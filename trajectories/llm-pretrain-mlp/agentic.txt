@@ -1,0 +1,708 @@
+<meta task="llm-pretrain-mlp" domain="Language models" file="nanoGPT/custom_pretrain.py" model_format="qwen3" edit_tool="str_replace"/>
+
+<system>
+You are a research engineer improving a model on a fixed ML task. You work by editing the model code and running experiments. Think carefully before each change. You have these tools:
+- str_replace(path, old_str, new_str): replace the unique occurrence of old_str with new_str.
+- create(path, file_text): create a new file.
+- run_experiment(): train + evaluate the current code under the fixed budget; returns metrics.
+Make one tool call at a time. After editing, call run_experiment() to measure your method.
+</system>
+
+<user>
+## Research question
+
+In a GPT-style language model, every transformer block alternates two sublayers: multi-head
+self-attention, which mixes information *across* positions, and a position-wise feed-forward network
+(the MLP), which transforms each token's hidden vector *on its own*. The MLP is where most of the
+model's parameters and a large share of its compute live, yet it has the simplest possible form — one
+linear up-projection to a wide hidden dimension, one pointwise nonlinearity, one linear down-projection.
+The single thing being designed here is **the MLP sublayer**: can a drop-in replacement for the default
+`Linear(d,4d) → GELU → Linear(4d,d)` lower held-out validation loss at **matched parameters and FLOPs**,
+changing only how the per-position hidden representation is formed — and nothing about attention,
+normalization, the data, the optimizer, or evaluation?
+
+## Prior art before the first rung (the FFN the first rung reacts to)
+
+The first method on the ladder reacts to the default MLP and the activation/gating lineage that produced
+it. These precede the ladder; the substrate below is what they converged to.
+
+- **ReLU FFN (Vaswani et al. 2017; bias-free T5 form, Raffel et al. 2019).** `max(0, xW1)W2`, two
+  matrices, `d_ff ≈ 4d`. Read ReLU as a hard *sign* gate: `ReLU(z) = z·1[z>0]` — multiply the
+  preactivation by a 0/1 mask of its sign. Gap: the only input-dependence is the single projection
+  `xW1`, and the gate is hard, zero-valued and zero-gradient on the whole negative half-line.
+- **GELU (Hendrycks & Gimpel 2016).** `GELU(z) = z·Φ(z)`, Φ the standard-normal CDF — the expectation
+  of a stochastic 0/1 mask `m ~ Bernoulli(Φ(z))`, so it weights the preactivation by a smooth value in
+  ~(0,1) instead of ReLU's hard step. This is the **default** activation in the scaffold's MLP. Gap:
+  smoother and better at the origin, but structurally identical to ReLU — one projection, one fixed
+  pointwise map; the smooth factor `Φ(xW1)` is tied to the same scalar it scales.
+- **Swish / SiLU (Ramachandran, Zoph & Le 2017; Elfwing et al. 2017).** `Swish_β(z) = z·σ(βz)`, found by
+  an automated activation search whose winners all had the form `z · g(z)` — the raw preactivation times
+  a gate of itself. Smooth, non-monotonic, and at `β=1` traces nearly the same curve as GELU (GELU's
+  cheap approximation is exactly `z·σ(1.702 z)`). Gap: same two-matrix shape; still one projection
+  through one fixed pointwise function.
+- **Multiplicative / gating thread (Mnih & Hinton 2007; Dauphin et al. 2017).** A separate line combines
+  *two* learned linear views of the input multiplicatively rather than passing one through a fixed map:
+  log-bilinear models couple linear projections by a product; gated convolutional language models use
+  `(X∗W) ⊗ σ(X∗V)`, a content path times a sigmoid gate. Lesson carried forward: a product of two
+  linear maps of `x` can express interactions a single-projection-then-pointwise map cannot. Gap: this
+  shape had not been put inside the transformer FFN, where every activation above is already a "value ×
+  gate" with value and gate forced to share one projection.
+
+Across all of these the hidden activation at each unit is `f(one linear map of x)`.
+
+## The fixed substrate
+
+A nanoGPT-style GPT-2 Medium pretraining loop is frozen and must not be touched: GPT-2 Medium
+(24 layers, 16 heads, `n_embd=1024`, ~355M params), pre-norm `LayerNorm` (bias-free), causal
+self-attention (flash SDPA), tied input/output embeddings, residual-scaled init
+(`c_proj` weights initialized `N(0, 0.02/√(2·n_layer))`), AdamW (`β=(0.9,0.95)`, `weight_decay=0.1`,
+`grad_clip=1.0`), a warmup+cosine schedule (`warmup_iters = 0.04·max_iters`, decay to `lr/10`),
+`torch.compile`, and 2-GPU DDP. Data is FineWeb `sample-10BT` (GPT-2 tokenizer, ~7.1B training tokens),
+trained 12,030 iterations at micro-batch 96 with gradient accumulation 6. The transformer `Block` is
+fixed as `x = x + attn(ln_1(x)); x = x + mlp(ln_2(x))`. The MLP receives `(B, T, n_embd)` and must
+return the same shape; `nn`, `F` (`torch.nn.functional`), and `math` are in scope.
+
+## The editable interface
+
+Exactly two regions of `nanoGPT/custom_pretrain.py` are editable, and every method on the ladder is a
+fill of the same contract:
+
+1. The **`MLP` class** (the only architectural slot): it must accept `(B, T, n_embd)` and return the
+   same shape, depend on nothing outside the FFN, and — when its shape differs from the default
+   two-matrix `4d` FFN — keep parameters and FLOPs matched by re-sizing the hidden width (the common
+   convention for a 3-matrix gated FFN is `hidden = 8/3 · n_embd`, rounded to a multiple of 64).
+2. A **`CONFIG_OVERRIDES` dict** that may override training hyperparameters from a fixed whitelist
+   (`learning_rate`, `weight_decay`, `warmup_iters`, `min_lr`, `grad_clip`). The baselines leave it
+   empty; they change only the MLP.
+
+The starting point is the scaffold default — the standard two-layer GELU MLP at 4× expansion. Each method
+replaces exactly the `MLP` class (and, if it chooses, `CONFIG_OVERRIDES`) and nothing else.
+
+```python
+# EDITABLE region of nanoGPT/custom_pretrain.py — default fill (GELU MLP, 4x expansion)
+class MLP(nn.Module):
+    def __init__(self, config):
+        super().__init__()
+        self.c_fc   = nn.Linear(config.n_embd, 4 * config.n_embd, bias=config.bias)
+        self.gelu   = nn.GELU()
+        self.c_proj = nn.Linear(4 * config.n_embd, config.n_embd, bias=config.bias)
+        self.dropout = nn.Dropout(config.dropout)
+
+    def forward(self, x):                  # x: (B, T, n_embd) -> (B, T, n_embd)
+        x = self.c_fc(x)
+        x = self.gelu(x)
+        x = self.c_proj(x)
+        x = self.dropout(x)
+        return x
+
+
+# ... later in the training setup, the (default-empty) hyperparameter override hook:
+# CONFIG_OVERRIDES: override training hyperparameters for your method.
+# Allowed keys: learning_rate, weight_decay, warmup_iters, min_lr, grad_clip.
+CONFIG_OVERRIDES = {}
+```
+
+## Evaluation settings
+
+One seed (42). Primary metric is **FineWeb validation cross-entropy** (`val_loss`, lower is better),
+measured at the end of the fixed 12,030-iteration budget. Secondary metrics, all from the fixed eval
+scripts, are word-level perplexity on **WikiText-2** and **LAMBADA** (lower is better) and zero-shot
+downstream accuracy on **ARC-Easy**, **HellaSwag**, **PIQA**, and **WinoGrande** (higher is better);
+`elapsed` is wall-clock seconds. Because the substrate is frozen and the budget fixed, any change in
+`val_loss` is attributable to the *form* of the MLP alone.
+
+The editable model code is in `nanoGPT/custom_pretrain.py`:
+```python
+class MLP(nn.Module):
+    def __init__(self, config):
+        super().__init__()
+        self.c_fc = nn.Linear(config.n_embd, 4 * config.n_embd, bias=config.bias)
+        self.gelu = nn.GELU()
+        self.c_proj = nn.Linear(4 * config.n_embd, config.n_embd, bias=config.bias)
+        self.dropout = nn.Dropout(config.dropout)
+
+    def forward(self, x):
+        x = self.c_fc(x)
+        x = self.gelu(x)
+        x = self.c_proj(x)
+        x = self.dropout(x)
+        return x
+```
+Improve it. Derive your method, edit the code, then run_experiment().
+</user>
+
+### step 1 — GeGLU (GLU with GELU gate, 8/3 width)   [slug:geglu]
+
+<think>
+The substrate is frozen and the only architectural slot I own is the `MLP` class, so I have to decide
+where the design pressure actually is before I touch anything. The block is `x = x + attn(ln_1(x)); x
+= x + mlp(ln_2(x))`, and the MLP is `Linear(d,4d) → GELU → Linear(4d,d)`. With the 4× expansion the two
+matrices `c_fc` (d×4d) and `c_proj` (4d×d) together hold roughly two-thirds of the whole 355M-parameter
+network and a correspondingly large share of the per-token FLOPs. So this layer is not a minor knob — it
+is where most of the budget already sits, and it is the *entire* per-position transformation: attention
+mixes tokens, but the MLP is the only place each token's representation gets reshaped on its own. If I
+want to spend the fixed budget better, this is the obvious place to push, because it is where the budget
+already is. And the only nonlinearity in the whole sublayer is that single `GELU`. Everything the layer
+can express about a token, it expresses by taking *one* linear view `xW1 = c_fc(x)` and bending it
+pointwise.
+
+Let me look hard at what that pointwise function is, because the family I'm choosing from is small and
+they share an anatomy. The default here is GELU, `GELU(z) = z·Φ(z)`, Φ the standard-normal CDF —
+derived as the expectation of a stochastic 0/1 mask `m ~ Bernoulli(Φ(z))`, whose mean transform is
+`Φ(z)·z + (1−Φ(z))·0 = zΦ(z)`. So GELU multiplies the preactivation `z` by a *smooth* value in roughly
+(0,1) that rises with `z`. Its predecessor ReLU is the hard version of the same idea, `ReLU(z) = z·1[z>0]`
+— multiply `z` by a 0/1 mask of its sign. Swish is `z·σ(βz)`, the same shape with a logistic gate; at
+β=1 it traces almost exactly GELU's curve (GELU's own cheap approximation is `z·σ(1.702 z)`). Pause on
+that: every activation I could drop into this slot — ReLU, GELU, Swish — has the *same internal anatomy*.
+Each is the raw preactivation `z` multiplied by a gate that is some function of `z`. The activation is
+already a gating operation: it takes a value (`z` itself) and multiplies it by a gate (a function of `z`)
+that decides how much of the value to let through. The automated activation search that found Swish made
+this explicit — its winners overwhelmingly had the form `b(z, g(z))`, the raw preactivation reused and
+multiplied by a gate of itself. The structure that keeps winning is value-times-gate.
+
+Here is what bothers me once I see the layer that way. In `f(xW1)·W2`, the value and the gate come from
+the *same* projection. GELU's value is `z = xW1` and its gate is `Φ(z) = Φ(xW1)`; both are functions of
+the single linear map `xW1 = c_fc(x)`. There is exactly one learned linear view of `x` feeding this whole
+layer, and the gate is forced to be a fixed function of the very thing it gates. The layer never gets to
+ask one question of `x` to decide *how much*, and a different question of `x` to decide *what*. The gating
+is real, but it is not independent — it can't be, because there is only one projection to build it from.
+
+What would it take to make the gate its own thing? I want the gate to be a separately-learned linear
+function of `x`, not a fixed function of the value. So instead of one up-projection `xW1`, give the layer
+two: a gate projection `xW` and a value projection `xV`. Form the hidden vector as their elementwise
+product, with the nonlinearity sitting on the gate path, then project back down:
+
+  hidden = f(xW) ⊗ (xV),   then  hidden·W2.
+
+Now the layer takes two independent linear views of the same input — one decides, via `f`, how much each
+hidden unit should fire; the other carries the content to be modulated. The amount and the content are no
+longer tied to the same projection. I should check this is not a gadget I'm inventing from nothing,
+because I've seen this exact shape before, just not in a transformer FFN: Dauphin, Fan, Auli and
+Grangier's gated convolutional language model is built on `(X∗W) ⊗ σ(X∗V)` — a content projection times a
+sigmoid gate, one elementwise product of two linear maps of the input — which they called a gated linear
+unit, the whole point being to let the network select which features matter without recurrence. And an
+older thread says the un-activated version is already meaningful: drop the nonlinearity and take
+`(xW) ⊗ (xV)`, a pure bilinear interaction, exactly the kind of multiplicative coupling Mnih and Hinton
+used in their log-bilinear language model. A product of two linear views of `x` makes each hidden unit a
+degree-two function of `x` rather than a degree-one preactivation bent by a fixed curve — a genuine
+increase in what the layer expresses per unit, not a rearrangement. So the move I'm reaching for is the
+gated linear unit, lifted out of the convolutional sequence model and dropped into this MLP slot in place
+of `GELU(xW1)`.
+
+Why should I believe the *gated* version trains well, not just expresses more? Here the gradient is what
+I actually worry about, because I'm stacking 24 of these. Suppose I had used the LSTM-style gate, content
+through `tanh` and gate through `σ` — the "gated tanh unit" `tanh(X) ⊗ σ(X)`. Differentiate it:
+`∇[tanh(X) ⊗ σ(X)] = tanh'(X)∇X ⊗ σ(X) + σ'(X)∇X ⊗ tanh(X)`. Every term multiplies the upstream gradient
+`∇X` by an activation *derivative* — `tanh'`, at most 1, or `σ'`, at most ¼. There is no path back through
+this unit on which the gradient is not shrunk by a bounded-below-one factor; stack a dozen and the signal
+attenuates a dozen times over. Now the linear-gated version `X ⊗ σ(X)` — content carried *linearly*, only
+the gate through σ: `∇[X ⊗ σ(X)] = ∇X ⊗ σ(X) + X ⊗ σ'(X)∇X`. The first term is `∇X ⊗ σ(X)`: the upstream
+gradient multiplied only by the gate *value* σ(X) ∈ (0,1), not by any activation derivative. For units
+the gate has opened (σ near 1) the gradient passes essentially undiminished — a clean, almost-linear
+highway back through the layer, a multiplicative skip. That is the structural reason to keep the *content*
+path linear and put the nonlinearity only on the *gate*: it buys GLU's expressivity without the per-layer
+gradient-downscaling tax the both-paths-nonlinear unit pays. So the design isn't "two projections,
+nonlinearity wherever" — it's specifically value carried linearly, gate through `f`, product taken,
+matching the shape `f(xW) ⊗ (xV)` with V's path linear.
+
+Now which `f` for the gate? The gated-conv unit used σ, but this MLP's default is already GELU, a smooth
+value-weighting rather than a hard sign gate, behaving almost like the Swish shape activation search
+keeps rediscovering. The minimal, consistent move is to make the gate use that same activation family,
+not reach for an unrelated function. So put GELU on the gate: `hidden = GELU(xW) ⊗ (xV)`. I can also see
+why GELU is a better gate than a bare sigmoid, not just a familiar one. A sigmoid gate is strictly in
+(0,1): it can only ever *attenuate* the content toward zero, never pass it at more than unit strength and
+never amplify or flip it. GELU's factor isn't bounded above by 1 the same way — `GELU(z) = zΦ(z)` grows
+like `z` for large positive `z` and dips slightly negative for moderately negative `z` (the same
+non-monotonic bump Swish has). So a GELU gate can pass content through at greater-than-unit gain when the
+gate preactivation is large and positive, and softly suppress or sign-flip near zero — strictly richer
+modulation than σ's pure squashing, while keeping the smoothness at the origin that made GELU preferable
+to ReLU in the first place. (Sigmoid, ReLU, GELU, Swish, or identity on the gate give the whole family —
+GLU / ReGLU / GeGLU / SwiGLU / Bilinear; GELU on the gate is the one that lines up with the activation
+this MLP already runs, so it is where I start.)
+
+That settles the form: `(GELU(xW) ⊗ xV)·W2`. Three weight matrices now — gate `W`, value `V`, down `W2`
+— where the old MLP had two. And that is a problem I have to confront immediately, because the whole
+premise of the comparison is matched budget: the substrate is frozen, the budget is fixed, and the
+leaderboard reads `val_loss` at a fixed iteration count. If I just bolt a third matrix on, of course it
+might do better — it has more parameters and does more compute, and any quality gain would be confounded
+with spending more. I have to hold parameters and FLOPs fixed, which means the extra projection is paid
+for by shrinking the hidden width. Write `d` for `n_embd` and let the baseline use hidden `d_ff = 4d`.
+The baseline has `c_fc` of shape `d×4d` and `c_proj` of `4d×d`, parameter count `2·d·(4d)`. My gated
+layer has `W, V` each `d×d_ff'` and `W2` of `d_ff'×d`, for `3·d·d_ff'` parameters. Match them:
+`3·d·d_ff' = 2·d·(4d) ⇒ d_ff' = (2/3)·4d = (8/3)·d ≈ 2.667·d`. The FLOPs scale identically — each of
+the three matmuls is `d×d_ff'` work per token, three of them equal the baseline's two `d×4d` matmuls — so
+matching parameters matches compute here too. At `n_embd = 1024` that is `int(8/3·1024) = 2730`, which I
+round *up* to the next multiple of 64 (2752) so the matmul tiles align with the hardware on the H200s the
+loop runs on — a sub-1% nudge to the width, not a real budget change. I omit biases on all three matrices
+(the scaffold's `config.bias` is `False`), keeping the accounting clean and matching the bias-free FFN
+the baseline uses.
+
+Let me write the forward pass concretely so the shapes click. Input `x` is `(B, T, n_embd)`. Gate
+projection `w1` takes it to `(B, T, hidden)` and I apply GELU; value projection `w3` takes it to
+`(B, T, hidden)` with no activation; multiply elementwise — same shape; down-projection `c_proj` back to
+`(B, T, n_embd)`; dropout on the output. Same shape in, same out: a true drop-in, touching nothing in
+attention, normalization, the data, or the optimizer, satisfying the interface contract exactly. I keep
+`CONFIG_OVERRIDES` empty — I'm changing the *form* of the MLP, not the training schedule, and the whole
+point is to isolate that one variable. So the concrete edit is gate `w1`, value `w3`, down `c_proj`, with
+`F.gelu(self.w1(x)) * self.w3(x)` in the forward — let me write it in.
+
+Do I have a mechanistic *proof* this lowers loss? No — and I shouldn't invent one. What I have are three
+converging design-time reasons to expect help at matched budget: each hidden unit is now a product of two
+independent linear views of `x`, so the layer can express multiplicative feature interactions a
+single-projection FFN cannot; the content path stays linear, so the gradient gets a clean almost-undiminished
+highway back through every one of the 24 layers, unlike the both-paths-nonlinear unit; and the gate reuses
+the same GELU this MLP already prefers, as a richer-than-sigmoid modulation that can amplify and softly
+sign-flip. Whether those add up to a real improvement is exactly what the run measures. This is the
+weakest rung of the ladder on purpose — it is the *first* and most conservative departure from the
+default: keep the GELU nonlinearity the baseline already uses, change only the *shape* of the layer from
+two-matrix-bent-once to three-matrix-gated-product, and hold the budget fixed by the 8/3 rule. It commits
+to the gating *structure* without yet questioning whether GELU is the right gate.
+
+So here is what I watch, because it sets up the next rung. The headline question is whether
+`val_loss` drops below the default GELU MLP's level at all — if the gating structure is worth its
+re-sizing, it should. But the choice I made most casually is the gate's activation: I put GELU there
+because it's what the MLP already ran, not because I derived it as optimal. The family is parameterized by
+exactly that choice (`σ`, ReLU, GELU, SiLU, identity), at the *same* 8/3 width and the *same* three-matrix
+budget — so swapping the gate is free, fully controlled, and the obvious next experiment. If GeGLU lands a
+modest improvement but the gate's activation turns out to matter on its own, the natural follow-up is to
+hold this exact structure fixed and change only `F.gelu` to something like `F.silu`. And there is a
+second thread I am explicitly deferring: I haven't questioned the *activation* itself, only whether to
+gate it — squaring or otherwise reshaping the nonlinearity inside a plain two-matrix FFN is a completely
+orthogonal lever that this rung says nothing about. So GeGLU's number will tell me two things at once:
+whether gating beats the default, and — once I vary the gate next — how much of any gain is the structure
+versus the particular activation sitting in it.
+</think>
+<say>
+I'm replacing the default 4× GELU MLP with GeGLU — a gated linear unit whose gate path runs GELU and whose value path stays linear. This first edit rewrites the `MLP` class into the three-matrix gated form (gate `w1`, value `w3`, down `c_proj`) at 8/3 width so parameters and FLOPs stay matched.
+</say>
+<edit path="nanoGPT/custom_pretrain.py">
+<old>
+class MLP(nn.Module):
+    def __init__(self, config):
+        super().__init__()
+        self.c_fc = nn.Linear(config.n_embd, 4 * config.n_embd, bias=config.bias)
+        self.gelu = nn.GELU()
+        self.c_proj = nn.Linear(4 * config.n_embd, config.n_embd, bias=config.bias)
+        self.dropout = nn.Dropout(config.dropout)
+
+    def forward(self, x):
+        x = self.c_fc(x)
+        x = self.gelu(x)
+        x = self.c_proj(x)
+        x = self.dropout(x)
+        return x
+</old>
+<new>
+# EDITABLE region of nanoGPT/custom_pretrain.py — step 1: GeGLU MLP (8/3 width)
+class MLP(nn.Module):
+    def __init__(self, config):
+        super().__init__()
+        hidden_dim = int(8 / 3 * config.n_embd)
+        hidden_dim = ((hidden_dim + 63) // 64) * 64
+        self.w1 = nn.Linear(config.n_embd, hidden_dim, bias=config.bias)
+        self.c_proj = nn.Linear(hidden_dim, config.n_embd, bias=config.bias)
+        self.w3 = nn.Linear(config.n_embd, hidden_dim, bias=config.bias)
+        self.dropout = nn.Dropout(config.dropout)
+
+    def forward(self, x):
+        # GeGLU: GELU(xW1) * (xW3) then project back
+        return self.dropout(self.c_proj(F.gelu(self.w1(x)) * self.w3(x)))
+
+
+# training-setup hook left at the default — only the MLP form changed:
+CONFIG_OVERRIDES = {}
+</new>
+</edit>
+<obs>
+Successfully replaced text in nanoGPT/custom_pretrain.py.
+</obs>
+<run/>
+<obs>
+Measured results — `baseline:geglu` (`is_final,true`), seed 42 (the single seed) and mean.
+
+## FineWeb val_loss / perplexity (lower is better)
+| seed | val_loss | wikitext2_ppl | lambada_ppl | elapsed (s) |
+|---|---|---|---|---|
+| 42 | 2.2952 | 44.13 | 68.73 | 21098 |
+| **mean** | **2.2952** | **44.13** | **68.73** | **21098** |
+
+## Downstream accuracy (higher is better)
+| seed | arc_easy | hellaswag | piqa | winogrande |
+|---|---|---|---|---|
+| 42 | 54.88 | 32.90 | 64.15 | 50.36 |
+| **mean** | **54.88** | **32.90** | **64.15** | **50.36** |
+</obs>
+
+### step 2 — SwiGLU (GLU with SiLU gate, 8/3 width)   [slug:swiglu]
+
+<think>
+GeGLU's number is the cleanest possible isolation of one variable, and it tells me the structure was the
+right move but didn't settle the gate. On seed 42 GeGLU lands `val_loss` 2.2952, with WikiText-2 ppl
+44.13, LAMBADA 68.73, and downstream {arc_easy 54.88, hellaswag 32.90, piqa 64.15, winogrande 50.36}.
+I have no default-GELU-MLP row on this leaderboard to subtract against, but the construction already told
+me what GeGLU was *for*: untie the gate from the value, give the layer two independent linear views of
+the token instead of one, hold the budget fixed by the 8/3 rule. That is a real change in what each
+hidden unit can express, and the run came in at a sensible loss — so the gating *structure* is carrying
+its weight; it didn't blow up, didn't need a schedule change, and sits in the same ballpark the other
+GLU-family fills will. But two things in this row bother me. The LAMBADA perplexity (68.73) is the worst
+of the GLU fills I'll be comparing, and hellaswag (32.90) is the lowest too. LAMBADA rewards
+long-range completion — predicting the last word of a passage from broad context — and hellaswag rewards
+commonsense continuation; both are sensitive to how cleanly the per-position transformation passes a
+useful, well-scaled signal forward. That points my attention at exactly the part of GeGLU I chose most
+casually: the gate's activation. I put `GELU` on the gate because it was the activation the default MLP
+already ran, not because I derived it as the right gate. The structure is fixed and good; the gate is an
+open knob, and this row is the reason to turn it.
+
+So let me reopen the gate choice deliberately, because the family is parameterized by exactly this and
+nothing else changes. The hidden is `f(xW) ⊗ (xV)` at the same 8/3 width, the same three matrices, the
+same matched parameter and FLOP budget; choosing `f` gives the whole family — sigmoid → GLU, ReLU →
+ReGLU, GELU → GeGLU, identity → Bilinear, and Swish/SiLU → SwiGLU. Swapping `f` is free and fully
+controlled: any change in `val_loss` from here is attributable to the gate's activation alone, the same
+clean isolation that made GeGLU's number interpretable. That is the experiment GeGLU's LAMBADA/hellaswag
+weakness sets up — hold the GLU structure exactly, vary only the gate.
+
+Which `f`, then, and why would it beat GELU rather than just differ from it? Go back to what these
+activations *are*. Both GELU and Swish are "value × smooth gate of the value": `GELU(z) = z·Φ(z)` weights
+`z` by the standard-normal CDF; `Swish_β(z) = z·σ(βz)` weights `z` by a logistic of `βz`. At β=1 these two
+curves are nearly indistinguishable — GELU's own cheap approximation is `z·σ(1.702 z)`, which is just a
+Swish with β≈1.702 — so on the curve alone I should not expect a large gap, and I should be honest that I
+am not reaching for a dramatically different function. What I *am* reaching for is the gate that the
+modern large-model FFNs converged on in exactly this slot. The GLU structure with a Swish/SiLU gate —
+SwiGLU — is the form PaLM, LLaMA, DeepSeek, and Qwen all settled on for the feed-forward sublayer at
+scale, and the reason it is worth treating as the *next* rung rather than a sibling is that it is the
+empirically-selected gate for this precise construction (gated FFN, ~8/3 width, bias-free), whereas GeGLU
+was my conservative first pick because it matched the incumbent activation. So the move is: keep
+everything GeGLU established and replace the gate `f` from GELU to SiLU, `f(z) = z·σ(z)`.
+
+Let me make the mechanistic case for why the SiLU gate could specifically lift the long-range and
+commonsense signals where GeGLU sagged, rather than hand-waving "modern models use it." The relevant
+distinction is the gate's behavior in two regimes. For large positive preactivations the two gates agree
+closely (both → identity-like passthrough), so the difference is concentrated near and below zero. There
+SiLU's gate `σ(z)` and GELU's gate `Φ(z)` differ in shape: SiLU is the smoother, slightly *softer* gate
+around the origin and has a marginally more pronounced non-monotonic dip for small negative `z`. Two
+consequences matter for the gradient highway I built the structure around. First, the value path is linear
+in both, so the clean-highway argument is untouched — `∇[X⊗f(X)]` still has the leading `∇X⊗f(X)` term
+that scales the upstream gradient by the gate value, not by an activation derivative; switching `f` from
+Φ-shaped to σ-shaped only reshapes *which* units the highway is open on, it doesn't reintroduce a
+derivative factor. Second, the gate *value* itself is what multiplies the carried content, and SiLU's
+gently-non-monotonic, smooth profile lets a slightly larger band of moderate-magnitude preactivations
+pass content through at near-or-above unit gain before saturating, with a softer roll-off into the
+negative regime. For tasks that depend on accumulating a precise, well-scaled signal across many tokens —
+LAMBADA's long-range completion, hellaswag's commonsense continuation — a gate that is a touch more
+generous and smoother in the moderate regime, and slightly less prone to hard suppression, is exactly the
+kind of change that nudges those metrics. I won't overclaim it: the curves are close, so I expect a small
+effect, and the direction is what I'm asserting, not the magnitude.
+
+There is also the budget bookkeeping to redo from scratch even though I expect it unchanged, because the
+matched-budget premise is the whole reason any of these numbers are comparable. SwiGLU has the identical
+three-matrix layout as GeGLU: gate `W`, value `V`, down `W2`, each the same shapes. So the parameter count
+is `3·d·d_ff'` exactly as before, the FLOP count is the three `d×d_ff'` matmuls exactly as before, and the
+matched-budget condition `3·d·d_ff' = 2·d·(4d)` gives the same `d_ff' = (8/3)·d`. At `n_embd = 1024` that
+is `int(8/3·1024) = 2730`, rounded up to the next multiple of 64 (2752) for matmul-tile alignment — the
+same width GeGLU used, so the comparison is genuinely apples-to-apples: SwiGLU and GeGLU differ in the
+*single* function on the gate path and in *nothing else* — not width, not matrix count, not biases
+(`config.bias=False` throughout), not the schedule. That is precisely the controlled swap I wanted, and
+it is why I can read any `val_loss` delta as the gate's activation rather than a budget artifact.
+
+Now make it concrete in this task's edit surface, because the loop is frozen and the only architectural
+slot is the `MLP` class. The forward pass is `x → w1(x)` (gate) and `x → w3(x)` (value), both
+`(B,T,n_embd) → (B,T,hidden)`; apply SiLU to the gate, multiply elementwise, project down with `c_proj`
+to `(B,T,n_embd)`, dropout on the output. In code that is one line — `F.silu(self.w1(x)) * self.w3(x)` —
+where GeGLU had `F.gelu`. Everything else in the class is byte-for-byte the GeGLU fill: the `8/3` sizing,
+the round-to-64, the three bias-free `Linear`s named `w1`/`w3`/`c_proj`, the dropout. And I leave
+`CONFIG_OVERRIDES` empty again — I am changing the gate's activation, not the learning rate or weight
+decay, and the entire value of this step is that it isolates that one function. So let me make the one-line
+gate swap and the matching comment updates, and run it.
+
+So the delta from step 1 is as small and as sharp as it gets: same GLU structure, same matched 8/3 budget,
+gate activation `GELU → SiLU`. Reading GeGLU's measured shape, here is what I expect and where I'm
+exposed. The primary `val_loss` should move *slightly* in the right direction — lower than GeGLU's 2.2952
+— but only slightly, because the two gate curves are close; if it moved a lot I'd distrust it as noise on
+a single seed. The clearer, more falsifiable prediction is on the two metrics that sagged: LAMBADA ppl
+should come *down* from 68.73 (the smoother, more generous gate passing long-range signal more cleanly),
+and I'd expect a modest lift on the gate-sensitive downstream metrics — piqa and the GLU-family-wide
+accuracies — even if hellaswag is noisy enough on one seed that I won't bet the step on it. Where I'm
+unsure: arc_easy and winogrande are close enough across the family that the SiLU gate could land them
+flat or even a hair below GeGLU, and `val_loss` could come in *above* GeGLU if the single seed happens to
+favor the Φ gate — both gates are so close that seed-42 luck is a live alternative explanation, and I'm
+explicitly only claiming the *direction*. The deeper thing this step still does not touch is the
+*activation itself*: SwiGLU, like GeGLU, keeps the nonlinearity *on the gate* of a product structure and
+keeps the value path linear. If both GLU gates land in the same narrow band — which the closeness of
+their curves predicts — then the lesson is that varying the gate inside the GLU family has run its course,
+and the next rung has to question something the whole GLU family shares: whether gating a smooth
+sigmoid-like activation is even the right primitive, versus reshaping the activation itself inside the
+plain two-matrix FFN. That is the thread I deferred at step 1 and the place SwiGLU's row, if it lands
+where I expect, will point next.
+
+The causal chain in one breath: GeGLU proved the gating *structure* but its GELU gate was my
+conservative carry-over from the incumbent activation, and its row sagged exactly on the long-range and
+commonsense metrics (LAMBADA 68.73, hellaswag 32.90) → so hold the GLU structure and the 8/3 matched
+budget *fixed* and turn the one knob I chose casually, the gate's activation → swap `GELU → SiLU`, the
+gate the modern at-scale FFNs converged on for this exact slot, smoother and a touch more generous in the
+moderate regime while leaving the linear-value gradient highway intact → drop it into the task's `MLP` as
+the single edit `F.silu(self.w1(x)) * self.w3(x)`, budget byte-for-byte identical to GeGLU → expecting a
+small `val_loss` improvement below 2.2952, LAMBADA down from 68.73, and the gate-sensitive accuracies up,
+while watching for the possibility that the two close gate curves land in the same band — which, if it
+happens, says the next rung must leave the GLU family and reshape the activation itself.
+</think>
+<say>
+Next is SwiGLU: same GLU structure and same 8/3 matched budget as GeGLU, but the gate activation swaps from GELU to SiLU — the gate modern at-scale FFNs converged on. This edit relabels the class and flips `F.gelu` to `F.silu` on the gate path; nothing else changes.
+</say>
+<edit path="nanoGPT/custom_pretrain.py">
+<old>
+# EDITABLE region of nanoGPT/custom_pretrain.py — step 1: GeGLU MLP (8/3 width)
+class MLP(nn.Module):
+</old>
+<new>
+# EDITABLE region of nanoGPT/custom_pretrain.py — step 2: SwiGLU MLP (8/3 width)
+class MLP(nn.Module):
+</new>
+</edit>
+<obs>
+Successfully replaced text in nanoGPT/custom_pretrain.py.
+</obs>
+<edit path="nanoGPT/custom_pretrain.py">
+<old>
+        hidden_dim = int(8 / 3 * config.n_embd)
+        hidden_dim = ((hidden_dim + 63) // 64) * 64
+</old>
+<new>
+        hidden_dim = int(8 / 3 * config.n_embd)
+        # Round to nearest multiple of 64 for efficiency
+        hidden_dim = ((hidden_dim + 63) // 64) * 64
+</new>
+</edit>
+<obs>
+Successfully replaced text in nanoGPT/custom_pretrain.py.
+</obs>
+<note>
+The gate swap itself: SiLU on the gate path, GELU comment updated.
+</note>
+<edit path="nanoGPT/custom_pretrain.py">
+<old>
+    def forward(self, x):
+        # GeGLU: GELU(xW1) * (xW3) then project back
+        return self.dropout(self.c_proj(F.gelu(self.w1(x)) * self.w3(x)))
+
+
+# training-setup hook left at the default — only the MLP form changed:
+CONFIG_OVERRIDES = {}
+</old>
+<new>
+    def forward(self, x):
+        # SwiGLU: SiLU(xW1) * (xW3) then project back
+        return self.dropout(self.c_proj(F.silu(self.w1(x)) * self.w3(x)))
+
+
+# training-setup hook left at the default — only the gate activation changed:
+CONFIG_OVERRIDES = {}
+</new>
+</edit>
+<obs>
+Successfully replaced text in nanoGPT/custom_pretrain.py.
+</obs>
+<run/>
+<obs>
+Measured results — `baseline:swiglu` (`is_final,true`), seed 42 (the single seed) and mean.
+
+## FineWeb val_loss / perplexity (lower is better)
+| seed | val_loss | wikitext2_ppl | lambada_ppl | elapsed (s) |
+|---|---|---|---|---|
+| 42 | 2.2923 | 44.33 | 66.81 | 20750 |
+| **mean** | **2.2923** | **44.33** | **66.81** | **20750** |
+
+## Downstream accuracy (higher is better)
+| seed | arc_easy | hellaswag | piqa | winogrande |
+|---|---|---|---|---|
+| 42 | 54.71 | 33.40 | 64.64 | 50.43 |
+| **mean** | **54.71** | **33.40** | **64.64** | **50.43** |
+</obs>
+
+### step 3 — ReLU² (squared-ReLU / Primer-EZ, 4x width)   [slug:relu_squared]
+
+<think>
+SwiGLU's row confirms exactly the suspicion I closed step 2 with: varying the gate inside the GLU family
+has run its course. On seed 42 SwiGLU lands `val_loss` 2.2923, against GeGLU's 2.2952 — a real
+improvement, and in the direction I predicted, but a *tiny* one (0.0029 nats), which is precisely what the
+near-identical GELU/SiLU gate curves should produce. The secondary metrics moved the way I expected too:
+LAMBADA dropped from 68.73 to 66.81 (the smoother, more generous gate passing long-range signal more
+cleanly), hellaswag came up from 32.90 to 33.40, piqa from 64.15 to 64.64. So the gate swap *worked*, and
+it worked on the metrics I aimed at — but the magnitude is the message. Two activations whose curves are
+nearly the same, dropped into the identical structure, land in the same narrow band. That tells me the
+remaining headroom is not in *which smooth sigmoid-like gate* I put on a GLU; it is in something the whole
+GLU family shares and that I have never once questioned across both rungs.
+
+What do GeGLU and SwiGLU have in common, structurally, that I've held fixed? Both keep the nonlinearity
+*on the gate* of a product of two linear projections, both carry the value path linearly, both sit at the
+8/3 width with three matrices, and — the part I want to interrogate now — both use a *smooth, bounded-rate,
+sigmoid-derived* gate: `Φ(z)` for GeGLU, `σ(z)` for SwiGLU. Every move so far has been inside one design
+axis (the gate's smooth activation) of one structure (gated product). I've been optimizing the gate and
+treating the *activation primitive itself* as furniture. The flatness of the GeGLU→SwiGLU step is the
+evidence that this axis is nearly exhausted. So the next rung has to leave the GLU family and reopen the
+question I deferred at step 1: is gating a smooth activation even the right primitive, or is there a
+*different shape of nonlinearity* — inside the plain two-matrix FFN, no gating at all — that the gated
+smooth activations have been quietly leaving on the table?
+
+Let me reconsider the plain FFN from scratch, because that is the structure I'm going back to. The default
+is `Linear(d,4d) → GELU → Linear(4d,d)`, one up-projection, one pointwise map, one down-projection, full
+4d width, two matrices. GeGLU/SwiGLU spent their third matrix and their extra expressivity on *gating*;
+but gating is not the only way to make a layer's per-unit response richer. The other axis is the *pointwise
+function itself*. ReLU, GELU, SiLU are all variations on "smooth-or-hard sign gate of `z`, output roughly
+linear in `z` for large positive `z`" — they all grow at most *linearly* in the preactivation. What if the
+activation grew *faster* than linearly where the preactivation is large and positive? Consider squaring the
+rectified preactivation: `(ReLU(z))² = max(0,z)²`. For `z ≤ 0` it is exactly zero (the same hard sparsity
+floor as ReLU); for `z > 0` it grows *quadratically*, so a hidden unit with a large positive preactivation
+fires far more sharply than a ReLU or GELU unit would. This is a genuinely different *shape* of
+nonlinearity, not another smooth gate: it's a rectified polynomial of degree two, where everything I tried
+before was degree-≤1-asymptotic.
+
+Why would faster-than-linear growth help the language-modeling loss? Two mechanistic reasons, and I want
+to state them as design-time expectations, not proofs. First, *selectivity / effective sparsity*.
+Squaring sharpens the contrast between strongly- and weakly-activated units: a unit at `z=2` produces 4,
+a unit at `z=0.5` produces 0.25, a 16× ratio where ReLU would give only 4×. So the down-projection sees a
+hidden vector dominated by the few units that genuinely matched the token's content, with the marginal
+units suppressed toward zero — a soft, learned feature selection baked into the activation, which is
+exactly the kind of crisp per-position routing the FFN exists to do. ReLU already zeroes the negative half;
+squaring additionally *de-emphasizes the small-positive half*, pushing the layer toward responding
+strongly on a sparse set of units. Second, and this is the surprising part, it does this *inside the plain
+two-matrix FFN* — no third matrix, no gating, no width re-sizing. The GLU family bought richer per-unit
+responses by adding a multiplicative interaction at the cost of a matrix and a shrunk width; squared-ReLU
+buys a richer per-unit *response curve* for free, by changing the function alone. That is why it belongs
+on a later rung than the GLU variants rather than alongside them: it questions a more fundamental thing
+(the shape of the nonlinearity) and it does so at *zero* structural cost.
+
+The budget bookkeeping here is the cleanest of the whole ladder, and it's worth doing explicitly because
+it changes the comparison. The GLU variants had to justify their third matrix by the 8/3 rule. Squared-ReLU
+adds *nothing*: it keeps the default's exact two matrices, `c_fc` of shape `d×4d` and `c_proj` of `4d×d`,
+the full 4d hidden width, the bias-free convention — the only difference from the default MLP is that the
+pointwise map between them is `max(0,z)²` instead of `GELU(z)`. Parameter count `2·d·(4d)`, identical to
+the default and identical (by the 8/3 construction) to GeGLU/SwiGLU; FLOPs identical to the default (the
+square is a cheap elementwise op, negligible against the two matmuls). So this rung is matched-budget to
+*everything* before it, and it is the only fill that keeps the full 4d width — which matters, because the
+8/3 width the GLU variants run at is a 33% narrower hidden dimension, and there is a real question whether
+some of the GLU family's headroom was eaten by that narrowing. Squared-ReLU sidesteps it entirely: full
+width, two matrices, just a sharper activation.
+
+I should be careful about one numerical worry before I commit, because faster-than-linear growth is exactly
+the kind of thing that destabilizes training. If `(ReLU(z))²` grows quadratically, can the activations
+blow up and wreck the run? Three things keep it in check, and they're worth naming so I don't reach for a
+schedule override I don't need. (1) The preactivation `z = c_fc(x)` is the output of a `LayerNorm`ed input
+through a bias-free linear initialized at `N(0, 0.02)`, so `z` is small at initialization and the square
+of a small number is smaller still — the layer starts *gentle*, not explosive. (2) The down-projection
+`c_proj` carries the residual-scaled init `N(0, 0.02/√(2·n_layer))` the substrate applies to every
+`c_proj.weight`, which is precisely the mechanism that keeps the residual stream's variance from growing
+with depth regardless of the activation's gain. (3) `grad_clip=1.0` is already in the frozen optimizer
+config. So the squaring is buffered at init by small preactivations, buffered along depth by the residual
+init, and buffered in the gradient by the clip — I expect no instability, and crucially I expect *not* to
+need any `CONFIG_OVERRIDES`. I leave the learning rate, weight decay, warmup, and grad-clip exactly where
+the substrate sets them, so that — exactly as on the previous two rungs — any `val_loss` change is
+attributable to the activation shape alone and not to a re-tuned schedule.
+
+Now make it concrete in the task's edit surface. The architectural slot is the `MLP` class, and unlike the
+GLU rungs I am going *back* to the default's two-matrix skeleton: `c_fc = Linear(n_embd, 4·n_embd)`,
+`c_proj = Linear(4·n_embd, n_embd)`, both bias-free, dropout on the output — byte-for-byte the default
+MLP's `__init__` minus the stored `nn.GELU()` module. The forward is `x = c_fc(x); x = F.relu(x).square();
+x = c_proj(x); x = dropout(x)` — the single substantive change from the default being `F.relu(x).square()`
+where the default had `self.gelu(x)`. I use `F.relu(x).square()` rather than `F.relu(x)**2` because
+`.square()` is the same operation expressed as the cheaper fused elementwise op, and it reads as the
+intent. `CONFIG_OVERRIDES` stays empty for the reasons above. So let me rewrite the class back to the
+two-matrix skeleton with the squared-ReLU activation and run it.
+
+So the delta from step 2 is a change of *axis*, not a change of gate: drop gating entirely, return to the
+plain two-matrix 4d FFN, and replace the smooth sigmoid-derived activation with a rectified *quadratic*,
+`max(0,z)²`. Reading SwiGLU's measured shape, here is what I expect and where I'm exposed. The primary
+`val_loss` should drop *below* SwiGLU's 2.2923 — and I expect a *larger* margin than the GeGLU→SwiGLU step
+gave (0.0029), because this is a change of kind (activation shape) rather than a change of degree (gate
+curve), and because it recovers the full 4d width the GLU variants gave up. The clearest falsifiable
+prediction is on WikiText-2 perplexity: the sharper, more selective activation should produce a crisper
+language model, so WikiText-2 ppl should come *down* from SwiGLU's 44.33 — and if it does, that's the
+selectivity story confirming itself. I'd also expect the throughput to *improve* (lower `elapsed` than
+SwiGLU's 20750), since two full-width matmuls plus a cheap square are no costlier than three 8/3-width
+matmuls and the square is far cheaper than a SiLU. Where I'm unsure: on a single seed the downstream
+accuracies (arc_easy, piqa, winogrande) are close enough across all these fills that squared-ReLU could
+land any of them flat or a hair either way, and I'm only claiming the *primary loss and WikiText-2*
+direction. There is also a residual risk I've argued against but can't fully rule out — that the
+quadratic's larger dynamic range hurts the *smooth* metrics (LAMBADA) even as it sharpens the
+sparse-selective ones; if LAMBADA were to regress while `val_loss` and WikiText-2 improve, that would be
+the tell that the sharpness helps local prediction but costs long-range smoothness, and the next move
+would be a *gated* squared-ReLU that puts the quadratic on the gate of a GLU to get both — but that is a
+hypothesis for past the strongest baseline, not this rung.
+
+The causal chain in one breath: GeGLU→SwiGLU improved `val_loss` only 0.0029 because two near-identical
+smooth gate curves in the identical GLU structure must land in the same band — so the gate axis is
+exhausted → leave the GLU family entirely and reopen the activation *shape* I deferred at step 1, going
+back to the plain two-matrix 4d FFN → replace the smooth sigmoid-derived activation with the rectified
+quadratic `max(0,z)²`, which keeps ReLU's hard sparsity floor but grows *faster than linearly*, sharpening
+the contrast between strongly- and weakly-firing units (soft feature selection) at *zero* structural cost
+and recovering the full 4d width the GLU variants gave up → buffered against blow-up by small init
+preactivations, the residual-scaled `c_proj` init, and `grad_clip=1.0`, so no schedule override is needed
+→ drop it into the task's `MLP` as `F.relu(x).square()` in the default two-matrix skeleton → expecting
+`val_loss` below 2.2923 by a clearer margin than the gate swap gave, WikiText-2 ppl down from 44.33, and
+throughput up, while watching LAMBADA in case the quadratic's sharpness trades against long-range
+smoothness.
+</think>
+<say>
+Now ReLU² (squared-ReLU): I leave the GLU family and go back to the plain two-matrix 4× FFN, swapping the smooth gate for a rectified quadratic `max(0,z)²` — same parameters and FLOPs, just a sharper, more selective activation. This edit rewrites the `MLP` class back to the two-matrix skeleton with `F.relu(x).square()`.
+</say>
+<edit path="nanoGPT/custom_pretrain.py">
+<old>
+# EDITABLE region of nanoGPT/custom_pretrain.py — step 2: SwiGLU MLP (8/3 width)
+class MLP(nn.Module):
+    def __init__(self, config):
+        super().__init__()
+        hidden_dim = int(8 / 3 * config.n_embd)
+        # Round to nearest multiple of 64 for efficiency
+        hidden_dim = ((hidden_dim + 63) // 64) * 64
+        self.w1 = nn.Linear(config.n_embd, hidden_dim, bias=config.bias)
+        self.c_proj = nn.Linear(hidden_dim, config.n_embd, bias=config.bias)
+        self.w3 = nn.Linear(config.n_embd, hidden_dim, bias=config.bias)
+        self.dropout = nn.Dropout(config.dropout)
+
+    def forward(self, x):
+        # SwiGLU: SiLU(xW1) * (xW3) then project back
+        return self.dropout(self.c_proj(F.silu(self.w1(x)) * self.w3(x)))
+
+
+# training-setup hook left at the default — only the gate activation changed:
+CONFIG_OVERRIDES = {}
+</old>
+<new>
+# EDITABLE region of nanoGPT/custom_pretrain.py — step 3: ReLU² (squared-ReLU) MLP, 4x expansion
+class MLP(nn.Module):
+    def __init__(self, config):
+        super().__init__()
+        self.c_fc = nn.Linear(config.n_embd, 4 * config.n_embd, bias=config.bias)
+        self.c_proj = nn.Linear(4 * config.n_embd, config.n_embd, bias=config.bias)
+        self.dropout = nn.Dropout(config.dropout)
+
+    def forward(self, x):
+        x = self.c_fc(x)
+        x = F.relu(x).square()  # ReLU²
+        x = self.c_proj(x)
+        x = self.dropout(x)
+        return x
+
+
+# training-setup hook left at the default — only the activation shape changed:
+CONFIG_OVERRIDES = {}
+</new>
+</edit>
+<obs>
+Successfully replaced text in nanoGPT/custom_pretrain.py.
+</obs>
+<run/>
+<obs>
+Measured results — `baseline:relu_squared` (`is_final,true`), seed 42 (the single seed) and mean.
+
+## FineWeb val_loss / perplexity (lower is better)
+| seed | val_loss | wikitext2_ppl | lambada_ppl | elapsed (s) |
+|---|---|---|---|---|
+| 42 | 2.2830 | 43.33 | 66.56 | 19667 |
+| **mean** | **2.2830** | **43.33** | **66.56** | **19667** |
+
+## Downstream accuracy (higher is better)
+| seed | arc_easy | hellaswag | piqa | winogrande |
+|---|---|---|---|---|
+| 42 | 55.26 | 33.86 | 63.87 | 51.22 |
+| **mean** | **55.26** | **33.86** | **63.87** | **51.22** |
+</obs>

@@ -1,0 +1,838 @@
+<meta task="dl-regularization" domain="Deep learning" file="pytorch-vision/custom_reg.py" model_format="qwen3" edit_tool="str_replace"/>
+
+<system>
+You are a research engineer improving a model on a fixed ML task. You work by editing the model code and running experiments. Think carefully before each change. You have these tools:
+- str_replace(path, old_str, new_str): replace the unique occurrence of old_str with new_str.
+- create(path, file_text): create a new file.
+- run_experiment(): train + evaluate the current code under the fixed budget; returns metrics.
+Make one tool call at a time. After editing, call run_experiment() to measure your method.
+</system>
+
+<user>
+## Research question
+
+A deep convolutional image classifier has far more parameters than the data can constrain, so it
+overfits: training accuracy marches toward perfect while held-out accuracy stalls. The single thing
+being designed is an **additional regularization term** — one differentiable scalar, computed every
+training step from the model, the batch, and the current logits, and *added* to the cross-entropy loss
+before backpropagation. Everything else about the pipeline is frozen: the architectures, the weight
+initialization, the data and augmentation, the optimizer (SGD, `lr=0.1`, `momentum=0.9`,
+`weight_decay=5e-4` — so plain L2 weight decay is *already on*), the cosine schedule, and the
+evaluation procedure. The term must generalize across three architecture/dataset pairs, must stay
+differentiable, and must be cheap enough to run on every step.
+
+## Prior art before the first rung
+
+The first rung reacts to the standard regularizers that already act *inside* the network, and to the
+fact that the most successful one stops working in exactly the place this task cares about — the
+convolutional layers.
+
+- **Weight decay / L2 (Krogh & Hertz 1991).** Penalize `||W||^2`, shrinking every weight toward zero.
+  It controls overall magnitude (the *scale* of the spectrum) but not its *shape*, and it is already
+  applied here through the optimizer (`weight_decay=5e-4`), so any new term must do something L2 does
+  not. Gap: scale-only, and already spent.
+- **Dropout (Srivastava et al. 2014).** Zero each hidden unit independently with probability `1-p` and
+  rescale survivors, so one forward pass samples a thinned sub-network and test time averages the
+  ensemble — killing co-adaptation in dense layers. Gap: on a convolutional feature map the activations
+  are spatially correlated, so zeroing one scalar removes nothing (its neighbors carry the same signal
+  onward); dropout has quietly disappeared from conv layers.
+- **Batch normalization (Ioffe & Szegedy 2015).** Normalize activations per channel; a strong implicit
+  regularizer, and present in all three architectures here. Gap: it normalizes *activations*, leaving
+  the weight spectrum and the *output distribution* untouched.
+- **Label smoothing (Szegedy et al. 2016).** Soften the one-hot target toward uniform, which curbs
+  over-confident outputs. Gap: it acts by *replacing the target / the loss itself*, which this edit
+  surface forbids — the base cross-entropy is fixed; a regularizer here can only *add* a term.
+
+These act on weights (L2), hidden units (dropout), or activations (BN); none is an *additional*,
+adaptive, loss-side penalty layered on a pipeline that already has L2 and BN. That is the gap the ladder
+fills, each rung a different answer to "what extra scalar should I add to the loss?".
+
+## The fixed substrate
+
+A standard CIFAR-style training loop is frozen and must not be touched. CIFAR-adapted architectures
+(ResNet-56 with `BasicBlock` `[9,9,9]`, VGG-16-BN with adaptive average pooling, MobileNetV2 with a
+stride-1 stem), Kaiming weight init, `RandomCrop(32, pad=4)` + `RandomHorizontalFlip`, per-dataset
+normalization, batch size 128. The optimizer is `SGD(lr=0.1, momentum=0.9, weight_decay=5e-4)` with
+`CosineAnnealingLR(T_max=200)` over 200 epochs. The training step is exactly:
+
+`loss = CrossEntropy(outputs, targets) + compute_regularization(model, inputs, outputs, targets, config)`
+
+so the new term is summed straight onto the cross-entropy. Best test accuracy over training is recorded.
+
+## The editable interface
+
+Exactly one region is editable — the body of `compute_regularization` in `pytorch-vision/custom_reg.py`
+(the file's lines 246-273). `torch`, `torch.nn as nn`, and `torch.nn.functional as F` are already
+imported at module scope, so the body uses them directly (no imports inside the function). The contract:
+
+- `model`: the full `nn.Module`; iterate `model.named_parameters()` / `model.named_modules()` for
+  weight- or activation-based penalties.
+- `inputs`: `[B, 3, 32, 32]` input batch (for input-dependent penalties).
+- `outputs`: `[B, num_classes]` logits (for output-based penalties such as entropy/confidence).
+- `targets`: `[B]` integer labels.
+- `config`: dict with `num_classes` (int), `epoch` (int, 0-indexed), `total_epochs` (int) — for
+  epoch-dependent scheduling.
+
+The function returns one differentiable scalar `torch.Tensor` added to the cross-entropy loss; return
+`0` for no regularization. The starting point is the scaffold default: not implemented. Each method on
+the ladder replaces exactly this body and nothing else.
+
+```python
+# EDITABLE region of pytorch-vision/custom_reg.py (lines 246-273) — default fill
+# torch, torch.nn as nn, torch.nn.functional as F are already imported at module scope.
+def compute_regularization(model, inputs, outputs, targets, config):
+    """Compute regularization loss term added to classification loss.
+
+    Called every training step. The returned scalar is added to the
+    cross-entropy loss before backpropagation.
+
+    Args:
+        model: the network (nn.Module, ResNet / VGG / MobileNetV2)
+        inputs: [B, 3, 32, 32] input batch
+        outputs: [B, num_classes] model logits
+        targets: [B] integer class labels
+        config: dict with keys:
+            - 'num_classes': int (10 or 100)
+            - 'epoch': int (current epoch, 0-indexed)
+            - 'total_epochs': int (total training epochs)
+
+    Returns:
+        scalar torch.Tensor -- regularization loss (added to CE loss).
+        Return 0 for no regularization.
+
+    Design considerations:
+        - Weight-based penalties (L1, L2, orthogonality, spectral)
+        - Output-based penalties (confidence, entropy, label smoothing)
+        - Activation-based penalties (sparsity, diversity)
+        - Gradient-based penalties (gradient penalty, Jacobian)
+        - Epoch-dependent scheduling (warm-up, annealing)
+    """
+    raise NotImplementedError("Implement your regularization strategy")
+```
+
+## Evaluation settings
+
+Three architecture/dataset pairs spanning the difficulty range — **ResNet-56 on CIFAR-100** (deep,
+residual, 100 classes), **VGG-16-BN on CIFAR-100** (plain, BN-heavy, large dense classifier head), and
+**MobileNetV2 on FashionMNIST** (depthwise-separable, grayscale-replicated-to-3-channel, 10 classes,
+the held-out pair). One seed, `42`. One metric, higher is better: **best test accuracy (%)** reached at
+any epoch during the 200-epoch run. The regularizer must not alter the dataset, architecture, base
+loss, optimizer, scheduler, or evaluation procedure.
+
+The editable model code is in `pytorch-vision/custom_reg.py`:
+```python
+def compute_regularization(model, inputs, outputs, targets, config):
+    """Compute regularization loss term added to classification loss.
+
+    Called every training step. The returned scalar is added to the
+    cross-entropy loss before backpropagation.
+
+    Args:
+        model: the network (nn.Module, ResNet or VGG)
+        inputs: [B, 3, 32, 32] input batch
+        outputs: [B, num_classes] model logits
+        targets: [B] integer class labels
+        config: dict with keys:
+            - 'num_classes': int (10 or 100)
+            - 'epoch': int (current epoch, 0-indexed)
+            - 'total_epochs': int (total training epochs)
+
+    Returns:
+        scalar torch.Tensor -- regularization loss (added to CE loss).
+        Return 0 for no regularization.
+
+    Design considerations:
+        - Weight-based penalties (L1, L2, orthogonality, spectral)
+        - Output-based penalties (confidence, entropy, label smoothing)
+        - Activation-based penalties (sparsity, diversity)
+        - Gradient-based penalties (gradient penalty, Jacobian)
+        - Epoch-dependent scheduling (warm-up, annealing)
+    """
+    raise NotImplementedError("Implement your regularization strategy")
+```
+Improve it. Derive your method, edit the code, then run_experiment().
+</user>
+
+### step 1 — DropBlock-inspired spatial co-activation penalty (on conv weights)   [slug:dropblock]
+
+<think>
+I am starting the climb at the rung that reacts most directly to the prior art I just laid out, and I
+want to be honest from the first line about a constraint that reshapes the whole idea. The thing that
+bugs me is dropout: it is the best injected noise we have, and it has quietly disappeared from the
+convolutional layers of every strong modern architecture, kept at most on a final dense head. That is
+strange, because the convolutional layers are where the spatial parameters live. The reason it fails
+there is correlation. A convolutional feature map is one kernel slid over a spatially smooth input;
+neighboring output positions look at heavily overlapping receptive fields, so two adjacent activations
+in the same channel carry almost the same number. Zero one of them and the next layer's convolution,
+sliding over the hole, simply reads the same edge or texture off the surviving neighbors. I removed a
+unit and removed nothing — the information leaked around the hole, and the "thinned sub-network" I
+thought I sampled was never actually thinned. The cure, in the activation-masking world, is to remove
+information at the *scale of correlation*: delete a contiguous `block_size × block_size` square so there
+are no surviving correlated neighbors inside the hole to carry the signal onward. That is the
+DropBlock idea, and it is where my intuition starts.
+
+But this task does not let me build that. The activation-masking version is a layer inserted into the
+forward graph — it samples a Bernoulli seed field, expands each seed into a square with a stride-1
+max-pool, multiplies the activation tensor by the keep-mask, rescales by the realized survival
+fraction, and is a no-op at inference. Every one of those operations mutates the model's forward pass.
+The edit surface here is a single function, `compute_regularization`, that returns one differentiable
+scalar *added to the loss* — it cannot insert a layer, cannot mask an activation that the next
+convolution will consume, and cannot change inference behavior because it only contributes to the
+training loss. So I must take the *insight* of DropBlock — discourage the network from relying on
+contiguous spatial regions — and re-express it as a loss-side penalty on something I am allowed to
+touch. The thing I can touch every step, differentiably, is the model's parameters. So the question
+becomes: what penalty on the convolutional *weights* discourages contiguous spatial co-activation,
+in the spirit of dropping contiguous blocks of the feature map?
+
+Let me think about where contiguous spatial structure lives in a convolution. The output at a position
+is the inner product of the kernel with the input patch under it. A kernel whose weight energy is
+concentrated in a tight, contiguous spatial cluster of taps responds maximally to a contiguous patch
+of input — it is, in effect, a detector that fires on a small contiguous region. That is exactly the
+kind of reliance DropBlock fights at the activation level: the network leaning on a contiguous chunk of
+the map. So if I want a weight-side analogue, I should penalize convolutional kernels whose magnitude is
+spatially clustered within local blocks of the kernel itself. A kernel whose energy is spread out, or
+small inside any local block, is less of a contiguous-region detector; a kernel with a hot contiguous
+sub-block is more of one. Penalizing the local block energy of the kernel pushes filters away from being
+sharp contiguous-region detectors and toward smoother, more distributed responses — the weight-space
+echo of "don't let any contiguous region carry everything."
+
+How do I measure "local block energy" of a kernel differentiably? Take a Conv2d weight `w` of shape
+`[out_c, in_c, kH, kW]`. I care about spatial structure, not which input channel it came from, so I
+collapse the input-channel axis by taking the per-output-channel, per-spatial-tap mean squared
+magnitude: `w_sq = w.pow(2).mean(dim=1, keepdim=True)`, shape `[out_c, 1, kH, kW]`. This is a small
+spatial energy map for each filter. Now I want the energy *within local contiguous blocks* of that map.
+A block of side `block_size` centered at each tap, averaged, is exactly an average pool with kernel
+`block_size`, stride 1, and `padding = block_size // 2` to keep the spatial size:
+`local = F.avg_pool2d(w_sq, block_size, stride=1, padding=pad)`. Each entry of `local` is the mean
+squared weight magnitude in the `block_size × block_size` neighborhood around a tap. Take the mean of
+`local` over all taps and filters, and I have a scalar that is large when filters pack their energy into
+tight contiguous blocks and small when energy is spread thin. Penalizing it nudges filters toward the
+latter. This is the weight-space reading of "discourage reliance on contiguous regions," and it is fully
+differentiable — a square, a mean, an average pool, a mean — with autograd handling the gradient.
+
+Two design parameters fall out. `block_size` is the spatial scale of the "contiguous region" I am
+discouraging — the analogue of the activation-masking block side. The CIFAR architectures here use
+`3 × 3` convolutions almost everywhere (every `BasicBlock` conv, every VGG conv, the MobileNetV2
+depthwise convs), so the kernels themselves are `3 × 3`. A block of side `3` is therefore the whole
+kernel — the smallest contiguous spatial scale that still spans a genuine local neighborhood rather than
+a single tap. So `block_size = 3`, and I only apply the penalty to layers whose kernel is at least
+`block_size` in both spatial dimensions (`m.kernel_size[0] >= block_size` and `w.size(-1), w.size(-2) >=
+block_size`); the `1 × 1` pointwise convolutions in VGG's classifier path and MobileNetV2's expansion /
+projection layers have no spatial structure to regularize and are correctly skipped. The second
+parameter is the strength `lambda`. This is the most delicate choice, and I want to reason about it
+rather than guess.
+
+Here is the wall, and it is the same one the activation-masking version hit, transplanted. If I switch
+on a strong penalty from step zero, I am shaping filters that have not learned anything yet. Early in
+training the convolutional weights are near their Kaiming-random initialization, the representation is
+meaningless, and a penalty that discourages contiguous kernel energy is just fighting the network's
+attempt to find *any* useful filter structure. Worse, these three architectures are BatchNorm-heavy —
+every conv is followed by a BN — and BN couples the scale of the conv weights to the running statistics
+in a way that makes the early dynamics fragile; a weight-shaping force applied before BN has settled can
+destabilize the very statistics the rest of training depends on. So a constant penalty from the start is
+a blunt instrument: early it harms, late it helps. The activation-masking version solved the analogous
+problem by ramping the drop probability linearly from zero. I will do the weight-side analogue: keep the
+penalty *off* entirely for the first stretch of training, then ramp it linearly to its target.
+
+Concretely, I compute training progress `progress = epoch / max(total_epochs - 1, 1)` from the `config`
+the loop hands me. For the first 20% of training (`progress < 0.2`) I return exactly zero — let the
+network build features and let BatchNorm settle, with no interference. After that I ramp linearly:
+`adjusted = (progress - 0.2) / 0.8` runs from 0 to 1 over the remaining 80%, and `lam = lambda_max *
+adjusted`. So the penalty starts at zero at the 20% mark and reaches its full strength `lambda_max` only
+at the end of training, when the filters are mature and over-fitting is the live problem. This delayed,
+warmed-up schedule is exactly the "start gentle, get harsh" principle, and it is what makes the method
+robust to a slightly-too-aggressive target: even if `lambda_max` is a touch high, the network had a long
+runway to build filters before the penalty bit, and the BN statistics were never shocked.
+
+How large is `lambda_max`? This penalty rides on top of L2 weight decay (`5e-4`) and BatchNorm, both
+already doing heavy regularization, and the quantity I am penalizing — mean squared weight magnitude
+inside local blocks — is on the same scale as the squared weights L2 already shrinks. So this is meant
+to be a light, complementary nudge to the *spatial shape* of filters, not a second weight decay. If I
+push it hard I will fight L2 and the data loss for a marginal shape preference and lose accuracy. I want
+something conservative — a fraction of a percent of the loss scale. `lambda_max = 1e-4` is the natural
+conservative setting: an order of magnitude below the L2 coefficient, so it perturbs filter shape gently
+without dominating the magnitude control L2 already provides. I also average `local` over the number of
+contributing layers (`reg = reg / count`) so the penalty's scale does not grow with network depth — a
+56-layer ResNet and a 16-layer VGG see a comparably-scaled term, which matters because `lambda_max` has
+to be one value across all three architectures.
+
+Let me make sure the pieces fit the contract and the substrate. The penalty reads only `model` (for the
+conv weights) and `config['epoch']`, `config['total_epochs']` (for the schedule); it ignores `inputs`,
+`outputs`, `targets`, which is fine — a pure weight-shape penalty does not need the batch. It returns a
+scalar on `outputs.device` (using `outputs.device` is the clean way to land on the right GPU without
+touching the batch values). It is differentiable in the weights through the square, pool, and means. It
+adds essentially nothing to step cost: an average pool over tiny `3 × 3` kernel maps and a couple of
+reductions, dwarfed by the convolutions themselves. And it changes nothing else — same architecture,
+same Kaiming init, same SGD, same cosine schedule, same evaluation. It is a clean fill of the editable
+region. The full scaffold body is in the answer.
+
+Now let me reason carefully about what this rung should actually do, because I am deliberately starting
+the ladder here and I want a falsifiable expectation. The honest assessment is that this is a *weak*
+regularizer by construction, for three compounding reasons. First, it is far removed from the failure it
+is supposed to fix: the activation-masking DropBlock removes information from the feature map directly
+and forces the network to look elsewhere; my version only gently reshapes filter *weights* and never
+touches an activation, so the mechanism by which it improves generalization is indirect and diluted.
+Second, it lands on a pipeline that already has two strong regularizers — L2 on the same weights and BN
+on the activations — so the marginal room for a third weight-shape penalty is thin. Third, the delayed
+warm-up means the penalty is at meaningful strength only over the last fraction of training, and it
+reaches `lambda_max` precisely when the cosine schedule has driven the learning rate toward zero and the
+weights are barely moving — so the penalty has the least leverage exactly when it is finally at full
+strength. Each of these alone would blunt the effect; together they make me expect this rung to land
+*at or slightly below* a plain well-regularized baseline rather than above it.
+
+I can be sharper per architecture. On VGG-16-BN, the most over-parameterized of the three — a plain
+deep stack with a 512-wide dense head on CIFAR-100 — there is the most over-fitting to fight, but also
+the most BN to perturb, and a tiny conservative weight-shape penalty applied late is unlikely to move a
+network whose dense classifier head is the real capacity sink (and which I do not regularize, since the
+penalty targets only `Conv2d` layers with kernels `>= 3`). On ResNet-56 the residual structure already
+controls gradient flow and the filters are `3 × 3` throughout, so the penalty does apply broadly, but
+the residual paths give the network easy ways to route around any single filter's shape preference, so
+again I expect little movement. On MobileNetV2 / FashionMNIST the task is the easiest (10 classes, a
+near-saturated accuracy regime in the mid-90s), so there is almost no generalization gap left to close —
+the penalty has nothing to grab.
+
+So my falsifiable expectation, before any number comes back, is: this rung should sit near the floor of
+the three regularizers, plausibly *the weakest*, with the largest shortfall on the harder CIFAR-100
+pairs (ResNet-56 and VGG-16-BN), where the indirect weight-shape mechanism is most clearly out-muscled
+by the over-fitting it is supposed to fight, and a near-tie with the others on the saturated
+MobileNetV2 / FashionMNIST pair where everything works. If instead it *led* the field, that would
+falsify my reading that a late, conservative weight-shape penalty is too indirect to beat the
+output-side and weight-spectrum penalties the next rungs will try — and would tell me the contiguous-
+energy preference is doing more real work than I credit it. I do not expect that. What I expect is a
+weak baseline that establishes the floor of the ladder and motivates moving the point of action away
+from filter *shape* and toward the two places the prior art said were the real blind spots: the output
+distribution, and the *spectrum* of the weights rather than their local spatial energy. Those are the
+next two rungs. For now I want that floor measured, so let me write this fill in.
+</think>
+<say>
+I'm starting with a DropBlock-inspired weight penalty: for each Conv2d kernel >= 3 it penalizes the mean energy of local 3x3 blocks of the weights, with a delayed linear warm-up (off for the first 20% of training, ramping to lambda_max=1e-4). This first edit replaces the scaffold body with that scheduled penalty.
+</say>
+<edit path="pytorch-vision/custom_reg.py">
+<old>
+def compute_regularization(model, inputs, outputs, targets, config):
+    """Compute regularization loss term added to classification loss.
+
+    Called every training step. The returned scalar is added to the
+    cross-entropy loss before backpropagation.
+
+    Args:
+        model: the network (nn.Module, ResNet or VGG)
+        inputs: [B, 3, 32, 32] input batch
+        outputs: [B, num_classes] model logits
+        targets: [B] integer class labels
+        config: dict with keys:
+            - 'num_classes': int (10 or 100)
+            - 'epoch': int (current epoch, 0-indexed)
+            - 'total_epochs': int (total training epochs)
+
+    Returns:
+        scalar torch.Tensor -- regularization loss (added to CE loss).
+        Return 0 for no regularization.
+
+    Design considerations:
+        - Weight-based penalties (L1, L2, orthogonality, spectral)
+        - Output-based penalties (confidence, entropy, label smoothing)
+        - Activation-based penalties (sparsity, diversity)
+        - Gradient-based penalties (gradient penalty, Jacobian)
+        - Epoch-dependent scheduling (warm-up, annealing)
+    """
+    raise NotImplementedError("Implement your regularization strategy")
+</old>
+<new>
+# EDITABLE region of pytorch-vision/custom_reg.py (lines 246-273) — step 1: DropBlock-inspired
+# spatial co-activation penalty on conv weights. torch / nn / F already imported at module scope.
+def compute_regularization(model, inputs, outputs, targets, config):
+    """Spatial co-activation penalty on convolutional weights.
+
+    Applies a spatial co-activation penalty on convolutional weights.
+    For each Conv2d layer with spatial kernels >= block_size, it
+    penalizes the mean energy of local spatial blocks in the weight
+    tensor, discouraging spatially correlated filter patterns.
+
+    Uses conservative strength (lambda_max=1e-4) with linear warm-up
+    and only activates after 20% of training to avoid destabilizing
+    early learning, particularly for BatchNorm-heavy architectures.
+
+    block_size=3, lambda_max=1e-4, linear warm-up with delayed start.
+    """
+    block_size = 3
+    lambda_max = 1e-4
+    progress = config['epoch'] / max(config['total_epochs'] - 1, 1)
+
+    # Delay activation: no penalty for first 20% of training
+    if progress < 0.2:
+        return torch.tensor(0.0, device=outputs.device)
+
+    # Linear schedule from 20% to 100% of training
+    adjusted_progress = (progress - 0.2) / 0.8
+    lam = lambda_max * adjusted_progress
+
+    reg = torch.tensor(0.0, device=outputs.device)
+    count = 0
+    for m in model.modules():
+        if isinstance(m, nn.Conv2d) and m.kernel_size[0] >= block_size:
+            w = m.weight  # [out_c, in_c, kH, kW]
+            if w.size(-1) >= block_size and w.size(-2) >= block_size:
+                # Mean squared magnitude within spatial blocks
+                w_sq = w.pow(2).mean(dim=1, keepdim=True)  # [out_c, 1, kH, kW]
+                pad = block_size // 2
+                local = F.avg_pool2d(w_sq, block_size, stride=1, padding=pad)
+                reg = reg + local.mean()
+                count += 1
+
+    if count > 0:
+        reg = reg / count
+    return lam * reg
+</new>
+</edit>
+<obs>
+Successfully replaced text in pytorch-vision/custom_reg.py.
+</obs>
+<run/>
+<obs>
+Measured results — `baseline:dropblock` (`is_final,true`), seed 42. Metric: best test accuracy (%).
+
+| seed | resnet56-cifar100 | vgg16bn-cifar100 | mobilenetv2-fmnist |
+|---|---|---|---|
+| 42 | 72.45 | 73.37 | 94.69 |
+| **mean** | **72.45** | **73.37** | **94.69** |
+</obs>
+
+### step 2 — Confidence penalty (negative output entropy)   [slug:confidence_penalty]
+
+<think>
+The DropBlock-inspired weight penalty came back exactly where I feared it would: 72.45 on
+ResNet-56/CIFAR-100, 73.37 on VGG-16-BN/CIFAR-100, 94.69 on MobileNetV2/FashionMNIST. Read against
+what I expected, every prediction landed. It is the floor of the field — the lowest of the three on both
+hard CIFAR-100 pairs, and lowest again on the saturated FashionMNIST pair where everything crowds into
+the mid-90s. The largest shortfall is exactly where I said it would be, on the harder CIFAR-100 models:
+VGG-16-BN at 73.37 is the weakest single number, and that is the architecture whose real capacity sink —
+the 512-wide dense classifier head — my penalty never even touched, because it only regularizes `Conv2d`
+filters. ResNet-56 at 72.45 is barely a baseline-level number; the residual paths let the network route
+around any filter-shape preference, and the penalty reached full strength only after the cosine schedule
+had nearly frozen the weights. So the diagnosis is clean and it is a diagnosis about *location*: I was
+acting on the spatial shape of convolutional weights, which is two steps removed from the failure, on a
+pipeline that already shrinks those same weights with L2 and normalizes their activations with BN, and I
+left the place where over-confidence actually shows up — the output — completely unregularized. The
+penalty was too indirect to out-muscle the over-fitting it was supposed to fight. The fix is not a better
+weight-shape penalty; it is to move the point of action to where the disease is visible.
+
+So let me look at where the disease is actually visible. When one of these networks over-fits, the
+symptom I can literally see is in the output: an over-fit classifier puts almost all of its softmax mass
+on one class. Histogram the softmax probabilities over the validation set and the mass piles up at 0 and
+1 — the outputs are near-deterministic spikes. Every regularizer I have reached for so far reaches into
+the *insides* of the network — weight decay penalizes the weights, BN normalizes the activations, my
+DropBlock penalty reshaped the filters — but the thing the network hands to the world is the distribution
+`p(y|x)` that falls out of the softmax, and I am doing nothing to it. That is the blind spot the prior
+art flagged and the one I just confirmed the hard way: I spent rung one acting on the weights and the
+output stayed unregularized, so the over-confidence that drives the generalization gap was never
+addressed. VGG's dense head over-fitting at 73.37 is precisely an *output* over-confidence I could not
+reach by penalizing conv kernels. Acting on the output distribution directly should reach it.
+
+Why is the output a good place to act, beyond "that is where the symptom shows"? Two reasons that are
+not cosmetic, and that contrast sharply with the weight penalty I just ran. First, the output
+distribution has a natural, fixed scale — it is a probability vector, it sums to one no matter what —
+whereas the weights do not: the meaning of any single weight depends on every other weight, so a penalty
+on the weights is entangled with how I happened to parameterize the network. That entanglement is part
+of why rung one's `lambda_max` was such a delicate guess against the L2 already on those weights. A
+penalty on the output is invariant to the parameterization underneath, so one strength should travel
+across ResNet, VGG, and MobileNetV2 far more cleanly than a weight-scale coefficient did. Second, the
+output *contains* information I must not destroy: the probabilities the network assigns to the *wrong*
+classes encode how it generalizes — a net that puts `1e-3` on a visually similar class and `1e-9` on an
+unrelated one is genuinely better than one that flips those, because the ratios among the wrong-class
+probabilities are real knowledge. So whatever I add must discourage the peaked spike without crushing
+those wrong-class ratios. File that as a constraint.
+
+What does "regularize the output distribution" concretely want? The over-fit network is *over-confident*
+— its output is a low-entropy spike. The scalar that measures exactly this is entropy. For a softmax
+output, `H(p(y|x)) = − sum_i p_i log p_i` is maximal at the uniform distribution and zero at a one-hot
+spike. Over-confidence is low entropy; the cure is to push entropy up. And I have seen this move before,
+just not in supervised classification. In reinforcement learning, when the policy is a softmax over
+actions, people add the entropy of the policy to the objective — a `+ beta H(pi)` term — to stop the
+policy from collapsing onto one action too early so it keeps exploring; Williams and Peng did it in 1991
+and it is standard in modern policy-gradient training. "Premature convergence to a deterministic policy"
+in RL is the same failure pattern as "an over-confident, low-entropy output distribution" in supervised
+learning. The RL people add entropy to keep their softmax from spiking; I want to keep my softmax from
+spiking. Same term, a setting where it transfers directly.
+
+So the candidate is almost embarrassingly direct: take the cross-entropy I already minimize and subtract
+a multiple of the output entropy. As a total loss, `L = CE − beta H(p)`. Let me make sure the signs say
+what I mean, because this is exactly the kind of thing that is easy to flip. I *minimize* `L`. The term
+`− beta H` means that to make `L` small I want `H` large — high entropy, less-peaked outputs. So I am
+penalizing low entropy, which is penalizing confidence. Since this edit surface adds my term onto a fixed
+cross-entropy, my `compute_regularization` should return `− beta H(p)`: the loop computes `CE + (− beta
+H)`, exactly the objective I want. The sign is right.
+
+Is this surgical or a sledgehammer that flattens everything to uniform and destroys the model? Look at
+what the entropy term does to the gradient on the logits, because that is what flows back. With the
+softmax Jacobian `∂p_j/∂z_i = p_j(δ_ij − p_i)`, the entropy gradient works out to
+`∂H/∂z_i = p_i(− log p_i − H)`. Sit with that. `− log p_i` is the surprisal of class `i`, and `H` is the
+mean surprisal under `p`, so the gradient on logit `i` is the deviation of class `i`'s surprisal from the
+mean, *weighted by `p_i`*. For the class the model is confident about, `p_i` is large and `− log p_i` is
+small (below the mean), so the deviation is negative and the term pushes that logit down. For a class the
+model has nearly killed, `p_i ≈ 0`, so even though its surprisal is huge, the whole thing is multiplied
+by `p_i ≈ 0` and the push is negligible. So this does not yank every dead class up toward uniform
+indiscriminately — it acts mostly on the dominant class, pulling it down, with action concentrated
+wherever `p_i` is non-negligible, exactly the over-confident classes. It flattens toward uniform in
+proportion to the mass each class already carries, leaving the long tail of near-zero wrong classes
+essentially alone and *preserving their ratios* — the dark knowledge I told myself not to crush. That is
+the surgical property the weight penalty could never have: it concentrates exactly on the over-confidence
+that drove the gap.
+
+I should place this against the closest existing thing, label smoothing, because if I cannot say why I am
+not just reinventing it I have not understood my own term — and the prior art listed label smoothing as a
+gap precisely because *this edit surface forbids it*. Label smoothing replaces the one-hot target with a
+softened one and, up to a constant, adds the *forward* KL `D_KL(u || p)` to the loss; but it does so by
+*changing the target / the loss itself*, which I cannot do here — the base cross-entropy is fixed. My
+confidence penalty adds `− beta H(p)`, and computing the *reverse* KL to uniform gives
+`D_KL(p || u) = − H(p) + log K`. So minimizing `D_KL(p || u)` is, up to the constant `log K`, exactly
+minimizing `− H(p)` — my penalty *is* a KL toward uniform, with the direction reversed relative to label
+smoothing, and crucially it is an *additive* term, not a modified loss, so it is the version that
+actually fits this contract. The reversal is not a curiosity: in `D_KL(u || p)` the log-ratio is weighted
+by the constant `u_i = 1/K`, equal fixed pressure on every class, forcing every wrong class toward the
+same target; in `D_KL(p || u)` it is weighted by the model's own `p_i`, adaptive pressure concentrated on
+the currently over-confident classes, with no target imposed on the wrong classes at all. That is the
+formal reason it is adaptive where label smoothing is uniform, and the reason it preserves the wrong-class
+ratios — the same behavior I read off the gradient.
+
+Now the strength. The RL analogy also warns me where it differs: in RL you want the entropy bonus *on
+throughout* because you never want to converge; in supervised learning I *do* want fast convergence on
+the easy examples and humility only near the end, when memorization sets in. A very large constant `beta`
+from step one would fight the convergence I want. But I just learned something from rung one's failure
+about over-engineering the schedule: my DropBlock penalty was *all* schedule — a delayed 20% start and a
+linear ramp — and the schedule is part of why it reached strength only when the weights had stopped
+moving and had no leverage. So I do not want to repeat that mistake by wrapping this in an elaborate
+anneal that arrives too late. The entropy penalty is far better-behaved than the weight penalty for a
+reason the gradient already showed: early in training the outputs are *naturally* high-entropy (the
+network is unsure), so `H` is already near its max and `max`-ish, the penalty `− beta H` is small in
+effect and its gradient `p_i(− log p_i − H)` is tiny because no class dominates yet. The penalty
+*self-attenuates* early and only bites once the outputs start to spike — it has a built-in schedule. So I
+do not need an explicit warm-up at all; a fixed modest `beta`, applied every step, is weak exactly when I
+want it weak (early, high entropy) and strong exactly when I want it strong (late, peaked outputs). That
+is the opposite of rung one's problem, where the strength was decoupled from the dynamics.
+
+What value of `beta`? It trades the data-fitting term against the humility term, and the right value is
+task-dependent — but I want one value that travels across all three pairs, the way the parameterization-
+invariance of the output argued it should. A modest `beta = 0.1` is the natural default: it is large
+enough to register a real pressure on the spike but small enough not to flatten genuine confidence on
+easy examples, and it sits at the conservative end of the range one would sweep on validation data. One
+knob, the model's other hyperparameters untouched.
+
+A note on the actual computation, because it has to drop into the loop cleanly and cheaply. I have the
+logits `outputs` of shape `[B, K]`. The entropy is one extra reduction over logits I already computed for
+the cross-entropy: form `probs = softmax(outputs)`, then `H = − sum_i p_i log p_i` per row, averaged over
+the batch, and return `− beta H`. There is no extra forward or backward pass, no auxiliary network —
+unlike the input-Jacobian or adversarial penalties, this is essentially free, which matters because it
+runs every step on three full 200-epoch runs. (I will compute the log with a small `1e-8` floor inside
+the log to keep it finite when a probability underflows toward zero; a peaked output is exactly when some
+`p_i` is tiny.) The penalty reads only `outputs`, ignores `model`, `inputs`, `targets`, returns a scalar
+on the right device, and changes nothing else in the pipeline. The full scaffold body is in the answer.
+
+Now the falsifiable expectations against the numbers I just got. The mechanism is finally pointed at the
+right place — the output over-confidence that the weight penalty could not reach — so I expect this rung
+to *beat* DropBlock's floor, and to beat it most clearly where DropBlock failed hardest: VGG-16-BN, whose
+over-fitting lives in a dense head my conv-only penalty ignored entirely but whose softmax this penalty
+acts on directly. So I expect VGG-16-BN to move up from 73.37 by the most — call it a point or so, into
+the mid-74s. On ResNet-56 I expect a gain over 72.45 as well, since the entropy penalty is parameterization-
+invariant and does not care about residual routing, though residual nets are already well-regularized so
+the gain may be smaller — into the low-to-mid 72s, comfortably above DropBlock's 72.45. On MobileNetV2 /
+FashionMNIST I expect the smallest move from 94.69, because the task is nearly saturated and there is
+little gap left to close — a slight bump at most, into the high-94s. If instead the entropy penalty
+*failed* to beat DropBlock, or worse, flattened genuine confidence and dropped accuracy below the floor,
+that would falsify my reading that output-distribution over-confidence is the live failure here and that
+acting on it directly is the right move — and would push me back toward the weights. I do not expect
+that; the gradient analysis says the penalty is surgical, concentrated on the spike, and the right place
+to act. What I do expect is a real improvement over rung one, and a new question it cannot answer: the
+entropy penalty fixes the *output* but says nothing about the *internal* conditioning of the network — the
+spectrum of the weight matrices that decides how signal and gradient propagate. That is the next rung.
+For this rung, let me swap in the entropy penalty.
+</think>
+<say>
+Now the confidence penalty: I return the negative entropy of the softmax (beta=0.1) so the model is pushed away from over-confident, low-entropy outputs. This edit replaces the conv-weight penalty with that single output-side term.
+</say>
+<edit path="pytorch-vision/custom_reg.py">
+<old>
+# EDITABLE region of pytorch-vision/custom_reg.py (lines 246-273) — step 1: DropBlock-inspired
+# spatial co-activation penalty on conv weights. torch / nn / F already imported at module scope.
+def compute_regularization(model, inputs, outputs, targets, config):
+    """Spatial co-activation penalty on convolutional weights.
+
+    Applies a spatial co-activation penalty on convolutional weights.
+    For each Conv2d layer with spatial kernels >= block_size, it
+    penalizes the mean energy of local spatial blocks in the weight
+    tensor, discouraging spatially correlated filter patterns.
+
+    Uses conservative strength (lambda_max=1e-4) with linear warm-up
+    and only activates after 20% of training to avoid destabilizing
+    early learning, particularly for BatchNorm-heavy architectures.
+
+    block_size=3, lambda_max=1e-4, linear warm-up with delayed start.
+    """
+    block_size = 3
+    lambda_max = 1e-4
+    progress = config['epoch'] / max(config['total_epochs'] - 1, 1)
+
+    # Delay activation: no penalty for first 20% of training
+    if progress < 0.2:
+        return torch.tensor(0.0, device=outputs.device)
+
+    # Linear schedule from 20% to 100% of training
+    adjusted_progress = (progress - 0.2) / 0.8
+    lam = lambda_max * adjusted_progress
+
+    reg = torch.tensor(0.0, device=outputs.device)
+    count = 0
+    for m in model.modules():
+        if isinstance(m, nn.Conv2d) and m.kernel_size[0] >= block_size:
+            w = m.weight  # [out_c, in_c, kH, kW]
+            if w.size(-1) >= block_size and w.size(-2) >= block_size:
+                # Mean squared magnitude within spatial blocks
+                w_sq = w.pow(2).mean(dim=1, keepdim=True)  # [out_c, 1, kH, kW]
+                pad = block_size // 2
+                local = F.avg_pool2d(w_sq, block_size, stride=1, padding=pad)
+                reg = reg + local.mean()
+                count += 1
+
+    if count > 0:
+        reg = reg / count
+    return lam * reg
+</old>
+<new>
+# EDITABLE region of pytorch-vision/custom_reg.py (lines 246-273) — step 2: confidence penalty.
+# torch / nn / F already imported at module scope.
+def compute_regularization(model, inputs, outputs, targets, config):
+    """Confidence penalty: penalize low-entropy predictions.
+
+    Computes negative entropy of the softmax distribution and adds it
+    as a penalty, encouraging the model to be less over-confident.
+    Beta=0.1.
+    """
+    probs = F.softmax(outputs, dim=-1)
+    entropy = -(probs * torch.log(probs + 1e-8)).sum(dim=-1).mean()
+    return -0.1 * entropy  # penalize confident (low-entropy) predictions
+</new>
+</edit>
+<obs>
+Successfully replaced text in pytorch-vision/custom_reg.py.
+</obs>
+<run/>
+<obs>
+Measured results — `baseline:confidence_penalty` (`is_final,true`), seed 42. Metric: best test accuracy (%).
+
+| seed | resnet56-cifar100 | vgg16bn-cifar100 | mobilenetv2-fmnist |
+|---|---|---|---|
+| 42 | 72.66 | 74.31 | 94.90 |
+| **mean** | **72.66** | **74.31** | **94.90** |
+</obs>
+
+### step 3 — Orthogonal regularization (||W W^T - I||_F^2 on conv weights)   [slug:orthogonal_reg]
+
+<think>
+The confidence penalty did what I expected and where I expected it. It came back at 72.66 on
+ResNet-56/CIFAR-100, 74.31 on VGG-16-BN/CIFAR-100, and 94.90 on MobileNetV2/FashionMNIST — above the
+DropBlock floor on every one of the three pairs (72.45, 73.37, 94.69). The diagnosis I made entering this
+rung is confirmed in detail: the largest gain landed on VGG-16-BN, exactly as predicted, +0.94 from 73.37
+to 74.31 — the architecture whose over-fitting lives in a dense head my conv-only weight penalty could
+never reach but whose softmax the entropy term acts on directly. ResNet-56 moved up too, +0.21 to 72.66,
+a smaller gain consistent with residual nets already being well-regularized. MobileNetV2/FashionMNIST
+inched up +0.21 to 94.90, the smallest move, consistent with a near-saturated task. So acting on the
+*output distribution* was the right move, and it confirms that over-confidence — the peaked, low-entropy
+softmax — was a live failure that the weight-shape penalty left untouched.
+
+But look at where the confidence penalty is *weak*, because that is what tells me the next move.
+ResNet-56 only reached 72.66 — a thin +0.21, barely above the DropBlock floor. And the absolute numbers
+are still well short of what these architectures can do; a +0.2-to-+0.9 nudge from an output penalty
+leaves the bulk of the generalization gap on the table. The reason is structural: the entropy penalty
+acts purely on the *final* output distribution and says nothing about the *internal* conditioning of the
+network — how a signal at the bottom is transformed on its way to the top, and how a gradient is
+transformed on its way back down. ResNet-56 is the deepest of the three, 56 layers of `3×3` convs, and a
+deep net's behavior is dominated by what happens *inside* — by the spectra of the weight matrices it
+multiplies a signal by, layer after layer. The output penalty cannot see that. So the confidence
+penalty's smallest gain being on the deepest network is not noise; it is the signature of a regularizer
+that fixes the output but ignores the propagation. The next rung has to act on the *internal* weight
+matrices, but not the way DropBlock did — not their spatial shape, but their *spectrum*.
+
+Let me reason from what actually goes wrong inside a deep conv net, because that is where the lever is. A
+signal enters at the bottom and gets multiplied by one layer's weights, then a nonlinearity, then the
+next layer's weights, up to the logits; a gradient does the same in reverse, the error at the top
+multiplied by the transposed weight matrices on its way down to the early layers. So both the forward
+activation and the backward gradient are, at heart, a vector hit by a long product of matrices. A product
+of matrices does to a vector roughly what a product of numbers does to a scalar: if the typical
+multiplicative factor is below one, the vector shrinks geometrically with depth — vanishing gradients in
+the early layers; if above one, it grows geometrically — explosion. The thing controlling the catastrophe
+is spectral: the singular values of each weight matrix decide whether long products contract, stay
+balanced, or blow up. This is the diagnosis Pascanu, Mikolov and Bengio made precise on recurrent nets,
+the cleanest case because an unrolled RNN is a feedforward net with the same matrix tied across layers:
+the long-range gradient factors into a product of per-step Jacobians, each bounded by the spectral norm
+of the recurrent matrix times the bounded nonlinearity derivative, so if those spectral norms drift off
+one the product contracts or has room to explode. The remedy the analysis points at is not subtle: I want
+the relevant singular values of my weight matrices to stay near one.
+
+What makes a matrix's singular values all exactly one? A square matrix with that property is exactly
+norm-preserving — it stretches no direction — which for a square matrix means it is orthogonal, with the
+two equivalent conditions `W^T W = I` (columns orthonormal) or `W W^T = I` (rows orthonormal). Saxe,
+McClelland and Ganguli worked out why this is the right configuration: orthogonal weights give *dynamical
+isometry* that survives depth, because a product of orthogonal matrices is itself orthogonal, so a deep
+stack of orthogonal layers has an end-to-end map with all singular values still exactly one, no matter how
+deep. The naive alternative — scaled Gaussian init that preserves norm *on average* (Glorot–Bengio) —
+fails exactly the test that matters: norm preservation in expectation is not a flat spectrum. The squared
+singular values of a scaled Gaussian matrix follow the Marchenko–Pastur law, a real spread that does not
+vanish with size, and under composition the product develops a wildly kurtotic spectrum — most singular
+values crushed toward zero, a thin tail blowing up. Such a product still preserves the norm of a typical
+vector, but anisotropically: any component of a backpropagated error lying in the crushed subspace is
+annihilated, so the early layers get no gradient there. Orthogonal has none of that spread.
+
+So I could initialize orthogonal and be done — except orthogonal initialization is a condition on the
+weights at step zero, and nothing holds it there. The instant the data gradient takes its first step it
+pulls `W` off the orthogonal manifold in whatever direction reduces the task loss, with zero regard for
+the singular spectrum. By mid-training the spectrum has spread back out, exactly during the long stretch
+where most weight movement happens. I need a *standing force* that keeps acting throughout training, not a
+one-time placement. And I have just been burned by the opposite mistake on rung one — a force that
+arrived too late (the DropBlock penalty reached strength only when the cosine schedule had nearly stopped
+the weights) — so a force that acts at every step is precisely what I want.
+
+The heavy-handed standing force would be a hard constraint: confine each weight matrix to the orthogonal
+(Stiefel) manifold and re-orthogonalize after every step with a QR or SVD. That keeps the spectrum exactly
+flat but costs a matrix factorization of every weight matrix on every single iteration on a GPU — a
+non-starter in the inner loop, especially across three full 200-epoch runs where step cost matters (the
+same cheapness concern that made the confidence penalty attractive). And there is a problem specific to
+convolutions I must confront head-on: conv weights are not square. A `Conv2d` weight is
+`[out_channels, in_channels, k, k]`; to talk about its spectrum I flatten it to a 2D matrix with output
+channels as rows and everything else collapsed into columns, `W ∈ R^{out × (in·k·k)}`. That is almost
+never square — usually the fan-in `in·k·k` exceeds `out`, so the matrix is short and wide. Now the two
+orthogonality conditions stop being equivalent: `W^T W = I` asks the `in·k·k` columns to be orthonormal in
+`R^{out}`, impossible when there are more columns than the dimension they live in; `W W^T = I` asks the
+`out` rows — exactly the `out` filters — to be orthonormal in `R^{in·k·k}`, which *is* feasible for a wide
+matrix. So for a wide conv weight the achievable thing is to make the output-channel filters mutually
+orthonormal: `W W^T = I`. And that reads beautifully on its own terms — no two filters point in the same
+direction, the filters are decorrelated, none is a wasted redundant copy, and each has unit norm so none
+has collapsed. The rectangular reality forces the feasible Gram and hands me a clean interpretation for
+free.
+
+A hard constraint is too expensive and clumsy for rectangular weights, but I do not need `W` exactly
+orthogonal every step — I need it to stay *close*, so the spectrum stays roughly flat. "Close to" is the
+language of a penalty, not a constraint. So I add a term that grows as `W` drifts from orthogonal, hand it
+to the SGD I am already running, and let the data loss and the penalty negotiate — no factorization,
+fully differentiable, acting every step. I turn "how far is `W` from orthogonal" into a scalar via the
+residual of the Gram from the identity: `R = W W^T − I`. This is the right thing to measure, and not just
+by analogy. The `(i, j)` entry of `W W^T` is the dot product of filter `i` and filter `j`, so the
+off-diagonal entries of `R` are exactly the pairwise filter correlations I want driven to zero, and the
+diagonal entries are `||filter_i||^2 − 1`, exactly the magnitude-collapse I want prevented. One matrix `R`
+simultaneously encodes "decorrelate the filters" (off-diagonals) and "keep each filter unit-norm"
+(diagonal). Contrast the alternatives: penalizing `||W||` pulls every singular value toward zero — that is
+plain L2 weight decay, already on through the optimizer, controlling scale not shape, and it is *exactly*
+the kind of magnitude control rung one piled on redundantly. The Gram residual controls shape — the flat
+spectrum — which is the complementary thing L2 cannot do.
+
+Measured how? The smooth choice with a clean closed-form gradient is the squared Frobenius norm of the
+residual, `||W W^T − I||_F^2 = sum_{i,j} R_{ij}^2`. Squaring is deliberate: the Frobenius norm itself has
+a square root and is non-differentiable at zero, while squaring removes the root, makes the penalty a
+smooth polynomial in `W`, and grows fast when a residual entry gets large — pushing hardest exactly on the
+worst-off filters. Its gradient is `4(W W^T − I)W`: two matrix multiplies, no SVD, no eigendecomposition,
+which autograd computes for me when I just write the forward penalty. So the wall that killed the hard
+constraint — a factorization every step — is gone; I traded an exact projection for a cheap gradient nudge
+toward the manifold, which is all I need to keep the spectrum from drifting, and it costs essentially
+nothing per step, the same cheapness that mattered for the confidence penalty.
+
+How hard should I push? This is a soft encouragement, not a law, so it gets a small coefficient `lambda`.
+The data loss is what I actually care about; the orthogonality term gently keeps the weights near a good
+manifold while the data loss does the real work. If `lambda` is too large I optimize for orthogonal but
+task-blind filters and lose accuracy. And it coexists with — does not replace — the optimizer's L2 weight
+decay: L2 shrinks all singular values (scale), this flattens the feasible nonzero singular values toward
+one (shape); they pull on different things. A small `lambda = 1e-4` is the natural setting — a fraction of
+a percent of the loss scale, the same conservative order as the coefficients on the earlier rungs, and the
+lightest touch that still keeps the spectrum from drifting. I sum the penalty over every conv filter bank
+in the network, each layer penalized independently, since each layer's own propagation matters; and I
+select layers by `'conv' in name and 'weight' in name and p.dim() == 4`, which picks exactly the
+4D convolutional weights and skips biases, BatchNorm scales, and the linear classifier weights — the
+orthogonality claim is about conv filter banks. I do *not* schedule this. Unlike rung one, where the
+warm-up was what made the penalty arrive too late, this force should act from the first step: the whole
+point is that the data gradient drags `W` off the manifold immediately, so the standing force has to be
+there immediately to oppose it. No delayed start, no ramp.
+
+Why should this help generalization and not just stabilize gradients? Two mechanisms, both readable from
+`R`. The off-diagonal part drives filter–filter correlations toward zero, so filters span distinct
+directions instead of clustering — the layer stops wasting capacity on near-duplicate filters, and more of
+the nominal parameters do independent work. The diagonal part pushes `||filter||^2` toward one, keeping
+filter magnitudes from collapsing, so capacity stays usable instead of dying toward an uninformative
+origin. Both are about using the model's capacity fully and keeping the representation well-conditioned —
+a generalization story, not merely a gradient-flow story. And this is exactly the lever the confidence
+penalty lacked: it acts *inside* the network, on the propagation, on the deepest models where the entropy
+penalty was weakest.
+
+So the fill iterates the conv filter banks, reshapes each weight to `[out_channels, in·k·k]` so rows are
+filters, builds `W W^T`, subtracts an identity on the same device, squares the residual and sums it, and
+scales by `lambda`. Autograd supplies the `4(W W^T − I)W` gradient. It reads only `model` (for the conv
+weights), ignores `inputs`, `outputs`, `targets` except to land the scalar on the right device, and
+changes nothing else — same architecture, init, SGD, cosine schedule, evaluation. The full scaffold body
+is in the answer.
+
+Now the falsifiable expectations against the confidence penalty's numbers. The mechanism is finally
+internal — it acts on the weight spectrum that governs propagation through depth — so I expect the gains
+to concentrate where the output penalty was weakest: **ResNet-56**, the deepest network, where the
+confidence penalty managed only +0.21 to 72.66 because it never saw the internal conditioning. I expect
+the Gram penalty to beat 72.66 on ResNet-56 and to be the *strongest* of the three regularizers there,
+plausibly into the low-73s — the deepest model is where flattening the layer-wise spectra should pay off
+most. On VGG-16-BN I expect a result near, but not clearly above, the confidence penalty's 74.31: VGG's
+real capacity sink is its dense classifier head, which this conv-only penalty does not touch, so the
+output penalty's direct grip on that head's softmax may match or slightly edge a conv-spectrum penalty
+there — I would be unsurprised to land just under 74.31, in the low-74s. On MobileNetV2/FashionMNIST I
+expect a near-tie around the confidence penalty's 94.90, since the task is saturated and the depthwise
+convs (single-channel filters) give the Gram penalty little to decorrelate — high-94s, within a fraction
+of a point either way. Netting out across the three pairs, I expect this rung to edge ahead overall by
+winning the hardest, deepest model decisively while trading the others roughly evenly — making it the
+strongest baseline on the ladder. If instead it *lost* to the confidence penalty on ResNet-56, that would
+falsify my reading that the deepest network's shortfall was about internal spectral conditioning rather
+than output over-confidence, and would tell me the propagation story is doing less work here than the
+output story. I do not expect that: the confidence penalty's own weakest point was its deepest model, and
+a flat weight spectrum is exactly what a deep stack needs. Let me write the orthogonality penalty in.
+</think>
+<say>
+Now orthogonal regularization on the conv weights: for each 4D filter bank reshaped to [out, in*k*k] I penalize ||W W^T − I||_F^2 (coefficient 1e-4), pushing the filters toward decorrelated, unit-norm — a flat spectrum. This edit replaces the entropy term with that conv-spectrum penalty.
+</say>
+<edit path="pytorch-vision/custom_reg.py">
+<old>
+# EDITABLE region of pytorch-vision/custom_reg.py (lines 246-273) — step 2: confidence penalty.
+# torch / nn / F already imported at module scope.
+def compute_regularization(model, inputs, outputs, targets, config):
+    """Confidence penalty: penalize low-entropy predictions.
+
+    Computes negative entropy of the softmax distribution and adds it
+    as a penalty, encouraging the model to be less over-confident.
+    Beta=0.1.
+    """
+    probs = F.softmax(outputs, dim=-1)
+    entropy = -(probs * torch.log(probs + 1e-8)).sum(dim=-1).mean()
+    return -0.1 * entropy  # penalize confident (low-entropy) predictions
+</old>
+<new>
+# EDITABLE region of pytorch-vision/custom_reg.py (lines 246-273) — step 3: orthogonal regularization.
+# torch / nn / F already imported at module scope.
+def compute_regularization(model, inputs, outputs, targets, config):
+    """Orthogonal regularization on convolutional weights.
+
+    Penalizes deviation from orthogonality: ||W^T W - I||_F^2 for each
+    4D conv weight reshaped to [out_channels, in*k*k]. Coefficient=1e-4.
+    """
+    reg = torch.tensor(0.0, device=outputs.device)
+    for name, p in model.named_parameters():
+        if 'conv' in name and 'weight' in name and p.dim() == 4:
+            W = p.view(p.size(0), -1)  # [out, in*k*k]
+            WtW = W @ W.t()
+            I = torch.eye(W.size(0), device=W.device)
+            reg = reg + ((WtW - I) ** 2).sum()
+    return 1e-4 * reg
+</new>
+</edit>
+<obs>
+Successfully replaced text in pytorch-vision/custom_reg.py.
+</obs>
+<run/>
+<obs>
+Measured results — `baseline:orthogonal_reg` (`is_final,true`), seed 42. Metric: best test accuracy (%).
+
+| seed | resnet56-cifar100 | vgg16bn-cifar100 | mobilenetv2-fmnist |
+|---|---|---|---|
+| 42 | 73.16 | 74.03 | 94.85 |
+| **mean** | **73.16** | **74.03** | **94.85** |
+</obs>

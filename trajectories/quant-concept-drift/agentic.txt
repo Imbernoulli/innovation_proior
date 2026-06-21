@@ -1,0 +1,4476 @@
+<meta task="quant-concept-drift" domain="Time series" file="qlib/custom_model.py" model_format="qwen3" edit_tool="str_replace"/>
+
+<system>
+You are a research engineer improving a model on a fixed ML task. You work by editing the model code and running experiments. Think carefully before each change. You have these tools:
+- str_replace(path, old_str, new_str): replace the unique occurrence of old_str with new_str.
+- create(path, file_text): create a new file.
+- run_experiment(): train + evaluate the current code under the fixed budget; returns metrics.
+Make one tool call at a time. After editing, call run_experiment() to measure your method.
+</system>
+
+<user>
+## Research question
+
+Can a stock-return predictor be made robust to *temporal* distribution shift — concept drift,
+the change over time in the joint law of features and returns — while holding everything else
+fixed: the CSI300 universe, the Alpha158 factor set, the label `Ref($close,-2)/Ref($close,-1)-1`,
+and a fixed qlib top-50/drop-5 backtest? The single thing being designed is the `CustomModel`
+(its `fit`/`predict`) plus, where a method needs it, the editable dataset-adapter / processor
+block of the workflow. The model is evaluated under **three different temporal regimes** — the
+same CSI300 universe split into three test windows (`csi300`: 2017–2020; `csi300_shifted`:
+2016–2018; `csi300_recent`: 2019–2020) — so a method is rewarded only if it generalizes across
+*when* it is tested, not just *what* it is tested on.
+
+## Prior art before the first rung (the lineage the first baseline reacts to)
+
+The first rung is a sequence model with explicit multi-pattern routing. It reacts to a line of
+prior approaches to the non-stationary-prediction problem, each with a gap:
+
+- **Empirical risk minimization on one model (a single LSTM / GBDT).** Fit one predictor on all of
+  history by average loss. Gap: it bakes in the i.i.d. assumption — one fixed joint `P`, one
+  relation `p(y|x)` — which the market violates; two documented cross-sectional effects (momentum
+  and reversal) have *opposite* sign and rotate over time, so one parameter vector can only average
+  contradictory relations and fits neither.
+- **Mixture-of-experts / conditional computation (Jacobs et al. 1991; Shazeer et al. 2017).**
+  Several expert sub-models and a gate that routes per input. The right *shape* — several relations,
+  a router — but trained naively the gate collapses onto one expert (the rich-get-richer gating
+  pathology), and a soft load-balancing penalty equalizes mass without saying *which* sample
+  belongs to *which* expert. Gap: no mechanism that assigns each sample to the expert that fits it
+  while preventing collapse.
+- **Domain-adaptation alignment (covariate shift, Shimodaira 2000; MMD/CORAL/DANN, 2012–2016).**
+  Align feature distributions across domains so a shared conditional is learned. Gap as posed for a
+  *stream*: it needs the test density and a known train/test pair, and it has no notion of *when*
+  inside a time series the distribution turns over — the temporal version of the shift is left
+  unaddressed.
+
+The two reference adaptive baselines on this task — a routing sequence model and a
+temporal-alignment recurrent model — are the two answers to those gaps; a non-adaptive
+gradient-boosted tree is the strong control they must beat.
+
+## The fixed substrate
+
+The qlib workflow is frozen except for the editable region. Fixed: the CSI300 instrument list;
+the **Alpha158** handler (158 engineered factors per stock per day — rolling mean/std/max-min of
+returns and volume, ROC momentum, K-line ratios, price–volume CORR/CORD, volatility VSTD/WVMA,
+residual RESI/RSQR — pre-normalized with `RobustZScoreNorm` and `Fillna`); the label; the
+`train=[2008,2014] / valid=[2015,2016] / test=[2017,2020]` segments (the three regimes are three
+such fixed workflow files); and the `PortAnaRecord` backtest (`TopkDropoutStrategy`, topk 50,
+n_drop 5, costs and benchmark fixed). The qlib `SignalRecord` / `SigAnaRecord` / `PortAnaRecord`
+chain computes the metrics. (The task brief mentions Alpha360; the actual frozen workflow handler
+is **Alpha158**, and every baseline is filled against Alpha158 — that is the contract.)
+
+## The editable interface
+
+Two regions are editable. (1) `custom_model.py` lines 16–103: the `CustomModel(Model)` class with
+`fit(dataset)` and `predict(dataset, segment="test") -> pd.Series` (indexed by
+`(datetime, instrument)`). (2) `workflow_config.yaml`: the dataset block (the `dataset.class` /
+adapter, lines 19–26) and the handler's processor block (lines 32–45), so a method that needs a
+different dataset *view* — a sequence sampler, a filtered feature set — can request it. Everything
+else (qlib init, segments, records, backtest) is fixed.
+
+The starting point is the scaffold **default fill**: a Ridge-regression `CustomModel` over the
+default `DatasetH` / Alpha158 pipeline. Each rung replaces exactly this editable region (and, for
+the sequence models, the dataset/processor block) and nothing else.
+
+```python
+# EDITABLE region of custom_model.py (lines 16-103) — default fill (Ridge baseline)
+# =====================================================================
+# EDITABLE: CustomModel — implement your stock prediction model here
+# =====================================================================
+class CustomModel(Model):
+    """Custom stock prediction model for concept drift adaptation.
+
+    fit(dataset) trains; predict(dataset, segment="test") returns a pd.Series
+    indexed by (datetime, instrument). The dataset is a qlib DatasetH with
+    Alpha158 features (158 per stock per day), pre-normalized and NaN-filled.
+    """
+
+    def __init__(self):
+        super().__init__()
+        self.fitted = False
+        from sklearn.linear_model import Ridge
+        self.model = Ridge(alpha=1.0)
+
+    def fit(self, dataset: DatasetH):
+        df_train = dataset.prepare(
+            "train", col_set=["feature", "label"], data_key=DataHandlerLP.DK_L
+        )
+        features = df_train["feature"].values
+        labels = df_train["label"].values.ravel()
+        mask = ~(np.isnan(features).any(axis=1) | np.isnan(labels))
+        features = features[mask]
+        labels = labels[mask]
+        self.model.fit(features, labels)
+        self.fitted = True
+
+    def predict(self, dataset: DatasetH, segment="test"):
+        if not self.fitted:
+            raise ValueError("Model is not fitted yet!")
+        df_test = dataset.prepare(
+            segment, col_set=["feature", "label"], data_key=DataHandlerLP.DK_I
+        )
+        features = df_test["feature"]
+        index = features.index
+        features_np = np.nan_to_num(features.values, nan=0.0)
+        preds = self.model.predict(features_np)
+        return pd.Series(preds, index=index, name="score")
+```
+
+## Evaluation settings
+
+Three temporal regimes, each a fixed CSI300 workflow with a different test window: `csi300`
+(2017–2020), `csi300_shifted` (2016–2018), `csi300_recent` (2019–2020). Three seeds {42, 123, 456}
+where a method is stochastic. Per regime, seven metrics — signal: IC, ICIR, Rank IC, Rank ICIR;
+portfolio: annualized return, information ratio, max drawdown — all higher-is-better (max drawdown
+is reported as a negative number, so closer to zero is better). The task aggregate is the geometric
+mean across the three regimes of each regime's equally-weighted (sigmoid-mapped) seven-metric mean,
+so a method that wins one regime but collapses in another is penalized.
+
+The editable model code is in `qlib/custom_model.py`:
+```python
+# =====================================================================
+# EDITABLE: CustomModel — implement your stock prediction model here
+# =====================================================================
+class CustomModel(Model):
+    """Custom stock prediction model for concept drift adaptation.
+
+    You must implement:
+        fit(dataset)    — train the model on the training data
+        predict(dataset, segment="test") — return predictions as pd.Series
+
+    The dataset is a qlib DatasetH with Alpha158 features (158 engineered
+    features per stock per day). Alpha158 computes rolling statistics over
+    multiple windows (5, 10, 20, 30, 60 days) from raw OHLCV data:
+      - Rolling mean, std, and max/min of returns and volume
+      - Momentum indicators (ROC at various horizons)
+      - K-line ratios (KLEN, KLOW, KSFT, etc.)
+      - Rolling correlation/covariance between price and volume (CORR, CORD)
+      - Volatility measures (VSTD, WVMA, residual-based RESI, RSQR)
+    Features are pre-normalized (RobustZScoreNorm) and NaN-filled.
+
+    Getting data from the dataset:
+        df_train = dataset.prepare("train", col_set=["feature", "label"],
+                                    data_key=DataHandlerLP.DK_L)
+        features = df_train["feature"]   # DataFrame: (n_samples, 158)
+        labels = df_train["label"]       # DataFrame: (n_samples, 1)
+
+    The label is: Ref($close, -2) / Ref($close, -1) - 1
+    (i.e., the return from T+1 to T+2, predicted at time T)
+
+    predict() must return a pd.Series indexed by (datetime, instrument)
+    matching the target segment's index.
+
+    Available imports: torch, torch.nn, numpy, pandas, lightgbm, sklearn, scipy
+    All network definitions and training logic go in this class.
+    """
+
+    def __init__(self):
+        super().__init__()
+        self.fitted = False
+        # --- Default: Ridge regression baseline ---
+        from sklearn.linear_model import Ridge
+
+        self.model = Ridge(alpha=1.0)
+
+    def fit(self, dataset: DatasetH):
+        """Train the model.
+
+        Args:
+            dataset: DatasetH with "train" and "valid" segments.
+        """
+        df_train = dataset.prepare(
+            "train", col_set=["feature", "label"], data_key=DataHandlerLP.DK_L
+        )
+        features = df_train["feature"].values
+        labels = df_train["label"].values.ravel()
+
+        # Remove NaN rows
+        mask = ~(np.isnan(features).any(axis=1) | np.isnan(labels))
+        features = features[mask]
+        labels = labels[mask]
+
+        self.model.fit(features, labels)
+        self.fitted = True
+
+    def predict(self, dataset: DatasetH, segment="test"):
+        """Generate predictions.
+
+        Args:
+            dataset: DatasetH with the target segment.
+            segment: Which segment to predict on (default: "test").
+
+        Returns:
+            pd.Series of predictions, indexed by (datetime, instrument).
+        """
+        if not self.fitted:
+            raise ValueError("Model is not fitted yet!")
+
+        df_test = dataset.prepare(
+            segment, col_set=["feature", "label"], data_key=DataHandlerLP.DK_I
+        )
+        features = df_test["feature"]
+        index = features.index
+
+        features_np = features.values
+        features_np = np.nan_to_num(features_np, nan=0.0)
+
+        preds = self.model.predict(features_np)
+        return pd.Series(preds, index=index, name="score")
+```
+Improve it. Derive your method, edit the code, then run_experiment().
+</user>
+
+### step 1 — TRA (Temporal Routing Adaptor)   [slug:tra]
+
+<think>
+The scaffold hands me a Ridge regression over Alpha158 and a frozen backtest, and the research
+question is concept drift — so before I write anything I have to decide what the *first serious*
+rung should be, the one whose failure mode will teach me what the next rung must fix. The default
+Ridge is a single linear relation `p(y|x)` fit by average squared loss over 2008–2014, and that is
+exactly the assumption I distrust: one fixed joint `P`, one mapping from factors to returns. The
+market is not one `P`. Two of the best-documented cross-sectional effects point in opposite
+directions at the same time — momentum (winners keep winning) and reversal (losers rebound) — and
+which one dominates rotates with the regime. I can make this concrete without a new experiment: fit
+the sign of "past return → future return" on different years of CSI300 and it flips. A single
+coefficient vector cannot be both signs; the best a single relation does is average two
+contradictory ones and fit neither. So the first rung should not be a bigger single model; it
+should be a model that *holds several distinct relations at once and decides per sample which one
+applies*. That is a routing sequence model, and it is the first thing I will fill into
+`CustomModel`. Let me derive it against this exact scaffold, because the scaffold constrains it in
+ways the generic idea does not.
+
+The data really is `P = Σ_k ν_k P_k`, a mixture of trading patterns, each with its own
+`p_k(y|x)` and its own time-varying share. If I knew each sample's pattern `k` this would be plain
+multi-domain learning. I do not — the patterns are latent, and worse, even if I cheated and used
+the *label* to assign each training sample to its best-fitting pattern, that trick dies at test
+time where there are no labels and the test period is the whole point. So the constraint is sharp:
+I need a model that (a) carries several relations, (b) routes each sample to one of them, and (c)
+makes that routing decision from signals available *without the current label* — the sample's
+latent representation and whatever past prediction-error state is already cached. Property (c) is
+the one that kills the naive solutions.
+
+Start with "one model, several behaviors." Mixture-of-experts is the right shape: `K` experts and a
+gate. But what are the experts here? `K` full backbones would multiply parameters by `K` and, on a
+noisy, smallish CSI300 panel, overfit hard. The patterns differ in the *relation* far more than in
+how to *encode* a 60-day window, so I share one backbone and replicate only the cheap part — the
+final linear head — into `K = num_states` linear predictors. `ŷ_ik = θ_k ∘ ψ(x_i)`, `ψ` shared,
+`θ_k` a linear head. Near-zero extra parameters, and a free safety net: `num_states = 1` collapses
+to the plain backbone, so I can never do worse than a single sequence model by construction. In this
+task `num_states = 3` (the workflow's `MTSDatasetH` is configured with `num_states: 3`), which is a
+deliberate, modest choice: enough heads to separate the main regimes, few enough that each head
+still gets data.
+
+Now the backbone, and here the scaffold pins the details. The reference fill uses an **attentive
+LSTM** — `rnn_arch="LSTM"`, two layers, hidden 64, `use_attn=True` — not the GRU the generic
+routing idea defaults to. The encoder projects the input only when compressing (here it does not,
+since the input width is below hidden), runs the LSTM, takes the mean of the last hidden state over
+layers, and concatenates that with an attention-pooled vector `att = Σ_t softmax_t(u^T tanh(W·h_t))
+· h_t`, so the latent fed to the predictors and router has width `2·64 = 128`. The input width is
+the next thing the scaffold fixes and it is *not* all of Alpha158: the editable processor block
+runs a **`FilterCol`** that keeps exactly 20 named columns (RESI5, WVMA5, RSQR5, KLEN, …, KLOW)
+before `RobustZScoreNorm` and `Fillna`, so `input_size = 20`. That matters — the routing model does
+not see the full 158-factor view the Ridge default and the tree baselines see; it sees a curated
+20-factor slice over a 60-day sequence. The sequence itself comes from `MTSDatasetH` with
+`seq_len: 60`, `batch_size: 1024`, `memory_mode: "sample"`, `drop_last: true` — the editable
+dataset block is swapped from `DatasetH` to this multi-timeseries sampler so each sample is a
+(stock, time) window with its cached state, which is precisely what the router needs.
+
+The router is the heart of it, and property (c) governs its inputs. It must run at test, so it can
+only use label-free signals. The first is the latent `h_i = ψ(x_i)` — I route on `h` rather than
+raw factors because `h` is already tuned toward prediction. But a single window's latent
+underdetermines the regime; the difference between "we are in a momentum regime" and "we are in a
+reversal regime" is not cleanly written in one stock's 60-day vector. I need a second signal, and
+the right one comes from how a real investor rotates strategies: not by deducing the macro regime
+from today's prices but by watching *how their strategies have been performing lately*. The
+analogue is each predictor's *recent prediction error*. So feed the router the per-sample history of
+the `K` predictors' losses — the cached `state` the `MTSDatasetH` carries — encoded by a small LSTM
+(`tra_config` hidden 32, one layer) whose last hidden state is concatenated with the 128-dim latent
+(`src_info="LR_TPE"`: latent-representation plus temporal-prediction-errors) and mapped by a linear
+`fc` to `K` logits. One causality subtlety the sampler must respect: the most recent usable error is
+from before the label horizon, never the current step, or the router leaks the future; batches flow
+forward in time, never shuffled across the time axis.
+
+How does the router *use* the logits? A soft `softmax` blend would re-create the single-model
+problem — every predictor would see gradients from every sample and all drift back to the average
+relation. To force specialization the routing has to be *discrete*: one predictor per sample, so a
+head can swing its coefficients to, say, reversal without being dragged back by momentum samples.
+Discrete selection is `argmax`, which has no gradient. The escape is the **Gumbel-softmax**: draw
+`one_hot(argmax_k(a_ik + g_ik))` with `g` i.i.d. Gumbel, replace the argmax with a temperature
+softmax at `tau=1.0`, and use the straight-through form — a hard one-hot `choice` in the forward
+pass with the soft gradient in the backward. The router also emits a plain `prob = softmax(a/tau)`
+for test time, where I drop the noise and take `argmax(prob)`. Training prediction is
+`(all_preds * choice).sum`; test prediction is `all_preds[argmax(prob)]` — label-free, property (c)
+satisfied.
+
+Train this end to end and it collapses: every sample routes to one predictor, the rest starve —
+the self-reinforcing gating pathology. A soft load-balancing penalty does not fix it, because it
+equalizes mass without saying *which* sample belongs to *which* predictor, and arbitrary balanced
+assignment discovers no patterns. State the real objective: assign each sample to the predictor that
+predicts it *best*, subject to keeping the predictors balanced. Pack predictor errors into a loss
+matrix `L ∈ R^{N×K}`, want an assignment `P` minimizing `<P, L>` with each sample getting one
+predictor (row sums one) and each predictor a prescribed share (column sums `ν_k N`). Row marginals
+one, fixed column marginals, nonnegative entries, linear cost — that is exactly an **optimal-
+transport** problem, and "do not collapse" *is* the column-marginal constraint. The hard LP is too
+slow per minibatch, so use the entropic relaxation: the scaffold's `sinkhorn` exponentiates
+`exp(-L_h/ε)` (cost enters with a minus sign so low loss → high mass) and runs three iterations of
+column-then-row normalization. The negative sign is non-negotiable.
+
+The transport `P` needs labels, so it cannot be the test selector — it is a *teacher*. The router,
+fed only LR and TPE, learns to predict the assignment the OT oracle would produce, by cross-entropy:
+add `reg = Σ_k P_ik log q_ik` and minimize `loss = task_loss − λ·reg`, which is task loss plus a
+cross-entropy to the OT target. Two parameters need pinning. The pattern shares `ν_k`: unknown, so
+the maximally noncommittal prior is equal shares `1/K`, which also maximally fights collapse — but
+equal shares is wrong in the limit, so I decay the teacher's grip, `λ_t = λ_0·ρ^{⌊step/100⌋}` with
+`ρ = 0.99` and `λ_0 = 1.0`; early on the equal-share transport forces diverse balanced predictors,
+later the task loss settles into the data's real share structure. And `α = 0.5` fuses the noisy
+single-batch loss matrix with the smoother historical loss (`L_h = α·norm(L) + (1−α)·norm(hist)`)
+before Sinkhorn, so the transport target is stable.
+
+Two more scaffold-pinned practicalities. The router's TPE input — every predictor's recent errors —
+would cost a full forward pass over all `N` samples every step if recomputed; instead the model
+keeps an external memory updated in two stages (`memory_mode: "sample"`): a full refresh before each
+epoch and on-the-fly patches for the minibatch (`assign_data`). And a cold router cannot bootstrap
+off random predictors, so the fill **pretrains** (`pretrain=True`): first train the backbone and
+predictors with the OT oracle assignment used directly (`transport_method="oracle"`, `λ=0`) so the
+predictors specialize, then reset the optimizer and train the router (`transport_method="router"`
+plus the OT cross-entropy). `lr=1e-3` Adam, `n_epochs=100`, early stop 20 on validation IC. The
+whole model — RNN backbone, TRA router with `K` predictors and the TPE-LSTM, the Sinkhorn solver,
+the two-stage memory, the pretrain-then-route loop, and the label-free argmax inference — is the
+fill of `custom_model.py`; the full module is in the answer.
+
+Now the part that makes this rung *first*: what I expect it to do, so its measured result diagnoses
+the next move. This is a genuinely heavy machine — an attentive LSTM, three predictors, an
+OT-distilled router, a pretraining phase, a 60-day sampler over a 20-factor slice — and it carries
+real risk on this data. The CSI300 panel is small and noisy; routing splits an already-thin sample
+into three even thinner per-predictor slices, and the router has to learn a label-free selector from
+cached error history that is itself low-signal. The OT teacher fights collapse but also forces
+balance the data may not support, and the `FilterCol` down to 20 factors throws away most of
+Alpha158 — a steep price if the dropped factors carried regime information. So my honest
+expectation is that TRA *works* — it is a real, complete drift-routing model and should beat the
+linear default — but that its IC and rank-IC land in the modest range and its information ratios are
+respectable rather than dominant, with the three regimes treated unevenly: a routing model trained
+on 2008–2014 may route the 2019–2020 (`csi300_recent`) test window poorly, since that regime is the
+furthest from training and the router's error-history signal is least reliable there. If the
+`csi300_recent` numbers come in clearly weaker than the long-horizon `csi300` ones, that is the
+tell: the routing capacity is being spent on in-distribution pattern separation and is not, by
+itself, *aligning* the model to a shifted future. That diagnosis is exactly what the next rung — a
+model that explicitly matches distributions across time rather than routing within them — is built
+to address.
+</think>
+<say>
+I'm replacing the Ridge baseline with TRA (Temporal Routing Adaptor): an attentive-LSTM backbone with three predictor heads and an OT-distilled router that sends each sample to the head that fits it. This first edit drops in the network definitions and the TRA module header.
+</say>
+<edit path="qlib/custom_model.py">
+<old>
+# =====================================================================
+# EDITABLE: CustomModel — implement your stock prediction model here
+# =====================================================================
+class CustomModel(Model):
+    """Custom stock prediction model for concept drift adaptation.
+
+    You must implement:
+        fit(dataset)    — train the model on the training data
+        predict(dataset, segment="test") — return predictions as pd.Series
+
+    The dataset is a qlib DatasetH with Alpha158 features (158 engineered
+    features per stock per day). Alpha158 computes rolling statistics over
+    multiple windows (5, 10, 20, 30, 60 days) from raw OHLCV data:
+      - Rolling mean, std, and max/min of returns and volume
+      - Momentum indicators (ROC at various horizons)
+      - K-line ratios (KLEN, KLOW, KSFT, etc.)
+      - Rolling correlation/covariance between price and volume (CORR, CORD)
+      - Volatility measures (VSTD, WVMA, residual-based RESI, RSQR)
+    Features are pre-normalized (RobustZScoreNorm) and NaN-filled.
+
+    Getting data from the dataset:
+        df_train = dataset.prepare("train", col_set=["feature", "label"],
+                                    data_key=DataHandlerLP.DK_L)
+        features = df_train["feature"]   # DataFrame: (n_samples, 158)
+        labels = df_train["label"]       # DataFrame: (n_samples, 1)
+
+    The label is: Ref($close, -2) / Ref($close, -1) - 1
+    (i.e., the return from T+1 to T+2, predicted at time T)
+
+    predict() must return a pd.Series indexed by (datetime, instrument)
+    matching the target segment's index.
+
+    Available imports: torch, torch.nn, numpy, pandas, lightgbm, sklearn, scipy
+    All network definitions and training logic go in this class.
+    """
+</old>
+<new>
+# EDITABLE region of custom_model.py (lines 16-103) — step 1: TRA model
+# =====================================================================
+# EDITABLE: CustomModel — implement your stock prediction model here
+# =====================================================================
+import io
+import os
+import copy
+import math
+import json
+import torch.optim as optim
+import matplotlib
+matplotlib.use("Agg")
+import matplotlib.pyplot as plt
+
+try:
+    from torch.utils.tensorboard import SummaryWriter
+except ImportError:
+    SummaryWriter = None
+
+from tqdm import tqdm
+
+from qlib.constant import EPS
+from qlib.log import get_module_logger
+
+device = "cuda" if torch.cuda.is_available() else "cpu"
+
+
+class RNN(nn.Module):
+    """RNN Model — verbatim from qlib/contrib/model/pytorch_tra.py.
+
+    Args:
+        input_size (int): input size (# features)
+        hidden_size (int): hidden size
+        num_layers (int): number of hidden layers
+        rnn_arch (str): rnn architecture
+        use_attn (bool): whether use attention layer.
+            we use concat attention as https://github.com/fulifeng/Adv-ALSTM/
+        dropout (float): dropout rate
+    """
+
+    def __init__(
+        self,
+        input_size=16,
+        hidden_size=64,
+        num_layers=2,
+        rnn_arch="GRU",
+        use_attn=True,
+        dropout=0.0,
+        **kwargs,
+    ):
+        super().__init__()
+
+        self.input_size = input_size
+        self.hidden_size = hidden_size
+        self.num_layers = num_layers
+        self.rnn_arch = rnn_arch
+        self.use_attn = use_attn
+
+        if hidden_size < input_size:
+            # compression
+            self.input_proj = nn.Linear(input_size, hidden_size)
+        else:
+            self.input_proj = None
+
+        self.rnn = getattr(nn, rnn_arch)(
+            input_size=min(input_size, hidden_size),
+            hidden_size=hidden_size,
+            num_layers=num_layers,
+            batch_first=True,
+            dropout=dropout,
+        )
+
+        if self.use_attn:
+            self.W = nn.Linear(hidden_size, hidden_size)
+            self.u = nn.Linear(hidden_size, 1, bias=False)
+            self.output_size = hidden_size * 2
+        else:
+            self.output_size = hidden_size
+
+    def forward(self, x):
+        if self.input_proj is not None:
+            x = self.input_proj(x)
+
+        rnn_out, last_out = self.rnn(x)
+        if self.rnn_arch == "LSTM":
+            last_out = last_out[0]
+        last_out = last_out.mean(dim=0)
+
+        if self.use_attn:
+            laten = self.W(rnn_out).tanh()
+            scores = self.u(laten).softmax(dim=1)
+            att_out = (rnn_out * scores).sum(dim=1)
+            last_out = torch.cat([last_out, att_out], dim=1)
+
+        return last_out
+
+
+class PositionalEncoding(nn.Module):
+    # reference: https://pytorch.org/tutorials/beginner/transformer_tutorial.html
+    def __init__(self, d_model, dropout=0.1, max_len=5000):
+        super(PositionalEncoding, self).__init__()
+        self.dropout = nn.Dropout(p=dropout)
+
+        pe = torch.zeros(max_len, d_model)
+        position = torch.arange(0, max_len, dtype=torch.float).unsqueeze(1)
+        div_term = torch.exp(torch.arange(0, d_model, 2).float() * (-math.log(10000.0) / d_model))
+        pe[:, 0::2] = torch.sin(position * div_term)
+        pe[:, 1::2] = torch.cos(position * div_term)
+        pe = pe.unsqueeze(0).transpose(0, 1)
+        self.register_buffer("pe", pe)
+
+    def forward(self, x):
+        x = x + self.pe[: x.size(0), :]
+        return self.dropout(x)
+
+
+class Transformer(nn.Module):
+    """Transformer Model — verbatim from qlib/contrib/model/pytorch_tra.py.
+
+    Args:
+        input_size (int): input size (# features)
+        hidden_size (int): hidden size
+        num_layers (int): number of transformer layers
+        num_heads (int): number of heads in transformer
+        dropout (float): dropout rate
+    """
+
+    def __init__(
+        self,
+        input_size=16,
+        hidden_size=64,
+        num_layers=2,
+        num_heads=2,
+        dropout=0.0,
+        **kwargs,
+    ):
+        super().__init__()
+
+        self.input_size = input_size
+        self.hidden_size = hidden_size
+        self.num_layers = num_layers
+        self.num_heads = num_heads
+
+        self.input_proj = nn.Linear(input_size, hidden_size)
+
+        self.pe = PositionalEncoding(input_size, dropout)
+        layer = nn.TransformerEncoderLayer(
+            nhead=num_heads, dropout=dropout, d_model=hidden_size, dim_feedforward=hidden_size * 4
+        )
+        self.encoder = nn.TransformerEncoder(layer, num_layers=num_layers)
+
+        self.output_size = hidden_size
+
+    def forward(self, x):
+        x = x.permute(1, 0, 2).contiguous()  # the first dim need to be time
+        x = self.pe(x)
+
+        x = self.input_proj(x)
+        out = self.encoder(x)
+
+        return out[-1]
+
+
+class TRA(nn.Module):
+    """Temporal Routing Adaptor (TRA) — verbatim from qlib/contrib/model/pytorch_tra.py.
+
+    TRA takes historical prediction errors & latent representation as inputs,
+    then routes the input sample to a specific predictor for training & inference.
+
+    Args:
+        input_size (int): input size (RNN/Transformer's hidden size)
+        num_states (int): number of latent states (i.e., trading patterns)
+            If `num_states=1`, then TRA falls back to traditional methods
+        hidden_size (int): hidden size of the router
+        tau (float): gumbel softmax temperature
+        src_info (str): information for the router
+    """
+
+    def __init__(
+        self,
+        input_size,
+        num_states=1,
+        hidden_size=8,
+        rnn_arch="GRU",
+        num_layers=1,
+        dropout=0.0,
+        tau=1.0,
+        src_info="LR_TPE",
+    ):
+        super().__init__()
+
+        assert src_info in ["LR", "TPE", "LR_TPE"], "invalid `src_info`"
+
+        self.num_states = num_states
+        self.tau = tau
+        self.rnn_arch = rnn_arch
+        self.src_info = src_info
+
+        self.predictors = nn.Linear(input_size, num_states)
+
+        if self.num_states > 1:
+            if "TPE" in src_info:
+                self.router = getattr(nn, rnn_arch)(
+                    input_size=num_states,
+                    hidden_size=hidden_size,
+                    num_layers=num_layers,
+                    batch_first=True,
+                    dropout=dropout,
+                )
+                self.fc = nn.Linear(hidden_size + input_size if "LR" in src_info else hidden_size, num_states)
+            else:
+                self.fc = nn.Linear(input_size, num_states)
+
+    def reset_parameters(self):
+        for child in self.children():
+            child.reset_parameters()
+
+    def forward(self, hidden, hist_loss):
+        preds = self.predictors(hidden)
+
+        if self.num_states == 1:  # no need for router when having only one prediction
+            return preds, None, None
+
+        if "TPE" in self.src_info:
+            out = self.router(hist_loss)[1]  # TPE
+            if self.rnn_arch == "LSTM":
+                out = out[0]
+            out = out.mean(dim=0)
+            if "LR" in self.src_info:
+                out = torch.cat([hidden, out], dim=-1)  # LR_TPE
+        else:
+            out = hidden  # LR
+
+        out = self.fc(out)
+
+        choice = F.gumbel_softmax(out, dim=-1, tau=self.tau, hard=True)
+        prob = torch.softmax(out / self.tau, dim=-1)
+
+        return preds, choice, prob
+
+
+def evaluate(pred):
+    pred = pred.rank(pct=True)  # transform into percentiles
+    score = pred.score
+    label = pred.label
+    diff = score - label
+    MSE = (diff**2).mean()
+    MAE = (diff.abs()).mean()
+    IC = score.corr(label, method="spearman")
+    return {"MSE": MSE, "MAE": MAE, "IC": IC}
+
+
+def shoot_infs(inp_tensor):
+    """Replaces inf by maximum of tensor"""
+    mask_inf = torch.isinf(inp_tensor)
+    ind_inf = torch.nonzero(mask_inf, as_tuple=False)
+    if len(ind_inf) > 0:
+        for ind in ind_inf:
+            if len(ind) == 2:
+                inp_tensor[ind[0], ind[1]] = 0
+            elif len(ind) == 1:
+                inp_tensor[ind[0]] = 0
+        m = torch.max(inp_tensor)
+        for ind in ind_inf:
+            if len(ind) == 2:
+                inp_tensor[ind[0], ind[1]] = m
+            elif len(ind) == 1:
+                inp_tensor[ind[0]] = m
+    return inp_tensor
+
+
+def sinkhorn(Q, n_iters=3, epsilon=0.1):
+    # epsilon should be adjusted according to logits value's scale
+    with torch.no_grad():
+        Q = torch.exp(Q / epsilon)
+        Q = shoot_infs(Q)
+        for i in range(n_iters):
+            Q /= Q.sum(dim=0, keepdim=True)
+            Q /= Q.sum(dim=1, keepdim=True)
+    return Q
+
+
+def loss_fn(pred, label):
+    mask = ~torch.isnan(label)
+    if len(pred.shape) == 2:
+        label = label[:, None]
+    return (pred[mask] - label[mask]).pow(2).mean(dim=0)
+
+
+def minmax_norm(x):
+    xmin = x.min(dim=-1, keepdim=True).values
+    xmax = x.max(dim=-1, keepdim=True).values
+    mask = (xmin == xmax).squeeze()
+    x = (x - xmin) / (xmax - xmin + EPS)
+    x[mask] = 1
+    return x
+
+
+def transport_sample(all_preds, label, choice, prob, hist_loss, count, transport_method, alpha, training=False):
+    """
+    sample-wise transport — verbatim from qlib/contrib/model/pytorch_tra.py.
+    """
+    assert all_preds.shape == choice.shape
+    assert len(all_preds) == len(label)
+    assert transport_method in ["oracle", "router"]
+
+    all_loss = torch.zeros_like(all_preds)
+    mask = ~torch.isnan(label)
+    all_loss[mask] = (all_preds[mask] - label[mask, None]).pow(2)  # [sample x states]
+
+    L = minmax_norm(all_loss.detach())
+    Lh = L * alpha + minmax_norm(hist_loss) * (1 - alpha)  # add hist loss for transport
+    Lh = minmax_norm(Lh)
+    P = sinkhorn(-Lh)
+    del Lh
+
+    if transport_method == "router":
+        if training:
+            pred = (all_preds * choice).sum(dim=1)  # gumbel softmax
+        else:
+            pred = all_preds[range(len(all_preds)), prob.argmax(dim=-1)]  # argmax
+    else:
+        pred = (all_preds * P).sum(dim=1)
+
+    if transport_method == "router":
+        loss = loss_fn(pred, label)
+    else:
+        loss = (all_loss * P).sum(dim=1).mean()
+
+    return loss, pred, L, P
+
+
+def transport_daily(all_preds, label, choice, prob, hist_loss, count, transport_method, alpha, training=False):
+    """
+    daily transport — verbatim from qlib/contrib/model/pytorch_tra.py.
+    """
+    assert len(prob) == len(count)
+    assert len(all_preds) == sum(count)
+    assert transport_method in ["oracle", "router"]
+
+    all_loss = []  # loss of all predictions
+    start = 0
+    for i, cnt in enumerate(count):
+        slc = slice(start, start + cnt)  # samples from the i-th day
+        start += cnt
+        tloss = loss_fn(all_preds[slc], label[slc])  # loss of the i-th day
+        all_loss.append(tloss)
+    all_loss = torch.stack(all_loss, dim=0)  # [days x states]
+
+    L = minmax_norm(all_loss.detach())
+    Lh = L * alpha + minmax_norm(hist_loss) * (1 - alpha)  # add hist loss for transport
+    Lh = minmax_norm(Lh)
+    P = sinkhorn(-Lh)
+    del Lh
+
+    pred = []
+    start = 0
+    for i, cnt in enumerate(count):
+        slc = slice(start, start + cnt)  # samples from the i-th day
+        start += cnt
+        if transport_method == "router":
+            if training:
+                tpred = all_preds[slc] @ choice[i]  # gumbel softmax
+            else:
+                tpred = all_preds[slc][:, prob[i].argmax(dim=-1)]  # argmax
+        else:
+            tpred = all_preds[slc] @ P[i]
+        pred.append(tpred)
+    pred = torch.cat(pred, dim=0)  # [samples]
+
+    if transport_method == "router":
+        loss = loss_fn(pred, label)
+    else:
+        loss = (all_loss * P).sum(dim=1).mean()
+
+    return loss, pred, L, P
+
+
+def load_state_dict_unsafe(model, state_dict):
+    """
+    Load state dict to provided model while ignore exceptions.
+    """
+
+    missing_keys = []
+    unexpected_keys = []
+    error_msgs = []
+
+    # copy state_dict so _load_from_state_dict can modify it
+    metadata = getattr(state_dict, "_metadata", None)
+    state_dict = state_dict.copy()
+    if metadata is not None:
+        state_dict._metadata = metadata
+
+    def load(module, prefix=""):
+        local_metadata = {} if metadata is None else metadata.get(prefix[:-1], {})
+        module._load_from_state_dict(
+            state_dict, prefix, local_metadata, True, missing_keys, unexpected_keys, error_msgs
+        )
+        for name, child in module._modules.items():
+            if child is not None:
+                load(child, prefix + name + ".")
+
+    load(model)
+    load = None  # break load->load reference cycle
+
+    return {"unexpected_keys": unexpected_keys, "missing_keys": missing_keys, "error_msgs": error_msgs}
+
+
+def plot(P):
+    assert isinstance(P, pd.DataFrame)
+
+    fig, axes = plt.subplots(1, 2, figsize=(10, 4))
+    P.plot.area(ax=axes[0], xlabel="")
+    P.idxmax(axis=1).value_counts().sort_index().plot.bar(ax=axes[1], xlabel="")
+    plt.tight_layout()
+
+    with io.BytesIO() as buf:
+        plt.savefig(buf, format="png")
+        buf.seek(0)
+        img = plt.imread(buf)
+        plt.close()
+
+    return np.uint8(img * 255)
+
+
+class CustomModel(Model):
+    """TRA Model — faithful to qlib's official TRAModel (pytorch_tra.py).
+
+    Hyperparameters from official benchmark:
+    examples/benchmarks/TRA/workflow_config_tra_Alpha158.yaml
+
+    The workflow provides MTSDatasetH with Alpha158+FilterCol (20 features).
+    fit()/predict() use dataset.prepare() to get MTSDataSampler loaders.
+    """
+</new>
+</edit>
+<obs>
+Successfully replaced text in qlib/custom_model.py.
+</obs>
+<note>
+Now the CustomModel body: the benchmark config, the two-stage memory, the pretrain-then-route loop, and the label-free argmax inference.
+</note>
+<edit path="qlib/custom_model.py">
+<old>
+        super().__init__()
+        self.fitted = False
+        # --- Default: Ridge regression baseline ---
+        from sklearn.linear_model import Ridge
+
+        self.model = Ridge(alpha=1.0)
+
+    def fit(self, dataset: DatasetH):
+        """Train the model.
+
+        Args:
+            dataset: DatasetH with "train" and "valid" segments.
+        """
+        df_train = dataset.prepare(
+            "train", col_set=["feature", "label"], data_key=DataHandlerLP.DK_L
+        )
+        features = df_train["feature"].values
+        labels = df_train["label"].values.ravel()
+
+        # Remove NaN rows
+        mask = ~(np.isnan(features).any(axis=1) | np.isnan(labels))
+        features = features[mask]
+        labels = labels[mask]
+
+        self.model.fit(features, labels)
+        self.fitted = True
+
+    def predict(self, dataset: DatasetH, segment="test"):
+        """Generate predictions.
+
+        Args:
+            dataset: DatasetH with the target segment.
+            segment: Which segment to predict on (default: "test").
+
+        Returns:
+            pd.Series of predictions, indexed by (datetime, instrument).
+        """
+        if not self.fitted:
+            raise ValueError("Model is not fitted yet!")
+
+        df_test = dataset.prepare(
+            segment, col_set=["feature", "label"], data_key=DataHandlerLP.DK_I
+        )
+        features = df_test["feature"]
+        index = features.index
+
+        features_np = features.values
+        features_np = np.nan_to_num(features_np, nan=0.0)
+
+        preds = self.model.predict(features_np)
+        return pd.Series(preds, index=index, name="score")
+</old>
+<new>
+        super().__init__()
+        self.logger = get_module_logger("TRA")
+
+        # Official benchmark hyperparameters
+        self.model_config = {
+            "input_size": 20,
+            "hidden_size": 64,
+            "num_layers": 2,
+            "rnn_arch": "LSTM",
+            "use_attn": True,
+            "dropout": 0.0,
+        }
+        self.tra_config = {
+            "num_states": 3,
+            "rnn_arch": "LSTM",
+            "hidden_size": 32,
+            "num_layers": 1,
+            "dropout": 0.0,
+            "tau": 1.0,
+            "src_info": "LR_TPE",
+        }
+        self.model_type = "RNN"
+        self.lr = 1e-3
+        self.n_epochs = 100
+        self.early_stop = 20
+        self.update_freq = 1
+        self.max_steps_per_epoch = None
+        self.lamb = 1.0
+        self.rho = 0.99
+        self.alpha = 0.5
+        self.seed = int(os.environ.get("SEED", "42"))
+        self.logdir = None
+        self.eval_train = False
+        self.eval_test = True
+        self.pretrain = True
+        self.init_state = None
+        self.reset_router = False
+        self.freeze_model = False
+        self.freeze_predictors = False
+        self.transport_method = "router"
+        self.use_daily_transport = False  # memory_mode=sample
+        self.transport_fn = transport_sample
+
+        self._writer = None
+
+        if self.seed is not None:
+            np.random.seed(self.seed)
+            torch.manual_seed(self.seed)
+
+        self._init_model()
+
+    def _init_model(self):
+        self.logger.info("init TRAModel...")
+
+        self.model = eval(self.model_type)(**self.model_config).to(device)
+        print(self.model)
+
+        self.tra = TRA(self.model.output_size, **self.tra_config).to(device)
+        print(self.tra)
+
+        if self.init_state:
+            self.logger.warning(f"load state dict from `init_state`")
+            state_dict = torch.load(self.init_state, map_location="cpu")
+            self.model.load_state_dict(state_dict["model"])
+            res = load_state_dict_unsafe(self.tra, state_dict["tra"])
+            self.logger.warning(str(res))
+
+        if self.reset_router:
+            self.logger.warning(f"reset TRA.router parameters")
+            self.tra.fc.reset_parameters()
+            self.tra.router.reset_parameters()
+
+        if self.freeze_model:
+            self.logger.warning(f"freeze model parameters")
+            for param in self.model.parameters():
+                param.requires_grad_(False)
+
+        if self.freeze_predictors:
+            self.logger.warning(f"freeze TRA.predictors parameters")
+            for param in self.tra.predictors.parameters():
+                param.requires_grad_(False)
+
+        self.logger.info("# model params: %d" % sum(p.numel() for p in self.model.parameters() if p.requires_grad))
+        self.logger.info("# tra params: %d" % sum(p.numel() for p in self.tra.parameters() if p.requires_grad))
+
+        self.optimizer = optim.Adam(list(self.model.parameters()) + list(self.tra.parameters()), lr=self.lr)
+
+        self.fitted = False
+        self.global_step = -1
+
+    def train_epoch(self, epoch, data_set, is_pretrain=False):
+        self.model.train()
+        self.tra.train()
+        data_set.train()
+        self.optimizer.zero_grad()
+
+        P_all = []
+        prob_all = []
+        choice_all = []
+        max_steps = len(data_set)
+        if self.max_steps_per_epoch is not None:
+            if epoch == 0 and self.max_steps_per_epoch < max_steps:
+                self.logger.info(f"max steps updated from {max_steps} to {self.max_steps_per_epoch}")
+            max_steps = min(self.max_steps_per_epoch, max_steps)
+
+        cur_step = 0
+        total_loss = 0
+        total_count = 0
+        for batch in tqdm(data_set, total=max_steps):
+            cur_step += 1
+            if cur_step > max_steps:
+                break
+
+            if not is_pretrain:
+                self.global_step += 1
+
+            data, state, label, count = batch["data"], batch["state"], batch["label"], batch["daily_count"]
+            index = batch["daily_index"] if self.use_daily_transport else batch["index"]
+
+            with torch.set_grad_enabled(not self.freeze_model):
+                hidden = self.model(data)
+
+            all_preds, choice, prob = self.tra(hidden, state)
+
+            if is_pretrain or self.transport_method != "none":
+                # NOTE: use oracle transport for pre-training
+                loss, pred, L, P = self.transport_fn(
+                    all_preds,
+                    label,
+                    choice,
+                    prob,
+                    state.mean(dim=1),
+                    count,
+                    self.transport_method if not is_pretrain else "oracle",
+                    self.alpha,
+                    training=True,
+                )
+                data_set.assign_data(index, L)  # save loss to memory
+                if self.use_daily_transport:  # only save for daily transport
+                    P_all.append(pd.DataFrame(P.detach().cpu().numpy(), index=index))
+                    prob_all.append(pd.DataFrame(prob.detach().cpu().numpy(), index=index))
+                    choice_all.append(pd.DataFrame(choice.detach().cpu().numpy(), index=index))
+                decay = self.rho ** (self.global_step // 100)  # decay every 100 steps
+                lamb = 0 if is_pretrain else self.lamb * decay
+                reg = prob.log().mul(P).sum(dim=1).mean()  # train router to predict TO assignment
+                if self._writer is not None and not is_pretrain:
+                    self._writer.add_scalar("training/router_loss", -reg.item(), self.global_step)
+                    self._writer.add_scalar("training/reg_loss", loss.item(), self.global_step)
+                    self._writer.add_scalar("training/lamb", lamb, self.global_step)
+                    if not self.use_daily_transport:
+                        P_mean = P.mean(axis=0).detach()
+                        self._writer.add_scalar("training/P", P_mean.max() / P_mean.min(), self.global_step)
+                loss = loss - lamb * reg
+            else:
+                pred = all_preds.mean(dim=1)
+                loss = loss_fn(pred, label)
+
+            (loss / self.update_freq).backward()
+            if cur_step % self.update_freq == 0:
+                self.optimizer.step()
+                self.optimizer.zero_grad()
+
+            if self._writer is not None and not is_pretrain:
+                self._writer.add_scalar("training/total_loss", loss.item(), self.global_step)
+
+            total_loss += loss.item()
+            total_count += 1
+
+        if self.use_daily_transport and len(P_all) > 0:
+            P_all = pd.concat(P_all, axis=0)
+            prob_all = pd.concat(prob_all, axis=0)
+            choice_all = pd.concat(choice_all, axis=0)
+            P_all.index = data_set.restore_daily_index(P_all.index)
+            prob_all.index = P_all.index
+            choice_all.index = P_all.index
+            if not is_pretrain:
+                self._writer.add_image("P", plot(P_all), epoch, dataformats="HWC")
+                self._writer.add_image("prob", plot(prob_all), epoch, dataformats="HWC")
+                self._writer.add_image("choice", plot(choice_all), epoch, dataformats="HWC")
+
+        total_loss /= total_count
+
+        if self._writer is not None and not is_pretrain:
+            self._writer.add_scalar("training/loss", total_loss, epoch)
+
+        return total_loss
+
+    def test_epoch(self, epoch, data_set, return_pred=False, prefix="test", is_pretrain=False):
+        self.model.eval()
+        self.tra.eval()
+        data_set.eval()
+
+        preds = []
+        probs = []
+        P_all = []
+        metrics = []
+        for batch in tqdm(data_set):
+            data, state, label, count = batch["data"], batch["state"], batch["label"], batch["daily_count"]
+            index = batch["daily_index"] if self.use_daily_transport else batch["index"]
+
+            with torch.no_grad():
+                hidden = self.model(data)
+                all_preds, choice, prob = self.tra(hidden, state)
+
+            if is_pretrain or self.transport_method != "none":
+                loss, pred, L, P = self.transport_fn(
+                    all_preds,
+                    label,
+                    choice,
+                    prob,
+                    state.mean(dim=1),
+                    count,
+                    self.transport_method if not is_pretrain else "oracle",
+                    self.alpha,
+                    training=False,
+                )
+                data_set.assign_data(index, L)  # save loss to memory
+                if P is not None and return_pred:
+                    P_all.append(pd.DataFrame(P.cpu().numpy(), index=index))
+            else:
+                pred = all_preds.mean(dim=1)
+
+            X = np.c_[pred.cpu().numpy(), label.cpu().numpy(), all_preds.cpu().numpy()]
+            columns = ["score", "label"] + ["score_%d" % d for d in range(all_preds.shape[1])]
+            pred = pd.DataFrame(X, index=batch["index"], columns=columns)
+
+            metrics.append(evaluate(pred))
+
+            if return_pred:
+                preds.append(pred)
+                if prob is not None:
+                    columns = ["prob_%d" % d for d in range(all_preds.shape[1])]
+                    probs.append(pd.DataFrame(prob.cpu().numpy(), index=index, columns=columns))
+
+        metrics = pd.DataFrame(metrics)
+        metrics = {
+            "MSE": metrics.MSE.mean(),
+            "MAE": metrics.MAE.mean(),
+            "IC": metrics.IC.mean(),
+            "ICIR": metrics.IC.mean() / metrics.IC.std(),
+        }
+
+        if self._writer is not None and epoch >= 0 and not is_pretrain:
+            for key, value in metrics.items():
+                self._writer.add_scalar(prefix + "/" + key, value, epoch)
+
+        if return_pred:
+            preds = pd.concat(preds, axis=0)
+            preds.index = data_set.restore_index(preds.index)
+            preds.index = preds.index.swaplevel()
+            preds.sort_index(inplace=True)
+
+            if probs:
+                probs = pd.concat(probs, axis=0)
+                if self.use_daily_transport:
+                    probs.index = data_set.restore_daily_index(probs.index)
+                else:
+                    probs.index = data_set.restore_index(probs.index)
+                    probs.index = probs.index.swaplevel()
+                    probs.sort_index(inplace=True)
+
+            if len(P_all):
+                P_all = pd.concat(P_all, axis=0)
+                if self.use_daily_transport:
+                    P_all.index = data_set.restore_daily_index(P_all.index)
+                else:
+                    P_all.index = data_set.restore_index(P_all.index)
+                    P_all.index = P_all.index.swaplevel()
+                    P_all.sort_index(inplace=True)
+
+        return metrics, preds, probs, P_all
+
+    def _fit(self, train_set, valid_set, test_set, evals_result, is_pretrain=True):
+        best_score = -1
+        best_epoch = 0
+        stop_rounds = 0
+        best_params = {
+            "model": copy.deepcopy(self.model.state_dict()),
+            "tra": copy.deepcopy(self.tra.state_dict()),
+        }
+        # train
+        if not is_pretrain and self.transport_method != "none":
+            self.logger.info("init memory...")
+            self.test_epoch(-1, train_set)
+
+        for epoch in range(self.n_epochs):
+            self.logger.info("Epoch %d:", epoch)
+
+            self.logger.info("training...")
+            self.train_epoch(epoch, train_set, is_pretrain=is_pretrain)
+
+            self.logger.info("evaluating...")
+            # NOTE: during evaluating, the whole memory will be refreshed
+            if not is_pretrain and (self.transport_method == "router" or self.eval_train):
+                train_set.clear_memory()  # NOTE: clear the shared memory
+                train_metrics = self.test_epoch(epoch, train_set, is_pretrain=is_pretrain, prefix="train")[0]
+                evals_result["train"].append(train_metrics)
+                self.logger.info("train metrics: %s" % train_metrics)
+
+            valid_metrics = self.test_epoch(epoch, valid_set, is_pretrain=is_pretrain, prefix="valid")[0]
+            evals_result["valid"].append(valid_metrics)
+            self.logger.info("valid metrics: %s" % valid_metrics)
+
+            if self.eval_test:
+                test_metrics = self.test_epoch(epoch, test_set, is_pretrain=is_pretrain, prefix="test")[0]
+                evals_result["test"].append(test_metrics)
+                self.logger.info("test metrics: %s" % test_metrics)
+
+            if valid_metrics["IC"] > best_score:
+                best_score = valid_metrics["IC"]
+                stop_rounds = 0
+                best_epoch = epoch
+                best_params = {
+                    "model": copy.deepcopy(self.model.state_dict()),
+                    "tra": copy.deepcopy(self.tra.state_dict()),
+                }
+                if self.logdir is not None:
+                    torch.save(best_params, self.logdir + "/model.bin")
+            else:
+                stop_rounds += 1
+                if stop_rounds >= self.early_stop:
+                    self.logger.info("early stop @ %s" % epoch)
+                    break
+
+        self.logger.info("best score: %.6lf @ %d" % (best_score, best_epoch))
+        self.model.load_state_dict(best_params["model"])
+        self.tra.load_state_dict(best_params["tra"])
+
+        return best_score
+
+    def fit(self, dataset, evals_result=dict()):
+        # MTSDatasetH is provided by the workflow (Alpha158+FilterCol, 20 features).
+        train_set, valid_set, test_set = dataset.prepare(["train", "valid", "test"])
+
+        self.fitted = True
+        self.global_step = -1
+
+        evals_result["train"] = []
+        evals_result["valid"] = []
+        evals_result["test"] = []
+
+        if self.pretrain:
+            self.logger.info("pretraining...")
+            self.optimizer = optim.Adam(
+                list(self.model.parameters()) + list(self.tra.predictors.parameters()), lr=self.lr
+            )
+            self._fit(train_set, valid_set, test_set, evals_result, is_pretrain=True)
+
+            # reset optimizer
+            self.optimizer = optim.Adam(list(self.model.parameters()) + list(self.tra.parameters()), lr=self.lr)
+
+        self.logger.info("training...")
+        best_score = self._fit(train_set, valid_set, test_set, evals_result, is_pretrain=False)
+
+        self.logger.info("inference")
+        train_metrics, train_preds, train_probs, train_P = self.test_epoch(-1, train_set, return_pred=True)
+        self.logger.info("train metrics: %s" % train_metrics)
+
+        valid_metrics, valid_preds, valid_probs, valid_P = self.test_epoch(-1, valid_set, return_pred=True)
+        self.logger.info("valid metrics: %s" % valid_metrics)
+
+        test_metrics, test_preds, test_probs, test_P = self.test_epoch(-1, test_set, return_pred=True)
+        self.logger.info("test metrics: %s" % test_metrics)
+
+    def predict(self, dataset, segment="test"):
+        if not self.fitted:
+            raise ValueError("model is not fitted yet!")
+
+        test_set = dataset.prepare(segment)
+
+        metrics, preds, _, _ = self.test_epoch(-1, test_set, return_pred=True)
+        self.logger.info("test metrics: %s" % metrics)
+
+        return preds
+</new>
+</edit>
+<obs>
+Successfully replaced text in qlib/custom_model.py.
+</obs>
+<run/>
+<obs>
+Measured results — `baseline:tra` (`is_final,true`), seeds {42, 123, 456} and mean, per temporal regime (all metrics higher-is-better; max drawdown reported negative, closer to zero better).
+
+## csi300 (test 2017-2020)
+| seed | IC | ICIR | Rank IC | Rank ICIR | Ann. return | Max drawdown | Info ratio |
+|---|---|---|---|---|---|---|---|
+| 42 | 0.04197 | 0.335485 | 0.050394 | 0.423179 | 0.064122 | -0.100267 | 1.0081 |
+| 123 | 0.04197 | 0.335485 | 0.050394 | 0.423179 | 0.064122 | -0.100267 | 1.0081 |
+| 456 | 0.04197 | 0.335485 | 0.050394 | 0.423179 | 0.064122 | -0.100267 | 1.0081 |
+| **mean** | **0.04197** | **0.335485** | **0.050394** | **0.423179** | **0.064122** | **-0.100267** | **1.0081** |
+
+## csi300_shifted (test 2016-2018)
+| seed | IC | ICIR | Rank IC | Rank ICIR | Ann. return | Max drawdown | Info ratio |
+|---|---|---|---|---|---|---|---|
+| 42 | 0.051277 | 0.428264 | 0.054641 | 0.458959 | 0.122284 | -0.0843 | 1.5869 |
+| 123 | 0.051277 | 0.428264 | 0.054641 | 0.458959 | 0.122284 | -0.0843 | 1.5869 |
+| 456 | 0.051277 | 0.428264 | 0.054641 | 0.458959 | 0.122284 | -0.0843 | 1.5869 |
+| **mean** | **0.051277** | **0.428264** | **0.054641** | **0.458959** | **0.122284** | **-0.0843** | **1.5869** |
+
+## csi300_recent (test 2019-2020)
+| seed | IC | ICIR | Rank IC | Rank ICIR | Ann. return | Max drawdown | Info ratio |
+|---|---|---|---|---|---|---|---|
+| 42 | 0.023703 | 0.192256 | 0.039709 | 0.329632 | 0.032592 | -0.071431 | 0.479804 |
+| 123 | 0.023703 | 0.192256 | 0.039709 | 0.329632 | 0.032592 | -0.071431 | 0.479804 |
+| 456 | 0.023703 | 0.192256 | 0.039709 | 0.329632 | 0.032592 | -0.071431 | 0.479804 |
+| **mean** | **0.023703** | **0.192256** | **0.039709** | **0.329632** | **0.032592** | **-0.071431** | **0.479804** |
+</obs>
+
+### step 2 — AdaRNN (adaptive temporal-distribution matching)   [slug:adarnn]
+
+<think>
+TRA landed where a real but heavy routing model lands, and the *shape* of its three-regime result
+is the thing I have to read before I pick the next rung. On the long-horizon `csi300` window it gets
+IC 0.0420, rank IC 0.0504, information ratio 1.01; on `csi300_shifted` it does best — IC 0.0513,
+rank IC 0.0546, info ratio 1.59; and on `csi300_recent` it collapses — IC 0.0237, rank IC 0.0397,
+info ratio 0.48, less than a third of its shifted info ratio. That gradient is the diagnosis. TRA is
+identical across the three seeds (its backbone is seeded deterministically), so this is not seed
+noise; it is structural. The recent window (2019–2020) is the regime furthest from the 2008–2014
+training period, and it is exactly there that TRA is weakest. Routing did what I expected — it
+separated in-distribution trading patterns and beat the averaged linear default — but the router's
+selector is learned from cached prediction-error history on the *training* distribution, and when
+the test regime drifts far from training, the very signal the router relies on (which predictor has
+been doing well lately) is computed on a distribution that no longer holds, so it routes the
+shifted-future samples to the wrong heads. TRA spent its capacity on *which pattern is active now*
+and almost none on *what survives when the distribution moves*. The 0.48 info ratio on
+`csi300_recent` is that gap made numeric. So the next rung should not route harder; it should
+explicitly force the model to learn what is *invariant* across time, so a drifted test window
+inherits a relation that was trained to be stable rather than a router trained to a stale signal.
+
+Let me get the structure of that right, because naming it picks the tool. Write the joint law
+`P(x, y)`. Over the training stream 2008–2014 the marginal `P(x)` of the factors drifts hard with
+the regime, but the economic regularity turning factors into returns — `P(y|x)` — is far more
+stable. The thing worth carrying to a shifted future is `P(y|x)`; the thing that betrays me is
+`P(x)`. That is temporal covariate shift: `P_train(x) ≠ P_test(x)` while `P_train(y|x) =
+P_test(y|x)`, and the stream is not one shift but a sequence of shifts at unknown times. The
+classic covariate-shift fix — reweight by the test/train density ratio — is dead twice over: the
+test is a genuinely unseen future window with no density to estimate, and the posed fix has no
+notion of *when* inside a stream the distribution turns over. So the right move is to make the model
+*extract what is invariant across time* by aligning the periods' representations, which is exactly
+the failure TRA exposed: routing aligns nothing across regimes, it only partitions within one.
+
+Now the model, derived against this scaffold — and the scaffold immediately changes the generic
+AdaRNN story in a way I have to honor. The generic idea splits the training stream into `K` periods
+chosen to be maximally *dissimilar* (maximum-entropy / worst-case diversity, found by a greedy
+search over candidate cut points), then aligns the periods' hidden-state trajectories at every
+timestep with a learned, boosting-updated per-state importance weight. Three pieces: period
+discovery, per-state distribution matching, boosting weights. The task fill keeps the *machinery* —
+the gated AdaRNN network, the boosting weight update, the full `TransferLoss` family — but pins two
+hyperparameters that simplify it sharply, and I must derive the model that the harness actually
+runs, not the paper's. First, `len_seq = 1`. Alpha158 gives 158 *flat* factors per (stock, day);
+the fill's `data_loader` does `.unsqueeze(1)` to make `[N, 1, 158]`, a single-timestep sequence. So
+the GRU sees one step, the hidden trajectory has length one, and the "match the distribution at
+*every* hidden state" idea collapses to matching at the single state. The whole argument that an
+endpoint-only match wastes the recurrent trajectory still motivates the *architecture*, but on this
+task there is exactly one state, so per-state weighting and the local matching window `len_win`
+degenerate — there is nothing to weight across. Second, the periods are not discovered by a
+diversity search at all: `n_splits = 2`, and `fit` literally does `np.array_split(days, 2)` — two
+equal consecutive halves of the training days, 2008–2011 and 2012–2014. No greedy max-distance
+search, no `K` sweep. So the temporal-distribution-characterization step is replaced by a fixed
+two-way chronological split. That is the honest description of this baseline: align the
+representations of the first and second halves of training so the GRU learns a factor→return map
+that is invariant between the two halves, in the hope it then transfers to a third (test) half.
+
+Given those pins, here is the model. The backbone is a stack of single-layer GRUs (`num_layers=2`,
+hidden 64) so each layer exposes its own hidden state; no bottleneck (`use_bottleneck=False`), a
+linear head on the last state to the scalar return prediction. For a pair of periods (here the only
+pair, halves 0 and 1) I run both through the GRU, take the per-layer hidden state, and add a
+distribution-matching loss between the two halves' representations to the prediction loss. The
+matching distance is `cosine` here (`loss_type="cosine"`, `d = 1 - cos(mean(h_s), mean(h_t))`) —
+the cheapest of the `TransferLoss` family, the sane default on the large CSI300 panel; the family
+also carries linear/RBF MMD, CORAL, and the gradient-reversal adversarial distance, all available
+but unused at this setting. The objective per layer is `L_pred + λ·L_match`, with `dw = 0.5` as the
+matching trade-off `λ` and `L_pred` the MSE on each half's predictions. Because the relationship I
+want is the one *shared* between the halves, pushing their hidden representations together forces the
+GRU toward the invariant conditional.
+
+The two-phase training is the load-bearing part the fill keeps. A chicken-and-egg sits between the
+state-importance weights and the GRU parameters: the weights judge the importance of hidden states,
+but early in training the states are meaningless, so the weights learn garbage and steer the GRU
+wrong. So `pre_epoch = 40`: for the first 40 epochs the fill runs `forward_pre_train`, which produces
+the prediction output and a *gate-weighted* matching loss (a small per-layer linear gate maps the
+concatenated source/target states to the state weights), getting the representations sensible before
+the boosting weights take over. After epoch 40 it switches to `forward_Boosting`, which computes the
+prediction output, the matching loss weighted by the current weight matrix, and the per-state
+distance matrix; then `update_weight_Boosting` ratchets up the weight on any state whose cross-half
+distance *grew* from last epoch — `weight *= 1 + sigmoid(d_new − d_old)`, a multiplier in (1, 2) so
+weights only ever increase on the stalling states and a single noisy epoch cannot blow them up,
+re-L1-normalized to stay a convex weighting so `dw` alone controls strength. This is the boosting
+instinct: lean into the worst-aligned state. With `len_seq=1` there is a single state per layer, so
+the boosting update is doing little real work here — it is the period *alignment*, not the per-state
+reweighting, that carries this baseline on this task. Training is Adam `lr=1e-3`, `n_epochs=200`,
+`early_stop=20` on validation loss, gradient value-clip at 3.0, `batch_size=800`, `dw=0.5`. The
+`seed` is `None`, so unlike TRA this model is *not* deterministic across seeds — its weights
+initialize differently each run, which I will need to read into its variance. At inference none of
+the matching machinery runs: `predict` just unsqueezes the test features to `[N, 1, 158]` and runs
+one GRU forward pass through `model.predict`, so prediction costs a vanilla recurrent net. The full
+module — the GRU stack, the `TransferLoss` family, the gate and boosting weight update, the
+two-phase `fit` over the two chronological halves, and the batched `infer` — is the fill of
+`custom_model.py`; it is in the answer.
+
+One more thing the scaffold changes relative to TRA that bears on what I expect: AdaRNN sees the
+*full* 158-factor Alpha158 view (the fill edits only `custom_model.py`, leaving the default
+`DatasetH`/Alpha158 processor block untouched), whereas TRA saw only the 20-column `FilterCol`
+slice. So AdaRNN has more raw factor information and a cheaper, more direct mechanism (align two
+halves, predict from one state) than TRA's heavy OT-distilled router. That cuts two ways and frames
+my falsifiable expectations.
+
+I expect AdaRNN to be *roughly competitive with TRA on the aggregate, with a different regime
+profile and more seed variance*. Concretely: on `csi300_shifted` it should be in TRA's
+neighborhood or a touch better — its info ratio there should land high (TRA's was 1.59), because
+the shifted window is closest to training and explicit two-half alignment should help where the
+shift is mild. On `csi300_recent` — the window that killed TRA at info ratio 0.48 — alignment is the
+right idea, but with only two coarse chronological halves and a single-timestep GRU, I do not expect
+it to *rescue* the far regime; I expect it to stay weak there too, possibly weaker on some seeds,
+because aligning 2008–2011 to 2012–2014 says nothing about a 2019–2020 regime that lies outside both
+halves. The falsifiable claim against the prior numbers: if AdaRNN's `csi300_recent` info ratio
+comes in around TRA's 0.48 or below — and especially if its *worst seed* on `csi300_recent` lands
+near zero (an aligned-but-uninformed model on the farthest regime) — then explicit two-half
+alignment, like routing, does not buy generalization to a genuinely distant future, and the lesson
+is that *both* adaptive sequence models are spending their machinery on the wrong axis. The
+sharper, more surprising possibility I should hold open: that on this low-SNR CSI300 panel a heavy
+sequence model with elaborate adaptation does *not* beat what a strong, plain, full-feature learner
+would do — that the adaptation overhead costs more (in fit-able signal on a thin sample) than the
+drift-robustness it buys. If AdaRNN's three-regime aggregate sits at or below TRA's rather than
+clearly above it, that points the next rung away from sequence-model adaptation entirely and toward
+making the *strong non-adaptive control* robust by other means.
+</think>
+<say>
+Next I'm swapping in AdaRNN: a GRU stack trained to align the representations of two chronological halves of the training period, so it learns a factor-to-return relation invariant across time. This first edit lays down the data loader and the full TransferLoss family the alignment loss draws from.
+</say>
+<edit path="qlib/custom_model.py">
+<old>
+# EDITABLE region of custom_model.py (lines 16-103) — step 1: TRA model
+# =====================================================================
+# EDITABLE: CustomModel — implement your stock prediction model here
+# =====================================================================
+import io
+import os
+import copy
+import math
+import json
+import torch.optim as optim
+import matplotlib
+matplotlib.use("Agg")
+import matplotlib.pyplot as plt
+
+try:
+    from torch.utils.tensorboard import SummaryWriter
+except ImportError:
+    SummaryWriter = None
+
+from tqdm import tqdm
+
+from qlib.constant import EPS
+from qlib.log import get_module_logger
+
+device = "cuda" if torch.cuda.is_available() else "cpu"
+
+
+class RNN(nn.Module):
+    """RNN Model — verbatim from qlib/contrib/model/pytorch_tra.py.
+
+    Args:
+        input_size (int): input size (# features)
+        hidden_size (int): hidden size
+        num_layers (int): number of hidden layers
+        rnn_arch (str): rnn architecture
+        use_attn (bool): whether use attention layer.
+            we use concat attention as https://github.com/fulifeng/Adv-ALSTM/
+        dropout (float): dropout rate
+    """
+</old>
+<new>
+# EDITABLE region of custom_model.py (lines 16-103) — step 2: AdaRNN model
+# =====================================================================
+# EDITABLE: CustomModel — implement your stock prediction model here
+# =====================================================================
+import os
+import copy
+from typing import Text, Union
+from torch.utils.data import Dataset, DataLoader
+import torch.optim as optim
+from torch.autograd import Function
+from qlib.log import get_module_logger
+from qlib.utils import get_or_create_path
+
+
+class data_loader(Dataset):
+    """Data loader for Alpha158 flat features.
+
+    Alpha158 provides 158 features per sample (flat vector).
+    Unsqueezes to [N, 1, 158] for GRU input (single timestep).
+    """
+    def __init__(self, df):
+        self.df_feature = df["feature"]
+        self.df_label_reg = df["label"]
+        self.df_index = df.index
+        self.df_feature = torch.tensor(
+            self.df_feature.values, dtype=torch.float32
+        ).unsqueeze(1)  # [N, 1, 158]
+        self.df_label_reg = torch.tensor(self.df_label_reg.values.reshape(-1), dtype=torch.float32)
+
+    def __getitem__(self, index):
+        sample, label_reg = self.df_feature[index], self.df_label_reg[index]
+        return sample, label_reg
+
+    def __len__(self):
+        return len(self.df_feature)
+
+
+def get_stock_loader(df, batch_size, shuffle=True):
+    train_loader = DataLoader(data_loader(df), batch_size=batch_size, shuffle=shuffle)
+    return train_loader
+
+
+def get_index(num_domain=2):
+    index = []
+    for i in range(num_domain):
+        for j in range(i + 1, num_domain + 1):
+            index.append((i, j))
+    return index
+
+
+def cosine(source, target):
+    source, target = source.mean(), target.mean()
+    cos = nn.CosineSimilarity(dim=0)
+    loss = cos(source, target)
+    return loss.mean()
+
+
+class ReverseLayerF(Function):
+    @staticmethod
+    def forward(ctx, x, alpha):
+        ctx.alpha = alpha
+        return x.view_as(x)
+
+    @staticmethod
+    def backward(ctx, grad_output):
+        output = grad_output.neg() * ctx.alpha
+        return output, None
+
+
+class Discriminator(nn.Module):
+    def __init__(self, input_dim=256, hidden_dim=256):
+        super(Discriminator, self).__init__()
+        self.input_dim = input_dim
+        self.hidden_dim = hidden_dim
+        self.dis1 = nn.Linear(input_dim, hidden_dim)
+        self.dis2 = nn.Linear(hidden_dim, 1)
+
+    def forward(self, x):
+        x = F.relu(self.dis1(x))
+        x = self.dis2(x)
+        x = torch.sigmoid(x)
+        return x
+
+
+def adv(source, target, device, input_dim=256, hidden_dim=512):
+    domain_loss = nn.BCELoss()
+    adv_net = Discriminator(input_dim, hidden_dim).to(device)
+    domain_src = torch.ones(len(source)).to(device)
+    domain_tar = torch.zeros(len(target)).to(device)
+    domain_src, domain_tar = domain_src.view(domain_src.shape[0], 1), domain_tar.view(domain_tar.shape[0], 1)
+    reverse_src = ReverseLayerF.apply(source, 1)
+    reverse_tar = ReverseLayerF.apply(target, 1)
+    pred_src = adv_net(reverse_src)
+    pred_tar = adv_net(reverse_tar)
+    loss_s, loss_t = domain_loss(pred_src, domain_src), domain_loss(pred_tar, domain_tar)
+    loss = loss_s + loss_t
+    return loss
+
+
+def CORAL(source, target, device):
+    d = source.size(1)
+    ns, nt = source.size(0), target.size(0)
+
+    # source covariance
+    tmp_s = torch.ones((1, ns)).to(device) @ source
+    cs = (source.t() @ source - (tmp_s.t() @ tmp_s) / ns) / (ns - 1)
+
+    # target covariance
+    tmp_t = torch.ones((1, nt)).to(device) @ target
+    ct = (target.t() @ target - (tmp_t.t() @ tmp_t) / nt) / (nt - 1)
+
+    # frobenius norm
+    loss = (cs - ct).pow(2).sum()
+    loss = loss / (4 * d * d)
+
+    return loss
+
+
+class MMD_loss(nn.Module):
+    def __init__(self, kernel_type="linear", kernel_mul=2.0, kernel_num=5):
+        super(MMD_loss, self).__init__()
+        self.kernel_num = kernel_num
+        self.kernel_mul = kernel_mul
+        self.fix_sigma = None
+        self.kernel_type = kernel_type
+
+    @staticmethod
+    def guassian_kernel(source, target, kernel_mul=2.0, kernel_num=5, fix_sigma=None):
+        n_samples = int(source.size()[0]) + int(target.size()[0])
+        total = torch.cat([source, target], dim=0)
+        total0 = total.unsqueeze(0).expand(int(total.size(0)), int(total.size(0)), int(total.size(1)))
+        total1 = total.unsqueeze(1).expand(int(total.size(0)), int(total.size(0)), int(total.size(1)))
+        L2_distance = ((total0 - total1) ** 2).sum(2)
+        if fix_sigma:
+            bandwidth = fix_sigma
+        else:
+            bandwidth = torch.sum(L2_distance.data) / (n_samples**2 - n_samples)
+        bandwidth /= kernel_mul ** (kernel_num // 2)
+        bandwidth_list = [bandwidth * (kernel_mul**i) for i in range(kernel_num)]
+        kernel_val = [torch.exp(-L2_distance / bandwidth_temp) for bandwidth_temp in bandwidth_list]
+        return sum(kernel_val)
+
+    @staticmethod
+    def linear_mmd(X, Y):
+        delta = X.mean(axis=0) - Y.mean(axis=0)
+        loss = delta.dot(delta.T)
+        return loss
+
+    def forward(self, source, target):
+        if self.kernel_type == "linear":
+            return self.linear_mmd(source, target)
+        elif self.kernel_type == "rbf":
+            batch_size = int(source.size()[0])
+            kernels = self.guassian_kernel(
+                source, target, kernel_mul=self.kernel_mul, kernel_num=self.kernel_num, fix_sigma=self.fix_sigma
+            )
+            with torch.no_grad():
+                XX = torch.mean(kernels[:batch_size, :batch_size])
+                YY = torch.mean(kernels[batch_size:, batch_size:])
+                XY = torch.mean(kernels[:batch_size, batch_size:])
+                YX = torch.mean(kernels[batch_size:, :batch_size])
+                loss = torch.mean(XX + YY - XY - YX)
+            return loss
+
+
+class Mine_estimator(nn.Module):
+    def __init__(self, input_dim=2048, hidden_dim=512):
+        super(Mine_estimator, self).__init__()
+        self.mine_model = Mine(input_dim, hidden_dim)
+
+    def forward(self, X, Y):
+        Y_shffle = Y[torch.randperm(len(Y))]
+        loss_joint = self.mine_model(X, Y)
+        loss_marginal = self.mine_model(X, Y_shffle)
+        ret = torch.mean(loss_joint) - torch.log(torch.mean(torch.exp(loss_marginal)))
+        loss = -ret
+        return loss
+
+
+class Mine(nn.Module):
+    def __init__(self, input_dim=2048, hidden_dim=512):
+        super(Mine, self).__init__()
+        self.fc1_x = nn.Linear(input_dim, hidden_dim)
+        self.fc1_y = nn.Linear(input_dim, hidden_dim)
+        self.fc2 = nn.Linear(hidden_dim, 1)
+
+    def forward(self, x, y):
+        h1 = F.leaky_relu(self.fc1_x(x) + self.fc1_y(y))
+        h2 = self.fc2(h1)
+        return h2
+
+
+def pairwise_dist(X, Y):
+    n, d = X.shape
+    m, _ = Y.shape
+    assert d == Y.shape[1]
+    a = X.unsqueeze(1).expand(n, m, d)
+    b = Y.unsqueeze(0).expand(n, m, d)
+    return torch.pow(a - b, 2).sum(2)
+
+
+def kl_div(source, target):
+    if len(source) < len(target):
+        target = target[: len(source)]
+    elif len(source) > len(target):
+        source = source[: len(target)]
+    criterion = nn.KLDivLoss(reduction="batchmean")
+    loss = criterion(source.log(), target)
+    return loss
+
+
+def js(source, target):
+    if len(source) < len(target):
+        target = target[: len(source)]
+    elif len(source) > len(target):
+        source = source[: len(target)]
+    M = 0.5 * (source + target)
+    loss_1, loss_2 = kl_div(source, M), kl_div(target, M)
+    return 0.5 * (loss_1 + loss_2)
+
+
+class TransferLoss:
+    def __init__(self, loss_type="cosine", input_dim=512, GPU=0):
+        """
+        Supported loss_type: mmd(mmd_lin), mmd_rbf, coral, cosine, kl, js, mine, adv
+        """
+        self.loss_type = loss_type
+        self.input_dim = input_dim
+        self.device = torch.device("cuda:%d" % GPU if torch.cuda.is_available() and GPU >= 0 else "cpu")
+
+    def compute(self, X, Y):
+        """Compute adaptation loss"""
+        loss = None
+        if self.loss_type in ("mmd_lin", "mmd"):
+            mmdloss = MMD_loss(kernel_type="linear")
+            loss = mmdloss(X, Y)
+        elif self.loss_type == "coral":
+            loss = CORAL(X, Y, self.device)
+        elif self.loss_type in ("cosine", "cos"):
+            loss = 1 - cosine(X, Y)
+        elif self.loss_type == "kl":
+            loss = kl_div(X, Y)
+        elif self.loss_type == "js":
+            loss = js(X, Y)
+        elif self.loss_type == "mine":
+            mine_model = Mine_estimator(input_dim=self.input_dim, hidden_dim=60).to(self.device)
+            loss = mine_model(X, Y)
+        elif self.loss_type == "adv":
+            loss = adv(X, Y, self.device, input_dim=self.input_dim, hidden_dim=32)
+        elif self.loss_type == "mmd_rbf":
+            mmdloss = MMD_loss(kernel_type="rbf")
+            loss = mmdloss(X, Y)
+        elif self.loss_type == "pairwise":
+            pair_mat = pairwise_dist(X, Y)
+            loss = torch.norm(pair_mat)
+
+        return loss
+
+
+class AdaRNN(nn.Module):
+    """AdaRNN network — verbatim from qlib/contrib/model/pytorch_adarnn.py.
+
+    model_type:  'Boosting', 'AdaRNN'
+    """
+</new>
+</edit>
+<obs>
+Successfully replaced text in qlib/custom_model.py.
+</obs>
+<note>
+Now the AdaRNN network itself: the gated GRU stack with the forward-pre-train and boosting passes and the per-state weight update.
+</note>
+<edit path="qlib/custom_model.py">
+<old>
+        self,
+        input_size=16,
+        hidden_size=64,
+        num_layers=2,
+        rnn_arch="GRU",
+        use_attn=True,
+        dropout=0.0,
+        **kwargs,
+    ):
+        super().__init__()
+
+        self.input_size = input_size
+        self.hidden_size = hidden_size
+        self.num_layers = num_layers
+        self.rnn_arch = rnn_arch
+        self.use_attn = use_attn
+
+        if hidden_size < input_size:
+            # compression
+            self.input_proj = nn.Linear(input_size, hidden_size)
+        else:
+            self.input_proj = None
+
+        self.rnn = getattr(nn, rnn_arch)(
+            input_size=min(input_size, hidden_size),
+            hidden_size=hidden_size,
+            num_layers=num_layers,
+            batch_first=True,
+            dropout=dropout,
+        )
+
+        if self.use_attn:
+            self.W = nn.Linear(hidden_size, hidden_size)
+            self.u = nn.Linear(hidden_size, 1, bias=False)
+            self.output_size = hidden_size * 2
+        else:
+            self.output_size = hidden_size
+
+    def forward(self, x):
+        if self.input_proj is not None:
+            x = self.input_proj(x)
+
+        rnn_out, last_out = self.rnn(x)
+        if self.rnn_arch == "LSTM":
+            last_out = last_out[0]
+        last_out = last_out.mean(dim=0)
+
+        if self.use_attn:
+            laten = self.W(rnn_out).tanh()
+            scores = self.u(laten).softmax(dim=1)
+            att_out = (rnn_out * scores).sum(dim=1)
+            last_out = torch.cat([last_out, att_out], dim=1)
+
+        return last_out
+
+
+class PositionalEncoding(nn.Module):
+    # reference: https://pytorch.org/tutorials/beginner/transformer_tutorial.html
+    def __init__(self, d_model, dropout=0.1, max_len=5000):
+        super(PositionalEncoding, self).__init__()
+        self.dropout = nn.Dropout(p=dropout)
+
+        pe = torch.zeros(max_len, d_model)
+        position = torch.arange(0, max_len, dtype=torch.float).unsqueeze(1)
+        div_term = torch.exp(torch.arange(0, d_model, 2).float() * (-math.log(10000.0) / d_model))
+        pe[:, 0::2] = torch.sin(position * div_term)
+        pe[:, 1::2] = torch.cos(position * div_term)
+        pe = pe.unsqueeze(0).transpose(0, 1)
+        self.register_buffer("pe", pe)
+
+    def forward(self, x):
+        x = x + self.pe[: x.size(0), :]
+        return self.dropout(x)
+
+
+class Transformer(nn.Module):
+    """Transformer Model — verbatim from qlib/contrib/model/pytorch_tra.py.
+
+    Args:
+        input_size (int): input size (# features)
+        hidden_size (int): hidden size
+        num_layers (int): number of transformer layers
+        num_heads (int): number of heads in transformer
+        dropout (float): dropout rate
+    """
+
+    def __init__(
+        self,
+        input_size=16,
+        hidden_size=64,
+        num_layers=2,
+        num_heads=2,
+        dropout=0.0,
+        **kwargs,
+    ):
+        super().__init__()
+
+        self.input_size = input_size
+        self.hidden_size = hidden_size
+        self.num_layers = num_layers
+        self.num_heads = num_heads
+
+        self.input_proj = nn.Linear(input_size, hidden_size)
+
+        self.pe = PositionalEncoding(input_size, dropout)
+        layer = nn.TransformerEncoderLayer(
+            nhead=num_heads, dropout=dropout, d_model=hidden_size, dim_feedforward=hidden_size * 4
+        )
+        self.encoder = nn.TransformerEncoder(layer, num_layers=num_layers)
+
+        self.output_size = hidden_size
+
+    def forward(self, x):
+        x = x.permute(1, 0, 2).contiguous()  # the first dim need to be time
+        x = self.pe(x)
+
+        x = self.input_proj(x)
+        out = self.encoder(x)
+
+        return out[-1]
+
+
+class TRA(nn.Module):
+    """Temporal Routing Adaptor (TRA) — verbatim from qlib/contrib/model/pytorch_tra.py.
+
+    TRA takes historical prediction errors & latent representation as inputs,
+    then routes the input sample to a specific predictor for training & inference.
+
+    Args:
+        input_size (int): input size (RNN/Transformer's hidden size)
+        num_states (int): number of latent states (i.e., trading patterns)
+            If `num_states=1`, then TRA falls back to traditional methods
+        hidden_size (int): hidden size of the router
+        tau (float): gumbel softmax temperature
+        src_info (str): information for the router
+    """
+
+    def __init__(
+        self,
+        input_size,
+        num_states=1,
+        hidden_size=8,
+        rnn_arch="GRU",
+        num_layers=1,
+        dropout=0.0,
+        tau=1.0,
+        src_info="LR_TPE",
+    ):
+        super().__init__()
+
+        assert src_info in ["LR", "TPE", "LR_TPE"], "invalid `src_info`"
+
+        self.num_states = num_states
+        self.tau = tau
+        self.rnn_arch = rnn_arch
+        self.src_info = src_info
+
+        self.predictors = nn.Linear(input_size, num_states)
+
+        if self.num_states > 1:
+            if "TPE" in src_info:
+                self.router = getattr(nn, rnn_arch)(
+                    input_size=num_states,
+                    hidden_size=hidden_size,
+                    num_layers=num_layers,
+                    batch_first=True,
+                    dropout=dropout,
+                )
+                self.fc = nn.Linear(hidden_size + input_size if "LR" in src_info else hidden_size, num_states)
+            else:
+                self.fc = nn.Linear(input_size, num_states)
+
+    def reset_parameters(self):
+        for child in self.children():
+            child.reset_parameters()
+
+    def forward(self, hidden, hist_loss):
+        preds = self.predictors(hidden)
+
+        if self.num_states == 1:  # no need for router when having only one prediction
+            return preds, None, None
+
+        if "TPE" in self.src_info:
+            out = self.router(hist_loss)[1]  # TPE
+            if self.rnn_arch == "LSTM":
+                out = out[0]
+            out = out.mean(dim=0)
+            if "LR" in self.src_info:
+                out = torch.cat([hidden, out], dim=-1)  # LR_TPE
+        else:
+            out = hidden  # LR
+
+        out = self.fc(out)
+
+        choice = F.gumbel_softmax(out, dim=-1, tau=self.tau, hard=True)
+        prob = torch.softmax(out / self.tau, dim=-1)
+
+        return preds, choice, prob
+
+
+def evaluate(pred):
+    pred = pred.rank(pct=True)  # transform into percentiles
+    score = pred.score
+    label = pred.label
+    diff = score - label
+    MSE = (diff**2).mean()
+    MAE = (diff.abs()).mean()
+    IC = score.corr(label, method="spearman")
+    return {"MSE": MSE, "MAE": MAE, "IC": IC}
+
+
+def shoot_infs(inp_tensor):
+    """Replaces inf by maximum of tensor"""
+    mask_inf = torch.isinf(inp_tensor)
+    ind_inf = torch.nonzero(mask_inf, as_tuple=False)
+    if len(ind_inf) > 0:
+        for ind in ind_inf:
+            if len(ind) == 2:
+                inp_tensor[ind[0], ind[1]] = 0
+            elif len(ind) == 1:
+                inp_tensor[ind[0]] = 0
+        m = torch.max(inp_tensor)
+        for ind in ind_inf:
+            if len(ind) == 2:
+                inp_tensor[ind[0], ind[1]] = m
+            elif len(ind) == 1:
+                inp_tensor[ind[0]] = m
+    return inp_tensor
+
+
+def sinkhorn(Q, n_iters=3, epsilon=0.1):
+    # epsilon should be adjusted according to logits value's scale
+    with torch.no_grad():
+        Q = torch.exp(Q / epsilon)
+        Q = shoot_infs(Q)
+        for i in range(n_iters):
+            Q /= Q.sum(dim=0, keepdim=True)
+            Q /= Q.sum(dim=1, keepdim=True)
+    return Q
+
+
+def loss_fn(pred, label):
+    mask = ~torch.isnan(label)
+    if len(pred.shape) == 2:
+        label = label[:, None]
+    return (pred[mask] - label[mask]).pow(2).mean(dim=0)
+
+
+def minmax_norm(x):
+    xmin = x.min(dim=-1, keepdim=True).values
+    xmax = x.max(dim=-1, keepdim=True).values
+    mask = (xmin == xmax).squeeze()
+    x = (x - xmin) / (xmax - xmin + EPS)
+    x[mask] = 1
+    return x
+
+
+def transport_sample(all_preds, label, choice, prob, hist_loss, count, transport_method, alpha, training=False):
+    """
+    sample-wise transport — verbatim from qlib/contrib/model/pytorch_tra.py.
+    """
+    assert all_preds.shape == choice.shape
+    assert len(all_preds) == len(label)
+    assert transport_method in ["oracle", "router"]
+
+    all_loss = torch.zeros_like(all_preds)
+    mask = ~torch.isnan(label)
+    all_loss[mask] = (all_preds[mask] - label[mask, None]).pow(2)  # [sample x states]
+
+    L = minmax_norm(all_loss.detach())
+    Lh = L * alpha + minmax_norm(hist_loss) * (1 - alpha)  # add hist loss for transport
+    Lh = minmax_norm(Lh)
+    P = sinkhorn(-Lh)
+    del Lh
+
+    if transport_method == "router":
+        if training:
+            pred = (all_preds * choice).sum(dim=1)  # gumbel softmax
+        else:
+            pred = all_preds[range(len(all_preds)), prob.argmax(dim=-1)]  # argmax
+    else:
+        pred = (all_preds * P).sum(dim=1)
+
+    if transport_method == "router":
+        loss = loss_fn(pred, label)
+    else:
+        loss = (all_loss * P).sum(dim=1).mean()
+
+    return loss, pred, L, P
+
+
+def transport_daily(all_preds, label, choice, prob, hist_loss, count, transport_method, alpha, training=False):
+    """
+    daily transport — verbatim from qlib/contrib/model/pytorch_tra.py.
+    """
+    assert len(prob) == len(count)
+    assert len(all_preds) == sum(count)
+    assert transport_method in ["oracle", "router"]
+
+    all_loss = []  # loss of all predictions
+    start = 0
+    for i, cnt in enumerate(count):
+        slc = slice(start, start + cnt)  # samples from the i-th day
+        start += cnt
+        tloss = loss_fn(all_preds[slc], label[slc])  # loss of the i-th day
+        all_loss.append(tloss)
+    all_loss = torch.stack(all_loss, dim=0)  # [days x states]
+
+    L = minmax_norm(all_loss.detach())
+    Lh = L * alpha + minmax_norm(hist_loss) * (1 - alpha)  # add hist loss for transport
+    Lh = minmax_norm(Lh)
+    P = sinkhorn(-Lh)
+    del Lh
+
+    pred = []
+    start = 0
+    for i, cnt in enumerate(count):
+        slc = slice(start, start + cnt)  # samples from the i-th day
+        start += cnt
+        if transport_method == "router":
+            if training:
+                tpred = all_preds[slc] @ choice[i]  # gumbel softmax
+            else:
+                tpred = all_preds[slc][:, prob[i].argmax(dim=-1)]  # argmax
+        else:
+            tpred = all_preds[slc] @ P[i]
+        pred.append(tpred)
+    pred = torch.cat(pred, dim=0)  # [samples]
+
+    if transport_method == "router":
+        loss = loss_fn(pred, label)
+    else:
+        loss = (all_loss * P).sum(dim=1).mean()
+
+    return loss, pred, L, P
+
+
+def load_state_dict_unsafe(model, state_dict):
+    """
+    Load state dict to provided model while ignore exceptions.
+    """
+
+    missing_keys = []
+    unexpected_keys = []
+    error_msgs = []
+
+    # copy state_dict so _load_from_state_dict can modify it
+    metadata = getattr(state_dict, "_metadata", None)
+    state_dict = state_dict.copy()
+    if metadata is not None:
+        state_dict._metadata = metadata
+
+    def load(module, prefix=""):
+        local_metadata = {} if metadata is None else metadata.get(prefix[:-1], {})
+        module._load_from_state_dict(
+            state_dict, prefix, local_metadata, True, missing_keys, unexpected_keys, error_msgs
+        )
+        for name, child in module._modules.items():
+            if child is not None:
+                load(child, prefix + name + ".")
+
+    load(model)
+    load = None  # break load->load reference cycle
+
+    return {"unexpected_keys": unexpected_keys, "missing_keys": missing_keys, "error_msgs": error_msgs}
+
+
+def plot(P):
+    assert isinstance(P, pd.DataFrame)
+
+    fig, axes = plt.subplots(1, 2, figsize=(10, 4))
+    P.plot.area(ax=axes[0], xlabel="")
+    P.idxmax(axis=1).value_counts().sort_index().plot.bar(ax=axes[1], xlabel="")
+    plt.tight_layout()
+
+    with io.BytesIO() as buf:
+        plt.savefig(buf, format="png")
+        buf.seek(0)
+        img = plt.imread(buf)
+        plt.close()
+
+    return np.uint8(img * 255)
+
+
+class CustomModel(Model):
+    """TRA Model — faithful to qlib's official TRAModel (pytorch_tra.py).
+
+    Hyperparameters from official benchmark:
+    examples/benchmarks/TRA/workflow_config_tra_Alpha158.yaml
+
+    The workflow provides MTSDatasetH with Alpha158+FilterCol (20 features).
+    fit()/predict() use dataset.prepare() to get MTSDataSampler loaders.
+    """
+</old>
+<new>
+        self,
+        use_bottleneck=False,
+        bottleneck_width=256,
+        n_input=128,
+        n_hiddens=[64, 64],
+        n_output=6,
+        dropout=0.0,
+        len_seq=9,
+        model_type="AdaRNN",
+        trans_loss="mmd",
+        GPU=0,
+    ):
+        super(AdaRNN, self).__init__()
+        self.use_bottleneck = use_bottleneck
+        self.n_input = n_input
+        self.num_layers = len(n_hiddens)
+        self.hiddens = n_hiddens
+        self.n_output = n_output
+        self.model_type = model_type
+        self.trans_loss = trans_loss
+        self.len_seq = len_seq
+        self.device = torch.device("cuda:%d" % GPU if torch.cuda.is_available() and GPU >= 0 else "cpu")
+        in_size = self.n_input
+
+        features = nn.ModuleList()
+        for hidden in n_hiddens:
+            rnn = nn.GRU(input_size=in_size, num_layers=1, hidden_size=hidden, batch_first=True, dropout=dropout)
+            features.append(rnn)
+            in_size = hidden
+        self.features = nn.Sequential(*features)
+
+        if use_bottleneck is True:  # finance
+            self.bottleneck = nn.Sequential(
+                nn.Linear(n_hiddens[-1], bottleneck_width),
+                nn.Linear(bottleneck_width, bottleneck_width),
+                nn.BatchNorm1d(bottleneck_width),
+                nn.ReLU(),
+                nn.Dropout(),
+            )
+            self.bottleneck[0].weight.data.normal_(0, 0.005)
+            self.bottleneck[0].bias.data.fill_(0.1)
+            self.bottleneck[1].weight.data.normal_(0, 0.005)
+            self.bottleneck[1].bias.data.fill_(0.1)
+            self.fc = nn.Linear(bottleneck_width, n_output)
+            torch.nn.init.xavier_normal_(self.fc.weight)
+        else:
+            self.fc_out = nn.Linear(n_hiddens[-1], self.n_output)
+
+        if self.model_type == "AdaRNN":
+            gate = nn.ModuleList()
+            for i in range(len(n_hiddens)):
+                gate_weight = nn.Linear(len_seq * self.hiddens[i] * 2, len_seq)
+                gate.append(gate_weight)
+            self.gate = gate
+
+            bnlst = nn.ModuleList()
+            for i in range(len(n_hiddens)):
+                bnlst.append(nn.BatchNorm1d(len_seq))
+            self.bn_lst = bnlst
+            self.softmax = torch.nn.Softmax(dim=0)
+            self.init_layers()
+
+    def init_layers(self):
+        for i in range(len(self.hiddens)):
+            self.gate[i].weight.data.normal_(0, 0.05)
+            self.gate[i].bias.data.fill_(0.0)
+
+    def forward_pre_train(self, x, len_win=0):
+        out = self.gru_features(x)
+        fea = out[0]  # [2N,L,H]
+        if self.use_bottleneck is True:
+            fea_bottleneck = self.bottleneck(fea[:, -1, :])
+            fc_out = self.fc(fea_bottleneck).squeeze()
+        else:
+            fc_out = self.fc_out(fea[:, -1, :]).squeeze()  # [N,]
+
+        out_list_all, out_weight_list = out[1], out[2]
+        out_list_s, out_list_t = self.get_features(out_list_all)
+        loss_transfer = torch.zeros((1,)).to(self.device)
+        for i, n in enumerate(out_list_s):
+            criterion_transder = TransferLoss(loss_type=self.trans_loss, input_dim=n.shape[2])
+            h_start = 0
+            for j in range(h_start, self.len_seq, 1):
+                i_start = j - len_win if j - len_win >= 0 else 0
+                i_end = j + len_win if j + len_win < self.len_seq else self.len_seq - 1
+                for k in range(i_start, i_end + 1):
+                    weight = (
+                        out_weight_list[i][j].item()
+                        if self.model_type == "AdaRNN"
+                        else 1 / (self.len_seq - h_start) * (2 * len_win + 1)
+                    )
+                    loss_transfer = loss_transfer + weight * criterion_transder.compute(
+                        n[:, j, :], out_list_t[i][:, k, :]
+                    )
+        return fc_out, loss_transfer, out_weight_list
+
+    def gru_features(self, x, predict=False):
+        x_input = x
+        out = None
+        out_lis = []
+        out_weight_list = [] if (self.model_type == "AdaRNN") else None
+        for i in range(self.num_layers):
+            out, _ = self.features[i](x_input.float())
+            x_input = out
+            out_lis.append(out)
+            if self.model_type == "AdaRNN" and predict is False:
+                out_gate = self.process_gate_weight(x_input, i)
+                out_weight_list.append(out_gate)
+        return out, out_lis, out_weight_list
+
+    def process_gate_weight(self, out, index):
+        x_s = out[0 : int(out.shape[0] // 2)]
+        x_t = out[out.shape[0] // 2 : out.shape[0]]
+        x_all = torch.cat((x_s, x_t), 2)
+        x_all = x_all.view(x_all.shape[0], -1)
+        weight = torch.sigmoid(self.bn_lst[index](self.gate[index](x_all.float())))
+        weight = torch.mean(weight, dim=0)
+        res = self.softmax(weight)
+        return res
+
+    @staticmethod
+    def get_features(output_list):
+        fea_list_src, fea_list_tar = [], []
+        for fea in output_list:
+            fea_list_src.append(fea[0 : fea.size(0) // 2])
+            fea_list_tar.append(fea[fea.size(0) // 2 :])
+        return fea_list_src, fea_list_tar
+
+    # For Boosting-based
+    def forward_Boosting(self, x, weight_mat=None):
+        out = self.gru_features(x)
+        fea = out[0]
+        if self.use_bottleneck:
+            fea_bottleneck = self.bottleneck(fea[:, -1, :])
+            fc_out = self.fc(fea_bottleneck).squeeze()
+        else:
+            fc_out = self.fc_out(fea[:, -1, :]).squeeze()
+
+        out_list_all = out[1]
+        out_list_s, out_list_t = self.get_features(out_list_all)
+        loss_transfer = torch.zeros((1,)).to(self.device)
+        if weight_mat is None:
+            weight = (1.0 / self.len_seq * torch.ones(self.num_layers, self.len_seq)).to(self.device)
+        else:
+            weight = weight_mat
+        dist_mat = torch.zeros(self.num_layers, self.len_seq).to(self.device)
+        for i, n in enumerate(out_list_s):
+            criterion_transder = TransferLoss(loss_type=self.trans_loss, input_dim=n.shape[2])
+            for j in range(self.len_seq):
+                loss_trans = criterion_transder.compute(n[:, j, :], out_list_t[i][:, j, :])
+                loss_transfer = loss_transfer + weight[i, j] * loss_trans
+                dist_mat[i, j] = loss_trans
+        return fc_out, loss_transfer, dist_mat, weight
+
+    # For Boosting-based
+    def update_weight_Boosting(self, weight_mat, dist_old, dist_new):
+        epsilon = 1e-5
+        dist_old = dist_old.detach()
+        dist_new = dist_new.detach()
+        ind = dist_new > dist_old + epsilon
+        weight_mat[ind] = weight_mat[ind] * (1 + torch.sigmoid(dist_new[ind] - dist_old[ind]))
+        weight_norm = torch.norm(weight_mat, dim=1, p=1)
+        weight_mat = weight_mat / weight_norm.t().unsqueeze(1).repeat(1, self.len_seq)
+        return weight_mat
+
+    def predict(self, x):
+        out = self.gru_features(x, predict=True)
+        fea = out[0]
+        if self.use_bottleneck is True:
+            fea_bottleneck = self.bottleneck(fea[:, -1, :])
+            fc_out = self.fc(fea_bottleneck).squeeze(-1)
+        else:
+            fc_out = self.fc_out(fea[:, -1, :]).squeeze(-1)
+        return fc_out
+
+
+class CustomModel(Model):
+    """ADARNN model — faithful to qlib's official ADARNN (pytorch_adarnn.py).
+
+    Adapted for Alpha158 features (158 flat features per sample).
+    Data is unsqueezed to [N, 1, 158] for GRU input (single timestep).
+    """
+</new>
+</edit>
+<obs>
+Successfully replaced text in qlib/custom_model.py.
+</obs>
+<note>
+Now the AdaRNN hyperparameters: len_seq=1, two chronological splits, cosine matching, the 40-epoch pretrain.
+</note>
+<edit path="qlib/custom_model.py">
+<old>
+        super().__init__()
+        self.logger = get_module_logger("TRA")
+
+        # Official benchmark hyperparameters
+        self.model_config = {
+            "input_size": 20,
+            "hidden_size": 64,
+            "num_layers": 2,
+            "rnn_arch": "LSTM",
+            "use_attn": True,
+            "dropout": 0.0,
+        }
+        self.tra_config = {
+            "num_states": 3,
+            "rnn_arch": "LSTM",
+            "hidden_size": 32,
+            "num_layers": 1,
+            "dropout": 0.0,
+            "tau": 1.0,
+            "src_info": "LR_TPE",
+        }
+        self.model_type = "RNN"
+        self.lr = 1e-3
+        self.n_epochs = 100
+        self.early_stop = 20
+        self.update_freq = 1
+        self.max_steps_per_epoch = None
+        self.lamb = 1.0
+        self.rho = 0.99
+        self.alpha = 0.5
+        self.seed = int(os.environ.get("SEED", "42"))
+        self.logdir = None
+        self.eval_train = False
+        self.eval_test = True
+        self.pretrain = True
+        self.init_state = None
+        self.reset_router = False
+        self.freeze_model = False
+        self.freeze_predictors = False
+        self.transport_method = "router"
+        self.use_daily_transport = False  # memory_mode=sample
+        self.transport_fn = transport_sample
+
+        self._writer = None
+</old>
+<new>
+        super().__init__()
+        self.logger = get_module_logger("ADARNN")
+        self.logger.info("ADARNN pytorch version...")
+
+        # Hyperparameters adapted for Alpha158 flat features
+        self.d_feat = 158
+        self.hidden_size = 64
+        self.num_layers = 2
+        self.dropout = 0.0
+        self.n_epochs = 200
+        self.pre_epoch = 40
+        self.dw = 0.5
+        self.loss_type = "cosine"
+        self.len_seq = 1
+        self.len_win = 0
+        self.lr = 1e-3
+        self.metric = "loss"
+        self.batch_size = 800
+        self.early_stop = 20
+        self.loss = "mse"
+        self.optimizer_name = "adam"
+        self.n_splits = 2
+        self.seed = None
+        self.device = torch.device(
+            "cuda:0" if torch.cuda.is_available() else "cpu"
+        )
+
+        self.logger.info(
+            "ADARNN parameters setting:"
+            "\nd_feat : {}"
+            "\nhidden_size : {}"
+            "\nnum_layers : {}"
+            "\ndropout : {}"
+            "\nn_epochs : {}"
+            "\nlr : {}"
+            "\nmetric : {}"
+            "\nbatch_size : {}"
+            "\nearly_stop : {}"
+            "\noptimizer : {}"
+            "\nloss_type : {}"
+            "\nuse_GPU : {}".format(
+                self.d_feat,
+                self.hidden_size,
+                self.num_layers,
+                self.dropout,
+                self.n_epochs,
+                self.lr,
+                self.metric,
+                self.batch_size,
+                self.early_stop,
+                self.optimizer_name,
+                self.loss,
+                self.use_gpu,
+            )
+        )
+</new>
+</edit>
+<obs>
+Successfully replaced text in qlib/custom_model.py.
+</obs>
+<note>
+Now the build and the two-phase fit: pre-train then boosting over the two halves, with batched single-step inference.
+</note>
+<edit path="qlib/custom_model.py">
+<old>
+
+        self._init_model()
+
+    def _init_model(self):
+        self.logger.info("init TRAModel...")
+
+        self.model = eval(self.model_type)(**self.model_config).to(device)
+        print(self.model)
+
+        self.tra = TRA(self.model.output_size, **self.tra_config).to(device)
+        print(self.tra)
+
+        if self.init_state:
+            self.logger.warning(f"load state dict from `init_state`")
+            state_dict = torch.load(self.init_state, map_location="cpu")
+            self.model.load_state_dict(state_dict["model"])
+            res = load_state_dict_unsafe(self.tra, state_dict["tra"])
+            self.logger.warning(str(res))
+
+        if self.reset_router:
+            self.logger.warning(f"reset TRA.router parameters")
+            self.tra.fc.reset_parameters()
+            self.tra.router.reset_parameters()
+
+        if self.freeze_model:
+            self.logger.warning(f"freeze model parameters")
+            for param in self.model.parameters():
+                param.requires_grad_(False)
+
+        if self.freeze_predictors:
+            self.logger.warning(f"freeze TRA.predictors parameters")
+            for param in self.tra.predictors.parameters():
+                param.requires_grad_(False)
+
+        self.logger.info("# model params: %d" % sum(p.numel() for p in self.model.parameters() if p.requires_grad))
+        self.logger.info("# tra params: %d" % sum(p.numel() for p in self.tra.parameters() if p.requires_grad))
+
+        self.optimizer = optim.Adam(list(self.model.parameters()) + list(self.tra.parameters()), lr=self.lr)
+
+        self.fitted = False
+        self.global_step = -1
+
+    def train_epoch(self, epoch, data_set, is_pretrain=False):
+        self.model.train()
+        self.tra.train()
+        data_set.train()
+        self.optimizer.zero_grad()
+
+        P_all = []
+        prob_all = []
+        choice_all = []
+        max_steps = len(data_set)
+        if self.max_steps_per_epoch is not None:
+            if epoch == 0 and self.max_steps_per_epoch < max_steps:
+                self.logger.info(f"max steps updated from {max_steps} to {self.max_steps_per_epoch}")
+            max_steps = min(self.max_steps_per_epoch, max_steps)
+
+        cur_step = 0
+        total_loss = 0
+        total_count = 0
+        for batch in tqdm(data_set, total=max_steps):
+            cur_step += 1
+            if cur_step > max_steps:
+                break
+
+            if not is_pretrain:
+                self.global_step += 1
+
+            data, state, label, count = batch["data"], batch["state"], batch["label"], batch["daily_count"]
+            index = batch["daily_index"] if self.use_daily_transport else batch["index"]
+
+            with torch.set_grad_enabled(not self.freeze_model):
+                hidden = self.model(data)
+
+            all_preds, choice, prob = self.tra(hidden, state)
+
+            if is_pretrain or self.transport_method != "none":
+                # NOTE: use oracle transport for pre-training
+                loss, pred, L, P = self.transport_fn(
+                    all_preds,
+                    label,
+                    choice,
+                    prob,
+                    state.mean(dim=1),
+                    count,
+                    self.transport_method if not is_pretrain else "oracle",
+                    self.alpha,
+                    training=True,
+                )
+                data_set.assign_data(index, L)  # save loss to memory
+                if self.use_daily_transport:  # only save for daily transport
+                    P_all.append(pd.DataFrame(P.detach().cpu().numpy(), index=index))
+                    prob_all.append(pd.DataFrame(prob.detach().cpu().numpy(), index=index))
+                    choice_all.append(pd.DataFrame(choice.detach().cpu().numpy(), index=index))
+                decay = self.rho ** (self.global_step // 100)  # decay every 100 steps
+                lamb = 0 if is_pretrain else self.lamb * decay
+                reg = prob.log().mul(P).sum(dim=1).mean()  # train router to predict TO assignment
+                if self._writer is not None and not is_pretrain:
+                    self._writer.add_scalar("training/router_loss", -reg.item(), self.global_step)
+                    self._writer.add_scalar("training/reg_loss", loss.item(), self.global_step)
+                    self._writer.add_scalar("training/lamb", lamb, self.global_step)
+                    if not self.use_daily_transport:
+                        P_mean = P.mean(axis=0).detach()
+                        self._writer.add_scalar("training/P", P_mean.max() / P_mean.min(), self.global_step)
+                loss = loss - lamb * reg
+            else:
+                pred = all_preds.mean(dim=1)
+                loss = loss_fn(pred, label)
+
+            (loss / self.update_freq).backward()
+            if cur_step % self.update_freq == 0:
+                self.optimizer.step()
+                self.optimizer.zero_grad()
+
+            if self._writer is not None and not is_pretrain:
+                self._writer.add_scalar("training/total_loss", loss.item(), self.global_step)
+
+            total_loss += loss.item()
+            total_count += 1
+
+        if self.use_daily_transport and len(P_all) > 0:
+            P_all = pd.concat(P_all, axis=0)
+            prob_all = pd.concat(prob_all, axis=0)
+            choice_all = pd.concat(choice_all, axis=0)
+            P_all.index = data_set.restore_daily_index(P_all.index)
+            prob_all.index = P_all.index
+            choice_all.index = P_all.index
+            if not is_pretrain:
+                self._writer.add_image("P", plot(P_all), epoch, dataformats="HWC")
+                self._writer.add_image("prob", plot(prob_all), epoch, dataformats="HWC")
+                self._writer.add_image("choice", plot(choice_all), epoch, dataformats="HWC")
+
+        total_loss /= total_count
+
+        if self._writer is not None and not is_pretrain:
+            self._writer.add_scalar("training/loss", total_loss, epoch)
+
+        return total_loss
+
+    def test_epoch(self, epoch, data_set, return_pred=False, prefix="test", is_pretrain=False):
+        self.model.eval()
+        self.tra.eval()
+        data_set.eval()
+
+        preds = []
+        probs = []
+        P_all = []
+        metrics = []
+        for batch in tqdm(data_set):
+            data, state, label, count = batch["data"], batch["state"], batch["label"], batch["daily_count"]
+            index = batch["daily_index"] if self.use_daily_transport else batch["index"]
+
+            with torch.no_grad():
+                hidden = self.model(data)
+                all_preds, choice, prob = self.tra(hidden, state)
+
+            if is_pretrain or self.transport_method != "none":
+                loss, pred, L, P = self.transport_fn(
+                    all_preds,
+                    label,
+                    choice,
+                    prob,
+                    state.mean(dim=1),
+                    count,
+                    self.transport_method if not is_pretrain else "oracle",
+                    self.alpha,
+                    training=False,
+                )
+                data_set.assign_data(index, L)  # save loss to memory
+                if P is not None and return_pred:
+                    P_all.append(pd.DataFrame(P.cpu().numpy(), index=index))
+            else:
+                pred = all_preds.mean(dim=1)
+
+            X = np.c_[pred.cpu().numpy(), label.cpu().numpy(), all_preds.cpu().numpy()]
+            columns = ["score", "label"] + ["score_%d" % d for d in range(all_preds.shape[1])]
+            pred = pd.DataFrame(X, index=batch["index"], columns=columns)
+
+            metrics.append(evaluate(pred))
+
+            if return_pred:
+                preds.append(pred)
+                if prob is not None:
+                    columns = ["prob_%d" % d for d in range(all_preds.shape[1])]
+                    probs.append(pd.DataFrame(prob.cpu().numpy(), index=index, columns=columns))
+
+        metrics = pd.DataFrame(metrics)
+        metrics = {
+            "MSE": metrics.MSE.mean(),
+            "MAE": metrics.MAE.mean(),
+            "IC": metrics.IC.mean(),
+            "ICIR": metrics.IC.mean() / metrics.IC.std(),
+        }
+
+        if self._writer is not None and epoch >= 0 and not is_pretrain:
+            for key, value in metrics.items():
+                self._writer.add_scalar(prefix + "/" + key, value, epoch)
+
+        if return_pred:
+            preds = pd.concat(preds, axis=0)
+            preds.index = data_set.restore_index(preds.index)
+            preds.index = preds.index.swaplevel()
+            preds.sort_index(inplace=True)
+
+            if probs:
+                probs = pd.concat(probs, axis=0)
+                if self.use_daily_transport:
+                    probs.index = data_set.restore_daily_index(probs.index)
+                else:
+                    probs.index = data_set.restore_index(probs.index)
+                    probs.index = probs.index.swaplevel()
+                    probs.sort_index(inplace=True)
+
+            if len(P_all):
+                P_all = pd.concat(P_all, axis=0)
+                if self.use_daily_transport:
+                    P_all.index = data_set.restore_daily_index(P_all.index)
+                else:
+                    P_all.index = data_set.restore_index(P_all.index)
+                    P_all.index = P_all.index.swaplevel()
+                    P_all.sort_index(inplace=True)
+
+        return metrics, preds, probs, P_all
+
+    def _fit(self, train_set, valid_set, test_set, evals_result, is_pretrain=True):
+        best_score = -1
+        best_epoch = 0
+        stop_rounds = 0
+        best_params = {
+            "model": copy.deepcopy(self.model.state_dict()),
+            "tra": copy.deepcopy(self.tra.state_dict()),
+        }
+        # train
+        if not is_pretrain and self.transport_method != "none":
+            self.logger.info("init memory...")
+            self.test_epoch(-1, train_set)
+
+        for epoch in range(self.n_epochs):
+            self.logger.info("Epoch %d:", epoch)
+
+            self.logger.info("training...")
+            self.train_epoch(epoch, train_set, is_pretrain=is_pretrain)
+
+            self.logger.info("evaluating...")
+            # NOTE: during evaluating, the whole memory will be refreshed
+            if not is_pretrain and (self.transport_method == "router" or self.eval_train):
+                train_set.clear_memory()  # NOTE: clear the shared memory
+                train_metrics = self.test_epoch(epoch, train_set, is_pretrain=is_pretrain, prefix="train")[0]
+                evals_result["train"].append(train_metrics)
+                self.logger.info("train metrics: %s" % train_metrics)
+
+            valid_metrics = self.test_epoch(epoch, valid_set, is_pretrain=is_pretrain, prefix="valid")[0]
+            evals_result["valid"].append(valid_metrics)
+            self.logger.info("valid metrics: %s" % valid_metrics)
+
+            if self.eval_test:
+                test_metrics = self.test_epoch(epoch, test_set, is_pretrain=is_pretrain, prefix="test")[0]
+                evals_result["test"].append(test_metrics)
+                self.logger.info("test metrics: %s" % test_metrics)
+
+            if valid_metrics["IC"] > best_score:
+                best_score = valid_metrics["IC"]
+                stop_rounds = 0
+                best_epoch = epoch
+                best_params = {
+                    "model": copy.deepcopy(self.model.state_dict()),
+                    "tra": copy.deepcopy(self.tra.state_dict()),
+                }
+                if self.logdir is not None:
+                    torch.save(best_params, self.logdir + "/model.bin")
+            else:
+                stop_rounds += 1
+                if stop_rounds >= self.early_stop:
+                    self.logger.info("early stop @ %s" % epoch)
+                    break
+
+        self.logger.info("best score: %.6lf @ %d" % (best_score, best_epoch))
+        self.model.load_state_dict(best_params["model"])
+        self.tra.load_state_dict(best_params["tra"])
+
+        return best_score
+
+    def fit(self, dataset, evals_result=dict()):
+        # MTSDatasetH is provided by the workflow (Alpha158+FilterCol, 20 features).
+        train_set, valid_set, test_set = dataset.prepare(["train", "valid", "test"])
+
+        self.fitted = True
+        self.global_step = -1
+
+        evals_result["train"] = []
+        evals_result["valid"] = []
+        evals_result["test"] = []
+
+        if self.pretrain:
+            self.logger.info("pretraining...")
+            self.optimizer = optim.Adam(
+                list(self.model.parameters()) + list(self.tra.predictors.parameters()), lr=self.lr
+            )
+            self._fit(train_set, valid_set, test_set, evals_result, is_pretrain=True)
+
+            # reset optimizer
+            self.optimizer = optim.Adam(list(self.model.parameters()) + list(self.tra.parameters()), lr=self.lr)
+
+        self.logger.info("training...")
+        best_score = self._fit(train_set, valid_set, test_set, evals_result, is_pretrain=False)
+
+        self.logger.info("inference")
+        train_metrics, train_preds, train_probs, train_P = self.test_epoch(-1, train_set, return_pred=True)
+        self.logger.info("train metrics: %s" % train_metrics)
+
+        valid_metrics, valid_preds, valid_probs, valid_P = self.test_epoch(-1, valid_set, return_pred=True)
+        self.logger.info("valid metrics: %s" % valid_metrics)
+
+        test_metrics, test_preds, test_probs, test_P = self.test_epoch(-1, test_set, return_pred=True)
+        self.logger.info("test metrics: %s" % test_metrics)
+
+    def predict(self, dataset, segment="test"):
+        if not self.fitted:
+            raise ValueError("model is not fitted yet!")
+
+        test_set = dataset.prepare(segment)
+
+        metrics, preds, _, _ = self.test_epoch(-1, test_set, return_pred=True)
+        self.logger.info("test metrics: %s" % metrics)
+
+        return preds
+</old>
+<new>
+
+        n_hiddens = [self.hidden_size for _ in range(self.num_layers)]
+        self.model = AdaRNN(
+            use_bottleneck=False,
+            bottleneck_width=64,
+            n_input=self.d_feat,
+            n_hiddens=n_hiddens,
+            n_output=1,
+            dropout=self.dropout,
+            model_type="AdaRNN",
+            len_seq=self.len_seq,
+            trans_loss=self.loss_type,
+        )
+        self.logger.info("model:\n{:}".format(self.model))
+
+        self.train_optimizer = optim.Adam(self.model.parameters(), lr=self.lr)
+
+        self.fitted = False
+        self.model.to(self.device)
+
+    @property
+    def use_gpu(self):
+        return self.device != torch.device("cpu")
+
+    def train_AdaRNN(self, train_loader_list, epoch, dist_old=None, weight_mat=None):
+        self.model.train()
+        criterion = nn.MSELoss()
+        dist_mat = torch.zeros(self.num_layers, self.len_seq).to(self.device)
+        out_weight_list = None
+        for data_all in zip(*train_loader_list):
+            self.train_optimizer.zero_grad()
+            list_feat = []
+            list_label = []
+            for data in data_all:
+                feature, label_reg = data[0].to(self.device).float(), data[1].to(self.device).float()
+                list_feat.append(feature)
+                list_label.append(label_reg)
+            flag = False
+            index = get_index(len(data_all) - 1)
+            for temp_index in index:
+                s1 = temp_index[0]
+                s2 = temp_index[1]
+                if list_feat[s1].shape[0] != list_feat[s2].shape[0]:
+                    flag = True
+                    break
+            if flag:
+                continue
+
+            total_loss = torch.zeros(1).to(self.device)
+            for i, n in enumerate(index):
+                feature_s = list_feat[n[0]]
+                feature_t = list_feat[n[1]]
+                label_reg_s = list_label[n[0]]
+                label_reg_t = list_label[n[1]]
+                feature_all = torch.cat((feature_s, feature_t), 0)
+
+                if epoch < self.pre_epoch:
+                    pred_all, loss_transfer, out_weight_list = self.model.forward_pre_train(
+                        feature_all, len_win=self.len_win
+                    )
+                else:
+                    pred_all, loss_transfer, dist, weight_mat = self.model.forward_Boosting(feature_all, weight_mat)
+                    dist_mat = dist_mat + dist
+                pred_s = pred_all[0 : feature_s.size(0)]
+                pred_t = pred_all[feature_s.size(0) :]
+
+                loss_s = criterion(pred_s, label_reg_s)
+                loss_t = criterion(pred_t, label_reg_t)
+
+                total_loss = total_loss + loss_s + loss_t + self.dw * loss_transfer
+            self.train_optimizer.zero_grad()
+            total_loss.backward()
+            torch.nn.utils.clip_grad_value_(self.model.parameters(), 3.0)
+            self.train_optimizer.step()
+        if epoch >= self.pre_epoch:
+            if epoch > self.pre_epoch:
+                weight_mat = self.model.update_weight_Boosting(weight_mat, dist_old, dist_mat)
+            return weight_mat, dist_mat
+        else:
+            weight_mat = self.transform_type(out_weight_list)
+            return weight_mat, None
+
+    @staticmethod
+    def calc_all_metrics(pred):
+        """pred is a pandas dataframe that has two attributes: score (pred) and label (real)"""
+        res = {}
+        ic = pred.groupby(level="datetime", group_keys=False).apply(lambda x: x.label.corr(x.score))
+        rank_ic = pred.groupby(level="datetime", group_keys=False).apply(
+            lambda x: x.label.corr(x.score, method="spearman")
+        )
+        res["ic"] = ic.mean()
+        res["icir"] = ic.mean() / ic.std()
+        res["ric"] = rank_ic.mean()
+        res["ricir"] = rank_ic.mean() / rank_ic.std()
+        res["mse"] = -(pred["label"] - pred["score"]).mean()
+        res["loss"] = res["mse"]
+        return res
+
+    def test_epoch(self, df):
+        self.model.eval()
+        preds = self.infer(df["feature"])
+        label = df["label"].squeeze()
+        preds = pd.DataFrame({"label": label, "score": preds}, index=df.index)
+        metrics = self.calc_all_metrics(preds)
+        return metrics
+
+    def log_metrics(self, mode, metrics):
+        metrics_str = ["{}/{}: {:.6f}".format(k, mode, v) for k, v in metrics.items()]
+        metrics_str = ", ".join(metrics_str)
+        self.logger.info(metrics_str)
+
+    def fit(
+        self,
+        dataset: DatasetH,
+        evals_result=dict(),
+        save_path=None,
+    ):
+        df_train, df_valid = dataset.prepare(
+            ["train", "valid"],
+            col_set=["feature", "label"],
+            data_key=DataHandlerLP.DK_L,
+        )
+        days = df_train.index.get_level_values(level=0).unique()
+        train_splits = np.array_split(days, self.n_splits)
+        train_splits = [df_train[s[0] : s[-1]] for s in train_splits]
+        train_loader_list = [get_stock_loader(df, self.batch_size) for df in train_splits]
+
+        save_path = get_or_create_path(save_path)
+        stop_steps = 0
+        evals_result["train"] = []
+        evals_result["valid"] = []
+
+        # train
+        self.logger.info("training...")
+        self.fitted = True
+        best_score = -np.inf
+        best_epoch = 0
+        weight_mat, dist_mat = None, None
+
+        for step in range(self.n_epochs):
+            self.logger.info("Epoch%d:", step)
+            self.logger.info("training...")
+            weight_mat, dist_mat = self.train_AdaRNN(train_loader_list, step, dist_mat, weight_mat)
+            self.logger.info("evaluating...")
+            train_metrics = self.test_epoch(df_train)
+            valid_metrics = self.test_epoch(df_valid)
+            self.log_metrics("train: ", train_metrics)
+            self.log_metrics("valid: ", valid_metrics)
+
+            valid_score = valid_metrics[self.metric]
+            train_score = train_metrics[self.metric]
+            evals_result["train"].append(train_score)
+            evals_result["valid"].append(valid_score)
+            if valid_score > best_score:
+                best_score = valid_score
+                stop_steps = 0
+                best_epoch = step
+                best_param = copy.deepcopy(self.model.state_dict())
+            else:
+                stop_steps += 1
+                if stop_steps >= self.early_stop:
+                    self.logger.info("early stop")
+                    break
+
+        self.logger.info("best score: %.6lf @ %d" % (best_score, best_epoch))
+        self.model.load_state_dict(best_param)
+        torch.save(best_param, save_path)
+
+        if self.use_gpu:
+            torch.cuda.empty_cache()
+        return best_score
+
+    def predict(self, dataset: DatasetH, segment: Union[Text, slice] = "test"):
+        if not self.fitted:
+            raise ValueError("model is not fitted yet!")
+        x_test = dataset.prepare(segment, col_set="feature", data_key=DataHandlerLP.DK_I)
+        return self.infer(x_test)
+
+    def infer(self, x_test):
+        index = x_test.index
+        self.model.eval()
+        x_values = x_test.values
+        sample_num = x_values.shape[0]
+        preds = []
+
+        for begin in range(sample_num)[:: self.batch_size]:
+            if sample_num - begin < self.batch_size:
+                end = sample_num
+            else:
+                end = begin + self.batch_size
+
+            x_batch = torch.from_numpy(x_values[begin:end]).float().unsqueeze(1).to(self.device)  # [B, 1, 158]
+
+            with torch.no_grad():
+                pred = self.model.predict(x_batch).detach().cpu().numpy()
+
+            preds.append(pred)
+
+        return pd.Series(np.concatenate(preds), index=index)
+
+    def transform_type(self, init_weight):
+        weight = torch.ones(self.num_layers, self.len_seq).to(self.device)
+        for i in range(self.num_layers):
+            for j in range(self.len_seq):
+                weight[i, j] = init_weight[i][j].item()
+        return weight
+</new>
+</edit>
+<obs>
+Successfully replaced text in qlib/custom_model.py.
+</obs>
+<run/>
+<obs>
+Measured results — `baseline:adarnn` (`is_final,true`), seeds {42, 123, 456} and mean, per temporal regime (all metrics higher-is-better; max drawdown reported negative, closer to zero better).
+
+## csi300 (test 2017-2020)
+| seed | IC | ICIR | Rank IC | Rank ICIR | Ann. return | Max drawdown | Info ratio |
+|---|---|---|---|---|---|---|---|
+| 42 | 0.039286 | 0.309792 | 0.049615 | 0.391881 | 0.075862 | -0.086957 | 1.1949 |
+| 123 | 0.035927 | 0.31863 | 0.039894 | 0.365218 | 0.049572 | -0.104147 | 0.673138 |
+| 456 | 0.040073 | 0.331476 | 0.05009 | 0.412738 | 0.097436 | -0.082491 | 1.3994 |
+| **mean** | **0.038429** | **0.319966** | **0.046533** | **0.389946** | **0.07429** | **-0.091198** | **1.0891** |
+
+## csi300_shifted (test 2016-2018)
+| seed | IC | ICIR | Rank IC | Rank ICIR | Ann. return | Max drawdown | Info ratio |
+|---|---|---|---|---|---|---|---|
+| 42 | 0.056839 | 0.516149 | 0.058742 | 0.518721 | 0.122409 | -0.081397 | 1.4815 |
+| 123 | 0.045289 | 0.438719 | 0.045174 | 0.43761 | 0.137573 | -0.080839 | 1.8151 |
+| 456 | 0.055505 | 0.449717 | 0.061229 | 0.483059 | 0.15139 | -0.147676 | 1.6915 |
+| **mean** | **0.052544** | **0.468195** | **0.055048** | **0.479797** | **0.137124** | **-0.103304** | **1.6627** |
+
+## csi300_recent (test 2019-2020)
+| seed | IC | ICIR | Rank IC | Rank ICIR | Ann. return | Max drawdown | Info ratio |
+|---|---|---|---|---|---|---|---|
+| 42 | 0.017431 | 0.169455 | 0.027549 | 0.27417 | 0.000302 | -0.0833 | 0.004027 |
+| 123 | 0.01687 | 0.153666 | 0.027848 | 0.253343 | 0.020738 | -0.064522 | 0.282505 |
+| 456 | 0.026058 | 0.207091 | 0.040218 | 0.328876 | 0.084087 | -0.049445 | 1.1180 |
+| **mean** | **0.02012** | **0.176737** | **0.031872** | **0.285463** | **0.035042** | **-0.065756** | **0.468166** |
+</obs>
+
+### step 3 — LightGBM (strong non-adaptive control)   [slug:lgbm]
+
+<think>
+AdaRNN's numbers settle the question the last two rungs were circling, and the answer is not the one
+the research framing wanted. On `csi300_shifted` AdaRNN does well — mean IC 0.0525, info ratio 1.66,
+even edging TRA's 1.59 — and its best seed there hits info ratio 1.82. But on `csi300_recent`, the
+regime that already broke TRA, it stays broken: mean info ratio 0.47, essentially tied with TRA's
+0.48, and now with the seed variance I predicted — seed 42 comes in at info ratio 0.004 and
+annualized return 0.0003 on that window, a near-dead run, while seed 456 recovers to 1.12. So
+explicit two-half temporal alignment, exactly the "learn the invariant" move I reached for, did *not*
+rescue the far regime; it produced the same far-regime collapse plus instability. And the aggregate
+tells the deeper story: across all three regimes, gmean of the per-regime metric means, AdaRNN
+(≈0.561) and TRA (≈0.560) are essentially tied, both *adaptive* sequence models, both heavy, both
+weak on the window that matters most for drift. Two independent adaptation mechanisms — routing
+within a distribution, aligning across halves — converged to the same ceiling. That is the signal I
+have to act on: the bottleneck on this task is not the adaptation *mechanism*; it is the
+fit-able signal a sequence model can extract from a thin, noisy CSI300 panel, and both models pay an
+overhead (a 20-factor `FilterCol` slice for TRA, a single-timestep GRU for AdaRNN) that costs more
+than the drift-robustness it buys. AdaRNN's seed-42 `csi300_recent` near-zero is the extreme of that:
+a model that aligned two training halves and then had nothing informative to say about 2019–2020.
+
+So I am going to do the thing the drift framing resists: drop sequence-model adaptation entirely and
+fit the strongest plain, *full-feature*, non-adaptive tabular learner I can, and let it be the
+control the adaptive models have to beat. The hypothesis is concrete and falsifiable — that on this
+panel a well-tuned gradient-boosted tree over all 158 Alpha158 factors generalizes across the three
+regimes *better* than either adaptive sequence model, because it spends none of its capacity on
+adaptation machinery and all of it on extracting cross-sectional signal, and because trees on
+RobustZScore-free raw factors are naturally robust to the marginal drift that hurts a neural encoder.
+Let me derive why a GBDT is the right control and exactly how the scaffold wants it filled.
+
+A GBDT is an additive sequence of regression trees. At round `t`, with current ensemble `F_{t-1}`,
+each sample gets a gradient `g_i = ∂L(y_i, F_{t-1}(x_i))/∂F`; for the squared loss `objective=mse`
+this is `ŷ_i − y_i`, so `−g_i` is the residual and each round fits a tree to the residuals, folded in
+shrunk by the learning rate. Inside one tree the split is chosen to maximize the variance gain — in
+sum-of-gradient form, `V_j(d) = (1/n)[(Σ_{x_ij≤d} g_i)²/n_l + (Σ_{x_ij>d} g_i)²/n_r]` — searched per
+feature over candidate thresholds `d`; LightGBM does this on bucketed histograms (each factor binned
+into ≤255 bins, one pass per node accumulating per-bin gradient sums, the sibling histogram recovered
+by parent-minus-smaller-child subtraction) and grows leaf-wise (always split the leaf with the largest
+gain), which is why `num_leaves` and `max_depth` are both capped to bound the leaf-wise overfit. Why is
+this the right thing for return prediction across regimes? Three reasons that bear directly on the
+failure I just saw. First, trees split on *thresholds* of individual factors, so they are invariant to
+any monotone rescaling of a factor — the split `x_ij ≤ d` only cares about rank order, not scale or
+mean. That is the crux for drift: temporal covariate shift moves `P(x)` — the level, spread, and
+correlations of the factors drift between 2008–2014 and 2019–2020 — but a relation expressed as a
+rank threshold on a single factor is far more portable across that shift than a neural encoder whose
+first layer takes a fixed linear combination of all 158 factors, a combination whose meaning changes
+the moment the factor marginals move. The very drift that made TRA's router read a stale error-history
+signal and AdaRNN align two halves that don't span the test regime does not move a tree's split points
+the same way; the tree's inductive bias is *already* the kind of robustness the adaptive models tried
+to learn. Second, a GBDT sees the *full* 158-factor view, not a curated slice, so it loses none of the
+factor information the adaptive models discarded — no `FilterCol` to 20 columns, no collapse to a
+single timestep. Third, boosting with heavy L1/L2 leaf regularization is a strong defense against the
+noise that dominates this panel: with leaf weight `w* = −G/(H+λ2)` and L1 entering as a soft-threshold
+on `G`, large penalties shrink every leaf value toward zero, so the trees commit only to splits whose
+gradient mass clearly survives the regularizer — exactly the right posture on low-SNR data where the
+unregularized optimum would memorize idiosyncratic returns. It is the consensus high-accuracy learner
+on exactly this kind of tabular data, and on this task it is the control the two adaptive models have
+spent four rungs failing to clearly beat.
+
+Now the scaffold specifics, because the fill is a *faithful* qlib `LGBModel`, not a generic GBDT, and
+a couple of details in it look like adaptation but are not. The hyperparameters are the official
+Alpha158 CSI300 benchmark: `learning_rate=0.2`, `num_leaves=210`, `max_depth=8` (a leaf-wise tree
+engine with both a leaf budget and a depth cap to bound the leaf-wise overfit), and the load-bearing
+ones for this noisy data, `lambda_l1=205.6999` and `lambda_l2=580.9768` — enormous leaf-weight
+penalties that shrink every leaf value hard, which is precisely the regularization that keeps the
+trees from chasing the unlearnable residuals. `colsample_bytree=0.8879` and `subsample=0.8789` are
+the booster's own per-tree feature and row sub-sampling parameters forwarded to `lgb.train`; they are
+*not* a request for the gradient-based one-side sampling the method is famous for, and they are *not*
+temporal-domain adaptation — they are vanilla stochastic-GBDT knobs that add a little member-to-member
+decorrelation. The fill trains with `num_boost_round=1000` and `early_stopping_rounds=50` against the
+validation segment (2015–2016), so the actual tree count is chosen by validation, and it is
+deterministic, which is why I expect (and the harness shows) identical numbers across the three seeds.
+
+The data view is the other place the scaffold makes a deliberate choice, and it is the right one for
+trees. The fill edits the workflow processor block to set `infer_processors: []` — it removes the
+`RobustZScoreNorm` and `Fillna` that the neural baselines depend on, and keeps only the label
+processors (`DropnaLabel`, `CSRankNorm`). That is correct GBDT practice: trees split on raw factor
+thresholds and gain nothing from per-feature z-scoring (which would, if anything, smear the natural
+split points), and LightGBM handles NaNs natively by learning a default direction, so there is no
+need to fill them. So the tree baseline sees the *raw* Alpha158 factors over the default `DatasetH`
+(no sequence sampler), with `fit` preparing train+valid `lgb.Dataset`s, training one booster with
+early stopping, and `predict` returning `pd.Series(model.predict(x_test), index=x_test.index)` over
+the test segment. There is no domain split, no alignment, no router — by design. The full module is
+the fill of `custom_model.py` plus the one processor-block YAML edit; it is in the answer.
+
+Let me reason carefully about what this control should do, because if it merely ties the adaptive
+models the trajectory has no strong rung, and if it wins it reframes the whole task. On
+`csi300_shifted` I expect LGBM to be competitive but perhaps a touch behind AdaRNN's strong showing
+there (AdaRNN's alignment genuinely helps where the shift is mild and the near window rewards a
+sequence encoder). The decisive regime is `csi300_recent`. Both adaptive models died there
+(info ratio ≈0.47–0.48); my falsifiable prediction is that the tree, seeing all factors and immune to
+marginal rescaling, will *not* die there — its `csi300_recent` annualized return and info ratio should
+come in clearly above the adaptive models' (I expect info ratio comfortably above 1.0 and annualized
+return well above their ≈0.03–0.04), because the relation the trees learn from raw thresholds is more
+portable to a distant regime than a neural encoder's drifted representation. And on the long-horizon
+`csi300` window I expect LGBM to be the best of the three on the signal metrics (higher IC and
+rank IC) with a markedly *shallower max drawdown* — the strong regularization should make its
+portfolio steadier than the adaptive models', whose drawdowns ran to −0.10. If those three predictions
+hold — competitive on the near window, decisively better on the far window, best signal and shallowest
+drawdown on the long window — then the aggregate gmean puts LGBM above both adaptive models, and the
+trajectory's lesson is sharp and a little subversive: on a thin, noisy CSI300 panel, the most
+effective response to concept drift among these baselines is *not* an explicit drift-adaptation
+mechanism but a strong, heavily-regularized, full-feature non-adaptive learner whose inductive bias
+(threshold splits, leaf shrinkage) is already robust to the marginal shift. The failure mode that
+would refute this is the symmetric one: if LGBM's `csi300_recent` also lands near info ratio 0.5, then
+the far regime is simply unforecastable for everyone and the ceiling is the data, not the model. The
+numbers will decide it — and if LGBM does win as the strong control, the natural next move is not to
+abandon it but to make *it* drift-robust by ensembling it deliberately, reweighting the samples it
+learns from and the features it uses, which is exactly where a stronger method would build from here.
+</think>
+<say>
+Now I'm dropping the sequence-model adaptation entirely and putting in a strong non-adaptive control: a heavily-regularized LightGBM over all 158 raw Alpha158 factors, whose threshold splits are already robust to marginal drift. This edit replaces the whole AdaRNN module with the LightGBM CustomModel header.
+</say>
+<edit path="qlib/custom_model.py">
+<old>
+# EDITABLE region of custom_model.py (lines 16-103) — step 2: AdaRNN model
+# =====================================================================
+# EDITABLE: CustomModel — implement your stock prediction model here
+# =====================================================================
+import os
+import copy
+from typing import Text, Union
+from torch.utils.data import Dataset, DataLoader
+import torch.optim as optim
+from torch.autograd import Function
+from qlib.log import get_module_logger
+from qlib.utils import get_or_create_path
+
+
+class data_loader(Dataset):
+    """Data loader for Alpha158 flat features.
+
+    Alpha158 provides 158 features per sample (flat vector).
+    Unsqueezes to [N, 1, 158] for GRU input (single timestep).
+    """
+    def __init__(self, df):
+        self.df_feature = df["feature"]
+        self.df_label_reg = df["label"]
+        self.df_index = df.index
+        self.df_feature = torch.tensor(
+            self.df_feature.values, dtype=torch.float32
+        ).unsqueeze(1)  # [N, 1, 158]
+        self.df_label_reg = torch.tensor(self.df_label_reg.values.reshape(-1), dtype=torch.float32)
+
+    def __getitem__(self, index):
+        sample, label_reg = self.df_feature[index], self.df_label_reg[index]
+        return sample, label_reg
+
+    def __len__(self):
+        return len(self.df_feature)
+
+
+def get_stock_loader(df, batch_size, shuffle=True):
+    train_loader = DataLoader(data_loader(df), batch_size=batch_size, shuffle=shuffle)
+    return train_loader
+
+
+def get_index(num_domain=2):
+    index = []
+    for i in range(num_domain):
+        for j in range(i + 1, num_domain + 1):
+            index.append((i, j))
+    return index
+
+
+def cosine(source, target):
+    source, target = source.mean(), target.mean()
+    cos = nn.CosineSimilarity(dim=0)
+    loss = cos(source, target)
+    return loss.mean()
+
+
+class ReverseLayerF(Function):
+    @staticmethod
+    def forward(ctx, x, alpha):
+        ctx.alpha = alpha
+        return x.view_as(x)
+
+    @staticmethod
+    def backward(ctx, grad_output):
+        output = grad_output.neg() * ctx.alpha
+        return output, None
+
+
+class Discriminator(nn.Module):
+    def __init__(self, input_dim=256, hidden_dim=256):
+        super(Discriminator, self).__init__()
+        self.input_dim = input_dim
+        self.hidden_dim = hidden_dim
+        self.dis1 = nn.Linear(input_dim, hidden_dim)
+        self.dis2 = nn.Linear(hidden_dim, 1)
+
+    def forward(self, x):
+        x = F.relu(self.dis1(x))
+        x = self.dis2(x)
+        x = torch.sigmoid(x)
+        return x
+
+
+def adv(source, target, device, input_dim=256, hidden_dim=512):
+    domain_loss = nn.BCELoss()
+    adv_net = Discriminator(input_dim, hidden_dim).to(device)
+    domain_src = torch.ones(len(source)).to(device)
+    domain_tar = torch.zeros(len(target)).to(device)
+    domain_src, domain_tar = domain_src.view(domain_src.shape[0], 1), domain_tar.view(domain_tar.shape[0], 1)
+    reverse_src = ReverseLayerF.apply(source, 1)
+    reverse_tar = ReverseLayerF.apply(target, 1)
+    pred_src = adv_net(reverse_src)
+    pred_tar = adv_net(reverse_tar)
+    loss_s, loss_t = domain_loss(pred_src, domain_src), domain_loss(pred_tar, domain_tar)
+    loss = loss_s + loss_t
+    return loss
+
+
+def CORAL(source, target, device):
+    d = source.size(1)
+    ns, nt = source.size(0), target.size(0)
+
+    # source covariance
+    tmp_s = torch.ones((1, ns)).to(device) @ source
+    cs = (source.t() @ source - (tmp_s.t() @ tmp_s) / ns) / (ns - 1)
+
+    # target covariance
+    tmp_t = torch.ones((1, nt)).to(device) @ target
+    ct = (target.t() @ target - (tmp_t.t() @ tmp_t) / nt) / (nt - 1)
+
+    # frobenius norm
+    loss = (cs - ct).pow(2).sum()
+    loss = loss / (4 * d * d)
+
+    return loss
+
+
+class MMD_loss(nn.Module):
+    def __init__(self, kernel_type="linear", kernel_mul=2.0, kernel_num=5):
+        super(MMD_loss, self).__init__()
+        self.kernel_num = kernel_num
+        self.kernel_mul = kernel_mul
+        self.fix_sigma = None
+        self.kernel_type = kernel_type
+
+    @staticmethod
+    def guassian_kernel(source, target, kernel_mul=2.0, kernel_num=5, fix_sigma=None):
+        n_samples = int(source.size()[0]) + int(target.size()[0])
+        total = torch.cat([source, target], dim=0)
+        total0 = total.unsqueeze(0).expand(int(total.size(0)), int(total.size(0)), int(total.size(1)))
+        total1 = total.unsqueeze(1).expand(int(total.size(0)), int(total.size(0)), int(total.size(1)))
+        L2_distance = ((total0 - total1) ** 2).sum(2)
+        if fix_sigma:
+            bandwidth = fix_sigma
+        else:
+            bandwidth = torch.sum(L2_distance.data) / (n_samples**2 - n_samples)
+        bandwidth /= kernel_mul ** (kernel_num // 2)
+        bandwidth_list = [bandwidth * (kernel_mul**i) for i in range(kernel_num)]
+        kernel_val = [torch.exp(-L2_distance / bandwidth_temp) for bandwidth_temp in bandwidth_list]
+        return sum(kernel_val)
+
+    @staticmethod
+    def linear_mmd(X, Y):
+        delta = X.mean(axis=0) - Y.mean(axis=0)
+        loss = delta.dot(delta.T)
+        return loss
+
+    def forward(self, source, target):
+        if self.kernel_type == "linear":
+            return self.linear_mmd(source, target)
+        elif self.kernel_type == "rbf":
+            batch_size = int(source.size()[0])
+            kernels = self.guassian_kernel(
+                source, target, kernel_mul=self.kernel_mul, kernel_num=self.kernel_num, fix_sigma=self.fix_sigma
+            )
+            with torch.no_grad():
+                XX = torch.mean(kernels[:batch_size, :batch_size])
+                YY = torch.mean(kernels[batch_size:, batch_size:])
+                XY = torch.mean(kernels[:batch_size, batch_size:])
+                YX = torch.mean(kernels[batch_size:, :batch_size])
+                loss = torch.mean(XX + YY - XY - YX)
+            return loss
+
+
+class Mine_estimator(nn.Module):
+    def __init__(self, input_dim=2048, hidden_dim=512):
+        super(Mine_estimator, self).__init__()
+        self.mine_model = Mine(input_dim, hidden_dim)
+
+    def forward(self, X, Y):
+        Y_shffle = Y[torch.randperm(len(Y))]
+        loss_joint = self.mine_model(X, Y)
+        loss_marginal = self.mine_model(X, Y_shffle)
+        ret = torch.mean(loss_joint) - torch.log(torch.mean(torch.exp(loss_marginal)))
+        loss = -ret
+        return loss
+
+
+class Mine(nn.Module):
+    def __init__(self, input_dim=2048, hidden_dim=512):
+        super(Mine, self).__init__()
+        self.fc1_x = nn.Linear(input_dim, hidden_dim)
+        self.fc1_y = nn.Linear(input_dim, hidden_dim)
+        self.fc2 = nn.Linear(hidden_dim, 1)
+
+    def forward(self, x, y):
+        h1 = F.leaky_relu(self.fc1_x(x) + self.fc1_y(y))
+        h2 = self.fc2(h1)
+        return h2
+
+
+def pairwise_dist(X, Y):
+    n, d = X.shape
+    m, _ = Y.shape
+    assert d == Y.shape[1]
+    a = X.unsqueeze(1).expand(n, m, d)
+    b = Y.unsqueeze(0).expand(n, m, d)
+    return torch.pow(a - b, 2).sum(2)
+
+
+def kl_div(source, target):
+    if len(source) < len(target):
+        target = target[: len(source)]
+    elif len(source) > len(target):
+        source = source[: len(target)]
+    criterion = nn.KLDivLoss(reduction="batchmean")
+    loss = criterion(source.log(), target)
+    return loss
+
+
+def js(source, target):
+    if len(source) < len(target):
+        target = target[: len(source)]
+    elif len(source) > len(target):
+        source = source[: len(target)]
+    M = 0.5 * (source + target)
+    loss_1, loss_2 = kl_div(source, M), kl_div(target, M)
+    return 0.5 * (loss_1 + loss_2)
+
+
+class TransferLoss:
+    def __init__(self, loss_type="cosine", input_dim=512, GPU=0):
+        """
+        Supported loss_type: mmd(mmd_lin), mmd_rbf, coral, cosine, kl, js, mine, adv
+        """
+        self.loss_type = loss_type
+        self.input_dim = input_dim
+        self.device = torch.device("cuda:%d" % GPU if torch.cuda.is_available() and GPU >= 0 else "cpu")
+
+    def compute(self, X, Y):
+        """Compute adaptation loss"""
+        loss = None
+        if self.loss_type in ("mmd_lin", "mmd"):
+            mmdloss = MMD_loss(kernel_type="linear")
+            loss = mmdloss(X, Y)
+        elif self.loss_type == "coral":
+            loss = CORAL(X, Y, self.device)
+        elif self.loss_type in ("cosine", "cos"):
+            loss = 1 - cosine(X, Y)
+        elif self.loss_type == "kl":
+            loss = kl_div(X, Y)
+        elif self.loss_type == "js":
+            loss = js(X, Y)
+        elif self.loss_type == "mine":
+            mine_model = Mine_estimator(input_dim=self.input_dim, hidden_dim=60).to(self.device)
+            loss = mine_model(X, Y)
+        elif self.loss_type == "adv":
+            loss = adv(X, Y, self.device, input_dim=self.input_dim, hidden_dim=32)
+        elif self.loss_type == "mmd_rbf":
+            mmdloss = MMD_loss(kernel_type="rbf")
+            loss = mmdloss(X, Y)
+        elif self.loss_type == "pairwise":
+            pair_mat = pairwise_dist(X, Y)
+            loss = torch.norm(pair_mat)
+
+        return loss
+
+
+class AdaRNN(nn.Module):
+    """AdaRNN network — verbatim from qlib/contrib/model/pytorch_adarnn.py.
+
+    model_type:  'Boosting', 'AdaRNN'
+    """
+
+    def __init__(
+        self,
+        use_bottleneck=False,
+        bottleneck_width=256,
+        n_input=128,
+        n_hiddens=[64, 64],
+        n_output=6,
+        dropout=0.0,
+        len_seq=9,
+        model_type="AdaRNN",
+        trans_loss="mmd",
+        GPU=0,
+    ):
+        super(AdaRNN, self).__init__()
+        self.use_bottleneck = use_bottleneck
+        self.n_input = n_input
+        self.num_layers = len(n_hiddens)
+        self.hiddens = n_hiddens
+        self.n_output = n_output
+        self.model_type = model_type
+        self.trans_loss = trans_loss
+        self.len_seq = len_seq
+        self.device = torch.device("cuda:%d" % GPU if torch.cuda.is_available() and GPU >= 0 else "cpu")
+        in_size = self.n_input
+
+        features = nn.ModuleList()
+        for hidden in n_hiddens:
+            rnn = nn.GRU(input_size=in_size, num_layers=1, hidden_size=hidden, batch_first=True, dropout=dropout)
+            features.append(rnn)
+            in_size = hidden
+        self.features = nn.Sequential(*features)
+
+        if use_bottleneck is True:  # finance
+            self.bottleneck = nn.Sequential(
+                nn.Linear(n_hiddens[-1], bottleneck_width),
+                nn.Linear(bottleneck_width, bottleneck_width),
+                nn.BatchNorm1d(bottleneck_width),
+                nn.ReLU(),
+                nn.Dropout(),
+            )
+            self.bottleneck[0].weight.data.normal_(0, 0.005)
+            self.bottleneck[0].bias.data.fill_(0.1)
+            self.bottleneck[1].weight.data.normal_(0, 0.005)
+            self.bottleneck[1].bias.data.fill_(0.1)
+            self.fc = nn.Linear(bottleneck_width, n_output)
+            torch.nn.init.xavier_normal_(self.fc.weight)
+        else:
+            self.fc_out = nn.Linear(n_hiddens[-1], self.n_output)
+
+        if self.model_type == "AdaRNN":
+            gate = nn.ModuleList()
+            for i in range(len(n_hiddens)):
+                gate_weight = nn.Linear(len_seq * self.hiddens[i] * 2, len_seq)
+                gate.append(gate_weight)
+            self.gate = gate
+
+            bnlst = nn.ModuleList()
+            for i in range(len(n_hiddens)):
+                bnlst.append(nn.BatchNorm1d(len_seq))
+            self.bn_lst = bnlst
+            self.softmax = torch.nn.Softmax(dim=0)
+            self.init_layers()
+
+    def init_layers(self):
+        for i in range(len(self.hiddens)):
+            self.gate[i].weight.data.normal_(0, 0.05)
+            self.gate[i].bias.data.fill_(0.0)
+
+    def forward_pre_train(self, x, len_win=0):
+        out = self.gru_features(x)
+        fea = out[0]  # [2N,L,H]
+        if self.use_bottleneck is True:
+            fea_bottleneck = self.bottleneck(fea[:, -1, :])
+            fc_out = self.fc(fea_bottleneck).squeeze()
+        else:
+            fc_out = self.fc_out(fea[:, -1, :]).squeeze()  # [N,]
+
+        out_list_all, out_weight_list = out[1], out[2]
+        out_list_s, out_list_t = self.get_features(out_list_all)
+        loss_transfer = torch.zeros((1,)).to(self.device)
+        for i, n in enumerate(out_list_s):
+            criterion_transder = TransferLoss(loss_type=self.trans_loss, input_dim=n.shape[2])
+            h_start = 0
+            for j in range(h_start, self.len_seq, 1):
+                i_start = j - len_win if j - len_win >= 0 else 0
+                i_end = j + len_win if j + len_win < self.len_seq else self.len_seq - 1
+                for k in range(i_start, i_end + 1):
+                    weight = (
+                        out_weight_list[i][j].item()
+                        if self.model_type == "AdaRNN"
+                        else 1 / (self.len_seq - h_start) * (2 * len_win + 1)
+                    )
+                    loss_transfer = loss_transfer + weight * criterion_transder.compute(
+                        n[:, j, :], out_list_t[i][:, k, :]
+                    )
+        return fc_out, loss_transfer, out_weight_list
+
+    def gru_features(self, x, predict=False):
+        x_input = x
+        out = None
+        out_lis = []
+        out_weight_list = [] if (self.model_type == "AdaRNN") else None
+        for i in range(self.num_layers):
+            out, _ = self.features[i](x_input.float())
+            x_input = out
+            out_lis.append(out)
+            if self.model_type == "AdaRNN" and predict is False:
+                out_gate = self.process_gate_weight(x_input, i)
+                out_weight_list.append(out_gate)
+        return out, out_lis, out_weight_list
+
+    def process_gate_weight(self, out, index):
+        x_s = out[0 : int(out.shape[0] // 2)]
+        x_t = out[out.shape[0] // 2 : out.shape[0]]
+        x_all = torch.cat((x_s, x_t), 2)
+        x_all = x_all.view(x_all.shape[0], -1)
+        weight = torch.sigmoid(self.bn_lst[index](self.gate[index](x_all.float())))
+        weight = torch.mean(weight, dim=0)
+        res = self.softmax(weight)
+        return res
+
+    @staticmethod
+    def get_features(output_list):
+        fea_list_src, fea_list_tar = [], []
+        for fea in output_list:
+            fea_list_src.append(fea[0 : fea.size(0) // 2])
+            fea_list_tar.append(fea[fea.size(0) // 2 :])
+        return fea_list_src, fea_list_tar
+
+    # For Boosting-based
+    def forward_Boosting(self, x, weight_mat=None):
+        out = self.gru_features(x)
+        fea = out[0]
+        if self.use_bottleneck:
+            fea_bottleneck = self.bottleneck(fea[:, -1, :])
+            fc_out = self.fc(fea_bottleneck).squeeze()
+        else:
+            fc_out = self.fc_out(fea[:, -1, :]).squeeze()
+
+        out_list_all = out[1]
+        out_list_s, out_list_t = self.get_features(out_list_all)
+        loss_transfer = torch.zeros((1,)).to(self.device)
+        if weight_mat is None:
+            weight = (1.0 / self.len_seq * torch.ones(self.num_layers, self.len_seq)).to(self.device)
+        else:
+            weight = weight_mat
+        dist_mat = torch.zeros(self.num_layers, self.len_seq).to(self.device)
+        for i, n in enumerate(out_list_s):
+            criterion_transder = TransferLoss(loss_type=self.trans_loss, input_dim=n.shape[2])
+            for j in range(self.len_seq):
+                loss_trans = criterion_transder.compute(n[:, j, :], out_list_t[i][:, j, :])
+                loss_transfer = loss_transfer + weight[i, j] * loss_trans
+                dist_mat[i, j] = loss_trans
+        return fc_out, loss_transfer, dist_mat, weight
+
+    # For Boosting-based
+    def update_weight_Boosting(self, weight_mat, dist_old, dist_new):
+        epsilon = 1e-5
+        dist_old = dist_old.detach()
+        dist_new = dist_new.detach()
+        ind = dist_new > dist_old + epsilon
+        weight_mat[ind] = weight_mat[ind] * (1 + torch.sigmoid(dist_new[ind] - dist_old[ind]))
+        weight_norm = torch.norm(weight_mat, dim=1, p=1)
+        weight_mat = weight_mat / weight_norm.t().unsqueeze(1).repeat(1, self.len_seq)
+        return weight_mat
+
+    def predict(self, x):
+        out = self.gru_features(x, predict=True)
+        fea = out[0]
+        if self.use_bottleneck is True:
+            fea_bottleneck = self.bottleneck(fea[:, -1, :])
+            fc_out = self.fc(fea_bottleneck).squeeze(-1)
+        else:
+            fc_out = self.fc_out(fea[:, -1, :]).squeeze(-1)
+        return fc_out
+
+
+class CustomModel(Model):
+    """ADARNN model — faithful to qlib's official ADARNN (pytorch_adarnn.py).
+
+    Adapted for Alpha158 features (158 flat features per sample).
+    Data is unsqueezed to [N, 1, 158] for GRU input (single timestep).
+    """
+</old>
+<new>
+# EDITABLE region of custom_model.py (lines 16-103) — step 3: LightGBM model
+# =====================================================================
+# EDITABLE: CustomModel — implement your stock prediction model here
+# =====================================================================
+class CustomModel(Model):
+    """LightGBM model — faithful to qlib's official LGBModel (gbdt.py).
+
+    Hyperparameters from official benchmark:
+    examples/benchmarks/LightGBM/workflow_config_lightgbm_Alpha158.yaml
+    """
+</new>
+</edit>
+<obs>
+Successfully replaced text in qlib/custom_model.py.
+</obs>
+<note>
+Now the booster body: the benchmark params with the large L1/L2 leaf penalties, plus fit with validation early stopping and a plain predict.
+</note>
+<edit path="qlib/custom_model.py">
+<old>
+        super().__init__()
+        self.logger = get_module_logger("ADARNN")
+        self.logger.info("ADARNN pytorch version...")
+
+        # Hyperparameters adapted for Alpha158 flat features
+        self.d_feat = 158
+        self.hidden_size = 64
+        self.num_layers = 2
+        self.dropout = 0.0
+        self.n_epochs = 200
+        self.pre_epoch = 40
+        self.dw = 0.5
+        self.loss_type = "cosine"
+        self.len_seq = 1
+        self.len_win = 0
+        self.lr = 1e-3
+        self.metric = "loss"
+        self.batch_size = 800
+        self.early_stop = 20
+        self.loss = "mse"
+        self.optimizer_name = "adam"
+        self.n_splits = 2
+        self.seed = None
+        self.device = torch.device(
+            "cuda:0" if torch.cuda.is_available() else "cpu"
+        )
+
+        self.logger.info(
+            "ADARNN parameters setting:"
+            "\nd_feat : {}"
+            "\nhidden_size : {}"
+            "\nnum_layers : {}"
+            "\ndropout : {}"
+            "\nn_epochs : {}"
+            "\nlr : {}"
+            "\nmetric : {}"
+            "\nbatch_size : {}"
+            "\nearly_stop : {}"
+            "\noptimizer : {}"
+            "\nloss_type : {}"
+            "\nuse_GPU : {}".format(
+                self.d_feat,
+                self.hidden_size,
+                self.num_layers,
+                self.dropout,
+                self.n_epochs,
+                self.lr,
+                self.metric,
+                self.batch_size,
+                self.early_stop,
+                self.optimizer_name,
+                self.loss,
+                self.use_gpu,
+            )
+        )
+
+        if self.seed is not None:
+            np.random.seed(self.seed)
+            torch.manual_seed(self.seed)
+
+        n_hiddens = [self.hidden_size for _ in range(self.num_layers)]
+        self.model = AdaRNN(
+            use_bottleneck=False,
+            bottleneck_width=64,
+            n_input=self.d_feat,
+            n_hiddens=n_hiddens,
+            n_output=1,
+            dropout=self.dropout,
+            model_type="AdaRNN",
+            len_seq=self.len_seq,
+            trans_loss=self.loss_type,
+        )
+        self.logger.info("model:\n{:}".format(self.model))
+
+        self.train_optimizer = optim.Adam(self.model.parameters(), lr=self.lr)
+
+        self.fitted = False
+        self.model.to(self.device)
+
+    @property
+    def use_gpu(self):
+        return self.device != torch.device("cpu")
+
+    def train_AdaRNN(self, train_loader_list, epoch, dist_old=None, weight_mat=None):
+        self.model.train()
+        criterion = nn.MSELoss()
+        dist_mat = torch.zeros(self.num_layers, self.len_seq).to(self.device)
+        out_weight_list = None
+        for data_all in zip(*train_loader_list):
+            self.train_optimizer.zero_grad()
+            list_feat = []
+            list_label = []
+            for data in data_all:
+                feature, label_reg = data[0].to(self.device).float(), data[1].to(self.device).float()
+                list_feat.append(feature)
+                list_label.append(label_reg)
+            flag = False
+            index = get_index(len(data_all) - 1)
+            for temp_index in index:
+                s1 = temp_index[0]
+                s2 = temp_index[1]
+                if list_feat[s1].shape[0] != list_feat[s2].shape[0]:
+                    flag = True
+                    break
+            if flag:
+                continue
+
+            total_loss = torch.zeros(1).to(self.device)
+            for i, n in enumerate(index):
+                feature_s = list_feat[n[0]]
+                feature_t = list_feat[n[1]]
+                label_reg_s = list_label[n[0]]
+                label_reg_t = list_label[n[1]]
+                feature_all = torch.cat((feature_s, feature_t), 0)
+
+                if epoch < self.pre_epoch:
+                    pred_all, loss_transfer, out_weight_list = self.model.forward_pre_train(
+                        feature_all, len_win=self.len_win
+                    )
+                else:
+                    pred_all, loss_transfer, dist, weight_mat = self.model.forward_Boosting(feature_all, weight_mat)
+                    dist_mat = dist_mat + dist
+                pred_s = pred_all[0 : feature_s.size(0)]
+                pred_t = pred_all[feature_s.size(0) :]
+
+                loss_s = criterion(pred_s, label_reg_s)
+                loss_t = criterion(pred_t, label_reg_t)
+
+                total_loss = total_loss + loss_s + loss_t + self.dw * loss_transfer
+            self.train_optimizer.zero_grad()
+            total_loss.backward()
+            torch.nn.utils.clip_grad_value_(self.model.parameters(), 3.0)
+            self.train_optimizer.step()
+        if epoch >= self.pre_epoch:
+            if epoch > self.pre_epoch:
+                weight_mat = self.model.update_weight_Boosting(weight_mat, dist_old, dist_mat)
+            return weight_mat, dist_mat
+        else:
+            weight_mat = self.transform_type(out_weight_list)
+            return weight_mat, None
+
+    @staticmethod
+    def calc_all_metrics(pred):
+        """pred is a pandas dataframe that has two attributes: score (pred) and label (real)"""
+        res = {}
+        ic = pred.groupby(level="datetime", group_keys=False).apply(lambda x: x.label.corr(x.score))
+        rank_ic = pred.groupby(level="datetime", group_keys=False).apply(
+            lambda x: x.label.corr(x.score, method="spearman")
+        )
+        res["ic"] = ic.mean()
+        res["icir"] = ic.mean() / ic.std()
+        res["ric"] = rank_ic.mean()
+        res["ricir"] = rank_ic.mean() / rank_ic.std()
+        res["mse"] = -(pred["label"] - pred["score"]).mean()
+        res["loss"] = res["mse"]
+        return res
+
+    def test_epoch(self, df):
+        self.model.eval()
+        preds = self.infer(df["feature"])
+        label = df["label"].squeeze()
+        preds = pd.DataFrame({"label": label, "score": preds}, index=df.index)
+        metrics = self.calc_all_metrics(preds)
+        return metrics
+
+    def log_metrics(self, mode, metrics):
+        metrics_str = ["{}/{}: {:.6f}".format(k, mode, v) for k, v in metrics.items()]
+        metrics_str = ", ".join(metrics_str)
+        self.logger.info(metrics_str)
+
+    def fit(
+        self,
+        dataset: DatasetH,
+        evals_result=dict(),
+        save_path=None,
+    ):
+        df_train, df_valid = dataset.prepare(
+            ["train", "valid"],
+            col_set=["feature", "label"],
+            data_key=DataHandlerLP.DK_L,
+        )
+        days = df_train.index.get_level_values(level=0).unique()
+        train_splits = np.array_split(days, self.n_splits)
+        train_splits = [df_train[s[0] : s[-1]] for s in train_splits]
+        train_loader_list = [get_stock_loader(df, self.batch_size) for df in train_splits]
+
+        save_path = get_or_create_path(save_path)
+        stop_steps = 0
+        evals_result["train"] = []
+        evals_result["valid"] = []
+
+        # train
+        self.logger.info("training...")
+        self.fitted = True
+        best_score = -np.inf
+        best_epoch = 0
+        weight_mat, dist_mat = None, None
+
+        for step in range(self.n_epochs):
+            self.logger.info("Epoch%d:", step)
+            self.logger.info("training...")
+            weight_mat, dist_mat = self.train_AdaRNN(train_loader_list, step, dist_mat, weight_mat)
+            self.logger.info("evaluating...")
+            train_metrics = self.test_epoch(df_train)
+            valid_metrics = self.test_epoch(df_valid)
+            self.log_metrics("train: ", train_metrics)
+            self.log_metrics("valid: ", valid_metrics)
+
+            valid_score = valid_metrics[self.metric]
+            train_score = train_metrics[self.metric]
+            evals_result["train"].append(train_score)
+            evals_result["valid"].append(valid_score)
+            if valid_score > best_score:
+                best_score = valid_score
+                stop_steps = 0
+                best_epoch = step
+                best_param = copy.deepcopy(self.model.state_dict())
+            else:
+                stop_steps += 1
+                if stop_steps >= self.early_stop:
+                    self.logger.info("early stop")
+                    break
+
+        self.logger.info("best score: %.6lf @ %d" % (best_score, best_epoch))
+        self.model.load_state_dict(best_param)
+        torch.save(best_param, save_path)
+
+        if self.use_gpu:
+            torch.cuda.empty_cache()
+        return best_score
+
+    def predict(self, dataset: DatasetH, segment: Union[Text, slice] = "test"):
+        if not self.fitted:
+            raise ValueError("model is not fitted yet!")
+        x_test = dataset.prepare(segment, col_set="feature", data_key=DataHandlerLP.DK_I)
+        return self.infer(x_test)
+
+    def infer(self, x_test):
+        index = x_test.index
+        self.model.eval()
+        x_values = x_test.values
+        sample_num = x_values.shape[0]
+        preds = []
+
+        for begin in range(sample_num)[:: self.batch_size]:
+            if sample_num - begin < self.batch_size:
+                end = sample_num
+            else:
+                end = begin + self.batch_size
+
+            x_batch = torch.from_numpy(x_values[begin:end]).float().unsqueeze(1).to(self.device)  # [B, 1, 158]
+
+            with torch.no_grad():
+                pred = self.model.predict(x_batch).detach().cpu().numpy()
+
+            preds.append(pred)
+
+        return pd.Series(np.concatenate(preds), index=index)
+
+    def transform_type(self, init_weight):
+        weight = torch.ones(self.num_layers, self.len_seq).to(self.device)
+        for i in range(self.num_layers):
+            for j in range(self.len_seq):
+                weight[i, j] = init_weight[i][j].item()
+        return weight
+</old>
+<new>
+        super().__init__()
+        # Official benchmark kwargs (passed to lgb.train via self.params)
+        self.params = {
+            "objective": "mse",
+            "colsample_bytree": 0.8879,
+            "learning_rate": 0.2,
+            "subsample": 0.8789,
+            "lambda_l1": 205.6999,
+            "lambda_l2": 580.9768,
+            "max_depth": 8,
+            "num_leaves": 210,
+            "num_threads": 20,
+            "verbosity": -1,
+        }
+        self.early_stopping_rounds = 50
+        self.num_boost_round = 1000
+        self.model = None
+
+    def _prepare_data(self, dataset):
+        """Prepare LightGBM datasets — matches LGBModel._prepare_data()."""
+        import lightgbm as lgb
+
+        ds_l = []
+        for key in ["train", "valid"]:
+            if key in dataset.segments:
+                df = dataset.prepare(
+                    key, col_set=["feature", "label"], data_key=DataHandlerLP.DK_L
+                )
+                if df.empty:
+                    raise ValueError(
+                        "Empty data from dataset, please check your dataset config."
+                    )
+                x, y = df["feature"], df["label"]
+                # Lightgbm need 1D array as its label
+                if y.values.ndim == 2 and y.values.shape[1] == 1:
+                    y = np.squeeze(y.values)
+                else:
+                    raise ValueError(
+                        "LightGBM doesn't support multi-label training"
+                    )
+                ds_l.append(
+                    (lgb.Dataset(x.values, label=y, free_raw_data=False), key)
+                )
+        return ds_l
+
+    def fit(self, dataset: DatasetH):
+        import lightgbm as lgb
+
+        ds_l = self._prepare_data(dataset)
+        ds, names = list(zip(*ds_l))
+        early_stopping_callback = lgb.early_stopping(
+            self.early_stopping_rounds
+        )
+        verbose_eval_callback = lgb.log_evaluation(period=20)
+        evals_result = {}
+        evals_result_callback = lgb.record_evaluation(evals_result)
+        self.model = lgb.train(
+            self.params,
+            ds[0],  # training dataset
+            num_boost_round=self.num_boost_round,
+            valid_sets=ds,
+            valid_names=names,
+            callbacks=[
+                early_stopping_callback,
+                verbose_eval_callback,
+                evals_result_callback,
+            ],
+        )
+
+    def predict(self, dataset: DatasetH, segment="test"):
+        if self.model is None:
+            raise ValueError("model is not fitted yet!")
+        x_test = dataset.prepare(
+            segment, col_set="feature", data_key=DataHandlerLP.DK_I
+        )
+        return pd.Series(self.model.predict(x_test.values), index=x_test.index)
+</new>
+</edit>
+<obs>
+Successfully replaced text in qlib/custom_model.py.
+</obs>
+<run/>
+<obs>
+Measured results — `baseline:lgbm` (`is_final,true`), seeds {42, 123, 456} and mean, per temporal regime (all metrics higher-is-better; max drawdown reported negative, closer to zero better).
+
+## csi300 (test 2017-2020)
+| seed | IC | ICIR | Rank IC | Rank ICIR | Ann. return | Max drawdown | Info ratio |
+|---|---|---|---|---|---|---|---|
+| 42 | 0.045716 | 0.363961 | 0.056853 | 0.465979 | 0.092344 | -0.05794 | 1.3473 |
+| 123 | 0.045716 | 0.363961 | 0.056853 | 0.465979 | 0.092344 | -0.05794 | 1.3473 |
+| 456 | 0.045716 | 0.363961 | 0.056853 | 0.465979 | 0.092344 | -0.05794 | 1.3473 |
+| **mean** | **0.045716** | **0.363961** | **0.056853** | **0.465979** | **0.092344** | **-0.05794** | **1.3473** |
+
+## csi300_shifted (test 2016-2018)
+| seed | IC | ICIR | Rank IC | Rank ICIR | Ann. return | Max drawdown | Info ratio |
+|---|---|---|---|---|---|---|---|
+| 42 | 0.054956 | 0.429609 | 0.063939 | 0.509556 | 0.103335 | -0.079467 | 1.2993 |
+| 123 | 0.054956 | 0.429609 | 0.063939 | 0.509556 | 0.103335 | -0.079467 | 1.2993 |
+| 456 | 0.054956 | 0.429609 | 0.063939 | 0.509556 | 0.103335 | -0.079467 | 1.2993 |
+| **mean** | **0.054956** | **0.429609** | **0.063939** | **0.509556** | **0.103335** | **-0.079467** | **1.2993** |
+
+## csi300_recent (test 2019-2020)
+| seed | IC | ICIR | Rank IC | Rank ICIR | Ann. return | Max drawdown | Info ratio |
+|---|---|---|---|---|---|---|---|
+| 42 | 0.025456 | 0.185089 | 0.043982 | 0.321687 | 0.080709 | -0.051103 | 1.1037 |
+| 123 | 0.025456 | 0.185089 | 0.043982 | 0.321687 | 0.080709 | -0.051103 | 1.1037 |
+| 456 | 0.025456 | 0.185089 | 0.043982 | 0.321687 | 0.080709 | -0.051103 | 1.1037 |
+| **mean** | **0.025456** | **0.185089** | **0.043982** | **0.321687** | **0.080709** | **-0.051103** | **1.1037** |
+</obs>
+
+### step 4 — DoubleEnsemble (sample-reweighting + feature-selection ensemble)   [slug:double-ensemble]
+
+<think>
+LightGBM did exactly what I hoped and a bit more, and its numbers tell me precisely where the next
+gain has to come from. On the long `csi300` window it is the best of the three baselines on signal —
+IC 0.0457, rank IC 0.0569 — and crucially its max drawdown is the shallowest of all, −0.0579 against
+the adaptive models' −0.09 to −0.10, with information ratio 1.35. On the far `csi300_recent` window,
+the regime that killed both adaptive models at info ratio ≈0.48, the tree does *not* die: info ratio
+1.10, annualized return 0.0807 — more than double either adaptive model's, and steady across seeds
+because it is deterministic. On `csi300_shifted` it is competitive (info ratio 1.30, slightly behind
+AdaRNN's alignment-helped 1.66 on the near window, but with a much shallower drawdown). So the
+aggregate gmean puts LGBM clearly on top (≈0.571 vs ≈0.560–0.561 for the adaptive pair), and the
+trajectory's lesson held: on this thin, noisy panel the most effective response to concept drift among
+the baselines is a strong, heavily-regularized, full-feature non-adaptive learner whose threshold-split
+inductive bias is already robust to marginal drift. But that very result tells me the tree is not
+*finished*. Two soft spots are visible in its own numbers. First, the near window: AdaRNN's explicit
+alignment beat the tree on `csi300_shifted` info ratio, so there is drift-adaptation value the single
+tree is leaving on the table where the shift is mild. Second, and more fundamentally, a single GBDT
+has no defense against the two pathologies of this data beyond its leaf penalties — it overfits the
+abundant noise (its later trees chase residuals that are largely unlearnable) and it uses *all*
+features *all* the time, so it cannot shed regime-stale factors or down-weight unlearnable samples. The
+natural next move is not to abandon the tree but to make *it* drift-robust by ensembling it
+deliberately — and that is a real, published technique that fits this exact edit surface.
+
+So the finale is to wrap the LightGBM base learner in an ensemble that is deliberate about two things a
+plain bagged or boosted GBDT leaves uniform: which *samples* each new member focuses on, and which
+*features* it may use. The framework trains members sequentially and, after each member, runs two
+modules driven by the current ensemble's per-sample loss. Let me derive both against the failure I
+just measured.
+
+Take the sample axis first, because that is where the noise pathology lives, and LGBM's behavior
+already hints at it: a single GBDT's late trees chase residuals, and on return data those residuals
+are disproportionately the unlearnable noise (a stock that jumped on an unforecastable headline has
+huge loss and nothing to learn from). The boosting reflex — weight up the high-current-loss samples —
+is therefore the *wrong sign* here: it leans into the noise and overfits harder, which is exactly why a
+single deep-boosted tree needs the enormous `lambda_l1`/`lambda_l2` to survive. I need a per-sample
+importance that distinguishes hard-*but-learnable* from hard-*because-noise*, and the scalar final loss
+cannot do it because both have high loss. The richer signal is free: a GBDT produces, for each sample,
+the *trajectory* of its loss as trees are added. A sample whose loss collapses in the first few trees
+was learned from structure the low-variance early trees could capture — transferable. A sample whose
+loss stays high and only falls late, when the model is memorizing, is noise. So the start-to-end shape
+of the loss curve separates the two. Concretely the Sample Reweighting (SR) module rank-normalizes each
+sample's loss curve down the sample axis at each iteration, averages the first 10% of iterations into
+`l_start` and the last 10% into `l_end`, and forms the curve statistic `h2 = rank(l_end / l_start)` —
+small ratio means the loss collapsed (well-behaved), large ratio means it stalled. It blends this with
+the current-ensemble error `h1` (rank-normalized) as `h = α1·h1 + α2·h2`, so it still leans toward
+residual error like boosting but the `h2` term injects the learnability discrimination that keeps it
+off pure noise. To stabilize, it bins samples by `h` into `bins_sr=10` bins and assigns a single weight
+per bin, `1/(decay^k · h_avg + 0.1)` — binning regularizes the weighting, `decay^k` (with `decay=0.5`)
+anneals the chase as members accumulate so later members reweight gently, and `+0.1` floors the
+denominator. This is the right correction to the single tree: focus each member on under-served but
+learnable samples instead of letting heavy leaf penalties bluntly suppress everything.
+
+Now the feature axis, which is where the drift pathology lives — the one the adaptive sequence models
+tried and failed to handle, and the one the single LGBM ignores by using every factor always. I want
+each successive member trained on a *different, deliberately chosen* feature subset, so the ensemble
+does not collapse onto one clique of factors that may be regime-specific. The wrong way is a single
+global importance pruning — keep the top factors once — because that bakes in the present regime and
+discards factors that will matter when the regime turns, the exact mistake that hurt `csi300_recent`.
+So the Feature Selection (FS) module measures each factor's *reliance* by permutation — shuffle its
+column, run the current ensemble, and take the standardized loss increase `g = mean(Δloss)/std(Δloss)`
+— then bins factors by `g` into `bins_fs=5` bins and samples *from every bin* at declining ratios
+(`sample_ratios=[0.8,0.7,0.6,0.5,0.4]`): keep most of the load-bearing bin but always retain a tail of
+currently-weak factors, never zero. That deliberate inclusion of dormant factors is what gives the
+ensemble exposure to relations that are quiet now but revive in a shifted regime — drift-robustness
+built on the feature axis rather than by aligning representations. It is the move the sequence models
+gestured at and could not land on a thin panel, expressed in a way the strong tree control can actually
+use.
+
+The two modules alternate off the current ensemble's loss: train member `k`, evaluate the
+ensemble-so-far on the training data to get the loss values and member `k`'s loss curve, run SR to set
+member `k+1`'s sample weights and FS to set its feature subset, train member `k+1`, repeat. The last
+member needs neither (nothing follows it). At inference the whole SR/FS apparatus is gone — `predict`
+just runs each member on its own stored feature subset and averages, weighted by `sub_weights`
+(uniform). So, like the adaptive models, all the adaptation is training-time; unlike them, the
+inference is a plain tree-ensemble average with no encoder to drift.
+
+The scaffold fit is the cleanest of the four rungs. The finale fills `custom_model.py` with qlib's
+`DEnsembleModel` (`Model`, `FeatureInt`) and *leaves the workflow at the default* `DatasetH` + Alpha158
+— the same full-158-raw-factor view the winning LGBM used, no sequence sampler, no special processors.
+`fit(dataset)` prepares train+valid via `dataset.prepare(["train","valid"], DK_L)`, then runs the
+sequential member loop with SR (`sample_reweight`) and FS (`feature_selection`); each member is a
+LightGBM booster trained by `train_submodel` on the weighted samples and selected features.
+`retrieve_loss_curve` reconstructs the per-tree per-sample loss with `model.predict(..., start_iteration,
+num_iteration=1)`. `predict` averages the members over their `sub_features`. The base LightGBM params
+are deliberately *identical to the winning LGBM baseline* — `learning_rate=0.2`, `num_leaves=210`,
+`max_depth=8`, `lambda_l1=205.6999`, `lambda_l2=580.9768`, `colsample_bytree=0.8879`,
+`subsample=0.8789` — so the finale isolates the *framework*: it is an ensemble of the exact tree that
+already won, made drift-robust by SR and FS. The DoubleEnsemble defaults are `num_models=3`,
+`enable_sr=True`, `enable_fs=True`, `alpha1=alpha2=1`, `bins_sr=10`, `bins_fs=5`, `decay=0.5`,
+`sample_ratios=[0.8,0.7,0.6,0.5,0.4]`, `sub_weights=[1,1,1]`, `epochs=28` — crucially *short* members
+(28 rounds, not the ~1000 a single GBDT used), because the ensemble, not boosting depth, does the
+variance reduction and short members resist memorizing the noise. The full module is in the answer,
+verified line-by-line against qlib's `qlib/contrib/model/double_ensemble.py`.
+
+The bar this has to clear is LGBM's real numbers, and my expectations are falsifiable against them. The
+aggregate gmean must beat LGBM's ≈0.571, or the framework added nothing. The mechanism predicts *where*
+the gain comes from: on the long `csi300` window I expect the ensemble to lift IC/rank IC modestly
+above the single tree (0.0457 / 0.0569) and, more importantly, to hold or improve the already-shallow
+−0.0579 max drawdown — the SR down-weighting of noise and FS feature diversity should make the
+portfolio at least as steady, not less. On `csi300_recent`, the drift-decisive regime, I expect the
+clearest separation from the *adaptive* models (whose 0.48 info ratio it should crush as LGBM already
+did at 1.10) and a hold-or-improve over LGBM's annualized return 0.0807 — the FS tail of dormant
+factors is precisely the exposure a far regime rewards. On `csi300_shifted`, the near window where
+AdaRNN's alignment beat the single tree, the ensemble is my chance to close that gap: I expect it to
+push the tree's 1.30 info ratio up toward or past AdaRNN's 1.66 by reweighting toward the learnable
+samples that the mild shift makes informative. The honest risk, which the numbers would expose, is
+over-thinning: with only three short members each on a sampled feature subset, the ensemble could
+*lose* a little IC on the long window relative to one deep tree if the per-member feature subsets drop
+too much signal — if `csi300` IC comes in *below* 0.0457, that is the tell that the FS ratios are too
+aggressive for a 158-factor set on this sample size. But the framework is built from the exact tree
+that won, only made deliberate about samples and features, so the expectation is a uniform-or-better
+lift across all three regimes with the drawdown held — an ensemble of the strongest control, turned
+drift-robust on the two axes the single tree left uniform. That is the endpoint I would put past the
+strongest baseline, and the `csi300` IC and the `csi300_recent` annualized return are the two numbers I
+would check first to confirm or refute it.
+</think>
+<say>
+For the finale I'm wrapping that exact LightGBM in DoubleEnsemble: a sequential ensemble that reweights samples by the shape of their loss curve and selects features per member from permutation-importance bins, making the winning tree drift-robust on both axes. This first edit puts in the DEnsembleModel header and its config.
+</say>
+<edit path="qlib/custom_model.py">
+<old>
+# EDITABLE region of custom_model.py (lines 16-103) — step 3: LightGBM model
+# =====================================================================
+# EDITABLE: CustomModel — implement your stock prediction model here
+# =====================================================================
+class CustomModel(Model):
+    """LightGBM model — faithful to qlib's official LGBModel (gbdt.py).
+
+    Hyperparameters from official benchmark:
+    examples/benchmarks/LightGBM/workflow_config_lightgbm_Alpha158.yaml
+    """
+
+    def __init__(self):
+        super().__init__()
+        # Official benchmark kwargs (passed to lgb.train via self.params)
+        self.params = {
+            "objective": "mse",
+            "colsample_bytree": 0.8879,
+</old>
+<new>
+# EDITABLE region of custom_model.py (lines 16-103) — finale: DoubleEnsemble (DEnsembleModel)
+# =====================================================================
+# EDITABLE: CustomModel — implement your stock prediction model here
+# =====================================================================
+# DoubleEnsemble (Zhang, Aggarwal, Qi, ICDM 2020, arXiv 2010.01265) wrapped around a LightGBM
+# base learner, faithful to qlib/contrib/model/double_ensemble.py (DEnsembleModel).
+import lightgbm as lgb
+from typing import Text, Union
+from qlib.model.interpret.base import FeatureInt
+from qlib.log import get_module_logger
+
+class CustomModel(Model, FeatureInt):
+    """Double Ensemble Model"""
+
+    def __init__(
+        self,
+        base_model="gbm",
+        loss="mse",
+        num_models=3,
+        enable_sr=True,
+        enable_fs=True,
+        alpha1=1.0,
+        alpha2=1.0,
+        bins_sr=10,
+        bins_fs=5,
+        decay=0.5,
+        sample_ratios=None,
+        sub_weights=None,
+        epochs=28,
+        early_stopping_rounds=None,
+        **kwargs,
+    ):
+        self.base_model = base_model  # "gbm" or "mlp", specifically, we use lgbm for "gbm"
+        self.num_models = num_models  # the number of sub-models
+        self.enable_sr = enable_sr
+        self.enable_fs = enable_fs
+        self.alpha1 = alpha1
+        self.alpha2 = alpha2
+        self.bins_sr = bins_sr
+        self.bins_fs = bins_fs
+        self.decay = decay
+        if sample_ratios is None:  # the default values for sample_ratios
+            sample_ratios = [0.8, 0.7, 0.6, 0.5, 0.4]
+        if sub_weights is None:  # the default values for sub_weights
+            sub_weights = [1] * self.num_models
+        if not len(sample_ratios) == bins_fs:
+            raise ValueError("The length of sample_ratios should be equal to bins_fs.")
+        self.sample_ratios = sample_ratios
+        if not len(sub_weights) == num_models:
+            raise ValueError("The length of sub_weights should be equal to num_models.")
+        self.sub_weights = sub_weights
+        self.epochs = epochs
+        self.logger = get_module_logger("DEnsembleModel")
+        self.logger.info("Double Ensemble Model...")
+        self.ensemble = []  # the current ensemble model, a list contains all the sub-models
+        self.sub_features = []  # the features for each sub model in the form of pandas.Index
+        self.params = {"objective": loss}
+        # Official Alpha158 CSI300 benchmark LightGBM base params (identical to the LGBM baseline),
+        # so the finale isolates the ensembling framework, not the base learner.
+        _bench = {
+            "colsample_bytree": 0.8879,
+</new>
+</edit>
+<obs>
+Successfully replaced text in qlib/custom_model.py.
+</obs>
+<note>
+Now the framework body: the sequential member loop with the SR sample-reweighting and FS feature-selection modules, and the averaged-ensemble predict.
+</note>
+<edit path="qlib/custom_model.py">
+<old>
+        }
+        self.early_stopping_rounds = 50
+        self.num_boost_round = 1000
+        self.model = None
+
+    def _prepare_data(self, dataset):
+        """Prepare LightGBM datasets — matches LGBModel._prepare_data()."""
+        import lightgbm as lgb
+
+        ds_l = []
+        for key in ["train", "valid"]:
+            if key in dataset.segments:
+                df = dataset.prepare(
+                    key, col_set=["feature", "label"], data_key=DataHandlerLP.DK_L
+                )
+                if df.empty:
+                    raise ValueError(
+                        "Empty data from dataset, please check your dataset config."
+                    )
+                x, y = df["feature"], df["label"]
+                # Lightgbm need 1D array as its label
+                if y.values.ndim == 2 and y.values.shape[1] == 1:
+                    y = np.squeeze(y.values)
+                else:
+                    raise ValueError(
+                        "LightGBM doesn't support multi-label training"
+                    )
+                ds_l.append(
+                    (lgb.Dataset(x.values, label=y, free_raw_data=False), key)
+                )
+        return ds_l
+
+    def fit(self, dataset: DatasetH):
+        import lightgbm as lgb
+
+        ds_l = self._prepare_data(dataset)
+        ds, names = list(zip(*ds_l))
+        early_stopping_callback = lgb.early_stopping(
+            self.early_stopping_rounds
+        )
+        verbose_eval_callback = lgb.log_evaluation(period=20)
+        evals_result = {}
+        evals_result_callback = lgb.record_evaluation(evals_result)
+        self.model = lgb.train(
+            self.params,
+            ds[0],  # training dataset
+            num_boost_round=self.num_boost_round,
+            valid_sets=ds,
+            valid_names=names,
+            callbacks=[
+                early_stopping_callback,
+                verbose_eval_callback,
+                evals_result_callback,
+            ],
+        )
+
+    def predict(self, dataset: DatasetH, segment="test"):
+        if self.model is None:
+            raise ValueError("model is not fitted yet!")
+        x_test = dataset.prepare(
+            segment, col_set="feature", data_key=DataHandlerLP.DK_I
+        )
+        return pd.Series(self.model.predict(x_test.values), index=x_test.index)
+</old>
+<new>
+        }
+        for _k, _v in _bench.items():
+            kwargs.setdefault(_k, _v)
+        self.params.update(kwargs)
+        self.loss = loss
+        self.early_stopping_rounds = early_stopping_rounds
+
+    def fit(self, dataset: DatasetH):
+        df_train, df_valid = dataset.prepare(
+            ["train", "valid"], col_set=["feature", "label"], data_key=DataHandlerLP.DK_L
+        )
+        if df_train.empty or df_valid.empty:
+            raise ValueError("Empty data from dataset, please check your dataset config.")
+        x_train, y_train = df_train["feature"], df_train["label"]
+        # initialize the sample weights
+        N, F = x_train.shape
+        weights = pd.Series(np.ones(N, dtype=float))
+        # initialize the features
+        features = x_train.columns
+        pred_sub = pd.DataFrame(np.zeros((N, self.num_models), dtype=float), index=x_train.index)
+        # train sub-models
+        for k in range(self.num_models):
+            self.sub_features.append(features)
+            self.logger.info("Training sub-model: ({}/{})".format(k + 1, self.num_models))
+            model_k = self.train_submodel(df_train, df_valid, weights, features)
+            self.ensemble.append(model_k)
+            # no further sample re-weight and feature selection needed for the last sub-model
+            if k + 1 == self.num_models:
+                break
+
+            self.logger.info("Retrieving loss curve and loss values...")
+            loss_curve = self.retrieve_loss_curve(model_k, df_train, features)
+            pred_k = self.predict_sub(model_k, df_train, features)
+            pred_sub.iloc[:, k] = pred_k
+            pred_ensemble = (pred_sub.iloc[:, : k + 1] * self.sub_weights[0 : k + 1]).sum(axis=1) / np.sum(
+                self.sub_weights[0 : k + 1]
+            )
+            loss_values = pd.Series(self.get_loss(y_train.values.squeeze(), pred_ensemble.values))
+
+            if self.enable_sr:
+                self.logger.info("Sample re-weighting...")
+                weights = self.sample_reweight(loss_curve, loss_values, k + 1)
+
+            if self.enable_fs:
+                self.logger.info("Feature selection...")
+                features = self.feature_selection(df_train, loss_values)
+
+    def train_submodel(self, df_train, df_valid, weights, features):
+        dtrain, dvalid = self._prepare_data_gbm(df_train, df_valid, weights, features)
+        evals_result = dict()
+
+        callbacks = [lgb.log_evaluation(20), lgb.record_evaluation(evals_result)]
+        if self.early_stopping_rounds:
+            callbacks.append(lgb.early_stopping(self.early_stopping_rounds))
+            self.logger.info("Training with early_stopping...")
+
+        model = lgb.train(
+            self.params,
+            dtrain,
+            num_boost_round=self.epochs,
+            valid_sets=[dtrain, dvalid],
+            valid_names=["train", "valid"],
+            callbacks=callbacks,
+        )
+        evals_result["train"] = list(evals_result["train"].values())[0]
+        evals_result["valid"] = list(evals_result["valid"].values())[0]
+        return model
+
+    def _prepare_data_gbm(self, df_train, df_valid, weights, features):
+        x_train, y_train = df_train["feature"].loc[:, features], df_train["label"]
+        x_valid, y_valid = df_valid["feature"].loc[:, features], df_valid["label"]
+
+        # Lightgbm need 1D array as its label
+        if y_train.values.ndim == 2 and y_train.values.shape[1] == 1:
+            y_train, y_valid = np.squeeze(y_train.values), np.squeeze(y_valid.values)
+        else:
+            raise ValueError("LightGBM doesn't support multi-label training")
+
+        dtrain = lgb.Dataset(x_train, label=y_train, weight=weights)
+        dvalid = lgb.Dataset(x_valid, label=y_valid)
+        return dtrain, dvalid
+
+    def sample_reweight(self, loss_curve, loss_values, k_th):
+        """
+        the SR module of Double Ensemble
+        :param loss_curve: the shape is NxT
+        the loss curve for the previous sub-model, where the element (i, t) if the error on the i-th sample
+        after the t-th iteration in the training of the previous sub-model.
+        :param loss_values: the shape is N
+        the loss of the current ensemble on the i-th sample.
+        :param k_th: the index of the current sub-model, starting from 1
+        :return: weights
+        the weights for all the samples.
+        """
+        # normalize loss_curve and loss_values with ranking
+        loss_curve_norm = loss_curve.rank(axis=0, pct=True)
+        loss_values_norm = (-loss_values).rank(pct=True)
+
+        # calculate l_start and l_end from loss_curve
+        N, T = loss_curve.shape
+        part = np.maximum(int(T * 0.1), 1)
+        l_start = loss_curve_norm.iloc[:, :part].mean(axis=1)
+        l_end = loss_curve_norm.iloc[:, -part:].mean(axis=1)
+
+        # calculate h-value for each sample
+        h1 = loss_values_norm
+        h2 = (l_end / l_start).rank(pct=True)
+        h = pd.DataFrame({"h_value": self.alpha1 * h1 + self.alpha2 * h2})
+
+        # calculate weights
+        h["bins"] = pd.cut(h["h_value"], self.bins_sr)
+        h_avg = h.groupby("bins", group_keys=False, observed=False)["h_value"].mean()
+        weights = pd.Series(np.zeros(N, dtype=float))
+        for b in h_avg.index:
+            weights[h["bins"] == b] = 1.0 / (self.decay**k_th * h_avg[b] + 0.1)
+        return weights
+
+    def feature_selection(self, df_train, loss_values):
+        """
+        the FS module of Double Ensemble
+        :param df_train: the shape is NxF
+        :param loss_values: the shape is N
+        the loss of the current ensemble on the i-th sample.
+        :return: res_feat: in the form of pandas.Index
+
+        """
+        x_train, y_train = df_train["feature"], df_train["label"]
+        features = x_train.columns
+        N, F = x_train.shape
+        g = pd.DataFrame({"g_value": np.zeros(F, dtype=float)})
+        M = len(self.ensemble)
+
+        # shuffle specific columns and calculate g-value for each feature
+        x_train_tmp = x_train.copy()
+        for i_f, feat in enumerate(features):
+            x_train_tmp.loc[:, feat] = np.random.permutation(x_train_tmp.loc[:, feat].values)
+            pred = pd.Series(np.zeros(N), index=x_train_tmp.index)
+            for i_s, submodel in enumerate(self.ensemble):
+                pred += (
+                    pd.Series(
+                        submodel.predict(x_train_tmp.loc[:, self.sub_features[i_s]].values), index=x_train_tmp.index
+                    )
+                    / M
+                )
+            loss_feat = self.get_loss(y_train.values.squeeze(), pred.values)
+            g.loc[i_f, "g_value"] = np.mean(loss_feat - loss_values) / (np.std(loss_feat - loss_values) + 1e-7)
+            x_train_tmp.loc[:, feat] = x_train.loc[:, feat].copy()
+
+        # one column in train features is all-nan # if g['g_value'].isna().any()
+        g["g_value"].replace(np.nan, 0, inplace=True)
+
+        # divide features into bins_fs bins
+        g["bins"] = pd.cut(g["g_value"], self.bins_fs)
+
+        # randomly sample features from bins to construct the new features
+        res_feat = []
+        sorted_bins = sorted(g["bins"].unique(), reverse=True)
+        for i_b, b in enumerate(sorted_bins):
+            b_feat = features[g["bins"] == b]
+            num_feat = int(np.ceil(self.sample_ratios[i_b] * len(b_feat)))
+            res_feat = res_feat + np.random.choice(b_feat, size=num_feat, replace=False).tolist()
+        return pd.Index(set(res_feat))
+
+    def get_loss(self, label, pred):
+        if self.loss == "mse":
+            return (label - pred) ** 2
+        else:
+            raise ValueError("not implemented yet")
+
+    def retrieve_loss_curve(self, model, df_train, features):
+        if self.base_model == "gbm":
+            num_trees = model.num_trees()
+            x_train, y_train = df_train["feature"].loc[:, features], df_train["label"]
+            # Lightgbm need 1D array as its label
+            if y_train.values.ndim == 2 and y_train.values.shape[1] == 1:
+                y_train = np.squeeze(y_train.values)
+            else:
+                raise ValueError("LightGBM doesn't support multi-label training")
+
+            N = x_train.shape[0]
+            loss_curve = pd.DataFrame(np.zeros((N, num_trees)))
+            pred_tree = np.zeros(N, dtype=float)
+            for i_tree in range(num_trees):
+                pred_tree += model.predict(x_train.values, start_iteration=i_tree, num_iteration=1)
+                loss_curve.iloc[:, i_tree] = self.get_loss(y_train, pred_tree)
+        else:
+            raise ValueError("not implemented yet")
+        return loss_curve
+
+    def predict(self, dataset: DatasetH, segment: Union[Text, slice] = "test"):
+        if self.ensemble is None:
+            raise ValueError("model is not fitted yet!")
+        x_test = dataset.prepare(segment, col_set="feature", data_key=DataHandlerLP.DK_I)
+        pred = pd.Series(np.zeros(x_test.shape[0]), index=x_test.index)
+        for i_sub, submodel in enumerate(self.ensemble):
+            feat_sub = self.sub_features[i_sub]
+            pred += (
+                pd.Series(submodel.predict(x_test.loc[:, feat_sub].values), index=x_test.index)
+                * self.sub_weights[i_sub]
+            )
+        pred = pred / np.sum(self.sub_weights)
+        return pred
+
+    def predict_sub(self, submodel, df_data, features):
+        x_data = df_data["feature"].loc[:, features]
+        pred_sub = pd.Series(submodel.predict(x_data.values), index=x_data.index)
+        return pred_sub
+
+    def get_feature_importance(self, *args, **kwargs) -> pd.Series:
+        """get feature importance
+
+        Notes
+        -----
+            parameters reference:
+            https://lightgbm.readthedocs.io/en/latest/pythonapi/lightgbm.Booster.html?highlight=feature_importance#lightgbm.Booster.feature_importance
+        """
+        res = []
+        for _model, _weight in zip(self.ensemble, self.sub_weights):
+            res.append(pd.Series(_model.feature_importance(*args, **kwargs), index=_model.feature_name()) * _weight)
+        return pd.concat(res, axis=1, sort=False).sum(axis=1).sort_values(ascending=False)
+</new>
+</edit>
+<obs>
+Successfully replaced text in qlib/custom_model.py.
+</obs>
+

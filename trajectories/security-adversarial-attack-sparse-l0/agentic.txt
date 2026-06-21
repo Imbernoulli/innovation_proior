@@ -1,0 +1,1420 @@
+<meta task="security-adversarial-attack-sparse-l0" domain="Security" file="torchattacks/bench/custom_attack.py" model_format="qwen3" edit_tool="str_replace"/>
+
+<system>
+You are a research engineer improving a model on a fixed ML task. You work by editing the model code and running experiments. Think carefully before each change. You have these tools:
+- str_replace(path, old_str, new_str): replace the unique occurrence of old_str with new_str.
+- create(path, file_text): create a new file.
+- run_experiment(): train + evaluate the current code under the fixed budget; returns metrics.
+Make one tool call at a time. After editing, call run_experiment() to measure your method.
+</system>
+
+<user>
+## Research question
+
+Fool an image classifier under a strict **`L0`** budget: change at most `pixels` *spatial* pixels of a
+correctly classified image (a pixel counts as changed if *any* of its channels moves), but each changed
+pixel may take any color in `[0,1]`. This is the opposite trade from the familiar dense `L_inf`/`L_2`
+attacks, which cap the *magnitude* of a change spread across every pixel; here the count of touched
+pixels is capped and the amplitude is free. The single thing being designed is the attack procedure
+`run_attack` — which pixels to move, and to what — under a fixed budget `pixels = 24` (the canonical
+Sparse-RS CIFAR-10 `L0` budget). Everything else — the target models, the data, the validity checks — is
+frozen.
+
+The setting is deliberately hard: the targets are *adversarially-robust* `L2` models from the
+RobustBench zoo, not undefended networks. On an undefended classifier a strong sparse attack saturates
+at ~100% trivially, so the informative regime — the one that actually ranks attacks — is robust models,
+where the success rates spread out across the whole `[0,1]` range.
+
+## Prior art before the first rung (the sparse-attack lineage)
+
+The first rung reacts to the dense-attack orthodoxy and to the handful of methods that already tried to
+make an attack *sparse*. These precede the ladder; each leaves a gap the ladder's rungs answer.
+
+- **Box-constrained `L-BFGS` (Szegedy et al. 2014).** Minimize `||r||_2` subject to `f(x+r)=target`
+  and `x+r in [0,1]`, by line-searching a penalty constant. First to find imperceptible adversarial
+  examples and transferability. Gap: the `L2` penalty has no incentive to zero coordinates, so the
+  perturbation is *dense* — exactly the wrong shape for an `L0` budget — and it runs a heavy
+  per-example optimization.
+- **Fast gradient sign method (Goodfellow et al. 2015).** One step `eps*sign(grad_x J)`. Fast, with a
+  clean linear story for why many tiny coordinated changes sum to a large logit shift. Gap: the sign
+  step writes a nonzero into *every* coordinate — the densest possible perturbation under `L_inf`, the
+  opposite of sparse — and it targets the loss, not a chosen support.
+- **Class saliency maps (Simonyan et al. 2014).** Backprop a class score to the input,
+  `M_ij = max_c |(dS_c/dI)_{ijc}|`, to highlight which pixels matter. Gap: a *visualization* — single
+  class, magnitude-only (sign-blind), no notion of converting one class to another — not an attack
+  procedure, but it plants the idea that per-feature, per-class input sensitivity is the right object.
+- **DeepFool (Moosavi-Dezfooli et al. 2016).** Iteratively walk to the nearest *linearized* decision
+  boundary with a minimal `L2` step. Gap: dense `L2` again; but its local-linear boundary model is the
+  geometric engine a later sparse method reuses.
+
+What these share is the crack the ladder pries open: they all bound a *norm* and let the support run
+free, and most read back a single loss gradient. A genuine `L0` attack must instead *select* a tiny set
+of coordinates — a discrete, combinatorial choice on top of the continuous "to what value" choice — and
+several of them must do it through scores alone, because the cheapest realistic threat model never sees
+the weights.
+
+## The fixed substrate
+
+A single evaluation harness (`bench/run_eval.py`) is frozen and must not be touched. It: loads one
+adversarially-robust `L2` CIFAR-10 model from the RobustBench zoo (`Rebuffi-R18-L2`, `Augustin-L2`,
+`Engstrom-L2`); collects up to **150** samples the model classifies correctly on clean input; passes a
+**fresh deep copy** of the model to the attack (so user code cannot tamper with the scoring model's
+weights, BatchNorm stats, or hooks); runs `run_attack`; then validates every output and scores it. A
+returned image is counted as a *failure* (the sample stays robust) unless it is finite, lies in
+`[0,1]` (within `1e-6`), **and** changes at most `pixels` spatial pixels — where a pixel is "changed" iff
+`((adv - x).abs() > 1e-5).any(dim=channels)`. The reported numbers are `clean_acc` (always 1.0 by
+construction), `robust_acc` (fraction still correct, invalid outputs included), and the headline
+`asr = 1 - robust_acc`. Higher ASR is stronger. The attack may use full model access including gradients
+(the deep copy is differentiable); the budget, not the access, is the constraint.
+
+## The editable interface
+
+Exactly one region is editable — the body of `run_attack` in `torchattacks/bench/custom_attack.py`
+(the file's lines 7–23). Every rung on the ladder is a fill of this same contract:
+
+```
+run_attack(model, images, labels, pixels, device, n_classes) -> adv_images
+```
+
+`images` is `(N, C, H, W)` in `[0,1]` on `device`; `labels` is `(N,)`; `pixels` is the `L0` budget
+(24); `n_classes` is 10. The return must be the same shape, in `[0,1]`, and respect the budget. The
+baselines `onepixel`, `sparsefool`, `jsma`, and `pixle` are thin wrappers around the reference
+implementations in `torchattacks`; `sparse_rs` is inlined because `torchattacks` has no Sparse-RS. Each
+rung replaces exactly this function body and nothing else.
+
+The starting point is the scaffold default: a **no-op** attack that returns the clean image untouched
+(ASR 0 by construction). The ladder fills it in.
+
+```python
+import torch
+import torch.nn as nn
+
+# =====================================================================
+# EDITABLE: implement run_attack below
+# =====================================================================
+def run_attack(
+    model: nn.Module,
+    images: torch.Tensor,
+    labels: torch.Tensor,
+    pixels: int,
+    device: torch.device,
+    n_classes: int,
+) -> torch.Tensor:
+    """
+    Sparse L0 adversarial attack.
+    images: (N, C, H, W) in [0, 1] on device. labels: (N,) on device.
+    pixels: max number of modified spatial pixels (H, W) per sample.
+    n_classes: 10 for CIFAR-10, 100 for CIFAR-100.
+    Returns adv_images satisfying an L0 pixel budget validated by evaluator.
+    """
+    _ = (model, labels, pixels, device, n_classes)
+    return images.clone()
+
+# =====================================================================
+# END EDITABLE REGION
+# =====================================================================
+```
+
+## Evaluation settings
+
+Three CIFAR-10 settings, each a different adversarially-robust `L2` RobustBench model:
+`Rebuffi-R18-L2` (the exact model the Sparse-RS L0 evaluation uses), `Augustin-L2`, and `Engstrom-L2`
+(hidden). One seed, 42. Budget `pixels = 24`, up to 150 correctly-classified samples per model. The
+single metric is **ASR** (`asr = 1 - robust_acc`) per model, higher is better; invalid outputs (shape,
+range, non-finite, or budget violation) score as attack failures. Wall-clock per model is reported but
+not scored.
+
+The editable model code is in `torchattacks/bench/custom_attack.py`:
+```python
+import numpy as np
+import torch
+from torch.utils.data import DataLoader, TensorDataset
+from torchvision import datasets, transforms
+
+from custom_attack import run_attack
+
+
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser()
+    # RobustBench L2-robust CIFAR-10 model-zoo key (Croce et al., AAAI 2022
+    # canonical sparse-L0 threat model: k=24, untargeted, robust models).
+    parser.add_argument("--model-name", type=str, required=True)
+    parser.add_argument("--model-dir", type=str, default="/data/robustbench_models")
+    parser.add_argument("--data-dir", type=str, required=True)
+    parser.add_argument("--pixels", type=int, default=24)
+    parser.add_argument("--n-samples", type=int, default=150)
+```
+Improve it. Derive your method, edit the code, then run_experiment().
+</user>
+
+### step 1 — Pixle (pixel-rearrangement, black-box)   [slug:pixle]
+
+<think>
+I have to fill the `run_attack` body, and the harness gives me full model access — gradients are on the
+table — but I want to start from the cheapest, most conservative thing that is still a real sparse
+attack, so I know what the floor looks like before I spend any complexity. The cheapest realistic threat
+model never differentiates the network at all; it only feeds in an image and reads back the probability
+vector. So the first rung is the *black-box, query-only* attack that needs nothing but `model(x)`. Among
+the sparse attacks that live in that regime, the one that is structurally the leanest — no population, no
+gradient estimation, one forward pass per probe — is the pixel-rearrangement attack, and that is where I
+start.
+
+The idea is worth stating precisely because it is what makes this rung so cheap. A natural image already
+contains, somewhere inside it, a huge palette of pixel values — bright pixels, dark pixels, every hue the
+scene happens to hold. So to drop a high-contrast, out-of-place pixel onto a sensitive location, I do not
+need to *synthesize* a new color; I can *copy* an existing pixel's value onto the target. That single
+observation collapses the whole search. The other black-box sparse attack I know, the differential-
+evolution one-pixel attack, has to search a continuous `[0,1]^c` color cube *per modified pixel* on top
+of choosing the location — three real dimensions of color for every pixel — and it evaluates an entire
+population every generation, hundreds of forward passes before it even takes a step. Rearranging deletes
+the color search entirely: I am no longer asking "what new color do I paint this pixel," only "which
+existing pixel's value do I copy here." The continuous per-pixel color dimension vanishes, the search
+becomes positions-times-positions, and I get two things for free that I would otherwise have to enforce
+by hand — every value I write is by construction already a legal value in `[0,1]`, so I never clip or go
+out of range, and the `L0` count is clean because the only pixels that change are the destinations I
+overwrite.
+
+There is a second reason this is a good *floor* and not just a cheap one: it borrows the lesson from the
+query-efficient dense black-box attacks that *localized* updates work far better than scattered ones,
+because convolutional networks are unusually sensitive to a few *neighboring* pixels changed together with
+high contrast. So the rearrangement does not move random scattered pixels; it copies a small *contiguous*
+source patch. That keeps the attack honest as a baseline — it is using the one structural prior that black-
+box sparse attacks are known to exploit — while still being the leanest possible instantiation of it.
+
+So the candidate I sample is: take a small contiguous *source patch* of the image (an origin plus tiny
+side lengths), and for each source pixel pick a *destination* coordinate where its value gets written;
+overwrite the destinations, leave everything else untouched. Because the patch is small only a few pixels
+change per step, which keeps me sparse; because I copy existing values I stay in range. The destinations
+I choose by the cheapest possible map — `pixel_mapping="random"`: each source pixel goes to a uniformly
+random target location, no extra queries spent deciding where. The outer search is plain accept-if-
+improves random search with restarts: keep a committed image, sample a candidate built off it, evaluate
+the true-class probability, record a candidate only if it lowers that probability, and at the restart
+boundary move the committed image to the best recorded candidate; stop the instant the prediction flips.
+One evaluation per probe, no population — this is the leanest sparse attack there is, and that is exactly
+why it belongs on the bottom rung.
+
+Now I have to be honest about how this rung is configured *in this task*, because the scaffold's choices
+are not the paper's defaults and they matter for what I should expect. The harness wraps the
+`torchattacks` implementation directly, and the fill I land is the literal call:
+`Pixle(x_dimensions=(1, 2), y_dimensions=(1, 2), pixel_mapping="random", restarts=3, max_iterations=5,
+update_each_iteration=False)`. Read those numbers against the budget of 24 pixels and the picture is
+stark. The patch side lengths are drawn from `(1, 2)` in *both* dimensions, so each sampled patch is one
+to four pixels — a single pixel up to a `2x2` block. With `restarts=3` and `max_iterations=5` the attack
+gets, at most, on the order of fifteen candidate evaluations per image before it gives up, and it commits
+the running best only at the three restart boundaries (`update_each_iteration=False`, the restart-
+iterative variant, not the greedy one). Fifteen random tiny patches, copied to random destinations, on a
+*robust* model. That is an extremely thin search. The budget allows 24 changed pixels, but this
+configuration will rarely even approach it — most candidates touch one to four pixels and the loop ends
+long before twenty-four are usefully placed. This is the floor by design: the leanest attack, given the
+fewest queries, against the hardest targets.
+
+Let me reason about what this rung must do, because the entire point of running it is to set the bar the
+next rung has to clear. Random search throws away everything it learns — each probe is independent, it
+never uses the geometry of past probes to concentrate where the boundary turned out to be close. On an
+*undefended* network that is fine: vulnerable pixels are dense, a random patch lands on one quickly, and
+even a thin search saturates. But these are `L2`-adversarially-trained models, whose entire training
+objective was to *flatten* the loss surface in a neighborhood of each input — to make exactly the local,
+few-pixel sensitivities that a random-search attack relies on as scarce and as small as possible. So a
+scattershot of fifteen tiny random patches is searching for rare needles in a haystack that was
+deliberately built to hide them. I expect this rung to almost entirely fail: a near-zero success rate on
+all three models, with whatever handful of successes come from the easiest samples where even a robust
+model left a single fragile pixel. The random mapping is the weakest link — it spends no queries
+deciding *where* to put the out-of-place pixel, so against a robust model it is essentially hoping to hit
+a sensitive location by luck, fifteen times, and luck against a flattened surface is thin.
+
+That diagnosis already points at the next rung. If random rearrangement fails because it never uses any
+signal about *which* pixels matter, the obvious next move is an attack that *does* compute a per-pixel
+importance — even a crude one — and spends its budget on the pixels that score highest, instead of
+sampling locations blind. That is the direction the ladder climbs from here. But first I need the number,
+because "almost entirely fails" has to become a measured floor before the next rung can be said to beat
+it.
+
+To make this concrete as the literal scaffold edit: where the default `run_attack` returned the clean
+image untouched (ASR 0 by construction), this rung instantiates `torchattacks.Pixle` with the tiny-patch,
+random-mapping, restart-iterative configuration above and returns `attack(images, labels)`. The
+`pixels`, `device`, and `n_classes` arguments are unused — Pixle's own patch-size and budget knobs govern
+sparsity, and the harness validates the `L0` count after the fact, rejecting any sample that somehow
+exceeds 24. The full scaffold module is in the answer. What I am watching for: a success rate close to
+zero across `Rebuffi-R18-L2`, `Augustin-L2`, and `Engstrom-L2`, confirming that a blind, query-starved
+sparse search is the wrong tool against robust models — and giving me the floor the rest of the ladder is
+measured against.
+
+The causal chain in one breath: I want the cheapest real sparse attack as the floor → the leanest is
+black-box, query-only, and the rearrangement trick (copy existing pixel values instead of searching a
+color cube) makes it leaner still, killing the continuous color dimension and guaranteeing in-range,
+budget-clean candidates → wrapped in accept-if-improves random search with restarts, configured here with
+one-to-four-pixel patches, random destinations, and ~15 evaluations per image → against `L2`-robust
+models whose surfaces were trained flat, a blind query-starved search should almost entirely fail,
+setting a near-zero floor and pointing the next rung at *using* per-pixel importance instead of guessing
+locations. So let me write the floor in.
+</think>
+<say>
+Starting at the floor with Pixle, the leanest black-box sparse attack: this edit fills `run_attack` with a `torchattacks.Pixle` instance (tiny 1–4 pixel patches, random destination mapping, restart-iterative) that copies existing pixel values onto random locations and returns the perturbed images.
+</say>
+<edit path="torchattacks/bench/custom_attack.py">
+<old>
+import numpy as np
+import torch
+from torch.utils.data import DataLoader, TensorDataset
+from torchvision import datasets, transforms
+
+from custom_attack import run_attack
+
+
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser()
+    # RobustBench L2-robust CIFAR-10 model-zoo key (Croce et al., AAAI 2022
+    # canonical sparse-L0 threat model: k=24, untargeted, robust models).
+    parser.add_argument("--model-name", type=str, required=True)
+    parser.add_argument("--model-dir", type=str, default="/data/robustbench_models")
+    parser.add_argument("--data-dir", type=str, required=True)
+    parser.add_argument("--pixels", type=int, default=24)
+    parser.add_argument("--n-samples", type=int, default=150)
+</old>
+<new>
+def run_attack(
+    model: nn.Module,
+    images: torch.Tensor,
+    labels: torch.Tensor,
+    pixels: int,
+    device: torch.device,
+    n_classes: int,
+) -> torch.Tensor:
+    import torchattacks
+
+    _ = (pixels, device, n_classes)
+    model.eval()
+    attack = torchattacks.Pixle(
+        model,
+        x_dimensions=(1, 2),
+        y_dimensions=(1, 2),
+        pixel_mapping="random",
+        restarts=3,
+        max_iterations=5,
+        update_each_iteration=False,
+    )
+    return attack(images, labels)
+</new>
+</edit>
+<obs>
+Successfully replaced text in torchattacks/bench/custom_attack.py.
+</obs>
+<run/>
+<obs>
+Measured results — `baseline:pixle` (`is_final,true`), seed 42. Metric: ASR (higher is stronger).
+
+| model | seed | asr |
+|---|---|---|
+| Rebuffi-R18-L2 | 42 | 0.006667 |
+| Augustin-L2 | 42 | 0.020000 |
+| Engstrom-L2 | 42 | 0.006667 |
+| **mean** | | **0.011111** |
+</obs>
+
+### step 2 — JSMA (Jacobian saliency map, white-box)   [slug:jsma]
+
+<think>
+The Pixle floor came back almost exactly as I feared, and the numbers tell me *why* in detail.
+`asr = 0.0067` on `Rebuffi-R18-L2`, `0.020` on `Augustin-L2`, `0.0067` on `Engstrom-L2` — a mean of
+about `0.011`. That is one or two successes out of 150 on two of the three models, three on the third.
+This is not noise around some real signal; it is a search that essentially never found anything. And the
+diagnosis is precise: Pixle spends *no* information deciding which pixels to touch. With
+`pixel_mapping="random"` it copies an existing pixel value onto a *uniformly random* destination, and
+with only ~15 evaluations per image it gets fifteen blind throws. On an undefended network that is
+enough, because fragile pixels are everywhere; on these `L2`-adversarially-trained models, whose whole
+training objective was to flatten the loss surface in a neighborhood of each input, the fragile pixels
+are scarce and small, and fifteen random throws almost never land on one. The Augustin model being the
+softest of the three (`0.020` versus `0.0067`) is consistent with that reading — it is the least robust
+target, so blind luck pays off slightly more often — but "slightly more often than essentially never" is
+still essentially never. The lesson is unambiguous: against robust models I cannot guess locations. I
+have to *compute* which pixels matter and spend my budget on them.
+
+So the next rung has to introduce a per-pixel importance signal. The harness hands me full model access,
+including gradients, so I no longer have to stay black-box — and the cheapest way to turn a gradient into
+a *sparse* attack is the saliency-map idea. The reflex from the dense world is to read one loss gradient,
+but that collapses the whole output vector and the label into a single scalar `J` and gives me one
+direction over all pixels — useful for a dense `L_inf` step, useless for *selecting* a tiny support. What
+I actually want, and what the saliency construction keeps, is the full sensitivity of *every* output to
+*every* input feature: the Jacobian `dF_j/dx_i`, the forward derivative. It is per-feature *and*
+per-class, and crucially it keeps the *sign*. With it I can ask, for each individual pixel, the targeted
+question that a single loss gradient cannot express: does pushing this pixel raise some chosen class while
+dragging the others down? That is exactly the question a sparse, label-flipping attack lives on.
+
+Let me make sure I can actually compute the forward derivative under this threat model before I lean on
+it, because if I cannot it is a fantasy. Each entry `dF_j/dx_i` is the derivative of an *output* (a
+logit) with respect to an *input feature*, and the chain rule threads it through every layer: it is the
+activation derivative at each neuron times the weighted sum of the previous layer's input-derivatives,
+recursive in depth, with base case `dx/dx_i = e_i`. Every term — weights, biases, activations at the
+current image, activation derivatives — is available with full model access, and in practice I do not
+hand-roll the recursion: each row `j` of the Jacobian is one backward pass with the output seeded at
+neuron `j`, so the whole `n_classes x num_features` matrix costs ten backward passes on CIFAR-10. That
+is cheap, and it is exactly the white-box capability Pixle declined to use.
+
+Now set up the targeted saliency precisely, because the both-signs structure is the whole point. To
+flip the label toward a target class `t`, a useful feature, when I increase it, must do two things at
+once: raise the target output (`dF_t/dx_i > 0`) and lower the rest (`sum_{j!=t} dF_j/dx_i < 0`). A
+feature that fails either test is useless or counterproductive, so it scores zero; among features passing
+both, the score is the product `(dF_t/dx_i) * |sum_{j!=t} dF_j/dx_i|`, large when target-help and
+others-hurt are both large. The product, not a sum, is deliberate: a sum would let a huge target-
+derivative paper over a near-zero others-effect, selecting a feature that pushes the target up while
+doing nothing to suppress the competitors — which on a robust model is precisely a feature that wastes
+one of my 24 pixels. The product demands *both* be substantial, and the absolute value on the others-sum
+turns "more negative (more helpful)" into "higher score" once the sign gate has already passed. One subtlety pins down a real choice: the two conditions only carry
+independent information if I differentiate the *logits*, not the softmax probabilities — the probabilities
+sum to one, so raising one mechanically drops the rest and the gate becomes vacuous, and the softmax's
+saturated derivatives flatten the ranking. On the logits the outputs are unconstrained, so requiring
+*both* signs genuinely selects the rare favorable features. And because a single feature is rarely
+favorable on both axes — most pixels strongly help the target but slightly help a competitor too, and get
+gated out — the saliency search modifies *two* features at a time, letting one pixel's strongly-negative
+others-sum compensate the other's slightly-positive one. Each selected feature is saturated to its
+extreme in one shot (`theta = +1`, increasing being more reliable than decreasing because adding
+intensity is more confidently misclassified than removing it), then dropped from the search domain
+because a saturated pixel has nothing left to give. Recompute the Jacobian every iteration, because the
+network is non-linear and the sensitivities shift after every move, and stop when the prediction reaches
+the target or the feature budget is spent.
+
+Now the part that matters most for *this* task: how the harness actually configures JSMA, because it
+diverges from the textbook in two consequential ways, and both are bug-fixes that a naive fill would get
+wrong. First, `torchattacks.JSMA` is *targeted-only* by construction — it needs a target class per
+sample. The textbook choice is a fixed shift like `(y+1) % n_classes`, but that is a weak target: forcing
+the image toward an arbitrary neighbor class can be far harder than just pushing it off its own class,
+and on a robust model "harder target" means "fails more." The harness instead calls
+`set_mode_targeted_least_likely`, which picks, per sample, the class the model currently rates *least*
+likely as the attack target. That sounds backwards until you see it: a *least-likely* target is the
+strongest possible *untargeted* proxy here, because driving probability mass toward the class the model is
+most confident is wrong is the most aggressive way to collapse the true class. It is the right adaptation
+of a targeted-only primitive to an untargeted success metric, and it works for any `n_classes`.
+
+Second — and this is the failure mode the harness explicitly guards against — the `L0` budget. JSMA
+counts in *feature* space: `torchattacks` computes `num_features = C*H*W = 3*32*32 = 3072` on CIFAR and
+sets `max_iters = ceil(num_features * gamma / 2)`, modifying two features per iteration, so the total
+features it can touch is `num_features * gamma`. A spatial pixel is counted as changed if *any* of its
+three channels moves, so touching `num_features * gamma` features can cover up to that many *distinct
+spatial pixels*. If `gamma` is set carelessly — say a constant meant as "10/1024" — the attack can
+perturb ~30 features and therefore up to ~30 distinct pixels, blowing past the budget; the harness then
+rejects *every* such sample as invalid and ASR collapses to zero. The fix the edit lands is
+`gamma = pixels / (C*H*W) = 24 / 3072`, so `max_iters = ceil(24/2) = 12` iterations, `12 * 2 = 24`
+features touched at most, which upper-bounds the distinct spatial pixels by 24 — exactly the budget. This
+is the literal scaffold edit: `JSMA(model, theta=1.0, gamma=pixels/num_features)`, then
+`set_mode_targeted_least_likely(quiet=True)`, then `attack(images, labels)`. The full module is in the
+answer. Getting `gamma` right is not a tuning nicety here; it is the difference between a valid attack and
+one the harness throws out wholesale — and it is precisely the budget bookkeeping that a same-named paper
+fill would miss.
+
+So where does that leave my expectations against the Pixle floor? JSMA is a genuine step up on the axis
+Pixle failed: it *uses* a per-pixel importance signal instead of guessing locations, and it uses the
+gradient the harness now lets me read. It should beat `0.011` — placing 24 saturated pixels chosen by
+forward-derivative saliency is a far better bet than fifteen random patch throws. But I am not expecting a
+large number, and the reason is structural to *this* setting. JSMA's saliency is a *first-order, local*
+quantity computed at the clean image, and it is greedy with no backtracking: it commits to the
+best-scoring pair, saturates them, recomputes, and repeats, never reconsidering a committed pixel. On a
+robust `L2` model the first-order signal is exactly what training was hardened against — the gradient is
+small and the both-signs gate finds few features that clear it — so the greedy walk is choosing among weak
+candidates and can stall in a local optimum where no next pair looks good even though a different support
+would have worked. There is also a real risk that on the hardest model the least-likely target is still
+too hard to reach within 12 iterations, in which case those samples simply fail. My falsifiable
+expectation: JSMA's mean ASR clears the Pixle floor of `0.011` — anything that *uses* saliency should —
+but lands low, somewhere in the few-percent range, and stays well short of a search method that can
+escape local optima. If it comes back only marginally above Pixle, the diagnosis for the next rung is
+already written: greedy first-order saliency is too brittle on robust surfaces, and I need either a richer
+gradient move that does not commit irrevocably, or a search that can reconsider.
+
+The delta from the previous rung, concretely: where Pixle returned `attack(images, labels)` from a
+random-mapping `Pixle` instance and scored `0.011`, this rung returns `attack(images, labels)` from a
+`JSMA` instance with `gamma = pixels/(C*H*W)` and a least-likely target — trading a blind black-box
+random search for a white-box, saliency-guided, budget-exact greedy support selection. I expect it to beat
+the floor by *using* the gradient Pixle ignored, while exposing the next weakness — the brittleness of a
+greedy first-order signal against models trained to flatten exactly that signal. Let me swap in the JSMA fill.
+</think>
+<say>
+Climbing to JSMA, a white-box Jacobian-saliency attack that *computes* which pixels matter instead of guessing: this edit replaces Pixle with `torchattacks.JSMA`, sets `gamma = pixels/(C*H*W)` so at most 24 features (hence 24 spatial pixels) are touched, and targets each sample's least-likely class.
+</say>
+<edit path="torchattacks/bench/custom_attack.py">
+<old>
+
+    _ = (pixels, device, n_classes)
+    model.eval()
+    attack = torchattacks.Pixle(
+        model,
+        x_dimensions=(1, 2),
+        y_dimensions=(1, 2),
+        pixel_mapping="random",
+        restarts=3,
+        max_iterations=5,
+        update_each_iteration=False,
+    )
+    return attack(images, labels)
+</old>
+<new>
+
+    _ = (device, n_classes)
+    model.eval()
+
+    # gamma bounds total perturbed features (C*H*W space) to `pixels`, which
+    # is a sufficient upper bound on the number of distinct spatial pixels.
+    num_features = int(images.shape[1] * images.shape[2] * images.shape[3])
+    gamma = float(pixels) / float(num_features)
+
+    attack = torchattacks.JSMA(model, theta=1.0, gamma=gamma)
+    # Least-likely class as target -> strong untargeted proxy, works for any
+    # n_classes.
+    attack.set_mode_targeted_least_likely(quiet=True)
+    return attack(images, labels)
+</new>
+</edit>
+<obs>
+Successfully replaced text in torchattacks/bench/custom_attack.py.
+</obs>
+<run/>
+<obs>
+Measured results — `baseline:jsma` (`is_final,true`), seed 42. Metric: ASR (higher is stronger).
+
+| model | seed | asr |
+|---|---|---|
+| Rebuffi-R18-L2 | 42 | 0.026667 |
+| Augustin-L2 | 42 | 0.046667 |
+| Engstrom-L2 | 42 | 0.066667 |
+| **mean** | | **0.046667** |
+</obs>
+
+### step 3 — One-Pixel (differential evolution, black-box)   [slug:onepixel]
+
+<think>
+JSMA cleared the Pixle floor, but only just, and the shape of its numbers is exactly the brittleness I
+predicted. `asr = 0.0267` on `Rebuffi-R18-L2`, `0.0467` on `Augustin-L2`, `0.0667` on `Engstrom-L2`, mean
+about `0.047`. So it roughly quadrupled the Pixle mean of `0.011` — confirming that *using* a per-pixel
+importance signal beats guessing locations — but it is still in the low single-digit-percent range, a few
+successes out of 150 on the hardest model and ten on the softest. The per-model ordering is informative:
+JSMA does best on `Engstrom-L2` and worst on `Rebuffi-R18-L2`, the reverse of nothing in particular but
+consistent with a first-order signal that is least suppressed on whichever model's local surface is least
+flattened. The flat, low magnitude across all three is the tell. JSMA's saliency is a *local, first-order*
+quantity read at the clean image, and the greedy walk commits to the best-scoring pair, saturates them,
+and never reconsiders — and on `L2`-adversarially-trained models the first-order signal is precisely what
+training was hardened against. So the both-signs gate finds few features that clear it, the greedy search
+is choosing among weak candidates, and it stalls in local optima where no next pair looks good even though
+some *other* support would have flipped the label. The gradient is honest but the surface lies to it
+locally, and greedy with no backtracking has no way to recover.
+
+That diagnosis points two ways. One is to keep the gradient but make the move richer and reconsiderable —
+a direction I will hold in reserve. The other, which I take here, is to *drop the gradient entirely* and
+search. JSMA failed not because gradients are useless but because a *greedy, local, first-order* use of
+them gets trapped on a flattened surface; a method that can escape local optima by maintaining a diverse
+population and only ever *evaluating* the objective sidesteps both the locality and the greediness. That
+is the differential-evolution one-pixel attack, and it is genuinely the next rung up: a black-box,
+gradient-free, diversity-keeping search that answers exactly JSMA's failure mode.
+
+Let me derive it cleanly, because the encoding is where it lives or dies. I want to flip the label by
+changing as few pixels as possible, amplitude free, but the `L0` constraint is *combinatorial*: choosing
+*which* pixels is discrete, on top of choosing *what value* to write — continuous. A gradient is the wrong
+instrument for selecting a sparse support (that is JSMA's wall, and Pixle dodged it only by giving up on
+location choice). What fits a non-differentiable, multimodal objective I can only query is a metaheuristic,
+and differential evolution in particular, because it has the two properties JSMA lacked. It keeps a
+*population* and forms each child from a *scaled difference of two other members*
+(`x_i' = x_{r1} + F*(x_{r2} - x_{r3})`), so the search radius self-adapts — large while the population is
+spread (exploration), small as it converges (refinement) — and a child competes only with *its own
+parent* one-to-one, which preserves diversity instead of letting a few strong candidates clone themselves
+across the population. That diversity is exactly what lets DE jump out of the local optima a greedy method
+dies in. And it only ever *evaluates* the objective, never differentiates it.
+
+Let me be precise about *why* DE's two properties answer JSMA's two failures, because that is the whole
+justification for switching tools rather than just retuning the saliency search. JSMA stalled in local
+optima because it was greedy with no backtracking — once it saturated a pixel it could never undo that
+choice, and on a flattened surface the locally-best pixel is often a globally-poor commitment. DE never
+commits irrevocably: a candidate that looks good early can be displaced by its own descendants, and the
+population holds *many* supports simultaneously, so a promising-but-different combination is not crushed by
+the current leader. And JSMA leaned on a *local, first-order* signal that robust training specifically
+suppressed; DE reads only the *global* objective value — the actual probability the model assigns the true
+class on the full perturbed image — so it is immune to the gradient being small. It does not care that the
+surface is locally flat; it cares only whether a candidate, as a whole, lowers the true-class probability.
+That is exactly the right instrument for a surface engineered to defeat first-order attacks.
+
+But DE optimizes a *real vector*, and my problem has a discrete part — which pixel. The unlock is the
+encoding: one modified pixel is a 5-tuple `(x, y, R, G, B)` — a location and a color — and a candidate
+with budget `d` is `d` such tuples concatenated, a real vector of length `5d`. Look at what that does to
+the constraint: by writing exactly `d` tuples and leaving every other coordinate at zero, `||e||_0 <= d`
+holds *by construction* — no penalty, no projection, no constrained optimization. The discrete "which
+pixel" choice rides along as continuous `(x, y)` coordinates that get rounded to indices at apply-time.
+DE never knows it is looking at an image; it searches `5d` reals and I decode. The fitness is the one
+number the black box hands me: for the untargeted attack the harness runs, the true-class probability
+`f_t(x + e)`, which DE *minimizes* — drive probability mass off the correct class until something else
+wins. No surrogate loss; the exact quantity I care about, read straight off the softmax.
+
+Now the part specific to *this* task, because the harness's configuration diverges sharply from the
+textbook DE and it bounds what I should expect. The fill is the literal call
+`OnePixel(model, pixels=pixels, steps=6, popsize=8, inf_batch=128)`, untargeted (`torchattacks.OnePixel`
+defaults to untargeted, minimizing the true-class probability). Two things stand out. First, `pixels=24`:
+the encoding is `24` five-tuples, a `120`-dimensional DE search per image — and that is a *large* search
+space relative to the budget the optimizer is given. Second, that budget is tiny: `steps=6` generations
+and a population multiplier `popsize=8`. The `torchattacks` implementation delegates to a scipy-derived
+differential-evolution minimizer whose population size is `popsize` times the number of parameters per
+member, so `popsize=8` over a `120`-dim problem is a real population, but `steps=6` means only six
+generations of evolution before it stops. Six generations of DE over a `120`-dim space is a *coarse*
+search — enough to find the obviously-fragile pixels, nowhere near enough to refine 24 well-placed ones on
+a robust model. The `inf_batch=128` only batches the forward passes for speed; it does not buy more
+search. So this rung is the black-box-search answer to JSMA's greediness, but it is *query-starved* in its
+own way — a population that can escape local optima, given too few generations to fully exploit that.
+
+There is a further subtlety worth naming, because it shapes how hard 24 pixels is for this configuration.
+With the budget at 24, the optimizer must place *and color* 24 pixels well, but DE does not get to optimize
+them one at a time — it evolves the whole `120`-dimensional vector jointly, and the difference-mutation
+perturbs many coordinates of a candidate at once. Early generations, with the population spread, take large
+exploratory steps that scatter all 24 pixels around; only as the population converges do the steps shrink
+enough to refine individual placements. Six generations barely reaches the refinement phase, so the
+realized attack tends to find a handful of pixels that matter and leaves the rest poorly placed. This is
+the opposite failure from JSMA: JSMA placed each pixel carefully but greedily and locally; OnePixel places
+all pixels by global search but coarsely. Neither has both careful placement and a global, reconsiderable
+view — which is the gap the next rung starts to close.
+
+Where does that leave my expectations against the JSMA floor of `0.047`? DE's structural advantage over
+JSMA is real and on the exact axis JSMA failed: it does not commit greedily and it does not rely on a
+local first-order signal, so it should not stall in the same local optima. With 24 pixels of budget and a
+diversity-keeping population, it should find *more* flips than greedy saliency — I expect it to clear
+`0.047` and land in the low-to-mid teens of percent, a clear step up. But I do not expect it to approach
+the high success rates that the hardest sparse attacks reach, and the reason is the query budget: six
+generations is too few to evolve a good 24-pixel support against a flattened surface, so DE will harvest
+the easy fragile-pixel flips and run out of generations before it solves the harder samples. There is also
+a subtle cost to the large search space — `120` dimensions with `8x` population and `6` steps spreads the
+optimizer thin, so each pixel's location and color get only coarse optimization. My falsifiable
+expectation: OnePixel's mean ASR clears JSMA's `0.047` comfortably — black-box population search beats
+greedy first-order saliency on robust models — but stays well under the strongest sparse attacks, exposing
+its own ceiling as *query starvation* rather than the wrong-tool problem JSMA had. If it comes back only a
+little above JSMA, that would say six generations is simply too few for DE to express its advantage, and
+the next rung should either spend its queries far more efficiently or go back to gradients with a smarter,
+reconsiderable move.
+
+The delta from the previous rung, concretely: where JSMA returned `attack(images, labels)` from a
+saliency-guided greedy white-box pass and scored `0.047`, this rung returns `attack(images, labels)` from
+a `OnePixel` instance — trading a local, greedy, first-order gradient search for a black-box,
+diversity-keeping population search over a `5d`-real encoding in which the `L0` budget holds by
+construction. The full scaffold module is in the answer. I expect it to beat the JSMA floor by escaping
+the local optima that trapped greedy saliency, while its own six-generation budget caps how far it can
+push — the ceiling the next rung must break.
+
+The causal chain in one breath: JSMA's `0.047` is a *brittleness* result — greedy, local, first-order
+saliency stalls on flattened robust surfaces → escape it by dropping the gradient for a population search
+that only evaluates the objective and self-adapts its step via difference-mutation, keeping diversity to
+jump out of local optima → encode each pixel as `(x,y,R,G,B)` and a candidate as `d` such tuples so the
+`L0` budget is free, with fitness the raw true-class probability → wrapped in this task as untargeted
+`OnePixel` with a `120`-dim search but only `steps=6`/`popsize=8`, so expect a clear gain over `0.047`
+into the low-mid teens, capped by query starvation rather than the wrong tool — pointing the next rung at
+spending queries far more efficiently. Let me put the OnePixel fill in.
+</think>
+<say>
+Switching to the differential-evolution One-Pixel attack: this edit replaces JSMA with `torchattacks.OnePixel`, a gradient-free black-box population search over a 24-pixel `(x,y,R,G,B)` encoding that escapes the local optima greedy saliency stalled in.
+</say>
+<edit path="torchattacks/bench/custom_attack.py">
+<old>
+    model.eval()
+
+    # gamma bounds total perturbed features (C*H*W space) to `pixels`, which
+    # is a sufficient upper bound on the number of distinct spatial pixels.
+    num_features = int(images.shape[1] * images.shape[2] * images.shape[3])
+    gamma = float(pixels) / float(num_features)
+
+    attack = torchattacks.JSMA(model, theta=1.0, gamma=gamma)
+    # Least-likely class as target -> strong untargeted proxy, works for any
+    # n_classes.
+    attack.set_mode_targeted_least_likely(quiet=True)
+    return attack(images, labels)
+</old>
+<new>
+    model.eval()
+    attack = torchattacks.OnePixel(
+        model,
+        pixels=pixels,
+        steps=6,
+        popsize=8,
+        inf_batch=128,
+    )
+    return attack(images, labels)
+</new>
+</edit>
+<obs>
+Successfully replaced text in torchattacks/bench/custom_attack.py.
+</obs>
+<run/>
+<obs>
+Measured results — `baseline:onepixel` (`is_final,true`), seed 42. Metric: ASR (higher is stronger).
+
+| model | seed | asr |
+|---|---|---|
+| Rebuffi-R18-L2 | 42 | 0.100000 |
+| Augustin-L2 | 42 | 0.180000 |
+| Engstrom-L2 | 42 | 0.180000 |
+| **mean** | | **0.153333** |
+</obs>
+
+### step 4 — SparseFool (boundary linearization, white-box)   [slug:sparsefool]
+
+<think>
+OnePixel landed where I expected and confirmed the diagnosis. `asr = 0.10` on `Rebuffi-R18-L2`, `0.18` on
+`Augustin-L2`, `0.18` on `Engstrom-L2`, mean about `0.153`. So the black-box population search more than
+tripled JSMA's `0.047` — a clear, real gain — exactly because it escapes the local optima that trapped
+greedy saliency. But the absolute level, mid-teens of percent, is the ceiling I warned about: six
+generations of differential evolution over a `120`-dimensional encoding is enough to harvest the easy
+fragile-pixel flips and not much more. The per-model pattern is telling — `0.10` on the hardest model
+(`Rebuffi`) versus `0.18` on the two softer ones — which is what query starvation looks like: where the
+surface is most flattened, DE needs *more* generations to evolve a working 24-pixel support, and with only
+six it runs out before it solves the hard samples. DE found the right *tool* (search, not greedy local
+gradient) but was given too few queries to express it. So the question for the next rung is not "search
+versus gradient" again; it is how to spend the budget far more efficiently — and one route I deliberately
+held in reserve back at JSMA is now the right move: go *back* to the gradient, but use it through a
+*reconsiderable, boundary-aware* construction instead of a greedy saliency walk.
+
+Here is the reasoning. JSMA's gradient use failed because it was greedy and committed; OnePixel's
+gradient-free use was query-starved. The synthesis is a white-box method that linearizes the *decision
+boundary* (not the classifier values, and not a per-pixel saliency score), takes a *sparse* step toward
+it, and *relinearizes* at the new point — so it both uses the gradient efficiently and reconsiders the
+geometry every iteration instead of committing once. That is SparseFool, and it is genuinely the next rung.
+
+Let me derive it from the constraint. I want minimal-`L0`, but `L0` is combinatorial and NP-hard, so I
+relax to its convex surrogate `L1` — compressed sensing says `L1` recovers sparse solutions under linear
+constraints. The bottleneck is then turning the label-change condition into a *linear* constraint. DeepFool
+gives the engine: for an affine classifier the closest `L2` boundary point is an orthogonal projection,
+and in the `Lp` form the dual exponent is `q = p/(p-1)`, so the `L1` case (`q = infinity`) puts *all* the
+correction mass on the single coordinate with the largest `|w_j|` — sparse for free. That is `L1`-DeepFool,
+and it is the closest prior idea to what I want. But it has a fatal flaw I have to design around, and it is
+the *same* flaw that the budget bookkeeping kept biting earlier: validity. `L1`-DeepFool concentrates large
+magnitude on a few coordinates, and those are exactly the coordinates most likely to exceed `[0,1]`;
+clipping to the valid range afterward collapses the fooling rate (in the reference setting from near-100%
+down to ~13%), because the clip removes the high-magnitude evidence the attack relied on. The box has to
+live *inside* the optimization, not after it.
+
+Before the fix, let me be sure I understand *why* the `L1` projection is sparse at all, because that is the
+property I am trying to preserve while curing the validity failure. For an affine constraint
+`w^T(z - x_B) = 0`, projecting a point onto that hyperplane in the `Lp` sense puts the correction mass
+according to the dual norm `q = p/(p-1)`. For `L2` (`q=2`) the mass spreads smoothly across all
+coordinates — dense, which is what DeepFool gives. For `L1` (`q=infinity`) the optimizer puts *all* the
+mass on the single coordinate with the largest `|w_j|`: the projection is one-hot. That is sparsity for
+free, falling straight out of the `L1`-`L_inf` duality, and it is why an `L1`-relaxed boundary projection
+is the natural sparse-attack primitive. The catch is precisely that "all the mass on one coordinate" tends
+to drive that coordinate out of `[0,1]`; so I want to keep the one-coordinate-at-a-time structure while
+forcing each coordinate to respect the box. That is the design target.
+
+The fix is two moves. First, linearize the *boundary* rather than the classifier: near a natural image the
+deep decision boundary has low mean curvature, so I can model it locally as one hyperplane. I find a
+boundary point `x_B` by an `L2`-DeepFool step, and the oriented normal is the gradient of the logit
+difference there, `w = grad f_adv(x_B) - grad f_true(x_B)`. The relaxed problem becomes
+`min ||r||_1` s.t. `w^T(x + r - x_B) = 0` and `l <= x + r <= u`. Second, solve *that* with a
+coordinate-greedy projection that *retires* any coordinate as it saturates against the box: pick the
+largest remaining `|w_j|`, put the `L1` mass needed to close the residual gap on it, clip the image into
+`[l,u]`, and if the chosen coordinate hit a box wall, drop it and solve the residual with the next-best
+coordinate. Every intermediate point is valid by construction, and sparsity is preserved because mass
+still concentrates on few coordinates. A single hyperplane is not enough — flatness is only local, and a
+sparse step leaves the neighborhood where I estimated the plane — so the outer loop *relinearizes*: at the
+new iterate, run `L2`-DeepFool again, rebuild `x_B` and `w`, run the box-aware `L1` solver, and stop only
+when the label flips. This relinearization is exactly the reconsideration JSMA lacked: the boundary
+geometry is re-estimated every step, so the method tracks the moving boundary instead of committing to a
+stale ranking.
+
+Now the part specific to *this* task, because the harness's configuration is the literal fill and one of
+its knobs is the method's only real control. The fill is `SparseFool(model, steps=20, lam=3.0,
+overshoot=0.02)`, then `attack(images, labels)`. Read the three numbers. `steps=20` is the outer
+relinearization budget — twenty boundary re-estimations, far more *effective* iterations than OnePixel's
+six DE generations bought, because each step is a directed geometric move rather than a population sample,
+so the same order of model queries goes much further. `overshoot=0.02` is the small final nudge that
+pushes the accumulated perturbation just across the actual classifier boundary before returning (separate
+from the boundary-target control). And `lam=3.0` is the real parameter: it aims the linear solver's target
+*past* the estimated boundary, `x + lam*(x_B - x)`, to absorb the boundary's curvature. The trade-off is
+exactly the one the budget cares about — `lam` near 1 aims right at the boundary and keeps the perturbation
+sparsest but may fail to cross and need more iterations; larger `lam` pushes farther across, raising the
+fooling rate and cutting iterations at the cost of spending more coordinates. `lam = 3.0` is the standard
+CIFAR-10 setting, deliberately on the aggressive side, because on *robust* models the curvature is larger
+and aiming right at the boundary under-shoots — I want to cross reliably even if it costs a few of the 24
+pixels. The harness validates the `L0` count afterward, so as long as the box-aware solver keeps the
+support under 24 (which the budget and the early stop tend to ensure on these images), the aggressive `lam`
+is the right call. The `pixels`, `device`, and `n_classes` arguments are unused — SparseFool's own
+`num_classes` default and `lam` govern the behavior, and the harness handles validity.
+
+Where does that leave my expectations against the OnePixel ceiling of `0.153`? SparseFool addresses
+OnePixel's exact weakness — query efficiency — by replacing undirected population sampling with a directed,
+boundary-following geometric search that reconsiders every step, *and* it addresses JSMA's exact weakness —
+greedy commitment — by relinearizing. So on both axes it is strictly better-motivated than either prior
+rung. I expect it to clear `0.153`. But I am cautious about *how much*, and the caution is specific to
+robust models. SparseFool's whole engine is local-linear: it assumes the boundary is locally a hyperplane
+of low curvature. Adversarial `L2` training does two things that fight this — it flattens the loss surface
+(weak gradients, so the DeepFool step and the normal `w` are small and noisy) and it can make the boundary
+*more* curved in the directions an attack would exploit, so the one-hyperplane model is a worse fit
+exactly where it matters. When the local-linear assumption is poor, even twenty relinearizations chase a
+boundary the linear model keeps mis-estimating, and `lam=3.0` overshooting a mis-estimated boundary can
+spend coordinates without crossing. My falsifiable expectation: SparseFool's mean ASR beats OnePixel's
+`0.153`, but not by a landslide — somewhere in the high-teens — and it may even *trail* OnePixel on the
+single model whose boundary is least linear, while leading clearly on the others. That mixed, modest gain
+would be the diagnosis for the final rung: every gradient-based and population method so far is limited by
+either local commitment, query starvation, or a brittle local-linear boundary model, and the strongest
+sparse attack is the one designed natively for the discrete `L0` set — a random search whose proposal
+distribution is built specifically to sample *feasible supports*, with a query schedule that explores then
+refines, so it neither commits early nor wastes queries nor leans on a linear-boundary fiction.
+
+The delta from the previous rung, concretely: where OnePixel returned `attack(images, labels)` from a
+six-generation black-box population search and scored `0.153`, this rung returns `attack(images, labels)`
+from a `SparseFool` instance with `steps=20`, `lam=3.0` — trading undirected, query-starved population
+sampling for a directed, reconsiderable, boundary-linearizing white-box search that keeps the box inside
+the optimization. The full scaffold module is in the answer. I expect a real but modest gain over `0.153`,
+limited by how well a local-linear boundary model survives on adversarially-trained surfaces — the
+limitation the final rung is built to escape. Let me drop in the SparseFool fill.
+</think>
+<say>
+Going back to the gradient with SparseFool: this edit installs `torchattacks.SparseFool`, a white-box attack that linearizes the decision boundary, takes a box-aware sparse `L1` step toward it, and relinearizes each iteration — `steps=20`, `lam=3.0` (aggressive overshoot for robust curvature).
+</say>
+<edit path="torchattacks/bench/custom_attack.py">
+<old>
+
+    _ = (device, n_classes)
+    model.eval()
+    attack = torchattacks.OnePixel(
+        model,
+        pixels=pixels,
+        steps=6,
+        popsize=8,
+        inf_batch=128,
+    )
+    return attack(images, labels)
+</old>
+<new>
+
+    _ = (pixels, device, n_classes)
+    model.eval()
+    attack = torchattacks.SparseFool(
+        model,
+        steps=20,
+        lam=3.0,
+        overshoot=0.02,
+    )
+    return attack(images, labels)
+</new>
+</edit>
+<obs>
+Successfully replaced text in torchattacks/bench/custom_attack.py.
+</obs>
+<run/>
+<obs>
+Measured results — `baseline:sparsefool` (`is_final,true`), seed 42. Metric: ASR (higher is stronger).
+
+| model | seed | asr |
+|---|---|---|
+| Rebuffi-R18-L2 | 42 | 0.166667 |
+| Augustin-L2 | 42 | 0.113333 |
+| Engstrom-L2 | 42 | 0.280000 |
+| **mean** | | **0.186667** |
+</obs>
+
+### step 5 — Sparse-RS (L0 random search, black-box)   [slug:sparse_rs]
+
+<think>
+SparseFool came back with exactly the mixed signature I predicted, and the per-model spread is the whole
+story. `asr = 0.167` on `Rebuffi-R18-L2`, `0.113` on `Augustin-L2`, `0.280` on `Engstrom-L2`, mean about
+`0.187`. So it beat OnePixel's `0.153` mean — a real gain — but it *trailed* OnePixel on `Augustin`
+(`0.113` versus `0.18`) while leading clearly on `Engstrom` (`0.280` versus `0.18`) and `Rebuffi`
+(`0.167` versus `0.10`). That non-uniform result is the diagnosis written in numbers: SparseFool's engine
+is local-linear, and where the boundary best fits a hyperplane it wins decisively, but on whichever model's
+boundary is least linear (`Augustin` here) twenty relinearizations chase a boundary the linear model keeps
+mis-estimating, and `lam=3.0` overshoots a wrong target without crossing. The method's strength and its
+fragility are the same assumption. And stepping back across all four rungs so far, every one is limited by
+*something other than the budget itself*: Pixle guessed locations, JSMA committed greedily to a local
+first-order signal, OnePixel ran out of generations, SparseFool leaned on a brittle local-linear boundary.
+None of them is *built for the discrete `L0` set*. That is the gap the strongest baseline closes.
+
+The realization that reframes everything: the `L0` budget is not a norm radius, it is a *combinatorial
+support*. It says only a selected set `M` of `k` pixels may move at all; once a pixel is in `M`, its
+channels can go anywhere in `[0,1]`. So the object to optimize is not a dense vector in a ball — it is a
+*pair*, a support `M` and the colors on it. This is why every continuous method stalled. In an `L_inf` or
+`L_2` attack you step and project back into a smooth convex ball; here projection means *choosing* a
+support — a discrete top-`k` — so a small continuous change before projection causes a large support change
+after, the iteration lurches, and the support settles poorly. That is precisely SparseFool's and JSMA's
+trouble seen from the `L0` side. And in any gradient-based form the budget fights the gradient, which wants
+to spread signal over many pixels even though only `k` survive. So I drop continuous optimization
+altogether and use the one primitive that needs nothing but feasible candidates and scalar comparisons:
+*random search*. Keep the best candidate, sample a new *legal sparse* candidate, query its loss, keep it
+if it improves. The accept-if-improves loop is trivial; the entire problem is the *distribution over legal
+sparse candidates*, and getting that distribution right is what makes this the strongest rung.
+
+I split a candidate into support and color and design the proposal for each. The objective is the
+untargeted margin `L(z) = f_y(z) - max_{r!=y} f_r(z)`, minimized; its *sign* is the misclassification
+certificate, `L(z) < 0` is exactly a flip, so I never need a separate success test. For colors: because
+the budget penalizes magnitude not at all — a pixel in `M` costs the same whether nudged or slammed to an
+extreme — I use *corners* of the color cube, `{0,1}^c`, spending each precious pixel maximally. For the
+support, the move that never leaves the budget is a *swap*: pick `A` from the current perturbed support `M`
+and `B` from the clean complement of equal size, restore `A` to clean, give `B` fresh corner colors, so
+`M' = (M\A) union B` and `|M'| = k` always. Every candidate is feasible by construction — no projection, no
+clipping, no rejected samples, which is the structural cleanliness all the budget-bookkeeping pain on
+earlier rungs was groping toward.
+
+The swap *size* has to change over the run, and this is the heart of the method. Swap many pixels early and
+I escape a poor random initial support fast; keep swapping many late and I destroy the good support I have
+found; swap one from the start and I refine gently but spend far too many queries finding the right region.
+So the swap fraction *decays* — large for exploration, small for refinement — which neither a constant-large
+nor a constant-small schedule can do. There is a real reason this is query-efficient and not merely
+plausible, and it is worth tracing because it tells me what the decay buys. Analyze single-pixel swaps on a
+binary-linear model as a coupon-collector chain. In the white-box limit the optimal `k`-sparse attack is to
+pick the `k` coordinates with the smallest entries of an effective weight vector; the black-box obstacle is
+that this vector is hidden and reading it coordinate by coordinate costs `O(d)` queries — hopeless at
+`d ~ 1000` on CIFAR, let alone ImageNet scale. But I do not need the *exact* top `k`: a relaxed goal is to
+collect `k` coordinates among the `m` smallest, for some `m > k`. Model the support's progress toward that
+goal as a Markov chain on the count of "good" coordinates currently in the support; a single swap improves
+the count when it drops a bad coordinate and adds a good one, with a probability I can write down exactly,
+and the expected time to fill the support is a sum of geometric waiting times. Working that sum out gives
+the expected number of queries `E[t_k] < (d-k)k(ln k + 2)/(m-k)`, which is *sublinear* in the input
+dimension `d` once `m-k` grows with `d` — beating the `O(d)` cost of coordinate-wise weight estimation that
+sank any black-box gradient route. The relaxation from "exact top `k`" to "`k` among the `m` smallest" is
+the whole trick: it is what converts a prohibitive `O(d)` identification problem into a `k log k`-style
+hitting time. The decaying schedule is exactly what runs the broad-support exploration
+early and approaches the one-pixel refinement regime whose analysis gives that bound. So the strongest rung
+is the one whose proposal distribution is *derived from* the `L0` structure, not adapted to it from a
+continuous method.
+
+Now the part specific to *this* task, because the harness does not wrap a library here — `torchattacks` has
+no Sparse-RS, so the fill *inlines* the full L0 attack, and the literal scaffold edit is that whole inlined
+function. The configuration is `n_queries = 10000`, `p_init = 0.8`, `eps = pixels = 24`. The proposal is
+exactly the swap above: maintain per image an index set `b` of the `24` perturbed pixels and its complement
+`be`, map a pixel index `p` to coordinates `(p // W, p % W)` (matching the harness's channel-wise `L0`
+count — a pixel changes if *any* channel differs), and swap `eps_it = max(int(p_selection(it)*eps), 1)`
+entries between `b` and `be` each step, redrawing binary corner colors on the entrants. The schedule
+`p_selection` is the piecewise-constant decay with divisors `{2,4,5,6,8,10,12,15,20}` on the reference
+intervals, rescaled to `n_queries`. The accept rule keeps a move if the loss improves *or* the margin is
+already negative (locking in a flip), and only spends queries on images whose current margin is still
+positive — so easy samples stop early and the budget concentrates on the stubborn ones. The single-pixel
+case resamples the entering color until it differs from the current one, so a one-pixel refinement step is
+never a wasted no-op query. This is `10000` directed, *always-feasible* proposals per image with a schedule
+that provably explores-then-refines — a different order of search entirely from SparseFool's twenty
+relinearizations or OnePixel's six generations.
+
+Where does that leave my expectations against the SparseFool ceiling of `0.187`? Sparse-RS attacks the
+*one* thing every prior rung got wrong — it is built natively for the discrete `L0` support, with a feasible
+proposal, a provably query-efficient decaying schedule, and corner colors that use the budget maximally —
+and it gets two-to-three orders of magnitude more queries to do it (`10000` versus `~15`–`120`). So I
+expect not a modest gain but a *step change*: from the high-teens of the best continuous method into the
+high-eighties-to-mid-nineties of percent across all three models. The per-model spread should also
+*flatten* relative to SparseFool, because random search over feasible supports does not depend on the local
+linearity of any one model's boundary — the property that made SparseFool swing from `0.113` to `0.280`.
+My falsifiable expectation: Sparse-RS's mean ASR clears `0.187` decisively and lands above `0.85` on every
+model, with `Engstrom` (the model SparseFool already found softest) at or near the top — and the spread
+across models narrower than SparseFool's because the method no longer hinges on a boundary-linearity
+assumption. If it *failed* to dominate — if it landed merely in the SparseFool range — that would mean
+`10000` queries were not enough on these robust models, and the only thing stronger would be a method that
+uses the gradient the harness permits to *guide* the support choice rather than searching it blind.
+
+The delta from the previous rung, concretely: where SparseFool returned `attack(images, labels)` from a
+local-linear boundary-following white-box search and scored `0.187`, this rung returns `x_best` from an
+inlined random search over feasible `L0` supports — trading a continuous method adapted to `L0` for one
+*derived from* `L0`, with binary corner colors, a provably efficient decaying swap schedule, and `10000`
+always-feasible queries per image. The full scaffold module is in the answer. I expect a step change to the
+high-eighties-plus across all three models, flattening the per-model spread SparseFool's linearity
+assumption produced — the strongest baseline, and the bar a finale would have to clear. Let me inline the Sparse-RS attack now.
+</think>
+<say>
+Now the strongest baseline, Sparse-RS — inlined since `torchattacks` has none: this edit replaces the body with a black-box `L0` random search that swaps pixels in and out of a feasible 24-pixel support (binary corner colors, decaying swap schedule, 10000 queries per image), so every candidate respects the budget by construction.
+</say>
+<edit path="torchattacks/bench/custom_attack.py">
+<old>
+) -> torch.Tensor:
+    import torchattacks
+
+    _ = (pixels, device, n_classes)
+    model.eval()
+    attack = torchattacks.SparseFool(
+        model,
+        steps=20,
+        lam=3.0,
+        overshoot=0.02,
+    )
+    return attack(images, labels)
+</old>
+<new>
+) -> torch.Tensor:
+    """Sparse-RS L0 black-box attack (Croce et al., AAAI 2022)."""
+    import torch
+    import torch.nn.functional as F
+
+    _ = (n_classes,)
+    model.eval()
+
+    n_queries = 10000
+    p_init = 0.8
+    eps = int(pixels)
+
+    x = images.detach().clone().to(device)
+    y = labels.detach().clone().to(device)
+    B, C, H, W = x.shape
+    n_pixels = H * W
+
+    def _margin_and_loss(xb, yb):
+        with torch.no_grad():
+            logits = model(xb)
+        u = torch.arange(xb.shape[0], device=xb.device)
+        y_corr = logits[u, yb].clone()
+        logits[u, yb] = -float("inf")
+        y_others = logits.max(dim=-1)[0]
+        margin = y_corr - y_others
+        return margin, margin  # 'margin' loss variant
+
+    def _p_selection(it):
+        # Rescaled schedule (see Sparse-RS paper Fig. 3 / rs_attacks.py).
+        it = int(it / n_queries * 10000)
+        if 0 < it <= 50:
+            return p_init / 2
+        if 50 < it <= 200:
+            return p_init / 4
+        if 200 < it <= 500:
+            return p_init / 5
+        if 500 < it <= 1000:
+            return p_init / 6
+        if 1000 < it <= 2000:
+            return p_init / 8
+        if 2000 < it <= 4000:
+            return p_init / 10
+        if 4000 < it <= 6000:
+            return p_init / 12
+        if 6000 < it <= 8000:
+            return p_init / 15
+        if 8000 < it:
+            return p_init / 20
+        return p_init
+
+    def _rand_colors(shape):
+        # Binary {0,1} random colors, as in Sparse-RS default.
+        return torch.randint(0, 2, shape, device=device, dtype=x.dtype)
+
+    # ---- Initialise: random eps pixels per image with random binary colors.
+    x_best = x.clone()
+    b_all = torch.zeros(B, eps, dtype=torch.long, device=device)
+    be_all = torch.zeros(B, n_pixels - eps, dtype=torch.long, device=device)
+    for i in range(B):
+        perm = torch.randperm(n_pixels, device=device)
+        ind_p = perm[:eps]
+        ind_np = perm[eps:]
+        x_best[i, :, ind_p // W, ind_p % W] = _rand_colors((C, eps)).clamp(0.0, 1.0)
+        b_all[i] = ind_p
+        be_all[i] = ind_np
+
+    margin_min, loss_min = _margin_and_loss(x_best, y)
+
+    for it in range(1, n_queries):
+        idx_to_fool = (margin_min > 0.0).nonzero().squeeze(-1)
+        if idx_to_fool.numel() == 0:
+            break
+
+        x_curr = x[idx_to_fool].clone()
+        x_best_curr = x_best[idx_to_fool].clone()
+        y_curr = y[idx_to_fool]
+        margin_curr = margin_min[idx_to_fool].clone()
+        loss_curr = loss_min[idx_to_fool].clone()
+        b_curr = b_all[idx_to_fool].clone()
+        be_curr = be_all[idx_to_fool].clone()
+
+        x_new = x_best_curr.clone()
+        eps_it = max(int(_p_selection(it) * eps), 1)
+        ind_p = torch.randperm(eps, device=device)[:eps_it]
+        ind_np = torch.randperm(n_pixels - eps, device=device)[:eps_it]
+
+        for i in range(x_new.shape[0]):
+            p_set = b_curr[i, ind_p]
+            np_set = be_curr[i, ind_np]
+            # Restore previously-perturbed positions to clean.
+            x_new[i, :, p_set // W, p_set % W] = x_curr[i, :, p_set // W, p_set % W]
+            # Perturb newly-selected positions with random binary colors.
+            if eps_it > 1:
+                x_new[i, :, np_set // W, np_set % W] = _rand_colors((C, eps_it)).clamp(0.0, 1.0)
+            else:
+                old = x_new[i, :, np_set // W, np_set % W].clone()
+                new = old.clone()
+                tries = 0
+                while (new == old).all() and tries < 16:
+                    new = _rand_colors((C, 1)).clamp(0.0, 1.0)
+                    tries += 1
+                x_new[i, :, np_set // W, np_set % W] = new
+
+        margin, loss = _margin_and_loss(x_new, y_curr)
+
+        idx_improved = (loss < loss_curr).float()
+        idx_miscl = (margin < -1e-6).float()
+        idx_keep = torch.max(idx_improved, idx_miscl)
+        nkeep = int(idx_keep.sum().item())
+
+        # Update loss whenever loss improves.
+        upd_loss = (idx_improved > 0).nonzero().squeeze(-1)
+        if upd_loss.numel() > 0:
+            loss_min[idx_to_fool[upd_loss]] = loss[upd_loss]
+
+        if nkeep > 0:
+            upd = (idx_keep > 0).nonzero().squeeze(-1)
+            margin_min[idx_to_fool[upd]] = margin[upd]
+            x_best[idx_to_fool[upd]] = x_new[upd]
+
+            # Swap mask indices for the accepted moves.
+            # `upd` comes from .squeeze(-1), so the batch dim is preserved
+            # (shape [K] with K>=1); always use the 2-D batched form.
+            t = b_curr[upd].clone()
+            te = be_curr[upd].clone()
+            t[:, ind_p] = be_curr[upd][:, ind_np]
+            te[:, ind_np] = b_curr[upd][:, ind_p]
+            b_all[idx_to_fool[upd]] = t
+            be_all[idx_to_fool[upd]] = te
+
+    return x_best.detach()
+</new>
+</edit>
+<obs>
+Successfully replaced text in torchattacks/bench/custom_attack.py.
+</obs>
+<run/>
+<obs>
+Measured results — `baseline:sparse_rs` (`is_final,true`), seed 42. Metric: ASR (higher is stronger).
+
+| model | seed | asr |
+|---|---|---|
+| Rebuffi-R18-L2 | 42 | 0.853333 |
+| Augustin-L2 | 42 | 0.946667 |
+| Engstrom-L2 | 42 | 0.966667 |
+| **mean** | | **0.922222** |
+</obs>
+
+### step 6 — Sparse-PGD / sPGD (gradient-guided support search, white-box)   [slug:sparse-pgd]
+
+<think>
+Sparse-RS delivered exactly the step change I predicted: `asr = 0.853` on `Rebuffi-R18-L2`, `0.947` on
+`Augustin-L2`, `0.967` on `Engstrom-L2`, mean about `0.922`. So the random search that is *built for* the
+discrete `L0` support went from SparseFool's `0.187` to over `0.92` — and, as I expected, it flattened the
+per-model spread (the three numbers sit within `0.11` of each other, versus SparseFool's `0.17`-wide swing
+from `0.113` to `0.280`), precisely because random search over feasible supports does not hinge on any one
+model's boundary linearity. This is the strongest baseline, and it is genuinely strong. But the very thing
+that makes it the floor for a finale is also its one structural concession: it uses *no gradient at all*,
+even though the harness grants full white-box access including backprop. Look at where it still leaves
+robust accuracy on the table — `Rebuffi-R18-L2` at `0.853` means roughly 22 of 150 correctly-classified
+samples *survived* 10000 queries of directed random search. Those survivors are the hard cases, the ones
+where the right 24-pixel support is rare enough that blind swapping, even with a provably efficient
+schedule, does not stumble onto it in the budget. For exactly those cases the gradient is information
+Sparse-RS is throwing away. So the natural next move is not a different search heuristic — it is to *use
+the gradient to choose the support*, which is the one lever every rung either lacked (Pixle, OnePixel,
+Sparse-RS are gradient-free) or used badly (JSMA greedy, SparseFool local-linear).
+
+The obstacle is the one that sank the white-box rungs in the first place, and I have to confront it head-on:
+gradient descent does not respect a *combinatorial* support. If I take a gradient step on a dense
+perturbation and then project onto the `L0` ball by keeping the top-`k` coordinates by magnitude, two
+things go wrong, and they are the same two that made JSMA brittle. The support lurches discontinuously
+because the projection is a hard top-`k`, so the iterate never settles; and once the projection zeroes a
+coordinate, *no gradient flows back to it*, so the optimizer is blind to the possibility that a
+currently-unselected pixel would have been a better choice. That is why naive projected-gradient `L0`
+attacks *over-report* robustness — they cannot find the support they should. Sparse-RS sidesteps this
+entirely by never differentiating; the finale has to *solve* it, so the gradient can be put to work.
+
+The solution is to stop treating the perturbation as one dense vector I project, and instead make the
+support its own differentiable variable. Decompose the perturbation as `delta = p ⊙ binarize(m)`: a dense
+**magnitude tensor** `p` (the perturbation values, image-shaped) times the **binarized** version of a
+continuous **mask** `m` with one scalar per spatial pixel. The binarization is a hard top-`k` over the
+mask — keep the `k` pixels with the largest mask values, zero the rest — so exactly `k` pixels survive
+every forward pass and the `L0` budget holds *by construction*, no projection of the perturbation required.
+Now the two sub-problems are explicit and each has its own gradient: the gradient on `p` says how to push
+the values on the chosen pixels, and the gradient on `m` says *which pixels to choose*. The support is no
+longer an implicit byproduct of magnitude ranking; it is a thing the optimizer steers directly.
+
+Why a mask `m` separate from the magnitudes `p`, rather than just ranking `p` itself by magnitude (which is
+what PGD0 does)? Because ranking `p` ties the support choice to the *current* magnitudes: a pixel only
+enters the support if its perturbation is already large, but its perturbation only grows if it is already in
+the support, a chicken-and-egg that the discontinuous projection resolves arbitrarily. A dedicated mask
+breaks the cycle — `m` can grow for a pixel whose magnitude is still small, *pulling* it into the support on
+the strength of its gradient alone, and only then does `p` start optimizing its value. The two variables
+let the attack decide *where* before it has decided *how much*, which is exactly the ordering a sparse
+attack wants and the one PGD0 cannot express.
+
+But the hard top-`k` is still non-differentiable — the same wall. The device that crosses it is
+straight-through estimation: apply the hard top-`k` in the *forward* pass so the attack stays feasible, but
+in the *backward* pass let the gradient to `m` flow as if through the *soft* mask `sigmoid(m)`, not the
+binarized one. Then every pixel — including the ones currently outside the support — receives a gradient
+telling it whether raising its mask value (entering the support) would lower the loss. That is the exact
+cure for the dead-gradient failure: the support can move because the unselected coordinates are no longer
+gradient-zero. There is a second, subtler routing choice for the *perturbation's* gradient: send it through
+the soft mask (the "unprojected" variant, which updates `p` as if all pixels were partially active, biasing
+toward exploration of new supports) or through the hard mask (the "projected" variant, which refines the
+current support faithfully). They fall into different local optima, so I alternate them across restarts and
+keep the best example either finds — the white-box analogue of the diversity Sparse-RS got from its
+population, and the direct answer to those ~22 Rebuffi survivors that one biased descent alone would miss.
+
+Now ground this in *this* task's edit surface, because the finale is the literal fill of the same
+`run_attack` contract, not a paper harness. The harness hands me a differentiable deep copy of the model
+(I may backprop through it), images in `[0,1]`, the budget `pixels = 24`, and it validates the `L0` count
+channel-wise after the fact. So I parameterize `p` at full image resolution and keep `x + p` valid
+*natively*, not by an end-clip that would collapse a sparse attack: after each magnitude step I clamp `p`
+into `[-eps, eps]` and then into `[-x, 1-x]`, which guarantees `x + p in [0,1]` per pixel — `eps = 1`
+because the `L0` model lets a chosen pixel take any value in the range. The mask `m` is `(B, 1, H, W)`, one
+scalar per spatial position (matching the harness's per-pixel, channel-collapsed `L0` count); I sigmoid it
+before the top-`k` so the ranking is bounded and the gradients well-scaled. The magnitude update is a PGD
+sign step `p <- p - alpha*sign(grad_p)` with `alpha = 0.25*eps` (descent on the margin); the mask update is
+a *normalized* gradient step `m <- m - beta*sqrt(H*W)*grad_m/||grad_m||` with `beta = 0.25`, because `m` is
+a selection variable, not a bounded perturbation, and normalizing keeps the support moving at a consistent
+rate. The objective is the untargeted margin `f_y - max_{r!=y} f_r`, minimized — its sign is the
+misclassification certificate, and unlike cross-entropy it does not saturate as the attack nears success. I
+keep a running best across all iterations and both restarts, so the returned image is the strongest
+`24`-sparse example ever found. The straight-through top-`k` lives in a small custom autograd function; the
+full scaffold module is in the answer.
+
+What bar must this clear, and what would I validate? The strongest baseline is Sparse-RS at mean ASR
+`0.922` — `0.853 / 0.947 / 0.967` on Rebuffi / Augustin / Engstrom. A finale that merely matched those
+numbers would not justify itself, because Sparse-RS already gets them gradient-free; the claim has to be
+that *using the gradient to choose the support* finds the hard examples random search misses in budget. The
+falsifiable expectation is therefore concrete: sPGD should clear `0.922` mean and, most tellingly, lift the
+*lowest* number — `Rebuffi-R18-L2` at `0.853`, the model where ~22 samples survived random search — because
+that is exactly where a gradient-guided support search should pay off, converting survivors that have a rare
+but *findable-by-gradient* 24-pixel support into successes. I would validate three things against the
+Sparse-RS feedback: (1) mean ASR strictly above `0.922`; (2) the per-model minimum strictly above Rebuffi's
+`0.853`, since closing the hardest model is the whole point; (3) that the gain comes from the gradient and
+not from extra iterations — i.e. it holds at a comparable compute budget to the 10000-query random search.
+If sPGD came back *below* Sparse-RS, the diagnosis would be that on these particular `L2`-robust surfaces
+the gradient is so flattened that even a straight-through support search cannot beat directed random search
+in budget, and the right move would be the published ensemble: run sPGD *and* Sparse-RS and take the best
+of both, which is how the strongest reported sparse-`L0` evaluations are actually assembled. But the
+straight-through, mask-decomposed gradient is the one piece of information every rung on this ladder left on
+the table, and putting it to work is the natural endpoint of the climb.
+
+The causal chain in one breath: Sparse-RS's `0.922` is the strongest baseline but uses *no gradient*,
+leaving ~22 Rebuffi survivors that random search cannot find a support for in budget → use the gradient to
+choose the support, which naive `L0`-PGD cannot do because the hard top-`k` projection lurches and zeroes
+the gradient on unselected pixels → decompose `delta = p ⊙ binarize(m)` so the support is its own
+differentiable variable and the budget holds by construction → cross the non-differentiable top-`k` with
+straight-through estimation (hard forward, soft-mask backward) so unselected pixels still get signal, and
+alternate the projected/unprojected perturbation-gradient routing across restarts for diversity → ground it
+as the literal `run_attack` fill with native `[-x,1-x]` validity clamps, a sigmoid mask, a margin
+objective, and best-tracking → expecting mean ASR above `0.922` and, decisively, the Rebuffi minimum above
+`0.853`, because gradient-guided support search is built to find exactly the hard examples that gradient-
+free random search misses. Let me build the sPGD fill, starting with the docstring.
+</think>
+<say>
+The finale is Sparse-PGD (sPGD) — the gradient-guided support search every prior rung left on the table: this first edit reheaders the inlined function as the white-box sPGD attack, ahead of replacing the random-search body with mask-decomposed straight-through gradient descent.
+</say>
+<edit path="torchattacks/bench/custom_attack.py">
+<old>
+) -> torch.Tensor:
+    """Sparse-RS L0 black-box attack (Croce et al., AAAI 2022)."""
+    import torch
+</old>
+<new>
+) -> torch.Tensor:
+    """Sparse-PGD (sPGD) L0 white-box attack (Zhong & Liu, TPAMI; arXiv:2405.05075)."""
+    import torch
+</new>
+</edit>
+<obs>
+Successfully replaced text in torchattacks/bench/custom_attack.py.
+</obs>
+<note>
+Now the hyperparameters: eps=1 (free amplitude), the per-restart iteration count, and the two restarts that alternate projected/unprojected gradient routing.
+</note>
+<edit path="torchattacks/bench/custom_attack.py">
+<old>
+
+    n_queries = 10000
+    p_init = 0.8
+    eps = int(pixels)
+</old>
+<new>
+
+    eps = 1.0          # L0 lets a chosen pixel take any value in [0,1]
+    t = 300            # iterations per restart
+    n_restarts = 2     # alternate projected / unprojected gradient routing
+    alpha = 0.25 * eps                       # magnitude sign-step size
+    beta = 0.25                              # mask step (scaled by sqrt(H*W))
+</new>
+</edit>
+<obs>
+Successfully replaced text in torchattacks/bench/custom_attack.py.
+</obs>
+<note>
+Now the core: replace the random-search loop with the straight-through top-k mask, margin descent on the magnitudes, normalized steps on the mask, and best-tracking across both restarts.
+</note>
+<edit path="torchattacks/bench/custom_attack.py">
+<old>
+    B, C, H, W = x.shape
+    n_pixels = H * W
+
+    def _margin_and_loss(xb, yb):
+        with torch.no_grad():
+            logits = model(xb)
+        u = torch.arange(xb.shape[0], device=xb.device)
+        y_corr = logits[u, yb].clone()
+        logits[u, yb] = -float("inf")
+        y_others = logits.max(dim=-1)[0]
+        margin = y_corr - y_others
+        return margin, margin  # 'margin' loss variant
+
+    def _p_selection(it):
+        # Rescaled schedule (see Sparse-RS paper Fig. 3 / rs_attacks.py).
+        it = int(it / n_queries * 10000)
+        if 0 < it <= 50:
+            return p_init / 2
+        if 50 < it <= 200:
+            return p_init / 4
+        if 200 < it <= 500:
+            return p_init / 5
+        if 500 < it <= 1000:
+            return p_init / 6
+        if 1000 < it <= 2000:
+            return p_init / 8
+        if 2000 < it <= 4000:
+            return p_init / 10
+        if 4000 < it <= 6000:
+            return p_init / 12
+        if 6000 < it <= 8000:
+            return p_init / 15
+        if 8000 < it:
+            return p_init / 20
+        return p_init
+
+    def _rand_colors(shape):
+        # Binary {0,1} random colors, as in Sparse-RS default.
+        return torch.randint(0, 2, shape, device=device, dtype=x.dtype)
+
+    # ---- Initialise: random eps pixels per image with random binary colors.
+    x_best = x.clone()
+    b_all = torch.zeros(B, eps, dtype=torch.long, device=device)
+    be_all = torch.zeros(B, n_pixels - eps, dtype=torch.long, device=device)
+    for i in range(B):
+        perm = torch.randperm(n_pixels, device=device)
+        ind_p = perm[:eps]
+        ind_np = perm[eps:]
+        x_best[i, :, ind_p // W, ind_p % W] = _rand_colors((C, eps)).clamp(0.0, 1.0)
+        b_all[i] = ind_p
+        be_all[i] = ind_np
+
+    margin_min, loss_min = _margin_and_loss(x_best, y)
+
+    for it in range(1, n_queries):
+        idx_to_fool = (margin_min > 0.0).nonzero().squeeze(-1)
+        if idx_to_fool.numel() == 0:
+            break
+
+        x_curr = x[idx_to_fool].clone()
+        x_best_curr = x_best[idx_to_fool].clone()
+        y_curr = y[idx_to_fool]
+        margin_curr = margin_min[idx_to_fool].clone()
+        loss_curr = loss_min[idx_to_fool].clone()
+        b_curr = b_all[idx_to_fool].clone()
+        be_curr = be_all[idx_to_fool].clone()
+
+        x_new = x_best_curr.clone()
+        eps_it = max(int(_p_selection(it) * eps), 1)
+        ind_p = torch.randperm(eps, device=device)[:eps_it]
+        ind_np = torch.randperm(n_pixels - eps, device=device)[:eps_it]
+
+        for i in range(x_new.shape[0]):
+            p_set = b_curr[i, ind_p]
+            np_set = be_curr[i, ind_np]
+            # Restore previously-perturbed positions to clean.
+            x_new[i, :, p_set // W, p_set % W] = x_curr[i, :, p_set // W, p_set % W]
+            # Perturb newly-selected positions with random binary colors.
+            if eps_it > 1:
+                x_new[i, :, np_set // W, np_set % W] = _rand_colors((C, eps_it)).clamp(0.0, 1.0)
+            else:
+                old = x_new[i, :, np_set // W, np_set % W].clone()
+                new = old.clone()
+                tries = 0
+                while (new == old).all() and tries < 16:
+                    new = _rand_colors((C, 1)).clamp(0.0, 1.0)
+                    tries += 1
+                x_new[i, :, np_set // W, np_set % W] = new
+
+        margin, loss = _margin_and_loss(x_new, y_curr)
+
+        idx_improved = (loss < loss_curr).float()
+        idx_miscl = (margin < -1e-6).float()
+        idx_keep = torch.max(idx_improved, idx_miscl)
+        nkeep = int(idx_keep.sum().item())
+
+        # Update loss whenever loss improves.
+        upd_loss = (idx_improved > 0).nonzero().squeeze(-1)
+        if upd_loss.numel() > 0:
+            loss_min[idx_to_fool[upd_loss]] = loss[upd_loss]
+
+        if nkeep > 0:
+            upd = (idx_keep > 0).nonzero().squeeze(-1)
+            margin_min[idx_to_fool[upd]] = margin[upd]
+            x_best[idx_to_fool[upd]] = x_new[upd]
+
+            # Swap mask indices for the accepted moves.
+            # `upd` comes from .squeeze(-1), so the batch dim is preserved
+            # (shape [K] with K>=1); always use the 2-D batched form.
+            t = b_curr[upd].clone()
+            te = be_curr[upd].clone()
+            t[:, ind_p] = be_curr[upd][:, ind_np]
+            te[:, ind_np] = b_curr[upd][:, ind_p]
+            b_all[idx_to_fool[upd]] = t
+            be_all[idx_to_fool[upd]] = te
+
+    return x_best.detach()
+</old>
+<new>
+    B, C, H, W = x.shape
+    k = int(pixels)
+    mask_step = beta * (H * W) ** 0.5
+
+    class _TopKMask(torch.autograd.Function):
+        """Forward: hard top-k binarization (exactly k pixels=1) -> L0 budget by
+        construction. Backward: straight-through -- the mask gradient flows through the
+        SOFT mask, so unselected pixels still get signal and the support can change.
+        `unprojected=True` routes the perturbation gradient through the soft mask
+        (MaskingA, explore); `False` through the hard projection (MaskingB, refine)."""
+
+        @staticmethod
+        def forward(ctx, x_perturb, mask, kk, unprojected):
+            b = mask.shape[0]
+            flat = mask.view(b, -1)
+            idx = flat.argsort(dim=1, descending=True)
+            hard = torch.zeros_like(flat).scatter_(1, idx[:, :kk], 1.0).view_as(mask)
+            ctx.save_for_backward(x_perturb, mask if unprojected else hard)
+            return x_perturb * hard, hard
+
+        @staticmethod
+        def backward(ctx, grad_out, _grad_mask):
+            x_perturb, routed = ctx.saved_tensors
+            grad_perturb = grad_out * routed
+            grad_mask = (grad_out * x_perturb).sum(dim=1, keepdim=True)
+            return grad_perturb, grad_mask, None, None
+
+    def margin_loss(logits, yb):
+        u = torch.arange(logits.shape[0], device=logits.device)
+        correct = logits[u, yb].clone()
+        tmp = logits.clone()
+        tmp[u, yb] = -float("inf")
+        other = tmp.max(dim=1)[0]
+        return correct - other            # >0 correct; minimized
+
+    x_adv_best = x.clone()
+    loss_best = torch.full((B,), float("inf"), device=device)
+
+    for r in range(n_restarts):
+        unprojected = (r % 2 == 0)
+        perturb = x.new(x.size()).uniform_(-eps, eps)
+        perturb = torch.min(torch.max(perturb, -x), 1 - x)       # x+perturb in [0,1]
+        mask = torch.randn(B, 1, H, W, device=device)            # one scalar per spatial pixel
+
+        for it in range(t):
+            perturb = perturb.detach().requires_grad_(True)
+            mask = mask.detach().requires_grad_(True)
+            proj_perturb, _hard = _TopKMask.apply(perturb, torch.sigmoid(mask), k, unprojected)
+            logits = model(x + proj_perturb)
+            loss = margin_loss(logits, y)
+            loss.sum().backward()
+            g_perturb = perturb.grad.detach()
+            g_mask = mask.grad.detach()
+
+            with torch.no_grad():
+                cur = loss.detach()
+                improve = cur < loss_best
+                if improve.any():
+                    loss_best[improve] = cur[improve]
+                    x_adv_best[improve] = (x + proj_perturb)[improve].detach()
+
+            # magnitude: PGD sign step (descent on margin) + native validity clamps
+            perturb = perturb.detach() - alpha * g_perturb.sign()
+            perturb = perturb.clamp(-eps, eps)
+            perturb = torch.min(torch.max(perturb, -x), 1 - x)
+
+            # mask: normalized gradient step (selection variable, not bounded perturbation)
+            gnorm = g_mask.flatten(1).norm(dim=1).clamp_min(1e-10)
+            mask = mask.detach() - mask_step * (g_mask / gnorm.view(B, 1, 1, 1))
+
+    return x_adv_best.detach()
+</new>
+</edit>
+<obs>
+Successfully replaced text in torchattacks/bench/custom_attack.py.
+</obs>

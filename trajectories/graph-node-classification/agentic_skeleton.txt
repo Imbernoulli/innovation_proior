@@ -1,0 +1,981 @@
+<meta task="graph-node-classification" domain="Graph & mesh" file="pytorch-geometric/custom_nodecls.py" model_format="qwen3" edit_tool="str_replace"/>
+
+<system>
+You are a research engineer improving a model on a fixed ML task. You work by editing the model code and running experiments. Think carefully before each change. You have these tools:
+- str_replace(path, old_str, new_str): replace the unique occurrence of old_str with new_str.
+- create(path, file_text): create a new file.
+- run_experiment(): train + evaluate the current code under the fixed budget; returns metrics.
+Make one tool call at a time. After editing, call run_experiment() to measure your method.
+</system>
+
+<user>
+## Research question
+
+Semi-supervised node classification on citation networks: each node is a document with a sparse
+bag-of-words feature vector, edges are citations, and only ~20 nodes per class are labeled. The single
+thing being designed is the **message-passing mechanism** — how a node constructs messages from its
+neighbors, aggregates them, and updates its own representation — stacked into a model that labels every
+node. Everything around it (the data, the splits, the optimizer, the training loop, the metrics) is
+fixed; the contribution is the propagation/model design alone.
+
+## Prior art before the first rung (pre-message-passing lineage)
+
+The message-passing layer the first rung fills reacts to a line of attempts to put the graph into a
+neural classifier. These precede the ladder; each leaves a gap the rungs close.
+
+- **Label propagation (Zhu et al. 2003).** Solve for a harmonic function where each unlabeled node is the
+  degree-weighted average of its neighbors' labels, in closed form. Uses the edges but ignores the node
+  features entirely. Gap: no features, and "edge ⇒ same label" is baked in.
+- **Graph-as-regularizer (Belkin et al. 2006; Weston et al. 2012).** Keep a feature-only predictor
+  $f(\mathbf X)$ and add a Laplacian smoothness penalty $\sum_{ij}A_{ij}\|f_i-f_j\|^2$ to the loss. The
+  graph only ever appears as a smoothness whip; the architecture itself carries no information across
+  edges, and the penalty again assumes neighbors share a label. Gap: structure never enters the model.
+- **Spectral graph convolution (Bruna et al. 2014).** Define convolution through the graph Fourier basis,
+  $g_\theta\star\mathbf x=\mathbf U\,\mathrm{diag}(\theta)\,\mathbf U^\top\mathbf x$, with $\mathbf U$ the
+  eigenvectors of the normalized Laplacian. Principled but needs an $O(N^3)$ eigendecomposition, has
+  $O(N)$ non-localized parameters, and is welded to one graph's spectrum. Gap: expensive, non-local,
+  non-transferable.
+- **ChebNet (Defferrard et al. 2016).** Replace the free spectral filter with a degree-$K$ Chebyshev
+  polynomial in the Laplacian, $\sum_k\theta_k T_k(\tilde{\mathbf L})\mathbf x$ — $K$-hop localized,
+  $O(K|E|)$, no eigendecomposition. Gap: filter order and receptive field are still tangled, and the
+  neighbor weights are determined by the supplied Laplacian, not learned from features.
+
+The renormalized graph convolution (Kipf & Welling 2017) squeezed ChebNet to $K=1$ with the
+renormalization trick — $\tilde{\mathbf P}=\tilde{\mathbf D}^{-1/2}\tilde{\mathbf A}\tilde{\mathbf
+D}^{-1/2}$, $\tilde{\mathbf A}=\mathbf A+\mathbf I$ — and is exactly the **default fill** of the scaffold
+below: a per-edge symmetric-normalized message. The ladder starts by replacing this default.
+
+## The fixed substrate
+
+The whole pipeline outside the editable region is frozen. PyTorch Geometric's `MessagePassing`
+orchestrates `message → aggregate → update` via `self.propagate(edge_index, ...)`; the loop provides
+`add_self_loops`, `degree`, `softmax`, and read-only reference convolutions (`GCNConv`, `GATConv`,
+`SAGEConv`). Data is the Planetoid citation networks with `T.NormalizeFeatures()`. Training is
+full-batch: cross-entropy on the labeled mask only, Adam (`lr=0.01`, `weight_decay=5e-4`), up to 200
+epochs with early stopping on validation accuracy (patience 50). The model is built with
+`hidden_channels=64`, `num_layers=2`, `dropout=0.5`. A **parameter budget** is enforced — the model must
+stay within $1.05\times$ the largest baseline's parameter count (computed per dataset from GraphSAGE /
+GPS / NAGphormer). The model may override `lr`/`weight_decay` by setting `custom_lr`/`custom_wd`
+attributes; `hidden_channels`, `dropout`, and the `num_layers` argument value are passed in fixed.
+
+## The editable interface
+
+Exactly one region is editable — the `CustomMessagePassingLayer` (a `MessagePassing` subclass) and the
+`CustomGNN` model in `custom_nodecls.py`. The layer defines `__init__`, `forward(x, edge_index)`, and
+`message(...)`; the model defines `__init__(in_channels, hidden_channels, out_channels, num_layers,
+dropout)` and `forward(x, edge_index)` returning logits. Every method on the ladder is a fill of this
+same contract. The starting point is the scaffold **default**: a symmetric-normalized graph convolution.
+Each later method replaces these two definitions.
+
+```python
+# EDITABLE region of custom_nodecls.py — default fill (symmetric-normalized convolution)
+class CustomMessagePassingLayer(MessagePassing):
+    """Default: standard graph convolutional layer (symmetric normalization)."""
+
+    def __init__(self, in_channels: int, out_channels: int):
+        super().__init__(aggr="add")
+        self.lin = nn.Linear(in_channels, out_channels, bias=False)
+        self.bias = nn.Parameter(torch.zeros(out_channels))
+        self.reset_parameters()
+
+    def reset_parameters(self):
+        nn.init.xavier_uniform_(self.lin.weight)
+        nn.init.zeros_(self.bias)
+
+    def forward(self, x: Tensor, edge_index: Adj) -> Tensor:
+        x = self.lin(x)
+        edge_index, _ = add_self_loops(edge_index, num_nodes=x.size(0))
+        row, col = edge_index
+        deg = degree(col, x.size(0), dtype=x.dtype)
+        deg_inv_sqrt = deg.pow(-0.5)
+        deg_inv_sqrt[deg_inv_sqrt == float("inf")] = 0
+        norm = deg_inv_sqrt[row] * deg_inv_sqrt[col]            # 1/sqrt(d_i d_j) per edge
+        out = self.propagate(edge_index, x=x, norm=norm)
+        out = out + self.bias
+        return out
+
+    def message(self, x_j: Tensor, norm: Tensor) -> Tensor:
+        return norm.view(-1, 1) * x_j
+
+
+class CustomGNN(nn.Module):
+    """Default: 2-layer convolution with ReLU and dropout."""
+
+    def __init__(self, in_channels: int, hidden_channels: int,
+                 out_channels: int, num_layers: int = 2, dropout: float = 0.5):
+        super().__init__()
+        self.dropout = dropout
+        self.convs = nn.ModuleList()
+        self.convs.append(CustomMessagePassingLayer(in_channels, hidden_channels))
+        for _ in range(num_layers - 2):
+            self.convs.append(CustomMessagePassingLayer(hidden_channels, hidden_channels))
+        self.convs.append(CustomMessagePassingLayer(hidden_channels, out_channels))
+
+    def forward(self, x: Tensor, edge_index: Adj) -> Tensor:
+        for i, conv in enumerate(self.convs[:-1]):
+            x = conv(x, edge_index)
+            x = F.relu(x)
+            x = F.dropout(x, p=self.dropout, training=self.training)
+        x = self.convs[-1](x, edge_index)
+        return x
+```
+
+## Evaluation settings
+
+Three citation networks with the standard Planetoid semi-supervised splits — **Cora** (2,708 nodes, 7
+classes, 1,433 features), **CiteSeer** (3,327 nodes, 6 classes, 3,703 features), **PubMed** (19,717
+nodes, 3 classes, 500 features) — about 20 labeled nodes per class, fixed masks, evaluated at seed 42.
+Two metrics per dataset, higher is better on both: **accuracy** and **macro-F1** on the test split.
+
+The editable model code is in `pytorch-geometric/custom_nodecls.py`:
+```python
+class CustomMessagePassingLayer(MessagePassing):
+    """Custom message passing layer for node classification.
+
+    This layer defines how messages are constructed, aggregated, and used
+    to update node representations. You should implement a novel message
+    passing mechanism here.
+
+    The PyG MessagePassing base class provides:
+        - self.propagate(edge_index, ...): orchestrates message passing
+        - Override message(): define how messages are computed per edge
+        - Override aggregate(): define how messages are combined (default: 'add')
+        - Override update(): define how node embeddings are updated
+
+    Args:
+        in_channels: input feature dimension
+        out_channels: output feature dimension
+    """
+
+    def __init__(self, in_channels: int, out_channels: int):
+        super().__init__(aggr="add")
+        self.lin = nn.Linear(in_channels, out_channels, bias=False)
+        self.bias = nn.Parameter(torch.zeros(out_channels))
+        self.reset_parameters()
+
+    def reset_parameters(self):
+        nn.init.xavier_uniform_(self.lin.weight)
+        nn.init.zeros_(self.bias)
+
+    def forward(self, x: Tensor, edge_index: Adj) -> Tensor:
+        """Forward pass.
+
+        Args:
+            x: node feature matrix [num_nodes, in_channels]
+            edge_index: graph connectivity [2, num_edges]
+
+        Returns:
+            Updated node features [num_nodes, out_channels]
+        """
+        # Transform features
+        x = self.lin(x)
+
+        # Add self-loops
+        edge_index, _ = add_self_loops(edge_index, num_nodes=x.size(0))
+
+        # Compute normalization (symmetric like GCN)
+        row, col = edge_index
+        deg = degree(col, x.size(0), dtype=x.dtype)
+        deg_inv_sqrt = deg.pow(-0.5)
+        deg_inv_sqrt[deg_inv_sqrt == float("inf")] = 0
+        norm = deg_inv_sqrt[row] * deg_inv_sqrt[col]
+
+        # Propagate messages
+        out = self.propagate(edge_index, x=x, norm=norm)
+        out = out + self.bias
+        return out
+
+    def message(self, x_j: Tensor, norm: Tensor) -> Tensor:
+        """Construct messages from source nodes.
+
+        Args:
+            x_j: source node features [num_edges, out_channels]
+            norm: normalization coefficients [num_edges]
+
+        Returns:
+            Messages [num_edges, out_channels]
+        """
+        return norm.view(-1, 1) * x_j
+
+
+class CustomGNN(nn.Module):
+    """GNN model using CustomMessagePassingLayer for node classification.
+
+    Must implement __init__ and forward.
+    The model receives the full graph and returns logits for each node.
+
+    Args:
+        in_channels: number of input features per node
+        hidden_channels: hidden layer dimension
+        out_channels: number of output classes
+        num_layers: number of message passing layers
+        dropout: dropout probability
+    """
+
+    def __init__(self, in_channels: int, hidden_channels: int,
+                 out_channels: int, num_layers: int = 2,
+                 dropout: float = 0.5):
+        super().__init__()
+        self.dropout = dropout
+        self.convs = nn.ModuleList()
+        self.convs.append(CustomMessagePassingLayer(in_channels, hidden_channels))
+        for _ in range(num_layers - 2):
+            self.convs.append(CustomMessagePassingLayer(hidden_channels, hidden_channels))
+        self.convs.append(CustomMessagePassingLayer(hidden_channels, out_channels))
+
+    def forward(self, x: Tensor, edge_index: Adj) -> Tensor:
+        """Forward pass through the GNN.
+
+        Args:
+            x: node feature matrix [num_nodes, in_channels]
+            edge_index: graph connectivity [2, num_edges]
+
+        Returns:
+            Node classification logits [num_nodes, out_channels]
+        """
+        for i, conv in enumerate(self.convs[:-1]):
+            x = conv(x, edge_index)
+            x = F.relu(x)
+            x = F.dropout(x, p=self.dropout, training=self.training)
+        x = self.convs[-1](x, edge_index)
+        return x
+```
+Improve it. Derive your method, edit the code, then run_experiment().
+</user>
+
+### step 1 — GraphSAGE (mean aggregation)   [slug:graphsage]
+
+<think>
+[[POLISH_REASONING: adapt to first-person agentic voice, end by deciding to implement]]
+The whole task is the message-passing mechanism, and before I reach for anything clever I want the simplest *separated* aggregator on the ladder — the one that makes the fewest commitments — so I can read what the bare graph signal is worth on these splits. The scaffold default already does a symmetric-normalized convolution, $\tilde{\mathbf P}=\tilde{\mathbf D}^{-1/2}\tilde{\mathbf A}\tilde{\mathbf D}^{-1/2}$, which fixes each neighbor's weight to $1/\sqrt{\tilde d_i\tilde d_j}$ and folds the node's own contribution into the *same* normalized pot via the self-loop. Two things are baked into that default that I want to question one at a time. First, the neighbor weight is a fixed function of the two endpoints' degrees — nothing learned, nothing feature-driven. Second, and more subtly, the node's own features and its neighbors' features pass through one shared linear map and are summed on the same footing, the self being just another (self-looped) neighbor in the average. The cleanest first move is not to attack the *weighting* yet — that is a later rung — but to relax the *coupling*: give the node a clean, undiluted channel for itself, separate from whatever it pulls in from its neighbors, with the most neutral possible neighbor weighting underneath. That isolates a single question for the floor: what does two-hop neighbor aggregation buy at all, before any cleverness about which neighbor matters?
+
+Why does separating self from neighborhood matter here? Think about what the folded-self convolution does as it stacks. At each layer the node's own signal is averaged into a growing crowd — its neighbors, then their neighbors — through one shared $\mathbf W$, and by the second layer the node's own identity has been blended with everything two hops out under a single transform. There is no way for the layer to say "weight my own representation differently from the summary of my neighborhood," because there is only one weight matrix and one pot. If instead I keep the node's previous-layer vector *separate* and combine it with the aggregated neighborhood through *two distinct* projections, the node always has a dedicated channel for itself that shortcuts past the aggregation. Concretely the update becomes $\mathbf h_i'=\mathbf W_{\text{self}}\mathbf h_i+\mathbf W_{\text{neigh}}\,\mathrm{agg}_{j\in N(i)}\mathbf h_j$, two linear maps the layer can balance against each other. This is a skip connection across the propagation step, at the level of the layer's own arithmetic: the self term is a direct path that the neighbor term cannot wash out. I expect this to be a real, if modest, lift over the folded-self default, and the natural counterfactual is exactly the fold-it-in version the scaffold ships — same data, same depth, one shared map versus two.
+
+Now the aggregator itself, and this is the design surface I most want to keep neutral at the floor. A node's neighbors are a *set* — there is no first neighbor, no canonical order, and the same node enumerated in two different adjacency orders must produce the same vector. So whatever I do over the neighbors must be permutation-invariant; an order-sensitive combiner is simply wrong on a set. The cheapest permutation-invariant pooling is the plain **mean**: $\mathrm{mean}_{j\in N(i)}\mathbf h_j$, the unweighted average over $N(i)$, with no degree normalization at all. I deliberately pick the mean for the floor precisely because it makes the *fewest* assumptions about which neighbor matters — every neighbor counts equally. It is the most neutral baseline against which any later weighting scheme can be measured: if learned attention or principled degree damping beats it, I will know the gain came from the weighting and not from the aggregation shape. And the mean has a clarifying relationship to the default I am replacing: if I were to fold the self back into the pot and run a single shared map over the combined mean, I would recover, up to a normalization constant, the inductive face of the symmetric convolution itself — the GCN rule is the mean aggregator with self folded in. So the default is not outside this framework; it is a special case of it. That tells me the separated-mean layer is the right *generalization* to start from, and it tells me exactly which knob (fold vs. separate) the floor is turning relative to the scaffold default.
+
+There is a deeper reason this "aggregate-a-set-of-features-through-shared-maps" shape is the right primitive, and it is worth being explicit about because it governs everything above this rung too. The learned object here is not a table of per-node embeddings; it is a small set of *functions* — $\mathbf W_{\text{self}}$, $\mathbf W_{\text{neigh}}$ — applied to features and neighborhoods. A node's representation is the *output* of those functions on (its features, its neighbors' features), not a parameter looked up by node id. That reframing is what makes message passing a real architecture rather than a fitted lookup, and it is why the whole ladder is a sequence of fills of the *same* contract: every rung just changes how the neighbor set is summarized and weighted, while the "shared function of features" backbone stays fixed. I note in passing that the larger family this floor descends from also offers a richer, trainable pooling — push each neighbor through a small shared map and take an elementwise max, a soft existential over the set — and a fixed-size neighbor *sampler* to bound per-batch cost on huge graphs. Neither is what this task wants. The fixed loop here trains full-batch on the entire graph transductively: there are no minibatches over nodes, no hub-degree blowup to bound, so the sampler has nothing to do and I aggregate the *whole* neighborhood every step. And the floor's job is to establish the most neutral aggregator, so I take the mean rather than the max-pool; the expressive pooling is a lever I am deliberately not pulling yet. The plain mean over the full neighborhood, with separate self/neighbor maps, is the literal scaffold edit.
+
+One more piece falls out of stacking two such layers: scale control. Mean aggregation plus two linear maps can let feature magnitudes drift from layer to layer — there is nothing in the update pinning the output scale, and after the first layer feeds the second, a magnitude that grew or shrank propagates. So I $\ell_2$-normalize each node's output, $\mathbf h_i'\leftarrow\mathbf h_i'/\|\mathbf h_i'\|_2$, projecting every node onto the unit sphere. This keeps the second layer's inputs at a stable, comparable scale regardless of what the first layer did to magnitudes, which matters when the only supervision is ~20 labels per class and I cannot afford the first layer to silently rescale itself into a bad regime. It also has a clean semantic consequence: on the unit sphere, downstream comparisons between node vectors are about *direction*, not magnitude — two nodes are "similar" when their representations point the same way, which is the right notion for a feature aggregator whose magnitudes are an artifact of how many neighbors got summed. I give $\mathbf W_{\text{self}}$ a bias and leave $\mathbf W_{\text{neigh}}$ bias-free, since one bias on the combined output is all that is needed; a second would be redundant.
+
+The depth is set by the task and by the structure of the problem, not chosen freely. The fixed loop passes `num_layers=2`, and two layers is exactly right for these citation graphs: each layer reaches one hop, so two layers give every node a two-hop receptive field, the freshly-transformed self at layer one and a summary of the two-hop ego network by layer two. That is the standard depth for Cora/CiteSeer/PubMed, the depth the harness is built for, and — as the rest of this ladder will make painfully clear — the depth at which all the shallow baselines live. So the floor is two separated-mean layers, ReLU and dropout 0.5 between them (the scaffold-fixed dropout), $\ell_2$-normalizing after each, mapping in_channels → hidden (64) → out_channels (the class logits). It costs one full-batch sparse mean per layer plus two dense linear maps — cheaper than anything else on the ladder, with no attention vectors, no per-edge softmax, no eigendecomposition.
+
+Now, what do I expect this floor to do, and — since there is no prior result to diagnose — where do I predict it will be weakest, so the next rung is already pointed? The mean aggregator treats every neighbor identically and uses no degree normalization whatsoever. Compare it to the symmetric-normalized default it replaces: that default at least damps a high-degree neighbor by $1/\sqrt{\tilde d_j}$, so a citation to a paper everyone cites carries less weight than a citation to an obscure one. The plain mean does no such thing — a high-degree off-topic neighbor counts exactly as much as a low-degree on-topic one. So on a node whose neighbors are a mix of classes — a citation crossing a topic boundary — the mean blurs the useful signal with the off-topic one and has no mechanism to discount the off-topic neighbor. This should bite hardest where neighborhoods are noisiest and the label budget smallest, and the spread within a dataset should reveal it: with uniform, un-normalized aggregation, a poorly-connected node's representation is at the mercy of *which particular* neighbors it happens to have, so I expect the symptom to be high *seed-to-seed variance* on the mixed-neighborhood dataset. Of the three, CiteSeer is the sparsest and least homophilous, so I expect it to be both the lowest-scoring and the highest-variance dataset, while Cora and PubMed — denser, cleaner, more homophilous — should hold up well and steady. Whatever the exact numbers, the diagnosis is pre-pointed at the next rung: if uniform neighbor weighting is the cap, the fix is not a different aggregation shape but to let the layer *learn* which neighbor matters instead of averaging them all. The full scaffold module is in the answer.
+</think>
+<say>
+[[FILL_SAY: 1-2 sentences naming the method and what this first edit does]]
+</say>
+<edit path="pytorch-geometric/custom_nodecls.py">
+<old>
+class CustomMessagePassingLayer(MessagePassing):
+    """Custom message passing layer for node classification.
+
+    This layer defines how messages are constructed, aggregated, and used
+    to update node representations. You should implement a novel message
+    passing mechanism here.
+
+    The PyG MessagePassing base class provides:
+        - self.propagate(edge_index, ...): orchestrates message passing
+        - Override message(): define how messages are computed per edge
+        - Override aggregate(): define how messages are combined (default: 'add')
+        - Override update(): define how node embeddings are updated
+
+    Args:
+        in_channels: input feature dimension
+        out_channels: output feature dimension
+    """
+
+    def __init__(self, in_channels: int, out_channels: int):
+        super().__init__(aggr="add")
+        self.lin = nn.Linear(in_channels, out_channels, bias=False)
+        self.bias = nn.Parameter(torch.zeros(out_channels))
+        self.reset_parameters()
+
+    def reset_parameters(self):
+        nn.init.xavier_uniform_(self.lin.weight)
+        nn.init.zeros_(self.bias)
+
+    def forward(self, x: Tensor, edge_index: Adj) -> Tensor:
+        """Forward pass.
+
+        Args:
+            x: node feature matrix [num_nodes, in_channels]
+            edge_index: graph connectivity [2, num_edges]
+
+        Returns:
+            Updated node features [num_nodes, out_channels]
+        """
+        # Transform features
+        x = self.lin(x)
+
+        # Add self-loops
+        edge_index, _ = add_self_loops(edge_index, num_nodes=x.size(0))
+
+        # Compute normalization (symmetric like GCN)
+        row, col = edge_index
+        deg = degree(col, x.size(0), dtype=x.dtype)
+        deg_inv_sqrt = deg.pow(-0.5)
+        deg_inv_sqrt[deg_inv_sqrt == float("inf")] = 0
+        norm = deg_inv_sqrt[row] * deg_inv_sqrt[col]
+
+        # Propagate messages
+        out = self.propagate(edge_index, x=x, norm=norm)
+        out = out + self.bias
+        return out
+
+    def message(self, x_j: Tensor, norm: Tensor) -> Tensor:
+        """Construct messages from source nodes.
+
+        Args:
+            x_j: source node features [num_edges, out_channels]
+            norm: normalization coefficients [num_edges]
+
+        Returns:
+            Messages [num_edges, out_channels]
+        """
+        return norm.view(-1, 1) * x_j
+
+
+class CustomGNN(nn.Module):
+    """GNN model using CustomMessagePassingLayer for node classification.
+
+    Must implement __init__ and forward.
+    The model receives the full graph and returns logits for each node.
+
+    Args:
+        in_channels: number of input features per node
+        hidden_channels: hidden layer dimension
+        out_channels: number of output classes
+        num_layers: number of message passing layers
+        dropout: dropout probability
+    """
+
+    def __init__(self, in_channels: int, hidden_channels: int,
+                 out_channels: int, num_layers: int = 2,
+                 dropout: float = 0.5):
+        super().__init__()
+</old>
+<new>
+# EDITABLE region of custom_nodecls.py — step 1: mean-aggregation message passing
+class CustomMessagePassingLayer(MessagePassing):
+    """Mean-aggregation layer with separate self/neighbor projections + L2 normalization."""
+
+    def __init__(self, in_channels: int, out_channels: int):
+        super().__init__(aggr="mean")
+        self.lin_self = nn.Linear(in_channels, out_channels, bias=True)
+        self.lin_neigh = nn.Linear(in_channels, out_channels, bias=False)
+        self.reset_parameters()
+
+    def reset_parameters(self):
+        nn.init.xavier_uniform_(self.lin_self.weight)
+        nn.init.xavier_uniform_(self.lin_neigh.weight)
+        nn.init.zeros_(self.lin_self.bias)
+
+    def forward(self, x: Tensor, edge_index: Adj) -> Tensor:
+        neigh_agg = self.propagate(edge_index, x=x)        # mean over neighbors, no self-loop
+        out = self.lin_self(x) + self.lin_neigh(neigh_agg)  # separate self / neighbor channels
+        out = F.normalize(out, p=2, dim=-1)                 # project each node onto the unit sphere
+        return out
+
+    def message(self, x_j: Tensor) -> Tensor:
+        return x_j
+
+
+class CustomGNN(nn.Module):
+    """Mean-aggregation GNN with L2 normalization."""
+
+    def __init__(self, in_channels: int, hidden_channels: int,
+                 out_channels: int, num_layers: int = 2, dropout: float = 0.5):
+        super().__init__()
+</new>
+</edit>
+<obs>
+Successfully replaced text in pytorch-geometric/custom_nodecls.py.
+</obs>
+<note>
+[[FILL_NOTE?: optional one-line thought for this edit, or delete this block]]
+</note>
+<edit path="pytorch-geometric/custom_nodecls.py">
+<old>
+    def forward(self, x: Tensor, edge_index: Adj) -> Tensor:
+        """Forward pass through the GNN.
+
+        Args:
+            x: node feature matrix [num_nodes, in_channels]
+            edge_index: graph connectivity [2, num_edges]
+
+        Returns:
+            Node classification logits [num_nodes, out_channels]
+        """
+        for i, conv in enumerate(self.convs[:-1]):
+</old>
+<new>
+    def forward(self, x: Tensor, edge_index: Adj) -> Tensor:
+        for i, conv in enumerate(self.convs[:-1]):
+</new>
+</edit>
+<obs>
+Successfully replaced text in pytorch-geometric/custom_nodecls.py.
+</obs>
+<run/>
+<obs>
+Measured results — `baseline:graphsage` (`is_final,true`), seeds {42, 123, 456} and mean.
+
+## Cora
+| seed | accuracy | macro_f1 |
+|---|---|---|
+| 42 | 0.793 | 0.7845 |
+| 123 | 0.793 | 0.7840 |
+| 456 | 0.791 | 0.7817 |
+| **mean** | **0.7923** | **0.7834** |
+
+## CiteSeer
+| seed | accuracy | macro_f1 |
+|---|---|---|
+| 42 | 0.679 | 0.6475 |
+| 123 | 0.674 | 0.6369 |
+| 456 | 0.628 | 0.5811 |
+| **mean** | **0.6603** | **0.6218** |
+
+## PubMed
+| seed | accuracy | macro_f1 |
+|---|---|---|
+| 42 | 0.776 | 0.7720 |
+| 123 | 0.770 | 0.7664 |
+| 456 | 0.762 | 0.7585 |
+| **mean** | **0.7693** | **0.7656** |
+</obs>
+
+### step 2 — GAT (multi-head graph attention)   [slug:gat]
+
+<think>
+[[POLISH_REASONING: adapt to first-person agentic voice, end by deciding to implement]]
+The mean aggregator landed where I predicted it would be weakest, and the shape of the failure is the argument for what comes next. Read across the three datasets: Cora holds (0.7923 accuracy, and almost no spread — {0.793, 0.793, 0.791} across seeds), PubMed holds (0.7693, tight {0.776, 0.770, 0.762}), but CiteSeer collapses to 0.6603 *and* its seeds fan out — {0.679, 0.674, 0.628}, a 5-point swing from best to worst, with macro-F1 cratering to 0.5811 on seed 456. That is exactly the signature I said to watch for. CiteSeer is the sparsest, least-homophilous graph, and the plain mean — every neighbor counted equally, no degree damping — blurs an off-topic neighbor into the average with full weight, so a poorly-connected node's representation is at the mercy of which particular neighbors it happens to have. The variance *is* the diagnosis: where neighborhoods are clean (Cora, PubMed) uniform averaging is fine; where they are mixed (CiteSeer) the mean has no way to discount the wrong neighbor, and the result swings seed to seed. The mean has no knob for "this neighbor matters more than that one." So the fix is not a different aggregation *shape* — separating self from neighbor was the right backbone and I keep it — it is to make the neighbor weight *learnable* from the features, so the layer can itself down-weight the off-topic citation that wrecked CiteSeer.
+
+Before I reach for the new primitive, let me be precise about what kind of weighting I am after, because the scaffold default and the floor sit at two ends of a spectrum and I want to understand both. The default's weight $1/\sqrt{\tilde d_i\tilde d_j}$ is *fixed* — a deterministic function of degrees, the same for every model and every task, untrainable. The floor's weight is *uniform* — every neighbor gets $1/|N(i)|$, also untrainable. Both are pinned by graph structure and cannot decide that, for predicting node $i$'s class, one particular neighbor matters more than another. That is the real cap, and CiteSeer's seed swing is the cost of it: when the right answer for a mixed neighborhood is "trust this neighbor, discount that one," neither fixed nor uniform weighting can express it, so the model is stuck averaging noise into signal. What I want is a weight that is a *function of the features* of the two endpoints — learned, not handed down by degrees — so the layer can look at a neighbor and decide how much it matters. And I want to keep everything the floor got right: permutation-invariance over the neighbor set, the whole neighborhood (not a sample), and a shared mechanism applied identically everywhere.
+
+What primitive takes a variable-sized, unordered set of items and returns a *learned* weight for each before combining? Spell that out and it is exactly an attention mechanism: a node is the query, its neighbors are the items, each neighbor is scored, the scores are normalized over the neighborhood, and the output is the score-weighted sum. It does not care how many items there are or what order they come in, the scores are learned from content, and they are interpretable as "how much does this item matter." The mean is the special case where every score is equal; attention is the generalization that can make them unequal. That is precisely the missing knob CiteSeer needs, and it keeps the property the mean had — a softmax-weighted sum over a set is permutation-invariant, unlike any sequence model I might be tempted to use on the neighbor set.
+
+Let me build the layer so each piece falls out of a need. First I need a shared linear transform on every node, $\mathbf W\mathbf h_i$ — the minimum that gives the layer expressive power and lets it change dimension, shared across all nodes so it is the same mechanism everywhere. In the scaffold this is `self.lin`, projecting to `heads * head_dim`. Then a function that scores how much neighbor $j$ matters to node $i$, $e_{ij}=a(\mathbf W\mathbf h_i,\mathbf W\mathbf h_j)$, with $a$ a shared scorer. Here is a fork I have to settle. The maximally flexible thing would be to let every node attend over every other node — full self-attention, dropping the graph entirely and letting the model rediscover relationships. That is $O(N^2)$ and, worse, throws away the graph I trust: the off-topic-neighbor problem on CiteSeer is about *weighting real neighbors*, not discovering new edges. I have a perfectly good inductive bias sitting in the edges, so I inject it by *masking* — compute $e_{ij}$ only for $j\in N(i)$, the actual neighbors, plus a self-loop so the node keeps its own features (the same reason the convolution folds in $\mathbf A+\mathbf I$). In the scaffold this is `add_self_loops` before `propagate`, so attention is computed exactly over the real edge set plus self-edges. Multi-hop reach comes from stacking, the same two layers as before — the harness passes `num_layers=2` and a two-hop receptive field is enough for these graphs.
+
+Scores from different nodes must be made comparable — a node with three neighbors and a node with three hundred should not be on different scales, and CiteSeer's variance is partly a degree-imbalance story — so I normalize them over each neighborhood with a softmax, $\alpha_{ij}=\exp(e_{ij})/\sum_{k\in N(i)}\exp(e_{ik})$. The softmax does three things at once: it turns the raw scores into a proper distribution over the neighborhood regardless of its size, it stays permutation-invariant over the set, and it is differentiable with well-behaved gradients. In the scaffold this is exactly `softmax(alpha, index, ptr, size_i)`, a per-destination-node softmax over incoming edges. For the scorer $a$ I take the cheapest learnable form: a single weight vector over the two transformed endpoints with a nonlinearity, so the score is not merely bilinear. The concatenation $\vec a^\top[\mathbf W\mathbf h_i\Vert\mathbf W\mathbf h_j]$ splits *additively* into $\vec a_s^\top\mathbf W\mathbf h_i+\vec a_d^\top\mathbf W\mathbf h_j$ — a *source* score and a *destination* score — and this split is not cosmetic, it is the efficient implementation: I compute one scalar per node for each half and the edge score becomes a broadcast sum over the edge list, never a materialized $2F'$ concatenation per edge. The scaffold lands this precisely — `att_src` and `att_dst` are the two halves $\vec a_s,\vec a_d$, `alpha_src = (x * att_src).sum(-1)` and `alpha_dst = (x * att_dst).sum(-1)` are the per-node scalars, and `message` forms `alpha_src_i + alpha_dst_j`, the broadcast sum, before the nonlinearity.
+
+The nonlinearity on the pair score matters, and it has to be LeakyReLU rather than plain ReLU for a reason that connects straight back to the CiteSeer failure. The pre-activation $\vec a_s^\top\mathbf W\mathbf h_i+\vec a_d^\top\mathbf W\mathbf h_j$ is routinely negative, and I need the *ordering* of scores among neighbors to survive into the softmax. Plain ReLU clamps every negative score to exactly zero — a whole range of "this neighbor is somewhat less relevant" collapses to one value, and the gradient there dies, so the scorer could never learn to discriminate among the down-weighted neighbors. But discriminating among down-weighted neighbors is *exactly* what CiteSeer needs: the off-topic citation has to be pushed below the on-topic ones, not flattened to zero alongside them. LeakyReLU keeps a small negative slope (0.2 in the scaffold's `negative_slope`), preserving the ordering and the gradient. So the full normalized weight is $\alpha_{ij}=\mathrm{softmax}_j\big(\mathrm{LeakyReLU}(\vec a_s^\top\mathbf W\mathbf h_i+\vec a_d^\top\mathbf W\mathbf h_j)\big)$, and the message is $\alpha_{ij}\,\mathbf W\mathbf h_j$ summed over neighbors — `x_j * alpha.unsqueeze(-1)` with `aggr="add"`.
+
+Now a worry specific to the data regime, and it is the same word that named the floor's failure: instability. Attention trained from scratch on ~20 labels per class can latch onto one bad scoring pattern early — and "latch onto a bad pattern" is a precise restatement of the seed-to-seed instability I just measured on CiteSeer. So I do not bet everything on a single attention head. I run $K$ independent heads in parallel, each with its own $\mathbf W^k$ and $\vec a^k$, and combine them: in the hidden layer **concatenate** the heads, keeping every head's view (8 heads of 8 features into the 64 hidden width, `concat=True` with `head_dim = out_channels // heads`), and at the **output** layer **average** a single head's class scores (`concat=False`, `out.mean(dim=1)`), because concatenating heads at the output would give $K\times C$ numbers instead of a class vector. Averaging several independent attempts is itself the variance reducer the mean aggregator could not supply: instead of one fragile weighting, I get the consensus of several, which should pull CiteSeer's seed spread back in — this is the head-averaging acting directly on the failure mode I diagnosed.
+
+The small-label regime needs aggressive regularization, and here there is a graph-specific lever the floor did not have. Beyond dropping input features, I apply dropout to the *normalized attention coefficients* themselves at rate 0.6 (`F.dropout(alpha, p=0.6)` inside `message`). Think about what that does: zeroing some $\alpha_{ij}$ each step means each node sees a stochastically sampled subset of its neighborhood every iteration — data augmentation on the connectivity itself, tailored to this exact layer, which is precisely the kind of regularizer that helps when there are ~20 labels per class. Heavy feature dropout (0.6, the scaffold's `CustomGNN` dropout, applied before each conv) rounds it out. For the activation I use ELU rather than ReLU — smooth, allowing negative outputs so activations stay near zero-mean, which tends to converge faster in this moderately deep attentional stack. So the forward shape in the scaffold is: dropout → 8-head concat conv → ELU → dropout → 1-head averaged conv → logits.
+
+Cost check, because cheapness mattered at the floor and I do not want to give it back. Applying $\mathbf W$ to all nodes is $O(|V|FF')$; computing the scores and weighted sums only over edges is $O(|E|F')$; so one head is $O(|V|FF'+|E|F')$ — linear in nodes and edges, on par with the mean layer, with no eigendecomposition and no inversion anywhere. Multi-head multiplies parameters and storage by $K$, but the heads are independent and run in parallel, and every edge score and every node update is independent, so the whole thing parallelizes across edges and nodes. I am paying more parameters than the floor — eight heads, two attention vectors per head — but buying a learned, feature-driven, per-neighbor weight, and the question the next rung will have to ask is whether that purchase pays off everywhere or only where neighborhoods were actually mixed. The full scaffold module is in the answer.
+
+Now the falsifiable expectations, read against graphsage's actual numbers, because the whole story says the gain should be *concentrated where uniform weighting failed*. CiteSeer is the headline claim: its seed variance should shrink — the mean's {0.679, 0.674, 0.628} spread was the symptom, and learned weights plus head-averaging plus attention-dropout should tighten it — and its mean accuracy should rise above 0.6603. Cora should *clearly* improve over 0.7923: Cora is dense and homophilous, so learned attention can sharpen the already-good neighborhoods, and I would expect it past 0.82, with the best seed higher still. PubMed I expect to roughly hold near 0.7693, maybe a hair under: PubMed's neighborhoods are already clean and large and uniform averaging was nearly optimal there, so attention adds parameters and dropout noise without much room to help — a flat or marginally-lower PubMed would *not* falsify the thesis. What *would* falsify it: a Cora that fails to beat 0.7923 (learned weighting should help where neighborhoods are good), or a CiteSeer whose variance does not tighten and whose floor does not lift (the whole point is that the mixed-neighborhood dataset is where learned per-neighbor weighting earns its keep). The bet is specifically that learning which neighbor matters buys the most on the mixed-neighborhood dataset and little on the clean ones.
+</think>
+<say>
+[[FILL_SAY: 1-2 sentences naming the method and what this first edit does]]
+</say>
+<edit path="pytorch-geometric/custom_nodecls.py">
+<old>
+# EDITABLE region of custom_nodecls.py — step 1: mean-aggregation message passing
+class CustomMessagePassingLayer(MessagePassing):
+    """Mean-aggregation layer with separate self/neighbor projections + L2 normalization."""
+
+    def __init__(self, in_channels: int, out_channels: int):
+        super().__init__(aggr="mean")
+        self.lin_self = nn.Linear(in_channels, out_channels, bias=True)
+        self.lin_neigh = nn.Linear(in_channels, out_channels, bias=False)
+        self.reset_parameters()
+
+    def reset_parameters(self):
+        nn.init.xavier_uniform_(self.lin_self.weight)
+        nn.init.xavier_uniform_(self.lin_neigh.weight)
+        nn.init.zeros_(self.lin_self.bias)
+
+    def forward(self, x: Tensor, edge_index: Adj) -> Tensor:
+        neigh_agg = self.propagate(edge_index, x=x)        # mean over neighbors, no self-loop
+        out = self.lin_self(x) + self.lin_neigh(neigh_agg)  # separate self / neighbor channels
+        out = F.normalize(out, p=2, dim=-1)                 # project each node onto the unit sphere
+        return out
+
+    def message(self, x_j: Tensor) -> Tensor:
+        return x_j
+
+
+class CustomGNN(nn.Module):
+    """Mean-aggregation GNN with L2 normalization."""
+
+    def __init__(self, in_channels: int, hidden_channels: int,
+                 out_channels: int, num_layers: int = 2, dropout: float = 0.5):
+        super().__init__()
+        self.dropout = dropout
+        self.convs = nn.ModuleList()
+        self.convs.append(CustomMessagePassingLayer(in_channels, hidden_channels))
+        for _ in range(num_layers - 2):
+            self.convs.append(CustomMessagePassingLayer(hidden_channels, hidden_channels))
+        self.convs.append(CustomMessagePassingLayer(hidden_channels, out_channels))
+
+    def forward(self, x: Tensor, edge_index: Adj) -> Tensor:
+        for i, conv in enumerate(self.convs[:-1]):
+            x = conv(x, edge_index)
+            x = F.relu(x)
+            x = F.dropout(x, p=self.dropout, training=self.training)
+        x = self.convs[-1](x, edge_index)
+        return x
+</old>
+<new>
+# EDITABLE region of custom_nodecls.py — step 2: multi-head graph attention
+class CustomMessagePassingLayer(MessagePassing):
+    """Graph attention layer with multi-head additive attention."""
+
+    def __init__(self, in_channels: int, out_channels: int,
+                 heads: int = 8, concat: bool = True, negative_slope: float = 0.2):
+        super().__init__(aggr="add", node_dim=0)
+        self.heads = heads
+        self.concat = concat
+        self.negative_slope = negative_slope
+        if concat:
+            assert out_channels % heads == 0
+            self.head_dim = out_channels // heads
+        else:
+            self.head_dim = out_channels
+        self.lin = nn.Linear(in_channels, heads * self.head_dim, bias=False)
+        self.att_src = nn.Parameter(torch.empty(1, heads, self.head_dim))   # a_s (source score half)
+        self.att_dst = nn.Parameter(torch.empty(1, heads, self.head_dim))   # a_d (destination half)
+        self.bias = nn.Parameter(torch.zeros(heads * self.head_dim if concat else out_channels))
+        self.reset_parameters()
+
+    def reset_parameters(self):
+        nn.init.xavier_uniform_(self.lin.weight)
+        nn.init.xavier_uniform_(self.att_src)
+        nn.init.xavier_uniform_(self.att_dst)
+        nn.init.zeros_(self.bias)
+
+    def forward(self, x: Tensor, edge_index: Adj) -> Tensor:
+        H, D = self.heads, self.head_dim
+        x = self.lin(x).view(-1, H, D)
+        alpha_src = (x * self.att_src).sum(dim=-1)             # per-node source scalar (per head)
+        alpha_dst = (x * self.att_dst).sum(dim=-1)             # per-node destination scalar (per head)
+        edge_index, _ = add_self_loops(edge_index, num_nodes=x.size(0))
+        out = self.propagate(edge_index, x=x, alpha_src=alpha_src, alpha_dst=alpha_dst)
+        out = out.view(-1, H * D) if self.concat else out.mean(dim=1)
+        return out + self.bias
+
+    def message(self, x_j: Tensor, alpha_src_i: Tensor, alpha_dst_j: Tensor,
+                index: Tensor, ptr: OptTensor, size_i: Optional[int]) -> Tensor:
+        alpha = alpha_src_i + alpha_dst_j                      # additive score = a_s.Wh_i + a_d.Wh_j
+        alpha = F.leaky_relu(alpha, self.negative_slope)
+        alpha = softmax(alpha, index, ptr, size_i)            # normalize over the neighborhood
+        alpha = F.dropout(alpha, p=0.6, training=self.training)  # dropout on attention coefficients
+        return x_j * alpha.unsqueeze(-1)
+
+
+class CustomGNN(nn.Module):
+    """Multi-head attention GNN: 8 concat heads then 1 averaged head."""
+
+    def __init__(self, in_channels: int, hidden_channels: int,
+                 out_channels: int, num_layers: int = 2, dropout: float = 0.6):
+        super().__init__()
+        self.dropout = dropout
+        self.convs = nn.ModuleList()
+        self.convs.append(CustomMessagePassingLayer(in_channels, hidden_channels, heads=8, concat=True))
+        for _ in range(num_layers - 2):
+            self.convs.append(CustomMessagePassingLayer(hidden_channels, hidden_channels, heads=8, concat=True))
+        self.convs.append(CustomMessagePassingLayer(hidden_channels, out_channels, heads=1, concat=False))
+
+    def forward(self, x: Tensor, edge_index: Adj) -> Tensor:
+        for i, conv in enumerate(self.convs[:-1]):
+            x = F.dropout(x, p=self.dropout, training=self.training)
+            x = conv(x, edge_index)
+            x = F.elu(x)
+        x = F.dropout(x, p=self.dropout, training=self.training)
+        x = self.convs[-1](x, edge_index)
+        return x
+</new>
+</edit>
+<obs>
+Successfully replaced text in pytorch-geometric/custom_nodecls.py.
+</obs>
+<run/>
+<obs>
+Measured results — `baseline:gat` (`is_final,true`), seeds {42, 123, 456} and mean.
+
+## Cora
+| seed | accuracy | macro_f1 |
+|---|---|---|
+| 42 | 0.838 | 0.8251 |
+| 123 | 0.825 | 0.8131 |
+| 456 | 0.815 | 0.7995 |
+| **mean** | **0.8260** | **0.8126** |
+
+## CiteSeer
+| seed | accuracy | macro_f1 |
+|---|---|---|
+| 42 | 0.711 | 0.6577 |
+| 123 | 0.696 | 0.6433 |
+| 456 | 0.716 | 0.6801 |
+| **mean** | **0.7077** | **0.6604** |
+
+## PubMed
+| seed | accuracy | macro_f1 |
+|---|---|---|
+| 42 | 0.777 | 0.7711 |
+| 123 | 0.776 | 0.7718 |
+| 456 | 0.780 | 0.7758 |
+| **mean** | **0.7777** | **0.7729** |
+</obs>
+
+### step 3 — GCN (renormalized graph convolution)   [slug:gcn]
+
+<think>
+[[POLISH_REASONING: adapt to first-person agentic voice, end by deciding to implement]]
+Attention did what I predicted on Cora and missed what I predicted on CiteSeer, and the gap between those two outcomes is the whole lesson. Read the means: Cora rose to 0.8260 — clearly past graphsage's 0.7923, exactly as the dense-homophilous story said, with seed 42 hitting 0.838. PubMed held at 0.7777, a hair above the mean aggregator's 0.7693, also as expected — clean neighborhoods left little for learned weighting to gain. But CiteSeer came in at 0.7077, and look at the seeds: {0.711, 0.696, 0.716}. The mean accuracy went *up* from 0.6603, yes, but the *variance did not collapse* the way I claimed it would — there is still a ~2-point seed swing, and the worst seed (0.696) is barely better than the mean aggregator's *best* seed (0.679). My thesis that learned attention would buy the most on the mixed-neighborhood dataset is only half-confirmed: it lifted CiteSeer's floor but it did not make it *stable*, and CiteSeer remains the worst of the three by a wide margin. So learned per-neighbor weighting is not free — it bought Cora a lot, CiteSeer a little and shakily, PubMed nothing.
+
+That asymmetry makes me question whether the *learned* part of the weight is even pulling its weight on these graphs. Attention spends a great deal to learn $\alpha_{ij}$: eight heads, two attention vectors per head, a LeakyReLU and a softmax and a dropout over every edge, all fit from ~20 labels per class. Citation graphs are strongly homophilous — a citation usually links same-topic papers — so the "right" answer for most neighbors is simply "count this neighbor, with a sensible degree-based discount." On a homophilous graph, a *fixed* weighting that already encodes "discount high-degree neighbors" might match what attention is straining to learn, at none of the parameter cost and none of the variance that learning from 20 labels introduces. CiteSeer's stubborn seed swing is consistent with exactly that diagnosis: the attention scorer is overfitting the tiny label set, so which weighting it lands on depends on the seed. So I want to throw away the learned weight entirely and go back to a *principled fixed* weight — but a better-founded one than the plain mean of the floor, which had no normalization at all and was the worst of the three. The question is what the *right* fixed weight is, and to answer it I have to ask what "convolution on a graph" should even mean.
+
+Why can I not just write down "slide a filter across the graph"? Because sliding is exactly what I cannot do. An ordinary convolution is built on *translation* — take a small filter, shift it by one position, multiply-and-sum, shift again — and on a grid "shift by one" is unambiguous. On a graph it is meaningless: node 7 has three neighbors, node 8 has nine hundred, there is no canonical "next node over." Translation is undefined, so the spatial definition of convolution does not transfer. The only translation-free definition of convolution I know goes through the convolution theorem: convolution in space is multiplication in the Fourier domain. So if I can build a Fourier basis on the graph, I can define convolution as "transform, multiply by a filter, transform back," never mentioning translation. The object that supplies a graph Fourier basis is the symmetric normalized Laplacian $\mathbf L=\mathbf I-\mathbf D^{-1/2}\mathbf A\mathbf D^{-1/2}$: it is real and symmetric, so it diagonalizes with an *orthonormal* eigenbasis $\mathbf L=\mathbf U\boldsymbol\Lambda\mathbf U^\top$, and an orthonormal basis is exactly what a Fourier basis must be. The eigenvectors are the graph's frequency modes, the eigenvalues are the frequencies, and crucially for the normalized Laplacian the spectrum is bounded, $\lambda\in[0,2]$ — a fact I will lean on twice.
+
+A spectral filter is anything diagonal in that basis, $g_\theta\star\mathbf x=\mathbf U\,\mathrm{diag}(\theta)\,\mathbf U^\top\mathbf x$. Principled, but it walks into four walls at once. The free diagonal $\theta$ has one parameter per eigenvalue — $O(N)$ parameters; it is non-localized (a generic spectral diagonal touches every node); it needs $\mathbf U$, an $O(N^3)$ eigendecomposition; and even with $\mathbf U$ in hand, applying it is a dense $O(N^2)$ multiply. On a 20,000-node graph this is dead on arrival, and the parameter count alone would be hopeless against ~20 labels per class. The escape is to stop treating the filter as a free diagonal and write it as a smooth *function* of the eigenvalues, then approximate that function by a low-order polynomial: $g_\theta(\boldsymbol\Lambda)\approx\sum_{k}\theta_k T_k(\tilde{\boldsymbol\Lambda})$, a degree-$K$ Chebyshev polynomial. Pushing the polynomial back through the eigenbasis, the $\mathbf U$'s telescope — $(\mathbf U\boldsymbol\Lambda\mathbf U^\top)^k=\mathbf U\boldsymbol\Lambda^k\mathbf U^\top$ — so $g_\theta\star\mathbf x=\sum_k\theta_k T_k(\tilde{\mathbf L})\mathbf x$, with no eigenvectors anywhere. I only ever apply $\tilde{\mathbf L}$, sparse, $K$ times, at $O(K|E|)$ cost, and a degree-$K$ polynomial in $\mathbf L$ is $K$-hop localized. All four walls fall: parameters drop to $K+1$ coefficients, locality returns, the eigendecomposition vanishes, and the coefficients are graph-independent.
+
+That is still richer than I want for this rung, and here is the move that lands me on the principled fixed weight. In the polynomial filter $K$ does double duty — it sets both the filter's expressiveness *and* the receptive field. I want to untangle them, and I can, because I am going to *stack* layers and depth supplies the receptive field by composition. So drive $K$ all the way down to 1, making each layer's spectral filter *linear* in $\mathbf L$, and let depth and the between-layer nonlinearity recover the expressiveness. Setting $K=1$ gives $g_\theta\star\mathbf x\approx\theta_0\mathbf x+\theta_1\mathbf L\mathbf x$; approximating the largest eigenvalue $\lambda_{\max}\approx2$ (justified by the $[0,2]$ bound, with the trainable weights free to absorb the error) collapses $\tilde{\mathbf L}=\mathbf L-\mathbf I=-\mathbf D^{-1/2}\mathbf A\mathbf D^{-1/2}$, leaving $\theta_0\mathbf x-\theta_1\mathbf D^{-1/2}\mathbf A\mathbf D^{-1/2}\mathbf x$. Tie the two coefficients, $\theta=\theta_0=-\theta_1$, both to cut parameters and to regularize, and the operator becomes $\theta(\mathbf I+\mathbf D^{-1/2}\mathbf A\mathbf D^{-1/2})$ — "yourself plus your symmetric-normalized neighbors."
+
+Pause on that neighbor-mixing operator $\mathbf D^{-1/2}\mathbf A\mathbf D^{-1/2}$, because the choice of normalization is the entire point of this rung. The obvious alternative is the random-walk form $\mathbf D^{-1}\mathbf A$, whose row $i$ is literally the *average* of $i$'s neighbors — which is the plain mean the floor used. The symmetric form weights edge $(i,j)$ by $1/\sqrt{d_i d_j}$ rather than $1/d_i$, the geometric mean of the two degrees, and that is exactly the degree damping the mean lacked: it down-weights edges to high-degree neighbors more aggressively, so a citation to a paper everyone cites carries less than a citation to an obscure one. That is the homophilous-graph prior — "discount the popular neighbor" — baked into a *fixed* weight, no parameters, nothing to overfit from 20 labels. It is, I claim, precisely the useful part of what attention was straining to relearn. (The symmetric form is also the one the spectral story requires: $\mathbf D^{-1}\mathbf A$ is not symmetric, has no orthonormal eigenbasis, and breaks the Fourier picture; $\mathbf D^{-1/2}\mathbf A\mathbf D^{-1/2}=\mathbf I-\mathbf L$ shares $\mathbf L$'s spectrum and keeps the derivation coherent.)
+
+There is a stability catch I have to handle, and it is the second use of the $[0,2]$ bound. The operator $\mathbf I+\mathbf D^{-1/2}\mathbf A\mathbf D^{-1/2}=2\mathbf I-\mathbf L$ has eigenvalues in $[0,2]$, top eigenvalue $\approx2$ — because the self-loop's unit mass was bolted on *after* normalizing the neighbor part, so it is not accounted for in the degree denominators, and the node is over-weighted relative to how it is normalized. Stacking an operator of spectral radius 2 amplifies signals like $2^{\text{depth}}$. The fix is to fold the self-loop in *before* normalizing: add a self-loop to every node, $\tilde{\mathbf A}=\mathbf A+\mathbf I$, recompute degrees $\tilde{\mathbf D}=\mathbf D+\mathbf I$, and symmetric-normalize *that*, $\tilde{\mathbf P}=\tilde{\mathbf D}^{-1/2}\tilde{\mathbf A}\tilde{\mathbf D}^{-1/2}$. Now $\tilde{\mathbf P}$ is itself the normalized adjacency of the self-looped graph, so by the same $[0,2]$ argument its spectral radius is back to 1, the node and its neighbors sit on the same footing (edge $(i,j)$ gets $1/\sqrt{\tilde d_i\tilde d_j}$, the self-loop $1/\tilde d_i$, all from one $\tilde{\mathbf D}$), and stacking no longer blows up. This is the renormalization trick — and it is *exactly the scaffold's default layer*, the one I have been replacing for two rungs. Landing back on the default is the right thing here, not a retreat: the point of this rung is that the principled fixed weight, with proper degree normalization and a consistently-normalized self-loop, is a strong and *low-variance* baseline on homophilous citation graphs precisely because it has no learned edge weights to overfit the tiny label set that destabilized CiteSeer.
+
+One cross-check that this is the right operator, from a completely different direction. Read the layer node-wise: $\mathbf h_i'=\sigma\big(\sum_{j\in N(i)\cup\{i\}}\frac{1}{\sqrt{\tilde d_i\tilde d_j}}\mathbf W\mathbf h_j\big)$ is the 1-Weisfeiler–Lehman vertex-refinement step — hash your own state together with the aggregate of your neighbors' states, iterated — with the hash replaced by a differentiable, normalized, learnable map. WL uses an unweighted aggregate ($c_{ij}=1$), which is the degree-unstable raw-adjacency sum I already rejected; the symmetric normalization forces $c_{ij}=\sqrt{\tilde d_i\tilde d_j}$, the *same* constant the spectral derivation produced. Two unrelated motivations landing on one operator is exactly the kind of coincidence that tells me I am at the right fixed weight rather than an arbitrary one.
+
+So the layer is the leanest on the ladder: one shared linear map $\mathbf W$ per layer, propagate through $\tilde{\mathbf P}$, add a bias — a single parameter matrix, no attention vectors, no per-edge softmax, no head dimension. In the scaffold this is `self.lin(x)` then `add_self_loops`, the $1/\sqrt{\tilde d_i\tilde d_j}$ `norm` from `degree`, `propagate` with `message = norm * x_j`, plus bias. Far fewer parameters than the eight-head attention layer, which on a 20-label budget is itself a regularizer — fewer parameters to overfit is the structural reason I expect the variance to fall. Two layers, ReLU and dropout 0.5 between, give the two-hop receptive field. The full scaffold module is in the answer.
+
+Now the falsifiable expectations against gat's numbers, because the claim is specific and easy to be wrong about. PubMed should hold or slightly *exceed* gat's 0.7777 — clean, large neighborhoods where degree damping is the whole story and learned weights only add noise — so I would put it near 0.785. CiteSeer is the real test: if attention's residual instability there was overfitting the learned weight, then dropping the learned weight should *raise the floor and tighten the spread*, so I expect the mean past gat's 0.7077 toward ~0.715 with the worst seed no longer dragging and the {0.711, 0.696, 0.716} swing collapsing. Cora is where I am most at risk: attention genuinely helped Cora (0.8260), and a fixed weight throwing away the learned sharpening could lose a little there — I expect Cora close to gat, around 0.82, possibly a touch under; if Cora *beats* 0.8260 with the fixed weight, that is a strong sign attention was pure overfitting even on the dense graph. What would falsify the thesis: a CiteSeer that stays as noisy as gat's, or a PubMed that drops below 0.7777 — either would mean the fixed normalization is not actually capturing the useful part of attention. The bet is that on these three homophilous citation networks the principled fixed weight is at least as good as learned attention and *more stable*, with the only plausible loss on the densest graph.
+</think>
+<say>
+[[FILL_SAY: 1-2 sentences naming the method and what this first edit does]]
+</say>
+<edit path="pytorch-geometric/custom_nodecls.py">
+<old>
+# EDITABLE region of custom_nodecls.py — step 2: multi-head graph attention
+class CustomMessagePassingLayer(MessagePassing):
+    """Graph attention layer with multi-head additive attention."""
+
+    def __init__(self, in_channels: int, out_channels: int,
+                 heads: int = 8, concat: bool = True, negative_slope: float = 0.2):
+        super().__init__(aggr="add", node_dim=0)
+        self.heads = heads
+        self.concat = concat
+        self.negative_slope = negative_slope
+        if concat:
+            assert out_channels % heads == 0
+            self.head_dim = out_channels // heads
+        else:
+            self.head_dim = out_channels
+        self.lin = nn.Linear(in_channels, heads * self.head_dim, bias=False)
+        self.att_src = nn.Parameter(torch.empty(1, heads, self.head_dim))   # a_s (source score half)
+        self.att_dst = nn.Parameter(torch.empty(1, heads, self.head_dim))   # a_d (destination half)
+        self.bias = nn.Parameter(torch.zeros(heads * self.head_dim if concat else out_channels))
+        self.reset_parameters()
+</old>
+<new>
+# EDITABLE region of custom_nodecls.py — step 3: renormalized symmetric graph convolution
+class CustomMessagePassingLayer(MessagePassing):
+    """Standard graph convolutional layer (symmetric normalization, renormalization trick)."""
+
+    def __init__(self, in_channels: int, out_channels: int):
+        super().__init__(aggr="add")
+        self.lin = nn.Linear(in_channels, out_channels, bias=False)
+        self.bias = nn.Parameter(torch.zeros(out_channels))
+        self.reset_parameters()
+</new>
+</edit>
+<obs>
+Successfully replaced text in pytorch-geometric/custom_nodecls.py.
+</obs>
+<note>
+[[FILL_NOTE?: optional one-line thought for this edit, or delete this block]]
+</note>
+<edit path="pytorch-geometric/custom_nodecls.py">
+<old>
+        nn.init.xavier_uniform_(self.lin.weight)
+        nn.init.xavier_uniform_(self.att_src)
+        nn.init.xavier_uniform_(self.att_dst)
+        nn.init.zeros_(self.bias)
+
+    def forward(self, x: Tensor, edge_index: Adj) -> Tensor:
+        H, D = self.heads, self.head_dim
+        x = self.lin(x).view(-1, H, D)
+        alpha_src = (x * self.att_src).sum(dim=-1)             # per-node source scalar (per head)
+        alpha_dst = (x * self.att_dst).sum(dim=-1)             # per-node destination scalar (per head)
+        edge_index, _ = add_self_loops(edge_index, num_nodes=x.size(0))
+        out = self.propagate(edge_index, x=x, alpha_src=alpha_src, alpha_dst=alpha_dst)
+        out = out.view(-1, H * D) if self.concat else out.mean(dim=1)
+        return out + self.bias
+
+    def message(self, x_j: Tensor, alpha_src_i: Tensor, alpha_dst_j: Tensor,
+                index: Tensor, ptr: OptTensor, size_i: Optional[int]) -> Tensor:
+        alpha = alpha_src_i + alpha_dst_j                      # additive score = a_s.Wh_i + a_d.Wh_j
+        alpha = F.leaky_relu(alpha, self.negative_slope)
+        alpha = softmax(alpha, index, ptr, size_i)            # normalize over the neighborhood
+        alpha = F.dropout(alpha, p=0.6, training=self.training)  # dropout on attention coefficients
+        return x_j * alpha.unsqueeze(-1)
+
+
+class CustomGNN(nn.Module):
+    """Multi-head attention GNN: 8 concat heads then 1 averaged head."""
+
+    def __init__(self, in_channels: int, hidden_channels: int,
+                 out_channels: int, num_layers: int = 2, dropout: float = 0.6):
+        super().__init__()
+        self.dropout = dropout
+        self.convs = nn.ModuleList()
+        self.convs.append(CustomMessagePassingLayer(in_channels, hidden_channels, heads=8, concat=True))
+        for _ in range(num_layers - 2):
+            self.convs.append(CustomMessagePassingLayer(hidden_channels, hidden_channels, heads=8, concat=True))
+        self.convs.append(CustomMessagePassingLayer(hidden_channels, out_channels, heads=1, concat=False))
+
+    def forward(self, x: Tensor, edge_index: Adj) -> Tensor:
+        for i, conv in enumerate(self.convs[:-1]):
+            x = F.dropout(x, p=self.dropout, training=self.training)
+            x = conv(x, edge_index)
+            x = F.elu(x)
+        x = F.dropout(x, p=self.dropout, training=self.training)
+        x = self.convs[-1](x, edge_index)
+        return x
+</old>
+<new>
+        nn.init.xavier_uniform_(self.lin.weight)
+        nn.init.zeros_(self.bias)
+
+    def forward(self, x: Tensor, edge_index: Adj) -> Tensor:
+        x = self.lin(x)
+        edge_index, _ = add_self_loops(edge_index, num_nodes=x.size(0))   # self-loop folded in first
+        row, col = edge_index
+        deg = degree(col, x.size(0), dtype=x.dtype)
+        deg_inv_sqrt = deg.pow(-0.5)
+        deg_inv_sqrt[deg_inv_sqrt == float("inf")] = 0
+        norm = deg_inv_sqrt[row] * deg_inv_sqrt[col]            # 1/sqrt(d~_i d~_j): degree damping
+        out = self.propagate(edge_index, x=x, norm=norm)
+        out = out + self.bias
+        return out
+
+    def message(self, x_j: Tensor, norm: Tensor) -> Tensor:
+        return norm.view(-1, 1) * x_j
+
+
+class CustomGNN(nn.Module):
+    """2-layer renormalized graph convolution with ReLU and dropout."""
+
+    def __init__(self, in_channels: int, hidden_channels: int,
+                 out_channels: int, num_layers: int = 2, dropout: float = 0.5):
+        super().__init__()
+        self.dropout = dropout
+        self.convs = nn.ModuleList()
+        self.convs.append(CustomMessagePassingLayer(in_channels, hidden_channels))
+        for _ in range(num_layers - 2):
+            self.convs.append(CustomMessagePassingLayer(hidden_channels, hidden_channels))
+        self.convs.append(CustomMessagePassingLayer(hidden_channels, out_channels))
+
+    def forward(self, x: Tensor, edge_index: Adj) -> Tensor:
+        for i, conv in enumerate(self.convs[:-1]):
+            x = conv(x, edge_index)
+            x = F.relu(x)
+            x = F.dropout(x, p=self.dropout, training=self.training)
+        x = self.convs[-1](x, edge_index)
+        return x
+</new>
+</edit>
+<obs>
+Successfully replaced text in pytorch-geometric/custom_nodecls.py.
+</obs>
+<run/>
+<obs>
+Measured results — `baseline:gcn` (`is_final,true`), seeds {42, 123, 456} and mean.
+
+## Cora
+| seed | accuracy | macro_f1 |
+|---|---|---|
+| 42 | 0.821 | 0.8068 |
+| 123 | 0.820 | 0.8063 |
+| 456 | 0.821 | 0.8100 |
+| **mean** | **0.8207** | **0.8077** |
+
+## CiteSeer
+| seed | accuracy | macro_f1 |
+|---|---|---|
+| 42 | 0.712 | 0.6804 |
+| 123 | 0.722 | 0.6881 |
+| 456 | 0.719 | 0.6807 |
+| **mean** | **0.7177** | **0.6831** |
+
+## PubMed
+| seed | accuracy | macro_f1 |
+|---|---|---|
+| 42 | 0.784 | 0.7826 |
+| 123 | 0.790 | 0.7864 |
+| 456 | 0.785 | 0.7816 |
+| **mean** | **0.7863** | **0.7835** |
+</obs>
+
+### step 4 — GCNII (initial residual + identity mapping)   [slug:gcnii]
+
+<think>
+[[POLISH_REASONING: adapt to first-person agentic voice, end by deciding to implement]]
+The renormalized convolution did exactly what I bet it would, and the way it won names the ceiling all three baselines share. Read the means: PubMed came in at 0.7863 — past gat's 0.7777 and graphsage's 0.7693, confirming that on clean large neighborhoods the principled degree damping is the whole story and learned weights only added noise. CiteSeer rose to 0.7177 with seeds {0.712, 0.722, 0.719} — the spread finally collapsed to under a point, the stability I claimed the fixed weight would buy by having nothing to overfit. And Cora landed at 0.8207, essentially tied with gat's 0.8260 — the one place I said a fixed weight might give back a little of attention's sharpening, and it did, barely. So the fixed symmetric-normalized convolution is the strongest and most stable of the three: best on PubMed, best-stabilized on CiteSeer, a near-tie on Cora. It is the bar to beat.
+
+But notice what *all three* baselines have in common, including this winner: they are two-layer models. graphsage, gat, gcn — every one peaks at a two-hop receptive field. That is not a coincidence, it is a wall. Each node only ever sees information from two hops away; a label that needs evidence from a four- or five-hop-distant node simply cannot reach it. On CiteSeer in particular — the sparsest graph, where many nodes have few same-class neighbors within two hops — that horizon is plausibly *why* it stays the worst dataset at 0.7177 even after I stabilized it: the relevant labeled nodes are farther than two hops, and no amount of better neighbor-weighting *at* two hops can fetch them. The obvious move is to stack more layers and widen the receptive field. And the obvious move fails — accuracy drops as I deepen — which is the thing I actually have to fix. The fix has to attack the real mechanism, so let me derive *why* depth poisons graph convolution rather than bolt on a vision trick and hope.
+
+Strip the weights and nonlinearities to see the pure propagation: $K$ layers is $\tilde{\mathbf P}^{K}\mathbf x$, the fixed operator raised to the $K$. The renormalization trick I leaned on at step 3 pinned $\tilde{\mathbf P}$'s top eigenvalue to exactly 1 with all others strictly smaller in magnitude — and that is *precisely* what makes its powers collapse, because every eigencomponent except the top decays geometrically. The very thing that made depth stable is what makes depth useless. Let me compute the limit concretely, because its *form* tells me what is destroyed. Conjugate the operator (I use the lazy version $(\mathbf I+\tilde{\mathbf P})/2$, natural once a residual is in play and with cleaner convergence to the same fixed point) into a random walk: since $\mathbf I=\tilde{\mathbf D}^{-1/2}\tilde{\mathbf D}^{1/2}$, the inner $\tilde{\mathbf D}^{1/2}\tilde{\mathbf D}^{-1/2}$ pairs telescope and $\big((\mathbf I+\tilde{\mathbf P})/2\big)^{K}=\tilde{\mathbf D}^{-1/2}\big((\mathbf I+\tilde{\mathbf A}\tilde{\mathbf D}^{-1})/2\big)^{K}\tilde{\mathbf D}^{1/2}$. The middle factor is the transition matrix of a *lazy random walk* on the self-looped graph — stay-put probability $1/2$ — whose $K$-th power is the $K$-step distribution of a walk, and a lazy walk on a connected graph converges to the unique degree-proportional stationary distribution $\mathbf p^{(K)}_i(j)\to(\tilde d_j)/(2m+n)$, with a Cheeger-type rate: the $j$-th entry sits within $\sqrt{\tilde d_j/\tilde d_i}\,(1-\lambda_{\tilde G}^2/2)^{K}$ of stationary, $\lambda_{\tilde G}$ the spectral gap of the self-looped graph. Push $\tilde{\mathbf D}^{1/2}\mathbf x$ through and pull $\tilde{\mathbf D}^{-1/2}$ back out, and $\tilde{\mathbf P}^{K}\mathbf x\to\boldsymbol\pi=\frac{\langle\tilde{\mathbf D}^{1/2}\mathbf 1,\mathbf x\rangle}{2m+n}\tilde{\mathbf D}^{1/2}\mathbf 1$. Stare at that vector: every node's value is $\sqrt{\tilde d_j}$ times one global scalar — the inner product of the features with the degree-weighted all-ones vector. After enough layers a node knows only its own degree and a single number summarizing the whole graph; two nodes of equal degree become identical. That is over-smoothing, derived rather than asserted: the deep model throws away exactly the per-node signal I need to classify with. And the rate is uneven — factor the perturbation as $\sqrt{\tilde d_j}\big(\text{stationary}\pm\frac{1}{\sqrt{\tilde d_j}}(1-\lambda_{\tilde G}^2/2)^K\big)$, so the *relative* deviation shrinks like $1/\tilde d_j$ and high-degree nodes over-smooth first. The deep model collapses fastest exactly where degree is highest.
+
+The reflex cure for "deep nets degrade" is a residual connection. Try the literal ResNet move: add the previous layer back, $\mathbf H^{(\ell+1)}=\sigma((\tilde{\mathbf P}\mathbf H^{(\ell)}+\mathbf H^{(\ell)})\mathbf W^{(\ell)})$. The propagation becomes $(\mathbf I+\tilde{\mathbf P})\mathbf H^{(\ell)}$ — exactly the lazy walk I just analyzed, up to the $1/2$ the weights absorb. But laziness only slows mixing; the lazy walk has the *same* stationary distribution $\boldsymbol\pi$. So a residual to the previous layer postpones over-smoothing and never prevents it — which is the reported behavior of deep residual GCNs: they go a few layers further, then collapse, and a 2-layer GCN still beats them. The skip is to the wrong target: the previous layer is *itself already partly smoothed*, so adding it back feeds smoothed signal into more smoothing.
+
+That reframes the question sharply: not *whether* to skip but *what to skip back to*. The previous layer is contaminated; the one representation guaranteed un-smoothed is layer zero — the freshly transformed input features, before any propagation touched them. Skip to *that*. At every layer mix the smoothed representation with a fixed fraction of the original input, $(1-\alpha)\tilde{\mathbf P}\mathbf H^{(\ell)}+\alpha\mathbf H^{(0)}$, with $\mathbf H^{(0)}$ a learned map of the features. Now the limit changes character entirely. Unroll it: $\mathbf H^{(K)}$ becomes a geometric mixture $\sum_\ell\alpha(1-\alpha)^\ell\tilde{\mathbf P}^\ell\mathbf H^{(0)}$ that converges as $K\to\infty$ to $\alpha(\mathbf I-(1-\alpha)\tilde{\mathbf P})^{-1}\mathbf H^{(0)}$ — the personalized-PageRank diffusion of the input, a fixed point that *carries the features* instead of erasing them. A surfer that with probability $\alpha$ teleports back to where it started keeps locality forever. With $\alpha$ small (around 0.1) propagation dominates so the receptive field genuinely widens — fetching the far-hop CiteSeer evidence the two-hop wall could not — while the input anchor never vanishes. The initial residual fixes the over-smoothing of the *propagation*.
+
+But that initial-residual-only update is *linear* in $\mathbf H^{(\ell)}$ — no per-layer weight, no nonlinearity per hop. It is deep in propagation but shallow in representation: it would reach far hops with no learned nonlinear transform along the way, which is the very expressive power that made depth worth wanting. Put the weight and ReLU back, $\sigma(((1-\alpha)\tilde{\mathbf P}\mathbf H^{(\ell)}+\alpha\mathbf H^{(0)})\mathbf W^{(\ell)})$, and a *second*, different depth pathology appears — not over-smoothing this time but the weights. Two arguments converge on it. First, a $K$-layer stack drives features into a low-dimensional subspace at a rate $s^{K}$, where $s$ is the largest singular value of the per-layer weights: if the effective transforms contract, $s^K$ decays and the feature space collapses; if they expand, the product is unstable; the only stable target for a deep product is to keep the useful singular values near 1. Second, the data regime — ~20 labels per class against $K$ free $H\times H$ matrices is a massive over-parameterization, exactly the overfitting I watched attention suffer on CiteSeer at step 2, now multiplied by depth, and the specific damage in semi-supervised graphs is too much cross-dimension feature mixing, the dense remix a full $\mathbf W$ does every layer.
+
+So I want each layer's weight close to the identity — both to hold $s\approx1$ and to do only a gentle, regularizable amount of mixing. Take the ResNet lesson at the level of the matrix: write the effective transform as $(1-\beta_\ell)\mathbf I+\beta_\ell\mathbf W^{(\ell)}$. At $\beta_\ell\to0$ it is the identity — the layer ignores its weights and falls back to the pure PageRank diffusion that already does not over-smooth; at moderate $\beta_\ell$ it adds a $\beta$-sized learned transform. This is safe to regularize hard for a real reason: for a linear residual network $\mathbf H(\mathbf W+\mathbf I)$ the optimal weights have small norm and the only critical point is the global minimum, so strong $L_2$ on $\mathbf W$ is not fighting the model — the optimum lives at small norm anyway — and it removes the spurious minima scarce-label training would otherwise fall into. Small $\|\mathbf W\|$ keeps $(1-\beta)\mathbf I+\beta\mathbf W$ near identity, $s\approx1$, $s^{K}=O(1)$, collapse defused. The two cures interlock: initial residual stops the *propagation* smoothing, identity mapping stops the *weights* collapsing rank and overfitting.
+
+And $\beta_\ell$ should *decay* with depth: the deeper a layer, the more I want it to be a pure propagation step rather than a transform, since the cumulative product of transforms is what blows the singular values around and the late layers do the most over-transformation damage. The natural single-knob schedule is $\beta_\ell=\log(\frac{\lambda}{\ell}+1)\approx\lambda/\ell$ — layer 1 gets the most transformation budget, deep layers fade toward identity — with $\lambda$ around 0.5 setting the scale. So the transformation decays adaptively as I stack while the propagation-with-anchor keeps going, the asymmetry deep graph learning needs.
+
+Does this restore what over-smoothing destroyed — the freedom to be a flexible filter? The deep-GCN pathology was that $K$ layers realize a *fixed*-coefficient polynomial $\tilde{\mathbf P}^{K}\mathbf x$. Take the weak version of this layer ($\alpha=\tfrac12$, ReLU in its identity region, effective weight a scalar $\gamma_\ell\mathbf I$): a layer is $\gamma_\ell\tilde{\mathbf P}(\mathbf H^{(\ell)}+\mathbf x)=\gamma_\ell(\mathbf I-\tilde{\mathbf L})(\mathbf H^{(\ell)}+\mathbf x)$, and unrolling $K$ of them collects exactly into $\mathbf H^{(K)}=\big(\sum_\ell(\prod_{r=K-\ell-1}^{K-1}\gamma_r)(\mathbf I-\tilde{\mathbf L})^\ell\big)\mathbf x$. On the other side, an arbitrary order-$K$ filter $\sum_k\theta_k\tilde{\mathbf L}^{k}$ re-expands by the binomial theorem in powers of $(\mathbf I-\tilde{\mathbf L})$ with coefficients $c_\ell=\sum_{k\ge\ell}\theta_k(-1)^\ell\binom{k}{\ell}$. Matching the two requires the partial product $\prod_{r=K-\ell-1}^{K-1}\gamma_r=c_\ell$ for every $\ell$, which I solve telescopically: $\gamma_{K-1}=c_0=\sum_k\theta_k$ and $\gamma_{K-\ell-1}=c_\ell/c_{\ell-1}$ for $\ell\ge1$, the only singular case being a coefficient that is exactly zero (the filter ignoring a whole hop), reachable by an arbitrarily small perturbation. So a $K$-layer model of this form can express an *arbitrary* order-$K$ filter — the free $\beta_\ell/\mathbf W^{(\ell)}$ supply the per-hop coefficients the fixed GCN could not. Arbitrary coefficients mean I can land on ones whose deep limit keeps the input (the geometric $\alpha(1-\alpha)^i$ converging to PageRank), instead of being forced into the degree-only collapse. That is the formal reason depth is finally a resource here: the network can *learn* not to over-smooth.
+
+One cross-check from an unrelated direction, because I trust a derivation more when two stories land on the same structure. Recover a sparse code: $\min_x\tfrac12\|\mathbf B\mathbf x-\mathbf y\|^2+\lambda\|\mathbf x\|_1$ with $\mathbf y$ the node's observed features. The iterative-shrinkage step is $\mathbf x^{t+1}=P_{\mu\lambda}\big(\mathbf x^t-\mu\mathbf B^\top\mathbf B\mathbf x^t+\mu\mathbf B^\top\mathbf y\big)$; reparameterize $-\mathbf B^\top\mathbf B$ as a learned $\mathbf W$ and it is $P_{\mu\lambda}\big((\mathbf I+\mu\mathbf W)\mathbf x^t+\mu\mathbf B^\top\mathbf y\big)$. Read off the pieces: $(\mathbf I+\mu\mathbf W)$ is my identity-mapped weight, $\mu\mathbf B^\top\mathbf y$ re-added every step is my initial residual to $\mathbf H^{(0)}$, and the soft-threshold plays the role of ReLU. The two patches are not ad hoc — they are the two terms any iterative reconstruction of the node's own features must have.
+
+Now the part specific to this harness, because the trajectory's win has to be the literal edit. The two cures map cleanly onto the scaffold, but with one constraint the paper version does not face. GCNII's headline configuration is very deep — 64 layers on Cora — but the fixed scaffold pins the hidden width at 64 and enforces a parameter budget of $1.05\times$ the largest baseline. With $H=64$ every conv layer is an $H\times H=4096$-parameter weight, so the count grows linearly in depth, and 64 layers blows the budget (Cora's budget is ~194k; 64 layers would need ~348k). The deepest budget-compliant uniform choice is $L=16$ layers, which fits on all three datasets (Cora ~158k, PubMed ~98k, CiteSeer comfortably). So I keep the method exactly — initial residual to $\mathbf H^{(0)}$, identity-mapped weights with $\beta_\ell=\log(\lambda/\ell+1)$, $\alpha=0.1$, $\lambda=0.5$ — at $L=16$, still eight times deeper than every baseline and far past the over-smoothing wall, with the budget rather than a grid search setting the depth. The scaffold also fixes dropout at 0.5 and a single weight-decay scalar (so I cannot use a split $L_2$ for conv-vs-dense weights or the 0.6/0.7 dropout the headline config used); I accept those as harness constraints and rely on the identity mapping itself to do the weight regularization the split $L_2$ would have. Structurally the edit puts one GCNII conv into `CustomMessagePassingLayer` — propagate through $\tilde{\mathbf P}$, form the teleported support $(1-\alpha)\tilde{\mathbf P}\mathbf H^{(\ell)}+\alpha\mathbf H^{(0)}$, apply the identity-mapped weight via the clean blend $(1-\theta)\mathbf s+\theta\,\mathbf s\mathbf W$ — and rebuilds `CustomGNN` as input-FC → 16 convs (all $H\to H$, carrying $\mathbf H^{(0)}$ into every layer) → output-FC, ignoring the passed `num_layers=2` since the whole point is to set the depth myself. The full scaffold module is in the answer.
+
+The bar this has to clear is gcn's strongest-baseline row: Cora 0.8207, CiteSeer 0.7177, PubMed 0.7863. The falsifiable claims follow the diagnosis. The biggest expected gain is on **CiteSeer**, because that is where the two-hop wall most plausibly capped the baselines — a 16-hop receptive field that does not over-smooth should reach the far same-class labels two hops could not, so CiteSeer should move clearly above 0.7177, and if depth is the right cure it should move *more* there than on the others. **Cora** should rise above 0.8207 — depth helps, and the input anchor plus identity mapping keep it from collapsing — landing meaningfully past the baselines' ~0.82 ceiling. **PubMed** I expect to clear 0.7863 but by the smallest margin, since its large clean neighborhoods already gave the two-hop model most of what depth offers. What would falsify the construction: any dataset that *drops* with depth (that would mean the initial residual and identity mapping failed to stop over-smoothing — the very thing they are derived to prevent), or a CiteSeer that fails to beat 0.7177 (which would say the wall was never the receptive field). There is no leaderboard row here to read against; what the trajectory ends on is the construction whose two simple changes make depth a resource — a model that goes 16 hops deep without over-smoothing, derived from exactly the failure mode the three two-layer baselines all share.
+</think>
+<say>
+[[FILL_SAY: 1-2 sentences naming the method and what this first edit does]]
+</say>
+<edit path="pytorch-geometric/custom_nodecls.py">
+<old>
+# EDITABLE region of custom_nodecls.py — step 3: renormalized symmetric graph convolution
+class CustomMessagePassingLayer(MessagePassing):
+    """Standard graph convolutional layer (symmetric normalization, renormalization trick)."""
+
+    def __init__(self, in_channels: int, out_channels: int):
+        super().__init__(aggr="add")
+        self.lin = nn.Linear(in_channels, out_channels, bias=False)
+        self.bias = nn.Parameter(torch.zeros(out_channels))
+        self.reset_parameters()
+
+    def reset_parameters(self):
+        nn.init.xavier_uniform_(self.lin.weight)
+        nn.init.zeros_(self.bias)
+
+    def forward(self, x: Tensor, edge_index: Adj) -> Tensor:
+        x = self.lin(x)
+        edge_index, _ = add_self_loops(edge_index, num_nodes=x.size(0))   # self-loop folded in first
+        row, col = edge_index
+</old>
+<new>
+# EDITABLE region of custom_nodecls.py — finale: deep GCN via initial residual + identity mapping
+import math
+
+
+class CustomMessagePassingLayer(MessagePassing):
+    """One deep conv: ((1-alpha) P̃ H + alpha H0) ((1-theta) I + theta W), theta = log(lambda/l + 1).
+    P̃ = D̃^{-1/2} Ã D̃^{-1/2} (renormalization trick)."""
+
+    def __init__(self, channels: int):
+        super().__init__(aggr="add")
+        self.weight = nn.Parameter(torch.empty(channels, channels))   # H x H, depth-independent size
+        self.reset_parameters()
+
+    def reset_parameters(self):
+        stdv = 1.0 / math.sqrt(self.weight.size(1))
+        self.weight.data.uniform_(-stdv, stdv)
+
+    def forward(self, x: Tensor, edge_index: Adj, h0: Tensor,
+                alpha: float, lam: float, layer: int) -> Tensor:
+        theta = math.log(lam / layer + 1.0)                 # identity-mapping strength, decays with depth
+        edge_index, _ = add_self_loops(edge_index, num_nodes=x.size(0))
+        row, col = edge_index
+</new>
+</edit>
+<obs>
+Successfully replaced text in pytorch-geometric/custom_nodecls.py.
+</obs>
+<note>
+[[FILL_NOTE?: optional one-line thought for this edit, or delete this block]]
+</note>
+<edit path="pytorch-geometric/custom_nodecls.py">
+<old>
+        deg_inv_sqrt[deg_inv_sqrt == float("inf")] = 0
+        norm = deg_inv_sqrt[row] * deg_inv_sqrt[col]            # 1/sqrt(d~_i d~_j): degree damping
+        out = self.propagate(edge_index, x=x, norm=norm)
+        out = out + self.bias
+        return out
+</old>
+<new>
+        deg_inv_sqrt[deg_inv_sqrt == float("inf")] = 0
+        norm = deg_inv_sqrt[row] * deg_inv_sqrt[col]
+        hi = self.propagate(edge_index, x=x, norm=norm)     # P̃ H^{(l)}
+        support = (1 - alpha) * hi + alpha * h0             # initial residual: anchor to H^{(0)}
+        # (1-theta) support + theta (support W) == support ((1-theta) I + theta W)
+        return (1 - theta) * support + theta * torch.mm(support, self.weight)
+</new>
+</edit>
+<obs>
+Successfully replaced text in pytorch-geometric/custom_nodecls.py.
+</obs>
+<note>
+[[FILL_NOTE?: optional one-line thought for this edit, or delete this block]]
+</note>
+<edit path="pytorch-geometric/custom_nodecls.py">
+<old>
+class CustomGNN(nn.Module):
+    """2-layer renormalized graph convolution with ReLU and dropout."""
+</old>
+<new>
+class CustomGNN(nn.Module):
+    """Deep GCN: input FC -> L identity-mapped, initial-residual convs -> output FC.
+    Sets its own depth (L) to go past the over-smoothing wall within the parameter budget;
+    the passed num_layers is ignored."""
+
+    NUM_PROP_LAYERS = 16          # 8x deeper than the baselines; fits the 1.05x-largest-baseline budget
+    ALPHA = 0.1                   # initial-residual fraction
+    LAMBDA = 0.5                  # identity-mapping schedule scale
+</new>
+</edit>
+<obs>
+Successfully replaced text in pytorch-geometric/custom_nodecls.py.
+</obs>
+<note>
+[[FILL_NOTE?: optional one-line thought for this edit, or delete this block]]
+</note>
+<edit path="pytorch-geometric/custom_nodecls.py">
+<old>
+        self.dropout = dropout
+        self.convs = nn.ModuleList()
+        self.convs.append(CustomMessagePassingLayer(in_channels, hidden_channels))
+        for _ in range(num_layers - 2):
+            self.convs.append(CustomMessagePassingLayer(hidden_channels, hidden_channels))
+        self.convs.append(CustomMessagePassingLayer(hidden_channels, out_channels))
+
+    def forward(self, x: Tensor, edge_index: Adj) -> Tensor:
+        for i, conv in enumerate(self.convs[:-1]):
+            x = conv(x, edge_index)
+            x = F.relu(x)
+            x = F.dropout(x, p=self.dropout, training=self.training)
+        x = self.convs[-1](x, edge_index)
+        return x
+</old>
+<new>
+        self.dropout = dropout
+        self.fc_in = nn.Linear(in_channels, hidden_channels)
+        self.convs = nn.ModuleList(
+            CustomMessagePassingLayer(hidden_channels) for _ in range(self.NUM_PROP_LAYERS))
+        self.fc_out = nn.Linear(hidden_channels, out_channels)
+
+    def forward(self, x: Tensor, edge_index: Adj) -> Tensor:
+        x = F.dropout(x, p=self.dropout, training=self.training)
+        h0 = F.relu(self.fc_in(x))                          # H^{(0)} = transformed features
+        h = h0
+        for i, conv in enumerate(self.convs):
+            h = F.dropout(h, p=self.dropout, training=self.training)
+            h = F.relu(conv(h, edge_index, h0, self.ALPHA, self.LAMBDA, i + 1))
+        h = F.dropout(h, p=self.dropout, training=self.training)
+        return self.fc_out(h)                               # class logits (loop applies cross-entropy)
+</new>
+</edit>
+<obs>
+Successfully replaced text in pytorch-geometric/custom_nodecls.py.
+</obs>
+

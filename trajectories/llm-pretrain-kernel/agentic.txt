@@ -1,0 +1,982 @@
+<meta task="llm-pretrain-kernel" domain="Language models" file="nanoGPT/custom_pretrain.py" model_format="qwen3" edit_tool="str_replace"/>
+
+<system>
+You are a research engineer improving a model on a fixed ML task. You work by editing the model code and running experiments. Think carefully before each change. You have these tools:
+- str_replace(path, old_str, new_str): replace the unique occurrence of old_str with new_str.
+- create(path, file_text): create a new file.
+- run_experiment(): train + evaluate the current code under the fixed budget; returns metrics.
+Make one tool call at a time. After editing, call run_experiment() to measure your method.
+</system>
+
+<user>
+## Research question
+
+Pretraining a GPT-2-class decoder language model, the bill is dominated by training compute, and
+inside each block the position-wise feed-forward network (FFN) is the fatter consumer: project each
+token's width-`d` vector up to `4d`, apply a pointwise nonlinearity, project back down to `d`. The
+single thing being designed here is **the FFN's middle operation** — the activation that sits between
+the two dense matmuls, *and how it is executed on the GPU* (which PyTorch ops, which custom kernel,
+which hand-written backward). Everything else about the model and the training loop is fixed. Total
+cost is `steps × step-time`, so there are two levers at once: the activation can change *quality per
+step* (lower validation loss for the same tokens), and the execution can change *throughput per step*
+(wall-clock), and a method is judged on both.
+
+## Prior art before the first rung (FFN-activation lineage)
+
+The first rung reacts to the stock pointwise activations the FFN slot has historically held. These are
+the methods that precede the ladder; the substrate below is what the block converged to.
+
+- **ReLU FFN (Vaswani et al. 2017).** `max(xW1, 0) W2` — hard sign-gate, no activation parameters, a
+  0/1 mask in backward. Gap: for positive inputs it is *exactly* the identity, so a strongly-firing
+  and a barely-firing unit pass through at the same unit slope; the activation adds no shaping, and its
+  output grows only linearly.
+- **GELU FFN (Hendrycks & Gimpel 2016).** `GELU(x) = xΦ(x)`, smoothing ReLU's corner and leaking a
+  little negative signal through; the de-facto choice in BERT/GPT-style LMs. Gap: still
+  *asymptotically linear* (its slope saturates near 1 as `x→∞`), needs an `erf`/`tanh` per element
+  (costlier than a rectifier in both passes), and on LM perplexity it is roughly on par with — not
+  clearly better than — plain ReLU. This is the scaffold's default fill.
+- **Swish FFN (Ramachandran et al. 2017).** `xσ(βx)`, smooth and self-gated near the origin. Gap: same
+  asymptotically-linear shape and the same per-element sigmoid cost; does not beat ReLU/GELU for LM.
+- **GLU-variant FFNs (Shazeer 2020): ReGLU/GEGLU/SwiGLU.** Replace the activation-of-one-projection
+  with a Hadamard product of two projections, one squashed, e.g. `(max(xW,0) ⊗ xV) W2` — a
+  multiplicative gate that gives an un-attenuated gradient path (Dauphin et al. 2017) and the strongest
+  LM perplexities in this family. Gap *here specifically*: they need a **third** weight matrix `V` and
+  a `2/3` inner-width shrink to stay parameter-matched — and the edit surface below hands the FFN only
+  **two** weights, so a gated FFN with its own `V` cannot be expressed in this slot at all.
+- **GPU kernel execution: vendor libraries vs. custom kernels.** The FFN's two matmuls go to cuBLAS
+  near peak, but the activation, run as separate PyTorch ops, is a *bandwidth-bound* elementwise pass
+  that streams the wide `(tokens × 4d)` intermediate through HBM and back. A custom Triton kernel can
+  in principle fuse the activation onto the matmul accumulator in registers to delete that traffic.
+  Gap: hand-rolled tiled matmuls must out-run a heavily-tuned `torch.compile`/cuBLAS path to be worth
+  it, which is far from guaranteed.
+
+## The fixed substrate
+
+A nanoGPT GPT-2-Medium training loop is frozen and must not be touched: 24 layers, 16 heads, width
+`n_embd=1024` (~355M params), block size 1024, no biases, weight-tied embeddings, bf16 autocast,
+`torch.compile`, 2-GPU DDP. AdamW (`β=(0.9, 0.95)`, `wd=0.1`, grad-clip 1.0), cosine LR with linear
+warmup. Flash attention in the attention block. The FFN module (`MLP`) owns the two linear weights
+`c_fc` (up, `4·n_embd × n_embd`) and `c_proj` (down, `n_embd × 4·n_embd`) and the dropout, and calls a
+single function for the matmul→activation→matmul core, then applies dropout outside it. Pre-activations
+and outputs are produced under bf16 autocast; any in-activation arithmetic that can overflow in low
+precision must be done in fp32 and cast back.
+
+## The editable interface
+
+Exactly one function is editable — `fused_mlp_forward(x, w_fc, w_proj)` in `custom_pretrain.py` (the
+template's lines 33–48), plus an optional `CONFIG_OVERRIDES` dict (lines 257–259) limited to
+`{learning_rate, weight_decay, warmup_iters, min_lr, grad_clip}`. The contract is rigid and is the
+reason the GLU variants above are out of reach:
+
+- `x`: input rows `(B*T, n_embd)`;
+- `w_fc`: up-projection weight `(4*n_embd, n_embd)`;
+- `w_proj`: down-projection weight `(n_embd, 4*n_embd)`;
+- returns: output rows `(B*T, n_embd)`.
+
+Only these **two** weights are passed in — there is no third gate matrix — so every method on the
+ladder is a fill of a *two-matrix* FFN: the design freedom is the pointwise activation between the two
+matmuls, the kernel/fusion strategy that executes it, and (optionally) a hand-written autograd backward
+for that activation. The `MLP` module flattens to `(B*T, n_embd)` and re-applies dropout itself, so the
+function must be a pure FFN core. The starting point is the scaffold default: **GELU via separate
+PyTorch ops**, letting autograd build the backward.
+
+```python
+# EDITABLE region of custom_pretrain.py (lines 33-48) — default fill
+def fused_mlp_forward(x, w_fc, w_proj):
+    """MLP forward pass: linear -> activation -> linear.
+
+    Default implementation uses standard PyTorch ops.
+    Can be replaced with a fused Triton kernel for better performance.
+
+    Args:
+        x: input tensor (B*T, n_embd)
+        w_fc: first linear weight (4*n_embd, n_embd)
+        w_proj: second linear weight (n_embd, 4*n_embd)
+    Returns:
+        output tensor (B*T, n_embd)
+    """
+    h = F.gelu(x @ w_fc.t())
+    return h @ w_proj.t()
+```
+
+Everything else — the two linear maps, the `4×` inner width, dropout, the surrounding block, the
+optimizer and the training loop — already exists. Each later method replaces exactly this function body
+(and, where it helps, hand-writes the backward as a `torch.autograd.Function`).
+
+## Evaluation settings
+
+- **Model / data:** GPT-2 Medium (24L / 16H / 1024D, ~355M params) on FineWeb 10B with the GPT-2
+  tokenizer, ~7.1B tokens (`D ≈ 20N`, Chinchilla-optimal).
+- **Training:** 13535 iterations, batch size 64, gradient-accumulation 8, 2-GPU DDP; one seed (42).
+- **Metrics, two axes.** Quality (lower is better): `val_loss` (held-out cross-entropy, primary),
+  `wikitext2_ppl`, `lambada_ppl`. Throughput (lower is better): `elapsed` (training wall-clock).
+  Downstream zero-shot accuracy (higher is better) is reported as a secondary read: `arc_easy`,
+  `hellaswag` (and hidden `piqa`, `winogrande`). A kernel change that also changes the activation can
+  move quality, not just speed.
+
+The editable model code is in `nanoGPT/custom_pretrain.py`:
+```python
+def fused_mlp_forward(x, w_fc, w_proj):
+    """MLP forward pass: linear -> activation -> linear.
+
+    Default implementation uses standard PyTorch ops.
+    Can be replaced with a fused Triton kernel for better performance.
+
+    Args:
+        x: input tensor (B*T, n_embd)
+        w_fc: first linear weight (4*n_embd, n_embd)
+        w_proj: second linear weight (n_embd, 4*n_embd)
+    Returns:
+        output tensor (B*T, n_embd)
+    """
+    h = F.gelu(x @ w_fc.t())
+    return h @ w_proj.t()
+```
+Improve it. Derive your method, edit the code, then run_experiment().
+</user>
+
+### step 1 — Triton fused GELU   [slug:triton_gelu]
+
+<think>
+The activation is the whole point, but it executes inside an FFN, and with the stock activation in
+stock ops that FFN is the floor — so the place to start is the cheapest honest baseline: keep the
+default activation the scaffold ships, GELU, and just establish how this two-matrix FFN actually runs
+on the GPU and what it costs. The default fill is `h = F.gelu(x @ w_fc.t()); return h @ w_proj.t()` —
+three operations the way PyTorch sees them: an up-projection matmul, an elementwise GELU on the wide
+hidden, a down-projection matmul. Before I change *what* the activation computes, I want to fix *how*
+it executes and read off the number it lands, because that number is the bar everything else has to
+beat, and because the execution question turns out to be where the first real lever is.
+
+Let me look at the GELU the scaffold actually uses. GELU is the smooth nonlinearity `GELU(x) = x·Φ(x)`
+with `Φ` the standard-normal CDF, so exactly `GELU(x) = x · 0.5 · (1 + erf(x/√2))`. The reading is
+nice: instead of gating an input by a hard 0/1 step like ReLU, GELU weights `x` by the probability
+that a standard Gaussian falls below it — a smooth, stochastic-feeling gate made deterministic. It is
+the de-facto choice in BERT/GPT-style LMs, which is exactly why it is the scaffold's default, and so
+the right thing to start from: I want the floor to be the activation everyone already trusts, run
+correctly, so that any later win is attributable to a *change I made* and not to a baseline I crippled.
+In practice I will not call `erf` at all; the cheap form used in these models is the tanh
+approximation `GELU(x) ≈ 0.5·x·(1 + tanh[√(2/π)·(x + 0.044715·x³)])`, with `√(2/π) = 0.7978845608…`.
+Two reasons it is the right form for a kernel and not just for convenience: it is trivial to implement
+with a device `tanh`, and — this matters once I hand-write the backward — its derivative is closed-form
+in terms of `tanh`, since `d/dx tanh(u) = 1 − tanh²(u) = sech²(u)`, so I never need `erf`'s derivative
+either. Matching the forward and backward to the *same* approximation is the difference between a
+correct gradient and a subtly wrong one, so I will commit to the tanh form on both sides.
+
+Now the execution, which is the real content of this rung. Run as three PyTorch ops, the two matmuls
+go to cuBLAS and are compute-bound — lots of FLOPs per byte, near peak, nothing to improve there
+without changing the math. The activation is the opposite animal. It reads all `M·N` elements of the
+wide hidden `h` (with `N = 4·n_embd`) from HBM, computes one `erf`/`tanh`-flavored expression per
+element, and writes all `M·N` elements back to HBM, after which the second matmul reads them yet again.
+Let me count the bytes the way I would for a bandwidth-bound op, because that exposes the waste. The
+activation does `O(M·N)` trivial flops for `M·N` reads plus `M·N` writes; its arithmetic intensity is
+at the floor; by the roofline picture its runtime is essentially the time to stream the block's
+largest tensor through HBM twice. And that traffic accomplishes nothing the matmul could not have done
+in passing — except that here, with the matmuls handed to cuBLAS, the value of every `h` element was
+already written out and must be read back. So at minimum I want the activation itself to stop being a
+chain of generic elementwise launches over temporaries (one tensor for `x³`, one for the inner
+polynomial, one for the `tanh`, one for the product). I want a *single* custom kernel that loads a
+chunk of `h` once, forms the cubic, the tanh and the final multiply in registers, and stores the
+activated tensor once.
+
+The tool for that is a tile-level kernel — Triton — where I write the body of one *program instance*
+that owns a whole contiguous block of the flat tensor, indexed by a program id, and the compiler
+recovers the threading, coalescing and vectorization underneath. For a pure elementwise op this is the
+simplest possible use of the abstraction: flatten the tensor, give each instance one `BLOCK`-sized
+chunk, ask which chunk with `program_id(0)`, build the tile of offsets `pid·BLOCK + arange(0, BLOCK)`,
+mask the tail against `n_elements` so the last partial block does not fault, do a masked load, compute
+the tanh-GELU, and do a masked store. No `threadIdx`, no shared memory, no hand-written barriers — for
+an elementwise op the compiler's passes do the rest. There is one numerical trap I have to respect:
+the cubic and the tanh must *not* be evaluated in the input's low-precision dtype. Under the loop's
+bf16 autocast, `h` arrives in bf16; the cubic `x³` can overflow at moderate magnitudes in fp16 and is
+needlessly coarse in bf16, so I upcast the loaded chunk to fp32, form the polynomial and the tanh in
+fp32, and cast the result back to the input dtype before the store. Compute in fp32, store in the
+original dtype — the same discipline the surrounding loop already follows for its reductions.
+
+A scope decision falls out here, and it is the one place this rung diverges from the most aggressive
+thing the tile abstraction allows. I *could* fuse the up-projection matmul and the activation into one
+tiled kernel, running `tanh`-GELU on the matmul's fp32 accumulator in registers before it ever touches
+HBM, which would delete the activation's round-trip entirely. But that means hand-writing the matmul,
+and the matmul is exactly what cuBLAS (and, here, `torch.compile`'s fused path) does extremely well. At
+this first rung I am not trying to beat cuBLAS at its own game; I am establishing the GELU floor with a
+*correct, clean* activation kernel and leaving the two matmuls as the well-tuned `x @ w_fc.t()` and
+`@ w_proj.t()` torch ops. So the kernel I write fuses *the activation's own elementwise chain* into one
+launch over `h` — collapsing four generic kernels and their temporaries into one — and stops there. The
+matmuls stay in torch. That is the literal edit: the function does the first matmul, runs the GELU
+kernel over `h` as one custom pass, does the second matmul. Whether folding the activation *into* the
+matmul epilogue actually pays is a question for a later rung, once I have a number to compare against.
+
+Now the backward, and I want it analytic rather than letting autograd trace through my elementwise
+kernel — partly because autograd cannot differentiate the Triton kernel at all, and partly because I
+just wrote the activation explicitly and its gradient is just as local. The two linears are easy:
+their gradients are matmuls. With `out = act @ w_proj.t()`, the gradient flowing into `act` is
+`d_act = grad_out @ w_proj`, and `grad_w_proj = grad_out.t() @ act`; after the activation gradient I
+have `d_h`, and then `grad_x = d_h @ w_fc` and `grad_w_fc = d_h.t() @ x`. Let me check the shapes so I
+trust them. `out` is `(N_rows, n_embd)`, `act` is `(N_rows, 4·n_embd)`, `w_proj` is
+`(n_embd, 4·n_embd)`; `grad_out (N_rows, n_embd) @ w_proj (n_embd, 4·n_embd) → (N_rows, 4·n_embd)`
+matches `act`; `grad_out.t() (n_embd, N_rows) @ act (N_rows, 4·n_embd) → (n_embd, 4·n_embd)` matches
+`w_proj`. Good. The one piece that needs care is the activation's own derivative. Differentiate
+`gelu(x) = 0.5·x·(1 + tanh(inner))` with `inner = c·(x + a·x³)`, `c = √(2/π)`, `a = 0.044715`, by the
+product rule:
+
+`d/dx gelu = 0.5·(1 + tanh(inner)) + 0.5·x·sech²(inner)·d(inner)/dx`,
+
+with the chain `d(inner)/dx = c·(1 + 3a·x²)` and `sech² = 1 − tanh²`. Let me sanity-check the limits so
+I trust the signs and constants, because a dropped factor here is a silent training bug. As `x → +∞`:
+`inner → +∞`, `tanh → 1`, so the first term `→ 0.5·(1+1) = 1`; the second term has `sech² → 0` killing
+it, so the derivative `→ 1` — correct, GELU acts like the identity for large positive `x`. As
+`x → −∞`: `tanh → −1`, first term `→ 0`, second term `→ 0`, derivative `→ 0` — correct, GELU saturates
+to zero on the left. At `x = 0`: `inner = 0`, `tanh 0 = 0`, first term `0.5·(1+0) = 0.5`, second term
+`0.5·0·1·c = 0`, so the derivative is `0.5` — the expected slope of GELU at the origin. Signs and
+constants check out. So in the backward I save the pre-activation `h` from the forward (cheaper than
+recomputing the first matmul), recompute `inner`, `tanh(inner)`, `sech²`, `d_inner` in fp32 on `h`,
+assemble `gelu_grad`, and form `d_h = (d_act · gelu_grad)` cast back to the gradient dtype. I also save
+`act` itself so the down-projection weight gradient `grad_out.t() @ act` does not have to recompute the
+activation. I wrap the whole thing in a `torch.autograd.Function` so forward stashes
+`(x, w_fc, w_proj, h, act)` and backward runs exactly this derivation. One dtype discipline: I cast the
+saved tensors and the weights to `grad_output`'s dtype consistently in the matmuls, so I never mix a
+bf16 weight with an fp32 grad — a small thing that otherwise silently slows the path or NaNs it.
+
+So the step-1 fill is settled and it is, deliberately, the conservative one: the scaffold's GELU,
+expressed as one fused-elementwise Triton activation kernel between two ordinary torch matmuls, with an
+analytic tanh-GELU backward in a custom autograd Function (the full module is in the answer). No change
+to *what* the FFN computes — same activation everyone trusts — only a tighter execution of it and an
+explicit backward.
+
+Now reason about what this floor must do, because reading its number is the entire point of running it.
+Quality first: I have changed nothing about the function the model computes — it is still GELU to the
+precision of the tanh approximation — so I expect `val_loss`, `wikitext2_ppl` and `lambada_ppl` to land
+at the unremarkable GELU level. This is by construction the *quality* floor: GELU is asymptotically
+linear, so a strongly-firing and a barely-firing unit are pushed through at nearly the same slope, and
+the activation adds no super-linear shaping; on LM perplexity GELU is famously only on par with plain
+ReLU. So whatever number it posts, I should read it as "this is what the default activation buys, with
+no shaping beyond the knee," and expect a later activation change — not a kernel change — to move it.
+Throughput second: collapsing the activation's elementwise chain into one fused launch over `h` should
+make the activation cheaper than the multi-kernel default, but the dominant cost is still the two
+cuBLAS matmuls plus the one HBM round-trip of `h` that I did *not* fuse away (I left the matmuls in
+torch), so `elapsed` should be respectable but not extraordinary — the activation round-trip is still
+there, just executed in one pass instead of four. The falsifiable expectations, then, are concrete: I
+expect this rung to be the *worst on quality* of anything I try (it is unshaped GELU) and *competitive,
+likely the best, on throughput* (it leaves the matmuls to cuBLAS and only tidies the activation). If a
+later rung lowers `val_loss` while holding throughput near this, that isolates the activation as the
+quality lever; if a later rung lowers `val_loss` but *raises* `elapsed`, it tells me fusing the matmul
+myself cost more than it saved, and that the cleanest win keeps the matmuls exactly where they are here.
+Either way, this GELU number is the reference against which both axes get read. Let me write the floor
+in: one fused-elementwise Triton GELU kernel between two torch matmuls, analytic backward in a custom
+autograd Function.
+</think>
+<say>
+Establishing the baseline floor: the scaffold's GELU, run as a single fused-elementwise Triton kernel
+between two torch matmuls, with an analytic tanh-GELU backward. This edit drops in the kernel and the
+custom autograd forward.
+</say>
+<edit path="nanoGPT/custom_pretrain.py">
+<old>
+def fused_mlp_forward(x, w_fc, w_proj):
+    """MLP forward pass: linear -> activation -> linear.
+
+    Default implementation uses standard PyTorch ops.
+    Can be replaced with a fused Triton kernel for better performance.
+
+    Args:
+        x: input tensor (B*T, n_embd)
+        w_fc: first linear weight (4*n_embd, n_embd)
+        w_proj: second linear weight (n_embd, 4*n_embd)
+    Returns:
+        output tensor (B*T, n_embd)
+    """
+    h = F.gelu(x @ w_fc.t())
+    return h @ w_proj.t()
+</old>
+<new>
+# EDITABLE region of custom_pretrain.py (lines 33-48) — step 1: Triton fused GELU
+import triton
+import triton.language as tl
+from triton.language.extra.cuda import libdevice
+
+@triton.jit
+def _fused_gelu_kernel(
+    x_ptr, out_ptr,
+    n_elements,
+    BLOCK_SIZE: tl.constexpr,
+):
+    pid = tl.program_id(0)
+    offsets = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
+    mask = offsets < n_elements
+    x = tl.load(x_ptr + offsets, mask=mask)
+    # Compute entirely in float32 to avoid bfloat16 overflow in x^3
+    xf = x.to(tl.float32)
+    # tanh-approximation GELU: 0.5 * x * (1 + tanh(sqrt(2/pi) * (x + 0.044715 * x^3)))
+    c = 0.7978845608028654  # sqrt(2/pi)
+    inner = c * (xf + 0.044715 * xf * xf * xf)
+    tanh_val = libdevice.tanh(inner)
+    out = xf * 0.5 * (1.0 + tanh_val)
+    tl.store(out_ptr + offsets, out.to(x.dtype), mask=mask)
+
+class _TritonGELUMLP(torch.autograd.Function):
+    @staticmethod
+    def forward(ctx, x, w_fc, w_proj):
+        h = x @ w_fc.t()
+        act = torch.empty_like(h)
+        n = h.numel()
+        BLOCK = 1024
+        grid = ((n + BLOCK - 1) // BLOCK,)
+        _fused_gelu_kernel[grid](h, act, n, BLOCK_SIZE=BLOCK)
+        out = act @ w_proj.t()
+        ctx.save_for_backward(x, w_fc, w_proj, h, act)
+        return out
+
+    @staticmethod
+    def backward(ctx, grad_output):
+        x, w_fc, w_proj, h, act = ctx.saved_tensors
+        dtype = grad_output.dtype
+        d_act = grad_output @ w_proj.to(dtype)
+        grad_w_proj = grad_output.reshape(-1, grad_output.shape[-1]).t() @ act.to(dtype).reshape(-1, act.shape[-1])
+        # Analytical gradient of tanh-approximation GELU (matches the Triton forward)
+        # gelu(x) = 0.5 * x * (1 + tanh(inner)), inner = c * (x + 0.044715 * x^3)
+        # d_gelu/dx = 0.5 * (1 + tanh(inner)) + 0.5 * x * sech^2(inner) * d_inner/dx
+        # d_inner/dx = c * (1 + 3 * 0.044715 * x^2)
+        h_f = h.float()
+        c = 0.7978845608028654
+        inner = c * (h_f + 0.044715 * h_f * h_f * h_f)
+        tanh_inner = torch.tanh(inner)
+        sech2 = 1.0 - tanh_inner * tanh_inner
+        d_inner = c * (1.0 + 3.0 * 0.044715 * h_f * h_f)
+        gelu_grad = 0.5 * (1.0 + tanh_inner) + 0.5 * h_f * sech2 * d_inner
+        d_h = (d_act.float() * gelu_grad).to(dtype)
+        grad_x = d_h @ w_fc.to(dtype)
+        grad_w_fc = d_h.reshape(-1, d_h.shape[-1]).t() @ x.to(dtype).reshape(-1, x.shape[-1])
+        return grad_x, grad_w_fc, grad_w_proj
+
+def fused_mlp_forward(x, w_fc, w_proj):
+    """MLP forward with Triton fused GELU kernel."""
+    return _TritonGELUMLP.apply(x, w_fc, w_proj)
+</new>
+</edit>
+<obs>
+Successfully replaced text in nanoGPT/custom_pretrain.py.
+</obs>
+<run/>
+<obs>
+Measured results — `baseline:triton_gelu` (`is_final,true`), seed 42.
+
+## Quality (lower is better)
+| seed | val_loss | wikitext2_ppl | lambada_ppl |
+|---|---|---|---|
+| 42 | 2.2868 | 43.94 | 68.2 |
+| **mean** | **2.2868** | **43.94** | **68.2** |
+
+## Throughput (lower is better)
+| seed | elapsed |
+|---|---|
+| 42 | 20035 |
+| **mean** | **20035** |
+
+## Downstream zero-shot (higher is better)
+| seed | arc_easy | hellaswag | piqa | winogrande |
+|---|---|---|---|---|
+| 42 | 54.67 | 33.61 | 63.44 | 51.7 |
+| **mean** | **54.67** | **33.61** | **63.44** | **51.7** |
+</obs>
+
+### step 2 — Triton fused linear + ReLU²   [slug:triton_relu_sq_fused]
+
+<think>
+The GELU floor landed where I expected on one axis and told me something sharp on the other. On
+quality it is unremarkable by construction: `val_loss` 2.2868, `wikitext2_ppl` 43.94, `lambada_ppl`
+68.2 — exactly the "unshaped GELU" level I predicted, the floor against which an *activation* change
+should move. On throughput it posted `elapsed` 20035 leaving the matmuls to cuBLAS, which confirms the
+other half of the prediction: the two matmuls plus the single HBM round-trip of the wide hidden
+dominate, and tidying the activation's elementwise chain into one launch was respectable but not
+transformative. So the GELU rung handed me two distinct openings. First, the activation is the quality
+lever — GELU is asymptotically linear, a strongly-firing and a barely-firing unit pass through at
+nearly the same slope, no super-linear shaping — and on LM perplexity that is famously only on par with
+ReLU, so 2.2868 is what "no shaping beyond the knee" buys. Second, the activation is *still* a separate
+HBM round-trip even after I fused its elementwise chain, because I deliberately left the matmuls in
+torch. This rung goes after *both* at once: change the activation to something with real super-linear
+shaping, and execute it by folding it into the matmul that produces it, so the round-trip the GELU rung
+left on the table disappears too.
+
+Take the activation first, because the quality story has to lead. The defaults — ReLU, GELU, Swish —
+are all, in their large-`x` behavior, the same animal: asymptotically linear. For big positive
+pre-activation they pass the input through roughly proportionally. That is a *choice*, and the GELU
+number says it is a choice that costs me — 2.2868 is the price of asymptotic linearity. There is an old
+result staring at me from a different corner: Krotov and Hopfield, studying associative memory, used
+rectified-polynomial energy terms `F(s) = s^p` on the positive branch, and noted that the
+feed-forward activation falling out of that energy is one degree lower — the `p = 2` energy case
+corresponds to ReLU, the `p = 3` case to a rectified parabola — and they left an explicit open question
+hanging: past the threshold, should the activation grow linearly, sub-linearly, or *faster than
+linearly*, and might a higher rectified polynomial beat ReLU in ordinary networks? The whole pointwise
+literature answered "linearly." The GELU floor I just measured is that answer's price tag. Let me take
+the other branch.
+
+So the candidate is `act(z) = max(z, 0)²` — rectify, then square. Squared ReLU. Before getting
+excited, check it is not obviously broken. Asymptotics: for large positive `z` it grows like `z²`,
+genuinely faster than linear — a *different shape* from GELU, not a tweak of the same shape, which is
+exactly what I need given that tweaking the knee is what GELU already did relative to ReLU and it bought
+nothing on perplexity. Below zero it is flat zero, the same sparsity-inducing dead zone as ReLU.
+Numerics: will `z²` blow up? In this FFN the pre-activation is the output of a normalized-input linear
+layer under bf16 autocast, so it sits at `O(1)`; squaring an `O(1)` number is fine. And crucially I am
+*not* tempted to go cubic or quartic, because higher powers amplify the tail viciously — in bf16 a
+pre-activation of 8 becomes 4096 at degree four, and the gradient scales like `q·z^(q−1)`, so cube and
+quartic court overflow and unstable gradients. Degree two is the *minimal* super-linear rectified
+polynomial: it leaves the linear regime by the smallest step, keeping the numerics tame while getting
+the sharper nonlinearity. That is the first reason to pick the square specifically and not just "some
+higher power."
+
+But "sharper basins in a Hopfield net" is an analogy, not a mechanism for why it helps a *language
+model* FFN. I want a concrete reason, and the gated FFNs supply it. The GLU idea (Dauphin) and
+Shazeer's FFN variants replace the first linear-plus-activation with `(act(xW) ⊙ (xV)) W2` — two
+separate linear projections of the input, one activated, multiplied elementwise, then projected down.
+ReGLU is the rectified version, `(max(0, xW) ⊙ (xV)) W2`. These reliably beat the plain ReLU/GELU FFN
+on held-out perplexity at matched parameters, and the standard story for *why* is the multiplicative
+interaction: `(xW) ⊙ (xV)` lets the block compute products of two learned linear features, an
+input-dependent gate, which a single univariate pointwise activation cannot represent — each
+plain-activation output is a fixed function of one pre-activation coordinate, no cross-talk, no
+products. So the lesson from the gated variants is that *multiplicative interactions are what buy the
+quality*. The catch, and it is the reason this whole ladder lives in a two-matrix slot: the GLU
+variants need a *third* weight matrix `V` and shrink the inner width by `2/3` to stay
+parameter-matched, and the edit surface hands `fused_mlp_forward` only `w_fc` and `w_proj` — there is
+no `V` to pass. A gated FFN simply cannot be expressed here.
+
+Now stare at squared ReLU next to ReGLU and it clicks. ReGLU is `max(0, xW) ⊙ (xV)`. Set the two
+projections equal, `W = V`: it becomes `max(0, xW) ⊙ (xW)`. And `max(0, z)·z` is `z²` when `z > 0` and
+`0` when `z ≤ 0` — exactly `max(0, z)² = relu(z)²`. So squared ReLU applied to `xW` *is* ReGLU with its
+two gate matrices tied. It is the diagonal, weight-shared special case of the gated unit, which means
+it is not a different idea from the gates — it is the *same multiplicative interaction*, `(xW) ⊙ (xW)`,
+the unit gating against itself, the precise mechanism the gated-FFN literature credits for the gain.
+And it gets that interaction *for free in exactly the slot I am allowed to edit*: ReGLU needs `W, V, W2`
+and the `2/3` shrink; squared ReLU keeps the original two matrices `w_fc, w_proj`, no extra `V`, no
+bookkeeping, no narrower bottleneck. So the constraint that blocks GLU here is *precisely* what makes
+squared ReLU the right move: it recovers the gated benefit without the gate's third matrix. That is the
+real reason the square is the sweet spot and not just "Krotov says higher is sharper" — it is exactly
+the power at which `relu(z)·z` collapses into a self-gate.
+
+I need the gradient before I can train it, and I want it clean. `f(z) = relu(z)² = (max(z,0))²`. For
+`z > 0`, `f = z²`, `f'(z) = 2z = 2·relu(z)` since `relu(z) = z` there. For `z < 0`, `f = 0`,
+`f'(z) = 0 = 2·relu(z)` since `relu(z) = 0` there. At `z = 0` both pieces meet at `0`, and
+`2·relu(0) = 0`, no jump. So the derivative is just `f'(z) = 2·max(z, 0) = 2·relu(z)` everywhere, no
+case split in code — and notice it is *continuous*, ramping smoothly through zero, unlike ReLU's
+derivative which jumps 0→1 at the origin. Squared ReLU is `C¹`, a smoother optimization surface than
+ReLU while keeping the hard zero below threshold. A quiet bonus. The activation derivative needs only
+the pre-activation; the down-projection weight gradient `∂L/∂W2 = gᵀ @ post` needs the activated tensor
+`post`.
+
+Now the throughput lever, and this is where the GELU rung's leftover round-trip gets paid off and where
+the activation choice and the execution turn out entangled. The GELU floor left the activation as a
+standalone HBM pass over the wide `(M, N)` hidden, `N = 4·n_embd`: the matmul wrote `pre` out, the
+activation read `MN`, wrote `MN`, the second matmul read it again. But the matmul already had every
+`pre` element sitting in an fp32 register accumulator the instant it finished accumulating that output
+tile — and instead of using it, cuBLAS wrote it to HBM. If I run the activation *on the accumulator, in
+registers, before the store*, that `2·MN` of round-trip traffic — the dominant cost of the
+bandwidth-bound activation step — simply vanishes. By the roofline picture it is close to free: the
+matmul is compute-bound, so the few extra elementwise flops in its epilogue hide under arithmetic that
+is already saturating the cores; I spend idle compute to erase real memory traffic. The reason the GELU
+rung did not do this is that cuBLAS gives a *fixed* epilogue (down-cast and store) with no hook to
+staple an activation onto the accumulator — it is structural, not a tuning knob — so to fuse I have to
+write the up-projection matmul myself at the tile level, where the epilogue is mine.
+
+And here the entanglement pays: squared ReLU is the *easiest possible* activation to fuse. Softmax or
+layernorm need a row reduction, so fusing them into a matmul epilogue would need the whole row resident,
+crossing tile boundaries. `relu(z)²` is strictly local — one element at a time, no reduction, no
+neighbor — so it folds into the per-tile epilogue with zero cross-tile communication: `relu(acc)²` on
+the `BLOCK_M × BLOCK_N` accumulator is just an elementwise op on data I already hold. A gated unit like
+ReGLU would also need `xV` computed and multiplied, more to fuse and more traffic; the self-gate needs
+only the one accumulator. The quality lever and the throughput lever chose the same activation.
+
+So the forward kernel tiles the up-projection: each program instance owns one `BLOCK_M × BLOCK_N`
+output tile, loops over the contraction `K` in chunks of `BLOCK_K`, loading sub-tiles of `x` and
+`w_fc.t()`, accumulating `acc += dot(a, b)` into an fp32 register accumulator (standard — summing many
+bf16 products loses bits), and after the K-loop the epilogue computes `relu(acc)²`, down-casts to bf16,
+stores `post`. The second matmul `out = post @ w_proj.t()` has no activation after it (residual and
+dropout are outside the block), so there is nothing to fuse into its epilogue — I leave it as a plain
+torch matmul, the same decision the GELU rung made for *both* matmuls, now made for just the down one.
+
+For backward I keep it minimal and let the algebra dictate what to stash. Forward, with `x : (M, K)`,
+`w_fc : (N, K)` so `N = 4·n_embd`, `w_proj : (d, N)`: `pre = x @ w_fc.t()`, `post = relu(pre)²`,
+`out = post @ w_proj.t()`. Given `g = ∂L/∂out` of shape `(M, d)`: through the second matmul,
+`d_post = g @ w_proj` shape `(M, N)`, and `∂L/∂w_proj = gᵀ @ post` shape `(d, N)`; through the
+activation, `d_pre = 2·relu(pre) ⊙ d_post`; through the first matmul, `∂L/∂x = d_pre @ w_fc` and
+`∂L/∂w_fc = d_preᵀ @ x`. The only nonlinear-specific value the backward needs is `relu(pre)`, so I save
+just `pre` and recompute `relu(pre)` and `relu(pre)²` from it in the backward — `relu(pre)²` for the
+`w_proj` gradient and `2·relu(pre)` for the activation gradient. Saving only `pre` and recomputing,
+rather than also stashing `post`, trades a cheap elementwise recompute for one fewer wide tensor held
+across the step. I wrap it in a `torch.autograd.Function` with the fixed signature
+`fused_mlp_forward(x, w_fc, w_proj)`, accumulating the contraction in fp32 inside the kernel and
+following the autocast dtype outside (the full module is in the answer).
+
+Now the falsifiable expectations against the GELU rung's numbers, on both axes, because this rung bets
+on both. On quality I expect a real drop below 2.2868: squared ReLU is the self-gating multiplicative
+interaction the GLU variants credit for beating GELU, captured in this exact two-matrix slot, so
+`val_loss`, `wikitext2_ppl` and `lambada_ppl` should all come in under the GELU floor — if they do not,
+the "multiplicative interaction buys quality" story is wrong *here* and I should reconsider the
+activation, not the kernel. On throughput the bet is riskier and I want to be honest about it. The
+fusion *deletes* the activation's `2·MN` round-trip, which should help; but it does so by replacing
+cuBLAS's exquisitely-tuned up-projection with a hand-rolled tiled matmul at fixed `BLOCK_M=BLOCK_N=64`,
+`BLOCK_K=32`, and under `torch.compile` the GELU rung's matmuls were already heavily optimized. So the
+real question this rung answers is whether the round-trip I save is worth more than the cuBLAS-vs-naive
+matmul gap I take on. If `elapsed` comes in *at or below* 20035, the fusion paid; if it comes in
+*above* 20035 even though quality improved, that is the diagnosis that the cleanest win keeps the
+matmuls in cuBLAS and changes only the activation — i.e. the next rung should drop the Triton matmul
+entirely and run squared ReLU in plain torch, betting that almost all the quality gain here comes from
+the activation and almost none from the fusion. Let me write the fused kernel and its forward in.
+</think>
+<say>
+Switching the activation to squared ReLU — the self-gated `relu(z)^2`, ReGLU with its two gates tied —
+and fusing it into the up-projection's tiled-matmul epilogue. This edit replaces the GELU kernel and
+forward with the fused linear+ReLU^2 kernel.
+</say>
+<edit path="nanoGPT/custom_pretrain.py">
+<old>
+# EDITABLE region of custom_pretrain.py (lines 33-48) — step 1: Triton fused GELU
+import triton
+import triton.language as tl
+from triton.language.extra.cuda import libdevice
+
+@triton.jit
+def _fused_gelu_kernel(
+    x_ptr, out_ptr,
+    n_elements,
+    BLOCK_SIZE: tl.constexpr,
+):
+    pid = tl.program_id(0)
+    offsets = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
+    mask = offsets < n_elements
+    x = tl.load(x_ptr + offsets, mask=mask)
+    # Compute entirely in float32 to avoid bfloat16 overflow in x^3
+    xf = x.to(tl.float32)
+    # tanh-approximation GELU: 0.5 * x * (1 + tanh(sqrt(2/pi) * (x + 0.044715 * x^3)))
+    c = 0.7978845608028654  # sqrt(2/pi)
+    inner = c * (xf + 0.044715 * xf * xf * xf)
+    tanh_val = libdevice.tanh(inner)
+    out = xf * 0.5 * (1.0 + tanh_val)
+    tl.store(out_ptr + offsets, out.to(x.dtype), mask=mask)
+
+class _TritonGELUMLP(torch.autograd.Function):
+    @staticmethod
+    def forward(ctx, x, w_fc, w_proj):
+        h = x @ w_fc.t()
+        act = torch.empty_like(h)
+        n = h.numel()
+        BLOCK = 1024
+        grid = ((n + BLOCK - 1) // BLOCK,)
+        _fused_gelu_kernel[grid](h, act, n, BLOCK_SIZE=BLOCK)
+        out = act @ w_proj.t()
+        ctx.save_for_backward(x, w_fc, w_proj, h, act)
+        return out
+</old>
+<new>
+# EDITABLE region of custom_pretrain.py (lines 33-48) — step 2: Triton fused linear + ReLU^2
+import triton
+import triton.language as tl
+
+@triton.jit
+def _matmul_relu_sq_kernel(
+    a_ptr, b_ptr, c_ptr, pre_ptr,
+    M, N, K,
+    stride_am, stride_ak,
+    stride_bk, stride_bn,
+    stride_cm, stride_cn,
+    BLOCK_M: tl.constexpr, BLOCK_N: tl.constexpr, BLOCK_K: tl.constexpr,
+    SAVE_PRE: tl.constexpr,
+):
+    pid_m = tl.program_id(0)
+    pid_n = tl.program_id(1)
+    offs_m = pid_m * BLOCK_M + tl.arange(0, BLOCK_M)
+    offs_n = pid_n * BLOCK_N + tl.arange(0, BLOCK_N)
+    offs_k = tl.arange(0, BLOCK_K)
+    a_ptrs = a_ptr + offs_m[:, None] * stride_am + offs_k[None, :] * stride_ak
+    b_ptrs = b_ptr + offs_k[:, None] * stride_bk + offs_n[None, :] * stride_bn
+    acc = tl.zeros((BLOCK_M, BLOCK_N), dtype=tl.float32)
+    for k in range(0, K, BLOCK_K):
+        a = tl.load(a_ptrs, mask=(offs_m[:, None] < M) & (offs_k[None, :] < K))
+        b = tl.load(b_ptrs, mask=(offs_k[:, None] < K) & (offs_n[None, :] < N))
+        acc += tl.dot(a, b)
+        a_ptrs += BLOCK_K * stride_ak
+        b_ptrs += BLOCK_K * stride_bk
+        offs_k += BLOCK_K
+    pre = acc.to(tl.bfloat16)
+    relu_val = tl.maximum(acc, 0.0)
+    result = (relu_val * relu_val).to(tl.bfloat16)
+    c_ptrs = c_ptr + offs_m[:, None] * stride_cm + offs_n[None, :] * stride_cn
+    mask = (offs_m[:, None] < M) & (offs_n[None, :] < N)
+    tl.store(c_ptrs, result, mask=mask)
+    if SAVE_PRE:
+        pre_ptrs = pre_ptr + offs_m[:, None] * stride_cm + offs_n[None, :] * stride_cn
+        tl.store(pre_ptrs, pre, mask=mask)
+
+class _FusedLinearReLUSquare(torch.autograd.Function):
+    @staticmethod
+    def forward(ctx, x, w_fc, w_proj):
+        M, K = x.shape
+        N = w_fc.shape[0]
+        post = torch.empty((M, N), device=x.device, dtype=x.dtype)
+        pre = torch.empty((M, N), device=x.device, dtype=x.dtype)
+        grid = lambda meta: (
+            triton.cdiv(M, meta['BLOCK_M']),
+            triton.cdiv(N, meta['BLOCK_N']),
+        )
+        b = w_fc.t().contiguous()
+        _matmul_relu_sq_kernel[grid](
+            x, b, post, pre,
+            M, N, K,
+            x.stride(0), x.stride(1),
+            b.stride(0), b.stride(1),
+            post.stride(0), post.stride(1),
+            BLOCK_M=64, BLOCK_N=64, BLOCK_K=32,
+            SAVE_PRE=True,
+        )
+        out = post @ w_proj.t()
+        ctx.save_for_backward(x, w_fc, w_proj, pre)
+        return out
+</new>
+</edit>
+<obs>
+Successfully replaced text in nanoGPT/custom_pretrain.py.
+</obs>
+<note>
+Now the backward: the analytic ReLU^2 gradient (`d_pre = 2·relu(pre) ⊙ d_post`) saving only `pre`, and the new forward entry point.
+</note>
+<edit path="nanoGPT/custom_pretrain.py">
+<old>
+    def backward(ctx, grad_output):
+        x, w_fc, w_proj, h, act = ctx.saved_tensors
+        dtype = grad_output.dtype
+        d_act = grad_output @ w_proj.to(dtype)
+        grad_w_proj = grad_output.reshape(-1, grad_output.shape[-1]).t() @ act.to(dtype).reshape(-1, act.shape[-1])
+        # Analytical gradient of tanh-approximation GELU (matches the Triton forward)
+        # gelu(x) = 0.5 * x * (1 + tanh(inner)), inner = c * (x + 0.044715 * x^3)
+        # d_gelu/dx = 0.5 * (1 + tanh(inner)) + 0.5 * x * sech^2(inner) * d_inner/dx
+        # d_inner/dx = c * (1 + 3 * 0.044715 * x^2)
+        h_f = h.float()
+        c = 0.7978845608028654
+        inner = c * (h_f + 0.044715 * h_f * h_f * h_f)
+        tanh_inner = torch.tanh(inner)
+        sech2 = 1.0 - tanh_inner * tanh_inner
+        d_inner = c * (1.0 + 3.0 * 0.044715 * h_f * h_f)
+        gelu_grad = 0.5 * (1.0 + tanh_inner) + 0.5 * h_f * sech2 * d_inner
+        d_h = (d_act.float() * gelu_grad).to(dtype)
+        grad_x = d_h @ w_fc.to(dtype)
+        grad_w_fc = d_h.reshape(-1, d_h.shape[-1]).t() @ x.to(dtype).reshape(-1, x.shape[-1])
+        return grad_x, grad_w_fc, grad_w_proj
+
+def fused_mlp_forward(x, w_fc, w_proj):
+    """MLP forward with Triton fused GELU kernel."""
+    return _TritonGELUMLP.apply(x, w_fc, w_proj)
+</old>
+<new>
+    def backward(ctx, grad_output):
+        x, w_fc, w_proj, pre = ctx.saved_tensors
+        dtype = grad_output.dtype
+        d_post = grad_output @ w_proj.to(dtype)
+        grad_w_proj = grad_output.reshape(-1, grad_output.shape[-1]).t() @ \
+                      F.relu(pre).pow(2).to(dtype).reshape(-1, pre.shape[-1])
+        d_pre = 2 * F.relu(pre).to(dtype) * d_post
+        grad_x = d_pre @ w_fc.to(dtype)
+        grad_w_fc = d_pre.reshape(-1, d_pre.shape[-1]).t() @ x.to(dtype).reshape(-1, x.shape[-1])
+        return grad_x, grad_w_fc, grad_w_proj
+
+def fused_mlp_forward(x, w_fc, w_proj):
+    """MLP forward with Triton fused linear+ReLU^2 kernel."""
+    return _FusedLinearReLUSquare.apply(x, w_fc, w_proj)
+</new>
+</edit>
+<obs>
+Successfully replaced text in nanoGPT/custom_pretrain.py.
+</obs>
+<run/>
+<obs>
+Measured results — `baseline:triton_relu_sq_fused` (`is_final,true`), seed 42.
+
+## Quality (lower is better)
+| seed | val_loss | wikitext2_ppl | lambada_ppl |
+|---|---|---|---|
+| 42 | 2.2749 | 43.52 | 66.88 |
+| **mean** | **2.2749** | **43.52** | **66.88** |
+
+## Throughput (lower is better)
+| seed | elapsed |
+|---|---|
+| 42 | 30344 |
+| **mean** | **30344** |
+
+## Downstream zero-shot (higher is better)
+| seed | arc_easy | hellaswag | piqa | winogrande |
+|---|---|---|---|---|
+| 42 | 54.8 | 33.77 | 63.49 | 48.46 |
+| **mean** | **54.8** | **33.77** | **63.49** | **48.46** |
+</obs>
+
+### step 3 — ReLU² (pure torch, custom autograd)   [slug:relu_sq_torch]
+
+<think>
+The fused rung resolved the bet I made, and it split clean: the activation half won and the kernel half
+lost. Quality dropped exactly as the multiplicative-interaction story predicted — `val_loss` 2.2749
+under the GELU floor's 2.2868, `wikitext2_ppl` 43.52 under 43.94, and `lambada_ppl` 66.88 well under
+68.2, the largest relative move. So squared ReLU is real: changing the activation from asymptotically-
+linear GELU to the self-gating `relu(z)²` bought a genuine quality gain in this exact two-matrix slot,
+confirming that the lever is the activation, not the kernel. But the throughput half went the wrong way,
+and badly: `elapsed` 30344 against the GELU rung's 20035 — roughly 50% *slower*. That is the falsifiable
+expectation I wrote down coming true on the pessimistic side: the round-trip the fusion deleted was
+worth less than the gap I took on by replacing cuBLAS's up-projection with a hand-rolled tiled matmul at
+fixed `BLOCK_M=BLOCK_N=64`, `BLOCK_K=32`. Under `torch.compile`, the GELU rung's matmuls were already
+heavily optimized; my naive tiled kernel, however clean its epilogue, cannot match a vendor GEMM on a
+355M-param model's FFN shapes, and the activation round-trip I saved is a rounding error next to that
+matmul gap. The diagnosis writes itself: keep the activation that won, throw away the kernel that lost.
+This rung is that move — squared ReLU in *pure torch*, so the two matmuls go back to cuBLAS, and only
+the activation and its hand-written backward stay custom.
+
+Let me re-derive the activation cleanly, because I am now committing to it as the design, not as half of
+a kernel experiment. The bill is training compute; the FFN dominates it; the activation between its two
+matmuls is the one parameter-free knob — and the fused rung's 2.2749 proves pushing it pays. Why squared
+ReLU specifically, restated so the reasoning stands on its own. The defaults ReLU, GELU, Swish are all
+asymptotically linear — out in the tail a strongly-firing and a barely-firing unit get pushed through at
+nearly the same slope ≈1, so they differ only near the origin, the soft knee. That is why GELU barely
+beat ReLU historically and why the GELU floor here sat at the unshaped level: reshaping the knee is
+deck-chairs, the bulk of the function stays linear. The real lever is the *asymptotics*. The gated FFNs
+(ReGLU/GEGLU/SwiGLU, building on Dauphin's GLU) change the asymptotics by going multiplicative —
+`(act(xW) ⊙ xV) W2`, a product of two linear projections — and that multiplicative interaction is what
+the literature credits for their perplexity wins over GELU. But they need a third weight matrix `V` and
+a `2/3` inner-width shrink to stay parameter-matched, and the edit surface hands me only `w_fc` and
+`w_proj` — no `V`. So the gated FFN is structurally out of reach in this slot.
+
+The escape is the same one the fused rung found, and it is worth re-tracing because it is the crux of
+why this works with two matrices. Take ReGLU's hidden unit, `max(uᵀx, 0)·(vᵀx)`, and tie the two weight
+vectors, `u = v`: it becomes `max(uᵀx, 0)·(uᵀx)`. Let `z = uᵀx` be the pre-activation the up-projection
+already produces. If `z > 0`, `max(z,0) = z` and the unit is `z·z = z²`; if `z ≤ 0`, `max(z,0) = 0` and
+the product is `0`. So tying the weights turns ReGLU's unit into `relu(z)²` — and the second
+multiplicative factor was never something I needed a new matrix for, it was sitting right there in the
+up-projection's own output `xW`. Squared ReLU captures the GLU-family multiplicative benefit with one
+matrix instead of two, no width shrink, a literal drop-in into the existing two-matrix FFN. That is the
+whole reason it fits where GEGLU/SwiGLU cannot.
+
+Now the choices that pin it down, each derivable rather than assumed. Why power 2 and not 3 or 4?
+Rectified polynomials `F(z) = zⁿ` for `z ≥ 0` are sharper for higher `n` (Krotov–Hopfield's
+associative-memory capacity scales like `Nⁿ⁻¹`), but sharper cuts both ways for an activation I have to
+train in bf16: the general rectified power has derivative `n·relu(z)ⁿ⁻¹`, which for `n = 3` is `3z²` —
+quadratic gradient growth, much easier to overflow — and the forward `zⁿ` overflows sooner. `n = 2` is
+the *minimal* super-linear rectified polynomial: the smallest step away from linear that still gives the
+multiplicative second-order term and a magnitude-aware gradient, with the gradient growing only linearly
+(`2z`). The safe rung. Why rectify, rather than plain `x²`? `x²` is even, `x² = (−x)²`, so it fires
+identically for `+z` and `−z` — it throws away the sign of the pre-activation entirely, makes every
+neuron blind to which side of zero it is on, and is non-monotonic, dropping then rising through 0; two
+inputs the up-projection deliberately separated by sign would collapse to the same output. `relu(z)²` is
+monotone non-decreasing — flat-zero on the negative half, rising on the positive — so it keeps ReLU's
+"off" behavior for negatives and only curves the active half upward. The rectification is what preserves
+the gate while letting the active half go super-linear.
+
+There is also a real inductive-bias story in the gradient, and it is worth naming because it is *why*
+2.2749 happened. The derivative of `relu(z)²` is `2·relu(z)`: 0 for dead units, and `2·relu(z)` for
+live ones — growing linearly with the pre-activation, unbounded above. Contrast GELU and Swish, whose
+derivatives saturate near 1 as `z` grows, so a strongly-firing and a mildly-firing unit send back nearly
+the same gradient. With squared ReLU a unit that fires hard gets a proportionally *larger* gradient: the
+activation tells the optimizer "the confident, strongly-active units matter more, push them harder," and
+it does this for free because the magnitude information is already in `z`. That is a genuine inductive
+bias, not a cosmetic change — and it is the mechanism behind the perplexity drop the fused rung measured
+and that this rung inherits, since the activation is *identical*. The flip side is the danger I keep in
+mind: a quadratic with an unbounded-above gradient could in principle run away in low precision, which is
+exactly why power 2 and not higher — the gradient grows only linearly. I do not add a clamp inside the
+activation, since that would change the function I just derived; I keep it clean and let the loop's
+existing grad-clip (1.0) and AdamW handle scale.
+
+The forward is settled: `h = x @ w_fc.t()` gives the pre-activation, `a = relu(h)²`, `out = a @
+w_proj.t()`. The single change from the fused rung is *execution*: no Triton, no hand-rolled matmul.
+Both matmuls are plain torch `@`, so they go to cuBLAS under `torch.compile` — the exact path the GELU
+rung used to post 20035 — and only the activation and its backward are custom. This is the direct
+answer to the 30344 regression: I am betting almost all the fused rung's quality gain came from the
+activation and almost none from the fusion, so removing the fusion should recover throughput to the
+GELU level while keeping the quality. The activation itself, `relu` then square, is cheaper per element
+than GELU's `erf`/`tanh`, so even as a separate elementwise pass it is no worse than the GELU floor's
+activation and arguably a touch lighter.
+
+The backward I want hand-written rather than left to autograd, because the gradient is local and I can
+save exactly what I need. Forward with the matmuls: `h = x W_fcᵀ`, `r = relu(h)`, `a = r·r = r²`,
+`y = a W_projᵀ`; upstream `g = ∂L/∂y`. Walk it back. Through the second matmul `y = a W_projᵀ`:
+`∂L/∂a = g @ W_proj` — shapes `g (N, n_embd) @ W_proj (n_embd, 4·n_embd) → (N, 4·n_embd)`, matching `a`.
+Call it `d_a`. Through the square-of-relu `a = relu(h)²`: `∂L/∂h = d_a · d(relu(h)²)/dh`, and
+`d(relu(h)²)/dh = 2·relu(h)·1[h>0]`, but the indicator is redundant against `relu(h)` — where `h ≤ 0`,
+`relu(h) = 0` already — so it is exactly `2·relu(h)`. Thus `∂L/∂h = 2·r·d_a`; call it `d_h`. That is the
+one place I need `r = relu(h)`; everything else is matmuls. Weight gradients: `∂L/∂W_proj = gᵀ @ a`
+(shapes `gᵀ (n_embd, N) @ a (N, 4·n_embd) → (n_embd, 4·n_embd)`, matching `W_proj`), and
+`∂L/∂W_fc = d_hᵀ @ x` (`(4·n_embd, N) @ (N, n_embd) → (4·n_embd, n_embd)`, matching `W_fc`). Input
+gradient `∂L/∂x = d_h @ W_fc` (`(N, 4·n_embd) @ (4·n_embd, n_embd) → (N, n_embd)`, matching `x`). So the
+backward is two cheap elementwise ops — the `2·r·d_a` step — plus three matmuls, and the only
+nonlinear-specific value needed is `r = relu(h)`.
+
+What to stash. I save the pre-activation `h` and `relu_h = relu(h)`: `relu_h` supplies the `2·relu(h)`
+factor and, squared, the activation value `a` for the `W_proj` gradient. This is a small but deliberate
+difference from the fused rung, which saved only `pre` and recomputed `relu(pre)` and `relu(pre)²` in
+backward to hold one fewer wide tensor across the step — there the kernel was already paying for a
+custom path, so minimizing saved tensors mattered; here, in pure torch with cuBLAS matmuls, stashing
+`relu_h` directly is the cleaner mirror of the derivation and avoids recomputing `relu(h)` twice. Both
+are correct; this rung saves `(x, w_fc, w_proj, h, relu_h)` and reads the analytic factors straight out.
+One precision note: under bf16 autocast the pre-activations and outputs are low precision, but I cast
+the saved tensors and weights to `grad_output`'s dtype in the backward matmuls and the `2·relu(h)`
+multiply, so I never mix a bf16 weight with an fp32 grad. I wrap it in a `torch.autograd.Function` with
+the fixed signature `fused_mlp_forward(x, w_fc, w_proj)` — forward stashes the five tensors, backward
+runs the derivation above (the full module is in the answer). No `CONFIG_OVERRIDES`: the activation is
+parameter-matched and tested on the loop's existing AdamW / cosine schedule, exactly as the GELU floor
+was, so any difference is the activation, not a retune.
+
+Now the falsifiable expectations against both prior rungs, because this rung is precisely a *Pareto*
+claim. On quality I expect to *match or slightly beat* the fused rung's 2.2749 `val_loss`: the
+activation is mathematically identical to the fused rung's, so the only sources of difference are
+floating-point — the fused kernel computed the up-projection in an fp32 accumulator and down-cast in its
+epilogue, while pure torch under autocast follows cuBLAS's bf16 path — and I expect that to be a wash or
+a hair in my favor, landing at or just under 2.2749 on `val_loss`, with `wikitext2_ppl` near 43 and
+`lambada_ppl` near 67. If quality came in *worse* than the fused rung, it would mean the fp32 epilogue
+accumulation was actually buying accuracy and I would have to reconsider giving it up — but the
+derivation says the activation, not the accumulation, is what moved perplexity. On throughput the bet is
+the sharp one: I expect `elapsed` to collapse from the fused rung's 30344 back toward the GELU floor's
+20035 — both matmuls are now the same cuBLAS path the GELU rung used, and the only overhead beyond GELU
+is that squared ReLU runs as a separate (but cheaper-than-GELU) elementwise pass. If `elapsed` lands
+near or below 20035 while `val_loss` holds at ~2.2749, this rung Pareto-dominates the fused one — better
+or equal quality *and* far better throughput — which is exactly the outcome the 30344-vs-20035 split
+predicted: the win was the activation all along, and the kernel was a detour. Let me strip out the
+Triton path and write squared ReLU in pure torch with its custom backward.
+</think>
+<say>
+Keeping the squared-ReLU activation that won but dropping the Triton matmul that lost: pure-torch
+ReLU^2 with a hand-written backward, so both matmuls go back to cuBLAS. This edit replaces the whole
+fused kernel with the plain-torch custom-autograd version.
+</say>
+<edit path="nanoGPT/custom_pretrain.py">
+<old>
+# EDITABLE region of custom_pretrain.py (lines 33-48) — step 2: Triton fused linear + ReLU^2
+import triton
+import triton.language as tl
+
+@triton.jit
+def _matmul_relu_sq_kernel(
+    a_ptr, b_ptr, c_ptr, pre_ptr,
+    M, N, K,
+    stride_am, stride_ak,
+    stride_bk, stride_bn,
+    stride_cm, stride_cn,
+    BLOCK_M: tl.constexpr, BLOCK_N: tl.constexpr, BLOCK_K: tl.constexpr,
+    SAVE_PRE: tl.constexpr,
+):
+    pid_m = tl.program_id(0)
+    pid_n = tl.program_id(1)
+    offs_m = pid_m * BLOCK_M + tl.arange(0, BLOCK_M)
+    offs_n = pid_n * BLOCK_N + tl.arange(0, BLOCK_N)
+    offs_k = tl.arange(0, BLOCK_K)
+    a_ptrs = a_ptr + offs_m[:, None] * stride_am + offs_k[None, :] * stride_ak
+    b_ptrs = b_ptr + offs_k[:, None] * stride_bk + offs_n[None, :] * stride_bn
+    acc = tl.zeros((BLOCK_M, BLOCK_N), dtype=tl.float32)
+    for k in range(0, K, BLOCK_K):
+        a = tl.load(a_ptrs, mask=(offs_m[:, None] < M) & (offs_k[None, :] < K))
+        b = tl.load(b_ptrs, mask=(offs_k[:, None] < K) & (offs_n[None, :] < N))
+        acc += tl.dot(a, b)
+        a_ptrs += BLOCK_K * stride_ak
+        b_ptrs += BLOCK_K * stride_bk
+        offs_k += BLOCK_K
+    pre = acc.to(tl.bfloat16)
+    relu_val = tl.maximum(acc, 0.0)
+    result = (relu_val * relu_val).to(tl.bfloat16)
+    c_ptrs = c_ptr + offs_m[:, None] * stride_cm + offs_n[None, :] * stride_cn
+    mask = (offs_m[:, None] < M) & (offs_n[None, :] < N)
+    tl.store(c_ptrs, result, mask=mask)
+    if SAVE_PRE:
+        pre_ptrs = pre_ptr + offs_m[:, None] * stride_cm + offs_n[None, :] * stride_cn
+        tl.store(pre_ptrs, pre, mask=mask)
+
+class _FusedLinearReLUSquare(torch.autograd.Function):
+    @staticmethod
+    def forward(ctx, x, w_fc, w_proj):
+        M, K = x.shape
+        N = w_fc.shape[0]
+        post = torch.empty((M, N), device=x.device, dtype=x.dtype)
+        pre = torch.empty((M, N), device=x.device, dtype=x.dtype)
+        grid = lambda meta: (
+            triton.cdiv(M, meta['BLOCK_M']),
+            triton.cdiv(N, meta['BLOCK_N']),
+        )
+        b = w_fc.t().contiguous()
+        _matmul_relu_sq_kernel[grid](
+            x, b, post, pre,
+            M, N, K,
+            x.stride(0), x.stride(1),
+            b.stride(0), b.stride(1),
+            post.stride(0), post.stride(1),
+            BLOCK_M=64, BLOCK_N=64, BLOCK_K=32,
+            SAVE_PRE=True,
+        )
+        out = post @ w_proj.t()
+        ctx.save_for_backward(x, w_fc, w_proj, pre)
+        return out
+
+    @staticmethod
+    def backward(ctx, grad_output):
+        x, w_fc, w_proj, pre = ctx.saved_tensors
+        dtype = grad_output.dtype
+        d_post = grad_output @ w_proj.to(dtype)
+        grad_w_proj = grad_output.reshape(-1, grad_output.shape[-1]).t() @ \
+                      F.relu(pre).pow(2).to(dtype).reshape(-1, pre.shape[-1])
+        d_pre = 2 * F.relu(pre).to(dtype) * d_post
+        grad_x = d_pre @ w_fc.to(dtype)
+        grad_w_fc = d_pre.reshape(-1, d_pre.shape[-1]).t() @ x.to(dtype).reshape(-1, x.shape[-1])
+        return grad_x, grad_w_fc, grad_w_proj
+
+def fused_mlp_forward(x, w_fc, w_proj):
+    """MLP forward with Triton fused linear+ReLU^2 kernel."""
+    return _FusedLinearReLUSquare.apply(x, w_fc, w_proj)
+</old>
+<new>
+# EDITABLE region of custom_pretrain.py (lines 33-48) — step 3: ReLU^2 (pure torch, custom autograd)
+def fused_mlp_forward(x, w_fc, w_proj):
+    """MLP forward with ReLU^2 activation via custom autograd."""
+
+    class ReLUSquaredMLP(torch.autograd.Function):
+        @staticmethod
+        def forward(ctx, x, w_fc, w_proj):
+            h = x @ w_fc.t()
+            relu_h = F.relu(h)
+            act = relu_h * relu_h  # ReLU^2
+            out = act @ w_proj.t()
+            ctx.save_for_backward(x, w_fc, w_proj, h, relu_h)
+            return out
+
+        @staticmethod
+        def backward(ctx, grad_output):
+            x, w_fc, w_proj, h, relu_h = ctx.saved_tensors
+            dtype = grad_output.dtype
+            # grad through second linear
+            d_act = grad_output @ w_proj.to(dtype)
+            # grad through ReLU^2: d/dx[relu(x)^2] = 2*relu(x) * (x > 0)
+            d_h = 2 * relu_h.to(dtype) * d_act
+            # weight grads
+            act_sq = (relu_h * relu_h).to(dtype)
+            grad_w_proj = grad_output.t() @ act_sq
+            grad_w_fc = d_h.t() @ x.to(dtype)
+            grad_x = d_h @ w_fc.to(dtype)
+            return grad_x, grad_w_fc, grad_w_proj
+
+    return ReLUSquaredMLP.apply(x, w_fc, w_proj)
+</new>
+</edit>
+<obs>
+Successfully replaced text in nanoGPT/custom_pretrain.py.
+</obs>
+<run/>
+<obs>
+Measured results — `baseline:relu_sq_torch` (`is_final,true`), seed 42.
+
+## Quality (lower is better)
+| seed | val_loss | wikitext2_ppl | lambada_ppl |
+|---|---|---|---|
+| 42 | 2.2736 | 42.81 | 67.05 |
+| **mean** | **2.2736** | **42.81** | **67.05** |
+
+## Throughput (lower is better)
+| seed | elapsed |
+|---|---|
+| 42 | 21776 |
+| **mean** | **21776** |
+
+## Downstream zero-shot (higher is better)
+| seed | arc_easy | hellaswag | piqa | winogrande |
+|---|---|---|---|---|
+| 42 | 55.43 | 33.84 | 63.98 | 50.59 |
+| **mean** | **55.43** | **33.84** | **63.98** | **50.59** |
+</obs>
+

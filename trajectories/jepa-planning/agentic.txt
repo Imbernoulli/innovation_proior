@@ -1,0 +1,1516 @@
+<meta task="jepa-planning" domain="Self-supervised" file="eb_jepa/custom_planner.py" model_format="qwen3" edit_tool="str_replace"/>
+
+<system>
+You are a research engineer improving a model on a fixed ML task. You work by editing the model code and running experiments. Think carefully before each change. You have these tools:
+- str_replace(path, old_str, new_str): replace the unique occurrence of old_str with new_str.
+- create(path, file_text): create a new file.
+- run_experiment(): train + evaluate the current code under the fixed budget; returns metrics.
+Make one tool call at a time. After editing, call run_experiment() to measure your method.
+</system>
+
+<user>
+## Research question
+
+A JEPA world model has already been trained: given an encoded observation and an action sequence, it
+forward-simulates the *latent* encodings the agent would see, and a fixed objective scores how close
+the predicted final latent is to a goal latent. The checkpoint is frozen — I am not allowed to retrain
+it. The single thing being designed is the **planner**: the rule that, from the current observation,
+searches over action sequences and returns the one to execute. The environment is Two Rooms — a 65×65
+grid split by a wall with a single doorway — and the agent must navigate from a random start to a
+random goal, which forces the plan to route *around* the wall and *through* the door rather than head
+straight at the goal. Everything else (the world model, the cost, the receding-horizon control loop)
+is fixed. Can a planner beat the standard derivative-free optimizers — CEM, MPPI — by exploiting the
+structure of the learned model more carefully?
+
+## Prior art before the first rung (derivative-free planning lineage)
+
+The planners on the ladder are all *zeroth-order* trajectory optimizers run inside a model-predictive
+loop: sample candidate action sequences, roll each through the model, score it, keep the best, act,
+re-plan. The lineage the first rung reacts to:
+
+- **Shooting / random shooting (Rao 2009; Richards 2005).** Sample action sequences from a fixed
+  distribution, roll them all out, return the lowest-cost one. Gradient-free, trivially parallel, and
+  it cannot get stuck in a single basin the way a hill-climber would. Gap: it *never learns* — the
+  hundredth batch is drawn from the same distribution as the first, so the whole budget is spent
+  re-sampling regions already shown to be bad; nothing concentrates effort where the good sequences were.
+- **Cross-Entropy Method (Rubinstein 1997; de Boer et al. 2005).** Refit a Gaussian over action
+  sequences to the top-`k` lowest-cost "elites" each iteration, so the search distribution marches
+  toward the good region and auto-sizes its own spread. Gap: it pays for that refinement with rollouts
+  — the elite quantile needs many samples to estimate, and the hard top-`k` cut throws away *how much*
+  better the best elite was than the worst.
+- **Model Predictive Path Integral (Williams et al. 2015, arXiv:1509.01149).** From path-integral
+  optimal control: instead of a hard elite cut, refit the Gaussian to an *exponentially cost-weighted*
+  average of the samples, so a markedly better rollout pulls the mean and tightens the variance more
+  than a marginal one. Gap: still a high-variance soft-weighted estimator unless the sample count is
+  large, and like every method above it discards every rollout it evaluates at the end of the step.
+- **iCEM (Pinneri et al. 2020).** CEM with the wasted rollouts reclaimed: temporally-correlated
+  *colored* action noise so sampled trajectories range farther per unit of energy, elite reuse across
+  iterations and across env steps, and population decay to buy more refinement from a fixed budget.
+  Gap: still purely zeroth-order — it never reads the gradient of the cost the differentiable model
+  could hand it.
+
+Common thread: all four optimize the action sequence using *only function values* of the cost, even
+though the JEPA model and the objective are differentiable end-to-end. The gradient of the cost with
+respect to the actions is sitting unused.
+
+## The fixed substrate
+
+A pre-trained JEPA world model and a receding-horizon control loop are frozen and must not be touched.
+The loop, at each control step, calls the planner for an action sequence, executes its first action,
+re-observes, and re-plans, until the episode ends (max 200 steps) or the agent is within Euclidean
+distance 4.5 of the goal. The world model exposes, through the `Planner` base class the planner
+inherits:
+
+- `self.unroll(obs_init, actions)` — forward-simulate a batch of action sequences through the world
+  model. `obs_init` is `[1, C, 1, H, W]`; `actions` is `[B, A, T]`; returns predicted state encodings
+  `[B, D, T+1, H, W]`.
+- `self.objective(encodings)` — cost of predicted encodings `[B, D, T, H, W]`, returns `[B]` (lower is
+  better).
+- `self.cost_function(actions, obs_init)` — convenience: `unroll` then `objective`, returns `[B]` cost
+  per sample. Both `unroll` and `objective` are differentiable in the world model, so a cost can be
+  backpropagated to the actions.
+
+The action space is 2-D (x/y movement) with a per-step norm limit of `max_norm = 2.45`. The plan
+horizon is capped at `plan_length` (and at `steps_left` when fewer steps remain).
+
+## The editable interface
+
+Exactly one region is editable — the `CustomPlanner` class in `eb_jepa/custom_planner.py` (the
+`plan()` method and the constructor). `CustomPlanner` extends `Planner` and must implement:
+
+```python
+def plan(self, obs_init, steps_left=None, eval_mode=True,
+         t0=False, plan_vis_path=None) -> PlanningResult:
+```
+
+`t0=True` marks the first call of an episode (the place to reset any state carried across env steps).
+The method returns a `PlanningResult(actions=Tensor[T, A], ...)`; the loop executes the first action.
+Every method on the ladder is a fill of this one slot. The starting point is the scaffold default: a
+single-pass **random search** — sample action sequences once, clip them to the feasible ball, return
+the lowest-cost one. Each later method replaces exactly this class.
+
+```python
+# EDITABLE region of eb_jepa/custom_planner.py — default fill (single-pass random search)
+class CustomPlanner(Planner):
+    """Random Search planner (lower bound baseline).
+
+    Samples random action sequences and returns the one with lowest cost.
+    No iterative refinement -- purely single-pass random sampling.
+    """
+
+    def __init__(self, unroll, action_dim=2, plan_length=15,
+                 num_samples=200, n_iters=20, **kwargs):
+        super().__init__(unroll)
+        self.action_dim = action_dim
+        self.plan_length = plan_length
+        self.num_samples = num_samples
+        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+    @torch.no_grad()
+    def plan(self, obs_init, steps_left=None, eval_mode=True,
+             t0=False, plan_vis_path=None):
+        from einops import rearrange
+
+        plan_length = min(self.plan_length, steps_left) if steps_left else self.plan_length
+
+        # Sample random actions
+        actions = torch.randn(
+            plan_length, self.num_samples, self.action_dim, device=self.device
+        )
+
+        # Clip action norms
+        max_norm = 2.45
+        norms = actions.norm(dim=-1, keepdim=True)
+        actions = actions * (max_norm / norms.clamp(min=1e-6)).clamp(max=1.0)
+
+        # Evaluate all samples and pick the best
+        cost = self.cost_function(
+            rearrange(actions, "t b a -> b a t"), obs_init
+        )
+        best_idx = cost.argmin()
+
+        return PlanningResult(actions=actions[:, best_idx])
+```
+
+## Evaluation settings
+
+- Environment: Two Rooms, 65×65 grid with a wall and a single door.
+- Episodes: 20 per benchmark, random start and goal controlled by the MLS-Bench seed (seed 42).
+- Max steps per episode: 200; success when Euclidean distance to goal `< 4.5`.
+- Three planning-horizon benchmarks — 30, 60, 90 steps — probing short, medium, and long-range
+  planning.
+- Metric: `success_rate` per horizon (fraction of the 20 episodes solved), higher is better. The
+  leaderboard also reports `mean_dist` (final distance to goal, lower better) and
+  `mean_steps_to_success` per horizon.
+
+The editable model code is in `eb_jepa/custom_planner.py`:
+```python
+class CustomPlanner(Planner):
+    """Custom planning algorithm for JEPA world models.
+
+    Uses the learned JEPA world model to search for optimal action
+    sequences that reach a specified goal state.
+
+    Available methods (inherited from Planner):
+        self.unroll(obs_init, actions): Forward simulate actions through world model
+            obs_init: [1, C, 1, H, W] initial observation encoding
+            actions: [B, A, T] action sequences to evaluate
+            Returns: [B, D, T+1, H, W] predicted state encodings
+
+        self.objective(encodings): Compute cost for predicted encodings
+            encodings: [B, D, T, H, W]
+            Returns: [B] cost per sample (lower is better)
+
+        self.cost_function(actions, obs_init): Convenience method
+            Calls unroll then objective
+            Returns: [B] cost per sample
+
+    plan() must return PlanningResult(actions=Tensor[T, A], ...)
+    """
+
+    def __init__(self, unroll, action_dim=2, plan_length=15,
+                 num_samples=200, n_iters=20, **kwargs):
+        super().__init__(unroll)
+        self.action_dim = action_dim
+        self.plan_length = plan_length
+        self.num_samples = num_samples
+        self.n_iters = n_iters
+        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+    @torch.no_grad()
+    def plan(self, obs_init, steps_left=None, eval_mode=True,
+             t0=False, plan_vis_path=None):
+        plan_length = min(self.plan_length, steps_left) if steps_left else self.plan_length
+        # TODO: Implement your planning algorithm here.
+        # You have access to:
+        #   self.unroll(obs_init, actions) - forward simulate through world model
+        #   self.objective(encodings)      - compute cost (lower = better)
+        #   self.cost_function(actions, obs_init) - convenience: unroll + objective
+        #
+        # Return PlanningResult with action sequence of shape [plan_length, action_dim]
+        actions = torch.zeros(plan_length, self.action_dim, device=self.device)
+        return PlanningResult(actions=actions)
+```
+Improve it. Derive your method, edit the code, then run_experiment().
+</user>
+
+### step 1 — Random search (single-pass shooting)   [slug:random]
+
+<think>
+I want the reference rung — the planner whose behavior I understand completely and whose only job is to
+say what "doing nothing clever" scores, so every later method can be measured against it. The contract
+is fixed and narrow: from the current encoded observation, produce an action sequence of length up to
+`plan_length`, the loop will execute its first action, re-observe, and ask me again. I have a frozen
+JEPA world model I can roll action sequences through (`unroll`), a fixed cost on the predicted latents
+(`objective`), and the convenience `cost_function` that composes them and returns one scalar cost per
+candidate sequence (lower is better). The action is 2-D with a per-step norm cap of `2.45`. So the
+whole design space for the planner is: choose a set of candidate action sequences, score them with the
+black-box cost, and return one. The reference rung makes the crudest possible choice at every one of
+those decisions, and I want to be deliberate about *why* each crude choice is the right floor rather
+than an accident.
+
+Start from what the cost actually is. It is a black box over action sequences: hand it a batch, get
+back a number each. I have no gradient I'm willing to trust yet (I haven't earned the right to assume
+the model rollout is smooth enough to descend), the cost surface over action sequences in a
+walls-and-doorway maze is plainly multi-modal — there are at least two qualitatively different routes
+to most goals, one through the door from each side — and each evaluation is a full horizon-length
+rollout of a neural world model, so it is not free. The only operation available to me is *querying*
+the cost at points I pick. The question is how to pick them, and the reference answer is: pick them
+once, at random, from a fixed distribution, and keep the best. No refitting, no iteration that learns
+from the scores, no gradient. This is random shooting, and its single defining virtue is that it has
+nothing in it that can go subtly wrong in a data-dependent way — there is no distribution being
+updated from possibly-misleading early scores, no step size to mistune, no assumption about the cost's
+smoothness. That is exactly what makes it the honest yardstick: whatever a cleverer planner buys, it
+buys *on top of* this, and it has to beat this curve to justify the machinery it adds.
+
+What distribution do I draw the candidate sequences from? I have no prior reason to prefer moving in
+any particular direction before I have looked at the cost, so the mean of the sampling distribution
+should be zero in every action coordinate at every timestep, and the coordinates should be independent
+and identically spread — an isotropic Gaussian over the whole `[plan_length, num_samples, action_dim]`
+tensor. A standard normal is the natural choice: zero mean, unit spread, no built-in bias toward any
+route. Crucially the per-timestep actions are drawn *independently*, which means a sampled sequence is
+a white-noise action signal. I should be honest that this is the weakest part of the design — white
+actions integrate to a Brownian walk in position, and a Brownian walk does not go anywhere: its
+expected squared displacement grows only linearly in the number of steps because the independent
+increments cancel, so a fixed budget of action "energy" buys only a small net excursion from the
+start. In a maze where the goal is on the *other side* of a wall, most of these jittery sequences will
+never reach the door at all, let alone pass through it. But that is precisely the failure I want the
+reference rung to *exhibit*, not hide — it is the gap a smarter noise source or an iterative refit will
+later have to close, and the cleanest way to make that gap legible is to leave the noise white and
+single-pass here.
+
+Before I commit to that white-noise draw, let me be explicit about why I am refusing the two things a
+cleverer planner would reach for, because the refusals are what define the floor. The first is the
+gradient. The whole pipeline — `unroll` through the JEPA model, then `objective` on the predicted
+latents — is differentiable end to end, so in principle I could backpropagate the cost to the action
+sequence and descend it directly. I am deliberately not doing that yet, and the reason is honesty about
+what I have earned: I have not verified that the learned model's cost surface over action sequences is
+smooth enough that its gradient points anywhere useful. A world-model rollout composes many nonlinear
+predictor steps, and the gradient of a deep composition can be dominated by sharp, locally-misleading
+directions that send a descent straight into the wall; until I have seen the zeroth-order methods'
+behavior I have no basis for trusting it. The second refusal is *adaptation* — folding the scores back
+into where I sample next. That is exactly what CEM will do, and the cleanest way to attribute CEM's
+eventual win to its refit rather than to some incidental advantage is to make this rung spend the same
+per-batch budget but refuse to learn from it. So the floor is defined by two abstentions: no gradient,
+no adaptation. Everything it does is the minimum that still produces a feasible plan.
+
+There is one more property of the cost surface I should name, because it governs *why* even the
+adaptive methods will have to work hard. In a walls-and-doorway maze most goals admit at least two
+qualitatively different routes — through the door from either side — so the cost over action sequences
+is genuinely multi-modal, with separated low-cost basins. A single-pass random draw treats those basins
+even-handedly (it has no state to prefer one), which is the one thing the floor does *right*: it cannot
+get trapped in a basin the way a hill-climber would, because it never climbs. That even-handedness is
+the floor's only structural virtue, and it is worth stating so the later methods' premature-collapse
+risk — committing to the wrong basin — reads as a real danger they take on in exchange for adaptivity.
+
+Now the action constraint. A standard normal has unbounded support, so some sampled per-step actions
+will exceed the `max_norm = 2.45` cap the environment enforces. I do not want to hand the cost a
+candidate the agent could never actually execute, because then the rollout scores a fantasy. The
+cheapest faithful fix is to project each sampled action into the feasible ball before scoring: compute
+the norm of each 2-D action, and if it exceeds `max_norm`, rescale that action down to norm
+`max_norm`, leaving shorter actions untouched. Concretely, multiply each action by
+`(max_norm / norm).clamp(max=1.0)` (with a tiny `eps` in the denominator so a zero action does not
+divide by zero) — actions already inside the ball get a factor of 1 and are unchanged, actions outside
+get pulled exactly to the boundary. Feasibility is enforced before the black-box cost ever sees a
+candidate, and it costs one elementwise operation.
+
+How many candidates, and how many iterations? The harness hands the constructor `num_samples=200` and
+`n_iters=20`, the shared defaults all the ladder's planners receive. The reference rung deliberately
+ignores `n_iters` entirely — it does *one* pass, no refinement — and uses the `num_samples=200` budget
+as a single batch of 200 candidate sequences. That is the whole point of the floor: it spends the same
+per-batch sample budget the iterative methods will spend per iteration, but only once and without ever
+folding the scores back into the sampling distribution. So if CEM, which reuses essentially this batch
+twenty times while marching the distribution toward the elites, beats this rung, the win is
+attributable cleanly to the *iteration and the refit*, not to a larger sample count on the first pass.
+
+The selection rule is then trivial and forced: roll all 200 candidates through the model, read the 200
+costs, and return the single sequence with the lowest cost — `argmin` over the batch. The whole
+sequence is returned (the loop will take its first action), and there is no distribution to carry to
+the next call, so nothing needs to persist across env steps and the `t0` flag is irrelevant here. The
+plan length is `min(plan_length, steps_left)` so the planner never proposes actions past the end of
+the episode. The entire method runs under `torch.no_grad()` because nothing here needs a gradient — I
+am only ever reading function values, which is the defining limitation of the whole zeroth-order family
+this rung opens.
+
+Let me be precise about what I expect this floor to do across the three horizon benchmarks, because
+the *shape* of its failure is what the next rung must read. At the short horizon (30 steps) the maze is
+most forgiving — many random sequences will, by luck, drift toward the door and through it, and the
+re-planning loop gets to re-sample every step, so even a dumb planner that occasionally points the
+right way can stumble to the goal; I expect a modest but nonzero success rate here. At the longer
+horizons (60, 90) two competing effects fight: more steps means more chances for the re-planning loop
+to correct course, but each individual plan is longer, so a white-noise sequence has to stay
+coherent over more timesteps to make real progress, and Brownian cancellation gets worse the longer
+the sequence. I expect the success rate to be capped well below the iterative methods at every horizon,
+and the `mean_steps_to_success` to be large — when random search does succeed it succeeds slowly,
+because it wanders. That large step count and the depressed success rate are the two numbers the next
+rung is on the hook to improve: the obvious lever is to stop throwing the scored batch away and instead
+*refit the sampling distribution toward the low-cost sequences*, iteration after iteration, so the
+search concentrates on the route through the door instead of re-drawing the same white noise twenty
+times. That is exactly the move from this single-pass floor to CEM. The full scaffold module — the
+literal `CustomPlanner` fill for this rung — is in the answer. So let me write the floor in: single-pass
+random shooting with norm projection and an argmin.
+</think>
+<say>
+I'm starting with the reference rung: single-pass random search. This first edit relabels the class as the random-shooting lower-bound baseline.
+</say>
+<edit path="eb_jepa/custom_planner.py">
+<old>
+class CustomPlanner(Planner):
+    """Custom planning algorithm for JEPA world models.
+
+    Uses the learned JEPA world model to search for optimal action
+    sequences that reach a specified goal state.
+
+    Available methods (inherited from Planner):
+        self.unroll(obs_init, actions): Forward simulate actions through world model
+            obs_init: [1, C, 1, H, W] initial observation encoding
+            actions: [B, A, T] action sequences to evaluate
+            Returns: [B, D, T+1, H, W] predicted state encodings
+
+        self.objective(encodings): Compute cost for predicted encodings
+            encodings: [B, D, T, H, W]
+            Returns: [B] cost per sample (lower is better)
+
+        self.cost_function(actions, obs_init): Convenience method
+            Calls unroll then objective
+            Returns: [B] cost per sample
+
+    plan() must return PlanningResult(actions=Tensor[T, A], ...)
+    """
+</old>
+<new>
+# EDITABLE region of eb_jepa/custom_planner.py — step 1: single-pass random search
+class CustomPlanner(Planner):
+    """Random Search planner (lower bound baseline).
+
+    Samples random action sequences and returns the one with lowest cost.
+    No iterative refinement -- purely single-pass random sampling.
+    """
+</new>
+</edit>
+<obs>
+Successfully replaced text in eb_jepa/custom_planner.py.
+</obs>
+<note>
+Drop the unused `n_iters` from the constructor — the floor does one pass and never iterates.
+</note>
+<edit path="eb_jepa/custom_planner.py">
+<old>
+        self.num_samples = num_samples
+        self.n_iters = n_iters
+        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+</old>
+<new>
+        self.num_samples = num_samples
+        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+</new>
+</edit>
+<obs>
+Successfully replaced text in eb_jepa/custom_planner.py.
+</obs>
+<note>
+Now the plan body itself: draw one white-noise batch, project to the feasible ball, return the argmin.
+</note>
+<edit path="eb_jepa/custom_planner.py">
+<old>
+             t0=False, plan_vis_path=None):
+        plan_length = min(self.plan_length, steps_left) if steps_left else self.plan_length
+        # TODO: Implement your planning algorithm here.
+        # You have access to:
+        #   self.unroll(obs_init, actions) - forward simulate through world model
+        #   self.objective(encodings)      - compute cost (lower = better)
+        #   self.cost_function(actions, obs_init) - convenience: unroll + objective
+        #
+        # Return PlanningResult with action sequence of shape [plan_length, action_dim]
+        actions = torch.zeros(plan_length, self.action_dim, device=self.device)
+        return PlanningResult(actions=actions)
+</old>
+<new>
+             t0=False, plan_vis_path=None):
+        from einops import rearrange
+
+        plan_length = min(self.plan_length, steps_left) if steps_left else self.plan_length
+
+        # Sample random actions
+        actions = torch.randn(
+            plan_length, self.num_samples, self.action_dim, device=self.device
+        )
+
+        # Clip action norms
+        max_norm = 2.45
+        norms = actions.norm(dim=-1, keepdim=True)
+        actions = actions * (max_norm / norms.clamp(min=1e-6)).clamp(max=1.0)
+
+        # Evaluate all samples and pick the best
+        cost = self.cost_function(
+            rearrange(actions, "t b a -> b a t"), obs_init
+        )
+        best_idx = cost.argmin()
+
+        return PlanningResult(actions=actions[:, best_idx])
+</new>
+</edit>
+<obs>
+Successfully replaced text in eb_jepa/custom_planner.py.
+</obs>
+<run/>
+<obs>
+Measured results — leaderboard row `random` (`is_final,true`), seed 42.
+
+## Horizon 30
+| seed | success_rate | mean_dist | mean_steps_to_success |
+|---|---|---|---|
+| 42 | 0.55 | 12.582 | 64.09 |
+
+## Horizon 60
+| seed | success_rate | mean_dist | mean_steps_to_success |
+|---|---|---|---|
+| 42 | 0.70 | 9.6064 | 81.64 |
+
+## Horizon 90
+| seed | success_rate | mean_dist | mean_steps_to_success |
+|---|---|---|---|
+| 42 | 0.70 | 8.2038 | 112.36 |
+</obs>
+
+### step 2 — CEM (Cross-Entropy Method)   [slug:cem]
+
+<think>
+The random-search floor told me exactly where it bleeds, and it told me in the step counts. At horizon
+30 it cleared only 0.55 of the episodes and finished a mean distance of 12.6 from the goal — more than
+half the time it never got near. At horizons 60 and 90 the success rate crept to 0.70, but look at how
+it got there: `mean_steps_to_success` ran 64 → 82 → 112, climbing with the horizon. When random
+shooting succeeds, it succeeds *slowly* — it wanders. That is the Brownian signature I predicted: a
+white-noise action sequence integrates to a random walk whose net displacement grows only like the
+square root of its length, so most single-pass batches never produce a sequence that actually reaches
+the door, and the ones that do meander there. The re-planning loop is doing the real work — re-drawing
+200 fresh white sequences every control step and occasionally catching a lucky one — which is why the
+longer horizons, with more re-plans, edge upward at all. But the planner itself learns nothing within a
+step: it spends the same 200-sample batch the iterative methods will spend *per iteration*, once, and
+throws every score away. Every one of those 200 rollouts told me something about where the low-cost
+sequences live, and the floor discards all of it. That is the leak to plug, and the fix is not a better
+noise source yet — it is to stop drawing from a frozen distribution and instead let the sampling
+distribution *move toward* the sequences that scored well, batch after batch.
+
+I want that move to be principled, not a nudge, because "move toward the good points" can be done a
+dozen ad-hoc ways — average the best few, step by some rate, weight by score — and I have no idea which
+is right or what it converges to. So let me re-read the problem. Instead of asking "where is the lowest
+cost?", pick a high score threshold `γ` (recall the cost is to minimize, so a high score means a low
+cost — I will work with `S = −cost` and chase its max) and ask: how probable is it that a randomly drawn
+action sequence clears `γ`? That is `ℓ(γ) = P_u(S(X) ≥ γ)` under some broad baseline density. Now push
+`γ` up toward the true optimum. The set `{x : S(x) ≥ γ}` shrinks toward the maximizers, and under a
+broad density its probability tends to zero — it becomes a *rare* event. A density that made this rare
+event likely — that put its mass on `{S(X) ≥ γ}` for `γ` near the optimum — is exactly a density that
+samples almost only the best action sequences. Finding the optimal plan and making the near-optimum
+event common are the same problem. So I can borrow whatever the rare-event people use to hunt down a
+good sampling distribution.
+
+Their tool is importance sampling: don't sample from the broad `f(·;u)`, sample from a cleverer `g` and
+undo the change of measure with the likelihood ratio, `ℓ = E_g[I{S(X) ≥ γ} f(X;u)/g(X)]`. And there is
+a *best* `g` — the one giving the estimator zero variance. Zero variance means the summand
+`I{S(x) ≥ γ} f(x;u)/g(x)` is constant in `x`; setting it equal to its own mean `ℓ` forces
+`g*(x) = I{S(x) ≥ γ} f(x;u)/ℓ`. Read that: `g*` is just the baseline density *restricted to the elite
+event* `{S(x) ≥ γ}` and renormalized. It is precisely the "throw away everything below the bar, keep the
+mass on the good region" distribution I was hand-waving about when I said "move toward the good
+sequences." The rare-event framing handed me the ideal target for my adaptive sampler, and it is not a
+heuristic — it is the variance-minimizing density.
+
+I cannot sample `g*` directly — it carries the unknown `ℓ` and is some arbitrary restricted shape — so I
+restrict to a tractable parametric family `f(·;v)` and find the member closest to the restricted target.
+At iteration `t` the target is built from the law I am actually using now,
+`g*_t(x) = I{S(x) ≥ γ} f(x;v_{t−1})/ℓ_t`. Closest in what sense? The KL divergence,
+`D(g,h) = ∫ g ln(g/h)`. Minimizing `D(g*_t, f(·;v))` over `v` drops the `v`-free first term and leaves
+`max_v ∫ g*_t(x) ln f(x;v) dx = max_v E_{v_{t−1}}[ I{S(X) ≥ γ} ln f(X;v) ]` (the positive constant
+`1/ℓ_t` does not move the argmax). Replace the expectation by its Monte-Carlo counterpart over the batch
+I actually drew from `f(·;v_{t−1})`, and read what the indicator does: `I{S(X_k) ≥ γ}` is 1 for the
+sequences that beat the bar and 0 for the rest, so the objective is the *log-likelihood of the
+threshold-beating samples under `f(·;v)`* — maximizing it is fitting `f(·;v)` by maximum likelihood to
+those samples alone. That is the answer to "how do I move the distribution toward the good sequences,"
+and it is not a nudge: take the sequences that beat the bar, fit your sampling distribution to them by
+maximum likelihood.
+
+But a fixed high `γ` is a dead end — exactly the rarity that motivated importance sampling. Under the
+broad initial distribution almost no sequence clears a high `γ`, every indicator is zero, and the
+maximum-likelihood program has no data. So I stop fixing `γ` and let it track the sample: each
+iteration, sort the costs, and take the top fraction as elites — equivalently the `(1−ρ)` sample
+quantile. Then there are always exactly that many elites, never zero, no matter how broad the
+distribution. And it is self-tuning: early, when the distribution is broad, the elite cutoff is a
+modest score; as the distribution concentrates on good plans, the same top fraction is a *higher* score,
+so the bar ratchets upward toward the optimum on its own. The loop becomes: sample from the current
+distribution, score by rolling through the model, take the lowest-cost elites, refit the distribution to
+them by maximum likelihood, repeat. This is what random shooting structurally could not do — it is the
+iteration the floor discarded.
+
+Now the family. The fit is a maximum-likelihood estimation I run *every* iteration, so I want a closed
+form (no inner optimization) and cheap sampling. Both point at the Gaussian. Here the candidate is an
+action sequence of shape `[plan_length, action_dim]`, so I take a diagonal Gaussian over every
+(timestep, coordinate) — per entry, `x ~ N(μ, σ²)`. Its elite-restricted MLE drops out cleanly. The
+Gaussian log-density of one elite with independent coordinates is
+`Σ [−½ln(2π) − ln σ − (x−μ)²/(2σ²)]`; summing over the elite set and setting `∂/∂μ = 0` gives
+`Σ(x − μ)/σ² = 0`, and since `σ²` is a common positive factor it cancels, leaving `μ` = the **elite
+sample mean**, coordinate by coordinate. Setting `∂/∂σ = 0` gives `−N_e/σ + (1/σ³)Σ(x−μ)² = 0`, i.e.
+`σ²` = the **elite sample variance**. So the whole update is: take the elite sequences, compute their
+per-(timestep,coordinate) mean and spread, and those *are* next iteration's sampling parameters. The
+mean re-centers the search on where the good action sequences clustered; the variance re-sizes the
+exploration — automatically tighter on the coordinates the elites agreed about, wider where they did
+not. That second part is the thing the fixed-spread random floor never had: the optimizer sets its own
+exploration width from the data instead of me freezing it. In the code I store the spread as
+`torch.std` over the elite dimension — the same lowest-cost-elite refit loop.
+
+Let me read what limit this drives toward, because it tells me both the right fixed point and the
+danger. As iterations proceed and the distribution concentrates, the elites cluster tighter and their
+variance shrinks toward zero; in the limit `σ → 0` the Gaussian collapses to a point mass at `μ` — a
+sampler fully concentrated on the best region found, which is the *right* fixed point. But that same
+collapse can bite: if an early batch's elites happen to land in a small cluster (by luck, or because the
+broad initial sampling under-covered the real optimum's basin) the variance update slams `σ` small right
+there, and now I am sampling a tiny region around a possibly-wrong plan with no spread to escape — the
+spread collapsed before the search found the global basin. In this maze that is a real risk: the cost
+surface has two routes through the door, and if the first elites all cluster on the wrong-side route the
+variance can commit before the right route is even sampled. The standard guard is to start the spread
+deliberately *wide* so the first iterations explore aggressively; here I set the initial standard
+deviation to `var_scale = 1.5` everywhere, larger than the unit spread, exactly so the early batches
+cover both routes before any collapse. (A second guard — blending the fresh fit with the previous
+parameters by a momentum factor — exists, but this rung uses the raw mean/std update; momentum is the
+knob I would turn only if premature collapse proved to be the bottleneck.)
+
+The continuous action space forces one more thing: the per-step action norm is capped at `2.45`, but a
+Gaussian has unbounded support, so some sampled actions are infeasible. I take the same projection the
+floor used — draw from the plain Gaussian, then for any action whose 2-D norm exceeds `max_norm = 2.45`
+rescale it to the boundary, leaving shorter actions untouched. Concretely with `n = ‖a‖`, multiply by
+`clamp(min(max(n,0), max_norm))/(n + ε)`: inside the ball unchanged, outside pulled to the boundary.
+Feasibility is enforced before the cost ever sees a candidate, and the elites are then fit on the
+*projected* sequences, so the refit respects the constraint too.
+
+Now the bookkeeping numbers, from the harness. The constructor receives `num_samples = 200` and
+`n_iters = 20` — the shared defaults — and unlike the floor I *use* `n_iters`: 20 refinement passes,
+each drawing 200 sequences. The elite count I take as `max(10, num_samples // 10)`, i.e. the top 10% (a
+floor of 10 so the mean and variance are estimable even if the budget shrinks); with 200 samples that is
+the 20 lowest-cost sequences per iteration. The initial mean is the zero action sequence — no prior bias
+toward any direction, the same neutral start the floor used — and the initial standard deviation is the
+wide `var_scale = 1.5`. Because my objective is a cost to minimize while the derivation maximized
+`S = −cost`, the elites are the samples with the **lowest** cost, which I pick as the top-k of `−cost`.
+
+What do I return? The distribution's center. After the final refit, the mean sequence is the Gaussian's
+point estimate of the optimum, and in the degenerate `σ → 0` limit it *is* the optimum, so I return
+`mean` as the plan (the loop takes its first action). I also pass back the per-iteration min cost and
+elite-cost mean/std as diagnostics, but those do not affect control. Nothing needs to persist across env
+steps — each `plan()` call re-optimizes from the zero-mean, wide-`σ` start — so `t0` is irrelevant here,
+and the whole loop runs under `no_grad` because, like the floor, CEM only ever reads function values of
+the cost. It never touches the gradient the differentiable model could hand it — a fact I am noting now
+because it is the lever a later rung will pull.
+
+So the falsifiable expectations against random's numbers. The iteration-and-refit is supposed to fix
+exactly the wandering the step counts exposed. I expect `mean_steps_to_success` to *collapse* relative
+to random's 64/82/112 — the refit should march the distribution onto a coherent route through the door
+within a few iterations, so successes arrive far faster — and I expect the success rate to rise at every
+horizon, most clearly at the longer ones where the floor's Brownian sequences fell shortest (random's
+0.70 at horizons 60/90 should climb). The `mean_dist` should drop substantially from random's 12.6 / 9.6
+/ 8.2, because even on the episodes CEM fails to reach the threshold it should finish much closer. If
+instead the success rate barely moves or the variance collapses onto the wrong route, that points at
+premature convergence and would send me to the momentum guard or a non-white noise source. But the
+cleanest single prediction is the step count: if refitting toward the elites is the right fix for
+random's wandering, the steps-to-success must fall sharply, because the planner now commits to a
+direction instead of re-rolling white noise every call. The full scaffold module — the literal
+`CustomPlanner` fill for CEM — is in the answer. Let me wire CEM in: the iterated sample-score-refit
+loop with a wide-start diagonal Gaussian.
+</think>
+<say>
+Now CEM: I replace the single-pass search with an iterated sample-score-refit loop that fits a diagonal Gaussian to the lowest-cost elites each pass. This first edit relabels the class.
+</say>
+<edit path="eb_jepa/custom_planner.py">
+<old>
+# EDITABLE region of eb_jepa/custom_planner.py — step 1: single-pass random search
+class CustomPlanner(Planner):
+    """Random Search planner (lower bound baseline).
+
+    Samples random action sequences and returns the one with lowest cost.
+    No iterative refinement -- purely single-pass random sampling.
+    """
+</old>
+<new>
+# EDITABLE region of eb_jepa/custom_planner.py — step 2: CEM
+class CustomPlanner(Planner):
+    """CEM (Cross-Entropy Method) planner for JEPA world models."""
+</new>
+</edit>
+<obs>
+Successfully replaced text in eb_jepa/custom_planner.py.
+</obs>
+<note>
+Restore `n_iters` and add the CEM constructor knobs: elite count and the wide initial spread.
+</note>
+<edit path="eb_jepa/custom_planner.py">
+<old>
+        self.num_samples = num_samples
+        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+</old>
+<new>
+        self.num_samples = num_samples
+        self.n_iters = n_iters
+        self.num_elites = max(10, num_samples // 10)
+        self.var_scale = 1.5
+        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+</new>
+</edit>
+<obs>
+Successfully replaced text in eb_jepa/custom_planner.py.
+</obs>
+<note>
+Now the plan body: the iterated refit loop with the closed-form elite mean/std update.
+</note>
+<edit path="eb_jepa/custom_planner.py">
+<old>
+
+        # Sample random actions
+        actions = torch.randn(
+            plan_length, self.num_samples, self.action_dim, device=self.device
+        )
+
+        # Clip action norms
+        max_norm = 2.45
+        norms = actions.norm(dim=-1, keepdim=True)
+        actions = actions * (max_norm / norms.clamp(min=1e-6)).clamp(max=1.0)
+
+        # Evaluate all samples and pick the best
+        cost = self.cost_function(
+            rearrange(actions, "t b a -> b a t"), obs_init
+        )
+        best_idx = cost.argmin()
+
+        return PlanningResult(actions=actions[:, best_idx])
+</old>
+<new>
+
+        mean = torch.zeros(plan_length, self.action_dim, device=self.device)
+        std = self.var_scale * torch.ones(plan_length, self.action_dim, device=self.device)
+        actions = torch.empty(plan_length, self.num_samples, self.action_dim, device=self.device)
+
+        losses = []
+        elite_means = []
+        elite_stds = []
+
+        for _ in range(self.n_iters):
+            actions[:, :] = mean.unsqueeze(1) + std.unsqueeze(1) * torch.randn(
+                plan_length, self.num_samples, self.action_dim, device=self.device,
+            )
+
+            # Clip action norms
+            max_norm = 2.45
+            eps = 1e-6
+            norms = actions.norm(dim=-1, keepdim=True)
+            max_norms = torch.ones_like(norms) * max_norm
+            min_norms = torch.ones_like(norms) * 0
+            coeff = torch.min(torch.max(norms, min_norms), max_norms) / (norms + eps)
+            actions = actions * coeff
+
+            cost = self.cost_function(
+                rearrange(actions, "t b a -> b a t"), obs_init
+            ).unsqueeze(1)
+            losses.append(cost.min().item())
+
+            elite_idxs = torch.topk(-cost.squeeze(1), self.num_elites, dim=0).indices
+            elite_loss, elite_actions = cost[elite_idxs], actions[:, elite_idxs]
+
+            elite_means.append(elite_loss.mean().item())
+            elite_stds.append(elite_loss.std().item())
+
+            mean = torch.mean(elite_actions, dim=1)
+            std = torch.std(elite_actions, dim=1)
+
+        return PlanningResult(
+            actions=mean,
+            losses=torch.tensor(losses).detach().unsqueeze(-1),
+            prev_elite_losses_mean=torch.tensor(elite_means).unsqueeze(-1),
+            prev_elite_losses_std=torch.tensor(elite_stds).unsqueeze(-1),
+        )
+</new>
+</edit>
+<obs>
+Successfully replaced text in eb_jepa/custom_planner.py.
+</obs>
+<run/>
+<obs>
+Measured results — leaderboard row `cem` (`is_final,true`), seed 42.
+
+## Horizon 30
+| seed | success_rate | mean_dist | mean_steps_to_success |
+|---|---|---|---|
+| 42 | 0.70 | 9.5209 | 23.79 |
+
+## Horizon 60
+| seed | success_rate | mean_dist | mean_steps_to_success |
+|---|---|---|---|
+| 42 | 0.85 | 6.4698 | 23.47 |
+
+## Horizon 90
+| seed | success_rate | mean_dist | mean_steps_to_success |
+|---|---|---|---|
+| 42 | 0.95 | 3.4398 | 46.37 |
+</obs>
+
+### step 3 — iCEM (improved CEM: colored noise + elite reuse)   [slug:icem]
+
+<think>
+CEM's numbers came back, and the first thing they told me is that the iteration-and-refit fix worked
+exactly where I bet it would. The wandering collapsed: random's `mean_steps_to_success` of 64 / 82 /
+112 fell to CEM's 24 / 23 / 46, so once the Gaussian marches onto a coherent route through the door,
+successes arrive in a quarter of the steps. The success rate rose at every horizon — 0.55 → 0.70 at
+30, 0.70 → 0.85 at 60, 0.70 → 0.95 at 90 — and `mean_dist` dropped hard, 12.6 / 9.6 / 8.2 down to 9.5
+/ 6.5 / 3.4. The refit is unambiguously the right move over the floor. But look closer at the *shape*
+across horizons, because that is where CEM is still leaving episodes on the table. At the long horizon
+(90) CEM is excellent — 0.95, mean distance 3.4, the elites converge on a clean long route. At the
+*short* horizon (30) it is its weakest — only 0.70, mean distance 9.5, the highest residual distance
+of the three. That is the tell. A short horizon means each plan is only 30 steps, so the re-planning
+loop gets fewer corrections and each individual optimization has to find a good route *the first time*
+inside one `plan()` call — and CEM, drawing white Gaussian perturbations and fitting a fresh
+distribution from a zero mean every call, is spending most of its 20 iterations just discovering a
+route at all, then has no budget left to refine it. The 0.70-at-30 with a 9.5 residual is CEM running
+out of optimization before it has committed to the door.
+
+So two things are still bleeding, and I think they share a root. First, every `plan()` call starts
+cold: zero mean, wide spread, rediscover the route from scratch — even though consecutive control
+steps face almost the same planning problem, the goal hasn't moved, the route from one step earlier is
+still mostly valid. CEM throws away the entire optimized distribution at the end of each step and the
+loop pays to re-find it. That is the same amnesia I diagnosed in random search, just one level up: random
+discarded scores *within* a call, CEM discards the whole solution *across* calls. Second — and this is
+what bites the short horizon hardest — the white-noise sampling. CEM perturbs each timestep
+independently, so a sampled action sequence is still white noise around the mean, and white actions
+integrate to a Brownian walk: net displacement grows only like the square root of the horizon, so most
+sampled perturbations jitter near the current mean rather than proposing a committed, far-ranging
+excursion toward the door. At a long horizon the re-planning loop papers over this; at a short horizon,
+where the optimizer has to reach the door inside one call, the white perturbations simply don't propose
+trajectories that get there, and the elite fit has nothing good to lock onto. I want to fix the sample
+*shape* so each draw ranges farther per unit of action energy, and I want to stop throwing away the
+solution between steps and between iterations. The whole budget is the enemy — 200 samples, 20 iters,
+each sample a full world-model rollout — so every fix has to *reclaim* wasted rollouts rather than ask
+for more.
+
+Start with the sample shape, because I think it is the bigger leak at the short horizon. What does a
+single sampled action sequence do when I roll it through the model? It drives the latent state
+somewhere, and to first order position is the running integral of the action. If the action sequence
+is white — independent per-timestep increments — then position is a Brownian walk, and a Brownian walk
+famously does not go anywhere: independent increments cancel, expected squared displacement grows only
+linearly in horizon, so a fixed budget of action energy buys only a small net excursion. That is
+exactly the wrong behavior in a maze where the goal sits on the far side of a wall: I need sampled
+trajectories that *commit to a direction* long enough to reach and pass the door, and white noise
+structurally won't. The thing I actually want to control is not the per-step variance — CEM already
+adapts that through the elite std — it is the *temporal correlation* of the sampled sequence. White
+noise has none.
+
+How do I parameterize "amount of temporal correlation" with one interpretable knob? Read the action
+sequence as a time series and look at its power spectral density — how much energy sits at each
+temporal frequency. White noise has a flat PSD: equal energy at all frequencies, including the very
+highest, which corresponds to the action flipping sign every timestep — pure diffusive jitter. To make
+the sequence persist in a direction I want to *suppress* the high frequencies relative to the low ones.
+The clean one-knob family that does this is a power-law spectrum, PSD(f) ∝ 1/f^β, where β = 0 recovers
+white noise and larger β tilts energy toward the low frequencies — smoother, more persistent
+sequences. One scalar dials from white to very smooth. And I can check this propagates correctly to
+*position*, not just the action: carrying a 1/f^β action spectrum through the integrator reddens it by
+two more powers of f, so position has spectrum 1/f^(β+2) — even white actions give the 1/f² Brownian
+walk (the sanity check), and cranking β up piles even more energy into the low frequencies, i.e. larger,
+smoother, longer-range excursions at the *same* action variance, because β only redistributes energy
+across frequencies, it never adds any. That is the trade I want: same energy, more reach toward the
+door. I set β = 2.5 — firmly in the smooth regime, since this task wants committed low-frequency
+motion (cross the room, pass the door), not high-frequency control.
+
+Drawing a length-T sequence with a 1/f^β spectrum is cleanest in the frequency domain, because the PSD
+*is* a frequency-domain statement: draw random complex Fourier coefficients, scale bin k by f_k^(-β/2),
+inverse-FFT. I have to handle the zero-frequency bin — f^(-β/2) blows up at f = 0 — by clamping the
+lowest frequency to the smallest resolvable nonzero frequency, 1/T, so DC is finite. And there is a
+realness subtlety that controls the *variance*, so I cannot wave it away: for the inverse real-FFT to
+produce a real sequence, the DC coefficient must be real (and the Nyquist coefficient too, when T is
+even). Zeroing those imaginary parts deletes half the variance at those bins, so I compensate by
+multiplying the surviving real part there by √2 — restoring the full intended power. Without the √2 the
+DC drift comes out weaker than designed, which is precisely the long-range directional component I am
+introducing colored noise *for*. I keep the √2. The colored sampler is then a drop-in replacement for
+CEM's white `torch.randn`: same interface, returns the same `[T, N, A]` shape, scaled by the same elite
+std and added to the same mean — so the entire rest of the CEM machinery survives unchanged, and the
+only thing different per sample is that it now ranges.
+
+Now the amnesia leaks, and there are two at two timescales. *Within* a single `plan()` call, across
+the inner iterations: each iteration produces an elite set — the lowest-cost sequences found so far —
+and standard CEM uses them only to refit μ, σ and then discards the actual sequences, drawing a fresh
+population from the shifted distribution. But those elites were *good*; after the small refit most of
+the new population will be worse than the elites I just deleted. So I keep a fraction of them and add
+them back into the next iteration's candidate pool, alongside the fresh colored draws. They are even
+cheaper than fresh samples in a sense — but I must add only a *fraction* (0.3), because the elites have
+small spread by construction, and if they dominate the pool the refit collapses σ immediately and kills
+exploration before it has started. *Across* env steps: consecutive control steps overlap by all but one
+timestep, so I shift the optimized mean forward by one, repeat the last entry to fill the freed slot,
+and reset σ back to its initial wide value (the new final timestep is genuinely unexplored, so it must
+re-open exploration). I also shift the kept elites: drop their executed first timestep and append a
+freshly sampled final action — giving the new step a handful of genuinely-good warm-start sequences, not
+just a shifted mean. This is the persistent state CEM lacked: I carry `_mean`, `_std`, `_kept_elites`
+on the planner instance between calls, and reset them only when `t0=True` flags an episode start (or
+when the horizon changes). The `t0` flag that random and CEM both ignored is now load-bearing.
+
+A few smaller reclaim-the-budget moves, each closing a specific leak. CEM's σ shrinks automatically as
+iterations concentrate, so a late iteration samples from an already-narrow distribution where each
+extra sample buys little — so I decay the population geometrically, N_i = max(2·elites, N/γ) with γ =
+1.25, floored at twice the elite count so the elite selection and refit stay meaningful. The payoff is
+direct: cheaper late iterations mean the *same* total rollout budget buys more refinement than fixed-N
+CEM could afford — exactly what I need against the short-horizon failure where CEM ran out of
+optimization. I smooth the refit with momentum, μ ← (1−α)·μ_elite + α·μ_prev and the same for σ, with
+α = 0.1, because fitting a high-dimensional mean and std from a small elite set is noisy and the
+momentum is free variance reduction. And I keep a *best-so-far* across all iterations: CEM returns the
+final distribution mean, but that mean was never actually evaluated — it is the centroid of the last
+elites and in high dimensions a centroid can sit in a low-density region that rolls out worse than the
+best sequence I actually scored. So I track the single lowest-cost evaluated sequence across every
+iteration, and at the end I roll the final mean through the model once and return whichever is actually
+better — the best-ever evaluated trajectory or the final mean. That stops the optimizer from
+discarding a known-good plan in favor of an untested centroid, which is most valuable precisely at the
+short horizon where a single good route matters more than a well-fit distribution.
+
+One honest note on what this task's harness does *not* let me use, relative to the full method this
+descends from. That method is designed for a per-step MPC loop where the across-step shift is the
+headline mechanism, and it leans on a per-task β chosen for the control bandwidth and on executing the
+first action of the *best evaluated* sequence each step. Here the loop already executes only the first
+action and re-plans, the horizons are fixed by the benchmark rather than tuned, and I fold the
+best-evaluated idea into the best-so-far + final-mean fallback rather than a per-iteration mean
+injection. So what I am landing is the core: colored noise, elite reuse within and across steps,
+population decay, momentum, best-so-far — fit to this task's single-plan-per-observation interface, not
+the paper's full MPC harness. I also bump the budget to match the regime this method was characterized
+in: 900 samples, 10 iterations, K = 10%, which after the γ = 1.25 decay is a comparable total rollout
+count to CEM's 200×20 but spent with the colored, reuse-and-decay structure instead of flat white
+re-sampling.
+
+So the falsifiable expectations against CEM's numbers. The colored noise and warm-starting are aimed
+straight at CEM's short-horizon weakness, so the cleanest prediction is at horizon 30: CEM's 0.70 with
+a 9.5 residual should rise, because committed colored excursions reach the door inside one call and the
+across-step shift means each call no longer starts cold. I expect the short-horizon `mean_dist` to drop
+the most — from 9.5 toward the 4–6 range — because even on failures the colored planner should finish
+closer. At the long horizon, where CEM was already 0.95, I expect to roughly *hold* rather than leap —
+there is little headroom, and the across-step machinery and best-so-far fallback mainly protect against
+the centroid-in-a-bad-region failure. The risk I can already name: colored noise plus aggressive elite
+reuse can over-commit — if the kept elites and the smooth low-frequency draws all agree on a route that
+turns out wrong, the search has even less spread to escape than CEM did, so a long-horizon seed could
+*regress* if the committed route is the wrong side of the door. If that shows up — a long-horizon
+success rate that slips below CEM's 0.95 even as the short horizon improves — the diagnosis is already
+written: the hard elite cut and the colored over-commitment are too greedy, and the next move is a
+*soft*, cost-weighted update that lets a markedly-better rollout pull the distribution without throwing
+away the spread a hard top-k discards. The full scaffold module — the literal `CustomPlanner` fill for
+this rung — is in the answer. Let me land iCEM: the colored-noise sampler plus the constructor that
+carries the across-step state.
+</think>
+<say>
+Now iCEM: colored 1/f^β action noise plus elite reuse and across-step warm-starting, aimed at CEM's short-horizon weakness. This first edit relabels the class and adds the colored-noise sampler and persistent-state knobs.
+</say>
+<edit path="eb_jepa/custom_planner.py">
+<old>
+# EDITABLE region of eb_jepa/custom_planner.py — step 2: CEM
+class CustomPlanner(Planner):
+    """CEM (Cross-Entropy Method) planner for JEPA world models."""
+
+    def __init__(self, unroll, action_dim=2, plan_length=15,
+                 num_samples=200, n_iters=20, **kwargs):
+        super().__init__(unroll)
+        self.action_dim = action_dim
+        self.plan_length = plan_length
+        self.num_samples = num_samples
+        self.n_iters = n_iters
+        self.num_elites = max(10, num_samples // 10)
+        self.var_scale = 1.5
+        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+</old>
+<new>
+# EDITABLE region of eb_jepa/custom_planner.py — step 3: iCEM
+class CustomPlanner(Planner):
+    """iCEM (Pinneri et al., CoRL 2020 / PMLR 2021) - colored noise + elite reuse + momentum."""
+
+    def __init__(self, unroll, action_dim=2, plan_length=15,
+                 num_samples=900, n_iters=10, **kwargs):
+        super().__init__(unroll)
+        self.action_dim = action_dim
+        self.plan_length = plan_length
+        # The task harness passes CEM/MPPI defaults (200, 20). Override them
+        # here to match Pinneri et al. Table S4's 4000-budget iCEM setting:
+        # 900 samples, 10 iterations, K=10%, gamma=1.25 -> ~4101 fresh
+        # trajectories after decay.
+        self.num_samples = 900
+        self.n_iters = 10
+        self.elites_size = max(10, self.num_samples // 10)
+        # iCEM paper / reference-code defaults
+        self.fraction_elites_reused = 0.3
+        self.factor_decrease_num = 1.25
+        self.alpha = 0.1              # momentum smoothing factor
+        self.noise_beta = 2.5         # learned-model PlaNet setting
+        self.var_scale = 1.5
+        self.max_norm = 2.45
+        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        # Persistent state for across-env-step shift (paper Sec 3.2 / Fig S9).
+        # The Planner instance lives across all plan() calls within
+        # an evaluation; t0=True at the start of each episode triggers reset.
+        self._mean = None
+        self._std = None
+        self._kept_elites = None
+
+    def _colored_noise(self, T, N, A):
+        # rFFT-based 1/f^noise_beta Gaussian, matching
+        # colorednoise.powerlaw_psd_gaussian (used by the iCEM repo).
+        if T <= 1:
+            return torch.randn(T, N, A, device=self.device)
+        freqs = torch.fft.rfftfreq(T, device=self.device)
+        # Avoid the DC zero-frequency blow-up the same way colorednoise does:
+        freqs = freqs.clone()
+        freqs[0] = 1.0 / T
+        s_scale = freqs ** (-self.noise_beta / 2.0)
+        w = s_scale[1:].clone()
+        if T % 2 == 0:
+            w[-1] = w[-1] / 2
+        sigma = 2.0 * torch.sqrt((w ** 2).sum()) / T
+        # Random amplitudes in frequency domain, one spectrum per (N, A) trajectory.
+        nf = s_scale.shape[0]
+        sr = torch.randn(N, A, nf, device=self.device) * s_scale
+        si = torch.randn(N, A, nf, device=self.device) * s_scale
+        si[..., 0] = 0.0
+        # The colorednoise.powerlaw_psd_gaussian reference compensates for
+        # the dropped imaginary parts at DC (and Nyquist when T is even) by
+        # scaling the corresponding real parts by sqrt(2). Without this fix
+        # the DC drift component is ~0.71x of the reference, weakening the
+        # long-trajectory directional bias colored noise is meant to provide.
+        sr[..., 0] = sr[..., 0] * (2 ** 0.5)
+        if T % 2 == 0:
+            si[..., -1] = 0.0
+            sr[..., -1] = sr[..., -1] * (2 ** 0.5)
+        spec = torch.complex(sr, si)
+        noise = torch.fft.irfft(spec, n=T, dim=-1) / sigma
+        # Return as [T, N, A] to match the CEM baseline's sampling convention.
+        return noise.permute(2, 0, 1)
+</new>
+</edit>
+<obs>
+Successfully replaced text in eb_jepa/custom_planner.py.
+</obs>
+<note>
+Now the plan body: the shift-warm-start, the decaying-population loop with elite reuse and momentum, and the best-so-far fallback.
+</note>
+<edit path="eb_jepa/custom_planner.py">
+<old>
+
+        mean = torch.zeros(plan_length, self.action_dim, device=self.device)
+        std = self.var_scale * torch.ones(plan_length, self.action_dim, device=self.device)
+        actions = torch.empty(plan_length, self.num_samples, self.action_dim, device=self.device)
+
+        losses = []
+        elite_means = []
+        elite_stds = []
+
+        for _ in range(self.n_iters):
+            actions[:, :] = mean.unsqueeze(1) + std.unsqueeze(1) * torch.randn(
+                plan_length, self.num_samples, self.action_dim, device=self.device,
+            )
+
+            # Clip action norms
+            max_norm = 2.45
+            eps = 1e-6
+            norms = actions.norm(dim=-1, keepdim=True)
+            max_norms = torch.ones_like(norms) * max_norm
+            min_norms = torch.ones_like(norms) * 0
+            coeff = torch.min(torch.max(norms, min_norms), max_norms) / (norms + eps)
+            actions = actions * coeff
+
+            cost = self.cost_function(
+                rearrange(actions, "t b a -> b a t"), obs_init
+            ).unsqueeze(1)
+            losses.append(cost.min().item())
+
+            elite_idxs = torch.topk(-cost.squeeze(1), self.num_elites, dim=0).indices
+            elite_loss, elite_actions = cost[elite_idxs], actions[:, elite_idxs]
+
+            elite_means.append(elite_loss.mean().item())
+            elite_stds.append(elite_loss.std().item())
+
+            mean = torch.mean(elite_actions, dim=1)
+            std = torch.std(elite_actions, dim=1)
+
+        return PlanningResult(
+            actions=mean,
+            losses=torch.tensor(losses).detach().unsqueeze(-1),
+</old>
+<new>
+
+        # iCEM "shift" mechanism (paper Sec 3.2 / icem.py:165-175). At episode
+        # start (t0=True) or when plan_length changes, reset to fresh state.
+        # Otherwise shift mean/kept-elites left by 1 timestep. Per Alg. 1 /
+        # Suppl. E.1, repeat the last mean timestep and reset std everywhere
+        # to sigma_init.
+        need_reset = (t0 or self._mean is None
+                      or self._mean.shape[0] != plan_length)
+        if need_reset:
+            mean = torch.zeros(plan_length, self.action_dim, device=self.device)
+            std = self.var_scale * torch.ones(plan_length, self.action_dim, device=self.device)
+            prev_elites = None
+        else:
+            mean = torch.empty_like(self._mean)
+            mean[:-1] = self._mean[1:]
+            mean[-1] = self._mean[-1]
+            std = self.var_scale * torch.ones_like(self._std)
+            # Shift kept elites: drop the executed timestep and append a
+            # freshly sampled final timestep from the reset distribution.
+            if self._kept_elites is not None:
+                ke = torch.zeros_like(self._kept_elites)
+                ke[:-1] = self._kept_elites[1:]
+                K = self._kept_elites.shape[1]
+                last_noise = self._colored_noise(1, K, self.action_dim)[0]
+                ke[-1] = mean[-1] + std[-1] * last_noise
+                prev_elites = ke
+            else:
+                prev_elites = None
+
+        best_actions = None
+        best_cost = torch.tensor(float("inf"), device=self.device)
+        losses, elite_means, elite_stds = [], [], []
+
+        num_sim_traj = self.num_samples
+        prev_iter_elites = None
+        prev_iter_cost = None
+
+        for i in range(self.n_iters):
+            # Sample decay per iCEM reference:
+            # num_sim_traj = max(elites_size * 2, num_sim_traj / factor_decrease_num)
+            if i > 0:
+                num_sim_traj = max(self.elites_size * 2,
+                                   int(num_sim_traj / self.factor_decrease_num))
+
+            n_reused = int(self.elites_size * self.fraction_elites_reused)
+
+            noise = self._colored_noise(plan_length, num_sim_traj, self.action_dim)
+            actions = mean.unsqueeze(1) + std.unsqueeze(1) * noise
+            reused_cost = None
+            if i == 0 and prev_elites is not None and n_reused > 0:
+                actions = torch.cat([actions, prev_elites[:, :n_reused]], dim=1)
+            elif i > 0 and prev_iter_elites is not None and n_reused > 0:
+                actions = torch.cat([actions, prev_iter_elites[:, :n_reused]], dim=1)
+                reused_cost = prev_iter_cost[:n_reused]
+
+            # Clip action norms (consistent with CEM baseline and planning_cem.yaml)
+            norms = actions.norm(dim=-1, keepdim=True)
+            coeff = (self.max_norm / norms.clamp(min=1e-6)).clamp(max=1.0)
+            actions = actions * coeff
+
+            if reused_cost is None:
+                cost = self.cost_function(
+                    rearrange(actions, "t b a -> b a t"), obs_init
+                )
+            else:
+                fresh_actions = actions[:, :num_sim_traj]
+                fresh_cost = self.cost_function(
+                    rearrange(fresh_actions, "t b a -> b a t"), obs_init
+                )
+                cost = torch.cat([fresh_cost, reused_cost], dim=0)
+            losses.append(cost.min().item())
+
+            # Best-so-far across all iterations (iCEM "memory" within a plan).
+            min_idx = cost.argmin()
+            if cost[min_idx] < best_cost:
+                best_cost = cost[min_idx]
+                best_actions = actions[:, min_idx].clone()
+
+            elite_idxs = torch.topk(-cost, self.elites_size, dim=0).indices
+            elite_actions = actions[:, elite_idxs]
+            elite_cost = cost[elite_idxs]
+            elite_means.append(elite_cost.mean().item())
+            elite_stds.append(elite_cost.std().item())
+
+            # Momentum update of mean/std (alpha=0.1 per iCEM reference).
+            new_mean = elite_actions.mean(dim=1)
+            new_std = elite_actions.std(dim=1)
+            mean = (1.0 - self.alpha) * new_mean + self.alpha * mean
+            std = (1.0 - self.alpha) * new_std + self.alpha * std
+
+            prev_iter_elites = elite_actions.detach()
+            prev_iter_cost = elite_cost.detach()
+
+        # Return best-ever trajectory if it beats the final mean (iCEM keeps best).
+        final_mean_cost = self.cost_function(
+            rearrange(mean.unsqueeze(1), "t b a -> b a t"), obs_init
+        )[0]
+        out = best_actions if best_cost < final_mean_cost else mean
+
+        # Save state for the next env step's shift (paper Sec 3.2).
+        # prev_iter_elites is the last iteration's elite_actions tensor [T, K, A].
+        self._mean = mean.detach()
+        self._std = std.detach()
+        self._kept_elites = prev_iter_elites.detach() if prev_iter_elites is not None else None
+
+        return PlanningResult(
+            actions=out,
+            losses=torch.tensor(losses).detach().unsqueeze(-1),
+</new>
+</edit>
+<obs>
+Successfully replaced text in eb_jepa/custom_planner.py.
+</obs>
+<run/>
+<obs>
+Measured results — `baseline:icem` (`is_final,true`), seed 42.
+
+## Horizon 30
+| seed | success_rate | mean_dist | mean_steps_to_success |
+|---|---|---|---|
+| 42 | 0.80 | 5.7089 | 24.75 |
+
+## Horizon 60
+| seed | success_rate | mean_dist | mean_steps_to_success |
+|---|---|---|---|
+| 42 | 0.90 | 4.1002 | 25.22 |
+
+## Horizon 90
+| seed | success_rate | mean_dist | mean_steps_to_success |
+|---|---|---|---|
+| 42 | 0.85 | 4.8471 | 38.53 |
+</obs>
+
+### step 4 — MPPI (Model Predictive Path Integral)   [slug:mppi]
+
+<think>
+iCEM's numbers came back, and they confirmed the bet *and* exposed the risk I flagged when I built it.
+The bet paid off at the short horizon exactly as predicted: CEM's weakest benchmark, horizon 30, went
+from 0.70 to 0.80 and the residual `mean_dist` dropped from 9.5 to 5.7 — the colored, far-ranging
+excursions plus the across-step warm start did reach the door inside a single `plan()` call, which is
+precisely what white CEM could not do cold. At horizon 60 iCEM held respectably, 0.90 with residual
+4.1. But look at horizon 90: iCEM scored 0.85 — *below* CEM's 0.95 there — with residual 4.8 against
+CEM's 3.4. That is the regression I named in advance: at the long horizon, where CEM's white sampling
+plus the re-planning loop had plenty of room to converge on a clean route, iCEM's aggressive elite
+reuse and smooth low-frequency colored draws *over-commit*. When the kept elites and the persistent
+shifted mean all agree on a route, and that route is the wrong side of the door for a given start/goal,
+the search has even less spread to escape than CEM did — the hard top-k elite cut plus the colored
+over-smoothing leaves no candidate that disagrees enough to pull the distribution onto the other route.
+So iCEM traded long-horizon robustness for short-horizon reach. Averaged across the three benchmarks it
+is roughly a wash with CEM (mean success ~0.85 vs ~0.83), which is not the clean dominance I wanted.
+
+The root is the *hard* elite selection, and I should be precise about why. Both CEM and iCEM refit the
+distribution by taking the top-k lowest-cost sequences and computing their plain mean and variance.
+That throws away two things. First, it throws away *how much* better the best elite was than the worst:
+a sequence that is dramatically better and one that barely cleared the elite cut count exactly the same
+in the mean — each elite gets weight 1/k. Second, the hard cut is brittle near the decision boundary
+between the two routes through the door: a handful of mediocre elites on the wrong route can drag the
+mean and, worse, keep the variance from shrinking onto the right route — or, in iCEM's over-committed
+case, the elites all land on one route and the variance collapses there with no soft pressure from the
+near-elite samples on the other route. I want an update that is *soft*: every sampled sequence
+contributes, weighted by how good it is, so a markedly-better rollout pulls the mean and tightens the
+variance far more than a marginal one, and no information is discarded at a hard threshold. And I want
+it to be the *principled* soft update, not an ad-hoc reweighting — the same demand I made when I moved
+from random shooting to CEM.
+
+So go back to the object and ask what the right weighting is. I have sampled action sequences and their
+costs, and I want the new control distribution that best concentrates on low cost. Frame it as the
+free-energy / partition-function object: assign each trajectory τ a Boltzmann weight that is
+exponential in its negative cost, w(τ) ∝ exp(−S(τ)/λ), where S(τ) is the cost of rolling that sequence
+through the model and λ is a temperature. Low-cost trajectories get large weight, high-cost ones are
+suppressed, and λ controls how sharply: λ → 0 puts all the weight on the single best sequence (a hard
+argmax), λ → ∞ weights everything equally (back to plain averaging). The optimal control is then the
+weighted average of the sampled controls under these weights — the soft, information-preserving analogue
+of CEM's hard elite mean. This is exactly the path-integral reading of optimal control: the new mean is
+the cost-weighted average of the perturbations, u_i ← Σ_k w_k · a_{i,k} with w_k = exp(−S(τ_k)/λ) / Σ_j
+exp(−S(τ_j)/λ). Each sequence votes with a weight that decays smoothly in its cost, so the
+dramatically-better wrong-route-avoiding sequence dominates without me having to draw a hard line, and a
+cluster of mediocre wrong-route sequences gets exponentially suppressed rather than averaged in at full
+weight — which is exactly the long-horizon failure iCEM showed.
+
+Now I have to be honest about the specific form the task's harness gives me, because the full
+path-integral derivation assumes a control-affine system with a particular noise-cost coupling and
+yields a Girsanov likelihood-ratio correction for shifting both the mean and the covariance of the
+sampling distribution. I do not have a control-affine analytic model here — I have a learned JEPA world
+model I can only roll forward and a black-box cost — so I am not going to import the covariance-scaling
+Girsanov machinery. What I land instead is the discrete, sampling-based core of the method as it is
+actually used on top of learned models: keep the CEM skeleton — sample a batch around the current mean,
+roll through the model, take the lowest-cost elites — but replace the *update* with the exponential
+cost-weighting. Concretely, after scoring I still select the top elites (here num_elites = 20, top 10%),
+then compute weights over those elites, score_k = exp(temperature · (min_cost − cost_k)), normalized to
+sum to 1, and set the new mean to the weighted average of the elite sequences and the new std to the
+weighted standard deviation. Subtracting min_cost inside the exponential is the standard numerical
+stabilization — it shifts the largest exponent to zero so nothing overflows, and because the weights are
+normalized the shift cancels and leaves the Boltzmann weighting unchanged. The temperature here is
+small, 0.005, which keeps the weighting gentle relative to the cost scale — sharp enough that a clearly
+better rollout dominates, soft enough that the near-best sequences still contribute and the variance
+does not collapse onto one route the way iCEM's hard reuse did.
+
+I keep the sampling *white* here — plain `torch.randn` perturbations, not colored noise. That is a
+deliberate choice given what iCEM's numbers showed: the colored over-smoothing is part of what made
+iCEM over-commit at the long horizon, and the soft weighting is supposed to do the reach-and-route work
+through the *update*, not through a far-ranging noise prior. White sampling with a soft cost-weighted
+mean lets the distribution be pulled toward whichever route the rollouts actually score well, without a
+low-frequency prior baking in a committed direction before the cost is read. I also widen the initial
+spread to max_std = 2.0 (above CEM's 1.5), because the soft update is more forgiving of a wide start —
+it will not be dragged around by a few wide outliers the way a hard elite mean can be, since those
+outliers carry exponentially small weight — so I can afford to explore both routes more aggressively at
+the first iteration and let the Boltzmann weighting concentrate from there.
+
+There is one more place the soft framing changes the *output*, and it matters for the maze. CEM and
+iCEM return the distribution's center (the mean, or iCEM's best-so-far fallback). But the mean of a
+soft-weighted distribution, in a bimodal cost surface with two routes, can land *between* the two modes
+— in the wall — which is worse than either route. So instead of executing the mean, I select the
+executed sequence by *sampling* from the final elite weights: draw one elite with probability
+proportional to its score, and return that actual evaluated sequence. This is the path-integral
+controller's stochastic action selection, and it is the right thing in a multi-modal surface: it commits
+to one real, rolled-out route rather than averaging two incompatible routes into an infeasible
+compromise. The chosen sequence is one I actually scored, so it is feasible and known-good, not an
+untested centroid. Nothing persists across env steps in this rung — each `plan()` re-optimizes from the
+zero mean and wide std — so `t0` is irrelevant again, and the whole loop runs under `no_grad` because,
+like every rung before it, MPPI reads only function values of the cost and never touches the gradient
+the differentiable model could hand it. That gradient is still sitting unused; it is the lever a method
+beyond this ladder would pull.
+
+So the falsifiable expectations against iCEM's numbers. The soft cost-weighting is aimed squarely at
+iCEM's long-horizon regression, so the cleanest prediction is at horizon 90: where iCEM slipped to 0.85
+by over-committing to one route, the Boltzmann weighting should recover the long-horizon performance
+CEM had — I expect horizon 90 back up to ~0.95 with the residual `mean_dist` back down toward CEM's 3.4,
+because the soft update plus stochastic-elite action selection stops a few wrong-route elites from
+collapsing the search and stops the planner from executing an in-the-wall mean. At horizon 60 I expect
+a clear lift over iCEM's 0.90 — the soft update is most valuable in the middle regime where both routes
+are live and a hard cut is brittle. At horizon 30 the open question is whether dropping iCEM's colored
+noise costs me the short-horizon reach: I expect to roughly *hold* iCEM's 0.80 rather than beat it,
+because white sampling reaches the door less reliably than colored excursions inside one short call —
+and if horizon 30 instead *drops* below 0.75, that is the signal that the short horizon genuinely needs
+the colored prior and the right method would be MPPI's soft update *over* colored noise, combining this
+rung's robustness with iCEM's reach. But the headline bet is that the soft, information-preserving update
+gives the first planner that is strong at *all three* horizons at once — short reach near iCEM's, and
+long-horizon robustness back at CEM's level — which is the clean dominance neither hard-cut baseline
+achieved. The full scaffold module — the literal `CustomPlanner` fill for MPPI — is in the answer. Let me
+swap in MPPI: white sampling with the exponential cost-weighted update and stochastic action selection.
+</think>
+<say>
+Now MPPI: I replace the hard top-k refit with a soft exponential cost-weighted update and stochastic action selection, to fix iCEM's long-horizon over-commitment. This first edit relabels the class and sets the temperature and wide initial spread.
+</say>
+<edit path="eb_jepa/custom_planner.py">
+<old>
+# EDITABLE region of eb_jepa/custom_planner.py — step 3: iCEM
+class CustomPlanner(Planner):
+    """iCEM (Pinneri et al., CoRL 2020 / PMLR 2021) - colored noise + elite reuse + momentum."""
+
+    def __init__(self, unroll, action_dim=2, plan_length=15,
+                 num_samples=900, n_iters=10, **kwargs):
+        super().__init__(unroll)
+        self.action_dim = action_dim
+        self.plan_length = plan_length
+        # The task harness passes CEM/MPPI defaults (200, 20). Override them
+        # here to match Pinneri et al. Table S4's 4000-budget iCEM setting:
+        # 900 samples, 10 iterations, K=10%, gamma=1.25 -> ~4101 fresh
+        # trajectories after decay.
+        self.num_samples = 900
+        self.n_iters = 10
+        self.elites_size = max(10, self.num_samples // 10)
+        # iCEM paper / reference-code defaults
+        self.fraction_elites_reused = 0.3
+        self.factor_decrease_num = 1.25
+        self.alpha = 0.1              # momentum smoothing factor
+        self.noise_beta = 2.5         # learned-model PlaNet setting
+        self.var_scale = 1.5
+        self.max_norm = 2.45
+        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        # Persistent state for across-env-step shift (paper Sec 3.2 / Fig S9).
+        # The Planner instance lives across all plan() calls within
+        # an evaluation; t0=True at the start of each episode triggers reset.
+        self._mean = None
+        self._std = None
+        self._kept_elites = None
+
+    def _colored_noise(self, T, N, A):
+        # rFFT-based 1/f^noise_beta Gaussian, matching
+        # colorednoise.powerlaw_psd_gaussian (used by the iCEM repo).
+        if T <= 1:
+            return torch.randn(T, N, A, device=self.device)
+        freqs = torch.fft.rfftfreq(T, device=self.device)
+        # Avoid the DC zero-frequency blow-up the same way colorednoise does:
+        freqs = freqs.clone()
+        freqs[0] = 1.0 / T
+        s_scale = freqs ** (-self.noise_beta / 2.0)
+        w = s_scale[1:].clone()
+        if T % 2 == 0:
+            w[-1] = w[-1] / 2
+        sigma = 2.0 * torch.sqrt((w ** 2).sum()) / T
+        # Random amplitudes in frequency domain, one spectrum per (N, A) trajectory.
+        nf = s_scale.shape[0]
+        sr = torch.randn(N, A, nf, device=self.device) * s_scale
+        si = torch.randn(N, A, nf, device=self.device) * s_scale
+        si[..., 0] = 0.0
+        # The colorednoise.powerlaw_psd_gaussian reference compensates for
+        # the dropped imaginary parts at DC (and Nyquist when T is even) by
+        # scaling the corresponding real parts by sqrt(2). Without this fix
+        # the DC drift component is ~0.71x of the reference, weakening the
+        # long-trajectory directional bias colored noise is meant to provide.
+        sr[..., 0] = sr[..., 0] * (2 ** 0.5)
+        if T % 2 == 0:
+            si[..., -1] = 0.0
+            sr[..., -1] = sr[..., -1] * (2 ** 0.5)
+        spec = torch.complex(sr, si)
+        noise = torch.fft.irfft(spec, n=T, dim=-1) / sigma
+        # Return as [T, N, A] to match the CEM baseline's sampling convention.
+        return noise.permute(2, 0, 1)
+</old>
+<new>
+# EDITABLE region of eb_jepa/custom_planner.py — step 4: MPPI
+class CustomPlanner(Planner):
+    """MPPI (Model Predictive Path Integral) planner for JEPA world models."""
+
+    def __init__(self, unroll, action_dim=2, plan_length=15,
+                 num_samples=200, n_iters=20, **kwargs):
+        super().__init__(unroll)
+        self.action_dim = action_dim
+        self.plan_length = plan_length
+        self.num_samples = num_samples
+        self.n_iters = n_iters
+        # Match upstream MPPIPlanner defaults — planning_mppi.yaml sets
+        # var_scale=1.5 but MPPIPlanner doesn't accept that kwarg, so the
+        # effective config is max_std=2 (class default), temperature=0.005,
+        # num_elites=20 (yaml). Mirror that here.
+        self.num_elites = max(20, num_samples // 10)
+        self.max_std = 2.0
+        self.temperature = 0.005
+        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+</new>
+</edit>
+<obs>
+Successfully replaced text in eb_jepa/custom_planner.py.
+</obs>
+<note>
+Now the plan body: white sampling, the exponential cost-weighted mean/std update over the elites, and weighted-sampling action selection.
+</note>
+<edit path="eb_jepa/custom_planner.py">
+<old>
+
+        # iCEM "shift" mechanism (paper Sec 3.2 / icem.py:165-175). At episode
+        # start (t0=True) or when plan_length changes, reset to fresh state.
+        # Otherwise shift mean/kept-elites left by 1 timestep. Per Alg. 1 /
+        # Suppl. E.1, repeat the last mean timestep and reset std everywhere
+        # to sigma_init.
+        need_reset = (t0 or self._mean is None
+                      or self._mean.shape[0] != plan_length)
+        if need_reset:
+            mean = torch.zeros(plan_length, self.action_dim, device=self.device)
+            std = self.var_scale * torch.ones(plan_length, self.action_dim, device=self.device)
+            prev_elites = None
+        else:
+            mean = torch.empty_like(self._mean)
+            mean[:-1] = self._mean[1:]
+            mean[-1] = self._mean[-1]
+            std = self.var_scale * torch.ones_like(self._std)
+            # Shift kept elites: drop the executed timestep and append a
+            # freshly sampled final timestep from the reset distribution.
+            if self._kept_elites is not None:
+                ke = torch.zeros_like(self._kept_elites)
+                ke[:-1] = self._kept_elites[1:]
+                K = self._kept_elites.shape[1]
+                last_noise = self._colored_noise(1, K, self.action_dim)[0]
+                ke[-1] = mean[-1] + std[-1] * last_noise
+                prev_elites = ke
+            else:
+                prev_elites = None
+
+        best_actions = None
+        best_cost = torch.tensor(float("inf"), device=self.device)
+        losses, elite_means, elite_stds = [], [], []
+
+        num_sim_traj = self.num_samples
+        prev_iter_elites = None
+        prev_iter_cost = None
+
+        for i in range(self.n_iters):
+            # Sample decay per iCEM reference:
+            # num_sim_traj = max(elites_size * 2, num_sim_traj / factor_decrease_num)
+            if i > 0:
+                num_sim_traj = max(self.elites_size * 2,
+                                   int(num_sim_traj / self.factor_decrease_num))
+
+            n_reused = int(self.elites_size * self.fraction_elites_reused)
+
+            noise = self._colored_noise(plan_length, num_sim_traj, self.action_dim)
+            actions = mean.unsqueeze(1) + std.unsqueeze(1) * noise
+            reused_cost = None
+            if i == 0 and prev_elites is not None and n_reused > 0:
+                actions = torch.cat([actions, prev_elites[:, :n_reused]], dim=1)
+            elif i > 0 and prev_iter_elites is not None and n_reused > 0:
+                actions = torch.cat([actions, prev_iter_elites[:, :n_reused]], dim=1)
+                reused_cost = prev_iter_cost[:n_reused]
+
+            # Clip action norms (consistent with CEM baseline and planning_cem.yaml)
+            norms = actions.norm(dim=-1, keepdim=True)
+            coeff = (self.max_norm / norms.clamp(min=1e-6)).clamp(max=1.0)
+            actions = actions * coeff
+
+            if reused_cost is None:
+                cost = self.cost_function(
+                    rearrange(actions, "t b a -> b a t"), obs_init
+                )
+            else:
+                fresh_actions = actions[:, :num_sim_traj]
+                fresh_cost = self.cost_function(
+                    rearrange(fresh_actions, "t b a -> b a t"), obs_init
+                )
+                cost = torch.cat([fresh_cost, reused_cost], dim=0)
+            losses.append(cost.min().item())
+
+            # Best-so-far across all iterations (iCEM "memory" within a plan).
+            min_idx = cost.argmin()
+            if cost[min_idx] < best_cost:
+                best_cost = cost[min_idx]
+                best_actions = actions[:, min_idx].clone()
+
+            elite_idxs = torch.topk(-cost, self.elites_size, dim=0).indices
+            elite_actions = actions[:, elite_idxs]
+            elite_cost = cost[elite_idxs]
+            elite_means.append(elite_cost.mean().item())
+            elite_stds.append(elite_cost.std().item())
+
+            # Momentum update of mean/std (alpha=0.1 per iCEM reference).
+            new_mean = elite_actions.mean(dim=1)
+            new_std = elite_actions.std(dim=1)
+            mean = (1.0 - self.alpha) * new_mean + self.alpha * mean
+            std = (1.0 - self.alpha) * new_std + self.alpha * std
+
+            prev_iter_elites = elite_actions.detach()
+            prev_iter_cost = elite_cost.detach()
+
+        # Return best-ever trajectory if it beats the final mean (iCEM keeps best).
+        final_mean_cost = self.cost_function(
+            rearrange(mean.unsqueeze(1), "t b a -> b a t"), obs_init
+        )[0]
+        out = best_actions if best_cost < final_mean_cost else mean
+
+        # Save state for the next env step's shift (paper Sec 3.2).
+        # prev_iter_elites is the last iteration's elite_actions tensor [T, K, A].
+        self._mean = mean.detach()
+        self._std = std.detach()
+        self._kept_elites = prev_iter_elites.detach() if prev_iter_elites is not None else None
+
+        return PlanningResult(
+            actions=out,
+            losses=torch.tensor(losses).detach().unsqueeze(-1),
+</old>
+<new>
+
+        mean = torch.zeros(plan_length, self.action_dim, device=self.device)
+        std = self.max_std * torch.ones(plan_length, self.action_dim, device=self.device)
+        actions = torch.empty(plan_length, self.num_samples, self.action_dim, device=self.device)
+
+        losses = []
+        elite_means = []
+        elite_stds = []
+
+        for _ in range(self.n_iters):
+            actions[:, :] = mean.unsqueeze(1) + std.unsqueeze(1) * torch.randn(
+                plan_length, self.num_samples, self.action_dim, device=self.device,
+            )
+
+            cost = self.cost_function(
+                rearrange(actions, "t b a -> b a t"), obs_init
+            ).unsqueeze(1)
+            losses.append(cost.min().item())
+
+            elite_idxs = torch.topk(-cost.squeeze(1), self.num_elites, dim=0).indices
+            elite_loss, elite_actions = cost[elite_idxs], actions[:, elite_idxs]
+
+            elite_means.append(elite_loss.mean().item())
+            elite_stds.append(elite_loss.std().item())
+
+            # MPPI weighted update
+            min_cost = cost.min(0)[0]
+            score = torch.exp(
+                self.temperature * (min_cost - elite_loss[:, 0])
+            )
+            score /= score.sum(0) + 1e-9
+            mean = torch.sum(
+                score.unsqueeze(0).unsqueeze(2) * elite_actions, dim=1
+            )
+            std = torch.sqrt(
+                torch.sum(
+                    score.unsqueeze(0).unsqueeze(2)
+                    * (elite_actions - mean.unsqueeze(1)) ** 2,
+                    dim=1,
+                )
+            )
+
+        # Select action via weighted sampling
+        score_np = score.cpu().numpy()
+        selected = elite_actions[
+            :, np.random.choice(np.arange(score_np.shape[0]), p=score_np)
+        ]
+
+        return PlanningResult(
+            actions=selected,
+            losses=torch.tensor(losses).detach().unsqueeze(-1),
+</new>
+</edit>
+<obs>
+Successfully replaced text in eb_jepa/custom_planner.py.
+</obs>
+<run/>
+<obs>
+Measured results — leaderboard row `mppi` (`is_final,true`), seed 42.
+
+## Horizon 30
+| seed | success_rate | mean_dist | mean_steps_to_success |
+|---|---|---|---|
+| 42 | 0.75 | 8.8324 | 18.0 |
+
+## Horizon 60
+| seed | success_rate | mean_dist | mean_steps_to_success |
+|---|---|---|---|
+| 42 | 0.95 | 3.2740 | 22.53 |
+
+## Horizon 90
+| seed | success_rate | mean_dist | mean_steps_to_success |
+|---|---|---|---|
+| 42 | 0.95 | 3.2826 | 38.84 |
+</obs>

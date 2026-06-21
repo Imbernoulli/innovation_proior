@@ -1,0 +1,1825 @@
+<meta task="ai4sci-mol-property-prediction" domain="AI for science" file="Uni-Mol/custom_molprop.py" model_format="qwen3" edit_tool="str_replace"/>
+
+<system>
+You are a research engineer improving a model on a fixed ML task. You work by editing the model code and running experiments. Think carefully before each change. You have these tools:
+- str_replace(path, old_str, new_str): replace the unique occurrence of old_str with new_str.
+- create(path, file_text): create a new file.
+- run_experiment(): train + evaluate the current code under the fixed budget; returns metrics.
+Make one tool call at a time. After editing, call run_experiment() to measure your method.
+</system>
+
+<user>
+## Research question
+
+Predict chemical properties — blood-brain-barrier penetration, beta-secretase inhibition, toxicity
+across a panel of assays — from molecular structure alone, and predict them on molecules whose
+*scaffold* never appeared in training. The single thing being designed is the **molecular
+representation model**: the map from a molecule (a SMILES string turned into an atom/bond graph, with
+optional 3D coordinates) to a fixed vector that a small head turns into one logit per task. Everything
+else — SMILES preprocessing, conformer generation, the scaffold split, the optimizer schedule, target
+normalization, the masked loss for missing labels, and test-time augmentation over conformers — is
+frozen by the scaffold. The metric is ROC-AUC (higher is better), averaged over valid labels per task
+and across tasks, on a **scaffold** split: train and test share no Murcko scaffold, so any score above
+chance has to come from structure the model genuinely generalizes, not from a memorized series.
+
+## Prior art before the first rung (molecular-representation lineage)
+
+The encoder the first rung uses — a message-passing graph net — is itself the resolution of a line of
+molecular-representation methods. These precede the ladder; the substrate below is what they converged
+to (RDKit featurization of atoms and bonds, then a learned graph-to-vector encoder).
+
+- **Fixed-descriptor models (Morgan/ECFP fingerprints, RDKit 2D descriptors + RF/FFN).** Hash a
+  molecule into a fixed bit-vector or a pile of computed physicochemical descriptors and run a generic
+  classifier on it. They carry a strong, general chemical prior and need little data, but the
+  representation is *frozen* — it can never specialize to the property actually being predicted. Gap:
+  cannot adapt the encoding to the task.
+- **Neural molecular fingerprints (Duvenaud et al. 2015).** Replace the fixed hash with a learned,
+  differentiable one: aggregate neighbor atom features through degree-specific matrices and sum into a
+  fingerprint trained end-to-end. Learnable at last, but the message is a plain concatenation of atom
+  and bond features and the depth is shallow. Gap: weak message function, still atom-centered.
+- **Gated graph nets / Weave (Li et al. 2016; Kearnes et al. 2016).** Edge-typed linear messages with a
+  GRU update (GGNN), or keeping explicit edge representations around (Weave). More expressive updates,
+  but the hidden state still lives on the *atom*, so a message sent out one bond is summed straight back
+  along the same bond next step — the representation re-mixes its own echoes. Gap: atom-centered message
+  passing "totters".
+- **The MPNN framework (Gilmer et al. 2017).** The unifying view every model above is a special case of:
+  a message phase `m_v = Σ_{w∈N(v)} M(h_v,h_w,e_vw)`, an update `h_v ← U(h_v,m_v)`, then a permutation-
+  invariant readout. It names the design space — choose `M`, `U`, the readout — but leaves the choice
+  open, and the default atom-centered instantiation still tots and still only reaches `T` hops, smaller
+  than a drug-molecule's diameter. Gap: framework, not an answer; locality and tottering unresolved.
+
+The 3D side has its own ancestor the strongest rung reacts to: a Transformer treats atoms as a
+fully-connected set so distant-in-bonds-but-close-in-space contacts are visible, but a vanilla
+Transformer is position-blind, and the position here is a *continuous, rotation/translation-arbitrary*
+3D coordinate that must enter as an SE(3)-invariant signal — the gap the strongest baseline closes.
+
+## The fixed substrate
+
+A self-contained molecular-property pipeline is frozen and must not be touched. It mirrors the Uni-Mol
+data path: load pre-split LMDB data (official scaffold splits) with pre-computed multi-conformer 3D
+coordinates; for each molecule, sample/enumerate a conformer, remove polar hydrogens, normalize
+coordinates, tokenize against the Uni-Mol vocabulary, and build a distance matrix and atom-pair edge
+types. It then runs the training loop (Adam, warmup-then-decay schedule), normalizes regression targets,
+applies a masked binary-cross-entropy loss that ignores missing labels in multi-task datasets, and at
+val/test time averages predictions over 11 conformers (test-time augmentation).
+
+The featurization the GNN path consumes is fixed: `ATOM_DIM = 136` (one-hot atomic number 118, degree 6,
+formal charge 5, num-H 5, hybridization 5, aromatic 1, in-ring 1) and `EDGE_DIM = 9` (bond type 4,
+stereo 3, conjugated 1, in-ring 1). The loop also exposes a pretrained Uni-Mol checkpoint inside the
+container at the path the strongest baseline loads from.
+
+Each batch is a `MolBatch` carrying both representations at once, so a model picks what it needs:
+
+- **Sparse graph (for GNNs):** `x [total_atoms, 136]`, `edge_index [2, total_edges]` (COO, bonds stored
+  as adjacent forward/reverse pairs), `edge_attr [total_edges, 9]`, `batch_idx [total_atoms]` (graph id).
+- **Dense (for Transformers):** `atom_features [B, N, 136]` zero-padded, `positions [B, N, 3]`,
+  `dist_matrix [B, N, N]`, `mask [B, N]` (1 = real atom).
+- **Uni-Mol-specific:** `atom_tokens`, `edge_types`, plus dynamically-set `_unimol_dist`,
+  `_unimol_token_mask`.
+- **Targets:** `targets [B, num_tasks]`, `target_mask [B, num_tasks]` (1 = valid label).
+
+## The editable interface
+
+Exactly one region is editable — the `MoleculeModel` class (and any helper modules/functions placed
+beside it) in `custom_molprop.py`, between the `EDITABLE SECTION START`/`END` markers (the lines the
+config exposes for editing). Every method on the ladder is a fill of this same contract:
+
+- `__init__(self, atom_dim, edge_dim, num_tasks, task_type)` — build the architecture.
+- `forward(self, batch) -> Tensor` — return predictions of shape `[B, num_tasks]` from a `MolBatch`.
+
+The model chooses which batch fields to read (sparse graph, dense tensors, or Uni-Mol tokens) and may
+read a per-dataset `pooler_dropout` set as a class attribute by the training driver. The starting point
+is the scaffold default: a small **GIN with mean pooling and edge features**. Each later method replaces
+exactly this class (plus its helpers) and nothing else.
+
+```python
+# EDITABLE region of custom_molprop.py — default fill (starter GIN, mean pooling)
+class GINConv(nn.Module):
+    """Graph Isomorphism Network convolution layer (edge-aware)."""
+
+    def __init__(self, in_dim, out_dim, edge_dim):
+        super().__init__()
+        self.mlp = nn.Sequential(
+            nn.Linear(in_dim, out_dim),
+            nn.BatchNorm1d(out_dim),
+            nn.ReLU(),
+            nn.Linear(out_dim, out_dim),
+        )
+        self.edge_proj = nn.Linear(edge_dim, in_dim)
+        self.eps = nn.Parameter(torch.zeros(1))
+
+    def forward(self, x, edge_index, edge_attr, batch_idx):
+        src, dst = edge_index
+        edge_msg = self.edge_proj(edge_attr)
+        msg = x[src] + edge_msg                      # message folds in bond features
+        agg = torch.zeros_like(x)
+        agg.index_add_(0, dst, msg)                  # sum neighbor messages
+        out = self.mlp((1 + self.eps) * x + agg)     # (1+eps) center tag, then MLP
+        return out
+
+
+class MoleculeModel(nn.Module):
+    """Starter model: GIN with mean pooling."""
+
+    def __init__(self, atom_dim: int, edge_dim: int, num_tasks: int, task_type: str):
+        super().__init__()
+        self.num_tasks = num_tasks
+        self.task_type = task_type
+        hidden_dim = 256
+        num_layers = 4
+
+        self.atom_embed = nn.Linear(atom_dim, hidden_dim)
+        self.convs = nn.ModuleList([
+            GINConv(hidden_dim, hidden_dim, edge_dim) for _ in range(num_layers)
+        ])
+        self.norms = nn.ModuleList([
+            nn.BatchNorm1d(hidden_dim) for _ in range(num_layers)
+        ])
+        self.dropout = nn.Dropout(0.1)
+        self.readout = nn.Sequential(
+            nn.Linear(hidden_dim, hidden_dim),
+            nn.ReLU(),
+            nn.Dropout(0.1),
+            nn.Linear(hidden_dim, num_tasks),
+        )
+
+    def forward(self, batch):
+        x = self.atom_embed(batch.x)
+        for conv, norm in zip(self.convs, self.norms):
+            x_new = conv(x, batch.edge_index, batch.edge_attr, batch.batch_idx)
+            x_new = norm(x_new)
+            x_new = F.relu(x_new)
+            x = x + self.dropout(x_new)               # residual
+
+        num_graphs = batch.batch_idx.max().item() + 1
+        graph_embed = torch.zeros(num_graphs, x.size(-1), device=x.device)
+        counts = torch.zeros(num_graphs, 1, device=x.device)
+        graph_embed.index_add_(0, batch.batch_idx, x)
+        counts.index_add_(0, batch.batch_idx, torch.ones(x.size(0), 1, device=x.device))
+        graph_embed = graph_embed / counts.clamp(min=1)   # MEAN pooling
+
+        return self.readout(graph_embed)
+```
+
+## Evaluation settings
+
+Three MoleculeNet classification benchmarks, each with the official **scaffold** split, scored by
+ROC-AUC (higher is better, averaged over valid labels per task and across tasks):
+
+- **BBBP** — blood-brain-barrier penetration (2,039 molecules, 1 task).
+- **BACE** — beta-secretase 1 inhibition (1,513 molecules, 1 task).
+- **Tox21** — toxicity across 12 assays (7,831 molecules, 12 tasks, multi-task with missing labels).
+
+One seed (42). Test-time augmentation averages each prediction over 11 conformers. The metric columns
+reported are `rocauc_BBBP`, `rocauc_BACE`, `rocauc_Tox21`.
+
+The editable model code is in `Uni-Mol/custom_molprop.py`:
+```python
+# =====================================================================
+
+class GINConv(nn.Module):
+    """Graph Isomorphism Network convolution layer."""
+
+    def __init__(self, in_dim, out_dim, edge_dim):
+        super().__init__()
+        self.mlp = nn.Sequential(
+            nn.Linear(in_dim, out_dim),
+            nn.BatchNorm1d(out_dim),
+            nn.ReLU(),
+            nn.Linear(out_dim, out_dim),
+        )
+        self.edge_proj = nn.Linear(edge_dim, in_dim)
+        self.eps = nn.Parameter(torch.zeros(1))
+
+    def forward(self, x, edge_index, edge_attr, batch_idx):
+        """
+        x: [total_atoms, in_dim]
+        edge_index: [2, total_edges]
+        edge_attr: [total_edges, edge_dim]
+        batch_idx: [total_atoms]
+        """
+        src, dst = edge_index
+        edge_msg = self.edge_proj(edge_attr)
+        msg = x[src] + edge_msg
+
+        # Aggregate messages to destination nodes
+        agg = torch.zeros_like(x)
+        agg.index_add_(0, dst, msg)
+
+        out = self.mlp((1 + self.eps) * x + agg)
+        return out
+
+
+class MoleculeModel(nn.Module):
+    """Starter model: Graph Isomorphism Network (GIN) with mean pooling.
+
+    Simple but effective baseline for molecular property prediction.
+    Uses message passing on the molecular graph with learned edge features.
+    """
+
+    def __init__(self, atom_dim: int, edge_dim: int, num_tasks: int, task_type: str):
+        super().__init__()
+        self.num_tasks = num_tasks
+        self.task_type = task_type
+        hidden_dim = 256
+        num_layers = 4
+
+        self.atom_embed = nn.Linear(atom_dim, hidden_dim)
+        self.convs = nn.ModuleList([
+            GINConv(hidden_dim, hidden_dim, edge_dim) for _ in range(num_layers)
+        ])
+        self.norms = nn.ModuleList([
+            nn.BatchNorm1d(hidden_dim) for _ in range(num_layers)
+        ])
+        self.dropout = nn.Dropout(0.1)
+
+        self.readout = nn.Sequential(
+            nn.Linear(hidden_dim, hidden_dim),
+            nn.ReLU(),
+            nn.Dropout(0.1),
+            nn.Linear(hidden_dim, num_tasks),
+        )
+
+    def forward(self, batch):
+        """
+        Args:
+            batch: MolBatch with sparse graph data.
+        Returns:
+            predictions: [B, num_tasks]
+        """
+        x = self.atom_embed(batch.x)
+
+        for conv, norm in zip(self.convs, self.norms):
+            x_new = conv(x, batch.edge_index, batch.edge_attr, batch.batch_idx)
+            x_new = norm(x_new)
+            x_new = F.relu(x_new)
+            x = x + self.dropout(x_new)  # residual
+
+        # Mean pooling per graph
+        num_graphs = batch.batch_idx.max().item() + 1
+        graph_embed = torch.zeros(num_graphs, x.size(-1), device=x.device)
+        counts = torch.zeros(num_graphs, 1, device=x.device)
+        graph_embed.index_add_(0, batch.batch_idx, x)
+        counts.index_add_(0, batch.batch_idx, torch.ones(x.size(0), 1, device=x.device))
+        graph_embed = graph_embed / counts.clamp(min=1)
+
+        return self.readout(graph_embed)
+
+# =====================================================================
+# EDITABLE SECTION END
+# =====================================================================
+```
+Improve it. Derive your method, edit the code, then run_experiment().
+</user>
+
+### step 1 — GIN (mean-pool graph isomorphism network)   [slug:gin]
+
+<think>
+[[POLISH_REASONING: adapt to first-person agentic voice, end by deciding to implement]]
+The representation is the whole point, but it bolts onto a frozen pipeline, and the floor I start from
+is just "learn *any* molecular encoder on these scaffold-split tasks at all." So before reaching for
+anything clever I want the simplest learned graph encoder that I can argue, from first principles, is
+not throwing away structure for free — and then watch where it breaks, because where it breaks tells me
+what the next rung has to fix. The scaffold hands me an atom/bond graph per molecule (atoms with the
+136-dim feature vector, bonds with the 9-dim one, in the sparse `x / edge_index / edge_attr / batch_idx`
+format) and asks for one vector per graph that a small head turns into per-task logits. That is exactly
+the message-passing setting, so the design question is narrow: what aggregator, what per-layer
+transform, what readout — and which of those choices actually decides how much the encoder can tell two
+molecules apart.
+
+Let me write down what every graph net in this family actually is, stripped to its skeleton, because the
+differences I care about are smaller than they look. Each atom starts at `h_v^{(0)} = x_v`; then for `k`
+rounds, `a_v^{(k)} = AGGREGATE({h_u^{(k-1)} : u∈N(v)})` and `h_v^{(k)} = COMBINE(h_v^{(k-1)}, a_v^{(k)})`,
+and a graph vector is `h_G = READOUT({h_v^{(K)}})`. GCN is this with a mean aggregator and a single
+linear+ReLU; GraphSAGE's pooling variant is an element-wise max of a transformed neighborhood. The only
+things that vary are the function that squashes the bag of neighbors and the transform around it. So my
+real question is: what does `h_v^{(k)}` represent, and when are two atoms (or two molecules) *forced* to
+the same vector — because that collapse is the ceiling on what any such encoder can distinguish, and on
+a scaffold split, distinguishing genuinely-novel structure is the entire game.
+
+Trace what `h_v^{(k)}` captures. Round one, an atom sees its bonded neighbors. Round two, each neighbor
+has already absorbed *its* neighbors, so the atom sees two bonds out. After `k` rounds `h_v^{(k)}` is a
+summary of the rooted subtree of height `k` hanging off `v`. Two atoms should collapse to the same
+vector only if those rooted subtrees are genuinely identical. And I recognize this loop — relabel a node
+by hashing (its own label, the multiset of neighbor labels), iterate — it is the Weisfeiler-Lehman
+color-refinement test for graph isomorphism. WL's hash is *injective*: different (color, neighbor-
+multiset) inputs always get a brand-new distinct color, so WL never throws away a distinction once it
+has found one. A graph net runs everything through continuous, lossy functions — a mean, a max, a linear
+layer — that can squash two different inputs to the same output. That comparison is the right ruler: WL
+is a strong, almost-complete stand-in for isomorphism that has the *same shape* as my encoder, so I can
+ask whether the encoder reaches it.
+
+The bound goes both ways and it is worth knowing exactly. If WL cannot separate two graphs, the two have
+the identical multiset of (label, neighbor-multiset) pairs at every round — otherwise WL's injective
+hash would have separated them at the next round. By induction within a graph, equal WL labels force
+equal encoder features (same input, same shared AGGREGATE/COMBINE applied to equal inputs), so the
+encoder's feature-multisets march in lockstep too, and a permutation-invariant readout returns the same
+value: **no message-passing GNN beats WL.** There is the ceiling. And it is *reached* exactly when the
+neighbor aggregation, the combine, and the readout are all injective on multisets — because then the
+encoder's features are a faithful (injective) recoding of WL's labels, and whatever WL separates, the
+encoder separates. Injectivity on multisets is the whole game.
+
+Now the practical payoff: which aggregator is injective? Over bounded multisets, **sum** can be made
+injective — pick a per-element code and sum, and the total is a positional encoding of the multiset's
+multiplicity profile, so distinct multisets give distinct sums. **Mean** keeps only the *distribution*:
+it cannot tell a multiset from any inflated copy of itself (scale every multiplicity by `k` and the mean
+is unchanged), so `{green,red}` and `{green,green,red,red}` collapse. **Max** keeps only the *support*:
+`{green,red}` and `{green,red,red}` collapse, because the second red is invisible. So the discriminative
+ranking is strict: sum ⊐ mean ⊐ max. And the transform around the sum must be a real MLP, not a single
+linear+ReLU — with all-nonnegative inputs a bias-free linear+ReLU degenerates into "sum first, then one
+linear map," which cannot separate `{1,1,1,1,1}` from `{2,3}` (both sum to 5). One more: if I merge the
+center atom into the neighbor bag and sum the flat multiset, I lose which element was the root — the
+middle of `a–b–b` and of `b–a–b` both become `{a,b,b}` — so I tag the center, `(1+ε)·h_v + Σ_u h_u`,
+which stays injective for irrational `ε` and is a learnable scalar in practice. The maximally expressive
+fill is therefore: sum the neighbors, add `(1+ε)` times the center, push through an MLP, and read out by
+summing (ideally over every layer, jumping-knowledge style).
+
+So the theory points hard at *sum* pooling and a sum readout. But I am building the **scaffold's starter
+fill**, and it deliberately departs from the theoretical maximum in three ways, each of which I'll keep,
+because the point of rung one is a deliberately weak, honest floor — and I want the departures named so
+the next rung can react to them rather than to a paper. First, the per-layer message folds in the **bond
+features**: `msg = h_v[src] + edge_proj(e_vw)`, then summed into the destination atom. The clean WL-
+maximal GIN ignores edges entirely; here the edges (single/double/aromatic, conjugated, in-ring) are
+chemically load-bearing, so the message is edge-aware — an additive bond bias before the sum. Second,
+the per-layer aggregation over neighbors is a sum (good, injective), and the center is tagged by
+`(1+ε)`, so each `GINConv` is `MLP((1+ε)·x + Σ_{N(v)}(x[u]+edge))` with a BatchNorm inside the MLP —
+that part is faithful to the expressive recipe. Third — and this is the load-bearing weakness — the
+*graph readout is **mean** pooling*, `Σ_v h_v / |V|`, off the **last** layer only, not a sum and not
+concatenated across depths. By the ranking above, mean readout throws away exactly the multiplicity
+information sum keeps; on an unlabeled-degree sense it cannot tell a molecule from a scaled copy of its
+substructure distribution. The starter trades the provably-maximal readout for the simplest one. It also
+wraps the four layers in a residual stack (`x ← x + dropout(relu(norm(conv(x)))`)) so gradients flow and
+the encoder doesn't over-smooth, with hidden width 256, four layers, dropout 0.1, and a two-layer FFN
+head to the `num_tasks` logits.
+
+Let me reason about what this floor must do, because that is the entire reason to run it. The encoder is
+local: four rounds reach atoms four bonds away, and a drug-like molecule's diameter is often larger, so
+the pooled vector is a sum-then-*average* of local views and can miss anything genuinely global about the
+molecule. It is also data-hungry — it learns its whole representation from scratch against a few hundred
+to a few thousand labels — and it carries *no* external chemical prior, no pretrained weights, nothing
+the fixed-descriptor camp would hand it for free. On a *random* split a learned encoder this plain can
+still score by recognizing scaffolds it memorized; but the evaluation here is a **scaffold** split, so
+test molecules are structurally novel, and memorization buys nothing. Worse, the mean readout actively
+hurts on the scaffold split: averaging discards the size/count signal that often correlates with the
+property, and on a single-task binary target with a hard distribution shift between train and test
+scaffolds, a representation that only sees the *proportions* of local environments has very little to
+hold onto. I therefore expect this rung to be the weakest thing I can run by construction — a learned
+encoder with the lossiest readout in the family, no prior, and a receptive field smaller than the
+molecule.
+
+I expect the three datasets to split on how much the property is decided by *local* chemistry that mean-
+pooling of four-hop neighborhoods can still capture under a hard scaffold shift. Tox21 is twelve assays
+with a lot of molecules; even a weak local encoder gets enough signal that multi-task averaging should
+keep it well above chance — I'd expect it to be the best of the three for this rung. BACE is a single,
+fairly structured enzyme-inhibition target where local substructure matters a lot, so a local encoder
+should get meaningful traction. BBBP is the danger: a single binary target with a severe scaffold shift,
+where the property depends on global, whole-molecule physicochemistry (lipophilicity, polar surface
+area, size) that a four-hop *mean*-pooled GNN with no descriptors essentially cannot see — I would not be
+surprised if this rung lands near *chance* (ROC-AUC ≈ 0.5) on BBBP, because the encoder has been handed
+the one task its weaknesses (locality, lossy mean readout, no global prior) bite hardest, on the split
+that punishes memorization. If BBBP does collapse toward 0.5 while BACE and Tox21 stay well above it,
+the diagnosis is already written and points two ways at once: the readout is throwing away count
+information (swap mean for sum, and reach back to the raw bond identity instead of letting four tied-ish
+rounds wash it out), and there is a cheap global prior — molecule-level descriptors — sitting unused that
+would patch exactly the locality/no-prior failure on a task like BBBP. That is the next rung.
+
+So at rung one the encoder is settled and my edit is the *default* one: the scaffold's starter GIN —
+edge-aware sum-of-neighbors message with a `(1+ε)` center tag and an MLP, four residual layers with
+BatchNorm, **mean** pooling off the last layer, a two-layer head (the distilled module is in the
+answer). It is the floor by construction: maximally expressive in the message, deliberately lossy in the
+readout, local in receptive field, and prior-free — and on a scaffold split, on the task most decided by
+global physicochemistry, it should show me exactly how much a plain learned encoder leaves on the table.
+
+The causal chain in one breath: I want the simplest learned graph encoder whose representational power I
+can actually reason about, so I measure it against the WL test → no message-passing GNN beats WL, and it
+*reaches* WL only when aggregation, combine, and readout are injective, which forces sum over mean over
+max and an MLP over a single linear layer, with a `(1+ε)` center tag → but the scaffold's starter fill
+deliberately keeps the injective sum *message* (edge-aware) while using the lossy **mean** *readout* off
+the last layer, no jumping-knowledge, no external prior → so this floor is local (four hops < molecule
+diameter), data-hungry, and prior-free, and on a scaffold split it should be best on Tox21, decent on
+BACE, and near chance on BBBP — and that collapse is what forces, at rung two, a sum readout that keeps
+counts plus a global descriptor prior to patch the locality.
+</think>
+<say>
+[[FILL_SAY: 1-2 sentences naming the method and what this first edit does]]
+</say>
+<edit path="Uni-Mol/custom_molprop.py">
+<old>
+# =====================================================================
+
+class GINConv(nn.Module):
+</old>
+<new>
+class GINConv(nn.Module):
+</new>
+</edit>
+<obs>
+Successfully replaced text in Uni-Mol/custom_molprop.py.
+</obs>
+<note>
+[[FILL_NOTE?: optional one-line thought for this edit, or delete this block]]
+</note>
+<edit path="Uni-Mol/custom_molprop.py">
+<old>
+
+        return self.readout(graph_embed)
+
+# =====================================================================
+# EDITABLE SECTION END
+# =====================================================================
+</old>
+<new>
+
+        return self.readout(graph_embed)
+</new>
+</edit>
+<obs>
+Successfully replaced text in Uni-Mol/custom_molprop.py.
+</obs>
+<run/>
+<obs>
+Measured results — `baseline:gin` (`is_final,true`), seed 42.
+
+## ROC-AUC (higher is better)
+| seed | rocauc_BBBP | rocauc_BACE | rocauc_Tox21 |
+|---|---|---|---|
+| 42 | 0.509886 | 0.726135 | 0.747023 |
+| **mean** | **0.509886** | **0.726135** | **0.747023** |
+</obs>
+
+### step 2 — D-MPNN (directed message passing + RDKit features)   [slug:dmpnn]
+
+<think>
+[[POLISH_REASONING: adapt to first-person agentic voice, end by deciding to implement]]
+The starter GIN told me exactly what's missing, and it told me in numbers. BBBP came in at **0.5099** —
+that is *chance*; a coin flip would score the same. BACE held at 0.726 and Tox21 at 0.747, both clearly
+above chance, so the encoder can learn *something* — it is not broken across the board. The split is
+sharp and it is informative: the two tasks where local substructure carries the label (an enzyme-
+inhibition pocket in BACE, twelve toxicity assays in Tox21 with enough molecules that multi-task
+averaging stabilizes it) survive a weak local encoder; the single binary target whose answer is decided
+by *global* whole-molecule physicochemistry — does this thing cross the blood-brain barrier, which is
+mostly a story about lipophilicity, polar surface area, size — collapses to a coin flip on the scaffold
+split. So this is not a learning-rate problem and not a credit-assignment problem. It is two structural
+problems at once, both of which I can read straight off the GIN design: the readout *mean*-pools and
+throws away the count information sum keeps, and the four-hop receptive field with no external prior
+simply cannot see the global property that BBBP turns on. The 0.51 is the tell — the encoder had nothing
+global to hold onto and nothing to memorize on a scaffold split, so it guessed. I have to fix the message
+passing *and* hand the model the global prior it lacked.
+
+Take the message passing first, because there is a flaw in the GIN-style update deeper than the readout.
+The starter aggregates, for each atom, a sum over *all* its neighbors — including, at the next step, the
+atom it just sent a message to. Trace one edge between atoms 1 and 2. At step `t` atom 2 forms its
+message by summing over its neighbors, which includes atom 1, so `h_2^{t+1}` contains a piece of `h_1`.
+Next step atom 1 sums over *its* neighbors, which includes atom 2, so atom 1 pulls back `h_2^{t+1}` —
+the piece of `h_1` it just sent over. The message atom 1 sent out one bond has bounced right back along
+the same bond. Walks that go out and immediately back — `v→w→v`, the pattern `v_i = v_{i+2}` — are
+called *totters*; they bring in no new information, they re-mix what the atom already had, and they do it
+on every edge, every step. The representation gets steadily polluted with echoes of itself. That is not a
+corner case; it is the structural disease of *atom-centered* message passing, and it is one reason a
+plain GIN's deep features wash out into a uniform blob (which the residual stack only partly hides).
+
+I half-recognize the cure, because I've seen it in belief propagation: the message from node `v` to a
+neighbor `w` is built from everything `v` has heard *except* what came from `w`. That exclusion is the
+whole reason BP doesn't double-count. The atom-centered update violates it — it sums over all of `N(v)`
+with no exclusion, so it tells atom 1 what atom 1 just said. But to drop the offending term the update
+has to know which neighbor the message is *going to*, and a single hidden vector on an undirected atom is
+direction-blind. The state is in the wrong place. So move it onto **directed bonds**: keep `h_vw` and
+`h_wv` distinct. Now "the message heading from `v` out to `w`" is a first-class object, and I build it
+from the *other* directed bonds flowing into `v`, skipping the reverse:
+`m_vw = Σ_{k∈N(v)\w} h_kv`. The reverse message `h_wv` drops out by construction — exactly the term that
+caused the totter. This is the directed-edge form of the loopy-BP embedding; the atom-centered GIN was
+the *mean-field* embedding, the one with the totter. The choice between them is the choice between
+embedding mean-field and embedding loopy BP, and loopy BP is the one that respects the exclusion.
+
+Make the rest concrete. Initialize each directed bond from the atom it leaves and the bond's own
+features, `h_vw^0 = ReLU(W_i·[x_v ; e_vw])` — mixing source atom and bond features inside one matrix so
+their interaction survives (a double bond *in a ring* is different from a double bond *not* in a ring).
+The message function is trivial — the message along `k→v` is just `h_kv` — and all the learning sits in
+a tied update: `h_vw^{t+1} = ReLU(h_vw^0 + W_m·m_vw)`, the *same* `W_m` every round so depth is a free
+hyperparameter, and a skip back to `h_vw^0` at every step so the raw bond identity never washes out under
+the tied recurrence (the exact failure mode I just watched bite GIN's deep features). After `T` rounds I
+return to atoms by summing the directed bonds that *end* at each atom, `m_v = Σ_{w∈N(v)} h_wv`, re-inject
+the atom features, `h_v = ReLU(W_a·[x_v ; m_v])`, and — this is the second fix to GIN's readout — pool
+the atoms by **sum**, not mean. Sum is the injective multiset aggregator; mean keeps only the
+distribution, and the distribution is exactly what was insufficient on BBBP. The molecule vector `Σ_v h_v`
+keeps the counts.
+
+The exclusion looks expensive — for every directed bond, sum over the source atom's neighbors minus one —
+but it factors. The sum over `N(v)\w` is the sum over *all* of `N(v)` minus the one excluded term, and
+the sum over all incoming bonds at `v` doesn't depend on `w`: compute `a_v = Σ_{k∈N(v)} h_kv` once per
+atom, then for each outgoing bond `v→w` the message is `a_v − h_wv`. One subtraction per bond. To find
+the reverse bond instantly, store bonds in adjacent forward/reverse pairs so the reverse of bond `e` is
+`e XOR 1` — and the scaffold's `edge_index` already lays bonds out this way, so the directed scheme costs
+essentially the same as a plain atom aggregation. The architectural advantage is free.
+
+Now the part that directly attacks BBBP's 0.51. Even fixed, this is a *local, data-hungry, prior-free*
+encoder — `T≈3` hops is still smaller than a drug-molecule's diameter, and BBBP's answer lives in global
+physicochemistry the message passing cannot reach in three hops, on a few hundred training molecules.
+There is a cheap external source of exactly that global, prior-laden chemical knowledge sitting unused:
+molecule-level RDKit 2D descriptors. The fixed-descriptor camp would hand the model molecular weight,
+LogP, topological polar surface area, H-bond donor/acceptor counts, rotatable bonds, aromatic and
+aliphatic ring counts, fraction of sp3 carbons, heteroatom count, molar refractivity, Labute ASA — a
+compact set that *is* the lipophilicity/size/polarity story BBBP turns on. So compute a fixed-length
+RDKit descriptor vector per molecule and **concatenate it to the graph vector before the head**:
+`ŷ = head([h ; h_f])`. This is a hybrid — the learned message-passed `h` supplies task-specific, locally
+resolved structure; the fixed `h_f` supplies a global chemical prior that needs neither a large `T` nor
+much data. On a tiny single-target task like BBBP, `h_f` is the regularizer that hands the model a view
+of chemistry it could never learn from a few hundred scaffolds, and it reaches across the molecule where
+three-hop message passing cannot. This is the patch for precisely the failure I measured.
+
+The descriptors have wildly different scales — a molecular weight in the hundreds next to a fraction in
+`[0,1]` next to an integer ring count — so I must standardize them before they meet the head, or the
+large-range features drown the small ones. The clean version would map each through its CDF (a percentile
+in `[0,1]`, identical in meaning across features, immune to outliers and to non-normal count
+distributions), fit on a large background once. In *this* task's edit surface I approximate that with a
+BatchNorm-style running normalizer on the descriptor branch: a per-feature running mean/std updated as
+batches arrive, so train and test see the same scaling — the streaming standardization, not a precomputed
+CDF table. One honest limitation I'll respect rather than hide: the harness only reliably exposes SMILES
+to this branch through `batch._smiles`; when that attribute is absent the descriptor branch falls back to
+a zero vector, and after the running normalizer that contributes nothing, leaving the pure GNN branch — so
+the descriptor lift is real where SMILES are available and gracefully absent where they are not. I also
+keep the descriptor set deliberately compact (the seventeen above) rather than the full few-hundred CDF-
+normalized panel, because the compact set is the chemically load-bearing subset and is robust to compute
+in-loop.
+
+The remaining knobs follow from something, not a hat. Depth `T = 3`: enough hops to build a useful local
+environment around each atom without the tied recurrence over-smoothing or, even with the skip,
+washing out distinctions — and the cost is linear in `T`. Hidden width 300, the usual sweet spot for
+these molecule sizes. **Sum** pooling for the graph readout (keeps counts), with the head a two-layer FFN
+over `[h ; h_f]`. Dropout I'll leave near zero by default and let the driver lift it per dataset where
+overfitting bites — the small single-target sets (BACE, BBBP) want a little, the regression-style targets
+more. The loss is the fixed pipeline's masked BCE for the multi-task Tox21 (absent assays contribute no
+gradient), and the scaffold split stays — the architecture and the evaluation are answering the same
+question (does the representation transfer to new chemistry) from two ends.
+
+So the delta from rung one is concrete: where GIN summed over *all* neighbors (tottering) and mean-pooled
+(losing counts) with no global prior, I move the state onto directed bonds and exclude the reverse
+message (BP-style, no totter), add the tied-update-plus-skip so depth is free and bond identity survives,
+**sum**-pool to keep counts, and concatenate a running-normalized RDKit descriptor vector so the global
+physicochemistry BBBP needs is handed in directly. Reading GIN's shape, here is what I expect and where
+I'm exposed. BBBP is the falsifiable claim: GIN sat at chance (0.51); if the descriptor branch is really
+supplying the global prior BBBP turns on, BBBP should move *clearly off chance* — it is the metric that
+most directly tests the diagnosis, and if BBBP stays near 0.5 my story about "global prior fixes it" is
+wrong. BACE should at least hold and likely improve as the directed message passing kills the totter
+that was muddying its local substructure. Tox21 I expect to hold around GIN's 0.75 or edge up — it had
+the most data and was never the bottleneck. The risk I can already name: the descriptor branch only helps
+where `batch._smiles` is exposed, and if it is *not* exposed at finetune the model is just a directed-bond
+MPNN with sum pooling — better than GIN's tottering mean-pool encoder, but without the global lift, in
+which case BBBP improves only modestly rather than dramatically. If *that* is what I see, the diagnosis
+for the next rung is already written: the cure isn't more 2D graph machinery at all, it's the *3D
+geometry* the property actually depends on, plus pretraining to escape the data-hunger — feed the model
+atoms-in-space instead of a 2D graph.
+
+The causal chain in one breath: GIN's measured failure is structural — chance (0.51) on BBBP because a
+*mean*-pooled, four-hop, prior-free encoder cannot see global physicochemistry, while BACE (0.73) and
+Tox21 (0.75) survive on local substructure → fix the message passing by moving state onto directed bonds
+and excluding the reverse term (`m_vw = a_v − h_wv`), killing the totter, with a tied update plus skip so
+depth is free and bond identity survives → fix the readout by **sum**-pooling to keep the counts mean
+threw away → patch the locality/no-prior gap that BBBP exposed by concatenating a running-normalized RDKit
+2D descriptor vector (the global lipophilicity/polarity/size prior), dropping gracefully to the pure GNN
+where SMILES aren't exposed → expecting BBBP to move clearly off chance, BACE to hold/improve, Tox21 to
+hold — and if BBBP barely moves, the next rung must abandon 2D graphs for the 3D geometry plus pretraining.
+</think>
+<say>
+[[FILL_SAY: 1-2 sentences naming the method and what this first edit does]]
+</say>
+<edit path="Uni-Mol/custom_molprop.py">
+<old>
+class GINConv(nn.Module):
+    """Graph Isomorphism Network convolution layer."""
+
+    def __init__(self, in_dim, out_dim, edge_dim):
+        super().__init__()
+        self.mlp = nn.Sequential(
+            nn.Linear(in_dim, out_dim),
+            nn.BatchNorm1d(out_dim),
+            nn.ReLU(),
+            nn.Linear(out_dim, out_dim),
+        )
+        self.edge_proj = nn.Linear(edge_dim, in_dim)
+        self.eps = nn.Parameter(torch.zeros(1))
+
+    def forward(self, x, edge_index, edge_attr, batch_idx):
+        """
+        x: [total_atoms, in_dim]
+        edge_index: [2, total_edges]
+        edge_attr: [total_edges, edge_dim]
+</old>
+<new>
+# =====================================================================
+# EDITABLE SECTION START — D-MPNN: Directed Message Passing Neural Network
+# =====================================================================
+
+from rdkit.Chem import Descriptors as _Descriptors
+from rdkit.Chem import rdMolDescriptors as _rdMolDescriptors
+from rdkit.Chem import MolFromSmiles as _MolFromSmiles
+
+
+# --------------------- RDKit 2D molecular descriptors -----------------
+# A compact subset of normalized RDKit 2D descriptors that have been
+# shown to improve D-MPNN on physicochemical / biophysical tasks (Yang
+# et al. 2019, "rdkit_2d_normalized" features generator).  We compute
+# them once per SMILES and per-feature standardize using running stats
+# accumulated over the training batches — a robust approximation of
+# chemprop's pre-computed Welford normalization.
+
+def _rdkit_2d_descriptors(smi):
+    """Compute a fixed-length RDKit 2D descriptor vector for a SMILES."""
+    if not smi:
+        return [0.0] * 17
+    mol = _MolFromSmiles(smi)
+    if mol is None:
+        return [0.0] * 17
+    feats = [
+        _Descriptors.MolWt(mol),
+        _Descriptors.MolLogP(mol),
+        _Descriptors.NumHDonors(mol),
+        _Descriptors.NumHAcceptors(mol),
+        _Descriptors.TPSA(mol),
+        _Descriptors.NumRotatableBonds(mol),
+        _Descriptors.NumAromaticRings(mol),
+        _Descriptors.NumAliphaticRings(mol),
+        _Descriptors.HeavyAtomCount(mol),
+        _Descriptors.RingCount(mol),
+        _Descriptors.FractionCSP3(mol),
+        _Descriptors.NumHeteroatoms(mol),
+        _rdMolDescriptors.CalcNumSaturatedRings(mol),
+        _rdMolDescriptors.CalcNumAromaticHeterocycles(mol),
+        _rdMolDescriptors.CalcNumAliphaticHeterocycles(mol),
+        _Descriptors.MolMR(mol),
+        _Descriptors.LabuteASA(mol),
+    ]
+    # NaN / inf guard
+    cleaned = []
+    for v in feats:
+        try:
+            v = float(v)
+            if math.isnan(v) or math.isinf(v):
+                v = 0.0
+        except Exception:
+            v = 0.0
+        cleaned.append(v)
+    return cleaned
+
+
+_RDKIT_FEAT_DIM = 17
+
+
+class _RunningNormalizer(nn.Module):
+    """Running mean/std normalizer for RDKit features (BatchNorm-style)."""
+
+    def __init__(self, dim, momentum=0.01):
+        super().__init__()
+        self.dim = dim
+        self.momentum = momentum
+        self.register_buffer('running_mean', torch.zeros(dim))
+        self.register_buffer('running_std', torch.ones(dim))
+
+    def forward(self, x):
+        if self.training:
+            with torch.no_grad():
+                mean = x.mean(dim=0)
+                std = x.std(dim=0).clamp(min=1e-6)
+                self.running_mean.mul_(1 - self.momentum).add_(self.momentum * mean)
+                self.running_std.mul_(1 - self.momentum).add_(self.momentum * std)
+        return (x - self.running_mean) / self.running_std.clamp(min=1e-6)
+
+
+class DMPNNEncoder(nn.Module):
+    """Directed Message Passing Neural Network (Yang et al., 2019).
+
+    Bond-level messages flow along directed edges; each message passing step
+    computes new edge messages from incoming atom messages minus the reverse
+    edge contribution to avoid message collision.
+    """
+
+    def __init__(self, atom_dim, edge_dim, hidden_dim=300, depth=3, dropout=0.0):
+        super().__init__()
+        self.hidden_dim = hidden_dim
+        self.depth = depth
+
+        # Initial bond message: linear over [atom_src || bond_attr]
+        self.W_i = nn.Linear(atom_dim + edge_dim, hidden_dim, bias=False)
+        # Shared message-update weight (chemprop default)
+        self.W_h = nn.Linear(hidden_dim, hidden_dim, bias=False)
+        # Final atom-level readout combine
+        self.W_o = nn.Linear(atom_dim + hidden_dim, hidden_dim)
+        self.dropout = nn.Dropout(dropout)
+        self.act = nn.ReLU()
+
+    def forward(self, x, edge_index, edge_attr, batch_idx):
+        """
+        x: [total_atoms, atom_dim]
+        edge_index: [2, total_edges] (bidirectional, paired as [i,j],[j,i])
+        edge_attr: [total_edges, edge_dim]
+</new>
+</edit>
+<obs>
+Successfully replaced text in Uni-Mol/custom_molprop.py.
+</obs>
+<note>
+[[FILL_NOTE?: optional one-line thought for this edit, or delete this block]]
+</note>
+<edit path="Uni-Mol/custom_molprop.py">
+<old>
+        src, dst = edge_index
+        edge_msg = self.edge_proj(edge_attr)
+        msg = x[src] + edge_msg
+
+        # Aggregate messages to destination nodes
+        agg = torch.zeros_like(x)
+        agg.index_add_(0, dst, msg)
+
+        out = self.mlp((1 + self.eps) * x + agg)
+        return out
+
+
+class MoleculeModel(nn.Module):
+    """Starter model: Graph Isomorphism Network (GIN) with mean pooling.
+
+    Simple but effective baseline for molecular property prediction.
+    Uses message passing on the molecular graph with learned edge features.
+    """
+</old>
+<new>
+        src, dst = edge_index
+        num_atoms = x.size(0)
+        num_edges = edge_index.size(1)
+
+        if num_edges == 0:
+            # Fallback for atom-only molecules
+            atom_hidden = self.act(self.W_o(torch.cat([x, torch.zeros(num_atoms, self.hidden_dim, device=x.device)], dim=-1)))
+            return self.dropout(atom_hidden)
+
+        # Reverse edge index: edges are added in pairs (i->j, j->i),
+        # so reverse of edge e is e XOR 1.
+        rev_edge_idx = torch.arange(num_edges, device=x.device) ^ 1
+        rev_edge_idx = rev_edge_idx.clamp(max=num_edges - 1)
+
+        # Initial bond input: source atom features concatenated with bond features
+        bond_input = torch.cat([x[src], edge_attr], dim=-1)
+        h0 = self.act(self.W_i(bond_input))  # [num_edges, hidden]
+        h = h0
+
+        # Message passing for depth-1 steps (chemprop convention)
+        for _ in range(self.depth - 1):
+            # Aggregate incoming messages to each atom
+            atom_msg = torch.zeros(num_atoms, self.hidden_dim, device=x.device)
+            atom_msg.index_add_(0, dst, h)
+
+            # New edge message: a_v - h_{v->u}^{rev} (avoid passing back)
+            new_h = atom_msg[src] - h[rev_edge_idx]
+            new_h = self.W_h(new_h)
+            # Residual on h0 (chemprop style)
+            new_h = self.act(h0 + new_h)
+            new_h = self.dropout(new_h)
+            h = new_h
+
+        # Final atom messages
+        atom_msg = torch.zeros(num_atoms, self.hidden_dim, device=x.device)
+        atom_msg.index_add_(0, dst, h)
+
+        # Combine atom features with aggregated bond messages
+        atom_hidden = self.act(self.W_o(torch.cat([x, atom_msg], dim=-1)))
+        atom_hidden = self.dropout(atom_hidden)
+        return atom_hidden
+
+
+class MoleculeModel(nn.Module):
+    """D-MPNN with RDKit 2D normalized molecular descriptors.
+
+    Configuration follows Yang et al. 2019 chemprop defaults:
+      - hidden_dim = 300
+      - depth = 3 message passing steps
+      - sum readout per graph
+      - 2-layer FFN head with hidden=300
+      - RDKit 2D descriptors concatenated at the readout ("+features" mode)
+    """
+</new>
+</edit>
+<obs>
+Successfully replaced text in Uni-Mol/custom_molprop.py.
+</obs>
+<note>
+[[FILL_NOTE?: optional one-line thought for this edit, or delete this block]]
+</note>
+<edit path="Uni-Mol/custom_molprop.py">
+<old>
+        self.task_type = task_type
+        hidden_dim = 256
+        num_layers = 4
+
+        self.atom_embed = nn.Linear(atom_dim, hidden_dim)
+        self.convs = nn.ModuleList([
+            GINConv(hidden_dim, hidden_dim, edge_dim) for _ in range(num_layers)
+        ])
+        self.norms = nn.ModuleList([
+            nn.BatchNorm1d(hidden_dim) for _ in range(num_layers)
+        ])
+        self.dropout = nn.Dropout(0.1)
+
+        self.readout = nn.Sequential(
+            nn.Linear(hidden_dim, hidden_dim),
+            nn.ReLU(),
+            nn.Dropout(0.1),
+            nn.Linear(hidden_dim, num_tasks),
+        )
+
+    def forward(self, batch):
+        """
+        Args:
+            batch: MolBatch with sparse graph data.
+        Returns:
+            predictions: [B, num_tasks]
+        """
+        x = self.atom_embed(batch.x)
+
+        for conv, norm in zip(self.convs, self.norms):
+            x_new = conv(x, batch.edge_index, batch.edge_attr, batch.batch_idx)
+            x_new = norm(x_new)
+            x_new = F.relu(x_new)
+            x = x + self.dropout(x_new)  # residual
+
+        # Mean pooling per graph
+        num_graphs = batch.batch_idx.max().item() + 1
+        graph_embed = torch.zeros(num_graphs, x.size(-1), device=x.device)
+        counts = torch.zeros(num_graphs, 1, device=x.device)
+        graph_embed.index_add_(0, batch.batch_idx, x)
+        counts.index_add_(0, batch.batch_idx, torch.ones(x.size(0), 1, device=x.device))
+        graph_embed = graph_embed / counts.clamp(min=1)
+
+        return self.readout(graph_embed)
+</old>
+<new>
+        self.task_type = task_type
+        hidden_dim = 300
+        depth = 3
+        # `pooler_dropout` may be set by the training driver to vary dropout
+        # per dataset (e.g. BACE/Tox21=0.1, BBBP=0.0, regression tasks=0.1-0.2)
+        dropout = float(getattr(type(self), "pooler_dropout", 0.0))
+
+        self.encoder = DMPNNEncoder(
+            atom_dim=atom_dim,
+            edge_dim=edge_dim,
+            hidden_dim=hidden_dim,
+            depth=depth,
+            dropout=dropout,
+        )
+
+        # RDKit 2D descriptor branch
+        self.feat_norm = _RunningNormalizer(_RDKIT_FEAT_DIM)
+
+        # 2-layer FFN head over [graph_embed || rdkit_features]
+        readout_in = hidden_dim + _RDKIT_FEAT_DIM
+        self.readout = nn.Sequential(
+            nn.Linear(readout_in, hidden_dim),
+            nn.ReLU(),
+            nn.Dropout(dropout),
+            nn.Linear(hidden_dim, num_tasks),
+        )
+
+        # Lazy SMILES->feature cache (shared across forward calls)
+        self._smi_cache = {}
+
+    def _batch_rdkit_features(self, batch):
+        """Compute RDKit features for the molecules in this batch.
+
+        Uses LMDB SMILES via the dataset wrapper.  When SMILES are not
+        available (no `_smiles` attr), falls back to a zero vector — the
+        running normalizer will then produce zeros, leaving the GNN
+        branch unaffected.
+        """
+        smiles = getattr(batch, "_smiles", None)
+        if smiles is None:
+            num_graphs = int(batch.batch_idx.max().item()) + 1
+            return torch.zeros(num_graphs, _RDKIT_FEAT_DIM,
+                               device=batch.x.device)
+
+        feats = []
+        for smi in smiles:
+            if smi in self._smi_cache:
+                feats.append(self._smi_cache[smi])
+            else:
+                f = _rdkit_2d_descriptors(smi)
+                self._smi_cache[smi] = f
+                feats.append(f)
+        return torch.tensor(feats, dtype=torch.float32, device=batch.x.device)
+
+    def forward(self, batch):
+        atom_hidden = self.encoder(batch.x, batch.edge_index, batch.edge_attr, batch.batch_idx)
+
+        # Sum pooling per graph (chemprop default)
+        num_graphs = int(batch.batch_idx.max().item()) + 1
+        graph_embed = torch.zeros(num_graphs, atom_hidden.size(-1), device=atom_hidden.device)
+        graph_embed.index_add_(0, batch.batch_idx, atom_hidden)
+
+        # RDKit feature branch (per-graph)
+        rdkit_feats = self._batch_rdkit_features(batch)
+        rdkit_feats = self.feat_norm(rdkit_feats)
+
+        combined = torch.cat([graph_embed, rdkit_feats], dim=-1)
+        return self.readout(combined)
+
+# =====================================================================
+# EDITABLE SECTION END
+# =====================================================================
+</new>
+</edit>
+<obs>
+Successfully replaced text in Uni-Mol/custom_molprop.py.
+</obs>
+<run/>
+<obs>
+Measured results — `baseline:dmpnn` (`is_final,true`), seed 42.
+
+## ROC-AUC (higher is better)
+| seed | rocauc_BBBP | rocauc_BACE | rocauc_Tox21 |
+|---|---|---|---|
+| 42 | 0.598573 | 0.688054 | 0.713105 |
+| **mean** | **0.598573** | **0.688054** | **0.713105** |
+</obs>
+
+### step 3 — Uni-Mol (pretrained SE(3)-invariant 3D Transformer)   [slug:unimol]
+
+<think>
+[[POLISH_REASONING: adapt to first-person agentic voice, end by deciding to implement]]
+The D-MPNN numbers are the breakthrough I was watching for on BBBP — and they are disappointing
+everywhere else in a way that names the next move exactly. BBBP moved off chance: from GIN's **0.510** to
+**0.599**. So the diagnosis was right in direction — the global RDKit descriptor prior pulled the single-
+target task whose answer is global physicochemistry up off the coin flip. But 0.599 is a weak win, not
+the decisive one I expected if the descriptor branch were fully delivering its lipophilicity/polarity/
+size signal, which is exactly the risk I flagged: the descriptor branch only contributes where
+`batch._smiles` is exposed, and a BBBP that climbs to only ~0.60 rather than ~0.70 reads as the global
+prior arriving partially, with the directed-bond encoder carrying most of the load. Worse, read the other
+two rows: BACE *fell* from 0.726 to **0.688** and Tox21 *fell* from 0.747 to **0.713**. The directed-bond
+fix and the sum readout did not buy anything on the tasks where the 2D graph was already doing fine —
+they slightly hurt. That is the tell. I have now spent two rungs entirely inside the 2D bond graph, and
+the 2D bond graph has a ceiling: BACE and Tox21 do not move up no matter how I rearrange message passing,
+and BBBP creeps but does not leap. The information the 2D graph throws away is the *geometry* — and that
+is not a thing I can recover by tweaking aggregation, because it was never in the input.
+
+So step back to what the property actually depends on. Whether a molecule crosses the blood-brain
+barrier, inhibits an enzyme, is toxic in an assay — every one of these is decided by how the atoms sit in
+*space*: which groups are close enough to touch, the shape that fits or doesn't fit a binding site. A 2D
+bond graph has thrown that away before the encoder ever sees it. Two atoms can be many bonds apart yet
+sit right next to each other in folded 3D space and interact strongly — a hydrogen bond across a ring,
+two aromatic groups stacking — and a message-passing GNN that only talks along bonds *structurally
+cannot* see that contact. That is the real ceiling under BACE and Tox21. And there is a second wall I
+keep hitting: data. These sets are a few hundred to a few thousand molecules; an encoder learning its
+whole representation from scratch overfits the artifacts of a tiny training set. The fix for *that* is
+the recipe that made BERT and ViT work — pretrain a representation on an essentially unlimited pile of
+unlabeled molecules, then finetune a light head. The scaffold even hands me a pretrained checkpoint
+inside the container. So the next rung is not more 2D graph machinery; it is an encoder whose input *is*
+the 3D structure, pretrained at scale, finetuned here. Both walls — geometry and data-hunger — fall to
+the same move.
+
+The first instinct is a 3D graph net, but locality is exactly wrong: I want *every* atom able to look at
+*every* other atom, because the interactions that decide the property are long-range in bond-distance.
+That is what self-attention gives for free — a Transformer treats its input as a fully-connected set,
+every atom token attending to every other. And a set is the right object: atoms have no canonical order,
+attention is permutation-equivariant over them, and a `[CLS]` readout gives an order-invariant molecule
+vector. So the backbone is a Transformer, not a local GNN — which also flips the very thing that capped
+the 2D rungs (bonded-only message passing) into full connectivity.
+
+But a Transformer is position-blind: `softmax(QKᵀ/√d)V` depends only on the set of token features, not on
+where any atom is. In language you add a positional encoding indexed by a *discrete* integer slot. My
+position is a *continuous* 3D coordinate, and one I cannot use raw: rotate or translate the whole
+molecule — which changes nothing about its chemistry — and every absolute coordinate changes, so the
+model would waste capacity learning that a molecule and its rotated copy are the same. So I need to inject
+3D position in a way that is continuous *and* invariant to global rotation and translation (SE(3)). The
+clean way to inject structure into a Transformer without breaking full connectivity is the Graphormer
+move: don't touch the architecture, add a learnable per-pair bias to the attention logits,
+`A_ij = QᵢKⱼᵀ/√d + b_{φ(i,j)}`. The slot is right — geometry enters as a number added to `QKᵀ` before the
+softmax — but Graphormer's bias is keyed by shortest-path distance and discrete bond features, all 2D
+topology, with nowhere to put a continuous Euclidean distance and nothing rotation-invariant in it. So
+the question sharpens: what continuous, SE(3)-invariant per-pair quantity goes in that bias slot?
+
+Stare at the coordinates. Anything involving an *absolute* coordinate moves under a rigid motion. What
+survives any rotation and translation of the whole molecule is the *relative* geometry, and the simplest
+invariant of a pair of points is the Euclidean distance `d_ij = ‖xᵢ − xⱼ‖`. Build the per-pair bias
+purely out of pairwise distances and I get SE(3)-invariance *for free*, with none of the heavy
+equivariant-tensor machinery (tensor field networks, SE(3)-Transformers) that would be the wrong price at
+pretraining scale. By choosing the *invariant* of the coordinate rather than trying to be equivariant to
+it, I keep the cost close to a vanilla Transformer.
+
+What function of `d_ij`? One scalar per pair, fed through layers and eventually backprop targets, so I
+want a smooth, expressive featurization — evaluate the distance against a bank of `K` learnable Gaussians
+with means `μᵏ` and widths `σᵏ`: the vector `(G(d_ij,μ¹,σ¹),…,G(d_ij,μᴷ,σᴷ))` is a soft one-hot of where
+on the distance axis the pair lives. Gaussians over bins because the encoding must be differentiable in
+`d` (so coordinates can be a target, which matters for pretraining) and free of bin-boundary artifacts.
+And a bare distance kernel says a C–C pair at 1.5 Å and a C–O pair at 1.5 Å are encoded *identically* —
+clearly wrong, the chemistry differs. So make the kernel pair-type-aware: apply a per-pair-type affine
+`a_t·d + b_t` to the distance *before* the Gaussian basis, with `a_t, b_t` learnable scalars indexed by
+the unordered pair of element types. The same number of Ångströms then lands at a different position on
+the shared ruler for different pair types. (Pair type from the atom identities, not the bond — I am
+living without the 2D bond.) The `K` Gaussian channels project down to one bias per head with a small
+MLP, and that bias is added into the attention logits exactly in Graphormer's slot — continuous and
+SE(3)-invariant now, not a discrete shortest-path scalar. This is the pair-to-atom communication:
+geometry steers which atoms each atom attends to.
+
+The pair feature should not stay frozen, though. The distance is fixed by the conformer, but the
+*meaning* of a pair's interaction is what the model figures out as it processes the molecule — and that
+figuring-out lives in the atom representations while the pair channel sits at its initial geometric value.
+There is a per-pair, per-layer quantity that already captures "how strongly do these two atoms interact
+right now": the query-key product `QᵢKⱼᵀ`. So let the atoms write back into the pairs — add the current
+per-head `QᵢKⱼᵀ` into the pair representation each layer, residually. Now the two channels genuinely talk:
+the pair feature biases attention (pair→atom) and the attention's affinity refines the pair feature
+(atom→pair), layer after layer, and the residual accumulation makes `q^L − q^0` the *learned correction*
+to the raw geometry. The cost stays small because the QK product is already computed.
+
+Optimization stability is not a detail at this scale — the pretraining ran for a very long schedule over
+hundreds of millions of conformers, and I am finetuning a 15-layer, 512-dim, 64-head, ~86M-parameter
+encoder, so the block has to be the stable variant. Post-LN gives large gradients near the output at init
+and forces fragile warmup; Pre-LN puts the norm inside the residual branch, well-behaved at init. So each
+block is: normalize, self-attend with the pair bias, add; normalize, GELU feed-forward, add. The encoder
+tracks and updates the pair representation through the stack, so the attention bias entering each layer is
+the running pair feature, and the delta `q^L − q^0` falls out by subtraction.
+
+Now make it concrete *in this task's edit surface*, because the harness fixes everything but the
+`MoleculeModel` class, and what it exposes is narrower than the full framework. I do *not* build the
+pretraining loop, the masked-atom / noised-coordinate recovery objective, or the equivariant coordinate
+head here — those produced the checkpoint I am loading, but for property prediction I only consume the
+encoder and read out a molecule vector. So the fill is: a token embedding sized to the Uni-Mol dictionary
+(map each atom's element to its dictionary index from the 136-dim feature vector, prepend `[CLS]`, append
+`[SEP]`, pad with `[PAD]`); extend the distance matrix and mask for those two special tokens; form edge
+types as `token_i · dict_size + token_j`; run the edge-type Gaussian layer and project to per-head
+attention bias; embed tokens; run the Pre-LN encoder-with-pair; and read out the `[CLS]` token through a
+classification head. One faithful-but-thinner choice here: the head is a simple dropout-then-linear on the
+`[CLS]` representation — not the dense+tanh+dropout pooler — because at finetune the heavy pretrained
+trunk does the work and the simplest head transfers most cleanly. And the load step matters: I read the
+checkpoint, remap the fairseq/unicore key names to this flat module layout, copy every key whose shape
+matches (`embed_tokens`, the Gaussian layer, all 15 encoder layers), and skip the pretraining-only heads
+(LM head, distance head, coordinate projection) and any mismatch — falling back to from-scratch only if
+the checkpoint is absent. The pretrained weights are the entire point: they are how the encoder escapes
+the data-hunger that capped the 2D rungs.
+
+So the delta from rung two is total, not incremental: where D-MPNN passed messages along bonds in 2D and
+bolted on a global descriptor prior, I feed the model atoms-in-space, attend fully-connected with an
+SE(3)-invariant pair-type Gaussian distance bias, let geometry and attention co-refine through a Pre-LN
+encoder, read out `[CLS]`, and — crucially — start from weights pretrained on hundreds of millions of
+conformers. Reading the 2D rungs' shape, here are the falsifiable claims. BACE and Tox21 are the cleanest
+tests: both *fell* from GIN to D-MPNN (0.726→0.688, 0.747→0.713) because 2D message passing had hit its
+ceiling, so if geometry plus pretraining is the real lever, both should now *exceed* even GIN's numbers —
+BACE clearly above 0.726 and Tox21 above 0.747 — not merely recover D-MPNN's. BBBP is the harder claim:
+the descriptor prior got it to 0.599, and 3D geometry plus a pretrained trunk should push it higher
+still, comfortably off chance and above D-MPNN — though BBBP's severe scaffold shift on a single binary
+target means I expect the *smallest* absolute headroom there, so a BBBP around the low-0.70s with BACE in
+the mid-0.80s and Tox21 in the mid-0.70s would confirm the diagnosis: the win comes from the geometry the
+2D graph never had and the pretraining the small sets could never substitute for, and it is largest
+exactly where local-2D message passing was most starved. If instead BACE and Tox21 fail to clear GIN's
+marks, my story — that the 2D *input*, not the 2D *architecture*, was the ceiling — is wrong.
+
+The causal chain in one breath: D-MPNN's measured failure is a *2D-input* ceiling — BBBP crept off chance
+(0.510→0.599) on the descriptor prior but BACE and Tox21 *fell* (0.726→0.688, 0.747→0.713), so
+rearranging 2D message passing buys nothing where geometry is the missing signal → the property depends on
+how atoms sit in space and the small sets are data-starved, so move to a 3D-input encoder pretrained at
+scale → use a fully-connected Transformer (every atom sees every atom, long-range contacts visible),
+inject 3D position as a per-pair attention bias built from the SE(3)-invariant Euclidean distance through
+a pair-type-aware learnable Gaussian basis (Graphormer's slot, geometric contents) → let `QKᵀ` write back
+into the pair channel so geometry and attention co-refine, Pre-LN for stable finetuning, `[CLS]` readout,
+and load the pretrained checkpoint → expecting BACE and Tox21 to exceed even GIN's marks and BBBP to push
+past D-MPNN, with the largest gains where 2D message passing was most starved of geometry.
+</think>
+<say>
+[[FILL_SAY: 1-2 sentences naming the method and what this first edit does]]
+</say>
+<edit path="Uni-Mol/custom_molprop.py">
+<old>
+# =====================================================================
+# EDITABLE SECTION START — D-MPNN: Directed Message Passing Neural Network
+# =====================================================================
+
+from rdkit.Chem import Descriptors as _Descriptors
+from rdkit.Chem import rdMolDescriptors as _rdMolDescriptors
+from rdkit.Chem import MolFromSmiles as _MolFromSmiles
+
+
+# --------------------- RDKit 2D molecular descriptors -----------------
+# A compact subset of normalized RDKit 2D descriptors that have been
+# shown to improve D-MPNN on physicochemical / biophysical tasks (Yang
+# et al. 2019, "rdkit_2d_normalized" features generator).  We compute
+# them once per SMILES and per-feature standardize using running stats
+# accumulated over the training batches — a robust approximation of
+# chemprop's pre-computed Welford normalization.
+
+def _rdkit_2d_descriptors(smi):
+    """Compute a fixed-length RDKit 2D descriptor vector for a SMILES."""
+    if not smi:
+        return [0.0] * 17
+    mol = _MolFromSmiles(smi)
+    if mol is None:
+        return [0.0] * 17
+    feats = [
+        _Descriptors.MolWt(mol),
+        _Descriptors.MolLogP(mol),
+        _Descriptors.NumHDonors(mol),
+        _Descriptors.NumHAcceptors(mol),
+        _Descriptors.TPSA(mol),
+        _Descriptors.NumRotatableBonds(mol),
+        _Descriptors.NumAromaticRings(mol),
+        _Descriptors.NumAliphaticRings(mol),
+        _Descriptors.HeavyAtomCount(mol),
+        _Descriptors.RingCount(mol),
+        _Descriptors.FractionCSP3(mol),
+        _Descriptors.NumHeteroatoms(mol),
+        _rdMolDescriptors.CalcNumSaturatedRings(mol),
+        _rdMolDescriptors.CalcNumAromaticHeterocycles(mol),
+        _rdMolDescriptors.CalcNumAliphaticHeterocycles(mol),
+        _Descriptors.MolMR(mol),
+        _Descriptors.LabuteASA(mol),
+    ]
+    # NaN / inf guard
+    cleaned = []
+    for v in feats:
+        try:
+            v = float(v)
+            if math.isnan(v) or math.isinf(v):
+                v = 0.0
+        except Exception:
+            v = 0.0
+        cleaned.append(v)
+    return cleaned
+
+
+_RDKIT_FEAT_DIM = 17
+
+
+class _RunningNormalizer(nn.Module):
+    """Running mean/std normalizer for RDKit features (BatchNorm-style)."""
+
+    def __init__(self, dim, momentum=0.01):
+        super().__init__()
+        self.dim = dim
+        self.momentum = momentum
+        self.register_buffer('running_mean', torch.zeros(dim))
+        self.register_buffer('running_std', torch.ones(dim))
+
+    def forward(self, x):
+        if self.training:
+            with torch.no_grad():
+                mean = x.mean(dim=0)
+                std = x.std(dim=0).clamp(min=1e-6)
+                self.running_mean.mul_(1 - self.momentum).add_(self.momentum * mean)
+                self.running_std.mul_(1 - self.momentum).add_(self.momentum * std)
+        return (x - self.running_mean) / self.running_std.clamp(min=1e-6)
+
+
+class DMPNNEncoder(nn.Module):
+    """Directed Message Passing Neural Network (Yang et al., 2019).
+
+    Bond-level messages flow along directed edges; each message passing step
+    computes new edge messages from incoming atom messages minus the reverse
+    edge contribution to avoid message collision.
+    """
+
+    def __init__(self, atom_dim, edge_dim, hidden_dim=300, depth=3, dropout=0.0):
+        super().__init__()
+        self.hidden_dim = hidden_dim
+        self.depth = depth
+
+        # Initial bond message: linear over [atom_src || bond_attr]
+        self.W_i = nn.Linear(atom_dim + edge_dim, hidden_dim, bias=False)
+        # Shared message-update weight (chemprop default)
+        self.W_h = nn.Linear(hidden_dim, hidden_dim, bias=False)
+        # Final atom-level readout combine
+        self.W_o = nn.Linear(atom_dim + hidden_dim, hidden_dim)
+        self.dropout = nn.Dropout(dropout)
+        self.act = nn.ReLU()
+
+    def forward(self, x, edge_index, edge_attr, batch_idx):
+        """
+        x: [total_atoms, atom_dim]
+        edge_index: [2, total_edges] (bidirectional, paired as [i,j],[j,i])
+        edge_attr: [total_edges, edge_dim]
+        batch_idx: [total_atoms]
+        """
+        src, dst = edge_index
+        num_atoms = x.size(0)
+        num_edges = edge_index.size(1)
+
+        if num_edges == 0:
+            # Fallback for atom-only molecules
+            atom_hidden = self.act(self.W_o(torch.cat([x, torch.zeros(num_atoms, self.hidden_dim, device=x.device)], dim=-1)))
+            return self.dropout(atom_hidden)
+
+        # Reverse edge index: edges are added in pairs (i->j, j->i),
+        # so reverse of edge e is e XOR 1.
+        rev_edge_idx = torch.arange(num_edges, device=x.device) ^ 1
+        rev_edge_idx = rev_edge_idx.clamp(max=num_edges - 1)
+
+        # Initial bond input: source atom features concatenated with bond features
+        bond_input = torch.cat([x[src], edge_attr], dim=-1)
+        h0 = self.act(self.W_i(bond_input))  # [num_edges, hidden]
+        h = h0
+
+        # Message passing for depth-1 steps (chemprop convention)
+        for _ in range(self.depth - 1):
+            # Aggregate incoming messages to each atom
+            atom_msg = torch.zeros(num_atoms, self.hidden_dim, device=x.device)
+            atom_msg.index_add_(0, dst, h)
+
+            # New edge message: a_v - h_{v->u}^{rev} (avoid passing back)
+            new_h = atom_msg[src] - h[rev_edge_idx]
+            new_h = self.W_h(new_h)
+            # Residual on h0 (chemprop style)
+            new_h = self.act(h0 + new_h)
+            new_h = self.dropout(new_h)
+            h = new_h
+
+        # Final atom messages
+        atom_msg = torch.zeros(num_atoms, self.hidden_dim, device=x.device)
+        atom_msg.index_add_(0, dst, h)
+
+        # Combine atom features with aggregated bond messages
+        atom_hidden = self.act(self.W_o(torch.cat([x, atom_msg], dim=-1)))
+        atom_hidden = self.dropout(atom_hidden)
+        return atom_hidden
+
+
+class MoleculeModel(nn.Module):
+    """D-MPNN with RDKit 2D normalized molecular descriptors.
+
+    Configuration follows Yang et al. 2019 chemprop defaults:
+      - hidden_dim = 300
+      - depth = 3 message passing steps
+      - sum readout per graph
+      - 2-layer FFN head with hidden=300
+      - RDKit 2D descriptors concatenated at the readout ("+features" mode)
+    """
+
+    def __init__(self, atom_dim: int, edge_dim: int, num_tasks: int, task_type: str):
+        super().__init__()
+        self.num_tasks = num_tasks
+        self.task_type = task_type
+        hidden_dim = 300
+        depth = 3
+        # `pooler_dropout` may be set by the training driver to vary dropout
+        # per dataset (e.g. BACE/Tox21=0.1, BBBP=0.0, regression tasks=0.1-0.2)
+        dropout = float(getattr(type(self), "pooler_dropout", 0.0))
+
+        self.encoder = DMPNNEncoder(
+            atom_dim=atom_dim,
+            edge_dim=edge_dim,
+            hidden_dim=hidden_dim,
+            depth=depth,
+            dropout=dropout,
+        )
+
+        # RDKit 2D descriptor branch
+        self.feat_norm = _RunningNormalizer(_RDKIT_FEAT_DIM)
+
+        # 2-layer FFN head over [graph_embed || rdkit_features]
+        readout_in = hidden_dim + _RDKIT_FEAT_DIM
+        self.readout = nn.Sequential(
+            nn.Linear(readout_in, hidden_dim),
+            nn.ReLU(),
+            nn.Dropout(dropout),
+            nn.Linear(hidden_dim, num_tasks),
+        )
+
+        # Lazy SMILES->feature cache (shared across forward calls)
+        self._smi_cache = {}
+
+    def _batch_rdkit_features(self, batch):
+        """Compute RDKit features for the molecules in this batch.
+
+        Uses LMDB SMILES via the dataset wrapper.  When SMILES are not
+        available (no `_smiles` attr), falls back to a zero vector — the
+        running normalizer will then produce zeros, leaving the GNN
+        branch unaffected.
+        """
+        smiles = getattr(batch, "_smiles", None)
+        if smiles is None:
+            num_graphs = int(batch.batch_idx.max().item()) + 1
+            return torch.zeros(num_graphs, _RDKIT_FEAT_DIM,
+                               device=batch.x.device)
+
+        feats = []
+        for smi in smiles:
+            if smi in self._smi_cache:
+                feats.append(self._smi_cache[smi])
+            else:
+                f = _rdkit_2d_descriptors(smi)
+                self._smi_cache[smi] = f
+                feats.append(f)
+        return torch.tensor(feats, dtype=torch.float32, device=batch.x.device)
+
+    def forward(self, batch):
+        atom_hidden = self.encoder(batch.x, batch.edge_index, batch.edge_attr, batch.batch_idx)
+
+        # Sum pooling per graph (chemprop default)
+        num_graphs = int(batch.batch_idx.max().item()) + 1
+        graph_embed = torch.zeros(num_graphs, atom_hidden.size(-1), device=atom_hidden.device)
+        graph_embed.index_add_(0, batch.batch_idx, atom_hidden)
+
+        # RDKit feature branch (per-graph)
+        rdkit_feats = self._batch_rdkit_features(batch)
+        rdkit_feats = self.feat_norm(rdkit_feats)
+
+        combined = torch.cat([graph_embed, rdkit_feats], dim=-1)
+        return self.readout(combined)
+</old>
+<new>
+# =====================================================================
+# EDITABLE SECTION START — Uni-Mol: SE(3)-Invariant Molecular Transformer
+# =====================================================================
+
+import os as _os
+import logging as _logging
+
+_logger = _logging.getLogger(__name__)
+
+# --------------- Uni-Mol dictionary (mirrors dict.txt) ----------------
+# The pretrained model uses a token vocabulary.  We map atomic numbers
+# from the featurisation to dictionary indices so that we can re-use the
+# pretrained ``embed_tokens`` embedding and edge-type Gaussian layer.
+# dict.txt ordering:
+#   [PAD]=0, [CLS]=1, [SEP]=2, [UNK]=3, C=4, N=5, O=6, S=7, H=8,
+#   Cl=9, F=10, Br=11, I=12, Si=13, P=14, B=15, Na=16, K=17, Al=18,
+#   Ca=19, Sn=20, As=21, Hg=22, Fe=23, Zn=24, Cr=25, Se=26, Gd=27,
+#   Au=28, Li=29
+_ELEM_TO_DICT_IDX = {
+    6: 4, 7: 5, 8: 6, 16: 7, 1: 8, 17: 9, 9: 10, 35: 11,
+    53: 12, 14: 13, 15: 14, 5: 15, 11: 16, 19: 17, 13: 18,
+    20: 19, 50: 20, 33: 21, 80: 22, 26: 23, 30: 24, 24: 25,
+    34: 26, 64: 27, 79: 28, 3: 29,
+}
+_DICT_SIZE = 31  # 30 atoms + [MASK] token to match pretrained checkpoint
+_PAD_IDX = 0
+_CLS_IDX = 1
+_SEP_IDX = 2
+_UNK_IDX = 3
+
+
+def _atomic_num_from_features(atom_feat):
+    """Extract atomic number from the one-hot atom feature vector.
+    The first 118 elements encode atomic_num (1..118).
+    """
+    idx = atom_feat[:118].argmax().item()
+    if atom_feat[idx].item() < 0.5:
+        return 0
+    return idx + 1
+
+
+def _atoms_to_tokens(atom_features_dense, mask):
+    """Convert dense atom features [B, N, D] + mask [B, N] to token ids [B, N+2].
+    Prepends [CLS] and appends [SEP], matching the reference data pipeline.
+    Padding positions get PAD token.
+    """
+    B, N, D = atom_features_dense.shape
+    device = atom_features_dense.device
+
+    tokens = torch.full((B, N), _PAD_IDX, dtype=torch.long, device=device)
+    for b in range(B):
+        for i in range(N):
+            if mask[b, i].item() > 0.5:
+                anum = _atomic_num_from_features(atom_features_dense[b, i])
+                tokens[b, i] = _ELEM_TO_DICT_IDX.get(anum, _UNK_IDX)
+
+    cls_col = torch.full((B, 1), _CLS_IDX, dtype=torch.long, device=device)
+    sep_col = torch.full((B, 1), _SEP_IDX, dtype=torch.long, device=device)
+    tokens = torch.cat([cls_col, tokens, sep_col], dim=1)  # [B, N+2]
+    return tokens
+
+
+def _extend_dist_and_mask(dist_matrix, mask):
+    """Extend distance matrix and mask for [CLS] and [SEP] tokens.
+    Returns dist [B, N+2, N+2] and padding_mask [B, N+2] (True=pad).
+    """
+    B, N, _ = dist_matrix.shape
+    device = dist_matrix.device
+    dist = torch.zeros(B, N + 2, N + 2, device=device, dtype=dist_matrix.dtype)
+    dist[:, 1:N+1, 1:N+1] = dist_matrix
+
+    ext_mask = torch.zeros(B, N + 2, device=device, dtype=mask.dtype)
+    ext_mask[:, 0] = 1.0    # CLS always valid
+    ext_mask[:, 1:N+1] = mask
+    ext_mask[:, N+1] = 1.0  # SEP always valid
+
+    padding_mask = (ext_mask < 0.5)  # True = padded
+    return dist, padding_mask
+
+
+# -------------------- Gaussian Distance Encoding ---------------------
+
+@torch.jit.script
+def _gaussian(x, mean, std):
+    pi = 3.14159
+    a = (2.0 * pi) ** 0.5
+    return torch.exp(-0.5 * (((x - mean) / std) ** 2)) / (a * std)
+
+
+class GaussianLayer(nn.Module):
+    """Edge-type-dependent Gaussian distance encoding.
+    Each atom-pair type (i,j) has its own learned scaling (mul) and bias.
+    This is critical: it lets the model distinguish C-C, C-N, C-O etc.
+    """
+    def __init__(self, K=128, edge_types=1024):
+        super().__init__()
+        self.K = K
+        self.means = nn.Embedding(1, K)
+        self.stds = nn.Embedding(1, K)
+        self.mul = nn.Embedding(edge_types, 1)
+        self.bias = nn.Embedding(edge_types, 1)
+        nn.init.uniform_(self.means.weight, 0, 3)
+        nn.init.uniform_(self.stds.weight, 0, 3)
+        nn.init.constant_(self.bias.weight, 0)
+        nn.init.constant_(self.mul.weight, 1)
+
+    def forward(self, x, edge_type):
+        mul = self.mul(edge_type).type_as(x)
+        bias = self.bias(edge_type).type_as(x)
+        x = mul * x.unsqueeze(-1) + bias
+        x = x.expand(-1, -1, -1, self.K)
+        mean = self.means.weight.float().view(-1)
+        std = self.stds.weight.float().view(-1).abs() + 1e-5
+        return _gaussian(x.float(), mean, std).type_as(self.means.weight)
+
+
+# -------------------- Helper Heads -----------------------------------
+
+class NonLinearHead(nn.Module):
+    """Two-layer MLP with GELU activation for projecting Gaussian features."""
+    def __init__(self, input_dim, out_dim, hidden=None):
+        super().__init__()
+        hidden = input_dim if not hidden else hidden
+        self.linear1 = nn.Linear(input_dim, hidden)
+        self.linear2 = nn.Linear(hidden, out_dim)
+
+    def forward(self, x):
+        return self.linear2(F.gelu(self.linear1(x)))
+
+
+class ClassificationHead(nn.Module):
+    """Head for molecule-level prediction via [CLS] token.
+    Reference Uni-Mol uses simple dropout + linear (no hidden dense/tanh).
+    """
+    def __init__(self, input_dim, inner_dim, num_classes, pooler_dropout=0.2):
+        super().__init__()
+        self.dropout = nn.Dropout(p=pooler_dropout)
+        self.out_proj = nn.Linear(input_dim, num_classes)
+
+    def forward(self, features):
+        x = features[:, 0, :]  # [CLS] token
+        x = self.dropout(x)
+        return self.out_proj(x)
+
+
+# -------------------- Transformer Encoder With Pair -------------------
+
+class SelfMultiheadAttention(nn.Module):
+    """Multi-head self-attention with fused QKV projection."""
+    def __init__(self, embed_dim, num_heads, dropout=0.1):
+        super().__init__()
+        self.embed_dim = embed_dim
+        self.num_heads = num_heads
+        self.head_dim = embed_dim // num_heads
+        self.scaling = self.head_dim ** -0.5
+        self.dropout = dropout
+        self.in_proj = nn.Linear(embed_dim, embed_dim * 3)
+        self.out_proj = nn.Linear(embed_dim, embed_dim)
+
+    def forward(self, query, key_padding_mask=None, attn_bias=None,
+                return_attn=False):
+        bsz, tgt_len, _ = query.size()
+        q, k, v = self.in_proj(query).chunk(3, dim=-1)
+
+        def reshape(t):
+            return t.view(bsz, -1, self.num_heads, self.head_dim) \
+                    .transpose(1, 2).contiguous() \
+                    .view(bsz * self.num_heads, -1, self.head_dim)
+
+        q = reshape(q) * self.scaling
+        k = reshape(k)
+        v = reshape(v)
+        src_len = k.size(1)
+
+        attn_weights = torch.bmm(q, k.transpose(1, 2))
+
+        if key_padding_mask is not None:
+            attn_weights = attn_weights.view(bsz, self.num_heads, tgt_len, src_len)
+            attn_weights.masked_fill_(
+                key_padding_mask.unsqueeze(1).unsqueeze(2).to(torch.bool),
+                float("-inf"),
+            )
+            attn_weights = attn_weights.view(bsz * self.num_heads, tgt_len, src_len)
+
+        if not return_attn:
+            aw = attn_weights
+            if attn_bias is not None:
+                aw = aw + attn_bias
+            attn = F.dropout(F.softmax(aw, dim=-1),
+                             p=self.dropout, training=self.training)
+        else:
+            attn_weights = attn_weights + attn_bias
+            attn = F.dropout(F.softmax(attn_weights.clone(), dim=-1),
+                             p=self.dropout, training=self.training)
+
+        o = torch.bmm(attn, v)
+        o = o.view(bsz, self.num_heads, tgt_len, self.head_dim) \
+             .transpose(1, 2).contiguous() \
+             .view(bsz, tgt_len, self.embed_dim)
+        o = self.out_proj(o)
+        if not return_attn:
+            return o
+        return o, attn_weights, attn
+
+
+class UniMolEncoderLayer(nn.Module):
+    """Pre-LN Transformer encoder layer (matches reference)."""
+    def __init__(self, embed_dim, ffn_embed_dim, attention_heads,
+                 dropout=0.1, attention_dropout=0.1, activation_dropout=0.0):
+        super().__init__()
+        self.dropout = dropout
+        self.activation_dropout = activation_dropout
+        self.self_attn = SelfMultiheadAttention(
+            embed_dim, attention_heads, dropout=attention_dropout)
+        self.self_attn_layer_norm = nn.LayerNorm(embed_dim)
+        self.fc1 = nn.Linear(embed_dim, ffn_embed_dim)
+        self.fc2 = nn.Linear(ffn_embed_dim, embed_dim)
+        self.final_layer_norm = nn.LayerNorm(embed_dim)
+
+    def forward(self, x, padding_mask=None, attn_bias=None, return_attn=False):
+        residual = x
+        x = self.self_attn_layer_norm(x)
+        x = self.self_attn(query=x, key_padding_mask=padding_mask,
+                           attn_bias=attn_bias, return_attn=return_attn)
+        if return_attn:
+            x, attn_weights, attn_probs = x
+        x = F.dropout(x, p=self.dropout, training=self.training)
+        x = residual + x
+
+        residual = x
+        x = self.final_layer_norm(x)
+        x = F.gelu(self.fc1(x))
+        x = F.dropout(x, p=self.activation_dropout, training=self.training)
+        x = self.fc2(x)
+        x = F.dropout(x, p=self.dropout, training=self.training)
+        x = residual + x
+
+        if not return_attn:
+            return x
+        return x, attn_weights, attn_probs
+
+
+class TransformerEncoderWithPair(nn.Module):
+    """Transformer encoder that tracks and updates pair (attention bias)
+    representations through layers — a key Uni-Mol architectural feature.
+    """
+    def __init__(self, encoder_layers, embed_dim, ffn_embed_dim,
+                 attention_heads, emb_dropout=0.1, dropout=0.1,
+                 attention_dropout=0.1, activation_dropout=0.0):
+        super().__init__()
+        self.emb_dropout = emb_dropout
+        self.embed_dim = embed_dim
+        self.attention_heads = attention_heads
+        self.emb_layer_norm = nn.LayerNorm(embed_dim)
+        self.final_layer_norm = nn.LayerNorm(embed_dim)
+        self.final_head_layer_norm = nn.LayerNorm(attention_heads)
+        self.layers = nn.ModuleList([
+            UniMolEncoderLayer(
+                embed_dim=embed_dim, ffn_embed_dim=ffn_embed_dim,
+                attention_heads=attention_heads, dropout=dropout,
+                attention_dropout=attention_dropout,
+                activation_dropout=activation_dropout,
+            )
+            for _ in range(encoder_layers)
+        ])
+
+    def forward(self, emb, attn_mask=None, padding_mask=None):
+        bsz, seq_len = emb.size(0), emb.size(1)
+        x = self.emb_layer_norm(emb)
+        x = F.dropout(x, p=self.emb_dropout, training=self.training)
+
+        if padding_mask is not None:
+            x = x * (1 - padding_mask.unsqueeze(-1).type_as(x))
+
+        input_attn_mask = attn_mask
+        input_padding_mask = padding_mask
+
+        def fill_attn_mask(am, pm, fill_val=float("-inf")):
+            if am is not None and pm is not None:
+                am = am.view(bsz, -1, seq_len, seq_len)
+                am.masked_fill_(
+                    pm.unsqueeze(1).unsqueeze(2).to(torch.bool), fill_val)
+                am = am.view(-1, seq_len, seq_len)
+                pm = None
+            return am, pm
+
+        assert attn_mask is not None
+        attn_mask, padding_mask = fill_attn_mask(attn_mask, padding_mask)
+
+        for layer in self.layers:
+            x, attn_mask, _ = layer(
+                x, padding_mask=padding_mask,
+                attn_bias=attn_mask, return_attn=True)
+
+        x = self.final_layer_norm(x)
+
+        # Compute pair representations
+        delta_pair_repr = attn_mask - input_attn_mask
+        delta_pair_repr, _ = fill_attn_mask(
+            delta_pair_repr, input_padding_mask, 0)
+        attn_mask = attn_mask.view(
+            bsz, -1, seq_len, seq_len).permute(0, 2, 3, 1).contiguous()
+        delta_pair_repr = delta_pair_repr.view(
+            bsz, -1, seq_len, seq_len).permute(0, 2, 3, 1).contiguous()
+        delta_pair_repr = self.final_head_layer_norm(delta_pair_repr)
+
+        return x, attn_mask, delta_pair_repr
+
+
+# -------------------- Main Model ------------------------------------
+
+class MoleculeModel(nn.Module):
+    """Uni-Mol: SE(3)-invariant Transformer with pretrained weights.
+
+    Architecture: 15 layers, 512 hidden dim, 64 attention heads, 2048 FFN
+    dim (~86M parameters).  Uses edge-type-dependent Gaussian distance
+    encoding and pair representation tracking through the encoder layers.
+    Loads pretrained weights from the checkpoint at build time.
+    """
+
+    def __init__(self, atom_dim: int, edge_dim: int, num_tasks: int,
+                 task_type: str):
+        super().__init__()
+        self.num_tasks = num_tasks
+        self.task_type = task_type
+
+        # Architecture (matches reference base_architecture)
+        embed_dim = 512
+        ffn_embed_dim = 2048
+        attention_heads = 64
+        encoder_layers = 15
+        dropout = 0.1
+        attention_dropout = 0.1
+        K = 128
+        n_edge_type = _DICT_SIZE * _DICT_SIZE  # 961
+
+        self.embed_dim = embed_dim
+        self.attention_heads = attention_heads
+
+        # Token embedding (will be loaded from pretrained)
+        self.embed_tokens = nn.Embedding(
+            _DICT_SIZE, embed_dim, padding_idx=_PAD_IDX)
+
+        # Edge-type dependent Gaussian distance encoding
+        self.gbf = GaussianLayer(K, n_edge_type)
+        self.gbf_proj = NonLinearHead(K, attention_heads)
+
+        # Transformer encoder with pair tracking
+        self.encoder = TransformerEncoderWithPair(
+            encoder_layers=encoder_layers,
+            embed_dim=embed_dim,
+            ffn_embed_dim=ffn_embed_dim,
+            attention_heads=attention_heads,
+            emb_dropout=dropout,
+            dropout=dropout,
+            attention_dropout=attention_dropout,
+            activation_dropout=0.0,
+        )
+
+        # Classification / regression head.  `pooler_dropout` may be set as a
+        # class attribute by the training driver to match reference per-dataset
+        # settings (e.g. FreeSolv/ESOL use 0.2 per Uni-Mol README).
+        pooler_dropout = getattr(type(self), "pooler_dropout", 0.0)
+        self.cls_head = ClassificationHead(
+            input_dim=embed_dim,
+            inner_dim=embed_dim,
+            num_classes=num_tasks,
+            pooler_dropout=pooler_dropout,
+        )
+
+        # Initialise, then load pretrained weights
+        self.apply(self._init_weights)
+        self._load_pretrained()
+
+    @staticmethod
+    def _init_weights(module):
+        """BERT-style weight initialisation."""
+        if isinstance(module, nn.Linear):
+            nn.init.normal_(module.weight, mean=0.0, std=0.02)
+            if module.bias is not None:
+                nn.init.zeros_(module.bias)
+        elif isinstance(module, nn.Embedding):
+            nn.init.normal_(module.weight, mean=0.0, std=0.02)
+            if module.padding_idx is not None:
+                nn.init.zeros_(module.weight[module.padding_idx])
+        elif isinstance(module, nn.LayerNorm):
+            nn.init.ones_(module.weight)
+            nn.init.zeros_(module.bias)
+
+    def _load_pretrained(self):
+        """Load pretrained encoder + GBF weights from checkpoint."""
+        ckpt_path = "/data/unimol_weights/mol_pre_all_h_220816.pt"
+        if not _os.path.exists(ckpt_path):
+            _logger.warning(
+                "Pretrained weights not found at %s — training from scratch",
+                ckpt_path)
+            return
+
+        ckpt = torch.load(ckpt_path, map_location="cpu", weights_only=False)
+        state = ckpt.get("model", ckpt)
+
+        # Remap checkpoint keys from fairseq/unicore format to our flat format
+        remapped = {}
+        for key, val in state.items():
+            if any(s in key for s in ["classification_head", "lm_head",
+                                       "dist_head", "pair2coord_proj"]):
+                continue
+            new_key = key
+            new_key = new_key.replace("encoder.sentence_encoder.", "encoder.")
+            new_key = new_key.replace("encoder.gbf", "gbf")
+            new_key = new_key.replace("encoder.embed_tokens", "embed_tokens")
+            remapped[new_key] = val
+
+        own_state = self.state_dict()
+        loaded_keys, skipped_shape, skipped_missing = [], [], []
+
+        for key, val in remapped.items():
+            if key in own_state:
+                if own_state[key].shape == val.shape:
+                    own_state[key].copy_(val)
+                    loaded_keys.append(key)
+                else:
+                    skipped_shape.append(f"  {key}: ckpt={list(val.shape)} model={list(own_state[key].shape)}")
+            else:
+                skipped_missing.append(key)
+
+        self.load_state_dict(own_state, strict=False)
+        print(f"[Checkpoint] Loaded {len(loaded_keys)} keys successfully")
+        if skipped_shape:
+            print(f"[Checkpoint] Shape mismatch ({len(skipped_shape)} keys):")
+            for s in skipped_shape:
+                print(s)
+        if skipped_missing:
+            print(f"[Checkpoint] Missing in model ({len(skipped_missing)} keys):")
+            for k in skipped_missing[:10]:
+                print(f"  {k}")
+            if len(skipped_missing) > 10:
+                print(f"  ... and {len(skipped_missing)-10} more")
+        # Also show model keys NOT in checkpoint
+        not_loaded = [k for k in own_state if k not in set(loaded_keys)]
+        if not_loaded:
+            print(f"[Checkpoint] Model keys NOT loaded ({len(not_loaded)}):")
+            for k in not_loaded[:10]:
+                print(f"  {k}")
+            if len(not_loaded) > 10:
+                print(f"  ... and {len(not_loaded)-10} more")
+
+    def forward(self, batch):
+        """Forward pass using dense batch format.
+
+        Args:
+            batch: MolBatch with atom_features [B, N, D],
+                   dist_matrix [B, N, N], mask [B, N].
+        Returns:
+            predictions: [B, num_tasks]
+        """
+        B, N, _ = batch.atom_features.shape
+        device = batch.atom_features.device
+
+        # Map atom features to dictionary tokens
+        tokens = _atoms_to_tokens(batch.atom_features, batch.mask)  # [B, N+2]
+
+        # Extend distance matrix / mask for [CLS] and [SEP]
+        dist, padding_mask = _extend_dist_and_mask(
+            batch.dist_matrix, batch.mask)
+        seq_len = N + 2
+
+        # Edge types: token_i * dict_size + token_j
+        edge_type = tokens.unsqueeze(1) * _DICT_SIZE + tokens.unsqueeze(2)
+
+        # Gaussian features with edge-type-dependent scaling
+        gbf_feature = self.gbf(dist, edge_type)         # [B, S, S, K]
+        attn_bias = self.gbf_proj(gbf_feature)           # [B, S, S, H]
+        attn_bias = attn_bias.permute(0, 3, 1, 2).contiguous()  # [B, H, S, S]
+        attn_bias = attn_bias.view(-1, seq_len, seq_len)  # [B*H, S, S]
+
+        # Token embeddings
+        x = self.embed_tokens(tokens)  # [B, S, D]
+
+        # Run encoder (with pair representation tracking)
+        encoder_rep, pair_rep, delta_pair_repr = self.encoder(
+            x, attn_mask=attn_bias,
+            padding_mask=padding_mask if padding_mask.any() else None,
+        )
+
+        # Predict via [CLS] token
+        return self.cls_head(encoder_rep)  # [B, num_tasks]
+</new>
+</edit>
+<obs>
+Successfully replaced text in Uni-Mol/custom_molprop.py.
+</obs>
+<run/>
+<obs>
+Measured results — `baseline:unimol` (`is_final,true`), seed 42.
+
+## ROC-AUC (higher is better)
+| seed | rocauc_BBBP | rocauc_BACE | rocauc_Tox21 |
+|---|---|---|---|
+| 42 | 0.712867 | 0.846635 | 0.761314 |
+| **mean** | **0.712867** | **0.846635** | **0.761314** |
+</obs>
+

@@ -1,0 +1,989 @@
+<meta task="ai4sci-weather-forecast-aggregation" domain="AI for science" file="ClimaX/custom_forecast.py" model_format="qwen3" edit_tool="str_replace"/>
+
+<system>
+You are a research engineer improving a model on a fixed ML task. You work by editing the model code and running experiments. Think carefully before each change. You have these tools:
+- str_replace(path, old_str, new_str): replace the unique occurrence of old_str with new_str.
+- create(path, file_text): create a new file.
+- run_experiment(): train + evaluate the current code under the fixed budget; returns metrics.
+Make one tool call at a time. After editing, call run_experiment() to measure your method.
+</system>
+
+<user>
+## Research question
+
+A weather forecasting model has tokenized each input physical field independently: for every spatial
+patch it holds one `D`-dimensional token per meteorological variable. Before the Vision-Transformer
+backbone runs, these per-variable tokens must be collapsed into **one** token per spatial location. The
+single thing being designed is that reduction — the `VariableAggregator`: it receives per-variable patch
+embeddings `x: [B, V, L, D]` and must return `[B, L, D]`, one aggregated representation per location.
+Everything else — the per-variable tokenization, the ViT backbone, the ERA5 data pipeline, the fine-tuning
+recipe from pretrained ClimaX weights, the optimizer/schedule, and the latitude-weighted RMSE metric — is
+fixed. The question is purely: *how should information be aggregated across the heterogeneous variable set
+at each location?*
+
+## Prior art before the first rung
+
+The first rung reacts to how every standard image model ingests a stack of `V` physical fields, and to
+the design that made a single weather/climate foundation model possible.
+
+- **Channel-stacking image models (ResNet/UNet/ViT over `V × H × W`; Rasp & Thuerey 2021, Pathak et al.
+  2022, Bi et al. 2022).** Treat the `V` variables as input channels; the first conv/patch projection has
+  its input dimension welded to exactly `V`. Strong on a fixed variable set. **Gap:** the variable set is
+  hard-wired — no pretraining across sources with different variables, no subset/unseen variables at
+  finetune time — and variable identity is destroyed the instant the first layer sums the channels.
+- **Per-variable tokenization (the ClimaX move; Nguyen et al. 2023).** Give each variable its own tokens
+  by tokenizing its `H × W` map separately, with a learnable per-variable embedding so tokens stay
+  identifiable. The variable set becomes a runtime argument. **Gap:** this multiplies the sequence length
+  by `V`, so backbone self-attention costs `O((V·h·w)²)` — quadratic in the variable count — and leaves
+  the backbone a sequence of semantically incommensurable tokens (geopotential, humidity, wind, a
+  land-sea mask all interleaved). Both pathologies reduce to one need: collapse the `V` variable tokens
+  at each location to a single unified token *before* the backbone. That collapse is the editable slot.
+- **The set-pooling lineage the slot inherits.** Once variables are a set of tokens at each location, the
+  reduction is a set-to-vector map. The cheapest is uniform mean (parameter-free, content-blind); a step
+  up is a fixed learned per-variable weighting (content-independent); the ClimaX default is a
+  learnable-query cross-attention (content-dependent). These are the rungs of this ladder.
+
+## The fixed substrate
+
+A ClimaX forecasting pipeline is frozen and must not be touched. Per-variable patch tokenization
+produces, for each of `L = h·w` spatial patches, one `D`-dimensional token per input variable
+(`x: [B, V, L, D]`); a learnable per-variable embedding is added so the tokens stay identifiable. The
+output of the aggregator (`[B, L, D]`) then receives a spatial position embedding and a lead-time
+embedding, and is processed by an 8-block ViT backbone (`embed_dim D = 1024`, `num_heads = 16`,
+`mlp_ratio = 4`) and a linear prediction head. The model is fine-tuned from pretrained ClimaX weights on
+ERA5 reanalysis at 5.625° (a 32×64 grid, patch size 2, so `L = 16×32 = 512`), with the
+latitude-weighted MSE as the training loss. The variable vocabulary has `V = 48`: 3 surface constants
+(land-sea mask, orography, latitude), 3 surface fields (2 m temperature, 10 m wind u/v), and 42
+pressure-level fields (geopotential, u/v wind, temperature, relative/specific humidity at 50–925 hPa).
+
+## The editable interface
+
+Exactly one region is editable — the `VariableAggregator` class in `custom_forecast.py` (the block at
+lines 310–351 the harness replaces from `edits/<baseline>.edit.py`). The contract is fixed:
+
+- `__init__(self, embed_dim, num_heads, num_vars)` — `embed_dim = D = 1024`, `num_heads = 16`,
+  `num_vars = V = 48`. The module may allocate any parameters here.
+- `forward(self, x)` — `x: [B, V, L, D]` → returns `[B, L, D]`. The reduction is over the variable axis
+  `V`, performed independently at every spatial location `L` (and every example `B`). `V` is read from
+  the input shape at runtime; the module must accept any `V`.
+
+The FIXED section imports `torch`, `torch.nn as nn`, and `torch.nn.functional as F`, and standard
+PyTorch modules (`nn.Linear`, `nn.MultiheadAttention`, `nn.LayerNorm`, …) are available. Every method on
+the ladder is a fill of this same contract. The scaffold default is the ClimaX learnable-query
+cross-attention:
+
+```python
+# EDITABLE region of custom_forecast.py (lines 310-351) — default fill: ClimaX cross-attention
+class VariableAggregator(nn.Module):
+    """Aggregates per-variable patch embeddings into a unified representation.
+
+    Default: learnable query with single-layer cross-attention (ClimaX default).
+    """
+
+    def __init__(self, embed_dim, num_heads, num_vars):
+        super().__init__()
+        self.embed_dim = embed_dim
+        self.num_heads = num_heads
+        self.num_vars = num_vars
+        # Learnable query token for cross-attention aggregation
+        self.var_query = nn.Parameter(torch.zeros(1, 1, embed_dim), requires_grad=True)
+        self.var_agg = nn.MultiheadAttention(embed_dim, num_heads, batch_first=True)
+
+    def forward(self, x):
+        b, v, l, d = x.shape
+        # Reshape to treat each spatial location independently
+        x = x.permute(0, 2, 1, 3)   # B, L, V, D
+        x = x.reshape(b * l, v, d)  # B*L, V, D
+
+        # Cross-attention: query attends to all variable tokens
+        query = self.var_query.expand(b * l, -1, -1)  # B*L, 1, D
+        out, _ = self.var_agg(query, x, x)             # B*L, 1, D
+        out = out.squeeze(1)                            # B*L, D
+
+        out = out.reshape(b, l, d)  # B, L, D
+        return out
+```
+
+## Evaluation settings
+
+The model is fine-tuned from pretrained ClimaX weights on ERA5 at 5.625° and evaluated on three
+forecasting targets at increasing lead times: **z500-3day** (500 hPa geopotential height, 3-day lead),
+**t850-5day** (850 hPa temperature, 5-day lead), and **wind10m-7day** (10 m wind speed, 7-day lead),
+under seed 42. The metric on every target is **latitude-weighted RMSE — lower is better**. Equal-degree
+grid cells cover more area near the equator than near the poles, so each row's squared error is weighted
+by `L(i) = cos(lat(i)) / ((1/H) Σ_{i'} cos(lat(i')))` (weights average to one), and the score is the
+square root of the latitude-weighted mean squared error, averaged over forecasts. The same weighting
+defines the training loss.
+
+The editable model code is in `ClimaX/custom_forecast.py`:
+```python
+class VariableAggregator(nn.Module):
+    """Aggregates per-variable patch embeddings into a unified representation.
+
+    Default: learnable query with single-layer cross-attention (ClimaX default).
+
+    Args:
+        embed_dim (int): Embedding dimension D.
+        num_heads (int): Number of attention heads for cross-attention.
+        num_vars (int): Number of input variables V.
+    """
+
+    def __init__(self, embed_dim, num_heads, num_vars):
+        super().__init__()
+        self.embed_dim = embed_dim
+        self.num_heads = num_heads
+        self.num_vars = num_vars
+        # Learnable query token for cross-attention aggregation
+        self.var_query = nn.Parameter(torch.zeros(1, 1, embed_dim), requires_grad=True)
+        self.var_agg = nn.MultiheadAttention(embed_dim, num_heads, batch_first=True)
+
+    def forward(self, x):
+        """Aggregate variable embeddings.
+
+        Args:
+            x: [B, V, L, D] — per-variable patch embeddings.
+
+        Returns:
+            [B, L, D] — aggregated representation.
+        """
+        b, v, l, d = x.shape
+        # Reshape to treat each spatial location independently
+        x = x.permute(0, 2, 1, 3)   # B, L, V, D
+        x = x.reshape(b * l, v, d)  # B*L, V, D
+
+        # Cross-attention: query attends to all variable tokens
+        query = self.var_query.expand(b * l, -1, -1)  # B*L, 1, D
+        out, _ = self.var_agg(query, x, x)             # B*L, 1, D
+        out = out.squeeze(1)                            # B*L, D
+
+        out = out.reshape(b, l, d)  # B, L, D
+        return out
+```
+Improve it. Derive your method, edit the code, then run_experiment().
+</user>
+
+### step 1 — Mean pooling   [slug:mean-pooling]
+
+<think>
+[[POLISH_REASONING: adapt to first-person agentic voice, end by deciding to implement]]
+I'm starting at the bottom of this ladder on purpose, and I want to be honest about why. The slot I have to fill takes a set of `V` variable tokens at each spatial location and must return one token. There is a whole family of ways to do that, from a parameter-free average up to a content-dependent cross-attention, and before I reach for anything with learnable machinery I want a floor: the simplest reduction that is *correct* for the contract, that adds no parameters, and that anything fancier has to beat to justify its parameters. If the average already gets me most of the way, the elaborate aggregators are not earning their cost; if it falls down badly, the *manner* in which it falls down tells me exactly what the next rung has to fix. So the first rung is the transparent baseline by design, and the only real work here is to derive *which* parameter-free reduction is the right floor and to be precise about what I expect it to leave on the table.
+
+Let me look hard at what the contract actually forces on the reduction, because the constraints narrow the choice almost completely. The aggregator receives `x: [B, V, L, D]` and the reduction runs over the variable axis `V`, independently at every spatial location `L` and every example `B`. So at one location I have `V` vectors in `R^D` and I want one vector in `R^D`. Three properties are non-negotiable. First, the variables at a location have no canonical order — there is no privileged arrangement of temperature, geopotential, humidity, the land-sea mask that the aggregation should exploit — so the reduction must be invariant to permuting the `V` tokens: shuffle them, get the same output. Second, `V` is read from the input shape at runtime and the module must accept any `V`; the contract says so explicitly, and it is the entire reason variable tokenization exists (different reanalysis products and the climate-simulation archives that fuel pretraining each carry a different variable set). So the reduction cannot bake `V` into a weight matrix. Third — and this one bites quietly — the output feeds a fixed downstream stack: a position embedding is added, then an 8-block ViT initialized from pretrained ClimaX weights. That stack was tuned to features on a particular scale. If my reduction's output magnitude drifts with how many variables I happen to feed, set size masquerades as content and I knock the pretrained backbone off its operating point. And fourth, for a clean floor I want zero learnable parameters, so the baseline is fully transparent.
+
+Permutation invariance is the sharp constraint, so I lean on it first. If the reduction must be unchanged under every reordering of the `V` tokens, it cannot reference any variable by its position in the tensor — it can only see the tokens as an unordered multiset. The functions that do that are the *symmetric* ones: reductions built from an order-independent, associative-commutative combiner. The combiners I actually have are elementwise sum, elementwise max (and min), and things built from them like the average. This immediately rules out two tempting moves. Concatenating the `V` tokens would be both order-dependent and size-dependent — the result has dimension `V·D`, which is not even a fixed width and breaks the `[B, L, D]` contract outright — so concat is out. And feeding the `V` tokens through any recurrent reader and taking the last state would mean inventing an artificial order over an orderless set and making the answer depend on that arbitrary choice. So I am down to symmetric elementwise reductions: sum, max, mean, or some weighting of them.
+
+There is one more candidate I should dispatch before settling on a symmetric reduction, because in other settings people reach for it first: pick a single designated summary token and read it off. In a sequence model that is the class token — one slot the architecture funnels a whole-sequence summary into. But here the per-variable tokenizer at a spatial location produces just `V` variable tokens, none of them privileged; there is no designated summary slot in the variable set at all. And even where such a token exists, it is a single-vector bottleneck shaped by whatever objective trained it, not necessarily a good pooled representation off the shelf. So pick-one-token fails on both availability and quality. I want a reduction that uses *all* `V` tokens and presupposes no special slot.
+
+Back to the symmetric reductions, taken in order of increasing care. The bare sum, `g = Σ_v x_v`, is the simplest order-free combination: permutation-invariant, accepts any `V`, no parameters. But the third constraint kills it. Treat each coordinate of a token as a draw with per-coordinate mean `μ` and variance `σ²`, and use the roughly-independent case for the scale estimate. The sum has expectation `Vμ`, so whenever `μ` is not zero the pooled output's location moves *linearly* with the number of variables. Even the centered part has variance `Vσ²`, so its standard deviation grows like `√V·σ`. A location pooled from 48 variables and one pooled from a different count would sit at systematically different magnitudes purely because of the count. Here `V = 48` is fixed across the three targets, so the count is constant — but the pretrained ClimaX backbone I am fine-tuning from never saw inputs at the *summed* scale; it expects features on roughly the scale of a single token. The bare sum would hand it features inflated by a factor of order `V`, and the position embedding (added next) lives on the single-token scale, so it would be drowned. The sum leaks set scale straight into the representation and onto the wrong operating point. Wall.
+
+The fix is forced by the same algebra that exposed the problem. If I scale the sum as `Σ_v x_v / V^α`, the expectation is `V^{1-α}μ`; the only exponent that makes the pooled location independent of the count, for any nonzero `μ`, is `α = 1`. That gives `g = (1/V) Σ_v x_v` — the mean. Now the expected location is `μ` regardless of `V`, and the per-coordinate variance is `σ²/V` in the roughly-independent case. So the pooled token lives on the same scale as an individual variable token — exactly the scale the pretrained backbone and the position embedding expect — and the reduction is invisible to the operating point. That is decisive for a fine-tuning-from-pretrained setting like this one: the cheapest correct floor is not the sum, it is the mean, precisely because it preserves the input scale.
+
+There is a second, cleaner way to see why the *uniform* mean is the right parameter-free combiner and not merely a convenient one. Any weighted average `Σ_v w_v x_v` with `Σ_v w_v = 1` is scale-stable. Among all such weightings, which do I pick when I have no information distinguishing one variable from another at this stage? The weighting that treats every variable identically — `w_v = 1/V` — is the only fixed permutation-symmetric choice, and it is the maximum-entropy (flattest) weighting given no reason to prefer any variable. So the uniform mean is not a lazy default; it is the *forced* default the moment I refuse to spend parameters scoring the variables. Anything non-uniform asserts a per-variable preference I have not yet earned. That is exactly the property I want in a floor.
+
+That observation also tells me precisely how this rung relates to the rungs above it, which matters because it sets up what the climb is climbing. The next rung will attach a learnable scalar weight per variable and softmax them — a fixed but non-uniform `Σ_v w_v x_v`. The mean is its zero-information limit: equal logits give `w_v = 1/V`. The rung after that is the ClimaX cross-attention, a content-dependent `Σ_v α_v(x) (W^V x_v)` whose weights depend on the token contents; the mean is *its* limit too, the value it collapses to when the attention weights are uniform and the projections are identity. So the mean is not a third unrelated option sitting beside the others — it is the degenerate case of the whole family, the honest floor that every learned aggregator must clear to justify its parameters. If the learned weightings cannot beat uniform, they are not capturing real per-variable or content-dependent structure; they are just spending parameters.
+
+I should weigh the other symmetric reduction that genuinely beats the mean in some settings, so I know what I am choosing against: elementwise max, `g_d = max_v x_{v,d}`, keep the strongest activation per dimension across the variable set. It is the right reduction when the signal at a location is concentrated in *one* extreme variable — a single dominant token the mean would dilute by averaging in 47 quieter ones. But that is also its failure mode here. At a weather grid cell, the informative signal is plausibly spread across *many* variables at once — geopotential, temperature, humidity, and wind all carry real, comparable information about the local state — not concentrated in a lone outlier. Max would throw away everything but the per-dimension winner and is non-smooth: per coordinate the gradient flows to exactly one variable, so most of the set gets no learning signal on that channel. The mean uses every variable equally and is smooth in all of them. For a set of comparably-informative variables — which is the regime of 48 meteorological fields — the mean is the safer floor, with max kept on the shelf as the alternative for extreme-driven sets. So I commit to the mean.
+
+Now the implementation, and here is where the task's reality strips the general machinery down to almost nothing. In the fully general set-pooling problem, sets are ragged — different items have different counts — so a batch pads them to a common length and the honest reduction must *mask*: zero the pad slots before summing and divide by the true count, `g = (Σ_v m_v x_v) / clamp(Σ_v m_v, min=ε)`, with a tiny floor on the denominator so an empty set gives a defined 0 instead of a NaN. But this task is not ragged. Every spatial location has the full `V = 48` variable set present — the tokenizer produces a token for every variable at every patch, there is no padding, the mask would be all ones. With an all-ones mask the masked mean collapses exactly to the plain average over the variable axis: the numerator is the full sum, the denominator is `V` itself, and the clamp never fires because the count is always 48, vastly above any `ε`. So the masking machinery, the running-count denominator, the empty-set guard, the `√V` variance-stabilizing sibling — none of it earns its keep here. The implementable form is just `x.mean(dim=1)` over the variable axis. I note this explicitly because it is the kind of thing one carries over reflexively from the general derivation; the harness exposes a fixed-full variable set, so I drop the padding apparatus and keep the bare average.
+
+The `num_heads` and `num_vars` arguments to `__init__` are part of the fixed contract, so I store them, but the mean uses neither: there is no attention so `num_heads` is irrelevant, and the average is size-agnostic so `num_vars` never enters a weight. There are no learnable parameters at all — that is the point of the floor. The forward pass is a single reduction over the variable axis: `x: [B, V, L, D] -> [B, L, D]`, `out = x.mean(dim=1)`. The full scaffold module is in the answer.
+
+Let me close on what I expect this floor to do and, more importantly, *how* I expect it to fall short, because that is what the next rung must repair. The mean is correct, scale-preserving, and the right starting point, so I expect it to produce a genuinely working forecaster — not a degenerate one — across all three targets. But it weights every variable identically at every location and in every atmospheric state, and it just adds up the differently-grounded raw tokens without re-expressing them in a common space. So I expect it to be beaten, and beaten in a specific way: a fixed learned per-variable weighting should pull ahead by letting informative fields (the dynamical and thermodynamic variables) count more than near-inert ones (the static land-sea mask, orography), recovering whatever signal uniform weighting smears out. The falsifiable expectation I am setting for the next rung is therefore concrete: on each of z500-3day, t850-5day, and wind10m-7day, a learned per-variable softmax weighting should achieve a *lower* latitude-weighted RMSE than this mean — and if it cannot, then the per-variable contributions really are uniform and the parameters are wasted. And I expect the content-dependent cross-attention above it to beat both, because the right weighting at a grid cell surely depends on the local state, not just on which variable it is — but that is two rungs up. For now I have my floor: the uniform mean, the scale-preserving, maximum-entropy, parameter-free reduction that is the degenerate limit of every aggregator I will try next.
+</think>
+<say>
+[[FILL_SAY: 1-2 sentences naming the method and what this first edit does]]
+</say>
+<edit path="ClimaX/custom_forecast.py">
+<old>
+class VariableAggregator(nn.Module):
+    """Aggregates per-variable patch embeddings into a unified representation.
+
+    Default: learnable query with single-layer cross-attention (ClimaX default).
+
+    Args:
+        embed_dim (int): Embedding dimension D.
+        num_heads (int): Number of attention heads for cross-attention.
+        num_vars (int): Number of input variables V.
+    """
+</old>
+<new>
+# EDITABLE region of custom_forecast.py (lines 310-351) — step 1: mean pooling
+class VariableAggregator(nn.Module):
+    """Mean pooling variable aggregation.
+
+    Simply averages all V variable tokens at each spatial location.
+    No additional learnable parameters.
+
+    Args:
+        embed_dim (int): Embedding dimension D.
+        num_heads (int): Number of attention heads (unused).
+        num_vars (int): Number of input variables V (unused).
+    """
+</new>
+</edit>
+<obs>
+Successfully replaced text in ClimaX/custom_forecast.py.
+</obs>
+<note>
+[[FILL_NOTE?: optional one-line thought for this edit, or delete this block]]
+</note>
+<edit path="ClimaX/custom_forecast.py">
+<old>
+        self.num_vars = num_vars
+        # Learnable query token for cross-attention aggregation
+        self.var_query = nn.Parameter(torch.zeros(1, 1, embed_dim), requires_grad=True)
+        self.var_agg = nn.MultiheadAttention(embed_dim, num_heads, batch_first=True)
+
+    def forward(self, x):
+        """Aggregate variable embeddings.
+
+        Args:
+            x: [B, V, L, D] — per-variable patch embeddings.
+
+        Returns:
+            [B, L, D] — aggregated representation.
+        """
+        b, v, l, d = x.shape
+        # Reshape to treat each spatial location independently
+        x = x.permute(0, 2, 1, 3)   # B, L, V, D
+        x = x.reshape(b * l, v, d)  # B*L, V, D
+
+        # Cross-attention: query attends to all variable tokens
+        query = self.var_query.expand(b * l, -1, -1)  # B*L, 1, D
+        out, _ = self.var_agg(query, x, x)             # B*L, 1, D
+        out = out.squeeze(1)                            # B*L, D
+
+        out = out.reshape(b, l, d)  # B, L, D
+        return out
+</old>
+<new>
+        self.num_vars = num_vars
+
+    def forward(self, x):
+        """
+        Args:
+            x: [B, V, L, D] — per-variable patch embeddings.
+        Returns:
+            [B, L, D] — aggregated representation.
+        """
+        # Average across variable dimension
+        out = x.mean(dim=1)  # B, L, D
+        return out
+</new>
+</edit>
+<obs>
+Successfully replaced text in ClimaX/custom_forecast.py.
+</obs>
+<run/>
+<obs>
+Measured results — `baseline:mean_pooling` (`is_final,true`), seed 42 (the only seed). Latitude-weighted RMSE, lower is better.
+
+| seed | z500-3day | t850-5day | wind10m-7day |
+|---|---|---|---|
+| 42 | 353.5033 | 2.6032 | 3.3991 |
+| **mean** | **353.5033** | **2.6032** | **3.3991** |
+</obs>
+
+### step 2 — Learned weighted sum (softmax)   [slug:learned-weighted-sum]
+
+<think>
+[[POLISH_REASONING: adapt to first-person agentic voice, end by deciding to implement]]
+The mean told me, in numbers, exactly which assumption to attack. The floor landed at latitude-weighted
+RMSE 353.50 on z500-3day, 2.6032 on t850-5day, 3.3991 on wind10m-7day — a working forecaster on all
+three targets, not a degenerate one, which is the reassuring part: the scale-preserving uniform average
+plugs into the pretrained ClimaX backbone cleanly and produces real forecasts. But it is a floor, and the
+shape of these numbers points straight at its one structural defect. The mean weights every variable
+identically at every location and in every atmospheric state. With `V = 48` variables, three of which are
+near-inert static fields (land-sea mask, orography, latitude) and many of which are pressure-level fields
+of very uneven relevance to a given target, "count all 48 equally" is almost certainly leaving signal on
+the table. The 500 hPa geopotential forecast at 353.50 is the loudest tell: z500 is a large-magnitude
+field, and its 3-day evolution is governed by the synoptic dynamical variables — geopotential and wind at
+the mid-troposphere — far more than by the land-sea mask or the surface humidity. The mean dilutes those
+informative fields by averaging in dozens of comparably-weighted-but-less-relevant ones. So the diagnosis
+is precise and it is *not* a scale problem (the mean already preserves scale) and *not* a capacity problem
+(the backbone is untouched): it is that the aggregation has no way to say *this variable matters more than
+that one*. That is the degree of freedom I'll buy back now, as cheaply as possible, before reaching for
+anything content-dependent.
+
+Let me question the equal-weight assumption directly, because it is a free decision the mean made for
+free. When I write `(1/V) Σ_v x_v`, I am asserting every variable contributes equally to the fused token.
+The variables are heterogeneous by construction — different physical fields, different units, different
+relevance — so there is no reason on earth they deserve the same say. And I don't have to argue this in
+the abstract; the mean's own numbers are the evidence. If equal weighting were already optimal, no learned
+re-weighting could beat it, and I'd be wasting parameters. The bet I'm making is that it is *not* optimal —
+that there is a fixed, global "this field matters more" structure the uniform average is blind to. The
+most direct fix imaginable: attach a weight `w_v` to each variable and combine by a weighted sum,
+`O = Σ_v w_v x_v`, and let `w_v` be a learnable parameter trained by ordinary backprop. The gradient flows
+straight through — `dO/dw_v = x_v` — so a variable that consistently helps reduce the latitude-weighted
+loss has its weight pushed up, one that hurts pushed down. The network discovers per-variable importance
+instead of me legislating uniformity.
+
+How expressive should the weight be? It could be a scalar — one number per variable — or a length-`D`
+vector (one per channel), or a full per-location tensor. The per-channel and per-location versions are
+strictly more expressive, but the quantity I'm trying to decide is "how much does variable `v` matter
+*overall*," and that is naturally one number per variable. With `V = 48` a scalar weighting is 48
+parameters total — utterly negligible next to the ViT backbone, basically free. So I start with the
+scalar-per-variable form: the cheapest knob that expresses exactly the thing the mean's numbers told me to
+add. This is deliberately the *minimal* step up from the floor — I am not yet making the weighting depend
+on the token contents or the location (that is the cross-attention rung above), I am only letting the
+global per-variable split move off uniform. If even this minimal step can't beat the mean, then the
+per-variable contributions really are uniform and the whole ladder above is in question.
+
+Now let me actually try to train `O = Σ_v w_v x_v` with `w_v` free real numbers and feel where it breaks,
+because the mean's one virtue — scale preservation, the thing that let it plug into the pretrained
+backbone at all — is exactly what free weights would destroy. The map from `(w_1, …, w_V)` to `O` is
+linear and homogeneous of degree one in the weights: scale every `w_v` by `c` and `O` scales by `c`.
+Nothing pins the overall magnitude of `w`. So during fine-tuning there is an entire ray of weight settings
+— all `c·w` — producing outputs that differ only by a global gain, and the optimizer can drift along it
+however it likes. That is bad in two concrete ways, and the first is the one the mean's success warned me
+about. The pretrained ClimaX backbone expects features on the single-token scale; the mean delivered
+exactly that, which is why 353.50/2.6032/3.3991 are sensible numbers and not garbage. If `Σ_v w_v` wanders
+up to 10 or down to 0.1, I have silently multiplied the fused token by 10 or 0.1 and yanked the pretrained
+stack off the operating point the mean carefully respected — re-creating, by the back door, the very
+scale-leak I rejected the bare sum for. The second is that there is no ceiling at all: `w_v` is a free
+scalar, it can grow without bound, and an unbounded multiplicative gain in the middle of a deep fine-tuned
+network is exactly the kind of thing that makes training unstable. I'd have handed the model
+expressiveness and a way to blow itself up in the same line. Wall.
+
+The failure points at the cure. I never cared about the *absolute* size of the weights — I cared about
+*relative* contribution: how much variable `v` matters compared to the others. That is a ratio, not a
+magnitude. The absolute scale of `w` is a nuisance degree of freedom, and it is precisely the thing that
+ran away. So I quotient it out: fix the overall scale and let the network move only the relative split.
+The cleanest way to fix the scale is to demand the weights sum to one; and if I also keep them
+nonnegative, then `Σ_v w_v x_v` with `w_v ≥ 0`, `Σ_v w_v = 1` is a *convex combination* of the variable
+tokens — a weighted average. That is exactly the well-behaved object the mean was, generalized: it lives
+in the convex hull of the `x_v`, so it is on the same single-token scale as any one variable (the property
+that makes the pretrained backbone happy is *preserved*, not gambled), it cannot introduce an arbitrary
+gain, and when all `w_v` are equal it collapses back to the mean. The mean I just measured is the uniform
+point of this very family; I'm letting the network pick any other point of the simplex. Bounding the
+weights onto `{w ≥ 0, Σ w = 1}` removes the runaway scale and keeps every bit of the relative-importance
+expressiveness. That's the constraint I need, and it is the right constraint *because* it keeps the one
+thing that made the floor work.
+
+Now the question is purely mechanical: how do I parameterize a point on the simplex with free,
+unconstrained parameters, smoothly and differentiably, so plain Adam trains it with no projection step? I
+do not want to carry `w_v ≥ 0, Σ w_v = 1` as hard constraints during fine-tuning — that means projecting
+onto the simplex after every step, an ugly special case in the otherwise-vanilla ClimaX training loop. I
+want raw parameters `a_v` living anywhere in `R^V`, and a fixed function that maps them onto the simplex
+with gradients flowing through. Nonnegativity from an arbitrary real: the smooth positive map is the
+exponential, `e^{a_v} > 0` always. Sum-to-one: divide by the total. Put them together,
+`w_v = e^{a_v} / Σ_j e^{a_j}` — softmax. Staring at it, it does exactly and only what I asked: every `w_v`
+is strictly positive, they sum to one by construction, so the output is always a valid point on the
+simplex — a distribution over the 48 variables, which is a satisfying way to read it: `w_v` is the model's
+estimate of how much variable `v` should carry. The raw `a_v` are unconstrained, so I register them as
+ordinary parameters and let Adam move them freely; softmax does the projection every forward pass. It is
+differentiable everywhere, and the gradient on `a_v` couples all the variables (the denominator depends on
+all of them), which is correct — pushing one variable's share up necessarily pushes the others' shares
+down, since they compete for a budget that sums to one. The constraint isn't a penalty bolted on; it is
+baked into the functional form, which is why it composes cleanly with the frozen-recipe training loop.
+
+Let me sanity-check the degenerate case against the run I'm trying to beat, because it determines where
+fine-tuning starts. If all `a_v` are equal — in particular if I initialize them all to zero — then
+`w_v = e^0 / (V·e^0) = 1/V` for every `v`. Uniform. So at initialization the softmax-weighted sum *is* the
+plain mean over the 48 variables: the exact aggregator that produced 353.50/2.6032/3.3991. That is the
+ideal place to start a fine-tune-from-pretrained run. I begin from the measured floor — the safe
+equal-contribution prior that already works with the pretrained backbone — and training perturbs the `a_v`
+off uniform only insofar as the latitude-weighted loss rewards it. There is no cold-start risk where the
+aggregator begins in a wild corner of the simplex and corrupts the pretrained features; it begins at the
+centroid, which is the baseline I am improving on, and climbs from there. (Softmax is shift-invariant, so
+any constant init — zeros or ones — gives the same uniform start; the task's edit zero-initializes the raw
+weights, which is what I want.) This is a strictly monotone-by-construction improvement story: at step 0 I
+am the mean, and any move the optimizer makes is one it found reduces the loss.
+
+I should place this against the rung above so I'm honest about what I am *not* yet buying. The fully
+expressive aggregation is cross-attention: project each variable into query/key/value and let a query at
+each location decide, per location and per atmospheric state, how much to read from each variable. That
+captures *content-dependent* and *location-dependent* mixing — strictly more than I'm doing, because my
+`w_v` is a single distribution shared across every location and every example, whereas attention
+recomputes the mixing at every token. But that expressiveness drags in the QKV projection matrices
+(parameters scaling with `D = 1024`) plus an attention computation at every one of the 512 locations — a
+real tax on top of an already-large fine-tuned backbone, to answer a question — "how much does each
+variable contribute" — that the mean's failure suggests may be largely answerable with a *global*
+per-variable split. My 48 scalars are the minimal answer to that question: one learned mixing distribution
+for the whole tensor, no projections, no attention matrix. If the global split is most of the signal, I
+get most of the benefit at essentially none of the cost. That is the bet of this rung, and it is the right
+middle point to test between the parameter-free mean below and the cross-attention above.
+
+So the delta from step 1 is exact and minimal: where the mean computed `x.mean(dim=1)`, I now hold one
+learnable length-`V` vector of raw weights, softmax it over the variable axis into a simplex distribution,
+broadcast it against `[B, V, L, D]` so each variable token is scaled by its scalar weight, and sum over
+the variable axis to collapse `V → 1`, leaving `[B, L, D]`. (The full scaffold module is in the answer.) I
+keep only the softmax form — not the ReLU fast-normalized sibling that latency-bound detectors use, and
+not a per-channel weight — because the task's edit surface and its fine-tuning budget call for the clean,
+smooth, exactly-sums-to-one default, zero-initialized so it starts as the measured mean.
+
+Let me close on the falsifiable expectations against the numbers I have. I expect this to *beat the mean
+on every target*, and most clearly on z500-3day: that 353.50 is the floor's largest headroom, and the
+500 hPa geopotential forecast is exactly where a non-uniform split — upweighting mid-tropospheric
+geopotential and wind, downweighting the static surface constants and surface humidity — should help most,
+so I expect the z500 RMSE to drop the most in relative terms. On t850-5day (2.6032) and wind10m-7day
+(3.3991) I expect a smaller but real improvement, since those targets also have their own characteristic
+informative subsets the uniform mean smears. The bet is falsifiable and sharp: if the learned weighted sum
+*fails* to beat 353.50 / 2.6032 / 3.3991 on each target, then the per-variable contributions genuinely are
+uniform — the mean was already optimal among global weightings — and the next rung's content-dependent
+machinery would have to justify itself purely on *location*- and *state*-dependent mixing rather than on
+fixing a bad global split. And I already suspect where even this rung will run out: the weighting it learns
+is *fixed* — once trained, variable `v` gets the same share at every grid cell and in every atmospheric
+state, no matter what its token actually says there. The right weighting at a synoptically active cell
+surely differs from a quiescent one. So I expect this to beat the mean and then itself be beaten, by an
+aggregator whose weights depend on the token contents — which is the cross-attention rung directly above.
+</think>
+<say>
+[[FILL_SAY: 1-2 sentences naming the method and what this first edit does]]
+</say>
+<edit path="ClimaX/custom_forecast.py">
+<old>
+# EDITABLE region of custom_forecast.py (lines 310-351) — step 1: mean pooling
+class VariableAggregator(nn.Module):
+    """Mean pooling variable aggregation.
+
+    Simply averages all V variable tokens at each spatial location.
+    No additional learnable parameters.
+</old>
+<new>
+# EDITABLE region of custom_forecast.py (lines 310-351) — step 2: learned weighted sum
+class VariableAggregator(nn.Module):
+    """Learned weighted sum variable aggregation.
+
+    Learns a scalar weight per variable, applies softmax normalization,
+    then computes a weighted sum across variable tokens.
+</new>
+</edit>
+<obs>
+Successfully replaced text in ClimaX/custom_forecast.py.
+</obs>
+<note>
+[[FILL_NOTE?: optional one-line thought for this edit, or delete this block]]
+</note>
+<edit path="ClimaX/custom_forecast.py">
+<old>
+        num_heads (int): Number of attention heads (unused).
+        num_vars (int): Number of input variables V (unused).
+    """
+</old>
+<new>
+        num_heads (int): Number of attention heads (unused).
+        num_vars (int): Number of input variables V.
+    """
+</new>
+</edit>
+<obs>
+Successfully replaced text in ClimaX/custom_forecast.py.
+</obs>
+<note>
+[[FILL_NOTE?: optional one-line thought for this edit, or delete this block]]
+</note>
+<edit path="ClimaX/custom_forecast.py">
+<old>
+        self.num_vars = num_vars
+</old>
+<new>
+        self.num_vars = num_vars
+        # Learnable weight per variable
+        self.var_weights = nn.Parameter(torch.zeros(num_vars), requires_grad=True)
+</new>
+</edit>
+<obs>
+Successfully replaced text in ClimaX/custom_forecast.py.
+</obs>
+<note>
+[[FILL_NOTE?: optional one-line thought for this edit, or delete this block]]
+</note>
+<edit path="ClimaX/custom_forecast.py">
+<old>
+        """
+        # Average across variable dimension
+        out = x.mean(dim=1)  # B, L, D
+        return out
+</old>
+<new>
+        """
+        # Softmax-normalized variable weights
+        w = F.softmax(self.var_weights, dim=0)  # V
+        w = w.view(1, -1, 1, 1)                # 1, V, 1, 1
+        # Weighted sum across variables
+        out = (x * w).sum(dim=1)  # B, L, D
+        return out
+</new>
+</edit>
+<obs>
+Successfully replaced text in ClimaX/custom_forecast.py.
+</obs>
+<run/>
+<obs>
+Measured results — `baseline:learned_weighted_sum` (`is_final,true`), seed 42 (the only seed). Latitude-weighted RMSE, lower is better.
+
+| seed | z500-3day | t850-5day | wind10m-7day |
+|---|---|---|---|
+| 42 | 345.7938 | 2.5934 | 3.4245 |
+| **mean** | **345.7938** | **2.5934** | **3.4245** |
+</obs>
+
+### step 3 — Cross-attention (ClimaX default)   [slug:cross-attention]
+
+<think>
+[[POLISH_REASONING: adapt to first-person agentic voice, end by deciding to implement]]
+The learned weighted sum did what I bet it would, and then it did one thing I didn't, and the surprise is
+the most informative part. Against the mean's 353.50 / 2.6032 / 3.3991, the global per-variable softmax
+landed 345.79 / 2.5934 / 3.4245 — it beat the mean on z500-3day (353.50 → 345.79, the largest absolute
+drop, exactly where I predicted the headroom was) and shaved t850-5day (2.6032 → 2.5934), confirming the
+core diagnosis: the per-variable contributions are *not* uniform, a fixed non-uniform split helps, and the
+gain is biggest on the geopotential target whose evolution leans on a few dynamical fields. So the
+"variables matter unequally" hypothesis is validated. But on wind10m-7day it went the *wrong* way:
+3.3991 → 3.4245, very slightly worse than the mean. That regression is the tell I have to read carefully,
+because it is precisely the failure mode I flagged when I built that rung — the weighting it learns is
+*fixed*. Once trained, variable `v` gets the same share at every grid cell and in every atmospheric state,
+no matter what its token says there. A single global distribution over the 48 variables is one compromise
+weighting that has to serve z500 at 3 days, t850 at 5 days, *and* 10 m wind at 7 days at once. Whatever
+fixed split most reduces the geopotential and temperature loss is apparently a hair *worse* for the
+longest-lead wind target than even uniform weighting — the global split overfit to the targets where it
+helped and mis-served the one where the right variables differ. That is the wall: a content- and
+location-independent weighting cannot be right everywhere at once, and the wind regression proves the
+weighting needs to *react* rather than be legislated.
+
+So the question is no longer "which variables matter on average" — the weighted sum answered that — but
+"which variables matter *here*, given what the tokens at this location currently say." I want a reduction
+whose weights are content-dependent: the weight on each variable token decided by the token contents at
+that location, not by a global parameter. And while I'm at it, I should fix the second defect both lower
+rungs share and that I noted at the very bottom: the mean and the weighted sum both just rescale-and-add
+the *raw* variable tokens. A geopotential token, a humidity token, and a wind token are differently
+grounded objects; adding them, even with good weights, hands the backbone a muddied vector. A good
+reduction should re-express the tokens in a shared space before mixing them. Let me write down what a
+content-dependent, re-projecting reduction looks like at one location and see what it forces.
+
+At one location I have `V` value vectors and I want output `= Σ_v α_v · (something I do to token v)`, where
+the weights `α_v` are a *function of the tokens themselves* and normalized to a convex combination so the
+output stays a proper pooling on the single-token scale (the scale discipline the mean taught me and the
+weighted sum kept — I will not give that up) and accepts any `V`. "Normalized, data-dependent convex
+combination over a set" is the shape of a softmax. "The weight comes from how well each token matches some
+reference" is a compatibility score. I keep circling the same object: this is attention. The output is a
+weighted average of values; the weights are a softmax of query-key compatibilities; the softmax runs over
+the *set* of variable tokens so it is invariant to their order and defined for any `V` — the exact set
+semantics the contract demands. Attention is not one option among several here; it is the thing that
+matches every requirement the wind regression just handed me — react to content, stay a convex
+combination, re-project the values — at once.
+
+Attention needs a query, keys, and values. Keys and values are obvious: the `V` variable tokens at this
+location, with learned projections, so values become `W^V x_v` (there is the re-projection into a shared
+space, for free — the muddied-vector fix) and keys become `W^K x_v`. The query is the subtle part. In a
+sequence model each output position has its own query from somewhere. Here I want exactly *one* output
+token per location summarizing the whole set, and there is no natural source for it — the output isn't a
+transformed version of any particular variable token, it's a summary of all of them. So let the query be a
+free parameter: a single learnable vector, reused at every spatial location and every example, that the
+network trains to ask the right question of the variable set. One trainable query, cross-attending into
+the `V` keys and values. (This is the trainable-query-summarizes-a-set pattern — the same move a ViT's
+class token makes over the spatial set, pointed here at the variable axis.) Concretely, per head with
+`d_k = D / num_heads`, `score_v = (W^Q q)·(W^K x_v)/√d_k`, `α = softmax_v(score)`, and the head output is
+`Σ_v α_v (W^V x_v)`; the heads concatenate and pass through `W^O`.
+
+Two pieces of that are load-bearing and I should justify them rather than copy them. The `1/√d_k` is not
+decoration: for query/key components roughly independent with unit variance, the dot product
+`Σ_{i=1}^{d_k} q_i k_i` has variance `d_k`, so its magnitude grows like `√d_k`; left unscaled, large
+logits push the softmax toward one-hot, where its Jacobian collapses and the gradient through the
+attention weights becomes tiny. Dividing by `√d_k` keeps the logits unit-variance and the softmax
+responsive — and "responsive" is the whole point of this rung, since the wind regression was caused by a
+weighting that *couldn't* respond. The multi-head choice is the other one: a single query-key softmax
+produces one weighting pattern over the variables — one answer to "which variables matter." But "which
+variables matter" has several simultaneous answers — the thermodynamic story and the dynamical story are
+different, and a single softmax forces one compromise, which is exactly the compromise that sank wind10m at
+the previous rung. Several heads, each with its own projections to a `d_k = D/num_heads` subspace, keep
+distinct "which variables matter for *this* aspect" patterns distinct instead of averaging them into one;
+`W^O` then mixes the heads' subspaces back into one `D`-vector. Multi-head is the structural antidote to
+the one-compromise-weighting failure I just measured.
+
+How many such layers, and how many queries? One query already turns the set into exactly one token per
+location — exactly the `[B, L, D]` the contract wants — and a single cross-attention layer already does
+it. Stacking more would re-attend a length-one sequence into the variable set again, buying little for the
+cost. So one layer, one query: minimal. And the cost ledger is favorable, which matters because this sits
+inside an already-large fine-tuned backbone. The reduction is `O(V)` per location, `O(V·h·w)` total —
+linear in `V`, like the weighted sum — and crucially it does *not* reintroduce the `O(V²)` blowup that
+motivated aggregation in the first place: that blowup came from running the backbone's self-attention over
+the full `V·h·w` sequence; here the cross-attention is a tiny softmax over `V` keys with a single query,
+and the backbone still sees only the `h·w`-length aggregated sequence. So I get content-dependent,
+re-projecting, multi-head mixing at linear-in-`V` cost.
+
+Now initialization, because a learnable query starting badly could corrupt the pretrained ClimaX features
+the lower rungs were careful to respect — and the lower rungs handed me the right discipline. If I
+zero-initialize the query and the attention biases start at zero, every score is
+`(W^Q·0)·(W^K x_v)/√d_k = 0`, so at step zero the softmax over the `V` variables is uniform — the layer
+begins with the same equal-weighting pattern as the mean, applied to the projected value tokens. That is
+the safe prior I want for a fine-tune-from-pretrained run: before learning anything, "treat all variables
+equally" is the right default, and it is the exact starting point the mean and the zero-initialized
+weighted sum both used and that produced sensible numbers. From there gradient descent specializes the
+query toward content-dependent pooling. This also closes the loop on the whole ladder: the mean is this
+layer with the softmax forced uniform (`softmax(0)`) and identity projections; the learned weighted sum is
+this layer with logits that are learned *constants* rather than functions of the tokens; the full
+cross-attention is the same machine with the weights set free to depend on the data and the values
+re-projected. The two rungs I climbed are the degenerate cases of this one — which is the test that I
+picked the right object: the simpler things fall out of it, they don't sit beside it. And the diagnosis is
+clean: the weighted sum's wind regression was the cost of frozen logits; this rung unfreezes them.
+
+Let me make the shapes concrete, since the indexing is the only fiddly part and it must land the literal
+edit. The tokenizer hands me `x: [B, V, L, D]`. The reduction is per-location, per-example, and identical
+at every location, so I treat every `(example, location)` pair as an independent `V`-element set: permute
+to `[B, L, V, D]` to bring the variable axis next to `D`, then fold `B` and `L` together into `[B·L, V, D]`
+— `B·L` independent set-reduction problems. The query is the one learnable vector `[1, 1, D]`, expanded
+across the batch to `[B·L, 1, D]`. Run multi-head cross-attention with that query against the `V` tokens as
+keys and values: out `[B·L, 1, D]`. Drop the length-one query axis to `[B·L, D]`, unfold back to
+`[B, L, D]`. In the scaffold this is a single `nn.MultiheadAttention(embed_dim, num_heads,
+batch_first=True)` plus one `nn.Parameter` query, with `embed_dim = D = 1024` and `num_heads = 16` so
+`d_k = 64` per head — the standard head width. `V` never enters the module's weights; it is read from the
+input shape, which is the entire point of the contract. The query is zero-initialized, as argued. This is
+exactly the ClimaX default fill the scaffold ships, and now I've derived *why* each piece is there rather
+than inherited it. (The full scaffold module is in the answer.)
+
+So the delta from step 2 is precise: where the weighted sum held a single global softmax distribution over
+the 48 variables — a frozen weighting that helped z500 and t850 but mis-served wind10m — I now let one
+learnable query compute, at each location, a content-dependent multi-head softmax over the *projected*
+variable tokens, so the weighting reacts to what the tokens say there and the values are re-expressed in a
+shared space before mixing.
+
+Let me close on the falsifiable expectations against the two runs I have. I expect this to beat the
+weighted sum on *every* target, and the cleanest test is wind10m-7day: that was the regression — the
+weighted sum's 3.4245 was worse than even the mean's 3.3991 — and if content-dependent, multi-head
+attention is the right diagnosis of that regression, then wind10m should drop back below the mean's floor,
+i.e. below 3.3991, not merely below 3.4245. That is the sharp, falsifiable bar: if cross-attention cannot
+get wind10m under 3.3991, then content dependence is not what the longest-lead wind target needed and the
+regression had another cause. On z500-3day and t850-5day, where the global split already helped (345.79,
+2.5934), I expect the content-dependent version to push further — the right variables at a synoptically
+active cell differ from a quiescent one, and only this rung can express that — so I expect both to drop
+below 345.79 and 2.5934, with z500 again showing the largest absolute gain since it carries the most
+headroom and leans hardest on a state-dependent dynamical subset. If all three land below the weighted
+sum's numbers and wind10m clears the mean's 3.3991, the ladder's logic holds end to end: uniform → fixed
+global weighting → content-dependent re-projecting attention, each rung fixing the defect the previous
+one's numbers exposed.
+</think>
+<say>
+[[FILL_SAY: 1-2 sentences naming the method and what this first edit does]]
+</say>
+<edit path="ClimaX/custom_forecast.py">
+<old>
+# EDITABLE region of custom_forecast.py (lines 310-351) — step 2: learned weighted sum
+class VariableAggregator(nn.Module):
+    """Learned weighted sum variable aggregation.
+
+    Learns a scalar weight per variable, applies softmax normalization,
+    then computes a weighted sum across variable tokens.
+
+    Args:
+        embed_dim (int): Embedding dimension D.
+        num_heads (int): Number of attention heads (unused).
+        num_vars (int): Number of input variables V.
+</old>
+<new>
+# EDITABLE region of custom_forecast.py (lines 310-351) — step 3: ClimaX cross-attention
+class VariableAggregator(nn.Module):
+    """Cross-attention variable aggregation (ClimaX default).
+
+    A learnable query token attends to all V variable tokens at each spatial
+    location via multi-head cross-attention, producing one token per location.
+
+    Args:
+        embed_dim (int): Embedding dimension D.
+        num_heads (int): Number of attention heads.
+        num_vars (int): Number of input variables V.
+</new>
+</edit>
+<obs>
+Successfully replaced text in ClimaX/custom_forecast.py.
+</obs>
+<note>
+[[FILL_NOTE?: optional one-line thought for this edit, or delete this block]]
+</note>
+<edit path="ClimaX/custom_forecast.py">
+<old>
+        self.num_vars = num_vars
+        # Learnable weight per variable
+        self.var_weights = nn.Parameter(torch.zeros(num_vars), requires_grad=True)
+</old>
+<new>
+        self.num_vars = num_vars
+        self.var_query = nn.Parameter(torch.zeros(1, 1, embed_dim), requires_grad=True)
+        self.var_agg = nn.MultiheadAttention(embed_dim, num_heads, batch_first=True)
+</new>
+</edit>
+<obs>
+Successfully replaced text in ClimaX/custom_forecast.py.
+</obs>
+<note>
+[[FILL_NOTE?: optional one-line thought for this edit, or delete this block]]
+</note>
+<edit path="ClimaX/custom_forecast.py">
+<old>
+        """
+        # Softmax-normalized variable weights
+        w = F.softmax(self.var_weights, dim=0)  # V
+        w = w.view(1, -1, 1, 1)                # 1, V, 1, 1
+        # Weighted sum across variables
+        out = (x * w).sum(dim=1)  # B, L, D
+        return out
+</old>
+<new>
+        """
+        b, v, l, d = x.shape
+        x = x.permute(0, 2, 1, 3)   # B, L, V, D
+        x = x.reshape(b * l, v, d)  # B*L, V, D
+
+        query = self.var_query.expand(b * l, -1, -1)  # B*L, 1, D
+        out, _ = self.var_agg(query, x, x)             # B*L, 1, D
+        out = out.squeeze(1)                            # B*L, D
+
+        out = out.reshape(b, l, d)  # B, L, D
+        return out
+</new>
+</edit>
+<obs>
+Successfully replaced text in ClimaX/custom_forecast.py.
+</obs>
+<run/>
+<obs>
+Measured results — `baseline:cross_attention` (`is_final,true`), seed 42 (the only seed). Latitude-weighted RMSE, lower is better.
+
+| seed | z500-3day | t850-5day | wind10m-7day |
+|---|---|---|---|
+| 42 | 255.8458 | 2.1214 | 3.1455 |
+| **mean** | **255.8458** | **2.1214** | **3.1455** |
+</obs>
+
+### step 4 — Set Transformer pooling (SAB + PMA)   [slug:set-transformer-aggregation]
+
+<think>
+[[POLISH_REASONING: adapt to first-person agentic voice, end by deciding to implement]]
+The cross-attention rung confirmed the whole ladder's logic and, in doing so, drew a sharp line under what
+content-dependent pooling buys. Against the weighted sum's 345.79 / 2.5934 / 3.4245, the learnable-query
+cross-attention landed 255.85 / 2.1214 / 3.1455 — a large drop on every target, and crucially it pulled
+wind10m-7day back under the mean's floor (3.1455 < 3.3991), exactly the falsifiable bar I had set for it.
+So the diagnosis held: the weighted sum's wind regression really was the cost of a frozen, content-
+independent weighting, and letting the weight on each variable react to the token contents fixed it. The
+z500-3day collapse from 345.79 to 255.85 is the headline — content-dependent, multi-head, value-
+re-projecting pooling captures the state-dependent dynamical structure the global split could not. The
+ladder is internally consistent: uniform → fixed global weighting → content-dependent attention, each rung
+repairing the previous one's measured defect. Now I have to ask what the *cross-attention* rung itself
+still leaves on the table, because that is where the next move lives.
+
+Let me look hard at what the single query actually does, token by token. At one location it forms one
+learnable query `q`, scores each variable token by `(W^Q q)·(W^K x_v)/√d_k`, softmaxes over the `V`
+variables, and returns `Σ_v α_v (W^V x_v)`. The weights are content-dependent — they react to what each
+token says — and that is the win I just measured. But notice *how* each weight is computed: the score on
+variable `v` is a compatibility between the fixed query and `x_v` *alone*. The query asks the same fixed
+question of every token independently; the score on the geopotential token does not depend on what the
+wind token is currently saying, and vice versa. The variable tokens never read each other before they are
+pooled. So cross-attention reacts to each variable's content in isolation, but it cannot express a
+*relational* rule — "upweight the wind token *because* the geopotential token indicates a sharp gradient
+here." That kind of inter-variable conditioning is exactly the structure I'd expect to matter most on the
+hardest target: wind10m-7day is the longest lead (7 days) and the smallest absolute headroom (3.1455),
+and at long lead the informative combination of variables is plausibly the most state-coupled — which
+variable carries the signal depends on the joint atmospheric configuration, not on any one variable's
+token in isolation. So the cross-attention number, good as it is, is the number I'd expect from a pooling
+that scores variables independently; the residual structure it can't reach is the correlations *among* the
+variables.
+
+That points at the one lever every rung so far has left unpulled. The mean encodes each variable in
+isolation (identity, then average); the weighted sum encodes each in isolation (scalar weight, then sum);
+the cross-attention scores each in isolation (query-vs-token, then weighted sum of re-projected values).
+None of them lets the `V` variable tokens *interact* before the summary is formed. If I want the pooling
+weight on variable `i` to be able to depend on variable `j`'s contents, the variables have to attend to
+*each other* first, producing context-aware representations, and only then be pooled. That is a different
+and strictly more expressive construction than scoring-then-pooling, and it is precisely the gap the
+cross-attention rung's isolation-scoring leaves.
+
+I have to be careful, because "let the elements interact, then pool" has a collapse trap: if the
+interaction stage is optimized only to make pooling easy, the cheapest solution can be an encoder that maps
+every variable token to the same vector — trivially poolable, useless. So the interaction mechanism must be
+one that genuinely mixes information across the set and resists the trivial collapse. Self-attention is exactly that:
+each token's new representation is a content-weighted combination of *all* the tokens' values, with a
+residual that carries the token's own information forward, so the identity-collapse the bare encoder
+risked is not the cheap optimum — folding every token to a constant would have to fight the residual rather
+than ride a free gradient down to it — and it is permutation-equivariant — permute the inputs and the outputs permute the
+same way — which is what I need so that a permutation-invariant pooling on top yields a permutation-
+invariant whole. So the move is: a self-attention block over the `V` variable tokens (the variables read
+each other), then an attention pooling on top (content-dependent, set-valued, returning one token).
+
+Let me build both from one well-behaved block and check the pieces against the constraints the contract and
+the pretrained backbone impose. The block is a Transformer encoder block adapted for sets — multihead
+attention plus a feed-forward, residuals, LayerNorm, but **no positional encoding and no dropout** (a
+position would break the permutation symmetry I'm relying on; stochastic dropout would break the
+determinism of the set map). Call it MAB(X, Y) for a query set `X` over key/value set `Y`:
+`H = LayerNorm(X + Multihead(X, Y, Y))`, then `MAB(X, Y) = LayerNorm(H + rFF(H))`, with `rFF` a row-wise
+feed-forward and the usual `1/√d` scaling so the softmax doesn't saturate (the same responsiveness
+argument that mattered at the cross-attention rung). From MAB, two blocks fall out. Self-attention within
+the variable set is `SAB(X) = MAB(X, X)` — tokens are queries, keys, and values at once, so each variable
+reads from all the others by content compatibility; this is the inter-variable interaction the lower rungs
+lack, and one block of pairwise mixing is a sensible amount of structure to add for a set of `V = 48`. The
+pooling is `PMA` with one learnable *seed* vector `S`: `PMA(Z) = MAB(S, Z)`, the seed a trainable query
+that asks the encoded set for its summary, returning one token; multihead so it can pose several summary
+sub-questions (the thermodynamic and dynamical summaries) and combine them through the block's output
+projection. One seed gives exactly the one token per location the contract wants — I do not need more
+seeds, which are for problems wanting several correlated outputs.
+
+Now the key consistency check that tells me this is the *right* next rung and not a sideways move: how does
+this relate to the cross-attention I'm trying to beat? A one-seed, single-head PMA on the *raw* tokens with
+no encoder is essentially the cross-attention rung — a learnable query pooling the variable tokens. So the
+ClimaX cross-attention is the no-encoder, `k=1`, single-head special case of this construction. The two
+things I'm adding over it are exactly the two it lacks: the pooling is multihead, and — the decisive one —
+there is a self-attention encoder (SAB) over the variable set *before* pooling, so the summary is formed
+over context-aware variable representations rather than independently-scored raw ones. That is the
+inter-variable-correlation modelling I argued wind10m-7day most needs. And this is not idle: the
+attend-among-elements-then-pool construction is known to match a max-pooling oracle on a max-value-
+regression task where mean and sum pooling fail badly — because identifying the governing element requires
+the elements to be compared against each other, the same relational structure I expect among
+meteorological variables. So the next rung is `SAB` then one-seed `PMA`: the minimal Set-Transformer
+pooling that adds interaction and multihead pooling over the cross-attention baseline.
+
+Cost and conditioning, since this sits inside a deep backbone fine-tuned from pretrained weights. The SAB
+is `O(V²)` per location — but `V = 48`, so this is a `48×48` attention at each of the 512 locations, tiny,
+and it does *not* reintroduce the `O((V·h·w)²)` blowup that motivated aggregation in the first place (that
+came from the backbone over the full variable-and-space sequence; here the backbone still sees only the
+`h·w` aggregated sequence). So I can afford the full SAB rather than the inducing-point bottleneck (ISAB),
+which is meant for large sets. I keep LayerNorm on in both blocks — inside a deep ViT fine-tune, LayerNorm
+in the residual blocks is what keeps activations well-conditioned and training stable — and use the
+pipeline's `num_heads = 16` (`d_k = 64`/head, the standard width the rest of the model uses). The seed is a
+learnable parameter, Xavier-initialized so the pooling attention starts with sensible-magnitude logits.
+Unlike the cross-attention rung I cannot zero-initialize to recover the mean, because the SAB encoder makes
+the map nonlinear in the tokens — but the residual structure and LayerNorm keep the starting point
+well-behaved, and fine-tuning from pretrained ClimaX weights means the backbone adapts to the new
+aggregator's output distribution.
+
+The shapes follow the same per-location folding as the cross-attention rung. The tokenizer hands me
+`x: [B, V, L, D]`; permute to `[B, L, V, D]` and fold to `[B·L, V, D]` so each `(example, location)` is an
+independent `V`-set. Apply SAB: `[B·L, V, D] → [B·L, V, D]`, the variables now context-aware. Expand the
+seed to `[B·L, 1, D]` and apply PMA: `[B·L, 1, D]`. Squeeze and unfold to `[B, L, D]`. `V` never enters any
+weight — every `Linear` inside MAB maps `D → D` and the seed is `1×1×D` — so the module accepts any `V`,
+as the contract requires. I implement MAB faithfully to its canonical reference (three projections to width
+`D`, heads split and stacked along the batch dim for one `bmm`, residual `Q_ + A V_`, LayerNorm, then the
+feed-forward residual `O + ReLU(fc_o(O))`, LayerNorm); SAB calls `MAB(x, x)`, PMA calls `MAB(seed, z)`.
+(The full scaffold module — MAB plus the SAB-then-PMA aggregator — is in the answer.)
+
+So the delta from the cross-attention rung is precise: where that rung scored each variable token
+independently against one fixed query and pooled the re-projected values, I now first let the `V` variable
+tokens attend among themselves (SAB) so each is represented in the context of the others, then pool the
+context-aware tokens with a learnable-seed multihead attention (PMA). The pooling weight on a variable can
+now depend on what the other variables are saying — the inter-variable correlation the cross-attention
+cannot express.
+
+Let me close on the bar this has to clear, stated against the real cross-attention numbers, since this rung
+is the endpoint and carries no measurement of its own. To justify the added SAB block, it must beat
+255.85 / 2.1214 / 3.1455 on z500-3day / t850-5day / wind10m-7day. The sharpest, most falsifiable test is
+wind10m-7day: that is the longest-lead, most state-coupled target and the smallest residual headroom
+(3.1455), and it is precisely where I argued inter-variable correlation should matter most — so if the
+Set-Transformer pooling cannot get wind10m below 3.1455, then attending-among-variables-before-pooling is
+*not* what that target needed and the extra block is unjustified. On z500-3day and t850-5day I'd expect
+smaller relative gains than the jump cross-attention already delivered (those targets' biggest defect — the
+frozen global split — was already fixed by content-dependent pooling), but still a measurable improvement
+if relational structure among the dynamical and thermodynamic variables is real. The risk I'd watch is
+overfitting: SAB roughly triples the aggregator's parameters over the single cross-attention layer, and on
+a single-seed, single-block budget fine-tuned from pretrained weights, a too-expressive aggregator could
+fit noise and *fail* to clear the cross-attention bar on the easier targets even while helping wind10m. So
+the validation I would run is exactly the three-target comparison against 255.85 / 2.1214 / 3.1455, with
+wind10m-7day as the decisive rung: clear it on all three (and especially wind10m) and the ladder's final
+step — from independent-scoring pooling to interaction-then-pooling — is earned.
+</think>
+<say>
+[[FILL_SAY: 1-2 sentences naming the method and what this first edit does]]
+</say>
+<edit path="ClimaX/custom_forecast.py">
+<old>
+# EDITABLE region of custom_forecast.py (lines 310-351) — step 3: ClimaX cross-attention
+class VariableAggregator(nn.Module):
+    """Cross-attention variable aggregation (ClimaX default).
+
+    A learnable query token attends to all V variable tokens at each spatial
+    location via multi-head cross-attention, producing one token per location.
+</old>
+<new>
+# EDITABLE region of custom_forecast.py (lines 310-351) — finale: Set Transformer pooling (SAB + PMA)
+import math
+
+
+class MAB(nn.Module):
+    """Multihead Attention Block (Set Transformer, eqs. 6-7):
+        H        = LayerNorm(X + Multihead(X, Y, Y))
+        MAB(X,Y) = LayerNorm(H + rFF(H)),   rFF = row-wise Linear+ReLU residual.
+    No positional encoding, no dropout (both break the set symmetry).
+    """
+
+    def __init__(self, dim_Q, dim_K, dim_V, num_heads, ln=True):
+        super().__init__()
+        self.dim_V = dim_V
+        self.num_heads = num_heads
+        self.fc_q = nn.Linear(dim_Q, dim_V)
+        self.fc_k = nn.Linear(dim_K, dim_V)
+        self.fc_v = nn.Linear(dim_K, dim_V)
+        self.ln0 = nn.LayerNorm(dim_V) if ln else None
+        self.ln1 = nn.LayerNorm(dim_V) if ln else None
+        self.fc_o = nn.Linear(dim_V, dim_V)
+
+    def forward(self, Q, K):
+        Q = self.fc_q(Q)
+        K, V = self.fc_k(K), self.fc_v(K)
+        dim_split = self.dim_V // self.num_heads
+        Q_ = torch.cat(Q.split(dim_split, 2), 0)
+        K_ = torch.cat(K.split(dim_split, 2), 0)
+        V_ = torch.cat(V.split(dim_split, 2), 0)
+        A = torch.softmax(Q_.bmm(K_.transpose(1, 2)) / math.sqrt(self.dim_V), 2)
+        O = torch.cat((Q_ + A.bmm(V_)).split(Q.size(0), 0), 2)
+        O = O if self.ln0 is None else self.ln0(O)
+        O = O + F.relu(self.fc_o(O))
+        O = O if self.ln1 is None else self.ln1(O)
+        return O
+
+
+class VariableAggregator(nn.Module):
+    """Set Transformer pooling: SAB over the V variable tokens, then PMA with one seed.
+</new>
+</edit>
+<obs>
+Successfully replaced text in ClimaX/custom_forecast.py.
+</obs>
+<note>
+[[FILL_NOTE?: optional one-line thought for this edit, or delete this block]]
+</note>
+<edit path="ClimaX/custom_forecast.py">
+<old>
+        self.num_vars = num_vars
+        self.var_query = nn.Parameter(torch.zeros(1, 1, embed_dim), requires_grad=True)
+        self.var_agg = nn.MultiheadAttention(embed_dim, num_heads, batch_first=True)
+</old>
+<new>
+        self.num_vars = num_vars
+        # SAB encoder: variables attend to each other (MAB(X, X)).
+        self.sab = MAB(embed_dim, embed_dim, embed_dim, num_heads, ln=True)
+        # PMA pooling: one learnable seed cross-attends over the encoded set (MAB(S, Z)).
+        self.seed = nn.Parameter(torch.empty(1, 1, embed_dim))
+        nn.init.xavier_uniform_(self.seed)
+        self.pma = MAB(embed_dim, embed_dim, embed_dim, num_heads, ln=True)
+</new>
+</edit>
+<obs>
+Successfully replaced text in ClimaX/custom_forecast.py.
+</obs>
+<note>
+[[FILL_NOTE?: optional one-line thought for this edit, or delete this block]]
+</note>
+<edit path="ClimaX/custom_forecast.py">
+<old>
+        b, v, l, d = x.shape
+        x = x.permute(0, 2, 1, 3)   # B, L, V, D
+        x = x.reshape(b * l, v, d)  # B*L, V, D
+
+        query = self.var_query.expand(b * l, -1, -1)  # B*L, 1, D
+        out, _ = self.var_agg(query, x, x)             # B*L, 1, D
+        out = out.squeeze(1)                            # B*L, D
+
+        out = out.reshape(b, l, d)  # B, L, D
+        return out
+</old>
+<new>
+        b, v, l, d = x.shape
+        x = x.permute(0, 2, 1, 3).reshape(b * l, v, d)   # B*L, V, D
+        z = self.sab(x, x)                               # B*L, V, D: variables read each other
+        s = self.seed.expand(b * l, -1, -1)              # B*L, 1, D: the shared learnable seed
+        out = self.pma(s, z)                             # B*L, 1, D: seed pools the encoded set
+        out = out.squeeze(1).reshape(b, l, d)            # B, L, D
+        return out
+</new>
+</edit>
+<obs>
+Successfully replaced text in ClimaX/custom_forecast.py.
+</obs>
+

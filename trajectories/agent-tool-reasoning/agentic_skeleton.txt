@@ -1,0 +1,659 @@
+<meta task="agent-tool-reasoning" domain="Language models" file="stabletoolbench/toolbench/inference/Algorithms/custom_search.py" model_format="qwen3" edit_tool="str_replace"/>
+
+<system>
+You are a research engineer improving a model on a fixed ML task. You work by editing the model code and running experiments. Think carefully before each change. You have these tools:
+- str_replace(path, old_str, new_str): replace the unique occurrence of old_str with new_str.
+- create(path, file_text): create a new file.
+- run_experiment(): train + evaluate the current code under the fixed budget; returns metrics.
+Make one tool call at a time. After editing, call run_experiment() to measure your method.
+</system>
+
+<user>
+## Research question
+
+Give a frozen LLM a user query and a pile of real RapidAPI tools, and ask it to fulfill the query by
+calling tools in the right order with the right arguments. The single thing being designed is the
+agent's **search/reasoning policy** — how it explores the action space: which tool to call next, when
+to back up after a dead end, when to give up — and the policy trades task success against the number
+of LLM queries it spends. Everything else (the tool environment, the answer judge, the model
+backbones, the prompts, the decoding parameters) is frozen. The benchmark is StableToolBench
+(Guo et al. 2024, arXiv:2403.07714), a stabilized ToolBench (Qin et al. 2023, arXiv:2307.16789) whose
+virtual API server replaces flaky live APIs with a cache+simulator and whose GPT-4 judge reports a
+Solvable Pass Rate.
+
+## Prior art before the first rung (grounded-acting lineage)
+
+The first rung is a single forward chain over a frozen model; that idea is itself the resolution of a
+short lineage, and the fixed harness below is what it converged to.
+
+- **Chain-of-thought prompting (Wei et al. 2022).** Few-shot exemplars that write out intermediate
+  reasoning steps before the answer; large models imitate the form and produce their own multi-step
+  procedure. Gap: a *closed box* — it reasons over its own pretraining residue with no contact with
+  the world, so the moment a step needs a fact the model doesn't hold it invents one and the whole
+  chain reasons from the fabrication. For tool use, it even hallucinates APIs that do not exist.
+- **Self-consistency (Wang et al. 2022).** Sample many chains, vote on the answer; averages out
+  path-level noise. Gap: every sampled chain draws from the same internal well, so it cures *path*
+  noise, not *missing grounding* — many chains can march confidently to the same wrong answer.
+- **Acting-by-prompting (LLM-as-policy: WebGPT, SayCan, etc., 2021–2022).** Turn each observation into
+  text, ask the model for the next action, execute it, feed the new observation back. Gap: real
+  contact with the world but no place to *think* between actions, so on a multi-step task it loses the
+  goal, repeats a call, and can't synthesize a final answer from what it gathered.
+- **Reflect-and-retry (Reflexion, Shinn et al. 2023).** On a failed episode, write a natural-language
+  reflection on what went wrong, stash it, and rerun the *whole task* with the reflection prepended.
+  Gap: the unit of revision is the entire episode — a fumble at step nine throws away eight good steps
+  and re-derives them. It corrects *between* attempts, never *within* one.
+
+## The fixed substrate
+
+A StableToolBench inference harness is frozen and must not be touched. It exposes the agent as a
+`CustomSearch` object whose tree is built from a root node carrying the system/user prompt, and it runs
+the same `search()` policy across both DeepSeek and Qwen backbones on the I1-instruction subset. The
+harness owns the entire ReAct round and hands the policy three helpers, none of which may be modified:
+
+- `self._step(node)` — one LLM call from `node` plus tool execution. It parses the assistant message
+  into a `Thought` node and, for a tool call, an `Action` node and an `Action Input` node; it runs the
+  call against the virtual API server, sets `observation_code` (0 ok, 1 hallucinated API name, 3 final
+  answer, 4 give up), flips `is_terminal`/`pruned`, increments `self.query_count`, and returns the new
+  leaf(s). Returns `[]` once the query budget is hit.
+- `self._add_diversity_prompt(node)` — if `node` already has children, appends a temporary prompt
+  listing the actions already tried from `node` and asking for a *different* one; returns `True` so the
+  caller marks that message invalid afterward (it is generation scaffolding, not part of the child's
+  history).
+- `self._rank_nodes(candidates)` — LLM **pairwise** ranking of candidate nodes via `sum_based_rankn`;
+  returns a per-candidate score (higher is better) and charges the comparison calls to `query_count`.
+
+Tree/node state is read-only-by-convention but the policy may *attach* its own attributes to nodes
+(as the baselines attach `prior_score`): `self.query_count`/`self.max_query_count`,
+`self.terminal_node`/`self.give_up_node`, `self.status` (set to 1 on success), `self.answer_count`,
+`self.single_chain_max_step` (depth cap, in raw nodes — a logical round is Thought+Action+Action Input,
+so three), `self.tree_beam_size` (children per expansion); and `node.is_terminal`, `node.pruned`,
+`node.observation_code`, `node.get_depth()`, `node.children`, `node.father`, `node.messages`,
+`node.make_finish(k)`.
+
+## The editable interface
+
+Exactly one region is editable — the `search(self, root_node)` method of `CustomSearch` in
+`custom_search.py` (lines 368–439). Every rung is a fill of this one method (plus any private helper
+methods it calls). The starting point is the scaffold default: a **greedy chain** — follow one path,
+no backtracking.
+
+```python
+    # EDITABLE region of custom_search.py — default fill (greedy chain, no backtracking)
+    def search(self, root_node):
+        """Core search logic. Modify this method to implement your strategy.
+
+        Helpers (do NOT modify, just call): self._step(node), self._add_diversity_prompt(node),
+        self._rank_nodes(candidates). State: self.query_count, self.max_query_count,
+        self.terminal_node, self.give_up_node, self.status, self.answer_count,
+        self.single_chain_max_step, self.tree_beam_size. Node: node.is_terminal, node.pruned,
+        node.observation_code, node.get_depth(), node.children, node.father.
+        """
+        now_node = root_node
+        for step in range(self.single_chain_max_step):
+            if self.query_count >= self.max_query_count:        # budget exhausted
+                break
+            if len(self.terminal_node) >= self.answer_count:    # already have enough answers
+                break
+
+            new_leaves = self._step(now_node)                   # one LLM call + tool exec
+            if not new_leaves:
+                break
+            now_node = new_leaves[-1]
+
+            if now_node.is_terminal:                            # produced a final answer
+                self.status = 1
+                self.terminal_node.append(now_node)
+                break
+            if now_node.pruned:                                 # dead end / give up
+                if now_node.observation_code == 4:
+                    self.give_up_node.append(now_node)
+                break
+            if now_node.get_depth() >= self.single_chain_max_step:
+                now_node.pruned = True
+                break
+```
+
+## Evaluation settings
+
+The same `search()` policy is run across multiple agent backbones on the **I1-instruction** subset of
+StableToolBench (50 scored queries per backbone), seed 42. Three diagnostics are reported per backbone:
+`pass_rate` — fraction of queries with a valid final answer (higher is better, the primary signal,
+alongside the GPT-4-judge Solvable Pass Rate `sopr`); `avg_queries` — average LLM queries per task
+(lower is better, the efficiency signal); and `give_up_rate` — fraction of queries the agent abandons
+(lower is better, a diagnostic). The score emphasizes answer quality; query count and give-up rate are
+efficiency and diagnostic signals.
+
+The editable model code is in `stabletoolbench/toolbench/inference/Algorithms/custom_search.py`:
+```python
+    def search(self, root_node):
+        """Core search logic. Modify this method to implement your strategy.
+
+        Available helpers (do NOT modify them, just call them):
+        --------------------------------------------------------
+        self._step(node) -> list[tree_node]
+            One LLM call + tool execution from *node*.
+            Returns list of new leaf nodes (usually length 1).
+            Returns [] if query budget is exhausted.
+
+        self._add_diversity_prompt(node) -> bool
+            Appends a diversity prompt if node already has children.
+            Returns True if prompt was added (mark it invalid after step).
+
+        self._rank_nodes(candidates) -> list[float]
+            LLM pairwise ranking of candidate nodes. Costs extra queries.
+
+        Available state:
+        ----------------
+        self.query_count       Current number of LLM queries used.
+        self.max_query_count   Budget limit.
+        self.terminal_node     List of nodes that produced a final answer.
+        self.give_up_node      List of nodes that gave up.
+        self.status            Set to 1 when a valid answer is found.
+        self.answer_count      Stop after this many answers.
+        self.single_chain_max_step   Max tree depth before pruning.
+        self.tree_beam_size    Number of children per expansion.
+
+        Node properties:
+        ----------------
+        node.is_terminal       True if the node produced a final answer.
+        node.pruned            True if the node is pruned (dead end).
+        node.observation_code  Status code (0=ok, 1=hallucination, 3=finish, 4=give_up).
+        node.get_depth()       Depth in the tree.
+        node.children          List of child nodes.
+        node.messages          OpenAI message history up to this node.
+
+        Default implementation: simple greedy chain (no backtracking).
+        """
+        now_node = root_node
+        for step in range(self.single_chain_max_step):
+            # Check budget
+            if self.query_count >= self.max_query_count:
+                break
+
+            # Check if we already have enough answers
+            if len(self.terminal_node) >= self.answer_count:
+                break
+
+            # Take one step
+            new_leaves = self._step(now_node)
+            if not new_leaves:
+                break
+
+            now_node = new_leaves[-1]
+
+            # Check if the new node is terminal (gave a final answer)
+            if now_node.is_terminal:
+                self.status = 1
+                self.terminal_node.append(now_node)
+                break
+
+            # Check if the new node is pruned (dead end / give up)
+            if now_node.pruned:
+                if now_node.observation_code == 4:
+                    self.give_up_node.append(now_node)
+                break
+
+            # Check depth limit
+            if now_node.get_depth() >= self.single_chain_max_step:
+                now_node.pruned = True
+                break
+```
+Improve it. Derive your method, edit the code, then run_experiment().
+</user>
+
+### step 1 — Greedy chain (CoT@1 / single-chain ReAct)   [slug:greedy_chain]
+
+<think>
+[[POLISH_REASONING: adapt to first-person agentic voice, end by deciding to implement]]
+The policy is the whole point, but it drives an agent, and the simplest agent is the floor — so the pain to start from is just getting a frozen LLM to fulfill a multi-tool instruction at all. The interaction is a conversation with the world in the loop: the model reads the instruction and the tool schemas, it thinks, it picks one API out of the pile, it fills in arguments, the virtual server actually runs the call and hands back a real response, and the next move conditions on everything so far. Two finishing moves are always on the table — "Finish with Final Answer" (success) and "Finish by Giving Up" (the tools can't do it). Before I design any clever search I need the dumbest thing that closes this loop, because that is the baseline every later rung has to beat, and because its failure mode is what tells me what to build next.
+
+Let me be honest about why I can't just reuse the two tricks I already have. One is to make the model reason: few-shot it with exemplars that write out intermediate steps, and on a new instance it imitates the form and produces its own chain before answering. That clearly works for self-contained reasoning. But the instant a step needs a fact the model doesn't hold, it doesn't stop — it writes down something plausible, and because every later token conditions on the text already written, the invented fact becomes a premise the rest of the chain reasons from. For tool use this is fatal in a sharper way than for arithmetic: the model will cheerfully invent an *API that does not exist*, or invent what a real API returned, and then plan against the hallucination. Sampling many chains and voting (self-consistency) doesn't help, because every chain draws from the same internal well; voting cures path noise, not missing grounding, and on a tool task the grounding *is* the task. So pure reasoning over an internal black box is a non-starter the moment real APIs are involved.
+
+The other trick is to make the model act: turn each observation into text, ask for the next action, execute it, feed the response back. That gives real contact with the world — the model sees what the API actually returned instead of imagining it. But acting-only has the mirror-image hole: no place to think between actions. On a multi-step instruction the model loses the goal halfway through, re-calls a tool it already tried, and can't synthesize a final answer out of the responses it gathered, because the format gives it no moment to say "the search returned X, so the parameter I need for the next call is Y."
+
+So the two failures are almost mirror images: thought without grounding versus grounding without thought. The resolution that the field converged to, and that the harness is built around, is to interleave them in one trajectory. Frame it cleanly: at round t the agent has context c_t = (o_1, a_1, ..., o_t) and emits an action a_t under a policy π(a_t | c_t). Enlarge the action space to Â = A ∪ L, where L is language. An ordinary action in A executes a tool and returns a real observation; a *thought* in L is defined to have no environment effect and returns no observation — it just rewrites the context so the next real action is better reasoned, c_{t+1} = (c_t, thought). Interleaving thought and action in one chain is exactly the right per-round shape for tool use: think, call an API, read the real response, think again. The thoughts decompose the goal, react to surprises, and finally synthesize; the actions keep the reasoning grounded in real feedback so it stops hallucinating. Reasoning's hallucination pressure is reduced by grounding; acting's blindness is reduced by thought. That is the substrate, and the frozen large model with a few interleaved exemplars is what makes the unbounded L tractable — the strong language prior already knows what a sensible next thought looks like, so there is no training, only demonstration.
+
+Now I have to decide what the *search* over this substrate is, and at the floor the answer is "no search at all." The harness already owns the entire ReAct round inside `_step`: one call to `_step(node)` performs one LLM call, parses the assistant message into a Thought node and, for a tool call, an Action node and an Action Input node, runs the call, sets `observation_code` (0 ok, 1 hallucinated API name, 3 final answer, 4 give up), flips `is_terminal`/`pruned`, increments `query_count`, and returns the new leaf. So the policy I have to write is purely the *control flow* over repeated `_step` calls — and the simplest control flow is a single forward chain. Start at the root, call `_step` on the current node, move to the leaf it returns, and repeat: think, act, observe, think, act, observe, until something stops me. This is the greedy chain. It is the scaffold default, and it is the right floor precisely because it has no notion of taking anything back.
+
+Walk the stopping conditions, because they are the whole body of the method and each one is load-bearing. First, before every step, check the budget: if `query_count >= max_query_count`, break — the harness will not let me spend past the cap, and `_step` itself returns `[]` once the budget is hit, which I also treat as a stop. Second, check whether I already have enough answers: if `len(terminal_node) >= answer_count`, break (here `answer_count` is 1, so the first valid answer ends the search). Third, take the step; if it returns no new leaf, break. Fourth, inspect the leaf the world just produced. If `is_terminal` — the model emitted "Finish with Final Answer" and the server confirmed it (observation_code 3) — set `status = 1`, record the node in `terminal_node`, and stop: I have a solution. If `pruned` — a dead end — stop, and if its `observation_code == 4` it was an explicit give-up, so record it in `give_up_node` (a give-up is still a recordable, honest outcome: "the tools can't do this"). Finally, a depth guard: if the node reached `single_chain_max_step` raw nodes deep, prune it and stop. That is the entire policy. One path, taken greedily, no branching, no ranking, no backtracking. Critically, it never calls `_add_diversity_prompt` and never calls `_rank_nodes`, so it spends *zero* queries on anything but advancing the chain — the cheapest possible run.
+
+I want to be precise that this matches what the harness actually exposes, not the generic paper version of "ReAct." In the original grounded-acting setup the agent often manages its own stop-before-observation parsing, its own bad-split recovery (a second narrow call when the model fails to emit a clean action), and its own Finish handling. Here all of that lives inside the frozen `_step` — the parser, the tool execution, the status codes, the terminal detection are the harness's, not mine. My `search()` is *only* the loop that decides when to call `_step` and when to stop. So the greedy-chain rung is genuinely thin: it is the literal default fill of the editable region, equivalent to the CoT@1 / single-chain ReAct strategy, and its content is exactly the five stopping conditions above wrapped around a single `_step` call. (The distilled module is in the answer.)
+
+Now reason about what this floor will and won't do, because that is the entire reason to run it. On a *simple* instruction — one where the right tool is obvious, the call succeeds, and the model finishes — the greedy chain is not just adequate, it is optimal: it spends the minimum number of queries to reach the answer, with no overhead from exploration it doesn't need. So I expect the greedy chain to have, by a wide margin, the *lowest* `avg_queries` of any policy on the ladder — a handful of calls per task, because it takes exactly one path and stops. That is its one genuine virtue and I should expect the numbers to show it starkly.
+
+But the structure that makes it cheap is exactly the structure that makes it weak: the chain has no way to take back an action. Once a_t is committed the agent moves forward; after seeing r_t it cannot return to the state before a_t and pick a different action. So two failures are baked in. First, error propagation: one wrong call — malformed parameters, or a hallucinated API name — is now sitting in the context, every later thought conditions on it, and the model does the obvious thing, retrying the same broken call slightly reworded, getting stuck in a faulty loop. The error never gets corrected; it propagates. Second, under-exploration: a single chain commits to exactly one route through an effectively unbounded action space (free-form thought × API name × arguments), and if the first tool the model reaches for is wrong for this instruction, the chain rides it all the way down and never tries the tool that would have worked. On complex multi-tool instructions even a strong backbone often cannot find a single valid path with one linear pass.
+
+So here is the falsifiable shape I expect from the floor. On `avg_queries` it should win — lowest on every backbone — and that low number is *not* a good sign, it is the symptom: the agent quits early because it has no machinery to keep trying. On `pass_rate` it should be the weakest rung by construction, and the gap should widen on the harder instructions and the weaker backbones, where one linear pass is most likely to commit to a wrong tool and never recover. I expect `give_up_rate` to be non-trivial — with no retraction, an early dead end has nowhere to go but a give-up. And the split across backbones should track raw model strength: the stronger the backbone, the more often its single greedy guess is already right, so the larger backbone should post the highest greedy `pass_rate` and the smaller one the lowest. Whatever the precise numbers, the diagnosis is already pointed at the next rung: this is not a tuning problem, it is a *structural* one — the agent needs a way to retract a decision and try another, which means turning the single chain into a tree of partial trajectories I can back up in. The empty `search()` loop becomes a search over that tree at step 2.
+</think>
+<say>
+[[FILL_SAY: 1-2 sentences naming the method and what this first edit does]]
+</say>
+<edit path="stabletoolbench/toolbench/inference/Algorithms/custom_search.py">
+<old>
+    def search(self, root_node):
+        """Core search logic. Modify this method to implement your strategy.
+
+        Available helpers (do NOT modify them, just call them):
+        --------------------------------------------------------
+        self._step(node) -> list[tree_node]
+            One LLM call + tool execution from *node*.
+            Returns list of new leaf nodes (usually length 1).
+            Returns [] if query budget is exhausted.
+
+        self._add_diversity_prompt(node) -> bool
+            Appends a diversity prompt if node already has children.
+            Returns True if prompt was added (mark it invalid after step).
+
+        self._rank_nodes(candidates) -> list[float]
+            LLM pairwise ranking of candidate nodes. Costs extra queries.
+
+        Available state:
+        ----------------
+        self.query_count       Current number of LLM queries used.
+        self.max_query_count   Budget limit.
+        self.terminal_node     List of nodes that produced a final answer.
+        self.give_up_node      List of nodes that gave up.
+        self.status            Set to 1 when a valid answer is found.
+        self.answer_count      Stop after this many answers.
+        self.single_chain_max_step   Max tree depth before pruning.
+        self.tree_beam_size    Number of children per expansion.
+
+        Node properties:
+        ----------------
+        node.is_terminal       True if the node produced a final answer.
+        node.pruned            True if the node is pruned (dead end).
+        node.observation_code  Status code (0=ok, 1=hallucination, 3=finish, 4=give_up).
+        node.get_depth()       Depth in the tree.
+        node.children          List of child nodes.
+        node.messages          OpenAI message history up to this node.
+
+        Default implementation: simple greedy chain (no backtracking).
+        """
+        now_node = root_node
+        for step in range(self.single_chain_max_step):
+            # Check budget
+            if self.query_count >= self.max_query_count:
+                break
+
+            # Check if we already have enough answers
+            if len(self.terminal_node) >= self.answer_count:
+                break
+
+            # Take one step
+            new_leaves = self._step(now_node)
+</old>
+<new>
+    def search(self, root_node):
+        """Greedy chain: follow one path, no backtracking."""
+        now_node = root_node
+        for step in range(self.single_chain_max_step):
+            if self.query_count >= self.max_query_count:
+                break
+            if len(self.terminal_node) >= self.answer_count:
+                break
+
+            new_leaves = self._step(now_node)
+</new>
+</edit>
+<obs>
+Successfully replaced text in stabletoolbench/toolbench/inference/Algorithms/custom_search.py.
+</obs>
+<note>
+[[FILL_NOTE?: optional one-line thought for this edit, or delete this block]]
+</note>
+<edit path="stabletoolbench/toolbench/inference/Algorithms/custom_search.py">
+<old>
+
+            # Check if the new node is terminal (gave a final answer)
+            if now_node.is_terminal:
+</old>
+<new>
+
+            if now_node.is_terminal:
+</new>
+</edit>
+<obs>
+Successfully replaced text in stabletoolbench/toolbench/inference/Algorithms/custom_search.py.
+</obs>
+<note>
+[[FILL_NOTE?: optional one-line thought for this edit, or delete this block]]
+</note>
+<edit path="stabletoolbench/toolbench/inference/Algorithms/custom_search.py">
+<old>
+
+            # Check if the new node is pruned (dead end / give up)
+            if now_node.pruned:
+</old>
+<new>
+
+            if now_node.pruned:
+</new>
+</edit>
+<obs>
+Successfully replaced text in stabletoolbench/toolbench/inference/Algorithms/custom_search.py.
+</obs>
+<note>
+[[FILL_NOTE?: optional one-line thought for this edit, or delete this block]]
+</note>
+<edit path="stabletoolbench/toolbench/inference/Algorithms/custom_search.py">
+<old>
+
+            # Check depth limit
+            if now_node.get_depth() >= self.single_chain_max_step:
+                now_node.pruned = True
+                break
+</old>
+<new>
+
+            if now_node.get_depth() >= self.single_chain_max_step:
+                now_node.pruned = True
+                break
+</new>
+</edit>
+<obs>
+Successfully replaced text in stabletoolbench/toolbench/inference/Algorithms/custom_search.py.
+</obs>
+<run/>
+<obs>
+Measured results — `baseline:greedy_chain`, seed 42, I1-instruction (50 scored queries per backbone).
+
+## DeepSeek
+| seed | pass_rate | avg_queries | give_up_rate | sopr |
+|---|---|---|---|---|
+| 42 | 0.44 | 3.7 | 0.04 | 0.34 |
+
+## Qwen-72B
+| seed | pass_rate | avg_queries | give_up_rate | sopr |
+|---|---|---|---|---|
+| 42 | 0.62 | 3.9 | 0.04 | 0.32 |
+
+## Qwen-7B
+| seed | pass_rate | avg_queries | give_up_rate | sopr |
+|---|---|---|---|---|
+| 42 | 0.30 | 5.5 | 0.06 | 0.14 |
+</obs>
+
+### step 2 — DFS with LLM ranking (with_filter=True)   [slug:dfs_ranked]
+
+<think>
+[[POLISH_REASONING: adapt to first-person agentic voice, end by deciding to implement]]
+The greedy chain told me exactly what's missing, and it told me in numbers. Its `avg_queries` is the lowest anything will post on this ladder — 3.7 on DeepSeek, 3.9 on Qwen-72B, 5.5 on Qwen-7B — and that is precisely the symptom, not a virtue: the agent reaches a state, makes one guess, and when the guess dead-ends it has nowhere to go, so it stops after a handful of calls. The pass rates are the floor I expected: 0.44 / 0.62 / 0.30 across DeepSeek / Qwen-72B / Qwen-7B, and the split tracks raw backbone strength exactly as predicted — the strongest model's single greedy guess is right most often, the weakest's least. And the `give_up_rate` is non-trivial everywhere (0.04 / 0.04 / 0.06), which is the tell that the failures are dead ends the chain couldn't escape rather than genuinely unsolvable tasks. The `sopr` from the GPT-4 judge mirrors the pass rates (0.34 / 0.32 / 0.14), so this isn't a case of finding answers the judge then rejects — the agent is simply not finding answers. So the failure that bites is structural, and I diagnosed its root at step 1: the chain has no operation that means "undo and branch." Once an action is committed the agent moves forward; an early wrong call — malformed parameters, or worse a hallucinated API name that the model then keeps retrying slightly reworded — sits in the context and conditions every later thought, and a single linear pass commits to exactly one route through an unbounded action space. The fix is not a hyperparameter; it is to give the agent a way to take an action back.
+
+So what does "take an action back" even mean here? I want to keep an action when it's good and revise it when it's bad, locally, mid-trajectory. The cleanest existing idea for using a failure is the verbal-reflection loop — on a failed attempt, write down what went wrong, stash it, and retry the *whole task from the root* with the reflection prepended. That converts a binary fail into a textual hint, which is better than nothing. But stare at the unit of backup: it's the entire episode. Every retry restarts at the root. The greedy chain's 3.7 average calls already shows how short these trajectories are when they fail early — but the ones that *matter*, the hard multi-tool instructions, run many rounds, and if step nine of those is the only mistake, restarting from step one throws away eight good steps and re-exposes me to fresh mistakes on each one. In a setting where every step is a real, paid LLM call, that's enormously wasteful, and it doesn't even fit the budget shape: I want to spend my queries advancing, not re-deriving good prefixes. What I actually want is to keep the good prefix and revise only the bad suffix — back up *a little*, to where it went wrong, not all the way to the start.
+
+The instant I say "keep the prefix, revise the suffix, return to a prior state and choose differently," I'm not describing a chain anymore. A chain has one successor per state. What I'm describing has multiple possible successors at a state, with the ability to return to that state and pick another. That's a decision tree. A node is a state of the interaction — the partial trajectory of thoughts, calls, and observations reached so far; the root is the bare task; the children of a node are the different actions the agent could take from there; a leaf is a finish, either a real final answer (a good terminal) or a give-up / API-error dead end (a pruned node). Retraction is just "walk up from a dead leaf to an ancestor and descend into a different child" — exactly "keep the prefix up to the ancestor, revise the suffix below it." The greedy chain falls out as the degenerate tree where every node has one child. So the structure is forced: search over a tree of partial trajectories. The harness already makes this natural — `_step(node)` expands a node into a leaf, nodes carry `father`/`children`/`messages`, and the policy I write is the search over that tree.
+
+Now, *how* do I search it, and this is where I have to be careful, because the standard recipe is built for a different problem. The textbook deliberate-search-over-a-tree-of-thoughts approach is: at each node generate k candidate children; *score* them with a value heuristic — ask the model to rate each partial state, or vote which is best — and use the score both to pick which child to expand first and to prune branches whose value falls below a threshold; then backtrack when a branch looks hopeless. On a small, brute-forceable puzzle that's lovely, because there a value heuristic is cheap and calibrated and the whole space is small. But a tool trajectory is different on two axes. First, the state is a half-finished multi-API interaction with real, messy observations; ask the model "rate this partial trajectory 1 to 10" and the absolute number is noisy, instruction-dependent, and badly calibrated, so pruning on a fixed threshold throws away good branches whose self-score happened to land low and keeps bad ones that scored high. Relative judgment survives this far better: the model doesn't need to decide what an absolute 7 means, only whether continuation A or continuation B is more helpful for this same instruction from this same prefix. So I should compare candidates *pairwise* rather than assign absolute values — and the harness hands me exactly that primitive, `_rank_nodes`, which runs `sum_based_rankn` over candidate nodes and returns per-candidate scores. Second, I can't enumerate children — the next action is the Cartesian product of every free-form thought, every API, and every parameter string — so I sample a fixed number, `tree_beam_size` candidate continuations, by calling `_step` repeatedly from the same node.
+
+But naive repeated sampling has a trap, and it's the same trap that would otherwise make backtracking useless. If I call `_step` k times at the same node, I often get k near-identical actions, because the model has a strong mode — and when I back up to a node that already has children and just regenerate, I'll get the very action that already failed and loop forever. So when a node already has children, before I generate the next one I have to actively push the model off its previous choices. That's exactly what `_add_diversity_prompt(node)` is for: it appends a temporary prompt listing the actions already tried from this node and asks for a different one. It returns `True`, and I must then mark that message invalid after the `_step` call, because the nudge is scaffolding for *generating* the new child — it shouldn't live on in the child's own context or pollute the recorded message history. The nudge does its job at generation time and then disappears. This turns "retract and re-expand" into genuine exploration instead of repetition.
+
+Then breadth-first versus depth-first. Breadth-first would expand the whole frontier at each depth before going deeper — it would generate and partially run a whole layer of alternative trajectories before reaching any terminal. But I only need *one* valid path to terminate; `answer_count` is 1. Depth-first drives straight down one branch to a terminal as fast as possible and pays for siblings only when the chosen branch fails. Since "found one valid path" is the entire stopping condition, depth-first reaches it with far fewer calls. So: ranked depth-first. At a node, generate `tree_beam_size` children (with the diversity nudge on re-expansion), rank them pairwise with `_rank_nodes`, sort by score descending, and expand the best-judged child first; recurse; on failure come back and take the next-best.
+
+Now the backtracking machinery has to be exact, because after a leaf fails I may want to jump more than one level up before trying another branch, and a plain true/false return is too weak. So each recursive call returns an integer: how many levels the caller should still climb. Base cases fix the arithmetic. If the node is terminal — a real final answer — record it, set `status = 1`, and return `final_answer_back_length = 2`. If it's at the depth limit or already pruned, mark it pruned and check why: if `observation_code == 4` it's the explicit give-up, record it in `give_up_node` and return `prune_back_length = 2`; otherwise it's an ordinary failed call and return 1. The constants encode *how bad* the dead end was: 1 means "local sibling retry, this single call failed but its neighborhood may be fine," while 2 means "escape the local subtree — a give-up, or a completed answer I want to look past — so don't retry right next to it, diversify one level higher." And two sentinels handle global exits: if generating a child pushes `query_count` to `max_query_count`, return 100000 so every frame unwinds and the search exits; if I've collected `answer_count` final answers, return 10000 for the same hard unwind.
+
+Let me trace the climb once to be sure it's right, because the integer is doing all the control flow. A leaf returns 2. Its parent's loop sees `result = 2 > 1`, marks itself finished (`make_finish(2)`), and returns `2 - 1 = 1`. The grandparent sees `result == 1`, so the climb is consumed — it does *not* keep unwinding; it stays in its loop and generates its next sibling, two levels above the failed leaf. That's exactly "back up two levels and branch." If instead the leaf had returned 1 (an ordinary failed call), the parent sees 1, doesn't return, and immediately tries the failed leaf's *sibling* — a one-level local retry. The decrement-and-propagate converts a single integer into "unwind exactly N frames, then branch." One more accounting detail I can't fudge: the budget check happens *after* the `_step` call increments `query_count`, and `_rank_nodes` charges its comparison calls to the same `query_count`. So ranking is not free — and this is the crux of the cost story I have to confront before I trust this rung to be worth its price.
+
+Here is the cost I'm signing up for. For `n` generated children, the pairwise ranking compares every unordered pair, and to beat order bias it asks twice (each presentation order), so the comparison spends on the order of `n(n-1)` extra LLM calls at each ranked node — O(n²) queries whose *only* job is to reorder siblings I'm going to depth-first-explore anyway. That is the single most expensive thing in the procedure, and it buys me only the *order* of expansion, not the set of nodes explored. The greedy chain spent ~4 queries per task; this rung will spend many times that, most of it on ranking. That is the bet: pay a large, quadratic evaluation tax per branch point in exchange for retraction and exploration that the chain entirely lacked.
+
+So reading the greedy-chain numbers, here are my falsifiable expectations. `pass_rate` should rise substantially over the chain on the harder backbones — DeepSeek's 0.44 and especially Qwen-7B's 0.30 are where the chain most often committed to a wrong tool and couldn't recover, and retraction targets exactly that; Qwen-72B at 0.62 has less room. `give_up_rate` should *drop* or stay low, because a dead end now triggers a branch instead of a stop. And `avg_queries` should *explode* relative to the chain's 3.7–5.5 — that is the necessary cost of the O(n²) ranking, and the number to watch is whether the pass-rate gain justifies it, because the very next rung's whole thesis will be that it does not. The risk I can already feel in the construction: the ranking is paying quadratic calls to re-derive an ordering, and depth-first visits the *same set* of nodes regardless of sibling order — so if the model's first-generated child is usually its best instinct, I will have spent the bulk of my budget reordering siblings that depth-first would have reached anyway. If `avg_queries` balloons while `pass_rate` lands only at or below a rank-free depth-first search, the diagnosis for step 3 is already written: keep the tree and the backtracking, drop the ranking.
+</think>
+<say>
+[[FILL_SAY: 1-2 sentences naming the method and what this first edit does]]
+</say>
+<edit path="stabletoolbench/toolbench/inference/Algorithms/custom_search.py">
+<old>
+    def search(self, root_node):
+        """Greedy chain: follow one path, no backtracking."""
+        now_node = root_node
+        for step in range(self.single_chain_max_step):
+            if self.query_count >= self.max_query_count:
+                break
+            if len(self.terminal_node) >= self.answer_count:
+                break
+
+            new_leaves = self._step(now_node)
+            if not new_leaves:
+                break
+
+            now_node = new_leaves[-1]
+
+            if now_node.is_terminal:
+                self.status = 1
+                self.terminal_node.append(now_node)
+                break
+
+            if now_node.pruned:
+                if now_node.observation_code == 4:
+                    self.give_up_node.append(now_node)
+                break
+
+            if now_node.get_depth() >= self.single_chain_max_step:
+                now_node.pruned = True
+                break
+</old>
+<new>
+    def search(self, root_node):
+        """DFS with LLM ranking: expand best child first, backtrack on failure."""
+        self._dfs(root_node)
+
+    def _dfs(self, now_node):
+        """Recursive DFS. Returns number of levels to backtrack."""
+        final_answer_back_length = 2
+        prune_back_length = 2
+
+        now_node.expand_num = self.now_expand_num
+        self.now_expand_num += 1
+
+        # Base cases
+        if now_node.get_depth() >= self.single_chain_max_step or now_node.pruned or now_node.is_terminal:
+            if now_node.is_terminal:
+                self.status = 1
+                self.terminal_node.append(now_node)
+                return final_answer_back_length
+            else:
+                now_node.pruned = True
+                if now_node.observation_code == 4:
+                    self.give_up_node.append(now_node)
+                    return prune_back_length
+                return 1
+
+        # Generate beam_size children
+        candidates = []
+        for i in range(self.tree_beam_size):
+            if self.query_count >= self.max_query_count:
+                return 100000
+
+            # Add diversity prompt if node already has children
+            added_diversity = self._add_diversity_prompt(now_node)
+
+            new_leaves = self._step(now_node)
+
+            # Mark diversity message as invalid
+            if added_diversity:
+                now_node.messages[-1]["valid"] = False
+
+            if not new_leaves:
+                continue
+            candidates.append(new_leaves[-1])
+
+        if not candidates:
+            return 1
+
+        # Rank candidates using LLM pairwise comparison
+        if len(candidates) > 1:
+            scores = self._rank_nodes(candidates)
+            for score, node in zip(scores, candidates):
+                node.prior_score = score
+            candidates.sort(key=lambda x: x.prior_score, reverse=True)
+
+        # Expand best candidates in order
+        for cand in candidates:
+            result = self._dfs(cand)
+            if len(self.terminal_node) >= self.answer_count:
+                return 10000
+            elif result > 1:
+                now_node.make_finish(2)
+                return result - 1
+
+        return 1
+</new>
+</edit>
+<obs>
+Successfully replaced text in stabletoolbench/toolbench/inference/Algorithms/custom_search.py.
+</obs>
+<run/>
+<obs>
+Measured results — `baseline:dfs_ranked`, seed 42, I1-instruction (50 scored queries per backbone).
+
+## DeepSeek
+| seed | pass_rate | avg_queries | give_up_rate | sopr |
+|---|---|---|---|---|
+| 42 | 0.72 | 33.1 | 0.02 | 0.40 |
+
+## Qwen-72B
+| seed | pass_rate | avg_queries | give_up_rate | sopr |
+|---|---|---|---|---|
+| 42 | 0.82 | 35.1 | 0.02 | 0.50 |
+
+## Qwen-7B
+| seed | pass_rate | avg_queries | give_up_rate | sopr |
+|---|---|---|---|---|
+| 42 | 0.36 | 52.7 | 0.04 | 0.20 |
+</obs>
+
+### step 3 — DFSDT (depth-first search with decision tree)   [slug:dfsdt]
+
+<think>
+[[POLISH_REASONING: adapt to first-person agentic voice, end by deciding to implement]]
+The ranked search confirmed the bet was half right and half a waste, and the numbers say exactly which half. Retraction works: on DeepSeek `pass_rate` jumped from the chain's 0.44 to 0.72, on Qwen-72B from 0.62 to 0.82, and `give_up_rate` fell to 0.02 on both — the tree found valid paths the single chain couldn't, by abandoning wrong branches and trying others, precisely the structural fix I predicted. But look at the price, because it is brutal and it is the whole story of this rung. `avg_queries` exploded from the chain's 3.7 / 3.9 / 5.5 to 33.1 / 35.1 / 52.7 — roughly an order of magnitude more LLM calls. And the worst signal is on the weakest backbone: Qwen-7B spent the *most* queries of any cell on the board (52.7) and yet its `pass_rate` came in at 0.36, barely above the chain's 0.30 and with `sopr` at 0.20. So on the backbone that most needs help, the ranking tax bought almost nothing — it burned the budget reordering siblings and then ran out before exploring enough of the tree. That is the diagnosis: the gain came from *retraction*, the cost came from *ranking*, and on at least one backbone the ranking actively cannibalized the search by spending the budget on evaluation instead of advancement.
+
+So the failure to fix is precise: the O(n²) pairwise ranking is paying a quadratic LLM-call tax per branch point to produce something I'm not sure I need — an *ordering* of siblings. Let me make the constraint explicit, because it changes the whole shape of the answer. I do not need the *best* path, and I do not need to *rank* anything. I need exactly one path that reaches a final answer, found within a tight query budget; `answer_count` is 1. Every LLM call I spend comparing children instead of advancing toward a terminal is, for that goal, wasted. The ranked rung had it backwards: it spent the bulk of its budget on `_rank_nodes` in a space that's effectively infinite, when all I actually need is one valid path. The 52.7-query Qwen-7B cell is what that mistake looks like in a number.
+
+So the question is sharp: do I even need the ranking? Let me check what it actually buys. Its job is to make me expand the *most promising* child first, so I descend toward a terminal faster. But here's the thing depth-first guarantees and ranking does not change: depth-first visits the *same set* of nodes regardless of the *order* it visits siblings, and I terminate the instant I find a valid path either way. Ranking only changes the *order*, not the eventual set. So the only thing ranking can buy is reaching the terminal a few expansions sooner *on the branch where the best child happens not to be the first-generated one* — and it pays `n(n-1)` comparison calls per branch point for that chance. Now ask the empirical question: how often is the ranked-best child actually different from the first-generated child? On these tasks, the child the model generates *first* — its own first instinct at a node — is usually the one that ends up ranked highest. The model's strong mode is, most of the time, its best move. So the ranking is, in the common case, paying a quadratic tax to re-derive an ordering that "generation order" already approximates for free. That's the waste the 33–53 query counts encode.
+
+Drop it. Generate one child, recurse into it immediately; only generate a second child at this node if the first child's whole subtree dead-ends. That's a pre-order traversal of the tree — no beam, no sorting, no `_rank_nodes` call anywhere. And this is not a hack, it's the right generalization, because it has two properties that bracket it exactly between the rungs I've already run. First, graceful degradation *downward*: on a simple instruction where the model never has to retract — it thinks, calls the right API, finishes — my tree is a single chain with one child per node, and the procedure is *identical* to the greedy chain at step 1, at the same cost. I haven't made the easy case more expensive; the cheap cases stay cheap, which the ranked rung could not promise because it ranked even when there was nothing to rank. Second, graceful degradation *upward*: after the search finishes, the set of nodes I explored is almost exactly the set a full ranked depth-first search would have explored — because, again, depth-first's node set is order-independent and I stop on the first valid path. So I keep the hard-instruction-solving power of real DFS while shedding its dominant cost. Pre-order traversal sits exactly between "no exploration" (the chain it degrades to) and "full ranked search" (the node set it reproduces), and it pays for neither's worst case. That is the precise sense in which DFSDT dominates the ranked rung: same retraction, same exploration reach, minus the quadratic evaluation tax.
+
+Now I have to keep the parts of the ranked rung that were doing real work, because dropping ranking is the *only* change. The tree structure stays: nodes are partial trajectories, children are alternative actions, retraction is walking up and descending into a different child. The diversity nudge stays and is *more* important now, not less — when a branch dead-ends and I retract to a node that already has a child, the model, left alone, will regenerate the very action that just failed and I'll loop forever. So before generating the next child at a node that already has children, I call `_add_diversity_prompt(node)` to show the model the actions it already tried here and demand a different one, and I mark that temporary message invalid after the `_step` call so it doesn't contaminate the child's context or the recorded history. The nudge is what turns "retract and re-expand" into genuine exploration; without ranking to diversify by selection, the nudge carries the entire diversification load.
+
+The backtracking machinery stays identical too, because the integer-return control flow was never the expensive part — `_rank_nodes` was. Each recursive call returns how many levels the caller should keep climbing. Base cases: at the depth limit, or pruned, or terminal — if terminal (a real final answer), record it, set `status = 1`, return `final_answer_back_length = 2`; if pruned, mark it, and if `observation_code == 4` it's the explicit give-up, record it in `give_up_node` and return `prune_back_length = 2`, else (ordinary failed call) return 1. The values encode how bad the dead end was: 1 is a local sibling retry (a lone failed call is local, not a sign the subtree is poisoned), 2 escapes the local subtree (a give-up or a completed answer I want to look past, so I diversify one level higher rather than retry right next to it). Sentinels: 100000 if a `_step` pushes `query_count` to the cap (unwind everything and exit), 10000 once `answer_count` answers are collected.
+
+The one place DFSDT differs structurally from the ranked rung — beyond not ranking — is *when* it recurses. The ranked rung generated the whole beam first, stored the leaves, ranked them, sorted, and only then expanded. DFSDT generates one child and immediately recurses into it; it loops up to `tree_beam_size` times, but each iteration generates exactly one new child from this node and dives into it before considering another. So the loop body is: check budget; if this node already has children, add the diversity nudge; call `_step` once to get one leaf; mark the nudge invalid; recurse into the leaf and read its returned climb length. If I now have enough answers, return 10000. If the returned value is greater than 1, a descendant wants me to keep backing up past this level, so decrement and return `result - 1`. If it's exactly 1, the request was consumed at this frame, so I stay in the loop and generate the next sibling. If the loop exhausts `tree_beam_size` attempts without a propagating return, return 1 and let my parent try its next sibling. Note the subtle but real difference from the ranked rung's per-node handling: DFSDT does *not* call `make_finish(2)` on the way up the way the ranked branch did — it simply decrements and propagates, because there's no ranked-completion bookkeeping to settle; the integer alone carries the control flow.
+
+Let me trace the propagation once to be sure, because the integer is doing everything. Deep down a node gives up and returns 2. Its parent's loop sees `result = 2 > 1`, returns `2 - 1 = 1`. The grandparent sees `result == 1`, does *not* return — it stays in its loop and generates its next child, a sibling two levels above the give-up. That's exactly "back up two levels and branch": the give-up frame and its parent unwound, the grandparent is where the new exploration happens. If the give-up had returned 1 (an ordinary failed call), the parent would see 1, not return, and immediately try the give-up node's sibling — a one-level local retry. Same machinery as the ranked rung, same constants, same meaning; I've only removed the generate-all-then-rank-then-sort prelude.
+
+Now the cost story, which is the entire point of this rung. Per node I spend exactly one LLM call — the one `_step` that generates its single child. No `_rank_nodes`, ever. The diversity nudge doesn't add a call; it's a prefix on the same generation call. So total LLM calls ≈ number of nodes expanded, capped by `max_query_count`. On a simple instruction that's a single chain — same cost as the greedy chain at step 1. On a hard one it's a chain plus however many sibling branches the dead ends forced open, each one node-for-node, and I stop the instant I find one answer or hit the budget. Compare that to the ranked rung's 33–53 queries: at a branch point with `tree_beam_size` = 3 children, the ranked rung spent ~3 generation calls *plus* ~6 comparison calls (3·2 ordered pairs); DFSDT spends the generation calls only, and often fewer of those because it doesn't pre-generate the whole beam before recursing — it generates the next sibling only on failure. That's where the order-of-magnitude saving lives.
+
+So reading the ranked-search numbers, here are the falsifiable expectations against them. `pass_rate` should *hold or rise* versus the ranked rung on every backbone — same retraction, same exploration reach, so the answers it finds shouldn't get worse, and on the budget-starved Qwen-7B it should rise because dropping the ranking frees the budget to actually explore the tree instead of burning it on comparisons. `avg_queries` should *collapse* toward the chain's regime relative to the ranked 33–53 — that's the headline claim, the quadratic tax removed. `give_up_rate` should stay low (the backtracking is unchanged). And `sopr` should track `pass_rate`, holding or rising. The single sharpest prediction is the Qwen-7B cell: the ranked rung spent 52.7 queries for 0.36 pass and 0.20 sopr; if my diagnosis is right — that ranking starved the search — DFSDT should beat 0.36 pass at a fraction of those queries. If instead `pass_rate` *drops* without ranking, that would mean the ordering was doing real work after all and the model's first instinct isn't usually its best; but the degradation argument says the node set is order-independent, so I expect the opposite: strictly cheaper, at least as good, and meaningfully better where the budget was the binding constraint. This is the strongest rung of the ladder — full retraction and exploration at single-chain per-node cost — and the place an honest next step would have to look is not "rank better" (that path is closed) but a search that spends its calls *evaluating value where it's worth it and reusing that value across branches*, which is where a Monte-Carlo tree search over this same action space comes in.
+</think>
+<say>
+[[FILL_SAY: 1-2 sentences naming the method and what this first edit does]]
+</say>
+<edit path="stabletoolbench/toolbench/inference/Algorithms/custom_search.py">
+<old>
+    def search(self, root_node):
+        """DFS with LLM ranking: expand best child first, backtrack on failure."""
+        self._dfs(root_node)
+
+    def _dfs(self, now_node):
+        """Recursive DFS. Returns number of levels to backtrack."""
+        final_answer_back_length = 2
+</old>
+<new>
+    def search(self, root_node):
+        """DFSDT: generate one child, recurse immediately, backtrack on failure."""
+        self._dfsdt(root_node)
+
+    def _dfsdt(self, now_node):
+        """Recursive DFSDT. Returns number of levels to backtrack."""
+        final_answer_back_length = 2
+</new>
+</edit>
+<obs>
+Successfully replaced text in stabletoolbench/toolbench/inference/Algorithms/custom_search.py.
+</obs>
+<note>
+[[FILL_NOTE?: optional one-line thought for this edit, or delete this block]]
+</note>
+<edit path="stabletoolbench/toolbench/inference/Algorithms/custom_search.py">
+<old>
+
+        # Generate beam_size children
+        candidates = []
+        for i in range(self.tree_beam_size):
+</old>
+<new>
+
+        # Try beam_size times (each time generates one child and recurses)
+        for i in range(self.tree_beam_size):
+</new>
+</edit>
+<obs>
+Successfully replaced text in stabletoolbench/toolbench/inference/Algorithms/custom_search.py.
+</obs>
+<note>
+[[FILL_NOTE?: optional one-line thought for this edit, or delete this block]]
+</note>
+<edit path="stabletoolbench/toolbench/inference/Algorithms/custom_search.py">
+<old>
+                continue
+            candidates.append(new_leaves[-1])
+
+        if not candidates:
+            return 1
+
+        # Rank candidates using LLM pairwise comparison
+        if len(candidates) > 1:
+            scores = self._rank_nodes(candidates)
+            for score, node in zip(scores, candidates):
+                node.prior_score = score
+            candidates.sort(key=lambda x: x.prior_score, reverse=True)
+
+        # Expand best candidates in order
+        for cand in candidates:
+            result = self._dfs(cand)
+            if len(self.terminal_node) >= self.answer_count:
+                return 10000
+            elif result > 1:
+                now_node.make_finish(2)
+                return result - 1
+
+        return 1
+</old>
+<new>
+                continue
+
+            leaf = new_leaves[-1]
+
+            # Immediately recurse (no ranking)
+            result = self._dfsdt(leaf)
+            if len(self.terminal_node) >= self.answer_count:
+                return 10000
+            elif result > 1:
+                return result - 1
+
+        return 1
+</new>
+</edit>
+<obs>
+Successfully replaced text in stabletoolbench/toolbench/inference/Algorithms/custom_search.py.
+</obs>
+<run/>
+<obs>
+Measured results — `baseline:dfsdt`, seed 42, I1-instruction (50 scored queries per backbone).
+
+## DeepSeek
+| seed | pass_rate | avg_queries | give_up_rate | sopr |
+|---|---|---|---|---|
+| 42 | 0.78 | 18.3 | 0.04 | 0.40 |
+
+## Qwen-72B
+| seed | pass_rate | avg_queries | give_up_rate | sopr |
+|---|---|---|---|---|
+| 42 | 0.90 | 12.4 | 0.00 | 0.54 |
+
+## Qwen-7B
+| seed | pass_rate | avg_queries | give_up_rate | sopr |
+|---|---|---|---|---|
+| 42 | 0.44 | 39.6 | 0.00 | 0.26 |
+</obs>
+

@@ -1,0 +1,873 @@
+<meta task="synth-counting" domain="Sequence modeling" file="pytorch-examples/synth_counting/custom_strategy.py" model_format="qwen3" edit_tool="str_replace"/>
+
+<system>
+You are a research engineer improving a model on a fixed ML task. You work by editing the model code and running experiments. Think carefully before each change. You have these tools:
+- str_replace(path, old_str, new_str): replace the unique occurrence of old_str with new_str.
+- create(path, file_text): create a new file.
+- run_experiment(): train + evaluate the current code under the fixed budget; returns metrics.
+Make one tool call at a time. After editing, call run_experiment() to measure your method.
+</system>
+
+<user>
+## Research question
+
+Counting is the oldest probe of sequence-model expressivity, and the sharp question is not whether a
+model can count *inside* the lengths it trained on — almost anything memorizes that — but whether it
+maintains an honest *integer counter* that survives when the test input is two-to-four times longer
+than anything it saw at training time. The single thing being designed here is the **encoder
+architecture** — recurrent, transformer, state-space, hybrid; its layer count; its positional scheme;
+its pooling. Everything else (initialization, the AdamW loop, the loss, the data generators, the
+fixed scalar head, the evaluation splits) is frozen. The model must hold a count across three
+environments at once: regress the number of `a`'s in a binary string, classify whether a string is
+exactly `a^n b^n c^n`, and — the metric that actually separates methods — *retain* that classification
+accuracy when `n` leaves the training range.
+
+## Prior art before the first rung (counting-expressivity lineage)
+
+The first rung reacts to a line of results on what sequence models can and cannot count. These precede
+the ladder; the fixed substrate below is the harness they are all dropped into.
+
+- **Finite-state acceptors / classical RNNs (Elman 1990; Siegelmann & Sontag 1992).** A recurrent net
+  with bounded precision is, in the limit, a finite-state machine; a^n b^n needs an unbounded counter,
+  which a finite automaton cannot maintain past its state budget. Gap: in principle a plain RNN cannot
+  count arbitrarily far, and in practice the gradient that would teach it a counter vanishes across the
+  long lag between the `a`-block and the `c`-block.
+- **The gated memory cell (Hochreiter & Schmidhuber 1997; Gers et al. 2000).** A linear cell state with
+  a self-loop at unit gain carries gradient across arbitrarily long lags; input/forget/output gates
+  decide when to write, reset, and read. A cell that learns "+1 on `a`, hold, −1 on `c`" *is* an
+  explicit integer counter, and its gradient survives the lag a plain RNN drowns. This is exactly the
+  recipe the first rung uses. Gap: the counter lives in a continuous, bounded activation `tanh(c_t)`;
+  far outside the training range the learned increment can drift or the read-out saturates, so the
+  counter that was exact in-distribution degrades out-of-distribution.
+- **Self-attention with positional encodings (Vaswani et al. 2017).** Replaces recurrence with
+  any-to-any attention; order is injected by adding a positional code to the embedding. A CLS-pooled
+  encoder can in principle compare block boundaries directly rather than threading a counter through
+  time. Gap: attention is permutation-equivariant, so *all* of its sense of length comes from the
+  positional code; a code that is sinusoidal-in-absolute-index, or learned per absolute index, is
+  out-of-distribution at the longer test lengths and the count collapses there.
+- **Position as the lever for length generalization (Press et al. 2022, ALiBi; Ruoss et al. 2023,
+  randomized positions; McLeish et al. 2024, count-indexed embeddings).** The recurring finding is that
+  length extrapolation is *governed by the positional representation*: a code that stays in-distribution
+  at test length, and that exposes the latent count directly, is what lets a transformer extrapolate.
+  This is the lineage the strongest rung draws on.
+
+## The fixed substrate
+
+A single training/evaluation driver is frozen and must not be touched. Each of the three environments
+generates data on the fly (no network, no filesystem): `exact` draws binary strings over `{a, b}` and
+regresses the count of `a`'s; `abc` draws balanced positive (`a^n b^n c^n`) and structured-negative
+strings (wrong block counts, swapped order, interleaved middle) and classifies membership;
+`length_ood` reuses the `abc` generator but scores *retention* of accuracy from the in-distribution to
+the out-of-distribution length range. Every environment prepends a CLS token at position 0, trains for
+6,000 steps of AdamW (`lr=3e-4`, `weight_decay=1e-2`, batch 64, grad-clip 1.0) under smooth-L1
+(regression) or BCE-with-logits (classification), and evaluates on 1,024 freshly drawn examples per
+split. A fixed `nn.Linear(hidden_dim, 1)` head turns the encoder's pooled summary into the scalar the
+loss consumes. The config exposes `vocab_size=5` (`0=PAD, 1=a, 2=b, 3=c, 4=CLS`), `hidden_dim=128`,
+`train_max_len=64`, `ood_multiplier=4`.
+
+## The editable interface
+
+Exactly one region is editable: the body of `build_model(config: TaskConfig) -> nn.Module` in
+`pytorch-examples/synth_counting/custom_strategy.py`. The returned module is the **encoder**, and the
+contract is the only hard constraint:
+
+- **Input** — `tokens: LongTensor[B, T]` padded with `config.pad_id`; position 0 is always
+  `config.cls_id`. `lengths: LongTensor[B]` gives the true length *including* the CLS token.
+- **Output** — a tensor `[B, config.hidden_dim]`: the pooled sequence summary the fixed head consumes.
+- **Capacity** — at most 5,000,000 parameters (asserted at startup).
+
+Anything inside that contract is fair game: encoder type, positional scheme, layer count, attention
+pattern, pooling rule. Note the CLS subtlety the scaffold flags — a causal/left-to-right encoder must
+read the *last* valid position to summarise the sequence (the CLS sits *before* any content), while a
+bidirectional or self-attention model may pool the CLS position instead.
+
+The starting point is the scaffold default: a 2-layer GRU reading its final hidden state. Each rung on
+the ladder replaces exactly this `build_model` body and nothing else.
+
+```python
+# EDITABLE region of pytorch-examples/synth_counting/custom_strategy.py — default fill (2-layer GRU)
+def build_model(config: TaskConfig) -> nn.Module:
+    """Default scaffold: a 2-layer GRU encoder reading the final hidden state."""
+
+    class GRUEncoder(nn.Module):
+        def __init__(self, cfg: TaskConfig):
+            super().__init__()
+            self.embed = nn.Embedding(cfg.vocab_size, cfg.hidden_dim, padding_idx=cfg.pad_id)
+            self.rnn = nn.GRU(
+                input_size=cfg.hidden_dim,
+                hidden_size=cfg.hidden_dim,
+                num_layers=2,
+                batch_first=True,
+            )
+            self.norm = nn.LayerNorm(cfg.hidden_dim)
+
+        def forward(self, tokens: torch.Tensor, lengths: torch.Tensor) -> torch.Tensor:
+            h = self.embed(tokens)
+            out, _ = self.rnn(h)
+            last_idx = (lengths - 1).clamp(min=0).view(-1, 1, 1).expand(-1, 1, out.size(-1))
+            last = out.gather(1, last_idx).squeeze(1)
+            return self.norm(last)
+
+    return GRUEncoder(config)
+```
+
+## Evaluation settings
+
+Three environments, one seed (42). Each prints `FINAL_METRICS`/`TEST_METRICS` with
+`in_dist_accuracy`, `ood_accuracy`, `extrapolation_gap`, and the primary `score` (already in `[0, 1]`).
+For `exact` the score is the OOD accuracy on `T in [128, 256]` (rounded-count-equals-target); for `abc`
+it is the in-distribution membership accuracy; for `length-ood` it is the retention
+`1 - max(0, in_dist_acc - ood_acc)` on `n in (T/3, 4T/3]`. The aggregate task score is the geometric
+mean across the three. Higher is better on every metric.
+
+The editable model code is in `pytorch-examples/synth_counting/custom_strategy.py`:
+```python
+def build_model(config: TaskConfig) -> nn.Module:
+    """Default scaffold: a 2-layer GRU encoder reading the final hidden state.
+
+    Note: the prepended CLS token is at position 0, BEFORE any content token,
+    so a causal/left-to-right encoder must read the *last* valid position to
+    summarise the sequence.  Bidirectional or self-attention models may pool
+    over the CLS position instead.
+    """
+
+    class GRUEncoder(nn.Module):
+        def __init__(self, cfg: TaskConfig):
+            super().__init__()
+            self.embed = nn.Embedding(cfg.vocab_size, cfg.hidden_dim, padding_idx=cfg.pad_id)
+            self.rnn = nn.GRU(
+                input_size=cfg.hidden_dim,
+                hidden_size=cfg.hidden_dim,
+                num_layers=2,
+                batch_first=True,
+            )
+            self.norm = nn.LayerNorm(cfg.hidden_dim)
+
+        def forward(self, tokens: torch.Tensor, lengths: torch.Tensor) -> torch.Tensor:
+            h = self.embed(tokens)
+            out, _ = self.rnn(h)
+            last_idx = (lengths - 1).clamp(min=0).view(-1, 1, 1).expand(-1, 1, out.size(-1))
+            last = out.gather(1, last_idx).squeeze(1)
+            return self.norm(last)
+
+    return GRUEncoder(config)
+```
+Improve it. Derive your method, edit the code, then run_experiment().
+</user>
+
+### step 1 — LSTM (gated counter)   [slug:lstm]
+
+<think>
+I start the ladder at the architecture that has the cleanest claim to *actually counting*, because the
+research question is about counters and I want the first rung to be the model whose internal mechanism
+is a counter by construction rather than by accident. The scaffold default is a 2-layer GRU reading its
+last hidden state; before I reach for attention or anything fancier I want to know how far a recurrent
+counter gets on its own, because if a recurrent net can hold an integer count across the sequence then
+that is the honest floor every later method has to beat, and if it cannot then I have learned precisely
+*where* recurrence breaks and that diagnosis seeds the next rung. So rung one is a recurrent encoder,
+and I will reason about why an LSTM specifically, and what I expect it to do on each of the three
+environments.
+
+The reason a plain recurrent net is the wrong place to *stop* — even though it is the right place to
+*start* — is the gradient. Trace an error signal backward through a recurrence `h_t = f(h_{t-1}, x_t)`:
+over `q` steps it is multiplied by a product of `q` Jacobian factors, each of the form (derivative of
+the squashing nonlinearity) times (a recurrent weight). With a sigmoid or tanh unit each such factor is
+below one in magnitude for any reasonable weight, so the product decays geometrically in the lag — the
+classic vanishing gradient. On the `abc` environment the lag is exactly the thing that matters: to
+decide whether a string is `a^n b^n c^n` the model must compare the size of the `a`-block, seen at the
+*front* of the sequence, against the `c`-block, seen at the *back*, and for the longer training strings
+those blocks are dozens of steps apart. A vanilla RNN's gradient connecting them has shrunk to nothing,
+so it never learns to thread a count from the `a`-block through to the `c`-block; it learns local
+texture instead. That is the disease, and it is exactly what the gated memory cell was built to cure.
+
+So I use an LSTM. The cure is structural: a linear cell state `c_t` carried by a self-loop at unit
+gain, so the backpropagated error riding that state is multiplied by *one* per step rather than by a
+sub-unit factor, and three sigmoid gates — input (when to write), forget (when to reset), output (when
+to read) — that decide, from context, what the cell stores and exposes. The forward dynamics
+`c_t = f_t ⊙ c_{t-1} + i_t ⊙ g_t`, `h_t = o_t ⊙ tanh(c_t)` are, for my purpose, a programmable
+accumulator: the network can learn an input gate that opens on `a`, a candidate that contributes `+1`,
+a forget gate pinned near one so the running tally is held undamped, and later a contribution that
+checks the tally against the `b` and `c` blocks. The backward recursion makes the same point in
+gradient form — the state error at time `t` inherits the next step's state error scaled by the forget
+gate, `ε_s^t = … + f_{t+1} ⊙ ε_s^{t+1}`, which is unit-gain when the forget gate is open — so the
+credit for "increment here" reaches back across the whole block instead of dying in the lag. This is
+why a finite-precision LSTM can, in principle, *implement* an integer counter and even extrapolate it
+to inputs longer than those seen in training: the counting recipe is a fixed-point of the cell
+dynamics, not a length-specific table.
+
+Now the design choices, each tied to the contract the harness hands me. The encoder receives
+`tokens: LongTensor[B, T]` with a CLS at position 0 and must return `[B, hidden_dim]`. The first layer
+is an embedding `nn.Embedding(vocab_size, hidden_dim, padding_idx=pad_id)` — five symbols
+(`PAD, a, b, c, CLS`) into a 128-dim space, with the padding row pinned to zero so padded positions
+contribute nothing to the recurrence. Then `nn.LSTM(input_size=hidden_dim, hidden_size=hidden_dim,
+num_layers=2, batch_first=True)`: two layers because a single layer must both maintain the count *and*
+compute the membership decision from it, while stacking lets the lower layer carry the running tallies
+and the upper layer combine them into the `a==b==c` comparison — a small amount of depth buys a cleaner
+division of labor without exploding the parameter budget. Width 128 matches `hidden_dim` so the
+returned summary lands in exactly the shape the fixed head expects, with no extra projection.
+
+The pooling rule is the one place I have to respect a scaffold subtlety rather than copy the attention
+playbook. The CLS token sits at position 0, *before* any content token. An LSTM is causal and
+left-to-right: its hidden state at position 0 has seen only the CLS and nothing else, so reading the CLS
+position would summarise an empty sequence. The information accumulates as the recurrence sweeps left to
+right, so the state that has seen the *whole* string is the one at the *last valid position*. The
+harness gives me `lengths` (true length including CLS), so I gather the output at index `lengths - 1`:
+`last_idx = (lengths - 1).clamp(min=0).view(-1, 1, 1).expand(-1, 1, out.size(-1))`, then
+`out.gather(1, last_idx).squeeze(1)`. The `clamp(min=0)` guards the degenerate empty case; the gather
+picks per-row the genuinely final hidden, never a padded position. This is the recurrent reading of the
+contract — *last valid position*, not CLS — and getting it wrong would silently feed the head a hidden
+that never saw the `c`-block. Finally a `nn.LayerNorm(hidden_dim)` on the pooled vector, so the scale
+handed to the fixed linear head is stable across the wildly different sequence lengths the three
+environments produce (a length-8 `exact` string and a length-256 OOD string would otherwise hand the
+head summaries on very different scales).
+
+I should be explicit about what this LSTM is *not*, because the README's warning about same-named
+baselines applies. This is not the full qlib-style sequence-to-one regressor with its own Adam, masked
+MSE, gradient-value-clipping, and validation early-stopping — all of that optimization machinery lives
+in the *fixed* harness here (AdamW at 3e-4, smooth-L1 / BCE, grad-norm-clip 1.0, 6,000 steps, single
+seed, no early stop). The harness also fixes the head, the loss, and the data. So the only thing this
+rung contributes is the *encoder*: embedding, 2-layer LSTM, last-position read, LayerNorm. Everything
+the cell-derivation says about counters still holds — the cell state can implement the tally — but I am
+filling a much smaller slot than the paper's training loop, and I should reason only about the encoder's
+capacity, not about an optimizer I do not control.
+
+What do I expect, environment by environment, so that the numbers can confirm or refute it? On `abc`
+in-distribution I expect the LSTM to do *well* — the blocks in the training range are within reach of
+the cell's gradient, and a learned increment/compare counter fits the data; this is the regime where
+finite-precision LSTMs are known to nail counter languages, so a high in-distribution membership
+accuracy is the prediction, and `abc` scores on exactly that. On `exact` in-distribution I likewise
+expect a strong rounded-count accuracy: counting `a`'s in a binary string is the *easiest* counter, a
+single accumulator with no comparison, so the in-distribution number should be near the top. The place
+I am genuinely unsure — and it is the place the task is built to expose — is *out of distribution*. The
+LSTM's counter is exact only to the extent its learned per-step increment is exact and its read-out
+`tanh(c_t)` has not saturated. At training lengths up to 64 the cell state stays in a range the model
+has shaped; at OOD lengths of 128–256 the accumulated state can drift past where `tanh` is responsive,
+or a per-step increment that was 0.99 instead of 1.00 compounds into a large error over twice as many
+steps. So my falsifiable expectation is a *split*: high in-distribution accuracy on both `abc` and
+`exact`, but a large extrapolation gap — the `exact` OOD accuracy (the `exact` score) could collapse,
+and the `length-ood` retention could be poor, because the in-distribution counter the LSTM learns does
+not transfer cleanly to twice the length. If that split shows up, it tells me the recurrent counter is
+*memorized in-range* rather than *implemented as an exact integer recurrence*, and the next rung has to
+change the representation of length itself rather than just the way the count is carried.
+
+So rung one is the honest recurrent floor: an LSTM whose cell state can in principle be an integer
+counter, read at the last valid position, normalized into the fixed head. I expect it to win
+in-distribution and to reveal, in its OOD numbers, exactly how a continuous-state counter degrades when
+the sequence outgrows the lengths that shaped it — and that degradation is the problem the rest of the
+ladder exists to attack.
+
+One more reason to start here rather than skip to attention: it keeps the comparison honest. The LSTM
+and the later encoders share the same fixed harness — same AdamW, same 6,000 steps, same fixed head,
+same data, same single seed — and the same width and depth budget. So whatever the OOD numbers show is
+attributable to the *encoder*, not to a training-loop difference I quietly introduced. If the recurrent
+counter wins in-distribution while the attention models win on retention, that is an architecture
+result, cleanly isolated, telling me which property — exact in-range counting versus graceful length
+behavior — each family buys. Starting at a model that genuinely *counts*, rather than the scaffold's
+generic GRU default, is what makes that read-out interpretable. So let me swap the GRU for the LSTM
+encoder.
+</think>
+<say>
+Rung one: I am replacing the scaffold's GRU with a 2-layer LSTM encoder, whose gated cell state can
+hold an honest integer counter across the sequence and is read at the last valid position. This first
+edit changes the module name and swaps the recurrent layer to `nn.LSTM`.
+</say>
+<edit path="pytorch-examples/synth_counting/custom_strategy.py">
+<old>
+def build_model(config: TaskConfig) -> nn.Module:
+    """Default scaffold: a 2-layer GRU encoder reading the final hidden state.
+
+    Note: the prepended CLS token is at position 0, BEFORE any content token,
+    so a causal/left-to-right encoder must read the *last* valid position to
+    summarise the sequence.  Bidirectional or self-attention models may pool
+    over the CLS position instead.
+    """
+
+    class GRUEncoder(nn.Module):
+        def __init__(self, cfg: TaskConfig):
+            super().__init__()
+            self.embed = nn.Embedding(cfg.vocab_size, cfg.hidden_dim, padding_idx=cfg.pad_id)
+            self.rnn = nn.GRU(
+                input_size=cfg.hidden_dim,
+</old>
+<new>
+# EDITABLE region of pytorch-examples/synth_counting/custom_strategy.py — step 1: LSTM
+def build_model(config: TaskConfig) -> nn.Module:
+    """LSTM encoder following Weiss/Goldberg/Yahav 2018 counter recipe."""
+
+    class LSTMEncoder(nn.Module):
+        def __init__(self, cfg: TaskConfig):
+            super().__init__()
+            self.embed = nn.Embedding(cfg.vocab_size, cfg.hidden_dim, padding_idx=cfg.pad_id)
+            self.rnn = nn.LSTM(
+                input_size=cfg.hidden_dim,
+</new>
+</edit>
+<obs>
+Successfully replaced text in pytorch-examples/synth_counting/custom_strategy.py.
+</obs>
+<note>
+Now point the return at the renamed encoder.
+</note>
+<edit path="pytorch-examples/synth_counting/custom_strategy.py">
+<old>
+
+    return GRUEncoder(config)
+</old>
+<new>
+
+    return LSTMEncoder(config)
+</new>
+</edit>
+<obs>
+Successfully replaced text in pytorch-examples/synth_counting/custom_strategy.py.
+</obs>
+<run/>
+<obs>
+Measured results — `baseline:lstm` (`is_final,true`), seed 42.
+
+## exact (score = OOD accuracy on `T in [128, 256]`)
+| seed | in_dist_accuracy | ood_accuracy | extrapolation_gap | score |
+|---|---|---|---|---|
+| 42 | 0.998047 | 0.0 | 0.998047 | 0.0 |
+
+## abc (score = in-distribution membership accuracy)
+| seed | in_dist_accuracy | ood_accuracy | extrapolation_gap | score |
+|---|---|---|---|---|
+| 42 | 0.994141 | 0.524414 | 0.469727 | 0.994141 |
+
+## length-ood (score = retention `1 - max(0, in_dist - ood)`)
+| seed | in_dist_accuracy | ood_accuracy | extrapolation_gap | retention | score |
+|---|---|---|---|---|---|
+| 42 | 0.994141 | 0.524414 | 0.469727 | 0.530273 | 0.530273 |
+</obs>
+
+### step 2 — Transformer (sinusoidal PE)   [slug:transformer]
+
+<think>
+The LSTM numbers tell me the split I was watching for, and they tell me it sharply. In-distribution the
+recurrent counter is excellent: `abc` membership lands at 0.994 and the `exact` in-distribution count at
+0.998 — the cell really did learn to thread a tally through the sequence and compare blocks, exactly the
+finite-precision counter recipe predicts. But every out-of-distribution number is a collapse. On `exact`
+the OOD accuracy on `T in [128, 256]` is *exactly* 0.0 — not degraded, *zero* — so the `exact` score is
+0.0. On `abc`/`length-ood` the OOD accuracy is 0.524, which is chance for a balanced binary classifier:
+the model that was right 99.4% of the time in-range is *guessing* the moment the length doubles, and the
+extrapolation gap is 0.470, giving a retention of only 0.530. So the LSTM did not implement an exact
+integer recurrence that transfers; it memorized a counter calibrated to lengths up to 64. The diagnosis
+I sketched at rung one is confirmed by the 0.0 on `exact`: a per-step increment that is 0.99 instead of
+1.00, or a `tanh(c_t)` read-out that was responsive at training-range counts, compounds and saturates
+over twice as many steps, and the rounded count is then wrong on essentially every long string. The
+counter is real but its *scale* is length-specific.
+
+That collapse points at something the recurrent architecture cannot fix by being a better recurrence:
+the information about a far-away block has to be *carried* step by step through the cell, and over 256
+steps even a unit-gain cell is integrating a long chain of small imperfections. What if I do not carry
+the count through time at all, but instead let every position look *directly* at every other position
+and compare blocks in one hop? That is the move to self-attention. The membership decision "is the
+`a`-block the same size as the `c`-block" is fundamentally a comparison between two regions of the
+sequence; a recurrence threads that comparison through a long chain, but attention can route it as a
+single any-to-any lookup. The CLS token can attend to the whole string at once and the encoder can, in
+principle, compute the block-boundary comparison without the lag that compounded the LSTM's error. So
+rung two replaces the recurrent encoder with a self-attention encoder, and the question becomes whether
+removing the carry removes the OOD collapse.
+
+Let me build it as the contract allows and watch where it breaks, because attention has its own
+length-fragility and I want to know whether I am trading one OOD failure for another. The primitive is
+scaled dot-product attention `softmax(QK^T / sqrt(d_k)) V`: queries, keys, values are linear
+projections of the previous layer, scores are all pairwise dot products, softmax over positions, mix
+the values. The `1/sqrt(d_k)` is not decoration — a raw dot product of two `d_k`-dimensional unit-scale
+vectors has variance `d_k`, so for `d_k = hidden_dim/4 = 32` the logits sit around `±sqrt(32)`, the
+softmax saturates toward one-hot, its Jacobian collapses, and the attention weights stop receiving
+gradient; dividing by `sqrt(d_k)` puts the logit variance back at one and keeps the softmax in its
+responsive region. I use multiple heads so the encoder can attend to several relations at once — one
+head can track the `a→b` boundary, another the `b→c` boundary — each head a lower-dimensional
+projection with its own softmax, gathered and mixed by an output projection so the per-head findings get
+composed rather than siloed. With `hidden_dim = 128` and 4 heads, `d_k = 32`.
+
+The wall that decides this whole rung is that pure attention is permutation-equivariant: `softmax(QK^T)V`
+is all dot products and weighted sums over the *set* of positions, with no term that knows which
+position is which. Shuffle the input rows and the output rows shuffle identically — the encoder cannot
+tell `a^n b^n c^n` from a shuffled bag of the same symbols, which is fatal for a task whose entire
+content is *order and block length*. So order has to be injected, and *how* I inject it is exactly the
+lever the prior-art lineage flagged as governing length extrapolation. The standard, lineage-faithful
+choice for a vanilla Transformer is the sinusoidal positional encoding: for position `pos` and dimension
+`i`, `PE(pos, 2i) = sin(pos / 10000^{2i/d})`, `PE(pos, 2i+1) = cos(pos / 10000^{2i/d})`, added to the
+token embedding at the bottom of the stack. Each dimension pair is a sinusoid at its own frequency, the
+wavelengths sweeping a geometric range, and the appeal is that a shift by `k` is a fixed
+position-independent rotation of each `(sin, cos)` pair, so a head can in principle learn "compare to the
+position `k` away" as one operator that works everywhere. Crucially the sinusoid is defined for *any*
+real position, so unlike a learned per-index table it at least *has* a value at the OOD lengths rather
+than feeding the encoder an untrained noise row.
+
+But I have to be honest with myself about what sinusoidal-in-absolute-index actually buys at the OOD
+lengths, because this is precisely where I expect the rung to be limited, and saying so now makes the
+prediction falsifiable against the numbers. The positional code is a function of the *absolute* index.
+At training the model only ever sees indices up to ~65 (64 content tokens plus CLS); the
+high-frequency dimensions cycle many times within that range, so the *combinations* of phase values the
+encoder learns to read are the combinations that occur for `pos ≤ 65`. At test length 256, the absolute
+positions 66…256 produce phase combinations — especially in the low-frequency dimensions whose
+wavelength is comparable to the sequence — that the encoder simply never saw during training. The
+rotation-by-`k` property says relative offsets are *representable*, but it does not say the encoder
+*learned* to read them in a way that holds at absolute indices four times larger than training; in
+practice the network keys off the absolute phase pattern it was trained on, and that pattern is
+out-of-distribution at the long lengths. So I expect the sinusoidal transformer to still fail to
+*generalize* the count OOD — the absolute count of `a`'s in `exact` should still be unreachable at
+length 256 — but to be *less catastrophic on retention* than the LSTM, for a specific reason: the
+LSTM's error is a compounding drift that grows monotonically with length, whereas attention's
+block-comparison does not compound step by step, so even if it cannot read the long absolute positions
+it degrades more gracefully than a saturating accumulator. That is the testable distinction.
+
+Now the encoder, fit to the contract. Embedding `nn.Embedding(vocab_size, hidden_dim,
+padding_idx=pad_id)`, scaled by `sqrt(hidden_dim)` so its amplitude matches the `O(1)` sinusoids rather
+than being whispered under them. Add the sinusoidal `PE`. Then 2 `nn.TransformerEncoderLayer`s with
+`nhead=4`, feed-forward width `4*hidden_dim` (the position-wise nonlinear capacity), `dropout=0.0`,
+`activation="gelu"`, `norm_first=True` (pre-norm residual blocks, the stable ordering for a small
+stack). Two layers, mirroring the LSTM's depth so the comparison is architecture-vs-architecture, not
+depth-vs-depth. The padding mask is passed as `src_key_padding_mask = tokens.eq(pad_id)` so attention
+never mixes in padded positions — important because the three environments produce very different
+padded widths within a batch. And here the pooling rule *flips* from rung one: the encoder is
+bidirectional, every position including CLS attends to the whole sequence, so the CLS position at index
+0 is now a legitimate global summary — I pool `h[:, 0]`, the CLS, not the last position. This is the
+attention reading of the same contract, and it is the natural one: CLS pooling is exactly why the
+scaffold seeds a CLS token. A final `LayerNorm(hidden_dim)` on the pooled CLS stabilizes the scale into
+the fixed head.
+
+One sinusoid-buffer detail the harness forces me to handle: the OOD lengths can exceed the precomputed
+positional table, so the table must extend on the fly rather than crash. I precompute `PE` up to a
+generous `max_len` and, if a batch is longer, concatenate zero rows for the overflow — those positions
+fall back to no positional signal, which is part of the standard recipe and, notably, is itself a small
+part of *why* the very longest positions carry weaker order information. I note this not as a fix but as
+an honest limitation that feeds the next rung's motivation.
+
+I should again flag what this rung is *not*, per the same-named-baseline warning. This is not the full
+encoder-decoder translation Transformer with cross-attention, causal masking, label smoothing, tied
+embeddings, and the warmup-then-inverse-sqrt schedule — all of that is either irrelevant to a pooled
+*encoder* classifier or lives in the fixed harness (AdamW at a flat 3e-4, BCE/smooth-L1). The editable
+slot is the encoder only: scaled embedding, sinusoidal PE, 2 pre-norm encoder layers, CLS pooling,
+LayerNorm. So I reason about the encoder's length behavior, not about an optimizer or a decoder I do not
+have.
+
+Falsifiable expectations against the LSTM's numbers. In-distribution `abc` I expect to be *at or below*
+the LSTM's 0.994 — the recurrent counter is genuinely good in-range and a 2-layer encoder may not match
+it on the easy in-distribution regime, so a slightly lower in-distribution `abc` would not surprise me
+and would itself be informative. On `exact` OOD I expect the same 0.0 the LSTM hit: nothing in the
+sinusoidal absolute code lets the encoder read an exact count at length 256, so the `exact` score should
+stay pinned at zero — if it moves off zero I am wrong about the absolute-index limitation. The
+prediction that decides whether this rung is an *improvement* is `length-ood` retention: I expect it to
+beat the LSTM's 0.530, because attention's block comparison degrades more gracefully than the LSTM's
+compounding drift, even though the OOD accuracy itself should stay near chance. If retention rises while
+`abc`-in-distribution holds, the rung is a real step up on the metric the task is built to measure, and
+the residual failure — no genuine OOD generalization because the positional code is absolute and
+out-of-distribution at test length — is exactly the gap the strongest rung must close by changing the
+positional representation itself. So let me write the sinusoidal-PE transformer encoder in.
+</think>
+<say>
+Rung two: I am swapping the recurrent encoder for a 2-layer pre-norm Transformer with sinusoidal
+positional encodings and CLS pooling, to compare blocks directly instead of carrying a count through
+time. This edit replaces the LSTM body with the `SinusoidalPE` module and the Transformer encoder.
+</say>
+<edit path="pytorch-examples/synth_counting/custom_strategy.py">
+<old>
+# EDITABLE region of pytorch-examples/synth_counting/custom_strategy.py — step 1: LSTM
+def build_model(config: TaskConfig) -> nn.Module:
+    """LSTM encoder following Weiss/Goldberg/Yahav 2018 counter recipe."""
+
+    class LSTMEncoder(nn.Module):
+        def __init__(self, cfg: TaskConfig):
+            super().__init__()
+            self.embed = nn.Embedding(cfg.vocab_size, cfg.hidden_dim, padding_idx=cfg.pad_id)
+            self.rnn = nn.LSTM(
+                input_size=cfg.hidden_dim,
+                hidden_size=cfg.hidden_dim,
+                num_layers=2,
+                batch_first=True,
+            )
+            self.norm = nn.LayerNorm(cfg.hidden_dim)
+
+        def forward(self, tokens: torch.Tensor, lengths: torch.Tensor) -> torch.Tensor:
+            h = self.embed(tokens)
+            out, _ = self.rnn(h)
+            last_idx = (lengths - 1).clamp(min=0).view(-1, 1, 1).expand(-1, 1, out.size(-1))
+            last = out.gather(1, last_idx).squeeze(1)
+            return self.norm(last)
+
+    return LSTMEncoder(config)
+</old>
+<new>
+# EDITABLE region of pytorch-examples/synth_counting/custom_strategy.py — step 2: Transformer (sinusoidal PE)
+def build_model(config: TaskConfig) -> nn.Module:
+    """Vanilla Transformer encoder with sinusoidal positional encodings."""
+
+    class SinusoidalPE(nn.Module):
+        def __init__(self, dim: int, max_len: int = 4096):
+            super().__init__()
+            pe = torch.zeros(max_len, dim)
+            position = torch.arange(0, max_len, dtype=torch.float).unsqueeze(1)
+            div_term = torch.exp(torch.arange(0, dim, 2).float() * -(math.log(10000.0) / dim))
+            pe[:, 0::2] = torch.sin(position * div_term)
+            pe[:, 1::2] = torch.cos(position * div_term)
+            self.register_buffer("pe", pe.unsqueeze(0))
+
+        def forward(self, x: torch.Tensor) -> torch.Tensor:
+            T = x.size(1)
+            if T > self.pe.size(1):
+                # Extend on the fly so OOD lengths do not crash; values past
+                # max_len fall back to zero (still part of the standard recipe).
+                extra = torch.zeros(1, T - self.pe.size(1), x.size(-1), device=x.device, dtype=x.dtype)
+                pe = torch.cat([self.pe.to(x.dtype), extra], dim=1)
+            else:
+                pe = self.pe[:, :T].to(x.dtype)
+            return x + pe
+
+    class TransformerEncoder(nn.Module):
+        def __init__(self, cfg: TaskConfig):
+            super().__init__()
+            self.cfg = cfg
+            self.embed = nn.Embedding(cfg.vocab_size, cfg.hidden_dim, padding_idx=cfg.pad_id)
+            self.pe = SinusoidalPE(cfg.hidden_dim)
+            layer = nn.TransformerEncoderLayer(
+                d_model=cfg.hidden_dim,
+                nhead=4,
+                dim_feedforward=4 * cfg.hidden_dim,
+                dropout=0.0,
+                activation="gelu",
+                batch_first=True,
+                norm_first=True,
+            )
+            self.encoder = nn.TransformerEncoder(layer, num_layers=2)
+            self.norm = nn.LayerNorm(cfg.hidden_dim)
+
+        def forward(self, tokens: torch.Tensor, lengths: torch.Tensor) -> torch.Tensor:
+            x = self.embed(tokens) * math.sqrt(self.cfg.hidden_dim)
+            x = self.pe(x)
+            key_padding = tokens.eq(self.cfg.pad_id)
+            h = self.encoder(x, src_key_padding_mask=key_padding)
+            cls = h[:, 0]
+            return self.norm(cls)
+
+    return TransformerEncoder(config)
+</new>
+</edit>
+<obs>
+Successfully replaced text in pytorch-examples/synth_counting/custom_strategy.py.
+</obs>
+<run/>
+<obs>
+Measured results — `baseline:transformer` (`is_final,true`), seed 42.
+
+## exact (score = OOD accuracy on `T in [128, 256]`)
+| seed | in_dist_accuracy | ood_accuracy | extrapolation_gap | score |
+|---|---|---|---|---|
+| 42 | 0.936523 | 0.0 | 0.936523 | 0.0 |
+
+## abc (score = in-distribution membership accuracy)
+| seed | in_dist_accuracy | ood_accuracy | extrapolation_gap | score |
+|---|---|---|---|---|
+| 42 | 0.753906 | 0.524414 | 0.229492 | 0.753906 |
+
+## length-ood (score = retention `1 - max(0, in_dist - ood)`)
+| seed | in_dist_accuracy | ood_accuracy | extrapolation_gap | retention | score |
+|---|---|---|---|---|---|
+| 42 | 0.753906 | 0.524414 | 0.229492 | 0.770508 | 0.770508 |
+</obs>
+
+### step 3 — Abacus (count-positional embeddings)   [slug:abacus]
+
+<think>
+The transformer numbers move the metric in exactly the direction I predicted, and the *way* they move
+is the whole argument for this rung. `length-ood` retention rose from the LSTM's 0.530 to 0.771 — a real
+step up on the metric the task is built to measure — and the extrapolation gap shrank from 0.470 to
+0.230, confirming that attention's block comparison degrades more gracefully than the LSTM's compounding
+accumulator. But every prediction I made about the *limit* also held. The `exact` OOD accuracy is still
+exactly 0.0, so the `exact` score is still 0.0: nothing in the sinusoidal absolute code let the encoder
+read an exact count at length 256. The `abc`/`length-ood` OOD accuracy is still 0.524 — dead chance —
+so the retention gain is "degrades less," not "generalizes." And in-distribution `abc` actually *fell*,
+from the LSTM's 0.994 to 0.754, which is the most diagnostic number on the board: the transformer is
+*worse* at the in-range membership task than the recurrent counter was. So the transformer bought
+graceful degradation at the cost of in-distribution counting sharpness, and it bought *zero* genuine OOD
+generalization. The diagnosis I sketched is confirmed: the positional code is a function of *absolute
+index*, the encoder only ever trained on indices up to ~65, and at test length 256 the phase patterns
+are out-of-distribution, so the model keys off positional structure it never saw and falls back to
+chance. The lever is the positional representation, and rung two proved it by being limited exactly
+there.
+
+So the question for rung three is sharp: what positional signal would let the encoder read the count at
+*any* length, including lengths four times longer than training? I had it half-right at rung two when I
+said sinusoids "have a value" at OOD positions but the encoder never learned to read those absolute
+phase patterns. The deeper problem is that *absolute index is the wrong thing to encode in the first
+place*. Stare at what the counting tasks actually need. On `abc`, deciding `a^n b^n c^n` is deciding
+that the run of `a`'s, the run of `b`'s, and the run of `c`'s all have the same length — and "the run of
+`a`'s has length `n`" is a statement about *position within the current block of identical symbols*, not
+about absolute position in the sequence. On `exact`, counting `a`'s is counting within runs of `a`. The
+latent variable both tasks track is the *within-run count*, and absolute index scrambles it: the third
+`a` of a string sits at absolute index 4 (after CLS) if it is the first block, but at index 40 if 36
+symbols preceded it. The transformer was trying to reconstruct "same block length" from absolute
+positions that move around; no wonder it could not transfer. What I want is a positional code that gives
+two symbols the *same* value exactly when they sit at the same offset from the start of their own run.
+
+Let me build that and watch it fall out. Walk along the sequence; every time the symbol changes (or a
+run begins), reset a counter to 1; give each symbol of the current run the counter's value and
+increment. So `a a a b b b c c c` produces run-offsets `1 2 3 | 1 2 3 | 1 2 3`. Feed those integers
+through a learned embedding table and *add* the result to the token embedding, absolute-style, at the
+bottom of the stack. Now look at what this does. The `k`-th `a`, the `k`-th `b`, and the `k`-th `c` all
+receive the *identical* positional vector — offset `k` — so a head can directly check "do the runs reach
+the same maximum offset," which is precisely the `a^n b^n c^n` decision, and on `exact` the offset
+*is* the running count of the current run. The latent variable the tasks track is now handed to the
+model through the position channel, with no extra tokens. This is the count-indexed embedding idea from
+the prior-art lineage, ported from per-*number* digit alignment to per-*run* symbol counting — the
+adaptation the task's research question demands, because here the "number" whose internal offset matters
+is the run of identical symbols, not a multi-digit numeral.
+
+But I have walked straight into the same wall absolute embeddings hit, and it is the wall that killed
+rung two — so I have to fix it or this rung is just the transformer with a fancier index. My counter
+resets per run, good, but it still *counts up* within a run, and a length-256 OOD string has runs of `n`
+up to ~85, so the embedding table needs rows up to ~85. If I train only on `3n ≤ 64` (so `n ≤ 21`), the
+embedding rows for offsets 22, 23, …, 85 are *never updated* and are garbage noise at test — exactly the
+out-of-distribution-row failure that made the sinusoidal absolute code collapse. The per-run reset fixed
+the *significance* problem beautifully and did nothing for the *coverage* problem. I need both, and the
+coverage fix is the one piece that makes this rung genuinely extrapolate rather than just re-index.
+
+The coverage trick is to train the large rows even though the training runs are short, by randomizing
+the *starting offset* of the count. During training, before laying down a run's offsets, draw a single
+shift uniformly from `{0, …, train_offset}` and add it to every positive offset, so a run `1 2 3`
+becomes `1+s, 2+s, 3+s`. The within-run step stays exactly `+1` — so adjacency and "same significance"
+are preserved — but because the shift ranges up to `train_offset = 100`, over many batches the embedding
+rows from 1 all the way to `~100 + max-run-length` get exercised, including all the rows the OOD lengths
+will need. At evaluation I add nothing, so the runs use rows `1, 2, 3, …`, the smallest and
+most-trained start. Two details are load-bearing. First, the shift is *shared across the batch* — one
+draw per forward pass, the same shift for every run in it — not redrawn per run; if I drew an
+independent shift per run, the `a`-run might start at offset 7 and the `c`-run at offset 40 *within the
+same example*, and "same significance ⇒ same vector" would break in exactly the example where I need it.
+With one shift per batch, every run in the example starts at the same place, so within any example the
+`k`-th symbol of every run still lands on the same row, and the column-alignment property holds intact
+while coverage is bought across batches. Second, the shift is applied *only to positive offsets* — the
+non-run positions (PAD and, here, the CLS token) keep offset 0 and use row 0, reserved for "not a
+counted symbol," so they are never perturbed.
+
+Now the run-boundary definition has to respect this task's vocabulary, and this is where the adaptation
+to the harness is concrete rather than generic. The "run of identical symbols" is computed over the
+content tokens, but two tokens must be *excluded* from the run logic entirely: `pad_id` (padding) and
+`cls_id` (the CLS at position 0). Padding is obvious — padded positions carry no symbol. CLS is the
+subtle one: the CLS sits at position 0 *before* any content, and if I let it participate in run-counting
+it would either start a spurious run or, worse, merge with a following `a` and shift every offset by
+one, breaking the alignment between the `a`-run and the `b`/`c`-runs. So I build the offsets by sweeping
+the sequence, marking a position *valid* only if it is neither PAD nor CLS, and a position *continues a
+run* only if it is valid, the previous position was valid, and the token equals the previous token;
+otherwise a valid position *starts* a new run at offset 1, and an invalid position gets offset 0. I clamp
+the offsets at a generous `max_count` (4096) so the embedding lookup never indexes out of bounds even on
+pathological inputs. This per-run-of-identical-symbols rule is the heart of the adaptation: the
+single-round derivation indexes offset from the start of a *number* (digits of one numeral, written
+least-significant-first); here the analogous unit is the *maximal run of one symbol*, because the
+`a^n b^n c^n` membership and the `a`-count are statements about run length, not numeral length.
+
+The rest of the encoder I keep identical to rung two on purpose, so the comparison isolates the
+positional change. Token embedding `nn.Embedding(vocab_size, hidden_dim, padding_idx=pad_id)`, scaled by
+`sqrt(hidden_dim)` to match the additive positional amplitude; *add* the count-positional embedding
+(initialized small, `std=0.02`, so it starts as a gentle bias and the optimizer grows the rows it
+uses); 2 pre-norm `nn.TransformerEncoderLayer`s with 4 heads, FFN width `4*hidden_dim`, GELU,
+`dropout=0.0`; `src_key_padding_mask = tokens.eq(pad_id)`; CLS pooling `h[:, 0]`; final `LayerNorm`.
+Same depth, same heads, same pooling, same mask as rung two — the *only* thing that changed is that the
+sinusoidal absolute PE became a learned, run-indexed, training-shift-randomized embedding. That is the
+controlled experiment.
+
+A word on what this rung does *not* import from the single-round arithmetic derivation, per the
+same-named-baseline warning, because the differences are exactly the adaptations the harness forces.
+There is no digit-token set and no `isin(input_ids, digit_tokens)` — the "counted" tokens here are
+"anything that is not PAD or CLS," computed by exclusion, and the run boundary is symbol-change, not the
+contiguous-digit-run of a numeral. There is no reversal of operands (least-significant-first) — the
+sequence is read left to right and offset 1 is simply the first symbol of a run. The shift range is
+`train_offset = 100`, sized to the OOD run lengths this task actually reaches (~85), not the
+hundred-digit numbers of the arithmetic setting. And the whole thing is an *encoder* feeding a CLS-pooled
+classifier/regressor through a fixed head, not a decoder-only language model. The *idea* — offset from
+the start of the current unit, randomized start for coverage, shared shift per batch, additive at the
+bottom — is preserved; the *unit* and the *vocabulary* are this task's.
+
+Falsifiable expectations against the transformer's numbers. The prediction that decides whether this
+rung is the strongest is OOD generalization, and I expect it to *finally move off chance*: because the
+run-offset is the actual latent the `abc` decision needs and the training-shift-randomization keeps the
+needed rows in-distribution at test length, the `abc`/`length-ood` OOD accuracy should rise above 0.524
+for the first time on the ladder — that is the single claim this whole construction rests on, and if it
+stays at chance the run-indexing did not help. Following from that, `length-ood` retention should beat
+the transformer's 0.771; if OOD accuracy climbs while in-distribution holds, retention climbs with it,
+and this becomes the strongest rung on the metric the task scores. I am honest about two places it may
+*not* dominate. In-distribution `abc` may sit *below* the LSTM's 0.994 and even near the transformer's
+0.754, because the randomized training shift makes the in-distribution task slightly noisier to fit
+(the model must read offsets it sees at many different shifts), trading a little in-range sharpness for
+OOD coverage — a trade the task's geometric-mean-of-scores actively rewards, since retention and OOD
+matter. And `exact` OOD: this is the hardest split, because reading an exact integer count at length 256
+through a pooled CLS is a tall order even with the right positional signal, so I will not be shocked if
+the `exact` score stays at 0.0 like both prior rungs — the run-offset helps the *membership/retention*
+tasks most directly, and the regression-of-exact-count OOD may remain the residual failure. The rung is
+an improvement if retention and `abc`-OOD rise; the place it might still fall short — exact OOD count
+regression — would then name what a future method past this ladder would have to attack. So let me write
+the Abacus count-positional encoder in.
+</think>
+<say>
+Rung three: I am keeping the 2-layer Transformer but replacing the sinusoidal absolute PE with
+Abacus-style count-positional embeddings — a learned table indexed by each symbol's offset within its
+own run, with a batch-shared random start-offset during training so the OOD rows stay in-distribution.
+This first edit adds the `AbacusPE` module and rewires the encoder to use it.
+</say>
+<edit path="pytorch-examples/synth_counting/custom_strategy.py">
+<old>
+# EDITABLE region of pytorch-examples/synth_counting/custom_strategy.py — step 2: Transformer (sinusoidal PE)
+def build_model(config: TaskConfig) -> nn.Module:
+    """Vanilla Transformer encoder with sinusoidal positional encodings."""
+
+    class SinusoidalPE(nn.Module):
+        def __init__(self, dim: int, max_len: int = 4096):
+            super().__init__()
+            pe = torch.zeros(max_len, dim)
+            position = torch.arange(0, max_len, dtype=torch.float).unsqueeze(1)
+            div_term = torch.exp(torch.arange(0, dim, 2).float() * -(math.log(10000.0) / dim))
+            pe[:, 0::2] = torch.sin(position * div_term)
+            pe[:, 1::2] = torch.cos(position * div_term)
+            self.register_buffer("pe", pe.unsqueeze(0))
+
+        def forward(self, x: torch.Tensor) -> torch.Tensor:
+            T = x.size(1)
+            if T > self.pe.size(1):
+                # Extend on the fly so OOD lengths do not crash; values past
+                # max_len fall back to zero (still part of the standard recipe).
+                extra = torch.zeros(1, T - self.pe.size(1), x.size(-1), device=x.device, dtype=x.dtype)
+                pe = torch.cat([self.pe.to(x.dtype), extra], dim=1)
+            else:
+                pe = self.pe[:, :T].to(x.dtype)
+            return x + pe
+
+    class TransformerEncoder(nn.Module):
+        def __init__(self, cfg: TaskConfig):
+            super().__init__()
+            self.cfg = cfg
+            self.embed = nn.Embedding(cfg.vocab_size, cfg.hidden_dim, padding_idx=cfg.pad_id)
+            self.pe = SinusoidalPE(cfg.hidden_dim)
+            layer = nn.TransformerEncoderLayer(
+</old>
+<new>
+# EDITABLE region of pytorch-examples/synth_counting/custom_strategy.py — step 3: Abacus (count-positional embeddings)
+def build_model(config: TaskConfig) -> nn.Module:
+    """Transformer with Abacus-style count-positional embeddings (McLeish 2024)."""
+
+    class AbacusPE(nn.Module):
+        def __init__(
+            self,
+            dim: int,
+            max_count: int = 4096,
+            pad_id: int = 0,
+            cls_id: int = 4,
+            train_offset: int = 100,
+        ):
+            super().__init__()
+            self.pad_id = pad_id
+            self.cls_id = cls_id
+            self.max_count = max_count
+            self.train_offset = train_offset
+            self.embed = nn.Embedding(max_count + 1, dim)
+            nn.init.normal_(self.embed.weight, mean=0.0, std=0.02)
+
+        def block_offsets(self, tokens: torch.Tensor) -> torch.Tensor:
+            B, T = tokens.shape
+            if T == 0:
+                return torch.zeros_like(tokens)
+
+            valid = tokens.ne(self.pad_id) & tokens.ne(self.cls_id)
+            cur = torch.zeros(B, dtype=torch.long, device=tokens.device)
+            prev_token = tokens.new_full((B,), -1)
+            prev_valid = torch.zeros(B, dtype=torch.bool, device=tokens.device)
+            cols = []
+            for t in range(T):
+                tok = tokens[:, t]
+                is_valid = valid[:, t]
+                same_run = is_valid & prev_valid & tok.eq(prev_token)
+                cur = torch.where(
+                    is_valid,
+                    torch.where(same_run, cur + 1, torch.ones_like(cur)),
+                    torch.zeros_like(cur),
+                )
+                cols.append(cur)
+                prev_token = tok
+                prev_valid = is_valid
+
+            offsets = torch.stack(cols, dim=1).clamp(max=self.max_count)
+            if self.training and self.train_offset > 0:
+                shift = torch.randint(
+                    0,
+                    self.train_offset + 1,
+                    (),
+                    dtype=offsets.dtype,
+                    device=offsets.device,
+                )
+                shifted = (offsets + shift).clamp(max=self.max_count)
+                offsets = torch.where(offsets > 0, shifted, offsets)
+            return offsets
+
+        def forward(self, tokens: torch.Tensor) -> torch.Tensor:
+            offsets = self.block_offsets(tokens)
+            return self.embed(offsets)
+
+    class AbacusTransformer(nn.Module):
+        def __init__(self, cfg: TaskConfig):
+            super().__init__()
+            self.cfg = cfg
+            self.tok_embed = nn.Embedding(cfg.vocab_size, cfg.hidden_dim, padding_idx=cfg.pad_id)
+            self.abacus = AbacusPE(cfg.hidden_dim, max_count=4096, pad_id=cfg.pad_id, cls_id=cfg.cls_id)
+            layer = nn.TransformerEncoderLayer(
+</new>
+</edit>
+<obs>
+Successfully replaced text in pytorch-examples/synth_counting/custom_strategy.py.
+</obs>
+<note>
+Now the forward pass: add the run-offset embedding to the token embedding instead of the sinusoidal PE.
+</note>
+<edit path="pytorch-examples/synth_counting/custom_strategy.py">
+<old>
+        def forward(self, tokens: torch.Tensor, lengths: torch.Tensor) -> torch.Tensor:
+            x = self.embed(tokens) * math.sqrt(self.cfg.hidden_dim)
+            x = self.pe(x)
+            key_padding = tokens.eq(self.cfg.pad_id)
+</old>
+<new>
+        def forward(self, tokens: torch.Tensor, lengths: torch.Tensor) -> torch.Tensor:
+            x = self.tok_embed(tokens) * math.sqrt(self.cfg.hidden_dim)
+            x = x + self.abacus(tokens)
+            key_padding = tokens.eq(self.cfg.pad_id)
+</new>
+</edit>
+<obs>
+Successfully replaced text in pytorch-examples/synth_counting/custom_strategy.py.
+</obs>
+<note>
+Point the return at the new module.
+</note>
+<edit path="pytorch-examples/synth_counting/custom_strategy.py">
+<old>
+
+    return TransformerEncoder(config)
+</old>
+<new>
+
+    return AbacusTransformer(config)
+</new>
+</edit>
+<obs>
+Successfully replaced text in pytorch-examples/synth_counting/custom_strategy.py.
+</obs>
+<run/>
+<obs>
+Measured results — `baseline:abacus` (`is_final,true`), seed 42.
+
+## exact (score = OOD accuracy on `T in [128, 256]`)
+| seed | in_dist_accuracy | ood_accuracy | extrapolation_gap | score |
+|---|---|---|---|---|
+| 42 | 0.402344 | 0.0 | 0.402344 | 0.0 |
+
+## abc (score = in-distribution membership accuracy)
+| seed | in_dist_accuracy | ood_accuracy | extrapolation_gap | score |
+|---|---|---|---|---|
+| 42 | 0.744141 | 0.668945 | 0.075195 | 0.744141 |
+
+## length-ood (score = retention `1 - max(0, in_dist - ood)`)
+| seed | in_dist_accuracy | ood_accuracy | extrapolation_gap | retention | score |
+|---|---|---|---|---|---|
+| 42 | 0.744141 | 0.668945 | 0.075195 | 0.924805 | 0.924805 |
+</obs>

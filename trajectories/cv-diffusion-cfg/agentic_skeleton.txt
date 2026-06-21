@@ -1,0 +1,919 @@
+<meta task="cv-diffusion-cfg" domain="Computer vision" file="CFGpp-main/latent_diffusion.py" model_format="qwen3" edit_tool="str_replace"/>
+
+<system>
+You are a research engineer improving a model on a fixed ML task. You work by editing the model code and running experiments. Think carefully before each change. You have these tools:
+- str_replace(path, old_str, new_str): replace the unique occurrence of old_str with new_str.
+- create(path, file_text): create a new file.
+- run_experiment(): train + evaluate the current code under the fixed budget; returns metrics.
+Make one tool call at a time. After editing, call run_experiment() to measure your method.
+</system>
+
+<user>
+## Research question
+
+Text-to-image diffusion follows a prompt only weakly if I sample the conditional model alone, so
+every system uses *guidance*: at each reverse step I have two predictions from one frozen U-Net —
+the unconditional noise `eps_uc = eps_theta(z_t, empty)` and the conditional `eps_c =
+eps_theta(z_t, c)` — and I combine them to push the trajectory toward the prompt. The single thing
+being designed is **the guidance rule**: given those two predictions per step, how to form the
+denoised estimate and how to renoise to the next latent. Everything else — the frozen SD v1.5 /
+SD v2 / SDXL weights, the DDIM step count, the prompt set, the VAE decode, the metrics — is fixed.
+The score I am judged on is per-variant **FID** (lower is better), with **CLIP score** (higher is
+better) reported alongside; a good rule should improve image quality without giving up the
+prompt-following that guidance buys.
+
+## Prior art before the first rung (the guidance lineage)
+
+The first rung reacts to standard classifier-free guidance and its discontents; that is the
+lineage to hold in mind.
+
+- **Classifier guidance (Dhariwal & Nichol 2021, arXiv:2105.05233).** Steer the unconditional
+  score with the input-gradient of a separately trained, noise-aware classifier `p(c|z_t)`:
+  `score <- score + s * grad_z log p(c|z_t)`, with `s ~ 10` for strong conditioning. *Gap:* needs a
+  second network trained on noisy latents, and the update direction is an adversarial-attack-like
+  classifier gradient rather than a clean generative direction.
+- **Classifier-free guidance, CFG (Ho & Salimans 2022, arXiv:2207.12598).** Drop the classifier:
+  a single network trained with the condition randomly nulled produces both `eps_uc` and `eps_c`,
+  and the guided noise is the linear mix `eps_g = eps_uc + w (eps_c - eps_uc)`. In a DDIM step this
+  `eps_g` is substituted for the noise in **both** the Tweedie denoise and the renoise. *Gap:* the
+  useful regime is a moderately-high scale `w` in roughly `[5, 30]`, and in that band the sampler
+  over-saturates colors, collapses modes, accumulates trajectory error, and breaks DDIM
+  invertibility — pathologies widely treated as inherent to diffusion.
+- **The geometric reading that the first rung needs.** A DDIM step is "denoise (Tweedie to the
+  clean manifold `M`), then renoise (lift to the next noisy manifold)." The clean manifold is
+  locally piecewise-linear, so the segment between two nearby denoised points stays on `M`. With
+  `eps_g`, the denoised estimate is `x_hat_g = (1-w) x_hat_uc + w x_hat_c`; for `w > 1` this is an
+  *extrapolation* past the `[x_hat_uc, x_hat_c]` segment, off `M`. And the renoise reuses the same
+  guided `eps_g`, injecting an off-manifold noise direction. These two off-manifold sources are the
+  opening the first rung exploits.
+
+## The fixed substrate
+
+A frozen latent-diffusion text-to-image stack is the substrate and must not be touched: the U-Net
+noise predictor and VAE for each variant (SD v1.5, SD v2-base, SDXL, frozen weights), the
+tokenizer/text-encoder producing the null and conditional embeddings, the DDIM noise scheduler
+exposing the cumulative signal rate `bar_alpha_t`, and the "denoise then renoise" reverse loop run
+for a fixed step budget. Exactly two predictions are available per step from one batched network
+call — `eps_uc` and `eps_c` — and that budget is fixed (no extra neural function evaluations
+allowed). The harness also fixes the prompt set (COCO captions), the seed, the guidance-scale
+argument it passes in, and all evaluation code (FID against a reference Inception-stats set, CLIP
+score with ViT-B/32).
+
+## The editable interface
+
+Exactly one region per variant is editable: the `BaseDDIMCFGpp` solver class registered as
+`ddim_cfg++`. For SD v1.5 / SD v2 it is the `sample()` method of `BaseDDIMCFGpp(StableDiffusion)`
+in `latent_diffusion.py` (the marked block, lines 621-679); for SDXL it is the `reverse_process()`
+method of `BaseDDIMCFGpp(SDXL)` in `latent_sdxl.py` (lines 713-755). Every method on the ladder is
+a fill of this same contract, with these helpers provided by the parent class:
+
+- `self.get_text_embed(null_prompt, prompt)` -> `(uc, c)` (SD path);
+- `self.initialize_latent()` / `self.initialize_latent(size=...)` -> `z_T ~ N(0, I)`;
+- `self.predict_noise(zt, t, uc, c)` -> `(eps_uc, eps_c)` — the two predictions, one batched call;
+- `self.alpha(t)` -> `bar_alpha_t` (SD path); `self.scheduler.alphas_cumprod[t]` (SDXL path);
+- `self.scheduler.timesteps`, `self.skip`, `self.decode(z)`, `self.vae_scale_factor`.
+
+The contract: combine `eps_uc` and `eps_c` into a denoised estimate `z0t` (Tweedie) and a renoised
+next latent `zt`, iterate over `self.scheduler.timesteps`, and return the decoded clean estimate.
+The rule may change how the two predictions are combined, which prediction drives the renoise, or
+how guidance varies with time — but not the prompt set, the weights, the NFE budget, or the
+evaluation code. The starting point is the scaffold default: an unfilled stub that raises
+`NotImplementedError`. The first rung replaces it with the CFG++ fill below; later rungs replace
+exactly this block and nothing else.
+
+```python
+# EDITABLE region of CFGpp-main/latent_diffusion.py (lines 621-679) — scaffold DEFAULT (stub)
+@register_solver("ddim_cfg++")
+class BaseDDIMCFGpp(StableDiffusion):
+    # The baseline CFG++ uses unconditional noise (noise_uc) for renoising to keep
+    # the trajectory on the data manifold. Improve upon this approach.
+    #
+    # Helpers from the parent class:
+    #   self.get_text_embed(null_prompt, prompt) -> (uc, c)
+    #   self.initialize_latent()                 -> z_T ~ N(0, I)
+    #   self.predict_noise(zt, t, uc, c)         -> (noise_uc, noise_c)
+    #   self.alpha(t)                            -> bar_alpha_t
+    #   self.decode(z)                           -> image
+    #   self.scheduler.timesteps, self.skip
+
+    def __init__(self,
+                 solver_config: Dict,
+                 model_key: str = "runwayml/stable-diffusion-v1-5",
+                 device: Optional[torch.device] = None,
+                 **kwargs):
+        super().__init__(solver_config, model_key, device, **kwargs)
+
+    @torch.autocast(device_type='cuda', dtype=torch.float16)
+    def sample(self,
+               cfg_guidance=7.5,
+               prompt=["", ""],
+               callback_fn=None,
+               **kwargs):
+        # TODO: implement the guidance rule here.
+        #   x0_hat = (zt - sqrt(1-at) * <eps for denoise>) / sqrt(at)
+        #   zt     = sqrt(at_prev) * x0_hat + sqrt(1-at_prev) * <eps for renoise>
+        raise NotImplementedError("You need to implement the sample method")
+```
+
+The SDXL block is the identical contract in `reverse_process()`, indexing
+`self.scheduler.alphas_cumprod[t]` directly and threading the dual text embeddings; the same
+denoise/renoise slot is the open region.
+
+## Evaluation settings
+
+Three frozen variants — **SD v1.5**, **SD v2-base**, **SDXL** — each scored independently. The
+harness generates images from a shared COCO-caption prompt set at a single seed (42) under the
+fixed DDIM step budget and the guidance-scale argument the harness passes in, decodes with the
+frozen VAE, then computes two metrics per variant: **FID** against a precomputed COCO reference
+Inception-stats set (lower is better; this is the task score) and **CLIP score** (ViT-B/32
+image-text cosine, higher is better). The denoiser-evaluation budget, prompt set, weights, and
+metric code are identical across every rung; only the editable guidance block changes.
+
+The editable model code is in `CFGpp-main/latent_diffusion.py`:
+```python
+# (starting code)
+```
+Improve it. Derive your method, edit the code, then run_experiment().
+</user>
+
+### step 1 — CFG++ (manifold-constrained guidance)   [slug:cfgpp]
+
+<think>
+[[POLISH_REASONING: adapt to first-person agentic voice, end by deciding to implement]]
+I start the ladder at the rung the scaffold itself points to. The editable class is literally named
+`BaseDDIMCFGpp` and its comment says the baseline renoises with the unconditional noise to keep the
+trajectory on the data manifold — so the floor of this task is not standard CFG but its
+manifold-constrained cousin, CFG++. Before I fill the stub I want to be sure I understand *why* this
+is the right place to begin and exactly what one line of the DDIM step it changes, because
+everything later on the ladder is a perturbation of this fill.
+
+Let me restate the failure that motivates starting above plain CFG. I have one frozen U-Net I can
+call two ways, `eps_uc = eps_theta(z_t, empty)` and `eps_c = eps_theta(z_t, c)`, and standard CFG
+forms the guided noise `eps_g = eps_uc + w (eps_c - eps_uc)` and plugs it into the DDIM step. A DDIM
+step is "denoise then renoise." Using Tweedie's formula the denoised estimate of the clean signal
+is `x_hat = (z_t - sqrt(1-a_t) eps) / sqrt(a_t)`, writing `a_t` for the cumulative signal rate
+`bar_alpha_t`; that estimate is the posterior mean of `x_0` and lands on the clean data manifold
+`M`. Then the renoise lifts it back up to the next, slightly-less-noisy level: `z_{t-1} =
+sqrt(a_{t-1}) x_hat + sqrt(1-a_{t-1}) eps`. CFG substitutes `eps_g` for the noise in *both* of those
+lines, and that double substitution is exactly where the damage is.
+
+Look at the denoise first. With `eps_g = eps_uc + w (eps_c - eps_uc)` plugged into Tweedie,
+linearity gives `x_hat_g = x_hat_uc - w * sqrt(1-a_t)/sqrt(a_t) * (eps_c - eps_uc)`. The conditional
+denoised estimate alone is `x_hat_c = x_hat_uc - sqrt(1-a_t)/sqrt(a_t) (eps_c - eps_uc)`, so the
+coefficient on the difference is exactly `x_hat_uc - x_hat_c`, and substituting collapses the
+denoised estimate to an affine combination of the two endpoints: `x_hat_g = (1-w) x_hat_uc + w
+x_hat_c`. Stare at the weights. If `w` were in `[0,1]` this would be an *interpolation* — a point on
+the segment between `x_hat_uc` and `x_hat_c`, and because the clean manifold is locally
+piecewise-linear, that segment stays on `M`. But the useful CFG regime is `w` in `[5,30]`, so
+`1-w` is hugely negative and this is an *extrapolation*, shot far past `x_hat_c` off the end of the
+linear piece, off `M`. That off-manifold denoised estimate is the sudden early-step shift and the
+color saturation people see. Source one of the trouble: `w > 1` turns interpolation into
+extrapolation.
+
+Now the renoise line. CFG renoises with `eps_g` too: `z_{t-1} = sqrt(a_{t-1}) x_hat_g +
+sqrt(1-a_{t-1}) eps_g`. The first term already carried an off-manifold `x_hat_g`, but there is a
+second, separate insult: the noise added back to lift the point to the next noisy manifold is itself
+the *guided, extrapolated* direction `eps_g`, not the plain unconditional `eps_uc`. Even setting
+aside the bad denoised estimate, the transition is being driven by an off-manifold noise vector.
+Two distinct off-manifold sources, then: the `w>1` extrapolation in the denoise, and the guided
+noise in the renoise. The whole point of CFG++ is to fix both with a single change to the renoise,
+and to make the scale interpretable in `[0,1]` instead of a magnification factor I crank to 12.
+
+How do I fix this from first principles rather than by hand-tuning `w`? The fact that keeps nagging
+me is that the *unconditional* DDIM step is clean and well-behaved — its renoise uses `eps_uc`, it
+stays on the manifold, and it inverts cleanly. So instead of thinking of guidance as "amplify the
+conditional score," which is exactly what produced the `w>1` extrapolation, I reframe it as: run the
+well-behaved unconditional sampler, but at each step nudge the *denoised estimate* toward satisfying
+the text. That is an optimization on the manifold, `min_{x in M} l(x)`, for a loss `l` that measures
+"this clean image does not match the prompt." That shape is exactly a diffusion inverse-problem
+solver, where a data-consistency loss is minimized while the diffusion process keeps the iterate on
+the right manifold; I will borrow that machinery.
+
+The natural `l` for "match the text" is the text-conditioned score-matching loss the network was
+trained on — noise `x` to level `t`, ask the conditional network to predict the noise, penalize the
+residual: `l(x) = || eps_theta(sqrt(a_t) x + sqrt(1-a_t) eps, c) - eps ||^2`. Minimizing this over
+clean `x` pushes `x` toward images the conditional model finds typical for the prompt, a direct
+target for alignment unlike CFG's indirect sharpened-posterior route. The honest gradient of such a
+diffusion loss carries the U-Net Jacobian, which is expensive and badly conditioned; the
+decomposed-diffusion-sampling view (and the score-distillation observation) says I can drop that
+Jacobian and take the gradient *with respect to the denoised estimate itself*,
+`grad_{x_hat} l(x_hat)`, a one-step projected gradient on the tangent space at `x_hat`, with no
+backprop through the network. So one reverse step becomes
+
+  `z_{t-1} = sqrt(a_{t-1}) ( x_hat_uc - gamma_t grad_{x_hat} l(x_hat_uc) ) + sqrt(1-a_{t-1}) eps_uc`.
+
+Notice the renoise term in this template is `eps_uc`, not anything guided — because the template is
+solving the *unconditional* PF-ODE and the conditioning enters *only* through the data-consistency
+gradient on the denoised estimate. The text never touches the renoise. That is not a heuristic swap
+I am choosing; it is what the optimization-on-the-manifold view forces, and it is precisely the fix
+for source two.
+
+Now compute the gradient step and watch the denoise half too. Reduce `l`: from the forward relation
+`x_t = sqrt(a_t) x + sqrt(1-a_t) eps` and the conditional Tweedie estimate, the residual is
+`eps_c - eps = sqrt(a_t)/sqrt(1-a_t) (x - x_hat_c)`, so `l(x) = (a_t/(1-a_t)) || x - x_hat_c ||^2`,
+a clean quadratic. Its gradient at `x = x_hat_uc` is `(2 a_t/(1-a_t)) (x_hat_uc - x_hat_c)`. Plug it
+into the denoised half: `x_hat_uc - gamma_t (2 a_t/(1-a_t)) (x_hat_uc - x_hat_c) = x_hat_uc +
+lambda (x_hat_c - x_hat_uc)`, collapsing all prefactors into a single scalar `lambda := 2 a_t
+gamma_t / (1-a_t)`. The denoised estimate is now `x_hat_cfgpp = (1-lambda) x_hat_uc + lambda
+x_hat_c`. Same affine *shape* as CFG, but the coefficient is `lambda`, a step size I keep in
+`[0,1]`. With `lambda` in `[0,1]` this is an honest interpolation — a convex combination of two
+on-manifold endpoints, on the segment, hence on `M`. Source one is fixed: I never extrapolate past
+the conditional endpoint, so the denoised estimate cannot shoot off the manifold, and `lambda` now
+has an interpretable meaning (`0` = unconditional, `1` = conditional, in between a blend) instead of
+being a magnification factor.
+
+Re-expressing in noise-mixing notation shows how small the change really is. Define `eps_cfgpp =
+eps_uc + lambda (eps_c - eps_uc)` — identical to CFG but with `lambda`. Then the interpolated
+denoised estimate is exactly the Tweedie estimate of this mixed noise: `(z_t - sqrt(1-a_t)
+eps_cfgpp)/sqrt(a_t)`. So the step is: denoise with the *mixed* noise, renoise with the
+*unconditional* noise. Side by side with CFG: CFG forms `eps_g`, Tweedie-denoises with `eps_g`,
+renoises with `eps_g`; CFG++ forms `eps_cfgpp`, Tweedie-denoises with `eps_cfgpp`, renoises with
+`eps_uc`. **The single line that changed is the renoise noise**, `eps_g -> eps_uc` (and the scale
+moved from `w > 1` to `lambda` in `[0,1]`). It costs nothing extra — I already compute `eps_uc` and
+`eps_c` every step for the mix, exactly two network evaluations, the same fixed NFE budget the
+harness allows — yet it removes both off-manifold sources at once.
+
+I want to be careful about one thing the harness exposes versus how the method is usually told. The
+clean CFG++ story is "small interpretable scale `lambda` in `[0,1]`," and the methods derivation
+runs at `lambda` around 0.6. But the scaffold signature here is `sample(self, cfg_guidance=7.5,
+...)` and the SD class reuses the same `noise_uc + cfg_guidance * (noise_c - noise_uc)` mix as CFG —
+so the *value* of the scale at run time is whatever the evaluation harness passes in, not the 7.5
+default in the signature. The contract I am filling does not let me rename or rescale that argument;
+it only lets me decide which predicted noise drives each half of the DDIM step. So my fill keeps the
+exact mix expression and changes exactly the renoise: `zt = at_prev.sqrt() * z0t + (1-at_prev).sqrt()
+* noise_uc`. That is the literal one-line edit, and it is faithful to CFG++ precisely because the
+small-scale behavior comes from the harness's chosen `cfg_guidance` (it passes the small CFG++
+scale), while the on-manifold geometry comes from the `eps_uc` renoise I am writing. I am not
+importing any extra machinery the scaffold does not have — no per-image null-text optimization, no
+coupled invertible transforms, no time-varying schedule; just the renoise swap.
+
+For the SDXL variant the contract is the same in `reverse_process()`: index `at = alphas_cumprod[t]`
+and `at_next = alphas_cumprod[t - skip]` directly, get `noise_uc, noise_c` from `predict_noise` with
+the dual prompt embeddings, denoise with the mixed `noise_pred`, and renoise with `noise_uc`. Same
+one-line difference from CFG, same two predictions per step. The full scaffold module for both
+variants is in the answer.
+
+So the falsifiable expectation, stated against what comes next on the ladder. CFG++ should be a
+*conservative, on-manifold* sampler: by construction it removes the off-manifold extrapolation and
+the guided renoise, so I expect it to be stable and artifact-free, but at a small interpolation
+scale it deliberately does *not* push as hard toward the prompt as a high-`w` guided renoise would.
+On the task's FID-scored COCO setup, that conservatism is a real risk: the metric rewards matching
+the reference image *distribution*, and a sampler that renoises unconditionally and interpolates
+gently may sit slightly *farther* from the reference statistics than a sampler that renoises with
+the guided noise and drives harder. In other words, the very on-manifold caution that fixes
+saturation and inversion might cost a little FID against a harder-pushing renoise. I am starting
+here because the scaffold names this the baseline and because it is the principled floor; what I am
+watching is whether the unconditional renoise, measured by per-variant FID, actually beats or
+trails the guided renoise — and if it trails, the immediate next move on the ladder is obvious:
+put the guided noise back into the renoise (standard CFG) and see whether the harder push lowers FID
+even at the cost of the manifold guarantees.
+</think>
+<say>
+[[FILL_SAY: 1-2 sentences naming the method and what this first edit does]]
+</say>
+<edit path="CFGpp-main/latent_diffusion.py">
+<old>
+# (starting code)
+</old>
+<new>
+# EDITABLE region of CFGpp-main/latent_diffusion.py (lines 621-679) — step 1: CFG++ (SD v1.5 / v2)
+@register_solver("ddim_cfg++")
+class BaseDDIMCFGpp(StableDiffusion):
+    """
+    DDIM solver for SD with CFG++.
+    """
+    def __init__(self,
+                 solver_config: Dict,
+                 model_key:str="runwayml/stable-diffusion-v1-5",
+                 device: Optional[torch.device]=None,
+                 **kwargs):
+        super().__init__(solver_config, model_key, device, **kwargs)
+
+    @torch.autocast(device_type='cuda', dtype=torch.float16)
+    def sample(self,
+               cfg_guidance=7.5,
+               prompt=["",""],
+               callback_fn=None,
+               **kwargs):
+
+        # Text embedding
+        uc, c = self.get_text_embed(null_prompt=prompt[0], prompt=prompt[1])
+
+        # Initialize zT
+        zt = self.initialize_latent()
+        zt = zt.requires_grad_()
+
+        # Sampling
+        pbar = tqdm(self.scheduler.timesteps, desc="SD")
+        for step, t in enumerate(pbar):
+            at = self.alpha(t)
+            at_prev = self.alpha(t - self.skip)
+
+            with torch.no_grad():
+                noise_uc, noise_c = self.predict_noise(zt, t, uc, c)
+                noise_pred = noise_uc + cfg_guidance * (noise_c - noise_uc)
+
+            # tweedie
+            z0t = (zt - (1-at).sqrt() * noise_pred) / at.sqrt()
+
+            # add noise - CFG++: use noise_uc to stay on manifold
+            zt = at_prev.sqrt() * z0t + (1-at_prev).sqrt() * noise_uc
+
+            if callback_fn is not None:
+                callback_kwargs = {'z0t': z0t.detach(),
+                                    'zt': zt.detach(),
+                                    'decode': self.decode}
+                callback_kwargs = callback_fn(step, t, callback_kwargs)
+                z0t = callback_kwargs["z0t"]
+                zt = callback_kwargs["zt"]
+
+        # for the last step, do not add noise
+        img = self.decode(z0t)
+        img = (img / 2 + 0.5).clamp(0, 1)
+        return img.detach().cpu()
+</new>
+</edit>
+<obs>
+Successfully replaced text in CFGpp-main/latent_diffusion.py.
+</obs>
+<run/>
+<obs>
+Measured results — `baseline:cfgpp` (`is_final,true`), seed 42. Task score is per-variant FID
+(lower is better).
+
+## FID (lower is better)
+| seed | fid_sd15 | fid_sd20 | fid_sdxl |
+|---|---|---|---|
+| 42 | 23.9904 | 24.8937 | 25.8774 |
+| **mean** | **23.9904** | **24.8937** | **25.8774** |
+</obs>
+
+### step 2 — Standard CFG (guided renoise, w = 7.5)   [slug:cfg]
+
+<think>
+[[POLISH_REASONING: adapt to first-person agentic voice, end by deciding to implement]]
+CFG++'s numbers came back and they are worse than I would have guessed, which sharpens exactly what
+to try next. On the three frozen variants the on-manifold sampler scored FID 23.99 on SD v1.5,
+24.89 on SD v2-base, and 25.88 on SDXL — and every one of those is the *highest* FID I will see on
+this ladder. I built CFG++ to be the principled floor: it removes the off-manifold extrapolation in
+the denoise and the guided noise in the renoise, so it should be stable, artifact-free, and
+invertible. And I believe it is all of those things. But the task does not score stability or
+invertibility; it scores FID against the COCO reference distribution, and on that single axis the
+gentle interpolation plus unconditional renoise sits *farther* from the reference statistics than I
+hoped. That is precisely the risk I flagged when I started here: the very caution that fixes
+saturation and broken inversion can cost FID against a sampler that pushes harder. The 25.88 on SDXL
+is the loudest signal — the high-resolution model, where the unconditional renoise has the most room
+to under-commit to the prompt and drift the sample's statistics away from the reference set.
+
+So let me read the failure precisely before I move, because the diagnosis dictates the fix. CFG++'s
+reverse step is: form the mixed noise `eps_cfgpp = eps_uc + lambda (eps_c - eps_uc)`, Tweedie-denoise
+with that mix, then renoise with the *unconditional* noise `eps_uc`. The renoise choice is the whole
+character of the method. By renoising with `eps_uc` I lift the denoised estimate to the next noisy
+manifold along the *clean, unconditional* direction — which is exactly why it stays on-manifold, but
+also exactly why the sample's per-step motion toward the prompt is limited to the small `lambda`
+nudge inside the denoise. The harness runs CFG++ at a small interpolation scale (the value it passes
+into `cfg_guidance`), so the conditional push per step is deliberately modest. Add up many gentle,
+unconditionally-renoised steps and the generated distribution is clean but under-committed: it does
+not sharpen onto the prompt-consistent modes as aggressively as the FID reference (itself a set of
+real, sharp images) rewards. The diagnosis is not "CFG++ is broken"; it is "CFG++ trades distribution
+sharpness for manifold safety, and on this FID-scored benchmark the trade went the wrong way."
+
+If under-commitment is the disease, the obvious remedy is to put the *guided* noise back into the
+renoise — which is precisely what standard CFG does. So the next rung is not a more elaborate method;
+it is the older, harder-pushing one, standard classifier-free guidance, and the entire derivation I
+care about is *why renoising with the guided noise pushes the sample's statistics toward the
+reference even though it abandons CFG++'s manifold guarantee*. Let me build it from the ground the
+scaffold gives me.
+
+Standard CFG starts from the same two predictions per step, `eps_uc` and `eps_c`, but it does not
+treat guidance as a manifold-constrained nudge. It treats it as sampling from a *sharpened*
+posterior `p^w(x|c) ∝ p(x) p(c|x)^w`. Take `grad_x log` of that sharpened density and parameterize
+the score with the noise predictor: the gradient of `log p(x)` is the unconditional score, the
+gradient of `log p(c|x)` is — by the implicit-classifier identity `p(c|x) ∝ p(x|c)/p(x)` — the
+*difference* of the conditional and unconditional scores, and out drops the linear mix `eps_g =
+eps_uc + w (eps_c - eps_uc)`. Worth pausing on why that difference is the right object. A classifier
+is hiding inside any pair of conditional-and-unconditional generative models: by Bayes,
+`p(c|x) ∝ p(x|c)/p(x)`, so `grad_x log p(c|x) = grad_x log p(x|c) - grad_x log p(x)`, and in
+noise-prediction units that is `-(1/sigma)(eps_c - eps_uc)`. The entire class signal — the thing
+classifier guidance trained a whole separate network to compute the gradient of — is just the gap
+between the conditional and unconditional predictions I already have. Amplifying it by `w` is what
+raises `p(c|x)` to the `w`-th power, and the `sigma` factor from converting score to epsilon cancels
+the `1/sigma` from converting back, leaving the clean linear mix with nothing classifier-shaped left
+in it. So standard CFG is not "add a classifier gradient"; it is "amplify the difference of two
+predictions I am already computing," and the renoise question is then simply whether that amplified
+difference should drive the lift to the next latent or be discarded in favor of `eps_uc`. The crucial structural fact is what happens to that `eps_g` inside the
+DDIM step: standard CFG substitutes it for the noise in *both* halves. Tweedie-denoise with `eps_g`,
+and — the line that differs from rung one — renoise with `eps_g` as well: `z_{t-1} = sqrt(a_{t-1})
+x_hat_g + sqrt(1-a_{t-1}) eps_g`. The guided noise drives the lift to the next noisy manifold, not
+the unconditional noise.
+
+Why would that lower FID when I just argued the guided renoise is "off-manifold"? Because
+"off-manifold" and "closer to the reference distribution" are not the same axis. Renoising with
+`eps_g` means every step both denoises toward and *re-injects noise along* the prompt-amplified
+direction, so the conditional signal compounds across the trajectory instead of leaking out through
+an unconditional renoise. At a high guidance scale this is exactly the sharpening that maps onto the
+inverse-temperature reading: `p(c|x)^w` for `w > 1` dumps probability mass onto the
+prompt-consistent modes, and the FID reference — real, prompt-relevant, sharp images — lives on
+those modes. The price is the over-saturation and the broken inversion I cared about at rung one, but
+the task does not measure either; it measures distance to the reference image statistics, and a
+sharper, more prompt-committed sample distribution can be *closer* to that reference than CFG++'s
+cautious one. So the prediction is that the harder push buys FID precisely on the axis the metric
+rewards, which is the opposite of what rung one optimized for.
+
+Now the scaffold-specific subtlety, which is the single most important implementation difference
+between this rung and the last, and the thing I must get exactly right. At rung one I kept the mix
+expression and let the harness supply the small CFG++ scale through `cfg_guidance`. But standard CFG
+needs a *moderately high* scale to do its sharpening — the `w` in roughly `[5, 30]` band — and the
+harness, by default, passes in the *small* CFG++ value. If I simply renoised with `eps_g` while
+still using the harness's small scale, I would get neither method: a barely-guided sampler that
+renoises with a barely-guided noise. So the standard-CFG fill must *override* the incoming scale and
+fix it at the value CFG actually needs. The scaffold edit makes exactly this choice: at the top of
+`sample()` it sets `cfg_guidance = 7.5`, ignoring whatever the harness passed, and then forms
+`noise_pred = noise_uc + cfg_guidance * (noise_c - noise_uc)` at that high scale, Tweedie-denoises
+with `noise_pred`, and **renoises with `noise_pred`** (the guided noise) rather than `noise_uc`.
+That is the complete delta from rung one: two changes, not one — hardcode the scale to 7.5, and swap
+the renoise noise from `noise_uc` back to `noise_pred`. Both are necessary; the guided renoise is
+pointless at a tiny scale, and the high scale is what makes the sharpening strong enough to move FID.
+
+I want to be careful not to over-tell this rung. The classifier-free derivation has a whole story
+about training one network with the condition randomly nulled, about the implicit classifier not
+being the gradient of any real classifier so the adversarial-attack worry dissolves, about getting
+the unconditional branch for free. None of that training-time machinery is mine to touch here: the
+weights are frozen, `predict_noise` already returns both `eps_uc` and `eps_c` from one batched call,
+and the only slot I fill is the per-step combination and which noise drives each half of the DDIM
+step. So the part of standard CFG that is *live* in this scaffold is exactly the inference-time rule:
+mix at a high scale, denoise with the mix, renoise with the mix. The 7.5 is the canonical
+high-quality CFG scale and I take it as given rather than sweeping it, because the harness pins the
+seed and the prompt set and I am comparing rules, not tuning a single rule's scalar.
+
+For the SDXL variant the contract is identical in `reverse_process()`: index `at =
+alphas_cumprod[t]`, `at_next = alphas_cumprod[t - skip]`, override `cfg_guidance = 7.5`, get
+`noise_uc, noise_c` from `predict_noise` with the dual prompt embeddings, denoise with
+`noise_pred`, and renoise with `noise_pred`. Same two changes from rung one, same two predictions per
+step, same fixed NFE budget. The full scaffold module for both variants is in the answer.
+
+The falsifiable expectation, stated against rung one's measured numbers. If under-commitment is
+really why CFG++ landed at the top of the FID range, then putting the guided noise back into the
+renoise at the high CFG scale should *lower* FID on all three variants below CFG++'s 23.99 / 24.89 /
+25.88 — the harder push pulling the generated distribution onto the prompt-consistent modes the
+reference set occupies. I expect the largest gain exactly where CFG++ was weakest, SDXL at 25.88,
+because that is where the unconditional renoise had the most room to under-commit. The risk is the
+mirror image of rung one: if 7.5 over-sharpens — collapsing modes and over-saturating hard enough to
+*distort* the distribution rather than concentrate it — FID could fail to improve or even regress,
+and CLIP would climb while FID stalls. So the clean test is simply whether standard CFG's three FID
+numbers come in under CFG++'s three. If they do, the lesson is that on this benchmark the guided
+renoise beats the manifold-safe one, and the next question becomes whether I can keep standard CFG's
+harder push while clawing back *some* of CFG++'s on-manifold cleanliness — the renoise choice and
+the high-noise early steps being the two obvious levers to revisit.
+</think>
+<say>
+[[FILL_SAY: 1-2 sentences naming the method and what this first edit does]]
+</say>
+<edit path="CFGpp-main/latent_diffusion.py">
+<old>
+# EDITABLE region of CFGpp-main/latent_diffusion.py (lines 621-679) — step 1: CFG++ (SD v1.5 / v2)
+@register_solver("ddim_cfg++")
+class BaseDDIMCFGpp(StableDiffusion):
+    """
+    DDIM solver for SD with CFG++.
+    """
+</old>
+<new>
+# EDITABLE region of CFGpp-main/latent_diffusion.py (lines 621-679) — step 2: standard CFG (SD v1.5 / v2)
+@register_solver("ddim_cfg++")
+class BaseDDIMCFGpp(StableDiffusion):
+    """
+    DDIM solver for SD with standard CFG.
+    """
+</new>
+</edit>
+<obs>
+Successfully replaced text in CFGpp-main/latent_diffusion.py.
+</obs>
+<note>
+[[FILL_NOTE?: optional one-line thought for this edit, or delete this block]]
+</note>
+<edit path="CFGpp-main/latent_diffusion.py">
+<old>
+               **kwargs):
+</old>
+<new>
+               **kwargs):
+        # Standard CFG needs higher guidance scale
+        cfg_guidance = 7.5
+</new>
+</edit>
+<obs>
+Successfully replaced text in CFGpp-main/latent_diffusion.py.
+</obs>
+<note>
+[[FILL_NOTE?: optional one-line thought for this edit, or delete this block]]
+</note>
+<edit path="CFGpp-main/latent_diffusion.py">
+<old>
+
+            # add noise - CFG++: use noise_uc to stay on manifold
+            zt = at_prev.sqrt() * z0t + (1-at_prev).sqrt() * noise_uc
+</old>
+<new>
+
+            # add noise - STANDARD CFG: use noise_pred
+            zt = at_prev.sqrt() * z0t + (1-at_prev).sqrt() * noise_pred
+</new>
+</edit>
+<obs>
+Successfully replaced text in CFGpp-main/latent_diffusion.py.
+</obs>
+<run/>
+<obs>
+Measured results — `baseline:cfg` (`is_final,true`), seed 42. Task score is per-variant FID
+(lower is better).
+
+## FID (lower is better)
+| seed | fid_sd15 | fid_sd20 | fid_sdxl |
+|---|---|---|---|
+| 42 | 23.6473 | 24.2928 | 25.7426 |
+| **mean** | **23.6473** | **24.2928** | **25.7426** |
+</obs>
+
+### step 3 — CFG++ + zero-init (skip first K = 2 steps)   [slug:zeroinit]
+
+<think>
+[[POLISH_REASONING: adapt to first-person agentic voice, end by deciding to implement]]
+Both prior numbers are now in, and together they tell a more interesting story than either alone.
+Standard CFG (the guided renoise at scale 7.5) came in at FID 23.65 / 24.29 / 25.74 on SD v1.5 /
+SD v2-base / SDXL, beating CFG++'s 23.99 / 24.89 / 25.88 on every variant. So my rung-2 hypothesis
+held: the harder push, with the prompt-amplified noise driving the renoise, pulled the generated
+distribution onto the sharp reference modes and lowered FID, most on SD v2-base (0.60) and least on
+SDXL (0.14). Good. But the gains are *small* — a tenth to six-tenths of a FID point — and they came
+with everything CFG++ was built to avoid: over-saturation, off-manifold drift, broken inversion. The
+narrow margin is the clue. If the guided renoise were unambiguously better, I would expect a larger
+gap; that it is only marginally ahead says the guided renoise is *both* helping (sharpening toward
+the reference) and hurting (off-manifold distortion), and the net is barely positive. The two effects
+are nearly cancelling. That reframes the question for rung 3: can I keep the *helpful* part of one of
+these and drop the *harmful* part, rather than choosing between two rules that each mix help and harm?
+
+Let me look harder at where each method spends its error, because the answer is in the timing. In a
+DDIM trajectory the early steps are the highest-noise steps: `z_t` is almost pure noise, the two
+predictions `eps_uc` and `eps_c` are at their least reliable, and yet guidance is already allowed to
+push at full strength. CFG++ renoises with `eps_uc` there, which is safe but under-committed; standard
+CFG renoises with the guided `eps_g` there, which commits hard along a direction the model can barely
+estimate at that noise level. Both prior rungs treat the first step like every other step. But the
+high-noise regime is special: this is exactly where a guided move is most likely to be a *worse*
+estimate of the right direction than no move at all, because the conditional signal `eps_c - eps_uc`
+is dominated by prediction error when the latent is near-pure noise. So the lever I have not touched
+is *time*: not which noise drives the renoise, but whether to apply the guided update *at all* during
+the first, least-trustworthy steps.
+
+Here is the diagnostic that makes "skip the first steps" principled rather than a hack. The trouble
+with a guided mix is that the same scale that strengthens the conditional signal also strengthens the
+conditional *error*: if `eps_uc = eps_uc^* + e_uc` and `eps_c = eps_c^* + e_c`, the guided
+prediction carries the ideal guided part plus an error term that grows with the guidance scale, and
+when the model is unreliable a large push cannot tell which component is semantic control and which is
+a wrong prediction. On real images I cannot see that error, but a Gaussian path gives me a measuring
+stick. Take a source-to-target flow with `x_0 ~ N(0,I)`, `x_1 ~ N(mu,I)`, and the linear path
+`x_t = (1-t)x_0 + t x_1`. The optimal velocity is the conditional mean `E[x_1 - x_0 | x_t]`, and
+because `(x_t, x_1 - x_0)` is jointly Gaussian with `Cov(x_t, x_1 - x_0) = (2t-1)I` and
+`Var(x_t) = ((1-t)^2 + t^2)I`, it has the closed form
+`v_t^*(x) = ((2t-1)/((1-t)^2 + t^2))(x - t mu) + mu`. That formula lets me compare a learned,
+guided step to the true step at any `t` — and the source end, `t` near the start, is the dangerous
+place: the sample is still close to noise while guidance is already allowed to push hard.
+
+In that controlled case, when the model is underfitted, I can ask the sharp question directly: is the
+*guided* first-step move closer to the optimal first-step move than the *zero* move is? And the
+answer, in the underfitted regime, is that it is not — the diagnostic can satisfy
+`||v_guided(t=0) - v_0^*||^2 >= ||0 - v_0^*||^2`. Read that as a decision rule. At the source end,
+taking the guided step injects the largest wrong direction exactly when the trajectory carries the
+least semantic information; doing nothing — leaving the latent unchanged for that step — is provably
+no worse, and often better, than the guided move. So the high-noise prefix should be *inert*: zero the
+update for the first `K` steps and let guidance act only once the predictions become informative.
+
+This is the move I will fill in, and I want to be careful about exactly what the scaffold exposes,
+because the method this rung is named for has *two* parts and the task uses only one of them. The
+full version of "fix guidance at the unreliable source end" pairs the inert prefix with a per-sample
+*optimized scale* on the unconditional prediction — replace `eps_uc` in the mix by `s* eps_uc` where
+`s* = <eps_c, eps_uc> / ||eps_uc||^2` is the least-squares projection of the conditional prediction
+onto the unconditional one, so guidance amplifies only the conditional *residual* the unconditional
+prediction cannot already explain. That projection is a cheap dot-product-and-norm on the two vectors
+I already have, no extra network call. But the task's `zeroinit` baseline does **not** include it:
+its fill keeps the plain CFG++ mix and renoise (`noise_pred = noise_uc + cfg_guidance*(noise_c -
+noise_uc)`, renoise with `noise_uc`) and adds *only* the inert prefix — `if step < K: continue` with
+`K = 2`. So the rung I am building here is the zero-init half alone, layered on the CFG++ manifold-safe
+renoise, not the full optimized-scale-plus-zero-init method. I note the omission deliberately: the
+optimized scale is the obvious thing left on the table, and it is where the ladder goes next.
+
+So the rung-3 fill is concretely: start from the CFG++ step (mix with `cfg_guidance`, Tweedie-denoise
+with the mix, renoise with `noise_uc`), and wrap the loop with a guard that skips the first `K = 2`
+iterations entirely — no denoise, no renoise, no callback — so the latent stays at its initialization
+through the two highest-noise steps, and the manifold-safe CFG++ update runs on every step after. Why
+build it on the CFG++ renoise rather than the standard-CFG renoise, given that standard CFG just beat
+CFG++ on FID? Because the two diagnoses compose. Standard CFG's edge was small and bought with
+off-manifold distortion; CFG++'s renoise is the clean one. If the *reason* the early steps hurt is
+that guidance is unreliable at high noise, then the right base for the inert prefix is the
+*clean-renoise* sampler, so that once the prefix ends and guidance resumes, every remaining step is
+on-manifold. Skipping the worst two steps removes the regime where even the clean renoise is
+under-committed *and* unreliable, and running CFG++ on the rest keeps the manifold guarantee for the
+informative steps. The bet is that "manifold-safe renoise, but only after the noise has come down
+enough for the predictions to mean something" beats both "manifold-safe renoise applied even at the
+useless high-noise start" (plain CFG++) and "hard guided renoise applied everywhere including the
+unreliable start" (standard CFG).
+
+A detail on `K`. It has to stay small. The inert-prefix argument is a statement about the *source
+end* of the trajectory, where predictions are unreliable; it is not a license to skip arbitrarily
+many steps. Once the velocity field becomes informative — a few steps in, when the noise has dropped
+— continuing to do nothing would simply throw away useful, budget-limited solver steps and *lose*
+the conditional signal I need. `K = 2` is the scaffold's choice and a sensible one: skip the two
+worst steps, keep the rest. I do not sweep it; the harness pins the seed and budget and I am
+comparing the rule, and two is small enough to be safely inside the "unreliable source end" the
+diagnostic identifies.
+
+For SDXL the fill is identical in `reverse_process()`: the same `if step < K: continue` guard with
+`K = 2` at the top of the loop, then the CFG++ step indexing `alphas_cumprod[t]` and renoising with
+`noise_uc`. Same two predictions per step, same fixed NFE budget, the only structural change being the
+skipped prefix. The full scaffold module for both variants is in the answer.
+
+The falsifiable expectation, against the two measured rungs. If the high-noise early steps are really
+where guidance does net harm, then zeroing the first `K = 2` steps on top of the CFG++ renoise should
+beat *both* priors on FID: below standard CFG's 23.65 / 24.29 / 25.74 and below CFG++'s 23.99 / 24.89
+/ 25.88, on every variant. The reasoning predicts the inert prefix recovers CFG++'s manifold
+cleanliness while removing its under-committed worst steps, so it should clear the bar standard CFG
+set by sharpening — without paying standard CFG's off-manifold cost. If instead skipping two steps
+mostly costs me conditional signal (because the budget is tight and two steps is a large fraction of
+it), FID would regress toward or below the no-skip CFG++ numbers, and I would conclude the prefix is
+too long for this step budget. The clean test is whether all three zero-init FID numbers come in
+under both prior rows. And whatever the result, the optimized-scale projection I just set aside is the
+explicit next lever: the full method amplifies only the conditional residual `eps_c - s* eps_uc`, and
+adding that on top of this inert prefix is the move past the strongest baseline.
+</think>
+<say>
+[[FILL_SAY: 1-2 sentences naming the method and what this first edit does]]
+</say>
+<edit path="CFGpp-main/latent_diffusion.py">
+<old>
+# EDITABLE region of CFGpp-main/latent_diffusion.py (lines 621-679) — step 2: standard CFG (SD v1.5 / v2)
+@register_solver("ddim_cfg++")
+class BaseDDIMCFGpp(StableDiffusion):
+    """
+    DDIM solver for SD with standard CFG.
+    """
+</old>
+<new>
+# EDITABLE region of CFGpp-main/latent_diffusion.py (lines 621-679) — step 3: CFG++ + zero-init (SD v1.5 / v2)
+@register_solver("ddim_cfg++")
+class BaseDDIMCFGpp(StableDiffusion):
+    """
+    DDIM solver for SD with CFG++ and Zero-init.
+    """
+</new>
+</edit>
+<obs>
+Successfully replaced text in CFGpp-main/latent_diffusion.py.
+</obs>
+<note>
+[[FILL_NOTE?: optional one-line thought for this edit, or delete this block]]
+</note>
+<edit path="CFGpp-main/latent_diffusion.py">
+<old>
+               **kwargs):
+        # Standard CFG needs higher guidance scale
+        cfg_guidance = 7.5
+</old>
+<new>
+               **kwargs):
+</new>
+</edit>
+<obs>
+Successfully replaced text in CFGpp-main/latent_diffusion.py.
+</obs>
+<note>
+[[FILL_NOTE?: optional one-line thought for this edit, or delete this block]]
+</note>
+<edit path="CFGpp-main/latent_diffusion.py">
+<old>
+
+        # Sampling
+        pbar = tqdm(self.scheduler.timesteps, desc="SD")
+        for step, t in enumerate(pbar):
+            at = self.alpha(t)
+</old>
+<new>
+
+        # Zero-init parameter
+        K = 2  # Skip first K steps
+
+        # Sampling
+        pbar = tqdm(self.scheduler.timesteps, desc="SD")
+        for step, t in enumerate(pbar):
+            # Zero-init: skip first K steps
+            if step < K:
+                continue
+
+            at = self.alpha(t)
+</new>
+</edit>
+<obs>
+Successfully replaced text in CFGpp-main/latent_diffusion.py.
+</obs>
+<note>
+[[FILL_NOTE?: optional one-line thought for this edit, or delete this block]]
+</note>
+<edit path="CFGpp-main/latent_diffusion.py">
+<old>
+
+            # add noise - STANDARD CFG: use noise_pred
+            zt = at_prev.sqrt() * z0t + (1-at_prev).sqrt() * noise_pred
+</old>
+<new>
+
+            # add noise - CFG++: use noise_uc to stay on manifold
+            zt = at_prev.sqrt() * z0t + (1-at_prev).sqrt() * noise_uc
+</new>
+</edit>
+<obs>
+Successfully replaced text in CFGpp-main/latent_diffusion.py.
+</obs>
+<run/>
+<obs>
+Measured results — `baseline:zeroinit` (`is_final,true`), seed 42. Task score is per-variant FID
+(lower is better).
+
+## FID (lower is better)
+| seed | fid_sd15 | fid_sd20 | fid_sdxl |
+|---|---|---|---|
+| 42 | 22.7559 | 23.3120 | 25.4935 |
+| **mean** | **22.7559** | **23.3120** | **25.4935** |
+</obs>
+
+### step 4 — CFG-Zero* (optimized scale + zero-init)   [slug:cfg-zero-star]
+
+<think>
+[[POLISH_REASONING: adapt to first-person agentic voice, end by deciding to implement]]
+The strongest baseline cleared the bar I set for it, and in doing so it told me exactly the one piece
+it left unused. Zero-init — CFG++'s manifold-safe renoise with the first `K = 2` highest-noise steps
+made inert — came in at FID 22.76 / 23.31 / 25.49 on SD v1.5 / SD v2-base / SDXL, under both priors
+on every variant: below standard CFG's 23.65 / 24.29 / 25.74 and below plain CFG++'s 23.99 / 24.89 /
+25.88. So the rung-3 hypothesis held cleanly: keeping CFG++'s clean `noise_uc` renoise while deleting
+its under-committed, unreliable high-noise prefix beat the hard guided renoise *and* the no-skip
+clean renoise, and it did so without paying standard CFG's off-manifold cost. The gains were largest
+where there was the most to fix — 1.23 on SD v1.5, 0.98 on SD v2-base — and smallest on SDXL (0.25),
+which is the variant that has stubbornly resisted every move so far (cfgpp 25.88, cfg 25.74, zeroinit
+25.49). SDXL is the signal: a high-resolution model whose FID barely budges as I swap renoise rules
+and skip steps, which says the remaining error there is not in *when* I guide or *which noise
+renoises*, but in *how the two predictions are mixed* at the steps I do guide.
+
+And that is precisely the lever I flagged and set aside at rung 3. The zero-init baseline only
+implemented half of the method it is named after: it took the inert prefix but kept the *plain* CFG++
+mix, `noise_pred = noise_uc + cfg_guidance (noise_c - noise_uc)`. The other half — the half the
+harness's fill omits — is a per-sample correction to *how the unconditional prediction enters the
+mix*. That is the natural next move, because every rung so far has treated the coefficient on
+`noise_uc` as fixed at 1: CFG++, standard CFG, and zero-init all subtract a full unit of `noise_uc`
+inside the difference `noise_c - noise_uc`. But there is no reason the best baseline to subtract is
+exactly one times the raw unconditional prediction. If the unconditional prediction is, at this
+particular `(z_t, t)`, too large or too small or partly mis-aligned with the conditional one,
+subtracting a full unit of it pollutes the guidance direction with a component the model did not
+intend. The fix is to choose, per sample and per step, *how much* of `noise_uc` to subtract.
+
+Let me derive what "how much" should be, because the right scalar falls out of a projection. I want
+guidance to amplify the part of the conditional prediction that the unconditional prediction does not
+already explain — the conditional *residual* — rather than amplifying the raw conditional vector
+against a possibly mis-scaled unconditional baseline. So introduce a scalar `s` on the unconditional
+prediction and write the guided noise as `s * noise_uc + w (noise_c - s * noise_uc)`, which collapses
+to `(1 - w) s noise_uc + w noise_c`; at `s = 1` this is exactly the mix every prior rung used. Now
+how to pick `s`? If I could see the true guided noise I would minimize `||v_s - v^*||^2` over `s`,
+but `v^*` is invisible — that is the wall. The way through is to write `delta = w - 1` so the guided
+prediction is `v_s = v_c + delta(v_c - s v_uc)`, then the unavailable loss is
+`||(v_c - v^*) + delta(v_c - s v_uc)||^2`. For any positive `lambda`, Young's inequality bounds this
+above by `(1 + lambda)||v_c - v^*||^2 + (1 + 1/lambda) delta^2 ||v_c - s v_uc||^2`. The first term
+still hides the truth, but it does *not* depend on `s`; the only `s`-dependent part of the bound is a
+positive constant times `||v_c - s v_uc||^2` — equivalently, in noise units, `||noise_c - s
+noise_uc||^2`. That is a quantity built entirely from the two predictions I already have, so
+minimizing the bound replaces the impossible "match the invisible truth" with a solvable projection.
+It is a one-line least squares: set the derivative `-2 noise_uc^T (noise_c - s noise_uc)` to zero and
+solve,
+
+  `s* = (noise_c^T noise_uc) / ||noise_uc||^2`.
+
+The second derivative `2 ||noise_uc||^2` is positive, so this is the minimizer whenever `noise_uc` is
+nonzero. Geometrically `s* noise_uc` is the orthogonal projection of `noise_c` onto the line spanned
+by `noise_uc`, and `noise_c - s* noise_uc` is the residual the unconditional prediction cannot
+explain — exactly the direction I want guidance to push, instead of the whole conditional vector
+measured against a raw, possibly mis-scaled baseline. So the optimized-scale mix is `s* noise_uc + w
+(noise_c - s* noise_uc)`: rescale the unconditional baseline to its best least-squares match, then
+amplify only the leftover conditional residual. It is per-sample (the projection is computed over
+each sample's flattened prediction), it adds one dot product and one squared norm per step — no extra
+network evaluation, well inside the fixed NFE budget — and it reduces to the prior mix exactly when
+`noise_c` and `noise_uc` are already collinear (then the residual `noise_c - s* noise_uc` vanishes, and
+`s* = 1` in the equal-predictions case).
+
+I should check this is genuinely a new degree of freedom and not just a relabeled guidance scale,
+because if `s*` only ever rescaled what `w` already controls it would buy nothing. It does not: `w`
+is a single global scalar fixed for the whole run, applied identically to every sample and every step,
+whereas `s*` is computed per sample and per step from the actual geometry of that step's two
+predictions. The two act on different objects — `w` sets *how hard* to push along the conditional
+residual, `s*` sets *what the residual is* by fixing the baseline the residual is measured against.
+There is also a clean reading in the implicit-classifier language I used at rung 2: there, the guided
+direction was the difference `noise_c - noise_uc`, the implicit-classifier score with a *unit*
+coefficient on the unconditional term. The optimized scale says that unit coefficient was an
+unexamined default — the implicit classifier is sharper when the unconditional baseline is first
+projected onto the conditional prediction, so that the difference isolates only the conditional-specific
+component and not a mis-scaled chunk of the shared image prior. And a sanity check on the limits: if
+the two predictions are collinear, the residual `noise_c - s* noise_uc` is zero and I recover the
+strongest baseline's mix exactly (with `s* = 1` when they are equal), so the finale can only differ
+where there is a real off-axis component to correct; if `noise_uc` were orthogonal to `noise_c`,
+`s* = 0` and guidance would push along the full conditional vector. Both
+limits are sensible, which is the reassurance that the projection is the right scalar rather than a
+tuned one.
+
+This composes with everything the strongest baseline already does, which is the whole point. The
+finale is the full method the `zeroinit` baseline only half-implemented: keep the inert prefix (`if
+step < K: continue`, `K = 2`), keep CFG++'s manifold-safe renoise with `noise_uc`, and replace *only*
+the mix — swap `noise_pred = noise_uc + cfg_guidance (noise_c - noise_uc)` for the optimized-scale
+form `noise_pred = noise_uc * s* + cfg_guidance (noise_c - noise_uc * s*)`. Three pieces, each
+addressing a distinct failure I diagnosed on the way up: the `noise_uc` renoise fixes the off-manifold
+drift (rung 1's lesson), the inert prefix removes the unreliable high-noise steps (rung 3's lesson),
+and the optimized scale corrects the per-step mis-scaling of the unconditional baseline that every
+prior rung left at a fixed coefficient of 1. The first two are already in the strongest baseline; the
+third is the genuinely new, published ingredient it omitted.
+
+A few implementation cautions so the projection is faithful. The dot product and norm must be taken
+per sample over the flattened non-batch dimensions, then reshaped to broadcast back over the latent's
+channel and spatial axes — a single scalar per image, not a global scalar across the batch and not a
+per-element one. The denominator needs a small floor (`+1e-8`) so a near-zero unconditional
+prediction does not blow up `s*`. The scale must be cast back to the prediction's dtype (the SD path
+runs under fp16 autocast). And the projection is computed from the *detached* predictions inside the
+existing `no_grad` block — it is a sampling-time correction, nothing is trained. None of this touches
+the renoise, which stays `noise_uc`; the optimized scale lives entirely inside the construction of the
+denoise mix. For SDXL the fill is identical in `reverse_process()`: same `if step < K: continue`
+guard, same per-sample projection over the flattened predictions, same `noise_uc` renoise, indexing
+`alphas_cumprod[t]`. The full scaffold module for both variants is in the answer.
+
+The bar this has to clear is the strongest baseline's measured FID — 22.76 / 23.31 / 25.49 — and the
+expectation is specific. Because the optimized scale only *changes the mix on the steps that are
+already guided*, and leaves the renoise and the prefix exactly as the strongest baseline has them, it
+should never do worse than zero-init when `noise_c` and `noise_uc` happen to be collinear (the residual
+vanishes and the mix recovers the baseline) and should help wherever they are not — i.e. wherever the raw unconditional
+baseline is mis-scaled, which is most likely on the model that has resisted every other lever. So the
+sharpest prediction is on SDXL: the variant whose FID barely moved across rungs 1-3 (25.88 -> 25.74
+-> 25.49) is exactly where a per-step correction to the mix, rather than to the renoise or the
+timing, has the most untapped room, and a drop below 25.49 there would be the cleanest evidence that
+the optimized scale is doing real work. On SD v1.5 and SD v2-base I expect smaller gains on top of an
+already-strong 22.76 / 23.31, since those variants were largely fixed by the renoise-and-prefix
+combination. What I would validate, with the seed and prompt set pinned exactly as the baselines ran:
+that all three FID numbers come in at or below zero-init's, with the largest improvement on SDXL, and
+that CLIP score does not fall — the optimized scale amplifies the conditional *residual*, so if it
+were merely trading alignment for distribution-matching, CLIP would drop while FID improved, and the
+method would have to be judged on whether it preserved the prompt-following that guidance is for.
+</think>
+<say>
+[[FILL_SAY: 1-2 sentences naming the method and what this first edit does]]
+</say>
+<edit path="CFGpp-main/latent_diffusion.py">
+<old>
+# EDITABLE region of CFGpp-main/latent_diffusion.py (lines 621-679) — step 3: CFG++ + zero-init (SD v1.5 / v2)
+@register_solver("ddim_cfg++")
+class BaseDDIMCFGpp(StableDiffusion):
+    """
+    DDIM solver for SD with CFG++ and Zero-init.
+    """
+</old>
+<new>
+# EDITABLE region of CFGpp-main/latent_diffusion.py (lines 621-679) — finale: CFG-Zero* (SD v1.5 / v2)
+@register_solver("ddim_cfg++")
+class BaseDDIMCFGpp(StableDiffusion):
+    """
+    DDIM solver for SD with CFG-Zero* (optimized scale + zero-init), CFG++ renoise.
+    """
+</new>
+</edit>
+<obs>
+Successfully replaced text in CFGpp-main/latent_diffusion.py.
+</obs>
+<note>
+[[FILL_NOTE?: optional one-line thought for this edit, or delete this block]]
+</note>
+<edit path="CFGpp-main/latent_diffusion.py">
+<old>
+                noise_uc, noise_c = self.predict_noise(zt, t, uc, c)
+                noise_pred = noise_uc + cfg_guidance * (noise_c - noise_uc)
+</old>
+<new>
+                noise_uc, noise_c = self.predict_noise(zt, t, uc, c)
+
+                # CFG-Zero*: per-sample optimized scale on the unconditional prediction.
+                # s* = <noise_c, noise_uc> / ||noise_uc||^2  (projection onto noise_uc)
+                bsz = noise_c.shape[0]
+                c_flat = noise_c.reshape(bsz, -1)
+                uc_flat = noise_uc.reshape(bsz, -1)
+                dot = (c_flat * uc_flat).sum(dim=1, keepdim=True)
+                sq_norm = (uc_flat ** 2).sum(dim=1, keepdim=True) + 1e-8
+                alpha = (dot / sq_norm).reshape(bsz, *([1] * (noise_c.dim() - 1)))
+                alpha = alpha.to(noise_c.dtype)
+
+                # mix on the rescaled unconditional baseline
+                noise_pred = noise_uc * alpha + cfg_guidance * (noise_c - noise_uc * alpha)
+</new>
+</edit>
+<obs>
+Successfully replaced text in CFGpp-main/latent_diffusion.py.
+</obs>
+

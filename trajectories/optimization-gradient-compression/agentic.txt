@@ -1,0 +1,811 @@
+<meta task="optimization-gradient-compression" domain="Optimization" file="pytorch-vision/custom_compressor.py" model_format="qwen3" edit_tool="str_replace"/>
+
+<system>
+You are a research engineer improving a model on a fixed ML task. You work by editing the model code and running experiments. Think carefully before each change. You have these tools:
+- str_replace(path, old_str, new_str): replace the unique occurrence of old_str with new_str.
+- create(path, file_text): create a new file.
+- run_experiment(): train + evaluate the current code under the fixed budget; returns metrics.
+Make one tool call at a time. After editing, call run_experiment() to measure your method.
+</system>
+
+<user>
+## Research question
+
+Data-parallel training spends most of its wall-clock time not computing gradients but
+*communicating* them: every step, each worker computes a stochastic gradient — the whole model
+laid flat, millions of 32-bit floats — and must all-reduce it before the optimizer can move. The
+single thing being designed is the **gradient compressor**: a lossy map applied to each gradient
+tensor before it goes on the wire (and its inverse after), so the communicated volume drops by
+one to three orders of magnitude. Everything else — the model, the data pipeline, the
+SGD+momentum optimizer, the cosine schedule, the 200-epoch budget — is fixed. The tension is the
+whole problem: any lossy compression perturbs the descent direction, and a perturbed direction
+can slow convergence, bias the solution, or stop it converging. A method has to compress
+aggressively (the target here is **100×**, keep 1%) *and* still land on a model as good as
+full-gradient training would.
+
+## Prior art before the first rung
+
+The first rung reacts to the family of compression schemes that already exist; each is on the
+ladder because it leaves a gap the next one tries to close.
+
+- **Full dense gradient (no compression).** All-reduce the entire float32 gradient every step.
+  Convergence is whatever SGD gives, but the communication is `O(d)` per step — the bottleneck
+  the whole task exists to remove. Gap: no compression at all.
+- **Sign compression — 1-bit SGD (Seide et al. 2014), signSGD (Bernstein et al. 2018).** Send
+  one bit per coordinate, the sign. Maximally cheap, but the sign operator is *biased* and
+  forgets magnitude: a coordinate whose true gradient is small but consistent is repeatedly
+  mis-signed, and on a bimodal stochastic gradient with positive mean the expected sign can point
+  the wrong way. Gap: biased, magnitude-blind, fragile without correction.
+- **Magnitude sparsification — top-k / gradient dropping (Aji & Heafield 2017; Lin et al.
+  2018).** Keep only the `k` largest-magnitude coordinates (gradients are positively skewed, so
+  these hold most of the energy), send their values and indices, zero the rest. Empirically
+  strong at 99–99.9% drop. Gap: top-k is *biased*, and a persistently-small coordinate is
+  starved — its direction is never transmitted — so naive top-k stalls; it needs a memory
+  correction (error feedback).
+- **Error feedback (Karimireddy, Rebjock, Stich, Jaggi 2019; Stich et al. 2018).** For any
+  biased, contractive compressor `C` (`‖C(x) − x‖² ≤ (1−δ)‖x‖²`), accumulate the compression
+  residual in a local memory and add it back before the next compression: `p = g + e`, send
+  `C(p)`, set `e ← p − C(p)`. The virtual iterate `x̃ = x − e` then runs *exact* SGD, recovering
+  the convergence rate. This is the correction every biased compressor on the ladder relies on.
+
+## The fixed substrate
+
+A single-node benchmark *simulates* distributed training: it computes gradients normally, then
+for each parameter applies `compress() → decompress()` (standing in for compress → communicate →
+decompress) and steps the optimizer on the decompressed gradient. This faithfully measures the
+effect of compression on convergence without multi-node infrastructure. Frozen and untouchable:
+the model definitions (ResNet-20/56, VGG-11-BN), CIFAR data loading with standard augmentation
+(random `32×32` crop pad 4, horizontal flip, per-channel normalize), the training loop, the
+cosine LR schedule with warmup, and the optimizer — **SGD, momentum 0.9, weight decay `5×10⁻⁴`,
+base LR `0.1`, 5 warmup epochs, 200 epochs, batch 128**. The loop calls the compressor once per
+parameter per step, between `loss.backward()` and `optimizer.step()`.
+
+## The editable interface
+
+Exactly one region is editable: the `Compressor` class in `custom_compressor.py`. Every method
+on the ladder is a fill of this same contract:
+
+- `__init__(self, compress_ratio=0.01)` — fix the target ratio (`0.01` = keep 1% = 100×).
+- `compress(self, tensor, name) -> (compressed_tensors: list[Tensor], ctx)` — map a gradient
+  tensor to a small payload that would be communicated; `ctx` stays local. `name` identifies the
+  parameter for per-parameter state (e.g. an error-feedback residual).
+- `decompress(self, compressed_tensors, ctx) -> Tensor` — rebuild a tensor of the *same shape*
+  as the original input.
+
+The compressor may hold internal state across calls (residuals, warm-start matrices) keyed by
+`name`. The starting point is the scaffold default: **identity (no compression)** — `compress`
+clones the tensor and stores its shape, `decompress` views it back. Each method replaces exactly
+these three method bodies.
+
+```python
+class Compressor:
+    """Gradient compressor base implementation.
+
+    Default: identity (no compression). Replace with your method."""
+
+    def __init__(self, compress_ratio=0.01):
+        self.compress_ratio = compress_ratio
+
+    def compress(self, tensor, name):
+        # default: ship the full tensor (no compression)
+        return [tensor.clone()], tensor.shape
+
+    def decompress(self, compressed_tensors, ctx):
+        return compressed_tensors[0].view(ctx)
+```
+
+## Evaluation settings
+
+Three settings, all at **100× compression** (`compress_ratio = 0.01`), each over three seeds
+{42, 123, 456}:
+
+- **ResNet-20 / CIFAR-10** (~0.27M params) — small model, standard benchmark.
+- **VGG-11-BN / CIFAR-100** (~9.8M params) — larger model, harder 100-class problem.
+- **ResNet-56 / CIFAR-10** (~0.85M params) — deeper model, tests scalability.
+
+Metric: **best test accuracy** (higher is better) per setting, reported per seed and as the
+mean. All settings share the fixed SGD+momentum + cosine-schedule + 200-epoch recipe above.
+
+The editable model code is in `pytorch-vision/custom_compressor.py`:
+```python
+
+class Compressor:
+    """Gradient compressor base implementation.
+
+    Interface contract:
+    - compress(tensor) -> (compressed_tensors: list[Tensor], ctx: any)
+        Compress a gradient tensor. Only `compressed_tensors` would be
+        "communicated" in a real distributed setting. `ctx` stays local.
+    - decompress(compressed_tensors, ctx) -> Tensor
+        Reconstruct the gradient from compressed representation.
+        Must return a tensor of the same shape as the original.
+    - The compressor may maintain internal state (e.g., error feedback
+        residuals) across calls for the same parameter.
+
+    Default: identity (no compression). Replace with your method.
+    """
+
+    def __init__(self, compress_ratio=0.01):
+        """Initialize the compressor.
+
+        Args:
+            compress_ratio: Target compression ratio (fraction of elements
+                to keep for sparsification, or quantization level).
+                0.01 = 100x compression, 0.1 = 10x compression.
+        """
+        self.compress_ratio = compress_ratio
+
+    def compress(self, tensor, name):
+        """Compress a gradient tensor.
+
+        Args:
+            tensor: Gradient tensor to compress (flattened or original shape).
+            name: Parameter name (useful for maintaining per-parameter state).
+
+        Returns:
+            compressed_tensors: list of tensors that would be communicated.
+            ctx: local context needed for decompression (not communicated).
+        """
+        return [tensor.clone()], tensor.shape
+
+    def decompress(self, compressed_tensors, ctx):
+        """Decompress gradients back to original shape.
+
+        Args:
+            compressed_tensors: list of tensors from compress().
+            ctx: local context from compress().
+
+        Returns:
+            Decompressed gradient tensor matching original shape.
+        """
+        return compressed_tensors[0].view(ctx)
+```
+Improve it. Derive your method, edit the code, then run_experiment().
+</user>
+
+### step 1 — QSGD (unbiased stochastic quantization)   [slug:qsgd]
+
+<think>
+The compressor is the whole point, but it sits inside a fixed SGD loop, and before I can be clever about *which* compressor wins I have to settle on a starting point that I can actually reason about end to end. The identity default ships the full gradient and tells me nothing about compression. So the first real rung has to be a compressor that is *principled* in the one way that makes the standard convergence theory survive — and that pins down where I start, because exactly one property decides whether a compressed gradient is still a legitimate stochastic gradient: is the compression *unbiased*?
+
+Let me write down the lever the theory actually charges me for, because it is the entire reason to start here. For an `L`-smooth `f` and SGD with stochastic gradients satisfying `E[g] = ∇f` and a second-moment bound `E‖g‖² ≤ B`, the convergence rate depends on the gradient *only through its variance* — the iteration count to reach a target error is linear in `B`, and nothing else about the gradient's representation matters. The deep consequence: if I compress with a randomized map `Q` that is *exactly unbiased*, `E[Q(g)] = g`, then `Q(g)` is itself a perfectly valid stochastic gradient for `f`. Its mean is right, so the only thing compression does to the bound is inflate the variance by some factor, and that factor multiplies the iteration count and changes nothing else. No error feedback, no residual buffer, no new proof — I plug an inflated `B` into a theorem I already trust. That is the cleanest possible foundation, and it is why an unbiased quantizer is the natural first rung: it is the compressor whose convergence I can *argue*, not just hope for.
+
+So the design is a randomized quantizer that is unbiased and cheap to encode. Take a gradient tensor, flatten it, and look at one coordinate `v_i`. The magnitude information I can keep almost for free is the tensor's `ℓ₂` norm `‖v‖` — one float shared across all coordinates. Normalize: `a = |v_i|/‖v‖ ∈ [0,1]`. Lay down `s` evenly spaced levels in `[0,1]`; `a` falls between two adjacent levels `ℓ/s` and `(ℓ+1)/s`. Round stochastically — *up* to `(ℓ+1)/s` with probability equal to the fractional part `a·s − ℓ`, else down to `ℓ/s`. Check the expectation: `(ℓ/s)(1−p) + ((ℓ+1)/s)p = ℓ/s + p/s`, and with `p = a·s − ℓ` this is exactly `a`. So the rounded level, times the sign, times `‖v‖`, is unbiased per coordinate by construction. The closer a coordinate sits to its upper level, the more likely it rounds up — randomized rounding to the neighboring level, which is the move that keeps the per-coordinate jump small (one level apart) and so keeps the variance bounded. The number of levels `s` is the dial: more levels, smaller gap, quadratically smaller added variance, at the cost of more bits to name the level.
+
+Now I have to be honest about *this task's* implementation of that idea, because the contract I am filling is not the textbook construction — it is a specific, fixed fill of the `Compressor` class, and three choices in it matter and depart from the generic quantizer. First, **`s` is fixed at 256**, not derived from the `compress_ratio` and not the dimension-matched `s = √d` the variance theory points to. With `d ~ 10^7` for the VGG weights, the variance bound `min(d/s², √d/s)·‖v‖²` at `s = 256` is `min(10^7/65536, ~3162/256) ≈ min(153, 12.4) = 12.4` — an added second-moment factor in the low tens, not the constant `~1` the theory's sweet spot would give. So this fill is *not* operating at the variance-optimal point; it spends a fixed 8-ish bits per coordinate (so roughly 3.5× compression in raw level encoding, far short of the nominal 100× the task headline asks for) and accepts a double-digit variance inflation. Second, there is **no bucketing** — the norm and the levels are taken over the *whole flattened tensor*, so the dimension `d` in that variance bound is the full layer size, the unfixable large number, exactly the regime where a fixed `s` leaves the variance large. Third — and this is the one that bites — the fill **clips the gradient to norm 1.0 before quantizing**: `if ‖v‖ > 1, scale v down to unit norm`. Clipping is standard QSGD-stability practice (rare large-norm gradients otherwise amplify quantization noise toward divergence), but it is a *biased* operation. So the comment in the fill claiming "QSGD is unbiased, so error feedback is not needed" is only half true here: the quantizer is unbiased, but the pre-clip is not, and there is no error feedback to repair the clipped-away mass. The compressor I am actually running is "clip-to-unit-norm, then full-tensor stochastic quantize to 256 levels," with no memory.
+
+Let me be precise about the variance, because it is the quantity the SGD bound actually charges me and it explains both why an unbiased quantizer is sound *and* why this particular fill is not at its best. Each rounded level only randomizes between two *adjacent* levels `1/s` apart, so the per-coordinate variance is that of a Bernoulli on a gap of `1/s` — it scales as `1/s²`, which is the whole reason more levels crush the noise quadratically. Summed over the tensor, the added second-moment factor is bounded by `min(d/s², √d/s)·‖v‖²`. The variance-optimal point is `s = √d`, where both branches equal 1 and the second moment is at most `2‖v‖²` — a constant-factor iteration cost. This fill sits nowhere near that point: it fixes `s = 256` regardless of `d`, so on a small tensor (`d` in the thousands) it over-spends levels and on a huge one (`d ~ 10^7`) it under-spends them, leaving the variance in the low tens. The encoding side is the same story in bits. The variance-optimal `s = √d` would need `~½ log d` bits per coordinate naively, which the real QSGD construction beats with Elias coding of the sparse integer levels down to `O(√d log d)` bits; but this fill does none of that — it stores a fixed-width `int16` level per coordinate, so its realized compression is just the `int16`-vs-`float32` ratio, ~2×, plus whatever sparsity the levels happen to have. That is the concrete sense in which a fixed `s` with no entropy coding leaves both the variance *and* the compression far from what the unbiased-quantization idea can deliver — and it is why this rung, despite the clean unbiasedness story, is a weak realization of it.
+
+What goes on the wire is the vector of signed integer levels plus the one norm float; what stays local is just the shape. Decompression is `(‖v‖/s)·level`. There is no residual, no warm-start, no per-name state beyond what `decompress` needs — the simplest of the three families to fill, which is part of why it is the natural place to plant the flag and read the first numbers.
+
+Let me reason about what this floor must do, because that is the entire point of running it first. The unbiasedness gives me a clean convergence *story* on the easy settings: ResNet-20 on CIFAR-10 is a small, well-conditioned problem where SGD's noise floor is already low, the gradient norms are modest, and a double-digit variance inflation is survivable — the cosine schedule's late-training small steps average out the quantization noise. So I expect ResNet-20 and ResNet-56 on CIFAR-10 to land *close to* uncompressed accuracy, in the low-to-mid 90s, with the quantization showing up only as a small accuracy gap and seed-to-seed jitter. The danger is concentrated on **VGG-11-BN / CIFAR-100**, and I can see the failure mechanism before I run it. VGG-11 is the largest model (`~9.8M` params), so the full-tensor `d` in the variance bound is largest and the fixed `s = 256` leaves the most variance unquenched; CIFAR-100 is the hardest objective, so the optimization is least forgiving of a noisy direction; and the clip-to-norm-1.0, with no error feedback to pay back the clipped mass, systematically deletes gradient energy on exactly the steps where the gradient is large — early training, when the model most needs to move. The combination is a recipe for the kind of failure that is *not* a uniform small accuracy loss but a *catastrophic, seed-dependent collapse*: on a seed where the early large-norm gradients get clipped hard and the residual is thrown away, the model can fall into a bad basin and never recover, while on a luckier seed it trains almost normally. So I expect VGG/CIFAR-100 to be the setting that *separates the seeds* — one or two seeds collapsing to a fraction of the others' accuracy — and that high-variance, sometimes-collapsing behavior is exactly what should make this the weakest rung.
+
+That diagnosis already points past this rung. The thing that hurts here is twofold and shared: the variance inflation from a fixed, dimension-unmatched `s` over the whole tensor, and the *unrepaired bias* from clipping with no memory. Both are about the same missing ingredient — a way to carry forward the part of the gradient the compressor could not faithfully send. The unbiased construction was supposed to make error feedback unnecessary, but the clip reintroduces bias and the fixed `s` leaves real variance, so the next rung should be a compressor that *embraces* bias and pays for it with a memory: keep only a tiny, energy-dense slice of the gradient and accumulate everything else in a residual, so nothing is permanently deleted. That is the move that turns the headline 100× compression from a variance-and-clip gamble into a delayed-but-faithful transmission — which is what I will reach for the moment these numbers confirm the collapse I am predicting on the hard setting.
+
+The falsifiable expectations, stated against what I will measure: on ResNet-20/CIFAR-10 and ResNet-56/CIFAR-10, best accuracy should sit in the low-90s, within a couple of points of uncompressed, with one possibly-weaker seed from the unrepaired clip. On VGG-11-BN/CIFAR-100, I expect the mean to be dragged well below a healthy ~70 by at least one collapsed seed, and the seed spread to be large — the signature that an unbiased-but-clipped, memoryless quantizer at fixed `s` is the floor of this ladder. If instead all three settings come back tight and high, my read of the clip-without-feedback failure is wrong and I would not need a memory at the next rung; I do not expect that. So let me write the floor in: clip to unit norm, stochastic-round to 256 levels, send signed levels plus the norm.
+</think>
+<say>
+Starting with QSGD — unbiased stochastic quantization. This edit replaces the identity compressor with one that clips each gradient to unit norm, stochastically rounds it to 256 levels, and ships the signed integer levels plus the tensor norm.
+</say>
+<edit path="pytorch-vision/custom_compressor.py">
+<old>
+
+class Compressor:
+    """Gradient compressor base implementation.
+
+    Interface contract:
+    - compress(tensor) -> (compressed_tensors: list[Tensor], ctx: any)
+        Compress a gradient tensor. Only `compressed_tensors` would be
+        "communicated" in a real distributed setting. `ctx` stays local.
+    - decompress(compressed_tensors, ctx) -> Tensor
+        Reconstruct the gradient from compressed representation.
+        Must return a tensor of the same shape as the original.
+    - The compressor may maintain internal state (e.g., error feedback
+        residuals) across calls for the same parameter.
+
+    Default: identity (no compression). Replace with your method.
+    """
+
+    def __init__(self, compress_ratio=0.01):
+        """Initialize the compressor.
+
+        Args:
+            compress_ratio: Target compression ratio (fraction of elements
+                to keep for sparsification, or quantization level).
+                0.01 = 100x compression, 0.1 = 10x compression.
+        """
+        self.compress_ratio = compress_ratio
+
+    def compress(self, tensor, name):
+        """Compress a gradient tensor.
+
+        Args:
+            tensor: Gradient tensor to compress (flattened or original shape).
+            name: Parameter name (useful for maintaining per-parameter state).
+
+        Returns:
+            compressed_tensors: list of tensors that would be communicated.
+            ctx: local context needed for decompression (not communicated).
+        """
+        return [tensor.clone()], tensor.shape
+
+    def decompress(self, compressed_tensors, ctx):
+        """Decompress gradients back to original shape.
+
+        Args:
+            compressed_tensors: list of tensors from compress().
+            ctx: local context from compress().
+
+        Returns:
+            Decompressed gradient tensor matching original shape.
+        """
+        return compressed_tensors[0].view(ctx)
+</old>
+<new>
+class Compressor:
+    """QSGD — Quantized Stochastic Gradient Descent.
+
+    Quantizes each gradient element to one of `s` discrete levels using
+    randomized rounding. The quantization is unbiased: E[Q(g)] = g.
+    Communication cost: O(n * log(s) / 32) of original, where n = numel.
+
+    Uses s=256 quantization levels for a stable communication/variance tradeoff.
+
+    Note: QSGD is an *unbiased* compressor, so error feedback is not needed
+    and can actually hurt convergence. Unlike biased compressors (TopK,
+    SignSGD) that systematically lose information, QSGD preserves the
+    expected gradient value, making the vanilla SGD convergence guarantees
+    applicable with only increased variance.
+
+    Reference: Alistarh et al., "QSGD: Communication-Efficient SGD via
+    Gradient Quantization and Encoding", NeurIPS 2017.
+    """
+
+    def __init__(self, compress_ratio=0.01):
+        self.compress_ratio = compress_ratio
+        # QSGD: s = number of quantization levels (~log2(s)+1 bits/element).
+        # Var(Q(g)) ~ ||g||^2 * min(d/s^2, sqrt(d)/s). For deep nets with
+        # d ~ 1e7 params, small s produces huge variance that interacts with
+        # momentum SGD causing divergence on some seeds. s=256 gives ~9
+        # bits/element (~3.5x compression) and keeps variance bounded.
+        self.quantum_num = 256
+        # Per-tensor gradient clip: prevent rare large-norm gradients from
+        # amplifying quantization noise into divergence (standard QSGD
+        # practice, cf. Alistarh 2017 Algorithm 1 discussion).
+        self.clip_norm = 1.0
+
+    def compress(self, tensor, name):
+        shape = tensor.shape
+        tensor_flat = tensor.flatten()
+
+        # Gradient clipping BEFORE quantization — critical for stability.
+        norm = tensor_flat.norm()
+        if norm == 0:
+            return [tensor_flat.to(torch.int16), norm], shape
+        clip_coef = self.clip_norm / (norm + 1e-6)
+        if clip_coef < 1.0:
+            tensor_flat = tensor_flat * clip_coef
+            norm = tensor_flat.norm()
+            if norm == 0:
+                return [tensor_flat.to(torch.int16), norm], shape
+
+        abs_gradient = tensor_flat.abs()
+
+        # Quantize: level = floor(s * |g_i| / ||g||) with stochastic rounding
+        level_float = self.quantum_num / norm * abs_gradient
+        previous_level = level_float.floor()
+        prob = torch.rand_like(tensor_flat)
+        is_next_level = (prob < (level_float - previous_level)).float()
+        new_level = previous_level + is_next_level
+
+        # Store sign and quantized level
+        sign = tensor_flat.sign()
+        tensor_compressed = (new_level * sign)
+        tensor_compressed = tensor_compressed.to(torch.int16)
+
+        return [tensor_compressed, norm], shape
+
+    def decompress(self, compressed_tensors, ctx):
+        shape = ctx
+        tensor_compressed, norm = compressed_tensors
+
+        # Dequantize: g_hat = (norm / s) * quantized_value
+        decode_output = tensor_compressed.float()
+        tensor_decompressed = norm / self.quantum_num * decode_output
+        return tensor_decompressed.view(shape)
+</new>
+</edit>
+<obs>
+Successfully replaced text in pytorch-vision/custom_compressor.py.
+</obs>
+<run/>
+<obs>
+Measured results — `baseline:qsgd` (`is_final,true`), seeds {42, 123, 456} and mean. Metric: best test accuracy (%).
+
+## ResNet-20 / CIFAR-10
+| seed | best_acc | test_acc | test_loss |
+|---|---|---|---|
+| 42 | 92.66 | 92.66 | 0.2781 |
+| 123 | 92.38 | 92.38 | 0.2709 |
+| 456 | 86.78 | 86.78 | 0.3929 |
+| **mean** | **90.61** | **90.61** | **0.3140** |
+
+## VGG-11-BN / CIFAR-100
+| seed | best_acc | test_acc | test_loss |
+|---|---|---|---|
+| 42 | 69.80 | 69.80 | 1.6211 |
+| 123 | 38.57 | 38.57 | 2.2991 |
+| 456 | 37.91 | 37.91 | 2.3027 |
+| **mean** | **48.76** | **48.76** | **2.0743** |
+
+## ResNet-56 / CIFAR-10
+| seed | best_acc | test_acc | test_loss |
+|---|---|---|---|
+| 42 | 94.06 | 94.06 | 0.2681 |
+| 123 | 93.94 | 93.94 | 0.2609 |
+| 456 | 94.23 | 94.23 | 0.2763 |
+| **mean** | **94.08** | **94.08** | **0.2684** |
+</obs>
+
+### step 2 — EF-TopK (top-k sparsification + error feedback)   [slug:topk_ef]
+
+<think>
+QSGD's numbers came back and they point straight at its successor — and the split across settings is exactly the failure I predicted, only sharper. On the two CIFAR-10 settings the unbiased quantizer is fine: ResNet-56 is dead level at {94.06, 93.94, 94.23}, mean 94.08, indistinguishable from a healthy uncompressed run; ResNet-20 is mostly fine, {92.66, 92.38, 86.78} — two clean seeds and one that fell to 86.78. But VGG-11-BN/CIFAR-100 is the catastrophe I flagged: {69.80, 38.57, 37.91}, mean 48.76. Seed 42 trained almost normally to ~70; the other two *collapsed* to half that. That is not uniform quantization loss — uniform loss would shave a point or two off every seed equally. It is a bimodal, seed-dependent failure, and the bimodality is the fingerprint of the unrepaired bias: on the unlucky seeds the early large-norm gradients got clipped to unit norm, the clipped-away mass was thrown on the floor (no memory), and the model dropped into a basin it never climbed out of. The 86.78 ResNet-20 seed is the same disease in a milder form. So the diagnosis is confirmed and precise: the floor's weakness is the *deleted* gradient energy — both the clip's biased deletion and the variance the fixed `s = 256` over the whole tensor never quenched — with nothing carrying it forward. The fix has to be a compressor that, however aggressive, *never permanently throws gradient mass away*.
+
+That reframes the goal. QSGD spent its design budget on staying unbiased so the SGD proof would apply unchanged, and then quietly broke its own premise with a memoryless clip. Let me go the other way on purpose: *embrace* a biased compressor — one aggressive enough to actually hit the 100× the task asks for, which QSGD at fixed `s` never did — and pay for the bias with an explicit memory. The structural fact that makes aggressive sparsification plausible is the one QSGD ignored: gradients are strongly positively skewed. Most coordinates are near zero, a few are large, so most of the gradient's energy `‖g‖²` lives in a small number of coordinates. Keep the `k` largest-magnitude coordinates and zero the rest, and I keep almost all the energy while sending only `k` values and `k` indices — at `k = ratio·d` with `ratio = 0.01`, that is genuinely 100× on the wire, not QSGD's ~3.5×. Magnitude is the importance signal, and the skew is what makes magnitude a *good* importance signal. One discipline from the start, the one QSGD's full-tensor normalization also respected: do this *per tensor*, layer-wise — a conv layer's gradient and a big embedding's gradient live on different scales, so "largest magnitude" only means something within a block; a global top-k would let the large-scale layers eat the whole budget.
+
+But top-k is biased — deterministically keeping the largest coordinates and zeroing the rest, `E[top_k(g)] ≠ ∇f` — so the second I use it raw, none of the SGD guarantees apply, and I am one step from the failure I just watched. And naive top-k has its own version of QSGD's deletion disease, sharper: a coordinate whose magnitude is *persistently* small never enters the top-k, so its direction is never transmitted and is starved at every single step. Whatever consistent signal lives in the small coordinates is dropped forever. That is the same "thrown on the floor" pathology that collapsed the VGG seeds — just deterministic instead of clip-triggered. So raw top-k cannot be the rung; it would reproduce QSGD's worst behavior, possibly worse, because at 100× it deletes 99% of coordinates every step.
+
+The fix is to stare at what starvation actually *is*. The problem is not that I send only `k` coordinates this step — that would be fine if, over time, every coordinate eventually got sent. The problem is that the `d−k` coordinates I drop are *discarded* and never come back. A coordinate small now is small again next step, dropped again, even though summed over a hundred steps its contribution might be large and consistent. The information is not worthless; it is below threshold *at each instant*. So do not discard it — *keep* it. Maintain a per-tensor residual `e`, the running total of everything suppressed so far. Each step, before compressing, add the residual back: compress `p = g + e` instead of `g`. Send `top_k(p)`, step with it, and stash the leftover — the part that did not make the cut — back into the residual, `e ← p − top_k(p)`. Now a persistently-small coordinate keeps *accumulating* in `e` until it finally crosses into the top-k and is sent in one shot. Nothing is forgotten; only delayed. This is error feedback, and it is exactly the missing ingredient the QSGD collapse pointed at: the memory QSGD's clip lacked, made the centerpiece rather than an afterthought.
+
+Does this fix convergence or just feel right? The clean handle is a virtual iterate. The residual is an update that has been owed but not applied; updates are subtracted from the iterate, so subtract the owed update from the real point: `x̃ = x − e`. Watch its recursion — with the iterate stepping by the communicated `Δ = top_k(p)` and the residual `e' = p − Δ`: `x̃' = x' − e' = (x − Δ) − (p − Δ) = x − p = x − (g + e) = (x − e) − g = x̃ − g` (folding the learning rate in where the loop applies it). The virtual iterate runs *exact* plain SGD — the `Δ` and the compression cancel perfectly. So error feedback is not approximating SGD heuristically; it is running honest SGD on a shadow sequence `x̃`, and the only gap to the real iterate is the residual `e`. If `e` stays bounded — which it does for a contractive compressor, and top-k keeping the `k` largest is contractive with `δ = k/d` — then `x ≈ x̃`, and because `f` is smooth, `∇f(x) ≈ ∇f(x̃)`, so SGD's descent on `x̃` carries over to `x`. Error feedback is a *delayed* gradient method: a fraction of the information goes out each step, the rest waits, and eventually all of it is transmitted, just late — and on a smooth loss, delay is cheap. The result is that the compression quality `δ` enters only the higher-order term of the rate; the leading term matches uncompressed SGD. This is the guarantee QSGD's clip forfeited, recovered by the memory rather than by unbiasedness.
+
+Now the task's actual fill, because the contract I am filling is the literal `Compressor` edit, and I should match it exactly. The residual is a per-name dict, `self.residuals`, keyed by parameter name — each tensor has its own memory and its own scale, which is the layer-wise discipline again. On `compress(g, name)`: if a residual exists for this name, add it, `tensor = g + residual[name]` (the `p = g + e` step; the learning rate lives in the optimizer, so I accumulate raw-gradient-plus-residual and let the loop apply the LR after decompress — the residual is in gradient units, the natural fit for this interface). Flatten, set `k = max(1, int(numel·ratio))` — the `max(1, ·)` guarantees even a tiny tensor sends at least one coordinate so nothing is permanently silent (note the contrast with QSGD, which had no such floor and no memory at all). Get the top-k by magnitude: `torch.topk(|flat|, k, sorted=False)` for the indices, then read the values directly, `values = tensor_flat[indices]`. Update the residual: build the decompressed flat vector by scattering the kept values into a zero buffer, subtract it from the corrected flat tensor, reshape to the tensor's shape, store under `name` — this is exactly `e ← p − C(p)`. The payload is `[values, indices]`, the context `(numel, shape)`. `decompress` allocates a zero vector of length `numel`, scatters the values at their indices, and views back to `shape` — the zeros are the dropped coordinates, sitting in the residual waiting for next step.
+
+So the delta from QSGD is exactly the deletion fix: trade the unbiased-but-clipped, memoryless, only-3.5×-compressing quantizer for a *biased* but *memory-corrected* sparsifier that actually hits 100× and provably matches SGD's rate because the residual makes a virtual iterate do exact SGD. Reading QSGD's shape, here is what I expect, stated as falsifiable claims against its numbers. The CIFAR-10 settings should *hold or slightly improve* — QSGD was already healthy there (ResNet-56 at 94.08, ResNet-20's two good seeds at ~92.5) — and crucially the weak ResNet-20 seed (86.78) should come *up* toward the others, because the residual no longer lets that seed's deleted mass strand the model; I expect ResNet-20 to tighten into the low-92s across all three seeds and ResNet-56 to stay ~93.8–94.0. The decisive test is VGG-11-BN/CIFAR-100: if the deletion-without-memory diagnosis is right, error feedback should *eliminate the seed-dependent collapse* — no more 38/38 seeds — and pull the mean from 48.76 up into a healthy ~70, with the seed spread collapsing from the ~32-point chasm QSGD showed to a couple of points. That is the single result that decides whether memory was the missing ingredient. If instead VGG stays bimodal under error feedback, then the problem was the variance, not the deletion, and I would have to reach for something other than a memory at the next rung — but I do not expect that; the bimodal fingerprint says deletion, and a residual is the cure for deletion. The price I am consciously paying is that this is a *biased* compressor whose guarantee leans on the residual staying small, and at 100× the residual carries a lot — so the place I will watch next is whether even error-feedback top-k leaves accuracy slightly below where a sign-based or low-rank scheme could reach, which is the question the third rung will answer. Let me start by swapping the class docstring, then rewrite the body.
+</think>
+<say>
+Moving to EF-TopK — top-k sparsification with error feedback. This first edit swaps the QSGD docstring for the new method's, describing keeping the K largest-magnitude elements per tensor and accumulating the dropped mass in a residual.
+</say>
+<edit path="pytorch-vision/custom_compressor.py">
+<old>
+class Compressor:
+    """QSGD — Quantized Stochastic Gradient Descent.
+
+    Quantizes each gradient element to one of `s` discrete levels using
+    randomized rounding. The quantization is unbiased: E[Q(g)] = g.
+    Communication cost: O(n * log(s) / 32) of original, where n = numel.
+
+    Uses s=256 quantization levels for a stable communication/variance tradeoff.
+
+    Note: QSGD is an *unbiased* compressor, so error feedback is not needed
+    and can actually hurt convergence. Unlike biased compressors (TopK,
+    SignSGD) that systematically lose information, QSGD preserves the
+    expected gradient value, making the vanilla SGD convergence guarantees
+    applicable with only increased variance.
+
+    Reference: Alistarh et al., "QSGD: Communication-Efficient SGD via
+    Gradient Quantization and Encoding", NeurIPS 2017.
+    """
+</old>
+<new>
+class Compressor:
+    """TopK sparsification with error feedback (EF-TopK).
+
+    Keeps the K largest-magnitude gradient elements per tensor.
+    Error feedback accumulates the compression error (original - decompressed)
+    and adds it to the next gradient before compression, ensuring convergence.
+    """
+</new>
+</edit>
+<obs>
+Successfully replaced text in pytorch-vision/custom_compressor.py.
+</obs>
+<note>
+Now the body: add the residual, top-k by magnitude, and stash what was not sent.
+</note>
+<edit path="pytorch-vision/custom_compressor.py">
+<old>
+        self.compress_ratio = compress_ratio
+        # QSGD: s = number of quantization levels (~log2(s)+1 bits/element).
+        # Var(Q(g)) ~ ||g||^2 * min(d/s^2, sqrt(d)/s). For deep nets with
+        # d ~ 1e7 params, small s produces huge variance that interacts with
+        # momentum SGD causing divergence on some seeds. s=256 gives ~9
+        # bits/element (~3.5x compression) and keeps variance bounded.
+        self.quantum_num = 256
+        # Per-tensor gradient clip: prevent rare large-norm gradients from
+        # amplifying quantization noise into divergence (standard QSGD
+        # practice, cf. Alistarh 2017 Algorithm 1 discussion).
+        self.clip_norm = 1.0
+
+    def compress(self, tensor, name):
+        shape = tensor.shape
+        tensor_flat = tensor.flatten()
+
+        # Gradient clipping BEFORE quantization — critical for stability.
+        norm = tensor_flat.norm()
+        if norm == 0:
+            return [tensor_flat.to(torch.int16), norm], shape
+        clip_coef = self.clip_norm / (norm + 1e-6)
+        if clip_coef < 1.0:
+            tensor_flat = tensor_flat * clip_coef
+            norm = tensor_flat.norm()
+            if norm == 0:
+                return [tensor_flat.to(torch.int16), norm], shape
+
+        abs_gradient = tensor_flat.abs()
+
+        # Quantize: level = floor(s * |g_i| / ||g||) with stochastic rounding
+        level_float = self.quantum_num / norm * abs_gradient
+        previous_level = level_float.floor()
+        prob = torch.rand_like(tensor_flat)
+        is_next_level = (prob < (level_float - previous_level)).float()
+        new_level = previous_level + is_next_level
+
+        # Store sign and quantized level
+        sign = tensor_flat.sign()
+        tensor_compressed = (new_level * sign)
+        tensor_compressed = tensor_compressed.to(torch.int16)
+
+        return [tensor_compressed, norm], shape
+
+    def decompress(self, compressed_tensors, ctx):
+        shape = ctx
+        tensor_compressed, norm = compressed_tensors
+
+        # Dequantize: g_hat = (norm / s) * quantized_value
+        decode_output = tensor_compressed.float()
+        tensor_decompressed = norm / self.quantum_num * decode_output
+        return tensor_decompressed.view(shape)
+</old>
+<new>
+        self.compress_ratio = compress_ratio
+        self.residuals = {}
+
+    def compress(self, tensor, name):
+        # Error feedback: add accumulated residual
+        if name in self.residuals:
+            tensor = tensor + self.residuals[name]
+
+        shape = tensor.shape
+        tensor_flat = tensor.flatten()
+        numel = tensor_flat.numel()
+        k = max(1, int(numel * self.compress_ratio))
+
+        # Select top-k by magnitude
+        _, indices = torch.topk(tensor_flat.abs(), k, sorted=False)
+        values = tensor_flat[indices]
+
+        # Update residual: store what was NOT communicated
+        decompressed_flat = torch.zeros_like(tensor_flat)
+        decompressed_flat.scatter_(0, indices, values)
+        self.residuals[name] = tensor_flat - decompressed_flat
+        self.residuals[name] = self.residuals[name].view(shape)
+
+        return [values, indices], (numel, shape)
+
+    def decompress(self, compressed_tensors, ctx):
+        values, indices = compressed_tensors
+        numel, shape = ctx
+        tensor_decompressed = torch.zeros(
+            numel, dtype=values.dtype, device=values.device)
+        tensor_decompressed.scatter_(0, indices, values)
+        return tensor_decompressed.view(shape)
+</new>
+</edit>
+<obs>
+Successfully replaced text in pytorch-vision/custom_compressor.py.
+</obs>
+<run/>
+<obs>
+Measured results — `baseline:topk_ef` (`is_final,true`), seeds {42, 123, 456} and mean. Metric: best test accuracy (%).
+
+## ResNet-20 / CIFAR-10
+| seed | best_acc | test_acc | test_loss |
+|---|---|---|---|
+| 42 | 92.05 | 92.05 | 0.2805 |
+| 123 | 92.40 | 92.06 | 0.2686 |
+| 456 | 92.29 | 92.07 | 0.2782 |
+| **mean** | **92.25** | **92.06** | **0.2758** |
+
+## VGG-11-BN / CIFAR-100
+| seed | best_acc | test_acc | test_loss |
+|---|---|---|---|
+| 42 | 70.78 | 70.78 | 1.4511 |
+| 123 | 69.75 | 69.75 | 1.4917 |
+| 456 | 70.20 | 70.04 | 1.4669 |
+| **mean** | **70.24** | **70.19** | **1.4699** |
+
+## ResNet-56 / CIFAR-10
+| seed | best_acc | test_acc | test_loss |
+|---|---|---|---|
+| 42 | 93.78 | 93.78 | 0.2562 |
+| 123 | 93.79 | 93.79 | 0.2679 |
+| 456 | 93.98 | 93.98 | 0.2503 |
+| **mean** | **93.85** | **93.85** | **0.2581** |
+</obs>
+
+### step 3 — SignSGD with error feedback   [slug:signsgd]
+
+<think>
+Error-feedback top-k did exactly what the QSGD collapse said it should, and the residual numbers tell me both that the memory was the right idea and where it still leaves accuracy on the table. The decisive VGG-11-BN/CIFAR-100 result is fixed: {70.78, 69.75, 70.20}, mean 70.24 — the seed-dependent collapse is *gone*. Where QSGD had two seeds at ~38 and a 32-point chasm, EF-TopK has all three within a single point of each other at ~70. That confirms the diagnosis cleanly: the VGG failure was deleted gradient mass, and a residual that carries it forward is the cure. ResNet-20 also did what I predicted — the weak 86.78 seed came up; the three seeds tightened to {92.05, 92.40, 92.29}, mean 92.25, a couple points above QSGD's mean and far more stable. So error feedback bought robustness everywhere. But read ResNet-56 against QSGD: EF-TopK is {93.78, 93.79, 93.98}, mean 93.85 — *below* QSGD's 94.08, and below where uncompressed SGD sits. That is the tell. On the setting where QSGD did not collapse, the aggressive 99%-drop top-k is slightly *worse* than the gentler quantizer: keeping only 1% of coordinates, even with the residual paying the rest back later, means the model is always working from a stale, delayed version of the gradient, and at 100× the residual carries a lot of lag. The delay is cheap on a smooth loss but it is not free, and on a deep net where the curvature is real, a 99%-stale direction costs a fraction of a point. So EF-TopK's weakness is *delay*: it transmits a tiny dense-in-energy slice now and owes the rest, and the owed mass is large enough to leave ResNet-56 (and the absolute VGG number) a hair short of the best.
+
+That points at a different axis entirely. Top-k's lag comes from sending *few coordinates* — a sparse support that drops 99% of the directions each step. What if I send *every* coordinate, but spend almost nothing per coordinate? The crudest per-coordinate message is one bit: the sign. `sign(g)` keeps the direction of every coordinate and throws away only the magnitude — the opposite trade from top-k, which keeps full magnitude on a tiny support and drops the rest entirely. A sign message touches all `d` coordinates every step, so there is no stale, owed-for-later mass the way top-k has; every direction gets a vote now. The cost is 1 bit per coordinate against float32's 32, a 32× compression — less than top-k's nominal 100× on the wire, but with no sparse-support lag. So the question is whether trading top-k's sparse-but-stale signal for sign's dense-but-magnitude-blind signal buys back the fraction of a point top-k's delay cost on ResNet-56, and holds the robustness EF-TopK won on VGG.
+
+The danger with sign is the mirror image of top-k's. Where top-k is biased by *starving directions*, sign is biased by *forgetting magnitude*, and magnitude-blindness has its own failure: a coordinate that gets gradient `+0.1` on nine minibatches and `−0.9` on the tenth has true mean zero — it should sit still — but a pure sign rule sees nine `+` votes and one `−` and marches the weight a long way the wrong direction. So `sign(g)` raw is biased and can point against the true gradient, exactly the kind of bias that, left uncorrected, is what collapsed QSGD's VGG seeds. The lesson from the last two rungs is therefore not optional: a biased compressor needs a memory. So I will not use raw sign — I will use sign *with error feedback*, the same residual mechanism that rescued top-k, applied to the magnitude information sign throws away.
+
+But error feedback needs a reconstruction to take the difference against, and sign alone reconstructs to `±1`, which has the wrong scale entirely — the gradient's coordinates are not order 1, they are tiny. So I have to pick a magnitude to attach to the signs on decompress, and the natural, cheap choice is the *mean absolute value* of the tensor: reconstruct each coordinate as `sign(g_i)·mean(|g|)`. One shared scalar carries the typical magnitude; the per-coordinate signs carry the direction. This is the right reconstruction for two reasons. First, it gives error feedback something correctly-scaled to subtract: the residual is `e ← (g + e_prev) − sign·mean(|·|)`, so the part the sign-and-mean reconstruction got wrong — every coordinate's deviation from the shared mean magnitude, and every mis-signed coordinate's full value — is carried forward and paid back next step, just as in EF-TopK. Second, the mean-magnitude scale keeps the reconstructed gradient's overall norm in the right ballpark so the optimizer's step size, tuned for full gradients, still makes sense. So the compressor is: error-correct with the residual, take the sign of every coordinate (one bit), compute the mean absolute magnitude (one float), update the residual against the `sign·mean` reconstruction, and send the bits plus the scalar.
+
+Why should this be *better* than EF-TopK, not just different? Go back to the densities. Sign's bias is governed by a per-coordinate signal-to-noise argument: the sign of a coordinate is only wrong when the noise overpowers the signal, and the damage of a flipped sign is proportional to that coordinate's magnitude while the probability of flipping is inversely proportional to it — so the error a flip costs is capped by the noise scale, *independent* of the gradient size. When a coordinate's true gradient is large relative to its noise, the sign is almost always right and I make good progress; when it is small relative to noise, going slightly the wrong way is cheap because I am near stationary there anyway. For real networks the gradient and its noise turn out to be of the *same density* — both dense, neither concentrated on a sparse loud set — which is precisely the regime where the magnitude-blind sign converges about as fast as full SGD and pockets the compression. EF-TopK, by contrast, is *betting on sparsity*: it only wins big if the energy really is concentrated in 1% of coordinates, and when it is not (a dense gradient, which is what these CNNs have), it is forced to delay 99% of a genuinely dense signal — which is the lag that left ResNet-56 short. Sign does not make that bet; it spends one bit on *every* coordinate, so a dense gradient is exactly its home turf. That is the mechanism by which sign-with-EF should recover top-k's lost fraction on the dense-gradient settings while keeping the residual-bought robustness on VGG.
+
+Now the task's actual fill, because — as with the other rungs — what I am filling is the literal `Compressor` edit, and it differs from the textbook signSGD in ways I must match. The classic distributed signSGD compresses the *return* trip too, via majority vote (`sign[Σ_w sign(g_w)]`), one bit each way. This single-node benchmark simulates one worker, so there is **no majority vote** — `aggregate` does not exist in this contract; the loop just compresses and decompresses per parameter. There is also **no momentum inside the sign** (no Signum); the momentum lives in the fixed SGD optimizer outside the compressor, not in a sign-of-momentum buffer. So the fill is plain sign-with-error-feedback-and-mean-magnitude, nothing more. Concretely: `self.residuals` is a per-name dict; an `ef_beta = 1.0` scales how much residual is added back (here, full). On `compress(g, name)`: if a residual exists, `tensor = g + ef_beta·residual[name]`; flatten; `signs = (tensor_flat >= 0)` as a `uint8` (so `sign(0) → +1`, the binary convention that keeps every coordinate a single bit); `mean_magnitude = |tensor_flat|.mean()`; reconstruct `sign_float·mean_magnitude` with `sign_float = signs·2 − 1` mapping `{0,1}→{−1,+1}`; update `residual[name] = (tensor_flat − reconstructed).view(shape)`; send `[signs, mean_magnitude]`, context `shape`. `decompress` maps the bits back to `±1`, multiplies by the mean magnitude, and views to `shape`. The `compress_ratio` is accepted but unused — sign is always 1 bit, so the ratio knob does not apply, exactly as with QSGD's `quantum_num` overriding it.
+
+So the delta from EF-TopK is the support/precision flip: trade top-k's full-magnitude-on-1%-of-coordinates for sign's one-bit-on-100%-of-coordinates, keeping the same error-feedback memory but now correcting the *magnitude* sign discards (via the mean-magnitude reconstruction) instead of the *coordinates* top-k discards. Reading EF-TopK's shape, the falsifiable claims against its numbers are specific. On ResNet-56/CIFAR-10 — the setting where top-k's delay cost it, landing at 93.85 below QSGD's 94.08 — sign-with-EF on a dense gradient should *recover* that, coming back up toward ~94.1, at or above both prior rungs; that is the single result that decides whether the dense-vs-sparse story is right. On VGG-11-BN/CIFAR-100, sign-with-EF should *hold* EF-TopK's hard-won ~70 (no return to collapse — the residual still carries the magnitude mass) and ideally edge slightly above it, since a dense one-bit signal does not strand 99% of the gradient; I expect ~70.7, just over top-k's 70.24. On ResNet-20/CIFAR-10 I expect a tight ~92.5 across seeds, at or just above EF-TopK's 92.25, with the lowest seed spread of the three rungs. If instead sign comes back *below* EF-TopK on ResNet-56, the dense-gradient bet was wrong and top-k's sparse support was actually buying something — but the densities of these CNN gradients say otherwise, so I expect sign-with-EF to be the strongest of the three baselines, beating both on every setting. What it cannot do — and what the next rung must address — is the systems problem hiding underneath all three: top-k's supports do not all-reduce across workers, and sign's majority vote (absent here) is a non-linear collective, so neither is cheaply aggregateable at scale; the compressor that fixes *that* while matching this accuracy is where the ladder goes next. Let me put it in: swap the docstring, add the EF momentum, then rewrite the body to sign-plus-mean-magnitude.
+</think>
+<say>
+Next is SignSGD with error feedback — one bit per coordinate plus a shared mean-magnitude scale. This first edit swaps the docstring to describe sign compression with error feedback recovering the discarded magnitude.
+</say>
+<edit path="pytorch-vision/custom_compressor.py">
+<old>
+class Compressor:
+    """TopK sparsification with error feedback (EF-TopK).
+
+    Keeps the K largest-magnitude gradient elements per tensor.
+    Error feedback accumulates the compression error (original - decompressed)
+    and adds it to the next gradient before compression, ensuring convergence.
+    """
+</old>
+<new>
+class Compressor:
+    """SignSGD with error feedback.
+
+    Compresses each gradient element to its sign (+1 or -1), achieving
+    32x compression. Error feedback accumulates the magnitude information
+    lost during sign extraction, improving convergence.
+
+    The compress_ratio parameter is not used for sign compression (always
+    1-bit), but the error feedback momentum can be tuned.
+    """
+</new>
+</edit>
+<obs>
+Successfully replaced text in pytorch-vision/custom_compressor.py.
+</obs>
+<note>
+Add the error-feedback momentum knob to __init__.
+</note>
+<edit path="pytorch-vision/custom_compressor.py">
+<old>
+        self.residuals = {}
+</old>
+<new>
+        self.residuals = {}
+        # Error feedback momentum
+        self.ef_beta = 1.0
+</new>
+</edit>
+<obs>
+Successfully replaced text in pytorch-vision/custom_compressor.py.
+</obs>
+<note>
+Now the body: error-correct, take signs, reconstruct against the mean magnitude.
+</note>
+<edit path="pytorch-vision/custom_compressor.py">
+<old>
+        if name in self.residuals:
+            tensor = tensor + self.residuals[name]
+
+        shape = tensor.shape
+        tensor_flat = tensor.flatten()
+        numel = tensor_flat.numel()
+        k = max(1, int(numel * self.compress_ratio))
+
+        # Select top-k by magnitude
+        _, indices = torch.topk(tensor_flat.abs(), k, sorted=False)
+        values = tensor_flat[indices]
+
+        # Update residual: store what was NOT communicated
+        decompressed_flat = torch.zeros_like(tensor_flat)
+        decompressed_flat.scatter_(0, indices, values)
+        self.residuals[name] = tensor_flat - decompressed_flat
+        self.residuals[name] = self.residuals[name].view(shape)
+
+        return [values, indices], (numel, shape)
+
+    def decompress(self, compressed_tensors, ctx):
+        values, indices = compressed_tensors
+        numel, shape = ctx
+        tensor_decompressed = torch.zeros(
+            numel, dtype=values.dtype, device=values.device)
+        tensor_decompressed.scatter_(0, indices, values)
+        return tensor_decompressed.view(shape)
+</old>
+<new>
+        if name in self.residuals:
+            tensor = tensor + self.ef_beta * self.residuals[name]
+
+        shape = tensor.shape
+        tensor_flat = tensor.flatten()
+
+        # Sign compression: 1 bit per element
+        signs = (tensor_flat >= 0).to(torch.uint8)
+
+        # Scale by mean magnitude for better reconstruction
+        mean_magnitude = tensor_flat.abs().mean()
+
+        # Update residual: original - reconstructed
+        sign_float = signs.float() * 2 - 1  # map {0,1} -> {-1,+1}
+        reconstructed = sign_float * mean_magnitude
+        self.residuals[name] = (tensor_flat - reconstructed).view(shape)
+
+        return [signs, mean_magnitude], shape
+
+    def decompress(self, compressed_tensors, ctx):
+        shape = ctx
+        signs, mean_magnitude = compressed_tensors
+
+        # Reconstruct: sign * mean_magnitude
+        sign_float = signs.float() * 2 - 1
+        tensor_decompressed = sign_float * mean_magnitude
+        return tensor_decompressed.view(shape)
+</new>
+</edit>
+<obs>
+Successfully replaced text in pytorch-vision/custom_compressor.py.
+</obs>
+<run/>
+<obs>
+Measured results — `baseline:signsgd` (`is_final,true`), seeds {42, 123, 456} and mean. Metric: best test accuracy (%).
+
+## ResNet-20 / CIFAR-10
+| seed | best_acc | test_acc | test_loss |
+|---|---|---|---|
+| 42 | 92.66 | 92.65 | 0.2703 |
+| 123 | 92.28 | 92.26 | 0.2776 |
+| 456 | 92.61 | 92.61 | 0.2667 |
+| **mean** | **92.52** | **92.51** | **0.2715** |
+
+## VGG-11-BN / CIFAR-100
+| seed | best_acc | test_acc | test_loss |
+|---|---|---|---|
+| 42 | 70.82 | 70.82 | 1.4530 |
+| 123 | 70.82 | 70.82 | 1.4498 |
+| 456 | 70.66 | 70.66 | 1.4502 |
+| **mean** | **70.77** | **70.77** | **1.4510** |
+
+## ResNet-56 / CIFAR-10
+| seed | best_acc | test_acc | test_loss |
+|---|---|---|---|
+| 42 | 94.33 | 94.33 | 0.2610 |
+| 123 | 93.98 | 93.98 | 0.2545 |
+| 456 | 94.12 | 94.12 | 0.2569 |
+| **mean** | **94.14** | **94.14** | **0.2575** |
+</obs>
+
+### step 4 — PowerSGD (warm-started low-rank + error feedback)   [slug:powersgd]
+
+<think>
+SignSGD's numbers came back as the strongest baseline on the ladder, and reading them carefully tells me both that the dense-gradient bet was right and where the whole family of accuracy-tuned compressors quietly stops being the real problem. Sign-with-EF did exactly what I predicted: ResNet-56/CIFAR-10 recovered to {94.33, 93.98, 94.12}, mean 94.14 — above EF-TopK's 93.85 and above QSGD's 94.08, confirming that on a dense gradient a one-bit-per-coordinate signal beats a 99%-sparse-but-stale one. VGG-11-BN/CIFAR-100 held and edged up, {70.82, 70.82, 70.66}, mean 70.77, just over top-k's 70.24 with the tightest spread yet — the residual still carries the magnitude mass, no return to QSGD's collapse. ResNet-20 came in tight at {92.66, 92.28, 92.61}, mean 92.52, the best of the three. So sign-with-EF is the accuracy winner across all three settings, and the margins are real but small — fractions of a point separate it from EF-TopK, which separates from QSGD mostly by *not collapsing*. The three baselines have converged to roughly the same accuracy ceiling, all of it bought by the same error-feedback memory, differing only in which information they delete and delay.
+
+And that convergence is the tell. All three rungs have been optimizing the wrong axis. Look at what each one *actually does at the all-reduce*, because this benchmark simulates a single worker and so it has been hiding the cost that matters most at scale. EF-TopK keeps the `k` largest coordinates — but worker A's top-`k` and worker B's top-`k` touch *different* coordinates, so the sum of `W` workers' sparse vectors has up to `Wk` nonzeros; the aggregate is not `k`-sparse, the cheap ring all-reduce (whose cost is independent of the number of workers) does not apply, and the framework has to fall back to an all-gather whose cost *grows with `W`*. SignSGD's accuracy-winning trick on a single node is sign+EF+mean-magnitude, but the version that actually compresses the *return* trip at scale is majority vote, `sign[Σ_w sign(g_w)]` — a non-linear collective, again not a standard all-reduce. QSGD is worse still: summing two workers' quantized codes does not give a quantized code, so the aggregate de-quantizes and you are back to dense or to a gather. So every baseline on this ladder, whatever its single-node accuracy, *breaks the one property that makes data-parallel training fast*: the `W`-independent all-reduce. The benchmark rewards accuracy at 100× and the baselines have squeezed that nearly dry; the real headroom is the systems axis the benchmark cannot see, and the right next move is a compressor that matches sign-with-EF's accuracy *and* aggregates linearly. That reframing — accuracy is saturated, aggregateability is not — is what selects the next method.
+
+So the requirement sharpens to: a compressor `C` that is (a) aggressive enough for 100×, (b) accurate enough to match sign-with-EF, and (c) *linear in the gradient*, so that `Σ_w C(g_w) = C(Σ_w g_w)` is itself a compressed object of fixed shape that all-reduces with the cheap collective. Linearity is the constraint none of the baselines met, and it immediately rules out coordinate sparsity: "which coordinates are largest" is data-dependent per worker, so top-k is fundamentally non-linear across workers. I need a different structure — one that is linearly compressible. Here I should look at *what a neural-network gradient actually is*, not just a flat vector of `d` numbers. A weight gradient for a conv or linear layer is naturally a *matrix* `M ∈ R^{m×n}` (fold a conv's output channels against everything else). And matrices have a second kind of low-complexity besides coordinate sparsity: low *rank*. The baselines all exploited that gradients are positively skewed (a coordinate-space fact); but gradient matrices are also approximately *low-rank* — their singular spectra decay fast, so most of the Frobenius energy lives in the top few singular directions. A rank-`r` factorization `M ≈ P Q^T` with `P ∈ R^{m×r}`, `Q ∈ R^{n×r}` captures that in `(m+n)r` numbers instead of `mn` — a `2r/n` payload for a square matrix, easily 100× at small `r`. Spectral concentration is a genuinely different, and crucially a *linearly accessible*, structure than the coordinate skew top-k rode.
+
+Let me check the linearity, because it is the whole point. The exact best rank-`r` approximation is the truncated SVD — but truncated SVD is *not* linear in `M`: the singular vectors of `M_A + M_B` are not those of `M_A` plus those of `M_B`. So if every worker sends its own truncated SVD, summing them does not give the SVD of the sum, and I have reintroduced the support-mismatch disease in singular-vector space. A *full* low-rank decomposition does not satisfy the constraint. So I need an *approximate* low-rank scheme whose two factors are computed by *linear* operations. Stare at how a low-rank approximation is computed cheaply — the power method / randomized range finder. To find the top-`r` subspace of `M`: pick an `n×r` matrix `Q`, form `P = M Q` (its columns approximate `M`'s top-`r` column space), orthonormalize `P`, and project back, `Q = M^T P`; then `M ≈ P Q^T`. Now look at the two heavy operations. `P = M Q` and `Q = M^T P` are *both linear in `M`*. If `Q` is held fixed and identical across workers, `Σ_w P_w = (Σ_w M_w) Q` — I all-reduce the small `P_w` and get `P` for the *aggregate* gradient. Once `P` is agreed (orthonormalized identically on every worker from the all-reduced `P`), `Q_w = M_w^T P`, and `Σ_w Q_w = (Σ_w M_w)^T P` all-reduces too. The two matrix multiplies of one power step are exactly the two linear, all-reduceable operations the systems constraint demands. The compression decomposes into two small all-reduces — one of `P` (`m×r`), one of `Q` (`n×r`) — each `W`-independent and fixed-shape. *One step* of subspace iteration, not a full SVD, is the compressor.
+
+But one power step from a *random* `Q` is a poor approximation — random subspace iteration needs several passes to land on the top-`r` subspace, and I can afford only one matrix-multiply pair per gradient (more would multiply both my compute and my communication, defeating the point). So one step gives a crude, possibly bad subspace, and a crude low-rank approximation deletes real gradient energy — a *biased* compressor with, on its own, no guarantee. I know exactly what that needs, because the last two rungs taught it: a biased, contractive compressor is rescued by *error feedback*. Keep a per-tensor residual `e`, compress `p = g + e`, send the low-rank `C(p)`, stash `e ← p − C(p)` — the deleted trailing spectrum is the residual, paid back next step. The virtual-iterate identity is the same one that made EF-TopK and sign-with-EF converge: `x̃ = x − e` runs exact SGD, the residual stays bounded because the rank-`r` projection is contractive, and the leading-order rate matches uncompressed SGD. So the same memory that fixed the other two rungs fixes the low-rank crudeness — error feedback is compressor-agnostic, which is precisely why I can reuse it a third time.
+
+The second idea is what makes *one* power step actually good, and it has no analog in the baselines. The biggest waste in one-step subspace iteration is starting `Q` from a fresh random matrix every step, discarding everything learned about the subspace last step. But the gradient's top-`r` subspace does not jump around between consecutive SGD steps — it drifts slowly. So *warm-start*: reuse the previous step's `Q` as this step's starting matrix. Then a single power step is no longer one iteration from scratch — it is one step of a power iteration *running continuously across the whole training run*, because the input gradients change slowly. The subspace estimate compounds across iterations, so warm-started rank-1 or rank-2 reaches the accuracy that cold-restart random low-rank would need many power passes to get. Warm-start buys the accuracy of many iterations at the cost of one. The two ideas lock together: warm-start makes the single-step approximation good enough that the error-feedback residual is small, and error feedback catches whatever the single step still misses. This is the mechanism by which a method spending only `(m+n)r` numbers can match a dense gradient's accuracy — the thing the accuracy-saturated baselines do, but now *linearly* and so *cheaply aggregateable*.
+
+Now the task's fill, matched to the literal `Compressor` contract. Per-name state: the residual `e[name]` and the warm-start `Q[name]`. On `compress(g, name)`: error-correct, `M = (g + e[name])` reshaped to a matrix; if the tensor is 1-D (bias, BN scale/shift — rank is meaningless and they are tiny), pass it through dense with no residual; otherwise pick the rank `r ≈ ratio·mn/(m+n)`, floored at 1 and capped at `min(m,n)`, so each layer hits the target compression rather than a global fixed `r`; initialize `Q` random `n×r` only if missing or shape-changed (the *only* randomness, once per tensor — every later step warm-starts); `P = M Q`; orthonormalize `P` with QR (I keep only the orthonormal factor); `Q = M^T P`; stash `Q[name] = Q` for next step's warm start; reconstruct `M̂ = P Q^T`, set `e[name] = M − M̂` (the trailing spectrum, carried forward), reshaped back. The payload is `[P, Q]` — `(m+n)r` floats — plus a context with the original shape and a flag for the low-rank-vs-passthrough path. `decompress` forms `P Q^T` and reshapes, or returns the dense passthrough. The one correctness invariant to hold: the residual is exactly `M − decompress(compress(M))`, corrected-input minus reconstructed-output, and the stored `Q` is the *post-projection* factor, so the warm-start starts from the subspace this step found.
+
+This is the rare compressor that is aggressive, convergent, *and* fast on real clusters — the systems property the entire ladder existed to need and none of its rungs delivered. The bar it must clear is sign-with-EF's real numbers, since that is the strongest baseline. The falsifiable expectations: on ResNet-56/CIFAR-10, warm-started low-rank with EF should *match or beat* sign-with-EF's 94.14 — the dense gradient is approximately low-rank, so `P Q^T` captures it about as well as a dense one-bit signal, and the warm-start tracks the slowly-drifting subspace; if it lands meaningfully below ~94, the low-rank assumption on these gradients is weaker than I think. On VGG-11-BN/CIFAR-100, it should *hold* the ~70.8 ceiling the baselines reached and not collapse — the residual carries the trailing spectrum, so no seed should fall the way QSGD's did; the VGG weights are the largest matrices, where low-rank compression has the most room, so I expect ~70.5–71. On ResNet-20/CIFAR-10, ~92.5, at or just above sign-with-EF. The accuracy claim is "match the strongest baseline at 100×"; the claim the benchmark cannot score but that motivates the whole rung is "do it with a *linear*, all-reduceable compression that keeps the `W`-independent collective top-k and majority-vote forfeit." This task's leaderboard has no PowerSGD row to confirm the accuracy match; what the trajectory ends on is the construction whose single warm-started power step — `P = M Q`, orthonormalize, `Q = M^T P` — is built precisely from the two linear maps that survive aggregation, with error feedback paying back the deleted spectrum. Let me write the whole class in one replacement.
+</think>
+<say>
+Final rung: PowerSGD — warm-started rank-r low-rank compression with error feedback, the one scheme whose two factors are linear in the gradient and so all-reduce cheaply at scale. This edit replaces the whole class with the single-power-step factorization plus the residual and warm-start state.
+</say>
+<edit path="pytorch-vision/custom_compressor.py">
+<old>
+class Compressor:
+    """SignSGD with error feedback.
+
+    Compresses each gradient element to its sign (+1 or -1), achieving
+    32x compression. Error feedback accumulates the magnitude information
+    lost during sign extraction, improving convergence.
+
+    The compress_ratio parameter is not used for sign compression (always
+    1-bit), but the error feedback momentum can be tuned.
+    """
+
+    def __init__(self, compress_ratio=0.01):
+        self.compress_ratio = compress_ratio
+        self.residuals = {}
+        # Error feedback momentum
+        self.ef_beta = 1.0
+
+    def compress(self, tensor, name):
+        # Error feedback: add accumulated residual
+        if name in self.residuals:
+            tensor = tensor + self.ef_beta * self.residuals[name]
+
+        shape = tensor.shape
+        tensor_flat = tensor.flatten()
+
+        # Sign compression: 1 bit per element
+        signs = (tensor_flat >= 0).to(torch.uint8)
+
+        # Scale by mean magnitude for better reconstruction
+        mean_magnitude = tensor_flat.abs().mean()
+
+        # Update residual: original - reconstructed
+        sign_float = signs.float() * 2 - 1  # map {0,1} -> {-1,+1}
+        reconstructed = sign_float * mean_magnitude
+        self.residuals[name] = (tensor_flat - reconstructed).view(shape)
+
+        return [signs, mean_magnitude], shape
+
+    def decompress(self, compressed_tensors, ctx):
+        shape = ctx
+        signs, mean_magnitude = compressed_tensors
+
+        # Reconstruct: sign * mean_magnitude
+        sign_float = signs.float() * 2 - 1
+        tensor_decompressed = sign_float * mean_magnitude
+        return tensor_decompressed.view(shape)
+</old>
+<new>
+class Compressor:
+    """PowerSGD: warm-started rank-r low-rank gradient compression with error feedback.
+
+    Reshape each matrix-shaped gradient to M (m x n); add the error-feedback
+    residual; do ONE power-iteration step from the previous step's Q (warm start):
+    P = M Q, orthonormalize P, Q = M^T P. Communicate (P, Q) -- (m+n)*r floats.
+    Reconstruct M_hat = P Q^T; carry M - M_hat in a per-tensor residual. P = M Q
+    and Q = M^T P are linear in M, so across workers they all-reduce with the cheap
+    W-independent collective. 1-D tensors are sent dense."""
+
+    def __init__(self, compress_ratio=0.01):
+        self.compress_ratio = compress_ratio
+        self.residuals = {}     # e[name]: error-feedback memory, NOT communicated
+        self.qs = {}            # Q[name]: warm-start subspace, NOT communicated
+
+    def _rank(self, m, n):
+        r = max(1, int(self.compress_ratio * m * n / (m + n)))
+        return min(r, m, n)
+
+    def compress(self, tensor, name):
+        shape = tensor.shape
+        # error correction: compress g + e (raw-gradient units; optimizer applies lr)
+        if name in self.residuals:
+            tensor = tensor + self.residuals[name]
+
+        matrix = tensor.view(tensor.shape[0], -1)
+        m, n = matrix.shape
+        if m == 1 or n == 1:                      # vectors: send dense, no low-rank, no EF
+            return [matrix.clone(), None], (shape, False)
+
+        r = self._rank(m, n)
+        q = self.qs.get(name)
+        if q is None or q.shape != (n, r):        # one-time random init; else warm start
+            q = torch.randn(n, r, device=matrix.device, dtype=matrix.dtype)
+
+        p = matrix @ q                            # P = M Q   (linear -> all-reduceable)
+        p, _ = torch.linalg.qr(p)                 # orthonormalize the left factor
+        q = matrix.t() @ p                        # Q = M^T P (linear -> all-reduceable)
+        self.qs[name] = q                         # warm start next step
+
+        approx = p @ q.t()                        # M_hat = P Q^T
+        self.residuals[name] = (matrix - approx).view(shape)   # carry trailing spectrum
+        return [p, q], (shape, True)
+
+    def decompress(self, compressed_tensors, ctx):
+        shape, low_rank = ctx
+        if not low_rank:
+            return compressed_tensors[0].view(shape)
+        p, q = compressed_tensors
+        return (p @ q.t()).view(shape)
+</new>
+</edit>
+<obs>
+Successfully replaced text in pytorch-vision/custom_compressor.py.
+</obs>

@@ -1,0 +1,894 @@
+<meta task="cv-multitask-loss" domain="Computer vision" file="pytorch-vision/custom_mtl.py" model_format="qwen3" edit_tool="str_replace"/>
+
+<system>
+You are a research engineer improving a model on a fixed ML task. You work by editing the model code and running experiments. Think carefully before each change. You have these tools:
+- str_replace(path, old_str, new_str): replace the unique occurrence of old_str with new_str.
+- create(path, file_text): create a new file.
+- run_experiment(): train + evaluate the current code under the fixed budget; returns metrics.
+Make one tool call at a time. After editing, call run_experiment() to measure your method.
+</system>
+
+<user>
+## Research question
+
+CIFAR-100 ships its 100 fine classes pre-grouped into 20 coarse superclasses, so a single image
+carries two labels at two granularities. The single thing being designed is the **multi-task loss
+combination strategy** — how the fine-head loss and the coarse-head loss are folded into one scalar
+that the optimizer descends — with one objective only: maximize **fine-class test accuracy**. The
+coarse task is purely auxiliary; the coarse label is a free, semantically structured extra signal,
+and the question is whether and how it can be made to *help* the fine objective rather than steal
+capacity from it. Everything else — the backbone, the two heads, the data pipeline, the optimizer,
+the schedule — is fixed. Only the combination rule moves.
+
+## Prior art before the first rung
+
+The first rung reacts to the way joint multi-task training is normally done and to its standard
+failure. The lineage it answers:
+
+- **Hard parameter sharing (Caruana, *Multitask Learning*, 1997).** A shared trunk with small
+  task-specific heads, trained on the summed loss `L = Σ_i L_i`. The premise is that an inductive
+  bias from a related task improves generalization. Gap: the bare sum is acutely sensitive to the
+  implicit relative weighting, and "just add them" is rarely where the primary task peaks.
+- **Hand-tuned / grid-searched weighting `L = Σ_i w_i L_i`.** Sweep `w_i` and keep the best. Gap:
+  one full training run per grid point, combinatorial in the number of tasks, and the good band is
+  narrow; the static weight also cannot adapt to where training currently is.
+- **Loss-magnitude balancing (the family the auxiliary-weighting baselines come from).** Observe
+  that fine cross-entropy (100-way) and coarse cross-entropy (20-way) sit at different magnitudes
+  and at different difficulties, so a fixed sum lets one dominate the shared gradient; rescale per
+  task to equalize them. Gap: scaling the losses changes *how much* each task counts but not the
+  *geometry* of how their gradients interact on the shared trunk.
+- **Gradient-interference accounts (Caruana; later multi-objective MTL).** The shared trunk sees
+  `g = Σ_i g_i`; when two task gradients point partly against each other the sum cancels in the
+  overlap, and joint training can land *below* single-task training. This is the observation the
+  gradient-surgery rung picks up: the cancellation is *directional*, so a magnitude rescale cannot
+  reach it.
+
+## The fixed substrate
+
+The whole pipeline is frozen and must not be touched. A CIFAR-adapted backbone (ResNet-20 = `[3,3,3]`
+basic blocks, ResNet-56 = `[9,9,9]`, or VGG-16-BN) ends in a global average pool feeding **two linear
+heads** off the *same* features: `fc_fine` (100-way) and `fc_coarse` (20-way). The coarse label of
+each image is derived from its fine label by the fixed CIFAR-100 superclass map. Training is SGD
+(`lr=0.1`, `momentum=0.9`, `weight_decay=5e-4`) under cosine annealing over **200 epochs**, batch
+size 128, with `RandomCrop(32, pad=4)` + `RandomHorizontalFlip`. Each step the loop computes
+`fine_loss = CE(fine_logits, fine_targets)` and `coarse_loss = CE(coarse_logits, coarse_targets)`,
+hands both (plus `epoch`, `total_epochs`) to the combination module, calls `.backward()` on the
+returned scalar, and steps. One detail is load-bearing for everything that follows: the optimizer is
+built over `model.parameters() + mtl_loss.parameters()`, so **any learnable tensor the module
+registers as a `Parameter` is trained jointly with the network by the same SGD**. Test-time accuracy
+is read off `fc_fine` only.
+
+## The editable interface
+
+Exactly one region is editable — the `MultiTaskLoss` class in `pytorch-vision/custom_mtl.py`
+(lines 195–216). Every method on the ladder is a fill of this same contract:
+
+- `__init__(self, num_tasks=2)` — may register learnable parameters (log-variances, weights) or
+  non-learnable buffers, and may hold auxiliary state such as a loss-history buffer.
+- `forward(self, fine_loss, coarse_loss, epoch, total_epochs)` — receives the **two scalar task
+  losses** plus the current `epoch` (0-indexed) and `total_epochs`, and returns **one scalar** for
+  `.backward()`. It must stay differentiable and must not touch labels, heads, datasets, backbones,
+  or the outer loop.
+
+What the interface does and does not expose decides the whole space. The module is handed the two
+*already-reduced scalar* losses, not the logits, not the targets, not the shared features — so a
+pure loss-weighting rule reads only those scalars; a gradient-geometry rule must *reach back into
+the graph* from `fine_loss`/`coarse_loss` (e.g. via `torch.autograd.grad`) to recover the shared
+parameters, since the module is never given them directly. The `epoch`/`total_epochs` arguments are
+the only curriculum/scheduling handle.
+
+The starting point is the scaffold default: **equal weighting** — sum the two losses.
+
+```python
+# EDITABLE region of pytorch-vision/custom_mtl.py (lines 195-216) — default fill (equal weighting)
+class MultiTaskLoss(nn.Module):
+    """Multi-task loss combination for fine + coarse classification.
+
+    Args:
+        num_tasks: int (always 2)
+    """
+
+    def __init__(self, num_tasks=2):
+        super().__init__()
+
+    def forward(self, fine_loss, coarse_loss, epoch, total_epochs):
+        """Combine fine and coarse classification losses.
+
+        Args:
+            fine_loss: scalar tensor, CE loss for 100-class fine prediction
+            coarse_loss: scalar tensor, CE loss for 20-class coarse prediction
+            epoch: int, current epoch (0-indexed)
+            total_epochs: int, total number of training epochs
+        Returns:
+            combined scalar loss
+        """
+        return fine_loss + coarse_loss
+```
+
+## Evaluation settings
+
+Three backbones span the capacity range — **ResNet-20** (small), **ResNet-56** (deeper residual),
+and **VGG-16-BN** (a different family, larger heads) — each trained on CIFAR-100 with the fine+coarse
+two-head setup for 200 epochs, seed 42. The reported metric is **best fine-class test accuracy
+(%, higher is better)** reached during training, per backbone; the task score is the geometric mean
+across the three. The combination module must remain differentiable and may not change labels, heads,
+datasets, backbones, or the outer training loop.
+
+The editable model code is in `pytorch-vision/custom_mtl.py`:
+```python
+class MultiTaskLoss(nn.Module):
+    """Multi-task loss combination for fine + coarse classification.
+
+    Args:
+        num_tasks: int (always 2)
+    """
+
+    def __init__(self, num_tasks=2):
+        super().__init__()
+
+    def forward(self, fine_loss, coarse_loss, epoch, total_epochs):
+        """Combine fine and coarse classification losses.
+
+        Args:
+            fine_loss: scalar tensor, CE loss for 100-class fine prediction
+            coarse_loss: scalar tensor, CE loss for 20-class coarse prediction
+            epoch: int, current epoch (0-indexed)
+            total_epochs: int, total number of training epochs
+        Returns:
+            combined scalar loss
+        """
+        return fine_loss + coarse_loss
+```
+Improve it. Derive your method, edit the code, then run_experiment().
+</user>
+
+### step 1 — PCGrad (gradient surgery)   [slug:pcgrad]
+
+<think>
+[[POLISH_REASONING: adapt to first-person agentic voice, end by deciding to implement]]
+I have one shared backbone feeding two heads, a fine 100-way head and a coarse 20-way head, and the
+only knob I am allowed is how the two cross-entropy losses combine into the one scalar SGD descends.
+The scaffold default just adds them, `L = L_fine + L_coarse`, which means the optimizer steps along
+`g = g_fine + g_coarse` on the shared trunk. I want to start the ladder from the place where I most
+distrust that bare sum, because the auxiliary coarse task is supposed to *help* the fine objective,
+and the failure mode I have seen again and again in hard-parameter-sharing setups is that joint
+training lands *below* what each task reaches alone — the shared network underperforms exactly the
+efficiency it was supposed to buy. So before I reach for any clever reweighting, I want to interrogate
+the one operation everything skips over: the *combination* of the two gradients. The optimizer never
+sees `g_fine` and `g_coarse` separately; it sees their sum and steps along it. If anything is broken,
+it has to be visible in the geometry of that sum, and a fix that only rescales the losses can never
+reach a problem that lives in directions.
+
+So let me stare at the geometry. Two gradient vectors `g_fine`, `g_coarse` in the same shared-trunk
+parameter space; the step goes along `g_fine + g_coarse`. When are they fighting? When they point
+partly against each other — negative inner product, `g_fine · g_coarse < 0`, equivalently negative
+cosine `cos φ = (g_fine · g_coarse)/(‖g_fine‖‖g_coarse‖) < 0`. Call that *conflicting*. In that case
+`‖g_fine + g_coarse‖² = ‖g_fine‖² + ‖g_coarse‖² + 2 g_fine · g_coarse` is strictly *less* than
+`‖g_fine‖² + ‖g_coarse‖²`: the overlap cancels. But I should be careful — is conflict by itself fatal?
+If two opposing gradients are of equal size and I step along their sum, the sum still points downhill
+on `L = L_fine + L_coarse`; I still decrease the combined objective. Conflict alone is not the disease.
+What makes it hurt is co-occurrence with two other things. First, *magnitude dominance*: suppose on
+this task the coarse loss, being a 20-way problem, is easier and smaller, while the fine 100-way loss
+is large — then `g = g_fine + g_coarse` is essentially `g_fine`, the coarse signal barely registers,
+and because they conflict, that step actively moves *against* the coarse task while the fine task
+drags the trunk. Worse for the symmetric story, the same asymmetry can run the other way at a
+different stage of training, and whichever task dominates pushes the shared features in a direction
+that *undoes* the other. Second, *high curvature*: a gradient step trusts a local linear model, and in
+the narrow, steeply-curved valleys that deep nets live in, that model overestimates the gain on the
+dominating task and underestimates the harm to the dominated one — the optimizer takes a trade it
+thinks is good and that is actually bad. So the disease is the triad — conflicting gradients *and* one
+dominating *and* high curvature — and when all three hit at once the summed gradient walks the
+optimizer into a bad trade it cannot see, and joint training stalls below single-task.
+
+Now what do the magnitude-only fixes do, and why don't they reach this? Everything in the
+loss-weighting family — learning a per-task variance, balancing the per-task loss magnitudes, any
+`L = Σ w_i L_i` with nonnegative `w_i` — is a *scaling* operation. If `g_fine` and `g_coarse`
+conflict, then `w_fine g_fine + w_coarse g_coarse` is still two vectors pointing partly against each
+other, still cancelling in the overlap. No choice of nonnegative weights can make a conflicting
+*direction* stop conflicting; reweighting changes how much each fighter weighs, it does not stop the
+fight. That is precisely the gap I want this first rung to attack: the cancellation is geometric, so
+the fix has to touch the geometry, not the magnitudes. This is also why I start the ladder here rather
+than with a weighting scheme — I want the rung that operates one level deeper than weighting, so that
+when it underperforms (and I suspect it will, for reasons I will get to) the diagnosis points cleanly
+at *what kind* of intervention the task actually rewards.
+
+So let me design the geometric intervention from scratch for these two gradients and see what is
+forced. I want to modify `g_fine` to remove only its conflict with `g_coarse`, changing it as little
+as possible otherwise. The conflict between them lives entirely in the component of `g_fine` that lies
+*along* `g_coarse`, because the inner product only sees that component. Decompose `g_fine` into the
+part parallel to `g_coarse` and the part orthogonal to it. The parallel part is
+`((g_fine · g_coarse)/‖g_coarse‖²) g_coarse` — the standard projection of `g_fine` onto `g_coarse`.
+When they conflict, `g_fine · g_coarse < 0`, so this parallel part points *opposite* to `g_coarse`:
+it is exactly the piece of `g_fine` that is undoing the coarse task's progress. Strip it out,
+`g_fine ← g_fine − ((g_fine · g_coarse)/‖g_coarse‖²) g_coarse`, and what is left is `g_fine` projected
+onto the *normal plane* of `g_coarse`. The new `g_fine` now has zero inner product with `g_coarse`, so
+it no longer conflicts, and I changed it by the minimum amount needed (I removed precisely the
+offending parallel component and nothing else). No quadratic program, no line search — it is one inner
+product and one axpy, a closed form. And crucially I do this *only* when they conflict: if
+`cos φ ≥ 0` the gradients already cooperate, the parallel component is *helping*, pulling fine and
+coarse in compatible directions, and ripping it out would destroy the positive transfer that is the
+entire reason I am sharing a trunk. So the rule is conditional — project when `g_fine · g_coarse < 0`,
+leave alone otherwise — which is the multi-task analogue of the conflict-detection-by-inner-product
+idea from continual learning (project away a step that would raise a protected task's loss), but made
+*symmetric*: both fine and coarse are first-class here, so I project `g_coarse` onto the normal plane
+of `g_fine` as well, by the same formula. With only two tasks there is no loop and no task ordering to
+worry about; the projection is a single symmetric operation, and I do not need the random task-order
+shuffling that a many-task version would require to stay unbiased. This is *projecting conflicting
+gradients* — PCGrad, in its two-task form.
+
+The combined step is then `Δθ = g_fine^PC + g_coarse^PC`. It is worth confirming this is a legitimate
+descent direction and not a plausible hack. In the clean conflicting case, write `g_0 = g_fine`,
+`g_1 = g_coarse`, the de-conflicted update is `g^PC = g_0 + g_1 − ((g_0·g_1)/‖g_1‖²) g_1 −
+((g_0·g_1)/‖g_0‖²) g_0`. Using the heavy-ball-flavoured rewrite `g^PC = (1 − cos φ/R) g_0 +
+(1 − cos φ·R) g_1` with `R = ‖g_0‖/‖g_1‖`, and noting that under conflict `cos φ < 0` makes both
+coefficients exceed 1, PCGrad does not merely cancel the conflict — it *amplifies* each task's own
+direction, which is exactly what lets the step escape the cancellation that flattens the plain sum.
+With a smooth loss (Lipschitz gradient `L`, step `t ≤ 1/L`) the standard quadratic upper bound, after
+the algebra collapses, gives `L(θ⁺) ≤ L(θ) − ½ t (1 − cos²φ) ‖g‖²`: as long as `cos φ > −1` the
+factor `(1 − cos²φ)` is strictly positive, so the objective strictly decreases unless `g = 0` or the
+two gradients are *exactly* anti-parallel — and exact anti-alignment of two stochastic minibatch
+gradients essentially never happens. So PCGrad is a descent method; it does not *break* anything. The
+single-step win over the plain sum is exactly the triad regime: it provably reaches a lower loss than
+the summed-gradient step when the gradients conflict enough (`cos φ ≤ −Φ`, with the magnitude
+similarity `Φ = 2‖g_0‖‖g_1‖/(‖g_0‖²+‖g_1‖²)` fusing "they conflict" with "their magnitudes differ"),
+the curvature is high enough, and the step is large enough that the curvature mis-estimation actually
+bites. That is the precise condition I want a geometry fix to win under, recovered from the algebra.
+
+Now I have to land this in *this task's* edit surface, and here is where the implementation is forced
+into a shape that differs from a generic PCGrad wrapper. The wrapper version assumes it owns the
+optimizer: it sits between `backward` and `step`, reads each task's `.grad` off the parameters, does
+the projection, writes the corrected gradient back, and lets the base optimizer step. But the scaffold
+gives me none of that. The only thing I get to fill is `MultiTaskLoss.forward(fine_loss, coarse_loss,
+epoch, total_epochs)`, and it must *return a scalar* on which the loop calls `.backward()`. I am handed
+the two already-reduced scalar losses, not the shared parameters, not the optimizer, not the per-task
+`.grad` fields. So I cannot run the wrapper's read-modify-write-then-step protocol. I have to do all of
+PCGrad *inside* `forward`, before the loop's single `.backward()`. Two consequences follow, and both
+are real departures from the wrapper form that I must reason out, not import.
+
+First, I have to *recover the shared parameters myself*, because the interface never gives them to me.
+Both `fine_loss` and `coarse_loss` are tensors with a `grad_fn`, so the autograd graph that produced
+them is reachable from them. I can walk that graph backward from `fine_loss.grad_fn`, following
+`next_functions`, and collect every leaf node that carries a `.variable` which `requires_grad` — those
+leaves are exactly the model parameters (and the two heads) that fed the loss. The fine loss's graph
+touches the shared trunk plus the fine head; that set of leaves is what I treat as the parameters to
+de-conflict over. I cache this list after the first call so I am not re-walking the graph every step.
+
+Second, having the parameters, I compute the two per-task gradients *explicitly* with
+`torch.autograd.grad(fine_loss, params, retain_graph=True)` and the same for `coarse_loss` — not by
+calling `.backward()`, because the loop owns the one `.backward()` and I must not consume the graph or
+populate `.grad` prematurely. `allow_unused=True` and a zero fill handle parameters a given task does
+not touch (the fine head contributes no gradient to the coarse loss, and vice versa). I flatten both
+into vectors `g0`, `g1`, run the single symmetric projection when `dot = g0·g1 < 0` — using the
+*originals* of both for the two projections so the operation is symmetric (`g0_proj = g0 − (dot/‖g1‖²)
+g1`, `g1_proj = g1 − (dot/‖g0‖²) g0`) — and form `g_pcgrad = g0 + g1`. Small `+1e-12` floors on the
+squared norms keep the division safe.
+
+The last piece is the trick that lets a projected gradient survive the interface's "return a scalar"
+contract. I have a desired gradient `g_pcgrad`, but the loop is going to call `.backward()` on whatever
+scalar I return and then `step()`. So I construct a *surrogate loss* whose gradient with respect to
+each parameter is exactly the corresponding chunk of `g_pcgrad`: take the de-conflicted gradient chunk
+for parameter `p`, **detach** it (it is now a constant target, not part of the graph), and add
+`(chunk · p).sum()` to the surrogate. Then `∂(chunk·p)/∂p = chunk`, so when the loop backpropagates
+the returned surrogate it deposits `g_pcgrad` into every `p.grad`, and the optimizer steps along the
+de-conflicted direction — exactly as if a wrapper had written the corrected gradient back. This
+surrogate-loss device is the bridge from "I can only return a scalar" to "I need to impose a specific
+gradient," and it is the defining feature of how PCGrad has to be expressed *here* rather than as the
+external wrapper. (The full scaffold module is in the answer.)
+
+So the delta from the equal-weighting default is: where the default returned `fine_loss + coarse_loss`
+and let SGD step along the raw sum, this rung recovers the shared parameters by walking the loss graph,
+computes the two per-task gradients, projects away their conflict only when `cos φ < 0`, and returns a
+surrogate scalar whose backward pass installs the de-conflicted gradient. Now let me reason about what
+I actually expect, because that sets up the next rung. The honest worry is twofold and specific to
+this task. One: fine and coarse here are *not* an arbitrary, semantically unrelated pair — coarse is a
+deterministic *coarsening* of fine, so their gradients are likely *correlated*, not conflicting, much
+of the time. If `cos φ ≥ 0` on most steps, PCGrad does nothing and I am back to the plain sum, paying
+two extra backward passes per step for no change. Two: PCGrad fixes the *direction* of the conflict but
+does nothing about the *magnitude imbalance* between a 100-way and a 20-way cross-entropy — it never
+asks how much each task should count, only whether they fight. If the real bottleneck on fine accuracy
+is that the coarse task is mis-weighted (too loud early, or starving the fine head of capacity), a
+direction-only fix leaves that on the table. So my falsifiable expectation is that this rung lands
+respectably but *not* at the top — that across ResNet-20, ResNet-56, and VGG-16-BN it does not clearly
+beat what a good *weighting* rule would do, precisely because on a hierarchical fine/coarse pair the
+gradients rarely conflict and the lever that matters is the relative weight, which PCGrad never
+touches. If that is what the numbers say, the next rung writes itself: stop projecting directions and
+start *learning the weights*, with a principled penalty that keeps them from collapsing.
+</think>
+<say>
+[[FILL_SAY: 1-2 sentences naming the method and what this first edit does]]
+</say>
+<edit path="pytorch-vision/custom_mtl.py">
+<old>
+class MultiTaskLoss(nn.Module):
+    """Multi-task loss combination for fine + coarse classification.
+
+    Args:
+        num_tasks: int (always 2)
+    """
+</old>
+<new>
+# EDITABLE region of pytorch-vision/custom_mtl.py (lines 195-216) — step 1: PCGrad (2-task, in-forward)
+class MultiTaskLoss(nn.Module):
+    """PCGrad: Gradient Surgery for Multi-Task Learning (Yu et al., 2020).
+
+    Projects conflicting task gradients onto the normal plane of the
+    other when their cosine similarity is negative, reducing gradient
+    interference between tasks.
+    """
+</new>
+</edit>
+<obs>
+Successfully replaced text in pytorch-vision/custom_mtl.py.
+</obs>
+<note>
+[[FILL_NOTE?: optional one-line thought for this edit, or delete this block]]
+</note>
+<edit path="pytorch-vision/custom_mtl.py">
+<old>
+        super().__init__()
+
+    def forward(self, fine_loss, coarse_loss, epoch, total_epochs):
+        """Combine fine and coarse classification losses.
+
+        Args:
+            fine_loss: scalar tensor, CE loss for 100-class fine prediction
+            coarse_loss: scalar tensor, CE loss for 20-class coarse prediction
+            epoch: int, current epoch (0-indexed)
+            total_epochs: int, total number of training epochs
+        Returns:
+            combined scalar loss
+        """
+        return fine_loss + coarse_loss
+</old>
+<new>
+        super().__init__()
+        self._shared_params = None
+
+    def _get_shared_params(self, loss):
+        """Extract shared model parameters from the computation graph."""
+        if self._shared_params is not None:
+            return self._shared_params
+        # Walk the computation graph to find leaf parameters
+        params = []
+        seen = set()
+        def _walk(grad_fn):
+            if grad_fn is None:
+                return
+            for child, _ in grad_fn.next_functions:
+                if child is None:
+                    continue
+                cid = id(child)
+                if cid in seen:
+                    continue
+                seen.add(cid)
+                if hasattr(child, 'variable'):
+                    p = child.variable
+                    if p.requires_grad:
+                        params.append(p)
+                _walk(child)
+        _walk(loss.grad_fn)
+        self._shared_params = params
+        return params
+
+    def forward(self, fine_loss, coarse_loss, epoch, total_epochs):
+        params = self._get_shared_params(fine_loss)
+        if len(params) == 0:
+            return fine_loss + coarse_loss
+
+        # Compute per-task gradients
+        grads_fine = torch.autograd.grad(
+            fine_loss, params, retain_graph=True, allow_unused=True,
+        )
+        grads_coarse = torch.autograd.grad(
+            coarse_loss, params, retain_graph=True, allow_unused=True,
+        )
+
+        # Flatten gradients into vectors
+        g0 = torch.cat([
+            g.flatten() if g is not None else torch.zeros_like(p).flatten()
+            for g, p in zip(grads_fine, params)
+        ])
+        g1 = torch.cat([
+            g.flatten() if g is not None else torch.zeros_like(p).flatten()
+            for g, p in zip(grads_coarse, params)
+        ])
+
+        # PCGrad: project conflicting gradients when cosine similarity < 0
+        dot = torch.dot(g0, g1)
+        if dot < 0:
+            # Project each gradient onto the normal plane of the other.
+            # Use originals for both projections (symmetric dot product).
+            g0_norm_sq = torch.dot(g0, g0) + 1e-12
+            g1_norm_sq = torch.dot(g1, g1) + 1e-12
+            g0_proj = g0 - (dot / g1_norm_sq) * g1
+            g1_proj = g1 - (dot / g0_norm_sq) * g0
+            g0 = g0_proj
+            g1 = g1_proj
+
+        # Combined projected gradient
+        g_pcgrad = g0 + g1
+
+        # Construct a surrogate loss whose gradient equals g_pcgrad.
+        # loss = sum_i (g_pcgrad_i * param_i), so grad w.r.t. param_i = g_pcgrad_i
+        offset = 0
+        surrogate = torch.tensor(0.0, device=fine_loss.device)
+        for p in params:
+            numel = p.numel()
+            chunk = g_pcgrad[offset:offset + numel].reshape(p.shape).detach()
+            surrogate = surrogate + (chunk * p).sum()
+            offset += numel
+        return surrogate
+</new>
+</edit>
+<obs>
+Successfully replaced text in pytorch-vision/custom_mtl.py.
+</obs>
+<run/>
+<obs>
+Measured results — `baseline:pcgrad` (`is_final,true`), seed 42, best fine-class test accuracy (%).
+
+| backbone | seed 42 | mean |
+|---|---|---|
+| ResNet-20 | 64.31 | 64.31 |
+| ResNet-56 | 70.20 | 70.20 |
+| VGG-16-BN | 74.17 | 74.17 |
+
+(One seed; the mean column equals the single seed-42 run.)
+</obs>
+
+### step 2 — Uncertainty weighting   [slug:uncertainty]
+
+<think>
+[[POLISH_REASONING: adapt to first-person agentic voice, end by deciding to implement]]
+The gradient-surgery run told me what I suspected it would, and it told me in the spread across the
+three backbones. PCGrad landed at 64.31 on ResNet-20, 70.20 on ResNet-56, 74.17 on VGG-16-BN. Look at
+the shape: on the larger-headed VGG it is fine, but on the small ResNet-20 it is *the worst point* on
+that backbone — 64.31 is a long way below what a plain weighting would reach there. That is exactly the
+failure I flagged. Coarse is a deterministic coarsening of fine, so on most steps the two gradients are
+*correlated*, `cos φ ≥ 0`, and PCGrad does nothing but pay two extra backward passes; and on the steps
+where it does fire, it fixes only the *direction* of the conflict and never asks the question that
+actually decides fine accuracy on a small backbone — *how much should the coarse task count at all?* On
+ResNet-20 the trunk is tiny, capacity is scarce, and an unweighted coarse loss of the wrong size steals
+that capacity; PCGrad cannot see that, because magnitude imbalance is invisible to a direction-only
+fix. The deeper ResNet-56 and the larger VGG have capacity to spare, so the mis-weighting hurts less,
+which is why the gap to the others shrinks as the backbone grows. So the lesson is sharp: the lever I
+left on the table — the *relative weight* between fine and coarse — is the one that matters here, and I
+should pick it up next. The trouble is that picking it up naively is its own trap, and I want to walk
+into the right scheme rather than the wrong one.
+
+The bare version of the lever is `L = w_fine L_fine + w_coarse L_coarse` with the `w_i` as trainable
+parameters, and let SGD set them. Stare at the gradient for one second. `∂L/∂w_i = L_i ≥ 0`, which is
+nonnegative, so gradient descent pushes every `w_i` *down*, and there is nothing in this objective that
+pushes back. The global optimum over the weights is `w_fine = w_coarse = 0`, where `L = 0` and the
+network has learned nothing. The weights collapse to zero. So I cannot just learn the weights of a bare
+weighted sum — the objective is happy to turn off both tasks. Whatever scheme learns the weights has to
+carry a term that *resists shrinking them*, a cost for declaring a task unimportant. That is the real
+constraint: I need a principled coupling between "how much I down-weight a task" and "a penalty for
+doing so," not a free knob. And note this is a genuinely different kind of fix from PCGrad — PCGrad
+operated on the gradient *directions* and refused to ask about magnitudes; here I am going straight at
+the magnitudes, learning them, which is exactly the axis PCGrad's ResNet-20 collapse said was
+underserved.
+
+Where would such a coupling come from naturally? The fine and coarse losses are both cross-entropies,
+and a cross-entropy is a negative log-likelihood in disguise — it is `−log Softmax(logits)_c` for the
+true class `c`. In ordinary single-task training I treat the observation noise of each head as a fixed
+constant, fold it into the learning rate, and never write it down. But here is the thing: that constant
+is *exactly* a per-task scale. A task that is noisier, or whose loss sits at a different numerical scale
+(and a 100-way and a 20-way cross-entropy genuinely do sit at different scales and difficulties), has a
+larger effective noise. And that noise does not have to be fixed — I can make it a free parameter and
+learn it. This is the heteroscedastic-regression move (Nix & Weigend, 1994: train a mean head and a
+variance head, learn the noise by maximizing the Gaussian likelihood). They never needed "uncertainty
+labels," because the likelihood couples the noise to the residuals and recovers it implicitly. I do not
+need their input-dependence; I want one *constant* noise scale `σ_i` per task — the homoscedastic,
+task-dependent version — because what varies across my problem is not the noise from pixel to pixel, it
+is the noise and the scale from *task to task*. That is precisely the missing magnitude lever, derived
+rather than guessed.
+
+Let me get the form first from the regression case where it is cleanest, then port it to the two
+classifiers I actually have. If a head's output is a Gaussian observation `p(y | f(x)) = N(f(x), σ²)`,
+its negative log-likelihood is `(1/2σ²)‖y − f(x)‖² + (1/2)log σ² + const`. Writing the bare per-task
+loss as `L_i`, the contribution is `(1/2σ_i²) L_i + log σ_i`. Now look at what fell out. The coefficient
+on each task's loss is `1/(2σ_i²)` — an *inverse-variance weighting*. As `σ_i` grows, the weight on `L_i`
+shrinks: the noisier or larger-scale a task is, the less it is allowed to dominate the shared gradient;
+as `σ_i` shrinks, its weight grows. That is exactly the adaptive relative weighting I wanted, and it is
+not a heuristic — it is the maximum-likelihood way to combine measurements of differing precision. And
+crucially there is a `+log σ_i` sitting there, and it is the anti-collapse term I argued I needed. Watch:
+if the optimizer tries the degenerate route of sending `σ_i → ∞` to zero out the `1/(2σ_i²)` coefficient
+and make a task free, the `log σ_i` term shoots off to `+∞` and punishes it. The likelihood will not let
+me declare a task infinitely noisy and walk away. So the *same* probabilistic model that gives me
+inverse-variance weighting automatically supplies the regularizer that the bare learnable weights were
+missing — the collapse I hit a moment ago is structurally impossible here. I can confirm the balance is
+sane by setting the gradient with respect to `σ_i` to zero: `∂/∂σ_i = −L_i/σ_i³ + 1/σ_i = 0` gives
+`σ_i² = L_i`, so at the optimum the learned variance tracks that task's *current* loss. A big-loss task
+gets a big `σ` (low weight), a well-fit task a small `σ` (high weight), and the fixed point cannot run to
+zero or infinity because the two terms pull against each other.
+
+Both my heads are classifiers, not regressors, so I have to check the cross-entropy case gives the same
+shape. The analogue of "scaling the observation noise" for a softmax is temperature: scale the logits by
+`1/σ²` before the softmax, `p(y | f(x), σ) = Softmax((1/σ²) f(x))`, so `σ²` is the temperature — large
+`σ²` flattens the distribution toward uniform (high uncertainty), small `σ²` sharpens it toward one-hot
+(high confidence). Working through the negative log-likelihood, the inverse-variance weight `1/σ_i²`
+appears on the unscaled cross-entropy exactly as in the regression case, but the regularizer comes out as
+a messy log-ratio of two log-sum-exps that depends on the logits. Under the approximation
+`(1/σ) Σ exp((1/σ²) f_{c'}) ≈ (Σ exp f_{c'})^{1/σ²}`, which is *exact at `σ = 1`* and degrades smoothly
+away from it, that bracket collapses back to a clean `log σ`. So the classification term is
+`(1/σ_i²) L_i + log σ_i`, parallel to regression up to the factor-of-two on the coefficient (the Gaussian
+NLL carries a `1/2` the temperature scaling does not). The point for me is that both heads land on the
+same shape — inverse-variance weight plus a logarithmic scale penalty — so a single uniform rule works
+for the two cross-entropies I actually have.
+
+I had better make sure I can optimize the scale stably, because there are two landmines. `σ` appears as
+`1/σ²`, so if it ever wanders to zero I divide by zero and blow up; and `σ` is a variance scale,
+constrained positive, which is awkward for plain SGD that will happily step a parameter negative. Both
+vanish with one reparameterization: do not learn `σ`, learn the *log-variance* `s := log σ²`. Then
+`1/σ² = exp(−s)` (always strictly positive, no divide-by-zero), `log σ = s/2`, and `s` ranges over all
+of ℝ so SGD can step it freely. In terms of `s` the per-task term is `exp(−s_i) L_i + s_i` (taking the
+canonical convention that absorbs the factor-of-two, which moves the term's value but not its optimum in
+`s`). The objective is strictly convex in `s` — `∂/∂s = −exp(−s)L + 1`, zero at `s = log L`, second
+derivative `exp(−s)L > 0` — so it has a single minimum and is robust to where I start. That means I can
+initialize `s = 0`, i.e. `σ² = 1`, every task weighted equally, the most neutral possible start with no
+preference baked in, and let each scalar move toward its fixed point with no extra hand-tuned
+hyperparameter. This is the cleanest possible answer to PCGrad's ResNet-20 problem: instead of leaving
+the fine/coarse weight to chance, I start them equal and let the likelihood walk them to wherever the
+data says.
+
+Now land it in this task's edit surface, and notice how much *simpler* it is than the PCGrad rung — and
+why. PCGrad had to fight the interface: walk the autograd graph to recover the shared parameters, call
+`torch.autograd.grad` twice, build a surrogate loss to smuggle a projected gradient through the
+"return a scalar" contract. Uncertainty weighting needs *none* of that, because it is a pure
+loss-weighting rule and the interface hands me exactly the two scalar losses it reads. I register one
+log-variance parameter per task, `self.log_vars = nn.Parameter(torch.zeros(2))` — and here the load-bearing
+detail of the substrate pays off: the loop builds the optimizer over `model.parameters() +
+mtl_loss.parameters()`, so these two scalars are trained jointly with the network by the same SGD, no
+extra machinery. The forward is two lines: for each of the two losses compute the precision
+`exp(−s_i)` and accumulate `exp(−s_i) · L_i + s_i`, return the sum. That is the whole module. (The full
+scaffold module is in the answer.)
+
+So the delta from the PCGrad rung is a change of *axis*: where PCGrad operated on gradient directions
+and was blind to magnitude, this rung learns the per-task magnitude directly, with a likelihood-derived
+log-variance penalty that keeps it from collapsing to zero. There is one more reason to expect this to
+beat both the equal-weighting default and a static grid weight, and it bears on PCGrad's backbone
+pattern. A grid weight is *static* for the whole run; the learned `σ` is *dynamic* — early on every loss
+is large so every `σ_i` is large and the weighting is roughly even, and as the model masters the easier
+20-way coarse task its loss drops, its `σ` drops, and its weight *rises*, with the schedule of relative
+weights evolving over training in a way no fixed point can match. That adaptivity is exactly what the
+small ResNet-20 trunk needed and could not get from PCGrad.
+
+Now the falsifiable expectations against the numbers I have. The PCGrad run was 64.31 / 70.20 / 74.17.
+My sharp claim is on **ResNet-20**: if the ResNet-20 collapse really was a *weighting* problem, then
+learning the weight should pull that point *up*, clearly above 64.31 — that is the headline test of this
+whole diagnosis, and if it fails there my read of PCGrad was wrong. On **ResNet-56** I expect a smaller
+gain over 70.20, because the deeper trunk was already less starved by mis-weighting, so there is less for
+the lever to recover. On **VGG-16-BN** I am genuinely unsure of the sign: PCGrad already hit 74.17 there,
+VGG has large-capacity heads where the auxiliary signal matters least, and the `σ → 1` approximation in
+the classification derivation is only first-order, so the learned weighting might land *near or even
+slightly under* PCGrad on that backbone. If the pattern comes out as "big ResNet-20 recovery, modest
+ResNet-56 gain, roughly flat VGG," that confirms the magnitude lever is what the task rewards — but it
+also tells me what uncertainty weighting still cannot do: it learns *one constant* weight per task and
+nothing time-aware beyond the slow fixed-point drift, so if the real story is that the *rate* at which
+each task is learning matters within a run, the next rung should weight by the relative *rate of change*
+of each loss rather than by a learned static scale.
+</think>
+<say>
+[[FILL_SAY: 1-2 sentences naming the method and what this first edit does]]
+</say>
+<edit path="pytorch-vision/custom_mtl.py">
+<old>
+# EDITABLE region of pytorch-vision/custom_mtl.py (lines 195-216) — step 1: PCGrad (2-task, in-forward)
+class MultiTaskLoss(nn.Module):
+    """PCGrad: Gradient Surgery for Multi-Task Learning (Yu et al., 2020).
+
+    Projects conflicting task gradients onto the normal plane of the
+    other when their cosine similarity is negative, reducing gradient
+    interference between tasks.
+    """
+</old>
+<new>
+# EDITABLE region of pytorch-vision/custom_mtl.py (lines 195-216) — step 2: uncertainty weighting
+class MultiTaskLoss(nn.Module):
+    """Uncertainty weighting (Kendall et al., 2018).
+
+    Learns per-task log-variance: loss_i / exp(log_var_i) + log_var_i.
+    """
+</new>
+</edit>
+<obs>
+Successfully replaced text in pytorch-vision/custom_mtl.py.
+</obs>
+<note>
+[[FILL_NOTE?: optional one-line thought for this edit, or delete this block]]
+</note>
+<edit path="pytorch-vision/custom_mtl.py">
+<old>
+        super().__init__()
+        self._shared_params = None
+
+    def _get_shared_params(self, loss):
+        """Extract shared model parameters from the computation graph."""
+        if self._shared_params is not None:
+            return self._shared_params
+        # Walk the computation graph to find leaf parameters
+        params = []
+        seen = set()
+        def _walk(grad_fn):
+            if grad_fn is None:
+                return
+            for child, _ in grad_fn.next_functions:
+                if child is None:
+                    continue
+                cid = id(child)
+                if cid in seen:
+                    continue
+                seen.add(cid)
+                if hasattr(child, 'variable'):
+                    p = child.variable
+                    if p.requires_grad:
+                        params.append(p)
+                _walk(child)
+        _walk(loss.grad_fn)
+        self._shared_params = params
+        return params
+
+    def forward(self, fine_loss, coarse_loss, epoch, total_epochs):
+        params = self._get_shared_params(fine_loss)
+        if len(params) == 0:
+            return fine_loss + coarse_loss
+
+        # Compute per-task gradients
+        grads_fine = torch.autograd.grad(
+            fine_loss, params, retain_graph=True, allow_unused=True,
+        )
+        grads_coarse = torch.autograd.grad(
+            coarse_loss, params, retain_graph=True, allow_unused=True,
+        )
+
+        # Flatten gradients into vectors
+        g0 = torch.cat([
+            g.flatten() if g is not None else torch.zeros_like(p).flatten()
+            for g, p in zip(grads_fine, params)
+        ])
+        g1 = torch.cat([
+            g.flatten() if g is not None else torch.zeros_like(p).flatten()
+            for g, p in zip(grads_coarse, params)
+        ])
+
+        # PCGrad: project conflicting gradients when cosine similarity < 0
+        dot = torch.dot(g0, g1)
+        if dot < 0:
+            # Project each gradient onto the normal plane of the other.
+            # Use originals for both projections (symmetric dot product).
+            g0_norm_sq = torch.dot(g0, g0) + 1e-12
+            g1_norm_sq = torch.dot(g1, g1) + 1e-12
+            g0_proj = g0 - (dot / g1_norm_sq) * g1
+            g1_proj = g1 - (dot / g0_norm_sq) * g0
+            g0 = g0_proj
+            g1 = g1_proj
+
+        # Combined projected gradient
+        g_pcgrad = g0 + g1
+
+        # Construct a surrogate loss whose gradient equals g_pcgrad.
+        # loss = sum_i (g_pcgrad_i * param_i), so grad w.r.t. param_i = g_pcgrad_i
+        offset = 0
+        surrogate = torch.tensor(0.0, device=fine_loss.device)
+        for p in params:
+            numel = p.numel()
+            chunk = g_pcgrad[offset:offset + numel].reshape(p.shape).detach()
+            surrogate = surrogate + (chunk * p).sum()
+            offset += numel
+        return surrogate
+</old>
+<new>
+        super().__init__()
+        self.log_vars = nn.Parameter(torch.zeros(num_tasks))
+
+    def forward(self, fine_loss, coarse_loss, epoch, total_epochs):
+        losses = [fine_loss, coarse_loss]
+        total = sum(
+            torch.exp(-self.log_vars[i]) * losses[i] + self.log_vars[i]
+            for i in range(2)
+        )
+        return total
+</new>
+</edit>
+<obs>
+Successfully replaced text in pytorch-vision/custom_mtl.py.
+</obs>
+<run/>
+<obs>
+Measured results — `baseline:uncertainty` (`is_final,true`), seed 42, best fine-class test accuracy (%).
+
+| backbone | seed 42 | mean |
+|---|---|---|
+| ResNet-20 | 66.81 | 66.81 |
+| ResNet-56 | 70.94 | 70.94 |
+| VGG-16-BN | 72.67 | 72.67 |
+
+(One seed; the mean column equals the single seed-42 run.)
+</obs>
+
+### step 3 — Dynamic Weight Average (DWA)   [slug:dwa]
+
+<think>
+[[POLISH_REASONING: adapt to first-person agentic voice, end by deciding to implement]]
+The uncertainty run confirmed the diagnosis and then drew the next line for me. Learning the weights
+gave 66.81 on ResNet-20, 70.94 on ResNet-56, 72.67 on VGG-16-BN. The headline test passed exactly where
+I bet it would: ResNet-20 jumped from PCGrad's 64.31 to 66.81 — a clear two-and-a-half point recovery on
+the capacity-scarce backbone — which is the strongest evidence that the small-backbone collapse really was
+a *weighting* problem, not a direction problem, and that picking up the magnitude lever was the right move.
+ResNet-56 nudged up a little (70.20 → 70.94), the modest gain I expected on a trunk that was less starved.
+But VGG-16-BN went the *other* way — 74.17 down to 72.67 — and that drop is the tell I want to chase. On
+the large-headed VGG the auxiliary signal matters least, the `σ → 1` approximation in the classification
+derivation is only first-order, and, more importantly, the thing uncertainty weighting learns is a single
+*static* scale per task that drifts only slowly toward its `σ_i² = L_i` fixed point. If the fine and coarse
+tasks are learning at genuinely different *rates* over the 200-epoch cosine schedule, a slow-moving learned
+scale can lag the actual balance the network needs at each phase — and on VGG, where the coarse task is
+mastered quickly and then mostly contributes a stale, mis-sized gradient, that lag costs accuracy. So the
+limitation of the uncertainty rung is now legible: it weights by a learned *level* of each loss, with a
+fixed point tied to the loss *value*, and it has almost no notion of the *speed* at which each task is
+currently improving. The next lever is rate, not level.
+
+Let me make "rate" precise, because that is the whole design. What I actually care about, for keeping the
+two tasks balanced, is not how big a loss is in absolute terms — that is exactly the units-and-scale problem
+uncertainty weighting already tried to neutralize — but how *fast* each task is still descending. A task
+whose loss is plummeting epoch over epoch is learning fine and does not need more weight; a task whose loss
+has plateaued, whose descent has stalled relative to the other, is the one being neglected by the shared
+trunk and the one I want to *up-weight* so it catches up. So I want a weighting that reads the recent
+*trajectory* of each loss and pushes weight toward whichever task is currently the slower learner. That is a
+fundamentally different signal from both prior rungs: PCGrad read the instantaneous gradient *geometry*,
+uncertainty read the instantaneous loss *level*; this reads the loss's *change over time*. It is the one
+piece of information the `epoch`/`total_epochs` arguments and a stored history buffer let me compute, and
+the two earlier rungs threw it away.
+
+Now derive the form. The cleanest scale-free measure of "how fast is task `k` descending" is the ratio of
+its loss now to its loss one step ago: `r_k = L_k(now) / L_k(prev)`. A ratio is unit-free, so it already
+solves the incommensurability that plagued the bare sum — a 100-way fine cross-entropy and a 20-way coarse
+cross-entropy live at different magnitudes, but their *ratios* are directly comparable. Read what `r_k`
+says: `r_k ≈ 1` means task `k`'s loss is barely moving — it has stalled, it is the slow learner; `r_k < 1`
+means the loss is still dropping fast — it is learning well, the fast learner; `r_k > 1` means the loss is
+*rising*. So a *larger* `r_k` corresponds to a *slower* (or worsening) learner, and a larger `r_k` is
+exactly the task I want to give *more* weight. That monotonicity — bigger ratio gets bigger weight — is the
+core of the rule. (Contrast uncertainty weighting, where a bigger *loss* got a bigger `σ` and therefore
+*less* weight; here a bigger *ratio* gets more weight. The two rules push on different quantities and in the
+opposite direction, which is the point.)
+
+I need to turn the two ratios `r_fine`, `r_coarse` into two weights that sum to a fixed budget so the
+overall loss scale does not drift. The natural map from a set of scores to a normalized set of weights is
+the softmax, and it has a temperature knob that controls how sharply the weighting reacts. So weight task
+`k` by `softmax(r_k / T)` over the two tasks, then scale the softmax (which sums to 1) up by the number of
+tasks `K = 2` so the weights sum to `K` and the *mean* weight stays 1 — that keeps the total loss roughly
+the same magnitude as the equal-weighted sum, so the fixed SGD learning rate and cosine schedule still see
+a sensibly-sized loss. The temperature `T` controls the contrast: as `T → ∞` the softmax flattens toward
+uniform and DWA reduces to equal weighting (weights → 1 each), so a large `T` is a *soft* version that
+barely reweights; as `T → 0` it becomes a hard argmax that dumps almost all the budget on the single
+slowest task, which is too aggressive and unstable on a deep net. `T = 2.0` is the conservative middle the
+method uses — enough contrast to favor the lagging task, not so much that it starves the other. So the
+weight is `w_k = K · softmax(r_k / T)`, with the ratios as the only inputs.
+
+There is a bootstrap question — what are the weights on the very first update, when there is no "previous"
+loss to form a ratio against? On the first step (or whenever no history exists yet) I have no rate
+information, so I fall back to the most neutral choice: equal weights, `w_fine = w_coarse = 1`. After that,
+each step I read the current losses, form the ratios against the stored previous losses, compute the
+softmax weights, then overwrite the stored previous losses with the current ones for next time. That is the
+whole state: one buffer of the previous losses, plus the fixed `T`.
+
+One subtlety I have to get exactly right, and it is where this differs from a textbook description of the
+method. In the original formulation the ratio is taken between two *epoch-averaged* losses, `w_k(t−1) =
+L_k(t−1)/L_k(t−2)`, so the rate is smoothed over a whole epoch before it drives the weight, and the weight
+is held fixed across that epoch. But the interface here is invoked *per batch* — `forward` runs every
+minibatch — and the only per-call state I can cheaply keep is the loss from the *previous call*. So in this
+task's implementation the ratio is `L_k(this batch) / L_k(previous batch)`: a *per-batch* rate, recomputed
+and the buffer overwritten every step, not a per-epoch one. I want to be honest that this is a noisier
+signal than the epoch-averaged version — batch-to-batch loss ratios fluctuate with minibatch composition —
+but the `T = 2.0` softmax damps that noise heavily (it is a soft, near-uniform reweighting), and the
+buffer's constant overwriting means the rate always reflects the *most recent* descent, which is the
+freshest possible read on which task is currently lagging. The `epoch == 0` guard pins the weights to
+uniform for the entire first epoch, so the rate signal only switches on once the losses have a meaningful
+recent history. These are the concrete shapes the edit takes, and they are not the paper's epoch-loop
+form — they are what the per-batch scalar interface allows.
+
+The last detail is keeping the gradient honest. The weights are computed from the *detached* losses
+(`ratios = losses.detach() / (prev + 1e-8)`, so the softmax is a function of constants), and the buffer
+stores detached losses, so no gradient ever flows *through* the weighting computation — `w_k` is treated as
+a constant multiplier at each step, and the gradient flows only through the live `w_k · L_k` product into
+the network and heads. That is correct: DWA is a *scheduling* rule on the loss weights, not a learnable
+parameter like uncertainty's log-variances, so it registers nothing in the optimizer; it is pure state
+(a previous-loss buffer) plus arithmetic. This is again simpler than PCGrad's machinery and even lighter
+than uncertainty's two learnable scalars — no parameters at all, just a buffer and a softmax. (The full
+scaffold module is in the answer.)
+
+So the delta across the three rungs is a clean progression of *what signal drives the weighting*: PCGrad
+used the instantaneous gradient geometry and ignored magnitude; uncertainty used the instantaneous loss
+level and learned a slow static scale; DWA uses the recent loss *rate of change* and pushes weight toward
+whichever task is descending more slowly, recomputed every step. It directly targets the limitation the
+uncertainty run exposed — a static, slow-drifting weight that cannot track tasks learning at different
+speeds — by making the weight a fast function of the live descent rate.
+
+Now the falsifiable expectations against the numbers I have. Uncertainty was 66.81 / 70.94 / 72.67; PCGrad
+was 64.31 / 70.20 / 74.17. My sharpest claim is on **VGG-16-BN**: the uncertainty rung *regressed* there to
+72.67, and if that regression was caused by a stale, slow-drifting static weight on a quickly-mastered
+coarse task, then a rate-driven weight that backs off the coarse task as soon as its loss stops dropping
+should *recover* VGG — I expect it back above uncertainty's 72.67 and plausibly at or above PCGrad's 74.17.
+If DWA does *not* lift VGG, my "rate vs level" story is wrong. On **ResNet-20** I expect a further small gain
+over uncertainty's 66.81 — the rate signal should help the starved small trunk allocate weight to whichever
+task is currently lagging, on top of the level-based recovery uncertainty already bought, so I would be
+disappointed if it did not clear 67. On **ResNet-56** I expect another modest step over 70.94, the same
+"deep trunk was less starved, less to gain" logic as before. If the pattern comes out as "VGG recovered,
+ResNet-20 up past 67, ResNet-56 modestly up," that confirms the *rate* of learning is the signal this
+hierarchical fine/coarse task most rewards, and DWA sits at the top of the ladder; if instead the per-batch
+noise in the ratio swamps the signal and DWA lands no better than uncertainty, the read would be that the
+epoch-averaged form the per-batch interface cannot express is what actually matters, and the static learned
+weight is as far as a scalar-loss rule can climb here.
+</think>
+<say>
+[[FILL_SAY: 1-2 sentences naming the method and what this first edit does]]
+</say>
+<edit path="pytorch-vision/custom_mtl.py">
+<old>
+# EDITABLE region of pytorch-vision/custom_mtl.py (lines 195-216) — step 2: uncertainty weighting
+class MultiTaskLoss(nn.Module):
+    """Uncertainty weighting (Kendall et al., 2018).
+
+    Learns per-task log-variance: loss_i / exp(log_var_i) + log_var_i.
+    """
+</old>
+<new>
+# EDITABLE region of pytorch-vision/custom_mtl.py (lines 195-216) — step 3: Dynamic Weight Average
+class MultiTaskLoss(nn.Module):
+    """Dynamic Weight Average (Liu et al., 2019).
+
+    Weights tasks by relative loss change rate with temperature.
+    """
+</new>
+</edit>
+<obs>
+Successfully replaced text in pytorch-vision/custom_mtl.py.
+</obs>
+<note>
+[[FILL_NOTE?: optional one-line thought for this edit, or delete this block]]
+</note>
+<edit path="pytorch-vision/custom_mtl.py">
+<old>
+        super().__init__()
+        self.log_vars = nn.Parameter(torch.zeros(num_tasks))
+
+    def forward(self, fine_loss, coarse_loss, epoch, total_epochs):
+        losses = [fine_loss, coarse_loss]
+        total = sum(
+            torch.exp(-self.log_vars[i]) * losses[i] + self.log_vars[i]
+            for i in range(2)
+        )
+        return total
+</old>
+<new>
+        super().__init__()
+        self.prev_losses = None
+        self.T = 2.0  # temperature
+
+    def forward(self, fine_loss, coarse_loss, epoch, total_epochs):
+        losses = torch.stack([fine_loss, coarse_loss])
+        if self.prev_losses is None or epoch == 0:
+            weights = torch.ones(2, device=losses.device)
+        else:
+            ratios = losses.detach() / (self.prev_losses + 1e-8)
+            weights = 2 * F.softmax(ratios / self.T, dim=0)
+        self.prev_losses = losses.detach().clone()
+        return (weights * losses).sum()
+</new>
+</edit>
+<obs>
+Successfully replaced text in pytorch-vision/custom_mtl.py.
+</obs>
+<run/>
+<obs>
+Measured results — `baseline:dwa` (`is_final,true`), seed 42, best fine-class test accuracy (%).
+
+| backbone | seed 42 | mean |
+|---|---|---|
+| ResNet-20 | 67.96 | 67.96 |
+| ResNet-56 | 72.39 | 72.39 |
+| VGG-16-BN | 73.78 | 73.78 |
+
+(One seed; the mean column equals the single seed-42 run.)
+</obs>
+

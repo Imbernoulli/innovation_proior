@@ -1,0 +1,1220 @@
+<meta task="meta-fewshot-classification" domain="Meta-learning" file="easy-few-shot-learning/custom_fewshot.py" model_format="qwen3" edit_tool="str_replace"/>
+
+<system>
+You are a research engineer improving a model on a fixed ML task. You work by editing the model code and running experiments. Think carefully before each change. You have these tools:
+- str_replace(path, old_str, new_str): replace the unique occurrence of old_str with new_str.
+- create(path, file_text): create a new file.
+- run_experiment(): train + evaluate the current code under the fixed budget; returns metrics.
+Make one tool call at a time. After editing, call run_experiment() to measure your method.
+</system>
+
+<user>
+## Research question
+
+Few-shot image classification under episodic evaluation: I am handed a support set of N classes I
+have never seen during training, with K labeled images each (here N = 5, K = 5), and I must label
+fresh query images of those same classes — immediately, with no per-task retraining. The single thing
+being designed is the **episode-level classifier**: how to summarize the support set into something a
+query can be compared against, how to score a query against that summary, and the loss that trains it.
+Everything else — the backbone, the episodic data pipeline, the optimizer, the schedule, the
+evaluation protocol — is fixed. The contribution must be a reusable algorithmic component (a way to
+summarize a support set, compare a query to it, or adapt the episode), not a dataset-specific trick.
+
+## Prior art before the first rung (metric-learning lineage)
+
+The first rung reacts to the line of work that turned few-shot classification into *learned comparison
+in an embedding space*. These are the methods the ladder departs from; each is concise, with its gap.
+
+- **Borrowed-feature nearest neighbour.** Train an ordinary classifier on the base classes, drop the
+  softmax, and do nearest-neighbour on the penultimate features for novel classes. Instant
+  assimilation (non-parametric), but the features were trained to separate the *base* classes under a
+  softmax, never to make instance-to-instance comparison meaningful for an unseen support set. Gap:
+  the geometry is a byproduct, not the objective.
+- **Neighbourhood Components Analysis (Goldberger, Hinton, Roweis, Salakhutdinov 2004).** Make kNN
+  differentiable by replacing the hard nearest neighbour with a *soft* one — point i picks j with
+  probability ∝ exp(−‖Ax_i − Ax_j‖²) — and learn the metric A by maximizing expected leave-one-out
+  accuracy. Gap: A is a single *linear* map (Mahalanobis), and the objective is point-against-all-of-
+  training, not shaped like an N-way K-shot episode.
+- **Nearest Class Mean (Mensink, Verbeek, Perronnin, Csurka 2013).** Represent each class by the mean
+  μ_c of its examples and assign a query to the nearest mean under a learned Mahalanobis metric;
+  brand-new classes cost nothing (just average their examples). Gap: a *linear* embedding for the
+  many-examples regime, and its non-linear variant needs a *separate* k-means step decoupled from the
+  metric learning — not end-to-end.
+- **Episodic training (the durable idea the ladder keeps).** Make the training condition match the
+  test condition: sample mini-tasks during training that look exactly like test tasks (N classes, K
+  shots, a query set) and optimize the classifier on each episode's query set. In a data-starved
+  regime this faithfulness is itself a strong regularizer — the network is never allowed to rely on
+  anything it won't have at test time. Every rung trains this way; only the *classifier inside the
+  episode* changes.
+
+## The fixed substrate
+
+The whole pipeline is frozen and must not be touched. A **ResNet-12 backbone** maps an 84×84 image to
+a 640-dim feature vector (`make_backbone(use_pooling=True)`) — or, if a method asks for it, to a
+640-channel feature **map** (`make_backbone(use_pooling=False)`). Training is **episodic**: 500 tasks
+per epoch for 200 epochs, every task 5-way 5-shot with 15 query images per class. For each task the
+loop calls `model.process_support_set(support_images, support_labels)`, then `model(query_images)` to
+get scores of shape `(n_query, n_way)`, then `model.compute_loss(scores, query_labels)`, backprops,
+and steps. The optimizer is **SGD**, lr `1e-2`, momentum `0.9`, weight decay `5e-4`, with a
+`MultiStepLR` schedule (milestones `[120, 160]`, γ `0.1`) and global gradient-norm clipping at `5.0`.
+The loop honours one method-level knob, `LR_OVERRIDE`, which replaces the scalar learning rate for the
+whole model (the same rate for every parameter — there is no per-module learning rate). A parameter
+budget of ≈1.05× the largest baseline (the ResNet-12 backbone plus a relation module) is enforced.
+
+The loop also exposes utilities a method may use: `self.compute_features(images)` (pass through the
+backbone), `self.l2_distance_to_prototypes(features)` (**negative non-squared** Euclidean distance to
+`self.prototypes`), `self.cosine_distance_to_prototypes(features)` (cosine similarity to the
+prototypes), `compute_prototypes(features, labels)` (per-class mean feature), and the convenience
+`self.compute_prototypes_and_store_support_set(images, labels)`.
+
+## The editable interface
+
+Exactly one region is editable — the `CustomFewShotMethod` class (a subclass of `FewShotClassifier`)
+in `custom_fewshot.py`. Every method on the ladder is a fill of this same contract: `__init__`
+(build the backbone and any learnable modules), `process_support_set(support_images, support_labels)`
+(turn the labeled support set into whatever queries are compared against, and stash it),
+`forward(query_images) -> Tensor` of shape `(n_query, n_way)` (score each query), and
+`compute_loss(scores, labels) -> Tensor` (the training loss on the query labels; default
+cross-entropy). The starting point is the scaffold default: a mean-prototype, distance-to-prototype
+classifier. Each later method replaces exactly this class and nothing else.
+
+```python
+# EDITABLE region of custom_fewshot.py — default fill
+class CustomFewShotMethod(FewShotClassifier):
+    """Default: mean-prototype classifier scored by distance to prototypes."""
+
+    def __init__(self):
+        backbone = make_backbone(use_pooling=True)        # ResNet-12 -> 640-d feature vector
+        super().__init__(backbone=backbone, use_softmax=False)
+
+    def process_support_set(self, support_images: Tensor, support_labels: Tensor):
+        # build whatever queries are compared against (default: per-class mean prototypes) and store it
+        self.compute_prototypes_and_store_support_set(support_images, support_labels)
+
+    def forward(self, query_images: Tensor) -> Tensor:
+        query_features = self.compute_features(query_images)        # f(query): (n_query, 640)
+        scores = self.l2_distance_to_prototypes(query_features)     # logits = -distance to prototypes
+        return self.softmax_if_specified(scores)
+
+    @staticmethod
+    def is_transductive() -> bool:
+        return False                                                # queries classified independently
+
+    def compute_loss(self, scores: Tensor, labels: Tensor) -> Tensor:
+        return F.cross_entropy(scores, labels)
+```
+
+## Evaluation settings
+
+Three benchmarks spanning the difficulty range — **miniImageNet** (100 ImageNet classes), **CIFAR-FS**
+(100 classes from CIFAR-100), and **CUB-200** (200 fine-grained bird species) — all evaluated 5-way
+5-shot, each over three seeds {42, 123, 456}. The metric on every benchmark is **mean classification
+accuracy over 600 test episodes** (higher is better); the task score is the geometric mean of the
+three benchmark accuracies. Models are selected by validation accuracy (200 validation tasks per
+epoch) and the best checkpoint is evaluated on the test split.
+
+The editable model code is in `easy-few-shot-learning/custom_fewshot.py`:
+```python
+# =====================================================================
+class CustomFewShotMethod(FewShotClassifier):
+    """Custom few-shot classification method.
+
+    This class defines how to classify query images given a support set.
+    You MUST implement:
+        - __init__: create the backbone and any learnable modules
+        - process_support_set(support_images, support_labels): extract and store
+          information from the support set for later query classification
+        - forward(query_images) -> Tensor of shape (n_query, n_way): predict
+          classification scores for query images
+
+    Available utilities (from easyfsl):
+        - self.compute_features(images): pass images through self.backbone
+        - self.l2_distance_to_prototypes(features): compute negative L2 distance to self.prototypes
+        - self.cosine_distance_to_prototypes(features): compute cosine similarity to self.prototypes
+        - self.softmax_if_specified(scores): apply softmax if self.use_softmax is set
+        - compute_prototypes(features, labels): compute class prototypes (mean features)
+
+    The backbone should be set as self.backbone (an nn.Module).
+    Feature dimension of the ResNet12 backbone is 640.
+
+    The training loop calls model.compute_loss(scores, labels) for flexibility.
+    Override compute_loss if your method needs a different loss (e.g., MSE for RelationNet).
+    """
+
+    def __init__(self):
+        backbone = make_backbone(use_pooling=True)
+        super().__init__(backbone=backbone, use_softmax=False)
+
+    def process_support_set(self, support_images: Tensor, support_labels: Tensor):
+        """Extract and store support set information."""
+        self.compute_prototypes_and_store_support_set(support_images, support_labels)
+
+    def forward(self, query_images: Tensor) -> Tensor:
+        """Predict classification scores for query images.
+
+        Args:
+            query_images: images of shape (n_query, 3, 84, 84)
+
+        Returns:
+            scores of shape (n_query, n_way) — higher means more likely
+        """
+        query_features = self.compute_features(query_images)
+        scores = self.l2_distance_to_prototypes(query_features)
+        return self.softmax_if_specified(scores)
+
+    @staticmethod
+    def is_transductive() -> bool:
+        return False
+
+    def compute_loss(self, scores: Tensor, labels: Tensor) -> Tensor:
+        """Compute the training loss. Override for custom loss functions.
+
+        Args:
+            scores: classification scores of shape (n_query, n_way)
+            labels: ground truth labels of shape (n_query,), integers in [0, n_way)
+
+        Returns:
+            scalar loss tensor
+        """
+        return F.cross_entropy(scores, labels)
+```
+Improve it. Derive your method, edit the code, then run_experiment().
+</user>
+
+### step 1 — Matching Networks (cosine-attention vote)   [slug:matchingnet]
+
+<think>
+[[POLISH_REASONING: adapt to first-person agentic voice, end by deciding to implement]]
+The classifier inside the episode is the whole point, and the scaffold hands me a default already —
+mean prototypes, distance to prototypes — but I want to start from the weakest *principled* fill of
+this contract and understand exactly where it stalls, because that failure is what every later rung
+will react to. So I set the prototype shortcut aside and start from what actually hurts in this
+problem, then build the simplest classifier that respects it.
+
+What hurts is structural, not a tuning problem. I have a backbone that would be wonderful if I could
+pour thousands of labeled images per class into it, and it is useless the moment a brand-new class
+arrives with five examples. A child sees one giraffe in a book and spots giraffes everywhere; a
+parametric net sees five giraffes and shrugs, because the only way it knows how to absorb a class is to
+take gradient steps, and five examples are a few tiny steps. Worse, the rules of this task forbid the
+move entirely: at test time I get a fresh support set of unseen classes and I am not allowed to update
+weights on it. No fine-tuning at evaluation. And if I tried — hammering the backbone on twenty-five
+images — I would overfit catastrophically and overwrite everything the base classes taught me. So
+whatever I build has to absorb a never-before-seen class *instantly*, with no weight update, and still
+classify a query into it. The knowledge that adapts to the task cannot live in the slowly-moving
+weights; it has to live in the support set itself.
+
+The thing that already assimilates new examples instantly is *non-parametric*: nearest neighbours,
+kernel density estimation. You store the example and it is in the model — there is no training step,
+nothing to forget, and capacity grows with the data because the model *is* the data. That is exactly
+the instant-assimilation property I need, and it is the right half of the answer. The catch everyone
+knows: a nearest-neighbour classifier is only as good as the metric that decides what "near" means, and
+a raw-feature metric tailored to the base-class softmax is weak for comparing unseen classes. So I have
+two halves at opposite ends of a trade-off — parametric deep nets give powerful *learned* features but
+cannot absorb a class in one shot; non-parametric classifiers absorb instantly but cannot learn the
+geometry. The standard compromise, borrowed-feature nearest neighbour, only works moderately, and it is
+worth being precise about *why*: those features were optimized to make a softmax separate the base
+classes, never to make instance-to-instance comparison meaningful for an unseen support set. The
+geometry I lean on at test time is a byproduct of a different objective. That mismatch is the thing I
+have to fix, and fixing it means making the metric *learnable* and training it under exactly the task I
+will be judged on.
+
+The one piece of prior work that already made nearest-neighbour classification differentiable is
+Neighbourhood Components Analysis, and its trick is the one I want to steal. Hard kNN error is a
+*discontinuous* function of the metric — an infinitesimal change can flip which point is nearest and
+jump the classification by a finite amount — so you cannot take its gradient. NCA's cure is to replace
+the hard neighbour with a *soft, stochastic* one: point i picks neighbour j with probability
+p_ij ∝ exp(−‖Ax_i − Ax_j‖²), a softmax over embedding distances, and the probability i is classified
+correctly is the mass it puts on its own class. Maximize that by gradient ascent and the metric A
+trains by backprop; the discontinuity is gone because the softmax is smooth. That is exactly the bridge
+between "non-parametric classifier" and "trained by gradient descent." But two things about NCA do not
+fit this task. First, A is a single *linear* map — far short of the deep ResNet-12 the scaffold gives
+me. Second, and more important, the NCA objective is point-against-all-of-training over a fixed set; my
+task is not shaped like that at all. At test time I get a small, freshly sampled labeled support set of
+unseen classes and a query, and I must put a distribution over those classes. The reference set is not
+all of training — it is a tiny support set that changes every episode.
+
+So I carry the soft-neighbour idea over but re-aim it at *my* task. Forget pairwise-over-everything. I
+have a support set S = {(x_i, y_i)} and a query x̂, and I want a distribution over the labels present in
+S. The simplest non-parametric thing I can write is a weighted vote of the support labels, where the
+weight says how much the query matches each support example: ŷ = Σ_i a(x̂, x_i) y_i. If the y_i are
+one-hot and the weights a(x̂, x_i) are non-negative and sum to one, then ŷ is *literally* a probability
+distribution over the classes in S — the mass on each class is the total attention the query pays to
+support examples of that class. This one expression is doing several jobs at once and I want to see all
+of them before committing. If a is a kernel on the embedding space, this is kernel density estimation —
+ŷ is a Nadaraya–Watson smoothing of the labels by similarity. If a is zero for all but the nearest
+support points and constant on those, this is nearest neighbours. So the expression *subsumes* both KDE
+and kNN; I have not thrown away the non-parametric behaviour, I have parameterized the kernel. And
+there is a third reading I like even more: a is an *attention* mechanism, the y_i are memories bound to
+the x_i, and given a query I "point" into the support set and read out the label of whatever I am
+pointing at — an associative memory whose slots carry labels. Crucially it is non-parametric in the
+right way: as the support set grows, the memory grows with it; the classifier is redefined by whatever
+S I feed it, with no change to the network. That is the instant-assimilation property, recovered, and
+it is what lets a freshly sampled support set of novel classes simply *be* a new classifier with no
+weight update — exactly what this task demands at test time.
+
+Now I choose a, the attention. The form that connects cleanly to NCA's soft neighbours and to
+content-based attention is a softmax, a(x̂, x_i) = exp(c(f(x̂), g(x_i))) / Σ_j exp(c(f(x̂), g(x_j))),
+where f embeds the query and g embeds the support examples — both the same deep backbone here — and c
+is a similarity. The softmax gives me exactly the non-negative, sum-to-one weights I assumed, it is
+differentiable, and it is the same smoothing that killed NCA's discontinuity, now applied over the
+support set rather than all of training. The metric is learned through f and g, which are deep, fixing
+NCA's linear limitation. What should c be? NCA used negative squared Euclidean. Let me think about what
+goes wrong with that on top of an unconstrained deep embedding. The backbone's outputs have no
+constraint on their magnitude — one support embedding can come out with a much larger norm than another
+simply because of where it landed in feature space. If c is a raw dot product, a long support vector
+scores high for almost any query regardless of *direction* and dominates the softmax; if c is negative
+Euclidean, the absolute scale of the embeddings sets the softmax temperature, so a class with tightly
+clustered but far-out embeddings behaves differently from one near the origin. I do not want an
+embedding's *magnitude* deciding the vote; I want its *direction* — does the query point the same way
+as this support example. So normalize the magnitude out: use cosine similarity, c(u, v) =
+uᵀv/(‖u‖‖v‖), bounded in [−1, 1], so the softmax sees scores on a fixed scale and the comparison is
+about alignment, not length. That is the choice, and it is a real divergence from the scaffold default,
+which scores by L2 distance to a *mean* — I am voting over individual support points by cosine instead.
+
+There is a subtlety about *what kind* of classifier this is that tells me it should work. The vote
+ŷ = Σ a(x̂, x_i) y_i is *discriminative*, not generative: for a query to be classified right it only has
+to be sufficiently aligned with support pairs of its own class and misaligned with the rest — I never
+model class densities. That is the same flavour as NCA, but unlike triplet or large-margin surrogates,
+the objective I will optimize *is* the multi-way classification I care about, end to end, with one
+differentiable loss. Which brings me to the half of the problem I think the borrowed-feature baselines
+get wrong. I have a model that maps a support set to a classifier, S → c_S(x̂). How do I train it so it
+generalizes to support sets of classes it has never seen? The trap is to train the ordinary way — a
+flat softmax over all base classes — and *hope* the features transfer. That is precisely the mismatch I
+diagnosed: train objective and test task are different shapes. So state the principle baldly: the
+conditions I train under must match the conditions I test under. At test time I am handed a small
+support set of a few unseen classes and asked to label queries using only it. So I train exactly that
+way — sample a handful of classes, draw a support set and a query batch, train the model to predict the
+query labels *conditioned on* the support set, and resample which classes are in play every step so it
+never memorizes a fixed label set. This is the episodic objective the scaffold already runs:
+θ = argmax_θ E_{L∼T} E_{S,B∼L} Σ_{(x,y)∈B} log P_θ(y | x, S). Because the support classes are
+resampled every episode and never bound to fixed output units, a genuinely novel support set at test
+time simply *is* the new classifier — no fine-tuning, by construction. The honest caveat: this only
+holds while the test task distribution resembles training; if novel classes are drawn very differently
+(say, all fine-grained and mutually similar, when training sampled broadly), the learned comparison
+transfers worse. I will want to remember that when I see the per-benchmark split.
+
+I could stop here — a softmax-cosine vote over the support is a complete, trainable few-shot classifier
+that fits the contract. But there is a myopia in the embeddings I want to remove, because it is where
+the real subtlety lives. Right now g embeds each support example *independently*: g(x_i) does not know
+what else is in the support set. Suppose two support examples of different classes land very close in
+feature space — a hard pair. Embedding each in isolation, g has no way to push them apart to make the
+vote cleaner; it would help for x_i's embedding to shift *given that* x_j sits next to it. And
+symmetrically, the way I embed the query ought to depend on which support set I am comparing against —
+the same image might emphasize different features when the candidates are {cat, dog} versus
+{truck, ship}. The classification is already conditioned on the whole support set through P(·|x̂, S); I
+want the *features* it operates on conditioned too. Fully conditional embeddings.
+
+Take the support side, g(x_i, S). I need a function of one example *and* the whole set. The set has no
+natural order, so a one-way RNN would impose a spurious directionality; a *bidirectional* recurrence
+lets each element's encoding see both sides and washes that out. Run a bidirectional LSTM over the
+backbone features. Going forward and backward gives each position a hidden state summarizing everything
+before and after it, so the contextual encoding of x_i depends on the entire set. Combine the two
+directions and — the piece that keeps it from breaking — add a *skip connection* back to the raw
+feature: g(x_i, S) = h⃗_i + h⃐_i + g′(x_i). The skip matters because I do not want the LSTM to
+reconstruct the useful feature from scratch; I want it to start from the raw feature and add a
+contextual *correction*. At initialization g(x_i, S) ≈ g′(x_i), so the network only has to learn how
+the set should *modify* the embedding, and it can never do worse than the myopic version because it can
+drive the LSTM contributions to zero. (I should keep honest that on easy, well-separated benchmarks
+this context may buy little — the value should show up where support examples genuinely collide.)
+
+Now the query side, f(x̂, S). I want the query's embedding to attend to the support set and be refined
+over a few steps. The right machinery is an attention LSTM that takes no changing external input and
+runs a fixed number of steps, each step reading the support by content attention and folding the
+read-out back into its state — a "Process block" for reading a set, where the number of steps sets the
+depth. Specialize it: the memory is the contextualized support, the thing refined is the query, and I
+re-inject the raw query feature f′(x̂) at every step so the LSTM never loses what it is supposed to be
+embedding. Each step computes attention a(h_{k−1}, g(x_i)) = softmax_i(h_{k−1}ᵀ g(x_i)), reads
+r_{k−1} = Σ_i a g(x_i), feeds [f′(x̂); r_{k−1}] to the LSTM cell, and adds the skip h_k = ĥ_k + f′(x̂);
+after K steps f(x̂, S) = h_K. So each step the query "looks at" the support set, decides which elements
+are relevant *given where it currently is*, reads them, and updates — iterated K times so the attention
+can sharpen and the model can learn to ignore some support elements. A natural choice when I implement
+it is K equal to the number of support examples, so the read budget scales with the set being read. The
+attention *inside* this refinement is the unnormalized dot product, not cosine, because here I am
+shaping an internal representation, not casting the final vote; the final vote stays the cosine-softmax
+over f(x̂, S) and g(x_i, S), where the magnitude-invariance argument earns its keep.
+
+Two implementation choices I should pin down rather than wave through, because they bite. First, the
+cosine vote: strictly, cosine normalizes *both* sides, but if I L2-normalize the query too, every dot
+product gets squeezed into a narrow band, the softmax over support comes out nearly uniform, and the
+vote loses its bite. So I normalize the *support* side only and leave the query unnormalized — keeping
+the query vectors "sharp" so similarities spread out and the softmax can actually concentrate. It is a
+deliberate trade of strict query-side scale invariance for a softmax that discriminates. The output is
+then a vote ŷ = Σ a(x̂, x_i) y_i, already a probability distribution per query (the weights are convex,
+the one-hots partition them by class), so to score it with the usual loss I take its log and apply
+*negative log-likelihood* — not cross-entropy, which would softmax an already-normalized distribution a
+second time. One numerical care: a query that puts zero total mass on a class would give log(0) = −∞,
+so I floor with a tiny additive ε before the log. Second, the learning rate. The scaffold defaults to
+plain SGD at 1e-2, which is fine for a fixed-metric mean classifier but this method has a bidirectional
+LSTM *and* a multi-step attention loop in the forward path; under that large a step those recurrences
+blow up and the output softmax collapses toward uniform. The contract exposes `LR_OVERRIDE`, so I set
+it to 1e-3 (Adam-style small step) — the gradient-norm clipping at 5.0 is already in the fixed loop and
+helps the LSTMs. is_transductive stays False: each query is classified on its own against the support,
+never letting queries see each other. The full scaffold module is in the answer.
+
+So the delta from the scaffold default is concrete: where the default takes per-class *means* and
+scores by L2 distance, I keep every support point, contextualize support and query with LSTMs, and vote
+by cosine-softmax over the support labels with an NLL loss. Now let me reason about what this floor
+should do, because that is the entire point of running it first. This is the most *intricate* of the
+metric methods — a per-point vote with two LSTMs — but intricacy is not strength here. The vote keeps
+one weight per support example and never forms a single concise entity per class, so at 5-shot each
+class is a scatter of five embeddings the softmax has to integrate, and the FCE recurrences add
+parameters that twenty-five images per episode can barely constrain. I expect the benchmarks to split
+on one axis: how cleanly the *frozen cosine vote* over individual points separates the classes. Where
+classes are visually distinct (generic objects, CIFAR-like and miniImageNet-like categories), the
+cosine vote over points should do reasonably and the LSTMs should help a little. Where the test
+distribution diverges from the broad training sampling — fine-grained classes that are mutually
+similar, like one bird species against another — the per-point cosine vote should struggle most,
+because cosine over individual scattered support points is exactly the comparison that has the least
+margin when all classes look alike, and the LSTM context cannot manufacture a margin that the
+embedding-plus-fixed-metric does not already have. So I predict the weakest benchmark for this method
+is the fine-grained one, and that the next rung's job is to find a *cleaner per-class summary and a
+metric consistent with it*, which is precisely where collapsing each class to a single prototype —
+instead of voting over points — points.
+</think>
+<say>
+[[FILL_SAY: 1-2 sentences naming the method and what this first edit does]]
+</say>
+<edit path="easy-few-shot-learning/custom_fewshot.py">
+<old>
+# =====================================================================
+class CustomFewShotMethod(FewShotClassifier):
+    """Custom few-shot classification method.
+
+    This class defines how to classify query images given a support set.
+    You MUST implement:
+        - __init__: create the backbone and any learnable modules
+        - process_support_set(support_images, support_labels): extract and store
+          information from the support set for later query classification
+        - forward(query_images) -> Tensor of shape (n_query, n_way): predict
+          classification scores for query images
+
+    Available utilities (from easyfsl):
+        - self.compute_features(images): pass images through self.backbone
+        - self.l2_distance_to_prototypes(features): compute negative L2 distance to self.prototypes
+        - self.cosine_distance_to_prototypes(features): compute cosine similarity to self.prototypes
+        - self.softmax_if_specified(scores): apply softmax if self.use_softmax is set
+        - compute_prototypes(features, labels): compute class prototypes (mean features)
+
+    The backbone should be set as self.backbone (an nn.Module).
+    Feature dimension of the ResNet12 backbone is 640.
+
+    The training loop calls model.compute_loss(scores, labels) for flexibility.
+    Override compute_loss if your method needs a different loss (e.g., MSE for RelationNet).
+    """
+</old>
+<new>
+class CustomFewShotMethod(FewShotClassifier):
+    """Matching Networks (Vinyals et al., 2016).
+
+    Contextualizes support and query features using LSTMs, then classifies
+    queries via cosine-similarity-weighted voting over support labels.
+    Uses NLLLoss since output is log-probabilities.
+    """
+
+    # Vinyals et al. 2016 trains MatchingNet with Adam@1e-3 and gradient
+    # clipping at 5; SGD@1e-2 (the global default for ProtoNet/RelationNet)
+    # destabilizes the bidirectional LSTM and the 25-step query encoder loop,
+    # collapsing softmax to uniform output. The framework's training loop
+    # honours LR_OVERRIDE to keep this baseline trainable.
+    LR_OVERRIDE = 1e-3
+</new>
+</edit>
+<obs>
+Successfully replaced text in easy-few-shot-learning/custom_fewshot.py.
+</obs>
+<note>
+[[FILL_NOTE?: optional one-line thought for this edit, or delete this block]]
+</note>
+<edit path="easy-few-shot-learning/custom_fewshot.py">
+<old>
+        super().__init__(backbone=backbone, use_softmax=False)
+
+    def process_support_set(self, support_images: Tensor, support_labels: Tensor):
+        """Extract and store support set information."""
+        self.compute_prototypes_and_store_support_set(support_images, support_labels)
+
+    def forward(self, query_images: Tensor) -> Tensor:
+        """Predict classification scores for query images.
+
+        Args:
+            query_images: images of shape (n_query, 3, 84, 84)
+
+        Returns:
+            scores of shape (n_query, n_way) — higher means more likely
+        """
+        query_features = self.compute_features(query_images)
+        scores = self.l2_distance_to_prototypes(query_features)
+        return self.softmax_if_specified(scores)
+</old>
+<new>
+        super().__init__(backbone=backbone, use_softmax=False)
+        self.feature_dimension = FEATURE_DIMENSION
+
+        # Bidirectional LSTM to contextualize support features
+        self.support_features_encoder = nn.LSTM(
+            input_size=self.feature_dimension,
+            hidden_size=self.feature_dimension,
+            num_layers=1,
+            batch_first=True,
+            bidirectional=True,
+        )
+        # LSTM cell for attention-based query encoding
+        self.query_features_encoding_cell = nn.LSTMCell(
+            self.feature_dimension * 2, self.feature_dimension
+        )
+        self.softmax = nn.Softmax(dim=1)
+
+        self.contextualized_support_features = torch.tensor(())
+        self.one_hot_support_labels = torch.tensor(())
+
+    def process_support_set(self, support_images: Tensor, support_labels: Tensor):
+        support_features = self.compute_features(support_images)
+        self.contextualized_support_features = self._encode_support(support_features)
+        self.one_hot_support_labels = F.one_hot(support_labels).float()
+
+    def forward(self, query_images: Tensor) -> Tensor:
+        query_features = self.compute_features(query_images)
+        contextualized_query_features = self._encode_query(query_features)
+
+        similarity_matrix = self.softmax(
+            contextualized_query_features.mm(
+                F.normalize(self.contextualized_support_features, dim=1).T
+            )
+        )
+        log_probabilities = (
+            similarity_matrix.mm(self.one_hot_support_labels) + 1e-6
+        ).log()
+        return self.softmax_if_specified(log_probabilities)
+
+    def _encode_support(self, support_features: Tensor) -> Tensor:
+        hidden_state = self.support_features_encoder(
+            support_features.unsqueeze(0)
+        )[0].squeeze(0)
+        contextualized = (
+            support_features
+            + hidden_state[:, : self.feature_dimension]
+            + hidden_state[:, self.feature_dimension :]
+        )
+        return contextualized
+
+    def _encode_query(self, query_features: Tensor) -> Tensor:
+        hidden_state = query_features
+        cell_state = torch.zeros_like(query_features)
+
+        for _ in range(len(self.contextualized_support_features)):
+            attention = self.softmax(
+                hidden_state.mm(self.contextualized_support_features.T)
+            )
+            read_out = attention.mm(self.contextualized_support_features)
+            lstm_input = torch.cat((query_features, read_out), 1)
+            hidden_state, cell_state = self.query_features_encoding_cell(
+                lstm_input, (hidden_state, cell_state)
+            )
+            hidden_state = hidden_state + query_features
+
+        return hidden_state
+</new>
+</edit>
+<obs>
+Successfully replaced text in easy-few-shot-learning/custom_fewshot.py.
+</obs>
+<note>
+[[FILL_NOTE?: optional one-line thought for this edit, or delete this block]]
+</note>
+<edit path="easy-few-shot-learning/custom_fewshot.py">
+<old>
+    def compute_loss(self, scores: Tensor, labels: Tensor) -> Tensor:
+        """Compute the training loss. Override for custom loss functions.
+
+        Args:
+            scores: classification scores of shape (n_query, n_way)
+            labels: ground truth labels of shape (n_query,), integers in [0, n_way)
+
+        Returns:
+            scalar loss tensor
+        """
+        return F.cross_entropy(scores, labels)
+</old>
+<new>
+    def compute_loss(self, scores: Tensor, labels: Tensor) -> Tensor:
+        return F.nll_loss(scores, labels)
+</new>
+</edit>
+<obs>
+Successfully replaced text in easy-few-shot-learning/custom_fewshot.py.
+</obs>
+<run/>
+<obs>
+Measured results — `baseline:matchingnet` (`is_final,true`), seeds {42, 123, 456} and mean. Metric is
+mean classification accuracy over 600 test episodes, 5-way 5-shot (higher is better).
+
+## miniImageNet
+| seed | accuracy |
+|---|---|
+| 42 | 0.6828 |
+| 123 | 0.6674 |
+| 456 | 0.6705 |
+| **mean** | **0.6736** (std 0.0067) |
+
+## CIFAR-FS
+| seed | accuracy |
+|---|---|
+| 42 | 0.7670 |
+| 123 | 0.7682 |
+| 456 | 0.7720 |
+| **mean** | **0.7691** (std 0.0021) |
+
+## CUB-200
+| seed | accuracy |
+|---|---|
+| 42 | 0.6217 |
+| 123 | 0.6308 |
+| 456 | 0.6229 |
+| **mean** | **0.6251** (std 0.0040) |
+</obs>
+
+### step 2 — Prototypical Networks (mean prototypes)   [slug:protonet]
+
+<think>
+[[POLISH_REASONING: adapt to first-person agentic voice, end by deciding to implement]]
+The matching-vote run told me where the per-point classifier breaks, and it told me in numbers. On the
+two generic benchmarks it was respectable — CIFAR-FS 0.769, miniImageNet 0.674 — but on the
+fine-grained one it cratered to 0.625 on CUB, the lowest of the three by a wide margin and exactly the
+benchmark I flagged as the danger. Read the split the way I predicted it: where classes are visually
+distinct, a cosine-softmax vote over individual support embeddings has enough margin to work, and the
+two LSTMs help a little; where every class looks like every other class — one bird species against
+another — voting over scattered individual support points is the comparison with the *least* margin,
+because the query is being asked to align with twenty-five separate embeddings, five per class, that
+all sit close together, and the softmax over points has nothing crisp to concentrate on. The CUB number
+is the symptom of a deeper inefficiency: the matching classifier never forms a single concise *entity*
+per class. A class is just whichever scattered support points happen to wear its label, and the
+prediction is a sum over all of them, so the state the classifier carries grows with the support set
+and there is no notion of "the class" to compare against. And the FCE machinery I added — a
+bidirectional LSTM over support, a multi-step attention LSTM over the query — is a pile of parameters
+that twenty-five images per episode can barely constrain, parameters that on the hard benchmark are
+more likely to be noise than help. So the diagnosis is sharp: I have *more* representational machinery
+than this problem deserves, pointed at the wrong abstraction. The fix is not a better metric on the
+same scatter of points; it is to collapse each class to its minimal summary and compare against *that*.
+
+So let me ask the question the matching vote refused to ask: what is the *minimal* summary of a class I
+could compare a query against, independent of whether it has one example or fifty? If I had to describe
+a class with a single object, the most natural single object for a cloud of vectors is its center. Take
+the mean of the embedded support points for the class, one vector per class no matter the shot, nothing
+to fit. Call it the prototype, c_k = (1/|S_k|) Σ_{(x_i,y_i)∈S_k} f_φ(x_i). Then classify a query by
+which prototype it is closest to. This immediately fixes the two things the CUB number exposed: the
+per-class state is one vector regardless of shot, and a "class" is now a concrete entity rather than a
+bag of points the softmax has to integrate. The nearest-class-mean idea is not new — there is prior
+work that represents each class by the mean of its examples and classifies by nearest mean, precisely
+so a new class can be dropped in at near-zero cost by averaging its examples. But that work used a
+*linear* embedding (a learned Mahalanobis metric on fixed features) for the many-examples regime, and
+when it wanted non-linearity it bolted on a separate k-means partitioning step in input space,
+decoupled from the metric learning. I want the embedding itself to be the deep ResNet-12 the scaffold
+gives me, learned end-to-end by the episodic objective, with the mean computed *in the learned space*.
+So: a deep f_φ, prototypes = means of embedded support, classify by distance — trained episodically so
+f_φ learns to make the means separable. Everything that hurt on CUB — the scatter, the FCE parameters,
+the absent class entity — goes away in one move.
+
+Now I have to turn "nearest prototype" into something differentiable. A hard argmin over distances has
+no gradient. The standard cure is a softmax: p_φ(y = k | x) = exp(−d(f_φ(x), c_k)) /
+Σ_{k'} exp(−d(f_φ(x), c_{k'})), and minimize the negative log-probability of the true class,
+J(φ) = −log p_φ(y = k | x), averaged over an episode's queries. The closer the query embedding to the
+right prototype relative to the others, the smaller the loss; gradients flow through the distances,
+through the prototypes, into f_φ. This is clean — it is just cross-entropy on logits that happen to be
+negative distances, which means I do *not* repeat the matching method's NLL subtlety: there the output
+was an already-normalized vote and the loss had to be NLL, but here the logits are raw negative
+distances, so cross-entropy (log-softmax then NLL) is exactly right and is what the scaffold default
+uses. One care: the numerator's exponent uses c_k for the true class while the denominator sums over
+all k′ including k — do not fuse those indices.
+
+But which distance? Cosine is the lazy choice — it is what the matching vote used, and that vote just
+posted 0.625 on CUB. Let me not pick by habit; let me pick by consistency, because I now have two
+coupled design objects, the distance and the prototype, and I have committed the prototype to be the
+*mean*. The right question is: for which distances is "the mean" actually the right representative of a
+class — the point that best stands in for all its support points? That is precise and it has a precise
+answer. Treat each class as a tiny clustering problem: given its support embeddings, the "best
+representative" should be the point minimizing total distance to them. So I ask for which d we have
+argmin_c Σ_{x∈S_k} d(f(x), c) = mean of the f(x). There is a known characterization. For the whole
+family of *Bregman divergences* — d_φ(z, z′) = φ(z) − φ(z′) − (z − z′)ᵀ∇φ(z′) for strictly convex φ —
+the minimizer of summed divergence to a set is *exactly* its arithmetic mean. Let me convince myself
+rather than cite it. Differentiate g(c) = Σ_x d_φ(x, c): the φ(x) term is constant in c, and working
+through the derivative of the inner product term gives ∇_c d_φ(x, c) = −∇²φ(c)(x − c). Sum over x, set
+to zero: ∇²φ(c) Σ_x (x − c) = 0; since φ is strictly convex its Hessian is positive definite hence
+invertible, so the only solution is Σ_x (x − c) = 0, i.e. c is the mean. So for *any* Bregman
+divergence the mean is the optimal representative — precisely the prototype I already chose; the two
+choices are made for each other. And there is a converse worth holding: among smooth distortions, this
+mean-as-minimizer property characterizes exactly the Bregman divergences. That tells me my distance had
+better *be* a Bregman divergence, or I am averaging points that the distance does not think the average
+represents.
+
+Is cosine a Bregman divergence? No. Cosine distance, 1 − ⟨z,z′⟩/(‖z‖‖z′‖), cares only about angle,
+throws away magnitude, and its best representative of a cluster is not the arithmetic mean. So if I
+average embeddings into a prototype and then score by cosine, I commit an inconsistency: I summarized
+the class with the mean, but cosine does not agree the mean is the right summary. Squared Euclidean
+distance, on the other hand, *is* a Bregman divergence — take φ(z) = ‖z‖², and the construction
+collapses to ‖z − z′‖² exactly, so the mean is its optimal representative. This predicts something
+concrete and testable against the matching run: for a *mean-prototype* classifier, squared Euclidean
+should beat cosine, and the gap should be larger here than it was for the point-wise vote, because it is
+the *averaging step* that cosine is inconsistent with — and the matching vote never averaged. The CUB
+failure is partly this: matching voted over points with cosine, which at least keeps cosine consistent
+with its (non-averaging) classifier, but it paid for the scatter; here I average and so I must switch to
+the Euclidean partner of the mean to keep the summary honest. So I will use squared Euclidean — and the
+scaffold's `l2_distance_to_prototypes` gives me the negative *non-squared* L2 distance, which is a
+monotone re-parameterization of the same nearest-prototype rule and trains fine; the clean Bregman
+story is stated for the squared form, but the scaffold helper lands the same classifier.
+
+There is a deeper reading of "squared Euclidean is a Bregman divergence" that surfaces the modeling
+assumption I am silently making. There is a bijection between regular exponential-family densities and
+regular Bregman divergences. Model each class in embedding space as one component of an
+equally-weighted mixture; the posterior over which component generated z is exactly the
+softmax-over-negative-divergence-to-prototypes I wrote down. So my classifier *is* inference in an
+exponential-family mixture with one component per class, and the choice of d picks the
+class-conditional density. Squared Euclidean corresponds to a spherical, isotropic, unit-variance
+Gaussian per class: every class a round blob of the same size around its mean. That is a strong, simple
+assumption, and in this data-starved regime "strong and simple" is exactly the bias I want — it is the
+opposite of the matching method's parameter-heavy FCE that CUB could not constrain. It also flags the
+natural relaxation (a different Bregman divergence for a diagonal-Gaussian, i.e. per-dimension
+variances) so I know where to push if spherical proves too rigid; but I will argue below it is
+redundant with the embedding's own freedom.
+
+Before I lock in squared Euclidean I should check it is not secretly a weak classifier, since it is
+*quadratic* in the embedding. Expand −‖f_φ(x) − c_k‖² = −f_φ(x)ᵀf_φ(x) + 2 c_kᵀ f_φ(x) − c_kᵀ c_k. The
+first term is the same for every class k, so it cancels top and bottom in the softmax. What survives,
+2 c_kᵀ f_φ(x) − c_kᵀ c_k, is *linear* in f_φ(x) — a plain linear classifier with weights w_k = 2c_k and
+bias b_k = −c_kᵀc_k, *induced* by the prototypes, no extra parameters. At first "only linear?" worried
+me, but it is the right amount of expressiveness for this regime. The linear head has nothing to
+overfit — its weights are determined by five-image means, not free parameters — and all the
+non-linearity lives in f_φ, the deep ResNet-12, trained across 500 episodes per epoch where it *can* be
+constrained. That is the same division of labor every modern classifier uses, and it is the cure for
+exactly what hurt the matching run: there, the FCE LSTMs put fitted capacity into the *per-episode*
+head where twenty-five images could not pay for it; here the per-task head is parameter-free and the
+capacity sits in the shared embedding. I am putting the parameters where the data can constrain them.
+
+A sanity check that I have not strayed from the method I am reacting to. In the one-shot case the
+prototype c_k is just the single support embedding — averaging one point returns it — so the classifier
+becomes a soft nearest-neighbour over support points, which is exactly what the matching vote reduces
+to in one-shot with the same distance. The two methods are literally identical at K = 1; the divergence
+opens only at K > 1, where I summarize and the matching vote does not. So this is the natural multi-shot
+*generalization* of what I just ran, not a disconnected new thing — and at 5-shot, which is what every
+benchmark here uses, the summary is the whole point, which is why I expect the gain to show up most
+where the matching scatter hurt most. Should I allow more than one prototype per class to capture
+multimodal classes? Tempting, but it would need a *partitioning* of each class's support — k-means or
+the like — a separate step decoupled from the gradient updates of f_φ, breaking the single end-to-end
+loop I value. One prototype per class keeps everything differentiable, and the deep embedding can warp
+space so a class becomes unimodal around its mean. The same logic kills FCE outright: a per-episode
+contextual re-embedding adds LSTM parameters and an arbitrary set ordering, and the CUB number is the
+evidence that in this regime that over-parameterization does not pay. The simple inductive bias is the
+feature, not a compromise.
+
+Two episode-composition choices remain. First, training "way": should it match the test 5-way? The
+naive answer is yes, but think about what the embedding has to learn. If I train on 5-way episodes, f_φ
+only ever has to keep 5 prototypes mutually separable; train on higher way and it must keep many more
+separable at once — a strictly harder constraint that forces finer-grained distinctions into f_φ, and
+an embedding that separates many classes will comfortably separate 5 at test time. So I would tune
+training way *upward* on validation rather than pin it to 5. The scaffold fixes 5-way episodes, so I do
+not get that knob here — worth naming as a lever the harness removes, since it is one of the documented
+ways to push prototype methods further and I cannot pull it. Second, the shot: here matching matters,
+because a prototype's noise level changes with the number of support points averaged, so I want the
+network to see prototypes at test-time noise during training — and the scaffold's 5-shot train/5-shot
+test already gives me that match for free.
+
+So the edit is the literal scaffold default, and that is the point: the matching run forced me back to
+the simplest fill — mean prototypes, score by (negative) distance, cross-entropy — by showing that the
+intricate per-point vote with FCE underperforms exactly where intricacy cannot buy margin. The full
+scaffold module is in the answer. Now the falsifiable expectations against the matching numbers. The
+move that should pay off most is on **CUB**: collapsing each fine-grained class to one prototype and
+scoring by the Euclidean partner of the mean removes the scatter that posted 0.625, so I expect CUB to
+jump the most — the fine-grained benchmark is where a clean per-class entity helps most. On the generic
+benchmarks I am less sure of the direction: the matching vote already had margin there (CIFAR 0.769,
+mini 0.674), and a quirk of this harness could cut against me — the scaffold trains everyone from
+scratch under plain SGD@1e-2 with no pre-trained backbone, and the matching method ran at its own
+LR_OVERRIDE of 1e-3 while prototypes will run at the default 1e-2, so any change on mini/CIFAR is
+confounded by the optimizer, not purely the classifier. My concrete prediction: CUB up substantially
+(past 0.70), CIFAR roughly flat or down a little (the mean summary is a strong but rigid prior and
+CIFAR's classes may be where the matching vote's flexibility helped), and mini in the same
+neighbourhood. If CIFAR *drops* while CUB *rises*, that is the spherical-Gaussian prior doing exactly
+what it should — trading flexibility on already-separable classes for a clean, low-variance summary
+that wins where classes collide. And if even the prototype's rigid summary leaves the *generic*
+benchmarks where the per-point vote left them, the diagnosis for the next rung is already written: the
+bottleneck is not the *summary* but the *fixed metric* comparing query to summary, and the move is to
+stop hand-choosing the comparison and learn it.
+</think>
+<say>
+[[FILL_SAY: 1-2 sentences naming the method and what this first edit does]]
+</say>
+<edit path="easy-few-shot-learning/custom_fewshot.py">
+<old>
+class CustomFewShotMethod(FewShotClassifier):
+    """Matching Networks (Vinyals et al., 2016).
+
+    Contextualizes support and query features using LSTMs, then classifies
+    queries via cosine-similarity-weighted voting over support labels.
+    Uses NLLLoss since output is log-probabilities.
+    """
+
+    # Vinyals et al. 2016 trains MatchingNet with Adam@1e-3 and gradient
+    # clipping at 5; SGD@1e-2 (the global default for ProtoNet/RelationNet)
+    # destabilizes the bidirectional LSTM and the 25-step query encoder loop,
+    # collapsing softmax to uniform output. The framework's training loop
+    # honours LR_OVERRIDE to keep this baseline trainable.
+    LR_OVERRIDE = 1e-3
+</old>
+<new>
+class CustomFewShotMethod(FewShotClassifier):
+    """Prototypical Networks (Snell et al., 2017).
+
+    Compute class prototypes as the mean feature vector of support examples,
+    then classify queries by negative Euclidean distance to prototypes.
+    """
+</new>
+</edit>
+<obs>
+Successfully replaced text in easy-few-shot-learning/custom_fewshot.py.
+</obs>
+<note>
+[[FILL_NOTE?: optional one-line thought for this edit, or delete this block]]
+</note>
+<edit path="easy-few-shot-learning/custom_fewshot.py">
+<old>
+        super().__init__(backbone=backbone, use_softmax=False)
+        self.feature_dimension = FEATURE_DIMENSION
+
+        # Bidirectional LSTM to contextualize support features
+        self.support_features_encoder = nn.LSTM(
+            input_size=self.feature_dimension,
+            hidden_size=self.feature_dimension,
+            num_layers=1,
+            batch_first=True,
+            bidirectional=True,
+        )
+        # LSTM cell for attention-based query encoding
+        self.query_features_encoding_cell = nn.LSTMCell(
+            self.feature_dimension * 2, self.feature_dimension
+        )
+        self.softmax = nn.Softmax(dim=1)
+
+        self.contextualized_support_features = torch.tensor(())
+        self.one_hot_support_labels = torch.tensor(())
+
+    def process_support_set(self, support_images: Tensor, support_labels: Tensor):
+        support_features = self.compute_features(support_images)
+        self.contextualized_support_features = self._encode_support(support_features)
+        self.one_hot_support_labels = F.one_hot(support_labels).float()
+
+    def forward(self, query_images: Tensor) -> Tensor:
+        query_features = self.compute_features(query_images)
+        contextualized_query_features = self._encode_query(query_features)
+
+        similarity_matrix = self.softmax(
+            contextualized_query_features.mm(
+                F.normalize(self.contextualized_support_features, dim=1).T
+            )
+        )
+        log_probabilities = (
+            similarity_matrix.mm(self.one_hot_support_labels) + 1e-6
+        ).log()
+        return self.softmax_if_specified(log_probabilities)
+
+    def _encode_support(self, support_features: Tensor) -> Tensor:
+        hidden_state = self.support_features_encoder(
+            support_features.unsqueeze(0)
+        )[0].squeeze(0)
+        contextualized = (
+            support_features
+            + hidden_state[:, : self.feature_dimension]
+            + hidden_state[:, self.feature_dimension :]
+        )
+        return contextualized
+
+    def _encode_query(self, query_features: Tensor) -> Tensor:
+        hidden_state = query_features
+        cell_state = torch.zeros_like(query_features)
+
+        for _ in range(len(self.contextualized_support_features)):
+            attention = self.softmax(
+                hidden_state.mm(self.contextualized_support_features.T)
+            )
+            read_out = attention.mm(self.contextualized_support_features)
+            lstm_input = torch.cat((query_features, read_out), 1)
+            hidden_state, cell_state = self.query_features_encoding_cell(
+                lstm_input, (hidden_state, cell_state)
+            )
+            hidden_state = hidden_state + query_features
+
+        return hidden_state
+</old>
+<new>
+        super().__init__(backbone=backbone, use_softmax=False)
+
+    def process_support_set(self, support_images: Tensor, support_labels: Tensor):
+        self.compute_prototypes_and_store_support_set(support_images, support_labels)
+
+    def forward(self, query_images: Tensor) -> Tensor:
+        query_features = self.compute_features(query_images)
+        scores = self.l2_distance_to_prototypes(query_features)
+        return self.softmax_if_specified(scores)
+</new>
+</edit>
+<obs>
+Successfully replaced text in easy-few-shot-learning/custom_fewshot.py.
+</obs>
+<note>
+[[FILL_NOTE?: optional one-line thought for this edit, or delete this block]]
+</note>
+<edit path="easy-few-shot-learning/custom_fewshot.py">
+<old>
+    def compute_loss(self, scores: Tensor, labels: Tensor) -> Tensor:
+        return F.nll_loss(scores, labels)
+</old>
+<new>
+    def compute_loss(self, scores: Tensor, labels: Tensor) -> Tensor:
+        return F.cross_entropy(scores, labels)
+</new>
+</edit>
+<obs>
+Successfully replaced text in easy-few-shot-learning/custom_fewshot.py.
+</obs>
+<run/>
+<obs>
+Measured results — `baseline:protonet` (`is_final,true`), seeds {42, 123, 456} and mean. Metric is mean
+classification accuracy over 600 test episodes, 5-way 5-shot (higher is better).
+
+## miniImageNet
+| seed | accuracy |
+|---|---|
+| 42 | 0.6481 |
+| 123 | 0.6458 |
+| 456 | 0.6522 |
+| **mean** | **0.6487** (std 0.0026) |
+
+## CIFAR-FS
+| seed | accuracy |
+|---|---|
+| 42 | 0.6749 |
+| 123 | 0.6851 |
+| 456 | 0.6867 |
+| **mean** | **0.6822** (std 0.0052) |
+
+## CUB-200
+| seed | accuracy |
+|---|---|
+| 42 | 0.7531 |
+| 123 | 0.7536 |
+| 456 | 0.7622 |
+| **mean** | **0.7563** (std 0.0042) |
+</obs>
+
+### step 3 — Relation Networks (learned comparator)   [slug:relationnet]
+
+<think>
+[[POLISH_REASONING: adapt to first-person agentic voice, end by deciding to implement]]
+The prototype run confirmed the prediction *and* exposed the next wall in the same numbers. CUB jumped
+exactly as I said it would — from the matching vote's 0.625 to 0.756, the single largest move of either
+method, because collapsing each fine-grained class to one clean prototype and scoring by the Euclidean
+partner of the mean removed precisely the per-point scatter that had no margin when all the birds look
+alike. That is the spherical-Gaussian prior earning its keep where classes collide. But look at the
+generic benchmarks: CIFAR-FS *fell* from 0.769 to 0.682, and miniImageNet *fell* from 0.674 to 0.649.
+Some of that is the optimizer confound I flagged — the matching method ran at LR_OVERRIDE 1e-3 while the
+prototypes ran at the scaffold default 1e-2 — but the shape of the result is too clean to be only that.
+The prototype's rigid summary traded flexibility on already-separable classes for a low-variance class
+entity; on CUB the trade won big, on CIFAR and mini it lost. And that is the tell I said to watch for:
+where the *summary* is no longer the problem, the bottleneck has moved to the *fixed metric* comparing
+query to summary. Stare at what the prototype classifier actually is and the ceiling is written into
+it. Expanding the squared distance, the query-only term cancels and what is left is *linear* in the
+embedding — the prototype method is exactly a linear classifier in feature space, weights read off the
+means. So it can only succeed to the extent the embedding *by itself* lays out brand-new classes as
+round, linearly-separable blobs around their means. On fine-grained CUB the embedding can apparently do
+that; on the broader CIFAR/mini layouts it cannot, and a straight line through the prototypes leaves
+accuracy on the table. The violent benchmark-to-benchmark swing — CUB up 13 points, CIFAR down 9 — *is*
+the symptom that no single fixed, closed-form comparison is right for all of these layouts. The metric
+is the bottleneck, and its sensitivity to the data is the proof.
+
+So the thing I kept fixed through both previous rungs — the comparison function — is what I have to
+attack. In the matching vote it was cosine; in the prototype method it was squared Euclidean,
+equivalently a linear classifier. In *both*, every bit of learning lived in the embedding, and the
+actual comparison was a hand-chosen, closed-form function: the network learns where to put the points,
+a frozen formula decides who is near whom. Let me make myself feel exactly where an element-wise fixed
+metric fails, not just assert it. Picture the simplest hard case: a 2-D embedding, fix a query point,
+and ask for every possible support point in the plane, "same class as the query or not?" If
+matched/mismatched is decided by Euclidean nearness, the matched region is a disk around the query —
+one convex blob. But suppose the true matched region is an annulus, or two separated patches, or a
+curved band — anything non-convex. No Euclidean nearest-neighbour can carve that out; nearest-neighbour
+only produces convex, distance-monotone regions. Can I rescue it by learning a *better metric* while
+keeping it a metric — a Mahalanobis distance? That just stretches and rotates the space; the matched
+region is still an ellipsoidal blob, still convex. Push the embeddings through more non-linear layers
+*and then* do Mahalanobis? Now I can warp the space more, but the *final* decision is still "ellipsoidal
+blob in the warped space," and if "same class" is genuinely a complicated joint function of the query
+and the class summary, the blob-shaped comparison at the end is still the choke point. Every fix I just
+tried poured more capacity into the embedding or the space-warp while insisting the *last step* — the
+comparison — stay a fixed parametric distance. That is the wall, and the prototype method's CIFAR drop
+is me hitting it. The comparison itself has no learnable non-linearity in it.
+
+So stop fixing the comparison and learn it too. Do not compute d(f(x̂), c_k) with a chosen formula; feed
+the two representations into a *network* and let it output the score. The metric becomes a learned,
+non-linear function of the query and the class summary, trained jointly with the embedding end-to-end.
+Now I am no longer betting everything on the embedding making classes linearly separable — the
+comparator can itself bend, and the embedding and comparator can split the work however the data wants.
+That is precisely the freedom CIFAR and mini were asking for and the prototype's linear head could not
+give them. But "feed two things into a network and get a relation out" — I have seen exactly that
+machinery in a different problem, a relation module for reasoning about objects within a single image,
+RN(O) = f_φ(Σ_{i,j} g_θ(o_i, o_j)): one small shared network g_θ applied to every concatenated pair of
+objects, the pairwise outputs summed, then mapped to an answer. Different task, but the *mechanism* is
+exactly what I need — a learned function that takes two representations, concatenated, and returns how
+they relate — and two of its properties transfer perfectly. One, a *single shared* comparator across
+all pairs is data-efficient and generalizes to unseen pairings: I have very little data and I need the
+comparator to generalize to support sets of unseen classes, so one shared comparison network applied to
+every (class, query) pair is exactly the inductive bias I want, not a separate comparator per class.
+Two, *summing* over a set is order-invariant — which I will need to fold each class's K support
+examples into one class representation. The relational module hands me both the comparator and the
+pooling. Borrow it.
+
+Concretely, in the one-shot case: I keep the scaffold's shared ResNet-12 as the embedding f_φ — there
+is no parameter budget to add a second backbone, and from-scratch episodic training on this loop is the
+only training I get — and for each class I concatenate its representation with the query's, then push
+the pair through a learned relation module g_φ that outputs a single scalar relation score, giving N
+scores per query, one per class. The combine operator is concatenation. That is the simplest thing, it
+is what the relational module did, and it keeps *all* of both representations and lets g_φ learn
+whatever cross-terms it wants; a fixed combine like a difference f(x_i) − f(x̂) would already be
+throwing information away and baking in a comparison form — exactly the mistake I am trying to undo
+after watching the linear prototype head lose CIFAR. Concatenation commits to nothing.
+
+Now the choice that the harness actually forces, and it is where I have to depart from the textbook
+relation network. The textbook version uses a small four-conv embedding and concatenates feature *maps*
+in depth so the relation module can be *convolutional* and compare local spatial structure before
+pooling to a score — and that matters, because "are these the same kind of thing" is often about
+whether local parts correspond, which a vector-MLP comparator cannot see. But I do not get to choose a
+four-conv embedding: the scaffold's backbone is a fixed ResNet-12, and the only knob I have is whether I
+ask it for pooled 640-dim *vectors* (`use_pooling=True`) or 640-channel feature *maps*
+(`use_pooling=False`). To make the comparator convolutional I take the maps. So `make_backbone(
+use_pooling=False)` for both support and query, giving 640-channel feature maps, and I concatenate a
+(class-map, query-map) pair along the channel axis into 2·640 = 1280 channels — the relation module's
+first conv accepts that doubled depth. This is the literal edit: I do not build the paper's 64-channel
+ConvNet embedding (the canonical reference's `EmbeddingModule`), I reuse the shared ResNet-12 as the
+embedding and put *all* my new parameters into the relation module operating on its 640-channel maps.
+That is also what keeps me inside the parameter budget, since the budget is set at ≈1.05× a ResNet-12
+plus exactly such a relation module.
+
+The relation module g_φ itself has to eat the 1280-channel concatenated pair and boil it to one number.
+Mirror the embedding's vocabulary but make it a comparator: a conv block — Conv2d(1280, 640, 3, pad 1),
+BatchNorm, ReLU — then pool the spatial map down, because this branch's job is to aggregate spatial
+evidence toward a decision, so pooling away spatial dimensions is exactly right here (unlike in the
+embedding). The ResNet-12 maps are small, so rather than a fixed 2×2 max-pool that assumes a particular
+map size, I use `AdaptiveMaxPool2d((5,5))` after the first conv block and `AdaptiveMaxPool2d((1,1))`
+after the second — adaptive pooling makes the module robust to whatever spatial size the backbone emits,
+which is the safe choice when I am bolting onto a backbone I did not design. Two conv blocks
+(640→640→640 channels) with those two adaptive pools collapse the pair to a single 640-vector per
+(class, query); flatten it and pass through Linear(640, 8) → ReLU → Linear(8, 1). The hidden FC of
+width 8 is the comparator's final non-linearity over the pooled convolutional evidence — without it the
+head would be linear again and I would have quietly reintroduced the very linear comparator that lost
+CIFAR. The BatchNorms use momentum 1 (no running average), the relation-network convention that fits
+the small per-episode batches.
+
+The output is a single scalar, and I want it to be a *relation score*, "how much do these match,"
+pinned to a bounded interpretable range rather than an unbounded logit — because I am about to compare
+it against targets meaning "match" and "no match," and an unbounded score has no natural zero and one.
+So a Sigmoid: r ∈ (0, 1), 1 reads as same class, 0 as different, a consistent meaning across episodes
+and classes — which matters because the comparator is *shared* and must mean the same thing everywhere.
+
+Now the K-shot case, which is the whole game here since every benchmark is 5-shot — and this is exactly
+where I get to fix what the matching vote did badly and the prototype method did rigidly. I have K
+support maps per class and I want still N scores per query, not N·K I would have to reconcile. So fold
+each class's K embedded maps into one class-level map before the comparison. The relational module
+already told me how to aggregate a set order-invariantly: sum. So element-wise *sum* (equivalently mean,
+up to a constant the BatchNorm and learned weights absorb) the K support feature maps of a class into
+one class feature map, then run the one-shot procedure on it. This is the same "one entity per class"
+move the prototype method made — and notice the relation network keeps that improvement over matching's
+scatter *and* adds the learned comparator the prototype lacked. A class map scaling with K is harmless
+because the very next op is conv-then-BatchNorm, which rescales away a global magnitude factor. So I get
+the prototype's clean per-class summary in feature-map space, and on top of it a non-linear learned
+comparison — the two upgrades the previous two rungs each had only one of.
+
+Last piece, the loss, and it is the one that looks oddest until I see what the model emits. The reflex
+is cross-entropy — it is classification, the targets are class indices, and that is what both previous
+rungs used. But the model does not emit a normalized distribution over classes; it emits N *independent*
+sigmoid relation scores, each produced by the shared comparator looking at one (class, query) pair in
+isolation. The natural ground truth for a single relation score is binary: 1 if the query's class equals
+that class, 0 otherwise. So per pair I am *regressing a score toward a {0,1} target* — drive the matched
+pair to 1, every mismatched pair to 0 — which is mean-squared error against the one-hot target. MSE on a
+sigmoid output matches that framing: a bounded relation magnitude pulled to one of two ends. If I
+insisted on cross-entropy I would have to renormalize the N independent scores into a distribution — a
+softmax or extra head — reintroducing a fixed cross-class comparison and partly undoing the
+"each pair is an independent learned relation" structure I built to escape the fixed metric. So MSE is
+not sloppiness; it is the loss consistent with treating each (query, class) decision as an independent
+learned-relation regression. I override `compute_loss` to MSE against one-hot, where both previous rungs
+left it at cross-entropy (the prototype) or NLL (the matching vote).
+
+For optimization I can stay on the scaffold default: SGD@1e-2 from scratch — no LR_OVERRIDE. Unlike the
+matching method's recurrences, the relation module is a feedforward conv stack and is stable under the
+default rate, and the loop's grad-norm clipping at 5.0 covers the from-scratch training; the embedding
+and comparator tune each other, the embedding shaping maps the comparator can compare and the comparator
+adapting to the embedding.
+
+So the delta from the prototype rung is precise: I keep its one-clean-entity-per-class summary (now in
+feature-map space, by summing maps), but I replace the *fixed linear* comparison — the thing that won
+CUB and lost CIFAR/mini — with a learned non-linear convolutional comparator on the concatenated pair,
+scored by sigmoid and trained by MSE. The full scaffold module is in the answer. Now the falsifiable
+expectations against the prototype numbers. The whole reason to do this is the generic benchmarks where
+the linear metric left accuracy on the table, so I expect **CIFAR-FS to recover and pass** the prototype
+0.682 — the learned comparator can carve the non-convex matched regions the linear head could not — and
+**miniImageNet to rise** past 0.649 for the same reason. The risk and the test is **CUB**: the prototype
+already posted a strong 0.756 there on a layout where a clean entity plus a simple metric was apparently
+near-ideal, so the learned comparator's extra capacity might buy little on CUB and could even be *higher
+variance* across seeds, because a flexible comparator trained from scratch on twenty-five images per
+episode has more ways to land differently per seed than a parameter-free linear head. So my concrete
+prediction: CIFAR up clearly (past 0.78), mini up (past 0.69), CUB roughly holding around 0.756 but with
+visibly larger seed-to-seed spread than the prototype's tight 0.753–0.762. If CIFAR and mini both rise
+while CUB holds, that confirms the diagnosis that the fixed metric — not the summary — was the bottleneck
+on the generic benchmarks, and the learned comparison is the right and final lever among the metric
+methods. If even the learned comparator cannot move the generic benchmarks much, the remaining lever is
+no longer the metric at all but *adapting the embedding itself to each task* — making the per-class
+summaries task-aware rather than comparing fixed embeddings — which is where I would look next.
+</think>
+<say>
+[[FILL_SAY: 1-2 sentences naming the method and what this first edit does]]
+</say>
+<edit path="easy-few-shot-learning/custom_fewshot.py">
+<old>
+class CustomFewShotMethod(FewShotClassifier):
+    """Prototypical Networks (Snell et al., 2017).
+
+    Compute class prototypes as the mean feature vector of support examples,
+    then classify queries by negative Euclidean distance to prototypes.
+    """
+
+    def __init__(self):
+        backbone = make_backbone(use_pooling=True)
+        super().__init__(backbone=backbone, use_softmax=False)
+
+    def process_support_set(self, support_images: Tensor, support_labels: Tensor):
+        self.compute_prototypes_and_store_support_set(support_images, support_labels)
+
+    def forward(self, query_images: Tensor) -> Tensor:
+        query_features = self.compute_features(query_images)
+        scores = self.l2_distance_to_prototypes(query_features)
+        return self.softmax_if_specified(scores)
+</old>
+<new>
+class _RelationModule(nn.Module):
+    """CNN relation module from Sung et al. (2018)."""
+
+    def __init__(self, feature_dimension: int, inner_channels: int = 8):
+        super().__init__()
+        self.module = nn.Sequential(
+            nn.Sequential(
+                nn.Conv2d(feature_dimension * 2, feature_dimension, kernel_size=3, padding=1),
+                nn.BatchNorm2d(feature_dimension, momentum=1, affine=True),
+                nn.ReLU(),
+                nn.AdaptiveMaxPool2d((5, 5)),
+            ),
+            nn.Sequential(
+                nn.Conv2d(feature_dimension, feature_dimension, kernel_size=3, padding=0),
+                nn.BatchNorm2d(feature_dimension, momentum=1, affine=True),
+                nn.ReLU(),
+                nn.AdaptiveMaxPool2d((1, 1)),
+            ),
+            nn.Flatten(),
+            nn.Linear(feature_dimension, inner_channels),
+            nn.ReLU(),
+            nn.Linear(inner_channels, 1),
+            nn.Sigmoid(),
+        )
+
+    def forward(self, x):
+        return self.module(x)
+
+
+class CustomFewShotMethod(FewShotClassifier):
+    """Relation Networks (Sung et al., 2018).
+
+    Extracts feature maps (not pooled vectors) from support and query images.
+    Computes class prototypes as mean feature maps, concatenates each query-prototype
+    pair, and feeds them through a learned relation module to get relation scores.
+    Uses MSE loss since output represents relation scores in [0, 1].
+    """
+
+    def __init__(self):
+        backbone = make_backbone(use_pooling=False)  # Need feature maps, not vectors
+        super().__init__(backbone=backbone, use_softmax=False)
+        self.feature_dimension = FEATURE_DIMENSION
+        self.relation_module = _RelationModule(self.feature_dimension)
+
+    def process_support_set(self, support_images: Tensor, support_labels: Tensor):
+        support_features = self.compute_features(support_images)
+        n_way = len(torch.unique(support_labels))
+        self.prototypes = torch.cat(
+            [
+                support_features[support_labels == label].mean(0, keepdim=True)
+                for label in range(n_way)
+            ]
+        )
+
+    def forward(self, query_images: Tensor) -> Tensor:
+        query_features = self.compute_features(query_images)
+        n_queries = query_features.shape[0]
+        n_prototypes = self.prototypes.shape[0]
+
+        # Build pairs: [n_queries * n_prototypes, 2 * C, H, W]
+        query_prototype_pairs = torch.cat(
+            (
+                self.prototypes.unsqueeze(0).expand(n_queries, -1, -1, -1, -1),
+                query_features.unsqueeze(1).expand(-1, n_prototypes, -1, -1, -1),
+            ),
+            dim=2,
+        ).view(-1, 2 * self.feature_dimension, *query_features.shape[2:])
+
+        relation_scores = self.relation_module(query_prototype_pairs).view(
+            n_queries, n_prototypes
+        )
+        return self.softmax_if_specified(relation_scores)
+</new>
+</edit>
+<obs>
+Successfully replaced text in easy-few-shot-learning/custom_fewshot.py.
+</obs>
+<note>
+[[FILL_NOTE?: optional one-line thought for this edit, or delete this block]]
+</note>
+<edit path="easy-few-shot-learning/custom_fewshot.py">
+<old>
+    def compute_loss(self, scores: Tensor, labels: Tensor) -> Tensor:
+        return F.cross_entropy(scores, labels)
+</old>
+<new>
+    def compute_loss(self, scores: Tensor, labels: Tensor) -> Tensor:
+        # RelationNet uses MSE with one-hot labels
+        one_hot = F.one_hot(labels, num_classes=scores.shape[1]).float()
+        return F.mse_loss(scores, one_hot)
+</new>
+</edit>
+<obs>
+Successfully replaced text in easy-few-shot-learning/custom_fewshot.py.
+</obs>
+<run/>
+<obs>
+Measured results — `baseline:relationnet` (`is_final,true`), seeds {42, 123, 456} and mean. Metric is
+mean classification accuracy over 600 test episodes, 5-way 5-shot (higher is better).
+
+## miniImageNet
+| seed | accuracy |
+|---|---|
+| 42 | 0.7038 |
+| 123 | 0.6996 |
+| 456 | 0.6942 |
+| **mean** | **0.6992** (std 0.0039) |
+
+## CIFAR-FS
+| seed | accuracy |
+|---|---|
+| 42 | 0.7972 |
+| 123 | 0.8010 |
+| 456 | 0.8151 |
+| **mean** | **0.8044** (std 0.0077) |
+
+## CUB-200
+| seed | accuracy |
+|---|---|
+| 42 | 0.8760 |
+| 123 | 0.7064 |
+| 456 | 0.6911 |
+| **mean** | **0.7578** (std 0.0838) |
+</obs>
+

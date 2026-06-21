@@ -1,0 +1,699 @@
+<meta task="libero-lifelong" domain="Classical ML" file="LIBERO/libero/lifelong/algos/custom.py" model_format="qwen3" edit_tool="str_replace"/>
+
+<system>
+You are a research engineer improving a model on a fixed ML task. You work by editing the model code and running experiments. Think carefully before each change. You have these tools:
+- str_replace(path, old_str, new_str): replace the unique occurrence of old_str with new_str.
+- create(path, file_text): create a new file.
+- run_experiment(): train + evaluate the current code under the fixed budget; returns metrics.
+Make one tool call at a time. After editing, call run_experiment() to measure your method.
+</system>
+
+<user>
+## Research question
+
+Lifelong robot manipulation: the agent learns ten LIBERO-Spatial pick-and-place tasks **one at a
+time, in sequence**. Every task shares the same action goal (pick up a black bowl, place it on a
+plate) and differs only in spatial layout. It trains on task 0 to convergence, then task 1, and so on
+through task 9; only after the last task is it evaluated on **all ten**. The single thing being
+designed is the *lifelong learning strategy* layered on a fixed behavior-cloning learner — the
+mechanism, if any, that stops task k's training from erasing what tasks 0..k−1 learned. The pain is
+**catastrophic forgetting**: plain sequential fine-tuning rewrites the very weights the earlier tasks
+relied on, so by the time the final task finishes the early tasks have collapsed. Everything else about
+the agent — the transformer policy, the BC loss, AdamW, the cosine schedule, the 50-epochs-per-task
+budget — is frozen.
+
+## Prior art before the first rung (continual-learning lineage)
+
+The first rung reacts to the standard continual-learning toolbox; these are the ancestors the ladder
+climbs out of, each with the gap that pushes past it.
+
+- **Joint / multi-task training (the unreachable ceiling).** Train on all ten tasks' data
+  interleaved. Forgetting vanishes because the weights are jointly fit. But the sequential regime
+  forbids it: once a task finishes, its full dataset is gone, and interleaving would require hoarding
+  every task's data, with storage growing in the number of tasks. Gap: remembers by hoarding data, not
+  by remembering anything about the network — violates the streaming budget.
+- **Uniform L2 anchoring (naive regularization).** After a task, snapshot the weights θ\* and add
+  `Σ_i (λ/2)(θ_i − θ\*_i)²` while training the next task — constant memory, no old data. But the single
+  global stiffness λ cannot tell apart the weights an old task needed from the weights the new task must
+  move: large λ freezes the whole net (can't learn the new task), small λ fails to hold the old one. Gap:
+  a uniform penalty has no notion of *which* weights mattered.
+- **Plain dropout / weight decay.** Resist forgetting indirectly, mostly by pushing toward larger nets
+  (spare capacity), and stop working after a couple of sequential tasks. Gap: not protecting any
+  *specific* knowledge.
+- **Progressive Networks (Rusu et al. 2016).** Give each task its own column and freeze the rest, so
+  forgetting is literally zero. But parameters and memory grow with the number of tasks, and every
+  column is carried to test time. Gap: unbounded growth on a long stream.
+
+These split the design space into two camps the ladder will test: *protect the weights that mattered*
+(regularization) versus *keep a few old examples and use them* (rehearsal). The fixed substrate below is
+the BC learner all of them bolt onto.
+
+## The fixed substrate
+
+A behavior-cloning continual learner is frozen and must not be touched. A transformer policy
+`self.policy` maps multimodal observations (RGB views, proprioception) to actions; its BC objective is
+`self.policy.compute_loss(data)` (a scalar; `reduction="none"` is available for per-sample losses).
+The parent `Sequential` class drives the lifecycle — it constructs the AdamW `self.optimizer` and the
+cosine-annealing `self.scheduler` in its own `start_task`, exposes `self.loss_scale`,
+`self.current_task`, `self.n_tasks`, `self.cfg`, and the helper `self.map_tensor_to_device(data)` that
+moves a nested observation dict to the GPU. Each task trains for 50 epochs; after the last task the agent
+is rolled out in every task's environment and scored. The loop also provides module-level helpers a
+strategy may use: `cycle(dl)` (an infinite iterator over a DataLoader, needed because a replay stream
+must outlast the current-task loader), `merge_datas(x, y)` (recursively concatenate two nested data
+dicts along the batch dimension), `TruncatedSequenceDataset(dataset, n)` (keep the first `n` sequence
+windows of a dataset), `safe_device`, `TensorUtils.map_tensor`, and the PyTorch data utilities
+`DataLoader`, `ConcatDataset`, `RandomSampler`.
+
+## The editable interface
+
+Exactly one region is editable — the `Custom(Sequential)` class in
+`LIBERO/libero/lifelong/algos/custom.py` (lines 37–65). Every method on the ladder is a fill of this
+same contract by overriding any of four lifecycle hooks:
+
+- `__init__(self, n_tasks, cfg, **policy_kwargs)` — allocate the strategy's state (buffers,
+  regularizers, flat gradient scratch).
+- `start_task(self, task)` — called before each task; set up task-specific state (e.g. build the replay
+  iterator from finished tasks). Must call `super().start_task(task)` so the parent rebuilds the
+  optimizer/scheduler.
+- `observe(self, data)` — called every training step; compute the loss, backprop, step the optimizer.
+  Must return the (forward) loss as a float.
+- `end_task(self, dataset, task_id, benchmark, env=None)` — called after each task; post-process (store
+  replay data, compute Fisher information).
+
+The starting point is the scaffold default: **plain sequential fine-tuning** — no buffer, no penalty,
+no projection. `observe` does the ordinary BC step and `end_task` does nothing. Each later method
+replaces exactly this class body.
+
+```python
+# EDITABLE region of LIBERO/libero/lifelong/algos/custom.py (lines 37-65) — default fill (Sequential)
+class Custom(Sequential):
+    """Custom lifelong learning algorithm.
+
+    Override __init__, start_task, observe, and/or end_task to implement
+    your lifelong learning strategy. The goal is to minimize catastrophic
+    forgetting across sequential robot manipulation tasks.
+    """
+
+    def __init__(self, n_tasks, cfg, **policy_kwargs):
+        super().__init__(n_tasks=n_tasks, cfg=cfg, **policy_kwargs)
+
+    def start_task(self, task):
+        super().start_task(task)
+
+    def observe(self, data):
+        data = self.map_tensor_to_device(data)
+        self.optimizer.zero_grad()
+        loss = self.policy.compute_loss(data)
+        (self.loss_scale * loss).backward()
+        if self.cfg.train.grad_clip is not None:
+            nn.utils.clip_grad_norm_(
+                self.policy.parameters(), self.cfg.train.grad_clip
+            )
+        self.optimizer.step()
+        return loss.item()
+
+    def end_task(self, dataset, task_id, benchmark, env=None):
+        pass
+```
+
+## Evaluation settings
+
+LIBERO-Spatial, ten tasks learned sequentially, 50 epochs per task, seed 42. After the final task the
+policy is rolled out in all ten task environments. Metrics, all higher-is-better: **avg_final_success**
+(mean success rate across the ten tasks, evaluated after the last task), and **auc** — the canonical
+LIBERO lifelong score (area under the per-task success curve, which folds forward learning and backward
+retention into one number); the leaderboard also records **fwt** (forward transfer) and **nbt**
+(negative backward transfer / forgetting). The ranking metric is `auc`.
+
+The editable model code is in `LIBERO/libero/lifelong/algos/custom.py`:
+```python
+
+class Custom(Sequential):
+    """Custom lifelong learning algorithm.
+
+    Override __init__, start_task, observe, and/or end_task to implement
+    your lifelong learning strategy. The goal is to minimize catastrophic
+    forgetting across sequential robot manipulation tasks.
+    """
+
+    def __init__(self, n_tasks, cfg, **policy_kwargs):
+        super().__init__(n_tasks=n_tasks, cfg=cfg, **policy_kwargs)
+
+    def start_task(self, task):
+        super().start_task(task)
+
+    def observe(self, data):
+        data = self.map_tensor_to_device(data)
+        self.optimizer.zero_grad()
+        loss = self.policy.compute_loss(data)
+        (self.loss_scale * loss).backward()
+        if self.cfg.train.grad_clip is not None:
+            nn.utils.clip_grad_norm_(
+                self.policy.parameters(), self.cfg.train.grad_clip
+            )
+        self.optimizer.step()
+        return loss.item()
+
+    def end_task(self, dataset, task_id, benchmark, env=None):
+        pass
+```
+Improve it. Derive your method, edit the code, then run_experiment().
+</user>
+
+### step 1 — EWC (Elastic Weight Consolidation, online)   [slug:ewc]
+
+<think>
+The scaffold default is plain sequential fine-tuning, and I already know what that floor does: nothing protects the weights an earlier task needed, so the moment I run AdamW on task k the gradient drags whatever weights reduce task-k's BC loss fastest, the early tasks' policies slide off whatever ridge held them up, and by task 9 the early tasks have collapsed. That is the whole reason a strategy has to exist at all. So the first rung is not "train a policy" — the substrate already trains a perfectly good single-task BC policy — it is "train task k *without* erasing tasks 0..k−1," under the rules this regime actually enforces: each task's data is gone once I move on, the memory budget is bounded, and whatever I add has to ride inside the existing fifty-epoch loop and the four lifecycle hooks. Inside those rules there is a clean dividing line between the two families of fix, and the cheapest family — the one that stores no old data at all — is where I want to start, because if a pure-regularization method already holds the early tasks I never have to pay for rehearsal.
+
+Let me state the failure mechanically so the fix is forced rather than guessed. The objective while learning task k is `L_k(θ)` and nothing else. Gradient descent on `L_k` moves every shared weight that reduces `L_k`, with no term anywhere saying "don't touch the weights task j relied on." This is the stability–plasticity tension made concrete: the network is plastic enough to learn task k precisely because every weight is free to move, and that same freedom is what loses task j. So I want to take freedom away — but selectively, from the right weights, by the right amount. If I take it away uniformly I am back at the naive L2 anchor, and I can already see why that cannot work here: a single global stiffness λ pays the same protection cost on weights an old task never cared about as on weights it depended on, so to hold the old task I have to freeze the net and then cannot fit the new one. The uniform-anchor failure is itself the requirement: I need the same quadratic-spring idea — anchor to the post-task weights, penalize departure — but with a *per-parameter* stiffness, large on the weights that mattered, small on the rest. Everything now reduces to one number per weight: how important was weight i to the task that just finished?
+
+I do not want to bolt on a heuristic importance, because a wrong importance is worse than none — it would clamp the wrong weights and leave the load-bearing ones free. So derive it. Read training probabilistically: optimizing the parameters is finding the most probable θ given the data, and by Bayes `log p(θ|D) = log p(D|θ) + log p(θ) − log p(D)`, where the log-likelihood is the negative of the loss — the BC cross-entropy *is* a negative log-likelihood. Split the data into the finished task A and the current task B and apply Bayes a second time: `log p(θ|D_A,D_B) = log p(D_B|θ) + log p(θ|D_A) − const`, the constant independent of θ and gone the moment I take a gradient. The middle term is the posterior over weights given task A, and the whole of A's contribution to the new objective is carried in that one object — if I had `p(θ|D_A)` I would be done, maximizing the B-likelihood plus the A-posterior fits B while respecting everything A taught me. The posterior is the compact summary of A I was after. It is intractable as written — a distribution over millions of weights — so I need an approximation that is cheap to store, cheap to add to the per-step loss, and that actually encodes per-weight importance. A Gaussian gives all three: its negative log density is a quadratic in θ — exactly the spring I want — and its precision becomes per-weight stiffness once I make it diagonal.
+
+The Laplace approximation is the natural way to get that Gaussian. I trained A to a (local) optimum θ\*_A, where the gradient of `−log p(θ|D_A)` vanishes. Expand `−log p(θ|D_A)` to second order around θ\*_A: the constant I drop, the first-order term is zero because the gradient vanishes, and what remains is `(1/2)(θ−θ\*_A)ᵀ H (θ−θ\*_A)`, the quadratic part of a Gaussian centered at θ\*_A with precision H, the Hessian of the old negative log posterior at the optimum. Since θ\*_A is a minimum, H is PSD there — a precision had better be. The diagonal of H is exactly the per-weight importance: a weight with large curvature is one the A-solution is sensitive to (move it and A degrades fast → make it stiff); a weight with near-zero curvature is one A does not care about (leave it loose for B).
+
+But the full Hessian is a millions-by-millions matrix I cannot form, store, or invert. The escape is the Fisher information: `F = E_{y∼p_θ}[(∇_θ log p_θ(y|x))(∇_θ log p_θ(y|x))ᵀ]`, the expected outer product of the score, which equals the expected Hessian of the negative log-likelihood. The one-line check: differentiating `log p` twice and taking the expectation over y∼p, the `(1/p)·d²p` piece integrates to `d²/dθ²(Σ_y p) = d²/dθ²(1) = 0`, leaving `E[−d²log p/dθ²] = E[(d log p/dθ)²]`. So the likelihood curvature is an average of *squared first-order gradients* — no second derivatives — and it is PSD by construction (a sum of squares), whereas the raw empirical Hessian could be indefinite and hand me meaningless negative stiffnesses. Keep only the diagonal (assert a factorized Gaussian, one independent quadratic per weight): the old-task term becomes `Σ_i (1/2) F_i (θ_i − θ\*_{A,i})²`, and the loss I minimize while training B is `L_B(θ) + Σ_i (λ/2) F_i (θ_i − θ\*_{A,i})²`. There is the spring, derived rather than guessed, with λ absorbing the task-A sample-size scaling and the overconfidence of a diagonal point-estimate Laplace approximation.
+
+Now I have to be careful, because this task's harness pins down several choices that the generic derivation leaves open, and the rung I am actually filling is *this* implementation, not the textbook one. Three concrete commitments.
+
+First, the multi-task bookkeeping. The clean derivation says keep one quadratic per past task and sum them, anchoring each at the optimum reached when that task finished — but that grows memory with the number of tasks. The harness instead keeps a **single running Fisher** with exponential decay: after each task I set `fish ← γ·fish + F_new` (with γ = 0.9) and re-snapshot a single anchor `checkpoint` at the just-finished weights. This is online EWC: one Fisher, one anchor, constant memory regardless of how many of the ten tasks have passed. The decay γ down-weights the curvature of tasks that finished long ago, so the penalty is dominated by recent tasks; it trades the per-task fidelity of the summed form for bounded state. I should expect that trade to *cost* retention on the earliest tasks — their curvature is repeatedly multiplied by 0.9 and eventually drowned out — which matters because the metric averages over all ten and the early tasks are exactly the ones forgetting hits hardest.
+
+Second, and this is the sharp divergence from the principled Fisher: the harness computes an **empirical Fisher from the true data labels**, not the model-distribution Fisher. In `end_task` it loops the finished task's dataloader, computes `nll = compute_loss(data, reduction="none")`, backprops `(−nll).mean()`, and accumulates `grads²`. That is `E_{(x,y)∼data}[(score)²]` — squared gradients of the demonstrated-action likelihood — which is the *empirical* Fisher, not the `E_{y∼p_θ}` object the derivation showed equals the expected Hessian. The two coincide only when the model fits the task well; off the optimum the empirical Fisher is a biased curvature proxy. For BC this is the natural choice — the demonstrations are the only labels there are, and there is no clean categorical to sum over for an exact model-distribution expectation — but I should hold it as a known approximation: the importances are measured against the expert actions, not the policy's own predictive distribution. The `(−nll)` sign and the `.mean()` are just bookkeeping so the accumulated square is the squared score of the average log-likelihood over the batch.
+
+Third, the coefficient and the factor. The harness sets `e_lambda = 50000` — an enormous stiffness, which it has to be because the empirical-Fisher magnitudes on a transformer's BC loss are tiny and the spring would otherwise never bite — and it applies the penalty as `e_lambda · Σ_i F_i (θ_i − checkpoint_i)²` with **no 1/2 factor** (the factor is absorbed into e_lambda). The penalty is added only when `current_task > 0`, since on the first task there is no anchor and `penalty()` returns zero. Two implementation realities make the spring computable on a transformer: `get_params()` flattens every parameter into one vector so the anchor comparison is a single elementwise op, and `get_grads()` flattens the gradients (substituting zeros for any `None` grad) so the Fisher accumulation is one vector square. The penalty is then `(fish · (get_params() − checkpoint)²).sum()` — no data pass, just an elementwise pass over the current weights and the stored summary, cheap enough to evaluate every step inside the fifty-epoch loop.
+
+So the step-1 edit lands exactly this. In `__init__` I hold `e_lambda = 50000`, `gamma = 0.9`, and `checkpoint = fish = None`. `observe` does the ordinary BC forward, records the forward loss to return, and for `current_task > 0` adds `e_lambda · penalty()` before backprop, grad-clip, and step. `end_task` runs the empirical-Fisher pass over the finished task's dataloader, decays-and-accumulates into the single running `fish`, and re-snapshots `checkpoint` at the current weights. `start_task` is just the parent call so the optimizer/scheduler rebuild. (The full scaffold class is in the answer.)
+
+Now reason about what this rung must do, because that is the point of running it first. EWC stores no old data — its entire defense against forgetting is a quadratic penalty that pins the weights a finished task cared about. That defense is known to be flavor-mismatched to *this* regime in two ways I can already name. The penalty is a soft anchor that pulls each weight toward a frozen scalar value with a scalar importance; it has no idea which *directions* in weight space preserve the old policy's function, only how far each coordinate has strayed, so it protects the old behavior bluntly. And the whole construction wants a learner that gets to settle into a basin satisfying the anchor and the new task at once — on a transformer trained fifty epochs per task with a single running Fisher, the early tasks' curvature is decayed away and the e_lambda that is large enough to hold anything risks fighting the new task's gradient hard enough to hurt forward learning too. So I expect this floor to be *weak*: it should retain little on the earliest tasks (their Fisher decays out), and the avg-final-success across the ten tasks should sit near the bottom — regularization alone, with no replayed data, barely beating the plain fine-tune it is layered on. The diagnosis I am already pointed at, if that is what the numbers say, is that pinning *weights* is the wrong target — what I actually need to protect is the *function* on the old tasks, which means I will have to put a few old examples back into the batch rather than anchor coordinates. That is the rehearsal camp, and it is where the next rung goes. So let me write the EWC fill in.
+</think>
+<say>
+Starting with EWC (online Elastic Weight Consolidation): pure regularization, no old data. This first edit adds the per-weight machinery to `__init__` — the running Fisher, the anchor checkpoint, and the flattened `get_params`/`get_grads`/`penalty` helpers that compute the quadratic spring.
+</say>
+<edit path="LIBERO/libero/lifelong/algos/custom.py">
+<old>
+
+class Custom(Sequential):
+    """Custom lifelong learning algorithm.
+
+    Override __init__, start_task, observe, and/or end_task to implement
+    your lifelong learning strategy. The goal is to minimize catastrophic
+    forgetting across sequential robot manipulation tasks.
+    """
+
+    def __init__(self, n_tasks, cfg, **policy_kwargs):
+        super().__init__(n_tasks=n_tasks, cfg=cfg, **policy_kwargs)
+</old>
+<new>
+# EDITABLE region of LIBERO/libero/lifelong/algos/custom.py (lines 37-65) — step 1: EWC (online)
+class Custom(Sequential):
+    """EWC (Elastic Weight Consolidation) lifelong learning algorithm."""
+
+    def __init__(self, n_tasks, cfg, **policy_kwargs):
+        super().__init__(n_tasks=n_tasks, cfg=cfg, **policy_kwargs)
+        self.e_lambda = 50000
+        self.gamma = 0.9
+        self.checkpoint = None
+        self.fish = None
+
+    def get_params(self):
+        return torch.cat([p.reshape(-1) for p in self.policy.parameters()])
+
+    def get_grads(self):
+        return torch.cat(
+            [
+                p.grad.reshape(-1)
+                if p.grad is not None
+                else torch.zeros_like(p).reshape(-1)
+                for p in self.policy.parameters()
+            ]
+        )
+
+    def penalty(self):
+        if self.checkpoint is None:
+            return safe_device(torch.tensor(0.0), self.cfg.device)
+        else:
+            penalty = (self.fish * ((self.get_params() - self.checkpoint) ** 2)).sum()
+            return penalty
+</new>
+</edit>
+<obs>
+Successfully replaced text in LIBERO/libero/lifelong/algos/custom.py.
+</obs>
+<note>
+Now `observe`: keep the BC forward, record the forward loss to return, and add `e_lambda · penalty()` once past task 0.
+</note>
+<edit path="LIBERO/libero/lifelong/algos/custom.py">
+<old>
+        loss = self.policy.compute_loss(data)
+        (self.loss_scale * loss).backward()
+        if self.cfg.train.grad_clip is not None:
+</old>
+<new>
+        loss = self.policy.compute_loss(data)
+        forward_loss = loss.item()
+        if self.current_task > 0:
+            loss += self.e_lambda * self.penalty()
+        assert not torch.isnan(loss)
+        (loss * self.loss_scale).backward()
+        if self.cfg.train.grad_clip is not None:
+</new>
+</edit>
+<obs>
+Successfully replaced text in LIBERO/libero/lifelong/algos/custom.py.
+</obs>
+<note>
+And `end_task`: the empirical-Fisher pass over the finished task, decay-and-accumulate into the single running `fish`, re-snapshot the anchor.
+</note>
+<edit path="LIBERO/libero/lifelong/algos/custom.py">
+<old>
+        self.optimizer.step()
+        return loss.item()
+
+    def end_task(self, dataset, task_id, benchmark, env=None):
+        pass
+</old>
+<new>
+        self.optimizer.step()
+        return forward_loss
+
+    def end_task(self, dataset, task_id, benchmark, env=None):
+        self.policy.train()
+        fish = torch.zeros_like(self.get_params())
+
+        dataloader = DataLoader(
+            dataset,
+            batch_size=self.cfg.train.batch_size,
+            shuffle=True,
+            num_workers=self.cfg.train.num_workers,
+        )
+
+        for data in dataloader:
+            data = TensorUtils.map_tensor(
+                data, lambda x: safe_device(x, device=self.cfg.device)
+            )
+            self.policy.zero_grad()
+            nll = self.policy.compute_loss(data, reduction="none")
+            (-nll).mean().backward()
+            grads = self.get_grads()
+            fish += grads ** 2
+
+        fish /= len(dataloader)
+
+        if self.fish is None:
+            self.fish = fish
+        else:
+            self.fish *= self.gamma
+            self.fish += fish
+
+        self.checkpoint = self.get_params().data.clone()
+</new>
+</edit>
+<obs>
+Successfully replaced text in LIBERO/libero/lifelong/algos/custom.py.
+</obs>
+<run/>
+<obs>
+Measured result — `baseline:ewc`, seed 42 (latest committed run; the leaderboard has no `is_final,true` row for this task, so these are the final recorded `is_final,false` numbers).
+
+## LIBERO-Spatial (10 tasks, after final task)
+| seed | avg_final_success | auc | fwt | nbt |
+|---|---|---|---|---|
+| 42 | 0.045 | 0.0487 | 0.2091 | 0.174 |
+| **mean** | **0.045** | **0.0487** | **0.2091** | **0.174** |
+</obs>
+
+### step 2 — A-GEM (Averaged Gradient Episodic Memory)   [slug:agem]
+
+<think>
+The EWC run told me, in one number, that pure regularization does not carry this regime: avg_final_success 0.045 and auc 0.0487, with fwt 0.2091 but nbt 0.174. Read those together and the story is unambiguous. The fwt of 0.21 says the policy *does* learn each task as it arrives — forward transfer is non-trivial, the BC learner works. But avg_final 0.045 means that by the time the tenth task finishes, almost nothing of the early tasks survives: the success rate averaged over all ten is essentially floor. The nbt of 0.17 is the forgetting written explicitly — old-task performance is being eaten as new tasks come in. So EWC's quadratic spring, with a single decayed running Fisher and e_lambda = 50000, simply did not hold the early tasks; their curvature was multiplied by 0.9 each task until it drowned, and an anchor that pins *coordinates* to a frozen scalar value never protected the *function* the early policies computed. This is exactly the failure I flagged at the close of the last rung — regularization alone barely beats the fine-tune it sits on — and it tells me the target was wrong. I should stop trying to protect weights and start protecting the old tasks' *behavior*, which means I have to put some of their data back in front of the optimizer.
+
+So move to the rehearsal camp, but think hard about *how* the old data is used, because there is a cheap-and-cautious version and an expensive-and-aggressive version and I want to understand the geometry before I pick. Go back to the one fact I trust completely. A single optimizer step `θ ← θ − α g`, with `g = ∇_θ L_k(θ)` the current task's gradient, changes a past task j's loss by, to first order, `L_j(θ − αg) − L_j(θ) ≈ −α ⟨g, g_j⟩`, where `g_j = ∇_θ L_j` is the past task's gradient at the current weights. So the *sign of an inner product* is the forgetting diagnostic: `⟨g, g_j⟩ > 0` means the step lowers task j's loss (backward transfer, good), `⟨g, g_j⟩ < 0` means it raises it (forgetting, happening one negative dot product at a time). EWC never looked at this; it judged a step by how far weights strayed from θ\*, not by what the step actually did to the old tasks — which is precisely why it could clamp the wrong coordinates while the policy's function drifted anyway. The inner-product view says: police the *angle* of each step against the directions the old tasks care about, and you address forgetting at its source.
+
+To compute `g_j` I need some of task j's examples. Fine — keep a small bounded episodic memory of past examples and approximate each past gradient by the gradient on that memory. The memory is used to *measure a direction*, not to retrain wholesale, so it can stay small. Now phrase the goal as a hard constraint rather than EWC's soft penalty: while learning task k, minimize the current loss subject to "don't let any past task's loss go up." The crucial thing this buys over EWC is that the inequality is one-sided — it *permits* a past loss to drop, so positive backward transfer is allowed, exactly the thing EWC's symmetric quadratic anchor threw away. Linearized over the small step, "past loss on memory does not increase" becomes `⟨g, g_j⟩ ≥ 0` for every past task j. If all hold, take the step; if some are violated, do not discard the step — most of `g` is still the right direction for the current task — fix it *minimally*: find the closest gradient in L2 satisfying every constraint, `min_{g̃} (1/2)‖g − g̃‖²` s.t. `⟨g̃, g_j⟩ ≥ 0` for all j.
+
+That is the right statement, and it is exactly where it gets too expensive, so I have to watch the cost the way the original GEM line did. It is a quadratic program in g̃, which lives in P dimensions — millions of transformer parameters — so you dualize: the constraint matrix has only (k−1) rows, the dual QP is in (k−1) variables. Smaller, but look at the per-step bill: to build the constraint matrix I need one backward pass through the memory of *each* of the k−1 past tasks, plus a QP solve, and both pieces grow with how many of the ten tasks have passed. By task 9 every single training step pays nine extra backward passes plus a QP — the per-step cost scales with the stream, which on a fifty-epoch-per-task loop is fatal. The constraint formulation is right; the *number* of constraints is the disease.
+
+Why k−1 constraints? Because I demanded that *each individual* past task not get worse — a worst-case promise. But the metric I am graded on is the *average* success over the ten tasks, i.e. I care that the *average* past loss does not rise, not that every single task holds. And those differ: insisting every task improve-or-hold can block a step that raises one task's loss a hair while dropping the others a lot — a step that improves the average. So weaken the promise on purpose: require only that the *average* loss over the union of all past memories not increase. One task, one constraint. Let `g_ref = ∇_θ L(θ, M)` be the gradient of the loss over the combined memory `M = ∪_{j<k} M_j` — a single reference direction summarizing "what the past wants" — and the whole constraint set collapses to `⟨g̃, g_ref⟩ ≥ 0`. A single linear inequality is a projection onto one halfspace, which has a closed form.
+
+Derive it so I am sure of the vector and the scalar. `min_z (1/2)‖g − z‖²` s.t. `zᵀg_ref ≥ 0`. Drop the constant `(1/2)gᵀg`, write the constraint as `−zᵀg_ref ≤ 0`, Lagrangian `L(z,α) = (1/2)zᵀz − gᵀz − α zᵀg_ref` with `α ≥ 0`. Stationarity: `z − g − α g_ref = 0`, so `z\* = g + α g_ref` — the answer has the shape "current gradient slid along the reference." Substitute back, collect terms, and the dual is `θ_D(α) = −(1/2)gᵀg − α gᵀg_ref − (1/2)α² g_refᵀg_ref`, concave in α; setting the derivative to zero gives `α\* = −gᵀg_ref / g_refᵀg_ref`. The KKT sign check is the whole if/else: when the constraint is *violated*, `gᵀg_ref < 0`, so `α\* > 0` is feasible and active, and `g̃ = g − (gᵀg_ref / g_refᵀg_ref) g_ref`; when it is already *satisfied*, `gᵀg_ref ≥ 0`, the unconstrained `α\* ≤ 0` is clamped to 0 and `g̃ = g`. The geometry: the subtracted term is the orthogonal projection of `g` onto `g_ref`, so in the violating case I remove exactly the component of `g` pointing against the reference and keep everything else; checking, `g̃ᵀg_ref = gᵀg_ref − gᵀg_ref = 0`, so the corrected gradient sits on the boundary of the feasible halfspace — to first order neither raising nor lowering the average past loss, while staying as close to the current-task `g` as the constraint allows. Minimal fix, no QP, no matrix of per-task gradients.
+
+And `g_ref` need not be exact: it is a *direction*, so a stochastic estimate from a single random minibatch over the union memory suffices — one forward/backward on a fixed-size batch regardless of how many tasks are stored, and the averaging across tasks happens for free because the union memory mixes all of them. Per-step cost is now flat in the stream: the backward for `g` I was doing anyway, one extra backward for `g_ref`, two dot products. That is the second place the stream-scaling could creep back in, and sampling kills it too. I am honest about the trade against the per-task version: I gave up the worst-case "no single task gets worse" guarantee for an average-loss guarantee — but the average is exactly my metric, so it is the right thing to constrain.
+
+Now land it in *this* harness, because the rung I fill is the task's A-GEM, and a few details differ from the generic continual-classification version. The four hooks: `__init__` allocates the episodic memory (a list of finished-task datasets) and the flat gradient scratch — `grad_dims = [p.numel() for p in policy.parameters()]`, and two preallocated flat buffers `grad_xy` (for `g`) and `grad_er` (for `g_ref`) of total parameter size on device. `start_task`, once past task 0, builds the reference stream: truncate each finished dataset to `n_memories = 1000` sequence windows with `TruncatedSequenceDataset`, `ConcatDataset` them, and wrap a `RandomSampler` `DataLoader` in `cycle(...)` — infinite because the reference stream must outlast the current-task loader, which has a different length. `end_task` just appends the finished dataset to the memory list. The heart is `observe`, and the *sequencing of the two backward passes* is load-bearing because they share the same `.grad` fields. First do the current-task forward and backward (`(loss·loss_scale).backward()`) so `.grad` holds `g`; if the buffer exists, flatten `.grad` into `grad_xy` with the `_store_grad` helper *before clobbering it*, then `zero_grad`, pull a reference batch via `next(self.buffer)`, forward/backward it (`buf_loss.backward()`) so `.grad` holds `g_ref`, flatten into `grad_er`. Take `dot_prod = ⟨grad_xy, grad_er⟩`; if it is `< 0`, project (`_project` computes `gxy − (gxyᵀger/gerᵀger)·ger`) and write the result back into `.grad` with `_overwrite_grad`; otherwise write `grad_xy` back unchanged (necessary because the second backward overwrote `.grad` with `g_ref`). Either branch ends with grad-clip and `optimizer.step()`. The three helpers `_project`, `_store_grad`, `_overwrite_grad` are module-level functions the edit defines above the class; `_store_grad`/`_overwrite_grad` move between per-parameter `.grad` tensors and the flat buffer by precomputed slice offsets. On task 0 the buffer is empty, so it is plain BC. (The full scaffold module is in the answer.)
+
+So the delta from EWC is precise and addresses its measured failure directly. Where EWC anchored *coordinates* to a decayed snapshot and let the early-task function drift (avg_final 0.045, nbt 0.17), A-GEM keeps actual old examples and *vetoes* any step whose gradient points against the average old-task direction — protecting the old tasks' behavior at its source, the inner product, and permitting backward transfer EWC forbade. Here is what I expect and where I am unsure. Against EWC's 0.0487 auc and 0.045 avg_final, A-GEM should clear both comfortably: putting real old data into the constraint should hold meaningfully more than a decayed weight-spring, so I expect avg_final up into the low tenths and a higher auc, with nbt *lower* than EWC's 0.17 since the projection's whole job is to stop the average old loss from rising. But I can already feel A-GEM's own ceiling in the construction: the memory acts only as a *veto*. Most steps have `⟨g, g_ref⟩ ≥ 0` and the memory does literally nothing — I take the plain current-task step; only on a violation does it shave off a component. It never *pushes the old-task loss down*; it guards a ceiling. That caution should leave it underfitting both the new task and the memory — so if avg_final lands respectable but short of what the data could give, the diagnosis for the next rung is already written: stop vetoing, and just *train on* the old examples by stacking them into the batch and descending their loss directly. That is the move I expect to beat this. Let me write the A-GEM fill in.
+</think>
+<say>
+Moving to the rehearsal camp with A-GEM. This first edit replaces the EWC scaffold with the projection helpers (`_project`, `_store_grad`, `_overwrite_grad`) and rewrites `__init__`/`start_task` to hold an episodic memory of finished tasks plus the flat gradient buffers and a cycled reference loader.
+</say>
+<edit path="LIBERO/libero/lifelong/algos/custom.py">
+<old>
+# EDITABLE region of LIBERO/libero/lifelong/algos/custom.py (lines 37-65) — step 1: EWC (online)
+class Custom(Sequential):
+    """EWC (Elastic Weight Consolidation) lifelong learning algorithm."""
+
+    def __init__(self, n_tasks, cfg, **policy_kwargs):
+        super().__init__(n_tasks=n_tasks, cfg=cfg, **policy_kwargs)
+        self.e_lambda = 50000
+        self.gamma = 0.9
+        self.checkpoint = None
+        self.fish = None
+
+    def get_params(self):
+        return torch.cat([p.reshape(-1) for p in self.policy.parameters()])
+
+    def get_grads(self):
+        return torch.cat(
+            [
+                p.grad.reshape(-1)
+                if p.grad is not None
+                else torch.zeros_like(p).reshape(-1)
+                for p in self.policy.parameters()
+            ]
+        )
+
+    def penalty(self):
+        if self.checkpoint is None:
+            return safe_device(torch.tensor(0.0), self.cfg.device)
+        else:
+            penalty = (self.fish * ((self.get_params() - self.checkpoint) ** 2)).sum()
+            return penalty
+
+    def start_task(self, task):
+        super().start_task(task)
+</old>
+<new>
+# EDITABLE region of LIBERO/libero/lifelong/algos/custom.py (lines 37-65) — step 2: A-GEM
+def _project(gxy, ger):
+    """Project gradient gxy so it does not conflict with ger."""
+    corr = torch.dot(gxy, ger) / torch.dot(ger, ger)
+    return gxy - corr * ger
+
+
+def _store_grad(params, grads, grad_dims):
+    """Store parameter gradients into a flat vector."""
+    grads.fill_(0.0)
+    count = 0
+    for param in params():
+        if param.grad is not None:
+            begin = 0 if count == 0 else sum(grad_dims[:count])
+            end = np.sum(grad_dims[: count + 1])
+            grads[begin:end].copy_(param.grad.data.view(-1))
+        count += 1
+
+
+def _overwrite_grad(params, newgrad, grad_dims):
+    """Overwrite parameter gradients from a flat vector."""
+    count = 0
+    for param in params():
+        if param.grad is not None:
+            begin = 0 if count == 0 else sum(grad_dims[:count])
+            end = sum(grad_dims[: count + 1])
+            this_grad = newgrad[begin:end].contiguous().view(param.grad.data.size())
+            param.grad.data.copy_(this_grad)
+        count += 1
+
+
+class Custom(Sequential):
+    """A-GEM (Averaged Gradient Episodic Memory) lifelong learning algorithm."""
+
+    def __init__(self, n_tasks, cfg, **policy_kwargs):
+        super().__init__(n_tasks=n_tasks, cfg=cfg, **policy_kwargs)
+        self.n_memories = 1000
+        self.datasets = []
+        self.buffer = None
+
+        self.grad_dims = []
+        for pp in self.policy.parameters():
+            self.grad_dims.append(pp.data.numel())
+        self.grad_xy = torch.Tensor(np.sum(self.grad_dims)).to(self.cfg.device)
+        self.grad_er = torch.Tensor(np.sum(self.grad_dims)).to(self.cfg.device)
+
+    def start_task(self, task):
+        super().start_task(task)
+        if self.current_task > 0:
+            buffers = [
+                TruncatedSequenceDataset(dataset, self.n_memories)
+                for dataset in self.datasets
+            ]
+            buf = ConcatDataset(buffers)
+            self.buffer = cycle(
+                DataLoader(
+                    buf,
+                    batch_size=self.cfg.train.batch_size,
+                    num_workers=self.cfg.train.num_workers,
+                    sampler=RandomSampler(buf),
+                    persistent_workers=(self.cfg.train.num_workers > 0),
+                )
+            )
+</new>
+</edit>
+<obs>
+Successfully replaced text in LIBERO/libero/lifelong/algos/custom.py.
+</obs>
+<note>
+Now the two-backward `observe`: store `g`, take a reference backward for `g_ref`, then project only when the dot product is negative.
+</note>
+<edit path="LIBERO/libero/lifelong/algos/custom.py">
+<old>
+        loss = self.policy.compute_loss(data)
+        forward_loss = loss.item()
+        if self.current_task > 0:
+            loss += self.e_lambda * self.penalty()
+        assert not torch.isnan(loss)
+        (loss * self.loss_scale).backward()
+        if self.cfg.train.grad_clip is not None:
+</old>
+<new>
+        loss = self.policy.compute_loss(data)
+        (loss * self.loss_scale).backward()
+
+        if self.buffer is not None:
+            _store_grad(self.policy.parameters, self.grad_xy, self.grad_dims)
+            buf_data = next(self.buffer)
+            self.policy.zero_grad()
+
+            buf_data = self.map_tensor_to_device(buf_data)
+            buf_loss = self.policy.compute_loss(buf_data)
+            buf_loss.backward()
+            _store_grad(self.policy.parameters, self.grad_er, self.grad_dims)
+
+            dot_prod = torch.dot(self.grad_xy, self.grad_er)
+            if dot_prod.item() < 0:
+                g_tilde = _project(gxy=self.grad_xy, ger=self.grad_er)
+                _overwrite_grad(self.policy.parameters, g_tilde, self.grad_dims)
+            else:
+                _overwrite_grad(self.policy.parameters, self.grad_xy, self.grad_dims)
+
+        if self.cfg.train.grad_clip is not None:
+</new>
+</edit>
+<obs>
+Successfully replaced text in LIBERO/libero/lifelong/algos/custom.py.
+</obs>
+<note>
+And `end_task` collapses to one line — just append the finished dataset to the memory list; the Fisher pass is gone.
+</note>
+<edit path="LIBERO/libero/lifelong/algos/custom.py">
+<old>
+        self.optimizer.step()
+        return forward_loss
+
+    def end_task(self, dataset, task_id, benchmark, env=None):
+        self.policy.train()
+        fish = torch.zeros_like(self.get_params())
+
+        dataloader = DataLoader(
+            dataset,
+            batch_size=self.cfg.train.batch_size,
+            shuffle=True,
+            num_workers=self.cfg.train.num_workers,
+        )
+
+        for data in dataloader:
+            data = TensorUtils.map_tensor(
+                data, lambda x: safe_device(x, device=self.cfg.device)
+            )
+            self.policy.zero_grad()
+            nll = self.policy.compute_loss(data, reduction="none")
+            (-nll).mean().backward()
+            grads = self.get_grads()
+            fish += grads ** 2
+
+        fish /= len(dataloader)
+
+        if self.fish is None:
+            self.fish = fish
+        else:
+            self.fish *= self.gamma
+            self.fish += fish
+
+        self.checkpoint = self.get_params().data.clone()
+</old>
+<new>
+        self.optimizer.step()
+        return loss.item()
+
+    def end_task(self, dataset, task_id, benchmark, env=None):
+        self.datasets.append(dataset)
+</new>
+</edit>
+<obs>
+Successfully replaced text in LIBERO/libero/lifelong/algos/custom.py.
+</obs>
+<run/>
+<obs>
+Measured result — `baseline:agem`, seed 42 (latest committed run; the leaderboard has no `is_final,true` row for this task, so these are the final recorded `is_final,false` numbers).
+
+## LIBERO-Spatial (10 tasks, after final task)
+| seed | avg_final_success | auc | fwt | nbt |
+|---|---|---|---|---|
+| 42 | 0.22 | 0.2166 | 0.6768 | 0.573 |
+| **mean** | **0.22** | **0.2166** | **0.6768** | **0.573** |
+</obs>
+
+### step 3 — ER (Experience Replay)   [slug:er]
+
+<think>
+A-GEM cleared EWC, and the numbers say exactly how and where it stalled. avg_final_success climbed from 0.045 to 0.22 and auc from 0.0487 to 0.2166 — a real jump, four to five times the floor, confirming that putting actual old data into the update beats a decayed weight-spring. fwt rose sharply too, 0.21 → 0.68, so the constrained learner is now fitting each incoming task well. But two things in the row stop me. First, avg_final 0.22 is still low — almost four out of five evaluation rollouts on the early tasks fail. Second, and this is the tell, nbt is *0.573*, far higher than EWC's 0.174. That looks paradoxical for a method whose whole job is to stop the average old loss from rising — until I remember what A-GEM actually does. The memory acts only as a *veto*: on the common step where `⟨g, g_ref⟩ ≥ 0` it does nothing and I take the plain current-task gradient, and only on a violation does it shave off a component. It never *pushes the old-task loss down*; it guards a ceiling. So the high nbt and the high fwt fit together — the method fits the new task aggressively (fwt 0.68) and merely caps, rather than reduces, the damage to old tasks, so backward transfer is strongly negative and avg_final stays low. This is precisely the underfitting-the-memory failure I predicted at the close of the last rung: the constrained step is so cautious about the old tasks that it never drives their loss down, and the unconstrained common case lets new-task fitting walk the old policies off. The veto is leaving the old tasks' performance on the table.
+
+So the obvious move I kept wanting at the last rung and was warned against: stop vetoing, and just *train on* the old examples. Do not measure a reference direction and project against it — put the old examples *into the batch* and descend their loss like any other data. If A-GEM underfits because it only guards a ceiling on the memory loss, then driving that loss down directly should fix exactly the thing the 0.573 nbt is showing me. Concretely: each step, alongside the current-task minibatch, draw a minibatch from the memory and take one ordinary BC step on the *union*. That is it — no projection, no inner product, no two-backward sequencing. It is computationally *simpler* than A-GEM, which still computes `g_ref` and then does the projection arithmetic; here I feed both batches through one forward/backward and step once.
+
+But this is the move the gradient-constraint line warned against in plain words — minimizing the loss on the current example together with the loss on the episodic memory results in overfitting to the stored examples — and the worry is not stupid, so I have to actually reason about whether it is true before I commit, because if it is wrong the whole projection apparatus was unnecessary. My memory here is a thousand sequence windows per finished task: a small, fixed slice. If every single step I take a gradient step on those same stored windows, over and over, for fifty epochs of a task, that is the canonical setup for memorizing them and generalizing to nothing — I would drive the memory loss to zero, but memory loss being zero is worthless; what I need is success on the *held-out* old-task rollouts, and memorizing a thousand windows should give me little there. That is the case against, and it is exactly why the field built constraint machinery instead of just adding the examples to the batch.
+
+Let me not take the warning on faith. The claim is: repeatedly fitting a small stored set must overfit it. When is that actually right? It is right when those stored windows are *all* I am training on. If I sat and trained only on task-0's thousand windows with nothing else, yes — the policy would contort to nail them and old-task rollout success would crater; textbook small-sample overfitting. But that is not my situation. When I am learning task k, I am not training on the memory alone — I am training on the memory *together with* the full, large dataset of task k. So at every step the gradient is a blend: a little "fit these old windows" and a lot "fit this fresh, large batch of new-task demonstrations." And the large companion changes everything. The old windows want to bend the policy into an idiosyncratic shape that nails them; but the thousands of task-k windows simultaneously constrain the policy to remain a sensible function that fits *them*. It cannot go fully idiosyncratic on the memory without wrecking its fit on task k, whose gradient is large and persistent. The big current-task dataset acts as an implicit, data-dependent regularizer on the repeated learning of the small memory — not a penalty I add, but one that comes for free from co-training.
+
+Pressure-test that, because "regularizer" is a hopeful word. Three ways to train and what each does to an early task's rollout success. Train on the memory alone: overfit, success collapses — the small-sample case, expected. Train on the new task alone, no memory — that is plain fine-tuning, and what it does to the old task depends on relatedness; on LIBERO-Spatial the ten tasks share the *same* manipulation skill and differ only in spatial layout, so they are quite related, which is why fine-tuning's fwt was never the problem — fitting a new layout partly helps the old ones. The problem was retention. Now train on memory ∪ new-task: the new-task part supplies the data-dependent regularization, and the memory part keeps pulling the policy back toward actually fitting old-layout windows. When tasks are related — which they are here — the new data already helps the old skill, and the memory can only sharpen it, so I should beat fine-tuning *and* beat the veto, because I am now reducing the old loss rather than capping it. The only regime where the companion data hurts is the near-adversarial corner where new-task labels contradict the old ones on similar inputs; LIBERO-Spatial is the opposite of that corner. So the prediction is concrete: direct replay should drive nbt down hard (I am descending the old loss every step, not vetoing) and lift avg_final well past A-GEM's 0.22.
+
+This also dissolves the original objection cleanly. The constraint camp may be right that I will fit the memory closely — those thousand windows can be memorized — but they are wrong that memorization implies bad *generalization*, because the generalization is supplied by the companion data, not by the memory size. Fitting the memory and generalizing to the old task are not in conflict here. And it explains A-GEM's 0.573 nbt directly: by only vetoing gradients it never treats reducing the memory loss as a goal, and its cautious steps underfit the new task too, so it never even exposes itself to the beneficial co-training regularization. The cautious method threw away the exact mechanism that makes the reckless one work.
+
+So drop all the machinery — no constraint, no projection, no flat-gradient buffers, no two-backward dance. Two changes from plain fine-tuning: maintain the episodic memory, and each step stack a random memory minibatch onto the current minibatch and take one ordinary step. The optimization geometry of "double the batch" is the whole algorithm: if the current and memory minibatches have gradients `g` and `g_ref`, the gradient of the loss on the concatenation is the average direction `(g + g_ref)` up to a constant absorbed into the learning rate. Where A-GEM used `g_ref` only as a half-space constraint and only on a violation, ER *always* moves along the sum of the current-task and memory directions — always descending the old loss, every step, not merely capping it. That is the precise difference, and it costs essentially nothing: one forward/backward on a batch of twice the size, no extra gradient solve.
+
+Land it in this harness, and note what the task's ER does and does not do versus the general recipe, because the rung I fill is *this* implementation. The general ER story spends a lot of care on the *write* strategy — reservoir sampling for uniform coverage when the memory is comfortably sized, balanced ring/k-means writers when it is tiny so no class starves, hybrids that switch between them. This task's ER does none of that: `end_task` simply appends the whole finished dataset to a list, and `start_task` (past task 0) truncates each finished dataset to its first `n_memories = 1000` sequence windows with `TruncatedSequenceDataset`, `ConcatDataset`s them, and wraps a `RandomSampler` `DataLoader` in `cycle(...)`. So the buffer is "the first 1000 windows of every past task, sampled at random" — a fixed, balanced-by-construction per-task slice, no reservoir, no eviction policy. The `cycle` is needed because the replay stream must outlast the current-task loader, which has a different length, so I cannot zip them. `observe` is the minimal change: if the buffer exists, pull one replay batch with `next(self.buffer)` and `merge_datas(data, buf_data)` — the BC data is a nested dict of observation modalities, so the merge recurses and concatenates each tensor along the batch dimension — then run the ordinary to-device, zero_grad, `compute_loss`, `(loss_scale·loss).backward()`, grad-clip, step. The single step on the merged batch *is* the average-the-gradients move; that one concatenation is the entire contribution. On task 0 the buffer is `None`, so it is plain BC. The `persistent_workers=(num_workers > 0)` guard is the one robustness detail the harness adds so the DataLoader does not error when `num_workers = 0` (which the eval config uses). (The full scaffold class is in the answer.)
+
+So the delta from A-GEM is the whole point: where A-GEM vetoed steps that pointed against the average old direction and thereby left the old loss merely capped (nbt 0.573, avg_final 0.22), ER puts the old windows in the batch and descends their loss every step, with the large current-task data preventing the small memory from being memorized into uselessness — the co-training that A-GEM's caution never reached. Here is what I expect against A-GEM's numbers. avg_final should jump well past 0.22 — into the high-0.4s or beyond, since I am now actively recovering old-task success rather than capping its decay — and auc should follow it up from 0.2166. nbt should fall substantially below A-GEM's 0.573, because every step now reduces the old loss instead of only vetoing increases; I would not be surprised if fwt dips slightly from A-GEM's 0.68, since half of every batch is now old-task data so the per-step pull toward the new task is diluted — but that is the correct trade, paying a little forward speed for a lot of retention, and on a metric averaged over all ten tasks after the last one, retention is what dominates. If avg_final lands well above 0.22 with nbt well below 0.573, the co-training argument held and the simplest method is the strongest; if instead it underperformed I would have to revisit whether the 1000-window truncation is too small to regularize, but the related-tasks structure of LIBERO-Spatial makes that unlikely. Let me strip out the A-GEM machinery and write the replay fill in.
+</think>
+<say>
+Switching to ER (Experience Replay): drop all the projection machinery and just train on the old examples directly. This first edit replaces the A-GEM module header — deleting the three gradient-projection helpers and renaming the class to ER.
+</say>
+<edit path="LIBERO/libero/lifelong/algos/custom.py">
+<old>
+# EDITABLE region of LIBERO/libero/lifelong/algos/custom.py (lines 37-65) — step 2: A-GEM
+def _project(gxy, ger):
+    """Project gradient gxy so it does not conflict with ger."""
+    corr = torch.dot(gxy, ger) / torch.dot(ger, ger)
+    return gxy - corr * ger
+
+
+def _store_grad(params, grads, grad_dims):
+    """Store parameter gradients into a flat vector."""
+    grads.fill_(0.0)
+    count = 0
+    for param in params():
+        if param.grad is not None:
+            begin = 0 if count == 0 else sum(grad_dims[:count])
+            end = np.sum(grad_dims[: count + 1])
+            grads[begin:end].copy_(param.grad.data.view(-1))
+        count += 1
+
+
+def _overwrite_grad(params, newgrad, grad_dims):
+    """Overwrite parameter gradients from a flat vector."""
+    count = 0
+    for param in params():
+        if param.grad is not None:
+            begin = 0 if count == 0 else sum(grad_dims[:count])
+            end = sum(grad_dims[: count + 1])
+            this_grad = newgrad[begin:end].contiguous().view(param.grad.data.size())
+            param.grad.data.copy_(this_grad)
+        count += 1
+
+
+class Custom(Sequential):
+    """A-GEM (Averaged Gradient Episodic Memory) lifelong learning algorithm."""
+</old>
+<new>
+# EDITABLE region of LIBERO/libero/lifelong/algos/custom.py (lines 37-65) — step 3: ER
+class Custom(Sequential):
+    """ER (Experience Replay) lifelong learning algorithm."""
+</new>
+</edit>
+<obs>
+Successfully replaced text in LIBERO/libero/lifelong/algos/custom.py.
+</obs>
+<note>
+The flat gradient buffers go too — ER never touches `.grad` directly, so `__init__` keeps only the memory and buffer.
+</note>
+<edit path="LIBERO/libero/lifelong/algos/custom.py">
+<old>
+        self.buffer = None
+
+        self.grad_dims = []
+        for pp in self.policy.parameters():
+            self.grad_dims.append(pp.data.numel())
+        self.grad_xy = torch.Tensor(np.sum(self.grad_dims)).to(self.cfg.device)
+        self.grad_er = torch.Tensor(np.sum(self.grad_dims)).to(self.cfg.device)
+</old>
+<new>
+        self.buffer = None
+</new>
+</edit>
+<obs>
+Successfully replaced text in LIBERO/libero/lifelong/algos/custom.py.
+</obs>
+<note>
+The heart of ER: `observe` merges a replay batch into the current batch and takes one ordinary BC step on the union.
+</note>
+<edit path="LIBERO/libero/lifelong/algos/custom.py">
+<old>
+    def observe(self, data):
+        data = self.map_tensor_to_device(data)
+        self.optimizer.zero_grad()
+        loss = self.policy.compute_loss(data)
+        (loss * self.loss_scale).backward()
+
+        if self.buffer is not None:
+            _store_grad(self.policy.parameters, self.grad_xy, self.grad_dims)
+            buf_data = next(self.buffer)
+            self.policy.zero_grad()
+
+            buf_data = self.map_tensor_to_device(buf_data)
+            buf_loss = self.policy.compute_loss(buf_data)
+            buf_loss.backward()
+            _store_grad(self.policy.parameters, self.grad_er, self.grad_dims)
+
+            dot_prod = torch.dot(self.grad_xy, self.grad_er)
+            if dot_prod.item() < 0:
+                g_tilde = _project(gxy=self.grad_xy, ger=self.grad_er)
+                _overwrite_grad(self.policy.parameters, g_tilde, self.grad_dims)
+            else:
+                _overwrite_grad(self.policy.parameters, self.grad_xy, self.grad_dims)
+
+        if self.cfg.train.grad_clip is not None:
+</old>
+<new>
+    def observe(self, data):
+        if self.buffer is not None:
+            buf_data = next(self.buffer)
+            data = merge_datas(data, buf_data)
+
+        data = self.map_tensor_to_device(data)
+
+        self.optimizer.zero_grad()
+        loss = self.policy.compute_loss(data)
+        (self.loss_scale * loss).backward()
+        if self.cfg.train.grad_clip is not None:
+</new>
+</edit>
+<obs>
+Successfully replaced text in LIBERO/libero/lifelong/algos/custom.py.
+</obs>
+<run/>
+<obs>
+Measured result — `baseline:er`, seed 42 (latest committed run; the leaderboard has no `is_final,true` row for this task, so these are the final recorded `is_final,false` numbers).
+
+## LIBERO-Spatial (10 tasks, after final task)
+| seed | avg_final_success | auc | fwt | nbt |
+|---|---|---|---|---|
+| 42 | 0.495 | 0.4323 | 0.62 | 0.1551 |
+| **mean** | **0.495** | **0.4323** | **0.62** | **0.1551** |
+</obs>

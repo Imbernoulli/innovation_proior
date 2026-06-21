@@ -1,0 +1,1413 @@
+<meta task="graph-signal-propagation" domain="Graph & mesh" file="ChebNetII/main/custom_filter.py" model_format="qwen3" edit_tool="str_replace"/>
+
+<system>
+You are a research engineer improving a model on a fixed ML task. You work by editing the model code and running experiments. Think carefully before each change. You have these tools:
+- str_replace(path, old_str, new_str): replace the unique occurrence of old_str with new_str.
+- create(path, file_text): create a new file.
+- run_experiment(): train + evaluate the current code under the fixed budget; returns metrics.
+Make one tool call at a time. After editing, call run_experiment() to measure your method.
+</system>
+
+<user>
+## Research question
+
+A graph neural network for node classification has to push each node's features through the graph
+before reading them out, and the operator that does the pushing — a *graph filter* — decides what the
+network can learn. On a **homophilic** graph (connected nodes share labels: citation networks, where
+two linked papers usually share a topic) a smoothing, low-pass operator is exactly right — averaging a
+node with its neighbors sharpens the class signal. On a **heterophilic** graph (connected nodes tend to
+*differ*: webpage link graphs where a hub links to pages of many categories) smoothing is actively
+harmful — the discriminative signal lives in how a node *contrasts* with its neighborhood, a
+high-frequency component averaging destroys. The same fixed operator cannot serve both regimes.
+
+So the single thing being designed is the **propagation filter**: a learnable polynomial of the graph
+Laplacian that can take *any* frequency shape — low-pass, high-pass, band-pass, or a mixture — from
+labels alone, and do it cheaply (linear, not quadratic, in the polynomial order `K`), without
+overfitting through a wild high-order response, and — for some designs — admitting side constraints
+(notably non-negativity) cleanly. Everything else about the model is fixed: the MLP encoder, the
+dropouts, the optimizer, the data splits, the early-stopping evaluation.
+
+## Prior art before the first rung
+
+The fixed harness below is the *decoupled* `MLP → polynomial propagation → readout` template, and the
+first rung reacts to the spectral-GNN lineage that converged onto it.
+
+- **Spectral filtering via the Laplacian.** With the symmetric normalized Laplacian
+  `L = I - D^{-1/2} A D^{-1/2} = U Λ U^T`, a filter applies a scalar `h` to each frequency,
+  `y = U h(Λ) U^T x`. The eigendecomposition is `O(n^3)`, so `h` is restricted to a degree-`K`
+  polynomial of `L`, `y ≈ sum_k w_k L^k x` — `K` sparse mat-vecs, no `U`. The normalized-Laplacian
+  spectrum satisfies `0 ≤ λ ≤ 2` a priori (Chung 1997), which later saves an eigen-computation. Gap:
+  *which* polynomial — which basis, which coefficients — is left open, and that choice is the whole game.
+- **ChebNet (Defferrard, Bresson & Vandergheynst 2016).** The original learnable spectral GNN:
+  `y ≈ sum_k w_k T_k(L_hat) x`, `L_hat = 2L/λ_max - I`, via the stable Chebyshev three-term recurrence,
+  with the coefficients absorbed into a full weight matrix `W_k` per order. Gap: on citation graphs it
+  *loses* to GCN — its own first-order special case — and the gap *widens* as `K` rises (Cora 80.5 at
+  `K=2`, 74.9 at `K=10` vs GCN 81.3); a `W_k` per order also blows the parameter count up with `K`. The
+  `w_k` are fit freely, with nothing tying them to a well-behaved response.
+- **GCN (Kipf & Welling 2017).** ChebNet collapsed to first order (`K=1`, `w_0=-w_1`, `λ_max=2`) plus a
+  renormalization trick, `y = w · D̃^{-1/2} Ã D̃^{-1/2} x`. Gap: a *fixed* low-pass filter — it cannot
+  represent the high-/band-pass responses heterophilic graphs need, and is not learnable as a filter.
+- **APPNP / decoupling (Klicpera et al. 2019).** Observed the feature transform (an MLP) and the graph
+  propagation need not be interleaved: run `f_θ(X)` first, then a *fixed* PPR polynomial
+  `sum_k α(1-α)^k P̃^k`. Keeps the parameter count tied to the MLP, independent of `K`. Gap: the
+  propagation is fixed (PPR), not learned — it cannot adapt its frequency response to the graph.
+
+The ladder below keeps APPNP's decoupled harness and makes the propagation *learnable*; the rungs
+differ only in **how the `K+1` trainable parameters become the polynomial filter** — which basis, what
+constraint, what initialization.
+
+## The fixed substrate
+
+A single training/evaluation pipeline is frozen and must not be touched. Four datasets spanning the
+homophily range — **cora** (2,708 nodes, 7 classes, homophilic), **citeseer** (3,327, 6, homophilic),
+**texas** and **cornell** (183, 5, heterophilic WebKB) — each run over 10 random 60/20/20
+train/val/test splits with early stopping (patience 200, up to 1000 epochs), features row-normalized.
+The model is the decoupled `dropout → Linear → ReLU → dropout → Linear → (dprate) → CustomProp →
+log_softmax`, trained with Adam under NLL loss; the linear layers and the propagation parameters get
+their own learning rate / weight decay (a model may override `LR`, `WEIGHT_DECAY`, `PROP_LR`, `PROP_WD`
+through `custom_*` attributes). The loop also provides the operators a filter may use:
+`gcn_norm(edge_index)` → `D^{-1/2} A D^{-1/2}`; `get_laplacian(edge_index, normalization='sym')` →
+`L = I - D^{-1/2} A D^{-1/2}`; `add_self_loops(edge_index, weight, fill_value)` to shift the operator;
+`self.propagate(edge_index, x=x, norm=norm)` for one sparse mat-vec; `cheby(i, x)` for `T_i(x)` at a
+scalar; and `comb(n, k)` (binomial). Defaults: `K=10`, `HIDDEN=64`, `DROPOUT=0.5`, `DPRATE=0.0`,
+`ALPHA=0.1`.
+
+## The editable interface
+
+Exactly one region is editable — the `CustomProp` (propagation layer) and `CustomFilter` (full model)
+classes in `custom_filter.py`. Every method on the ladder is a fill of this same contract: `CustomProp`
+owns the `K+1` trainable filter parameters (`temp`), defines in `reset_parameters` how they are
+initialized, and in `forward(x, edge_index)` turns them into a degree-`K` polynomial of the (shifted,
+normalized) Laplacian applied to `x`; `CustomFilter` wraps it with the fixed MLP encoder and readout
+(and may set the `custom_*` training overrides). The starting point is the scaffold default — a PPR-like
+*monomial* polynomial with frozen PPR coefficients (APPNP, made parametric but not yet learned freely):
+
+```python
+# EDITABLE region of custom_filter.py — default fill (PPR-initialized monomial propagation)
+class CustomProp(MessagePassing):
+    def __init__(self, K, alpha=0.1, **kwargs):
+        super(CustomProp, self).__init__(aggr="add", **kwargs)
+        self.K = K
+        self.alpha = alpha
+        self.temp = Parameter(torch.Tensor(K + 1))   # K+1 polynomial coefficients
+        self.reset_parameters()
+
+    def reset_parameters(self):
+        # PPR-like initialization: gamma_k = alpha (1-alpha)^k
+        for k in range(self.K + 1):
+            self.temp.data[k] = self.alpha * (1 - self.alpha) ** k
+        self.temp.data[-1] = (1 - self.alpha) ** self.K
+
+    def forward(self, x, edge_index, edge_weight=None):
+        # GCN-normalized adjacency P = D^{-1/2} A D^{-1/2}; monomial polynomial sum_k temp_k P^k x
+        edge_index, norm = gcn_norm(
+            edge_index, edge_weight, num_nodes=x.size(0), dtype=x.dtype
+        )
+        hidden = x * self.temp[0]
+        for k in range(self.K):
+            x = self.propagate(edge_index, x=x, norm=norm)
+            hidden = hidden + self.temp[k + 1] * x
+        return hidden
+
+    def message(self, x_j, norm):
+        return norm.view(-1, 1) * x_j
+
+
+class CustomFilter(nn.Module):
+    def __init__(self, num_features, num_classes, hidden=64, K=10,
+                 alpha=0.1, dropout=0.5, dprate=0.5):
+        super(CustomFilter, self).__init__()
+        self.lin1 = Linear(num_features, hidden)
+        self.lin2 = Linear(hidden, num_classes)
+        self.prop = CustomProp(K, alpha)
+        self.dropout = dropout
+        self.dprate = dprate
+
+    def reset_parameters(self):
+        self.lin1.reset_parameters()
+        self.lin2.reset_parameters()
+        self.prop.reset_parameters()
+
+    def forward(self, data):
+        x, edge_index = data.x, data.edge_index
+        x = F.dropout(x, p=self.dropout, training=self.training)
+        x = F.relu(self.lin1(x))
+        x = F.dropout(x, p=self.dropout, training=self.training)
+        x = self.lin2(x)
+        if self.dprate == 0.0:
+            x = self.prop(x, edge_index)
+        else:
+            x = F.dropout(x, p=self.dprate, training=self.training)
+            x = self.prop(x, edge_index)
+        return F.log_softmax(x, dim=1)
+```
+
+Each later method replaces exactly these two class bodies (and, for the strongest rung, the `custom_*`
+training overrides) and nothing else.
+
+## Evaluation settings
+
+Four datasets — **cora**, **citeseer** (homophilic citation), **texas**, **cornell** (heterophilic
+WebKB) — each over 10 random 60/20/20 splits with early stopping. Metric: **mean test accuracy over the
+10 runs, higher is better**, reported per dataset (with the across-run standard deviation alongside).
+The contribution must remain a modular graph filter paired with this fixed pipeline; the data split and
+evaluation target are not to be changed.
+
+The editable model code is in `ChebNetII/main/custom_filter.py`:
+```python
+class CustomProp(MessagePassing):
+    """Custom graph signal propagation layer.
+
+    This layer defines how node features are propagated (filtered) across
+    the graph structure. It operates on the graph Laplacian spectrum.
+
+    Design a novel spectral or spatial graph filter here. The filter should:
+    1. Accept node features x and edge_index as input
+    2. Apply graph-based propagation/filtering
+    3. Return filtered node features
+
+    Available graph operators (from PyG):
+    - get_laplacian(edge_index, normalization='sym') -> (edge_index, norm)
+      Returns the symmetric normalized Laplacian L = I - D^{-1/2}AD^{-1/2}
+    - add_self_loops(edge_index, edge_weight, fill_value) -> (edge_index, weight)
+    - gcn_norm(edge_index) -> (edge_index, norm)
+      Returns D^{-1/2}AD^{-1/2} normalization
+    - self.propagate(edge_index, x=x, norm=norm) for message passing
+
+    Config available: K (polynomial order), ALPHA (teleport probability).
+
+    Args:
+        K: number of propagation steps / polynomial order
+        alpha: teleport probability (for PPR-like initialization)
+    """
+
+    def __init__(self, K, alpha=0.1, **kwargs):
+        super(CustomProp, self).__init__(aggr="add", **kwargs)
+        self.K = K
+        self.alpha = alpha
+        # Learnable polynomial coefficients
+        self.temp = Parameter(torch.Tensor(K + 1))
+        self.reset_parameters()
+
+    def reset_parameters(self):
+        # Initialize with PPR-like coefficients
+        for k in range(self.K + 1):
+            self.temp.data[k] = self.alpha * (1 - self.alpha) ** k
+        self.temp.data[-1] = (1 - self.alpha) ** self.K
+
+    def forward(self, x, edge_index, edge_weight=None):
+        # Compute GCN-normalized adjacency: D^{-1/2}AD^{-1/2}
+        edge_index, norm = gcn_norm(
+            edge_index, edge_weight, num_nodes=x.size(0), dtype=x.dtype
+        )
+        # Weighted sum of K-hop propagations (monomial basis)
+        hidden = x * self.temp[0]
+        for k in range(self.K):
+            x = self.propagate(edge_index, x=x, norm=norm)
+            hidden = hidden + self.temp[k + 1] * x
+        return hidden
+
+    def message(self, x_j, norm):
+        return norm.view(-1, 1) * x_j
+
+
+class CustomFilter(nn.Module):
+    """Full graph filter model: MLP encoder + CustomProp + softmax.
+
+    Architecture: input -> dropout -> Linear -> ReLU -> dropout -> Linear
+                  -> (optional dprate dropout) -> CustomProp -> log_softmax
+
+    Args:
+        num_features: input feature dimension
+        num_classes: number of output classes
+        hidden: hidden layer dimension
+        K: polynomial order for propagation
+        alpha: teleport probability
+        dropout: dropout rate for MLP layers
+        dprate: dropout rate for propagation layer
+    """
+
+    def __init__(self, num_features, num_classes, hidden=64, K=10,
+                 alpha=0.1, dropout=0.5, dprate=0.5):
+        super(CustomFilter, self).__init__()
+        self.lin1 = Linear(num_features, hidden)
+        self.lin2 = Linear(hidden, num_classes)
+        self.prop = CustomProp(K, alpha)
+        self.dropout = dropout
+        self.dprate = dprate
+
+    def reset_parameters(self):
+        self.lin1.reset_parameters()
+        self.lin2.reset_parameters()
+        self.prop.reset_parameters()
+
+    def forward(self, data):
+        x, edge_index = data.x, data.edge_index
+        x = F.dropout(x, p=self.dropout, training=self.training)
+        x = F.relu(self.lin1(x))
+        x = F.dropout(x, p=self.dropout, training=self.training)
+        x = self.lin2(x)
+        if self.dprate == 0.0:
+            x = self.prop(x, edge_index)
+        else:
+            x = F.dropout(x, p=self.dprate, training=self.training)
+            x = self.prop(x, edge_index)
+        return F.log_softmax(x, dim=1)
+```
+Improve it. Derive your method, edit the code, then run_experiment().
+</user>
+
+### step 1 — BernNet (Bernstein-basis filter)   [slug:bernnet]
+
+<think>
+[[POLISH_REASONING: adapt to first-person agentic voice, end by deciding to implement]]
+The filter is the whole point, but it bolts onto a fixed harness, and the scaffold default is already a graph filter — so the floor I'm starting from is just: what is the simplest *learnable* filter that beats the default, and does it have any pathology I can name in advance? The default fill is APPNP made parametric: a monomial polynomial `sum_k temp_k P^k x` of the GCN-normalized adjacency `P = D^{-1/2} A D^{-1/2}`, with the coefficients *frozen* at the Personalized-PageRank pattern `temp_k = alpha(1-alpha)^k`. That is a fixed low-pass response by construction — geometrically decaying weight on each successive hop — and it is exactly the operator that cannot serve heterophilic graphs, because a hub whose neighbors carry *opposite* labels needs a filter that *contrasts* a node with its neighborhood, a high-frequency response, and a monotone-decaying PPR filter has no way to produce one. So the default is a perfectly reasonable homophilic smoother and a guaranteed failure on Texas and Cornell unless I let the filter *change shape*. The minimal move is therefore to make those `temp_k` learnable. But I want to think harder than "unfreeze the coefficients," because the choice of *which* polynomial family the coefficients parameterize, and *what constraint* I put on them, is precisely the design space the whole task is about, and a careless choice has a failure mode I can predict from theory before I ever run it.
+
+Let me write down what a graph filter actually is, so the design choices have something to bite on. With the symmetric normalized Laplacian `L = I - D^{-1/2} A D^{-1/2} = U Λ U^T`, a spectral filter applies a scalar function `h` to each frequency, `y = U h(Λ) U^T x`, and because the eigendecomposition is `O(n^3)` I am forced to write `h` as a degree-`K` polynomial of `L` and evaluate `sum_k w_k L^k x` with sparse mat-vecs. The shape of `h` over the spectrum `[0,2]` decides everything: an impulse at `λ=0` is a pure low-pass (smooth the signal, ideal for homophily), an impulse at `λ=2` is a pure high-pass (alternate signs node-to-node, ideal for heterophily), and anything in between is a band-pass. So the homophilic and heterophilic regimes do not want *more or less* propagation — they want *opposite* frequency responses. A method that can only bend one way is stuck on half the graphs. I need a filter I can learn into any of these shapes from labels alone, and the question is which parameterization makes that learning both expressive and well-behaved.
+
+The default's basis — the monomial powers `λ^k`, equivalently the hop-powers `P^k` — is the obvious first candidate, and unfreezing its coefficients (the next rung's move) does make it expressive: GPR-style learned `gamma_k` can go low-pass, high-pass, or sign-alternating. But there is a known numerical objection to the monomial basis that I do not want to walk into blind: the powers `λ^k` become nearly collinear as `k` grows — the classic ill-conditioning of the Vandermonde matrix — so high-order monomial fits are unstable and the basis is a *poor* conditioned approximator despite the flexibility. And there is a second, subtler thing I care about: I would like to be able to *constrain the response*, in particular to keep the filter **non-negative** across the whole spectrum. Why non-negative? Because a great many of the filters one actually wants for these graphs — low-pass bumps, band-pass bumps centered somewhere in `[0,2]` — are non-negative functions of frequency, and a parameterization in which "the filter is non-negative everywhere" is a *simple constraint on the parameters* would let me bias the optimizer toward valid, interpretable filters and away from the wild oscillatory responses that overfit. With the monomial coefficients there is no transparent relationship between the sign or magnitude of `w_k` and the value of the response `h(λ)` at any frequency, so "keep `h ≥ 0` on `[0,2]`" is a hard global condition, not a box constraint I can impose with a ReLU. That is the gap the first rung is going to attack: I want a basis whose coefficients control the *value* of the response in an interpretable, sign-respecting way, so that a per-coefficient non-negativity constraint yields a globally non-negative filter.
+
+The Bernstein basis is exactly that object. The degree-`K` Bernstein basis polynomials on the interval `[0,2]` (rescaled from the textbook `[0,1]`) are `b_{k,K}(λ) = (1/2^K) C(K,k) (2-λ)^{K-k} λ^k`, `k = 0..K`, and they have three properties I want all at once. First, **non-negativity**: every `b_{k,K}(λ) ≥ 0` on `[0,2]` because it is a product of non-negative factors `(2-λ)^{K-k}` and `λ^k` (both non-negative on the interval) times positive constants. Second, **partition of unity**: `sum_k b_{k,K}(λ) = (1/2^K)((2-λ)+λ)^K = 1` by the binomial theorem, so the basis functions are a convex weighting. Together these give the property I was after: if I write the filter as `h(λ) = sum_k theta_k b_{k,K}(λ)` with **all** `theta_k ≥ 0`, then `h` is a non-negative combination of non-negative functions, so `h(λ) ≥ 0` for *every* `λ` in `[0,2]` — a guaranteed non-negative filter, certified everywhere on the spectrum, not just at sample points, purely from a box constraint on the coefficients. Third, **controllability / interpretability**: the Bernstein coefficient `theta_k` controls a "bump" located near frequency `λ ≈ 2k/K`, because `b_{k,K}` peaks there; so I can read the learned `theta` as a picture of the response — large `theta_0` is low-pass, large `theta_K` is high-pass, a bump in the middle is band-pass. This is the parameterization where "constrain the filter" becomes "ReLU the coefficients," which is precisely what the monomial basis could not give me.
+
+So the first rung is the Bernstein-basis filter: learn `theta_k`, pass them through a ReLU to enforce non-negativity, and apply `h(L) = sum_k ReLU(theta_k) · (1/2^K) C(K,k) (2I - L)^{K-k} L^k` to the MLP-transformed features. Now I have to turn that operator into the sparse mat-vec recurrence the harness supports, and this is where I need to be careful about cost. I have `L` (the symmetric normalized Laplacian) and I need both `L^j` and `(2I - L)^j` applied to a signal. Building `(2I - L)` is one self-loop shift of `L`: `add_self_loops(L, -norm, fill_value=2.0)` gives the operator `2I - L`. The clean way to assemble the Bernstein sum is to first compute the chain of `(2I-L)` powers applied to `x`, caching `tmp[i] = (2I-L)^i x` for `i = 0..K`; then for each term `k` I need `L^k · (2I-L)^{K-k} x`, which is `L` applied `k` times to the cached `tmp[K-k]`. The `k=0` term is just `(1/2^K) C(K,0) theta_0 · tmp[K]`; each subsequent term takes `tmp[K-i-1]` and walks it through `L` exactly `i+1` times, accumulating `(1/2^K) C(K,i+1) theta_{i+1} · L^{i+1} tmp[K-i-1]`. This is the structure the reference Bernstein propagation uses, and the harness's `comb(n,k)` gives me the binomial coefficients directly.
+
+I should be honest with myself about the price, because it is the one real weakness of this rung and I want it on the record before I see the numbers. Caching the `(2I-L)` chain is `K` propagations — linear, fine. But the second loop re-walks `L` from scratch for each term: term `i` does `i+1` propagations, so the total is `1 + 2 + ... + K ≈ K^2/2` extra sparse mat-vecs. The forward pass is therefore `O(K^2 m d)` — **quadratic in `K`** (`m` edges, `d` channels) — where the monomial GPR filter is linear. At `K=10` on these small graphs that is a constant-factor slowdown I can absorb, but it is the structural reason this basis does not scale, and there is no linear-time rewrite of the Bernstein form on offer. I am buying the non-negativity certificate and the controllability with a quadratic propagation cost. There is also a slower-convergence concern from approximation theory: the Bernstein approximation of a function with modulus of continuity `omega` has error scaling like `omega(K^{-1/2})` — resolution growing like `K^{-1/2}` — which is slower per degree than the near-minimax options, so for a sharp target response Bernstein needs a larger `K` for the same fidelity. On these benchmarks `K=10` is fixed, so I cannot raise it to compensate; if the true responses are sharp, the slow convergence will show as a ceiling I cannot break without more degree.
+
+The initialization is the next decision, and the Bernstein basis makes it clean. I set every `theta_k = 1`. With the partition-of-unity property, all-ones gives `h(λ) = sum_k 1 · b_{k,K}(λ) = 1` — the **constant, all-pass / identity** response, which passes every frequency unchanged and imposes no a-priori low- or high-pass bias. That is exactly the neutral default I want: I am not baking in the homophily assumption that cripples the PPR default on heterophilic graphs; I start flat and let the labels pull the filter low- or high-pass. And the ReLU on `theta` before forming the response keeps the non-negativity constraint live throughout training — it is an ordinary box constraint at the coefficient level, the very thing the monomial basis could not express. There is no separate `alpha` to set: the Bernstein filter does not use a teleport probability, so the harness's `ALPHA` is simply ignored by this rung.
+
+The harness around the propagation is the decoupled APPNP-style one — dropout, `lin1`, ReLU, dropout, `lin2` to transform the features first, then the Bernstein propagation, then log-softmax — and that decoupling matters for a reason worth naming: the filter is a single scalar function with `K+1` parameters applied identically to every channel, so the parameter count stays tied to the feature dimension and hidden width, *independent* of `K`. The MLP does all the feature mixing up front; the filter only shapes the frequency response. I leave the propagation dropout at the scaffold default (`dprate=0.0`, no dropout on the propagation step) and let the MLP dropouts (0.5) do the regularization — propagation dropout tends to hurt spectral filters on heterophilic data, and the task's default already reflects that. The literal edit fills the two class bodies (`CustomProp` becomes the Bernstein layer, `CustomFilter` keeps the standard encoder/readout); the full scaffold module is in the answer.
+
+Now I reason about what this rung should and should not do, since that is the entire point of running it as the first rung. The Bernstein filter is *expressive* — with `K=10` non-negative bumps it can build low-pass, high-pass, or band-pass responses — and it is *constrained* in a way I argued is a feature: the non-negativity certificate keeps it inside the family of valid, interpretable filters and should make it robust on the heterophilic graphs where an unconstrained filter might overfit. So I expect Texas and Cornell, the WebKB graphs, to be where this rung looks *best* relative to its weaknesses: the controllable non-negative basis can find the high-frequency bump those graphs need, and the small heterophilic graphs (183 nodes) are exactly where an unconstrained, ill-conditioned filter would overfit, so the Bernstein constraint should pay off there. The risk I have already named is on the homophilic citation graphs (Cora, Citeseer): if the true response there is a smooth low-pass that a sharper basis nails with fewer degrees, the Bernstein basis's slower `K^{-1/2}` convergence at a fixed `K=10`, plus the quadratic cost that discourages raising `K`, could leave it short of what a better-conditioned or near-minimax basis would reach — and on the *large* homophilic graphs the citation datasets stand in for, the quadratic-in-`K` propagation is the structural ceiling. So my falsifiable expectation entering the ladder is: the Bernstein filter should be a genuine improvement over the fixed-PPR default and a credible heterophilic performer, but I expect it to be the *weakest* of the learnable filters on the homophilic citation graphs specifically — the non-negativity certificate that buys robustness on the tiny WebKB graphs is the same constraint, and the same slow-converging quadratic basis, that I expect to cap it on Cora and Citeseer. If that asymmetry shows up in the numbers — strong-ish on Texas/Cornell, soft on Cora/Citeseer — then the next rung's job is already pointed: keep the near-best approximation quality and the linear cost while shedding the slow Bernstein convergence, which is exactly where a Chebyshev construction comes in.
+
+The causal chain in one breath: the scaffold default is a *fixed* PPR low-pass that cannot serve heterophilic graphs → make the filter learnable, but the obvious monomial basis is ill-conditioned and offers no clean way to constrain the response to be non-negative → choose the Bernstein basis, whose non-negativity, partition-of-unity, and bump-controllability turn "non-negative filter" into "ReLU the coefficients," giving a certified-valid, interpretable, expressive filter → assemble it as the `(2I-L)^{K-k} L^k` recurrence, accepting the `O(K^2 m d)` quadratic cost and slower `K^{-1/2}` convergence as the price of the certificate → initialize all-ones for the neutral all-pass start and let labels shape the response — expecting a solid heterophilic performer that nonetheless lands as the weakest learnable filter on the homophilic citation graphs, where the slow convergence at fixed `K` should bite.
+</think>
+<say>
+[[FILL_SAY: 1-2 sentences naming the method and what this first edit does]]
+</say>
+<edit path="ChebNetII/main/custom_filter.py">
+<old>
+class CustomProp(MessagePassing):
+    """Custom graph signal propagation layer.
+
+    This layer defines how node features are propagated (filtered) across
+    the graph structure. It operates on the graph Laplacian spectrum.
+
+    Design a novel spectral or spatial graph filter here. The filter should:
+    1. Accept node features x and edge_index as input
+    2. Apply graph-based propagation/filtering
+    3. Return filtered node features
+
+    Available graph operators (from PyG):
+    - get_laplacian(edge_index, normalization='sym') -> (edge_index, norm)
+      Returns the symmetric normalized Laplacian L = I - D^{-1/2}AD^{-1/2}
+    - add_self_loops(edge_index, edge_weight, fill_value) -> (edge_index, weight)
+    - gcn_norm(edge_index) -> (edge_index, norm)
+      Returns D^{-1/2}AD^{-1/2} normalization
+    - self.propagate(edge_index, x=x, norm=norm) for message passing
+
+    Config available: K (polynomial order), ALPHA (teleport probability).
+
+    Args:
+        K: number of propagation steps / polynomial order
+        alpha: teleport probability (for PPR-like initialization)
+    """
+</old>
+<new>
+class CustomProp(MessagePassing):
+    """Bernstein polynomial propagation layer.
+
+    Filter: h(L) = sum_{k=0}^{K} theta_k * C(K,k)/2^K * L^k * (2I-L)^{K-k}
+    where theta_k = ReLU(learnable), C(K,k) is binomial coefficient,
+    and L is the symmetric normalized Laplacian.
+    """
+</new>
+</edit>
+<obs>
+Successfully replaced text in ChebNetII/main/custom_filter.py.
+</obs>
+<note>
+[[FILL_NOTE?: optional one-line thought for this edit, or delete this block]]
+</note>
+<edit path="ChebNetII/main/custom_filter.py">
+<old>
+        self.K = K
+        self.alpha = alpha
+        # Learnable polynomial coefficients
+        self.temp = Parameter(torch.Tensor(K + 1))
+</old>
+<new>
+        self.K = K
+        self.temp = Parameter(torch.Tensor(K + 1))
+</new>
+</edit>
+<obs>
+Successfully replaced text in ChebNetII/main/custom_filter.py.
+</obs>
+<note>
+[[FILL_NOTE?: optional one-line thought for this edit, or delete this block]]
+</note>
+<edit path="ChebNetII/main/custom_filter.py">
+<old>
+    def reset_parameters(self):
+        # Initialize with PPR-like coefficients
+        for k in range(self.K + 1):
+            self.temp.data[k] = self.alpha * (1 - self.alpha) ** k
+        self.temp.data[-1] = (1 - self.alpha) ** self.K
+
+    def forward(self, x, edge_index, edge_weight=None):
+        # Compute GCN-normalized adjacency: D^{-1/2}AD^{-1/2}
+        edge_index, norm = gcn_norm(
+            edge_index, edge_weight, num_nodes=x.size(0), dtype=x.dtype
+        )
+        # Weighted sum of K-hop propagations (monomial basis)
+        hidden = x * self.temp[0]
+        for k in range(self.K):
+            x = self.propagate(edge_index, x=x, norm=norm)
+            hidden = hidden + self.temp[k + 1] * x
+        return hidden
+</old>
+<new>
+    def reset_parameters(self):
+        self.temp.data.fill_(1.0)
+
+    def forward(self, x, edge_index, edge_weight=None):
+        TEMP = F.relu(self.temp)
+
+        # L = I - D^{-1/2}AD^{-1/2}
+        edge_index1, norm1 = get_laplacian(
+            edge_index, edge_weight, normalization="sym",
+            dtype=x.dtype, num_nodes=x.size(self.node_dim)
+        )
+        # 2I - L
+        edge_index2, norm2 = add_self_loops(
+            edge_index1, -norm1, fill_value=2.0,
+            num_nodes=x.size(self.node_dim)
+        )
+
+        # Compute (2I-L)^k * x for k = 0, ..., K
+        tmp = [x]
+        for i in range(self.K):
+            x = self.propagate(edge_index2, x=x, norm=norm2, size=None)
+            tmp.append(x)
+
+        # Bernstein basis evaluation
+        out = (comb(self.K, 0) / (2 ** self.K)) * TEMP[0] * tmp[self.K]
+
+        for i in range(self.K):
+            x = tmp[self.K - i - 1]
+            # Apply L^{i+1}
+            x = self.propagate(edge_index1, x=x, norm=norm1, size=None)
+            for j in range(i):
+                x = self.propagate(edge_index1, x=x, norm=norm1, size=None)
+            out = out + (comb(self.K, i + 1) / (2 ** self.K)) * TEMP[i + 1] * x
+
+        return out
+</new>
+</edit>
+<obs>
+Successfully replaced text in ChebNetII/main/custom_filter.py.
+</obs>
+<note>
+[[FILL_NOTE?: optional one-line thought for this edit, or delete this block]]
+</note>
+<edit path="ChebNetII/main/custom_filter.py">
+<old>
+class CustomFilter(nn.Module):
+    """Full graph filter model: MLP encoder + CustomProp + softmax.
+
+    Architecture: input -> dropout -> Linear -> ReLU -> dropout -> Linear
+                  -> (optional dprate dropout) -> CustomProp -> log_softmax
+
+    Args:
+        num_features: input feature dimension
+        num_classes: number of output classes
+        hidden: hidden layer dimension
+        K: polynomial order for propagation
+        alpha: teleport probability
+        dropout: dropout rate for MLP layers
+        dprate: dropout rate for propagation layer
+    """
+</old>
+<new>
+class CustomFilter(nn.Module):
+    """BernNet: Bernstein polynomial graph filter (He et al., 2021).
+
+    MLP encoder + Bernstein polynomial propagation.
+    """
+</new>
+</edit>
+<obs>
+Successfully replaced text in ChebNetII/main/custom_filter.py.
+</obs>
+<note>
+[[FILL_NOTE?: optional one-line thought for this edit, or delete this block]]
+</note>
+<edit path="ChebNetII/main/custom_filter.py">
+<old>
+        self.lin2 = Linear(hidden, num_classes)
+        self.prop = CustomProp(K, alpha)
+        self.dropout = dropout
+</old>
+<new>
+        self.lin2 = Linear(hidden, num_classes)
+        self.prop = CustomProp(K)
+        self.dropout = dropout
+</new>
+</edit>
+<obs>
+Successfully replaced text in ChebNetII/main/custom_filter.py.
+</obs>
+<run/>
+<obs>
+Measured results — `baseline:bernnet` (`is_final,true`), seeds {42, 123, 456} and mean. Metric: mean
+test accuracy over 10 splits (higher is better); the across-run std is shown alongside.
+
+## Test accuracy (mean over 10 splits)
+| seed | cora | citeseer | texas | cornell |
+|---|---|---|---|---|
+| 42 | 0.8563 | 0.7798 | 0.9049 | 0.8836 |
+| 123 | 0.8552 | 0.7793 | 0.9082 | 0.8262 |
+| 456 | 0.8547 | 0.7795 | 0.9148 | 0.8230 |
+| **mean** | **0.8554** | **0.7795** | **0.9093** | **0.8443** |
+
+## Across-run std (std of accuracy over the 10 splits)
+| seed | cora | citeseer | texas | cornell |
+|---|---|---|---|---|
+| 42 | 0.0143 | 0.0061 | 0.0252 | 0.0377 |
+| 123 | 0.0146 | 0.0058 | 0.0245 | 0.0403 |
+| 456 | 0.0151 | 0.0048 | 0.0262 | 0.0445 |
+| **mean** | **0.0147** | **0.0056** | **0.0253** | **0.0408** |
+</obs>
+
+### step 2 — ChebNetII (Chebyshev-interpolation filter)   [slug:chebnetii]
+
+<think>
+[[POLISH_REASONING: adapt to first-person agentic voice, end by deciding to implement]]
+The Bernstein run told me where its certificate helps and where it costs, and it told me in the
+asymmetry I predicted. On the heterophilic WebKB graphs the non-negative basis did its job: Texas landed
+at 0.9093 mean, the *highest* texas of anything I will run, and Cornell at 0.8443, both tight across
+seeds — the controllable non-negative bumps found the high-frequency response those graphs need, and the
+non-negativity constraint kept the filter from overfitting the tiny 183-node graphs. But on the
+homophilic citation graphs it is soft, exactly where I said the slow `K^{-1/2}` Bernstein convergence at
+a fixed `K=10` would bite: Cora 0.8554 and Citeseer 0.7795 are the lowest homophilic numbers I will see
+from a learnable filter. The Citeseer gap is the loud one — 0.7795 is a clear step below where a smooth
+low-pass should land on a clean citation graph. So the diagnosis is sharp and it is *not* a constraint
+problem and *not* an expressivity problem: Bernstein is expressive enough and its constraint is helping.
+The problem is **approximation efficiency** — at the fixed `K=10` the Bernstein basis resolves a smooth
+target response too slowly, and on top of that its `O(K^2 m d)` cost means I cannot just raise `K` to
+buy resolution. I want the same near-best approximation quality with *linear* cost and *faster*
+per-degree convergence, and the basis that is supposed to deliver exactly that is Chebyshev. So the
+obvious next move is to swap the Bernstein basis for the Chebyshev basis in the same decoupled harness.
+But there is a puzzle waiting on that path, and if I do not resolve it I will make Citeseer *worse*, not
+better.
+
+Here is the puzzle. The truncated Chebyshev expansion of a function is *near-minimax*: among all
+degree-`K` polynomials its worst-case uniform error is within a small factor of the best possible. By
+approximation theory it is the *good* basis — the whole reason numerical analysts abandoned the monomial
+powers a century ago is that the Chebyshev basis is far better conditioned. So a naive expectation is
+that dropping the Chebyshev basis into the harness — learn `w_k` freely, propagate
+`sum_k w_k T_k(L_hat) f_θ(X)` — should beat both Bernstein and the monomial GPR filter. Yet the
+empirical record on these citation graphs is the opposite: a free-coefficient Chebyshev filter comes in
+*last* of the three bases, below the monomial GPR filter and below Bernstein. The near-minimax basis is
+the worst performer. Either approximation theory is lying to me, or I am using Chebyshev wrong — and I
+will bet on the latter, because the theory is about the *best* polynomial in the basis, and I am letting
+gradient descent pick the coefficients freely, which is a different thing.
+
+So let me think about what "learn `w_k` freely" actually does. Any continuous response on `[-1,1]` has a
+Chebyshev expansion `h(x) = sum_k w_k T_k(x)`, and the high-`k` `T_k` are the high-frequency modes:
+`T_k(x) = cos(k arccos x)`, literally a cosine of increasing frequency. So the large-`k` coefficients
+control how much high-frequency wiggle the response has. Now the fact I keep underusing: there is a
+constraint on those coefficients that any *well-behaved* filter must obey. If `h` is analytic on the
+open interval — locally a convergent power series, the smooth kind of response a sensible filter should
+be — then its Chebyshev coefficients must *decay*, asymptotically like `1/k^q` for some positive `q`.
+The high-frequency coefficients of a smooth filter are *forced* to die off. A response whose large-`k`
+Chebyshev coefficients do *not* decay is, by the contrapositive, non-analytic — a wild, oscillatory,
+hard-to-approximate function. And free `w_k`, fit by gradient descent chasing training accuracy, have
+*nothing* enforcing that decay: the optimizer is free to pile weight onto the large-`k` coefficients and
+fit a jagged, high-frequency response that memorizes the labels and generalizes terribly. That is a
+textbook overfitting machine — enormous capacity in exactly the high-frequency modes — and it is why the
+free-Chebyshev filter loses despite the basis being near-minimax. This is the same disease that made the
+original ChebNet *lose to its own first-order GCN special case* and get worse as `K` rose: GCN
+physically cannot express high-frequency garbage, so on a mostly-homophilic citation graph its
+inflexibility is a feature, while a free-coefficient high-`K` Chebyshev filter has ten extra
+high-frequency knobs to overfit with. The basis was never the problem; the *missing coefficient
+constraint* is.
+
+So the cure is to force the decay — to tie the coefficients to a well-behaved response instead of
+letting them roam. The crudest way is a `1/k` reparameterization: learn `w_k` but propagate with
+`w_k/k` per order, mechanically pushing the spectrum toward the `1/k^q` shape the theorem demands. And
+that does work — it jumps a free-Chebyshev filter past the monomial and the Bernstein ones. But it is a
+hack, and it has the exact same wall the monomial basis had against the *previous* rung: I cannot extend
+it to impose the non-negativity constraint that BernNet's whole design was built around. With abstract
+expansion coefficients there is no transparent relation between `w_k` and the *value* `h(λ̂)`, so "keep
+the response non-negative" is a hard global condition again, not a box constraint. I want the lesson
+BernNet taught me — *constraints on the response should be constraints on the parameters* — without
+BernNet's quadratic cost and slow convergence. That sentence is the thing to chase.
+
+What makes response constraints turn into parameter constraints? If my trainable numbers *were* the
+filter's values themselves, then "the filter is non-negative at the control points" would just be "these
+numbers are non-negative" — a ReLU, done. So instead of parameterizing the *coefficients* of the
+polynomial, parameterize the polynomial by the *values* it takes at a fixed set of points, and let the
+coefficients be *derived* from those values. That is not a basis change; it is switching from expansion
+to **interpolation**. Given values `γ_j` at `K+1` distinct nodes `x_0 < ... < x_K`, there is a unique
+degree-`≤K` polynomial through them. Now the free parameters *are* `γ_j = h(x_j)`, the response values,
+and a constraint on the response at a control point is a box constraint on a parameter. When the sampled
+values come from a smooth response, the recovered coefficient vector is the interpolation coefficient
+vector of *that smooth response*, so the decay comes from the response itself rather than from a
+heuristic `1/k` penalty — and `γ_j ≥ 0` is exactly "non-negative response value at node `j`," the
+BernNet-style constraint, now living at the parameter level.
+
+Except interpolation has its own famous trap, and if I walk into it I have traded one disease for a
+worse one: the **Runge phenomenon**. Sample at *equispaced* nodes and crank `K` up on a Runge-type
+target, and the interpolant oscillates harder and harder near the interval ends, the high-degree error
+diverging. Let me locate exactly where that comes from so I know what to do about it. The interpolation
+error at any point is `R_K(λ̂) = h^{(K+1)}(ζ)/(K+1)! · π_{K+1}(λ̂)`, where `π_{K+1}(λ̂) = prod_k(λ̂ -
+x_k)` is the *nodal polynomial* — the monic degree-`K+1` polynomial whose roots are my chosen nodes. The
+`h^{(K+1)}/(K+1)!` factor is the function's business, untouchable. But `π_{K+1}` is *entirely mine* — it
+is decided by where I put the nodes. With equispaced nodes `π_{K+1}` is small in the middle and swings
+enormously near `±1`, so the error explodes at the boundaries. So the whole Runge problem reduces to a
+clean question I control: *where do I place `K+1` nodes so that `max |prod_k(x - x_k)|` over `[-1,1]` is
+as small as possible?*
+
+And I know the answer to that. Among all monic degree-`K+1` polynomials on `[-1,1]`, the one with the
+smallest possible maximum absolute value is the scaled Chebyshev polynomial `2^{-K} T_{K+1}`, with
+uniform norm exactly `2^{-K}`. So if I choose my nodes to be the *roots of `T_{K+1}`*, the nodal
+polynomial *is* that minimizer, `||π_{K+1}|| = 2^{-K}` — the smallest it can be, shrinking geometrically
+in `K`. Those roots are the **Chebyshev nodes** `x_j = cos((j + 1/2)π/(K+1))`, `j = 0..K`, which cluster
+near the endpoints — denser exactly where equispaced nodes let the error run wild, which is the
+geometric reason they tame it. And this also delivers the approximation quality, not just a small nodal
+polynomial: the Lebesgue constant of Chebyshev-node interpolation grows like `log K` (versus `~2^K` for
+equispaced), so the interpolant is always within a `~log K` factor of the minimax polynomial. That is
+the near-minimax guarantee, and it confirms the basis was never the problem — it is interpolation at the
+*right nodes* that is near-best, and free-coefficient fitting that was wrong.
+
+Now the coefficients in closed form, because the structure is the payoff. Write `x_j = cos θ_j` with
+`θ_j = (j+1/2)π/(K+1)`, so `T_k(x_j) = cos(k θ_j)`. The Chebyshev polynomials are *discretely
+orthogonal* at their own nodes: `sum_{j=0}^K T_m(x_j) T_l(x_j)` is `0` for `m≠l`, `(K+1)/2` for
+`m=l≠0`, and `K+1` for `m=l=0` — the half-integer offset in `θ_j` makes the cross sums of unit roots
+cancel, with the `m=l=0` case being *twice* the others. Plugging the interpolation conditions `P_K(x_j) =
+γ_j` into the expansion `P_K = (c_0/2)T_0 + sum_{k≥1} c_k T_k` and inverting via that orthogonality gives
+one normalization for every coefficient: `c_k = (2/(K+1)) sum_{j=0}^K γ_j T_k(x_j)`, with the constant
+term applied as `c_0/2` to compensate `T_0`'s doubled discrete norm. This is exactly a discrete cosine
+transform of the sampled values — not a fudge, the inverse of the orthogonality relation. So the recipe
+is: treat the response values at the Chebyshev nodes as the trainable `γ_j`, take this near-DCT to get
+the Chebyshev coefficients of the unique near-minimax interpolant, and propagate with the standard
+three-term recurrence.
+
+Two implementation choices close it, and both are the *opposite* trade-off from BernNet. First the
+rescaling: Chebyshev lives on `[-1,1]` and the normalized-Laplacian spectrum lives on `[0,2]`. ChebNet
+needed `λ_max` to set `L_hat = 2L/λ_max - I` — an extra eigen-computation — but I know `λ_max ≤ 2` a
+priori, and using `λ_max = 2` gives the free shift `L_hat = L - I`: build `L` once with `get_laplacian`,
+then add self-loops with weight `-1`. No spectrum estimate. Second the propagation: the Chebyshev
+three-term recurrence `T_k(L_hat)x = 2 L_hat T_{k-1}(L_hat)x - T_{k-2}(L_hat)x`, carrying two running
+vectors through one sparse mat-vec each, accumulating `out += c_k T_k(L_hat)x` started at `(c_0/2)T_0 +
+c_1 T_1`. Forming the `K+1` coefficients is `O(K^2)` scalar work on the fixed `T_k(x_j)` table; the
+propagation is `K` sparse mat-vecs, `O(K m d)`. So the forward pass is `O(K^2 + K m d)` — **linear in
+`K`**, where BernNet was quadratic — and the per-degree convergence is faster too: Chebyshev
+interpolation error scales like `ω(K^{-1}) log K` against Bernstein's `ω(K^{-1/2})`, so at the *same*
+fixed `K=10` it resolves a smooth target more sharply. That is precisely the deficit I diagnosed on
+Citeseer: I am buying back the resolution Bernstein left on the table, at lower cost.
+
+The initialization mirrors BernNet's logic in the new parameterization. The parameters are response
+*values* `γ_j = h(x_j)`, so the neutral start is every `γ_j = 1`, which interpolates to the constant
+`h ≡ 1` — the all-pass / identity response, no a-priori low- or high-pass bias, the same flat start that
+let the Bernstein filter find heterophilic responses. The ReLU on `γ` before the DCT keeps the
+non-negativity constraint at the interpolation nodes — the BernNet lesson preserved, though I should be
+honest that this is a *sampled-value* constraint (non-negative at the `K+1` nodes), not BernNet's global
+positivity certificate between nodes. I keep the harness's propagation dropout at the default and the
+training overrides at the scaffold values. The literal edit replaces the two class bodies; the full
+scaffold module is in the answer.
+
+So the falsifiable expectations against the Bernstein numbers. The whole motivation was Bernstein's
+softness on the *homophilic* citation graphs, so that is where I expect to gain: Citeseer should climb
+clearly off 0.7795 toward 0.80, and Cora off 0.8554 toward 0.87 — the linear-cost, faster-converging
+near-minimax interpolation buying the smooth-low-pass resolution Bernstein under-resolved at fixed `K`. I
+expect the per-seed variance to *shrink* relative to Bernstein's, because the Chebyshev-node
+parameterization ties the coefficients to a stable interpolation problem instead of a free or slowly
+converging fit — and indeed the place to watch is whether Cora/Citeseer come in nearly seed-invariant.
+The genuine risk is on the *heterophilic* side, and I want it on the record: BernNet's global
+non-negativity certificate may be doing real regularizing work on the tiny 183-node Texas and Cornell
+graphs, and my weaker sampled-value constraint plus the higher-resolution basis could *overfit* there
+where Bernstein did not. So my honest prediction is an inversion of Bernstein's profile: I expect
+ChebNetII to *win the homophilic graphs* (Cora and Citeseer above Bernstein) while possibly *losing
+texas* (Bernstein's 0.9093 is a high bar that its certificate earned on a tiny graph) and landing
+roughly even on Cornell. If that inversion shows — homophilic up, heterophilic flat-to-down — then
+neither the certificate nor the near-minimax interpolation is uniformly best, and the next rung's
+question is already framed: is there a parameterization that keeps the linear cost and recovers the
+heterophilic edge a constrained basis gives up, without the quadratic price?
+</think>
+<say>
+[[FILL_SAY: 1-2 sentences naming the method and what this first edit does]]
+</say>
+<edit path="ChebNetII/main/custom_filter.py">
+<old>
+class CustomProp(MessagePassing):
+    """Bernstein polynomial propagation layer.
+
+    Filter: h(L) = sum_{k=0}^{K} theta_k * C(K,k)/2^K * L^k * (2I-L)^{K-k}
+    where theta_k = ReLU(learnable), C(K,k) is binomial coefficient,
+    and L is the symmetric normalized Laplacian.
+    """
+</old>
+<new>
+class CustomProp(MessagePassing):
+    """ChebNetII propagation: Chebyshev interpolation filter.
+
+    Learns filter values at Chebyshev interpolation nodes, then converts
+    to Chebyshev polynomial coefficients. Uses ReLU to ensure non-negative
+    interpolation values.
+
+    Filter: h(L_tilde) = sum_{k=0}^{K} c_k * T_k(L_tilde)
+    where L_tilde = L - I (shifted Laplacian), T_k is the k-th Chebyshev
+    polynomial, and c_k are computed from interpolation values via DCT-like transform.
+    """
+</new>
+</edit>
+<obs>
+Successfully replaced text in ChebNetII/main/custom_filter.py.
+</obs>
+<note>
+[[FILL_NOTE?: optional one-line thought for this edit, or delete this block]]
+</note>
+<edit path="ChebNetII/main/custom_filter.py">
+<old>
+    def forward(self, x, edge_index, edge_weight=None):
+        TEMP = F.relu(self.temp)
+</old>
+<new>
+    def forward(self, x, edge_index, edge_weight=None):
+        coe_tmp = F.relu(self.temp)
+        coe = coe_tmp.clone()
+
+        # Convert interpolation values to Chebyshev coefficients
+        for i in range(self.K + 1):
+            coe[i] = coe_tmp[0] * cheby(i, math.cos((self.K + 0.5) * math.pi / (self.K + 1)))
+            for j in range(1, self.K + 1):
+                x_j = math.cos((self.K - j + 0.5) * math.pi / (self.K + 1))
+                coe[i] = coe[i] + coe_tmp[j] * cheby(i, x_j)
+            coe[i] = 2 * coe[i] / (self.K + 1)
+</new>
+</edit>
+<obs>
+Successfully replaced text in ChebNetII/main/custom_filter.py.
+</obs>
+<note>
+[[FILL_NOTE?: optional one-line thought for this edit, or delete this block]]
+</note>
+<edit path="ChebNetII/main/custom_filter.py">
+<old>
+        )
+        # 2I - L
+        edge_index2, norm2 = add_self_loops(
+            edge_index1, -norm1, fill_value=2.0,
+            num_nodes=x.size(self.node_dim)
+        )
+
+        # Compute (2I-L)^k * x for k = 0, ..., K
+        tmp = [x]
+        for i in range(self.K):
+            x = self.propagate(edge_index2, x=x, norm=norm2, size=None)
+            tmp.append(x)
+
+        # Bernstein basis evaluation
+        out = (comb(self.K, 0) / (2 ** self.K)) * TEMP[0] * tmp[self.K]
+
+        for i in range(self.K):
+            x = tmp[self.K - i - 1]
+            # Apply L^{i+1}
+            x = self.propagate(edge_index1, x=x, norm=norm1, size=None)
+            for j in range(i):
+                x = self.propagate(edge_index1, x=x, norm=norm1, size=None)
+            out = out + (comb(self.K, i + 1) / (2 ** self.K)) * TEMP[i + 1] * x
+</old>
+<new>
+        )
+        # L_tilde = L - I (shifted to [-1, 1] range)
+        edge_index_tilde, norm_tilde = add_self_loops(
+            edge_index1, norm1, fill_value=-1.0,
+            num_nodes=x.size(self.node_dim)
+        )
+
+        # Chebyshev recurrence: T_0(x)=x, T_1(x)=x, T_{k+1}=2xT_k - T_{k-1}
+        Tx_0 = x
+        Tx_1 = self.propagate(edge_index_tilde, x=x, norm=norm_tilde, size=None)
+
+        out = coe[0] / 2 * Tx_0 + coe[1] * Tx_1
+
+        for i in range(2, self.K + 1):
+            Tx_2 = self.propagate(edge_index_tilde, x=Tx_1, norm=norm_tilde, size=None)
+            Tx_2 = 2 * Tx_2 - Tx_0
+            out = out + coe[i] * Tx_2
+            Tx_0, Tx_1 = Tx_1, Tx_2
+</new>
+</edit>
+<obs>
+Successfully replaced text in ChebNetII/main/custom_filter.py.
+</obs>
+<note>
+[[FILL_NOTE?: optional one-line thought for this edit, or delete this block]]
+</note>
+<edit path="ChebNetII/main/custom_filter.py">
+<old>
+class CustomFilter(nn.Module):
+    """BernNet: Bernstein polynomial graph filter (He et al., 2021).
+
+    MLP encoder + Bernstein polynomial propagation.
+    """
+</old>
+<new>
+class CustomFilter(nn.Module):
+    """ChebNetII: Chebyshev interpolation graph filter (He et al., 2022).
+
+    MLP encoder + ChebNetII propagation with Chebyshev interpolation.
+    """
+</new>
+</edit>
+<obs>
+Successfully replaced text in ChebNetII/main/custom_filter.py.
+</obs>
+<run/>
+<obs>
+Measured results — `baseline:chebnetii` (`is_final,true`), seeds {42, 123, 456} and mean. Metric: mean
+test accuracy over 10 splits (higher is better); the across-run std is shown alongside.
+
+## Test accuracy (mean over 10 splits)
+| seed | cora | citeseer | texas | cornell |
+|---|---|---|---|---|
+| 42 | 0.8724 | 0.8001 | 0.8770 | 0.8475 |
+| 123 | 0.8726 | 0.8007 | 0.8770 | 0.8475 |
+| 456 | 0.8724 | 0.8004 | 0.8770 | 0.8459 |
+| **mean** | **0.8725** | **0.8004** | **0.8770** | **0.8470** |
+
+## Across-run std (std of accuracy over the 10 splits)
+| seed | cora | citeseer | texas | cornell |
+|---|---|---|---|---|
+| 42 | 0.0161 | 0.0153 | 0.0246 | 0.0464 |
+| 123 | 0.0161 | 0.0147 | 0.0246 | 0.0464 |
+| 456 | 0.0161 | 0.0148 | 0.0246 | 0.0459 |
+| **mean** | **0.0161** | **0.0149** | **0.0246** | **0.0462** |
+</obs>
+
+### step 3 — GPRGNN (learnable monomial / Generalized-PageRank filter)   [slug:gprgnn]
+
+<think>
+[[POLISH_REASONING: adapt to first-person agentic voice, end by deciding to implement]]
+ChebNetII came in almost exactly where I bet it would on the homophilic graphs, and almost exactly
+where I feared on the heterophilic ones — and the *way* it landed is the tell that reframes the whole
+ladder. On Cora it climbed to 0.8725 and on Citeseer to 0.8004, both clearly above BernNet's 0.8554 and
+0.7795: the linear-cost near-minimax interpolation bought back the smooth-low-pass resolution Bernstein
+under-resolved at fixed `K`, exactly as predicted. The seed-to-seed variance collapsed to almost
+nothing — Cora 0.8724/0.8726/0.8724, Citeseer within 0.0006 — which is the signature of tying the
+coefficients to a stable interpolation problem rather than a free fit. So the homophilic story is a
+clean win. But the heterophilic prediction also came true, and harder than I wanted: Texas *fell* to
+0.8770, below BernNet's 0.9093, and Cornell sat flat at 0.8470. The inversion I flagged is real —
+ChebNetII wins the citation graphs and loses Texas — and that means neither the Bernstein certificate
+nor the Chebyshev interpolant is uniformly best. Now here is the thing that actually nags me: ChebNetII's
+near-perfect seed-invariance on the citation graphs is not only a feature, it is a *symptom*. A filter
+whose three seeds land within 0.0006 of each other on Cora is a filter that is barely moving off its
+initialization — the optimizer is finding nearly the same response every time. That is wonderful when the
+target is a single smooth low-pass, but it suggests the parameterization is *over-regularized*: the
+ReLU-on-values plus the DCT plus the near-minimax node placement together pin the filter so tightly that
+it cannot reach the sharper, possibly sign-changing response Texas needs — which is exactly why Texas
+regressed. So my question for this rung is: can I keep the linear cost, but *loosen* the parameterization
+so the filter can swing further toward the heterophilic responses, and recover the texas/cornell edge a
+constrained basis gives up?
+
+Let me reconsider what each rung actually constrained, because the pattern across the two failures points
+somewhere specific. BernNet constrained the response to be *non-negative everywhere* (a global
+certificate) and paid with quadratic cost and slow convergence. ChebNetII constrained the response to be
+a *near-minimax interpolant of non-negative sampled values* and paid with a filter so stiff it under-fits
+the heterophilic graphs. Both constraints were motivated by the fear that an unconstrained filter would
+overfit — the original ChebNet's disease, free Chebyshev coefficients piling weight on high frequencies
+and losing even to GCN. But look at where the two constrained filters actually *lose*: not on the large
+citation graphs where overfitting capacity would be dangerous, but on Texas and Cornell — graphs with
+**183 nodes**, where the heterophilic response is sharp and sign-changing, and where the constraint is
+not protecting against overfitting so much as *forbidding the very response the graph needs*. The
+non-negativity constraint, in particular, is suspect: a true heterophilic filter is high-pass, and a
+high-pass response on the normalized spectrum can want to *alternate sign* across frequency — exactly
+what a non-negative-everywhere or non-negative-at-nodes constraint cannot express. So the lesson the two
+feedbacks are jointly teaching me is that the *constraint* — the thing both prior rungs were proud of —
+is the thing capping heterophilic performance. The next move is to drop it: parameterize the filter so
+the coefficients are *unconstrained* and free to take either sign, and trust a *different* mechanism than
+a hard constraint to control overfitting.
+
+That sounds like a step backward — it is the free-coefficient ChebNet disease all over again — unless I
+change two things at once. First, the *basis*. The ChebNet failure was free coefficients in a basis
+where high-`k` terms are high-frequency cosines, so unconstrained learning piles capacity exactly where
+it overfits. But there is a basis where the natural, regularization-friendly default is *not* a wild
+response: the **monomial** basis in the GCN-normalized adjacency, `h(P) = sum_k γ_k P^k` with `P =
+D^{-1/2} A D^{-1/2}`. Here `P^k` is the `k`-hop propagation operator, and the coefficient `γ_k` is the
+weight on information from `k` hops away — a directly interpretable quantity, not an abstract Chebyshev
+amplitude. A node's label, on either a homophilic or a heterophilic graph, depends on its neighborhood
+at a few hops; learning *how much* to trust each hop, with the sign free, is exactly the degree of
+freedom Texas needs (it can learn to *subtract* the 1-hop average to build a contrast) and exactly what
+the non-negative bases forbade. The monomial basis is the one the scaffold default already uses (frozen
+at PPR); the move is to *unfreeze* it and let every hop-weight be learned, sign and all. Yes, the
+monomial basis is ill-conditioned — the powers `P^k` become collinear as `k` grows — and that is a real
+objection that motivated the *Chebyshev* rung in the first place. But conditioning is an
+*approximation-theory* concern about fitting an arbitrary target to high precision; here `K=10` is
+modest, the target responses are not pathological, and the empirical record on these exact graphs is
+blunt: a learned monomial filter outperforms a free Chebyshev filter on the citation graphs despite the
+conditioning. So I will accept the conditioning cost to buy the unconstrained, sign-free, hop-interpretable
+coefficients.
+
+Second, and this is what keeps the unconstrained filter from overfitting the way ChebNet did: the
+*regularization* moves from a hard architectural constraint to a *soft* one — weight decay on the
+coefficients, plus a careful learning-rate split, plus the right *initialization*. This is where I
+deliberately depart from the textbook monomial filter, which initializes the hop-weights to the PPR
+pattern `γ_k = α(1-α)^k` (a decaying low-pass, the same shape the scaffold default freezes). PPR
+initialization bakes in the homophily prior — it starts the filter as a low-pass and asks the optimizer
+to climb out of it toward high-pass on heterophilic graphs. On a 183-node heterophilic graph with little
+data, that starting bias is a headwind: the optimizer may not travel far enough from a low-pass start to
+reach the contrast filter Texas needs, which is one more way a homophily prior caps heterophilic
+accuracy. So I initialize **uniformly**: every `γ_k = 1/(K+1)`, an equal-weight average over all hops `0`
+through `K`. That is dataset-agnostic — it commits to neither low- nor high-pass, it is the flat,
+unbiased start (the same neutrality logic that made all-ones the right init for the previous two rungs,
+here expressed as the uniform hop-average) — and it lets the optimizer move freely toward whichever
+response the labels demand, low-pass on Cora or sign-alternating on Texas, without first having to undo a
+baked-in prior. This is the single most important departure of this rung: *uniform, not PPR,
+initialization*, precisely so the heterophilic graphs are reachable.
+
+The training-hyperparameter split is the other deliberate departure, and it is the soft regularization
+that replaces the hard constraints. I give the *filter coefficients* the **same** learning rate as the
+MLP — `0.05` for both, where the scaffold default would slow the propagation parameters to `0.01`.
+ChebNetII's stiffness, I now think, was partly that its parameterization plus a slow propagation LR meant
+the filter barely moved; here I *want* the unconstrained hop-weights to move fast enough to find the
+heterophilic response, so I do not throttle them. To control the overfitting that fast, unconstrained,
+ill-conditioned coefficients invite, I lean on weight decay where it belongs: a small `5e-4` weight decay
+on the MLP encoder (the high-capacity part, where overfitting on a 183-node graph is the real danger),
+and **zero** weight decay on the `K+1` filter coefficients themselves (decaying the filter toward zero
+would bias it back toward an over-smooth response — the wrong prior). So the regularization budget is
+spent on the encoder, not the filter, and the filter is left free and fast. Propagation dropout stays off
+(`dprate=0.0`), consistent with the whole task's finding that propagation dropout hurts spectral filters
+on heterophilic data.
+
+The propagation itself is the cheapest of all three rungs and that is a virtue I should state plainly,
+since BernNet's quadratic cost was a named weakness. The monomial filter is `hidden = γ_0 x; for k:
+x ← P x; hidden += γ_{k+1} x` — `K` sparse mat-vecs of the GCN-normalized adjacency, accumulating the
+learned hop-weights as I go. That is `O(K m d)`, linear in `K`, the same order as ChebNetII and strictly
+cheaper than BernNet, with no DCT coefficient transform and no Laplacian shift — just the normalized
+adjacency powers. So this rung is simultaneously the *least constrained* and the *cheapest*: I am betting
+that on these graphs the right design is not a clever constrained basis but the plainest possible
+learnable hop-mixer, freed of every prior, regularized softly, and started flat. The literal edit
+replaces the two class bodies and sets the four `custom_*` training overrides; the full scaffold module
+is in the answer.
+
+Now the falsifiable expectations against ChebNetII's numbers, because this rung either justifies dropping
+the constraint or it does not. The whole motivation is the heterophilic regression, so that is the first
+thing I expect to fix: Texas should climb back off ChebNetII's 0.8770 toward 0.90 — recovering and
+plausibly exceeding it, because the unconstrained sign-free coefficients with a uniform start can build
+the contrast response that both non-negative bases forbade — and Cornell should rise off 0.8470 toward
+0.87, since the same freedom helps the second WebKB graph. The risk is the mirror of ChebNetII's win: by
+dropping the constraint and the near-minimax conditioning I might *give back* the homophilic gain, so
+Cora and Citeseer are the graphs to watch for a regression. My honest prediction is that they will *not*
+regress and may edge slightly higher — Cora toward 0.89, Citeseer holding near 0.80 — because the
+uniform-init monomial filter is perfectly capable of learning a smooth low-pass on a clean citation
+graph (a decaying `γ_k` is right there in its reach), and the soft weight decay on the encoder controls
+overfitting without stiffening the filter. The second thing I expect is *more* seed-to-seed variance than
+ChebNetII's near-zero — an unconstrained, fast-learning filter will not land in the identical place every
+run — but I expect that variance to stay small and the *mean* to be higher across the board. If both hold
+— heterophilic recovered (Texas back near 0.90, Cornell up) *and* homophilic held-or-improved (Cora and
+Citeseer at or above ChebNetII) — then the unconstrained, uniform-init, fast-coefficient monomial filter
+dominates both constrained rungs on this harness, and the ladder's verdict is that on these four graphs
+the constraint machinery the prior rungs were built around was the thing holding them back. That is the
+result I am chasing: the simplest filter, freed of its priors, as the strongest.
+</think>
+<say>
+[[FILL_SAY: 1-2 sentences naming the method and what this first edit does]]
+</say>
+<edit path="ChebNetII/main/custom_filter.py">
+<old>
+class CustomProp(MessagePassing):
+    """ChebNetII propagation: Chebyshev interpolation filter.
+
+    Learns filter values at Chebyshev interpolation nodes, then converts
+    to Chebyshev polynomial coefficients. Uses ReLU to ensure non-negative
+    interpolation values.
+
+    Filter: h(L_tilde) = sum_{k=0}^{K} c_k * T_k(L_tilde)
+    where L_tilde = L - I (shifted Laplacian), T_k is the k-th Chebyshev
+    polynomial, and c_k are computed from interpolation values via DCT-like transform.
+    """
+</old>
+<new>
+class CustomProp(MessagePassing):
+    """GPR propagation: learnable polynomial in the monomial basis.
+
+    Filter: h(A) = sum_{k=0}^{K} gamma_k * A^k
+    where A is the GCN-normalized adjacency and gamma_k are learnable.
+
+    Initialized with uniform coefficients (1/(K+1)) so the filter starts
+    as an equal-weight average of all hops. This is dataset-agnostic and
+    lets the optimizer freely learn both low-pass (homophilic) and
+    high-pass (heterophilic) filters.
+    """
+</new>
+</edit>
+<obs>
+Successfully replaced text in ChebNetII/main/custom_filter.py.
+</obs>
+<note>
+[[FILL_NOTE?: optional one-line thought for this edit, or delete this block]]
+</note>
+<edit path="ChebNetII/main/custom_filter.py">
+<old>
+        self.K = K
+        self.temp = Parameter(torch.Tensor(K + 1))
+</old>
+<new>
+        self.K = K
+        self.alpha = alpha
+        self.temp = Parameter(torch.Tensor(K + 1))
+</new>
+</edit>
+<obs>
+Successfully replaced text in ChebNetII/main/custom_filter.py.
+</obs>
+<note>
+[[FILL_NOTE?: optional one-line thought for this edit, or delete this block]]
+</note>
+<edit path="ChebNetII/main/custom_filter.py">
+<old>
+    def reset_parameters(self):
+        self.temp.data.fill_(1.0)
+
+    def forward(self, x, edge_index, edge_weight=None):
+        coe_tmp = F.relu(self.temp)
+        coe = coe_tmp.clone()
+
+        # Convert interpolation values to Chebyshev coefficients
+        for i in range(self.K + 1):
+            coe[i] = coe_tmp[0] * cheby(i, math.cos((self.K + 0.5) * math.pi / (self.K + 1)))
+            for j in range(1, self.K + 1):
+                x_j = math.cos((self.K - j + 0.5) * math.pi / (self.K + 1))
+                coe[i] = coe[i] + coe_tmp[j] * cheby(i, x_j)
+            coe[i] = 2 * coe[i] / (self.K + 1)
+
+        # L = I - D^{-1/2}AD^{-1/2}
+        edge_index1, norm1 = get_laplacian(
+            edge_index, edge_weight, normalization="sym",
+            dtype=x.dtype, num_nodes=x.size(self.node_dim)
+        )
+        # L_tilde = L - I (shifted to [-1, 1] range)
+        edge_index_tilde, norm_tilde = add_self_loops(
+            edge_index1, norm1, fill_value=-1.0,
+            num_nodes=x.size(self.node_dim)
+        )
+
+        # Chebyshev recurrence: T_0(x)=x, T_1(x)=x, T_{k+1}=2xT_k - T_{k-1}
+        Tx_0 = x
+        Tx_1 = self.propagate(edge_index_tilde, x=x, norm=norm_tilde, size=None)
+
+        out = coe[0] / 2 * Tx_0 + coe[1] * Tx_1
+
+        for i in range(2, self.K + 1):
+            Tx_2 = self.propagate(edge_index_tilde, x=Tx_1, norm=norm_tilde, size=None)
+            Tx_2 = 2 * Tx_2 - Tx_0
+            out = out + coe[i] * Tx_2
+            Tx_0, Tx_1 = Tx_1, Tx_2
+
+        return out
+</old>
+<new>
+    def reset_parameters(self):
+        # Uniform initialization for dataset-agnostic starting point.
+        nn.init.constant_(self.temp, 1.0 / (self.K + 1))
+
+    def forward(self, x, edge_index, edge_weight=None):
+        edge_index, norm = gcn_norm(
+            edge_index, edge_weight, num_nodes=x.size(0), dtype=x.dtype
+        )
+        hidden = x * self.temp[0]
+        for k in range(self.K):
+            x = self.propagate(edge_index, x=x, norm=norm)
+            hidden = hidden + self.temp[k + 1] * x
+        return hidden
+</new>
+</edit>
+<obs>
+Successfully replaced text in ChebNetII/main/custom_filter.py.
+</obs>
+<note>
+[[FILL_NOTE?: optional one-line thought for this edit, or delete this block]]
+</note>
+<edit path="ChebNetII/main/custom_filter.py">
+<old>
+class CustomFilter(nn.Module):
+    """ChebNetII: Chebyshev interpolation graph filter (He et al., 2022).
+
+    MLP encoder + ChebNetII propagation with Chebyshev interpolation.
+    """
+</old>
+<new>
+class CustomFilter(nn.Module):
+    """GPRGNN: Generalized PageRank GNN (Chien et al., 2021).
+
+    MLP encoder + learnable monomial polynomial filter.
+    """
+</new>
+</edit>
+<obs>
+Successfully replaced text in ChebNetII/main/custom_filter.py.
+</obs>
+<note>
+[[FILL_NOTE?: optional one-line thought for this edit, or delete this block]]
+</note>
+<edit path="ChebNetII/main/custom_filter.py">
+<old>
+        self.lin2 = Linear(hidden, num_classes)
+        self.prop = CustomProp(K)
+        self.dropout = dropout
+        self.dprate = dprate
+</old>
+<new>
+        self.lin2 = Linear(hidden, num_classes)
+        self.prop = CustomProp(K, alpha)
+        self.dropout = dropout
+        self.dprate = 0.0  # GPRGNN paper: no propagation dropout
+        # Override training hyperparams (read by template's training loop)
+        self.custom_lr = 0.05
+        self.custom_wd = 0.0005
+        self.custom_prop_lr = 0.05  # same lr for filter coefficients
+        self.custom_prop_wd = 0.0
+</new>
+</edit>
+<obs>
+Successfully replaced text in ChebNetII/main/custom_filter.py.
+</obs>
+<run/>
+<obs>
+Measured results — `baseline:gprgnn` (`is_final,true`), seeds {42, 123, 456} and mean. Metric: mean
+test accuracy over 10 splits (higher is better); the across-run std is shown alongside. (The cora seed
+123 run is absent in the leaderboard; its mean is over the two recorded seeds.)
+
+## Test accuracy (mean over 10 splits)
+| seed | cora | citeseer | texas | cornell |
+|---|---|---|---|---|
+| 42 | 0.8887 | 0.8020 | 0.9098 | 0.8738 |
+| 123 | — | 0.8020 | 0.9049 | 0.8738 |
+| 456 | 0.8893 | 0.8019 | 0.9049 | 0.8639 |
+| **mean** | **0.8890** | **0.8020** | **0.9065** | **0.8705** |
+
+## Across-run std (std of accuracy over the 10 splits)
+| seed | cora | citeseer | texas | cornell |
+|---|---|---|---|---|
+| 42 | 0.0095 | 0.0136 | 0.0471 | 0.0303 |
+| 123 | — | 0.0136 | 0.0350 | 0.0434 |
+| 456 | 0.0111 | 0.0136 | 0.0262 | 0.0275 |
+| **mean** | **0.0103** | **0.0136** | **0.0361** | **0.0337** |
+</obs>
+
+### step 4 — JacobiConv (Jacobi-basis orthogonal-polynomial filter)   [slug:jacobiconv]
+
+<think>
+[[POLISH_REASONING: adapt to first-person agentic voice, end by deciding to implement]]
+I start from the monomial filter because its numbers show both the win and the crack I want to pry
+open. Dropping the constraint and starting flat pays off across the board: Texas sits at 0.9065 (from
+ChebNetII's 0.8770), Cornell at 0.8705 (from 0.8470), and the homophilic graphs do *not* regress:
+Cora reaches 0.8890 and Citeseer reaches 0.8020, both above ChebNetII's 0.8725 and 0.8004. So the
+uniform-init, fast-coefficient, unconstrained monomial filter dominates both constrained rungs, and
+the ladder's verdict so far is blunt: on these four graphs the constraint machinery the earlier rungs
+were proud of holds them back, and the plainest learnable hop-mixer, freed of its priors, is strongest.
+But two things in the GPR-GNN numbers tell me it is *not* the ceiling. First, the seed-to-seed variance
+is the largest of any rung — Texas std across seeds ranges 0.0262 to 0.0471 (mean 0.0361), Cornell
+0.0275 to 0.0434 — and one seed even drops a Cora run entirely. That spread is the fingerprint of a
+hard optimization landscape: the filter reaches a good response *on average*, but where it lands
+depends on the seed, which means the loss surface in the coefficients is poorly conditioned and the
+optimizer is fighting it. Second, I choose the monomial basis knowing it is ill-conditioned — the
+powers `P^k` go collinear as `k` grows — and I wave that off because "at `K=10` on these graphs it
+works." The variance is the bill for that hand-wave arriving.
+
+So the question for this rung is not "what other constraint" — I have learned constraints cost more
+than they pay here. It is: **can I keep the unconstrained, sign-free, flat-start freedom that made
+GPR-GNN win, but fix the conditioning that made it noisy?** And to answer that I have to look harder at
+something I have been treating as obvious across all three rungs. Every rung I have run differs in
+exactly one thing — the polynomial *basis*: Bernstein, then Chebyshev nodes, then monomial. And every
+one of those bases is *complete*: by the polynomial-filter argument they all span the same degree-`K`
+function space, so they have the *same expressive power*. Any filter the monomial basis can represent,
+the Chebyshev and Bernstein bases can too, and vice versa. They are linear changes of variable for one
+function space. Yet they reached visibly different accuracies — Bernstein soft on citation graphs,
+Chebyshev stiff on WebKB, monomial best-but-noisy. If they can all express the same filters, the
+difference between them cannot be *what* they represent. It has to be *how the optimizer reaches* the
+good filter inside each. That reframes the whole ladder: the basis was never an expressiveness choice,
+it was an **optimization** choice, and I have been picking bases by intuition instead of by which one
+conditions the descent. The monomial variance is the loudest evidence yet that I picked wrong on
+conditioning.
+
+Let me make that precise, because if I can write down what determines "how hard is this basis to
+optimize," I can choose the basis that minimizes it instead of guessing. Take the decoupled filter
+`Z = sum_k γ_k g_k(L̂) X` and look at the optimization over the coefficients `γ` alone, near the
+optimum, under a squared loss. This is convex in `γ`, so gradient descent's convergence rate is set by
+the condition number `κ(H)` of the Hessian `H`. Compute `H`: its `(k₁,k₂)` entry is
+`X^T g_{k₂}(L̂) g_{k₁}(L̂) X = sum_i g_{k₁}(λ_i) g_{k₂}(λ_i) X̂²_{λ_i}`, summing over the spectrum,
+where `X̂²_{λ_i}` is the signal's energy at frequency `λ_i`. In the continuum,
+`H_{k₁k₂} = ∫₀² g_{k₁}(λ) g_{k₂}(λ) f(λ) dλ`, where `f(λ)` is the **spectral density of the graph
+signal** — how the signal's energy is distributed over frequency. So the Hessian is exactly the Gram
+matrix of the basis functions under the inner product weighted by `f`. And the whole optimization
+difficulty — the thing producing GPR-GNN's seed variance — is `κ(H)`. There it is, explicit: a basis
+is easy to optimize precisely when its Gram matrix under the signal density is well-conditioned.
+
+Now the punchline that selects the basis. `κ(H)` is smallest, equal to 1, exactly when `H = I` — when
+the basis is **orthonormal under the density-weighted inner product** `⟨g,h⟩ = ∫ g h f dλ`. So the
+optimal basis is not fixed; it is whichever orthogonal family has weight function equal to the graph's
+signal density `f`. This explains every result on the ladder at once. The monomial basis I just used
+is *provably not orthogonal under any weight function* — its Hessian is dense and ill-conditioned, the
+worst case — which is precisely why GPR-GNN optimizes well *on average* (it is expressive) but with the
+*highest variance* (the descent is poorly conditioned, so the seed decides where it lands). The
+Bernstein basis is also non-orthogonal. The Chebyshev basis ChebNetII used *is* orthogonal — but only
+under *one fixed* weight, `(1-x²)^{-1/2}`. If the graph's `f` happens to look like that weight,
+Chebyshev is near-optimal; but `f` is *not* the same across these four graphs — homophilic Cora and
+Citeseer have their signal energy at *low* frequency, heterophilic Texas and Cornell at *high*
+frequency — so one fixed weight cannot match all four, and Chebyshev's mismatch on the WebKB graphs is
+the stiffness I diagnosed two rungs ago. No fixed-weight basis can be optimal across graphs whose
+densities differ. I need a basis whose weight I can *tune to match `f`* — and that is a basis the
+ladder has not tried.
+
+That requirement names it. Among the classical orthogonal polynomials, the **Jacobi** family
+`P_k^{a,b}` is orthogonal under the weight `(1-x)^a (1+x)^b` on `[-1,1]`, with two free parameters
+`a, b` that reshape the weight continuously. Chebyshev is the *single special case* `a=b=-1/2`,
+Legendre is `a=b=0` — so Jacobi *contains* the basis ChebNetII used and adds two knobs to slide the
+weight toward whichever end of the spectrum the graph's energy occupies. On the normalized adjacency
+`Â = I − L`, whose spectrum is `[-1,1]`, low graph frequency `λ≈0` maps to `x≈1` and high `λ≈2` to
+`x≈-1`. So for a homophilic graph (low-frequency energy) I push the Jacobi weight toward `x=1` by
+making the exponent on `(1-x)` smaller relative to the exponent on `(1+x)`; for a heterophilic graph
+(high-frequency) I push it toward `x=-1` by making the exponent on `(1+x)` smaller. Tuning `a, b`
+*is* matching the weight to `f`, which is the `κ(H)→1` knob made an explicit hyperparameter. This is the move that
+keeps everything GPR-GNN got right — unconstrained, sign-free, learned coefficients, flat uniform start
+— while fixing the one thing it got wrong: it replaces the non-orthogonal monomial basis, whose bad
+conditioning produced the seed variance, with the *adaptable* orthogonal basis that drives the Hessian
+toward identity on each graph. I do not have to *compute* the optimal `a, b` (that needs the
+eigendecomposition I cannot afford); I pick the flexible family and a sensible default, and the weight
+sits close enough to `f` to condition the descent.
+
+There is a deeper licence here too, one I should state because it changes what I am even building.
+Across all three prior rungs I kept the nonlinear ReLU MLP encoder without questioning it. But a
+spectral GNN is a filter, and I can ask whether a *linear* spectral GNN — drop the activation — is
+already enough. The answer is yes under two conditions: the normalized Laplacian must have no repeated
+eigenvalues, and the features must miss no frequency component. Repeated eigenvalues come from graph
+symmetry; these benchmark graphs are irregular and fewer than 1% of eigenvalues are multiple, and no
+frequency component is missing. ReLU's only spectral effect is to *mix* frequency components — the
+repair for exactly those two obstructions — so on these graphs it fixes a disease the data does not
+have. The principled JacobiConv is therefore a *linear* model, which is also what made the Hessian
+argument above clean (the coefficient fit is convex). The harness I am editing keeps the ReLU between
+its two linear layers, so in this task I land the Jacobi *propagation* into the existing decoupled
+encoder rather than stripping it to a single linear layer — the basis change is where the leverage is,
+and it carries over whether or not the encoder is linear.
+
+Now I have to be honest about exactly what this task's edit surface lets me build, because the
+principled JacobiConv has two refinements the harness cannot express, and I must land the version the
+scaffold supports, not the paper's. First, *individual filters per output channel*: the universality
+argument is one-dimensional, and a single shared filter cannot produce an arbitrary multi-class
+prediction, so the full method gives each output channel its own coefficient vector `α_{kl}`. But this
+task's `CustomProp` owns a *single* shared coefficient vector `temp` of length `K+1`, applied
+identically to every channel — there is no per-channel filter slot. Second, *polynomial coefficient
+decomposition (PCD)*: the full method decomposes `α_{kl} = β_{kl} Π_i γ_i` with shared bounded ratios
+to rescale the per-`k` magnitudes, which is what realizes the orthogonal basis's good conditioning in
+practice. The harness exposes only the raw `temp[k]`, so there is no PCD here either. So what I am
+actually landing is the **shared-coefficient, fixed-`(a,b)` Jacobi filter** — the orthogonal-basis core
+of the method without the per-channel filters and without PCD. That is the honest delta over GPR-GNN:
+*same* unconstrained learned coefficients, *same* uniform `1/(K+1)` start, *same* decoupled encoder —
+but the monomial powers `P^k` are replaced by the Jacobi polynomials `P_k^{a,b}(Â)`, with `a=b=1` as
+the symmetric default (which makes the recurrence's `θ'_k = (a²−b²)·(…)` term vanish, a basis neutral
+between the two spectral ends).
+
+The propagation itself stays linear in `K`, which I want on the record since cheapness has been a
+running theme. I build `L` with the symmetric-normalized `get_laplacian`, shift to `L̃ = L − I = −Â`
+by adding self-loops of weight `−1`, and run the Jacobi three-term recurrence: `P_0 = x`,
+`P_1 = ((a+b+2)/2)·(L̃ x) + ((a-b)/2)·x`, and for `k ≥ 2`,
+`P_k = (A_k + B_k L̃) P_{k-1} − C_k P_{k-2}` with the Jacobi coefficients `A_k, B_k, C_k` computed from
+`a, b, k`. Each step is one `propagate` (one sparse mat-vec), so the whole filter is `K` propagations —
+`O(K m d)`, the same order as GPR-GNN and ChebNetII, strictly cheaper than BernNet. One subtlety I have
+to get right: running the recurrence on `L̃ = −Â` rather than `Â` evaluates `P_k(−x) = (−1)^k
+P_k^{a,b}(x)` (the Jacobi reflection identity, symmetric when `a=b`), an alternating sign that the
+*learned* `temp[k]` absorb completely — so the filter family is identical to the `Â` convention and I
+lose nothing by using the operator the harness builds for free. The literal edit replaces the two class
+bodies (`CustomProp` becomes the Jacobi layer with its `a, b` and recurrence, `CustomFilter` keeps the
+standard encoder/readout and passes `a=b=1` into the propagation); the full scaffold module is in the
+answer.
+
+So the bar this rung must clear, against GPR-GNN's real numbers, and what I would validate. The whole
+motivation was GPR-GNN's *conditioning*, not its means, so the first thing I expect is not a dramatic
+mean jump but a *quieter* one: the Jacobi basis should match or modestly exceed GPR-GNN's accuracies —
+Cora at or above 0.8890, Citeseer at or above 0.8020, Texas at or above 0.9065, Cornell at or above
+0.8705 — while *shrinking the seed-to-seed variance* that betrayed the monomial basis's ill-conditioned
+Hessian (GPR-GNN's Texas std spread of 0.0262–0.0471 and the dropped Cora run are exactly what a
+well-conditioned orthogonal basis should tighten). The cleanest falsification would be the opposite
+profile: if the shared-coefficient Jacobi filter — shorn of the per-channel filters and PCD the full
+method relies on — lands *below* GPR-GNN on any graph, that would say the conditioning win does not
+survive without PCD on this harness, and the monomial filter remains the right answer here. The honest
+risk I name: with `a=b` fixed (no per-dataset tuning of the weight toward the graph's density) and no
+PCD, the Jacobi advantage on this harness may be small — the orthogonality is only *exactly* matched to
+`f` when `a, b` track each graph's density, and a single symmetric default leaves some conditioning on
+the table. But even the untuned symmetric Jacobi basis is orthogonal under *a* weight, where the
+monomial basis is orthogonal under *none*, so I expect the conditioning to improve and the variance to
+fall — and that, more than a fractional accuracy gain, is the result that would justify the orthogonal
+basis as the right ceiling for this ladder.
+</think>
+<say>
+[[FILL_SAY: 1-2 sentences naming the method and what this first edit does]]
+</say>
+<edit path="ChebNetII/main/custom_filter.py">
+<old>
+class CustomProp(MessagePassing):
+    """GPR propagation: learnable polynomial in the monomial basis.
+
+    Filter: h(A) = sum_{k=0}^{K} gamma_k * A^k
+    where A is the GCN-normalized adjacency and gamma_k are learnable.
+
+    Initialized with uniform coefficients (1/(K+1)) so the filter starts
+    as an equal-weight average of all hops. This is dataset-agnostic and
+    lets the optimizer freely learn both low-pass (homophilic) and
+    high-pass (heterophilic) filters.
+    """
+
+    def __init__(self, K, alpha=0.1, **kwargs):
+        super(CustomProp, self).__init__(aggr="add", **kwargs)
+        self.K = K
+        self.alpha = alpha
+        self.temp = Parameter(torch.Tensor(K + 1))
+</old>
+<new>
+class CustomProp(MessagePassing):
+    """Jacobi polynomial propagation layer.
+
+    Filter: h(L_tilde) = sum_{k=0}^{K} gamma_k * P_k^{(a,b)}(L_tilde)
+    where P_k^{(a,b)} are Jacobi polynomials with parameters a, b,
+    L_tilde = L - I (shifted Laplacian), and gamma_k are learnable.
+
+    Jacobi polynomials generalize Chebyshev (a=b=0), Legendre (a=b=0.5),
+    and other orthogonal polynomial families.
+    """
+
+    def __init__(self, K, alpha=0.1, a=1.0, b=1.0, **kwargs):
+        super(CustomProp, self).__init__(aggr="add", **kwargs)
+        self.K = K
+        self.a = a
+        self.b = b
+        self.temp = Parameter(torch.Tensor(K + 1))
+</new>
+</edit>
+<obs>
+Successfully replaced text in ChebNetII/main/custom_filter.py.
+</obs>
+<note>
+[[FILL_NOTE?: optional one-line thought for this edit, or delete this block]]
+</note>
+<edit path="ChebNetII/main/custom_filter.py">
+<old>
+    def reset_parameters(self):
+        # Uniform initialization for dataset-agnostic starting point.
+        nn.init.constant_(self.temp, 1.0 / (self.K + 1))
+
+    def forward(self, x, edge_index, edge_weight=None):
+        edge_index, norm = gcn_norm(
+            edge_index, edge_weight, num_nodes=x.size(0), dtype=x.dtype
+        )
+        hidden = x * self.temp[0]
+        for k in range(self.K):
+            x = self.propagate(edge_index, x=x, norm=norm)
+            hidden = hidden + self.temp[k + 1] * x
+        return hidden
+</old>
+<new>
+    def reset_parameters(self):
+        # Initialize uniformly
+        self.temp.data.fill_(1.0 / (self.K + 1))
+
+    def forward(self, x, edge_index, edge_weight=None):
+        # L = I - D^{-1/2}AD^{-1/2}
+        edge_index1, norm1 = get_laplacian(
+            edge_index, edge_weight, normalization="sym",
+            dtype=x.dtype, num_nodes=x.size(self.node_dim)
+        )
+        # L_tilde = L - I (shifted to [-1, 1])
+        edge_index_tilde, norm_tilde = add_self_loops(
+            edge_index1, norm1, fill_value=-1.0,
+            num_nodes=x.size(self.node_dim)
+        )
+
+        a, b = self.a, self.b
+
+        # Jacobi three-term recurrence
+        # P_0^{(a,b)}(x) = 1
+        Px_0 = x
+        out = self.temp[0] * Px_0
+
+        if self.K >= 1:
+            # P_1^{(a,b)}(x) = (a+1) + (a+b+2)/2 * (x-1)
+            #                 = ((a-b)/2) + ((a+b+2)/2) * x
+            # Using matrix form: P_1 = c1 * L_tilde @ x + c0 * x
+            c0 = (a - b) / 2.0
+            c1 = (a + b + 2.0) / 2.0
+            Px_1_prop = self.propagate(edge_index_tilde, x=x, norm=norm_tilde, size=None)
+            Px_1 = c1 * Px_1_prop + c0 * x
+            out = out + self.temp[1] * Px_1
+
+        for k in range(2, self.K + 1):
+            # Three-term recurrence coefficients for Jacobi polynomials
+            k_f = float(k)
+            denom1 = 2.0 * k_f * (k_f + a + b) * (2.0 * k_f + a + b - 2.0)
+            A_k = ((2.0 * k_f + a + b - 1.0) * (a * a - b * b)) / denom1
+            B_k = ((2.0 * k_f + a + b - 1.0) * (2.0 * k_f + a + b - 2.0) * (2.0 * k_f + a + b)) / denom1
+            C_k = (2.0 * (k_f - 1.0 + a) * (k_f - 1.0 + b) * (2.0 * k_f + a + b)) / denom1
+
+            # P_k(x) = (A_k + B_k * x) * P_{k-1}(x) - C_k * P_{k-2}(x)
+            Px_1_prop = self.propagate(edge_index_tilde, x=Px_1, norm=norm_tilde, size=None)
+            Px_2 = (A_k * Px_1 + B_k * Px_1_prop) - C_k * Px_0
+            out = out + self.temp[k] * Px_2
+            Px_0, Px_1 = Px_1, Px_2
+
+        return out
+</new>
+</edit>
+<obs>
+Successfully replaced text in ChebNetII/main/custom_filter.py.
+</obs>
+<note>
+[[FILL_NOTE?: optional one-line thought for this edit, or delete this block]]
+</note>
+<edit path="ChebNetII/main/custom_filter.py">
+<old>
+class CustomFilter(nn.Module):
+    """GPRGNN: Generalized PageRank GNN (Chien et al., 2021).
+
+    MLP encoder + learnable monomial polynomial filter.
+    """
+</old>
+<new>
+class CustomFilter(nn.Module):
+    """JacobiConv: Jacobi polynomial graph filter (Wang & Zhang, 2022).
+
+    MLP encoder + Jacobi polynomial propagation with learnable coefficients.
+    """
+</new>
+</edit>
+<obs>
+Successfully replaced text in ChebNetII/main/custom_filter.py.
+</obs>
+<note>
+[[FILL_NOTE?: optional one-line thought for this edit, or delete this block]]
+</note>
+<edit path="ChebNetII/main/custom_filter.py">
+<old>
+        self.lin2 = Linear(hidden, num_classes)
+        self.prop = CustomProp(K, alpha)
+        self.dropout = dropout
+        self.dprate = 0.0  # GPRGNN paper: no propagation dropout
+        # Override training hyperparams (read by template's training loop)
+        self.custom_lr = 0.05
+        self.custom_wd = 0.0005
+        self.custom_prop_lr = 0.05  # same lr for filter coefficients
+        self.custom_prop_wd = 0.0
+</old>
+<new>
+        self.lin2 = Linear(hidden, num_classes)
+        self.prop = CustomProp(K, alpha, a=1.0, b=1.0)
+        self.dropout = dropout
+        self.dprate = dprate
+</new>
+</edit>
+<obs>
+Successfully replaced text in ChebNetII/main/custom_filter.py.
+</obs>
+

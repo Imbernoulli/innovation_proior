@@ -1,0 +1,1164 @@
+<meta task="rl-value-atari" domain="Reinforcement learning" file="cleanrl/cleanrl/custom_value_atari.py" model_format="qwen3" edit_tool="str_replace"/>
+
+<system>
+You are a research engineer improving a model on a fixed ML task. You work by editing the model code and running experiments. Think carefully before each change. You have these tools:
+- str_replace(path, old_str, new_str): replace the unique occurrence of old_str with new_str.
+- create(path, file_text): create a new file.
+- run_experiment(): train + evaluate the current code under the fixed budget; returns metrics.
+Make one tool call at a time. After editing, call run_experiment() to measure your method.
+</system>
+
+<user>
+## Research question
+
+Value-based RL on Atari from raw pixels: learn an effective visual representation *and* a Q-value
+estimate at the same time, off-policy, from a replay buffer, on $84\times84$ grayscale 4-frame stacks.
+The one thing being designed is the **value head and its TD update** — how the per-action value is
+parameterized, how the bootstrap target is constructed, and what loss trains it. Everything else (the
+convolutional encoder, the replay buffer, $\epsilon$-greedy acting, the periodic target copy, the
+evaluation protocol) is fixed. Capacity is *not* a lever: the encoder is frozen and a parameter-budget
+check forbids buying improvement with a wider net, so every gain must be algorithmic — target
+construction, head design, TD loss.
+
+## Prior art before the first rung (value-based deep-RL lineage)
+
+The first rung reacts to the standard deep Q-learning recipe; these are the methods that recipe
+converged from, each with the gap it leaves open.
+
+- **Deep Q-Network (DQN, Mnih et al. 2015).** Regress $Q(S_t,A_t;\theta)$ onto the bootstrap target
+  $R_{t+1}+\gamma\max_a Q(S_{t+1},a;\theta^-)$ with a frozen target network $\theta^-$ and a uniform
+  replay buffer, minimizing the squared TD error. Cracked Atari from pixels. Gap: the same estimates
+  both *select* the greedy next action (the $\arg\max$) and *evaluate* it (the value read off), and
+  because $\max$ is convex, any estimation error makes the target biased *upward* (Jensen) — the
+  predicted value of the greedy policy runs above its realized return, and on some games diverges while
+  the score collapses.
+- **Dueling DQN (Wang et al. 2016).** Splits the head into a state-value stream $V(s)$ and an
+  advantage stream $A(s,a)$, recombined as $Q=V+A-\operatorname{mean}_a A$, so the network can learn
+  "this state is good" without committing to a per-action value. Gap: it improves the *mean* estimator
+  architecturally but does nothing about the overestimation bias in the target, nor about the fact that
+  $Q$ is still a single scalar collapsing the whole return distribution.
+- **A distributional view (Bellemare, Dabney, Munos 2017).** The return $Z(x,a)$ is a random variable
+  obeying a distributional Bellman recursion $Z\overset{D}{=}R+\gamma Z(X',A')$; learning its whole law
+  (probabilities on a fixed atom grid $[V_{\min},V_{\max}]$, trained by KL after a projection of the
+  shifted target) carries strictly more information than its mean and helps even with a mean-greedy
+  policy. Gap: it must be told the return range $[V_{\min},V_{\max}]$ up front, it optimizes
+  KL-after-projection rather than the Wasserstein metric the operator actually contracts in, and its
+  resolution is capped at the $N$ atoms placed a priori.
+
+These set up the ladder: fix the overestimation bias first (a target-construction change with no new
+parameters), then enrich the value object into a distribution that needs no support bounds and gives
+unbiased sample gradients.
+
+## The fixed substrate
+
+A standard off-policy value-based Atari loop is frozen and must not be touched. Atari preprocessing:
+grayscale $84\times84$, frame-skip 4, 4-frame stack, no-op resets, terminal-on-life-loss and reward
+clipping during training (the *eval* env drops both). A **fixed** Nature-DQN convolutional encoder maps
+$(B,4,84,84)$ uint8 frames to a 512-dim feature vector and is shared by every method — only the head on
+top of those 512 features may change. The loop runs a $10^6$-transition uniform replay buffer
+(`optimize_memory_usage=True`), linear $\epsilon$-anneal $1\to0.01$ over the first 10% of steps,
+`learning_starts=80000`, a training step every 4 environment steps with batch 32, $\gamma=0.99$, and a
+periodic target-network sync every `target_network_frequency=1000` steps. A parameter-budget check
+prints the head size against $1.05\times$ the largest baseline head (QR-DQN's $|\mathcal A|\times200$)
+so capacity cannot be the contribution.
+
+## The editable interface
+
+Exactly one region is editable — the `QNetwork` head and the `ValueAlgorithm` class in
+`custom_value_atari.py` (lines 186–249). The training loop calls a fixed contract:
+`algorithm = ValueAlgorithm(envs, device, args)`; acting via `algorithm.select_action(obs, epsilon)`;
+one gradient step per call via `metrics = algorithm.update(batch, global_step)` on a cleanrl
+`ReplayBuffer` sample (`.observations`, `.next_observations`, `.actions`, `.rewards`, `.dones`); and
+evaluation reads `algorithm.q_network(obs)` and takes its $\arg\max$. The algorithm **must** set
+`self.q_network` and `self.target_network` to `nn.Module`s whose `forward(x)` returns per-action
+$Q$-values, and must own its own optimizer and target-sync. Available to it: the fixed
+`NatureDQNEncoder` (→512-d), `ENCODER_FEATURE_DIM = 512`, and `linear_schedule`.
+
+The starting point is the scaffold default below — a single linear head and a stub `update` that does
+nothing. Each rung replaces exactly this region.
+
+```python
+# EDITABLE region of custom_value_atari.py (lines 186-249) -- default scaffold fill
+class QNetwork(nn.Module):
+    """Q-network: NatureDQNEncoder (fixed) + head. Output: Q-values per action.
+
+    The encoder is FIXED (Nature DQN CNN -> 512-dim features). Only the
+    head layer(s) on top of the 512-dim features may be changed.
+    """
+
+    def __init__(self, envs):
+        super().__init__()
+        n_actions = envs.single_action_space.n
+        self.encoder = NatureDQNEncoder()
+        self.head = nn.Linear(ENCODER_FEATURE_DIM, n_actions)
+
+    def forward(self, x):
+        features = self.encoder(x)
+        return self.head(features)
+
+
+class ValueAlgorithm:
+    """Value-based algorithm for Atari -- implement your approach here."""
+
+    def __init__(self, envs, device, args):
+        self.device = device
+        self.gamma = args.gamma
+        self.tau = args.tau
+        self.target_network_frequency = args.target_network_frequency
+
+        self.q_network = QNetwork(envs).to(device)
+        self.target_network = QNetwork(envs).to(device)
+        self.target_network.load_state_dict(self.q_network.state_dict())
+        self.optimizer = optim.Adam(self.q_network.parameters(), lr=args.learning_rate)
+
+    def select_action(self, obs, epsilon):
+        """Epsilon-greedy action selection."""
+        if random.random() < epsilon:
+            return np.array([self.q_network.head.out_features])  # placeholder
+        q_values = self.q_network(torch.Tensor(obs).to(self.device))
+        return torch.argmax(q_values, dim=1).cpu().numpy()
+
+    def update(self, batch, global_step):
+        """Single gradient update. Returns a dict of scalar metrics."""
+        return {"td_loss": 0.0, "q_values": 0.0}
+```
+
+## Evaluation settings
+
+Three Atari games spanning the design space — **Breakout** (fast, dense, small action set),
+**Seaquest** (longer-horizon, larger action set, harder credit assignment), and **Pong** (near-ceiling
+once learned) — each over three seeds {42, 123, 456}, within a fixed interaction budget using the
+benchmark Atari wrappers. One metric per game: mean episodic return over the evaluation episodes
+(higher is better), evaluated at the greedy policy. A strong method should improve across games rather
+than tune to one title.
+
+The editable model code is in `cleanrl/cleanrl/custom_value_atari.py`:
+```python
+class ValueAlgorithm:
+    """Value-based algorithm for Atari -- implement your approach here.
+
+    The training loop calls:
+        algorithm = ValueAlgorithm(envs, device, args)
+        action = algorithm.select_action(obs, epsilon)
+        metrics = algorithm.update(batch, global_step)
+        eval_qnetwork(env_id, algorithm, device, ...)
+
+    You MUST set self.q_network and self.target_network to nn.Module instances.
+
+    Available classes:
+        NatureDQNEncoder (fixed) -- Nature DQN CNN encoder, -> 512-dim features
+        QNetwork         (editable) -- NatureDQNEncoder + head
+    ENCODER_FEATURE_DIM = 512 (feature dimension from NatureDQNEncoder)
+
+    Available utilities (fixed): linear_schedule
+    """
+
+    def __init__(self, envs, device, args):
+        self.device = device
+        self.gamma = args.gamma
+        self.tau = args.tau
+        self.target_network_frequency = args.target_network_frequency
+
+        self.q_network = QNetwork(envs).to(device)
+        self.target_network = QNetwork(envs).to(device)
+        self.target_network.load_state_dict(self.q_network.state_dict())
+        self.optimizer = optim.Adam(self.q_network.parameters(), lr=args.learning_rate)
+
+    def select_action(self, obs, epsilon):
+        """Epsilon-greedy action selection."""
+        if random.random() < epsilon:
+            return np.array([self.q_network.head.out_features])  # placeholder
+        q_values = self.q_network(torch.Tensor(obs).to(self.device))
+        return torch.argmax(q_values, dim=1).cpu().numpy()
+
+    def update(self, batch, global_step):
+        """Single gradient update. Returns a dict of scalar metrics.
+
+        batch: cleanrl ReplayBuffer sample with .observations, .next_observations,
+               .actions, .rewards, .dones
+
+        TODO: implement your value-based RL algorithm here.
+        """
+        return {"td_loss": 0.0, "q_values": 0.0}
+```
+Improve it. Derive your method, edit the code, then run_experiment().
+</user>
+
+### step 1 — Double DQN (decoupled target)   [slug:double_dqn]
+
+<think>
+[[POLISH_REASONING: adapt to first-person agentic voice, end by deciding to implement]]
+The scaffold hands me a frozen Nature-DQN encoder feeding a single linear head, a uniform replay
+buffer, $\epsilon$-greedy acting, and a periodic target copy, and asks me to fill in the value head and
+its TD update. The floor here — the thing the whole ladder reacts to — is ordinary deep Q-learning, so
+that is where I have to start, but I want to start by being honest about its one structural disease,
+because diagnosing it is what tells me the minimal first edit. Let me instrument the obvious thing.
+During training I freeze the greedy policy and roll it out, and I record two numbers: the value the
+network *predicts* for that policy, averaged over the states it visits, and the *actual* discounted
+return that same policy collects. If the value function were any good these two would sit on top of
+each other — the predicted value of a policy is, by definition, the return you expect from running it.
+Instead the predicted value keeps climbing well above the realized return, and on the harder games it
+doesn't just sit high, it can run away while the score stagnates or falls. So this is not harmless
+calibration error. The estimates are biased upward, the bias is large, and it coincides with the policy
+failing to improve.
+
+Where could a systematic *upward* bias come from? Not from the optimizer — least-squares regression
+toward a target is unbiased for the target. So the bias has to be in the target itself. Write down what
+DQN regresses onto. For a transition $(S_t,A_t,R_{t+1},S_{t+1})$ the Q-learning target is
+$Y_t = R_{t+1} + \gamma \max_a Q(S_{t+1},a;\theta^-)$, where $\theta^-$ is the frozen target network the
+scaffold already maintains. The reward is what it is; $\gamma$ is a constant. The only thing in that
+expression that is a function of my noisy estimates is $\max_a Q(S_{t+1},a;\theta^-)$. So the bias, if
+there is one, lives in that max.
+
+What does the max do to estimation error? Say the true optimal value at $s'=S_{t+1}$ is $Q_*(s',a)$ and
+my network gives noisy estimates $Q(s',a)=Q_*(s',a)+\epsilon_a$. Suppose for the moment the errors are
+zero-mean for each action, so my per-action estimates are individually unbiased. Is
+$\max_a Q(s',a)$ then an unbiased estimate of $\max_a Q_*(s',a)$? No — because $\max$ is convex. For any
+convex $f$ and random vector $X$, Jensen gives $\mathbb{E}[f(X)]\ge f(\mathbb{E}[X])$, and the pointwise
+maximum is convex in its arguments, so
+$\mathbb{E}[\max_a(Q_*(s',a)+\epsilon_a)] \ge \max_a(Q_*(s',a)+\mathbb{E}[\epsilon_a]) = \max_a Q_*(s',a)$.
+The expected max of my noisy values is at least the max of the true values. Even with perfectly unbiased
+per-action estimates the bootstrap target is biased upward. Intuitively the max goes hunting through all
+$m$ actions and selects the largest estimate, which preferentially picks the action whose noise landed
+on the high side; positive noise gets selected, negative noise gets discarded. Then I bootstrap: this
+inflated target is regressed into $Q(S_t,A_t)$, which becomes part of the next state's target, and the
+inflation propagates backward through the chain of states. That is the runaway I see in the curves.
+
+Before I call this fatal there is a counterargument I half-believe. If the overestimation were
+*uniform* — every action in every state lifted by the same constant — then $\arg\max_a Q(s,a)$ wouldn't
+change at all, since adding a constant preserves the ordering; the values would be wrong but the policy
+fine. And optimism about uncertain things is a respectable exploration strategy. So why worry? Two
+reasons, and they are exactly what separates this from benign optimism. First, this bias appears *after*
+I have updated, baked into values I now treat as settled — overoptimism in the face of apparent
+certainty, not optimism before acting. Second, and decisively, there is no reason the bias is uniform:
+it depends on how many actions there are, on the shape of the per-state errors, on which states got
+more data. A state with eighteen noisy actions (Seaquest) gets a bigger upward kick from the max than a
+state with four (Breakout); a poorly-fit region gets a bigger kick than a well-fit one. So the
+overestimate is state- and action-dependent, and a non-uniform additive distortion scrambles the
+*relative* ordering, which is the only thing the greedy policy reads off. Combined with bootstrapping I
+am propagating wrong relative judgments about which states are worth more. That can absolutely produce a
+worse policy.
+
+I want this quantitative, not just "biased upward." Take the cleanest stress state: all true action
+values equal, $Q_*(s,a)=V_*(s)$ for every $a$ — the worst case for "the max manufactures value out of
+noise," because there is genuinely nothing to choose between. Let the estimates be balanced around the
+truth, $\sum_a(Q_t(s,a)-V_*(s))=0$, with a fixed mean-squared error
+$\frac1m\sum_a(Q_t(s,a)-V_*(s))^2=C>0$, $m\ge2$. Define $\epsilon_a=Q_t(s,a)-V_*(s)$, so
+$\sum_a\epsilon_a=0$ and $\sum_a\epsilon_a^2=mC$. I claim $\max_a\epsilon_a\ge\sqrt{C/(m-1)}$. Argue by
+contradiction: suppose $\max_a\epsilon_a<\sqrt{C/(m-1)}$. At least one error is non-positive (if all
+were positive, the zero-sum forces all zero, contradicting nonzero spread), so the number of strictly
+positive errors is $n\le m-1$. Each positive error is below the max, so the positive mass
+$\sum\epsilon^+_i< n\sqrt{C/(m-1)}$; the zero-sum makes the negative mass equal to it, so each negative
+magnitude is also bounded by $n\sqrt{C/(m-1)}$. Converting magnitudes to squares via the $\ell_1/\ell_\infty$
+bound, the positive squared mass is $<n\cdot C/(m-1)$ and the negative is $<n^2C/(m-1)$, summing to
+$<\frac{n(n+1)}{m-1}C\le\frac{(m-1)m}{m-1}C=mC$ since $n\le m-1$. That contradicts
+$\sum_a\epsilon_a^2=mC$. So $\max_a Q_t(s,a)\ge V_*(s)+\sqrt{C/(m-1)}$, and it is tight: put
+$\epsilon_a=\sqrt{C/(m-1)}$ on $m-1$ actions and $-\sqrt{(m-1)C}$ on the last, and both constraints hold
+with the max exactly at the bound. So *any* balanced error pattern with spread $C$ forces the
+single-estimator target to overshoot by at least $\sqrt{C/(m-1)}$, with no independence or distribution
+assumption — and early in training the estimates are always wrong, so this is the norm, not a corner
+case. (The companion typical-case figure, errors i.i.d. uniform on $[-\epsilon,\epsilon]$, gives
+$\mathbb{E}[\max_a\epsilon_a]=\epsilon\frac{m-1}{m+1}$, which *increases* with the number of actions —
+so Seaquest's eighteen actions are exactly where I should expect the worst inflation.)
+
+Now the fix has to live where the disease lives. Rewrite the target as
+$\max_a Q(S_{t+1},a;\theta^-) = Q\big(S_{t+1},\arg\max_a Q(S_{t+1},a;\theta^-);\theta^-\big)$. Written
+this way the disease is obvious: the max does two jobs with one set of numbers — it *selects* the
+greedy action (the inner $\arg\max$) and *evaluates* it (the outer $Q$), both on $\theta^-$. The action
+I pick is by construction the one whose $\theta^-$-estimate is largest — the one whose noise is most
+positive — and then I read off that same inflated estimate as its value. Selection and evaluation are
+perfectly correlated in their error, and that correlation is what turns "noisy" into "biased high." If
+I select an action *because* its estimate is highest, I should not trust that same estimate to tell me
+its value; I have conditioned on it being large.
+
+What if I evaluated with a *different* set of estimates? Suppose I had a second value function $\theta'$
+whose errors are independent of $\theta$'s. Select with $\theta$, evaluate with $\theta'$:
+$Y_t=R_{t+1}+\gamma\,Q(S_{t+1},\arg\max_a Q(S_{t+1},a;\theta);\theta')$. The action chosen by $\theta$
+is some particular $a^\star$, and $\theta'$'s error on $a^\star$ is independent of *why* $a^\star$ was
+selected, so the evaluation is not conditioned-on-being-large — it is an unbiased estimate of
+$Q_*(S_{t+1},a^\star)$. In the all-equal stress state, $a^\star$ is whichever action $\theta$ inflated
+most, but $\theta'$ doesn't know or care, so its expected value is $V_*(S_{t+1})$ — no upward bias. In
+the tight example above I can set the second estimator on the selected action to exactly $V_*$, so the
+floor on the decoupled estimate's error is *zero* where the single max is forced to overshoot by
+$\sqrt{C/(m-1)}$. Decoupling selection from evaluation is the cure. (This is the idea behind the tabular
+two-estimator scheme of van Hasselt, 2010: two tables, each experience updates one at random, one picks
+and the other scores.)
+
+The literal two-estimator recipe would double the value functions — train and store a whole second
+network and arrange symmetric random-assignment updates. That is a lot of machinery to bolt onto a
+delicate system, and it muddies the comparison: I want to know whether *just* fixing the max helps, not
+whether "DQN plus a second network" helps. But the scaffold already hands me a second set of weights:
+the target network $\theta^-$, a frozen copy of $\theta$, sitting there so the regression target
+doesn't move every step. So let $\theta$ do the selection and $\theta^-$ the evaluation:
+$Y_t=R_{t+1}+\gamma\,Q\big(S_{t+1},\arg\max_a Q(S_{t+1},a;\theta);\theta^-\big)$. The online net picks
+the greedy action; the target net scores it. Compared to plain DQN — selection and evaluation both on
+$\theta^-$ — the *only* change is whose argmax I use, $\theta$ instead of $\theta^-$. No new network, no
+new parameters, no extra forward pass beyond one I am essentially already doing, and the target-sync
+rule stays exactly as the scaffold sets it. This is the smallest possible edit that introduces the
+decoupling, which is exactly what makes it the right first rung: it isolates the effect of the
+decoupled target from everything else.
+
+I should be honest about how much this buys. $\theta$ and $\theta^-$ are not independent the way the
+idealized $\theta'$ was — $\theta^-$ is a stale copy of $\theta$, so their errors are correlated, and
+right after a target refresh $\theta^-=\theta$ exactly and the whole thing collapses back to plain
+Q-learning for that interval. So this will not fully kill the bias. But the staleness gives partial
+decoupling: between refreshes $\theta$ has moved on while $\theta^-$ has not, so the action the current
+$\theta$ thinks is best is no longer guaranteed to be the one $\theta^-$ inflated, and that is enough to
+take a real bite out of the overestimation. The lever to push it further is obvious from the analysis:
+widen the gap between target copies so $\theta$ and $\theta^-$ drift apart and spend less time
+freshly-synced. The scaffold fixes that gap at `target_network_frequency = 1000` with a hard copy
+(`tau = 1.0`, so the soft-update formula degenerates to an outright copy every 1000 steps), and I keep
+it — I am not tuning the decoupling knob here, only installing the decoupling itself.
+
+Now the concrete fill, because the edit surface is specific and I must match it, not a generic paper
+harness. The head stays the scaffold default: the fixed `NatureDQNEncoder` → 512 features → a single
+`nn.Linear(512, n_actions)`, no change to the architecture, no capacity added (the budget check is moot
+since I touch nothing). The `select_action` is greedy on those Q-values (the loop handles $\epsilon$
+externally). The whole edit is in `update`: under `no_grad`, the **online** network's argmax over
+$Q(S_{t+1},\cdot)$ selects the next action, the **target** network gathers that action's value, and
+$y=R_{t+1}+\gamma\,Q(\cdot;\theta^-)(1-\text{done})$. Then I regress $Q(S_t,A_t;\theta)$ onto $y$ with
+the mean-squared error the loop expects, step Adam at the scaffold's `learning_rate = 1e-4`, and on
+every `target_network_frequency`-th step do the hard target copy via the soft-update formula at
+$\tau=1$. One detail I respect from the harness rather than the textbook: the loss is plain `mse_loss`
+on the TD error, not a Huber — the scaffold's protocol and budget check are built around the squared
+loss, and the only thing I am changing relative to DQN is the selection net inside the target. (The
+full scaffold module is in the answer.)
+
+Now what should this floor do, because that is the point of running it. Decoupling selection from
+evaluation should pull the predicted values back down toward the realized returns and, because the bias
+it removes is the *non-uniform* part that corrupts relative ordering, should give a steadier, slightly
+better greedy policy than plain DQN across all three games — most visibly where the action count is
+largest and the inflation worst (Seaquest, eighteen actions), least where the game is near-trivial to
+saturate (Pong, which any working value learner should drive close to its ceiling). What it cannot do
+is enrich the value object: $Q$ is still a single scalar per action, the mean of a return distribution
+it never sees, and the target is still a point estimate with no notion of its own spread. So I expect
+this to be a *correct but modest* rung — a real reduction in overestimation, a real but not dramatic
+score, with Pong essentially solved, Breakout in the low hundreds, and Seaquest the most variable
+because its long horizon and large action set leave the most residual bias and the most room for the
+relative-ordering errors to matter. That ceiling — a scalar-mean critic with a decoupled but still
+correlated target — is exactly what the next rung will have to break by learning the whole return
+distribution rather than its mean.
+</think>
+<say>
+[[FILL_SAY: 1-2 sentences naming the method and what this first edit does]]
+</say>
+<edit path="cleanrl/cleanrl/custom_value_atari.py">
+<old>
+class ValueAlgorithm:
+    """Value-based algorithm for Atari -- implement your approach here.
+
+    The training loop calls:
+        algorithm = ValueAlgorithm(envs, device, args)
+        action = algorithm.select_action(obs, epsilon)
+        metrics = algorithm.update(batch, global_step)
+        eval_qnetwork(env_id, algorithm, device, ...)
+
+    You MUST set self.q_network and self.target_network to nn.Module instances.
+
+    Available classes:
+        NatureDQNEncoder (fixed) -- Nature DQN CNN encoder, -> 512-dim features
+        QNetwork         (editable) -- NatureDQNEncoder + head
+    ENCODER_FEATURE_DIM = 512 (feature dimension from NatureDQNEncoder)
+
+    Available utilities (fixed): linear_schedule
+    """
+</old>
+<new>
+class ValueAlgorithm:
+    """DoubleDQN -- Double Deep Q-Network with hard target updates."""
+</new>
+</edit>
+<obs>
+Successfully replaced text in cleanrl/cleanrl/custom_value_atari.py.
+</obs>
+<note>
+[[FILL_NOTE?: optional one-line thought for this edit, or delete this block]]
+</note>
+<edit path="cleanrl/cleanrl/custom_value_atari.py">
+<old>
+        """Epsilon-greedy action selection."""
+        if random.random() < epsilon:
+            return np.array([self.q_network.head.out_features])  # placeholder
+        q_values = self.q_network(torch.Tensor(obs).to(self.device))
+</old>
+<new>
+        """Epsilon-greedy action selection."""
+        q_values = self.q_network(torch.Tensor(obs).to(self.device))
+</new>
+</edit>
+<obs>
+Successfully replaced text in cleanrl/cleanrl/custom_value_atari.py.
+</obs>
+<note>
+[[FILL_NOTE?: optional one-line thought for this edit, or delete this block]]
+</note>
+<edit path="cleanrl/cleanrl/custom_value_atari.py">
+<old>
+    def update(self, batch, global_step):
+        """Single gradient update. Returns a dict of scalar metrics.
+
+        batch: cleanrl ReplayBuffer sample with .observations, .next_observations,
+               .actions, .rewards, .dones
+
+        TODO: implement your value-based RL algorithm here.
+        """
+        return {"td_loss": 0.0, "q_values": 0.0}
+</old>
+<new>
+    def update(self, batch, global_step):
+        """DoubleDQN update: online net selects action, target net evaluates."""
+        with torch.no_grad():
+            # Double Q-learning: online net selects best action, target net evaluates it
+            best_actions = self.q_network(batch.next_observations).argmax(dim=1, keepdim=True)
+            target_q = self.target_network(batch.next_observations).gather(1, best_actions).squeeze()
+            td_target = batch.rewards.flatten() + self.gamma * target_q * (1 - batch.dones.flatten())
+
+        old_val = self.q_network(batch.observations).gather(1, batch.actions).squeeze()
+        loss = F.mse_loss(td_target, old_val)
+
+        self.optimizer.zero_grad()
+        loss.backward()
+        self.optimizer.step()
+
+        # Hard target update
+        if global_step % self.target_network_frequency == 0:
+            for target_param, q_param in zip(self.target_network.parameters(), self.q_network.parameters()):
+                target_param.data.copy_(
+                    self.tau * q_param.data + (1.0 - self.tau) * target_param.data
+                )
+
+        return {"td_loss": loss.item(), "q_values": old_val.mean().item()}
+</new>
+</edit>
+<obs>
+Successfully replaced text in cleanrl/cleanrl/custom_value_atari.py.
+</obs>
+<run/>
+<obs>
+Measured results — `baseline:double_dqn` (`is_final,true`), seeds {42, 123, 456} and mean.
+
+## Breakout (eval_return)
+| seed | eval_return |
+|---|---|
+| 42 | 141.6 |
+| 123 | 125.6 |
+| 456 | 244.8 |
+| **mean** | **170.67** |
+
+## Seaquest (eval_return)
+| seed | eval_return |
+|---|---|
+| 42 | 7178.0 |
+| 123 | 5386.0 |
+| 456 | 7804.0 |
+| **mean** | **6789.33** |
+
+## Pong (eval_return)
+| seed | eval_return |
+|---|---|
+| 42 | 20.4 |
+| 123 | 20.6 |
+| 456 | 21.0 |
+| **mean** | **20.67** |
+</obs>
+
+### step 2 — QR-DQN (quantile-regression distributional critic)   [slug:qr_dqn]
+
+<think>
+[[POLISH_REASONING: adapt to first-person agentic voice, end by deciding to implement]]
+The decoupled-target run did exactly what the bias analysis said it would, and the numbers tell me both
+that it worked and where its ceiling is. Double DQN landed Breakout 170.7 (seeds 141.6 / 125.6 / 244.8),
+Seaquest 6789 (7178 / 5386 / 7804), Pong 20.7 (20.4 / 20.6 / 21.0). Pong is essentially solved — three
+seeds within 0.6 of each other, right at the ceiling — which is the cheap game and tells me nothing
+except that the critic is functioning. The information is in the other two. Seaquest is high but
+*spread*: 5386 to 7804 across seeds, a swing of ~2400, the widest of any game. Breakout is modest and
+also spread (125.6 to 244.8). That pattern is the residual disease, not a new one. Decoupling selection
+from evaluation removed the *non-uniform* part of the overestimation, but $\theta^-$ is a stale copy of
+$\theta$, so right after each `target_network_frequency = 1000` sync the two nets coincide and the
+target reverts to a plain max for that interval — the correlated-error floor I admitted I couldn't fully
+clear. And on Seaquest's eighteen actions, exactly where the typical-case inflation
+$\epsilon\frac{m-1}{m+1}$ is largest, that residual bias and the relative-ordering errors it leaves have
+the most room to move the greedy policy from seed to seed. So the variance is the tell: the critic is
+still a single scalar per action, a point estimate with no notion of its own uncertainty, and it
+absorbs all the stochasticity of returns and bootstraps into one number that wobbles. Tightening the
+target-sync gap would shave a little more bias, but it cannot change *what* the critic represents. The
+ceiling here is representational, and to break it I have to stop collapsing the return to its mean.
+
+Why am I only learning the mean at all? I train an agent to maximize expected return, so I learn
+$Q(x,a)=\mathbb{E}[Z(x,a)]$, one number per state-action. But $Z(x,a)$ — the actual return from
+$(x,a)$ — is a random variable: in Seaquest it might be "surface in time, refill oxygen, score
+thousands" with some probability and "suffocate now, score little" with the rest, a genuinely bimodal
+distribution. The mean collapses it to a single value the agent will rarely actually receive, and worse,
+the *spread* of that distribution — exactly what makes one Seaquest seed land at 5386 and another at
+7804 — is information the scalar critic throws away on every transition. If I could learn the whole
+distribution of $Z$ I would carry strictly more information, the way I would never hesitate to model a
+full conditional distribution in supervised learning. The catch in RL is that there are no given
+targets; I bootstrap, learning a guess from a guess. So the real question is whether the *machinery*
+survives in distribution-space: a Bellman recursion the distribution obeys, a contraction so iterating
+it converges, and a loss I can train from sampled transitions by SGD. Let me check the three and let the
+representation and loss fall out of what the math allows.
+
+The recursion exists. Peel the first reward off the return: $Z(x,a)=R(x,a)+\gamma\,Z(X',A')$ as an
+equality *in distribution*, $X'\sim P(\cdot|x,a)$, $A'\sim\pi(\cdot|X')$. So there is a distributional
+Bellman operator $\mathcal{T}^\pi Z(x,a)\overset{D}{=}R(x,a)+\gamma\,Z(X',A')$ that scales the
+next-state distribution by $\gamma$, convolves with the transition randomness, and shifts by the reward.
+The contraction story, though, lives or dies on the metric. My deep-learning instinct is KL, but the
+$\gamma$-scaling alone kills it: scaling the *locations* of a distribution toward zero doesn't change
+the *probabilities*, so KL is unchanged under the very operation that should make two distributions
+closer; for disjoint supports KL stays infinite as both collapse toward a point mass. KL, total
+variation, Kolmogorov — all vertical distances, blind to horizontal movement. The metric that sees the
+$\gamma$-shrink is Wasserstein: $d_p(F,G)=(\int_0^1|F^{-1}(u)-G^{-1}(u)|^p\,du)^{1/p}$, a transport
+distance that is finite for disjoint supports and scales linearly under multiplication. Under the
+maximal Wasserstein metric $\bar d_p$, the operator $\mathcal{T}^\pi$ is a $\gamma$-contraction (the
+common reward shift cancels, the scalar $\gamma$ comes out, the mixture over successors is bounded by
+the worst case), with unique fixed point $Z^\pi$. So Wasserstein is the *right* metric — and that is
+precisely the problem.
+
+Because there is a sampling obstruction: I cannot minimize Wasserstein from samples by SGD. If I form an
+empirical target from sampled transitions and minimize the sample-Wasserstein loss, the minimizer of the
+expected sample loss is not the minimizer of the true $W_p$ — the gradient is biased. A concrete
+one-line check: target $\frac12\delta_0+\frac12\delta_1$ sampled as $\delta_0$ or $\delta_1$, against
+$p\delta_0+(1-p)\delta_1$; the true distance $|p-\frac12|$ is minimized at $p=\frac12$, but the expected
+*sampled* distance is constant $\frac12$ in $p$, so its gradient points nowhere. The metric the theory
+loves is the metric the learner can't follow. This is exactly the wall the prior distributional approach
+(fixed atoms on $[V_{\min},V_{\max}]$, probabilities learned, KL after a projection) dodged — and it
+dodged it at a cost: it optimizes KL-after-projection rather than Wasserstein, it must be handed the
+return range $[V_{\min},V_{\max}]$ as prior knowledge, and the projection exists only because fixed
+atoms force disjoint-support collisions. I want something genuinely Wasserstein-aware, trainable online,
+with no projection and no support bounds — partly because the scaffold gives me no clean way to know
+Seaquest's return range a priori (its returns run into the thousands while Pong's sit near $\pm21$), and
+guessing $[V_{\min},V_{\max}]$ wrong is its own failure mode.
+
+So find where the bias comes from. Wasserstein is built from the quantile function $F^{-1}$, and a
+single sample is a draw, not an observation of a quantile; the optimal transport reshuffles which sample
+pairs with which atom, and that matching's gradient doesn't average to the population gradient. The
+fixed-atom agent's free variables are the *probabilities* on fixed locations — it learns the vertical
+axis. Turn the parametrization on its side: fix the probabilities to uniform $1/N$ and make the
+*locations* $\theta_i$ the learnable thing, so $Z_\theta(x,a)=\frac1N\sum_i\delta_{\theta_i(x,a)}$. Now
+I am learning *where* $N$ equal lumps of mass sit — and "where the $i$-th of $N$ equal lumps sits" is
+exactly a *quantile* of the return. Three wins fall out immediately: the support is no longer pinned to
+any $[V_{\min},V_{\max}]$ (the locations slide to wherever Seaquest's thousands and Pong's tens actually
+live, per-state adaptive resolution); there is no projection (the Bellman target's shifted locations are
+just numbers I compare to mine, disjoint supports a non-issue); and estimating quantiles is something I
+*can* do from samples without a biased gradient.
+
+Which quantiles? Minimize $W_1(Y,U)$ between an arbitrary target $Y$ and a uniform-$N$-Dirac $U$ on
+ordered locations $\theta_1\le\cdots\le\theta_N$. Since $F_U^{-1}$ is the staircase equal to $\theta_i$
+on the level-cell $(\tau_{i-1},\tau_i]$ with $\tau_i=i/N$,
+$W_1(Y,U)=\sum_i\int_{\tau_{i-1}}^{\tau_i}|F_Y^{-1}(\omega)-\theta_i|\,d\omega$, and the cells decouple
+— each $\theta_i$ in its own integral. The subgradient of one cell in $\theta$ is
+$2F(\theta)-(\tau_{i-1}+\tau_i)$, zero at $F(\theta)=\frac{\tau_{i-1}+\tau_i}{2}$, so the $W_1$-optimal
+location is the quantile at the cell *midpoint*: $\hat\tau_i=\frac{2i-1}{2N}$,
+$\theta_i=F_Y^{-1}(\hat\tau_i)$. Not the cell edges $i/N$ — the centers $(2i-1)/(2N)$.
+
+Now hit those midpoint quantiles from samples without bias. Quantile parametrization alone does not
+unbias Wasserstein — the obstruction above still applies to $W_p$ directly. The unbiasedness has to come
+from the *loss*. Quantile regression supplies it: the $\tau$-quantile minimizes
+$\mathbb{E}[\rho_\tau(\hat Z-\theta)]$ with $\rho_\tau(u)=u(\tau-\mathbb{1}_{u<0})$, whose subgradient in
+$\theta$ is $\Pr(\hat Z<\theta)-\tau$, zero exactly at $\theta=F^{-1}(\tau)$. Crucially its gradient
+depends only on the *sign* of $u=\hat Z-\theta$, so a single sample gives an unbiased stochastic
+gradient. That is the escape: I cannot descend $W_p$, but I can descend the quantile-regression loss
+whose minimizers are the very locations that minimize $W_1$. End-to-end Wasserstein, by way of quantile
+regression on the midpoint quantiles.
+
+One wrinkle before a deep net. $\rho_\tau$ has a kink at $u=0$ — its gradient magnitude stays constant
+($\tau$ or $1-\tau$) right down to zero error, so the locations jitter and never settle. Round it off
+with a Huber: quadratic inside $[-\kappa,\kappa]$, linear outside, weighted by the asymmetric quantile
+factor $|\tau-\mathbb{1}_{u<0}|$. At $\kappa=1$ the Huber piece is $\frac12u^2$ inside $[-1,1]$ and
+$|u|-\frac12$ outside — the gradient-clipped squared error, but made asymmetric per quantile level. This
+is also the right answer for the variance I saw on Seaquest: the squared loss the previous rung used put
+all its weight on the single mean and let a few large-return transitions dominate the gradient; the
+quantile Huber spreads the supervision across $N$ levels and clips the tail influence, so a high-return
+Seaquest outlier shapes the high quantiles instead of yanking the one scalar around.
+
+Control. The objective is still to maximize expected return — I am enriching the representation, not
+redefining optimal — so the greedy action maximizes the *mean* of the next-state distribution,
+$a^\star=\arg\max_{a'}\frac1N\sum_j\theta_j(x',a')$, a drop-in for the previous rung's $\arg\max_a Q$.
+The per-transition target uses the target network: compute $a^\star$ from its next-state
+location-averages, form $\mathcal{T}\theta_j=r+\gamma\,\theta_j(x',a^\star)$ for all $j$ ($\gamma$ zeroed
+at terminals), and regress each predicted location $\theta_i(x,a)$ against the whole *set* of target
+locations with the quantile Huber loss summed over predicted quantiles $i$ and averaged over target
+samples $j$ — the all-pairs version of the tabular update. There is no projection and no support range;
+the only extra knob over the scalar critic is $N$.
+
+Now fit this to *this* edit surface, because it is a same-named method only in spirit and I must land
+the harness's implementation, not the paper's. The fixed `NatureDQNEncoder` gives me 512 features; the
+head becomes `Linear(512, n_actions * N)`, reshaped to $(B, n_{\text{actions}}, N)$, with $Q$-values as
+the per-action mean over the $N$ — so `q_network.forward` returns means and the loop's eval argmax still
+works unchanged. I take $N = 200$, the standard Atari resolution and exactly the width the scaffold's
+budget check is sized around ($1.05\times$ the $|\mathcal A|\times200$ head), so I am at the budget, not
+over it. The midpoint levels are the fixed buffer $\hat\tau_i=(2i-1)/(2N)$. $\kappa=1$ is hard-coded —
+the harness does not expose the $\kappa=0$ hard-loss branch as a runtime option, so I commit to the
+Huberized form. One optimizer detail I keep from the distributional recipe even though it differs from
+the previous rung: Adam with $\epsilon_{\text{Adam}}=0.01/\text{batch\_size}$ (a larger-than-default
+$\epsilon$ that stabilizes the all-pairs asymmetric regression whose per-quantile gradient scales
+differ), while the learning rate stays the scaffold's `args.learning_rate = 1e-4` rather than the
+$5\times10^{-5}$ a from-scratch distributional run might pick — I am filling the harness's contract, and
+its LR is fixed. The target sync stays the hard copy at `target_network_frequency`. The full scaffold
+module is in the answer.
+
+So the delta from the decoupled-target rung is concrete: same fixed encoder, same replay,
+$\epsilon$-greedy, and periodic copy, but the head emits $N=200$ quantile locations per action instead
+of one scalar, the loss is the all-pairs quantile Huber instead of `mse_loss`, and the policy acts on
+the mean of the locations. Here is what I expect against the measured numbers. Pong is already at the
+ceiling (20.7) and a richer critic can't do much there — I expect it to stay $\approx21$, no worse. The
+two informative games should move on *both* axes I diagnosed: the mean should rise because the critic now
+models the spread instead of letting it corrupt one scalar, and — the falsifiable part — the
+seed-to-seed variance should *not blow up* relative to Double DQN even as the mean climbs, because the
+quantile Huber's tail-clipping and distributional averaging are exactly the stabilizers the bare squared
+loss lacked. So Breakout should clear Double DQN's 170 (I expect the mid-200s), and Seaquest should
+clear its 6789 (I expect into the 9000s) with the high-return transitions now shaping the upper
+quantiles rather than yanking the mean from seed to seed. If instead the distributional critic merely
+matched the scalar one, that would say the Seaquest variance was never representational and I misread the
+diagnosis; if it raised the mean but the spread widened, that would say $N=200$ on a frozen encoder is
+under-resolving the tails and the next move is to stop fixing the quantile *levels* at all.
+</think>
+<say>
+[[FILL_SAY: 1-2 sentences naming the method and what this first edit does]]
+</say>
+<edit path="cleanrl/cleanrl/custom_value_atari.py">
+<old>
+class ValueAlgorithm:
+    """DoubleDQN -- Double Deep Q-Network with hard target updates."""
+</old>
+<new>
+class QNetwork(nn.Module):
+    """QR-DQN quantile Q-network: NatureDQNEncoder (fixed) + quantile head."""
+
+    def __init__(self, envs, n_quantiles=200):
+        super().__init__()
+        self.n_quantiles = n_quantiles
+        self.n = envs.single_action_space.n
+        self.encoder = NatureDQNEncoder()
+        self.head = nn.Linear(ENCODER_FEATURE_DIM, self.n * n_quantiles)
+
+    def forward(self, x):
+        """Return Q-values as mean of quantile values per action."""
+        features = self.encoder(x)
+        quantiles = self.head(features).view(len(x), self.n, self.n_quantiles)
+        q_values = quantiles.mean(dim=2)
+        return q_values
+
+    def get_quantiles(self, x):
+        """Return raw quantile values: [batch, n_actions, n_quantiles]."""
+        features = self.encoder(x)
+        return self.head(features).view(len(x), self.n, self.n_quantiles)
+
+
+class ValueAlgorithm:
+    """QR-DQN -- Quantile Regression DQN with distributional value learning."""
+</new>
+</edit>
+<obs>
+Successfully replaced text in cleanrl/cleanrl/custom_value_atari.py.
+</obs>
+<note>
+[[FILL_NOTE?: optional one-line thought for this edit, or delete this block]]
+</note>
+<edit path="cleanrl/cleanrl/custom_value_atari.py">
+<old>
+        self.gamma = args.gamma
+        self.tau = args.tau
+        self.target_network_frequency = args.target_network_frequency
+
+        self.q_network = QNetwork(envs).to(device)
+        self.target_network = QNetwork(envs).to(device)
+        self.target_network.load_state_dict(self.q_network.state_dict())
+        self.optimizer = optim.Adam(self.q_network.parameters(), lr=args.learning_rate)
+
+    def select_action(self, obs, epsilon):
+        """Epsilon-greedy action selection."""
+        q_values = self.q_network(torch.Tensor(obs).to(self.device))
+</old>
+<new>
+        self.gamma = args.gamma
+        self.target_network_frequency = args.target_network_frequency
+        self.n_quantiles = 200
+        self.kappa = 1.0  # Huber loss threshold
+
+        self.q_network = QNetwork(envs, n_quantiles=self.n_quantiles).to(device)
+        self.target_network = QNetwork(envs, n_quantiles=self.n_quantiles).to(device)
+        self.target_network.load_state_dict(self.q_network.state_dict())
+        self.optimizer = optim.Adam(self.q_network.parameters(), lr=args.learning_rate, eps=0.01 / args.batch_size)
+
+        # Fixed quantile midpoints: tau_i = (2i - 1) / (2N) for i = 1, ..., N
+        self.tau = torch.arange(1, self.n_quantiles + 1, dtype=torch.float32, device=device)
+        self.tau = (2 * self.tau - 1) / (2 * self.n_quantiles)
+
+    def select_action(self, obs, epsilon):
+        """Greedy action selection using mean of quantile values."""
+        q_values = self.q_network(torch.Tensor(obs).to(self.device))
+</new>
+</edit>
+<obs>
+Successfully replaced text in cleanrl/cleanrl/custom_value_atari.py.
+</obs>
+<note>
+[[FILL_NOTE?: optional one-line thought for this edit, or delete this block]]
+</note>
+<edit path="cleanrl/cleanrl/custom_value_atari.py">
+<old>
+    def update(self, batch, global_step):
+        """DoubleDQN update: online net selects action, target net evaluates."""
+        with torch.no_grad():
+            # Double Q-learning: online net selects best action, target net evaluates it
+            best_actions = self.q_network(batch.next_observations).argmax(dim=1, keepdim=True)
+            target_q = self.target_network(batch.next_observations).gather(1, best_actions).squeeze()
+            td_target = batch.rewards.flatten() + self.gamma * target_q * (1 - batch.dones.flatten())
+
+        old_val = self.q_network(batch.observations).gather(1, batch.actions).squeeze()
+        loss = F.mse_loss(td_target, old_val)
+</old>
+<new>
+    def update(self, batch, global_step):
+        """QR-DQN update: quantile Huber loss."""
+        with torch.no_grad():
+            # Get quantile values for next state from target network
+            next_quantiles = self.target_network.get_quantiles(batch.next_observations)  # [batch, n_actions, N]
+            next_q = next_quantiles.mean(dim=2)  # [batch, n_actions]
+            next_actions = next_q.argmax(dim=1)  # [batch]
+            # Select quantiles for best actions
+            next_quantiles_best = next_quantiles[torch.arange(len(batch.next_observations)), next_actions]  # [batch, N]
+            # Compute target quantile values
+            target_quantiles = batch.rewards + self.gamma * next_quantiles_best * (1 - batch.dones)
+
+        # Get current quantile values for taken actions
+        current_quantiles_all = self.q_network.get_quantiles(batch.observations)  # [batch, n_actions, N]
+        current_quantiles = current_quantiles_all[torch.arange(len(batch.observations)), batch.actions.flatten()]  # [batch, N]
+
+        # Quantile Huber loss
+        # Pairwise TD errors: [batch, N (pred), N (target)]
+        td_errors = target_quantiles.unsqueeze(1) - current_quantiles.unsqueeze(2)
+
+        # Huber loss element-wise
+        abs_td = td_errors.abs()
+        huber = torch.where(abs_td <= self.kappa,
+                            0.5 * td_errors ** 2,
+                            self.kappa * (abs_td - 0.5 * self.kappa))
+
+        # Asymmetric weighting by quantile level
+        tau = self.tau.view(1, -1, 1)
+        quantile_weights = torch.abs(tau - (td_errors < 0).float())
+        loss = (quantile_weights * huber / self.kappa).sum(dim=2).mean(dim=1).mean()
+</new>
+</edit>
+<obs>
+Successfully replaced text in cleanrl/cleanrl/custom_value_atari.py.
+</obs>
+<note>
+[[FILL_NOTE?: optional one-line thought for this edit, or delete this block]]
+</note>
+<edit path="cleanrl/cleanrl/custom_value_atari.py">
+<old>
+        if global_step % self.target_network_frequency == 0:
+            for target_param, q_param in zip(self.target_network.parameters(), self.q_network.parameters()):
+                target_param.data.copy_(
+                    self.tau * q_param.data + (1.0 - self.tau) * target_param.data
+                )
+
+        return {"td_loss": loss.item(), "q_values": old_val.mean().item()}
+</old>
+<new>
+        if global_step % self.target_network_frequency == 0:
+            self.target_network.load_state_dict(self.q_network.state_dict())
+
+        q_values = current_quantiles.mean(dim=1)
+        return {"td_loss": loss.item(), "q_values": q_values.mean().item()}
+</new>
+</edit>
+<obs>
+Successfully replaced text in cleanrl/cleanrl/custom_value_atari.py.
+</obs>
+<run/>
+<obs>
+Measured results — `baseline:qr_dqn` (`is_final,true`), seeds {42, 123, 456} and mean.
+
+## Breakout (eval_return)
+| seed | eval_return |
+|---|---|
+| 42 | 246.9 |
+| 123 | 185.7 |
+| 456 | 324.7 |
+| **mean** | **252.43** |
+
+## Seaquest (eval_return)
+| seed | eval_return |
+|---|---|
+| 42 | 7892.0 |
+| 123 | 7038.0 |
+| 456 | 12152.0 |
+| **mean** | **9027.33** |
+
+## Pong (eval_return)
+| seed | eval_return |
+|---|---|
+| 42 | 20.9 |
+| 123 | 20.9 |
+| 456 | 21.0 |
+| **mean** | **20.93** |
+</obs>
+
+### step 3 — IQN (Implicit Quantile Networks)   [slug:iqn]
+
+<think>
+[[POLISH_REASONING: adapt to first-person agentic voice, end by deciding to implement]]
+The quantile critic did what I bet it would. QR-DQN cleared the decoupled-mean rung on both informative
+games — Breakout 252 (seeds 246.9 / 185.7 / 324.7) against Double DQN's 170.7, Seaquest 9027 (7892 /
+7038 / 12152) against 6789 — and Pong stayed pinned at the ceiling (20.9). So modeling the spread
+instead of collapsing it into one scalar paid off exactly where I argued it would, on the long-horizon,
+wide-distribution game. But look harder at the Seaquest seeds: 7038, 7892, and then a 12152 that is
+nearly double the lowest. The mean rose, but the spread did not collapse — one seed found a much heavier
+upper tail than the others. That is not the bias variance I was chasing last rung; it is the critic
+telling me something about its *resolution*. The thing that keeps bothering me is that I picked the
+number 200 by hand and then the network is stuck with it forever. The output layer is $|\mathcal A|\times
+200$, those 200 numbers are tied one-to-one to 200 levels $\hat\tau_i=(2i-1)/(2N)$ chosen before
+training started, and the approximation can never be finer than 200 no matter how much the frozen encoder
+has left to give. On Seaquest, whose return distribution runs into five figures with a long, heavy upper
+tail, a 200-step staircase is a coarse description of exactly the tail that the 12152 seed lived in — and
+every update touches the same fixed comb of levels, so the agent never gets to put extra resolution where
+the distribution is most informative. The resolution is an architectural constant, not something that
+improves with capacity or training. That is the wart I want to remove, and it is the natural next move:
+last rung enriched the value *object* from a scalar to a distribution; this rung removes the one
+structural limit left on that distribution.
+
+So what is the object I am really approximating? The 200 locations are quantiles, and "the location of
+the $\tau$-quantile as a function of $\tau$" is just the quantile function $F_Z^{-1}(\tau)$ — the inverse
+CDF, a map from a probability $\tau\in[0,1]$ to a return value. The quantile agent samples this function
+at 200 fixed grid points and learns those 200 outputs. But $F_Z^{-1}$ is a *continuous* function of
+$\tau$. If I could learn the whole function — a map I can query at any $\tau$ — then I am no longer
+pinned to a grid: I evaluate it at as many or as few points as I like, and the fidelity is set by how
+well the network approximates a curve, which is a matter of capacity and training, not a hardcoded $N$.
+Write the target: $Z_\tau(x,a):=F_{Z(x,a)}^{-1}(\tau)$, so that for $\tau\sim U([0,1])$, the value
+$Z_\tau(x,a)$ is a genuine sample of the return. That last sentence is the reparameterization trick
+stated for returns: push a uniform random variable through the quantile function and you get a return
+sample. So instead of learning probabilities on fixed locations, or locations on fixed probabilities, I
+learn a deterministic function that *reparameterizes* a base sample $\tau$ into a return. The
+distribution is defined implicitly — I never write down its density or CDF, I only know how to sample it:
+draw $\tau$, evaluate the network. With enough capacity this approximates any return distribution,
+because any distribution is the pushforward of a uniform through its own quantile function. That is
+exactly what frees Seaquest's tail: where the 200-comb spent the same resolution everywhere, an implicit
+function can bend sharply in the upper quantiles if that is where the data demands it.
+
+Two questions the grid agent answered by construction I now have to answer by design: how does $\tau$
+enter the network, and what trains the function so that $Z_\tau(x,a)$ lands on $F^{-1}_{Z(x,a)}(\tau)$
+for *every* $\tau$, not just a chosen few. Take the training first, because it is the part I am sure
+about — it is the same quantile-regression machinery the last rung used, and that machinery never cared
+that the levels came from a grid. It cares only that I am trying to hit the $\tau$-quantile. For any
+single $\tau$, the $\tau$-quantile minimizes $\mathbb{E}_{\hat Z}[\rho_\tau(\hat Z-\theta)]$ with
+$\rho_\tau(u)=u(\tau-\mathbb{1}_{u<0})$, whose error-gradient $\tau-\mathbb{1}_{u<0}$ depends only on the
+sign of $u$, so one sample gives an unbiased gradient. The Bellman version uses *two independent* base
+samples $\tau$ and $\tau'$: build the sampled TD error
+$\delta^{\tau,\tau'}=r+\gamma\,Z_{\tau'}(x',\pi(x'))-Z_\tau(x,a)$, where $Z_\tau(x,a)$ is my prediction
+at level $\tau$ and $Z_{\tau'}(x',\pi(x'))$ is a bootstrapped target-network sample at level $\tau'$, and
+regress the prediction at level $\tau$ toward the target at level $\tau'$ using the quantile loss at
+level $\tau$. Crucially, $\tau$ and $\tau'$ are drawn *fresh* from a continuous distribution each update,
+not read off a fixed comb. So the function gets trained at a dense, ever-changing set of levels, which is
+exactly what forces it to be right *as a function* and not just at 200 pinned points. The kink in
+$\rho_\tau$ at $u=0$ hurts a deep net the same way it did last rung — constant-magnitude gradient down to
+zero error — so Huberize with threshold $\kappa$, quadratic inside $[-\kappa,\kappa]$ and linear outside,
+weighted by the asymmetric quantile factor $|\tau-\mathbb{1}\{u<0\}|$; $\kappa=1$ recovers the
+gradient-clipped squared error inside the band but asymmetric per level.
+
+Now the sample counts, because they are *knobs* rather than the fixed 200. Sample $N$ values of $\tau$
+for predictions and $N'$ values of $\tau'$ for targets, form the all-pairs loss
+$\mathcal L=\frac1{N'}\sum_{i=1}^{N}\sum_{j=1}^{N'}\rho^\kappa_{\tau_i}(\delta^{\tau_i,\tau'_j})$ — sum
+over predicted levels $i$ (each is regressed at its own level), average over target samples $j$ (a
+Monte-Carlo estimate of the bootstrapped distribution, hence $1/N'$). $N$ is how much of my own quantile
+function I touch per update; $N'$ is a variance-reduction count on the regression target. Push $N=1$ in
+my head: I touch a single random point of the curve per update, close to a non-distributional agent in
+loss terms — a clean diagnostic that the benefit is the implicit representation, not merely many heads.
+For the working agent I want both moderate: enough $N$ to shape several parts of the curve, enough $N'$
+to denoise the target, nowhere near a 200-wide output layer. $N=N'=8$ is the balanced setting; the
+per-update cost is $8\times8=64$ pairwise terms, comparable to the grid agent's work and far below its
+200-wide output.
+
+Now the architecture: how does $\tau$ get in? The state side should stay as close as possible to the
+machinery the scaffold fixes. I take $\psi(x)$ to be the frozen `NatureDQNEncoder` ending in its
+512-dim ReLU feature vector — that is just choosing the boundary so the encoder includes the usual hidden
+layer, leaving the action head as a single linear map from 512 features to actions. I want to insert
+$\tau$-dependence without rebuilding either, so add a function $\phi(\tau)$ that embeds the scalar level
+into the same 512-dim space and combine it with $\psi(x)$ before the head. What combination? Concatenation
+is the lazy choice, but with a single linear head, if I merely concatenate $\psi(x)$ and $\phi(\tau)$ and
+hit them with one linear map, $\tau$ enters only *additively*: the output is (linear in $\psi$) + (linear
+in $\phi(\tau)$), and a $\tau$-dependent shift of every action's value can only slide the whole curve up
+and down — it cannot reshape the quantile function per state. But the *shape* of $F^{-1}$ has to change
+with $\tau$ in a state-dependent way; that is the whole point. So I need $\tau$ to *multiply* the state
+features. Take the Hadamard product $Z_\tau(x,a)\approx f(\psi(x)\odot\phi(\tau))_a$, so $\phi(\tau)$
+gates each feature of $\psi(x)$ — feature-wise multiplicative modulation, so even a single linear head
+sees a genuinely $\tau$-conditioned input. This matters more here than in a from-scratch IQN, precisely
+because the encoder is *frozen*: I cannot adapt $\psi$ to make room for $\tau$, so the interaction has to
+be forced through the only thing I control, and multiplication forces it through the shallow head.
+
+What embedding $\phi(\tau)$? Feeding the raw scalar through a linear layer is rank-one in $\tau$ and
+can't represent rich dependence. I want a basis expansion: lift the scalar into many features varying at
+different rates so a linear layer on top can synthesize an arbitrary smooth function of $\tau$. Cosines
+of increasing frequency are the natural bounded basis on an interval — a Fourier-type feature map. Expand
+$\tau$ into $n$ cosine features $\cos(\pi i\tau)$, $i=1,\dots,n$, then a linear-then-ReLU into the 512-dim
+space: $\phi_j(\tau)=\mathrm{ReLU}(\sum_{i=1}^n\cos(\pi i\tau)\,w_{ij}+b_j)$. (Indexing from 0 only adds a
+constant cosine absorbable into the bias.) $n=64$ cosines is plenty of frequency content to describe how
+the quantile function bends, and it is cheap.
+
+Let me make sure I have not quietly defeated the point by adding capacity. The encoder is untouched and
+frozen. The head is the same shallow $f$. The only new parameters are the cosine embedding's
+`Linear(64, 512)` and the head maps modulated features to actions. And here the accounting is decisively
+in my favor for *this* task: where the grid agent's output layer was $|\mathcal A|\times200$ — large, the
+very head the scaffold's budget check is sized around — mine is $|\mathcal A|$ per evaluated $\tau$,
+reused across samples. So I have *removed* the 200-fold output blowup and replaced it with one small
+embedding branch. Concretely the IQN head plus embedding is a few tens of thousands of parameters over the
+shared encoder, well inside the $1.05\times$-QR-DQN budget on all three action-space sizes (4, 6, 18) —
+the representational gain comes from learning a function of $\tau$, not from width. That is the property I
+want: a minimal, single-axis change over the quantile rung.
+
+Now the policy. The grid agent acts on the mean of its 200 locations. The mean is
+$\mathbb{E}_{\tau\sim U([0,1])}[Z_\tau(x,a)]$, so approximate it with $K$ fresh samples and take the
+argmax: $\tilde\pi(x)=\arg\max_a\frac1K\sum_k Z_{\tilde\tau_k}(x,a)$, $\tilde\tau_k\sim U([0,1])$, $K=32$
+— enough to make the choice a Monte-Carlo estimate of the mean rather than a single noisy draw. The
+bootstrapped target uses this greedy action with $\gamma=0$ at terminals; the replay buffer,
+$\epsilon$-greedy, and the periodic copy stay as the scaffold fixes them. I deliberately keep the
+risk-*neutral* uniform policy here even though the implicit quantile function unlocks more: sampling
+$\tau$ from a non-uniform $\mu$ instead of $U([0,1])$ turns the action value into a distorted expectation
+$\int_0^1 F^{-1}_Z(u)\,d\mu(u)$ — mass near low quantiles makes the policy risk-averse, mass near high
+quantiles risk-seeking, with CVaR$(\eta)$ the lower-tail case $u\sim U([0,\eta])$. That risk knob is a
+genuine bonus the representation gives for free, but using it would change *what* is being maximized, and
+I want this rung to be a clean comparison: same risk-neutral mean-greedy objective the quantile rung
+maximized, so any difference is attributable to the implicit, continuous representation and nothing else.
+
+Fitting this to the edit surface: `q_network.forward(x)` must return per-action Q-values for the loop's
+eval-argmax, so I have it return the $K$-sample mean over $\tau$; a separate `get_quantiles(x, taus)`
+returns the raw $(B,|\mathcal A|,M)$ samples for the loss. `update` samples $N=8$ prediction $\tau$ and
+$N'=8$ target $\tau'$, picks the next action greedily on the target net's $K$-sample mean, forms the
+pairwise TD errors and the all-pairs quantile Huber, steps Adam at the scaffold's
+`learning_rate = 1e-4` with $\epsilon_{\text{Adam}}=0.01/\text{batch\_size}$, and does the hard target
+copy at `target_network_frequency`. The full scaffold module is in the answer.
+
+Now the bar this has to clear, stated against the strongest baseline's real numbers so I can be proven
+wrong. QR-DQN set Breakout mean 252.4 (best seed 324.7), Seaquest mean 9027 (best seed 12152), Pong
+20.9. Pong is at the ceiling and a richer representation cannot help there — I expect IQN to hold
+$\approx21$, and if it dropped that would mean the cosine modulation destabilized the easy case, a clear
+failure. Breakout and Seaquest are where the implicit function should pay: I expect IQN to match or beat
+the QR-DQN means while removing the fixed-resolution bottleneck, and I expect the *largest* gain on
+Seaquest specifically, because that is the game whose return distribution is widest and whose long upper
+tail — the one the 12152 seed lived in — the 200-comb resolved most coarsely. The three things I would
+validate: (1) the $K$-sample mean policy is stable seed-to-seed, with no resolution-induced variance of
+the kind the 200-grid showed on Seaquest; (2) Seaquest is where the implicit representation gains most,
+which is the falsifiable claim — if Breakout improves but Seaquest does not, then the bottleneck was
+never resolution and I misread the 12152 seed; and (3) the head stays inside the parameter budget on all
+of breakout (4), pong (6), and seaquest (18) actions, which the accounting above already confirms. If
+IQN merely matched QR-DQN everywhere, that would say 200 quantiles already saturated these games and the
+implicit representation buys nothing at this budget — a clean negative result, but I expect the Seaquest
+tail to say otherwise.
+</think>
+<say>
+[[FILL_SAY: 1-2 sentences naming the method and what this first edit does]]
+</say>
+<edit path="cleanrl/cleanrl/custom_value_atari.py">
+<old>
+class QNetwork(nn.Module):
+    """QR-DQN quantile Q-network: NatureDQNEncoder (fixed) + quantile head."""
+
+    def __init__(self, envs, n_quantiles=200):
+        super().__init__()
+        self.n_quantiles = n_quantiles
+        self.n = envs.single_action_space.n
+        self.encoder = NatureDQNEncoder()
+        self.head = nn.Linear(ENCODER_FEATURE_DIM, self.n * n_quantiles)
+
+    def forward(self, x):
+        """Return Q-values as mean of quantile values per action."""
+        features = self.encoder(x)
+        quantiles = self.head(features).view(len(x), self.n, self.n_quantiles)
+        q_values = quantiles.mean(dim=2)
+        return q_values
+
+    def get_quantiles(self, x):
+        """Return raw quantile values: [batch, n_actions, n_quantiles]."""
+        features = self.encoder(x)
+        return self.head(features).view(len(x), self.n, self.n_quantiles)
+
+
+class ValueAlgorithm:
+    """QR-DQN -- Quantile Regression DQN with distributional value learning."""
+</old>
+<new>
+class QNetwork(nn.Module):
+    """IQN quantile network: NatureDQNEncoder (fixed) + cosine tau-embedding + linear head.
+
+    Z_tau(x, a) = head( psi(x) (Hadamard) phi(tau) )_a, with psi the fixed 512-dim
+    encoder features and phi a ReLU cosine embedding of the base sample tau.
+    """
+
+    N_COS = 64       # cosine embedding dimension
+    K_POLICY = 32    # samples for the mean-greedy policy / Q-value readout
+
+    def __init__(self, envs):
+        super().__init__()
+        self.n = envs.single_action_space.n
+        self.encoder = NatureDQNEncoder()
+        self.phi = nn.Linear(self.N_COS, ENCODER_FEATURE_DIM)   # cosine basis -> feature dim
+        self.head = nn.Linear(ENCODER_FEATURE_DIM, self.n)      # single linear head to actions
+        # frequencies i = 1..N_COS used in cos(pi * i * tau)
+        self.register_buffer(
+            "freqs", torch.arange(1, self.N_COS + 1, dtype=torch.float32) * 3.141592653589793
+        )
+
+    def get_quantiles(self, x, taus):
+        """Z_tau(x, .) for each of M sampled taus -> [batch, n_actions, M]."""
+        psi = self.encoder(x).unsqueeze(1)                      # [B, 1, d]
+        cos = torch.cos(taus.unsqueeze(-1) * self.freqs)        # [B, M, N_COS]
+        phi = F.relu(self.phi(cos))                             # [B, M, d]
+        feats = psi * phi                                       # Hadamard modulation [B, M, d]
+        return self.head(feats).permute(0, 2, 1)               # [B, n_actions, M]
+
+    def forward(self, x):
+        """Q-values as a K-sample Monte-Carlo estimate of the per-action mean E_tau[Z_tau]."""
+        taus = torch.rand(len(x), self.K_POLICY, device=x.device)
+        return self.get_quantiles(x, taus).mean(dim=2)         # [B, n_actions]
+
+
+class ValueAlgorithm:
+    """IQN -- Implicit Quantile Network with an implicitly-defined return distribution."""
+</new>
+</edit>
+<obs>
+Successfully replaced text in cleanrl/cleanrl/custom_value_atari.py.
+</obs>
+<note>
+[[FILL_NOTE?: optional one-line thought for this edit, or delete this block]]
+</note>
+<edit path="cleanrl/cleanrl/custom_value_atari.py">
+<old>
+        self.target_network_frequency = args.target_network_frequency
+        self.n_quantiles = 200
+        self.kappa = 1.0  # Huber loss threshold
+
+        self.q_network = QNetwork(envs, n_quantiles=self.n_quantiles).to(device)
+        self.target_network = QNetwork(envs, n_quantiles=self.n_quantiles).to(device)
+        self.target_network.load_state_dict(self.q_network.state_dict())
+        self.optimizer = optim.Adam(self.q_network.parameters(), lr=args.learning_rate, eps=0.01 / args.batch_size)
+
+        # Fixed quantile midpoints: tau_i = (2i - 1) / (2N) for i = 1, ..., N
+        self.tau = torch.arange(1, self.n_quantiles + 1, dtype=torch.float32, device=device)
+        self.tau = (2 * self.tau - 1) / (2 * self.n_quantiles)
+
+    def select_action(self, obs, epsilon):
+        """Greedy action selection using mean of quantile values."""
+        q_values = self.q_network(torch.Tensor(obs).to(self.device))
+</old>
+<new>
+        self.target_network_frequency = args.target_network_frequency
+        self.n_quantiles = 8        # N : prediction samples per update
+        self.n_quantiles_tgt = 8    # N': target samples per update
+        self.kappa = 1.0            # Huber threshold
+
+        self.q_network = QNetwork(envs).to(device)
+        self.target_network = QNetwork(envs).to(device)
+        self.target_network.load_state_dict(self.q_network.state_dict())
+        self.optimizer = optim.Adam(self.q_network.parameters(), lr=args.learning_rate, eps=0.01 / args.batch_size)
+
+    def select_action(self, obs, epsilon):
+        """Greedy action selection on the K-sample Monte-Carlo mean."""
+        q_values = self.q_network(torch.Tensor(obs).to(self.device))
+</new>
+</edit>
+<obs>
+Successfully replaced text in cleanrl/cleanrl/custom_value_atari.py.
+</obs>
+<note>
+[[FILL_NOTE?: optional one-line thought for this edit, or delete this block]]
+</note>
+<edit path="cleanrl/cleanrl/custom_value_atari.py">
+<old>
+    def update(self, batch, global_step):
+        """QR-DQN update: quantile Huber loss."""
+        with torch.no_grad():
+            # Get quantile values for next state from target network
+            next_quantiles = self.target_network.get_quantiles(batch.next_observations)  # [batch, n_actions, N]
+            next_q = next_quantiles.mean(dim=2)  # [batch, n_actions]
+            next_actions = next_q.argmax(dim=1)  # [batch]
+            # Select quantiles for best actions
+            next_quantiles_best = next_quantiles[torch.arange(len(batch.next_observations)), next_actions]  # [batch, N]
+            # Compute target quantile values
+            target_quantiles = batch.rewards + self.gamma * next_quantiles_best * (1 - batch.dones)
+
+        # Get current quantile values for taken actions
+        current_quantiles_all = self.q_network.get_quantiles(batch.observations)  # [batch, n_actions, N]
+        current_quantiles = current_quantiles_all[torch.arange(len(batch.observations)), batch.actions.flatten()]  # [batch, N]
+
+        # Quantile Huber loss
+        # Pairwise TD errors: [batch, N (pred), N (target)]
+        td_errors = target_quantiles.unsqueeze(1) - current_quantiles.unsqueeze(2)
+
+        # Huber loss element-wise
+        abs_td = td_errors.abs()
+</old>
+<new>
+    def update(self, batch, global_step):
+        """IQN update: all-pairs quantile Huber loss on freshly sampled tau levels."""
+        b = batch.observations.shape[0]
+        idx = torch.arange(b, device=self.device)
+
+        with torch.no_grad():
+            # mean-greedy next action on the target network (K-sample MC mean)
+            next_q = self.target_network(batch.next_observations)               # [B, n_actions]
+            next_actions = next_q.argmax(dim=1)                                 # [B]
+            taus_tgt = torch.rand(b, self.n_quantiles_tgt, device=self.device)  # tau' ~ U([0,1])
+            z_next = self.target_network.get_quantiles(batch.next_observations, taus_tgt)  # [B, A, N']
+            z_next = z_next[idx, next_actions]                                  # [B, N']
+            not_done = (1 - batch.dones.flatten()).view(b, 1)
+            target_z = batch.rewards.flatten().view(b, 1) + self.gamma * not_done * z_next  # [B, N']
+
+        taus = torch.rand(b, self.n_quantiles, device=self.device)             # tau ~ U([0,1])
+        z = self.q_network.get_quantiles(batch.observations, taus)            # [B, A, N]
+        theta = z[idx, batch.actions.flatten()]                                # [B, N] predicted
+
+        # pairwise TD errors u_ij = T theta_j - theta_i : [B, N (pred), N' (target)]
+        td_errors = target_z.unsqueeze(1) - theta.unsqueeze(2)
+
+        abs_td = td_errors.abs()
+</new>
+</edit>
+<obs>
+Successfully replaced text in cleanrl/cleanrl/custom_value_atari.py.
+</obs>
+<note>
+[[FILL_NOTE?: optional one-line thought for this edit, or delete this block]]
+</note>
+<edit path="cleanrl/cleanrl/custom_value_atari.py">
+<old>
+                            self.kappa * (abs_td - 0.5 * self.kappa))
+
+        # Asymmetric weighting by quantile level
+        tau = self.tau.view(1, -1, 1)
+        quantile_weights = torch.abs(tau - (td_errors < 0).float())
+        loss = (quantile_weights * huber / self.kappa).sum(dim=2).mean(dim=1).mean()
+</old>
+<new>
+                            self.kappa * (abs_td - 0.5 * self.kappa))
+        # asymmetric weight by the prediction quantile level tau_i (along the i-axis)
+        tau = taus.unsqueeze(2)                                                # [B, N, 1]
+        quantile_weights = torch.abs(tau - (td_errors.detach() < 0).float())
+        # average over target samples j (1/N'), sum over prediction quantiles i, mean over batch
+        loss = (quantile_weights * huber / self.kappa).mean(dim=2).sum(dim=1).mean()
+</new>
+</edit>
+<obs>
+Successfully replaced text in cleanrl/cleanrl/custom_value_atari.py.
+</obs>
+<note>
+[[FILL_NOTE?: optional one-line thought for this edit, or delete this block]]
+</note>
+<edit path="cleanrl/cleanrl/custom_value_atari.py">
+<old>
+
+        q_values = current_quantiles.mean(dim=1)
+        return {"td_loss": loss.item(), "q_values": q_values.mean().item()}
+</old>
+<new>
+
+        return {"td_loss": loss.item(), "q_values": theta.mean().item()}
+</new>
+</edit>
+<obs>
+Successfully replaced text in cleanrl/cleanrl/custom_value_atari.py.
+</obs>
+

@@ -1,0 +1,1109 @@
+<meta task="synth-copy" domain="Sequence modeling" file="pytorch-examples/synth_copy/custom_strategy.py" model_format="qwen3" edit_tool="str_replace"/>
+
+<system>
+You are a research engineer improving a model on a fixed ML task. You work by editing the model code and running experiments. Think carefully before each change. You have these tools:
+- str_replace(path, old_str, new_str): replace the unique occurrence of old_str with new_str.
+- create(path, file_text): create a new file.
+- run_experiment(): train + evaluate the current code under the fixed budget; returns metrics.
+Make one tool call at a time. After editing, call run_experiment() to measure your method.
+</system>
+
+<user>
+## Research question
+
+A small causal Transformer can copy, repeat, or reverse a symbol string trivially *at the length it was
+trained on* — the hard part is what it does at lengths it never saw. Train content lengths are sampled
+from `[1, 20]`; evaluation runs both an in-distribution split (`id`, lengths in `[1, 20]`) and a strict
+out-of-distribution split (`ood`, lengths in `[21, 40]`). The single thing being designed is the
+**positional / attention mechanism** — how token order enters the model. Everything else (vocabulary,
+decoder block layout, optimizer, data, metrics) is fixed. So the question is sharp: which way of
+injecting position lets the same 4-layer / `d_model=128` decoder keep solving copy-style tasks past its
+training length, and why.
+
+## Prior art before the first rung (the order-encoding lineage)
+
+The first rung reacts to a line of sequence models, each of which encodes order differently and breaks
+length generalization in its own way. These precede the ladder; the fixed substrate below is the
+decoder the later rungs all share.
+
+- **Recurrent encoder-decoder (Sutskever, Vinyals, Le 2014; Cho et al. 2014).** Read the source with an
+  RNN, compress it into one fixed-size vector, decode from that. Order is supplied by the recurrence
+  itself — no explicit positional code. Gap: the constant-size summary is an information bottleneck, so
+  it degrades on long sequences, worst beyond training lengths.
+- **Additive attention seq2seq (Bahdanau, Cho, Bengio 2015).** Keep every encoder state and let the
+  decoder read a content-weighted blend `c_i = Σ_j α_{ij} h_j` at each step, removing the bottleneck.
+  Still recurrent, still no positional encoding — recurrence carries order. Gap: it is the classical
+  non-Transformer reference here; recurrence does generalize order in principle but is slow and the
+  hidden state is still a fixed-width channel under length stress.
+- **Sinusoidal absolute PE (Vaswani et al. 2017, §3.5).** Self-attention is permutation-equivariant, so
+  a fixed `d_model` position vector — a vector of geometrically spaced sines/cosines — is added to each
+  token embedding before layer one. Closed-form, so it is *defined* at any index. Gap: the model only
+  ever interprets the phase patterns over `[0, 20)`; past that the joint sinusoid configuration is out
+  of distribution, so behaviour beyond training length is uncalibrated.
+- **Learned absolute PE.** A trainable table, one vector per slot. Gap: there is literally no entry past
+  the training range, so it cannot even represent an unseen length — ruled out for OOD by inspection.
+
+## The fixed substrate
+
+A self-contained character-level driver is frozen and must not be touched. Vocabulary: 16 symbols plus
+`PAD/BOS/EOS/SEP` (`vocab_size = 20`). Sequence layout `[BOS] x_1 … x_T [SEP] y_1 … y_M [EOS]`, with the
+loss computed only on the positions whose next token belongs to the target. Three variants, one test
+command each: `delim` (`y = x`), `repeat` (`y = x` twice), `reverse` (`y = reverse(x)`). The model is a
+decoder-only Transformer — token embedding, four `TransformerBlock`s (pre-LN, multi-head causal
+attention, GELU MLP at 4× expansion), final LayerNorm, a linear head — with `d_model = 128`, 4 heads, 4
+layers. Optimization is fixed: AdamW (lr `5e-4`, wd `1e-2`), batch 256, 6000 steps, 200-step linear
+warm-up, grad-clip 1.0. The attention module already consumes a `PositionalScheme` with three optional
+hooks and applies the causal mask after any bias; `build_model` may also swap the backbone to an LSTM.
+
+## The editable interface
+
+Exactly one region is editable — `build_positional_scheme(config)` and `build_model(config)` in
+`pytorch-examples/synth_copy/custom_strategy.py` (lines 301–332). A `PositionalScheme` is a thin
+container with three optional callables: `token_embedding_extra(positions) -> [B,T,D]` (an additive
+token-level embedding, e.g. sinusoidal / learned APE); `attn_bias(T, device, dtype) -> [H,T,T]` or
+`[1,T,T]` (an additive attention-score bias applied before the causal mask, e.g. ALiBi / T5 relative
+bias); and `rotary(q, k) -> (q', k')` (applied inside attention before the dot product, e.g. RoPE). Any
+learnable parameters must be registered via `scheme.extra_modules` (an `nn.ModuleList`) so AdamW picks
+them up and they move to the GPU. `build_model` may return any `nn.Module` exposing
+`forward(tokens) -> [B,T,V]`; passing `use_lstm=True` to `SeqModel` (or returning a custom module)
+swaps the backbone away from the Transformer entirely.
+
+The starting point is the scaffold default: a **learned absolute** positional embedding — a sensible but
+length-limited fill. Each rung replaces exactly these two definitions and nothing else.
+
+```python
+# EDITABLE region of custom_strategy.py (lines 301-332) -- default fill: learned absolute PE
+def build_positional_scheme(config: TaskConfig) -> PositionalScheme:
+    """Default: a learned absolute positional embedding (length-limited)."""
+    extras = nn.ModuleList()
+    pos_emb = nn.Embedding(config.max_total_len, config.d_model)
+    nn.init.normal_(pos_emb.weight, mean=0.0, std=0.02)
+    extras.append(pos_emb)
+
+    def token_embedding_extra(positions: torch.Tensor) -> torch.Tensor:
+        # positions: [B, T] with values in [0, max_total_len)
+        return pos_emb(positions.clamp(max=config.max_total_len - 1))
+
+    return PositionalScheme(
+        name="learned_absolute",
+        token_embedding_extra=token_embedding_extra,
+        attn_bias=None,
+        rotary=None,
+        extra_modules=extras,
+    )
+
+
+def build_model(config: TaskConfig) -> nn.Module:
+    """Construct the model. Override to swap in a different backbone (e.g. LSTM)."""
+    scheme = build_positional_scheme(config)
+    return SeqModel(config, scheme, use_lstm=False)
+```
+
+## Evaluation settings
+
+One seed (42). Three variants, each tested by greedy autoregressive decoding on two splits: `id`
+(content lengths `[1, 20]`) and `ood` (content lengths `[21, 40]`). Per variant the run reports
+`exact_match_id`, `token_acc_id`, `exact_match_ood`, `token_acc_ood`, and a combined
+`score = 0.5·exact_match_id + 0.5·exact_match_ood`. The leaderboard records the per-variant `score`; the
+task-level summary is the **geometric mean of `score` across the three variants**, which penalises any
+single variant where the model fails to length-generalise. Higher is better on every column.
+
+The editable model code is in `pytorch-examples/synth_copy/custom_strategy.py`:
+```python
+def build_positional_scheme(config: TaskConfig) -> PositionalScheme:
+    """Return the positional scheme used by the Transformer.
+
+    The default implementation is a learned absolute positional embedding
+    (APE) — a sensible but length-limited starting point. Modify this function
+    to invent better schemes (sinusoidal, ALiBi, RoPE, NoPE, hybrids, ...).
+
+    You may register learnable sub-modules via ``scheme.extra_modules`` so
+    their parameters are picked up by the optimizer.
+    """
+    extras = nn.ModuleList()
+    pos_emb = nn.Embedding(config.max_total_len, config.d_model)
+    nn.init.normal_(pos_emb.weight, mean=0.0, std=0.02)
+    extras.append(pos_emb)
+
+    def token_embedding_extra(positions: torch.Tensor) -> torch.Tensor:
+        # positions: [B, T] with values in [0, max_total_len)
+        return pos_emb(positions.clamp(max=config.max_total_len - 1))
+
+    return PositionalScheme(
+        name="learned_absolute",
+        token_embedding_extra=token_embedding_extra,
+        attn_bias=None,
+        rotary=None,
+        extra_modules=extras,
+    )
+
+
+def build_model(config: TaskConfig) -> nn.Module:
+    """Construct the model. Override to swap in a different backbone (e.g. LSTM)."""
+    scheme = build_positional_scheme(config)
+    return SeqModel(config, scheme, use_lstm=False)
+```
+Improve it. Derive your method, edit the code, then run_experiment().
+</user>
+
+### step 1 — Bahdanau LSTM seq2seq attention   [slug:lstm_attn]
+
+<think>
+[[POLISH_REASONING: adapt to first-person agentic voice, end by deciding to implement]]
+I start at the bottom of the ladder, before I commit to any Transformer at all, because I want a
+reference point that encodes order in the most classical way available — through recurrence rather than
+through an explicit positional code. The default scaffold fill is a learned absolute positional
+embedding bolted onto the decoder-only backbone, and I already distrust it for the OOD split: a learned
+table has one trainable vector per slot and literally no entry past the training range, so at content
+length 30 there is nothing to look up. I want the first rung to be a method whose handling of position
+is *structural*, so that whatever it does at unseen lengths is a property of the architecture and not of
+a table that runs out. The recurrent attention seq2seq of Bahdanau, Cho, and Bengio (2015) is exactly
+that reference: it carries order purely through the step-by-step recurrence and adds no positional
+encoding anywhere. It is also the natural non-Transformer baseline the task names, the thing the rest of
+the ladder will be measured against, so it belongs at rung one.
+
+Let me reconstruct why this method exists and what it actually computes, because the way it has to be
+fit into this harness is not the textbook translation version. The disease the additive-attention
+seq2seq cures is the fixed-length-context bottleneck of the plain encoder-decoder: an RNN reads the
+source left to right, `h_t = f(x_t, h_{t-1})`, and the older design hands the decoder only the final
+state `c = h_{T}` as a single fixed-width summary of the whole input. Everything the decoder will ever
+need about the source has to be squeezed into that one vector before the first output symbol comes out,
+and a constant-size vector cannot hold an unbounded amount of content — so the basic model degrades on
+long inputs, worst beyond the lengths it trained on. The cure is to keep *all* the encoder's
+per-position states `h_1, …, h_{T}` and let the decoder, at each output step, search the source for the
+position it should be reading right now and pull a content-weighted blend from there. If the weights
+`α_{i1}, …, α_{iT}` are nonnegative and sum to one, the decoder reads `c_i = Σ_j α_{ij} h_j`, a per-step
+context recomputed every output step instead of one summary frozen at the start. That removes the
+bottleneck: a long source is no harder than a short one because the decoder only ever reads one
+position's worth of blended content at a time.
+
+The weights themselves come from a content match. The decoder, before emitting `y_i`, knows its
+recurrent state `s_{i-1}` — what it has produced and what it intends next — and each source position is
+represented by its annotation `h_j`. So the score `e_{ij} = a(s_{i-1}, h_j)` measures how well position
+`j` matches what the decoder is about to do, and the natural cheap scorer for a (query, key) pair whose
+vectors need not live in the same space is a one-hidden-layer additive MLP,
+`e_{ij} = v_a^⊤ tanh(W_a s_{i-1} + U_a h_j)`. A softmax over positions turns those scores into a
+distribution, `α_{ij} = softmax_j(e_{ij})`, which is what keeps the read length-invariant — `c_i` is a
+convex combination of the annotations, so its scale does not grow with the number of source positions.
+I use `s_{i-1}` and not `s_i` as the query because `s_i` depends on `c_i`, which would be circular; the
+pre-step state is also the right semantics for "where should I look now." This is the load-bearing
+machinery: a content-based, non-monotonic, differentiable soft alignment, with order supplied entirely
+by the recurrence that builds the `h_j` and the `s_i`.
+
+Now the part that matters most for this trajectory: how that method has to be expressed in *this* task's
+edit surface, because it is not the generic translation network and I must derive the version the
+harness actually runs. The scaffold gives me a single token stream
+`[BOS] x_1 … x_T [SEP] y_1 … y_M [EOS]` and a fixed `forward(tokens) -> [B, T, V]` API; there is no
+separate source and target tensor. So I have to manufacture the encoder-decoder split inside `forward`.
+The `[SEP]` token is the seam: I find `sep_pos` per row as the position of `SEP_ID`, treat the content
+between `BOS` and `SEP` as the source, and treat everything from `SEP` onward as the decoding region. I
+embed the source slice, run a *bidirectional* LSTM encoder over it so each annotation `h_j` sees both
+sides of position `j` (the forward direction summarises `x_1..x_j`, the backward direction `x_j..x_T`,
+concatenated to width `d_model`), and mask out the padding positions so attention never reads them. The
+decoder is an `LSTMCell` initialised from a `tanh` projection of the masked-mean encoder summary, and it
+steps over *every* position of the stream, but I only let it advance — and only let it write logits —
+once the position has reached or passed `sep_pos`. Concretely a per-row boolean `active = pos >= sep_pos`
+gates the state update (`h, c` are held frozen on inactive positions) and the logit write, so the model
+produces predictions only on the target region, which is exactly where the loss mask lives.
+
+The attention inside the decoder is the Bahdanau additive form, derived above, but typed to this
+harness. I project the encoder annotations once into keys `keys = attn_key(enc_out)`; at each position I
+project the current decoder state into a query `attn_query(h)`, add it to the keys, push through `tanh`,
+read off a scalar per source position with `attn_v`, mask the padded positions to `-inf`, softmax to get
+the alignment weights, and form `context = Σ_j α_j h_j` by a batched matrix-vector product against the
+encoder outputs. The decoder cell input is the concatenation of the embedding of the current token and
+that context; the output logits come from a linear layer on the concatenation of the new state and the
+context. Two details are forced by the single-stream layout. First, the decoder reads `tokens[:, pos]`
+as its input embedding at every step — there is no teacher-forced separate target tensor, so the prefix
+(content and `SEP`) flows through the cell too, but its logits are discarded by the `active` gate.
+Second, because the whole thing is one `forward` over a `[B, T]` tensor, the attention is recomputed at
+every one of the `T` positions, which makes this the slowest baseline on the clock by a wide margin —
+the recurrence is sequential and the per-step alignment is an extra matmul each step.
+
+This is the place to be explicit about what the harness does *not* expose, because it changes the method
+from its translation form. There is no bidirectional GRU with reset/update gates and a maxout deep
+output here — I use a plain bidirectional `LSTM` for the encoder and a single `LSTMCell` for the
+decoder, which is the lighter gated unit with the same long-range-gradient property, and a bare linear
+readout instead of maxout. There is no beam search — evaluation is greedy autoregressive decoding driven
+by the fixed loop. There is no separate `[NULL]`/fertility machinery. The `build_positional_scheme` hook
+is returned as an empty placeholder (`name="lstm_none"`, all three callables `None`, no extra modules),
+because the recurrence *is* the positional mechanism: the encoder's left-to-right and right-to-left
+passes stamp order into the annotations, and the decoder's sequential stepping stamps order into the
+output, so there is nothing for the Transformer's positional hooks to do. `build_model` returns the
+recurrent module directly instead of a `SeqModel`. The single design lever the task actually cares about
+— "how does position enter" — is answered here by "through recurrence, with no explicit code at all."
+
+What I expect, and what I will watch on the two splits. At the training lengths every variant should be
+easy: the source is short, the bottleneck never bites, and content-based soft alignment plus recurrence
+should give near-perfect in-distribution exact match across copy, repeat, and reverse — the alignment
+just has to learn to point at the right source position (the same index for `delim`, the mirrored index
+for `reverse`, the modular index for `repeat`). The OOD split is the real test, and here I am genuinely
+uncertain. In principle recurrence and content-based attention should generalise the *rule* of copying
+to longer inputs, since neither mechanism has a hard length cap the way the learned table does. But two
+structural pressures push the other way at length 30–40. The encoder's hidden state is still a
+fixed-width channel, so a longer source crowds more content through the same annotations; and the
+decoder state, initialised from a single masked-mean summary, accumulates drift over a longer output
+that no positional anchor corrects. So I expect the sequence-level exact match to be the brittle metric:
+one wrong symbol anywhere fails the whole sequence, and over 30–40 output steps a single drift is likely.
+The token-level accuracy should degrade more gracefully than exact match, since most symbols can still
+be aligned even when the sequence is not perfect end to end. If OOD exact match collapses to zero while
+OOD token accuracy stays well above chance, that is the signature of a model that has the right local
+alignment rule but cannot hold a long output together without an explicit position signal — which is
+exactly the gap the Transformer rungs above will try to close by putting order back in as a code rather
+than as a recurrence. That falsifiable shape — perfect ID, zero OOD exact match, non-trivial OOD token
+accuracy — is what rung one should establish as the floor, and it is what the next rung will have to
+diagnose and beat. (The full scaffold module is in the answer.)
+</think>
+<say>
+[[FILL_SAY: 1-2 sentences naming the method and what this first edit does]]
+</say>
+<edit path="pytorch-examples/synth_copy/custom_strategy.py">
+<old>
+def build_positional_scheme(config: TaskConfig) -> PositionalScheme:
+    """Return the positional scheme used by the Transformer.
+
+    The default implementation is a learned absolute positional embedding
+    (APE) — a sensible but length-limited starting point. Modify this function
+    to invent better schemes (sinusoidal, ALiBi, RoPE, NoPE, hybrids, ...).
+
+    You may register learnable sub-modules via ``scheme.extra_modules`` so
+    their parameters are picked up by the optimizer.
+    """
+    extras = nn.ModuleList()
+    pos_emb = nn.Embedding(config.max_total_len, config.d_model)
+    nn.init.normal_(pos_emb.weight, mean=0.0, std=0.02)
+    extras.append(pos_emb)
+
+    def token_embedding_extra(positions: torch.Tensor) -> torch.Tensor:
+        # positions: [B, T] with values in [0, max_total_len)
+        return pos_emb(positions.clamp(max=config.max_total_len - 1))
+
+    return PositionalScheme(
+        name="learned_absolute",
+        token_embedding_extra=token_embedding_extra,
+        attn_bias=None,
+        rotary=None,
+        extra_modules=extras,
+    )
+</old>
+<new>
+# EDITABLE region of custom_strategy.py (lines 301-332) -- step 1: Bahdanau LSTM seq2seq attention
+class BahdanauSeq2SeqAttention(nn.Module):
+    """LSTM encoder-decoder with additive attention."""
+
+    def __init__(self, config: TaskConfig):
+        super().__init__()
+        if config.d_model % 2 != 0:
+            raise ValueError("d_model must be even for the bidirectional encoder")
+        self.config = config
+        self.vocab = vocab_size(config)
+        self.token_embed = nn.Embedding(self.vocab, config.d_model, padding_idx=PAD_ID)
+        self.encoder = nn.LSTM(
+            input_size=config.d_model,
+            hidden_size=config.d_model // 2,
+            num_layers=1,
+            batch_first=True,
+            bidirectional=True,
+        )
+        self.init_h = nn.Linear(config.d_model, config.d_model)
+        self.init_c = nn.Linear(config.d_model, config.d_model)
+        self.attn_key = nn.Linear(config.d_model, config.d_model, bias=False)
+        self.attn_query = nn.Linear(config.d_model, config.d_model, bias=False)
+        self.attn_v = nn.Linear(config.d_model, 1, bias=False)
+        self.decoder = nn.LSTMCell(2 * config.d_model, config.d_model)
+        self.out = nn.Linear(2 * config.d_model, self.vocab)
+
+    def forward(self, tokens: torch.Tensor) -> torch.Tensor:
+        B, T = tokens.shape
+        device = tokens.device
+        sep_pos = tokens.eq(SEP_ID).long().argmax(dim=1)
+        src_lens = (sep_pos - 1).clamp(min=1)
+        max_src = int(src_lens.max().item())
+        src = tokens[:, 1 : 1 + max_src].clone()
+        src_idx = torch.arange(max_src, device=device).unsqueeze(0)
+        src_mask = src_idx < src_lens.unsqueeze(1)
+        src = torch.where(src_mask, src, torch.full_like(src, PAD_ID))
+
+        enc_emb = self.token_embed(src)
+        enc_emb = enc_emb * src_mask.unsqueeze(-1).to(enc_emb.dtype)
+        enc_out, _ = self.encoder(enc_emb)
+        enc_out = enc_out * src_mask.unsqueeze(-1)
+        denom = src_lens.to(enc_out.dtype).unsqueeze(1)
+        summary = enc_out.sum(dim=1) / denom
+        h = torch.tanh(self.init_h(summary))
+        c = torch.tanh(self.init_c(summary))
+        keys = self.attn_key(enc_out)
+        logits = enc_out.new_zeros(B, T, self.vocab)
+
+        for pos in range(T):
+            active = pos >= sep_pos
+            query = self.attn_query(h).unsqueeze(1)
+            scores = self.attn_v(torch.tanh(keys + query)).squeeze(-1)
+            scores = scores.masked_fill(~src_mask, float("-inf"))
+            weights = F.softmax(scores, dim=-1)
+            context = torch.bmm(weights.unsqueeze(1), enc_out).squeeze(1)
+            dec_in = torch.cat([self.token_embed(tokens[:, pos]), context], dim=-1)
+            new_h, new_c = self.decoder(dec_in, (h, c))
+            active_f = active.unsqueeze(1)
+            h = torch.where(active_f, new_h, h)
+            c = torch.where(active_f, new_c, c)
+            step_logits = self.out(torch.cat([h, context], dim=-1))
+            logits[:, pos, :] = torch.where(active_f, step_logits, logits[:, pos, :])
+        return logits
+
+
+def build_positional_scheme(config: TaskConfig) -> PositionalScheme:
+    """The LSTM ignores the scheme; return an empty placeholder."""
+    return PositionalScheme(
+        name="lstm_none",
+        token_embedding_extra=None,
+        attn_bias=None,
+        rotary=None,
+        extra_modules=nn.ModuleList(),
+    )
+</new>
+</edit>
+<obs>
+Successfully replaced text in pytorch-examples/synth_copy/custom_strategy.py.
+</obs>
+<note>
+[[FILL_NOTE?: optional one-line thought for this edit, or delete this block]]
+</note>
+<edit path="pytorch-examples/synth_copy/custom_strategy.py">
+<old>
+def build_model(config: TaskConfig) -> nn.Module:
+    """Construct the model. Override to swap in a different backbone (e.g. LSTM)."""
+    scheme = build_positional_scheme(config)
+    return SeqModel(config, scheme, use_lstm=False)
+</old>
+<new>
+def build_model(config: TaskConfig) -> nn.Module:
+    """Bahdanau-style recurrent encoder-decoder with additive attention."""
+    return BahdanauSeq2SeqAttention(config)
+</new>
+</edit>
+<obs>
+Successfully replaced text in pytorch-examples/synth_copy/custom_strategy.py.
+</obs>
+<run/>
+<obs>
+Measured results — `baseline:lstm_attn` (`is_final,true`), seed 42. Per-variant columns; `score = 0.5·exact_match_id + 0.5·exact_match_ood`.
+
+| variant | exact_match_id | token_acc_id | exact_match_ood | token_acc_ood | score | elapsed |
+|---|---|---|---|---|---|---|
+| delim | 1.0 | 1.0 | 0.0 | 0.371115 | 0.5 | 413.5 |
+| repeat | 1.0 | 1.0 | 0.0 | 0.207253 | 0.5 | 523.2 |
+| reverse | 1.0 | 1.0 | 0.0 | 0.179562 | 0.5 | 413.1 |
+
+Task-level summary (geometric mean of per-variant `score`): **0.5000**.
+</obs>
+
+### step 2 — Transformer + sinusoidal absolute PE   [slug:transformer_sinusoidal]
+
+<think>
+[[POLISH_REASONING: adapt to first-person agentic voice, end by deciding to implement]]
+The recurrent baseline came back with the exact shape I predicted, and the numbers tell me precisely
+what to fix. Across all three variants the in-distribution split is perfect — `exact_match_id = 1.0`,
+`token_acc_id = 1.0` — so the soft-alignment recurrence learns the copying rule flawlessly at the
+lengths it trained on. But the OOD split is a wall: `exact_match_ood = 0.0` on every variant, and the
+OOD token accuracy is low and decaying with task difficulty — `0.371` on `delim`, `0.207` on `repeat`,
+`0.180` on `reverse`. Read that gradient: `delim` (the source index maps straight through) holds the
+most tokens, `repeat` (the alignment must wrap modulo the source length) holds fewer, and `reverse` (the
+alignment must run backwards) holds the fewest. The score is pinned at `0.5` on all three because it is
+exactly half ID and half OOD, and OOD exact match is zero. This is the signature I flagged at rung one: a
+model with the right *local* alignment rule but no way to hold a long output together. The decoder state
+is seeded from a single masked-mean summary and accumulates drift over 30–40 output steps with no
+positional anchor to correct it, so one symbol slips somewhere and the sequence-level match fails even
+while most tokens are still right. And it is slow — 400–500 seconds per variant, because the recurrence
+is sequential and the per-step alignment is an extra matmul at every one of the `T` positions. So the
+diagnosis is sharp: recurrence carries order *implicitly*, and implicit order does not survive being
+stretched past the training length. The cure has to be an *explicit* position signal, and the natural
+substrate for it is the decoder-only Transformer the rest of the ladder shares — which also kills the
+sequential-recurrence cost, since attention parallelises over positions.
+
+But the Transformer has its own problem before it can even start, and I have to face it head-on because
+it is the whole reason a positional scheme exists. Self-attention is a function of a *set* of key/value
+vectors. Take the attention output at one position: it is `softmax(q·k_j/√d)` weights times the values
+`v_j`, summed over `j`. The query is a linear function of the token at my position; each key and value
+is a linear function of the token at position `j`. Nowhere does the index `j` appear — only the contents
+of the two token vectors. Permute the input tokens and every `k_j, v_j` is just relabelled, the set is
+identical, the softmax is over the same scores, the weighted sum is the same number. The feed-forward
+sublayer acts per position and cannot see neighbours either. So a stack of these reads its input as a
+*bag* of token vectors: `a b` and `b a` are the same object. (The causal mask does break some of this —
+I will come back to that at a later rung — but the default move, and the one I am taking now, is to put
+order back in by hand.) For the recurrent baseline I never had to, because the recurrence supplied order;
+moving to attention, I have to manufacture a position signal explicitly. That is exactly the lever the
+task hands me, and the cleanest first explicit scheme is the one that started the Transformer line:
+sinusoidal absolute encoding.
+
+So what should the per-position signal be? Operationally, the number "this token is at position `t`" has
+to enter the computation in a form the existing machinery — linear layers, dot products, softmax — can
+consume, and all of that eats `d_model`-dimensional vectors. So I manufacture, for each position `t`, a
+vector `p_t ∈ ℝ^{d_model}` that *is* the position, and fuse it with the token embedding at the bottom of
+the stack. Add, do not concatenate: the first linear layer on a concatenation `[embed; p]` is
+`W_a·embed + W_b·p`, which is exactly applying one matrix to the embedding and another to the position
+and summing — so concatenation just buys the position a private projection at the cost of extra width
+everywhere above, whereas plain addition `embed + p` still lets the first projection read a linear
+function `W·p` of the position and widens nothing. The model carves out a subspace of the `d_model`
+dimensions to hold position and reads it off. The scaffold's `token_embedding_extra(positions)` hook is
+precisely this: it returns an additive `[B, T, D]` term, and `SeqModel.forward` adds it to the token
+embedding before layer one. So my whole job is to define what vector that hook returns.
+
+Now, what is `p_t`? The dumbest try is to stuff the raw integer `t` into a channel. But `t` is unbounded:
+train on lengths to 20, run at 40, and the model is fed position values it never saw, large-magnitude
+inputs that push the downstream linears into uncalibrated regimes — the activations blow up. Normalising
+to `t/L` bounds it but breaks the meaning of a step: in a length-10 sequence one token back is a delta of
+`0.1`, in a length-100 sequence it is `0.01`, so "look one position back" is no longer a fixed quantity
+the model can learn a single rule for. I want something bounded *and* shift-consistent — where a fixed
+positional step always advances the code by the same amount, regardless of absolute position or sequence
+length. A periodic function gives both: `sin(ω t)` lives in `[-1, 1]` for all `t` and a step of `Δt`
+always advances the phase by `ω Δt`. But one sinusoid aliases — it repeats every period, and a single
+scalar cannot separate hundreds of positions. The fix is many frequencies at once, the continuous
+analogue of a binary counter: the low bits flip fast (fine local position), the high bits flip slowly
+(coarse global position), and the *combination* separates an enormous range while each digit stays
+bounded. So I use a whole vector of sinusoids at geometrically spaced frequencies
+`ω_i = 10000^{-2i/d}`, `i = 0 … d/2−1` — the fastest with wavelength `2π`, the slowest near
+`10000·2π` — geometric so the wavelengths tile the scale axis evenly in log-space, giving roughly equal
+resolution from local to global.
+
+There is one more thing the encoding has to give me, and it is the property that makes it more than a
+bounded counter: a fixed relative shift should be a fixed linear map. If I stored only `sin(ω t)` per
+dimension, I could not recover `sin(ω(t+k))` from it — the angle-addition formula needs `cos(ω t)`,
+which I threw away, and at a given value of `sin` I do not know whether the phase is rising or falling.
+The cure is to keep both `sin(ω t)` and `cos(ω t)` for each frequency — store the full phase as a point
+on the unit circle. Then the shift `t → t+k` is, for each frequency, the orthogonal rotation by `ω k`,
+and stacking those rotations block-diagonally gives `p_{t+k} = M_k p_t`, a single linear transformation
+that depends only on the offset `k` and is identical at every absolute `t`. That is why the layout pairs
+sine with cosine per frequency and interleaves them: even dimensions `PE(t,2i)=sin(t·ω_i)`, odd
+dimensions `PE(t,2i+1)=cos(t·ω_i)`. And it is why I can hope for extrapolation at all — `sin` and `cos`
+are defined for every real `t`, so position 30 is not a missing table slot the way the scaffold default's
+learned table is; it is just the next point along the same curves, and the rotation relation still holds
+there with the same `M_k`. That last point is the direct answer to rung one's failure mode: where the
+recurrence had no anchor and the learned table had no entry, the sinusoid has a closed-form value
+everywhere.
+
+Now I have to be careful and honest, because the methods derivation of this scheme already names the
+catch, and the catch is exactly what I will be testing. "Defined everywhere" is *not* the same as "the
+model can use it everywhere." During training the attention learns to interpret the particular phase
+combinations that occur over `[0, 20)`. Past 20, the joint pattern of all those sinusoids across the
+dimensions is a configuration the model never encountered — it is out of distribution. The encoding
+function does not die, but the model's *learned interpretation* of it only covers the training range. So
+I am genuinely unsure this beats rung one on OOD exact match; what I am confident of is that it parallels
+the loop (no sequential recurrence) and that it gives the model a real positional code instead of an
+implicit one. The honest expectation is that this is a *diagnostic* rung: if even a closed-form,
+extrapolation-friendly absolute code fails OOD, that is strong evidence the problem is *absoluteness
+itself*, not the particular code — which is the thread the next rungs pull.
+
+Let me make this concrete in the edit surface, and note exactly how the harness version differs from the
+canonical translation-era scheme. I fill `build_positional_scheme` to build the `[max_total_len, d_model]`
+sinusoidal table in closed form — `pe[:, 0::2] = sin(positions·div_term)`,
+`pe[:, 1::2] = cos(positions·div_term)`, with `div_term = exp(arange(0,d,2)·(−ln 10000 / d))` computed
+in log space rather than by repeated `pow` — wrap it in a *frozen* `nn.Embedding.from_pretrained(pe,
+freeze=True)` (no gradient, no learnable parameter), register it through `scheme.extra_modules` so it
+moves to the GPU, and return only the `token_embedding_extra` hook; `attn_bias` and `rotary` stay `None`.
+`build_model` returns the plain `SeqModel` with `use_lstm=False`, so the decoder-only backbone is back
+and the recurrence is gone. Two harness-specific differences from the textbook sinusoidal recipe matter.
+First, there is **no `√d_model` embedding scaling** here — the canonical scheme multiplies the token
+lookup by `√d_model` to put content and position on comparable scales before the sum, but this scaffold's
+`SeqModel` adds `token_embedding_extra(positions)` straight onto the raw `token_embed` output, so I do not
+control that scaling and do not introduce it; the learned token embedding simply has to grow on its own
+to balance the `O(1)` sinusoids. Second, there is **no dropout** on the sum (the task fixes
+`dropout = 0.0`), unlike the original which applies dropout to the embedding-plus-position. And the
+positions fed in are `[0, T)` over the *whole* stream `[BOS] x … [SEP] y … [EOS]`, not a separate
+source/target indexing — the table is indexed by absolute stream position with a `clamp` to the table's
+last row as a safety bound (the table is sized to `max_total_len = 256`, comfortably past `2·L_train`, so
+the clamp never actually fires on this task's lengths). Nothing else in the editable block changes.
+
+So the delta from rung one is precise: where the LSTM carried order through a sequential recurrence with
+no explicit code, I now run the parallel decoder-only Transformer and stamp every token with a frozen
+sinusoidal absolute position before layer one. My falsifiable expectations against the rung-one numbers:
+in-distribution should stay perfect (`exact_match_id ≈ 1.0` on all three variants — the absolute code is
+more than enough at training length), and the elapsed time should drop sharply from the LSTM's 400–500 s
+to roughly the other Transformer rungs' ~130 s, because attention parallelises. The open question is OOD,
+and I have a specific prediction: if absoluteness is the disease, sinusoidal should *not* rescue OOD exact
+match — I expect `exact_match_ood` to stay at or near `0.0` on all three variants, and possibly with OOD
+token accuracy even *worse* than the LSTM's `0.37/0.21/0.18`, because the out-of-range phase patterns are
+actively misleading the attention rather than merely under-anchoring it. If that comes true — perfect ID,
+zero OOD, and OOD token accuracy at or below rung one — then the lesson is unambiguous and sets up the
+next rung: the failure is not "which absolute code," it is *absolute position at all*, and the move is to
+stop prescribing an absolute code and let the model build a relative one. (The full scaffold module is in
+the answer.)
+</think>
+<say>
+[[FILL_SAY: 1-2 sentences naming the method and what this first edit does]]
+</say>
+<edit path="pytorch-examples/synth_copy/custom_strategy.py">
+<old>
+# EDITABLE region of custom_strategy.py (lines 301-332) -- step 1: Bahdanau LSTM seq2seq attention
+class BahdanauSeq2SeqAttention(nn.Module):
+    """LSTM encoder-decoder with additive attention."""
+
+    def __init__(self, config: TaskConfig):
+        super().__init__()
+        if config.d_model % 2 != 0:
+            raise ValueError("d_model must be even for the bidirectional encoder")
+        self.config = config
+        self.vocab = vocab_size(config)
+        self.token_embed = nn.Embedding(self.vocab, config.d_model, padding_idx=PAD_ID)
+        self.encoder = nn.LSTM(
+            input_size=config.d_model,
+            hidden_size=config.d_model // 2,
+            num_layers=1,
+            batch_first=True,
+            bidirectional=True,
+        )
+        self.init_h = nn.Linear(config.d_model, config.d_model)
+        self.init_c = nn.Linear(config.d_model, config.d_model)
+        self.attn_key = nn.Linear(config.d_model, config.d_model, bias=False)
+        self.attn_query = nn.Linear(config.d_model, config.d_model, bias=False)
+        self.attn_v = nn.Linear(config.d_model, 1, bias=False)
+        self.decoder = nn.LSTMCell(2 * config.d_model, config.d_model)
+        self.out = nn.Linear(2 * config.d_model, self.vocab)
+
+    def forward(self, tokens: torch.Tensor) -> torch.Tensor:
+        B, T = tokens.shape
+        device = tokens.device
+        sep_pos = tokens.eq(SEP_ID).long().argmax(dim=1)
+        src_lens = (sep_pos - 1).clamp(min=1)
+        max_src = int(src_lens.max().item())
+        src = tokens[:, 1 : 1 + max_src].clone()
+        src_idx = torch.arange(max_src, device=device).unsqueeze(0)
+        src_mask = src_idx < src_lens.unsqueeze(1)
+        src = torch.where(src_mask, src, torch.full_like(src, PAD_ID))
+
+        enc_emb = self.token_embed(src)
+        enc_emb = enc_emb * src_mask.unsqueeze(-1).to(enc_emb.dtype)
+        enc_out, _ = self.encoder(enc_emb)
+        enc_out = enc_out * src_mask.unsqueeze(-1)
+        denom = src_lens.to(enc_out.dtype).unsqueeze(1)
+        summary = enc_out.sum(dim=1) / denom
+        h = torch.tanh(self.init_h(summary))
+        c = torch.tanh(self.init_c(summary))
+        keys = self.attn_key(enc_out)
+        logits = enc_out.new_zeros(B, T, self.vocab)
+
+        for pos in range(T):
+            active = pos >= sep_pos
+            query = self.attn_query(h).unsqueeze(1)
+            scores = self.attn_v(torch.tanh(keys + query)).squeeze(-1)
+            scores = scores.masked_fill(~src_mask, float("-inf"))
+            weights = F.softmax(scores, dim=-1)
+            context = torch.bmm(weights.unsqueeze(1), enc_out).squeeze(1)
+            dec_in = torch.cat([self.token_embed(tokens[:, pos]), context], dim=-1)
+            new_h, new_c = self.decoder(dec_in, (h, c))
+            active_f = active.unsqueeze(1)
+            h = torch.where(active_f, new_h, h)
+            c = torch.where(active_f, new_c, c)
+            step_logits = self.out(torch.cat([h, context], dim=-1))
+            logits[:, pos, :] = torch.where(active_f, step_logits, logits[:, pos, :])
+        return logits
+
+
+def build_positional_scheme(config: TaskConfig) -> PositionalScheme:
+    """The LSTM ignores the scheme; return an empty placeholder."""
+    return PositionalScheme(
+        name="lstm_none",
+        token_embedding_extra=None,
+        attn_bias=None,
+        rotary=None,
+        extra_modules=nn.ModuleList(),
+    )
+</old>
+<new>
+# EDITABLE region of custom_strategy.py (lines 301-332) -- step 2: sinusoidal absolute PE
+def build_positional_scheme(config: TaskConfig) -> PositionalScheme:
+    """Sinusoidal absolute positional encoding (Vaswani et al., 2017)."""
+    max_len = config.max_total_len
+    d_model = config.d_model
+    pe = torch.zeros(max_len, d_model)
+    positions = torch.arange(0, max_len, dtype=torch.float32).unsqueeze(1)
+    div_term = torch.exp(
+        torch.arange(0, d_model, 2, dtype=torch.float32)
+        * (-math.log(10000.0) / d_model)
+    )
+    pe[:, 0::2] = torch.sin(positions * div_term)
+    pe[:, 1::2] = torch.cos(positions * div_term)
+
+    extras = nn.ModuleList()
+    table = nn.Embedding.from_pretrained(pe, freeze=True)
+    extras.append(table)
+
+    def token_embedding_extra(positions: torch.Tensor) -> torch.Tensor:
+        return table(positions.clamp(max=max_len - 1))
+
+    return PositionalScheme(
+        name="sinusoidal",
+        token_embedding_extra=token_embedding_extra,
+        attn_bias=None,
+        rotary=None,
+        extra_modules=extras,
+    )
+</new>
+</edit>
+<obs>
+Successfully replaced text in pytorch-examples/synth_copy/custom_strategy.py.
+</obs>
+<note>
+[[FILL_NOTE?: optional one-line thought for this edit, or delete this block]]
+</note>
+<edit path="pytorch-examples/synth_copy/custom_strategy.py">
+<old>
+def build_model(config: TaskConfig) -> nn.Module:
+    """Bahdanau-style recurrent encoder-decoder with additive attention."""
+    return BahdanauSeq2SeqAttention(config)
+</old>
+<new>
+def build_model(config: TaskConfig) -> nn.Module:
+    """Decoder-only Transformer with sinusoidal APE."""
+    scheme = build_positional_scheme(config)
+    return SeqModel(config, scheme, use_lstm=False)
+</new>
+</edit>
+<obs>
+Successfully replaced text in pytorch-examples/synth_copy/custom_strategy.py.
+</obs>
+<run/>
+<obs>
+Measured results — `baseline:transformer_sinusoidal` (`is_final,true`), seed 42. Per-variant columns; `score = 0.5·exact_match_id + 0.5·exact_match_ood`.
+
+| variant | exact_match_id | token_acc_id | exact_match_ood | token_acc_ood | score | elapsed |
+|---|---|---|---|---|---|---|
+| delim | 1.0 | 1.0 | 0.0 | 0.071051 | 0.5 | 127.7 |
+| repeat | 1.0 | 1.0 | 0.0 | 0.066312 | 0.5 | 131.1 |
+| reverse | 0.999023 | 0.999907 | 0.000977 | 0.031206 | 0.5 | 123.7 |
+
+Task-level summary (geometric mean of per-variant `score`): **0.5000**.
+</obs>
+
+### step 3 — Transformer + NoPE (no positional encoding)   [slug:transformer_nope]
+
+<think>
+[[POLISH_REASONING: adapt to first-person agentic voice, end by deciding to implement]]
+The sinusoidal run confirmed my worst-case prediction, and it confirmed it cleanly. In-distribution is
+still perfect — `exact_match_id` is `1.0` on `delim` and `repeat`, `0.999` on `reverse`, with token
+accuracy essentially `1.0` everywhere — so the absolute code is more than enough at the training length,
+and the move to the parallel Transformer paid off on the clock: elapsed dropped from the LSTM's
+400–500 s to ~125–130 s per variant. But OOD is *worse than rung one*, exactly as I feared. The
+sequence-level OOD match is `0.0` on `delim` and `repeat` and `0.001` on `reverse` — effectively zero —
+and the OOD token accuracy collapsed to `0.071 / 0.066 / 0.031`, well below the LSTM's `0.371 / 0.207 /
+0.180`. So adding a *closed-form, extrapolation-friendly* absolute code did not merely fail to help OOD,
+it made the per-token OOD accuracy actively worse than the recurrence that had no explicit code at all.
+That is the decisive datum. The out-of-range phase patterns are not neutral; they are misleading the
+attention. And it rules out the hypothesis that the fix is "a better absolute code," because sinusoidal
+*is* the better absolute code — defined everywhere, bounded, shift-consistent — and it is the worst
+extrapolator on the board. The disease is absolute position itself. Whatever the model learned to do with
+positions over `[0, 20)`, it cannot transfer to `[21, 40)` because the absolute index it was keying on
+simply does not recur out there.
+
+So I should stop *prescribing* a position scheme. Every option I would normally reach for is a
+prescription with a fixed shape chosen before I have seen the data: sinusoidal is a periodic absolute
+code (just measured to break), a learned table has no entry past training length (the scaffold default,
+ruled out by inspection), a relative-bias table fixes a bucketing and a cutoff, a rotation scheme fixes a
+frequency schedule, a linear-penalty scheme fixes a recency slope. Each fixed shape mismatches some task
+or some length regime, and the in-distribution metric cannot even tell them apart — at training length
+they all hit near-perfect accuracy, which is exactly what I just saw. I keep trying to pick the *best*
+prescription, and rung two showed that the best absolute prescription is still a wall. That is the moment
+to question the premise instead of the choice.
+
+Here is the premise I have been carrying since rung two: "self-attention with no position signal cannot
+tell `a b` from `b a`, so I must add one." Let me check whether that is actually true *in this harness*,
+because if it is not, I have been solving a problem I do not have. My model is a **decoder** — the
+scaffold's `CausalSelfAttention` builds a lower-triangular mask and fills the upper triangle with `-inf`
+before the softmax. So the query at position `t` attends only to positions `≤ t`. That is not a symmetric
+set operation. Stare at it: the token at position 1 sees a window of size 1 (itself); position 2 sees a
+window of size 2; position `t` sees a window of size `t`. *The size of the visible set is the position.*
+The causal mask is not a neutral implementation detail — it injects order. A bidirectional encoder with
+no positional code really would collapse to a bag of words, but a masked decoder does not. So the
+premise is false for the architecture I actually have, and the implication is immediate: maybe the right
+move for length generalization is not a better prescription but *no prescription at all* — delete the
+positional scheme, let the causal mask supply order, and let gradient descent decide for itself how to
+use it. The appeal is threefold. It removes the fixed inductive bias that was the source of every failure
+mode, including the one I just measured. It is free — the attention score is exactly `q_t^⊤ k_i`, no
+table, no bias term, no rotation, so none of the overhead. And it is the minimal change to the editable
+block: return a scheme that supplies *nothing*.
+
+But "the mask carries some order" is suggestive, not a guarantee that a no-PE causal model can represent
+position *well enough to extrapolate*. I want to convince myself the architecture is expressive enough —
+exhibit, by hand, weights that compute position from nothing but the mask, so that I know SGD at least has
+a target to find. Start with absolute position in a single layer. At the input the hidden state is just
+the word embeddings, no position added. The only position-bearing structure is the causal mask, the
+softmax, and the `BOS` token anchored at position 1 (the scaffold's layout always begins with `BOS`).
+Reserve three coordinates of the residual stream. Design the embedding so that for every token coordinate
+1 is `1`, coordinate 2 is `1` iff the token is `BOS` else `0`, and coordinate 3 is `0`. Make one head's
+key projection read coordinate 1 — which is `1` for every token, so every key is identical. Then for a
+query at position `t`, every logit over the `t` visible keys is the same value, the softmax over equal
+logits is *uniform*, `α̂_i = 1/t` for each `i ≤ t`. The mask did the counting; the softmax turned the
+count into a number. Now make the value projection read coordinate 2 — `1` only at `BOS` — so the
+attention output is `Σ_{i≤t} α̂_i v_i = (1/t)·v_{BOS}`, and the output projection copies that into
+coordinate 3. After layer one, coordinate 3 holds `1/t`, a faithful injective code for absolute position
+(strictly decreasing in `t`); the GELU MLP that follows is a universal approximator, so it can re-map
+`1/t` to `t` or any monotone re-coding. The `BOS` anchor set the numerator, the causal window size set
+the denominator. So the architecture *can* recover absolute position with no positional code at all.
+
+Absolute position is exactly what failed to extrapolate, though, so the question that matters is whether
+the *later* layers can convert that recovered absolute index into a *relative* signal — make the
+attention dot product depend on `t − i`. Construct that too. Assume coordinate 3 of every hidden vector
+now holds the position, preserved across the residual stream. In a layer `l ≥ 2`, engineer the query at
+position `t` to read out `[1, −t, …]` (row 1 of `W_Q` reads coordinate 1, giving `1`; row 2 reads
+coordinate 3 with coefficient `−1`, giving `−t`) and the key at position `i` to read out `[i, 1, …]` (row
+1 of `W_K` reads coordinate 3, giving `i`; row 2 reads coordinate 1, giving `1`). Then
+`⟨q_t, k_i⟩ = 1·i + (−t)·1 + (content) = (content) − (t − i)`. The logit splits into a content term plus a
+pure function of the relative offset `t − i`. That is exactly the form of a relative positional encoding —
+the score depends on the distance, not on the absolute indices — and `−(t − i)` is just the simplest
+reachable case; because the first layer's MLP can write any function of absolute position into coordinate
+3, later layers can realise a far richer dependence on `t − i`. So a no-PE causal Transformer can recover
+absolute position in layer one and synthesise a relative encoding in any later layer. The architecture
+contains absolute-like and relative-like behaviour as special cases, and — unlike every explicit scheme —
+it does not force a prescription; SGD picks whichever the task rewards.
+
+For copy / repeat / reverse, what it should reward is relative-and-bimodal. While emitting `y_k` the model
+needs to attend to the corresponding `x` token, which may be far back into the input, *and* to the local
+decoding context — a short-and-long attention pattern, not the monotone recency that a linear-penalty
+scheme would force. Relative distance is the rule that is the *same* at every length: "the source token
+`reverse`-paired with output position `k` is at a fixed offset from the seam" does not change when the
+sequence grows. So if the no-PE model learns a relative encoding, it has a real shot at OOD where the
+absolute schemes had none — the offset that worked at length 15 is the same offset at length 30, and
+nothing in `q_t^⊤ k_i` goes out of distribution because there is no absolute code to fall off the end of.
+That is the precise mechanism by which deleting the scheme could beat rung two: it does not add a relative
+prior, it *removes* the absolute prior that was the thing breaking, and lets the mask-derived position be
+relative if the data wants it.
+
+In the edit surface this is the smallest possible change, and the methods-level derivation already
+matches this exact harness, so there is little to re-express. `build_positional_scheme` returns a scheme
+named `"nope"` with all three hooks `None` and an empty `extra_modules` — no additive token embedding, no
+attention bias, no rotation, no learnable positional parameter. `SeqModel.forward` then skips the
+`token_embedding_extra` add (it is `None`), `CausalSelfAttention` adds no bias before the causal mask,
+and applies no rotary, so the attention score is exactly `q_t^⊤ k_i / √{head_dim}` under the lower-
+triangular mask. `build_model` returns the plain `SeqModel(use_lstm=False)`. The one thing worth naming
+that the harness *does* provide and that the construction leans on: the layout always starts with `BOS`
+at position 0, which is the anchor the layer-one absolute-position construction needs, and the causal mask
+is applied unconditionally — so both ingredients of the existence proof are present in the fixed
+substrate. There is no machinery to omit here because there is no machinery at all; the method *is* the
+absence of a positional scheme.
+
+My falsifiable expectations against the rung-two numbers. In-distribution should stay perfect on all
+three variants (`exact_match_id ≈ 1.0`) — removing the absolute code costs nothing at training length,
+since the mask already supplies order there. Elapsed should be about the same as sinusoidal, ~125–135 s,
+or marginally faster (one fewer add per layer). The whole bet rides on OOD, and here is the specific
+prediction that would falsify the absolute schemes' framing: `exact_match_ood` should move *off zero* on
+at least some variants, and OOD token accuracy should jump well above sinusoidal's `0.071 / 0.066 /
+0.031` — back above the LSTM and beyond — because the model can now key on relative offsets that recur at
+unseen lengths. I expect the gains to be uneven across variants: `reverse` needs the model to attend from
+the end of the output back to the start of the input, a long, length-dependent offset, so it is the
+hardest test of whether the learned relative code truly extrapolates; `delim` and `repeat` involve
+offsets that track the seam more locally. If NoPE lifts OOD exact match on `delim`/`repeat`/`reverse`
+above zero while holding ID perfect, that is the confirmation that absoluteness was the disease and
+relative-from-the-mask is the cure — and it sets up the final rung, where instead of *hoping* SGD finds a
+relative code I give it a relative recency bias explicitly and see whether a well-shaped prior beats the
+learned-from-nothing one. (The full scaffold module is in the answer.)
+</think>
+<say>
+[[FILL_SAY: 1-2 sentences naming the method and what this first edit does]]
+</say>
+<edit path="pytorch-examples/synth_copy/custom_strategy.py">
+<old>
+# EDITABLE region of custom_strategy.py (lines 301-332) -- step 2: sinusoidal absolute PE
+def build_positional_scheme(config: TaskConfig) -> PositionalScheme:
+    """Sinusoidal absolute positional encoding (Vaswani et al., 2017)."""
+    max_len = config.max_total_len
+    d_model = config.d_model
+    pe = torch.zeros(max_len, d_model)
+    positions = torch.arange(0, max_len, dtype=torch.float32).unsqueeze(1)
+    div_term = torch.exp(
+        torch.arange(0, d_model, 2, dtype=torch.float32)
+        * (-math.log(10000.0) / d_model)
+    )
+    pe[:, 0::2] = torch.sin(positions * div_term)
+    pe[:, 1::2] = torch.cos(positions * div_term)
+
+    extras = nn.ModuleList()
+    table = nn.Embedding.from_pretrained(pe, freeze=True)
+    extras.append(table)
+
+    def token_embedding_extra(positions: torch.Tensor) -> torch.Tensor:
+        return table(positions.clamp(max=max_len - 1))
+
+    return PositionalScheme(
+        name="sinusoidal",
+        token_embedding_extra=token_embedding_extra,
+        attn_bias=None,
+        rotary=None,
+        extra_modules=extras,
+    )
+</old>
+<new>
+# EDITABLE region of custom_strategy.py (lines 301-332) -- step 3: NoPE (no positional encoding)
+def build_positional_scheme(config: TaskConfig) -> PositionalScheme:
+    """No positional encoding (Kazemnejad et al., NeurIPS 2023)."""
+    return PositionalScheme(
+        name="nope",
+        token_embedding_extra=None,
+        attn_bias=None,
+        rotary=None,
+        extra_modules=nn.ModuleList(),
+    )
+</new>
+</edit>
+<obs>
+Successfully replaced text in pytorch-examples/synth_copy/custom_strategy.py.
+</obs>
+<note>
+[[FILL_NOTE?: optional one-line thought for this edit, or delete this block]]
+</note>
+<edit path="pytorch-examples/synth_copy/custom_strategy.py">
+<old>
+def build_model(config: TaskConfig) -> nn.Module:
+    """Decoder-only Transformer with sinusoidal APE."""
+    scheme = build_positional_scheme(config)
+    return SeqModel(config, scheme, use_lstm=False)
+</old>
+<new>
+def build_model(config: TaskConfig) -> nn.Module:
+    """Decoder-only Transformer with no explicit positional encoding."""
+    scheme = build_positional_scheme(config)
+    return SeqModel(config, scheme, use_lstm=False)
+</new>
+</edit>
+<obs>
+Successfully replaced text in pytorch-examples/synth_copy/custom_strategy.py.
+</obs>
+<run/>
+<obs>
+Measured results — `baseline:transformer_nope` (`is_final,true`), seed 42. Per-variant columns; `score = 0.5·exact_match_id + 0.5·exact_match_ood`.
+
+| variant | exact_match_id | token_acc_id | exact_match_ood | token_acc_ood | score | elapsed |
+|---|---|---|---|---|---|---|
+| delim | 0.998047 | 0.99972 | 0.296875 | 0.433462 | 0.647461 | 130.3 |
+| repeat | 0.996094 | 0.995613 | 0.549805 | 0.757108 | 0.772949 | 133.8 |
+| reverse | 1.0 | 1.0 | 0.40332 | 0.434075 | 0.70166 | 130.8 |
+
+Task-level summary (geometric mean of per-variant `score`): **0.7055**.
+</obs>
+
+### step 4 — Transformer + ALiBi (linear distance bias)   [slug:transformer_alibi]
+
+<think>
+[[POLISH_REASONING: adapt to first-person agentic voice, end by deciding to implement]]
+NoPE broke the wall, and the numbers tell me both that the diagnosis was right and where it is still
+soft. Deleting the positional code lifted OOD off zero on every variant: `exact_match_ood` went from
+sinusoidal's `0.0 / 0.0 / 0.001` to `0.297 / 0.550 / 0.403`, and OOD token accuracy from
+`0.071 / 0.066 / 0.031` to `0.433 / 0.757 / 0.434` — past the LSTM, past everything. In-distribution
+held perfect (`0.998 / 0.996 / 1.0`), elapsed stayed ~130 s, and the geometric-mean score jumped from
+`0.50` to `0.706`. So absoluteness *was* the disease: with no absolute code to fall off the end of, the
+mask-derived position let SGD find a relative-ish rule that recurs at unseen lengths. That confirms the
+whole arc. But read the per-variant OOD numbers closely, because they expose what NoPE leaves on the
+table. `repeat` extrapolates best (`0.550` exact, `0.757` token) — its offsets track the seam in a fairly
+local, periodic way. `delim` and `reverse` are the weaker pair (`0.297`/`0.403` exact, `0.433`/`0.434`
+token), and the symmetry of their token accuracies around `0.43` is telling: NoPE recovers position by
+*construction* — the layer-one `1/t` count anchored at `BOS`, re-coded by the MLP into a relative score —
+but that recovered code is something SGD has to discover and then keep stable across 30–40 unseen
+positions, with no inductive bias pushing it toward the right shape. It works, but it is *learned from
+nothing*, and "learned from nothing" is exactly the kind of thing that holds at length 25 and frays at
+length 40. The next move is the obvious one: stop *hoping* the model induces a good relative code and
+*give* it one — a relative bias whose value at an unseen distance is the obvious continuation of its value
+at seen distances, so there is no out-of-distribution regime to fray in.
+
+So I want a relative scheme, but I have to choose it carefully, because NoPE already taught me the failure
+modes of the explicit family. A learned relative-bias table (T5-style) fixes a bucketing and a cutoff,
+and the far buckets are trained only on whatever far distances appeared in `[0, 20)`, so even bucketing
+only partly defines behaviour out of range — and it adds parameters and a gather, which is real overhead.
+A rotation scheme is relative-by-construction but injects per-layer rotations that cost compute, and its
+frequency schedule is a fixed prescription too. What I want is the property the relative family has —
+position lives in the *score*, depends only on `t − i`, never enters the values, reasserts at every layer
+— but with a bias-versus-distance function so simple it needs no parameters, no gather, and is defined,
+smoothly, for *every* distance including ones I never trained on. The disease with sinusoidal was that the
+signal past the training length was a novel high-dimensional pattern; the cure is a position signal whose
+value at distance `d` is the obvious continuation of its values at small `d`, with no learned dial that
+could be miscalibrated out of range. The simplest such function of distance is a straight line. So: add to
+the query–key score, before the softmax, a bias that is *linear* in the relative distance `i − j`.
+
+Which direction does the line go? I want a recency bias — distant keys matter less than nearby ones, all
+else equal — and crucially I want that preference to have the *same shape* at every distance, so distance
+40 is just "distance 4 but more so," never a regime the model has not conceptually seen. So make the bias
+*more negative* the farther the key is from the query. For a causal query at position `i` over keys
+`j ≤ i`, the relative distance is `i − j ≥ 0`, and I subtract a penalty proportional to it: the key right
+next to the query (distance 0) gets penalty 0, one step back gets `−m`, two steps back `−2m`, linearly. A
+per-head slope `m > 0`. No embedding added anywhere, no learned bias, no bucket gather — and it is defined
+at any distance, because at distance 40 the penalty is just `40·m`, the same line rather than a new
+absolute vector. This directly attacks the failure I diagnosed at rung two and the softness I diagnosed at
+rung three: the thing the model interprets is a scalar that grows linearly and predictably, not a phase
+pattern that goes novel (sinusoidal) and not a code SGD had to induce from scratch (NoPE).
+
+Does this keep the structural properties NoPE showed me matter? Position lives in the scores, not the
+values — the bias is added to the attention scores, the values are untouched, so the attention output
+carries no absolute-position component, exactly like the relative code NoPE synthesised in its later
+layers. It injects at every layer — every attention sublayer adds the same bias, so position reasserts
+itself throughout, where the sinusoidal add happened only once at the bottom. And it depends only on
+`i − j`, the relative offset, which is the quantity that recurs at unseen lengths. So this is the
+explicit, well-shaped version of the thing NoPE was groping toward — but instead of a single learned
+recency shape I get a *spread* of them, because the slope is per-head.
+
+The slope needs care. One slope for all heads would force every head to the same recency preference,
+which is clearly wrong — some heads should look locally, some should keep a long view, and for `reverse`
+in particular I need at least one head that can reach far back into the input without being crushed by the
+penalty. So `m` is per-head, and the `H` slopes should span a range of recency scales: a head with large
+`m` is penalised hard for distance and becomes local; a head with tiny `m` barely notices distance and
+keeps a long-range view. The long-range heads are the precious ones, so I want more resolution near zero —
+the slopes bunched toward 0, spread toward 1 — which is what a geometric sequence gives (equal ratios =
+equal log-spacing, dense near the small end). The clean choice is start = ratio = `2^{−8/n}`, giving
+`2^{−8/n}, 2^{−16/n}, …, 2^{−8}`; for the common power-of-two case it reduces to `1/2, 1/4, …, 1/256` at
+8 heads. This task has 4 heads, also a power of two, so the formula applies directly:
+`2^{−8/4} = 2^{−2} = 1/4`, giving slopes `1/4, 1/16, 1/64, 1/256` — four distinct recency scales from a
+fairly local head down to one that barely penalises distance, which is the long-range head `reverse`
+needs. For a non-power-of-two head count the scaffold falls back to the closest-power-of-two set plus
+interleaved extras, but that path is unused here.
+
+Should the slopes be learned? My instinct is to let gradient descent find them, but for *extrapolation*
+specifically that is the wrong instinct, and NoPE is the cautionary tale: learned slopes would be tuned to
+the distances seen in `[0, 20)`, with no training signal about how the slope should behave at the far
+distances that only appear at evaluation, so a learned slope could overfit the in-range recency statistics
+and generalise *worse* out of range — the same "learned from nothing reliable past the training length"
+weakness I am trying to fix. A fixed geometric set is the same line everywhere and cannot be miscalibrated
+to the training length. So I fix the slopes before training. They are cached as a parameter-free buffer
+wrapped in a tiny `nn.Module` so they follow the model to the GPU, registered via `scheme.extra_modules`,
+and carry no gradient.
+
+One scaling subtlety, because it is easy to get wrong. Standard attention divides the scores by
+`√{head_dim}` to tame the variance of a random dot product. My bias is not a random dot product — it is a
+deterministic geometric penalty I am choosing directly in score-space. If I also divided it by
+`√{head_dim}` I would just be rescaling slopes I already choose freely, coupling my slope choice to the
+head dimension for no reason. So the linear bias is added *after* the `√{head_dim}` scaling, not inside it.
+In this harness that is automatic: `CausalSelfAttention` computes `attn_scores = q·k / √head_dim` first,
+then adds `scheme.attn_bias(T, …)`, so my bias is correctly outside the scaling.
+
+Now the concrete fill, and here is where the harness version differs from the canonical implementation, so
+I derive *this* one. The scaffold's `attn_bias` hook must return a `[H, T, T]` (or `[1, T, T]`) tensor
+that is added to the scores *before* the causal mask is applied (the loop applies the lower-triangular
+`-inf` mask itself, right after adding the bias). The canonical ALiBi implementation exploits softmax's
+per-row shift-invariance to replace the honest staircase `m·[−(i−1), …, −1, 0]` with a single broadcast
+row `m·[0, 1, …, T−1]`, since the two differ only by a per-row constant that softmax kills — a cheap
+trick that works *because* the bias is linear. This harness does **not** take that shortcut: it builds the
+full signed relative-distance matrix `rel = idx[None, :] − idx[:, None]` (so `rel_{ij} = j − i`, negative
+below the diagonal where `j < i`) and sets `bias = slope · rel`, i.e. `bias_{ij} = m·(j − i) = −m·(i − j)`
+— the honest staircase, more negative for keys farther *back*, exactly as the math says, with no
+shift-invariance optimisation. Above the diagonal `rel` is positive (a *positive* bias), but those entries
+are immediately overwritten by the loop's `-inf` causal mask before the softmax, so they never matter — I
+do not need to mask them myself. The result is shaped `[H, T, T]` (one slope per head), the loop
+broadcasts it across the batch and adds the causal mask on top, and the values and token embeddings stay
+completely position-free. `build_positional_scheme` returns the scheme with only the `attn_bias` hook set
+(`token_embedding_extra` and `rotary` are `None`); `build_model` returns the plain
+`SeqModel(use_lstm=False)`. What the harness does *not* expose that the canonical recipe might use: the
+softmax-shift cheap-construction (it builds the full matrix instead), and any folding of the bias into the
+causal mask in one allocation (here they are two separate adds). Neither changes the algorithm — the
+attention weights are identical to the canonical ALiBi — only the arithmetic path differs.
+
+My falsifiable expectations against the NoPE numbers, which are the bar this rung must clear. In-
+distribution should stay perfect on all three variants (the bias is negligible at short distances, and
+the model had no trouble at training length without it). The whole bet is OOD, and the prediction is
+specific: ALiBi should beat NoPE on OOD exact match where NoPE's *learned* relative code was softest — I
+expect the biggest lift on `delim` (NoPE only `0.297`) and a solid lift on `repeat`, because the linear
+recency bias is precisely the well-shaped relative prior NoPE had to induce from scratch, and it is
+defined identically at length 40 as at length 15. The risk I have to name is `reverse`: ALiBi's recency
+bias is a *monotone* preference for nearby tokens, but `reverse` requires attending from the end of the
+output all the way back to the *start* of the input — the longest possible offset — which is exactly the
+direction the recency penalty fights. So `reverse` is where a built-in recency prior could backfire, and
+I expect it to be ALiBi's weakest variant, possibly even at or below NoPE there, with the long-range head
+(`slope = 1/256`) doing the heavy lifting if it works at all. The honest claim is therefore aggregate, not
+uniform: ALiBi should lift the geometric-mean score above NoPE's `0.706` by winning clearly on
+`delim`/`repeat` even if it pays a little on `reverse` — a well-shaped, parameter-free relative prior
+beating a relative code learned from nothing. If instead `reverse` collapses far enough to drag the
+geometric mean below NoPE, that would falsify the "monotone recency is good enough here" assumption and
+point the next step toward a non-monotone relative scheme. (The full scaffold module is in the answer.)
+</think>
+<say>
+[[FILL_SAY: 1-2 sentences naming the method and what this first edit does]]
+</say>
+<edit path="pytorch-examples/synth_copy/custom_strategy.py">
+<old>
+# EDITABLE region of custom_strategy.py (lines 301-332) -- step 3: NoPE (no positional encoding)
+def build_positional_scheme(config: TaskConfig) -> PositionalScheme:
+    """No positional encoding (Kazemnejad et al., NeurIPS 2023)."""
+    return PositionalScheme(
+        name="nope",
+        token_embedding_extra=None,
+        attn_bias=None,
+        rotary=None,
+        extra_modules=nn.ModuleList(),
+    )
+</old>
+<new>
+# EDITABLE region of custom_strategy.py (lines 301-332) -- step 4: ALiBi linear distance bias
+def _alibi_slopes(n_heads: int) -> torch.Tensor:
+    """Geometric slopes from Press et al. 2022, generalized to non-pow2 n_heads."""
+    def power_of_2_slopes(n: int) -> list[float]:
+        start = 2.0 ** (-(2.0 ** -(math.log2(n) - 3.0)))
+        return [start ** (i + 1) for i in range(n)]
+    if math.log2(n_heads).is_integer():
+        return torch.tensor(power_of_2_slopes(n_heads), dtype=torch.float32)
+    closest = 2 ** math.floor(math.log2(n_heads))
+    base = power_of_2_slopes(closest)
+    extra = power_of_2_slopes(2 * closest)[0::2][: n_heads - closest]
+    return torch.tensor(base + extra, dtype=torch.float32)
+
+
+def build_positional_scheme(config: TaskConfig) -> PositionalScheme:
+    """ALiBi: additive per-head linear distance bias on attention scores."""
+    slopes = _alibi_slopes(config.n_heads)
+    # Cache slopes as a parameter-free buffer wrapped in a Module so it
+    # follows the model device. We rebuild the bias matrix on demand.
+    container = nn.Module()
+    container.register_buffer("slopes", slopes, persistent=False)
+    extras = nn.ModuleList([container])
+
+    def attn_bias(T: int, device: torch.device, dtype: torch.dtype) -> torch.Tensor:
+        # Relative-distance matrix: bias_{i,j} = -slope * (i - j) for i >= j.
+        # Causal mask still applies on top of this.
+        idx = torch.arange(T, device=device)
+        rel = idx[None, :] - idx[:, None]  # negative below the diagonal
+        rel = rel.to(dtype)
+        s = container.slopes.to(device=device, dtype=dtype)
+        # ALiBi only meaningfully shapes scores at positions j <= i, where
+        # rel <= 0, giving bias = slope * rel (more negative for distant).
+        bias = s[:, None, None] * rel[None, :, :]
+        return bias  # [H, T, T]
+
+    return PositionalScheme(
+        name="alibi",
+        token_embedding_extra=None,
+        attn_bias=attn_bias,
+        rotary=None,
+        extra_modules=extras,
+    )
+</new>
+</edit>
+<obs>
+Successfully replaced text in pytorch-examples/synth_copy/custom_strategy.py.
+</obs>
+<note>
+[[FILL_NOTE?: optional one-line thought for this edit, or delete this block]]
+</note>
+<edit path="pytorch-examples/synth_copy/custom_strategy.py">
+<old>
+def build_model(config: TaskConfig) -> nn.Module:
+    """Decoder-only Transformer with no explicit positional encoding."""
+    scheme = build_positional_scheme(config)
+    return SeqModel(config, scheme, use_lstm=False)
+</old>
+<new>
+def build_model(config: TaskConfig) -> nn.Module:
+    """Decoder-only Transformer with ALiBi (Press et al. 2022)."""
+    scheme = build_positional_scheme(config)
+    return SeqModel(config, scheme, use_lstm=False)
+</new>
+</edit>
+<obs>
+Successfully replaced text in pytorch-examples/synth_copy/custom_strategy.py.
+</obs>
+<run/>
+<obs>
+Measured results — `baseline:transformer_alibi` (`is_final,true`), seed 42. Per-variant columns; `score = 0.5·exact_match_id + 0.5·exact_match_ood`.
+
+| variant | exact_match_id | token_acc_id | exact_match_ood | token_acc_ood | score | elapsed |
+|---|---|---|---|---|---|---|
+| delim | 1.0 | 1.0 | 0.570312 | 0.910123 | 0.785156 | 132.5 |
+| repeat | 0.967773 | 0.97559 | 0.808594 | 0.886235 | 0.888184 | 135.5 |
+| reverse | 0.994141 | 0.997573 | 0.25 | 0.268569 | 0.62207 | 129.5 |
+
+Task-level summary (geometric mean of per-variant `score`): **0.7570**.
+</obs>
+

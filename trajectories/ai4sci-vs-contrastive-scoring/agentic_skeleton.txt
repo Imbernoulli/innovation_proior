@@ -1,0 +1,1524 @@
+<meta task="ai4sci-vs-contrastive-scoring" domain="AI for science" file="HypSeek/unimol/custom_scoring.py" model_format="qwen3" edit_tool="str_replace"/>
+
+<system>
+You are a research engineer improving a model on a fixed ML task. You work by editing the model code and running experiments. Think carefully before each change. You have these tools:
+- str_replace(path, old_str, new_str): replace the unique occurrence of old_str with new_str.
+- create(path, file_text): create a new file.
+- run_experiment(): train + evaluate the current code under the fixed budget; returns metrics.
+Make one tool call at a time. After editing, call run_experiment() to measure your method.
+</system>
+
+<user>
+## Research question
+
+Structure-based virtual screening ranks a compound library against one protein target so the few
+true binders sit at the very top, where a handful are pulled for wet-lab validation. Libraries are
+$10^8$–$10^9$ molecules and the hit rate is brutally low — far below 0.1% of compounds truly bind a
+given pocket — so the whole game is *throughput at the top of the ranking*. The single thing being
+designed is the **scoring objective**: given fixed pretrained backbone encoders (Uni-Mol for the
+molecule and the pocket, ESM-2 for the protein sequence) that are fine-tuned jointly with the scoring
+module, how should their features be projected into a shared space, what training loss should align
+binders with their target, and how should a final per-molecule score be read off at evaluation.
+Everything else — the encoders, the data loaders, the training loop, the evaluation scripts — is
+fixed.
+
+## Prior art before the first rung (the screening lineage)
+
+The first rung — a CLIP-style contrastive scorer — is itself the resolution of a line of screening
+methods. These are the families it reacts to; each gets some of what screening needs and breaks on
+the rest.
+
+- **Molecular docking (Glide, AutoDock Vina, Gold).** Sample candidate ligand poses in the pocket
+  (genetic algorithms, Monte Carlo over the conformational space) and score each with an empirical
+  force-field correlated with binding free energy. The dominant family and the only one that reliably
+  beats chance on hard benchmarks. Gap: the per-compound pose sampling is ~10 s on a CPU core, so a
+  $10^{10}$-compound library is thousands of years of compute — cost grows *with the library*, exactly
+  the wrong scaling for the "bigger is better" regime.
+- **Supervised affinity regression (DeepDTA, GraphDTA, OnionNet).** Map a protein-molecule
+  representation to a numeric affinity and rank by it. Gap: depends on scarce affinity labels
+  (~$10^4$ labeled complexes), sees almost no true negatives (so false positives explode), and at
+  inference each pocket-molecule pair needs a full forward pass — screening many targets scales as
+  (#targets)×(#library) network evaluations, which does not amortize.
+- **Supervised decoy classifiers (DrugVQA, AttentionSiteDTI).** Train a binary classifier on actives
+  versus rule-constructed decoys. Gap: the model latches onto the *decoy-construction rule* and fails
+  to transfer to benchmarks built with different rules — the negatives you train on shape what the
+  model learns, and artificial decoys teach an artificial boundary.
+- **Single-tower 3D scorers.** Feed the joint protein-ligand complex, including the cross-distances,
+  into one network. Captures interaction geometry directly. Gap: the score depends on the
+  protein-ligand cross-distances, which are only known once the ligand is *posed* in the pocket — so a
+  docking step is required, inheriting docking's cost.
+- **Dense retrieval (DPR, Karpukhin et al. 2020) and contrastive pretraining (InfoNCE, Oord et al.
+  2018; CLIP, Radford et al. 2021).** The templates the first rung borrows: a *factorized* score
+  $s(q,p)=E_Q(q)^\top E_P(p)$ that lets every document be embedded once and searched with
+  billion-scale nearest-neighbor indices, and a symmetric in-batch softmax whose optimum is a density
+  ratio $p(x\mid c)/p(x)$ and whose mutual-information bound tightens as the batch grows. These are
+  the ingredients the ladder is built from, not screening methods themselves.
+
+## The fixed substrate
+
+The backbone encoders and the harness are frozen and must not be touched. Uni-Mol is an
+SE(3)-invariant 3D Transformer that, given atom types and coordinates, returns a 512-d [CLS] vector
+for a whole molecule or pocket; ESM-2 returns a 480-d [CLS] vector for the protein sequence. These
+three encoders are loaded from pretrained weights and **fine-tuned jointly** with the scoring module
+(freezing them collapses the absolute metrics and breaks the relative ordering of the geometries — the
+projection heads alone cannot adapt the features to the chosen embedding space). The fixed model
+wrapper extracts the three [CLS] features per assay, calls the module's three `project_*` methods, and
+hands `(prot_emb, poc_emb, mol_emb)` to the fixed loss wrapper, which calls `compute_loss`. Training
+data is organized **by assay**: one target paired with a contiguous block of tested ligands, with the
+block spans, the per-ligand pIC50 activities, and metadata for false-negative masking all provided per
+batch. Evaluation calls `score` over a target's library and reports the ranking metrics.
+
+## The editable interface
+
+Exactly one file is editable — `custom_scoring.py`, the `CustomScoring` module. Every method on the
+ladder is a fill of the same contract:
+
+- `__init__(mol_dim=512, pocket_dim=512, protein_dim=480, embed_dim=128)` — projection heads and any
+  objective parameters.
+- `project_mol(mol_feat)` / `project_pocket(poc_feat)` / `project_protein(prot_feat)` — map a
+  `[B, dim]` feature into the `[B, embed_dim]` comparison space.
+- `compute_loss(mol_emb, poc_emb, prot_emb, batch_list, act_list, uniprot_poc, uniprot_mol,
+  pocket_lig_smiles, lig_smiles)` — the training loss. `batch_list[i] = (start, end)` gives the
+  contiguous column span of pocket `i`'s ligands in `mol_emb`; `act_list[i]` their pIC50 activities;
+  the four metadata fields drive false-negative / duplicate masking. Returns `(loss, log_dict)`, and
+  `log_dict["sim_masked"]` is read by the validation loop.
+- `score(mol_reps, pocket_reps, prot_reps=None)` — numpy scoring for one target's library; returns
+  one score per molecule.
+
+The starting point is the scaffold default — a CLIP-style contrastive scorer over L2-normalized
+Euclidean embeddings, scored pocket↔molecule only, with the protein tower defined but unused in the
+loss. Each later rung edits exactly this file.
+
+```python
+"""Custom scoring module for contrastive virtual screening — default fill (vanilla CLIP)."""
+
+import math
+import numpy as np
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+
+
+class CustomScoring(nn.Module):
+    """Scoring module for contrastive protein-ligand virtual screening.
+
+    Projects frozen encoder features into a shared embedding space and computes
+    the training loss for ranking actives above decoys.
+    """
+
+    def __init__(self, mol_dim=512, pocket_dim=512, protein_dim=480, embed_dim=128):
+        super().__init__()
+        # NonLinearHead pattern: Linear(in,in) -> ReLU -> Linear(in,embed_dim).
+        self.mol_project = nn.Sequential(
+            nn.Linear(mol_dim, mol_dim), nn.ReLU(), nn.Linear(mol_dim, embed_dim)
+        )
+        self.pocket_project = nn.Sequential(
+            nn.Linear(pocket_dim, pocket_dim), nn.ReLU(), nn.Linear(pocket_dim, embed_dim)
+        )
+        self.protein_project = nn.Sequential(
+            nn.Linear(protein_dim, protein_dim), nn.ReLU(), nn.Linear(protein_dim, embed_dim)
+        )
+        # Learnable temperature (log scale); init log(13) ~ CLIP-style.
+        self.logit_scale = nn.Parameter(torch.ones([1]) * np.log(13))
+
+    def project_mol(self, mol_feat):
+        return F.normalize(self.mol_project(mol_feat), dim=-1)
+
+    def project_pocket(self, poc_feat):
+        return F.normalize(self.pocket_project(poc_feat), dim=-1)
+
+    def project_protein(self, prot_feat):
+        return F.normalize(self.protein_project(prot_feat), dim=-1)
+
+    def compute_loss(self, mol_emb, poc_emb, prot_emb,
+                     batch_list, act_list,
+                     uniprot_poc=None, uniprot_mol=None,
+                     pocket_lig_smiles=None, lig_smiles=None):
+        logit_scale = self.logit_scale.exp().detach()
+        B = poc_emb.size(0)
+
+        # Similarity matrix: [N_poc, N_mol]
+        logits = poc_emb @ mol_emb.T * logit_scale
+
+        # False-negative mask: same target, or a known binder of this pocket.
+        mask = torch.zeros_like(logits, dtype=torch.bool)
+        if uniprot_poc is not None and uniprot_mol is not None:
+            for i in range(B):
+                for j in range(logits.size(1)):
+                    if uniprot_poc[i] == uniprot_mol[j]:
+                        mask[i, j] = True
+        if pocket_lig_smiles is not None:
+            for i in range(B):
+                bad = pocket_lig_smiles[i]
+                for j in range(logits.size(1)):
+                    if lig_smiles[j] in bad:
+                        mask[i, j] = True
+
+        minus_inf = torch.finfo(logits.dtype).min
+        sim_masked = logits.masked_fill(mask, minus_inf)
+
+        # Symmetric contrastive loss.
+        # Pocket-to-ligand: each pocket retrieves its tested ligands (multi-positive).
+        idx2poc = []
+        for i, (s, e) in enumerate(batch_list):
+            idx2poc += [i] * (e - s)
+        targets = torch.tensor(idx2poc, dtype=torch.long, device=logits.device)
+
+        lprobs_pocket = F.log_softmax(sim_masked.T, dim=-1)
+        loss_pocket_list = []
+        for i, (s, e) in enumerate(batch_list):
+            L_i = e - s
+            if L_i == 0:
+                continue
+            rows = list(range(s, e))
+            lprobs_sub = lprobs_pocket[rows]
+            targ_sub = targets[rows]
+            loss_tmp = F.nll_loss(lprobs_sub, targ_sub, reduction="none")
+            loss_pocket_list.append(loss_tmp.sum() / math.sqrt(L_i))
+        loss_pocket = torch.stack(loss_pocket_list).sum() if loss_pocket_list else torch.tensor(0.0, device=logits.device)
+
+        # Ligand-to-pocket: each ligand retrieves its pocket (row-local).
+        loss_mol_list = []
+        for i in range(B):
+            s, e = batch_list[i]
+            for k in range(s, e):
+                row_mask = torch.full_like(sim_masked[i], minus_inf)
+                row_mask[k] = 0
+                lprobs = F.log_softmax(row_mask + sim_masked[i], dim=-1)
+                loss_mol_list.append(-lprobs[k] / math.sqrt(e - s))
+        loss_mol = torch.stack(loss_mol_list).sum() if loss_mol_list else torch.tensor(0.0, device=logits.device)
+
+        loss = loss_pocket + loss_mol
+
+        return loss, {
+            "loss": loss.item(),
+            "loss_pocket": loss_pocket.item(),
+            "loss_mol": loss_mol.item(),
+            "sim_masked": sim_masked,
+        }
+
+    def score(self, mol_reps, pocket_reps, prot_reps=None):
+        poc_scores = (pocket_reps @ mol_reps.T).max(axis=0)
+        if prot_reps is not None:
+            prot_scores = (prot_reps @ mol_reps.T).max(axis=0)
+            return poc_scores + prot_scores
+        return poc_scores
+```
+
+## Evaluation settings
+
+Zero-shot: no target-specific training. Three structure-based screening benchmarks, with metrics
+averaged across each benchmark's targets:
+
+- **DUD-E** — 102 targets, actives versus property-matched ZINC decoys (the standard benchmark).
+- **LIT-PCBA** — 15 targets, confirmed actives versus confirmed inactives from dose-response
+  bioassays; built to remove DUD-E's artificial-decoy bias, so realistic and much harder.
+- **DEKOIS 2.0** — 81 targets, a challenging decoy benchmark.
+
+Metrics, all higher-is-better and all *early-recognition* (what matters is binders concentrated at the
+top of the ranking, not average behavior): **AUROC**, **BEDROC** ($\alpha=80.5$), and **enrichment
+factor EF** at the top 0.5%, 1%, and 5% (also EF at 0.05%, 0.1%, 0.2%). The task score is the
+geometric mean across the three benchmarks of each benchmark's metric average. One seed (42).
+
+The editable model code is in `HypSeek/unimol/custom_scoring.py`:
+```python
+# (starting code)
+```
+Improve it. Derive your method, edit the code, then run_experiment().
+</user>
+
+### step 1 — vanilla CLIP (DrugCLIP-style contrastive)   [slug:vanilla_clip]
+
+<think>
+[[POLISH_REASONING: adapt to first-person agentic voice, end by deciding to implement]]
+The scoring objective is the whole point, but it bolts onto an evaluation regime, and the floor I have
+to start from is just ranking a library against a target at all — under the constraints that actually
+bite here. The library is $10^8$–$10^9$ molecules and the hit rate is savage, far below one in a
+thousand, so almost any molecule I grab is, with overwhelming probability, a non-binder. That single
+number reframes everything. It says I am hunting needles, and it says there is a free, essentially
+unlimited supply of correct negatives lying around while confirmed positives are the scarce thing. And
+the metric I am judged on — BEDROC at $\alpha=80.5$, EF at the top 0.5%/1%/5% — is violently top-heavy:
+almost all the credit is for the handful of ranks at the very top, none for average behavior over the
+whole curve. So I need a score that (1) puts true binders at the *top* specifically, (2) can run over a
+billion molecules in feasible time, (3) does not lean on scarce affinity labels or hand-built decoy
+sets, and (4) generalizes to targets never seen in training.
+
+Look at what the prior families do and where each breaks. Docking samples poses and scores them
+physically; it works, it is the only family that reliably beats chance on the hard benchmarks, but the
+per-compound pose sampling is the bottleneck — order ten seconds a compound, so ten billion compounds is
+thousands of years. The cost scales *with the library*, which is exactly backwards for a regime whose
+premise is "use a bigger library." Affinity regression skips the sampling but needs reliable affinity
+labels, of which there are only ~$10^4$, sees almost no true negatives so false positives explode, and
+at inference every pocket-molecule pair needs a full forward pass — screening many targets is
+(#targets)×(#library) network evaluations, which does not amortize at all. The decoy classifiers are
+worse in a subtler way: they manufacture negatives from a rule, and it has been shown cleanly that such
+a model learns the *decoy-construction rule* and not binding — train on one benchmark's decoys, test on
+another built differently, and it collapses. The negatives I feed a contrastive boundary *are* what the
+model learns, so artificial decoys teach an artificial boundary.
+
+So let me stare at what screening actually asks for, because I think the field has been answering a
+harder question than the one posed. Docking predicts a *pose*. Regression predicts an *affinity value*.
+But for screening I need neither: I need to know *which* molecules are likely to bind, ranked, in the
+top fraction I will ever inspect. That is a matching problem — given the pocket as a query, find the
+molecules that go with it. It is retrieval. And the moment I say "retrieval," the template I trust snaps
+into focus: dense passage retrieval defined relevance as a plain dot product of two independently
+computed embeddings, $s(q,p)=E_Q(q)^\top E_P(p)$, one encoder per side, deliberately *not* a
+cross-encoder that jointly attends over the pair. The dot-product form is decomposable: I can embed the
+whole library once, cache the vectors, and every new target is one pocket encoding plus a
+nearest-neighbor search against the cache. The expensive neural computation is paid once per molecule,
+ever — not once per (target, molecule) pair. That restriction to a factorized score is not a modeling
+concession; it is the entire reason the thing runs at scale, and it is the answer to the throughput
+constraint that sank docking and regression.
+
+Now training. I have positive pairs — assays where a tested ligand genuinely binds its target. I have
+almost no labeled true negatives. But the savage hit rate hands me negatives for free: any other
+molecule is essentially certainly a non-binder, and the cheapest other molecules around are the ones
+already in my batch. This is in-batch negatives. Take the batch's pocket and molecule embeddings, form
+the full similarity matrix $S$ with $S_{ij}=s(p_i,m_j)$; the matched pairs are the positives, every
+other cell is a negative-by-default. One matrix multiply gives me a pile of realistic hard negatives —
+real drug-like molecules that bind *some* pocket — with no external decoy mining and no rule to overfit,
+which is exactly the shortcut that broke the rule-based classifiers. The natural loss over that matrix is
+the contrastive softmax: treat a pocket's row as logits over candidate molecules and ask the model to
+pick its true binder, a categorical cross-entropy. Two reasons this is the right object and not a
+margin or a regression-to-1/0: its optimum drives the score toward a density ratio
+$p(\text{molecule}\mid\text{pocket})/p(\text{molecule})$ — precisely the relevance signal for ranking,
+not an absolute affinity I would have to have labeled — and minimizing it maximizes a lower bound on the
+pocket-molecule mutual information that *tightens as the batch grows*, so a larger batch is provably
+better, not just convenient. I symmetrize over rows and columns so the space is good for retrieval in
+both directions and the molecule embeddings cannot collapse into a cluster that all looks alike to a
+pocket.
+
+Two head choices, with their reasons. First, I do not dot-product directly on the encoder's [CLS]
+feature: the contrastive objective is aggressive and will warp whatever space it acts on, and if that
+space *is* the backbone feature, I degrade the rich pretrained representation. A projection head absorbs
+the contrastive distortion and protects the backbone — the representation *before* the head generalizes
+better than the one after. So a nonlinear head, Linear$(d,d)\!\to\!$ReLU$\to$Linear$(d,128)$, into a
+modest 128-d space, one head per modality since the three backbones have different statistics and
+dimensions. Second, after the head I L2-normalize each embedding onto the unit sphere, turning the dot
+product into cosine — bounded and scale-free. Without it the model could cheat the softmax by inflating
+vector norms instead of improving directions. But cosine lives in $[-1,1]$, far too compressed for a
+peaked softmax, so I scale the logits up by an inverse temperature, stored on a log axis and initialized
+so the multiplier is ~13 (CLIP-ish). And I *detach* that scale inside the loss: otherwise the objective
+trivially lowers itself by cranking the scale up — sharpening every softmax — without improving a single
+embedding, and it would run away. Detaching makes the contrastive gradients sharpen the embedding
+directions at a stable scale.
+
+Now I have to fit this to *this task's* data and edit surface, and here the scaffold differs from the
+generic dense-retrieval picture in three ways I should be honest about. First, the data is grouped **by
+assay**, not as clean one-positive-per-pocket pairs. The harness hands me `batch_list[i]=(s,e)`, the
+contiguous column span of pocket $i$'s tested ligands, and `act_list[i]`, their activities — so a pocket
+typically owns *several* ligand columns. The clean one-positive diagonal of DrugCLIP would, for pocket
+$i$, shove every *other* genuine active of the same target into its negative set and push it away. So I
+cannot keep the literal diagonal. The honest generalization is a column term: log-softmax the *transpose*
+of the similarity matrix so each ligand column is a distribution over query pockets, and for every
+ligand in block $i$ the target class is "pocket $i$." That lets a pocket own all its tested ligand
+columns. The mirror direction is row-local and deliberately so: for ligand $k$ in pocket $i$, I build a
+row mask that is $0$ at column $k$ and $-\infty$ elsewhere, add it to the masked row, log-softmax, and
+take $-\log p_k$ — a selected-pair NLL, with the real competition carried by the column term, not by
+contrasting a pocket's own actives against each other. Second, assays vary wildly in size — some screen a
+handful of ligands, some dozens — so a straight sum lets one big assay dominate the batch gradient.
+Dividing by $L_i$ over-corrects (a big, information-rich assay genuinely *should* count for more); the
+middle ground is $1/\sqrt{L_i}$, sub-linear, applied to each per-pocket term. Third, the in-batch
+construction has a quiet bug: an off-diagonal cell can be a *true* binder I am about to push down as a
+negative — same target, or the same known ligand. The scaffold gives me metadata for exactly this, so
+before any softmax I build a boolean mask, `mask[i,j] = True` whenever `uniprot_poc[i] == uniprot_mol[j]`
+or `lig_smiles[j]` is in pocket $i$'s known set, and `masked_fill` those cells to the dtype minimum so
+they vanish from every softmax. On this sharp, low-hit-rate distribution false negatives are the one
+signal-corrupting mistake I cannot afford.
+
+One more thing this scaffold default does *not* do, which I want to name because it sets up the next
+rung. The harness hands me a third tower — the ESM-2 protein-sequence embedding, `prot_emb` — and a
+fourth piece of metadata, the per-ligand pIC50 in `act_list`. The vanilla CLIP fill ignores both: the
+loss is pocket↔molecule only, the protein tower is defined and projected but never enters
+`compute_loss`, and nothing in the objective distinguishes a strong binder from a merely-okay one — two
+actives of the same target both get pulled toward it with no preference for the stronger. That is fine
+for a floor; it is exactly what makes this the weakest rung. The scoring at evaluation is the matching
+quantity: embed the target's pockets and every molecule, form `pocket_reps @ mol_reps.T`, and take the
+max over the target's pocket conformers — a molecule that binds *any* conformation should rank high — then
+sort. (The full scaffold module is in the answer.)
+
+So at rung one my fill is the plainest contrastive scorer the scaffold admits: three NonLinearHeads,
+L2-normalized Euclidean embeddings, a detached log-scale, the assay-grouped symmetric in-batch softmax
+with false-negative masking and $\sqrt{L_i}$ normalization, max-over-pockets scoring — and the protein
+tower and the activity numbers left on the table.
+
+Now reason about what this floor must do, because that is the point of running it. The contrastive
+objective aligns binders with their target in cosine space, so it should already concentrate actives
+near the top far better than chance — this is a real, scalable scorer, not a null model, and I expect
+solid AUROC on all three benchmarks and respectable EF on DUD-E, where the decoys are property-matched
+ZINC molecules that a good binder/non-binder boundary separates cleanly. But two weaknesses are baked
+into this fill by construction. One: with the protein-sequence view dropped, the only target signal is a
+single sampled pocket conformation; where that pocket is noisy or ambiguous, I have no complementary,
+structure-free view to fall back on. Two: nothing in the loss is *top-heavy*. The objective treats every
+active as an equal positive, but the metric rewards getting the *strongest* binders to the very top — so
+on the benchmark where realistic, graded actives crowd together and the top few ranks decide the score,
+this fill should leave enrichment on the table. LIT-PCBA is exactly that benchmark — confirmed actives
+versus confirmed inactives, no artificial-decoy crutch — so I expect vanilla CLIP to look weakest there:
+decent AUROC but soft BEDROC and EF, because it ranks binders above decoys without ranking *strong*
+binders above *weak* ones. Whatever the precise split across DUD-E, DEKOIS, and LIT-PCBA, the diagnosis
+is already pointed at the next rung: I have an *ordering* problem on top of a *separation* problem, and
+the unused activity numbers and the unused sequence tower are sitting right there to fix it.
+</think>
+<say>
+[[FILL_SAY: 1-2 sentences naming the method and what this first edit does]]
+</say>
+<edit path="HypSeek/unimol/custom_scoring.py">
+<old>
+# (starting code)
+</old>
+<new>
+"""Custom scoring module for contrastive virtual screening — vanilla CLIP (default fill)."""
+
+import math
+import numpy as np
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+
+
+class CustomScoring(nn.Module):
+    """Scoring module for contrastive protein-ligand virtual screening."""
+
+    def __init__(self, mol_dim=512, pocket_dim=512, protein_dim=480, embed_dim=128):
+        super().__init__()
+        # NonLinearHead pattern: Linear(in,in) -> ReLU -> Linear(in,embed_dim).
+        self.mol_project = nn.Sequential(
+            nn.Linear(mol_dim, mol_dim), nn.ReLU(), nn.Linear(mol_dim, embed_dim)
+        )
+        self.pocket_project = nn.Sequential(
+            nn.Linear(pocket_dim, pocket_dim), nn.ReLU(), nn.Linear(pocket_dim, embed_dim)
+        )
+        self.protein_project = nn.Sequential(
+            nn.Linear(protein_dim, protein_dim), nn.ReLU(), nn.Linear(protein_dim, embed_dim)
+        )
+        # Learnable temperature (log scale); init log(13) ~ CLIP-style.
+        self.logit_scale = nn.Parameter(torch.ones([1]) * np.log(13))
+
+    def project_mol(self, mol_feat):
+        return F.normalize(self.mol_project(mol_feat), dim=-1)
+
+    def project_pocket(self, poc_feat):
+        return F.normalize(self.pocket_project(poc_feat), dim=-1)
+
+    def project_protein(self, prot_feat):
+        return F.normalize(self.protein_project(prot_feat), dim=-1)
+
+    def compute_loss(self, mol_emb, poc_emb, prot_emb,
+                     batch_list, act_list,
+                     uniprot_poc=None, uniprot_mol=None,
+                     pocket_lig_smiles=None, lig_smiles=None):
+        logit_scale = self.logit_scale.exp().detach()
+        B = poc_emb.size(0)
+
+        # Similarity matrix: [N_poc, N_mol]
+        logits = poc_emb @ mol_emb.T * logit_scale
+
+        # False-negative mask: same target, or a known binder of this pocket.
+        mask = torch.zeros_like(logits, dtype=torch.bool)
+        if uniprot_poc is not None and uniprot_mol is not None:
+            for i in range(B):
+                for j in range(logits.size(1)):
+                    if uniprot_poc[i] == uniprot_mol[j]:
+                        mask[i, j] = True
+        if pocket_lig_smiles is not None:
+            for i in range(B):
+                bad = pocket_lig_smiles[i]
+                for j in range(logits.size(1)):
+                    if lig_smiles[j] in bad:
+                        mask[i, j] = True
+
+        minus_inf = torch.finfo(logits.dtype).min
+        sim_masked = logits.masked_fill(mask, minus_inf)
+
+        # === Symmetric contrastive loss ===
+        # Pocket-to-ligand (multi-positive column term): each pocket owns its ligand columns.
+        idx2poc = []
+        for i, (s, e) in enumerate(batch_list):
+            idx2poc += [i] * (e - s)
+        targets = torch.tensor(idx2poc, dtype=torch.long, device=logits.device)
+
+        lprobs_pocket = F.log_softmax(sim_masked.T, dim=-1)
+        loss_pocket_list = []
+        for i, (s, e) in enumerate(batch_list):
+            L_i = e - s
+            if L_i == 0:
+                continue
+            rows = list(range(s, e))
+            lprobs_sub = lprobs_pocket[rows]
+            targ_sub = targets[rows]
+            loss_tmp = F.nll_loss(lprobs_sub, targ_sub, reduction="none")
+            loss_pocket_list.append(loss_tmp.sum() / math.sqrt(L_i))
+        loss_pocket = torch.stack(loss_pocket_list).sum() if loss_pocket_list else torch.tensor(0.0, device=logits.device)
+
+        # Ligand-to-pocket (row-local selected-pair NLL): each ligand retrieves its pocket.
+        loss_mol_list = []
+        for i in range(B):
+            s, e = batch_list[i]
+            for k in range(s, e):
+                row_mask = torch.full_like(sim_masked[i], minus_inf)
+                row_mask[k] = 0
+                lprobs = F.log_softmax(row_mask + sim_masked[i], dim=-1)
+                loss_mol_list.append(-lprobs[k] / math.sqrt(e - s))
+        loss_mol = torch.stack(loss_mol_list).sum() if loss_mol_list else torch.tensor(0.0, device=logits.device)
+
+        loss = loss_pocket + loss_mol
+
+        return loss, {
+            "loss": loss.item(),
+            "loss_pocket": loss_pocket.item(),
+            "loss_mol": loss_mol.item(),
+            "sim_masked": sim_masked,
+        }
+
+    def score(self, mol_reps, pocket_reps, prot_reps=None):
+        poc_scores = (pocket_reps @ mol_reps.T).max(axis=0)
+        if prot_reps is not None:
+            prot_scores = (prot_reps @ mol_reps.T).max(axis=0)
+            return poc_scores + prot_scores
+        return poc_scores
+</new>
+</edit>
+<obs>
+Successfully replaced text in HypSeek/unimol/custom_scoring.py.
+</obs>
+<run/>
+<obs>
+Measured results — `baseline:vanilla_clip` (`is_final,true`), seed 42 (the only configured seed; per-seed = mean).
+
+## DUD-E
+| metric | AUROC | BEDROC | EF@0.5% | EF@1% | EF@5% | EF@0.05% | EF@0.1% | EF@0.2% |
+|---|---|---|---|---|---|---|---|---|
+| 42 / mean | 0.895254 | 0.702952 | 51.3104 | 45.9741 | 14.3824 | 51.3104 | 45.9741 | 31.5920 |
+
+## DEKOIS 2.0
+| metric | AUROC | BEDROC | EF@0.5% | EF@1% | EF@5% | EF@0.05% | EF@0.1% | EF@0.2% |
+|---|---|---|---|---|---|---|---|---|
+| 42 / mean | 0.891507 | 0.711319 | 24.8319 | 24.4116 | 13.2445 | 24.8319 | 24.4116 | 21.9581 |
+
+## LIT-PCBA
+| metric | AUROC | BEDROC | EF@0.5% | EF@1% | EF@5% | EF@0.05% | EF@0.1% | EF@0.2% |
+|---|---|---|---|---|---|---|---|---|
+| 42 / mean | 0.575630 | 0.064706 | 7.2703 | 5.1616 | 2.5547 | 7.2703 | 5.1616 | 4.0763 |
+</obs>
+
+### step 2 — HCC (Euclidean contrastive + activity ranking)   [slug:hcc]
+
+<think>
+[[POLISH_REASONING: adapt to first-person agentic voice, end by deciding to implement]]
+The vanilla CLIP run told me exactly where it breaks, and it told me in numbers. On DUD-E it is already
+strong — AUROC 0.895, BEDROC 0.703, EF@0.5% 51.3 — because DUD-E's decoys are property-matched ZINC
+molecules and a clean binder/non-binder cosine boundary separates them well; in-batch contrastive
+learning is doing its job there. DEKOIS holds up too (AUROC 0.892, BEDROC 0.711). But LIT-PCBA is the
+tell: AUROC collapses to 0.576 — barely above chance — and BEDROC craters to 0.065 with EF@0.5% at 7.27,
+a seventh of the DUD-E number. That split is not noise; it is structural. LIT-PCBA is the benchmark
+built to *remove* the artificial-decoy crutch — confirmed actives versus confirmed inactives at
+realistic ratios, with graded potencies crowded together — and that is precisely the regime a pure
+contrastive separation cannot rank, because it has no notion of "more active." Two actives of the same
+target both get pulled toward it with equal force; nothing distinguishes a 10 nM binder from a 10 µM
+one. The metric is top-heavy and LIT-PCBA's top ranks are decided by *ordering* graded actives, which
+vanilla CLIP simply does not do. So the failure that bites is sharp and it is an *ordering* problem
+sitting on top of the *separation* I already have. And I left two things on the table at rung one that
+are exactly the levers for it: the per-ligand pIC50 in `act_list`, and the ESM-2 sequence tower the loss
+never touched.
+
+Let me start from what the data actually is, because that is where both fixes live. Screening data is
+organized by assay: one target, a block of tested ligands each with an active/inactive label and, for
+the actives, an affinity — pIC50. And affinities are only comparable *inside* one assay; across assays
+the pH, temperature, cofactors, readout all differ, so a pIC50 of 7 here and a 7 there do not mean the
+same thing. Whatever I learn has to be relative-within-assay, never absolute-across-assays. That single
+constraint shapes everything that follows. The harness already exposes the assay structure I need:
+`batch_list[i]=(s,e)` is the contiguous ligand span of pocket $i$, and `act_list[i]` is the sorted
+activities of those ligands. So the question is how to turn graded within-assay activity into the loss.
+
+First, keep what works. The symmetric in-batch contrastive shape and the normalize-and-dot similarity
+stay — they gave me the DUD-E strength I do not want to lose, and the false-negative mask stays too,
+because on a sub-0.1% distribution a true binder treated as a negative is the one corruption I cannot
+afford. But the contrastive core has no preference among binders, and the metric most rewards getting
+the *strongest* one to the very top. So I need a *ranking* signal inside the assay, and I need it without
+re-introducing the false-negative problem the contrastive term already guards against.
+
+The textbook move is a listwise loss — sort the assay's ligands by affinity and fit a Plackett-Luce
+model, maximizing the probability of the affinity-sorted order, with a position decay so early ranks
+matter more. Let me try to just adopt that and watch where it fails. A full Plackett-Luce loss commits
+to a single *total order* over every ligand in the assay. But the within-assay affinities are noisy and
+only loosely comparable — measurement error alone can flip two nearby ligands. A total order would
+penalize the model for failing to separate two ligands whose measured affinities differ by less than
+experimental error; I would be fitting the noise. This is exactly the kind of overconfidence that would
+*hurt* LIT-PCBA, where the actives crowd together: forcing spurious order among near-ties is how you
+scramble the very top of the list. The ordering I actually trust is coarse. In med-chem the rule of
+thumb for a "real" potency difference is roughly threefold in IC50 — anything inside ~3× is a wash. So a
+strict total order is the wrong object; I want to enforce order *only between pairs clearly separated in
+affinity* and stay silent inside a ~3× band.
+
+So reshape the ranking loss around that tolerance. Threefold in IC50 is $\log_{10}(3)\approx0.477$ in
+log-affinity units. Sort each pocket's ligands strongest-first, position 0 the strongest. For each
+ligand as an *anchor* at position `k_rel`, I want it to outscore the ligands clearly weaker than it and
+ignore the ones within noise. So build a softmax over the in-pocket ligands but *mask out* every other
+ligand whose activity is not clearly below the anchor's — keep `idx` in the denominator only if
+`acts[k_rel] - log10(3) > acts[idx]`, i.e. strictly more than threefold weaker, and always keep the
+anchor. The loss is $-\log$ of the anchor's softmax probability against that pruned set of clearly-weaker
+rivals: if it is genuinely the strongest among them it wins and the loss is small; if a clearly-weaker
+ligand outscores it, it pays. Because I only ever compare against ligands more than 3× weaker, I never
+punish ordering two near-ties — the noise tolerance I wanted. I run this only when $L_i>2$; with one or
+two ligands there is no meaningful within-assay order. And the weighting: the metric is top-heavy, so
+ranking the *strongest* ligand above everything matters far more than the 20th. That is the DCG
+intuition — discount each anchor by $1/\log(\text{rank}+2)$, so anchor 0 (the strongest) carries the
+largest weight $1/\log 2\approx1.44$, decaying for deeper anchors. The "+2" keeps the first anchor's log
+finite rather than $\log 1 = 0$. This spends the ranking gradient on the head of the list, which is what
+BEDROC and EF reward — exactly the LIT-PCBA failure mode.
+
+Now I revisit the contrastive term itself, because graded data changes how I should treat the
+ligand-to-pocket direction. At rung one the row-local term matched every ligand to its pocket
+unconditionally. But a weak or inactive ligand is *noisy evidence* for a matched pair — pulling a 10 µM
+ligand toward its pocket as hard as a 10 nM one teaches the space to call marginal binders confident
+positives, which is exactly wrong when the metric lives at the top. So I gate it: for ligand $k$ in a
+multi-ligand pocket, if `acts[k-s] < 5` (below the conventional ~10 µM "active" cutoff in pIC50), skip
+it as a contrastive positive. When $L_i=1$ I keep the single ligand regardless, because otherwise that
+pocket contributes nothing to this term. I do *not* gate the column term the same way: the column term
+says which query owns the tested ligand column, and that ownership is part of the assay structure even
+when the ligand is weak. So the per-pathway loss is the column term (multi-positive ownership), the gated
+row-local selected-pair term, and the new activity-gated ranking term — three pieces, each
+$\sqrt{L_i}$-normalized so big assays count more but not linearly, summed.
+
+That is the ordering fix. The second lever is the sequence tower, and it is nearly free. The pocket is
+the primary signal, but it is a single sampled conformation; the ESM-2 protein sequence is a
+complementary, structure-free view of the same target that helps when the pocket is noisy or ambiguous —
+which is exactly the LIT-PCBA condition. The whole three-term computation is a function of one query
+embedding against the shared ligand embeddings, so I factor it into a helper and call it *twice*: once
+with the pocket embedding as query, once with the protein-sequence embedding as query, against the same
+ligand tower. The molecule embeddings are shared between the two pathways, so the ligand tower learns
+from both views at once. With both pathway weights at 1, the total training loss is just
+pathway(pocket) + pathway(sequence). This is the step where the `prot_emb` I projected but ignored at
+rung one finally enters the loss — and where the model wrapper's third tower starts earning its keep.
+
+Now I have to be precise about what *this task's* edit surface does, because it differs from the generic
+contrastive-ranking story in one detail that matters and that I should not import wrongly. In the generic
+formulation it is natural to carry a leading reserved coordinate in the embedding and score only the
+learned slice with `[:, 1:]` — a bookkeeping convention that becomes load-bearing once embeddings live on
+a manifold. But this rung is still **Euclidean**, and the scaffold here projects each feature with a
+plain NonLinearHead, L2-normalizes, and scores the *full* 128-d vector: `logits = emb_poc @ emb_mol.T *
+logit_scale`, no slice. There is no reserved coordinate to drop. So I keep the embeddings exactly as the
+default fill produced them — three NonLinearHeads, L2-normalize, no leading coordinate — and run the
+three-term helper on the full dot product. Getting this right keeps rung two an honest minimal delta over
+rung one: same projection geometry, same masking, same $\sqrt{L_i}$ discipline, same detached log-scale
+(init $\log 13$, detached inside the helper so the objective cannot trivially sharpen itself by cranking
+the scale). The *only* changes are the activity gate on the row term, the activity-aware ranking term,
+and the second sequence pathway.
+
+The scale point deserves one line because it threads through both pathways. After L2-normalization the
+dot product lives in $[-1,1]$, far too compressed for a peaked softmax, so I multiply logits by
+$\exp(\text{logit\_scale})$ — the inverse temperature — and I `.detach()` it inside the helper. Without
+the detach the ranking and contrastive softmaxes could lower themselves by sharpening every distribution
+via the scale alone, never improving an embedding; detaching forces the gradient into the directions.
+
+At evaluation nothing changes in shape from rung one except that the sequence view now votes. I embed the
+target's pockets, the target's sequence, and every candidate ligand; score by the max over the pocket
+conformers of `pocket · ligand` (a molecule binding *any* conformation should rank high), add the
+analogous max over the sequence view, and rank by the sum — the same Euclidean dot product the loss
+optimized, so train and test agree. (The full scaffold module is in the answer.)
+
+So the delta from rung one is concrete: keep the in-batch contrastive separation that won DUD-E; gate the
+row-local positive term so weak ligands stop being pulled in as confident binders; add an activity-aware
+ranking term that pushes strong binders above clearly-weaker ones with a threefold-IC50 noise tolerance
+and a DCG head-of-list discount; and turn on the sequence pathway as a complementary target view. Reading
+vanilla CLIP's numbers, here is what I expect and where I am unsure. DUD-E should hold or improve
+slightly — the ranking term cannot hurt a benchmark already separated well, and the sequence view adds a
+second target signal; but DUD-E's ceiling is high, so I do not expect a large jump, and it is even
+possible the extra ranking pressure shifts a metric or two by a hair in either direction. The real test is
+LIT-PCBA: its AUROC and BEDROC should *climb*, because the ranking term and the sequence view directly
+attack the graded-actives failure that left it at 0.576 / 0.065. DEKOIS should hold near its strong rung-one
+values. The falsifiable claim is sharp: if the ordering diagnosis is right, the largest relative gain on the
+ladder should appear on LIT-PCBA's AUROC and BEDROC, *not* on DUD-E — and if instead LIT-PCBA barely moves,
+then the problem was never ordering but the Euclidean geometry itself collapsing near-identical ligands,
+which would be the diagnosis that forces the next rung.
+</think>
+<say>
+[[FILL_SAY: 1-2 sentences naming the method and what this first edit does]]
+</say>
+<edit path="HypSeek/unimol/custom_scoring.py">
+<old>
+"""Custom scoring module for contrastive virtual screening — vanilla CLIP (default fill)."""
+</old>
+<new>
+"""HCC scoring module: Euclidean contrastive + ranking loss."""
+</new>
+</edit>
+<obs>
+Successfully replaced text in HypSeek/unimol/custom_scoring.py.
+</obs>
+<note>
+[[FILL_NOTE?: optional one-line thought for this edit, or delete this block]]
+</note>
+<edit path="HypSeek/unimol/custom_scoring.py">
+<old>
+class CustomScoring(nn.Module):
+    """Scoring module for contrastive protein-ligand virtual screening."""
+
+    def __init__(self, mol_dim=512, pocket_dim=512, protein_dim=480, embed_dim=128):
+        super().__init__()
+        # NonLinearHead pattern: Linear(in,in) -> ReLU -> Linear(in,embed_dim).
+        self.mol_project = nn.Sequential(
+</old>
+<new>
+class CustomScoring(nn.Module):
+    """HCC: Hierarchical Contrastive Cosine in Euclidean space.
+
+    Adds ranking loss that enforces more active ligands score higher
+    within each pocket's ligand set, weighted by 1/log(rank+2) (DCG-style).
+    """
+
+    def __init__(self, mol_dim=512, pocket_dim=512, protein_dim=480, embed_dim=128):
+        super().__init__()
+        # NonLinearHead pattern used by the HypSeek implementation.
+        self.mol_project = nn.Sequential(
+</new>
+</edit>
+<obs>
+Successfully replaced text in HypSeek/unimol/custom_scoring.py.
+</obs>
+<note>
+[[FILL_NOTE?: optional one-line thought for this edit, or delete this block]]
+</note>
+<edit path="HypSeek/unimol/custom_scoring.py">
+<old>
+        )
+        # Learnable temperature (log scale); init log(13) ~ CLIP-style.
+        self.logit_scale = nn.Parameter(torch.ones([1]) * np.log(13))
+</old>
+<new>
+        )
+        self.logit_scale = nn.Parameter(torch.ones([1]) * np.log(13))
+</new>
+</edit>
+<obs>
+Successfully replaced text in HypSeek/unimol/custom_scoring.py.
+</obs>
+<note>
+[[FILL_NOTE?: optional one-line thought for this edit, or delete this block]]
+</note>
+<edit path="HypSeek/unimol/custom_scoring.py">
+<old>
+
+    def compute_loss(self, mol_emb, poc_emb, prot_emb,
+                     batch_list, act_list,
+                     uniprot_poc=None, uniprot_mol=None,
+                     pocket_lig_smiles=None, lig_smiles=None):
+        logit_scale = self.logit_scale.exp().detach()
+        B = poc_emb.size(0)
+
+        # Similarity matrix: [N_poc, N_mol]
+        logits = poc_emb @ mol_emb.T * logit_scale
+
+        # False-negative mask: same target, or a known binder of this pocket.
+        mask = torch.zeros_like(logits, dtype=torch.bool)
+</old>
+<new>
+
+    def _compute_hcc_pair(self, emb_poc, emb_mol, batch_list, act_list,
+                          uniprot_poc, uniprot_mol, pocket_lig_smiles, lig_smiles,
+                          logit_scale):
+        """Compute HCC loss for one pathway (pocket-mol or protein-mol)."""
+        B = emb_poc.size(0)
+        logits = emb_poc @ emb_mol.T * logit_scale
+
+        # False-negative mask
+        mask = torch.zeros_like(logits, dtype=torch.bool)
+</new>
+</edit>
+<obs>
+Successfully replaced text in HypSeek/unimol/custom_scoring.py.
+</obs>
+<note>
+[[FILL_NOTE?: optional one-line thought for this edit, or delete this block]]
+</note>
+<edit path="HypSeek/unimol/custom_scoring.py">
+<old>
+
+        # === Symmetric contrastive loss ===
+        # Pocket-to-ligand (multi-positive column term): each pocket owns its ligand columns.
+        idx2poc = []
+</old>
+<new>
+
+        # Pocket retrieves ligands
+        idx2poc = []
+</new>
+</edit>
+<obs>
+Successfully replaced text in HypSeek/unimol/custom_scoring.py.
+</obs>
+<note>
+[[FILL_NOTE?: optional one-line thought for this edit, or delete this block]]
+</note>
+<edit path="HypSeek/unimol/custom_scoring.py">
+<old>
+        targets = torch.tensor(idx2poc, dtype=torch.long, device=logits.device)
+
+        lprobs_pocket = F.log_softmax(sim_masked.T, dim=-1)
+        loss_pocket_list = []
+</old>
+<new>
+        targets = torch.tensor(idx2poc, dtype=torch.long, device=logits.device)
+        lprobs_pocket_all = F.log_softmax(sim_masked.T, dim=-1)
+
+        loss_pocket_list = []
+</new>
+</edit>
+<obs>
+Successfully replaced text in HypSeek/unimol/custom_scoring.py.
+</obs>
+<note>
+[[FILL_NOTE?: optional one-line thought for this edit, or delete this block]]
+</note>
+<edit path="HypSeek/unimol/custom_scoring.py">
+<old>
+            rows = list(range(s, e))
+            lprobs_sub = lprobs_pocket[rows]
+            targ_sub = targets[rows]
+</old>
+<new>
+            rows = list(range(s, e))
+            lprobs_sub = lprobs_pocket_all[rows]
+            targ_sub = targets[rows]
+</new>
+</edit>
+<obs>
+Successfully replaced text in HypSeek/unimol/custom_scoring.py.
+</obs>
+<note>
+[[FILL_NOTE?: optional one-line thought for this edit, or delete this block]]
+</note>
+<edit path="HypSeek/unimol/custom_scoring.py">
+<old>
+
+        # Ligand-to-pocket (row-local selected-pair NLL): each ligand retrieves its pocket.
+        loss_mol_list = []
+        for i in range(B):
+            s, e = batch_list[i]
+            for k in range(s, e):
+</old>
+<new>
+
+        # Ligand retrieves pocket (skip low-activity ligands in multi-ligand pockets)
+        loss_mol_list = []
+        for i in range(B):
+            s, e = batch_list[i]
+            acts = act_list[i]
+            L_i = e - s
+            for k in range(s, e):
+</new>
+</edit>
+<obs>
+Successfully replaced text in HypSeek/unimol/custom_scoring.py.
+</obs>
+<note>
+[[FILL_NOTE?: optional one-line thought for this edit, or delete this block]]
+</note>
+<edit path="HypSeek/unimol/custom_scoring.py">
+<old>
+                lprobs = F.log_softmax(row_mask + sim_masked[i], dim=-1)
+                loss_mol_list.append(-lprobs[k] / math.sqrt(e - s))
+        loss_mol = torch.stack(loss_mol_list).sum() if loss_mol_list else torch.tensor(0.0, device=logits.device)
+
+        loss = loss_pocket + loss_mol
+
+        return loss, {
+            "loss": loss.item(),
+            "loss_pocket": loss_pocket.item(),
+            "loss_mol": loss_mol.item(),
+            "sim_masked": sim_masked,
+        }
+</old>
+<new>
+                lprobs = F.log_softmax(row_mask + sim_masked[i], dim=-1)
+                if L_i > 1 and acts[k - s] < 5:
+                    continue
+                loss_mol_list.append(-lprobs[k] / math.sqrt(L_i))
+        loss_mol = torch.stack(loss_mol_list).sum() if loss_mol_list else torch.tensor(0.0, device=logits.device)
+
+        # Ranking loss: within each pocket, rank by activity
+        loss_rank_list = []
+        for i in range(B):
+            s, e = batch_list[i]
+            acts = act_list[i]
+            L_i = e - s
+            if L_i <= 2:
+                continue
+            out_i = sim_masked[i, s:e]
+            for k_rel in range(L_i - 1):
+                m = torch.zeros_like(out_i)
+                for idx in range(L_i):
+                    if idx == k_rel:
+                        continue
+                    if acts[k_rel] - math.log10(3) <= acts[idx]:
+                        m[idx] = minus_inf
+                lprobs_rank = F.log_softmax(m + out_i, dim=-1)
+                loss_rank_list.append(-lprobs_rank[k_rel] / (math.log(k_rel + 2) * math.sqrt(L_i)))
+        loss_rank = torch.stack(loss_rank_list).sum() if loss_rank_list else torch.tensor(0.0, device=logits.device)
+
+        total = loss_pocket + loss_mol + loss_rank
+        return {
+            "loss": total,
+            "loss_pocket": loss_pocket,
+            "loss_mol": loss_mol,
+            "loss_rank": loss_rank,
+            "sim_masked": sim_masked,
+        }
+
+    def compute_loss(self, mol_emb, poc_emb, prot_emb,
+                     batch_list, act_list,
+                     uniprot_poc=None, uniprot_mol=None,
+                     pocket_lig_smiles=None, lig_smiles=None):
+        logit_scale = self.logit_scale.exp().detach()
+
+        # HCC for pocket-molecule pathway
+        loss_dict_poc = self._compute_hcc_pair(
+            poc_emb, mol_emb, batch_list, act_list,
+            uniprot_poc, uniprot_mol, pocket_lig_smiles, lig_smiles,
+            logit_scale,
+        )
+        # HCC for protein-molecule pathway
+        loss_dict_prot = self._compute_hcc_pair(
+            prot_emb, mol_emb, batch_list, act_list,
+            uniprot_poc, uniprot_mol, pocket_lig_smiles, lig_smiles,
+            logit_scale,
+        )
+        loss = loss_dict_poc["loss"] + loss_dict_prot["loss"]
+
+        return loss, {
+            "loss": loss.item(),
+            "loss_poc": loss_dict_poc["loss"].item(),
+            "loss_prot": loss_dict_prot["loss"].item(),
+            "sim_masked": loss_dict_poc["sim_masked"],
+        }
+</new>
+</edit>
+<obs>
+Successfully replaced text in HypSeek/unimol/custom_scoring.py.
+</obs>
+<run/>
+<obs>
+Measured results — `baseline:hcc` (`is_final,true`), seed 42 (the only configured seed; per-seed = mean).
+
+## DUD-E
+| metric | AUROC | BEDROC | EF@0.5% | EF@1% | EF@5% | EF@0.05% | EF@0.1% | EF@0.2% |
+|---|---|---|---|---|---|---|---|---|
+| 42 / mean | 0.920293 | 0.693408 | 48.8182 | 44.4660 | 14.8039 | 48.8182 | 44.4660 | 31.6808 |
+
+## DEKOIS 2.0
+| metric | AUROC | BEDROC | EF@0.5% | EF@1% | EF@5% | EF@0.05% | EF@0.1% | EF@0.2% |
+|---|---|---|---|---|---|---|---|---|
+| 42 / mean | 0.921977 | 0.711890 | 24.0050 | 23.2060 | 14.2247 | 24.0050 | 23.2060 | 21.9111 |
+
+## LIT-PCBA
+| metric | AUROC | BEDROC | EF@0.5% | EF@1% | EF@5% | EF@0.05% | EF@0.1% | EF@0.2% |
+|---|---|---|---|---|---|---|---|---|
+| 42 / mean | 0.628293 | 0.087036 | 11.1498 | 6.7456 | 3.6915 | 11.1498 | 6.7456 | 5.2030 |
+</obs>
+
+### step 3 — Full HypSeek (hyperbolic HCC + cone hierarchy)   [slug:hcc_hyp_cone]
+
+<think>
+[[POLISH_REASONING: adapt to first-person agentic voice, end by deciding to implement]]
+The HCC numbers confirm the ordering diagnosis and, in the same breath, expose the limit the ranking term
+cannot reach. LIT-PCBA moved exactly where I predicted: AUROC climbed 0.576 → 0.628 and BEDROC 0.065 →
+0.087, with EF@0.5% nearly doubling 7.27 → 11.15. So activity-aware ranking plus the sequence view did
+attack the graded-actives failure — the relative gains *are* concentrated on the realistic benchmark,
+just as the falsifiable claim said. DUD-E even firmed up its AUROC (0.895 → 0.920) and DEKOIS held
+(0.892 → 0.922). But read LIT-PCBA again: 0.628 AUROC is still soft, and 0.087 BEDROC is still an order
+of magnitude below the DUD-E number. The ranking term helped, and it stopped helping while the realistic
+benchmark is still mostly unsolved. That is the tell I flagged as the alternative diagnosis at rung two:
+if LIT-PCBA only partly moved, the residual problem is not ordering but the *geometry* — the Euclidean
+space itself collapsing the cases that matter most. So now I have to stare at the geometry.
+
+Where does Euclidean space fail, specifically? Activity cliffs. Two ligands that are almost the same
+molecule — one substituent removed — that bind tens of fold differently. A structure encoder, doing its
+job, maps near-identical molecules to near-identical vectors. In Euclidean space that is fatal, because
+distance is linear: if $\|v_1-v_2\|$ is small in the encoder's native space it stays small in the
+embedding, and any pocket-to-ligand score I read off is essentially the same for both. The ranking term I
+just added cannot fix this — it asks the score to order the pair, but the two embeddings are so close
+that there is no room to *place* the order without forcing structurally similar molecules to large
+distance, which would fight the encoder's smoothness everywhere and wreck the genuinely-similar-and-
+similar-affinity pairs too. And this is exactly LIT-PCBA's regime: realistic actives include
+near-identical analogues, so the residual 0.628/0.087 is the model failing on precisely the pairs where
+function diverges but structure does not. The ranking loss ran out of room because the *space* has no
+room.
+
+So what kind of space has room? Negative curvature. The defining fact about hyperbolic space is that
+volume grows exponentially with radius instead of polynomially — that is why it embeds trees and
+hierarchies with low distortion, there is exponentially more room near the boundary than a flat space
+provides. And graded binding affinity *is* a hierarchy: within an assay ligands fan out from weak to
+strong, and across the library there is a coarse-to-fine structure of "binds this family / binds this
+target / binds this pocket specifically." If a curved space naturally encodes hierarchy, maybe it encodes
+the affinity hierarchy, and — this is the bet — maybe the exponential growth gives me exactly the room to
+separate cliffs cheaply, *without* uniformly stretching the metric.
+
+Let me make that bet quantitative before committing, because "exponential room" is a slogan until I can
+show a small structural difference becomes a large distance. Work on the Lorentz model: points on the
+upper sheet of a hyperboloid with the Lorentzian inner product, geodesic distance
+$d_L(x,y)=(1/\sqrt\kappa)\,\mathrm{arccosh}(-\kappa\langle x,y\rangle_L)$, and lift Euclidean encoder
+outputs onto it with the exponential map at the origin. Take two ligands as tangent vectors at the origin
+with nearly equal radial norm $r$ and a small angle $\theta\ll1$ between them. The hyperbolic law of
+cosines gives, on a unit-curvature sheet, $\cosh d=\cosh^2 r-\sinh^2 r\cos\theta$; expand for small
+$\theta$ with $\cos\theta\approx1-\theta^2/2$ and use $\cosh^2 r-\sinh^2 r=1$, so $\cosh d-1\approx
+(\sinh^2 r/2)\theta^2$; invert with $\mathrm{arccosh}(1+\epsilon)=\sqrt{2\epsilon}$ to get
+$d\approx\sinh r\cdot\theta$, and restoring curvature, $d_H\approx(\sinh r/\sqrt\kappa)\,\theta$. There
+it is — the separation is $\theta$ *amplified by $\sinh r$*, which grows exponentially in $r$, where
+Euclidean gives only $r\cdot\theta$, linear. So a cliff pair — tiny $\theta$, very different function — can
+be separated if the geometry gives the stronger tier access to larger radial scale and tighter angular
+control: the angular sliver is amplified at the radius where it matters, and I never distort the metric
+uniformly. The bet has teeth. The design now reduces to: make the radial coordinate carry binding-strength
+tier information, make angular position carry identity, and let cliffs separate through the product of the
+two — exactly the room the HCC ranking term lacked.
+
+How do I *control* radial depth and angular spread per ligand as a function of affinity? I need a
+structured prior on the manifold, not "embed and hope." Entailment cones give it: attach to each point a
+cone opening away from the origin, and the cone's half-aperture has a closed form that *shrinks* as the
+point's norm grows — a point farther out projects a narrower cone. Read in my setting: a pocket pushed
+deep toward the boundary is "more specific" and should admit only a tight set of ligand directions —
+exactly the inductive bias I want for a specific binding pocket. The aperture transfers to the Lorentz
+model as $\omega(x)=\arcsin(2K/(\sqrt\kappa\|x_{\text{space}}\|))$. But a single on/off cone is binary,
+and I established I need *graded* tiers because affinity is graded. So I do the thing a plain cone does
+not: turn it into a hierarchy of tiers indexed by affinity, using *both* the radial dimension (geodesic
+pocket-ligand distance) and the angular dimension (the cone) as graded constraints.
+
+Two measurements per ligand, and the argument order matters. The radial one is the geodesic distance
+$d_{ij}$ from pocket $i$ to ligand $j$. The angular one is the first-argument angle
+$\phi_{ij}=\mathrm{oxy\_angle}(\text{ligand}_j,\text{pocket}_i)$ in the hyperbolic triangle O-ligand-pocket,
+and the aperture $\omega_i$ is attached to the *pocket*. The constraint the code imposes is
+$\phi_{ij}\le\eta_{ij}\cdot\omega_i$ with the pocket supplying the aperture and the ligand-first angle the
+measured lean — swapping the arguments would be a different loss, so I take the order the harness's lorentz
+helpers compute. Now the tiers: bucket each ligand's pIC50 by the standard activity thresholds 5, 7, 9 (5
+is the ~10 µM "active" cutoff, each step a decade), giving four buckets $b\in\{0,1,2,3\}$. Per ligand,
+$r_k=r_0+b\,\Delta r$ and $\eta_k=\eta_0-b\,\Delta\eta$ with $r_0,\eta_0$ the weakest-tier base and
+$\Delta r,\Delta\eta>0$. Stare at the signs because getting them backwards inverts the prior: a *stronger*
+binder (larger $b$) gets a *larger* radial cap — a one-sided hinge permitting it to occupy the larger
+radial scales where the $\sinh r$ amplification can act — and a *smaller* angular tolerance, because a
+strong, specific binding event should align more decisively with the pocket's admissible direction than a
+weak one. Strong = larger radial cap, tighter cone; weak = smaller cap, wider cone. The two knobs move in
+opposite directions with affinity, spreading tiers by both distance and angular selectivity — exactly the
+two-axis separation the cliff calculation said I needed, since $\sinh r\cdot\theta$ uses both.
+
+The cone losses are one-sided hinges — penalize only violations, never pull a satisfied ligand:
+$L_{\text{rad}}=(1/\sqrt N)\sum\max(d_{ij}-r_{ij},0)$, $L_{\text{ang}}=(1/\sqrt N)\sum\max(\phi_{ij}-
+\eta_{ij}\omega_i,0)$, combined as $\lambda_{\text{rad}}L_{\text{rad}}+\lambda_{\text{ang}}L_{\text{ang}}$
+with both weights 0.5 (two halves of the same cone, no reason to prefer one). The $1/\sqrt N$ is the same
+assay-size discipline I have used since rung one — sub-linear so big assays count more but do not drown the
+many small ones. Two regularizers fall out of what can go wrong with the cone. The angular hinge is zero
+the instant $\phi\le\eta\omega$, so the optimizer has no pressure to do better than touch the boundary and
+could collapse angles toward the axis trivially; a margin $m=0.15$ rad — $R_{\text{ang}}=(1/\sqrt N)\sum
+\max(\phi-\eta\omega+m,0)$ — keeps pushing until ligands are decisively *inside* the cone. And because the
+metric is dominated by the very top of the list, a heterogeneity term weights threshold-selected entries by
+distance rank with $w_j=\exp(-\beta(\text{rank}_j-1)/L_i)$ at $\beta=80.5$ — the *same* focus parameter as
+BEDROC, so I shape training to match the evaluation's early-enrichment emphasis. Both regularizers are
+auxiliary, weight 0.10 each.
+
+The cone hierarchy is the new part, but it rides on top of a retrieval objective that still has to find
+binders at all — so I keep HCC's contrastive-plus-ranking core from rung two, applied to the hyperbolic
+embeddings, and I am careful about the similarity I feed the softmax. Geodesic distance is the "correct"
+hyperbolic similarity, but at inference I need a plain dot product so retrieval stays a matmul over a cached
+matrix — non-negotiable, it is the whole reason screening is feasible. So I score with the inner product of
+the spatial components both inside the softmax logits and at inference, and let the cone losses do the
+geometric shaping. And here the bookkeeping detail I deliberately *omitted* at rung two becomes
+load-bearing: the exp map returns only the space components, and the implementation treats the projector
+output as $[\text{lead}, \text{space}\ldots]$, dropping index 0 with `emb[:, 1:]` before the similarity, so
+the manifold coordinates stay aligned. At rung two I noted there was no reserved coordinate to drop because
+the space was flat; on the manifold the `[:, 1:]` slice is exactly the convention that keeps the
+contrastive/cone math consistent. At *inference*, though, the score uses the *full* embedding dot product
+(`pocket_reps @ mol_reps.T`, max over the target's pockets, plus the sequence contribution), because that
+is the cached-retrieval matmul as the embeddings are produced — the geometry was paid for at training time.
+
+The projection heads and the parameters the geometry needs come with initialization traps I have to defuse.
+Each backbone feature goes through the same NonLinearHead into 128-d, but then the exp map scales by
+$\sinh$, and CLIP-style init makes the Euclidean output have norm $\approx\sqrt n$, so $\sinh(\sqrt\kappa
+\sqrt{128})$ is astronomical and training diverges immediately. The fix: a learnable per-tower scale
+$\alpha$ initialized to $1/\sqrt n=128^{-1/2}$ so the scaled embedding has expected unit norm at init,
+learned in log space, clamped so $\exp(\alpha)\le1$ — the scale can shrink but never blow the exp map back
+up. So each projection is $u=\text{head}(\text{feat})\cdot\exp(\alpha)$, then $h=\exp\_map0(u,\kappa)$. The
+curvature $\kappa$ is itself learnable (init $\log 1$), clamped to $[\log 0.1,\log 10]$ so it can neither
+collapse to Euclidean nor detonate. The contrastive softmax keeps the detached $\log 13$ inverse
+temperature. The sequence pathway runs the identical contrastive-plus-ranking helper as a second query
+view, but I apply the cone supervision *only* to the pocket branch — the pocket carries the structural,
+geometrically meaningful signal, and over-constraining the sequence branch geometrically would fight its
+role as an auxiliary view. So the total is $\alpha_{\text{poc}}\text{loss}_{\text{poc}}+\alpha_{\text{prot}}
+\text{loss}_{\text{seq}}+\gamma_{\text{cone}}L_{\text{cone}}+\lambda_{\text{het}}R_{\text{het}}+
+\lambda_{\text{ang}}R_{\text{ang}}$ with $\gamma_{\text{cone}}=0.1$, down-weighted because the cone is a
+structural prior shaping the space, not the primary retrieval signal — if it dominated, the model would
+satisfy the geometry at the expense of actually finding binders. (The full scaffold module is in the
+answer.)
+
+So the delta from HCC is the geometry: keep the contrastive-plus-ranking core verbatim, lift every
+embedding onto a learnable-curvature Lorentz hyperboloid through a clamped, scaled exp map, and add an
+affinity-tiered radial-plus-angular cone hierarchy (pocket branch only) with a margin and a
+BEDROC-matched heterogeneity regularizer. Reading HCC's numbers, the falsifiable claims are sharp and they
+are specifically about the realistic benchmark, because that is where cliffs live. LIT-PCBA's AUROC and
+BEDROC should rise *again* past HCC's 0.628 / 0.087 — if the $\sinh r$ room is real, the model should now
+separate the near-identical-but-different-affinity pairs that the Euclidean ranking term could not place,
+and DUD-E (already near its ceiling at 0.920 AUROC) should hold or edge up on the early-enrichment metrics
+where the cone's head-of-list shaping helps. The honest risk is that the cone is a strong prior on top of
+already-strong features: it could trade a little on a benchmark whose decoys are easy (DEKOIS, where the
+extra geometric constraint is unnecessary) for a gain where cliffs dominate, so I would not be surprised to
+see DEKOIS hold roughly flat rather than climb. The claim that decides whether the geometry was worth it is
+DUD-E's BEDROC/EF and LIT-PCBA's AUROC moving up together — separation where it was already good, plus the
+cliff room the flat space never had.
+</think>
+<say>
+[[FILL_SAY: 1-2 sentences naming the method and what this first edit does]]
+</say>
+<edit path="HypSeek/unimol/custom_scoring.py">
+<old>
+"""HCC scoring module: Euclidean contrastive + ranking loss."""
+</old>
+<new>
+"""Full HypSeek scoring: Hyperbolic HCC + Cone Hierarchy."""
+</new>
+</edit>
+<obs>
+Successfully replaced text in HypSeek/unimol/custom_scoring.py.
+</obs>
+<note>
+[[FILL_NOTE?: optional one-line thought for this edit, or delete this block]]
+</note>
+<edit path="HypSeek/unimol/custom_scoring.py">
+<old>
+import torch.nn.functional as F
+
+
+class CustomScoring(nn.Module):
+    """HCC: Hierarchical Contrastive Cosine in Euclidean space.
+
+    Adds ranking loss that enforces more active ligands score higher
+    within each pocket's ligand set, weighted by 1/log(rank+2) (DCG-style).
+    """
+</old>
+<new>
+import torch.nn.functional as F
+from unimol.losses import lorentz as L
+
+
+class CustomScoring(nn.Module):
+    """Full HypSeek: Lorentz hyperbolic embeddings + HCC + cone hierarchy.
+
+    Maps projected features onto a Lorentz hyperboloid via exp_map0,
+    trains with HCC contrastive-ranking loss plus cone hierarchy
+    constraints (radial + angular).
+    """
+</new>
+</edit>
+<obs>
+Successfully replaced text in HypSeek/unimol/custom_scoring.py.
+</obs>
+<note>
+[[FILL_NOTE?: optional one-line thought for this edit, or delete this block]]
+</note>
+<edit path="HypSeek/unimol/custom_scoring.py">
+<old>
+        super().__init__()
+        # NonLinearHead pattern used by the HypSeek implementation.
+        self.mol_project = nn.Sequential(
+</old>
+<new>
+        super().__init__()
+        # Projection heads (NonLinearHead equivalent: hidden=input_dim)
+        self.mol_project = nn.Sequential(
+</new>
+</edit>
+<obs>
+Successfully replaced text in HypSeek/unimol/custom_scoring.py.
+</obs>
+<note>
+[[FILL_NOTE?: optional one-line thought for this edit, or delete this block]]
+</note>
+<edit path="HypSeek/unimol/custom_scoring.py">
+<old>
+        )
+        self.logit_scale = nn.Parameter(torch.ones([1]) * np.log(13))
+
+    def project_mol(self, mol_feat):
+        return F.normalize(self.mol_project(mol_feat), dim=-1)
+
+    def project_pocket(self, poc_feat):
+        return F.normalize(self.pocket_project(poc_feat), dim=-1)
+
+    def project_protein(self, prot_feat):
+        return F.normalize(self.protein_project(prot_feat), dim=-1)
+</old>
+<new>
+        )
+
+        # Learnable scale parameters (log-space, clamped to exp(alpha) <= 1)
+        self.mol_alpha = nn.Parameter(torch.tensor([embed_dim ** -0.5]).log())
+        self.pocket_alpha = nn.Parameter(torch.tensor([embed_dim ** -0.5]).log())
+        self.protein_alpha = nn.Parameter(torch.tensor([embed_dim ** -0.5]).log())
+
+        # Learnable curvature (log-space)
+        self.curv = nn.Parameter(torch.tensor([1.0]).log(), requires_grad=True)
+        self._curv_minmax = {"max": math.log(10.0), "min": math.log(0.1)}
+
+        # Temperature
+        self.logit_scale = nn.Parameter(torch.ones([1]) * np.log(13))
+
+        # Cone hierarchy hyperparameters
+        self.bounds = torch.tensor([5.0, 7.0, 9.0], dtype=torch.float32)
+        self.chl_r0 = 0.5
+        self.chl_dr = 0.5
+        self.chl_eta0 = 0.7
+        self.chl_deta = 0.2
+        self.lambda_rad = 0.5
+        self.lambda_ang = 0.5
+        self.gamma_chl = 0.1
+        self.lambda_angu = 0.10
+        self.lambda_het = 0.10
+
+    def _clamp_params(self):
+        """Clamp scale and curvature parameters."""
+        self.mol_alpha.data = torch.clamp(self.mol_alpha.data, max=0.0)
+        self.pocket_alpha.data = torch.clamp(self.pocket_alpha.data, max=0.0)
+        self.protein_alpha.data = torch.clamp(self.protein_alpha.data, max=0.0)
+        self.curv.data = torch.clamp(self.curv.data, **self._curv_minmax)
+
+    def _project_to_hyperboloid(self, feat, proj_head, alpha):
+        """Project features to Lorentz hyperboloid."""
+        u = proj_head(feat) * alpha.exp()
+        with torch.autocast(u.device.type, dtype=torch.float32):
+            h = L.exp_map0(u, self.curv.exp())
+        return h
+
+    def project_mol(self, mol_feat):
+        self._clamp_params()
+        return self._project_to_hyperboloid(mol_feat, self.mol_project, self.mol_alpha)
+
+    def project_pocket(self, poc_feat):
+        self._clamp_params()
+        return self._project_to_hyperboloid(poc_feat, self.pocket_project, self.pocket_alpha)
+
+    def project_protein(self, prot_feat):
+        self._clamp_params()
+        return self._project_to_hyperboloid(prot_feat, self.protein_project, self.protein_alpha)
+</new>
+</edit>
+<obs>
+Successfully replaced text in HypSeek/unimol/custom_scoring.py.
+</obs>
+<note>
+[[FILL_NOTE?: optional one-line thought for this edit, or delete this block]]
+</note>
+<edit path="HypSeek/unimol/custom_scoring.py">
+<old>
+                          logit_scale):
+        """Compute HCC loss for one pathway (pocket-mol or protein-mol)."""
+        B = emb_poc.size(0)
+        logits = emb_poc @ emb_mol.T * logit_scale
+
+        # False-negative mask
+        mask = torch.zeros_like(logits, dtype=torch.bool)
+        if uniprot_poc is not None and uniprot_mol is not None:
+            for i in range(B):
+                for j in range(logits.size(1)):
+                    if uniprot_poc[i] == uniprot_mol[j]:
+</old>
+<new>
+                          logit_scale):
+        """HCC loss for one pathway (space component dot product)."""
+        B = emb_poc.size(0)
+        emb_poc = emb_poc[:, 1:]
+        emb_mol = emb_mol[:, 1:]
+        logits = torch.matmul(emb_poc, emb_mol.T) * logit_scale
+
+        N_mol = emb_mol.size(0)
+        mask = torch.zeros_like(logits, dtype=torch.bool)
+        if uniprot_poc is not None and uniprot_mol is not None:
+            for i in range(B):
+                for j in range(N_mol):
+                    if uniprot_poc[i] == uniprot_mol[j]:
+</new>
+</edit>
+<obs>
+Successfully replaced text in HypSeek/unimol/custom_scoring.py.
+</obs>
+<note>
+[[FILL_NOTE?: optional one-line thought for this edit, or delete this block]]
+</note>
+<edit path="HypSeek/unimol/custom_scoring.py">
+<old>
+                bad = pocket_lig_smiles[i]
+                for j in range(logits.size(1)):
+                    if lig_smiles[j] in bad:
+</old>
+<new>
+                bad = pocket_lig_smiles[i]
+                for j in range(N_mol):
+                    if lig_smiles[j] in bad:
+</new>
+</edit>
+<obs>
+Successfully replaced text in HypSeek/unimol/custom_scoring.py.
+</obs>
+<note>
+[[FILL_NOTE?: optional one-line thought for this edit, or delete this block]]
+</note>
+<edit path="HypSeek/unimol/custom_scoring.py">
+<old>
+        # Pocket retrieves ligands
+        idx2poc = []
+</old>
+<new>
+        # Pocket retrieves ligands
+        loss_mol_list, loss_rank_list = [], []
+        for i in range(B):
+            s, e = batch_list[i]
+            acts = act_list[i]
+            L_i = e - s
+            out_i = sim_masked[i, s:e]
+            for k in range(s, e):
+                row_mask = torch.full_like(sim_masked[i], minus_inf)
+                row_mask[k] = 0
+                lprobs = F.log_softmax(row_mask + sim_masked[i], dim=-1)
+                if L_i > 1 and acts[k - s] < 5:
+                    continue
+                loss_mol_list.append(-lprobs[k] / math.sqrt(L_i))
+            if L_i > 2:
+                for k_rel in range(L_i - 1):
+                    m = torch.zeros_like(out_i)
+                    for idx in range(L_i):
+                        if idx == k_rel:
+                            continue
+                        if acts[k_rel] - math.log10(3) <= acts[idx]:
+                            m[idx] = minus_inf
+                    lprobs_rank = F.log_softmax(m + out_i, dim=-1)
+                    loss_rank_list.append(-lprobs_rank[k_rel] / (math.log(k_rel + 2) * math.sqrt(L_i)))
+        loss_mol = torch.stack(loss_mol_list).sum() if loss_mol_list else torch.tensor(0.0, device=logits.device)
+        loss_rank = torch.stack(loss_rank_list).sum() if loss_rank_list else torch.tensor(0.0, device=logits.device)
+
+        # Ligand-to-pocket
+        idx2poc = []
+</new>
+</edit>
+<obs>
+Successfully replaced text in HypSeek/unimol/custom_scoring.py.
+</obs>
+<note>
+[[FILL_NOTE?: optional one-line thought for this edit, or delete this block]]
+</note>
+<edit path="HypSeek/unimol/custom_scoring.py">
+<old>
+        lprobs_pocket_all = F.log_softmax(sim_masked.T, dim=-1)
+
+        loss_pocket_list = []
+</old>
+<new>
+        lprobs_pocket_all = F.log_softmax(sim_masked.T, dim=-1)
+        loss_pocket_list = []
+</new>
+</edit>
+<obs>
+Successfully replaced text in HypSeek/unimol/custom_scoring.py.
+</obs>
+<note>
+[[FILL_NOTE?: optional one-line thought for this edit, or delete this block]]
+</note>
+<edit path="HypSeek/unimol/custom_scoring.py">
+<old>
+
+        # Ligand retrieves pocket (skip low-activity ligands in multi-ligand pockets)
+        loss_mol_list = []
+        for i in range(B):
+            s, e = batch_list[i]
+            acts = act_list[i]
+            L_i = e - s
+            for k in range(s, e):
+                row_mask = torch.full_like(sim_masked[i], minus_inf)
+                row_mask[k] = 0
+                lprobs = F.log_softmax(row_mask + sim_masked[i], dim=-1)
+                if L_i > 1 and acts[k - s] < 5:
+                    continue
+                loss_mol_list.append(-lprobs[k] / math.sqrt(L_i))
+        loss_mol = torch.stack(loss_mol_list).sum() if loss_mol_list else torch.tensor(0.0, device=logits.device)
+
+        # Ranking loss: within each pocket, rank by activity
+        loss_rank_list = []
+        for i in range(B):
+            s, e = batch_list[i]
+            acts = act_list[i]
+            L_i = e - s
+            if L_i <= 2:
+                continue
+            out_i = sim_masked[i, s:e]
+            for k_rel in range(L_i - 1):
+                m = torch.zeros_like(out_i)
+                for idx in range(L_i):
+                    if idx == k_rel:
+                        continue
+                    if acts[k_rel] - math.log10(3) <= acts[idx]:
+                        m[idx] = minus_inf
+                lprobs_rank = F.log_softmax(m + out_i, dim=-1)
+                loss_rank_list.append(-lprobs_rank[k_rel] / (math.log(k_rel + 2) * math.sqrt(L_i)))
+        loss_rank = torch.stack(loss_rank_list).sum() if loss_rank_list else torch.tensor(0.0, device=logits.device)
+
+        total = loss_pocket + loss_mol + loss_rank
+        return {
+            "loss": total,
+            "loss_pocket": loss_pocket,
+            "loss_mol": loss_mol,
+            "loss_rank": loss_rank,
+            "sim_masked": sim_masked,
+        }
+</old>
+<new>
+
+        total = loss_pocket + loss_mol + loss_rank
+        return {"loss": total, "loss_pocket": loss_pocket, "loss_mol": loss_mol,
+                "loss_rank": loss_rank, "sim_masked": sim_masked}
+</new>
+</edit>
+<obs>
+Successfully replaced text in HypSeek/unimol/custom_scoring.py.
+</obs>
+<note>
+[[FILL_NOTE?: optional one-line thought for this edit, or delete this block]]
+</note>
+<edit path="HypSeek/unimol/custom_scoring.py">
+<old>
+                     pocket_lig_smiles=None, lig_smiles=None):
+        logit_scale = self.logit_scale.exp().detach()
+
+        # HCC for pocket-molecule pathway
+        loss_dict_poc = self._compute_hcc_pair(
+            poc_emb, mol_emb, batch_list, act_list,
+            uniprot_poc, uniprot_mol, pocket_lig_smiles, lig_smiles,
+            logit_scale,
+        )
+        # HCC for protein-molecule pathway
+        loss_dict_prot = self._compute_hcc_pair(
+            prot_emb, mol_emb, batch_list, act_list,
+            uniprot_poc, uniprot_mol, pocket_lig_smiles, lig_smiles,
+            logit_scale,
+        )
+        loss = loss_dict_poc["loss"] + loss_dict_prot["loss"]
+
+        return loss, {
+            "loss": loss.item(),
+            "loss_poc": loss_dict_poc["loss"].item(),
+            "loss_prot": loss_dict_prot["loss"].item(),
+            "sim_masked": loss_dict_poc["sim_masked"],
+</old>
+<new>
+                     pocket_lig_smiles=None, lig_smiles=None):
+        kappa = self.curv.exp().detach()
+        logit_scale = self.logit_scale.exp().detach()
+        B = poc_emb.size(0)
+
+        # === Cone Hierarchy Loss ===
+        poc_space = poc_emb[:, 1:]
+        lig_space = mol_emb[:, 1:]
+        poc_idx = []
+        for i, (s, e) in enumerate(batch_list):
+            poc_idx += [i] * (e - s)
+        poc_idx = torch.tensor(poc_idx, device=poc_emb.device)
+
+        poc_sel = poc_space[poc_idx]
+        dist_mat = L.pairwise_dist(poc_sel, lig_space, curv=kappa)
+        dist = dist_mat.diagonal()
+        device = dist.device
+        phi = L.oxy_angle(lig_space, poc_space[poc_idx], curv=kappa)
+        omega = L.half_aperture(poc_space[poc_idx], curv=kappa)
+        act_flat = torch.tensor(
+            [x for sub in act_list for x in sub],
+            device=poc_emb.device, dtype=torch.float32,
+        )
+        bounds = self.bounds.to(poc_emb.device)
+        bucket = torch.bucketize(act_flat, bounds)
+        r_k = self.chl_r0 + bucket.float() * self.chl_dr
+        eta_k = self.chl_eta0 - bucket.float() * self.chl_deta
+        Nl = dist.size(0)
+        L_rad = F.relu(dist - r_k).sum() / math.sqrt(Nl)
+        L_ang = F.relu(phi - eta_k * omega).sum() / math.sqrt(Nl)
+        loss_cone = self.lambda_rad * L_rad + self.lambda_ang * L_ang
+
+        # Angular regularization
+        m_margin = 0.15
+        R_ang = F.relu(phi - eta_k * omega + m_margin).sum() / math.sqrt(Nl)
+
+        # Heterogeneous ranking regularization
+        R_het = torch.zeros(1, device=device)
+        cnt_het = 0
+        beta = 80.5
+        offset = 0
+        for i_poc, (s, e) in enumerate(batch_list):
+            L_i = e - s
+            if L_i < 1:
+                continue
+            d_i = dist[offset : offset + L_i].detach()
+            rank = (d_i.unsqueeze(0) < d_i.unsqueeze(1)).float().sum(1) + 1
+            w = torch.exp(-beta * (rank - 1) / L_i)
+            logits_row = torch.matmul(poc_space[i_poc : i_poc + 1], lig_space.T) * logit_scale
+            row_probs = F.softmax(logits_row[0, s:e], dim=-1)
+            pos_mask = act_flat[offset : offset + L_i] < 5
+            if pos_mask.any():
+                R_het += -(w[pos_mask] * row_probs[pos_mask].log()).sum() / (w[pos_mask].sum() + 1e-9)
+                cnt_het += 1
+            offset += L_i
+        R_het = R_het / max(cnt_het, 1)
+        loss_reg = self.lambda_het * R_het + self.lambda_angu * R_ang
+
+        # === HCC for both pathways ===
+        loss_dict_poc = self._compute_hcc_pair(
+            poc_emb, mol_emb, batch_list, act_list,
+            uniprot_poc, uniprot_mol, pocket_lig_smiles, lig_smiles, logit_scale,
+        )
+        loss_dict_prot = self._compute_hcc_pair(
+            prot_emb, mol_emb, batch_list, act_list,
+            uniprot_poc, uniprot_mol, pocket_lig_smiles, lig_smiles, logit_scale,
+        )
+
+        loss_hcc = loss_dict_poc["loss"] + loss_dict_prot["loss"]
+        total_loss = loss_hcc + self.gamma_chl * loss_cone + loss_reg
+
+        return total_loss, {
+            "loss": total_loss.item(),
+            "loss_hcc": loss_hcc.item(),
+            "loss_cone": loss_cone.item(),
+            "loss_reg": loss_reg.item(),
+            "sim_masked": loss_dict_poc["sim_masked"],
+</new>
+</edit>
+<obs>
+Successfully replaced text in HypSeek/unimol/custom_scoring.py.
+</obs>
+<note>
+[[FILL_NOTE?: optional one-line thought for this edit, or delete this block]]
+</note>
+<edit path="HypSeek/unimol/custom_scoring.py">
+<old>
+    def score(self, mol_reps, pocket_reps, prot_reps=None):
+        poc_scores = (pocket_reps @ mol_reps.T).max(axis=0)
+</old>
+<new>
+    def score(self, mol_reps, pocket_reps, prot_reps=None):
+        """Score using full 128-d hyperbolic embedding (paper convention)."""
+        poc_scores = (pocket_reps @ mol_reps.T).max(axis=0)
+</new>
+</edit>
+<obs>
+Successfully replaced text in HypSeek/unimol/custom_scoring.py.
+</obs>
+<run/>
+<obs>
+Measured results — `baseline:hcc_hyp_cone` (`is_final,true`), seed 42 (the only configured seed; per-seed = mean).
+
+## DUD-E
+| metric | AUROC | BEDROC | EF@0.5% | EF@1% | EF@5% | EF@0.05% | EF@0.1% | EF@0.2% |
+|---|---|---|---|---|---|---|---|---|
+| 42 / mean | 0.924947 | 0.736885 | 52.3662 | 47.3212 | 15.5217 | 52.3662 | 47.3212 | 33.7170 |
+
+## DEKOIS 2.0
+| metric | AUROC | BEDROC | EF@0.5% | EF@1% | EF@5% | EF@0.05% | EF@0.1% | EF@0.2% |
+|---|---|---|---|---|---|---|---|---|
+| 42 / mean | 0.914162 | 0.715044 | 24.2816 | 23.5852 | 14.0513 | 24.2816 | 23.5852 | 21.9833 |
+
+## LIT-PCBA
+| metric | AUROC | BEDROC | EF@0.5% | EF@1% | EF@5% | EF@0.05% | EF@0.1% | EF@0.2% |
+|---|---|---|---|---|---|---|---|---|
+| 42 / mean | 0.634394 | 0.070060 | 6.4515 | 5.3316 | 3.3802 | 6.4515 | 5.3316 | 4.7241 |
+</obs>
+

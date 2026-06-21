@@ -1,0 +1,1853 @@
+<meta task="llm-qat-algorithm" domain="Language models" file="llm-qat-runtime/custom_qat.py" model_format="qwen3" edit_tool="str_replace"/>
+
+<system>
+You are a research engineer improving a model on a fixed ML task. You work by editing the model code and running experiments. Think carefully before each change. You have these tools:
+- str_replace(path, old_str, new_str): replace the unique occurrence of old_str with new_str.
+- create(path, file_text): create a new file.
+- run_experiment(): train + evaluate the current code under the fixed budget; returns metrics.
+Make one tool call at a time. After editing, call run_experiment() to measure your method.
+</system>
+
+<user>
+## Research question
+
+Ship Pythia-1.4B with its transformer-block linear weights stored at 4, 3, or even 2 bits, and keep
+the held-out perplexity as close to full precision as possible. The act that does the damage is a
+single irreversible step at the end: snap every real weight onto a signed `B`-bit integer grid
+(per-row, per-group of `group_size=128` columns, symmetric). At 8 bits that grid is fine and nobody
+worries; at INT2 there are only four codes per group and the in-range reconstruction points are a
+whole largest-weight apart, so a weight in the middle of a group can move by half the group's max.
+The single thing being designed is the **training-side QAT algorithm**: how the fake-quant forward
+behaves, how the gradient reaches the weight (and any extra learnable parameters) through the
+non-differentiable round, and how the optimizer schedule is set — so that *after* the real
+quantize-dequantize roundtrip the perplexity stays low, uniformly across INT4, INT3, and INT2. The
+backbone, data, optimizer family, and the real-QDQ-then-eval harness are fixed.
+
+## Prior art before the first rung (the lineage the ladder reacts to)
+
+The first rung is the do-nothing control — pure round-to-nearest PTQ — and it reacts to the long line
+of integer-inference work that established the format the whole task is built on.
+
+- **Fixed-point CPU inference (Vanhoucke et al., 2011).** Take a trained fp32 net and run its linear
+  layers in 8-bit integers with a per-tensor max-magnitude scale, no retraining. Established the
+  affine code-to-real map and the max-abs scale. Gap: tuned for 8 bits, where the grid is fine; says
+  nothing about what happens when only a handful of codes remain.
+- **Integer-arithmetic-only inference (Jacob et al., CVPR 2018).** Formalized the affine scheme
+  `r = S(q − Z)` with the zero-point that makes real 0 exactly representable (so zero-padding does not
+  inject a bias), and showed the integer matmul payoff. Round-to-nearest, weights symmetric (`Z = 0`).
+  Gap: still an 8-bit story; one-shot rounding has an error floor `S/2` that is harmless at 8 bits and
+  fatal at 2.
+- **Stochastic rounding for low-precision *training* (Gupta et al., 2015).** Round up with probability
+  proportional to the residual, so the expectation is exact; needed because in training the *same*
+  weight is rounded thousands of times and a per-step bias would accumulate. Gap: a one-shot PTQ
+  conversion rounds each weight once, so stochastic rounding only buys variance for nothing.
+- **The straight-through estimator (Bengio et al., 2013).** Treat the round/clamp as the identity on
+  the backward pass, so a gradient can reach the weight that fed the quantizer. Gap on its own: it is
+  only a *gradient* trick — it says nothing about *where* to place the grid; the step size is still a
+  fixed statistic.
+
+The format these converged to — per-row, per-group symmetric signed round-to-nearest, max-abs scale,
+LM head and embeddings left full precision — is fixed for this task. The ladder is about what training
+does on top of that fixed format.
+
+## The fixed substrate
+
+A QAT finetune-then-evaluate loop is frozen and must not be touched. It loads Pythia-1.4B
+(GPTNeoX, 24 layers, hidden 2048) in fp32 with gradient checkpointing; samples random 1024-token
+crops from WikiText-2 raw train; runs an AdamW finetune (`betas=(0.9,0.95)`, cosine schedule decaying
+to 10% with linear warmup, gradient accumulation, global grad-norm clip); after training, walks every
+wrapped linear and applies the **real, no-grad** per-group symmetric round-to-nearest to materialize
+the genuine INT-`B` weights; then measures WikiText-2 raw test perplexity (sliding non-overlapping
+1024-token blocks, exponentiated mean cross-entropy). The loop also sums, into the training loss, any
+`aux_loss(step, total_steps)` a wrapped module exposes — the hook a method uses to add its own
+objective. The optimizer is built over `model.parameters()` that `require_grad`, so any extra
+learnable parameter a method registers (a per-group scale, a clipping factor) is trained automatically.
+
+A control baseline `finetune_then_ptq` runs the *same* schedule with a pure-fp forward (no fake quant)
+and then the same RTN as `no_qat`; a QAT method has to beat it, or its gains over `no_qat` are just the
+in-domain finetune talking.
+
+## The editable interface
+
+Exactly one region is editable — lines 33–176 of `llm-qat-runtime/custom_qat.py`. Every method on the
+ladder is a fill of this same contract: `CONFIG_OVERRIDES` (the per-method training schedule);
+`fake_quantize_weight(weight, num_bits, group_size)` (the **differentiable** forward fake-quant —
+gradient must flow back to the weight); `fake_quantize_activation(x, num_bits)` (optional, default
+identity for weight-only QAT); `quantize_dequantize_weight(weight, num_bits, group_size)` (the
+**real, no-grad** per-group QDQ used after training to materialize the integer model);
+`class QATWrapper(nn.Module)` (wraps an `nn.Linear`, applies fake-quant in `forward`, may hold extra
+learnable parameters and may expose `aux_loss`); and `prepare_qat_model(model, num_bits, group_size)`
+(recursively replace every `nn.Linear` — and HF `Conv1D` — with a `QATWrapper`, then restore the LM
+head, `embed_out` for Pythia, to a plain Linear so the output projection stays full precision).
+
+The starting point is the scaffold default: **straight-through fake-quant with a fixed max-abs scale**
+— the same per-group symmetric RTN in both the differentiable forward and the real eval QDQ, with the
+weight as the only trainable parameter.
+
+```python
+# EDITABLE region of custom_qat.py (lines 33-176) — default fill
+CONFIG_OVERRIDES = {
+    "learning_rate": 2e-5,
+    "num_steps": 500,
+    "batch_size": 2,
+    "gradient_accumulation_steps": 4,
+    "max_grad_norm": 1.0,
+    "warmup_steps": 50,
+    "weight_decay": 0.0,
+}
+
+
+def _qrange(num_bits):
+    qmax = (1 << (num_bits - 1)) - 1        # +2^{B-1} - 1
+    qmin = -(1 << (num_bits - 1))           # -2^{B-1}
+    return qmin, qmax
+
+
+def fake_quantize_weight(weight, num_bits, group_size):
+    # differentiable per-group symmetric RTN; backward = straight-through
+    qmin, qmax = _qrange(num_bits)
+    out_features, in_features = weight.shape
+    assert in_features % group_size == 0
+    w = weight.float().reshape(out_features, -1, group_size)
+    w_max = w.abs().amax(dim=-1, keepdim=True).clamp(min=1e-12)   # per-group max|w|
+    scale = w_max / qmax                                          # fixed max-abs scale
+    w_q = torch.clamp(torch.round(w / scale), qmin, qmax) * scale
+    w_dq = w + (w_q - w).detach()                                 # STE: grad passes to w
+    return w_dq.reshape(out_features, in_features).to(weight.dtype)
+
+
+def fake_quantize_activation(x, num_bits):
+    return x                                                      # weight-only QAT
+
+
+def quantize_dequantize_weight(weight, num_bits, group_size):
+    # real, no-grad per-group symmetric RTN, applied once after training
+    qmin, qmax = _qrange(num_bits)
+    out_features, in_features = weight.shape
+    assert in_features % group_size == 0
+    with torch.no_grad():
+        w = weight.float().reshape(out_features, -1, group_size)
+        w_max = w.abs().amax(dim=-1, keepdim=True).clamp(min=1e-12)
+        scale = w_max / qmax
+        w_q = torch.clamp(torch.round(w / scale), qmin, qmax) * scale
+        return w_q.reshape(out_features, in_features).to(weight.dtype)
+
+
+class QATWrapper(nn.Module):
+    def __init__(self, linear, num_bits, group_size):
+        super().__init__()
+        self.linear = linear
+        self.num_bits = num_bits
+        self.group_size = group_size
+
+    @property
+    def weight(self):
+        return self.linear.weight
+
+    @property
+    def bias(self):
+        return self.linear.bias
+
+    def forward(self, x):
+        x = fake_quantize_activation(x, self.num_bits)
+        w_q = fake_quantize_weight(self.linear.weight, self.num_bits, self.group_size)
+        return F.linear(x, w_q, self.linear.bias)
+
+
+def prepare_qat_model(model, num_bits, group_size):
+    from transformers.pytorch_utils import Conv1D
+
+    def _replace(parent):
+        for name, child in list(parent.named_children()):
+            if isinstance(child, nn.Linear):
+                setattr(parent, name, QATWrapper(child, num_bits=num_bits, group_size=group_size))
+            elif isinstance(child, Conv1D):
+                in_f, out_f = child.weight.shape
+                lin = nn.Linear(in_f, out_f, bias=child.bias is not None,
+                                device=child.weight.device, dtype=child.weight.dtype)
+                with torch.no_grad():
+                    lin.weight.copy_(child.weight.t().contiguous())
+                    if child.bias is not None:
+                        lin.bias.copy_(child.bias)
+                setattr(parent, name, QATWrapper(lin, num_bits=num_bits, group_size=group_size))
+            else:
+                _replace(child)
+
+    _replace(model)
+    for head_attr in ("lm_head", "embed_out"):
+        head = getattr(model, head_attr, None)
+        if isinstance(head, QATWrapper):
+            setattr(model, head_attr, head.linear)
+    return model
+```
+
+## Evaluation settings
+
+The algorithm is run at three bit-widths, group size 128, on Pythia-1.4B, seed 42:
+**`qat-1b-int4`** (INT4 — 16 codes, easy), **`qat-1b-int3`** (INT3 — 8 codes, medium), and
+**`qat-1b-int2`** (INT2 — 4 codes, extreme). Primary metric `wikitext2_ppl`: WikiText-2 test
+perplexity after the real QDQ roundtrip, **lower is better**. Secondary `degradation`:
+`wikitext2_ppl − fp16_ppl`, with `fp16_ppl = 13.2033` the full-precision baseline measured before any
+quantization. A method must work *uniformly* across all three bit-widths, and must beat the
+`finetune_then_ptq` control to count as real QAT signal rather than in-domain finetune.
+
+The editable model code is in `llm-qat-runtime/custom_qat.py`:
+```python
+# Per-method training hyperparameters.  The training loop reads this dict.
+# Override any of these in your method to retune.
+CONFIG_OVERRIDES = {
+    "learning_rate": 2e-5,
+    "num_steps": 500,
+    "batch_size": 2,
+    "gradient_accumulation_steps": 4,
+    "max_grad_norm": 1.0,
+    "warmup_steps": 50,
+    "weight_decay": 0.0,
+}
+
+
+def _qrange(num_bits):
+    """Symmetric integer range for `num_bits`-bit signed quantization."""
+    qmax = (1 << (num_bits - 1)) - 1
+    qmin = -(1 << (num_bits - 1))
+    return qmin, qmax
+
+
+def fake_quantize_weight(weight, num_bits, group_size):
+    """Differentiable fake-quant of a 2D weight tensor.
+
+    Forward: simulates `num_bits` symmetric per-group quantization.
+    Backward: straight-through estimator (gradient passes through unchanged).
+
+    Args:
+        weight: float tensor of shape (out_features, in_features).
+        num_bits: bit width.
+        group_size: column group size (>0); in_features must be divisible.
+
+    Returns:
+        Tensor of same shape and dtype as `weight`, quantize-dequantized.
+    """
+    qmin, qmax = _qrange(num_bits)
+    out_features, in_features = weight.shape
+    assert in_features % group_size == 0, (
+        f"in_features {in_features} not divisible by group_size {group_size}"
+    )
+    w = weight.float().reshape(out_features, -1, group_size)
+    w_max = w.abs().amax(dim=-1, keepdim=True).clamp(min=1e-12)
+    scale = w_max / qmax
+    w_q = torch.clamp(torch.round(w / scale), qmin, qmax) * scale
+    # Straight-through estimator: forward = quantized, backward = identity.
+    w_dq = w + (w_q - w).detach()
+    return w_dq.reshape(out_features, in_features).to(weight.dtype)
+
+
+def fake_quantize_activation(x, num_bits):
+    """Default identity (weight-only QAT).  Override to add activation QAT."""
+    return x
+
+
+def quantize_dequantize_weight(weight, num_bits, group_size):
+    """REAL (non-differentiable) symmetric per-group QDQ for post-training.
+
+    Used after QAT finetune to materialize the quantized weights for eval.
+    Returns the same shape/dtype as `weight`.
+    """
+    qmin, qmax = _qrange(num_bits)
+    out_features, in_features = weight.shape
+    assert in_features % group_size == 0
+    with torch.no_grad():
+        w = weight.float().reshape(out_features, -1, group_size)
+        w_max = w.abs().amax(dim=-1, keepdim=True).clamp(min=1e-12)
+        scale = w_max / qmax
+        w_q = torch.clamp(torch.round(w / scale), qmin, qmax) * scale
+        return w_q.reshape(out_features, in_features).to(weight.dtype)
+
+
+class QATWrapper(nn.Module):
+    """Wraps an nn.Linear and applies fake-quant to its weight in forward.
+
+    The wrapped module exposes the original Linear's weight/bias as
+    submodule parameters so the QAT optimizer can update them; the bias
+    is left in full precision.
+
+    Attributes
+    ----------
+    linear : nn.Linear
+        Underlying linear layer.  `linear.weight` is the trainable param.
+    num_bits : int
+    group_size : int
+    """
+
+    def __init__(self, linear, num_bits, group_size):
+        super().__init__()
+        self.linear = linear
+        self.num_bits = num_bits
+        self.group_size = group_size
+
+    @property
+    def weight(self):
+        return self.linear.weight
+
+    @property
+    def bias(self):
+        return self.linear.bias
+
+    def forward(self, x):
+        x = fake_quantize_activation(x, self.num_bits)
+        w_q = fake_quantize_weight(self.linear.weight, self.num_bits, self.group_size)
+        return F.linear(x, w_q, self.linear.bias)
+
+
+def prepare_qat_model(model, num_bits, group_size):
+    """Replace every nn.Linear in `model` with a QATWrapper in-place.
+
+    The LM head (``model.lm_head`` for GPT-style, ``model.embed_out`` for
+    Pythia / GPTNeoX) is restored to a plain Linear after the recursive
+    replace so the output projection stays in full precision.  HF GPT-2
+    Conv1D layers are converted to nn.Linear before wrapping.
+    """
+    from transformers.pytorch_utils import Conv1D  # type: ignore
+
+    def _replace(parent):
+        for name, child in list(parent.named_children()):
+            if isinstance(child, nn.Linear):
+                wrapper = QATWrapper(child, num_bits=num_bits, group_size=group_size)
+                setattr(parent, name, wrapper)
+            elif isinstance(child, Conv1D):
+                # Convert Conv1D -> Linear (Conv1D weight is (in, out), Linear is (out, in)).
+                in_f, out_f = child.weight.shape
+                lin = nn.Linear(in_f, out_f, bias=child.bias is not None,
+                                device=child.weight.device, dtype=child.weight.dtype)
+                with torch.no_grad():
+                    lin.weight.copy_(child.weight.t().contiguous())
+                    if child.bias is not None:
+                        lin.bias.copy_(child.bias)
+                wrapper = QATWrapper(lin, num_bits=num_bits, group_size=group_size)
+                setattr(parent, name, wrapper)
+            else:
+                _replace(child)
+
+    _replace(model)
+    # Restore the LM head to full precision (covers GPT-2 `lm_head` and
+    # Pythia / GPTNeoX `embed_out`).
+    for head_attr in ("lm_head", "embed_out"):
+        head = getattr(model, head_attr, None)
+        if isinstance(head, QATWrapper):
+            setattr(model, head_attr, head.linear)
+
+    return model
+```
+Improve it. Derive your method, edit the code, then run_experiment().
+</user>
+
+### step 1 — no_qat (RTN PTQ, no finetune)   [slug:no_qat]
+
+<think>
+[[POLISH_REASONING: adapt to first-person agentic voice, end by deciding to implement]]
+The training-side algorithm is the whole point, but it bolts onto a fixed format — per-group symmetric
+round-to-nearest — and the floor I have to start from is that format with *nothing* trained on top of
+it: pure post-training quantization, the irreversible rounding applied once to the pretrained weights
+and nothing else. Before I can reason about what training buys, I need to know exactly what the
+rounding does on its own, because that is the error every later rung is trying to claw back. So the
+first rung is deliberately the do-nothing control: zero training steps, materialize the integer model,
+measure. Its value is precisely that it isolates the damage of the format from the contribution of any
+algorithm.
+
+Let me nail the irreversible step, since it is the substrate the whole ladder stands on. An integer
+code `q` is, by itself, just an index; it only becomes a number because I attach a rule `q ↦ r`. The
+first thing forced on me is the *shape* of that rule. A layer is a matrix multiply — sums of products
+of weights and activations — and I want to do that accumulation on the codes and only convert back at
+the end, so the products and sums of the codes must track the products and sums of the reals. The only
+`g` for which "multiply the reals" reduces to "do integer work on the codes plus a cheap fix-up" is an
+*affine* one: `r = A·q + B`. Anything nonlinear and `g(q1)·g(q2)` stops being expressible through
+`q1·q2` plus corrections, and the whole reason for integers evaporates. So the map is affine — forced,
+not chosen.
+
+Now look at `B`. Convolutions and the attention/MLP plumbing pad and zero things; in the quantized
+world that padding is some code, and whatever real value the code denotes is what actually gets added.
+If real 0 is *not* exactly representable, every padded position contributes the same small nonzero
+value — the same error, every time, which is a *bias*, the one kind of error that compounds across depth
+rather than averaging out. So I need real 0 to land exactly on a code. Reparameterize the same affine
+map as `r = S·(q − Z)`: set `r = 0` at `q = Z` and `S` cancels, leaving `Z = −Z`, i.e. the constraint
+is satisfied by construction for any `S`. So the correspondence is `r = S(q − Z)`: a positive real step
+size `S` and an integer zero-point `Z` (the code that maps to real 0). But a trained weight tensor is
+roughly zero-centered and symmetric, so the natural grid is centered at zero and `Z = 0` falls out,
+collapsing the map to `r = S·q`. That is not just tidy: in the integer matmul the general scheme
+expands `(q1 − Z1)(q2 − Z2)` into the core `q1·q2` plus cross terms in the zero-points that I would have
+to subtract off; with `Z = 0` on the weights, all the weight zero-point cross terms vanish, leaving the
+leanest kernel. This is the entire reason integer quantization earns its keep — the `O(N³)` accumulation
+runs on small integers and only a per-output scalar multiplier `S1·S2/S3` survives in floating point —
+and it is why the format is what it is.
+
+That leaves a single knob, the scale `S`. With no appetite for tuning the range against data — this is
+the *no-calibration* control — the honest choice is the max-magnitude one: in the signed code range
+`qmin = −2^{B−1}`, `qmax = 2^{B−1} − 1`, tie the scale to the positive endpoint, `S = max|w| / qmax`,
+the smallest step that covers the weights without clipping. I should name the trade-off this resolves,
+because it is the crux of the whole ladder: a *smaller* `S` would clip the range tighter than `max|w|`,
+shrinking the rounding error on the bulk at the cost of clipping the few weights beyond the tighter
+range to the rail — trading rounding error for clipping error, a balance that requires looking at the
+data and optimizing. The max-abs scale is exactly the choice that needs *no* data: the smallest `S` that
+covers both rails with no clipping. The extra negative code is simply outside the observed no-clip range.
+And round-to-nearest, because for a one-shot conversion it minimizes each element's error,
+`|error| ≤ S/2`, with residual variance about `S²/12` under the uniform-within-a-cell model. I
+deliberately do *not* reach for stochastic rounding here even though it is pointwise unbiased: its
+unbiasedness only earns its keep when the *same* value is rounded over and over, so a tiny per-step bias
+accumulates linearly while the extra variance averages down. PTQ rounds each weight exactly once. There
+is no accumulation to fight, so stochastic rounding would buy variance for nothing.
+
+The one real refinement is to make the scale per-group rather than per-tensor. A single tensor-wide `S`
+is wrecked by the two known one-shot failure modes: weight ranges that differ by over a hundredfold
+across output channels — so a narrow channel gets a grid far too coarse for its own magnitude — and
+lone outlier weights that inflate `max|w|` for the whole tensor and coarsen everyone. Partitioning each
+row into contiguous blocks of `group_size = 128` columns, each with its own `max|w|` and its own `S`,
+localizes both: an outlier only coarsens the 128 weights in its own group, and a narrow channel's group
+gets a scale matched to its own magnitude. It costs one extra scale per 128 weights — negligible — and
+directly attacks both diseases. So the irreversible step is fixed: per-group symmetric
+round-to-nearest, `S_g = max|w_g| / qmax`, with a `1e-12` floor on `max|w_g|` so an all-zero group does
+not divide by zero.
+
+Now the wall I will be staring at for the rest of the ladder. This conversion is *blind*: it looks only
+at the weights, never at the data or the loss, and once it rounds, the error is frozen. The floor is
+`S/2`, and at INT2 `qmax = 1`, so `S = max|w_g|` and that floor is `max|w_g| / 2` — half the largest
+weight in the group. The signed container has four codes `{−2, −1, 0, 1}`, but with the no-clip scale
+and weights inside `[−max|w_g|, max|w_g|]`, the in-range reconstruction points are spaced by
+`max|w_g|`; the extra negative code does not make the cells finer. Grouping localizes the outlier and
+range-spread damage but does nothing to the underlying coarseness — within a group of 128 weights
+snapped onto that spacing, most weights are still thrown onto a brutally coarse grid. There is no
+mechanism in this scheme to *repair* the error: I round once and freeze. That is exactly why every
+later rung exists — to let the weights (and a learnable grid) move *before* the rounding, which needs
+the loss, gradients, and optimization that this control forbids.
+
+So this rung's edit is the one that makes the harness do nothing. The scaffold default fakes-quant in
+the forward and would, if I left it, run a 500-step finetune through the straight-through estimator —
+but that is already the next rung's idea (STE QAT), not this one. The point of the PTQ control is *no
+training at all*, so I set `num_steps = 0` and `learning_rate = 0`, which turns the AdamW loop into a
+no-op and leaves the pretrained fp32 weights untouched. Then the fixed post-step does the only real
+work: it calls the no-grad `quantize_dequantize_weight` once on every wrapped linear, snapping the
+fp32 weights to their per-group integer grid, and evaluates. Because training is off, the wrapper's
+forward does not need to fake-quant inside any loop — by eval time the weight has already been replaced
+by its dequantized version, so the wrapper just calls a plain linear on the already-quantized weight.
+This is the one place the wrapper diverges from the scaffold default: the default's `forward` applies
+`fake_quantize_weight` every call (it expects to be trained through), but the PTQ control's `forward`
+is the bare `F.linear` on `self.linear.weight`. The differentiable `fake_quantize_weight` is still
+present and correct — it just is never exercised, because zero gradients are ever taken. And I keep the
+deliberate exclusions: activations stay full precision (this is weight-only), and the LM head
+(`embed_out` for this GPTNeoX backbone) is restored to a plain Linear so the accuracy-critical output
+projection escapes quantization. The full scaffold module is in the answer.
+
+What must this floor do, and why run it? At INT4 the grid is fine enough — 16 codes, in-range points
+spaced by `max|w_g|/7` — that even blind RTN should leave perplexity only modestly above full
+precision; this is the regime where the older 8-bit-style inference work lived, and the damage is real
+but survivable. At INT3 — 8 codes, spacing `max|w_g|/3` — the floor climbs sharply and I expect a clear
+degradation, perplexity well above the `fp16_ppl = 13.2033` baseline. At INT2 — 4 codes, spacing
+`max|w_g|`, floor `max|w_g|/2` — I expect the model to be effectively destroyed: every weight smashed
+onto a four-level grid is a perturbation so large that the composed function bears little resemblance
+to the trained one, and perplexity should blow up by orders of magnitude rather than points. That
+collapse is the entire motivation for the ladder. The diagnosis is already pointed: this is not a
+learning problem and not a tuning problem — it is a *no-repair* problem. The grid is fixed and the
+rounding is irreversible, so the only leverage is to move the weights before I round, which means
+turning training back on. The very next rung does exactly that, with the cheapest possible mechanism
+for sending a gradient through the round: the straight-through estimator the scaffold default already
+carries.
+</think>
+<say>
+[[FILL_SAY: 1-2 sentences naming the method and what this first edit does]]
+</say>
+<edit path="llm-qat-runtime/custom_qat.py">
+<old>
+# Per-method training hyperparameters.  The training loop reads this dict.
+# Override any of these in your method to retune.
+CONFIG_OVERRIDES = {
+    "learning_rate": 2e-5,
+    "num_steps": 500,
+    "batch_size": 2,
+    "gradient_accumulation_steps": 4,
+    "max_grad_norm": 1.0,
+    "warmup_steps": 50,
+    "weight_decay": 0.0,
+</old>
+<new>
+# EDITABLE region of custom_qat.py (lines 33-176) — step 1: no_qat (PTQ-only control)
+
+CONFIG_OVERRIDES = {
+    "learning_rate": 0.0,
+    "num_steps": 0,
+    "batch_size": 2,
+    "gradient_accumulation_steps": 1,
+    "max_grad_norm": 1.0,
+    "warmup_steps": 0,
+    "weight_decay": 0.0,
+</new>
+</edit>
+<obs>
+Successfully replaced text in llm-qat-runtime/custom_qat.py.
+</obs>
+<note>
+[[FILL_NOTE?: optional one-line thought for this edit, or delete this block]]
+</note>
+<edit path="llm-qat-runtime/custom_qat.py">
+<old>
+def _qrange(num_bits):
+    """Symmetric integer range for `num_bits`-bit signed quantization."""
+    qmax = (1 << (num_bits - 1)) - 1
+</old>
+<new>
+def _qrange(num_bits):
+    qmax = (1 << (num_bits - 1)) - 1
+</new>
+</edit>
+<obs>
+Successfully replaced text in llm-qat-runtime/custom_qat.py.
+</obs>
+<note>
+[[FILL_NOTE?: optional one-line thought for this edit, or delete this block]]
+</note>
+<edit path="llm-qat-runtime/custom_qat.py">
+<old>
+def fake_quantize_weight(weight, num_bits, group_size):
+    """Differentiable fake-quant of a 2D weight tensor.
+
+    Forward: simulates `num_bits` symmetric per-group quantization.
+    Backward: straight-through estimator (gradient passes through unchanged).
+
+    Args:
+        weight: float tensor of shape (out_features, in_features).
+        num_bits: bit width.
+        group_size: column group size (>0); in_features must be divisible.
+
+    Returns:
+        Tensor of same shape and dtype as `weight`, quantize-dequantized.
+    """
+    qmin, qmax = _qrange(num_bits)
+    out_features, in_features = weight.shape
+    assert in_features % group_size == 0, (
+        f"in_features {in_features} not divisible by group_size {group_size}"
+    )
+    w = weight.float().reshape(out_features, -1, group_size)
+</old>
+<new>
+def fake_quantize_weight(weight, num_bits, group_size):
+    qmin, qmax = _qrange(num_bits)
+    out_features, in_features = weight.shape
+    assert in_features % group_size == 0
+    w = weight.float().reshape(out_features, -1, group_size)
+</new>
+</edit>
+<obs>
+Successfully replaced text in llm-qat-runtime/custom_qat.py.
+</obs>
+<note>
+[[FILL_NOTE?: optional one-line thought for this edit, or delete this block]]
+</note>
+<edit path="llm-qat-runtime/custom_qat.py">
+<old>
+    w_q = torch.clamp(torch.round(w / scale), qmin, qmax) * scale
+    # Straight-through estimator: forward = quantized, backward = identity.
+    w_dq = w + (w_q - w).detach()
+</old>
+<new>
+    w_q = torch.clamp(torch.round(w / scale), qmin, qmax) * scale
+    w_dq = w + (w_q - w).detach()
+</new>
+</edit>
+<obs>
+Successfully replaced text in llm-qat-runtime/custom_qat.py.
+</obs>
+<note>
+[[FILL_NOTE?: optional one-line thought for this edit, or delete this block]]
+</note>
+<edit path="llm-qat-runtime/custom_qat.py">
+<old>
+def fake_quantize_activation(x, num_bits):
+    """Default identity (weight-only QAT).  Override to add activation QAT."""
+    return x
+</old>
+<new>
+def fake_quantize_activation(x, num_bits):
+    return x
+</new>
+</edit>
+<obs>
+Successfully replaced text in llm-qat-runtime/custom_qat.py.
+</obs>
+<note>
+[[FILL_NOTE?: optional one-line thought for this edit, or delete this block]]
+</note>
+<edit path="llm-qat-runtime/custom_qat.py">
+<old>
+def quantize_dequantize_weight(weight, num_bits, group_size):
+    """REAL (non-differentiable) symmetric per-group QDQ for post-training.
+
+    Used after QAT finetune to materialize the quantized weights for eval.
+    Returns the same shape/dtype as `weight`.
+    """
+    qmin, qmax = _qrange(num_bits)
+</old>
+<new>
+def quantize_dequantize_weight(weight, num_bits, group_size):
+    qmin, qmax = _qrange(num_bits)
+</new>
+</edit>
+<obs>
+Successfully replaced text in llm-qat-runtime/custom_qat.py.
+</obs>
+<note>
+[[FILL_NOTE?: optional one-line thought for this edit, or delete this block]]
+</note>
+<edit path="llm-qat-runtime/custom_qat.py">
+<old>
+class QATWrapper(nn.Module):
+    """Wraps an nn.Linear and applies fake-quant to its weight in forward.
+
+    The wrapped module exposes the original Linear's weight/bias as
+    submodule parameters so the QAT optimizer can update them; the bias
+    is left in full precision.
+
+    Attributes
+    ----------
+    linear : nn.Linear
+        Underlying linear layer.  `linear.weight` is the trainable param.
+    num_bits : int
+    group_size : int
+    """
+
+    def __init__(self, linear, num_bits, group_size):
+</old>
+<new>
+class QATWrapper(nn.Module):
+    def __init__(self, linear, num_bits, group_size):
+</new>
+</edit>
+<obs>
+Successfully replaced text in llm-qat-runtime/custom_qat.py.
+</obs>
+<note>
+[[FILL_NOTE?: optional one-line thought for this edit, or delete this block]]
+</note>
+<edit path="llm-qat-runtime/custom_qat.py">
+<old>
+    def forward(self, x):
+        x = fake_quantize_activation(x, self.num_bits)
+        w_q = fake_quantize_weight(self.linear.weight, self.num_bits, self.group_size)
+        return F.linear(x, w_q, self.linear.bias)
+
+
+def prepare_qat_model(model, num_bits, group_size):
+    """Replace every nn.Linear in `model` with a QATWrapper in-place.
+
+    The LM head (``model.lm_head`` for GPT-style, ``model.embed_out`` for
+    Pythia / GPTNeoX) is restored to a plain Linear after the recursive
+    replace so the output projection stays in full precision.  HF GPT-2
+    Conv1D layers are converted to nn.Linear before wrapping.
+    """
+    from transformers.pytorch_utils import Conv1D  # type: ignore
+</old>
+<new>
+    def forward(self, x):
+        # PTQ-only: by eval the real QDQ has already replaced linear.weight,
+        # so just run a plain linear on the already-quantized weight.
+        return F.linear(x, self.linear.weight, self.linear.bias)
+
+
+def prepare_qat_model(model, num_bits, group_size):
+    from transformers.pytorch_utils import Conv1D
+</new>
+</edit>
+<obs>
+Successfully replaced text in llm-qat-runtime/custom_qat.py.
+</obs>
+<note>
+[[FILL_NOTE?: optional one-line thought for this edit, or delete this block]]
+</note>
+<edit path="llm-qat-runtime/custom_qat.py">
+<old>
+            if isinstance(child, nn.Linear):
+                wrapper = QATWrapper(child, num_bits=num_bits, group_size=group_size)
+                setattr(parent, name, wrapper)
+            elif isinstance(child, Conv1D):
+                # Convert Conv1D -> Linear (Conv1D weight is (in, out), Linear is (out, in)).
+                in_f, out_f = child.weight.shape
+</old>
+<new>
+            if isinstance(child, nn.Linear):
+                setattr(parent, name, QATWrapper(child, num_bits=num_bits, group_size=group_size))
+            elif isinstance(child, Conv1D):
+                in_f, out_f = child.weight.shape
+</new>
+</edit>
+<obs>
+Successfully replaced text in llm-qat-runtime/custom_qat.py.
+</obs>
+<note>
+[[FILL_NOTE?: optional one-line thought for this edit, or delete this block]]
+</note>
+<edit path="llm-qat-runtime/custom_qat.py">
+<old>
+                        lin.bias.copy_(child.bias)
+                wrapper = QATWrapper(lin, num_bits=num_bits, group_size=group_size)
+                setattr(parent, name, wrapper)
+            else:
+</old>
+<new>
+                        lin.bias.copy_(child.bias)
+                setattr(parent, name, QATWrapper(lin, num_bits=num_bits, group_size=group_size))
+            else:
+</new>
+</edit>
+<obs>
+Successfully replaced text in llm-qat-runtime/custom_qat.py.
+</obs>
+<note>
+[[FILL_NOTE?: optional one-line thought for this edit, or delete this block]]
+</note>
+<edit path="llm-qat-runtime/custom_qat.py">
+<old>
+    _replace(model)
+    # Restore the LM head to full precision (covers GPT-2 `lm_head` and
+    # Pythia / GPTNeoX `embed_out`).
+    for head_attr in ("lm_head", "embed_out"):
+</old>
+<new>
+    _replace(model)
+    for head_attr in ("lm_head", "embed_out"):
+</new>
+</edit>
+<obs>
+Successfully replaced text in llm-qat-runtime/custom_qat.py.
+</obs>
+<note>
+[[FILL_NOTE?: optional one-line thought for this edit, or delete this block]]
+</note>
+<edit path="llm-qat-runtime/custom_qat.py">
+<old>
+            setattr(model, head_attr, head.linear)
+
+    return model
+</old>
+<new>
+            setattr(model, head_attr, head.linear)
+    return model
+</new>
+</edit>
+<obs>
+Successfully replaced text in llm-qat-runtime/custom_qat.py.
+</obs>
+<run/>
+<obs>
+Measured results — `baseline:no_qat` (`is_final,true`), seed {42}; `fp16_ppl = 13.2033`.
+
+## qat-1b-int4
+| seed | wikitext2_ppl | degradation |
+|---|---|---|
+| 42 | 15.0101 | 1.8068 |
+| **mean** | **15.0101** | **1.8068** |
+
+## qat-1b-int3
+| seed | wikitext2_ppl | degradation |
+|---|---|---|
+| 42 | 42.5400 | 29.3367 |
+| **mean** | **42.5400** | **29.3367** |
+
+## qat-1b-int2
+| seed | wikitext2_ppl | degradation |
+|---|---|---|
+| 42 | 104422.6562 | 104409.4530 |
+| **mean** | **104422.6562** | **104409.4530** |
+</obs>
+
+### step 2 — finetune_then_ptq (FP finetune + RTN, control)   [slug:finetune_then_ptq]
+
+<think>
+[[POLISH_REASONING: adapt to first-person agentic voice, end by deciding to implement]]
+The PTQ control told me, in numbers, exactly how the blind rounding scales with bit-width, and the
+shape is precisely the one I predicted from the `S/2` floor. At INT4, `no_qat` landed at 15.01 PPL,
+only 1.81 above the 13.2033 full-precision baseline — 16 codes, in-range spacing `max|w_g|/7`, the
+damage real but survivable, the regime the old 8-bit inference work lived in. At INT3 it jumped to
+42.54, a degradation of 29.34 — 8 codes, spacing `max|w_g|/3`, the floor climbing sharply just as the
+arithmetic said. And at INT2 it detonated: 104422.66 PPL, a degradation of 104409 — four codes, spacing
+`max|w_g|`, floor `max|w_g|/2`, every weight smashed onto a grid so coarse that the composed function
+bears no resemblance to the trained one. The model is effectively destroyed. So the diagnosis from the
+control is confirmed and sharp: this is a *no-repair* problem. The grid is fixed and the rounding is
+irreversible, and `no_qat` has no mechanism to compensate. The only leverage left is to move the
+weights *before* I round, and moving weights needs the loss, the data, and the optimizer that the
+control deliberately switched off.
+
+But before I reach for a QAT signal, I have to be honest about a confound that the harness was built to
+expose. The QAT methods are going to finetune on WikiText-2 train and be scored on WikiText-2 test —
+disjoint articles, but the same domain. So if a QAT method beats `no_qat`, I cannot immediately credit
+the *quantization-aware* part: a plain finetune on in-domain text lowers test cross-entropy all by
+itself, with no bits involved at all, simply because the model arrives knowing language broadly and a
+few hundred steps sharpen it for this particular corpus. I need to separate the in-domain finetune
+effect from the genuine QAT effect, and the clean way to do that is to run a finetune that has *no QAT
+signal whatsoever* and quantize it the same way `no_qat` did. That is this rung: full-precision
+finetune, then the identical RTN PTQ. It is a control, not a contender — its job is to set the bar that
+a real QAT method has to clear, so that later I can read any QAT method's improvement over `no_qat` and
+know how much of it was just the finetune talking.
+
+So what does a pre-rounding adjustment actually buy, and toward what do I adjust? The naive instinct is
+"make the quantized weights close to the original weights" — minimize `‖ŵ − w‖`. Stare at that and it is
+the wrong objective, and seeing why is the whole game. I do not ship the weights; I ship the *function*
+the network computes, and I am scored on its loss on text, not on how near its weights sit to some
+reference. Two weight sets far apart in MSE can compute nearly the same function, and a weight set
+close in MSE can have noticeably worse loss — weight-space distance and loss-space distance are simply
+different things. The pretrained weights were placed to minimize the *pretraining* loss in *full
+precision*; they have no reason to be the weights that, after being smashed onto a coarse grid,
+minimize the test perplexity I care about. So the thing to minimize before rounding is the task loss —
+next-token cross-entropy on the in-domain text — and the pretrained weights are not its minimizer in
+any sense relevant to me.
+
+That immediately tells me a plain finetune can buy two distinct things, and I keep them separate. The
+first is *domain*: even with no quantization at all, a short finetune on text from the eval
+distribution lowers cross-entropy on that distribution — ordinary adaptation, nothing to do with bits.
+This is exactly the confound I am trying to measure. The second is *robustness to rounding*: a finetune
+driven by the real loss tends to settle the weights into a flatter, lower region of the loss surface,
+and weights in a flat basin are, almost by definition, ones where moving each a little — which is
+exactly what rounding does — costs little loss. So a plain finetune does double duty: it pulls the loss
+down for the domain, and it tends to leave the weights somewhere the rounding hurts less. Both effects
+come from the same cheap thing — run ordinary SGD on the task loss, in full precision, before I round.
+And I let it run with the master weights kept in fp32 the entire time and round only at the very end,
+which is the right reading of the low-precision-training lineage: keep a high-precision master copy
+through all the updates so thousands of small gradient steps actually accumulate, and collapse to the
+grid exactly once at the finish.
+
+Now I have to be careful, because there is a tempting next move that would change the recipe and quietly
+turn this control into a QAT method. The accuracy-recovery line of work fine-tunes *with the
+quantization in the loop* — quantize first, then retrain the quantized representation against the loss,
+so the optimizer can see the grid and place weights to sit well on it. That is powerful, but it is no
+longer the plain train-in-floating-point-then-quantize recipe, and it would defeat the purpose of this
+rung. If I want the control cleanly, the forward pass during training must *not* simulate the
+quantization at all. The weight goes into the matmul exactly as the fp32 weight — no fake-quant, no
+rounding, no grid in sight. In the task's edit surface that means `fake_quantize_weight` is the
+identity: `return weight`, full stop. The finetune is plain full-precision training, and the rounding
+is bolted on, once, only after the loop is over. The very next rung — STE QAT — will do the opposite,
+flipping `fake_quantize_weight` back to the straight-through quantizer so the grid *is* in the forward;
+the gap between that rung and this one will be the genuine QAT contribution, with the in-domain finetune
+held constant because both use the identical schedule.
+
+Let me make sure I see the limitation, because a plain fp finetune is *not* secretly optimizing the
+rounded model. The finetune is blind to the grid by construction. It can drive the task loss down and
+it tends to flatten the basin, but it has no term in its objective that says "place this weight so that
+*after rounding with step S* the loss is still low." It cannot target the named failure modes either:
+the cross-channel range spread of over a hundredfold and the outlier weights survive a finetune,
+because nothing in next-token cross-entropy on fp32 weights directly penalizes a wide per-channel range
+or a stray large value — those only become costly *through* the rounding, which the finetune never
+sees. So when I finally apply the one-shot RTN, I still pay the `S/2` floor. The finetune lowered the
+loss I am rounding *from* and put me somewhere a bit more robust, but it did not minimize the
+post-rounding error.
+
+That lets me predict, against the `no_qat` numbers, exactly the failure signature I expect, and the
+prediction is the falsifiable point of this rung. At INT4 the floor is small to begin with, so the
+finetune's domain gain should dominate: I expect this control to *beat* `no_qat`'s 15.01 comfortably,
+and — because the in-domain finetune can pull test PPL below even the full-precision baseline measured
+without finetuning — it could land *under* 13.2033, a negative degradation. The 16-code grid is fine
+enough that the finetuned weights survive it. At INT3 the picture should split: the finetune lowers the
+loss I round from, so I expect a clear improvement over `no_qat`'s 42.54, but the `max|w_g|/3` floor is
+high enough that the rounded model is meaningfully worse than full precision — degradation well into the
+double digits, somewhere between INT4's near-zero and INT2's catastrophe. At INT2, here is the crux: the
+finetune is blind to the grid, the floor is `max|w_g|/2`, and no amount of full-precision loss
+minimization changes how brutally four codes destroy the weights. I expect INT2 to *stay collapsed* —
+better than `no_qat`'s 104422 only because the finetuned weights are a little more clustered, but still
+in the thousands-to-tens-of-thousands of PPL, nowhere near usable. If INT2 collapses for this control
+but a QAT method later holds INT2 near full precision, *that gap is the genuine QAT contribution*,
+proven, with the finetune effect subtracted out. That is the entire reason this rung exists.
+
+So the recipe is forced and almost embarrassingly simple. Run the ordinary finetune in fp32 with the
+fixed text-modeling schedule — the same `learning_rate=2e-5`, `num_steps=500`, `batch_size=2`,
+`gradient_accumulation_steps=4`, `max_grad_norm=1.0`, `warmup_steps=50`, `weight_decay=0.0` that every
+QAT rung will use, so the finetune is held constant across the comparison — with all master weights in
+fp32 throughout. Then, after the loop, the fixed harness walks every wrapped linear and applies the
+no-grad per-group symmetric RTN, materializing the genuine INT-`B` model, and evaluates. The wrapper's
+forward is a plain linear on `self.linear.weight`, which is correct both during training (pure fp, no
+fake-quant) and at eval (the harness has already overwritten the weight with the materialized INT-`B`
+value). This differs from the scaffold default in exactly one place — the default's
+`fake_quantize_weight` simulates the grid in the forward, whereas this control's is the identity — and
+that single change is the whole definition of "no QAT signal." The `quantize_dequantize_weight` and the
+`prepare_qat_model` wrap-and-restore-the-head logic are identical to `no_qat`'s. The full scaffold
+module is in the answer.
+
+The causal chain in one breath: the PTQ control's measured collapse — 15.01 / 42.54 / 104422 across
+INT4/INT3/INT2 — confirms a no-repair problem, so the leverage is moving weights before rounding; but
+because train and eval share a domain, I first have to measure the plain in-domain finetune effect, so
+I run a full-precision finetune (identity `fake_quantize_weight`) on the same schedule, then the
+identical RTN; this buys domain adaptation and a flatter basin but is blind to the grid by
+construction, so I expect it to beat `no_qat` clearly at INT4 (likely below 13.2033) and INT3, yet
+*still collapse* at INT2 — and that surviving INT2 gap is precisely the bar the real QAT methods on the
+next rungs must clear to prove their gains are QAT signal, not finetune.
+</think>
+<say>
+[[FILL_SAY: 1-2 sentences naming the method and what this first edit does]]
+</say>
+<edit path="llm-qat-runtime/custom_qat.py">
+<old>
+# EDITABLE region of custom_qat.py (lines 33-176) — step 1: no_qat (PTQ-only control)
+
+CONFIG_OVERRIDES = {
+    "learning_rate": 0.0,
+    "num_steps": 0,
+    "batch_size": 2,
+    "gradient_accumulation_steps": 1,
+    "max_grad_norm": 1.0,
+    "warmup_steps": 0,
+    "weight_decay": 0.0,
+</old>
+<new>
+# EDITABLE region of custom_qat.py (lines 33-176) — step 2: finetune_then_ptq (control)
+
+CONFIG_OVERRIDES = {
+    "learning_rate": 2e-5,
+    "num_steps": 500,
+    "batch_size": 2,
+    "gradient_accumulation_steps": 4,
+    "max_grad_norm": 1.0,
+    "warmup_steps": 50,
+    "weight_decay": 0.0,
+</new>
+</edit>
+<obs>
+Successfully replaced text in llm-qat-runtime/custom_qat.py.
+</obs>
+<note>
+[[FILL_NOTE?: optional one-line thought for this edit, or delete this block]]
+</note>
+<edit path="llm-qat-runtime/custom_qat.py">
+<old>
+def fake_quantize_weight(weight, num_bits, group_size):
+    qmin, qmax = _qrange(num_bits)
+    out_features, in_features = weight.shape
+    assert in_features % group_size == 0
+    w = weight.float().reshape(out_features, -1, group_size)
+    w_max = w.abs().amax(dim=-1, keepdim=True).clamp(min=1e-12)
+    scale = w_max / qmax
+    w_q = torch.clamp(torch.round(w / scale), qmin, qmax) * scale
+    w_dq = w + (w_q - w).detach()
+    return w_dq.reshape(out_features, in_features).to(weight.dtype)
+</old>
+<new>
+def fake_quantize_weight(weight, num_bits, group_size):
+    # Identity: no fake quant in forward -- pure FP finetune.
+    return weight
+</new>
+</edit>
+<obs>
+Successfully replaced text in llm-qat-runtime/custom_qat.py.
+</obs>
+<note>
+[[FILL_NOTE?: optional one-line thought for this edit, or delete this block]]
+</note>
+<edit path="llm-qat-runtime/custom_qat.py">
+<old>
+    def forward(self, x):
+        # PTQ-only: by eval the real QDQ has already replaced linear.weight,
+        # so just run a plain linear on the already-quantized weight.
+        return F.linear(x, self.linear.weight, self.linear.bias)
+</old>
+<new>
+    def forward(self, x):
+        # Pure FP forward during training (no fake quant).  At eval the real
+        # QDQ has already been applied to linear.weight, so this still
+        # produces the genuine INT-N output.
+        return F.linear(x, self.linear.weight, self.linear.bias)
+</new>
+</edit>
+<obs>
+Successfully replaced text in llm-qat-runtime/custom_qat.py.
+</obs>
+<run/>
+<obs>
+Measured results — `baseline:finetune_then_ptq` (`is_final,true`), seed {42}; `fp16_ppl = 13.2033`.
+
+## qat-1b-int4
+| seed | wikitext2_ppl | degradation |
+|---|---|---|
+| 42 | 12.6094 | −0.5939 |
+| **mean** | **12.6094** | **−0.5939** |
+
+## qat-1b-int3
+| seed | wikitext2_ppl | degradation |
+|---|---|---|
+| 42 | 31.4101 | 18.2068 |
+| **mean** | **31.4101** | **18.2068** |
+
+## qat-1b-int2
+| seed | wikitext2_ppl | degradation |
+|---|---|---|
+| 42 | 94034.5078 | 94021.3045 |
+| **mean** | **94034.5078** | **94021.3045** |
+</obs>
+
+### step 3 — STE QAT (straight-through, fixed scale)   [slug:ste]
+
+<think>
+[[POLISH_REASONING: adapt to first-person agentic voice, end by deciding to implement]]
+The control rung settled the confound, and the numbers draw a clean line for me. The full-precision
+finetune-then-PTQ beat the blind `no_qat` everywhere the grid left room: at INT4 it reached 12.61 PPL,
+a degradation of −0.59 — *below* the 13.2033 full-precision baseline, exactly the in-domain finetune
+pulling test perplexity down, with the 16-code grid fine enough that the finetuned weights survive it.
+At INT3 it dropped `no_qat`'s 42.54 to 31.41 (degradation 18.21) — a real improvement, but the
+`max|w_g|/3` floor still leaves it badly above full precision. And at INT2 it stayed catastrophically
+collapsed: 94034.51, barely distinguishable from `no_qat`'s 104422 on any scale that matters. That INT2
+result is the whole point of the control. It says: a finetune that is *blind to the grid* cannot rescue
+two-bit quantization, no matter how much it lowers the loss it rounds from, because four codes destroy
+the weights through a rounding the finetune never sees. So the finetune buys domain adaptation and a
+flatter basin — and that is all. The bar is now set: any method I call "real QAT" has to clear
+`finetune_then_ptq` at the bit-widths where the floor bites, and the place it has to prove itself is
+INT2, where the control is still in the tens of thousands.
+
+The reason the control collapses points straight at the fix. Its forward pass during training is pure
+fp32 — `fake_quantize_weight` is the identity — so the optimizer never sees the grid. Every gradient it
+takes is the gradient of the *full-precision* function, and full-precision loss has no term that says
+"sit where rounding with step `S` is cheap." If I want the optimizer to place weights that survive
+rounding, the rounding has to be *in the forward pass during training*: compute the loss on the
+quantize-dequantized weights, so that every gradient already accounts for the grid. Then the weight is
+nudged toward configurations where the rounded model — not the fp model — has low loss. That is the one
+structural change between this rung and the control, and it is exactly the scaffold default I have been
+carrying since the start: STE QAT.
+
+But putting the grid in the forward immediately hits the wall that made the control take the easy way
+out. The fake-quant is `ŵ = S·clamp(round(w/S), qmin, qmax)`, and `round` is a staircase — slope zero
+almost everywhere, undefined at the half-integers — while `clamp` is flat outside its range. If I
+differentiate this honestly, the chain rule multiplies by that zero Jacobian and annihilates the
+gradient: nothing reaches `w`, and the weight is frozen. This is the identical wall that pushed the
+field off hard-threshold units and onto sigmoids decades ago — a constant-by-parts graph kills gradient
+learning. So the honest derivative is useless here, and I have to ask what nonzero proxy to put in its
+place on the backward pass, while keeping the forward exactly the hard quantizer.
+
+The recipe that nags at me is the simplest possible one, the same one that makes rectifiers train:
+pretend the slope was one. Back-propagate through the quantize-dequantize *as if it had been the
+identity*. Then the gradient arriving at the quantized output, `∂L/∂ŵ`, is sent unchanged to the
+underlying weight: `∂L/∂w = ∂L/∂ŵ`. The forward still computes the true rounded weight; only the
+backward edge lies, pretending `∂ŵ/∂w = 1`. Let me sanity-check the sign, because a proxy that points
+the wrong way is worse than useless. The quantizer is monotone increasing in `w`: raise `w`, you raise
+`round(w/S)`, you raise `ŵ` (within the clip range). So the true sign of "how `ŵ` responds to `w`" is
+positive, and the identity proxy assigns slope `+1`, also positive. For a single quantized layer the
+straight-through gradient therefore has the right sign — if downstream wants `ŵ` larger, it pushes `w`
+larger, exactly as it should. It is biased — the magnitude is fabricated — but the direction is correct
+where it matters, and that is what lets the weight reorganize to be quantization-friendly instead of
+frozen by a zero Jacobian.
+
+I should poke at whether a less crude proxy is better, since "slope = 1" feels too cheap. The natural
+alternative is to back-propagate as if the round were its smooth surrogate, multiplying the incoming
+gradient by some bell-shaped factor that peaks at a bin center and decays toward the transitions. But
+that *attenuates the gradient exactly where I need it most*. A weight sitting confidently in the middle
+of a code cell is already well-quantized; the weights I need to move are the ones near a transition,
+where a small nudge flips which code they round to and where the rounding error is largest. The plain
+identity proxy keeps the signal alive everywhere — slope one regardless of position in the cell — so a
+weight that is rounding badly still gets a full push to move. The cruder proxy is the better one here,
+and not by accident: it refuses to attenuate where the useful signal lives.
+
+There is one piece of bookkeeping the identity proxy hides, and it is load-bearing. I cannot store the
+weight I am learning at low precision, because each weight has to absorb a long run of tiny, noisy
+gradient steps, and averaging those out needs real resolution — coarse storage would round every
+infinitesimal step to zero and nothing would move. So I keep a *full-precision master weight*, quantize
+it on the fly each forward pass, use the quantized value in the matmul (with straight-through carrying
+the gradient back to the master), and let the optimizer accumulate updates in the master. In this
+task's edit surface that master *is* `self.linear.weight` — the fp32 parameter the harness's AdamW
+already optimizes — and the scale is recomputed from it every forward, so the per-group grid tracks the
+current weight. The fixed loop's design makes this automatic: it builds the optimizer over all
+`requires_grad` parameters and runs the finetune through the wrapper's fake-quant forward, so I do not
+have to manage shadow copies myself. At the end, the harness's no-grad `quantize_dequantize_weight`
+materializes the genuine integer model, with no straight-through needed because nothing differentiates
+anymore.
+
+Now the precise diff against the control, and against the scaffold default, so I land the *task's* STE
+and not a paper's generic version. Versus the control: I flip `fake_quantize_weight` from the identity
+back to the straight-through per-group symmetric RTN — `w_dq = w + (w_q − w).detach()`, which is `w_q`
+in the forward and slope-one in the backward — and the wrapper's forward calls it every step:
+`F.linear(x, fake_quantize_weight(self.linear.weight, ...), self.linear.bias)`. Everything else is held
+constant: the same 500-step schedule (`lr=2e-5`, `warmup=50`, cosine to 10%, grad-accum 4, grad-clip
+1.0), the same `quantize_dequantize_weight`, the same wrap-and-restore-the-head logic. So the *only*
+change from `finetune_then_ptq` is that the grid is now in the forward — which means the gap between
+this rung and the control is, by construction, the pure QAT contribution, the finetune effect
+subtracted out. Versus the scaffold default: this rung *is* the default fake-quant, but I should be
+deliberate that the contribution I am isolating is exactly the *gradient*, nothing more. The scale here
+is a fixed max-abs statistic, recomputed each forward, *not* learned. Keeping the scale plain isolates
+what straight-through buys on its own — the ability to send a gradient through the round so the master
+weight reorganizes to be quantization-friendly — and leaves the obvious next idea, *learning* the step
+size to place the levels more cleverly, for the rung after this. The full scaffold module is in the
+answer.
+
+So what do I expect, falsifiably, against the numbers I now have? At INT4 the floor is already small,
+so I expect STE to roughly match or slightly beat `finetune_then_ptq`'s 12.61 — grid-aware training has
+little room to help when blind finetuning already lands below full precision; both should sit near or
+under 13.2033. At INT3 I expect the first clear separation: the control reached 31.41 because its
+weights were placed without regard to the 8-code grid, whereas STE trains *through* that grid, so the
+optimizer can push weights into configurations that round cleanly. I expect a large drop — from the
+control's 31.41 toward the low-to-mid teens, close to full precision, the genuine QAT signal finally
+visible. INT2 is the real test and the place I am least sure. Straight-through *does* let the optimizer
+fight the four-code grid, so I expect a dramatic improvement over both the control's 94034 and
+`no_qat`'s 104422 — collapse should be averted, perplexity brought down from five digits to two. But I
+can already feel a ceiling in the construction: STE trains the weights against a grid whose *step size
+is fixed* at `max|w_g|/qmax = max|w_g|` per group. At four codes that single fixed knob places the
+levels crudely, and straight-through can only move the weights to fit those levels — it cannot move the
+*levels* to fit the weights. So I expect INT2 to be rescued from catastrophe but to land well above full
+precision, perhaps in the tens of PPL rather than the teens, with a visible gap to whatever a method
+that *learns the step size* could reach. If that is what the numbers show — INT4 and INT3 near full
+precision, INT2 saved but stubbornly high — then the diagnosis for the next rung is already written:
+the remaining INT2 error is in the *grid placement*, which STE holds fixed, so the move is to make the
+per-group step size a trained parameter.
+</think>
+<say>
+[[FILL_SAY: 1-2 sentences naming the method and what this first edit does]]
+</say>
+<edit path="llm-qat-runtime/custom_qat.py">
+<old>
+# EDITABLE region of custom_qat.py (lines 33-176) — step 2: finetune_then_ptq (control)
+</old>
+<new>
+# EDITABLE region of custom_qat.py (lines 33-176) — step 3: STE QAT
+</new>
+</edit>
+<obs>
+Successfully replaced text in llm-qat-runtime/custom_qat.py.
+</obs>
+<note>
+[[FILL_NOTE?: optional one-line thought for this edit, or delete this block]]
+</note>
+<edit path="llm-qat-runtime/custom_qat.py">
+<old>
+def fake_quantize_weight(weight, num_bits, group_size):
+    # Identity: no fake quant in forward -- pure FP finetune.
+    return weight
+</old>
+<new>
+def fake_quantize_weight(weight, num_bits, group_size):
+    qmin, qmax = _qrange(num_bits)
+    out_features, in_features = weight.shape
+    assert in_features % group_size == 0
+    w = weight.float().reshape(out_features, -1, group_size)
+    # Recompute scale on-the-fly each forward (max-abs / qmax).
+    w_max = w.abs().amax(dim=-1, keepdim=True).clamp(min=1e-12)
+    scale = w_max / qmax
+    w_q = torch.clamp(torch.round(w / scale), qmin, qmax) * scale
+    # Straight-through: forward = quantized, backward = identity.
+    w_dq = w + (w_q - w).detach()
+    return w_dq.reshape(out_features, in_features).to(weight.dtype)
+</new>
+</edit>
+<obs>
+Successfully replaced text in llm-qat-runtime/custom_qat.py.
+</obs>
+<note>
+[[FILL_NOTE?: optional one-line thought for this edit, or delete this block]]
+</note>
+<edit path="llm-qat-runtime/custom_qat.py">
+<old>
+    def forward(self, x):
+        # Pure FP forward during training (no fake quant).  At eval the real
+        # QDQ has already been applied to linear.weight, so this still
+        # produces the genuine INT-N output.
+        return F.linear(x, self.linear.weight, self.linear.bias)
+</old>
+<new>
+    def forward(self, x):
+        x = fake_quantize_activation(x, self.num_bits)
+        w_q = fake_quantize_weight(self.linear.weight, self.num_bits, self.group_size)
+        return F.linear(x, w_q, self.linear.bias)
+</new>
+</edit>
+<obs>
+Successfully replaced text in llm-qat-runtime/custom_qat.py.
+</obs>
+<run/>
+<obs>
+Measured results — `baseline:ste` (`is_final,true`), seed {42}; `fp16_ppl = 13.2033`.
+
+## qat-1b-int4
+| seed | wikitext2_ppl | degradation |
+|---|---|---|
+| 42 | 11.7044 | −1.4989 |
+| **mean** | **11.7044** | **−1.4989** |
+
+## qat-1b-int3
+| seed | wikitext2_ppl | degradation |
+|---|---|---|
+| 42 | 13.7471 | 0.5438 |
+| **mean** | **13.7471** | **0.5438** |
+
+## qat-1b-int2
+| seed | wikitext2_ppl | degradation |
+|---|---|---|
+| 42 | 72.5517 | 59.3484 |
+| **mean** | **72.5517** | **59.3484** |
+</obs>
+
+### step 4 — LSQ (learned step size)   [slug:lsq]
+
+<think>
+[[POLISH_REASONING: adapt to first-person agentic voice, end by deciding to implement]]
+STE QAT did exactly what I predicted, and its numbers draw the next problem with a sharp edge. At INT4
+it reached 11.70 PPL (degradation −1.50), essentially matching the control's 12.61 and sitting
+comfortably below full precision — the 16-code grid leaves little for grid-aware training to add. At
+INT3 the first real separation appeared: STE dropped the control's 31.41 all the way to 13.75
+(degradation 0.54), within a hair of full precision. That gap — 31.41 for a grid-blind finetune versus
+13.75 for the same finetune trained *through* the grid — is the pure QAT signal I built the control to
+isolate, and it is large. So straight-through works: putting the rounding in the forward lets the
+optimizer place weights that survive it. But INT2 is where the construction shows its ceiling. STE
+brought INT2 from the control's 94034 (and `no_qat`'s 104422) down to 72.55 — collapse averted, five
+digits to two, a genuine rescue — but 72.55 PPL against a 13.20 baseline is a degradation of 59.35. The
+model is *alive* at two bits but nowhere near usable. And I know precisely why, because I left the
+reason in place deliberately when I built STE.
+
+STE trains the weights against a grid whose step size is *fixed* at `S = max|w_g| / qmax` per group,
+recomputed each forward from the current weights but never itself a parameter. At four codes,
+`qmax = 1`, so `S = max|w_g|` and the in-range reconstruction points are spaced a whole group-max apart.
+Straight-through can move the *weights* to fit those levels, but it cannot move the *levels* to fit the
+weights. The single fixed knob places the grid crudely, and at four codes "crudely" costs 59 points of
+perplexity. The leftover INT2 error is not in the weights anymore — STE already optimized those against
+the grid — it is in the *grid placement* itself, which STE holds fixed. So the move is forced: make the
+per-group step size a trained parameter, learned jointly with the weights against the task loss, so the
+optimizer places both the weights *and* the levels.
+
+Why should learning the step size help when the weights are already optimized for the fixed step? Because
+the max-abs scale is a *statistic*, not an optimum. It is the smallest step that covers the group without
+clipping — a no-data choice — but at four codes the no-clip constraint is exactly the wrong thing to
+respect. Setting `S = max|w_g|` means one or two outlier weights in the group define the spacing for all
+128, and the bulk of the weights, which are much smaller, get snapped to a grid far too coarse for them.
+A *smaller* step would round the bulk more finely at the cost of clipping the outliers to the rail —
+and at the task loss, clipping a couple of outliers can be far cheaper than coarsening 126 ordinary
+weights. The right step balances rounding error against clipping error, and that balance depends on the
+weight distribution *and* on the loss, which only a trained scale can find. So I make each per-group
+scale `s` a learnable parameter and let the same AdamW that trains the weights train it.
+
+Now the obstacle that made STE necessary returns, but now I have to push a gradient not only to the
+weight but to the *scale*. The quantizer is `ŵ = round(clip(w/s, qmin, qmax))·s`. The round is flat
+almost everywhere, so the path from `s` through `w/s` into the integer code has zero ordinary derivative
+— ordinary backprop sees the final multiply by `s` but misses how `s` moves values toward or away from
+bin transitions. The fix for the round is the same straight-through identity I already use. But I have
+to be careful: STE applies to the *round node*, while the divide-by-`s`, the clip, and the multiply-by-
+`s` I should differentiate honestly. Cutting corners here is what costs accuracy, so let me do the
+calculus. In the interior, `−qmin < w/s < qmax`, the quantizer is `ŵ = round(w/s)·s`. Product rule:
+`∂ŵ/∂s = [∂ round(w/s)/∂s]·s + round(w/s)`. For the first term, STE treats round as identity, so
+`round(w/s) ≈ w/s` for differentiation and `∂(w/s)/∂s = −w/s²`; times `s` that term is `−w/s`. The
+second term is `round(w/s)`. So in the interior `∂ŵ/∂s = round(w/s) − w/s` — the negative signed
+residual between `w/s` and the integer it rounds to. Stare at that: the gradient to the step size is
+largest exactly when `w/s` sits near a bin transition (where a small nudge to `s` flips the code, a big
+jump in `ŵ`) and goes to zero when `w/s` sits on a level. That is precisely the sensitivity a fixed
+scale throws away. In the clipped regions it is simpler: if `w/s ≤ qmin` the code pins at `qmin`, so
+`ŵ = qmin·s` and `∂ŵ/∂s = qmin`; symmetrically `∂ŵ/∂s = qmax` above. And the data gradient is the plain
+STE: `∂ŵ/∂w = 1` inside the clip range, `0` outside (clipped weights get no weight gradient). The task's
+edit surface implements this exactly as a custom `torch.autograd.Function` whose `backward` returns the
+in-range-masked `grad_out` for `w` and the `(below·qmin + above·qmax + inside·(round(w/s)−w/s))·grad_out`
+sum for `s` — the textbook step-size gradient.
+
+There is one more thing the step-size gradient needs, and it is where I have to read this task's
+implementation rather than import the generic recipe. A single scalar `s` per group is being optimized
+by the same AdamW, same global learning rate, as the millions of weights. Training behaves well when,
+across parameters, the ratio of update magnitude to parameter magnitude is balanced; a step size whose
+gradient is far out of scale with the weights' will be over-driven and destabilize the run. The
+step-size gradient sums over the elements it touches, so it scales like the square root of that count
+times the typical per-element gradient — out of balance with a single weight's gradient by a factor that
+grows with the count and with `qmax`. The cure is to scale the step-size gradient down by a `g_scale`
+that cancels the imbalance: `g_scale = 1 / sqrt(N · qmax)`. Here is the diff from the canonical version I
+have to honor exactly: the task computes `N = w.numel()` — the *whole weight tensor's* element count —
+not the per-group weight count, and applies one `g_scale` to every group's scale gradient. So this is
+not the per-layer `1/sqrt(N_W·qmax)` of the generic derivation applied per group; it is a single
+tensor-level normalizer `1/sqrt(N_elem·qmax)` shared across all groups of the layer. It still does the
+job — it brings the scale gradients into a stable band relative to the weights — but it is a coarser,
+tensor-wide normalization, and I land it as the harness has it rather than refining it per group.
+
+A second place I must follow this task's harness and not the generic recipe: the eval-time
+materialization. The harness's
+fixed post-training step calls `quantize_dequantize_weight` and overwrites every wrapped weight with its
+return value — but a *max-abs* RTN there would clobber the learned LSQ scales, snapping the weights back
+onto the very grid I trained away from. So in this task `quantize_dequantize_weight` is a deliberate
+*no-op*: `return weight.clone()`, leaving the fp32 weights untouched. The real quantization instead
+lives in the wrapper's `forward`, which branches on `self.training`: during training it calls the
+differentiable LSQ fake-quant with the learnable scale; at eval it performs a genuine no-grad
+`round(clip(w/s))·s` on the *learned* LSQ grid. That is how evaluation still sees a properly quantized
+model even though the harness's RTN was neutralized — the LSQ grid, not the max-abs grid, is what the
+weights are snapped to. I also follow the task's initialization: each per-group scale starts at
+`2·|W_g|.mean()/sqrt(qmax)`, clamped to `1e-8`, with shape `(out_features, n_groups, 1)` so it
+broadcasts over the 128 columns of each group. Activations stay full precision (weight-only), and the
+LM head is restored to plain Linear, both unchanged from STE. The full scaffold module is in the answer.
+
+So the precise delta from STE: STE's `fake_quantize_weight` used a fixed max-abs scale and STE on the
+round; LSQ adds a learnable per-group `lsq_scale` parameter, routes the forward through a custom
+autograd function that carries the step-size gradient `round(w/s)−w/s` (clip endpoints outside the
+range) with the `1/sqrt(N_elem·qmax)` normalizer, neutralizes the harness RTN to a no-op clone, and does
+real LSQ-grid QDQ in the wrapper's eval branch. Everything else — the 500-step schedule, the wrap logic,
+the full-precision head — is held constant, so the gap to STE is, by construction, exactly what *learning
+the grid* buys over training the weights against a fixed grid.
+
+What do I expect, falsifiably, against the numbers I have? At INT4 the grid is already fine and STE
+landed at 11.70; learning the scale has almost no room to help, so I expect LSQ to land near there,
+maybe a touch worse — possibly around 12.2, since the learnable-scale machinery is overkill when the
+fixed scale is nearly optimal at 16 codes and can even cost a little. At INT3 STE reached 13.75; I
+expect LSQ to roughly match it, landing in the low-to-mid teens near full precision, perhaps slightly
+better (around 13.5) as the learned 8-code grid trims a little of the residual. INT2 is where I expect
+the payoff to be unmistakable, because INT2 is exactly where the fixed scale was the bottleneck. STE's
+72.55 was the fixed-grid ceiling; with the per-group step size now free to clip outliers and round the
+bulk finely, I expect LSQ to fall *dramatically* — from STE's 72.55 into the high teens or low twenties,
+a degradation of a handful of points instead of 59. If that is what the numbers show — INT4 and INT3
+unchanged from STE within noise, INT2 cut from the seventies to the low twenties — then LSQ is the first
+method to satisfy the task's actual requirement: low perplexity *uniformly* across all three
+bit-widths, including the extreme one, and clearly beating the `finetune_then_ptq` control everywhere
+the floor bites. The remaining question it would leave open is whether the learnable scale is *stable*
+enough at two bits — an unbounded `s` trained by SGD can still drift — and that is the seam a method
+that *bounds* the learned grid would press on next.
+</think>
+<say>
+[[FILL_SAY: 1-2 sentences naming the method and what this first edit does]]
+</say>
+<edit path="llm-qat-runtime/custom_qat.py">
+<old>
+# EDITABLE region of custom_qat.py (lines 33-176) — step 3: STE QAT
+</old>
+<new>
+# EDITABLE region of custom_qat.py (lines 33-176) — step 4: LSQ (learned step size)
+</new>
+</edit>
+<obs>
+Successfully replaced text in llm-qat-runtime/custom_qat.py.
+</obs>
+<note>
+[[FILL_NOTE?: optional one-line thought for this edit, or delete this block]]
+</note>
+<edit path="llm-qat-runtime/custom_qat.py">
+<old>
+
+def fake_quantize_weight(weight, num_bits, group_size):
+    qmin, qmax = _qrange(num_bits)
+</old>
+<new>
+
+class _LSQQuant(torch.autograd.Function):
+    """LSQ quantize-dequantize with the step-size gradient of arxiv:1902.08153 eq. 5."""
+
+    @staticmethod
+    def forward(ctx, w, scale, qmin, qmax, g_scale):
+        # w: (out, n_groups, group_size); scale: (out, n_groups, 1) broadcastable.
+        w_div = w / scale
+        w_clip = torch.clamp(w_div, qmin, qmax)
+        w_round = torch.round(w_clip)
+        ctx.save_for_backward(w_div, scale)
+        ctx.qmin = qmin
+        ctx.qmax = qmax
+        ctx.g_scale = g_scale
+        return w_round * scale
+
+    @staticmethod
+    def backward(ctx, grad_out):
+        w_div, scale = ctx.saved_tensors
+        qmin, qmax, g = ctx.qmin, ctx.qmax, ctx.g_scale
+        # Gradient w.r.t. w: pass-through inside the clip range.
+        in_range = (w_div > qmin) & (w_div < qmax)
+        grad_w = torch.where(in_range, grad_out, torch.zeros_like(grad_out))
+        # Gradient w.r.t. s: LSQ paper eq. 5.
+        below = (w_div <= qmin).float() * float(qmin)
+        above = (w_div >= qmax).float() * float(qmax)
+        inside = in_range.float() * (torch.round(w_div) - w_div)
+        grad_s_per_elem = (below + above + inside) * grad_out
+        grad_s = grad_s_per_elem.sum(dim=-1, keepdim=True) * g
+        return grad_w, grad_s, None, None, None
+
+
+def fake_quantize_weight(weight, num_bits, group_size, scale=None):
+    qmin, qmax = _qrange(num_bits)
+</new>
+</edit>
+<obs>
+Successfully replaced text in llm-qat-runtime/custom_qat.py.
+</obs>
+<note>
+[[FILL_NOTE?: optional one-line thought for this edit, or delete this block]]
+</note>
+<edit path="llm-qat-runtime/custom_qat.py">
+<old>
+    w = weight.float().reshape(out_features, -1, group_size)
+    # Recompute scale on-the-fly each forward (max-abs / qmax).
+    w_max = w.abs().amax(dim=-1, keepdim=True).clamp(min=1e-12)
+    scale = w_max / qmax
+    w_q = torch.clamp(torch.round(w / scale), qmin, qmax) * scale
+    # Straight-through: forward = quantized, backward = identity.
+    w_dq = w + (w_q - w).detach()
+    return w_dq.reshape(out_features, in_features).to(weight.dtype)
+</old>
+<new>
+    w = weight.float().reshape(out_features, -1, group_size)
+    if scale is None:
+        # No learnable scale supplied (prepare-time call) -- fall back to STE.
+        w_max = w.abs().amax(dim=-1, keepdim=True).clamp(min=1e-12)
+        s = w_max / qmax
+        w_q = torch.clamp(torch.round(w / s), qmin, qmax) * s
+        w_dq = w + (w_q - w).detach()
+    else:
+        n_elem = w.numel()
+        g_scale = 1.0 / max(1.0, math.sqrt(n_elem * qmax))
+        w_dq = _LSQQuant.apply(w, scale, qmin, qmax, g_scale)
+    return w_dq.reshape(out_features, in_features).to(weight.dtype)
+</new>
+</edit>
+<obs>
+Successfully replaced text in llm-qat-runtime/custom_qat.py.
+</obs>
+<note>
+[[FILL_NOTE?: optional one-line thought for this edit, or delete this block]]
+</note>
+<edit path="llm-qat-runtime/custom_qat.py">
+<old>
+def quantize_dequantize_weight(weight, num_bits, group_size):
+    qmin, qmax = _qrange(num_bits)
+    out_features, in_features = weight.shape
+    assert in_features % group_size == 0
+    with torch.no_grad():
+        w = weight.float().reshape(out_features, -1, group_size)
+        w_max = w.abs().amax(dim=-1, keepdim=True).clamp(min=1e-12)
+        scale = w_max / qmax
+        w_q = torch.clamp(torch.round(w / scale), qmin, qmax) * scale
+        return w_q.reshape(out_features, in_features).to(weight.dtype)
+</old>
+<new>
+def quantize_dequantize_weight(weight, num_bits, group_size):
+    # LSQ stores learned scales on the wrapper; the fixed-region
+    # apply_real_quantization would clobber them with a max-abs RTN, so we
+    # return the float weight unchanged and let the wrapper apply LSQ-grid
+    # QDQ in eval mode below.
+    return weight.clone()
+</new>
+</edit>
+<obs>
+Successfully replaced text in llm-qat-runtime/custom_qat.py.
+</obs>
+<note>
+[[FILL_NOTE?: optional one-line thought for this edit, or delete this block]]
+</note>
+<edit path="llm-qat-runtime/custom_qat.py">
+<old>
+        self.group_size = group_size
+</old>
+<new>
+        self.group_size = group_size
+        qmin, qmax = _qrange(num_bits)
+        out_features, in_features = linear.weight.shape
+        n_groups = in_features // group_size
+        # LSQ initial scale: 2 * |W|.mean() / sqrt(qmax)  (paper Sec. 3.4).
+        with torch.no_grad():
+            w = linear.weight.float().reshape(out_features, n_groups, group_size)
+            init = 2.0 * w.abs().mean(dim=-1, keepdim=True) / max(1.0, math.sqrt(qmax))
+            init = init.clamp(min=1e-8)
+        # Shape (out_features, n_groups, 1) so it broadcasts over group_size.
+        self.lsq_scale = nn.Parameter(init.to(linear.weight.dtype))
+</new>
+</edit>
+<obs>
+Successfully replaced text in llm-qat-runtime/custom_qat.py.
+</obs>
+<note>
+[[FILL_NOTE?: optional one-line thought for this edit, or delete this block]]
+</note>
+<edit path="llm-qat-runtime/custom_qat.py">
+<old>
+        x = fake_quantize_activation(x, self.num_bits)
+        w_q = fake_quantize_weight(self.linear.weight, self.num_bits, self.group_size)
+        return F.linear(x, w_q, self.linear.bias)
+</old>
+<new>
+        x = fake_quantize_activation(x, self.num_bits)
+        if self.training:
+            w_q = fake_quantize_weight(
+                self.linear.weight, self.num_bits, self.group_size,
+                scale=self.lsq_scale.float(),
+            )
+        else:
+            # Eval: produce a *real* quantize-dequantize on the LSQ grid.
+            qmin, qmax = _qrange(self.num_bits)
+            with torch.no_grad():
+                w = self.linear.weight.float().reshape(
+                    self.linear.weight.shape[0], -1, self.group_size
+                )
+                s = self.lsq_scale.float()
+                w_q = torch.clamp(torch.round(w / s), qmin, qmax) * s
+                w_q = w_q.reshape_as(self.linear.weight).to(self.linear.weight.dtype)
+        return F.linear(x, w_q, self.linear.bias)
+</new>
+</edit>
+<obs>
+Successfully replaced text in llm-qat-runtime/custom_qat.py.
+</obs>
+<run/>
+<obs>
+Measured results — `baseline:lsq` (`is_final,true`), seed {42}; `fp16_ppl = 13.2033`.
+
+## qat-1b-int4
+| seed | wikitext2_ppl | degradation |
+|---|---|---|
+| 42 | 12.1670 | −1.0363 |
+| **mean** | **12.1670** | **−1.0363** |
+
+## qat-1b-int3
+| seed | wikitext2_ppl | degradation |
+|---|---|---|
+| 42 | 13.4947 | 0.2915 |
+| **mean** | **13.4947** | **0.2915** |
+
+## qat-1b-int2
+| seed | wikitext2_ppl | degradation |
+|---|---|---|
+| 42 | 19.4969 | 6.2936 |
+| **mean** | **19.4969** | **6.2936** |
+</obs>
+
+### step 5 — OmniQuant LWC (learnable weight clipping)   [slug:omniquant-lwc]
+
+<think>
+[[POLISH_REASONING: adapt to first-person agentic voice, end by deciding to implement]]
+LSQ closed the ladder's biggest gap and, in doing so, exposed the one seam left to press. At INT4 it
+landed at 12.17 (degradation −1.04) — essentially STE's 11.70, the learnable-scale machinery neither
+helping nor hurting much when 16 codes are already fine, as I expected. At INT3, 13.49 (degradation
+0.29), a shade better than STE's 13.75 and within a third of a point of full precision. And at INT2 it
+delivered exactly the payoff I predicted: from STE's 72.55 down to 19.50, a degradation of 6.29. That
+is the first method to be genuinely usable at two bits, beating the `finetune_then_ptq` control's 94034
+by orders of magnitude and proving the contribution is real QAT signal — learning the per-group step
+size let the optimizer place the *levels* as well as the weights, clipping outliers and rounding the
+bulk finely, which is precisely what the fixed max-abs scale could not do. So LSQ is the strongest rung,
+and the task's actual requirement — low perplexity uniformly across INT4/INT3/INT2 — is met for the
+first time.
+
+But I left a question open at the close of the LSQ rung, and the INT2 number sharpens it. LSQ learns the
+scale `s` as a *free, unbounded* parameter, optimized by AdamW with one tensor-wide gradient
+normalizer `1/sqrt(N_elem·qmax)`. At INT2 the loss surface in `s` is brutal: with four codes, a small
+change in `s` reassigns large blocks of weights across codes, so the step-size gradient is huge and
+noisy near transitions. An unbounded `s` driven by that gradient can drift — overshoot to a scale that
+clips too aggressively, or undershoot to one that wastes codes — and there is nothing in the
+parameterization to keep it sane. The 6.29 degradation at INT2 is small, but I suspect a meaningful
+slice of it is LSQ's scale wandering during the 500 steps rather than settling at the loss-optimal grid.
+The diagnosis is specific: LSQ's *degree of freedom* is right (the grid should be learned) but its
+*parameterization* is too loose (the scale is free to roam anywhere in (0, ∞)). The move is to keep the
+learnable grid but **bound** it — parameterize the scale so that what is learned is a clipping *ratio*
+constrained to a sensible range, not an unconstrained step size.
+
+So here is the move that does exactly this, and that fits this edit surface without breaking the
+algorithm: learnable weight clipping. Go back to the max-abs scale as the *anchor* — the no-clip cover
+STE used — and learn a multiplicative *clipping factor* that shrinks it, where the factor is forced into
+(0, 1) by a sigmoid. Concretely, for each group take the raw extremes
+`xmax = max(w_g)` and `xmin = min(w_g)`, introduce two learnable per-group parameters
+`upbound_factor` and `lowbound_factor`, gate them through a sigmoid, and clip the extremes:
+`xmax ← sigmoid(upbound_factor)·xmax`, `xmin ← sigmoid(lowbound_factor)·xmin`. For symmetric signed
+weight quantization the scale is then `s = max(|xmax|, |xmin|) / qmax`, clamped to a safe range
+`[1e-5, 1e4]`, and the fake-quant is the straight-through `round(clip(w/s, qmin, qmax))·s`. The
+gradient reaches the bound factors through the differentiable `sigmoid · extreme / qmax` scale; the
+round is STE as before. I set `init_value = 4.0` for the
+factors (so `sigmoid(4) ≈ 0.982` — the grid starts essentially at the max-abs cover, identical to STE,
+and *learns to clip inward* from there), `CLIPMIN = 1e-5`, and per-group factors with shape
+`(out_features, n_groups, 1)`.
+
+Let me be precise about why this should beat LSQ at INT2, because the two are close cousins and the
+difference is the whole bet. Both learn a per-group grid; the difference is the *coordinate* in which
+they learn it. LSQ learns `s ∈ (0, ∞)` directly. LWC learns `γ = sigmoid(factor) ∈ (0, 1)` and sets
+`s = γ · max|w_g| / qmax`. Three consequences fall out. First, the search space is *bounded*: γ cannot
+exceed 1, so the learned scale can never blow past the max-abs cover — it can only clip inward, which is
+exactly the useful direction at low bits (clip the outliers, round the bulk finely). LSQ's scale has no
+such ceiling and can wander above the cover, wasting codes. Second, the parameterization is *anchored*:
+because the scale is always `γ · max|w_g|`, it rides the current weight magnitude, so as the weights
+move during training the grid moves with them automatically and the factor only has to learn the
+relative clip, a far gentler quantity to optimize than an absolute scale. Third, the sigmoid *bounds the
+gradient*: `dγ/dfactor = γ(1−γ)` saturates as γ → 0 or 1, which damps the huge, noisy step-size
+gradients that destabilize LSQ at four codes — the parameterization itself provides the stability that
+LSQ has no mechanism for. The starting point at `sigmoid(4) ≈ 0.982` means LWC begins essentially where
+STE sits (near the max-abs cover) and improves monotonically by clipping inward, so it should never be
+*worse* than STE, and it inherits LSQ's "learn the grid" power with a tighter, gradient-damped
+parameterization — the cure for exactly the drift I suspect in LSQ's INT2 number.
+
+One more thing to be careful about, because it is where the original form of this clip and this harness
+part ways and I must not import machinery the edit surface cannot run. The clip's natural home is a
+*per-block local reconstruction*: quantize one transformer block, minimize the MSE between its output
+and the full-precision block's output on a small calibration set, no gradient through the rest of the
+model — a PTQ-grade budget. This task's harness does not expose a per-block reconstruction loop; it
+exposes the *global* QAT loop — full-model forward, cross-entropy on WikiText-2, AdamW over all
+`requires_grad` parameters for 500 steps. So I do not get that cheap local objective; I get the same
+end-to-end finetune every other rung uses, and the learnable factors are trained by the global task
+loss alongside the weights. That is actually a *stronger* training signal than a local
+reconstruction — the factors are optimized against the very metric I am scored on — so the LWC
+parameterization should, if anything, do better here than its budget-constrained origin, not worse. The
+one piece of LWC I therefore drop is the per-block scheduling; the parameterization itself — sigmoid-
+gated per-group clip factors, init 4.0 — is exactly the canonical one, and it is the part that fixes the
+INT2 rounding error. I keep the weights trainable too (the harness trains them anyway), so this is LWC's
+clip layered on top of STE's weight-QAT, both driven by the global loss.
+
+Now I land it in the task's edit surface, following the same wiring decisions LSQ forced, because the
+harness's fixed post-training RTN would clobber a learned grid just as it would have clobbered LSQ's
+scales. So `quantize_dequantize_weight` is again a deliberate no-op `weight.clone()`, and the real
+quantization lives in the wrapper's `forward`, branching on `self.training`: during training the
+differentiable LWC fake-quant with the sigmoid-gated factors; at eval a genuine no-grad
+`round(clip(w/s))·s` on the *learned* clipped grid (recomputing the per-group extremes and scale from
+the final weights and the final factors), so evaluation sees the LWC grid and not the max-abs grid. The
+factors `upbound_factor` and `lowbound_factor` are registered as `nn.Parameter`s of shape
+`(out_features, n_groups, 1)` initialized to 4.0, so the harness's optimizer-over-all-`requires_grad`-
+params trains them alongside the weights with no extra plumbing. Activations stay full precision
+(weight-only), and the LM head is restored to plain Linear — both unchanged from LSQ. I keep the same
+500-step schedule (`lr=2e-5`, `warmup=50`, cosine to 10%, grad-accum 4, grad-clip 1.0) so the
+comparison to LSQ holds everything constant except the parameterization of the learned grid. One
+detail I have to get right so the clip is faithful: I compute raw `xmax`/`xmin` as the per-group
+*signed* max and min (not max-abs), gate each by its own sigmoid factor, and *then*
+take `max(|xmax|, |xmin|)` for the symmetric scale — so I keep both factors and the signed-extreme
+computation rather than collapsing to a single max-abs factor, which would be a different (and less
+faithful) method. The full scaffold module is in the answer.
+
+The causal chain in one breath: LSQ's measured INT2 (19.50, degradation 6.29) proved that *learning the
+grid* is the right degree of freedom, but its *free unbounded scale* is too loose a parameterization and
+likely drifts under the huge four-code step-size gradient → keep the learnable grid but bound it: learn a
+sigmoid-gated clipping factor γ ∈ (0,1) on the max-abs cover, `s = γ·max|w_g|/qmax`, init `sigmoid(4)≈
+0.982` so it starts at STE and clips inward, with `γ(1−γ)` damping the gradient → wire it into the task
+exactly as LSQ (no-op real-QDQ, eval-branch QDQ in the wrapper, per-group `nn.Parameter`s) so the only
+change from LSQ is the coordinate the grid is learned in.
+
+This finale carries no feedback, so the bar it must clear is the strongest baseline's measured numbers,
+stated as falsifiable expectations. At INT4 LSQ landed 12.17 and STE 11.70; since LWC starts at the
+max-abs cover (≈ STE) and only clips inward, I expect it to match or modestly beat both — somewhere
+around 11.7–12.2, certainly not worse than STE. At INT3 LSQ reached 13.49; I expect LWC to match or
+slightly beat it, low-to-mid teens, within a point of full precision. INT2 is where the claim lives: LSQ
+reached 19.50 (degradation 6.29), and if my diagnosis is right — that a bounded, gradient-damped,
+weight-anchored clip is more stable than a free scale at four codes — LWC should clear LSQ at INT2,
+landing *below* 19.50 (I would expect mid-to-high teens, degradation under 6). The falsifiable failure
+mode is explicit: if LWC lands *at or above* 19.50 at INT2 with no INT4/INT3 regression, then the
+bounded parameterization bought nothing over LSQ's free scale and the drift I hypothesized was not the
+binding constraint — in which case LSQ remains the right answer and the grid-placement gap at two bits
+must lie somewhere this clip also does not reach (e.g. the block-wise reconstruction objective the clip
+is naturally paired with, which this single-linear edit surface does not expose). The minimal, honest
+claim is that LWC
+should not regress INT4/INT3 and should not be worse than LSQ at INT2; the optimistic claim is a clear
+INT2 improvement from the bounded, stable clip.
+</think>
+<say>
+[[FILL_SAY: 1-2 sentences naming the method and what this first edit does]]
+</say>
+<edit path="llm-qat-runtime/custom_qat.py">
+<old>
+# EDITABLE region of custom_qat.py (lines 33-176) — step 4: LSQ (learned step size)
+</old>
+<new>
+# EDITABLE region of custom_qat.py (lines 33-176) — finale: OmniQuant LWC (learnable weight clipping)
+</new>
+</edit>
+<obs>
+Successfully replaced text in llm-qat-runtime/custom_qat.py.
+</obs>
+<note>
+[[FILL_NOTE?: optional one-line thought for this edit, or delete this block]]
+</note>
+<edit path="llm-qat-runtime/custom_qat.py">
+<old>
+}
+
+
+def _qrange(num_bits):
+</old>
+<new>
+}
+
+_LWC_INIT = 4.0       # init_value for the learnable clip factors; sigmoid(4) ~ 0.982
+_CLIPMIN = 1e-5       # floor on the learned scale (OmniQuant CLIPMIN)
+
+
+def _qrange(num_bits):
+</new>
+</edit>
+<obs>
+Successfully replaced text in llm-qat-runtime/custom_qat.py.
+</obs>
+<note>
+[[FILL_NOTE?: optional one-line thought for this edit, or delete this block]]
+</note>
+<edit path="llm-qat-runtime/custom_qat.py">
+<old>
+
+class _LSQQuant(torch.autograd.Function):
+    """LSQ quantize-dequantize with the step-size gradient of arxiv:1902.08153 eq. 5."""
+
+    @staticmethod
+    def forward(ctx, w, scale, qmin, qmax, g_scale):
+        # w: (out, n_groups, group_size); scale: (out, n_groups, 1) broadcastable.
+        w_div = w / scale
+        w_clip = torch.clamp(w_div, qmin, qmax)
+        w_round = torch.round(w_clip)
+        ctx.save_for_backward(w_div, scale)
+        ctx.qmin = qmin
+        ctx.qmax = qmax
+        ctx.g_scale = g_scale
+        return w_round * scale
+
+    @staticmethod
+    def backward(ctx, grad_out):
+        w_div, scale = ctx.saved_tensors
+        qmin, qmax, g = ctx.qmin, ctx.qmax, ctx.g_scale
+        # Gradient w.r.t. w: pass-through inside the clip range.
+        in_range = (w_div > qmin) & (w_div < qmax)
+        grad_w = torch.where(in_range, grad_out, torch.zeros_like(grad_out))
+        # Gradient w.r.t. s: LSQ paper eq. 5.
+        below = (w_div <= qmin).float() * float(qmin)
+        above = (w_div >= qmax).float() * float(qmax)
+        inside = in_range.float() * (torch.round(w_div) - w_div)
+        grad_s_per_elem = (below + above + inside) * grad_out
+        grad_s = grad_s_per_elem.sum(dim=-1, keepdim=True) * g
+        return grad_w, grad_s, None, None, None
+
+
+def fake_quantize_weight(weight, num_bits, group_size, scale=None):
+    qmin, qmax = _qrange(num_bits)
+</old>
+<new>
+
+def _round_ste(x):
+    # straight-through round: forward = round, backward = identity
+    return (x.round() - x).detach() + x
+
+
+def _lwc_scale(w, up_factor, low_factor, qmax):
+    # w: (out, n_groups, group_size); factors: (out, n_groups, 1).
+    # Gate the per-group signed extremes by sigmoid(factor) in (0,1), then
+    # take the symmetric abs-max scale.  Differentiable in the factors.
+    xmax = w.amax(dim=-1, keepdim=True)
+    xmin = w.amin(dim=-1, keepdim=True)
+    xmax = torch.sigmoid(up_factor) * xmax
+    xmin = torch.sigmoid(low_factor) * xmin
+    abs_max = torch.max(xmax.abs(), xmin.abs())
+    scale = (abs_max / qmax).clamp(min=_CLIPMIN, max=1e4)
+    return scale
+
+
+def fake_quantize_weight(weight, num_bits, group_size, up_factor=None, low_factor=None):
+    qmin, qmax = _qrange(num_bits)
+</new>
+</edit>
+<obs>
+Successfully replaced text in llm-qat-runtime/custom_qat.py.
+</obs>
+<note>
+[[FILL_NOTE?: optional one-line thought for this edit, or delete this block]]
+</note>
+<edit path="llm-qat-runtime/custom_qat.py">
+<old>
+    w = weight.float().reshape(out_features, -1, group_size)
+    if scale is None:
+        # No learnable scale supplied (prepare-time call) -- fall back to STE.
+        w_max = w.abs().amax(dim=-1, keepdim=True).clamp(min=1e-12)
+</old>
+<new>
+    w = weight.float().reshape(out_features, -1, group_size)
+    if up_factor is None:
+        # Prepare-time call with no learnable factors -- fall back to STE max-abs.
+        w_max = w.abs().amax(dim=-1, keepdim=True).clamp(min=1e-12)
+</new>
+</edit>
+<obs>
+Successfully replaced text in llm-qat-runtime/custom_qat.py.
+</obs>
+<note>
+[[FILL_NOTE?: optional one-line thought for this edit, or delete this block]]
+</note>
+<edit path="llm-qat-runtime/custom_qat.py">
+<old>
+    else:
+        n_elem = w.numel()
+        g_scale = 1.0 / max(1.0, math.sqrt(n_elem * qmax))
+        w_dq = _LSQQuant.apply(w, scale, qmin, qmax, g_scale)
+    return w_dq.reshape(out_features, in_features).to(weight.dtype)
+</old>
+<new>
+    else:
+        s = _lwc_scale(w, up_factor, low_factor, qmax)
+        w_q = torch.clamp(_round_ste(w / s), qmin, qmax) * s
+        w_dq = w_q
+    return w_dq.reshape(out_features, in_features).to(weight.dtype)
+</new>
+</edit>
+<obs>
+Successfully replaced text in llm-qat-runtime/custom_qat.py.
+</obs>
+<note>
+[[FILL_NOTE?: optional one-line thought for this edit, or delete this block]]
+</note>
+<edit path="llm-qat-runtime/custom_qat.py">
+<old>
+def quantize_dequantize_weight(weight, num_bits, group_size):
+    # LSQ stores learned scales on the wrapper; the fixed-region
+    # apply_real_quantization would clobber them with a max-abs RTN, so we
+    # return the float weight unchanged and let the wrapper apply LSQ-grid
+    # QDQ in eval mode below.
+    return weight.clone()
+</old>
+<new>
+def quantize_dequantize_weight(weight, num_bits, group_size):
+    # LWC stores learned clip factors on the wrapper; the fixed-region RTN
+    # would clobber the learned grid, so leave the float weight untouched and
+    # let the wrapper apply LWC-grid QDQ in eval mode below.
+    return weight.clone()
+</new>
+</edit>
+<obs>
+Successfully replaced text in llm-qat-runtime/custom_qat.py.
+</obs>
+<note>
+[[FILL_NOTE?: optional one-line thought for this edit, or delete this block]]
+</note>
+<edit path="llm-qat-runtime/custom_qat.py">
+<old>
+        self.group_size = group_size
+        qmin, qmax = _qrange(num_bits)
+        out_features, in_features = linear.weight.shape
+        n_groups = in_features // group_size
+        # LSQ initial scale: 2 * |W|.mean() / sqrt(qmax)  (paper Sec. 3.4).
+        with torch.no_grad():
+            w = linear.weight.float().reshape(out_features, n_groups, group_size)
+            init = 2.0 * w.abs().mean(dim=-1, keepdim=True) / max(1.0, math.sqrt(qmax))
+            init = init.clamp(min=1e-8)
+        # Shape (out_features, n_groups, 1) so it broadcasts over group_size.
+        self.lsq_scale = nn.Parameter(init.to(linear.weight.dtype))
+</old>
+<new>
+        self.group_size = group_size
+        out_features, in_features = linear.weight.shape
+        n_groups = in_features // group_size
+        shape = (out_features, n_groups, 1)
+        # Per-group learnable clip factors, init so sigmoid(init) ~ 1 (== STE start).
+        self.up_factor = nn.Parameter(torch.full(shape, _LWC_INIT, dtype=linear.weight.dtype))
+        self.low_factor = nn.Parameter(torch.full(shape, _LWC_INIT, dtype=linear.weight.dtype))
+</new>
+</edit>
+<obs>
+Successfully replaced text in llm-qat-runtime/custom_qat.py.
+</obs>
+<note>
+[[FILL_NOTE?: optional one-line thought for this edit, or delete this block]]
+</note>
+<edit path="llm-qat-runtime/custom_qat.py">
+<old>
+                self.linear.weight, self.num_bits, self.group_size,
+                scale=self.lsq_scale.float(),
+            )
+        else:
+            # Eval: produce a *real* quantize-dequantize on the LSQ grid.
+            qmin, qmax = _qrange(self.num_bits)
+</old>
+<new>
+                self.linear.weight, self.num_bits, self.group_size,
+                up_factor=self.up_factor.float(), low_factor=self.low_factor.float(),
+            )
+        else:
+            # Eval: real no-grad quantize-dequantize on the learned LWC grid.
+            qmin, qmax = _qrange(self.num_bits)
+</new>
+</edit>
+<obs>
+Successfully replaced text in llm-qat-runtime/custom_qat.py.
+</obs>
+<note>
+[[FILL_NOTE?: optional one-line thought for this edit, or delete this block]]
+</note>
+<edit path="llm-qat-runtime/custom_qat.py">
+<old>
+                )
+                s = self.lsq_scale.float()
+                w_q = torch.clamp(torch.round(w / s), qmin, qmax) * s
+</old>
+<new>
+                )
+                s = _lwc_scale(w, self.up_factor.float(), self.low_factor.float(), qmax)
+                w_q = torch.clamp(torch.round(w / s), qmin, qmax) * s
+</new>
+</edit>
+<obs>
+Successfully replaced text in llm-qat-runtime/custom_qat.py.
+</obs>
+

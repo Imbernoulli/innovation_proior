@@ -1,0 +1,749 @@
+<meta task="dl-weight-initialization" domain="Deep learning" file="pytorch-vision/custom_init.py" model_format="qwen3" edit_tool="str_replace"/>
+
+<system>
+You are a research engineer improving a model on a fixed ML task. You work by editing the model code and running experiments. Think carefully before each change. You have these tools:
+- str_replace(path, old_str, new_str): replace the unique occurrence of old_str with new_str.
+- create(path, file_text): create a new file.
+- run_experiment(): train + evaluate the current code under the fixed budget; returns metrics.
+Make one tool call at a time. After editing, call run_experiment() to measure your method.
+</system>
+
+<user>
+## Research question
+
+Before the first gradient step, every weight in a deep convolutional network is just a number drawn from
+some distribution I choose. That choice alone decides whether the forward pass keeps a usable signal as it
+passes through dozens of layers, whether the backward pass delivers a gradient that is neither vanishing nor
+exploding, and — empirically — where 200 epochs of SGD finally land. The single thing being designed here is
+the **initialization strategy**: a data-independent rule that fills `Conv2d`, `BatchNorm2d`, and `Linear`
+parameters in place, given only the architecture and its depth. Everything else about training is frozen.
+The rule has to hold across three different network families at once — a deep residual net, a plain
+VGG-style stack, and an inverted-residual mobile net — so a strategy that quietly assumes one topology has
+to earn its keep on the other two.
+
+## Prior art before the first rung
+
+The first rung reacts to the standard fan-scaling lineage that every modern initializer descends from. These
+are the methods the ladder starts above; each fixed one failure of the last.
+
+- **Small fixed-variance Gaussian (the scaffold default).** Draw every weight from `N(0, 0.01²)`. Simple,
+  symmetry-breaking, depth-blind. Gap: the variance is unrelated to fan-in/out, so the per-layer signal
+  shrinks geometrically with depth — a deep stack initialized this way starts almost dead, and on a network
+  without BatchNorm to rescue it, never recovers.
+- **LeCun / Xavier scaling (LeCun 1998; Glorot & Bengio 2010).** Set `Var(W) = 1/fan_in` (LeCun) or
+  `2/(fan_in+fan_out)` (Xavier) to hold activation/gradient variance roughly constant across a *linear* or
+  `tanh`-like layer. Gap: the derivation assumes a symmetric, unit-derivative-at-zero nonlinearity; with
+  ReLU, which zeroes half its inputs, the forward variance is halved at every layer, so Xavier still decays
+  with depth in a ReLU net.
+- **Kaiming / He scaling (He et al. 2015, arXiv:1502.01852).** Repair the ReLU factor of two:
+  `Var(W) = 2/fan`. This is the variance the residual and orthogonal rungs both fall back to as their
+  per-layer scale. Gap: it controls *per-layer* variance but says nothing about how variance *accumulates*
+  down a residual network's main path, nor about the conditioning of the backward Jacobian beyond its scale.
+- **Norm-preservation via orthogonality (Saxe, McClelland & Ganguli 2014, arXiv:1312.6120).** Instead of
+  matching only the second moment, make each weight matrix *orthogonal* so it preserves the entire norm of
+  whatever vector passes through it, forward and backward — exact isometry in a deep linear net. Gap: the
+  clean theory is for linear/square maps; ReLU and non-square conv reshapes perturb the isometry, and the
+  scheme is silent about residual accumulation and about BatchNorm's own rescaling.
+
+## The fixed substrate
+
+The training loop, data pipeline, model definitions, and evaluation are frozen and must not be touched. Three
+architectures are built by `build_model(arch, num_classes)` and handed to me fully constructed: a CIFAR
+**ResNet-56** (`BasicBlock` ×27 across three stages, each block = two 3×3 convs with BN, an additive
+shortcut, final `Linear` head), a **VGG-16-BN** (a plain `Conv-BN-ReLU` stack, no shortcuts, a two-layer
+classifier with `Dropout`), and a **MobileNetV2** (inverted-residual blocks with depthwise 3×3 convs,
+pointwise 1×1 expansions/projections, BN throughout, additive shortcuts only when stride 1 and channels
+match). Every conv that is followed by BN has `bias=False`. Optimization is fixed: SGD `lr=0.1`,
+`momentum=0.9`, `weight_decay=5e-4`, cosine-annealed over 200 epochs, cross-entropy loss, batch 128, with
+`RandomCrop(32, pad=4)` + `RandomHorizontalFlip` augmentation. The metric is the best test accuracy reached
+during those 200 epochs.
+
+## The editable interface
+
+Exactly one function is editable — `initialize_weights(model, config)` in `pytorch-vision/custom_init.py`
+(lines 228–261). It receives the constructed model and a `config` dict and must initialize **all**
+parameters in place, with no return value. The contract:
+
+- `config['arch']` — `'resnet56'`, `'vgg16bn'`, or `'mobilenetv2'`; `config['num_classes']` — 10 or 100;
+  `config['depth']` — total count of `Conv2d` + `Linear` layers.
+- I may iterate `model.modules()` / `model.named_modules()` / `model.named_parameters()`, branch on module
+  type or on `arch`, treat shortcut projections differently from main-path convs, set `BatchNorm2d`
+  weight/bias however I like, and use any depth-dependent arithmetic. The module classes `BasicBlock`,
+  `InvertedResidual`, `nn.Conv2d`, `nn.BatchNorm2d`, `nn.Linear` are all in scope.
+- **Hard constraints:** the rule must be **data-independent** — no access to training data, no calibration
+  forward passes — and must not alter the model graph, change optimizer hyperparameters, or touch evaluation.
+
+The starting point is the scaffold default: a tiny fixed-variance Gaussian on every weight, BN at
+`(weight=1, bias=0)`. Each method on the ladder replaces exactly this function body and nothing else.
+
+```python
+# EDITABLE region of pytorch-vision/custom_init.py (lines 228-261) — default fill
+def initialize_weights(model, config):
+    """Initialize all weights in the vision model.
+
+    config: {'arch': str, 'num_classes': int, 'depth': int}
+    Layer types: nn.Conv2d (bias=False under BN), nn.BatchNorm2d, nn.Linear.
+    """
+    for m in model.modules():
+        if isinstance(m, nn.Conv2d):
+            nn.init.normal_(m.weight, 0, 0.01)
+        elif isinstance(m, nn.BatchNorm2d):
+            nn.init.constant_(m.weight, 1)
+            nn.init.constant_(m.bias, 0)
+        elif isinstance(m, nn.Linear):
+            nn.init.normal_(m.weight, 0, 0.01)
+            if m.bias is not None:
+                nn.init.constant_(m.bias, 0)
+```
+
+## Evaluation settings
+
+Three (architecture, dataset) pairs, each trained from scratch for the full 200-epoch schedule on seed 42:
+**ResNet-56 on CIFAR-100**, **VGG-16-BN on CIFAR-100**, and **MobileNetV2 on FashionMNIST** (grayscale
+repeated to three channels, resized to 32×32). One metric, higher is better: best test accuracy (%) reached
+during training, reported per (arch, dataset).
+
+The editable model code is in `pytorch-vision/custom_init.py`:
+```python
+def initialize_weights(model, config):
+    """Initialize all weights in the vision model.
+
+    Called after model construction, before moving to GPU.
+
+    Args:
+        model: nn.Module (ResNet or VGG, with Conv2d + BatchNorm2d + Linear)
+        config: dict with keys:
+            - arch: str ('resnet20', 'resnet56', 'vgg16bn', 'mobilenetv2')
+            - num_classes: int (10 or 100)
+            - depth: int (total number of Conv2d + Linear layers)
+
+    Layer types in the model:
+        - nn.Conv2d: feature extractors (no bias when followed by BN)
+        - nn.BatchNorm2d: batch normalization (weight=scale, bias=shift)
+        - nn.Linear: classifier head (with bias)
+
+    Design considerations:
+        - Fan-in vs fan-out scaling for Conv2d
+        - Distribution choice (normal, uniform, orthogonal, ...)
+        - Depth-dependent scaling for residual branches
+        - BatchNorm parameter initialization
+        - Interaction between initialization and residual shortcuts
+    """
+    for m in model.modules():
+        if isinstance(m, nn.Conv2d):
+            nn.init.normal_(m.weight, 0, 0.01)
+        elif isinstance(m, nn.BatchNorm2d):
+            nn.init.constant_(m.weight, 1)
+            nn.init.constant_(m.bias, 0)
+        elif isinstance(m, nn.Linear):
+            nn.init.normal_(m.weight, 0, 0.01)
+            if m.bias is not None:
+                nn.init.constant_(m.bias, 0)
+```
+Improve it. Derive your method, edit the code, then run_experiment().
+</user>
+
+### step 1 — Orthogonal init (norm-preserving)   [slug:orthogonal]
+
+<think>
+[[POLISH_REASONING: adapt to first-person agentic voice, end by deciding to implement]]
+The scaffold ships with the worst defensible initializer — every weight an i.i.d. draw from `N(0, 0.01²)`,
+a variance picked for nothing in particular — so the floor I have to beat is not "no initializer" but "an
+initializer that ignores the layer's shape." I want to start the ladder from the first principled rung, the
+one that asks the strongest single question you can ask of an untrained network: not "is the variance right
+on average?" but "does a signal survive being pushed through this layer at all?" That is the orthogonal
+question, and it is the natural place to anchor the climb because it is the most aggressive form of the
+signal-preservation idea — it controls the entire spectrum of each weight map, not just its second moment.
+
+Start from what actually goes wrong in a deep net at step zero. Take the forward pass through the VGG stack,
+which is the cleanest case because it is a plain chain with no shortcuts: input `x`, then thirteen
+`Conv-BN-ReLU` triples. Ignore BN for a moment and ask what a stack of linear maps `W_L … W_2 W_1` does to
+the norm of an input vector. The answer is governed by the singular values of each `W_i`. If a layer's
+largest singular value exceeds one, it stretches; if its smallest is below one, it shrinks; compose dozens of
+such maps and the product's singular values spread out geometrically, so a generic input is either blown up
+or crushed to nearly nothing by the time it reaches the classifier. The scaffold default makes this acute:
+`N(0, 0.01²)` gives a conv map whose singular values are all tiny, so the signal is multiplied by a small
+number at every layer and arrives at the head essentially dead. Symmetric, depth-blind, and exactly the kind
+of vanishing-signal start that 200 epochs of SGD struggles to dig out of.
+
+The fan-scaling lineage — LeCun, Xavier, He — fixes the *average* of this story. It chooses the variance of
+the entries of `W` so that the *expected* squared norm of the output equals that of the input, layer by
+layer. Xavier targets `Var(W) = 2/(fan_in+fan_out)` for a symmetric unit-derivative nonlinearity; He
+corrects the factor of two that ReLU eats by zeroing half its inputs, giving `Var(W) = 2/fan`. This is real
+progress — it makes the *mean* signal norm depth-stable — but it is a statement about one number, the second
+moment. A random Gaussian matrix scaled to the right variance still has a spread of singular values (for a
+square `n×n` Gaussian the singular values follow the Marchenko–Pastur law, ranging from near 0 up to ~2 in
+the scaled units). So even with He scaling the *individual* directions are not preserved: some directions in
+the input space are amplified, others nearly annihilated, and over depth this anisotropy compounds. The mean
+is stable; the worst case is not.
+
+Saxe, McClelland & Ganguli (2014) make the stronger demand, and it is the demand I want at the bottom of this
+ladder: don't just match the mean, preserve the *whole* norm — every singular value exactly one. A matrix
+with all singular values equal to one is orthogonal (or, for non-square, semi-orthogonal): `WᵀW = I` on the
+smaller dimension. Such a map is an isometry — it rotates/reflects its input without changing any length.
+Chain orthogonal maps and the composition is still orthogonal, so in a deep *linear* net an orthogonal init
+gives perfect dynamical isometry: the forward signal norm is exactly conserved at every depth, and — because
+the backward Jacobian of a linear net is the transpose product, also a product of orthogonal matrices — so is
+the gradient norm. No vanishing, no exploding, at any depth, exactly rather than on average. That is a
+qualitatively stronger guarantee than fan-scaling's mean-matching, which is why it is the right first rung:
+it is the most that initialization-by-norm-preservation can promise.
+
+Now I have to translate "orthogonal" to the objects the scaffold actually hands me, because a conv weight is
+not a matrix — it is a 4-D tensor of shape `(out_channels, in_channels, kh, kw)`. The standard move, and the
+one PyTorch's `nn.init.orthogonal_` implements, is to view the tensor as a 2-D matrix by flattening all but
+the first dimension: rows = `out_channels`, columns = `in_channels·kh·kw`. Then fill that matrix with a random
+(semi-)orthogonal matrix — sample a Gaussian, take its QR (or SVD) factorization, keep the orthogonal factor,
+fix the sign convention — and reshape back. When the flattened matrix is wider than it is tall (the usual
+case: `in·kh·kw` ≫ `out`), the result is *row*-orthogonal: `W Wᵀ = I` on the output channels. That preserves
+the norm in the over-determined direction, which is the forward-pass direction I care about most. It is not a
+literally norm-preserving *convolution* — true orthogonal convolutions need the delta/circular construction —
+but at the matrix level it gives every output channel a unit-norm, mutually-orthogonal filter, which is the
+practical content of the idea and what the task's `nn.init.orthogonal_` exposes. I accept that gap knowingly;
+the matrix-level scheme is the one the edit surface supports without altering the graph.
+
+There is a scale subtlety I cannot skip, and it is exactly where orthogonality and ReLU collide. A pure
+orthogonal map preserves norm — perfect for a linear net. But every layer here is followed by ReLU, which
+discards the negative half of its pre-activations and so, in expectation, halves the variance of what flows
+forward. If I initialize each conv as exactly orthogonal (singular values one) and then ReLU after it, the
+*activation* norm decays by roughly √2 per layer — the same ReLU leak that forced He to put a factor of two
+into the variance. So I scale the orthogonal matrix by a gain. The gain that compensates ReLU's variance halving
+is `√2`, which is precisely `nn.init.calculate_gain('relu')`. Multiplying an orthogonal matrix by `√2` sets
+every singular value to `√2`, so each layer amplifies the pre-ReLU signal by √2 and ReLU pulls it back to
+unit — the post-activation norm holds across depth. This is the orthogonal analogue of He scaling: same
+target second moment, but achieved with a controlled spectrum (every singular value identical at √2) instead
+of a Gaussian's spread. I apply the same orthogonal-with-`√2`-gain rule to the `Linear` layers too, since the
+classifier head and VGG's hidden FC sit behind ReLUs of the same kind; biases go to zero, since at
+initialization there is no reason to offset any unit and a nonzero bias would just inject an arbitrary shift
+into the carefully balanced pre-activations.
+
+BatchNorm is the one piece I leave at its conventional setting, and I want to be explicit about why, because
+it is the same decision the fan-scaling baselines make and it matters for how this rung behaves. Each
+`BatchNorm2d` has an affine `(weight γ, bias β)`. The neutral, identity-like setting is `γ=1, β=0`: at
+initialization BN whitens its input to unit variance per channel and then applies the identity affine, so it
+neither amplifies nor suppresses. That keeps BN out of the way of the orthogonal scaling I just did on the
+convs — the conv sets the spectrum, BN re-standardizes the running statistics, and the `γ=1` affine doesn't
+fight it. I deliberately do *not* try anything cleverer with BN at this rung (no zero-γ, no per-block
+scaling); the whole point of the first rung is to test the orthogonal hypothesis in isolation, with the
+simplest BN that lets the conv init speak.
+
+Walk the three target architectures with this rule and predict where it should and shouldn't pay off, because
+the cross-architecture spread is what the leaderboard will actually grade. **VGG-16-BN** is the friendliest:
+a deep plain chain of `Conv-BN-ReLU` with no shortcuts, exactly the topology orthogonality was derived for.
+Here the orthogonal spectrum should give the cleanest conditioning of any per-layer scheme, and if
+orthogonal init has an edge anywhere it is here. **ResNet-56** is more delicate. Its main path is a sum of
+residual branches: `x_{l+1} = x_l + F_l(x_l)`. Orthogonality controls each conv *inside* `F_l`, but it says
+nothing about how the *branch outputs accumulate* down the additive main path. If each branch starts with
+unit-scale output (which orthogonal-√2 convs give), then the main-path variance grows roughly linearly with
+the number of blocks — 27 of them — so the signal entering the head is inflated by depth, and BN has to
+absorb that growth. Orthogonality buys clean per-branch maps but not residual-accumulation control; I expect
+it to be merely fine on ResNet, not special. **MobileNetV2** is the hardest case for this scheme and worth
+naming. Its workhorse is the *depthwise* 3×3 conv: a conv with `groups = channels`, so each output channel
+sees exactly one input channel. Flatten its weight to a matrix and you get shape `(channels, 1·3·3)` =
+`(channels, 9)` — far *taller* than wide. `nn.init.orthogonal_` on a tall matrix can only make the *columns*
+orthonormal (nine orthonormal vectors in `channels`-space); it cannot make the many rows mutually orthogonal,
+so the per-channel-filter norm-preservation story that justified the whole approach simply doesn't hold for
+depthwise layers. The orthogonal guarantee degrades to "nine well-conditioned directions" out of a tensor
+that has one filter per channel — exactly the layer type where I'd expect orthogonal init to lose its
+advantage, possibly to fall *behind* a plain fan-scaled Gaussian that at least gets the per-filter variance
+right without pretending to an isometry it can't deliver.
+
+So the step-1 edit is the literal orthogonal fill: iterate `model.modules()`; for every `Conv2d` apply
+`orthogonal_` with gain `√2`; for every `Linear` the same with zero bias; for every `BatchNorm2d` set
+`(weight=1, bias=0)`. No architecture branching, no depth arithmetic, no special treatment of shortcuts —
+one uniform rule, which is the honest way to test the orthogonal hypothesis before complicating it. The
+distilled module and its exact code live in the answer.
+
+What I expect when this runs, stated so the next rung has something to push against. On VGG-16-BN, the
+topology orthogonality was built for, this should be at least competitive — the clean spectrum is its best
+shot. On ResNet-56 I expect it to be unremarkable: orthogonality fixes per-layer conditioning but not the
+residual accumulation that is the dominant effect in a 56-layer res-net, so it should land in the same
+neighborhood as plain fan-scaling rather than above it. On MobileNetV2/FashionMNIST I am genuinely worried —
+the depthwise convs defeat the matrix-orthogonality construction, so this is the architecture where the
+elegant theory has the least grip on the actual weights, and I would not be surprised to see it trail there.
+If that cross-architecture pattern holds — fine on the plain stack, ordinary on the residual net, weakest on
+the depthwise mobile net — then the diagnosis for the next rung writes itself: norm-preservation of the
+*whole spectrum* is the wrong thing to over-invest in when (a) BatchNorm already re-standardizes variance at
+every layer so the per-layer isometry is partly redundant, and (b) the architectures that matter are
+dominated by either residual accumulation or depthwise filters that orthogonality cannot touch. The move
+after this is to stop chasing the full spectrum and go back to getting the *second moment* exactly right for
+ReLU — the He variance — applied uniformly and cheaply, and see whether that simpler, BN-friendly target
+already matches or beats the orthogonal spectrum it cost so much to impose.
+</think>
+<say>
+[[FILL_SAY: 1-2 sentences naming the method and what this first edit does]]
+</say>
+<edit path="pytorch-vision/custom_init.py">
+<old>
+def initialize_weights(model, config):
+    """Initialize all weights in the vision model.
+
+    Called after model construction, before moving to GPU.
+
+    Args:
+        model: nn.Module (ResNet or VGG, with Conv2d + BatchNorm2d + Linear)
+        config: dict with keys:
+            - arch: str ('resnet20', 'resnet56', 'vgg16bn', 'mobilenetv2')
+            - num_classes: int (10 or 100)
+            - depth: int (total number of Conv2d + Linear layers)
+
+    Layer types in the model:
+        - nn.Conv2d: feature extractors (no bias when followed by BN)
+        - nn.BatchNorm2d: batch normalization (weight=scale, bias=shift)
+        - nn.Linear: classifier head (with bias)
+
+    Design considerations:
+        - Fan-in vs fan-out scaling for Conv2d
+        - Distribution choice (normal, uniform, orthogonal, ...)
+        - Depth-dependent scaling for residual branches
+        - BatchNorm parameter initialization
+        - Interaction between initialization and residual shortcuts
+    """
+    for m in model.modules():
+        if isinstance(m, nn.Conv2d):
+            nn.init.normal_(m.weight, 0, 0.01)
+        elif isinstance(m, nn.BatchNorm2d):
+</old>
+<new>
+def initialize_weights(model, config):
+    """Orthogonal initialization.
+
+    Conv2d & Linear: orthogonal matrix (gain=sqrt(2) for ReLU).
+    BatchNorm2d: weight=1, bias=0.
+    """
+    gain = nn.init.calculate_gain('relu')
+    for m in model.modules():
+        if isinstance(m, nn.Conv2d):
+            nn.init.orthogonal_(m.weight, gain=gain)
+        elif isinstance(m, nn.BatchNorm2d):
+</new>
+</edit>
+<obs>
+Successfully replaced text in pytorch-vision/custom_init.py.
+</obs>
+<note>
+[[FILL_NOTE?: optional one-line thought for this edit, or delete this block]]
+</note>
+<edit path="pytorch-vision/custom_init.py">
+<old>
+        elif isinstance(m, nn.Linear):
+            nn.init.normal_(m.weight, 0, 0.01)
+            if m.bias is not None:
+                nn.init.constant_(m.bias, 0)
+</old>
+<new>
+        elif isinstance(m, nn.Linear):
+            nn.init.orthogonal_(m.weight, gain=gain)
+            if m.bias is not None:
+                nn.init.constant_(m.bias, 0)
+</new>
+</edit>
+<obs>
+Successfully replaced text in pytorch-vision/custom_init.py.
+</obs>
+<run/>
+<obs>
+Measured results — `baseline:orthogonal` (`is_final,true`), seed 42. Metric: best test accuracy (%, higher is better).
+
+## ResNet-56 / CIFAR-100
+| seed | test_acc |
+|---|---|
+| 42 | 72.08 |
+| **mean** | **72.08** |
+
+## VGG-16-BN / CIFAR-100
+| seed | test_acc |
+|---|---|
+| 42 | 72.83 |
+| **mean** | **72.83** |
+
+## MobileNetV2 / FashionMNIST
+| seed | test_acc |
+|---|---|
+| 42 | 93.88 |
+| **mean** | **93.88** |
+</obs>
+
+### step 2 — Kaiming/He normal init   [slug:kaiming_normal]
+
+<think>
+[[POLISH_REASONING: adapt to first-person agentic voice, end by deciding to implement]]
+The orthogonal numbers came in almost exactly where the construction predicted, and the pattern is the
+diagnosis. On VGG-16-BN — the plain stack orthogonality was derived for — it scored 72.83, its *best*
+relative showing. On ResNet-56 it landed at 72.08, unremarkable, sitting right in the fan-scaling
+neighborhood as I expected once I realized orthogonality fixes per-branch conditioning but not residual
+accumulation. And on MobileNetV2/FashionMNIST it came in at 93.88, the *weakest* of the three runs — exactly
+the depthwise-conv failure I flagged: those `(C, 9)` tall weight matrices cannot be made row-orthogonal, so
+the isometry I paid for never materialized on the layer type that dominates that network. So the orthogonal
+rung did not buy a uniform win; it bought a topology-dependent one, strong only where the topology matched the
+theory and actively weakest where it didn't. That tells me the expensive part of the orthogonal scheme — the
+full-spectrum control, every singular value pinned to one — is not what is doing the work, and on two of three
+architectures it is either redundant or unattainable.
+
+The redundancy is the key realization, and it reframes the whole problem. Every conv in all three networks is
+followed by BatchNorm. BN takes whatever the conv produces and re-standardizes it to zero mean, unit variance
+per channel before the next layer sees it. So the elaborate guarantee orthogonality offers — that the
+*activation norm* is preserved layer to layer — is precisely the thing BN already enforces at every layer,
+for free, from data statistics, *regardless* of how I initialized the conv. Pinning the whole singular-value
+spectrum to control forward-norm propagation is solving a problem BN has already solved downstream. What BN
+does *not* fix, and what initialization still genuinely owns, is the very first forward pass and the very
+first backward pass before BN's running statistics have warmed up, and — more importantly — the *scale* of the
+gradient that SGD sees at the start. If the conv weights are scaled wrong, the gradient that flows back
+through them is scaled wrong, and the first few hundred SGD steps either crawl or thrash regardless of what BN
+does to the forward activations. So the right target is not the full spectrum; it is getting the *second
+moment* exactly right for ReLU, cheaply, uniformly, in the BN-friendly way — which is exactly what He scaling
+was built to do and what I deliberately set aside to test the orthogonal hypothesis first.
+
+So I go back to the variance question and do it properly for ReLU. Consider one conv layer with response
+`y = Wx` (ignore bias, it is zero) feeding a ReLU. The forward-variance condition that keeps the signal from
+shrinking or blowing as it passes the layer is the one He et al. (2015) derived: with ReLU killing half the
+inputs, the per-output variance is `Var(y_out) = ½ · fan · Var(W) · Var(x)`, where the ½ is ReLU's leak and
+`fan` is the number of input connections feeding each output. To hold `Var(y_out) = Var(x_in)` across the
+layer you need `Var(W) = 2 / fan`. That factor of two is the entire content of He over Xavier — it pays back
+exactly what ReLU takes. So I draw each conv weight from `N(0, √(2/fan))`. This matches the orthogonal-√2
+target second moment, but with a plain Gaussian spectrum instead of a pinned one — and the orthogonal results
+just told me the pinned spectrum wasn't the thing earning the points.
+
+Now the one decision in this rung that is *not* the textbook default, and it is deliberate: which fan to use,
+`fan_in` or `fan_out`. For a conv, `fan_in = in_channels · kh · kw` and `fan_out = out_channels · kh · kw`.
+`fan_in` scaling keeps the *forward* activation variance stable; `fan_out` scaling keeps the *backward*
+gradient variance stable. He's original paper showed that for a feed-forward ReLU net either choice works
+because the ratio between consecutive layers' fan-in and fan-out telescopes — the depth-wise product of the
+mismatch is bounded, so you don't get compounding decay either way. I choose **`fan_out` for the convs**, and
+the reason is the residual and BN structure I am actually initializing. With `fan_out` the variance is set by
+the number of *output* channels, which makes the backward gradient through each conv well-scaled — and since
+BN already pins the forward activation variance regardless, controlling the *backward* scale is the higher-
+value thing initialization can still do here. For the `Linear` classifier head I use **`fan_in`** instead:
+the head has no BN after it and feeds directly into the softmax/cross-entropy, so I want its *forward*
+pre-logit variance controlled, and `fan_in` is the choice that holds the logit scale sane at the start rather
+than letting an over-large head saturate the softmax before training has moved. Splitting the mode by layer
+role — `fan_out` on the BN-backed convs for gradient scale, `fan_in` on the bare head for logit scale — is
+the considered version of "He init" for *this* substrate, not a blind application of one mode everywhere.
+
+BatchNorm stays at `(γ=1, β=0)`, the same neutral identity affine I used for orthogonal, and for the same
+reason: at this rung BN's job is to re-standardize, and the identity affine lets it do that without amplifying
+or suppressing. I am explicitly *not* doing anything residual-aware yet — no per-block scaling, no zero-γ —
+because the point of this rung is to isolate whether the simple, correct, BN-friendly second-moment target
+already matches the orthogonal spectrum that cost so much to impose. If it does, that is strong evidence the
+full-spectrum machinery was redundant, and it sets up the next rung cleanly: the residual *accumulation*
+problem, which neither orthogonal nor plain He touches, becomes the obvious remaining lever.
+
+Walk the three architectures and predict against the orthogonal numbers I now have in hand. **MobileNetV2** is
+where I expect the clearest swing in my favor. Its depthwise convs — the ones whose tall `(C, 9)` matrices
+broke orthogonality — are handled honestly by He scaling: for a depthwise conv `fan` counts the actual `kh·kw`
+= 9 connections per output channel, so `N(0, √(2/fan_out))` gives each depthwise filter the *right per-filter
+variance* without pretending to an isometry it cannot have. Where orthogonal had to degrade to "nine
+well-conditioned directions," He just sets the correct second moment for those nine weights and moves on. So I
+expect kaiming_normal to recover ground on MobileNetV2 relative to orthogonal's 93.88 — this is the
+architecture where the orthogonal scheme was actively misapplied and the simpler target is strictly more
+appropriate. **VGG-16-BN** is the closest call: it is the plain stack where orthogonality had its *best*
+relative showing (72.83), because the full spectrum genuinely is well-defined and well-conditioned there. Here
+I expect He to be competitive but I am not confident it beats orthogonal — on a deep plain ReLU stack the
+pinned spectrum has a real, if small, conditioning advantage over a Gaussian one, so VGG is where orthogonal's
+72.83 might hold up or even stay ahead. **ResNet-56** I expect to be roughly a wash with orthogonal's 72.08:
+both schemes get the per-layer second moment right (orthogonal via √2 gain, He via `√(2/fan)`), and *neither*
+addresses the residual accumulation that is the dominant effect in a 56-layer res-net — so they should land in
+the same neighborhood, and whichever wins by tenths is noise rather than mechanism. That ResNet wash is
+itself the most informative outcome I can hope for, because it isolates the lever the next rung must pull: if
+two schemes that differ in their per-layer spectrum tie on the residual net, then per-layer spectrum is *not*
+what limits the residual net — residual accumulation is.
+
+So the step-2 edit is the literal He fill, with the role-split modes: iterate `model.modules()`; for every
+`Conv2d` apply `kaiming_normal_(mode='fan_out', nonlinearity='relu')`; for every `Linear` apply
+`kaiming_normal_(mode='fan_in', nonlinearity='relu')` with zero bias; for every `BatchNorm2d` set
+`(weight=1, bias=0)`. One uniform pass, no architecture branching, no depth arithmetic. The distilled module
+and its exact code live in the answer.
+
+The falsifiable expectations against the orthogonal rung, stated plainly so the next rung has a clean
+scoreboard to react to. (1) On MobileNetV2 I expect kaiming_normal to *beat* orthogonal's 93.88, because He
+scaling treats depthwise convs correctly where orthogonality could not — if it does not, my whole "the
+spectrum wasn't doing the work" diagnosis is wrong and I should reconsider whether depthwise layers want
+something stranger. (2) On VGG-16-BN I expect a near-tie, with orthogonal's 72.83 possibly holding a slim edge
+from its genuine spectral conditioning on the plain stack — if He clearly *wins* here too, then the spectrum
+buys nothing even on its home turf and the orthogonal rung was strictly dominated. (3) On ResNet-56 I expect a
+wash around 72.0–72.4, because both fix per-layer variance and neither fixes residual accumulation — and that
+wash is the signal that the residual net's ceiling is set by accumulation, not by per-layer scale. If all
+three land as expected, the lesson is sharp: the cheap, correct, BN-friendly second moment matches or beats
+the expensive full-spectrum scheme everywhere except possibly the one plain stack, which means the next move
+is not a better per-layer init at all — it is to finally attack the residual-accumulation problem that has sat
+untouched under both rungs, by scaling the residual branches down and starting them near identity so that
+adding depth stops inflating the main-path signal.
+</think>
+<say>
+[[FILL_SAY: 1-2 sentences naming the method and what this first edit does]]
+</say>
+<edit path="pytorch-vision/custom_init.py">
+<old>
+def initialize_weights(model, config):
+    """Orthogonal initialization.
+
+    Conv2d & Linear: orthogonal matrix (gain=sqrt(2) for ReLU).
+    BatchNorm2d: weight=1, bias=0.
+    """
+    gain = nn.init.calculate_gain('relu')
+    for m in model.modules():
+        if isinstance(m, nn.Conv2d):
+            nn.init.orthogonal_(m.weight, gain=gain)
+        elif isinstance(m, nn.BatchNorm2d):
+</old>
+<new>
+def initialize_weights(model, config):
+    """Kaiming/He normal initialization (fan_out, ReLU).
+
+    Conv2d: N(0, sqrt(2/fan_out)) — preserves forward-pass variance with ReLU.
+    BatchNorm2d: weight=1, bias=0.
+    Linear: N(0, sqrt(2/fan_in)).
+    """
+    for m in model.modules():
+        if isinstance(m, nn.Conv2d):
+            nn.init.kaiming_normal_(m.weight, mode='fan_out', nonlinearity='relu')
+        elif isinstance(m, nn.BatchNorm2d):
+</new>
+</edit>
+<obs>
+Successfully replaced text in pytorch-vision/custom_init.py.
+</obs>
+<note>
+[[FILL_NOTE?: optional one-line thought for this edit, or delete this block]]
+</note>
+<edit path="pytorch-vision/custom_init.py">
+<old>
+        elif isinstance(m, nn.Linear):
+            nn.init.orthogonal_(m.weight, gain=gain)
+            if m.bias is not None:
+                nn.init.constant_(m.bias, 0)
+</old>
+<new>
+        elif isinstance(m, nn.Linear):
+            nn.init.kaiming_normal_(m.weight, mode='fan_in', nonlinearity='relu')
+            if m.bias is not None:
+                nn.init.constant_(m.bias, 0)
+</new>
+</edit>
+<obs>
+Successfully replaced text in pytorch-vision/custom_init.py.
+</obs>
+<run/>
+<obs>
+Measured results — `baseline:kaiming_normal` (`is_final,true`), seed 42. Metric: best test accuracy (%, higher is better).
+
+## ResNet-56 / CIFAR-100
+| seed | test_acc |
+|---|---|
+| 42 | 72.07 |
+| **mean** | **72.07** |
+
+## VGG-16-BN / CIFAR-100
+| seed | test_acc |
+|---|---|
+| 42 | 73.38 |
+| **mean** | **73.38** |
+
+## MobileNetV2 / FashionMNIST
+| seed | test_acc |
+|---|---|
+| 42 | 94.49 |
+| **mean** | **94.49** |
+</obs>
+
+### step 3 — Fixup-style residual scaling + zero-gamma BN   [slug:fixup]
+
+<think>
+[[POLISH_REASONING: adapt to first-person agentic voice, end by deciding to implement]]
+The Kaiming numbers landed almost exactly on the three predictions, and the one that matters most is the
+ResNet wash. On MobileNetV2 He jumped to 94.49 from orthogonal's 93.88 — the depthwise convs got their
+correct per-filter variance and the swing was real, confirming the spectrum was never the thing earning points
+there. On VGG-16-BN He came in at 73.38, comfortably ahead of orthogonal's 72.83 — so the plain stack's
+spectral conditioning, which I thought might hold a slim edge, did *not* survive contact; the cheap correct
+second moment beat the expensive pinned spectrum even on its home turf. But ResNet-56 came in at 72.07,
+essentially identical to orthogonal's 72.08 — a dead wash, two schemes that differ entirely in their per-layer
+spectrum tying to within one part in seven thousand. That tie is the whole signal. When two initializers that
+disagree about the per-layer map agree on the residual net, per-layer scale is provably *not* what limits the
+residual net. The ResNet ceiling is set by something neither rung touched, and I now know what it is: residual
+accumulation.
+
+Make the accumulation problem precise, because the fix has to come out of its structure. A ResNet main path is
+a running sum: `x_{l+1} = x_l + F_l(x_l)`, where `F_l` is a residual branch — for `BasicBlock`, two 3×3
+convs each with BN. At initialization, both He and orthogonal give each branch an output `F_l(x_l)` whose
+variance is roughly the same scale as `x_l` (that is what "preserve the per-layer variance" *means*). But the
+branches *add*, and the branch outputs at init are roughly independent, so the variance of the running sum
+grows additively: after `L` blocks the main-path variance is roughly `Var(x_0) + Σ_l Var(F_l) ≈ (1+L)·Var(x_0)`.
+ResNet-56 on CIFAR has 27 `BasicBlock`s, so the signal entering the head is inflated by a factor on the order
+of the depth. Three things follow at the start of training. The logits are over-scaled, so the softmax starts
+saturated and the early gradient is distorted. BN does re-standardize the running sum each block — that is why
+the network trains at all — but it is forced to do so by *dividing out* a large, depth-dependent variance,
+which couples every block's BN to the depth and means the residual branches start out *competing* with the
+identity path on equal footing rather than as small corrections. And the deepest blocks' branches, whose
+contribution is buried in a large sum, get a poorly-scaled gradient. That is the accumulation tax, and no
+per-layer second-moment choice can pay it, because the problem is *between* layers — in how the branches sum —
+not *within* any one.
+
+The remedy that the residual structure itself suggests is to make each branch *start small* so the running sum
+does not inflate, and to start it from the identity rather than from a random function so SGD does not have to
+first unlearn a bad random branch before it can use it. The cleanest way to say "start small" with the right
+depth dependence comes from the residual-scaling analysis of Zhang, Dauphin & Ma (2019): if I want each
+branch's contribution to the network function to be `Θ(1/L)` rather than `Θ(1)` — so that the sum over `L`
+branches is `Θ(1)` again, depth-independent — and the branch has `m` weight layers, then scaling the branch's
+weight layers by `L^{-1/(2m-2)}` achieves it. For the `BasicBlock` here, `m = 2` (two convs per branch), so
+the exponent is `-1/(2·2-2) = -1/2`: scale by `L^{-1/2}`, i.e. `n_blocks^{-1/2}`. That is the load-bearing
+move — controlling the *accumulation* directly, which is exactly the lever the ResNet wash exposed as untouched.
+
+But here I have to be careful, because the substrate I am editing is *not* the normalization-free setting that
+analysis was built for, and importing the wrong machinery would break things. The original residual-scaling
+recipe was designed to train res-nets *without any normalization at all*: it removes BatchNorm entirely,
+replaces it with learnable scalar biases inserted before every conv and activation, adds one learnable scalar
+multiplier per branch, scales the *non-zero* branch weights by `L^{-1/(2m-2)}` while zero-initializing the
+*last* conv of each branch, and zero-initializes the classifier. Every one of those pieces exists to
+substitute for what BN would have done. But this task's networks **keep BatchNorm** — it is part of the frozen
+model graph I am forbidden to touch — and I cannot add scalar biases or multipliers without altering the graph,
+which the contract prohibits. So I must *not* import that story. I cannot add learnable scalars (graph change),
+I cannot remove BN (graph change), and I should not zero the classifier (with BN present and the head's logits
+already controlled by the `fan_in` scaling I kept, zeroing the head would only throw away a good start). What I
+can do, and what is the *right* translation of the residual-scaling idea into a BN-equipped network, is two
+edits, both inside the contract.
+
+First, the branch down-scaling. I run the He pass first — every conv gets `N(0, √(2/fan_out))`, every Linear
+`fan_in` He, every BN neutral — so I keep the step-2 second moment that just proved itself on VGG and Mobile.
+Then, for ResNets only, I find the residual blocks and scale the *last* conv of each block (`conv2`) by
+`n_blocks^{-1/2}`. This shrinks each branch's output by the depth-corrected factor so the running sum stops
+inflating. I scale `conv2` specifically — the last weight layer in the branch — because that is the layer
+whose output directly enters the additive sum, so scaling it is the most direct way to set the branch's
+contribution scale; and I scale it *down from a good He init* rather than zeroing it, because with BN in the
+loop I want the branch to be a small but live correction, not a dead one.
+
+Second — and this is where the BN-equipped translation gets to do something the normalization-free recipe
+cannot — I exploit BatchNorm itself to start the branch near identity, for free, with no graph change. In a
+`BasicBlock` the branch ends `conv2 → bn2`, and the block output is `relu(bn2(conv2(...)) + shortcut(x))`. The
+affine `weight` (γ) of `bn2` multiplies the *entire* branch output before it is added to the shortcut. So if I
+set `bn2.weight = 0` at initialization, the branch output is multiplied by zero and the block computes exactly
+`relu(shortcut(x))` — the residual branch starts as the *zero function* and the block starts as a clean
+identity-plus-shortcut, precisely the "start from identity, don't unlearn a random branch" property I wanted,
+achieved through a parameter BN already owns. This is the zero-γ trick (Goyal et al. 2017): zero the last BN's
+scale in each residual block so residual branches begin inert and SGD grows them from zero. It is strictly
+better than zero-initializing the *conv* would be here, because the conv weights stay at their He scale (ready
+to contribute the moment γ lifts off zero) while the *block output* is what starts at identity — and crucially
+γ is a single learnable scalar per channel that BN already exposes, so I change no graph and add no parameters.
+
+So the task's residual init is a hybrid the normalization-free recipe never was: keep BN, keep the He second
+moment, then for ResNets (a) down-scale the last branch conv by `n_blocks^{-1/2}` to kill accumulation and
+(b) zero the last branch BN's γ to start each branch from identity. The branch-scaling exponent comes from the
+`m=2`, `Θ(1/L)`-accumulation argument; the zero-γ start comes from BN's own affine. I am explicitly *not*
+adding scalar biases or multipliers, *not* removing BN, *not* zeroing the classifier — those belong to the
+no-normalization world and would violate the frozen-graph contract here.
+
+For the non-residual architectures the answer is "do nothing extra," and it is worth saying why rather than
+treating it as a default. **VGG-16-BN** has no shortcuts and no additive accumulation — it is a plain chain, so
+there is no branch to scale and no last-branch-BN to zero; the He pass *is* the right init, and it already won
+there at 73.38, so I leave it untouched. **MobileNetV2** does have additive shortcuts in its
+`InvertedResidual` blocks, but its block structure is different (expand-1×1 → depthwise-3×3 → project-1×1,
+three convs, with the residual added only when stride 1 and channels match), and the leaderboard's strongest
+He result already lives here at 94.49; rather than guess a branch-scaling exponent for a block type the
+`n_blocks`/`BasicBlock` accounting wasn't derived for, I gate the residual scaling on `arch.startswith('resnet')`
+and let Mobile and VGG keep the plain He init that is already best for them. The honest scope of the residual
+fix is the architecture whose accumulation I can actually count: ResNet.
+
+So the step-3 edit, literally: phase one, the full He pass from step 2 (convs `fan_out`, Linear `fan_in`, BN
+neutral, zero biases); phase two, *if* `arch` is a ResNet, count `n_blocks` = number of `BasicBlock`s,
+multiply each block's `conv2.weight` by `n_blocks^{-1/2}`, and set each block's `bn2.weight` to zero. No graph
+change, no added parameters, no data, no calibration. The distilled module and its exact code live in the
+answer.
+
+The falsifiable expectations against the Kaiming rung, where this either earns the top of the ladder or
+doesn't. The decisive test is **ResNet-56**: it sat in a dead wash at 72.07/72.08 under the two per-layer
+schemes precisely because neither addressed accumulation, and this rung is the *only* one that does — so if
+the residual-scaling-plus-zero-γ story is right, ResNet-56 should finally move *up* off that 72.07 ceiling. If
+it doesn't, then accumulation wasn't the binding constraint after all and my reading of the wash is wrong. On
+**VGG-16-BN** I expect essentially no change from He's 73.38 in the worst case, because the residual phase
+never fires there — any movement is plain seed-level noise, and a clean tie-or-better is the success
+condition (a *drop* would mean my phase-one pass somehow diverged from step 2, which it must not). On
+**MobileNetV2** the residual phase is gated off too, so I expect to hold He's 94.49 — again, holding is the
+success condition, not improving. The shape of the win I am predicting is therefore narrow and specific: the
+top of this ladder is won *on the residual net*, by paying the accumulation tax that the per-layer rungs left
+on the table, while matching the best per-layer result everywhere the residual machinery correctly stays out
+of the way. If ResNet-56 rises and the other two hold, this is the strongest rung; if ResNet-56 stays at 72.07,
+the lesson would be that BN already neutralizes accumulation well enough that initialization cannot improve on
+it, and the next move would have to look past initialization entirely.
+</think>
+<say>
+[[FILL_SAY: 1-2 sentences naming the method and what this first edit does]]
+</say>
+<edit path="pytorch-vision/custom_init.py">
+<old>
+def initialize_weights(model, config):
+    """Kaiming/He normal initialization (fan_out, ReLU).
+
+    Conv2d: N(0, sqrt(2/fan_out)) — preserves forward-pass variance with ReLU.
+    BatchNorm2d: weight=1, bias=0.
+    Linear: N(0, sqrt(2/fan_in)).
+    """
+    for m in model.modules():
+</old>
+<new>
+def initialize_weights(model, config):
+    """Fixup-inspired residual scaling with zero-gamma BatchNorm.
+
+    For ResNets: Kaiming normal for all Conv2d, then scale the last conv in
+    each residual block by n_blocks^(-0.5) to control variance accumulation.
+    Zero-initialize the last BN in each block (Goyal et al., 2017).
+    For VGG: Kaiming normal (no residual branches to scale).
+    Linear: small normal init with zero bias.
+    """
+    arch = config['arch']
+    is_resnet = arch.startswith('resnet')
+
+    # Phase 1: standard Kaiming init for all layers
+    for m in model.modules():
+</new>
+</edit>
+<obs>
+Successfully replaced text in pytorch-vision/custom_init.py.
+</obs>
+<note>
+[[FILL_NOTE?: optional one-line thought for this edit, or delete this block]]
+</note>
+<edit path="pytorch-vision/custom_init.py">
+<old>
+            if m.bias is not None:
+                nn.init.constant_(m.bias, 0)
+</old>
+<new>
+            if m.bias is not None:
+                nn.init.constant_(m.bias, 0)
+
+    # Phase 2: Fixup-inspired residual branch scaling for ResNets
+    if is_resnet:
+        n_blocks = sum(1 for m in model.modules() if isinstance(m, BasicBlock))
+        fixup_scale = n_blocks ** (-0.5)
+        for m in model.modules():
+            if isinstance(m, BasicBlock):
+                # Scale the last conv (conv2) in each residual block
+                m.conv2.weight.data.mul_(fixup_scale)
+                # Zero-init the last BN so residual branch starts near identity
+                nn.init.constant_(m.bn2.weight, 0)
+</new>
+</edit>
+<obs>
+Successfully replaced text in pytorch-vision/custom_init.py.
+</obs>
+<run/>
+<obs>
+Measured results — `baseline:fixup` (`is_final,true`), seed 42. Metric: best test accuracy (%, higher is better).
+
+## ResNet-56 / CIFAR-100
+| seed | test_acc |
+|---|---|
+| 42 | 72.37 |
+| **mean** | **72.37** |
+
+## VGG-16-BN / CIFAR-100
+| seed | test_acc |
+|---|---|
+| 42 | 74.37 |
+| **mean** | **74.37** |
+
+## MobileNetV2 / FashionMNIST
+| seed | test_acc |
+|---|---|
+| 42 | 94.48 |
+| **mean** | **94.48** |
+</obs>
+

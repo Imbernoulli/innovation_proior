@@ -1,0 +1,1181 @@
+<meta task="robo-diffusion-policy" domain="Optimization" file="CleanDiffuser/pipelines/custom_policy.py" model_format="qwen3" edit_tool="str_replace"/>
+
+<system>
+You are a research engineer improving a model on a fixed ML task. You work by editing the model code and running experiments. Think carefully before each change. You have these tools:
+- str_replace(path, old_str, new_str): replace the unique occurrence of old_str with new_str.
+- create(path, file_text): create a new file.
+- run_experiment(): train + evaluate the current code under the fixed budget; returns metrics.
+Make one tool call at a time. After editing, call run_experiment() to measure your method.
+</system>
+
+<user>
+## Research question
+
+Offline reinforcement learning on D4RL MuJoCo control: I am handed a fixed buffer of transitions
+`(s, a, r, s')` collected by some behavior policy `mu`, with no further environment interaction, and I
+must learn a **Markov policy** that maps the current observation to one action. The single thing being
+designed is the **policy algorithm core** — the actor (a diffusion model over actions, conditioned on
+the state), the optional critic, the training objective, and the inference-time action-selection rule.
+The diffusion actor replaces the unimodal Gaussian head of classic actor-critic methods so that a
+multimodal action distribution can be represented; the question is how to *learn* and *use* it offline
+without the out-of-distribution value blow-up that wrecks naive offline RL. Everything outside the
+policy core — the D4RL dataset construction, the environment names, the evaluation loop, the seeds, the
+episode count, the vectorized-environment count, and the checkpoint names — is frozen.
+
+## Prior art before the first rung (offline-RL + diffusion-actor lineage)
+
+The first rung (diffusion behavior cloning) reacts to the failures of the methods below; the fixed
+substrate is the harness they all plug into.
+
+- **Behavior cloning by L2 regression.** Fit `f(s) -> a` by minimizing `E||a - f(s)||^2`. The optimum
+  is the conditional *mean* `E[a|s]`, which is the log-likelihood of a fixed-variance Gaussian — a
+  unimodal head. On a `medium` D4RL buffer (a half-trained agent visiting several action clusters per
+  state) the action given a state is multimodal, and the mean of two valid action modes is an action no
+  one ever took. Gap: a unimodal regressor manufactures invalid in-between actions at exactly the
+  branchy states that matter.
+- **Conservative offline value learning (CQL, Kumar et al. 2020).** Bootstraps a value function while
+  *penalizing* the Q-values of out-of-distribution actions, pushing them down so the policy cannot
+  exploit phantom optima. Effective, but the penalty is a coarse, dataset-wide pressure and the policy
+  it extracts is still a Gaussian; it does not, on its own, give an expressive multimodal actor. Gap:
+  conservative value, weak actor.
+- **Advantage-weighted regression (AWR / AWAC, Peng et al. 2019; Nair et al. 2020).** Extract a policy
+  by `E[exp(beta * A(s,a)) log pi(a|s)]` — the maximum-likelihood fit to the KL-constrained
+  reward-maximizing policy `pi ∝ mu * exp(beta * A)`. This stays close to data by construction, but the
+  policy class is again a unimodal Gaussian fit to what is generically a multimodal reweighted-behavior
+  target. Gap: the extraction step throws away expressivity.
+- **In-sample value learning (IQL, Kostrikov, Nair, Levine 2022).** Never writes down
+  `max_{a'} Q(s',a')` at all — estimates the value of the best *in-support* action by expectile
+  regression of `Q` over dataset actions on a separate value net `V`, then SARSA-backs `Q` against
+  `V(s')`. The value side is solved stably and in-sample; what remains open is which policy that critic
+  evaluates and how to extract it expressively. Gap: stable critic, unresolved expressive actor.
+- **Score-based generative modeling / DDPM (Sohl-Dickstein et al. 2015; Ho et al. 2020).** Models a
+  distribution by learning the gradient field (score) of its log-density via a denoising regression
+  `E||eps - eps_theta(sqrt(abar_t) x + sqrt(1-abar_t) eps, t)||^2`, then samples by a stochastic reverse
+  chain from Gaussian noise. This is the generative core every rung's *actor* is built from — an
+  expressive, multimodal conditional density `p(a|s)` trained by plain MSE, with no intractable
+  normalizer. The lineage's question becomes: drop this expressive actor into the offline-RL harness and
+  decide how (or whether) a critic shapes it.
+
+## The fixed substrate
+
+A CleanDiffuser offline-RL pipeline (`CleanDiffuser/pipelines/custom_policy.py`) is frozen outside the
+editable region: it builds the D4RL MuJoCo TD dataset (`D4RLMuJoCoTDDataset` over
+`d4rl.qlearning_dataset(env)`, with optional reward normalization), a shuffled `DataLoader`, and reads
+`obs_dim, act_dim` off the dataset. After training it runs a vectorized evaluation loop
+(`gym.vector.make(env_name, num_envs)`), normalizes observations with `dataset.get_normalizer()`,
+collects episodic returns over `num_episodes`, converts them to D4RL normalized scores via
+`env.get_normalized_score`, and prints `EVAL_METRICS normalized_score=... episode_reward=...`. The loop
+provides the actor wrapper `DiscreteDiffusionSDE` (a discrete VP-SDE / DDPM diffusion model exposing
+`.loss(act, obs)`, `.update(act, obs)["loss"]` for a denoising-BC step, `.sample(...)`, `.ema_update()`,
+`.save/.load`, and its own optimizer), the `IdentityCondition` conditioner (the state is fed in raw),
+the score backbones (`DQLMlp`, `IDQLMlp`), the critics (`DQLCritic`, `IDQLQNet`, `IDQLVNet`), and
+`report_parameters`. The diffusion actor uses `diffusion_steps = sampling_steps = 5` and a cosine noise
+schedule; actions live in the box `[-1, 1]`.
+
+## The editable interface
+
+Exactly one region is editable — the policy-algorithm core inside `pipeline(args)` in
+`custom_policy.py` (the imports block, the network/critic construction, the training loop, the
+inference-time checkpoint load, the eval `prior`, and the action-selection block). Every method on the
+ladder is a fill of this same contract: construct a diffusion **actor** (and optionally a **critic**);
+in the training loop, take an actor objective (a denoising-BC `loss`/`update` step, possibly with a
+Q-maximization term) and optionally a critic objective; at inference, load the checkpoint(s), sample
+candidate action(s) from the actor, and select the action to execute (single sample, or a reranking
+over `num_candidates` using the critic).
+
+The starting point is the scaffold default: **Diffusion Q-Learning (DQL)** — a diffusion actor with a
+twin-Q critic, trained by BC plus a Q-maximization term, with candidate reranking by softmax over `Q`
+at inference. Each later baseline replaces exactly this editable region.
+
+```python
+import os
+from copy import deepcopy
+
+import d4rl
+import gym
+import hydra
+import numpy as np
+import torch
+import torch.nn.functional as F
+from torch.optim.lr_scheduler import CosineAnnealingLR
+from torch.utils.data import DataLoader
+
+from cleandiffuser.dataset.d4rl_mujoco_dataset import D4RLMuJoCoTDDataset
+from cleandiffuser.dataset.dataset_utils import loop_dataloader
+from cleandiffuser.diffusion import DiscreteDiffusionSDE
+from cleandiffuser.nn_condition import IdentityCondition
+from cleandiffuser.nn_diffusion import DQLMlp
+from cleandiffuser.utils import report_parameters, DQLCritic, FreezeModules
+from utils import set_seed
+
+# ---- EDITABLE REGION (default fill = Diffusion Q-Learning) ----
+
+# --------------- Network Architecture -----------------
+nn_diffusion = DQLMlp(obs_dim, act_dim, emb_dim=64, timestep_emb_type="positional").to(args.device)
+nn_condition = IdentityCondition(dropout=0.0).to(args.device)
+
+# --------------- Diffusion Model Actor --------------------
+actor = DiscreteDiffusionSDE(
+    nn_diffusion, nn_condition, predict_noise=args.predict_noise, optim_params={"lr": args.actor_learning_rate},
+    x_max=+1. * torch.ones((1, act_dim), device=args.device),
+    x_min=-1. * torch.ones((1, act_dim), device=args.device),
+    diffusion_steps=args.diffusion_steps, ema_rate=args.ema_rate, device=args.device)
+
+# ------------------ Critic ---------------------
+critic = DQLCritic(obs_dim, act_dim, hidden_dim=args.hidden_dim).to(args.device)
+critic_target = deepcopy(critic).requires_grad_(False).eval()
+critic_optim = torch.optim.Adam(critic.parameters(), lr=args.critic_learning_rate)
+
+# ---------------------- Training ----------------------
+if args.mode == "train":
+    actor_lr_scheduler = CosineAnnealingLR(actor.optimizer, T_max=args.gradient_steps)
+    critic_lr_scheduler = CosineAnnealingLR(critic_optim, T_max=args.gradient_steps)
+    actor.train(); critic.train()
+    prior = torch.zeros((args.batch_size, act_dim), device=args.device)
+
+    for batch in loop_dataloader(dataloader):
+        obs, next_obs = batch["obs"]["state"].to(args.device), batch["next_obs"]["state"].to(args.device)
+        act = batch["act"].to(args.device)
+        rew = batch["rew"].to(args.device)
+        tml = batch["tml"].to(args.device)
+
+        # Critic Training: SARSA-style TD with next action drawn from the diffusion actor
+        current_q1, current_q2 = critic(obs, act)
+        next_act, _ = actor.sample(
+            prior, solver=args.solver, n_samples=args.batch_size, sample_steps=args.sampling_steps,
+            use_ema=True, temperature=1.0, condition_cfg=next_obs, w_cfg=1.0, requires_grad=False)
+        target_q = torch.min(*critic_target(next_obs, next_act))
+        target_q = (rew + (1 - tml) * args.discount * target_q).detach()
+        critic_loss = F.mse_loss(current_q1, target_q) + F.mse_loss(current_q2, target_q)
+        critic_optim.zero_grad(); critic_loss.backward(); critic_optim.step()
+
+        # Policy Training: BC loss + eta * Q-maximization on freshly sampled actions
+        bc_loss = actor.loss(act, obs)
+        new_act, _ = actor.sample(
+            prior, solver=args.solver, n_samples=args.batch_size, sample_steps=args.sampling_steps,
+            use_ema=False, temperature=1.0, condition_cfg=obs, w_cfg=1.0, requires_grad=True)
+        with FreezeModules([critic, ]):
+            q1_new_action, q2_new_action = critic(obs, new_act)
+        if np.random.uniform() > 0.5:
+            q_loss = - q1_new_action.mean() / q2_new_action.abs().mean().detach()
+        else:
+            q_loss = - q2_new_action.mean() / q1_new_action.abs().mean().detach()
+        actor_loss = bc_loss + args.task.eta * q_loss
+        actor.optimizer.zero_grad(); actor_loss.backward(); actor.optimizer.step()
+
+        actor_lr_scheduler.step(); critic_lr_scheduler.step()
+        if n_gradient_step % args.ema_update_interval == 0:
+            if n_gradient_step >= 1000:
+                actor.ema_update()
+            for p, tp in zip(critic.parameters(), critic_target.parameters()):
+                tp.data.copy_(0.995 * p.data + 0.005 * tp.data)
+        # ... logging / checkpointing / break at gradient_steps ...
+
+# ---------------------- Inference ----------------------
+elif args.mode == "inference":
+    actor.load(...); critic.load_state_dict(...); critic_target.load_state_dict(...)
+    actor.eval(); critic.eval(); critic_target.eval()
+    prior = torch.zeros((args.num_envs * args.num_candidates, act_dim), device=args.device)
+    # for each env step: sample num_candidates actions per env, then
+    #   q = critic_target.q_min(obs, act).view(-1, num_candidates, 1)
+    #   w = softmax(q * weight_temperature, dim=1); idx = multinomial(w); pick act[idx]
+```
+
+## Evaluation settings
+
+Three D4RL MuJoCo environments — **hopper-medium-v2**, **walker2d-medium-v2**, **halfcheetah-medium-v2**
+— evaluated with `num_envs = 50`, `num_episodes = 3`, `use_ema = True`. Training is fixed at
+`gradient_steps = 1,000,000` for every method (a method may shorten its own training but never lengthen
+it). For methods that rerank, `num_candidates = 50` at inference; `diffusion_policy` ignores it
+(sample-1 inference, no critic). Metrics: `normalized_score` (D4RL normalized score, higher is better),
+`episode_reward` (raw return), and `training_time` (seconds, lower is better). The final score is the
+**geometric mean** over the three environment-specific normalized scores. Seed 42 is primary; seeds 123
+and 456 are run for the strongest baseline to confirm the result is not cherry-picked.
+</content>
+</invoke>
+
+The editable model code is in `CleanDiffuser/pipelines/custom_policy.py`:
+```python
+                obs = torch.tensor(normalizer.normalize(obs), device=args.device, dtype=torch.float32)
+                obs = obs.unsqueeze(1).repeat(1, args.num_candidates, 1).view(-1, obs_dim)
+
+                act, log = actor.sample(
+                    prior,
+                    solver=args.solver,
+                    n_samples=args.num_envs * args.num_candidates,
+                    sample_steps=args.sampling_steps,
+                    condition_cfg=obs, w_cfg=1.0,
+                    use_ema=args.use_ema, temperature=args.temperature)
+
+                with torch.no_grad():
+                    q = critic_target.q_min(obs, act)
+                    q = q.view(-1, args.num_candidates, 1)
+                    w = torch.softmax(q * args.task.weight_temperature, 1)
+                    act = act.view(-1, args.num_candidates, act_dim)
+
+                    indices = torch.multinomial(w.squeeze(-1), 1).squeeze(-1)
+                    sampled_act = act[torch.arange(act.shape[0]), indices].cpu().numpy()
+```
+Improve it. Derive your method, edit the code, then run_experiment().
+</user>
+
+### step 1 — Diffusion Policy (diffusion behavior cloning)   [slug:diffusion_policy]
+
+<think>
+[[POLISH_REASONING: adapt to first-person agentic voice, end by deciding to implement]]
+I want to start at the floor of this ladder, and the floor is the most honest question I can ask about
+the buffer: can I just *clone* it? Before I bolt a critic onto anything, I should know how far pure
+imitation of the behavior policy gets me, because every later rung — the IQL reweighting, the DQL
+Q-maximization — is going to be measured against "what does the data alone give me." So the first fill
+of the editable region is a diffusion actor trained by behavior cloning and nothing else: no critic, no
+Q, no reranking, one action sampled per environment at inference. That decision needs justifying on two
+fronts — why a diffusion actor rather than the obvious regressor, and why I expect this to be the
+*weakest* rung even though it is the cleanest.
+
+The thing that breaks naive cloning is not subtle once I look at the loss. Supervised regression of a
+network `f(s) -> a` under squared error converges to `f(s) = E[a|s]`, the conditional mean, because
+squared error is the log-likelihood of a fixed-variance Gaussian and a Gaussian has exactly one mode.
+That is fine when the action given a state is a single blob, but a D4RL `medium` buffer is generated by
+a half-trained SAC agent that has not collapsed onto one behavior — at the same hopper state one
+rollout hops a little harder, another a little softer, and both are in the data. The mean of two valid
+action modes is an action in the valley between them, an action no one ever took, and on a contact-rich
+MuJoCo task that in-between action is frequently the worst one available (it stalls the gait, it
+mistimes the contact). So an L2 regressor does not merely lose a bit of accuracy on multimodal states;
+it actively manufactures invalid actions precisely at the branchy states that decide whether the gait
+survives. I need a policy class that can carry an arbitrary conditional `p(a|s)`, with several sharp
+modes if that is what the buffer holds.
+
+The honestly-multimodal class is the energy-based one — parameterize an energy `E_theta(s,a)` and let
+`p(a|s) ∝ exp(-E_theta(s,a))`, choosing the action by minimizing `E` over `a`. Many actions can share
+low energy, so it is natively multimodal. But maximum-likelihood training needs the normalizer
+`Z(s) = integral exp(-E) da`, which is intractable in a continuous action space, and estimating it by
+negative sampling makes the energy landscape — and therefore the training and the eval curve —
+oscillate. I do not want a method whose checkpoint I cannot trust. So I sit with what I actually need at
+inference: not the normalized density, but the ability to *move toward* high-density actions. The thing
+that points there is the score, `grad_a log p(a|s) = -grad_a E_theta(s,a) - grad_a log Z(s)`, and `Z(s)`
+does not depend on `a`, so `grad_a log Z = 0` — the intractable term differentiates away. If I work with
+the gradient field of the action density rather than the density itself, the entire reason the
+energy-based policy was unstable never arises.
+
+Denoising diffusion is exactly a way to learn that gradient field by regression. Fix a forward process
+that drips Gaussian noise onto a clean action over a chain, with the closed form
+`a^k = sqrt(abar_k) a + sqrt(1-abar_k) eps`, `eps ~ N(0,I)`. For this Gaussian the score of the noised
+conditional is `grad_{a^k} log q(a^k|a) = -eps/sqrt(1-abar_k)`, so the noise `eps` *is* the negative
+score up to the noise scale. Train a network `eps_theta(a^k, s, k)` to predict that noise under MSE and
+I have learned the score with a plain regression — no negatives, no `Z`, ever. Generation runs the
+stochastic reverse chain from Gaussian noise, following the learned field with a shrinking injection of
+noise; the random initialization drops each sample into a possibly different mode's basin and the
+per-step noise lets it hop between basins early, so a single trained field draws from several modes
+without averaging them. That restores the multimodality I lost with the Gaussian, with the stable
+training I lost with the energy model. This is the generative core, and on this benchmark — low-dim
+state, one action out, no images, no action sequence — I strip away everything diffusion-policy methods
+add for visuomotor control (the observation is a *condition* so the encoder runs once not per denoising
+step; the denoised variable is an action *sequence* for temporal consistency; receding-horizon
+execution) and keep only the core: the action is the variable denoised, the state is the condition fed
+through `IdentityCondition`, the objective is the noise-prediction MSE, and one action is sampled per
+environment at evaluation.
+
+Now the part that matters for *this* rung specifically: I have to derive it against the harness, not
+against the generic paper, because the harness already hands me the machinery and the literal edit is
+small. The substrate's default fill is Diffusion Q-Learning — it builds `DQLMlp` as the score backbone,
+wraps it in `DiscreteDiffusionSDE` (the discrete VP-SDE / DDPM model that owns the cosine schedule, the
+box `[-1,1]` on actions, the EMA copy, and the optimizer), constructs a `DQLCritic`, and trains the
+actor with `bc_loss + eta * q_loss`. To get pure diffusion BC I do the *minimal* surgery: keep exactly
+the same `DQLMlp` actor and the same `DiscreteDiffusionSDE` wrapper — there is no reason to hand-roll a
+residual score net when the library backbone already fits low-dim actions and already clips to the box —
+and I *delete the critic entirely*. No `DQLCritic`, no `critic_target`, no `critic_optim`, no SARSA TD
+update, no `eta * q_loss` term. The training loop then reads only `obs` and `act` from each batch (it no
+longer needs `next_obs`, `rew`, or `tml` at all, because there is no bootstrapping), and the single
+update is the wrapper's denoising-BC step, `actor.update(act, obs)["loss"]`. I use `.update` rather than
+the bare `.loss` because the wrapper's `update` both computes the noise-prediction MSE and steps the
+actor's own optimizer in one call, which is precisely the weight-free BC step I want — there is nothing
+to add to it. I keep the cosine LR scheduler on the actor optimizer, and I keep the EMA update that the
+substrate already does (`actor.ema_update()` once `n_gradient_step >= 1000`), because evaluating with the
+EMA weights is a well-established diffusion stabilizer and the eval loop is configured `use_ema=True`.
+
+The inference side needs the second edit, and here the diff from the default fill is the whole point of
+this rung. The default reranks: it repeats each observation `num_candidates` times, samples that many
+actions, scores them with `critic_target.q_min`, and resamples by a softmax over `Q`. With no critic I
+cannot rerank and I should not — reranking is exactly the value-based step I am deliberately omitting at
+this rung. So the eval `prior` shrinks from `(num_envs * num_candidates, act_dim)` to
+`(num_envs, act_dim)`, and the action-selection block becomes: normalize the observation, sample one
+action per environment with `actor.sample(prior, n_samples=num_envs, ...)`, clip to `[-1,1]`, and step.
+The checkpoint load drops the critic load and keeps only `actor.load(...)` then `actor.eval()`. That is
+the entire baseline — three small replacements (imports stay, actor/critic construction loses the
+critic, the train loop loses the critic and the Q term, the inference setup and prior and action block
+lose the reranking). The harness ignores `num_candidates` for this method by construction, which is the
+fair-compute statement: this rung sees no critic and no extra inference compute.
+
+I should be explicit about what I am *not* doing, because the temptation is to sneak value back in.
+Diffusion BC has exactly one job — represent `mu(a|s)` as faithfully as possible — and I deliberately
+give it no information about reward. That means its ceiling is the behavior policy itself. On a `medium`
+buffer the behavior policy is a mediocre, half-trained agent, so cloning it well reproduces mediocrity
+well. The expressive actor buys me one real thing over Gaussian BC: it will not smear across the action
+modes and emit the stalling in-between actions, so on walker2d (where balance is brittle and the
+in-between action falls over) I expect diffusion BC to clearly beat what a Gaussian regressor would do.
+But it cannot exceed the data, and that is the structural reason this is the weakest rung: the next two
+rungs both add a critic precisely to push the actor *above* `mu` toward the better actions the buffer
+contains, by reweighting candidates (IQL) or by maximizing `Q` directly (DQL). I am setting the floor
+that those value-based moves have to clear.
+
+A few smaller choices follow from the harness rather than from taste, and they are worth pinning so the
+comparison across rungs is clean. The diffusion model keeps `diffusion_steps = sampling_steps = 5`: on
+these relatively deterministic control datasets a short chain is enough to fit the action distribution,
+and since I resample the entire reverse chain every environment step, a short chain keeps inference
+fast — this is the chief reason diffusion BC will be the *cheapest* rung in walltime, with no critic
+training and no candidate fan-out. Actions are normalized to the box `[-1,1]` (not unit variance),
+because the sampler clips the running prediction to the box each step and a unit-variance normalization
+would make part of the action range unreachable; the wrapper already does this. I keep the actor EMA at
+the wrapper's default and evaluate with it. There are no critic hyperparameters to set — no `tau`, no
+`eta`, no `weight_temperature`, no `discount` — which is itself a fact about this rung: it is the only
+one with no value-learning knobs, so whatever it scores is purely a statement about how well an
+expressive generative model can clone a `medium` buffer.
+
+So my falsifiable expectation, stated before I see the numbers, is concrete. Pure diffusion BC should
+(a) be the *fastest* method to train and evaluate by a wide margin, since it drops both the critic
+training and the per-step candidate reranking; (b) produce coherent, in-support actions — no
+mode-averaging collapse — so it should comfortably clear what a Gaussian behavior-cloning baseline would
+manage, especially on the balance-critical walker2d; but (c) land at the *bottom* of this ladder on
+normalized score, because it has no mechanism to exceed the behavior policy. Concretely I expect the
+normalized scores to sit well below 1.0 on hopper and walker2d (the behavior policy is `medium`, not
+expert) and to be lowest among the three rungs on the geometric mean, with halfcheetah — where the
+`medium` buffer is already a fairly competent steady-state runner and cloning transfers well — the
+relative bright spot of the three. If diffusion BC instead matched the value-based rungs, that would
+falsify the premise that the critic is buying anything on these datasets; I expect it will not. The next
+rung will read this floor and ask the obvious question: the buffer contains *better-than-average*
+actions — how do I get the actor to prefer them without querying out-of-distribution values? The full
+scaffold module — the critic-free construction, the BC-only train loop, and the single-sample inference
+block — is in the answer.
+</content>
+</think>
+<say>
+[[FILL_SAY: 1-2 sentences naming the method and what this first edit does]]
+</say>
+<edit path="CleanDiffuser/pipelines/custom_policy.py">
+<old>
+                obs = torch.tensor(normalizer.normalize(obs), device=args.device, dtype=torch.float32)
+                obs = obs.unsqueeze(1).repeat(1, args.num_candidates, 1).view(-1, obs_dim)
+
+                act, log = actor.sample(
+                    prior,
+                    solver=args.solver,
+                    n_samples=args.num_envs * args.num_candidates,
+                    sample_steps=args.sampling_steps,
+                    condition_cfg=obs, w_cfg=1.0,
+                    use_ema=args.use_ema, temperature=args.temperature)
+
+                with torch.no_grad():
+                    q = critic_target.q_min(obs, act)
+                    q = q.view(-1, args.num_candidates, 1)
+                    w = torch.softmax(q * args.task.weight_temperature, 1)
+                    act = act.view(-1, args.num_candidates, act_dim)
+
+                    indices = torch.multinomial(w.squeeze(-1), 1).squeeze(-1)
+                    sampled_act = act[torch.arange(act.shape[0]), indices].cpu().numpy()
+</old>
+<new>
+_FILE = "CleanDiffuser/pipelines/custom_policy.py"
+
+# ============================================================================
+# diffusion_policy baseline: diffusion BC only, no critic / no reranking
+# ============================================================================
+
+# --------------- Network Architecture -----------------
+nn_diffusion = DQLMlp(obs_dim, act_dim, emb_dim=64, timestep_emb_type="positional").to(args.device)
+nn_condition = IdentityCondition(dropout=0.0).to(args.device)
+
+print(f"======================= Parameter Report of Diffusion Model =======================")
+report_parameters(nn_diffusion)
+print(f"==============================================================================")
+
+# --------------- Diffusion Model Actor --------------------
+actor = DiscreteDiffusionSDE(
+    nn_diffusion, nn_condition, predict_noise=args.predict_noise, optim_params={"lr": args.actor_learning_rate},
+    x_max=+1. * torch.ones((1, act_dim), device=args.device),
+    x_min=-1. * torch.ones((1, act_dim), device=args.device),
+    diffusion_steps=args.diffusion_steps, ema_rate=args.ema_rate, device=args.device)
+
+# ---------------------- Training ----------------------
+if args.mode == "train":
+
+    actor_lr_scheduler = CosineAnnealingLR(actor.optimizer, T_max=args.gradient_steps)
+
+    actor.train()
+
+    n_gradient_step = 0
+    log = {"bc_loss": 0.}
+
+    for batch in loop_dataloader(dataloader):
+
+        obs = batch["obs"]["state"].to(args.device)
+        act = batch["act"].to(args.device)
+
+        bc_loss = actor.update(act, obs)["loss"]          # weight-free diffusion BC step
+        actor_lr_scheduler.step()
+
+        if n_gradient_step % args.ema_update_interval == 0 and n_gradient_step >= 1000:
+            actor.ema_update()
+
+        log["bc_loss"] += bc_loss
+
+        if (n_gradient_step + 1) % args.log_interval == 0:
+            log["gradient_steps"] = n_gradient_step + 1
+            log["bc_loss"] /= args.log_interval
+            print(f"TRAIN_METRICS gradient_steps={log['gradient_steps']} bc_loss={log['bc_loss']:.4f}")
+            log = {"bc_loss": 0.}
+
+        if (n_gradient_step + 1) % args.save_interval == 0:
+            actor.save(save_path + f"diffusion_ckpt_{n_gradient_step + 1}.pt")
+            actor.save(save_path + f"diffusion_ckpt_latest.pt")
+
+        n_gradient_step += 1
+        if n_gradient_step >= args.gradient_steps:
+            break
+
+# ---------------------- Inference ----------------------
+# (checkpoint load) -- critic load removed
+#     actor.load(save_path + f"diffusion_ckpt_{args.ckpt}.pt")
+#     actor.eval()
+#
+# (eval prior) -- shrink from num_envs*num_candidates to num_envs
+#     prior = torch.zeros((args.num_envs, act_dim), device=args.device)
+#
+# (action selection) -- single sample per env, no reranking
+#     obs = torch.tensor(normalizer.normalize(obs), device=args.device, dtype=torch.float32)
+#     act, _ = actor.sample(
+#         prior, solver=args.solver, n_samples=args.num_envs, sample_steps=args.sampling_steps,
+#         condition_cfg=obs, w_cfg=1.0, use_ema=args.use_ema, temperature=args.temperature)
+#     sampled_act = act.clip(-1., 1.).cpu().numpy()
+</new>
+</edit>
+<obs>
+Successfully replaced text in CleanDiffuser/pipelines/custom_policy.py.
+</obs>
+<run/>
+<obs>
+Measured results — `baseline:diffusion_policy` (`is_final,true`), seeds {42, 123, 456} and mean.
+
+## normalized_score
+| seed | hopper-medium-v2 | walker2d-medium-v2 | halfcheetah-medium-v2 |
+|---|---|---|---|
+| 42 | 0.4817 | 0.6669 | 0.4200 |
+| 123 | 0.4961 | 0.6433 | 0.4247 |
+| 456 | 0.4921 | 0.6573 | 0.4226 |
+| **mean** | **0.4900** | **0.6558** | **0.4224** |
+
+## elapsed training time (seconds)
+| seed | train_hopper | train_walker2d | train_halfcheetah |
+|---|---|---|---|
+| 42 | 2622 | 2661 | 2654 |
+| 123 | 2098 | 2135 | 2136 |
+| 456 | 2079 | 2131 | 2272 |
+| **mean** | **2266.3** | **2309.0** | **2354.0** |
+</content>
+</obs>
+
+### step 2 — IDQL (Implicit Diffusion Q-Learning)   [slug:idql]
+
+<think>
+[[POLISH_REASONING: adapt to first-person agentic voice, end by deciding to implement]]
+The diffusion-BC floor came in exactly where the theory said it would, and reading the numbers tells me
+precisely what to fix. Pure cloning landed at `0.49` on hopper, `0.66` on walker2d, `0.42` on
+halfcheetah (means over seeds 42/123/456), and the seeds are tight — hopper `0.482 / 0.496 / 0.492`,
+walker2d `0.667 / 0.643 / 0.657` — so this is not a variance story, it is a *ceiling* story. The actor
+is doing its one job well: the seed-to-seed spread is small, which means the diffusion model is
+faithfully and reproducibly reproducing the behavior policy; there is no mode-averaging collapse pulling
+one seed into the floor. But the behavior policy is `medium`, a half-trained agent, and cloning it well
+just reproduces its mediocrity well. The relative shape across environments is the tell: walker2d clones
+best (`0.66`) because its `medium` buffer is a fairly coherent gait, halfcheetah worst (`0.42`) because
+its `medium` buffer is a competent-but-unremarkable runner whose ceiling is low to begin with, and
+hopper sits in between at `0.49`. Nothing here is broken. The actor simply has no idea which of the
+actions it can sample are *good*. It was given no reward signal at all, so its ceiling is `mu` by
+construction, and `0.49` on hopper is `mu`'s ceiling. The obvious next move is to let reward in — to
+push the actor above `mu` toward the better-than-average actions the buffer demonstrably contains.
+
+So I need a value function. And the instant I reach for one, I hit the wall that defines offline RL.
+The buffer is fixed; the moment I bootstrap — fit `Q(s,a)` toward `r + gamma * Q(s', a')` — I have to
+choose which `a'` to plug into the next-state value. If I take `a'` from the policy I am improving, that
+policy by construction wants to deviate from `mu`, so `a'` slides off the data support, the function
+approximator returns a value for an action it has never seen, and because nothing pins those values
+down they come out too high far more often than too low. The backup carries that phantom optimism
+backward, the policy chases it, and the whole thing diverges. The real enemy is querying the value of
+out-of-distribution actions. I have to add reward *without* ever writing down `max_{a'} Q(s',a')`,
+because that max is exactly the operator that reaches outside the data.
+
+The cleanest way to refuse that query is to never form it. Instead of maximizing over `a'`, estimate
+"the value of the best in-support action" from dataset actions alone, using expectile regression. The
+`tau`-expectile of a random variable is `argmin_m E[ |tau - 1(x<m)| (x-m)^2 ]`: an asymmetric squared
+loss that for `tau > 0.5` punishes `x < m` less than `x > m`, so the minimizer is pulled above the mean,
+and as `tau -> 1` it climbs toward the supremum. Apply that conditionally to the distribution of `Q(s,a)`
+as `a` ranges over `mu(.|s)`, and put it on a *separate* value net `V(s)`: a high expectile of that
+distribution is the value of the best action the data supports, recovered purely from in-sample
+actions, with the max done implicitly by the loss asymmetry. I never name the maximizing action, so I
+never query an OOD one. The split onto a separate `V` matters: if I expectile-regressed
+`r + gamma Q(s',a')` directly, the asymmetry would also reward lucky *transitions* — a single `s'` that
+happened to be good — and confuse "this action is reliably good" with "this sample got lucky." Letting
+`V` take the action-expectile and then having `Q` do an ordinary SARSA TD backup against `V(s')`
+isolates the max over actions from the dynamics noise:
+
+  `L_V(psi) = E_{(s,a)~D}[ |tau - 1(Q_targ(s,a) - V_psi(s) < 0)| (Q_targ(s,a) - V_psi(s))^2 ]`,
+  `L_Q(theta) = E_{(s,a,s')~D}[ (r + gamma (1-done) V_psi(s') - Q_theta(s,a))^2 ]`.
+
+This interpolates from SARSA at `tau = 0.5` to support-constrained Q-learning as `tau -> 1`, stable and
+multi-step, never touching an OOD action. The value side is solved.
+
+But now the half that actually drives the score is the extraction, and this is where I have to be
+careful, because I have a critic with no policy anywhere in sight. I trained `V` to be the
+`tau`-expectile of `Q` over `mu`. At `tau = 0.5` that is the mean, so `V` is the value of `mu` itself;
+at `tau -> 1` it is the max, so the policy is greedy. For the `tau` in between that I will actually use,
+which policy does my critic evaluate? I do not want to guess, so let me derive it. Generalize the
+value loss to an arbitrary convex `f` with `f'(0) = 0` (expectile is the special case
+`f = |tau-1(u<0)| u^2`), defining `V*(s) = argmin_V E_{a~mu}[ f(Q(s,a) - V(s)) ]`. At the optimum the
+derivative in `V` vanishes: `E_{a~mu}[ f'(Q - V*) ] = 0`. Convexity with `f'(0)=0` means `f'` has the
+sign of its argument, so write `f'(x) = |f'(x)| * x/|x|` and substitute:
+`E_{a~mu}[ |f'(Q-V*)|/|Q-V*| * (Q - V*) ] = 0`. The factor `|f'(Q-V*)|/|Q-V*|` is a nonnegative scalar
+weight; fold it into the sampling distribution as `pi_imp(a|s) ∝ mu(a|s) * |f'(Q-V*)|/|Q-V*|` and the
+condition collapses to `E_{a~pi_imp}[ Q(s,a) - V*(s) ] = 0`, i.e. `V*(s) = E_{a~pi_imp}[Q(s,a)]`. So `V*`
+is the *value of the implicit actor* `pi_imp` — a reweighting of the behavior policy. The in-sample
+critic is secretly an actor-critic method, and the actor it evaluates is `mu` skewed by the critic's
+weights. For the expectile loss the weight is the strikingly simple two-valued `|tau - 1(Q < V*)|` —
+`tau` above the value, `1-tau` below — so the implicit actor broadens the good half of `mu` and shrinks
+the bad half.
+
+That derivation hands me the fix to the diffusion-BC ceiling almost directly, and it also tells me what
+*not* to do. The implicit actor is `mu` reweighted, and on a multimodal `medium` buffer the reweighting
+of a multimodal `mu` is itself multimodal — which a unimodal Gaussian extraction (the classic AWR move)
+cannot represent; it would smear across the modes and put mass in the low-density valley where the OOD,
+over-valued actions live, throwing away the careful in-sample value learning at the last step. So I keep
+the expressive diffusion actor I already have. The naive instinct is to retrain it with the advantage
+weights baked into the loss, but that is a known dead end: a high-capacity model trained with
+importance-weighted maximum likelihood raises the likelihood of all training points regardless of their
+weights, so the `exp(beta A)` skew washes out and I lose the very reweighting I wanted. The escape is
+sitting in the form of `pi_imp = mu * w / Z`: I do not have to bake the weighting into training. I can
+train the actor to represent `mu` alone — pure diffusion BC, *the exact thing I already validated at the
+floor* — and apply the critic weights at *inference* by importance resampling. At a state, draw `N`
+candidates from the behavior model, score each with the critic, and resample one with probability
+proportional to the advantage weight. The behavior model does the one easy job it already does well, and
+the critic does the skewing where there is no training pathology to wash anything out.
+
+This is why IDQL is the natural rung above diffusion BC and not a different animal: it *reuses the
+floor's actor verbatim* and adds exactly the missing piece — a value function and an inference-time
+reweighting — without touching the actor's training. The decoupling (the critic never sees the actor
+during training; the actor never sees `Q`/`V` during training) is the whole source of the method's
+stability, and it is precisely what lets me keep the floor's clean, reproducible BC and just bolt value
+on top. Concretely the inference rule I adopt is the practical exponential-style one: draw `N`
+candidates, compute advantage `A = Q - V` for each, form `w = softmax(A * weight_temperature)` over the
+candidates, and resample one. This is the finite-sample realization of the exponential/KL implicit
+actor (the linex loss `f(u) = exp(alpha u) - alpha u` whose value is the log-partition of
+`pi ∝ mu exp(alpha A)`), and it skews toward high-advantage candidates while staying inside the support
+the behavior model sampled from.
+
+Now I derive the literal edit against the harness, because a same-named method can differ from its
+generic form and I want the exact fill. The substrate's default builds a single `DQLCritic` (a twin-Q)
+and trains the actor with `bc_loss + eta * q_loss`. IDQL needs a *different* critic shape: twin-Q
+*plus* a value net, with the expectile rule. The harness exposes exactly these — `IDQLQNet` (twin-Q,
+with `.both(obs,act)` and a `q_min`) and `IDQLVNet` — and a matching actor backbone `IDQLMlp`, so I do
+not hand-roll the residual score net or the value heads; I import them. I swap the actor backbone from
+`DQLMlp` to `IDQLMlp` (which the wrapper takes the same way), construct `iql_q`, a frozen
+`iql_q_target = deepcopy(iql_q)`, and `iql_v`, with their own Adam optimizers and cosine schedulers.
+The training loop now reads `obs, next_obs, act, rew, tml`. I update the critic on *every other* step
+(`n_gradient_step % 2 == 0`) — the behavior model is the harder fit and deserves at least as many
+updates as the in-sample critic, which converges quickly — doing first the expectile `V` step
+(`v_loss = (|tau - 1((q-v)<0)| * (q-v)^2).mean()` with `q = iql_q_target(obs,act)`), then the `Q` step
+against the bootstrapped `td_target = rew + discount*(1-tml)*iql_v(next_obs)` over both twin heads, then
+a Polyak update of the `Q` target at `0.995`. And on *every* step I take the weight-free diffusion BC
+step `actor.update(act, obs)["loss"]` — identical to the floor's actor update. Critically, IDQL drops
+the default's `eta * q_loss` term entirely: there is no Q-maximization gradient flowing into the actor;
+the actor is pure BC, and all value information enters only at inference. That is the structural
+difference from the rung above (DQL), and I expect it to be exactly what costs IDQL the top spot.
+
+The inference edit is the reranking, and here the diff from the floor is that the reranking comes *back*
+(the floor deleted it). I load the actor checkpoint plus the critic checkpoint
+(`iql_q`, `iql_q_target`, `iql_v`), repeat each observation `num_candidates` times, sample that many
+actions, compute `adv = (iql_q_target(obs,act) - iql_v(obs))` reshaped to `(-1, num_candidates, 1)`,
+`w = softmax(adv * weight_temperature, dim=1)`, normalize, and resample one candidate per env with
+`torch.multinomial`. With `num_candidates = 50` fixed by the protocol so reranking methods see equal
+compute, this is the same fan-out the default DQL uses, only the score is the advantage rather than a
+bare `Q`.
+
+So my falsifiable expectations against the floor: IDQL must beat diffusion BC on every environment,
+because it has the same actor plus a value-based selection that can only help if `Q`/`V` are
+informative — anything else would mean the critic learned nothing useful. I expect the gain to be
+largest where the behavior policy has the most exploitable spread between good and mediocre actions
+(hopper, where `0.49 -> ` well above `0.6` should be reachable) and present but smaller on halfcheetah
+(whose `medium` ceiling is low, so even perfect selection cannot lift `0.42` very far). I expect it to
+cost more walltime than the floor — it trains a twin-Q and a value net and reranks 50 candidates per
+step where the floor reranked none — so it should land between diffusion BC and DQL in both score and
+time. And I expect it to *not* catch DQL: because IDQL's actor is pure BC and only the *selection*
+chases value, its ceiling is "the best of 50 samples from `mu`," whereas DQL pushes the actor's own
+distribution toward high-`Q` actions during training and can therefore place mass on actions better than
+anything `mu` would sample. If IDQL matched or beat DQL, that would falsify the claim that training-time
+Q-maximization buys anything over inference-time selection on these datasets; I expect it will sit
+clearly above the floor and clearly below DQL. The full scaffold module — the IDQL critic construction,
+the decoupled expectile/BC train loop, and the advantage-reranking inference block — is in the answer.
+</content>
+</think>
+<say>
+[[FILL_SAY: 1-2 sentences naming the method and what this first edit does]]
+</say>
+<edit path="CleanDiffuser/pipelines/custom_policy.py">
+<old>
+_FILE = "CleanDiffuser/pipelines/custom_policy.py"
+
+# ============================================================================
+# diffusion_policy baseline: diffusion BC only, no critic / no reranking
+# ============================================================================
+
+# --------------- Network Architecture -----------------
+nn_diffusion = DQLMlp(obs_dim, act_dim, emb_dim=64, timestep_emb_type="positional").to(args.device)
+nn_condition = IdentityCondition(dropout=0.0).to(args.device)
+
+print(f"======================= Parameter Report of Diffusion Model =======================")
+report_parameters(nn_diffusion)
+print(f"==============================================================================")
+</old>
+<new>
+import os
+from copy import deepcopy
+
+import d4rl
+import gym
+import hydra
+import numpy as np
+import torch
+from torch.optim.lr_scheduler import CosineAnnealingLR
+from torch.utils.data import DataLoader
+
+from cleandiffuser.dataset.d4rl_mujoco_dataset import D4RLMuJoCoTDDataset
+from cleandiffuser.dataset.dataset_utils import loop_dataloader
+from cleandiffuser.diffusion import DiscreteDiffusionSDE
+from cleandiffuser.nn_condition import IdentityCondition
+from cleandiffuser.nn_diffusion import IDQLMlp
+from cleandiffuser.utils import report_parameters, IDQLQNet, IDQLVNet
+from utils import set_seed
+
+# ============================================================================
+# idql baseline: full IDQL pipeline (decoupled actor / IQL critic)
+# ============================================================================
+
+# --------------- Network Architecture -----------------
+nn_diffusion = IDQLMlp(
+    obs_dim, act_dim, emb_dim=64,
+    hidden_dim=args.actor_hidden_dim, n_blocks=args.actor_n_blocks, dropout=args.actor_dropout,
+    timestep_emb_type="positional")
+nn_condition = IdentityCondition(dropout=0.0)
+</new>
+</edit>
+<obs>
+Successfully replaced text in CleanDiffuser/pipelines/custom_policy.py.
+</obs>
+<note>
+[[FILL_NOTE?: optional one-line thought for this edit, or delete this block]]
+</note>
+<edit path="CleanDiffuser/pipelines/custom_policy.py">
+<old>
+    nn_diffusion, nn_condition, predict_noise=args.predict_noise, optim_params={"lr": args.actor_learning_rate},
+    x_max=+1. * torch.ones((1, act_dim), device=args.device),
+    x_min=-1. * torch.ones((1, act_dim), device=args.device),
+    diffusion_steps=args.diffusion_steps, ema_rate=args.ema_rate, device=args.device)
+</old>
+<new>
+    nn_diffusion, nn_condition, predict_noise=args.predict_noise, optim_params={"lr": args.actor_learning_rate},
+    x_max=+1. * torch.ones((1, act_dim)),
+    x_min=-1. * torch.ones((1, act_dim)),
+    diffusion_steps=args.diffusion_steps, ema_rate=args.ema_rate, device=args.device)
+
+# ------------------ Critic (twin-Q + value net) ---------------------
+iql_q = IDQLQNet(obs_dim, act_dim, hidden_dim=args.critic_hidden_dim).to(args.device)
+iql_q_target = deepcopy(iql_q).requires_grad_(False).eval()
+iql_v = IDQLVNet(obs_dim, hidden_dim=args.critic_hidden_dim).to(args.device)
+q_optim = torch.optim.Adam(iql_q.parameters(), lr=args.critic_learning_rate)
+v_optim = torch.optim.Adam(iql_v.parameters(), lr=args.critic_learning_rate)
+</new>
+</edit>
+<obs>
+Successfully replaced text in CleanDiffuser/pipelines/custom_policy.py.
+</obs>
+<note>
+[[FILL_NOTE?: optional one-line thought for this edit, or delete this block]]
+</note>
+<edit path="CleanDiffuser/pipelines/custom_policy.py">
+<old>
+    actor_lr_scheduler = CosineAnnealingLR(actor.optimizer, T_max=args.gradient_steps)
+
+    actor.train()
+
+    n_gradient_step = 0
+    log = {"bc_loss": 0.}
+
+    for batch in loop_dataloader(dataloader):
+
+        obs = batch["obs"]["state"].to(args.device)
+        act = batch["act"].to(args.device)
+
+        bc_loss = actor.update(act, obs)["loss"]          # weight-free diffusion BC step
+        actor_lr_scheduler.step()
+
+        if n_gradient_step % args.ema_update_interval == 0 and n_gradient_step >= 1000:
+            actor.ema_update()
+
+        log["bc_loss"] += bc_loss
+
+        if (n_gradient_step + 1) % args.log_interval == 0:
+            log["gradient_steps"] = n_gradient_step + 1
+            log["bc_loss"] /= args.log_interval
+            print(f"TRAIN_METRICS gradient_steps={log['gradient_steps']} bc_loss={log['bc_loss']:.4f}")
+            log = {"bc_loss": 0.}
+
+        if (n_gradient_step + 1) % args.save_interval == 0:
+            actor.save(save_path + f"diffusion_ckpt_{n_gradient_step + 1}.pt")
+            actor.save(save_path + f"diffusion_ckpt_latest.pt")
+</old>
+<new>
+    actor_lr_scheduler = CosineAnnealingLR(actor.optimizer, T_max=args.gradient_steps)
+    q_lr_scheduler = CosineAnnealingLR(q_optim, T_max=args.gradient_steps)
+    v_lr_scheduler = CosineAnnealingLR(v_optim, T_max=args.gradient_steps)
+
+    actor.train(); iql_q.train(); iql_v.train()
+    n_gradient_step = 0
+
+    for batch in loop_dataloader(dataloader):
+
+        obs, next_obs = batch["obs"]["state"].to(args.device), batch["next_obs"]["state"].to(args.device)
+        act = batch["act"].to(args.device)
+        rew = batch["rew"].to(args.device)
+        tml = batch["tml"].to(args.device)
+
+        # -- IQL critic (every other step)
+        if n_gradient_step % 2 == 0:
+            q = iql_q_target(obs, act)
+            v = iql_v(obs)
+            v_loss = (torch.abs(args.iql_tau - ((q - v) < 0).float()) * (q - v) ** 2).mean()
+            v_optim.zero_grad(); v_loss.backward(); v_optim.step()
+
+            with torch.no_grad():
+                td_target = rew + args.discount * (1 - tml) * iql_v(next_obs)
+            q1, q2 = iql_q.both(obs, act)
+            q_loss = ((q1 - td_target) ** 2 + (q2 - td_target) ** 2).mean()
+            q_optim.zero_grad(); q_loss.backward(); q_optim.step()
+            q_lr_scheduler.step(); v_lr_scheduler.step()
+
+            for param, target_param in zip(iql_q.parameters(), iql_q_target.parameters()):
+                target_param.data.copy_(0.995 * param.data + (1 - 0.995) * target_param.data)
+
+        # -- Policy (every step): weight-free diffusion BC, no eta * q_loss
+        bc_loss = actor.update(act, obs)["loss"]
+        actor_lr_scheduler.step()
+</new>
+</edit>
+<obs>
+Successfully replaced text in CleanDiffuser/pipelines/custom_policy.py.
+</obs>
+<note>
+[[FILL_NOTE?: optional one-line thought for this edit, or delete this block]]
+</note>
+<edit path="CleanDiffuser/pipelines/custom_policy.py">
+<old>
+# ---------------------- Inference ----------------------
+# (checkpoint load) -- critic load removed
+#     actor.load(save_path + f"diffusion_ckpt_{args.ckpt}.pt")
+#     actor.eval()
+#
+# (eval prior) -- shrink from num_envs*num_candidates to num_envs
+#     prior = torch.zeros((args.num_envs, act_dim), device=args.device)
+#
+# (action selection) -- single sample per env, no reranking
+#     obs = torch.tensor(normalizer.normalize(obs), device=args.device, dtype=torch.float32)
+#     act, _ = actor.sample(
+#         prior, solver=args.solver, n_samples=args.num_envs, sample_steps=args.sampling_steps,
+#         condition_cfg=obs, w_cfg=1.0, use_ema=args.use_ema, temperature=args.temperature)
+#     sampled_act = act.clip(-1., 1.).cpu().numpy()
+</old>
+<new>
+# ---------------------- Inference ----------------------
+# (checkpoint load) load actor + iql_q / iql_q_target / iql_v; .eval() all
+# (action selection) advantage reranking over num_candidates:
+#     obs = torch.tensor(normalizer.normalize(obs), device=args.device, dtype=torch.float32)
+#     obs = obs.unsqueeze(1).repeat(1, args.num_candidates, 1).view(-1, obs_dim)
+#     act, _ = actor.sample(
+#         prior, solver=args.solver, n_samples=args.num_envs * args.num_candidates,
+#         sample_steps=args.sampling_steps, condition_cfg=obs, w_cfg=1.0,
+#         use_ema=args.use_ema, temperature=args.temperature)
+#     with torch.no_grad():
+#         adv = (iql_q_target(obs, act) - iql_v(obs)).view(-1, args.num_candidates, 1)
+#         w = torch.softmax(adv * args.task.weight_temperature, 1)
+#         act = act.view(-1, args.num_candidates, act_dim)
+#         p = w / w.sum(1, keepdim=True)
+#         indices = torch.multinomial(p.squeeze(-1), 1).squeeze(-1)
+#         sampled_act = act[torch.arange(act.shape[0]), indices].cpu().numpy()
+</new>
+</edit>
+<obs>
+Successfully replaced text in CleanDiffuser/pipelines/custom_policy.py.
+</obs>
+<run/>
+<obs>
+Measured results — `baseline:idql` (`is_final,true`), seeds {42, 123} and mean.
+
+## normalized_score
+| seed | hopper-medium-v2 | walker2d-medium-v2 | halfcheetah-medium-v2 |
+|---|---|---|---|
+| 42 | 0.6301 | 0.8256 | 0.4747 |
+| 123 | 0.6168 | 0.8280 | 0.4764 |
+| **mean** | **0.6235** | **0.8268** | **0.4756** |
+
+## elapsed training time (seconds)
+| seed | train_hopper | train_walker2d | train_halfcheetah |
+|---|---|---|---|
+| 42 | 5792 | 5828 | 5820 |
+| 123 | 4580 | 4578 | 4574 |
+| **mean** | **5186.0** | **5203.0** | **5197.0** |
+</content>
+</obs>
+
+### step 3 — DQL (Diffusion Q-Learning)   [slug:default]
+
+<think>
+[[POLISH_REASONING: adapt to first-person agentic voice, end by deciding to implement]]
+IDQL did exactly what I predicted and the numbers draw the boundary of the inference-time-selection idea
+sharply. It beat the diffusion-BC floor on every environment — hopper `0.49 -> 0.62`, walker2d
+`0.66 -> 0.83`, halfcheetah `0.42 -> 0.48` — and the two seeds it ran are tight (hopper `0.630/0.617`,
+walker2d `0.826/0.828`), so the gain is real and reproducible, not a lucky seed. That confirms the core
+hypothesis: the same diffusion-BC actor, plus a value function and an inference-time advantage
+reranking, lifts the score wherever `Q`/`V` carry useful information. But look at *where* it lifted and
+where it stalled. Walker2d, where `mu` has a coherent gait with exploitable spread, jumped most (`+0.17`).
+Halfcheetah barely moved (`0.42 -> 0.48`), because its `medium` buffer is a competent-but-low-ceiling
+runner and even perfect selection over 50 samples from `mu` cannot conjure actions better than the best
+`mu` would ever draw. And hopper, at `0.62`, is still a long way from solved. That last point is the
+diagnosis I have to act on: IDQL's actor is *pure BC*. It only ever samples from `mu`, and the critic
+merely picks the best of those samples. The ceiling of "best of 50 samples from `mu`" is bounded by what
+`mu` puts mass on. If the genuinely good action lives in a region `mu` samples rarely or never, no amount
+of reranking will surface it — the candidate set never contains it.
+
+So the obvious next move is to stop merely *selecting* good actions and start *training the actor to
+prefer them*. Instead of leaving all value information at inference, push the gradient of `Q` into the
+actor's own parameters so that the distribution it samples from drifts toward high-`Q` regions. Then the
+candidate set itself improves: at inference the actor is already sampling near the good actions, and
+selection (if any) only sharpens. This is the structural difference from IDQL — value enters *during
+actor training*, not only at inference — and it is exactly the lever that can break past the
+"best-of-`mu`" ceiling that capped IDQL on hopper.
+
+Let me derive what that actor objective should be, because the danger is the same OOD wall as before,
+just relocated. I want the actor to maximize `E_{a ~ pi}[Q(s,a)]` — sample an action from the diffusion
+actor at state `s` and ascend `Q` on it. But if I *only* maximize `Q`, the actor will happily march off
+the data support to wherever the critic is erroneously optimistic, and I am back to exploiting phantom
+optima. The fix is a behavior-regularized objective: keep the diffusion-BC term as an anchor that pins
+the actor near `mu`, and add the `Q`-maximization term as the pull toward better actions. So the actor
+loss is `L_actor = L_BC + eta * L_Q`, where `L_BC` is the noise-prediction denoising loss (the same
+objective that the floor and IDQL both used to clone `mu`) and `L_Q = -E[Q(s, a_new)]` with `a_new`
+*freshly sampled from the actor's own reverse chain*, so the gradient flows through the diffusion
+sampler back into the actor's weights. The coefficient `eta` trades cloning against improvement: small
+`eta` stays close to `mu` (safe, like IDQL's pure BC in the limit `eta -> 0`); large `eta` chases `Q`
+harder but risks the OOD blow-up. This regularized policy class is what diffusion buys here — an
+expressive actor that can place mass on a *better* action than any single `mu` mode, while the BC anchor
+keeps it from leaving the support entirely.
+
+Two things need care, and both are visible in the harness's exact form. First, sampling the new action
+*through* the diffusion chain with gradients enabled (`requires_grad=True`) is what makes
+`Q`-maximization meaningful — the actor's parameters move so that the *generated* action has higher `Q`,
+not so that some external action does. The default fill samples `new_act` from the actor with
+`use_ema=False` (I want gradients on the live weights, not the EMA copy) and `requires_grad=True`, then
+evaluates `Q` on it inside a `FreezeModules([critic])` block so the `Q`-gradient updates only the actor,
+not the critic. Second — and this is the subtle, harness-specific part I must get exactly right — the
+`Q`-maximization term needs a scale that does not let one of the twin heads dominate or blow up. The
+default uses a *randomized, normalized double-Q* trick: with probability one half it forms
+`q_loss = - q1.mean() / q2.abs().mean().detach()`, otherwise `- q2.mean() / q1.abs().mean().detach()`.
+The numerator is the head being maximized; the denominator is the *detached* absolute scale of the
+*other* head. Dividing by the other head's magnitude normalizes the `Q`-gradient to roughly unit scale
+so that `eta` has a stable, dataset-independent meaning, and randomizing which head is numerator vs
+denominator each step symmetrizes the two critics and prevents the actor from over-fitting to one head's
+idiosyncratic over-estimates. This is not the textbook `-Q.mean()`; it is the literal mechanism this
+harness exposes, and it is what makes the BC+Q balance robust across the three environments without
+per-env retuning of `eta`. I derive against *this*, not the generic version.
+
+The critic side, by contrast, is simpler than IDQL's — and that simplification is itself the point. DQL
+does not need the expectile/value-net machinery, because its actor is no longer pure BC: the actor is
+being pushed toward high-`Q` actions, so the natural critic target uses the actor's *own* next action
+rather than an in-sample expectile. The critic is a twin-Q (`DQLCritic`), and the TD target is
+`r + gamma (1-done) * min(Q1_target(s', a'), Q2_target(s', a'))` with `a'` sampled from the diffusion
+actor at `s'`. This *does* query an action the actor proposes at `s'`, which is precisely the OOD query
+IDQL refused — but here it is tolerable for two linked reasons: the actor is BC-anchored so `a'` stays
+near the support, and the twin-min `torch.min(*critic_target(next_obs, next_act))` is the standard
+clipped-double-Q underestimation pressure that fights the residual overestimation. So DQL trades IDQL's
+strict in-sample safety for a more aggressive but still-regularized bootstrap, and that aggression is
+the source of its higher ceiling: the critic can value actions slightly better than `mu`'s, and the
+actor is trained to produce them. The critic loss is the plain
+`F.mse_loss(current_q1, target_q) + F.mse_loss(current_q2, target_q)`, Polyak target update at `0.995`,
+Adam at `3e-4`, cosine scheduler — all the usual choices, no expectile, no separate `V`.
+
+Now the literal edit, which is the *default fill* — the unmodified template — so the "edit" here is
+"change nothing." But I want to state precisely how it differs from the two rungs below so the ladder is
+legible. Versus diffusion BC: DQL adds the entire `DQLCritic` (twin-Q + target + optimizer), adds the
+critic TD-update reading `next_obs/rew/tml`, and replaces the actor's pure BC step with
+`actor.loss(act, obs) + eta * q_loss` where `q_loss` flows through a gradient-enabled actor sample.
+Versus IDQL: DQL swaps the actor backbone back to `DQLMlp` and the critic from
+`IDQLQNet + IDQLVNet` (expectile `V`, in-sample SARSA) to a single `DQLCritic` twin-Q with an
+actor-sampled bootstrap target; it *adds* the `eta * q_loss` actor term that IDQL deliberately omits;
+and at inference it reranks `num_candidates` actions by a softmax over the *bare* `Q`
+(`critic_target.q_min`) rather than over the *advantage* `Q - V`. That last difference is consistent
+with the training difference: IDQL needed the advantage because its value baseline `V` was the
+expectile; DQL has no `V`, so it reranks on `Q` directly, and because the actor is already trained toward
+high `Q`, both the candidate set and the ranking pull the same direction. The inference block repeats
+each observation `num_candidates` times, samples that many actions, computes
+`q = critic_target.q_min(obs, act).view(-1, num_candidates, 1)`, forms
+`w = softmax(q * weight_temperature, dim=1)`, and resamples one with `multinomial`. Note that since DQL's
+actor was *trained* to prefer high-`Q` actions, the reranking matters less than it does for IDQL (where
+it was the only value mechanism) — the heavy lifting has already happened in the actor's weights.
+
+I also want to settle the training schedule, since it differs from IDQL's every-other-step critic. DQL
+updates the critic and the actor on *every* gradient step (not every other), because both are now doing
+coupled work — the critic has to keep up with an actor that is actively moving toward high-`Q` regions,
+and a stale critic would let the actor exploit lag. The EMA on the actor still kicks in only after 1000
+steps, and the critic target is Polyak-updated every `ema_update_interval` steps. This tighter coupling
+is more expensive than IDQL — every step samples *two* full diffusion chains (one for the critic's
+`next_act`, one for the actor's `new_act`), where the floor sampled none in training and IDQL sampled
+none in training either (it only sampled at inference). That cost is the reason DQL is the slowest rung
+to train, and I should expect its walltime to dwarf both others.
+
+My falsifiable expectations against the rungs below. DQL must beat IDQL on hopper and (especially)
+where the best action lives outside `mu`'s frequent samples, because training the actor toward high `Q`
+breaks the "best-of-`mu`" ceiling that capped IDQL at `0.62` on hopper — I expect hopper to approach the
+expert-level `~1.0` normalized score, since hopper is the task where `medium`-buffer stitching toward a
+clean hop pays off most. On halfcheetah I expect a smaller gain (IDQL was already near the `medium`
+ceiling at `0.48`); DQL's training-time `Q`-maximization can push it modestly higher (toward `~0.51`)
+but the dataset ceiling is low for everyone. Walker2d, already strong for IDQL at `0.83`, should hold or
+improve slightly toward `~0.90`. The geometric mean across the three must come out clearly above IDQL's
+— that is the claim that training-time `Q`-maximization beats inference-time selection on these
+datasets, and it is exactly the claim IDQL's hopper stall set up. The cost is walltime: DQL trains two
+diffusion chains per step plus a coupled critic, so I expect it to be roughly three times slower than
+IDQL and far slower than the floor; if it were not slower, something would be wrong with the
+gradient-enabled sampling. If DQL failed to beat IDQL, that would falsify the whole premise that moving
+value from inference into actor training helps here — but the hopper ceiling IDQL hit is precisely the
+evidence that it should. The full scaffold module — the twin-Q critic, the coupled BC+Q actor training
+with the randomized normalized double-Q `q_loss`, and the `Q`-reranking inference block — is in the
+answer.
+</content>
+</think>
+<say>
+[[FILL_SAY: 1-2 sentences naming the method and what this first edit does]]
+</say>
+<edit path="CleanDiffuser/pipelines/custom_policy.py">
+<old>
+import os
+from copy import deepcopy
+
+import d4rl
+import gym
+import hydra
+import numpy as np
+import torch
+from torch.optim.lr_scheduler import CosineAnnealingLR
+from torch.utils.data import DataLoader
+
+from cleandiffuser.dataset.d4rl_mujoco_dataset import D4RLMuJoCoTDDataset
+from cleandiffuser.dataset.dataset_utils import loop_dataloader
+from cleandiffuser.diffusion import DiscreteDiffusionSDE
+from cleandiffuser.nn_condition import IdentityCondition
+from cleandiffuser.nn_diffusion import IDQLMlp
+from cleandiffuser.utils import report_parameters, IDQLQNet, IDQLVNet
+from utils import set_seed
+
+# ============================================================================
+# idql baseline: full IDQL pipeline (decoupled actor / IQL critic)
+# ============================================================================
+
+# --------------- Network Architecture -----------------
+nn_diffusion = IDQLMlp(
+    obs_dim, act_dim, emb_dim=64,
+    hidden_dim=args.actor_hidden_dim, n_blocks=args.actor_n_blocks, dropout=args.actor_dropout,
+    timestep_emb_type="positional")
+nn_condition = IdentityCondition(dropout=0.0)
+</old>
+<new>
+# --------------- Network Architecture -----------------
+nn_diffusion = DQLMlp(obs_dim, act_dim, emb_dim=64, timestep_emb_type="positional").to(args.device)
+nn_condition = IdentityCondition(dropout=0.0).to(args.device)
+</new>
+</edit>
+<obs>
+Successfully replaced text in CleanDiffuser/pipelines/custom_policy.py.
+</obs>
+<note>
+[[FILL_NOTE?: optional one-line thought for this edit, or delete this block]]
+</note>
+<edit path="CleanDiffuser/pipelines/custom_policy.py">
+<old>
+    nn_diffusion, nn_condition, predict_noise=args.predict_noise, optim_params={"lr": args.actor_learning_rate},
+    x_max=+1. * torch.ones((1, act_dim)),
+    x_min=-1. * torch.ones((1, act_dim)),
+    diffusion_steps=args.diffusion_steps, ema_rate=args.ema_rate, device=args.device)
+
+# ------------------ Critic (twin-Q + value net) ---------------------
+iql_q = IDQLQNet(obs_dim, act_dim, hidden_dim=args.critic_hidden_dim).to(args.device)
+iql_q_target = deepcopy(iql_q).requires_grad_(False).eval()
+iql_v = IDQLVNet(obs_dim, hidden_dim=args.critic_hidden_dim).to(args.device)
+q_optim = torch.optim.Adam(iql_q.parameters(), lr=args.critic_learning_rate)
+v_optim = torch.optim.Adam(iql_v.parameters(), lr=args.critic_learning_rate)
+</old>
+<new>
+    nn_diffusion, nn_condition, predict_noise=args.predict_noise, optim_params={"lr": args.actor_learning_rate},
+    x_max=+1. * torch.ones((1, act_dim), device=args.device),
+    x_min=-1. * torch.ones((1, act_dim), device=args.device),
+    diffusion_steps=args.diffusion_steps, ema_rate=args.ema_rate, device=args.device)
+
+# ------------------ Critic ---------------------
+critic = DQLCritic(obs_dim, act_dim, hidden_dim=args.hidden_dim).to(args.device)
+critic_target = deepcopy(critic).requires_grad_(False).eval()
+critic_optim = torch.optim.Adam(critic.parameters(), lr=args.critic_learning_rate)
+</new>
+</edit>
+<obs>
+Successfully replaced text in CleanDiffuser/pipelines/custom_policy.py.
+</obs>
+<note>
+[[FILL_NOTE?: optional one-line thought for this edit, or delete this block]]
+</note>
+<edit path="CleanDiffuser/pipelines/custom_policy.py">
+<old>
+    actor_lr_scheduler = CosineAnnealingLR(actor.optimizer, T_max=args.gradient_steps)
+    q_lr_scheduler = CosineAnnealingLR(q_optim, T_max=args.gradient_steps)
+    v_lr_scheduler = CosineAnnealingLR(v_optim, T_max=args.gradient_steps)
+
+    actor.train(); iql_q.train(); iql_v.train()
+    n_gradient_step = 0
+</old>
+<new>
+    actor_lr_scheduler = CosineAnnealingLR(actor.optimizer, T_max=args.gradient_steps)
+    critic_lr_scheduler = CosineAnnealingLR(critic_optim, T_max=args.gradient_steps)
+    actor.train(); critic.train()
+    n_gradient_step = 0
+    prior = torch.zeros((args.batch_size, act_dim), device=args.device)
+</new>
+</edit>
+<obs>
+Successfully replaced text in CleanDiffuser/pipelines/custom_policy.py.
+</obs>
+<note>
+[[FILL_NOTE?: optional one-line thought for this edit, or delete this block]]
+</note>
+<edit path="CleanDiffuser/pipelines/custom_policy.py">
+<old>
+
+        # -- IQL critic (every other step)
+        if n_gradient_step % 2 == 0:
+            q = iql_q_target(obs, act)
+            v = iql_v(obs)
+            v_loss = (torch.abs(args.iql_tau - ((q - v) < 0).float()) * (q - v) ** 2).mean()
+            v_optim.zero_grad(); v_loss.backward(); v_optim.step()
+
+            with torch.no_grad():
+                td_target = rew + args.discount * (1 - tml) * iql_v(next_obs)
+            q1, q2 = iql_q.both(obs, act)
+            q_loss = ((q1 - td_target) ** 2 + (q2 - td_target) ** 2).mean()
+            q_optim.zero_grad(); q_loss.backward(); q_optim.step()
+            q_lr_scheduler.step(); v_lr_scheduler.step()
+
+            for param, target_param in zip(iql_q.parameters(), iql_q_target.parameters()):
+                target_param.data.copy_(0.995 * param.data + (1 - 0.995) * target_param.data)
+
+        # -- Policy (every step): weight-free diffusion BC, no eta * q_loss
+        bc_loss = actor.update(act, obs)["loss"]
+        actor_lr_scheduler.step()
+</old>
+<new>
+
+        # Critic Training
+        current_q1, current_q2 = critic(obs, act)
+        next_act, _ = actor.sample(
+            prior, solver=args.solver, n_samples=args.batch_size, sample_steps=args.sampling_steps,
+            use_ema=True, temperature=1.0, condition_cfg=next_obs, w_cfg=1.0, requires_grad=False)
+        target_q = torch.min(*critic_target(next_obs, next_act))
+        target_q = (rew + (1 - tml) * args.discount * target_q).detach()
+        critic_loss = F.mse_loss(current_q1, target_q) + F.mse_loss(current_q2, target_q)
+        critic_optim.zero_grad(); critic_loss.backward(); critic_optim.step()
+
+        # Policy Training: BC anchor + eta * Q-maximization on freshly sampled actions
+        bc_loss = actor.loss(act, obs)
+        new_act, _ = actor.sample(
+            prior, solver=args.solver, n_samples=args.batch_size, sample_steps=args.sampling_steps,
+            use_ema=False, temperature=1.0, condition_cfg=obs, w_cfg=1.0, requires_grad=True)
+        with FreezeModules([critic, ]):
+            q1_new_action, q2_new_action = critic(obs, new_act)
+        if np.random.uniform() > 0.5:
+            q_loss = - q1_new_action.mean() / q2_new_action.abs().mean().detach()
+        else:
+            q_loss = - q2_new_action.mean() / q1_new_action.abs().mean().detach()
+        actor_loss = bc_loss + args.task.eta * q_loss
+        actor.optimizer.zero_grad(); actor_loss.backward(); actor.optimizer.step()
+
+        actor_lr_scheduler.step(); critic_lr_scheduler.step()
+
+        # ema
+        if n_gradient_step % args.ema_update_interval == 0:
+            if n_gradient_step >= 1000:
+                actor.ema_update()
+            for param, target_param in zip(critic.parameters(), critic_target.parameters()):
+                target_param.data.copy_(0.995 * param.data + (1 - 0.995) * target_param.data)
+</new>
+</edit>
+<obs>
+Successfully replaced text in CleanDiffuser/pipelines/custom_policy.py.
+</obs>
+<note>
+[[FILL_NOTE?: optional one-line thought for this edit, or delete this block]]
+</note>
+<edit path="CleanDiffuser/pipelines/custom_policy.py">
+<old>
+# ---------------------- Inference ----------------------
+# (checkpoint load) load actor + iql_q / iql_q_target / iql_v; .eval() all
+# (action selection) advantage reranking over num_candidates:
+#     obs = torch.tensor(normalizer.normalize(obs), device=args.device, dtype=torch.float32)
+#     obs = obs.unsqueeze(1).repeat(1, args.num_candidates, 1).view(-1, obs_dim)
+#     act, _ = actor.sample(
+#         prior, solver=args.solver, n_samples=args.num_envs * args.num_candidates,
+#         sample_steps=args.sampling_steps, condition_cfg=obs, w_cfg=1.0,
+#         use_ema=args.use_ema, temperature=args.temperature)
+#     with torch.no_grad():
+#         adv = (iql_q_target(obs, act) - iql_v(obs)).view(-1, args.num_candidates, 1)
+#         w = torch.softmax(adv * args.task.weight_temperature, 1)
+#         act = act.view(-1, args.num_candidates, act_dim)
+#         p = w / w.sum(1, keepdim=True)
+#         indices = torch.multinomial(p.squeeze(-1), 1).squeeze(-1)
+#         sampled_act = act[torch.arange(act.shape[0]), indices].cpu().numpy()
+</old>
+<new>
+# ---------------------- Inference ----------------------
+# load actor + critic/critic_target; rerank num_candidates by softmax over Q:
+#     obs = obs.unsqueeze(1).repeat(1, args.num_candidates, 1).view(-1, obs_dim)
+#     act, _ = actor.sample(prior, ..., n_samples=args.num_envs * args.num_candidates, ...)
+#     with torch.no_grad():
+#         q = critic_target.q_min(obs, act).view(-1, args.num_candidates, 1)
+#         w = torch.softmax(q * args.task.weight_temperature, 1)
+#         act = act.view(-1, args.num_candidates, act_dim)
+#         indices = torch.multinomial(w.squeeze(-1), 1).squeeze(-1)
+#         sampled_act = act[torch.arange(act.shape[0]), indices].cpu().numpy()
+</new>
+</edit>
+<obs>
+Successfully replaced text in CleanDiffuser/pipelines/custom_policy.py.
+</obs>
+<run/>
+<obs>
+Measured results — `baseline:default` (Diffusion Q-Learning, `is_final,true`), seeds {42, 123, 456} and mean.
+
+## normalized_score
+| seed | hopper-medium-v2 | walker2d-medium-v2 | halfcheetah-medium-v2 |
+|---|---|---|---|
+| 42 | 0.9966 | 0.9042 | 0.5132 |
+| 123 | 1.0178 | 0.8882 | 0.5126 |
+| 456 | 1.0160 | 0.9058 | 0.5134 |
+| **mean** | **1.0101** | **0.8994** | **0.5131** |
+
+## elapsed training time (seconds)
+| seed | train_hopper | train_walker2d | train_halfcheetah |
+|---|---|---|---|
+| 42 | 16776 | 16673 | 16696 |
+| 123 | 16810 | 16769 | 16715 |
+| 456 | 16704 | 16826 | 16589 |
+| **mean** | **16763.3** | **16756.0** | **16666.7** |
+</content>
+</obs>
+

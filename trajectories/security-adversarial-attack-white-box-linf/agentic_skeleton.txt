@@ -1,0 +1,888 @@
+<meta task="security-adversarial-attack-white-box-linf" domain="Security" file="torchattacks/bench/custom_attack.py" model_format="qwen3" edit_tool="str_replace"/>
+
+<system>
+You are a research engineer improving a model on a fixed ML task. You work by editing the model code and running experiments. Think carefully before each change. You have these tools:
+- str_replace(path, old_str, new_str): replace the unique occurrence of old_str with new_str.
+- create(path, file_text): create a new file.
+- run_experiment(): train + evaluate the current code under the fixed budget; returns metrics.
+Make one tool call at a time. After editing, call run_experiment() to measure your method.
+</system>
+
+<user>
+## Research question
+
+White-box `L_inf` evasion: I have full access to a trained image classifier — parameters and
+gradients — a clean image the model classifies correctly, and a strict per-pixel budget
+`eps = 2/255`. The single thing I design is the **attack procedure** that turns the clean batch into
+an adversarial batch inside that budget. Everything else — the model, the data, the way success is
+scored — is fixed. The number being maximized is attack success rate (ASR): the fraction of
+initially-correct samples I push to a wrong prediction while every pixel stays within `eps` and the
+image stays in `[0,1]`. The `8/255` budget RobustBench uses for *defended* models saturates ASR to
+~1.0 on these undefended classifiers and leaves no headroom; the tight `2/255` regime is what makes
+attack quality measurable, especially on the wider VGG architecture where even strong attacks leave
+ASR well below 1.
+
+## Prior art before the first rung (white-box attack lineage)
+
+The first rung reacts to the existence proof that adversarial examples exist at all, and to the cost
+of the only method that originally produced them.
+
+- **Existence of adversarial examples (Szegedy et al. 2014).** For a correctly classified `x` there
+  is a tiny `r`, below visual perception, with `x + r` misclassified; the same crafted `r` often fools
+  a *different* model, and random noise of the same size does not. Produced by minimizing
+  `c·||r||_2 + loss_f(x + r, l)` over the box with box-constrained L-BFGS and a line search over `c`.
+  Gap: an iterative constrained optimizer with a line search **per single image** — far too slow to
+  study at scale or to fold into a training loop, and it gives no cheap closed-form move.
+
+That is the lineage the first rung answers: a cheap, closed-form, one-pass attack that needs no inner
+optimizer. The rungs above it then climb from that single step toward the strongest reference attack.
+
+## The fixed substrate
+
+The evaluation harness is frozen and must not be touched. Each scenario is a `(model, dataset)` pair
+drawn from {ResNet20, VGG11-BN, MobileNetV2} × {CIFAR-10, CIFAR-100}, using public pretrained
+checkpoints loaded from `chenyaofo/pytorch-cifar-models`. For each scenario the harness:
+
+1. loads the trusted **score model** and collects up to 1000 samples it initially classifies
+   correctly;
+2. for every batch, hands my code a **fresh deep copy** of the score model (so I cannot tamper with
+   its weights, BatchNorm statistics, or hooks), the clean `images` in `[0,1]`, the `labels`, the
+   budget `eps = 2/255`, the `device`, and `n_classes` (10 or 100);
+3. checks the output is finite, lies in `[0,1]`, and satisfies per-sample
+   `||x_adv − x||_inf ≤ eps + 1e-6` — any violation (wrong shape, non-finite, out of range, over
+   budget) is counted as an **attack failure** for that sample;
+4. scores `robust_acc` with the score model and reports `asr = 1 − robust_acc`, denominator = the
+   number of initially-correct samples.
+
+Two consequences shape every rung. First, the budget is enforced per-sample by the harness, so my
+code must project into the `eps`-box and into `[0,1]` itself or it forfeits the sample. Second, I see
+the model only through the copy passed to `run_attack` — a pure white-box first-order interface
+(forward + `torch.autograd.grad`); there is no access to the score model that grades me, so an attack
+that overfits a private quirk of the copy still has to flip the score model's decision.
+
+## The editable interface
+
+Exactly one region is editable — the body of `run_attack` in `torchattacks/bench/custom_attack.py`
+(lines 7–22 of the template). The contract is fixed:
+
+`run_attack(model, images, labels, eps, device, n_classes) -> adv_images`
+
+with `images` of shape `(N, C, H, W)` in `[0,1]`, `labels` of shape `(N,)`, and `adv_images` the same
+shape, in `[0,1]`, within `eps` of `images` in `L_inf`. Every method on the ladder is a fill of this
+one function. The starting point is the scaffold default: **return the clean images unchanged** (a
+0-ASR floor that the first real attack must beat).
+
+```python
+import torch
+import torch.nn as nn
+
+# =====================================================================
+# EDITABLE: implement run_attack below
+# =====================================================================
+def run_attack(
+    model: nn.Module,
+    images: torch.Tensor,
+    labels: torch.Tensor,
+    eps: float,
+    device: torch.device,
+    n_classes: int,
+) -> torch.Tensor:
+    """
+    White-box L_inf adversarial attack.
+    images: (N, C, H, W) in [0, 1] on device. labels: (N,) on device.
+    n_classes: 10 for CIFAR-10, 100 for CIFAR-100.
+    Returns adv_images satisfying (adv_images - images).abs().max() <= eps.
+    """
+    _ = (model, labels, eps, device, n_classes)
+    return images.clone()
+
+# =====================================================================
+# END EDITABLE REGION
+# =====================================================================
+```
+
+## Evaluation settings
+
+Five scored scenarios — ResNet20-C10, VGG11BN-C10, ResNet20-C100, VGG11BN-C100, and the hidden
+MobileNetV2-C100 — plus MobileNetV2-C10 where it is reported. One seed, `42`. Budget `eps = 2/255`.
+Up to 1000 initially-correct samples per scenario, batch size 100. The single metric, higher is
+better, is `asr = 1 − robust_acc` per scenario. The reference baseline implementations live in the
+`torchattacks` package; the harness exposes only the white-box first-order interface above.
+
+The editable model code is in `torchattacks/bench/custom_attack.py`:
+```python
+import numpy as np
+import torch
+from torch.utils.data import DataLoader, TensorDataset
+from torchvision import datasets, transforms
+
+from custom_attack import run_attack
+
+
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--arch", type=str, required=True)
+    parser.add_argument("--dataset", type=str, choices=["cifar10", "cifar100"], required=True)
+    parser.add_argument("--data-dir", type=str, required=True)
+    parser.add_argument("--eps", type=float, default=2.0 / 255.0)
+    parser.add_argument("--n-samples", type=int, default=1000)
+    parser.add_argument("--batch-size", type=int, default=100)
+```
+Improve it. Derive your method, edit the code, then run_experiment().
+</user>
+
+### step 1 — FGSM (fast gradient sign method)   [slug:fgsm]
+
+<think>
+[[POLISH_REASONING: adapt to first-person agentic voice, end by deciding to implement]]
+I am filling exactly one function — `run_attack` — in a frozen white-box harness, and the scaffold
+default returns the clean images, which by construction flips nothing: its ASR is zero. So the first
+rung has a clean job: produce the cheapest attack that beats zero, the floor every later rung will be
+measured against. I want the minimal, principled move, because the whole ladder above me is going to
+be "this, but iterated / momentum-stabilized / made adaptive," and if I start from the wrong primitive
+the entire climb inherits the mistake.
+
+What is actually available to me through this interface? The harness hands me a fresh deep copy of the
+model, the clean `images` in `[0,1]`, the `labels`, and `eps = 2/255`. White-box means I can run a
+forward pass and call `torch.autograd.grad` to read the gradient of any scalar I build with respect to
+the input pixels — one backward pass, the same machinery training uses, just stopped one step early at
+the input instead of the weights. That is the entire toolkit: a forward pass and an input-gradient.
+The only prior recipe I know for crafting an adversarial example is the existence-proof method — drive
+`x` to a wrong label by minimizing `c·||r||_2 + loss_f(x+r, l)` over the box with box-constrained
+L-BFGS and a line search over `c` until the label flips. It works and it is the reason I believe these
+examples exist, but it runs an iterative constrained optimizer *with a line search* per single image.
+Across 1000 samples per scenario and six scenarios, that is dead on arrival, and it gives me no cheap
+closed-form move to build a ladder on. I want something I can compute in about the cost of one
+backward pass.
+
+So let me ask the prior question, because I suspect the cheap method and the *reason these examples
+exist* are the same insight. Why do adversarial examples exist at all, and why does the same crafted
+perturbation fool different models? The reflexive story is that deep nets are wildly nonlinear and
+carve the input space into bizarre high-curvature pockets, and adversarial examples are needles hidden
+in those pockets. But that story fights the evidence. If each model's blind spots were idiosyncratic
+high-curvature pockets, a needle found for one model would not land in a needle for a *different* model
+with different depth and weights — independent quirks do not line up like that — and yet they do, and
+the models even agree on the wrong class. And a plain linear softmax classifier on raw pixels has the
+same vulnerability, where there is no extreme nonlinearity to blame. The nonlinearity story is not
+just unproven, it points the wrong way.
+
+Let me take the opposite hypothesis seriously and work it out for the simplest model — a linear one —
+to see if adversarial examples fall out of *linearity* rather than nonlinearity. A linear unit
+computes `w^T x`. Feed it `x̃ = x + η`: the activation moves by exactly `w^T η`. What is the most
+damage I can do to that activation under the constraint that no single pixel moves by more than the
+budget — `||η||_inf ≤ eps`? I want to maximize `w^T η = Σ_i w_i η_i` with each `|η_i| ≤ eps`. The
+terms decouple: each `w_i η_i` is maximized independently by pushing `η_i` to the corner of its
+allowed interval in the direction of `w_i` — set `η_i = eps` if `w_i > 0`, `η_i = −eps` if `w_i < 0`.
+That is `η = eps·sign(w)`, giving `w^T η = eps·Σ_i |w_i| = eps·||w||_1`. Stare at the scaling. With
+`n` weight components of average magnitude `m`, `w^T η = eps·m·n`: the perturbation size `||η||_inf =
+eps` does not grow with `n`, but the output swing grows *linearly* in `n`. In high dimension I can
+make a huge number of changes, each individually below the precision threshold — each invisible —
+that add up coherently into one large swing because I aligned every coordinate with its weight.
+Adversarial examples do not need curvature; they need *dimension* and *linearity*. That alone explains
+the vulnerable linear softmax with no appeal to anything deep.
+
+Now the bridge to the real classifiers I am attacking — ResNet20, VGG11-BN, MobileNetV2. They are not
+linear, but the modern building blocks are deliberately *near*-linear because that is what makes them
+trainable: ReLU is piecewise linear, BatchNorm is affine, the convolutions are linear. So my working
+hypothesis is that these models are too linear to resist a linear perturbation. If that holds, the
+closed-form perturbation that is optimal for a linear model should also damage them, because near the
+input they behave linearly. So I want to do for the classification loss `J(θ, x, y)` what I just did
+for a single linear activation. The thing I am attacking is the scalar loss the model was trained
+with, and I want to *raise* it — raising the loss is pushing the logits away from the true label. I do
+not have a global linear form for `J`, but I have its first-order behavior around the current input.
+Taylor-expand the loss in the input: `J(θ, x + η, y) ≈ J(θ, x, y) + η^T ∇_x J(θ, x, y)`. The part I
+control is `η^T g` with `g = ∇_x J` — one input-gradient, exactly the `torch.autograd.grad` the
+harness lets me call. Maximize the linearized increase under the per-pixel budget:
+`max_{||η||_inf ≤ eps} η^T g`.
+
+This is the linear-model problem again, with `g` in the role `w` played. I can solve it coordinate by
+coordinate as before, but the clean general statement is worth stating because it tells me the norm is
+doing real work. By Hölder's inequality with conjugate exponents `∞` and `1`,
+`η^T g ≤ ||η||_inf·||g||_1 ≤ eps·||g||_1`, with equality when every nonzero-gradient coordinate has
+the same sign as `g_i` and is pushed to the boundary `|η_i| = eps`. So a canonical maximizer is forced:
+`η = eps·sign(∇_x J(θ, x, y))`, achieving `η^T g = eps·||g||_1`. There it is in closed form, no inner
+loop. The geometry, said out loud so I do not reach for the wrong thing: the feasible set
+`{η : ||η||_inf ≤ eps}` is an axis-aligned cube, the objective is linear, so the maximum sits at a
+*corner* — a vector all of whose coordinates are `±eps`, i.e. `eps·sign(g)`. This is why it is the
+*sign* and not the gradient itself. If the budget had been `L_2` the feasible set would be a ball, the
+maximizer `eps·g/||g||_2`, and large-magnitude coordinates would soak up the budget. But under `L_inf`
+each coordinate has its own independent allowance `eps`, and the right move is to spend each one fully
+in its gradient's direction — magnitude is irrelevant, only the sign of each partial derivative
+matters. That is the fast gradient sign step: one forward pass, one backward pass, an elementwise
+sign, scale by `eps`.
+
+Why is `L_inf` the right budget here in the first place, not merely the convenient one? Because of
+feature precision, and because the task fixed it. An 8-bit image throws away everything below `1/255`
+of its dynamic range; a per-pixel change smaller than the sensor can represent is semantically
+meaningless by construction. The honest notion of imperceptible is therefore *per-coordinate* — no
+single feature moves by more than the precision floor — which is exactly a max-norm constraint, and
+the harness scores me against precisely that constraint, rejecting any sample where
+`||x_adv − x||_inf` exceeds `eps`. The norm is not a mathematical convenience; it is the formalization
+of "below the precision of the features," and it happens to give the cleanest answer.
+
+One worry before I trust this on a real network: it is only a first-order method. I linearized `J` and
+then took `η` as large as the whole budget allows — a full `eps` jump in every coordinate at once. The
+true loss surface is curved; over a jump that big the linear model is approximate, so `x + eps·sign(g)`
+maximizes the *approximation*, not the true loss inside the box. Could it just fail? Two things
+reassure me. In the one case where the model genuinely is linear in `x` — logistic regression — there
+is no approximation and the sign step is the exact worst case in the box. And my whole hypothesis is
+that the nonlinear models are too linear to resist, so the first-order step *should* transfer; if it
+reliably raises the loss in practice, that success is itself evidence for the linearity explanation.
+The method and the hypothesis test each other. The cost of the worry is that the linearization wastes
+budget on the harder, wider architectures: I expect the single step to underfit the model wherever the
+loss bends fast away from its tangent plane — which is exactly the gap the next rung will attack by
+iterating. So FGSM is the right *primitive* but a deliberately weak *adversary*; I want it as the
+floor, not the finish.
+
+Now, what does the harness force me to add beyond the bare math? The scaffold-level discipline. The
+mathematical step is `x + eps·sign(g)`, but the harness rejects any sample that leaves `[0,1]` or
+violates the budget, treating it as an attack failure. The clean reference single-step attack just
+clamps the resulting image to `[0,1]`. I will be slightly more careful and project the *perturbation*
+to `[-eps, eps]` first, then add it and clamp the image to `[0,1]`: with a single signed step of size
+exactly `eps` the perturbation already lies in the box, so the delta-clamp is a no-op here, but it
+makes the budget projection explicit and identical in form to the iterative rungs that follow, where
+it stops being a no-op. I also do the gradient bookkeeping the interface needs: detach and clone the
+inputs, set `requires_grad_`, build the cross-entropy with `F.cross_entropy`, take exactly one
+`torch.autograd.grad`, and do the pixel arithmetic under `torch.no_grad`. `n_classes` and `device` go
+unused for this attack — the gradient already knows the class count through the loss — so I bind them
+to a throwaway to keep the signature honest. The full scaffold fill is in the answer.
+
+What I expect, stated against the floor it must beat. The default returns clean images and scores
+exactly 0 ASR; one signed gradient step must beat that comfortably on every scenario, because raising
+a linearized loss by `eps·||g||_1` is a real push toward the boundary even when crude. But I expect a
+clear *split by architecture*: on the bottlenecked ResNet and depthwise MobileNetV2, where small
+`L_inf` perturbations propagate readily, the single step should already flip a large majority; on the
+wider, shallower VGG11-BN, whose low-resolution feature maps absorb small per-pixel perturbations more
+robustly, the single step should leave the most headroom — the clearest sign that one linearized jump
+underfits the curved loss. That architecture-dependent shortfall, and the general gap between "raise
+the tangent plane" and "raise the true loss," is precisely what the next rung must close by replacing
+one big leap with many small re-linearized steps.
+</think>
+<say>
+[[FILL_SAY: 1-2 sentences naming the method and what this first edit does]]
+</say>
+<edit path="torchattacks/bench/custom_attack.py">
+<old>
+import numpy as np
+import torch
+from torch.utils.data import DataLoader, TensorDataset
+from torchvision import datasets, transforms
+
+from custom_attack import run_attack
+
+
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--arch", type=str, required=True)
+    parser.add_argument("--dataset", type=str, choices=["cifar10", "cifar100"], required=True)
+    parser.add_argument("--data-dir", type=str, required=True)
+    parser.add_argument("--eps", type=float, default=2.0 / 255.0)
+    parser.add_argument("--n-samples", type=int, default=1000)
+    parser.add_argument("--batch-size", type=int, default=100)
+</old>
+<new>
+def run_attack(
+    model: nn.Module,
+    images: torch.Tensor,
+    labels: torch.Tensor,
+    eps: float,
+    device: torch.device,
+    n_classes: int,
+) -> torch.Tensor:
+    import torch.nn.functional as F
+
+    _ = (device, n_classes)
+    model.eval()
+    x = images.detach().clone().requires_grad_(True)
+    logits = model(x)
+    loss = F.cross_entropy(logits, labels)
+    grad = torch.autograd.grad(loss, x)[0]
+
+    with torch.no_grad():
+        x_adv = x + eps * grad.sign()
+        delta = torch.clamp(x_adv - images, min=-eps, max=eps)
+        x_adv = torch.clamp(images + delta, 0.0, 1.0)
+
+    return x_adv.detach()
+</new>
+</edit>
+<obs>
+Successfully replaced text in torchattacks/bench/custom_attack.py.
+</obs>
+<run/>
+<obs>
+Measured results — `baseline:fgsm` (`is_final,true`), seed 42, ASR per scenario (higher is better).
+
+| scenario | seed 42 ASR |
+|---|---|
+| ResNet20-C10 | 0.825 |
+| VGG11BN-C10 | 0.617 |
+| MobileNetV2-C10 | 0.878 |
+| ResNet20-C100 | 0.839 |
+| VGG11BN-C100 | 0.621 |
+| MobileNetV2-C100 | 0.825 |
+| **mean** | **0.768** |
+</obs>
+
+### step 2 — MI-FGSM (momentum iterative FGSM)   [slug:mifgsm]
+
+<think>
+[[POLISH_REASONING: adapt to first-person agentic voice, end by deciding to implement]]
+The single sign step landed where the linearization argument said it would, and the shape of the
+result is the whole story. FGSM scored 0.825 / 0.839 / 0.825 on ResNet20-C10 / ResNet20-C100 /
+MobileNetV2-C100, 0.878 on MobileNetV2-C10 — already a large majority flipped on the bottlenecked and
+depthwise architectures — but only 0.617 and 0.621 on VGG11BN-C10 and VGG11BN-C100. That is the split
+I expected, and it is diagnostic, not noise. One signed jump of size `eps` in every coordinate
+maximizes the loss's *tangent plane* at the clean point, and over a full-budget jump the tangent plane
+stops describing the true loss surface. Wherever the loss bends fast away from its linearization, the
+corner FGSM lands on is not where the loss is actually high — and VGG11-BN, whose wider, shallower
+low-resolution feature maps absorb small per-pixel perturbations more robustly, is exactly where that
+bending costs the most. So roughly 38% of VGG samples survived not because they are safe but because
+one linearized step could not reach them. The fix is forced by the diagnosis: stop trusting one
+linearization across the whole `eps`-box, and re-read the slope as I move.
+
+I cannot trust a single tangent plane over a `2eps`-wide box, so I take a *small* step in the sign
+direction, re-evaluate the gradient where I land, step again, and repeat. With step size `alpha`,
+`x_{t+1} = x_t + alpha·sign(∇_x J(θ, x_t, y))`, projecting back into the budget each step. Each step is
+still the `L_inf`-steepest move — sign of the gradient, for exactly the Hölder reason FGSM used — but
+now read from the *current* point, so I follow the curved surface instead of betting everything on the
+plane at `x`. This iterative sign-ascent is what I'd expect to recover the VGG headroom: the samples
+that survived FGSM are the ones where the surface curves, and that is precisely what extra
+re-linearized steps correct. But before I just run iterative FGSM, I want to ask whether iterating
+*greedily* on the raw gradient is the best use of those steps, because there is a known pathology in
+greedy gradient ascent that I can pre-empt cheaply, and the harness lets me.
+
+Here is the pathology. The classifier's loss surface around a point is curved and bumpy; the raw
+input-gradient jitters from step to step as the iterate moves across that bumpiness. A greedy
+sign-ascent that chases whatever the local slope says *right now* zig-zags — consecutive perturbation
+increments do not pull consistently one way — and a zig-zagging ascent dives into the nearest sharp
+local maximum of the loss. In the classic transfer setting that is fatal, because those sharp maxima
+are one model's private quirks and do not generalize to a different model. In *this* task I attack and
+am graded by the same architecture, so transfer is not the headline concern — but the optimization
+pathology is the same one, and it still hurts the white-box number: a direction that zig-zags wastes
+steps oscillating instead of climbing, and it can pin the iterate in a shallow sharp maximum well
+short of the high-loss region a smoother trajectory would reach. So I want the iterative scheme — it
+is what recovers FGSM's underfit — but with the per-step direction stabilized so it settles along the
+component of the gradient that keeps pointing the same way and coasts through the small sharp humps
+rather than getting caught in them.
+
+Once I name the attack correctly, the cure is obvious. Iterative sign-FGSM is plain sign-gradient
+ascent on `J`, and zig-zagging into poor local optima on a noisy surface is the oldest pathology in
+optimization, with an equally old remedy: momentum. Polyak's trick — do not step on the raw gradient,
+step on an accumulated velocity `g_{t+1} = μ·g_t + (current gradient)` that averages the recent
+gradients. The averaging cancels the components that flip sign step to step (the zig-zag) and
+reinforces the components that persist (the consistent ascent direction), and the built-up velocity
+carries the iterate over small humps instead of letting each one trap it. Everything I said I wanted —
+stabilize the direction, keep the consistent part, escape the sharp maxima — is what momentum does. So
+I put a velocity into the iteration: maintain `g`, accumulate the gradient into it each step, and take
+the pixel step along `g` rather than the bare current gradient.
+
+Two details decide the method, and I want to derive both, not guess them. Take the step first, because
+it is forced. The budget is `L_inf`, and I already know the `L_inf`-optimal move for a given direction
+is the sign: each nonzero coordinate goes `±alpha`, no coordinate moves more than `alpha`. So the
+update is `x_{t+1} = x_t + alpha·sign(g_{t+1})`. Same reason FGSM used the sign, and it buys explicit
+per-step budget control. Now the accumulation, where the naive `g_{t+1} = μ·g_t + ∇_x J(x_t, y)` has a
+problem that would quietly wreck the momentum. The magnitude of the input gradient is not stable
+across iterations — large far from a boundary, small near one, sometimes spiking. Dump the raw
+gradient into `g` and a single big-magnitude iteration dominates the running sum while a small one
+contributes almost nothing; the "average" becomes whichever step happened to have the largest
+gradient, which is the very magnitude-noise I am trying to smooth out, sneaking back in. Momentum must
+be an average of *directions* over time, every step getting a fair vote. So I normalize the current
+gradient before accumulating: `g_{t+1} = μ·g_t + ∇_x J(x_t, y) / ||∇_x J(x_t, y)||_1`. Dividing by the
+gradient's total absolute mass makes each iteration's contribution a unit-mass vector, so `μ` becomes
+a clean trade-off between accumulated history and the present direction rather than between whatever
+raw magnitudes the surface handed me. In code this is naturally written as dividing by the mean
+absolute value over the pixel dimensions — proportional to the per-sample `L_1` norm — and since I
+take `sign(g_{t+1})` downstream, only the *pattern of relative magnitudes across coordinates* in
+`g_{t+1}` matters; the per-iteration normalization keeps old and new gradients comparable so neither a
+stale big-gradient step nor a fresh one can unilaterally flip the accumulated direction.
+
+Now the two constants this task's harness sets. The decay is `μ = 1`: the recursion
+`g_{t+1} = g_t + grad/||grad||_1` simply *sums* all the normalized gradients seen so far with equal
+weight — undiscounted accumulation of the consensus direction, with no decay throwing away history and
+no blow-up of any single step because each addend is unit-mass. So `g_t` means the running sum of all
+past unit-normalized gradient directions. And there is a clean consistency check that I have built the
+right generalization rather than a third unrelated trick: set `μ = 0` and `g_{t+1} = grad/||grad||_1`,
+whose sign is just `sign(grad)`, so I recover iterative sign-FGSM exactly (the normalization is
+annihilated by the sign); take a single step from the clean point and I recover FGSM. The family
+contains both ancestors and interpolates between them — that is the test of the right generalization.
+
+The step count and step size matter more than they look, and this is where the task's fill diverges
+from the bare momentum recipe in a way I should be explicit about. The natural momentum-attack
+default ties `alpha = eps/T` so that `T` aligned sign steps exactly fill the budget. This task instead
+runs `T = 40` steps with `alpha = eps/10`, and starts from a *random* point in the `eps`-box rather
+than from the clean image. Both choices push the method toward the strong-white-box regime rather than
+the transfer regime. With `alpha = eps/10` and 40 steps, the total reach is `40·eps/10 = 4·eps`, well
+past the `2·eps` box diameter, so after the iterate is pinned to the high-loss boundary it spends its
+remaining steps refining its position there instead of merely crawling toward it — more gradient
+updates correcting stale-gradient error rather than trusting the first plane. And the random start
+matters for exactly the reason it mattered for the iterative attack generally: the gradient evaluated
+at the clean point is corrupted by sharp curvature artifacts localized at `x`, so launching from a
+uniform perturbation in the `eps`-box, clipped to `[0,1]`, jumps off that brittle point before the
+first gradient read and lets the momentum accumulate from a better-behaved direction. In a pure
+transfer-motivated momentum attack the random start is not part of the recipe; here it is in the fill,
+and it makes this method a genuine member of the projected-iteration family — iterative sign-ascent
+with a momentum-smoothed direction and a random launch — rather than a transfer-tuned variant. So I
+should not import the transfer story as the *reason* this works on the leaderboard; on a single-model
+white-box budget, the operative reasons are that iterating recovers FGSM's underfit and that momentum
+plus a random start gives a steadier, less-trapped ascent than greedy iterative FGSM.
+
+There is one more thing the diagnosis tells me to keep modest. The samples FGSM already flipped — the
+~82–88% on ResNet and MobileNetV2 — are the easy ones where even the tangent plane reached the
+boundary; iterating cannot do worse on those, it pins them harder. The marginal value of momentum is
+concentrated on the survivors, the curved-surface samples, and those are concentrated on VGG. So the
+clean falsifiable expectation is asymmetric. I expect MI-FGSM to roughly match FGSM where FGSM already
+saturated (ResNet20-C10/C100, MobileNetV2 should land in the high-0.96–0.99 band once iterated) and to
+make its real gain on the two VGG scenarios, lifting them substantially above FGSM's 0.617 and 0.621 —
+though, because VGG's robustness to small `L_inf` is architectural, I do not expect it to close the
+gap to 1.0; I expect it to land in the low-0.7s, recovering most but not all of the underfit. The
+contract fill — 40 iterations of normalize-accumulate-sign-step from a random start, projecting the
+perturbation to `[-eps,eps]` and the image to `[0,1]` each step — is in the answer. If instead MI-FGSM
+fails to beat FGSM on VGG, my whole diagnosis (that the VGG survivors are curvature-underfit, not
+genuinely safe) is wrong, and the headroom is architectural robustness no first-order iteration can
+touch — which the next rung, an adaptive-step ensemble, would then have to settle.
+</think>
+<say>
+[[FILL_SAY: 1-2 sentences naming the method and what this first edit does]]
+</say>
+<edit path="torchattacks/bench/custom_attack.py">
+<old>
+    model.eval()
+    x = images.detach().clone().requires_grad_(True)
+    logits = model(x)
+    loss = F.cross_entropy(logits, labels)
+    grad = torch.autograd.grad(loss, x)[0]
+
+    with torch.no_grad():
+        x_adv = x + eps * grad.sign()
+        delta = torch.clamp(x_adv - images, min=-eps, max=eps)
+        x_adv = torch.clamp(images + delta, 0.0, 1.0)
+
+    return x_adv.detach()
+</old>
+<new>
+    model.eval()
+    steps = 40
+    alpha = eps / 10.0
+    decay = 1.0
+
+    x = images.detach()
+    x_adv = x + torch.empty_like(x).uniform_(-eps, eps)
+    x_adv = torch.clamp(x_adv, 0.0, 1.0).detach()
+    momentum = torch.zeros_like(x)
+
+    for _ in range(steps):
+        x_adv.requires_grad_(True)
+        logits = model(x_adv)
+        loss = F.cross_entropy(logits, labels)
+        grad = torch.autograd.grad(loss, x_adv)[0]
+        grad = grad / (grad.abs().mean(dim=(1, 2, 3), keepdim=True) + 1e-12)
+        momentum = decay * momentum + grad
+
+        with torch.no_grad():
+            x_adv = x_adv + alpha * momentum.sign()
+            delta = torch.clamp(x_adv - x, min=-eps, max=eps)
+            x_adv = torch.clamp(x + delta, 0.0, 1.0)
+
+        x_adv = x_adv.detach()
+
+    return x_adv
+</new>
+</edit>
+<obs>
+Successfully replaced text in torchattacks/bench/custom_attack.py.
+</obs>
+<run/>
+<obs>
+Measured results — `baseline:mifgsm` (`is_final,true`), seed 42, ASR per scenario (higher is better).
+
+| scenario | seed 42 ASR |
+|---|---|
+| ResNet20-C10 | 0.981 |
+| VGG11BN-C10 | 0.714 |
+| MobileNetV2-C10 | 0.999 |
+| ResNet20-C100 | 0.984 |
+| VGG11BN-C100 | 0.720 |
+| MobileNetV2-C100 | 0.967 |
+| **mean** | **0.894** |
+</obs>
+
+### step 3 — PGD (projected gradient descent)   [slug:pgd]
+
+<think>
+[[POLISH_REASONING: adapt to first-person agentic voice, end by deciding to implement]]
+Iterating paid off where the diagnosis said it would. MI-FGSM lifted the easy scenarios to the ceiling
+— 0.981 / 0.984 on ResNet20-C10/C100, 0.999 on MobileNetV2-C10, 0.967 on MobileNetV2-C100 — confirming
+that the samples FGSM left on those architectures were curvature-underfit, not safe: re-reading the
+slope across forty steps reached them. And on VGG it did move the needle, 0.617 → 0.714 and
+0.621 → 0.720, recovering a chunk of the underfit. But the VGG numbers are still in the low 0.7s, and
+the gain there is smaller than the easy-scenario gains were dramatic. So one of two things is true:
+either VGG's residual ~28% is architectural robustness that no first-order attack can touch, or the
+*particular* iterative scheme I ran is leaving white-box loss on the table. Before I concede the
+former, I want to interrogate the latter, because there is a specific reason to suspect the momentum I
+added is, in this single-model setting, slightly *blunting* the maximizer rather than sharpening it.
+
+Reread why I put momentum in. The justification was that greedy sign-ascent zig-zags into sharp local
+maxima, and in the *transfer* setting those maxima are one model's private quirks that do not
+generalize — so averaging the direction across steps keeps the component shared with other models and
+discards the idiosyncratic part. That argument is about *generalizing the perturbation to a different
+model*. But here I attack and am graded by the same architecture: there is no held-out model whose
+boundary I need to align with. The thing I actually want is the strongest possible solution to the
+*inner* maximization `max_{||δ||_inf ≤ eps} J(θ, x+δ, y)` on this one model — climb its own loss
+surface as high as I can inside the box. And for that objective, an accumulated velocity is not
+obviously helpful and can hurt. The velocity is a running sum of *past* normalized gradients, from
+points the iterate has already left; near the high-loss boundary, where the surface bends, the
+direction that maximizes the *current* loss is the current gradient's sign, and a stale momentum term
+can point the step partly along a direction that was good several iterations ago but is now wrong,
+overshooting past the local maximum or oscillating along the boundary instead of settling on it.
+Momentum trades faithful local ascent for direction stability — a good trade when stability buys
+transfer, a possibly-bad trade when the only goal is to maximize *this* loss.
+
+So let me strip back to the cleanest strong inner maximizer and ask what it should be, deriving it
+from the objective rather than from the momentum patch. I have a fixed classifier, white-box access so
+I can read `∇_x L(θ, x, y)` for any loss, a clean image the model gets right, and a budget `eps`. I
+want `δ` solving `max_δ L(θ, x+δ, y)` subject to `||δ||_inf ≤ eps` and `x+δ ∈ [0,1]^d`. That is a
+constrained maximization of the loss over a little box around `x`. There is no closed form — `L` is a
+deep network, wildly non-concave in `x` — so I will not solve it exactly; I will climb it as well as a
+gradient method can. The reason to climb it *well*, rather than just get some misclassification, is
+exactly the VGG number: a sloppy maximizer reports the model as more robust than it is, because the
+samples it fails to flip are not safe, they are out of its reach. The VGG survivors are precisely the
+samples where the maximizer's quality is being tested.
+
+The cheapest move is to linearize: `L(x+δ) ≈ L(x) + g^T δ` with `g = ∇_x L`, maximized over the box at
+`δ = eps·sign(g)` — the corner, gain `eps·||g||_1`. That is FGSM, and I already know it underfits the
+curved surface. The honest correction is what FGSM and MI-FGSM both reached for: take a *small* step in
+the sign direction, re-read the gradient where I land, and repeat — `x_{t+1} = x_t + alpha·sign(∇_x
+L(θ, x_t, y))` — so I follow the curved surface instead of betting on one tangent plane. But the
+instant I iterate, two things break the constraint: after a few steps the accumulated move can wander
+outside the `eps`-box, and the iterate can leave `[0,1]`. So I must project back into the feasible set
+after every step. This is what projected gradient methods are for, and I want to *know* the projection
+is right, not just clamp and hope.
+
+Work out the projection. The feasible set is the intersection of `||x' − x||_inf ≤ eps` (budget) and
+`x' ∈ [0,1]^d` (valid image). For the `L_inf` ball, the Euclidean projection
+`Π(z) = argmin_{||x'−x||_inf ≤ eps} ||x' − z||_2` decouples coordinate by coordinate, because both the
+squared distance and the constraint are per-coordinate; minimizing `(x'_i − z_i)^2` subject to
+`x_i − eps ≤ x'_i ≤ x_i + eps` gives `z_i` if it is already inside the interval, else the nearer
+endpoint — which is exactly clamping `x'_i` to `[x_i − eps, x_i + eps]`. So element-wise clipping of
+the perturbation to `[−eps, eps]` *is* the Euclidean projection onto the `L_inf` box, not a heuristic.
+The pixel-box `[0,1]` is the same kind of object — another set of per-coordinate intervals — so its
+projection is clamping to `[0,1]`. The intersection is the coordinate interval
+`[max(x_i − eps, 0), min(x_i + eps, 1)]`, and the implementation reaches the same point by clipping the
+perturbation to `[−eps, eps]`, adding it to `x`, then clipping the image to `[0,1]`. That is projected
+gradient ascent under `L_inf`, and it is precisely the same dual-clamp I have been using in every rung
+— now justified as the exact projection rather than carried along by analogy.
+
+Two design levers remain: the step size with the step count, and where I start. For the step, this task
+runs `steps = 40` with `alpha = eps/4`, no momentum — and now I can reason about why that is the right
+inner-maximizer setting rather than MI-FGSM's `eps/10` with a velocity. The requirement is that from
+any start inside the `eps`-ball the iterate can reach the opposite side and still have steps left to
+move *along* the boundary once pinned there; the box diameter in any coordinate is `2·eps`, so
+`steps·alpha` must comfortably exceed `2·eps`. With `alpha = eps/4` and 40 steps the total reach is
+`40·eps/4 = 10·eps`, five times the diameter, so the iterate easily crosses the box from any interior
+start and spends most of its steps refining its position on the high-loss boundary. The larger per-step
+`eps/4` (versus MI-FGSM's `eps/10`) is affordable precisely *because* there is no momentum to overshoot
+with: each step is a faithful local sign-ascent of the current loss, re-corrected the next step, so a
+bigger step explores the box faster without a stale velocity carrying it past the maximum. More steps,
+up to diminishing returns, keep correcting stale-gradient error rather than trusting the first plane.
+This is the lever momentum was contesting, and dropping the velocity is what lets the step size do its
+job cleanly.
+
+For the start, I keep the random launch — and here the reasoning is sharper than "dodge the corrupted
+gradient." The gradient evaluated at the exact data point `x` is suspect: the loss surface right next
+to a data point has sharp curvature artifacts localized at `x`, so the steepest direction *at `x`* is a
+poor guide to where the loss climbs a little further out. Worse, if I always launch from `x`, I commit
+the whole trajectory to that one possibly-corrupted initial direction and climb into whatever single
+local maximum sits in the basin containing `x` — and since the inner problem is non-concave, there are
+many maxima scattered across the box, and I never see the others. Sampling each coordinate uniform in
+`[−eps, eps]`, setting `x_0 = x + u`, and clipping into `[0,1]` jumps me off the non-smooth point
+before the first gradient read, so the first gradient I trust is evaluated somewhere better-behaved,
+and the trajectory can land in a different, possibly higher, basin. The random start costs no extra
+gradient evaluation, and it is exactly what a strong first-order adversary should do.
+
+The claim that this is the *strongest* first-order attack rests on whether random-start projected
+ascent is finding the worst case or just *a* high-loss point. The inner maximization is non-concave; in
+principle a hidden isolated maximum could be missed, badly underestimating vulnerability. The
+diagnostic is to run the projected iteration from many random starts and look at the loss of the final
+iterate each time: the useful pattern is that the loss climbs consistently from each start and
+plateaus quickly, and across restarts the plateau values *concentrate* — many genuinely distinct
+maxima (far apart, nearly orthogonal in the box) reaching almost the same loss. If that is the
+landscape, then formal non-concavity is not the practical blocker it first appears: many local maxima
+are about equally good, and a first-order adversary that already uses input-gradients repeatedly from
+several starts has little evidence of a significantly better point to chase. Random restarts do not
+prove no hidden higher maximum exists, but the concentration is the honest basis for calling this the
+strongest *first-order* attack. The loss itself is a pluggable choice — cross-entropy is the simplest
+default and the one the harness fill uses, with a logit-margin loss the drop-in when I want to push on
+the decision boundary directly — but the iteration is the same. And Danskin's theorem closes the loop:
+the negative loss-gradient at the inner maximizer is, in the tie-free exact-max case, a descent
+direction for the saddle-point objective a robust-training defense would solve, so the same maximizer I
+am building is exactly what such a defense would call in its inner loop — which is why "solve the inner
+max well" is the principled target, not a heuristic.
+
+So I drop the momentum, keep the random start, run 40 plain sign-ascent steps at `alpha = eps/4`, and
+project the perturbation to `[−eps, eps]` and the image to `[0,1]` each step. The contract fill is in
+the answer. The falsifiable expectation, against MI-FGSM's numbers: on the easy scenarios I expect a
+dead heat — both attacks have already saturated ResNet20-C10/C100 and MobileNetV2, so PGD should land
+in the same 0.97–0.99 band (it may even edge MobileNetV2-C10 down a hair if the bigger step is slightly
+noisier there, since those are already essentially solved). The real test is VGG: if dropping the
+stale velocity and taking faithful larger local steps genuinely sharpens the inner maximizer, VGG
+should tick *above* MI-FGSM's 0.714 and 0.720 — modestly, into the low 0.72s — confirming that part of
+the residual was a blunted maximizer, not pure architectural robustness. If PGD instead matches or
+underperforms MI-FGSM on VGG, then the VGG headroom really is the architecture absorbing small `L_inf`
+perturbations, and only changing the loss or moving to a worst-case ensemble of attacks — not a better
+single-loss gradient climber — can settle it. Either way I will have separated "weak maximizer" from
+"robust architecture," which is what the VGG number has been asking me to do since FGSM.
+</think>
+<say>
+[[FILL_SAY: 1-2 sentences naming the method and what this first edit does]]
+</say>
+<edit path="torchattacks/bench/custom_attack.py">
+<old>
+    steps = 40
+    alpha = eps / 10.0
+    decay = 1.0
+</old>
+<new>
+    steps = 40
+    alpha = eps / 4.0
+</new>
+</edit>
+<obs>
+Successfully replaced text in torchattacks/bench/custom_attack.py.
+</obs>
+<note>
+[[FILL_NOTE?: optional one-line thought for this edit, or delete this block]]
+</note>
+<edit path="torchattacks/bench/custom_attack.py">
+<old>
+    x_adv = torch.clamp(x_adv, 0.0, 1.0).detach()
+    momentum = torch.zeros_like(x)
+</old>
+<new>
+    x_adv = torch.clamp(x_adv, 0.0, 1.0).detach()
+</new>
+</edit>
+<obs>
+Successfully replaced text in torchattacks/bench/custom_attack.py.
+</obs>
+<note>
+[[FILL_NOTE?: optional one-line thought for this edit, or delete this block]]
+</note>
+<edit path="torchattacks/bench/custom_attack.py">
+<old>
+        grad = torch.autograd.grad(loss, x_adv)[0]
+        grad = grad / (grad.abs().mean(dim=(1, 2, 3), keepdim=True) + 1e-12)
+        momentum = decay * momentum + grad
+
+        with torch.no_grad():
+            x_adv = x_adv + alpha * momentum.sign()
+            delta = torch.clamp(x_adv - x, min=-eps, max=eps)
+</old>
+<new>
+        grad = torch.autograd.grad(loss, x_adv)[0]
+
+        with torch.no_grad():
+            x_adv = x_adv + alpha * grad.sign()
+            delta = torch.clamp(x_adv - x, min=-eps, max=eps)
+</new>
+</edit>
+<obs>
+Successfully replaced text in torchattacks/bench/custom_attack.py.
+</obs>
+<run/>
+<obs>
+Measured results — `baseline:pgd` (`is_final,true`), seed 42, ASR per scenario (higher is better).
+
+| scenario | seed 42 ASR |
+|---|---|
+| ResNet20-C10 | 0.992 |
+| VGG11BN-C10 | 0.720 |
+| MobileNetV2-C10 | — (not reported) |
+| ResNet20-C100 | 0.988 |
+| VGG11BN-C100 | 0.736 |
+| MobileNetV2-C100 | 0.975 |
+| **mean (reported)** | **0.882** |
+</obs>
+
+### step 4 — AutoAttack (standard ensemble)   [slug:autoattack]
+
+<think>
+[[POLISH_REASONING: adapt to first-person agentic voice, end by deciding to implement]]
+The PGD result settles the question I posed and reframes it into a harder one. Dropping the momentum
+and taking faithful larger steps did sharpen the maximizer exactly where I predicted: VGG11BN-C10
+ticked 0.714 → 0.720 and VGG11BN-C100 0.720 → 0.736, with the easy scenarios holding at the ceiling
+(0.992 / 0.988 on ResNet, 0.975 on MobileNetV2-C100). So part of the VGG residual *was* a blunted
+maximizer — a better single-loss gradient climber recovered a couple of points. But the gain is small
+and the level is still ~0.72–0.74. PGD is, by the Danskin argument, the principled strongest
+*first-order, single-loss, single-run* attack I can build, and it has now plateaued on VGG. That tells
+me the remaining headroom is no longer about climbing the cross-entropy surface better. Two failure
+modes survive a strong fixed-step CE-PGD, and both are invisible from inside that single run, so I have
+to attack them from outside it.
+
+First failure mode: the *step schedule* itself. CE-PGD fixes `alpha = eps/4` for all 40 steps. A fixed
+step cannot be both large enough for early exploration across the `2eps`-wide box and small enough for
+late local refinement on the high-loss boundary. On a sample where the surface bends sharply near the
+boundary, a fixed `eps/4` step keeps overshooting the local maximum and bouncing — the best-so-far loss
+jumps early and then stalls, and the iteration count stops being a reliable measure of attack strength.
+I patched this informally with "40 steps, total reach `10·eps`, so late steps refine," but a fixed step
+does not *know* whether it is still improving; it cannot adapt. The honest fix is to make the step size
+a function of the trajectory's own progress: start large to explore, and halve it when the iterates
+stop making progress, restarting from the best point found so far. That removes the one tuned knob
+(`alpha`) that I have been guessing per-method and replaces it with a budget-aware schedule.
+
+Concretely, start at `eta = 2·eps` — in `L_inf` a single signed step of `2·eps` can cross the whole
+box before projection, so the projected point lands at an informative boundary location — and keep the
+best point `x_max` and best objective seen so far, because the raw iterate is not monotone. Put
+checkpoints into the budget at fractions `p_0 = 0`, `p_1 = 0.22`, `p_{j+1} = p_j + max(p_j − p_{j−1} −
+0.03, 0.06)`: a long first window to explore, later windows shrinking until they hit a `0.06N` floor,
+so progress is checked more often as the search becomes local. At each checkpoint, halve `eta` if too
+few steps in the window actually increased the objective (a count below `0.75` of the window — the step
+is overshooting too often) or if the step was not reduced last checkpoint *and* the best objective has
+not improved since (the search has stalled at a scale it cannot refine). Whenever I halve, restart the
+iterate from `x_max`, because a smaller step should refine the best neighborhood the larger step found.
+A momentum blend on the projected step stabilizes the deliberately-large early moves:
+`z = P_S(x + eta·dir(grad))`, then `x_{next} = P_S(x + 0.75·(z − x) + 0.25·(x − x_prev))`. This is an
+adaptive, step-size-free PGD whose only remaining knob is the iteration budget — strictly a better
+version of the inner maximizer I built at rung three, fixing the schedule I had been hand-tuning.
+
+Second failure mode is subtler and is the one I think actually pins VGG: the *loss*. I have been
+climbing cross-entropy throughout, and cross-entropy has a scale degree of freedom the decision rule
+does not. `CE(x,y) = −z_y + log Σ_j exp(z_j)`, and its input gradient is `(p_y − 1)∇z_y + Σ_{i≠y}
+p_i ∇z_i`. When the true-class probability `p_y` is near one — an overconfident, well-classified point,
+which is exactly the VGG survivor — all those coefficients are near zero, and in finite precision can
+*be* zero. The gradient vanishes not because the point is hard to move but because the softmax has
+saturated, and a decision-preserving rescaling of the logits (`h = α·g`, same argmax for every input)
+sharpens the softmax and can drive the CE gradient to zero while the classifier behaves identically.
+So a CE-PGD run can report a VGG sample as robust when the only thing robust is the *loss surface I
+chose to climb*, not the model. The fix is to climb a loss with the same invariances as the decision:
+shift-invariant and positive-scale-invariant. A margin `−z_y + max_{i≠y} z_i` is shift-invariant
+(difference of logits) but not scale-invariant; I need a *ratio* of logit differences so the scale
+cancels. Sort the logits `z_{π1} ≥ z_{π2} ≥ z_{π3} ≥ …` and use
+`DLR(x,y) = −(z_y − max_{i≠y} z_i) / (z_{π1} − z_{π3})`: the numerator is the decision margin (so the
+loss turns positive exactly when a wrong class overtakes `y`), and the `1st−3rd` denominator keeps the
+top-two competition the attack is trying to close *out* of the denominator (avoiding a `0/0` at the
+boundary) while measuring the logit scale. Being a ratio of differences, it is invariant to the exact
+shift-and-scale that blinds cross-entropy — so it keeps a usable gradient precisely on the saturated,
+overconfident VGG points where CE goes flat.
+
+But even an adaptive-step DLR attack is still *one* gradient attack, and any single gradient attack has
+a failure mode some configuration will sit on — discontinuous, flat, noisy, or otherwise uninformative
+gradients. So the strongest honest move is not a better single attack but a small *ensemble* whose
+members fail for different reasons, with the final result taken as the worst case over all of them: a
+sample counts as flipped if *any* member flips it. Keep an untargeted CE-APGD run (reducing true-class
+confidence is useful, especially under any output stochasticity). Add a targeted DLR-APGD run that
+aims at the highest-scoring wrong classes — the scale-invariant gradient attack with a sharp objective.
+Add targeted FAB, which searches by linearizing decision boundaries and minimizing perturbation norm
+rather than maximizing a fixed-ball loss, so it fails differently from APGD. And add Square Attack, a
+score-based random search using *no gradients at all*, the backstop against any form of gradient
+masking. Run them sequentially on the shrinking set of still-robust points — mark the initially-correct
+points robust, run APGD-CE and remove what it flips, then targeted DLR-APGD on the survivors, then FAB,
+then Square — so the worst-case-over-attacks robust accuracy is computed without wasting queries on
+already-broken samples. Standard fixed settings: APGD-CE one 100-iteration run, targeted DLR-APGD one
+100-iteration run over the 9 top wrong classes, targeted FAB likewise, Square with 5000 queries. This
+is a parameter-free evaluation built from two new pieces — the adaptive APGD schedule and the
+scale-invariant DLR loss — plus complementary existing attacks chosen for diversity, not for another
+tunable knob.
+
+Now the crucial scaffold-grounding point, because the trajectory's code must match what this task's
+harness actually runs, not the from-scratch construction I just derived. The reference implementation
+of this entire ensemble lives in the `torchattacks` package, and the task's edit fills `run_attack`
+with the single library call `torchattacks.AutoAttack(model, norm="Linf", eps=eps,
+version="standard", n_classes=n_classes, seed=SEED, verbose=False)` applied to `(images, labels)`. So
+the literal edit on this surface is *one line of construction plus the call* — the APGD schedule, the
+DLR loss, FAB, and Square are all inside the package; the harness does not ask me to reimplement them,
+it asks me to invoke the standard ensemble correctly. Two interface details matter and the fill gets
+them right: `n_classes` must be passed (10 vs 100 changes how many targeted classes the targeted
+members sweep — for CIFAR-100 the 9 targets are drawn from 99 wrong classes), and the `seed` is read
+from the environment so the run is reproducible under the harness's single seed 42. Unlike the prior
+rungs, `device` is unused here because the package places tensors itself; I bind it to a throwaway. The
+derivation above is *why* this call is the right endpoint — it is the worst case over a diverse,
+adaptive, parameter-free ensemble — but the code is the invocation, and that is what the answer shows.
+
+The bar this endpoint must clear, against PGD's real numbers, with the failure modes named. On the easy
+scenarios it should match PGD at the ceiling — ResNet20-C10/C100 near 0.99, MobileNetV2-C100 near
+0.975–0.98 — because those are already solved and the worst-case-over-ensemble can only hold or
+slightly raise them (MobileNetV2-C10 should reach ~1.0, the column PGD did not report). The decisive
+test is again VGG. If the cross-entropy *loss* was what pinned VGG — saturated softmax gradients on
+overconfident survivors — then the scale-invariant DLR member should flip samples CE-PGD could not even
+get a gradient on, and the worst-case-over-ensemble VGG ASR should sit at or above PGD's 0.720 and
+0.736. I genuinely expect a near-tie there rather than a large jump: PGD at `eps/4` over 40 steps is
+already a strong CE maximizer, and AutoAttack's edge is *reliability* — it cannot be defeated by a
+loss-scale quirk or a single attack's blind spot — more than raw ASR on these particular undefended
+models, where most survivors really are architectural `L_inf` robustness no in-budget attack can touch.
+So the honest claim for the endpoint is not "much higher than PGD" but "no worse than PGD on every
+scenario, with the VGG number now trustworthy": a robustness measurement that a decision-preserving
+rescaling or a single attack's failure mode can no longer inflate. If instead AutoAttack came in
+*below* PGD on VGG, that would mean the fixed-step CE-PGD had been over-reporting ASR by exploiting a
+surrogate-specific quirk — and the ensemble's lower, worst-case number would be the more honest one,
+which is exactly the property that makes it the right place to stop the ladder.
+</think>
+<say>
+[[FILL_SAY: 1-2 sentences naming the method and what this first edit does]]
+</say>
+<edit path="torchattacks/bench/custom_attack.py">
+<old>
+) -> torch.Tensor:
+    import torch.nn.functional as F
+
+    _ = (device, n_classes)
+    model.eval()
+    steps = 40
+    alpha = eps / 4.0
+
+    x = images.detach()
+    x_adv = x + torch.empty_like(x).uniform_(-eps, eps)
+    x_adv = torch.clamp(x_adv, 0.0, 1.0).detach()
+
+    for _ in range(steps):
+        x_adv.requires_grad_(True)
+        logits = model(x_adv)
+        loss = F.cross_entropy(logits, labels)
+        grad = torch.autograd.grad(loss, x_adv)[0]
+
+        with torch.no_grad():
+            x_adv = x_adv + alpha * grad.sign()
+            delta = torch.clamp(x_adv - x, min=-eps, max=eps)
+            x_adv = torch.clamp(x + delta, 0.0, 1.0)
+
+        x_adv = x_adv.detach()
+
+    return x_adv
+</old>
+<new>
+) -> torch.Tensor:
+    import os
+    import torchattacks
+
+    _ = device
+    model.eval()
+    attack = torchattacks.AutoAttack(
+        model,
+        norm="Linf",
+        eps=eps,
+        version="standard",
+        n_classes=n_classes,
+        seed=int(os.environ.get("SEED", "42")),
+        verbose=False,
+    )
+    return attack(images, labels)
+</new>
+</edit>
+<obs>
+Successfully replaced text in torchattacks/bench/custom_attack.py.
+</obs>
+<run/>
+<obs>
+Measured results — `baseline:autoattack` (`is_final,true`), seed 42, ASR per scenario (higher is better).
+
+| scenario | seed 42 ASR |
+|---|---|
+| ResNet20-C10 | 0.991 |
+| VGG11BN-C10 | 0.715 |
+| MobileNetV2-C10 | 1.000 |
+| ResNet20-C100 | 0.989 |
+| VGG11BN-C100 | 0.735 |
+| MobileNetV2-C100 | 0.978 |
+| **mean** | **0.901** |
+</obs>
+

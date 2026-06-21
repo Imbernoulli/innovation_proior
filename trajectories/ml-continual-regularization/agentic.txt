@@ -1,0 +1,1186 @@
+<meta task="ml-continual-regularization" domain="Classical ML" file="continual-learning/custom_regularization.py" model_format="qwen3" edit_tool="str_replace"/>
+
+<system>
+You are a research engineer improving a model on a fixed ML task. You work by editing the model code and running experiments. Think carefully before each change. You have these tools:
+- str_replace(path, old_str, new_str): replace the unique occurrence of old_str with new_str.
+- create(path, file_text): create a new file.
+- run_experiment(): train + evaluate the current code under the fixed budget; returns metrics.
+Make one tool call at a time. After editing, call run_experiment() to measure your method.
+</system>
+
+<user>
+## Research question
+
+A single fixed-capacity network trains on a *sequence* of contexts, one at a time, and must keep
+performing on all the earlier ones. While training on a context the learner sees only that context's
+loss; the data of every earlier context is gone, and replaying it would cost memory growing with the
+number of contexts. Ordinary SGD on the current context drags the shared weights wherever the new loss
+demands, and those same weights encoded the old contexts, so old accuracy collapses — catastrophic
+forgetting. The one thing being designed is a **regularization strategy**: an *importance estimator*
+(which parameters mattered for each finished context) and a *penalty form* (how their changes are
+penalized while later contexts train), added on top of an otherwise-fixed training loop.
+
+## Prior art before the first rung
+
+The first rung reacts to one settled fact and the family of fixes it spawned. These precede the ladder;
+the substrate below is the harness they all plug into.
+
+- **Catastrophic interference (McCloskey & Cohen 1989; French 1999).** A backprop network trained on a
+  second set of associations abruptly loses the first, because the representation is *shared and
+  distributed* — any weight move that helps the new context tends to corrupt the old one. Gap: states the
+  disease, not the cure.
+- **Joint / replay training (the multitask regime).** Interleave all contexts' data and forgetting
+  vanishes, because the weights are jointly fit. Gap: forbidden here — the old data is gone, and storing
+  it costs memory linear in the number of contexts.
+- **Uniform-stiffness L2 anchor.** When a context finishes, snapshot `theta*` and add
+  `sum_i (theta_i - theta*_i)^2` while later contexts train. No data, constant memory. Gap: one *global*
+  stiffness cannot be right — large enough to hold the old context freezes the net so the new one cannot
+  be learned; small enough to learn the new one fails to hold the old. The stiffness must be *per
+  parameter*, set by how much each weight mattered.
+- **Curvature framing (MacKay 1992; Pascanu & Bengio 2013).** Near a context's optimum,
+  `L(theta) ~ L(theta*) + 0.5 (theta-theta*)^T H (theta-theta*)`: stiff (high-curvature) directions are
+  the ones the context cared about, flat ones are free. This turns "important parameter" into "high local
+  curvature," and the diagonal Fisher is a PSD, first-order-computable stand-in for that curvature — the
+  raw material every rung on this ladder builds its importance from.
+
+## The fixed substrate
+
+The training loop is frozen and must not be touched. It sweeps contexts in sequence; on each step it
+forms `task_loss + (reg_strength * reg_strength_scale) * R(theta)` and backpropagates, where `R` is the
+penalty the editable region returns. It snapshots parameters at every context boundary, accumulates the
+returned importance *additively* into `model._custom_importance`, and exposes per-step bookkeeping a
+method may use. The hooks the framework provides:
+
+- `model.param_list` — list of generators yielding `(name, param)` over the regularized parameters
+  (here, `[model.named_parameters]`). Names are stored with `.` replaced by `__`.
+- `model._custom_W` — dict the loop accumulates each step as `W[n] += -grad * (p - p_old[n])`: the
+  running gradient-weighted parameter change. The path-integral material for SI-style importance.
+- `model._custom_p_old` — dict of per-step parameter snapshots (the previous step's values).
+- `model._custom_importance` / `model._custom_prev_params` — the carried importance and the
+  latest-boundary parameter anchor; the loop adds new importance into the former and refreshes the latter.
+- `model.gamma` — decay factor for Fisher accumulation (framework default `1.0`; Online EWC uses `< 1`).
+- `model.epsilon` — damping constant (default `0.1`, used by SI to bound importance when a weight barely
+  moved).
+- `CONFIG_OVERRIDES` — a dict whose only honored key is `reg_strength_scale`, a multiplier on the
+  per-benchmark `reg_strength`.
+
+The benchmark networks are ordinary classifiers: a small MLP for Split-MNIST, a larger MLP for
+Permuted-MNIST, a CNN for Split-CIFAR100; all multi-head, Adam, cross-entropy. The loop computes the
+task loss only over the classes present in the current context.
+
+## The editable interface
+
+Exactly one region of `continual-learning/custom_regularization.py` is editable — two functions and the
+`CONFIG_OVERRIDES` dict. Every method on the ladder is a fill of this same contract:
+
+- `estimate_importance(model, dataset, prev_params, device) -> dict` — called *once* after each context
+  finishes. Returns `{param_name: importance_tensor}` (param shapes). May do forward/backward passes
+  over `dataset` and may read the per-step bookkeeping (`_custom_W`, `_custom_p_old`). The loop
+  **sums** the returned dict into the carried importance.
+- `compute_regularization_loss(model, importance_dict, prev_params_dict) -> Tensor` — called at *every*
+  training step; must be cheap. Returns the scalar penalty added to the task loss.
+
+The starting point is the scaffold default: **diagonal-Fisher importance with a `0.5 * F * (theta-theta*)^2`
+quadratic penalty** (an EWC-shaped default). Each method on the ladder replaces exactly these two
+definitions (SI also rewrites `CONFIG_OVERRIDES`).
+
+```python
+# EDITABLE region of custom_regularization.py — default fill (diagonal Fisher + quadratic penalty)
+def estimate_importance(model, dataset, prev_params, device):
+    """Default: diagonal Fisher Information (EWC-style)."""
+    est_fisher = {}
+    for gen_params in model.param_list:
+        for n, p in gen_params():
+            if p.requires_grad:
+                n = n.replace('.', '__')
+                est_fisher[n] = p.detach().clone().zero_()
+
+    mode = model.training
+    model.eval()
+
+    data_loader = DataLoader(dataset, batch_size=1, shuffle=False)
+    n_samples = min(len(data_loader), 200)
+
+    for idx, (x, y) in enumerate(data_loader):
+        if idx >= n_samples:
+            break
+        x = x.to(device)
+        output = model(x)
+        with torch.no_grad():
+            label_weights = F.softmax(output, dim=1)
+        for label_index in range(output.shape[1]):
+            label = torch.LongTensor([label_index]).to(device)
+            negloglikelihood = F.cross_entropy(output, label)
+            model.zero_grad()
+            negloglikelihood.backward(
+                retain_graph=True if (label_index + 1) < output.shape[1] else False
+            )
+            for gen_params in model.param_list:
+                for n, p in gen_params():
+                    if p.requires_grad:
+                        n = n.replace('.', '__')
+                        if p.grad is not None:
+                            est_fisher[n] += label_weights[0][label_index] * (p.grad.detach() ** 2)
+
+    est_fisher = {n: v / max(n_samples, 1) for n, v in est_fisher.items()}
+
+    model.train(mode=mode)
+    return est_fisher
+
+
+def compute_regularization_loss(model, importance_dict, prev_params_dict):
+    """Default: EWC quadratic penalty 0.5 * sum(F * (param - prev_param)^2)."""
+    losses = []
+    for gen_params in model.param_list:
+        for n, p in gen_params():
+            if p.requires_grad:
+                n = n.replace('.', '__')
+                if n in importance_dict and n in prev_params_dict:
+                    fisher = importance_dict[n]
+                    prev = prev_params_dict[n]
+                    losses.append((fisher * (p - prev) ** 2).sum())
+    if losses:
+        return 0.5 * sum(losses)
+    return torch.tensor(0.0, device=next(model.parameters()).device)
+
+
+# CONFIG_OVERRIDES: override training hyperparameters for your method.
+# Allowed keys: reg_strength_scale (multiplier on the per-benchmark reg_strength).
+CONFIG_OVERRIDES = {}
+```
+
+## Evaluation settings
+
+Three benchmarks span the difficulty range. **Split-MNIST** — task-incremental, 5 binary tasks (2
+classes each), a small MLP. **Permuted-MNIST** — domain-incremental, 10 contexts, each a fixed pixel
+permutation of the same digit classes, a larger MLP; the long sequence of uncorrelated-input contexts
+is where an over-strong or drifting penalty does the most damage. **Split-CIFAR100** — task-incremental,
+10 ten-way tasks, a CNN. One seed (42). Primary metric: **average accuracy across all contexts after
+training completes** (higher is better), reported per benchmark.
+
+The editable model code is in `continual-learning/custom_regularization.py`:
+```python
+# ======================================================================
+def estimate_importance(model, dataset, prev_params, device):
+    """Estimate per-parameter importance after training on a context.
+
+    Called once after each context's training completes. The returned
+    importance dict is accumulated (summed) across contexts by the
+    training loop and stored in model._custom_importance.
+
+    Args:
+        model: The neural network (nn.Module with a ``param_list`` attribute).
+               Use model.param_list to get generators for named_parameters.
+        dataset: Training dataset of the just-completed context.
+        prev_params: Dict mapping param_name -> param tensor from before
+                     training on this context started.
+        device: torch.device to use.
+
+    Returns:
+        importance: Dict mapping param_name -> importance tensor (same shape
+                    as the parameter). Higher values mean the parameter is
+                    more important for the completed context.
+    """
+    # Default: diagonal Fisher Information (EWC-style)
+    est_fisher = {}
+    for gen_params in model.param_list:
+        for n, p in gen_params():
+            if p.requires_grad:
+                n = n.replace('.', '__')
+                est_fisher[n] = p.detach().clone().zero_()
+
+    mode = model.training
+    model.eval()
+
+    data_loader = DataLoader(dataset, batch_size=1, shuffle=False)
+    n_samples = min(len(data_loader), 200)
+
+    for idx, (x, y) in enumerate(data_loader):
+        if idx >= n_samples:
+            break
+        x = x.to(device)
+        output = model(x)
+        with torch.no_grad():
+            label_weights = F.softmax(output, dim=1)
+        for label_index in range(output.shape[1]):
+            label = torch.LongTensor([label_index]).to(device)
+            negloglikelihood = F.cross_entropy(output, label)
+            model.zero_grad()
+            negloglikelihood.backward(
+                retain_graph=True if (label_index + 1) < output.shape[1] else False
+            )
+            for gen_params in model.param_list:
+                for n, p in gen_params():
+                    if p.requires_grad:
+                        n = n.replace('.', '__')
+                        if p.grad is not None:
+                            est_fisher[n] += label_weights[0][label_index] * (p.grad.detach() ** 2)
+
+    est_fisher = {n: v / max(n_samples, 1) for n, v in est_fisher.items()}
+
+    model.train(mode=mode)
+    return est_fisher
+
+
+def compute_regularization_loss(model, importance_dict, prev_params_dict):
+    """Compute regularization loss to prevent catastrophic forgetting.
+
+    Called at every training step during forward pass.
+
+    Args:
+        model: Current model (nn.Module with ``param_list``).
+        importance_dict: Dict from estimate_importance, accumulated across
+                         contexts (summed). Maps param_name -> importance tensor.
+        prev_params_dict: Dict of parameter snapshots taken after the last
+                          context finished. Maps param_name -> tensor.
+
+    Returns:
+        loss: Scalar regularization loss (torch scalar tensor).
+    """
+    # Default: EWC quadratic penalty
+    losses = []
+    for gen_params in model.param_list:
+        for n, p in gen_params():
+            if p.requires_grad:
+                n = n.replace('.', '__')
+                if n in importance_dict and n in prev_params_dict:
+                    fisher = importance_dict[n]
+                    prev = prev_params_dict[n]
+                    losses.append((fisher * (p - prev) ** 2).sum())
+    if losses:
+        return 0.5 * sum(losses)
+    return torch.tensor(0.0, device=next(model.parameters()).device)
+```
+Improve it. Derive your method, edit the code, then run_experiment().
+</user>
+
+### step 1 — SI (Synaptic Intelligence)   [slug:si]
+
+<think>
+The harness hands me a default fill — diagonal Fisher importance with a quadratic penalty — and a frozen
+loop that snapshots parameters at every context boundary, accumulates whatever importance I return, and,
+most tellingly, maintains a per-step accumulator `model._custom_W` that adds `-grad * (p - p_old)` every
+single training step. That `_custom_W` is the thing I want to start from, because it is *already*
+computing the one quantity the default Fisher fill throws away, and the whole design of this rung is to
+spend it instead of paying for a separate Fisher phase. So let me derive what importance that accumulator
+actually measures, and why anchoring the penalty to it is a coherent place to begin the ladder rather
+than the default.
+
+Start from the failure the regularizer exists to fix, stated mechanically. Training is sequential: at
+context `mu` I only have the loss `L_mu` in front of me; the data and losses of everything before are
+gone. What I actually want to minimize is the sum over everything I have ever seen, `L = sum_mu L_mu`,
+but I am forced to descend one summand at a time. Descending `L_mu` drags the shared weights `theta`
+wherever lowering `L_mu` demands, and those same weights were carrying context 1, so `L_1` quietly climbs
+back while I am not looking. The representation is shared and distributed, so any weight change that helps
+the new context tends to corrupt an old one — the more I train, the more I overwrite. I cannot change the
+data (no replay, the constraint forbids it), and I would rather not change the architecture, so I change
+the *objective*: add a penalty to `L_mu` that discourages clobbering what the net already knew. The crude
+version writes itself — anchor every weight to where it ended up, `L_mu + sum_k (theta_k - theta_tilde_k)^2`
+with `theta_tilde` the boundary snapshot. But one global stiffness cannot be right, and I can see why
+without running it: large enough to actually hold the old context in place and the net is too rigid to
+learn the new one; small enough to learn the new one and it does not hold the old. The stiffness has to be
+*per parameter* — stiff on the weights an old context relied on, slack on the ones it did not. So the real
+question is two coupled ones: which parameters were important, and how do I turn "important" into a
+penalty.
+
+What does "important" mean here? The net is wildly over-parameterized — a context does not pin a single
+solution, it pins a whole low-loss manifold, many weight settings all solving it equally well. That is my
+opening: somewhere near the old solution there may well be a configuration that *also* solves the new
+context, and the job is to steer toward that one instead of toward an arbitrary new minimum that happens
+to wreck the old. To steer I need to know, per weight, how much the old context would suffer if I moved
+it. Locally that is a curvature statement: expand the old loss around its minimum, the Hessian tells me
+how much loss I pay for moving in each direction, stiff directions are the ones the old context cared
+about. So per-parameter importance is morally per-parameter curvature, and a curvature-weighted quadratic
+penalty is the natural form — which is exactly what the default Fisher fill encodes.
+
+So why not just leave the default and call it the first rung? Because of *how* the default gets its
+curvature, and the loop is practically begging me to do it differently. The default diagonal Fisher is a
+*point* estimate evaluated *at the converged endpoint* `theta*`, computed in a *separate phase after* the
+context is over: a whole extra sweep, one backward pass per output class per example, that throws away the
+entire training trajectory and looks only at the final point. The loop already pays for that sweep in the
+default. But the loop *also* already maintains `_custom_W = sum (-grad * delta_theta)` step by step, for
+free, from gradients training computes anyway. If that accumulator measures something importance-like, the
+first thing to try on this ladder is the one that costs nothing extra — read importance off the trajectory
+the optimizer already walked, rather than off a final-point Fisher I would have to recompute. Let me check
+that it actually measures importance, because the elegance is worthless if the running sum is meaningless.
+
+Make it precise. Picture the training of context `mu` as a path `theta(t)` through parameter space, from
+the boundary snapshot `theta(t_{mu-1})` to the endpoint `theta(t_mu)`. An infinitesimal step `delta(t)`
+changes the loss, to first order, by `sum_k g_k(t) delta_k(t)` with `g_k = dL/dtheta_k`. So each
+coordinate's little move contributes `g_k(t) delta_k(t)` to the change in total loss right then. Sum these
+infinitesimal contributions over the whole path. Writing `delta_k(t) = theta'_k(t) dt`, the total loss
+change along the path is the line integral of the gradient field, `integral g(theta(t)) . theta'(t) dt`.
+The gradient of a scalar loss is a *conservative* field — it is literally a gradient — so this integral
+does not depend on the path; it equals the difference of the loss between the endpoints,
+`L(theta(t_mu)) - L(theta(t_{mu-1}))`, which is negative during successful descent. That is a sanity
+anchor: whatever I build from the per-step pieces, summed up it must reproduce the total loss change with
+the right sign. And crucially the integral *decomposes coordinate by coordinate*, because the dot product
+is a sum: each term `integral g_k theta'_k dt` is the contribution of one parameter to the whole context's
+loss drop. That per-parameter line integral is what I call importance,
+`omega_k^mu = - integral g_k(theta(t)) theta'_k(t) dt`. The minus sign is deliberate: I care about loss
+*decreasing*, and a parameter that drove the loss down has `g_k theta'_k < 0` (it moves against its own
+gradient under descent), so flipping the sign makes `omega_k^mu` a positive number measuring how much that
+parameter helped. This is exactly the thing the default Fisher cannot get without its separate after-the-
+fact phase — and I am getting it from quantities the loop already has at every step.
+
+Can I accumulate it cheaply during training? The integrand is `g_k(t) . theta'_k(t)` — the gradient times
+the rate of change of the parameter. At each optimizer step I have the gradient `g_k`, and the parameter
+update `delta_theta_k = theta_k^new - theta_k^old` is the discrete stand-in for `theta'_k dt`. So I keep a
+running sum, per parameter, of `-g_k . delta_theta_k` — and that is *exactly* what the harness's
+`_custom_W[n] += -grad * (p - p_old[n])` already does. The loop's per-step hook is the discrete path
+integral. For full-batch descent with an infinitesimal learning rate this running sum *is* the path
+integral; in practice I run SGD, so `g_k` is a noisy minibatch gradient and the noise leaks in — worth
+flagging now, because a noisy `g_k` summed up tends to *overestimate* the magnitude of the importance,
+since the cross terms between noise and update do not fully cancel. Hold that thought; it forces a
+correction.
+
+Now turn `omega_k^mu` into a penalty. I want the penalty added while training a later context to recreate,
+as far as the descent dynamics can tell, the effect of the unavailable past loss — to pull the weights as
+if that loss were still present. The simplest faithful surrogate is a quadratic anchored at the boundary
+weights `theta_tilde_k`, `L_mu + c sum_k Omega_k (theta_tilde_k - theta_k)^2`, with a per-parameter
+strength `Omega_k` to set and a single scalar `c` trading old against new. What should `Omega_k` be? Demand
+faithfulness: if I had trained on the quadratic surrogate `s_k (theta_tilde_k - theta_k)^2` *instead of*
+the real old loss, it should produce the same per-parameter loss drop over the same motion. Over the
+context a parameter moved by `Delta_k = theta_k(t_mu) - theta_k(t_{mu-1})`, and the quadratic's loss drop
+over that motion is, up to the constant, `s_k Delta_k^2`. Set that equal to the credit `omega_k^mu` the
+real loss actually accrued: `s_k Delta_k^2 = omega_k^mu`, forcing `s_k = omega_k^mu / Delta_k^2`. There is
+the normalization — divide the path-integral importance by the square of how far the parameter actually
+moved. That `Delta^2` in the denominator is not a fudge: it makes the surrogate quadratic yield the same
+`omega` over the same distance, so descent on the surrogate mimics descent on the true past loss, and it
+fixes the units — `omega` is in units of loss, `Delta^2` in parameter-squared, so `omega/Delta^2` times
+`(theta_tilde - theta)^2` comes out in units of loss, matching `L_mu` exactly and making `c` a clean
+dimensionless knob. I bolt on a small damping `xi` in the denominator for a concrete reason: a parameter
+that barely moved has `Delta_k -> 0` and `omega/Delta^2` blows up — a weight that sat still would get
+infinite importance, which is nonsense — and `xi` floors that. The harness exposes exactly this constant as
+`model.epsilon` (default `0.1`). So the importance I return per parameter is `W_k / (Delta_k^2 + epsilon)`,
+read straight from the loop's accumulated `W` and the net motion since the boundary snapshot.
+
+Let me pressure-test whether this is really measuring curvature, the way the default Fisher claims to, on
+the one case I can solve: a quadratic loss `E(theta) = 0.5 (theta-theta*)^T H (theta-theta*)`. Continuous
+gradient descent gives `theta(t) = theta* + exp(-Ht/tau)(theta(0)-theta*)`, so the velocity is
+`theta'(t) = -(1/tau) H exp(-Ht/tau)(theta(0)-theta*)`. The importance is `-integral g_k theta'_k dt`, and
+under descent `tau dtheta/dt = -g`, so `-g_k theta'_k = tau (dtheta_k/dt)^2`; the per-parameter `omega` are
+the diagonal of `Q = tau integral (dtheta/dt)(dtheta/dt)^T dt`. Diagonalize `H` with eigenpairs
+`lambda^a, u^a` and let `d^a` be the initial displacement along `u^a`; the time integral of
+`exp(-(lambda^a+lambda^b)t/tau)` is `tau/(lambda^a+lambda^b)`, and after the `1/tau^2` from the two
+velocities and the leading `tau`, the `(a,b)` prefactor is `lambda^a lambda^b/(lambda^a+lambda^b)` — `tau`
+drops out entirely, so importance does not depend on the learning rate, reassuring. Averaging over random
+initial conditions with `<d^a d^b> = sigma^2 delta_{ab}`, the off-diagonals vanish, the diagonal gives
+`lambda^a/2`, and `<Q> = 0.5 sigma^2 H`. So on average the path-integral matrix is *half the Hessian* up
+to the displacement scale — and the half is exactly the half in the loss drop of a quadratic bowl. Dividing
+by `Delta_k^2` (which averages to `sigma^2`) strips the trajectory scale and leaves `Omega_k = 0.5 H_kk`;
+because I write the penalty as `Omega_k (theta-theta_tilde)^2` with no leading half, the effective
+curvature is `2 Omega_k = H_kk`. So the `Delta^2` normalization I introduced for faithfulness also turns
+the path integral into the right curvature convention. And here is the sharpest contrast with the default:
+the default empirical Fisher is evaluated *at the endpoint* `theta*`, where the gradient vanishes, so for a
+quadratic the empirical Fisher at the minimum is *zero* — it has thrown away all the curvature by the time
+it looks; the path integral accumulated curvature-flavored information along the way, while the gradients
+were still nonzero, with no extra backward pass. That is the case for starting the ladder here rather than
+the default.
+
+Now the noise corrections I parked, because they decide the one hyperparameter I have. SGD makes the
+path-integral estimate overestimate the true contribution, so `c = 1` (equal weight to old and new, if the
+integral were exact) over-constrains the net; the remedy is to let `c < 1`, an empirical knob trading old
+memories against capacity, and on noisier or harder benchmarks it wants to come down. In this harness `c`
+is the per-benchmark `reg_strength`, scalable by `CONFIG_OVERRIDES['reg_strength_scale']`; I leave the
+override empty and take the harness default — `c = 1` is the honest in-the-limit value and the baseline
+spends it as-is. The loop also handles the cross-task summation (it sums what I return into
+`_custom_importance`), so my `estimate_importance` returns the raw normalized increment
+`W_k/(Delta_k^2 + epsilon)` per context, and the per-step penalty is the cheap `sum_k Omega_k (p-theta_tilde)^2`
+with no leading half — both filling the two slots exactly (the full module is in the answer).
+
+So at step 1 my edit is: leave the loop and its `_custom_W` accumulator alone, replace the default
+endpoint-Fisher `estimate_importance` with the trajectory normalization `W/(Delta^2 + epsilon)`, and
+replace the default `0.5 * sum F (theta-theta*)^2` with the no-half `sum Omega (theta-theta*)^2`. Now reason
+about what this floor should do, because that is the point of running it. On a short task-incremental
+sequence — Split-MNIST, 5 binary tasks, a small MLP trained to convergence each time — the path integral
+is accumulated over few, clean descents, the overestimate is mild, and the per-parameter springs should
+hold the earlier binary tasks well; I expect SI to be strong here, possibly the strongest single number on
+the whole ladder, because the trajectory importance is at its most faithful when each context converges
+cleanly and there are only a handful of them. Split-CIFAR100 is task-incremental with 10 contexts on a CNN
+— more contexts, noisier gradients, a harder net — so I expect the overestimate to bite somewhat and the
+average to land in the mid-0.5s, respectable but not dominant. The real exposure is Permuted-MNIST:
+domain-incremental, 10 contexts of *uncorrelated* inputs, a larger MLP, every context demanding genuinely
+different weights. Here the running `Omega` only ever *adds* across ten contexts, the SGD overestimate
+compounds with each, and there is no decay to relieve it — so by the later permutations the accumulated
+springs may have rigidified the fixed-capacity net so hard that new permutations cannot be learned *and*
+the over-strong, scale-mismatched importance (deterministic later contexts dump large-norm increments) may
+even fail to hold the early ones. If SI is going to break anywhere, it is on the long domain-incremental
+sequence: I expect a steep decay across the ten Permuted contexts, the average dragged well below EWC's,
+even as Split-MNIST stays excellent. That asymmetry — best on the short clean sequence, worst on the long
+uncorrelated one — is exactly the falsifiable signature I am watching for, and if it shows up it points
+the next rung straight at importance that does not over-accumulate: a curvature estimate that is bounded
+and re-centered rather than a path integral that only ever grows. So let me write it in.
+</think>
+<say>
+I'll start the ladder with SI (Synaptic Intelligence): instead of the default endpoint Fisher, I read per-parameter importance off the trajectory the optimizer already walked. This first edit rewrites `estimate_importance` to pull the loop's accumulated path-integral `W` and compute `omega = W / (delta^2 + epsilon)`.
+</say>
+<edit path="continual-learning/custom_regularization.py">
+<old>
+# ======================================================================
+def estimate_importance(model, dataset, prev_params, device):
+    """Estimate per-parameter importance after training on a context.
+
+    Called once after each context's training completes. The returned
+    importance dict is accumulated (summed) across contexts by the
+    training loop and stored in model._custom_importance.
+
+    Args:
+        model: The neural network (nn.Module with a ``param_list`` attribute).
+               Use model.param_list to get generators for named_parameters.
+        dataset: Training dataset of the just-completed context.
+        prev_params: Dict mapping param_name -> param tensor from before
+                     training on this context started.
+        device: torch.device to use.
+
+    Returns:
+        importance: Dict mapping param_name -> importance tensor (same shape
+                    as the parameter). Higher values mean the parameter is
+                    more important for the completed context.
+    """
+    # Default: diagonal Fisher Information (EWC-style)
+    est_fisher = {}
+    for gen_params in model.param_list:
+</old>
+<new>
+# EDITABLE region of custom_regularization.py — step 1: SI (path-integral importance)
+def estimate_importance(model, dataset, prev_params, device):
+    """SI: Compute omega from accumulated path integral W and parameter changes.
+
+    omega_k = W_k / (delta_k^2 + epsilon)
+
+    where W_k is the accumulated per-step gradient-weighted parameter change
+    (tracked in model._custom_W by the training loop) and delta_k is the
+    total parameter change over the context.
+    """
+    epsilon = getattr(model, 'epsilon', 0.1)
+    omega = {}
+
+    # Get the accumulated W from the per-step tracking
+    W = getattr(model, '_custom_W', {})
+
+    for gen_params in model.param_list:
+</new>
+</edit>
+<obs>
+Successfully replaced text in continual-learning/custom_regularization.py.
+</obs>
+<note>
+Now the body that normalizes W by the squared net motion since the boundary, plus the matching no-half penalty.
+</note>
+<edit path="continual-learning/custom_regularization.py">
+<old>
+                n = n.replace('.', '__')
+                est_fisher[n] = p.detach().clone().zero_()
+
+    mode = model.training
+    model.eval()
+
+    data_loader = DataLoader(dataset, batch_size=1, shuffle=False)
+    n_samples = min(len(data_loader), 200)
+
+    for idx, (x, y) in enumerate(data_loader):
+        if idx >= n_samples:
+            break
+        x = x.to(device)
+        output = model(x)
+        with torch.no_grad():
+            label_weights = F.softmax(output, dim=1)
+        for label_index in range(output.shape[1]):
+            label = torch.LongTensor([label_index]).to(device)
+            negloglikelihood = F.cross_entropy(output, label)
+            model.zero_grad()
+            negloglikelihood.backward(
+                retain_graph=True if (label_index + 1) < output.shape[1] else False
+            )
+            for gen_params in model.param_list:
+                for n, p in gen_params():
+                    if p.requires_grad:
+                        n = n.replace('.', '__')
+                        if p.grad is not None:
+                            est_fisher[n] += label_weights[0][label_index] * (p.grad.detach() ** 2)
+
+    est_fisher = {n: v / max(n_samples, 1) for n, v in est_fisher.items()}
+
+    model.train(mode=mode)
+    return est_fisher
+
+
+def compute_regularization_loss(model, importance_dict, prev_params_dict):
+    """Compute regularization loss to prevent catastrophic forgetting.
+
+    Called at every training step during forward pass.
+
+    Args:
+        model: Current model (nn.Module with ``param_list``).
+        importance_dict: Dict from estimate_importance, accumulated across
+                         contexts (summed). Maps param_name -> importance tensor.
+        prev_params_dict: Dict of parameter snapshots taken after the last
+                          context finished. Maps param_name -> tensor.
+
+    Returns:
+        loss: Scalar regularization loss (torch scalar tensor).
+    """
+    # Default: EWC quadratic penalty
+    losses = []
+</old>
+<new>
+                n = n.replace('.', '__')
+                p_current = p.detach().clone()
+                p_prev = prev_params.get(n, p_current)
+                p_change = p_current - p_prev
+                w_val = W.get(n, torch.zeros_like(p_current))
+                omega[n] = w_val / (p_change ** 2 + epsilon)
+
+    return omega
+
+
+def compute_regularization_loss(model, importance_dict, prev_params_dict):
+    """SI: sum(omega * (param - prev_param)^2)."""
+    losses = []
+</new>
+</edit>
+<obs>
+Successfully replaced text in continual-learning/custom_regularization.py.
+</obs>
+<note>
+Drop the leading half on the penalty — the `Delta^2` normalization already absorbed it.
+</note>
+<edit path="continual-learning/custom_regularization.py">
+<old>
+                if n in importance_dict and n in prev_params_dict:
+                    fisher = importance_dict[n]
+                    prev = prev_params_dict[n]
+                    losses.append((fisher * (p - prev) ** 2).sum())
+    if losses:
+        return 0.5 * sum(losses)
+    return torch.tensor(0.0, device=next(model.parameters()).device)
+</old>
+<new>
+                if n in importance_dict and n in prev_params_dict:
+                    omega = importance_dict[n]
+                    prev = prev_params_dict[n]
+                    losses.append((omega * (p - prev) ** 2).sum())
+    if losses:
+        return sum(losses)
+    return torch.tensor(0.0, device=next(model.parameters()).device)
+
+
+# CONFIG_OVERRIDES: override training hyperparameters for your method.
+# Allowed keys: reg_strength_scale (multiplier on the per-benchmark reg_strength).
+CONFIG_OVERRIDES = {}
+</new>
+</edit>
+<obs>
+Successfully replaced text in continual-learning/custom_regularization.py.
+</obs>
+<run/>
+<obs>
+Measured results — `baseline:si` (`is_final,true`), seed 42.
+
+## Split-MNIST (average accuracy: 0.9852)
+| context | 1 | 2 | 3 | 4 | 5 |
+|---|---|---|---|---|---|
+| accuracy | 0.9991 | 0.9812 | 0.9859 | 0.9754 | 0.9845 |
+
+## Permuted-MNIST (average accuracy: 0.4474)
+| context | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 |
+|---|---|---|---|---|---|---|---|---|---|---|
+| accuracy | 0.7862 | 0.7221 | 0.6577 | 0.6121 | 0.5270 | 0.4036 | 0.2898 | 0.1933 | 0.1430 | 0.1394 |
+
+## Split-CIFAR100 (average accuracy: 0.5363)
+| context | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 |
+|---|---|---|---|---|---|---|---|---|---|---|
+| accuracy | 0.4140 | 0.5500 | 0.4840 | 0.5130 | 0.4600 | 0.6210 | 0.5800 | 0.5960 | 0.5920 | 0.5530 |
+
+| benchmark | average accuracy |
+|---|---|
+| Split-MNIST | 0.9852 |
+| Permuted-MNIST | 0.4474 |
+| Split-CIFAR100 | 0.5363 |
+</obs>
+
+### step 2 — EWC (Elastic Weight Consolidation)   [slug:ewc]
+
+<think>
+SI's numbers told me exactly what its trajectory importance does well and exactly where it breaks, and
+the split is as sharp as I feared. On Split-MNIST it was excellent — 0.9852 average, the per-context line
+{0.9991, 0.9812, 0.9859, 0.9754, 0.9845} barely sagging — which is the regime I predicted it would own:
+five short binary tasks, a small MLP trained cleanly to convergence each time, few contexts, mild SGD
+overestimate, so the path-integral springs held the early tasks almost perfectly. Split-CIFAR100 landed at
+0.5363, mid-pack and unremarkable, the per-context accuracies sitting in a flat 0.41–0.62 band — the
+overestimate biting a little on a noisier 10-context CNN sequence, as expected. But Permuted-MNIST is the
+collapse I was watching for, and it is worse than "dragged below EWC": 0.4474 average, and the per-context
+line is a *monotone slide* — {0.7862, 0.7221, 0.6577, 0.6121, 0.5270, 0.4036, 0.2898, 0.1933, 0.1430,
+0.1394}. Read that line: the last contexts are near chance for a 10-way readout, but the earliest are
+*also* eroding (context 1 ends at 0.7862, not the ~0.97 a held task should keep), so it is not simply
+"can't learn the new ones." It is both failure modes at once — the accumulated, undecayed `Omega` has
+rigidified the fixed-capacity net so the later permutations can't be learned, *and* the over-strong,
+scale-mismatched importance has stopped holding the early ones. That is precisely the long-uncorrelated-
+sequence disease I flagged: the running path integral only ever adds across ten contexts, the SGD
+overestimate compounds, and there is no relief. So the diagnosis is clean — SI's importance is *unbounded
+and grows*, and on the one benchmark that demands genuinely different weights from many contexts it both
+over-constrains and under-protects. The next rung has to fix the *importance estimator* itself: I want a
+per-parameter curvature that is bounded, anchored, and PSD by construction, not a trajectory sum that runs
+away.
+
+So go back to what "importance" should be and derive it properly rather than reading it off the path. The
+honest way to think about "what does the network know about a finished context A" is probabilistic.
+Training to optimize parameters is, read correctly, finding the most probable `theta` given the data: by
+Bayes, `log p(theta|D) = log p(D|theta) + log p(theta) - log p(D)`, and the cross-entropy loss *is* a
+negative log-likelihood, so MAP estimation and loss minimization are the same act seen two ways. Split the
+data into the finished context A and the current context B, assume conditional independence given `theta`,
+and apply Bayes a second time to peel off B:
+`log p(theta | D_A, D_B) = log p(D_B | theta) + log p(theta | D_A) - log p(D_B | D_A)`. The last term does
+not depend on `theta`, so it vanishes under any gradient — set it aside. Stare at the rest. The first term
+is the context-B loss, what I would minimize anyway. The middle term, `log p(theta | D_A)`, is the
+*posterior over weights given A*, and notice that *all* of A's information has been absorbed into this one
+object. So if I had that posterior I would be done: maximize `log p(D_B|theta) + log p(theta|D_A)` and I am
+fitting B while respecting everything A taught. The posterior is the compact summary of A I want — but it
+is a distribution over millions of weights, intractable. I need an approximation that is cheap to store,
+cheap to add per step, and encodes per-weight importance. A Gaussian gives all three: its negative-log-
+density is a quadratic in `theta` — exactly the spring penalty I already want — and its precision becomes
+per-weight stiffness once I make it diagonal. This is the key difference from SI's route: SI never named a
+posterior; it built a plausible running sum and *checked* it was curvature-flavored on a quadratic. Here
+the curvature is derived as the precision of an approximate posterior, which is what will let me bound it.
+
+How do I Gaussian-approximate `p(theta | D_A)` when I cannot write it down? Laplace's method, and it is
+natural here. I trained A to a (local) optimum `theta*_A`; at that point the gradient of
+`-log p(theta | D_A)` vanishes — that is what "optimum" means. Expand `-log p(theta|D_A)` to second order
+around `theta*_A`: the constant I drop, the *first*-order term is zero because the gradient vanishes there,
+and I am left with `-log p(theta|D_A) ~ const + 0.5 (theta - theta*_A)^T H (theta - theta*_A)`, where `H`
+is the Hessian of the negative log posterior at `theta*_A`. That is the quadratic part of a Gaussian with
+mean `theta*_A` and precision `H`. Because `theta*_A` is a minimum of `-log p`, `H` is positive semi-
+definite there — good, a precision had better be PSD. So the summary of A is a quadratic bowl centered at
+`theta*_A` with curvature `H`: the diagonal of `H` tells me, per weight, how sharply A's negative log
+posterior rises as I move it. Large curvature means A is sensitive to that weight — move it and A degrades
+fast, so it should be stiff; near-zero curvature means A does not care, leave it loose for B. This is the
+crucial structural contrast with SI's collapse: this importance is evaluated *at one point* with bounded
+curvature, not summed along a trajectory that compounds. There is nothing here that grows with the number
+of steps in a context.
+
+But `H` is the full Hessian — data-likelihood part plus prior curvature — a millions-by-millions matrix I
+cannot form, store, or invert. Wall. I need a first-order object that matches the likelihood curvature.
+This is where the Fisher information earns its place. The Fisher is
+`F = E_{y ~ p_theta(y|x)}[(grad_theta log p_theta(y|x))(grad_theta log p_theta(y|x))^T]` — the expected
+outer product of the score, with the output `y` drawn from the model's *own* predictive distribution. The
+load-bearing fact is that this expected outer product equals the expected Hessian of the negative log-
+likelihood. Let me check it, because the whole argument leans on it. For one coordinate, write `p` for
+`p_theta(y)`: the second derivative of `log p` is `(1/p) d^2p/dtheta^2 - (d log p/dtheta)^2`. Take the
+expectation over `y ~ p`, i.e. multiply by `p` and sum over `y`:
+`E[d^2 log p/dtheta^2] = sum_y d^2p/dtheta^2 - E[(d log p/dtheta)^2]`. The first piece is
+`d^2/dtheta^2 (sum_y p) = d^2/dtheta^2 (1) = 0`, because probabilities sum to one regardless of `theta`. So
+`E[-d^2 log p/dtheta^2] = E[(d log p/dtheta)^2]` — the expected Hessian of the NLL is the expected squared
+score, the Fisher. That single line rescues me: under the model distribution the curvature is an *average
+of squared first-order gradients*, no second derivatives. And the outer-product form is automatically PSD
+— a sum of squares cannot be negative — whereas the raw empirical Hessian can be indefinite and would give
+me negative "stiffnesses," meaningless as importances. (This is also where SI's running sum could go
+negative under noise and need a floor; the Fisher is PSD by construction and needs none.) So the Fisher is
+the usable curvature: exact as an expected-likelihood identity, first-order computable, guaranteed PSD.
+
+I still have a full matrix `F`. In a million-dimensional weight space, storing even one full Fisher is
+hopeless. Keep only the *diagonal* — treat off-diagonals as zero, asserting the posterior is a factorized
+Gaussian, one independent quadratic per weight. It is lossy (weights surely covary in their effect on A),
+but it is the price of linearity in the number of parameters, and the diagonal already carries the per-
+weight curvature `F_i` I most need. With the diagonal-Gaussian summary, the A-term becomes
+`sum_i 0.5 F_i (theta_i - theta*_{A,i})^2` up to a constant and a scalar. Assemble: minimizing
+`-[log p(D_B|theta) + log p(theta|D_A)]` with the Laplace-Fisher approximation gives the loss I minimize
+while training B, `L(theta) = L_B(theta) + sum_i (lambda/2) F_i (theta_i - theta*_{A,i})^2`. There is the
+spring, derived rather than guessed: a quadratic anchor to `theta*_A` with per-coordinate stiffness `F_i`,
+the diagonal Fisher. Important weights held nearly rigid, unimportant ones free for B. The `0.5` is the
+Gaussian quadratic-form factor that fell out of the Taylor expansion — and note this is *why* this rung's
+penalty carries the leading `0.5` that SI's no-half penalty deliberately dropped (SI absorbed the half via
+the `Delta^2` normalization; here the half is the honest Gaussian coefficient). `lambda` trades A against
+B: the clean derivation says the Fisher should be multiplied by A's sample size `N`, but the diagonal
+Laplace approximation is overconfident, so rather than nail `lambda` to `N` I let it be the tunable knob —
+which in this harness is the per-benchmark `reg_strength`.
+
+Make sure I can actually compute that diagonal Fisher, because the harness's default fill already does it
+and I want to land exactly that. `F_i = E_x E_{y ~ p_theta(y|x)}[(d log p_theta(y|x)/dtheta_i)^2]` at
+`theta*_A`. The expectation over `x` is an average over a sample of the finished context's inputs — a
+hundred or two is plenty for a stable diagonal, and the harness caps it at 200 single-example passes. The
+inner expectation over `y` is the subtle one, and I want it right: the Fisher averages the squared score
+over `y` drawn from the *model's own* predictive distribution, NOT over the true labels. So per input I
+run a forward pass to get the class distribution `p = softmax(logits)`; then for each class `k` I compute
+the per-class NLL `-log p_theta(y=k|x)`, backprop it to get the gradient, square it coordinatewise, weight
+by `p_k`, and sum over `k`. That weighted sum is the exact inner expectation (the expectation over a
+categorical is the probability-weighted sum over outcomes). Average over the inputs and I have the diagonal
+Fisher. The harness default does precisely this — `label_weights = softmax(output)`, a backward per class
+weighted by `label_weights[0][label_index]`, in eval mode (so dropout/BN do not corrupt the estimate), one
+example at a time, divided by the sample count. So my `estimate_importance` is essentially the *default
+fill* — the EWC-shaped curvature the scaffold ships — and the penalty is the default `0.5 * sum F (theta -
+theta*)^2`. The one thing the loop does for me is cross-context accumulation: when context C arrives after
+A and B, it sums my returned Fisher into `_custom_importance`, which is the right multi-context EWC because
+a sum of quadratics is a quadratic, each anchored at its boundary snapshot with its stored Fisher. That
+matches the EWC rule exactly — at the price of memory that grows with the number of contexts, which I note
+now because it is the very thing the next rung will have to attack.
+
+There is a wrinkle the harness forces me to be honest about, comparing this to the paper's EWC. The
+canonical EWC keeps a *separate* Fisher and anchor per past context and sums explicit springs, each
+anchored at its own `theta*_t`. This harness's loop instead sums my per-context Fisher returns into a
+single `_custom_importance` buffer and re-snapshots `_custom_prev_params` to the *latest* boundary at each
+context. So the penalty here anchors all the accumulated stiffness at the *most recent* optimum, not at
+each context's own optimum. For two contexts these coincide; from the third on they differ, and that
+difference is exactly what the next rung is built around — so for this EWC rung I take the harness at face
+value: diagonal-Fisher importance summed by the loop, quadratic penalty anchored at the carried snapshot.
+
+So the delta from SI is precise and surgical. Where SI read importance off the trajectory as
+`W/(Delta^2 + epsilon)` — unbounded, growing, scale-mismatched across contexts — EWC reads it off the
+*endpoint* as a diagonal Fisher: a bounded, PSD, per-point curvature with no dependence on how many steps
+a context took. Where SI dropped the half via `Delta^2`, EWC carries the honest Gaussian `0.5`. The penalty
+shape is the same spring; only the stiffness changes, and that is the whole point — the failure was the
+estimator, so I changed the estimator. Now the falsifiable expectations against SI's measured line. On
+Split-MNIST I expect EWC to be *very good but probably slightly below* SI's 0.9852: SI's trajectory
+importance is at its most faithful on few clean short tasks, and the endpoint Fisher, which is zero exactly
+at a perfectly converged minimum, can under-weight a cleanly solved binary task — so I would not be
+surprised to see EWC land around 0.95–0.97, a hair under SI here. The decisive test is Permuted-MNIST.
+EWC's importance does not compound along the trajectory and is bounded per context, so it should *not*
+exhibit SI's monotone slide to 0.14; I expect the per-context line to stay roughly flat and the average to
+jump well above SI's 0.4474 — into the low-to-mid 0.8s if the bounded Fisher genuinely keeps the ten
+permutations alive. That single benchmark is where EWC should win the aggregate. On Split-CIFAR100 I expect
+a near-tie with SI in the low-to-mid 0.5s — same multi-head CNN setup, and the Fisher-vs-path-integral
+choice matters less when neither is over-accumulating catastrophically. If EWC's Permuted-MNIST does *not*
+clear SI's by a wide margin, my diagnosis of SI's collapse — unbounded growing importance — was wrong, and
+the fix is something else; but if it does, the remaining weakness is the one I already named: the loop sums
+Fishers without bound across contexts and re-anchors only at the latest, which on a long sequence will
+itself start to over-constrain — the opening for the next rung. So let me swap the estimator in.
+</think>
+<say>
+The diagnosis is that SI's path integral is unbounded and grows, so I'm switching to EWC: importance becomes the diagonal Fisher read off the converged endpoint, bounded and PSD. This first edit replaces `estimate_importance` with the softmax-weighted squared-gradient Fisher.
+</say>
+<edit path="continual-learning/custom_regularization.py">
+<old>
+# EDITABLE region of custom_regularization.py — step 1: SI (path-integral importance)
+def estimate_importance(model, dataset, prev_params, device):
+    """SI: Compute omega from accumulated path integral W and parameter changes.
+
+    omega_k = W_k / (delta_k^2 + epsilon)
+
+    where W_k is the accumulated per-step gradient-weighted parameter change
+    (tracked in model._custom_W by the training loop) and delta_k is the
+    total parameter change over the context.
+    """
+    epsilon = getattr(model, 'epsilon', 0.1)
+    omega = {}
+
+    # Get the accumulated W from the per-step tracking
+    W = getattr(model, '_custom_W', {})
+
+    for gen_params in model.param_list:
+</old>
+<new>
+# EDITABLE region of custom_regularization.py — step 2: EWC (diagonal Fisher + quadratic penalty)
+def estimate_importance(model, dataset, prev_params, device):
+    """EWC: Diagonal Fisher Information matrix via squared gradients."""
+    est_fisher = {}
+    for gen_params in model.param_list:
+</new>
+</edit>
+<obs>
+Successfully replaced text in continual-learning/custom_regularization.py.
+</obs>
+<note>
+Now the Fisher-estimation body and the honest Gaussian penalty that carries the leading 0.5 back.
+</note>
+<edit path="continual-learning/custom_regularization.py">
+<old>
+                n = n.replace('.', '__')
+                p_current = p.detach().clone()
+                p_prev = prev_params.get(n, p_current)
+                p_change = p_current - p_prev
+                w_val = W.get(n, torch.zeros_like(p_current))
+                omega[n] = w_val / (p_change ** 2 + epsilon)
+
+    return omega
+
+
+def compute_regularization_loss(model, importance_dict, prev_params_dict):
+    """SI: sum(omega * (param - prev_param)^2)."""
+    losses = []
+</old>
+<new>
+                n = n.replace('.', '__')
+                est_fisher[n] = p.detach().clone().zero_()
+
+    mode = model.training
+    model.eval()
+
+    data_loader = DataLoader(dataset, batch_size=1, shuffle=False)
+    n_samples = min(len(data_loader), 200)
+
+    for idx, (x, y) in enumerate(data_loader):
+        if idx >= n_samples:
+            break
+        x = x.to(device)
+        output = model(x)
+        with torch.no_grad():
+            label_weights = F.softmax(output, dim=1)
+        for label_index in range(output.shape[1]):
+            label = torch.LongTensor([label_index]).to(device)
+            negloglikelihood = F.cross_entropy(output, label)
+            model.zero_grad()
+            negloglikelihood.backward(
+                retain_graph=True if (label_index + 1) < output.shape[1] else False
+            )
+            for gen_params in model.param_list:
+                for n, p in gen_params():
+                    if p.requires_grad:
+                        n = n.replace('.', '__')
+                        if p.grad is not None:
+                            est_fisher[n] += label_weights[0][label_index] * (p.grad.detach() ** 2)
+
+    est_fisher = {n: v / max(n_samples, 1) for n, v in est_fisher.items()}
+
+    model.train(mode=mode)
+    return est_fisher
+
+
+def compute_regularization_loss(model, importance_dict, prev_params_dict):
+    """EWC: 0.5 * sum(fisher * (param - prev_param)^2)."""
+    losses = []
+</new>
+</edit>
+<obs>
+Successfully replaced text in continual-learning/custom_regularization.py.
+</obs>
+<note>
+Restore the leading 0.5 and rename the spring's stiffness to fisher.
+</note>
+<edit path="continual-learning/custom_regularization.py">
+<old>
+                if n in importance_dict and n in prev_params_dict:
+                    omega = importance_dict[n]
+                    prev = prev_params_dict[n]
+                    losses.append((omega * (p - prev) ** 2).sum())
+    if losses:
+        return sum(losses)
+    return torch.tensor(0.0, device=next(model.parameters()).device)
+
+
+# CONFIG_OVERRIDES: override training hyperparameters for your method.
+# Allowed keys: reg_strength_scale (multiplier on the per-benchmark reg_strength).
+CONFIG_OVERRIDES = {}
+</old>
+<new>
+                if n in importance_dict and n in prev_params_dict:
+                    fisher = importance_dict[n]
+                    prev = prev_params_dict[n]
+                    losses.append((fisher * (p - prev) ** 2).sum())
+    if losses:
+        return 0.5 * sum(losses)
+    return torch.tensor(0.0, device=next(model.parameters()).device)
+</new>
+</edit>
+<obs>
+Successfully replaced text in continual-learning/custom_regularization.py.
+</obs>
+<run/>
+<obs>
+Measured results — `baseline:ewc` (`is_final,true`), seed 42.
+
+## Split-MNIST (average accuracy: 0.9577)
+| context | 1 | 2 | 3 | 4 | 5 |
+|---|---|---|---|---|---|
+| accuracy | 0.9916 | 0.8317 | 0.9903 | 0.9814 | 0.9933 |
+
+## Permuted-MNIST (average accuracy: 0.8381)
+| context | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 |
+|---|---|---|---|---|---|---|---|---|---|---|
+| accuracy | 0.9325 | 0.9258 | 0.9166 | 0.9009 | 0.8737 | 0.8501 | 0.8091 | 0.7463 | 0.7066 | 0.7199 |
+
+## Split-CIFAR100 (average accuracy: 0.5463)
+| context | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 |
+|---|---|---|---|---|---|---|---|---|---|---|
+| accuracy | 0.4180 | 0.5480 | 0.5060 | 0.5240 | 0.4810 | 0.6200 | 0.6270 | 0.5860 | 0.5990 | 0.5540 |
+
+| benchmark | average accuracy |
+|---|---|
+| Split-MNIST | 0.9577 |
+| Permuted-MNIST | 0.8381 |
+| Split-CIFAR100 | 0.5463 |
+</obs>
+
+### step 3 — Online EWC   [slug:online_ewc]
+
+<think>
+EWC's numbers confirmed the SI diagnosis and then quietly exposed its own ceiling. The collapse I traced
+to SI's unbounded path integral is gone: on Permuted-MNIST EWC jumped from SI's 0.4474 to 0.8381, and the
+per-context line {0.9325, 0.9258, 0.9166, 0.9009, 0.8737, 0.8501, 0.8091, 0.7463, 0.7066, 0.7199} is no
+longer a monotone slide to chance — it is a *gentle, monotone decay*. That is exactly the EWC signature I
+predicted: a bounded, PSD, per-endpoint Fisher keeps all ten permutations alive where SI's growing
+importance had killed them. Split-CIFAR100 came in at 0.5463, a near-tie with SI's 0.5363 as expected —
+neither estimator over-accumulates catastrophically on that 10-context CNN, so the choice barely matters
+there. And Split-MNIST landed at 0.9577, just under SI's 0.9852, also as predicted: the endpoint Fisher is
+near zero at a cleanly converged binary task, so it under-weights what SI's trajectory importance held
+perfectly. The one ugly data point is Split-MNIST context 2 at 0.8317 against its neighbors all above 0.98
+— a single task the Fisher failed to protect — but the aggregate verdict is clear: EWC's bounded estimator
+fixed SI's catastrophic regime and pays only a small tax on the short clean one.
+
+But look harder at that Permuted-MNIST line, because it is *also* EWC's tell. The decay is gentle but it is
+real and monotone: context 1 ends at 0.9325, context 10's earliest-protected neighbors are down in the
+0.70s. The earliest contexts are remembered *worse* than the recent ones — and that is not noise, it is
+structural. The harness's loop sums every context's Fisher into one `_custom_importance` buffer and re-
+anchors `_custom_prev_params` to the *latest* boundary each time. So across ten contexts the summed
+stiffness only ever grows — `F-summed = sum_t F_t`, never shrinking — and on a fixed-capacity net that
+accumulating rigidity is precisely what makes the later permutations land lower while the early ones, re-
+anchored away from their own optima, gradually un-protect. EWC has converted SI's *explosion* into a *slow
+bleed*: bounded per context, yes, but unbounded in the *sum* over contexts. So the next rung is not about
+the importance estimator anymore — the Fisher is the right curvature — it is about *how importance
+accumulates across contexts*. I want EWC's protection at a cost that does not grow, and a mechanism that
+frees capacity for the future instead of letting the summed springs rigidify the net.
+
+Feel the wall first. EWC itself notes two quadratic penalties sum to a single quadratic penalty — a sum of
+springs is a spring. So can I just merge them? For one coordinate,
+`0.5 F_A (theta - theta*_A)^2 + 0.5 F_B (theta - theta*_B)^2` expands to a single square centered at
+`m = (F_A theta*_A + F_B theta*_B)/(F_A + F_B)` with stiffness `F_A + F_B`. The *stiffness* merges into a
+running sum of Fishers — one parameter-sized object regardless of context count, constant memory, good. But
+the merged anchor `m` is a Fisher-weighted blend of all past optima; to update it incrementally I would
+carry `sum_t F_t` and `sum_t F_t theta*_t` and divide — still constant memory, but this is just algebra on
+a pile of springs I have not questioned. The harness already does the constant-memory thing for the
+stiffness (it sums Fishers). The real question is whether anchoring a fresh penalty at *every* past optimum
+— or at a Fisher-weighted blend of them — is even what the probabilistic story prescribes. If the springs
+are the wrong object, merging them faithfully just preserves the error in a cheaper container.
+
+So redo the derivation, slowly, without assuming the per-context stack. The weights are random; what I know
+after contexts 1..k is the posterior `p(theta | T_{1:k})`. The contexts' data are conditionally
+independent given `theta`, so the posterior builds recursively:
+`p(theta | T_{1:k}) ∝ p(theta | T_{1:k-1}) p(T_k | theta)`. Stare at that. The posterior after all k
+contexts is the posterior after the first k-1 — used as the *prior* — times the likelihood of just the
+k-th. It is purely sequential, order-independent, and it never asks me to keep the individual context
+likelihoods `p(T_t | theta)` around. The only object the recursion needs is the *running posterior*. That
+is the tell: the per-context stack of springs is not in this equation at all. EWC's linear growth came not
+from the Bayesian math but from how EWC *approximated* it.
+
+How did the approximation go, and where is the branch point? The posterior over a deep net is intractable,
+so Laplace: near the mode `theta*`, approximate `-log` of a distribution by its second-order Taylor
+expansion, purely quadratic at a mode, with curvature the diagonal Fisher (folding in prior curvature).
+Same for everyone. The branch point is *what* you Laplace-approximate. EWC applies the Gaussian to each
+context's *likelihood* `p(T_t | theta)` separately — one Gaussian `N(theta*_t, F_t^{-1})` per context — and
+their product is the product of springs, one anchored at each `theta*_t`. That is where the stack is born.
+But the recursion says the object to approximate is the *whole running posterior*, not each likelihood.
+
+Run the consistent version context by context, because the difference only shows from the third. Two
+contexts, A then B: `log p(theta | D_A, D_B) = log p(D_B | theta) + log p(theta | D_A) + const`. Laplace
+`p(theta | D_A)` around `theta*_A` gives one spring `0.5 sum_i F_{A,i} (theta_i - theta*_{A,i})^2`, so
+learning B minimizes `L_B + 0.5 sum_i F_{A,i} (theta_i - theta*_{A,i})^2` — identical to EWC, no
+disagreement yet. Now the third context C, after A and B. The exact log posterior is
+`log p(D_C|theta) + log p(theta | D_A, D_B) + const`, and I must Laplace-approximate the running posterior
+`p(theta | D_A, D_B)`. But I already threw D_A and D_B away — I do not have the true running posterior.
+What I have is the approximation I built while learning B:
+`log p(theta | D_A, D_B) ~ log p(D_B|theta) - 0.5 sum_i F_{A,i} (theta_i - theta*_{A,i})^2 + const`. So I
+Taylor-expand *that* around its mode, which is `theta*_B` (the optimum of exactly this approximated
+objective, so the first-order term vanishes there). Its curvature at `theta*_B` has two pieces: the NLL of
+B contributes its Fisher `F_B`, and the spring around `theta*_A` contributes its own stiffness `F_A` (a
+quadratic's second derivative is its coefficient, constant everywhere). So the curvature of the running
+posterior at `theta*_B` is `F_A + F_B`, and the consistent Laplace approximation of `p(theta | D_A, D_B)`,
+expanded at `theta*_B`, is a *single* quadratic `0.5 sum_i (F_{A,i} + F_{B,i})(theta_i - theta*_{B,i})^2`.
+Learning C becomes `L_C + 0.5 sum_i (F_{A,i} + F_{B,i})(theta_i - theta*_{B,i})^2`.
+
+Compare. EWC at context C carries *two* springs, at `theta*_A` and `theta*_B`. The consistent recursion
+gives *one* spring, anchored at the *latest* optimum `theta*_B`, with stiffness the *sum* of past Fishers.
+The number of penalty terms did not grow — it stayed one — and that fell out of just being consistent about
+what to approximate. And once I see it, I can see *why* EWC's extra spring is not merely redundant but
+actively wrong, which matters because the harness already half-does the right thing. `theta*_B` was not
+found in a vacuum — it was found while *already* being pulled toward `theta*_A` by the spring
+`0.5 F_A (theta - theta*_A)^2`. So information about A is already baked into *where `theta*_B` sits*; a
+spring around `theta*_B` inherits A's pull. If on top of that I keep a *separate* spring still anchored at
+`theta*_A`, I impose A's constraint a second time — I double-count A. Over a long sequence this is a
+systematic bias toward the earliest contexts: they get re-asserted at every step through their surviving
+anchors while later contexts are represented once. That is the harness's EWC behavior I diagnosed in the
+feedback — the early Permuted contexts erode *and* the later ones land lower, the signature of an over-
+constraining, early-biased accumulation. The consistent fix is not to blend all the old anchors (the
+merged `m` would preserve exactly this double-counted structure); it is to *drop* them and anchor only at
+the latest optimum, because the latest optimum already encodes the cumulative pull of everything before it.
+So the running state is two parameter-sized objects: the latest mean `theta*_{i-1}` and a running sum of
+Fishers, `F-summed <- F-summed + F_i`. One spring, re-centered forward each context, with an accumulating
+Fisher. Constant memory, constant per-step cost. This is, in fact, *exactly* what the harness loop already
+does for EWC — sum the Fishers, re-anchor to the latest snapshot — which is why EWC already had constant
+memory and yet still bled on Permuted-MNIST.
+
+So is constant-memory single-spring EWC the end? No — and the remaining failure is precisely the one the
+feedback showed. Two things. First, the fixed-capacity problem is only *compressed*, not solved: with
+`F-summed = sum_t F_t` the stiffnesses only ever add, never shrink. Over ten Permuted contexts the summed
+Fisher grows in every direction any context cared about, and a fixed-parameter net becomes so rigid that
+later permutations cannot be learned — which is exactly why EWC's Permuted line decays from 0.93 to 0.72.
+Second, in a lifelong setting contexts can recur, and the right thing is to *revise* a context's
+contribution in light of fresh data, not pile a new redundant term on the stale one — but I deliberately do
+not store per-context terms (that is what gives constant memory), so how do I revise? Both problems point
+at the same missing capability: I need to *remove*, or down-weight, a context's earlier contribution to the
+shared summary without ever having stored it separately.
+
+That phrasing names the move. Approximate-inference's expectation propagation refines one factor by
+*dividing it out* of the product, recomputing, and multiplying back — but EP keeps a factor per context,
+the linear memory I am fleeing. *Stochastic* EP relaxes exactly this: keep a *single shared* averaged
+factor standing in for all of them, and treat any one factor's contribution as a *fraction* of the shared
+one. To update, do not divide out a stored copy — down-weight the shared factor by a fraction `gamma < 1`
+(a partial removal), refine on the new data, fold back in. That is the capability I need, and it costs
+nothing: a scalar down-weighting of the one summary I already keep. Transcribe it into the Fisher
+accumulation. The harness's EWC does `F-summed <- F-summed + F_i`; the stochastic-EP move is to *partially
+remove* the previous shared contribution first, `F* <- gamma * F*_old + F_i`. That single change does both
+jobs. For recurrence: scaling by `gamma` is the fractional removal of a context's previous presentation
+before fresh data is added — no per-context factor, no task identity, only that a boundary occurred. For
+capacity: `gamma < 1` turns the unbounded running sum into a *geometric* one. Unroll it,
+`F*_i = sum_{t<=i} gamma^{i-t} F_t`, so a context that finished k boundaries ago contributes with weight
+`gamma^k`, decaying geometrically; the stored summary settles to an effective sum on the order of
+`1/(1-gamma)` recent contexts instead of climbing forever. That is exactly the room to keep learning new
+contexts on fixed capacity — and it is *graceful*: an old half-wrong constraint fades rather than being
+dropped catastrophically. The endpoints check out: `gamma = 1` recovers the strict undecayed sum (the
+harness EWC), and with the loss also scaled by `gamma`, `gamma -> 0` leaves no protective penalty at all. A
+middle value like `0.9` keeps roughly the last ten contexts strongly represented — well matched to
+Permuted-MNIST's ten — and lets the oldest fade. So `gamma` is simultaneously the EP partial-removal
+fraction and the explicit forgetting knob; the same scalar wears both hats, a sign it is the right scalar.
+I set `model.gamma = 0.9`, overriding the framework default of `1.0` (at which Online EWC *is* EWC).
+
+The penalty uses `0.5 * gamma * sum F* (theta - theta*)^2`: the `gamma` sits in the loss as well as the
+accumulation, because the factor I hold the new context to is the partially-removed shared summary, not the
+raw sum. There is a genuinely ambiguous reading where one regularizes against the undamped `F*` and only
+decays the next update; I keep the two uses tied — applied stiffness `gamma F*_{i-1}`, post-context update
+`gamma F*_{i-1} + F_i` — because the cavity-style reading says the object I regularize against is already
+the down-weighted shared factor.
+
+One harness-specific subtlety, and it is the difference between this and a from-scratch Online EWC. The
+loop accumulates whatever I return *additively* into `_custom_importance` — `existing + my_return`. But I
+want the buffer to land on `gamma * existing + F_new`, not `existing + F_new`. So inside
+`estimate_importance` I compute the full decayed-plus-new Fisher `gamma * existing + F_new` myself, then
+*subtract* the existing value and return the difference: the loop's `existing + (gamma*existing + F_new -
+existing)` lands exactly on `gamma * existing + F_new`. That subtraction trick is not in the paper's Online
+EWC — it is purely an adapter to the harness's add-don't-replace convention — but it makes the carried
+buffer hold the geometric decayed sum the derivation prescribes. The importance estimator itself is
+unchanged from EWC: the diagonal Fisher from softmax-weighted squared gradients over all classes, eval
+mode, capped sample — the model's own expected curvature, first-order and cheap. (The full module, with the
+subtraction adapter and the `gamma` in both places, is in the answer.)
+
+So the delta from EWC is one scalar and one adapter, both surgical, and the expectations against EWC's
+measured line are sharp. On Permuted-MNIST — the benchmark that decides the aggregate — I expect the
+geometric decay to relieve the accumulating rigidity that pulled EWC's line from 0.93 down to 0.72: the
+later permutations should land *higher* than EWC's because `gamma F*` frees capacity, and although the very
+earliest contexts may fade slightly (the honest cost of `gamma < 1` favoring the recent past), the *average*
+across ten contexts should edge above EWC's 0.8381. If it does not, my diagnosis of EWC's bleed — unbounded
+*summed* Fisher over-rigidifying — was wrong. On Split-MNIST I expect a near-tie with or slight improvement
+over EWC's 0.9577: five short tasks well inside `1/(1-gamma) ~ 10` contexts of effective memory, so the
+decay barely engages and may even help the context-2 anomaly (0.8317) by not over-constraining. On Split-
+CIFAR100 I expect essentially EWC's number, mid-0.5s — the estimator is identical and ten contexts is right
+at the decay's effective window, so `gamma F*` neither frees much nor costs much. The win, if it comes, is
+modest and concentrated where the theory says it should be: the long sequence whose accumulating springs
+were the only thing left over-constraining the net. That is the endpoint of this ladder — bounded,
+re-centered, decayed curvature at constant cost — and the bar it must clear is EWC's 0.9577 / 0.8381 /
+0.5463, won or matched benchmark by benchmark with the Permuted-MNIST average the decisive number. So let
+me set the decay and wire it into both places.
+</think>
+<say>
+EWC's summed Fisher over-rigidifies the long sequence, so I'm moving to Online EWC: replace the undecayed sum with a geometric one, `F* <- gamma * F*_old + F_new` at `gamma = 0.9`. This first edit sets the decay and starts the Fisher estimate.
+</say>
+<edit path="continual-learning/custom_regularization.py">
+<old>
+# EDITABLE region of custom_regularization.py — step 2: EWC (diagonal Fisher + quadratic penalty)
+def estimate_importance(model, dataset, prev_params, device):
+    """EWC: Diagonal Fisher Information matrix via squared gradients."""
+    est_fisher = {}
+</old>
+<new>
+# EDITABLE region of custom_regularization.py — step 3: Online EWC (decayed running Fisher)
+def estimate_importance(model, dataset, prev_params, device):
+    """Online EWC: Diagonal Fisher with exponential decay accumulation.
+
+    When accumulating across contexts: fisher = gamma * fisher_old + fisher_new.
+    Uses gamma=0.9 as the online Fisher decay for this benchmark.
+    """
+    # Explicitly set gamma on the model to override framework default (1.0).
+    # With gamma=1.0, Online EWC reduces to standard EWC.
+    model.gamma = 0.9
+    gamma = model.gamma
+    est_fisher = {}
+</new>
+</edit>
+<obs>
+Successfully replaced text in continual-learning/custom_regularization.py.
+</obs>
+<note>
+Now the decay-and-subtract adapter that makes the loop's additive buffer land on the geometric sum.
+</note>
+<edit path="continual-learning/custom_regularization.py">
+<old>
+
+    model.train(mode=mode)
+    return est_fisher
+
+
+def compute_regularization_loss(model, importance_dict, prev_params_dict):
+    """EWC: 0.5 * sum(fisher * (param - prev_param)^2)."""
+    losses = []
+</old>
+<new>
+
+    # Apply decay to existing importance before adding new
+    existing = getattr(model, '_custom_importance', {})
+    for n in est_fisher:
+        if n in existing:
+            est_fisher[n] = gamma * existing[n] + est_fisher[n]
+
+    # We return the full (decayed + new) Fisher, so the training loop
+    # should replace (not add to) _custom_importance. To achieve this
+    # with the accumulation logic in mid_edit, we subtract the existing
+    # importance so that accumulation yields the correct result.
+    result = {}
+    for n in est_fisher:
+        if n in existing:
+            result[n] = est_fisher[n] - existing[n]
+        else:
+            result[n] = est_fisher[n]
+
+    model.train(mode=mode)
+    return result
+
+
+def compute_regularization_loss(model, importance_dict, prev_params_dict):
+    """Online EWC: 0.5 * gamma * sum(fisher * (param - prev_param)^2)."""
+    gamma = getattr(model, 'gamma', 0.9)  # Already set to 0.9 in estimate_importance
+    losses = []
+</new>
+</edit>
+<obs>
+Successfully replaced text in continual-learning/custom_regularization.py.
+</obs>
+<note>
+Fold the same gamma into the penalty so the stiffness I regularize against is the down-weighted shared factor.
+</note>
+<edit path="continual-learning/custom_regularization.py">
+<old>
+    if losses:
+        return 0.5 * sum(losses)
+    return torch.tensor(0.0, device=next(model.parameters()).device)
+</old>
+<new>
+    if losses:
+        return 0.5 * gamma * sum(losses)
+    return torch.tensor(0.0, device=next(model.parameters()).device)
+</new>
+</edit>
+<obs>
+Successfully replaced text in continual-learning/custom_regularization.py.
+</obs>
+<run/>
+<obs>
+Measured results — `baseline:online_ewc` (`is_final,true`), seed 42.
+
+## Split-MNIST (average accuracy: 0.9743)
+| context | 1 | 2 | 3 | 4 | 5 |
+|---|---|---|---|---|---|
+| accuracy | 0.9669 | 0.9480 | 0.9830 | 0.9819 | 0.9917 |
+
+## Permuted-MNIST (average accuracy: 0.8427)
+| context | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 |
+|---|---|---|---|---|---|---|---|---|---|---|
+| accuracy | 0.9274 | 0.8920 | 0.9037 | 0.8768 | 0.8364 | 0.8242 | 0.7947 | 0.7844 | 0.7866 | 0.8009 |
+
+## Split-CIFAR100 (average accuracy: 0.5444)
+| context | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 |
+|---|---|---|---|---|---|---|---|---|---|---|
+| accuracy | 0.3150 | 0.5160 | 0.5590 | 0.5680 | 0.4840 | 0.6310 | 0.6350 | 0.6080 | 0.5940 | 0.5340 |
+
+| benchmark | average accuracy |
+|---|---|
+| Split-MNIST | 0.9743 |
+| Permuted-MNIST | 0.8427 |
+| Split-CIFAR100 | 0.5444 |
+</obs>

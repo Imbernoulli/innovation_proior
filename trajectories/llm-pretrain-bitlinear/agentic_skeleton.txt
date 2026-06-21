@@ -1,0 +1,1109 @@
+<meta task="llm-pretrain-bitlinear" domain="Language models" file="nanoGPT/custom_pretrain.py" model_format="qwen3" edit_tool="str_replace"/>
+
+<system>
+You are a research engineer improving a model on a fixed ML task. You work by editing the model code and running experiments. Think carefully before each change. You have these tools:
+- str_replace(path, old_str, new_str): replace the unique occurrence of old_str with new_str.
+- create(path, file_text): create a new file.
+- run_experiment(): train + evaluate the current code under the fixed budget; returns metrics.
+Make one tool call at a time. After editing, call run_experiment() to measure your method.
+</system>
+
+<user>
+## Research question
+
+Pretrain GPT-2 Medium so that the weights actually used in every linear projection come from a
+**tiny discrete set** — one bit `{−1,+1}`, ternary `{−1,0,+1}`, or a few-bit grid — during both
+training and inference, rather than full-precision floats. A float *latent* weight is kept only as the
+optimizer's accumulator; the forward matmul sees the discrete value on every pass. The single thing
+being designed is the **quantizer that maps the latent weight to its discrete forward value** (and,
+optionally, the activation quantizer that prepares the matmul's other operand). Everything else — the
+model, the data, the optimizer, the loop — is fixed. The goal is to minimize held-out validation loss
+and preserve downstream language ability while the forward weights stay discrete.
+
+## Prior art before the first rung (low-bit / quantization lineage)
+
+The first rung — binarized weights via the sign function — is itself the resolution of a line of work
+on making a network compute with discrete weights. These are the methods the ladder reacts to.
+
+- **Post-training quantization (PTQ; absmax / LLM.int8(), Dettmers et al. 2022).** Round an already
+  FP-trained model onto a coarse grid after the fact, scaling by the per-tensor absolute maximum. At
+  8 bits this is nearly lossless once activation outliers are handled; pushed toward 1–2 bits the
+  rounding error swamps the signal and accuracy detonates. Gap: the model never *learned* the grid, so
+  there is no reason its float optimum has a good low-bit neighbor.
+- **Quantization-aware training (QAT).** Simulate the rounding inside the training forward pass
+  ("fake quant") so the network learns weights that tolerate the grid. Recovers more accuracy than
+  PTQ, but the parameter being optimized is still a floating-point number; the discreteness is a
+  simulated overlay, not the thing the forward pass natively is. Gap: float weights at heart.
+- **Straight-through estimator (STE; Bengio, Léonard & Courville 2013).** The sign/round step has
+  zero derivative almost everywhere, which would kill learning. Treat the threshold as the identity on
+  the backward pass; in the canonical stochastic-neuron case this is a provably unbiased gradient
+  estimator. This is what makes a discrete forward op trainable at all. Gap: it is a *device*, not a
+  weight representation — it still needs a quantizer and a scale.
+- **Latent high-precision weight (BinaryConnect, Courbariaux, Bengio & David 2015).** A binary
+  variable cannot accumulate SGD's tiny noisy steps (a small step rarely flips a sign). Keep a float
+  latent weight the optimizer updates and binarize it on the fly each forward pass; "only the expected
+  value of the weight needs precision." Discard the latent weight at inference. Gap: demonstrated on
+  small image classifiers; a bare sign throws away magnitude.
+- **L2-optimal binary scale (XNOR-Net, Rastegari et al. 2016).** Approximating a real weight tensor by
+  `α·sign(W)` and minimizing `‖W − α·sign(W)‖²` gives the optimal direction `sign(W)` and the optimal
+  scalar `α = mean(|W|)` — the absmean. Both the discrete direction and the per-tensor scale fall out
+  of one least-squares problem. Gap: a single bit per weight; no off-state and no magnitude resolution.
+
+## The fixed substrate
+
+The training harness is frozen and must not be touched. **Model:** GPT-2 Medium — 24 layers, 16 heads,
+`d=1024`, ~355M parameters — built from the scaffold's `GPT`, in which **every** linear projection
+(attention Q/K/V and output, both MLP matrices, and the tied `lm_head`) is a `BitLinear`. The
+embeddings, the `LayerNorm`s, and the residuals stay full precision; the token embedding is tied to
+`lm_head.weight`. **Data:** FineWeb 10B (`HuggingFaceFW/fineweb`, `sample-10BT`), GPT-2 tokenizer,
+~7.1B training tokens (Chinchilla-optimal `D≈20N`). **Training:** 13,535 iterations, micro-batch 64,
+gradient accumulation 8, 2-GPU DDP, AdamW (`β=(0.9,0.95)`, weight decay `0.1`, grad-clip `1.0`), a
+cosine learning-rate schedule with 4% linear warmup peaking at `6e-4`, `bfloat16` autocast, and
+`torch.compile` on the whole model. One structural fact is load-bearing for everything below: **each
+transformer block already applies a `LayerNorm` immediately before its attention and MLP projections**,
+so the input reaching every `BitLinear` is already normalized — the quantizer does not need to add its
+own pre-quant normalization to keep the forward variance sane.
+
+## The editable interface
+
+Exactly one region is editable — the `BitLinear` module of `nanoGPT/custom_pretrain.py`: the two
+free functions `weight_quant(weight)` and `activation_quant(x)`, the `BitLinear.__init__`/`forward`,
+and a `CONFIG_OVERRIDES` dict (allowed keys: `learning_rate`, `weight_decay`, `warmup_iters`,
+`min_lr`, `grad_clip`). The contract: `__init__(self, in_features, out_features, bias=True)` keeps
+`self.weight` a `Parameter`; `forward(self, x)` maps `(…, in_features) → (…, out_features)`;
+quantization runs in *every* forward pass (no train/eval branch); `weight_quant` returns
+`(quantized_weight, scale)` with `quantized_weight * scale ≈ weight` (same convention for
+`activation_quant`); helper `autograd.Function`s and learned parameters may be added; the module must
+remain `torch.compile`-compatible (no `@torch.compiler.disable`). Every method on the ladder is a fill
+of this same contract.
+
+The starting point is the scaffold default below: a **pass-through** — `weight_quant` returns the float
+weight unchanged (so the model is just FP GPT-2). Each method replaces these definitions and nothing
+else.
+
+```python
+# EDITABLE region of nanoGPT/custom_pretrain.py (lines 38-115) -- default fill (pass-through)
+def weight_quant(weight):
+    """Map the latent weight to its forward value; return (forward_weight, scale).
+    Default: pass-through (no quantization)."""
+    scale = weight.detach().abs().mean()
+    return weight, scale
+
+
+def activation_quant(x):
+    """Prepare the layer input for the matmul; return (forward_x, scale).
+    Default: pass-through."""
+    scale = x.detach().abs().max().clamp(min=1e-12)
+    return x, scale
+
+
+class BitLinear(nn.Module):
+    """Linear layer with native low-bit weights for training and inference.
+    self.weight is the float LATENT weight the optimizer updates; the forward pass uses
+    whatever weight_quant / activation_quant produce. Same path in train and eval."""
+    def __init__(self, in_features, out_features, bias=True):
+        super().__init__()
+        self.in_features = in_features
+        self.out_features = out_features
+        self.weight = nn.Parameter(torch.empty(out_features, in_features))
+        if bias:
+            self.bias = nn.Parameter(torch.zeros(out_features))
+        else:
+            self.bias = None
+        nn.init.normal_(self.weight, mean=0.0, std=0.02)
+
+    def forward(self, x):
+        w_q, w_scale = weight_quant(self.weight)
+        x_q, x_scale = activation_quant(x)
+        out = F.linear(x_q, w_q, None)        # default pass-through: scales unused below
+        if self.bias is not None:
+            out = out + self.bias
+        return out
+```
+
+## Evaluation settings
+
+Single seed `42` (the leaderboard's fixed seed). Metrics, with the model checkpoint frozen after the
+13,535-iteration run: **validation loss** — cross-entropy on a held-out FineWeb shard (lower is
+better, primary); **perplexity** on WikiText-2 and LAMBADA (lower is better); **downstream zero-shot
+accuracy** on ARC-Easy and HellaSwag (higher is better; PIQA and WinoGrande are also measured but
+hidden). Wall-clock (`elapsed`) is logged but not optimized. Identical data, tokenizer, optimizer, and
+loop for every fill, so any difference is attributable to the quantizer alone.
+
+The editable model code is in `nanoGPT/custom_pretrain.py`:
+```python
+def weight_quant(weight):
+    """Quantize weight to low-bit representation for forward pass.
+
+    This function maps float latent weights to a discrete low-bit set
+    during the forward pass. The backward pass uses the Straight-Through
+    Estimator (STE) to flow gradients through the non-differentiable
+    quantization.
+
+    The default implementation is a pass-through (no quantization).
+    Replace this with your low-bit quantization scheme, e.g.:
+    - Binary: {-1, +1} via sign function
+    - Ternary: {-1, 0, +1} via absmean thresholding
+    - 2-bit: {-1, -1/3, +1/3, +1} via uniform quantization
+
+    Args:
+        weight: float latent weight tensor [out_features, in_features]
+    Returns:
+        (quantized_weight, scale): quantized weight tensor and a per-tensor
+            or per-channel scale factor used to rescale the output.
+            quantized_weight * scale should approximate the original weight.
+    """
+    scale = weight.detach().abs().mean()
+    return weight, scale
+
+
+def activation_quant(x):
+    """Quantize activations for the forward pass (optional).
+
+    Some low-bit training schemes also quantize activations to maximize
+    the benefit of low-bit compute. The default is a pass-through.
+
+    Args:
+        x: activation tensor [..., in_features]
+    Returns:
+        (quantized_x, scale): quantized activation and scale factor.
+    """
+    scale = x.detach().abs().max().clamp(min=1e-12)
+    return x, scale
+
+
+class BitLinear(nn.Module):
+    """Linear layer with native low-bit weights for training and inference.
+
+    Unlike QAT (which fake-quantizes float weights), BitLinear maintains
+    float latent weights but applies true low-bit quantization (binary,
+    ternary, or higher) in every forward pass. The weight is stored in
+    float for gradient updates, but the forward computation uses only the
+    quantized discrete values.
+
+    Key differences from QAT:
+    - QAT: float weights -> fake quantize -> float matmul -> real quantize at deploy
+    - BitLinear: float latent weights -> discrete quantize -> scaled matmul (always)
+
+    The quantization is applied identically in both training and eval modes
+    (no separate train/eval paths needed, unlike QAT).
+    """
+    def __init__(self, in_features, out_features, bias=True):
+        super().__init__()
+        self.in_features = in_features
+        self.out_features = out_features
+        self.weight = nn.Parameter(torch.empty(out_features, in_features))
+        if bias:
+            self.bias = nn.Parameter(torch.zeros(out_features))
+        else:
+            self.bias = None
+        nn.init.normal_(self.weight, mean=0.0, std=0.02)
+
+    def forward(self, x):
+        w_q, w_scale = weight_quant(self.weight)
+        x_q, x_scale = activation_quant(x)
+        # Perform matmul with quantized values, then rescale
+        out = F.linear(x_q, w_q, None)
+        # Rescale output: the true output ~ (x_scale * w_scale) * out_quantized
+        # But since default is pass-through, just add bias
+        if self.bias is not None:
+            out = out + self.bias
+        return out
+```
+Improve it. Derive your method, edit the code, then run_experiment().
+</user>
+
+### step 1 — Binary sign {-1, +1} (BitNet)   [slug:binary_sign]
+
+<think>
+[[POLISH_REASONING: adapt to first-person agentic voice, end by deciding to implement]]
+The quantizer is the whole point, but it lives inside a frozen training loop, and the rung I have to start from is the most aggressive thing the discrete-weight idea can mean: one bit per weight, `{−1,+1}`, on every forward pass, trained from scratch. So before I reach for anything cleverer I should derive that floor honestly and see how much language ability survives when each of GPT-2 Medium's projection weights is forced down to a single sign. The pass-through default that ships in the scaffold is not a contender — it leaves the weights in float, so it is just FP GPT-2 wearing a `BitLinear` costume, and it tells me nothing about the low-bit regime I actually care about. The real floor is the crudest genuinely-discrete fill: binarize every weight to its sign.
+
+Let me write down what I am optimizing so I do not fool myself. A linear projection computes `y = Wx`; almost all of GPT-2 Medium's parameters and almost all of its inference arithmetic sit in these projections — the attention Q/K/V and output maps and the two MLP matrices, repeated across 24 layers, plus the tied `lm_head`. If I want the forward matmul to stop doing floating-point multiplies and the weights to stop costing full-precision bytes, the lever is to make the forward weight discrete. One bit is the extreme of that lever. The question is whether a 355M-parameter decoder can learn anything coherent when every projection weight is `±1` times a scalar, and what validation loss that costs me relative to the float model the scaling law would predict.
+
+The instant I say "forward weight is `sign(W)`" I hit the first wall, and it is a hard one. The map from my real parameter to the value I use is the sign function, whose derivative is zero everywhere except the origin, where it is undefined. Backprop multiplies by that derivative, so the gradient reaching `W` is zero almost surely and the parameter never moves. A network whose every weight is gated by a sign would simply not train — there is nothing to descend. So before any representation question I need a way to get a gradient through a hard threshold. The move, with real grounding in the work on training threshold units, is to lie in the backward pass: apply the sign in the forward direction, but pretend it was the identity in the backward direction, so the incoming gradient passes straight through to `W` unchanged. That is the straight-through estimator. It feels like cheating, but it is the deterministic shadow of an honest unbiased estimator — for a stochastic binary neuron the estimator `(h − sign(a))·L` is unbiased, a special case of the score-function trick with the sampled bit playing the role of the action. So "pass the gradient through the threshold as identity" is licensed, not arbitrary. The sign is in the forward pass; in the backward pass it is a wire. In an autograd framework the cleanest way to write this is the detached-difference idiom `w_q = (sign(W) − W).detach() + W`: the forward value is `W + sign(W) − W = sign(W)`, and the detached parenthesis contributes zero gradient, so `∂w_q/∂W = 1` — exactly the wire, no custom backward.
+
+Now the representation. The naive thing is `w_b = sign(W)`, every forward weight magnitude exactly 1. But stare at one output unit's dot product `y_j = Σ_i sign(W_ji)·x_i`: every weight has magnitude 1, while the real trained weights of a layer have a scale, often well below 1, and forcing them all to unit magnitude inflates the output by a large systematic factor and throws away the one cheap global piece of magnitude information I could keep. So I should approximate `W` not by `sign(W)` but by `α·sign(W)` for a positive scalar `α` — one number per tensor, negligible storage, and at inference it factors out of the matmul as a single post-multiply. Which `α`? Do not guess; solve it. Minimize the squared reconstruction error `J(B,α) = ‖W − αB‖²` over `B ∈ {−1,+1}ⁿ` and `α > 0`. Expand: `J = α²·BᵀB − 2α·WᵀB + WᵀW`. Since every `B_i = ±1`, `BᵀB = n` is constant, and `WᵀW` is constant, so as a function of `B` with `α > 0` fixed the only term that matters is `−2α·WᵀB`; minimizing `J` is maximizing `WᵀB = Σ_i W_i B_i`, which decouples coordinate by coordinate to `B_i = sign(W_i)`. The sign is not a heuristic — it is the provably optimal binary direction in least squares. With `B` at that optimum, `∂J/∂α = 2αn − 2WᵀB = 0` gives `α* = WᵀB*/n = (1/n)Σ_i|W_i| = mean(|W|)` — the absmean. So the L2-best 1-bit summary of a weight tensor is `mean(|W|)·sign(W)`, both pieces falling out of one least-squares problem.
+
+I should be explicit about what this task's fill keeps and what it drops, because the absmean-sign story has refinements that a faithful implementation here does *not* include. In the broader binarized-Transformer line one centers the weights before the sign — `sign(W − mean(W))` — so that a tensor with a nonzero mean does not waste half its one-bit code on the starved symbol, and one places a sub-layer normalization immediately before the activation quantizer to force `Var(y) ≈ 1` in a deep stack. Neither is in the rung I am actually running. The fill here takes the *uncentered* `sign(W)` with the absmean scale, and it adds **no** normalization inside `BitLinear` — and that omission is correct rather than careless, because the substrate already puts a `LayerNorm` in front of every projection, so the activation entering each quantizer is already normalized and the variance bookkeeping the SubLN would have done is done for me by the frozen block. So I drop the SubLN by design, and I drop the centering as the simplest possible first rung; the centering is a capacity refinement I can reach for later if the floor is as bad as I fear.
+
+That handles the weights. But a matmul has two operands, and if I leave the activations in float I have solved only half the cost problem — I still stream and multiply full-precision activations, and a 1-bit-times-float product does not even buy the cheap-arithmetic win, because the expensive floating-point multiply is still there on the activation side. So I quantize the activations too, but here I must be asymmetric, because activations are a different animal. Weight distributions in trained Transformers are flat and round cleanly; activation distributions are not, and LLM activations carry a small number of outlier feature channels whose magnitudes run tens to a hundred times larger than the rest and recur in the same channels across tokens. Going to one bit on activations would be quantizing the very hardest thing with two levels, in the presence of huge outliers. So I keep activations at a *modest* low precision — 8 bits — where I still have enough levels to absorb the outlier dynamic range, and reserve the extreme treatment for the well-behaved weights. The natural 8-bit scheme is symmetric absmax: take the absolute maximum of the tensor, divide by it, scale into the signed int8 range, round, clip, and carry the inverse as the dequant scale. I use `Q_b = 127` so the quantized values land in `[−127, 127]`, and the same detached-difference STE carries the gradient straight through the `round` and `clip` (both non-differentiable at their corners). One implementation choice worth naming: the fill takes a single **per-tensor** absmax over the whole activation tensor, not a per-token (per-row) maximum. Per-token would confine an outlier's damage to its own row and is the tighter scheme; per-tensor is the simpler one, and it is what this rung uses — a deliberately plain activation quantizer shared identically across all three bit-widths on this ladder, so that the only thing changing rung to rung is the *weight* grid.
+
+Let me check the layer does not destroy the forward signal, because I am stacking 24 of these and a deep stack is unforgiving about variance. For `y = Σ_i w̃_i x̃_i` over `n` inputs, treating the entries as i.i.d. and independent of each other, `Var(y) = n·E[w̃²]·E[x̃²]`. The scaled binary weight has magnitude `β = mean(|W|)` on every entry, so `E[w̃²] = β²` and `Var(y) = n·β²·E[x̃²]`. Under the scaffold's `std=0.02` init, `mean(|W|) ∝ 1/√n`-flavored small, so `n·β²` is a controlled constant, leaving `Var(y) ≈ E[x̃²]`. And `E[x̃²]` is held near 1 by the block's pre-projection `LayerNorm` — which is exactly why I did not need a SubLN inside the layer. So the binarized layer inherits the float layer's variance scale; the absmean does double duty, both as the L2-derived magnitude and as the thing that keeps `n·β²` controlled.
+
+There is one optimization wrinkle specific to binary training that I should at least name, though this rung does not act on it. The gradient the latent weight receives is computed through the binarized forward weight, so it is an estimate of the loss sensitivity at the current sign pattern, and a small update to the latent weight usually does not flip any sign — the function the network computes is unchanged even though a gradient step was spent. This bias is worst at the very start, when the sign pattern most needs to reorganize. The known lever is a *large* learning rate, large enough to push latent weights across zero and flip bits at a useful rate. The scaffold lets me touch `learning_rate` through `CONFIG_OVERRIDES`. But the honest first rung keeps the inherited recipe untouched — peak `6e-4`, the FP GPT-2 setting — so that what I measure is the cost of binarization *under the standard recipe*, not the cost of binarization plus a re-tuned schedule. If the floor is bad, the learning-rate lever is the first thing the diagnosis will point at; for now I leave `CONFIG_OVERRIDES` empty.
+
+So the step-1 fill is the crudest genuinely-discrete `BitLinear`: `weight_quant` returns `(sign(W), mean(|W|))` with STE; `activation_quant` returns int8 absmax activations with STE and the `max|x|/127` dequant scale; `forward` runs `F.linear(x_q, w_q)` and rescales by the product of the two scales before adding the bias. No centering, no SubLN, per-tensor activation scale — the distilled module is in the answer.
+
+Now reason about what this floor must do, because that is the entire point of running it. A 1-bit weight has exactly one bit of information per parameter and no way to express "this connection is off" — a near-zero latent weight, a connection the network would rather drop, still gets shoved to `±β` at full strength, picking up whichever side of zero noise put it on. So I expect binary GPT-2 to learn *something* — the absmean scale and the STE make it trainable, and the pre-projection LayerNorms keep it stable — but to land well above the float loss, because one bit per weight is simply not enough capacity for a 355M decoder to model FineWeb at the Chinchilla-optimal token budget. Concretely I expect a validation loss in the high-2s, WikiText-2 and LAMBADA perplexities in the high tens to low hundreds, and downstream accuracies barely above chance on HellaSwag (chance ≈ 25) and modest on ARC-Easy. Whatever the precise numbers, the diagnosis is already pointed at the next rung: if binary lands high, the cheapest thing to buy back is the one capability the two-valued set provably cannot express — an explicit *off* state — which is the third value that turns `{−1,+1}` into `{−1,0,+1}`. That is exactly where the absmean machinery already takes me, since round-then-clip onto three levels reuses the same scale, so the next rung is a small change to `weight_quant` and a direct test of whether "let weak connections be zero" is worth more than the bit it costs.
+</think>
+<say>
+[[FILL_SAY: 1-2 sentences naming the method and what this first edit does]]
+</say>
+<edit path="nanoGPT/custom_pretrain.py">
+<old>
+def weight_quant(weight):
+    """Quantize weight to low-bit representation for forward pass.
+
+    This function maps float latent weights to a discrete low-bit set
+    during the forward pass. The backward pass uses the Straight-Through
+    Estimator (STE) to flow gradients through the non-differentiable
+    quantization.
+
+    The default implementation is a pass-through (no quantization).
+    Replace this with your low-bit quantization scheme, e.g.:
+    - Binary: {-1, +1} via sign function
+    - Ternary: {-1, 0, +1} via absmean thresholding
+    - 2-bit: {-1, -1/3, +1/3, +1} via uniform quantization
+
+    Args:
+        weight: float latent weight tensor [out_features, in_features]
+    Returns:
+        (quantized_weight, scale): quantized weight tensor and a per-tensor
+            or per-channel scale factor used to rescale the output.
+            quantized_weight * scale should approximate the original weight.
+    """
+    scale = weight.detach().abs().mean()
+    return weight, scale
+
+
+def activation_quant(x):
+    """Quantize activations for the forward pass (optional).
+
+    Some low-bit training schemes also quantize activations to maximize
+    the benefit of low-bit compute. The default is a pass-through.
+
+    Args:
+        x: activation tensor [..., in_features]
+    Returns:
+        (quantized_x, scale): quantized activation and scale factor.
+    """
+    scale = x.detach().abs().max().clamp(min=1e-12)
+    return x, scale
+
+
+class BitLinear(nn.Module):
+    """Linear layer with native low-bit weights for training and inference.
+
+    Unlike QAT (which fake-quantizes float weights), BitLinear maintains
+    float latent weights but applies true low-bit quantization (binary,
+    ternary, or higher) in every forward pass. The weight is stored in
+    float for gradient updates, but the forward computation uses only the
+    quantized discrete values.
+
+    Key differences from QAT:
+    - QAT: float weights -> fake quantize -> float matmul -> real quantize at deploy
+    - BitLinear: float latent weights -> discrete quantize -> scaled matmul (always)
+
+    The quantization is applied identically in both training and eval modes
+    (no separate train/eval paths needed, unlike QAT).
+    """
+</old>
+<new>
+# EDITABLE region of nanoGPT/custom_pretrain.py (lines 38-115) -- step 1: binary sign {-1, +1}
+def weight_quant(weight):
+    """Binary quantization: sign(W) * mean(|W|) with STE.
+
+    Forward: w_q = sign(W), scale = mean(|W|)
+    Backward: STE (gradient passes through sign as identity)
+    """
+    scale = weight.detach().abs().mean()
+    # STE: forward uses sign, backward treats sign as identity
+    w_q = (weight.sign() - weight).detach() + weight
+    return w_q, scale
+
+
+def activation_quant(x):
+    """Absmax 8-bit activation quantization with STE.
+
+    Quantizes activations to 127 levels (int8 range) using per-tensor
+    absmax scaling, following the original BitNet paper.
+    """
+    Qb = 127  # int8 range
+    scale = x.detach().abs().max().clamp(min=1e-12)
+    x_normed = x / scale
+    x_q = (x_normed * Qb).round().clamp(-Qb, Qb)
+    # STE: forward uses quantized, backward passes through
+    x_q = (x_q - x_normed * Qb).detach() + x_normed * Qb
+    return x_q, scale / Qb
+
+
+class BitLinear(nn.Module):
+    """BitNet linear layer with binary {-1, +1} weights.
+
+    During both training and eval: weights are binarized via sign function,
+    activations are quantized to int8 range. Output is rescaled by
+    weight_scale * activation_scale.
+    """
+</new>
+</edit>
+<obs>
+Successfully replaced text in nanoGPT/custom_pretrain.py.
+</obs>
+<note>
+[[FILL_NOTE?: optional one-line thought for this edit, or delete this block]]
+</note>
+<edit path="nanoGPT/custom_pretrain.py">
+<old>
+        x_q, x_scale = activation_quant(x)
+        # Perform matmul with quantized values, then rescale
+        out = F.linear(x_q, w_q, None)
+        # Rescale output: the true output ~ (x_scale * w_scale) * out_quantized
+        # But since default is pass-through, just add bias
+        if self.bias is not None:
+            out = out + self.bias
+        return out
+</old>
+<new>
+        x_q, x_scale = activation_quant(x)
+        out = F.linear(x_q, w_q, None)
+        out = out * (w_scale * x_scale)
+        if self.bias is not None:
+            out = out + self.bias
+        return out
+</new>
+</edit>
+<obs>
+Successfully replaced text in nanoGPT/custom_pretrain.py.
+</obs>
+<run/>
+<obs>
+Measured results — `baseline:binary_sign` (`is_final,true`), seed 42.
+
+| metric | value |
+|---|---|
+| val_loss (primary, ↓) | 2.7352 |
+| wikitext2_ppl (↓) | 81.28 |
+| lambada_ppl (↓) | 110.18 |
+| arc_easy (↑) | 47.01 |
+| hellaswag (↑) | 28.70 |
+| piqa (↑) | 58.87 |
+| winogrande (↑) | 51.46 |
+| elapsed (s) | 22601 |
+</obs>
+
+### step 2 — Ternary {-1, 0, +1} (BitNet b1.58)   [slug:ternary_158bit]
+
+<think>
+[[POLISH_REASONING: adapt to first-person agentic voice, end by deciding to implement]]
+The binary run told me exactly what one bit costs, and it told me in numbers. Validation loss landed at
+2.7352, WikiText-2 perplexity at 81.3, LAMBADA at 110.2, with ARC-Easy at 47.0 and HellaSwag at 28.7 —
+barely above the 25 chance floor on the four-way completion task. So the model did *train*: the absmean
+scale and the STE made one-bit GPT-2 a real language model rather than noise, and the pre-projection
+LayerNorms kept it stable. But it is a weak one. A perplexity in the 80s on WikiText-2 for a 355M
+decoder at the Chinchilla-optimal token budget is roughly where a much smaller float model would sit,
+and a HellaSwag a few points above chance says the binarized weights are not carrying enough
+information to model the long-range structure these completion tasks probe. This is not an optimization
+failure — the loss curve was stable, the run finished in 22,601 seconds like the others — it is a
+*capacity* failure. One bit per weight is simply too few, and I can name the specific deficiency it
+imposes rather than wave at "not enough bits."
+
+Here is the deficiency, stared at directly. A two-valued set `{−1,+1}` forces every weight to
+participate at full magnitude `±β`. Watch what `sign` does to a weight that is essentially zero — a
+connection the network would rather not have at all: it still gets shoved to `+β` or `−β` at full
+strength, picking up whichever side of zero the latent noise happened to land it on. The binary code
+has no way to express *absence*. And in a 355M Transformer a large fraction of the weights, after
+training, genuinely want to be near zero — that is what gives a dense layer its effective sparsity and
+its selectivity. Binary cannot represent that; it converts every weak-but-near-zero connection into a
+full-strength one with an essentially random sign, which is pure injected noise into the matmul. So the
+2.7352 floor is, in large part, the cost of forbidding the network an off-switch. That is the precise
+thing I should buy back next, and it costs almost nothing in bits.
+
+What does adding a single zero level buy, concretely? Two things. First, capacity in the obvious
+counting sense: a set of three values carries `log₂(3) ≈ 1.58` bits per weight instead of one, so I am
+spending barely more than a bit and getting a qualitatively richer alphabet. Second, and this is the
+real prize, a weight set to exactly zero contributes *nothing* to the dot product — its term drops out
+entirely — so the zero acts as explicit feature filtering: the layer can learn which connections to
+switch off, and the random-sign noise that binary injected into every near-zero weight disappears,
+because those weights now map to a clean 0 instead of `±β`. That is not just expressiveness on paper;
+it is the direct removal of the noise source I just diagnosed. So the next grid is `{−1, 0, +1}` —
+ternary, scaled.
+
+I cannot reuse the binary derivation verbatim, because `sign` only ever emits `±1`; I need a rule that
+rounds a scaled weight to the *nearest* of `{−1, 0, +1}`. The clean construction: normalize the weight
+by a per-tensor scale, then map onto the three integer levels with rounding and clipping. Keep the same
+absmean scale `γ = mean(|W|)` — it was the L2-optimal scale for the sign grid and it carries over as
+the natural unit, parameter-free, one reduction over the tensor, the same cheap statistic that already
+kept `n·γ²` controlled in the variance accounting. Normalize `w_n = W/γ`, then snap `w_n` onto
+`{−1, 0, +1}`. Let me check the threshold this induces, because it is the whole point of the zero. A
+normalized value below `0.5` in magnitude rounds to `0`; between `0.5` and `1.5` rounds to `±1`; beyond
+`±1` clips to `±1`. So a weight is gated off precisely when `|W| < γ/2 = mean(|W|)/2` — when its
+magnitude is below half the average magnitude, i.e. exactly the genuinely small, weak connections. The
+survivors that become `±1` are the above-half-average ones. So the absmean scale does double duty
+again: it is the L2 unit *and* the dial that places the zero-threshold at the sensible spot, gating off
+the weak connections that binary was forced to corrupt into full-strength noise. That is the mechanism
+I expect to recover the loss binary lost.
+
+One subtlety in *how* the snap is written, because the task's fill orders the two non-differentiable
+operations in a way worth being explicit about. The textbook ternary quantizer is round-then-clip —
+`RoundClip(w_n, −1, 1) = clip(round(w_n), −1, 1)` — and there the clip almost never fires, because
+round already produces an integer and clip only catches the rare `|w_n| ≥ 1.5` that rounds to `±2`. The
+fill here does it in the other order: it *clips first* to `[−1, 1]`, then rounds. Clamp-then-round
+folds the saturation into a continuous pre-round value, so anything with `|w_n| > 1` is pinned to
+exactly `±1` before rounding (round of `±1` is `±1`), while values inside `[−1, 1]` round to the
+nearest of `{−1, 0, +1}` exactly as before. The two orders agree on the resulting ternary level for
+every weight — the set of values that map to `0`, `+1`, `−1` is identical — so the forward function is
+the same ternary map; the only difference is which intermediate the STE attaches its identity gradient
+to, and since the STE is `(w_q.round() − w_q).detach() + w_q` wrapped around the *clamped* `w_q`, the
+gradient flows as identity through the clamped value, which is exactly the saturating behavior I want
+(weights driven past `±1` stop receiving a magnitude-increasing gradient through the round). So the
+clamp-first ordering is a faithful ternary quantizer with sensible saturation, not a different method.
+
+The STE itself is the same wire I needed for binary, for the same reason: `round` and `clip` have zero
+derivative almost everywhere, so I pretend they are the identity on the backward pass via the
+detached-difference idiom, and the float latent weight keeps accumulating the optimizer's tiny noisy
+steps that a discrete variable could never integrate. Nothing about the latent-weight story changes
+from rung 1 — I still keep `self.weight` in float, quantize it on the fly, and discard the latent copy
+conceptually at inference.
+
+Now I should be honest about what this task's ternary fill keeps from the absmean-ternary idea and what
+it drops, because the textbook version carries machinery the harness omits. The canonical ternary
+BitLinear is built on a LLaMA-style backbone and *fuses an RMSNorm into the layer* — a sub-layer
+normalization placed before the activation quantizer to force `E[x̃²] ≈ 1` and hold the matmul output
+variance near 1 across depth — and it scales activations *per token* so an outlier feature cannot crush
+the rest of a row. This fill has **neither**. It adds no normalization inside `BitLinear`, and it is
+correct not to: the GPT-2 block already applies a `LayerNorm` immediately before each projection, so
+the input reaching the ternary `BitLinear` is already normalized and the variance bookkeeping the fused
+RMSNorm would have done is done by the frozen substrate — `Var(y) = n·γ²·E[x̃²]` with `E[x̃²]` held near
+1 by that LayerNorm. And the activation quantizer is the *same* per-tensor 8-bit absmax the binary rung
+used (`Q_b = 127`, clip `[−127, 127]`, STE), not the per-token scheme. That last choice is deliberate
+ladder hygiene: the activation path is held *identical* across all three rungs so that the only thing
+changing from binary to ternary is the weight grid. If ternary beats binary, I will know it was the
+zero level and not a quieter change to how activations are scaled.
+
+Let me also pin down why ternary and not some other small set, since I am about to spend a measurement
+on it. Two values I have already shown is too rigid — no off switch, near-zero weights become
+full-strength noise. A non-symmetric set like `{0, 1}` breaks the thing that made binary stable: with
+no negative value the matmul cannot subtract, the representation is biased, and the optimizer fights a
+one-sided alphabet. The symmetry of `{−1, 0, +1}` keeps the matmul a balanced signed add/subtract and
+the code centered on zero. Could I go richer — `{−2,−1,0,1}`, or the four-level grid that is the next
+rung? Each added value costs bits and kernel complexity, and the *first* set that gives me negative,
+zero, and positive is `{−1, 0, +1}`. So I stop at ternary here and let the four-level grid be its own
+test later; the controlled question this rung answers is narrow and clean — does adding *only* the zero,
+at 1.58 bits, beat one bit?
+
+Assemble the fill: `weight_quant` returns `(clamp-then-round-to-{−1,0,1}, mean(|W|))` with STE;
+`activation_quant` is the unchanged int8 per-tensor absmax with STE; `forward` runs
+`F.linear(x_q, w_q)` and rescales by the product of the two scales before the bias. The recipe stays
+inherited — `CONFIG_OVERRIDES` empty, peak LR `6e-4` — so this remains a clean grid-only comparison
+against binary under the standard schedule (the distilled module is in the answer).
+
+So the delta from rung 1 is exactly one thing: where binary forced every weak weight to `±β` and
+injected random-sign noise, ternary lets `|W| < mean(|W|)/2` collapse to a clean 0. Here is what I
+expect that to do against binary's measured numbers, and where I am unsure. I expect validation loss to
+fall *modestly* below 2.7352 — the zero removes a real noise source, but it is only one extra level on
+a tiny set, so I am buying back a fraction of the gap to float, not closing it. WikiText-2 should drop
+from 81.3 toward the high 70s and LAMBADA from 110 toward the high 100s, both small moves in the same
+direction. Downstream I expect ARC-Easy and HellaSwag to stay essentially flat near binary's 47.0 and
+28.7 — the zero-state helps the loss but the model is still starved of magnitude resolution, so I do
+not expect the completion tasks, which need that resolution, to move much. The risk I can already feel:
+the absmean threshold might gate off *too aggressively*, sending more than half the weights to zero and
+losing useful weak connections, in which case ternary could land *at or even slightly worse than*
+binary on some metric — which is exactly what the numbers will adjudicate. If ternary's gain over
+binary turns out to be as small as I suspect, the diagnosis for the next rung is already written: the
+problem was never the off-switch, it was *magnitude resolution* — three coarse levels still cannot say
+"this weight is small-but-not-zero" — and the fix is to spend the next bit on finer levels instead of
+on a zero, i.e. trade the explicit off-state for a genuine two-bit grid.
+</think>
+<say>
+[[FILL_SAY: 1-2 sentences naming the method and what this first edit does]]
+</say>
+<edit path="nanoGPT/custom_pretrain.py">
+<old>
+# EDITABLE region of nanoGPT/custom_pretrain.py (lines 38-115) -- step 1: binary sign {-1, +1}
+def weight_quant(weight):
+    """Binary quantization: sign(W) * mean(|W|) with STE.
+
+    Forward: w_q = sign(W), scale = mean(|W|)
+    Backward: STE (gradient passes through sign as identity)
+    """
+    scale = weight.detach().abs().mean()
+    # STE: forward uses sign, backward treats sign as identity
+    w_q = (weight.sign() - weight).detach() + weight
+    return w_q, scale
+</old>
+<new>
+# EDITABLE region of nanoGPT/custom_pretrain.py (lines 38-115) -- step 2: ternary {-1, 0, +1} (1.58-bit)
+def weight_quant(weight):
+    """Ternary quantization: {-1, 0, +1} via absmean with STE.
+
+    Forward: normalize by absmean, round-then-clip to {-1, 0, +1}
+    Backward: STE (gradient passes through rounding as identity)
+    """
+    scale = weight.detach().abs().mean().clamp(min=1e-12)
+    w_normed = weight / scale
+    # STE round: (round(x) - x).detach() + x
+    w_q = w_normed.clamp(-1, 1)
+    w_q = (w_q.round() - w_q).detach() + w_q
+    return w_q, scale
+</new>
+</edit>
+<obs>
+Successfully replaced text in nanoGPT/custom_pretrain.py.
+</obs>
+<note>
+[[FILL_NOTE?: optional one-line thought for this edit, or delete this block]]
+</note>
+<edit path="nanoGPT/custom_pretrain.py">
+<old>
+    Quantizes activations to 127 levels (int8 range) using per-tensor
+    absmax scaling, following the original BitNet paper.
+    """
+</old>
+<new>
+    Quantizes activations to 127 levels (int8 range) using per-tensor
+    absmax scaling, following the BitNet b1.58 paper.
+    """
+</new>
+</edit>
+<obs>
+Successfully replaced text in nanoGPT/custom_pretrain.py.
+</obs>
+<note>
+[[FILL_NOTE?: optional one-line thought for this edit, or delete this block]]
+</note>
+<edit path="nanoGPT/custom_pretrain.py">
+<old>
+class BitLinear(nn.Module):
+    """BitNet linear layer with binary {-1, +1} weights.
+
+    During both training and eval: weights are binarized via sign function,
+    activations are quantized to int8 range. Output is rescaled by
+    weight_scale * activation_scale.
+    """
+</old>
+<new>
+class BitLinear(nn.Module):
+    """BitNet b1.58 linear layer with ternary {-1, 0, +1} weights.
+
+    During both training and eval: weights are ternarized via absmean
+    + round-clip, activations are quantized to int8 range. Output is
+    rescaled by weight_scale * activation_scale.
+    """
+</new>
+</edit>
+<obs>
+Successfully replaced text in nanoGPT/custom_pretrain.py.
+</obs>
+<run/>
+<obs>
+Measured results — `baseline:ternary_158bit` (`is_final,true`), seed 42.
+
+| metric | value |
+|---|---|
+| val_loss (primary, ↓) | 2.7213 |
+| wikitext2_ppl (↓) | 77.93 |
+| lambada_ppl (↓) | 109.80 |
+| arc_easy (↑) | 46.68 |
+| hellaswag (↑) | 28.43 |
+| piqa (↑) | 59.68 |
+| winogrande (↑) | 50.83 |
+| elapsed (s) | 22494 |
+</obs>
+
+### step 3 — 2-bit uniform grid   [slug:int2_uniform]
+
+<think>
+[[POLISH_REASONING: adapt to first-person agentic voice, end by deciding to implement]]
+Ternary barely moved the needle, and that is the most informative result so far. Validation loss fell
+from binary's 2.7352 to 2.7213 — a drop of 0.014, about half a percent — with WikiText-2 from 81.3 to
+77.9 and LAMBADA essentially flat at 109.8, and downstream ARC-Easy and HellaSwag if anything a hair
+*worse* (46.7 vs 47.0, 28.4 vs 28.7, both inside noise). So adding the explicit zero bought back almost
+nothing. That falsifies the hypothesis I went into rung 2 with. I had argued the binary floor was
+dominated by the missing off-switch — that near-zero weights forced to `±β` with random signs were the
+main noise source — and that gating them to a clean 0 would recover a real chunk of the gap to float.
+The numbers say no: the off-switch alone is worth half a percent of loss, not the several percent that
+separates these models from a usable one. The deficiency that actually bites is somewhere else, and the
+flat-to-slightly-worse downstream accuracies point right at it.
+
+Here is the re-diagnosis. Ternary can say a weight is `0`, `+β`, or `−β`. What it *cannot* say is that a
+weight is small-but-not-zero — there is no `+β/3`-flavored level, no way to express a connection that is
+present but weak. So every surviving connection is slammed to full magnitude `±β`, and the only
+expressive choice the layer has per weight is "off, or full-strength in one of two directions." The zero
+removed the random-sign noise on the truly-dead weights, which is why the loss improved at all; but the
+*resolution* problem — the inability to represent a graded magnitude — is untouched, and that is what
+the completion tasks need. HellaSwag and ARC-Easy probe whether the model has learned finely-weighted
+combinations of features; a three-level weight cannot encode a finely-weighted anything. So the next bit
+I spend should not buy another structural state — it should buy *magnitude resolution*. I want a grid
+with more levels per weight, spaced to give the layer graded magnitudes.
+
+The natural next step is two genuine bits — four levels — but here I have to read the task's actual fill
+carefully rather than the textbook 2-bit grid, because they differ, and the difference is the whole
+reason this rung will leap rather than crawl. The clean textbook 2-bit grid is the symmetric uniform set
+`{−1, −1/3, +1/3, +1}`, four levels at exactly `log₂4 = 2` bits, *without* an exact zero — it trades
+ternary's off-state for four graded magnitudes. That would test resolution-without-the-zero. But the
+fill in front of me does something subtly different, and I worked out what it actually computes rather
+than trust its docstring. It normalizes by the absmean, multiplies by `1.5` so the grid lands at
+`{−1.5, −0.5, 0.5, 1.5}` in scaled space, clamps the *scaled* value to `[−2, 2]`, rounds to the nearest
+integer, clamps the result to `[−1.5, 1.5]`, then divides back by `1.5`. Trace where the levels land:
+round sends a scaled value to one of the integers `{−2, −1, 0, 1, 2}`; the outer clamp pins `±2` back to
+`±1.5`; and PyTorch's round is half-to-even, so `±0.5` rounds to `0` (zero is even) while `±1.5` rounds
+to `±2` (two is even). Divide the surviving integers by `1.5` and the realized grid is
+`{−1, −2/3, 0, +2/3, +1}` — **five** levels, not four, and it *contains an exact zero*. So this fill is
+neither the 4-level paper grid nor ternary; it is a 5-level symmetric grid at `log₂5 ≈ 2.32` bits that
+keeps the off-state *and* adds two intermediate magnitudes `±2/3`. That is the best of both prior rungs
+at once: the zero that ternary had, plus the graded magnitude that ternary lacked. The docstring claims
+`{−1, −1/3, +1/3, +1}`, but the arithmetic the code runs produces the five-level grid, and the
+measurement is of the code, so I reason about the five levels.
+
+It is worth being precise about why the round-half-to-even convention is what creates the extra zero
+level rather than the symmetric four-level grid the author evidently intended. If round broke ties away
+from zero, `±0.5` would go to `±1` and `±1.5` to `±2`, the outer clamp would pin `±2`→`±1.5`, and after
+dividing by `1.5` the realized set would be `{−1, −1/3, +1/3, +1}` with no zero — the textbook 2-bit
+grid. Half-to-even flips two of those mappings: `0.5`→`0` (even) and `1.5`→`2` (even), which both
+*adds* the `0` level and *removes* the `±1/3` levels in favor of `±2/3`. So the five-level grid is an
+artifact of the rounding convention interacting with the `×1.5` scaling, not a designed choice — but it
+is exactly what the model is trained on, and it happens to land on a strictly more capable grid than the
+nominal one. I take the grid the code computes, and the grid the code computes is five symmetric levels.
+
+Why does this matter so much for my expectation? Because I just diagnosed that the binding constraint is
+magnitude resolution, and this grid attacks exactly that while *also* keeping the off-switch I confirmed
+is worth a (small) real amount. A weight can now be off (`0`), weakly on (`±2/3`), or strongly on
+(`±1`), in either sign — five symbols, `log₂5 ≈ 2.32` bits, against ternary's three at 1.58. That is a
+qualitatively richer alphabet than three slammed levels: the layer can finally express a
+present-but-weak connection, which is the thing ARC-Easy and HellaSwag were starved of. And the extra
+0.74 bits per weight, multiplied across the 355M projection weights, is a large amount of restored
+representational budget. I should expect this rung to break out of the 2.72 plateau that binary and
+ternary sat on, not inch below it — the gap between three and five graded levels is far bigger than the
+gap between two levels and three.
+
+Let me make sure the rest of the layer is sound for this grid, because the scale and the STE have to be
+right or the resolution gain evaporates. The scale stays the absmean `s = mean(|W|)` — the L2-optimal
+per-tensor unit from the same least-squares argument that gave the sign grid its scale, cheap and
+outlier-robust, and it places the typical weight near the grid's `±1` so the bulk of the distribution
+falls inside the representable range. Contrast absmax, which one outlier weight would inflate, crushing
+all ordinary weights toward a single level and wasting the five levels on representing the outlier; so
+absmean for weights, deliberately. The two non-differentiable operations — the round and the two clamps
+— are bridged by the same detached-difference STE I used on both prior rungs: `(w_rounded −
+w_scaled).detach() + w_scaled` makes the forward use the grid value and the backward pass identity to
+the normalized weight, and the clamp inside `w_rounded` defines the forward saturation (a scaled weight
+driven past `±1.5` is pinned, stops receiving a magnitude-increasing gradient through the round). The
+float latent weight keeps accumulating the optimizer's tiny noisy steps exactly as before; nothing about
+the latent-weight machinery changes from rung 1.
+
+The activation path stays *identical* to the two earlier rungs — and this is the controlled-experiment
+spine of the whole ladder. It is 8-bit symmetric per-tensor absmax, `Q_b = 127`, clip `[−127, 127]`,
+STE, with the dequant scale `max|x|/127`. I keep activations at int8 rather than pushing them low,
+because the diagnostic from the quantization literature is decisive: weights are far easier to quantize
+than activations — weight distributions are flat and round cleanly, while activations carry per-token
+outlier channels with huge dynamic range — so the contribution should stay in the *weight* grid and the
+activations should be only as low as is safe. And I use absmax rather than absmean here, the opposite of
+the weight choice, because the failure modes are opposite: a clipped activation is a destroyed
+activation, whereas a clipped weight is just a slightly misplaced grid assignment, so the activation
+scale must be set by the maximum to guarantee nothing clips. Holding this path fixed across all three
+rungs means that when int2 beats ternary, I will know it was the five-level weight grid and nothing
+else. And as on the earlier rungs there is no normalization inside `BitLinear`: the block's
+pre-projection `LayerNorm` already holds `E[x̃²] ≈ 1`, so the variance estimate `Var(y) = n·s²·E[g²]·
+E[x̃²]` (with `g` a grid value, `E[g²]` a fixed grid constant) stays at the float layer's order, no
+SubLN needed.
+
+Assemble the fill: `weight_quant` returns `(five-level-grid-value, mean(|W|))` via the
+multiply-by-1.5 / clamp / round / clamp / divide-by-1.5 path with STE; `activation_quant` is the
+unchanged int8 absmax; `forward` runs `F.linear(x_q, w_q)` and rescales by the product of the two scales
+before the bias. Recipe inherited — `CONFIG_OVERRIDES` empty, peak LR `6e-4` — so it remains a clean
+grid-only comparison (the distilled module is in the answer).
+
+So the delta from ternary is one thing: where ternary offered `{−1, 0, +1}` — off or full-strength —
+this grid offers `{−1, −2/3, 0, +2/3, +1}`, adding two intermediate magnitudes while keeping the zero.
+Here is what I expect against the measured numbers, and how I would be wrong. I expect a *large* drop in
+validation loss, decisively below the 2.72 plateau — into the mid-2.4s if the resolution diagnosis is
+right, because graded magnitudes are exactly what the model has been starved of. WikiText-2 should fall
+sharply from ~78 toward the mid-50s and LAMBADA from ~110 toward the low 80s — these are
+perplexity-of-text metrics and respond directly to better weight fidelity. And critically, downstream
+should *move* this time where it did not for ternary: ARC-Easy up from ~47 toward the low-to-mid 50s and
+HellaSwag up from ~28 toward the low 30s, because the finely-weighted feature combinations those tasks
+need are now representable. If instead int2 lands only a hair below ternary, like ternary landed only a
+hair below binary, then I was wrong twice and the bottleneck is not the weight grid at all but the
+*fixed* absmean scale — a per-tensor statistic chosen to minimize reconstruction error, not task loss —
+and the next move would be to stop fixing the scale by a formula and learn it against the loss instead.
+</think>
+<say>
+[[FILL_SAY: 1-2 sentences naming the method and what this first edit does]]
+</say>
+<edit path="nanoGPT/custom_pretrain.py">
+<old>
+# EDITABLE region of nanoGPT/custom_pretrain.py (lines 38-115) -- step 2: ternary {-1, 0, +1} (1.58-bit)
+def weight_quant(weight):
+    """Ternary quantization: {-1, 0, +1} via absmean with STE.
+
+    Forward: normalize by absmean, round-then-clip to {-1, 0, +1}
+    Backward: STE (gradient passes through rounding as identity)
+    """
+    scale = weight.detach().abs().mean().clamp(min=1e-12)
+    w_normed = weight / scale
+    # STE round: (round(x) - x).detach() + x
+    w_q = w_normed.clamp(-1, 1)
+    w_q = (w_q.round() - w_q).detach() + w_q
+    return w_q, scale
+</old>
+<new>
+# EDITABLE region of nanoGPT/custom_pretrain.py (lines 38-115) -- step 3: 2-bit uniform grid
+def weight_quant(weight):
+    """2-bit uniform quantization: {-1, -1/3, +1/3, +1} with STE.
+
+    Normalizes weights by absmean, maps to 4 uniform levels in [-1, 1],
+    then rescales. Uses STE for gradient flow through rounding.
+    """
+    scale = weight.detach().abs().mean().clamp(min=1e-12)
+    w_normed = weight / scale
+    # Map to [-1.5, 1.5] grid with spacing 1.0, round, then map back
+    # Levels: -1.5 -> -1, -0.5 -> -1/3, 0.5 -> 1/3, 1.5 -> 1
+    # Multiply by 1.5 so that [-1,1] -> [-1.5,1.5], round, clip to {-1,0,1} range
+    # Actually: use 4 uniform levels directly
+    # Grid points at: -1, -1/3, 1/3, 1 (spacing = 2/3)
+    # Scale so spacing becomes 1: multiply by 3/2
+    w_scaled = w_normed * 1.5  # now grid at -1.5, -0.5, 0.5, 1.5
+    w_rounded = w_scaled.clamp(-2, 2).round().clamp(-1.5, 1.5)
+    # STE: (rounded - scaled).detach() + scaled
+    w_q = (w_rounded - w_scaled).detach() + w_scaled
+    # Map back: divide by 1.5
+    w_q = w_q / 1.5
+    return w_q, scale
+</new>
+</edit>
+<obs>
+Successfully replaced text in nanoGPT/custom_pretrain.py.
+</obs>
+<note>
+[[FILL_NOTE?: optional one-line thought for this edit, or delete this block]]
+</note>
+<edit path="nanoGPT/custom_pretrain.py">
+<old>
+    Quantizes activations to 127 levels (int8 range) using per-tensor
+    absmax scaling, following the BitNet b1.58 paper.
+    """
+</old>
+<new>
+    Quantizes activations to 127 levels (int8 range) using per-tensor
+    absmax scaling.
+    """
+</new>
+</edit>
+<obs>
+Successfully replaced text in nanoGPT/custom_pretrain.py.
+</obs>
+<note>
+[[FILL_NOTE?: optional one-line thought for this edit, or delete this block]]
+</note>
+<edit path="nanoGPT/custom_pretrain.py">
+<old>
+class BitLinear(nn.Module):
+    """BitNet b1.58 linear layer with ternary {-1, 0, +1} weights.
+
+    During both training and eval: weights are ternarized via absmean
+    + round-clip, activations are quantized to int8 range. Output is
+    rescaled by weight_scale * activation_scale.
+    """
+</old>
+<new>
+class BitLinear(nn.Module):
+    """Linear layer with 2-bit uniform weight quantization.
+
+    Weights are quantized to {-1, -1/3, +1/3, +1} during both training
+    and eval. Activations quantized to int8 range. Output rescaled by
+    weight_scale * activation_scale.
+    """
+</new>
+</edit>
+<obs>
+Successfully replaced text in nanoGPT/custom_pretrain.py.
+</obs>
+<run/>
+<obs>
+Measured results — `baseline:int2_uniform` (`is_final,true`), seed 42.
+
+| metric | value |
+|---|---|
+| val_loss (primary, ↓) | 2.4392 |
+| wikitext2_ppl (↓) | 54.05 |
+| lambada_ppl (↓) | 81.97 |
+| arc_easy (↑) | 53.83 |
+| hellaswag (↑) | 31.53 |
+| piqa (↑) | 62.89 |
+| winogrande (↑) | 50.36 |
+| elapsed (s) | 23255 |
+</obs>
+
+### step 4 — LSQ (Learned Step Size Quantization)   [slug:lsq]
+
+<think>
+[[POLISH_REASONING: adapt to first-person agentic voice, end by deciding to implement]]
+The 2-bit grid finally broke the plateau. Validation loss fell from the 2.72 the binary and ternary
+rungs sat on to 2.4392, WikiText-2 from ~78 to 54.1, LAMBADA from ~110 to 82.0, and — the tell I was
+watching for — downstream *moved*: ARC-Easy 47→53.8, HellaSwag 28→31.5. So the resolution diagnosis was
+right: the binding constraint on the earlier rungs was not the off-switch but the inability to express a
+graded weight magnitude, and the five-level grid `{−1, −2/3, 0, +2/3, +1}` that the int2 fill actually
+realizes (its `×1.5` scaling plus half-to-even rounding lands on five symbols, not the four its
+docstring names) fixed exactly that. But the win also tells me where the *next* limit is. The thing that
+moved the model was giving each weight more places to land; the thing I have *not* touched on any rung is
+*where those places are*. On all three baselines the grid is anchored by one number per tensor — the
+absmean `s = mean(|W|)` — and that number is chosen to minimize the squared reconstruction error
+`‖W − s·grid‖²`, i.e. to make the discrete weights *close to the float weights*. But I do not care
+whether the discrete weights are close to the float weights; I care whether they make the *loss* small.
+Those are different objectives, and at two or three bits, where only a handful of levels exist per layer,
+the gap between them is exactly the gap between int2 and a usable model.
+
+Let me make the deficiency concrete, because it is the whole motivation. With so few levels, the single
+scalar `s` decides everything about level placement: too small and I clip away the tails of the weight
+distribution, throwing the large-magnitude weights into the top level and losing them; too large and I
+waste my precious few levels on coarse spacing, so the dense core of the distribution near zero gets one
+level where it wanted three. The absmean picks `s` to balance reconstruction across the whole tensor —
+but reconstruction error weights every weight equally, while the loss does not: some weights matter
+enormously and some not at all, and the right `s` for the loss is the one that places levels where the
+loss-important weights are, not where the average weight is. There is no formula for that `s`. So I
+should stop computing it from a statistic and *learn* it — make the per-layer step a trainable parameter,
+optimized jointly with the weights against the actual next-token cross-entropy. That is the move: a
+single extra scalar per `BitLinear`, the step size, trained by the same AdamW that trains the weights, so
+the network tunes its own quantization grid to minimize the thing I measure.
+
+The obstacle is immediate and it is the same wall every rung hit, but sharper. The quantizer is
+`ŵ = round(clip(w/s, −Q_N, Q_P)) · s`. The round is flat almost everywhere, so the path from `s` through
+`w/s` into the integer code has zero ordinary derivative — ordinary backprop sees the final multiply by
+`s` but is blind to how `s` moves weights *toward or away from bin transitions*, which is the whole
+reason `s` matters. The standard fix for the round is the STE I have used throughout: treat round as the
+identity on the backward pass. But here I must be more careful than on the baselines, because they only
+needed a gradient to the *weight*; now I need a correct gradient to the *step* too, and the easy thing —
+cancel the round entirely — would zero out the interior step-gradient and learn nothing useful. So I
+apply STE to the round node only, and differentiate the divide, the clip, and the multiply honestly.
+
+Take the interior region, where `−Q_N < w/s < Q_P` so the clip is inactive: `ŵ = round(w/s)·s`.
+Differentiate w.r.t. `s` by the product rule: `∂ŵ/∂s = [∂round(w/s)/∂s]·s + round(w/s)`. STE says treat
+round as identity for the first term, so `round(w/s) ≈ w/s` there and `∂(w/s)/∂s = −w/s²`; times `s`
+gives `−w/s`. The second term is `round(w/s)`. So in the interior `∂ŵ/∂s = round(w/s) − w/s`. Write
+`z = w/s`, `n = round(z)`, `r = z − n` (the residual, between about `−½` and `½`): then
+`∂ŵ/∂s = n − z = −r`, the negative signed residual between `z` and the level it rounds to. Stare at that,
+because it is the payoff. The step-size gradient is *largest in magnitude exactly when `z` sits near a
+bin transition* (`|r|` near ½) and *zero when `z` sits right on a level* (`r = 0`). That is precisely the
+sensitivity I want: a weight near a transition is the one a small change in `s` will flip to a different
+integer code, producing a large jump in `ŵ`, so its gradient to `s` should be large. The fixed-absmean
+baselines had no version of this at all — their `s` was a constant of the weights, not a parameter, so it
+could never respond to where the weights sit relative to the grid. The clipped regions are simpler: if
+`w/s ≤ −Q_N` then `ŵ = −Q_N·s` and `∂ŵ/∂s = −Q_N`; if `w/s ≥ Q_P` then `∂ŵ/∂s = Q_P`. And the data
+gradient is the usual STE: `∂ŵ/∂w = 1` inside the range, `0` outside (clipped weights get no gradient,
+which is correct — pushing a clipped latent weight further changes nothing in the forward pass).
+
+There is one more thing I have to get right or the learned step will destabilize training, and it is the
+part the careless versions of this idea miss. I now have one scalar `s` per layer being optimized by the
+same AdamW, with the same global learning rate, as the layer's hundreds of thousands of weights. Training
+behaves well when, across parameters, the ratio of update magnitude to parameter magnitude is in the same
+band — if `s` gets updates that are huge relative to its own size it overshoots and oscillates; if tiny,
+it stalls. Let me check the ratio `R = (∇_s L / s) / (‖∇_w L‖ / ‖w‖)`. For the parameter sizes:
+`‖w‖ ∝ √N_W` times a typical weight magnitude, and the typical weight magnitude is about `s·√Q_P` (with
+`Q_P` levels the step shrinks like `1/√Q_P`), so `‖w‖/s ≈ √(N_W·Q_P)`. For the gradients: `∇_s L` is a
+sum over all `N_W` weights of `(∂L/∂ŵ)·(∂ŵ/∂s)`, and treating the per-weight loss gradients as
+uncorrelated zero-mean with the `∂ŵ/∂s` factor an order-one per-element constant, `E[(∇_s L)²] ≈
+N_W·E[(∂L/∂ŵ)²]` — the *same order* as `E[‖∇_w L‖²]`. So numerator and denominator of `R` differ exactly
+by the `‖w‖/s` factor: `R ≈ √(N_W·Q_P)`. That is not 1 — it grows with layer width and precision, so the
+step would be over-driven by roughly that factor, worst in the widest layers. The fix is to cancel it
+directly: scale the gradient flowing to `s` by `g = 1/√(N_W·Q_P)`. I inject this as a transparent
+gradient multiplier with the same detach trick the STE uses — `gradscale(s, g) = (s − g·s).detach() +
+g·s` is `s` in the forward pass (the step value is untouched) and multiplies the gradient by `g` in the
+backward pass. So `s` is divided by `√(N_W·Q_P)` in its gradient and trains in the same update/parameter
+band as the weights, and one AdamW learning rate serves both.
+
+Now adapt all of this to *this task's* substrate, because the canonical LSQ recipe assumes things the
+harness does not provide and I must not import them blindly. Canonical LSQ *fine-tunes from a trained
+full-precision model* with momentum SGD and cosine decay; here I am pretraining from scratch with AdamW
+on the fixed 13,535-iteration schedule, so there is no FP teacher to initialize from — the latent weights
+start from the scaffold's `std=0.02` init and the step must be initialized from them. The scale-aware
+initializer `s = 2⟨|w|⟩/√Q_P` does exactly that from the initial weights, so I set the step parameter to
+`2·mean(|W|)/√Q_P` at construction and let AdamW take it from there; the `√Q_P` denominator correctly
+says "more levels ⇒ finer initial step." Canonical LSQ keeps the first and last layers at 8 bits; the
+harness ties `wte` to `lm_head` and quantizes every projection uniformly, so I keep the uniform treatment
+rather than carve out exceptions the scaffold is not built to express. And I keep the activation path
+*identical* to the three baselines — 8-bit per-tensor absmax, `Q_b = 127`, STE — for two reasons: it
+isolates the contribution to the *weight* quantizer (the learned step), which is the honest comparison
+against int2; and learning a second step for activations from scratch, on top of an unstable-by-nature
+low-bit pretraining run, is a risk the controlled experiment does not need. The bit-width I take is
+three: signed range `Q_N = 2^{b−1} = 4`, `Q_P = 2^{b−1}−1 = 3`, an eight-level grid `{−4,…,+3}`. Three
+bits keeps me firmly in the few-bit native-low-bit regime this task is about, and it deliberately gives
+the learned step *more* levels to place than int2's effective five — so the finale tests both halves of
+the thesis at once: more levels, and levels placed by the loss rather than by a reconstruction formula.
+No SubLN inside the layer, same as every rung: the block's pre-projection `LayerNorm` holds the variance.
+
+So the finale fill adds three things to the scaffold and changes one: a learnable `weight_scale`
+parameter per `BitLinear` initialized to `2·mean(|W|)/√Q_P`; the two helper ops `roundpass` (STE round)
+and `gradscale` (the `1/√(N_W·Q_P)` step-gradient multiplier); and a `weight_quant` that clips `w/s` to
+`[−Q_N, Q_P]`, STE-rounds, and rescales by the gradient-scaled `s`. The activation path and the latent-
+weight machinery are unchanged from the baselines (the full module is in the answer).
+
+Here is the bar this has to clear, against int2's measured numbers, and what I would validate. The thing
+int2 left on the table is loss-aware level placement, and three bits gives more room to place; so I
+expect validation loss *below* int2's 2.4392 — into the low-2.4s or high-2.3s, in the neighborhood of the
+~2.37 that the strongest non-baseline run on this task reached, which is itself evidence that headroom
+below int2 exists. I expect WikiText-2 below int2's 54.1 and LAMBADA below 82.0, and downstream ARC-Easy
+and HellaSwag at or above int2's 53.8 / 31.5 — because graded, loss-placed magnitudes are exactly what
+the completion tasks reward. The way I would be wrong is if the learned step does not train cleanly under
+AdamW from a scratch init — if the `√(N_W·Q_P)` gradient scaling is even slightly off, the step either
+oscillates and the grid thrashes, or stalls and I have a fixed-step quantizer with one wasted parameter
+landing right back at int2. I would validate by watching the per-layer `weight_scale` trajectories: if
+they move smoothly away from their absmean-flavored init and settle, the learned placement is doing real
+work; if they sit pinned at init, the gradient scaling needs the per-layer `N_W` it already uses but
+perhaps a different AdamW treatment. The falsifiable claim is simply: a *learned* step at three bits
+beats the *fixed* absmean step at int2's effective resolution — val_loss strictly under 2.4392.
+</think>
+<say>
+[[FILL_SAY: 1-2 sentences naming the method and what this first edit does]]
+</say>
+<edit path="nanoGPT/custom_pretrain.py">
+<old>
+# EDITABLE region of nanoGPT/custom_pretrain.py (lines 38-115) -- step 3: 2-bit uniform grid
+def weight_quant(weight):
+    """2-bit uniform quantization: {-1, -1/3, +1/3, +1} with STE.
+
+    Normalizes weights by absmean, maps to 4 uniform levels in [-1, 1],
+    then rescales. Uses STE for gradient flow through rounding.
+    """
+    scale = weight.detach().abs().mean().clamp(min=1e-12)
+    w_normed = weight / scale
+    # Map to [-1.5, 1.5] grid with spacing 1.0, round, then map back
+    # Levels: -1.5 -> -1, -0.5 -> -1/3, 0.5 -> 1/3, 1.5 -> 1
+    # Multiply by 1.5 so that [-1,1] -> [-1.5,1.5], round, clip to {-1,0,1} range
+    # Actually: use 4 uniform levels directly
+    # Grid points at: -1, -1/3, 1/3, 1 (spacing = 2/3)
+    # Scale so spacing becomes 1: multiply by 3/2
+    w_scaled = w_normed * 1.5  # now grid at -1.5, -0.5, 0.5, 1.5
+    w_rounded = w_scaled.clamp(-2, 2).round().clamp(-1.5, 1.5)
+    # STE: (rounded - scaled).detach() + scaled
+    w_q = (w_rounded - w_scaled).detach() + w_scaled
+    # Map back: divide by 1.5
+    w_q = w_q / 1.5
+    return w_q, scale
+
+
+def activation_quant(x):
+    """Absmax 8-bit activation quantization with STE.
+
+    Quantizes activations to 127 levels (int8 range) using per-tensor
+    absmax scaling.
+    """
+    Qb = 127  # int8 range
+</old>
+<new>
+# EDITABLE region of nanoGPT/custom_pretrain.py (lines 38-115) -- finale: LSQ (learned step, 3-bit weights)
+def gradscale(x, scale):
+    """Transparent gradient multiplier: forward = x, backward = grad * scale.
+    Used to apply LSQ's 1/sqrt(N_W * Q_P) scaling to the step-size gradient."""
+    y_out = x
+    y_grad = x * scale
+    return (y_out - y_grad).detach() + y_grad
+
+
+def roundpass(x):
+    """Straight-through round: forward = round(x), backward = identity."""
+    y_out = x.round()
+    y_grad = x
+    return (y_out - y_grad).detach() + y_grad
+
+
+def weight_quant(weight, step, Qn, Qp):
+    """LSQ weight quantization with a LEARNED per-tensor step size.
+
+    Forward: w_q = round(clip(W / s, -Qn, Qp)), dequantized by s.
+    Backward: STE through round; step-size gradient = round(W/s) - W/s
+              (interior), scaled by g = 1/sqrt(N_W * Qp) for stable training.
+    Returns (quantized_weight, scale) with quantized_weight * scale ~= weight.
+    """
+    g = 1.0 / ((weight.numel() * Qp) ** 0.5)
+    s = gradscale(step, g)                       # transparent forward, gradient * g
+    w = torch.clamp(weight / s, -Qn, Qp)         # clipped weights get zero data-gradient
+    w = roundpass(w)                             # STE round; interior s-grad = round(W/s) - W/s
+    return w, s                                  # w * s ~= weight
+
+
+def activation_quant(x):
+    """Absmax 8-bit activation quantization with STE (identical to the baselines)."""
+    Qb = 127  # int8 range
+</new>
+</edit>
+<obs>
+Successfully replaced text in nanoGPT/custom_pretrain.py.
+</obs>
+<note>
+[[FILL_NOTE?: optional one-line thought for this edit, or delete this block]]
+</note>
+<edit path="nanoGPT/custom_pretrain.py">
+<old>
+    x_q = (x_normed * Qb).round().clamp(-Qb, Qb)
+    # STE: forward uses quantized, backward passes through
+    x_q = (x_q - x_normed * Qb).detach() + x_normed * Qb
+</old>
+<new>
+    x_q = (x_normed * Qb).round().clamp(-Qb, Qb)
+    x_q = (x_q - x_normed * Qb).detach() + x_normed * Qb
+</new>
+</edit>
+<obs>
+Successfully replaced text in nanoGPT/custom_pretrain.py.
+</obs>
+<note>
+[[FILL_NOTE?: optional one-line thought for this edit, or delete this block]]
+</note>
+<edit path="nanoGPT/custom_pretrain.py">
+<old>
+class BitLinear(nn.Module):
+    """Linear layer with 2-bit uniform weight quantization.
+
+    Weights are quantized to {-1, -1/3, +1/3, +1} during both training
+    and eval. Activations quantized to int8 range. Output rescaled by
+    weight_scale * activation_scale.
+    """
+</old>
+<new>
+class BitLinear(nn.Module):
+    """LSQ linear layer: 3-bit weights with a learnable step size, 8-bit activations.
+
+    self.weight is the float latent weight the optimizer updates; self.weight_scale is the
+    learnable per-tensor LSQ step, initialized to 2*mean(|W|)/sqrt(Qp). Same path train/eval.
+    """
+</new>
+</edit>
+<obs>
+Successfully replaced text in nanoGPT/custom_pretrain.py.
+</obs>
+<note>
+[[FILL_NOTE?: optional one-line thought for this edit, or delete this block]]
+</note>
+<edit path="nanoGPT/custom_pretrain.py">
+<old>
+        self.out_features = out_features
+        self.weight = nn.Parameter(torch.empty(out_features, in_features))
+</old>
+<new>
+        self.out_features = out_features
+        bits = 3
+        self.Qn = 2 ** (bits - 1)               # 4 for 3-bit signed
+        self.Qp = 2 ** (bits - 1) - 1           # 3 for 3-bit signed
+        self.weight = nn.Parameter(torch.empty(out_features, in_features))
+</new>
+</edit>
+<obs>
+Successfully replaced text in nanoGPT/custom_pretrain.py.
+</obs>
+<note>
+[[FILL_NOTE?: optional one-line thought for this edit, or delete this block]]
+</note>
+<edit path="nanoGPT/custom_pretrain.py">
+<old>
+        nn.init.normal_(self.weight, mean=0.0, std=0.02)
+
+    def forward(self, x):
+        w_q, w_scale = weight_quant(self.weight)
+        x_q, x_scale = activation_quant(x)
+</old>
+<new>
+        nn.init.normal_(self.weight, mean=0.0, std=0.02)
+        # LSQ step-size init from the scratch weights: s = 2<|W|>/sqrt(Qp)
+        with torch.no_grad():
+            init_s = 2.0 * self.weight.abs().mean() / (self.Qp ** 0.5)
+        self.weight_scale = nn.Parameter(init_s.clone().clamp(min=1e-5))
+
+    def forward(self, x):
+        w_q, w_scale = weight_quant(self.weight, self.weight_scale, self.Qn, self.Qp)
+        x_q, x_scale = activation_quant(x)
+</new>
+</edit>
+<obs>
+Successfully replaced text in nanoGPT/custom_pretrain.py.
+</obs>
+

@@ -1,0 +1,826 @@
+<meta task="security-adversarial-training" domain="Security" file="torchattacks/bench/custom_adv_train.py" model_format="qwen3" edit_tool="str_replace"/>
+
+<system>
+You are a research engineer improving a model on a fixed ML task. You work by editing the model code and running experiments. Think carefully before each change. You have these tools:
+- str_replace(path, old_str, new_str): replace the unique occurrence of old_str with new_str.
+- create(path, file_text): create a new file.
+- run_experiment(): train + evaluate the current code under the fixed budget; returns metrics.
+Make one tool call at a time. After editing, call run_experiment() to measure your method.
+</system>
+
+<user>
+## Research question
+
+A convolutional classifier can hit 99%+ on MNIST and 95% on CIFAR-10 clean, yet an `L_inf`
+perturbation smaller than the sensor's own noise flips its prediction with confidence — and there is
+one such perturbation next to essentially every image, transferable across architectures. The single
+thing being designed here is the **adversarial training procedure**: the per-step rule that, given a
+clean batch, produces the weights of a model whose predictions survive white-box `L_inf` attacks.
+Everything else about the pipeline is fixed.
+
+## Prior art before the first rung (the robustness lineage)
+
+The first rung — PGD adversarial training — is the resolution of a line of defenses that came before
+it, and each later rung on this ladder reacts to a specific failure of the one before. These are the
+ancestors the ladder builds on.
+
+- **Gradient masking / obfuscation defenses (defensive distillation, Papernot et al. 2016; input
+  bit-depth squeezing; detector front-ends).** Each hardens the model against *one* attack by hiding or
+  flattening the gradient the attacker uses, but the gradient is still there — a transfer or
+  decision-based attack walks right past them. Gap: tuned against a single attack, no statement about
+  attacks not yet tried; broken once the attacker adapts.
+- **FGSM adversarial training (Goodfellow et al. 2015).** Augment training with one-step sign
+  perturbations `x + eps*sign(grad_x J)`. Cheap and it raised FGSM robustness, but it linearizes the
+  loss inside the ball, so it overfits to its own weak one-step adversary (the label-leaking
+  pathology) and falls to iterative attacks. Gap: trains against a linearized adversary that a
+  non-linear attacker bypasses.
+- **The min-max view, pre-PGD (Huang et al. 2015; Shaham et al. 2015).** Framed defense as a saddle
+  point `min_theta E max_{delta in S} L` but concluded the inner maximization over the non-concave
+  loss was too hard, so they fell back to one-step linearization and only ever evaluated against FGSM.
+  Gap: assumed the inner max intractable and never solved it, so the defense was never trained against
+  a strong adversary.
+
+The first rung resolves these by actually solving the inner maximization with multi-step PGD and
+proving (via Danskin) that one ordinary SGD step on the worst-case point is the right outer descent.
+
+## The fixed substrate
+
+The training loop, the learning-rate schedule (cosine annealing), the model architectures
+(SmallCNN, PreActResNet-18, VGG-11-BN), the data loading, and the evaluation attacks are all fixed and
+must not be touched. The optimizer handed in is SGD with `lr`, `momentum`, and `weight_decay` already
+configured. Each scenario fixes its budget: `eps = 0.3` for SmallCNN on MNIST, `eps = 8/255` for the
+three CIFAR scenarios; the inner step size `alpha` and PGD-step count `attack_steps` are passed in.
+The loop calls one method, `train_step(images, labels, optimizer)`, once per minibatch and reads back
+its `'loss'`. Everything the method needs — `torch`, `torch.nn as nn`, `torch.nn.functional as F` — is
+imported at module top.
+
+## The editable interface
+
+Exactly one region is editable — the `AdversarialTrainer` class in
+`torchattacks/bench/custom_adv_train.py` (lines 10–54), with two methods. The contract:
+
+- `__init__(self, model, eps, alpha, attack_steps, num_classes, **kwargs)` — `model` is the
+  `nn.Module` to train; `eps` the `L_inf` budget; `alpha` the inner PGD step size; `attack_steps` the
+  number of PGD steps; `num_classes` the label count (10 or 100). Any per-method state (regularizer
+  weights, a proxy model) is set up here.
+- `train_step(self, images, labels, optimizer) -> dict` — `images` are clean, shape `(N,C,H,W)`, in
+  `[0,1]`; `labels` shape `(N,)`; `optimizer` is the externally configured SGD. The method crafts its
+  adversarial batch, computes its loss, calls `optimizer.zero_grad()/backward()/step()` itself, and
+  returns a dict with at least `'loss'` (float).
+
+Every method on the ladder is a fill of this same contract. The starting point is the scaffold
+default: **standard (non-adversarial) training** — no attack at all, plain cross-entropy on clean
+images. Each later method replaces exactly this class body and nothing else.
+
+```python
+"""Custom adversarial training method for MLS-Bench."""
+
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+
+# ═══════════════════════════════════════════════════════════════════
+# EDITABLE — implement AdversarialTrainer below
+# ═══════════════════════════════════════════════════════════════════
+class AdversarialTrainer:
+    """Default fill: standard (non-adversarial) training — the floor."""
+
+    def __init__(self, model, eps, alpha, attack_steps, num_classes, **kwargs):
+        self.model = model
+        self.eps = eps
+        self.alpha = alpha
+        self.attack_steps = attack_steps
+        self.num_classes = num_classes
+
+    def train_step(self, images, labels, optimizer):
+        # Default: standard (non-adversarial) training — no inner attack.
+        self.model.train()
+        outputs = self.model(images)
+        loss = F.cross_entropy(outputs, labels)
+
+        optimizer.zero_grad()
+        loss.backward()
+        optimizer.step()
+
+        return {'loss': loss.item()}
+# ═══════════════════════════════════════════════════════════════════
+# END EDITABLE
+# ═══════════════════════════════════════════════════════════════════
+```
+
+## Evaluation settings
+
+Four scenarios spanning datasets and architectures: **SmallCNN on MNIST** (`eps = 0.3`),
+**PreActResNet-18 on CIFAR-10** (`eps = 8/255`), **VGG-11-BN on CIFAR-10** (`eps = 8/255`), and
+**PreActResNet-18 on CIFAR-100** (`eps = 8/255`, the hidden scenario). One seed, 42. After training,
+each model is evaluated three ways, all higher-is-better: **clean accuracy** (unperturbed test
+images), **robust accuracy under one-step FGSM**, and **robust accuracy under a 50-step PGD attack** —
+PGD-50 is the primary metric. A method must lift PGD-50 robustness across all scenarios while keeping
+clean accuracy reasonable; the standing tension is that pushing robustness up tends to drag clean
+accuracy down.
+
+The editable model code is in `torchattacks/bench/custom_adv_train.py`:
+```python
+from torch.utils.data import DataLoader
+from torchvision import datasets, transforms
+
+from custom_adv_train import AdversarialTrainer
+from models import get_model
+
+
+def parse_args():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--arch", type=str, required=True,
+                        choices=["smallcnn", "preact_resnet18", "vgg11_bn"])
+    parser.add_argument("--dataset", type=str, required=True,
+                        choices=["mnist", "cifar10", "cifar100"])
+    parser.add_argument("--data-dir", type=str, required=True)
+    parser.add_argument("--epochs", type=int, default=80)
+    parser.add_argument("--batch-size", type=int, default=128)
+    parser.add_argument("--lr", type=float, default=0.1)
+    parser.add_argument("--weight-decay", type=float, default=5e-4)
+    parser.add_argument("--eps", type=float, required=True)
+    parser.add_argument("--alpha", type=float, required=True)
+    parser.add_argument("--attack-steps", type=int, default=10)
+    parser.add_argument("--eval-attack-steps", type=int, default=50)
+    parser.add_argument("--eval-alpha", type=float, default=None,
+                        help="Step size for eval PGD. Defaults to eps/4 if not set.")
+    parser.add_argument("--eval-restarts", type=int, default=1,
+                        help="Number of random restarts for eval PGD.")
+    parser.add_argument("--seed", type=int, default=42)
+    return parser.parse_args()
+
+
+def set_seed(seed):
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    torch.cuda.manual_seed_all(seed)
+
+
+def get_datasets(dataset_name, data_dir):
+    """Load train and test datasets."""
+    if dataset_name == "mnist":
+        transform_train = transforms.Compose([transforms.ToTensor()])
+        transform_test = transforms.Compose([transforms.ToTensor()])
+        train_set = datasets.MNIST(data_dir, train=True, transform=transform_train, download=False)
+        test_set = datasets.MNIST(data_dir, train=False, transform=transform_test, download=False)
+        num_classes = 10
+```
+Improve it. Derive your method, edit the code, then run_experiment().
+</user>
+
+### step 1 — PGD-AT (Madry et al., 2018)   [slug:pgdat]
+
+<think>
+[[POLISH_REASONING: adapt to first-person agentic voice, end by deciding to implement]]
+The floor I have to start from is the scaffold default, and the scaffold default is not a defense at all — it is plain cross-entropy on clean images, standard training. So before I can climb anything I have to admit what the floor does: it produces a model that aces the clean test set and collapses the instant anyone perturbs the input. The lineage I inherited names exactly why that happens and why the obvious patches fail. Defensive distillation and bit-depth squeezing and detector front-ends each harden the model against one attack by hiding the gradient, but the gradient is still there and a transfer attack walks past them. FGSM training augments with one-step sign perturbations and does raise FGSM robustness, but it linearizes the loss inside the ball and overfits to its own weak adversary, so an iterative attack bypasses it. And the pre-PGD min-max papers framed the defense correctly as a saddle point but then declared the inner maximization intractable and fell back to the same one-step linearization. So the question at the first rung is not "build a defense" — defenses are everywhere — it is "state a goal precise enough that hitting it means something, and then actually solve it instead of assuming the hard part away."
+
+Let me write down the thing I wish were true. Standard training minimizes the expected clean loss, `min_theta E[L(theta, x, y)]`. The trouble is the expectation is over clean `x`, and the adversary gets to move `x` afterward. So I bake the adversary into the objective: for each example, before I pay the loss, let an adversary pick the worst perturbation `delta` inside the allowed set `S`, the `L_inf` ball of radius `eps` — the threat model everyone agrees on, "no pixel moves by more than `eps`," and the one this task fixes (`eps = 0.3` on MNIST, `8/255` on CIFAR). The quantity I actually care about is `rho(theta) = E[max_{delta in S} L(theta, x+delta, y)]`, and I want `min_theta rho(theta)`. This is doing more than it looks. If I ever drive `rho` small, then the loss is small for *every* `delta` in `S` on the typical example — there is no admissible perturbation left that produces high loss, so by construction there is no adversarial example within the budget. That is the guarantee the bolt-on defenses could never give. And the same expression unifies the two camps: the inner `max` is the attacker's job, the outer `min` is the defender's, and FGSM training is just an outer step on top of a one-step stab at the inner max. Attack and defense are the inner and outer halves of one saddle-point problem.
+
+The reason nobody committed to this is that it looks hopeless on the inner max — a maximization of a wildly non-concave function over the ball. So my first real question is not "what is the algorithm" but "is the inner maximization actually intractable, or did people just assume it." The natural tool for large-scale constrained maximization is projected gradient ascent: step `delta` along the gradient, project back into the constraint set. Under an `L_inf` budget the steepest-ascent direction solves `max_{||v||_inf <= alpha} (grad_delta L)^T v`, a linear objective over a box, so each coordinate pins to its corner: `v = alpha*sign(grad_delta L)`. That is FGSM's move taken *repeatedly* with a small step `alpha` instead of one jump of size `eps`. The sign also makes `alpha` a pixel-unit quantity independent of the gradient's magnitude, so I do not retune it as the gradient scale drifts. After each step I project: clip `delta` coordinatewise to `[-eps, eps]` (the Euclidean projection onto an `L_inf` ball is per-coordinate), then clip `x+delta` into `[0,1]`. That is PGD as the inner adversary.
+
+Where do I start `delta`? FGSM starts at `delta = 0`, right at the clean point, but there the loss is nearly linear in the ball — exactly the regime one-step methods already exploit and that does not represent the whole ball. So I start from a random point, `delta_0 ~ Uniform(-eps, eps)` per coordinate, clipped into `[0,1]`. Random start breaks me out of the linear neighborhood, and across the many epochs — drawing a fresh start every time I revisit an example — it effectively samples the ball, which doubles as protection against the label-leaking pathology where the model memorizes a fixed deterministic adversary. The worry this raises is the one that killed the idea for everyone else: PGD climbs a non-concave surface and only finds local maxima, so training against "whatever PGD found" might be training against a moving, unrepresentative target. But the landscape, probed with many random restarts, does not behave that way — the trajectories climb and plateau quickly, and the final loss values concentrate tightly across distinct basins. So "what PGD finds" is a stable, representative estimate of the inner max, and random-start PGD is a stand-in for the strongest first-order adversary. I cannot rule out an isolated higher maximum, but first-order methods do not find one, and first-order is all that scales on these nets.
+
+So the inner problem is solved well enough. Back to the outer problem: `rho(theta) = E[phi(theta)]` with `phi(theta) = max_delta L(theta, x+delta, y)`, descended by SGD. To take an SGD step I need `grad_theta phi`, but `phi` is a max over `delta` and the maximizer `delta*` itself depends on `theta`. Naively I would differentiate through the whole inner optimization. Danskin's theorem says I do not have to: when the inner maximizer is the active one, `grad phi(theta) = grad_theta L(theta, x+delta*, y)` — the `d delta*/d theta` term drops out by the envelope argument, because at the maximum the gradient with respect to `delta` is zero or pinned by the constraint, so moving `delta*` is a zeroth-order effect on the value of the max. So I freeze the perturbation PGD found, build `x + delta*`, and backprop the ordinary cross-entropy as if `x + delta*` were a fixed input. Two honest gaps: the loss has ReLU/max-pool kinks, but those are measure-zero and I never sit exactly on one; and PGD returns a local, not global, maximizer, so the conclusion is local — if PGD found a genuinely high-loss point, stepping `theta` to reduce the loss there makes progress against that local adversary. The landscape study says that point is representative of what first-order attacks find, which is what I am defending against.
+
+Now the knobs, by reasoning about what each is for. The inner step `alpha` versus the budget `eps`: I take `k` steps, and if each were `eps` I would leave the ball immediately and bounce on its surface. I want several smaller steps that traverse the ball with the projection keeping me legal, so `alpha < eps` with enough steps that `k*alpha` comfortably exceeds `eps` — the boundary is reachable from any interior start. The task passes `alpha` and `attack_steps` per scenario, so I do not hardcode them; I trust the harness's `eps = 0.3, alpha, k` on MNIST and `eps = 8/255` on CIFAR to respect that rule. Eval mode while crafting the attack, so batch-norm statistics and dropout do not shift under me as I perturb — I want the gradient of the deployed function. Then train mode, one forward on the adversarial batch, cross-entropy against the *true* labels (the untargeted attack maximizes the true-label loss, which is what drives a misclassification), and a single SGD step. In the active-maximizer regime that step descends the local adversarial objective.
+
+This is the literal scaffold edit, and it maps onto the task's interface cleanly: `__init__` just stores `model, eps, alpha, attack_steps, num_classes`; `train_step` does eval-mode random-start PGD with `torch.autograd.grad` on the cross-entropy, the two clips per step, then train-mode cross-entropy on the adversarial batch and `optimizer.zero_grad()/backward()/step()`, returning `{'loss': loss.item()}`. Nothing about the loop, the schedule, the architectures changes — the full module is in the answer.
+
+Now I reason about what this floor must do, because that is the entire point of running it first. PGD-AT solves the saddle point with the strongest first-order adversary I have, so it is the genuine floor of *adversarial* methods, not of standard training — it should be a large jump over the scaffold default's near-zero robust accuracy. But it has a known structural weakness I should watch for, because it dictates where the next rung goes. The objective is a single term, `E[max_x' L(x', y)]`, the loss at the worst point against the true label, and it has no place to dial the balance between "be right on clean `x`" and "be stable across the ball" — clean accuracy just falls out as a byproduct, and the reports say what falls out is often a poor trade. So I expect PGD-AT to post solid PGD-50 robustness on every scenario — the headline win over the floor — but to pay for it in clean accuracy, and to leave the robust accuracy well below the clean accuracy with a gap that a single-term objective cannot close because it cannot reallocate effort. On the harder, many-class scenario (CIFAR-100) I expect the robustness to be lowest in absolute terms, because the robust boundary there is the most contorted and the single CE term has the least room. Whatever the precise numbers, the diagnosis is already pointed at the next rung: I have a *single-objective* problem, not an attack problem — I solved the inner max well — so the fix is to split the objective into a term for clean accuracy and a term for robustness with a knob between them, which is exactly what the next baseline must supply.
+</think>
+<say>
+[[FILL_SAY: 1-2 sentences naming the method and what this first edit does]]
+</say>
+<edit path="torchattacks/bench/custom_adv_train.py">
+<old>
+from torch.utils.data import DataLoader
+from torchvision import datasets, transforms
+
+from custom_adv_train import AdversarialTrainer
+from models import get_model
+
+
+def parse_args():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--arch", type=str, required=True,
+                        choices=["smallcnn", "preact_resnet18", "vgg11_bn"])
+    parser.add_argument("--dataset", type=str, required=True,
+                        choices=["mnist", "cifar10", "cifar100"])
+    parser.add_argument("--data-dir", type=str, required=True)
+    parser.add_argument("--epochs", type=int, default=80)
+    parser.add_argument("--batch-size", type=int, default=128)
+    parser.add_argument("--lr", type=float, default=0.1)
+    parser.add_argument("--weight-decay", type=float, default=5e-4)
+    parser.add_argument("--eps", type=float, required=True)
+    parser.add_argument("--alpha", type=float, required=True)
+    parser.add_argument("--attack-steps", type=int, default=10)
+    parser.add_argument("--eval-attack-steps", type=int, default=50)
+    parser.add_argument("--eval-alpha", type=float, default=None,
+                        help="Step size for eval PGD. Defaults to eps/4 if not set.")
+    parser.add_argument("--eval-restarts", type=int, default=1,
+                        help="Number of random restarts for eval PGD.")
+    parser.add_argument("--seed", type=int, default=42)
+    return parser.parse_args()
+
+
+def set_seed(seed):
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    torch.cuda.manual_seed_all(seed)
+
+
+def get_datasets(dataset_name, data_dir):
+    """Load train and test datasets."""
+    if dataset_name == "mnist":
+        transform_train = transforms.Compose([transforms.ToTensor()])
+        transform_test = transforms.Compose([transforms.ToTensor()])
+        train_set = datasets.MNIST(data_dir, train=True, transform=transform_train, download=False)
+        test_set = datasets.MNIST(data_dir, train=False, transform=transform_test, download=False)
+        num_classes = 10
+</old>
+<new>
+class AdversarialTrainer:
+    """PGD Adversarial Training (Madry et al., 2018)."""
+
+    def __init__(self, model, eps, alpha, attack_steps, num_classes, **kwargs):
+        self.model = model
+        self.eps = eps
+        self.alpha = alpha
+        self.attack_steps = attack_steps
+        self.num_classes = num_classes
+
+    def train_step(self, images, labels, optimizer):
+        # Inner max: random-start L_inf PGD (eval mode so BN/dropout are frozen).
+        self.model.eval()
+        adv_images = images.clone().detach()
+        adv_images = adv_images + torch.empty_like(adv_images).uniform_(-self.eps, self.eps)
+        adv_images = torch.clamp(adv_images, 0.0, 1.0)
+
+        for _ in range(self.attack_steps):
+            adv_images.requires_grad_(True)
+            outputs = self.model(adv_images)
+            loss = F.cross_entropy(outputs, labels)               # untargeted: maximize true-label CE
+            grad = torch.autograd.grad(loss, adv_images)[0]
+            adv_images = adv_images.detach() + self.alpha * grad.sign()
+            delta = torch.clamp(adv_images - images, min=-self.eps, max=self.eps)  # project into eps-box
+            adv_images = torch.clamp(images + delta, 0.0, 1.0).detach()            # project into [0,1]
+
+        # Outer min: one ordinary CE step on the adversarial batch (valid by Danskin).
+        self.model.train()
+        outputs = self.model(adv_images)
+        loss = F.cross_entropy(outputs, labels)
+
+        optimizer.zero_grad()
+        loss.backward()
+        optimizer.step()
+
+        return {'loss': loss.item()}
+</new>
+</edit>
+<obs>
+Successfully replaced text in torchattacks/bench/custom_adv_train.py.
+</obs>
+<run/>
+<obs>
+Measured results — `baseline:pgdat` (`is_final,true`), seed 42.
+
+| scenario | clean_acc | robust_acc_fgsm | robust_acc_pgd (primary) |
+|---|---|---|---|
+| SmallCNN-MNIST | 0.9856 | 0.9457 | 0.8932 |
+| PreActResNet18-C10 | 0.8501 | 0.5602 | 0.4585 |
+| VGG11BN-C10 | 0.7796 | 0.4974 | 0.4194 |
+| PreActResNet18-C100 | 0.5828 | 0.2755 | 0.2214 |
+</obs>
+
+### step 2 — TRADES (Zhang et al., 2019)   [slug:trades]
+
+<think>
+[[POLISH_REASONING: adapt to first-person agentic voice, end by deciding to implement]]
+The PGD-AT numbers tell me exactly what the single-term objective bought and what it cannot buy. On MNIST it is strong — clean 0.9856, PGD-50 0.8932, a tiny 9-point clean-to-robust gap, because the MNIST problem has so much slack that one CE term can do both jobs. But on the CIFAR scenarios the single-term cost is written all over the row. PreActResNet-18 on CIFAR-10 sits at clean 0.8501 and PGD-50 0.4585 — a 39-point gap; VGG-11-BN at clean 0.7796, PGD-50 0.4194; and CIFAR-100, the many-class case, at clean 0.5828 collapsing to PGD-50 0.2214, the lowest robustness on the board, exactly where I predicted the contorted robust boundary would leave the least room. The shape is consistent: PGD-AT lifts robustness far above the floor everywhere, but clean accuracy is paid down and the robust accuracy lands well below clean, and there is no place in `E[max_x' L(x', y)]` to dial that balance. Clean accuracy is a byproduct. So the failure to fix is not the attack — I solved the inner max, PGD found genuinely high-loss points — it is the *objective*: one term, no knob. I want a formulation where the robustness/accuracy trade-off is written in as a parameter, and ideally one that tells me *why* the trade-off exists, so the CIFAR-100 collapse stops being a mystery.
+
+So I will not start from the min-max. I will start from the robust error itself and ask where its mistakes come from. The honest object is the probability that *some* point in the ball is misclassified, `R_adv(f) = E 1{exists x' in B(x,eps): f(x') misclassifies}`, against the natural error `R_nat(f) = E 1{f(x) misclassifies}`. Obviously `R_adv >= R_nat`. Take a robustly-misclassified point `x`. There are only two ways that happens, mutually exclusive: either `x` itself is already misclassified (that is exactly the natural error), or `x` is classified correctly but sits so close to my own decision surface that a permitted nudge tips it over. Name the boundary's `eps`-neighborhood, and define the boundary error `R_bdy(f) = E 1{x near the boundary, f(x) correct}` — the mass of *correctly* classified points crowding the surface. The two buckets tile the robustly-wrong set exactly and disjointly, so this is an equality, not a bound: `R_adv = R_nat + R_bdy`. That is more useful than PGD-AT's single upper bound because it *separates* the two things I care about into additive terms — clean accuracy lives entirely in `R_nat`, the extra fragility entirely in `R_bdy`. If I get a differentiable handle on each I can weight them however I like, and the weight *is* the knob the PGD-AT row was missing.
+
+Before I get excited I should check the trade-off is real and not a capacity artifact I could dissolve with a bigger net — because if it were, the CIFAR-100 collapse would just be "too small a model." Build the meanest example: `X` uniform on `[0,1]`, label oscillating with period `2*eps`. The Bayes classifier tracks the oscillation, clean error zero — but every point is within `eps` of a flip, so `R_bdy = 1` and `R_adv = 1`. Now the constant all-ones classifier: wrong half the time, `R_nat = 1/2`, but it has *no boundary*, so `R_bdy = 0` and `R_adv = 1/2`. The constant classifier is strictly more robust than Bayes while Bayes is strictly more accurate. The accuracy-optimal and robustness-optimal models are different models, far apart, regardless of capacity. So the tension is intrinsic, a single-objective method cannot be right in general, and I need the decomposition plus a weight. Lean the weight toward `R_nat` and I recover Bayes; lean toward `R_bdy` and I get the constant classifier; in between I trade — the exact dial PGD-AT lacked, and the reason its CIFAR-100 clean and robust numbers both suffer is that it cannot choose where on that curve to sit.
+
+Both terms are 0-1 losses, so neither is trainable yet. The natural term is the solved problem — reuse it. Calibration theory (Bartlett, Jordan, McAuliffe) says: pick a calibrated surrogate margin loss `phi` and minimize `E[phi(f(x)y)]`; then excess 0-1 risk is squeezed by excess surrogate risk, `R_nat(f) - R_nat* <= psi^{-1}(R_phi(f) - R_phi*)`, with `psi` the (identity, for hinge) calibration transform. One term down. The boundary term is the novelty and has no off-the-shelf surrogate, so I grind on it. First slacken: drop the "correctly classified" qualifier, `R_bdy <= Pr[x near boundary]` — I lose a little but gain a quantity that *no longer references the label* `y`, which tells me the boundary term is about the *geometry of `f` near `x`*, not about correctness. Now, "`x` is within `eps` of the boundary" means there is an `x'` in the ball where the prediction differs from the one at `x`: `Pr[x near boundary] = E max_{x' in B} 1{f(x)f(x') <= 0}`, an indicator of *disagreement between the center and a perturbed point* — far more natural to relax than "near a boundary." Upper-bound that indicator by a margin surrogate: for the standard nonneg, non-increasing `phi` with `phi(0) >= 1`, the pointwise inequality `phi(f(x)f(x')/lambda) >= 1{f(x)f(x')/lambda <= 0}` holds, so `R_bdy <= E max_{x' in B} phi(f(x)f(x')/lambda)`. A *differentiable* upper bound on the boundary error, measuring perturbed-vs-clean-prediction, not perturbed-vs-label. That difference from PGD-AT is the whole point: PGD-AT's inner loss is `phi(f(x')y)`, the perturbed point against the label; this is `phi(f(x)f(x'))`, the perturbed prediction against the clean prediction. Mine pushes the boundary *away from the data* by keeping the score's sign across the ball, without demanding the perturbed point match the label — which is precisely how it should protect clean accuracy on the CIFAR scenarios where PGD-AT overspent it.
+
+Stack the two pieces: `R_adv - R_nat* <= psi^{-1}(R_phi - R_phi*) + E max_{x' in B} phi(f(x)f(x')/lambda)`. It reads beautifully — first term, "be accurate on clean data"; second term, "do not let any nearby perturbation disagree with your clean prediction," a robustness *regularizer*. The scale `lambda` is the knob: small `lambda` punishes disagreement severely (robustness-heavy), large `lambda` lets the natural term dominate (accuracy-heavy). Check the toy: `lambda -> inf` recovers Bayes, `lambda -> 0` recovers the constant robust classifier. And this bound is *tight* — a two-atom construction saturates it up to arbitrary slack — so the regularizer is the right one, not merely *a* one, which is the claim PGD-AT's possibly-loose single bound cannot make.
+
+Now cross to the multi-class, deep-net implementation, where three gaps stand between me and the edit. The theory is binary; cross-entropy is the calibrated multi-class surrogate, so the accuracy term becomes `CE(f(x), y)` on the clean logits. The boundary surrogate `phi(f(x)f(x')/lambda)` becomes a discrepancy between the two output distributions, and the natural multi-class form is `KL(p(x) || p(x'))` — cross-entropy with the clean prediction as the soft target. KL is zero exactly when `p(x') = p(x)`, the "no disagreement" baseline, which is the flatness I am inducing; and it has the same `x'`-gradient as the cross-entropy form because the entropy of `p(x)` is constant in `x'`. The `psi^{-1}` gap: I drop the explicit inverse transform as a heuristic — its practical effect is only to rescale how hard the accuracy term competes with the boundary term, and I already have a scalar for that. Write `beta = 1/lambda` for the implementation weight; `beta` large means robustness-heavy. The objective is `min_f E[CE(f(x), y) + beta * max_{x' in B} KL(p(x) || p(x'))]`.
+
+The inner `max` is the operational heart, and here the task's harness pins the exact form. I need, per point, the `x'` in the ball that most increases `KL(p(x) || p(x'))` — a constrained max over an `L_inf` box, so PGD with the sign gradient, `attack_steps` times, projecting back into the box and `[0,1]`. There is a subtlety that bit me the moment I wrote `grad_x' KL(p(x) || p(x'))`: at `x' = x` the KL is exactly zero, its global *minimum*, so the gradient vanishes and an attack started at the clean point never leaves it. PGD-AT started from a *uniform* random point in the ball; here I must start from a tiny random *nudge* off the center instead, `x' = x + 0.001 * randn`, to break the stationarity at the global min — a structurally forced choice, not a stylistic one. And I use the *forward* KL `KL(p(x) || p(x'))`, clean distribution as the anchor: the inner attack maximizes the perturbed prediction's divergence from the clean anchor, the outer minimization drives it back. In this task's edit surface that is `F.kl_div(F.log_softmax(model(x_adv)), F.softmax(model(x_clean)), reduction='batchmean')` — the adversarial branch as the log-probability input, the clean branch as the probability target. One detail the harness fixes that I should name: during the inner attack the clean logits are computed once and *detached* as the KL target, so the attack ascends only `x_adv` and the clean prediction is a frozen anchor; the `batchmean` reduction already divides by the batch, so unlike a raw `sum` form I need no separate `1/batch_size`. These are the task's conventions, and the code in the answer follows them exactly.
+
+Then alternate, heuristically: freeze the network (eval mode, so batch-norm statistics do not shift while I craft the perturbations), run the `attack_steps` sign-ascent steps to get `x'`, unfreeze (train mode), and take one SGD step on `CE(f(x), y) + beta * KL(p(x) || p(x'))`. `beta = 6.0` — the value the harness fixes — sits robustness-heavy, which is what the CIFAR rows demand. The whole loop is the literal scaffold edit: `__init__` stores the args plus `self.beta = 6.0`; `train_step` does the eval-mode KL-PGD with the detached clean target, then the train-mode clean CE plus `beta * batchmean-KL` and `optimizer.zero_grad()/backward()/step()`, returning the loss plus its two components. The full module is in the answer.
+
+So the delta from PGD-AT is sharp, and the falsifiable claims are pointed at the exact numbers I am reacting to. Where PGD-AT trained the perturbed point against the *label* with one term and no knob, TRADES splits the objective into clean CE plus a `beta`-weighted KL that pushes the perturbed prediction back to the *clean* prediction — buying the trade-off dial the decomposition proved is mandatory. Reading the PGD-AT row, I expect: on MNIST, where PGD-AT already had slack, TRADES should *raise* PGD-50 above 0.8932 (the boundary regularizer flattens the score where there is room) while holding clean near 0.98 — the cheapest win. On the CIFAR scenarios the prediction is more interesting and more falsifiable: TRADES should *lift* PGD-50 robustness where the boundary term does its work, but because `beta = 6.0` is robustness-heavy it may *trade away* some of PGD-AT's clean accuracy — so I expect CIFAR-10 clean to drop below 0.8501 and CIFAR-100 clean below 0.5828, with robustness moving up. If instead robustness does *not* rise on the per-architecture CIFAR-10 cases — if VGG or the ResNet PGD-50 lands at or below PGD-AT's 0.4194 / 0.4585 — then the knob is mis-set for these models and the failure mode names the next rung: TRADES pushes *every* example's boundary equally hard, including the ones the model already nails, and reallocating that effort toward the examples that actually move robustness is the move the next baseline must make.
+</think>
+<say>
+[[FILL_SAY: 1-2 sentences naming the method and what this first edit does]]
+</say>
+<edit path="torchattacks/bench/custom_adv_train.py">
+<old>
+class AdversarialTrainer:
+    """PGD Adversarial Training (Madry et al., 2018)."""
+</old>
+<new>
+class AdversarialTrainer:
+    """TRADES (Zhang et al., 2019)."""
+</new>
+</edit>
+<obs>
+Successfully replaced text in torchattacks/bench/custom_adv_train.py.
+</obs>
+<note>
+[[FILL_NOTE?: optional one-line thought for this edit, or delete this block]]
+</note>
+<edit path="torchattacks/bench/custom_adv_train.py">
+<old>
+        self.num_classes = num_classes
+
+    def train_step(self, images, labels, optimizer):
+        # Inner max: random-start L_inf PGD (eval mode so BN/dropout are frozen).
+        self.model.eval()
+</old>
+<new>
+        self.num_classes = num_classes
+        self.beta = 6.0  # TRADES regularization weight
+
+    def train_step(self, images, labels, optimizer):
+        self.model.train()
+
+        # Clean forward pass (the anchor for the KL target).
+        logits_clean = self.model(images)
+        loss_clean = F.cross_entropy(logits_clean, labels)
+
+        # Inner max: generate adversarial examples by maximizing KL(clean || adv).
+        self.model.eval()
+</new>
+</edit>
+<obs>
+Successfully replaced text in torchattacks/bench/custom_adv_train.py.
+</obs>
+<note>
+[[FILL_NOTE?: optional one-line thought for this edit, or delete this block]]
+</note>
+<edit path="torchattacks/bench/custom_adv_train.py">
+<old>
+            adv_images.requires_grad_(True)
+            outputs = self.model(adv_images)
+            loss = F.cross_entropy(outputs, labels)               # untargeted: maximize true-label CE
+            grad = torch.autograd.grad(loss, adv_images)[0]
+            adv_images = adv_images.detach() + self.alpha * grad.sign()
+            delta = torch.clamp(adv_images - images, min=-self.eps, max=self.eps)  # project into eps-box
+            adv_images = torch.clamp(images + delta, 0.0, 1.0).detach()            # project into [0,1]
+
+        # Outer min: one ordinary CE step on the adversarial batch (valid by Danskin).
+        self.model.train()
+        outputs = self.model(adv_images)
+        loss = F.cross_entropy(outputs, labels)
+</old>
+<new>
+            adv_images.requires_grad_(True)
+            logits_adv = self.model(adv_images)
+            loss_kl = F.kl_div(
+                F.log_softmax(logits_adv, dim=1),
+                F.softmax(logits_clean.detach(), dim=1),   # frozen clean anchor
+                reduction='batchmean',
+            )
+            grad = torch.autograd.grad(loss_kl, adv_images)[0]
+            adv_images = adv_images.detach() + self.alpha * grad.sign()
+            delta = torch.clamp(adv_images - images, min=-self.eps, max=self.eps)
+            adv_images = torch.clamp(images + delta, 0.0, 1.0).detach()
+
+        # Outer min: clean CE + beta * KL(clean || adv).
+        self.model.train()
+        logits_adv = self.model(adv_images)
+        loss_kl = F.kl_div(
+            F.log_softmax(logits_adv, dim=1),
+            F.softmax(logits_clean.detach(), dim=1),
+            reduction='batchmean',
+        )
+        loss = loss_clean + self.beta * loss_kl
+</new>
+</edit>
+<obs>
+Successfully replaced text in torchattacks/bench/custom_adv_train.py.
+</obs>
+<note>
+[[FILL_NOTE?: optional one-line thought for this edit, or delete this block]]
+</note>
+<edit path="torchattacks/bench/custom_adv_train.py">
+<old>
+
+        return {'loss': loss.item()}
+</old>
+<new>
+
+        return {
+            'loss': loss.item(),
+            'loss_clean': loss_clean.item(),
+            'loss_kl': loss_kl.item(),
+        }
+</new>
+</edit>
+<obs>
+Successfully replaced text in torchattacks/bench/custom_adv_train.py.
+</obs>
+<run/>
+<obs>
+Measured results — `baseline:trades` (`is_final,true`), seed 42.
+
+| scenario | clean_acc | robust_acc_fgsm | robust_acc_pgd (primary) |
+|---|---|---|---|
+| SmallCNN-MNIST | 0.9863 | 0.9647 | 0.9350 |
+| PreActResNet18-C10 | 0.7894 | 0.4924 | 0.4410 |
+| VGG11BN-C10 | 0.7421 | 0.4556 | 0.4065 |
+| PreActResNet18-C100 | 0.5249 | 0.2552 | 0.2268 |
+</obs>
+
+### step 3 — MART (Wang et al., 2020)   [slug:mart]
+
+<think>
+[[POLISH_REASONING: adapt to first-person agentic voice, end by deciding to implement]]
+The TRADES numbers confirmed the prediction I closed step 2 on, and confirmed it in the most pointed way possible: the knob helped exactly where there was slack and *hurt* where there was not. On MNIST it did what I hoped — PGD-50 climbed from PGD-AT's 0.8932 to 0.9350, clean held at 0.9863 — because MNIST has enough room for the boundary regularizer to flatten the score without costing accuracy. But on the CIFAR scenarios the robustness-heavy `beta = 6.0` did the opposite of help. CIFAR-10 PGD-50 *dropped*, 0.4585 under PGD-AT down to 0.4410 under TRADES, with clean collapsing from 0.8501 to 0.7894; VGG-11-BN PGD-50 fell from 0.4194 to 0.4065 with clean down from 0.7796 to 0.7421; CIFAR-100 PGD-50 barely moved, 0.2214 to 0.2268, while clean dropped from 0.5828 to 0.5249. So TRADES spent a lot of clean accuracy and on three of four scenarios did not even buy robustness back. That is not a knob mis-set by a little — it is the structural complaint I flagged: TRADES pushes *every* example's boundary equally hard, the ones the model already nails and the ones it already blows, and on the harder CIFAR distributions that uniform pressure wastes itself on the easy examples while starving the hard ones. The leverage is being mis-allocated.
+
+So before I design anything I want to know *which* examples actually carry robustness, because the TRADES row says "treat them all the same" is wrong but does not say what the right allocation is. Stare at the definition of an adversarial example: it is a perturbation of a *correctly classified* input that flips it to wrong. That is the whole concept — you were right, the adversary nudges, now you are wrong. But during training, at any epoch, the current model already gets some natural examples wrong with *no* perturbation. For those, the "adversarial example" PGD crafts is perturbing an input that was already misclassified — the object is not even well-defined under the textbook notion. And both PGD-AT and TRADES treat that example identically to a confident correct one: PGD-AT slaps the same CE on every perturbed point, TRADES pushes the same `beta`-weighted KL on every clean prediction. I have been treating "the example the model nails" and "the example it already blows" as identical citizens. That is the thing to probe.
+
+So split the training data by what the *current* model does on the *natural* image: `S-`, the examples it currently misclassifies, and `S+`, an equal-size chunk it classifies correctly. Three concrete measurements, each isolating a part of the recipe. First, contribution to final robustness: if I simply *do not perturb* `S-` during training (train on the clean version of those while still perturbing everything else), final robustness drops drastically; do the same to `S+` and robustness barely moves. So the misclassified examples carry most of the robustness — exactly the examples TRADES's uniform `beta` under-serves on CIFAR. Second, attack strength: replace PGD with weak one-step FGSM on `S-` only and robustness is essentially unchanged; do the weak attack on `S+` only and robustness degrades. So on the misclassified subset *how hard I attack* is nearly irrelevant — which kills any instinct to fix the CIFAR drop with a cleverer inner max; the inner max is fine. Third, the outer loss: add a consistency regularizer (perturbed output should match the clean output) to the loss on `S-` only and robustness improves substantially; add it to `S+` only and it helps far less. The lesson is sharp: the leverage is on misclassified examples, and on those the action is in the *outer minimization*, not the attack. Whatever I build lives in the outer loss and must *single out misclassified examples* — the precise thing TRADES's uniform regularizer cannot do.
+
+Write a risk that does. Against the 0-1 loss first, to stay honest. The standard adversarial risk is `R(h) = (1/n) sum_i max_{x'} 1{h(x') != y_i}`. Split by the model's clean prediction: `S+ = {i: h(x_i) = y_i}`, `S- = {i: h(x_i) != y_i}`, with `xhat'_i` the adversarial example. On `S+` I keep the standard adversarial risk — those are the citizens the existing recipes handle fine. On `S-` I need something different. My first instinct is to also demand `1{h(xhat'_i) != y_i} = 0` there — but that asks the perturbed version of an already-wrong example to be *correct*, a harder target than I meet on the easy case; it will thrash. The diagnostic agrees from the other side: it was the *consistency* regularizer, not a harder classification demand, that helped on `S-`. So ask for the gentler, more honest thing: not "be correct after perturbation," but "be *stable* under perturbation" — the perturbed prediction should not differ from the clean one. Add the indicator `1{h(x_i) != h(xhat'_i)}`. So `R-(h, x_i) = 1{h(xhat'_i) != y_i} + 1{h(x_i) != h(xhat'_i)}`.
+
+Now check whether the split even needs two formulas. On `S+`, `h(x_i) = y_i`, so the stability indicator `1{h(x_i) != h(xhat'_i)}` becomes `1{y_i != h(xhat'_i)}` — *identical* to the first term. So applying `R-` everywhere only double-counts the standard risk on `S+` and adds the genuinely new stability term on `S-`. That means I do not need a hard branch; I write one risk where the stability term is *gated on* only for misclassified examples: `R_misc(h) = (1/n) sum_i {1{h(xhat'_i) != y_i} + 1{h(x_i) != h(xhat'_i)} * 1{h(x_i) != y_i}}`. The first term is the ordinary adversarial risk applied to everyone; the second is a *misclassification-aware regularizer* gated by `1{h(x_i) != y_i}` so it fires only on examples whose clean version is already wrong. The gate is the whole idea — the formal version of "single out the misclassified examples and regularize *them*" — and it falls out of the algebra rather than being imposed. This is exactly the reallocation the TRADES CIFAR rows demanded: pour the regularization onto the hard examples instead of spreading it uniformly.
+
+It is a sum of indicators, so I need surrogates, one per indicator, each physically meaningful. Three to replace. First, `1{h(xhat') != y}`, classification on the perturbed input — the reflex is plain CE, what PGD-AT uses. But this term applies to *every* example and is the backbone of robustness, and the capacity argument says a robust boundary is more complicated than a clean one, so I want the loss to push harder for separation. CE maximizes the true-class probability but does not care how large the *best wrong-class* probability is once the true class is on top. For robustness I want a wide margin to the nearest competitor, so *boost* CE with a margin term: `BCE(p(xhat'), y) = -log p_y(xhat') - log(1 - max_{k!=y} p_k(xhat'))`. The second piece is small when the runner-up probability is small and blows up as a competitor nears certainty, so minimizing it widens the margin — answering the "robust classification needs a stronger classifier" pressure with the loss, not just model size. Second, the stability indicator `1{h(x) != h(xhat')}` wants a surrogate measuring how *different* two output distributions are: `KL(p(x) || p(xhat'))`, zero when they match, growing as they diverge — the same local-flatness instinct TRADES used, here aimed only at the hard examples. Third, the gate `1{h(x) != y}` is the delicate one, because a hard 0/1 switch inside a differentiable loss freezes the decision and cannot co-evolve as an example's status flips over training. I want a *soft* gate: what continuous quantity is large when the clean example is misclassified and small when it is confidently correct? The model hands me one — `1 - p_y(x)`, the mass on everything except the true class. Confidently correct, `p_y(x) ~ 1`, gate ~ 0; misclassified or uncertain, `p_y(x)` small, gate ~ 1. It is a smooth, jointly-learnable stand-in, and *graded* — it leans hardest on the most-wrong examples and tapers as an example becomes confident, exactly the "spend effort on the hard ones" pressure made continuous.
+
+Assemble: BCE applies to all examples; the KL is multiplied by the soft gate `(1 - p_y(x))`; one global scalar `lambda` balances classification against the regularizer (the *per-example* weighting is already handled by the gate). The per-example loss is `BCE(p(xhat'), y) + lambda * KL(p(x) || p(xhat')) * (1 - p_y(x))`, averaged over the batch. The adversarial example `xhat'` I still craft with strong CE-PGD — the same attack as PGD-AT — because the diagnostic was unambiguous that on the misclassified examples attack strength barely matters; the differentiation belongs entirely in the outer loss. Compare to TRADES directly, because the contrast is the point of this rung: TRADES fits the *clean* label with `CE(p(x), y)` and pushes the boundary with a KL whose weight is *the same for every example* — which is exactly why its CIFAR robustness stalled. Mine fits the *perturbed* input with a boosted CE and weights the KL *per example* by `(1 - p_y(x))`, reallocating the robustness push toward the examples that the diagnostic showed actually move robustness. The per-example reweighting is not a flourish; it is the direct implementation of the one finding that the TRADES row forced.
+
+Now the code, in this task's edit surface, where a few places need care and where the harness fixes conventions I must honor. The inner attack first, the standard part: eval mode, start from a tiny random nudge `images + 0.001*randn` (not the uniform-ball start PGD-AT used — MART's official recipe seeds the CE-PGD this way), then `attack_steps` of signed-gradient ascent on cross-entropy, projecting into the `eps`-box and `[0,1]` each step. Then the loss, train mode. The first subtlety is the margin term `-log(1 - max_{k!=y} p_k(xhat'))`: I need, per example, the largest probability among classes *other than* `y`. Argsort the probabilities, take the top two indices; if the top-1 equals `y` the runner-up I want is the top-2, else the top-1 itself is the best wrong class — so `new_y = (top1 == y ? top2 : top1)`, and `p_{new_y} = max_{k!=y} p_k` in both cases. Write the margin piece as `nll_loss` against `new_y` on `log(1.0001 - adv_probs + 1e-12)`, the slack keeping the log finite when a probability rounds to 1. The second subtlety is the KL: I want `KL(p(x) || p(xhat'))` summed over classes per sample, weighted by `(1 - p_y(x))`. Here the harness pins a convention I must match exactly and that differs from the bare paper write-up: the clean logits are taken *detached* — `logits_clean = self.model(images).detach()` — so the KL target `nat_probs` and the soft-gate weight `true_probs` are both computed from a *frozen* clean forward pass, and the regularizer's gradient flows only through the adversarial branch. (The standalone derivation keeps the clean logits attached so the gradient flows through `p(x)` too; this task deliberately detaches them, which stabilizes the KL target and the per-example weighting and is the implementation I must reproduce, not the paper's.) Multiply the per-sample KL by `(1.0000001 - true_probs)`, sum, divide by batch size for `loss_robust`. Total is `loss_adv + beta * loss_robust` with `beta = 6.0` — the value the harness hardcodes (the task description's headline `lambda = 5.0` is overridden by `beta = 6.0` in the actual edit, so I follow the edit). Backward, step. The full module is in the answer.
+
+So the delta from TRADES is one focused change with a clear mechanism, and the falsifiable claims are aimed straight at the rows that disappointed me. Where TRADES pushed a uniform-weight KL on every example's clean prediction and fit the clean label, MART fits the perturbed input with a margin-boosted CE and weights the KL per example by `(1 - p_y(x))`, concentrating the robustness pressure on the misclassified examples the diagnostic proved carry it. Reading the TRADES row, I expect MART to *recover and exceed* on exactly the scenarios TRADES lost: CIFAR-10 PGD-50 should rise back above PGD-AT's 0.4585 and TRADES's 0.4410, VGG PGD-50 above 0.4194, and CIFAR-100 PGD-50 above TRADES's flat 0.2268, because the reallocation puts effort where it moves the needle. The margin-boosted CE should also recover some of the clean accuracy TRADES spent — I expect CIFAR-10 clean back above TRADES's 0.7894, since the per-example gate stops over-regularizing the easy examples. The one place I am unsure is MNIST: TRADES already hit 0.9350 with no allocation problem to fix, so MART may match it rather than beat it — and that is fine; the rung is justified by the CIFAR recovery, not MNIST. If instead the per-example reweighting does *not* lift the CIFAR-10 robustness above 0.4585 — if the misclassification gate is the wrong lever — then the failure names the next rung: the problem is not *which* examples I regularize but *robust overfitting itself*, the late-training divergence between train and test robustness that no choice of per-example loss weight addresses, and flattening the *weight* loss landscape directly is the move that remains.
+</think>
+<say>
+[[FILL_SAY: 1-2 sentences naming the method and what this first edit does]]
+</say>
+<edit path="torchattacks/bench/custom_adv_train.py">
+<old>
+class AdversarialTrainer:
+    """TRADES (Zhang et al., 2019)."""
+</old>
+<new>
+class AdversarialTrainer:
+    """MART (Wang et al., 2020)."""
+</new>
+</edit>
+<obs>
+Successfully replaced text in torchattacks/bench/custom_adv_train.py.
+</obs>
+<note>
+[[FILL_NOTE?: optional one-line thought for this edit, or delete this block]]
+</note>
+<edit path="torchattacks/bench/custom_adv_train.py">
+<old>
+        self.num_classes = num_classes
+        self.beta = 6.0  # TRADES regularization weight
+
+    def train_step(self, images, labels, optimizer):
+        self.model.train()
+
+        # Clean forward pass (the anchor for the KL target).
+        logits_clean = self.model(images)
+        loss_clean = F.cross_entropy(logits_clean, labels)
+
+        # Inner max: generate adversarial examples by maximizing KL(clean || adv).
+        self.model.eval()
+        adv_images = images.clone().detach()
+        adv_images = adv_images + torch.empty_like(adv_images).uniform_(-self.eps, self.eps)
+        adv_images = torch.clamp(adv_images, 0.0, 1.0)
+</old>
+<new>
+        self.num_classes = num_classes
+        self.beta = 6.0  # MART regularization weight
+
+    def train_step(self, images, labels, optimizer):
+        # Inner max: strong CE-PGD seeded with a small random nudge (official mart.py).
+        self.model.eval()
+        adv_images = images.detach() + 0.001 * torch.randn_like(images)
+        adv_images = torch.clamp(adv_images, 0.0, 1.0)
+</new>
+</edit>
+<obs>
+Successfully replaced text in torchattacks/bench/custom_adv_train.py.
+</obs>
+<note>
+[[FILL_NOTE?: optional one-line thought for this edit, or delete this block]]
+</note>
+<edit path="torchattacks/bench/custom_adv_train.py">
+<old>
+            adv_images.requires_grad_(True)
+            logits_adv = self.model(adv_images)
+            loss_kl = F.kl_div(
+                F.log_softmax(logits_adv, dim=1),
+                F.softmax(logits_clean.detach(), dim=1),   # frozen clean anchor
+                reduction='batchmean',
+            )
+            grad = torch.autograd.grad(loss_kl, adv_images)[0]
+            adv_images = adv_images.detach() + self.alpha * grad.sign()
+</old>
+<new>
+            adv_images.requires_grad_(True)
+            outputs = self.model(adv_images)
+            loss = F.cross_entropy(outputs, labels)
+            grad = torch.autograd.grad(loss, adv_images)[0]
+            adv_images = adv_images.detach() + self.alpha * grad.sign()
+</new>
+</edit>
+<obs>
+Successfully replaced text in torchattacks/bench/custom_adv_train.py.
+</obs>
+<note>
+[[FILL_NOTE?: optional one-line thought for this edit, or delete this block]]
+</note>
+<edit path="torchattacks/bench/custom_adv_train.py">
+<old>
+
+        # Outer min: clean CE + beta * KL(clean || adv).
+        self.model.train()
+        logits_adv = self.model(adv_images)
+        loss_kl = F.kl_div(
+            F.log_softmax(logits_adv, dim=1),
+            F.softmax(logits_clean.detach(), dim=1),
+            reduction='batchmean',
+        )
+        loss = loss_clean + self.beta * loss_kl
+
+        optimizer.zero_grad()
+        loss.backward()
+        optimizer.step()
+
+        return {
+            'loss': loss.item(),
+            'loss_clean': loss_clean.item(),
+            'loss_kl': loss_kl.item(),
+        }
+</old>
+<new>
+
+        # Outer min: misclassification-aware loss.
+        self.model.train()
+        optimizer.zero_grad()
+
+        logits_clean = self.model(images).detach()  # detached: frozen KL target + soft-gate weight
+        logits_adv = self.model(adv_images)
+        adv_probs = F.softmax(logits_adv, dim=1)
+
+        # Boosted CE: standard CE + margin penalty on the best wrong class.
+        tmp1 = torch.argsort(adv_probs, dim=1)[:, -2:]
+        new_y = torch.where(
+            tmp1[:, -1] == labels, tmp1[:, -2], tmp1[:, -1],
+        )
+        loss_adv = F.cross_entropy(logits_adv, labels) + F.nll_loss(
+            torch.log(1.0001 - adv_probs + 1e-12), new_y,
+        )
+
+        # Misclassification-aware KL regularization weighted by (1 - p_y(x)).
+        nat_probs = F.softmax(logits_clean, dim=1)
+        true_probs = nat_probs.gather(1, labels.unsqueeze(1)).squeeze(1)
+        kl_per_sample = F.kl_div(
+            torch.log(adv_probs + 1e-12), nat_probs, reduction='none',
+        ).sum(dim=1)
+        batch_size = images.size(0)
+        loss_robust = (1.0 / batch_size) * torch.sum(
+            kl_per_sample * (1.0000001 - true_probs)
+        )
+
+        loss = loss_adv + self.beta * loss_robust
+
+        loss.backward()
+        optimizer.step()
+
+        return {'loss': loss.item()}
+</new>
+</edit>
+<obs>
+Successfully replaced text in torchattacks/bench/custom_adv_train.py.
+</obs>
+<run/>
+<obs>
+Measured results — `baseline:mart` (`is_final,true`), seed 42.
+
+| scenario | clean_acc | robust_acc_fgsm | robust_acc_pgd (primary) |
+|---|---|---|---|
+| SmallCNN-MNIST | 0.9837 | 0.9475 | 0.9055 |
+| PreActResNet18-C10 | 0.8342 | 0.5780 | 0.4891 |
+| VGG11BN-C10 | 0.7344 | 0.5181 | 0.4746 |
+| PreActResNet18-C100 | 0.5425 | 0.3120 | 0.2713 |
+</obs>
+
+### step 4 — AWP + TRADES (Wu et al., 2020)   [slug:awp]
+
+<think>
+[[POLISH_REASONING: adapt to first-person agentic voice, end by deciding to implement]]
+MART did what I predicted on the rows that mattered, and the way it succeeded tells me what is left undone. The per-example reallocation recovered exactly the CIFAR scenarios TRADES had lost: CIFAR-10 PGD-50 climbed to 0.4891, past PGD-AT's 0.4585 and well past TRADES's 0.4410; VGG-11-BN reached 0.4746, the best on the board, up from 0.4194/0.4065; CIFAR-100 hit 0.2713, clearly above TRADES's flat 0.2268. And the margin-boosted CE bought back clean accuracy — CIFAR-10 clean recovered to 0.8342 from TRADES's 0.7894. So concentrating the robustness pressure on the misclassified examples was the right allocation, just as the diagnostic said. But two things in the MART row tell me the loss-design lever is now nearly exhausted. First, MNIST PGD-50 actually *fell*, 0.9350 under TRADES to 0.9055 under MART — the boosted CE and the per-example gate are tuned for the hard CIFAR distributions and slightly overfit the easy MNIST one, which is a sign I am now trading between scenarios rather than lifting all of them. Second, and decisively: every method on this ladder so far — PGD-AT, TRADES, MART — is a different choice of *what loss to put on which example*, and the headline robust accuracy is still stuck in the mid-0.4s on CIFAR-10 and the high-0.2s on CIFAR-100. Three loss redesigns, and the ceiling barely moved. That pattern says the remaining gap is not about the loss at all.
+
+So what is the remaining gap about? Look past the per-scenario headline at the thing every adversarial-training run shares. A PGD-AT model on CIFAR-10 classifies about 84% of the *training* set correctly under a 10-step PGD attack, but only about 43% of the *test* set under the same attack — forty-one points of robust generalization gap, where a normally-trained net keeps its train/test gap under ten. And it gets worse over the curve: test robustness peaks early, right around the first learning-rate decay, then *decays* while training robustness keeps climbing. That is overfitting — but overfitting of the *worst-case* loss, not the clean loss — robust overfitting. People recover most of the apparent gains of fancier losses just by early-stopping at that peak, which is a confession, not a cure: it closes the gap only by quitting before the model has actually become robust, capping the peak at a mediocre training robustness. MART, TRADES, PGD-AT all sit inside this gap; none of them addresses it, because reweighting *which* example gets *which* loss does nothing about the late-training divergence between train and test robustness. That is the failure that survived all three rungs, and it is the one to attack now.
+
+What does adversarial training actually do, geometrically? It flattens the loss as a function of the *input*: around each training point the loss barely moves when you push the input inside the ball — that is the whole point of training on the worst input. Call that the input loss landscape; AT flattens it by construction. But flattening the loss in *input* space says nothing about how the loss behaves in *weight* space, and the gap I am chasing is a generalization gap — a property of the weights I land on, not of any single input. The connection I keep circling is the ordinary flat-minima story: if the loss surface as a function of the *weights* is flat around the solution — you can jiggle the weights and the loss barely rises — that solution generalizes better than one in a sharp, narrow valley. The object is the *weight* loss landscape: hold the data fixed, move the weights, watch the loss. Sharp is bad, flat is good. Does that link survive under adversarial training? I have to measure it correctly, because the obvious measurement is wrong: probing the surface with a fixed set of adversarial examples generated once on the unperturbed model makes every perturbed model look artificially robust (an adversarial example crafted for `f_w` is a weak attack on `f_{w+v}`), so the landscape looks artificially flat. The honest measurement regenerates the PGD attack on-the-fly for each perturbed weight, and uses filter-normalized directions so the comparison is scale-fair under ReLU scale invariance. Done that way, the evidence has a precise shape: before the "best" epoch the weight loss landscape is flat and the robust gap is small; after it, as test robustness falls, the landscape gets visibly sharper, in lockstep with the gap widening — and across PGD-AT, the KL-regularized variant, the misclassification-aware variant, and early-stopped AT, the smaller-gap methods all have flatter weight landscapes. So the flat-minima story *does* survive, and — the reframing — every method on my ladder, including MART, has only been flattening this surface *implicitly*, by a different indirect route. That is why three loss redesigns hit the same ceiling: they were all chasing the same geometric property sideways.
+
+That observation is the lever. If flatness of the weight loss landscape controls the robust generalization gap, and every successful method only flattens it as a side effect, I should stop being coy and flatten it *directly* — make it an explicit term. Write down what "flat at `w`" means: how much the adversarial loss `rho` rises if I move the weights to `w + v`, i.e. `rho(w+v) - rho(w)`. I want the loss low *and* that bump small, so `min_w {rho(w) + (rho(w+v) - rho(w))}`. The `rho(w)` and `-rho(w)` cancel, and the whole thing collapses to `min_w rho(w+v)`. Surprising and clean: minimizing "loss plus flatness penalty" is just minimizing the loss *at the perturbed point*, because the only way to keep the loss small at both `w` and `w+v` is for the surface between them to be flat — no separate regularizer needed. But which `v`? A *random* `v` (the PAC-Bayes `E_v[rho(w+v)]` spirit) mostly points along directions the loss does not care about, so it only probes the steep directions if I crank its magnitude until the temporary model stops being a local probe. The right tool is the *worst* direction — the one along which the adversarial loss rises fastest — found cheaply at tiny magnitude: `min_w max_{v in V} rho(w+v)`. A double perturbation: inputs perturbed adversarially (inner, per-example) and weights perturbed adversarially (outer over `v`). The PAC-Bayes flatness bound justifies the worst-case as a conservative upper bound on the expected sharpness term: an expectation over `V` cannot exceed the max on `V`, so driving down `max_v rho(w+v) - rho(w)` squeezes the expected-sharpness term that controls the gap.
+
+The bound also tells me how to *size* `v`: relative to `||w||`, per layer, because ReLU scale invariance makes absolute weight magnitudes meaningless — the same filter-normalization lesson. So I constrain `||v_l|| <= gamma * ||w_l||` with a single small dimensionless `gamma`, the weight-space analogue of `eps`. Solve the outer `max_v` by projected gradient *ascent* on `v`. The budget here is an `L_2`/Frobenius ball per layer, not an `L_inf` box, so the steepest-ascent direction is the *normalized* gradient (not the sign), scaled to the budget radius. I take the cheapest version that still implements the math: one alternation, the inner attack with its usual steps, one ascent step for `v`. With a single alternation `v = 0` when I craft `x'`, so `x'` is generated on the plain model and `v` is computed afterward on those `x'`. One extra ascent step per minibatch.
+
+Now the two traps in making this real, both of which the task's edit surface pins to a specific implementation I must reproduce. First, batch-norm statistics: computing `grad_v` needs forward passes through `f_{w+v}`, throwaway passes on a deliberately corrupted model that I do *not* want polluting the real model's BN running stats. The clean way is a *proxy* — a `copy.deepcopy` of the model with its own SGD optimizer — load the current weights in, do the ascent step there, read off the perturbation, apply it to the real model only for the actual training pass, restore afterward. The proxy carries the BN damage; the real model stays clean. The task's `__init__` sets up exactly this: `self.proxy = copy.deepcopy(model)` and `self.proxy_optim = torch.optim.SGD(self.proxy.parameters(), lr=0.1)`, the proxy lr matching the main lr — though the magnitude is governed by `gamma` and the renormalization, not the proxy lr, so the proxy lr only sets the ascent step's raw scale before I renormalize it away. Second, the ascent-as-negated-descent trick: a gradient-descent optimizer minimizes, so to make the proxy *ascend* the loss I feed it the *negated* loss and take one step — `loss = -1.0 * (loss_natural + beta * loss_robust)` — after which the proxy weights have moved in the ascent direction, and `Delta_w = w_proxy - w` points along `+grad rho`, the direction I want for `v`.
+
+The renormalization is the per-layer relative-size constraint, implemented exactly: for each multi-dim weight tensor, take the raw direction `Delta_w`, normalize to unit norm, multiply by `||w_l||`, so `diff_l = (||w_l|| / (||Delta_w_l|| + eps)) * Delta_w_l` with a tiny `1e-20` floor against a zero step; then the applied perturbation is `v_l = gamma * diff_l`, sitting right on the boundary of the `gamma*||w_l||` ball — the one-step ascent landing exactly on the constraint surface, so the projection is satisfied by construction. Which parameters? Only tensors with `dim > 1` whose name contains `'weight'` — convolutional and linear weights, where "relative to `||w_l||`" is meaningful — skipping BN scales and biases. The outer descent has its own trap: the perturbation is a temporary probe, I must not leave the weights at `w + v`. So after computing `diff`, I `perturb` (add `+gamma*diff`), compute the base loss under the perturbed weights, backward, `optimizer.step()`, then `restore` (add `-gamma*diff`) to bring the center back. The net effect is the SGD direction is the gradient *at the perturbed point* but applied to the center weights — a flat-minimum-seeking step without drifting toward the adversarial perturbation.
+
+The base loss this all sits on is the strongest I have built — TRADES: `CE(clean) + beta * KL(clean || adv)`, with `beta = 6.0`, and the adversarial example crafted by maximizing the KL between clean and perturbed predictions. I deliberately combine with TRADES rather than MART here, because AWP is generic over the inner loss and TRADES is the cleanest, strongest base to flatten; the per-example reweighting MART added is orthogonal and I am attacking a different axis now — the weight landscape, not the example allocation. In this task's edit surface the attack uses `F.kl_div(F.log_softmax(model(adv)), F.softmax(model(clean)), reduction='sum')` with the `0.001*randn` nudge start (the KL's global-minimum-at-`x` problem from step 2 still forces the nudge), and both the proxy ascent and the final descent use the `batchmean` TRADES loss with the same `kl_div(log_softmax(adv), softmax(clean))` argument order. `gamma = 0.005`, the useful band `[1e-3, 5e-3]` — too small flattens nothing, too large makes `w+v` a poor training point. The full module — proxy setup, `_diff_in_weights`, `_add_into_weights`, `_calc_awp`, and the four-step `train_step` (craft `x'`, compute `diff` on the proxy, perturb, TRADES loss + backward + step, restore) — is in the answer.
+
+So the delta from MART: keep a TRADES base, but wrap the whole update in an explicit weight-landscape flattening — find the worst-case per-layer relative weight perturbation on a proxy, take the descent step at the perturbed weights, and restore the center. The falsifiable claims are aimed at the gap MART left untouched. Because AWP attacks robust *overfitting* rather than the loss allocation, I expect it to lift PGD-50 on the scenario where the generalization gap is largest — CIFAR-10 on the ResNet — above MART's 0.4891, and on CIFAR-100 above MART's 0.2713, since a flatter weight minimum should let training robustness translate into test robustness instead of diverging late. I expect MNIST to *recover* from MART's dip back toward TRADES's 0.935, because flattening helps the easy scenario without the loss-tuning side-effects that pulled MART down there. The place I am unsure is VGG-11-BN, where MART already posted the board-best 0.4746 — AWP may match rather than clearly beat it, since BN-heavy nets interact with the proxy-BN handling and the per-layer relative scaling. If AWP fails to beat MART on CIFAR-10, the diagnosis would be that `gamma` is mis-set for these architectures (the flatness probe too gentle or too aggressive), not that flattening is the wrong axis — but the expectation, against MART's row, is that directly flattening the weight loss landscape lifts the headline robustness where three rounds of loss redesign could not.
+</think>
+<say>
+[[FILL_SAY: 1-2 sentences naming the method and what this first edit does]]
+</say>
+<edit path="torchattacks/bench/custom_adv_train.py">
+<old>
+class AdversarialTrainer:
+    """MART (Wang et al., 2020)."""
+
+    def __init__(self, model, eps, alpha, attack_steps, num_classes, **kwargs):
+        self.model = model
+</old>
+<new>
+class AdversarialTrainer:
+    """AWP + TRADES (Wu et al., 2020 + Zhang et al., 2019)."""
+
+    def __init__(self, model, eps, alpha, attack_steps, num_classes, **kwargs):
+        import copy
+        from collections import OrderedDict
+        self.model = model
+</new>
+</edit>
+<obs>
+Successfully replaced text in torchattacks/bench/custom_adv_train.py.
+</obs>
+<note>
+[[FILL_NOTE?: optional one-line thought for this edit, or delete this block]]
+</note>
+<edit path="torchattacks/bench/custom_adv_train.py">
+<old>
+        self.num_classes = num_classes
+        self.beta = 6.0  # MART regularization weight
+
+    def train_step(self, images, labels, optimizer):
+        # Inner max: strong CE-PGD seeded with a small random nudge (official mart.py).
+        self.model.eval()
+        adv_images = images.detach() + 0.001 * torch.randn_like(images)
+        adv_images = torch.clamp(adv_images, 0.0, 1.0)
+
+        for _ in range(self.attack_steps):
+            adv_images.requires_grad_(True)
+            outputs = self.model(adv_images)
+            loss = F.cross_entropy(outputs, labels)
+            grad = torch.autograd.grad(loss, adv_images)[0]
+            adv_images = adv_images.detach() + self.alpha * grad.sign()
+            delta = torch.clamp(adv_images - images, min=-self.eps, max=self.eps)
+            adv_images = torch.clamp(images + delta, 0.0, 1.0).detach()
+
+        # Outer min: misclassification-aware loss.
+        self.model.train()
+        optimizer.zero_grad()
+
+        logits_clean = self.model(images).detach()  # detached: frozen KL target + soft-gate weight
+        logits_adv = self.model(adv_images)
+        adv_probs = F.softmax(logits_adv, dim=1)
+
+        # Boosted CE: standard CE + margin penalty on the best wrong class.
+        tmp1 = torch.argsort(adv_probs, dim=1)[:, -2:]
+        new_y = torch.where(
+            tmp1[:, -1] == labels, tmp1[:, -2], tmp1[:, -1],
+        )
+        loss_adv = F.cross_entropy(logits_adv, labels) + F.nll_loss(
+            torch.log(1.0001 - adv_probs + 1e-12), new_y,
+        )
+
+        # Misclassification-aware KL regularization weighted by (1 - p_y(x)).
+        nat_probs = F.softmax(logits_clean, dim=1)
+        true_probs = nat_probs.gather(1, labels.unsqueeze(1)).squeeze(1)
+        kl_per_sample = F.kl_div(
+            torch.log(adv_probs + 1e-12), nat_probs, reduction='none',
+        ).sum(dim=1)
+        batch_size = images.size(0)
+        loss_robust = (1.0 / batch_size) * torch.sum(
+            kl_per_sample * (1.0000001 - true_probs)
+        )
+
+        loss = loss_adv + self.beta * loss_robust
+
+        loss.backward()
+        optimizer.step()
+
+        return {'loss': loss.item()}
+</old>
+<new>
+        self.num_classes = num_classes
+        self.beta = 6.0        # TRADES regularization weight
+        self.gamma = 0.005     # AWP perturbation magnitude (paper default)
+        self._EPS_AWP = 1e-20
+        # Proxy model + optimizer so BN running stats of the main model are untouched.
+        self.proxy = copy.deepcopy(model)
+        self.proxy_optim = torch.optim.SGD(self.proxy.parameters(), lr=0.1)
+
+    def _diff_in_weights(self):
+        from collections import OrderedDict
+        diff = OrderedDict()
+        model_sd = self.model.state_dict()
+        proxy_sd = self.proxy.state_dict()
+        for (old_k, old_w), (new_k, new_w) in zip(model_sd.items(), proxy_sd.items()):
+            if old_w.dim() <= 1:
+                continue
+            if 'weight' in old_k:
+                diff_w = new_w - old_w
+                diff[old_k] = old_w.norm() / (diff_w.norm() + self._EPS_AWP) * diff_w
+        return diff
+
+    def _add_into_weights(self, diff, coeff):
+        with torch.no_grad():
+            names = diff.keys()
+            for name, param in self.model.named_parameters():
+                if name in names:
+                    param.add_(coeff * diff[name])
+
+    def _calc_awp(self, adv_images, clean_images, labels):
+        self.proxy.load_state_dict(self.model.state_dict())
+        self.proxy.train()
+        loss_natural = F.cross_entropy(self.proxy(clean_images), labels)
+        loss_robust = F.kl_div(
+            F.log_softmax(self.proxy(adv_images), dim=1),
+            F.softmax(self.proxy(clean_images), dim=1),
+            reduction='batchmean',
+        )
+        loss = -1.0 * (loss_natural + self.beta * loss_robust)  # negate => ascent
+        self.proxy_optim.zero_grad()
+        loss.backward()
+        self.proxy_optim.step()
+        return self._diff_in_weights()
+
+    def train_step(self, images, labels, optimizer):
+        # Step 1: TRADES-style attack (maximize KL(clean || adv), sum reduction).
+        self.model.eval()
+        adv_images = images.detach() + 0.001 * torch.randn_like(images)
+        adv_images = torch.clamp(adv_images, 0.0, 1.0)
+        for _ in range(self.attack_steps):
+            adv_images.requires_grad_(True)
+            loss_kl = F.kl_div(
+                F.log_softmax(self.model(adv_images), dim=1),
+                F.softmax(self.model(images), dim=1),
+                reduction='sum',
+            )
+            grad = torch.autograd.grad(loss_kl, adv_images)[0]
+            adv_images = adv_images.detach() + self.alpha * grad.sign().detach()
+            delta = torch.clamp(adv_images - images, min=-self.eps, max=self.eps)
+            adv_images = torch.clamp(images + delta, 0.0, 1.0).detach()
+
+        self.model.train()
+
+        # Step 2: AWP — worst-case weight perturbation via proxy, apply to model.
+        diff = self._calc_awp(adv_images, images, labels)
+        self._add_into_weights(diff, coeff=1.0 * self.gamma)
+
+        # Step 3: TRADES loss under perturbed weights.
+        optimizer.zero_grad()
+        logits_adv = self.model(adv_images)
+        loss_robust = F.kl_div(
+            F.log_softmax(logits_adv, dim=1),
+            F.softmax(self.model(images), dim=1),
+            reduction='batchmean',
+        )
+        logits_clean = self.model(images)
+        loss_clean = F.cross_entropy(logits_clean, labels)
+        loss = loss_clean + self.beta * loss_robust
+
+        # Step 4: backward, step, then RESTORE the center weights.
+        optimizer.zero_grad()
+        loss.backward()
+        optimizer.step()
+        self._add_into_weights(diff, coeff=-1.0 * self.gamma)
+
+        return {'loss': loss.item()}
+</new>
+</edit>
+<obs>
+Successfully replaced text in torchattacks/bench/custom_adv_train.py.
+</obs>
+<run/>
+<obs>
+Measured results — `baseline:awp` (`is_final,true`), seed 42.
+
+| scenario | clean_acc | robust_acc_fgsm | robust_acc_pgd (primary) |
+|---|---|---|---|
+| SmallCNN-MNIST | 0.9732 | 0.9434 | 0.9217 |
+| PreActResNet18-C10 | 0.8112 | 0.5751 | 0.5370 |
+| VGG11BN-C10 | 0.7642 | 0.4751 | 0.4235 |
+| PreActResNet18-C100 | 0.5789 | 0.3289 | 0.3043 |
+</obs>
+

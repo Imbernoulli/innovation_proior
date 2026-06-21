@@ -1,0 +1,1153 @@
+<meta task="cv-vae-loss" domain="Computer vision" file="diffusers-main/custom_train.py" model_format="qwen3" edit_tool="str_replace"/>
+
+<system>
+You are a research engineer improving a model on a fixed ML task. You work by editing the model code and running experiments. Think carefully before each change. You have these tools:
+- str_replace(path, old_str, new_str): replace the unique occurrence of old_str with new_str.
+- create(path, file_text): create a new file.
+- run_experiment(): train + evaluate the current code under the fixed budget; returns metrics.
+Make one tool call at a time. After editing, call run_experiment() to measure your method.
+</system>
+
+<user>
+## Research question
+
+A KL-regularized autoencoder (`AutoencoderKL` from `diffusers`) is trained on CIFAR-10 32×32 images,
+and the single thing being designed is the **training loss**. Architecture, optimizer, LR schedule,
+mixed precision, gradient clipping, and EMA are all fixed; the only contribution allowed is the loss
+function. The objective is the best reconstruction quality on the held-out test set, scored primarily
+by reconstruction FID (rFID, lower is better), with PSNR and SSIM as supporting diagnostics. The loss
+sees a reconstruction, a target, the encoder's diagonal-Gaussian posterior, and the current training
+step — and must return a scalar to backpropagate plus a metrics dict. Everything below the editable
+region is frozen.
+
+## Prior art before the first rung (reconstruction-objective lineage)
+
+The first rung — a pixel reconstruction term plus a KL regularizer — is the resolution of a line of
+generative-autoencoder objectives. These precede the ladder; the editable contract below is the slot
+they each fill.
+
+- **Plain autoencoder (Hinton & Salakhutdinov 2006).** Encode to a bottleneck, decode, minimize pixel
+  reconstruction error. Compresses, but the latent space has no probabilistic structure — no prior, no
+  way to sample — and reconstruction alone is known not to learn a well-behaved code. Gap: no
+  generative model, no regularized latent.
+- **Denoising / sparse autoencoders (Vincent et al. 2008; Ranzato et al. 2007).** Add a hand-set
+  corruption or sparsity penalty to force a useful code. The regularizer works but is ad-hoc — a knob
+  bolted on, not derived from a likelihood. Gap: the regularizer is hand-designed, not principled.
+- **Variational Bayes / mean-field (Jordan et al. 1999).** Bound an intractable likelihood with a
+  tractable `q`, but coordinate-ascent updates need analytic expectations under conjugate families —
+  hopeless once the decoder is a neural network — and fit a separate `q` per datapoint, which does not
+  scale to a large image set. Gap: no neural likelihoods, no amortization.
+- **Pixel reconstruction distances (L2 / L1).** Squared error is the negative log-likelihood of a
+  fixed-variance Gaussian decoder; absolute error is the Laplace sibling, which penalizes large
+  residuals less and tends to come out sharper. Both treat pixels as independent, so they reward the
+  blurry conditional mean under reconstruction uncertainty. Gap: pixel independence rewards blur.
+
+## The fixed substrate
+
+The training loop in `custom_train.py` is frozen and must not be touched. It builds an `AutoencoderKL`
+(3 blocks, 2 downsample stages, latent 8×8 at compression `f=4`; channel widths and latent channels
+scale with `BLOCK_OUT_CHANNELS`/`LATENT_CHANNELS` across the small/medium/large scales), wraps it so a
+forward pass does encode → sample (one reparameterized draw `z = mean + std·eps` inside
+`posterior.sample()`) → decode, and runs AdamW (lr 4e-4, wd 1e-4), 5% warmup + cosine LR, autocast +
+GradScaler, grad clip 1.0, and EMA at 0.999. It evaluates rFID/PSNR/SSIM on the 10,000-image test set.
+
+One detail of the loop is load-bearing for the third rung: it has **built-in GAN support** that
+activates only if the loss module exposes a discriminator. If the criterion has `disc` and `disc_opt`
+attributes, then after a `disc_start` warm-up the loop, every step, (1) adds an adversarial generator
+loss `g_loss = -mean disc(recon)` to the loss with an **adaptive weight** that balances the GAN
+gradient against a reference gradient at the decoder's last layer `vae.decoder.conv_out.weight` — using
+`criterion._perceptual_loss` as the reference if the module stored it — and (2) updates the
+discriminator with a **hinge loss plus an R1 gradient penalty** (`gp_weight=10`) via the module's own
+`disc_opt`. So the adversarial machinery lives in the *fixed loop*; a GAN-style loss module only has to
+build the discriminator, set `disc_start`, and stash `_perceptual_loss`.
+
+## The editable interface
+
+Exactly one region is editable — the `VAELoss` class (lines 32–76 of `custom_train.py`). Every method
+on the ladder is a fill of this same contract:
+
+```python
+class VAELoss(nn.Module):
+    def __init__(self, device): ...
+    def forward(self, recon, target, posterior, step):
+        # recon:     [B, 3, 32, 32] reconstruction in [-1, 1]
+        # target:    [B, 3, 32, 32] original     in [-1, 1]
+        # posterior: DiagonalGaussianDistribution — posterior.kl() is the per-sample KL
+        #            0.5*sum_j (mu_j^2 + sigma_j^2 - 1 - log sigma_j^2); also .mean, .logvar
+        # step:      current training step (int)
+        # returns:   (loss_tensor, metrics_dict)
+        ...
+```
+
+Available inside the loss: `torch`, `torch.nn`, `torch.nn.functional`, `torch.fft`, `lpips`, `numpy`,
+`math`. The reconstruction sample is already baked into `recon` (one reparameterized draw), so the loss
+must **not** resample. A GAN-style fill may additionally define a discriminator module, a `disc_opt`,
+and a `disc_start` step, and store `self._perceptual_loss` — the fixed loop reads those.
+
+The starting point is the scaffold default: the loss is unimplemented. Each rung replaces exactly this
+class (and, for the adversarial rung, adds a discriminator class beside it) and nothing else.
+
+```python
+# EDITABLE region of custom_train.py (lines 32-76) — scaffold default (unimplemented)
+class VAELoss(nn.Module):
+    """VAE training loss function.
+
+    The loss receives:
+        recon:     Reconstructed images [B, 3, 32, 32] in [-1, 1]
+        target:    Original images      [B, 3, 32, 32] in [-1, 1]
+        posterior: DiagonalGaussianDistribution from the encoder
+                   - posterior.kl()   -> KL divergence [B, ...]
+                   - posterior.mean   -> latent mean
+                   - posterior.logvar -> latent log-variance
+        step:      Current training step (int)
+
+    Must return: (total_loss, metrics_dict)
+    Available imports: torch, torch.nn, torch.nn.functional, numpy, lpips, torch.fft
+    """
+
+    def __init__(self, device):
+        super().__init__()
+        raise NotImplementedError("Implement VAELoss.__init__")
+
+    def forward(self, recon, target, posterior, step):
+        raise NotImplementedError("Implement VAELoss.forward")
+```
+
+## Evaluation settings
+
+Three training scales, each a different model width and latent channel count over a fixed step budget:
+**small** (`BLOCK_OUT_CHANNELS=(64,128,256)`, `LATENT_CHANNELS=4`, 20,000 steps), **medium**
+(`(96,192,384)`, `LATENT_CHANNELS=8`, 30,000 steps), and **large** (`(128,256,512)`,
+`LATENT_CHANNELS=16`, 30,000 steps), all on a single seed (42). Reconstruction quality is measured on
+the full CIFAR-10 test set (10,000 images). The primary metric is **best rFID per scale** (lower is
+better); the task score is the geometric mean of best rFID across the three scales. PSNR (dB, higher
+better) and SSIM (higher better) are supporting diagnostics. The contribution is the loss design only.
+
+The editable model code is in `diffusers-main/custom_train.py`:
+```python
+class VAELoss(nn.Module):
+    """VAE training loss function.
+
+    TODO: Design your loss function for training a KL-regularized VAE.
+
+    The loss function receives:
+        recon:     Reconstructed images [B, 3, 32, 32] in [-1, 1]
+        target:    Original images [B, 3, 32, 32] in [-1, 1]
+        posterior: DiagonalGaussianDistribution from the encoder
+                   - posterior.kl()       -> KL divergence [B, ...]
+                   - posterior.mean       -> latent mean
+                   - posterior.logvar     -> latent log-variance
+        step:      Current training step (int)
+
+    Must return: (total_loss, metrics_dict)
+        total_loss: scalar tensor (for backpropagation)
+        metrics_dict: dict with string keys and float values for logging
+
+    Available imports: torch, torch.nn, torch.nn.functional, numpy, lpips
+    The lpips package provides learned perceptual loss:
+        loss_fn = lpips.LPIPS(net='vgg').to(device)
+        p_loss = loss_fn(recon, target).mean()
+
+    You may also use torch.fft for frequency-domain operations, or any
+    other approach you think will improve reconstruction quality.
+
+    Evaluation metrics (for reference, you do NOT compute these):
+        - rFID: Reconstruction FID (lower is better)
+        - PSNR: Peak signal-to-noise ratio in dB (higher is better)
+        - SSIM: Structural similarity (higher is better)
+    """
+
+    def __init__(self, device):
+        super().__init__()
+        raise NotImplementedError("Implement VAELoss.__init__")
+
+    def forward(self, recon, target, posterior, step):
+        """Compute total VAE loss.
+
+        Returns:
+            loss: scalar tensor (total training loss for backpropagation)
+            metrics: dict of {str: float} for logging
+        """
+        raise NotImplementedError("Implement VAELoss.forward")
+```
+Improve it. Derive your method, edit the code, then run_experiment().
+</user>
+
+### step 1 — L1 reconstruction + KL (negative ELBO)   [slug:l2-kl]
+
+<think>
+The loss is the whole task, and with the architecture, optimizer, schedule, and evaluation all frozen,
+the floor I must start from is the simplest objective that trains this `AutoencoderKL` at all. Whatever
+I eventually build will be a correction to *this*, so I want to get the floor exactly right and
+understand precisely what it can and cannot do, because its measured failure is what the next rung
+reacts to. The loop has already encoded the image into a diagonal-Gaussian posterior, drawn one
+reparameterized code, and decoded it into `recon`; it exposes `posterior.kl()` and hands me `recon`,
+`target`, the `posterior`, and `step`. My job is to turn those into one scalar to minimize. So let me
+derive what that scalar should be from first principles, then read off the literal fill.
+
+I am training a deep latent-variable model: a latent `z ~ p(z)` pushed through a decoder to paint an
+image, `x ~ p_theta(x|z)`. I fix the prior to the most boring thing imaginable, `p(z) = N(0, I)`,
+parameter-free, and let all the modeling happen in the decoder — a Gaussian pushed through a deep
+enough network can manufacture whatever latent structure the data needs, so expressiveness is not my
+problem. My problem is learning. To do maximum likelihood on `theta` I need the marginal
+`p_theta(x) = ∫ p(z) p_theta(x|z) dz`, and the instant the decoder is a neural net that integral is
+intractable; by Bayes the posterior `p_theta(z|x)` is intractable for the same reason, which kills EM
+(its E-step *is* the posterior) and the conjugate mean-field machinery. So I replace the true posterior
+by a tractable approximation `q_phi(z|x)` and optimize a bound. For any `q` I can write
+`log p_theta(x) = L(x) + D_KL(q_phi(z|x) || p_theta(z|x))`, where
+`L(x) = E_{q}[log p_theta(x,z) - log q_phi(z|x)]`; since a KL is non-negative, `L(x) ≤ log p_theta(x)`
+is a lower bound on the evidence, and the slack is exactly that intractable posterior KL — which I am
+happy to leave implicit, because maximizing `L` both raises the marginal likelihood I care about and
+tightens `q` toward the true posterior at once. Peeling out the prior gives the form I want to stare
+at: `L(x) = E_{q}[log p_theta(x|z)] - D_KL(q_phi(z|x) || p(z))`. Structurally that *is* a regularized
+autoencoder — an expected reconstruction log-likelihood minus a divergence pulling the encoder's output
+toward the prior — and the regularizer is not an ad-hoc penalty I bolted on the way denoising or sparse
+autoencoders need one; it falls out of the probability. That is already a better story than a plain
+autoencoder, which is known not to learn a well-behaved code from reconstruction alone.
+
+The sign discipline bites later, so I pin it now. The *bound* I maximize contains `-D_KL`; the *loss*
+I minimize is `-L`, so it must contain `+D_KL`. Maximize the negative-divergence, equivalently minimize
+the positive-divergence — I will *add* the KL to the loss, never subtract it there.
+
+The diagonal Gaussian I am handed gives the prior divergence in closed form, no Monte-Carlo noise. For
+`q = N(mu, sigma^2 I)` and `p = N(0, I)` over latent dimension `J`, the negative-KL term in the bound is
+`-D_KL(q||p) = 0.5 Σ_j (1 + log sigma_j^2 - mu_j^2 - sigma_j^2)`, which is never positive and reaches
+zero exactly at `mu_j = 0, sigma_j = 1` — the prior — as it must. Its negation is the positive KL I add
+to the loss, `D_KL(q||p) = 0.5 Σ_j (mu_j^2 + sigma_j^2 - 1 - log sigma_j^2)`, and that is *precisely*
+the per-sample quantity `posterior.kl()` already returns. So the KL half of my objective is just
+`posterior.kl().mean()` — averaged over the minibatch, added to the loss. I do not recompute it from
+`mu` and `logvar`; the loop's bottleneck has done that for me.
+
+Now the reconstruction term `log p_theta(x|z)`, where the decoder-likelihood choice is more consequential
+than it looks. For real-valued pixels the natural choice is a fixed-variance Gaussian,
+`p_theta(x|z) = N(x; f_theta(z), sigma_x^2 I)`. Then `log p_theta(x|z)` equals, up to an additive
+constant, `-(1/(2 sigma_x^2)) Σ_d (x_d - f_theta(z)_d)^2` — so maximizing the Gaussian likelihood is
+*exactly* minimizing squared (Euclidean, L2) reconstruction error. That is the "L2" the rung is named
+for, and it is not a heuristic distance: it is the negative log-likelihood of a fixed-variance Gaussian
+decoder. But there is a sibling I should take seriously here. If I instead model the decoder likelihood
+as a **Laplace** distribution rather than a Gaussian, the negative log-likelihood becomes the
+*absolute* error, `Σ_d |x_d - f_theta(z)_d|` — an L1 reconstruction term. The Laplace has heavier tails,
+so it penalizes large residuals *less* than the quadratic does, and the practical consequence is that
+L1 tends to produce **sharper** reconstructions: squared error, by quadratically punishing the worst
+pixels, drives the decoder toward the smooth conditional mean that hedges across plausible
+high-frequency completions — a blur — whereas L1's linear penalty tolerates a few large misses in
+exchange for committing to crisp edges. On a reconstruction task scored by a perceptual statistic like
+rFID, that sharpness matters, so the principled default to *start* from is the Laplace/L1 form: same
+derivation, heavier-tailed decoder, sharper output. This is the choice the scaffold's `l2-kl` fill
+actually makes — despite the slug it uses `F.l1_loss`, the Laplace reconstruction term, not MSE — and
+the reasoning lands exactly there.
+
+Where does `sigma_x^2` sit? It multiplies only the reconstruction term, not the KL, so it is precisely
+the knob weighing reconstruction against the prior regularizer. For continuous data this knob is
+*necessary*, not optional: without a scale the two terms are in incommensurable units. One subtlety the
+implementation forces on me — the exact decoder NLL is a per-image *sum* over pixels, but the convenient
+`F.l1_loss` (like `F.mse_loss`) *averages* over batch, channels, height, and width. That averaging
+rescales the reconstruction term relative to the per-image-sum form by `1/D` (with `D` the pixel count),
+so the version I actually code, `mean_pixel_recon + beta · mean_batch_KL`, equals the exact negative
+bound up to one positive global factor when `beta` absorbs both `sigma_x^2` and the `1/D` reduction.
+Practically, then, `beta` (the `kl_weight`) is the *effective* KL coefficient under the chosen
+reduction, not the raw decoder variance — and for a task whose entire goal is reconstruction quality I
+want it *small*. The KL's job here is hygiene: keep the code near the prior and well-behaved, not to
+compress hard. So `beta` on the order of `1e-6` is right — the objective is overwhelmingly
+reconstruction-driven, with the KL present only as a faint leash. (Push `beta` up and I trade
+reconstruction for a tidier latent, which is the wrong trade when rFID is what I am scored on.) That is
+exactly the `kl_weight = 1e-6` the scaffold fixes.
+
+How many noise samples per datapoint? In principle the bound averages over draws of `eps`, but the loop
+already does stochastic gradient descent over a minibatch of images, and each step averages over many
+`(x, eps)` pairs. With a batch in the hundreds, a single reparameterized draw per image (`L = 1`) is
+enough; the minibatch supplies the rest. And critically, that one draw has *already happened* — the
+loop sampled `z = mean + std·eps` inside `posterior.sample()` before producing `recon`. So I must not
+resample inside the loss; I consume `recon` as given. The reparameterization is also what makes the
+gradient flow: because the sample was a smooth function of `mean`, `std`, and a fixed `eps`, backprop
+through the decoder carries `∂ log p_theta/∂z` back through the sampled latent into the encoder, and the
+closed-form KL is a differentiable function of `mean` and `logvar`, so one backward pass on one scalar
+trains both networks jointly. That is the thing per-datapoint MCMC and wake-sleep could not deliver at
+scale: no inner sampling loop, just one feedforward encode, one decode, one backward pass, with the
+recognition network amortizing inference across all images.
+
+So the floor is settled, and the literal edit is the small one: a reconstruction term that is the
+Laplace-decoder NLL — `F.l1_loss(recon, target)`, the sharp sibling of MSE — plus the bottleneck's
+closed-form KL averaged over the batch and weighted by a tiny `kl_weight = 1e-6`, added (never
+subtracted), returning the scalar and a metrics dict reporting the two pieces. No discriminator, no
+perceptual term, no frequency term — the bare negative ELBO with the sharper reconstruction likelihood.
+(The distilled module is in the answer.)
+
+Now reason about what this floor must do, because that is the entire point of running it. The objective
+is dominated by per-pixel L1, and per-pixel distances treat the image as a bag of independent pixels —
+which is exactly where they lie about reconstruction quality. Even L1, sharper than L2, is minimized in
+the presence of residual uncertainty by committing to *a* plausible value per pixel without any notion
+that a slightly-shifted-but-equally-sharp texture is perceptually as good as the target while a washed
+out one is worse. It scores energy of the residual, and energy of the residual is only loosely coupled
+to what the FID feature extractor — and a human — actually reports. So I expect this rung to learn a
+*competent but soft* reconstructor: PSNR and SSIM should be respectable, because those reward pixel
+agreement and local-statistic agreement, the very things L1 optimizes; but rFID, which compares the
+*distributions* of deep features between originals and reconstructions, should lag, because the
+reconstructions will carry the tell-tale softness of a pixel-only objective and their feature
+statistics will drift from the originals'.
+
+I also expect a sharp split across the three scales, and the direction is predictable. The small model
+(narrowest channels, only 4 latent channels) has the least capacity to encode high-frequency detail
+through the `f=4` bottleneck, so under a pixel-only loss it should hedge hardest toward the blurry mean
+and post the *worst* rFID by a wide margin. The large model (widest channels, 16 latent channels) has
+the most room to carry detail, so even a pixel-only loss should let it reconstruct fairly crisply and
+its rFID should be far lower. The medium scale should sit in between. Whatever the exact numbers, the
+diagnosis is already pointed at the next rung: this is not a learning-rate or a capacity problem, it is
+a *measurement* problem — the loss is optimizing the wrong distance. The fix is to stop measuring
+reconstruction error purely in pixel space and start measuring it where it tracks perception, which is
+the move the next rung makes by adding a learned perceptual term on top of this same L1 + KL skeleton.
+
+The causal chain in one breath: a deep latent model has an intractable marginal and posterior, so I
+maximize the variational lower bound `L = E_q[log p(x|z)] - D_KL(q||p)`, whose negation is my loss; the
+diagonal-Gaussian bottleneck gives the KL in closed form as `posterior.kl()`, which I add with a tiny
+`beta = 1e-6` because the task is reconstruction-driven; the reconstruction term is a decoder NLL, and I
+take the **Laplace/L1** form rather than the Gaussian/L2 form because its heavier tails yield sharper
+output; I consume the loop's single reparameterized `recon` without resampling, so one backward pass
+trains encoder and decoder jointly — landing the bare `F.l1_loss(recon, target) + 1e-6 · kl` floor, and
+expecting decent PSNR/SSIM but a lagging, scale-dependent rFID that a perceptual term must rescue next.
+So let me write the floor in.
+</think>
+<say>
+Starting from the floor: the negative ELBO — an L1 (Laplace-decoder) reconstruction term plus the
+bottleneck's closed-form KL at a tiny `kl_weight = 1e-6`. This first edit fills `VAELoss` with that
+bare objective.
+</say>
+<edit path="diffusers-main/custom_train.py">
+<old>
+class VAELoss(nn.Module):
+    """VAE training loss function.
+
+    TODO: Design your loss function for training a KL-regularized VAE.
+
+    The loss function receives:
+        recon:     Reconstructed images [B, 3, 32, 32] in [-1, 1]
+        target:    Original images [B, 3, 32, 32] in [-1, 1]
+        posterior: DiagonalGaussianDistribution from the encoder
+                   - posterior.kl()       -> KL divergence [B, ...]
+                   - posterior.mean       -> latent mean
+                   - posterior.logvar     -> latent log-variance
+        step:      Current training step (int)
+
+    Must return: (total_loss, metrics_dict)
+        total_loss: scalar tensor (for backpropagation)
+        metrics_dict: dict with string keys and float values for logging
+
+    Available imports: torch, torch.nn, torch.nn.functional, numpy, lpips
+    The lpips package provides learned perceptual loss:
+        loss_fn = lpips.LPIPS(net='vgg').to(device)
+        p_loss = loss_fn(recon, target).mean()
+
+    You may also use torch.fft for frequency-domain operations, or any
+    other approach you think will improve reconstruction quality.
+
+    Evaluation metrics (for reference, you do NOT compute these):
+        - rFID: Reconstruction FID (lower is better)
+        - PSNR: Peak signal-to-noise ratio in dB (higher is better)
+        - SSIM: Structural similarity (higher is better)
+    """
+
+    def __init__(self, device):
+        super().__init__()
+        raise NotImplementedError("Implement VAELoss.__init__")
+
+    def forward(self, recon, target, posterior, step):
+        """Compute total VAE loss.
+
+        Returns:
+            loss: scalar tensor (total training loss for backpropagation)
+            metrics: dict of {str: float} for logging
+        """
+        raise NotImplementedError("Implement VAELoss.forward")
+</old>
+<new>
+# EDITABLE region of custom_train.py (lines 32-76) — step 1: L1 reconstruction + KL
+class VAELoss(nn.Module):
+    """Basic VAE loss: L1 reconstruction + KL divergence."""
+
+    def __init__(self, device):
+        super().__init__()
+        self.kl_weight = 1e-6
+
+    def forward(self, recon, target, posterior, step):
+        rec_loss = F.l1_loss(recon, target)          # Laplace-decoder NLL (sharper than L2)
+        kl_loss = posterior.kl().mean()              # closed-form D_KL(q||N(0,I)), ADD it
+        loss = rec_loss + self.kl_weight * kl_loss   # negative ELBO
+        return loss, {
+            "rec_loss": rec_loss.item(),
+            "kl_loss": kl_loss.item(),
+        }
+</new>
+</edit>
+<obs>
+Successfully replaced text in diffusers-main/custom_train.py.
+</obs>
+<run/>
+<obs>
+Measured results — `baseline:l2-kl` (`is_final,true`), seed 42. Primary metric: best rFID per scale
+(lower is better).
+
+| scale | best_rfid |
+|---|---|
+| small | 53.00 |
+| medium | 15.75 |
+| large | 5.35 |
+| **gmean (task score)** | **16.47** |
+</obs>
+
+### step 2 — L1 + LPIPS perceptual + KL   [slug:perceptual]
+
+<think>
+The L1 + KL floor told me exactly what is missing, and it told me in numbers that split hard across
+scales. On the large model best rFID came in at 5.35 — already respectable — but the medium landed at
+15.75 and the small at **53.00**, a tenfold spread for the same loss. That spread is the diagnosis. The
+loss is per-pixel L1, and the only thing that changes across the three runs is capacity: the small model
+has the narrowest channels and just 4 latent channels through the `f=4` bottleneck, the large has the
+widest channels and 16. So where the model has room to carry high-frequency detail (large), a pixel loss
+gets out of its way and the reconstruction is crisp enough that even a feature-distribution metric like
+rFID is satisfied; where the model is starved (small), the pixel loss does exactly what I feared it
+would — under reconstruction uncertainty it hedges toward the conditional mean, the blurry average over
+all the plausible textures, because that is what minimizes mean absolute error. The 53.00 is the blur
+tax, and it is largest precisely where capacity is tightest. This is not a learning-rate problem and not
+a capacity problem I am allowed to touch; it is a *measurement* problem. The loss is optimizing the
+wrong distance, and it is optimizing it hardest into the ground exactly where the model can least afford
+to waste capacity on pixel-mean-matching.
+
+So the obstacle is sharp: per-pixel L1 (and L2, and PSNR, which is L2 on a log axis) treats the image as
+a bag of independent pixels, and that independence assumption is where it breaks. Blur a reconstruction
+and the mean absolute residual can stay modest while the perceptual damage is obvious, because the
+high-frequency structure that makes an image look sharp has been washed out and a pixel loss does not
+know it should care. rFID, by contrast, compares the *distributions of deep features* between originals
+and reconstructions — it is sensitive to exactly the softness a pixel loss is blind to. So I have an
+objective (L1) that disagrees with my metric (rFID), and the small-scale 53.00 is what that disagreement
+costs. The fix has to make the *training* loss see what rFID sees: I need to measure reconstruction
+error somewhere that pixel softness is penalized, not in pixel space.
+
+Where would such a measurement come from? The lever is a fact from image synthesis that is the same blur
+story in another guise: when people train an image model under per-pixel L2, the outputs come out
+over-smoothed, for exactly my reason — squared error is minimized by averaging over plausible
+completions. The fix that swept the field was to stop measuring the error in pixel space and measure it
+in the feature space of a pretrained classification network — VGG features. Push both the reconstruction
+and the target through a fixed network and compare deep activations. The diagnostic that comes with this
+is the part worth chewing on: if you optimize an image to match a target at an *early* VGG layer the
+result is visually indistinguishable, while matching at a *deep* layer preserves content and layout but
+not exact texture — so Euclidean distance *in these feature spaces already behaves perceptually*, and the
+layers ladder from appearance to semantics. The network was never trained to do this; the perceptual
+behavior is an emergent side effect of learning a representation predictive about natural images. That is
+exactly the distance I want my small model to be scored on during training, because a blurred
+reconstruction has visibly different deep features and would be penalized, whereas under L1 it slides
+through.
+
+Now I have a choice about how much of that feature-space machinery to build myself. Raw deep-feature
+distance is crude in a known way: convolutional channels have wildly different activation magnitudes, so
+a naive sum of squared feature differences is dominated by a few high-energy channels and measures
+whether those loud channels matched in *gain* rather than whether the *pattern* of activation agrees.
+The mature fix is to unit-normalize across channels at each location (turning the comparison into a
+gain-invariant cosine of feature direction), then recalibrate each channel by a learned non-negative
+coefficient fit to human two-alternative-forced-choice judgments, spatially average within a layer, and
+sum across layers. That whole object — a frozen trunk, channel normalization, learned per-channel
+calibration grounded in human data — is precisely what the `lpips` package gives me, pre-built and
+pre-calibrated. The edit surface hands me `lpips` as an available import, and the contract is that I
+*consume* a perceptual distance, not that I learn one: I have no 2AFC judgments in this loop, no second
+optimizer for calibration coefficients, no projection step. So the right move is not to re-derive and
+re-fit the calibrated metric here — it is to take the off-the-shelf `lpips.LPIPS(net='vgg')`, freeze it
+hard (eval mode, no gradients to its parameters), and use it as a fixed black-box perceptual ruler. The
+emergent perceptual structure and the human calibration are baked in; my job is only to *measure with
+it* and weight it against the terms I already have. Freezing it is not optional: if I let gradients into
+the VGG trunk I would be retraining the very representation whose accidental perceptual goodness is the
+thing I am exploiting, and I would bend it toward this one dataset; conservative read, calibrate
+nothing, just measure. So `eval()`, `requires_grad_(False)` on every LPIPS parameter.
+
+Now compose. I do not throw away the floor — the negative-ELBO skeleton was correct, the KL is still
+the right closed-form leash at the same tiny `1e-6`, and I keep the L1 reconstruction term, because the
+perceptual loss alone has a known weakness as a sole objective: optimizing it can leave high-frequency
+artifacts, since many non-natural images map to similar deep features, so it wants a pixel anchor
+alongside it for stability. The L1 term is that anchor; it pins coarse structure and color, while LPIPS
+carries the perceptual sharpness the pixel term cannot see. So the reconstruction objective becomes
+`L1(recon, target) + perceptual_weight · LPIPS(recon, target)`, and the full loss is that plus
+`kl_weight · KL`. One implementation detail the harness forces: LPIPS is a VGG forward pass and the loop
+runs under autocast mixed precision, so I cast both inputs to float before the perceptual call —
+`self.lpips_fn(recon.float(), target.float())` — to keep the feature extractor in the precision it was
+trained in and avoid half-precision drift in the distance; the `.mean()` reduces its per-image output to
+a scalar.
+
+The one real knob is `perceptual_weight`. The two terms are in different units — mean absolute pixel
+error versus a calibrated perceptual distance — and I want the perceptual term to genuinely shape the
+output without overpowering the pixel anchor that keeps coarse structure honest. A weight around `0.5`
+is the standard balance for this pairing: large enough that LPIPS materially drives sharpness, small
+enough that L1 still anchors. I keep `kl_weight = 1e-6` unchanged, because the floor's KL behavior was
+not the problem — the reconstruction distance was — and there is no reason to disturb the leash. So the
+literal edit is: in `__init__`, build and freeze `lpips.LPIPS(net='vgg').to(device)`, set
+`perceptual_weight = 0.5` and `kl_weight = 1e-6`; in `forward`, compute L1, the float-cast mean LPIPS,
+and the mean KL, sum them as `rec + 0.5·p_loss + 1e-6·kl`, and report all three in the metrics dict.
+No discriminator, no frequency term yet — just the perceptual upgrade to the reconstruction distance.
+(The distilled module is in the answer.)
+
+Now the falsifiable expectations against the floor's numbers, because that is the point of having run
+it. The whole diagnosis was that the blur tax is largest where capacity is tightest, and the perceptual
+term attacks blur directly — so I expect the *biggest* improvement on the *small* scale, where L1 left
+the most on the table at 53.00. That number should fall the hardest, plausibly by half or more, because
+LPIPS refuses to reward the soft conditional mean the small model was hiding behind. The medium scale,
+which started at 15.75 with moderate blur, should improve substantially too. The large scale was already
+crisp at 5.35 — the pixel loss was nearly enough there — so the perceptual term has less blur to remove
+and I expect a smaller absolute gain; it should still tick down, since deep-feature matching is strictly
+more aligned with rFID than pixel matching, but I would be suspicious if it moved as much as the small
+scale did. If instead the large scale improved most and the small barely moved, my whole "blur tax
+scales inversely with capacity" reading would be wrong and I would have to rethink. PSNR and SSIM I
+expect to hold or dip very slightly: those reward pixel and local-statistic agreement, which the pure L1
+floor was already optimizing, and adding a perceptual term that tolerates small pixel-exact misses in
+exchange for crispness can trade a hair of PSNR for a large rFID gain — which is the trade I want, since
+rFID is the scored metric.
+
+And I can already feel where this rung will run out. The perceptual loss pulls deep features together,
+but it still does not have a sharp, adversarial opinion about whether a *patch* of texture is realistic —
+VGG features can be matched by something that is close-but-still-a-bit-soft, because the metric is a
+fixed distance, not an active critic hunting for the residual difference between a real image and a
+reconstruction. So I expect perceptual to substantially close the small-scale gap but leave a residual
+softness that a learned discriminator could attack — which is exactly the move the next rung makes,
+adding an adversarial signal on top of this same L1 + LPIPS + KL skeleton.
+
+The causal chain in one breath: L1's measured failure is a *measurement* problem — the small scale's
+53.00 versus the large's 5.35 is the blur tax, largest where capacity is tightest, because a per-pixel
+loss rewards the conditional-mean blur that rFID punishes → so measure reconstruction error in deep
+feature space, where blur is penalized and distance is emergently perceptual → take the pre-calibrated
+`lpips.LPIPS(net='vgg')` as a frozen black-box ruler rather than re-deriving its channel-normalization
+and 2AFC calibration, because the harness exposes a perceptual distance to *consume*, not to *learn*,
+and freezing it preserves the representation I am exploiting → keep the L1 term as a stability anchor
+against perceptual high-frequency artifacts and keep the KL leash at `1e-6`, weighting LPIPS at `0.5` →
+landing `F.l1_loss + 0.5·LPIPS + 1e-6·KL`, and expecting the small-scale 53.00 to fall the hardest with
+diminishing gains up the capacity ladder, while a residual softness waits for an adversarial critic next.
+So let me add the frozen LPIPS term on top of the floor.
+</think>
+<say>
+Adding a learned perceptual term: a frozen `lpips.LPIPS(net='vgg')` ruler at `perceptual_weight = 0.5`,
+alongside the existing L1 pixel anchor and the `1e-6` KL leash. This edit swaps the floor's `VAELoss`
+for the perceptual one.
+</say>
+<edit path="diffusers-main/custom_train.py">
+<old>
+# EDITABLE region of custom_train.py (lines 32-76) — step 1: L1 reconstruction + KL
+class VAELoss(nn.Module):
+    """Basic VAE loss: L1 reconstruction + KL divergence."""
+
+    def __init__(self, device):
+        super().__init__()
+        self.kl_weight = 1e-6
+
+    def forward(self, recon, target, posterior, step):
+        rec_loss = F.l1_loss(recon, target)          # Laplace-decoder NLL (sharper than L2)
+        kl_loss = posterior.kl().mean()              # closed-form D_KL(q||N(0,I)), ADD it
+        loss = rec_loss + self.kl_weight * kl_loss   # negative ELBO
+        return loss, {
+            "rec_loss": rec_loss.item(),
+            "kl_loss": kl_loss.item(),
+        }
+</old>
+<new>
+# EDITABLE region of custom_train.py (lines 32-76) — step 2: L1 + LPIPS + KL
+class VAELoss(nn.Module):
+    """Perceptual VAE loss: L1 + LPIPS + KL."""
+
+    def __init__(self, device):
+        super().__init__()
+        import lpips
+        self.lpips_fn = lpips.LPIPS(net='vgg').to(device)   # frozen perceptual ruler
+        self.lpips_fn.eval()
+        for p in self.lpips_fn.parameters():
+            p.requires_grad_(False)
+        self.kl_weight = 1e-6
+        self.perceptual_weight = 0.5
+
+    def forward(self, recon, target, posterior, step):
+        rec_loss = F.l1_loss(recon, target)                          # pixel anchor
+        p_loss = self.lpips_fn(recon.float(), target.float()).mean() # deep-feature distance (float under autocast)
+        kl_loss = posterior.kl().mean()
+        loss = rec_loss + self.perceptual_weight * p_loss + self.kl_weight * kl_loss
+        return loss, {
+            "rec_loss": rec_loss.item(),
+            "p_loss": p_loss.item(),
+            "kl_loss": kl_loss.item(),
+        }
+</new>
+</edit>
+<obs>
+Successfully replaced text in diffusers-main/custom_train.py.
+</obs>
+<run/>
+<obs>
+Measured results — `baseline:perceptual` (`is_final,true`), seed 42. Primary metric: best rFID per
+scale (lower is better).
+
+| scale | best_rfid |
+|---|---|
+| small | 19.64 |
+| medium | 10.69 |
+| large | 3.84 |
+| **gmean (task score)** | **9.31** |
+</obs>
+
+### step 3 — L1 + LPIPS + KL + PatchGAN feature matching (adversarial loop)   [slug:vqgan]
+
+<think>
+The perceptual rung did what I bet it would, and the numbers say so precisely. The small scale fell
+from 53.00 to 19.64 — the blur tax I diagnosed was real and the perceptual term collected most of it,
+just as I predicted the biggest gain would land where capacity is tightest. Medium went 15.75 → 10.69,
+a solid but smaller cut, and large went 5.35 → 3.84, the smallest absolute move of the three, exactly
+the diminishing-returns-up-the-capacity-ladder shape I expected: the large model was already nearly
+crisp under pixel loss, so LPIPS had little blur left to remove there. So the perceptual diagnosis
+holds end to end. But look at where the small scale *stopped*: 19.64 is far better than 53.00 and still
+the worst of the three by a wide margin — there is a residual softness LPIPS could not finish off. And I
+flagged exactly this at the close of the last rung: a fixed perceptual distance pulls deep features
+together but has no sharp, *adversarial* opinion about whether a patch of texture is realistic. VGG
+features can be matched by something that is close-but-still-a-bit-soft, because LPIPS is a static ruler,
+not a critic that actively hunts for the residual tell-tale difference between a real image and a
+reconstruction. The 19.64 is what is left after the ruler has done all it can; closing it needs a signal
+that keeps finding the softness LPIPS tolerates and punishing it.
+
+That signal is adversarial. Add a discriminator `D` trained to tell real CIFAR images from
+reconstructions, and train the autoencoder — now also playing the role of a generator — to fool it. As
+`D` sharpens at spotting the residual softness or artifacts of reconstructions, it forces the
+autoencoder to produce crisper, more realistic output precisely in the high-frequency detail that the
+pixel and perceptual terms together still leave a touch soft. This is the move that historically took
+autoencoder reconstruction from "perceptually close" to "sharp," and it is the natural next correction
+to the L1 + LPIPS + KL skeleton I already have.
+
+Now I have to be careful about *what* this rung is, because the name invites the wrong construction. The
+lineage this rung descends from is a two-stage vector-quantized model: compress an image to a short grid
+of discrete codes with a straight-through quantizer, replace the codebook's L2 reconstruction with a
+perceptual-plus-adversarial objective so it can compress hard and stay sharp, then learn an
+autoregressive transformer prior over the code indices. *None of that second machinery exists in this
+task.* The architecture here is a fixed continuous `AutoencoderKL` with a diagonal-Gaussian bottleneck
+— no codebook, no quantizer, no straight-through estimator, and certainly no second-stage transformer
+prior over codes. I am editing the *loss only*. So what carries over is exactly one idea from that
+lineage: the reconstruction objective should be perceptual *plus patch-adversarial* rather than pixel
+only. Everything else — the discrete bottleneck, the index sequence, the GPT — is out of scope and I
+must not import it into the reasoning. The rung is "add an adversarial term to the continuous VAE's
+reconstruction loss," not "build a VQGAN."
+
+The next thing the harness dictates is *where the adversarial machinery lives*, and this is the load
+bearing detail. The fixed training loop already has built-in GAN support: if my loss module exposes
+`disc` and `disc_opt` attributes, then after a `disc_start` warm-up the loop, every step, computes the
+generator adversarial loss `g_loss = -mean disc(recon)`, weights it adaptively, adds it to my loss, and
+then runs a *separate* discriminator update through my `disc_opt`. So I do **not** write the adversarial
+generator term, the discriminator optimization, the warm-up gate logic, or the weight balancing inside
+`VAELoss` — the loop owns all of that. My loss module's job is narrower: build the discriminator, set
+`disc_start`, keep my reconstruction terms, add the one adversarial-family term the loop does *not*
+provide, and hand the loop the one tensor it needs to balance the GAN gradient. Let me work out each
+piece against the loop's actual code.
+
+First, the weight balancing. A constant weight on the adversarial term is guaranteed wrong somewhere in
+training: early the discriminator is near-random and its gradient into the decoder is tiny and noisy,
+later it sharpens and can swamp the reconstruction signal — and a fixed coefficient cannot track a
+moving ratio. What I want is for the adversarial gradient and the reconstruction gradient to arrive at
+the decoder with comparable magnitude automatically. The place they meet is the decoder's last layer,
+`vae.decoder.conv_out.weight`, through which every gradient into the decoder must pass; the loop measures
+both gradients *there* and sets the adaptive weight to `‖∇ ref‖ / (‖∇ g_loss‖ + δ)`, clamped and
+detached. The subtlety is what it uses as the *reference* gradient. The loop reads
+`criterion._perceptual_loss` if my module has stashed it, and uses *that* — the perceptual term alone —
+as the reference, falling back to the whole loss otherwise. So the adaptive weight here normalizes the
+GAN gradient to the magnitude of the *perceptual* gradient at the last layer, not to the full
+reconstruction gradient. That means my module must store `self._perceptual_loss = p_loss` so the loop
+can pick it up; if I forget, the loop balances against the entire loss instead and the GAN pressure is
+calibrated to the wrong scale. This is a concrete place the task's implementation differs from the
+generic lineage, where the adaptive weight is balanced against the full reconstruction loss — here it is
+against the perceptual term specifically, by the loop's construction.
+
+Second, the discriminator. The quality problem is *local* — residual softness in texture and
+high-frequency detail inside the image — so I want a discriminator that judges patches, not one that
+collapses the whole image to a single real/fake scalar. A fully-convolutional PatchGAN outputs a grid
+of scores, one per receptive field, concentrating the adversarial signal on local texture realism and
+giving a dense gradient. I build it as `NLayerDiscriminatorWithFeatures`: the standard PatchGAN stack —
+strided conv, LeakyReLU, deeper strided convs with normalization — but with two task-specific choices.
+I wrap every conv in **spectral normalization** to keep the discriminator Lipschitz and the adversarial
+game stable, which matters because the loop trains `D` aggressively every step after warm-up. And I
+register forward hooks on the LeakyReLU activations to expose the **intermediate features**, because of
+the third piece.
+
+Third — the one term the loop does *not* compute and that I therefore add inside `VAELoss` — feature
+matching. Beyond fooling the discriminator's final score, I want the reconstruction's *internal*
+discriminator features to match the real image's, layer by layer. Feature matching is a well-known
+stabilizer for adversarial training: instead of (or alongside) chasing the single real/fake logit, the
+generator is asked to reproduce the statistics the discriminator extracts at each layer, which gives a
+denser, less mode-collapse-prone signal and ties the adversarial objective back to perceptual structure.
+So when the discriminator is on, I run both the target and the reconstruction through `D` with
+`return_features=True`, take the L1 distance between corresponding real and fake feature maps (detaching
+the real features so the discriminator is not pulled by this term), average over the layers, and add it
+to my reconstruction loss with `feat_match_weight = 1.0`. The real-feature detach is the same discipline
+as everywhere else: feature matching trains the generator toward the discriminator's representation, not
+the discriminator toward the generator. This feature-matching term is *the* thing my module contributes
+to the adversarial objective; the logit-level `g_loss` and the discriminator's own hinge-plus-R1 update
+are the loop's job.
+
+So let me assemble the literal fill against everything I keep. The reconstruction skeleton is unchanged
+from the perceptual rung: `F.l1_loss` as the pixel anchor, the frozen `lpips.LPIPS(net='vgg')`
+perceptual term at `perceptual_weight = 0.5` (float-cast under autocast, eval, no grad), and the
+closed-form KL at `kl_weight = 1e-6`. I stash `self._perceptual_loss = p_loss` for the loop's adaptive
+weight. I build `self.disc = NLayerDiscriminatorWithFeatures()` and its own
+`self.disc_opt = Adam(lr=1e-4, betas=(0.5, 0.9))`, and set `self.disc_start = 5000` — the warm-up,
+because a randomly initialized decoder produces garbage and turning adversarial pressure on immediately
+lets `D` win trivially and emit useless or destructive gradients; hold the GAN off until the
+autoencoder reconstructs sanely. In `forward`, I gate the feature-matching term on `step >= disc_start`
+exactly as the loop gates its own adversarial terms, so the two come on together. I report the
+reconstruction pieces always and the feature-matching value once it is active. Note what I am *not*
+writing in the module and the loop handles: the hinge discriminator loss
+`(relu(1 + D(recon.detach())) + relu(1 - D(real))).mean()`, the **R1 gradient penalty** on real inputs
+(`gp_weight = 10`), the generator logit loss `-mean D(recon)`, and the adaptive-weight computation. The
+R1 penalty in particular is a task-specific stabilizer the lineage's pure-hinge recipe does not carry —
+it is in the loop, not mine to add. (The distilled module, including the discriminator class, is in the
+answer.)
+
+Now the falsifiable expectations against the perceptual numbers. The adversarial term attacks exactly
+the residual softness LPIPS left, and that softness was largest on the small scale (19.64). So I expect
+the small scale to improve most again, plausibly down into the mid-teens, since the patch discriminator
+keeps finding the soft textures the static ruler tolerated. Medium (10.69) and large (3.84) should each
+tick down too, with large moving least in absolute terms — it was already crisp, so there is the least
+softness left for the critic to find. The gmean task score, 9.31 at the perceptual rung, should fall
+meaningfully below it. Two risks I am watching, both rooted in the adaptive weight and the warm-up.
+First, if the adaptive weight is miscalibrated — say I forget to stash `_perceptual_loss` and the loop
+balances against the full loss — the GAN pressure could be too strong and *raise* rFID by introducing
+adversarial artifacts instead of removing softness; a rung that gets worse, not better, is the signature
+of that bug. Second, the warm-up at 5000 steps means the small run (20,000 steps) spends a quarter of
+training without the discriminator and the larger runs (30,000) spend a sixth — so the adversarial term
+has fewer steps to work on small, which could blunt the very scale I expect it to help most. If the
+small scale *fails* to improve much while medium and large do, the warm-up fraction is the suspect. If
+the adversarial rung comes in cleanly below perceptual across all three scales, the ladder is doing what
+it should and the residual to attack next would be something the patch discriminator and perceptual
+term *together* still miss — a structured, frequency-localized error rather than a generic softness.
+
+The causal chain in one breath: perceptual's measured residual is the softness a static LPIPS ruler
+tolerates (small scale stalls at 19.64, still the worst) → add an adversarial patch discriminator that
+actively hunts that softness, but keep it to the *loss-only* idea from the VQ lineage, importing none of
+its codebook / quantizer / transformer machinery, none of which this continuous `AutoencoderKL` exposes
+→ let the fixed loop own the generator logit loss, the hinge-plus-R1 discriminator update, and the
+adaptive weight (which it balances against `_perceptual_loss`, so I must stash it), and contribute from
+the module only what the loop does not: a spectral-norm `NLayerDiscriminatorWithFeatures` and an L1
+**feature-matching** term gated at `disc_start = 5000` → landing `L1 + 0.5·LPIPS + 1e-6·KL +
+1.0·feat_match` with the discriminator built and `_perceptual_loss` stashed, and expecting the small
+scale's 19.64 to fall the hardest while watching the adaptive-weight calibration and the warm-up
+fraction for the two ways this rung could disappoint. So let me wire in the discriminator and feature
+matching.
+</think>
+<say>
+Adding the adversarial rung: a spectral-norm PatchGAN discriminator plus an L1 feature-matching term on
+top of L1 + LPIPS + KL. This first edit just renames the class to mark the new recipe.
+</say>
+<edit path="diffusers-main/custom_train.py">
+<old>
+# EDITABLE region of custom_train.py (lines 32-76) — step 2: L1 + LPIPS + KL
+class VAELoss(nn.Module):
+    """Perceptual VAE loss: L1 + LPIPS + KL."""
+</old>
+<new>
+# EDITABLE region of custom_train.py (lines 32-76) — step 3: L1 + LPIPS + KL + feature matching
+class VAELoss(nn.Module):
+    """VAE loss with adversarial training and feature matching."""
+</new>
+</edit>
+<obs>
+Successfully replaced text in diffusers-main/custom_train.py.
+</obs>
+<note>
+Now the body: build and stash the discriminator, set the warm-up, and add the gated feature-matching term.
+</note>
+<edit path="diffusers-main/custom_train.py">
+<old>
+        import lpips
+        self.lpips_fn = lpips.LPIPS(net='vgg').to(device)   # frozen perceptual ruler
+        self.lpips_fn.eval()
+        for p in self.lpips_fn.parameters():
+            p.requires_grad_(False)
+        self.kl_weight = 1e-6
+        self.perceptual_weight = 0.5
+
+    def forward(self, recon, target, posterior, step):
+        rec_loss = F.l1_loss(recon, target)                          # pixel anchor
+        p_loss = self.lpips_fn(recon.float(), target.float()).mean() # deep-feature distance (float under autocast)
+        kl_loss = posterior.kl().mean()
+        loss = rec_loss + self.perceptual_weight * p_loss + self.kl_weight * kl_loss
+        return loss, {
+            "rec_loss": rec_loss.item(),
+            "p_loss": p_loss.item(),
+            "kl_loss": kl_loss.item(),
+        }
+</old>
+<new>
+        import lpips
+        self.lpips_fn = lpips.LPIPS(net='vgg').to(device)
+        self.lpips_fn.eval()
+        for p in self.lpips_fn.parameters():
+            p.requires_grad_(False)
+
+        self.device = device
+        self.perceptual_weight = 0.5
+        self.kl_weight = 1e-6
+        self.feat_match_weight = 1.0
+
+        self.disc = NLayerDiscriminatorWithFeatures().to(device)
+        self.disc_opt = torch.optim.Adam(self.disc.parameters(), lr=1e-4, betas=(0.5, 0.9))
+        self.disc_start = 5000
+
+    def forward(self, recon, target, posterior, step):
+        rec_loss = F.l1_loss(recon, target)
+        p_loss = self.lpips_fn(recon.float(), target.float()).mean()
+        self._perceptual_loss = p_loss            # the loop balances the adaptive GAN weight against this
+        kl_loss = posterior.kl().mean()
+
+        disc_factor = 1.0 if step >= self.disc_start else 0.0
+        feat_match_loss = 0.0
+        if disc_factor > 0:
+            _, real_feats = self.disc(target, return_features=True)
+            _, fake_feats = self.disc(recon, return_features=True)
+            for real_f, fake_f in zip(real_feats, fake_feats):
+                feat_match_loss += F.l1_loss(fake_f, real_f.detach())
+            feat_match_loss = feat_match_loss / len(real_feats)
+
+        total_rec_loss = rec_loss + self.perceptual_weight * p_loss
+        if disc_factor > 0:
+            total_rec_loss = total_rec_loss + self.feat_match_weight * feat_match_loss
+
+        loss = total_rec_loss + self.kl_weight * kl_loss
+
+        metrics = {
+            "rec_loss": rec_loss.item(),
+            "p_loss": p_loss.item(),
+            "kl_loss": kl_loss.item(),
+        }
+        if disc_factor > 0:
+            metrics["feat_match"] = feat_match_loss.item()
+
+        return loss, metrics
+
+
+class NLayerDiscriminatorWithFeatures(nn.Module):
+    """PatchGAN discriminator with intermediate feature extraction."""
+
+    def __init__(self, input_nc=3, ndf=64, n_layers=3):
+        super().__init__()
+        from torch.nn.utils import spectral_norm
+        self.n_layers = n_layers
+
+        layers = []
+        layers.append(spectral_norm(nn.Conv2d(input_nc, ndf, 4, 2, 1)))
+        layers.append(nn.LeakyReLU(0.2, True))
+
+        nf_mult = 1
+        for n in range(1, n_layers):
+            nf_mult_prev = nf_mult
+            nf_mult = min(2 ** n, 8)
+            layers.append(spectral_norm(nn.Conv2d(ndf * nf_mult_prev, ndf * nf_mult, 4, 2, 1, bias=False)))
+            layers.append(nn.BatchNorm2d(ndf * nf_mult))
+            layers.append(nn.LeakyReLU(0.2, True))
+
+        nf_mult_prev = nf_mult
+        nf_mult = min(2 ** n_layers, 8)
+        layers.append(spectral_norm(nn.Conv2d(ndf * nf_mult_prev, ndf * nf_mult, 4, 1, 1, bias=False)))
+        layers.append(nn.BatchNorm2d(ndf * nf_mult))
+        layers.append(nn.LeakyReLU(0.2, True))
+
+        layers.append(spectral_norm(nn.Conv2d(ndf * nf_mult, 1, 4, 1, 1)))
+
+        self.model = nn.Sequential(*layers)
+        self.features = []
+        self._register_hooks()
+
+    def _register_hooks(self):
+        def hook(module, input, output):
+            self.features.append(output)
+
+        for layer in self.model:
+            if isinstance(layer, nn.LeakyReLU):
+                layer.register_forward_hook(hook)
+
+    def forward(self, x, return_features=False):
+        self.features.clear()
+        out = self.model(x)
+        if return_features:
+            return out, self.features.copy()
+        return out
+</new>
+</edit>
+<obs>
+Successfully replaced text in diffusers-main/custom_train.py.
+</obs>
+<run/>
+<obs>
+Measured results — `baseline:vqgan` (`is_final,true`), seed 42. Primary metric: best rFID per scale
+(lower is better).
+
+| scale | best_rfid |
+|---|---|
+| small | 14.75 |
+| medium | 7.13 |
+| large | 3.38 |
+| **gmean (task score)** | **7.08** |
+</obs>
+
+### step 4 — Focal Frequency Loss (FFL) on the VQGAN recipe   [slug:focal-frequency-loss]
+
+<think>
+The adversarial rung came in cleanly below perceptual, exactly as I bet, and the per-scale shape
+confirms the whole ladder's logic. Small went 19.64 → 14.75 — the patch discriminator and feature
+matching found the residual softness LPIPS tolerated, and they found the most of it where there was the
+most to find. Medium went 10.69 → 7.13 and large 3.84 → 3.38, the now-familiar diminishing returns up
+the capacity ladder. The gmean task score fell from 9.31 to 7.08. So three rungs of attacking *spatial*
+quality — pixel anchor, then deep-feature perceptual distance, then patch-adversarial realism plus
+feature matching — have each helped, and each later one helped less, which tells me the spatial story is
+near its floor. The discriminator and LPIPS together are now squeezing the last bits of generic softness
+out, and the curve is flattening. To go meaningfully below 7.08 I need to attack a *different kind* of
+residual error, not pile a fourth spatial term on top of three.
+
+So let me diagnose what kind of error survives the vqgan recipe. All three of my objectives live in the
+spatial domain: per-pixel L1 scores pixel energy, LPIPS scores deep-feature agreement, the discriminator
+and feature matching score local patch realism. None of them has an *explicit* notion of which spatial
+*frequencies* the reconstruction is getting wrong. And that matters, because a continuous VAE through an
+`f=4` bottleneck has a structural frequency bias: the encoder-decoder fits low-frequency, smooth content
+fast (it's most of the pixel energy and cheap under L1), and it systematically struggles to reproduce
+high-frequency detail — fine edges, texture grain — which is a small fraction of the pixel energy but a
+large fraction of what rFID's deep feature extractor and a human eye actually register. The spatial
+terms patch this only indirectly: L1 barely penalizes the lost high-frequency residual, LPIPS pressures
+it through learned features, the discriminator pressures it through realism — but none says "you are
+missing *this band* of the spectrum." The residual that survives three spatial rungs is, I suspect, a
+*frequency-localized* error: a systematic mismatch in particular spectral bands that no spatial loss is
+shaped to target directly. That is a genuinely different axis from the softness the discriminator
+attacks, and it is the one the task description itself gestures at — natural images decompose into
+frequency bands, and explicitly handling them during training is the open lever I have not pulled.
+
+The move, then, is to measure reconstruction error directly on the spectrum. The 2D discrete Fourier
+transform gives me, per image channel, a complex value `F(u,v)` for every spatial frequency, carrying
+its amplitude and phase. Two images match iff their full complex spectra match, so a distance between
+spectra is a legitimate reconstruction objective — and unlike the spatial terms it is *natively*
+organized by frequency, so it can target the bands the spatial losses keep missing. The natural distance
+is the squared Euclidean distance between complex components, `|F_r(u,v) - F_f(u,v)|²`, averaged over the
+spectrum. Let me check it against the obvious failure before committing, because a naive frequency loss
+would repeat the spatial loss's sin in a new guise.
+
+Here is the trap. A plain, equally-weighted spectral distance would be dominated by the *many* frequency
+components the model already matches. After three spatial rungs the low-frequency components are mostly
+correct; the components that are still wrong are a small minority of hard, mostly high-frequency ones. An
+unweighted sum spends its gradient polishing the already-good frequencies and barely touches the missing
+ones — which is exactly the spatial loss's behavior, just relabeled. Equal weighting cannot be the
+answer; the frequency loss has to *adaptively concentrate on the hard frequencies*. What is "hard"?
+Operationally, a component is hard exactly when the current frequency error `|F_r - F_f|` is large — and
+that's a quantity I have for free every step. So gate each component's distance by a weight matrix that
+is large where the current error is large: `w(u,v) = |F_r(u,v) - F_f(u,v)|^α`, normalized into `[0,1]`.
+Where the model already matches a frequency, `w ≈ 0` and it's ignored; where it's far off, `w` is large
+and dominates the loss; and it's *dynamic* — as a once-hard frequency gets matched its weight decays and
+the loss moves to the next-hardest. A self-generated curriculum over frequencies, no hand-set band
+selection.
+
+The one subtlety I must get right is that this weight has to be a *constant* with respect to the
+parameters — detached, stop-gradient. If gradients flowed through `w = distance^α`, the optimizer would
+see a perverse second-order incentive to manipulate the importance map rather than just reduce the
+distance, and the focusing intent would tangle with the optimization. Detached, the gradient is exactly
+`w(u,v) · ∇(distance²)`: the ordinary spectral-distance gradient, reweighted by a fixed per-frequency
+spotlight that says "spend your effort here." Two normalizations keep the spotlight stable: divide the
+weight matrix by its per-image max so the loss scale doesn't silently drift as absolute errors shrink
+over training, clamp to `[0,1]`, and zero any NaN from the `0^α` corner. The default focusing strength
+is `α = 1` — the weight scales linearly with the error magnitude — which is the robust starting point;
+`α = 0` would recover the unweighted loss I just argued against. For 32×32 CIFAR a single global FFT
+(`patch_factor = 1`) is right; patch-wise spectra are for larger images. And the FFT uses orthonormal
+normalization so the transform is unitary and the spectral distance lands on the same scale as a spatial
+one — which matters because I am adding it to spatial terms.
+
+Now the composition, and this is the crucial design point: the focal frequency loss is a *complement*,
+not a replacement. It constrains the spectrum but says nothing about absolute pixel values being right —
+you can in principle match the spectrum while drifting the spatial content — so it must ride on top of a
+spatial reconstruction term that anchors the pixels. The natural place to add it is *on the strongest
+spatial recipe I have*, the vqgan rung: keep L1 + LPIPS + KL + feature matching + the loop's adversarial
+machinery exactly as they are, and add `loss_weight · FFL(recon, target)` on top. FFL's job is narrow
+and orthogonal — drag the output's frequency statistics toward the target's, concentrating on the bands
+the three spatial rungs keep missing — so it should *stack*, recovering frequency fidelity that the
+spatial terms structurally cannot, without disturbing what they already do well. I add the FFL term
+always (it does not depend on the discriminator warm-up; the frequency mismatch is there from step one),
+weight it at `loss_weight = 1.0` so the orthonormal-scaled spectral term is comparable to the L1 and
+perceptual terms, and report its value in the metrics. Everything else — the frozen VGG LPIPS, the
+spectral-norm `NLayerDiscriminatorWithFeatures`, the `disc_start = 5000` warm-up, stashing
+`_perceptual_loss` for the loop's adaptive weight, `perceptual_weight = 0.5`, `kl_weight = 1e-6`,
+`feat_match_weight = 1.0` — is carried over verbatim from the strongest baseline. The only new line in
+the objective is the frequency term. (The distilled module, including the discriminator and the
+`FocalFrequencyLoss` class, is in the answer.)
+
+Let me be explicit about what stays out, because the loss-only edit surface forbids most of it anyway. I
+am not touching the architecture, the optimizer, the schedule, the EMA, or the evaluation; the
+`AutoencoderKL` stays continuous (no codebook, no quantizer) and the adversarial logic stays in the
+fixed loop. The finale is a *pure loss-design* addition: one frequency-domain term, complementary to the
+three spatial terms, gated by a detached hard-frequency spotlight.
+
+Now the bar this has to clear and what I would validate, against the strongest baseline's real numbers.
+The vqgan rung sits at small 14.75, medium 7.13, large 3.38, gmean 7.08. For the finale to justify
+itself, the gmean must come in *below* 7.08, and the per-scale story I would expect — by the same logic
+that has held for three rungs — is that the frequency term helps most where the high-frequency residual
+is largest. That should again be the small scale: the narrowest model through the tightest bottleneck
+loses the most high-frequency detail, so an explicit spectral term has the most band-mismatch to recover
+there, and I would expect 14.75 to fall the hardest. Medium and large should tick down too but by less,
+large least of all, since it was already crisp enough that little spectral residual remains. PSNR and
+SSIM I would expect to hold or improve slightly: matching the spectrum more faithfully restores
+high-frequency content that, unlike the perceptual-vs-pixel trade, is not in tension with pixel accuracy
+— if anything a sharper spectrum nudges PSNR up. The risks I would watch are two. First, if
+`loss_weight = 1.0` over-weights the frequency term, the optimizer could chase spectral fidelity at the
+expense of the adversarial/perceptual balance and *raise* rFID by introducing high-frequency artifacts —
+the signature would be the finale getting worse than vqgan, and the fix would be to lower `loss_weight`.
+Second, if the surviving residual after three spatial rungs is *not* actually frequency-localized — if
+the discriminator already captured the high-frequency bands as a side effect of realism pressure — then
+FFL would be redundant and the gmean would barely move below 7.08; that null result would falsify the
+"frequency-localized residual" diagnosis. But the structural frequency bias of a bottlenecked
+autoencoder, and the fact that none of the three spatial terms targets the spectrum explicitly, make me
+expect a real, scale-dependent gain — largest on the small scale — that pushes the gmean below the
+strongest baseline.
+
+The causal chain in one breath: three spatial rungs (pixel, perceptual, adversarial) have flattened the
+curve to gmean 7.08 because they all measure error in the spatial domain and none targets the frequency
+bands a bottlenecked autoencoder structurally loses → so measure reconstruction error directly on the
+2D FFT spectrum as the squared complex distance → but equal weighting repeats the spatial loss's sin, so
+gate each component by a detached, `[0,1]`-normalized hard-frequency spotlight `|F_r - F_f|^α` (α=1) that
+self-generates a curriculum over the hardest bands → add this `loss_weight·FFL` term as a *complement*
+on top of the full vqgan recipe (it constrains the spectrum, the spatial terms anchor the pixels),
+changing one line of the objective and nothing else → expecting the small scale's 14.75 to fall the
+hardest and the gmean to clear 7.08, while watching the frequency weight and the redundancy-with-the-
+discriminator risk that would falsify the diagnosis. So let me add the focal frequency term to the vqgan
+recipe.
+</think>
+<say>
+Finale: adding a Focal Frequency Loss — a detached hard-frequency-weighted spectral distance — on top of
+the full vqgan recipe. This first edit defines the `FocalFrequencyLoss` class beside `VAELoss`.
+</say>
+<edit path="diffusers-main/custom_train.py">
+<old>
+# EDITABLE region of custom_train.py (lines 32-76) — step 3: L1 + LPIPS + KL + feature matching
+class VAELoss(nn.Module):
+    """VAE loss with adversarial training and feature matching."""
+</old>
+<new>
+# EDITABLE region of custom_train.py (lines 32-76) — finale: vqgan recipe + Focal Frequency Loss
+class FocalFrequencyLoss(nn.Module):
+    """Focal frequency loss (ICCV 2021): spectral distance gated by a detached
+    hard-frequency spotlight. Complement to spatial losses."""
+
+    def __init__(self, loss_weight=1.0, alpha=1.0, patch_factor=1,
+                 ave_spectrum=False, log_matrix=False, batch_matrix=False):
+        super().__init__()
+        self.loss_weight = loss_weight
+        self.alpha = alpha
+        self.patch_factor = patch_factor
+        self.ave_spectrum = ave_spectrum
+        self.log_matrix = log_matrix
+        self.batch_matrix = batch_matrix
+
+    def tensor2freq(self, x):
+        pf = self.patch_factor
+        _, _, h, w = x.shape
+        assert h % pf == 0 and w % pf == 0, "patch_factor must divide H and W"
+        ph, pw = h // pf, w // pf
+        patches = [x[:, :, i * ph:(i + 1) * ph, j * pw:(j + 1) * pw]
+                   for i in range(pf) for j in range(pf)]
+        y = torch.stack(patches, 1)
+        freq = torch.fft.fft2(y, norm='ortho')              # orthonormal 2D FFT
+        return torch.stack([freq.real, freq.imag], -1)
+
+    def loss_formulation(self, recon_freq, real_freq, matrix=None):
+        if matrix is not None:
+            weight_matrix = matrix.detach()
+        else:
+            tmp = (recon_freq - real_freq) ** 2
+            tmp = torch.sqrt(tmp[..., 0] + tmp[..., 1]) ** self.alpha   # |F_r - F_f|^alpha
+            if self.log_matrix:
+                tmp = torch.log(tmp + 1.0)
+            if self.batch_matrix:
+                tmp = tmp / tmp.max()
+            else:
+                tmp = tmp / tmp.max(-1).values.max(-1).values[:, :, :, None, None]
+            tmp[torch.isnan(tmp)] = 0.0
+            tmp = torch.clamp(tmp, min=0.0, max=1.0)
+            weight_matrix = tmp.clone().detach()            # spotlight: detached constant gate
+
+        tmp = (recon_freq - real_freq) ** 2
+        freq_distance = tmp[..., 0] + tmp[..., 1]           # |F_r - F_f|^2
+        return torch.mean(weight_matrix * freq_distance)
+
+    def forward(self, pred, target, matrix=None):
+        pred_freq = self.tensor2freq(pred)
+        target_freq = self.tensor2freq(target)
+        if self.ave_spectrum:
+            pred_freq = torch.mean(pred_freq, 0, keepdim=True)
+            target_freq = torch.mean(target_freq, 0, keepdim=True)
+        return self.loss_formulation(pred_freq, target_freq, matrix) * self.loss_weight
+
+
+class VAELoss(nn.Module):
+    """VQGAN-style spatial recipe + focal frequency loss complement."""
+</new>
+</edit>
+<obs>
+Successfully replaced text in diffusers-main/custom_train.py.
+</obs>
+<note>
+Now register the FFL module and its weight in `__init__`.
+</note>
+<edit path="diffusers-main/custom_train.py">
+<old>
+        self.feat_match_weight = 1.0
+</old>
+<new>
+        self.feat_match_weight = 1.0
+        self.freq_weight = 1.0
+
+        self.ffl = FocalFrequencyLoss(loss_weight=1.0, alpha=1.0, patch_factor=1)
+</new>
+</edit>
+<obs>
+Successfully replaced text in diffusers-main/custom_train.py.
+</obs>
+<note>
+Compute the frequency term each step (float-cast, no warm-up gate).
+</note>
+<edit path="diffusers-main/custom_train.py">
+<old>
+        p_loss = self.lpips_fn(recon.float(), target.float()).mean()
+        self._perceptual_loss = p_loss            # the loop balances the adaptive GAN weight against this
+        kl_loss = posterior.kl().mean()
+</old>
+<new>
+        p_loss = self.lpips_fn(recon.float(), target.float()).mean()
+        self._perceptual_loss = p_loss            # loop's adaptive GAN weight balances against this
+        kl_loss = posterior.kl().mean()
+        freq_loss = self.ffl(recon.float(), target.float())   # frequency-domain complement
+</new>
+</edit>
+<obs>
+Successfully replaced text in diffusers-main/custom_train.py.
+</obs>
+<note>
+Add the frequency term into the reconstruction sum.
+</note>
+<edit path="diffusers-main/custom_train.py">
+<old>
+
+        total_rec_loss = rec_loss + self.perceptual_weight * p_loss
+        if disc_factor > 0:
+</old>
+<new>
+
+        total_rec_loss = rec_loss + self.perceptual_weight * p_loss + self.freq_weight * freq_loss
+        if disc_factor > 0:
+</new>
+</edit>
+<obs>
+Successfully replaced text in diffusers-main/custom_train.py.
+</obs>
+<note>
+Report the frequency loss in the metrics dict.
+</note>
+<edit path="diffusers-main/custom_train.py">
+<old>
+            "kl_loss": kl_loss.item(),
+        }
+</old>
+<new>
+            "kl_loss": kl_loss.item(),
+            "freq_loss": freq_loss.item(),
+        }
+</new>
+</edit>
+<obs>
+Successfully replaced text in diffusers-main/custom_train.py.
+</obs>

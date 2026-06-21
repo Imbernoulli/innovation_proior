@@ -1,0 +1,545 @@
+<meta task="synth-associative-recall" domain="Sequence modeling" file="pytorch-examples/synth_associative_recall/custom_strategy.py" model_format="qwen3" edit_tool="str_replace"/>
+
+<system>
+You are a research engineer improving a model on a fixed ML task. You work by editing the model code and running experiments. Think carefully before each change. You have these tools:
+- str_replace(path, old_str, new_str): replace the unique occurrence of old_str with new_str.
+- create(path, file_text): create a new file.
+- run_experiment(): train + evaluate the current code under the fixed budget; returns metrics.
+Make one tool call at a time. After editing, call run_experiment() to measure your method.
+</system>
+
+<user>
+## Research question
+
+Multi-Query Associative Recall (MQAR) is the canonical stress test for a sequence model's ability to do
+**in-context key→value lookup**: a stream of `(key, value)` token pairs is followed by query keys, and at
+each query position the model must emit the value that was bound to that key earlier in the sequence. The
+single thing being designed is one **sub-quadratic sequence-mixing module** — `CustomMixer` — that performs
+that lookup at long context lengths. Everything else (embedding, residual stack, optimizer, data generator,
+evaluation) is frozen, so any accuracy gain must come from the mixer's recall mechanism.
+
+## Prior art before the first rung (sequence-mixing lineage)
+
+The first rung — a recurrent mixer — is itself the resolution of a long line of memory mechanisms for
+associative recall. These are the methods that precede the ladder; the fixed substrate below is what the
+benchmark holds constant around whatever mixer fills the slot.
+
+- **Neural Turing Machine (Graves et al. 2014).** Augments a recurrent controller with an external,
+  content-addressable memory matrix and differentiable read/write heads, with associative recall as one of
+  its headline synthetic tasks. Cracks recall when the memory is large enough, but the addressing machinery
+  is intricate and brittle to train, and the controller still has to learn to drive the heads. Gap: heavy,
+  fiddly external memory rather than a single drop-in mixer.
+- **Recurrent nets with feedback memory (Elman 1990; BPTT/RTRL training).** Carry a fixed-size hidden state
+  and fold each input into it, so per-step cost is constant — exactly the cost profile one wants at
+  generation. But the gradient through the recurrence is a product of per-step factors, so it vanishes (or
+  explodes) exponentially in the lag, and the fixed state has to compress the whole prefix into one vector.
+  Gap: cannot reliably carry information across long lags, and the state is a fixed-size bottleneck.
+- **Softmax self-attention (Vaswani et al. 2017).** At each query position reads a normalized
+  exponential-weighted average over every earlier key-value pair, so a matching key a thousand tokens back
+  spikes onto its value and is retrieved cleanly — the textbook recall machine, and the accuracy ceiling on
+  MQAR. Gap: it forms an `N×N` score matrix, so its compute and KV-cache grow with the sequence; it is the
+  ceiling, not a sub-quadratic candidate.
+
+The open question the ladder probes is the one framed by the recall-throughput literature: which mixer
+*closes the recall gap to full attention while staying sub-quadratic*, and where each one breaks as the
+context length and the number of key-value pairs grow.
+
+## The fixed substrate
+
+A two-layer hybrid model is frozen and must not be touched. Tokens are embedded (`d_model=64`, vocab 8192,
+**tied** input/output embeddings, GPT-2-style init); the first layer's mixer is a fixed **short causal
+convolution** (depthwise, kernel size 3, left-padded so position `t` sees only `≤ t`); the second layer's
+mixer is the editable `CustomMixer`. Each layer is a pre-norm residual block — `x + mixer(norm(x))` followed
+by `x + mlp(norm(x))` with a 2× GELU MLP — and a final norm + tied head produces logits. Training is
+`AdamW(lr=1e-3, weight_decay=0.1, betas=(0.9,0.95))` with cosine decay to `0.1·lr`, grad-clip 1.0, token-level
+cross-entropy with `ignore_index=-100` so only the query positions contribute to the loss. The MQAR data
+generator (distinct keys/values per example, power-law gap placement, random non-query filler) is ported
+verbatim from the Zoology repo. The short-conv first layer exists so the editable mixer can lean on it for
+the *local* shifts (lining a query token up against the key that preceded its value) and spend its own
+capacity on the *global* lookup.
+
+## The editable interface
+
+Exactly one region is editable — the `CustomMixer` class — and every method on the ladder is a fill of the
+same contract. `CustomMixer` must subclass `nn.Module`; its constructor is
+`__init__(self, d_model, seq_len, ...)` (extra keyword args allowed with defaults); its
+`forward(self, x)` takes and returns `[batch, seq_len, d_model]`; and it must be **causal** — the output at
+position `t` may depend only on inputs at positions `≤ t`. Anything from `torch`, `torch.nn`,
+`torch.nn.functional`, and `math` is allowed.
+
+The starting point is the scaffold default: **full causal multi-head attention** wired into the slot — the
+recall ceiling, included so the bar is visible from the first line. Each baseline replaces exactly this class
+and nothing else.
+
+```python
+# EDITABLE region of custom_strategy.py — default fill (full causal attention)
+class CustomMixer(nn.Module):
+    """Causal multi-head self-attention (full softmax attention)."""
+
+    def __init__(self, d_model: int, seq_len: int, num_heads: int = 2):
+        super().__init__()
+        assert d_model % num_heads == 0
+        self.num_heads = num_heads
+        self.head_dim = d_model // num_heads
+        self.qkv = nn.Linear(d_model, 3 * d_model, bias=False)
+        self.out_proj = nn.Linear(d_model, d_model, bias=False)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        B, T, D = x.shape
+        qkv = self.qkv(x).reshape(B, T, 3, self.num_heads, self.head_dim)
+        q, k, v = qkv.unbind(dim=2)
+        q = q.transpose(1, 2)  # [B, H, T, head_dim]
+        k = k.transpose(1, 2)
+        v = v.transpose(1, 2)
+        out = F.scaled_dot_product_attention(q, k, v, is_causal=True)
+        out = out.transpose(1, 2).reshape(B, T, D)
+        return self.out_proj(out)
+```
+
+## Evaluation settings
+
+Three `(seq_len, num_kv_pairs)` settings of increasing difficulty, each trained from scratch on a single
+seed (42): **`mqar-128`** (seq_len 128, 8 KV pairs, 20000 train examples, 32 epochs, batch 64),
+**`mqar-512`** (512, 32 pairs, 20000 examples, 32 epochs, batch 32), and **`mqar-2048`** (2048, 128 pairs,
+8000 examples, 16 epochs, batch 16). The longest setting is where a fixed-size recurrent state's
+compression bottleneck is most pronounced. The metric is **`test_accuracy`** (reported also as `score`):
+exact-match accuracy of the next-token prediction at every query position (where the label is not `-100`),
+taking the best across all training epochs. Higher is better on all three.
+
+The editable model code is in `pytorch-examples/synth_associative_recall/custom_strategy.py`:
+```python
+class CustomMixer(nn.Module):
+    """Default no-op identity mixer. Replace me."""
+
+    def __init__(self, d_model: int, seq_len: int):
+        super().__init__()
+        self.proj = nn.Linear(d_model, d_model, bias=False)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        # x: [B, T, D] -> [B, T, D]
+        return self.proj(x)
+```
+Improve it. Derive your method, edit the code, then run_experiment().
+</user>
+
+### step 1 — LSTM (recurrent floor)   [slug:lstm]
+
+<think>
+[[POLISH_REASONING: adapt to first-person agentic voice, end by deciding to implement]]
+The mixer is the whole point, and before I reach for any attention-flavored lookup I want the honest floor: the oldest, most-default thing that can carry information across a sequence at all. On associative recall the canonical recurrent baseline — the one Graves reached for as the comparison point for the Neural Turing Machine — is a gated recurrent memory cell, so that is where I start. It is the weakest rung I can plausibly run here, and I want to understand *why* it is weak in this exact scaffold, because the way it fails is what points at the next rung.
+
+Let me first be precise about what the slot demands, because the substrate around the mixer is fixed and it shapes what I can lean on. The model is two layers. The first mixer is a fixed short causal convolution — depthwise, kernel size 3 — so by the time `x` reaches my `CustomMixer`, each position already carries a little local context: a 3-wide window of its neighbors. The MLPs and norms are fixed. The embeddings are tied and `d_model` is only 64. The loss only counts the query positions. So my mixer's job is narrow and sharp: at a query position `t` whose token is some key `q`, look back over the prefix `≤ t`, find the position `j` where that same key was written, and surface the value that sat right after it. Everything is causal, output at `t` may see only inputs `≤ t`, and the short conv has already given me a touch of "what's immediately around me." What it has *not* given me is any way to reach an arbitrary earlier position — a 3-wide filter sees three steps back, and the matching key can be hundreds of steps back. So the editable mixer is exactly the part that has to bridge the long gap.
+
+The recurrent cell is the textbook way to bridge a long gap with a fixed-size state. I reach for it not because I expect it to win but because it is the default memory mechanism and I should measure the floor before I climb. Let me write down what it actually computes so I can reason about its limits rather than its slogan. A recurrent net carries a hidden state and folds each input into it one step at a time: per step it does a constant amount of work, and the state it carries forward has a fixed dimension regardless of how far along the sequence it is. That cost profile is appealing — it is the opposite of attention's growing cache. But the plain recurrence has a fatal training problem: the gradient that has to travel from a loss at position `t` back to an input at position `t-q` is a product of `q` per-step Jacobian factors, and a product of `q` numbers each a bit under one decays geometrically in `q`, while each a bit over one explodes. The lag sits in the exponent. So a plain recurrent net cannot reliably learn a dependency that spans hundreds of steps — which is precisely the dependency MQAR is built out of.
+
+The gated memory cell is the fix to that, and it is what I will actually instantiate, because there is no point measuring a floor I know is broken at training time when a strictly better-trained recurrent baseline exists. The cell keeps a linear memory state with a self-loop and wraps it in three multiplicative, context-sensitive gates: an input gate deciding *when to write*, a forget gate deciding *when to reset*, and an output gate deciding *when to read*. Concretely, with `x_t` the input, `h_{t-1}` the previous output, sigmoid gates, and tanh squashing, `i_t = σ(W_ix x_t + W_ih h_{t-1} + b_i)`, `f_t = σ(...)`, `o_t = σ(...)`, candidate `g_t = tanh(...)`, then `c_t = f_t ⊙ c_{t-1} + i_t ⊙ g_t` and `h_t = o_t ⊙ tanh(c_t)`. The reason this trains across long lags where the plain recurrence cannot is the state recursion: the error on the state inherits the next step's state error scaled by the forget gate, `ε_s^t = o_t ⊙ tanh'(c_t) ⊙ ε_h^t + f_{t+1} ⊙ ε_s^{t+1}`, so when the forget gate is open the gradient rides the linear memory at unit gain instead of decaying as a product of sub-unit factors. That is the entire reason the gated cell is the recurrent baseline worth running rather than a vanilla RNN.
+
+So my fill is the smallest faithful version of this: a single-layer cell over the sequence axis, hidden size equal to `d_model` so it drops straight into the residual stream, and a linear read-out projecting the hidden sequence back to `d_model`. Causality is automatic — a recurrence at step `t` has only consumed inputs `≤ t`, so the contract is satisfied by construction with no masking needed. I keep it minimal on purpose: one layer, no extra width, no tricks. The point of step one is the floor, and the cell *is* the classical recurrent floor. The distilled module and the exact scaffold fill live in the answer.
+
+Now the part that actually matters — reasoning about what this floor can and cannot do on MQAR, because that is the entire reason to run it. The cell carries a single fixed-size state `c_t` of dimension 64. As key-value pairs stream in, every pair it wants to remember has to be written into that one 64-dimensional vector, superimposed on everything already there. This is the structural tension recall has with a fixed-size recurrent state: associative recall is, at bottom, the index problem — you are handed a list of bindings and later asked for an arbitrary one — and answering an *arbitrary* later query means the state must, in effect, have retained *all* the bindings, because at write time the model does not know which key will be queried. A fixed 64-dimensional state simply cannot hold many distinct key→value bindings without them colliding. With a handful of pairs it might cope: write each binding into a roughly orthogonal direction, read it back by projecting. With dozens, the directions overlap, the bindings interfere, and the read-out returns a blurred superposition that argmaxes to the wrong value token. The gates help the cell *choose* what to keep, but they cannot manufacture capacity — the bucket is 64 numbers wide no matter how cleverly the forget gate prunes it.
+
+That tells me exactly how the three settings should split. At `mqar-128` there are only 8 key-value pairs to hold; that is the regime where a 64-dimensional state has a fighting chance, and I would not be shocked to see partial accuracy. At `mqar-512` there are 32 pairs over a four-times-longer sequence — more bindings to superimpose and a longer lag over which to hold each one — so I expect a sharp drop. At `mqar-2048` there are 128 pairs over a sequence sixteen times longer than the easy setting; cramming 128 distinct bindings into one 64-vector is hopeless by the capacity argument alone, and on top of that even the gated cell's unit-gain gradient highway is being asked to carry credit across up to two thousand steps for the hardest bindings, with fewer training examples (8000) and fewer epochs (16) to find that structure. I expect near-zero there.
+
+There is a second, subtler reason I expect this to underperform even where capacity is not the binding constraint, and it is specific to *this* scaffold. The cell processes the sequence strictly left-to-right and compresses as it goes. But a query at position `t` needs to *compare* its own key token against every earlier key and retrieve a match — a content-addressed lookup. A recurrent state has no native "compare my current token against a stored set" operation; it has only "fold my current token into the running summary." To do recall it must have *already* arranged, at write time, for each key's value to be recoverable by something correlated with that key, and then at the query it must project out the right one — an indirect, learned approximation of associative lookup rather than the direct comparison attention performs. The short conv in front gives it local shifts but no long-range comparison. So even in the easy setting I expect it to be doing a hard, indirect job, and to be fragile.
+
+Putting the diagnosis together: I expect `mqar-128` to be poor-to-partial, `mqar-512` to collapse, and `mqar-2048` to be essentially at chance — and I expect the failure to look like *capacity*, not like *optimization*, in the sense that adding epochs would not rescue it. If that is what I see, the lesson is sharp and it sets up the whole climb: the recurrent floor fails because it forces every binding through one fixed-size state and has no mechanism to directly compare a query against the set of stored keys. The fix is not a bigger or better-gated recurrence — that only widens the bucket linearly. The fix is to give the mixer an explicit *score between the current query and each earlier key*, so the lookup is content-addressed rather than compressed. That is exactly the move from a recurrent state to an attention-like mechanism, and the cheapest sub-quadratic version of it — a linear attention with a factored kernel that keeps the explicit query-key score but avoids the full `N×N` softmax — is the natural next rung. The floor's measured collapse is the thing that will justify reaching for it.
+</think>
+<say>
+[[FILL_SAY: 1-2 sentences naming the method and what this first edit does]]
+</say>
+<edit path="pytorch-examples/synth_associative_recall/custom_strategy.py">
+<old>
+class CustomMixer(nn.Module):
+    """Default no-op identity mixer. Replace me."""
+
+    def __init__(self, d_model: int, seq_len: int):
+        super().__init__()
+        self.proj = nn.Linear(d_model, d_model, bias=False)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        # x: [B, T, D] -> [B, T, D]
+        return self.proj(x)
+</old>
+<new>
+# EDITABLE region of custom_strategy.py — step 1: LSTM (recurrent floor)
+class CustomMixer(nn.Module):
+    """Single-layer LSTM as the sequence mixer (causal by construction)."""
+
+    def __init__(self, d_model: int, seq_len: int):
+        super().__init__()
+        self.lstm = nn.LSTM(
+            input_size=d_model,
+            hidden_size=d_model,
+            num_layers=1,
+            batch_first=True,
+        )
+        self.out_proj = nn.Linear(d_model, d_model, bias=False)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        h, _ = self.lstm(x)
+        return self.out_proj(h)
+</new>
+</edit>
+<obs>
+Successfully replaced text in pytorch-examples/synth_associative_recall/custom_strategy.py.
+</obs>
+<run/>
+<obs>
+Measured results — `baseline:lstm` (`is_final,true`), seed 42.
+
+| setting | test_accuracy | score | elapsed (s) |
+|---|---|---|---|
+| mqar-128 | 0.026500 | 0.026500 | 285.7 |
+| mqar-512 | 0.000469 | 0.000469 | 336.0 |
+| mqar-2048 | 0.000266 | 0.000266 | 312.2 |
+</obs>
+
+### step 2 — Linear attention (elu+1 feature map)   [slug:linear_attention]
+
+<think>
+[[POLISH_REASONING: adapt to first-person agentic voice, end by deciding to implement]]
+The recurrent floor came back almost exactly as the capacity argument predicted, and the numbers are sharper than I expected, which is useful. At `mqar-128`, with only 8 key-value pairs to hold, the gated cell reached just 0.0265 — not partial recall, essentially nothing. At `mqar-512` it was 0.000469 and at `mqar-2048` it was 0.000266, both indistinguishable from chance on a query that must pick one value token out of thousands. So the collapse I anticipated for the long settings showed up, but the *easy* setting also failed, and that is the diagnostic detail. If the cell had scored, say, 0.6 at 128 and then fallen off with length, I would read it as a pure capacity story — the 64-dimensional state filling up. But near-zero even at 8 pairs says the problem is more basic than "the bucket overflowed": the recurrent state never learned to do the content-addressed lookup at all. It has no operation that *compares* the current query token against the set of earlier keys; it only folds tokens into a running summary and hopes the read-out can project the right value back out. With only one fixed-size state and an indirect, learned approximation of associative lookup, it could not even nail 8 bindings. That is the failure I have to fix, and it tells me what the next mixer must have: an explicit score between the query at position `t` and every earlier key, so the lookup is content-addressed instead of compressed.
+
+The mechanism that has an explicit query-key score is attention. Full softmax attention is the ceiling sitting in the default slot precisely because it does this directly — at each query it reads a normalized exponential-weighted average over every earlier key-value pair, so a matching key spikes onto its value. But its score matrix is `N×N` and its cost grows with the sequence; the research question is the sub-quadratic version. So the question for this rung is: can I keep the explicit query-key score — the thing the recurrent cell lacked — while collapsing the over-keys part into a fixed-shape running state, so the per-step cost stays bounded? That is exactly what linear attention buys, and it is the cheapest attention-like mixer I can drop in. It is the natural intermediate between the recurrent floor I just measured and the ceiling.
+
+Let me derive why it factors, because the factoring is the whole point and it is what separates this from the LSTM. Write attention as a kernel smoother: the output at position `i` is a weighted average of values, weight proportional to a similarity between query `i` and key `j`,
+`y_i = Σ_{j≤i} sim(q_i, k_j) v_j / Σ_{j≤i} sim(q_i, k_j)`. With `sim(q,k) = exp(q^T k/√d)` this is softmax attention exactly. The only thing `sim` truly has to satisfy is non-negativity, so the weights are a sensible average — the exponential is one choice among many. The reason softmax forces the growing `N×N` matrix is that `exp(q_i^T k_j)` tangles `q_i` and `k_j` inside a nonlinearity, so I cannot pull `q_i` out and reuse work across positions. But suppose the similarity *factored*: `sim(q,k) = φ(q)^T φ(k)` for some non-negative feature map `φ`. Then the numerator becomes `Σ_{j≤i} (φ(q_i)^T φ(k_j)) v_j`, and because `φ(q_i)` does not depend on `j` I can pull it out: `φ(q_i)^T Σ_{j≤i} φ(k_j) v_j^T`. The thing inside the sum, `S_i = Σ_{j≤i} φ(k_j) v_j^T`, is a matrix of fixed shape that accumulates — `S_i = S_{i-1} + φ(k_i) v_i^T` — and likewise the denominator carries `z_i = z_{i-1} + φ(k_i)`. So `y_i = φ(q_i)^T S_i / (φ(q_i)^T z_i)`: a fixed-shape running state, no growing cache, and crucially an *explicit* per-query, per-key score `φ(q_i)^T φ(k_j)` — the comparison operation the recurrent cell never had.
+
+That last point is the bridge from step one. The LSTM also carried a fixed-shape state; what it lacked was the explicit content-addressed read. Linear attention carries a fixed-shape state `S_i` *and* reads it with an explicit query-conditioned score, `φ(q_i)^T S_i`, which is mathematically a sum of similarities to every stored key. So it should, in principle, do the lookup the recurrent cell could not — that is the reason to expect it to clear the 0.0265 floor at `mqar-128` decisively.
+
+Now the choice of `φ`, which is where this rung's strength and its weakness both come from. The simplest positive feature map keeps the feature dimension equal to the head dimension: push each coordinate through something non-negative. A plain relu zeroes the gradient on the negative side, killing learning for any coordinate that goes negative; the exponential linear unit fixes that — `elu(x) = x` for `x≥0` and `e^x−1` for `x<0`, so it bottoms out at `−1` with a live gradient everywhere. Shift it up: `φ(x) = elu(x) + 1 ≥ 0`. Then `φ(q)^T φ(k)` is a sum of products of non-negatives, a valid attention, cheap, gradient-alive, and it keeps the feature dimension small so the state stays compact. That is the canonical vanilla linear-attention feature map and it is what this rung uses.
+
+But I have to be honest about what this `φ` does to the *shape* of the attention weights, because it is exactly the property MQAR punishes. Recall is a lookup: when my query matches one particular key, I want almost all the weight to jump onto that key's value and almost none elsewhere — a spiky, low-entropy distribution. Softmax produces that because `exp` blows up the gap between a large dot product and a medium one. The `elu+1` map does not approximate `exp` at all; it is a smooth, roughly-linear positive function, and the kernel it induces is *gentle* — it spreads weight broadly across keys instead of concentrating it. So the read `φ(q_i)^T S_i` returns the matching value *diluted by a high-entropy smear of every other stored value*. With few keys and a short sequence the matching term may still dominate enough to argmax correctly; with many keys the smear of the non-matching bindings swamps the signal and the lookup fails. This is the documented failure mode of generic-feature-map linear attention on recall, and it is structurally different from the LSTM's failure: the LSTM had no comparison at all; linear-attention has the comparison but the comparison is too blurry.
+
+For the scaffold I will use the training-time *quadratic view* rather than the sequential recurrence, and I should be explicit that the two are identical math so the choice is purely about efficiency on a GPU. The recurrent form accumulates `S_i, z_i` with a scan down the sequence — perfect for generation, but a long sequential dependency stalls the tensor cores at training time. The quadratic view instead materializes the score matrix `A = φ(Q) φ(K)^T`, applies a causal lower-triangular mask, and reads `y = (masked A) V` normalized by the masked row-sums. Row `i` of the masked product is `Σ_{j≤i} (φ(q_i)^T φ(k_j)) v_j = φ(q_i)^T S_i`, and the row-sum normalizer is `Σ_{j≤i} φ(q_i)^T φ(k_j) = φ(q_i)^T z_i` — term for term the same function as the recurrent view, computed in a different associativity order. At these moderate sequence lengths the `T×T` matmul is far faster than a scan and the memory is fine, so the quadratic view is the right schedule. It also keeps the implementation a couple of matmuls and a mask, which is all the slot needs.
+
+A couple of grounding details for this exact fill. The head dimension is a small projection (32) below `d_model=64`, so `φ` is applied in that 32-dim space and the kernel stays cheap; `q`, `k`, `v` come from bias-free linear projections of the block-normed input that the substrate hands me, and an `out_proj` maps back to `d_model`. The denominator is clamped away from zero for numerical safety. Causality is enforced by the explicit `tril` mask on the score matrix — not by a recurrence as in step one — which is the one place I have to be careful, since unlike the LSTM, attention is not causal by default. I do *not* add a short convolution inside the mixer; the substrate already places a fixed short causal conv as the first layer, so the local-shift job is handled upstream and this rung is purely the global linear-attention read. The distilled module and the exact scaffold fill are in the answer.
+
+So the falsifiable expectations, stated against the recurrent floor's numbers. The explicit query-key score should let this rung clear the 0.0265 it failed to beat at `mqar-128` by a wide margin — I expect it to genuinely solve the easy setting, somewhere well above 0.7, because with 8 keys even a gentle kernel can let the matching value dominate. That alone would confirm the diagnosis that step one's problem was the *absence* of a comparison, not capacity. But I expect the gentle, high-entropy kernel to start failing as the key count climbs: at `mqar-512` (32 pairs) the non-matching smear should already eat a large fraction of the accuracy, dropping it well below the 128 number, and at `mqar-2048` (128 pairs) the smear should dominate and leave it close to the floor again. If I see that pattern — strong at 128, sagging at 512, collapsed at 2048 — it confirms the precise lesson this rung is meant to teach: the explicit score fixes the LSTM's missing-comparison problem, but a *non-spiky* kernel cannot single out the one matching key among many. That gap is exactly what a spiky feature map — a kernel that grows fast in `q^T k` the way `exp` does, so the matching key's weight blows up past the rest — is built to close, and it is the natural next rung from here.
+</think>
+<say>
+[[FILL_SAY: 1-2 sentences naming the method and what this first edit does]]
+</say>
+<edit path="pytorch-examples/synth_associative_recall/custom_strategy.py">
+<old>
+# EDITABLE region of custom_strategy.py — step 1: LSTM (recurrent floor)
+class CustomMixer(nn.Module):
+    """Single-layer LSTM as the sequence mixer (causal by construction)."""
+
+    def __init__(self, d_model: int, seq_len: int):
+        super().__init__()
+        self.lstm = nn.LSTM(
+            input_size=d_model,
+            hidden_size=d_model,
+            num_layers=1,
+            batch_first=True,
+        )
+        self.out_proj = nn.Linear(d_model, d_model, bias=False)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        h, _ = self.lstm(x)
+        return self.out_proj(h)
+</old>
+<new>
+# EDITABLE region of custom_strategy.py — step 2: linear attention (elu+1 feature map)
+class CustomMixer(nn.Module):
+    """Causal linear attention with phi(x) = elu(x) + 1 (Katharopoulos 2020)."""
+
+    def __init__(self, d_model: int, seq_len: int, head_dim: int = 32):
+        super().__init__()
+        self.head_dim = head_dim
+        self.q_proj = nn.Linear(d_model, head_dim, bias=False)
+        self.k_proj = nn.Linear(d_model, head_dim, bias=False)
+        self.v_proj = nn.Linear(d_model, d_model, bias=False)
+        self.out_proj = nn.Linear(d_model, d_model, bias=False)
+
+    @staticmethod
+    def phi(x: torch.Tensor) -> torch.Tensor:
+        return F.elu(x) + 1.0
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        B, T, D = x.shape
+        q = self.phi(self.q_proj(x))                  # [B, T, F]
+        k = self.phi(self.k_proj(x))                  # [B, T, F]
+        v = self.v_proj(x)                            # [B, T, D]
+        # Quadratic-view causal linear attention (training time): build the
+        # T x T causal kernel matrix <q_t, k_s> and apply to v. This matches
+        # the recurrent / prefix-sum view exactly but uses simple matmuls.
+        scores = torch.matmul(q, k.transpose(-1, -2))  # [B, T, T]
+        causal = torch.ones(T, T, device=x.device, dtype=torch.bool).tril()
+        scores = scores.masked_fill(~causal, 0.0)
+        denom = scores.sum(dim=-1, keepdim=True).clamp_min(1e-6)
+        weights = scores / denom
+        out = torch.matmul(weights, v)
+        return self.out_proj(out)
+</new>
+</edit>
+<obs>
+Successfully replaced text in pytorch-examples/synth_associative_recall/custom_strategy.py.
+</obs>
+<run/>
+<obs>
+Measured results — `baseline:linear_attention` (`is_final,true`), seed 42.
+
+| setting | test_accuracy | score | elapsed (s) |
+|---|---|---|---|
+| mqar-128 | 0.813125 | 0.813125 | 206.2 |
+| mqar-512 | 0.367844 | 0.367844 | 256.6 |
+| mqar-2048 | 0.163328 | 0.163328 | 233.9 |
+</obs>
+
+### step 3 — BASED (Taylor-2 spiky linear attention)   [slug:based]
+
+<think>
+[[POLISH_REASONING: adapt to first-person agentic voice, end by deciding to implement]]
+The linear-attention rung confirmed the diagnosis almost line for line, and the shape of its three numbers is exactly the fingerprint I was watching for. At `mqar-128` it jumped to 0.813 — a decisive break from the recurrent floor's 0.0265, which settles the step-one question: the LSTM's failure really was the *absence* of a content-addressed comparison, because the moment I gave the mixer an explicit `φ(q)^T φ(k)` score it could solve the easy setting. But then the sag I predicted appeared and it is steep: 0.368 at `mqar-512`, 0.163 at `mqar-2048`. So as the number of key-value pairs climbs from 8 to 32 to 128, accuracy more than halves and then halves again, sliding toward the floor. That is not a capacity-of-state collapse the way the LSTM's was — linear attention's running state `S_i = Σ φ(k_j) v_j^T` is a matrix, not a single vector, so it has room. It is a *selectivity* collapse: the read `φ(q_i)^T S_i` returns the matching value diluted by a high-entropy smear of every other stored value, and the more bindings there are, the larger that smear, until the matching term no longer wins the argmax. The `elu+1` kernel is too gentle. That is the precise gap this rung has to close.
+
+So the requirement is sharp and I can state it before reaching for anything: I need a feature map whose induced kernel is *spiky* — when `q_i` matches one key `k_j`, the weight on that key must blow up past every non-matching key, the way softmax's `exp` blows up the gap between a large dot product and a medium one. Linear attention failed at scale not because it lacked an explicit score but because its score was flat. I want to keep everything that worked — the factored `φ(q)^T φ(k)` that collapses the over-keys part into a fixed-shape state, the quadratic training view, the sub-quadratic generation cost — and swap *only* the feature map for one that actually tracks `exp(q^T k)`.
+
+What is the simplest deterministic feature map whose kernel approximates `exp` and stays spiky? The exponential has a Taylor series, `exp(x) = 1 + x + x²/2 + x³/6 + …`, and a truncation is a polynomial in `x = q^T k`, which is exactly the kind of similarity that factors through an explicit, finite feature map — that is what polynomial kernels are. Truncate at second order: `k(q,k) = 1 + q^T k + (q^T k)²/2`. I need to check two things before trusting it: that it is a legal kernel (corresponds to some `φ(q)^T φ(k)`), and that it has the two properties recall demands — non-negativity and spikiness.
+
+It is legal term by term. The constant `1` is `⟨[1],[1]⟩`. The linear term `q^T k` is the ordinary dot product. The quadratic term `(q^T k)² = Σ_{a,b}(q_a q_b)(k_a k_b)` is the dot product of the flattened outer products `q⊗q` and `k⊗k`. So `φ(x) = [1, x, (x⊗x)/√2]` reproduces `1 + q^T k + (q^T k)²/2` exactly, with the `√2` placing weight `1/2` on the squared block to match the Taylor coefficient. A finite, deterministic feature map — no randomness, no learned approximation, no variance injected into the attention weights, which is the last place I'd want noise when I am trying to make a clean lookup spike.
+
+Non-negativity: read `g(x) = 1 + x + x²/2` as a function of the scalar `x = q^T k` and complete the square — `1 + x + x²/2 = ½((x+1)² + 1) ≥ ½ > 0`. Strictly positive for every `q, k`, with no special-casing — better than `elu+1`, which is only non-negative by construction. So the weights stay a sensible average. Spikiness: `g` grows *quadratically* in `x`, so a large positive `q^T k` gets dramatically more weight than a medium one, the gap widening like the gap in `exp`'s first three terms. That quadratic growth is exactly the sharpening that concentrates weight on the matching key — the thing `elu+1`'s roughly-linear map could not do. This is the cheap deterministic stand-in for softmax's spike, and it is precisely the missing ingredient behind the 0.368/0.163 sag.
+
+One scaling subtlety, because a truncated Taylor series is only a good approximation of `exp` while its argument is modest: if `q^T k` were huge, the dropped `x³/6` and beyond would matter and the 2-term polynomial would diverge from the true exponential. So I keep the argument small by working in a *low* feature dimension — project `q` and `k` down to a small `feature_dim` (16) with bias-free linears and scale by `feature_dim^{-1/2}` before forming the kernel, the same temperature softmax uses. This does double duty: it keeps `q^T k` in the regime where the second-order truncation is benign, and it keeps the quadratic feature expansion cheap. (In the explicit-feature view the expansion is `1 + d~ + d~²` wide, dominated by `d~²`; projecting to `d~ = 16` keeps that small. In this fill I never materialize `φ` — I compute the kernel directly as `1 + qk + 0.5·qk²` — but the same scaling argument applies to the raw `qk`.)
+
+Now the second lesson from the linear-attention rung, which I want to fold in rather than relearn: global linear attention, even with a spiky kernel, mixes *globally* — every output is a function of a running summary of all earlier positions. Recall also needs *local precision*: lining a query token up against the key that immediately preceded its value, the fine token-to-token bookkeeping a global average is blunt at. In step two I leaned entirely on the substrate's fixed first-layer short conv for that. This rung adds its own short causal convolution *inside* the mixer — depthwise, kernel size 3, left-padded so it stays causal — and uses it twice: the convolved local signal `local` is added to the input before forming `q, k, v` (so the comparison is formed on locally-shifted features), and it is also added back to the output as a residual (`out_proj(out) + local`), so the precise local shift survives the global average. This is the spiky-global-plus-cheap-local pairing that the recall-throughput frontier converges to, and it is a genuine difference from the step-two fill, which had no internal conv and no `local` residual.
+
+Let me be concrete about the computation in this scaffold, because the implementation choices are load-bearing. I form `q, k, v` from the locally-mixed input `h = x + local`; I scale `q` and `k` by `feature_dim^{-1/2}`; I compute the raw score matrix `qk = q k^T`, then the Taylor-2 kernel `kernel = 1 + qk + 0.5·qk·qk` directly — this is the quadratic training view, mathematically identical to the recurrent state `S_i = Σ_{j≤i} φ(k_j) v_j^T` but expressed as one batched matmul, which is far faster than a sequential scan at these lengths. I apply the causal `tril` mask by zeroing the kernel above the diagonal (attention is not causal by default — this is the same care step two needed). The normalizer is the masked row-sum of the kernel itself, `denom = kernel.sum(-1)`, clamped away from zero — note this includes the `1 + …` constant term in every entry, so it is the sum of the *whole* Taylor-2 weights, not just the second-order part; that is the correct normalizer for this kernel and keeps the weights a proper average. Then `weights = kernel/denom`, `out = weights·v`, and `out_proj(out) + local`. The distilled module and the exact scaffold fill are in the answer.
+
+So the falsifiable expectations, stated against the linear-attention numbers. The spiky kernel should erase most of the step-two sag at the settings where the key count is still moderate: at `mqar-128` I expect a jump from 0.813 toward near-perfect — the matching key's weight blowing up past the rest should make the 8-pair lookup essentially clean — and at `mqar-512` I expect the most dramatic gain, from 0.368 up toward the 0.9s, because 32 pairs is exactly the regime where the gentle kernel's smear was eating accuracy and a quadratic sharpening recovers it. That pair of jumps is the direct test that "spikiness" was the missing ingredient. The harder, more interesting prediction is `mqar-2048`. With 128 pairs over a sequence sixteen times the easy length, the spiky kernel sharpens the *read*, but the fixed-shape state still has to hold all 128 bindings, and the deeper recall-state floor — any prefix-causal model needs state that grows with the number of bindings to recall *all* of them exactly — starts to bite. So I expect `mqar-2048` to improve only modestly over the step-two 0.163, staying far below the near-perfect short-setting numbers. If that is the pattern — near-perfect at 128 and 512, still largely failing at 2048 — it confirms that the spiky kernel closes the *selectivity* gap completely at moderate scale but cannot, on its own, beat the state-capacity wall at the longest setting. And it leaves exactly one thing unbeaten: full softmax attention, whose `N×N` matrix pays the quadratic cost precisely so it never has to compress the bindings into a fixed-shape state at all — the ceiling sitting in the default slot, and the only mechanism I expect to hold accuracy at `mqar-2048`.
+</think>
+<say>
+[[FILL_SAY: 1-2 sentences naming the method and what this first edit does]]
+</say>
+<edit path="pytorch-examples/synth_associative_recall/custom_strategy.py">
+<old>
+# EDITABLE region of custom_strategy.py — step 2: linear attention (elu+1 feature map)
+class CustomMixer(nn.Module):
+    """Causal linear attention with phi(x) = elu(x) + 1 (Katharopoulos 2020)."""
+
+    def __init__(self, d_model: int, seq_len: int, head_dim: int = 32):
+        super().__init__()
+        self.head_dim = head_dim
+        self.q_proj = nn.Linear(d_model, head_dim, bias=False)
+        self.k_proj = nn.Linear(d_model, head_dim, bias=False)
+        self.v_proj = nn.Linear(d_model, d_model, bias=False)
+        self.out_proj = nn.Linear(d_model, d_model, bias=False)
+
+    @staticmethod
+    def phi(x: torch.Tensor) -> torch.Tensor:
+        return F.elu(x) + 1.0
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        B, T, D = x.shape
+        q = self.phi(self.q_proj(x))                  # [B, T, F]
+        k = self.phi(self.k_proj(x))                  # [B, T, F]
+        v = self.v_proj(x)                            # [B, T, D]
+        # Quadratic-view causal linear attention (training time): build the
+        # T x T causal kernel matrix <q_t, k_s> and apply to v. This matches
+        # the recurrent / prefix-sum view exactly but uses simple matmuls.
+        scores = torch.matmul(q, k.transpose(-1, -2))  # [B, T, T]
+        causal = torch.ones(T, T, device=x.device, dtype=torch.bool).tril()
+        scores = scores.masked_fill(~causal, 0.0)
+        denom = scores.sum(dim=-1, keepdim=True).clamp_min(1e-6)
+        weights = scores / denom
+        out = torch.matmul(weights, v)
+        return self.out_proj(out)
+</old>
+<new>
+# EDITABLE region of custom_strategy.py — step 3: BASED (Taylor-2 spiky linear attention)
+class CustomMixer(nn.Module):
+    """BASED-style short convolution + 2nd-order Taylor linear attention.
+
+    Implementation uses BASED's `train_view="quadratic"` formulation: at
+    training time we materialise the T x T attention matrix using the
+    Taylor-2 kernel k(q,k) = 1 + q^T k + (q^T k)^2 / 2 (which equals
+    <phi(q), phi(k)>) and apply a causal mask. This is mathematically
+    identical to the recurrent / cumulative-sum view but uses memory
+    O(B*T^2) instead of O(B*T*F*D), which is what the official BASED
+    repo also does during training (see
+    https://github.com/HazyResearch/zoology/blob/main/zoology/mixers/based.py
+    `train_view`).
+    """
+
+    def __init__(self, d_model: int, seq_len: int, feature_dim: int = 16):
+        super().__init__()
+        self.d_model = d_model
+        self.feature_dim = feature_dim
+        self.q_proj = nn.Linear(d_model, feature_dim, bias=False)
+        self.k_proj = nn.Linear(d_model, feature_dim, bias=False)
+        self.v_proj = nn.Linear(d_model, d_model, bias=False)
+        self.out_proj = nn.Linear(d_model, d_model, bias=False)
+        self.conv_kernel_size = 3
+        self.local_conv = nn.Conv1d(
+            d_model,
+            d_model,
+            kernel_size=self.conv_kernel_size,
+            groups=d_model,
+            padding=0,
+            bias=True,
+        )
+        # Scale q,k so q^T k stays in the radius of convergence of exp().
+        self.scale = feature_dim ** -0.5
+
+    def short_conv(self, x: torch.Tensor) -> torch.Tensor:
+        h = x.transpose(1, 2)
+        h = F.pad(h, (self.conv_kernel_size - 1, 0))
+        h = self.local_conv(h)
+        return h.transpose(1, 2)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        B, T, D = x.shape
+        local = self.short_conv(x)
+        h = x + local
+        q = self.q_proj(h) * self.scale
+        k = self.k_proj(h) * self.scale
+        v = self.v_proj(h)
+        # Taylor-2 kernel score: 1 + q^T k + (q^T k)^2 / 2
+        qk = torch.matmul(q, k.transpose(-1, -2))           # [B, T, T]
+        kernel = 1.0 + qk + 0.5 * qk * qk                   # spiky, non-negative
+        causal = torch.ones(T, T, device=x.device, dtype=torch.bool).tril()
+        kernel = kernel.masked_fill(~causal, 0.0)
+        denom = kernel.sum(dim=-1, keepdim=True).clamp_min(1e-6)
+        weights = kernel / denom
+        out = torch.matmul(weights, v)                      # [B, T, D]
+        return self.out_proj(out) + local
+</new>
+</edit>
+<obs>
+Successfully replaced text in pytorch-examples/synth_associative_recall/custom_strategy.py.
+</obs>
+<run/>
+<obs>
+Measured results — `baseline:based` (`is_final,true`), seed 42.
+
+| setting | test_accuracy | score | elapsed (s) |
+|---|---|---|---|
+| mqar-128 | 0.987750 | 0.987750 | 210.0 |
+| mqar-512 | 0.971875 | 0.971875 | 288.9 |
+| mqar-2048 | 0.180062 | 0.180062 | 279.6 |
+</obs>
+
+### step 4 — Full causal multi-head attention   [slug:transformer]
+
+<think>
+[[POLISH_REASONING: adapt to first-person agentic voice, end by deciding to implement]]
+The spiky-kernel rung landed exactly where I predicted, and the way it split across the three settings is the cleanest confirmation yet of what governs this task. At `mqar-128` it reached 0.988 and at `mqar-512` it reached 0.972 — both essentially solved, both enormous jumps over linear attention's 0.813 and 0.368. So the quadratic Taylor-2 kernel did precisely the job I asked of it: by sharpening the weights so the matching key blows up past the rest, it closed the *selectivity* gap that the gentle `elu+1` kernel could not, and it did so completely at moderate scale. That settles the step-two diagnosis — the linear-attention sag really was a non-spiky-kernel problem, because making the kernel spiky erased it. But at `mqar-2048` the spiky kernel reached only 0.180, barely above linear attention's 0.163 and a world away from its own near-perfect short-setting numbers. The selectivity fix did almost nothing at the longest setting. That is the tell, and it tells me the bottleneck at 2048 is *not* selectivity at all.
+
+Let me read that 0.180 carefully, because it is the whole reason for this rung. At `mqar-2048` there are 128 key-value pairs to retain over a sequence sixteen times the easy length. The Taylor-2 kernel still factors through a fixed-shape running state — `S_i = Σ_{j≤i} φ(k_j) v_j^T`, with the feature dimension projected down to 16 to keep the quadratic expansion cheap. That projection, which was a *virtue* at 128 and 512 (it kept the kernel in the radius where the second-order truncation is accurate and the compute small), becomes the binding constraint at 2048: a state whose feature dimension is 16 has to superimpose 128 distinct bindings, and even a perfectly spiky read cannot recover a binding that the *write* has already crushed by collision. This is the deeper floor I flagged when I built the BASED rung and it is now measured: associative recall is the index problem, and recalling an *arbitrary* one of `m` bindings exactly requires the carried state to grow with `m`, because at write time the model does not know which key will be queried. A fixed-shape sub-quadratic state — recurrent or linear-attention or Taylor-kernel alike — is on the wrong side of that floor when the number of bindings is large. BASED dialed the state as far as it cheaply could and still hit the wall.
+
+So the question for this rung is no longer "how do I sharpen the read" — I have a perfectly spiky read. It is "how do I stop compressing the bindings into a fixed-shape state at all." And the answer is the mechanism that has been sitting in the default slot the entire time: full softmax attention. The reason it is the recall ceiling is precisely that it *refuses* the compression that every previous rung accepted. It pays the `N×N` cost specifically so that, at each query, it can read over every individual earlier key-value pair without ever summarizing them into a fixed-shape running state. The bindings are never crushed because they are never compressed — each key keeps its own column in the score matrix until the query arrives. That is the one structural property none of the sub-quadratic rungs had, and it is exactly the property the 0.180 says is missing at 2048.
+
+Let me derive the mechanism, because the implementation choices in this scaffold are load-bearing and a couple of them are the difference between the ceiling and a broken version of it. Read attention again as a kernel smoother: `y_i = Σ_{j≤i} sim(q_i, k_j) v_j / Σ_{j≤i} sim(q_i, k_j)`. Every previous rung chose a *factored* similarity `φ(q)^T φ(k)` precisely so the over-keys sum would collapse into a reusable state. Full attention makes the opposite choice on purpose: `sim(q,k) = exp(q^T k / √d)`. The exponential does not factor — it tangles `q_i` and `k_j` inside the nonlinearity — so I cannot pull `q_i` out and I am forced to keep every individual key around and form the full pairwise score matrix. That is the cost, and at these sequence lengths (128 to 2048, with `d_model=64`) the `N²` is affordable for training a from-scratch model, and it is exactly the cost I am now willing to pay to escape the state-capacity floor. In return the exponential gives me the sharpest possible spike for free: `exp` blows up the gap between a large dot product and a medium one without any truncation, so it is strictly spikier than the Taylor-2 kernel and it never has to trade spikiness against an approximation radius. So full attention is *both* the maximally-selective read and the no-compression read — the two things I needed, one for the short settings and one for the long.
+
+Two derivation details that matter for getting it right in the slot. First, the scaling. The raw dot product `q^T k = Σ_{i=1}^{d_k} q_i k_i` of two roughly unit-variance, zero-mean vectors has variance `d_k` — the cross terms vanish in expectation and the `d_k` diagonal terms each contribute 1. So the score's typical magnitude grows like `√d_k`, and if I feed scores of magnitude `±8`, `±10` into the softmax it saturates onto a near one-hot, where the softmax Jacobian `p_i(δ_ij − p_j)` collapses to near-zero everywhere and no gradient flows back through the attention weights — the model freezes in a near-argmax it cannot move. Dividing by `√d_k` puts the variance back at 1, keeps the logits `O(1)`, and keeps the softmax in its responsive region. In this scaffold I do not write that division by hand: I call `F.scaled_dot_product_attention`, which applies the `1/√d_k` scaling internally, so the variance fix is handled for me by the kernel. Second, causality. Pure attention computes the full `N×N` score matrix in one shot, including the illegal future entries where query `i` looks at key `j > i`. I do not skip them — skipping would break the single-matmul parallelism — I neutralize them by setting the future logits to `−∞` before the softmax, so `exp(−∞)=0` gives those positions exactly zero weight and position `i` attends only to `≤ i`. Here that is the `is_causal=True` flag to `scaled_dot_product_attention`, which builds the lower-triangular mask for me. This is the same causality care every attention-flavored rung needed (attention is not causal by default), now expressed through the fused kernel.
+
+Multi-head is the one remaining choice, and it is cheap insurance. A single softmax per query is one averaging summary, and an average blurs: if a query position needs to track more than one relation at once, one head smears them. So I split the `d_model=64` into `num_heads=2` subspaces of `head_dim=32`, run scaled dot-product attention independently in each, and concatenate — each head free to attend by a different criterion, and because each head has its own softmax the heads do not average over one another. The cost is identical to one full-width head (`h · N² · (d/h) = N²·d`), so resolution comes back for free. Two heads is modest, matching the small `d_model`; the point of this rung is the no-compression read, not head count.
+
+I deliberately keep the mixer *only* the attention — `qkv` projection, SDPA with `is_causal=True`, `out_proj`, nothing else. No positional encoding inside the mixer: the substrate's tied embeddings carry token identity and, more importantly, the fixed first-layer short causal convolution injects the local positional structure (it is the layer that knows "what immediately preceded me"), so the attention layer can be a pure content-addressed permutation-equivariant lookup on top of conv-provided position. No internal conv either — that local-shift job is upstream. This is genuinely simpler than the BASED fill, which had to carry an internal conv, a feature projection, a scaling, and a hand-built kernel; full attention needs none of that because it is not approximating anything. The distilled module and the exact scaffold fill are in the answer.
+
+So the falsifiable expectations, against the BASED numbers. At `mqar-128` and `mqar-512`, BASED already reached 0.988 and 0.972; full attention should match or very slightly exceed those — both are essentially solved and there is little headroom, so I am not expecting a large gain at the short settings, and a near-tie there would itself confirm that BASED's spiky kernel had genuinely closed the selectivity gap. The decisive prediction is `mqar-2048`. If the 0.180 was a state-capacity collapse and not a selectivity collapse, then removing the compression entirely should produce a dramatic jump — I expect full attention to *hold* its accuracy at 2048, somewhere near its short-setting numbers rather than near 0.18, because it never compresses the 128 bindings and so never crushes them. A result like ~0.99 at all three settings, flat across length, would be the clean confirmation: it would show that the long-context failure of every sub-quadratic rung was exactly the fixed-shape-state floor, and that paying the `N²` cost to keep each binding addressable is what buys length-invariant recall. That is the ceiling this whole ladder has been measured against, and it is the strongest mixer the task exposes — the open problem the research question poses is whether anything sub-quadratic can reach it at 2048, and on these measurements nothing on the ladder does.
+</think>
+<say>
+[[FILL_SAY: 1-2 sentences naming the method and what this first edit does]]
+</say>
+<edit path="pytorch-examples/synth_associative_recall/custom_strategy.py">
+<old>
+# EDITABLE region of custom_strategy.py — step 3: BASED (Taylor-2 spiky linear attention)
+class CustomMixer(nn.Module):
+    """BASED-style short convolution + 2nd-order Taylor linear attention.
+
+    Implementation uses BASED's `train_view="quadratic"` formulation: at
+    training time we materialise the T x T attention matrix using the
+    Taylor-2 kernel k(q,k) = 1 + q^T k + (q^T k)^2 / 2 (which equals
+    <phi(q), phi(k)>) and apply a causal mask. This is mathematically
+    identical to the recurrent / cumulative-sum view but uses memory
+    O(B*T^2) instead of O(B*T*F*D), which is what the official BASED
+    repo also does during training (see
+    https://github.com/HazyResearch/zoology/blob/main/zoology/mixers/based.py
+    `train_view`).
+    """
+
+    def __init__(self, d_model: int, seq_len: int, feature_dim: int = 16):
+        super().__init__()
+        self.d_model = d_model
+        self.feature_dim = feature_dim
+        self.q_proj = nn.Linear(d_model, feature_dim, bias=False)
+        self.k_proj = nn.Linear(d_model, feature_dim, bias=False)
+        self.v_proj = nn.Linear(d_model, d_model, bias=False)
+        self.out_proj = nn.Linear(d_model, d_model, bias=False)
+        self.conv_kernel_size = 3
+        self.local_conv = nn.Conv1d(
+            d_model,
+            d_model,
+            kernel_size=self.conv_kernel_size,
+            groups=d_model,
+            padding=0,
+            bias=True,
+        )
+        # Scale q,k so q^T k stays in the radius of convergence of exp().
+        self.scale = feature_dim ** -0.5
+
+    def short_conv(self, x: torch.Tensor) -> torch.Tensor:
+        h = x.transpose(1, 2)
+        h = F.pad(h, (self.conv_kernel_size - 1, 0))
+        h = self.local_conv(h)
+        return h.transpose(1, 2)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        B, T, D = x.shape
+        local = self.short_conv(x)
+        h = x + local
+        q = self.q_proj(h) * self.scale
+        k = self.k_proj(h) * self.scale
+        v = self.v_proj(h)
+        # Taylor-2 kernel score: 1 + q^T k + (q^T k)^2 / 2
+        qk = torch.matmul(q, k.transpose(-1, -2))           # [B, T, T]
+        kernel = 1.0 + qk + 0.5 * qk * qk                   # spiky, non-negative
+        causal = torch.ones(T, T, device=x.device, dtype=torch.bool).tril()
+        kernel = kernel.masked_fill(~causal, 0.0)
+        denom = kernel.sum(dim=-1, keepdim=True).clamp_min(1e-6)
+        weights = kernel / denom
+        out = torch.matmul(weights, v)                      # [B, T, D]
+        return self.out_proj(out) + local
+</old>
+<new>
+# EDITABLE region of custom_strategy.py — step 4: full causal multi-head attention (ceiling)
+class CustomMixer(nn.Module):
+    """Causal multi-head self-attention (full softmax attention)."""
+
+    def __init__(self, d_model: int, seq_len: int, num_heads: int = 2):
+        super().__init__()
+        assert d_model % num_heads == 0
+        self.num_heads = num_heads
+        self.head_dim = d_model // num_heads
+        self.qkv = nn.Linear(d_model, 3 * d_model, bias=False)
+        self.out_proj = nn.Linear(d_model, d_model, bias=False)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        B, T, D = x.shape
+        qkv = self.qkv(x).reshape(B, T, 3, self.num_heads, self.head_dim)
+        q, k, v = qkv.unbind(dim=2)
+        q = q.transpose(1, 2)  # [B, H, T, head_dim]
+        k = k.transpose(1, 2)
+        v = v.transpose(1, 2)
+        out = F.scaled_dot_product_attention(q, k, v, is_causal=True)
+        out = out.transpose(1, 2).reshape(B, T, D)
+        return self.out_proj(out)
+</new>
+</edit>
+<obs>
+Successfully replaced text in pytorch-examples/synth_associative_recall/custom_strategy.py.
+</obs>
+<run/>
+<obs>
+Measured results — `baseline:transformer` (`is_final,true`), seed 42.
+
+| setting | test_accuracy | score | elapsed (s) |
+|---|---|---|---|
+| mqar-128 | 0.996125 | 0.996125 | 409.2 |
+| mqar-512 | 0.996344 | 0.996344 | 444.5 |
+| mqar-2048 | 0.995891 | 0.995891 | 406.0 |
+</obs>
+

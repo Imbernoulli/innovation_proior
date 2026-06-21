@@ -1,0 +1,1079 @@
+<meta task="security-backdoor-defense" domain="Security" file="pytorch-vision/bench/backdoor/custom_backdoor_defense.py" model_format="qwen3" edit_tool="str_replace"/>
+
+<system>
+You are a research engineer improving a model on a fixed ML task. You work by editing the model code and running experiments. Think carefully before each change. You have these tools:
+- str_replace(path, old_str, new_str): replace the unique occurrence of old_str with new_str.
+- create(path, file_text): create a new file.
+- run_experiment(): train + evaluate the current code under the fixed budget; returns metrics.
+Make one tool call at a time. After editing, call run_experiment() to measure your method.
+</system>
+
+<user>
+## Research question
+
+A model is trained on data whose provenance the user does not control. An adversary injects a small
+number of training images that carry a fixed **trigger** (a corner pixel patch, a faint blended
+pattern) and are relabeled to an attacker-chosen **target class**. The trained model keeps clean test
+accuracy but classifies *any* triggered input as the target — a **backdoor**. The single thing being
+designed is a **poisoned-sample scoring rule**: given the penultimate-layer features and logits the
+fixed harness extracts after training, assign each training example a suspicion score so the harness
+can drop the highest-scoring fraction and retrain on the survivors. Everything else — the victim
+architecture, the poison injection, the removal budget, the retrain schedule — is frozen.
+
+## Prior art before the first rung
+
+The first rung reacts to the cheap, no-structure defenses and to the attack itself.
+
+- **BadNets / Blended attacks (Gu, Dolan-Gavitt, Garg 2017, arXiv:1708.06733; Chen et al. 2017,
+  arXiv:1712.05526)** — the threat. Stamp a trigger on a small fraction of one class, relabel to the
+  target, train as usual. The model maps trigger -> target while clean accuracy looks pristine. The
+  corruption is invisible from accuracy and is camouflaged at the pixel level (a tiny perturbation),
+  so it must be found in the *learned representation*. Gap (as a problem): nothing in the ordinary
+  training loop flags it.
+- **Confidence / per-class statistics.** Score each point by softmax confidence on its label, or by a
+  per-class confidence z-score; poison tends to be confidently classified into the target. Gap: a
+  weak, heavily-overlapping signal — once the model fits the clean data confidently too, poison ranks
+  no better than chance, and nothing about the *feature geometry* of the poison sub-population is used.
+
+These set up the move the first rung makes: stop looking at scalar confidence and start looking at the
+**geometry of the penultimate features within a class**, where the trigger-amplified poison forms a
+sub-population.
+
+## The fixed substrate
+
+A frozen harness owns everything except the scoring rule. It: (1) builds a poisoned training set for a
+fixed trigger (full dataset, no subsampling); (2) trains the victim model for 100 epochs (SGD,
+`lr=0.1`, `momentum=0.9`, `weight_decay=5e-4`, cosine annealing); (3) extracts penultimate-layer
+features and logits for the *entire* training set; (4) calls the defense; (5) removes the top
+`1.5 * eps` fraction of highest-scoring samples (an over-estimate of the poison count, per Tran et al.
+2018 Sec. 4.1) and retrains from scratch for 100 epochs on the filtered set; (6) evaluates clean
+accuracy and attack success rate on triggered test inputs on the *retrained* model.
+
+The objective is `defense_score = 0.5 * clean_acc + 0.5 * (1 - asr)` (BackdoorBench convention). The
+filter-stage `poison_recall` (fraction of true poison removed) is reported as a diagnostic but is
+**not** part of `defense_score`: a defense that under-ranks poison but still gets the retrained model
+to forget the backdoor can still win, and a defense that ranks poison well but does not remove *enough*
+to break the trigger shortcut will see `asr` stay high.
+
+## The editable interface
+
+Exactly one region is editable — the `BackdoorDefense` class in `custom_backdoor_defense.py`. Every
+method on the ladder is a fill of this same contract:
+
+- `fit(features, labels, poison_fraction, **kwargs)` — `features` is `(N, D)` penultimate features,
+  `labels` the `(N,)` training labels *after poisoning*, `poison_fraction` an upper bound on the
+  poison fraction. Cache whatever per-fit state the scoring rule needs, keeping the alignment between
+  examples and their training labels.
+- `score_samples(features, logits)` — returns 1-D suspicion scores of length `N`, higher = more
+  suspicious. `logits` is `(N, C)`; it is offered by the interface but is not necessarily the grouping
+  signal.
+
+The starting point is the scaffold default: **score by max softmax confidence** — no feature geometry
+at all. Each method on the ladder replaces exactly this class body.
+
+```python
+# EDITABLE region of custom_backdoor_defense.py — default fill (max-confidence)
+import numpy as np
+import torch
+
+
+class BackdoorDefense:
+    """Sample-scoring defense for poisoned-example filtering.
+
+    Default baseline: score each sample by its max softmax confidence. Higher
+    scores indicate more suspicious (likely poisoned) examples; the fixed
+    harness removes the top fraction and retrains.
+    """
+
+    def __init__(self):
+        self.class_means = None
+
+    def fit(self, features, labels, poison_fraction, **kwargs):
+        features = np.asarray(features)
+        labels = np.asarray(labels)
+        self.class_means = {}
+        for cls in np.unique(labels):
+            cls_features = features[labels == cls]
+            self.class_means[int(cls)] = cls_features.mean(axis=0)
+
+    def score_samples(self, features, logits):
+        probs = torch.softmax(torch.as_tensor(logits), dim=1).cpu().numpy()
+        return probs.max(axis=1)              # max-confidence suspicion score
+```
+
+## Evaluation settings
+
+Three benchmark settings, research-scale training, single seed `42`:
+
+- `resnet20-cifar10-badnets`: ResNet-20 on full CIFAR-10, BadNets trigger, 5% poison fraction.
+- `vgg16bn-cifar100-blend`: VGG-16-BN on full CIFAR-100, Blend trigger, 1% poison fraction (1% so the
+  target class stays ~33% poisoned, within the operating regime of per-class SVD/clustering defenses;
+  5% would make the target class 83% poison, a degenerate regime).
+- `mobilenetv2-fmnist-badnets`: MobileNetV2 on full FashionMNIST, BadNets trigger, 8% poison fraction.
+
+Reported per setting: `clean_acc` (higher better), `asr` (attack success rate on triggered test
+inputs, lower better), `poison_recall` (diagnostic), and `defense_score = 0.5*clean_acc + 0.5*(1-asr)`
+(the ranking objective, higher better).
+
+The editable model code is in `pytorch-vision/bench/backdoor/custom_backdoor_defense.py`:
+```python
+
+Usage:
+    python run_backdoor_defense.py --arch resnet20 --dataset cifar10 \
+        --data-root /data/cifar --trigger badnets --poison-fraction 0.05 \
+        --epochs 100 --seed 42
+"""
+
+import argparse
+import math
+import os
+import random
+import time
+
+import numpy as np
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+import torch.optim as optim
+import torchvision
+import torchvision.transforms as transforms
+from torch.utils.data import DataLoader, Dataset
+
+from custom_backdoor_defense import BackdoorDefense
+
+_DATA_ROOT = os.environ.get("DATA_ROOT", "/data")
+
+
+# ============================================================================
+# Model Architectures (FIXED) — same as dl-activation-function, using nn.ReLU
+# ============================================================================
+
+class BasicBlock(nn.Module):
+    """Basic residual block for CIFAR ResNets."""
+    expansion = 1
+
+    def __init__(self, in_planes, planes, stride=1):
+        super().__init__()
+        self.conv1 = nn.Conv2d(in_planes, planes, 3, stride=stride, padding=1, bias=False)
+        self.bn1 = nn.BatchNorm2d(planes)
+        self.conv2 = nn.Conv2d(planes, planes, 3, stride=1, padding=1, bias=False)
+```
+Improve it. Derive your method, edit the code, then run_experiment().
+</user>
+
+### step 1 — Activation Clustering (Chen et al., 2018)   [slug:activation-clustering]
+
+<think>
+I start the ladder here because the default fill — score by max softmax confidence — uses no feature
+geometry at all, and the one thing I actually know about the poison is structural, not confidence-based.
+The poison is, by construction, a *sub-population*: the attacker took some fraction of one class's
+worth of images, stamped them with a shared trigger, relabeled them all to the target, and dropped them
+into that class. So within the target class the training data is not homogeneous — it is a large pile of
+genuine target-class images plus a smaller pile of trigger-bearing intruders. Confidence does not see
+this. The model fits the clean target-class images confidently too, so "high confidence on the label"
+ranks poison no better than chance; the default baseline is throwing away the only handle I have. If I
+could *see* the smaller pile in the representation, I would be done. The question is where to look so
+that the pile is visible, and how to turn "membership in the pile" into the per-sample suspicion score
+the harness consumes.
+
+The naive place to look is the raw inputs — take all images labeled target and find the odd ones out.
+I should be honest about why this fails before spending effort on it. The poisoned images are real
+source-class photographs with a small trigger added; in pixel space they are perfectly ordinary
+images, and their variation from the clean target images is dwarfed by the natural variation *among*
+the clean images themselves — lighting, pose, background. The trigger is a tiny, localized
+perturbation. So in input space the poison sub-population is buried inside the spread of the legitimate
+data: norms overlap, distances overlap, nothing pops out. The signal-to-clutter ratio at the input
+level is hopeless. The lever has to be somewhere else.
+
+Flip the layer I look at: not the input, but what the *network* turned the input into — the
+penultimate-layer activations the harness hands me. Here is why this should be different, and it is
+worth deriving rather than asserting. The backdoor works *because the trigger is a powerful predictor
+of the target label*. During training the network discovered that "trigger present" is an almost
+perfect signal for "this is the target class" — far cleaner than any of the messy genuine target-class
+features — so a network minimizing loss is *pushed* to build a feature that fires strongly on the
+trigger and routes it to the target. It has to: that is how it gets the poisoned examples right, and it
+does get them right, with near-zero error even at small poison fractions. But that means the learned
+representation *amplifies* the trigger: whatever subtle pixel pattern the trigger was, by the
+penultimate layer it has become a strong, dedicated activation direction. The very mechanism that
+makes the attack effective drags the poison sub-population *apart* from the clean one in feature space.
+The contrast that was invisible in pixels is manufactured, by the network itself, in the activations.
+That is what the harness's penultimate features give me, and that is what I will analyze. Notably the
+harness extracts exactly these penultimate features after the full 100-epoch poisoned training, so the
+amplification is as strong as it will get by the time I score.
+
+Next decision: analyze all classes together, or class by class? If I pool all classes, the dominant
+structure in the activations is the *between-class* difference — the whole job of the representation is
+to separate classes, so that is where most of the variance sits, and the poison sub-population, a small
+wrinkle inside *one* class, is drowned by the giant between-class gaps. It would also be conceptually
+wrong: poison lives inside the target class, and I do not know which class is the target — the harness
+exposes no target-label oracle. So I segment by the (poisoned) training label and analyze each class on
+its own. Within a single class the loud between-class variance is gone, and the largest remaining
+structured difference — *if* the class was targeted — is precisely clean-versus-poison. That is exactly
+the structure I want to be the loudest thing in the data. Because the target is unknown, I run the same
+per-class procedure on every label; an unpoisoned class should simply not produce a real two-population
+split.
+
+So per class I have a cloud of penultimate activation vectors and I want to split it into "clean" and
+"poison" if a poison group exists. By the amplification argument these are two reasonably separated
+blobs for a poisoned class. Two blobs, find the membership: that is a clustering problem with two
+groups. Fit two clusters; one should land on the clean pile, one on the poison pile. The simplest thing
+that fits the two-population hypothesis is k-means with k=2 — partition the points into two groups by
+nearest centroid, alternately assigning and recomputing centroids. It is fast, it scales to the
+thousands of points per class, and for two roughly compact blobs it is the right tool. I will run it
+directly on the penultimate features the harness gives me.
+
+Here I have to flag, honestly, a tension this task's harness forces on me. The cleaner version of this
+idea reduces the activations to a low-dimensional space *before* clustering, because distance-based
+clustering is treacherous in very high dimensions: as dimensionality grows the Euclidean distances
+between points concentrate — nearest and farthest neighbor sit at almost the same distance — so the
+contrast clustering depends on collapses, and k-means run on hundreds of dimensions risks grouping by
+noise. The principled remedy is to reduce dimension first (an independent-component or principal-
+component projection to ~10 dims that surfaces the distinct injected component) and cluster there. But
+the editable interface I am filling is a single `BackdoorDefense` class scored against penultimate
+features whose dimension is whatever the architecture provides; the cleanest, most self-contained fill
+that matches the contract is to two-means the features as given. So my step-1 baseline runs k-means
+directly on the penultimate features, with no learned reduction — and I should be clear-eyed that this
+is exactly where the high-dimensional distance-concentration risk bites. If the two blobs are
+well-separated (strong amplification, low-dimensional trigger signal) k-means will find them; if they
+are not, the "smaller cluster" will be an arbitrary bisection of a single clean blob, and recall will
+be near zero. That is the gamble of the no-reduction baseline, and it is the gamble I am taking on
+purpose to establish the floor of the geometric approach before I add machinery.
+
+I need a deterministic, dependency-light two-means since the fill should be a clean drop-in. I
+initialize the two centroids at two spread-out points (the first row and the middle row of the class's
+feature matrix), then iterate: assign each point to its nearer centroid, recompute each centroid as the
+mean of its members, stop when assignments stop changing. Deterministic init keeps the result
+reproducible under the fixed seed. A class with very few samples cannot be meaningfully two-means'd — if
+there are fewer points than I would cluster sensibly, I treat them all as one (non-poison) group rather
+than forcing a split on a handful of points. I work in float64 for stable centroid arithmetic.
+
+There is a catch I have to confront immediately. k-means with k=2 *always* returns two clusters. It has
+no opinion about whether two clusters is the right description — hand it a clean, unpoisoned class with
+one homogeneous blob and it will still slice that blob into two arbitrary halves. So after clustering I
+do not automatically know whether a class was poisoned. I need a rule that says which cluster is the
+poison. The robust signal is *relative size*: the attacker poisons strictly less than half of any class
+(if the target class were mostly trigger images the attack would be blatant and would wreck clean
+accuracy on that class), so when a class is genuinely poisoned the split comes out lopsided — a small
+poison cluster and a large clean one — and the *smaller* cluster is the poison. When a class is not
+poisoned, an arbitrary bisection of one blob tends to come out closer to balanced. So smaller-cluster
+membership is my poison flag. This is the workhorse decision for a cheap per-sample score; the more
+discriminative tests (silhouette quality, exclusionary retraining) need either calibration data or a
+retrain the interface does not give me, so I lean on the size signal.
+
+Now turn that decision into the artifact the harness wants: a 1-D suspicion score per sample, higher =
+more suspicious, that the harness sorts to remove the top `1.5*eps`. Per class I find the smaller
+cluster and make the dominant component of the score *whether a point is in it* — a large constant for
+small-cluster members, so the rank-ordering puts every flagged-as-poison point above every clean point,
+which is what the harness consumes. But a pure binary membership throws away within-cluster geometry,
+and there is useful gradient there: among the points assigned to the small (poison) cluster, the ones
+sitting at the dense core — closest to the small-cluster centroid — are the most confidently poison,
+while boundary points are ambiguous. So I add a smaller continuous term that rewards closeness to the
+small-cluster centroid: one over the distance to that centroid (with a tiny epsilon against division by
+zero). The membership term dominates the ordering; the closeness term breaks ties *inside* the poison
+cluster, ranking the densest, most-certain poison highest. I assemble these in `score_samples` by
+walking each class's stored indicator and small-cluster centroid. For routing I use the membership I
+computed under the *training* labels (the bag the network amplified the trigger within); the logits are
+available but the score is keyed by the per-class cluster fit, not by the predicted class.
+
+So the step-1 delta from the default is concrete: where the scaffold scored by max softmax confidence —
+blind to the poison's feature geometry — I now segment penultimate activations by training label,
+two-means each class, call the smaller cluster the poison, and score by smaller-cluster membership plus
+closeness to its core. Here is what I expect, and where I am uncertain. On a setting where the trigger
+signal is strong and low-dimensional, the two blobs separate and the smaller cluster is real poison, so
+`poison_recall` should be clearly positive and `asr` should fall. But I have already named the failure
+mode I am most worried about: with no dimensionality reduction, k-means on high-dimensional penultimate
+features can collapse to an arbitrary bisection, and then the "smaller cluster" is just half of the
+clean data — `poison_recall` near zero, almost no true poison removed, the trigger shortcut intact, and
+`asr` staying pinned near 1.0. If that is what I see, the diagnosis for the next rung is already
+written: I do not need a *cluster* of poison, I need the single *direction* the poison shift inflates,
+read straight off the class covariance spectrum, which sidesteps the distance-concentration that kills
+high-dimensional clustering. (The full scaffold module is in the answer.) Let me write it in.
+</think>
+<say>
+Step 1: per-class Activation Clustering (Chen et al., 2018). This edit replaces the max-confidence
+baseline with a deterministic 2-means on each class's penultimate features, flagging the smaller
+cluster as poison and scoring by membership plus closeness to its core.
+</say>
+<edit path="pytorch-vision/bench/backdoor/custom_backdoor_defense.py">
+<old>
+
+Usage:
+    python run_backdoor_defense.py --arch resnet20 --dataset cifar10 \
+        --data-root /data/cifar --trigger badnets --poison-fraction 0.05 \
+        --epochs 100 --seed 42
+"""
+
+import argparse
+import math
+import os
+import random
+import time
+
+import numpy as np
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+import torch.optim as optim
+import torchvision
+import torchvision.transforms as transforms
+from torch.utils.data import DataLoader, Dataset
+
+from custom_backdoor_defense import BackdoorDefense
+
+_DATA_ROOT = os.environ.get("DATA_ROOT", "/data")
+
+
+# ============================================================================
+# Model Architectures (FIXED) — same as dl-activation-function, using nn.ReLU
+# ============================================================================
+
+class BasicBlock(nn.Module):
+    """Basic residual block for CIFAR ResNets."""
+    expansion = 1
+
+    def __init__(self, in_planes, planes, stride=1):
+        super().__init__()
+        self.conv1 = nn.Conv2d(in_planes, planes, 3, stride=stride, padding=1, bias=False)
+        self.bn1 = nn.BatchNorm2d(planes)
+        self.conv2 = nn.Conv2d(planes, planes, 3, stride=1, padding=1, bias=False)
+</old>
+<new>
+# EDITABLE region of custom_backdoor_defense.py — step 1: activation clustering (Chen et al., 2018)
+import numpy as np
+import torch
+
+
+class BackdoorDefense:
+    """Per-class 2-means activation clustering (Chen et al., 2018).
+
+    For each class, split features into two clusters via k-means.
+    The smaller cluster in a class is likely the poisoned sub-population.
+    Samples belonging to the smaller cluster get high suspicion scores.
+    """
+
+    def __init__(self):
+        self.class_labels_cluster = {}   # cls -> array of cluster labels per sample
+        self.class_small_center = {}     # cls -> centroid of smaller cluster
+        self.class_indices = {}          # cls -> global indices
+
+    def _kmeans2(self, X, max_iter=50):
+        """Simple 2-means on rows of X. Returns labels (0 or 1)."""
+        n = len(X)
+        # Initialise with two spread-out points (deterministic)
+        idx0, idx1 = 0, n // 2
+        c0, c1 = X[idx0].copy(), X[idx1].copy()
+        labels = np.zeros(n, dtype=int)
+        for _ in range(max_iter):
+            d0 = np.linalg.norm(X - c0, axis=1)
+            d1 = np.linalg.norm(X - c1, axis=1)
+            new_labels = (d1 < d0).astype(int)   # 0 = closer to c0, 1 = closer to c1
+            if np.array_equal(new_labels, labels):
+                break
+            labels = new_labels
+            mask0 = labels == 0
+            mask1 = labels == 1
+            if mask0.any():
+                c0 = X[mask0].mean(axis=0)
+            if mask1.any():
+                c1 = X[mask1].mean(axis=0)
+        # Determine which cluster is smaller (= poison, minority assumption)
+        n0 = (labels == 0).sum()
+        n1 = (labels == 1).sum()
+        small_label = 0 if n0 <= n1 else 1
+        small_center = c0 if small_label == 0 else c1
+        return labels, small_label, small_center
+
+    def fit(self, features, labels, poison_fraction, **kwargs):
+        features = np.asarray(features, dtype=np.float64)
+        labels_arr = np.asarray(labels)
+        for cls in np.unique(labels_arr):
+            mask = labels_arr == cls
+            cls_feat = features[mask]
+            indices = np.where(mask)[0]
+            self.class_indices[int(cls)] = indices
+            if len(cls_feat) < 4:
+                # Too few samples to cluster
+                self.class_labels_cluster[int(cls)] = np.zeros(len(cls_feat), dtype=int)
+                self.class_small_center[int(cls)] = cls_feat.mean(axis=0)
+                continue
+            clust_labels, small_label, small_center = self._kmeans2(cls_feat)
+            self.class_labels_cluster[int(cls)] = (clust_labels == small_label).astype(int)
+            self.class_small_center[int(cls)] = small_center
+
+    def score_samples(self, features, logits):
+        features = np.asarray(features, dtype=np.float64)
+        scores = np.zeros(len(features))
+        for cls in self.class_indices:
+            indices = self.class_indices[cls]
+            is_small = self.class_labels_cluster[cls]
+            small_center = self.class_small_center[cls]
+            for j, global_idx in enumerate(indices):
+                # Dominant term: membership in the smaller (poison) cluster
+                membership_score = float(is_small[j]) * 10.0
+                # Tie-breaker: closeness to the small-cluster core
+                dist = np.linalg.norm(features[global_idx] - small_center)
+                closeness = 1.0 / (dist + 1e-8)
+                scores[global_idx] = membership_score + closeness
+        return scores
+</new>
+</edit>
+<obs>
+Successfully replaced text in pytorch-vision/bench/backdoor/custom_backdoor_defense.py.
+</obs>
+<run/>
+<obs>
+Measured results — `baseline:activation_clustering` (`is_final,true`), seed 42.
+
+| setting | clean_acc | asr | poison_recall | defense_score |
+|---|---|---|---|---|
+| resnet20-cifar10-badnets | 0.9209 | 0.9729 | 0.0016 | 0.4740 |
+| vgg16bn-cifar100-blend | 0.6467 | 1.0000 | 0.0000 | 0.3234 |
+| mobilenetv2-fmnist-badnets | 0.9472 | 1.0000 | 0.0000 | 0.4736 |
+| **mean** | **0.8383** | **0.9910** | **0.0005** | **0.4237** |
+</obs>
+
+### step 2 — Spectral Signatures (Tran et al., 2018)   [slug:spectral-signature]
+
+<think>
+The clustering rung came back almost exactly as I feared, and the numbers say *why* in detail. On
+resnet20-cifar10-badnets `poison_recall` is 0.0016 — out of the `1.5*eps` points the harness removed, it
+caught essentially none of the real poison; on vgg16bn-cifar100-blend and mobilenetv2-fmnist-badnets the
+recall is a flat 0.0000. And the consequence shows up exactly where I said it would: with the trigger
+shortcut left intact, `asr` stays pinned at 0.97 / 1.00 / 1.00, and `defense_score` (mean 0.4237) is
+just clean accuracy carried by the retrain plus a `(1-asr)` term that is near zero. The defense did
+nothing; the retrained model relearned the backdoor from the poison the filter failed to remove. This is
+the high-dimensional-clustering collapse I flagged in the last step, confirmed: 2-means run directly on
+the penultimate features did not find a clean-versus-poison split, it bisected one blob arbitrarily, so
+the "smaller cluster" was half of the clean data and the score ranked clean points as suspicious. The
+diagnosis is sharp and it is not a tuning problem. Distance-based clustering needs distance contrast,
+and in hundreds of feature dimensions the distances concentrate, so the contrast the method depends on
+is gone. The lesson the recall numbers teach me: I should not be asking k-means to *partition* the cloud
+into two compact blobs at all. I should find the single *direction* the poison shift inflates and
+measure along it — a spectral question, not a clustering one — because a direction can be read off the
+covariance even when no compact cluster is visible to a distance metric.
+
+Let me set up that direction precisely, because "find the poison direction" has to be derived, not
+gestured at. Within one class the training points are a mixture `F = (1-eps) D + eps W` of clean points
+`D` (mean `mu_D`, fraction `1-eps`) and poison `W` (mean `mu_W`, fraction `eps`), with `Delta = mu_D -
+mu_W` the gap between the two sub-population means. If `D` and `W` differ enough in mean, there is a
+direction along which I can threshold to separate them; the question is whether the *covariance* tells
+me that direction. Compute the mixture covariance about the mixture mean `mu_F = (1-eps)mu_D +
+eps mu_W`. For the clean part, `mu_D - mu_F = eps Delta`, so `E_{X~D}[(X-mu_F)(X-mu_F)^T] = Sigma_D +
+eps^2 Delta Delta^T`; for the poison part, `mu_W - mu_F = -(1-eps)Delta`, so `E_{X~W}[...] = Sigma_W +
+(1-eps)^2 Delta Delta^T`. Mixing with weights `(1-eps)` and `eps`, the `Delta Delta^T` coefficient is
+`(1-eps)eps^2 + eps(1-eps)^2 = eps(1-eps)`, giving
+
+  `Sigma_F = (1-eps) Sigma_D + eps Sigma_W + eps(1-eps) Delta Delta^T`.
+
+There it is. The contamination contributes a *rank-one* variance bump `eps(1-eps) Delta Delta^T` on top
+of the within-population covariances. The mean shift between clean and poison announces itself as extra
+variance pointing exactly along `Delta`. So if that bump is large relative to the within-population
+spread, the top eigenvector of `Sigma_F` lines up with `Delta`, and the squared projection onto it
+separates poison from clean. This is the lever clustering missed: I do not need to *group* the points,
+I need the one direction of anomalous variance, and the covariance hands it to me directly. Crucially,
+reading a covariance eigenvector does not suffer the distance-concentration that killed 2-means — the
+spectral signal is in the second moment, not in pairwise distances.
+
+Why would this succeed where pixel-level analysis fails — and where, frankly, the clustering also had to
+work? Because the size of the bump `eps(1-eps)||Delta||^2` has to beat the within-population variance to
+dominate the spectrum. At the pixel level `||Delta||` is tiny (a trigger barely moves the mean) while
+the natural-image variance is enormous, so the bump is buried. In the *learned representation* the
+network amplifies the trigger — it is rewarded for keying on a near-perfect predictor of the target — so
+`||Delta||` in penultimate-feature space is large, pushed past the within-class variance. The same
+amplification I leaned on for clustering is what makes the spectral bump visible; the difference is that
+the spectral test reads the bump off the covariance rather than asking a distance metric to find a
+cluster, so it survives the high dimension that defeated 2-means. This is exactly why I expect this rung
+to move recall off the floor where clustering left it.
+
+I owe myself the condition under which this is guaranteed, because "should separate" is what I said
+about clustering too. Call `D, W` *eps-spectrally separable* if for the top eigenvector `v` of `Sigma_F`
+there is a threshold `t>0` with `Pr_{D}[|<X-mu_F,v>| > t] < eps` (almost no clean point projects beyond
+`t`) and `Pr_{W}[|<X-mu_F,v>| < t] < eps` (almost no poison point within it). Then removing the largest
+projections removes nearly all poison while sacrificing little clean data. The claim: if `Sigma_D,
+Sigma_W <= sigma^2 I` and `||Delta||^2 >= 6 sigma^2/eps` (with `eps < 1/2`), then `D, W` are
+eps-spectrally separable. Three moves. (1) Chebyshev: along any unit `u`, each sub-population
+concentrates within `~sigma` of its own mean, `Pr_D[|<X-mu_D,u>| > t] <= sigma^2/t^2`. (2) Correlation
+implies separation: with `c = |<u,Delta>|`, the clean and poison projected centers about `mu_F` sit at
+`eps c` and `-(1-eps)c`; a threshold between them with Chebyshev room on both sides drives both error
+tails below `eps` once `c` is large enough relative to `sigma/sqrt(eps)`. (3) The top eigenvector is
+correlated with `Delta`: from `Sigma_F >= eps(1-eps) Delta Delta^T`, the top eigenvalue is at least
+`eps(1-eps)||Delta||^2`, and expanding `v^T Sigma_F v <= sigma^2 + eps(1-eps)<v,Delta>^2` gives
+`<v,Delta>^2 >= ||Delta||^2 - sigma^2/(eps(1-eps))`; under the `6`-constant hypothesis and `eps<1/2`
+this is `> (2/3)||Delta||^2 > 4 sigma^2/eps`, supplying the correlation move (2) needs. The constant `6`
+is a proof-sketch constant, not an optimized threshold; the finite-sample version costs a little slack
+(`eps < 1/4`, `||Delta||^2 >= 10 sigma^2/eps`, `n = Omega(d log n/eps)` samples) via a
+matrix-concentration bound, and gives separation with probability at least 9/10.
+
+This derivation also tells me the regime where the method *breaks*, and it is exactly the regime the
+task-design notes warned about. The whole argument needs `eps < 1/2` within the class. If the within-
+class poison fraction climbs past a half, the "outlier" sub-population becomes the majority, centering
+subtracts a mean dominated by poison, and the *clean* images become the extreme points of `v` — I would
+remove clean data. That is why the vgg16bn-cifar100-blend setting uses 1% global poison (keeping the
+target class ~33% poison) rather than 5% (which would make the target class 83% poison): at 83% the
+spectral test is pointed at the wrong sub-population by construction. So on cifar100 I should not expect
+miracles even from a faithful spectral test — but I should at least expect it to stop being blind, which
+is the bar the clustering rung failed.
+
+Now the computation, ground in this task's scaffold. The harness hands me penultimate features for the
+whole training set and the (poisoned) training labels. For each training label, gather that class's
+features, compute the class mean `mu_c` (this is `mu_F` per class, the only mean I can actually compute
+since I do not know which points are poison), center the features, and take the top *right* singular
+vector `v_c` of the centered matrix — that is the top eigenvector of the class covariance, the direction
+the rank-one bump inflates. I use the right singular vector, not the left: the centered matrix is
+`n x d` with one row per sample, so its right singular vectors are the `d`-dimensional feature-space
+directions I project onto. Score each point by the squared centered projection `tau_i = ((r_i - mu_c) .
+v_c)^2` — the per-point variance contribution along the contaminated direction. Squaring rather than
+absolute value only monotonically reshapes the ranking, so "remove the largest" is unchanged; squaring
+is the natural form because the bump I derived is a variance. I do this *per class* because the poison
+all sits inside one trained label; if I decomposed the whole dataset at once, ordinary between-class
+mean differences would dominate the spectrum and I would just rediscover the labels — the same pooling
+mistake I avoided in clustering.
+
+One subtlety about *which* label to group by, and it matters more than it looks. The poison's signature
+lives in the target class as it was *trained* — the bag of points the network saw as "this class" and
+whose representation carries the amplified trigger direction. If I grouped by the model's *predicted*
+class at scoring time, a hard poisoned example whose prediction happens to disagree with its assigned
+label would be pulled into the wrong group and projected onto a direction fit for a different class,
+corrupting its score. So `fit` must remember the training labels and `score_samples(features, logits)`
+must apply each point's class-specific direction using those cached labels. The logits the harness
+passes are not the grouping signal — they are present only because the interface offers them. This is a
+real difference from how the default scaffold (which reads logits) and even the clustering rung treated
+the inputs: the spectral test is keyed strictly by training label. A degenerate class with fewer than
+two points gets a zero direction rather than a crash.
+
+The harness fixes the removal budget at the largest `1.5*eps` fraction, which is the right instinct and
+matches the asymmetry of costs I keep coming back to: only an upper bound on `eps` is known, surviving
+poison can preserve the trigger shortcut (the clustering rung's `asr=1.0` is exactly what surviving
+poison looks like), and discarding a few extra clean points out of thousands costs little. Over-removing
+is the cheaper error, and the harness already does it.
+
+So the step-2 delta from clustering is concrete: where 2-means tried to partition high-dimensional
+features into compact blobs and collapsed to an arbitrary bisection (recall 0.0016 / 0 / 0, asr pinned
+near 1.0), I now read the single contaminated *direction* off each class's covariance spectrum and score
+by the squared centered projection onto it. Here is what I expect, falsifiably, against the clustering
+numbers. On resnet20-cifar10-badnets, where the BadNets trigger is a strong low-dimensional signal,
+recall should rise well off the 0.0016 floor — the spectral bump should be visible where the cluster was
+not. On mobilenetv2-fmnist-badnets recall should likewise move above 0. On vgg16bn-cifar100-blend I am
+not optimistic the spectral test fully works — the blended trigger is more diffuse and the per-class
+poison fraction is higher — so recall may stay near 0 there even with a faithful spectral test. The
+honest open question is whether even a clearly-positive recall *removes enough* poison to break the
+trigger shortcut: the spectral test ranks the poison direction's extremes, but a single top eigenvector
+catches only the poison that aligns with *that one* direction, and if the signature is spread or the
+clean covariance is ill-conditioned, recall climbs but `asr` may not collapse. If I see recall improve
+yet `asr` stay high, the next rung's job is already named: stop betting on the *single* top direction
+and amplify the signature wherever it sits in the spectrum. (The full scaffold module is in the answer.)
+So let me swap in the spectral test.
+</think>
+<say>
+Step 2: per-class Spectral Signatures (Tran et al., 2018). I switch from clustering to the covariance
+spectrum — score each sample by its squared projection onto the top eigenvector of its class's centered
+features, the direction the poison's mean shift inflates. First the header.
+</say>
+<edit path="pytorch-vision/bench/backdoor/custom_backdoor_defense.py">
+<old>
+# EDITABLE region of custom_backdoor_defense.py — step 1: activation clustering (Chen et al., 2018)
+import numpy as np
+</old>
+<new>
+# EDITABLE region of custom_backdoor_defense.py — step 2: spectral signatures (Tran et al., 2018)
+import numpy as np
+</new>
+</edit>
+<obs>
+Successfully replaced text in pytorch-vision/bench/backdoor/custom_backdoor_defense.py.
+</obs>
+<note>
+Now the class body: per-class top singular direction and squared-projection scoring, routed by cached training labels.
+</note>
+<edit path="pytorch-vision/bench/backdoor/custom_backdoor_defense.py">
+<old>
+class BackdoorDefense:
+    """Per-class 2-means activation clustering (Chen et al., 2018).
+
+    For each class, split features into two clusters via k-means.
+    The smaller cluster in a class is likely the poisoned sub-population.
+    Samples belonging to the smaller cluster get high suspicion scores.
+    """
+
+    def __init__(self):
+        self.class_labels_cluster = {}   # cls -> array of cluster labels per sample
+        self.class_small_center = {}     # cls -> centroid of smaller cluster
+        self.class_indices = {}          # cls -> global indices
+
+    def _kmeans2(self, X, max_iter=50):
+        """Simple 2-means on rows of X. Returns labels (0 or 1)."""
+        n = len(X)
+        # Initialise with two spread-out points (deterministic)
+        idx0, idx1 = 0, n // 2
+        c0, c1 = X[idx0].copy(), X[idx1].copy()
+        labels = np.zeros(n, dtype=int)
+        for _ in range(max_iter):
+            d0 = np.linalg.norm(X - c0, axis=1)
+            d1 = np.linalg.norm(X - c1, axis=1)
+            new_labels = (d1 < d0).astype(int)   # 0 = closer to c0, 1 = closer to c1
+            if np.array_equal(new_labels, labels):
+                break
+            labels = new_labels
+            mask0 = labels == 0
+            mask1 = labels == 1
+            if mask0.any():
+                c0 = X[mask0].mean(axis=0)
+            if mask1.any():
+                c1 = X[mask1].mean(axis=0)
+        # Determine which cluster is smaller (= poison, minority assumption)
+        n0 = (labels == 0).sum()
+        n1 = (labels == 1).sum()
+        small_label = 0 if n0 <= n1 else 1
+        small_center = c0 if small_label == 0 else c1
+        return labels, small_label, small_center
+
+    def fit(self, features, labels, poison_fraction, **kwargs):
+        features = np.asarray(features, dtype=np.float64)
+        labels_arr = np.asarray(labels)
+        for cls in np.unique(labels_arr):
+            mask = labels_arr == cls
+            cls_feat = features[mask]
+            indices = np.where(mask)[0]
+            self.class_indices[int(cls)] = indices
+            if len(cls_feat) < 4:
+                # Too few samples to cluster
+                self.class_labels_cluster[int(cls)] = np.zeros(len(cls_feat), dtype=int)
+                self.class_small_center[int(cls)] = cls_feat.mean(axis=0)
+                continue
+            clust_labels, small_label, small_center = self._kmeans2(cls_feat)
+            self.class_labels_cluster[int(cls)] = (clust_labels == small_label).astype(int)
+            self.class_small_center[int(cls)] = small_center
+
+    def score_samples(self, features, logits):
+        features = np.asarray(features, dtype=np.float64)
+        scores = np.zeros(len(features))
+        for cls in self.class_indices:
+            indices = self.class_indices[cls]
+            is_small = self.class_labels_cluster[cls]
+            small_center = self.class_small_center[cls]
+            for j, global_idx in enumerate(indices):
+                # Dominant term: membership in the smaller (poison) cluster
+                membership_score = float(is_small[j]) * 10.0
+                # Tie-breaker: closeness to the small-cluster core
+                dist = np.linalg.norm(features[global_idx] - small_center)
+                closeness = 1.0 / (dist + 1e-8)
+                scores[global_idx] = membership_score + closeness
+        return scores
+</old>
+<new>
+class BackdoorDefense:
+    """Per-class spectral signatures (Tran et al., NeurIPS 2018).
+
+    For each class c: compute the mean mu_c of its penultimate-layer
+    features, center them, take the top right singular vector v_c of
+    the centered matrix, and score each sample by
+        tau_i = ((r_i - mu_c) . v_c)^2.
+    Training labels from fit() route each sample to its class direction.
+    """
+
+    def __init__(self):
+        self.class_centers = {}       # cls -> mean vector (D,)
+        self.class_directions = {}    # cls -> top right singular vector (D,)
+        self.cached_labels = None     # training labels from fit()
+
+    def fit(self, features, labels, poison_fraction, **kwargs):
+        features = np.asarray(features, dtype=np.float64)
+        labels = np.asarray(labels)
+        self.cached_labels = labels.copy()
+        for cls in np.unique(labels):
+            mask = labels == cls
+            cls_feat = features[mask]
+            if cls_feat.shape[0] < 2:
+                # Degenerate class; zero direction
+                self.class_centers[int(cls)] = cls_feat.mean(axis=0) if len(cls_feat) else np.zeros(features.shape[1])
+                self.class_directions[int(cls)] = np.zeros(features.shape[1])
+                continue
+            mu = cls_feat.mean(axis=0)
+            centered = cls_feat - mu
+            # Top right singular vector of the centered class matrix.
+            # np.linalg.svd returns vh with rows = right singular vectors.
+            _, _, vh = np.linalg.svd(centered, full_matrices=False)
+            self.class_centers[int(cls)] = mu
+            self.class_directions[int(cls)] = vh[0]
+
+    def score_samples(self, features, logits):
+        features = np.asarray(features, dtype=np.float64)
+        # Use TRAINING LABELS (cached in fit) to pick the per-class
+        # direction.  Using argmax(logits) would mismatch any sample whose
+        # prediction disagrees with its training label.
+        if self.cached_labels is not None and len(self.cached_labels) == len(features):
+            cls_for_sample = self.cached_labels
+        else:
+            cls_for_sample = np.asarray(logits).argmax(axis=1)
+
+        scores = np.zeros(len(features), dtype=np.float64)
+        for cls, direction in self.class_directions.items():
+            mask = (cls_for_sample == cls)
+            if not mask.any():
+                continue
+            centered = features[mask] - self.class_centers[cls]
+            proj = centered @ direction
+            scores[mask] = proj * proj  # tau_i = (centered . v)^2
+        return scores
+</new>
+</edit>
+<obs>
+Successfully replaced text in pytorch-vision/bench/backdoor/custom_backdoor_defense.py.
+</obs>
+<run/>
+<obs>
+Measured results — `baseline:spectral_signature` (`is_final,true`), seed 42.
+
+| setting | clean_acc | asr | poison_recall | defense_score |
+|---|---|---|---|---|
+| resnet20-cifar10-badnets | 0.9211 | 0.9708 | 0.2688 | 0.4752 |
+| vgg16bn-cifar100-blend | 0.6470 | 0.9999 | 0.0000 | 0.3236 |
+| mobilenetv2-fmnist-badnets | 0.9373 | 1.0000 | 0.1192 | 0.4687 |
+| **mean** | **0.8351** | **0.9902** | **0.1293** | **0.4225** |
+</obs>
+
+### step 3 — SPECTRE (Hayase et al., 2021)   [slug:spectre]
+
+<think>
+The spectral rung did exactly what the derivation promised and then stopped exactly where I worried it
+would, and the numbers draw the line cleanly. On resnet20-cifar10-badnets `poison_recall` climbed from
+the clustering rung's 0.0016 to 0.2688, and on mobilenetv2-fmnist-badnets from 0.0000 to 0.1192 — the
+spectral test is no longer blind; it surfaces real poison where 2-means found none, confirming that
+reading the contaminated *direction* off the covariance beats asking a distance metric to find a compact
+cluster in high dimensions. But look at `asr`: 0.9708 / 0.9999 / 1.0000, essentially unmoved from the
+clustering rung. Recall went up, the backdoor did not break. And on vgg16bn-cifar100-blend recall stayed
+flat at 0.0000 — the spectral test found nothing there at all. So `defense_score` (mean 0.4225) is, if
+anything, a hair *below* the clustering rung's 0.4237, because the small recall gains did not translate
+into any `(1-asr)` improvement and clean accuracy wobbled. The defense is detecting some poison and
+still failing to defend.
+
+The diagnosis is the limitation I named at the close of the last step, now measured. A 27% recall means
+the top eigenvector caught roughly one poisoned point in four and missed three. The spectral test bets
+everything on the *single* top-variance direction of the *combined* class covariance, and that bet only
+pays off when the contaminated direction `Delta` is also the largest-variance direction of the data.
+Two things break that bet here. First, the clean penultimate features of a class are not isotropic —
+there are a few directions of large legitimate spread (pose, sub-type, lighting) and many of small
+spread — so if the poison shift falls along a clean direction that is *not* the top one, the top
+eigenvector is owned by clean variance and the poison projection looks clean. Second, the blended attack
+on cifar100 spreads its trigger more diffusely than a single bright BadNets pixel, so its signature is
+not one sharp direction but several low-variance ones; the top eigenvector inspects exactly one of them,
+which is why recall there is pinned at zero. The 0.27 on cifar10 is the fraction of poison that happened
+to align with the one direction I looked at; the missing 0.73 is sitting in directions the top
+eigenvector never inspected. So the failure is structural: a single principal direction cannot catch a
+signature that is not the loudest direction, and an adversary (or just an ill-conditioned clean
+covariance) can put it anywhere. I do not need a *better* top eigenvector — I need the poison's excess
+variance to stand out *wherever it sits in the spectrum*.
+
+The geometric operation that makes excess variance stand out regardless of direction is **whitening**.
+Suppose I knew the *clean* covariance `Sigma_clean` of the class. Whiten every point by
+`Sigma_clean^{-1/2}`: the clean cloud becomes isotropic, unit variance in every direction. After that
+transform there is no longer a "big clean direction" for the poison to hide behind — every clean
+direction is equalized. The poison's mean shift `Delta`, a fixed vector in feature space, becomes
+`Sigma_clean^{-1/2} Delta` in whitened space, and its excess variance is now the *only* above-unit-
+variance structure left, exposed no matter which clean direction it originally overlapped. Whitening
+converts the question I cannot control — "is the signature a top-variance direction?" — into one whose
+answer is yes whenever poison is present — "is there *any* residual high-variance direction?" That is
+exactly the lever the single-eigenvector test was missing, and it directly attacks the cifar100 zero and
+the cifar10 three-quarters-missed.
+
+But this trades the problem for a harder one: I do not have `Sigma_clean`. All I have is the
+*contaminated* class covariance, and if I whiten by *that*, I whiten away the poison along with
+everything else — the contaminated covariance already contains the rank-one bump `eps(1-eps)Delta
+Delta^T`, so `Sigma_F^{-1/2}` flattens precisely the direction I want to keep tall. The whole approach
+hinges on estimating the *clean* covariance from contaminated samples, with no trusted clean set. This
+is the exact problem high-dimensional robust statistics solves: estimate the mean and covariance of `D`
+when an `eps`-fraction of samples are adversarial outliers. Robust estimators recover the clean mean and
+covariance up to error `O(eps sqrt(log(1/eps)))` from enough samples — close enough that whitening by
+the robust covariance makes the clean cloud nearly isotropic while leaving the poison's excess variance
+intact. So robust whitening is the amplifier: estimate the clean covariance robustly, whiten by it, and
+*then* the residual signature pops.
+
+How to do the robust estimation operationally. The full polynomial-time estimators are intricate; the
+workhorse underneath them is iterative filtering. Start with all points, compute a mean and covariance,
+measure each point's Mahalanobis distance under the current estimate, keep the points closest to the
+running core and drop the most extreme, recompute, repeat. The fixed point is a clean core whose mean
+and covariance are not dominated by the outliers, because the outliers — the high-Mahalanobis-distance
+points — are exactly the ones trimmed. The trim fraction should track the contamination level (on the
+order of `eps`, with a margin, since over-trimming clean points costs almost nothing while under-
+trimming leaves poison in the covariance and re-pollutes the whitening — the same asymmetry the harness's
+`1.5*eps` removal already encodes). A handful of iterations converges; because the trim fraction is
+below a half, the clean majority is never trimmed away.
+
+There is a dimensionality obstacle I have to clear before whitening, and it is the difference between
+this working and amplifying noise. Robust covariance estimation in `d` dimensions needs on the order of
+`d^2` samples to be accurate, and `d` here is the penultimate-feature dimension — hundreds to thousands
+— while a class has only a few thousand examples. I cannot robustly estimate a thousand-dimensional
+covariance from that; the estimate would be garbage and whitening would inflate estimation noise rather
+than poison. So I reduce dimension first: project the centered class features onto their top-`k`
+singular subspace and do all robust estimation and whitening inside that `k`-dimensional space. This is
+safe for the poison as long as `k` is large enough to contain the contaminated direction — the poison
+bump, even if not the single top direction, is *some* above-average-variance direction, so it lives
+within the top-`k` subspace for a reasonable `k` — and it makes robust estimation feasible (`k^2`
+samples, not `d^2`) while restoring distance contrast.
+
+But `k` is a real knob with failure on both sides, and the spectral rung's cifar100 zero is a warning
+that fixed choices can be exactly wrong. Too small a `k`: the subspace might not contain the poison
+direction, and I project the signature away before I start. Too large a `k`: I drag in clean directions
+that are heavy-tailed or poorly estimated from limited samples, the robust estimator mis-whitens them,
+and whitening *inflates* a clean direction so the score flags clean points. The sweet spot is attack-
+dependent — a sharp BadNets trigger has low effective dimension and wants a small `k`; a diffuse blend or
+a spread signature wants a larger `k`. I refuse to be on a knife's edge about a number that is wrong for
+half the settings, especially after watching one fixed top-eigenvector choice fail on cifar100. So I
+*select* `k` by the signal it produces: run the pipeline for a grid of candidate `k`, and for each
+measure how strong the residual signature is *after* whitening — the top eigenvalue of the whitened
+empirical covariance. A `k` that contains the poison and estimates the clean directions well leaves a
+tall residual eigenvalue (the un-whitened poison); a `k` too small (no poison) or too large (mis-whitened
+clean dilution) leaves a flatter whitened spectrum. Pick the `k` that maximizes the post-whitening top
+eigenvalue. The data tells me the effective dimensionality of the signature instead of my guessing it;
+a geometric grid from 1 up to a cap suffices and the choice is not sensitive to the exact grid.
+
+After robust whitening, how do I score? The two endpoints I already know are both wrong for half the
+cases. Score by the squared whitened *norm*: the total excess across all directions, good when the
+signature is *spread* (an m-way or diffuse blend), bad when it is one sharp direction (diluted by `k-1`
+unit-variance clean directions in the sum). Score by the squared projection onto the whitened *top
+eigenvector*: perfect for one sharp direction (this is what the spectral rung did, post-whitening), but
+throws away the signal when the signature is spread — which is precisely the cifar100 case that scored
+zero. I have spent this whole rung making the method handle the spread case, so I cannot commit to the
+top-projection; but I also do not want to lose the sharp cifar10 case to the norm score. I want a score
+that *interpolates* and adapts to the effective dimensionality automatically.
+
+That is exactly the quantum-entropy score. Take the empirical covariance `Sigma_tilde` of the whitened
+reps, form `Q = exp(alpha (Sigma_tilde - I)/(||Sigma_tilde||_2 - 1))`, normalize by `Tr(Q)`, and score
+each whitened point by `tau_i = (h_i^T Q h_i)/Tr(Q)`. Read what `Q` does. After whitening the clean
+directions have variance near 1, so `Sigma_tilde - I` is near zero on them and `Q` weights them lightly;
+the contaminated directions have variance above 1, so `Sigma_tilde - I` is positive there and the
+exponential weights them *heavily*. The normalization `||Sigma_tilde||_2 - 1` scales the temperature by
+the strength of the top excess direction so it is comparable across classes and settings. The single
+parameter `alpha` controls how aggressively `Q` concentrates: as `alpha -> 0`, `Q -> I` and the score is
+the squared whitened norm (the spread-friendly endpoint); as `alpha -> infinity`, `Q` collapses onto the
+top whitened eigenvector and the score is the top-projection (the sharp endpoint); intermediate `alpha`
+weights each excess direction by `exp(alpha * its excess)`, a soft-max over directions that automatically
+follows whatever effective dimensionality the whitening exposed. A sharp BadNets trigger leaves one tall
+direction and `Q` concentrates there; a diffuse blend leaves several moderately-tall directions and `Q`
+spreads weight across them. `alpha = 4` sits in the regime that handles both — large enough to emphasize
+excess over clean noise, small enough not to bet everything on the single top direction the spectral rung
+already over-bet on. The QUE score is not an arbitrary nonlinearity; it is the precise object that makes
+the method agnostic to how concentrated or spread the signature is, which is the entire reason I did
+robust whitening.
+
+Ground it in the scaffold. Same `BackdoorDefense` contract, same per-training-label routing as the
+spectral rung (the target label is not exposed, so run on every class; group by cached training labels,
+not predicted class, for the same reason as before — a hard poisoned point's prediction can disagree with
+its label). Per class: center, then for each candidate `k` project onto the top-`k` subspace, robustly
+estimate the clean mean/covariance by iterative Mahalanobis trimming, whiten by the robust
+`Sigma^{-1/2}`, record the post-whitening top eigenvalue, keep the best `k`, and compute the QUE score
+for it. Numerical guards fall out of the construction: clip the matrix-exponential exponent so it cannot
+overflow, add a small ridge so the robust covariance is invertible, skip classes too small to whiten,
+and fall back to the squared whitened norm if the trace degenerates. `fit` does the per-class work and
+caches the scores; `score_samples` reads them out. The harness's fixed `1.5*eps` removal does the rest.
+
+Here is the bar this rung must clear, falsifiably, against the spectral rung's real numbers, since it
+carries no feedback of its own. The spectral rung left recall at 0.2688 / 0.0000 / 0.1192 with `asr` at
+0.9708 / 0.9999 / 1.0000 and `defense_score` mean 0.4225. Robust whitening should raise recall on
+cifar10 well above 0.2688, because the poison the top eigenvector missed (the other three-quarters) is
+exactly the excess variance whitening exposes and QUE then weights; and it should move cifar100 off zero,
+because the diffuse blend signature that one direction could not see is what whitening-plus-QUE is built
+to surface. The real test is `asr`: recall only matters if removing the top `1.5*eps` now catches *enough*
+of the poison to break the trigger shortcut — if recall crosses the threshold where the retrained model
+no longer relearns the backdoor, `asr` should finally fall from ~1.0 and `defense_score` should jump well
+past 0.4225 toward the high-clean-acc, low-asr corner. If instead recall rises but `asr` stays pinned, the
+verdict is that within-class poison fraction or trigger diffuseness has pushed the setting outside the
+regime where *any* feature-scoring filter at a `1.5*eps` budget can break the backdoor — a limit of the
+filter-and-retrain protocol itself, not of the scoring rule. That is the line I would be testing, and it
+is the honest place this ladder ends. (The full scaffold module is in the answer.) Let me build it.
+</think>
+<say>
+Finale: per-class SPECTRE (Hayase et al., 2021). I robustly estimate each class's clean covariance,
+whiten by it so the poison's excess variance pops in any direction, then score with the Quantum-Entropy
+(QUE) quadratic form — auto-selecting the reduced dimension k. Starting with the header.
+</say>
+<edit path="pytorch-vision/bench/backdoor/custom_backdoor_defense.py">
+<old>
+# EDITABLE region of custom_backdoor_defense.py — step 2: spectral signatures (Tran et al., 2018)
+import numpy as np
+</old>
+<new>
+# EDITABLE region of custom_backdoor_defense.py — finale: SPECTRE (Hayase et al., ICML 2021)
+import numpy as np
+</new>
+</edit>
+<obs>
+Successfully replaced text in pytorch-vision/bench/backdoor/custom_backdoor_defense.py.
+</obs>
+<note>
+Now the class header plus the robust-covariance, per-k whitening+QUE, and k-selection helpers.
+</note>
+<edit path="pytorch-vision/bench/backdoor/custom_backdoor_defense.py">
+<old>
+class BackdoorDefense:
+    """Per-class spectral signatures (Tran et al., NeurIPS 2018).
+
+    For each class c: compute the mean mu_c of its penultimate-layer
+    features, center them, take the top right singular vector v_c of
+    the centered matrix, and score each sample by
+        tau_i = ((r_i - mu_c) . v_c)^2.
+    Training labels from fit() route each sample to its class direction.
+    """
+
+    def __init__(self):
+        self.class_centers = {}       # cls -> mean vector (D,)
+        self.class_directions = {}    # cls -> top right singular vector (D,)
+        self.cached_labels = None     # training labels from fit()
+</old>
+<new>
+class BackdoorDefense:
+    """Per-class SPECTRE: robust-whitening + Quantum-Entropy (QUE) scoring.
+
+    For each training label c, center its penultimate features, project onto a
+    top-k SVD subspace, robustly estimate the clean mean/covariance (iterative
+    Mahalanobis trimming), whiten by the robust Sigma^{-1/2}, and score each
+    sample by the QUE quadratic form
+        tau_i = (h_i^T Q h_i)/Tr(Q),
+        Q = exp(alpha (Sigma_tilde - I)/(||Sigma_tilde||_2 - 1)),
+    with Sigma_tilde the empirical covariance of the whitened reps and k chosen
+    to maximize the post-whitening top eigenvalue.
+    """
+
+    def __init__(self, k=64, alpha=4.0):
+        self.k = k
+        self.alpha = alpha
+        self.class_scores = {}        # c -> per-sample QUE scores (class order)
+        self.class_indices = {}       # c -> global indices for this class
+        self.cached_labels = None
+
+    def _robust_cov(self, Y, eps, n_iter=8):
+        """Iterative robust mean/cov: keep the points closest (Mahalanobis) to
+        the running clean core, re-estimate, repeat."""
+        Y = np.atleast_2d(Y)
+        n = Y.shape[0]
+        trim = min(0.5, 1.5 * eps)
+        n_keep = max(2, n - int(np.floor(trim * n)))
+        keep = np.ones(n, dtype=bool)
+        for _ in range(n_iter):
+            Yc = Y[keep]
+            mu = Yc.mean(axis=0)
+            sigma = np.atleast_2d(np.cov(Yc, rowvar=False, bias=False))
+            sigma = sigma + 1e-6 * np.eye(sigma.shape[0])
+            centered = Y - mu
+            sol = np.linalg.solve(sigma, centered.T).T
+            md = np.einsum("ij,ij->i", centered, sol)
+            new_keep = np.zeros(n, dtype=bool)
+            new_keep[np.argsort(md)[:n_keep]] = True
+            if np.array_equal(new_keep, keep):
+                break
+            keep = new_keep
+        Yc = Y[keep]
+        mu = Yc.mean(axis=0)
+        sigma = np.atleast_2d(np.cov(Yc, rowvar=False, bias=False))
+        sigma = sigma + 1e-6 * np.eye(sigma.shape[0])
+        return mu, sigma
+
+    def _que_for_k(self, Y, eps, k):
+        """SPECTRE for one reduced dimension k; returns (scores, signal)."""
+        n = Y.shape[0]
+        _, _, vh = np.linalg.svd(Y, full_matrices=False)
+        U = vh[:k].T                        # (D, k)
+        T1 = Y @ U                          # (n, k)
+        mu_r, sigma_r = self._robust_cov(T1, eps)
+        evals, evecs = np.linalg.eigh(sigma_r)
+        evals = np.clip(evals, 1e-8, None)
+        inv_sqrt = (evecs * (1.0 / np.sqrt(evals))) @ evecs.T
+        H = (T1 - mu_r) @ inv_sqrt          # (n, k) whitened
+        sigma_t = (H.T @ H) / n
+        top = float(np.linalg.eigvalsh(sigma_t)[-1])
+        denom = max(top - 1.0, 1e-6)
+        A = self.alpha * (sigma_t - np.eye(k)) / denom
+        ev, evec = np.linalg.eigh(A)
+        ev = np.clip(ev, None, 50.0)        # guard matrix-exp overflow
+        Q = (evec * np.exp(ev)) @ evec.T
+        trace = np.trace(Q)
+        if trace <= 0 or not np.isfinite(trace):
+            return np.einsum("ij,ij->i", H, H), top
+        scores = np.einsum("ij,jk,ik->i", H, Q, H) / trace
+        return scores, top
+
+    def _que_scores(self, Y, eps):
+        """Auto-select k by the post-whitening signal strength."""
+        n, D = Y.shape
+        if n < 4:
+            return np.zeros(n)
+        cap = int(min(self.k, D, n - 1))
+        grid = sorted({int(round(v)) for v in np.linspace(1, np.sqrt(cap), 8) ** 2})
+        grid = [k for k in grid if 1 <= k <= cap]
+        best_scores, best_signal = None, -np.inf
+        for k in grid:
+            scores, signal = self._que_for_k(Y, eps, k)
+            if signal > best_signal and np.isfinite(scores).all():
+                best_signal, best_scores = signal, scores
+        return best_scores if best_scores is not None else np.zeros(n)
+</new>
+</edit>
+<obs>
+Successfully replaced text in pytorch-vision/bench/backdoor/custom_backdoor_defense.py.
+</obs>
+<note>
+Finally, rewire fit/score_samples to run the per-class QUE pipeline and read out the cached scores.
+</note>
+<edit path="pytorch-vision/bench/backdoor/custom_backdoor_defense.py">
+<old>
+        self.cached_labels = labels.copy()
+        for cls in np.unique(labels):
+            mask = labels == cls
+            cls_feat = features[mask]
+            if cls_feat.shape[0] < 2:
+                # Degenerate class; zero direction
+                self.class_centers[int(cls)] = cls_feat.mean(axis=0) if len(cls_feat) else np.zeros(features.shape[1])
+                self.class_directions[int(cls)] = np.zeros(features.shape[1])
+                continue
+            mu = cls_feat.mean(axis=0)
+            centered = cls_feat - mu
+            # Top right singular vector of the centered class matrix.
+            # np.linalg.svd returns vh with rows = right singular vectors.
+            _, _, vh = np.linalg.svd(centered, full_matrices=False)
+            self.class_centers[int(cls)] = mu
+            self.class_directions[int(cls)] = vh[0]
+
+    def score_samples(self, features, logits):
+        features = np.asarray(features, dtype=np.float64)
+        # Use TRAINING LABELS (cached in fit) to pick the per-class
+        # direction.  Using argmax(logits) would mismatch any sample whose
+        # prediction disagrees with its training label.
+        if self.cached_labels is not None and len(self.cached_labels) == len(features):
+            cls_for_sample = self.cached_labels
+        else:
+            cls_for_sample = np.asarray(logits).argmax(axis=1)
+
+        scores = np.zeros(len(features), dtype=np.float64)
+        for cls, direction in self.class_directions.items():
+            mask = (cls_for_sample == cls)
+            if not mask.any():
+                continue
+            centered = features[mask] - self.class_centers[cls]
+            proj = centered @ direction
+            scores[mask] = proj * proj  # tau_i = (centered . v)^2
+        return scores
+</old>
+<new>
+        self.cached_labels = labels.copy()
+        eps = float(poison_fraction)
+        for c in np.unique(labels):
+            mask = labels == c
+            feat_c = features[mask]
+            self.class_indices[int(c)] = np.where(mask)[0]
+            if feat_c.shape[0] < 4:
+                self.class_scores[int(c)] = np.zeros(len(feat_c))
+                continue
+            Y = feat_c - feat_c.mean(axis=0)
+            self.class_scores[int(c)] = self._que_scores(Y, eps)
+
+    def score_samples(self, features, logits):
+        features = np.asarray(features, dtype=np.float64)
+        scores = np.zeros(len(features), dtype=np.float64)
+        for c, idx in self.class_indices.items():
+            scores[idx] = self.class_scores[c]
+        return scores
+</new>
+</edit>
+<obs>
+Successfully replaced text in pytorch-vision/bench/backdoor/custom_backdoor_defense.py.
+</obs>

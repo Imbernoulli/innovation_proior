@@ -1,0 +1,785 @@
+<meta task="synth-dyck" domain="Sequence modeling" file="pytorch-examples/synth_dyck/custom_strategy.py" model_format="qwen3" edit_tool="str_replace"/>
+
+<system>
+You are a research engineer improving a model on a fixed ML task. You work by editing the model code and running experiments. Think carefully before each change. You have these tools:
+- str_replace(path, old_str, new_str): replace the unique occurrence of old_str with new_str.
+- create(path, file_text): create a new file.
+- run_experiment(): train + evaluate the current code under the fixed budget; returns metrics.
+Make one tool call at a time. After editing, call run_experiment() to measure your method.
+</system>
+
+<user>
+## Research question
+
+Can a sequence model learn the bounded hierarchical **Dyck-(k,m)** language — well-nested strings over
+`k` bracket types with maximum nesting depth `m` — and, crucially, **length-generalize** to test strings
+strictly longer than anything seen in training? Dyck-(k,m) is the canonical probe for whether a neural
+sequence model implements an *explicit stack*: at every position the set of valid next tokens is fixed
+entirely by the stack of currently-open brackets, so an exact recognizer needs only `O(m log k)` bits of
+memory. The single thing being designed is the **model architecture** (`build_model`); the data sampler,
+training loop, optimizer, and evaluation are all fixed. The headline score is next-valid-set token
+accuracy on the **length-OOD** split — strings longer than the training maximum.
+
+## Prior art before the first rung (sequence-model lineage)
+
+The ladder reacts to a body of work on what fixed-width sequence models can and cannot represent, and on
+the depth-bounded Dyck recognizers that motivate the task.
+
+- **Bounded-memory Dyck recognizers (Hewitt, Hahn, Ganguli, Liang, Manning, EMNLP 2020).** Prove that a
+  recurrent net needs only `O(m log k)` hidden units to recognize Dyck-(k,m) exactly, by encoding the
+  depth-`m` stack of `k`-way symbols in a fixed-width state. The construction is the existence proof the
+  whole task leans on: a small RNN *can* solve this. Gap: existence of a solution is not learnability —
+  whether gradient descent on cross-entropy finds the stack-tracking state, and whether it length-
+  generalizes, is exactly what is in question.
+- **Self-attention on hierarchical languages (Yao, Peng, Papadimitriou, Narasimhan, ACL 2021).** Show a
+  Transformer with `O(log n)` layers/heads *can* process bounded-depth Dyck, but that with learned or
+  sinusoidal **absolute** positional encodings it tends to fit in-distribution lengths and then collapse
+  on longer test strings. Gap: the representational result does not transfer to length-OOD under the
+  standard absolute-position recipe.
+- **Stack-augmented recurrent nets (Joulin & Mikolov, NeurIPS 2015; Suzgun et al. 2019).** Bolt a
+  differentiable stack with soft PUSH/POP/NO-OP actions onto an RNN controller, so the *depth* of memory
+  grows with the input instead of being pinned to a fixed-width vector. Reported to length-generalize on
+  generalized Dyck where vanilla LSTMs collapse on the OOD split. Gap: the original constructions use an
+  unbounded stack with a curriculum and test-time discretization; the task asks whether a *bounded*,
+  end-to-end-trained version inside this harness reaches the same generalization.
+
+## The fixed substrate
+
+Everything except `build_model` is frozen. The data generator samples Dyck-(k,m) strings by a
+depth-bounded random walk (lengths even, drawn uniformly in the per-env training range); 8 000 training
+strings are held in memory. Each example is packed as `[BOS, x1, …, xn, EOS]` and padded with EOS as
+PAD; the model sees `[BOS, x1, …, xn]` and is scored on its prediction at every non-PAD position. The
+vocabulary has size `2k + 2`: BOS, EOS/PAD, `k` open brackets, `k` matching closers. Training is a
+left-to-right language model: token-level softmax cross-entropy over non-PAD positions, **AdamW** at
+`lr = 3e-3`, `weight_decay = 0`, gradient norm clipped to `1.0`, batch size `64`, **100 gradient steps
+per env**. The harness rejects any model with more than **500 000** trainable parameters
+(`config.max_params`). The default `config.hidden_dim` is `64`.
+
+## The editable interface
+
+`build_model(config: TaskConfig) -> DyckModel` must return a `torch.nn.Module` subclass of `DyckModel`
+exposing `forward(input_ids: LongTensor[B, T]) -> logits: FloatTensor[B, T, vocab]`. The harness supplies
+the helpers `vocab_size(config.k)` (= `2k + 2`) and the language parameters on `config` (`config.k`,
+`config.m`, `config.hidden_dim`). Inside `build_model` you define a model class subclassing `DyckModel`,
+construct it from `config`, and return it; the loop handles data, loss, optimization, and the next-valid-
+set evaluation. The default fill is a 2-layer LSTM language model.
+
+```python
+def build_model(config: TaskConfig) -> DyckModel:
+    """Construct the sequence model.
+
+    Default baseline: a 2-layer LSTM language model with `config.hidden_dim`
+    hidden units.  The agent is free to replace this entirely (e.g. with a
+    Transformer, a stack-augmented RNN, or a memory network) as long as the
+    returned module implements `DyckModel.forward(input_ids) -> logits`.
+    """
+
+    class LSTMModel(DyckModel):
+        def __init__(self, vocab: int, hidden: int, num_layers: int):
+            super().__init__()
+            self.embed = nn.Embedding(vocab, hidden)
+            self.rnn = nn.LSTM(hidden, hidden, num_layers=num_layers, batch_first=True)
+            self.head = nn.Linear(hidden, vocab)
+
+        def forward(self, input_ids: torch.Tensor) -> torch.Tensor:
+            h = self.embed(input_ids)
+            h, _ = self.rnn(h)
+            return self.head(h)
+
+    return LSTMModel(vocab=vocab_size(config.k), hidden=config.hidden_dim, num_layers=2)
+```
+
+## Evaluation settings
+
+Three environments, each at seed 42, one internal run per seed:
+
+| label             | `k` | `m` | train length | OOD eval length |
+|-------------------|-----|-----|--------------|-----------------|
+| `dyck-k2-m3`      | 2   | 3   | [8, 64]      | [65, 96]        |
+| `dyck-k8-m5`      | 8   | 5   | [16, 96]     | [97, 128]       |
+| `dyck-length-ood` | 4   | 4   | [8, 64]      | [128, 256]      |
+
+For each environment the parser reports: `id_token_acc` / `ood_token_acc` (next-valid-set token accuracy
+on the in-distribution and length-OOD splits; higher is better, in `[0,1]`), `id_string_acc` /
+`ood_string_acc` (strict per-string accuracy — every position correct), and `params`. The per-env score
+is `ood_token_acc`; the task score is the **geometric mean of `ood_token_acc` across the three
+environments**. `dyck-length-ood` is the hard probe: training tops out at length 64, evaluation runs at
+128–256.
+
+The editable model code is in `pytorch-examples/synth_dyck/custom_strategy.py`:
+```python
+def build_model(config: TaskConfig) -> DyckModel:
+    """Construct the sequence model.
+
+    Default baseline: a 2-layer LSTM language model with `config.hidden_dim`
+    hidden units.  The agent is free to replace this entirely (e.g. with a
+    Transformer, a stack-augmented RNN, or a memory network) as long as the
+    returned module implements `DyckModel.forward(input_ids) -> logits`.
+    """
+
+    class LSTMModel(DyckModel):
+        def __init__(self, vocab: int, hidden: int, num_layers: int):
+            super().__init__()
+            self.embed = nn.Embedding(vocab, hidden)
+            self.rnn = nn.LSTM(hidden, hidden, num_layers=num_layers, batch_first=True)
+            self.head = nn.Linear(hidden, vocab)
+
+        def forward(self, input_ids: torch.Tensor) -> torch.Tensor:
+            h = self.embed(input_ids)
+            h, _ = self.rnn(h)
+            return self.head(h)
+
+    return LSTMModel(vocab=vocab_size(config.k), hidden=config.hidden_dim, num_layers=2)
+```
+Improve it. Derive your method, edit the code, then run_experiment().
+</user>
+
+### step 1 — Causal Transformer (learned absolute positions)   [slug:transformer]
+
+<think>
+I want to start the ladder from the architecture that, on paper, has the cleanest shot at the structure
+of this language, and then let the measured numbers tell me where it actually breaks. Dyck-(k,m) is a
+language about *matching*: the token I must predict at position `t` is determined entirely by the single
+open bracket sitting on top of the stack, which could have been written many positions back. So the core
+computational primitive the model needs is the ability to reach back to an arbitrary earlier position and
+read it. That is exactly what self-attention does in one hop — every position can attend to every earlier
+position directly, with no recurrence in between — so before I reach for anything with an explicit memory,
+I want to know how far a pure attention stack gets on a language whose whole content is long-range
+matching. If attention's `O(1)` reach were enough, I would not need a stack at all.
+
+Let me build the model as a fill of the `build_model` slot and reason about each piece against the task. The
+scaffold hands me `vocab_size(config.k) = 2k + 2`, `config.hidden_dim = 64`, and the language parameters,
+and it will train whatever `DyckModel` I return with token-level cross-entropy at every non-PAD position.
+The sequence is `[BOS, x1, …, xn]`, scored left-to-right, so the model must be **causal**: the prediction
+at position `t` may depend only on tokens at positions `≤ t`, because at every position it is predicting
+the *next* token from the prefix it has seen. A bidirectional encoder would be cheating — it would let
+position `t` peek at the token it is supposed to predict. So I need a decoder-only / causal Transformer.
+
+The first piece is the token embedding: `nn.Embedding(vocab, hidden)` maps each of the `2k + 2` symbols
+to a `hidden`-dimensional vector. That is uncontroversial. The second piece is where the first real
+design decision lives, and it is the decision the whole length-generalization question turns on:
+**positional information**. Self-attention is permutation-equivariant — `softmax(QKᵀ)V` is a sum of dot
+products and weighted averages over the *set* of positions, with no term anywhere that knows which
+position is which. If I shuffle the input rows, the output rows shuffle identically and nothing else
+changes. For a language where order is everything — `( )` is valid, `) (` is not — a model that cannot
+tell positions apart is a bag of brackets and will fail outright. So I must inject position. The standard,
+most direct way is a **learned absolute positional embedding**: a second `nn.Embedding(max_len, hidden)`
+indexed by the integer position, added to the token embedding at the bottom of the stack. Each position
+`0, 1, 2, …` gets its own learned vector, and the model is free to use those vectors however it likes.
+
+I want to be honest with myself about what learned absolute positions do and do not buy, because this is
+where I expect the architecture to struggle and I would rather predict the failure than be surprised by
+it. During training the model only ever sees positions up to the training maximum — length 64 in two of
+the three environments. The positional embedding table has rows for every position, but only the rows for
+positions seen in training receive a gradient. The rows for positions beyond the training maximum — the
+ones the model will need at OOD evaluation, lengths 65–96, 97–128, and the brutal 128–256 of the
+length-OOD probe — are never trained. They sit at their random initialization. So at OOD time the model
+is asked to attend over positions whose positional codes it has literally never optimized. Whatever
+position-dependent computation it learned in-distribution — "look back to the matching open bracket using
+the relationship between my position and its position" — is expressed in terms of position vectors that, in
+the OOD range, are noise. This is the structural reason absolute positions are expected to fail to
+length-generalize on Dyck: the mechanism that lets attention locate the matching bracket is anchored to
+absolute coordinates, and those coordinates run off the end of what was trained. I will cap `max_len`
+generously (1024) so the model never indexes out of bounds and the harness does not crash, but a large
+table does not help — the untrained rows are still untrained.
+
+Now the attention stack itself. I use `nn.TransformerEncoderLayer` with a causal mask, which is the
+clean way to express a decoder-only block in PyTorch: it is multi-head self-attention followed by a
+position-wise feed-forward, with residual connections and layer norm around each. I set `norm_first=True`
+(pre-norm), because pre-norm Transformers are markedly more stable to train than post-norm at small depth
+and few steps, and I have only 100 gradient steps per environment to work with — I cannot afford a warmup
+schedule to tame post-norm. I use `dropout=0.0`: the training set is large (8 000 strings) relative to
+the tiny vocabulary and the model is small, and with only 100 steps I am nowhere near the regime where I
+need regularization against overfitting; dropout would just add noise to an already short optimization. I
+use `activation="gelu"` as the standard smooth nonlinearity, and `dim_feedforward = 4 * hidden`, the usual
+4× expansion in the feed-forward block. The number of heads is 4 and the number of layers is 4 — enough
+depth that, per the representational result for self-attention on bounded-depth Dyck, a logarithmic number
+of layers suffices to track depth-`m` nesting, and `m` here is at most 5, so 4 layers is comfortably
+above `log m`. The hidden width is `config.hidden_dim = 64`, giving head dimension 16.
+
+I have to build the causal mask myself and hand it to the encoder. For a sequence of length `T`, the mask
+is the strictly-upper-triangular matrix of `−inf` (every entry where query `i` looks at key `j > i`) and
+`0` elsewhere; added to the pre-softmax scores, the `−inf` entries become `exp(−inf) = 0` after the
+softmax, so position `i` attends only to positions `≤ i`. I construct it with
+`torch.triu(torch.full((T, T), -inf), diagonal=1)` and pass `is_causal=True` so the kernel can take the
+fast path. This is the one piece of plumbing the scaffold leaves to me, and it is the piece that enforces
+the autoregressive contract the loss assumes.
+
+A subtlety worth pinning down: the positions buffer. I register
+`torch.arange(max_len).unsqueeze(0)` as a non-persistent buffer and, at forward time, slice it to the
+actual `T` and expand to the batch. Non-persistent so it does not bloat the state dict; sliced to `T` so I
+only ever add as many positional codes as there are tokens. The forward pass is then: embed the tokens,
+add the (sliced) positional embeddings, run the causal encoder, and project to logits with a linear head
+of shape `hidden → vocab`. The output is `[B, T, vocab]`, exactly the contract `DyckModel.forward`
+requires, and the harness's cross-entropy and next-valid-set evaluator do the rest.
+
+Let me check the parameter budget, because the harness rejects anything over 500 000 trainable params. The
+dominant cost is the four encoder layers. Each layer has the four attention projections (`Q, K, V, O`),
+each `hidden × hidden = 64 × 64`, and the feed-forward two linears `64 × 256` and `256 × 64`, plus norms
+and biases. That is roughly `4 · 64² + 2 · 64 · 256 ≈ 16 384 + 32 768 ≈ 49 000` per layer, so ~200 000
+across four layers, plus the embeddings (`vocab · 64` and `1024 · 64 ≈ 66 000` for the position table) and
+the head. The position table at `max_len = 1024` is the single biggest non-layer cost, but it still keeps
+me well under 500 000 — the leaderboard will report params in the mid-200-thousands, comfortably inside
+budget. So the budget is not the binding constraint here; the binding constraint is whether the absolute-
+position recipe generalizes.
+
+Why start the ladder *here*, with the architecture I half-expect to fail on the headline metric? Because
+the failure is the most informative one to see first. The Transformer is the model with the strongest
+in-distribution prior — its `O(1)` reach should let it fit the training lengths to high token accuracy
+quickly, even in 100 steps. If it then collapses on the OOD split, that collapse cleanly isolates the
+length-generalization problem from the fitting problem: the model can represent the matching, it just
+cannot carry the representation past the positions it was trained on. That is a sharper diagnosis than
+starting from a model that fails *both* in-distribution and OOD, because it tells me the next rung needs to
+fix *generalization across length*, specifically, and not raw capacity. It also sets up the contrast I
+care about: a recurrent model has no absolute-position table at all — it processes one token at a time and
+its state is updated by the same transition regardless of absolute index — so if the recurrent baseline
+length-generalizes where the Transformer does not, the absolute-position table is implicated as the
+culprit, exactly as the prior art on self-attention for hierarchical languages would predict.
+
+What do I expect to watch in the numbers? In-distribution token accuracy should be high but not perfect —
+the Transformer fits the training-length distribution well, but Dyck's per-string accuracy is
+unforgiving (one wrong position fails the whole string), so I expect strong `id_token_acc` and weak
+`id_string_acc`. On the OOD split I expect a visible drop in `ood_token_acc`, worst on the
+`dyck-length-ood` environment where the gap between training (≤64) and test (128–256) is the largest and
+the untrained positional rows dominate the sequence. The `dyck-k8-m5` environment, with 8 bracket types
+and depth 5, is the hardest *content* (more distinct closers to disambiguate, deeper stacks), so I expect
+the lowest accuracies there even in-distribution. The falsifiable claim is concrete: if absolute positions
+are the bottleneck, `ood_token_acc` should sag furthest exactly where the length extrapolation is largest,
+while `id_token_acc` stays high — a fitting-fine, extrapolating-poorly signature. If instead both
+in-distribution and OOD are poor, my read of the architecture is wrong and the next rung is about capacity,
+not position. So let me write in the causal Transformer with learned absolute positional embeddings,
+capped at `max_len = 1024` — the strongest in-distribution prior on the board, deliberately placed first so
+its length-OOD collapse names the problem the rest of the ladder has to solve.
+</think>
+<say>
+Starting the ladder with a 4-layer causal Transformer using learned absolute positional embeddings. This edit replaces the LSTM baseline with a decoder-only attention stack, capped at max_len=1024.
+</say>
+<edit path="pytorch-examples/synth_dyck/custom_strategy.py">
+<old>
+def build_model(config: TaskConfig) -> DyckModel:
+    """Construct the sequence model.
+
+    Default baseline: a 2-layer LSTM language model with `config.hidden_dim`
+    hidden units.  The agent is free to replace this entirely (e.g. with a
+    Transformer, a stack-augmented RNN, or a memory network) as long as the
+    returned module implements `DyckModel.forward(input_ids) -> logits`.
+    """
+
+    class LSTMModel(DyckModel):
+        def __init__(self, vocab: int, hidden: int, num_layers: int):
+            super().__init__()
+            self.embed = nn.Embedding(vocab, hidden)
+            self.rnn = nn.LSTM(hidden, hidden, num_layers=num_layers, batch_first=True)
+            self.head = nn.Linear(hidden, vocab)
+
+        def forward(self, input_ids: torch.Tensor) -> torch.Tensor:
+            h = self.embed(input_ids)
+            h, _ = self.rnn(h)
+            return self.head(h)
+
+    return LSTMModel(vocab=vocab_size(config.k), hidden=config.hidden_dim, num_layers=2)
+</old>
+<new>
+def build_model(config: TaskConfig) -> DyckModel:
+    """4-layer causal Transformer with learned absolute positional embeddings."""
+
+    class CausalTransformer(DyckModel):
+        def __init__(self, vocab: int, hidden: int, num_layers: int, num_heads: int, max_len: int):
+            super().__init__()
+            self.embed = nn.Embedding(vocab, hidden)
+            self.pos = nn.Embedding(max_len, hidden)
+            layer = nn.TransformerEncoderLayer(
+                d_model=hidden,
+                nhead=num_heads,
+                dim_feedforward=4 * hidden,
+                dropout=0.0,
+                activation="gelu",
+                batch_first=True,
+                norm_first=True,
+            )
+            self.encoder = nn.TransformerEncoder(layer, num_layers=num_layers)
+            self.head = nn.Linear(hidden, vocab)
+            self.register_buffer(
+                "positions",
+                torch.arange(max_len, dtype=torch.long).unsqueeze(0),
+                persistent=False,
+            )
+
+        def forward(self, input_ids: torch.Tensor) -> torch.Tensor:
+            B, T = input_ids.shape
+            pos = self.positions[:, :T].expand(B, T)
+            h = self.embed(input_ids) + self.pos(pos)
+            causal = torch.triu(
+                torch.full((T, T), float("-inf"), device=input_ids.device), diagonal=1,
+            )
+            h = self.encoder(h, mask=causal, is_causal=True)
+            return self.head(h)
+
+    # Cap max_len generously above any single-env requirement.
+    return CausalTransformer(
+        vocab=vocab_size(config.k),
+        hidden=config.hidden_dim,
+        num_layers=4,
+        num_heads=4,
+        max_len=1024,
+    )
+</new>
+</edit>
+<obs>
+Successfully replaced text in pytorch-examples/synth_dyck/custom_strategy.py.
+</obs>
+<run/>
+<obs>
+Measured results — `baseline:transformer` (`is_final,true`), seed 42.
+
+## dyck-k2-m3 (k=2, m=3)
+| seed | id_token_acc | ood_token_acc | id_string_acc | ood_string_acc | params |
+|---|---|---|---|---|---|
+| 42 | 0.959956 | 0.903061 | 0.465 | 0.001 | 266246 |
+
+## dyck-k8-m5 (k=8, m=5)
+| seed | id_token_acc | ood_token_acc | id_string_acc | ood_string_acc | params |
+|---|---|---|---|---|---|
+| 42 | 0.804292 | 0.727853 | 0.024 | 0.0 | 267794 |
+
+## dyck-length-ood (k=4, m=4, train ≤64, OOD 128–256)
+| seed | id_token_acc | ood_token_acc | id_string_acc | ood_string_acc | params |
+|---|---|---|---|---|---|
+| 42 | 0.924174 | 0.734313 | 0.277 | 0.0 | 266762 |
+
+Per-env score = `ood_token_acc`; task score = geometric mean across envs ≈ 0.785.
+</obs>
+
+### step 2 — 2-layer LSTM   [slug:lstm]
+
+<think>
+The Transformer told me, in numbers, exactly which problem I have to solve, and it is not the one I might
+have feared. In-distribution the attention stack fits well: 0.96 token accuracy on `dyck-k2-m3`, 0.92 on
+`dyck-length-ood`. So the model *can* represent the matching — its one-hop reach finds the bracket it needs
+when the positions are familiar. But on the length-OOD splits it sags exactly where I predicted it would:
+`ood_token_acc` falls to 0.90 on the easy `dyck-k2-m3` (only a small length gap, 65–96 vs ≤64), and then
+collapses to 0.73 on `dyck-length-ood`, where training tops out at 64 and the test runs 128–256 — the
+largest extrapolation on the board, and the worst score. The per-string numbers make the diagnosis brutal:
+`ood_string_acc` is 0.001, 0.0, 0.0 — essentially *no* OOD string is fully correct. The model gets most
+positions right and a handful wrong, and on a language where one wrong position fails the whole string,
+that is a failure of generalization, not of capacity. The signature is fitting-fine, extrapolating-poorly,
+which is precisely the absolute-position story: the mechanism that lets attention locate the matching
+bracket is anchored to absolute coordinates, and at OOD lengths those coordinates are untrained noise. And
+`dyck-k8-m5` is worst even in-distribution (0.80 id, 0.73 ood) — 8 bracket types and depth 5 is the hardest
+content, and the attention stack does not have a clean place to *store* the stack discipline; it has to
+re-derive it by position-indexed lookup every time.
+
+So the next rung must remove the dependence on absolute position. The cleanest way to do that is to stop
+processing the sequence as a set of indexed positions and process it as a *stream*: a recurrent model
+updates its state by the *same* transition at every step, regardless of the absolute index. There is no
+position table to run off the end of. If a recurrent model can carry the stack information forward in its
+hidden state, then a string of length 200 is processed by the same per-step rule as a string of length 60
+— the rule was trained on every step it ever saw, and there are no untrained positions. That is the
+structural reason to expect a recurrent model to length-generalize where the absolute-position Transformer
+did not. But "recurrent" alone is not enough; the plain Elman recurrence has its own wall, and I have to
+understand it precisely or I will just trade one failure for another.
+
+Follow a single error signal backward through a recurrence. The error that lands on a unit at time `t` and
+has to reach a unit `q` steps in the past arrives as a *product of `q` factors*, each factor of the form
+`f'(net) · w` — the chain rule telescoped over the path. Stare at that product. If every factor has
+magnitude below 1 — the ordinary case, since the logistic derivative peaks at 0.25 and reasonable weights
+keep `|f'·w| < 1` — the product shrinks like (something<1)^q: the error *vanishes* exponentially in the
+lag. If every factor exceeds 1, it *explodes*. Either way the lag `q` sits in the exponent, and no setting
+of the weights makes a generic product of many factors stay `O(1)`. For Dyck this is fatal in exactly the
+regime I care about: matching a closer to its opener requires carrying gradient across the entire span of
+the nested sub-string, and on OOD lengths that span is longer than anything trained — the very lags where
+the vanishing is worst. A plain RNN would memorize short-range matching and fail to learn the long-range
+discipline, which is no better than the Transformer's position problem.
+
+If the product of factors is the disease, the cure must make the product *exactly 1* for any `q`. In the
+simplest setting — a single unit with a self-connection of weight `w` — the one-step backward multiplier is
+`f'(net) · w`, and I want it to equal 1. Read as a constraint on `f`: `f'(net) = 1/w`, a constant, so `f`
+must be *linear*, and the clean choice is the identity with `w = 1`. Then the unit's state simply persists,
+step after step, and the backpropagated error riding through it is multiplied by exactly 1 at every step —
+a constant error carousel, a channel along which gradient survives an arbitrarily long lag. This is the
+seed: a protected linear memory state. For Dyck, this is precisely the object I want, because the depth-`m`
+stack is information that must be *held* across the nested span and then *read* when the matching closer
+arrives — a memory, not a position lookup.
+
+But a bare linear self-loop cannot be wired to the rest of the net without conflict. A single incoming
+weight must do two opposite jobs: at the moment relevant information arrives it must *write* it into the
+memory, and at all other moments it must *protect* what is stored from being overwritten by irrelevant
+input. One weight cannot be context-sensitive; another *unit* can — a unit whose activation depends on the
+whole network this step can output "open" in one context and "closed" in another. And the control must be
+*multiplicative*, not additive, because protecting the memory means the irrelevant input contributes
+exactly zero, which only a multiply by a value in `[0,1]` can do. So I wrap the carousel in multiplicative
+gates that are themselves learned sigmoid units. An **input gate** decides when to write — resolving the
+write/protect conflict on the input side. An **output gate** decides when to read — resolving the
+read/protect conflict on the output side. And because a Dyck stream is not segmented (the harness feeds one
+string at a time, but within a string the model must reset its working memory as sub-structures complete),
+I also need a way to *release* stored state at the right moments: a **forget gate** that multiplies the
+carried-over state, recovering the exact carousel when it is 1 and wiping the memory when it is 0, learned
+from context so the model discovers its own reset points — which for Dyck are exactly the bracket closures.
+
+That is the gated memory cell: a linear state `c_t` carried by the forget gate, written through the input
+gate, read through the output gate, with the backward state error obeying `ε_s^t = … + f_{t+1} · ε_s^{t+1}`
+— unit gain across the lag when the forget gate is open, and a deliberate drop when the cell has chosen to
+forget. The forward pass for a layer of cells is the standard form: input/forget/output gates as sigmoids
+of `[x_t, h_{t-1}]`, a tanh candidate, `c_t = f_t ⊙ c_{t-1} + i_t ⊙ g_t`, `h_t = o_t ⊙ tanh(c_t)`. This is
+exactly `nn.LSTM`, which implements precisely these equations, so I do not re-derive them in code — I use
+the fused, optimized version the framework provides. And critically, none of this references absolute
+position. The cell's update at step 200 is the same learned function as at step 60; there is no table to
+run off the end of. That is the property the Transformer lacked.
+
+Now the fill, against this scaffold. The model is `nn.Embedding(vocab, hidden)` → `nn.LSTM(hidden, hidden,
+num_layers=2, batch_first=True)` → `nn.Linear(hidden, vocab)`. Two layers because depth lets the second
+layer compute over the first layer's summary of the stack — for `dyck-k8-m5`, where 8 bracket types must be
+disambiguated, one layer of width 64 may not cleanly separate the closer identities, and a second layer
+gives the network room to compose "what is on top" with "which of 8 types it is." Width is
+`config.hidden_dim = 64`, which by the bounded-memory result is generous: an exact recognizer needs only
+`O(m log k)` units — for the hardest config `m=5, k=8` that is on the order of `5 · 3 = 15` units — so 64 is
+comfortably above the information-theoretic floor, and the question is purely whether gradient descent
+*finds* the stack-tracking state, not whether 64 units can hold it. There is no absolute-position table,
+because the recurrence supplies order for free from the sequential processing; this is the deliberate
+contrast with the Transformer rung. The parameter count is tiny — two LSTM layers of width 64 plus a small
+embedding and head come to roughly 67 000 parameters, a quarter of the Transformer's and far inside the
+500 000 budget. The forward pass embeds, runs the LSTM over the time axis returning a hidden at every
+position, and projects to logits `[B, T, vocab]` — exactly the `DyckModel.forward` contract, scored by the
+harness's next-valid-set evaluator.
+
+One thing I want to be clear-eyed about: the recurrence removes the *absolute-position* failure mode, but
+it does not remove every length-generalization risk. The LSTM's memory is still a *fixed-width* vector. The
+bounded-memory result guarantees a depth-`m` stack of `k` symbols *fits* in `O(m log k)` units, and `m` is
+bounded (≤5), so the stack the model must hold is bounded too — this is why I expect the LSTM to do well
+here, where for *unbounded*-depth Dyck a fixed-width state would eventually overflow. The OOD strings are
+longer but the *depth* never exceeds `m`; the cell only has to hold a bounded stack and slide it as brackets
+open and close, which a forget-gated linear state can do at any length. So the bet is that the LSTM's
+length-independent transition plus its bounded stack exactly matches Dyck-(k,m)'s bounded-memory structure.
+
+The falsifiable expectations against the Transformer's numbers. First and headline: `ood_token_acc` should
+*rise* across the board, and rise most on `dyck-length-ood`, where the Transformer collapsed to 0.73 — if
+the absolute-position table was the culprit, removing it should help most exactly where the extrapolation
+was largest. I expect `ood_token_acc` near 0.97+ on the two easier environments and a clear gain on
+`dyck-length-ood`. Second, the per-string numbers should move off the floor: the Transformer's
+`ood_string_acc` of 0.0/0.001/0.0 means it never got a full OOD string right; if the LSTM is genuinely
+tracking the stack rather than approximating by position, some OOD strings should come out fully correct.
+Third, the one place I am *not* confident: `dyck-k8-m5`. The Transformer's worst environment was the
+content-hardest one (8 types, depth 5), and a fixed-width recurrent state has to pack the identity of the
+top-of-stack symbol cleanly enough that the read-out picks the right closer among 8. If the LSTM also sags
+on `dyck-k8-m5` — high on the other two but visibly lower here, and especially with weak per-string
+accuracy — that is the tell that a *fixed-width* memory, however well it generalizes across length, is
+struggling to maintain a *crisp* discrete stack, and the next rung should give the model an *explicit*
+stack data structure rather than asking a dense vector to emulate one. So let me drop the position table and
+write in the 2-layer LSTM — embedding, `nn.LSTM`, linear head.
+</think>
+<say>
+Removing the absolute-position table by swapping the Transformer for a 2-layer LSTM language model. The recurrence supplies order for free with a length-independent transition, which should fix the length-OOD collapse.
+</say>
+<edit path="pytorch-examples/synth_dyck/custom_strategy.py">
+<old>
+def build_model(config: TaskConfig) -> DyckModel:
+    """4-layer causal Transformer with learned absolute positional embeddings."""
+
+    class CausalTransformer(DyckModel):
+        def __init__(self, vocab: int, hidden: int, num_layers: int, num_heads: int, max_len: int):
+            super().__init__()
+            self.embed = nn.Embedding(vocab, hidden)
+            self.pos = nn.Embedding(max_len, hidden)
+            layer = nn.TransformerEncoderLayer(
+                d_model=hidden,
+                nhead=num_heads,
+                dim_feedforward=4 * hidden,
+                dropout=0.0,
+                activation="gelu",
+                batch_first=True,
+                norm_first=True,
+            )
+            self.encoder = nn.TransformerEncoder(layer, num_layers=num_layers)
+            self.head = nn.Linear(hidden, vocab)
+            self.register_buffer(
+                "positions",
+                torch.arange(max_len, dtype=torch.long).unsqueeze(0),
+                persistent=False,
+            )
+
+        def forward(self, input_ids: torch.Tensor) -> torch.Tensor:
+            B, T = input_ids.shape
+            pos = self.positions[:, :T].expand(B, T)
+            h = self.embed(input_ids) + self.pos(pos)
+            causal = torch.triu(
+                torch.full((T, T), float("-inf"), device=input_ids.device), diagonal=1,
+            )
+            h = self.encoder(h, mask=causal, is_causal=True)
+            return self.head(h)
+
+    # Cap max_len generously above any single-env requirement.
+    return CausalTransformer(
+        vocab=vocab_size(config.k),
+        hidden=config.hidden_dim,
+        num_layers=4,
+        num_heads=4,
+        max_len=1024,
+    )
+</old>
+<new>
+def build_model(config: TaskConfig) -> DyckModel:
+    """Two-layer LSTM language model (Hewitt et al. EMNLP 2020 baseline)."""
+
+    class LSTMModel(DyckModel):
+        def __init__(self, vocab: int, hidden: int, num_layers: int):
+            super().__init__()
+            self.embed = nn.Embedding(vocab, hidden)
+            self.rnn = nn.LSTM(hidden, hidden, num_layers=num_layers, batch_first=True)
+            self.head = nn.Linear(hidden, vocab)
+
+        def forward(self, input_ids: torch.Tensor) -> torch.Tensor:
+            h = self.embed(input_ids)
+            h, _ = self.rnn(h)
+            return self.head(h)
+
+    return LSTMModel(
+        vocab=vocab_size(config.k),
+        hidden=config.hidden_dim,
+        num_layers=2,
+    )
+</new>
+</edit>
+<obs>
+Successfully replaced text in pytorch-examples/synth_dyck/custom_strategy.py.
+</obs>
+<run/>
+<obs>
+Measured results — `baseline:lstm` (`is_final,true`), seed 42.
+
+## dyck-k2-m3 (k=2, m=3)
+| seed | id_token_acc | ood_token_acc | id_string_acc | ood_string_acc | params |
+|---|---|---|---|---|---|
+| 42 | 0.999863 | 0.999938 | 0.997 | 0.997 | 67334 |
+
+## dyck-k8-m5 (k=8, m=5)
+| seed | id_token_acc | ood_token_acc | id_string_acc | ood_string_acc | params |
+|---|---|---|---|---|---|
+| 42 | 0.932083 | 0.924061 | 0.126 | 0.001 | 68882 |
+
+## dyck-length-ood (k=4, m=4, train ≤64, OOD 128–256)
+| seed | id_token_acc | ood_token_acc | id_string_acc | ood_string_acc | params |
+|---|---|---|---|---|---|
+| 42 | 0.984675 | 0.973799 | 0.666 | 0.026 | 67850 |
+
+Per-env score = `ood_token_acc`; task score = geometric mean across envs ≈ 0.962.
+</obs>
+
+### step 3 — Stack-augmented RNN (soft PUSH/POP/NO-OP)   [slug:stack_rnn]
+
+<think>
+The LSTM confirmed the diagnosis I closed on, and it confirmed it in the most useful way — by being almost
+right, and failing in exactly one place. Removing the absolute-position table did everything I bet it would
+for length generalization. On `dyck-k2-m3` the LSTM is essentially perfect: `ood_token_acc` 0.99994,
+`ood_string_acc` 0.997 — a fixed-width recurrent state, processed by a length-independent transition,
+generalizes to longer strings cleanly when the language is shallow (depth 3, 2 types). On `dyck-length-ood`
+it jumps from the Transformer's 0.73 to 0.974 token accuracy, and `ood_string_acc` climbs off the floor
+from 0.0 to 0.026 — the length-independent rule extrapolates from train ≤64 to test 128–256, exactly where
+absolute positions had collapsed. The headline geometric mean rose from 0.785 to 0.962. The recurrence was
+the right move, and its win is largest precisely where the extrapolation gap was largest.
+
+But the third environment is the tell, and it is the tell I predicted. On `dyck-k8-m5` — 8 bracket types,
+depth 5 — the LSTM gets `ood_token_acc` 0.924, respectable, but `ood_string_acc` 0.001 and `id_string_acc`
+only 0.126. Read those two numbers together. Token accuracy near 0.92 with string accuracy near zero means
+the model is right at most positions and wrong at a *scattering* of them — and on Dyck, the positions that
+matter most are the closers, where the model must name *which* of 8 closing brackets matches the symbol on
+top of the stack. A fixed-width vector of 64 units, sliding a depth-5 stack of 8-way symbols, has to pack
+the identity of the top-of-stack symbol cleanly enough that the read-out picks the right one of 8. It mostly
+does — hence 0.92 token — but it smears under load: deep nesting plus many symbol types means the dense
+state is emulating a stack by superposition, and the superposition blurs just often enough that almost no
+full string survives. This is not a length problem anymore; even `id_string_acc` is 0.126. It is a
+*precision* problem: a dense vector is the wrong *shape* of memory for an order-sensitive, multi-type stack,
+and the harder the content, the more it blurs. The fix is not more recurrence; it is to stop asking a dense
+vector to *emulate* a stack and instead give the model an *explicit* stack data structure.
+
+What shape do I need? The machine that recognizes context-free languages — and Dyck is the toy core of the
+context-free class — is the pushdown automaton: a finite controller plus a stack. The stack is the data
+structure whose entire job is "remember things in order, match last-in-first-out, and read the top." If I
+give the recurrent controller a real stack and let it learn when to PUSH (on an opener) and when to POP (on
+a closer), then the top-of-stack symbol is held *explicitly* in its own slot, not superposed into a dense
+state, and the read-out reads it directly. The order is maintained by the stack structure itself, not by a
+vector that has to encode order implicitly. That is the structural fix for the precision failure.
+
+The obstacle to a literal stack is differentiability: a hard PUSH/POP/NO-OP choice makes the loss
+piecewise-constant in the controller's parameters — nudge a weight and, until the argmax flips, the action
+and the output and the loss are unchanged, so the gradient is zero almost everywhere. Backprop has nothing
+to push on, and reinforcement-style estimators have brutal credit-assignment variance on long sequences. So
+I relax the discreteness without killing the stack. The controller emits a *probability* for each action
+via a 3-way softmax, and the next stack is the probability-weighted *superposition* of the three pure
+operations applied to the current stack. Softmax (not three independent sigmoids) because the actions are
+mutually exclusive and I want a convex combination on the simplex, so blending the candidate stacks gives a
+weighted *average* rather than an arbitrary rescaling.
+
+Represent the stack as a tensor of shape `[B, depth, stack_dim]`, top at row 0. The three pure actions are
+shifts of this tensor. A pure PUSH shifts every row *down* (row `i` ← row `i−1`) and writes a fresh
+candidate vector into row 0. A pure POP shifts every row *up* (row `i` ← row `i+1`). A pure NO-OP leaves
+the stack unchanged. I implement the down- and up-shifts as fixed band matrices — `push_shift` with the
+sub-diagonal identity, `pop_shift` with the super-diagonal identity — so a whole shift is one `matmul`, and
+inject the new top with a one-hot `top_slot` selecting row 0. The update is then `stack = push_p · pushed +
+pop_p · popped + noop_p · stack`, where `pushed = push_shift @ stack + top_slot · new_top` and `popped =
+pop_shift @ stack`. Every operation is a multiply-add by a continuous softmax probability, so the whole
+stack is a smooth function of the parameters and gradients flow through it into the action logits and the
+controller. When a probability saturates to 1 the update *is* the corresponding pure action, so the soft
+stack contains the hard stack as its limit, and minimizing the prediction loss drives the softmax toward
+the corners on its own. The relaxation is a path *to* discrete behavior, not a replacement for it.
+
+Now the controller, and here I make the design choices that fit *this* harness, which differ from the
+unbounded-stack-with-curriculum constructions in the prior art — I want the version that trains end-to-end
+in 100 steps with no curriculum and no test-time surgery. The controller is a single fused linear over the
+concatenation of the token embedding, the *top of the stack*, and the *previous hidden state*, squashed by
+`tanh`: `h_t = tanh(W [emb_t, top_{t-1}, h_{t-1}])`. I keep the ordinary hidden-to-hidden recurrence
+(`h_{t-1}` is fed in) rather than zeroing it: on these abstract counting probes one might kill the
+recurrence to *isolate* the stack, but here I am language-modeling for accuracy, not isolating a mechanism,
+so I let the controller use both its dense state and the explicit stack. I feed back only the single top
+slot (`k = 1`), not a window of the top few, because the Dyck next-token rule depends on exactly *one* thing
+— the symbol on top — so one slot is the right amount of context and keeps the fused projection small. The
+new top candidate is `tanh(push_raw)`, bounded so that repeated pushes and blends keep stack entries in a
+fixed range and cannot grow without limit across a long string. The read-out is a linear over the
+concatenation of the hidden state and the (new) top of the stack, `head([h_t, top_t]) → logits` — so the
+prediction sees both the controller's summary and the explicit top.
+
+Two deliberate departures from the unbounded constructions, both because the harness is bounded-depth Dyck
+trained for 100 steps. First, the stack depth is *bounded*: I set `stack_depth = config.m + 2`. The language
+guarantees nesting never exceeds `m`, so a stack of depth `m` plus a small margin holds every legal
+configuration; an unbounded growing stack is unnecessary here and a fixed-depth tensor is far cheaper and
+trains in one shot. The `+2` gives slack for the empty-stack and one-over-full transients. Second, I do
+*not* use an out-of-range sentinel (`−1`) for the empty slot or a test-time argmax discretization. The
+unbounded constructions needed the sentinel so the controller could detect an exhausted stack on tasks like
+`a^n b^{2n}`, and needed test-time discretization to kill numerical drift over hundreds of soft steps. Here
+the stack is zero-initialized, the depth is bounded so drift has fewer slots to accumulate in, and the model
+is evaluated with its soft actions exactly as trained — the harness scores `argmax(logits)`, so any residual
+softness in the *actions* only matters if it changes the *token* prediction, which the read-out is trained
+to get right. I am betting the bounded depth and the explicit top-of-stack slot make the soft stack crisp
+enough without the extra machinery.
+
+Parameter budget: the embedding, one fused controller linear over `hidden + stack_dim + hidden` inputs, a
+small `3 + stack_dim` action/candidate projection, and a read-out over `hidden + stack_dim` — with
+`hidden = stack_dim = 64` this is on the order of 18 000–20 000 parameters, the *smallest* model on the
+board, a quarter of the LSTM's and an order of magnitude under the budget. The explicit stack buys
+precision without buying parameters, because the stack *tensor* is activation, not weights.
+
+The falsifiable expectations against the LSTM's numbers. The whole point of the explicit stack is the
+precision failure on `dyck-k8-m5`, so that is the headline test: the LSTM got `ood_token_acc` 0.924 but
+`ood_string_acc` 0.001 and `id_string_acc` 0.126 there. If the explicit stack is genuinely holding the
+top-of-stack symbol in its own slot rather than superposing it, the *string* accuracies on `dyck-k8-m5`
+should jump dramatically — from near zero toward near one — because the scattered closer errors that broke
+every string should disappear. That is the sharp, falsifiable claim: if `dyck-k8-m5` string accuracy stays
+low, the explicit stack is not actually crisper than the dense state and my read of the precision failure is
+wrong. On the two environments the LSTM already nearly solved (`dyck-k2-m3` at 0.997 OOD string,
+`dyck-length-ood` at 0.974 OOD token), I expect the stack to at least match and ideally close the remaining
+gap to 1.0 — the bounded depth and length-independent transition give it the same length-generalization the
+LSTM had, plus the explicit memory. If the stack reaches near-perfect token *and* string accuracy across
+all three environments, where the LSTM was perfect on one, strong on one, and precision-broken on the
+hardest, then the explicit-stack hypothesis is confirmed and this is the top of the baseline ladder. So let
+me write in the stack-augmented RNN — embedding, fused tanh controller, fixed-band PUSH/POP/NO-OP shifts,
+bounded `m + 2` stack, `[h, top]` read-out.
+</think>
+<say>
+Replacing the dense LSTM memory with an explicit differentiable stack: a stack-augmented RNN whose controller emits soft PUSH/POP/NO-OP actions over a bounded depth-(m+2) stack. This targets the precision failure on the 8-type dyck-k8-m5 environment.
+</say>
+<edit path="pytorch-examples/synth_dyck/custom_strategy.py">
+<old>
+def build_model(config: TaskConfig) -> DyckModel:
+    """Two-layer LSTM language model (Hewitt et al. EMNLP 2020 baseline)."""
+
+    class LSTMModel(DyckModel):
+        def __init__(self, vocab: int, hidden: int, num_layers: int):
+            super().__init__()
+            self.embed = nn.Embedding(vocab, hidden)
+            self.rnn = nn.LSTM(hidden, hidden, num_layers=num_layers, batch_first=True)
+            self.head = nn.Linear(hidden, vocab)
+
+        def forward(self, input_ids: torch.Tensor) -> torch.Tensor:
+            h = self.embed(input_ids)
+            h, _ = self.rnn(h)
+            return self.head(h)
+
+    return LSTMModel(
+        vocab=vocab_size(config.k),
+        hidden=config.hidden_dim,
+        num_layers=2,
+    )
+</old>
+<new>
+def build_model(config: TaskConfig) -> DyckModel:
+    """Stack-augmented RNN (Joulin & Mikolov 2015 + Softmax variant)."""
+
+    class StackRNN(DyckModel):
+        def __init__(self, vocab: int, hidden: int, stack_dim: int, stack_depth: int):
+            super().__init__()
+            self.hidden = hidden
+            self.stack_dim = stack_dim
+            self.stack_depth = stack_depth
+            self.embed = nn.Embedding(vocab, hidden)
+            # Equivalent to an RNNCell over [embed, top_of_stack], but one
+            # fused projection avoids two tiny matmuls per token.
+            self.cell = nn.Linear(hidden + stack_dim + hidden, hidden)
+            # 3-way action (PUSH / POP / NO-OP) plus new top candidate.
+            self.stack_update = nn.Linear(hidden, 3 + stack_dim)
+            self.head = nn.Linear(hidden + stack_dim, vocab)
+            push_shift = torch.zeros(stack_depth, stack_depth)
+            pop_shift = torch.zeros(stack_depth, stack_depth)
+            if stack_depth > 1:
+                eye = torch.eye(stack_depth - 1)
+                push_shift[1:, :-1] = eye
+                pop_shift[:-1, 1:] = eye
+            top_slot = torch.zeros(1, stack_depth, 1)
+            top_slot[:, 0, :] = 1.0
+            self.register_buffer("push_shift", push_shift, persistent=False)
+            self.register_buffer("pop_shift", pop_shift, persistent=False)
+            self.register_buffer("top_slot", top_slot, persistent=False)
+
+        def forward(self, input_ids: torch.Tensor) -> torch.Tensor:
+            B, T = input_ids.shape
+            device = input_ids.device
+            h = torch.zeros(B, self.hidden, device=device)
+            stack = torch.zeros(B, self.stack_depth, self.stack_dim, device=device)
+            embeddings = self.embed(input_ids)
+            states = []
+            for t in range(T):
+                emb = embeddings[:, t]
+                top = stack[:, 0]
+                h = torch.tanh(self.cell(torch.cat([emb, top, h], dim=-1)))
+                update = self.stack_update(h)
+                action_logits, push_raw = update[:, :3], update[:, 3:]
+                a = torch.softmax(action_logits, dim=-1).view(B, 3, 1, 1)
+                push_p, pop_p, noop_p = a[:, 0], a[:, 1], a[:, 2]
+                new_top = torch.tanh(push_raw)
+
+                pushed = torch.matmul(self.push_shift, stack) + self.top_slot * new_top.unsqueeze(1)
+                popped = torch.matmul(self.pop_shift, stack)
+                stack = push_p * pushed + pop_p * popped + noop_p * stack
+                states.append(torch.cat([h, stack[:, 0]], dim=-1))
+            return self.head(torch.stack(states, dim=1))
+
+    return StackRNN(
+        vocab=vocab_size(config.k),
+        hidden=config.hidden_dim,
+        stack_dim=config.hidden_dim,
+        stack_depth=config.m + 2,
+    )
+</new>
+</edit>
+<obs>
+Successfully replaced text in pytorch-examples/synth_dyck/custom_strategy.py.
+</obs>
+<run/>
+<obs>
+Measured results — `baseline:stack_rnn` (`is_final,true`), seed 42.
+
+## dyck-k2-m3 (k=2, m=3)
+| seed | id_token_acc | ood_token_acc | id_string_acc | ood_string_acc | params |
+|---|---|---|---|---|---|
+| 42 | 1.0 | 1.0 | 1.0 | 1.0 | 17865 |
+
+## dyck-k8-m5 (k=8, m=5)
+| seed | id_token_acc | ood_token_acc | id_string_acc | ood_string_acc | params |
+|---|---|---|---|---|---|
+| 42 | 1.0 | 1.0 | 1.0 | 1.0 | 20181 |
+
+## dyck-length-ood (k=4, m=4, train ≤64, OOD 128–256)
+| seed | id_token_acc | ood_token_acc | id_string_acc | ood_string_acc | params |
+|---|---|---|---|---|---|
+| 42 | 1.0 | 1.0 | 1.0 | 1.0 | 18637 |
+
+Per-env score = `ood_token_acc`; task score = geometric mean across envs = 1.0.
+</obs>

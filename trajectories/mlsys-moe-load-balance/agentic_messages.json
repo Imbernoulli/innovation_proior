@@ -1,0 +1,369 @@
+{
+ "tools": [
+  {
+   "type": "function",
+   "function": {
+    "name": "str_replace",
+    "description": "Replace the unique occurrence of old_str with new_str in the file.",
+    "parameters": {
+     "type": "object",
+     "properties": {
+      "path": {
+       "type": "string"
+      },
+      "old_str": {
+       "type": "string"
+      },
+      "new_str": {
+       "type": "string"
+      }
+     },
+     "required": [
+      "path",
+      "old_str",
+      "new_str"
+     ]
+    }
+   }
+  },
+  {
+   "type": "function",
+   "function": {
+    "name": "create",
+    "description": "Create a new file with the given text.",
+    "parameters": {
+     "type": "object",
+     "properties": {
+      "path": {
+       "type": "string"
+      },
+      "file_text": {
+       "type": "string"
+      }
+     },
+     "required": [
+      "path",
+      "file_text"
+     ]
+    }
+   }
+  },
+  {
+   "type": "function",
+   "function": {
+    "name": "run_experiment",
+    "description": "Train+evaluate the current code; returns metrics.",
+    "parameters": {
+     "type": "object",
+     "properties": {}
+    }
+   }
+  }
+ ],
+ "messages": [
+  {
+   "role": "system",
+   "content": "You are a research engineer improving a model on a fixed ML task. You work by editing the model code and running experiments. Think carefully before each change. You have these tools:\n- str_replace(path, old_str, new_str): replace the unique occurrence of old_str with new_str.\n- create(path, file_text): create a new file.\n- run_experiment(): train + evaluate the current code under the fixed budget; returns metrics.\nMake one tool call at a time. After editing, call run_experiment() to measure your method."
+  },
+  {
+   "role": "user",
+   "content": "## Research question\n\nA Mixture-of-Experts model is served under **expert parallelism**: every routed expert is a\nseparate feed-forward network whose weights live on one GPU, and a token's top-K routing sends its\nhidden state to the GPUs holding its chosen experts via an all-to-all *dispatch* before the expert\nFFNs and an all-to-all *combine* after. Because the combine cannot start until *every* GPU has\nfinished its experts' work, the per-layer latency is set by the **most-loaded** GPU, not the average.\nLive traffic is heavily skewed — a few experts soak up most of the tokens — and the hot set drifts as\nthe input distribution changes, so a static one-expert-per-GPU layout wastes most of the cluster.\n\nThe single thing being designed is the **expert placement algorithm**: given an online estimate of\nper-expert token load and the cluster shape, decide how many physical replicas each logical expert\ngets and which GPU each replica lands on, so that (1) the max GPU load is small, (2) the max *node*\nload is small, and (3) each expert's replicas stay concentrated on as few nodes as possible — because\nGPUs are grouped into nodes with fast intra-node NVLink and slow, scarce inter-node InfiniBand, and a\nplacement that scatters an expert across nodes detonates exactly the inter-node all-to-all the\nnode-limited routing was built to bound. The plan re-runs online as loads change, so it must also be\n**cheap**. Everything else about the serving stack is fixed.\n\n## Prior art before the first rung\n\nThe first rung is the established three-stage hierarchical placement. The lineage it reacts to:\n\n- **GShard / Switch capacity + auxiliary loss (Lepikhin et al. 2020; Fedus et al. 2021).** Cap each\n  expert's tokens per batch and drop the overflow; add a differentiable load-balance auxiliary loss\n  pushing the router toward uniform usage. *Gap:* both levers act at *training* time on the *router*;\n  dropping tokens is unacceptable for inference, and neither decides where physical expert weights\n  live at serving time nor handles a single expert too hot to fit on one GPU.\n- **Device-/node-limited routing (DeepSeek-V2, DeepSeek-AI 2024).** Cap the number of devices/nodes a\n  token's experts may span, establishing the **group** structure the placement must respect. *Gap:* a\n  routing constraint, not a placement — it bounds per-token communication footprint but never says\n  which GPU holds which expert; it *assumes* a co-located layout something else must produce.\n- **Greedy makespan scheduling — LPT / list scheduling (Graham 1966, 1969).** Assign weighted items\n  to identical machines to minimize the max load: list scheduling is within `2 − 1/m` of optimal,\n  largest-first (LPT) within `4/3 − 1/(3m)`. *Gap:* it balances a *fixed* set of indivisible items, so\n  a single item above the per-unit fair share floors the peak no matter how the rest are arranged; and\n  plain LPT does not enforce the equal item count per machine the hardware here requires.\n\n## The fixed substrate\n\nThe placement plugs into an MoE serving stack that already exists: a router producing per-token top-K\naffinities, an all-to-all dispatch/combine around the expert FFNs, and an online-statistics layer that\naccumulates a per-expert token-load estimate `weight` of shape `[L, E]` (layers × logical experts).\nThe cluster shape is given as `num_replicas` (total physical slots, a multiple of `num_gpus`),\n`num_groups` (routing groups, dividing `E`), `num_nodes`, and `num_gpus` (a multiple of `num_nodes`).\nThe substrate is plain tensor primitives (`torch`, `numpy`): summing / sorting / gathering / scattering\nweights into integer index maps. The evaluation harness, the workload generator, and the placement\nvalidator are frozen.\n\n## The editable interface\n\nExactly one region of `custom_eplb.py` is editable (lines 62–209): three functions the serving runtime\ncalls. The contract is fixed; every rung on the ladder is a different fill of it.\n\n- `balanced_packing(weight, num_packs)` — partition each row's `n` weighted items into `num_packs`\n  packs of **exactly** `n // num_packs` items each, balancing per-pack sums; return `(pack_index,\n  rank_in_pack)`.\n- `replicate_experts(weight, num_phy)` — grow `num_log` logical experts to `num_phy` physical slots;\n  return `(phy2log, rank, logcnt)`.\n- `rebalance_experts(weight, num_replicas, num_groups, num_nodes, num_gpus)` — the entry point; return\n  `phy2log [L, num_replicas]` (logical expert per physical slot), `log2phy [L, E, max_rep]` (physical\n  slots per logical expert, `-1` padded), `logcnt [L, E]` (replica count per expert).\n\nEvery valid plan must satisfy: `E % num_groups == 0`, `num_groups % num_nodes == 0`, `num_gpus %\nnum_nodes == 0`, `num_replicas % num_gpus == 0`; each GPU hosts exactly `num_replicas // num_gpus`\nphysical experts; every logical expert keeps ≥ 1 replica; `logcnt.sum(-1) == num_replicas` per layer.\n\nThe starting point is the scaffold default: the **hierarchical greedy bin-packing** — Stage 1 packs\ngroups onto nodes, Stage 2 replicates hot experts within each node, Stage 3 packs replicas onto GPUs\nwithin each node — with `balanced_packing` written as the textbook sequential greedy (sort descending,\ndrop each item on the least-loaded non-full pack). Each later rung replaces exactly these definitions.\n\n```python\n# EDITABLE region of custom_eplb.py (lines 62-209) — default fill: hierarchical greedy bin-packing\n\ndef balanced_packing(weight: torch.Tensor, num_packs: int) -> Tuple[torch.Tensor, torch.Tensor]:\n    B, n = weight.shape\n    assert n % num_packs == 0\n    items_per_pack = n // num_packs\n\n    if items_per_pack == 1:\n        idx = torch.arange(n, dtype=torch.int64, device=weight.device).expand(B, -1)\n        return idx, torch.zeros_like(idx)\n\n    sorted_idx = weight.float().sort(-1, descending=True).indices.cpu()\n    pack_index = torch.full((B, n), -1, dtype=torch.int64)\n    rank_in_pack = torch.full((B, n), -1, dtype=torch.int64)\n    for b in range(B):\n        loads = [0.0] * num_packs\n        counts = [0] * num_packs\n        for j in range(n):\n            item = sorted_idx[b, j].item()\n            best = min(\n                (p for p in range(num_packs) if counts[p] < items_per_pack),\n                key=lambda p: loads[p],\n            )\n            pack_index[b, item] = best\n            rank_in_pack[b, item] = counts[best]\n            loads[best] += weight[b, item].item()\n            counts[best] += 1\n    return pack_index, rank_in_pack\n\n\ndef replicate_experts(\n    weight: torch.Tensor, num_phy: int\n) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:\n    B, num_log = weight.shape\n    device = weight.device\n    phy2log = torch.arange(num_phy, dtype=torch.int64, device=device).repeat(B, 1)\n    rank = torch.zeros(B, num_phy, dtype=torch.int64, device=device)\n    logcnt = torch.ones(B, num_log, dtype=torch.int64, device=device)\n    idx_b = torch.arange(B, dtype=torch.int64, device=device)\n    for i in range(num_log, num_phy):\n        eff = weight / logcnt.float()\n        top = eff.argmax(dim=-1)\n        phy2log[:, i] = top\n        rank[:, i] = logcnt[idx_b, top]\n        logcnt[idx_b, top] += 1\n    return phy2log, rank, logcnt\n\n\ndef rebalance_experts(\n    weight: torch.Tensor,\n    num_replicas: int,\n    num_groups: int,\n    num_nodes: int,\n    num_gpus: int,\n) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:\n    L, E = weight.shape\n    weight = weight.float().cpu()\n    group_size = E // num_groups\n    gpus_per_node = num_gpus // num_nodes\n    phy_per_gpu = num_replicas // num_gpus\n    groups_per_node = num_groups // num_nodes\n    experts_per_node = E // num_nodes\n    replicas_per_node = num_replicas // num_nodes\n\n    def inv(perm):\n        out = torch.empty_like(perm)\n        out.scatter_(1, perm, torch.arange(perm.size(1), dtype=torch.int64).expand(perm.shape))\n        return out\n\n    # Stage 1: pack groups onto nodes\n    tpg = weight.unflatten(-1, (num_groups, group_size)).sum(-1)\n    gpi, grk = balanced_packing(tpg, num_nodes)\n    log2mlog = (((gpi * groups_per_node + grk) * group_size).unsqueeze(-1)\n                + torch.arange(group_size)).flatten(-2)\n    mlog2log = inv(log2mlog)\n\n    # Stage 2: replicate hot experts within each node\n    tpm = weight.gather(-1, mlog2log).view(-1, experts_per_node)\n    p2m, prk, mcnt = replicate_experts(tpm, replicas_per_node)\n\n    # Stage 3: pack physical replicas onto GPUs within each node\n    tpp = (tpm / mcnt.float()).gather(-1, p2m)\n    pi, ri = balanced_packing(tpp, gpus_per_node)\n    p2pp = pi * phy_per_gpu + ri\n    pp2p = inv(p2pp)\n\n    pp2m = p2m.gather(-1, pp2p)\n    pp2m = (pp2m.view(L, num_nodes, -1)\n            + torch.arange(0, E, experts_per_node).view(1, -1, 1)).flatten(-2)\n    pp2log = mlog2log.gather(-1, pp2m)\n    pprank = prk.gather(-1, pp2p).view(L, -1)\n    logcnt = mcnt.view(L, -1).gather(-1, log2mlog)\n\n    mx = logcnt.max().item()\n    log2phy = torch.full((L, E, mx), -1, dtype=torch.int64)\n    log2phy.view(L, -1).scatter_(\n        -1, pp2log * mx + pprank,\n        torch.arange(num_replicas).expand(L, -1),\n    )\n    return pp2log, log2phy, logcnt\n```\n\n## Evaluation settings\n\nFour MoE deployments derived from real architectures plus one stress configuration, each specified by\nthe number of logical experts `E`, groups `G`, nodes `N`, GPUs `D`, and physical-slot budget `R`:\n\n| Config | E | G | N | D | R | zipf · skew |\n|---|---|---|---|---|---|---|\n| `deepseek-v3`  | 256 | 8  | 8  | 64  | 320 | 0.7 · 0.85 |\n| `qwen3-moe`    | 128 | 8  | 4  | 32  | 160 | 0.5 · 0.70 |\n| `deepseek-v2`  | 160 | 8  | 4  | 32  | 192 | 0.6 · 0.75 |\n| `stress-skew`  | 256 | 32 | 16 | 128 | 384 | 1.0 · 0.95 |\n\n`stress-skew` is a synthetic stress test: the 16-node hierarchy is the largest in the suite, the\nreplication budget is tighter (1.5× rather than 2×), `groups_per_node = 2` makes Stage 1 group-to-node\npacking non-trivial, and the workload follows a long-tail Zipf distribution. Per-expert load is\nsynthesized from a skewed Zipf traffic model mixed with a uniform base; seed 42.\n\nFour metrics per config: **balance** = `mean_gpu_load / max_gpu_load` (higher better, capped at 1.0);\n**balance_node** = the same ratio at node granularity; **locality** = traffic-weighted node locality of\nreplicas (`1 / nodes_per_expert` averaged over experts weighted by traffic — replicas all on one node\nscore 1.0, uniformly scattered score `1/N`); **runtime_ms** = median wall time over 20 timed iterations\n(lower better). The per-config score weights the four equally; the task score is the geometric mean\nacross the four configs. All three balance/locality terms are required: a flat scheme that scatters\nreplicas to maximize per-GPU balance loses locality; a method that co-locates without addressing skew\nloses balance.\n\nThe editable model code is in `eplb/custom_eplb.py`:\n```python\n# EDITABLE SECTION (lines 62-209)\n# Implement your expert placement algorithm below.\n# You may define helper functions and modify the three core functions.\n# ================================================================\n\ndef balanced_packing(weight: torch.Tensor, num_packs: int) -> Tuple[torch.Tensor, torch.Tensor]:\n    \"\"\"\n    Pack n weighted items into num_packs balanced packs.\n\n    Args:\n        weight: [B, n] — weight of each item across B batches\n        num_packs: number of packs\n\n    Returns:\n        pack_index: [B, n] — which pack (0..num_packs-1) each item goes to\n        rank_in_pack: [B, n] — position (0..items_per_pack-1) within the pack\n\n    Constraint: each pack must contain exactly n // num_packs items.\n    \"\"\"\n    B, n = weight.shape\n    assert n % num_packs == 0\n    items_per_pack = n // num_packs\n\n    if items_per_pack == 1:\n        idx = torch.arange(n, dtype=torch.int64, device=weight.device).expand(B, -1)\n        return idx, torch.zeros_like(idx)\n\n    sorted_idx = weight.float().sort(-1, descending=True).indices.cpu()\n    pack_index = torch.full((B, n), -1, dtype=torch.int64)\n    rank_in_pack = torch.full((B, n), -1, dtype=torch.int64)\n    for b in range(B):\n        loads = [0.0] * num_packs\n        counts = [0] * num_packs\n        for j in range(n):\n            item = sorted_idx[b, j].item()\n            best = min(\n                (p for p in range(num_packs) if counts[p] < items_per_pack),\n                key=lambda p: loads[p],\n            )\n            pack_index[b, item] = best\n            rank_in_pack[b, item] = counts[best]\n            loads[best] += weight[b, item].item()\n            counts[best] += 1\n    return pack_index, rank_in_pack\n\n\ndef replicate_experts(\n    weight: torch.Tensor, num_phy: int\n) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:\n    \"\"\"\n    Replicate num_log logical experts into num_phy physical slots\n    to minimize the maximum per-replica load.\n\n    Args:\n        weight: [B, num_log] — load per logical expert\n        num_phy: total physical expert slots (>= num_log)\n\n    Returns:\n        phy2log: [B, num_phy] — logical expert ID for each physical slot\n        rank: [B, num_phy] — replica rank (0 = original, 1+ = copies)\n        logcnt: [B, num_log] — number of replicas per logical expert\n    \"\"\"\n    B, num_log = weight.shape\n    device = weight.device\n    phy2log = torch.arange(num_phy, dtype=torch.int64, device=device).repeat(B, 1)\n    rank = torch.zeros(B, num_phy, dtype=torch.int64, device=device)\n    logcnt = torch.ones(B, num_log, dtype=torch.int64, device=device)\n    idx_b = torch.arange(B, dtype=torch.int64, device=device)\n    for i in range(num_log, num_phy):\n        eff = weight / logcnt.float()\n        top = eff.argmax(dim=-1)\n        phy2log[:, i] = top\n        rank[:, i] = logcnt[idx_b, top]\n        logcnt[idx_b, top] += 1\n    return phy2log, rank, logcnt\n\n\ndef rebalance_experts(\n    weight: torch.Tensor,\n    num_replicas: int,\n    num_groups: int,\n    num_nodes: int,\n    num_gpus: int,\n) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:\n    \"\"\"\n    Main entry point: hierarchical expert placement across GPUs.\n\n    Stage 1: Pack expert groups across nodes (inter-node balancing)\n    Stage 2: Create replicas for popular experts within each node\n    Stage 3: Pack physical replicas to GPUs (intra-node balancing)\n\n    Args:\n        weight: [L, E] — token load per expert per layer\n        num_replicas: total physical expert slots (multiple of num_gpus)\n        num_groups: number of expert groups\n        num_nodes: number of server nodes\n        num_gpus: total GPUs (multiple of num_nodes)\n\n    Returns:\n        phy2log: [L, num_replicas] — logical expert for each physical slot\n        log2phy: [L, E, max_rep] — physical IDs per expert (-1 = unused)\n        logcnt: [L, E] — replica count per expert\n    \"\"\"\n    L, E = weight.shape\n    weight = weight.float().cpu()\n    group_size = E // num_groups\n    gpus_per_node = num_gpus // num_nodes\n    phy_per_gpu = num_replicas // num_gpus\n    groups_per_node = num_groups // num_nodes\n    experts_per_node = E // num_nodes\n    replicas_per_node = num_replicas // num_nodes\n\n    def inv(perm):\n        out = torch.empty_like(perm)\n        out.scatter_(1, perm, torch.arange(perm.size(1), dtype=torch.int64).expand(perm.shape))\n        return out\n\n    # Stage 1\n    tpg = weight.unflatten(-1, (num_groups, group_size)).sum(-1)\n    gpi, grk = balanced_packing(tpg, num_nodes)\n    log2mlog = (((gpi * groups_per_node + grk) * group_size).unsqueeze(-1)\n                + torch.arange(group_size)).flatten(-2)\n    mlog2log = inv(log2mlog)\n\n    # Stage 2\n    tpm = weight.gather(-1, mlog2log).view(-1, experts_per_node)\n    p2m, prk, mcnt = replicate_experts(tpm, replicas_per_node)\n\n    # Stage 3\n    tpp = (tpm / mcnt.float()).gather(-1, p2m)\n    pi, ri = balanced_packing(tpp, gpus_per_node)\n    p2pp = pi * phy_per_gpu + ri\n    pp2p = inv(p2pp)\n\n    pp2m = p2m.gather(-1, pp2p)\n    pp2m = (pp2m.view(L, num_nodes, -1)\n            + torch.arange(0, E, experts_per_node).view(1, -1, 1)).flatten(-2)\n    pp2log = mlog2log.gather(-1, pp2m)\n    pprank = prk.gather(-1, pp2p).view(L, -1)\n    logcnt = mcnt.view(L, -1).gather(-1, log2mlog)\n\n    mx = logcnt.max().item()\n    log2phy = torch.full((L, E, mx), -1, dtype=torch.int64)\n    log2phy.view(L, -1).scatter_(\n        -1, pp2log * mx + pprank,\n        torch.arange(num_replicas).expand(L, -1),\n    )\n    return pp2log, log2phy, logcnt\n```\nImprove it. Derive your method, edit the code, then run_experiment()."
+  },
+  {
+   "role": "assistant",
+   "reasoning_content": "The layer waits for the busiest GPU. Under expert parallelism the combine all-to-all cannot begin\nuntil every GPU has finished its share of the expert work, so the per-layer latency is the load of the\nsingle most-loaded GPU, not the average — and the live token load is wildly skewed, a handful of hot\nexperts soaking up most of the traffic while the rest sit nearly idle, with the hot set drifting as the\ninput distribution changes. So with one expert per GPU the busy GPU grinds through a mountain of tokens\nwhile the others wait, and most of the machine is wasted. The whole game is to lay out experts across\nGPUs so the *busiest* GPU is as light as possible, and to recompute that layout cheaply, online, every\ntime the observed loads shift.\n\nThat is minimizing a maximum over parallel units given a pile of weighted things to distribute — a\nmakespan problem, the identical-machines scheduling problem `P||Cmax`: assign jobs to machines to\nminimize the max machine load. Two facts about it I know cold. One, it is NP-hard — the two-machine\ncase is exactly PARTITION, split a multiset into two equal-sum halves, and the variable-machine case\nreduces from 3-PARTITION — so I will not find the exact optimum in polynomial time, and since I have to\nre-run this every few minutes as loads drift, I need something cheap, not exhaustive. Two, greedy gets\nclose. Plain list scheduling — drop each job on the currently least-loaded machine — has a clean bound:\nwhen the job that finishes last is placed, suppose it starts at time `t` with size `p`; because it went\non the least-loaded machine, all `m` machines already carry at least `t`, so total work `W ≥ m·t + p`,\nhence makespan `C = t + p ≤ W/m + (1 − 1/m)·p`. Since any optimum is at least `W/m` and at least `p`,\nthis gives `C ≤ (2 − 1/m)·OPT`. Sorting biggest-first before the same sweep — the Longest Processing\nTime rule — sharpens it: the critical last job is now the smallest in its prefix, and either it is\nlarger than `OPT/3`, in which case every prefix job exceeds `OPT/3` so an optimum can hold at most two\nper machine and the largest-first pairing is already optimal there, or it is at most `OPT/3`, and\nplugging that into the same inequality yields `C ≤ (4/3 − 1/(3m))·OPT`. That theorem belongs to the\n*unconstrained* rule; my hardware adds a constraint, so I keep the ordering and the least-loaded\ninstinct but I must not pretend the bound transfers unchanged.\n\nThe constraint is concrete. Every GPU hosts the *same number* of physical experts — the runtime\nallocates a fixed slot count per GPU. So it is not free-form makespan; it is a *balanced* partition\nwhere every pack gets exactly `n / num_packs` items. Plain LPT would happily put six items on one\nmachine and two on another if that balanced the *weight*; here I have to balance the *count* too. The\nfix is small: keep the greedy rule but restrict the candidate packs at each step to those not already\nfull. Sort descending; for each item in that order, among the packs with a free slot pick the one with\nthe smallest current load; assign it there, record its rank within the pack, bump that pack's load and\ncount. That gives me the primitive I will lean on twice — `balanced_packing`, items into equal-count\npacks by least-loaded-feasible greedy. There is a degenerate case worth special-casing: when there is\nexactly one item per pack, there is nothing to balance, so item `i` simply goes to pack `i` at rank 0\nand I return that without the inner loop. And the inner loop is irreducibly sequential — each\nplacement's \"least loaded\" decision reads the running loads from all earlier placements — so I cannot\nvectorize the greedy choice; I move the sorted indices to the CPU and let a Python loop carry the\nrunning loads. Slow, but it mirrors the greedy decisions exactly.\n\nNow the wall the pure packing thinking misses. Greedy balances a *fixed* set of indivisible items. But\nwhat if one item, by itself, is bigger than the fair share? Suppose one expert is so hot it carries a\nfifth of all the tokens and I have eight GPUs. Perfect balance would put one-eighth on each GPU — but\nthis one expert alone is a fifth, more than an eighth, and it cannot be split, because it is a single\nset of weights on a single GPU. So no matter how I pack, the GPU holding it is at least a fifth, and my\nmax is floored at a fifth even though the average is an eighth. Greedy cannot help; *nothing* that\nassigns whole experts can. The max GPU load is floored by the single largest item, and that floor sits\nabove what balance demands. The items themselves are the problem.\n\nSo the items have to become divisible. I cannot split an expert's weights, but I *can* make copies of\nit. If the hot expert has `r` physical replicas and its requests spread across them, each copy carries\nabout `w_i / r` instead of the whole `w_i`. Now the effective item size is tunable: each extra copy\nlowers the floor that expert imposes, and with enough budget it pulls the worst items back toward the\nfair share before packing. This is the move classical scheduling never had — it assumed fixed jobs.\nHere the jobs are FFNs and I am allowed to duplicate the heavy ones, so the algorithm grows a second\nstage before packing: *replicate*. But replication is not free — the runtime gives me `num_phy`\nphysical slots total and `num_log` logical experts, so I have exactly `num_phy − num_log` extra copies\nto hand out, and every logical expert needs at least one or its tokens have nowhere to go. Which\nexperts get the extras? Picture handing out replicas one at a time. Expert `i` currently has count\n`c_i` and load `w_i`, so each replica carries `w_i / c_i`; one more copy drops that to `w_i / (c_i +\n1)`. The expert I should feed is the one whose replicas are *currently the most loaded* — the largest\n`w_i / c_i` — because that per-replica load is the ceiling. Adding a replica anywhere except a current\nargmax leaves the ceiling untouched; adding it to an argmax is the only move that can lower it, and on a\ntie it attacks one of the tied ceilings. So repeatedly feed the argmax of `w_i / c_i`, do it `num_phy −\nnum_log` times, and I have the discrete water-filling that equalizes per-replica load. That loop is also\nsequential — the next argmax depends on the counts updated by all prior draws — so again Python and CPU.\n\nNow the second wall, the one pure-balance thinking completely misses. I said \"put the replicas on\ndifferent GPUs.\" Which GPUs? If I throw all replicas into one global pack across every GPU in the\ncluster, greedy may make the GPU loads look attractive while scattering expert `i`'s replicas across\nwhatever GPUs happened to be least loaded — across *different nodes*. That is a disaster for a different\nreason. The GPUs are not a flat pool; they are grouped into nodes, with fast NVLink inside a node and\nslow, scarce InfiniBand between nodes. The whole reason the router uses node-limited routing — each\ntoken restricted to a few nodes — is to keep the all-to-all mostly intra-node. If I scatter an expert's\nreplicas across many nodes, a token wanting that expert may have to cross to a far node to reach its\nassigned replica, and I have blown up exactly the inter-node traffic the routing was designed to bound.\nA placement strong on raw GPU balance can be terrible on communication, and that cost is invisible to\nthe balance number. I need to balance the load *and* keep each expert's replicas on as few nodes as\npossible — and the task's `locality` metric is precisely there to make that second objective count, so I\ncannot trade it away the way a balance-only objective would let me.\n\nThe experts already come in groups, and the routing already clusters a token's experts onto a few\nnodes. So the locality I want is: keep a whole expert group, and all replicas of its experts, on a\nsingle node. If group membership never crosses a node boundary, an expert's replicas all live on its\ngroup's node and an expert is never scattered. That reframes the whole thing as a nested, hierarchical\npacking rather than one flat global pack. First decide which groups go on which nodes; then, *within*\neach node, do the replication and the GPU packing. The replication and GPU-level packing become\nintra-node operations, so by construction nothing leaves its node and locality falls out for free.\n\nThree stages, then. Stage 1: pack the groups onto the nodes — each group has a total load (the sum of\nits experts' loads), so this is the balanced-packing primitive with items = groups, packs = nodes,\n`groups_per_node = num_groups / num_nodes` per node, balancing per-node load. Stage 2: within each node,\nreplicate — each node owns `num_log / num_nodes` logical experts and gets `num_phy / num_nodes` slots,\nso I run the replication rule per node on its slice. Stage 3: within each node, pack its replicas onto\nits GPUs — balanced packing again, items = the node's physical replicas weighted by per-replica load,\npacks = the node's GPUs, exactly `num_phy / num_gpus` slots per GPU. Two packs with the same primitive,\none replication between them, locality for free. As a sanity check, the global group-agnostic policy is\njust this hierarchy with `num_groups = num_nodes = 1`: one giant \"node\" holding everything, Stage 1\ntrivial, Stages 2–3 replicate and pack across the whole cluster — one algorithm, two regimes. For the\ndeployments here `num_nodes` divides `num_groups`, so the genuine hierarchical branch runs.\n\nThe rest is permutation bookkeeping, and it is fiddly because each stage produces a permutation and I\nhave to compose them to emit the three maps the runtime wants: `phy2log [L, num_replicas]` (logical\nexpert per physical slot), `log2phy [L, E, max_rep]` (the inverse, with `−1` padding), and `logcnt [L,\nE]` (replica count per expert). Stage 1 relabels logical experts into a node-major order so each node's\nexperts are a contiguous block — a group's position is `node · groups_per_node + rank`, times the group\nsize, plus the within-group offset — which lets Stage 2 slice \"this node's experts\" with a plain\nreshape. Stage 2 replicates per node. Stage 3 packs per node, builds each slot's final position as\n`gpu · phy_per_gpu + rank`, inverts it, then composes back: follow each final position to its slot, to\nits node-major-logical expert, lift node-local ids to global by adding each node's base offset, and map\nnode-major back to true logical with the Stage-1 inverse. Finally I assemble `log2phy` by scattering\neach physical slot index into `[E, max_rep]` at `(its logical expert, its replica rank)`, leaving `−1`\nwhere an expert has fewer than the max copies — exactly the padding contract. The whole composition is\nindex plumbing; an off-by-one silently mis-routes tokens, so I keep it exact.\n\nWhy start the ladder here, with this default fill of the scaffold. It is the correct, complete answer\nto the *placement* problem: it balances per-GPU load, it balances per-node load through Stage 1, and it\nkeeps every expert's replicas on one node, so on the `locality` metric it should score a perfect 1.0 on\nevery config — the hierarchy guarantees no expert ever crosses a node. The greedy packing is the\nnear-optimal heuristic for the NP-hard makespan core, so the balance numbers should be respectable where\nthe configuration is forgiving. The one thing it is not is fast: `balanced_packing` is a Python loop\nover every item with an O(P) min-scan inside, run across `L` layers, and Stage 3 walks `num_replicas`\nitems per layer-node — so the wall time will be on the order of hundreds of milliseconds on the larger\nconfigs, paid on the serving critical path. So what to watch is a split: locality pinned at 1.0\neverywhere; balance and balance_node solid on the gentle real-model configs but exposed wherever the\nhierarchy is forced into a corner — the `stress-skew` config, with only two groups per node, a 1.5×\nreplication budget, and a long-tail Zipf load, is where I expect the balance to crater, because Stage 1\nhas almost no freedom to even out the nodes and the tight budget leaves the hottest experts\nunder-replicated; and the runtime is the open wound across the board. Whichever of those two — the\nstress-config balance or the universal slowness — turns out to dominate the score is what the next rung\nhas to attack first. Let me put the three-stage hierarchy in as the baseline and measure it.",
+   "content": "I'm setting the baseline to the three-stage hierarchical greedy bin-packing: pack groups onto nodes, replicate hot experts within a node, then pack replicas onto GPUs. This first edit just trims the docstring on `balanced_packing` so the function body stands on its own.",
+   "tool_calls": [
+    {
+     "type": "function",
+     "function": {
+      "name": "str_replace",
+      "arguments": {
+       "path": "eplb/custom_eplb.py",
+       "old_str": "# EDITABLE SECTION (lines 62-209)\n# Implement your expert placement algorithm below.\n# You may define helper functions and modify the three core functions.\n# ================================================================\n\ndef balanced_packing(weight: torch.Tensor, num_packs: int) -> Tuple[torch.Tensor, torch.Tensor]:\n    \"\"\"\n    Pack n weighted items into num_packs balanced packs.\n\n    Args:\n        weight: [B, n] — weight of each item across B batches\n        num_packs: number of packs\n\n    Returns:\n        pack_index: [B, n] — which pack (0..num_packs-1) each item goes to\n        rank_in_pack: [B, n] — position (0..items_per_pack-1) within the pack\n\n    Constraint: each pack must contain exactly n // num_packs items.\n    \"\"\"\n    B, n = weight.shape",
+       "new_str": "def balanced_packing(weight: torch.Tensor, num_packs: int) -> Tuple[torch.Tensor, torch.Tensor]:\n    B, n = weight.shape"
+      }
+     }
+    }
+   ]
+  },
+  {
+   "role": "tool",
+   "content": "Successfully replaced text in eplb/custom_eplb.py."
+  },
+  {
+   "role": "assistant",
+   "reasoning_content": "Same trim on `replicate_experts` — the water-filling replicator that hands extra slots to the hottest expert.",
+   "content": "",
+   "tool_calls": [
+    {
+     "type": "function",
+     "function": {
+      "name": "str_replace",
+      "arguments": {
+       "path": "eplb/custom_eplb.py",
+       "old_str": ") -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:\n    \"\"\"\n    Replicate num_log logical experts into num_phy physical slots\n    to minimize the maximum per-replica load.\n\n    Args:\n        weight: [B, num_log] — load per logical expert\n        num_phy: total physical expert slots (>= num_log)\n\n    Returns:\n        phy2log: [B, num_phy] — logical expert ID for each physical slot\n        rank: [B, num_phy] — replica rank (0 = original, 1+ = copies)\n        logcnt: [B, num_log] — number of replicas per logical expert\n    \"\"\"\n    B, num_log = weight.shape",
+       "new_str": ") -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:\n    B, num_log = weight.shape"
+      }
+     }
+    }
+   ]
+  },
+  {
+   "role": "tool",
+   "content": "Successfully replaced text in eplb/custom_eplb.py."
+  },
+  {
+   "role": "assistant",
+   "reasoning_content": "And the same on the `rebalance_experts` entry point that composes the three stages.",
+   "content": "",
+   "tool_calls": [
+    {
+     "type": "function",
+     "function": {
+      "name": "str_replace",
+      "arguments": {
+       "path": "eplb/custom_eplb.py",
+       "old_str": ") -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:\n    \"\"\"\n    Main entry point: hierarchical expert placement across GPUs.\n\n    Stage 1: Pack expert groups across nodes (inter-node balancing)\n    Stage 2: Create replicas for popular experts within each node\n    Stage 3: Pack physical replicas to GPUs (intra-node balancing)\n\n    Args:\n        weight: [L, E] — token load per expert per layer\n        num_replicas: total physical expert slots (multiple of num_gpus)\n        num_groups: number of expert groups\n        num_nodes: number of server nodes\n        num_gpus: total GPUs (multiple of num_nodes)\n\n    Returns:\n        phy2log: [L, num_replicas] — logical expert for each physical slot\n        log2phy: [L, E, max_rep] — physical IDs per expert (-1 = unused)\n        logcnt: [L, E] — replica count per expert\n    \"\"\"\n    L, E = weight.shape",
+       "new_str": ") -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:\n    L, E = weight.shape"
+      }
+     }
+    }
+   ]
+  },
+  {
+   "role": "tool",
+   "content": "Successfully replaced text in eplb/custom_eplb.py."
+  },
+  {
+   "role": "assistant",
+   "reasoning_content": "",
+   "content": "Run the experiment to measure this.",
+   "tool_calls": [
+    {
+     "type": "function",
+     "function": {
+      "name": "run_experiment",
+      "arguments": {}
+     }
+    }
+   ]
+  },
+  {
+   "role": "tool",
+   "content": "Measured results — `baseline:greedy` (`is_final,true`), seed 42 (mean over 10 workload trials;\nstd is within-run trial variance).\n\n| Config | balance | balance_node | locality | runtime_ms |\n|---|---|---|---|---|\n| deepseek-v3 | 0.678627 | 0.702209 | 1.000000 | 248.5075 |\n| qwen3-moe   | 0.940328 | 0.946751 | 1.000000 | 102.3190 |\n| deepseek-v2 | 0.925448 | 0.930967 | 1.000000 | 153.3683 |\n| stress-skew | 0.221977 | 0.335967 | 1.000000 | 256.5723 |\n\n| Config | balance_std | balance_node_std | locality_std | runtime_std |\n|---|---|---|---|---|\n| deepseek-v3 | 0.008577 | 0.009289 | 0.0 | 1.6236 |\n| qwen3-moe   | 0.005041 | 0.005012 | 0.0 | 0.5916 |\n| deepseek-v2 | 0.004879 | 0.004854 | 0.0 | 1.5132 |\n| stress-skew | 0.001398 | 0.005892 | 0.0 | 1.1844 |\n\nTask score (geometric mean across the four configs): **0.25531**."
+  },
+  {
+   "role": "assistant",
+   "reasoning_content": "The greedy run told me where the score went, and it went almost entirely into runtime. Locality is\npinned at exactly 1.000 on all four configs — the hierarchy did its job, no expert ever crosses a node\n— and on the gentle real-model deployments the balance is solid: 0.940 / 0.947 on qwen3-moe, 0.925 /\n0.931 on deepseek-v2. Those are not the problem. The problem is the wall-clock: 248 ms on deepseek-v3,\n102 ms on qwen3-moe, 153 ms on deepseek-v2, 256 ms on stress-skew. Each config weights runtime equally\nwith the three quality metrics, and the runtime term is calibrated against the spread of the\nbaselines, so a quarter-second placement is scored as essentially worthless on that quarter of every\nconfig — and the geometric mean across configs drags the whole task score down to 0.255, far below what\nthe perfect locality and the strong real-model balance would otherwise earn. The diagnosis is sharp and\nit is not a balance problem: the algorithm is *correct*, it just spends hundreds of milliseconds doing\nit, on the serving critical path, every time the load drifts. The hierarchy, the replica-count rule,\nand the output maps are all worth keeping; what I have to kill is the time.\n\nSo where does the time go? Not in the arithmetic — the whole algorithm is shuffling small integer\nindices. The cost is one routine, `balanced_packing`, and the way it is written. It takes `n` weighted\nitems and splits them into `P` packs of exactly `n/P` items each, as evenly as possible by weight, and\nit does it the textbook way: sort descending, then walk the items one at a time, and for each one scan\nall `P` packs to find the emptiest pack with a free slot and drop the item there. That is the\nleast-loaded-feasible greedy I leaned on. But look at the control flow: an outer Python loop over the\n`L` layers, an inner Python loop over the `n` items, and inside that a linear min-scan over `P` packs —\n`L·n·P` iterations of interpreted Python, each a `.item()` off a tensor and a `min` over a little list.\nEvery quantity is tiny; the only expensive thing is that I am doing it element-by-element in Python on a\nmachine that wants batched tensor kernels. And it is called twice — Stage 1 packs `num_groups` items\nonto nodes, Stage 3 packs `num_replicas` per-replica loads onto GPUs. Stage 3 is the heavier of the two\nbecause `num_replicas` is much larger than `num_groups`; on deepseek-v3 that is 320 replicas per layer\nwalked in Python across 61 layers. That is the 248 ms.\n\nThe obvious instinct is \"just vectorize the loop,\" and it is worth being precise about why I cannot,\nbecause the obstruction is the whole problem. The greedy choice for item `j` is \"which pack is emptiest\nright now\" — and \"right now\" means after items `0..j−1` are already placed. The decision for each item\ndepends on the running pack loads, which depend on every earlier decision. It is an inherently\nsequential recurrence: a prefix scan where each step's branch (the argmin over current loads) depends\non the accumulated state, with no closed form for the current loads without simulating the whole prefix.\nThis is the same reason you cannot trivially parallelize a greedy bin-packer. So I cannot batch away the\ndependency; I have to *change the rule*.\n\nLet me back up and ask what I actually need, not what the greedy does. The greedy is one *way* to get a\nbalanced, cardinality-constrained partition; it is not the only way, and I do not care about reproducing\nits decisions step for step — I care about packs whose sums are about as even as the greedy's, computed\nwithout a per-item running-load dependence. So the question is: is there an assignment of items to packs\nI can write as a *fixed function of each item's sorted position alone*, no running state, that still\ncomes out balanced? If the pack an item goes to depends only on its rank in the sorted order, I can\ncompute it for all items at once with index arithmetic, and the sequential chain is broken.\n\nStart with the crudest such fixed rule: plain round-robin over the sorted items. Heaviest (rank 0) to\npack 0, rank 1 to pack 1, …, rank `P−1` to pack `P−1`, rank `P` back to pack 0, and so on — pack `p`\ngets sorted-ranks `{p, P+p, 2P+p, …}`. Purely positional, trivially vectorizable, and exactly `n/P`\nitems per pack for free since the ranks cycle. Does it balance? Group the sorted items into consecutive\nrounds of `P`. Round-robin hands round 0's items to packs `0,1,…,P−1` in order, so pack 0 gets the\nheaviest of that round and pack `P−1` the lightest. But round 1 *also* runs in order, so pack 0 gets\nthe heaviest of round 1, and round 2 again. Pack 0 systematically collects the heaviest element of\n*every* round, and pack `P−1` the lightest of every round. The disparities do not cancel — they\n*stack*. Pack 0 ends up overloaded, pack `P−1` underloaded, by roughly the per-round spread times the\nnumber of rounds. That is worse than I can accept; the positional simplicity bought me nothing because\nit always pours the big end of each round into the same low-index pack. But it is an *informative*\nfailure — it tells me exactly what to fix.\n\nThe fix stares back from the failure: the imbalance comes from every round running in the same\ndirection, so the same pack always gets the heavy end. So alternate the direction. Run even rounds\nforward — packs `0,1,…,P−1` — and odd rounds *backward* — `P−1,P−2,…,1,0`. Now in round 0 pack 0 gets\nthe heaviest item (rank 0) and pack `P−1` the lightest (rank `P−1`); in round 1, reversed, pack 0 gets\nthe *lightest* of that round (rank `2P−1`) and pack `P−1` gets the *heaviest* (rank `P`). So pack 0's\ntwo items are rank 0 and rank `2P−1` — a heavy one paired with a light one — while pack `P−1`'s two are\nrank `P−1` and rank `P`, two middling adjacent ones. Round by round, each pack alternately gets the\nheavy end and the light end, so the spread within each pack cancels instead of accumulating. This is the\nsnake — reverse direction each row. The assignment is still purely positional: the pack of rank `r`\ndepends only on `r`, through which round it is in and whether that round is even or odd. No running\nloads. So it vectorizes: the round is `r // P`, the within-round offset is `r % P`, the pack is the\noffset on even rounds and the mirror `P − 1 − offset` on odd rounds, and the within-pack rank is just\nthe round number, because each pack receives exactly one item per round in round order. The capacity\nconstraint the greedy enforced with a `counts[p] < items_per_pack` filter is now satisfied\nautomatically — the round structure deals one item to each pack per round, so with `n` divisible by `P`\nevery pack ends with exactly `n/P` items. I get the hard cardinality requirement for free.\n\nNow the real question — does this balance as well as the greedy, or did I trade a good heuristic for a\ncheap-but-worse one? After sorting, the weights are non-increasing, so the first round is forced:\ngreedy places ranks `0..P−1` into empty packs, the same forward sweep as the snake. After that I have\nto be careful. Pack `P−1` is the emptiest after round 0, so greedy gives rank `P` to pack `P−1`; the\nrest of the reversed round follows only if that new load has climbed enough that pack `P−2` is now\nemptiest, then `P−3`, and so on. The snake is not a theorem for *every* sorted sequence; it is the\nclosed form for the greedy order *when each filled pack overtakes the next in the alternating order*. A\nlocally affine descending block has exactly this property: over two consecutive blocks pack `p`\nreceives `w[p] + w[2P−1−p]`, and those pair sums are equal across `p`, so after the backward sweep the\ncanonical tie-break starts the next forward sweep from pack 0 again. Smooth sorted load tails\napproximate the same condition. So the precise claim is conditional: when the sorted sequence keeps the\npacks in that alternating emptiest-bin order, the snake is LPT written in closed form; when it only\napproximately holds, the snake is the fixed positional approximation to that greedy order.\n\nAnd here is where the greedy feedback makes me cautious in exactly the right place. The condition is\nfriendliest where the load sequence is smooth — and Stage 3 *is* smoothed, because the replication\nstage has already split the hot experts into multiple copies, so the per-replica loads I pack in Stage 3\nhave had their peaks shaved. The condition is *least* friendly where the sorted sequence has a cliff or\nstrong curvature — a couple of huge items and then a long flat tail. That is precisely the\n`stress-skew` regime: a long-tail Zipf load at skew 0.95, and Stage 1 packing only `groups_per_node =\n2` groups onto each of 16 nodes. Greedy already cratered there — balance 0.222, balance_node 0.336 —\nbecause with two groups per node and extreme skew there is almost no freedom to even out the nodes, and\ngreedy made its locally-best choice and still landed badly. The snake does not read the running loads,\nso on that cliffed Stage-1 sequence it cannot do *better* than greedy did, and it may do marginally\nworse on the exact node assignment; what it will *not* do is fix the structural problem, because the\nproblem there is the hierarchy itself starving Stage 1 of freedom, not the packing rule. So I should\nexpect stress-skew balance to stay roughly where greedy left it — around 0.222 — and I should not\npretend the snake rescues it. The snake's job is runtime, not stress-config balance.\n\nTwo more decisions. First, both packing calls become the snake, and doing it in *both* is what matters.\nIf I only snake-ified Stage 1 and left Stage 3 as the loop, I would still pay the Python tax on the\n*larger* packing — Stage 3 walks more items than Stage 1 — so the 248 ms would barely move. The\nspeedup only fully lands when every packing call is vectorized. Second, Stage 2, the replication, stays\na loop. Its recurrence is genuinely sequential in a way no positional trick fixes: each new replica\n*changes* the per-replica load of the expert it joins (`w/2`, then `w/3`, …), so the argmax for the\nnext replica depends on the previous draw — the whole point is the diminishing per-replica returns. But\nit iterates only over the *redundant* count, `num_phy − num_log` — a few dozen to a couple hundred — not\nthe whole tensor, and it runs after the two big packings are already vectorized away, so it is not the\nbottleneck. And I do not want to perturb it: replicating the single most-overloaded expert each time is\nthe right greedy for driving the peak per-replica load down. So Stage 2 stays a sequential argmax loop,\nbatched across the layers·nodes dimension but not across the replica draws.\n\nThe index-composition bookkeeping that stitches the three stages — the node-major relabeling, the\nper-node gathers, the slot-index construction and inverses, the final scatter into `log2phy` — I keep\n*identical* to what already works, because it is plumbing where an off-by-one silently mis-routes\ntokens. The only thing I replace is the body of `balanced_packing`. I also keep its index work on the\nCPU: the sort, the `where`, and the two scatters are tiny relative to the model, the maps are integer\npermutations consumed by host-side dispatch, and keeping them on CPU avoids launching a swarm of tiny\nGPU kernels for what is really index arithmetic. The full scaffold module is in the answer; here the\nmove is just the snake in place of the loop, in both packing stages.\n\nSo the falsifiable expectations against the greedy numbers. Locality should stay exactly 1.000 on all\nfour configs — I have not touched the hierarchy, so no expert crosses a node. The runtime should\ncollapse by roughly two orders of magnitude: from 248 / 102 / 153 / 256 ms down to the low single\ndigits of milliseconds, because `L·n·P` interpreted iterations become one batched sort plus a handful\nof `arange`/`where`/`scatter` kernels whose count is independent of `n`. The balance numbers should\nland *at or just below* greedy's, not above: on the smooth real-model configs I expect to roughly hold\nthe line — qwen3-moe near 0.94, deepseek-v2 near 0.92, deepseek-v3's already-mediocre 0.68 staying near\nthere — because the snake matches LPT under the smoothness condition those configs roughly satisfy; and\non stress-skew I expect balance to stay pinned around 0.222, because the snake cannot fix what the\nhierarchy's two-groups-per-node bottleneck imposed on greedy. If the runtime does not collapse, the\nvectorization failed; if the balance falls *well* below greedy's on the real configs, the smoothness\nassumption was wrong and the snake is a worse packer than I argued. The single number that should move,\nand move enormously, is the task score: with locality held and balance roughly held but runtime cut\nfrom a quarter-second to milliseconds, the score should jump from 0.255 toward the high-0.30s — the\nruntime tax that crushed greedy simply removed. So let me swap the snake into `balanced_packing` and use it in both packing stages.",
+   "content": "I'm replacing the sequential greedy in `balanced_packing` with a vectorized zigzag (snake) assignment — alternating the direction each round of the sorted items — to kill the Python loop without losing the balance. This first edit rewrites the function body to compute pack and rank from sorted position alone.",
+   "tool_calls": [
+    {
+     "type": "function",
+     "function": {
+      "name": "str_replace",
+      "arguments": {
+       "path": "eplb/custom_eplb.py",
+       "old_str": "    assert n % num_packs == 0\n    items_per_pack = n // num_packs\n\n    if items_per_pack == 1:\n        idx = torch.arange(n, dtype=torch.int64, device=weight.device).expand(B, -1)\n        return idx, torch.zeros_like(idx)\n\n    sorted_idx = weight.float().sort(-1, descending=True).indices.cpu()\n    pack_index = torch.full((B, n), -1, dtype=torch.int64)\n    rank_in_pack = torch.full((B, n), -1, dtype=torch.int64)\n    for b in range(B):\n        loads = [0.0] * num_packs\n        counts = [0] * num_packs\n        for j in range(n):\n            item = sorted_idx[b, j].item()\n            best = min(\n                (p for p in range(num_packs) if counts[p] < items_per_pack),\n                key=lambda p: loads[p],\n            )\n            pack_index[b, item] = best\n            rank_in_pack[b, item] = counts[best]\n            loads[best] += weight[b, item].item()\n            counts[best] += 1\n    return pack_index, rank_in_pack",
+       "new_str": "    assert n % num_packs == 0\n\n    if n // num_packs == 1:\n        idx = torch.arange(n, dtype=torch.int64, device=weight.device).expand(B, -1)\n        return idx, torch.zeros_like(idx)\n\n    # Sort items by weight descending\n    sorted_idx = weight.float().sort(-1, descending=True).indices\n\n    # Zigzag assignment: even blocks go 0..P-1, odd blocks go P-1..0\n    positions = torch.arange(n, device=weight.device)\n    block_id = positions // num_packs\n    pos_in_block = positions % num_packs\n    is_even = block_id % 2 == 0\n    pack_assign = torch.where(is_even, pos_in_block, num_packs - 1 - pos_in_block)\n    rank_assign = block_id\n\n    # Scatter back to original item order\n    pack_expanded = pack_assign.unsqueeze(0).expand(B, -1)\n    rank_expanded = rank_assign.unsqueeze(0).expand(B, -1)\n    pack_index = torch.zeros(B, n, dtype=torch.int64, device=weight.device)\n    rank_in_pack = torch.zeros(B, n, dtype=torch.int64, device=weight.device)\n    pack_index.scatter_(-1, sorted_idx, pack_expanded)\n    rank_in_pack.scatter_(-1, sorted_idx, rank_expanded)\n\n    return pack_index.cpu(), rank_in_pack.cpu()"
+      }
+     }
+    }
+   ]
+  },
+  {
+   "role": "tool",
+   "content": "Successfully replaced text in eplb/custom_eplb.py."
+  },
+  {
+   "role": "assistant",
+   "reasoning_content": "",
+   "content": "",
+   "tool_calls": [
+    {
+     "type": "function",
+     "function": {
+      "name": "str_replace",
+      "arguments": {
+       "path": "eplb/custom_eplb.py",
+       "old_str": "\n    # Stage 1\n    tpg = weight.unflatten(-1, (num_groups, group_size)).sum(-1)",
+       "new_str": "\n    # Stage 1: zigzag packing of groups to nodes\n    tpg = weight.unflatten(-1, (num_groups, group_size)).sum(-1)"
+      }
+     }
+    }
+   ]
+  },
+  {
+   "role": "tool",
+   "content": "Successfully replaced text in eplb/custom_eplb.py."
+  },
+  {
+   "role": "assistant",
+   "reasoning_content": "",
+   "content": "",
+   "tool_calls": [
+    {
+     "type": "function",
+     "function": {
+      "name": "str_replace",
+      "arguments": {
+       "path": "eplb/custom_eplb.py",
+       "old_str": "\n    # Stage 2\n    tpm = weight.gather(-1, mlog2log).view(-1, experts_per_node)\n    p2m, prk, mcnt = replicate_experts(tpm, replicas_per_node)\n\n    # Stage 3\n    tpp = (tpm / mcnt.float()).gather(-1, p2m)",
+       "new_str": "\n    # Stage 2: greedy replication\n    tpm = weight.gather(-1, mlog2log).view(-1, experts_per_node)\n    p2m, prk, mcnt = replicate_experts(tpm, replicas_per_node)\n\n    # Stage 3: zigzag packing of replicas to GPUs\n    tpp = (tpm / mcnt.float()).gather(-1, p2m)"
+      }
+     }
+    }
+   ]
+  },
+  {
+   "role": "tool",
+   "content": "Successfully replaced text in eplb/custom_eplb.py."
+  },
+  {
+   "role": "assistant",
+   "reasoning_content": "",
+   "content": "Run the experiment to measure this.",
+   "tool_calls": [
+    {
+     "type": "function",
+     "function": {
+      "name": "run_experiment",
+      "arguments": {}
+     }
+    }
+   ]
+  },
+  {
+   "role": "tool",
+   "content": "Measured results — `baseline:zigzag` (`is_final,true`), seed 42 (mean over 10 workload trials;\nstd is within-run trial variance).\n\n| Config | balance | balance_node | locality | runtime_ms |\n|---|---|---|---|---|\n| deepseek-v3 | 0.659000 | 0.702209 | 1.000000 | 1.6472 |\n| qwen3-moe   | 0.919030 | 0.946751 | 1.000000 | 0.8518 |\n| deepseek-v2 | 0.905732 | 0.930966 | 1.000000 | 1.1591 |\n| stress-skew | 0.221962 | 0.335967 | 1.000000 | 1.5613 |\n\n| Config | balance_std | balance_node_std | locality_std | runtime_std |\n|---|---|---|---|---|\n| deepseek-v3 | 0.008598 | 0.009289 | 0.0 | 0.0627 |\n| qwen3-moe   | 0.004606 | 0.005012 | 0.0 | 0.0716 |\n| deepseek-v2 | 0.005396 | 0.004854 | 0.0 | 0.0737 |\n| stress-skew | 0.001395 | 0.005892 | 0.0 | 0.0335 |\n\nTask score (geometric mean across the four configs): **0.37500**."
+  },
+  {
+   "role": "assistant",
+   "reasoning_content": "The zigzag run did exactly what I asked of it and exposed exactly what it could not do. Runtime\ncollapsed: 248 / 102 / 153 / 256 ms became 1.6 / 0.85 / 1.2 / 1.6 ms — two orders of magnitude, just as\nthe vectorization argument predicted, the `L·n·P` interpreted loop replaced by a sort and a handful of\nindex kernels. Locality held at exactly 1.000 on all four configs — the hierarchy was untouched, so no\nexpert crosses a node. And the balance came in right where I said it would: roughly at or just below\ngreedy's on the smooth real-model configs (qwen3-moe 0.919, deepseek-v2 0.906, deepseek-v3 0.659), and\npinned at 0.222 on stress-skew, because the snake cannot fix a problem the hierarchy itself imposes. The\ntask score jumped from 0.255 to 0.375, almost all of it the removed runtime tax. So the runtime wound\nis closed. But the score is now bottlenecked by *balance*, and the numbers tell me precisely where: the\nbalance term is mediocre on deepseek-v3 (0.659) and catastrophic on stress-skew (0.222), and on those\ntwo configs it is dragging the geometric mean down hard while qwen3-moe and deepseek-v2 sit comfortably\nnear 0.92. The question for this rung is no longer speed. It is: why is the balance capped, and what is\nactually capping it.\n\nLook at what greedy and zigzag share. They both score *identical* balance_node — 0.702 on deepseek-v3,\n0.336 on stress-skew — and nearly identical balance. That is the tell. The bottleneck is not the\npacking rule at all; greedy and snake are different packers and they land in the same place. The\nbottleneck is upstream of the packing: it is **Stage 1**, the group-to-node assignment, and the\nhierarchy that forces it. On deepseek-v3 there are 8 groups and 8 nodes, so `groups_per_node = 1` —\nStage 1 has *no freedom whatsoever*: one group per node, the assignment is forced, and whatever\nnode-level imbalance the group loads happen to have is locked in before replication and GPU packing even\nbegin. balance_node 0.702 is not a packing failure; it is the raw spread of the eight group loads,\nwhich Stage 1 cannot touch because there is exactly one group per node. On stress-skew it is worse:\n`groups_per_node = 2`, a long-tail Zipf at skew 0.95, so Stage 1 packs 32 wildly-skewed group loads two\nto a node across 16 nodes, and with two slots per node there is almost no room to even them out — hence\nbalance_node 0.336 and a balance of 0.222 that no downstream packing can rescue, because the node a\nreplica lands on was decided by a Stage 1 that had its hands tied. The hierarchy is *buying* the perfect\nlocality by *spending* balance: by insisting every group — and therefore every expert's replicas —\nstays whole on one node, it hands Stage 1 a rigid, low-freedom partition and then asks Stages 2 and 3 to\nbalance within a node structure that is already lopsided.\n\nSo the move this rung has to consider is the one the hierarchy forbids: give the placement back its\nfreedom by *dropping the node hierarchy entirely*. Instead of \"pack groups onto nodes, then replicate\nand pack within each node,\" do a single global pass — replicate over *all* logical experts at once, then\npack *all* the physical replicas directly across *all* the GPUs in the cluster, ignoring group and node\nstructure. This is not a new algorithm; it is the established global policy, the official fallback the\nhierarchical entry point uses when the group-to-node divisibility needed for the hierarchy is absent. It\nis the same procedure with the group and node counts collapsed to one — one giant pool. Here I am\nchoosing it deliberately, as the explicit global branch, even though the hierarchy *is* available,\nbecause I want to test the hypothesis that the hierarchy is what is capping balance.\n\nWhy would a flat global pack balance better? Because the packer now sees the whole problem at once. In\nthe hierarchy, Stage 3 packs only one node's `replicas_per_node` items onto that node's `gpus_per_node`\nGPUs — a small, isolated subproblem with whatever lopsided load that node inherited from Stage 1. Flat,\nthe packer sees all `num_replicas` items and all `num_gpus` packs together, so a heavy replica on what\nwould have been an overloaded node can be balanced against a light slot anywhere in the cluster, not\njust within its node. The single largest constraint on the achievable max-GPU-load — that each GPU's\nload is bounded below by the average of its *node's* inherited load — disappears. The zigzag packing\nrule itself I keep, because the runtime lesson from the last rung stands: it is the vectorized snake,\none sort and index arithmetic, no per-item loop. Run globally over all replicas and all GPUs, it is\nstill cheap. So the flat method is: replicate globally, then snake-pack the global per-replica loads\nacross all GPUs.\n\nLet me be concrete about the construction, because the global path is simpler than the hierarchy and I\nwant to be sure the maps still come out right. Replicate first: start every logical expert with one\ncopy and hand each of the `num_replicas − E` extra slots to the expert with the largest current\nper-replica load `weight / logcnt` — the same water-filling rule, now over all `E` experts at once\nrather than per node. This is unchanged from the hierarchical Stage 2 except that it runs once over the\nwhole model; it is the genuinely-sequential argmax loop, but only over the redundant count, so it is not\nthe cost center. Then the load of each physical slot is `weight / logcnt` gathered through `phy2log`\n(which says which logical expert each slot represents), and I snake-pack those `num_replicas` per-replica\nloads across `num_gpus` packs in one shot. The packing returns, per slot, its GPU and its rank within\nthat GPU; the GPU-ordered linear slot id is `pack_index · phy_per_gpu + rank_in_pack`, I invert that\npermutation to get \"which original slot landed at each packed position,\" gather `phy2log` and the\nreplica ranks through the inverse, and scatter the packed slot ids into `log2phy[e, r]` sized by the max\nreplica count. Equal cardinality is automatic — the snake puts exactly one item per pack per round, so\neach GPU gets exactly `phy_per_gpu` slots — and every expert keeps ≥ 1 copy because replication only\nadds. The `num_groups` and `num_nodes` arguments are still accepted by the entry point but the flat path\nsimply does not consult them; the group-to-node relabeling that Stage 1 used is gone.\n\nNow the cost, the part the metric will make me pay. The locality metric counts, for each expert, how\nmany distinct nodes hold its replicas and credits `1 / nodes_per_expert`, traffic-weighted. The\nhierarchy scored a perfect 1.000 everywhere because every expert's replicas were confined to one node by\nconstruction. The flat pack has no such confinement: it scatters an expert's replicas across whatever\nGPUs the snake assigns, and those GPUs can sit on different nodes. A hot expert with many replicas,\nspread by the packer across the cluster for balance, will touch several nodes, so its locality drops\ntoward `1 / num_nodes`. So I am about to *lose* the one metric the hierarchy nailed, in exchange for the\nbalance it was strangling. This is a genuine trade, and whether it is a net win depends on the\narithmetic of the four equally-weighted terms. The reason I expect it to win: the hierarchy's balance\ndeficits are *large and concentrated* — 0.659 and 0.222 on two configs — while the locality I am giving\nup is bounded. On the real-model configs locality will not fall to `1/N`; replication factors are modest\n(the budget is roughly 1.25–2×), so most experts have one or two replicas and a one- or two-replica\nexpert can only touch one or two nodes, keeping its locality high; only the heavily-replicated hot\nexperts scatter, and they are a minority of the traffic-weighted mass. So I expect locality to stay in\nthe low-to-mid 0.90s on the real configs — a few points lost, not collapsed — while balance climbs from\nthe 0.66–0.92 range up toward the high 0.97s, because the packer finally has the whole GPU pool. On\nstress-skew the trade is steeper: 16 nodes means the `1/N` floor is `0.0625`, the replication budget is\ntightest (1.5×), and the skew is extreme, so the hot experts get the most replicas and scatter the\nwidest — I expect locality there to fall the hardest, into the low 0.7s, but balance to climb from the\nfloored 0.222 up toward the low 0.9s, which on a config where balance was the catastrophe is a far\nlarger swing than the locality loss.\n\nThere is one thing I want to be honest with myself about, because it is the seam where this rung could\nbe beaten later. By dropping the hierarchy I have *decoupled* the two objectives the hierarchy had\nfused. The hierarchy got locality for free and paid in balance; the flat pack gets balance and pays in\nlocality. Neither is doing the thing the task actually rewards, which is *both at once*. A method that\nkept the node structure — so locality stayed near 1.0 — while finding more node-level balancing freedom\nthan the rigid one-group-per-node Stage 1 allows would dominate both of these rungs. I do not have that\nmethod in hand; the flat pack is the move that the zigzag feedback points to, because the feedback said\nthe cap was the hierarchy and the cheapest way to test that is to remove it. But I am noting the seam.\n\nSo the falsifiable expectations against the zigzag numbers. Runtime should stay cheap — single-digit\nmilliseconds — because the packing is still the vectorized snake, now over the global pool, with the\nStage 1 group-to-node work removed; I would not be surprised if it is marginally slower than the\nhierarchical snake on the smaller configs (replicating and packing one large pool can cost a touch more\nthan several tiny per-node packs) but it must stay in the low single digits, nowhere near greedy's\nhundreds. Balance should rise substantially on the two configs the hierarchy strangled: deepseek-v3\nfrom 0.659 toward the high 0.97s, and stress-skew from 0.222 up into the low 0.9s — and balance_node\nshould rise in lockstep, off the 0.702 and 0.336 the hierarchy locked in, because the node-level\nimbalance was a Stage 1 artifact and there is no Stage 1 now. Locality should *drop* off the perfect\n1.000 — into the low-to-mid 0.90s on the real configs and into the low 0.7s on stress-skew — and that\ndrop is the price. The net: the balance gains are large and on the configs that were dragging the\ngeometric mean, the locality losses are bounded, so the task score should climb past zigzag's 0.375 —\ninto the high 0.30s. If locality collapses further than I expect on the real configs, or if balance\ndoes not climb because something other than the hierarchy was capping it, the trade fails and the\nhierarchy should be kept; that is exactly what the next comparison will tell me. So let me rewrite the entry point to drop the hierarchy and pack globally.",
+   "content": "I'm testing the flat (global) zigzag: drop the node hierarchy entirely, replicate over all experts at once, then snake-pack every replica directly across all GPUs — trading the perfect locality for the node-level balancing freedom Stage 1 was starving. The first edits just strip the now-unused comments from the zigzag packer.",
+   "tool_calls": [
+    {
+     "type": "function",
+     "function": {
+      "name": "str_replace",
+      "arguments": {
+       "path": "eplb/custom_eplb.py",
+       "old_str": "\n    # Sort items by weight descending\n    sorted_idx = weight.float().sort(-1, descending=True).indices\n\n    # Zigzag assignment: even blocks go 0..P-1, odd blocks go P-1..0\n    positions = torch.arange(n, device=weight.device)",
+       "new_str": "\n    sorted_idx = weight.float().sort(-1, descending=True).indices\n\n    positions = torch.arange(n, device=weight.device)"
+      }
+     }
+    }
+   ]
+  },
+  {
+   "role": "tool",
+   "content": "Successfully replaced text in eplb/custom_eplb.py."
+  },
+  {
+   "role": "assistant",
+   "reasoning_content": "",
+   "content": "",
+   "tool_calls": [
+    {
+     "type": "function",
+     "function": {
+      "name": "str_replace",
+      "arguments": {
+       "path": "eplb/custom_eplb.py",
+       "old_str": "\n    # Scatter back to original item order\n    pack_expanded = pack_assign.unsqueeze(0).expand(B, -1)",
+       "new_str": "\n    pack_expanded = pack_assign.unsqueeze(0).expand(B, -1)"
+      }
+     }
+    }
+   ]
+  },
+  {
+   "role": "tool",
+   "content": "Successfully replaced text in eplb/custom_eplb.py."
+  },
+  {
+   "role": "assistant",
+   "reasoning_content": "Now the entry point: replace the per-node setup with global replication and one snake-pack over all replicas across all GPUs.",
+   "content": "",
+   "tool_calls": [
+    {
+     "type": "function",
+     "function": {
+      "name": "str_replace",
+      "arguments": {
+       "path": "eplb/custom_eplb.py",
+       "old_str": ") -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:\n    L, E = weight.shape\n    weight = weight.float().cpu()\n    group_size = E // num_groups\n    gpus_per_node = num_gpus // num_nodes\n    phy_per_gpu = num_replicas // num_gpus\n    groups_per_node = num_groups // num_nodes\n    experts_per_node = E // num_nodes\n    replicas_per_node = num_replicas // num_nodes",
+       "new_str": ") -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:\n    # Flat (non-hierarchical) approach: skip group-to-node, go directly to global\n    L, E = weight.shape\n    weight = weight.float().cpu()\n    phy_per_gpu = num_replicas // num_gpus\n\n    # Step 1: Replicate experts globally\n    phy2log, phyrank, logcnt = replicate_experts(weight, num_replicas)\n\n    # Step 2: Pack all replicas to GPUs directly using zigzag\n    tokens_per_phy = (weight / logcnt.float()).gather(-1, phy2log)\n    pack_index, rank_in_pack = balanced_packing(tokens_per_phy, num_gpus)"
+      }
+     }
+    }
+   ]
+  },
+  {
+   "role": "tool",
+   "content": "Successfully replaced text in eplb/custom_eplb.py."
+  },
+  {
+   "role": "assistant",
+   "reasoning_content": "The three-stage body goes too: invert the global GPU ordering and gather `phy2log` and the ranks through it directly.",
+   "content": "",
+   "tool_calls": [
+    {
+     "type": "function",
+     "function": {
+      "name": "str_replace",
+      "arguments": {
+       "path": "eplb/custom_eplb.py",
+       "old_str": "\n    # Stage 1: zigzag packing of groups to nodes\n    tpg = weight.unflatten(-1, (num_groups, group_size)).sum(-1)\n    gpi, grk = balanced_packing(tpg, num_nodes)\n    log2mlog = (((gpi * groups_per_node + grk) * group_size).unsqueeze(-1)\n                + torch.arange(group_size)).flatten(-2)\n    mlog2log = inv(log2mlog)\n\n    # Stage 2: greedy replication\n    tpm = weight.gather(-1, mlog2log).view(-1, experts_per_node)\n    p2m, prk, mcnt = replicate_experts(tpm, replicas_per_node)\n\n    # Stage 3: zigzag packing of replicas to GPUs\n    tpp = (tpm / mcnt.float()).gather(-1, p2m)\n    pi, ri = balanced_packing(tpp, gpus_per_node)\n    p2pp = pi * phy_per_gpu + ri\n    pp2p = inv(p2pp)\n\n    pp2m = p2m.gather(-1, pp2p)\n    pp2m = (pp2m.view(L, num_nodes, -1)\n            + torch.arange(0, E, experts_per_node).view(1, -1, 1)).flatten(-2)\n    pp2log = mlog2log.gather(-1, pp2m)\n    pprank = prk.gather(-1, pp2p).view(L, -1)\n    logcnt = mcnt.view(L, -1).gather(-1, log2mlog)",
+       "new_str": "\n    phy2pphy = pack_index * phy_per_gpu + rank_in_pack\n    pphy2phy = inv(phy2pphy)\n\n    final_phy2log = phy2log.gather(-1, pphy2phy)\n    final_rank = phyrank.gather(-1, pphy2phy)"
+      }
+     }
+    }
+   ]
+  },
+  {
+   "role": "tool",
+   "content": "Successfully replaced text in eplb/custom_eplb.py."
+  },
+  {
+   "role": "assistant",
+   "reasoning_content": "And point the final `log2phy` scatter and the return at the global maps.",
+   "content": "",
+   "tool_calls": [
+    {
+     "type": "function",
+     "function": {
+      "name": "str_replace",
+      "arguments": {
+       "path": "eplb/custom_eplb.py",
+       "old_str": "    log2phy.view(L, -1).scatter_(\n        -1, pp2log * mx + pprank,\n        torch.arange(num_replicas).expand(L, -1),\n    )\n    return pp2log, log2phy, logcnt",
+       "new_str": "    log2phy.view(L, -1).scatter_(\n        -1, final_phy2log * mx + final_rank,\n        torch.arange(num_replicas).expand(L, -1),\n    )\n    return final_phy2log, log2phy, logcnt"
+      }
+     }
+    }
+   ]
+  },
+  {
+   "role": "tool",
+   "content": "Successfully replaced text in eplb/custom_eplb.py."
+  },
+  {
+   "role": "assistant",
+   "reasoning_content": "",
+   "content": "Run the experiment to measure this.",
+   "tool_calls": [
+    {
+     "type": "function",
+     "function": {
+      "name": "run_experiment",
+      "arguments": {}
+     }
+    }
+   ]
+  },
+  {
+   "role": "tool",
+   "content": "Measured results — `baseline:flat_zigzag` (`is_final,true`), seed 42 (mean over 10 workload trials;\nstd is within-run trial variance).\n\n| Config | balance | balance_node | locality | runtime_ms |\n|---|---|---|---|---|\n| deepseek-v3 | 0.980332 | 0.984442 | 0.915379 | 4.8350 |\n| qwen3-moe   | 0.974809 | 0.983491 | 0.960669 | 1.6160 |\n| deepseek-v2 | 0.983199 | 0.988721 | 0.966865 | 2.0559 |\n| stress-skew | 0.931268 | 0.938060 | 0.727849 | 7.0557 |\n\n| Config | balance_std | balance_node_std | locality_std | runtime_std |\n|---|---|---|---|---|\n| deepseek-v3 | 0.000465 | 0.000316 | 0.001367 | 0.4237 |\n| qwen3-moe   | 0.000700 | 0.000444 | 0.002191 | 0.0321 |\n| deepseek-v2 | 0.000399 | 0.000335 | 0.001948 | 0.0791 |\n| stress-skew | 0.001326 | 0.001153 | 0.001566 | 0.0783 |\n\nTask score (geometric mean across the four configs): **0.38204**."
+  }
+ ]
+}

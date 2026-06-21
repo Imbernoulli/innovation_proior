@@ -1,0 +1,846 @@
+<meta task="cv-3dgs-densification" domain="Computer vision" file="gsplat/custom_strategy.py" model_format="qwen3" edit_tool="str_replace"/>
+
+<system>
+You are a research engineer improving a model on a fixed ML task. You work by editing the model code and running experiments. Think carefully before each change. You have these tools:
+- str_replace(path, old_str, new_str): replace the unique occurrence of old_str with new_str.
+- create(path, file_text): create a new file.
+- run_experiment(): train + evaluate the current code under the fixed budget; returns metrics.
+Make one tool call at a time. After editing, call run_experiment() to measure your method.
+</system>
+
+<user>
+## Research question
+
+3D Gaussian Splatting represents a scene as a collection of anisotropic 3D Gaussians and renders by
+differentiable rasterization. Training starts from a sparse Structure-from-Motion point cloud — far too
+few primitives to represent the scene — so the representation must *change size during training*: it has
+to add Gaussians where coverage is missing, subdivide Gaussians that smear over too much detail, and
+remove ones that go transparent or grow oversized. The single thing being designed is the
+**densification strategy** — the rule, called every refinement step, that decides which Gaussians to
+clone, split, prune, or leave alone. Everything else about the pipeline is fixed. The failure to fix is
+visible in real scenes: most regions render sharply, but grass, foliage, uneven pavement, and distant
+texture stay soft, because a few large flat splats sit over regions that need many small primitives and
+are never selected for subdivision. The metric is per-scene PSNR (higher is better) on novel views; the
+contribution must be a transferable density-control rule, not a change to the renderer, loss, optimizer,
+dataset, or evaluation protocol.
+
+## Prior art before the first rung (the densification lineage)
+
+The first rung reacts to the *original* 3DGS densification automaton and its known failure; that
+automaton, and the signals it consumes, are the prior art the ladder climbs from.
+
+- **3D Gaussian Splatting (Kerbl, Kopanas, Leimkühler & Drettakis 2023).** The substrate. A scene is a
+  set of Gaussians with center, scale, rotation, opacity, and SH color, alpha-composited front-to-back.
+  Density control is an open-loop automaton: every `refine_every` steps it averages each Gaussian's
+  view-space positional gradient over the views it appears in, and where that average exceeds a fixed
+  threshold it **clones** the Gaussian if small (under-coverage) or **splits** it into two
+  covariance-sampled children if large (over-coverage); separately it **prunes** near-transparent or
+  oversized Gaussians and periodically **resets** all opacities to force pruning. Gap: the densification
+  *signal* is a signed, summed projected-center gradient, and the splitting/pruning operations are crude.
+- **The signed-gradient cancellation failure.** Each Gaussian's view-space gradient component is a
+  *signed sum* of per-pixel sub-gradients over the pixels it covers, `g_x = Σ_j ∂L_j/∂μ_x`. In a
+  textured region the per-pixel terms have opposite signs — the L1 residual flips across the footprint,
+  compositing flips, and the projected-Gaussian derivative is antisymmetric about the center — so a large
+  splat over high-frequency detail can have many dissatisfied pixels and still produce a *small* net
+  gradient after cancellation. The automaton confuses "nobody is pulling" with "everybody is pulling in
+  different directions," so the worst over-reconstructed primitives are exactly the ones it fails to
+  split. Gap: the densification statistic measures net center motion, not total evidence of error.
+- **The split / prune crudeness.** Covariance-sampled split gives each child the parent's full shape and
+  opacity at a *random* offset, so the covered shape and through-ray density jump away from the optimized
+  geometry the instant the split fires, and run-to-run the result is random. Opacity-floor pruning only
+  removes Gaussians below ~0.005, so it is blind to Gaussians that hold ordinary opacity but overfit a
+  few training views. Gap: each edit perturbs the render, and pruning cannot see overfit primitives.
+
+## The fixed substrate
+
+A `gsplat` CUDA training loop is frozen and must not be touched. It initializes Gaussians from the SfM
+points; renders each view with `rasterization(..., packed=False, absgrad=True)` (so the absolute-value
+view-space gradient `info["means2d"].absgrad` is always populated after backward); computes the
+photometric loss `0.8·L1 + 0.2·(1 − SSIM)`; and runs AdamW with per-parameter learning rates and an
+exponential LR decay. Training is **30,000 steps per scene**; SH degree rises to 3 over the first few
+thousand steps. The loop calls the strategy through three hooks: `initialize_state(scene_scale)` once at
+the start, `step_pre_backward(...)` before `loss.backward()` (to retain the screen-space gradient), and
+`step_post_backward(...)` after backward and the optimizer step (where all densification happens). The
+loop hands the strategy an `info` dict with `means2d` (and its `.grad` / `.absgrad`), `width`, `height`,
+`n_cameras`, `radii`, `gaussian_ids`, and a `params` dict with `means [N,3]`, `scales [N,3]` (log),
+`quats [N,4]`, `opacities [N]` (logit), `sh0`, `shN`. It also provides the in-place operations in
+`gsplat.strategy.ops`: `duplicate`, `split` (with an optional `revised_opacity` flag), `remove`,
+`reset_opa`, `relocate`, `sample_add`, `inject_noise_to_position`.
+
+## The editable interface
+
+Exactly one region is editable — the `CustomStrategy` dataclass in `gsplat/custom_strategy.py` (lines
+20–90): its dataclass hyperparameter fields and the three hook bodies. Every method on the ladder is a
+fill of this same contract. The starting point is the scaffold **default fill: original 3DGS
+densification** — signed averaged view-space gradient, clone-small / split-large at one threshold,
+opacity-floor + size pruning, periodic opacity reset. Each later method replaces exactly this dataclass
+and nothing else.
+
+```python
+# EDITABLE region of gsplat/custom_strategy.py (lines 20-90) — default fill: original 3DGS densification
+@dataclass
+class CustomStrategy(Strategy):
+    """Original 3DGS densification: clone small, split large, prune transparent."""
+
+    prune_opa: float = 0.005
+    grow_grad2d: float = 0.0002
+    grow_scale3d: float = 0.01
+    prune_scale3d: float = 0.1
+    refine_start_iter: int = 500
+    refine_stop_iter: int = 15_000
+    reset_every: int = 3000
+    refine_every: int = 100
+
+    def initialize_state(self, scene_scale: float = 1.0) -> Dict[str, Any]:
+        return {"grad2d": None, "count": None, "scene_scale": scene_scale}
+
+    def step_pre_backward(self, params, optimizers, state, step, info):
+        info["means2d"].retain_grad()
+
+    def step_post_backward(self, params, optimizers, state, step, info, packed=False):
+        if step >= self.refine_stop_iter:
+            return
+
+        # Signed averaged view-space gradient (the inherited densification signal)
+        grads = info["means2d"].grad.clone()
+        grads[..., 0] *= info["width"] / 2.0 * info["n_cameras"]
+        grads[..., 1] *= info["height"] / 2.0 * info["n_cameras"]
+
+        n = len(list(params.values())[0])
+        if state["grad2d"] is None:
+            state["grad2d"] = torch.zeros(n, device=grads.device)
+            state["count"] = torch.zeros(n, device=grads.device)
+
+        sel = (info["radii"] > 0.0).all(dim=-1)
+        gs_ids = torch.where(sel)[1]
+        state["grad2d"].index_add_(0, gs_ids, grads[sel].norm(dim=-1))
+        state["count"].index_add_(0, gs_ids, torch.ones_like(gs_ids, dtype=torch.float32))
+
+        if step > self.refine_start_iter and step % self.refine_every == 0:
+            avg_grads = state["grad2d"] / state["count"].clamp_min(1)
+            scene_scale = state["scene_scale"]
+
+            is_grad_high = avg_grads > self.grow_grad2d
+            scale_max = torch.exp(params["scales"]).max(dim=-1).values
+            is_small = scale_max <= self.grow_scale3d * scene_scale
+
+            is_dupli = is_grad_high & is_small          # clone small under-covered Gaussians
+            if is_dupli.sum() > 0:
+                duplicate(params=params, optimizers=optimizers, state=state, mask=is_dupli)
+
+            is_split = is_grad_high & ~is_small          # split large over-covering Gaussians
+            is_split = torch.cat([is_split, torch.zeros(is_dupli.sum(), dtype=torch.bool, device=is_split.device)])
+            if is_split.sum() > 0:
+                split(params=params, optimizers=optimizers, state=state, mask=is_split)
+
+            is_prune = torch.sigmoid(params["opacities"].flatten()) < self.prune_opa
+            if step > self.reset_every:
+                scale_max = torch.exp(params["scales"]).max(dim=-1).values
+                is_prune = is_prune | (scale_max > self.prune_scale3d * scene_scale)
+            if is_prune.sum() > 0:
+                remove(params=params, optimizers=optimizers, state=state, mask=is_prune)
+
+            state["grad2d"].zero_()
+            state["count"].zero_()
+            torch.cuda.empty_cache()
+
+        if step % self.reset_every == 0 and step > 0:
+            reset_opa(params=params, optimizers=optimizers, state=state, value=self.prune_opa * 2.0)
+```
+
+## Evaluation settings
+
+Mip-NeRF 360 scenes (Barron et al., 2022) with every 8th image held out for testing, one seed (42).
+Four scenes span the range — **garden** and **bicycle** (outdoor, unbounded, heavy foliage and
+high-frequency texture), **bonsai** (indoor, structured), and **stump** (outdoor, held out from the
+public scenes). Metrics, per-scene: **PSNR** (higher is better, primary), **SSIM** (higher is better),
+**LPIPS** (lower is better). Scoring is per-scene PSNR at the end of the 30,000-step budget.
+
+The editable model code is in `gsplat/custom_strategy.py`:
+```python
+# Densification Strategy (EDITABLE REGION: lines 20-90)
+# ============================================================================
+
+@dataclass
+class CustomStrategy(Strategy):
+    """Custom 3DGS densification strategy.
+
+    TODO: Design your densification strategy to maximize novel view quality.
+
+    Available operations (from gsplat.strategy.ops):
+        duplicate(params, optimizers, state, mask)
+            Clone Gaussians selected by boolean mask.
+        split(params, optimizers, state, mask, revised_opacity=False)
+            Split Gaussians into 2 new ones sampled from covariance.
+        remove(params, optimizers, state, mask)
+            Remove Gaussians selected by boolean mask.
+        reset_opa(params, optimizers, state, value)
+            Reset all opacities to logit(value).
+        relocate(params, optimizers, state, mask, binoms, min_opacity)
+            Teleport dead Gaussians to high-opacity locations.
+        sample_add(params, optimizers, state, n, binoms, min_opacity)
+            Add n new Gaussians sampled from opacity distribution.
+        inject_noise_to_position(params, optimizers, state, scaler)
+            Perturb Gaussian positions with noise scaled by opacity.
+
+    Available info from rasterization (in step_pre/post_backward):
+        info["means2d"]       - 2D projected means, call .retain_grad()
+        info["means2d"].grad  - gradient w.r.t. 2D means (after backward)
+        info["width"], info["height"] - image dimensions
+        info["n_cameras"]     - number of cameras in batch
+        info["radii"]         - screen-space radii [C, N, 1] or [C, N, 2]
+        info["gaussian_ids"]  - visible Gaussian indices
+
+    Available params:
+        params["means"]      - [N, 3] world-space positions
+        params["scales"]     - [N, 3] log-scales (use torch.exp for actual)
+        params["quats"]      - [N, 4] rotation quaternions
+        params["opacities"]  - [N] logit-opacities (use torch.sigmoid)
+        params["sh0"]        - [N, 1, 3] DC spherical harmonics
+        params["shN"]        - [N, K, 3] higher-order SH coefficients
+
+    Evaluation metrics (for reference):
+        PSNR (higher is better), SSIM (higher is better), LPIPS (lower is better)
+    """
+
+    def initialize_state(self, scene_scale: float = 1.0) -> Dict[str, Any]:
+        """Initialize and return the running state for this strategy."""
+        raise NotImplementedError("Implement initialize_state")
+
+    def check_sanity(self, params, optimizers):
+        """Sanity check for required parameters."""
+        super().check_sanity(params, optimizers)
+        for key in ["means", "scales", "quats", "opacities"]:
+            assert key in params, f"{key} is required in params but missing."
+
+    def step_pre_backward(self, params, optimizers, state, step, info):
+        """Called BEFORE loss.backward(). Retain gradients for densification."""
+        raise NotImplementedError("Implement step_pre_backward")
+
+    def step_post_backward(self, params, optimizers, state, step, info,
+                           packed=False):
+        """Called AFTER loss.backward(). Implement densification logic here."""
+        raise NotImplementedError("Implement step_post_backward")
+```
+Improve it. Derive your method, edit the code, then run_experiment().
+</user>
+
+### step 1 — AbsGS (homodirectional absolute gradient)   [slug:absgrad]
+
+<think>
+[[POLISH_REASONING: adapt to first-person agentic voice, end by deciding to implement]]
+The scaffold hands me the original 3DGS densification automaton as the default fill, and the right place to start is the only part of it that is actually broken, because everything else in the loop is sound. I render a trained scene and the failure is concrete and reproducible: most of the image is sharp, but grass, foliage, uneven pavement, distant texture — the high-frequency stretches — stay soft. When I look at the ellipsoids in those regions I find a small number of large, flat splats sitting where the geometry needs many small primitives. So the loss is not blind to those pixels (the region is visibly wrong), and the renderer is not the limit (nearby regions drawn with smaller splats are sharp). The broken piece is the density-control *decision*: the large primitive that ought to be split is not being selected for split. That is the one thing I am allowed to change — the strategy in the editable region — and it is exactly where the fault lives, so I start the ladder here rather than touching anything in the fixed loop.
+
+Let me not dismiss the inherited rule too fast, because it is reasonable on its face. The automaton accumulates the magnitude of the loss gradient with respect to each Gaussian's projected 2D mean, averaged over the views in which that Gaussian participates: roughly `‖∇_μ L‖ = (1/M) Σ_k ‖∂L^k/∂μ_i^k‖`. If that is large, a small Gaussian gets cloned and a large one gets split. The intuition is sound: gradient descent is already asking how far each projected center wants to move, and a large movement request is a cheap proxy for "this primitive is not representing its region well." That is why the rule works for most under-covered regions — a small primitive covering a few pixels receives a coherent pull, crosses the threshold, and is duplicated. The signal is free (it rides on gradients I already compute), and density control runs often, so a cheap signal matters. I want to keep all of that.
+
+But a sum of gradients is not the same thing as a sum of *errors*, and that gap is the whole problem. Look inside one component of the projected-center gradient for one Gaussian, dropping the view index:
+`g_x = ∂L/∂μ_x = Σ_{j=1}^{m} ∂L_j/∂μ_x`, the sum running over the `m` pixels the splat covers. This sum can be small for two completely different reasons. It can be small because every per-pixel term is small — the primitive is genuinely fine. Or it can be small because the per-pixel terms are *large but of opposite sign*, and they cancel before the sum is taken. The density controller only ever sees the net sum, so it cannot distinguish "nobody is pulling" from "everybody is pulling in different directions." The second case is exactly what I should expect from a large splat averaging over texture, and it is precisely the case I keep finding in the soft regions.
+
+I have to convince myself those per-pixel terms can really carry opposite signs, so let me chain one of them through the renderer:
+`∂L_j/∂μ_x = Σ_a (∂L_j/∂C_j^a)(∂C_j^a/∂α_i)(∂α_i/∂μ_x)`, with `a` over color channels. The first factor is the photometric residual; for the L1 term its sign depends on whether the rendered channel is above or below the target at that pixel, and in a textured region some pixels are too bright and some too dark, so this flips across the footprint. The second factor is how this Gaussian's alpha changes the composited color — increasing `α_i` adds its own color but attenuates everything behind it, and in front-to-back compositing that is an own-color term against negative attenuation terms, so which sign wins depends on colors, opacities, and depth ordering at that pixel; it is not fixed across the footprint either. The third factor is geometric: `α_i = sigmoid(o_i)·G_i^{2d}(p_j)`, and differentiating the projected Gaussian with respect to its mean gives a factor proportional to `(p_{j,x} − μ_x)·G_i^{2d}(p_j)`, whose sign is set by the pixel's position *relative to the projected center*. Pixels on opposite sides of a large splat's center contribute opposite x-directions almost by construction, and the y component has the same antisymmetry. So all three factors invite sign flips across a large footprint. The old statistic adds these signed terms before taking a norm, and a large splat over high-frequency detail can have many dissatisfied pixels and still report a small `g_x`, `g_y` after cancellation. That explains the observed asymmetry directly: small under-covered primitives tend to keep a coherent net pull (their footprint is small, the residual is locally one-signed), while large over-covering primitives have their per-pixel pulls collide. The automaton therefore systematically misses the worst over-reconstructors — the soft regions are not noise, they are a structural blind spot of the signal.
+
+The tempting fix is to just lower the threshold, but it does not repair the statistic, and I should rule it out cleanly so I do not waste the rung on it. If a net signed sum is small *because of cancellation*, lowering the threshold still misses the worst cases — their net is near zero, so no reachable threshold flags them without flagging everything. Meanwhile a lower threshold floods in many primitives whose small signed gradients were harmless, inflating the count and the memory for no quality gain. The threshold is only a decision boundary; the deeper defect is that the measured number is *net movement of the center*, not total evidence that the covered pixels are badly represented. I need to change what is measured, not where I cut it.
+
+What I actually want is the magnitude of each pixel's dissatisfaction *before* directions are allowed to cancel. The sign of `∂L_j/∂μ_x` tells me which way pixel `j` would like to push the center — but that direction is an optimization question, not a density-control question. The density-control question is whether this pixel is badly enough represented to argue for more local capacity there. So I should keep the per-pixel magnitude and discard its sign before summing over pixels. That is the homodirectional statistic:
+`ĝ_x = Σ_j |∂L_j/∂μ_x|`, `ĝ_y = Σ_j |∂L_j/∂μ_y|`, then score by `‖ĝ‖_2`.
+
+This is not an optimization gradient and must not be used as one — the optimizer still steps with the true signed gradient, otherwise I would be fabricating parameter-update directions no loss derivative asked for. The absolute accumulation is consulted *only* for the split/clone decision. The triangle inequality confirms it has the right ordering: for each component `|g_x| = |Σ_j ∂L_j/∂μ_x| ≤ Σ_j |∂L_j/∂μ_x| = ĝ_x`, so `‖g‖_2 ≤ ‖ĝ‖_2`, with the gap becoming strict exactly when cancellation was present. That gap is the missing signal — where the old rule sees a small net pull, the new rule sees the large total magnitude underneath it — and where the per-pixel terms already agree in sign (small coherent primitives), the two statistics nearly coincide, so I am not disturbing the cases the automaton already handles.
+
+Now the implementation trap, which is the one place this can silently go wrong in the scaffold. There are two ways to get an "absolute gradient," and only one is correct. Taking `info["means2d"].grad.abs()` after backward is *not* enough: that tensor is already the signed per-pixel terms summed by the rasterizer, so taking an absolute value there only flips the sign of the collapsed result — it cannot recover the magnitudes that canceled *before* the sum. To get `Σ_j |∂L_j/∂μ|` I need the rasterizer to accumulate the absolute per-pixel sub-gradients *during* backward and expose them. And here the fixed substrate is generous: the training loop already calls `rasterization(..., absgrad=True)`, so after backward `info["means2d"].absgrad` holds exactly the per-pixel-absolute accumulation I want. My strategy can read it directly. I keep a defensive fallback to `info["means2d"].grad.abs()` only for the case where the attribute is absent, but on this harness the real absgrad is always present — that is the load-bearing difference from the naive `.grad.abs()`.
+
+Now a design choice where this task's harness diverges from the most surgical version of the idea, and I want to be explicit about it because it changes the threshold. The most faithful rule keeps the original *signed* statistic for clone and uses the homodirectional statistic only for split — clone handles a small primitive in an under-covered area where the signed gradient was already coherent and the footprint is too small for much cancellation, so there is no reason to change it; split handles the large-footprint over-reconstruction where cancellation actually bites. That split-only variant needs two thresholds, a low signed `τ_clone` and a higher `τ_split`. But the scaffold exposes a *single* densification signal and a single `grow_grad2d` threshold feeding both `duplicate` and `split` from the same accumulator — it is built for the `gsplat` drop-in variant of the idea, not the two-accumulator paper form. So I take the drop-in path that the harness is shaped for: I read `.absgrad` and use it as the grow statistic for *both* clone and split, with one unified threshold. This is still a faithful realization of the homodirectional statistic — the cancellation fix is intact, the optimizer still uses signed gradients — it is just less targeted than the split-only rule. I note the omission rather than hide it: the harness does not give me a separate clone accumulator, so I do not pretend to a two-threshold rule I cannot express here.
+
+That decision forces the threshold up, and by a known amount in spirit. Because `‖ĝ‖_2 ≥ ‖g‖_2` everywhere, keeping the old `0.0002` would over-select — every primitive that used to qualify still does, plus all the ones whose cancellation the absolute statistic now uncovers, so the count balloons. I have to raise `grow_grad2d` to compensate for the systematically larger statistic. The exact value is an empirical quality-versus-memory knob, not a theorem; I set it to `0.0006`, three times the signed threshold, which is in the band the `.absgrad` drop-in uses (commonly `0.0006`–`0.0008` against `0.0002` signed). Everything else in the default fill I leave exactly as it is, because the cancellation fix is the only change I am making this rung: the clone-small / split-large size split at `grow_scale3d`, the opacity-floor-plus-size prune, the periodic opacity reset to `2·prune_opa`, the `refine_start_iter=500`, `refine_stop_iter=15000`, `reset_every=3000`, `refine_every=100` schedule — all inherited. The edit is surgical by design: swap the signed accumulator for the absolute one, raise the one threshold, touch nothing else. The full scaffold module is in the answer.
+
+So at this rung the strategy is: in `step_post_backward`, read `info["means2d"].absgrad` (fallback `.grad.abs()`), scale the two components by `width/2·n_cameras` and `height/2·n_cameras` as the loop expects, accumulate the per-Gaussian norm into `grad2d` over visible Gaussians with a visibility count, and on each refinement step average, threshold at `0.0006`, clone the small high-gradient Gaussians and split the large ones, then prune and reset on the inherited schedule.
+
+Now reason about what this floor must do, because that is the point of running it. The absolute statistic should finally select the large over-reconstructed splats in the soft regions and route them to split, so I expect the high-frequency, foliage-heavy outdoor scenes — garden, bicycle, stump — to be where the gain shows up, since that is where signed cancellation was costing the most fine detail. The indoor, more structured scene (bonsai) had less of the textured cancellation problem to begin with, so I expect a smaller move there; its soft regions were never as dominated by sign-cancelling footprints. The risk I am carrying forward is exactly the one I created by taking the single-threshold drop-in form: using `.absgrad` for *both* clone and split, with one blunt threshold, is less discriminating than a clone-signed / split-abs rule would be, so I may grow more aggressively and less precisely than ideal, spending primitives where a sharper criterion would not. That is the natural pressure on the next rung — if abs-gradient lifts quality but the densification is still indiscriminate about *which* high-gradient Gaussians most deserve the budget, the move after this is to make the selection signal richer (catch view-specific spikes the average washes out) and the split operation itself less disruptive, rather than to keep flooding in more primitives on one scalar. But that is for after I see the numbers. This rung's falsifiable claim is narrow and clear: switching to the homodirectional view-space gradient should improve PSNR over the signed default on the textured outdoor scenes by recovering the fine detail that gradient cancellation was hiding, with the largest gains where the footprints were most sign-cancelling and the smallest on the structured indoor scene.
+</think>
+<say>
+[[FILL_SAY: 1-2 sentences naming the method and what this first edit does]]
+</say>
+<edit path="gsplat/custom_strategy.py">
+<old>
+# Densification Strategy (EDITABLE REGION: lines 20-90)
+# ============================================================================
+
+@dataclass
+class CustomStrategy(Strategy):
+    """Custom 3DGS densification strategy.
+
+    TODO: Design your densification strategy to maximize novel view quality.
+
+    Available operations (from gsplat.strategy.ops):
+        duplicate(params, optimizers, state, mask)
+            Clone Gaussians selected by boolean mask.
+        split(params, optimizers, state, mask, revised_opacity=False)
+            Split Gaussians into 2 new ones sampled from covariance.
+        remove(params, optimizers, state, mask)
+            Remove Gaussians selected by boolean mask.
+        reset_opa(params, optimizers, state, value)
+            Reset all opacities to logit(value).
+        relocate(params, optimizers, state, mask, binoms, min_opacity)
+            Teleport dead Gaussians to high-opacity locations.
+        sample_add(params, optimizers, state, n, binoms, min_opacity)
+            Add n new Gaussians sampled from opacity distribution.
+        inject_noise_to_position(params, optimizers, state, scaler)
+            Perturb Gaussian positions with noise scaled by opacity.
+
+    Available info from rasterization (in step_pre/post_backward):
+        info["means2d"]       - 2D projected means, call .retain_grad()
+        info["means2d"].grad  - gradient w.r.t. 2D means (after backward)
+        info["width"], info["height"] - image dimensions
+        info["n_cameras"]     - number of cameras in batch
+        info["radii"]         - screen-space radii [C, N, 1] or [C, N, 2]
+        info["gaussian_ids"]  - visible Gaussian indices
+
+    Available params:
+        params["means"]      - [N, 3] world-space positions
+        params["scales"]     - [N, 3] log-scales (use torch.exp for actual)
+        params["quats"]      - [N, 4] rotation quaternions
+        params["opacities"]  - [N] logit-opacities (use torch.sigmoid)
+        params["sh0"]        - [N, 1, 3] DC spherical harmonics
+        params["shN"]        - [N, K, 3] higher-order SH coefficients
+
+    Evaluation metrics (for reference):
+        PSNR (higher is better), SSIM (higher is better), LPIPS (lower is better)
+    """
+
+    def initialize_state(self, scene_scale: float = 1.0) -> Dict[str, Any]:
+        """Initialize and return the running state for this strategy."""
+        raise NotImplementedError("Implement initialize_state")
+
+    def check_sanity(self, params, optimizers):
+        """Sanity check for required parameters."""
+        super().check_sanity(params, optimizers)
+        for key in ["means", "scales", "quats", "opacities"]:
+            assert key in params, f"{key} is required in params but missing."
+
+    def step_pre_backward(self, params, optimizers, state, step, info):
+        """Called BEFORE loss.backward(). Retain gradients for densification."""
+        raise NotImplementedError("Implement step_pre_backward")
+
+    def step_post_backward(self, params, optimizers, state, step, info,
+                           packed=False):
+        """Called AFTER loss.backward(). Implement densification logic here."""
+        raise NotImplementedError("Implement step_post_backward")
+</old>
+<new>
+@dataclass
+class CustomStrategy(Strategy):
+    """AbsGS: absolute gradient densification for fine detail recovery."""
+
+    prune_opa: float = 0.005
+    grow_grad2d: float = 0.0006
+    grow_scale3d: float = 0.01
+    prune_scale3d: float = 0.1
+    refine_start_iter: int = 500
+    refine_stop_iter: int = 15_000
+    reset_every: int = 3000
+    refine_every: int = 100
+
+    def initialize_state(self, scene_scale: float = 1.0) -> Dict[str, Any]:
+        return {"grad2d": None, "count": None, "scene_scale": scene_scale}
+
+    def step_pre_backward(self, params, optimizers, state, step, info):
+        info["means2d"].retain_grad()
+
+    def step_post_backward(self, params, optimizers, state, step, info, packed=False):
+        if step >= self.refine_stop_iter:
+            return
+
+        if hasattr(info["means2d"], "absgrad"):
+            grads = info["means2d"].absgrad.clone()       # per-pixel |dL/dmu| summed in backward
+        else:
+            grads = info["means2d"].grad.abs().clone()    # fallback only; cannot undo cancellation
+        grads[..., 0] *= info["width"] / 2.0 * info["n_cameras"]
+        grads[..., 1] *= info["height"] / 2.0 * info["n_cameras"]
+
+        n = len(list(params.values())[0])
+        if state["grad2d"] is None:
+            state["grad2d"] = torch.zeros(n, device=grads.device)
+            state["count"] = torch.zeros(n, device=grads.device)
+
+        sel = (info["radii"] > 0.0).all(dim=-1)
+        gs_ids = torch.where(sel)[1]
+        state["grad2d"].index_add_(0, gs_ids, grads[sel].norm(dim=-1))
+        state["count"].index_add_(0, gs_ids, torch.ones_like(gs_ids, dtype=torch.float32))
+
+        if step > self.refine_start_iter and step % self.refine_every == 0:
+            avg_grads = state["grad2d"] / state["count"].clamp_min(1)
+            scene_scale = state["scene_scale"]
+
+            is_grad_high = avg_grads > self.grow_grad2d
+            scale_max = torch.exp(params["scales"]).max(dim=-1).values
+            is_small = scale_max <= self.grow_scale3d * scene_scale
+
+            is_dupli = is_grad_high & is_small            # clone (single abs threshold, drop-in form)
+            if is_dupli.sum() > 0:
+                duplicate(params=params, optimizers=optimizers, state=state, mask=is_dupli)
+
+            is_split = is_grad_high & ~is_small            # split (same abs threshold)
+            is_split = torch.cat([is_split, torch.zeros(is_dupli.sum(), dtype=torch.bool, device=is_split.device)])
+            if is_split.sum() > 0:
+                split(params=params, optimizers=optimizers, state=state, mask=is_split)
+
+            is_prune = torch.sigmoid(params["opacities"].flatten()) < self.prune_opa
+            if step > self.reset_every:
+                scale_max = torch.exp(params["scales"]).max(dim=-1).values
+                is_prune = is_prune | (scale_max > self.prune_scale3d * scene_scale)
+            if is_prune.sum() > 0:
+                remove(params=params, optimizers=optimizers, state=state, mask=is_prune)
+
+            state["grad2d"].zero_()
+            state["count"].zero_()
+            torch.cuda.empty_cache()
+
+        if step % self.reset_every == 0 and step > 0:
+            reset_opa(params=params, optimizers=optimizers, state=state,
+                      value=self.prune_opa * 2.0)
+</new>
+</edit>
+<obs>
+Successfully replaced text in gsplat/custom_strategy.py.
+</obs>
+<run/>
+<obs>
+Measured results — `baseline:absgrad` (`is_final,true`), seed 42, per-scene PSNR (higher is better).
+
+## Per-scene PSNR (seed 42)
+| scene | best_psnr |
+|---|---|
+| garden | 29.745 |
+| bicycle | 27.026 |
+| bonsai | 33.051 |
+| stump | 27.850 |
+| **mean (4 scenes)** | **29.418** |
+</obs>
+
+### step 2 — Taming-3DGS (max-grad blend) + revised-opacity split   [slug:taming]
+
+<think>
+[[POLISH_REASONING: adapt to first-person agentic voice, end by deciding to implement]]
+The absolute-gradient rung did exactly what I argued it would, and the per-scene numbers tell me both that and where it ran out. PSNR landed at garden 29.745, bicycle 27.026, bonsai 33.051, stump 27.850 — a four-scene mean of 29.418. That is the floor I now have to beat, and reading it against my own prediction is instructive. I claimed the gain would concentrate on the textured outdoor scenes where signed cancellation cost the most fine detail, and indeed garden, bicycle, and stump are the ones now carrying the foliage and pavement detail that the signed default smeared. But the levels themselves expose the residual problem. bicycle at 27.0 and stump at 27.85 are the laggards — both are sprawling outdoor scenes with thin high-frequency structure (spokes, grass blades, bark) seen sharply in only a handful of views — and bonsai at 33.05 is comfortably ahead because its detail is structured and seen consistently across views. So the absolute statistic fixed *sign cancellation within a footprint*, but it did not fix a second, orthogonal blind spot: the densification signal is still an *average over views*, and an average washes out exactly the failures that are concentrated in a few views. That diagnosis is what drives this rung — I keep the abs-gradient (it earned its place) and attack the averaging and the split operation it feeds.
+
+Let me make the averaging failure precise, because it is the thing I am fixing. The accumulator at each refinement step is `avg_g = (1/M) Σ_k ‖ĝ_i^k‖` — the per-view absolute gradient norm summed over the `M` views the Gaussian appeared in, divided by the visibility count. A Gaussian that is badly wrong in *one* view but adequately represented in the other `M−1` gets a per-view norm that is large in that one view and small elsewhere, so the average is dragged down toward "fine." This is precisely the bicycle/stump situation: a thin structure is rendered from many cameras, most of which see it edge-on or occluded and report little error, while a few see it broadside and report a large positional gradient. The average buries the few large views under the many small ones, the Gaussian never crosses `grow_grad2d`, and the detail stays soft — even though abs-gradient already removed the within-footprint cancellation. So the average is a low-pass filter on exactly the view-specific spikes that mark under-reconstruction in sparse-view regions. Lowering the threshold again is the same trap as before: it would flood in primitives that are uniformly mediocre across views while still possibly missing the spike cases, and it inflates the count.
+
+What I want is a statistic that fires when *either* a Gaussian is persistently wrong across its views *or* it is sharply wrong in a few. The average captures the first; I need a complement for the second, and the natural complement of a mean is a *max*. So alongside `avg_g` I track, per Gaussian, the running *maximum* per-view gradient norm over the accumulation window — `max_g_i = max_k ‖ĝ_i^k‖`. A Gaussian that spikes in one view has a large `max_g` even when its `avg_g` is small; a Gaussian that is uniformly slightly-wrong has a moderate `avg_g` and an unremarkable `max_g`. The two signals catch disjoint failure modes. Now I have to decide how to combine them into one selection criterion, because the harness gives me a single threshold to compare against. I do not want a pure max — a pure max would over-densify on single noisy views, the very over-selection I have been refusing — and I do not want a pure average, which is what just failed. So I blend: `combined = w_avg·avg_g + w_max·max_g`, weighting the average more heavily because the persistent error is the more trustworthy signal and the max is the corrective minority report. I set `w_avg = 0.7`, `w_max = 0.3`. The reasoning for the split: the average has to remain the dominant term so I do not regress to over-densifying on noise, but the max needs enough weight (0.3, not 0.05) that a genuine view-specific spike can carry a Gaussian over the threshold on its own when the average alone would not. With this blend, a Gaussian failing in a small number of views — the bicycle spoke, the grass blade seen broadside in three cameras — now gets densified, while a uniformly-adequate Gaussian still does not.
+
+Computing the max per Gaussian over a window of views needs the right reduction. The average uses `index_add_` to sum per-view norms into the accumulator; for the max I need a scatter-reduce with `amax` over the visible Gaussian ids, accumulating the running maximum across the views in the window — `scatter_reduce_(..., reduce="amax", include_self=True)` against a zero-initialized `grad2d_max` that I reset each refinement step alongside the sum and count. That is the one new piece of state. The blend is then computed at refinement time from the averaged sum and the running max, and it replaces the bare `avg_grads` in the threshold test; everything downstream — the clone-small / split-large size split, the prune, the reset — keeps consuming the same boolean mask, so the change is localized to how the densification signal is formed.
+
+Now the second thing the absgrad numbers pushed me toward: the split *operation itself*, not just its selection. I argued at the previous rung that single-threshold abs-gradient grows aggressively, and growing aggressively makes the disruptiveness of each split matter more. Look at what the inherited covariance-sampled split does to the rendered scene the instant it fires. A flagged large Gaussian is replaced by two children, each keeping the parent's full shape and *full opacity*, placed at offsets sampled from the parent's covariance. The opacity is the subtle defect. Before the split, a ray threading the region passes through one bump of opacity `α` and is attenuated by `(1 − α)`. After the split, with two children each at opacity `α`, the ray passes through two bumps and is attenuated by `(1 − α)²`, which is *smaller* — the region gets darker and more opaque at the instant of the split. So a raw copy silently *brightens* the composited contribution (more occlusion, less of what is behind it shows through), and the optimizer then has to spend iterations undoing a density jump that I introduced. With abs-gradient densifying more often, I pay this tax more often.
+
+The fix is to make the split *cumulative-α invariant*: choose the children's opacity so that two of them composited reproduce the parent's single-bump transmittance. I want `(1 − α_child)² = (1 − α_parent)`, which solves to `α_child = 1 − √(1 − α_parent)`. Check the limits: for small `α`, `1 − √(1 − α) ≈ α/2`, so two children of half the parent's opacity compose to roughly the parent's — exactly the "don't double the occlusion" behavior I want; for `α → 1` it sends each child toward `1` as it must, since you cannot reproduce a fully opaque parent with two transparent children. This is mathematically consistent splitting: the compound alpha-blending stays invariant under the split, so the rendered image barely moves when the operation fires, and the optimizer resumes from where it was instead of clawing back a brightness jump. The fixed substrate exposes this directly — the `split` op in `gsplat.strategy.ops` takes a `revised_opacity=True` flag that applies exactly the `1 − √(1 − α)` child opacity. So I do not implement the splitting geometry myself; I flip the flag, and the harness gives me the consistent split. I keep the covariance-sampled child *positions* (the harness's `split` samples them) — that part I am not changing this rung; the opacity invariance is the piece that removes the density jump.
+
+There is one schedule consequence of these two changes worth thinking through, because it is not free. Both the max-grad blend and the consistent split keep finding and adding useful splits *later* into training than pure averaged abs-gradient does — the blend surfaces view-specific candidates the average had already given up on, and the invariant split means late splits no longer cost a recovery period, so late densification stays productive instead of being net-negative. With the inherited `refine_stop_iter = 15000`, I would be freezing the set right when the max-grad signal is still surfacing genuine candidates. So I extend `refine_stop_iter` to 18000 — give the productive late densification three thousand more steps before the set is frozen for the final refinement phase. This is a deliberate consequence of the two mechanisms, not a free tuning knob: it is only safe to densify later *because* the invariant split stopped making late edits disruptive. I also nudge `grow_grad2d` slightly down to `0.0005` from the absgrad `0.0006`: the blend's max term is, for spiking Gaussians, smaller in magnitude than a pure-average-of-large-views would be, so a marginally lower threshold keeps the growth rate where I want it without the threshold doing the over-selection the blend is meant to do precisely.
+
+Now I have to be honest about what this rung is *not*, because the name invites a much larger method than the harness lets me build. The fuller version of this idea reframes densification as hitting an *exact* user-given Gaussian budget on a constructive parabolic count schedule, ranks Gaussians by a multi-signal importance score (blending weight, opacity, scale, depth, distance) computed from rendered per-pixel statistics, samples candidates by `multinomial` rather than thresholding, and rewrites the rasterizer backward to kill the atomic bottleneck. None of that is reachable here: the editable region is the strategy dataclass and its three hooks, the rasterizer and optimizer are frozen, and the `info` dict gives me view-space gradients, radii, and visibility — not the per-pixel blending-weight / distance / saliency accumulations that an importance score needs, and not a writable backward pass. So I take only the two pieces that *fit the contract and stack cleanly on abs-gradient*: the per-Gaussian max-gradient tracking blended with the average (the selection refinement), and the revised-opacity consistent split (the operation refinement), plus the schedule extension they justify. The budget schedule, the importance score, the multinomial sampling, and the rasterizer rewrite are machinery the harness omits, and I do not pretend to them. The result is a strategy that keeps AbsGS's absolute gradient, adds the max-grad blend, and flips the split to revised opacity. The full scaffold module is in the answer.
+
+So the delta from the absgrad rung is concrete: where absgrad averaged the absolute per-view gradient and split with full-opacity covariance children at one raised threshold, I now blend that average with a per-Gaussian running max (catching the view-specific spikes the average buried), split with `revised_opacity=True` so the compound alpha stays invariant and the edit stops perturbing the render, and extend the refinement window to 18000 because both changes keep late densification productive.
+
+Reading the absgrad per-scene numbers, here is the falsifiable expectation. The max-grad blend should help most on the scenes whose detail is concentrated in a few views — bicycle (27.026) and stump (27.850), the laggards — by densifying the spoke/grass/bark Gaussians the average had been burying, so I expect those two to move up the most. garden (29.745) should improve modestly from the same mechanism plus the cleaner split. bonsai (33.051) is the open question and possibly the one place I could *not* gain or even slip: its detail is already seen consistently across views, so the max term adds little there, and bonsai's gains come from the invariant split keeping the dense indoor structure from being perturbed — a smaller, less certain effect. If bonsai stays flat or dips while the outdoor scenes rise, that is the signature that the win is the view-specific selection and the invariant split, exactly as designed, and it points the next rung at the remaining weaknesses: the split is still covariance-*sampled* (random offsets, full-shape children that don't tile the parent), and pruning is still blind to Gaussians that overfit a few views while holding ordinary opacity.
+</think>
+<say>
+[[FILL_SAY: 1-2 sentences naming the method and what this first edit does]]
+</say>
+<edit path="gsplat/custom_strategy.py">
+<old>
+class CustomStrategy(Strategy):
+    """AbsGS: absolute gradient densification for fine detail recovery."""
+
+    prune_opa: float = 0.005
+    grow_grad2d: float = 0.0006
+    grow_scale3d: float = 0.01
+    prune_scale3d: float = 0.1
+    refine_start_iter: int = 500
+    refine_stop_iter: int = 15_000
+    reset_every: int = 3000
+    refine_every: int = 100
+
+    def initialize_state(self, scene_scale: float = 1.0) -> Dict[str, Any]:
+        return {"grad2d": None, "count": None, "scene_scale": scene_scale}
+</old>
+<new>
+class CustomStrategy(Strategy):
+    """AbsGS + Taming-3DGS (max-grad blend) + New Split (revised opacity)."""
+
+    prune_opa: float = 0.005
+    grow_grad2d: float = 0.0005   # slightly lower than absgrad (more aggressive growth)
+    grow_scale3d: float = 0.01
+    prune_scale3d: float = 0.1
+    refine_start_iter: int = 500
+    refine_stop_iter: int = 18_000  # later stop — max-grad keeps finding splits
+    reset_every: int = 3000
+    refine_every: int = 100
+    # Taming-3DGS blend weights
+    avg_weight: float = 0.7
+    max_weight: float = 0.3
+
+    def initialize_state(self, scene_scale: float = 1.0) -> Dict[str, Any]:
+        return {
+            "grad2d": None, "count": None, "grad2d_max": None,
+            "scene_scale": scene_scale,
+        }
+</new>
+</edit>
+<obs>
+Successfully replaced text in gsplat/custom_strategy.py.
+</obs>
+<note>
+[[FILL_NOTE?: optional one-line thought for this edit, or delete this block]]
+</note>
+<edit path="gsplat/custom_strategy.py">
+<old>
+
+        if hasattr(info["means2d"], "absgrad"):
+            grads = info["means2d"].absgrad.clone()       # per-pixel |dL/dmu| summed in backward
+        else:
+            grads = info["means2d"].grad.abs().clone()    # fallback only; cannot undo cancellation
+        grads[..., 0] *= info["width"] / 2.0 * info["n_cameras"]
+</old>
+<new>
+
+        # AbsGS: absolute gradients (key vs. default)
+        if hasattr(info["means2d"], "absgrad"):
+            grads = info["means2d"].absgrad.clone()
+        else:
+            grads = info["means2d"].grad.abs().clone()
+        grads[..., 0] *= info["width"] / 2.0 * info["n_cameras"]
+</new>
+</edit>
+<obs>
+Successfully replaced text in gsplat/custom_strategy.py.
+</obs>
+<note>
+[[FILL_NOTE?: optional one-line thought for this edit, or delete this block]]
+</note>
+<edit path="gsplat/custom_strategy.py">
+<old>
+            state["count"] = torch.zeros(n, device=grads.device)
+
+        sel = (info["radii"] > 0.0).all(dim=-1)
+        gs_ids = torch.where(sel)[1]
+        state["grad2d"].index_add_(0, gs_ids, grads[sel].norm(dim=-1))
+        state["count"].index_add_(0, gs_ids, torch.ones_like(gs_ids, dtype=torch.float32))
+
+        if step > self.refine_start_iter and step % self.refine_every == 0:
+            avg_grads = state["grad2d"] / state["count"].clamp_min(1)
+            scene_scale = state["scene_scale"]
+
+            is_grad_high = avg_grads > self.grow_grad2d
+            scale_max = torch.exp(params["scales"]).max(dim=-1).values
+            is_small = scale_max <= self.grow_scale3d * scene_scale
+
+            is_dupli = is_grad_high & is_small            # clone (single abs threshold, drop-in form)
+            if is_dupli.sum() > 0:
+                duplicate(params=params, optimizers=optimizers, state=state, mask=is_dupli)
+
+            is_split = is_grad_high & ~is_small            # split (same abs threshold)
+            is_split = torch.cat([is_split, torch.zeros(is_dupli.sum(), dtype=torch.bool, device=is_split.device)])
+            if is_split.sum() > 0:
+                split(params=params, optimizers=optimizers, state=state, mask=is_split)
+</old>
+<new>
+            state["count"] = torch.zeros(n, device=grads.device)
+            state["grad2d_max"] = torch.zeros(n, device=grads.device)
+
+        sel = (info["radii"] > 0.0).all(dim=-1)
+        gs_ids = torch.where(sel)[1]
+        grad_norms = grads[sel].norm(dim=-1)
+        state["grad2d"].index_add_(0, gs_ids, grad_norms)
+        state["count"].index_add_(0, gs_ids, torch.ones_like(gs_ids, dtype=torch.float32))
+        # Taming-3DGS: track per-Gaussian max gradient (catches view-specific spikes)
+        state["grad2d_max"].scatter_reduce_(0, gs_ids, grad_norms, reduce="amax", include_self=True)
+
+        if step > self.refine_start_iter and step % self.refine_every == 0:
+            avg_grads = state["grad2d"] / state["count"].clamp_min(1)
+            # Blended signal: avg for persistent errors, max for view-specific
+            combined = self.avg_weight * avg_grads + self.max_weight * state["grad2d_max"]
+            scene_scale = state["scene_scale"]
+
+            is_grad_high = combined > self.grow_grad2d
+            scale_max = torch.exp(params["scales"]).max(dim=-1).values
+            is_small = scale_max <= self.grow_scale3d * scene_scale
+
+            is_dupli = is_grad_high & is_small
+            if is_dupli.sum() > 0:
+                duplicate(params=params, optimizers=optimizers, state=state, mask=is_dupli)
+
+            # New Split: revised_opacity=True preserves alpha-blending under splits
+            is_split = is_grad_high & ~is_small
+            is_split = torch.cat([is_split, torch.zeros(is_dupli.sum(), dtype=torch.bool, device=is_split.device)])
+            if is_split.sum() > 0:
+                split(params=params, optimizers=optimizers, state=state, mask=is_split, revised_opacity=True)
+</new>
+</edit>
+<obs>
+Successfully replaced text in gsplat/custom_strategy.py.
+</obs>
+<note>
+[[FILL_NOTE?: optional one-line thought for this edit, or delete this block]]
+</note>
+<edit path="gsplat/custom_strategy.py">
+<old>
+            state["count"].zero_()
+            torch.cuda.empty_cache()
+</old>
+<new>
+            state["count"].zero_()
+            state["grad2d_max"].zero_()
+            torch.cuda.empty_cache()
+</new>
+</edit>
+<obs>
+Successfully replaced text in gsplat/custom_strategy.py.
+</obs>
+<run/>
+<obs>
+Measured results — `baseline:taming` (`is_final,true`), seed 42, per-scene PSNR (higher is better).
+
+## Per-scene PSNR (seed 42)
+| scene | best_psnr |
+|---|---|
+| garden | 30.044 |
+| bicycle | 27.141 |
+| bonsai | 33.353 |
+| stump | 27.794 |
+| **mean (4 scenes)** | **29.583** |
+</obs>
+
+### step 3 — EDC (long-axis split + recovery-aware pruning)   [slug:edc]
+
+<think>
+[[POLISH_REASONING: adapt to first-person agentic voice, end by deciding to implement]]
+The max-grad blend and the consistent split moved the mean, but the per-scene numbers are not the shape I predicted, and the discrepancy is the most informative thing on the table. PSNR went garden 30.044, bicycle 27.141, bonsai 33.353, stump 27.794 — mean 29.583, up from absgrad's 29.418. So the rung helped overall. But unpack it against the absgrad floor (29.745 / 27.026 / 33.051 / 27.850): garden jumped +0.30, bonsai jumped +0.30, bicycle moved only +0.115, and stump *slipped* −0.056. I had expected the laggard outdoor scenes — bicycle and stump — to gain the most from view-specific selection, and instead bonsai (already the strongest scene, indoor, structured) gained as much as garden, while stump went backwards. That tells me two things. First, the revised-opacity invariant split is doing real work, and it is doing it most where the scene is *densely structured and consistently viewed* — bonsai — because there the dominant cost was the density perturbation of each split, not the selection signal, and removing that perturbation let the dense indoor structure refine cleanly. Second, and more important, the stump regression is a tell: I added a mechanism (max-grad blend) that densifies *more* and *later* (refine_stop_iter pushed to 18000), and on the sprawling outdoor scene that benefits least from extra primitives, the extra densification is not paying for itself — it is adding primitives that fit the training views without improving held-out views. The blend fixed *which* Gaussians are selected, but it left untouched two things I flagged at the previous rung: the split *operation* is still covariance-*sampled* (random offsets, full-shape children that do not tile the parent), and pruning is still blind to Gaussians that overfit a few views while holding ordinary opacity. The stump slip is exactly what view-overfitting looks like at the metric level — train-view fit up, novel-view PSNR flat or down. So this rung attacks the operation and the pruning, the two pieces the blend did not.
+
+Take the split operation first, because the stump regression and the bonsai win both point at it from opposite sides. The inherited `split` — even with revised opacity — replaces a flagged large Gaussian with two children, each keeping the parent's full ellipsoidal *shape* (just uniformly shrunk by 1.6), placed at offsets sampled from the parent's own covariance, `μ + R·z` with `z ~ N(0, S²)`. The opacity is now consistent, but three things still jump when this fires. The positions are *random*: two runs split the same Gaussian differently, and a bad draw can put both children on the same side or too far out, so the run carries whatever the dice gave it — pure variance injected into the representation. The shape is wrong: the parent's ellipsoid was the optimizer's hard-won fit to the local geometry, and two copies of that *same* shape, displaced and uniformly shrunk, cannot reproduce the parent's footprint — they bulge past it in some directions and leave gaps in others, because an ellipsoid is not the union of two smaller similar ellipsoids placed off-center. And the uniform 1.6 shrink shrinks *all three* axes when the subdivision is really happening along *one* direction. So even the consistent split still moves the covered shape away from the geometry the instant it fires. I want a split that is *deterministic* (kills the variance) and that *tiles the parent along the direction it is actually subdividing* (keeps the shape).
+
+A split is morally a one-dimensional act: I am cutting one blob into two and laying them along a line. Which line? The parent ellipsoid has three principal axes with lengths `s = (s_x, s_y, s_z)` in its local frame, oriented in the world by `R = R(q)`. Split across a short axis and the children sit almost on top of each other — back to coincident duplicates seeing the same gradients. Split along the *longest* axis and I get maximum separation for free, and it is also the direction in which a single ellipsoid is doing the most smearing (an elongated Gaussian covers the most varied stretch of geometry along its long axis), so that is exactly where subdivision buys the most. So: `a = argmax_d s_d`, local unit vector `e_a`, world direction `d = R·e_a`, and the two children go to `μ ± offset·d`. How far apart? Far enough to be genuinely two Gaussians the optimizer can move independently, not so far they spill outside the region the parent covered (spilling is itself a shape change away from the fit). The parent's reach along the long axis is on the order of its longest scale `s_max`; pushing each child out by `½·s_max` puts the centers one longest-scale apart with each still inside the parent's original extent. So `offset = 0.5·s_max`, deterministic — no covariance sampling, so the run-to-run variance is gone, which directly addresses the stump-style noise.
+
+Now the shapes, and here this task's harness forces a specific, narrower choice than the most aggressive version of the idea. The fuller long-axis split *also* shrinks the two short axes (to ~0.85) so the union's cross-section matches the parent, halves the long axis (`/2`), and — most consequentially — *replaces both clone and split with this one operation*, on the argument that under backprop a Gaussian's size converges to one equilibrium so the under/over-reconstruction distinction dissolves. But I am filling a strategy whose contract keeps `duplicate` and `split` as separate operations selected by the size test, and I have a Taming max-grad blend already wired to that clone-small / split-large branch. Collapsing to split-only would mean rebuilding the whole selection branch, and it would also throw away the clone path that has been working on the small under-covered primitives since the first rung. So I keep the clone/split *distinction* — small high-gradient Gaussians still `duplicate`, large ones go to the long-axis split — and I make only the *large-Gaussian split* the long-axis one. That decision then sets the shrink factors: because I am keeping clone for the small case and only subdividing genuinely large elongated Gaussians, I shrink the longest axis by `/1.6` (matching the inherited split's shrink, so the children tile the long extent without the more aggressive `/2` that the split-only variant uses to compensate for also handling the clone case) and I leave the other two axes *unchanged*. Leaving the short axes alone is the conservative choice that fits keeping clone: the long axis is the one I subdivided and it takes the shrink; the short axes are not being subdivided, and since clone still handles the small-primitive case I do not need the extra short-axis trimming that a split-only rule uses to round out slivers. So the children get the parent's scales with only the longest axis divided by 1.6.
+
+The opacity is the third piece, and the geometry of two displaced bumps decides it. Before the split, the density along the long axis is one Gaussian bump of opacity `α`; after, it is two bumps a max-radius apart. If each child keeps `α`, the central overlap pushes the density above the parent's single-peak profile and a ray through the region sees more occlusion than the parent gave — the same brightening the revised-opacity flag fixed for the covariance split, but now I am writing the split myself so I set it directly. Matching the unimodal parent to the bimodal pair, the mismatch is large at `α_child = α` (too bimodal) and large at `α_child = 0` (parent erased), with an interior minimum; for two half-spaced bumps it bottoms out around `α_child ≈ 0.6·α`. So each child's opacity is `0.6·sigmoid(parent)`. This single factor also nearly preserves the through-ray transmittance — two children at `0.6α` transmit `(1 − 0.6α)² ≈ 1 − 1.2α`, much closer to the parent's `1 − α` than the `1 − 2α`-ish of full-opacity children. One factor, both effects: the spatial density and the transmittance both stay near the parent's, so the edit is nearly invisible to the renderer and the optimizer resumes immediately. I write this as a logit: `logit(clamp(0.6·sigmoid(parent), ε, 1−ε))`. (I note this is the EDC long-axis opacity factor; I keep it multiplicative and do not additionally route it through `1 − √(1 − α)`, because the 0.6 factor is itself the density-matching choice for this spacing.)
+
+Implementing the long-axis split means I cannot call the harness's `split` — it samples covariance offsets and shrinks all axes by 1.6. So I write a `_long_axis_split` helper that does the parameter surgery directly, using the same low-level utilities the harness uses: `_update_param_with_optimizer` to swap parameters and reset the Adam state for the new children, and `normalized_quat_to_rotmat` to rotate the local long-axis unit vector to world frame. It selects the long axis per Gaussian, builds the world direction, offsets the two children by `±0.5·s_max`, divides the longest scale by 1.6 (others unchanged), sets child opacity to `0.6·α` in logit space, copies quats and colors, and resizes the running state tensors alongside. This is the one genuinely new code block; everything around it — the AbsGS absolute gradient, the Taming max-grad blend, the clone path, the prune, the reset — stays.
+
+Now the second, independent failure the taming numbers exposed: pruning is blind to overfit Gaussians, and the stump slip is the symptom. Some Gaussians are flat-out harmful on held-out views while looking great on a few training views — they have found a configuration that nails two or three camera angles and produces garbage from the rest. The loss only ever sees training views, so the optimizer happily keeps them, and at steady state they hold a perfectly respectable opacity, so the opacity-floor prune (below 0.005) cannot touch them. There is nothing in their opacity, scale, or position *at rest* that flags them. So I cannot tell an overfit Gaussian from a useful one while it sits still — I need to *poke the system* and watch them respond differently. And I already have a poke built into training: the opacity reset every 3000 steps clamps all opacities down and lets the optimizer re-grow the ones it needs. Think about re-growth for the two kinds. A *normal* Gaussian contributes positively in every view it appears in — every view's gradient says "more opacity here" — so after the reset its opacity climbs steadily and recovers fast; the votes agree. An *overfit* Gaussian contributes positively in a few views and *negatively* in the rest — the views it helps push opacity up, the views it hurts push it down — so its recovery is slow and conflicted; the votes fight. There *is* a signature: recovery *speed* after a reset. Consistent-contribution Gaussians snap back; conflicted ones lag. That is the discriminator I could not find at rest, surfaced by the poke I already have.
+
+Turn it into a prune. Some iterations after each reset, look at who has recovered and cut the laggards. How long to wait? Long enough that the normals have visibly recovered (so the laggards are genuinely the conflicted ones, not everyone still climbing), but not so long that the overfit ones have grudgingly crawled back and hidden. A few hundred iterations after the reset is the window where the two populations are most separated; I check at reset + 300. The threshold: I am not enforcing a final opacity floor, I am catching the ones that *failed to recover*, so I set it well above the 0.005 junk floor — prune Gaussians whose sigmoid-opacity is still below 0.05 at reset+300. A normal Gaussian, recovered toward its real opacity, sails past 0.05; a conflicted one stuck near the reset value or oscillating below 0.05 gets cut. Concretely this fires when `step > reset_every and (step − 300) % reset_every == 0`. Two groups fall below 0.05: genuinely redundant near-zero Gaussians (cutting them frees capacity — pure win) and overfit ones that held respectable opacity but did not recover (cutting them is the point — densification may refill the high-gradient spot with a fresh Gaussian that converges view-consistently, so each reset-recover-prune-regrow round lowers the *fraction* of overfit Gaussians). This is a slow purification, not a hard constraint, and it pairs especially well with the deterministic long-axis split: the long-axis split is a stronger detail-fitter than the noisy covariance split, so it is *more* prone to overfitting fine regions — exactly the overfitting the recovery-aware prune then cleans up. That complementarity is why I add both this rung and not one without the other.
+
+One schedule consequence: recovery-aware pruning keeps the Gaussian count from ballooning (it removes the overfit and redundant primitives each cycle), so I can afford to refine longer before freezing the set. I extend `refine_stop_iter` to 22000 (from taming's 18000) — the recovery prune holds the count stable, so the extra refinement is productive rather than a count blowup. The grow threshold stays at 0.0005, the blend weights stay 0.7/0.3, the AbsGS path stays. The result is AbsGS gradient + Taming max-grad blend + EDC long-axis split (replacing the large-Gaussian split, clone kept) + EDC recovery-aware pruning. The full scaffold module is in the answer.
+
+So the delta from the taming rung is concrete: where taming selected with the max-grad blend but split large Gaussians with covariance-sampled, all-axis-shrunk, revised-opacity children and pruned only on the opacity floor, I now split large Gaussians *deterministically along the long axis* (offset ±0.5·s_max, longest axis /1.6, opacity 0.6·parent — killing the random variance and tiling the parent's footprint) and add a *recovery-aware prune* at reset+300 that catches the overfit Gaussians the opacity floor cannot see.
+
+Reading the taming per-scene numbers, here is the falsifiable expectation. The deterministic long-axis split should lift every scene a little by removing the split variance and the residual shape jump, with the clearest gains on the structured scenes where many splits fire cleanly — garden (30.044) and bonsai (33.353) should edge up further. The decisive test is *stump* (27.794, the one that slipped under taming) and *bicycle* (27.141): if recovery-aware pruning is doing what I designed it for, those two should *recover and rise* — the prune should remove the overfit primitives the max-grad blend over-added on the sprawling outdoor scenes, lifting novel-view PSNR back above the absgrad floor and past taming. The signature I am predicting is the inverse of the taming result: where taming's extra densification hurt stump, the recovery prune should turn that around, so I expect stump to be the largest single gain of this rung. If instead bonsai gains while stump stays flat, that would mean the long-axis split helped but the recovery prune is not catching the outdoor overfitters — and that would point the next move at the pruning criterion, not the split. But I expect the recovery prune to land: every public scene up over taming, and stump recovered, for the strongest mean of the three rungs.
+</think>
+<say>
+[[FILL_SAY: 1-2 sentences naming the method and what this first edit does]]
+</say>
+<edit path="gsplat/custom_strategy.py">
+<old>
+class CustomStrategy(Strategy):
+    """AbsGS + Taming-3DGS (max-grad blend) + New Split (revised opacity)."""
+
+    prune_opa: float = 0.005
+    grow_grad2d: float = 0.0005   # slightly lower than absgrad (more aggressive growth)
+    grow_scale3d: float = 0.01
+    prune_scale3d: float = 0.1
+    refine_start_iter: int = 500
+    refine_stop_iter: int = 18_000  # later stop — max-grad keeps finding splits
+    reset_every: int = 3000
+    refine_every: int = 100
+    # Taming-3DGS blend weights
+    avg_weight: float = 0.7
+    max_weight: float = 0.3
+</old>
+<new>
+class CustomStrategy(Strategy):
+    """EDC-TamingGS-Abs: Long-Axis Split + Recovery-Aware Pruning + Taming + AbsGS."""
+
+    prune_opa: float = 0.005
+    grow_grad2d: float = 0.0005
+    grow_scale3d: float = 0.01
+    prune_scale3d: float = 0.1
+    refine_start_iter: int = 500
+    refine_stop_iter: int = 22_000  # extended (recovery prune keeps count stable)
+    reset_every: int = 3000
+    refine_every: int = 100
+    # Taming-3DGS blend
+    avg_weight: float = 0.7
+    max_weight: float = 0.3
+    # EDC: Long-Axis Split
+    long_axis_opa_factor: float = 0.6   # child opacity = 0.6 * parent
+    long_axis_scale_div: float = 1.6    # longest axis scale shrunk by 1.6
+    long_axis_offset: float = 0.5       # child offset = +-0.5 * longest_axis
+    # EDC: Recovery-Aware Pruning
+    recovery_offset: int = 300          # iters after each opacity reset
+    recovery_opa: float = 0.05          # prune below this sigmoid-opacity
+</new>
+</edit>
+<obs>
+Successfully replaced text in gsplat/custom_strategy.py.
+</obs>
+<note>
+[[FILL_NOTE?: optional one-line thought for this edit, or delete this block]]
+</note>
+<edit path="gsplat/custom_strategy.py">
+<old>
+
+    def step_post_backward(self, params, optimizers, state, step, info, packed=False):
+</old>
+<new>
+
+    def _long_axis_split(self, params, optimizers, state, mask):
+        """EDC long-axis split: children placed deterministically along
+        longest axis, opacity = 0.6 * sigmoid(parent), longest axis / 1.6.
+        """
+        from gsplat.strategy.ops import _update_param_with_optimizer
+        from gsplat.utils import normalized_quat_to_rotmat
+        import torch.nn.functional as F
+
+        sel = torch.where(mask)[0]
+        rest = torch.where(~mask)[0]
+        if len(sel) == 0:
+            return
+
+        scales = torch.exp(params["scales"][sel])                  # [N, 3]
+        quats = F.normalize(params["quats"][sel], dim=-1)
+        rotmats = normalized_quat_to_rotmat(quats)                 # [N, 3, 3]
+        # longest axis index per Gaussian
+        max_axis = scales.argmax(dim=-1, keepdim=True)             # [N, 1]
+        # local one-hot direction along longest axis
+        e_local = torch.zeros_like(scales)
+        e_local.scatter_(1, max_axis, 1.0)                          # [N, 3]
+        # rotate to world frame
+        direction = torch.einsum("nij,nj->ni", rotmats, e_local)    # [N, 3]
+        longest = scales.gather(1, max_axis).squeeze(-1)            # [N]
+        # offsets +-0.5 * longest along world direction
+        offset = self.long_axis_offset * longest.unsqueeze(-1) * direction
+        samples = torch.stack([offset, -offset], dim=0)             # [2, N, 3]
+
+        # new scales: longest axis / 1.6, others unchanged
+        new_scales = scales.clone()
+        new_scales.scatter_(1, max_axis, longest.unsqueeze(-1) / self.long_axis_scale_div)
+
+        # new opacity: 0.6 * alpha, following the EDC long-axis split rule
+        new_opa_alpha = (self.long_axis_opa_factor * torch.sigmoid(params["opacities"][sel])).clamp(1e-6, 1.0 - 1e-6)
+        new_opa_logit = torch.logit(new_opa_alpha)
+
+        def param_fn(name, p):
+            repeats = [2] + [1] * (p.dim() - 1)
+            if name == "means":
+                p_split = (p[sel] + samples).reshape(-1, 3)
+            elif name == "scales":
+                p_split = torch.log(new_scales).repeat(2, 1)
+            elif name == "opacities":
+                p_split = new_opa_logit.repeat(repeats)
+            else:
+                p_split = p[sel].repeat(repeats)
+            return torch.nn.Parameter(torch.cat([p[rest], p_split]), requires_grad=p.requires_grad)
+
+        def optimizer_fn(key, v):
+            v_split = torch.zeros((2 * len(sel), *v.shape[1:]), device=v.device)
+            return torch.cat([v[rest], v_split])
+
+        _update_param_with_optimizer(param_fn, optimizer_fn, params, optimizers)
+        for k, v in state.items():
+            if isinstance(v, torch.Tensor):
+                repeats = [2] + [1] * (v.dim() - 1)
+                state[k] = torch.cat((v[rest], v[sel].repeat(repeats)))
+
+    def step_post_backward(self, params, optimizers, state, step, info, packed=False):
+</new>
+</edit>
+<obs>
+Successfully replaced text in gsplat/custom_strategy.py.
+</obs>
+<note>
+[[FILL_NOTE?: optional one-line thought for this edit, or delete this block]]
+</note>
+<edit path="gsplat/custom_strategy.py">
+<old>
+
+        # AbsGS: absolute gradients (key vs. default)
+        if hasattr(info["means2d"], "absgrad"):
+</old>
+<new>
+
+        # AbsGS: absolute gradients
+        if hasattr(info["means2d"], "absgrad"):
+</new>
+</edit>
+<obs>
+Successfully replaced text in gsplat/custom_strategy.py.
+</obs>
+<note>
+[[FILL_NOTE?: optional one-line thought for this edit, or delete this block]]
+</note>
+<edit path="gsplat/custom_strategy.py">
+<old>
+        state["count"].index_add_(0, gs_ids, torch.ones_like(gs_ids, dtype=torch.float32))
+        # Taming-3DGS: track per-Gaussian max gradient (catches view-specific spikes)
+        state["grad2d_max"].scatter_reduce_(0, gs_ids, grad_norms, reduce="amax", include_self=True)
+
+        if step > self.refine_start_iter and step % self.refine_every == 0:
+            avg_grads = state["grad2d"] / state["count"].clamp_min(1)
+            # Blended signal: avg for persistent errors, max for view-specific
+            combined = self.avg_weight * avg_grads + self.max_weight * state["grad2d_max"]
+</old>
+<new>
+        state["count"].index_add_(0, gs_ids, torch.ones_like(gs_ids, dtype=torch.float32))
+        # Taming: per-Gaussian max gradient
+        state["grad2d_max"].scatter_reduce_(0, gs_ids, grad_norms, reduce="amax", include_self=True)
+
+        # EDC Recovery-Aware Pruning: triggered 300 iters after each opacity reset (after first reset)
+        if step > self.reset_every and (step - self.recovery_offset) % self.reset_every == 0:
+            opa = torch.sigmoid(params["opacities"].flatten())
+            is_recovery_prune = opa < self.recovery_opa
+            if is_recovery_prune.sum() > 0:
+                remove(params=params, optimizers=optimizers, state=state, mask=is_recovery_prune)
+
+        if step > self.refine_start_iter and step % self.refine_every == 0:
+            avg_grads = state["grad2d"] / state["count"].clamp_min(1)
+            combined = self.avg_weight * avg_grads + self.max_weight * state["grad2d_max"]
+</new>
+</edit>
+<obs>
+Successfully replaced text in gsplat/custom_strategy.py.
+</obs>
+<note>
+[[FILL_NOTE?: optional one-line thought for this edit, or delete this block]]
+</note>
+<edit path="gsplat/custom_strategy.py">
+<old>
+
+            # New Split: revised_opacity=True preserves alpha-blending under splits
+            is_split = is_grad_high & ~is_small
+            is_split = torch.cat([is_split, torch.zeros(is_dupli.sum(), dtype=torch.bool, device=is_split.device)])
+            if is_split.sum() > 0:
+                split(params=params, optimizers=optimizers, state=state, mask=is_split, revised_opacity=True)
+</old>
+<new>
+
+            # EDC long-axis split (replaces stochastic split)
+            is_split = is_grad_high & ~is_small
+            is_split = torch.cat([is_split, torch.zeros(is_dupli.sum(), dtype=torch.bool, device=is_split.device)])
+            if is_split.sum() > 0:
+                self._long_axis_split(params, optimizers, state, is_split)
+</new>
+</edit>
+<obs>
+Successfully replaced text in gsplat/custom_strategy.py.
+</obs>
+<run/>
+<obs>
+Measured results — `baseline:edc` (`is_final,true`), seed 42, per-scene PSNR (higher is better).
+
+## Per-scene PSNR (seed 42)
+| scene | best_psnr |
+|---|---|
+| garden | 30.206 |
+| bicycle | 27.219 |
+| bonsai | 33.068 |
+| stump | 28.260 |
+| **mean (4 scenes)** | **29.688** |
+</obs>
+

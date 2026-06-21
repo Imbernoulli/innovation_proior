@@ -1,0 +1,923 @@
+<meta task="safe-rl" domain="Reinforcement learning" file="omnisafe/omnisafe/algorithms/on_policy/naive_lagrange/custom_lag.py" model_format="qwen3" edit_tool="str_replace"/>
+
+<system>
+You are a research engineer improving a model on a fixed ML task. You work by editing the model code and running experiments. Think carefully before each change. You have these tools:
+- str_replace(path, old_str, new_str): replace the unique occurrence of old_str with new_str.
+- create(path, file_text): create a new file.
+- run_experiment(): train + evaluate the current code under the fixed budget; returns metrics.
+Make one tool call at a time. After editing, call run_experiment() to measure your method.
+</system>
+
+<user>
+## Research question
+
+Safe reinforcement learning on Safety-Gymnasium navigation: an agent must maximize task reward while
+holding a separate, long-run **cost** — the count of safety violations per episode, things like
+entering a hazard or hitting an obstacle — below a fixed budget. The cost is its own signal, not a
+term inside the reward; the specification is "earn reward, but keep expected episodic cost under
+`d = 25`." The single thing being designed is the **constraint-handling mechanism**: how a scalar
+multiplier `lambda` is updated from the measured cost violation, and how that multiplier blends the
+reward advantage and the cost advantage into the one advantage PPO ascends. Everything else about the
+agent — the rollout loop, the two value functions, the optimizer, the environment interface — is
+fixed.
+
+## Prior art before the first rung (constrained-RL lineage)
+
+The framing the first rung sits inside — a constrained MDP solved by a dual multiplier — is itself the
+resolution of a line of work on optimizing under a cost budget. These are the ancestors the ladder
+reacts to; the fixed substrate below is what they converged to.
+
+- **Constrained MDPs (Altman 1999).** Formalizes "maximize reward subject to a cost return staying
+  under a threshold" as an MDP augmented with a cost function and a budget `d`, with the feasible set
+  the policies sitting under the budget. The linear-programming view over state-action occupancy
+  measures shows reward and cost returns are both *linear* in the occupancy measure and the feasible
+  set is convex, so the underlying problem has zero duality gap. Gap: the LP view is exact only in the
+  tabular/occupancy formulation; with a neural policy the objective is nonconvex in the parameters and
+  one needs an iterative primal-dual scheme that only approximates the saddle point.
+- **Penalty / reward-shaping baselines.** Fold safety into the reward as `r - beta*c` for a fixed
+  penalty weight `beta`, then run any unconstrained RL method. Simple, but `beta` cannot be set from
+  the budget `d` (the map from penalty weight to resulting cost return is environment- and
+  policy-dependent and not invertible ahead of time), and one constant cannot be right both early
+  (when a weak policy needs slack to learn the task) and late (when it has found rewarding-but-risky
+  shortcuts). Gap: the trade-off is baked into a number that must be guessed before any data is seen.
+- **Lagrangian / primal-dual methods (Arrow–Hurwicz; Platt & Barr 1987).** Dualize the constraint with
+  a nonnegative multiplier `lambda`, form `L(theta, lambda) = J_r - lambda*(J_c - d)`, and solve the
+  saddle point by alternating ascent on the policy and descent on `lambda`, growing `lambda` from the
+  running violation `J_c - d`. Platt & Barr's "basic differential multiplier method" is exactly this
+  in continuous time, `lambda_dot = alpha*(J_c - d)`. Gap: the multiplier is a pure *integral* of the
+  violation, so it reacts only to accumulated over-budget, lags, and makes cost oscillate around the
+  limit during training rather than settling — fine at convergence, but safe RL needs the budget
+  respected *while learning*.
+- **PPO (Schulman et al. 2017).** The inner unconstrained optimizer the substrate fixes: a clipped
+  surrogate `min(r_t*A, clip(r_t, 1-eps, 1+eps)*A)` with `r_t = pi_theta/pi_old`, multi-epoch reuse of
+  each batch inside a first-order trust region, GAE advantages, a value loss and entropy bonus. It is
+  agnostic to what the advantage `A` means — reward, or reward-minus-cost — which is exactly the hook a
+  constraint mechanism plugs into.
+
+## The fixed substrate
+
+A constrained-PPO loop is frozen and must not be touched. It owns: the Safety-Gymnasium environment
+interface and vectorized rollout; **two** value functions, one for reward and one for cost, each with
+its own GAE so the loop produces a reward advantage `adv_r` and a cost advantage `adv_c` per
+transition; the PPO actor/critic update (clipped surrogate, value losses, Adam); the
+`Metrics/EpCost` and `Metrics/EpRet` logging; and the registration plumbing. The agent's file is a
+subclass of PPO registered as `CustomLag`. The base class already exposes the two slots the mechanism
+fills and supplies the rest: `super()._update()` runs the PPO actor/critic step on whatever advantage
+`_compute_adv_surrogate` returns; `self._logger.get_stats('Metrics/EpCost')[0]` returns the current
+mean episodic cost (already averaged across workers); `self._cfgs.lagrange_cfgs.cost_limit` is the
+budget `d = 25.0`; `self._cfgs.lagrange_cfgs.lambda_lr` is the dual step size (default `0.035`).
+
+## The editable interface
+
+Exactly one region is editable — the constraint-handling methods of the `CustomLag` subclass in
+`custom_lag.py`: the imports line, and the block of methods `_init`, `_init_log`, `_update`, and
+`_compute_adv_surrogate`. Every method on the ladder is a fill of this same contract. `_init` sets up
+the multiplier state (after `super()._init()`); `_init_log` registers the `LagrangeMultiplier` key
+(after `super()._init_log()`); `_update` reads the measured mean episodic cost `Jc`, updates the
+multiplier from it, then calls `super()._update()` to run the PPO step and logs the multiplier; and
+`_compute_adv_surrogate(adv_r, adv_c)` returns the single advantage PPO ascends, the place the
+multiplier blends reward against cost.
+
+The starting point is the scaffold default: **no constraint handling**. The multiplier stays at zero
+and `_compute_adv_surrogate` returns `adv_r` unchanged — pure reward-maximizing PPO that ignores
+safety. Each method replaces exactly these definitions and nothing else.
+
+```python
+# EDITABLE region of custom_lag.py -- default fill (no constraint handling)
+
+# (no extra imports)
+
+@registry.register
+class CustomLag(PPO):
+    """Custom Lagrangian-based safe RL algorithm."""
+
+    def _init(self) -> None:
+        super()._init()
+        self._cost_limit: float = self._cfgs.lagrange_cfgs.cost_limit
+        self._lagrangian_multiplier: float = 0.0
+
+    def _init_log(self) -> None:
+        super()._init_log()
+        self._logger.register_key('Metrics/LagrangeMultiplier', min_and_max=True)
+
+    def _update(self) -> None:
+        Jc = self._logger.get_stats('Metrics/EpCost')[0]
+        assert not np.isnan(Jc), 'cost is nan'
+        # Default: no multiplier update -- the mechanism is what gets designed
+        super()._update()
+        self._logger.store({'Metrics/LagrangeMultiplier': self._lagrangian_multiplier})
+
+    def _compute_adv_surrogate(self, adv_r: torch.Tensor, adv_c: torch.Tensor) -> torch.Tensor:
+        """Default: only use reward advantage (ignores safety constraints entirely)."""
+        return adv_r
+```
+
+## Evaluation settings
+
+Three Safety-Gymnasium navigation environments spanning the difficulty range —
+**SafetyPointGoal1-v0** (point robot reaching goals while avoiding hazards), **SafetyCarGoal1-v0**
+(a non-holonomic car robot, same goal structure, harder dynamics), and **SafetyPointButton1-v0**
+(point robot pressing goal buttons amid hazards) — each over three seeds {42, 123, 456}, each trained
+for the benchmark's fixed step budget. Two metrics per environment: episode return (`reward`, higher
+is better) and episode cost (`cost`, lower is better, with a target threshold of `25.0` per the
+Safety-Gymnasium convention). A method is good only when it earns return *and* holds cost at or below
+the budget across all three environments — high return with an uncontrolled cost is a failure of the
+actual objective, not a success.
+
+The editable model code is in `omnisafe/omnisafe/algorithms/on_policy/naive_lagrange/custom_lag.py`:
+```python
+    def _init(self) -> None:
+        super()._init()
+        self._cost_limit: float = self._cfgs.lagrange_cfgs.cost_limit
+        self._lagrangian_multiplier: float = 0.0
+
+    def _init_log(self) -> None:
+        super()._init_log()
+        self._logger.register_key('Metrics/LagrangeMultiplier', min_and_max=True)
+
+    def _update(self) -> None:
+        Jc = self._logger.get_stats('Metrics/EpCost')[0]
+        assert not np.isnan(Jc), 'cost is nan'
+        # Default: no multiplier update -- agent should design this
+        super()._update()
+        self._logger.store({'Metrics/LagrangeMultiplier': self._lagrangian_multiplier})
+
+    def _compute_adv_surrogate(self, adv_r: torch.Tensor, adv_c: torch.Tensor) -> torch.Tensor:
+        """Combine reward and cost advantages.
+
+        Default: only use reward advantage (ignores safety constraints entirely).
+        Agent should incorporate self._lagrangian_multiplier to penalize cost.
+        """
+        return adv_r
+```
+Improve it. Derive your method, edit the code, then run_experiment().
+</user>
+
+### step 1 — Naive (no constraint handling)   [slug:naive]
+
+<think>
+The mechanism is the whole point, but it bolts onto a base learner, and with no mechanism that learner
+is the floor — so the thing to establish first is what the agent does when safety is ignored
+entirely. The substrate hands me a constrained-PPO loop with two value functions already wired: one
+GAE pass on the reward signal producing `adv_r`, a second on the cost signal producing `adv_c`. The
+loop is built to blend them, but at the start nothing forces it to. So the weakest possible fill is
+the one that throws the cost stream away: leave the multiplier at zero and have the advantage hook
+return `adv_r` untouched. That is plain reward-maximizing PPO running inside a safe-RL harness with
+the safety apparatus disconnected.
+
+Let me be precise about why this is the floor and not just *a* baseline. The two slots I can edit are
+the multiplier update in `_update` and the advantage combination in `_compute_adv_surrogate`. In the
+default fill, `_update` reads the measured mean episodic cost `Jc` (only to assert it is not NaN, a
+sanity check on the logging) and then calls `super()._update()` without ever moving `lambda` off its
+initial `0.0`. And `_compute_adv_surrogate(adv_r, adv_c)` returns `adv_r`, discarding `adv_c`
+completely. So the policy gradient the inner PPO ascends is built from the reward advantage alone.
+The cost critic still trains — the loop computes `adv_c` regardless — but its output never reaches the
+policy. There is, by construction, no channel through which a safety violation can change the agent's
+behavior. This is the constraint-unaware control: it tells me the *upper bound on reward* obtainable
+when nothing is paid for cost, and the *uncontrolled cost* the environment produces when the agent
+optimizes reward freely.
+
+Why start here rather than at a real constraint method? Because the entire ladder is about the
+trade-off between reward and cost, and I cannot read that trade-off without an anchor at each end. The
+naive fill anchors the reward-greedy end. Every later mechanism will trade some of this reward away to
+pull cost down toward the budget `d = 25`, and the only way to judge whether a mechanism is buying
+safety cheaply or expensively is against this point: how much return did it give up, and how much cost
+did it remove. Without the naive number I would have no idea whether a method that lands cost at 20 is
+doing well (because the unconstrained agent sat at 60) or doing nothing (because the unconstrained
+agent was already near 20). So the floor is not a throwaway; it is the denominator for everything that
+follows.
+
+Now I should reason about what this floor will actually do, because that prediction is what the next
+step diagnoses against. PPO with `adv = adv_r` is a competent reward optimizer. On these
+Safety-Gymnasium navigation tasks the reward is reasonably dense — the agent gets shaped signal for
+moving toward goals — so PPO should learn the task well and post the *highest* returns of anything on
+the ladder. There is nothing holding it back from the reward. The cost is the other half. The hazards
+in these environments are placed exactly where the shortest, highest-reward paths run; the reward
+gradient points straight through them. With no penalty on `adv_c`, the agent has no reason to detour,
+so it will plow through hazards whenever that is the fast way to a goal, and the episodic cost should
+sit far above the budget — many times `25` on the environments where the hazard density is high. The
+expectation is sharp and asymmetric: strong on return, badly out of bounds on cost. That is the
+signature of ignoring the constraint, and it is the failure the first real mechanism has to fix.
+
+One subtlety worth naming, because it sets up the comparison. The cost will not be uniform across the
+three environments. SafetyPointButton1-v0 packs the most hazards around its buttons, so I expect its
+naive cost to be the largest by a wide margin; SafetyPointGoal1-v0 and SafetyCarGoal1-v0 should be
+high but less extreme. The return ordering will roughly track task difficulty — the car's harder
+dynamics should depress its return relative to the point robot, and the button task's longer
+interaction should make its return the noisiest. None of this changes the diagnosis: wherever cost
+lands, it lands without any mechanism pulling it down, so it is the worst-case cost, and the job of
+step 2 is to introduce a multiplier that reads that violation and starts paying for it.
+
+So the edit is the trivial one: keep `lambda` pinned at zero, register the multiplier key so the
+logging contract is satisfied, and return `adv_r` from the advantage hook so the cost stream is
+dropped. What I will watch in the result is the gap between
+return and a controlled-cost method: high return is expected and is not the point; the point is how
+far over `25` the cost sits, because that distance is exactly the safety debt the next mechanism must
+pay down, and the amount of return it has to surrender to do so is the price I will then be measuring.
+The naive run is the constraint-unaware ceiling on reward and the uncontrolled floor on safety; from
+here every step trades down the first to fix the second. Let me write it in.
+</think>
+<say>
+Starting with the floor: naive PPO with no constraint handling. This edit pins the multiplier at zero so the mechanism is fully disconnected — pure reward-maximizing PPO that ignores the cost signal.
+</say>
+<edit path="omnisafe/omnisafe/algorithms/on_policy/naive_lagrange/custom_lag.py">
+<old>
+    def _init(self) -> None:
+        super()._init()
+        self._cost_limit: float = self._cfgs.lagrange_cfgs.cost_limit
+        self._lagrangian_multiplier: float = 0.0
+</old>
+<new>
+# EDITABLE region of custom_lag.py -- step 1: naive (no constraint handling)
+
+# (no extra imports)
+
+@registry.register
+class CustomLag(PPO):
+    """Naive baseline: pure reward-maximizing PPO, safety ignored."""
+
+    def _init(self) -> None:
+        super()._init()
+        self._lagrangian_multiplier: float = 0.0
+</new>
+</edit>
+<obs>
+Successfully replaced text in omnisafe/omnisafe/algorithms/on_policy/naive_lagrange/custom_lag.py.
+</obs>
+<edit path="omnisafe/omnisafe/algorithms/on_policy/naive_lagrange/custom_lag.py">
+<old>
+        assert not np.isnan(Jc), 'cost is nan'
+        # Default: no multiplier update -- agent should design this
+        super()._update()
+</old>
+<new>
+        assert not np.isnan(Jc), 'cost is nan'
+        # Naive: no multiplier update, stays at 0
+        super()._update()
+</new>
+</edit>
+<obs>
+Successfully replaced text in omnisafe/omnisafe/algorithms/on_policy/naive_lagrange/custom_lag.py.
+</obs>
+<note>
+Now the advantage hook: drop adv_c so the policy gradient is built from reward alone.
+</note>
+<edit path="omnisafe/omnisafe/algorithms/on_policy/naive_lagrange/custom_lag.py">
+<old>
+    def _compute_adv_surrogate(self, adv_r: torch.Tensor, adv_c: torch.Tensor) -> torch.Tensor:
+        """Combine reward and cost advantages.
+
+        Default: only use reward advantage (ignores safety constraints entirely).
+        Agent should incorporate self._lagrangian_multiplier to penalize cost.
+        """
+        return adv_r
+</old>
+<new>
+    def _compute_adv_surrogate(self, adv_r: torch.Tensor, adv_c: torch.Tensor) -> torch.Tensor:
+        """Naive: ignore cost advantage entirely, optimize reward only."""
+        return adv_r
+</new>
+</edit>
+<obs>
+Successfully replaced text in omnisafe/omnisafe/algorithms/on_policy/naive_lagrange/custom_lag.py.
+</obs>
+<run/>
+<obs>
+Measured results — `baseline:naive` (`is_final,true`), seeds {42, 123, 456} and mean. Cost budget `d = 25`.
+
+## SafetyPointGoal1-v0
+| seed | reward | cost |
+|---|---|---|
+| 42 | 25.1899 | 45.17 |
+| 123 | 26.1317 | 52.28 |
+| 456 | 25.2864 | 56.80 |
+| **mean** | **25.5360** | **51.4167** |
+
+## SafetyCarGoal1-v0
+| seed | reward | cost |
+|---|---|---|
+| 42 | 32.3217 | 64.87 |
+| 123 | 32.4097 | 64.73 |
+| 456 | 33.7404 | 52.55 |
+| **mean** | **32.8239** | **60.7167** |
+
+## SafetyPointButton1-v0
+| seed | reward | cost |
+|---|---|---|
+| 42 | 25.0370 | 153.00 |
+| 123 | 8.7886 | 163.78 |
+| 456 | 25.2465 | 140.51 |
+| **mean** | **19.6907** | **152.4300** |
+</obs>
+
+### step 2 — PPOLag (Adam dual multiplier)   [slug:ppo-lag]
+
+<think>
+The naive run told me exactly what's broken, and it told me in numbers. Return is strong everywhere —
+25.5 on SafetyPointGoal1, 32.8 on SafetyCarGoal1, 19.7 on SafetyPointButton1 — which confirms the
+base learner optimizes reward just fine; that was never the problem. The problem is the cost column.
+Against a budget of `d = 25`, the naive agent sits at 51 on PointGoal, 61 on CarGoal, and a staggering
+152 on PointButton — six times over budget on the hazard-dense one, and roughly two-to-three times over
+on the others, on every single seed (PointGoal 45–57, CarGoal 53–65, PointButton 140–164). There is no
+lucky safe seed; the violation is systematic. That is the unmistakable signature of dropping `adv_c`:
+the reward gradient points straight through the hazards, and with nothing paid for cost the agent plows
+through them whenever that is the fast route to a goal. So the diagnosis is sharp — this is not a
+learning problem, the agent learns the task; it is a *specification* problem. The cost is a real,
+separate signal the loop is already measuring and valuing, and I am simply not using it. I need to turn
+the cost stream back on and make the agent pay for violations in a way that drives that 51/61/152 down
+toward 25 without throwing the return away.
+
+The reflex fix is to mash the two signals into one scalar and hand it to the optimizer I already trust:
+ascend `adv_r - beta*adv_c` for some penalty `beta`. And every time I reach for this I hit the same
+wall. What is `beta`? There is no formula that takes my budget `d = 25` and returns the `beta` that
+lands cost at 25. The map from penalty weight to resulting cost return depends on the whole environment
+and the policy class in a way I cannot invert ahead of time — and the naive numbers prove it, because
+the *same* "penalty" (here, zero) produced wildly different over-budget amounts across the three
+environments (51 vs 61 vs 152). A single constant cannot possibly be the right tax for all three. If I
+guess `beta` too small, the agent decides a few hazards are worth the reward and sits above budget like
+the naive run; too big and it becomes so frightened of cost it never learns to navigate at all. And
+even in the lucky case where some `beta` lands a safe policy at convergence, that constant tells me
+nothing about the cost *during* training. So a fixed penalty is structurally the wrong object: it bakes
+a trade-off I do not know how to set into a number I must commit to before seeing any data. Worse, the
+one `beta` would have to do two incompatible jobs across a run — stay small early so the still-incompetent
+policy can learn to reach goals at all, then push hard once the policy has found rewarding-but-risky
+shortcuts. No single number does both.
+
+So I should stop trying to fold safety into the objective and keep it as what it is — a constraint. The
+clean statement is the constrained problem
+
+  max over theta of J_r(theta), subject to J_c(theta) <= d,
+
+where J_r and J_c are the expected episodic returns of reward and of cost, defined identically except
+for which signal they sum, and d = 25. This is exactly a constrained MDP: an MDP with an extra cost
+function and a threshold, whose feasible set is the policies sitting under the budget. The reason I
+prefer the constraint framing over the penalty framing is not aesthetic. A threshold encodes "get cost
+under 25, then stop caring about it; spend everything else on reward," which is the actual shape of the
+safety requirement here. A penalty keeps trading reward against cost forever, even far inside the safe
+region. The threshold has a saturation built in that the penalty lacks — and saturation is precisely
+what I want, because once I am at cost 25 I should be free to chase reward, not still paying tax.
+
+Now, how do I optimize a constrained objective when J_r and J_c are both horrible nonconvex functions
+of a few hundred thousand neural-net weights? I cannot project onto the feasible set — I have no closed
+form for it. The standard tool for "maximize subject to an inequality" is the Lagrangian. Write the
+constraint in standard form g(theta) = J_c(theta) - d <= 0, introduce a multiplier lambda >= 0, and
+form
+
+  L(theta, lambda) = J_r(theta) - lambda*(J_c(theta) - d).
+
+The classical result is that the constrained problem equals the max-min of this Lagrangian: I want
+max over theta of min over lambda>=0 of L. Let me verify the inner min before building on it. Fix
+theta. If the constraint is *violated*, g > 0, then minimizing -lambda*(positive) over lambda >= 0
+drives lambda to infinity and L to minus infinity — so the outer max never picks such a theta;
+infeasible policies (exactly the naive agent's situation) are punished to minus infinity. If the
+constraint is satisfied with slack, g < 0, then -lambda*(negative) increases in lambda, so the min
+picks lambda = 0 and L = J_r — the penalty switches off and I get pure reward, which is the naive
+behavior, *correct* once I am safely under budget. On the boundary g = 0 the lambda term vanishes for
+every lambda. So the inner min reconstructs exactly "reward if feasible, minus infinity if not," and at
+the saddle the multiplier obeys complementary slackness, lambda*g = 0: lambda is positive only when the
+constraint binds. The Lagrangian is not a heuristic stand-in; its max-min *is* the constrained problem.
+
+That is the textbook story for convex problems, and J_r, J_c are nonconvex in theta, so I should not
+assume duality works here. For a generic nonconvex program there is a duality gap, and dual methods then
+chase the wrong target. But there is a reason it works for this problem, specific to RL. The
+nonconvexity lives in the parameterization theta -> pi_theta, not in the problem itself: viewed in the
+space of state-action occupancy measures, the reward and cost returns are both *linear* in the occupancy
+measure, and the set of valid occupancy measures is convex (cut out by the Bellman flow equations). A
+linear objective with linear constraints over a convex set is a linear program, and an LP has no duality
+gap. So the underlying constrained-RL problem, expressed over occupancy measures, has zero duality gap
+under the usual feasibility assumptions. I want to be careful: that clean duality lives in
+occupancy-measure space, while I will actually take gradient steps on the neural parameters, where each
+policy update is only an approximate primal step. So the honest reading is that dual descent is aimed at
+the correct saddle-point structure of the true problem; my neural implementation approximates it. That
+is enough license to build the algorithm — I am not chasing a phantom.
+
+Now I have a saddle-point problem and the natural algorithm is primal-dual: ascend theta to push L up,
+descend lambda to push L down, and let them chase each other. Take the lambda update first, because it
+is a single scalar and it is where the adaptivity the fixed penalty lacked finally lives. I want to move
+lambda to *decrease* L = J_r - lambda*g, i.e. gradient descent on lambda. The gradient of L with respect
+to lambda is -g = -(J_c - d). Descent steps in the negative gradient direction:
+
+  lambda <- lambda - eta*(-(J_c - d)) = lambda + eta*(J_c - d),
+
+and projecting to keep lambda >= 0:
+
+  lambda <- [ lambda + eta*(J_c - d) ]_+.
+
+Let me re-check the sign by behavior, not just algebra, because a flipped sign would silently invert the
+whole safety mechanism. If the current policy is over budget — exactly the naive 51/61/152 situation —
+then J_c > d, g > 0, the bracket increases, lambda climbs, and the next policy update weighs cost more
+heavily and gets pushed toward safety. Correct. If the policy is under budget, J_c < d, g < 0, the
+bracket decreases, lambda falls toward zero, and the policy is freed to chase reward with the slack it
+has. Also correct. So lambda does the trade-off tuning *for* me, reading the actual measured violation
+each epoch — precisely the adaptive coefficient the fixed penalty could never produce. Structurally
+lambda is the *integral* of the violation: it accumulates the running sum of (J_c - d), so it settles to
+whatever penalty weight is needed to drive the average violation to zero. The projection is not
+cosmetic: an inequality multiplier must be nonnegative (the KKT condition, the complementary-slackness
+story again — lambda measures how much reward I would gain by loosening a binding budget, which cannot be
+negative), and a negative lambda would mean *paying* the agent to incur cost, exactly backwards.
+
+One subtlety on what J_c is. The constraint is on the *expected episodic* cost return, not on any single
+step, so I must not update lambda from a per-timestep cost; I update from an estimate of J_c over the
+epoch — the mean episodic cost across the trajectories just collected. The substrate already hands me
+this: `self._logger.get_stats('Metrics/EpCost')[0]` is the mean episodic cost averaged across workers,
+which is the same number the naive feedback reported (51, 61, 152). So once per `_update` epoch I read
+that `Jc`, assert it is not NaN (a bad cost statistic would corrupt lambda silently and kill the
+mechanism), and take one dual step from it.
+
+Now the theta update. I am ascending theta on L = J_r - lambda*J_c (the constant lambda*d drops). The
+gradient is grad J_r - lambda*grad J_c. I already have a machine that ascends an expected return given an
+advantage: the PPO surrogate, where the gradient is E[grad log pi * A]. So grad J_r corresponds to the
+reward advantage adv_r and grad J_c to the cost advantage adv_c — and the substrate already runs GAE
+twice to produce both, which is exactly why the loop keeps two value functions. The combined gradient
+grad(J_r - lambda*J_c) then corresponds to a single combined advantage
+
+  A = adv_r - lambda*adv_c,
+
+and I feed *that* into the PPO step I already trust through the `_compute_adv_surrogate` hook. Almost
+nothing about the base optimizer changes; I have only redefined the advantage it consumes. That is the
+appeal: a safe-RL fix that is the naive loop plus one scalar and one line that mixes the two advantage
+streams the loop was already computing and the naive fill was throwing away.
+
+Let me try shipping it raw — A = adv_r - lambda*adv_c — and see where it breaks. Picture training on
+PointButton, where the naive cost was 152: the agent keeps blowing the budget, so the dual update keeps
+incrementing lambda epoch after epoch. lambda does not stay small; it can climb to 5, 10, 50, whatever
+it takes to make the agent feel a 152-vs-25 violation. Now look at the magnitude of A = adv_r -
+lambda*adv_c when lambda = 50: the cost term dominates and the *scale* of the combined advantage is
+roughly 50x a normal advantage. PPO's clip range, learning rate, and step-size calibration were tuned
+assuming the advantage has roughly its usual magnitude. A combined advantage whose magnitude grows
+linearly in lambda silently inflates the effective policy-gradient step size — the policy takes enormous,
+badly-scaled steps exactly when lambda is large, which is exactly when I most need the update to be
+careful. And the clip will not save me, because it clips the probability *ratio* r_t, not the advantage;
+a giant A still scales the per-sample gradient the ratio multiplies. So lambda has leaked into two places
+at once — the relative weight of reward versus cost, which I want, and the numerical scale of the
+gradient, which I do not. Wall.
+
+I do not want to change lambda's *meaning* to fix this — the ratio of reward weight to cost weight,
+1:lambda, is the thing the dual is carefully tuning. What I want is to peel apart the two effects: keep
+the *direction* of the combined advantage but normalize its *scale* so PPO sees a roughly unit-scale
+advantage regardless of how large lambda grows. The cleanest normalization that is monotone in lambda
+and equals 1 at lambda = 0 is dividing by (1 + lambda):
+
+  A = (adv_r - lambda*adv_c) / (1 + lambda).
+
+Check it does what I want. Set u = lambda/(1+lambda). Then 1/(1+lambda) = 1 - u and lambda/(1+lambda) =
+u, so A = (1 - u)*adv_r - u*adv_c with u in [0, 1). Now it reads as a convex blend of the reward
+advantage and the negated cost advantage. At lambda = 0: u = 0, A = adv_r — pure reward, the naive
+update, which is right because lambda = 0 means the constraint is slack and I should pay no safety tax.
+As lambda grows large: u -> 1, A -> -adv_c — pure cost-avoidance, right because a huge lambda means the
+budget is being badly violated (the PointButton case) and reward should be sacrificed to fix it. In
+between, since the two weights 1-u and u are in [0,1] and sum to 1, |A| stays on the order of the
+individual advantages no matter how large lambda gets, so PPO's tuned step size and clip behave the same
+throughout. And critically, the *ratio* of reward weight to cost weight is (1-u):u = 1:lambda, identical
+to the un-normalized version, so the gradient *direction* in policy space and the dual stationary point
+are unchanged. The (1+lambda) factor is a learning-rate normalization that keeps the first-order update
+sane; it does not move the target. I have rescaled the step, not the optimum — forced by the scale
+problem, not decorative.
+
+There is an implementation choice in how I take the lambda step. Plain projected gradient ascent is
+lambda <- [lambda + eta*(J_c - d)]_+, and I can realize it cleanly by keeping lambda as a learnable
+scalar `torch.nn.Parameter` and defining a loss whose gradient is exactly the descent direction:
+loss_lambda = -lambda*(J_c - d). Then the gradient with respect to lambda is -(J_c - d), so an Adam step
+gives lambda <- lambda + eta*(J_c - d), exactly the dual ascent. Wrapping it in Adam (rather than a bare
+fixed step) also smooths the single dual scalar against the epoch-to-epoch noise in the Monte-Carlo
+estimate of J_c — and there *is* noise here, since the naive PointButton cost ranged 140–164 across
+seeds. After the optimizer step I clamp lambda.data to the nonnegative range, which is the projection.
+The advantage hook reads lambda directly via `.item()`, so a directly-stored, directly-clamped scalar is
+the simplest thing that hook can consume. The dual step size eta is the substrate's `lambda_lr`, default
+0.035. Order within an epoch: read J_c, update lambda from it *first*, then run `super()._update()` with
+the freshly-updated lambda inside the combined advantage, then log lambda so I can watch it climb when
+the agent is unsafe and relax when it is safe.
+
+I should name the one weakness of this loop up front, because it is real and intrinsic to the
+integral-only character of lambda, and it predicts where the *next* step will have to go. lambda is the
+integral of the violation: it responds only to *accumulated* over-budget, so it lags. When the agent is
+deep over budget — the 152 on PointButton — lambda has to integrate up from wherever it was, several
+epochs, and by the time it is large enough to rein the agent in it has overshot; then once cost drops
+below budget, lambda stays large for a while (it integrates down equally slowly), over-corrects toward
+timidity, cost undershoots, lambda falls, cost rises again. The result is oscillation of cost around the
+budget rather than a clean settle. This is the generic behavior of a pure-integral controller on a
+delayed system, and it is the flip side of the appeal: a tiny change to a strong optimizer, but one that
+reacts only after observed cost. The integral term is exactly what makes lambda converge to the right
+steady-state penalty with zero steady-state violation, which is why I keep it — but the oscillation is
+the obvious thing the next mechanism will attack by adding faster-reacting terms.
+
+So my falsifiable expectations against the naive numbers. The dual loop should pull cost *down* from
+51/61/152 toward 25 on all three environments — that is the whole point, and if it does not, the sign or
+the blend is wrong. In exchange I expect return to *drop* below the naive 25.5/32.8/19.7, because every
+unit of cost removed is paid for in reward forgone; the question the result answers is how much. But I do
+*not* expect cost to land cleanly at 25. Because lambda only reacts to accumulated violation, I expect it
+to still sit *over* budget — reduced from the naive level but not controlled, especially on PointButton
+where the violation it has to integrate against is largest — with cost oscillating rather than settling.
+If cost comes down substantially but remains above 25, that is the integral-only lag showing, and it is
+exactly the diagnosis that motivates replacing the pure integrator with a controller that also reacts to
+the present and anticipates the trend. Let me write it in.
+</think>
+<say>
+Moving to PPOLag: a Lagrangian dual multiplier updated by Adam from the measured cost violation. This first edit relabels the step and renames the class to the dual-multiplier method.
+</say>
+<edit path="omnisafe/omnisafe/algorithms/on_policy/naive_lagrange/custom_lag.py">
+<old>
+# EDITABLE region of custom_lag.py -- step 1: naive (no constraint handling)
+</old>
+<new>
+# EDITABLE region of custom_lag.py -- step 2: PPOLag (Adam dual multiplier)
+</new>
+</edit>
+<obs>
+Successfully replaced text in omnisafe/omnisafe/algorithms/on_policy/naive_lagrange/custom_lag.py.
+</obs>
+<note>
+Now `_init`: make lambda a learnable Parameter with its own Adam optimizer at lambda_lr.
+</note>
+<edit path="omnisafe/omnisafe/algorithms/on_policy/naive_lagrange/custom_lag.py">
+<old>
+class CustomLag(PPO):
+    """Naive baseline: pure reward-maximizing PPO, safety ignored."""
+
+    def _init(self) -> None:
+        super()._init()
+        self._lagrangian_multiplier: float = 0.0
+</old>
+<new>
+class CustomLag(PPO):
+    """PPOLag: Lagrangian PPO with an Adam-updated dual multiplier."""
+
+    def _init(self) -> None:
+        super()._init()
+        self._cost_limit: float = self._cfgs.lagrange_cfgs.cost_limit
+        init_value = max(self._cfgs.lagrange_cfgs.lagrangian_multiplier_init, 0.0)
+        self._lagrangian_multiplier = torch.nn.Parameter(
+            torch.as_tensor(init_value), requires_grad=True,
+        )
+        self._lambda_optimizer = torch.optim.Adam(
+            [self._lagrangian_multiplier],
+            lr=self._cfgs.lagrange_cfgs.lambda_lr,
+        )
+</new>
+</edit>
+<obs>
+Successfully replaced text in omnisafe/omnisafe/algorithms/on_policy/naive_lagrange/custom_lag.py.
+</obs>
+<note>
+Now the dual step and the normalized advantage blend: ascend lambda on -lambda*(Jc-d), then return (adv_r - lambda*adv_c)/(1+lambda).
+</note>
+<edit path="omnisafe/omnisafe/algorithms/on_policy/naive_lagrange/custom_lag.py">
+<old>
+        assert not np.isnan(Jc), 'cost is nan'
+        # Naive: no multiplier update, stays at 0
+        super()._update()
+        self._logger.store({'Metrics/LagrangeMultiplier': self._lagrangian_multiplier})
+
+    def _compute_adv_surrogate(self, adv_r: torch.Tensor, adv_c: torch.Tensor) -> torch.Tensor:
+        """Naive: ignore cost advantage entirely, optimize reward only."""
+        return adv_r
+</old>
+<new>
+        assert not np.isnan(Jc), 'cost is nan'
+        # Lagrange multiplier update via Adam: loss = -lambda * (Jc - d)
+        self._lambda_optimizer.zero_grad()
+        lambda_loss = -self._lagrangian_multiplier * (Jc - self._cost_limit)
+        lambda_loss.backward()
+        self._lambda_optimizer.step()
+        self._lagrangian_multiplier.data.clamp_(0.0)
+        super()._update()
+        self._logger.store({'Metrics/LagrangeMultiplier': self._lagrangian_multiplier.item()})
+
+    def _compute_adv_surrogate(self, adv_r: torch.Tensor, adv_c: torch.Tensor) -> torch.Tensor:
+        """PPOLag: penalize cost advantage using the Lagrange multiplier."""
+        penalty = self._lagrangian_multiplier.item()
+        return (adv_r - penalty * adv_c) / (1 + penalty)
+</new>
+</edit>
+<obs>
+Successfully replaced text in omnisafe/omnisafe/algorithms/on_policy/naive_lagrange/custom_lag.py.
+</obs>
+<run/>
+<obs>
+Measured results — `baseline:ppo_lag` (`is_final,true`), seeds {42, 123, 456} and mean. Cost budget `d = 25`.
+
+## SafetyPointGoal1-v0
+| seed | reward | cost |
+|---|---|---|
+| 42 | 11.8307 | 45.72 |
+| 123 | 12.4711 | 42.50 |
+| 456 | 21.1206 | 48.52 |
+| **mean** | **15.1408** | **45.5800** |
+
+## SafetyCarGoal1-v0
+| seed | reward | cost |
+|---|---|---|
+| 42 | 17.2587 | 49.18 |
+| 123 | 19.8435 | 40.93 |
+| 456 | 18.6480 | 50.03 |
+| **mean** | **18.5834** | **46.7133** |
+
+## SafetyPointButton1-v0
+| seed | reward | cost |
+|---|---|---|
+| 42 | 5.0079 | 51.31 |
+| 123 | 3.6397 | 59.53 |
+| 456 | 3.3823 | 57.83 |
+| **mean** | **4.0100** | **56.2233** |
+</obs>
+
+### step 3 — PID Lagrangian (CPPOPID)   [slug:pid-lag]
+
+<think>
+The dual loop did the thing it was supposed to, and it did it incompletely, and the numbers say exactly
+where it fell short. Cost came down everywhere relative to naive — PointGoal from 51 to 45.6, CarGoal
+from 61 to 46.7, PointButton from 152 to 56.2 — so the sign is right, the blend is right, lambda is
+reading the violation and paying for it, and on PointButton it removed almost a hundred cost-units. And
+the price was steep on return, as expected: PointGoal fell from 25.5 to 15.1, CarGoal from 32.8 to 18.6,
+PointButton from 19.7 to 4.0. So far this is the constrained trade-off doing its job. But look at the
+cost column against the budget: 45.6, 46.7, 56.2 — *still nearly twice over 25 on every environment, on
+every seed* (PointGoal 42–49, CarGoal 41–50, PointButton 51–60). It paid heavily in reward and *still
+did not satisfy the constraint*. That is the worst of both worlds: it gave up the reward of a safe method
+without delivering the safety. The mechanism is converging toward feasibility too slowly to get there
+inside the training budget.
+
+This is exactly the integral-only lag I flagged when I built the dual loop, and now I can see it in the
+data rather than just predict it. lambda is the integral of the violation: it responds only to
+accumulated over-budget, so it climbs slowly from where it started, and on these runs it simply has not
+integrated up to the value that would push cost to 25 by the time training ends. The PointButton seeds
+are the tell — cost pinned in the 51–60 band with return crushed to 3–5 means lambda is large enough to
+wreck the reward but still not large enough to enforce the budget, and it is stuck there because the
+integrator cannot react any faster than its accumulation rate allows. I do not want to fix this by simply
+cranking the dual step size `lambda_lr`, because a faster integrator on a delayed plant does not track
+better — it oscillates harder. So the right move is not to tune the one knob; it is to ask what *kind* of
+update rule lambda should obey, and a century of control theory has opinions about that.
+
+Let me reframe the whole training loop as the feedback control system it actually is, because that
+reframe is what opens the space of update rules. The cost limit d = 25 is a setpoint. The measured mean
+episodic cost J_c — the 45.6/46.7/56.2 I am reading off the logger — is the output I want to hold at the
+setpoint. The multiplier lambda is the control input I get to set. And the policy-optimization step, PPO
+grinding the policy forward to chase reward under the current lambda, is the *plant*: a nonlinear, frankly
+unknown map from lambda to next epoch's cost. Write it as a discrete system: the policy advances under
+lambda, the output is the resulting episodic cost, and lambda is some rule applied to the history of that
+output relative to d. The dual update I shipped is one specific, impoverished choice of that rule:
+lambda <- [lambda + K_I*(J_c - d)]_+ is *integral-only* control. Once I see it that way, the question
+stops being "how do I tune the Lagrangian update" and becomes "what controller should I use."
+
+Before reaching for a richer controller I want to be sure I understand mechanically why integral-only
+control lags and overshoots, because the cure has to attack the cause. Integral control has memory but no
+reflexes. It reacts only to *accumulated* error — lambda rises only after violation has been piling up.
+So the response is intrinsically late. By the time lambda has integrated up to a value large enough to
+push cost down, cost has already been over budget for a long stretch (the 45–60 plateau I am seeing is
+that stretch, just not yet resolved within the budget). And the continuous-time picture Platt and Barr
+wrote down, lambda_dot = alpha*(J_c - d), makes it precise: the multiplier is literally the time-integral
+of the constraint error. A pure integrator turns a sinusoid at its input into one shifted by ninety
+degrees at its output — so when the system does start to cycle, violation and lambda are offset by a
+quarter cycle, the textbook fingerprint of an integral controller. My runs have not even reached the
+clean limit-cycle regime; they are stuck in the slow approach, which is the same disease seen earlier in
+the trajectory: the integrator is too slow to track.
+
+What does a controls person reach for when an integral loop is too slow and rings? The other two terms of
+the most-used controller there is: proportional and derivative. Let me bring them in one at a time and
+check, in this same dynamical-systems picture, that they actually do what I hope.
+
+Proportional first. The idea is to add to lambda a term proportional to the *current* error,
+K_P*(J_c - d) — an instantaneous reaction, no waiting for accumulation. To see its effect on the
+dynamics I express it in continuous time. The integral term was lambda_dot = alpha*g, with g = J_c - d.
+A proportional term enters lambda_dot as a contribution that tracks g's rate, i.e. as the time-derivative
+of the constraint: lambda_dot = alpha*g + beta*g_dot. Redoing Platt and Barr's collapse of the coupled
+first-order system into one second-order equation per coordinate, the integral-only case gives a damped
+oscillator x_ddot + A*x_dot + alpha*g*grad_g = 0 with damping matrix A. Adding the beta*g_dot piece and
+regathering terms changes only the damping matrix: it gains beta*(grad_g)(grad_g)^T. That term is the
+outer product of grad_g with itself, positive semidefinite by construction — v^T (grad_g grad_g^T) v =
+(grad_g . v)^2 >= 0 for any v. So it can only *add* nonnegative damping in the grad_g direction. The
+restoring force alpha*g*grad_g is untouched, so the equilibrium does not move — the solution set is still
+"velocity zero, g = 0." The proportional term provides pure damping, exactly what kills an oscillation,
+and it falls straight out of the same energy argument: the dissipation term gains -beta*(grad_g . x_dot)^2.
+
+There is something satisfying here, because this beta*(grad_g)(grad_g)^T term is what the quadratic
+penalty method also produces — adding (c/2)*g^2 to the objective hands you the same outer-product damping.
+But the penalty pays for it twice: it has to modify the *primal* update (the penalty force lives in the
+policy dynamics, changing the objective the agent optimizes), and its damping comes bundled with an extra
+c*g*grad^2_g term carrying the constraint Hessian, which need not be positive semidefinite — so the
+penalty helps and hurts on a single coefficient I cannot split. The proportional control term gives the
+clean positive-semidefinite damping with none of that baggage: it touches only the lambda update, not the
+policy objective. So proportional control is not just a heuristic transplant; in this system it is a
+cleaner route to the penalty method's known benefit — and it directly addresses my ppo_lag plateau,
+because a proportional term reacts to the *current* 45-vs-25 gap immediately instead of waiting for the
+integrator to accumulate it.
+
+Now derivative. Proportional reacts to the present; the derivative term should let me react to the
+*future* — anticipate. The intuition: if cost is rising fast toward the limit, raise lambda now, before
+cost crosses d. A term on the *trend* of the constraint enters lambda_dot one derivative higher, as the
+second derivative of the constraint: lambda_dot = alpha*g + gamma*g_ddot. Grinding out g_ddot, it
+contains x_ddot — the acceleration appears on both sides — and pushing lambda_dot into the per-coordinate
+equation and collecting, the x_ddot terms couple through B = I + gamma*(grad_g)(grad_g)^T, identity plus a
+positive-semidefinite outer product, hence positive definite and invertible. Left-multiply by B^{-1} to
+decouple, and two effects appear. First, B^{-1} has eigenvalues no greater than one (strictly smaller in
+the grad_g direction), so it rescales the restoring direction and reshapes the damping operator to
+B^{-1}*A. Second — the predictive part — a scalar quadratic in the velocity and modulated by the
+constraint curvature along the direction of motion multiplies B^{-1}*grad_g; in the acceleration equation
+its sign is such that when g is already positive and the motion is into a region where g curves upward
+(violation about to get worse), this anticipatory force *adds* to the restoring force and brakes harder
+before overshooting. So the derivative term reads the trend and acts ahead of the violation — exactly the
+anticipation the slow integrator lacks. It is also the most delicate term, the one most prone to
+amplifying noise, because second differences of a noisy signal are wild; I keep that flag for estimation.
+
+One asymmetry I bake in for the cost case specifically. Derivative control on cost should *brake*
+increases — that is the dangerous direction, toward violation. When cost is *decreasing*, I do not want
+the derivative term fighting that; a falling cost is good. So I rectify the derivative term: use the
+positive part of the cost-increase rate, so it acts against increases and stays silent on decreases. A
+one-sided derivative for a one-sided (inequality) constraint.
+
+So the full controller is the combination: proportional damps, derivative anticipates, integral does the
+one thing neither can. Why keep integral at all, given it is what lagged? Because at convergence I need
+*zero* steady-state violation, and only the integral term supplies the standing lambda that holds cost
+exactly at 25. When the system settles, the error J_c - d is about zero, so the proportional term vanishes
+and the derivative term (cost not changing) vanishes too — if those were my only terms, lambda would
+collapse and cost would drift back up. The integral term has *remembered* the accumulated history, so it
+holds a nonzero lambda even at zero instantaneous error. Integral eliminates steady-state offset;
+proportional and derivative shape the *transient* — the very thing the ppo_lag plateau is failing at.
+And nicely, setting K_P = K_D = 0 recovers the integral-only dual update exactly, so this is a strict
+generalization: I am widening the update rule from a one-knob family to a three-knob one, with the prior
+baseline sitting at the origin of the two new axes.
+
+Now I move to the discrete per-epoch rule I will actually run, against the task's exact implementation.
+Each epoch I receive the mean episodic cost J_c from the logger — the same `get_stats('Metrics/EpCost')`
+the dual loop read. Define the error delta = J_c - d. The integral is the running accumulation of the
+error with its gain folded in, projected nonnegative for anti-windup (I do not want the integrator banking
+a negative reservoir during a feasible stretch — that would delay its reaction, the exact disease I am
+curing): I <- max(0, I + K_I*delta). The proportional input is the error, but smoothed against the noisy
+minibatch estimate — and there *is* noise, the ppo_lag PointButton cost ranged 51–60 across seeds. The
+task smooths it with an exponential moving average, delta_p <- 0.95*delta_p + 0.05*delta, a long window so
+one bad epoch cannot jerk the controller. The derivative works off a smoothed cost, cost_d <-
+0.95*cost_d + 0.05*J_c, and rather than a jittery one-step difference it takes a *delayed* difference: keep
+a short queue of past smoothed costs, and compute pid_d = max(0, cost_d - cost_ds[oldest]), the rectified
+finite difference over the delay window. The task fixes that delay at 10 epochs and the EMA coefficient at
+0.95 inline — these are the CPPOPID configuration, with gains K_P = 0.1, K_I = 0.01, K_D = 0.01. The
+output is pid_o = K_P*delta_p + I + K_D*pid_d, with I already carrying its K_I gain, and lambda =
+max(0, pid_o) for the nonnegativity the KKT condition demands. Then push cost_d onto the queue to advance
+the delay.
+
+I want to be careful to derive against *this* harness and not the fuller controller it descends from. The
+general controller has a sum-norm and a diff-norm mode and a penalty_max cap, and configurable EMA alphas;
+this task exposes none of those — no normalization branches, no upper cap, EMA fixed at 0.95, delay fixed
+at 10, integral seeded at 0.0 (so lambda starts at zero, like the dual loop did). So the update I actually
+ship is the clean PID core: integral with anti-windup, EMA-smoothed proportional, rectified delayed
+derivative, summed with the three gains and clamped at zero. The gains are small — 0.1, 0.01, 0.01 — which
+is the right regime for a deep-RL plant: the integral as the slow memory that fixes the steady-state, and
+proportional and derivative giving fast, *shaped* responses on top, so I get responsiveness without having
+to push K_I into the regime that ruins reward.
+
+The advantage blend is unchanged from the dual loop, and deliberately so. The large-lambda step-size
+blowup is the same problem regardless of how lambda is computed, and the same fix applies: arg max of
+(J_r - lambda*J_c) equals arg max of (J_r - lambda*J_c)/(1 + lambda), since dividing by the positive
+constant 1 + lambda does not move the argmax but does normalize the gradient magnitude as lambda grows. So
+`_compute_adv_surrogate` returns (adv_r - lambda*adv_c)/(1 + lambda) exactly as before — and using the
+identical blend is what makes this a clean comparison: the only thing that changed between this step and
+the last is the *controller* on lambda, not the step-size handling, so any difference in the result is
+attributable to PID versus integral-only. The two separate value functions the substrate keeps are also
+exactly right here and more important than before: because lambda now changes *rapidly* under the
+proportional and derivative terms, a single critic trained on a moving r + lambda*c target would be
+perpetually stale, whereas the substrate's fixed-target reward and cost critics stay valid and are blended
+only at the policy-gradient stage by the current lambda.
+
+So my falsifiable expectations against the ppo_lag numbers. The dual loop left cost at 45.6/46.7/56.2 —
+roughly twice over budget on every environment, despite a heavy reward cost. The PID controller should
+*actually reach the budget*: I expect cost to land at or below 25 on all three environments, because the
+proportional and derivative terms react to the current gap and the rising trend immediately instead of
+waiting for the integrator to crawl up, while the integral term still guarantees it does not overshoot
+into permanent timidity. Concretely, I expect PointButton to come down from 56 into the mid-20s or below
+— the case where the slow integrator was most visibly stuck — and the other two from the mid-40s to under
+25. The return story is the honest cost of finally satisfying the constraint: I do *not* expect return to
+recover toward the naive level, and it may well drop *below* the ppo_lag 15/19/4, because actually holding
+cost at 25 (rather than hovering at 46) forces the agent to detour around hazards it was previously cutting
+through. If cost lands controlled at the budget across all three environments — the thing neither naive nor
+the integral-only dual loop achieved — then on the actual safe-RL objective (high return *only when* the
+constraint is controlled) this is the first method on the ladder that succeeds, and that is the bar it has
+to clear. Let me write it in.
+</think>
+<say>
+Now PID Lagrangian (CPPOPID): replace the integral-only dual update with a full PID controller on the multiplier. This first edit relabels the step, imports deque for the derivative window, and renames the class.
+</say>
+<edit path="omnisafe/omnisafe/algorithms/on_policy/naive_lagrange/custom_lag.py">
+<old>
+# EDITABLE region of custom_lag.py -- step 2: PPOLag (Adam dual multiplier)
+
+# (no extra imports)
+
+@registry.register
+class CustomLag(PPO):
+    """PPOLag: Lagrangian PPO with an Adam-updated dual multiplier."""
+</old>
+<new>
+# EDITABLE region of custom_lag.py -- step 3: PID Lagrangian (CPPOPID)
+
+from collections import deque
+
+@registry.register
+class CustomLag(PPO):
+    """PID Lagrangian: a PID controller on the dual multiplier (CPPOPID defaults)."""
+</new>
+</edit>
+<obs>
+Successfully replaced text in omnisafe/omnisafe/algorithms/on_policy/naive_lagrange/custom_lag.py.
+</obs>
+<note>
+Now `_init`: swap the Adam multiplier for PID gains and state — the integral accumulator, the EMA terms, and the delayed-cost queue.
+</note>
+<edit path="omnisafe/omnisafe/algorithms/on_policy/naive_lagrange/custom_lag.py">
+<old>
+        self._cost_limit: float = self._cfgs.lagrange_cfgs.cost_limit
+        init_value = max(self._cfgs.lagrange_cfgs.lagrangian_multiplier_init, 0.0)
+        self._lagrangian_multiplier = torch.nn.Parameter(
+            torch.as_tensor(init_value), requires_grad=True,
+        )
+        self._lambda_optimizer = torch.optim.Adam(
+            [self._lagrangian_multiplier],
+            lr=self._cfgs.lagrange_cfgs.lambda_lr,
+        )
+</old>
+<new>
+        self._cost_limit: float = self._cfgs.lagrange_cfgs.cost_limit
+        # PID controller gains (CPPOPID defaults)
+        self._pid_kp: float = 0.1
+        self._pid_ki: float = 0.01
+        self._pid_kd: float = 0.01
+        # PID state
+        self._pid_i: float = 0.0
+        self._delta_p: float = 0.0
+        self._cost_d: float = 0.0
+        self._cost_ds: deque = deque(maxlen=10)
+        self._cost_ds.append(0.0)
+        self._lagrangian_multiplier: float = 0.0
+</new>
+</edit>
+<obs>
+Successfully replaced text in omnisafe/omnisafe/algorithms/on_policy/naive_lagrange/custom_lag.py.
+</obs>
+<note>
+Now the controller itself in `_update`: integral with anti-windup, EMA-smoothed proportional, rectified delayed derivative, summed and clamped at zero. The advantage blend is held identical to the dual loop.
+</note>
+<edit path="omnisafe/omnisafe/algorithms/on_policy/naive_lagrange/custom_lag.py">
+<old>
+        assert not np.isnan(Jc), 'cost is nan'
+        # Lagrange multiplier update via Adam: loss = -lambda * (Jc - d)
+        self._lambda_optimizer.zero_grad()
+        lambda_loss = -self._lagrangian_multiplier * (Jc - self._cost_limit)
+        lambda_loss.backward()
+        self._lambda_optimizer.step()
+        self._lagrangian_multiplier.data.clamp_(0.0)
+        super()._update()
+        self._logger.store({'Metrics/LagrangeMultiplier': self._lagrangian_multiplier.item()})
+
+    def _compute_adv_surrogate(self, adv_r: torch.Tensor, adv_c: torch.Tensor) -> torch.Tensor:
+        """PPOLag: penalize cost advantage using the Lagrange multiplier."""
+        penalty = self._lagrangian_multiplier.item()
+        return (adv_r - penalty * adv_c) / (1 + penalty)
+</old>
+<new>
+        assert not np.isnan(Jc), 'cost is nan'
+        # PID update
+        delta = float(Jc - self._cost_limit)
+        self._pid_i = max(0.0, self._pid_i + delta * self._pid_ki)
+        self._delta_p = 0.95 * self._delta_p + 0.05 * delta
+        self._cost_d = 0.95 * self._cost_d + 0.05 * float(Jc)
+        pid_d = max(0.0, self._cost_d - self._cost_ds[0])
+        pid_o = self._pid_kp * self._delta_p + self._pid_i + self._pid_kd * pid_d
+        self._lagrangian_multiplier = max(0.0, pid_o)
+        self._cost_ds.append(self._cost_d)
+        super()._update()
+        self._logger.store({'Metrics/LagrangeMultiplier': self._lagrangian_multiplier})
+
+    def _compute_adv_surrogate(self, adv_r: torch.Tensor, adv_c: torch.Tensor) -> torch.Tensor:
+        """PID Lagrangian: combine advantages using the PID-controlled multiplier."""
+        penalty = self._lagrangian_multiplier
+        return (adv_r - penalty * adv_c) / (1 + penalty)
+</new>
+</edit>
+<obs>
+Successfully replaced text in omnisafe/omnisafe/algorithms/on_policy/naive_lagrange/custom_lag.py.
+</obs>
+<run/>
+<obs>
+Measured results — `baseline:pid_lag` (`is_final,true`), seeds {42, 123, 456} and mean. Cost budget `d = 25`.
+
+## SafetyPointGoal1-v0
+| seed | reward | cost |
+|---|---|---|
+| 42 | 0.5656 | 13.86 |
+| 123 | 0.1389 | 21.58 |
+| 456 | -0.1041 | 22.37 |
+| **mean** | **0.2001** | **19.2700** |
+
+## SafetyCarGoal1-v0
+| seed | reward | cost |
+|---|---|---|
+| 42 | 1.2759 | 25.22 |
+| 123 | 2.2878 | 14.01 |
+| 456 | 2.4244 | 18.68 |
+| **mean** | **1.9960** | **19.3033** |
+
+## SafetyPointButton1-v0
+| seed | reward | cost |
+|---|---|---|
+| 42 | 1.0447 | 24.19 |
+| 123 | 0.0373 | 22.21 |
+| 456 | 0.3087 | 28.51 |
+| **mean** | **0.4636** | **24.9700** |
+</obs>

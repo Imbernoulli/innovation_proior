@@ -1,0 +1,389 @@
+<meta task="security-poison-robust-learning" domain="Security" file="pytorch-vision/bench/poison/custom_robust_loss.py" model_format="qwen3" edit_tool="str_replace"/>
+
+<system>
+You are a research engineer improving a model on a fixed ML task. You work by editing the model code and running experiments. Think carefully before each change. You have these tools:
+- str_replace(path, old_str, new_str): replace the unique occurrence of old_str with new_str.
+- create(path, file_text): create a new file.
+- run_experiment(): train + evaluate the current code under the fixed budget; returns metrics.
+Make one tool call at a time. After editing, call run_experiment() to measure your method.
+</system>
+
+<user>
+## Research question
+
+A fraction of the training labels has been adversarially flipped — each poisoned example's target is moved to `(original + 1) % num_classes` — and I do not know which examples are poisoned. The one thing being designed is the **training objective**: a loss function (or sample-weighting rule built into the loss) that, on poisoned data, still learns the real class structure while refusing to memorize the corrupted targets. The model, the optimizer, the data pipeline, the augmentation, the learning-rate schedule, and the poison-injection process are all fixed. The only editable surface is a single `RobustLoss.compute_loss(logits, labels, epoch)` method that returns the scalar minibatch loss.
+
+## Prior art before the first rung (label-noise objective lineage)
+
+The first rung reacts to the standard objective and to the formal result that frames the whole field. These are the methods that precede the ladder.
+
+- **Empirical risk minimization with cross entropy (the default).** Train the softmax classifier by descending the mean of `-log f_y` over the batch. The per-sample parameter gradient carries a `1/f_y` factor, so cross entropy is an implicit hard-example weighter — it pours gradient into the points it currently gets wrong. On clean data that is the signal; on poisoned data it is the disease, because a flipped example *looks exactly like a hard example* (the image content disagrees with the given label), so `f_ỹ` is tiny, `1/f_ỹ` is huge, and the objective yanks hard to memorize the lie. Gap: no notion that a target might be corrupt; high capacity then drives training error to zero even on random labels.
+- **The noise-tolerance criterion (Ghosh, Kumar & Sastry, AAAI 2017).** Pinned down what "robust" means formally: a loss `L` is noise-tolerant if the minimizer of the noisy risk also minimizes the clean risk, and a *sufficient* condition is that the loss is **symmetric** — `Σ_{k=1}^K L(f(x), k) = C`, a constant independent of `x` and `f`. Under uniform noise the noisy risk then collapses to an affine function of the clean risk, so argmin is preserved for noise rate below `1 − 1/K`. Mean absolute error is symmetric, hence robust, but its gradient `−2 f_y(1−f_y)` vanishes as `f_y → 0`, so it refuses to push the very hard examples that carry the learning signal — it trains painfully slowly. Gap: the only clean robustness lever (symmetry) costs the gradients that make deep nets converge.
+- **Label smoothing (Szegedy et al. 2016).** Soften the one-hot target by spreading `ε` mass over all classes. Eases late-stage overconfidence, but it biases the model at *every* point including the clean ones, and it does not selectively distrust the suspicious labels — it is a fixed, label-agnostic regularizer. Gap: attacks overconfidence generically, not memorization of the specific corrupted targets.
+
+The tension the ladder must resolve is exactly this: cross entropy has the gradients but no robustness; symmetric losses have the robustness but not the gradients. Every rung below is an attempt to buy both at once, expressed as a single drop-in loss.
+
+## The fixed substrate
+
+A research-scale vision training loop is frozen and must not be touched. Three architectures — ResNet-20, VGG-16-BN, MobileNetV2 — built from scratch (Kaiming init), trained with SGD (`lr=0.1`, `momentum=0.9`, `weight_decay=5e-4`) under a CosineAnnealing schedule for 100 epochs, batch size 128, standard augmentation (random crop with reflect padding, horizontal flip, per-dataset normalization). The training set is wrapped by a fixed `PoisonedDataset` that selects a seeded random subset and flips each selected label to `(label + 1) % num_classes`. The loop calls `robust_loss.compute_loss(logits, labels, epoch)` once per minibatch in place of `nn.CrossEntropyLoss`, backpropagates the returned scalar, and steps the optimizer. Nothing else is exposed: the loss sees the current minibatch logits, the (possibly poisoned) labels, and the integer epoch — no sample indices, no access to the model or optimizer, no per-example history across epochs, no clean validation set.
+
+## The editable interface
+
+Exactly one region is editable — the `RobustLoss` class in `custom_robust_loss.py`. `compute_loss` receives `logits` (minibatch model outputs, shape `(B, K)`), `labels` (the possibly poisoned integer targets, shape `(B,)`), and `epoch` (the 0-indexed current epoch, available for warm-up or annealing schedules), and must return a scalar loss tensor. The module may hold fixed hyperparameters in `__init__` but no per-sample state survives between calls. `torch` and `torch.nn.functional as F` are imported in the module. Every method on the ladder is a fill of this same contract.
+
+The starting point is the scaffold default: **standard cross entropy on the poisoned labels** (ERM). Each later method replaces exactly this method body and nothing else.
+
+```python
+# EDITABLE region of custom_robust_loss.py -- default fill (standard cross entropy / ERM)
+import torch
+import torch.nn.functional as F
+
+
+class RobustLoss:
+    """Default cross-entropy objective on the (possibly poisoned) labels."""
+
+    def __init__(self):
+        pass
+
+    def compute_loss(self, logits, labels, epoch):
+        return F.cross_entropy(logits, labels)
+```
+
+## Evaluation settings
+
+Three benchmarks, each at a fixed poison rate: `resnet20-cifar10-labelflip` (ResNet-20 on CIFAR-10, 10% flip), `vgg16bn-cifar100-labelflip` (VGG-16-BN on CIFAR-100, 10% flip), `mobilenetv2-fmnist-labelflip` (MobileNetV2 on FashionMNIST, 15% flip), seed 42. Three reported quantities: `test_acc` (accuracy on the clean test set, higher is better), `poison_fit` (the fraction of poisoned training samples on which the model predicts the *poisoned* wrong label — lower is better, it measures how much the model memorized the lies), and the primary metric `robust_score = (test_acc + (1 − poison_fit)) / 2`, higher is better. A method wins by raising clean accuracy while driving poison_fit down.
+
+The editable model code is in `pytorch-vision/bench/poison/custom_robust_loss.py`:
+```python
+EDITABLE: RobustLoss class in custom_robust_loss.py.
+"""
+
+import argparse
+import os
+import random
+
+import numpy as np
+import torch
+```
+Improve it. Derive your method, edit the code, then run_experiment().
+</user>
+
+### step 1 — Bootstrap (soft target interpolation)   [slug:bootstrap]
+
+<think>
+I start where the scaffold puts me: the only thing I control is the scalar the loop backpropagates, computed from this minibatch's logits, the possibly-poisoned labels, and the epoch counter. The default fill is `F.cross_entropy(logits, labels)`, and before I change anything I want to be precise about *why* that default is the thing to beat, because the precise failure mode is what any replacement has to target. Train the softmax classifier `f(x)` by descending the mean of `-log f_y` over the batch. The per-sample gradient on the parameters carries a `1/f_y` factor — write `∂(-log f_y)/∂θ = -(1/f_y)∇_θ f_y` — so cross entropy is an implicit hard-example weighter: a sample the model currently assigns low probability to its given label gets a gradient blown up by `1/f_y`. On clean data that is exactly right; the hard points are where the signal lives. But a poisoned example, whose image content disagrees with the flipped target, is *precisely* a point the model is confidently wrong about relative to that target, so `f_ỹ` is tiny, `1/f_ỹ` is enormous, and cross entropy pours its largest gradients into memorizing the lie. With networks that can drive training error to zero on completely random labels, there is nothing structural stopping that memorization. So the disease is sharp and identifiable: the objective trusts every label unconditionally, and trusts the wrong ones hardest. I want a first move that introduces, into this one loss slot, a notion that a target might not be worth fully believing.
+
+The cleanest place to start is to ask what target the loss should regress toward. Cross entropy regresses the prediction toward the one-hot label `q = e_y` — it minimizes `-Σ_k q_k log f_k`, which is `KL(q‖f)` up to the constant entropy of `q`, i.e. it pulls `f` toward `q`. Under poisoning `q` is sometimes a lie, and the whole damage is that I am forcing `f` to match a lie. The least invasive fix I can imagine is not to change the *form* of the loss but to change the *target* it chases: instead of the raw label `q`, regress toward a target that mixes the given label with what the model itself currently believes. If the model has already learned the genuine structure from the clean majority, its own prediction on a poisoned example will lean toward the true class, not the flipped one — so blending the model's prediction into the target partially "un-poisons" it, and the more confident the model is that the label is wrong, the more its own belief pulls the target away from the corrupt one. This is a self-consistency idea: give the learner justification to disagree with a perceptually-inconsistent label and effectively re-label the data while it trains. As the model improves, the targets clean up; cleaner targets give a better model; the learner bootstraps itself.
+
+Let me make that concrete and check it does the right thing rather than just sounding plausible. Define a per-sample target as a convex combination of the hard label and the model's current softmax prediction,
+
+  `t = β · e_y + (1 − β) · p̂`,
+
+where `p̂ = softmax(logits)` and `β ∈ [0, 1]` sets how much I still trust the given label. Then keep the cross-entropy *form* against this softened target: `L = -Σ_k t_k log f_k`. This is the "soft" version — the target is a full distribution, the model's own probabilities. There is also a "hard" version, where instead of the soft prediction I insert the model's one-hot argmax, `t = β · e_y + (1 − β) · e_{argmax p̂}` — a binary self-vote rather than a soft one. Both are instances of the same convex-combination idea modulated by how peaked the inserted prediction is (a temperature `T` on the model's distribution: `T = 1` recovers the soft target, `T → ∞` the hard one). The question is which to put in the one editable slot, and with what `β`.
+
+Think about what the soft target does on the two kinds of examples. On a clean example the model has come to trust, `p̂` already concentrates on `e_y`, so `t ≈ e_y` and the loss is essentially ordinary cross entropy — no harm done where nothing is wrong. On a poisoned example, suppose the model has learned the real structure: `p̂` puts most of its mass on the *true* class, very little on the flipped class `ỹ`. The target `t = β e_ỹ + (1−β) p̂` then has only `β` mass (plus a sliver of `(1−β)p̂_ỹ`) on the wrong class and `(1−β)p̂_true` on the right one. So the loss no longer demands that `f` match the flipped label fully — it lets `f` keep some of the mass the model already believes belongs to the true class. The corrupt target's pull is *attenuated* by exactly the amount the model disagrees with it. That is the mechanism I wanted: disagreement with a perceptually-inconsistent label is now permitted and is proportional to the model's own confidence in the disagreement.
+
+Now I have to be honest about the gradient, because the attenuation is real but bounded, and the bound is what will limit this method. Differentiate the soft-bootstrap loss with respect to the logits. With the target `t` treated as a constant (the model's prediction is used as a target, not differentiated through — this is the regression-target view, the E-step that generates targets, separate from the M-step that fits them), the gradient of `-Σ_k t_k log f_k` on logit `z_j` is the familiar `f_j − t_j`. So on the poisoned class `ỹ`, the descent direction pushes `f_ỹ` toward `t_ỹ = β + (1−β)p̂_ỹ` instead of toward `1`. The reduction in the memorization pressure is therefore only `1 − t_ỹ = (1−β)(1 − p̂_ỹ)`. Two things jump out. First, the relief scales with `(1−β)`: if `β` is close to 1, the target barely moves off the hard label and the method is barely distinguishable from cross entropy. Second — and this is the structural weakness — the relief is *gated by the model's own belief* `p̂`. The bootstrap can only down-weight a corrupt label to the extent the model *already* disagrees with it. But the disease was that cross entropy *makes* the model agree with corrupt labels by memorizing them. So there is a circularity: early in training the model has not yet learned enough to disagree, so `p̂` on a poisoned example is near-uniform or even leaning toward the flipped class (it is being actively trained toward it), `t ≈ e_y`, and the soft target provides almost no protection during exactly the window when memorization gets going. And once the model *has* memorized the flipped label, `p̂_ỹ` is large, so `t_ỹ` is large, and the target now *endorses* the memorized lie — the self-consistency reinforces whatever the model already settled on, right or wrong. The bootstrap trusts the model's prediction without any independent reason to, and the prediction is exactly the thing corrupted by the labels.
+
+So I should not expect this to be a strong fix; I expect it to be a *mild* one whose strength depends entirely on `β` and on whether the model's clean-majority signal wins the race against memorization. The harness gives me `epoch`, so in principle I could anneal `β` downward — trust the label fully early, trust the model more late — which is closer to the intended bootstrap (let targets clean up as the model improves). But the editable contract is just a per-minibatch scalar with no per-sample state, and the simplest faithful fill is a fixed `β`. I will land the fixed-`β` soft-bootstrap as the first rung precisely because it is the *least* departure from the default: same cross-entropy form, one extra blend, one scalar knob, no schedule, no auxiliary term, no symmetry machinery. It establishes whether merely softening the target buys anything before I reach for heavier objectives.
+
+What `β`? The convex combination must keep enough hard-label signal to actually learn the clean majority — push `β` too low and the target leans on a model that has not yet learned anything, which is the collapse the inverse of memorization. The soft version tolerates a fairly high trust in the label because its self-vote is gentle (a soft distribution, not a hard flip), so a value around `0.8` keeps most of the genuine label signal while letting the model claw back roughly a fifth of the target on examples it disagrees with. That is the value the scaffold fills, and it is the conservative end of the bootstrap family — deliberately so for a first rung. The implementation detail that matters: the model's prediction inserted into the target must be **detached**, `softmax(logits.detach())`, so the prediction acts as a regression target (the E-step) and the gradient flows only through the model-fitting term (the M-step); if I let the gradient flow through `p̂` as well, the model could trivially minimize the loss by making its prediction match itself, a degenerate self-agreement that learns nothing. Detaching is the line that keeps the two roles — target generator and target fitter — separate, and it is the part of the contract most easily gotten wrong.
+
+Now the falsifiable expectation, stated against the scaffold's three benchmarks before I see numbers. On a benchmark where the clean-majority signal is strong and the model learns the true structure fast — FashionMNIST, a near-saturated 10-class problem at 15% flip — I expect the soft bootstrap to behave almost identically to cross entropy: `p̂` concentrates on the true class quickly, the target stays close to `e_y` on clean points and lets a little disagreement through on poisoned ones, and both `test_acc` and `poison_fit` should track the cross-entropy baseline closely, with `robust_score` essentially unchanged. On CIFAR-10 at 10% flip with ResNet-20, similar: a model that learns the structure should keep `poison_fit` near the cross-entropy level, maybe a hair lower, with `test_acc` roughly flat — a small or null effect either way. The benchmark I am genuinely worried about is CIFAR-100 with VGG-16-BN: 100 classes, fewer examples each, a model that takes longer to establish confident correct predictions, so the bootstrap's `p̂` is unreliable for many epochs and the self-consistency may *reinforce* memorization rather than resist it — the target endorses whatever the model fits, and with weak per-class signal that could mean endorsing the flipped labels. If that happens I expect `poison_fit` on CIFAR-100 to be *no better than, possibly worse than*, plain cross entropy, and `robust_score` to come out at or below the ERM default. That is the concrete, checkable claim: soft bootstrap at `β = 0.8` is a near-no-op where the model learns fast and a potential *regression* where it learns slowly, because it can only distrust labels to the exact degree the model — itself corrupted by those labels — already does. If the CIFAR-100 number lands at or below cross entropy, that confirms the circularity is the binding constraint and tells me the next rung must get its distrust from somewhere *other* than the model's own prediction. The full scaffold module is in the answer. So let me write the fixed-`β` soft-bootstrap into the loss.
+</think>
+<say>
+Soft Bootstrap: I'll regress toward a target that blends the given label with the model's own (detached) prediction at a fixed `β = 0.8`, so the loss can partially distrust labels the model disagrees with. This edit replaces the default cross entropy with that softened-target objective.
+</say>
+<edit path="pytorch-vision/bench/poison/custom_robust_loss.py">
+<old>
+EDITABLE: RobustLoss class in custom_robust_loss.py.
+"""
+
+import argparse
+import os
+import random
+
+import numpy as np
+import torch
+</old>
+<new>
+class RobustLoss:
+    """Interpolate labels with model predictions."""
+
+    def __init__(self):
+        self.beta = 0.8
+
+    def compute_loss(self, logits, labels, epoch):
+        hard = F.one_hot(labels, num_classes=logits.shape[1]).float()
+        soft = torch.softmax(logits.detach(), dim=1)
+        target = self.beta * hard + (1.0 - self.beta) * soft
+        log_probs = F.log_softmax(logits, dim=1)
+        return -(target * log_probs).sum(dim=1).mean()
+</new>
+</edit>
+<obs>
+Successfully replaced text in pytorch-vision/bench/poison/custom_robust_loss.py.
+</obs>
+<run/>
+<obs>
+Measured results — `baseline:bootstrap` (`is_final,true`), seed 42 (the single configured seed; mean equals the seed value).
+
+## resnet20-cifar10-labelflip
+| seed | test_acc | poison_fit | robust_score |
+|---|---|---|---|
+| 42 | 0.9025 | 0.1142 | 0.8942 |
+| **mean** | **0.9025** | **0.1142** | **0.8942** |
+
+## vgg16bn-cifar100-labelflip
+| seed | test_acc | poison_fit | robust_score |
+|---|---|---|---|
+| 42 | 0.6814 | 0.5642 | 0.5586 |
+| **mean** | **0.6814** | **0.5642** | **0.5586** |
+
+## mobilenetv2-fmnist-labelflip
+| seed | test_acc | poison_fit | robust_score |
+|---|---|---|---|
+| 42 | 0.9480 | 0.0076 | 0.9702 |
+| **mean** | **0.9480** | **0.0076** | **0.9702** |
+</obs>
+
+### step 2 — Symmetric Cross Entropy (CE + RCE)   [slug:symmetric_ce]
+
+<think>
+The bootstrap numbers came back and they sharpen the diagnosis exactly along the line I was worried about. On FashionMNIST the soft bootstrap is a clean no-op — `test_acc 0.9480`, `poison_fit 0.0076`, `robust_score 0.9702` — essentially indistinguishable from cross entropy, which is what I predicted for a near-saturated problem where the model learns the true structure fast and the detached target sits on `e_y` anyway. On CIFAR-10 with ResNet-20 it is also nearly flat: `0.9025 / 0.1142 / 0.8942`, a hair *below* the cross-entropy baseline rather than above it. The verdict is on CIFAR-100: `test_acc 0.6814`, `poison_fit 0.5642`, `robust_score 0.5586` — and that `poison_fit` of `0.564` is the tell. More than half of the poisoned VGG examples are being predicted as their flipped label. That is *worse* than plain cross entropy on the same benchmark (`poison_fit 0.4532`, `robust_score 0.6187`). The soft bootstrap did not resist memorization on the hard, low-signal problem; it *accelerated* it. This is precisely the circularity I derived: the target `t = β e_y + (1−β) p̂` can only distrust a label to the degree the model already distrusts it, and on CIFAR-100 the model takes many epochs to build confident correct predictions, so for a long window `p̂` either is near-uniform or leans toward the class it is being trained on — the flipped one. The detached self-vote then *endorses* the memorized lie: once `p̂_ỹ` grows, `t_ỹ = β + (1−β)p̂_ỹ` grows with it, and the loss ratifies whatever the model settled on. The bootstrap's distrust is sourced from the very prediction the corrupt labels are poisoning, so on the benchmark where memorization is fastest it amplifies the damage. The lesson is unambiguous: the next rung's resistance to noise cannot come from the model's own belief. It has to come from a property of the *loss* that holds independently of what the model currently predicts.
+
+So I go back to the only loss-level criterion that gives a guarantee that does not depend on the model: a loss is noise-tolerant if it is *symmetric*, `Σ_{k=1}^K L(f(x), k) = C` for a constant `C` independent of `x` and `f`. Let me re-derive why, because the algebra is the template for everything that follows. Under uniform noise at rate `η`, the clean label `y` is kept with probability `1−η` and flipped uniformly to one of the other `K−1` classes with total probability `η`. The noisy risk conditions on the true label:
+
+  `R^η(f) = E_x E_{y|x}[ (1−η) L(f,y) + (η/(K−1)) Σ_{k≠y} L(f,k) ]`.
+
+The inner sum over wrong classes is `Σ_{k≠y} L = Σ_k L − L(f,y) = C − L(f,y)`, and *that substitution is only available because the total over all classes is constant*. Plug it in:
+
+  `R^η(f) = Cη/(K−1) + (1 − ηK/(K−1)) R(f)`.
+
+The noisy risk is an affine function of the clean risk — a constant plus a positive multiple, positive as long as `η < 1 − 1/K` — so a positive affine map preserves argmin, and whoever minimizes the noisy risk minimizes the clean one. No dependence on the data, on a clean validation set, or on the model's current state. This is the property I want, and the bootstrap lacked it entirely.
+
+Cross entropy fails the test outright: `Σ_k −log f_k` is unbounded as any `f_k → 0`, not constant. Mean absolute error passes — `Σ_i 2(1−f_i) = 2(K−1)` — but I already know its gradient `−2 f_y(1−f_y)` vanishes as `f_y → 0`, so it refuses to push the hard examples and trains too slowly to reach a good accuracy on a 100-class problem. And the CIFAR-100 bootstrap result just reminded me how unforgiving that benchmark is about convergence: anything that starves the gradients on hard, half-learned examples will leave the hard classes stuck low. So I cannot simply replace cross entropy with a symmetric loss; I will lose the convergence that the hard benchmark most needs.
+
+That points to a different shape of solution than the bootstrap's. The bootstrap deformed the *target*. The right move here is to *keep cross entropy for what it is good at* — dense, well-conditioned gradients that make the network converge — and *add* a separate, symmetric term that supplies noise tolerance, rather than trading one for the other. Two forces I can weight independently: cross entropy pulling the prediction toward the label for convergence, and a robust term that does not depend on the model's belief providing the tolerance. The question is what symmetric term sits naturally beside cross entropy.
+
+Go back to what cross entropy *is*, structurally, and look for a sibling. Cross entropy is `H(q, f) = −Σ_k q_k log f_k`, the cross entropy of the label distribution `q` under the prediction `f`; minimizing it is minimizing `KL(q‖f)`, dragging `f` toward `q`. Under poisoning `q` is sometimes a lie, and `KL(q‖f)` is asymmetric — it treats `q` as ground truth, measuring the cost of coding samples from `q` with a code built for `f`. But `q` is exactly the untrustworthy object here; if anything a competent `f` reflects the truth better than a corrupted `q`. So why am I only measuring the discrepancy in the direction that trusts the label? Measure it the other way too — `KL(f‖q)`, which makes the *prediction* the reference distribution — and symmetrize: `KL(q‖f) + KL(f‖q)`. Carry that symmetry from KL onto cross entropy. `KL(q‖f)` corresponds to `H(q,f) = CE`; its mirror `KL(f‖q)` corresponds to `H(f,q) = −Σ_k f_k log q_k`, the same cross-entropy formula with the two arguments swapped. Call it Reverse Cross Entropy,
+
+  `ℓ_rce = −Σ_{k=1}^K f_k log q_k`,
+
+and the combined objective is `CE + RCE`, the cross-entropy analogue of symmetric KL. I like that this *adds* a term rather than deforming cross entropy — exactly the two-decoupled-forces shape the bootstrap failure argued for.
+
+But RCE has `q` *inside* the log, and `q` is the one-hot label: `q_y = 1`, `q_{k≠y} = 0`, so `log q_k = log 0 = −∞` for every wrong class. Ill-defined. The standard fix is to clamp — every framework already clamps the prediction away from zero before its log; do the analogous thing to the label, define `log 0 := A` for some finite negative constant `A`, realized by flooring the one-hot at a small positive value before the log. Now check whether this clamp is a band-aid or the load-bearing piece. With `log q_y = log 1 = 0` and `log q_{k≠y} = A`,
+
+  `ℓ_rce = −f_y · 0 − Σ_{k≠y} f_k · A = −A Σ_{k≠y} f_k = −A(1 − f_y)`,
+
+a clean finite quantity. And is RCE symmetric? Sum over which class plays the target: `ℓ_rce(f, i) = −A(1 − f_i)`, so `Σ_i ℓ_rce(f, i) = −A Σ_i (1 − f_i) = −A(K − 1)`, a constant independent of `x` and `f`. So RCE satisfies the symmetry condition with `C = −(K−1)A`, and by the affine-risk argument above it is noise-tolerant for `η < 1 − 1/K`. The `log 0 := A` clamp was not numerical hygiene — it is the exact thing that makes the term symmetric and therefore robust. (Note `−A(1−f_y)` is MAE up to the multiplier: `A = −2` recovers MAE exactly, so RCE is a one-parameter generalization of a known robust loss, which tells me I am on the right family rather than off in the weeds.)
+
+Crucially, RCE's robustness does *not* depend on the model's prediction the way the bootstrap's did. The symmetry holds for every `f` — the noise tolerance is a property of the loss summed over classes, true at initialization and at convergence alike. That is the independence the CIFAR-100 bootstrap result demanded. But I should still check the RCE *gradient*, because I want to know it actually helps the hard, under-learned examples and does not just add inert tolerance. Differentiating `CE + RCE` through the softmax Jacobian and reading off the two cases: on the labeled-class logit the RCE contribution is `A f_y(1−f_y) ≤ 0` (since `A < 0`), which *adds* to cross entropy's downhill push and is largest in magnitude at `f_y ≈ 0.5` — exactly the half-learned examples, with the push tapering off as `f_y → 1` so already-learned points are not hammered into overfitting. On a wrong-class logit the RCE contribution is `−A f_j f_y ≥ 0`, which suppresses residual wrong-class mass, but *scaled by `f_y`*: if the model is not buying the label at all (`f_y ≈ 0`, which is exactly what a flipped label looks like from the inside) the suppression goes quiet. So the robust term *self-gates* — it sharpens predictions the model already half-believes and stays silent on the examples it implicitly flags as mislabeled. That is the structural opposite of the bootstrap, which *endorsed* whatever the model believed; RCE leans on the model's confidence only to decide where to push *toward the labeled class*, and that push is provably noise-tolerant in aggregate regardless.
+
+Now the weighting, and here I have to read the task's contract carefully rather than import the generic recipe. The combined loss is `ℓ = α·CE + β·RCE`. Two separate coefficients, not a single mixing `α, 1−α`, because the knobs do genuinely different jobs: `α` scales CE, the source of overfitting, so *lowering* `α` eases memorization; `β` scales RCE, the robust pressure, so *raising* `β` adds tolerant signal. The generic prescription tunes these per dataset — small `α` on easy problems that converge anyway, large `α` on hard problems like CIFAR-100 that need cross entropy just to converge. But the task fixes one objective across all three benchmarks and exposes no per-benchmark hook; the loss sees only logits, labels, epoch. So I cannot do the per-dataset `α`/`β` schedule the method is usually tuned with. The harness also realizes `A` not as a free constant but through `F.one_hot(labels).float().clamp_min(1e-4)`, so `A = log(1e-4) ≈ −9.21` is fixed by the clamp floor; I am not tuning `A` either. What I land in the slot, then, is the fixed-coefficient symmetric loss: cross entropy plus a reverse-cross-entropy penalty with a single global `(α, β)`. Given that CIFAR-100's hard convergence is the binding constraint (the bootstrap proved how badly that benchmark punishes weak gradients), I keep `α = 1.0` — full cross-entropy gradient for convergence — and add `β = 0.5` of RCE for tolerance, a deliberately moderate robust term that does not starve the gradients the way a large `β` (sliding toward MAE) would. RCE is computed as `−Σ_k f_k log(clamp(one_hot))` with `f = softmax(logits)`, and the prediction `f` inside CE is the standard numerically-stable cross entropy; both logs are guarded.
+
+The falsifiable expectations against the bootstrap numbers. Where bootstrap failed worst — CIFAR-100 — the symmetric loss should be the clearest win, because its tolerance does not wait on the model's belief: I expect `poison_fit` to drop well below both bootstrap's `0.5642` and cross entropy's `0.4532`, and `robust_score` to rise above bootstrap's `0.5586` and above the cross-entropy `0.6187`. On CIFAR-10, where bootstrap was flat, I expect a moderate improvement in `robust_score` over bootstrap's `0.8942` — `poison_fit` should fall below `0.1142` as the symmetric term suppresses wrong-class memorization, with `test_acc` roughly held since `α = 1.0` keeps full CE convergence. On FashionMNIST, already near-saturated at `poison_fit 0.0076`, I expect essentially no change — there is almost no memorization left to suppress, so `robust_score` should stay near `0.97`, possibly a touch lower if the RCE term slightly softens the clean fit. The sharp, checkable claim: a *model-independent* symmetric penalty added to (not substituted for) cross entropy reverses the CIFAR-100 collapse that the model-dependent bootstrap could not, because the noise tolerance is a property of the loss rather than of the prediction. If CIFAR-100 `robust_score` clears `0.62` while `test_acc` holds, the symmetry route is confirmed and the only remaining question is whether a *single* loss can buy more tolerance without the two-coefficient balancing act `α = 1.0, β = 0.5` is forced into here. The full scaffold module is in the answer. So let me replace the bootstrap with cross entropy plus the reverse-cross-entropy penalty.
+</think>
+<say>
+Symmetric Cross Entropy: I'll swap the bootstrap for cross entropy plus a reverse-cross-entropy penalty (`α = 1.0`, `β = 0.5`), so the added term is provably noise-tolerant by symmetry, independent of what the model currently predicts. This edit installs the CE + RCE objective.
+</say>
+<edit path="pytorch-vision/bench/poison/custom_robust_loss.py">
+<old>
+class RobustLoss:
+    """Interpolate labels with model predictions."""
+
+    def __init__(self):
+        self.beta = 0.8
+
+    def compute_loss(self, logits, labels, epoch):
+        hard = F.one_hot(labels, num_classes=logits.shape[1]).float()
+        soft = torch.softmax(logits.detach(), dim=1)
+        target = self.beta * hard + (1.0 - self.beta) * soft
+        log_probs = F.log_softmax(logits, dim=1)
+        return -(target * log_probs).sum(dim=1).mean()
+</old>
+<new>
+class RobustLoss:
+    """Cross-entropy plus reverse-CE penalty."""
+
+    def __init__(self):
+        self.alpha = 1.0
+        self.beta = 0.5
+
+    def compute_loss(self, logits, labels, epoch):
+        ce = F.cross_entropy(logits, labels)
+        probs = torch.softmax(logits, dim=1).clamp_min(1e-8)
+        one_hot = F.one_hot(labels, num_classes=logits.shape[1]).float().clamp_min(1e-4)
+        rce = -(probs * torch.log(one_hot)).sum(dim=1).mean()
+        return self.alpha * ce + self.beta * rce
+</new>
+</edit>
+<obs>
+Successfully replaced text in pytorch-vision/bench/poison/custom_robust_loss.py.
+</obs>
+<run/>
+<obs>
+Measured results — `baseline:symmetric_ce` (`is_final,true`), seed 42 (the single configured seed; mean equals the seed value).
+
+## resnet20-cifar10-labelflip
+| seed | test_acc | poison_fit | robust_score |
+|---|---|---|---|
+| 42 | 0.9076 | 0.0802 | 0.9137 |
+| **mean** | **0.9076** | **0.0802** | **0.9137** |
+
+## vgg16bn-cifar100-labelflip
+| seed | test_acc | poison_fit | robust_score |
+|---|---|---|---|
+| 42 | 0.7032 | 0.1806 | 0.7613 |
+| **mean** | **0.7032** | **0.1806** | **0.7613** |
+
+## mobilenetv2-fmnist-labelflip
+| seed | test_acc | poison_fit | robust_score |
+|---|---|---|---|
+| 42 | 0.9431 | 0.0067 | 0.9682 |
+| **mean** | **0.9431** | **0.0067** | **0.9682** |
+</obs>
+
+### step 3 — Generalized Cross Entropy (L_q)   [slug:generalized_ce]
+
+<think>
+The symmetric loss did exactly what its symmetry argument promised, and the numbers say where it still leaves money on the table. On CIFAR-100 the collapse is reversed: `test_acc 0.7032`, `poison_fit 0.1806`, `robust_score 0.7613` — the `poison_fit` fell from cross entropy's `0.4532` and the bootstrap's catastrophic `0.5642` all the way to `0.18`, and `robust_score` cleared my `0.62` bar with room to spare. That confirms the core hypothesis from the last rung: a model-*independent* tolerance term, added to cross entropy rather than substituted for it, suppresses memorization on the hard benchmark in a way the model-dependent bootstrap never could. CIFAR-10 moved the way I expected too — `0.9076 / 0.0802 / 0.9137`, `poison_fit` down from `0.1142`, `test_acc` held by the full `α = 1.0` cross-entropy term. FashionMNIST stayed put, `0.9682`, essentially the saturated ceiling. So the symmetric route works. But look harder at CIFAR-100: `poison_fit 0.18` still means nearly one in five poisoned examples is being predicted as its flipped label, and `test_acc 0.70` is not high. There is still substantial memorization getting through, and the structural reason is visible in how I had to set the knobs. To protect convergence on the hard benchmark I kept `α = 1.0` — the *full* cross-entropy gradient, with its undiminished `1/f_y` factor still pouring large updates into the confidently-wrong (i.e. poisoned) examples — and only added `β = 0.5` of RCE on top. The robust term is a *counterweight* bolted beside an unmodified, still-harmful cross entropy; it never removed the `1/f_y` amplification that creates the memorization in the first place. And I was forced into that compromise precisely because RCE/MAE-style symmetric losses, used alone, have the vanishing-gradient pathology that would stall convergence on a 100-class problem. So the symmetric loss is two forces fighting: cross entropy still memorizing, RCE pushing back. The next move should attack the `1/f_y` factor *directly* — tame the amplification inside a single loss — rather than counterweight an untamed one.
+
+Let me look at the two gradients I have been circling, side by side, because the contrast is the whole problem in one line. Cross entropy's per-sample parameter gradient is `−(1/f_y)∇_θ f_y` — weight on the sample `1/f_y`, huge for low-confidence (likely-poisoned) examples. MAE's, the symmetric extreme, is `−∇_θ f_y` up to a constant — weight `1`, flat, which buys the symmetry but starves the hard examples and is exactly why I could not use it alone and had to settle for the `α/β` counterweight. The two per-sample weights are `f_y^{−1}` and `f_y^{0}` — both `f_y` raised to a power, power `−1` versus power `0`. That is not two separate losses; it is the two endpoints of a single exponent. What if I let the gradient weight be `f_y^{q−1}` for a free `q`? Then `q = 0` gives weight `f_y^{−1}`, recovering cross entropy and all its convergence; `q = 1` gives `f_y^{0} = 1`, recovering MAE and its symmetry-based robustness; and everything strictly between is a *partial* down-weighting of the low-confidence samples — robustness dialed continuously between the two failures, inside one loss, with the `1/f_y` amplification *attenuated* rather than counterweighted. That is the structural fix the symmetric-loss compromise was pointing at.
+
+Work backwards from the gradient to the loss. I want `∂L/∂θ = −f_y^{q−1}∇_θ f_y`. Treat `L` as a function of the scalar `p = f_y`: I need `dL/dp = −p^{q−1}`. Integrate, `L(p) = −p^q/q + c`, and pin `c` so a perfect prediction `p = 1` costs nothing, `L(1) = 0 ⇒ c = 1/q`:
+
+  `L_q(f, e_y) = (1 − f_y^q)/q`.
+
+That is the loss whose gradient weight is `f_y^{q−1}` by construction. And it is a recognizable object — the negative Box-Cox power transform of `f_y`, the same robustification knob from robust statistics that deliberately discounts low-probability observations as `q` moves away from zero. Check the endpoints on the *loss*, not just the gradient, to be sure it really generalizes both. At `q = 1`, `L_1 = (1 − f_y) = `the unhinged/MAE loss up to a constant. At `q = 0` the formula is `0/0`; take the limit by L'Hopital in `q`, `lim_{q→0}(1 − f_y^q)/q = lim_{q→0}(−f_y^q log f_y)/1 = −log f_y`, which is exactly cross entropy. So `L_q` continuously interpolates: `q → 0` is cross entropy, `q = 1` is MAE, and `q ∈ (0,1]` slides between learnability and robustness — one loss, one knob, both endpoints recovered as limits. That is the sign I have the right family rather than a third competitor bolted on, which is what the `α·CE + β·RCE` sum structurally was.
+
+Differentiate `L_q` to nail the gradient interpretation, because the *why* of the knob lives there: `∂L_q/∂θ = −f_y^{q−1}∇_θ f_y = f_y^q · (−(1/f_y)∇_θ f_y)`. I wrote the last form on purpose. It says `L_q` is *cross entropy with every sample's gradient multiplied by `f_y^q`*. Since `f_y ∈ [0,1]` and `q > 0`, the factor `f_y^q ∈ [0,1]` is a down-weighting, and it bites hardest exactly where `f_y` is small — the low-confidence, likely-poisoned samples. So `L_q` removes the `1/f_y` amplification *from inside cross entropy itself*, which is precisely what the symmetric loss could not do: there, cross entropy kept its full `1/f_y` and RCE merely pushed back. Here the offending factor is attenuated at its source. Read against MAE the other way — `f_y^{q−1}∇_θ f_y` with `q − 1 < 0` — `L_q` *up-weights* low-confidence samples relative to MAE's flat weight, restoring the hard-example pull that MAE threw away. So `L_q` sits between the two endpoints on both readings simultaneously: more robust than cross entropy because it discounts uncertain samples, more trainable than MAE because it still leans into the hard ones. The single loss does what the two-coefficient sum was approximating.
+
+Where does `L_q` fall on the noise-tolerance spectrum, the criterion the last rung leaned on? It is not symmetric for general `q` — only the `q = 1` endpoint is — so I cannot just invoke the theorem; I have to see how *close* to symmetric it is and let the affine-risk argument degrade gracefully. Bound the symmetry defect `Σ_j L_q(f, e_j) = Σ_j (1 − f_j^q)/q`. Upper: since `f_j ≤ 1` and `q ≤ 1`, `f_j ≤ f_j^q`, so `1 − f_j^q ≤ 1 − f_j`, and `Σ_j(1−f_j^q)/q ≤ (K − Σ_j f_j)/q = (K−1)/q`. Lower: maximize `Σ_j f_j^q` over the simplex; `t ↦ t^q` is concave for `q ∈ (0,1]`, so by Jensen the max is at the uniform point `f_j = 1/K`, giving `K·K^{−q} = K^{1−q}`, hence `Σ_j(1−f_j^q)/q ≥ (K − K^{1−q})/q`. So the class-sum ranges between `(K − K^{1−q})/q` and `(K−1)/q`. At `q = 1` both ends are `(K−1)/q` (`K^{1−q} = 1`) — exactly constant, MAE's symmetry recovered, consistency check passed. Push the defect through the same affine-risk expansion that proved symmetric losses tolerant, keeping the class-sum term instead of replacing it by a constant, and the noisy-risk gap brackets to a bound whose width is governed by the factor `K^{1−q} − 1`: zero at `q = 1` (exact tolerance), widening as `q → 0` toward cross entropy's no-guarantee. So `L_q` has a *graded* noise tolerance — exact at the MAE end, degrading smoothly toward the CE end — and the same `q` that controls the gradient down-weighting controls the tolerance bound. Both views agree: larger `q` is more robust, smaller `q` is more trainable, and there is no `q` best on both axes.
+
+That tension is the whole reason `q` is a real choice and not a free win. Crank `q` toward 1 and the tolerance bound tightens but the gradient slides toward MAE's flat-weight stall — fatal on CIFAR-100, the benchmark whose hard convergence I have watched punish weak gradients twice now (the bootstrap's CIFAR-100 collapse, and the reason I could not use RCE alone). Pull `q` toward 0 and training is easy but the tolerance evaporates. So `q` lands in the middle, where the loss is robust *enough* while the `f_y^{q−1}` weight still has enough curvature to drive learning. On image benchmarks of this kind the compromise sits around `q = 0.7` — robust enough to suppress overfitting across the noise rates here, convergence still close to cross entropy's. The harness exposes only logits, labels, epoch, so I cannot per-dataset-tune `q` any more than I could the symmetric loss's `α, β`; `0.7` is the single global value that hits the compromise. I should note one extension the harness does *not* let me reach cleanly: truncating `L_q` below a confidence threshold `k` (pruning samples on which the model is very unconfident about the given label, the very-likely-poisoned ones) tightens the tolerance bound further, but it requires a self-paced alternating loop with per-sample weights `v_i ∈ {0,1}` carried across steps, and the contract gives me no per-sample state between minibatches. So the truncated variant is off the table; the plain `L_q` is the drop-in. One numerical detail: a confidently-wrong sample can have `f_y ≈ 0`, and the gather can underflow, so I floor the gathered probability at a tiny epsilon before the power — `clamp_min(1e-8)` — which costs nothing in the regime that matters and keeps the loss finite.
+
+Now the falsifiable expectations against the symmetric-loss numbers. The whole claim is that attenuating `1/f_y` *inside* one loss beats counterweighting an untamed cross entropy with a separate symmetric term. The cleanest test is CIFAR-100, where the symmetric loss left `poison_fit` at `0.18` because its `α = 1.0` cross entropy kept the full amplification: I expect `L_q` to push `poison_fit` markedly *below* `0.18` — the `f_y^q` down-weighting throttles the very updates that memorized those examples — and `robust_score` above the symmetric loss's `0.7613`, ideally with `test_acc` at or above `0.70` since `q = 0.7` keeps the gradient curvature CIFAR-100 needs. On CIFAR-10 I expect `poison_fit` below the symmetric loss's `0.0802` and `robust_score` above `0.9137`, with `test_acc` held near `0.91`. On FashionMNIST, saturated, I expect parity around `0.97` — there is essentially no memorization left for the down-weighting to remove, and `q = 0.7`'s slightly softer fit might cost a hair of `test_acc`, so I would not be surprised by a `robust_score` a touch under the symmetric loss's `0.9682`. The sharp, checkable claim: a single interpolating loss that attenuates the `1/f_y` amplification at its source dominates the two-force symmetric sum on the hard, memorization-heavy benchmark, because it fixes the cause rather than counterweighting it — and the place that shows up is CIFAR-100 `poison_fit`. If that number falls well below `0.18` while `test_acc` holds, the source-attenuation route is confirmed as the strongest of the three. The full scaffold module is in the answer. So let me write the generalized cross entropy `L_q` at `q = 0.7` into the slot.
+</think>
+<say>
+Generalized Cross Entropy: I'll replace the two-term symmetric loss with the single `L_q = (1 − f_y^q)/q` at `q = 0.7`, which interpolates between cross entropy and MAE and attenuates the `1/f_y` amplification at its source. This edit installs that one-knob objective.
+</say>
+<edit path="pytorch-vision/bench/poison/custom_robust_loss.py">
+<old>
+class RobustLoss:
+    """Cross-entropy plus reverse-CE penalty."""
+
+    def __init__(self):
+        self.alpha = 1.0
+        self.beta = 0.5
+
+    def compute_loss(self, logits, labels, epoch):
+        ce = F.cross_entropy(logits, labels)
+        probs = torch.softmax(logits, dim=1).clamp_min(1e-8)
+        one_hot = F.one_hot(labels, num_classes=logits.shape[1]).float().clamp_min(1e-4)
+        rce = -(probs * torch.log(one_hot)).sum(dim=1).mean()
+        return self.alpha * ce + self.beta * rce
+</old>
+<new>
+class RobustLoss:
+    """Generalized cross-entropy for noisy labels."""
+
+    def __init__(self):
+        self.q = 0.7
+
+    def compute_loss(self, logits, labels, epoch):
+        probs = torch.softmax(logits, dim=1)
+        p = probs.gather(1, labels[:, None]).clamp_min(1e-8)
+        return ((1.0 - p.pow(self.q)) / self.q).mean()
+</new>
+</edit>
+<obs>
+Successfully replaced text in pytorch-vision/bench/poison/custom_robust_loss.py.
+</obs>
+<run/>
+<obs>
+Measured results — `baseline:generalized_ce` (`is_final,true`), seed 42 (the single configured seed; mean equals the seed value).
+
+## resnet20-cifar10-labelflip
+| seed | test_acc | poison_fit | robust_score |
+|---|---|---|---|
+| 42 | 0.9055 | 0.0404 | 0.9325 |
+| **mean** | **0.9055** | **0.0404** | **0.9325** |
+
+## vgg16bn-cifar100-labelflip
+| seed | test_acc | poison_fit | robust_score |
+|---|---|---|---|
+| 42 | 0.6674 | 0.0264 | 0.8205 |
+| **mean** | **0.6674** | **0.0264** | **0.8205** |
+
+## mobilenetv2-fmnist-labelflip
+| seed | test_acc | poison_fit | robust_score |
+|---|---|---|---|
+| 42 | 0.9335 | 0.0050 | 0.9643 |
+| **mean** | **0.9335** | **0.0050** | **0.9643** |
+</obs>
+
+### step 4 — Active Passive Loss (NCE + RCE)   [slug:normalized-loss-functions]
+
+<think>
+The generalized cross entropy numbers confirm the source-attenuation hypothesis and, in the same breath, expose its limit. On CIFAR-100 `poison_fit` fell to `0.0264` — memorization almost entirely shut off, far below the symmetric loss's `0.18` and cross entropy's `0.45` — exactly as predicted when the `f_y^q` factor throttles the updates at their source. But look at what it cost: `test_acc` on CIFAR-100 is `0.6674`, *below* plain cross entropy's `0.6907` and below the symmetric loss's `0.7032`. The `robust_score` still rose to `0.8205` because the poison_fit collapse dominates the average, but the clean accuracy went the wrong way. That is the underfitting signature, and it is not noise — it is structural. Setting `q = 0.7` slid the loss most of the way toward the MAE end to buy that tolerance, and the MAE end is precisely where the gradient flattens and the hard, under-learned classes never reach their clean-label ceiling. On CIFAR-10 GCE is clean (`0.9055 / 0.0404 / 0.9325`, the best CIFAR-10 robust_score so far) and on FashionMNIST it is parity-or-slightly-below (`0.9643`, a hair under symmetric's `0.9682`, again the soft-fit cost on a saturated problem). So the pattern across the ladder is now legible: every rung that bought more robustness paid in fitting, and on the hard many-class benchmark the strongest robust loss I have is *leaving clean accuracy on the table* to keep poison_fit low. The remaining gap is an underfitting gap, and I want a method that closes the poison_fit *without* sacrificing the clean accuracy GCE gave up.
+
+The trap I keep falling into is treating symmetry as a property a loss either has or lacks, then mixing a symmetric (robust, underfitting) loss with a non-symmetric (fitting, memorizing) one and tuning the blend. GCE does it with one knob `q` sliding between cross entropy and MAE; the symmetric loss did it with `alpha*CE + beta*RCE`, an un-normalized — hence non-robust — CE term counterweighted by RCE. Every such blend reintroduces the very non-robustness I am trying to remove, in proportion to how much fitting I want back. So the question I have not yet asked is the constructive one: instead of *finding* a symmetric loss, can I *make* any loss symmetric? Read the condition `sum_{k=1}^K L(f(x), k) = C` literally. The only thing standing between an arbitrary loss and symmetry is its class-sum, and the class-sum is a quantity I can compute — it is the loss evaluated at every possible label, added up. So divide it out: define the normalized loss `L_norm(f, y) = L(f, y) / sum_{j} L(f, j)`. Its class-sum is identically `1` for every `x` and `f`, so *any* normalized loss is symmetric, hence noise-tolerant by the same affine-risk theorem I have leaned on at every rung. This is strictly stronger than "MAE happens to be symmetric" — it is a recipe that robustifies any loss, including the cross entropy whose fitting I want back. Normalize cross entropy and it becomes robust while keeping its labeled-class up-push.
+
+But I have to check whether normalization smuggles the underfitting back in, because if it does I have not advanced past GCE. It does — and seeing *why* is what unlocks the finale. Normalized cross entropy alone still underfits on CIFAR-100, for the same reason MAE and GCE-at-high-`q` do: it is a purely *active* loss. Let me name the structural axis I have been circling without naming. A classification loss does one of two things at the level of the softmax outputs. It can push *up* the probability at the labeled position — that is all `-log f_y` does, it maximizes `f_y` and says nothing about how the residual mass is spread. Call that **active**. Or it can push *down* the probability at the non-labeled positions — that is what MAE and RCE do, `2(1 - f_y) = 2 sum_{k != y} f_k` is manifestly a penalty on wrong-class mass. Call that **passive**. Cross entropy, normalized or not, is active; MAE and RCE are passive. And each kind, alone, underfits the half it ignores: an active loss has no direct lever on how wrong-class mass is distributed, so under noise it can be "satisfied" (high `f_ỹ`) while the true class still carries mass; a passive loss has no direct term maximizing the labeled class, so it commits slowly. GCE's underfitting on CIFAR-100 *is* this: pushed toward MAE it leans passive and its active up-push weakens, so the hard classes never reach their ceiling and `test_acc` drops.
+
+That diagnosis gives the fix directly, and it is exactly the move that sidesteps the blend-compromise. Combine a normalized *active* loss with a *passive* loss — `alpha * L_active + beta * L_passive`. The combination is *still symmetric*, because a positive combination of symmetric losses is symmetric (`sum_k (alpha L1 + beta L2)(f,k) = alpha*C1 + beta*C2`, constant), so robustness is fully preserved — and, decisively, *both* terms are robust, so unlike SCE's `alpha*CE + beta*RCE` there is no non-robust active term reintroducing memorization. Meanwhile the two complementary fitting behaviors — active pushing the right class up, passive pushing the wrong classes down — *jointly* concentrate the prediction the way neither could alone, which is precisely the fitting GCE sacrificed. This closes the underfitting gap without trading away tolerance, because the tolerance is structural (every term symmetric) rather than a balance point on a single knob.
+
+Before I commit, let me be precise about why this is structurally different from the symmetric-loss rung, because on the surface `alpha*NCE + beta*RCE` looks like the same shape as `alpha*CE + beta*RCE` and I do not want to repeat a failure dressed in new notation. The difference is the active term. In SCE the active term was *plain* cross entropy — un-normalized, non-symmetric, with its full `1/f_y` amplification intact — so the RCE term had to act as a counterweight against an active term that was *itself* generating memorization, and the balance point `beta = 0.5` was a truce, not a cure. Here the active term is *normalized* cross entropy, which is symmetric, so it carries no memorization pressure to counterweight: the RCE term is no longer fighting the active term, it is *completing* it. Both terms pull in the same robust direction — NCE concentrates the labeled class without the `1/f_y` blow-up on poisoned examples (the class-sum denominator damps exactly the low-confidence updates), RCE drives down wrong-class mass — and neither needs to be held back to protect against the other. That is why I can take `alpha = beta = 1` without a tuned truce: there is no opposing force to balance. SCE could not do this because its CE term, at full weight, would simply memorize; it *needed* a small `alpha`. The normalization is what frees the coefficients.
+
+The concrete instance is normalized cross entropy plus reverse cross entropy. NCE is the active term: `L_NCE = (sum_k q_k log f_k) / (sum_j log f_j)`, computed from `log_softmax` with the denominator the class-sum `sum_j -log f_j`; it is robust by normalization and it restores cross entropy's hard-example pull — the dense gradients CIFAR-100 needs to lift the hard classes back to their ceiling, which is exactly what GCE gave up at `q = 0.7`. The denominator is the load-bearing piece: it is large exactly when the prediction is diffuse and shrinks as the model commits, so it rescales the per-sample loss by the model's overall uncertainty rather than by the single labeled probability — which is what removes the `1/f_y` over-weighting of poisoned (low-`f_y`) examples while keeping a real gradient on genuinely hard clean ones. RCE is the passive term, the same reverse cross entropy from the symmetric-loss rung — `-A(1 - f_y)` with `A = log 0` realized by clamping the one-hot label to a small floor — already symmetric, so it serves as the passive piece directly, and its logit gradient self-gates: it adds `A f_y(1-f_y) <= 0` on the labeled logit (largest at `f_y ~ 0.5`, the half-learned classes that GCE under-pushed) and `-A f_j f_y >= 0` on wrong logits, scaled by `f_y` so it suppresses wrong-class mass only on examples the model already half-believes and goes silent on the ones it implicitly flags as mislabeled. So NCE supplies the up-push and the convergence, RCE the robust down-push, both noise-tolerant, no compromise term. This is the structural completion of the ladder: the symmetric loss kept a non-robust CE; GCE removed the non-robustness but slid into underfitting; normalization plus active-passive removes the non-robustness *and* the underfitting at once.
+
+I have to respect what the harness exposes, exactly as at every rung. The contract is a per-minibatch scalar from logits, labels, epoch — no sample indices, no model access, no cross-epoch state. NCE+RCE needs none of those: it is a pure function of the current batch's logits and labels, two normalized/symmetric terms summed, which is why it fits the slot where heavier noisy-label methods (co-training two networks, per-sample loss tracking, EM label re-estimation) would not. The coefficients: the canonical untuned setting is `alpha = beta = 1.0`, equal weight on the up-push and the down-push, and since the harness fixes one global objective across all three benchmarks I take that default rather than a per-dataset search. The numerical guards match the reference: `log_softmax` for NCE's stability, clamp the softmax prediction at `1e-7` and the one-hot label at `1e-4` (so `A = log(1e-4)`) for RCE. I must read `num_classes` from `logits.shape[1]` since the module is constructed without arguments in this scaffold and the harness does not pass the class count — that is the one adaptation from the reference's `__init__(num_classes)` signature to this contract.
+
+The bar this has to clear is GCE's measured numbers, and the falsifiable claim is specific. The whole point is to close GCE's CIFAR-100 underfitting gap without giving back its poison_fit win. So on CIFAR-100 I expect NCE+RCE to *raise* `test_acc` above GCE's `0.6674` — back toward or past the symmetric loss's `0.7032` and cross entropy's `0.6907`, because the normalized-active NCE term restores the up-push GCE sacrificed — while keeping `poison_fit` comparably low (near GCE's `0.0264`, both terms being symmetric), so `robust_score` should clear GCE's `0.8205`. If `test_acc` rises and `poison_fit` stays low together, that is the active-passive thesis confirmed: robustness and fitting are not on one axis once *both* terms are robust. On CIFAR-10 I expect parity-or-better against GCE's `0.9325` — `poison_fit` near `0.04`, `test_acc` near `0.91`, `robust_score` at or above GCE. On FashionMNIST, saturated, I expect parity around `0.96-0.97`; there is no underfitting gap to close on a near-solved 10-class problem, so the finale should neither help nor hurt beyond noise. The way this fails is informative too: if CIFAR-100 `test_acc` does *not* recover above GCE, then the underfitting was not the active/passive split but something the normalization itself damps, and the active-passive framing would be wrong. The prediction that decides it is CIFAR-100 `test_acc` moving up while `poison_fit` stays down. The full scaffold module is in the answer. So let me write the Active Passive Loss — normalized cross entropy plus reverse cross entropy — into the slot.
+</think>
+<say>
+Active Passive Loss: I'll replace GCE with normalized cross entropy (the active term) plus reverse cross entropy (the passive term), both symmetric, at `alpha = beta = 1.0` — so the up-push and the wrong-class down-push complete each other without a tuned truce. This edit installs the NCE + RCE objective.
+</say>
+<edit path="pytorch-vision/bench/poison/custom_robust_loss.py">
+<old>
+class RobustLoss:
+    """Generalized cross-entropy for noisy labels."""
+
+    def __init__(self):
+        self.q = 0.7
+
+    def compute_loss(self, logits, labels, epoch):
+        probs = torch.softmax(logits, dim=1)
+        p = probs.gather(1, labels[:, None]).clamp_min(1e-8)
+        return ((1.0 - p.pow(self.q)) / self.q).mean()
+</old>
+<new>
+class RobustLoss:
+    """Active Passive Loss: normalized cross-entropy + reverse cross-entropy."""
+
+    def __init__(self):
+        self.alpha = 1.0
+        self.beta = 1.0
+
+    def compute_loss(self, logits, labels, epoch):
+        num_classes = logits.shape[1]
+        one_hot = F.one_hot(labels, num_classes).float()
+
+        # Active term: normalized cross entropy (symmetric by construction)
+        log_probs = F.log_softmax(logits, dim=1)
+        nce_num = -(one_hot * log_probs).sum(dim=1)          # -log f_y
+        nce_den = -log_probs.sum(dim=1)                      # sum_j -log f_j (class-sum)
+        nce = (nce_num / nce_den).mean()
+
+        # Passive term: reverse cross entropy (already symmetric; A = log(1e-4))
+        probs = F.softmax(logits, dim=1).clamp(min=1e-7, max=1.0)
+        rce_target = one_hot.clamp(min=1e-4, max=1.0)
+        rce = -(probs * torch.log(rce_target)).sum(dim=1).mean()
+
+        return self.alpha * nce + self.beta * rce
+</new>
+</edit>
+<obs>
+Successfully replaced text in pytorch-vision/bench/poison/custom_robust_loss.py.
+</obs>

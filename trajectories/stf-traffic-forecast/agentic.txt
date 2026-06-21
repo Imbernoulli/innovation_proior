@@ -1,0 +1,2275 @@
+<meta task="stf-traffic-forecast" domain="Time series" file="BasicTS/custom_model.py" model_format="qwen3" edit_tool="str_replace"/>
+
+<system>
+You are a research engineer improving a model on a fixed ML task. You work by editing the model code and running experiments. Think carefully before each change. You have these tools:
+- str_replace(path, old_str, new_str): replace the unique occurrence of old_str with new_str.
+- create(path, file_text): create a new file.
+- run_experiment(): train + evaluate the current code under the fixed budget; returns metrics.
+Make one tool call at a time. After editing, call run_experiment() to measure your method.
+</system>
+
+<user>
+## Research question
+
+What modular spatial-temporal forecasting component generalizes across traffic-sensor networks of
+different sizes and modalities — speed on METR-LA (207 sensors) and PEMS-BAY (325 sensors), flow on
+PEMS04 (307 sensors) — under one fixed 12-step → 12-step horizon and one common evaluation protocol?
+The single thing being designed is the architecture inside `Custom` — the map from a length-12 window
+of all `N` nodes to the next 12 steps for every node. Everything else (the data pipeline, the loss, the
+optimizer, the schedule) is frozen. The point is not to win one dataset but to find the component whose
+forecasting skill survives the change of network size and the change of measured quantity.
+
+## Prior art before the first rung (the forecasting lineage)
+
+The first rung reacts to the recent history of *long-horizon* forecasters, which is a sequence of
+ever-more-elaborate Transformers — and one embarrassing result that called the whole elaboration into
+question. These are the methods the ladder climbs out of; each is named with the gap it leaves.
+
+- **Vanilla Transformer for forecasting (Vaswani et al. 2017, applied to TSF).** A token per timestamp,
+  self-attention over time, an autoregressive decoder emitting the horizon one step at a time. Gap:
+  attention is `O(L²)` over the sequence length, and the autoregressive decoder accumulates error over a
+  long horizon — exactly the regime it must handle.
+- **Informer (Zhou et al., AAAI 2021).** ProbSparse attention (`O(L log L)`) plus a generative decoder
+  that emits the whole horizon in one pass (direct multi-step). Gap: it changed *both* the attention and
+  the forecasting strategy at once, so the reported gain is not attributable to either; still a
+  high-capacity attention stack whose use of temporal order is unverified.
+- **Autoformer (Xu et al., NeurIPS 2021).** A moving-average `series_decomp` block (trend = moving
+  average, seasonal = residual) wired throughout the network, with an Auto-Correlation mechanism over
+  the FFT-found dominant lags. Gap: it bundles two reusable ideas (decomposition, direct multi-step)
+  with a still-complex sequence model and never isolates how much accuracy comes from which.
+- **FEDformer / Pyraformer (Zhou et al. ICML 2022; Liu et al. ICLR 2022).** Frequency-domain attention
+  with a mixture of decomposition kernels; pyramidal `O(L)` multi-scale attention. Gap: the same
+  pattern — each more intricate, each a new best, each leaving open whether the intricate part is doing
+  the work, and each not improving when handed a longer look-back, the fingerprint of a model that is
+  not really using long-range temporal structure.
+
+A common thread: the non-Transformer baselines these papers beat were iterated multi-step forecasters
+that compound error over long horizons, so "Transformer wins" was confounded with "direct multi-step
+wins." The first rung exists to strip that confound to the bone.
+
+## The fixed substrate
+
+A BasicTS training pipeline is frozen and must not be touched: per-dataset Z-score normalization,
+sliding-window sampling of (12-in, 12-out) pairs, a masked loss and masked metrics (missing values are
+encoded as `0.0` and excluded from both loss and metrics), inverse transform back to original scale
+before scoring, Adam with `lr=2e-3`, `weight_decay=1e-4`, `MultiStepLR(milestones=[1,50,80], gamma=0.5)`
+for 100 epochs at batch size 64, with gradient clipping. Only `lr` and `weight_decay` may be overridden
+per method (epochs, batch size, scheduler, clipping are fixed). The loop also exposes a small toolbox a
+method may import from `basicts.modules` — `MLPLayer`/`ResMLPLayer`, `RevIN`/`LayerNorm`, sequence
+embeddings, a `MultiHeadAttention`/`Encoder`, and common activations — and six read-only reference
+models in `basicts/models/` (SOFTS, DLinear, StemGNN, iTransformer, TimesNet, TimeMixer) as context.
+
+## The editable interface
+
+Exactly one region is editable — the `CustomConfig` dataclass and the `Custom` `nn.Module` in
+`custom_model.py` (and the `CONFIG_OVERRIDES` dict at the bottom, for `lr`/`weight_decay` only). The
+contract is one forward method:
+
+```python
+def forward(self, inputs: torch.Tensor, inputs_timestamps: torch.Tensor) -> torch.Tensor:
+    # inputs:            [batch_size, input_len=12, num_features]   # num_features = number of nodes
+    # inputs_timestamps: [batch_size, input_len=12, 2]             # [time-of-day, day-of-week] in [0,1]
+    # returns:           [batch_size, output_len=12, num_features] # next-hour prediction per node
+```
+
+`CustomConfig` extends `basicts.configs.BasicTSModelConfig` with at least `input_len`, `output_len`,
+`num_features`. Every method on the ladder is a fill of this same contract. The starting point is the
+scaffold default — a zero predictor that does nothing — and each method replaces exactly the
+`CustomConfig` + `Custom` definitions (and optionally `CONFIG_OVERRIDES`).
+
+```python
+# EDITABLE region of custom_model.py — default fill (no model: predicts zeros)
+import torch
+import torch.nn as nn
+from dataclasses import dataclass, field
+from basicts.configs import BasicTSModelConfig
+
+
+@dataclass
+class CustomConfig(BasicTSModelConfig):
+    input_len: int = field(default=12)
+    output_len: int = field(default=12)
+    num_features: int = field(default=207)
+    hidden_size: int = field(default=64)
+    num_layers: int = field(default=2)
+    dropout: float = field(default=0.1)
+
+
+class Custom(nn.Module):
+    """Default baseline: no spatial-temporal model; returns zeros."""
+
+    def __init__(self, config: CustomConfig):
+        super().__init__()
+        self.input_len = config.input_len
+        self.output_len = config.output_len
+        self.num_features = config.num_features
+
+    def forward(self, inputs: torch.Tensor, inputs_timestamps: torch.Tensor) -> torch.Tensor:
+        batch_size = inputs.shape[0]
+        return torch.zeros(batch_size, self.output_len, self.num_features, device=inputs.device)
+
+
+# CONFIG_OVERRIDES: override training hyperparameters (allowed keys: lr, weight_decay).
+CONFIG_OVERRIDES = {}
+```
+
+## Evaluation settings
+
+Three datasets spanning size and modality — **METR-LA** (207 speed sensors, Los Angeles),
+**PEMS-BAY** (325 speed sensors, Bay Area), **PEMS04** (307 flow sensors, Caltrans D4) — each trained
+and tested by the fixed BasicTS pipeline at `input_len=12`, `output_len=12`. Three metrics, **all lower
+is better**, computed in original scale after inverse transform with the missing-value mask applied:
+**MAE**, **RMSE**, **MAPE**. The headline ranking metric is MAE.
+
+The editable model code is in `BasicTS/custom_model.py`:
+```python
+# CONFIG_OVERRIDES: override training hyperparameters for your method.
+# Allowed keys: lr, weight_decay.
+CONFIG_OVERRIDES = {}
+```
+Improve it. Derive your method, edit the code, then run_experiment().
+</user>
+
+### step 1 — DLinear (decomposition-linear)   [slug:dlinear]
+
+<think>
+The model is the whole point, and with the scaffold default returning zeros there is nothing to react to yet — so the floor I start from is the simplest thing that could possibly forecast at all, and the question is what "simplest" should mean here. The lineage I inherit is a stack of ever-more-elaborate temporal Transformers, each beating the last on long-horizon benchmarks, and one result that makes me distrust the whole trajectory: a single linear layer, with a moving-average decomposition in front, beat that entire family on accuracy and on cost. If attention over the time axis were really earning its keep, a plain linear map from past to future would have no business winning. So before I reach for any spatial graph or any attention mechanism, I want to plant a flag at the bottom that tests exactly that suspicion in *this* task's harness — measure how much of the forecasting accuracy a high-capacity model would claim is actually available from an almost-trivial direct map. That flag is the right first rung because it is the weakest model that is still an honest forecaster, and everything above it has to justify its complexity against it.
+
+Let me write down what the minimal forecaster has to do. The harness hands me `inputs` of shape `[B, 12, N]` — twelve five-minute steps of every one of the `N` sensors — and wants `[B, 12, N]`, the next twelve steps for every sensor, in one shot. No recursion, no feedback loop: this is direct multi-step prediction, which already removes the error-accumulation disease that the iterated baselines in the lineage suffer over a long horizon. The absolute floor of a direct multi-step map is a single affine map along the time axis, applied independently per node: each future step is a learned weighted sum of the twelve past steps of that same node. For one node, `x̂ = W x` with `W` a `12 × 12` matrix; row `t` says how to combine the twelve observed values into the `t`-th predicted value. One linear layer along time. That is the entire model class I want to start in.
+
+I should make sure this minimal thing is not trivially crippled before I take it as the floor. The reflex objection is "it is linear, it cannot model traffic." But consider what a single linear row actually expresses on a traffic series. If the series has a period — and traffic is almost defined by its daily and weekly rhythm — then a future value is, to first order, well predicted by the value one period back in the look-back, and a row of `W` can place its weight exactly on that lag. If the series has a slow drift — congestion building over the look-back window — then a future value is well predicted by an extrapolation of recent values, which is again a weighted difference, a linear functional of the past. Periodicity and trend are exactly the two structures a linear temporal map captures naturally, because both are, at heart, "the future is a fixed linear functional of the recent past." And long-horizon forecasting is only feasible at all for series that *have* relatively clear trend and periodicity; a genuinely chaotic series is not predictable by anything. So if the only forecastable structure in this regime is trend plus periodicity, and a linear map captures both, then a linear map should already reach most of what is forecastable — and a high-capacity nonlinear model risks fitting noise that does not cross the train/test boundary. There is also a structural nicety: every input step connects directly to every output step with a learned weight, so the signal path from any past observation to any future prediction is length one. No recurrence to forget through, no attention bottleneck; the long-range dependency lives in the weight matrix itself.
+
+Now I run the bare linear map against the one structure I know will bite it, because that is where the second piece of the model comes from. Picture a traffic series as a big slow congestion ramp with a smaller daily oscillation riding on top. A single `W` now has to fit both at once, and these two structures want very different weight patterns: the trend wants weights that extrapolate a smooth drift, broadly spread across the look-back; the seasonality wants weights sharply concentrated at the periodic lags. Worse, the trend component is large in magnitude and the oscillation is small, so under a squared-error fit the trend dominates the gradient — `W` spends itself getting the loud ramp roughly right and under-fits the quiet oscillation that carries the fine structure. One weight matrix is being asked to be two different filters, and the loss makes it prioritize the loud one. The remedy is the oldest move in time-series analysis: seasonal-trend decomposition. Estimate the trend by a moving average of the window, take the residual as the seasonal part, and give *each* its own linear map, then sum. Now the trend stream is the smooth ramp and the seasonal stream is the oscillation around it, separated and on comparable footing, each linear map free to specialize and neither's gradient swamped by the other's magnitude.
+
+I want to be honest with myself that this does not betray the whole point by sneaking in capacity. Is decomposition-plus-two-linears still a linear model? The moving average is itself a linear operator, and two linear maps plus a sum are affine, so end to end the model is still a single affine map from input to output — I have added no representational capacity in the function-class sense. What I have added is *conditioning*: the decomposition is a fixed, parameter-free reparameterization that separates the loud trend from the quiet seasonality so that gradient descent on the squared error can fit each well, instead of letting the trend's magnitude dominate. It is preconditioning, not depth — the same solution set, far better-behaved learning — and it pays off precisely when there is a clear trend, which is the case the bare linear map handles worst. That keeps the rung honest: it is still the embarrassingly-simple baseline, only well-posed.
+
+The moving-average details decide the boundary behavior, so let me pin them down. I want the trend to be an average pool over a sliding window of size `k`, stride 1, producing a trend the same length as the input — which means I must pad, because a stride-1 pool over length `L` with kernel `k` yields `L − k + 1` outputs. Zero-padding would drag the trend toward zero at the two ends, creating spurious dips exactly where I have least information; that is the wrong boundary behavior for a level signal. Replicate-padding instead — extend the front and back with copies of the boundary values — so the moving average at the edge just sees more of the edge value and the trend stays flat-but-faithful there. With the harness fixing `input_len = 12`, the kernel cannot be the long `k = 25` that the original decomposition block uses on hourly data, because that exceeds the window; a kernel near the window length still smooths sub-window wiggles into a trend while leaving a meaningful seasonal residual, so I keep `k = 25` as the configured field but understand it is clamped by the short window in practice — the decomposition still separates a smoother component from a residual, which is all the conditioning argument needs.
+
+One more decision falls out: shared weights across nodes, or one linear pair per node? Within a single traffic dataset the sensors share temporal dynamics — every loop on the highway has the same daily and weekly rhythm — so a single `W` shared across nodes encodes that prior and slashes the parameter count from `N · 12 · 12` to `12 · 12`, which matters for overfitting on the smaller networks and, more importantly here, makes the model size *independent of `N`*. That is exactly the generalization property the research question asks for: the same component must work on 207, 325, and 307 nodes, and a node-shared linear map is the one that does not have to relearn its size per dataset. So I deliberately model no cross-node (spatial) correlation at all at this rung. That is a real choice and a real gap: traffic genuinely couples across sensors — congestion on one segment shows up downstream minutes later — and a node-independent model throws that coupling away. But that is the *point* of the floor: it measures how far pure per-node temporal extrapolation gets, so that every spatial mechanism above it has a clean number to beat.
+
+Concretely in the edit surface, the model decomposes `inputs` once into seasonal and trend (each `[B, 12, N]`), transposes so the time axis is last (`[B, N, 12]`), runs the seasonal linear and the trend linear (each `Linear(12, 12)`, shared across nodes), sums, and transposes back to `[B, 12, N]`. No timestamps are used — the decomposition reads periodicity straight off the values — and no `CONFIG_OVERRIDES` are needed, so the model trains under the harness's default `lr = 2e-3`, `weight_decay = 1e-4`. The full scaffold module is in the answer.
+
+Now reason about what this floor must do, because that is the entire reason to run it. The model ascends a direct-multi-step squared error built per node from its own twelve-step history; it has no mechanism to borrow from neighboring sensors and no nonlinearity beyond the parameter-free split. Where a node's near future is well-explained by its own recent trend and its daily phase, the linear map will do respectably — traffic is periodic enough that "twelve steps ahead from twelve steps back, per sensor" is a real signal. Where the near future depends on *another* sensor's recent state — a shockwave propagating in from upstream that the node itself has not yet felt — the linear map is blind, and that is precisely the regime spatial models are built for. So I expect this rung to be the weakest across all three datasets by construction, and I expect the gap to the spatial models to be *largest* on the dataset where cross-node propagation matters most. That falsifiable expectation is the whole reason to plant the flag here: if a graph or an inverted-attention model does not clearly beat node-independent linear extrapolation, its spatial machinery is not earning its keep. So let me write the decompose-and-two-linears floor in.
+</think>
+<say>
+Starting the ladder at the floor: DLinear, a decomposition-linear forecaster. This edit replaces the zero-predictor with a moving-average trend/seasonal split and one shared linear map per component, applied per node.
+</say>
+<edit path="BasicTS/custom_model.py">
+<old>
+# CONFIG_OVERRIDES: override training hyperparameters for your method.
+# Allowed keys: lr, weight_decay.
+CONFIG_OVERRIDES = {}
+</old>
+<new>
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+from dataclasses import dataclass, field
+from basicts.configs import BasicTSModelConfig
+
+
+@dataclass
+class CustomConfig(BasicTSModelConfig):
+    input_len: int = field(default=12)
+    output_len: int = field(default=12)
+    num_features: int = field(default=207)
+    moving_avg: int = field(default=25)
+
+
+class Custom(nn.Module):
+    """DLinear: Decomposition-Linear baseline.
+
+    Decomposes input into trend (moving average) and seasonal (residual),
+    then projects each component independently to the prediction horizon.
+    """
+
+    def __init__(self, config: CustomConfig):
+        super().__init__()
+        self.input_len = config.input_len
+        self.output_len = config.output_len
+        k = config.moving_avg
+        self.pad_left = (k - 1) // 2
+        self.pad_right = k // 2
+        self.avg_pool = nn.AvgPool1d(k, stride=1)
+        self.linear_seasonal = nn.Linear(config.input_len, config.output_len)
+        self.linear_trend = nn.Linear(config.input_len, config.output_len)
+
+    def _decompose(self, x):
+        # x: [B, T, N] -> trend via moving average, seasonal = x - trend
+        padded = F.pad(x.transpose(1, 2), (self.pad_left, self.pad_right), mode='replicate')
+        trend = self.avg_pool(padded).transpose(1, 2)
+        seasonal = x - trend
+        return seasonal, trend
+
+    def forward(self, inputs, inputs_timestamps):
+        # inputs: [B, T, N]
+        seasonal, trend = self._decompose(inputs)
+        # Per-feature linear: [B, N, T] -> [B, N, T']
+        seasonal_out = self.linear_seasonal(seasonal.transpose(1, 2))
+        trend_out = self.linear_trend(trend.transpose(1, 2))
+        prediction = (seasonal_out + trend_out).transpose(1, 2)  # [B, T', N]
+        return prediction
+</new>
+</edit>
+<obs>
+Successfully replaced text in BasicTS/custom_model.py.
+</obs>
+<run/>
+<obs>
+Measured results — `baseline:dlinear` (`is_final,true`), seed 42.
+
+## METR-LA
+| seed | MAE | RMSE | MAPE |
+|---|---|---|---|
+| 42 | 4.059874 | 7.887578 | 0.111688 |
+
+## PEMS-BAY
+| seed | MAE | RMSE | MAPE |
+|---|---|---|---|
+| 42 | 2.133391 | 4.983817 | 0.047325 |
+
+## PEMS04
+| seed | MAE | RMSE | MAPE |
+|---|---|---|---|
+| 42 | 28.474756 | 44.683695 | 0.332860 |
+</obs>
+
+### step 2 — TimeMixer (decomposable multiscale mixing)   [slug:timemixer]
+
+<think>
+The linear floor told me exactly what one resolution at one scale leaves on the table, and it told me in numbers. DLinear landed MAE 4.0599 on METR-LA, 2.1334 on PEMS-BAY, 28.4748 on PEMS04 — respectable for a model that is, end to end, a single affine map per node, which already confirms the floor's premise: most of the forecastable structure on these roads is trend plus daily phase, and a node-shared linear map reaches it. But look at *where* it sits relative to nothing-fancy expectations. On PEMS04, the flow dataset, 28.47 MAE is the worst of the three by a wide margin in relative terms; flow is spikier and less smoothly periodic than speed, and a single moving-average split at the native five-minute resolution cannot separate the commute-spike structure from the slow daily drift cleanly when both live in a twelve-step window. That is the tell I want to chase. DLinear decomposes once, at one resolution, with one kernel. The residual it cannot reach is the structure that only becomes legible when you look at the same series at a *different* temporal scale — and that is a gap I can attack while staying almost as cheap as the linear floor, before I spend any capacity on cross-node coupling.
+
+Here is the stubborn observation that drives the next rung. The same road, sampled every five minutes, shows a sharp commute spike twice a day. Average that same road to a coarser series and the spike softens into weekday-versus-weekend structure; average further and even that washes out, leaving only a slow seasonal drift. It is one physical process, but it *presents a completely different pattern at each sampling scale*, because averaging is a low-pass filter — it kills high frequencies and keeps low ones — so as I climb a downsampling ladder the dominant content slides monotonically from microscopic detail to macroscopic structure. DLinear's single decomposition cuts season from trend at one resolution and calls it done; nobody on the floor is cutting along the *scale* axis itself. Fine and coarse views are not redundant copies of one series — they are genuinely different, complementary descriptions of it, and the linear floor throws all but one away. On PEMS04, where the fine-scale spike and the coarse-scale drift are both strong and tangled in twelve steps, that is exactly the lost structure I suspect is costing the 28.47.
+
+And there is a second thing, specific to forecasting, that sharpens this. The next hour of traffic depends *jointly* on the immediate five-minute momentum and on the slow drift of the day. A predictor built off the fine view and a predictor built off the coarse view do not just see different inputs — they have different *skills*: the fine one is good at the next few high-frequency wiggles, the coarse one at the slow drift. If that is true, then collapsing everything to one representation before the prediction head — which even the linear floor does, implicitly, by running one map on one resolution — is the wrong move, because it merges the skills before I can use them separately. So the shape of the next rung is forced: build the series at several scales, mix across scales while keeping them separate, then predict from each scale and combine the forecasts.
+
+How do I make the scales? I want a ladder `x_0, x_1, x_2` where `x_0` is the raw twelve-step input and each step is coarser. The cheapest honest coarsening of a time series is averaging consecutive chunks — the low-pass-then-decimate I already invoked — so `x_{m+1}` is an average pool of `x_m` with window 2, halving length and resolution at each step. I deliberately use a parameter-free average pool rather than a learned strided convolution: a coarsener's whole job is to be a faithful change of resolution, not to bake in a learned filter that distorts what "coarse" even means before the rest of the model sees it. Max-pool is wrong here too — max tracks peaks, not the central tendency a coarse view should show. So average pooling, window 2, two downsampling layers, giving scales of length 12, 6, 3. Each scale is then embedded to `D` channels so the mixing layers have something to work with; on a many-node dataset I will embed each variate *independently* (channel-independent), which I will come back to.
+
+Now the core question: how do the scales talk to each other? The naive move is to concatenate or add the multiscale features and mix the whole stack, but that fails for the same reason the single-scale floor was incomplete — *within* each scale the signal is still a tangle of season and trend. Even the coarsest scale is not pure trend; a coarsely-averaged traffic series still carries seasonality on top of its drift. So I decompose *first, at every scale*, with the same replicate-padded moving-average split DLinear used, and mix the clean components. Inside each block, for every scale `m`, `s_m, t_m = SeriesDecomp(x_m)`. Now I have one seasonal part and one trend part per scale.
+
+The tempting move is to mix seasons across scales and trends across scales with identical machinery, but season and trend are opposite kinds of object, and that changes which direction information should flow. Take the seasonal parts. A coarse-scale season is an *aggregation* of finer seasons — the weekly cycle is literally several daily cycles stacked — so the detail that defines a coarse seasonal pattern actually lives down in the fine scale. For seasonality I therefore push information *upward*, fine → coarse, supplementing each coarser season with detail from below: walking `m` from fine to coarse, `s_m = s_m + BottomUpMixing(s_{m-1})`, where the mixing maps the finer length down to the coarser length. Now the trends, and the asymmetry is the whole point. For trend, fine-scale detail is the *enemy* — the wiggles I want to keep for season are exactly the noise I want to suppress when estimating a slow drift — so the clean read on the trend comes from the coarse scale, and information should flow the other way, coarse → fine: walking `m` from coarse to fine, `t_m = t_m + TopDownMixing(t_{m+1})`, mapping the coarser length up to the finer length. I can check this is not a pretty story by imagining the reversed assignment: mixing season top-down would pour the detail-poor coarse view onto the fine scale and smear out the microscopic seasonal information that *was* the fine scale's value; mixing trend bottom-up would inject fine wiggles into the coarse trend, the exact noise its cleanliness depended on. Both reversed directions attack what made each scale useful, so the assignment is structural, not aesthetic.
+
+The mixing primitive is a two-layer MLP with a GELU between, acting along the temporal length, not a single linear resample — because a single linear map can only rescale, whereas I want the finer season to be *transformed* into a useful supplement, and MLP-style mixing is the cheap primitive that can do more than resample. Each mix is residual, `s_m = s_m + (...)`, keeping each scale's own component and adding the cross-scale contribution rather than replacing it. After seasonal and trend mixing I recombine per scale, `out_m = s_m + t_m`, then run a small cross-channel FFN over the `D` channels (the mixing so far was all along time) with its own residual, and wrap the whole block in a residual on the original scale features. That is one Past-Decomposable-Mixing block; I stack two so repeated re-decomposition gives deeper cross-scale interaction without ballooning cost.
+
+Now the prediction, where I refuse to collapse the scales. I have mixed features at every scale, each still at its own temporal length. The conventional move takes the finest (or a merged) representation and runs one head, but my second observation said the scales have *different forecasting skills*, so I want a predictor per scale and then combine the forecasts, not the features. For each scale, one linear layer maps that scale's temporal length straight to the twelve-step horizon — the DLinear move I already know is shockingly strong — then a channel-independent projection back to one output value per node. That gives a full `[B, 12, N]` forecast from each scale alone, and the final forecast is the sum over scales: a deliberately heterogeneous ensemble where the fine predictors carry the seasonal detail and the coarse predictors carry the macro drift. Sum and average differ only by a constant the network absorbs, so I use the plain sum.
+
+Two more things the harness and the many-node setting force. First, non-stationarity: traffic level and scale drift across the window, so I standardize each input window per node — subtract its mean, divide by its std, invert on the output — and I do this *per scale*, because averaging changes the variance, so each scale deserves its own reversible instance normalization, with an affine term to re-introduce a learned level. Second, channel independence: these datasets run 207 to 325 nodes with loose coupling, and embedding all nodes jointly would overfit spurious cross-node correlations and tie the embedding width to `N`. So after per-scale normalization I reshape `[B, L_m, N]` into `[B·N, L_m, 1]`, treat every node as its own univariate sequence sharing one set of weights, run the whole multiscale stack on these independent sequences, and project back at the end. This keeps the model size independent of `N` — the same generalization property the floor had — and, like the floor, it still models *no explicit cross-node coupling*. That is the deliberate continuity with DLinear: I am upgrading the *temporal* representation from one scale to several, not yet adding spatial structure, so the comparison isolates whether multi-scale temporal modeling alone is worth its cost.
+
+A practical detail the harness exposes: this model wants a learning rate of `1e-3`, half the harness default of `2e-3`, set through `CONFIG_OVERRIDES = {'lr': 0.001}`, because the multiscale MLP stack is deeper and the default rate is unstable on it; `weight_decay` is left at the default. The full scaffold module is in the answer.
+
+So the delta from the linear floor is precise: same decompose-and-linear DNA, same channel independence, same no-spatial-coupling, but now read at three temporal scales, mix seasons bottom-up and trends top-down, and predict from every scale and sum. Reading DLinear's numbers, here is what I expect and where I am unsure. On the speed datasets (METR-LA, PEMS-BAY), where the floor was already close to the smooth periodic ceiling a per-node model can reach, I expect a modest improvement at best — multi-scale helps, but there is not much un-reached temporal structure on smooth speed series in a twelve-step window. On PEMS04, the flow dataset where the floor was relatively worst, I expect the *largest* gain, because that is exactly where the fine spike and the coarse drift are both strong and a single-scale decomposition cannot separate them — if multi-scale temporal modeling is worth anything, PEMS04 is where it should show. But I am genuinely unsure it will beat the floor by much *anywhere*, because the lookback is only twelve steps: two downsamplings leave a coarsest scale of length three, which is a thin reed to read a "macro trend" from, so the scale-axis advantage may be muted by the short window. If multi-scale temporal modeling does not clearly beat node-independent linear extrapolation here, the lost structure is on the *cross-node coupling* both rungs refuse to model, and that is what I would turn to next. Let me build the multiscale decomposable mixer and run it.
+</think>
+<say>
+Climbing to TimeMixer, a decomposable multiscale mixer that keeps DLinear's decompose-and-linear DNA but reads the series at three temporal scales. This edit swaps in the per-scale RevIN, the bottom-up season / top-down trend mixing blocks, and per-scale prediction heads, and drops the learning rate to 1e-3.
+</say>
+<edit path="BasicTS/custom_model.py">
+<old>
+    num_features: int = field(default=207)
+    moving_avg: int = field(default=25)
+
+
+class Custom(nn.Module):
+    """DLinear: Decomposition-Linear baseline.
+
+    Decomposes input into trend (moving average) and seasonal (residual),
+    then projects each component independently to the prediction horizon.
+    """
+
+    def __init__(self, config: CustomConfig):
+        super().__init__()
+        self.input_len = config.input_len
+        self.output_len = config.output_len
+        k = config.moving_avg
+        self.pad_left = (k - 1) // 2
+        self.pad_right = k // 2
+        self.avg_pool = nn.AvgPool1d(k, stride=1)
+        self.linear_seasonal = nn.Linear(config.input_len, config.output_len)
+        self.linear_trend = nn.Linear(config.input_len, config.output_len)
+
+    def _decompose(self, x):
+        # x: [B, T, N] -> trend via moving average, seasonal = x - trend
+        padded = F.pad(x.transpose(1, 2), (self.pad_left, self.pad_right), mode='replicate')
+        trend = self.avg_pool(padded).transpose(1, 2)
+        seasonal = x - trend
+        return seasonal, trend
+
+    def forward(self, inputs, inputs_timestamps):
+        # inputs: [B, T, N]
+        seasonal, trend = self._decompose(inputs)
+        # Per-feature linear: [B, N, T] -> [B, N, T']
+        seasonal_out = self.linear_seasonal(seasonal.transpose(1, 2))
+        trend_out = self.linear_trend(trend.transpose(1, 2))
+        prediction = (seasonal_out + trend_out).transpose(1, 2)  # [B, T', N]
+        return prediction
+</old>
+<new>
+    num_features: int = field(default=207)
+    hidden_size: int = field(default=64)
+    num_layers: int = field(default=2)
+    down_sampling_layers: int = field(default=2)
+    down_sampling_window: int = field(default=2)
+    dropout: float = field(default=0.1)
+    moving_avg: int = field(default=5)
+
+
+class RevIN(nn.Module):
+    def __init__(self, num_features, affine=True):
+        super().__init__()
+        self.eps = 1e-6
+        self.affine = affine
+        if affine:
+            self.weight = nn.Parameter(torch.ones(num_features))
+            self.bias = nn.Parameter(torch.zeros(num_features))
+
+    def forward(self, x, mode):
+        if mode == "norm":
+            self.mean = x.mean(dim=1, keepdim=True).detach()
+            self.stdev = torch.sqrt(x.var(dim=1, keepdim=True, unbiased=False) + self.eps).detach()
+            x = (x - self.mean) / self.stdev
+            if self.affine:
+                x = x * self.weight + self.bias
+            return x
+        else:
+            if self.affine:
+                x = (x - self.bias) / (self.weight + self.eps * self.eps)
+            return x * self.stdev + self.mean
+
+
+class MovingAvgDecomp(nn.Module):
+    def __init__(self, kernel_size):
+        super().__init__()
+        self.avg = nn.AvgPool1d(kernel_size, stride=1)
+        self.pad_left = (kernel_size - 1) // 2
+        self.pad_right = kernel_size // 2
+
+    def forward(self, x):
+        # x: [B, T, C]
+        trend = self.avg(F.pad(x.transpose(1, 2),
+                                (self.pad_left, self.pad_right),
+                                mode='replicate')).transpose(1, 2)
+        seasonal = x - trend
+        return seasonal, trend
+
+
+class MLPMixer(nn.Module):
+    '''2-layer MLP for scale mixing on the temporal dimension.'''
+    def __init__(self, in_dim, out_dim):
+        super().__init__()
+        self.fc1 = nn.Linear(in_dim, out_dim)
+        self.act = nn.GELU()
+        self.fc2 = nn.Linear(out_dim, out_dim)
+
+    def forward(self, x):
+        return self.fc2(self.act(self.fc1(x)))
+
+
+class MultiScaleSeasonMixing(nn.Module):
+    '''Bottom-up mixing: finer -> coarser scales via learned MLP.'''
+    def __init__(self, input_len, down_sampling_layers, down_sampling_window):
+        super().__init__()
+        self.down_layers = nn.ModuleList([
+            MLPMixer(
+                input_len // (down_sampling_window ** i),
+                input_len // (down_sampling_window ** (i + 1))
+            )
+            for i in range(down_sampling_layers)
+        ])
+
+    def forward(self, seasonal_list):
+        # seasonal_list[i]: [B, D, L_i] (permuted)
+        out_high = seasonal_list[0]
+        out_low = seasonal_list[1]
+        out_season_list = [out_high.permute(0, 2, 1)]
+
+        for i in range(len(seasonal_list) - 1):
+            out_low_res = self.down_layers[i](out_high)
+            out_low = out_low + out_low_res
+            out_high = out_low
+            if i + 2 <= len(seasonal_list) - 1:
+                out_low = seasonal_list[i + 2]
+            out_season_list.append(out_high.permute(0, 2, 1))
+
+        return out_season_list
+
+
+class MultiScaleTrendMixing(nn.Module):
+    '''Top-down mixing: coarser -> finer scales via learned MLP.'''
+    def __init__(self, input_len, down_sampling_layers, down_sampling_window):
+        super().__init__()
+        self.up_layers = nn.ModuleList([
+            MLPMixer(
+                input_len // (down_sampling_window ** (i + 1)),
+                input_len // (down_sampling_window ** i)
+            )
+            for i in reversed(range(down_sampling_layers))
+        ])
+
+    def forward(self, trend_list):
+        # trend_list[i]: [B, D, L_i] (permuted)
+        trend_rev = trend_list.copy()
+        trend_rev.reverse()
+        out_low = trend_rev[0]
+        out_high = trend_rev[1]
+        out_trend_list = [out_low.permute(0, 2, 1)]
+
+        for i in range(len(trend_rev) - 1):
+            out_high_res = self.up_layers[i](out_low)
+            out_high = out_high + out_high_res
+            out_low = out_high
+            if i + 2 <= len(trend_rev) - 1:
+                out_high = trend_rev[i + 2]
+            out_trend_list.append(out_low.permute(0, 2, 1))
+
+        out_trend_list.reverse()
+        return out_trend_list
+
+
+class PastDecomposableMixing(nn.Module):
+    '''Decompose each scale, mix seasonal bottom-up and trend top-down.'''
+    def __init__(self, input_len, hidden_size, down_sampling_layers,
+                 down_sampling_window, moving_avg):
+        super().__init__()
+        self.decomp = MovingAvgDecomp(moving_avg)
+        self.season_mixing = MultiScaleSeasonMixing(
+            input_len, down_sampling_layers, down_sampling_window)
+        self.trend_mixing = MultiScaleTrendMixing(
+            input_len, down_sampling_layers, down_sampling_window)
+        self.out_cross_layer = nn.Sequential(
+            nn.Linear(hidden_size, hidden_size * 4),
+            nn.GELU(),
+            nn.Linear(hidden_size * 4, hidden_size),
+        )
+
+    def forward(self, x_list):
+        seasonal_list, trend_list = [], []
+        for x in x_list:
+            seasonal, trend = self.decomp(x)
+            seasonal_list.append(seasonal.permute(0, 2, 1))
+            trend_list.append(trend.permute(0, 2, 1))
+
+        seasonal_list = self.season_mixing(seasonal_list)
+        trend_list = self.trend_mixing(trend_list)
+
+        out_list = []
+        for x, seasonal, trend in zip(x_list, seasonal_list, trend_list):
+            out = seasonal + trend
+            out = x + self.out_cross_layer(out)
+            out_list.append(out)
+        return out_list
+
+
+class Custom(nn.Module):
+    '''TimeMixer: Decomposable Multiscale Mixing baseline.
+
+    Channel-independent mode: each variate processed separately.
+    Multi-scale decomposition + Past-Decomposable Mixing across scales.
+    '''
+
+    def __init__(self, config: CustomConfig):
+        super().__init__()
+        self.num_features = config.num_features
+        self.output_len = config.output_len
+        self.down_layers = config.down_sampling_layers
+        self.down_window = config.down_sampling_window
+        D = config.hidden_size
+
+        self.down_pool = nn.AvgPool1d(config.down_sampling_window)
+
+        # Per-scale RevIN
+        self.norm_layers = nn.ModuleList([
+            RevIN(config.num_features, affine=True)
+            for _ in range(self.down_layers + 1)
+        ])
+
+        # Embedding (channel-independent: 1 feature -> D)
+        padding = 1 if torch.__version__ >= "1.5.0" else 2
+        self.embed = nn.Conv1d(1, D, kernel_size=3, padding=padding,
+                               padding_mode="circular", bias=False)
+
+        # PDM blocks (decomposition happens inside each block)
+        self.pdm_blocks = nn.ModuleList([
+            PastDecomposableMixing(
+                config.input_len, D, self.down_layers,
+                self.down_window, config.moving_avg)
+            for _ in range(config.num_layers)
+        ])
+
+        # Per-scale prediction heads
+        self.predict_layers = nn.ModuleList([
+            nn.Linear(config.input_len // (self.down_window ** i), config.output_len)
+            for i in range(self.down_layers + 1)
+        ])
+
+        # Channel-independent projection
+        self.projection = nn.Linear(D, 1)
+
+    def forward(self, inputs, inputs_timestamps):
+        # inputs: [B, T, N]
+        B, T, N = inputs.shape
+
+        # Multi-scale inputs
+        x_list = [inputs]
+        sample = inputs.permute(0, 2, 1)  # [B, N, T]
+        for _ in range(self.down_layers):
+            sample = self.down_pool(sample)
+            x_list.append(sample.permute(0, 2, 1))
+
+        # Per-scale normalization + channel independence
+        for i in range(len(x_list)):
+            x_list[i] = self.norm_layers[i](x_list[i], "norm")
+            _, Li, _ = x_list[i].shape
+            x_list[i] = x_list[i].transpose(1, 2).reshape(-1, Li, 1)  # [B*N, Li, 1]
+
+        # Embedding
+        h_list = []
+        for x in x_list:
+            h = self.embed(x.transpose(1, 2)).transpose(1, 2)  # [B*N, Li, D]
+            h_list.append(h)
+
+        # Past Decomposable Mixing (decomposition inside blocks)
+        for block in self.pdm_blocks:
+            h_list = block(h_list)
+
+        # Per-scale prediction and sum
+        pred_list = []
+        for i, h in enumerate(h_list):
+            # h: [B*N, Li, D] -> predict -> [B*N, T', D] -> project -> [B*N, T', 1]
+            p = self.predict_layers[i](h.permute(0, 2, 1)).permute(0, 2, 1)
+            p = self.projection(p)  # [B*N, T', 1]
+            p = p.reshape(B, N, self.output_len).permute(0, 2, 1)  # [B, T', N]
+            pred_list.append(p)
+
+        prediction = sum(pred_list)
+        prediction = self.norm_layers[0](prediction, "denorm")
+        return prediction
+
+
+# CONFIG_OVERRIDES: override training hyperparameters for your method.
+# Allowed keys: lr, weight_decay.
+CONFIG_OVERRIDES = {'lr': 0.001}
+</new>
+</edit>
+<obs>
+Successfully replaced text in BasicTS/custom_model.py.
+</obs>
+<run/>
+<obs>
+Measured results — `baseline:timemixer` (`is_final,true`), seeds {42, 123, 456} and mean.
+
+## METR-LA
+| seed | MAE | RMSE | MAPE |
+|---|---|---|---|
+| 42 | 3.955486 | 7.895897 | 0.109403 |
+| 123 | 3.945480 | 7.874867 | 0.109206 |
+| 456 | 3.948214 | 7.885982 | 0.109662 |
+| **mean** | **3.949727** | **7.885582** | **0.109424** |
+
+## PEMS-BAY
+| seed | MAE | RMSE | MAPE |
+|---|---|---|---|
+| 42 | 2.073621 | 4.994680 | 0.045428 |
+| 123 | 2.065462 | 4.989836 | 0.045140 |
+| 456 | 2.053295 | 4.982878 | 0.044906 |
+| **mean** | **2.064126** | **4.989131** | **0.045158** |
+
+## PEMS04
+| seed | MAE | RMSE | MAPE |
+|---|---|---|---|
+| 42 | 27.760058 | 43.236092 | 0.281865 |
+| 123 | 27.760874 | 43.257462 | 0.287589 |
+| 456 | 27.731530 | 43.142930 | 0.279121 |
+| **mean** | **27.750821** | **43.212161** | **0.282858** |
+</obs>
+
+### step 3 — StemGNN (spectral temporal graph network)   [slug:stemgnn]
+
+<think>
+The multi-scale rung answered the question I planted under it, and the answer points me off the temporal axis entirely. TimeMixer improved on the floor everywhere, but barely, and the *pattern* of the barely is the diagnosis. On METR-LA it moved MAE from 4.0599 to a tight 3.9497 mean across three seeds (3.945–3.955, std ~0.005); on PEMS-BAY from 2.1334 to 2.0641; on PEMS04 from 28.4748 to 27.7508. So multi-scale temporal modeling is worth something — and reassuringly stable across seeds, which the single-seed floor could not show me — but the gains are small, a few percent, and crucially they are *uniform* across the three datasets rather than concentrated on PEMS04 where I predicted the scale axis should pay off most. That uniformity is the tell. I expected flow data to reward multi-scale decomposition disproportionately, and it did not; the coarsest scale was a length-three reed, as I worried, and reading a macro trend off three averaged points in a twelve-step window simply does not recover much structure. So the residual that all three rungs have left on the table is not on the temporal-scale axis. Both DLinear and TimeMixer are *channel-independent by construction* — every node is its own univariate sequence, sharing weights, with no path for one sensor's recent state to inform another's future. And that is exactly the structure traffic has and these two models refuse to model: congestion on one segment shows up downstream minutes later, so node `j`'s recent past genuinely predicts node `i`'s near future. The next rung has to add cross-node coupling, because that is the only axis left with un-reached signal on it.
+
+So I am forecasting a *network* of sensors now, not a bundle of independent series. I have `N` series, twelve steps each, and the accuracy I am missing lives in the coupling between them. The natural object for cross-node structure is a graph: nodes are sensors, edge weights are correlation strengths, an adjacency `W`. But two things have to be decided before I can use one. First, where does `W` come from? The classical spatial-temporal models — the stacked graph-conv-plus-recurrent forecasters — want the road network handed to them as a prior, but the harness gives me only the value tensor `[B, 12, N]` and the timestamps; there is no adjacency in the contract. And even if I had the road graph, the physical topology may not be the structure that drives the forecast — two distant roads can behave identically at rush hour while two adjacent ones decouple at a junction. So I want the model to *learn* `W` from the data. Second, once I have a graph, how do I model both the cross-node structure and the within-node temporal structure, ideally without stapling a spatial module onto a separate time-domain temporal module the way the stacked baselines do?
+
+Take the graph-learning problem first, since everything downstream consumes `W`. I want to produce an `N × N` adjacency from the window. The principled score of how related two series are is a learned function of their temporal signatures, so I first compress each node's twelve-step history into a representation — here a GRU run over the node-indexed sequences gives each node a vector — and then score every ordered pair `(i, j)` with a learned additive attention: each node gets a scalar key and a scalar query, the pair score is `LeakyReLU(key_i + query_j)`, and a row-wise softmax turns the scores into normalized affinities. Averaging that attention over the batch gives a single shared `N × N` structure for the window rather than `B` different graphs. This is data-driven, needs no prior topology, and is interpretable — I could read off which sensors the model thinks drive which and check it against the map. That is my learned graph.
+
+Now the harder, central question: how to model both axes in *one* representation. The spatial side has a Fourier theory. For a symmetric nonnegative `W`, the normalized Laplacian `L = I − D^{-1/2} W D^{-1/2}` is real, symmetric, and positive-semidefinite, so it diagonalizes, and projecting the `N` coupled node signals onto its eigenvectors — the graph Fourier transform — rotates them into orthogonal graph modes. Low-frequency modes pick out slowly-varying components shared across strongly-connected nodes; higher modes pick out sharper contrasts. A raw node trace mixes several such components at once. So the graph Fourier view is not just a spatial mixer bolted on: it turns "`N` coupled node series" into graph-mode series that are individually *less entangled in time* and therefore easier to forecast — the cross-series interaction has been absorbed into the basis. That is the fusion the stacked baselines could not do, and it falls out of refusing to leave the spectral domain between the spatial and temporal steps.
+
+But once I am in the graph-spectral domain I still have `N` univariate mode-series with temporal structure to model, and here I use the *temporal* Fourier transform rather than handing the modes to an RNN. Traffic periodicity is real — the daily rush-hour cycle — so a basis that names frequency directly is the right place to model the temporal axis, and now both transforms act on the same representation: graph Fourier put me in the spatial-spectral basis, the DFT puts me in the temporal-spectral basis, and the temporal modeling happens *on the graph-spectral series*. I want the frequency operator to suppress noise frequencies and keep the ones carrying the sequential pattern, which is exactly a gate — a gated linear unit, `(W1 z) ⊙ σ(W2 z)`, applied to the real and imaginary parts of the DFT separately because cosine and sine content encode different information and should not share weights. DFT, gated processing on real and imaginary parts, inverse DFT: that four-step pipeline is the spectral sequential cell, the temporal learner sitting on each graph-spectral series, embedded *inside* the spectral graph convolution so the two spectral computations are fused rather than stacked.
+
+There is one wall in the honest version of this, and the task's implementation is built to climb it, so I should be explicit about what the harness keeps and what it drops. The honest graph Fourier transform needs the eigenvectors of `L`, which means eigendecomposing `L` every forward pass — `O(N³)` on a matrix that *changes* every batch because I am learning `W`, and backpropagating through `eig` on a near-singular learned Laplacian is numerically fragile. I do not want to forecast through a `torch.eig` call on a freshly-learned matrix tens of thousands of times. The escape is the ChebNet move: restrict the graph filter to a *polynomial* of the Laplacian, and the eigenvectors cancel — a polynomial in the eigenvalues conjugated by the eigenvectors is just the same polynomial in `L`, no eigendecomposition needed, only repeated matrix multiplication by `L`. A degree-`K` polynomial also localizes the filter to `K`-hop neighborhoods, which is a feature. The task's `_latent_graph` builds exactly this: it symmetrizes the learned attention (`0.5·(W + Wᵀ)`, since `L` needs a symmetric `W`), forms the normalized Laplacian with a `1e-7` floor under the square root so an isolated low-degree node does not divide by zero, and then expands four polynomial channels through the Chebyshev recurrence `T0, T1=L, T2=2L·T1−T0, T3=2L·T2−T1`. Worth noting precisely against the canonical method: this is the *lean* realization — `T0` is initialized to zeros rather than `I` on a spectrally-rescaled `L̃`, so the four channels are effectively `[0, L, 2L²−0, 4L³−L]` built from the unrescaled learned Laplacian. It keeps the four-channel polynomial-graph-filter shape and the eigendecomposition-free property — which are the load-bearing ideas — while dropping the exact Chebyshev normalization. I derive against that, not against the textbook recurrence, because that is what the edit surface runs.
+
+The block then ties it together. Per StockBlock: graph-filter the input by the four polynomial channels, run the spectral sequential cell to learn temporal patterns in the graph-spectral domain, apply a learnable channel-mixing weight that plays the role of the eigenvalue filter, and produce a forecast through a `sigmoid`-gated linear head. The first block additionally produces a *backcast* — a reconstruction of its own input window — and the next block consumes the residual `x − backcast`, so the second block only has to explain what the first could not. This is the doubly-residual stacking idea, and again I should name what the harness keeps versus drops relative to the canonical method: the canonical version trains with an explicit backcast-reconstruction *loss term* added to the forecast loss, and emits the forecast through a learnable-basis expansion. The task's edit keeps the backcast purely as the residual passed to the next block — there is no separate backcast-loss in the forward path, and the heads are plain linear-with-sigmoid rather than a basis-expansion module. So the regularization-by-reconstruction story is weaker here than in the paper: the backcast still gives the second block a clean residual to model, but it is not separately supervised. Two blocks, forecasts summed, then a final `Linear → LeakyReLU → Linear` head maps to the twelve-step horizon. Like TimeMixer this model wants `lr = 1e-3` rather than the harness default `2e-3`, set through `CONFIG_OVERRIDES = {'lr': 0.001}`, because the GRU-plus-spectral stack is unstable at the higher rate. The full scaffold module is in the answer; it uses no timestamps, reading periodicity straight from the values through the DFT.
+
+So the delta from the channel-independent rungs is the one I argued I needed: where DLinear and TimeMixer modeled each node alone, StemGNN learns an `N × N` graph from the window and convolves across nodes in the graph-spectral domain while modeling time in the temporal-spectral domain — the first rung with any cross-node coupling at all. Reading the prior numbers, here is what I expect and where I am unsure. On PEMS04, the flow dataset where multi-scale temporal modeling under-delivered, I expect the *clearest* win, because flow propagation between sensors is strong and that is precisely the cross-node signal the previous rungs threw away — if learned-graph coupling is worth anything, PEMS04 is where it should finally separate from the channel-independent ceiling. On the speed datasets I expect a more modest improvement: speed series are smoother and more self-predictable per node, so the marginal value of cross-node structure is smaller, though PEMS-BAY's dense Bay-Area grid should still reward it. But I am genuinely unsure the *temporal* side will be competitive, because the harness dropped the explicit backcast supervision and the basis-expansion heads, and because eigendecomposition-free polynomial filtering on a learned, unrescaled Laplacian can be numerically touchy — if RMSE comes in worse than the much simpler iTransformer-style attention models despite a strong MAE on PEMS04, the diagnosis would be that the spectral-graph machinery is over-engineered, and a cleaner cross-node mechanism should beat it. Let me write the learned-graph spectral model in.
+</think>
+<say>
+Adding the first cross-node mechanism: StemGNN, which learns an N×N graph from the window and convolves across nodes in the graph-spectral domain while modeling time in the temporal-spectral domain. This edit replaces the channel-independent mixer with the learned-graph + Chebyshev + spectral-sequential StockBlock stack, keeping lr at 1e-3.
+</say>
+<edit path="BasicTS/custom_model.py">
+<old>
+    num_features: int = field(default=207)
+    hidden_size: int = field(default=64)
+    num_layers: int = field(default=2)
+    down_sampling_layers: int = field(default=2)
+    down_sampling_window: int = field(default=2)
+    dropout: float = field(default=0.1)
+    moving_avg: int = field(default=5)
+
+
+class RevIN(nn.Module):
+    def __init__(self, num_features, affine=True):
+        super().__init__()
+        self.eps = 1e-6
+        self.affine = affine
+        if affine:
+            self.weight = nn.Parameter(torch.ones(num_features))
+            self.bias = nn.Parameter(torch.zeros(num_features))
+
+    def forward(self, x, mode):
+        if mode == "norm":
+            self.mean = x.mean(dim=1, keepdim=True).detach()
+            self.stdev = torch.sqrt(x.var(dim=1, keepdim=True, unbiased=False) + self.eps).detach()
+            x = (x - self.mean) / self.stdev
+            if self.affine:
+                x = x * self.weight + self.bias
+            return x
+        else:
+            if self.affine:
+                x = (x - self.bias) / (self.weight + self.eps * self.eps)
+            return x * self.stdev + self.mean
+
+
+class MovingAvgDecomp(nn.Module):
+    def __init__(self, kernel_size):
+        super().__init__()
+        self.avg = nn.AvgPool1d(kernel_size, stride=1)
+        self.pad_left = (kernel_size - 1) // 2
+        self.pad_right = kernel_size // 2
+
+    def forward(self, x):
+        # x: [B, T, C]
+        trend = self.avg(F.pad(x.transpose(1, 2),
+                                (self.pad_left, self.pad_right),
+                                mode='replicate')).transpose(1, 2)
+        seasonal = x - trend
+        return seasonal, trend
+
+
+class MLPMixer(nn.Module):
+    '''2-layer MLP for scale mixing on the temporal dimension.'''
+    def __init__(self, in_dim, out_dim):
+        super().__init__()
+        self.fc1 = nn.Linear(in_dim, out_dim)
+        self.act = nn.GELU()
+        self.fc2 = nn.Linear(out_dim, out_dim)
+
+    def forward(self, x):
+        return self.fc2(self.act(self.fc1(x)))
+
+
+class MultiScaleSeasonMixing(nn.Module):
+    '''Bottom-up mixing: finer -> coarser scales via learned MLP.'''
+    def __init__(self, input_len, down_sampling_layers, down_sampling_window):
+        super().__init__()
+        self.down_layers = nn.ModuleList([
+            MLPMixer(
+                input_len // (down_sampling_window ** i),
+                input_len // (down_sampling_window ** (i + 1))
+            )
+            for i in range(down_sampling_layers)
+        ])
+
+    def forward(self, seasonal_list):
+        # seasonal_list[i]: [B, D, L_i] (permuted)
+        out_high = seasonal_list[0]
+        out_low = seasonal_list[1]
+        out_season_list = [out_high.permute(0, 2, 1)]
+
+        for i in range(len(seasonal_list) - 1):
+            out_low_res = self.down_layers[i](out_high)
+            out_low = out_low + out_low_res
+            out_high = out_low
+            if i + 2 <= len(seasonal_list) - 1:
+                out_low = seasonal_list[i + 2]
+            out_season_list.append(out_high.permute(0, 2, 1))
+
+        return out_season_list
+
+
+class MultiScaleTrendMixing(nn.Module):
+    '''Top-down mixing: coarser -> finer scales via learned MLP.'''
+    def __init__(self, input_len, down_sampling_layers, down_sampling_window):
+        super().__init__()
+        self.up_layers = nn.ModuleList([
+            MLPMixer(
+                input_len // (down_sampling_window ** (i + 1)),
+                input_len // (down_sampling_window ** i)
+            )
+            for i in reversed(range(down_sampling_layers))
+        ])
+
+    def forward(self, trend_list):
+        # trend_list[i]: [B, D, L_i] (permuted)
+        trend_rev = trend_list.copy()
+        trend_rev.reverse()
+        out_low = trend_rev[0]
+        out_high = trend_rev[1]
+        out_trend_list = [out_low.permute(0, 2, 1)]
+
+        for i in range(len(trend_rev) - 1):
+            out_high_res = self.up_layers[i](out_low)
+            out_high = out_high + out_high_res
+            out_low = out_high
+            if i + 2 <= len(trend_rev) - 1:
+                out_high = trend_rev[i + 2]
+            out_trend_list.append(out_low.permute(0, 2, 1))
+
+        out_trend_list.reverse()
+        return out_trend_list
+
+
+class PastDecomposableMixing(nn.Module):
+    '''Decompose each scale, mix seasonal bottom-up and trend top-down.'''
+    def __init__(self, input_len, hidden_size, down_sampling_layers,
+                 down_sampling_window, moving_avg):
+        super().__init__()
+        self.decomp = MovingAvgDecomp(moving_avg)
+        self.season_mixing = MultiScaleSeasonMixing(
+            input_len, down_sampling_layers, down_sampling_window)
+        self.trend_mixing = MultiScaleTrendMixing(
+            input_len, down_sampling_layers, down_sampling_window)
+        self.out_cross_layer = nn.Sequential(
+            nn.Linear(hidden_size, hidden_size * 4),
+            nn.GELU(),
+            nn.Linear(hidden_size * 4, hidden_size),
+        )
+
+    def forward(self, x_list):
+        seasonal_list, trend_list = [], []
+        for x in x_list:
+            seasonal, trend = self.decomp(x)
+            seasonal_list.append(seasonal.permute(0, 2, 1))
+            trend_list.append(trend.permute(0, 2, 1))
+
+        seasonal_list = self.season_mixing(seasonal_list)
+        trend_list = self.trend_mixing(trend_list)
+
+        out_list = []
+        for x, seasonal, trend in zip(x_list, seasonal_list, trend_list):
+            out = seasonal + trend
+            out = x + self.out_cross_layer(out)
+            out_list.append(out)
+        return out_list
+
+
+class Custom(nn.Module):
+    '''TimeMixer: Decomposable Multiscale Mixing baseline.
+
+    Channel-independent mode: each variate processed separately.
+    Multi-scale decomposition + Past-Decomposable Mixing across scales.
+    '''
+
+    def __init__(self, config: CustomConfig):
+        super().__init__()
+        self.num_features = config.num_features
+        self.output_len = config.output_len
+        self.down_layers = config.down_sampling_layers
+        self.down_window = config.down_sampling_window
+        D = config.hidden_size
+
+        self.down_pool = nn.AvgPool1d(config.down_sampling_window)
+
+        # Per-scale RevIN
+        self.norm_layers = nn.ModuleList([
+            RevIN(config.num_features, affine=True)
+            for _ in range(self.down_layers + 1)
+        ])
+
+        # Embedding (channel-independent: 1 feature -> D)
+        padding = 1 if torch.__version__ >= "1.5.0" else 2
+        self.embed = nn.Conv1d(1, D, kernel_size=3, padding=padding,
+                               padding_mode="circular", bias=False)
+
+        # PDM blocks (decomposition happens inside each block)
+        self.pdm_blocks = nn.ModuleList([
+            PastDecomposableMixing(
+                config.input_len, D, self.down_layers,
+                self.down_window, config.moving_avg)
+            for _ in range(config.num_layers)
+        ])
+
+        # Per-scale prediction heads
+        self.predict_layers = nn.ModuleList([
+            nn.Linear(config.input_len // (self.down_window ** i), config.output_len)
+            for i in range(self.down_layers + 1)
+        ])
+
+        # Channel-independent projection
+        self.projection = nn.Linear(D, 1)
+
+    def forward(self, inputs, inputs_timestamps):
+        # inputs: [B, T, N]
+        B, T, N = inputs.shape
+
+        # Multi-scale inputs
+        x_list = [inputs]
+        sample = inputs.permute(0, 2, 1)  # [B, N, T]
+        for _ in range(self.down_layers):
+            sample = self.down_pool(sample)
+            x_list.append(sample.permute(0, 2, 1))
+
+        # Per-scale normalization + channel independence
+        for i in range(len(x_list)):
+            x_list[i] = self.norm_layers[i](x_list[i], "norm")
+            _, Li, _ = x_list[i].shape
+            x_list[i] = x_list[i].transpose(1, 2).reshape(-1, Li, 1)  # [B*N, Li, 1]
+
+        # Embedding
+        h_list = []
+        for x in x_list:
+            h = self.embed(x.transpose(1, 2)).transpose(1, 2)  # [B*N, Li, D]
+            h_list.append(h)
+
+        # Past Decomposable Mixing (decomposition inside blocks)
+        for block in self.pdm_blocks:
+            h_list = block(h_list)
+
+        # Per-scale prediction and sum
+        pred_list = []
+        for i, h in enumerate(h_list):
+            # h: [B*N, Li, D] -> predict -> [B*N, T', D] -> project -> [B*N, T', 1]
+            p = self.predict_layers[i](h.permute(0, 2, 1)).permute(0, 2, 1)
+            p = self.projection(p)  # [B*N, T', 1]
+            p = p.reshape(B, N, self.output_len).permute(0, 2, 1)  # [B, T', N]
+            pred_list.append(p)
+
+        prediction = sum(pred_list)
+        prediction = self.norm_layers[0](prediction, "denorm")
+        return prediction
+</old>
+<new>
+    num_features: int = field(default=207)
+    hidden_size: int = field(default=5)
+    num_blocks: int = field(default=2)
+    dropout: float = field(default=0.5)
+
+
+class GLU(nn.Module):
+    def __init__(self, in_dim, out_dim):
+        super().__init__()
+        self.left = nn.Linear(in_dim, out_dim)
+        self.right = nn.Linear(in_dim, out_dim)
+
+    def forward(self, x):
+        return self.left(x) * torch.sigmoid(self.right(x))
+
+
+class StockBlock(nn.Module):
+    def __init__(self, input_len, num_features, hidden_size, layer_idx):
+        super().__init__()
+        self.input_len = input_len
+        self.num_features = num_features
+        self.hidden_size = hidden_size
+        self.layer_idx = layer_idx
+        self.output_hidden_size = 4 * hidden_size
+
+        self.weight = nn.Parameter(
+            torch.Tensor(1, 4, 1, input_len * hidden_size, hidden_size * input_len))
+        nn.init.xavier_normal_(self.weight)
+        self.forecast = nn.Linear(input_len * hidden_size, input_len * hidden_size)
+        self.forecast_result = nn.Linear(input_len * hidden_size, input_len)
+        if layer_idx == 0:
+            self.backcast = nn.Linear(input_len * hidden_size, input_len)
+        self.backcast_short_cut = nn.Linear(input_len, input_len)
+
+        self.GLUs = nn.ModuleList()
+        for i in range(3):
+            in_d = input_len * 4 if i == 0 else input_len * self.output_hidden_size
+            self.GLUs.append(GLU(in_d, input_len * self.output_hidden_size))
+            self.GLUs.append(GLU(in_d, input_len * self.output_hidden_size))
+
+    def spe_seq_cell(self, inputs):
+        B, _, _, N, L = inputs.size()
+        inputs = inputs.view(B, -1, N, L)
+        ffted = torch.fft.fft(inputs, dim=-1)
+        real = ffted.real.permute(0, 2, 1, 3).contiguous().reshape(B, N, -1)
+        imag = ffted.imag.permute(0, 2, 1, 3).contiguous().reshape(B, N, -1)
+        for i in range(3):
+            real = self.GLUs[i * 2](real)
+            imag = self.GLUs[i * 2 + 1](imag)
+        real = real.reshape(B, N, 4, -1).permute(0, 2, 1, 3).contiguous()
+        imag = imag.reshape(B, N, 4, -1).permute(0, 2, 1, 3).contiguous()
+        return torch.fft.ifft(torch.complex(real, imag), dim=-1).real
+
+    def forward(self, x, graph):
+        graph = graph.unsqueeze(1)
+        x = x.unsqueeze(1)
+        gfted = torch.matmul(graph, x)
+        gconv_input = self.spe_seq_cell(gfted).unsqueeze(2)
+        igfted = torch.matmul(gconv_input, self.weight).sum(dim=1)
+        forecast_source = torch.sigmoid(self.forecast(igfted).squeeze(1))
+        forecast = self.forecast_result(forecast_source)
+        if self.layer_idx == 0:
+            backcast_short = self.backcast_short_cut(x).squeeze(1)
+            backcast_source = torch.sigmoid(self.backcast(igfted) - backcast_short)
+        else:
+            backcast_source = None
+        return forecast, backcast_source
+
+
+class Custom(nn.Module):
+    """StemGNN: Spectral Temporal Graph Neural Network baseline.
+
+    Learns a latent graph via self-attention, applies Chebyshev graph
+    convolution, and processes temporal patterns in the spectral domain.
+    """
+
+    def __init__(self, config: CustomConfig):
+        super().__init__()
+        N = config.num_features
+        L = config.input_len
+        self.num_blocks = config.num_blocks
+
+        # Latent graph via self-attention
+        self.weight_key = nn.Parameter(torch.zeros(N, 1))
+        nn.init.xavier_uniform_(self.weight_key.data, gain=1.414)
+        self.weight_query = nn.Parameter(torch.zeros(N, 1))
+        nn.init.xavier_uniform_(self.weight_query.data, gain=1.414)
+        self.GRU = nn.GRU(L, N)
+
+        # Backbone
+        self.stock_block = nn.ModuleList([
+            StockBlock(L, N, config.hidden_size, i)
+            for i in range(config.num_blocks)
+        ])
+
+        # Output
+        self.fc = nn.Sequential(
+            nn.Linear(L, L), nn.LeakyReLU(),
+            nn.Linear(L, config.output_len))
+        self.leakyrelu = nn.LeakyReLU(0.2)
+        self.dropout = nn.Dropout(config.dropout)
+
+    def _latent_graph(self, x):
+        # x: [B, T, N]
+        h, _ = self.GRU(x.permute(2, 0, 1))  # [N, B, N]
+        h = h.permute(1, 0, 2).contiguous()  # [B, N, N]
+        h = h.permute(0, 2, 1).contiguous()  # [B, N, N] transposed for attention
+        key = torch.matmul(h, self.weight_key)    # [B, N, 1]
+        query = torch.matmul(h, self.weight_query) # [B, N, 1]
+        N = h.size(1)
+        attn = key.repeat(1, 1, N).view(-1, N * N, 1) + query.repeat(1, N, 1)
+        attn = self.leakyrelu(attn.squeeze(2).view(-1, N, N))
+        attn = self.dropout(F.softmax(attn, dim=2))
+        attn = torch.mean(attn, dim=0)
+        attn = 0.5 * (attn + attn.T)
+        degree = torch.sum(attn, dim=1)
+        D_inv_sqrt = torch.diag(1.0 / (torch.sqrt(degree) + 1e-7))
+        L = D_inv_sqrt @ (torch.diag(degree) - attn) @ D_inv_sqrt
+        # Chebyshev polynomials (order 3)
+        L = L.unsqueeze(0)
+        T0 = torch.zeros_like(L)
+        T1 = L
+        T2 = 2 * torch.matmul(L, T1) - T0
+        T3 = 2 * torch.matmul(L, T2) - T1
+        return torch.cat([T0, T1, T2, T3], dim=0)
+
+    def forward(self, inputs, inputs_timestamps):
+        graph = self._latent_graph(inputs)
+        x = inputs.unsqueeze(1).transpose(-1, -2)  # [B, 1, N, T]
+        results = []
+        for i in range(self.num_blocks):
+            pred, x = self.stock_block[i](x, graph)
+            results.append(pred)
+        prediction = sum(results)
+        prediction = self.fc(prediction).transpose(1, 2)  # [B, T', N]
+        return prediction
+</new>
+</edit>
+<obs>
+Successfully replaced text in BasicTS/custom_model.py.
+</obs>
+<run/>
+<obs>
+Measured results — `baseline:stemgnn` (`is_final,true`), seed 42.
+
+## METR-LA
+| seed | MAE | RMSE | MAPE |
+|---|---|---|---|
+| 42 | 4.004539 | 7.779459 | 0.114681 |
+
+## PEMS-BAY
+| seed | MAE | RMSE | MAPE |
+|---|---|---|---|
+| 42 | 2.033419 | 4.593443 | 0.047170 |
+
+## PEMS04
+| seed | MAE | RMSE | MAPE |
+|---|---|---|---|
+| 42 | 24.203986 | 37.190640 | 0.211432 |
+</obs>
+
+### step 4 — SOFTS (series-core fusion / STAR)   [slug:softs]
+
+<think>
+The spectral-graph rung confirmed the diagnosis and, in the same breath, told me the mechanism is heavier than the problem needs. StemGNN's numbers split exactly along the axis I predicted: on PEMS04, the flow dataset, MAE dropped from TimeMixer's 27.7508 to 24.2040 — the largest single jump on the whole ladder so far, and it came precisely where cross-node propagation is strongest, vindicating the move off the channel-independent ceiling. RMSE on PEMS04 fell hard too, 43.21 → 37.19. So learned-graph coupling is genuinely worth it, and PEMS04 was the dataset starving for it. But look at the speed datasets. On METR-LA the learned graph actually *hurt* MAE relative to TimeMixer — 3.9497 → 4.0045 — even though RMSE improved (7.886 → 7.779) and, tellingly, MAPE got *worse* (0.1094 → 0.1147). On PEMS-BAY MAE barely moved, 2.0641 → 2.0334. That is the signature of a model whose cross-node mechanism helps where propagation dominates but whose temporal side is fragile: the GRU-plus-spectral stack, with the harness having dropped the backcast supervision and the basis-expansion heads, is over-engineered for smooth twelve-step speed series, and on METR-LA it pays for the spectral machinery without recovering enough cross-node signal to come out ahead. The lesson is sharp. Cross-node coupling is the right axis — keep it — but the *way* StemGNN does it (learn a Laplacian, eigendecomposition-free polynomial filtering, two spectral domains fused) is expensive and numerically touchy, and most of that apparatus is not earning its keep on speed. The next rung should keep cross-node modeling and throw away the spectral graph entirely, with a cleaner, cheaper mechanism.
+
+Let me restate the problem the way it actually is on these datasets, because that drives the redesign. I have `N` channels — 207 to 325 sensors — and the data drifts: per-sensor level and scale wander across the day and the week, sensors go dead and read flat (the masked zeros), a meter drops out. Two facts point in opposite directions. Channels are correlated, and the correlation is real signal — that is what StemGNN's PEMS04 win proved. But the models that mix channels *aggressively* are fragile under exactly this non-stationarity: when you fit cross-channel structure, you fit the joint distribution of the channels, and that joint distribution is what shifts between train and test, so you overfit correlations that do not hold at test time. StemGNN's METR-LA regression is a small instance of that. The honest statement of the next rung: put cross-channel information back, but through a mechanism that does not re-import the fragility, and at a cost that survives `N` in the hundreds.
+
+First get the representation right, because the per-timestamp token is part of what makes channel mixing fragile. If a token is one timestamp's slice across all nodes, then mixing channels happens *inside every token*, structurally, before the model does anything — the entanglement is baked in, and on a traffic panel that token jams together sensors at different phases of a propagating congestion wave. Flip it: make a token a *whole channel*. Take one node's twelve past values and embed them with a single linear map into one `D`-vector that stands for that node. Now I have `N` tokens, one per node, each a robust, self-contained description of one series, and any cross-node operation is an explicit, separable step over the *set* of tokens rather than something fused in by accident. Before embedding I normalize per instance — subtract each node's mean over the lookback, divide by its std, undo it on the prediction — to strip the drifting level that causes most of the train/test mismatch, so the tokens carry shape, not level. This is the inverted view, and it is the clean unit for the cross-node step.
+
+Now the cross-node step itself, which is the whole game. The obvious thing — and what the inverted-token attention models do — is self-attention across the channel tokens: every node attends to every other, the attention map is a learned `N × N` correlation, weight and aggregate. It recovers correlation and keeps each node as a unit. But it has the two problems I just watched StemGNN suffer in different clothing. First, cost: all-pairs attention is `O(N²)` in time and memory, the binding constraint as `N` grows into the hundreds — the same scaling that made StemGNN's Laplacian expensive. Second, and worse, attention's entire content is the *per-pair* weights, and per-pair correlations are precisely what overfits under non-stationarity and what shifts between train and test. If a sensor goes anomalous — a stuck loop reading flat — every node that attends to it ingests its garbage in proportion to a now-meaningless correlation weight. So attention is `O(N²)` *and* leans its whole interaction on the single quantity I have the most reason to distrust. That is the same fragility coming back in through the interaction module, exactly the thing that hurt StemGNN on METR-LA.
+
+So let me ask what "interaction" has to mean. I want each node to benefit from the others, but maybe it does not need to know *which specific other node* helped it. The all-pairs picture — `i` consults `j`, then `k` — is a *distributed* topology: `N²` conversations, each weighted by a fragile correlation. There is another topology entirely: route everything through a *hub*. Every node contributes to one shared summary, and every node reads back from that one summary — star-shaped, not mesh. That collapses `N²` pairwise conversations to `N` aggregate-in plus `N` redistribute-out, linear cost. And the hub is not just a cost trick: a single summary aggregated over *all* nodes is a *statistic*, and a statistic over many channels is far more stable than any one channel or any one pair. Averaging over channels is the robust operation, the opposite of trusting a brittle per-pair weight. If a sensor goes anomalous, it is one contributor out of hundreds to the summary, drowned out, instead of a correlation partner some node ingests at full weight. The hub fixes both StemGNN problems — the `O(N²)` cost and the fragile pairwise dependence — in one move: aggregate the `N` node tokens into one *core*, redistribute it back, and let each node fuse the global core with its own token.
+
+Now define "aggregate the `N` tokens into one vector." It is a function of an unordered *set* of node tokens, so it must be permutation-invariant over nodes: relabeling sensor 5 as sensor 200 must not change the network's summary. The set-function theory gives the invariant form `ρ(Σ_x φ(x))` — the same per-element map `φ`, summed with *equal* weight, then an outer map — as opposed to the permutation-*variant* form with per-coordinate weights glued to channel identity. I want the invariant one, and not just for symmetry: a per-channel weight is capacity spent on the channel *index*, and the index is meaningless under distribution shift — at test time the relation between a node's slot and its behavior is exactly what has drifted. Forcing the summary to depend on what each node *contains* rather than which slot it sits in is the robust choice, the same lesson channel independence taught the earlier rungs. So: `φ` is a shared two-layer MLP from the token dimension to a core dimension; the sum is a pool; and the redistribution-side fusion MLP absorbs any outer nonlinearity, so I drop the explicit `ρ`.
+
+The pooling deserves one more thought, because the core is a single shared object every node reads from — if it overfits, everyone overfits together. Mean pooling is maximally stable but washes a strong informative node into the crowd; max pooling preserves the salient signal but is brittle, betting a summary coordinate on one node that might be the anomalous one. I want something between them that also regularizes. Stochastic pooling does exactly this: for each core feature, softmax the node activations *across the channel axis* into a distribution, and in training *sample* one node from it (high-activation nodes picked often — the max tendency — but low ones occasionally too — the mean tendency), which injects noise into the shared core every step and regularizes it; at test time take the expectation under the same distribution, a deterministic magnitude-weighted average. Train and test are consistent (the test value is the mean of the training sampler), and the result is a soft aggregate over all nodes with weight concentrated on the salient ones but spread so no single dead node can hijack the core. Softmax over the channel axis is the right axis — I am normalizing across the things I am pooling.
+
+One interaction layer is then: compute the core `o = StochPool(MLP1(tokens))`, repeat it to all nodes, concatenate onto each token, fuse with `MLP2` and a residual so the layer *refines* each node with global context rather than overwriting it; then ordinary transformer-block hygiene — a per-node feed-forward network with its own residual, and LayerNorm after each sublayer. Stack two. Every step is linear in `N`: `MLP1` is `O(N·d²)`, the pool is `O(N·d)`, `MLP2` is `O(N·d²)`, the head is `O(N·d·H)`; no `N × N` matrix is ever formed. That is the scaling StemGNN's Laplacian could not offer, and it comes for free from routing through a hub. Wrapping it: RevIN-normalize, embed each node's lookback to a token, run two STAR layers, a final LayerNorm, a linear head `d → 12` per node, transpose, denormalize. The model wants `lr = 5e-4`, set through `CONFIG_OVERRIDES = {'lr': 0.0005}`, because the wide `hidden_size = 512` inverted stack is unstable at the harness default; `weight_decay` stays at the default. The full scaffold module is in the answer; it uses no timestamps.
+
+So the delta from StemGNN is: keep cross-node modeling, drop the spectral graph and the `O(N²)` all-pairs alternative both, and route channel interaction through a single robust core at `O(N)`. Reading the prior numbers, here is what I expect and where I am unsure. On PEMS-BAY and METR-LA — the speed datasets where StemGNN's spectral machinery was fragile and on METR-LA actually *lost* to the channel-independent TimeMixer — I expect the inverted-core model to clearly beat StemGNN, because it keeps cross-node information through a stable statistic instead of a brittle Laplacian, so it should recover the speed-dataset ground StemGNN gave up: I expect METR-LA MAE back below 3.95 and PEMS-BAY below 2.00. On PEMS04, the open question: StemGNN's 24.20 was its triumph, won by an explicit propagating graph, and a hub that summarizes all nodes into one core may *under*-model the directed, local propagation that flow on a highway actually exhibits — averaging into a global core can blur the upstream→downstream structure a real graph captures. So I would not be surprised if SOFTS *trails* StemGNN on PEMS04 even while beating it on both speed datasets. If that is the pattern, the next rung would put *explicit* cross-node attention back in the inverted-token view. Let me start by bringing in `math` for the later attention scaling, then build the inverted-core model.
+</think>
+<say>
+Swapping the spectral graph for SOFTS, an inverted series-core fusion model that routes cross-node interaction through one robust global core at O(N) instead of an N×N graph. First a tiny edit to import `math`, then the STAR module and inverted backbone follow.
+</say>
+<edit path="BasicTS/custom_model.py">
+<old>
+import torch
+</old>
+<new>
+import math
+import torch
+</new>
+</edit>
+<obs>
+Successfully replaced text in BasicTS/custom_model.py.
+</obs>
+<note>
+Now the STAR aggregate-redistribute module and the per-node inverted block.
+</note>
+<edit path="BasicTS/custom_model.py">
+<old>
+    num_features: int = field(default=207)
+    hidden_size: int = field(default=5)
+    num_blocks: int = field(default=2)
+    dropout: float = field(default=0.5)
+
+
+class GLU(nn.Module):
+    def __init__(self, in_dim, out_dim):
+        super().__init__()
+        self.left = nn.Linear(in_dim, out_dim)
+        self.right = nn.Linear(in_dim, out_dim)
+
+    def forward(self, x):
+        return self.left(x) * torch.sigmoid(self.right(x))
+
+
+class StockBlock(nn.Module):
+    def __init__(self, input_len, num_features, hidden_size, layer_idx):
+        super().__init__()
+        self.input_len = input_len
+        self.num_features = num_features
+        self.hidden_size = hidden_size
+        self.layer_idx = layer_idx
+        self.output_hidden_size = 4 * hidden_size
+
+        self.weight = nn.Parameter(
+            torch.Tensor(1, 4, 1, input_len * hidden_size, hidden_size * input_len))
+        nn.init.xavier_normal_(self.weight)
+        self.forecast = nn.Linear(input_len * hidden_size, input_len * hidden_size)
+        self.forecast_result = nn.Linear(input_len * hidden_size, input_len)
+        if layer_idx == 0:
+            self.backcast = nn.Linear(input_len * hidden_size, input_len)
+        self.backcast_short_cut = nn.Linear(input_len, input_len)
+
+        self.GLUs = nn.ModuleList()
+        for i in range(3):
+            in_d = input_len * 4 if i == 0 else input_len * self.output_hidden_size
+            self.GLUs.append(GLU(in_d, input_len * self.output_hidden_size))
+            self.GLUs.append(GLU(in_d, input_len * self.output_hidden_size))
+
+    def spe_seq_cell(self, inputs):
+        B, _, _, N, L = inputs.size()
+        inputs = inputs.view(B, -1, N, L)
+        ffted = torch.fft.fft(inputs, dim=-1)
+        real = ffted.real.permute(0, 2, 1, 3).contiguous().reshape(B, N, -1)
+        imag = ffted.imag.permute(0, 2, 1, 3).contiguous().reshape(B, N, -1)
+        for i in range(3):
+            real = self.GLUs[i * 2](real)
+            imag = self.GLUs[i * 2 + 1](imag)
+        real = real.reshape(B, N, 4, -1).permute(0, 2, 1, 3).contiguous()
+        imag = imag.reshape(B, N, 4, -1).permute(0, 2, 1, 3).contiguous()
+        return torch.fft.ifft(torch.complex(real, imag), dim=-1).real
+
+    def forward(self, x, graph):
+        graph = graph.unsqueeze(1)
+        x = x.unsqueeze(1)
+        gfted = torch.matmul(graph, x)
+        gconv_input = self.spe_seq_cell(gfted).unsqueeze(2)
+        igfted = torch.matmul(gconv_input, self.weight).sum(dim=1)
+        forecast_source = torch.sigmoid(self.forecast(igfted).squeeze(1))
+        forecast = self.forecast_result(forecast_source)
+        if self.layer_idx == 0:
+            backcast_short = self.backcast_short_cut(x).squeeze(1)
+            backcast_source = torch.sigmoid(self.backcast(igfted) - backcast_short)
+        else:
+            backcast_source = None
+        return forecast, backcast_source
+
+
+class Custom(nn.Module):
+    """StemGNN: Spectral Temporal Graph Neural Network baseline.
+
+    Learns a latent graph via self-attention, applies Chebyshev graph
+    convolution, and processes temporal patterns in the spectral domain.
+    """
+</old>
+<new>
+    num_features: int = field(default=207)
+    hidden_size: int = field(default=512)
+    core_size: int = field(default=128)
+    num_layers: int = field(default=2)
+    dropout: float = field(default=0.05)
+
+
+class RevIN(nn.Module):
+    def __init__(self, eps=1e-6):
+        super().__init__()
+        self.eps = eps
+
+    def forward(self, x, mode):
+        if mode == "norm":
+            self.mean = x.mean(dim=1, keepdim=True).detach()
+            self.stdev = torch.sqrt(x.var(dim=1, keepdim=True, unbiased=False) + self.eps).detach()
+            return (x - self.mean) / self.stdev
+        else:
+            return x * self.stdev + self.mean
+
+
+class MLP(nn.Module):
+    def __init__(self, in_dim, mid_dim, out_dim):
+        super().__init__()
+        self.fc1 = nn.Linear(in_dim, mid_dim)
+        self.fc2 = nn.Linear(mid_dim, out_dim)
+
+    def forward(self, x):
+        return self.fc2(F.gelu(self.fc1(x)))
+
+
+class STAR(nn.Module):
+    """STar Aggregate-Redistribute module.
+
+    Aggregates cross-variate info into a core representation via
+    stochastic pooling (training) or weighted mean (inference),
+    then redistributes back to each variate.
+    """
+    def __init__(self, hidden_size, core_size):
+        super().__init__()
+        self.ffn1 = MLP(hidden_size, hidden_size, core_size)
+        self.ffn2 = MLP(hidden_size + core_size, hidden_size, hidden_size)
+
+    def forward(self, x):
+        B, N, D = x.shape
+        combined = self.ffn1(x)  # [B, N, core_size]
+
+        if self.training:
+            # Stochastic pooling
+            ratio = F.softmax(combined, dim=1)  # [B, N, core_size]
+            ratio = ratio.transpose(1, 2).reshape(-1, N)
+            indices = torch.multinomial(ratio, 1)
+            indices = indices.view(B, -1, 1).transpose(1, 2)  # [B, 1, core_size]
+            core = torch.gather(combined, 1, indices)  # [B, 1, core_size]
+            core = core.repeat(1, N, 1)
+        else:
+            # Weighted mean
+            weight = F.softmax(combined, dim=1)
+            core = (combined * weight).sum(dim=1, keepdim=True).repeat(1, N, 1)
+
+        return self.ffn2(torch.cat([x, core], dim=-1))
+
+
+class SOFTSBlock(nn.Module):
+    def __init__(self, hidden_size, core_size, dropout):
+        super().__init__()
+        self.star = STAR(hidden_size, core_size)
+        self.ffn = nn.Sequential(
+            nn.Linear(hidden_size, hidden_size * 4),
+            nn.GELU(),
+            nn.Dropout(dropout),
+            nn.Linear(hidden_size * 4, hidden_size),
+        )
+        self.norm1 = nn.LayerNorm(hidden_size)
+        self.norm2 = nn.LayerNorm(hidden_size)
+
+    def forward(self, x):
+        x = self.norm1(x + self.star(x))
+        x = self.norm2(x + self.ffn(x))
+        return x
+
+
+class Custom(nn.Module):
+    """SOFTS: Series-Core Fusion baseline.
+
+    Inverted architecture (nodes as tokens), using STAR modules
+    instead of self-attention for O(N) cross-variate communication.
+    """
+</new>
+</edit>
+<obs>
+Successfully replaced text in BasicTS/custom_model.py.
+</obs>
+<note>
+Now the inverted backbone: RevIN, per-node embedding, the STAR layers, and the per-node head.
+</note>
+<edit path="BasicTS/custom_model.py">
+<old>
+        super().__init__()
+        N = config.num_features
+        L = config.input_len
+        self.num_blocks = config.num_blocks
+
+        # Latent graph via self-attention
+        self.weight_key = nn.Parameter(torch.zeros(N, 1))
+        nn.init.xavier_uniform_(self.weight_key.data, gain=1.414)
+        self.weight_query = nn.Parameter(torch.zeros(N, 1))
+        nn.init.xavier_uniform_(self.weight_query.data, gain=1.414)
+        self.GRU = nn.GRU(L, N)
+
+        # Backbone
+        self.stock_block = nn.ModuleList([
+            StockBlock(L, N, config.hidden_size, i)
+            for i in range(config.num_blocks)
+        ])
+
+        # Output
+        self.fc = nn.Sequential(
+            nn.Linear(L, L), nn.LeakyReLU(),
+            nn.Linear(L, config.output_len))
+        self.leakyrelu = nn.LeakyReLU(0.2)
+        self.dropout = nn.Dropout(config.dropout)
+
+    def _latent_graph(self, x):
+        # x: [B, T, N]
+        h, _ = self.GRU(x.permute(2, 0, 1))  # [N, B, N]
+        h = h.permute(1, 0, 2).contiguous()  # [B, N, N]
+        h = h.permute(0, 2, 1).contiguous()  # [B, N, N] transposed for attention
+        key = torch.matmul(h, self.weight_key)    # [B, N, 1]
+        query = torch.matmul(h, self.weight_query) # [B, N, 1]
+        N = h.size(1)
+        attn = key.repeat(1, 1, N).view(-1, N * N, 1) + query.repeat(1, N, 1)
+        attn = self.leakyrelu(attn.squeeze(2).view(-1, N, N))
+        attn = self.dropout(F.softmax(attn, dim=2))
+        attn = torch.mean(attn, dim=0)
+        attn = 0.5 * (attn + attn.T)
+        degree = torch.sum(attn, dim=1)
+        D_inv_sqrt = torch.diag(1.0 / (torch.sqrt(degree) + 1e-7))
+        L = D_inv_sqrt @ (torch.diag(degree) - attn) @ D_inv_sqrt
+        # Chebyshev polynomials (order 3)
+        L = L.unsqueeze(0)
+        T0 = torch.zeros_like(L)
+        T1 = L
+        T2 = 2 * torch.matmul(L, T1) - T0
+        T3 = 2 * torch.matmul(L, T2) - T1
+        return torch.cat([T0, T1, T2, T3], dim=0)
+
+    def forward(self, inputs, inputs_timestamps):
+        graph = self._latent_graph(inputs)
+        x = inputs.unsqueeze(1).transpose(-1, -2)  # [B, 1, N, T]
+        results = []
+        for i in range(self.num_blocks):
+            pred, x = self.stock_block[i](x, graph)
+            results.append(pred)
+        prediction = sum(results)
+        prediction = self.fc(prediction).transpose(1, 2)  # [B, T', N]
+        return prediction
+</old>
+<new>
+        super().__init__()
+        self.revin = RevIN()
+
+        # Sequence embedding: [B, T, N] -> transpose -> [B, N, T] -> [B, N, D]
+        self.embed = nn.Linear(config.input_len, config.hidden_size)
+        self.embed_drop = nn.Dropout(config.dropout)
+
+        self.layers = nn.ModuleList([
+            SOFTSBlock(config.hidden_size, config.core_size, config.dropout)
+            for _ in range(config.num_layers)
+        ])
+        self.norm = nn.LayerNorm(config.hidden_size)
+
+        # Output: [B, N, D] -> [B, N, T'] -> [B, T', N]
+        self.head = nn.Linear(config.hidden_size, config.output_len)
+
+    def forward(self, inputs, inputs_timestamps):
+        x = self.revin(inputs, "norm")
+        N = x.size(-1)
+
+        h = self.embed_drop(self.embed(x.transpose(1, 2)))
+        for layer in self.layers:
+            h = layer(h)
+        h = self.norm(h)
+
+        pred = self.head(h).transpose(1, 2)[:, :, :N]
+        pred = self.revin(pred, "denorm")
+        return pred
+</new>
+</edit>
+<obs>
+Successfully replaced text in BasicTS/custom_model.py.
+</obs>
+<note>
+And set the learning rate to 5e-4 for the wide inverted stack.
+</note>
+<edit path="BasicTS/custom_model.py">
+<old>
+# Allowed keys: lr, weight_decay.
+CONFIG_OVERRIDES = {'lr': 0.001}
+</old>
+<new>
+# Allowed keys: lr, weight_decay.
+CONFIG_OVERRIDES = {'lr': 0.0005}
+</new>
+</edit>
+<obs>
+Successfully replaced text in BasicTS/custom_model.py.
+</obs>
+<run/>
+<obs>
+Measured results — `baseline:softs` (`is_final,true`), seed 42.
+
+## METR-LA
+| seed | MAE | RMSE | MAPE |
+|---|---|---|---|
+| 42 | 3.854645 | 7.722623 | 0.106633 |
+
+## PEMS-BAY
+| seed | MAE | RMSE | MAPE |
+|---|---|---|---|
+| 42 | 1.962066 | 4.724186 | 0.043158 |
+
+## PEMS04
+| seed | MAE | RMSE | MAPE |
+|---|---|---|---|
+| 42 | 25.657163 | 40.727161 | 0.275894 |
+</obs>
+
+### step 5 — TimesNet (temporal 2D-variation modeling)   [slug:timesnet]
+
+<think>
+The inverted-core rung landed exactly the split I predicted, and the split tells me the next move is not more cross-node machinery but a better *temporal* representation. SOFTS reclaimed both speed datasets — METR-LA MAE 3.8546 (back below the channel-independent TimeMixer's 3.9497 and well under StemGNN's fragile 4.0045), PEMS-BAY 1.9621 (under 2.00 at last) — confirming that routing cross-node information through a robust global core fixes the fragility the spectral graph suffered on smooth speed series. But on PEMS04 it came in at 25.6572, *worse* than StemGNN's 24.2040, precisely as I worried: a hub that averages all nodes into one core blurs the directed upstream→downstream propagation that highway flow actually exhibits, so on the one dataset where local, directed coupling matters most, the global summary throws away the structure StemGNN's explicit graph captured. So I have two facts now. Cross-node coupling helps PEMS04 (StemGNN proved it), but neither a fragile spectral graph nor a robust-but-global core is the clean way to get it. And here is the thing that reframes the whole climb: the best PEMS04 result so far, StemGNN's 24.20, was won by a model whose *temporal* side — the spectral sequential cell — was actually its weak point. What if the PEMS04 residual is not primarily a cross-node problem at all, but a *temporal* one — flow's sharp, multi-scale periodic structure that none of the rungs so far has modeled in the right space?
+
+Let me reason about flow versus speed to see why that could be. Speed on a highway is smooth and self-predictable: it drifts, it has a daily shape, and twelve steps ahead from twelve steps back per node already captures most of it, which is why even DLinear did respectably and SOFTS does well. Flow is different — it spikes sharply at the commute peaks, the spikes have internal shape, and the same physical process shows fine structure within a cycle *and* a different structure across cycles. Every rung so far models the temporal axis as a flat function of absolute window position: DLinear and TimeMixer with linear maps over time, SOFTS with a single linear embedding of the twelve steps into a token. None of them has an explicit handle on *which periodicities* a series carries or on the two distinct dependencies a periodic point has. So the next rung should attack the temporal representation directly, and ask whether modeling flow's periodic 2D structure recovers PEMS04 without any explicit graph at all.
+
+Be precise about what kinds of dependency a single time point has, because vague talk of "temporal variation" gets me nowhere. A point now depends on its immediate neighbors — the short-term movement *within* the current cycle, call it intraperiod variation. But it also depends on the same phase one cycle ago and one cycle ahead — the same five-minute slot in yesterday's rush hour, call it interperiod variation. These are genuinely different dependencies: one is the local shape within a period, the other is how the corresponding phase changes from period to period. Real traffic has both, and several periods at once. Here is the structural problem and where it bites. My data is a 1D sequence indexed by time. Adjacency along that axis gives me the intraperiod neighbors for free: step `t−1` and `t+1` sit next to `t`. But the interperiod neighbor — the same phase one period back — is at `t−p`, and in the 1D layout that point is `p` steps away with the entire previous cycle crammed in between. A 1D convolution with any sane kernel never sees `t` and `t−p` together. So the 1D representation presents one variation cleanly (intra) and effectively hides the other (inter). Every rung so far inherited this bottleneck — DLinear's linear map, SOFTS's linear embedding — all operate on the raw 1D axis and must recover the interperiod relationship implicitly, fighting the layout.
+
+So the question sharpens: I have two kinds of locality and a 1D layout that can only express one of them as locality. What if I change the layout so *both* become locality? Take the sequence and a period `p`. Chop it into consecutive blocks of length `p` and stack those blocks as rows of a matrix. Now walking along a row is walking through one cycle (intraperiod), and walking down a column is walking through the same phase across successive cycles (interperiod). Both dependencies are adjacencies in a 2D array — the thing that was `p` apart in 1D is now one step apart along the cross-period axis. Reshape the 1D series, for a given period `p`, into a 2D tensor whose two axes are exactly intraperiod and interperiod. And the instant the data is a 2D grid with two meaningful local axes, I get the entire mature toolbox of 2D convolution for free: a 2D kernel sees, in one receptive field, a few adjacent steps within the cycle *and* the same window of phases in neighboring cycles, modeling intra and inter variation simultaneously — exactly what the 1D layout could never do with one kernel. The bottleneck was never that flow's variation is hard; it is that 1D was the wrong space to look at it in.
+
+Which `p`? Real series have several periods and I do not know them a priori. Discover them from the spectrum: the FFT amplitude at a frequency measures how strongly that periodic component is present, so compute the FFT of the window, take amplitudes, average over channels to get one shared amplitude profile (I want the *same* reshape applied to every node so they stay aligned in the grid), zero out the DC term (its "period" is meaningless and its amplitude is huge), consider only frequencies up to the Nyquist half, and take the top-`k` peaks as the dominant frequencies and their periods `p_i = T // f_i`. Keep the `k` amplitudes around — they will serve as importance weights. With `input_len = 12` the discoverable periods are short, but that is fine: flow's intra-spike shape lives at exactly those short periods, and top-`k = 3` gives three 2D views of the window, each exposing a different periodicity's intra/inter structure.
+
+What runs over each 2D tensor? A 2D conv, but the variation has structure at several scales — a fine wiggle over two or three steps, a broader hump over a third of the cycle, a slow tilt across cycles — and a single fixed kernel commits to one. That is the problem the Inception block was built for: several kernel sizes in parallel inside one block, combined, so the block is multi-scale by construction and parameter-efficient. So I use an inception block of 2D convs with increasing kernel sizes (`2i+1`, padded to preserve spatial size), run in parallel and averaged, made into a small two-layer affair — inception `hidden → 4·hidden`, GELU, inception `4·hidden → hidden` — a channel-bottleneck feedforward in 2D with the capacity to actually transform the features. One decision matters for cleanliness: I share *one* inception block across all `k` periods. Each period gets a different reshape geometry, but the same conv weights process all of them, so the model size is invariant to `k` — `k` becomes a pure width-of-search knob — and conceptually the inception learns "how to read 2D temporal variation," which should not depend on which period produced the grid.
+
+After the shared inception transforms each 2D tensor, reshape each back to 1D and truncate to the working length, giving `k` candidate representations. Fuse them by their importance: a plain sum ignores that some periods are far more present in this window than others, and I kept the amplitudes, which *are* the relative-importance signal. Push the `k` amplitudes through a softmax over periods to get convex weights and take the weighted sum — the same confidence-weighted aggregation idea, with the FFT amplitude as the confidence of the period. That is one TimesBlock: discover periods → reshape to `k` 2D tensors → shared inception on each → reshape back → amplitude-softmax aggregate, wrapped in a residual with a layer norm so the block learns only the correction to the variation representation and depth composes stably.
+
+Now make it a *forecaster* in this harness, which is where the task's edit differs from the reconstruction story the 2D-variation idea was first told for, so I am explicit about what the harness keeps and adds. There is a horizon here: I must produce twelve future steps, not just reconstruct the window. So the model first embeds the input — and crucially the embedding is a 1D conv that maps the `N` node features at each timestep to `hidden` channels, which is itself a *dense per-timestep cross-node mixing*: this is how TimesNet touches the spatial axis, not through any graph but by letting every node feed every hidden channel at each step. Then a `predict_linear` stretches the sequence along time from `input_len` to `input_len + output_len`, so the TimesBlocks see and continue the cycles into the future; the residual TimesBlocks refine that extended representation; and a final linear projection maps `hidden` back to the `N` node outputs, of which I keep the last `output_len` positions. RevIN brackets the whole thing for non-stationarity. So relative to the canonical 2D-variation model, the harness *adds* the `predict_linear` temporal extension and the value-embedding/projection limbs (the reconstruction version had same-length-in-same-length-out and no horizon), and the cross-node interaction is the dense embedding conv, not an explicit graph — that is the implementation I derive against. The model wants `lr = 1e-3` through `CONFIG_OVERRIDES = {'lr': 0.001}`; the full scaffold module is in the answer.
+
+So the delta from SOFTS is a different bet entirely: drop the explicit cross-node mechanism (keep only the dense per-timestep embedding mixing) and instead model the temporal axis in the 2D period space that exposes intra- and interperiod structure together. Reading the prior numbers, here is what I expect and where I am unsure. On PEMS04 I expect the *clearest* win on the whole ladder, possibly under StemGNN's 24.20 — because flow's sharp, multi-scale periodic structure is exactly what 2D-variation modeling captures and what every linear-temporal rung missed, and if the PEMS04 residual was really a temporal problem masquerading as a spatial one, this is where it shows. On the speed datasets I expect TimesNet to be competitive with SOFTS, maybe a touch better on METR-LA (speed is periodic too, and the daily shape benefits from explicit period modeling), but I am unsure it will beat SOFTS on PEMS-BAY, because speed is smooth enough that the robust cross-node core may already capture what a 2D temporal model adds. If the pattern is "TimesNet wins PEMS04 decisively and ties on speed," the next rung would marry an explicit cross-node mechanism in the clean inverted form back onto this temporal strength. Let me wire `torch.fft` into the imports first, then build the period-discovery and 2D-inception model.
+</think>
+<say>
+Now TimesNet, which drops the explicit cross-node mechanism and instead lifts each series into a 2D period space — rows are intraperiod, columns interperiod — read by a multi-scale Inception conv. This first edit adds the `torch.fft` import the period discovery needs.
+</say>
+<edit path="BasicTS/custom_model.py">
+<old>
+import math
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+from dataclasses import dataclass, field
+</old>
+<new>
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+import torch.fft
+from dataclasses import dataclass, field
+</new>
+</edit>
+<obs>
+Successfully replaced text in BasicTS/custom_model.py.
+</obs>
+<note>
+Now the config fields for the 2D-variation model — kernels and top-k.
+</note>
+<edit path="BasicTS/custom_model.py">
+<old>
+    num_features: int = field(default=207)
+    hidden_size: int = field(default=512)
+    core_size: int = field(default=128)
+    num_layers: int = field(default=2)
+    dropout: float = field(default=0.05)
+</old>
+<new>
+    num_features: int = field(default=207)
+    hidden_size: int = field(default=64)
+    num_layers: int = field(default=2)
+    num_kernels: int = field(default=3)
+    top_k: int = field(default=3)
+    dropout: float = field(default=0.1)
+</new>
+</edit>
+<obs>
+Successfully replaced text in BasicTS/custom_model.py.
+</obs>
+<note>
+Replace the STAR machinery with the Inception block and the period-discovering TimesBlock.
+</note>
+<edit path="BasicTS/custom_model.py">
+<old>
+
+class MLP(nn.Module):
+    def __init__(self, in_dim, mid_dim, out_dim):
+        super().__init__()
+        self.fc1 = nn.Linear(in_dim, mid_dim)
+        self.fc2 = nn.Linear(mid_dim, out_dim)
+
+    def forward(self, x):
+        return self.fc2(F.gelu(self.fc1(x)))
+
+
+class STAR(nn.Module):
+    """STar Aggregate-Redistribute module.
+
+    Aggregates cross-variate info into a core representation via
+    stochastic pooling (training) or weighted mean (inference),
+    then redistributes back to each variate.
+    """
+    def __init__(self, hidden_size, core_size):
+        super().__init__()
+        self.ffn1 = MLP(hidden_size, hidden_size, core_size)
+        self.ffn2 = MLP(hidden_size + core_size, hidden_size, hidden_size)
+
+    def forward(self, x):
+        B, N, D = x.shape
+        combined = self.ffn1(x)  # [B, N, core_size]
+
+        if self.training:
+            # Stochastic pooling
+            ratio = F.softmax(combined, dim=1)  # [B, N, core_size]
+            ratio = ratio.transpose(1, 2).reshape(-1, N)
+            indices = torch.multinomial(ratio, 1)
+            indices = indices.view(B, -1, 1).transpose(1, 2)  # [B, 1, core_size]
+            core = torch.gather(combined, 1, indices)  # [B, 1, core_size]
+            core = core.repeat(1, N, 1)
+        else:
+            # Weighted mean
+            weight = F.softmax(combined, dim=1)
+            core = (combined * weight).sum(dim=1, keepdim=True).repeat(1, N, 1)
+
+        return self.ffn2(torch.cat([x, core], dim=-1))
+
+
+class SOFTSBlock(nn.Module):
+    def __init__(self, hidden_size, core_size, dropout):
+        super().__init__()
+        self.star = STAR(hidden_size, core_size)
+        self.ffn = nn.Sequential(
+            nn.Linear(hidden_size, hidden_size * 4),
+            nn.GELU(),
+            nn.Dropout(dropout),
+            nn.Linear(hidden_size * 4, hidden_size),
+        )
+        self.norm1 = nn.LayerNorm(hidden_size)
+        self.norm2 = nn.LayerNorm(hidden_size)
+
+    def forward(self, x):
+        x = self.norm1(x + self.star(x))
+        x = self.norm2(x + self.ffn(x))
+        return x
+
+
+class Custom(nn.Module):
+    """SOFTS: Series-Core Fusion baseline.
+
+    Inverted architecture (nodes as tokens), using STAR modules
+    instead of self-attention for O(N) cross-variate communication.
+    """
+</old>
+<new>
+
+class InceptionBlock(nn.Module):
+    """Multi-scale 2D convolution with different kernel sizes."""
+    def __init__(self, in_channels, out_channels, num_kernels=3):
+        super().__init__()
+        self.num_kernels = num_kernels
+        self.convs = nn.ModuleList([
+            nn.Conv2d(in_channels, out_channels, kernel_size=2 * i + 1, padding=i)
+            for i in range(num_kernels)
+        ])
+        self._init_weights()
+
+    def _init_weights(self):
+        for m in self.modules():
+            if isinstance(m, nn.Conv2d):
+                nn.init.kaiming_normal_(m.weight)
+                if m.bias is not None:
+                    nn.init.constant_(m.bias, 0)
+
+    def forward(self, x):
+        return torch.stack([conv(x) for conv in self.convs], dim=-1).mean(-1)
+
+
+class TimesBlock(nn.Module):
+    def __init__(self, input_len, output_len, hidden_size, num_kernels, top_k):
+        super().__init__()
+        self.input_len = input_len
+        self.output_len = output_len
+        self.top_k = top_k
+        intermediate = hidden_size * 4
+        self.conv = nn.Sequential(
+            InceptionBlock(hidden_size, intermediate, num_kernels),
+            nn.GELU(),
+            InceptionBlock(intermediate, hidden_size, num_kernels),
+        )
+
+    def forward(self, x):
+        B, T, D = x.size()
+        # FFT to find dominant periods
+        xf = torch.fft.rfft(x, dim=1)
+        freq_amp = xf.abs().mean(dim=(0, -1))
+        freq_amp[0] = 0  # ignore DC
+        _, top_idx = torch.topk(freq_amp, self.top_k)
+        periods = T // top_idx.detach().cpu().numpy()
+        period_weight = xf.abs().mean(dim=-1)[:, top_idx]
+
+        # Process each period
+        results = []
+        for p in periods:
+            if T % p != 0:
+                pad_len = ((T // p) + 1) * p - T
+                out = F.pad(x, (0, 0, 0, pad_len))
+            else:
+                pad_len = 0
+                out = x
+            out = out.reshape(B, -1, p, D).permute(0, 3, 1, 2)  # [B, D, rows, p]
+            out = self.conv(out)
+            out = out.permute(0, 2, 3, 1).reshape(B, -1, D)[:, :T, :]
+            results.append(out)
+
+        results = torch.stack(results, dim=-1)
+        weights = F.softmax(period_weight, dim=1).unsqueeze(1).unsqueeze(1).expand_as(results)
+        return (results * weights).sum(-1) + x
+
+
+class Custom(nn.Module):
+    """TimesNet: Temporal 2D-Variation Modeling baseline.
+
+    Transforms 1D time series to 2D based on detected periodicity,
+    then applies 2D Inception convolution to capture temporal patterns.
+    """
+</new>
+</edit>
+<obs>
+Successfully replaced text in BasicTS/custom_model.py.
+</obs>
+<note>
+Now the forecasting backbone: value-embedding conv, temporal extension, and the TimesBlock stack.
+</note>
+<edit path="BasicTS/custom_model.py">
+<old>
+        super().__init__()
+        self.revin = RevIN()
+
+        # Sequence embedding: [B, T, N] -> transpose -> [B, N, T] -> [B, N, D]
+        self.embed = nn.Linear(config.input_len, config.hidden_size)
+        self.embed_drop = nn.Dropout(config.dropout)
+
+        self.layers = nn.ModuleList([
+            SOFTSBlock(config.hidden_size, config.core_size, config.dropout)
+            for _ in range(config.num_layers)
+        ])
+        self.norm = nn.LayerNorm(config.hidden_size)
+
+        # Output: [B, N, D] -> [B, N, T'] -> [B, T', N]
+        self.head = nn.Linear(config.hidden_size, config.output_len)
+
+    def forward(self, inputs, inputs_timestamps):
+        x = self.revin(inputs, "norm")
+        N = x.size(-1)
+
+        h = self.embed_drop(self.embed(x.transpose(1, 2)))
+        for layer in self.layers:
+            h = layer(h)
+        h = self.norm(h)
+
+        pred = self.head(h).transpose(1, 2)[:, :, :N]
+        pred = self.revin(pred, "denorm")
+</old>
+<new>
+        super().__init__()
+        self.output_len = config.output_len
+        self.revin = RevIN()
+
+        # Embedding: feature -> hidden
+        padding = 1 if torch.__version__ >= "1.5.0" else 2
+        self.value_embed = nn.Conv1d(
+            config.num_features, config.hidden_size,
+            kernel_size=3, padding=padding, padding_mode="circular", bias=False)
+
+        # Temporal alignment for forecasting
+        total_len = config.input_len + config.output_len
+        self.predict_linear = nn.Linear(config.input_len, total_len)
+
+        # TimesNet blocks
+        self.blocks = nn.ModuleList([
+            TimesBlock(config.input_len, config.output_len,
+                       config.hidden_size, config.num_kernels, config.top_k)
+            for _ in range(config.num_layers)
+        ])
+        self.layer_norm = nn.LayerNorm(config.hidden_size)
+
+        # Output projection
+        self.projection = nn.Linear(config.hidden_size, config.num_features)
+
+    def forward(self, inputs, inputs_timestamps):
+        x = self.revin(inputs, "norm")
+
+        # Embed: [B, T, N] -> [B, T, D]
+        h = self.value_embed(x.transpose(1, 2)).transpose(1, 2)
+
+        # Extend to input_len + output_len
+        h = self.predict_linear(h.transpose(1, 2)).transpose(1, 2)
+
+        for block in self.blocks:
+            h = self.layer_norm(block(h))
+
+        pred = self.projection(h[:, -self.output_len:, :])
+        pred = self.revin(pred, "denorm")
+</new>
+</edit>
+<obs>
+Successfully replaced text in BasicTS/custom_model.py.
+</obs>
+<note>
+Restore lr to 1e-3 for the TimesNet stack.
+</note>
+<edit path="BasicTS/custom_model.py">
+<old>
+# Allowed keys: lr, weight_decay.
+CONFIG_OVERRIDES = {'lr': 0.0005}
+</old>
+<new>
+# Allowed keys: lr, weight_decay.
+CONFIG_OVERRIDES = {'lr': 0.001}
+</new>
+</edit>
+<obs>
+Successfully replaced text in BasicTS/custom_model.py.
+</obs>
+<run/>
+<obs>
+Measured results — `baseline:timesnet` (`is_final,true`), seed 42.
+
+## METR-LA
+| seed | MAE | RMSE | MAPE |
+|---|---|---|---|
+| 42 | 3.845505 | 7.543611 | 0.106809 |
+
+## PEMS-BAY
+| seed | MAE | RMSE | MAPE |
+|---|---|---|---|
+| 42 | 2.034321 | 4.793971 | 0.045995 |
+
+## PEMS04
+| seed | MAE | RMSE | MAPE |
+|---|---|---|---|
+| 42 | 21.843599 | 34.645820 | 0.205928 |
+</obs>
+
+### step 6 — iTransformer (inverted Transformer)   [slug:itransformer]
+
+<think>
+TimesNet settled the PEMS04 question and, in doing so, drew the map for the strongest rung. It won PEMS04 decisively — MAE 21.8436, comfortably under StemGNN's 24.2040 and the best on the whole ladder — which confirms my reframing: the flow residual really was a *temporal* problem, flow's sharp multi-scale periodic structure, captured once I lifted the series into the 2D period space that exposes intra- and interperiod variation together, with no explicit graph at all. It also took METR-LA to 3.8455, the best speed MAE so far, and dropped METR-LA RMSE hard (7.722 → 7.544), so explicit period modeling helps smooth speed too. But on PEMS-BAY it came in at 2.0343 MAE — *worse* than SOFTS's 1.9621 — and PEMS-BAY RMSE (4.794) lost to SOFTS (4.724) as well. That is the gap I have to close. PEMS-BAY is the densest grid (325 sensors, tightly correlated Bay-Area speed), and it is exactly where a robust cross-node mechanism pays most; TimesNet has no real cross-node correlation model — its only spatial touch is the dense per-timestep value-embedding conv, which mixes nodes channel-wise at each step but learns no explicit node-to-node structure. SOFTS, which *does* model cross-node interaction (through its core), beats it there. So the two leading rungs each own one half of the problem: TimesNet owns the temporal/flow half, SOFTS owns the dense-grid cross-node half, and neither owns both.
+
+The strongest rung therefore has to keep an explicit, learned cross-node mechanism — which SOFTS showed helps the dense speed grid and StemGNN showed helps flow — but deliver it in the clean inverted-token form rather than SOFTS's lossy global core or StemGNN's fragile spectral graph. The lesson across the climb is consistent: cross-node coupling is real signal on every dataset, but the *robustness* of how you extract it decides whether you keep the speed gains. SOFTS's core was robust but global, blurring directed structure (it lost PEMS04). StemGNN's graph was explicit but spectral and fragile (it lost METR-LA). What I have not yet tried is the most direct explicit cross-node model — an `N × N` correlation, learned per pair — but applied in the inverted view that made SOFTS robust, and at these node counts (207–325) the `O(N²)` cost SOFTS was avoiding is actually affordable. So the bet is: put genuine all-pairs attention back, but on the right axis.
+
+Let me re-derive *why* the axis is the thing, because that is the crux. The reflex, inherited from language, is "a token per position in the sequence," and here the sequence is time, so a token is the slice of all `N` nodes at one instant, with attention over the `T` temporal tokens. Stare at what is inside one such token: whatever every sensor happened to read at the same wall-clock instant — and on a propagating-congestion network those are not even synchronized in the sense that matters, because a shockwave hits an upstream detector minutes before a downstream one, so "the same timestamp" lumps together different phases of the same event at different sensors. The token is a time-misaligned mixture, its receptive field is a single tick, and there is barely any temporal information in it; the temporal content lives *across* tokens. Worse, layer norm in this layout normalizes across the feature dimension of a token — the node mixture at a fixed time — blending nodes that are at different phases, which injects interaction noise rather than removing nuisance. And the attention map over `T` temporal tokens tells me which *instants* resemble which, not which *nodes* drive which — the cross-node structure I actually need. There is a cleaner way to see the mismatch: attention is permutation-invariant in its tokens, which is why language bolts on positional encodings; but time *has* order, so a permutation-invariant operator on the temporal axis is a structural mismatch I would have to patch with positional encodings just to undo the damage. Every symptom — meaningless attention, harmful layer norm, the `O(T²)` cost, the flatlining with longer lookback — traces to one root: tokenizing along time and mixing nodes inside each token.
+
+So invert. The thing with order that I must not permute is time; the thing without inherent order, where permutation invariance is *correct*, is the set of nodes — sensor 5 and sensor 200 have no canonical ordering. Make the token the whole twelve-step series of one node, embed *that* into a `D`-vector, and run attention across the `N` node tokens. Now everything lands in the right place. The attention map is `N × N` — it relates node to node, which is precisely the cross-node correlation TimesNet lacked and PEMS-BAY craves, and now it is what attention literally computes. Permutation invariance over nodes is fine — nodes have no order — so I need no positional encoding on this axis. Where did the temporal modeling go? Into the per-token map: each token is an encoding of one node's whole series, and the feed-forward network, shared across tokens, transforms that series representation — which is exactly the regime where the linear/MLP forecasters (DLinear, SOFTS's embedding) were already strong. So the inversion gives a clean division of labor: attention handles cross-node correlation, the FFN handles the per-node temporal representation. The linear floor was not beating attention because attention is useless; it was beating attention pointed at the wrong axis, with nothing doing the cross-node job. Flip the axes and each operator does what it is good at — and unlike SOFTS I keep the *explicit per-pair* correlation that the dense grid needs, while unlike StemGNN I get it without any spectral machinery.
+
+The layer norm, poison in the temporal layout, becomes the right medicine here: applied per node token, it normalizes each node's own representation across its feature dimension — within a single series, never blending nodes — bringing every node to a common scale and directly attacking the inter-node magnitude discrepancy (a flow sensor and a speed sensor, or two speed sensors at different baselines, put on equal footing). Same module, opposite effect, because the axis it normalizes over flipped. And the attention scores become interpretable: with node tokens already normalized, the query-key inner product behaves like a learned correlation between nodes, the `N × N` map is a learned multivariate correlation matrix, and the `1/√d_k` scaling keeps the logits where the softmax is not saturated — I keep it exactly as is, because the whole bet is that I do not redesign any component, only point them at the right axes.
+
+Now the harness specifics, where the task's edit differs from the canonical inverted model, so I am explicit. The embedding is a single `Linear(input_len, hidden)` mapping each node's twelve steps to a token; the order of time is stored in that linear's weights (a distinct weight column per input step), so no positional encoding is needed, and the only axis attention sees — the node axis — correctly has none. The encoder is `num_layers` blocks of `LayerNorm(x + Attn(x))` then `LayerNorm(x + FFN(x))`, attention over the `N` tokens, FFN per token. A linear head maps each `D`-token to its twelve-step horizon, sliced back to `N` outputs. RevIN brackets the whole thing for non-stationarity — subtract per-node mean and std over the lookback, restore on the output — which is the same drift fix SOFTS used. One thing to name against the canonical method: the harness's version is the lean encoder-only inverted Transformer with a plain `MultiHeadAttention` (no efficient-attention drop-in, no covariate tokens from the timestamps — `inputs_timestamps` is unused), so the cross-node attention is full `O(N²)`, which at 207–325 nodes is affordable; I derive against that. The model wants `lr = 5e-4` through `CONFIG_OVERRIDES = {'lr': 0.0005}`, like SOFTS, because the wide `hidden_size = 512` stack is unstable at the harness default; the full scaffold module is in the answer.
+
+So the delta from the two leading rungs is precise: keep TimesNet's lesson that strong per-node temporal modeling matters (the shared FFN over series tokens is exactly that), keep SOFTS's lesson that explicit cross-node modeling in the robust inverted view matters (now with genuine `N × N` attention instead of a global core), and drop StemGNN's spectral fragility entirely. Reading the prior numbers, here is what I expect and where I am unsure. On PEMS-BAY — the dense grid where TimesNet lost to SOFTS — I expect inverted attention to *win*, because an explicit `N × N` correlation over the densest network should recover the cross-node structure TimesNet's dense conv could not, taking MAE below SOFTS's 1.9621. On METR-LA I expect it to be the best or tied-best on the ladder, edging TimesNet's 3.8455, since it gets both an explicit cross-node map and a strong per-node FFN. The genuine open question is PEMS04: TimesNet's 21.84 was won by explicit 2D *temporal* period modeling, and inverted attention models the per-node temporal axis with only an FFN, no 2D period structure — so I would not be surprised if iTransformer *trails* TimesNet on PEMS04 even while winning both speed datasets, because flow's sharp periodic shape is exactly what a flat per-token FFN under-models. If that is the pattern, the move beyond the ladder would build an explicit spatial *and* explicit temporal structure at once. Let me put `math` back for the attention scaling, then build the inverted Transformer.
+</think>
+<say>
+Stepping up to iTransformer: keep the inverted view but put genuine N×N attention back across the node tokens, so attention carries cross-node correlation while the per-token FFN carries temporal shape. This first edit restores the `math` import the attention scaling uses.
+</say>
+<edit path="BasicTS/custom_model.py">
+<old>
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+import torch.fft
+from dataclasses import dataclass, field
+</old>
+<new>
+import math
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+from dataclasses import dataclass, field
+</new>
+</edit>
+<obs>
+Successfully replaced text in BasicTS/custom_model.py.
+</obs>
+<note>
+Now the config fields for the inverted Transformer — wide hidden, heads, depth.
+</note>
+<edit path="BasicTS/custom_model.py">
+<old>
+    num_features: int = field(default=207)
+    hidden_size: int = field(default=64)
+    num_layers: int = field(default=2)
+    num_kernels: int = field(default=3)
+    top_k: int = field(default=3)
+    dropout: float = field(default=0.1)
+</old>
+<new>
+    num_features: int = field(default=207)
+    hidden_size: int = field(default=512)
+    n_heads: int = field(default=8)
+    num_layers: int = field(default=3)
+    dropout: float = field(default=0.1)
+</new>
+</edit>
+<obs>
+Successfully replaced text in BasicTS/custom_model.py.
+</obs>
+<note>
+Just a docstring on RevIN, kept as-is otherwise.
+</note>
+<edit path="BasicTS/custom_model.py">
+<old>
+class RevIN(nn.Module):
+    def __init__(self, eps=1e-6):
+</old>
+<new>
+class RevIN(nn.Module):
+    """Reversible Instance Normalization."""
+    def __init__(self, eps=1e-6):
+</new>
+</edit>
+<obs>
+Successfully replaced text in BasicTS/custom_model.py.
+</obs>
+<note>
+Replace the TimesNet conv machinery with multi-head attention over node tokens and the transformer block.
+</note>
+<edit path="BasicTS/custom_model.py">
+<old>
+            return (x - self.mean) / self.stdev
+        else:
+            return x * self.stdev + self.mean
+
+
+class InceptionBlock(nn.Module):
+    """Multi-scale 2D convolution with different kernel sizes."""
+    def __init__(self, in_channels, out_channels, num_kernels=3):
+        super().__init__()
+        self.num_kernels = num_kernels
+        self.convs = nn.ModuleList([
+            nn.Conv2d(in_channels, out_channels, kernel_size=2 * i + 1, padding=i)
+            for i in range(num_kernels)
+        ])
+        self._init_weights()
+
+    def _init_weights(self):
+        for m in self.modules():
+            if isinstance(m, nn.Conv2d):
+                nn.init.kaiming_normal_(m.weight)
+                if m.bias is not None:
+                    nn.init.constant_(m.bias, 0)
+
+    def forward(self, x):
+        return torch.stack([conv(x) for conv in self.convs], dim=-1).mean(-1)
+
+
+class TimesBlock(nn.Module):
+    def __init__(self, input_len, output_len, hidden_size, num_kernels, top_k):
+        super().__init__()
+        self.input_len = input_len
+        self.output_len = output_len
+        self.top_k = top_k
+        intermediate = hidden_size * 4
+        self.conv = nn.Sequential(
+            InceptionBlock(hidden_size, intermediate, num_kernels),
+            nn.GELU(),
+            InceptionBlock(intermediate, hidden_size, num_kernels),
+        )
+
+    def forward(self, x):
+        B, T, D = x.size()
+        # FFT to find dominant periods
+        xf = torch.fft.rfft(x, dim=1)
+        freq_amp = xf.abs().mean(dim=(0, -1))
+        freq_amp[0] = 0  # ignore DC
+        _, top_idx = torch.topk(freq_amp, self.top_k)
+        periods = T // top_idx.detach().cpu().numpy()
+        period_weight = xf.abs().mean(dim=-1)[:, top_idx]
+
+        # Process each period
+        results = []
+        for p in periods:
+            if T % p != 0:
+                pad_len = ((T // p) + 1) * p - T
+                out = F.pad(x, (0, 0, 0, pad_len))
+            else:
+                pad_len = 0
+                out = x
+            out = out.reshape(B, -1, p, D).permute(0, 3, 1, 2)  # [B, D, rows, p]
+            out = self.conv(out)
+            out = out.permute(0, 2, 3, 1).reshape(B, -1, D)[:, :T, :]
+            results.append(out)
+
+        results = torch.stack(results, dim=-1)
+        weights = F.softmax(period_weight, dim=1).unsqueeze(1).unsqueeze(1).expand_as(results)
+        return (results * weights).sum(-1) + x
+
+
+class Custom(nn.Module):
+    """TimesNet: Temporal 2D-Variation Modeling baseline.
+
+    Transforms 1D time series to 2D based on detected periodicity,
+    then applies 2D Inception convolution to capture temporal patterns.
+    """
+</old>
+<new>
+            return (x - self.mean) / self.stdev
+        else:  # denorm
+            return x * self.stdev + self.mean
+
+
+class MultiHeadAttention(nn.Module):
+    def __init__(self, hidden_size, n_heads, dropout=0.1):
+        super().__init__()
+        self.n_heads = n_heads
+        self.head_dim = hidden_size // n_heads
+        self.q_proj = nn.Linear(hidden_size, hidden_size)
+        self.k_proj = nn.Linear(hidden_size, hidden_size)
+        self.v_proj = nn.Linear(hidden_size, hidden_size)
+        self.out_proj = nn.Linear(hidden_size, hidden_size)
+        self.dropout = nn.Dropout(dropout)
+        self.scale = math.sqrt(self.head_dim)
+
+    def forward(self, x):
+        B, N, D = x.shape
+        q = self.q_proj(x).view(B, N, self.n_heads, self.head_dim).transpose(1, 2)
+        k = self.k_proj(x).view(B, N, self.n_heads, self.head_dim).transpose(1, 2)
+        v = self.v_proj(x).view(B, N, self.n_heads, self.head_dim).transpose(1, 2)
+        attn = (q @ k.transpose(-2, -1)) / self.scale
+        attn = self.dropout(F.softmax(attn, dim=-1))
+        out = (attn @ v).transpose(1, 2).contiguous().view(B, N, D)
+        return self.out_proj(out)
+
+
+class TransformerBlock(nn.Module):
+    def __init__(self, hidden_size, n_heads, dropout=0.1):
+        super().__init__()
+        self.attn = MultiHeadAttention(hidden_size, n_heads, dropout)
+        self.ffn = nn.Sequential(
+            nn.Linear(hidden_size, hidden_size * 4),
+            nn.GELU(),
+            nn.Dropout(dropout),
+            nn.Linear(hidden_size * 4, hidden_size),
+        )
+        self.norm1 = nn.LayerNorm(hidden_size)
+        self.norm2 = nn.LayerNorm(hidden_size)
+
+    def forward(self, x):
+        x = self.norm1(x + self.attn(x))
+        x = self.norm2(x + self.ffn(x))
+        return x
+
+
+class Custom(nn.Module):
+    """iTransformer: Inverted Transformer baseline.
+
+    Treats each node's time series as a token (inverted view).
+    Self-attention captures cross-variate dependencies.
+    """
+</new>
+</edit>
+<obs>
+Successfully replaced text in BasicTS/custom_model.py.
+</obs>
+<note>
+Now the inverted backbone: per-node embedding, transformer encoder over nodes, per-node head.
+</note>
+<edit path="BasicTS/custom_model.py">
+<old>
+        super().__init__()
+        self.output_len = config.output_len
+        self.revin = RevIN()
+
+        # Embedding: feature -> hidden
+        padding = 1 if torch.__version__ >= "1.5.0" else 2
+        self.value_embed = nn.Conv1d(
+            config.num_features, config.hidden_size,
+            kernel_size=3, padding=padding, padding_mode="circular", bias=False)
+
+        # Temporal alignment for forecasting
+        total_len = config.input_len + config.output_len
+        self.predict_linear = nn.Linear(config.input_len, total_len)
+
+        # TimesNet blocks
+        self.blocks = nn.ModuleList([
+            TimesBlock(config.input_len, config.output_len,
+                       config.hidden_size, config.num_kernels, config.top_k)
+            for _ in range(config.num_layers)
+        ])
+        self.layer_norm = nn.LayerNorm(config.hidden_size)
+
+        # Output projection
+        self.projection = nn.Linear(config.hidden_size, config.num_features)
+
+    def forward(self, inputs, inputs_timestamps):
+        x = self.revin(inputs, "norm")
+
+        # Embed: [B, T, N] -> [B, T, D]
+        h = self.value_embed(x.transpose(1, 2)).transpose(1, 2)
+
+        # Extend to input_len + output_len
+        h = self.predict_linear(h.transpose(1, 2)).transpose(1, 2)
+
+        for block in self.blocks:
+            h = self.layer_norm(block(h))
+
+        pred = self.projection(h[:, -self.output_len:, :])
+        pred = self.revin(pred, "denorm")
+</old>
+<new>
+        super().__init__()
+        self.num_features = config.num_features
+        self.revin = RevIN()
+
+        # Embed each node's input_len time series -> hidden_size
+        self.embed = nn.Linear(config.input_len, config.hidden_size)
+        self.dropout = nn.Dropout(config.dropout)
+
+        # Transformer encoder over nodes
+        self.layers = nn.ModuleList([
+            TransformerBlock(config.hidden_size, config.n_heads, config.dropout)
+            for _ in range(config.num_layers)
+        ])
+        self.norm = nn.LayerNorm(config.hidden_size)
+
+        # Project hidden_size -> output_len per node
+        self.head = nn.Linear(config.hidden_size, config.output_len)
+
+    def forward(self, inputs, inputs_timestamps):
+        # inputs: [B, T, N]
+        x = self.revin(inputs, "norm")
+
+        # Invert: [B, N, T] -> embed -> [B, N, D]
+        h = self.dropout(self.embed(x.transpose(1, 2)))
+
+        for layer in self.layers:
+            h = layer(h)
+        h = self.norm(h)
+
+        # Project: [B, N, D] -> [B, N, T'] -> [B, T', N]
+        pred = self.head(h).transpose(1, 2)[:, :, :self.num_features]
+        pred = self.revin(pred, "denorm")
+</new>
+</edit>
+<obs>
+Successfully replaced text in BasicTS/custom_model.py.
+</obs>
+<note>
+And drop lr to 5e-4 for the wide attention stack, as with SOFTS.
+</note>
+<edit path="BasicTS/custom_model.py">
+<old>
+# Allowed keys: lr, weight_decay.
+CONFIG_OVERRIDES = {'lr': 0.001}
+</old>
+<new>
+# Allowed keys: lr, weight_decay.
+CONFIG_OVERRIDES = {'lr': 0.0005}
+</new>
+</edit>
+<obs>
+Successfully replaced text in BasicTS/custom_model.py.
+</obs>
+<run/>
+<obs>
+Measured results — `baseline:itransformer` (`is_final,true`), seed 42.
+
+## METR-LA
+| seed | MAE | RMSE | MAPE |
+|---|---|---|---|
+| 42 | 3.832120 | 7.665158 | 0.106305 |
+
+## PEMS-BAY
+| seed | MAE | RMSE | MAPE |
+|---|---|---|---|
+| 42 | 1.963719 | 4.714149 | 0.043282 |
+
+## PEMS04
+| seed | MAE | RMSE | MAPE |
+|---|---|---|---|
+| 42 | 25.002566 | 39.954730 | 0.276135 |
+</obs>
+
+### step 7 — STID (spatial-temporal identity)   [slug:stid]
+
+<think>
+The inverted-attention rung landed best-on-average, exactly as I expected, and in landing there it exposed the one thing the entire ladder never achieved: no single model wins all three datasets. iTransformer took METR-LA to 3.8321 MAE — the best on the ladder — and PEMS-BAY to 1.9637, statistically tied with SOFTS's 1.9621 for best on the densest grid, confirming that an explicit `N × N` correlation in the robust inverted view is the right cross-node mechanism. But on PEMS04 it came in at 25.0026, trailing TimesNet's 21.8436 by a wide margin, precisely as I predicted: inverted attention models the per-node temporal axis with only a flat shared FFN, and flow's sharp multi-scale periodic shape is exactly what that under-models. So the final tally across the ladder is a standoff. TimesNet owns flow (PEMS04 21.84) through explicit 2D *temporal* period modeling but loses the dense speed grid; iTransformer and SOFTS own the speed datasets through explicit *cross-node* modeling but neither touches TimesNet on flow. Each strong rung built *one* explicit structure — spatial or temporal — and let a generic operator carry the other, and the dataset where the neglected axis dominates is the dataset it loses. The lesson of the whole climb, read off the numbers, is that strong spatial-temporal forecasting needs *both* axes modeled explicitly at once, and every rung so far forced one operator to do double duty.
+
+That standoff is what motivates the move past the ladder. But before I reach for a model that builds both an explicit spatial *and* an explicit temporal structure with heavy machinery — which would be the obvious "best of TimesNet and iTransformer" graph-plus-2D-conv composite — let me re-examine what the explicit structures were actually *doing*, because I suspect the standoff has a much cheaper resolution. iTransformer's `N × N` attention exists so the model can tell *which sensor* a sample is — its whole content is letting node `i`'s update depend on which other nodes it correlates with, which is a way of conditioning on node identity. TimesNet's 2D period machinery and StemGNN's GRU-spectral cell exist so the model can tell *what temporal regime* a sample is in — what phase of the daily cycle. Strip the question to its bones: every rung's expensive structure is, at heart, a mechanism for making samples *distinguishable* — in the spatial dimension (which sensor?) and the temporal dimension (what time?). And that reframes the failure of the channel-independent floor too. DLinear and TimeMixer averaged over an equivalence class of inputs: two sensors with the same recent speed curve got the same prediction, even though a downtown loop and a suburban segment continue differently, and the same curve at 8am (rush building) and 8pm (rush clearing) continues in opposite directions. The samples were *indistinguishable*, so the shared map output one averaged continuation for futures that genuinely diverge. Every rung above the floor bought distinguishability — spatial via graph or attention, temporal via spectral or 2D-period cells — at escalating cost. If distinguishability is the real necessary ingredient, I can buy it directly, for almost nothing, and a plain MLP should suddenly become competitive with the whole ladder.
+
+So buy it directly. Take the spatial dimension first: I want the model to know *which sensor* a sample comes from, and the most direct thing is to give every sensor its own learnable vector — a spatial identity embedding, an `N × h` table, one row per node, learned end to end. Attach node `i`'s row to its representation, and two samples with identical histories from different sensors are no longer identical to the model: their identity vectors differ, so it can learn a sensor-specific continuation for each. This is the model learning an *embedding of the network* — instead of being handed an adjacency (DCRNN), or learning a Laplacian and convolving (StemGNN), or computing `N × N` attention every forward pass (iTransformer), the sensor-to-sensor structure lives latent in the geometry of `N` learnable vectors: sensors that behave alike drift to nearby embeddings because that minimizes the loss. I get the spatial distinguishability the whole ladder paid for, as a plain lookup table, with no message passing, no Laplacian, no attention, and no `O(N²)`.
+
+Now the temporal dimension, and the harness hands me exactly the variables I need — `inputs_timestamps` carries time-of-day and day-of-week per step, the very features that disambiguate 8am from 8pm and Monday from Sunday, and which every rung so far *ignored* (DLinear through iTransformer all left the timestamps unused). Mirror the spatial trick. Traffic has 288 five-minute slots in a day: a learnable table of 288 vectors, the time-in-day identity, looked up by the current slot. Traffic has 7 weekdays: a table of 7 vectors, the day-in-week identity, looked up by the current day. Attach both. Now a sample is tagged with which sensor, which five-minute slot, and which weekday it sits in — the temporal indistinguishability that made the identical-curve samples collapse is resolved by two more lookup tables. Why learnable embeddings rather than the raw normalized scalars the timestamps already provide? Because the effect of "it is 8am" on the continuation is sharp and non-monotonic — rush hour is a regime, not a smooth function of `8/24` — and a learned per-slot vector lets each slot carry an arbitrary signature a single scalar through a shared MLP cannot express. The 288 slots and 7 days are few enough that dedicated tables are cheap.
+
+Now the architecture, in this task's edit surface, and it is almost embarrassingly plain. Embed each node's own twelve-step history with a single shared linear map, `Linear(input_len, h)`, into an `h`-dimensional time-series embedding — the per-node temporal-shape representation, the one primitive that was strong from the floor onward (DLinear's linear map, SOFTS's embedding all relied on it). Concatenate onto it the three identities: the spatial identity row for this node, the time-in-day identity for this sample's slot, the day-in-week identity for its weekday, giving a `4h`-wide vector per node that carries *what the recent history looks like*, *which sensor this is*, *what time of day*, *what day of week* — exactly the quadruple a forecaster needs and exactly what every channel-independent rung was missing. Feed it through a short encoder of residual MLP blocks (`fc2(relu(fc1(x))) + x` — residual so depth past two layers trains stably and each block learns only a correction), three of them, then a regression head mapping `4h → output_len`. No graph, no attention, no recurrence, no 2D reshape: an embedding layer, residual MLPs, a head, and three lookup tables doing all the disambiguation.
+
+Let me get the index bookkeeping right, against this harness specifically, because it is where the model silently breaks. The timestamps arrive normalized to `[0,1]`. The time-in-day index is `floor(t_of_day × 288)`, a value in `0..287` selecting a time-in-day row; the day-in-week index is `floor(day × 7)`, in `0..6`. I read them at the *last* look-back step — the forecast is anchored at "now," so the disambiguating context is what time it is at the moment I predict from. The spatial identity needs no index: it is the node itself, so the `N × h` table broadcasts across the batch, one row per node. Each identity expands to `[B, N, h]` to line up with the time-series embedding `[B, N, h]`, and the four concatenate to `[B, N, 4h]`; the encoder preserves `4h` so the residual skips add cleanly, and the head maps to `[B, N, output_len]`, transposed to `[B, output_len, N]`. One thing to name precisely against the canonical reference: the canonical model implements the embeddings and the encoder with `1×1` Conv2d over a `[B, C, N, 1]` layout and a small dropout in each block; the task's edit re-expresses the identical computation with `nn.Linear` and `nn.Parameter` tables over a `[B, N, h]` layout and no dropout — mathematically the same map (a `1×1` conv over a singleton spatial axis *is* a per-node linear), and the index derivation (`×288`, `×7`, last step) matches the canonical lookup exactly. So the algorithm is faithful; only the tensor idiom differs. The model runs at the harness default `lr = 2e-3` (the shallow MLP is stable there), so `CONFIG_OVERRIDES = {'lr': 2e-3}` simply restates the default; the full scaffold module is in the answer.
+
+So the move past the strongest baseline is to stop building one explicit axis and letting a generic operator carry the other, and instead make *every sample distinguishable in both axes directly* — three cheap identity tables on a plain residual MLP — on the hypothesis that distinguishability, not topology and not heavy temporal cells, is the necessary ingredient. Here is the bar this must clear and what I would validate, stated against the ladder's real numbers, with no result invented. The standoff to beat is: METR-LA 3.8321 (iTransformer), PEMS-BAY 1.9621 (SOFTS), PEMS04 21.8436 (TimesNet) — three different winners. The falsifiable claim is that a single identity-MLP beats *all three at once*, and beats them by a clear margin rather than a hair, because if the explicit graph/attention and the 2D-period machinery were all just expensive routes to distinguishability, then resolving it directly should dominate every rung on every dataset. The sharpest test is METR-LA, the smallest and best-studied network: if identity-MLP cannot clearly beat iTransformer's 3.8321 there, the hypothesis is wrong and the explicit structures were doing something the tables cannot. I would also watch PEMS04 most nervously — it is the dataset whose winner (TimesNet) used explicit *temporal* 2D modeling, and if identity tables are not enough to disambiguate flow's sharp regimes, PEMS04 is where the model would fall short of the bar. And the diagnostic I would run if it works is the two ablations the design implies: drop the spatial identity and the model should collapse toward the channel-independent floor's averaging on the densest grids; drop the temporal identities and it should err most where the same curve continues differently at different times — confirming that the identities, not the MLP, are carrying the win. Let me strip the now-unused `math` import, then write the identity-MLP in.
+</think>
+<say>
+Final rung, STID: instead of building one explicit axis and letting a generic operator carry the other, make every sample distinguishable directly with three learnable identity tables — per-node, time-of-day, day-of-week — on a plain residual MLP. First edit drops the now-unused `math` import.
+</say>
+<edit path="BasicTS/custom_model.py">
+<old>
+import math
+import torch
+</old>
+<new>
+import torch
+</new>
+</edit>
+<obs>
+Successfully replaced text in BasicTS/custom_model.py.
+</obs>
+<note>
+Now swap the iTransformer config and modules for the residual-MLP block.
+</note>
+<edit path="BasicTS/custom_model.py">
+<old>
+    num_features: int = field(default=207)
+    hidden_size: int = field(default=512)
+    n_heads: int = field(default=8)
+    num_layers: int = field(default=3)
+    dropout: float = field(default=0.1)
+
+
+class RevIN(nn.Module):
+    """Reversible Instance Normalization."""
+    def __init__(self, eps=1e-6):
+        super().__init__()
+        self.eps = eps
+
+    def forward(self, x, mode):
+        if mode == "norm":
+            self.mean = x.mean(dim=1, keepdim=True).detach()
+            self.stdev = torch.sqrt(x.var(dim=1, keepdim=True, unbiased=False) + self.eps).detach()
+            return (x - self.mean) / self.stdev
+        else:  # denorm
+            return x * self.stdev + self.mean
+
+
+class MultiHeadAttention(nn.Module):
+    def __init__(self, hidden_size, n_heads, dropout=0.1):
+        super().__init__()
+        self.n_heads = n_heads
+        self.head_dim = hidden_size // n_heads
+        self.q_proj = nn.Linear(hidden_size, hidden_size)
+        self.k_proj = nn.Linear(hidden_size, hidden_size)
+        self.v_proj = nn.Linear(hidden_size, hidden_size)
+        self.out_proj = nn.Linear(hidden_size, hidden_size)
+        self.dropout = nn.Dropout(dropout)
+        self.scale = math.sqrt(self.head_dim)
+
+    def forward(self, x):
+        B, N, D = x.shape
+        q = self.q_proj(x).view(B, N, self.n_heads, self.head_dim).transpose(1, 2)
+        k = self.k_proj(x).view(B, N, self.n_heads, self.head_dim).transpose(1, 2)
+        v = self.v_proj(x).view(B, N, self.n_heads, self.head_dim).transpose(1, 2)
+        attn = (q @ k.transpose(-2, -1)) / self.scale
+        attn = self.dropout(F.softmax(attn, dim=-1))
+        out = (attn @ v).transpose(1, 2).contiguous().view(B, N, D)
+        return self.out_proj(out)
+
+
+class TransformerBlock(nn.Module):
+    def __init__(self, hidden_size, n_heads, dropout=0.1):
+        super().__init__()
+        self.attn = MultiHeadAttention(hidden_size, n_heads, dropout)
+        self.ffn = nn.Sequential(
+            nn.Linear(hidden_size, hidden_size * 4),
+            nn.GELU(),
+            nn.Dropout(dropout),
+            nn.Linear(hidden_size * 4, hidden_size),
+        )
+        self.norm1 = nn.LayerNorm(hidden_size)
+        self.norm2 = nn.LayerNorm(hidden_size)
+
+    def forward(self, x):
+        x = self.norm1(x + self.attn(x))
+        x = self.norm2(x + self.ffn(x))
+        return x
+
+
+class Custom(nn.Module):
+    """iTransformer: Inverted Transformer baseline.
+
+    Treats each node's time series as a token (inverted view).
+    Self-attention captures cross-variate dependencies.
+    """
+</old>
+<new>
+    num_features: int = field(default=207)
+    hidden_size: int = field(default=32)
+    num_layers: int = field(default=3)
+    dropout: float = field(default=0.0)
+
+
+class ResMLP(nn.Module):
+    def __init__(self, hidden_size, intermediate_size):
+        super().__init__()
+        self.fc1 = nn.Linear(hidden_size, intermediate_size)
+        self.fc2 = nn.Linear(intermediate_size, hidden_size)
+
+    def forward(self, x):
+        return self.fc2(F.relu(self.fc1(x))) + x
+
+
+class Custom(nn.Module):
+    """STID: Spatial-Temporal Identity baseline.
+
+    Per-node MLP over historical steps, augmented with learnable
+    spatial embeddings and temporal (time-of-day, day-of-week) embeddings.
+    """
+</new>
+</edit>
+<obs>
+Successfully replaced text in BasicTS/custom_model.py.
+</obs>
+<note>
+Now the backbone: time-series embedding plus the three identity tables, concatenated and run through residual MLPs.
+</note>
+<edit path="BasicTS/custom_model.py">
+<old>
+        super().__init__()
+        self.num_features = config.num_features
+        self.revin = RevIN()
+
+        # Embed each node's input_len time series -> hidden_size
+        self.embed = nn.Linear(config.input_len, config.hidden_size)
+        self.dropout = nn.Dropout(config.dropout)
+
+        # Transformer encoder over nodes
+        self.layers = nn.ModuleList([
+            TransformerBlock(config.hidden_size, config.n_heads, config.dropout)
+            for _ in range(config.num_layers)
+        ])
+        self.norm = nn.LayerNorm(config.hidden_size)
+
+        # Project hidden_size -> output_len per node
+        self.head = nn.Linear(config.hidden_size, config.output_len)
+
+    def forward(self, inputs, inputs_timestamps):
+        # inputs: [B, T, N]
+        x = self.revin(inputs, "norm")
+
+        # Invert: [B, N, T] -> embed -> [B, N, D]
+        h = self.dropout(self.embed(x.transpose(1, 2)))
+
+        for layer in self.layers:
+            h = layer(h)
+        h = self.norm(h)
+
+        # Project: [B, N, D] -> [B, N, T'] -> [B, T', N]
+        pred = self.head(h).transpose(1, 2)[:, :, :self.num_features]
+        pred = self.revin(pred, "denorm")
+        return pred
+</old>
+<new>
+        super().__init__()
+        self.input_len = config.input_len
+        self.output_len = config.output_len
+        self.num_features = config.num_features
+        h = config.hidden_size  # embedding dim for each component
+
+        # Time series embedding: project input_len -> h per node
+        self.ts_embed = nn.Linear(config.input_len, h)
+
+        # Spatial embedding: learnable per-node identity [N, h]
+        self.spatial_emb = nn.Parameter(torch.empty(config.num_features, h))
+        nn.init.xavier_uniform_(self.spatial_emb)
+
+        # Temporal embeddings
+        self.tid_emb = nn.Parameter(torch.empty(288, h))  # time-in-day
+        nn.init.xavier_uniform_(self.tid_emb)
+        self.diw_emb = nn.Parameter(torch.empty(7, h))    # day-in-week
+        nn.init.xavier_uniform_(self.diw_emb)
+
+        # Encoder: stack of residual MLPs over concatenated embeddings
+        total_h = h * 4  # ts + spatial + tid + diw
+        self.encoder = nn.Sequential(
+            *[ResMLP(total_h, total_h) for _ in range(config.num_layers)]
+        )
+
+        # Output projection
+        self.output_proj = nn.Linear(total_h, config.output_len)
+
+    def forward(self, inputs, inputs_timestamps):
+        # inputs: [B, T, N], inputs_timestamps: [B, T, 2]
+        B, T, N = inputs.shape
+
+        # Time series embedding: [B, N, h]
+        ts_emb = self.ts_embed(inputs.transpose(1, 2))
+
+        # Temporal embeddings from last timestamp
+        tid_idx = (inputs_timestamps[:, -1, 0] * 288).long()  # [B]
+        diw_idx = (inputs_timestamps[:, -1, 1] * 7).long()    # [B]
+        tid = self.tid_emb[tid_idx]  # [B, h]
+        diw = self.diw_emb[diw_idx]  # [B, h]
+
+        # Expand to [B, N, h]
+        spatial = self.spatial_emb.unsqueeze(0).expand(B, -1, -1)
+        tid = tid.unsqueeze(1).expand(-1, N, -1)
+        diw = diw.unsqueeze(1).expand(-1, N, -1)
+
+        # Concatenate: [B, N, 4*h]
+        hidden = torch.cat([ts_emb, spatial, tid, diw], dim=-1)
+
+        # Encode and project: [B, N, output_len] -> [B, output_len, N]
+        hidden = self.encoder(hidden)
+        prediction = self.output_proj(hidden).transpose(1, 2)
+        return prediction
+</new>
+</edit>
+<obs>
+Successfully replaced text in BasicTS/custom_model.py.
+</obs>
+<note>
+And set lr back to the harness default 2e-3 for the shallow MLP.
+</note>
+<edit path="BasicTS/custom_model.py">
+<old>
+# Allowed keys: lr, weight_decay.
+CONFIG_OVERRIDES = {'lr': 0.0005}
+</old>
+<new>
+# Allowed keys: lr, weight_decay.
+CONFIG_OVERRIDES = {'lr': 2e-3}
+</new>
+</edit>
+<obs>
+Successfully replaced text in BasicTS/custom_model.py.
+</obs>
+

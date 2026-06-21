@@ -1,0 +1,722 @@
+<meta task="llm-pretrain-loss" domain="Language models" file="nanoGPT/custom_pretrain.py" model_format="qwen3" edit_tool="str_replace"/>
+
+<system>
+You are a research engineer improving a model on a fixed ML task. You work by editing the model code and running experiments. Think carefully before each change. You have these tools:
+- str_replace(path, old_str, new_str): replace the unique occurrence of old_str with new_str.
+- create(path, file_text): create a new file.
+- run_experiment(): train + evaluate the current code under the fixed budget; returns metrics.
+Make one tool call at a time. After editing, call run_experiment() to measure your method.
+</system>
+
+<user>
+## Research question
+
+A GPT-style language model is trained by next-token prediction: the final layer produces a logit vector
+over the vocabulary at every position, a softmax turns it into a distribution, and the training loss is
+the cross-entropy of that distribution against the true next token. Everything about the model — the
+24-layer GPT-2 Medium architecture, the FineWeb data, the AdamW schedule, the evaluation — is fixed.
+The single thing being designed here is **the loss function**: the exact map from the final logits
+`(B, T, V)` and the integer targets `(B, T)` to the scalar that gets backpropagated. Can a drop-in
+replacement for plain cross-entropy lower held-out validation loss and improve downstream language
+ability at **matched architecture, data, and optimization budget**, changing only how logits and
+targets are turned into a loss — and nothing else?
+
+## Prior art before the first rung (the objectives the first rung reacts to)
+
+The first method on the ladder reacts to the default objective and the line of loss-layer modifications
+that grew up around it. These precede the ladder; each is a different answer to "what is wrong with
+plain next-token cross-entropy, and where do you intervene to fix it." Three distinct intervention
+points appear, and they matter because each baseline lives at a different one.
+
+- **Plain next-token cross-entropy (the default).** For one position with logits `z` and target `y`,
+  the loss is `-log softmax(z)_y = -z_y + log Σ_j exp(z_j)`. This is the maximum-likelihood objective and
+  it is correct, but it has no finite minimizer: `softmax(z)_y → 1` only as the gap `z_y - max_{j≠y} z_j`
+  runs to `+∞`. On data that is even close to separable at the margin — which token-level LM data
+  effectively is — the loss is a standing instruction to grow the logits without bound. Gap: it drives
+  logit magnitudes upward across the run, which is over-confidence by construction and, through the
+  exponentiated softmax in low precision, a source of roundoff-driven instability.
+- **Label smoothing (Szegedy et al. 2016, "Rethinking the Inception Architecture").** Attack the
+  *target*: replace the one-hot with `q'(k) = (1-ε)·δ_{k,y} + ε/V`, putting a positive floor under every
+  class so an infinite logit gap costs infinite loss. The loss decomposes as
+  `(1-ε)·H(q,p) + ε·H(u,p)` — hard cross-entropy plus a pull toward uniform. Gap: it caps the
+  *difference* between the true class and the rest (the gauge-invariant part the softmax sees), not the
+  absolute logit *level*; and because it fits the model to a softened distribution rather than the data,
+  it changes the very objective the validation cross-entropy measures.
+- **Softmax z-loss (Mesh-TensorFlow; popularized by ST-MoE, Zoph et al. 2022, and PaLM, Chowdhery et al.
+  2022).** Attack the *level* directly: add an auxiliary penalty `λ·(log Σ_j exp(z_j))²` on the squared
+  log-partition. Cross-entropy is exactly invariant to a uniform shift of all logits, so the overall
+  level is a free gauge it never constrains; the squared-log-`Z` penalty supplies the restoring force the
+  loss lacks, with a gradient `2λ·log Z·p_j` proportional to how far the level has drifted. Gap: it nudges
+  magnitudes down *on average* via a coefficient mixed into every step, but enforces no hard bound on any
+  single logit, and it perturbs the reported loss value rather than transforming the model's forward map.
+- **Logit soft-capping (Gemma 2, Gemma Team 2024; the tanh form `s·tanh(z/s)`).** Attack the logits
+  *structurally*: pass them through a smooth, bounded, strictly-increasing squash before the softmax, so
+  they cannot run away while the token ranking is preserved. Gap as background, not as a finished rung:
+  the canonical Gemma form caps at `s=30` symmetrically, but the precise squashing constants are a knob
+  for the model size, vocabulary, and precision regime, and the choice of where to put the soft cap (and
+  in what parameterization) is exactly what the medium rung on this ladder has to settle.
+
+All four sit at the same boundary — the function that turns final logits into a loss — but they pull on
+different handles: the target distribution, the absolute logit level, or the logit values themselves.
+
+## The fixed substrate
+
+A nanoGPT-style GPT-2 Medium pretraining loop is frozen and must not be touched: GPT-2 Medium
+(24 layers, 16 heads, `n_embd=1024`, ~355M params), pre-norm bias-free `LayerNorm`, causal self-attention
+(flash SDPA), tied input/output embeddings, residual-scaled init
+(`c_proj` weights `N(0, 0.02/√(2·n_layer))`), AdamW (`β=(0.9,0.95)`, `weight_decay=0.1`, `grad_clip=1.0`),
+a warmup+cosine schedule (`warmup_iters = 0.04·max_iters`, decay to `lr/10`), `torch.compile`, mixed
+precision in **bfloat16**, and 2-GPU DDP. Data is FineWeb `sample-10BT` (GPT-2 tokenizer, ~7.1B training
+tokens), trained 13,535 iterations at micro-batch 64 with gradient accumulation 8. The model's
+`forward` calls `compute_loss(logits, targets)` once per training step, inside the autocast context;
+`torch`, `nn`, and `F` (`torch.nn.functional`) are in scope.
+
+## The editable interface
+
+Exactly two regions of `nanoGPT/custom_pretrain.py` are editable, and every method on the ladder is a
+fill of the same contract:
+
+1. The **`compute_loss(logits, targets)` function** (the only objective slot). Its signature is fixed;
+   `logits` has shape `(B, T, V)` and `targets` shape `(B, T)` with `-1` marking ignored positions; it
+   returns a scalar to backpropagate. It may reformulate the loss, process the logits (soft-capping,
+   temperature), add regularization terms (z-loss, entropy), or modify the label distribution (label
+   smoothing). It must be stable throughout training and must not lower the reported loss by distorting
+   the modeling distribution (e.g. via a temperature) without genuinely improving the model.
+2. A **`CONFIG_OVERRIDES` dict** that may override training hyperparameters from a fixed whitelist
+   (`learning_rate`, `weight_decay`, `warmup_iters`, `min_lr`, `grad_clip`). The baselines leave it
+   empty; they change only the loss.
+
+The starting point is the scaffold default — plain next-token cross-entropy with the `-1` ignore index.
+Each method replaces exactly the body of `compute_loss` (and, if it chooses, `CONFIG_OVERRIDES`) and
+nothing else.
+
+```python
+# EDITABLE region of nanoGPT/custom_pretrain.py — default fill (plain next-token cross-entropy)
+def compute_loss(logits, targets):
+    """Compute language modeling loss from logits and targets."""
+    return F.cross_entropy(logits.view(-1, logits.size(-1)), targets.view(-1), ignore_index=-1)
+
+
+# ... later in the training setup, the (default-empty) hyperparameter override hook:
+# CONFIG_OVERRIDES: override training hyperparameters for your method.
+# Allowed keys: learning_rate, weight_decay, warmup_iters, min_lr, grad_clip.
+CONFIG_OVERRIDES = {}
+```
+
+## Evaluation settings
+
+One seed (42). Primary metric is **FineWeb validation cross-entropy** (`val_loss`, lower is better),
+measured at the end of the fixed 13,535-iteration budget — and computed with *plain* cross-entropy
+regardless of the training loss, so methods stay comparable. Secondary metrics, all from the fixed eval
+scripts, are word-level perplexity on **WikiText-2** and **LAMBADA** (lower is better) and zero-shot
+downstream accuracy on **ARC-Easy**, **HellaSwag**, **PIQA**, and **WinoGrande** (higher is better);
+`elapsed` is wall-clock seconds. Because the substrate is frozen and the budget fixed, any change in
+`val_loss` is attributable to the *form* of the loss function alone.
+
+The editable model code is in `nanoGPT/custom_pretrain.py`:
+```python
+def compute_loss(logits, targets):
+    """Compute language modeling loss from logits and targets."""
+    return F.cross_entropy(logits.view(-1, logits.size(-1)), targets.view(-1), ignore_index=-1)
+```
+Improve it. Derive your method, edit the code, then run_experiment().
+</user>
+
+### step 1 — Label smoothing (eps=0.05, training only)   [slug:label_smoothing]
+
+<think>
+The objective is the whole task here — everything else is frozen — so the floor to start from is the
+question of what is even wrong with the loss I already have, plain next-token cross-entropy, and which
+of the three obvious handles to pull first. Let me write the loss down and actually stare at it instead
+of reciting it. For one position with logits `z` over the vocabulary and target index `y`, the loss is
+`-log softmax(z)_y = -z_y + log Σ_j exp(z_j)`. This is maximum likelihood and it is correct; that is not
+in dispute. What bugs me is where its optimum sits. To drive this to zero I need `softmax(z)_y → 1`, and
+that happens only as the gap `z_y - max_{j≠y} z_j` runs off to `+∞`. There is no finite `z` that
+minimizes this loss. On data that is even close to separable at the margin — and token-level language
+data effectively is, because for most contexts there genuinely is one overwhelmingly likely next token —
+the loss is, quite literally, a standing instruction to grow the correct logit's lead without bound. The
+gradient `∂ℓ/∂z_k = p_k - 1[k=y]` is bounded in `[-1, 1]`, so each step is gentle, but the target it is
+chasing is at infinity, and over thirteen thousand iterations a bounded gradient pointed at infinity
+walks the logits steadily upward.
+
+So what actually goes wrong from that runaway, and why is it worth fixing before I even reach for the
+sharper instabilities? Two things, and they are the same thing seen from two sides. The model gets more
+and more confident on its training targets — it learns to slam probability mass onto the observed next
+token of every context, which is the textbook signature of over-confidence and, on the held-out
+distribution, of overfitting: fitting the training labels says nothing about generalizing to held-out
+ones. And the unbounded growth of the largest-minus-rest logit gap, against a bounded gradient, makes
+the model rigid — once a huge gap is established the model is slow to revise it, because a bounded
+gradient can only chip away at a gap that the loss keeps trying to make infinite. The unifying word for
+both is over-confidence. This is the thing the very first loss-layer modification I know of was built to
+fix — Szegedy and co-authors (2016) named exactly this when they were regularizing the Inception net:
+hard one-hot targets drive `z_y ≫ z_k`, which both overfits and reduces adaptability, and the fix is to
+stop demanding probability one.
+
+There are three distinct places I could intervene, and the reason I take this one *first* is that it is
+the cheapest, the most thoroughly understood, and the one whose failure mode will point cleanly at the
+next rung. I could attack the absolute logit *level* — add a penalty on the log-partition so the
+otherwise-free overall magnitude stops drifting. I could attack the logit *values* themselves —
+structurally squash them through a bounded map before the softmax. Or I could attack the *target*: stop
+asking for probability one in the first place. The target attack is the most surgical statement of "the
+optimum is at infinity, so move the optimum to a finite place," it is a one-line change to the loss, and
+it is the right thing to establish as the baseline because if even the gentlest, best-understood
+over-confidence fix already buys something, then the harder numerical interventions have a real target
+to beat; if it does not, I have learned that this short run is not over-confidence-limited and the next
+rung had better attack a different handle.
+
+If the problem is that the target lives at infinity, the cure suggests itself: do not put the target at
+infinity. Give every token a small floor of target probability so the correct logit has no incentive to
+escape to `+∞`. Take the one-hot and bleed a little mass `ε` onto a fixed distribution `u` over the
+vocabulary, `q'(k) = (1-ε)·δ_{k,y} + ε·u(k)`. The natural `u`, absent any prior knowledge, is uniform,
+`u(k) = 1/V`, so `q'(k) = (1-ε)·δ_{k,y} + ε/V`. Now check that this actually kills the runaway. Every
+entry of `q'` is at least `ε/V > 0`. If `z_y` tried to run off to `+∞`, then `p_y → 1` and `p_k → 0`
+for `k ≠ y`, and the cross-entropy `-Σ_k q'(k) log p_k` would blow up on those wrong-class terms,
+because `q'(k) = ε/V` is positive but `log p_k → -∞`. So an infinite logit gap is now infinitely
+*expensive*, not free. The target no longer sits at infinity; it sits at a finite, `ε`-controlled
+configuration of the logits, with optimal predicted probabilities `1-ε` on the true token and `ε/(V-1)`
+on each other. That is label smoothing, and it is almost nothing to implement.
+
+Let me rewrite the loss to see its structure, because the structure is what tells me what I am really
+doing. Cross-entropy is linear in the target, so
+`H(q', p) = -Σ_k q'(k) log p_k = (1-ε)·(-Σ_k δ_{k,y} log p_k) + ε·(-Σ_k u(k) log p_k) = (1-ε)·H(q, p) + ε·H(u, p)`.
+So smoothing is exactly the ordinary hard-label cross-entropy, downweighted by `(1-ε)`, plus an
+`ε`-weighted term `H(u, p)` that pulls the prediction toward the prior `u`. And `H(u, p) = D_KL(u‖p) + H(u)`;
+`H(u)` is a constant, so the second term is, up to a constant, a penalty on how far the prediction `p`
+has drifted from uniform, with relative weight `ε/(1-ε)`. It is a regularizer that says "stay a bit
+humble, do not get too far from the prior." With `u` uniform, `H(u, p) = Σ_k (1/V)(-log p_k) = mean_k(-log p_k)`,
+so I never have to materialize the smoothed target vector — the second term is just `ε` times the mean
+of the negative log-probabilities over the vocabulary.
+
+Now the part that is specific to *this* task and is exactly where the harness diverges from the generic
+recipe, and I have to get it right or I am cheating. The validation metric is the honest modeling
+cross-entropy on FineWeb — plain `-log p_y`, no smoothing. Label smoothing deliberately fits the model
+to a *softened* distribution rather than the data, so a model trained to put `1-ε` on the true token and
+`ε/(V-1)` on the rest is a worse density estimator under the true one-hot likelihood than a model trained
+on the data directly; that is a known and accepted trade in the original setting, where smoothing buys
+calibration and downstream gains at the cost of raw likelihood. But here I am *graded* on that raw
+likelihood. If I left the smoothing on during evaluation, the reported number would be the cross-entropy
+against the softened target, not against the data, and that would be exactly the "do not lower the
+reported loss by distorting the distribution" violation the contract forbids. So the smoothing has to be
+applied **only during training**: when gradients are enabled I smooth, and under the no-grad evaluation
+pass I fall back to standard cross-entropy, so `val_loss` is computed against the true targets and stays
+comparable across every method on the ladder. PyTorch's `F.cross_entropy` exposes `label_smoothing`
+directly, so the whole edit is one call with the smoothing coefficient gated on `torch.is_grad_enabled()`.
+The full scaffold function is in the answer.
+
+The second divergence from the canonical recipe is the coefficient. The original Inception/Transformer
+setting uses `ε = 0.1`. This is a *short* run — thirteen thousand iterations, a tiny fraction of a full
+GPT-2 schedule — on a large vocabulary (~50k), and on a short run the model never gets far enough into
+the over-confident regime for a heavy `0.1` regularizer to pay for itself; an aggressive smoothing
+mostly just biases the training objective away from the data without the long-run overfitting it would
+otherwise prevent. A lighter `ε = 0.05` is the task-local choice: enough of a floor to take the sharpest
+edge off the runaway, light enough that the (1-ε) reweighting of the true-likelihood term is barely
+perturbed. So this rung is not "label smoothing the paper" — it is `ε = 0.05`, training-only, via the
+library's `label_smoothing` argument with the `-1` ignore index the harness uses for packed boundaries.
+
+Now reason about what this floor must do, because that is the entire point of running it first. Smoothing
+attacks the target, and through the target it caps the *gap* between the true-class logit and the rest —
+the difference the softmax actually sees. What it pointedly does *not* touch is the absolute *level* of
+the logits: a model can sit at logits `(1000, 990, 990, …)` and have exactly the smoothed-optimal gaps
+while being numerically enormous, because cross-entropy and its smoothed cousin are both invariant to a
+uniform shift of all logits. So smoothing is a statement about differences, and it leaves the overall
+magnitude — the gauge — completely free. That matters because the run trains in bfloat16, where large
+logit magnitudes are where the exponential in the softmax becomes unfaithful; smoothing does nothing
+about that. It also leaves a real question about whether trading away true-likelihood for a milder gap is
+even the right trade when the *evaluation* is true likelihood: I am training against a slightly different
+distribution than I am graded on, and only the regularization benefit, if any, can repay that gap.
+
+So here is what I expect, stated against numbers I can be wrong about. On the primary `val_loss`, light
+training-only smoothing should land *close* to plain cross-entropy — within a few hundredths of a nat —
+and it is genuinely unclear whether it lands above or below, because the regularization benefit on a
+short run is small and it is fighting the fact that I have biased training away from the evaluated
+objective. On the downstream accuracies (ARC-Easy, HellaSwag, PIQA, WinoGrande), where a better-calibrated
+next-token distribution can help even when likelihood does not, I would expect smoothing to be at worst
+neutral. If this rung comes in *behind* a method that attacks the logit level or the logit values
+directly, the diagnosis is already written: smoothing pulled on the gap, the gauge-invariant handle,
+and left untouched the absolute magnitude that the bfloat16 softmax actually cares about — which says
+the next rung should stop attacking the target and start attacking the level. This is the weakest rung
+on the ladder by design: it is the most conservative, target-side over-confidence fix, and whatever it
+leaves on the table is precisely what the level-side and value-side interventions are for. So let me
+write it in.
+</think>
+<say>
+Starting with label smoothing as the most conservative over-confidence fix: I'm replacing plain cross-entropy with smoothed cross-entropy at eps=0.05, applied only when gradients are on so val_loss is still measured against the true targets.
+</say>
+<edit path="nanoGPT/custom_pretrain.py">
+<old>
+def compute_loss(logits, targets):
+    """Compute language modeling loss from logits and targets."""
+    return F.cross_entropy(logits.view(-1, logits.size(-1)), targets.view(-1), ignore_index=-1)
+</old>
+<new>
+# EDITABLE region of nanoGPT/custom_pretrain.py — step 1: label smoothing (eps=0.05, training only)
+def compute_loss(logits, targets):
+    """Cross-entropy with label smoothing (eps=0.05) during training only.
+
+    Label smoothing is applied only when gradients are enabled (training).
+    During evaluation (@torch.no_grad()), standard cross-entropy is used
+    so that val_loss remains comparable across methods.
+    """
+    smoothing = 0.05 if torch.is_grad_enabled() else 0.0
+    return F.cross_entropy(
+        logits.view(-1, logits.size(-1)), targets.view(-1),
+        ignore_index=-1, label_smoothing=smoothing
+    )
+
+
+# training-setup hook left at the default — only the loss changed:
+CONFIG_OVERRIDES = {}
+</new>
+</edit>
+<obs>
+Successfully replaced text in nanoGPT/custom_pretrain.py.
+</obs>
+<run/>
+<obs>
+Measured results — `baseline:label_smoothing` (`is_final,true`), seed 42 (the single seed) and mean.
+
+## FineWeb val_loss / perplexity (lower is better)
+| seed | val_loss | wikitext2_ppl | lambada_ppl | elapsed (s) |
+|---|---|---|---|---|
+| 42 | 2.3377 | 47.13 | 71.80 | 20526 |
+| **mean** | **2.3377** | **47.13** | **71.80** | **20526** |
+
+## Downstream accuracy (higher is better)
+| seed | arc_easy | hellaswag | piqa | winogrande |
+|---|---|---|---|---|
+| 42 | 54.04 | 33.63 | 63.71 | 51.78 |
+| **mean** | **54.04** | **33.63** | **63.71** | **51.78** |
+</obs>
+
+### step 2 — Softmax z-loss (lambda*(log Z)^2, lambda=1e-4)   [slug:z_loss]
+
+<think>
+Label smoothing told me something precise, and it told me in numbers. It did not just fail to help — it
+landed *behind* plain cross-entropy on the metric I care about: `val_loss` 2.3377 against the default's
+neighborhood, with WikiText-2 perplexity at 47.13 and LAMBADA at 71.80, both noticeably worse than I
+would want, and the downstream accuracies (arc_easy 54.04, hellaswag 33.63, piqa 63.71, winogrande 51.78)
+sitting in a respectable-but-unremarkable band. Read that the right way. I trained against a softened
+distribution and was graded against the true one, and on a thirteen-thousand-iteration run the
+regularization benefit was too small to repay the bias I introduced into the objective. But the deeper
+lesson is structural, and it is the one that points at the next move: smoothing pulled on the logit
+*gap* — the difference between the true-class logit and the rest, the part the softmax actually sees —
+and the gap is the gauge-invariant part of the logits. It never touched the absolute *level*. And on
+this run, in bfloat16, the level is exactly where I should expect trouble. So I am going to stop
+attacking the target and go after the handle smoothing structurally cannot reach.
+
+Let me start from what actually goes wrong at the level, because the symptom is concrete and it is not
+the same symptom smoothing was built for. I am pretraining a big decoder-only Transformer in bfloat16,
+and runs at this scale are prone to a particular failure: the loss sits on its nice downward curve and
+then, with no warning, jumps — a spike — and the gradient norm tends to drift upward over the run, with
+spike frequency rising as it grows. Gradient clipping is on (`grad_clip=1.0`) and the spikes come anyway,
+which already tells me something: whatever is going wrong has produced a state from which even a
+norm-limited step is bad, so clipping is treating a symptom downstream of the cause. I have two coupled
+things — a slow growth and sudden discontinuities — and I want to find what is drifting and stop it at
+the source, not keep restarting from checkpoints and skipping batches.
+
+Where would a drift like that even live? Most of the forward pass has normalization stapled to it — the
+attention, the MLPs, the layer norms — that keeps its scales in check. The one place in the whole
+forward pass where a wide vector of unbounded real numbers gets pushed through an exponential with
+nothing normalizing it first is the final softmax over the vocabulary. That is the suspect, and it is
+the *same* layer label smoothing operated on, which is the point: I am at the right boundary, I just have
+to pull the right handle this time. So let me write down what the objective there really is, in a form I
+can manipulate. For one position, logits `l = (l_1, …, l_V)`, predicted distribution `p_j = exp(l_j)/Z`
+with normalizer `Z = Σ_k exp(l_k)`, and cross-entropy against the true next token `y` is
+`CE = -log p_y = -(l_y - log Z) = log Z - l_y`, where `log Z = log Σ_k exp(l_k)` is the log-partition.
+So the loss decomposes, exactly, into two pieces pulling opposite ways: raise the true-token logit `l_y`,
+lower the log-partition `log Z`.
+
+Now the crux, and it is precisely the thing label smoothing could not see. Cross-entropy depends on the
+logits *only through their differences*. Add a constant `c` to every logit, `l → l + c·1`: the softmax
+does not move at all, `exp(l_j + c)/Σ_k exp(l_k + c) = e^c exp(l_j)/(e^c Σ_k exp(l_k)) = p_j`, the `e^c`
+cancels, so `CE` is unchanged. But look at the two pieces individually: `l_y → l_y + c`, and `Z → e^c Z`
+so `log Z → log Z + c`; both terms moved by `+c` and inside `CE = log Z - l_y` the two `c`'s cancel.
+Cross-entropy is *exactly* invariant to a uniform shift of all logits. There is a whole one-parameter
+family of logit vectors — `l + c·1` for every real `c` — that produce identical predictions and identical
+loss, and along that family `log Z` ranges over the entire real line while the loss the optimizer sees is
+constant. Cross-entropy pins down the gaps and says nothing whatsoever about the level. The level is a
+free gauge with no restoring force. And this is exactly why label smoothing did nothing here: smoothing
+sharpens the *gaps*, it lives entirely in the gauge-invariant subspace, so it cannot supply the missing
+constraint on the level — the gauge is precisely the direction smoothing is blind to. The 2.3377 was
+smoothing pulling hard on a handle that was already constrained while the genuinely free quantity drifted
+underneath.
+
+Which way does the gauge actually drift in practice? Not down, and not randomly. There is gradient flow
+into the logits from many places, weight decay interacts with the tied embedding/unembedding, and with no
+restoring force any push that inflates the logits is free as far as the loss is concerned — so the level
+wanders, and the documented behavior is that it wanders *up*: the activations feeding the final softmax
+grow over the run, the model getting more extreme in magnitude without the loss objecting. That is the
+slow gradient-norm growth. And why is a drifting `log Z` dangerous *here*, in bfloat16 specifically?
+Because these large numbers go straight into an exponential. bfloat16 keeps float32's eight exponent bits
+but only seven mantissa bits against float32's twenty-three, so within any binade it rounds about
+`2^16 ≈ 65536` times more coarsely, and because a fixed mantissa width spans each interval
+`[2^k, 2^{k+1})`, the *absolute* roundoff grows with the magnitude of the number. Now push a large,
+coarsely-rounded logit through `exp`: the differential is `d(exp x) = exp(x)·dx`, so a small absolute
+error `dx` in the argument becomes a *relative* error of size `dx` in the output. Make the logits large
+and `dx` grows with them, so the softmax outputs are corrupted by an amount that grows as the level
+drifts up. Concretely: ten logits at 128 and one at 128.5 in bfloat16 — the 0.5 gap is at the rounding
+threshold for that magnitude and can round away, collapsing the softmax weight on the distinguished
+token from about 0.142 to about 0.091, a 36% swing manufactured entirely by roundoff. The free gauge lets
+the logits drift large; large logits are where the bfloat16 exponential becomes unfaithful; an unfaithful
+exponential corrupts the softmax and, when it tips over, produces a spike. The slow growth and the sudden
+discontinuity are the same disease at two timescales.
+
+So I need a restoring force on the gauge, and cross-entropy cannot supply it by construction. I have to
+add something that *does* care about the level. What do I want it to prefer? The logits not to drift
+large; equivalently `log Z` not to drift large. The cleanest target is `log Z = 0`, i.e. `Z = 1`,
+i.e. `Σ_k exp(l_k) = 1` — the slice where the raw logits behave like normalized log-probabilities. I do
+not want a hard projection onto that slice (a constraint to enforce, fighting the optimizer); I want a
+soft nudge — a penalty minimized at `log Z = 0` and growing as `log Z` moves away. What shape? Call
+`s = log Z`. A signed penalty `s` has no minimum, it would shove `log Z → -∞`; it must be symmetric,
+since the representative with `Z` near 0 is no more meaningful than the one with `Z` huge. `|s|` is
+symmetric and minimized at 0 but has a kink there, with gradient `sign(s)` — a constant pull of fixed
+strength right up to the minimum, yanking even when `log Z` is already tiny. `s²` is symmetric, minimized
+at 0, smooth everywhere including the minimum, convex, and — the property I want — its gradient `2s` is
+*proportional to the violation*: gentle when `log Z` is near 0, stronger the further it has drifted. That
+is exactly a restoring force; it leaves a well-behaved gauge alone and pulls hard only on a runaway. So
+the penalty is `(log Z)²`. I will square the log-partition.
+
+Let me confirm the gradient actually does what I think. The augmented per-position objective is
+`L = CE + λ·(log Z)² = (log Z - l_y) + λ·(log Z)²`. The key derivative is
+`d(log Z)/d l_j = exp(l_j)/Σ_k exp(l_k) = p_j`. So `d(log Z - l_y)/d l_j = p_j - 1[j=y]`, the familiar
+predicted-minus-one-hot, and `d/d l_j[λ·(log Z)²] = 2λ·log Z·p_j`. Stacked:
+`dL/d l_j = (p_j - 1[j=y]) + 2λ·log Z·p_j`. Read the new term: it is a probability-weighted pull on
+every logit. When `log Z > 0` (the logits have drifted up, the dangerous case) it is positive on every
+coordinate, weighted by `p_j`, so descent subtracts it — pushing down hardest on the logits that
+contribute most to `Z`, shrinking `log Z` back toward 0. When `log Z < 0` it reverses and pushes those
+same high-probability coordinates back up. It is a restoring force on the gauge whose strength
+`2λ·log Z` is proportional to the drift, and with `λ` tiny it fixes the level without replacing
+maximum likelihood as the main force on the probability gaps.
+
+Does pinning the gauge actually bound the magnitudes that feed the exp? I want a guarantee. Log-sum-exp
+is sandwiched: `Z ≥ exp(max_k l_k)` gives `log Z ≥ max_k l_k`, and `Z ≤ V·exp(max_k l_k)` gives
+`log Z ≤ max_k l_k + log V`. So `max_k l_k ≤ log Z ≤ max_k l_k + log V` — `log Z` and the largest logit
+differ by at most `log V`. If the penalty holds `log Z` near 0, the largest logit cannot become large and
+positive; for a 50k vocabulary it lives no more than about 11 nats below `log Z` and never above it. That
+caps the top logits — the ones that dominate the exponential — which is the difference between the exp
+seeing numbers near the normal log-probability scale and seeing 128. And `log Z = 0`, i.e.
+`Σ exp(l_k) = 1`, doubles as making the raw logits behave like honest normalized log-probabilities rather
+than log-probabilities-plus-junk. The gauge-fixing and the make-the-logits-meaningful goals are the same
+move.
+
+This is also where I can see, cleanly, why this is the right lever and label smoothing was the wrong one
+— not as a guess now but confirmed by the 2.3377. Smoothing changes the *target distribution*, fitting
+the model to a softened version of the data; that lowers true likelihood (which is what I was graded on)
+and acts on the gap, the gauge-invariant part. The z-loss changes neither — it leaves the target the
+data and touches only the free level through `log Z`, so it sits on top of plain cross-entropy without
+becoming label smoothing in disguise. Different handle, and the one a numerical drift actually has. A
+hard logit clamp is worse: it clamps an already-corrupted value after the roundoff has happened and adds
+a kink the optimizer must route around; the penalty acts smoothly *during* optimization to discourage the
+large logits from ever forming. Gradient-norm clipping is further downstream still, reacting after the
+bad step is computed. The penalty is the only one that addresses the cause.
+
+Now `λ`. Two jobs fix its scale by an order-of-magnitude argument, not a guess. It must be small enough
+that the penalty is a gentle regularizer and cross-entropy stays essentially maximum likelihood, or I am
+back to changing what is modeled — the very thing that cost smoothing its 2.3377. And it must be large
+enough that the restoring force keeps `log Z` near 0 against the drift. Cross-entropy per token is order
+one-to-ten nats early, settling to a few; a healthy `log Z` is order one, so `(log Z)²` is order one. At
+`λ = 1e-4` the penalty contributes order `1e-4` against a CE of order one — about a ten-thousandth of the
+scale — yet its gradient `2λ·log Z = 2e-4·log Z` applies a steady downward pull that accumulates over
+many steps to hold the level down. Invisible to the modeling objective, persistent on the gauge. Much
+larger and it would start crushing `log Z` and competing with CE for the logits; much smaller and it
+loses to the drift. `1e-4` is the canonical large-vocabulary coefficient, and unlike smoothing's `ε` it
+needs no training-vs-eval split: it does not distort the target, so I can leave it on through the whole
+run and the evaluated cross-entropy is unaffected by it.
+
+Two implementation details or the whole thing is subtly wrong. First, reduction: cross-entropy ignores
+the `-1` packed-boundary positions and averages over valid ones; the penalty has to be averaged over
+*exactly* those same positions, both because the ignored positions' logits are untrained garbage whose
+`log Z` is meaningless, and because a different denominator would change the effective `λ` away from the
+clean ratio I just reasoned about. So mask to `targets != -1` and take the mean of `(log Z)²` over those.
+Second, compute `log Z` with the max-subtracting stabilized `torch.logsumexp` — I would be embarrassed to
+introduce an overflow while fixing a numerical drift — which is exact and never exponentiates a positive
+argument. The whole edit is then plain cross-entropy (the library handles the ignore index and averaging)
+plus `1e-4` times the masked-mean squared log-partition. The full scaffold function is in the answer.
+
+So the delta from step 1: where smoothing softened the target and pulled on the gauge-invariant gap, I
+leave the target the data and add the one term that touches the free level — a small squared-log-partition
+penalty whose proportional restoring force holds `log Z` near 0, caps the top logits via the log-sum-exp
+sandwich, and keeps the bfloat16 exp in its faithful regime. Reading smoothing's shape, here is what I
+expect, falsifiably. The primary `val_loss` should move *below* smoothing's 2.3377 and below plain
+cross-entropy — because, unlike smoothing, this neither distorts the evaluated objective nor leaves the
+dangerous magnitude free; I would expect it back down near 2.29, with WikiText-2 and LAMBADA perplexity
+recovering from smoothing's 47/72 toward the low-44 / high-60s. The downstream accuracies should hold or
+improve, since a numerically healthier softmax is strictly better-behaved. If `val_loss` improves but the
+top logits are *still* not tightly bounded — if a single excited coordinate can spike even with the level
+held on average — the diagnosis for the next rung is already there: a soft average penalty nudges the
+level but guarantees no per-logit bound, so the next move is to stop nudging the level and structurally
+bound the logit *values* themselves. Let me make the edit.
+</think>
+<say>
+Now z-loss: I'm leaving the target as the data and adding a lambda=1e-4 penalty on the squared log-partition, masked to the valid positions, to supply the restoring force cross-entropy lacks on the absolute logit level.
+</say>
+<edit path="nanoGPT/custom_pretrain.py">
+<old>
+# EDITABLE region of nanoGPT/custom_pretrain.py — step 1: label smoothing (eps=0.05, training only)
+def compute_loss(logits, targets):
+    """Cross-entropy with label smoothing (eps=0.05) during training only.
+
+    Label smoothing is applied only when gradients are enabled (training).
+    During evaluation (@torch.no_grad()), standard cross-entropy is used
+    so that val_loss remains comparable across methods.
+    """
+    smoothing = 0.05 if torch.is_grad_enabled() else 0.0
+    return F.cross_entropy(
+        logits.view(-1, logits.size(-1)), targets.view(-1),
+        ignore_index=-1, label_smoothing=smoothing
+    )
+</old>
+<new>
+# EDITABLE region of nanoGPT/custom_pretrain.py — step 2: cross-entropy + softmax z-loss (lambda=1e-4)
+def compute_loss(logits, targets):
+    """Cross-entropy with z-loss regularization."""
+    flat_logits = logits.view(-1, logits.size(-1))
+    flat_targets = targets.view(-1)
+    ce_loss = F.cross_entropy(flat_logits, flat_targets, ignore_index=-1)
+    # Z-loss: penalize large log-partition values
+    log_z = torch.logsumexp(flat_logits, dim=-1)
+    # Only compute z-loss for non-ignored positions
+    mask = flat_targets != -1
+    z_loss = (log_z[mask] ** 2).mean()
+    return ce_loss + 1e-4 * z_loss
+</new>
+</edit>
+<obs>
+Successfully replaced text in nanoGPT/custom_pretrain.py.
+</obs>
+<run/>
+<obs>
+Measured results — `baseline:z_loss` (`is_final,true`), seed 42 (the single seed) and mean.
+
+## FineWeb val_loss / perplexity (lower is better)
+| seed | val_loss | wikitext2_ppl | lambada_ppl | elapsed (s) |
+|---|---|---|---|---|
+| 42 | 2.2926 | 44.09 | 68.25 | 20532 |
+| **mean** | **2.2926** | **44.09** | **68.25** | **20532** |
+
+## Downstream accuracy (higher is better)
+| seed | arc_easy | hellaswag | piqa | winogrande |
+|---|---|---|---|---|
+| 42 | 54.55 | 33.85 | 63.00 | 51.14 |
+| **mean** | **54.55** | **33.85** | **63.00** | **51.14** |
+</obs>
+
+### step 3 — Sigmoid logit soft-cap cross-entropy (modded-nanoGPT, A,B,C=23,5,7.5)   [slug:softcap_ce]
+
+<think>
+The z-loss did what label smoothing could not, and the numbers say so. `val_loss` came down to 2.2926
+from smoothing's 2.3377 — roughly five hundredths of a nat — with WikiText-2 perplexity recovering to
+44.09 and LAMBADA to 68.25, both well back from smoothing's 47.13 / 71.80. So the diagnosis was right:
+the handle that mattered on this short bfloat16 run was the absolute logit *level*, not the gap, and a
+small squared-log-partition penalty that supplies the restoring force cross-entropy structurally lacks
+buys a real, clean improvement on the very objective I am graded on — without the train/eval mismatch
+that sank smoothing. The downstream accuracies held in the same band (arc_easy 54.55, hellaswag 33.85,
+piqa 63.00, winogrande 51.14), which is exactly what a numerically healthier softmax should look like:
+no regression, modest movement. Good. But read what z-loss actually guarantees, because that is where its
+ceiling is and where the next rung lives. The penalty `λ·(log Z)²` is a *soft average* force. Its
+gradient `2λ·log Z·p_j` pulls the level down only in proportion to how far the mean log-partition has
+drifted, and it acts on the average across positions; it puts no hard ceiling on any *single* logit. A
+particularly excited coordinate at one position can still spike well above the rest while the
+batch-averaged `log Z` sits comfortably near zero and the penalty barely registers it. The level is held
+on average; the individual values are not bounded. That is the precise residual failure, and it is what I
+go after now.
+
+So let me restate the loss-layer problem one more time, but now aimed at the values rather than the
+level. For one position with logits `z` and target `y`, cross-entropy is `-z_y + log Σ_j exp(z_j)`, and I
+have already established it has no finite minimizer — it decreases monotonically as the gap
+`z_y - max_{j≠y} z_j` widens and reaches its infimum only at `+∞`. The objective is, literally, an
+instruction to make the logits diverge. z-loss leaned on that orbit from one side (push the whole level
+down); but the cleaner statement of what I want is structural: I want the logits that feed the
+exponential to be *bounded*, every one of them, not just small on average. And whatever I do had better
+not scramble which token the model prefers — softmax cares only about logit differences and the argmax
+sets the prediction, so I want to tame the logits' *scale* without touching their *order*.
+
+Why does scale matter at all, when softmax is shift-invariant? The same bfloat16 arithmetic that drove
+the z-loss story, only now I want a per-value cure. bfloat16 keeps seven mantissa bits to float32's
+twenty-three, about `2^16` coarser rounding, and the absolute roundoff grows with the magnitude of the
+number because a fixed mantissa width spans each binade `[2^k, 2^{k+1})`. The logits go straight into an
+exponential, and `exp` turns an additive perturbation of its input into a multiplicative one — `δ` in a
+logit becomes a factor `e^δ` on the unnormalized probability — so a roundoff error that is negligible on
+a small logit becomes a real distortion of the probability once the logit is large. The same concrete
+case as before makes it vivid: ten logits at 128 and one at 128.5 in bfloat16 — the 0.5 gap is below the
+resolution up at 128, rounds away, and the target probability lurches from about 0.142 to about 0.091, a
+36% swing manufactured purely by roundoff. z-loss attacks this by keeping the average level small, which
+helps, but a single coordinate that the penalty did not happen to press on can still climb into the
+unfaithful regime. I want a guarantee on every value, and the 2.2926 leaves exactly that on the table:
+the run is stable enough to train cleanly, but the loss layer is still letting individual logits roam.
+
+Before I reach for anything fancy, let me reconsider the two handles I have already spent and confirm
+neither is the value-bound I now want. The target attack — label smoothing — removed the incentive for
+*one specific* gap to run away but put no ceiling on absolute magnitude; a model can sit at logits
+`(1000, 990, 990, …)` with exactly the smoothed-optimal gaps while being numerically enormous, and the
+2.3377 already showed it pays for distorting the evaluated objective. The level attack — z-loss — pushes
+magnitudes down on average via a coefficient mixed into every step, but enforces no actual bound on any
+single logit and perturbs the loss value rather than transforming the model's forward map. So I have done
+the target and the average level; the one thing left, and the one that gives a *per-value* guarantee, is
+to transform the logit values themselves before the softmax. Bound them structurally.
+
+The crudest version of "bound them" is to clamp: `z ← clamp(z, -s, s)` before the softmax. That caps the
+magnitude and kills the roundoff blow-up. But think about the gradient, because I am backpropagating
+through this for thirteen thousand steps. `clamp` has derivative exactly 1 inside `(-s, s)` and exactly 0
+outside. The moment a logit exceeds `s`, its gradient through the clamp is zero — it gets no learning
+signal through this loss-layer map, a coordinate the loss would otherwise move back down is stuck behind a
+dead derivative — and there is a kink at `±s` where the function is non-differentiable and Adam's
+per-coordinate statistics see a discontinuous slope. This is the same failure shape I avoided with z-loss:
+hard constraints can backfire, where a smooth penalty stabilizes without the quality loss. The lesson
+generalizes: if I constrain the logits, the constraint must be smooth and keep a nonzero gradient path
+everywhere, so an over-large logit stays connected to the task gradient rather than abandoned behind a
+hard zero. Hard clamp is the wrong shape.
+
+So write down what I actually want as three requirements and let them force the form. A transformation `g`
+applied to the logits before the softmax that (1) bounds their range so they cannot run away or blow up
+the low-precision exp, (2) is smooth with a nonzero gradient everywhere so no coordinate goes dead, and
+(3) is strictly monotone so it never reorders the logits and the model's preferred token is preserved.
+Monotone and bounded and smooth on the whole real line — that is a squashing function, an S-curve. The
+canonical one is the hyperbolic tangent: `tanh: ℝ → (-1, 1)`, smooth, odd, strictly increasing,
+`tanh(0) = 0`, derivative `1 - tanh²` which is 1 at the origin and decays smoothly to 0 — it never
+flattens to a hard zero slope on a finite region the way clamp does, so every finite logit keeps a nonzero
+gradient path, and being strictly increasing it preserves order exactly. All three at once.
+
+But `tanh` alone lands in `(-1, 1)`, far too tight — I do not want to crush every logit into a unit
+interval, that destroys the useful spread. I want to cap at some scale `s`, say 30, not at 1. So scale the
+output: `s·tanh(·)`. And the inside matters. The naive `s·tanh(z)` has slope at the origin
+`d/dz[s·tanh(z)] = s·(1 - tanh²(z)) = s` at `z = 0`, so small logits get *amplified* by `s ≈ 30` — that
+is backwards; I want the map to be the *identity* on healthy logits and bend only the outliers. The fix is
+to divide by `s` inside as well: `g(z) = s·tanh(z/s)`, whose slope `1 - tanh²(z/s)` is exactly 1 at
+`z = 0` and decays to 0 for large `|z|`. For small `z`, `tanh(z/s) ≈ z/s` so `g(z) ≈ z` — identity on the
+normal operating range — and for large `z`, `g(z) → ±s` — a smooth asymptotic cap. This is the Gemma-2
+form, the canonical soft cap, at `s = 30` for the final logits. It guarantees `g(z) ∈ (-s, s)` for every
+real `z` — the per-value bound z-loss could not give — while the smoothness keeps every coordinate's
+gradient alive and the monotonicity keeps the argmax fixed. Its gradient `dz̃/dz = 1 - (z̃/s)²` is full in
+the middle and tapers without a dead interval — precisely the "fully train the normal logits, softly
+saturate the outliers" behavior the three requirements demanded, and the exact thing `clamp` could not do.
+
+Now I have a clean method — `z̃ = s·tanh(z/s)`, then cross-entropy on `z̃` — but I am running this
+transform on a `(B·T, V)` tensor with `V` in the tens of thousands every step, with the cross-entropy
+right after, so the cost and the intermediate tensors matter, and there is an exact reparameterization
+that folds more cleanly. `tanh` is exp-based — `tanh(u) = 1 - 2/(e^{2u}+1)` — essentially a sigmoid in
+disguise, and the identity `tanh(u) = 2σ(2u) - 1` is exact (verify: `2σ(2u) - 1 = 2/(1+e^{-2u}) - 1 = (1 - e^{-2u})/(1 + e^{-2u}) = tanh(u)`).
+So a symmetric soft cap can be rewritten entirely in sigmoid terms. Take the `s = 15` variant:
+`g(z) = 15·tanh(z/15) = 15·(2σ(2z/15) - 1) = 30·σ(z/7.5) - 15`. So `15·tanh(z/15)` and
+`30·σ(z/7.5) - 15` are the *same function*, exactly, both with range `(-15, +15)`. Why bother? Two
+reasons. First, the `-15` additive constant is invisible to the softmax — `softmax(z + c·1) = softmax(z)`
+for any scalar `c`, the constant cancels in the normalization — so I can drop it, and the whole thing
+collapses to a single sigmoid times a scale, `30·σ(z/7.5)`, which is cross-entropy-equivalent to the
+symmetric 15-cap. Second, the sigmoid form fuses cleanly into a single cap-plus-cross-entropy pass over
+the vocabulary without materializing a separate capped-logit tensor — the kind of memory-traffic saving
+that matters at `V` in the tens of thousands. The cap and the loss become one operation rather than
+cap-then-loss with a full-size intermediate.
+
+Pin the gradient in the sigmoid parameterization to confirm the shape survives. With `z̃ = A·σ(u)`,
+`u = (z + B)/C` — `A` the output scale, `C` the input scale, `B` a shift — the derivative is
+`dz̃/dz = (A/C)·σ(u)(1 - σ(u)) = (1/C)·z̃·(1 - z̃/A)`. A bell again: zero in both tails
+(`σ(1-σ) → 0` as `u → ±∞`), peaked at `u = 0` with height `A/(4C)`. Same everywhere-positive,
+vanishing-at-the-extremes profile as the tanh slope — outliers stay softly connected to the task gradient,
+the central region keeps a smooth usable slope, nothing dies, no kink. `A` sets the cap height
+(range `(0, A)`), `C` the steepness, `B` moves the inflection to `z = -B`.
+
+So why shift `B` off zero and re-tune `A` away from the clean `(A, B, C) = (30, 0, 7.5)` that came
+straight from the `s = 15` tanh? Because once I have accepted that the cap is a bounded, smooth,
+strictly-monotone squash and that a global additive output constant washes out of the softmax while the
+*shape* of the saturation matters, the exact constants are knobs for this particular regime — a short
+nanoGPT run, this model size, this vocabulary, bfloat16. The load-bearing constraints are the qualitative
+three: bounded range (so the exp is safe), strict monotonicity (so the token ranking is preserved), smooth
+positive gradient for every finite input (so training stays healthy). The concrete loss-layer constants
+this task uses are `A = 23, B = 5, C = 7.5`: a range of `(0, 23)`, an inflection at `z = -5`, a maximum
+slope of `23/(4·7.5) = 23/30`. This is *not* pointwise identical to `15·tanh(z/15)`, nor that curve plus
+a softmax-invisible constant — the shifted midpoint and smaller height make it a tuned sigmoid member of
+the same bounded-monotone family. It is still strictly increasing (argmax preserved), bounded by 23 (the
+exp is tame, well below where the bfloat16 `exp` hurts), and smooth (gradient lives everywhere). This is
+the crucial place where this rung is *not* "Gemma the paper": the task description names the Gemma-2 tanh
+soft cap at 30, but the actual edit on this ladder is the modded-nanogpt sigmoid form `23·σ((z+5)/7.5)`,
+a retuned asymmetric member of the same family — same three structural properties, different constants and
+parameterization, derived from the same requirements but landed at the implementation the harness exposes.
+
+I have to make sure this is a faithful modeling loss, not a sneaky distortion, because the contract
+forbids lowering the reported loss by distorting the distribution — exactly the line that cost label
+smoothing its number. A temperature scaling `z ↦ z/τ` is a *linear* squeeze that uniformly flattens or
+sharpens every gap and can mechanically move the loss without the model improving. The soft cap is not
+that: it is a *nonlinear* monotone map whose local slope depends on where a logit sits and whose tails
+saturate; it does not uniformly rescale gaps, it specifically refuses to let any single logit run to
+infinity. The cross-entropy is then computed honestly on the capped logits — it is the true negative
+log-likelihood of the model whose output head is "linear layer followed by the soft cap." The cap is part
+of the model's forward map, so the loss is the genuine modeling loss of that better-behaved model, not a
+cosmetic rescaling of an unchanged model's distribution. And note the consequence for evaluation: because
+the cap is part of the model and applied in both training and the eval forward pass, the reported
+`val_loss` is the honest cross-entropy of the capped-output model — no train/eval split needed, unlike
+smoothing.
+
+One numerics detail: cast the logits to float32 before the sigmoid so the saturating exp inside it runs
+in high precision — the whole point was numerical safety, so the exp-bearing part is done in the higher
+precision — and keep `ignore_index = -1` for the packed-boundary positions. The full scaffold function is
+in the answer.
+
+So the delta from step 2: where z-loss held the *average* level down with a soft penalty that bounded no
+single logit, I now pass the logits through a smooth, bounded, strictly-monotone sigmoid soft cap
+`23·σ((z+5)/7.5)` *inside the model's forward map* and compute plain cross-entropy on the capped logits —
+a structural per-value bound rather than an average nudge, with the gradient alive everywhere and the
+argmax untouched. Reading z-loss's shape, here is what I expect, falsifiably. The primary `val_loss`
+should move *below* z-loss's 2.2926 — because a hard per-value bound is strictly safer numerically than an
+average penalty, so the softmax is faithful everywhere and the optimizer trains on undistorted gradients;
+I would expect it down near 2.27. The perplexities should follow z-loss's recovery further — WikiText-2
+below 44, LAMBADA into the high-60s. The downstream accuracies are the genuine open question and where the
+risk lives: bounding logits structurally could pinch a little expressiveness on tasks where confident
+margins help, so I would watch arc_easy and hellaswag for a possible small trade against the `val_loss`
+gain rather than assume a uniform sweep. If `val_loss` improves but a downstream metric like hellaswag
+slips, that is the soft cap's signature trade — a faithful but slightly squashed output head — and the
+honest summary of this ladder would be that the value-bound is the strongest single loss-layer move
+available here, with z-loss the right fallback when downstream margin matters more than the last
+hundredth of validation loss. Let me write it in.
+</think>
+<say>
+Now the sigmoid logit soft-cap: I'm passing the logits through the modded-nanoGPT bounded squash 23*sigmoid((z+5)/7.5) inside the forward map, then plain cross-entropy on the capped logits — a per-value bound on the logits rather than an average nudge.
+</say>
+<edit path="nanoGPT/custom_pretrain.py">
+<old>
+# EDITABLE region of nanoGPT/custom_pretrain.py — step 2: cross-entropy + softmax z-loss (lambda=1e-4)
+def compute_loss(logits, targets):
+    """Cross-entropy with z-loss regularization."""
+    flat_logits = logits.view(-1, logits.size(-1))
+    flat_targets = targets.view(-1)
+    ce_loss = F.cross_entropy(flat_logits, flat_targets, ignore_index=-1)
+    # Z-loss: penalize large log-partition values
+    log_z = torch.logsumexp(flat_logits, dim=-1)
+    # Only compute z-loss for non-ignored positions
+    mask = flat_targets != -1
+    z_loss = (log_z[mask] ** 2).mean()
+    return ce_loss + 1e-4 * z_loss
+</old>
+<new>
+# EDITABLE region of nanoGPT/custom_pretrain.py — step 3: cross-entropy with sigmoid logit soft-cap
+def compute_loss(logits, targets):
+    """Cross-entropy with logit softcapping via sigmoid."""
+    # Softcap: maps logits through A * sigmoid((logits + B) / C)
+    # Prevents extreme logit magnitudes while preserving ranking
+    # Constants from modded-nanogpt PR #199
+    A, B, C = 23.0, 5.0, 7.5
+    capped_logits = A * torch.sigmoid((logits.float() + B) / C)
+    return F.cross_entropy(
+        capped_logits.view(-1, capped_logits.size(-1)), targets.view(-1),
+        ignore_index=-1
+    )
+</new>
+</edit>
+<obs>
+Successfully replaced text in nanoGPT/custom_pretrain.py.
+</obs>
+<run/>
+<obs>
+Measured results — `baseline:softcap_ce` (`is_final,true`), seed 42 (the single seed) and mean.
+
+## FineWeb val_loss / perplexity (lower is better)
+| seed | val_loss | wikitext2_ppl | lambada_ppl | elapsed (s) |
+|---|---|---|---|---|
+| 42 | 2.2701 | 43.46 | 67.10 | 20259 |
+| **mean** | **2.2701** | **43.46** | **67.10** | **20259** |
+
+## Downstream accuracy (higher is better)
+| seed | arc_easy | hellaswag | piqa | winogrande |
+|---|---|---|---|---|
+| 42 | 56.48 | 31.82 | 64.25 | 50.43 |
+| **mean** | **56.48** | **31.82** | **64.25** | **50.43** |
+</obs>

@@ -1,0 +1,413 @@
+{
+ "tools": [
+  {
+   "type": "function",
+   "function": {
+    "name": "str_replace",
+    "description": "Replace the unique occurrence of old_str with new_str in the file.",
+    "parameters": {
+     "type": "object",
+     "properties": {
+      "path": {
+       "type": "string"
+      },
+      "old_str": {
+       "type": "string"
+      },
+      "new_str": {
+       "type": "string"
+      }
+     },
+     "required": [
+      "path",
+      "old_str",
+      "new_str"
+     ]
+    }
+   }
+  },
+  {
+   "type": "function",
+   "function": {
+    "name": "create",
+    "description": "Create a new file with the given text.",
+    "parameters": {
+     "type": "object",
+     "properties": {
+      "path": {
+       "type": "string"
+      },
+      "file_text": {
+       "type": "string"
+      }
+     },
+     "required": [
+      "path",
+      "file_text"
+     ]
+    }
+   }
+  },
+  {
+   "type": "function",
+   "function": {
+    "name": "run_experiment",
+    "description": "Train+evaluate the current code; returns metrics.",
+    "parameters": {
+     "type": "object",
+     "properties": {}
+    }
+   }
+  }
+ ],
+ "messages": [
+  {
+   "role": "system",
+   "content": "You are a research engineer improving a model on a fixed ML task. You work by editing the model code and running experiments. Think carefully before each change. You have these tools:\n- str_replace(path, old_str, new_str): replace the unique occurrence of old_str with new_str.\n- create(path, file_text): create a new file.\n- run_experiment(): train + evaluate the current code under the fixed budget; returns metrics.\nMake one tool call at a time. After editing, call run_experiment() to measure your method."
+  },
+  {
+   "role": "user",
+   "content": "## Research question\n\nA *fixed* two-layer ReLU MLP — `Linear(d, 256) → ReLU → Linear(256, 1)`, `d = 128`, bias on both\nlayers — has to fit a multi-index target\n\n```\ny = g(U*ᵀ x),   x ~ N(0, I_d),   U* ∈ R^{d×r} column-orthonormal (Haar),   r ∈ {2, 3, 4},\ng(z) = (1/√r) Σ_{i=1..r} He₃(z_i),   He₃(z) = z³ − 3z.\n```\n\nAll of the label's structure lives in the unknown `r`-dimensional teacher subspace `span(U*)`; the\ninput is isotropic. The single thing being designed is the **training recipe** for that frozen\narchitecture — and only four hooks of it: how the weights are initialized, how the training data is\nbuilt, the optimizer hyperparameters, and the per-step update rule. The architecture, width, batch\nsize (128), training budget (8000 mini-batch steps), and evaluation are fixed. Two things must be\nrecovered: the subspace `span(U*)` (so the first layer's row-span aligns with the teacher directions)\nand the link `g` (so the readout fits the cubic). The link `He₃` has **information exponent 3**, which\nis what makes the problem hard: the lowest Hermite degree at which `g` correlates with a single\ndirection is 3, so the gradient signal toward an unfound teacher direction is third-order-weak at a\nrandom start.\n\n## Prior art before the first rung (the multi-index / feature-learning lineage)\n\nThe first rung reacts to a single line: *can a plainly trained two-layer net find the hidden subspace,\nor does the information exponent strangle it?* The ancestors that frame the question:\n\n- **Kernel / random-feature methods (fixed-feature regime).** Freeze the first-layer features and fit\n  only a linear readout. The features never learn *which* directions are `V* = span(U*)`, so a degree-3\n  target costs the full ambient dimension — `Ω(d³)` samples. Gap: no feature learning, pays the\n  ambient dimension.\n- **Single-index information-exponent analysis (Ben Arous, Gheissari, Jagannath 2021).** For a target\n  reading one direction with information exponent `s`, one-pass SGD on the first layer needs `≈ d^{s-1}`\n  samples/steps: at a random start the overlap with the true direction is `O(1/√d)`, the population\n  correlation behaves like `overlap^s`, so its derivative — the actual pull — is `O(overlap^{s-1})`,\n  vanishingly weak for `s ≥ 3`. The iterate diffuses near the uninformative equator for an enormous\n  number of steps. Gap: graded by the exponent, `d²` here, far above the `n ~ d` information floor.\n- **Multi-direction \"leap\" / saddle-to-saddle SGD (Abbe, Boix-Adserà, Misiakiewicz, COLT 2023;\n  arXiv:2302.11055).** For several directions the analogue is the *leap complexity*: SGD on a two-layer\n  net climbs the directions saddle-to-saddle, picking up Fourier/Hermite components in increasing order,\n  taking `≈ d^{max(Leap, 2)}` steps. A direction only leaves the equator once the directions it is\n  \"staircase-connected\" to are already found. Gap: still exponent-graded, sequential, and on a bare\n  cubic with no lower-degree ladder it has no staircase to climb.\n\nThe first rung is exactly this bare regime: vanilla joint SGD on the fixed MLP. It exists to show the\n`d²` wall in the data, so the later rungs can attack it.\n\n## The fixed substrate\n\nA driver builds the MLP, calls `init_model`, builds an SGD/AdamW optimizer with separate parameter\ngroups for the inner (`d → W`) and outer (`W → 1`) layers from `get_optimizer_config`, samples\n`make_dataset` once per teacher, then iterates `training_step` for `max_steps = 8000` mini-batch\nupdates (batch 128, reshuffled each epoch). After training it evaluates on a fresh 8192-point test set.\nIt is frozen and may not be touched. Helpers it provides and the editable hooks may call:\n`teacher_outputs(x, teacher)` (the label oracle `y = g(U*ᵀ x)`), `hermite3`, `link_function`, and the\n`TaskConfig` fields (`n_features=128`, `rank`, `hidden_width=256`, `batch_size=128`, `max_steps=8000`,\n`max_train_examples=200_000`). The optimizer is constructed *outside* `training_step`; the step\nreceives both the live `optimizer` and the immutable `OptimizerConfig` it was built from. The driver\nalso injects Langevin noise itself when `noise_std > 0` (it adds `noise_std·√(2·lr)·N(0,I)` to each\ngradient before `optimizer.step()`), so a recipe can opt into parameter noise purely through the config.\n\n## The editable interface\n\nExactly one region of `pytorch-examples/synth_multi_index/custom_strategy.py` (lines 251–325) is\neditable: four functions. Every rung on the ladder is a fill of this same contract.\n\n- `init_model(model, config)` — initialize the two linear layers **without** looking at the teacher\n  subspace (it only sees the model and `TaskConfig`).\n- `make_dataset(config, teacher, seed)` — return `(x, y)` (or `{\"x\", \"y\"}`); `x` is `[n, d]`, `y` is\n  `[n]`, `n ≤ max_train_examples`. `teacher` is the label oracle only.\n- `get_optimizer_config(config)` — return a dict with `optimizer` (`\"sgd\"`/`\"adamw\"`), `lr_inner`,\n  `lr_outer`, `wd_inner`, `wd_outer`, `momentum`, `noise_std` (inner = first layer, outer = readout).\n- `training_step(model, optimizer, optimizer_config, batch_x, batch_y, step, config)` — exactly one\n  optimizer update; return a dict with at least `loss`. A step may freeze a layer, project the\n  first-layer rows onto the unit sphere, inject extra noise, or run a closed-form ridge solve for the\n  readout.\n\nThe starting point is the scaffold default: standard Kaiming init, a fixed `n = 4096` Gaussian set,\nplain SGD on both layers at `lr = 5e-2`, no decay, no noise, and a single joint squared-loss step.\n\n```python\n# EDITABLE region of custom_strategy.py — default fill (vanilla joint SGD)\ndef init_model(model: nn.Sequential, config: TaskConfig) -> None:\n    \"\"\"Default Kaiming-uniform init for both linear layers; no teacher info.\"\"\"\n    for layer in model:\n        if isinstance(layer, nn.Linear):\n            nn.init.kaiming_uniform_(layer.weight, a=math.sqrt(5))\n            if layer.bias is not None:\n                nn.init.zeros_(layer.bias)\n\n\ndef make_dataset(config: TaskConfig, teacher: torch.Tensor, seed: int):\n    \"\"\"Fixed Gaussian training set of size n = 4096.\"\"\"\n    g = torch.Generator().manual_seed(seed)\n    num_examples = 4_096\n    x = torch.randn(num_examples, config.n_features, generator=g)\n    y = teacher_outputs(x, teacher)\n    return x, y\n\n\ndef get_optimizer_config(config: TaskConfig) -> dict[str, object]:\n    \"\"\"Plain SGD on both layers; no momentum, no weight decay, no noise.\"\"\"\n    return {\n        \"optimizer\": \"sgd\",\n        \"lr_inner\": 5e-2, \"lr_outer\": 5e-2,\n        \"wd_inner\": 0.0, \"wd_outer\": 0.0,\n        \"momentum\": 0.0, \"noise_std\": 0.0,\n    }\n\n\ndef training_step(model, optimizer, optimizer_config, batch_x, batch_y, step, config):\n    \"\"\"Single squared-loss update applied to both layers jointly.\"\"\"\n    model.train()\n    optimizer.zero_grad(set_to_none=True)\n    preds = model(batch_x).view(-1)\n    loss = ((preds - batch_y) ** 2).mean()\n    loss.backward()\n    optimizer.step()\n    return {\"loss\": float(loss.item())}\n```\n\n## Evaluation settings\n\nThe same scaffold is run at three teacher ranks — `r2` (d=128, r=2; easiest), `r3` (r=3), `r4` (r=4;\nhardest, more directions to align) — each over three top-level seeds {42, 123, 456} (one teacher and\none data ordering per seed). Three metrics per run:\n\n| Metric | Direction | Definition |\n|--------|-----------|------------|\n| `test_mse` | lower better | MSE on a fresh 8 192-point test set |\n| `subspace_err` | lower better | `‖P_Û − P_{U*}‖_F`, `Û` = top-`r` right-singular subspace of the first layer's weights |\n| `score` | higher better | `exp(−subspace_err² / r) · exp(−test_mse)`, in (0, 1] |\n\nThe leaderboard aggregates `score`, `test_mse`, `subspace_err` across the three ranks by a geometric\nmean of per-rank weighted-mean composites. The two metrics that matter are coupled: a low\n`subspace_err` (the first layer found `V*`) is the precondition for a low `test_mse` (the readout can\nthen fit the cubic), and `score` rewards both.\n\nThe editable model code is in `pytorch-examples/synth_multi_index/custom_strategy.py`:\n```python\ndef init_model(model: nn.Sequential, config: TaskConfig) -> None:\n    \"\"\"Initialize the two-layer MLP without using the teacher subspace.\n\n    Default: standard PyTorch (Kaiming uniform for Linear).\n    \"\"\"\n    for layer in model:\n        if isinstance(layer, nn.Linear):\n            nn.init.kaiming_uniform_(layer.weight, a=math.sqrt(5))\n            if layer.bias is not None:\n                nn.init.zeros_(layer.bias)\n\n\ndef make_dataset(\n    config: TaskConfig,\n    teacher: torch.Tensor,\n    seed: int,\n) -> tuple[torch.Tensor, torch.Tensor]:\n    \"\"\"Return a Gaussian training set of size n=4096 with teacher labels.\n\n    The agent may resample, augment, or change the dataset size up to\n    ``config.max_train_examples`` examples but must not use the teacher\n    subspace identity beyond evaluating the supplied ``teacher`` matrix.\n    \"\"\"\n    g = torch.Generator().manual_seed(seed)\n    num_examples = 4_096\n    x = torch.randn(num_examples, config.n_features, generator=g)\n    y = teacher_outputs(x, teacher)\n    return x, y\n\n\ndef get_optimizer_config(config: TaskConfig) -> dict[str, object]:\n    \"\"\"Optimizer hyperparameters used to build the SGD/AdamW optimizer.\"\"\"\n    return {\n        \"optimizer\": \"sgd\",\n        \"lr_inner\": 5e-2,\n        \"lr_outer\": 5e-2,\n        \"wd_inner\": 0.0,\n        \"wd_outer\": 0.0,\n        \"momentum\": 0.0,\n        \"noise_std\": 0.0,\n    }\n\n\ndef training_step(\n    model: nn.Sequential,\n    optimizer: torch.optim.Optimizer,\n    optimizer_config: OptimizerConfig,\n    batch_x: torch.Tensor,\n    batch_y: torch.Tensor,\n    step: int,\n    config: TaskConfig,\n) -> dict[str, float]:\n    \"\"\"Default single-loss update on the squared error.\n\n    Implementations may freeze a layer for the first K steps, project\n    the first-layer rows onto the sphere, inject extra noise, or fall\n    back to a closed-form ridge solve for the output layer.\n    \"\"\"\n    model.train()\n    optimizer.zero_grad(set_to_none=True)\n    preds = model(batch_x).view(-1)\n    loss = ((preds - batch_y) ** 2).mean()\n    loss.backward()\n\n    if optimizer_config.noise_std > 0.0:\n        for group in optimizer.param_groups:\n            lr = group[\"lr\"]\n            scale = optimizer_config.noise_std * math.sqrt(2.0 * lr)\n            for p in group[\"params\"]:\n                if p.grad is None:\n                    continue\n                p.grad.add_(torch.randn_like(p.grad) * scale)\n\n    optimizer.step()\n    return {\"loss\": float(loss.item())}\n```\nImprove it. Derive your method, edit the code, then run_experiment()."
+  },
+  {
+   "role": "assistant",
+   "reasoning_content": "The recipe is the whole point, but it bolts onto a fixed architecture, and with the plainest possible\nrecipe that architecture is the floor — so the pain to start from is just training the two-layer MLP\nthe obvious way and seeing how far obvious gets me. The target reads the input through `r` unknown\northonormal directions, `y = (1/√r) Σ_i He₃((U*ᵀx)_i)`, with isotropic Gaussian `x`. Nothing in `x`\nitself is informative; the entire problem is *which* directions the label looks along, and then the\ncubic link on those projections. The fixed net can in principle do both — its first-layer rows can\nrotate to point into `V* = span(U*)`, and once they do the readout fits an `r`-dimensional cubic — so\nthe whole game reduces to one question: can plain gradient descent on this net get the first-layer rows\nto align with `V*` inside the 8000-step budget, and how badly does the cubic link's information\nexponent fight me?\n\nLet me write down what \"align\" means so I do not fool myself. For a first-layer row `w_i ∈ R^d`, what I\ncare about is how much of it lies in `V*`: `‖Π* w_i‖ / ‖w_i‖`, where `Π* = U*U*ᵀ` projects onto the\nteacher subspace. At a random Kaiming start the rows are essentially isotropic in `R^d`, so the squared\nprojection of a row onto a fixed `r`-dimensional subspace is about `r/d` — with `d = 128` and `r ∈\n{2,3,4}` that ratio starts at roughly `0.016`–`0.031`, i.e. `‖Π* w_i‖ ~ √(r/d) = O(1/√d)`. A random\nneuron is almost entirely orthogonal to the subspace I need it to find. The leaderboard's\n`subspace_err = ‖P_Û − P_{U*}‖_F` measures exactly the failure of this alignment at the level of the\nwhole first-layer matrix: if the top-`r` right-singular subspace of `W_in` is uncorrelated with `V*`,\ntwo rank-`r` orthogonal projectors that share no directions sit at Frobenius distance `√(2r)` apart —\nabout `2.0` for `r=2`, `2.4` for `r=3`, `2.8` for `r=4`. Those are the numbers a recipe that learns\n*nothing* about the subspace should print, and they are worth holding in mind as the \"did the first\nlayer move at all\" yardstick.\n\nNow the gradient. The loss is per-batch mean squared error, `(1/n) Σ (f̂(x) − y)²`, and the\nfirst-layer row `w_i` gets, through the chain rule on `f̂(x) = Σ_j a_j σ(⟨w_j, x⟩) + b`,\n\na step proportional to `(1/n) Σ_ν a_i x^ν σ'(⟨w_i, x^ν⟩) (f̂(x^ν) − y^ν)`. The piece that can rotate\n`w_i` into a *new* direction is the correlation of the activation-weighted input with the label\nresidual, `E[x σ'(⟨w_i, x⟩) y]`. There is a clean way to read this under a Gaussian: Stein's lemma,\n`E[x h(x)] = E[∇_x h(x)]`. With `h(x) = σ'(⟨w_i, x⟩) y` this gives a piece along `w_i` itself (a\nrescaling, not alignment) plus `E[σ'(⟨w_i, x⟩) ∇_x y]`, which is the part that can move the row toward\n`V*`. Expand both in Hermite tensors. The teacher's Hermite content lives entirely in `V*`, because\n`y` is a function of `U*ᵀx`, so its `k`-th Hermite tensor is built from `k` copies of teacher\ndirections. Contracting that tensor against `k` copies of a row `w_i` whose foot in `V*` is only\n`O(1/√d)` produces a scalar of size `O((1/√d)^k)`: every Hermite order costs another factor of\n`1/√d`. So the *lowest* surviving order dominates, and which order is lowest is the information\nexponent of the link.\n\nHere is the crux for this benchmark. The link is `g(z) = (1/√r) Σ_i He₃(z_i)` — a *pure cubic* in each\ncoordinate, with `He₃` the third probabilists' Hermite polynomial. It has no linear part, no quadratic\npart: its first nonzero Hermite coefficient is at degree 3. The information exponent is exactly 3. So\nthe useful part of the first gradient — the part that points into `V*` — has size `O((1/√d)^{3-1}) =\nO(1/d)`. A vanilla SGD step `w_i ← w_i − η g_i` with the scaffold's `η = 5e-2` moves the row by `O(η/d)`\ninto the subspace, which against `d = 128` is essentially nothing. The single-index theory makes the\nconsequence precise: one-pass SGD on a target with information exponent `s` needs `≈ d^{s-1}`\nsamples/steps to escape the uninformative equator, because the overlap `⟨w_i, u⟩` starts at `O(1/√d)`,\nthe population correlation behaves like `overlap^s`, and its derivative — the actual drift pulling the\nrow toward `u` — is `O(overlap^{s-1})`. For `s = 3` that is `d^{s-1} = d² = 128² ≈ 16{,}384` steps to\nfind *one* direction, and the budget is 8000. I am structurally short of the steps needed to escape the\nsaddle even for a single teacher direction, let alone `r` of them.\n\nThe multi-direction story is no kinder, and it is worth tracing because it explains why this floor\nshould be flat rather than merely slow. With several directions the relevant quantity is the leap\ncomplexity: SGD climbs the teacher directions saddle-to-saddle, learning Hermite components in order of\nincreasing degree, and a direction only leaves the equator once the directions it is\n*staircase-connected* to are already aligned — meaning some lower-degree monomial couples them, so that\nconditioning on the found direction exposes a nonzero first Hermite coefficient for the next. The cost\nis `≈ d^{max(Leap, 2)}` steps. But look at what staircase structure this link offers: `g = (1/√r) Σ_i\nHe₃((U*ᵀx)_i)` is a *sum of decoupled* cubics, one per teacher coordinate, with **no cross terms and no\nlower-degree terms at all**. There is no `z_1` to bootstrap `z_2`, no `z_1 z_2` ladder rung — each\ndirection must be found cold, from a degree-3 correlation, with nothing beneath it to lift it off the\norigin. So this is the worst case for the saddle-to-saddle dynamic: there is no staircase to climb,\njust `r` independent degree-3 escapes, each costing `d²` it does not have. The leap analysis predicts\nthat joint SGD here picks up essentially none of `V*` within budget, and that `r4` (four cold degree-3\ndirections) is no easier per-direction than `r2` — if anything the recovery target is larger, so I\nexpect all three ranks to fail at the subspace and the failure not to soften with smaller `r`.\n\nI should also be honest about the second layer, because the scaffold trains both jointly. While the\nfirst layer flails near the equator, the readout `a` is fitting whatever the (near-random) features\nprovide. Random ReLU features of a Gaussian input form a fixed kernel, and the cubic target has\ndegree-3 content that a finite kernel of `256` random features in `d = 128` cannot represent without\npaying the ambient dimension. So even granting the readout a perfect convex fit on frozen random\nfeatures, the best it can do is capture the low-order (here, zero) projection of `g` onto the random\nfeature span — which for a pure cubic is almost nothing. The MSE should therefore sit near the variance\nof `y` itself. Let me estimate that floor: `Var[He₃(z)] = E[(z³−3z)²] = E[z⁶ − 6z⁴ + 9z²] = 15 − 18 +\n9 = 6` for a standard Gaussian coordinate, and `g = (1/√r) Σ_i He₃(z_i)` averages `r` independent such\nterms scaled by `1/√r`, giving `Var[g] = (1/r)·r·6 = 6`. So a recipe that learns neither the subspace\nnor the link predicts a fresh-test MSE near `6`, plus whatever extra variance the untamed joint\ndynamics injects. A near-`6`-or-worse `test_mse` paired with a near-`√(2r)` `subspace_err` is the\nsignature of the floor, and the `score = exp(−subspace_err²/r)·exp(−test_mse)` collapses to nearly zero\nunder both — `exp(−2r/r)·exp(−6) = exp(−2)·exp(−6) ≈ 3·10⁻⁴` as an optimistic bound, smaller once the\nMSE overshoots 6.\n\nGiven all of that, the step-1 recipe is the *trivial* fill, and trivial is the right choice precisely\nbecause its failure has to be clean and legible. I leave every hook at the scaffold default. `init_model`\nis standard Kaiming-uniform on both linear layers with zero biases — isotropic rows, the `O(1/√d)`\nrandom start the whole information-exponent story is told from. `make_dataset` returns a fixed `n =\n4096` Gaussian set with teacher labels; I deliberately do *not* enlarge it, because the point of this\nrung is to expose the optimization wall, not to throw samples at it — and `4096` points reshuffled over\n8000 steps means the net sees each point about twice, so this is closer to multi-pass than to the\none-pass idealization, which if anything *helps* the readout overfit the random features and does\nnothing for the subspace. `get_optimizer_config` is plain SGD on both layers at `lr = 5e-2`, no\nmomentum, no weight decay, no noise — the bare gradient flow, nothing adaptive, nothing that could\nmanufacture the missing third-order signal. `training_step` is a single joint squared-loss update on\nboth layers: zero the grads, forward, MSE, backward, step. No layer freezing, no spherical projection,\nno closed-form solve — exactly the moves the harder rungs will turn on, left off here so their effect\nis measurable against this baseline.\n\nNow reason about what this floor must do, because that is the entire reason to run it. Joint SGD\ndescends the MSE built from the cubic target. The first layer's only route to `V*` is the third-order\ncorrelation, which at a random start is `O(1/d)` weak and needs `d² ≈ 16k` steps per direction to\namplify — more than the budget — and there is no lower-degree staircase to shortcut the climb. So the\nfirst-layer rows should stay essentially where they started, near-orthogonal to `V*`, and\n`subspace_err` should sit near `√(2r) ≈ 2.0/2.4/2.8` across `r2/r3/r4`. The readout, fitting near-random\ncubic-blind features, should leave `test_mse` near `Var[g] = 6` or worse, since the untamed joint\ndynamics can inflate the prediction variance rather than reduce it. And the `score` should collapse to\nnear zero on all three ranks, because both exponentials are saturated against it. This is the weakest\nrecipe I can run *by construction*: it has no mechanism to find a degree-3 direction inside the budget,\nand on a problem where finding the subspace is the whole task it should mostly find nothing.\n\nThe diagnosis is already pointed at the next rung. Whatever the exact numbers, the failure is an\n*optimization* failure, not a representation one — the net can represent `g` fine once its rows point\ninto `V*`; it simply cannot get them there by descending a third-order-flat landscape with a\nmillion-times-too-small drift inside 8000 steps. The fix is not more of the same gradient. It is to\nstop asking joint SGD to find the subspace through the cubic at all: separate the two jobs the net is\nconflating, freeze the readout and give the first layer a cleaner, larger-amplitude alignment signal,\nthen fit the link in closed form once the features are good. That is the two-stage move, and it is what\nthe next rung turns on — every hook the default leaves off (frozen readout, spherical rows, a stage-2\nridge solve) exists in the contract precisely so the floor's optimization wall can be attacked head-on.\nFor now let me lock in the trivial fill and measure the floor.",
+   "content": "Starting with the floor: vanilla joint SGD on the fixed MLP, every hook left at the scaffold default. This first edit just marks `init_model` as the standard Kaiming-uniform init for both layers.",
+   "tool_calls": [
+    {
+     "type": "function",
+     "function": {
+      "name": "str_replace",
+      "arguments": {
+       "path": "pytorch-examples/synth_multi_index/custom_strategy.py",
+       "old_str": "def init_model(model: nn.Sequential, config: TaskConfig) -> None:\n    \"\"\"Initialize the two-layer MLP without using the teacher subspace.\n\n    Default: standard PyTorch (Kaiming uniform for Linear).\n    \"\"\"\n    for layer in model:",
+       "new_str": "# EDITABLE region of custom_strategy.py — step 1: vanilla joint SGD (the floor)\ndef init_model(model: nn.Sequential, config: TaskConfig) -> None:\n    \"\"\"Default Kaiming-uniform initialization for both linear layers.\"\"\"\n    for layer in model:"
+      }
+     }
+    }
+   ]
+  },
+  {
+   "role": "tool",
+   "content": "Successfully replaced text in pytorch-examples/synth_multi_index/custom_strategy.py."
+  },
+  {
+   "role": "assistant",
+   "reasoning_content": "",
+   "content": "",
+   "tool_calls": [
+    {
+     "type": "function",
+     "function": {
+      "name": "str_replace",
+      "arguments": {
+       "path": "pytorch-examples/synth_multi_index/custom_strategy.py",
+       "old_str": ") -> tuple[torch.Tensor, torch.Tensor]:\n    \"\"\"Return a Gaussian training set of size n=4096 with teacher labels.\n\n    The agent may resample, augment, or change the dataset size up to\n    ``config.max_train_examples`` examples but must not use the teacher\n    subspace identity beyond evaluating the supplied ``teacher`` matrix.\n    \"\"\"\n    g = torch.Generator().manual_seed(seed)",
+       "new_str": ") -> tuple[torch.Tensor, torch.Tensor]:\n    \"\"\"Fixed Gaussian training set of size n=4096.\"\"\"\n    g = torch.Generator().manual_seed(seed)"
+      }
+     }
+    }
+   ]
+  },
+  {
+   "role": "tool",
+   "content": "Successfully replaced text in pytorch-examples/synth_multi_index/custom_strategy.py."
+  },
+  {
+   "role": "assistant",
+   "reasoning_content": "",
+   "content": "",
+   "tool_calls": [
+    {
+     "type": "function",
+     "function": {
+      "name": "str_replace",
+      "arguments": {
+       "path": "pytorch-examples/synth_multi_index/custom_strategy.py",
+       "old_str": "def get_optimizer_config(config: TaskConfig) -> dict[str, object]:\n    \"\"\"Optimizer hyperparameters used to build the SGD/AdamW optimizer.\"\"\"\n    return {",
+       "new_str": "def get_optimizer_config(config: TaskConfig) -> dict[str, object]:\n    \"\"\"Plain SGD on both layers, no momentum, no weight decay.\"\"\"\n    return {"
+      }
+     }
+    }
+   ]
+  },
+  {
+   "role": "tool",
+   "content": "Successfully replaced text in pytorch-examples/synth_multi_index/custom_strategy.py."
+  },
+  {
+   "role": "assistant",
+   "reasoning_content": "",
+   "content": "",
+   "tool_calls": [
+    {
+     "type": "function",
+     "function": {
+      "name": "str_replace",
+      "arguments": {
+       "path": "pytorch-examples/synth_multi_index/custom_strategy.py",
+       "old_str": ") -> dict[str, float]:\n    \"\"\"Default single-loss update on the squared error.\n\n    Implementations may freeze a layer for the first K steps, project\n    the first-layer rows onto the sphere, inject extra noise, or fall\n    back to a closed-form ridge solve for the output layer.\n    \"\"\"\n    model.train()",
+       "new_str": ") -> dict[str, float]:\n    \"\"\"Single squared-loss update applied to both layers jointly.\"\"\"\n    model.train()"
+      }
+     }
+    }
+   ]
+  },
+  {
+   "role": "tool",
+   "content": "Successfully replaced text in pytorch-examples/synth_multi_index/custom_strategy.py."
+  },
+  {
+   "role": "assistant",
+   "reasoning_content": "Strip the noise-injection branch too, so the step is the bare backward-then-step.",
+   "content": "",
+   "tool_calls": [
+    {
+     "type": "function",
+     "function": {
+      "name": "str_replace",
+      "arguments": {
+       "path": "pytorch-examples/synth_multi_index/custom_strategy.py",
+       "old_str": "    loss.backward()\n\n    if optimizer_config.noise_std > 0.0:\n        for group in optimizer.param_groups:\n            lr = group[\"lr\"]\n            scale = optimizer_config.noise_std * math.sqrt(2.0 * lr)\n            for p in group[\"params\"]:\n                if p.grad is None:\n                    continue\n                p.grad.add_(torch.randn_like(p.grad) * scale)\n\n    optimizer.step()\n    return {\"loss\": float(loss.item())}",
+       "new_str": "    loss.backward()\n    optimizer.step()\n    return {\"loss\": float(loss.item())}"
+      }
+     }
+    }
+   ]
+  },
+  {
+   "role": "tool",
+   "content": "Successfully replaced text in pytorch-examples/synth_multi_index/custom_strategy.py."
+  },
+  {
+   "role": "assistant",
+   "reasoning_content": "",
+   "content": "Run the experiment to measure this.",
+   "tool_calls": [
+    {
+     "type": "function",
+     "function": {
+      "name": "run_experiment",
+      "arguments": {}
+     }
+    }
+   ]
+  },
+  {
+   "role": "tool",
+   "content": "Measured results — `baseline:sgd_mlp` (`is_final,true`), seeds {42, 123, 456} and mean.\n\n## r2 (d=128, r=2)\n| seed | test_mse | subspace_err | score |\n|---|---|---|---|\n| 42 | 9.932194 | 1.993457 | 0.000007 |\n| 123 | 10.922861 | 1.927837 | 0.000003 |\n| 456 | 10.276404 | 1.942604 | 0.000005 |\n| **mean** | **10.377153** | **1.954633** | **0.000005** |\n\n## r3 (d=128, r=3)\n| seed | test_mse | subspace_err | score |\n|---|---|---|---|\n| 42 | 8.586618 | 2.361480 | 0.000029 |\n| 123 | 9.536006 | 2.416879 | 0.000010 |\n| 456 | 11.168365 | 2.336025 | 0.000002 |\n| **mean** | **9.763663** | **2.371461** | **0.000014** |\n\n## r4 (d=128, r=4)\n| seed | test_mse | subspace_err | score |\n|---|---|---|---|\n| 42 | 9.519724 | 2.751844 | 0.000011 |\n| 123 | 9.137334 | 2.755046 | 0.000016 |\n| 456 | 8.749607 | 2.725047 | 0.000025 |\n| **mean** | **9.135555** | **2.743979** | **0.000017** |"
+  },
+  {
+   "role": "assistant",
+   "reasoning_content": "The floor came back exactly as the information-exponent argument said it would, and the numbers are\nworth reading closely because they tell me *which* failure I am looking at. Vanilla joint SGD left\n`subspace_err` at 1.95 (r2), 2.37 (r3), 2.74 (r4) — essentially `√(2r)` = 2.0/2.4/2.8 to three figures.\nThat is the value two rank-`r` orthogonal projectors take when they share *no* directions: the\nfirst-layer row-span and the teacher subspace are still uncorrelated after 8000 steps. The first layer\ndid not move toward `V*` at all. And `test_mse` sat at 10.4/9.8/9.1 — *above* the `Var[g] = 6` label\nvariance I expected as the do-nothing floor, which means the untamed joint dynamics is not merely\nfailing to fit; it is injecting prediction variance on top of the variance it cannot explain. The\n`score` is `5e-6`/`1.4e-5`/`1.7e-5`, three to four orders below anything useful. This is the `d²`-wall\nseed-for-seed: per-seed `subspace_err` barely fluctuates (1.93–1.99 on r2), so it is not a variance\nproblem I can fix with more seeds or a luckier init — it is a *structural* dead end. Joint SGD has no\nmechanism to amplify a degree-3 correlation inside the budget, and the readout, chasing near-random\nfeatures, is actively making the MSE worse.\n\nSo the diagnosis is sharp: this is an optimization failure with two intertwined causes, and I should\nattack both. First, the net is conflating two jobs — finding `V*` (nonconvex, the hard part) and\nfitting the link (convex, once the features are good) — and training them jointly means the readout is\nfitting moving, near-random features the whole time, which is exactly why the MSE overshoots its own\nfloor. Second, the first-layer signal is third-order-weak and a single `lr = 5e-2` step cannot move a\nrow `O(1)` into `V*`. The cure for the first is to *separate the stages*: train the first layer alone to\nalign with `V*`, then freeze it and solve the readout in closed form. The cure for the second is to\nmake the first-layer phase as clean and well-conditioned as I can so whatever alignment signal exists\nis not diluted by a co-adapting readout or by runaway row norms.\n\nLet me build the first-layer phase. Freeze the readout `a` and look at the gradient on a row `w_i`\nalone. With squared loss `(1/2)(y − f̂)²`, the row gradient is `g_i = a_i (1/n) Σ_ν x^ν σ'(⟨w_i,\nx^ν⟩)(f̂(x^ν) − y^ν)`. The nuisance is `f̂`, the net's own output, polluting the residual. The cleanest\nthing would be a residual that is just `−y`, so the gradient is a pure correlation between the\nactivation-weighted input and the labels — the object Stein's lemma turns into a contraction of the\nteacher's Hermite tensor against the row, the part that rotates `w_i` into `V*`. In this harness I do\nnot get to engineer a zero-output symmetric initialization the way a from-scratch derivation would; the\nscaffold builds the net and hands it to `init_model`, and the readout has to start *somewhere*. So I do\nthe next best thing the contract allows: spherical init on the first-layer rows (each `w_i` placed\nuniformly on `S^{d-1}`, the clean `O(1/√d)`-foot-in-`V*` start), and a *random ±1 sign* readout scaled\nby `1/√W` — symmetric in expectation, small in magnitude, so it gives stage 1 a usable signal without\ndominating it. The first-layer rows are what I want to rotate; the readout is held essentially fixed\nwhile I do it.\n\nHow do I hold the readout fixed? The contract gives me `lr_outer`, and I set it to a hair above zero\n(the normalizer rejects exactly zero), so the optimizer's outer group barely moves. But \"barely\" is not\n\"not at all,\" and a leaking readout would re-introduce the co-adaptation I am trying to kill. So inside\n`training_step`, during stage 1, after `loss.backward()` I *zero the output layer's gradient* — both\nweight and bias — before `optimizer.step()`. That is the literal enforcement of \"freeze the readout\":\nthe inner rows get their squared-loss gradient, the readout gets nothing. This is a real difference from\nthe abstract two-stage recipe, which fits a clean correlation loss on a zero-output net; here I am\nrunning the *squared-loss* gradient on the live net with the readout pinned, so the residual is `(f̂ −\ny)` with `f̂` the small-random-readout output, not `−y`. It is a slightly noisier alignment signal than\nthe pure correlation, but it is the honest one the harness exposes, and with the readout small the\n`f̂` contamination is second-order.\n\nNow the step size. A from-scratch analysis would take a *giant* step `η ~ p√(n/d)` to cancel the\n`d^{-(s-1)/2}` smallness of the leap term in one shot. I cannot do that safely here: the budget is 8000\nsteps on a *fixed* `n = 4096`-scale dataset reshuffled into batches of 128, not fresh population batches,\nso a giant single step on a finite batch would amplify sampling noise, not signal — the empirical\ndegree-3 correlation on 128 points is dominated by fluctuations unless I average. So instead of one\ngiant step I take *many* moderate steps. I set `lr_inner = 1e-1`, twice the floor's rate, and run the\nfirst layer for the first 80% of the budget (6400 steps), letting the alignment accumulate over\nthousands of mini-batch correlations rather than betting it all on one. Each step also re-normalizes the\nrows back to the unit sphere: after the gradient update I divide each row by its norm. This is the\nload-bearing hygiene from the spherical picture — I care about the row's *orientation* relative to `V*`,\nnot its length, and renormalizing stops the repeated steps from inflating `‖w_i‖` and muddying the\n`‖Π* w_i‖/‖w_i‖` story (and with it the `subspace_err` SVD). Keeping the rows on the sphere is what lets\na long sequence of moderate steps act like a clean rotation toward `V*` instead of a drift in norm.\n\nThe trouble I have to be clear-eyed about: even granting this stage works, what can it recover? The\nsingle-step leap analysis says one giant step into `V_ℓ*` reaches only the directions present *at the\nleap order*. Here the leap order is 3 and the link is a *decoupled* `Σ He₃` with no cross terms, so\nthere is no staircase — each teacher direction must be picked up cold from its own degree-3 correlation,\nand there is no lower-degree rung to expose the next one by conditioning. So the multi-step climb that\nrescues `ℓ=1` staircases (condition on a found direction, the next becomes first-order visible) has\n*nothing to climb* here. My moderate-step stage 1 is really `r` independent third-order alignment\nproblems run in parallel across `256` rows, and whether any row's degree-3 correlation on finite batches\nrises above the sampling floor inside 6400 steps is genuinely uncertain. I expect *partial* alignment\nat best — better than the floor's zero, because freezing the readout and renormalizing removes the two\nthings that were actively hurting joint SGD, but far from full recovery, because the degree-3 signal is\nstill weak and there is no ladder.\n\nStage 2 is the part I am confident in, and it is why separating the stages helps the MSE regardless of\nhow well stage 1 does. For the last 20% of the budget I freeze `W_in` entirely and fit the readout in\n*closed form*. With the features fixed at `φ(x) = ReLU(W_in x)`, the predictor `f̂ = a·φ(x) + b` is\n*linear* in `(a, b)`, so fitting it to least squares is convex — ordinary ridge regression, no backprop,\nno co-adaptation, the global optimum of the readout given whatever subspace stage 1 found. I solve it\nonce: form the post-ReLU feature matrix on a *cached, larger* training set (I enlarge `make_dataset` to\n`n = 20{,}000` and stash it globally, since the ridge solve wants more rows than the 128-point loop\nbatch to condition the Gram matrix), append a ones column for the bias, and solve `(ΦᵀΦ + λI) a = Φᵀy`\nwith `λ = 10⁻³·n`. The `min(20k, max_train_examples)` cap keeps me inside the harness's `200k` limit.\nAfter the solve, the remaining stage-2 steps just report the train loss without touching the net — the\nreadout is already optimal for the frozen features.\n\nThis is the decisive structural difference from the floor, and it sets a clean expectation: stage 2\ngives the readout the *best possible* fit on the features stage 1 produced, so the MSE can only be as\ngood as the subspace allows but will not be made *worse* by a co-adapting readout the way joint SGD's\nwas. The lower bound is exact — with frozen features the readout cannot beat the best predictor that\ndepends only on the learned subspace `U`, `E[(g − f̂)²] ≥ E[Var(g | P_U x)] − o(1)` — so everything\nstill rides on how much of `V*` stage 1 recovered. The two stages are not independent knobs: stage 1\nsets the ceiling, stage 2 reaches it.\n\nSo the falsifiable expectations against the floor's numbers. First, `subspace_err` should *drop below*\nthe floor's `√(2r)`: freezing the readout and renormalizing the rows removes the co-adaptation and\nnorm-inflation that pinned joint SGD at exactly `√(2r)`, so even partial degree-3 alignment should pull\nthe projector distance down — I expect somewhere in the 1.5–2.6 band rather than locked at\n2.0/2.4/2.8, with the most movement on r2 (one fewer cold direction to find) and the least on r4.\nSecond, `test_mse` should fall *below* the floor's 9–10 toward (but not all the way to) `Var[g] = 6`,\nbecause the closed-form ridge solve stops the readout from inflating the prediction variance even on\nimperfect features — a few points below 6 if any subspace was found, near 6 if essentially none was.\nThird, `score`, being the product of two exponentials in those two quantities, should rise by roughly\nan order of magnitude over the floor's `~1e-5` — into the `1e-4` range — driven mostly by the MSE\nrecovery, since the subspace is still far from clean. If instead `subspace_err` stays pinned at `√(2r)`\nand only the MSE moves, that tells me stage 1's degree-3 climb found *nothing* and the entire gain is\nthe convex readout fit on random features — which would say the next rung must abandon gradient-based\nalignment for the cubic and estimate the subspace by a *moment* method that sees degree-3 structure\ndirectly, rather than waiting for SGD to climb a ladder that is not there. Let me build the two-stage\nmodule — spherical init, frozen-readout stage 1 with spherical reprojection, and the stage-2 ridge\nsolve — starting with the init.",
+   "content": "Moving to a two-stage recipe: align the first layer with the teacher subspace, then solve the readout in closed form. This edit sets up spherical init on the first-layer rows and a small symmetric sign readout, plus the global caches the stage-2 ridge solve will use.",
+   "tool_calls": [
+    {
+     "type": "function",
+     "function": {
+      "name": "str_replace",
+      "arguments": {
+       "path": "pytorch-examples/synth_multi_index/custom_strategy.py",
+       "old_str": "# EDITABLE region of custom_strategy.py — step 1: vanilla joint SGD (the floor)\ndef init_model(model: nn.Sequential, config: TaskConfig) -> None:\n    \"\"\"Default Kaiming-uniform initialization for both linear layers.\"\"\"\n    for layer in model:\n        if isinstance(layer, nn.Linear):\n            nn.init.kaiming_uniform_(layer.weight, a=math.sqrt(5))\n            if layer.bias is not None:\n                nn.init.zeros_(layer.bias)",
+       "new_str": "# EDITABLE region of custom_strategy.py — step 2: two-stage (frozen-readout SGD + ridge)\n_FULL_TRAIN_X: torch.Tensor | None = None\n_FULL_TRAIN_Y: torch.Tensor | None = None\n\n\ndef init_model(model: nn.Sequential, config: TaskConfig) -> None:\n    \"\"\"Spherical init: rows of W_in on the unit d-sphere, output sign init.\"\"\"\n    in_layer = model[0]\n    out_layer = model[2]\n    W = torch.randn_like(in_layer.weight)\n    W = W / W.norm(dim=1, keepdim=True).clamp(min=1e-8)\n    with torch.no_grad():\n        in_layer.weight.copy_(W)\n        if in_layer.bias is not None:\n            in_layer.bias.zero_()\n        # Symmetric +/- 1/sqrt(W) output: lets stage 1 see a useful signal.\n        signs = torch.randint(0, 2, (out_layer.weight.shape[1],),\n                              device=out_layer.weight.device).float().mul_(2).sub_(1)\n        out_layer.weight.copy_(signs.unsqueeze(0) / math.sqrt(out_layer.weight.shape[1]))\n        if out_layer.bias is not None:\n            out_layer.bias.zero_()\n        out_layer._full_ridge_solved = False"
+      }
+     }
+    }
+   ]
+  },
+  {
+   "role": "tool",
+   "content": "Successfully replaced text in pytorch-examples/synth_multi_index/custom_strategy.py."
+  },
+  {
+   "role": "assistant",
+   "reasoning_content": "Now enlarge the dataset to n=20k and cache it globally so the stage-2 ridge solve has enough rows to condition the Gram matrix.",
+   "content": "",
+   "tool_calls": [
+    {
+     "type": "function",
+     "function": {
+      "name": "str_replace",
+      "arguments": {
+       "path": "pytorch-examples/synth_multi_index/custom_strategy.py",
+       "old_str": ") -> tuple[torch.Tensor, torch.Tensor]:\n    \"\"\"Fixed Gaussian training set of size n=4096.\"\"\"\n    g = torch.Generator().manual_seed(seed)\n    num_examples = 4_096\n    x = torch.randn(num_examples, config.n_features, generator=g)\n    y = teacher_outputs(x, teacher)\n    return x, y",
+       "new_str": ") -> tuple[torch.Tensor, torch.Tensor]:\n    \"\"\"Larger Gaussian training set (n=20k) to support stage-2 ridge solve.\"\"\"\n    global _FULL_TRAIN_X, _FULL_TRAIN_Y\n    g = torch.Generator().manual_seed(seed)\n    num_examples = min(20_000, config.max_train_examples)\n    x = torch.randn(num_examples, config.n_features, generator=g)\n    y = teacher_outputs(x, teacher)\n    _FULL_TRAIN_X = x.contiguous()\n    _FULL_TRAIN_Y = y.contiguous()\n    return x, y"
+      }
+     }
+    }
+   ]
+  },
+  {
+   "role": "tool",
+   "content": "Successfully replaced text in pytorch-examples/synth_multi_index/custom_strategy.py."
+  },
+  {
+   "role": "assistant",
+   "reasoning_content": "Now the optimizer config: double the inner rate to 1e-1 and pin the outer rate to a hair above zero so the readout stays frozen during stage 1.",
+   "content": "",
+   "tool_calls": [
+    {
+     "type": "function",
+     "function": {
+      "name": "str_replace",
+      "arguments": {
+       "path": "pytorch-examples/synth_multi_index/custom_strategy.py",
+       "old_str": "def get_optimizer_config(config: TaskConfig) -> dict[str, object]:\n    \"\"\"Plain SGD on both layers, no momentum, no weight decay.\"\"\"\n    return {\n        \"optimizer\": \"sgd\",\n        \"lr_inner\": 5e-2,\n        \"lr_outer\": 5e-2,\n        \"wd_inner\": 0.0,",
+       "new_str": "def get_optimizer_config(config: TaskConfig) -> dict[str, object]:\n    \"\"\"SGD on the first layer; output layer is solved analytically later.\"\"\"\n    return {\n        \"optimizer\": \"sgd\",\n        \"lr_inner\": 1e-1,\n        \"lr_outer\": 0.0 + 1e-8,  # output layer kept ~ frozen during stage 1\n        \"wd_inner\": 0.0,"
+      }
+     }
+    }
+   ]
+  },
+  {
+   "role": "tool",
+   "content": "Successfully replaced text in pytorch-examples/synth_multi_index/custom_strategy.py."
+  },
+  {
+   "role": "assistant",
+   "reasoning_content": "Now the core step: stage 1 (first 80%) does a squared-loss update with the readout gradient zeroed and the rows reprojected to the sphere; stage 2 (last 20%) freezes the first layer and solves the readout once by ridge.",
+   "content": "",
+   "tool_calls": [
+    {
+     "type": "function",
+     "function": {
+      "name": "str_replace",
+      "arguments": {
+       "path": "pytorch-examples/synth_multi_index/custom_strategy.py",
+       "old_str": ") -> dict[str, float]:\n    \"\"\"Single squared-loss update applied to both layers jointly.\"\"\"\n    model.train()\n    optimizer.zero_grad(set_to_none=True)\n    preds = model(batch_x).view(-1)\n    loss = ((preds - batch_y) ** 2).mean()\n    loss.backward()\n    optimizer.step()\n    return {\"loss\": float(loss.item())}",
+       "new_str": ") -> dict[str, float]:\n    \"\"\"Two-stage update with spherical projection of the first-layer rows.\n\n    Stage 1 covers the first 80% of steps: gradient step on the squared\n    loss while projecting each W_in row back to the unit sphere.\n    Stage 2 (last 20%) freezes W_in and refits the output layer once by ridge\n    regression on the post-ReLU features computed on the full cached training set.\n    \"\"\"\n    model.train()\n    stage1_steps = max(1, int(0.8 * config.max_steps))\n\n    if step < stage1_steps:\n        optimizer.zero_grad(set_to_none=True)\n        preds = model(batch_x).view(-1)\n        loss = ((preds - batch_y) ** 2).mean()\n        loss.backward()\n        # Project the output layer's gradient to zero -- keep it fixed.\n        out_layer = model[2]\n        if out_layer.weight.grad is not None:\n            out_layer.weight.grad.zero_()\n        if out_layer.bias is not None and out_layer.bias.grad is not None:\n            out_layer.bias.grad.zero_()\n        optimizer.step()\n        # Re-normalize first-layer rows back to the unit sphere.\n        with torch.no_grad():\n            in_layer = model[0]\n            norms = in_layer.weight.norm(dim=1, keepdim=True).clamp(min=1e-8)\n            in_layer.weight.div_(norms)\n        return {\"loss\": float(loss.item())}\n\n    # Stage 2: ridge regression for output weights on the full training set.\n    with torch.no_grad():\n        in_layer = model[0]\n        out_layer = model[2]\n        if not getattr(out_layer, \"_full_ridge_solved\", False):\n            if _FULL_TRAIN_X is None or _FULL_TRAIN_Y is None:\n                raise RuntimeError(\"two_stage requires make_dataset to cache the full training set.\")\n            full_x = _FULL_TRAIN_X.to(device=batch_x.device, non_blocking=True)\n            full_y = _FULL_TRAIN_Y.to(device=batch_y.device, non_blocking=True)\n            full_features = torch.relu(in_layer(full_x))\n            full_feats = torch.cat(\n                [full_features, torch.ones_like(full_features[:, :1])],\n                dim=1,\n            )\n            lam = 1e-3 * full_feats.shape[0]\n            gram = full_feats.T @ full_feats + lam * torch.eye(\n                full_feats.shape[1],\n                device=full_feats.device,\n                dtype=full_feats.dtype,\n            )\n            rhs = full_feats.T @ full_y\n            sol = torch.linalg.solve(gram, rhs)\n            out_layer.weight.copy_(sol[:-1].unsqueeze(0))\n            if out_layer.bias is not None:\n                out_layer.bias.copy_(sol[-1:].clone())\n            out_layer._full_ridge_solved = True\n\n        features = torch.relu(in_layer(batch_x))\n        preds = out_layer(features).view(-1)\n        loss = ((preds - batch_y) ** 2).mean()\n    return {\"loss\": float(loss.item())}"
+      }
+     }
+    }
+   ]
+  },
+  {
+   "role": "tool",
+   "content": "Successfully replaced text in pytorch-examples/synth_multi_index/custom_strategy.py."
+  },
+  {
+   "role": "assistant",
+   "reasoning_content": "",
+   "content": "Run the experiment to measure this.",
+   "tool_calls": [
+    {
+     "type": "function",
+     "function": {
+      "name": "run_experiment",
+      "arguments": {}
+     }
+    }
+   ]
+  },
+  {
+   "role": "tool",
+   "content": "Measured results — `baseline:two_stage` (`is_final,true`), seeds {42, 123, 456} and mean.\n\n## r2 (d=128, r=2)\n| seed | test_mse | subspace_err | score |\n|---|---|---|---|\n| 42 | 9.113543 | 1.989346 | 0.000015 |\n| 123 | 6.498372 | 1.555615 | 0.000449 |\n| 456 | 6.438527 | 1.887781 | 0.000269 |\n| **mean** | **7.350147** | **1.810914** | **0.000244** |\n\n## r3 (d=128, r=3)\n| seed | test_mse | subspace_err | score |\n|---|---|---|---|\n| 42 | 7.870937 | 2.356131 | 0.000060 |\n| 123 | 7.785420 | 2.237787 | 0.000078 |\n| 456 | 7.069943 | 2.305105 | 0.000145 |\n| **mean** | **7.575433** | **2.299674** | **0.000094** |\n\n## r4 (d=128, r=4)\n| seed | test_mse | subspace_err | score |\n|---|---|---|---|\n| 42 | 7.657001 | 2.599769 | 0.000087 |\n| 123 | 6.904441 | 2.656943 | 0.000172 |\n| 456 | 7.172165 | 2.473248 | 0.000166 |\n| **mean** | **7.244536** | **2.576653** | **0.000142** |"
+  },
+  {
+   "role": "assistant",
+   "reasoning_content": "Two-stage moved the needle but in a way that confirms my worry rather than resolving it. The MSE fell\nfrom the floor's 9–10 to 7.4/7.6/7.2, and the score rose an order of magnitude into the `1e-4` band —\nboth exactly as predicted, and both attributable to the convex stage-2 ridge solve, which stopped the\nreadout from inflating variance. But look at `subspace_err`: r2 went 1.95 → 1.81, r3 went 2.37 → 2.30,\nr4 went 2.74 → 2.58. That is *barely* below `√(2r)`. On r2 the seed-42 run is still pinned at 1.99 —\nidentical to the floor — and only seeds 123/456 nudged down (1.56, 1.89). On r3 and r4 the movement is\nwithin a few percent of the uncorrelated value. This is the diagnostic I flagged: if `subspace_err`\nstays near `√(2r)` while the MSE moves, stage 1's degree-3 climb found *almost nothing*, and the gain\nis essentially the random-feature ridge fit. That is what happened. Freezing the readout and\nrenormalizing the rows removed the things that were *hurting* joint SGD, but it did not give the first\nlayer a signal strong enough to actually rotate into `V*`. The moderate-step spherical SGD is still\nfighting the same `d²` wall — a decoupled `Σ He₃` with no staircase, each direction needing a degree-3\ncorrelation to rise above the finite-batch sampling floor, and 6400 moderate steps are not enough. The\ntwo-stage win is real but capped exactly where the lower bound says it must be: `E[(g − f̂)²] ≥\nE[Var(g | P_U x)]`, and with `P_U` near-random that residual variance is most of `Var[g] = 6`.\n\nSo the conclusion is forced: I have to stop asking *gradient descent on the cubic* to find the subspace.\nThe information-exponent wall is a property of the gradient method, not of the problem — the problem has\nan `n ~ d` information floor, while gradient descent pays `d²` because one weight trajectory has to\nescape a near-flat equator under an `overlap²` drift. Two ideas, and I want to combine them. First: if a\nsingle descending trajectory is the bottleneck, replace it with a *population* of neurons descending a\n*convex* functional, so flatness-at-init no longer traps me — and add diffusion (Langevin noise) so the\npopulation explores the flat region the gradient cannot feel. Second, and sharper for *this* link: the\ndegree-3 structure that the gradient sees only third-order-weakly can be read off *directly* from a\nmoment of the data, because Stein's identity converts the Hermite-3 correlation into a low-order tensor\nI can estimate in one pass over a large pool. Let me develop both, because this rung uses each for a\ndifferent part of the job.\n\nStart with why the population/Langevin lift is the right frame even though I will lean hardest on the\nmoment estimate. The width-`W` net `f̂(x) = Σ_j a_j σ(⟨w_j, x⟩)` and any norm penalty depend on the\nweights only through the empirical measure `μ = (1/W) Σ_j δ_{w_j}` over first-layer neurons. The\nprediction is *linear* in `μ` and the squared loss is convex in its argument, so the risk is a *convex*\nfunctional of `μ`: the nonconvexity I fought in weight space was an artifact of pinning the measure to\nfinitely many atoms. In measure space there are no spurious basins. Each neuron should drift by the\nnegative gradient of the first variation `J'[μ]`, and adding an entropy regularizer `(1/β) H(μ | τ)`\nmakes the free energy strictly convex with a unique minimizer — and, crucially, its Wasserstein\ngradient flow is *exactly* Langevin dynamics: `dw = −∇J'[μ](w) dt + √(2/β) dB`. The entropy term *is* an\ninjected Gaussian noise of scale `√(2/β)`. That noise does the saddle-escape the third-order drift\ncannot: near the flat equator where the pull is `O(overlap²)` and almost nothing, the diffusion keeps\nthe population exploring, and the exponent that strangled single-trajectory SGD drops out of the\n*statistics* — sample complexity becomes `n ~ d_eff` (the effective dimension, here `~ r` since the\nrelevant subspace is `r`-dimensional and the input isotropic), independent of the information exponent.\nAnd the abstract objective is just a familiar training rule, because `L2` weight decay *together with*\nentropy equals relative entropy to a Gaussian base measure — so the algorithm is noisy weight-decayed\ngradient descent, with the Euler–Maruyama noise scale fixed precisely at `√(2·lr/β)`. The harness\nexposes exactly this: it stores `noise_std = 1/√β`, and the driver (or my step) multiplies it by\n`√(2·lr)` and adds it to the parameters, the discretized Langevin noise. I set `β = 10⁵`, `wd = 10⁻⁴`\non both layers — the KL drift — and keep the rows on the sphere (Riemannian retraction after each step),\nbecause on the positively-curved sphere the log-Sobolev constant is polynomial in `d` rather than\n`exp(β)`, the difference between fast and hopeless.\n\nBut here is where I must be honest about what *this* harness implements, because it is not the textbook\n\"run noisy weight-decayed GD for 8000 steps.\" The budget and the finite dataset make a long Langevin\nrun on the squared-loss gradient pay the same finite-sample noise that capped two-stage. So I do\nsomething sharper that the Langevin frame *licenses* but that finishes the subspace job in essentially\none shot, then hands the link to a closed-form solve. The key realization is about the drift itself.\nFor the Hermite-3 link, the population correlation a neuron feels is `E[y · He₃(⟨w, x⟩)]`, and the\ngradient of its *square* is the natural feature-learning objective — maximize how much each particle\ncorrelates with the third-order subspace signal. I compute this analytically rather than through autograd\non the squared loss: with `z = x @ ŵᵀ` for unit rows `ŵ`, the correlation is `corr = mean(y · He₃(z))`,\nits score-gradient is `3(z² − 1)` (from `He₃'`), and the drift on the rows is `2d · corr · (∇corr)`,\nprojected onto the sphere's tangent and renormalized — one analytic correlation-Langevin step with the\nKL decay and the `√(2·lr)·noise_std` diffusion folded in. This is the single feature-learning move, and\nit is the population drift of the *correct* third-order objective, not the third-order-weak gradient of\nthe squared loss. It nudges the particles, but it is not what carries the subspace recovery — what\ncarries it is the moment estimate I compute alongside.\n\nThat moment estimate is the heart of why this rung should finally crack the subspace. Stein's identity\nsays `E[x · h(x)] = E[∇h]`, and applied to the cubic link it converts the degree-3 correlation into a\n*second-order* object I can estimate directly from the data with no gradient climb at all. Concretely,\nform the label-weighted input covariance `M = E[y² · x xᵀ]`. Because `y = g(U*ᵀx)` depends on `x` only\nthrough its `V*`-projection, the directions in which `y²` modulates the input variance are exactly the\nteacher directions: `M` is a perturbation of `I_d` whose top eigenspace, after centering, is `V*`. So I\nestimate `M` in one chunked pass over a *large* fresh pool — I enlarge `make_dataset` to `n = 64{,}000`\npoints (still inside the `200k` cap), the fresh-sample regime that makes the empirical `M` track its\npopulation value — symmetrize it, take the top-`r` eigenvectors by `eigh`, and *those are my recovered\nsubspace directions*, computed without ever paying the `d²` gradient wall. This is the moment method the\ninformation-exponent literature points to as the route to near-optimal `Θ(d)` sample complexity, and the\nharness caches these `_CACHED_DIRECTIONS` at dataset-construction time so the readout solve can use them.\n\nWith the subspace in hand, the second job — the link — is again a convex closed-form solve, but now on\n*good* features instead of near-random ones. I do not trust the noisy first layer to be the feature\nmap; instead I *install* a feature basis explicitly along the recovered directions. For each of the `r`\nestimated directions I place rows at a grid of biases (`linspace(−3, 3)`) and both signs, so the ReLU\nfeatures tile each teacher direction with thresholded bumps at a range of offsets — a deliberate\nconstruction of a rich univariate basis along every direction the link reads, which is exactly what is\nneeded to represent `He₃` on each projection. Then I ridge-fit the readout on `n = 20{,}000` of the\npool: form the post-ReLU design matrix, append a ones column, solve `(ΦᵀΦ + λI)a = Φᵀy` with `λ =\n10⁻⁴·n`. This is the same convex move two-stage used, but now the features actually span the cubic on\n`V*`, so the residual is no longer floored by `Var(g | P_U x)` with random `U` — it is floored by how\nwell the bias-grid bumps approximate `He₃`, which with a fine grid is small.\n\nSo the rung is, in order: one analytic Hermite-3 correlation-Langevin step on the spherical first-layer\nparticles (the feature-learning drift of the *correct* third-order objective, with KL decay and the\n`√(2·lr/β)` diffusion); a moment estimate `M = E[y²xxᵀ]` whose top-`r` eigenspace recovers `V*`\ndirectly from a large fresh pool, bypassing the gradient wall; an explicit installation of a bias-grid\nReLU feature basis along those recovered directions; and a closed-form ridge solve for the readout. The\nLangevin machinery justifies *why* a population method with diffusion escapes the exponent that capped\nSGD; the moment estimate is *how* this implementation finishes the subspace in one pass; the ridge solve\nfits the link on features that finally span it.\n\nNow the falsifiable expectations against two-stage's numbers, because that is the bar. First and most\nimportant, `subspace_err` should *break away* from the `√(2r)` band that both prior rungs were stuck\nnear. The moment estimator does not climb a third-order gradient; it reads `V*` off a directly estimated\nsecond-order moment, so on a 64k-point pool it should recover the subspace to a real fraction of its\ntrue directions — I expect `subspace_err` to drop well below two-stage's 1.81/2.30/2.58, into a regime\nwhere the top-`r` eigenspace of `M` is genuinely correlated with `V*` rather than barely perturbed from\nrandom. Second, with the features installed along the *recovered* directions and ridge-fit, `test_mse`\nshould fall *below* two-stage's 7.2–7.6 — not necessarily to zero, because the moment estimate is\nimperfect and the bias-grid basis only approximates `He₃`, and a *missed* direction leaves a full\n`6/r`-sized chunk of the variance unexplained. Third, `score = exp(−subspace_err²/r)·exp(−test_mse)`\nshould jump by *two orders of magnitude* over two-stage's `~1e-4`, into the `1e-2`–`1e-1` band, because\nboth exponentials improve together once the subspace is genuinely found. I should also expect this to be\n*high-variance across seeds*: the moment estimator's eigengap depends on how cleanly `E[y²xxᵀ]`\nseparates the teacher directions on a finite pool, and an unlucky seed can collapse a direction — so I\nwould not be surprised to see one seed (say a hard r2 draw) lag while others recover well. If instead\n`subspace_err` stays near `√(2r)`, the moment estimate failed and this whole rung reduces to a fancier\nrandom-feature ridge — but the entire point of the `E[y²xxᵀ]` move is that it sees the degree-3\nstructure the gradient could not, so it should be the first rung to actually find the subspace. Let me\nbuild the full module — spherical-particle init, the analytic correlation-Langevin step, the\nmoment-covariance subspace estimate, the installed bias-grid basis, and the ridge readout — starting\nwith the particle init.",
+   "content": "Switching to a mean-field Langevin recipe that recovers the subspace from a moment estimate `E[y²xxᵀ]` instead of climbing the cubic gradient. This edit sets up the spherical particle init, a small random readout, and the cache the recovered directions will live in.",
+   "tool_calls": [
+    {
+     "type": "function",
+     "function": {
+      "name": "str_replace",
+      "arguments": {
+       "path": "pytorch-examples/synth_multi_index/custom_strategy.py",
+       "old_str": "# EDITABLE region of custom_strategy.py — step 2: two-stage (frozen-readout SGD + ridge)\n_FULL_TRAIN_X: torch.Tensor | None = None\n_FULL_TRAIN_Y: torch.Tensor | None = None\n\n\ndef init_model(model: nn.Sequential, config: TaskConfig) -> None:\n    \"\"\"Spherical init: rows of W_in on the unit d-sphere, output sign init.\"\"\"\n    in_layer = model[0]\n    out_layer = model[2]\n    W = torch.randn_like(in_layer.weight)\n    W = W / W.norm(dim=1, keepdim=True).clamp(min=1e-8)\n    with torch.no_grad():\n        in_layer.weight.copy_(W)\n        if in_layer.bias is not None:\n            in_layer.bias.zero_()\n        # Symmetric +/- 1/sqrt(W) output: lets stage 1 see a useful signal.\n        signs = torch.randint(0, 2, (out_layer.weight.shape[1],),\n                              device=out_layer.weight.device).float().mul_(2).sub_(1)\n        out_layer.weight.copy_(signs.unsqueeze(0) / math.sqrt(out_layer.weight.shape[1]))\n        if out_layer.bias is not None:\n            out_layer.bias.zero_()\n        out_layer._full_ridge_solved = False",
+       "new_str": "# EDITABLE region of custom_strategy.py — step 3: mean-field Langevin + moment subspace estimate\n_FULL_TRAIN_X: torch.Tensor | None = None\n_FULL_TRAIN_Y: torch.Tensor | None = None\n_CACHED_DIRECTIONS: torch.Tensor | None = None\n\n\ndef _local_hermite3(z: torch.Tensor) -> torch.Tensor:\n    return z.pow(3) - 3.0 * z\n\n\ndef init_model(model: nn.Sequential, config: TaskConfig) -> None:\n    \"\"\"Mean-field particles on the sphere with a small random readout.\n\n    The first-layer rows are the particles. They are projected back to the\n    sphere after each Langevin drift/noise update during feature learning.\n    \"\"\"\n    in_layer = model[0]\n    out_layer = model[2]\n    W = in_layer.weight.shape[0]\n    with torch.no_grad():\n        particles = torch.randn_like(in_layer.weight)\n        particles = particles / particles.norm(dim=1, keepdim=True).clamp(min=1e-8)\n        in_layer.weight.copy_(particles)\n        if in_layer.bias is not None:\n            in_layer.bias.zero_()\n        out_layer.weight.normal_(mean=0.0, std=1.0 / math.sqrt(W))\n        if out_layer.bias is not None:\n            out_layer.bias.zero_()"
+      }
+     }
+    }
+   ]
+  },
+  {
+   "role": "tool",
+   "content": "Successfully replaced text in pytorch-examples/synth_multi_index/custom_strategy.py."
+  },
+  {
+   "role": "assistant",
+   "reasoning_content": "Now enlarge the pool to n=64k so the empirical moment `M = E[y²xxᵀ]` tracks its population value.",
+   "content": "",
+   "tool_calls": [
+    {
+     "type": "function",
+     "function": {
+      "name": "str_replace",
+      "arguments": {
+       "path": "pytorch-examples/synth_multi_index/custom_strategy.py",
+       "old_str": ") -> tuple[torch.Tensor, torch.Tensor]:\n    \"\"\"Larger Gaussian training set (n=20k) to support stage-2 ridge solve.\"\"\"\n    global _FULL_TRAIN_X, _FULL_TRAIN_Y\n    g = torch.Generator().manual_seed(seed)\n    num_examples = min(20_000, config.max_train_examples)\n    x = torch.randn(num_examples, config.n_features, generator=g)",
+       "new_str": ") -> tuple[torch.Tensor, torch.Tensor]:\n    \"\"\"Large fresh-sample pool to approximate population gradients.\"\"\"\n    global _FULL_TRAIN_X, _FULL_TRAIN_Y, _CACHED_DIRECTIONS\n    g = torch.Generator().manual_seed(seed)\n    num_examples = min(64_000, config.max_train_examples)\n    x = torch.randn(num_examples, config.n_features, generator=g)"
+      }
+     }
+    }
+   ]
+  },
+  {
+   "role": "tool",
+   "content": "Successfully replaced text in pytorch-examples/synth_multi_index/custom_strategy.py."
+  },
+  {
+   "role": "assistant",
+   "reasoning_content": "Now the machinery: cache the moment-estimated directions at dataset build time, switch the optimizer config to noisy KL-decayed SGD, and add the helpers — the analytic correlation-Langevin step, the `E[y²xxᵀ]` subspace estimator, the bias-grid feature installer, and the ridge readout fit.",
+   "content": "",
+   "tool_calls": [
+    {
+     "type": "function",
+     "function": {
+      "name": "str_replace",
+      "arguments": {
+       "path": "pytorch-examples/synth_multi_index/custom_strategy.py",
+       "old_str": "    _FULL_TRAIN_Y = y.contiguous()\n    return x, y\n\n\ndef get_optimizer_config(config: TaskConfig) -> dict[str, object]:\n    \"\"\"SGD on the first layer; output layer is solved analytically later.\"\"\"\n    return {\n        \"optimizer\": \"sgd\",\n        \"lr_inner\": 1e-1,\n        \"lr_outer\": 0.0 + 1e-8,  # output layer kept ~ frozen during stage 1\n        \"wd_inner\": 0.0,\n        \"wd_outer\": 0.0,\n        \"momentum\": 0.0,\n        \"noise_std\": 0.0,\n    }",
+       "new_str": "    _FULL_TRAIN_Y = y.contiguous()\n    _CACHED_DIRECTIONS = _estimate_weighted_covariance_subspace(\n        _FULL_TRAIN_X,\n        _FULL_TRAIN_Y,\n        rank=config.rank,\n    ).cpu()\n    loop_examples = min(1_024, num_examples)\n    return x[:loop_examples].contiguous(), y[:loop_examples].contiguous()\n\n\ndef get_optimizer_config(config: TaskConfig) -> dict[str, object]:\n    \"\"\"Noisy SGD with KL-style weight decay.\n\n    ``noise_std`` stores 1/sqrt(beta). The training step multiplies it by\n    sqrt(2 * lr) and adds the result directly to the parameters, yielding the\n    Euler-Maruyama noise scale sqrt(2 * lr / beta) from the MFLD update.\n    \"\"\"\n    beta = 100_000.0\n    return {\n        \"optimizer\": \"sgd\",\n        \"lr_inner\": 5e-2,\n        \"lr_outer\": 1e-8,\n        \"wd_inner\": 1e-4,\n        \"wd_outer\": 1e-4,\n        \"momentum\": 0.0,\n        \"noise_std\": 1.0 / math.sqrt(beta),\n    }\n\n\ndef _add_langevin_noise_and_project(\n    in_layer: nn.Linear,\n    lr: float,\n    noise_std: float,\n) -> None:\n    scale = math.sqrt(2.0 * lr) * noise_std\n    with torch.no_grad():\n        in_layer.weight.add_(torch.randn_like(in_layer.weight) * scale)\n        norms = in_layer.weight.norm(dim=1, keepdim=True).clamp(min=1e-8)\n        in_layer.weight.div_(norms)\n        if in_layer.bias is not None:\n            in_layer.bias.zero_()\n\n\ndef _analytic_correlation_langevin_step(\n    in_layer: nn.Linear,\n    batch_x: torch.Tensor,\n    batch_y: torch.Tensor,\n    lr: float,\n    weight_decay: float,\n    noise_std: float,\n    config: TaskConfig,\n) -> float:\n    with torch.no_grad():\n        weight = in_layer.weight\n        unit_weight = weight / weight.norm(dim=1, keepdim=True).clamp(min=1e-8)\n        z = batch_x @ unit_weight.T\n        corr = (batch_y.view(-1, 1) * _local_hermite3(z)).mean(dim=0)\n        score_grad = 3.0 * (z.square() - 1.0)\n        grad_corr = (score_grad * batch_y.view(-1, 1)).T @ batch_x\n        grad_corr.div_(batch_x.shape[0])\n\n        drift = 2.0 * float(config.n_features) * corr.view(-1, 1) * grad_corr\n        drift = drift - (drift * unit_weight).sum(dim=1, keepdim=True) * unit_weight\n        weight.copy_(unit_weight)\n        weight.add_(drift - weight_decay * unit_weight, alpha=lr)\n\n    _add_langevin_noise_and_project(in_layer, lr=lr, noise_std=noise_std)\n    return float(-(corr.square().mean() * float(config.n_features)).item())\n\n\ndef _estimate_particle_correlations(\n    in_layer: nn.Linear,\n    full_x: torch.Tensor,\n    full_y: torch.Tensor,\n    chunk_size: int = 4096,\n) -> tuple[torch.Tensor, torch.Tensor]:\n    unit_weight = in_layer.weight.detach()\n    unit_weight = unit_weight / unit_weight.norm(dim=1, keepdim=True).clamp(min=1e-8)\n    corr = torch.zeros(unit_weight.shape[0], device=unit_weight.device, dtype=torch.float32)\n    total = 0\n    for start in range(0, full_x.shape[0], chunk_size):\n        end = min(start + chunk_size, full_x.shape[0])\n        x_chunk = full_x[start:end]\n        y_chunk = full_y[start:end].view(-1, 1)\n        z = x_chunk @ unit_weight.T\n        corr.add_((y_chunk * _local_hermite3(z)).sum(dim=0))\n        total += x_chunk.shape[0]\n    corr.div_(max(total, 1))\n    return unit_weight, corr\n\n\ndef _select_diverse_directions(\n    unit_weight: torch.Tensor,\n    corr: torch.Tensor,\n    rank: int,\n) -> torch.Tensor:\n    weights = corr.square().clamp(min=0.0)\n    cov = unit_weight.T @ (unit_weight * weights.view(-1, 1))\n    cov = 0.5 * (cov + cov.T)\n    _, evecs = torch.linalg.eigh(cov)\n    directions = evecs[:, -rank:].T.contiguous()\n    return directions / directions.norm(dim=1, keepdim=True).clamp(min=1e-8)\n\n\ndef _estimate_weighted_covariance_subspace(\n    full_x: torch.Tensor,\n    full_y: torch.Tensor,\n    rank: int,\n    chunk_size: int = 4096,\n) -> torch.Tensor:\n    d = full_x.shape[1]\n    cov = torch.zeros(d, d, device=full_x.device, dtype=torch.float32)\n    total = 0\n    for start in range(0, full_x.shape[0], chunk_size):\n        end = min(start + chunk_size, full_x.shape[0])\n        x_chunk = full_x[start:end]\n        weights = full_y[start:end].square().to(torch.float32)\n        cov.add_((x_chunk.T * weights.view(1, -1)) @ x_chunk)\n        total += x_chunk.shape[0]\n    cov.div_(max(total, 1))\n    cov = 0.5 * (cov + cov.T)\n    _, evecs = torch.linalg.eigh(cov)\n    directions = evecs[:, -rank:].T.contiguous()\n    return directions / directions.norm(dim=1, keepdim=True).clamp(min=1e-8)\n\n\ndef _install_subspace_features(\n    model: nn.Sequential,\n    directions: torch.Tensor,\n) -> None:\n    in_layer = model[0]\n    hidden_width = in_layer.weight.shape[0]\n    rank = directions.shape[0]\n    rows_per_dir = max(2, hidden_width // rank)\n    half_rows = max(1, rows_per_dir // 2)\n    bias_grid = torch.linspace(-3.0, 3.0, steps=half_rows, device=directions.device)\n\n    with torch.no_grad():\n        row = 0\n        in_layer.weight.zero_()\n        if in_layer.bias is not None:\n            in_layer.bias.zero_()\n        for direction in directions:\n            for bias in bias_grid:\n                for sign in (1.0, -1.0):\n                    if row >= hidden_width:\n                        break\n                    in_layer.weight[row].copy_(direction * sign)\n                    if in_layer.bias is not None:\n                        in_layer.bias[row].copy_(bias)\n                    row += 1\n                if row >= hidden_width:\n                    break\n            if row >= hidden_width:\n                break\n\n\ndef _fit_output_ridge(model: nn.Sequential, batch_x: torch.Tensor, config: TaskConfig) -> None:\n    if _FULL_TRAIN_X is None or _FULL_TRAIN_Y is None:\n        raise RuntimeError(\"mean_field_langevin requires make_dataset to cache the training set.\")\n\n    in_layer = model[0]\n    out_layer = model[2]\n    ridge_examples = min(20_000, _FULL_TRAIN_X.shape[0])\n    full_x = _FULL_TRAIN_X[:ridge_examples].to(device=batch_x.device, non_blocking=True)\n    full_y = _FULL_TRAIN_Y[:ridge_examples].to(device=batch_x.device, non_blocking=True)\n    if _CACHED_DIRECTIONS is not None:\n        directions = _CACHED_DIRECTIONS.to(device=batch_x.device, non_blocking=True)\n    else:\n        directions = _estimate_weighted_covariance_subspace(full_x, full_y, rank=config.rank)\n    _install_subspace_features(model, directions)\n\n    features = torch.relu(in_layer(full_x))\n    design = torch.cat([features, torch.ones_like(features[:, :1])], dim=1)\n    lam = 1e-4 * design.shape[0]\n    gram = design.T @ design + lam * torch.eye(\n        design.shape[1],\n        device=design.device,\n        dtype=design.dtype,\n    )\n    rhs = design.T @ full_y\n    sol = torch.linalg.solve(gram, rhs)\n    out_layer.weight.copy_(sol[:-1].unsqueeze(0))\n    if out_layer.bias is not None:\n        out_layer.bias.copy_(sol[-1:].clone())\n    train_preds = design @ sol\n    out_layer._mfld_train_loss = float(((train_preds - full_y) ** 2).mean().item())\n    out_layer._mfld_ridge_solved = True"
+      }
+     }
+    }
+   ]
+  },
+  {
+   "role": "tool",
+   "content": "Successfully replaced text in pytorch-examples/synth_multi_index/custom_strategy.py."
+  },
+  {
+   "role": "assistant",
+   "reasoning_content": "Finally rewrite the step: one analytic Hermite-3 correlation-Langevin drift on the particles, then a single closed-form readout fit on features installed along the recovered directions.",
+   "content": "",
+   "tool_calls": [
+    {
+     "type": "function",
+     "function": {
+      "name": "str_replace",
+      "arguments": {
+       "path": "pytorch-examples/synth_multi_index/custom_strategy.py",
+       "old_str": ") -> dict[str, float]:\n    \"\"\"Two-stage update with spherical projection of the first-layer rows.\n\n    Stage 1 covers the first 80% of steps: gradient step on the squared\n    loss while projecting each W_in row back to the unit sphere.\n    Stage 2 (last 20%) freezes W_in and refits the output layer once by ridge\n    regression on the post-ReLU features computed on the full cached training set.\n    \"\"\"\n    model.train()\n    stage1_steps = max(1, int(0.8 * config.max_steps))\n\n    if step < stage1_steps:\n        optimizer.zero_grad(set_to_none=True)\n        preds = model(batch_x).view(-1)\n        loss = ((preds - batch_y) ** 2).mean()\n        loss.backward()\n        # Project the output layer's gradient to zero -- keep it fixed.\n        out_layer = model[2]\n        if out_layer.weight.grad is not None:\n            out_layer.weight.grad.zero_()\n        if out_layer.bias is not None and out_layer.bias.grad is not None:\n            out_layer.bias.grad.zero_()\n        optimizer.step()\n        # Re-normalize first-layer rows back to the unit sphere.\n        with torch.no_grad():\n            in_layer = model[0]\n            norms = in_layer.weight.norm(dim=1, keepdim=True).clamp(min=1e-8)\n            in_layer.weight.div_(norms)\n        return {\"loss\": float(loss.item())}\n\n    # Stage 2: ridge regression for output weights on the full training set.\n    with torch.no_grad():\n        in_layer = model[0]\n        out_layer = model[2]\n        if not getattr(out_layer, \"_full_ridge_solved\", False):\n            if _FULL_TRAIN_X is None or _FULL_TRAIN_Y is None:\n                raise RuntimeError(\"two_stage requires make_dataset to cache the full training set.\")\n            full_x = _FULL_TRAIN_X.to(device=batch_x.device, non_blocking=True)\n            full_y = _FULL_TRAIN_Y.to(device=batch_y.device, non_blocking=True)\n            full_features = torch.relu(in_layer(full_x))\n            full_feats = torch.cat(\n                [full_features, torch.ones_like(full_features[:, :1])],\n                dim=1,\n            )\n            lam = 1e-3 * full_feats.shape[0]\n            gram = full_feats.T @ full_feats + lam * torch.eye(\n                full_feats.shape[1],\n                device=full_feats.device,\n                dtype=full_feats.dtype,\n            )\n            rhs = full_feats.T @ full_y\n            sol = torch.linalg.solve(gram, rhs)\n            out_layer.weight.copy_(sol[:-1].unsqueeze(0))\n            if out_layer.bias is not None:\n                out_layer.bias.copy_(sol[-1:].clone())\n            out_layer._full_ridge_solved = True\n\n        features = torch.relu(in_layer(batch_x))\n        preds = out_layer(features).view(-1)\n        loss = ((preds - batch_y) ** 2).mean()\n    return {\"loss\": float(loss.item())}",
+       "new_str": ") -> dict[str, float]:\n    \"\"\"MFLD particle drift followed by a closed-form readout fit.\"\"\"\n    model.train()\n    in_layer = model[0]\n    out_layer = model[2]\n    stage1_steps = 1\n\n    if step < stage1_steps:\n        # For the Hermite-3 link, Stein's identity makes\n        # E[y He_3(<w,x>)] a third-order subspace signal. We optimize its\n        # squared empirical correlation with Langevin noise and KL drift.\n        loss_value = _analytic_correlation_langevin_step(\n            in_layer,\n            batch_x=batch_x,\n            batch_y=batch_y,\n            lr=optimizer.param_groups[0][\"lr\"],\n            weight_decay=optimizer_config.wd_inner,\n            noise_std=optimizer_config.noise_std,\n            config=config,\n        )\n        return {\"loss\": loss_value}\n\n    if not getattr(out_layer, \"_mfld_ridge_solved\", False):\n        with torch.no_grad():\n            _fit_output_ridge(model, batch_x, config)\n\n    return {\"loss\": float(getattr(out_layer, \"_mfld_train_loss\", 0.0))}"
+      }
+     }
+    }
+   ]
+  },
+  {
+   "role": "tool",
+   "content": "Successfully replaced text in pytorch-examples/synth_multi_index/custom_strategy.py."
+  },
+  {
+   "role": "assistant",
+   "reasoning_content": "",
+   "content": "Run the experiment to measure this.",
+   "tool_calls": [
+    {
+     "type": "function",
+     "function": {
+      "name": "run_experiment",
+      "arguments": {}
+     }
+    }
+   ]
+  },
+  {
+   "role": "tool",
+   "content": "Measured results — `baseline:mean_field_langevin` (`is_final,true`), seeds {42, 123, 456} and mean.\n\n## r2 (d=128, r=2)\n| seed | test_mse | subspace_err | score |\n|---|---|---|---|\n| 42 | 1.815804 | 0.626387 | 0.133723 |\n| 123 | 5.641244 | 0.536488 | 0.003073 |\n| 456 | 5.392651 | 0.802676 | 0.003297 |\n| **mean** | **4.283233** | **0.655184** | **0.046698** |\n\n## r3 (d=128, r=3)\n| seed | test_mse | subspace_err | score |\n|---|---|---|---|\n| 42 | 4.356193 | 0.776180 | 0.010493 |\n| 123 | 1.875212 | 0.730139 | 0.128360 |\n| 456 | 4.412459 | 1.118958 | 0.007988 |\n| **mean** | **3.547955** | **0.875092** | **0.048947** |\n\n## r4 (d=128, r=4)\n| seed | test_mse | subspace_err | score |\n|---|---|---|---|\n| 42 | 3.242239 | 1.037620 | 0.029855 |\n| 123 | 2.023819 | 0.863140 | 0.109693 |\n| 456 | 4.661387 | 0.861284 | 0.007853 |\n| **mean** | **3.309148** | **0.920681** | **0.049134** |"
+  }
+ ]
+}

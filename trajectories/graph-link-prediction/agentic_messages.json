@@ -1,0 +1,523 @@
+{
+ "tools": [
+  {
+   "type": "function",
+   "function": {
+    "name": "str_replace",
+    "description": "Replace the unique occurrence of old_str with new_str in the file.",
+    "parameters": {
+     "type": "object",
+     "properties": {
+      "path": {
+       "type": "string"
+      },
+      "old_str": {
+       "type": "string"
+      },
+      "new_str": {
+       "type": "string"
+      }
+     },
+     "required": [
+      "path",
+      "old_str",
+      "new_str"
+     ]
+    }
+   }
+  },
+  {
+   "type": "function",
+   "function": {
+    "name": "create",
+    "description": "Create a new file with the given text.",
+    "parameters": {
+     "type": "object",
+     "properties": {
+      "path": {
+       "type": "string"
+      },
+      "file_text": {
+       "type": "string"
+      }
+     },
+     "required": [
+      "path",
+      "file_text"
+     ]
+    }
+   }
+  },
+  {
+   "type": "function",
+   "function": {
+    "name": "run_experiment",
+    "description": "Train+evaluate the current code; returns metrics.",
+    "parameters": {
+     "type": "object",
+     "properties": {}
+    }
+   }
+  }
+ ],
+ "messages": [
+  {
+   "role": "system",
+   "content": "You are a research engineer improving a model on a fixed ML task. You work by editing the model code and running experiments. Think carefully before each change. You have these tools:\n- str_replace(path, old_str, new_str): replace the unique occurrence of old_str with new_str.\n- create(path, file_text): create a new file.\n- run_experiment(): train + evaluate the current code under the fixed budget; returns metrics.\nMake one tool call at a time. After editing, call run_experiment() to measure your method."
+  },
+  {
+   "role": "user",
+   "content": "## Research question\n\nLink prediction on graphs: given a partially observed graph, score candidate node pairs so that the\ntrue-but-held-out edges rank above non-edges. The thing being designed is a single `LinkPredictor` —\nan **encoder** that maps nodes to embeddings from their features and the observed connectivity, and a\n**decoder** that turns a pair of embeddings (plus, optionally, the graph structure around the pair)\ninto an edge score. It must work without assuming a fixed feature dimension or graph size: the same\nclass is instantiated on small citation graphs with thousands of nodes and rich features and on a\ncollaboration graph with a quarter-million nodes and 128-dim features. Everything around the model —\ndata loading, the link split, negative sampling, the training loop, the metrics — is fixed; only the\nmodel is mine to design.\n\n## Prior art before the first rung (the link-prediction lineage)\n\nThe first rung reacts to a line of unsupervised graph-representation methods. These are what the\nladder starts from; each had a gap the next move tried to close.\n\n- **Heuristic structural scores (Adamic–Adar 2003; Liben-Nowell & Kleinberg 2007).** Score a pair by a\n  hand-designed function of their neighborhoods — common neighbors, Adamic–Adar\n  $\\sum_{w\\in N(u)\\cap N(v)} 1/\\log\\deg(w)$, resource allocation $\\sum 1/\\deg(w)$. No learning, no node\n  features, surprisingly strong on dense citation/collaboration graphs. Gap: a fixed formula ignores\n  node attributes entirely and cannot adapt to the graph.\n- **Random-walk embeddings (DeepWalk, Perozzi et al. 2014; node2vec, Grover & Leskovec 2016).** Treat\n  truncated random walks as sentences and run skip-gram to embed nodes, then score a pair by the dot\n  product of embeddings. Learns structure, but the embedding is *transductive* (one vector per node,\n  no inductive map from features), it never reads node features, and the walk objective is decoupled\n  from the link-prediction objective. Gap: ignores features; embeddings not learned end-to-end for the\n  task.\n- **GCN as an encoder (Kipf & Welling 2016, arXiv:1609.02907).** A message-passing encoder\n  $H^{(l+1)}=\\sigma(\\hat A H^{(l)} W^{(l)})$ with $\\hat A = \\tilde D^{-1/2}\\tilde A\\tilde D^{-1/2}$ folds\n  features *and* structure into every node embedding in $O(|E|)$ and is end-to-end trainable. It solved\n  the \"use features and structure together, inductively\" problem for node classification — but it is an\n  encoder, not a link-prediction model: it says nothing about how a *pair* of embeddings becomes an edge\n  score, or whether the encoder should be trained as a generative model of the graph. Gap: needs a\n  decoder and a training objective specialized to predicting edges.\n\nThat last gap is the substrate the first rung sits on: a GCN encoder is available, the question is how\nto wire it into a predictor of links.\n\n## The fixed substrate\n\nA self-contained link-prediction harness (`custom_linkpred.py`) is frozen and must not be touched. It\nprovides: dataset loading with an 85/5/10 random link split on the citation graphs (`RandomLinkSplit`,\nundirected, with negative train samples) and the official OGB split on `ogbl-collab`; per-epoch\n**negative sampling** (`negative_sampling` draws as many non-edges as positives each epoch); a training\nloop that optimizes **binary cross-entropy** on the returned scores (positives → 1, negatives → 0)\nwith Adam, gradient-norm clipping at 1.0, validation every `eval_every` epochs, and early stopping on\nvalidation AUC (citation) or validation Hits@50 (`ogbl-collab`); and the metric computations\n(`roc_auc_score`, `compute_mrr`, `compute_hits_at_k`). For `ogbl-collab` the loop follows the OGB\nprotocol of folding validation edges into the adjacency at test time. A **parameter budget** is checked\nat startup (≈1.05× the largest reference model). The loop only ever sees the scalar scores my model\nreturns; any auxiliary objective a model wants (e.g. a KL term) has to be injected into the scores'\ncomputation graph, because the loop computes only BCE on those scores.\n\n## The editable interface\n\nExactly one region is editable — the `LinkPredictor` class (lines 127–210 of `custom_linkpred.py`).\nThe contract is three methods. `encode(x, edge_index) -> z` maps node features `[N, in_channels]` and\nthe training-graph connectivity `[2, E]` to a node-embedding table `[N, hidden_channels]`.\n`decode(edge_label_index, z, edge_index=None, num_nodes=None) -> scores` scores candidate edges\n`[2, M]` given the full embedding table `z`; crucially it receives the *original node indices* in\n`edge_label_index` and the training `edge_index`, so a structure-aware decoder can compute neighborhood\nfeatures (common neighbors, Adamic–Adar, …) directly against the live adjacency — train-only during\nvalidation, train+val at test, exactly as the loop hands it in. `forward(x, edge_index,\nedge_label_index)` chains encode→decode. Available building blocks (pre-installed): PyG's `GCNConv`,\n`SAGEConv`, `GATConv`, `GINConv`, `GraphConv`, `MessagePassing`, global pooling, and\n`torch_geometric.utils` (`negative_sampling`, `to_undirected`, `degree`, `coalesce`).\n\nThe starting point is the scaffold default below: a 2-layer GCN encoder with BatchNorm on intermediate\nlayers and a **pure dot-product** decoder. Every method on the ladder replaces exactly this class.\n\n```python\n# EDITABLE region of custom_linkpred.py — default fill (2-layer GCN encoder + dot-product decoder)\nclass LinkPredictor(nn.Module):\n    \"\"\"Default: 2-layer GCN encoder + dot-product decoder (simple baseline).\"\"\"\n\n    def __init__(self, in_channels: int, hidden_channels: int = 256,\n                 num_layers: int = 2, dropout: float = 0.0):\n        super().__init__()\n        self.num_layers = num_layers\n        self.dropout = dropout\n\n        self.convs = nn.ModuleList()\n        self.convs.append(GCNConv(in_channels, hidden_channels))\n        for _ in range(num_layers - 1):\n            self.convs.append(GCNConv(hidden_channels, hidden_channels))\n\n        # BN only on intermediate layers — not the last layer, to preserve\n        # embedding magnitude for dot-product scoring.\n        self.bns = nn.ModuleList([\n            nn.BatchNorm1d(hidden_channels) for _ in range(num_layers - 1)\n        ])\n\n    def encode(self, x: torch.Tensor, edge_index: torch.Tensor) -> torch.Tensor:\n        for i, conv in enumerate(self.convs):\n            x = conv(x, edge_index)\n            if i < self.num_layers - 1:\n                x = self.bns[i](x)\n                x = F.relu(x)\n                x = F.dropout(x, p=self.dropout, training=self.training)\n        return x\n\n    def decode(self, edge_label_index: torch.Tensor, z: torch.Tensor,\n               edge_index: Optional[torch.Tensor] = None,\n               num_nodes: Optional[int] = None) -> torch.Tensor:\n        z_src = z[edge_label_index[0]]\n        z_dst = z[edge_label_index[1]]\n        return (z_src * z_dst).sum(dim=-1)\n\n    def forward(self, x: torch.Tensor, edge_index: torch.Tensor,\n                edge_label_index: torch.Tensor) -> torch.Tensor:\n        z = self.encode(x, edge_index)\n        return self.decode(edge_label_index, z, edge_index=edge_index,\n                           num_nodes=x.size(0))\n```\n\n## Evaluation settings\n\nThree datasets. **Cora** (2,708 nodes, 10,556 edges, 1,433 features) and **CiteSeer** (3,327 nodes,\n9,104 edges, 3,703 features) use the 85/5/10 random link split and report **AUC, MRR, Hits@20**, each\nover three seeds {42, 123, 456}. **ogbl-collab** (235,868 nodes, 1,285,465 edges, 128 features) uses\nthe official OGB split and reports **Hits@50** and **MRR** (single seed 42). All metrics are\nhigher-is-better. AUC measures separation of positives from a matched negative set; MRR and Hits@K are\nranking metrics that are far more sensitive to the *top* of the candidate list, where the hard\nnegatives sit. Default hyperparameters: `hidden_channels=256`, `num_layers=2`, `dropout=0.0`,\n`lr=0.01`, `epochs=200`, early-stop `patience=20`, `eval_every=10`.\n\nThe editable model code is in `pytorch-geometric-lp/custom_linkpred.py`:\n```python\nclass LinkPredictor(nn.Module):\n    \"\"\"\n    Link prediction model.\n\n    Default: 2-layer GCN encoder + dot-product decoder (simple baseline).\n    The agent should replace this with a better approach.\n\n    Args:\n        in_channels: Input feature dimension per node.\n        hidden_channels: Hidden dimension.\n        num_layers: Number of GNN layers.\n        dropout: Dropout rate.\n    \"\"\"\n    def __init__(self, in_channels: int, hidden_channels: int = 256,\n                 num_layers: int = 2, dropout: float = 0.0):\n        super().__init__()\n        self.num_layers = num_layers\n        self.dropout = dropout\n\n        self.convs = nn.ModuleList()\n        self.convs.append(GCNConv(in_channels, hidden_channels))\n        for _ in range(num_layers - 1):\n            self.convs.append(GCNConv(hidden_channels, hidden_channels))\n\n        # BN only on intermediate layers — not on the last layer\n        # to preserve embedding magnitude for dot-product scoring\n        self.bns = nn.ModuleList([\n            nn.BatchNorm1d(hidden_channels) for _ in range(num_layers - 1)\n        ])\n\n    def encode(self, x: torch.Tensor, edge_index: torch.Tensor) -> torch.Tensor:\n        \"\"\"Encode nodes into embeddings.\n\n        Args:\n            x: Node features [N, in_channels].\n            edge_index: Graph connectivity [2, E].\n\n        Returns:\n            Node embeddings [N, hidden_channels].\n        \"\"\"\n        for i, conv in enumerate(self.convs):\n            x = conv(x, edge_index)\n            if i < self.num_layers - 1:\n                x = self.bns[i](x)\n                x = F.relu(x)\n                x = F.dropout(x, p=self.dropout, training=self.training)\n        return x\n\n    def decode(self, edge_label_index: torch.Tensor, z: torch.Tensor,\n               edge_index: Optional[torch.Tensor] = None,\n               num_nodes: Optional[int] = None) -> torch.Tensor:\n        \"\"\"Score candidate edges.\n\n        Args:\n            edge_label_index: Candidate edges [2, num_edges] (original node\n                indices into `z`).\n            z: Full node embedding table [N, hidden_channels].\n            edge_index: Optional training graph connectivity [2, E], available\n                so structure-aware decoders can compute CN/AA/RA etc.\n            num_nodes: Optional number of nodes in the graph.\n\n        Returns:\n            Edge scores [num_edges].\n        \"\"\"\n        z_src = z[edge_label_index[0]]\n        z_dst = z[edge_label_index[1]]\n        return (z_src * z_dst).sum(dim=-1)\n\n    def forward(self, x: torch.Tensor, edge_index: torch.Tensor,\n                edge_label_index: torch.Tensor) -> torch.Tensor:\n        \"\"\"Full forward: encode all nodes, then decode candidate edges.\n\n        Args:\n            x: Node features [N, in_channels].\n            edge_index: Training graph connectivity [2, E_train].\n            edge_label_index: Candidate edges to score [2, num_candidates].\n\n        Returns:\n            Edge scores [num_candidates].\n        \"\"\"\n        z = self.encode(x, edge_index)\n        return self.decode(edge_label_index, z, edge_index=edge_index,\n                           num_nodes=x.size(0))\n```\nImprove it. Derive your method, edit the code, then run_experiment()."
+  },
+  {
+   "role": "assistant",
+   "reasoning_content": "The scaffold default is a GCN encoder feeding a dot product, trained by binary cross-entropy on\nsampled positive and negative pairs. Before I reach for anything heavier I want to start from the\nprincipled version of exactly that object, because the dot-product-of-GCN-embeddings idea is not an\narbitrary baseline — it is the shape of a real generative model of the graph, and starting there tells\nme whether the *probabilistic* framing buys anything before I start bolting on structural features and\nMLP decoders. So the first rung is the variational graph auto-encoder: the same GCN-encoder /\ninner-product-decoder skeleton, but derived as a latent-variable model of the adjacency matrix and\ntrained with the regularizer that framing demands.\n\nLet me write down what I am actually modeling, because the whole method falls out of taking the\ngenerative story seriously. I have an undirected graph on $N$ nodes with adjacency $A$ and node\nfeatures $X$. I posit a latent embedding $z_i\\in\\mathbb{R}^F$ per node, collected in $Z\\in\\mathbb{R}^{N\n\\times F}$, and a generative model in which an edge between $i$ and $j$ is a Bernoulli draw whose\nprobability is a function of the two latents: $p(A_{ij}=1\\mid z_i,z_j)=\\sigma(z_i^\\top z_j)$. That is\nthe *inner-product decoder*, and it is not a modeling afterthought — it is the natural likelihood for a\nsymmetric binary relation. The score $z_i^\\top z_j$ is large when two embeddings point the same way,\nthe sigmoid turns it into an edge probability, and reconstructing the whole adjacency means\n$\\hat A=\\sigma(ZZ^\\top)$. The prior on the latents is the usual isotropic Gaussian\n$p(Z)=\\prod_i\\mathcal N(z_i\\mid 0,I)$. So the object I want to fit is a model that, given features and\nthe observed (training) edges, places each node in a latent space such that connected nodes land near\neach other in inner-product geometry, and I want to do this by maximizing the probability the model\nassigns to the observed edges.\n\nThe inference side — the encoder — is where the graph structure and features enter. I cannot do exact\nposterior inference over $Z$, so I take the variational route: an approximate posterior\n$q(Z\\mid X,A)=\\prod_i\\mathcal N(z_i\\mid \\mu_i,\\operatorname{diag}(\\sigma_i^2))$ whose per-node mean and\nlog-standard-deviation are produced by a GCN read off the features and the connectivity. Concretely a\nshared GCN stack computes a hidden representation, and then two separate GCN heads on top of it produce\n$\\mu=\\mathrm{GCN}_\\mu(X,A)$ and $\\log\\sigma=\\mathrm{GCN}_\\sigma(X,A)$. The reason both heads are GCNs\nand not plain linear layers is that I want the *uncertainty* of a node's embedding to also depend on\nits neighborhood — a node with few, ambiguous connections should be allowed a wider posterior than a\nhub with a clear structural role. This is the GCN-as-encoder idea from the prior art, but now it is\nproducing the parameters of a distribution rather than a point.\n\nThe objective is the variational lower bound (ELBO):\n$\\mathcal L=\\mathbb E_{q(Z\\mid X,A)}[\\log p(A\\mid Z)]-\\mathrm{KL}[q(Z\\mid X,A)\\,\\|\\,p(Z)]$. The first\nterm is the expected reconstruction log-likelihood — under the Bernoulli-inner-product decoder this is\nexactly a (re-weighted) cross-entropy between the true adjacency entries and $\\sigma(z_i^\\top z_j)$,\nwhich is the same edge-classification loss the harness already runs. The second term is the\nKL divergence from the approximate posterior to the prior, and for two Gaussians it has the closed\nform $\\mathrm{KL}=-\\tfrac12\\sum_i\\sum_f\\big(1+\\log\\sigma_{if}^2-\\mu_{if}^2-\\sigma_{if}^2\\big)$. To make\nthe expectation differentiable I use the reparameterization trick: instead of sampling $z_i$ directly,\nI sample $\\epsilon\\sim\\mathcal N(0,I)$ and set $z_i=\\mu_i+\\epsilon\\odot\\sigma_i$ during training, which\nmoves the stochasticity off the parameters so gradients flow through $\\mu$ and $\\sigma$. At evaluation\nI drop the noise and use $z_i=\\mu_i$, the posterior mean, as the deterministic embedding.\n\nNow the part where the principled story has to bend to fit this task's harness, and getting it right is\nthe whole reason to think carefully rather than copy a generic VGAE. The fixed training loop does\n*not* know about an ELBO. It calls my `forward`, gets back a vector of edge scores, and computes\nbinary cross-entropy on those scores against {1 for positives, 0 for negatives}. That BCE is precisely\nthe reconstruction term — so the reconstruction half of the ELBO is handled for me, for free, by the\nloop. But the loop will never add a KL term, because it only ever sees my scalar scores; there is no\nhook for an auxiliary loss. If I do nothing, the KL gradient never flows, the encoder is unregularized,\n$\\sigma$ can collapse and $\\mu$ can drift to whatever the reconstruction term wants, and I have a\nplain (non-variational) auto-encoder with extra sampling noise — strictly worse than just fitting\npoint embeddings. So the KL has to be smuggled into the computation graph *of the scores themselves*.\n\nThe mechanism I use is to add the KL, as a single scalar, onto every returned score:\n$\\text{score}\\leftarrow\\text{score}+w\\cdot\\mathrm{KL}_{\\text{per-node}}$, where\n$\\mathrm{KL}_{\\text{per-node}}=-\\tfrac12\\,\\overline{\\sum_f(1+\\log\\sigma^2-\\mu^2-\\sigma^2)}$ is the\nmean-over-nodes KL (the standard $1/N$ VGAE normalization, here realized as a mean). This is a uniform\nadditive shift on all scores, so it barely perturbs the *ranking* the BCE cares about, but because the\nKL scalar is built from $\\mu$ and $\\log\\sigma$ — which are differentiable functions of the GCN\nparameters — adding it to a quantity the loop then differentiates makes the KL's gradient flow into\nthe encoder during backprop. The coefficient $w$ controls how hard the regularizer pulls. I keep it\nsmall, $w=0.005$: the KL is already normalized per node, and the dominant gradient on any single score\nmust remain the reconstruction signal — if $w$ were large, the shared shift would start dragging every\nlogit toward the same value and the BCE would degrade. This injection trick is specific to *this*\nharness's score-only interface; it is not how a standalone VGAE is trained (there one simply sums\nELBO terms in the loss), and the small coefficient is a direct consequence of the KL entering through\nthe scores rather than as a separate loss term. One more harness-driven detail: I put BatchNorm only\non the shared intermediate layers and *not* on the $\\mu$/$\\log\\sigma$ heads, because the decoder is a\nraw inner product and normalizing the final embeddings would crush the magnitude that the dot product\nneeds to spread positive and negative pairs apart.\n\nI should be honest with myself about the known tension in this model before I run it, because it\npredicts where the rung will be weak. The Gaussian prior pulls every embedding toward the origin, but\nthe inner-product decoder wants to push embeddings *outward* and apart so that $z_i^\\top z_j$ is large\nfor edges and small for non-edges. These two forces fight: the prior is, in a real sense, a poor match\nfor an inner-product likelihood, and the consequence is that the latent space the encoder is allowed to\nuse is squeezed. On top of that, the sampling noise injected at train time is pure variance from the\nranking metrics' point of view — it helps calibration and prevents overfitting on a small graph, but\nit blurs the exact top-of-list ordering that MRR and Hits@K reward. And the decoder is the weakest\npossible one: a single inner product, no learned interaction between the two embeddings, no structural\nfeatures about the *pair* (how many neighbors do $i$ and $j$ share?). The model only ever knows about a\npair through the geometry of two independently-encoded points. That is a deliberate floor: I want to\nsee how far the clean probabilistic version of \"GCN embeddings, dot product\" gets before I start adding\nmachinery, so that every later rung is measured against a principled, not a sloppy, starting point.\n\nSo the step-1 edit is concrete and lands directly in the editable region. I replace the default class\nwith: a shared GCN stack (BatchNorm + ReLU + dropout on its layers) when there is more than one layer;\ntwo GCN heads `conv_mu` and `conv_logstd` producing $\\mu$ and $\\log\\sigma$ with no BatchNorm;\n`encode` that runs the shared stack, computes $\\mu$ and $\\log\\sigma$, and returns the reparameterized\nsample during training or $\\mu$ at eval; a `decode` that is the plain inner product\n$(z_{\\text{src}}\\cdot z_{\\text{dst}}).\\text{sum}$; and a `forward` that, when training, computes the\nmean-per-node KL from the cached $\\mu,\\log\\sigma$ and adds $w\\cdot\\mathrm{KL}$ to the scores before\nreturning them, so the KL gradient reaches the encoder. The encoder caches $\\mu$ and $\\log\\sigma$ as\ninstance attributes during `encode` precisely so `forward` can reach them for the KL injection without\nre-running the GCN. (The full scaffold module is in the answer.)\n\nWhat do I expect, and against what would I judge it? This is the floor, so I am not expecting it to\nwin — I am expecting it to *separate*, i.e. produce respectable AUC (positives clearly above\nnegatives), while being noticeably weaker on the ranking-sensitive MRR and Hits@K, for the three\nstructural reasons above: the prior/inner-product mismatch squeezing the space, the sampling noise\nblurring the top of the list, and the structureless decoder having no way to sharpen the hardest pairs.\nOn the small citation graphs the variational regularization might even hurt relative to a deterministic\nembedding, because the graphs are small and the KL pull plus sampling noise cost more in ranking\nprecision than they buy in generalization. On the large `ogbl-collab` graph, where the metric is\nHits@50 over a huge candidate pool, I expect the inner-product decoder to struggle the most — a single\ndot product is a blunt instrument when tens of thousands of non-edges have to be pushed below each true\nedge, and the absence of any explicit common-neighbor signal (the heuristic that classically dominates\non dense collaboration graphs) should bite hardest there. That is the falsifiable shape of the result:\ndecent AUC, soft ranking metrics, and a collaboration-graph Hits@50 that I will read as the clearest\nverdict that the next rung must (a) drop the variational noise in favor of a deterministic embedding\nand (b) replace the bare inner product with a *learned* decoder that can mix the two embeddings, since\nthose are exactly the two pieces this model deliberately leaves on the floor. If instead the KL\ninjection destabilizes training and even AUC comes in soft, the diagnosis flips to \"the score-shift\ntrick is too crude,\" and the next move would lean even harder on a learned decoder that does not depend\non the inner-product geometry the Gaussian prior fights. So let me write it in.",
+   "content": "I'm starting from the principled version of the dot-product baseline: a variational graph auto-encoder\n(VGAE), a GCN encoder producing per-node mean and logstd with an inner-product decoder. This first edit\nrewrites the class docstring to describe the VGAE and how its KL gets injected into the scores.",
+   "tool_calls": [
+    {
+     "type": "function",
+     "function": {
+      "name": "str_replace",
+      "arguments": {
+       "path": "pytorch-geometric-lp/custom_linkpred.py",
+       "old_str": "class LinkPredictor(nn.Module):\n    \"\"\"\n    Link prediction model.\n\n    Default: 2-layer GCN encoder + dot-product decoder (simple baseline).\n    The agent should replace this with a better approach.\n\n    Args:\n        in_channels: Input feature dimension per node.\n        hidden_channels: Hidden dimension.\n        num_layers: Number of GNN layers.\n        dropout: Dropout rate.\n    \"\"\"",
+       "new_str": "class LinkPredictor(nn.Module):\n    \"\"\"Variational Graph Auto-Encoder (VGAE).\n\n    GCN encoder produces mean + logstd, samples via reparameterization.\n    Dot-product decoder. KL regularization is injected into the computation\n    graph so that it participates in the backward pass even though the\n    external training loop only sees BCE on the returned scores.\n\n    The KL term is added to each score as  w * KL / num_nodes  (the\n    standard VGAE normalisation), NOT divided by num_scores.  This\n    ensures the KL gradient is strong enough to regularise the latent\n    space while remaining small enough not to overwhelm the\n    reconstruction gradient on any single score.\n\n    No BatchNorm on the final (mu/logstd) layers to preserve embedding\n    magnitude for dot-product scoring.\n    \"\"\""
+      }
+     }
+    }
+   ]
+  },
+  {
+   "role": "tool",
+   "content": "Successfully replaced text in pytorch-geometric-lp/custom_linkpred.py."
+  },
+  {
+   "role": "assistant",
+   "reasoning_content": "Now the encoder: shared GCN stack plus the two mu/logstd heads, with reparameterized sampling at train time and the mean at eval.",
+   "content": "",
+   "tool_calls": [
+    {
+     "type": "function",
+     "function": {
+      "name": "str_replace",
+      "arguments": {
+       "path": "pytorch-geometric-lp/custom_linkpred.py",
+       "old_str": "        super().__init__()\n        self.num_layers = num_layers\n        self.dropout = dropout\n\n        self.convs = nn.ModuleList()\n        self.convs.append(GCNConv(in_channels, hidden_channels))\n        for _ in range(num_layers - 1):\n            self.convs.append(GCNConv(hidden_channels, hidden_channels))\n\n        # BN only on intermediate layers — not on the last layer\n        # to preserve embedding magnitude for dot-product scoring\n        self.bns = nn.ModuleList([\n            nn.BatchNorm1d(hidden_channels) for _ in range(num_layers - 1)\n        ])\n\n    def encode(self, x: torch.Tensor, edge_index: torch.Tensor) -> torch.Tensor:\n        \"\"\"Encode nodes into embeddings.\n\n        Args:\n            x: Node features [N, in_channels].\n            edge_index: Graph connectivity [2, E].\n\n        Returns:\n            Node embeddings [N, hidden_channels].\n        \"\"\"\n        for i, conv in enumerate(self.convs):\n            x = conv(x, edge_index)\n            if i < self.num_layers - 1:\n                x = self.bns[i](x)\n                x = F.relu(x)\n                x = F.dropout(x, p=self.dropout, training=self.training)\n        return x",
+       "new_str": "        super().__init__()\n        self.dropout = dropout\n        # Standard VGAE uses 1/N weighting for KL; we keep a small coefficient\n        # because the KL is already normalized per node below.\n        self.kl_weight = 0.005\n\n        # Shared GCN layers (all but last)\n        self.shared_convs = nn.ModuleList()\n        self.shared_bns = nn.ModuleList()\n        if num_layers > 1:\n            self.shared_convs.append(GCNConv(in_channels, hidden_channels))\n            self.shared_bns.append(nn.BatchNorm1d(hidden_channels))\n            for _ in range(num_layers - 2):\n                self.shared_convs.append(GCNConv(hidden_channels, hidden_channels))\n                self.shared_bns.append(nn.BatchNorm1d(hidden_channels))\n            last_in = hidden_channels\n        else:\n            last_in = in_channels\n\n        # Separate heads for mean and log-variance (no BN on these)\n        self.conv_mu = GCNConv(last_in, hidden_channels)\n        self.conv_logstd = GCNConv(last_in, hidden_channels)\n\n        self.__mu = None\n        self.__logstd = None\n        self.__num_nodes = None\n\n    def encode(self, x: torch.Tensor, edge_index: torch.Tensor) -> torch.Tensor:\n        self.__num_nodes = x.size(0)\n        # Shared layers with BN + ReLU\n        for conv, bn in zip(self.shared_convs, self.shared_bns):\n            x = conv(x, edge_index)\n            x = bn(x)\n            x = F.relu(x)\n            x = F.dropout(x, p=self.dropout, training=self.training)\n\n        self.__mu = self.conv_mu(x, edge_index)\n        self.__logstd = self.conv_logstd(x, edge_index)\n\n        if self.training:\n            std = torch.exp(0.5 * self.__logstd)\n            eps = torch.randn_like(std)\n            return self.__mu + eps * std\n        return self.__mu"
+      }
+     }
+    }
+   ]
+  },
+  {
+   "role": "tool",
+   "content": "Successfully replaced text in pytorch-geometric-lp/custom_linkpred.py."
+  },
+  {
+   "role": "assistant",
+   "reasoning_content": "Trim the decode docstring; the inner product stays as-is.",
+   "content": "",
+   "tool_calls": [
+    {
+     "type": "function",
+     "function": {
+      "name": "str_replace",
+      "arguments": {
+       "path": "pytorch-geometric-lp/custom_linkpred.py",
+       "old_str": "               num_nodes: Optional[int] = None) -> torch.Tensor:\n        \"\"\"Score candidate edges.\n\n        Args:\n            edge_label_index: Candidate edges [2, num_edges] (original node\n                indices into `z`).\n            z: Full node embedding table [N, hidden_channels].\n            edge_index: Optional training graph connectivity [2, E], available\n                so structure-aware decoders can compute CN/AA/RA etc.\n            num_nodes: Optional number of nodes in the graph.\n\n        Returns:\n            Edge scores [num_edges].\n        \"\"\"\n        z_src = z[edge_label_index[0]]",
+       "new_str": "               num_nodes: Optional[int] = None) -> torch.Tensor:\n        z_src = z[edge_label_index[0]]"
+      }
+     }
+    }
+   ]
+  },
+  {
+   "role": "tool",
+   "content": "Successfully replaced text in pytorch-geometric-lp/custom_linkpred.py."
+  },
+  {
+   "role": "assistant",
+   "reasoning_content": "Now the forward: inject the mean-per-node KL onto the scores so its gradient reaches the encoder.",
+   "content": "",
+   "tool_calls": [
+    {
+     "type": "function",
+     "function": {
+      "name": "str_replace",
+      "arguments": {
+       "path": "pytorch-geometric-lp/custom_linkpred.py",
+       "old_str": "                edge_label_index: torch.Tensor) -> torch.Tensor:\n        \"\"\"Full forward: encode all nodes, then decode candidate edges.\n\n        Args:\n            x: Node features [N, in_channels].\n            edge_index: Training graph connectivity [2, E_train].\n            edge_label_index: Candidate edges to score [2, num_candidates].\n\n        Returns:\n            Edge scores [num_candidates].\n        \"\"\"\n        z = self.encode(x, edge_index)\n        return self.decode(edge_label_index, z, edge_index=edge_index,\n                           num_nodes=x.size(0))",
+       "new_str": "                edge_label_index: torch.Tensor) -> torch.Tensor:\n        z = self.encode(x, edge_index)\n        scores = self.decode(edge_label_index, z,\n                             edge_index=edge_index, num_nodes=x.size(0))\n        # Inject KL divergence into the computation graph so its gradient\n        # flows through the encoder during backprop.  We add a uniform\n        # per-score shift:  scores + w * KL_per_node.\n        # KL_per_node = (1/N) * sum_i KL(q(z_i|X,A) || p(z_i)).\n        # The coefficient w controls the strength of the regularisation.\n        if self.training and self.__mu is not None:\n            kl_per_node = -0.5 * torch.mean(\n                torch.sum(1 + self.__logstd - self.__mu.pow(2)\n                          - self.__logstd.exp(), dim=-1)\n            )\n            scores = scores + self.kl_weight * kl_per_node\n        return scores"
+      }
+     }
+    }
+   ]
+  },
+  {
+   "role": "tool",
+   "content": "Successfully replaced text in pytorch-geometric-lp/custom_linkpred.py."
+  },
+  {
+   "role": "assistant",
+   "reasoning_content": "",
+   "content": "Run the experiment to measure this.",
+   "tool_calls": [
+    {
+     "type": "function",
+     "function": {
+      "name": "run_experiment",
+      "arguments": {}
+     }
+    }
+   ]
+  },
+  {
+   "role": "tool",
+   "content": "Measured results — `baseline:vgae` (`is_final,true`), seeds {42, 123, 456} and mean for Cora/CiteSeer;\nogbl-collab is seed 42 only.\n\n## Cora\n| seed | AUC | MRR | Hits@20 |\n|---|---|---|---|\n| 42 | 90.51 | 24.04 | 63.00 |\n| 123 | 84.82 | 14.78 | 39.09 |\n| 456 | 85.10 | 21.30 | 45.73 |\n| **mean** | **86.81** | **20.04** | **49.27** |\n\n## CiteSeer\n| seed | AUC | MRR | Hits@20 |\n|---|---|---|---|\n| 42 | 91.46 | 46.24 | 73.19 |\n| 123 | 84.78 | 19.42 | 45.27 |\n| 456 | 84.35 | 15.78 | 41.98 |\n| **mean** | **86.86** | **27.15** | **53.48** |\n\n## ogbl-collab\n| seed | Hits@50 | MRR |\n|---|---|---|\n| 42 | 31.77 | 7.70 |"
+  },
+  {
+   "role": "assistant",
+   "reasoning_content": "The VGAE numbers told me exactly which of its two deliberate weaknesses actually cost me, and it was\nboth, in the proportions I half-expected. The AUC on Cora came in at 86.8 mean and on CiteSeer 86.9,\nbut look at the seed spread: seed 42 was strong (90.5 / 91.5) while seeds 123 and 456 collapsed to the\nmid-84s on both graphs. That is not noise around a stable model — that is a model whose latent space is\nbeing squeezed by the prior/inner-product fight I flagged, so that on the runs where the random init\nand the sampling noise happen to start it badly, the KL pull and the reparameterization noise never let\nit recover and spread the embeddings apart. The ranking metrics are where it really bled: Cora MRR\n20.0, Hits@20 49.3; CiteSeer MRR 27.1, Hits@20 53.5. AUC of 87 says positives are *on average* above\nnegatives, but MRR of 20 says the *top* of the candidate list is a mess — the true edge is usually not\nnear the front. And the clearest verdict came from the large graph, exactly where I said the bare\ninner product would struggle most: ogbl-collab Hits@50 of **31.77**. On a quarter-million-node\ncollaboration graph, where tens of thousands of non-edges have to be pushed below each true edge, a\nsingle dot product of two independently-encoded points is simply too blunt, and the absence of any\nlearned pairwise interaction shows up as a Hits@50 in the low thirties.\n\nSo the diagnosis is sharp and it points at two specific pieces I left on the floor by design. First,\nthe *variational noise*: on these graphs the sampling noise plus KL pull cost me more in ranking\nprecision and seed stability than they bought in generalization — the small-graph seed collapses and\nthe soft MRR are both consistent with \"the model is fighting its own regularizer.\" Second, and more\nimportantly, the *decoder*: a pure inner product gives the model exactly one way to compare two nodes —\nthe cosine-like alignment of their embeddings. It cannot represent \"these two are similar in dimensions\n1–50 but that's irrelevant; what matters is the interaction in dimensions 100–150,\" because the inner\nproduct weights every dimension's product identically and then sums. The fix for both is the same move:\ndrop the variational machinery and make the embedding deterministic, and replace the bare dot product\nwith a *learned* decoder that can weight and mix the pairwise interaction. That is the second rung.\n\nLet me derive the decoder, because the encoder choice is the easy part and the decoder is where the\ngain has to come from. Keep the GCN encoder essentially as the scaffold default — a stack of `GCNConv`\nlayers with BatchNorm and ReLU on the intermediate layers, dropout, and crucially **no** sampling and\n**no** KL: the embedding is just $z=\\mathrm{GCN}(X,A)$, a point per node, trained end-to-end by the\nloop's BCE. That alone removes the noise and the prior/inner-product fight that destabilized the VGAE\nseeds. Now, given $z_i$ and $z_j$ for a candidate pair, what should the score be? The inner product\n$\\sum_d z_{id}z_{jd}$ is a single fixed reduction of the elementwise product $z_i\\odot z_j$. The\nobvious generalization is: don't sum the elementwise product with uniform weights — *feed it to an\nMLP* and let the network learn which interaction dimensions matter and how to combine them. An MLP on\n$z_i\\odot z_j$ already strictly generalizes the dot product (a single linear layer with all-ones\nweights and no bias recovers it), so it can only help if trained well.\n\nBut I can hand the decoder more than the Hadamard product. The two pieces of information a pair\ncarries are: *who each node is* (its own embedding) and *how they interact* (the elementwise product).\nThe inner product throws away the first entirely — it only ever sees the product. Yet \"who each node\nis\" matters: a high-degree hub and a leaf interact differently than two leaves, and the raw embeddings\ncarry that. So I give the decoder the concatenation of all three:\n$h=[\\,z_{\\text{src}}\\;\\|\\;z_{\\text{dst}}\\;\\|\\;z_{\\text{src}}\\odot z_{\\text{dst}}\\,]$, a $3H$-dimensional\npair representation, and put a small MLP on top: $3H\\to H\\to H\\to 1$, with ReLU and dropout between\nlayers, producing one logit per candidate edge. The first block ($z_{\\text{src}},z_{\\text{dst}}$) lets\nthe decoder condition the score on each node's identity and degree-like role; the third block\n($z_{\\text{src}}\\odot z_{\\text{dst}}$) is the learned-weight generalization of the dot product. This is\nexactly the standard OGB GCN+MLP link-prediction predictor — the one that reliably reaches the\nmid-fifties Hits@50 on collaboration graphs where the bare dot product sits in the low thirties — and\nthe reason it works is that the MLP can sharpen the *top* of the ranking, which is precisely where\nVGAE's MRR told me the bare inner product was failing.\n\nThere is a subtlety in *symmetry* I should think about, because the graph is undirected and I am\nconcatenating an ordered pair $[z_{\\text{src}}\\,\\|\\,z_{\\text{dst}}]$, which is not symmetric in\n$i\\leftrightarrow j$. The Hadamard block is symmetric, but the first two blocks are not — swapping\nsource and destination changes $h$. Is that a bug? In practice the harness samples each undirected\npositive once with a fixed orientation and the negatives are sampled pairs, and the MLP learns to be\napproximately symmetric because it sees both orientations across the training distribution (the graph\nis stored undirected, so most node pairs that matter appear in both directions during message passing,\nand the BCE target is orientation-independent). I could symmetrize explicitly by averaging the two\norderings, but that doubles decode cost on the large graph for a marginal gain, and the dominant signal\n— the Hadamard interaction — is already symmetric. So I leave the concatenation ordered and let the MLP\nabsorb the asymmetry; this is the standard, cheaper choice and matches the predictor I want to\nbenchmark.\n\nNow keep the encoder honest about the dot-product-versus-MLP distinction. In the VGAE rung I argued\n*against* BatchNorm on the final embedding layer, because the inner product needs the embedding\nmagnitude — normalizing it away crushes the score spread. Does that argument still hold now that the\ndecoder is an MLP? Partly. The MLP has its own first linear layer that can rescale whatever magnitude\nthe embeddings have, so it is far less sensitive to the final-layer normalization than a bare dot\nproduct is. But the scaffold's encoder convention — BatchNorm on intermediate layers only, none on the\nlast — is still the safe default: it stabilizes the depth of message passing without forcing a fixed\nscale on the embedding the MLP consumes. So I keep the encoder exactly as the scaffold default\n(intermediate BN, ReLU, dropout, no final BN) and put all the new capacity into the decoder. This also\nkeeps the parameter count modest — the MLP is $3H\\cdot H+H\\cdot H+H$ parameters, comfortably inside the\nbudget — and means the *only* change from the scaffold default is swapping the one-line dot product for\nthe three-block MLP, which is the cleanest possible test of \"does a learned decoder fix VGAE's ranking\nproblem?\"\n\nSo the step-2 edit lands directly in the editable region: the same GCN encoder as the scaffold default\n(no sampling, no KL — deterministic embeddings), plus an MLP decoder on\n$[z_{\\text{src}}\\,\\|\\,z_{\\text{dst}}\\,\\|\\,z_{\\text{src}}\\odot z_{\\text{dst}}]$ that returns one logit\nper edge. `encode` is the plain GCN stack; `decode` builds the $3H$ concatenation and runs the MLP;\n`forward` chains them. Nothing else about the loop changes. (The full scaffold module is in the\nanswer.)\n\nLet me state the falsifiable expectations against the VGAE numbers, metric by metric, because that is\nhow I will know whether the diagnosis was right. The headline claim is on the ranking metrics: removing\nthe sampling noise should tighten the seed spread (no more mid-84 AUC collapses on seeds 123/456), and\nthe learned decoder should lift MRR and Hits@20 substantially above VGAE's Cora 20.0/49.3 and CiteSeer\n27.1/53.5 — because the MLP can finally sharpen the front of the candidate list that the inner product\nblurred. I expect Cora MRR into the thirties and Hits@20 into the high sixties / low seventies, and a\nsimilar lift on CiteSeer. The second, sharper claim is on ogbl-collab: the GCN+MLP predictor is the\ncanonical baseline that reaches the mid-fifties Hits@50 on this exact graph, so I expect Hits@50 to\njump from VGAE's 31.77 into the low-to-mid fifties — that single number is the cleanest verdict on\nwhether a learned decoder beats a bare inner product at the large-pool ranking that is the real\nproblem. Where I am uncertain: AUC may *not* move much, or could even dip slightly, because AUC was\nnever the failing metric — VGAE already separated positives from negatives on average (87) — and a more\nexpressive decoder optimizes the loss in a way that trades a little average separation for much better\ntop-of-list precision. If AUC holds around the high eighties / low nineties while MRR and Hits jump,\nthat is the signal that the decoder, not the encoder, was the bottleneck, and the next rung should keep\nthis encoder/decoder skeleton and instead enrich what the decoder *sees about the pair* — explicit\nstructural features like shared-neighbor counts — rather than just giving it more parametric capacity.\nIf, instead, AUC and the ranking metrics both move only a little, the diagnosis flips: the GCN encoder\nitself is the limit, and the next rung would need a structurally richer encoder, not a richer decoder.\nSo let me write the deterministic GCN encoder plus the MLP decoder in.",
+   "content": "Dropping the variational machinery for a deterministic GCN encoder and giving it a learned decoder: an\nMLP over [z_src, z_dst, z_src*z_dst], the standard OGB GCN+MLP predictor. This edit swaps the class\ndocstring to describe it.",
+   "tool_calls": [
+    {
+     "type": "function",
+     "function": {
+      "name": "str_replace",
+      "arguments": {
+       "path": "pytorch-geometric-lp/custom_linkpred.py",
+       "old_str": "class LinkPredictor(nn.Module):\n    \"\"\"Variational Graph Auto-Encoder (VGAE).\n\n    GCN encoder produces mean + logstd, samples via reparameterization.\n    Dot-product decoder. KL regularization is injected into the computation\n    graph so that it participates in the backward pass even though the\n    external training loop only sees BCE on the returned scores.\n\n    The KL term is added to each score as  w * KL / num_nodes  (the\n    standard VGAE normalisation), NOT divided by num_scores.  This\n    ensures the KL gradient is strong enough to regularise the latent\n    space while remaining small enough not to overwhelm the\n    reconstruction gradient on any single score.\n\n    No BatchNorm on the final (mu/logstd) layers to preserve embedding\n    magnitude for dot-product scoring.\n    \"\"\"",
+       "new_str": "class LinkPredictor(nn.Module):\n    \"\"\"GCN encoder + MLP decoder with pairwise features.\n\n    MLP decoder on [z_src, z_dst, z_src*z_dst] matches OGB's standard GCN\n    link-prediction baseline; strictly stronger than pure dot product.\n    \"\"\""
+      }
+     }
+    }
+   ]
+  },
+  {
+   "role": "tool",
+   "content": "Successfully replaced text in pytorch-geometric-lp/custom_linkpred.py."
+  },
+  {
+   "role": "assistant",
+   "reasoning_content": "Now restore the plain deterministic GCN encoder and add the 3H→H→H→1 MLP decoder.",
+   "content": "",
+   "tool_calls": [
+    {
+     "type": "function",
+     "function": {
+      "name": "str_replace",
+      "arguments": {
+       "path": "pytorch-geometric-lp/custom_linkpred.py",
+       "old_str": "        super().__init__()\n        self.dropout = dropout\n        # Standard VGAE uses 1/N weighting for KL; we keep a small coefficient\n        # because the KL is already normalized per node below.\n        self.kl_weight = 0.005\n\n        # Shared GCN layers (all but last)\n        self.shared_convs = nn.ModuleList()\n        self.shared_bns = nn.ModuleList()\n        if num_layers > 1:\n            self.shared_convs.append(GCNConv(in_channels, hidden_channels))\n            self.shared_bns.append(nn.BatchNorm1d(hidden_channels))\n            for _ in range(num_layers - 2):\n                self.shared_convs.append(GCNConv(hidden_channels, hidden_channels))\n                self.shared_bns.append(nn.BatchNorm1d(hidden_channels))\n            last_in = hidden_channels\n        else:\n            last_in = in_channels\n\n        # Separate heads for mean and log-variance (no BN on these)\n        self.conv_mu = GCNConv(last_in, hidden_channels)\n        self.conv_logstd = GCNConv(last_in, hidden_channels)\n\n        self.__mu = None\n        self.__logstd = None\n        self.__num_nodes = None\n\n    def encode(self, x: torch.Tensor, edge_index: torch.Tensor) -> torch.Tensor:\n        self.__num_nodes = x.size(0)\n        # Shared layers with BN + ReLU\n        for conv, bn in zip(self.shared_convs, self.shared_bns):\n            x = conv(x, edge_index)\n            x = bn(x)\n            x = F.relu(x)\n            x = F.dropout(x, p=self.dropout, training=self.training)\n\n        self.__mu = self.conv_mu(x, edge_index)\n        self.__logstd = self.conv_logstd(x, edge_index)\n\n        if self.training:\n            std = torch.exp(0.5 * self.__logstd)\n            eps = torch.randn_like(std)\n            return self.__mu + eps * std\n        return self.__mu",
+       "new_str": "        super().__init__()\n        self.num_layers = num_layers\n        self.dropout = dropout\n\n        self.convs = nn.ModuleList()\n        self.convs.append(GCNConv(in_channels, hidden_channels))\n        for _ in range(num_layers - 1):\n            self.convs.append(GCNConv(hidden_channels, hidden_channels))\n\n        self.bns = nn.ModuleList([\n            nn.BatchNorm1d(hidden_channels) for _ in range(num_layers - 1)\n        ])\n\n        # MLP decoder on concatenated pair features\n        self.decoder = nn.Sequential(\n            nn.Linear(hidden_channels * 3, hidden_channels),\n            nn.ReLU(),\n            nn.Dropout(dropout),\n            nn.Linear(hidden_channels, hidden_channels),\n            nn.ReLU(),\n            nn.Dropout(dropout),\n            nn.Linear(hidden_channels, 1),\n        )\n\n    def encode(self, x: torch.Tensor, edge_index: torch.Tensor) -> torch.Tensor:\n        for i, conv in enumerate(self.convs):\n            x = conv(x, edge_index)\n            if i < self.num_layers - 1:\n                x = self.bns[i](x)\n                x = F.relu(x)\n                x = F.dropout(x, p=self.dropout, training=self.training)\n        return x"
+      }
+     }
+    }
+   ]
+  },
+  {
+   "role": "tool",
+   "content": "Successfully replaced text in pytorch-geometric-lp/custom_linkpred.py."
+  },
+  {
+   "role": "assistant",
+   "reasoning_content": "Replace the inner product in decode with the three-block concat fed to the MLP.",
+   "content": "",
+   "tool_calls": [
+    {
+     "type": "function",
+     "function": {
+      "name": "str_replace",
+      "arguments": {
+       "path": "pytorch-geometric-lp/custom_linkpred.py",
+       "old_str": "        z_dst = z[edge_label_index[1]]\n        return (z_src * z_dst).sum(dim=-1)",
+       "new_str": "        z_dst = z[edge_label_index[1]]\n        h = torch.cat([z_src, z_dst, z_src * z_dst], dim=-1)\n        return self.decoder(h).squeeze(-1)"
+      }
+     }
+    }
+   ]
+  },
+  {
+   "role": "tool",
+   "content": "Successfully replaced text in pytorch-geometric-lp/custom_linkpred.py."
+  },
+  {
+   "role": "assistant",
+   "reasoning_content": "Strip the KL injection out of forward — the embedding is deterministic now.",
+   "content": "",
+   "tool_calls": [
+    {
+     "type": "function",
+     "function": {
+      "name": "str_replace",
+      "arguments": {
+       "path": "pytorch-geometric-lp/custom_linkpred.py",
+       "old_str": "        z = self.encode(x, edge_index)\n        scores = self.decode(edge_label_index, z,\n                             edge_index=edge_index, num_nodes=x.size(0))\n        # Inject KL divergence into the computation graph so its gradient\n        # flows through the encoder during backprop.  We add a uniform\n        # per-score shift:  scores + w * KL_per_node.\n        # KL_per_node = (1/N) * sum_i KL(q(z_i|X,A) || p(z_i)).\n        # The coefficient w controls the strength of the regularisation.\n        if self.training and self.__mu is not None:\n            kl_per_node = -0.5 * torch.mean(\n                torch.sum(1 + self.__logstd - self.__mu.pow(2)\n                          - self.__logstd.exp(), dim=-1)\n            )\n            scores = scores + self.kl_weight * kl_per_node\n        return scores",
+       "new_str": "        z = self.encode(x, edge_index)\n        return self.decode(edge_label_index, z,\n                           edge_index=edge_index, num_nodes=x.size(0))"
+      }
+     }
+    }
+   ]
+  },
+  {
+   "role": "tool",
+   "content": "Successfully replaced text in pytorch-geometric-lp/custom_linkpred.py."
+  },
+  {
+   "role": "assistant",
+   "reasoning_content": "",
+   "content": "Run the experiment to measure this.",
+   "tool_calls": [
+    {
+     "type": "function",
+     "function": {
+      "name": "run_experiment",
+      "arguments": {}
+     }
+    }
+   ]
+  },
+  {
+   "role": "tool",
+   "content": "Measured results — `baseline:gcn_dot` (`is_final,true`), seeds {42, 123, 456} and mean for\nCora/CiteSeer; ogbl-collab is seed 42 only.\n\n## Cora\n| seed | AUC | MRR | Hits@20 |\n|---|---|---|---|\n| 42 | 93.11 | 39.45 | 76.66 |\n| 123 | 90.47 | 16.10 | 68.50 |\n| 456 | 90.31 | 38.00 | 65.65 |\n| **mean** | **91.30** | **31.18** | **70.27** |\n\n## CiteSeer\n| seed | AUC | MRR | Hits@20 |\n|---|---|---|---|\n| 42 | 93.05 | 39.40 | 75.82 |\n| 123 | 90.51 | 36.46 | 72.75 |\n| 456 | 88.83 | 46.67 | 72.53 |\n| **mean** | **90.80** | **40.84** | **73.70** |\n\n## ogbl-collab\n| seed | Hits@50 | MRR |\n|---|---|---|\n| 42 | 53.74 | 13.79 |"
+  },
+  {
+   "role": "assistant",
+   "reasoning_content": "The GCN+MLP decoder did almost exactly what I predicted, and the way it did it tells me where the next\ngain has to come from. Removing the variational noise tightened everything: the seed-123/456 AUC\ncollapses from VGAE are gone (Cora seeds now 93.1 / 90.5 / 90.3, CiteSeer 93.1 / 90.5 / 88.8), and the\nlearned decoder lifted the ranking metrics the way I claimed — Cora MRR went 20.0→31.2, Hits@20\n49.3→70.3; CiteSeer MRR 27.1→40.8, Hits@20 53.5→73.7. The cleanest verdict was the large graph:\nogbl-collab Hits@50 jumped 31.77→**53.74**, a full twenty-two points, confirming that a learned\npairwise decoder beats a bare inner product at large-pool ranking. AUC moved up modestly (87→91 on\nboth) but did not jump — exactly the \"AUC was never the failing metric\" pattern I expected. So the\ndecoder *was* the bottleneck, and the MLP fixed the part of it that was about parametric capacity.\n\nBut the per-seed ranking numbers expose the limit. Cora MRR has a violent seed spread — 39.5, 16.1,\n38.0 — that one collapsed seed (16.1) dragging the mean down. CiteSeer is steadier but Cora's\ninstability says the decoder's *signal* about a pair is fragile: on the seed where the embeddings land\nslightly differently, the MLP loses the ability to rank the true edge near the front. Why would that\nbe? Because everything the gcn_dot decoder knows about a pair, it knows through two things only:\n$z_{\\text{src}}\\odot z_{\\text{dst}}$ (the interaction) and the two raw embeddings (the identities). All\nthree are *learned* quantities — they depend on the GCN converging to a good geometry — and when the\nGCN's geometry is a little off (different seed), the decoder has nothing solid to fall back on. It has\nno *direct* measurement of the one feature that classical link prediction has leaned on for twenty\nyears and that is robust to embedding quality: how the two nodes' neighborhoods relate. Two papers that\nshare many citations are likely to cite each other regardless of where the GCN happened to place them\nin latent space. The gcn_dot decoder can only approximate that overlap *indirectly*, through whatever\nthe message passing folded into the embeddings, and that approximation is what's failing on the bad\nseeds. So the next move is to give the decoder a richer, more *structural* view of each pair — to\naugment what it sees with explicit pairwise geometry, so it stops depending entirely on the learned\nembedding alignment.\n\nThis is the SEAL idea, and I have to be careful here because the canonical version of SEAL is heavy\nmachinery this harness does not let me build, so I will derive what the *interface actually supports*\nand name what it omits. The original SEAL formulation reframes link prediction as subgraph\nclassification: for each candidate pair $(i,j)$, extract the $k$-hop enclosing subgraph around the\ntwo nodes, label every node in that subgraph by its *double-radius* — its distance to $i$ and its\ndistance to $j$ via the Double-Radius Node Labeling (DRNL) trick, which marks the two target nodes and\nencodes each other node's structural role relative to them — and then run a graph-level GNN with\npooling over the labeled subgraph to classify whether the link exists. The theory behind it (the\nlabeling trick) is that a GNN over a properly *labeled* enclosing subgraph can in principle learn *any*\nneighborhood-overlap heuristic — common neighbors, Adamic–Adar, Katz, the whole family — rather than\nbeing handed one. That expressive power is the appeal.\n\nBut none of that fits this scaffold's contract. The interface is `encode(x, edge_index) -> z` once over\nthe *whole* graph, then `decode(edge_label_index, z, edge_index)` per pair. There is no per-edge\nsubgraph extraction loop, no place to build and pool over thousands of small labeled subgraphs (that\nwould be ruinously expensive on ogbl-collab's 235k nodes anyway, and would blow the parameter and time\nbudget). DRNL needs per-pair shortest-path distances computed inside each enclosing subgraph; the\nharness gives me a single global embedding table and the raw `edge_index`, not a subgraph machine. So I\ncannot implement DRNL-labelled subgraph classification. What I *can* do is keep SEAL's load-bearing\ninsight — *the decoder should see structural/positional information about the pair, not just embedding\nalignment* — and realize it within the full-graph encode/decode interface. The honest framing is: this\nis a SEAL-inspired predictor that approximates the subgraph information through richer pairwise features\nat decode time, deliberately dropping the subgraph-extraction and DRNL machinery the interface cannot\nhost.\n\nSo how do I enrich the decoder's view of the pair without subgraph extraction? The gcn_dot decoder saw\n$[z_{\\text{src}}\\,\\|\\,z_{\\text{dst}}\\,\\|\\,z_{\\text{src}}\\odot z_{\\text{dst}}]$. The Hadamard product\ncaptures *agreement* (it's large where both embeddings are large and aligned), but it is symmetric and\nsign-coupled and it misses *dissimilarity* — and dissimilarity is structurally informative. Two nodes\nthat are far apart in embedding space along some dimension are structurally different in a way that\npredicts non-edges. The cleanest extra feature that captures this is the absolute difference\n$|z_{\\text{src}}-z_{\\text{dst}}|$, the elementwise $L_1$ gap. It is the natural complement to the\nHadamard product: where $z\\odot z$ measures co-activation, $|z-z|$ measures separation, and together\nthey span the standard pairwise interaction basis used across metric learning and link prediction\n(concat for identity, product for similarity, absolute difference for distance). So I extend the\ndecoder's input to four blocks:\n$h=[\\,z_{\\text{src}}\\;\\|\\;z_{\\text{dst}}\\;\\|\\;z_{\\text{src}}\\odot z_{\\text{dst}}\\;\\|\\;\n|z_{\\text{src}}-z_{\\text{dst}}|\\,]$, a $4H$-dimensional pair representation, and feed it to the same\nshape of MLP ($4H\\to H\\to H\\to 1$). The added difference block gives the MLP a *distance* view of the\npair to set alongside the *similarity* view it already had — a direct structural signal that does not\ndepend on the embeddings aligning perfectly, which is precisely what should stabilize the seed-to-seed\nvariance I saw on Cora's MRR.\n\nThere is a second change, and it is small but it matters and it distinguishes this rung's encoder from\ngcn_dot's. In the gcn_dot encoder I kept BatchNorm on intermediate layers *only* and left the final\nembedding un-normalized, with the original justification (inherited from the dot-product era) that the\ndecoder needs the final embedding's magnitude. But now the decoder is a four-block MLP whose first\nlinear layer rescales whatever comes in, and more importantly, the four pairwise features mix raw\nembeddings, products, and differences at very different scales — the product block is quadratic in the\nembedding magnitude, the difference block linear. If the final embedding is un-normalized, those scale\ndifferences across blocks make the MLP's job harder and add to the seed instability. So I put BatchNorm\non *every* encoder layer including the last (a separate `StructuralEncoder` module), normalizing the\nfinal embedding before it enters the four-feature decoder. With an MLP decoder this costs nothing — the\nMLP can recover any needed scale — and it controls the feature magnitudes so the product and difference\nblocks are comparable, which should further damp the variance. This is the deliberate inversion of the\nVGAE/gcn_dot \"no BN on the last layer\" rule, and it is licensed precisely because the decoder is no\nlonger a magnitude-sensitive inner product.\n\nSo the step-3 edit lands in the editable region as two pieces: a `StructuralEncoder` (GCN stack with\nBatchNorm on all layers, ReLU and dropout on the intermediate ones) and a `LinkPredictor` whose\n`decode` builds the four-block $4H$ feature $[z_{\\text{src}},z_{\\text{dst}},z_{\\text{src}}\\odot\nz_{\\text{dst}},|z_{\\text{src}}-z_{\\text{dst}}|]$ and runs the $4H\\to H\\to H\\to 1$ MLP. The encoder\ngeometry is otherwise the gcn_dot encoder; the new content is the difference feature and full-layer\nnormalization. Everything else — the loop, the BCE, the negative sampling — is untouched. (The full\nscaffold module is in the answer.) I want to be explicit that this is *not* the paper's SEAL: there is\nno enclosing-subgraph extraction, no DRNL labeling, no subgraph-level GNN with pooling; the structural\ninformation is approximated by the extra pairwise feature and normalized embeddings, which is what the\nencode/decode interface permits.\n\nNow the falsifiable expectations against the gcn_dot numbers, because the gains here should be *narrow\nand specific*, not a blowout — I am adding one structural feature and a normalization, not a new model\nclass. First, the seed-variance claim: the Cora MRR collapse seed (16.1) should come up, tightening the\n{39.5, 16.1, 38.0} spread, because the difference feature and the normalization give the decoder a\nstructural signal that survives a slightly-off embedding geometry. I expect the per-seed AUC to be\n*tighter* and slightly higher on average than gcn_dot (the full-layer BN stabilizes training), landing\naround 92–93 mean on both citation graphs — a small AUC gain, not a large one. Second, and this is the\nclearest verdict, ogbl-collab Hits@50: the extra distance feature plus normalization should push past\ngcn_dot's 53.74 into the high fifties, because on the dense collaboration graph the distinction between\n\"co-activated\" and \"separated\" embeddings is exactly what discriminates true collaborations from the\nhuge non-edge pool. I expect Hits@50 around 57–58. Where I expect *no* gain, or even a small regression\nrelative to gcn_dot, is the small-graph ranking metrics MRR and Hits@20: gcn_dot's MLP already extracts\nmost of what the small Cora/CiteSeer graphs offer through the three-block decoder, and the fourth\nfeature plus full-layer normalization can trade a little of that top-of-list precision for stability —\nso I would not be surprised if Cora MRR/Hits@20 come in at or slightly below gcn_dot's 31.2/70.3 even\nas AUC and ogbl-collab improve. That mixed outcome — SEAL stronger on AUC and the large graph,\ngcn_dot still competitive on small-graph MRR/Hits — is the honest prediction, and if it holds, the end\ndiagnosis for going *past* the strongest baseline is already written: the structural signal helps but I\nam still *approximating* neighborhood overlap through embeddings and a single difference feature, when\nthe thing that actually discriminates links on these graphs is the *explicit* count of shared\nneighbors. The next move would be to compute common-neighbor / Adamic–Adar / resource-allocation\nfeatures directly against the live adjacency and hand those to the decoder — the structural signal SEAL\ngestures at, made exact. So let me put the structural encoder and the four-block decoder in.",
+   "content": "Adding a SEAL-inspired structural view to the decoder: a separate StructuralEncoder with BatchNorm on\nevery layer, plus an absolute-difference feature alongside the Hadamard product so the decoder sees\nboth similarity and separation. This first edit introduces the StructuralEncoder class.",
+   "tool_calls": [
+    {
+     "type": "function",
+     "function": {
+      "name": "str_replace",
+      "arguments": {
+       "path": "pytorch-geometric-lp/custom_linkpred.py",
+       "old_str": "class LinkPredictor(nn.Module):\n    \"\"\"GCN encoder + MLP decoder with pairwise features.\n\n    MLP decoder on [z_src, z_dst, z_src*z_dst] matches OGB's standard GCN\n    link-prediction baseline; strictly stronger than pure dot product.\n    \"\"\"\n    def __init__(self, in_channels: int, hidden_channels: int = 256,\n                 num_layers: int = 2, dropout: float = 0.0):\n        super().__init__()",
+       "new_str": "class StructuralEncoder(nn.Module):\n    \"\"\"GCN encoder augmented with structural node features.\"\"\"\n    def __init__(self, in_channels: int, hidden_channels: int,\n                 num_layers: int, dropout: float):\n        super().__init__()"
+      }
+     }
+    }
+   ]
+  },
+  {
+   "role": "tool",
+   "content": "Successfully replaced text in pytorch-geometric-lp/custom_linkpred.py."
+  },
+  {
+   "role": "assistant",
+   "reasoning_content": "Give the StructuralEncoder its full-layer-BN forward and start the new LinkPredictor with the four-block decoder.",
+   "content": "",
+   "tool_calls": [
+    {
+     "type": "function",
+     "function": {
+      "name": "str_replace",
+      "arguments": {
+       "path": "pytorch-geometric-lp/custom_linkpred.py",
+       "old_str": "        self.bns = nn.ModuleList([\n            nn.BatchNorm1d(hidden_channels) for _ in range(num_layers - 1)\n        ])\n\n        # MLP decoder on concatenated pair features\n        self.decoder = nn.Sequential(\n            nn.Linear(hidden_channels * 3, hidden_channels),\n            nn.ReLU(),",
+       "new_str": "        self.bns = nn.ModuleList([\n            nn.BatchNorm1d(hidden_channels) for _ in range(num_layers)\n        ])\n\n    def forward(self, x, edge_index):\n        for i, conv in enumerate(self.convs):\n            x = conv(x, edge_index)\n            x = self.bns[i](x)\n            if i < self.num_layers - 1:\n                x = F.relu(x)\n                x = F.dropout(x, p=self.dropout, training=self.training)\n        return x\n\n\nclass LinkPredictor(nn.Module):\n    \"\"\"SEAL-inspired link predictor.\n\n    Uses GCN encoder + pairwise MLP decoder with structural features\n    (product, difference, L2 distance) that approximate SEAL's subgraph\n    information without the expensive subgraph extraction.\n    \"\"\"\n    def __init__(self, in_channels: int, hidden_channels: int = 256,\n                 num_layers: int = 2, dropout: float = 0.0):\n        super().__init__()\n        self.encoder = StructuralEncoder(in_channels, hidden_channels,\n                                          num_layers, dropout)\n        # SEAL-style pairwise features: concat, hadamard, L1, L2\n        # Input: z_src || z_dst || z_src*z_dst || |z_src-z_dst|\n        dec_in = hidden_channels * 4\n        self.decoder = nn.Sequential(\n            nn.Linear(dec_in, hidden_channels),\n            nn.ReLU(),"
+      }
+     }
+    }
+   ]
+  },
+  {
+   "role": "tool",
+   "content": "Successfully replaced text in pytorch-geometric-lp/custom_linkpred.py."
+  },
+  {
+   "role": "assistant",
+   "reasoning_content": "Point encode at the new StructuralEncoder.",
+   "content": "",
+   "tool_calls": [
+    {
+     "type": "function",
+     "function": {
+      "name": "str_replace",
+      "arguments": {
+       "path": "pytorch-geometric-lp/custom_linkpred.py",
+       "old_str": "    def encode(self, x: torch.Tensor, edge_index: torch.Tensor) -> torch.Tensor:\n        for i, conv in enumerate(self.convs):\n            x = conv(x, edge_index)\n            if i < self.num_layers - 1:\n                x = self.bns[i](x)\n                x = F.relu(x)\n                x = F.dropout(x, p=self.dropout, training=self.training)\n        return x",
+       "new_str": "    def encode(self, x: torch.Tensor, edge_index: torch.Tensor) -> torch.Tensor:\n        return self.encoder(x, edge_index)"
+      }
+     }
+    }
+   ]
+  },
+  {
+   "role": "tool",
+   "content": "Successfully replaced text in pytorch-geometric-lp/custom_linkpred.py."
+  },
+  {
+   "role": "assistant",
+   "reasoning_content": "Add the absolute-difference block to the decode concatenation.",
+   "content": "",
+   "tool_calls": [
+    {
+     "type": "function",
+     "function": {
+      "name": "str_replace",
+      "arguments": {
+       "path": "pytorch-geometric-lp/custom_linkpred.py",
+       "old_str": "        z_dst = z[edge_label_index[1]]\n        h = torch.cat([z_src, z_dst, z_src * z_dst], dim=-1)\n        return self.decoder(h).squeeze(-1)",
+       "new_str": "        z_dst = z[edge_label_index[1]]\n        h = torch.cat([\n            z_src, z_dst,\n            z_src * z_dst,\n            torch.abs(z_src - z_dst),\n        ], dim=-1)\n        return self.decoder(h).squeeze(-1)"
+      }
+     }
+    }
+   ]
+  },
+  {
+   "role": "tool",
+   "content": "Successfully replaced text in pytorch-geometric-lp/custom_linkpred.py."
+  },
+  {
+   "role": "assistant",
+   "reasoning_content": "",
+   "content": "Run the experiment to measure this.",
+   "tool_calls": [
+    {
+     "type": "function",
+     "function": {
+      "name": "run_experiment",
+      "arguments": {}
+     }
+    }
+   ]
+  },
+  {
+   "role": "tool",
+   "content": "Measured results — `baseline:seal` (`is_final,true`), seeds {42, 123, 456} and mean for Cora/CiteSeer;\nogbl-collab is seed 42 only.\n\n## Cora\n| seed | AUC | MRR | Hits@20 |\n|---|---|---|---|\n| 42 | 92.16 | 23.46 | 60.72 |\n| 123 | 92.32 | 21.49 | 54.84 |\n| 456 | 93.02 | 37.52 | 67.93 |\n| **mean** | **92.50** | **27.49** | **61.16** |\n\n## CiteSeer\n| seed | AUC | MRR | Hits@20 |\n|---|---|---|---|\n| 42 | 93.86 | 31.64 | 73.63 |\n| 123 | 93.01 | 34.29 | 74.73 |\n| 456 | 91.69 | 39.73 | 67.91 |\n| **mean** | **92.85** | **35.22** | **72.09** |\n\n## ogbl-collab\n| seed | Hits@50 | MRR |\n|---|---|---|\n| 42 | 57.88 | 10.58 |"
+  },
+  {
+   "role": "assistant",
+   "reasoning_content": "The SEAL rung landed almost exactly where I predicted, and the precise shape of its result is what\ntells me the next move. The full-layer normalization and the distance feature did stabilize Cora's AUC\n(seeds now 92.2 / 92.3 / 93.0, mean 92.5 — tighter and higher than gcn_dot's 91.3), and ogbl-collab\nHits@50 climbed to 57.88, past gcn_dot's 53.74, confirming that giving the decoder a *separation* view\nof the pair alongside the *similarity* view helps most on the dense large graph. But the small-graph\nranking metrics did *not* improve — they regressed: Cora MRR fell from gcn_dot's 31.18 to 27.49, Hits@20\nfrom 70.27 to 61.16; CiteSeer MRR 40.84→35.22, Hits@20 73.70→72.09. That is the tell. SEAL bought\nAUC and large-graph Hits by trading away top-of-list precision on the small graphs, and the reason is\nexactly what I flagged closing the last rung: SEAL is still *approximating* neighborhood overlap. Its\n\"structural\" signal is the absolute-difference feature $|z_{\\text{src}}-z_{\\text{dst}}|$ — a function of\nthe *learned embeddings*, not of the graph. When I asked it to discriminate the hardest pairs (the top\nof the MRR list), it had no measurement of the one quantity that actually decides links on citation and\ncollaboration graphs: how many neighbors do u and v literally share. It can only infer that overlap\nthrough whatever message passing folded into the embeddings, and on the hardest pairs that inference is\ntoo soft. So I am not going to add another *learned* pairwise feature. I am going to compute the\nstructural signal *exactly*, against the live adjacency, and hand it to the decoder.\n\nLet me be precise about the diagnosis before I commit, because this is a real expressiveness ceiling,\nnot a tuning issue. A message-passing GNN produces one embedding per node, so two structurally-identical\n(automorphic) destinations get the *same* embedding and therefore the *same* score against a fixed\nsource — even when one is a true neighbor and the other is not. Worse, a plain GNN cannot count\ntriangles, and a triangle through u, v, w is exactly a common neighbor w. So the common-neighbor /\nAdamic–Adar / resource-allocation family — the signal that has dominated link prediction on these graphs\nfor two decades — is precisely what every rung so far has been *structurally unable to represent*. VGAE,\ngcn_dot, and SEAL all score a pair only through the geometry of two independently-encoded points; none\nof them ever counts a shared neighbor. That is why SEAL's MRR stalled. The fix is to break the\nall-learned scoring and inject the explicit overlap counts.\n\nSo the structural insight I want is the one the SEAL lineage was reaching for but its harness-friendly\nform could not deliver: score a pair by a *learned function of explicit neighborhood-overlap features*,\nfused with the GNN embeddings. Concretely, for each candidate pair (u, v) compute the three canonical\noverlap heuristics directly from the adjacency: common neighbors CN(u,v) = |N(u) ∩ N(v)|, Adamic–Adar\nAA(u,v) = Σ_{w ∈ N(u)∩N(v)} 1/log deg(w), and resource allocation RA(u,v) = Σ_{w} 1/deg(w). CN is the\nraw triangle count — the A[1,1] distance-label count, the backbone signal a GNN cannot produce. AA and\nRA are degree-discounted variants: a shared neighbor that is a high-degree hub (cited by everyone) is\nweak evidence of a link, so AA down-weights it by 1/log deg and RA by 1/deg. Handing all three to the\ndecoder lets the MLP learn *which* discounting the data prefers rather than committing to one formula —\nthe learned-heuristic move. These three features are pair-relative: they depend on the joint\nneighborhood geometry of u and v, not on either node alone, so they separate exactly the\nautomorphic-node links the embedding-only decoders could not.\n\nNow the realization within this task's contract, and here I have to be honest about what the interface\nlets me build versus the fullest version of this idea. The fullest version computes, for each pair, the\nentire distance-label count table A[d_u, d_v] over a k-hop window — A[1,1] is CN, A[1,2]/A[2,1]/A[2,2]\nthe multi-hop overlaps — and, because computing those intersection cardinalities exactly over huge\nneighborhoods is expensive, estimates them with set sketches: MinHash for the Jaccard (intersection\nshape) and HyperLogLog for the cardinality (union size), propagated node-wise by elementwise min/max so\nthe per-edge cost is independent of graph size. That sketch machinery is what makes the idea scale to\nmillions of nodes. But this scaffold's interface gives me `decode(edge_label_index, z, edge_index)` —\nthe *original* node indices and the *live* adjacency — at decode time, on graphs of at most ~236k nodes,\nand the parameter budget is checked at startup. At this scale I do not need the sketches: I can compute\nCN/AA/RA *exactly* with a sparse-matrix routine. Build the CSR adjacency from `edge_index`, slice the\nrows for the batch's sources and destinations, take the elementwise product of those sparse rows to get\nthe per-pair common-neighbor indicator, then sum it (CN), sum it weighted by 1/log deg (AA), and by\n1/deg (RA). The whole thing stays sparse — no dense N×N materialization — so it is memory-feasible on\nogbl-collab. So the deliberate substitution is: *exact* CN/AA/RA via scipy sparse, in place of\n*sketched* multi-distance counts. I am keeping the load-bearing insight (explicit, pair-relative\noverlap counts as direct decoder inputs) and dropping the sketching and the multi-hop count table that\nthe harness neither needs at this scale nor exposes a clean hook for. The harness already passes the\ncorrect adjacency at each phase — train-only during validation, train+val at test, exactly as the OGB\nprotocol prescribes — so the overlap counts are computed against the right graph automatically.\n\nThe fusion is the other design point. The fullest version combines the structural counts with the\n*Hadamard product* of the propagated node features, edge-pooling style. The cleaner thing to do inside\nthis decoder, given I already have a good GNN encoder, is to project the three overlap counts up to the\nhidden width with a linear layer (so they enter the MLP on the same scale as the embeddings) and\n*concatenate* them with the two raw node embeddings: $h = [z_{\\text{src}}\\,\\|\\,z_{\\text{dst}}\\,\\|\\,\n\\text{proj}(\\text{CN}, \\text{AA}, \\text{RA})]$, then an MLP $3H\\to H\\to H\\to 1$. Concatenation rather\nthan Hadamard here is a deliberate, harness-matched choice: the structural counts are a *different kind*\nof quantity than the embeddings (integer-ish overlap magnitudes, not learned coordinates), so giving the\nMLP all of $z_{\\text{src}}$, $z_{\\text{dst}}$, and a learned embedding of the counts lets it model the\ninteraction between \"who the nodes are\" and \"how much they overlap\" without forcing the counts through a\nproduct with the embeddings. The overlap computation runs under `no_grad` — these are fixed structural\nmeasurements, not learned features, so no gradient needs to flow through the sparse adjacency ops — while\nthe projection and MLP are trained end-to-end. The encoder stays the GCN stack with BatchNorm on all\nlayers (as in SEAL), since the embeddings now sit beside projected counts and benefit from the same\nscale control.\n\nSo the finale edit lands in the editable region as a `StructuralFeatureComputer` (a `no_grad` scipy-\nsparse routine returning the [CN, AA, RA] per-pair feature) plus a `LinkPredictor` whose `encode` is the\nGCN stack and whose `decode` computes the structural features against the passed `edge_index`, projects\nthem, concatenates with the two embeddings, and runs the MLP. The encoder caches the encode-time\n`edge_index` and node count so `decode` has a sensible default adjacency when the loop does not pass one\nexplicitly. Nothing else changes — same loop, same BCE, same negative sampling. I am explicit that this\nis the exact-overlap, sketch-free realization: no MinHash, no HyperLogLog, no multi-distance count\ntable — the scale here makes exact CN/AA/RA both feasible and tighter than estimates.\n\nWhat is the bar, and what would I validate? There is no leaderboard row for this method on this task;\nthe bar is the strongest baseline, SEAL — Cora (AUC 92.5 / MRR 27.5 / Hits@20 61.2), CiteSeer (92.9 /\n35.2 / 72.1), ogbl-collab (Hits@50 57.88 / MRR 10.58). The falsifiable claims follow directly from the\ndiagnosis. First and sharpest: the small-graph *ranking* metrics that SEAL regressed should recover and\nexceed, because the explicit overlap counts are exactly the top-of-list signal SEAL lacked — I expect\nCora MRR and Hits@20 to climb back above gcn_dot's 31.2 / 70.3 (so clear of SEAL's 27.5 / 61.2), and\nCiteSeer likewise. Second: ogbl-collab Hits@50 should pass SEAL's 57.88, into the low-to-mid sixties,\nbecause CN/AA/RA are *the* dominant signal on a dense collaboration graph and SEAL only approximated\nthem — this is the cleanest single-number verdict. Third, the consistency check: AUC should hold around\nthe low-to-mid nineties (it was never the failing metric), and if it holds *while* MRR/Hits@20/Hits@50\nall rise, the whole trajectory's thesis is confirmed — that the ceiling on every embedding-only rung was\nthe inability to count shared neighbors, and that handing the decoder the exact overlap removes it. The\nway this could fail: if the exact CN/AA/RA features dominate the MLP so strongly that it ignores the\nnode features, the model could collapse toward a pure heuristic and lose the feature-driven gains on the\nfeature-rich citation graphs — I would watch for AUC *dropping* on Cora/CiteSeer as the warning sign,\nwhich would say the fusion (concat + projection) needs the structural features down-weighted relative to\nthe embeddings. So let me write the structural feature computer and the fused decoder in.",
+   "content": "The finale is a BUDDY-inspired decoder: compute exact common-neighbor / Adamic–Adar / resource-allocation\ncounts against the live adjacency and fuse them with the GCN embeddings. This first edit adds the\nno-grad scipy-sparse StructuralFeatureComputer and the new LinkPredictor docstring.",
+   "tool_calls": [
+    {
+     "type": "function",
+     "function": {
+      "name": "str_replace",
+      "arguments": {
+       "path": "pytorch-geometric-lp/custom_linkpred.py",
+       "old_str": "class StructuralEncoder(nn.Module):\n    \"\"\"GCN encoder augmented with structural node features.\"\"\"\n    def __init__(self, in_channels: int, hidden_channels: int,\n                 num_layers: int, dropout: float):\n        super().__init__()",
+       "new_str": "class StructuralFeatureComputer:\n    \"\"\"Precomputes structural pairwise features (approximating BUDDY sketches).\"\"\"\n\n    @staticmethod\n    @torch.no_grad()\n    def compute_cn_features(edge_index, num_nodes, edge_label_index):\n        \"\"\"Compute CN/AA/RA features using scipy sparse (memory-efficient).\"\"\"\n        import scipy.sparse as sp\n        device = edge_label_index.device\n\n        row = edge_index[0].cpu().numpy()\n        col = edge_index[1].cpu().numpy()\n        adj = sp.csr_matrix((np.ones(len(row)), (row, col)),\n                            shape=(num_nodes, num_nodes))\n\n        src = edge_label_index[0].cpu().numpy()\n        dst = edge_label_index[1].cpu().numpy()\n\n        # Sparse row extraction + element-wise multiply stays sparse\n        src_rows = adj[src]   # [batch, N] sparse\n        dst_rows = adj[dst]   # [batch, N] sparse\n        common = src_rows.multiply(dst_rows)  # sparse intersection\n\n        deg = np.asarray(adj.sum(axis=1)).flatten().clip(min=1)\n        cn = np.asarray(common.sum(axis=1)).flatten()\n        aa = np.asarray(common.multiply(1.0 / np.log(deg).clip(min=1.0))\n                        .sum(axis=1)).flatten()\n        ra = np.asarray(common.multiply(1.0 / deg).sum(axis=1)).flatten()\n\n        return torch.tensor(np.stack([cn, aa, ra], axis=1),\n                            dtype=torch.float32, device=device)\n\n\nclass LinkPredictor(nn.Module):\n    \"\"\"BUDDY-inspired link predictor.\n\n    Combines GCN node embeddings with precomputed structural features\n    (common neighbors, Adamic-Adar, resource allocation) via an MLP decoder.\n    This approximates BUDDY's subgraph sketching approach.\n\n    The new decode interface takes `edge_label_index` (original node\n    indices) and the full embedding table `z` directly, so we no longer\n    need to recover indices via hashing/argmax.  The training graph\n    `edge_index` is also passed through, enabling exact CN/AA/RA\n    computation against whichever adjacency is in use (train-only during\n    validation, train+val during final test, as OGB prescribes).\n    \"\"\"\n    def __init__(self, in_channels: int, hidden_channels: int = 256,\n                 num_layers: int = 2, dropout: float = 0.0):\n        super().__init__()"
+      }
+     }
+    }
+   ]
+  },
+  {
+   "role": "tool",
+   "content": "Successfully replaced text in pytorch-geometric-lp/custom_linkpred.py."
+  },
+  {
+   "role": "assistant",
+   "reasoning_content": "",
+   "content": "",
+   "tool_calls": [
+    {
+     "type": "function",
+     "function": {
+      "name": "str_replace",
+      "arguments": {
+       "path": "pytorch-geometric-lp/custom_linkpred.py",
+       "old_str": "\n        self.convs = nn.ModuleList()",
+       "new_str": "\n        # GCN encoder\n        self.convs = nn.ModuleList()"
+      }
+     }
+    }
+   ]
+  },
+  {
+   "role": "tool",
+   "content": "Successfully replaced text in pytorch-geometric-lp/custom_linkpred.py."
+  },
+  {
+   "role": "assistant",
+   "reasoning_content": "",
+   "content": "",
+   "tool_calls": [
+    {
+     "type": "function",
+     "function": {
+      "name": "str_replace",
+      "arguments": {
+       "path": "pytorch-geometric-lp/custom_linkpred.py",
+       "old_str": "            self.convs.append(GCNConv(hidden_channels, hidden_channels))\n\n        self.bns = nn.ModuleList([",
+       "new_str": "            self.convs.append(GCNConv(hidden_channels, hidden_channels))\n        self.bns = nn.ModuleList(["
+      }
+     }
+    }
+   ]
+  },
+  {
+   "role": "tool",
+   "content": "Successfully replaced text in pytorch-geometric-lp/custom_linkpred.py."
+  },
+  {
+   "role": "assistant",
+   "reasoning_content": "Replace the inherited StructuralEncoder forward and four-block decoder with the count-projection decoder.",
+   "content": "",
+   "tool_calls": [
+    {
+     "type": "function",
+     "function": {
+      "name": "str_replace",
+      "arguments": {
+       "path": "pytorch-geometric-lp/custom_linkpred.py",
+       "old_str": "\n    def forward(self, x, edge_index):\n        for i, conv in enumerate(self.convs):\n            x = conv(x, edge_index)\n            x = self.bns[i](x)\n            if i < self.num_layers - 1:\n                x = F.relu(x)\n                x = F.dropout(x, p=self.dropout, training=self.training)\n        return x\n\n\nclass LinkPredictor(nn.Module):\n    \"\"\"SEAL-inspired link predictor.\n\n    Uses GCN encoder + pairwise MLP decoder with structural features\n    (product, difference, L2 distance) that approximate SEAL's subgraph\n    information without the expensive subgraph extraction.\n    \"\"\"\n    def __init__(self, in_channels: int, hidden_channels: int = 256,\n                 num_layers: int = 2, dropout: float = 0.0):\n        super().__init__()\n        self.encoder = StructuralEncoder(in_channels, hidden_channels,\n                                          num_layers, dropout)\n        # SEAL-style pairwise features: concat, hadamard, L1, L2\n        # Input: z_src || z_dst || z_src*z_dst || |z_src-z_dst|\n        dec_in = hidden_channels * 4\n        self.decoder = nn.Sequential(",
+       "new_str": "\n        # Structural feature dimension: CN, AA, RA = 3\n        struct_dim = 3\n        self.struct_proj = nn.Linear(struct_dim, hidden_channels)\n\n        # MLP decoder: node features + structural features\n        dec_in = hidden_channels * 2 + hidden_channels  # src, dst, struct\n        self.decoder = nn.Sequential("
+      }
+     }
+    }
+   ]
+  },
+  {
+   "role": "tool",
+   "content": "Successfully replaced text in pytorch-geometric-lp/custom_linkpred.py."
+  },
+  {
+   "role": "assistant",
+   "reasoning_content": "Inline the GCN stack into encode and cache the adjacency + node count for decode.",
+   "content": "",
+   "tool_calls": [
+    {
+     "type": "function",
+     "function": {
+      "name": "str_replace",
+      "arguments": {
+       "path": "pytorch-geometric-lp/custom_linkpred.py",
+       "old_str": "\n    def encode(self, x: torch.Tensor, edge_index: torch.Tensor) -> torch.Tensor:\n        return self.encoder(x, edge_index)",
+       "new_str": "\n        # Cached context set at encode-time so decode() has sensible\n        # defaults when the caller does not pass edge_index explicitly.\n        self._edge_index = None\n        self._num_nodes = None\n\n    def encode(self, x: torch.Tensor, edge_index: torch.Tensor) -> torch.Tensor:\n        self._edge_index = edge_index\n        self._num_nodes = x.size(0)\n        for i, conv in enumerate(self.convs):\n            x = conv(x, edge_index)\n            x = self.bns[i](x)\n            if i < self.num_layers - 1:\n                x = F.relu(x)\n                x = F.dropout(x, p=self.dropout, training=self.training)\n        return x"
+      }
+     }
+    }
+   ]
+  },
+  {
+   "role": "tool",
+   "content": "Successfully replaced text in pytorch-geometric-lp/custom_linkpred.py."
+  },
+  {
+   "role": "assistant",
+   "reasoning_content": "Rebuild decode: compute the structural features, project them, concat with the two embeddings, run the MLP.",
+   "content": "",
+   "tool_calls": [
+    {
+     "type": "function",
+     "function": {
+      "name": "str_replace",
+      "arguments": {
+       "path": "pytorch-geometric-lp/custom_linkpred.py",
+       "old_str": "               num_nodes: Optional[int] = None) -> torch.Tensor:\n        z_src = z[edge_label_index[0]]\n        z_dst = z[edge_label_index[1]]\n        h = torch.cat([\n            z_src, z_dst,\n            z_src * z_dst,\n            torch.abs(z_src - z_dst),\n        ], dim=-1)\n        return self.decoder(h).squeeze(-1)",
+       "new_str": "               num_nodes: Optional[int] = None) -> torch.Tensor:\n        # Resolve the adjacency to use for structural features.\n        ei = edge_index if edge_index is not None else self._edge_index\n        N = num_nodes if num_nodes is not None else (\n            self._num_nodes if self._num_nodes is not None else z.size(0))\n\n        with torch.no_grad():\n            struct_feats = StructuralFeatureComputer.compute_cn_features(\n                ei, N, edge_label_index)\n        struct_h = self.struct_proj(struct_feats.float())\n\n        z_src = z[edge_label_index[0]]\n        z_dst = z[edge_label_index[1]]\n        h = torch.cat([z_src, z_dst, struct_h], dim=-1)\n        return self.decoder(h).squeeze(-1)"
+      }
+     }
+    }
+   ]
+  },
+  {
+   "role": "tool",
+   "content": "Successfully replaced text in pytorch-geometric-lp/custom_linkpred.py."
+  }
+ ]
+}

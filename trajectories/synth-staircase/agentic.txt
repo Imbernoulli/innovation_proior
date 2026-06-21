@@ -1,0 +1,950 @@
+<meta task="synth-staircase" domain="Learning theory" file="pytorch-examples/synth_staircase/custom_strategy.py" model_format="qwen3" edit_tool="str_replace"/>
+
+<system>
+You are a research engineer improving a model on a fixed ML task. You work by editing the model code and running experiments. Think carefully before each change. You have these tools:
+- str_replace(path, old_str, new_str): replace the unique occurrence of old_str with new_str.
+- create(path, file_text): create a new file.
+- run_experiment(): train + evaluate the current code under the fixed budget; returns metrics.
+Make one tool call at a time. After editing, call run_experiment() to measure your method.
+</system>
+
+<user>
+## Research question
+
+A two-layer fully connected network of width `M`, trained by online batch-SGD on the hypercube
+`{+1,-1}^d`, has to recover a latent sparse target `f*(x) = h*(x_{j_1},...,x_{j_P})` that depends on
+only `P=4` of the `d=100` coordinates — across the full range of "hierarchy levels" of `h*`. The single
+thing being designed is the **learning strategy**: the model (architecture / initialization /
+parametrization), the optimizer, and the one-step update. Everything else — the uniform `{+1,-1}^d`
+sampler, the three targets, the squared loss, the evaluation — is fixed. Three targets span the
+hierarchy: the leap-1 vanilla staircase `h1(z)=z1+z1z2+z1z2z3`, the leap-2 non-MSP chain
+`h2(z)=z1z2+z2z3+z3z4`, and the leap-3 pure monomial `h3(z)=z1z2z3`. A strategy that nails `h1` but
+collapses on `h3` scores poorly, because the aggregate is a geometric mean over the three environments.
+
+## Prior art before the first rung (sparse-function-learning lineage)
+
+The ladder reacts to a single, sharp prior fact: which sparse Boolean functions a plain SGD-trained
+network can find depends on the *hierarchical structure* of the target's Fourier support, and fixed
+feature maps cannot find any of them cheaply. The methods on the ladder are the responses to that fact.
+
+- **Fixed-feature lower bounds (Ghorbani-Mei-Misiakiewicz-Montanari, Ann. Stat. 2021;
+  Hsu-Sanford-Servedio-Vlatakis-Gkaragkounis 2021).** Any linear method on a *fixed* feature map (kernel,
+  random features) needs `n = Omega(d^k)` samples to fit a `k`-sparse parity. With the budget here
+  (`n = b·T = 150·4000 = 6·10^5`, `d = 100`) that is enough for degree-1 and -2 components but *not* for
+  the degree-3 monomial. Gap: a frozen feature map cannot adapt to the unknown latent subset `I`, so it
+  pays `d^k` for the high-degree pieces of every target.
+- **Mean-field limit of two-layer SGD (Mei-Montanari-Nguyen 2018; Chizat-Bach 2018).** With the `1/M`
+  output normalization the weights travel an `O(1)` distance, so the network stays in the
+  *feature-learning* regime and SGD concentrates onto a Wasserstein gradient flow on the empirical
+  measure of neurons — features can move toward the latent coordinates. Gap: this says the dynamics is
+  nonlinear and adaptive, but does not by itself say *which* targets the flow can drive to zero risk.
+- **Saddle-to-saddle / hierarchical pickup (Jacot et al. 2021; Abbe-Boix-Adsera-Misiakiewicz 2022,
+  2023).** Started from the near-origin init the mean-field flow leaves the signal directions at a saddle;
+  a coordinate's weight only escapes once the lower-degree supports beneath it are lit, so components are
+  learned in increasing degree, each higher stair an order of magnitude slower than the one below. This
+  is what makes a *staircase* learnable in `O(d)` and a non-staircase (a leap straight to high degree)
+  provably stuck. Gap: vanilla SGD only climbs *one* coordinate at a time, so a single leap larger than
+  one new coordinate stalls it.
+
+## The fixed substrate
+
+The harness is frozen and must not be touched. It fixes: ambient dimension `d=100`, latent dimension
+`P=4`, width `M=100`, batch size `b=150`, total online-SGD steps `T=4000` (one-pass — every batch is
+freshly sampled from `Unif({+1,-1}^d)`), and a test set of `8192` fresh samples. For each top-level seed
+it draws a fresh random latent subset `I` of size `P` (so the strategy must work for *any* placement of
+the latent coordinates), builds `f*(x)=h*(x_I)`, trains one run, and reports test MSE and Fourier
+recovery. The data sampler, the three targets `h1/h2/h3`, the squared loss `((pred-y)^2).mean()`, the
+Fourier-recovery evaluation, and the `train_one_run`/`run_benchmark` driver are all fixed. The driver
+calls the three editable functions and nothing else: it builds the model once per run via `build_model`,
+wraps it with `get_optimizer`, and at every step samples a fresh `(x,y)` and calls `train_step`.
+
+## The editable interface
+
+Exactly one region of `pytorch-examples/synth_staircase/custom_strategy.py` is editable — the three
+functions `build_model(config)`, `get_optimizer(model, config)`, and `train_step(model, optimizer, x, y)`.
+The contract: `build_model` returns a fresh `nn.Module` consuming `[B,d]` (entries in `{+1,-1}`) and
+returning `[B]` or `[B,1]`; `get_optimizer` wraps only `model.parameters()` (or a filtered subset);
+`train_step` performs one optimizer step on a fresh batch and returns the scalar training loss as a
+Python `float` (it must call `optimizer.zero_grad()` itself). `config` is the fixed `TaskConfig`
+(`config.d`, `config.width`, `config.batch_size`, ...). Every method on the ladder is a fill of exactly
+this contract.
+
+The starting point is the scaffold default: a two-layer mean-field network with shifted-sigmoid
+activation, random `+-1` readout signs, `N(0,I_d)` first layer, no bias, plain SGD at `lr=0.5`. Each
+method replaces exactly these three definitions and nothing else.
+
+```python
+# EDITABLE region of custom_strategy.py — default fill (mean-field two-layer SGD)
+def build_model(config: TaskConfig) -> nn.Module:
+    class TwoLayerMeanField(nn.Module):
+        def __init__(self, d: int, M: int) -> None:
+            super().__init__()
+            self.fc1 = nn.Linear(d, M, bias=False)
+            self.fc2 = nn.Linear(M, 1, bias=False)
+            # Mean-field init: w_j ~ N(0, I_d); no trainable first-layer bias.
+            nn.init.normal_(self.fc1.weight, mean=0.0, std=1.0)
+            with torch.no_grad():
+                signs = torch.randint(0, 2, (M, 1), dtype=torch.float32) * 2.0 - 1.0
+                self.fc2.weight.copy_(signs.t())          # a_j ~ Unif({+1,-1})
+            self.M = M
+
+        @staticmethod
+        def _shifted_sigmoid(u: torch.Tensor) -> torch.Tensor:
+            return torch.sigmoid(u - 0.5)                  # sigma(x) = (1 + e^{-x+0.5})^{-1}
+
+        def forward(self, x: torch.Tensor) -> torch.Tensor:
+            h = self._shifted_sigmoid(self.fc1(x))
+            return self.fc2(h).view(-1) / self.M           # 1/M mean-field normalization
+
+    return TwoLayerMeanField(d=config.d, M=config.width)
+
+
+def get_optimizer(model: nn.Module, config: TaskConfig) -> torch.optim.Optimizer:
+    return torch.optim.SGD(model.parameters(), lr=0.5, momentum=0.0)  # plain SGD, eta = 1/2
+
+
+def train_step(model, optimizer, x, y) -> float:
+    optimizer.zero_grad(set_to_none=True)
+    pred = model(x).view(-1)
+    loss = ((pred - y) ** 2).mean()                        # square loss, fresh batch
+    loss.backward()
+    optimizer.step()
+    return float(loss.item())
+```
+
+## Evaluation settings
+
+Three environments, one per latent target — `h1` (leap-1 / MSP staircase), `h2` (leap-2 non-MSP chain),
+`h3` (leap-3 monomial) — each over three top-level seeds `{42, 123, 456}`, one run per seed with a fresh
+latent subset `I`. For each environment three quantities are reported: `test_mse_{env}` (squared error of
+`model(x)` against `h*(x_I)` on the held-out test set, lower is better), `fourier_recovery_{env}` (mean
+`|hat_S(model) - hat_S(h*)|` over the latent monomials, lower is better), and the primary leaderboard
+metric `score_{env} = exp(-test_mse_{env})`, bounded in `(0,1]`, higher is better. The aggregate task
+score is the geometric mean of the three per-environment scores, so a catastrophic failure on any one
+environment is not papered over by a strong result on another.
+
+The editable model code is in `pytorch-examples/synth_staircase/custom_strategy.py`:
+```python
+def build_model(config: TaskConfig) -> nn.Module:
+    """Construct the trainable model used by the SGD loop.
+
+    The reference baseline is a two-layer fully-connected network with the
+    shifted sigmoid activation sigma(x) = (1 + exp(-x + 0.5))^(-1) used by
+    Abbe, Boix-Adsera, Misiakiewicz (2022, Fig. 1) and width M = config.width.
+
+    The model must consume a tensor of shape [B, d] and produce a tensor of
+    shape [B] or [B, 1]. The forward pass should be a scalar regressor.
+    """
+
+    class TwoLayerMeanField(nn.Module):
+        def __init__(self, d: int, M: int) -> None:
+            super().__init__()
+            self.fc1 = nn.Linear(d, M, bias=False)
+            self.fc2 = nn.Linear(M, 1, bias=False)
+            # Mean-field-style init from Abbe et al. Fig. 1: a_j ~ Unif({+1, -1}),
+            # w_j ~ N(0, 1).
+            nn.init.normal_(self.fc1.weight, mean=0.0, std=1.0)
+            # No trainable bias: the fixed -0.5 activation shift is the only offset.
+            with torch.no_grad():
+                signs = torch.randint(0, 2, (M, 1), dtype=torch.float32) * 2.0 - 1.0
+                self.fc2.weight.copy_(signs.t())
+            self.M = M
+
+        @staticmethod
+        def _shifted_sigmoid(u: torch.Tensor) -> torch.Tensor:
+            return torch.sigmoid(u - 0.5)
+
+        def forward(self, x: torch.Tensor) -> torch.Tensor:
+            h = self._shifted_sigmoid(self.fc1(x))
+            # Mean-field normalization 1/M.
+            return self.fc2(h).view(-1) / self.M
+
+    return TwoLayerMeanField(d=config.d, M=config.width)
+
+
+def get_optimizer(model: nn.Module, config: TaskConfig) -> torch.optim.Optimizer:
+    """Construct the optimizer. Default = plain SGD with lr = 0.5 (Abbe Fig. 1)."""
+    lr = 0.5
+    return torch.optim.SGD(model.parameters(), lr=lr, momentum=0.0)
+
+
+def train_step(
+    model: nn.Module,
+    optimizer: torch.optim.Optimizer,
+    x: torch.Tensor,
+    y: torch.Tensor,
+) -> float:
+    """One online SGD step on a fresh batch (x, y). Returns float training loss."""
+    optimizer.zero_grad(set_to_none=True)
+    pred = model(x).view(-1)
+    loss = ((pred - y) ** 2).mean()
+    loss.backward()
+    optimizer.step()
+    return float(loss.item())
+```
+Improve it. Derive your method, edit the code, then run_experiment().
+</user>
+
+### step 1 — NTK (frozen random features)   [slug:ntk]
+
+<think>
+The bonus of the whole task is feature learning, but the floor — the thing every adaptive method has to
+beat — is the strategy that learns *no* features at all: freeze the first layer at its random
+initialization and let only the readout move. That is the lazy / NTK regime, and it is the right place to
+start, because if I can name precisely what a fixed feature map can and cannot do on these three targets,
+I have the yardstick that every later rung is measured against. So I start here not because I think it
+will win, but because it is the most honest possible baseline: it is the network with its capacity to
+adapt deliberately switched off.
+
+Let me set up what "no feature learning" means concretely inside this scaffold. The contract gives me
+`build_model`, `get_optimizer`, `train_step` on a two-layer net, with `d=100`, `M=100`, batch `b=150`,
+`T=4000` one-pass steps. The default fill is the mean-field network whose weights are free to move; to
+turn it into a fixed-feature machine I keep the same two-layer shape but *freeze the first layer*. The
+first layer becomes a bank of `M` random features `phi_j(x) = sigma(<w_j, x> + c_j)` with `w_j, c_j`
+sampled once and never updated, and the model output is a linear combination of those features,
+`fhat(x) = (1/sqrt(M)) sum_j a_j phi_j(x)`, with only the readout `a` trainable. Training the readout by
+square loss on fresh batches is exactly online least-squares regression onto a fixed `M`-dimensional
+feature map — there is nothing nonlinear left in the optimization, the loss in `a` is convex, and the
+whole object is a random-features approximation to kernel ridge regression. This is the canonical lazy
+baseline, and the reason it deserves a rung of its own: it is the regime a two-layer network *falls into*
+if you parametrize it the wrong way, so I want to see exactly how badly it does before I argue for the
+feature-learning parametrization.
+
+Now the choices inside this frozen-feature fill, because they are not arbitrary even though nothing
+adapts. First, the activation and the initialization scale. The default mean-field net uses a
+shifted-sigmoid with `w ~ N(0, I_d)`; for the lazy baseline I switch to a ReLU random-feature stack with
+`w ~ N(0, 1/d)` and a bias `c ~ N(0,1)`. The reason for the `1/d` variance is that with `x in {+1,-1}^d`
+the pre-activation `<w,x>` is a sum of `d` independent terms, so with unit-variance weights it would have
+standard deviation `sqrt(d) ≈ 10` — the ReLU would be essentially linear-or-dead over the data and the
+features would be a poor, ill-conditioned basis. Scaling the weights to `N(0, 1/d)` keeps `<w,x>` at
+`O(1)`, which is the standard NTK / He-style scaling that makes the random features a sensible, isotropic
+sketch of the input space. The nonzero bias `c ~ N(0,1)` shifts each ReLU's kink off the origin so the
+features tile the input distribution rather than all firing on the same half-space. Second, the output
+normalization: `1/sqrt(M)` rather than the mean-field `1/M`. This is the load-bearing difference between
+this rung and the next. With `1/sqrt(M)` and unit-scale readout, each of the `M` features contributes
+`O(1/sqrt(M))` to the output and the readout can move an `O(1)` amount while the *first-layer* weights, if
+they were trainable, would barely move — that is precisely the linearization-around-init that defines the
+lazy regime. I am choosing the parametrization that keeps the network a fixed kernel machine; that choice
+is the whole point of the baseline. Third, the readout initialization: I start `a` at zero. Since the
+features are fixed and the objective is convex in `a`, the init only affects the transient, and starting at
+zero means the network outputs `0` before training and the readout grows toward the least-squares solution
+— clean and reproducible.
+
+The optimizer and step size follow from the same logic. The readout sees a fixed feature Gram matrix
+`Phi^T Phi / b` whose scale is set by the feature variance; with `1/sqrt(M)` normalization and `M=100`
+features, a learning rate of `0.5` on the readout would be far too large and the online least-squares
+iterate would oscillate or diverge. The right scale is to shrink the readout step by the feature
+dimension, so I use `lr = 0.5 / d` on the trainable parameters only — `get_optimizer` filters to
+`requires_grad` parameters (just the readout, since the first layer is frozen), and plain SGD with no
+momentum keeps the iterate a faithful online gradient step on the convex readout problem. The
+`train_step` is the unchanged square-loss-on-a-fresh-batch step: zero the gradients, forward, square
+error, backward, step, return the float loss. There is no auxiliary loss, no alternation, nothing — the
+simplicity is the baseline.
+
+Now the part that actually matters: reasoning about what this floor can and cannot do, because that is the
+entire purpose of running it. A fixed feature map `phi` defines a kernel `K(x,x') = E_{w,c}[phi_w(x)
+phi_w(x')]`, and online least-squares onto `M` random features approximates ridgeless regression in the
+RKHS of `K`. The question for each target is whether `h*` lies in the span that `M=100` random features
+plus `n = 6·10^5` samples can resolve. The fixed-feature lower bounds answer it sharply: a degree-`k`
+sparse parity over an *unknown* subset `I` requires `min(n, q) = Omega(d^k)` for any feature map of
+dimension `q`. Here `q` is bounded by the number of features `M=100` *and* by the sample budget `n`, and
+`d=100`, so the relevant thresholds are `d^1 = 100`, `d^2 = 10^4`, `d^3 = 10^6`. My budget `n = 6·10^5`
+sits *below* `d^3`, and my feature count `M = 100` sits at `d^1`. So the prediction is concrete and
+per-degree. The degree-1 component (the lone `z1` term in `h1`) is reachable — a linear function of a
+single coordinate is in the span of even a modest random-feature basis with `O(d)` samples. The degree-2
+components (the `z1z2` term in `h1`, all three terms of `h2`) sit right at the `d^2 = 10^4` threshold: my
+sample budget clears it, but with only `M=100` features the random basis cannot *resolve* a degree-2
+monomial over an unknown pair of coordinates, because a generic random-feature map needs `Omega(d^2)`
+features to have a degree-2 product over a specific unknown pair in its effective span. So even the
+degree-2 pieces are out of reach at `M=100`. The degree-3 components (the `z1z2z3` term in `h1`, all of
+`h3`) need `d^3 = 10^6` — both my sample budget and my feature count are below that, so they are flatly
+unreachable. The net prediction: the lazy baseline recovers at best the degree-1 piece of `h1` and is
+essentially at the trivial predictor on everything else.
+
+What does "the trivial predictor" score? Each target has unit-magnitude monomials and zero mean, so the
+constant predictor `0` has `test_mse = E[h*(x)^2] = (number of monomials)`. For `h1` that is
+`||z1||^2 + ||z1z2||^2 + ||z1z2z3||^2 = 3`; if the lazy machine grabs the degree-1 term it removes one
+unit and lands near `test_mse ≈ 2`, with `score = exp(-2) ≈ 0.13`. For `h2` (three degree-2 monomials)
+the constant predictor gives `test_mse = 3` and `score = exp(-3) ≈ 0.05`, and since no degree-2 piece is
+resolvable the lazy machine should sit right there. For `h3` (a single degree-3 monomial) the variance is
+`1`, so `test_mse ≈ 1` and `score = exp(-1) ≈ 0.37` — note that `h3`'s score looks the *highest* of the
+three precisely because its target is the *smallest* in magnitude, not because the method learns anything;
+it is the trivial-predictor score of a unit-variance target. This is the trap the geometric-mean
+aggregate is built to expose, and it is worth naming now so I read the later rungs correctly: a high
+`score_h3` is *not* evidence of learning `h3`; only a `score_h3` close to `1` (i.e. `test_mse` near zero)
+would be. The Fourier-recovery metric is the honest tell — it measures `|hat_S(model) - hat_S(h*)|`
+directly, so a lazy machine that recovers nothing will show recovery close to the full coefficient
+magnitude (near `1` per monomial), regardless of how flattering the `score` looks.
+
+So I expect the lazy baseline to be the floor by construction, and a particular *shape* of floor:
+near-trivial `test_mse` on all three targets, Fourier recovery close to its worst possible value, and the
+deceptively-high `score_h3` that comes from `h3`'s small target magnitude rather than from learning. The
+one place it might show life is the degree-1 piece of `h1`, which should pull `test_mse_h1` slightly below
+the full constant-predictor value — a small, real signal that this is a regression onto features, not pure
+noise. Everything else should be stuck, and stuck for the structural reason the fixed-feature bounds name:
+the feature map is frozen *before* it knows which coordinates are latent, so it cannot put its limited
+capacity where the signal is.
+
+The diagnosis this rung is built to deliver is therefore already pointed at the next step. The failure is
+not a learning-rate or an optimizer problem — the readout regression is convex and converges. It is that
+the *features cannot move toward the latent subset `I`*. The fix is not a better optimizer on the same
+frozen features; it is to *unfreeze* the features — to leave the lazy regime and put the network in the
+parametrization where the first-layer weights travel an `O(1)` distance and can rotate toward the signal
+coordinates. That is exactly the mean-field scaling, and it is the next rung: keep the two-layer shape but
+swap the `1/sqrt(M)` lazy normalization for the `1/M` mean-field one, unfreeze the first layer, and use
+plain SGD with a large step so the weights actually move. I expect that to do strictly better than the
+floor on `h1`, because feature learning can climb the leap-1 staircase that no fixed feature map can
+reach — and I expect it to *still* fail on `h2` and `h3`, because feature learning alone climbs only one
+coordinate at a time. But that is the next rung's question. Here the only claim is the floor: with the
+features frozen, the network is a kernel machine that cannot adapt to the hidden subset, and on
+high-degree sparse targets a non-adaptive kernel machine cannot escape the trivial predictor at this
+budget. So let me build the frozen-feature fill — ReLU random features, `1/sqrt(M)` output, readout-only
+SGD — and measure the floor.
+</think>
+<say>
+The honest floor first: a frozen-feature NTK baseline. This edit rewrites `build_model` into a ReLU
+random-feature net with the first layer fixed at init and `1/sqrt(M)` output, and points the optimizer at
+the readout-only parameters with `lr = 0.5/d`.
+</say>
+<edit path="pytorch-examples/synth_staircase/custom_strategy.py">
+<old>
+def build_model(config: TaskConfig) -> nn.Module:
+    """Construct the trainable model used by the SGD loop.
+
+    The reference baseline is a two-layer fully-connected network with the
+    shifted sigmoid activation sigma(x) = (1 + exp(-x + 0.5))^(-1) used by
+    Abbe, Boix-Adsera, Misiakiewicz (2022, Fig. 1) and width M = config.width.
+
+    The model must consume a tensor of shape [B, d] and produce a tensor of
+    shape [B] or [B, 1]. The forward pass should be a scalar regressor.
+    """
+
+    class TwoLayerMeanField(nn.Module):
+        def __init__(self, d: int, M: int) -> None:
+            super().__init__()
+            self.fc1 = nn.Linear(d, M, bias=False)
+            self.fc2 = nn.Linear(M, 1, bias=False)
+            # Mean-field-style init from Abbe et al. Fig. 1: a_j ~ Unif({+1, -1}),
+            # w_j ~ N(0, 1).
+            nn.init.normal_(self.fc1.weight, mean=0.0, std=1.0)
+            # No trainable bias: the fixed -0.5 activation shift is the only offset.
+            with torch.no_grad():
+                signs = torch.randint(0, 2, (M, 1), dtype=torch.float32) * 2.0 - 1.0
+                self.fc2.weight.copy_(signs.t())
+            self.M = M
+
+        @staticmethod
+        def _shifted_sigmoid(u: torch.Tensor) -> torch.Tensor:
+            return torch.sigmoid(u - 0.5)
+
+        def forward(self, x: torch.Tensor) -> torch.Tensor:
+            h = self._shifted_sigmoid(self.fc1(x))
+            # Mean-field normalization 1/M.
+            return self.fc2(h).view(-1) / self.M
+
+    return TwoLayerMeanField(d=config.d, M=config.width)
+
+
+def get_optimizer(model: nn.Module, config: TaskConfig) -> torch.optim.Optimizer:
+    """Construct the optimizer. Default = plain SGD with lr = 0.5 (Abbe Fig. 1)."""
+    lr = 0.5
+    return torch.optim.SGD(model.parameters(), lr=lr, momentum=0.0)
+</old>
+<new>
+def build_model(config: TaskConfig) -> nn.Module:
+    """Random-feature / NTK-style network: freeze first layer, train head."""
+
+    class RandomFeaturesNTK(nn.Module):
+        def __init__(self, d: int, M: int) -> None:
+            super().__init__()
+            self.fc1 = nn.Linear(d, M, bias=True)
+            self.fc2 = nn.Linear(M, 1, bias=False)
+            # He / NTK-style init for ReLU: w ~ N(0, 1/d), b ~ N(0, 1).
+            nn.init.normal_(self.fc1.weight, mean=0.0, std=(1.0 / d) ** 0.5)
+            nn.init.normal_(self.fc1.bias, mean=0.0, std=1.0)
+            nn.init.zeros_(self.fc2.weight)
+            # Freeze first-layer weights (the "lazy" / NTK regime where features
+            # are fixed at initialization).
+            self.fc1.weight.requires_grad_(False)
+            self.fc1.bias.requires_grad_(False)
+            self.M = M
+
+        def forward(self, x: torch.Tensor) -> torch.Tensor:
+            h = torch.relu(self.fc1(x))
+            # 1/sqrt(M) normalization for NTK-style output.
+            return self.fc2(h).view(-1) / (self.M ** 0.5)
+
+    return RandomFeaturesNTK(d=config.d, M=config.width)
+
+
+def get_optimizer(model: nn.Module, config: TaskConfig) -> torch.optim.Optimizer:
+    """SGD on the trainable parameters (just the readout in lazy training)."""
+    params = [p for p in model.parameters() if p.requires_grad]
+    return torch.optim.SGD(params, lr=0.5 / config.d, momentum=0.0)
+</new>
+</edit>
+<obs>
+Successfully replaced text in pytorch-examples/synth_staircase/custom_strategy.py.
+</obs>
+<note>
+Strip the leftover docstring line from `train_step`; the square-loss step itself is unchanged.
+</note>
+<edit path="pytorch-examples/synth_staircase/custom_strategy.py">
+<old>
+) -> float:
+    """One online SGD step on a fresh batch (x, y). Returns float training loss."""
+    optimizer.zero_grad(set_to_none=True)
+</old>
+<new>
+) -> float:
+    optimizer.zero_grad(set_to_none=True)
+</new>
+</edit>
+<obs>
+Successfully replaced text in pytorch-examples/synth_staircase/custom_strategy.py.
+</obs>
+<run/>
+<obs>
+Measured results — `baseline:ntk` (`is_final,true`), seeds {42, 123, 456} and mean.
+
+## h1 (leap-1 staircase)
+| seed | test_mse | fourier_recovery | score |
+|---|---|---|---|
+| 42 | 2.832301 | 0.968078 | 0.058877 |
+| 123 | 2.748306 | 0.948356 | 0.064036 |
+| 456 | 2.771983 | 0.951305 | 0.062538 |
+| **mean** | **2.784197** | **0.955913** | **0.061817** |
+
+## h2 (leap-2 non-MSP chain)
+| seed | test_mse | fourier_recovery | score |
+|---|---|---|---|
+| 42 | 2.957280 | 0.986024 | 0.051960 |
+| 123 | 3.033480 | 1.011253 | 0.048148 |
+| 456 | 2.988389 | 0.996408 | 0.050368 |
+| **mean** | **2.993050** | **0.997895** | **0.050159** |
+
+## h3 (leap-3 monomial)
+| seed | test_mse | fourier_recovery | score |
+|---|---|---|---|
+| 42 | 0.999993 | 0.999961 | 0.367882 |
+| 123 | 0.999632 | 0.999795 | 0.368015 |
+| 456 | 0.999983 | 0.999988 | 0.367886 |
+| **mean** | **0.999869** | **0.999915** | **0.367928** |
+
+Aggregate (geometric mean of per-env `score` means): **0.1045**.
+</obs>
+
+### step 2 — Mean-field two-layer SGD   [slug:mean-field-sgd]
+
+<think>
+The lazy baseline told me exactly what is missing, and it told me in the Fourier-recovery column. NTK
+landed at `test_mse_h1 = 2.78`, `h2 = 2.99`, `h3 = 1.00` — all three sitting essentially at their
+trivial-predictor variances (`3, 3, 1`), with recovery `0.96, 1.00, 1.00`, i.e. it recovered *almost
+nothing* on any target. Even `h1`, where I expected the degree-1 piece to be reachable, only fell from `3`
+to `2.78`: the frozen `M=100` random-feature basis barely resolved the lone `z1` term and got none of the
+`z1z2` or `z1z2z3` pieces. The deceptive `score_h3 = 0.368` is exactly the artifact I flagged — `h3` has
+unit variance, so the trivial predictor scores `exp(-1)`; recovery `0.9999` confirms nothing was learned.
+So the failure is sharp and structural: the features were frozen *before* the network knew which
+coordinates were latent, and a non-adaptive kernel machine cannot put its limited capacity where the
+signal is. The fix is not a better optimizer on those features. It is to let the features *move* — and the
+parametrization that lets them move is the whole game now.
+
+Start from the thing the lazy result makes unavoidable. With the `1/sqrt(M)` normalization NTK used, as
+the width grows the first-layer weights barely travel: the network linearizes around its initialization
+and is a fixed kernel machine, its feature map frozen before it ever sees `I`. That is precisely the
+regime I have to *escape*. So I take the other scaling, `fhat(x) = (1/M) sum_j a_j sigma(<w_j,x>)`. With
+the `1/M` out front, each neuron contributes `O(1/M)` to the output but the weights are free to travel an
+`O(1)` distance, so the dynamics stays genuinely nonlinear. This is the regime where features can rotate
+toward the latent subset. Train it by square loss, one-pass batch-SGD with the fixed batch `b=150`, plain
+SGD, large step — this is the canonical mean-field two-layer recipe, and the question is which of the
+three targets it can actually find.
+
+The network has `M` neurons, but they are exchangeable — the output only sees them through their empirical
+distribution. So instead of chasing `M(d+1)` coordinates, track the measure `rho = (1/M) sum_j
+delta_{theta_j}`, `theta_j = (a_j, w_j)`. The population risk is a functional of that measure alone:
+expanding `R(rho) = E_x[(f*(x) - fhat(x;rho))^2]` gives a constant `E[y^2]`, a linear term in `rho`, and
+a quadratic neuron-interaction term — all depending on `rho`, not on a labeling of neurons. In the
+wide-and-small-step limit one-pass SGD on this object is a Wasserstein gradient flow: the empirical
+measure converges to `rho_t` solving a continuity equation `partial_t rho_t = nabla.(rho_t H nabla
+psi(theta;rho_t))`, with `psi(theta;rho) = a E_x[(fhat - f*) sigma(<w,x>)] + reg`. The neurons are a gas
+of particles descending the risk. Clean — but it lives in `R^{d+1}` and `d = 100` is large. I have not
+used sparsity yet, and sparsity is where the separation between the three targets must live.
+
+Lean on the structure of `f*`. The target is `f*(x) = h*(z)` with `z = x_I` the `P=4` signal coordinates
+and the rest pure noise. Split every input `x = (z, r)` and every weight `w = (u, v)`, `u` aligned to the
+signal, `v` to the noise. At initialization the coordinates of `w^0` are iid and symmetric, so flipping
+any sign of the noise block leaves the initial distribution unchanged, which means `fhat(x;rho_0)` does
+not depend on `r`. Does that survive training? Take the pushforward of `rho_t` under a noise-sign flip; at
+`t=0` it equals `rho_0`, and because the flow only couples weights through `<w,x>` the flip can be
+absorbed into the `x`-average, so the flipped measure solves the same PDE with the same initial condition.
+By uniqueness, the network stays independent of the irrelevant directions throughout training. The noise
+block then enters only through `<v,r>`, a sum of `d-P` independent bounded terms, approximately Gaussian
+`||v||_2 G` for large `d`. So the entire `(d-P)`-dimensional noise weight collapses to a single scalar
+`s = ||v||_2` acting as a Gaussian smoothing width. The flow reduces to a *dimension-free* gradient flow
+on effective parameters `(a, u, s) in R^{P+2}`, with `fhat(z) = int a E_G[sigma(<u,z> + sG)] rho`. And —
+this is the part to stare at — as `d -> infinity` the signal block of the first-layer weight starts at
+`u^0 = O(1/sqrt(d)) -> 0`. The dynamics *starts with the signal weights at the origin*. Whether a target
+is learned is precisely whether the flow can push `u` off the origin and drive the risk to zero. With
+`d=100` this is the relevant near-saddle start.
+
+So attack each target through its first-layer evolution from `u^0 ≈ 0`:
+`d/dt u_i = a E_z[(h*(z) - fhat(z)) sigma'(<u,z>+sG) z_i] - reg`. A coordinate `i` only leaves the origin
+if the correlation between `z_i` and the residual-weighted gradient is nonzero. This is the lens that
+decides `h1` vs `h2` vs `h3`.
+
+Take `h3(z) = z1z2z3` first, because it is the cleanest. Forget regularization and the network output for
+a second: `d/dt u_i = a E_z[z1z2z3 · sigma'(<u,z>) z_i]`. By symmetry of `h3` under permuting `{1,2,3}`
+and the common origin start, `u_1 = u_2 = u_3 =: u_{123}` for all time. The driving expectation
+`E_z[z1z2z3 · sigma'(u_{123}(z1+z2+z3)) z_1]` is a *homogeneous* function of `u_{123}` that vanishes at
+`u_{123}=0` to high order — there is no first-order push, because the only thing correlating with `z_1` is
+the full triple `z1z2z3`, which contributes nothing at the origin. The coordinates never budge:
+`u_{123}^t = 0` forever, and the risk is bounded below by `hat(h3)({1,2,3})^2 = 1`. `h3` is a leap
+straight from nothing to a degree-3 support — it is non-MSP, and the flow is frozen at the origin. Plain
+mean-field SGD *cannot* learn it, exactly like the lazy baseline, but for a different reason: not "the
+features are frozen" but "the gradient at the origin is zero in the signal directions."
+
+Now `h2(z) = z1z2 + z2z3 + z3z4`, the non-MSP chain. The first added support is `{1,2}` with `|S_1| = 2`,
+so the first thing the flow would have to do is lift *two* coordinates off the origin at once. Repeat the
+homogeneity check: `d/dt u_1 = a E_z[(z1z2 + ...) sigma'(<u,z>) z_1]`, and the only term correlating with
+`z_1` near the origin is `z1z2`, whose expectation `E_z[z1z2 sigma'(u_1 z1 + u_2 z2 + ...) z_1] = E[z_2
+sigma'(...)]` is gated by `u_2` — and symmetrically `u_2`'s push is gated by `u_1`. Both start at zero, so
+the pair is a homogeneous linear system in `(u_1, u_2)` from the origin and stays at zero. The general
+statement: order `h*`'s supports greedily, and for a non-MSP target there is a leftover index set `Omega`
+whose new coordinates never appear "alone." Bounding the three relevant correlations (the network's own
+output contributes `K(1+t)|u_i|`; a lit support `S` with `i not in S` contributes `||sigma''||_inf |u_i|`;
+a leftover support contributes `||sigma''||_inf |u_j|` for *another* zero coordinate `j in Omega`) gives
+`|d/dt u_i| <= K(1+t)^2 max_{j in Omega} |u_j|`. Every coordinate in `Omega` has a derivative bounded by
+the maximum over `Omega`, all start at zero, so by Gronwall they stay at zero. `h2` leaps by 2 at its
+first step; `Omega` is nonempty; mean-field SGD is stuck, `R >= sum_{unlearnable} hat(h2)(S)^2 > 0`. The
+non-MSP chain is *not* learnable by this recipe either.
+
+Finally `h1(z) = z1 + z1z2 + z1z2z3`, the vanilla staircase, where I expect the recipe to come alive.
+Here the supports order `{1} -> {1,2} -> {1,2,3}`, each adding exactly one new coordinate — MSP / leap-1.
+Watch the cascade from the origin. Coordinate `1` enters through the degree-1 term `z1`:
+`d/dt u_1 = a · alpha_1 · m_1` (with `m_r = sigma^{(r)}(0)`), so `u_1 ~ a alpha_1 m_1 t` — it grows
+*linearly* off the origin, because it has a first-order driver that does not depend on any other
+coordinate. Once `u_1 != 0`, coordinate `2` gets a driver through `z1z2`:
+`d/dt u_2 = a alpha_{12} m_2 u_1 ~ t`, so `u_2 ~ t^2`. Then `u_1, u_2 != 0` light up coordinate `3`
+through `z1z2z3`: `d/dt u_3 = a alpha_{123} m_3 u_1 u_2 ~ t·t^2`, so `u_3 ~ t^4`. The weights light up
+*sequentially*, lower degree first, each new stair an entire order slower — `|u_k| = Theta(t^{2^{k-1}})`.
+This is climbing the staircase: a coordinate has no first-order driver until the product of the
+lower-degree weights is nonzero, and once it is, it gets dragged up. This is exactly the mechanism `h3`
+and `h2` *lack* — they have no degree-1 (or single-new-coordinate) entry point to start the cascade.
+
+Two design choices keep the cascade alive, and they are why the fill looks the way it does. First, the
+activation. The cascade `d/dt u_k = a alpha_{1..k} m_k prod_{j<k} u_j` *dies* the instant any
+`m_k = sigma^{(k)}(0) = 0`. A symmetric activation (odd `tanh` zeroes all even derivatives at 0; even
+zeroes all odd) breaks half the chain. I need `sigma^{(r)}(0) != 0` for `r = 0,...,P`. The shifted sigmoid
+`sigma(x) = (1 + e^{-x+0.5})^{-1} = sigmoid(x - 0.5)` does this — the shift moves evaluation off the
+logistic's symmetric center so every low-order derivative at the origin is nonzero, and the cascade can
+climb all the way. Second, the readout. The second (linear) phase, once the features are set, is kernel
+regression with `K(z,z') = E_a[sigma(<u(a),z>) sigma(<u(a),z')>)]`; in the Fourier basis this is
+`D(M_a + Delta)D` with `M_a = (E_a[a^{beta(S)+beta(S')}])`, `beta(S) = sum_{k in S} 2^{k-1}`. Since
+`beta` hits all of `{0,...,2^P - 1}`, `M_a` is the Gram matrix of `1, X, ..., X^{2^P-1}` under random `a`
+— full rank *because* `a` is random. Random `+-1` readout signs give the neuron diversity that makes the
+kernel positive definite; fixing all `a` equal would collapse it. So: `w ~ N(0,I_d)` (signal weights
+start near the origin), `a ~ Unif({+1,-1})` (diversity), shifted sigmoid (live cascade), `1/M`
+(feature-learning regime), plain SGD at `lr=0.5` (the bare gradient flow, nothing adaptive). Let me put
+the mean-field fill back in and measure how cleanly the leap splits the three targets.
+
+Now the falsifiable expectations against the lazy numbers. The delta from NTK is the parametrization:
+unfreeze the first layer, swap `1/sqrt(M)` for `1/M`, large plain-SGD step. The prediction splits cleanly
+by leap. On `h1`, mean-field SGD should do *strictly better than NTK's `2.78`*: it can climb the leap-1
+staircase that no fixed feature map reaches, picking up the degree-1 piece quickly and the degree-2 piece
+as `u_1` lights `u_2` — so `test_mse_h1` should fall and `score_h1` should rise above NTK's `0.062`, with
+the degree-3 piece (the slowest stair, `t^4`) the question mark within the `T=4000` budget. On `h2`, I
+predict it *fails*, sitting near the trivial `test_mse_h2 ≈ 3` just as NTK did — the leap-2 first support
+freezes the cascade at the origin, so `score_h2` should be no better than NTK's `0.050`. On `h3`, I
+predict it *fails identically* to NTK, `test_mse_h3 ≈ 1`, `score_h3 ≈ exp(-1) ≈ 0.37`, recovery near `1` —
+same trivial-predictor number, different reason (zero gradient at the origin, not frozen features). If
+mean-field SGD beats NTK on `h1` but ties it on `h2` and `h3`, the diagnosis for the next rung is already
+written: feature learning helps, but plain SGD climbs only *one* new coordinate at a time, so any leap
+greater than one stalls it. The cure is not more SGD; it is to *manufacture* the staircase the targets do
+not have — a layer-wise, saddle-escaping schedule that lifts coordinates the bare flow leaves at the
+origin. That is the next step.
+</think>
+<say>
+Now unfreeze the features: the mean-field two-layer net. This edit swaps `build_model` back to the
+shifted-sigmoid net with `w ~ N(0,I_d)`, random `+-1` readout signs, and `1/M` output, and restores plain
+SGD at `lr=0.5` so the first layer actually moves.
+</say>
+<edit path="pytorch-examples/synth_staircase/custom_strategy.py">
+<old>
+def build_model(config: TaskConfig) -> nn.Module:
+    """Random-feature / NTK-style network: freeze first layer, train head."""
+
+    class RandomFeaturesNTK(nn.Module):
+        def __init__(self, d: int, M: int) -> None:
+            super().__init__()
+            self.fc1 = nn.Linear(d, M, bias=True)
+            self.fc2 = nn.Linear(M, 1, bias=False)
+            # He / NTK-style init for ReLU: w ~ N(0, 1/d), b ~ N(0, 1).
+            nn.init.normal_(self.fc1.weight, mean=0.0, std=(1.0 / d) ** 0.5)
+            nn.init.normal_(self.fc1.bias, mean=0.0, std=1.0)
+            nn.init.zeros_(self.fc2.weight)
+            # Freeze first-layer weights (the "lazy" / NTK regime where features
+            # are fixed at initialization).
+            self.fc1.weight.requires_grad_(False)
+            self.fc1.bias.requires_grad_(False)
+            self.M = M
+
+        def forward(self, x: torch.Tensor) -> torch.Tensor:
+            h = torch.relu(self.fc1(x))
+            # 1/sqrt(M) normalization for NTK-style output.
+            return self.fc2(h).view(-1) / (self.M ** 0.5)
+
+    return RandomFeaturesNTK(d=config.d, M=config.width)
+
+
+def get_optimizer(model: nn.Module, config: TaskConfig) -> torch.optim.Optimizer:
+    """SGD on the trainable parameters (just the readout in lazy training)."""
+    params = [p for p in model.parameters() if p.requires_grad]
+    return torch.optim.SGD(params, lr=0.5 / config.d, momentum=0.0)
+</old>
+<new>
+def build_model(config: TaskConfig) -> nn.Module:
+    """Two-layer mean-field network (Abbe et al. Fig. 1 default)."""
+
+    class TwoLayerMeanField(nn.Module):
+        def __init__(self, d: int, M: int) -> None:
+            super().__init__()
+            self.fc1 = nn.Linear(d, M, bias=False)
+            self.fc2 = nn.Linear(M, 1, bias=False)
+            nn.init.normal_(self.fc1.weight, mean=0.0, std=1.0)
+            # No trainable bias in the Abbe et al. mean-field setup.
+            with torch.no_grad():
+                signs = torch.randint(0, 2, (M, 1), dtype=torch.float32) * 2.0 - 1.0
+                self.fc2.weight.copy_(signs.t())
+            self.M = M
+
+        @staticmethod
+        def _shifted_sigmoid(u: torch.Tensor) -> torch.Tensor:
+            return torch.sigmoid(u - 0.5)
+
+        def forward(self, x: torch.Tensor) -> torch.Tensor:
+            h = self._shifted_sigmoid(self.fc1(x))
+            return self.fc2(h).view(-1) / self.M
+
+    return TwoLayerMeanField(d=config.d, M=config.width)
+
+
+def get_optimizer(model: nn.Module, config: TaskConfig) -> torch.optim.Optimizer:
+    """Plain SGD with eta_k = 1/2."""
+    return torch.optim.SGD(model.parameters(), lr=0.5, momentum=0.0)
+</new>
+</edit>
+<obs>
+Successfully replaced text in pytorch-examples/synth_staircase/custom_strategy.py.
+</obs>
+<run/>
+<obs>
+Measured results — `baseline:mean_field_sgd` (`is_final,true`), seeds {42, 123, 456} and mean.
+
+## h1 (leap-1 staircase)
+| seed | test_mse | fourier_recovery | score |
+|---|---|---|---|
+| 42 | 2.431203 | 0.883939 | 0.087931 |
+| 123 | 2.480340 | 0.894372 | 0.083715 |
+| 456 | 2.433240 | 0.879936 | 0.087752 |
+| **mean** | **2.448261** | **0.886082** | **0.086466** |
+
+## h2 (leap-2 non-MSP chain)
+| seed | test_mse | fourier_recovery | score |
+|---|---|---|---|
+| 42 | 2.960399 | 0.986299 | 0.051798 |
+| 123 | 3.034799 | 1.011238 | 0.048084 |
+| 456 | 2.991479 | 0.996699 | 0.050213 |
+| **mean** | **2.995559** | **0.998079** | **0.050032** |
+
+## h3 (leap-3 monomial)
+| seed | test_mse | fourier_recovery | score |
+|---|---|---|---|
+| 42 | 1.000052 | 0.999219 | 0.367860 |
+| 123 | 1.001326 | 0.999886 | 0.367392 |
+| 456 | 1.000471 | 0.999491 | 0.367706 |
+| **mean** | **1.000616** | **0.999532** | **0.367653** |
+
+Aggregate (geometric mean of per-env `score` means): **0.1167**.
+</obs>
+
+### step 3 — Curriculum / layer-wise saddle-to-saddle SGD   [slug:curriculum-layerwise]
+
+<think>
+Mean-field SGD did exactly what its mechanism predicted, and the numbers split by leap with surgical
+cleanliness. On `h1` it beat the lazy floor: `test_mse_h1` fell from NTK's `2.78` to `2.45`, recovery from
+`0.96` to `0.89`, `score_h1` rose from `0.062` to `0.086` — feature learning climbed at least the
+degree-1 and part of the degree-2 stair that no frozen kernel could reach. But on `h2` it landed at
+`test_mse_h2 = 3.00`, recovery `1.00`, `score_h2 = 0.050` — *identical* to NTK's trivial-predictor row.
+And on `h3`: `test_mse_h3 = 1.00`, recovery `0.9995`, `score_h3 = 0.368` — again exactly the trivial
+`exp(-1)` of a unit-variance target, recovering nothing. So the aggregate barely moved (`0.105 -> 0.117`),
+and the diagnosis is precise: mean-field SGD's flow starts at the origin in the signal directions, and a
+coordinate only gets a first-order gradient once the lower-degree supports beneath it are lit. `h1` has a
+degree-1 entry point that starts the cascade; `h2` leaps by 2 at its first support and `h3` leaps straight
+to degree 3, so both leave coordinates frozen at the origin with *zero gradient* — and `score_h3 = 0.368`
+is not a near-success, it is the deceptive trivial number I flagged from the start. The failure is not the
+optimizer; plain SGD on a flat saddle goes nowhere because the gradient is genuinely zero there. The cure
+has to *manufacture* the staircase the leap-2 and leap-3 targets do not have — a way to lift coordinates
+the bare flow leaves at the origin.
+
+So the question that drives this rung: how do I get off a saddle where the first-order signal in the
+relevant coordinates is zero? Three mechanisms compose into the answer, and each attacks a different part
+of why mean-field SGD stalled.
+
+First mechanism: layer-wise alternation to drive saddle-to-saddle dynamics. The reason the bare flow
+freezes on `h2`/`h3` is that the first-layer and second-layer updates happen *simultaneously* — the readout
+`a` and the features `u` move together, and at the origin neither has a gradient in the leftover
+coordinates. The saddle-to-saddle picture says learning a hierarchical target should proceed as a sequence
+of *plateaus*: the dynamics sits near a saddle, slowly aligns one layer, then a fast transition lifts the
+next component, then another plateau. The way to *force* that structure rather than wait for it is to
+alternate which layer moves. In each step I do two sub-updates: first a *feature step* that updates only
+the first layer with the readout frozen, then a *readout step* that updates only the second layer with the
+features frozen. The feature step, with the readout held fixed at its current (now nonzero, diverse)
+values, gets a gradient on `u` even where the joint flow had none, because the residual `(h* - fhat)`
+projected through the *fixed* readout exposes correlations the simultaneous update averaged away. Then the
+readout step recombines those freshly-aligned features into the output. Alternating these is the
+saddle-to-saddle mechanism made explicit: each layer in turn is pushed to follow the next-easiest monomial
+in the leap ordering, instead of both layers idling together on the plateau. Concretely, in `train_step` I
+freeze the readout's `requires_grad`, take one optimizer step on the feature loss, unfreeze it; then freeze
+the features, take one step on the readout loss, unfreeze. Each sub-update samples the *same* batch
+`(x,y)` (the harness hands one batch per `train_step`), so it is two gradient steps on one batch with
+complementary parameter masks. I return the mean of the two sub-losses as the reported training loss.
+
+Second mechanism: a larger, *adaptive* step to actually escape the saddle once a gradient appears. Even
+with alternation, the gradient that lifts a leftover coordinate off the origin is tiny — it is the
+high-order correlation that the homogeneity argument showed vanishes to order `2^{k-1}` at the saddle. A
+fixed-`lr` SGD step on a gradient that small moves nowhere in `T=4000` steps. Adam is the natural lever:
+it normalizes each coordinate's update by a running estimate of its gradient magnitude, so a *consistently
+small but nonzero* gradient — exactly the signal that escapes a saddle — gets amplified to an `O(lr)` step
+regardless of its raw scale. This is the known practical mechanism for accelerating escape from
+high-dimensional saddles where vanilla SGD crawls. So I replace plain SGD with Adam, `betas=(0.9,0.999)`,
+`eps=1e-8`. But Adam's per-coordinate normalization also means the *step size* is no longer the
+self-correcting `eta=1/2` of the mean-field flow — it is set by the `lr`, and I need a `lr` large enough to
+cross the plateau in the budget but not so large it destabilizes the readout regression. A per-layer split
+handles this: the first layer (which must escape the saddle) gets the full `lr = 1e-2`, while the readout
+gets `lr = 1e-2 / sqrt(M)` so its update scale matches the `1/M`-normalized output and the linear
+readout-phase stays stable. The larger first-layer LR is the "leap-1 warm-up" that picks up the
+low-frequency monomial quickly; the smaller readout LR keeps the recombination phase from oscillating.
+
+Third mechanism: the parametrization that makes width-scaling preserve feature learning — mu-P-style
+init. The mean-field recipe used `w ~ N(0, I_d)` and the `1/M` readout. With Adam and a per-layer LR I want
+the initialization to keep the signal weights at the near-origin saddle the saddle-to-saddle story needs,
+while keeping the pre-activation `<w,x>` at `O(1)` so the activation's low-order derivatives (the `m_r`
+that drive the cascade) are actually exercised. The mu-P prescription is `w ~ N(0, 1/d)` (so
+`<w,x> = O(1)` over `x in {+1,-1}^d`, and the signal block starts at `O(1/sqrt(d)) ≈ 0.1`, i.e. near the
+saddle), a zero first-layer bias, and a readout drawn `N(0,1)` with the `1/M` output normalization carried
+over from the mean-field scaling. This is the parametrization under which the feature-learning dynamics
+does not degenerate as width changes — the readout and feature updates stay balanced. I keep the shifted
+sigmoid `sigma(x) = sigmoid(x - 0.5)`, because the cascade-keeps-alive argument is unchanged: I still need
+`sigma^{(r)}(0) != 0` for all low `r`, and a symmetric activation would zero half the chain regardless of
+how cleverly I alternate the layers. The shift is what makes the low derivatives nonzero around the origin.
+
+Let me reason carefully about what this composite can actually reach, because I should not overclaim. The
+leap-complexity picture says saddle-to-saddle SGD on a low-leap target should learn it in roughly
+`d^{max(leap,2)}` steps. For `h1` (leap-1) that is `d^2 = 10^4` — comfortably inside my `n = 6·10^5`
+budget. For `h2` (leap-2) that is `d^2 = 10^4` again (the `max(leap,2)` floor is `2`), also inside budget,
+*if* the saddle-escape actually fires. For `h3` (leap-3) that is `d^3 = 10^6`, which is *above* my budget
+`n = 6·10^5`. So even the strongest baseline has a structural ceiling: `h3`'s single leap-3 monomial sits
+at a sample complexity my fixed budget cannot reach, so I should *not* expect `h3` to be fully learned — at
+best partially. But `h1` and `h2`, both at the `d^2` threshold, are within reach if the alternation +
+Adam + mu-P combination genuinely escapes the saddle that froze mean-field SGD. This is the honest version
+of the claim: layer-wise saddle-to-saddle training should learn any low-leap function in
+`d^{max(leap,2)}` steps, so it is the natural upper bound on top of the leap-1-only mean-field baseline —
+but the leap-3 monomial is past the budget and stays the hardest case.
+
+Now the falsifiable expectations against the mean-field numbers, target by target. On `h1`: mean-field SGD
+already partially climbed it (`test_mse 2.45`, `score 0.086`); with Adam amplifying the slow degree-3 stair
+and alternation cleanly separating feature alignment from readout fitting, I expect `h1` to improve
+substantially — `test_mse_h1` should drop well below `2.45` and `score_h1` rise well above `0.086`, plausibly
+to the `0.5-0.7` range if the full staircase (including the `z1z2z3` term that the bare `t^4` cascade
+barely touched in budget) gets picked up. On `h2`, the decisive test: mean-field SGD was *flat* at the
+trivial `test_mse 3.00 / score 0.050`. If the saddle-to-saddle machinery works, `h2` should move off that
+floor for the first time on the ladder — a leap-2 target is exactly what alternation + Adam is for — so I
+expect `score_h2` to rise meaningfully above `0.050` (even partial recovery of one of its three degree-2
+monomials would show). If `h2` *stays* at `0.050`, the composite has failed at its central job and the
+saddle-escape did not fire. On `h3`: I am most cautious here, because the budget argument says `d^3` is out
+of reach — I expect `h3` to improve only modestly over the trivial `score 0.368`, recovering perhaps part
+of the single monomial but not driving `test_mse_h3` to zero; a large jump on `h3` would be a genuine
+surprise. The aggregate is a geometric mean, so even a strong `h1` and a partial `h2` with a stuck `h3`
+should lift the overall score well above the `0.105-0.117` the first two rungs posted — that is the bar
+this rung has to clear. The composite — mu-P init, shifted sigmoid, per-layer Adam, layer-wise alternating
+`train_step` — is what I write in now, starting with the model.
+</think>
+<say>
+Now the saddle-escaping rung: layer-wise alternating SGD with mu-P init and per-layer Adam. This first
+edit rewrites `build_model` to the mu-P parametrization — `w ~ N(0,1/d)`, zero bias, readout `N(0,1)` —
+keeping the shifted-sigmoid activation so the cascade derivatives stay nonzero.
+</say>
+<edit path="pytorch-examples/synth_staircase/custom_strategy.py">
+<old>
+def build_model(config: TaskConfig) -> nn.Module:
+    """Two-layer mean-field network (Abbe et al. Fig. 1 default)."""
+
+    class TwoLayerMeanField(nn.Module):
+        def __init__(self, d: int, M: int) -> None:
+            super().__init__()
+            self.fc1 = nn.Linear(d, M, bias=False)
+            self.fc2 = nn.Linear(M, 1, bias=False)
+            nn.init.normal_(self.fc1.weight, mean=0.0, std=1.0)
+            # No trainable bias in the Abbe et al. mean-field setup.
+            with torch.no_grad():
+                signs = torch.randint(0, 2, (M, 1), dtype=torch.float32) * 2.0 - 1.0
+                self.fc2.weight.copy_(signs.t())
+            self.M = M
+</old>
+<new>
+def build_model(config: TaskConfig) -> nn.Module:
+    """mu-P-style two-layer net with shifted-sigmoid activation.
+
+    The shifted sigmoid used by Abbe-Boix-Adsera-Misiakiewicz has nonzero low
+    derivatives around the origin, avoiding the zero even derivatives of tanh.
+    """
+
+    class MuPTwoLayer(nn.Module):
+        def __init__(self, d: int, M: int) -> None:
+            super().__init__()
+            self.fc1 = nn.Linear(d, M, bias=True)
+            self.fc2 = nn.Linear(M, 1, bias=False)
+            # mu-P-style init: w ~ N(0, 1/d), readout small.
+            nn.init.normal_(self.fc1.weight, mean=0.0, std=(1.0 / d) ** 0.5)
+            nn.init.zeros_(self.fc1.bias)
+            nn.init.normal_(self.fc2.weight, mean=0.0, std=1.0)
+            self.M = M
+</new>
+</edit>
+<obs>
+Successfully replaced text in pytorch-examples/synth_staircase/custom_strategy.py.
+</obs>
+<note>
+Now wire the forward to `MuPTwoLayer` and swap the optimizer to per-layer Adam — full first-layer LR, readout scaled by 1/sqrt(M).
+</note>
+<edit path="pytorch-examples/synth_staircase/custom_strategy.py">
+<old>
+            h = self._shifted_sigmoid(self.fc1(x))
+            return self.fc2(h).view(-1) / self.M
+
+    return TwoLayerMeanField(d=config.d, M=config.width)
+
+
+def get_optimizer(model: nn.Module, config: TaskConfig) -> torch.optim.Optimizer:
+    """Plain SGD with eta_k = 1/2."""
+    return torch.optim.SGD(model.parameters(), lr=0.5, momentum=0.0)
+</old>
+<new>
+            h = self._shifted_sigmoid(self.fc1(x))
+            # mu-P-style 1/M readout normalization.
+            return self.fc2(h).view(-1) / self.M
+
+    return MuPTwoLayer(d=config.d, M=config.width)
+
+
+def get_optimizer(model: nn.Module, config: TaskConfig) -> torch.optim.Optimizer:
+    """Adam with mu-P-style per-layer learning rates.
+
+    First layer gets a larger LR so that it picks up the low-frequency monomial
+    quickly (the saddle-to-saddle "leap-1" warm-up); the readout uses a
+    moderate LR proportional to 1/sqrt(M).
+    """
+    fc1_params = []
+    fc2_params = []
+    for name, p in model.named_parameters():
+        if not p.requires_grad:
+            continue
+        if name.startswith("fc1"):
+            fc1_params.append(p)
+        else:
+            fc2_params.append(p)
+    width = config.width
+    return torch.optim.Adam(
+        [
+            {"params": fc1_params, "lr": 1e-2},
+            {"params": fc2_params, "lr": 1e-2 / (width ** 0.5)},
+        ],
+        betas=(0.9, 0.999),
+        eps=1e-8,
+    )
+</new>
+</edit>
+<obs>
+Successfully replaced text in pytorch-examples/synth_staircase/custom_strategy.py.
+</obs>
+<note>
+Now the alternating `train_step`: a feature step with the readout frozen, then a readout step with the features frozen, both on the same batch.
+</note>
+<edit path="pytorch-examples/synth_staircase/custom_strategy.py">
+<old>
+) -> float:
+    optimizer.zero_grad(set_to_none=True)
+    pred = model(x).view(-1)
+    loss = ((pred - y) ** 2).mean()
+    loss.backward()
+    optimizer.step()
+    return float(loss.item())
+</old>
+<new>
+) -> float:
+    """Layer-wise alternating Adam: feature step, then readout step.
+
+    The alternation drives the saddle-to-saddle dynamics: each layer in turn
+    is updated to follow the next-easiest monomial in the leap ordering.
+    """
+    fc1_params = [p for n, p in model.named_parameters() if n.startswith("fc1") and p.requires_grad]
+    fc2_params = [p for n, p in model.named_parameters() if n.startswith("fc2") and p.requires_grad]
+
+    # 1) Feature step (freeze readout).
+    for p in fc2_params:
+        p.requires_grad_(False)
+    optimizer.zero_grad(set_to_none=True)
+    pred = model(x).view(-1)
+    loss1 = ((pred - y) ** 2).mean()
+    loss1.backward()
+    optimizer.step()
+    for p in fc2_params:
+        p.requires_grad_(True)
+
+    # 2) Readout step (freeze features).
+    for p in fc1_params:
+        p.requires_grad_(False)
+    optimizer.zero_grad(set_to_none=True)
+    pred = model(x).view(-1)
+    loss2 = ((pred - y) ** 2).mean()
+    loss2.backward()
+    optimizer.step()
+    for p in fc1_params:
+        p.requires_grad_(True)
+
+    return float(0.5 * (loss1.item() + loss2.item()))
+</new>
+</edit>
+<obs>
+Successfully replaced text in pytorch-examples/synth_staircase/custom_strategy.py.
+</obs>
+<run/>
+<obs>
+Measured results — `baseline:curriculum_layerwise` (`is_final,true`), seeds {42, 123, 456} and mean.
+
+## h1 (leap-1 staircase)
+| seed | test_mse | fourier_recovery | score |
+|---|---|---|---|
+| 42 | 0.469305 | 0.324915 | 0.625437 |
+| 123 | 0.460783 | 0.323251 | 0.630790 |
+| 456 | 0.459798 | 0.327509 | 0.631411 |
+| **mean** | **0.463295** | **0.325225** | **0.629213** |
+
+## h2 (leap-2 non-MSP chain)
+| seed | test_mse | fourier_recovery | score |
+|---|---|---|---|
+| 42 | 0.978321 | 0.530963 | 0.375942 |
+| 123 | 1.033402 | 0.553062 | 0.355794 |
+| 456 | 0.980105 | 0.536057 | 0.375272 |
+| **mean** | **0.997276** | **0.540027** | **0.369003** |
+
+## h3 (leap-3 monomial)
+| seed | test_mse | fourier_recovery | score |
+|---|---|---|---|
+| 42 | 0.015073 | 0.116411 | 0.985040 |
+| 123 | 0.020387 | 0.131951 | 0.979820 |
+| 456 | 0.018889 | 0.128862 | 0.981288 |
+| **mean** | **0.018116** | **0.125741** | **0.982049** |
+
+Aggregate (geometric mean of per-env `score` means): **0.6109**.
+</obs>

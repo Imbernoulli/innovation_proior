@@ -1,0 +1,2433 @@
+<meta task="optimization-hyperparameter-search" domain="Optimization" file="scikit-learn/custom_hpo.py" model_format="qwen3" edit_tool="str_replace"/>
+
+<system>
+You are a research engineer improving a model on a fixed ML task. You work by editing the model code and running experiments. Think carefully before each change. You have these tools:
+- str_replace(path, old_str, new_str): replace the unique occurrence of old_str with new_str.
+- create(path, file_text): create a new file.
+- run_experiment(): train + evaluate the current code under the fixed budget; returns metrics.
+Make one tool call at a time. After editing, call run_experiment() to measure your method.
+</system>
+
+<user>
+## Research question
+
+Black-box hyperparameter optimization under a tiny budget. Given a model and dataset, find the
+configuration that maximizes validation performance, where every function evaluation is a full
+train-and-score and the total budget is on the order of *tens* of evaluations (50 for XGBoost, 40 for
+SVM and the neural net). The single thing being designed is the **search strategy** — the policy that,
+given the search space and the history of past trials, proposes the next configuration to evaluate (and
+at what fidelity). Everything else — the benchmarks, the search-space encoding, the evaluation loop, the
+metric computation — is fixed. The strategy is called once per loop iteration, sequentially, until the
+budget is spent.
+
+## Prior art before the first rung (black-box optimization lineage)
+
+The ladder starts from the simplest defensible thing and climbs toward model-guided, multi-fidelity
+search. These are the methods the first rung reacts to and the later rungs combine.
+
+- **Grid search (folklore).** Enumerate a Cartesian product of per-axis values. Coverage is even, but
+  the trial count explodes with dimension and every axis gets probed at only a handful of levels — most
+  trials are spent varying knobs that do not matter. Gap: wastes the budget on irrelevant axes; infeasible
+  past a few dimensions.
+- **Random search (Bergstra and Bengio, JMLR 2012).** Draw configurations uniformly from the space. Under
+  the empirical fact that the loss has *low effective dimensionality* — only a few hyperparameters matter,
+  and which few differs across datasets — random sampling gives every axis as many distinct values as there
+  are trials and so covers the important axes far better than a grid. Strong and trivially parallel. Gap:
+  **stateless** — every draw ignores every loss already paid for, which under a few-dozen-trial budget is
+  the one thing that cannot be afforded.
+- **Sequential model-based optimization / Bayesian optimization (Mockus 1978; Jones et al. 1998).** Keep a
+  cheap probabilistic surrogate of the expensive loss, and each round pick the next point by maximizing an
+  acquisition such as Expected Improvement, which trades exploitation (low predicted loss) against
+  exploration (high predictive variance). Gap: the textbook Gaussian-process surrogate needs a metric on the
+  whole configuration vector (awkward for categoricals and conditional spaces), costs O(n³) to condition, and
+  stakes all exploration on a single point estimate of its own uncertainty that a sparse early sample can
+  collapse.
+- **Successive halving (Jamieson and Talwalkar, AISTATS 2016).** Evaluate many configurations cheaply (low
+  fidelity — fewer epochs/trees/folds), keep the top fraction, and reallocate the saved budget to evaluating
+  the survivors at higher fidelity. Gap: fixes one configurations-versus-fidelity tradeoff up front (the
+  "n versus B" dilemma), so an aggressive setting can kill a slow-starting but ultimately good configuration.
+
+The ladder picks up exactly where this lineage leaves off: it starts at random search (the stateless
+floor), and each rung adds one missing ingredient — adaptation to history, multi-fidelity scheduling, or
+both — until they are combined.
+
+## The fixed substrate
+
+A complete HPO loop in `scikit-learn/custom_hpo.py` is frozen and must not be touched. It defines:
+
+- **Three benchmarks**, each a real sklearn tuning problem with a `(space, objective)` pair.
+  *XGBoost*: `GradientBoostingRegressor` on California Housing, 6-D (`n_estimators`, `max_depth`,
+  `learning_rate` log-scaled, `subsample`, `min_samples_split`, `min_samples_leaf`), budget 50.
+  *SVM*: `SVC` on Breast Cancer, 3-D (`C` log, `gamma` log, `kernel` categorical), budget 40.
+  *NN*: `MLPRegressor` on Diabetes, 6-D (two log-scaled layer widths, `learning_rate_init` log, `alpha`
+  log, `batch_size`, `activation` categorical), budget 40.
+- **The fidelity contract.** Each objective accepts `budget ∈ (0,1]`: XGBoost scales `n_estimators` by it
+  (floor 10), SVM scales CV folds (`max(2, int(5·budget))`), the NN scales `max_iter` (`max(50, int(500·
+  budget))`). Lower fidelity is cheaper and noisier. The loop spends `total_cost += fidelity` each call and
+  stops when `total_cost ≥ budget`, so a strategy that evaluates at low fidelity buys *more* evaluations.
+- **The search-space API.** `space.params` (list of `HParam` with `name`, `type ∈ {float,int,categorical}`,
+  `low`, `high`, `log_scale`, `choices`), `space.dim`, `space.sample_uniform(rng)`, and `space.clip(config)`.
+  Each `Trial` records `config`, `score` (validation score, higher is better), and `budget` (fidelity used).
+- **The metrics.** `best_val_score` (best score within budget — primary) and `convergence_auc` (trapezoidal
+  area under the *min-max-normalized* best-so-far curve plotted against normalized cost — higher means good
+  configs were found earlier). Both higher-is-better; reported as the mean over seeds {42, 123, 456}.
+
+## The editable interface
+
+Exactly one region is editable — the `CustomHPOStrategy` class (lines 255–326 of `custom_hpo.py`). The
+contract is two methods: `__init__(self, seed=42)` (stores `self.seed` and `self.rng =
+np.random.RandomState(seed)`, plus any internal state the strategy needs across calls) and
+`suggest(self, space, history, budget_left) -> (config, fidelity)`, which returns the next configuration
+dict and a fidelity in `(0,1]`. The loop then clips the fidelity to `[0.1, 1.0]`, clips the config to valid
+ranges, evaluates it, appends the `Trial` to `history`, and calls `suggest` again. Because the loop hands
+back the full `history` every call, the strategy can carry state either in the object or by re-reading
+`history`; either is allowed. Every method on the ladder is a fill of this one contract.
+
+The starting point is the scaffold default: **uniform random search**. Each later method replaces exactly
+this class body and nothing else.
+
+```python
+# EDITABLE region of scikit-learn/custom_hpo.py (lines 255-326) — default fill
+class CustomHPOStrategy:
+    """Custom hyperparameter optimization strategy.
+
+    Called repeatedly: suggest(space, history, budget_left) -> (config, fidelity);
+    config is evaluated -> score; Trial(config, score, fidelity) is appended to
+    history; repeat until budget is exhausted.
+    """
+
+    def __init__(self, seed: int = 42):
+        """Default: store seed and create RNG. The agent may add internal state."""
+        self.seed = seed
+        self.rng = np.random.RandomState(seed)
+
+    def suggest(
+        self,
+        space: SearchSpace,
+        history: List[Trial],
+        budget_left: int,
+    ) -> Tuple[Dict[str, Any], float]:
+        """Default: uniform random search (poor — replace with a better strategy).
+
+        Returns (config, fidelity) with fidelity in (0, 1]; 1.0 = full evaluation.
+        """
+        config = space.sample_uniform(self.rng)
+        return config, 1.0
+```
+
+## Evaluation settings
+
+Three benchmarks — XGBoost (6-D, budget 50), SVM (3-D, budget 40), neural net (6-D, budget 40) — each over
+three seeds {42, 123, 456}, with mean metrics reported. Two metrics per benchmark, higher is better on
+both: `best_val_score` (best validation score within budget) and `convergence_auc` (area under the
+normalized best-so-far convergence curve). A method that finds the same final optimum but *earlier* wins on
+AUC; a method that wastes budget exploring late loses it.
+
+The editable model code is in `scikit-learn/custom_hpo.py`:
+```python
+class CustomHPOStrategy:
+    """Custom hyperparameter optimization strategy.
+
+    The agent should implement suggest() which proposes the next
+    hyperparameter configuration to evaluate, given the search space
+    and history of previous trials.
+
+    The strategy is called repeatedly in a loop:
+        1. strategy.suggest(space, history, budget_left) -> (config, fidelity)
+        2. config is evaluated -> score
+        3. Trial(config, score, fidelity) is added to history
+        4. Repeat until budget exhausted
+
+    Available utilities:
+        space.params        — list of HParam objects with name, type, range
+        space.dim           — number of hyperparameters
+        space.sample_uniform(rng) — sample random config
+        space.clip(config)  — clip values to valid ranges
+
+        trial.config        — dict of hyperparameter values
+        trial.score         — observed validation score (higher is better)
+        trial.budget        — fidelity fraction used (1.0 = full evaluation)
+
+    Useful scipy:
+        from scipy.stats import norm
+        norm.cdf(x), norm.pdf(x)
+
+    Useful numpy:
+        np.random.RandomState for reproducibility
+
+    Args:
+        seed: random seed for reproducibility
+
+    Returns from suggest():
+        config: dict mapping param names to values
+        fidelity: float in (0, 1] — fraction of full evaluation budget.
+                  Use 1.0 for full-fidelity evaluation.
+                  Lower values = cheaper evaluation (e.g., fewer epochs/trees).
+    """
+
+    def __init__(self, seed: int = 42):
+        """Initialize the strategy.
+
+        Default: stores seed and creates RNG.
+        The agent may add any internal state needed.
+        """
+        self.seed = seed
+        self.rng = np.random.RandomState(seed)
+
+    def suggest(
+        self,
+        space: SearchSpace,
+        history: List[Trial],
+        budget_left: int,
+    ) -> Tuple[Dict[str, Any], float]:
+        """Propose the next configuration to evaluate.
+
+        Default: uniform random search (poor — replace with a better
+        strategy).
+
+        Args:
+            space: search space definition
+            history: list of previously evaluated trials
+            budget_left: number of full-fidelity evaluations remaining
+
+        Returns:
+            config: dict of hyperparameter name -> value
+            fidelity: float in (0, 1], fraction of full evaluation
+        """
+        config = space.sample_uniform(self.rng)
+        return config, 1.0
+```
+Improve it. Derive your method, edit the code, then run_experiment().
+</user>
+
+### step 1 — Random Search   [slug:random_search]
+
+<think>
+[[POLISH_REASONING: adapt to first-person agentic voice, end by deciding to implement]]
+The strategy is the whole point, but it runs against a fixed loop and a fixed budget, and the weakest
+honest thing I can put in that loop is the floor everything else has to beat — so I start there, with
+the question of what "no strategy at all" should look like inside this scaffold. The loop hands me
+`suggest(space, history, budget_left)` and asks for one configuration plus a fidelity, over and over,
+until `total_cost` reaches the per-benchmark budget (50 for XGBoost, 40 for SVM and the NN). I have three
+search spaces that mix types and scales: 6-D for XGBoost and the NN, 3-D for SVM, with log-scaled learning
+rates and regularizers, integer layer widths and tree counts, and a categorical kernel/activation. The
+evaluation is a real train-and-score, gradient-free, with no view inside — I get back a single scalar. So
+whatever the floor is, it has to (1) produce a valid configuration over this mixed, log-scaled, partly
+categorical domain, and (2) make sense as the thing the adaptive methods will be measured against.
+
+The temptation is to reach for grid search as the naive default, but it is wrong here on two counts and
+naming why is worth it because it motivates the whole ladder. First, the trial count is the Cartesian
+product of per-axis levels, so it is exponential in dimension: even three levels per axis on the 6-D
+XGBoost space is 729 evaluations, and my budget is 50. Second — and this is the deeper objection — a grid's
+points are *aligned*, so they collapse under projection: g levels per axis in K dimensions uses g^K trials
+but probes each individual knob at only g = (trial count)^(1/K) distinct values, because every grid point
+shares coordinates with many others. On the subspace of knobs that actually matters, a grid has the
+resolution of the K-th root of its budget. So grid is not a serious floor; it is a strawman.
+
+Random sampling is the serious floor, and it has a real argument behind it, not just simplicity. The
+empirical fact about hyperparameter response surfaces is that they have *low effective dimensionality* —
+on any given dataset only a few of the knobs move the loss appreciably, and which few differ across
+datasets, so I cannot just pick the important ones and grid them. Refusing to align the points fixes the
+projection problem for free: T independent uniform draws project, almost surely, to T distinct values on
+*every* axis, so whichever low-dimensional subspace turns out to matter gets the full budget's worth of
+resolution at once, without my having to know in advance which subspace it is. There is a clean way to see
+why this is dimension-free. Idealize the good region as a target occupying relative volume v/V of the box;
+each independent uniform draw misses it with probability (1 − v/V), so the probability that T draws find it
+is 1 − (1 − v/V)^T, and the ambient dimension K does not appear — only the target's relative volume. A
+region that is wide along the irrelevant knobs and narrow along the few important ones still has findable
+relative volume in any number of dimensions, which is exactly why random search "thrives" precisely in the
+regime grid is worst at. And against the axis-aligned elongated targets that low effective dimensionality
+produces, grid is *especially* bad: a thin axis-aligned rectangle either threads through several collinear
+grid points (redundant, collapsing the effective sample size) or slips entirely between the grid lines
+(catching nothing), whereas independent draws are never collinear, so each is an independent shot.
+
+The scaffold has already done the type-and-scale bookkeeping I would otherwise have to write myself.
+`space.sample_uniform(rng)` walks `space.params` and, for each `HParam`, samples categoricals uniformly
+over `choices`, floats uniformly over `[low, high]` — or uniformly in log space (`exp` of a uniform draw
+over `[log low, log high]`) when `log_scale` is set — and integers uniformly over the inclusive range, again
+log-scaled when asked. That log-uniform handling is not incidental: learning rates, layer widths, and the
+regularizer span orders of magnitude with a roughly flat response per decade, so sampling them uniformly in
+log space covers the *effect* evenly rather than wasting almost every draw in the top decade of the raw
+range. Because the scaffold already does this correctly, the floor strategy does not need to touch
+encoding at all — it just calls `sample_uniform`, which is the cleanest possible expression of "draw each
+knob independently from its own range and type."
+
+It is worth being explicit that random search is not merely "better than grid"; it is the right *baseline*
+in a way a smarter method is not. A baseline's job is to make the cost of a deficiency legible, and to do
+that it must isolate exactly one mechanism. Random search isolates "coverage with no adaptation": it has
+the full per-axis resolution of the budget and the dimension-free hit probability, and it has *nothing*
+else — no surrogate, no resource scheduling, no memory. So when a later method beats it, the gain is
+unambiguously attributable to the one ingredient that method added, rather than tangled up with a better
+sampler or a cleverer encoding. That cleanliness is why random search, despite being trivial, is the
+correct floor rather than, say, a quasi-random Sobol sequence: Sobol can shave a few percent of coverage
+error in low dimensions, but it sacrifices the i.i.d. structure that makes the baseline anytime-stoppable,
+freely extendable, and analyzable, and in the high-dimension/low-budget regime it is no real improvement —
+so it would only blur what the baseline is supposed to measure without buying anything the ladder cares
+about.
+
+There are two design knobs left, and the floor takes the trivial choice on both. The first is *fidelity*:
+the loop accepts a fraction in (0,1] and scales the objective's cost by it (fewer trees, fewer CV folds,
+fewer MLP iterations), and a cheaper evaluation buys more evaluations against the same budget. The floor
+returns fidelity 1.0 on every call — single-fidelity, no cheap-and-noisy partial evaluations — because the
+whole point of a floor is to have *no* mechanism beyond uniform sampling; multi-fidelity is a lever the
+later rungs will pull, and conflating it into the baseline would muddy what the baseline measures. The
+second knob is *adaptivity*: `suggest` is handed the full `history` every call, so a strategy could read
+past scores and bias the next draw. The floor deliberately ignores `history` and `budget_left` entirely —
+every draw is i.i.d., independent of everything seen so far. That is the defining property of the floor and
+the one weakness the entire ladder exists to remove: random search is *stateless*. Under a budget of a few
+dozen trials, throwing away every loss already paid for is the single most expensive thing a strategy can
+do, and it is exactly what this baseline does on purpose, so that the cost of *not* adapting is what shows
+up in the numbers.
+
+So the edit at step 1 is the minimal one: leave the class essentially at the scaffold default — store the
+seed, build one `np.random.RandomState(seed)` so the run is reproducible, and have `suggest` return
+`space.sample_uniform(self.rng), 1.0`, ignoring `history` and `budget_left`. One independent uniform draw
+per call, full fidelity, no memory. The distilled module is in the answer.
+
+Now reason about what this floor must do on these three benchmarks, because that is the whole reason to run
+it. Two of the spaces are small — SVM is 3-D, and there the good region is a fat slab in (C, gamma) for the
+RBF kernel, easy to hit by chance, so I expect random search to find a near-optimal SVM almost regardless
+of seed, and the *only* discriminator there will be how *early* it lands a good config, i.e. the
+convergence AUC, which is at the mercy of draw order and should be both lower and more variable than an
+adaptive method's. XGBoost is 6-D but its objective is forgiving in the sense that the cross-validated MSE
+on California Housing is dominated by a couple of knobs (learning rate and depth), so I expect the best
+score to land in a narrow band across seeds, again with AUC the real differentiator. The NN is the hard
+case: a 6-D space with two log-scaled widths, a log learning rate, and a log regularizer, where bad
+configurations (too-high learning rate, too-small capacity) can score very poorly, so an unlucky draw
+sequence can leave the best-so-far curve flat for many evaluations before it stumbles onto a workable
+region — which should make the NN convergence AUC the noisiest and weakest number random search produces.
+
+The falsifiable expectation, then, is sharp: random search should reach *competitive final best scores*
+everywhere — that is the lesson of low effective dimensionality, and it is why random search is a famously
+strong baseline on *final* quality — but it should pay for its statelessness in *convergence speed*,
+especially on the higher-dimensional NN space and in the run-to-run variance of the AUC, because nothing in
+the strategy concentrates draws toward where the evidence already points. Whatever the precise split, the
+diagnosis is already aimed at the next rung: the deficiency is not the final-quality of the search but its
+*use of history* — every later method I try will keep random search's coverage virtues while adding the one
+thing it refuses to do, which is to let the losses it has already paid for steer the next configuration.
+</think>
+<say>
+[[FILL_SAY: 1-2 sentences naming the method and what this first edit does]]
+</say>
+<edit path="scikit-learn/custom_hpo.py">
+<old>
+class CustomHPOStrategy:
+    """Custom hyperparameter optimization strategy.
+
+    The agent should implement suggest() which proposes the next
+    hyperparameter configuration to evaluate, given the search space
+    and history of previous trials.
+
+    The strategy is called repeatedly in a loop:
+        1. strategy.suggest(space, history, budget_left) -> (config, fidelity)
+        2. config is evaluated -> score
+        3. Trial(config, score, fidelity) is added to history
+        4. Repeat until budget exhausted
+
+    Available utilities:
+        space.params        — list of HParam objects with name, type, range
+        space.dim           — number of hyperparameters
+        space.sample_uniform(rng) — sample random config
+        space.clip(config)  — clip values to valid ranges
+
+        trial.config        — dict of hyperparameter values
+        trial.score         — observed validation score (higher is better)
+        trial.budget        — fidelity fraction used (1.0 = full evaluation)
+
+    Useful scipy:
+        from scipy.stats import norm
+        norm.cdf(x), norm.pdf(x)
+
+    Useful numpy:
+        np.random.RandomState for reproducibility
+
+    Args:
+        seed: random seed for reproducibility
+
+    Returns from suggest():
+        config: dict mapping param names to values
+        fidelity: float in (0, 1] — fraction of full evaluation budget.
+                  Use 1.0 for full-fidelity evaluation.
+                  Lower values = cheaper evaluation (e.g., fewer epochs/trees).
+    """
+
+    def __init__(self, seed: int = 42):
+        """Initialize the strategy.
+
+        Default: stores seed and creates RNG.
+        The agent may add any internal state needed.
+        """
+        self.seed = seed
+</old>
+<new>
+# EDITABLE region of scikit-learn/custom_hpo.py (lines 255-326) — step 1: Random Search
+class CustomHPOStrategy:
+    """Random Search: sample configurations uniformly at random."""
+
+    def __init__(self, seed: int = 42):
+        self.seed = seed
+</new>
+</edit>
+<obs>
+Successfully replaced text in scikit-learn/custom_hpo.py.
+</obs>
+<note>
+[[FILL_NOTE?: optional one-line thought for this edit, or delete this block]]
+</note>
+<edit path="scikit-learn/custom_hpo.py">
+<old>
+    ) -> Tuple[Dict[str, Any], float]:
+        """Propose the next configuration to evaluate.
+
+        Default: uniform random search (poor — replace with a better
+        strategy).
+
+        Args:
+            space: search space definition
+            history: list of previously evaluated trials
+            budget_left: number of full-fidelity evaluations remaining
+
+        Returns:
+            config: dict of hyperparameter name -> value
+            fidelity: float in (0, 1], fraction of full evaluation
+        """
+        config = space.sample_uniform(self.rng)
+        return config, 1.0
+</old>
+<new>
+    ) -> Tuple[Dict[str, Any], float]:
+        config = space.sample_uniform(self.rng)
+        return config, 1.0
+</new>
+</edit>
+<obs>
+Successfully replaced text in scikit-learn/custom_hpo.py.
+</obs>
+<run/>
+<obs>
+Measured results — `baseline:random_search` (`is_final,true`), seeds {42, 123, 456} and mean.
+
+## XGBoost (budget 50)
+| seed | best_val_score | convergence_auc | total_evals |
+|---|---|---|---|
+| 42 | −0.396658 | 0.957041 | 50 |
+| 123 | −0.393145 | 0.962503 | 50 |
+| 456 | −0.391865 | 0.917713 | 50 |
+| **mean** | **−0.393889** | **0.945752** | **50** |
+
+## SVM (budget 40)
+| seed | best_val_score | convergence_auc | total_evals |
+|---|---|---|---|
+| 42 | 0.978932 | 0.889855 | 40 |
+| 123 | 0.978932 | 0.562513 | 40 |
+| 456 | 0.975408 | 0.913161 | 40 |
+| **mean** | **0.977757** | **0.788510** | **40** |
+
+## Neural Net (budget 40)
+| seed | best_val_score | convergence_auc | total_evals |
+|---|---|---|---|
+| 42 | −3070.18992 | 0.961907 | 40 |
+| 123 | −3013.31892 | 0.664774 | 40 |
+| 456 | −3067.41709 | 0.690738 | 40 |
+| **mean** | **−3050.30864** | **0.772473** | **40** |
+</obs>
+
+### step 2 — CMA-ES (Optuna sampler)   [slug:optuna_cma]
+
+<think>
+[[POLISH_REASONING: adapt to first-person agentic voice, end by deciding to implement]]
+Random search told me exactly what I predicted, and the numbers split the way the theory said they would.
+On final quality it is genuinely strong: XGBoost mean best −0.3939, SVM 0.9778, NN −3050 — competitive
+optima everywhere, which is the low-effective-dimensionality lesson playing out. Where it bleeds is the
+convergence AUC, and it bleeds *with high variance*: SVM AUC swings 0.5625 → 0.9132 → 0.8899 across seeds
+for a mean of only 0.7885, and the NN AUC is the same story, 0.6648 / 0.6907 / 0.9619 for 0.7725. That is
+the signature of statelessness — seed 123's draw order on SVM simply did not stumble onto a good config
+until late, and nothing in the strategy pulled it back toward where the early evidence pointed, so the
+best-so-far curve stayed flat for many evaluations and the area under it collapsed. The deficiency is not
+final quality; it is that random search throws away every loss it has paid for. So the obvious next move is
+to *use the history* — to maintain a model of where the good configurations live and concentrate draws
+there, and the most principled way to do that for the continuous knobs is to adapt the shape of the
+sampling distribution itself.
+
+Let me be precise about what I am optimizing, because the encoding decides everything here. The loop hands
+me configs over a mixed space — log-scaled floats, integers, one categorical per benchmark — but the engine
+I want to build works on a vector in R^n. So I will work in a normalized box: encode every knob to [0,1]
+(linear for plain ranges, log-linear for `log_scale` knobs, and a categorical to its choice-index divided
+by the number of choices minus one), search in that box, and decode back at the end. I should flag the cost
+of this up front, because it is going to matter: the categorical knob (SVM `kernel`, NN `activation`) gets
+flattened to a single scalar coordinate and rounded back on decode, so the optimizer sees a *continuous*
+relaxation of a discrete axis with no metric meaning. For SVM, where the kernel choice is one of three
+coordinates out of three, that is a real distortion. I am betting that the continuous knobs dominate the
+loss and the rounding noise on the categorical is tolerable; the alternative — a separate discrete handler —
+is more machinery than this rung should carry, and the point of this rung is to test "adapt the continuous
+shape," cleanly.
+
+So: sample from a multivariate normal `N(m, σ²C)` over the box, rank the offspring by score, and use the
+ranks to manufacture a better mean and a better ellipsoid for the next generation. Why a normal? Among all
+distributions on R^n with prescribed second moments it has maximum entropy, so it commits to nothing beyond
+the covariance I have actually learned, and it privileges no direction a priori — exactly what I want from a
+general-purpose sampler. And why obsess over the *shape* `C` rather than just chasing the mean? Because near
+a good region the objective looks locally quadratic, `f ≈ ½(x−x*)ᵀH(x−x*)`, and the ideal sampling
+covariance there is `C ∝ H⁻¹`: in the coordinates `C^{-1/2}(x−x*)` the level sets become spheres and the
+search is isotropic. Learning `C` is the gradient-free analogue of building the inverse-Hessian
+preconditioner a quasi-Newton method maintains — except I have only ranks. The NN space is the one that
+should reward this: it is 6-D with log-scaled widths, learning rate, and regularizer, almost certainly
+ill-conditioned (a narrow viable learning-rate band, a much broader capacity band), and a method that learns
+the anisotropy should converge there where random search wandered.
+
+Now the actual update, which is the (μ/μ_w, λ)-CMA-ES the implementation fills in, derived in the order the
+pieces become forced. First the population: `λ = 4 + floor(3·ln n)` offspring per generation (5–8 here for
+n = 3–6), `μ = λ//2` parents, with rank-based recombination weights `w_i ∝ ln(μ+½) − ln i` normalized to sum
+to one, so the best parent counts most and the weights decay smoothly. The variance-effective selection mass
+`μ_eff = 1/Σw_i²` is the single number that summarizes "how many parents are really contributing," and it
+shows up in every learning rate below — that is not a coincidence, it is the amount of selection information
+per generation, and every rate has to be throttled by it or the estimate is noise. The new mean is the
+weighted recombination of the μ best, `m ← Σ_i w_i x_{i:λ}`. That much is just "move toward the good
+points."
+
+The covariance is where the care goes, and the design principle is *derandomization*: do not infer the
+strategy parameters indirectly from which offspring won; read them off the steps actually taken. Two
+ingredients implement this. The rank-μ update estimates a covariance from this generation's selected steps,
+`C_μ = Σ_i w_i y_i y_iᵀ` with `y_i = (x_{i:λ} − m_old)/σ` — crucially referenced to the *old* mean the points
+were sampled around, not to the selected mean, because referencing the selected mean would systematically
+*shrink* the variance along the very directions selection just favored (it measures spread *within* the
+winners rather than the displacement of the winners), which is exactly backwards. The rank-one update adds
+information across generations through the evolution path `p_c`, an exponentially-smoothed sum of the
+realized mean-shifts: `p_c ← (1−c_c)p_c + h_σ·√(c_c(2−c_c)μ_eff)·(m−m_old)/σ`, and `C` gains `c1·p_c p_cᵀ`.
+The point of the path is sign information the rank-μ term throws away: consecutive steps in the same
+direction mean a long correlated ridge to stretch `C` along, whereas steps that zig-zag cancel in the path
+and signal an over-long step. The covariance update is then the convex blend `C ← (1−c1−c_μ)C + c1·p_c p_cᵀ +
+c_μ·Σ_i w_i y_i y_iᵀ`, with the standard rates `c1 = 2/((n+1.3)² + μ_eff)` and `c_μ = min(1−c1,
+2(μ_eff−2+1/μ_eff)/((n+2)² + μ_eff))` — both small, both scaled by `μ_eff` and shrinking with dimension,
+because I can only move `C` as fast as the selection signal justifies. After the update I symmetrize `C` and
+floor its eigenvalues to keep it positive-definite, since the rank-deficient rank-μ term plus finite
+arithmetic can otherwise push an eigenvalue negative and the next eigendecomposition would fail.
+
+The step size σ rides a separate path, and keeping it separate from `C` is the whole trick of CSA
+(cumulative step-size adaptation). The conjugate evolution path `p_σ ← (1−c_σ)p_σ + √(c_σ(2−c_σ)μ_eff)·
+C^{-1/2}(m−m_old)/σ` accumulates the mean-shift in the *isotropic* frame (the `C^{-1/2}` whitening removes
+the shape so only length and correlation across generations survive). Then `σ ← σ·exp((c_σ/d_σ)(‖p_σ‖/E‖N(0,
+I)‖ − 1))`: if successive selected steps line up, the path is longer than a random walk of independent steps
+would be, so I am making consistent progress and should lengthen σ; if they anticorrelate (overshoot,
+zig-zag), the path is short and σ shrinks. The damping `d_σ` and the rate `c_σ = (μ_eff+2)/(n+μ_eff+5)`
+control how fast σ may move. This σ path is also why CSA is unbiased under random selection: with no real
+selection signal the expected path length is exactly `E‖N(0,I)‖`, so `E[ln σ]` is stationary — σ does not
+drift when I am learning nothing, a safety property, not a cosmetic one. The `h_σ` flag in the `p_c` update
+is the coupling: when `‖p_σ‖` is anomalously large (a big correlated move), it stalls the rank-one
+accumulation for one step so a single outsized step does not blow up `C`.
+
+In the scaffold this becomes a generational `suggest`: on first call, initialize `m = 0.5·𝟙`, `C = I`,
+`σ = 0.3`, sample a whole population, and queue the decoded configs; each later call matches the returned
+trial back to its pending candidate by `np.allclose` on the encoded vector, fills in its score, and when the
+whole generation is scored, runs the update and resamples. Every evaluation is full fidelity — CMA-ES is a
+single-fidelity optimizer, it has no notion of cheap noisy partial evaluations, so it spends the budget one
+generation at a time. The distilled module is in the answer.
+
+Here is where I have to be honest about the regime, because it is going to bite. CMA-ES is a method for
+*many* generations: it pays an up-front cost learning `C` and `σ`, and the payoff is asymptotic, on
+ill-conditioned landscapes, over hundreds to thousands of evaluations. My budget is 40–50. With λ ≈ 5–8 that
+is only 5–10 generations — barely enough for the evolution paths to accumulate, let alone for `C` to bend
+into the right ellipsoid. Worse, the σ₀ = 0.3 start in a unit box is large, so the first generations sample
+widely and the early best-so-far curve can sit flat while the distribution is still contracting — and the
+convergence AUC integrates exactly that early flatness. I therefore expect this rung to *lose* to random
+search on convergence AUC, not beat it, despite being the more sophisticated method: random search's i.i.d.
+draws get lucky early sometimes, whereas CMA-ES deterministically spends its first generations exploring
+before it exploits. The categorical relaxation compounds the risk on SVM, where a third of the space is the
+rounded kernel axis and the covariance machinery is modeling a discrete choice as if it were continuous.
+
+So the falsifiable expectation against random search's numbers is specific and, for a "stronger" method,
+uncomfortable. Final best scores should stay in the same competitive band — XGBoost near −0.40, SVM ~0.978,
+NN ~3020–3060 — because even a few CMA generations land on a decent optimum. But the convergence AUC should
+*degrade* relative to random search's 0.946 / 0.789 / 0.772, possibly badly on the benchmark where σ₀ is
+most mismatched and the budget is shortest, with the worst single seed cratering (a generation that samples
+wide and scores nothing before σ contracts). If I see CMA-ES post AUCs *below* random search's — a SVM mean
+dropping toward 0.6, an isolated seed near 0.2 — that is not a bug; that is the diagnosis confirmed: a pure
+continuous-shape optimizer is the wrong tool under a few-dozen-evaluation budget, because it cannot amortize
+its model-learning cost. And that points straight at the next rung: the fix is not a better continuous model
+but *cheaper evaluations* — spend the budget on many low-fidelity looks, keep only the survivors at high
+fidelity — so that the strategy gets far more than 5–10 effective trials out of the same cost.
+</think>
+<say>
+[[FILL_SAY: 1-2 sentences naming the method and what this first edit does]]
+</say>
+<edit path="scikit-learn/custom_hpo.py">
+<old>
+# EDITABLE region of scikit-learn/custom_hpo.py (lines 255-326) — step 1: Random Search
+class CustomHPOStrategy:
+    """Random Search: sample configurations uniformly at random."""
+</old>
+<new>
+# EDITABLE region of scikit-learn/custom_hpo.py (lines 255-326) — step 2: CMA-ES (Optuna sampler)
+class CustomHPOStrategy:
+    """CMA-ES: Covariance Matrix Adaptation Evolution Strategy."""
+</new>
+</edit>
+<obs>
+Successfully replaced text in scikit-learn/custom_hpo.py.
+</obs>
+<note>
+[[FILL_NOTE?: optional one-line thought for this edit, or delete this block]]
+</note>
+<edit path="scikit-learn/custom_hpo.py">
+<old>
+        self.rng = np.random.RandomState(seed)
+</old>
+<new>
+        self.rng = np.random.RandomState(seed)
+        self._initialized = False
+        self._mean = None
+        self._sigma = 0.3
+        self._C = None  # covariance matrix
+        self._p_sigma = None  # evolution path for sigma
+        self._p_c = None  # evolution path for C
+        self._gen = 0
+        self._lam = None  # population size
+        self._mu = None
+        self._weights = None
+        self._mu_eff = None
+        self._candidates = []
+        self._pending_evals = []
+
+    def _encode(self, config, space):
+        vec = []
+        for p in space.params:
+            val = config[p.name]
+            if p.type == "categorical":
+                idx = p.choices.index(val)
+                vec.append(idx / max(len(p.choices) - 1, 1))
+            elif p.type in ("float", "int"):
+                if p.log_scale:
+                    v = (np.log(val) - np.log(p.low)) / (np.log(p.high) - np.log(p.low))
+                else:
+                    v = (val - p.low) / (p.high - p.low)
+                vec.append(float(np.clip(v, 0, 1)))
+        return np.array(vec)
+
+    def _decode(self, vec, space):
+        config = {}
+        for i, p in enumerate(space.params):
+            v = float(np.clip(vec[i], 0, 1))
+            if p.type == "categorical":
+                idx = int(round(v * max(len(p.choices) - 1, 1)))
+                idx = min(idx, len(p.choices) - 1)
+                config[p.name] = p.choices[idx]
+            elif p.type == "float":
+                if p.log_scale:
+                    config[p.name] = float(np.exp(
+                        np.log(p.low) + v * (np.log(p.high) - np.log(p.low))))
+                else:
+                    config[p.name] = float(p.low + v * (p.high - p.low))
+            elif p.type == "int":
+                if p.log_scale:
+                    config[p.name] = int(round(np.exp(
+                        np.log(p.low) + v * (np.log(p.high) - np.log(p.low)))))
+                else:
+                    config[p.name] = int(round(p.low + v * (p.high - p.low)))
+        return config
+
+    def _init_cma(self, dim):
+        self._mean = np.full(dim, 0.5)
+        self._C = np.eye(dim)
+        self._p_sigma = np.zeros(dim)
+        self._p_c = np.zeros(dim)
+        self._lam = 4 + int(3 * np.log(dim))
+        self._mu = self._lam // 2
+        weights = np.log(self._mu + 0.5) - np.log(np.arange(1, self._mu + 1))
+        self._weights = weights / weights.sum()
+        self._mu_eff = 1.0 / np.sum(self._weights ** 2)
+        self._initialized = True
+
+    def _sample_population(self, space):
+        dim = space.dim
+        # Eigendecomposition of C
+        eigvals, eigvecs = np.linalg.eigh(self._C)
+        eigvals = np.maximum(eigvals, 1e-20)
+        sqrt_C = eigvecs @ np.diag(np.sqrt(eigvals)) @ eigvecs.T
+
+        self._candidates = []
+        self._pending_evals = []
+        for _ in range(self._lam):
+            z = self.rng.randn(dim)
+            x = self._mean + self._sigma * sqrt_C @ z
+            x = np.clip(x, 0, 1)
+            cfg = self._decode(x, space)
+            cfg = space.clip(cfg)
+            self._candidates.append((x, cfg, None))
+            self._pending_evals.append(cfg)
+
+    def _update(self, space):
+        """CMA-ES update step after a full generation is evaluated."""
+        dim = space.dim
+
+        # Sort by score (descending — we maximize)
+        scored = [(s, x) for x, _, s in self._candidates if s is not None]
+        scored.sort(key=lambda p: p[0], reverse=True)
+
+        # Recombination
+        old_mean = self._mean.copy()
+        self._mean = np.zeros(dim)
+        for i in range(self._mu):
+            self._mean += self._weights[i] * scored[i][1]
+
+        # Evolution paths
+        c_sigma = (self._mu_eff + 2) / (dim + self._mu_eff + 5)
+        d_sigma = 1 + 2 * max(0, np.sqrt((self._mu_eff - 1) / (dim + 1)) - 1) + c_sigma
+        c_c = (4 + self._mu_eff / dim) / (dim + 4 + 2 * self._mu_eff / dim)
+        chi_n = np.sqrt(dim) * (1 - 1 / (4 * dim) + 1 / (21 * dim ** 2))
+
+        eigvals, eigvecs = np.linalg.eigh(self._C)
+        eigvals = np.maximum(eigvals, 1e-20)
+        inv_sqrt_C = eigvecs @ np.diag(1.0 / np.sqrt(eigvals)) @ eigvecs.T
+
+        self._p_sigma = (1 - c_sigma) * self._p_sigma + \
+            np.sqrt(c_sigma * (2 - c_sigma) * self._mu_eff) * \
+            inv_sqrt_C @ (self._mean - old_mean) / self._sigma
+
+        h_sigma = 1.0 if (np.linalg.norm(self._p_sigma) /
+                          np.sqrt(1 - (1 - c_sigma) ** (2 * (self._gen + 1)))
+                          < (1.4 + 2 / (dim + 1)) * chi_n) else 0.0
+
+        self._p_c = (1 - c_c) * self._p_c + \
+            h_sigma * np.sqrt(c_c * (2 - c_c) * self._mu_eff) * \
+            (self._mean - old_mean) / self._sigma
+
+        # Covariance matrix update
+        c1 = 2.0 / ((dim + 1.3) ** 2 + self._mu_eff)
+        c_mu = min(1 - c1, 2 * (self._mu_eff - 2 + 1.0 / self._mu_eff) /
+                   ((dim + 2) ** 2 + self._mu_eff))
+
+        rank_one = np.outer(self._p_c, self._p_c)
+        rank_mu = np.zeros((dim, dim))
+        for i in range(self._mu):
+            diff = (scored[i][1] - old_mean) / self._sigma
+            rank_mu += self._weights[i] * np.outer(diff, diff)
+
+        self._C = (1 - c1 - c_mu) * self._C + c1 * rank_one + c_mu * rank_mu
+        # Ensure symmetry and positive definiteness
+        self._C = (self._C + self._C.T) / 2
+        eigvals_check = np.linalg.eigvalsh(self._C)
+        if np.min(eigvals_check) < 1e-20:
+            self._C += np.eye(dim) * (1e-20 - np.min(eigvals_check))
+
+        # Step-size update
+        self._sigma *= np.exp(
+            (c_sigma / d_sigma) * (np.linalg.norm(self._p_sigma) / chi_n - 1))
+        self._sigma = np.clip(self._sigma, 1e-10, 1.0)
+
+        self._gen += 1
+</new>
+</edit>
+<obs>
+Successfully replaced text in scikit-learn/custom_hpo.py.
+</obs>
+<note>
+[[FILL_NOTE?: optional one-line thought for this edit, or delete this block]]
+</note>
+<edit path="scikit-learn/custom_hpo.py">
+<old>
+    ) -> Tuple[Dict[str, Any], float]:
+        config = space.sample_uniform(self.rng)
+        return config, 1.0
+</old>
+<new>
+    ) -> Tuple[Dict[str, Any], float]:
+        if not self._initialized:
+            self._init_cma(space.dim)
+            self._sample_population(space)
+
+        # Update scores for pending candidates
+        if history:
+            last = history[-1]
+            last_vec = self._encode(last.config, space)
+            for i, (x, cfg, score) in enumerate(self._candidates):
+                if score is None and np.allclose(x, last_vec, atol=0.01):
+                    self._candidates[i] = (x, cfg, last.score)
+                    break
+
+        # If all candidates evaluated, do CMA update and resample
+        if self._candidates and all(s is not None for _, _, s in self._candidates):
+            self._update(space)
+            self._sample_population(space)
+
+        # Return next pending evaluation
+        if self._pending_evals:
+            cfg = self._pending_evals.pop(0)
+            return cfg, 1.0
+
+        # Fallback
+        return space.sample_uniform(self.rng), 1.0
+</new>
+</edit>
+<obs>
+Successfully replaced text in scikit-learn/custom_hpo.py.
+</obs>
+<run/>
+<obs>
+Measured results — `baseline:optuna_cma` (`is_final,true`), seeds {42, 123, 456} and mean.
+
+## XGBoost (budget 50)
+| seed | best_val_score | convergence_auc | total_evals |
+|---|---|---|---|
+| 42 | −0.404518 | 0.801772 | 50 |
+| 123 | −0.405250 | 0.645021 | 50 |
+| 456 | −0.391865 | 0.764980 | 50 |
+| **mean** | **−0.400544** | **0.737258** | **50** |
+
+## SVM (budget 40)
+| seed | best_val_score | convergence_auc | total_evals |
+|---|---|---|---|
+| 42 | 0.978932 | 0.840799 | 40 |
+| 123 | 0.978932 | 0.224080 | 40 |
+| 456 | 0.975408 | 0.928333 | 40 |
+| **mean** | **0.977757** | **0.664404** | **40** |
+
+## Neural Net (budget 40)
+| seed | best_val_score | convergence_auc | total_evals |
+|---|---|---|---|
+| 42 | −3066.20590 | 0.962500 | 40 |
+| 123 | −3013.31892 | 0.881799 | 40 |
+| 456 | −3021.75607 | 0.962500 | 40 |
+| **mean** | **−3033.76030** | **0.935600** | **40** |
+</obs>
+
+### step 3 — DEHB (Differential Evolution Hyperband)   [slug:dehb]
+
+<think>
+[[POLISH_REASONING: adapt to first-person agentic voice, end by deciding to implement]]
+CMA-ES confirmed the diagnosis in the most uncomfortable way: the more sophisticated method *lost*. Final
+scores held the competitive band — XGBoost −0.4005, SVM 0.9778, NN −3034, all roughly random search's —
+but the convergence AUC collapsed, and exactly where I said it would. SVM AUC fell to 0.6644 mean with a
+single seed at 0.2241; XGBoost AUC dropped to 0.7373 from random search's 0.9458. That 0.2241 seed is the
+whole story in one number: a CMA generation sampled wide under σ₀ = 0.3, scored nothing competitive for
+several evaluations, and the best-so-far curve sat flat while the area under it bled out — and with only
+~6–10 generations in a 40-evaluation budget there was no time to recover. The lesson is sharp and it is not
+about CMA-ES specifically: a single-fidelity optimizer that pays an up-front model-learning cost cannot
+amortize it under a few-dozen-evaluation budget, because *every* evaluation costs a full unit and there are
+too few of them. The fix is therefore not a better continuous model. It is to stop paying full price for
+every look. If a cheap, noisy approximation of the objective exists, I can triage many configurations
+cheaply and reserve the expensive full evaluations for the survivors — buying far more than 40 effective
+trials out of the same budget.
+
+The scaffold hands me exactly this lever and I ignored it for two rungs: the fidelity parameter. Each
+objective accepts `budget ∈ (0,1]` and scales its cost by it — XGBoost trains fewer trees, SVM uses fewer CV
+folds, the NN runs fewer iterations — and the loop charges `total_cost += fidelity`, so an evaluation at
+fidelity ⅓ costs a third of a unit and I get three of them for the price of one full look. This is why the
+multi-fidelity baselines show `total_evals` far above the budget: the same budget of 40–50 cost-units stretches
+to a hundred or more actual evaluations. The cheap scores are noisy but correlated with the true one — a
+config that is hopeless after a third of its trees is almost certainly hopeless at full — so I can rule out
+the obviously bad early and concentrate spend on the promising.
+
+Successive halving is the clean way to triage: sample N configs, evaluate all at the lowest fidelity, keep
+the top 1/η, multiply the fidelity by η, repeat to the top. Survivors get exponentially more resource; the
+full evaluation is paid only for a handful. But SH has one input it cannot set for itself — N, the
+configurations-versus-fidelity tradeoff. Go wide and cheap (large N) and I triage aggressively, which is
+right only if the cheap fidelity predicts the expensive one well; if the correlation is weak, I will discard
+at low fidelity exactly the config that would have won at full. Hyperband hedges by running SH at several
+starting fidelities, but I will reach for that next rung; here I want to address a *different* weakness that
+both SH and Hyperband share — they sample every configuration uniformly at random. They are brilliant at
+*allocating* budget and *killing* weak configs early, but they never use the outcome of one evaluation to
+decide where to look next, so their quality is capped by random sampling. CMA-ES learned from history but
+couldn't triage; SH triages but doesn't learn. I want both: model-free learning *and* multi-fidelity
+scheduling.
+
+CMA-ES learned from history by fitting a covariance — a model — and that model cost too much to amortize.
+The alternative is a *model-free* way to learn from history, and differential evolution is exactly that. It
+keeps a population of vectors in the unit box and improves them generation by generation with three
+operators. Mutation, DE/rand/1: pick three distinct population members and form a mutant `v = x_a +
+F·(x_b − x_c)`. Binomial crossover: build a trial by taking each coordinate from `v` with probability `Cr`,
+from the target otherwise, forcing at least one coordinate from `v` (a random index `j_rand`) so the trial is
+never a pure copy. Selection: keep the trial over the target iff it scores at least as well. The genius is
+the difference vector: when the population is spread out, `x_b − x_c` is large and the search explores; as it
+converges, the difference vectors shrink and the search exploits — the step scale *self-adapts to the
+population's own spread*, with no learning rate and no smoothness assumption. And because DE only ever
+*compares* scores, it is indifferent to whether a coordinate is continuous, integer, or categorical: keep the
+population in `[0,1]^D` and decode to the real (possibly discrete) space only at evaluation, and DE searches a
+smooth box while the world stays discrete. Its per-step cost is constant — it never grows with the number of
+evaluations the way a covariance update or a KDE fit does. It is the anti-CMA-ES learner: cheap, model-free,
+discrete-friendly.
+
+So the method this rung fills in is DE *inside* Hyperband's multi-fidelity skeleton, derived in the order the
+pieces become forced by the scaffold. First the fidelity ladder. With η = 3 and `s_max = min(3,
+floor(log_η(total_budget)))`, the rungs are `1/η^s` for s from s_max down to 0 — but two of those, after the
+loop's clip to [0.1, 1.0], both collapse near 0.1 (e.g. 0.037 → 0.1 and 0.111 are nearly the same), so I
+*dedupe* on the rounded fidelity and keep a strictly increasing ladder. This is a real adaptation to the
+harness: the floor of 0.1 means I cannot have arbitrarily many distinct cheap rungs, so wasting an SH round
+on two near-identical fidelities would just burn budget. Each surviving fidelity gets its own population of
+`max(4, dim+1)` configs, sampled uniformly and queued for evaluation at that fidelity. Second, the
+DE-with-inheritance loop. When a trial returns, I match it to its pending entry by fidelity-and-vector and do
+DE selection against the target it was mutated from (an initial-population eval just fills in its score). Once
+the lowest-fidelity population is fully scored, I evolve it: for each target, mutate-and-crossover a trial,
+queue it at the low fidelity, and increment that fidelity's generation counter. Third — and this is DEHB's
+signature departure from plain Hyperband — promotion. Every time the source fidelity completes a fresh
+generation, the top `1/η` of its (already-evolved) population is *promoted* to seed the next fidelity's
+population, re-evaluated there, gated by a per-fidelity generation counter so promotion happens at most once
+per fresh source generation and the queue cannot grow unbounded. The crucial point is that the higher
+fidelities inherit DE-evolved configurations rather than restarting from random samples, so the search at
+every fidelity benefits from the learning done at the cheaper ones — the budget-allocation of SH and the
+history-learning of DE share the same population. Fallback to a random full-fidelity draw only if the queue
+ever empties. The distilled module is in the answer.
+
+Now where will this actually land relative to CMA-ES and random search, and what should I be nervous about?
+The wins should be on *convergence AUC*, the metric both prior rungs were weakest on, because triage means a
+decent config surfaces from the cheap rungs fast and the best-so-far curve climbs early instead of sitting
+flat — the opposite of CMA-ES's wide-then-slow opening. I expect DEHB's AUC to beat CMA-ES comfortably and
+to be at least competitive with, probably above, random search on the harder benchmarks. I am specifically
+nervous about two things. First, the AUC is computed on the *min-max-normalized* best-so-far curve, and DEHB
+spends a lot of cheap evaluations — many low-fidelity scores that are noisy and can be poor — so the
+normalization floor (the worst score seen) may sit very low and the curve's early portion may look ragged;
+the convergence_auc can even exceed 1.0 here, which the DEHB numbers will show, an artifact of how the
+normalized curve integrates when many cheap noisy evaluations bracket the good ones. Second, the *cost
+accounting*: because low-fidelity evals are cheap, DEHB runs many more actual evaluations than the
+single-fidelity baselines (its `total_evals` should be far above 40–50, sometimes into the hundreds when many
+cheap rungs fire), and on a benchmark where the cheap fidelity predicts the expensive one *poorly* — the NN,
+where 50 iterations may rank configs differently from 500 — aggressive low-fidelity triage could promote the
+wrong survivors and the final best score could actually *dip* below random search's.
+
+So the falsifiable expectations against the prior numbers are: convergence AUC should rise sharply versus
+CMA-ES (whose SVM AUC was 0.6644 with a 0.2241 seed) and beat random search's 0.789/0.772 on SVM and NN,
+because triage front-loads good configs; `total_evals` should climb well past the budget, confirming the
+cheap evaluations are being spent; and the final best scores should stay in the competitive band but with a
+real risk of the NN best *worsening* relative to random search if low-fidelity rank-correlation is weak there.
+If I see exactly that — strong AUC, inflated total_evals, an NN best that slips while SVM/XGBoost AUC jump —
+that is multi-fidelity working as designed, with the low-fidelity-correlation caveat exposed, and it points
+at the next question: the residual weakness is that DEHB and SH alike *guess* the configurations-versus-
+fidelity tradeoff. The next rung should stop guessing it and hedge across the whole spectrum.
+</think>
+<say>
+[[FILL_SAY: 1-2 sentences naming the method and what this first edit does]]
+</say>
+<edit path="scikit-learn/custom_hpo.py">
+<old>
+# EDITABLE region of scikit-learn/custom_hpo.py (lines 255-326) — step 2: CMA-ES (Optuna sampler)
+class CustomHPOStrategy:
+    """CMA-ES: Covariance Matrix Adaptation Evolution Strategy."""
+</old>
+<new>
+# EDITABLE region of scikit-learn/custom_hpo.py (lines 255-326) — step 3: DEHB
+class CustomHPOStrategy:
+    """DEHB: Differential Evolution + Hyperband."""
+</new>
+</edit>
+<obs>
+Successfully replaced text in scikit-learn/custom_hpo.py.
+</obs>
+<note>
+[[FILL_NOTE?: optional one-line thought for this edit, or delete this block]]
+</note>
+<edit path="scikit-learn/custom_hpo.py">
+<old>
+        self.rng = np.random.RandomState(seed)
+        self._initialized = False
+        self._mean = None
+        self._sigma = 0.3
+        self._C = None  # covariance matrix
+        self._p_sigma = None  # evolution path for sigma
+        self._p_c = None  # evolution path for C
+        self._gen = 0
+        self._lam = None  # population size
+        self._mu = None
+        self._weights = None
+        self._mu_eff = None
+        self._candidates = []
+        self._pending_evals = []
+</old>
+<new>
+        self.rng = np.random.RandomState(seed)
+        self.eta = 3
+        self.mutation_factor = 0.5
+        self.crossover_prob = 0.5
+        self._initialized = False
+        # Queue items: (cfg, fid)
+        self._queue = []
+        # fid -> list of (vec, score)  -- current evaluated population
+        self._populations = {}
+        self._fidelities = []
+        # fid -> list of (trial_vec, target_idx) for pending DE trials at fid.
+        # When score arrives for a trial, do DE selection against target.
+        self._pending = {}
+        # Ensure we only promote each fid->next once per generation
+        self._promoted_rounds = {}
+</new>
+</edit>
+<obs>
+Successfully replaced text in scikit-learn/custom_hpo.py.
+</obs>
+<note>
+[[FILL_NOTE?: optional one-line thought for this edit, or delete this block]]
+</note>
+<edit path="scikit-learn/custom_hpo.py">
+<old>
+
+    def _init_cma(self, dim):
+        self._mean = np.full(dim, 0.5)
+        self._C = np.eye(dim)
+        self._p_sigma = np.zeros(dim)
+        self._p_c = np.zeros(dim)
+        self._lam = 4 + int(3 * np.log(dim))
+        self._mu = self._lam // 2
+        weights = np.log(self._mu + 0.5) - np.log(np.arange(1, self._mu + 1))
+        self._weights = weights / weights.sum()
+        self._mu_eff = 1.0 / np.sum(self._weights ** 2)
+        self._initialized = True
+
+    def _sample_population(self, space):
+        dim = space.dim
+        # Eigendecomposition of C
+        eigvals, eigvecs = np.linalg.eigh(self._C)
+        eigvals = np.maximum(eigvals, 1e-20)
+        sqrt_C = eigvecs @ np.diag(np.sqrt(eigvals)) @ eigvecs.T
+
+        self._candidates = []
+        self._pending_evals = []
+        for _ in range(self._lam):
+            z = self.rng.randn(dim)
+            x = self._mean + self._sigma * sqrt_C @ z
+            x = np.clip(x, 0, 1)
+            cfg = self._decode(x, space)
+            cfg = space.clip(cfg)
+            self._candidates.append((x, cfg, None))
+            self._pending_evals.append(cfg)
+
+    def _update(self, space):
+        """CMA-ES update step after a full generation is evaluated."""
+        dim = space.dim
+
+        # Sort by score (descending — we maximize)
+        scored = [(s, x) for x, _, s in self._candidates if s is not None]
+        scored.sort(key=lambda p: p[0], reverse=True)
+
+        # Recombination
+        old_mean = self._mean.copy()
+        self._mean = np.zeros(dim)
+        for i in range(self._mu):
+            self._mean += self._weights[i] * scored[i][1]
+
+        # Evolution paths
+        c_sigma = (self._mu_eff + 2) / (dim + self._mu_eff + 5)
+        d_sigma = 1 + 2 * max(0, np.sqrt((self._mu_eff - 1) / (dim + 1)) - 1) + c_sigma
+        c_c = (4 + self._mu_eff / dim) / (dim + 4 + 2 * self._mu_eff / dim)
+        chi_n = np.sqrt(dim) * (1 - 1 / (4 * dim) + 1 / (21 * dim ** 2))
+
+        eigvals, eigvecs = np.linalg.eigh(self._C)
+        eigvals = np.maximum(eigvals, 1e-20)
+        inv_sqrt_C = eigvecs @ np.diag(1.0 / np.sqrt(eigvals)) @ eigvecs.T
+
+        self._p_sigma = (1 - c_sigma) * self._p_sigma + \
+            np.sqrt(c_sigma * (2 - c_sigma) * self._mu_eff) * \
+            inv_sqrt_C @ (self._mean - old_mean) / self._sigma
+
+        h_sigma = 1.0 if (np.linalg.norm(self._p_sigma) /
+                          np.sqrt(1 - (1 - c_sigma) ** (2 * (self._gen + 1)))
+                          < (1.4 + 2 / (dim + 1)) * chi_n) else 0.0
+
+        self._p_c = (1 - c_c) * self._p_c + \
+            h_sigma * np.sqrt(c_c * (2 - c_c) * self._mu_eff) * \
+            (self._mean - old_mean) / self._sigma
+
+        # Covariance matrix update
+        c1 = 2.0 / ((dim + 1.3) ** 2 + self._mu_eff)
+        c_mu = min(1 - c1, 2 * (self._mu_eff - 2 + 1.0 / self._mu_eff) /
+                   ((dim + 2) ** 2 + self._mu_eff))
+
+        rank_one = np.outer(self._p_c, self._p_c)
+        rank_mu = np.zeros((dim, dim))
+        for i in range(self._mu):
+            diff = (scored[i][1] - old_mean) / self._sigma
+            rank_mu += self._weights[i] * np.outer(diff, diff)
+
+        self._C = (1 - c1 - c_mu) * self._C + c1 * rank_one + c_mu * rank_mu
+        # Ensure symmetry and positive definiteness
+        self._C = (self._C + self._C.T) / 2
+        eigvals_check = np.linalg.eigvalsh(self._C)
+        if np.min(eigvals_check) < 1e-20:
+            self._C += np.eye(dim) * (1e-20 - np.min(eigvals_check))
+
+        # Step-size update
+        self._sigma *= np.exp(
+            (c_sigma / d_sigma) * (np.linalg.norm(self._p_sigma) / chi_n - 1))
+        self._sigma = np.clip(self._sigma, 1e-10, 1.0)
+
+        self._gen += 1
+</old>
+<new>
+
+    def _de_mutate(self, target_idx, population):
+        """DE/rand/1/bin mutation and crossover."""
+        pop_vecs = [p[0] for p in population]
+        n = len(pop_vecs)
+        if n < 4:
+            return pop_vecs[target_idx] + self.rng.randn(len(pop_vecs[0])) * 0.1
+
+        idxs = list(range(n))
+        idxs.remove(target_idx)
+        a, b, c = self.rng.choice(idxs, 3, replace=False)
+        mutant = pop_vecs[a] + self.mutation_factor * (pop_vecs[b] - pop_vecs[c])
+        mutant = np.clip(mutant, 0, 1)
+
+        # Crossover
+        dim = len(mutant)
+        cross_mask = self.rng.rand(dim) < self.crossover_prob
+        j_rand = self.rng.randint(dim)
+        cross_mask[j_rand] = True
+        trial = np.where(cross_mask, mutant, pop_vecs[target_idx])
+        return trial
+
+    def _init(self, space, total_budget):
+        s_max = max(0, int(np.floor(np.log(total_budget) / np.log(self.eta))))
+        s_max = min(s_max, 3)
+        pop_size = max(4, space.dim + 1)
+
+        # Build strictly increasing fidelity ladder with no duplicates.
+        # The harness clips fidelity to [0.1, 1.0] in run_hpo_loop, so we
+        # must still respect that floor, but we dedupe to avoid wasting
+        # SH rounds on near-identical fidelities (e.g. 0.037 -> 0.1 and
+        # 0.111 would otherwise both collapse near 0.1).
+        seen = set()
+        for s in range(s_max, -1, -1):
+            raw = 1.0 / self.eta ** s
+            fid = max(raw, 0.1)
+            key = round(fid, 3)
+            if key in seen:
+                continue
+            seen.add(key)
+            self._fidelities.append(fid)
+            self._pending[fid] = []
+            pop = []
+            for i in range(pop_size):
+                cfg = space.sample_uniform(self.rng)
+                vec = self._encode(cfg, space)
+                pop.append((vec, None))
+                # target_idx = -1 -i means initial eval; we encode as negative
+                # of (i+1) so it's distinguishable from real DE trial indices.
+                self._pending[fid].append((vec, -(i + 1)))
+                self._queue.append((cfg, fid))
+            self._populations[fid] = pop
+        self._initialized = True
+</new>
+</edit>
+<obs>
+Successfully replaced text in scikit-learn/custom_hpo.py.
+</obs>
+<note>
+[[FILL_NOTE?: optional one-line thought for this edit, or delete this block]]
+</note>
+<edit path="scikit-learn/custom_hpo.py">
+<old>
+        if not self._initialized:
+            self._init_cma(space.dim)
+            self._sample_population(space)
+
+        # Update scores for pending candidates
+        if history:
+            last = history[-1]
+            last_vec = self._encode(last.config, space)
+            for i, (x, cfg, score) in enumerate(self._candidates):
+                if score is None and np.allclose(x, last_vec, atol=0.01):
+                    self._candidates[i] = (x, cfg, last.score)
+                    break
+
+        # If all candidates evaluated, do CMA update and resample
+        if self._candidates and all(s is not None for _, _, s in self._candidates):
+            self._update(space)
+            self._sample_population(space)
+
+        # Return next pending evaluation
+        if self._pending_evals:
+            cfg = self._pending_evals.pop(0)
+            return cfg, 1.0
+
+        # Fallback
+        return space.sample_uniform(self.rng), 1.0
+</old>
+<new>
+        if not self._initialized:
+            self._init(space, budget_left + len(history))
+
+        # When a trial comes back, match to pending and do DE selection
+        # against the target it was generated from.
+        if history:
+            last = history[-1]
+            last_vec = self._encode(last.config, space)
+            # Match by (fidelity, vec) among pending trials
+            for fid in self._fidelities:
+                if abs(fid - last.budget) >= 0.05:
+                    continue
+                pending = self._pending[fid]
+                pop = self._populations[fid]
+                for j, (trial_vec, tgt_idx) in enumerate(pending):
+                    if np.allclose(trial_vec, last_vec, atol=1e-3):
+                        if tgt_idx < 0:
+                            # Initial-population eval: just fill in score.
+                            real_idx = -(tgt_idx + 1)
+                            pop[real_idx] = (trial_vec, last.score)
+                        else:
+                            tgt_vec, tgt_score = pop[tgt_idx]
+                            # DE selection: keep better of target/trial.
+                            if tgt_score is None or last.score >= tgt_score:
+                                pop[tgt_idx] = (trial_vec, last.score)
+                            # else: keep target unchanged.
+                        pending.pop(j)
+                        break
+
+        if self._queue:
+            return self._queue.pop(0)
+
+        sorted_fids = sorted(self._fidelities)
+        # Track generation counter per fidelity to alternate between
+        # DE evolution at lowest fidelity and inheritance-based
+        # promotion to higher fidelities (DEHB modified SH).
+        if not hasattr(self, "_gen_count"):
+            self._gen_count = {f: 0 for f in sorted_fids}
+
+        lo_fid = sorted_fids[0]
+        lo_pop = self._populations[lo_fid]
+        lo_ready = (all(s is not None for _, s in lo_pop)
+                    and not self._pending[lo_fid])
+
+        if lo_ready:
+            # Step 1: evolve the lowest-fidelity population.
+            for tgt_idx in range(len(lo_pop)):
+                trial_vec = self._de_mutate(tgt_idx, lo_pop)
+                trial_cfg = self._decode(trial_vec, space)
+                trial_cfg = space.clip(trial_cfg)
+                self._pending[lo_fid].append((trial_vec, tgt_idx))
+                self._queue.append((trial_cfg, lo_fid))
+            self._gen_count[lo_fid] += 1
+            # Step 2: every eta generations, promote top configs to the
+            # next fidelity level via successive halving (DEHB design).
+            for i in range(len(sorted_fids) - 1):
+                hi_fid = sorted_fids[i + 1]
+                src_fid = sorted_fids[i]
+                if self._pending[hi_fid]:
+                    continue
+                src_pop = self._populations[src_fid]
+                if any(s is None for _, s in src_pop):
+                    continue
+                # Gate promotion so it runs at most once per fresh src
+                # generation (avoid unbounded queue growth).
+                if self._gen_count[hi_fid] >= self._gen_count[src_fid]:
+                    continue
+                scored = sorted(
+                    [(s, v) for v, s in src_pop],
+                    key=lambda x: x[0],
+                    reverse=True,
+                )
+                n_promote = max(1, len(scored) // self.eta)
+                top_vecs = [v for _, v in scored[:n_promote]]
+                hi_pop = self._populations[hi_fid]
+                # Overwrite hi_pop members with promoted vecs, then
+                # re-evaluate each at the higher fidelity.
+                new_hi_pop = []
+                for k in range(len(hi_pop)):
+                    vec = top_vecs[k % len(top_vecs)]
+                    new_hi_pop.append((vec, None))
+                    cfg = self._decode(vec, space)
+                    cfg = space.clip(cfg)
+                    self._pending[hi_fid].append((vec, -(k + 1)))
+                    self._queue.append((cfg, hi_fid))
+                self._populations[hi_fid] = new_hi_pop
+                self._gen_count[hi_fid] = self._gen_count[src_fid]
+            if self._queue:
+                return self._queue.pop(0)
+
+        # Fallback: random full fidelity
+        return space.sample_uniform(self.rng), 1.0
+</new>
+</edit>
+<obs>
+Successfully replaced text in scikit-learn/custom_hpo.py.
+</obs>
+<run/>
+<obs>
+Measured results — `baseline:dehb` (`is_final,true`), seeds {42, 123, 456} and mean.
+
+## XGBoost (budget 50)
+| seed | best_val_score | convergence_auc | total_evals |
+|---|---|---|---|
+| 42 | −0.388511 | 0.847548 | 80 |
+| 123 | −0.399655 | 0.997118 | 116 |
+| 456 | −0.416707 | 1.003067 | 116 |
+| **mean** | **−0.401624** | **0.949244** | **104** |
+
+## SVM (budget 40)
+| seed | best_val_score | convergence_auc | total_evals |
+|---|---|---|---|
+| 42 | 0.978932 | 0.973311 | 65 |
+| 123 | 0.956097 | 0.982038 | 354 |
+| 456 | 0.963127 | 0.988664 | 320 |
+| **mean** | **0.966052** | **0.981338** | **246.33** |
+
+## Neural Net (budget 40)
+| seed | best_val_score | convergence_auc | total_evals |
+|---|---|---|---|
+| 42 | −3086.08148 | 1.003472 | 70 |
+| 123 | −3062.28388 | 1.007861 | 106 |
+| 456 | −2997.87989 | 0.794007 | 99 |
+| **mean** | **−3048.74842** | **0.935113** | **91.67** |
+</obs>
+
+### step 4 — TPE (Tree-structured Parzen Estimator)   [slug:tpe]
+
+<think>
+[[POLISH_REASONING: adapt to first-person agentic voice, end by deciding to implement]]
+DEHB behaved exactly as multi-fidelity should and exposed its own price in the numbers. The convergence
+AUC jumped where the prior rungs were weakest — SVM 0.9813 (versus CMA-ES's 0.6644 and random search's
+0.7885), XGBoost 0.9492, several seeds reading *above* 1.0 (1.0031, 1.0079) — and `total_evals` ballooned to
+104 on XGBoost, 246 on SVM, 92 on the NN, far past the 50/40/40 budgets, which is the cheap-fidelity lever
+working: the same cost stretched to many more actual looks, and triage front-loaded good configs so the
+best-so-far curve climbed early. But two things confirm the caveat I flagged. The AUCs over 1.0 are the
+normalization artifact — with many cheap noisy low-fidelity scores bracketing the good ones, the min-max
+floor sits very low and the integrated curve overshoots — so AUC is now partly measuring how the cheap
+evaluations stack up, not pure convergence. And the NN final best *slipped*: −3048.7 mean, with seed 42 at
+−3086 (worse than random search's −3070), which is precisely the weak-rank-correlation failure I worried
+about — at low fidelity the NN's 50-iteration scores rank configs differently from the 500-iteration truth,
+so aggressive triage promoted the wrong survivors. DEHB's residual weakness is structural, and it is the one
+both SH and Hyperband share: it *guesses* the configurations-versus-fidelity tradeoff, and where the cheap
+fidelity lies, it throws away the eventual winner early.
+
+So before I reach for the full multi-fidelity hedge, let me isolate a different ingredient that all three
+prior rungs were missing in their full form. CMA-ES learned from history but with a model too expensive to
+amortize. DEHB learned from history but *model-free* (DE), and inherited the low-fidelity-correlation risk.
+Neither built a clean *probabilistic model of where good configurations live* that I could trust at full
+fidelity. The question this rung answers is narrow: if I commit to single-fidelity evaluation (no triage
+risk at all) but spend each full evaluation on the configuration a *model* says is most promising, how far
+does pure model-guided search get? This is the model component that the strongest combination later will
+graft onto a multi-fidelity skeleton — so getting it right in isolation matters.
+
+The template for model-guided search is sequential model-based optimization: keep a cheap surrogate of the
+expensive loss built from the history, and each round maximize an acquisition over it to pick the next point,
+evaluate, append, refit. The expensive evaluation happens once per round, so everything else must be cheap
+next to it. Two choices define the method: what surrogate, and what acquisition. I want Expected Improvement
+as the acquisition because it balances exploit against explore without a hand-set target: given the best
+score y* seen and a surrogate's predictive distribution over the value Y(x) at a candidate, EI is the
+expected amount by which x would beat the incumbent — outcomes worse than y* contribute zero improvement, and
+the expectation over the surrogate's predictive distribution automatically rewards both high predicted score
+(exploit) and high predictive spread that could clear y* (explore). It is the standard acquisition precisely
+because that exploit/explore trade falls out of one integral with no tuning, so I commit to EI and spend the
+design effort on the surrogate, which is where the space's structure actually bites. The textbook surrogate is a
+Gaussian process, and it is elegant — analytic posterior mean and variance, closed-form EI — but it is the
+wrong fit for *this* space, and naming why is what forces the alternative. A GP kernel needs a metric on the
+whole configuration vector, and my spaces have a categorical axis (SVM kernel, NN activation) with no natural
+metric; conditioning costs O(n³); and EI under a GP stakes all exploration on a single point estimate of the
+predictive variance, which a sparse early sample (my normal starting condition at 40 evaluations) can
+collapse to near-zero, killing exploration silently.
+
+Stare at the EI integral and ask what it actually needs, because the GP may be solving a harder problem than
+EI requires. EI needs p(y|x): the distribution over loss for any candidate. The GP models the forward map
+x → distribution-over-y directly, which is why it needs a metric on x. But I never need a calibrated number —
+I draw candidates and *rank* them by EI. The data I have a lot of is the other direction: for each trial I
+have (config, score), samples of the joint. The GP factors the joint as p(y|x)p(x); what if I factor it the
+other way, p(x|y)p(y), and model p(x|y) — the density over *configurations* given the outcome? That is the
+direction my data is easy in: group the configs by outcome and estimate a density over configs within each
+group, with a per-coordinate kernel that composes natively over mixed types — no whole-vector metric needed.
+
+Split the outcome at a quantile: pick γ and set the threshold y* so a fraction γ of observations fall on the
+good side, then estimate two densities — `l(x)` over the configs whose score is in the top γ, `g(x)` over the
+rest. Push EI through this factorization with Bayes (p(y|x) = p(x|y)p(y)/p(x)) and the algebra collapses to a
+clean result. Writing EI for a maximization problem against incumbent y*, the improvement integral over the
+good region factors because on that region p(x|y) is, by construction, exactly `l(x)` and pulls out of the
+y-integral as a constant in x; the denominator p(x) is the total mixture `γ·l(x) + (1−γ)·g(x)` by total
+probability over the same split; and what survives is `EI(x) ∝ (γ + (1−γ)·g(x)/l(x))^{-1}`, which is strictly
+*increasing* in `l(x)/g(x)`. So EI(x) is a monotone function of the ratio `l(x)/g(x)`, and maximizing EI is
+*exactly* maximizing that ratio — pick the config most likely under the good density relative to the bad one.
+This is the payoff of the backwards factorization: I never had to build a regressor on x, never needed a
+whole-vector metric, and the acquisition reduced to a ratio of two densities I can estimate directly from the
+grouped history. The quantile choice y* is forced by the construction: GP-EI uses y* = the best observed
+score, but then the good set would be a single point and `l` would have no data to fit, so I must use a
+quantile γ instead, which also becomes the explore/exploit knob — larger γ admits more configs into the "good"
+set (more exploration, since `l` then covers more of the space), smaller γ is greedier (a tighter elite). The
+γ = 0.25 this rung uses is more exploratory than the classic 0.15, which is the right bias under a tiny budget
+where the good set must not collapse to two or three points and over-concentrate the ratio.
+
+Now the implementation the scaffold fills in, and where it departs from the clean ideal. Encode each config
+to a numeric vector in [0,1] (log-linear for scale knobs, and the categorical to its choice-index over the
+number of choices minus one — a scalar relaxation, the same lossy flattening I accepted for CMA-ES, fine here
+because EI only ranks and the continuous knobs dominate). Run `n_startup = 10` uniform-random configs first,
+because below a handful of observations the densities are meaningless and I should just explore. Then split:
+`n_good = max(1, int(γ·len(history)))` with γ = 0.25, threshold at the `n_good`-th best score. Estimate `l`
+and `g` as simple Gaussian KDEs — `log p(x) = log(mean_i exp(−½‖x−x_i‖²/bw²) + ε)` — with a *single global
+bandwidth* per density set by a Scott-style floor, `bw = max(0.05, samples.std() + ε)`. This is the key
+simplification to be honest about: it is not the per-point adaptive bandwidth of the full method, just one
+scale per density, which under 40 observations is a reasonable bias-variance trade (per-point bandwidths need
+more data to estimate) but does smear fine structure. Finally, optimize EI by *sampling*: draw
+`n_ei_candidates = 24` uniform configs, score each by `log l(x) − log g(x)`, and return the argmax — sampled
+optimization rather than gradient ascent, which sidesteps the categorical axis having no gradient and is
+cheap at 24 candidates. Every suggestion is full fidelity 1.0; this rung deliberately uses *no* multi-fidelity,
+to measure the model in isolation. The distilled module is in the answer.
+
+Now where should this land against DEHB's numbers? TPE's strength is *final quality* and *low-variance*
+convergence, because it spends every full-price evaluation on a model-chosen config rather than a cheap noisy
+look or a blind DE trial — so I expect its NN final best to *recover* from DEHB's slip (no low-fidelity
+mis-promotion can hurt it, since there is no low fidelity), landing back near random search's band rather than
+DEHB's −3086 seed. But its convergence AUC should be *lower* than DEHB's inflated multi-fidelity numbers,
+and for a clean reason: DEHB got many cheap evaluations and an AUC artifact above 1.0; TPE gets only 40–50
+full evaluations and a 10-evaluation random warm-up before the model even turns on, so a quarter of its
+budget on the small benchmarks is pure exploration with a flat early curve. I therefore expect TPE to *trail
+DEHB on convergence AUC* (SVM well below 0.98, NN below DEHB's 0.935) while being *more reliable on final
+best* — the inverse of DEHB's profile.
+
+The falsifiable expectations against DEHB are then specific: `total_evals` back to exactly the budget (50/40/
+40 — single fidelity, the tell that the model-only rung is doing no triage); NN final best recovered toward
+random search's level (no low-fidelity mis-promotion); but convergence AUC distinctly below DEHB's, because
+the 10-config warm-up and full-price evaluations cannot front-load the curve the way cheap triage did. If I
+see that — budget-pinned total_evals, decent and stable final scores, but AUC that loses to DEHB — the
+diagnosis is the missing ingredient stated cleanly: a *good model alone* fixes final quality and reliability
+but cannot match the *anytime* convergence that cheap multi-fidelity buys. The two strengths are
+complementary, which is the whole setup for the rungs that follow: hedge the configs-versus-fidelity tradeoff
+across the spectrum (next), and then put a model *inside* that hedge so the best of both compound.
+</think>
+<say>
+[[FILL_SAY: 1-2 sentences naming the method and what this first edit does]]
+</say>
+<edit path="scikit-learn/custom_hpo.py">
+<old>
+# EDITABLE region of scikit-learn/custom_hpo.py (lines 255-326) — step 3: DEHB
+class CustomHPOStrategy:
+    """DEHB: Differential Evolution + Hyperband."""
+</old>
+<new>
+# EDITABLE region of scikit-learn/custom_hpo.py (lines 255-326) — step 4: TPE
+class CustomHPOStrategy:
+    """Tree-structured Parzen Estimator (TPE)."""
+</new>
+</edit>
+<obs>
+Successfully replaced text in scikit-learn/custom_hpo.py.
+</obs>
+<note>
+[[FILL_NOTE?: optional one-line thought for this edit, or delete this block]]
+</note>
+<edit path="scikit-learn/custom_hpo.py">
+<old>
+        self.rng = np.random.RandomState(seed)
+        self.eta = 3
+        self.mutation_factor = 0.5
+        self.crossover_prob = 0.5
+        self._initialized = False
+        # Queue items: (cfg, fid)
+        self._queue = []
+        # fid -> list of (vec, score)  -- current evaluated population
+        self._populations = {}
+        self._fidelities = []
+        # fid -> list of (trial_vec, target_idx) for pending DE trials at fid.
+        # When score arrives for a trial, do DE selection against target.
+        self._pending = {}
+        # Ensure we only promote each fid->next once per generation
+        self._promoted_rounds = {}
+
+    def _encode(self, config, space):
+        vec = []
+</old>
+<new>
+        self.rng = np.random.RandomState(seed)
+        self.gamma = 0.25  # fraction of best observations for l(x)
+        self.n_startup = 10  # random search before modelling
+        self.n_ei_candidates = 24  # candidates to score with EI
+
+    def _encode(self, config, space):
+        """Encode a config to a numeric vector in [0,1]."""
+        vec = []
+</new>
+</edit>
+<obs>
+Successfully replaced text in scikit-learn/custom_hpo.py.
+</obs>
+<note>
+[[FILL_NOTE?: optional one-line thought for this edit, or delete this block]]
+</note>
+<edit path="scikit-learn/custom_hpo.py">
+<old>
+            if p.type == "categorical":
+                idx = p.choices.index(val)
+</old>
+<new>
+            if p.type == "categorical":
+                # One-hot-ish: use index / len
+                idx = p.choices.index(val)
+</new>
+</edit>
+<obs>
+Successfully replaced text in scikit-learn/custom_hpo.py.
+</obs>
+<note>
+[[FILL_NOTE?: optional one-line thought for this edit, or delete this block]]
+</note>
+<edit path="scikit-learn/custom_hpo.py">
+<old>
+
+    def _decode(self, vec, space):
+        config = {}
+        for i, p in enumerate(space.params):
+            v = float(np.clip(vec[i], 0, 1))
+            if p.type == "categorical":
+                idx = int(round(v * max(len(p.choices) - 1, 1)))
+                idx = min(idx, len(p.choices) - 1)
+                config[p.name] = p.choices[idx]
+            elif p.type == "float":
+                if p.log_scale:
+                    config[p.name] = float(np.exp(
+                        np.log(p.low) + v * (np.log(p.high) - np.log(p.low))))
+                else:
+                    config[p.name] = float(p.low + v * (p.high - p.low))
+            elif p.type == "int":
+                if p.log_scale:
+                    config[p.name] = int(round(np.exp(
+                        np.log(p.low) + v * (np.log(p.high) - np.log(p.low)))))
+                else:
+                    config[p.name] = int(round(p.low + v * (p.high - p.low)))
+        return config
+
+    def _de_mutate(self, target_idx, population):
+        """DE/rand/1/bin mutation and crossover."""
+        pop_vecs = [p[0] for p in population]
+        n = len(pop_vecs)
+        if n < 4:
+            return pop_vecs[target_idx] + self.rng.randn(len(pop_vecs[0])) * 0.1
+
+        idxs = list(range(n))
+        idxs.remove(target_idx)
+        a, b, c = self.rng.choice(idxs, 3, replace=False)
+        mutant = pop_vecs[a] + self.mutation_factor * (pop_vecs[b] - pop_vecs[c])
+        mutant = np.clip(mutant, 0, 1)
+
+        # Crossover
+        dim = len(mutant)
+        cross_mask = self.rng.rand(dim) < self.crossover_prob
+        j_rand = self.rng.randint(dim)
+        cross_mask[j_rand] = True
+        trial = np.where(cross_mask, mutant, pop_vecs[target_idx])
+        return trial
+
+    def _init(self, space, total_budget):
+        s_max = max(0, int(np.floor(np.log(total_budget) / np.log(self.eta))))
+        s_max = min(s_max, 3)
+        pop_size = max(4, space.dim + 1)
+
+        # Build strictly increasing fidelity ladder with no duplicates.
+        # The harness clips fidelity to [0.1, 1.0] in run_hpo_loop, so we
+        # must still respect that floor, but we dedupe to avoid wasting
+        # SH rounds on near-identical fidelities (e.g. 0.037 -> 0.1 and
+        # 0.111 would otherwise both collapse near 0.1).
+        seen = set()
+        for s in range(s_max, -1, -1):
+            raw = 1.0 / self.eta ** s
+            fid = max(raw, 0.1)
+            key = round(fid, 3)
+            if key in seen:
+                continue
+            seen.add(key)
+            self._fidelities.append(fid)
+            self._pending[fid] = []
+            pop = []
+            for i in range(pop_size):
+                cfg = space.sample_uniform(self.rng)
+                vec = self._encode(cfg, space)
+                pop.append((vec, None))
+                # target_idx = -1 -i means initial eval; we encode as negative
+                # of (i+1) so it's distinguishable from real DE trial indices.
+                self._pending[fid].append((vec, -(i + 1)))
+                self._queue.append((cfg, fid))
+            self._populations[fid] = pop
+        self._initialized = True
+</old>
+<new>
+
+    def _kde_logpdf(self, x, samples, bw):
+        """Simple Gaussian KDE log-density at x."""
+        diffs = x[None, :] - samples  # (n_samples, dim)
+        return float(
+            np.log(np.mean(np.exp(-0.5 * np.sum(diffs**2 / bw**2, axis=1))) + 1e-30)
+        )
+</new>
+</edit>
+<obs>
+Successfully replaced text in scikit-learn/custom_hpo.py.
+</obs>
+<note>
+[[FILL_NOTE?: optional one-line thought for this edit, or delete this block]]
+</note>
+<edit path="scikit-learn/custom_hpo.py">
+<old>
+    ) -> Tuple[Dict[str, Any], float]:
+        if not self._initialized:
+            self._init(space, budget_left + len(history))
+
+        # When a trial comes back, match to pending and do DE selection
+        # against the target it was generated from.
+        if history:
+            last = history[-1]
+            last_vec = self._encode(last.config, space)
+            # Match by (fidelity, vec) among pending trials
+            for fid in self._fidelities:
+                if abs(fid - last.budget) >= 0.05:
+                    continue
+                pending = self._pending[fid]
+                pop = self._populations[fid]
+                for j, (trial_vec, tgt_idx) in enumerate(pending):
+                    if np.allclose(trial_vec, last_vec, atol=1e-3):
+                        if tgt_idx < 0:
+                            # Initial-population eval: just fill in score.
+                            real_idx = -(tgt_idx + 1)
+                            pop[real_idx] = (trial_vec, last.score)
+                        else:
+                            tgt_vec, tgt_score = pop[tgt_idx]
+                            # DE selection: keep better of target/trial.
+                            if tgt_score is None or last.score >= tgt_score:
+                                pop[tgt_idx] = (trial_vec, last.score)
+                            # else: keep target unchanged.
+                        pending.pop(j)
+                        break
+
+        if self._queue:
+            return self._queue.pop(0)
+
+        sorted_fids = sorted(self._fidelities)
+        # Track generation counter per fidelity to alternate between
+        # DE evolution at lowest fidelity and inheritance-based
+        # promotion to higher fidelities (DEHB modified SH).
+        if not hasattr(self, "_gen_count"):
+            self._gen_count = {f: 0 for f in sorted_fids}
+
+        lo_fid = sorted_fids[0]
+        lo_pop = self._populations[lo_fid]
+        lo_ready = (all(s is not None for _, s in lo_pop)
+                    and not self._pending[lo_fid])
+
+        if lo_ready:
+            # Step 1: evolve the lowest-fidelity population.
+            for tgt_idx in range(len(lo_pop)):
+                trial_vec = self._de_mutate(tgt_idx, lo_pop)
+                trial_cfg = self._decode(trial_vec, space)
+                trial_cfg = space.clip(trial_cfg)
+                self._pending[lo_fid].append((trial_vec, tgt_idx))
+                self._queue.append((trial_cfg, lo_fid))
+            self._gen_count[lo_fid] += 1
+            # Step 2: every eta generations, promote top configs to the
+            # next fidelity level via successive halving (DEHB design).
+            for i in range(len(sorted_fids) - 1):
+                hi_fid = sorted_fids[i + 1]
+                src_fid = sorted_fids[i]
+                if self._pending[hi_fid]:
+                    continue
+                src_pop = self._populations[src_fid]
+                if any(s is None for _, s in src_pop):
+                    continue
+                # Gate promotion so it runs at most once per fresh src
+                # generation (avoid unbounded queue growth).
+                if self._gen_count[hi_fid] >= self._gen_count[src_fid]:
+                    continue
+                scored = sorted(
+                    [(s, v) for v, s in src_pop],
+                    key=lambda x: x[0],
+                    reverse=True,
+                )
+                n_promote = max(1, len(scored) // self.eta)
+                top_vecs = [v for _, v in scored[:n_promote]]
+                hi_pop = self._populations[hi_fid]
+                # Overwrite hi_pop members with promoted vecs, then
+                # re-evaluate each at the higher fidelity.
+                new_hi_pop = []
+                for k in range(len(hi_pop)):
+                    vec = top_vecs[k % len(top_vecs)]
+                    new_hi_pop.append((vec, None))
+                    cfg = self._decode(vec, space)
+                    cfg = space.clip(cfg)
+                    self._pending[hi_fid].append((vec, -(k + 1)))
+                    self._queue.append((cfg, hi_fid))
+                self._populations[hi_fid] = new_hi_pop
+                self._gen_count[hi_fid] = self._gen_count[src_fid]
+            if self._queue:
+                return self._queue.pop(0)
+
+        # Fallback: random full fidelity
+        return space.sample_uniform(self.rng), 1.0
+</old>
+<new>
+    ) -> Tuple[Dict[str, Any], float]:
+        if len(history) < self.n_startup:
+            return space.sample_uniform(self.rng), 1.0
+
+        # Split observations into good (l) and bad (g)
+        scores = np.array([t.score for t in history])
+        n_good = max(1, int(self.gamma * len(history)))
+        threshold = np.sort(scores)[-n_good]
+
+        good_vecs = np.array([
+            self._encode(t.config, space)
+            for t in history if t.score >= threshold
+        ])
+        bad_vecs = np.array([
+            self._encode(t.config, space)
+            for t in history if t.score < threshold
+        ])
+
+        if len(bad_vecs) == 0:
+            bad_vecs = good_vecs.copy()
+
+        # Bandwidth: Scott's rule
+        bw_good = max(0.05, good_vecs.std() + 1e-6)
+        bw_bad = max(0.05, bad_vecs.std() + 1e-6)
+
+        # Generate candidates and score them by l(x)/g(x)
+        best_score = -np.inf
+        best_config = None
+        for _ in range(self.n_ei_candidates):
+            candidate = space.sample_uniform(self.rng)
+            x = self._encode(candidate, space)
+            log_l = self._kde_logpdf(x, good_vecs, bw_good)
+            log_g = self._kde_logpdf(x, bad_vecs, bw_bad)
+            ei = log_l - log_g
+            if ei > best_score:
+                best_score = ei
+                best_config = candidate
+
+        return best_config, 1.0
+</new>
+</edit>
+<obs>
+Successfully replaced text in scikit-learn/custom_hpo.py.
+</obs>
+<run/>
+<obs>
+Measured results — `baseline:tpe` (`is_final,true`), seeds {42, 123, 456} and mean.
+
+## XGBoost (budget 50)
+| seed | best_val_score | convergence_auc | total_evals |
+|---|---|---|---|
+| 42 | −0.391354 | 0.913637 | 50 |
+| 123 | −0.390420 | 0.948581 | 50 |
+| 456 | −0.394426 | 0.936397 | 50 |
+| **mean** | **−0.392067** | **0.932872** | **50** |
+
+## SVM (budget 40)
+| seed | best_val_score | convergence_auc | total_evals |
+|---|---|---|---|
+| 42 | 0.978932 | 0.922994 | 40 |
+| 123 | 0.978932 | 0.793386 | 40 |
+| 456 | 0.980686 | 0.912390 | 40 |
+| **mean** | **0.979517** | **0.876257** | **40** |
+
+## Neural Net (budget 40)
+| seed | best_val_score | convergence_auc | total_evals |
+|---|---|---|---|
+| 42 | −3063.60619 | 0.958000 | 40 |
+| 123 | −3041.41230 | 0.797801 | 40 |
+| 456 | −3039.38202 | 0.736065 | 40 |
+| **mean** | **−3048.13351** | **0.830621** | **40** |
+</obs>
+
+### step 5 — Hyperband   [slug:hyperband]
+
+<think>
+[[POLISH_REASONING: adapt to first-person agentic voice, end by deciding to implement]]
+TPE landed exactly on the profile I predicted, and the contrast with DEHB is the whole point. `total_evals`
+came back pinned to the budget — 50 on XGBoost, 40 on SVM and the NN — confirming the model-only rung does no
+triage. The NN final best *recovered*: −3048.1 mean, with seed 42 at −3063.6 instead of DEHB's −3086, so
+removing the low-fidelity mis-promotion fixed the slip exactly as the diagnosis said. But the convergence AUC
+distinctly *lost* to DEHB: SVM 0.8763 (DEHB 0.9813), NN 0.8306 (DEHB 0.9351), XGBoost 0.9329 (DEHB 0.9492).
+The cause is structural and visible in the numbers: TPE spends 10 of its 40–50 evaluations on a random
+warm-up before the model turns on, and every evaluation thereafter is full price, so the best-so-far curve
+cannot climb early the way cheap multi-fidelity triage made DEHB's climb. So the two rungs are
+complementary, and the lesson is sharp: a good *model* fixes final quality and reliability; cheap
+*multi-fidelity* fixes anytime convergence; neither has both. DEHB had the multi-fidelity half but bolted a
+model-free DE learner onto it and inherited the low-fidelity-correlation risk. The question this rung
+isolates is the multi-fidelity skeleton *on its own*, done right — without DE, without a model — so I can see
+what principled resource allocation buys by itself and have a clean substrate to graft a model onto next.
+
+Strip the problem to the evaluation side. The waste that random search and TPE both pay is that every
+configuration is trained to full resource before I look at it, so with budget B I see only B configurations.
+But I *know* most randomly drawn configs declare themselves hopeless after a sliver of resource — a
+learning rate an order of magnitude too high diverges in the first few NN iterations, a too-shallow tree
+ensemble plateaus after a fraction of its trees. Random search pays full price for that information when a
+sliver would do. The lever is not *which* config (TPE's lever) but *how much* I spend on each before I throw
+it out. The clean framing is a non-stochastic best-arm-identification bandit: a config is an arm, training it
+one more unit is a pull, and the partial loss ℓ_{i,j} converges to a terminal value ν_i at an *unknown
+rate*. I want the arm with the best ν_i, but I cannot invoke i.i.d. concentration — the loss sequence is an
+arbitrary converging sequence, not noise around a mean.
+
+Successive halving is the algorithm that exploits this without knowing the rate: evaluate N arms at the
+lowest resource, keep the top 1/η, multiply the resource by η, repeat. Survivors get exponentially more
+resource; the full evaluation is paid only for the final handful. The reason it works against an arbitrary
+converging sequence is an envelope argument worth spelling out, because it is what makes the method
+principled rather than a heuristic. Define γ(j) as the smallest non-increasing function bounding how far any
+partial loss at resource j can sit from its terminal value — it exists because the limits exist. Two arms
+with terminal gap Δ have envelopes that stop overlapping once 2γ(j) ≤ Δ, i.e. at resource τ = γ⁻¹(Δ/2); at
+or beyond τ the ordering of the *partial* losses is guaranteed to match the ordering of the *terminal*
+losses. So a config separates from the best once the resource clears its gap-dependent threshold — small when
+curves converge fast or the gap is large, large when curves crawl or the gap is tiny. SH climbs the resource
+ladder exactly so that, rung by rung, more configs cross their separation threshold and the surviving
+ordering converges to the terminal one without ever needing to know γ. But SH has one input it cannot set for
+itself: N. For a fixed budget, many configs each run cheaply (large N) is right *only if* the cheap resource
+ranks configs like the expensive one; if the cheap fidelity is misleading, large N discards at low resource
+exactly the config that would have won at full. That is the configurations-versus-fidelity dilemma, and it is
+the *same* failure I watched bite DEHB's NN (−3086): aggressive low-fidelity triage where the cheap rank was
+wrong.
+
+Hyperband refuses to guess N and *hedges* across the whole spectrum: run several SH instances ("brackets"),
+each starting at a different number-of-configs-versus-initial-fidelity tradeoff. The most aggressive bracket
+throws a flood of configs at the cheapest fidelity (great if cheap predicts expensive); the least aggressive
+bracket is essentially random search at full fidelity (the safe fallback when cheap is misleading). By
+spanning the brackets, Hyperband covers the entire dilemma and is at most about (number of brackets) times
+slower than the best fixed choice — a guarantee no single SH setting has. The reason this is the right shape
+of hedge, and not just "try several settings," is that the brackets are *complementary*: each one is the
+optimal allocation under a different assumption about how predictive the cheap fidelity is, and since I do not
+know which assumption holds, paying a logarithmic-factor overhead to run all of them buys robustness to being
+wrong about the one thing SH most needs to assume. On a benchmark where the cheap fidelity is faithful, the
+aggressive bracket carries the run and the safe bracket is cheap insurance; on a benchmark where it lies, the
+safe bracket protects the eventual winner that the aggressive bracket would have killed. That is exactly the
+DEHB-NN failure mode (−3086) turned into a hedge instead of a gamble. Critically, every config is still
+sampled *uniformly at random*: Hyperband is purely an allocation method, it never uses one evaluation's
+outcome to decide where to look next. That is exactly its limitation and exactly why it is the right rung
+here — it measures the multi-fidelity skeleton in isolation, with random sampling, so the gap between it and
+the next rung will be attributable purely to adding a model.
+
+Now the implementation the scaffold fills in, derived against the harness. With η = 3, compute `s_max =
+min(4, floor(log_η(total_budget)))` — the cap at 4 keeps the number of brackets bounded so a small budget
+does not spawn more brackets than it can fund. For each bracket s from s_max down to 0, the number of configs
+is `n = min(ceil((s_max+1)/(s+1))·η^s, total_budget)` and the initial fidelity is `r = max(1/η^s, 0.1)` —
+the 0.1 floor is the loop's clip, so the cheapest rung is fidelity 0.1, not arbitrarily small. Each bracket
+samples its n configs uniformly and queues them all at fidelity r. The `suggest` loop is queue-driven: it
+pops the next queued (config, fidelity), and when a trial returns it matches it back to its bracket by exact
+`config == last.config` and `|fidelity − last.budget| < 0.05`, fills in the score, and when a bracket's
+current rung is fully scored, *advances* it — sort by score, keep the top `len//η`, multiply the fidelity by
+η (capped at 1.0), and re-queue the survivors at the higher fidelity. When the queue empties, fall back to a
+random full-fidelity draw. The exact-equality match is a real constraint of this harness: it works because
+the configs are reproducibly generated and clipped, so the returned config compares equal to the queued one;
+a method that perturbed configs would break this matching, which is why Hyperband (random configs, never
+perturbed) fits the queue model cleanly where DEHB needed `np.allclose` on encoded vectors. The distilled
+module is in the answer.
+
+Where should this land against TPE and DEHB? Hyperband should recover the *anytime* strength TPE lost,
+because the aggressive brackets surface a decent config from the cheap fidelity fast — so I expect its
+convergence AUC to beat TPE's clearly (TPE NN 0.8306, SVM 0.8763) and to be competitive with DEHB's. Its
+`total_evals` should climb well past the budget like DEHB's, but more predictably — the bracket schedule is
+deterministic given the budget, so I expect a fixed `total_evals` per benchmark across seeds (around 105 on
+XGBoost, 95 on SVM and NN), unlike DEHB's seed-to-seed swing (65 to 354 on SVM) that came from DE's
+data-dependent promotion. That predictability is itself a virtue. On final best, Hyperband should match the
+competitive band but I expect it to *not* clearly beat TPE, because it samples randomly — it allocates budget
+brilliantly but never aims, so against TPE's model-aimed configs it should be roughly even on final quality
+and win only on convergence. And the NN remains the risk benchmark: Hyperband triages at low fidelity too, so
+if the NN's cheap rank is misleading, an aggressive bracket can still kill the eventual winner — I expect the
+NN final best around DEHB/random-search level, not a clear improvement.
+
+So the falsifiable expectations against the prior numbers: convergence AUC should rise back above TPE's on
+every benchmark (especially NN, where TPE's 0.8306 was weak) and sit near DEHB's, because the multi-fidelity
+hedge front-loads the curve; `total_evals` should be high and *stable across seeds* (the deterministic
+bracket tell, distinguishing it from DEHB's variance); and final best should track the competitive band
+without clearly beating TPE, because random sampling allocates but does not aim. If I see exactly that — AUC
+recovered and stable, total_evals fixed and inflated, final best even with TPE — the residual weakness is
+named precisely: Hyperband's quality is capped by random sampling. It has the perfect skeleton and the wrong
+sampler. The final rung is forced: keep this bracket schedule, but replace the random sampling with the model
+from the TPE rung, so the multi-fidelity *allocation* and the model-guided *selection* compound instead of
+being traded off.
+</think>
+<say>
+[[FILL_SAY: 1-2 sentences naming the method and what this first edit does]]
+</say>
+<edit path="scikit-learn/custom_hpo.py">
+<old>
+# EDITABLE region of scikit-learn/custom_hpo.py (lines 255-326) — step 4: TPE
+class CustomHPOStrategy:
+    """Tree-structured Parzen Estimator (TPE)."""
+</old>
+<new>
+# EDITABLE region of scikit-learn/custom_hpo.py (lines 255-326) — step 5: Hyperband
+class CustomHPOStrategy:
+    """Hyperband: multi-fidelity with successive halving."""
+</new>
+</edit>
+<obs>
+Successfully replaced text in scikit-learn/custom_hpo.py.
+</obs>
+<note>
+[[FILL_NOTE?: optional one-line thought for this edit, or delete this block]]
+</note>
+<edit path="scikit-learn/custom_hpo.py">
+<old>
+        self.rng = np.random.RandomState(seed)
+        self.gamma = 0.25  # fraction of best observations for l(x)
+        self.n_startup = 10  # random search before modelling
+        self.n_ei_candidates = 24  # candidates to score with EI
+
+    def _encode(self, config, space):
+        """Encode a config to a numeric vector in [0,1]."""
+        vec = []
+        for p in space.params:
+            val = config[p.name]
+            if p.type == "categorical":
+                # One-hot-ish: use index / len
+                idx = p.choices.index(val)
+                vec.append(idx / max(len(p.choices) - 1, 1))
+            elif p.type in ("float", "int"):
+                if p.log_scale:
+                    v = (np.log(val) - np.log(p.low)) / (np.log(p.high) - np.log(p.low))
+                else:
+                    v = (val - p.low) / (p.high - p.low)
+                vec.append(float(np.clip(v, 0, 1)))
+        return np.array(vec)
+
+    def _kde_logpdf(self, x, samples, bw):
+        """Simple Gaussian KDE log-density at x."""
+        diffs = x[None, :] - samples  # (n_samples, dim)
+        return float(
+            np.log(np.mean(np.exp(-0.5 * np.sum(diffs**2 / bw**2, axis=1))) + 1e-30)
+        )
+</old>
+<new>
+        self.rng = np.random.RandomState(seed)
+        self.eta = 3  # halving rate
+        self.brackets = []  # list of (configs, fidelity, scores)
+        self._initialized = False
+        self._queue = []  # queue of (config, fidelity) to suggest
+
+    def _init_brackets(self, space, total_budget):
+        """Initialize Hyperband brackets (Successive Halving instances)."""
+        s_max = max(0, int(np.floor(np.log(total_budget) / np.log(self.eta))))
+        s_max = min(s_max, 4)  # cap brackets
+
+        for s in range(s_max, -1, -1):
+            n = int(np.ceil((s_max + 1) / (s + 1)) * self.eta ** s)
+            n = min(n, total_budget)
+            r = max(1.0 / self.eta ** s, 0.1)
+
+            # Generate random configs for this bracket
+            configs = [space.sample_uniform(self.rng) for _ in range(n)]
+            # Queue low-fidelity evaluations
+            for cfg in configs:
+                self._queue.append((cfg, r))
+
+            self.brackets.append({
+                "configs": configs,
+                "fidelity": r,
+                "scores": [None] * len(configs),
+                "round": 0,
+                "s": s,
+            })
+
+    def _advance_bracket(self, bracket):
+        """Advance a bracket: keep top 1/eta, increase fidelity."""
+        configs = bracket["configs"]
+        scores = bracket["scores"]
+
+        # Sort by score, keep top 1/eta
+        paired = [(s, c) for s, c in zip(scores, configs) if s is not None]
+        if not paired:
+            return
+        paired.sort(key=lambda x: x[0], reverse=True)
+        n_keep = max(1, len(paired) // self.eta)
+        survivors = paired[:n_keep]
+
+        new_fidelity = min(bracket["fidelity"] * self.eta, 1.0)
+        bracket["configs"] = [c for _, c in survivors]
+        bracket["scores"] = [None] * len(survivors)
+        bracket["fidelity"] = new_fidelity
+        bracket["round"] += 1
+
+        for cfg in bracket["configs"]:
+            self._queue.append((cfg, new_fidelity))
+</new>
+</edit>
+<obs>
+Successfully replaced text in scikit-learn/custom_hpo.py.
+</obs>
+<note>
+[[FILL_NOTE?: optional one-line thought for this edit, or delete this block]]
+</note>
+<edit path="scikit-learn/custom_hpo.py">
+<old>
+    ) -> Tuple[Dict[str, Any], float]:
+        if len(history) < self.n_startup:
+            return space.sample_uniform(self.rng), 1.0
+
+        # Split observations into good (l) and bad (g)
+        scores = np.array([t.score for t in history])
+        n_good = max(1, int(self.gamma * len(history)))
+        threshold = np.sort(scores)[-n_good]
+
+        good_vecs = np.array([
+            self._encode(t.config, space)
+            for t in history if t.score >= threshold
+        ])
+        bad_vecs = np.array([
+            self._encode(t.config, space)
+            for t in history if t.score < threshold
+        ])
+
+        if len(bad_vecs) == 0:
+            bad_vecs = good_vecs.copy()
+
+        # Bandwidth: Scott's rule
+        bw_good = max(0.05, good_vecs.std() + 1e-6)
+        bw_bad = max(0.05, bad_vecs.std() + 1e-6)
+
+        # Generate candidates and score them by l(x)/g(x)
+        best_score = -np.inf
+        best_config = None
+        for _ in range(self.n_ei_candidates):
+            candidate = space.sample_uniform(self.rng)
+            x = self._encode(candidate, space)
+            log_l = self._kde_logpdf(x, good_vecs, bw_good)
+            log_g = self._kde_logpdf(x, bad_vecs, bw_bad)
+            ei = log_l - log_g
+            if ei > best_score:
+                best_score = ei
+                best_config = candidate
+
+        return best_config, 1.0
+</old>
+<new>
+    ) -> Tuple[Dict[str, Any], float]:
+        if not self._initialized:
+            self._init_brackets(space, budget_left + len(history))
+            self._initialized = True
+
+        # Update bracket scores from history
+        if history:
+            last = history[-1]
+            for bracket in self.brackets:
+                for i, cfg in enumerate(bracket["configs"]):
+                    if (bracket["scores"][i] is None
+                            and cfg == last.config
+                            and abs(bracket["fidelity"] - last.budget) < 0.05):
+                        bracket["scores"][i] = last.score
+
+                # Check if bracket round complete
+                if all(s is not None for s in bracket["scores"]):
+                    if bracket["fidelity"] < 1.0 and len(bracket["configs"]) > 1:
+                        self._advance_bracket(bracket)
+
+        # Return from queue
+        if self._queue:
+            return self._queue.pop(0)
+
+        # Fallback: random
+        return space.sample_uniform(self.rng), 1.0
+</new>
+</edit>
+<obs>
+Successfully replaced text in scikit-learn/custom_hpo.py.
+</obs>
+<run/>
+<obs>
+Measured results — `baseline:hyperband` (`is_final,true`), seeds {42, 123, 456} and mean.
+
+## XGBoost (budget 50)
+| seed | best_val_score | convergence_auc | total_evals |
+|---|---|---|---|
+| 42 | −0.388511 | 0.916164 | 105 |
+| 123 | −0.393145 | 0.976994 | 105 |
+| 456 | −0.391865 | 0.987643 | 105 |
+| **mean** | **−0.391174** | **0.960267** | **105** |
+
+## SVM (budget 40)
+| seed | best_val_score | convergence_auc | total_evals |
+|---|---|---|---|
+| 42 | 0.978932 | 0.958140 | 95 |
+| 123 | 0.978932 | 0.913752 | 95 |
+| 456 | 0.975408 | 0.989892 | 95 |
+| **mean** | **0.977757** | **0.953928** | **95** |
+
+## Neural Net (budget 40)
+| seed | best_val_score | convergence_auc | total_evals |
+|---|---|---|---|
+| 42 | −3045.50206 | 0.995087 | 95 |
+| 123 | −3070.29011 | 0.998160 | 95 |
+| 456 | −3043.50752 | 0.855965 | 95 |
+| **mean** | **−3053.09990** | **0.949737** | **95** |
+</obs>
+
+### step 6 — BOHB (Bayesian Optimization + Hyperband)   [slug:bohb]
+
+<think>
+[[POLISH_REASONING: adapt to first-person agentic voice, end by deciding to implement]]
+Hyperband closed the gap exactly where I expected and left exactly the residual I expected. Its convergence
+AUC recovered above TPE's on every benchmark — NN 0.9497 (TPE 0.8306), SVM 0.9539 (TPE 0.8763), XGBoost
+0.9603 — confirming the multi-fidelity hedge front-loads the curve that TPE's warm-up flattened. And the
+`total_evals` came back high and *dead stable across seeds*: 105 on XGBoost, 95 on SVM and the NN, every
+seed identical, the deterministic-bracket tell that distinguishes it from DEHB's data-dependent swing (DEHB's
+SVM ran 65 to 354 evals across seeds). But on final best it did *not* clearly beat TPE: XGBoost −0.3912
+(TPE −0.3921, a wash), SVM 0.9778 (TPE 0.9795, if anything slightly worse), NN −3053 (TPE −3048, slightly
+worse). That is the cap I predicted, stated in numbers: Hyperband allocates budget brilliantly but samples
+every configuration uniformly at random, so it never *aims* — its quality is bounded by random sampling, and
+against TPE's model-aimed configs it wins only on convergence, not on the configs themselves. The whole
+ladder now points at one move. The TPE rung had the model and no allocation; the Hyperband rung has the
+allocation and no model. They were traded off against each other for two rungs running. The final rung stops
+trading and *compounds* them: keep Hyperband's exact bracket schedule, but replace its random configuration
+sampling with TPE's `l(x)/g(x)` model, so the multi-fidelity allocation and the model-guided selection work
+together.
+
+Let me derive why this composition is the right one and not just a hopeful stapling, because the two parts
+have to actually reinforce. Every HPO method makes two decisions that are logically separate: *which*
+configuration to evaluate, and *how much* resource to spend on it before judging. The ladder so far has
+attacked these one at a time. Random search aimed at neither. CMA-ES aimed the which (a learned
+distribution) but fixed the how-much at full and could not amortize the model. DEHB aimed the how-much
+(multi-fidelity) and learned the which model-free, inheriting the cheap-rank risk. TPE aimed the which (the
+`l/g` model) and fixed the how-much. Hyperband aimed the how-much (the bracket hedge) and left the which to
+random sampling. Laid out this way, the two axes have never both been handled by the same rung, and the two
+strongest single-axis rungs — TPE on which, Hyperband on how-much — are precisely the two I have in hand.
+Hyperband's strength is on the *evaluation* axis: it spends little on hopeless configs and reserves
+full-fidelity for survivors, and it hedges the configs-versus-fidelity dilemma so it is robust to a
+misleading cheap fidelity. Its weakness is on the *selection* axis: random sampling. TPE's strength is
+exactly the selection axis: a probabilistic model of where good configs live that aims each draw at high
+`l(x)/g(x)`. Its weakness was the evaluation axis: single fidelity, a warm-up tax, no anytime climb. The
+weaknesses are *disjoint* and each method's strength covers the other's weakness — so the composition is not
+arbitrary, it is the unique way to get a method that is strong on both axes at once. Hyperband still
+*decides how much resource each config gets and when to kill it*; TPE *decides which configs to propose in
+the first place*. Replace the line that says "sample uniformly" with "sample from the model" and nothing else
+about the bracket machinery has to change.
+
+Now the model has to be fed by the *multi-fidelity* history, which is the one genuinely new design question
+the composition raises and where the implementation makes its choices. In plain TPE every observation was a
+full-fidelity score; here most observations are cheap low-fidelity scores, and they are noisier. The
+implementation's choice is pragmatic: maintain a single pooled set of all completed trials — `(encoded_vec,
+score, fidelity)` — and fit one `l/g` model over the *whole pool* regardless of fidelity, rather than the
+purist's per-fidelity models. Under a 40–50-cost budget there are simply not enough observations at the
+highest fidelity to fit a model there early, so pooling across fidelities is what lets the model turn on at
+all within the budget; the cost is that the model treats a cheap noisy score the same as an expensive clean
+one, which is a real approximation but the only one that yields a usable model this early. The model warms up
+after `n_startup = 8` pooled trials (lower than TPE's 10, because the budget is tighter and the brackets
+generate observations fast), then splits at `γ = 0.15` — *more aggressive* than TPE's 0.25, a smaller "good"
+set, because with the pooled multi-fidelity history there are more observations and a tighter elite is both
+affordable and more exploitative, which is what I want once allocation is handling exploration. The KDEs use
+the same single-global-bandwidth simplification as the TPE rung (`bw = max(0.05, std·bw_factor + ε)` with
+`bw_factor = 1.0`), and EI is again optimized by sampling `n_candidates = 24` and taking the argmax of
+`log l − log g`.
+
+It is worth being precise about why the pooled model still composes correctly with the bracket schedule
+despite mixing fidelities, because that is the subtle joint where the staple could fail. The model's job is
+only to *rank* candidate configs by `l(x)/g(x)`; it does not need calibrated scores, only a roughly correct
+notion of which region the good configs occupy. Cheap low-fidelity scores are biased estimators of the
+terminal score, but on most of the space they are *order-correlated* with it — a config that scores in the
+top γ at a third of the trees is, more often than not, genuinely in a good region — so pooling them sharpens
+`l(x)` toward the right region faster than waiting for scarce full-fidelity data would. The places this
+breaks are exactly the configs whose cheap-vs-expensive ranking inverts, and those are rare enough on
+XGBoost and SVM that the pooled model is a clear net win there; the NN is the known exception, which is why I
+keep flagging it. And crucially, even when the model is mildly misled, Hyperband's *allocation* is the
+backstop: a config the model over-rates still has to survive the successive-halving rungs at increasing
+fidelity before it consumes a full evaluation, so a model error that the cheap fidelity would have masked
+gets caught by the schedule. The model aims; the schedule vetoes. That mutual correction is the real reason
+the composition is more than the sum of its parts.
+
+The bracket schedule is Hyperband's, with one tightening for the model: `s_max = min(3, floor(log_η(total)))`
+caps brackets at 4 rather than Hyperband's 5, because each bracket now consumes model-guided samples and a
+tighter budget should not spread itself across more brackets than the model can inform. On the first call the
+brackets are built by drawing each bracket's configs from `_sample_from_model` — which falls back to uniform
+until the 8-trial warm-up is met, then samples model-guided — and queued at their initial fidelities. As
+trials return, each is appended to the pooled trial set (so the model keeps improving), matched back to its
+bracket by exact `config == last.config` and fidelity proximity, and when a bracket's rung completes, the
+successive-halving advance runs inline: sort, keep top `len//η`, raise the fidelity, re-queue the survivors.
+When the queue empties, instead of Hyperband's random full-fidelity fallback, BOHB generates a *model-guided*
+full-fidelity config — so even the fallback is aimed. The distilled module is in the answer.
+
+Where should this land against the whole ladder? It should be the first rung that is strong on *both* axes
+simultaneously. On convergence AUC it should at least match Hyperband (the schedule is identical) and
+plausibly beat it on the benchmarks where aiming the early cheap configs helps the curve climb faster —
+because now the cheap brackets are not flooding random configs but model-guided ones, so the survivors that
+reach high fidelity are better from the start. On final best it should finally *beat* the pure-Hyperband
+random-sampling cap: I expect XGBoost to improve past Hyperband's −0.3912 toward the best of the ladder,
+because the model aims the full-fidelity survivors, and SVM/NN to at least match the strongest band. The
+benchmark I am still watching is the NN: it is the one where the cheap fidelity ranks configs poorly, and
+pooling cheap and expensive scores into one model means a misleading cheap score can pull the model's elite
+toward a region that is good at 50 iterations but not 500 — so I expect a real risk of a single NN seed
+cratering on convergence AUC (a bracket whose model was misled by cheap scores), even while the NN final best
+improves.
+
+So the falsifiable expectations against the prior numbers are: `total_evals` stable across seeds like
+Hyperband's (105/95/95 — same deterministic schedule); convergence AUC at least matching Hyperband's
+(XGBoost ~0.96, SVM ~0.95) and the NN possibly lower-variance-breaking on one seed if the pooled model is
+misled by cheap scores; and — the decisive one — final best scores that *break the Hyperband cap*, with
+XGBoost the clearest case (model-aimed full-fidelity survivors pushing past −0.39 toward the ladder's best,
+around −0.389) and SVM/NN at or above the strongest band (SVM ~0.9795, NN improving toward −3015). If I see
+final best improve over Hyperband *while* convergence AUC stays at Hyperband's level — strong on selection and
+allocation at once — that is the composition working as designed, and it is why BOHB is the strongest rung:
+it is the only method on the ladder that is not weak on either axis. The one honest caveat the numbers should
+expose is the pooled-fidelity model's vulnerability on the NN, where a single seed's convergence AUC may dip
+sharply (the cheap-rank-correlation problem re-entering through the model rather than through triage) — the
+residual that a method modeling each fidelity separately, or learning the cross-fidelity correlation, would
+be the next thing to attack beyond this ladder.
+</think>
+<say>
+[[FILL_SAY: 1-2 sentences naming the method and what this first edit does]]
+</say>
+<edit path="scikit-learn/custom_hpo.py">
+<old>
+# EDITABLE region of scikit-learn/custom_hpo.py (lines 255-326) — step 5: Hyperband
+class CustomHPOStrategy:
+    """Hyperband: multi-fidelity with successive halving."""
+</old>
+<new>
+# EDITABLE region of scikit-learn/custom_hpo.py (lines 255-326) — step 6: BOHB
+class CustomHPOStrategy:
+    """BOHB: Bayesian Optimization + Hyperband."""
+</new>
+</edit>
+<obs>
+Successfully replaced text in scikit-learn/custom_hpo.py.
+</obs>
+<note>
+[[FILL_NOTE?: optional one-line thought for this edit, or delete this block]]
+</note>
+<edit path="scikit-learn/custom_hpo.py">
+<old>
+        self.rng = np.random.RandomState(seed)
+        self.eta = 3  # halving rate
+        self.brackets = []  # list of (configs, fidelity, scores)
+        self._initialized = False
+        self._queue = []  # queue of (config, fidelity) to suggest
+
+    def _init_brackets(self, space, total_budget):
+        """Initialize Hyperband brackets (Successive Halving instances)."""
+        s_max = max(0, int(np.floor(np.log(total_budget) / np.log(self.eta))))
+        s_max = min(s_max, 4)  # cap brackets
+</old>
+<new>
+        self.rng = np.random.RandomState(seed)
+        self.eta = 3
+        self.gamma = 0.15  # fraction for good KDE
+        self.n_startup = 8  # random configs before model-guided
+        self.n_candidates = 24
+        self.bw_factor = 1.0
+        self._brackets = []
+        self._queue = []
+        self._initialized = False
+        self._all_trials = []  # (vec, score, fidelity)
+
+    def _encode(self, config, space):
+        vec = []
+        for p in space.params:
+            val = config[p.name]
+            if p.type == "categorical":
+                idx = p.choices.index(val)
+                vec.append(idx / max(len(p.choices) - 1, 1))
+            elif p.type in ("float", "int"):
+                if p.log_scale:
+                    v = (np.log(val) - np.log(p.low)) / (np.log(p.high) - np.log(p.low))
+                else:
+                    v = (val - p.low) / (p.high - p.low)
+                vec.append(float(np.clip(v, 0, 1)))
+        return np.array(vec)
+
+    def _kde_logpdf(self, x, samples, bw):
+        diffs = x[None, :] - samples
+        return float(np.log(
+            np.mean(np.exp(-0.5 * np.sum(diffs**2 / bw**2, axis=1))) + 1e-30
+        ))
+
+    def _sample_from_model(self, space):
+        """Sample config guided by TPE model or random."""
+        if len(self._all_trials) < self.n_startup:
+            return space.sample_uniform(self.rng)
+
+        vecs = np.array([t[0] for t in self._all_trials])
+        scores = np.array([t[1] for t in self._all_trials])
+        n_good = max(1, int(self.gamma * len(scores)))
+        threshold = np.sort(scores)[-n_good]
+
+        good = vecs[scores >= threshold]
+        bad = vecs[scores < threshold]
+        if len(bad) == 0:
+            bad = good.copy()
+
+        bw_good = max(0.05, good.std() * self.bw_factor + 1e-6)
+        bw_bad = max(0.05, bad.std() * self.bw_factor + 1e-6)
+
+        best_ei = -np.inf
+        best_cfg = None
+        for _ in range(self.n_candidates):
+            cfg = space.sample_uniform(self.rng)
+            x = self._encode(cfg, space)
+            log_l = self._kde_logpdf(x, good, bw_good)
+            log_g = self._kde_logpdf(x, bad, bw_bad)
+            ei = log_l - log_g
+            if ei > best_ei:
+                best_ei = ei
+                best_cfg = cfg
+        return best_cfg
+
+    def _init_brackets(self, space, total_budget):
+        s_max = max(0, int(np.floor(np.log(total_budget) / np.log(self.eta))))
+        s_max = min(s_max, 3)
+</new>
+</edit>
+<obs>
+Successfully replaced text in scikit-learn/custom_hpo.py.
+</obs>
+<note>
+[[FILL_NOTE?: optional one-line thought for this edit, or delete this block]]
+</note>
+<edit path="scikit-learn/custom_hpo.py">
+<old>
+
+            # Generate random configs for this bracket
+            configs = [space.sample_uniform(self.rng) for _ in range(n)]
+            # Queue low-fidelity evaluations
+            for cfg in configs:
+                self._queue.append((cfg, r))
+
+            self.brackets.append({
+                "configs": configs,
+                "fidelity": r,
+                "scores": [None] * len(configs),
+                "round": 0,
+                "s": s,
+            })
+
+    def _advance_bracket(self, bracket):
+        """Advance a bracket: keep top 1/eta, increase fidelity."""
+        configs = bracket["configs"]
+        scores = bracket["scores"]
+
+        # Sort by score, keep top 1/eta
+        paired = [(s, c) for s, c in zip(scores, configs) if s is not None]
+        if not paired:
+            return
+        paired.sort(key=lambda x: x[0], reverse=True)
+        n_keep = max(1, len(paired) // self.eta)
+        survivors = paired[:n_keep]
+
+        new_fidelity = min(bracket["fidelity"] * self.eta, 1.0)
+        bracket["configs"] = [c for _, c in survivors]
+        bracket["scores"] = [None] * len(survivors)
+        bracket["fidelity"] = new_fidelity
+        bracket["round"] += 1
+
+        for cfg in bracket["configs"]:
+            self._queue.append((cfg, new_fidelity))
+</old>
+<new>
+
+            configs = [self._sample_from_model(space) for _ in range(n)]
+            for cfg in configs:
+                self._queue.append((cfg, r))
+
+            self._brackets.append({
+                "configs": configs,
+                "fidelity": r,
+                "scores": [None] * len(configs),
+            })
+</new>
+</edit>
+<obs>
+Successfully replaced text in scikit-learn/custom_hpo.py.
+</obs>
+<note>
+[[FILL_NOTE?: optional one-line thought for this edit, or delete this block]]
+</note>
+<edit path="scikit-learn/custom_hpo.py">
+<old>
+    ) -> Tuple[Dict[str, Any], float]:
+        if not self._initialized:
+</old>
+<new>
+    ) -> Tuple[Dict[str, Any], float]:
+        # Track all completed trials for the TPE model
+        if history:
+            last = history[-1]
+            vec = self._encode(last.config, space)
+            self._all_trials.append((vec, last.score, last.budget))
+
+        if not self._initialized:
+</new>
+</edit>
+<obs>
+Successfully replaced text in scikit-learn/custom_hpo.py.
+</obs>
+<note>
+[[FILL_NOTE?: optional one-line thought for this edit, or delete this block]]
+</note>
+<edit path="scikit-learn/custom_hpo.py">
+<old>
+
+        # Update bracket scores from history
+        if history:
+            last = history[-1]
+            for bracket in self.brackets:
+                for i, cfg in enumerate(bracket["configs"]):
+</old>
+<new>
+
+        # Update bracket scores
+        if history:
+            last = history[-1]
+            for bracket in self._brackets:
+                for i, cfg in enumerate(bracket["configs"]):
+</new>
+</edit>
+<obs>
+Successfully replaced text in scikit-learn/custom_hpo.py.
+</obs>
+<note>
+[[FILL_NOTE?: optional one-line thought for this edit, or delete this block]]
+</note>
+<edit path="scikit-learn/custom_hpo.py">
+<old>
+
+                # Check if bracket round complete
+                if all(s is not None for s in bracket["scores"]):
+                    if bracket["fidelity"] < 1.0 and len(bracket["configs"]) > 1:
+                        self._advance_bracket(bracket)
+
+        # Return from queue
+        if self._queue:
+            return self._queue.pop(0)
+
+        # Fallback: random
+        return space.sample_uniform(self.rng), 1.0
+</old>
+<new>
+
+                # Advance complete brackets
+                if all(s is not None for s in bracket["scores"]):
+                    if bracket["fidelity"] < 1.0 and len(bracket["configs"]) > 1:
+                        # Successive halving
+                        paired = list(zip(bracket["scores"], bracket["configs"]))
+                        paired.sort(key=lambda x: x[0], reverse=True)
+                        n_keep = max(1, len(paired) // self.eta)
+                        survivors = paired[:n_keep]
+                        new_fid = min(bracket["fidelity"] * self.eta, 1.0)
+                        bracket["configs"] = [c for _, c in survivors]
+                        bracket["scores"] = [None] * len(survivors)
+                        bracket["fidelity"] = new_fid
+                        for cfg in bracket["configs"]:
+                            self._queue.append((cfg, new_fid))
+
+        if self._queue:
+            return self._queue.pop(0)
+
+        # Generate new configs using TPE model at full fidelity
+        cfg = self._sample_from_model(space)
+        return cfg, 1.0
+</new>
+</edit>
+<obs>
+Successfully replaced text in scikit-learn/custom_hpo.py.
+</obs>
+<run/>
+<obs>
+Measured results — `baseline:bohb` (`is_final,true`), seeds {42, 123, 456} and mean.
+
+## XGBoost (budget 50)
+| seed | best_val_score | convergence_auc | total_evals |
+|---|---|---|---|
+| 42 | −0.388511 | 0.916164 | 105 |
+| 123 | −0.392800 | 0.976698 | 105 |
+| 456 | −0.385948 | 0.982249 | 105 |
+| **mean** | **−0.389086** | **0.958370** | **105** |
+
+## SVM (budget 40)
+| seed | best_val_score | convergence_auc | total_evals |
+|---|---|---|---|
+| 42 | 0.978932 | 0.958140 | 95 |
+| 123 | 0.978932 | 0.913752 | 95 |
+| 456 | 0.980686 | 0.977407 | 95 |
+| **mean** | **0.979517** | **0.949766** | **95** |
+
+## Neural Net (budget 40)
+| seed | best_val_score | convergence_auc | total_evals |
+|---|---|---|---|
+| 42 | −3031.23504 | 0.987420 | 95 |
+| 123 | −3019.66786 | 0.996873 | 95 |
+| 456 | −2993.78102 | 0.567070 | 95 |
+| **mean** | **−3014.89464** | **0.850454** | **95** |
+</obs>
+

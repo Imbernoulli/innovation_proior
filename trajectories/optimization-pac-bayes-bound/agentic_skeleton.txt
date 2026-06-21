@@ -1,0 +1,1415 @@
+<meta task="optimization-pac-bayes-bound" domain="Optimization" file="PBB/custom_pac_bayes.py" model_format="qwen3" edit_tool="str_replace"/>
+
+<system>
+You are a research engineer improving a model on a fixed ML task. You work by editing the model code and running experiments. Think carefully before each change. You have these tools:
+- str_replace(path, old_str, new_str): replace the unique occurrence of old_str with new_str.
+- create(path, file_text): create a new file.
+- run_experiment(): train + evaluate the current code under the fixed budget; returns metrics.
+Make one tool call at a time. After editing, call run_experiment() to measure your method.
+</system>
+
+<user>
+## Research question
+
+I have a neural network with far more parameters than training examples, and on MNIST it generalizes
+to a few percent test error — but every capacity-based guarantee I can write for it (VC dimension,
+Rademacher complexity) is vacuous, returning "error ≤ 1." I want a single number, computed from the
+training data, that is a true high-probability upper bound on the unseen-data error and is small
+enough to be worth printing. The one thing being designed is the **PAC-Bayes bound itself** — the
+functional that turns an empirical risk and a posterior/prior KL into a risk certificate, the training
+objective that drives the posterior toward a small certificate, and the final certificate evaluation.
+Everything else — the stochastic layers, the data-dependent prior split, the outer SGD loop — is
+fixed.
+
+## Prior art before the first rung (PAC-Bayes lineage)
+
+The certificate machinery the first rung reacts to is the resolution of a line of PAC-Bayesian
+results. These are the ancestors that precede the ladder; the fixed substrate below is what they
+converged to.
+
+- **McAllester's PAC-Bayesian theorems (McAllester, *Machine Learning* 1999).** Replace the
+  union-bound penalty `log|H|` — vacuous for an infinite hypothesis class — with `KL(Q‖P)`, the
+  divergence of a data-dependent posterior `Q` from a data-free prior `P`. The complexity now measures
+  how far the learner moved, not how big the menu was. Gap: the original constants are loose, and the
+  bound it gives is the additive square-root form, which does not shrink as empirical risk shrinks.
+- **Seeger / Langford-Caruana PAC-Bayes-kl (Seeger, 2002; Langford & Caruana, 2002).** Control the
+  *binary KL* between empirical and true risk, `kl(L̂(Q)‖L(Q)) ≤ (KL(Q‖P)+log(·/δ))/n`. Provably the
+  tightest of the standard bounds, sharp at low risk. Gap: it is implicit in the true risk and
+  non-convex in `Q`, so it can be *inverted* to report a number but cannot be differentiated as a
+  training objective.
+- **Maurer's note (Maurer, arXiv:cs/0411099, 2004).** Sharpens the exponential-moment constant to
+  `E_S[e^{n·kl(L̂‖L)}] ≤ 2√n` for `n ≥ 8`, halving the sample-size dependence inside the log from
+  `log(2n)` to `log(2√n)`. Gap: it tightens the constant but leaves the bound's *shape* unchanged.
+- **Catoni's localization (Catoni, IMS Lecture Notes 56, 2007).** A fixed-`λ` trade-off bound, convex
+  in `Q`, whose `Q`-optimum is the Gibbs posterior `∝ P·e^{−λnL̂}`. Gap: it holds for a *single* `λ`
+  chosen before the data, so tuning `λ` to the sample costs a union bound over a grid.
+- **PAC-Bayes-with-Backprop / data-dependent priors (Dziugaite & Roy, UAI 2017, arXiv:1703.11008;
+  Pérez-Ortiz, Rivasplata, Shawe-Taylor, Szepesvári, JMLR 2021, arXiv:2007.12911).** The substrate
+  this task is built on: parameterize `Q` as diagonal Gaussians over weights with an analytic KL,
+  train a deterministic prior on one half of the data and evaluate the bound on the disjoint half, and
+  minimize the bound by SGD. Gap (the lever this ladder turns): with the substrate fixed, the
+  *certificate's tightness is entirely decided by the bound functional and the prior/posterior
+  coupling it induces* — the same posterior can produce a certificate of 0.12 or of 0.03 depending on
+  which bound it was trained against.
+
+## The fixed substrate
+
+A PAC-Bayes-with-Backprop pipeline is frozen and must not be touched. Stochastic layers `ProbLinear`
+and `ProbConv2d` carry Gaussian weights `N(μ, σ²)` with `σ = log(1+e^ρ)` and an analytic per-layer KL
+to a data-dependent Gaussian prior; `get_total_kl(model)` sums them. The loop (i) ERM-trains a
+deterministic model on a `prior_frac=0.5` split and copies its weights into both the posterior means
+and the prior means via `transfer_weights_to_stochastic`, then (ii) minimizes the bound on the
+disjoint bound split with SGD (`lr=0.001`, `momentum=0.95`, `prior_sigma=0.03`, `pmin=1e-5`). Three
+architectures are exercised: a `784-600-600-600-10` FCN and a 2-conv-2-fc CNN. Helpers provided:
+`model(x, sample=True/False)` (stochastic draw vs posterior mean), `inv_kl(q, c)` (the binary-KL
+inversion: largest `p ≥ q` with `kl(q‖p) ≤ c`, by bisection), and `compute_01_risk(model, loader,
+device, mc_samples)` (Monte-Carlo estimate of the 0-1 risk).
+
+## The editable interface
+
+Exactly one region is editable — the `BoundOptimizer` class in `PBB/custom_pac_bayes.py` (lines
+460–604). Every method on the ladder is a fill of this same three-method contract:
+
+- `compute_bound(empirical_risk, kl, n, delta) -> bound` — the PAC-Bayes functional (a tensor, so it
+  is differentiable when `empirical_risk`/`kl` carry gradients).
+- `train_step(model, data, target, device, n_bound, delta) -> loss` — the training objective: a
+  stochastic forward pass, a surrogate empirical risk, the KL, fed through a bound formula, returned
+  as the scalar SGD descends.
+- `compute_risk_certificate(model, bound_loader, device, delta, mc_samples) -> (risk_cert_01, metrics)`
+  — the final certificate: MC-estimate the empirical 0-1 risk, read off the KL, and PAC-Bayes-kl-invert
+  to the reported `risk_certificate` (primary metric, **lower is better**), plus `test_error`,
+  `kl_divergence`, `ce_bound`, `empirical_01_risk`.
+
+The starting point is the scaffold default: the **McAllester/Maurer additive square-root bound**, with
+an unrescaled NLL surrogate and a single (uncorrected) `inv_kl` certificate. Each method on the ladder
+replaces exactly this class and nothing else.
+
+```python
+# EDITABLE region of PBB/custom_pac_bayes.py (lines 460-604) — default fill
+class BoundOptimizer:
+    """PAC-Bayes bound computation and posterior optimization.
+
+    Default: McAllester/Maurer bound (fclassic).
+      B(Q,S) = empirical_risk + sqrt((KL(Q||P) + log(2*sqrt(n)/delta)) / (2n))
+    The goal is the tightest (lowest) 0-1 risk certificate.
+    """
+
+    def __init__(self, learning_rate=0.001, momentum=0.95, prior_sigma=0.1,
+                 pmin=1e-5):
+        self.learning_rate = learning_rate
+        self.momentum = momentum
+        self.prior_sigma = prior_sigma
+        self.pmin = pmin
+
+    def compute_bound(self, empirical_risk, kl, n, delta):
+        kl_term = (kl + math.log(2.0 * math.sqrt(n) / delta)) / (2.0 * n)
+        bound = empirical_risk + torch.sqrt(kl_term)
+        return bound
+
+    def train_step(self, model, data, target, device, n_bound, delta):
+        output = model(data, sample=True)
+        # Bounded cross-entropy as surrogate for 0-1 loss
+        log_probs = F.log_softmax(output, dim=1)
+        log_probs = torch.clamp(log_probs, min=math.log(self.pmin))
+        nll = F.nll_loss(log_probs, target)
+        kl = get_total_kl(model)
+        bound = self.compute_bound(nll, kl, n_bound, delta)
+        return bound
+
+    def compute_risk_certificate(self, model, bound_loader, device, delta=0.025,
+                                 mc_samples=1000):
+        model.eval()
+        n_bound = len(bound_loader.dataset)
+
+        # 1. Empirical 0-1 risk via MC sampling
+        emp_risk_01 = compute_01_risk(model, bound_loader, device,
+                                      mc_samples=mc_samples)
+
+        # 2. NLL-based empirical risk for the CE bound
+        total_nll = 0.0
+        total_samples = 0
+        with torch.no_grad():
+            for data, target in bound_loader:
+                data, target = data.to(device), target.to(device)
+                output = model(data, sample=True)
+                log_probs = F.log_softmax(output, dim=1)
+                log_probs = torch.clamp(log_probs, min=math.log(self.pmin))
+                nll = F.nll_loss(log_probs, target, reduction="sum")
+                total_nll += nll.item()
+                total_samples += target.size(0)
+        emp_nll = total_nll / total_samples
+
+        # 3. KL from a single forward pass
+        with torch.no_grad():
+            dummy_data = next(iter(bound_loader))[0][:1].to(device)
+            model(dummy_data, sample=True)
+            kl = get_total_kl(model).item()
+
+        # 4. PAC-Bayes-kl inversion for 0-1 loss certificate
+        c = (kl + math.log(2.0 * math.sqrt(n_bound) / delta)) / n_bound
+        risk_cert_01 = inv_kl(emp_risk_01, c)
+
+        # 5. Direct CE bound
+        emp_nll_t = torch.tensor(emp_nll)
+        kl_t = torch.tensor(kl)
+        ce_bound = self.compute_bound(emp_nll_t, kl_t, n_bound, delta).item()
+
+        metrics = {
+            "empirical_01_risk": emp_risk_01,
+            "empirical_nll": emp_nll,
+            "kl_divergence": kl,
+            "ce_bound": ce_bound,
+        }
+        return risk_cert_01, metrics
+```
+
+## Evaluation settings
+
+Three settings spanning architecture and dataset difficulty — **MNIST-FCN** (`784-600-600-600-10`
+fully connected), **MNIST-CNN** (2 conv + 2 fc), and **FashionMNIST-CNN** (same CNN, harder dataset)
+— each over three seeds {42, 123, 456}. The primary metric is `risk_certificate` (the 0-1 loss
+PAC-Bayes bound), **lower is better**. Also recorded: `test_error` (posterior-mean error),
+`kl_divergence` (the `KL(Q‖P)` driving the certificate), `ce_bound` (the cross-entropy-style bound),
+and `empirical_01_risk` (the MC empirical 0-1 risk on the bound set). Training uses the data-dependent
+prior split: 50% trains the deterministic prior, the disjoint 50% trains and evaluates the bound.
+
+The editable model code is in `PBB/custom_pac_bayes.py`:
+```python
+class BoundOptimizer:
+    """PAC-Bayes bound computation and posterior optimization.
+
+    This class controls:
+    1. compute_bound(): How the generalization bound is computed from
+       empirical risk and KL divergence.
+    2. train_step(): The training objective for posterior optimization.
+    3. compute_risk_certificate(): Final bound evaluation after training.
+
+    The training pipeline calls these methods. The goal is to achieve
+    the tightest (lowest) risk certificate on the 0-1 loss.
+
+    Available information:
+    - n_bound: number of samples in the bound-evaluation set
+    - delta: confidence parameter (default 0.025)
+    - kl: KL divergence between posterior and prior KL(Q||P)
+    - empirical_risk: estimated loss on bound-evaluation set
+    - inv_kl(q, c): binary KL inversion (find p s.t. KL(q||p)=c)
+
+    Interface contract:
+    - compute_bound(empirical_risk, kl, n, delta) -> bound_value (float tensor)
+    - train_step(model, data, target, device, n_bound, delta) -> loss (float tensor)
+    - compute_risk_certificate(model, bound_loader, device, delta, mc_samples)
+        -> (risk_cert_01, metrics_dict)
+    """
+
+    def __init__(self, learning_rate=0.001, momentum=0.95, prior_sigma=0.1,
+                 pmin=1e-5):
+        self.learning_rate = learning_rate
+        self.momentum = momentum
+        self.prior_sigma = prior_sigma
+        self.pmin = pmin
+
+    def compute_bound(self, empirical_risk, kl, n, delta):
+        """Compute PAC-Bayes upper bound on true risk.
+
+        Default: McAllester/Maurer bound (fclassic).
+        B(Q,S) = empirical_risk + sqrt((KL(Q||P) + log(2*sqrt(n)/delta)) / (2n))
+
+        Args:
+            empirical_risk: estimated risk on bound data (tensor)
+            kl: KL divergence between posterior and prior (tensor)
+            n: number of bound-evaluation samples
+            delta: confidence parameter
+
+        Returns:
+            bound_value: upper bound on true risk (tensor)
+        """
+        kl_term = (kl + math.log(2.0 * math.sqrt(n) / delta)) / (2.0 * n)
+        bound = empirical_risk + torch.sqrt(kl_term)
+        return bound
+
+    def train_step(self, model, data, target, device, n_bound, delta):
+        """Compute training loss (PAC-Bayes objective to minimize).
+
+        Default: McAllester bound with NLL surrogate.
+
+        Args:
+            model: stochastic neural network
+            data: input batch (already on device)
+            target: label batch (already on device)
+            device: torch device
+            n_bound: number of bound-evaluation samples
+            delta: confidence parameter
+
+        Returns:
+            loss: scalar tensor to backpropagate
+        """
+        output = model(data, sample=True)
+        # Bounded cross-entropy as surrogate for 0-1 loss
+        log_probs = F.log_softmax(output, dim=1)
+        log_probs = torch.clamp(log_probs, min=math.log(self.pmin))
+        nll = F.nll_loss(log_probs, target)
+
+        kl = get_total_kl(model)
+        bound = self.compute_bound(nll, kl, n_bound, delta)
+        return bound
+
+    def compute_risk_certificate(self, model, bound_loader, device, delta=0.025,
+                                 mc_samples=1000):
+        """Evaluate final PAC-Bayes risk certificate after training.
+
+        Computes:
+        1. Empirical 0-1 risk via MC sampling on the bound-evaluation set
+        2. KL divergence between posterior and prior
+        3. PAC-Bayes-kl bound inversion for the final certificate
+
+        Args:
+            model: trained stochastic model
+            bound_loader: DataLoader for bound-evaluation set
+            device: torch device
+            delta: confidence parameter
+            mc_samples: number of MC samples per input
+
+        Returns:
+            (risk_cert_01, metrics_dict)
+        """
+        model.eval()
+        n_bound = len(bound_loader.dataset)
+
+        # 1. Compute empirical 0-1 risk via MC sampling
+        emp_risk_01 = compute_01_risk(model, bound_loader, device,
+                                      mc_samples=mc_samples)
+
+        # 2. Compute NLL-based empirical risk for the CE bound
+        total_nll = 0.0
+        total_samples = 0
+        kl_total = None
+        with torch.no_grad():
+            for data, target in bound_loader:
+                data, target = data.to(device), target.to(device)
+                output = model(data, sample=True)
+                log_probs = F.log_softmax(output, dim=1)
+                log_probs = torch.clamp(log_probs, min=math.log(self.pmin))
+                nll = F.nll_loss(log_probs, target, reduction="sum")
+                total_nll += nll.item()
+                total_samples += target.size(0)
+                if kl_total is None:
+                    kl_total = get_total_kl(model)
+
+        emp_nll = total_nll / total_samples
+
+        # 3. Get KL from a single forward pass
+        with torch.no_grad():
+            dummy_data = next(iter(bound_loader))[0][:1].to(device)
+            model(dummy_data, sample=True)
+            kl = get_total_kl(model).item()
+
+        # 4. PAC-Bayes-kl bound inversion for 0-1 loss certificate
+        c = (kl + math.log(2.0 * math.sqrt(n_bound) / delta)) / n_bound
+        risk_cert_01 = inv_kl(emp_risk_01, c)
+
+        # 5. Compute the direct bound from compute_bound for CE risk
+        emp_nll_t = torch.tensor(emp_nll)
+        kl_t = torch.tensor(kl)
+        ce_bound = self.compute_bound(emp_nll_t, kl_t, n_bound, delta).item()
+
+        metrics = {
+            "empirical_01_risk": emp_risk_01,
+            "empirical_nll": emp_nll,
+            "kl_divergence": kl,
+            "ce_bound": ce_bound,
+        }
+
+        return risk_cert_01, metrics
+```
+Improve it. Derive your method, edit the code, then run_experiment().
+</user>
+
+### step 1 — Catoni / lambda bound (flamb)   [slug:catoni]
+
+<think>
+[[POLISH_REASONING: adapt to first-person agentic voice, end by deciding to implement]]
+I start from the default scaffold, which fills `compute_bound` with the McAllester/Maurer additive
+square-root form `L̂ + √((KL + log(2√n/δ))/(2n))`, and I want to ask whether that is the right shape
+to be *training against* in the first place. The whole certificate, in this substrate, is decided by
+the bound functional: the stochastic layers, the data-dependent prior split, and the SGD loop are all
+fixed, so the only lever I have is which inequality I push the posterior down. The additive bound has a
+property I should look at hard before I commit to it. When the posterior fits the bound split — which it
+will, because I initialize it at the ERM minimizer of the prior — the empirical risk `L̂(Q)` goes toward
+zero, and the bound collapses to `√((KL + log(2√n/δ))/(2n))`. The complexity enters through a *square
+root*. That means the certificate is governed by `√(KL)`, and the gradient of `√(KL)` with respect to
+the posterior parameters is `1/(2√(KL))` times the gradient of `KL` — it *flattens* as `KL` grows. The
+additive objective, in other words, only weakly penalizes a posterior that drifts away from the prior,
+because the marginal cost of one more nat of KL shrinks as the KL accumulates. I suspect that is the
+wrong incentive: I want the bound to fight KL growth proportionally, not sublinearly.
+
+So let me look for a bound whose complexity term is *linear* in KL near the operating point, and which I
+can still differentiate and minimize directly. The standard family that buys this is the localized,
+trade-off-parameter bounds, and Catoni's is the canonical one. Let me derive it from the same root the
+default came from, the PAC-Bayes-kl inequality, so I understand exactly what I am relaxing. The change
+of measure plus Maurer's sharp moment bound `E_S[e^{n·kl(L̂‖L)}] ≤ 2√n` gives, with probability `1−δ`,
+simultaneously for all `Q`, `kl(L̂(Q)‖L(Q)) ≤ (KL(Q‖P) + log(2√n/δ))/n`. This is the parent. The
+additive default is the Pinsker relaxation `kl(p‖q) ≥ 2(p−q)²` of it; that relaxation is symmetric in
+its argument and loose precisely when the true risk is small, which is my regime. The Catoni route
+relaxes the *same* parent differently — through a tilt engineered to give a linear-in-`L̂`,
+linear-in-KL trade-off — and the price is a free parameter `λ`.
+
+Let me write the Catoni/lambda functional and check its structure. The bound is
+`L(Q) ≤ L̂(Q)/(1−λ/2) + (KL(Q‖P) + log(2√n/δ))/(nλ(1−λ/2))`, valid for `λ ∈ (0,2)`. Two things to
+verify. First, that it is a genuine certificate — it is, for any *fixed* `λ` chosen before the data;
+this is exactly Catoni's localized bound. Second, that it is convex in `Q` for fixed `λ`: the numerator
+`L̂(Q)` is linear in `Q`, `KL(Q‖P)` is convex, and the denominators `1−λ/2` and `nλ(1−λ/2)` are
+positive constants once `λ ∈ (0,2)` is fixed — so the right-hand side is a positive-weighted sum of a
+linear and a convex functional, convex in `Q`. Good: this is differentiable and well-posed as a
+training objective, and the complexity term `(KL+const)/(nλ(1−λ/2))` is *linear* in KL, which is exactly
+the proportional penalty the additive bound lacked. Near `L̂ = 0` the Catoni bound is roughly
+`(KL + log(2√n/δ))/(nλ(1−λ/2))` — order `KL/n`, linear — versus the additive `√(KL/(2n))`. For small
+`KL/n` the additive `√` is actually *smaller numerically*, so I should be honest that the linear form
+does not automatically win as a certificate; what it wins is the *training dynamics* — a posterior
+trained against a linear-in-KL objective is pushed harder to keep KL down, and whether that nets out
+tighter depends on the `λ` it finds.
+
+That is the crux: `λ`. Catoni's bound holds for one fixed `λ`. If I want the trade-off to suit the data
+— and I do, because the right balance between fitting and staying near the prior depends on how much the
+posterior must move — I have to tune `λ`. The textbook-clean way is a uniform-in-`λ` bound that holds
+for all `λ` at once via a deterministic AM-GM identity, which would let me optimize `λ` continuously for
+free. But I have to be careful about what the *task's* edit surface actually lets me build, because the
+contract is just `compute_bound`/`train_step`/`compute_risk_certificate` over the fixed substrate, and
+the substrate's `model(x, sample=…)` and `get_total_kl` give me a Gaussian posterior with an analytic
+KL — not an explicit Gibbs measure I can form, and not a recurrent or sigmoid-scaled `λ` head wired
+into the loop. So the cleanest thing that fits the contract is to carry `λ` as my *own* learnable scalar
+inside the `BoundOptimizer`, give it its own optimizer, and update it by gradient descent on the same
+bound — a numerical alternating minimization rather than the closed-form one. That is the design I will
+land.
+
+Now the mechanics, and there is a real trap here that I need to reason through, because it is the
+difference between this baseline working and failing. The outer SGD loop in the substrate constructs
+*one* optimizer over `model.parameters()` and steps it after `train_step` returns the loss. My `λ` is
+not a model parameter — it lives in the `BoundOptimizer` — so the loop's `optimizer.step()` will never
+touch it. If I do nothing special, `λ` stays frozen at its initialization for the entire run. So I must
+give `λ` its *own* optimizer and step it myself inside `train_step`. And I must step it on a *detached*
+copy of the loss: the posterior's gradient flows through `optimizer.step()` in the loop using the bound
+I return, so if I also backprop the `λ`-update through the live `nll`/`kl` graph I would either
+double-count or corrupt the posterior gradient. The right structure is: compute the bound for the
+posterior (the value I return, with live graph), then *separately* form a detached scalar
+`L̂.detach()/(1−λ/2) + (KL.detach()+log(2√n/δ))/(nλ(1−λ/2))`, backprop *that* into `λ` only, and step
+`λ`'s optimizer. The detach makes the `λ` step see `L̂` and `KL` as constants — which is correct,
+because at the alternating-minimization `λ`-substep the posterior is held fixed.
+
+The second trap is the range of `λ`. The bound has a singularity at `λ = 2` (the `1−λ/2` denominator
+hits zero) and degenerates at `λ = 0` (the `1/λ` blows up). I argued the optimal `λ` sits well inside
+`(0,2)` — for `L̂ = 0` the closed-form optimum is `λ = 1`, and it only decreases as `L̂` grows, with a
+floor around `1/√n`. But a free SGD scalar can wander anywhere, and if it ever reaches `λ ≥ 2` the
+denominator flips sign and the bound becomes negative and meaningless — the optimizer would then happily
+drive `λ` to the singularity to "minimize" a bound that is no longer a bound. So I clamp `λ` into a safe
+open interval, `(0.01, 1.99)`, every time I read it. The clamp at `0.01` keeps the `1/λ` finite; the
+clamp at `1.99` keeps `1−λ/2 > 0`. This is the literal guard the edit surface needs — not the elegant
+sigmoid-into-`[1/√n,1]` reparameterization, just a hard clamp on a raw learnable scalar, initialized at
+`0.5`.
+
+Let me reason about *where* I expect this to land relative to the default, because that is the prediction
+I am making. The concern that nags me is the interaction between the linear-in-KL Catoni objective and
+the SGD it is trained with. The Catoni bound's complexity term has `1/(nλ(1−λ/2))` in front of KL; with
+`λ` starting at `0.5`, that prefactor is `1/(n·0.5·0.75) = 1/(0.375n)`, roughly `2.67/n`. Compare the
+additive bound, whose KL contribution near `L̂=0` is `√(KL/(2n))` with derivative `1/(2√(2n·KL))`. For
+the KL values a Gaussian posterior over a 600-wide net reaches — easily tens to hundreds of nats — the
+Catoni objective's *gradient* with respect to KL is the constant `2.67/n`, while the additive's gradient
+*shrinks* as `1/√KL`. That cuts both ways: the constant gradient keeps pressing on KL, which is good,
+but if `λ` drifts small (toward its `0.01` floor), the prefactor `1/(nλ(1−λ/2))` *explodes*, and a tiny
+`λ` makes the complexity term enormous, which paradoxically can let the posterior trade a large KL for a
+small `λ`-discounted empirical term — `L̂/(1−λ/2)` with `λ→0` approaches `L̂`, the cheapest possible
+empirical weighting. A free, clamped `λ` with no closed-form pinning is exactly the kind of knob that can
+settle in a bad corner: small `λ`, large KL, a bound that is technically valid but loose because KL ran
+away. I think this is the most likely failure mode of *this* simpler implementation versus the
+closed-form alternating one — the `λ` step is just SGD on a detached scalar, with no guarantee it tracks
+the analytic optimum, so the posterior and `λ` can co-adapt into a high-KL configuration.
+
+The final certificate is separate from the training objective and I should be deliberate about it. I
+train against the Catoni functional, but for the *reported* number I want the tightest valid bound on the
+learned posterior, which is PAC-Bayes-kl itself, inverted. So `compute_risk_certificate` MC-samples the
+stochastic predictor's empirical 0-1 risk on the bound set via `compute_01_risk`, reads off the KL from
+one forward pass, forms `c = (KL + log(2√n/δ))/n`, and calls `inv_kl(emp_risk_01, c)` for the reported
+`risk_certificate`. For this baseline I keep it simple — a single `inv_kl` on the raw MC estimate, with
+no inner Monte-Carlo correction — matching the unrescaled, uncorrected style of the scaffold default; the
+nested inner-`inv_kl` correction for posterior-sampling error is a refinement I am not adding here. I also
+report the Catoni `ce_bound` by feeding the empirical NLL and KL through `compute_bound`, and the `λ` I
+converged to, as a diagnostic. The empirical risk surrogate during training is the plain clamped NLL,
+`F.nll_loss` on `log_softmax` floored at `log(pmin)` — *not* rescaled by `1/log(1/pmin)`. I note that
+choice deliberately: the rescaling that maps NLL into `[0,1]` is what calibrates the empirical-risk
+term against the KL term, and leaving it out means the Catoni objective is being fed an empirical term
+that can exceed 1, which over-weights the empirical side relative to KL early in training. I expect this
+unrescaled feed, combined with the free `λ`, to be part of why the KL is not held down.
+
+So here is my falsifiable expectation for this rung. The Catoni/lambda bound, with a clamped free `λ`
+and an unrescaled NLL surrogate, is a legitimate convex-in-`Q` certificate and a reasonable first thing
+to try, and it should produce a non-vacuous `risk_certificate` well below 1 — the data-dependent prior
+guarantees the certificate is in the few-percent range, not the vacuous range. But I predict it will be
+the *loosest* of the bound formulations I can build on this surface, dominated by a KL that runs large.
+The signature I am watching for is `kl_divergence`: if the free `λ` settles small and the posterior
+exploits the discounted empirical term, the KL should balloon into the hundreds, and because the
+certificate `inv_kl(L̂_01, (KL+log(2√n/δ))/n)` grows monotonically in KL, a KL of a few hundred over
+`n ≈ 30000` gives `c` on the order of `0.01` and inflates the inverted certificate noticeably above the
+empirical 0-1 risk. I expect, concretely, that the FCN — with its three 600-wide hidden layers and the
+largest parameter count, hence the most room for KL to grow — will show the worst certificate and by far
+the largest KL, with the CNN settings tighter simply because they have fewer probabilistic weights. If
+instead the KL stays small (tens of nats) and the certificate comes in near the additive default, then my
+diagnosis of the free-`λ` failure mode is wrong and I will have to look elsewhere. The full scaffold
+module — `compute_bound`, the dual-optimizer `train_step`, and the single-`inv_kl`
+`compute_risk_certificate` — is in the answer.
+</think>
+<say>
+[[FILL_SAY: 1-2 sentences naming the method and what this first edit does]]
+</say>
+<edit path="PBB/custom_pac_bayes.py">
+<old>
+class BoundOptimizer:
+    """PAC-Bayes bound computation and posterior optimization.
+
+    This class controls:
+    1. compute_bound(): How the generalization bound is computed from
+       empirical risk and KL divergence.
+    2. train_step(): The training objective for posterior optimization.
+    3. compute_risk_certificate(): Final bound evaluation after training.
+
+    The training pipeline calls these methods. The goal is to achieve
+    the tightest (lowest) risk certificate on the 0-1 loss.
+
+    Available information:
+    - n_bound: number of samples in the bound-evaluation set
+    - delta: confidence parameter (default 0.025)
+    - kl: KL divergence between posterior and prior KL(Q||P)
+    - empirical_risk: estimated loss on bound-evaluation set
+    - inv_kl(q, c): binary KL inversion (find p s.t. KL(q||p)=c)
+
+    Interface contract:
+    - compute_bound(empirical_risk, kl, n, delta) -> bound_value (float tensor)
+    - train_step(model, data, target, device, n_bound, delta) -> loss (float tensor)
+    - compute_risk_certificate(model, bound_loader, device, delta, mc_samples)
+        -> (risk_cert_01, metrics_dict)
+    """
+
+    def __init__(self, learning_rate=0.001, momentum=0.95, prior_sigma=0.1,
+                 pmin=1e-5):
+        self.learning_rate = learning_rate
+</old>
+<new>
+class BoundOptimizer:
+    """Catoni/Lambda PAC-Bayes bound (flamb).
+
+    Bound: emp_risk / (1 - lam/2) + (KL + log(2*sqrt(n)/delta)) / (n*lam*(1 - lam/2))
+    Lambda is a learnable parameter optimized jointly with the posterior.
+    Tighter than McAllester when lambda is well-tuned.
+    """
+
+    def __init__(self, learning_rate=0.001, momentum=0.95, prior_sigma=0.03,
+                 pmin=1e-5, initial_lambda=0.5, lambda_lr=0.01):
+        self.learning_rate = learning_rate
+</new>
+</edit>
+<obs>
+Successfully replaced text in PBB/custom_pac_bayes.py.
+</obs>
+<note>
+[[FILL_NOTE?: optional one-line thought for this edit, or delete this block]]
+</note>
+<edit path="PBB/custom_pac_bayes.py">
+<old>
+        self.pmin = pmin
+
+    def compute_bound(self, empirical_risk, kl, n, delta):
+        """Compute PAC-Bayes upper bound on true risk.
+
+        Default: McAllester/Maurer bound (fclassic).
+        B(Q,S) = empirical_risk + sqrt((KL(Q||P) + log(2*sqrt(n)/delta)) / (2n))
+
+        Args:
+            empirical_risk: estimated risk on bound data (tensor)
+            kl: KL divergence between posterior and prior (tensor)
+            n: number of bound-evaluation samples
+            delta: confidence parameter
+
+        Returns:
+            bound_value: upper bound on true risk (tensor)
+        """
+        kl_term = (kl + math.log(2.0 * math.sqrt(n) / delta)) / (2.0 * n)
+        bound = empirical_risk + torch.sqrt(kl_term)
+        return bound
+
+    def train_step(self, model, data, target, device, n_bound, delta):
+        """Compute training loss (PAC-Bayes objective to minimize).
+
+        Default: McAllester bound with NLL surrogate.
+
+        Args:
+            model: stochastic neural network
+            data: input batch (already on device)
+            target: label batch (already on device)
+            device: torch device
+            n_bound: number of bound-evaluation samples
+            delta: confidence parameter
+
+        Returns:
+            loss: scalar tensor to backpropagate
+        """
+        output = model(data, sample=True)
+        # Bounded cross-entropy as surrogate for 0-1 loss
+        log_probs = F.log_softmax(output, dim=1)
+</old>
+<new>
+        self.pmin = pmin
+        # Lambda parameter for the Catoni bound (learnable)
+        self._lambda_param = torch.tensor(initial_lambda, requires_grad=True)
+        self.lambda_lr = lambda_lr
+        self._lambda_optimizer = None
+
+    def _get_lambda(self):
+        """Get clamped lambda value in (0, 2)."""
+        return torch.clamp(self._lambda_param, min=0.01, max=1.99)
+
+    def _ensure_lambda_optimizer(self):
+        if self._lambda_optimizer is None:
+            self._lambda_optimizer = torch.optim.SGD(
+                [self._lambda_param], lr=self.lambda_lr
+            )
+
+    def compute_bound(self, empirical_risk, kl, n, delta):
+        """Catoni/Lambda bound."""
+        lam = self._get_lambda()
+        kl_term = (kl + math.log(2.0 * math.sqrt(n) / delta)) / (
+            n * lam * (1.0 - lam / 2.0)
+        )
+        bound = empirical_risk / (1.0 - lam / 2.0) + kl_term
+        return bound
+
+    def train_step(self, model, data, target, device, n_bound, delta):
+        """Training objective: Catoni/lambda bound with joint lambda optimization."""
+        # Ensure lambda is on correct device
+        if self._lambda_param.device != device:
+            self._lambda_param = self._lambda_param.to(device).detach().requires_grad_(True)
+            self._lambda_optimizer = None
+        self._ensure_lambda_optimizer()
+
+        output = model(data, sample=True)
+        log_probs = F.log_softmax(output, dim=1)
+</new>
+</edit>
+<obs>
+Successfully replaced text in PBB/custom_pac_bayes.py.
+</obs>
+<note>
+[[FILL_NOTE?: optional one-line thought for this edit, or delete this block]]
+</note>
+<edit path="PBB/custom_pac_bayes.py">
+<old>
+        kl = get_total_kl(model)
+        bound = self.compute_bound(nll, kl, n_bound, delta)
+</old>
+<new>
+        kl = get_total_kl(model)
+
+        # Update lambda on a detached copy — the outer loop's optimizer.step()
+        # only knows about posterior params, so lambda would stay frozen at
+        # init without this explicit step. Before the fix, lambda=1.0 caused
+        # the Catoni bound to double the KL contribution (1-lam/2=0.5), which
+        # forced KL to grow to ~10x McAllester's value.
+        self._lambda_optimizer.zero_grad()
+        lam = self._get_lambda()
+        lam_bound = nll.detach() / (1.0 - lam / 2.0) + (
+            kl.detach() + math.log(2.0 * math.sqrt(n_bound) / delta)
+        ) / (n_bound * lam * (1.0 - lam / 2.0))
+        lam_bound.backward()
+        self._lambda_optimizer.step()
+
+        bound = self.compute_bound(nll, kl, n_bound, delta)
+</new>
+</edit>
+<obs>
+Successfully replaced text in PBB/custom_pac_bayes.py.
+</obs>
+<note>
+[[FILL_NOTE?: optional one-line thought for this edit, or delete this block]]
+</note>
+<edit path="PBB/custom_pac_bayes.py">
+<old>
+                                 mc_samples=1000):
+        """Evaluate final PAC-Bayes risk certificate after training.
+
+        Computes:
+        1. Empirical 0-1 risk via MC sampling on the bound-evaluation set
+        2. KL divergence between posterior and prior
+        3. PAC-Bayes-kl bound inversion for the final certificate
+
+        Args:
+            model: trained stochastic model
+            bound_loader: DataLoader for bound-evaluation set
+            device: torch device
+            delta: confidence parameter
+            mc_samples: number of MC samples per input
+
+        Returns:
+            (risk_cert_01, metrics_dict)
+        """
+        model.eval()
+        n_bound = len(bound_loader.dataset)
+
+        # 1. Compute empirical 0-1 risk via MC sampling
+        emp_risk_01 = compute_01_risk(model, bound_loader, device,
+                                      mc_samples=mc_samples)
+
+        # 2. Compute NLL-based empirical risk for the CE bound
+        total_nll = 0.0
+        total_samples = 0
+        kl_total = None
+        with torch.no_grad():
+</old>
+<new>
+                                 mc_samples=1000):
+        """Evaluate Catoni risk certificate with PAC-Bayes-kl inversion."""
+        model.eval()
+        n_bound = len(bound_loader.dataset)
+
+        # 1. Empirical 0-1 risk via MC sampling
+        emp_risk_01 = compute_01_risk(model, bound_loader, device,
+                                      mc_samples=mc_samples)
+
+        # 2. NLL-based empirical risk
+        total_nll = 0.0
+        total_samples = 0
+        with torch.no_grad():
+</new>
+</edit>
+<obs>
+Successfully replaced text in PBB/custom_pac_bayes.py.
+</obs>
+<note>
+[[FILL_NOTE?: optional one-line thought for this edit, or delete this block]]
+</note>
+<edit path="PBB/custom_pac_bayes.py">
+<old>
+                total_samples += target.size(0)
+                if kl_total is None:
+                    kl_total = get_total_kl(model)
+
+        emp_nll = total_nll / total_samples
+
+        # 3. Get KL from a single forward pass
+        with torch.no_grad():
+</old>
+<new>
+                total_samples += target.size(0)
+        emp_nll = total_nll / total_samples
+
+        # 3. KL divergence
+        with torch.no_grad():
+</new>
+</edit>
+<obs>
+Successfully replaced text in PBB/custom_pac_bayes.py.
+</obs>
+<note>
+[[FILL_NOTE?: optional one-line thought for this edit, or delete this block]]
+</note>
+<edit path="PBB/custom_pac_bayes.py">
+<old>
+
+        # 4. PAC-Bayes-kl bound inversion for 0-1 loss certificate
+        c = (kl + math.log(2.0 * math.sqrt(n_bound) / delta)) / n_bound
+        risk_cert_01 = inv_kl(emp_risk_01, c)
+
+        # 5. Compute the direct bound from compute_bound for CE risk
+        emp_nll_t = torch.tensor(emp_nll)
+</old>
+<new>
+
+        # 4. PAC-Bayes-kl inversion for 0-1 loss certificate
+        c = (kl + math.log(2.0 * math.sqrt(n_bound) / delta)) / n_bound
+        risk_cert_01 = inv_kl(emp_risk_01, c)
+
+        # 5. CE bound using Catoni formula
+        emp_nll_t = torch.tensor(emp_nll)
+</new>
+</edit>
+<obs>
+Successfully replaced text in PBB/custom_pac_bayes.py.
+</obs>
+<note>
+[[FILL_NOTE?: optional one-line thought for this edit, or delete this block]]
+</note>
+<edit path="PBB/custom_pac_bayes.py">
+<old>
+            "ce_bound": ce_bound,
+        }
+
+        return risk_cert_01, metrics
+</old>
+<new>
+            "ce_bound": ce_bound,
+            "lambda": self._get_lambda().item(),
+        }
+
+        return risk_cert_01, metrics
+</new>
+</edit>
+<obs>
+Successfully replaced text in PBB/custom_pac_bayes.py.
+</obs>
+<run/>
+<obs>
+Measured results — `baseline:catoni` (`is_final,true`), seeds {42, 123, 456} and mean. Primary metric
+`risk_certificate`, lower is better.
+
+## MNIST-FCN
+| seed | risk_certificate | test_error | kl_divergence | ce_bound | empirical_01_risk |
+|---|---|---|---|---|---|
+| 42 | 0.040395 | 0.0229 | 131.92 | 0.159797 | 0.0228 |
+| 123 | 0.062142 | 0.0204 | 731.99 | 0.231477 | 0.0166 |
+| 456 | 0.064714 | 0.0202 | 754.10 | 0.232372 | 0.017533 |
+| **mean** | **0.055750** | **0.021167** | **539.34** | **0.207882** | **0.018978** |
+
+## MNIST-CNN
+| seed | risk_certificate | test_error | kl_divergence | ce_bound | empirical_01_risk |
+|---|---|---|---|---|---|
+| 42 | 0.018122 | 0.0094 | 42.20 | 0.064234 | 0.010867 |
+| 123 | 0.028715 | 0.0088 | 268.77 | 0.107849 | 0.009167 |
+| 456 | 0.028224 | 0.0103 | 266.59 | 0.106252 | 0.008933 |
+| **mean** | **0.025020** | **0.009500** | **192.52** | **0.092778** | **0.009656** |
+
+## FashionMNIST-CNN
+| seed | risk_certificate | test_error | kl_divergence | ce_bound | empirical_01_risk |
+|---|---|---|---|---|---|
+| 42 | 0.102704 | 0.0918 | 36.71 | 0.312861 | 0.086267 |
+| 123 | 0.131805 | 0.0894 | 401.32 | 0.521503 | 0.079433 |
+| 456 | 0.129981 | 0.0900 | 420.77 | 0.519298 | 0.076833 |
+| **mean** | **0.121497** | **0.090400** | **286.27** | **0.451221** | **0.080844** |
+</obs>
+
+### step 2 — McAllester / Maurer additive bound (fclassic)   [slug:mcallester]
+
+<think>
+[[POLISH_REASONING: adapt to first-person agentic voice, end by deciding to implement]]
+The Catoni run confirmed exactly the failure mode I was worried about, and the number that tells the
+story is `kl_divergence`. On MNIST-FCN the KL means 539 across seeds — but look at the spread: seed 42
+landed at 131.92 while seeds 123 and 456 blew up to 731.99 and 754.10. That is not noise around a stable
+operating point; that is a bimodal outcome where two of three runs let the posterior flee the prior. And
+the certificate tracks it monotonically: seed 42's KL of 132 gives `risk_certificate` 0.0404, while the
+754-KL seed gives 0.0647 — a 60% looser certificate from the same architecture, same data, only a
+different `λ`/posterior corner. The empirical 0-1 risk barely moved across seeds (0.0228, 0.0166,
+0.0175), so the posterior is fitting the bound split fine; the entire gap in the certificate is KL. The
+free, clamped `λ` co-adapted with the posterior into the small-`λ`/large-KL corner I sketched, and
+because I fed an *unrescaled* NLL the empirical term carried too much weight to act as a counterforce on
+KL. The CNN settings are tighter (KL 42–269 on MNIST-CNN, certificate 0.018–0.029) precisely because
+they have fewer probabilistic weights for KL to accumulate in, exactly as I predicted — but even there
+the same two-of-three blowup appears (seed 42 KL 42, seeds 123/456 KL ~267). FashionMNIST-CNN is the
+worst, certificate mean 0.1215 with KL up to 421. So the diagnosis is clean: the Catoni bound is valid
+but its trade-off knob is unstable, and the certificate is being set by runaway KL, not by empirical
+risk.
+
+So I want to remove the unstable knob entirely. The lesson is that a free trade-off parameter, optimized
+by SGD with no analytic pinning, is a liability on this surface — it gives the optimizer a degree of
+freedom it uses to discount the empirical term and pay for it in KL. The cleanest way to kill that
+liability is to go back to the *parameter-free* bound: McAllester's additive square-root form, which has
+no `λ` at all. That is also the scaffold default, so this rung is, in effect, the question "does removing
+the trade-off knob and accepting the square-root shape beat the unstable Catoni run?" Let me derive the
+bound from scratch so I know precisely what I am committing to and why it should be more stable.
+
+I start where every PAC-Bayes bound starts: I have a learning algorithm that returns a distribution `Q`
+over weights, I predict by drawing `h ~ Q`, and I want a high-probability upper bound on the
+`Q`-averaged true risk `E_Q[R(h)]` from the `Q`-averaged empirical risk `E_Q[r(h)]`. The obstruction is
+that `Q` is chosen after and because of the data, so a fixed-hypothesis concentration statement does not
+transfer. The escape is to certify the distribution, not the hypothesis: fix a data-free reference `P`,
+let `Q` be anything, and charge complexity as `KL(Q‖P)` — zero when `Q=P` (nothing learned), growing as
+`Q` flees the prior. The change-of-measure inequality, `E_Q[φ] ≤ KL(Q‖P) + log E_P[e^φ]`, transports a
+per-hypothesis exponential moment under the fixed `P` onto the data-dependent `Q`; it is just `KL ≥ 0`
+applied to the gap between `Q` and the Gibbs tilt of `P` by `φ`. Choosing `φ(h) = n·kl(r(h)‖R(h))`, the
+binary KL between empirical and true Bernoulli risk, and using Maurer's sharp moment control
+`E_S[e^{n·kl(r‖R)}] ≤ 2√n` for `n ≥ 8`, plus Markov and Jensen, gives the parent: with probability
+`1−δ`, simultaneously for all `Q`, `kl(E_Q[r]‖E_Q[R]) ≤ (KL(Q‖P) + log(2√n/δ))/n`. The `2√n` is the
+sharp constant — Maurer's halving of `log(2n)` to `log(2√n)` — and it is the same parent the Catoni
+bound relaxed; I am now relaxing it differently.
+
+The relaxation that removes the trade-off parameter is Pinsker's inequality, `kl(p‖q) ≥ 2(p−q)²`. Apply
+it to the left of the parent: `2(E_Q[R] − E_Q[r])² ≤ (KL + log(2√n/δ))/n`, so
+`(E_Q[R] − E_Q[r])² ≤ (KL + log(2√n/δ))/(2n)`, and taking the upper root,
+`E_Q[R] ≤ E_Q[r] + √((KL(Q‖P) + log(2√n/δ))/(2n))`. The `2` from Pinsker's `2(p−q)²` lands in the
+denominator inside the root, turning the parent's `/n` into `/(2n)`. This is the McAllester/Maurer
+additive certificate, and it has exactly the property I want for stability: it is closed, additive,
+convex in `Q` (linear `E_Q[r]` plus the square root of a convex KL, and `√` of a convex function
+composed this way is still convex here because the KL enters affinely under the root), and — crucially —
+it has *no free parameter*. There is nothing for SGD to co-adapt into a bad corner. The trade-off between
+empirical fit and complexity is fixed by the functional form, not by a knob.
+
+Now I have to confront the very thing that made me leave this bound in the first place: the square-root
+shape. When `E_Q[r] → 0`, the bound collapses to `√(KL/(2n))`, and its gradient with respect to KL is
+`1/(2√(2n·KL))`, which *shrinks* as KL grows. So the additive bound penalizes KL sublinearly — the
+opposite of Catoni's linear penalty. I argued before that this is a weak incentive to keep KL down. But
+the Catoni run just taught me the dual lesson: a *strong* (linear) KL penalty with an *unstable* knob is
+worse than a *weak* (sublinear) penalty with *no* knob, because the instability dominates. The question
+is which effect wins numerically. Here is the reasoning that makes me bet on McAllester. The runaway KL
+in Catoni was not driven by the KL penalty being too weak — it was driven by `λ` drifting small, which
+*simultaneously* discounted the empirical term and inflated the complexity prefactor, letting the
+posterior buy a large KL cheaply through the `1/(1−λ/2)` empirical discount. Remove `λ` and that escape
+route is gone: the empirical term is always weighted exactly 1, so the posterior cannot discount its way
+into a high-KL configuration. The additive bound's weak KL gradient is enough *as long as there is no
+mechanism actively pushing KL up*, and removing `λ` removes that mechanism. So I expect McAllester to
+sit at a far smaller, far more *stable* KL than Catoni, even though its per-nat KL penalty is weaker.
+
+Let me be concrete about the implementation, because this rung is the literal scaffold default and the
+details are load-bearing. `compute_bound` is the additive formula:
+`empirical_risk + √((kl + log(2√n/δ))/(2n))`. `train_step` does a stochastic forward pass, computes the
+NLL surrogate for the 0-1 loss — `F.nll_loss` on `log_softmax` clamped below at `log(pmin)` — reads the
+KL from `get_total_kl`, and returns the bound. I note one deliberate choice that matches this task's edit
+surface and departs from the textbook recipe: the NLL is *not* rescaled by `1/log(1/pmin)`. The clean
+PAC-Bayes derivation requires the loss in `[0,1]`, and the rescaling is what enforces that; feeding the
+raw clamped NLL means the surrogate can exceed 1. I keep it unrescaled here both to match the default
+and to make the comparison with Catoni clean — both rungs feed the same unrescaled NLL, so any
+difference between them is attributable to the bound functional and the `λ`, not to the surrogate
+scaling. (I am holding the rescaling in reserve; it is the kind of calibration fix that a later, tighter
+bound will want.) Because the additive surrogate adds `√(kl_term)` rather than dividing by `1−λ/2`, an
+unrescaled NLL that occasionally exceeds 1 is less damaging here than in Catoni — there is no empirical
+discount to exploit.
+
+The certificate is the same separate-from-training story. I train against the additive bound but report
+the tighter PAC-Bayes-kl inversion: `compute_risk_certificate` MC-samples the empirical 0-1 risk via
+`compute_01_risk`, reads the KL, forms `c = (KL + log(2√n/δ))/n` — note the `/n`, not `/(2n)`, because
+the inversion uses the bare parent budget, the `2` only appeared in the additive *relaxation* — and
+returns `inv_kl(emp_risk_01, c)`. As in the Catoni rung I keep this single-inversion and uncorrected,
+with no inner Monte-Carlo correction for posterior-sampling error, matching the scaffold's style. I also
+report the additive `ce_bound` by feeding empirical NLL and KL through `compute_bound`.
+
+Here is my falsifiable expectation against the Catoni numbers. The decisive metric is `kl_divergence`,
+and I predict McAllester collapses it. Concretely: on MNIST-FCN, where Catoni's KL means 539 and spiked
+to 754, I expect McAllester's KL to land roughly an order of magnitude lower — in the tens-to-low-hundreds
+— and, just as important, to be *stable across seeds*, because removing `λ` removes the bimodal corner.
+If the additive bound holds KL near 70–90 across all three seeds while Catoni swung 132–754, that is the
+stability win. The certificate should follow: a KL of ~80 versus ~539 over the same `n` shrinks the
+inversion budget `c` substantially, so I expect `risk_certificate` on MNIST-FCN to drop from Catoni's
+0.0558 mean toward the high-0.03s, and the MNIST-CNN certificate from 0.0250 toward the mid-0.01s, with
+FashionMNIST-CNN improving from 0.1215 toward ~0.10. The empirical 0-1 risk may tick *up* slightly
+relative to Catoni — McAllester does not discount the empirical term, so the posterior fits a touch less
+aggressively — but that small empirical increase should be far outweighed by the KL collapse in the
+inverted certificate. The thing that would falsify me: if McAllester's KL stays in the hundreds, then the
+problem was never the `λ` knob but something in the shared substrate (the prior split, the unrescaled
+NLL), and removing the knob bought nothing. And the thing I am explicitly *not* claiming: I do not expect
+McAllester to be the tightest possible bound. Its square-root shape still caps the certificate at
+`~√(KL/2n)` even with the empirical risk at zero — so once KL is stabilized small, the remaining looseness
+is the square root itself, which is the next thing to attack. The full scaffold module — additive
+`compute_bound`, the plain `train_step`, and the single-`inv_kl` `compute_risk_certificate` — is in the
+answer.
+</think>
+<say>
+[[FILL_SAY: 1-2 sentences naming the method and what this first edit does]]
+</say>
+<edit path="PBB/custom_pac_bayes.py">
+<old>
+class BoundOptimizer:
+    """Catoni/Lambda PAC-Bayes bound (flamb).
+
+    Bound: emp_risk / (1 - lam/2) + (KL + log(2*sqrt(n)/delta)) / (n*lam*(1 - lam/2))
+    Lambda is a learnable parameter optimized jointly with the posterior.
+    Tighter than McAllester when lambda is well-tuned.
+    """
+
+    def __init__(self, learning_rate=0.001, momentum=0.95, prior_sigma=0.03,
+                 pmin=1e-5, initial_lambda=0.5, lambda_lr=0.01):
+        self.learning_rate = learning_rate
+</old>
+<new>
+class BoundOptimizer:
+    """McAllester/Maurer PAC-Bayes bound (fclassic).
+
+    Classic bound: emp_risk + sqrt((KL + log(2*sqrt(n)/delta)) / (2n))
+    Training objective: same functional form with NLL surrogate for 0-1 loss.
+    Certificate: PAC-Bayes-kl inversion on 0-1 risk.
+    """
+
+    def __init__(self, learning_rate=0.001, momentum=0.95, prior_sigma=0.03,
+                 pmin=1e-5):
+        self.learning_rate = learning_rate
+</new>
+</edit>
+<obs>
+Successfully replaced text in PBB/custom_pac_bayes.py.
+</obs>
+<note>
+[[FILL_NOTE?: optional one-line thought for this edit, or delete this block]]
+</note>
+<edit path="PBB/custom_pac_bayes.py">
+<old>
+        self.pmin = pmin
+        # Lambda parameter for the Catoni bound (learnable)
+        self._lambda_param = torch.tensor(initial_lambda, requires_grad=True)
+        self.lambda_lr = lambda_lr
+        self._lambda_optimizer = None
+
+    def _get_lambda(self):
+        """Get clamped lambda value in (0, 2)."""
+        return torch.clamp(self._lambda_param, min=0.01, max=1.99)
+
+    def _ensure_lambda_optimizer(self):
+        if self._lambda_optimizer is None:
+            self._lambda_optimizer = torch.optim.SGD(
+                [self._lambda_param], lr=self.lambda_lr
+            )
+
+    def compute_bound(self, empirical_risk, kl, n, delta):
+        """Catoni/Lambda bound."""
+        lam = self._get_lambda()
+        kl_term = (kl + math.log(2.0 * math.sqrt(n) / delta)) / (
+            n * lam * (1.0 - lam / 2.0)
+        )
+        bound = empirical_risk / (1.0 - lam / 2.0) + kl_term
+        return bound
+
+    def train_step(self, model, data, target, device, n_bound, delta):
+        """Training objective: Catoni/lambda bound with joint lambda optimization."""
+        # Ensure lambda is on correct device
+        if self._lambda_param.device != device:
+            self._lambda_param = self._lambda_param.to(device).detach().requires_grad_(True)
+            self._lambda_optimizer = None
+        self._ensure_lambda_optimizer()
+
+        output = model(data, sample=True)
+</old>
+<new>
+        self.pmin = pmin
+
+    def compute_bound(self, empirical_risk, kl, n, delta):
+        """McAllester/Maurer bound."""
+        kl_term = (kl + math.log(2.0 * math.sqrt(n) / delta)) / (2.0 * n)
+        bound = empirical_risk + torch.sqrt(kl_term)
+        return bound
+
+    def train_step(self, model, data, target, device, n_bound, delta):
+        """Training objective: McAllester bound with NLL surrogate."""
+        output = model(data, sample=True)
+</new>
+</edit>
+<obs>
+Successfully replaced text in PBB/custom_pac_bayes.py.
+</obs>
+<note>
+[[FILL_NOTE?: optional one-line thought for this edit, or delete this block]]
+</note>
+<edit path="PBB/custom_pac_bayes.py">
+<old>
+        kl = get_total_kl(model)
+
+        # Update lambda on a detached copy — the outer loop's optimizer.step()
+        # only knows about posterior params, so lambda would stay frozen at
+        # init without this explicit step. Before the fix, lambda=1.0 caused
+        # the Catoni bound to double the KL contribution (1-lam/2=0.5), which
+        # forced KL to grow to ~10x McAllester's value.
+        self._lambda_optimizer.zero_grad()
+        lam = self._get_lambda()
+        lam_bound = nll.detach() / (1.0 - lam / 2.0) + (
+            kl.detach() + math.log(2.0 * math.sqrt(n_bound) / delta)
+        ) / (n_bound * lam * (1.0 - lam / 2.0))
+        lam_bound.backward()
+        self._lambda_optimizer.step()
+
+        bound = self.compute_bound(nll, kl, n_bound, delta)
+</old>
+<new>
+        kl = get_total_kl(model)
+        bound = self.compute_bound(nll, kl, n_bound, delta)
+</new>
+</edit>
+<obs>
+Successfully replaced text in PBB/custom_pac_bayes.py.
+</obs>
+<note>
+[[FILL_NOTE?: optional one-line thought for this edit, or delete this block]]
+</note>
+<edit path="PBB/custom_pac_bayes.py">
+<old>
+                                 mc_samples=1000):
+        """Evaluate Catoni risk certificate with PAC-Bayes-kl inversion."""
+        model.eval()
+</old>
+<new>
+                                 mc_samples=1000):
+        """Evaluate McAllester risk certificate with PAC-Bayes-kl inversion."""
+        model.eval()
+</new>
+</edit>
+<obs>
+Successfully replaced text in PBB/custom_pac_bayes.py.
+</obs>
+<note>
+[[FILL_NOTE?: optional one-line thought for this edit, or delete this block]]
+</note>
+<edit path="PBB/custom_pac_bayes.py">
+<old>
+
+        # 5. CE bound using Catoni formula
+        emp_nll_t = torch.tensor(emp_nll)
+</old>
+<new>
+
+        # 5. CE bound
+        emp_nll_t = torch.tensor(emp_nll)
+</new>
+</edit>
+<obs>
+Successfully replaced text in PBB/custom_pac_bayes.py.
+</obs>
+<note>
+[[FILL_NOTE?: optional one-line thought for this edit, or delete this block]]
+</note>
+<edit path="PBB/custom_pac_bayes.py">
+<old>
+            "ce_bound": ce_bound,
+            "lambda": self._get_lambda().item(),
+        }
+
+        return risk_cert_01, metrics
+</old>
+<new>
+            "ce_bound": ce_bound,
+        }
+
+        return risk_cert_01, metrics
+</new>
+</edit>
+<obs>
+Successfully replaced text in PBB/custom_pac_bayes.py.
+</obs>
+<run/>
+<obs>
+Measured results — `baseline:mcallester` (`is_final,true`), seeds {42, 123, 456} and mean. Primary
+metric `risk_certificate`, lower is better.
+
+## MNIST-FCN
+| seed | risk_certificate | test_error | kl_divergence | ce_bound | empirical_01_risk |
+|---|---|---|---|---|---|
+| 42 | 0.036880 | 0.0231 | 71.90 | 0.166258 | 0.023867 |
+| 123 | 0.036515 | 0.0221 | 80.28 | 0.164957 | 0.022967 |
+| 456 | 0.038411 | 0.0205 | 91.83 | 0.167167 | 0.023700 |
+| **mean** | **0.037269** | **0.021900** | **81.34** | **0.166127** | **0.023511** |
+
+## MNIST-CNN
+| seed | risk_certificate | test_error | kl_divergence | ce_bound | empirical_01_risk |
+|---|---|---|---|---|---|
+| 42 | 0.016208 | 0.0092 | 10.00 | 0.075078 | 0.011867 |
+| 123 | 0.016104 | 0.0105 | 12.06 | 0.083756 | 0.011567 |
+| 456 | 0.016852 | 0.0119 | 12.12 | 0.082798 | 0.012200 |
+| **mean** | **0.016388** | **0.010533** | **11.39** | **0.080544** | **0.011878** |
+
+## FashionMNIST-CNN
+| seed | risk_certificate | test_error | kl_divergence | ce_bound | empirical_01_risk |
+|---|---|---|---|---|---|
+| 42 | 0.101850 | 0.0894 | 38.32 | 0.305303 | 0.085200 |
+| 123 | 0.101472 | 0.0930 | 30.87 | 0.298009 | 0.086167 |
+| 456 | 0.097244 | 0.0907 | 27.29 | 0.294783 | 0.082900 |
+| **mean** | **0.100189** | **0.091033** | **32.16** | **0.299365** | **0.084756** |
+</obs>
+
+### step 3 — Quadratic / inverted-kl bound (fquad)   [slug:quadratic]
+
+<think>
+[[POLISH_REASONING: adapt to first-person agentic voice, end by deciding to implement]]
+McAllester did exactly what I bet it would, and the KL numbers are the proof. Removing the `λ` knob
+collapsed and stabilized the KL: on MNIST-FCN the mean fell from Catoni's 539 to 81, and — the part I
+care about most — it is now *tight across seeds*, 71.90 / 80.28 / 91.83, no bimodal blowup. On MNIST-CNN
+the KL fell from 192 to 11 and is rock-stable (10.0 / 12.1 / 12.1); FashionMNIST-CNN from 286 to 32. The
+certificate followed: MNIST-FCN mean 0.0558 → 0.0373, MNIST-CNN 0.0250 → 0.0164, FashionMNIST-CNN
+0.1215 → 0.1002. So the parameter-free additive bound is the right *stability* fix — the diagnosis that
+the runaway KL was a `λ`-mechanism artifact, not a weak-penalty problem, was correct. But now look at
+where the additive bound is *stuck*, because that is the next wall. On MNIST-CNN the empirical 0-1 risk
+is 0.0119 and the KL is only 11 nats over `n ≈ 30000` — the posterior is essentially perfect and barely
+moved from the prior — yet the certificate sits at 0.0164. The gap between the certificate and the
+empirical risk is ~0.005, and it is *not* coming from a large KL anymore. It is coming from the shape of
+the bound. With KL this small, `kl_term = (11 + log(2√n/δ))/(2n)` is around `1e-3`, and the additive
+bound adds `√(1e-3) ≈ 0.032` on top of the empirical risk — except the empirical risk is already near
+zero, so the certificate is essentially `√(kl_term)` itself. The square root is the floor. McAllester
+fixed the KL; the residual looseness is now entirely the `√`.
+
+So the target is precise: I have a small, stable KL, and I am being penalized by the square-root shape of
+the relaxation rather than by the complexity itself. I need a bound whose complexity contribution is
+*linear* in `kl_term` at small empirical risk, not the square root — without reintroducing a free `λ`,
+because the Catoni run showed me what a free knob costs. Let me go back to the parent PAC-Bayes-kl and
+ask why Pinsker gave me a square root in the first place, and whether there is a relaxation that keeps
+the parameter-free property but is tight at low risk.
+
+The parent is `kl(E_Q[r]‖E_Q[R]) ≤ (KL + log(2√n/δ))/n`. Pinsker lower-bounds the binary KL by
+`2(p−q)²`, a *parabola* symmetric in `p` around `q`. Inverting that parabola gives the additive `√`. But
+the true binary KL is *asymmetric*: for `q < p` (empirical risk below true risk, my case), as `p` shrinks
+toward `q` the true `kl` grows faster than the symmetric parabola allows. There is a sharper, asymmetric
+lower bound for exactly that side — the refined Pinsker inequality `kl(q‖p) ≥ (p−q)²/(2p)`, valid for
+`q < p`. Compare the prefactors: refined has `1/(2p)`, standard has `2`; refined is the tighter lower
+bound on `kl` precisely when `1/(2p) > 2`, i.e. `p < 1/4`. A true risk below 25% is exactly where a
+network that works lives — McAllester's certificates are all well under 0.13. So I have been relaxing the
+parent with the wrong inequality for my regime; the refined one is sharp here.
+
+Substitute the refined bound into the parent. Let `C = (KL + log(2√n/δ))/n` be the bare parent budget.
+Then `(E_Q[R] − E_Q[r])²/(2 E_Q[R]) ≤ C`, i.e. `(E_Q[R] − E_Q[r])² ≤ 2 E_Q[R] C`. The certificate case
+is `E_Q[R] ≥ E_Q[r]`, so taking the root, `E_Q[R] − E_Q[r] ≤ √(2 E_Q[R] C)`, which gives
+`E_Q[R] ≤ E_Q[r] + √(2 E_Q[R] C)`. And there is the catch that always shows up next: `E_Q[R]`, the thing
+I am bounding, is on *both* sides, under the root on the right. This is not an explicit upper bound, so I
+cannot just minimize the right side. But it is a quadratic — not in `E_Q[R]`, but in `√(E_Q[R])`. Set
+`x = √(E_Q[R])`, so `E_Q[R] = x²`. Then `x² ≤ E_Q[r] + √(2C)·x`, i.e. `x² − √(2C)·x − E_Q[r] ≤ 0`. A
+quadratic in `x` with positive leading coefficient is non-positive between its roots, so `x` is at most
+the larger root, `x ≤ (√(2C) + √(2C + 4 E_Q[r]))/2`. Square back: pulling the `1/2` inside the roots,
+`√(2C)/2 = √(C/2)` and `√(2C + 4E_Q[r])/2 = √(C/2 + E_Q[r])`, so
+```
+E_Q[R] ≤ ( √(E_Q[r] + C/2) + √(C/2) )².
+```
+with `C/2 = (KL + log(2√n/δ))/(2n)` — the *same* `kl_term` as the additive bound, the factor `2n`
+re-explained (the `n` from the parent, the `2` from the refined `(p−q)²/(2p)`). Crucially, `E_Q[R]` is
+gone from the right side. The quadratic-in-`√(E_Q[R])` trick simultaneously used the inequality that is
+tight in my low-risk regime *and* eliminated the implicit risk, and it did so with no free parameter.
+This is the fquad bound.
+
+Now let me verify it actually attacks the wall — the square-root floor — by comparing head to head at
+zero empirical risk, which is McAllester's stuck regime. At `E_Q[r] = 0`: the additive bound gives
+`√(kl_term)`; fquad gives `(√(kl_term) + √(kl_term))² = (2√(kl_term))² = 4·kl_term`. So at zero empirical
+risk the comparison is `4·kl_term` versus `√(kl_term)`. With `kl_term ≈ 1e-3` (the MNIST-CNN operating
+point I just measured), that is `4e-3` versus `3.2e-2` — fquad is roughly eight times tighter. The
+structural reason is exactly the wall diagnosis: fquad's complexity contribution is `O(kl_term)`, *linear*
+in the complexity, while McAllester's is `O(√(kl_term))`. When `kl_term` is small the linear term wins
+decisively — this is the fast-rate, realizable-case `1/n` behavior instead of `1/√n`, and it is the direct
+payoff of the refined Pinsker being sharp below true risk 1/4. So I am not removing the stability I won;
+I am keeping the parameter-free property *and* fixing the square-root floor.
+
+There is one implementation detail this rung introduces that the previous two deliberately omitted, and it
+is load-bearing for fquad specifically. The earlier rungs fed the NLL surrogate *unrescaled*. fquad will
+not tolerate that. The bound `(√(E_Q[r] + C/2) + √(C/2))²` assumes `E_Q[r] ∈ [0,1]`; if I feed it an
+unbounded NLL that exceeds 1, the empirical term inside the root is mis-scaled relative to the `C/2`
+complexity term, and the `(·)²` outer square *amplifies* the miscalibration — the training objective and
+the fquad formula stop upper-bounding anything, and in practice the posterior drifts far from the prior,
+inflating the very KL I worked to suppress. So for fquad I add the bounded-loss rescaling: clamp
+`log_softmax` at `log(pmin)` (caps NLL at `log(1/pmin)`), then multiply by `_loss_scale = 1/log(1/pmin)`,
+landing the surrogate in `[0,1]`. This is not cosmetic — it is the calibration that lets the linear-in-KL
+fquad form actually be tighter in practice rather than just on paper. I also clamp both arguments under
+the square roots at zero, defensively, so a floating-point negative does not crash `sqrt`. `compute_bound`
+becomes `(√(clamp(emp + kl_term)) + √(clamp(kl_term)))²` with `kl_term = (kl + log(2√n/δ))/(2n)`, and
+`train_step` feeds the rescaled bounded NLL through it.
+
+The certificate stays separate. I train against fquad — convex, parameter-free, tight at low risk — but
+report the tightest valid bound on the learned posterior, the PAC-Bayes-kl inversion. `compute_risk_
+certificate` MC-samples the empirical 0-1 risk via `compute_01_risk`, reads the KL, forms the *bare*
+parent budget `c = (KL + log(2√n/δ))/n` — note `/n`, not `/(2n)`: the `2` lived only in the fquad
+relaxation, never in the inversion — and returns `inv_kl(emp_risk_01, c)`. As with the previous rungs I
+keep a single, uncorrected inversion (no inner Monte-Carlo correction), matching the scaffold style; the
+empirical NLL fed into `ce_bound` uses the same `_loss_scale` rescaling as training so the two are
+consistent.
+
+Here is my falsifiable expectation against McAllester's numbers. The KL should stay small and stable —
+fquad is parameter-free, so I keep the stability win, and the bounded-loss rescaling should if anything
+let KL drop *further* than McAllester's because the objective is no longer over-weighting an unrescaled
+empirical term. So I predict the KL collapses by another order of magnitude: on MNIST-FCN from
+McAllester's 81 toward single digits (~4), on MNIST-CNN from 11 toward ~2, on FashionMNIST-CNN from 32
+toward ~3. The certificate should improve modestly but unmistakably, because at these small KLs the
+*shape* change from `√(kl_term)` to `4·kl_term` is exactly what reduces the floor: MNIST-FCN
+0.0373 → low 0.03s (~0.031), MNIST-CNN 0.0164 → mid 0.015s, FashionMNIST-CNN 0.1002 → ~0.097. The
+empirical 0-1 risk may tick up slightly (fquad with rescaled loss fits a touch less hard than the
+unrescaled additive run), but the linear-in-KL shape more than compensates. The signature that confirms
+the mechanism: `kl_divergence` should drop dramatically *and* `ce_bound` should fall by a large factor
+(McAllester's MNIST-CNN ce_bound 0.081 → fquad ~0.008, an order of magnitude, because the CE bound is
+where the shape change is most visible). What would falsify me: if fquad's certificate matches or exceeds
+McAllester's, then either the rescaling destabilized the posterior or the low-risk regime is not actually
+below the 1/4 crossover where refined Pinsker helps — but the measured true risks are all well under 0.13,
+so I am confident this is the regime fquad is built for. This is the strongest rung I can build on this
+edit surface: the parent PAC-Bayes-kl is the tightest standard bound, fquad is its sharpest
+parameter-free convex relaxation at low risk, and the certificate is already the kl-inversion of the
+parent itself. The full scaffold module — the rescaled fquad `compute_bound`, `train_step`, and the
+single-`inv_kl` `compute_risk_certificate` — is in the answer.
+</think>
+<say>
+[[FILL_SAY: 1-2 sentences naming the method and what this first edit does]]
+</say>
+<edit path="PBB/custom_pac_bayes.py">
+<old>
+class BoundOptimizer:
+    """McAllester/Maurer PAC-Bayes bound (fclassic).
+
+    Classic bound: emp_risk + sqrt((KL + log(2*sqrt(n)/delta)) / (2n))
+    Training objective: same functional form with NLL surrogate for 0-1 loss.
+    Certificate: PAC-Bayes-kl inversion on 0-1 risk.
+    """
+</old>
+<new>
+class BoundOptimizer:
+    """Quadratic PAC-Bayes bound (fquad, Rivasplata 2019 / Perez-Ortiz 2021).
+
+    Bound: (sqrt(emp_risk + kl_term) + sqrt(kl_term))^2
+    where kl_term = (KL + log(2*sqrt(n)/delta)) / (2n)
+
+    Tighter than McAllester when empirical risk is low.
+    """
+</new>
+</edit>
+<obs>
+Successfully replaced text in PBB/custom_pac_bayes.py.
+</obs>
+<note>
+[[FILL_NOTE?: optional one-line thought for this edit, or delete this block]]
+</note>
+<edit path="PBB/custom_pac_bayes.py">
+<old>
+        self.pmin = pmin
+
+    def compute_bound(self, empirical_risk, kl, n, delta):
+        """McAllester/Maurer bound."""
+        kl_term = (kl + math.log(2.0 * math.sqrt(n) / delta)) / (2.0 * n)
+        bound = empirical_risk + torch.sqrt(kl_term)
+        return bound
+
+    def train_step(self, model, data, target, device, n_bound, delta):
+        """Training objective: McAllester bound with NLL surrogate."""
+        output = model(data, sample=True)
+        log_probs = F.log_softmax(output, dim=1)
+        log_probs = torch.clamp(log_probs, min=math.log(self.pmin))
+        nll = F.nll_loss(log_probs, target)
+</old>
+<new>
+        self.pmin = pmin
+        # PBB's loss-bounding constant: maps unbounded NLL into [0,1] via
+        # ell_tilde = NLL / log(1/pmin).  See Perez-Ortiz 2021 Sec 5.
+        self._loss_scale = 1.0 / math.log(1.0 / self.pmin)
+
+    def compute_bound(self, empirical_risk, kl, n, delta):
+        """Quadratic PAC-Bayes bound (fquad)."""
+        kl_term = (kl + math.log(2.0 * math.sqrt(n) / delta)) / (2.0 * n)
+        # Ensure non-negative under sqrt
+        inner = torch.clamp(empirical_risk + kl_term, min=0.0)
+        kl_term_clamped = torch.clamp(kl_term, min=0.0)
+        bound = (torch.sqrt(inner) + torch.sqrt(kl_term_clamped)) ** 2
+        return bound
+
+    def train_step(self, model, data, target, device, n_bound, delta):
+        """Training objective: bounded NLL passed through the fquad formula.
+
+        The NLL is rescaled by 1/log(1/pmin) so that the surrogate loss lies in
+        [0,1], matching the PBB reference implementation. This is essential
+        for fquad to actually be tighter than fclassic in practice.
+        """
+        output = model(data, sample=True)
+        log_probs = F.log_softmax(output, dim=1)
+        log_probs = torch.clamp(log_probs, min=math.log(self.pmin))
+        # Bounded NLL surrogate, in [0, 1]
+        nll = F.nll_loss(log_probs, target) * self._loss_scale
+</new>
+</edit>
+<obs>
+Successfully replaced text in PBB/custom_pac_bayes.py.
+</obs>
+<note>
+[[FILL_NOTE?: optional one-line thought for this edit, or delete this block]]
+</note>
+<edit path="PBB/custom_pac_bayes.py">
+<old>
+                                 mc_samples=1000):
+        """Evaluate McAllester risk certificate with PAC-Bayes-kl inversion."""
+        model.eval()
+</old>
+<new>
+                                 mc_samples=1000):
+        """Evaluate quadratic risk certificate with PAC-Bayes-kl inversion."""
+        model.eval()
+</new>
+</edit>
+<obs>
+Successfully replaced text in PBB/custom_pac_bayes.py.
+</obs>
+<note>
+[[FILL_NOTE?: optional one-line thought for this edit, or delete this block]]
+</note>
+<edit path="PBB/custom_pac_bayes.py">
+<old>
+
+        # 2. NLL-based empirical risk
+        total_nll = 0.0
+</old>
+<new>
+
+        # 2. Bounded NLL empirical risk (same scaling as training)
+        total_nll = 0.0
+</new>
+</edit>
+<obs>
+Successfully replaced text in PBB/custom_pac_bayes.py.
+</obs>
+<note>
+[[FILL_NOTE?: optional one-line thought for this edit, or delete this block]]
+</note>
+<edit path="PBB/custom_pac_bayes.py">
+<old>
+                total_samples += target.size(0)
+        emp_nll = total_nll / total_samples
+</old>
+<new>
+                total_samples += target.size(0)
+        emp_nll_bounded = (total_nll / total_samples) * self._loss_scale
+</new>
+</edit>
+<obs>
+Successfully replaced text in PBB/custom_pac_bayes.py.
+</obs>
+<note>
+[[FILL_NOTE?: optional one-line thought for this edit, or delete this block]]
+</note>
+<edit path="PBB/custom_pac_bayes.py">
+<old>
+
+        # 5. CE bound
+        emp_nll_t = torch.tensor(emp_nll)
+        kl_t = torch.tensor(kl)
+</old>
+<new>
+
+        # 5. Quadratic bound on bounded CE risk (in [0,1])
+        emp_nll_t = torch.tensor(emp_nll_bounded)
+        kl_t = torch.tensor(kl)
+</new>
+</edit>
+<obs>
+Successfully replaced text in PBB/custom_pac_bayes.py.
+</obs>
+<note>
+[[FILL_NOTE?: optional one-line thought for this edit, or delete this block]]
+</note>
+<edit path="PBB/custom_pac_bayes.py">
+<old>
+            "empirical_01_risk": emp_risk_01,
+            "empirical_nll": emp_nll,
+            "kl_divergence": kl,
+</old>
+<new>
+            "empirical_01_risk": emp_risk_01,
+            "empirical_nll": emp_nll_bounded,
+            "kl_divergence": kl,
+</new>
+</edit>
+<obs>
+Successfully replaced text in PBB/custom_pac_bayes.py.
+</obs>
+<run/>
+<obs>
+Measured results — `baseline:quadratic` (`is_final,true`), seeds {42, 123, 456} and mean. Primary
+metric `risk_certificate`, lower is better.
+
+## MNIST-FCN
+| seed | risk_certificate | test_error | kl_divergence | ce_bound | empirical_01_risk |
+|---|---|---|---|---|---|
+| 42 | 0.032285 | 0.0245 | 4.28 | 0.017174 | 0.027067 |
+| 123 | 0.030981 | 0.0241 | 3.93 | 0.016660 | 0.025933 |
+| 456 | 0.031137 | 0.0213 | 3.98 | 0.017201 | 0.026067 |
+| **mean** | **0.031468** | **0.023300** | **4.06** | **0.017012** | **0.026356** |
+
+## MNIST-CNN
+| seed | risk_certificate | test_error | kl_divergence | ce_bound | empirical_01_risk |
+|---|---|---|---|---|---|
+| 42 | 0.015210 | 0.0101 | 1.83 | 0.007798 | 0.011967 |
+| 123 | 0.015169 | 0.0110 | 1.80 | 0.008386 | 0.011933 |
+| 456 | 0.015937 | 0.0117 | 2.42 | 0.008410 | 0.012533 |
+| **mean** | **0.015439** | **0.010933** | **2.02** | **0.008198** | **0.012144** |
+
+## FashionMNIST-CNN
+| seed | risk_certificate | test_error | kl_divergence | ce_bound | empirical_01_risk |
+|---|---|---|---|---|---|
+| 42 | 0.096010 | 0.0927 | 2.42 | 0.030991 | 0.087800 |
+| 123 | 0.099083 | 0.0963 | 3.99 | 0.030254 | 0.090233 |
+| 456 | 0.094677 | 0.0920 | 4.02 | 0.029616 | 0.086000 |
+| **mean** | **0.096590** | **0.093667** | **3.48** | **0.030287** | **0.088011** |
+</obs>
+

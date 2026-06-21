@@ -1,0 +1,1555 @@
+<meta task="synth-dnf" domain="Learning theory" file="pytorch-examples/synth_dnf/custom_strategy.py" model_format="qwen3" edit_tool="str_replace"/>
+
+<system>
+You are a research engineer improving a model on a fixed ML task. You work by editing the model code and running experiments. Think carefully before each change. You have these tools:
+- str_replace(path, old_str, new_str): replace the unique occurrence of old_str with new_str.
+- create(path, file_text): create a new file.
+- run_experiment(): train + evaluate the current code under the fixed budget; returns metrics.
+Make one tool call at a time. After editing, call run_experiment() to measure your method.
+</system>
+
+<user>
+## Research question
+
+Learn a hidden DNF concept — a function `f(x) = T_1(x) ∨ … ∨ T_s(x)`, each term `T_l` a conjunction of
+literals over `n` Boolean variables — from *uniformly drawn* labelled examples `(x, f(x))`, and predict
+`f` on a fresh uniform test sample. The one thing being designed is the **learner**: the model class,
+the training set it is fit on, and the fitting routine. Everything else — how the target DNF is
+sampled, how the held-out test set is built, how accuracy is scored — is frozen. The task is a
+neural-learner ML-science question, *not* a SAT solver or a membership-query algorithm: the target DNF
+is a hidden label oracle for uniform examples only, never to be inspected or reconstructed directly.
+
+Three target families are evaluated independently and combined by geometric mean: `random-n30-s10-w4`
+(mixed-polarity DNF, n=30, s=10, w=4), `monotone-n40-s20-w4` (positive literals only, n=40, s=20, w=4),
+and `sparse-n60-s10-w4` (a 12-variable junta inside n=60, s=10, w=4). Each family stresses a different
+axis: width and polarity in the random case, term count and monotonicity in the monotone case, and
+variable irrelevance in the sparse case.
+
+## Prior art before the first rung
+
+DNF learnability under the uniform distribution is one of the most studied problems in computational
+learning theory; the lineage the first rung reacts to is the gap between what is provably learnable and
+what a gradient-trained network actually delivers from random examples alone.
+
+- **Quasi-polynomial bound (Verbeurgt 1990).** Any `s`-term DNF is learnable in `n^{O(log s / ε)}` time
+  under the uniform distribution from random examples — but the dependence on `s` is super-polynomial,
+  so this is an existence result, not a practical recipe. Gap: not polynomial; gives no concrete model.
+- **Harmonic Sieve (Jackson 1997).** Polynomial-time DNF learning — but it *requires membership
+  queries* (it actively probes `f` at chosen points), so it is outside the "learner from random
+  samples" setting this task fixes. Gap: needs queries the task forbids.
+- **Random-DNF average case (Jackson & Servedio 2005).** Polynomial-time algorithms exist for *random*
+  monotone DNF with `s = O(n^{2−γ})` terms and random non-monotone DNF with `s = O(n^{3/2−γ})` terms —
+  evidence that the random regimes here are tractable in principle, by Fourier/correlation arguments,
+  but again not a drop-in model. Gap: algorithm-specific, not a differentiable learner.
+- **Tree ensembles on Boolean tabular data (Breiman 2001; Friedman 2001).** A decision tree splits on
+  one variable at a time, so a depth-`w` root-to-leaf path is exactly a width-`w` conjunction — a single
+  term. Bagging (random forests) and boosting (GBDT) are the canonical strong practical baselines on
+  Boolean tabular data, and they encode conjunctive structure for free. Gap: not "neural," and it is an
+  open empirical question whether a differentiable learner can match them here.
+- **Differentiable DNF architectures (Payani & Fekri 2019; Mat_DNF 2023).** Encode the DNF inductive
+  bias directly into the network — soft conjunctions with learnable literal memberships, OR'd by a
+  noisy-OR — so the hypothesis class *is* relaxed DNF. The promise: the right inductive bias should beat
+  a generic MLP. The question this task poses: does that promise hold from random examples only, against
+  the tree ensembles?
+
+## The fixed substrate
+
+A frozen driver samples one hidden DNF per top-level seed, draws uniform Boolean examples in `{0,1}^n`,
+fits the agent-defined learner on one fresh training set, and scores 0/1 test accuracy on a 10k held-out
+uniform sample. The driver owns DNF sampling (`sample_dnf`), labeling (`evaluate_dnf`), uniform-example
+generation (`make_uniform_examples`), dataset/output validation, and the per-family configuration
+(`TaskConfig`: `n_features`, `num_terms`, `term_width`, `monotone`, `sparse_subset`, `train_size=20000`,
+`test_size=10000`). The learner may read these config fields and may call the two exposed helpers
+`evaluate_dnf` and `make_uniform_examples`, but may not peek at the test set or the term list.
+
+## The editable interface
+
+Exactly one region of `pytorch-examples/synth_dnf/custom_strategy.py` is editable (lines 217–304): the
+three functions `build_model`, `make_dataset`, `fit_and_predict`. The contract:
+
+1. `build_model(config, seed) -> (model, info)` returns an opaque model object consumed only by your own
+   `fit_and_predict`, plus an `info` dict.
+2. `make_dataset(dnf, config, seed) -> (x, y)` constructs the training set from `make_uniform_examples`
+   and `evaluate_dnf` only, with inputs in `{0,1}^n`, labels in `{0,1}`, and at most `4 * train_size`
+   examples.
+3. `fit_and_predict(model, info, train_x, train_y, test_x, config, seed) -> preds` trains and returns an
+   integer 0/1 vector of length `test_x.shape[0]`.
+
+The starting point is the scaffold default: a 2-hidden-layer ReLU MLP trained with AdamW + BCE. Each
+method on the ladder replaces exactly these three definitions and nothing else.
+
+```python
+# EDITABLE region of custom_strategy.py — default fill (MLP + AdamW + BCE)
+def build_model(config: TaskConfig, seed: int):
+    """2-hidden-layer MLP (256, 256) with ReLU (the scaffold default)."""
+    import torch
+    from torch import nn
+
+    torch.manual_seed(seed)
+    hidden = 256
+    model = nn.Sequential(
+        nn.Linear(config.n_features, hidden),
+        nn.ReLU(),
+        nn.Linear(hidden, hidden),
+        nn.ReLU(),
+        nn.Linear(hidden, 1),
+    )
+    return model, {"kind": "mlp", "hidden": hidden}
+
+
+def make_dataset(
+    dnf: tuple[tuple[tuple[int, int], ...], ...],
+    config: TaskConfig,
+    seed: int,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Uniform Boolean training set."""
+    x = make_uniform_examples(config, config.train_size, seed)
+    y = evaluate_dnf(x, dnf)
+    return x, y
+
+
+def fit_and_predict(
+    model,
+    info: dict,
+    train_x: np.ndarray,
+    train_y: np.ndarray,
+    test_x: np.ndarray,
+    config: TaskConfig,
+    seed: int,
+) -> np.ndarray:
+    """AdamW + BCE training, 20 epochs."""
+    import torch
+    from torch import nn
+
+    torch.manual_seed(seed)
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    model = model.to(device)
+    optimizer = torch.optim.AdamW(model.parameters(), lr=1e-3, weight_decay=1e-4)
+    criterion = nn.BCEWithLogitsLoss()
+
+    train_x_t = torch.from_numpy(train_x).float().to(device)
+    train_y_t = torch.from_numpy(train_y).float().to(device)
+    test_x_t = torch.from_numpy(test_x).float().to(device)
+
+    epochs = 20
+    batch_size = 256
+    n = train_x_t.shape[0]
+    model.train()
+    for epoch in range(epochs):
+        perm = torch.randperm(n, device=device)
+        for start in range(0, n, batch_size):
+            idx = perm[start : start + batch_size]
+            logits = model(train_x_t[idx]).view(-1)
+            loss = criterion(logits, train_y_t[idx])
+            optimizer.zero_grad(set_to_none=True)
+            loss.backward()
+            optimizer.step()
+    model.eval()
+    with torch.no_grad():
+        preds = (torch.sigmoid(model(test_x_t)).view(-1) >= 0.5).long().cpu().numpy()
+    return preds
+```
+
+## Evaluation settings
+
+Three families (`random-n30-s10-w4`, `monotone-n40-s20-w4`, `sparse-n60-s10-w4`), one top-level seed
+(42), `train_size = 20000`, `test_size = 10000`. Each family reports `test_accuracy` (emitted also as
+`score`); the overall result is the geometric mean across the three families. Higher is better; the
+geometric mean punishes any single family that lags. A soft per-run wall-clock budget applies.
+
+The editable model code is in `pytorch-examples/synth_dnf/custom_strategy.py`:
+```python
+def build_model(config: TaskConfig, seed: int):
+    """Return a (model, info) tuple. ``model`` is opaque to the framework
+    and only consumed by ``fit_and_predict``. The default is a small MLP.
+    """
+    import torch
+    from torch import nn
+
+    torch.manual_seed(seed)
+    hidden = 256
+    model = nn.Sequential(
+        nn.Linear(config.n_features, hidden),
+        nn.ReLU(),
+        nn.Linear(hidden, hidden),
+        nn.ReLU(),
+        nn.Linear(hidden, 1),
+    )
+    return model, {"kind": "mlp", "hidden": hidden}
+
+
+def make_dataset(
+    dnf: tuple[tuple[tuple[int, int], ...], ...],
+    config: TaskConfig,
+    seed: int,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Return a reproducible labeled training set for one target DNF.
+
+    May *not* peek at the held-out test set. The returned dataset is
+    validated to have inputs in {0, 1}^n and labels in {0, 1}.
+    """
+    x = make_uniform_examples(config, config.train_size, seed)
+    y = evaluate_dnf(x, dnf)
+    return x, y
+
+
+def fit_and_predict(
+    model,
+    info: dict,
+    train_x: np.ndarray,
+    train_y: np.ndarray,
+    test_x: np.ndarray,
+    config: TaskConfig,
+    seed: int,
+) -> np.ndarray:
+    """Fit ``model`` on (train_x, train_y) and return predictions on test_x.
+
+    Returns a 1-D array of length len(test_x) with values in {0, 1}.
+    The default trains an MLP with AdamW and binary cross-entropy.
+    """
+    import torch
+    from torch import nn
+
+    torch.manual_seed(seed)
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    model = model.to(device)
+    optimizer = torch.optim.AdamW(model.parameters(), lr=1e-3, weight_decay=1e-4)
+    criterion = nn.BCEWithLogitsLoss()
+
+    train_x_t = torch.from_numpy(train_x).float().to(device)
+    train_y_t = torch.from_numpy(train_y).float().to(device)
+    test_x_t = torch.from_numpy(test_x).float().to(device)
+
+    epochs = 20
+    batch_size = 256
+    n = train_x_t.shape[0]
+    model.train()
+    for epoch in range(epochs):
+        perm = torch.randperm(n, device=device)
+        for start in range(0, n, batch_size):
+            idx = perm[start : start + batch_size]
+            logits = model(train_x_t[idx]).view(-1)
+            loss = criterion(logits, train_y_t[idx])
+            optimizer.zero_grad(set_to_none=True)
+            loss.backward()
+            optimizer.step()
+        if (epoch + 1) % 5 == 0 or epoch == 0:
+            with torch.no_grad():
+                tr_acc = (
+                    ((torch.sigmoid(model(train_x_t)).view(-1) >= 0.5).long()
+                     == train_y_t.long()).float().mean().item()
+                )
+            print(
+                f"TRAIN_METRICS epoch={epoch + 1} loss={loss.item():.4f} train_acc={tr_acc:.4f}",
+                flush=True,
+            )
+    model.eval()
+    with torch.no_grad():
+        preds = (torch.sigmoid(model(test_x_t)).view(-1) >= 0.5).long().cpu().numpy()
+    return preds
+```
+Improve it. Derive your method, edit the code, then run_experiment().
+</user>
+
+### step 1 — deep_dnf (differentiable DNF / noisy-OR)   [slug:deep_dnf]
+
+<think>
+The hidden function is a DNF, and I get to choose the learner, so the first move I want to make is the
+one that puts the answer's *shape* into the model itself. The target is literally an OR of ANDs of
+literals; if I build a network whose hypothesis class is relaxed DNF — soft conjunctions OR'd together —
+then I am not asking gradient descent to discover that Boolean functions exist, I am only asking it to
+find *which* conjunctions. That inductive-bias argument is strong enough that it should be the floor I
+measure everything else against: if encoding the exact target structure does not win, that itself is the
+finding. So step 1 is the differentiable-DNF learner, and the question I have to answer before I can
+even fill `build_model` is how to make "OR of ANDs of literals" differentiable without a single bias
+threshold to tune.
+
+Start from the connectives, because the whole architecture follows from how I relax them. Extend truth
+values from `{0,1}` to `[0,1]` and pick smooth surrogates that agree on the corners. The product family
+does exactly that: `NOT x = 1 − x`, `x AND y = x·y`, and by De Morgan `x OR y = 1 − (1−x)(1−y)`. The AND
+is the load-bearing choice. An additive perceptron has to *count* how many inputs are on and compare to
+a bias threshold — and that bias is precisely the part of a trained net you cannot read back as logic,
+and the part the optimizer chases when the input statistics shift. Multiplication sidesteps it
+entirely: `x_1·x_2·x_3` is 1 exactly when every factor is 1 and 0 the instant any factor is 0, with no
+threshold and no bias anywhere. So a conjunction neuron is a product, an OR neuron is the De Morgan
+dual (a noisy-OR), and the model is `DISJ(CONJ(x))` — a bank of soft conjunctions, OR'd.
+
+Now the real design problem: a conjunction should AND over *some subset* of variables, and I do not
+know which subset, so I have to learn the selection differentiably. The instinct to put a softmax over
+the `n` inputs is wrong twice over — a softmax picks essentially one thing, so selecting `w` literals
+needs `w` softmaxes and a commitment to clause width up front, and a softmax forced to concentrate over
+a long input vector converges painfully when `n` is large. The right primitive is a per-variable,
+*independent* include/exclude decision, not a competition among variables. So attach to each input `i`
+of clause `j` a membership and fold it into the product through a factor that is the identity (= 1) when
+the variable is excluded and equals `x_i` when it is included: `F = 1 − m_i(1 − x_i)`. Check the table —
+`m_i = 0` gives 1 for either `x_i`; `m_i = 1` gives `x_i`. So `O_conj = Π_i (1 − m_i(1 − x_i))`, and the
+clause can be read straight off the memberships. Here, because the target may use *negative* literals
+too (the random and monotone families differ exactly on this), I want a three-way categorical per
+variable — include-positive, include-negative, skip — via a softmax over three logits, so a term can use
+either polarity but can never select `x_i` and `¬x_i` at once. The conjunction becomes a product over
+`pos·x + neg·(1−x) + skip`, with the three probabilities summing to 1.
+
+Three implementation facts are not optional, they decide whether this trains at all, and they are
+exactly what I encode in the scaffold's `forward`. First, **log-domain products.** A width-`w` clause is
+a product of `n` factors each ≤ 1; over `n = 60` those products underflow and the gradient through them
+vanishes. So I compute `exp(Σ log(factor))` with the factors clamped to `[1e-6, 1]` — valid because
+every factor lies in `[0,1]`. Second, **sparse initialization.** If most memberships start near 1, every
+clause is a product of many sub-1 terms, the output is crushed toward 0, and the gradient dies before
+training begins. So I initialize the skip logit high (≈ 4) and the include logits low (≈ −4), so clauses
+start near the constant-1 function and only a few literals switch on as learning proceeds; I also
+initialize the per-term gate logits low (≈ −3) so terms start mostly off. Third, **per-term gates and
+sparsity penalties.** I over-provision terms (`n_terms = max(4·num_terms, 32)`), put a `σ(g_j)` gate on
+each so the noisy-OR can switch a term off, and add a one-sided literal-width penalty `(usage − w)_+^2`
+plus a mean-gate penalty, pushing toward short clauses and few active terms — a crisp DNF rather than a
+mush of half-on memberships.
+
+There is one more piece this task's substrate lets me add that a generic differentiable-DNF learner
+would not: a **data-driven warm start.** Pure gradient descent on a noisy-OR of products is slow to
+discover *which* width-`w` conjunctions matter, and I have 20000 labelled examples sitting right there.
+So before training I mine candidate terms directly from the data: score each variable by the gap between
+its positive-class and negative-class means (`|E[x_i | y=1] − E[x_i | y=0]|`), keep the top variables
+(more for the monotone family, a tight window around the junta size for the sparse family), enumerate
+width-`w` combinations and polarity patterns over them, and score each candidate conjunction by its
+precision plus a recall term on the training labels, discarding any that fire on fewer than a handful of
+examples. The top-scoring distinct terms initialize the memberships at saturated logits, so the network
+*starts* near a plausible DNF and gradient descent only has to refine it. This is the harness adapting
+the architecture to its own research question — it is not in the canonical differentiable-DNF method,
+and it is the single biggest reason this baseline could beat a from-scratch soft-DNF. I should keep that
+in mind, because if the warm start mines the *wrong* terms, the network inherits the mistake.
+
+So why do I believe the convergence story at all? Differentiate one membership: `∂O_conj/∂m_i ∝
+(x_i − 1)`, since the product over the other factors is non-negative. To *raise* a membership toward 1 I
+need a counterexample — a point where `x_i = 0` yet the clause is supposed to fire — telling me `x_i`
+should not be a required literal; to keep it I need the clause to hold whenever the relevant variables
+are on. The memberships are driven by counterexamples, and with 20000 uniform examples each width-4
+conjunction's relevant counterexamples are present in abundance, so a single layer should converge if
+the warm start put it in the right neighborhood. I train with AdamW + BCE on the logits the noisy-OR
+emits, 30 epochs, batch 512, the two sparsity penalties at small weight, and threshold at logit 0 for
+the 0/1 prediction. The full scaffold module — `NeuralDNF` with the three-way literal, the noisy-OR, the
+term mining, and the penalised training loop — is in the answer.
+
+Now reason about what this floor must do on each family, because that is the entire point of running it
+as the first rung. The **monotone** family is the friendliest: all literals are positive, so the
+three-way categorical mostly only has to choose between include-positive and skip, the variable-mean
+gap is a clean signal (a relevant variable is on more often among positives), and the warm-start mining
+should recover most of the 20 terms. I expect the differentiable DNF to do *well* here — this is the
+regime its inductive bias was built for. The **sparse** family is also favorable in principle: only 12
+of 60 variables are relevant, the mean-gap score should expose exactly those, and once the candidate
+mining restricts to a small variable window the width-4 enumeration is cheap and accurate; I expect
+solid accuracy. The **random** family is where I am genuinely worried. It is non-monotone (every literal
+can be either polarity), so the three-way softmax has a real three-way decision per variable, the
+mean-gap signal is weaker because a mixed-polarity term correlates less cleanly with any single
+variable's marginal, and the candidate enumeration over both polarities is far larger. If the warm start
+mines imprecise terms there, the noisy-OR aggregation compounds the error: each slightly-wrong soft
+conjunction contributes a little false-positive mass, and OR-ing 32+ of them together drives the
+prediction toward 1 on inputs that should be 0. A noisy-OR is unforgiving in exactly this way — it
+takes the union, so precision errors accumulate.
+
+That gives me a sharp, falsifiable expectation to carry into the feedback. I expect this baseline to be
+*strong on monotone and sparse and weak on random* — the geometric mean across the three will be dragged
+down by whichever family the warm start serves worst, and I am betting that is the mixed-polarity random
+family. If the random number comes in well below the monotone and sparse numbers, the diagnosis is the
+one above: the noisy-OR plus imperfect term mining over both polarities, not a failure of the
+gradient-descent refinement. And if even monotone and sparse fall short of what a generic tabular
+learner would get, then the inductive-bias bet has failed outright and the lesson is that a hand-shaped
+DNF hypothesis class, trained from uniform random examples, does not actually beat a model that simply
+*splits on variables* — which is what a decision tree does for free, one conjunction per root-to-leaf
+path. That is the comparison the next rungs exist to make. For now the bar is just to see whether the
+exact-structure model clears the line, and where it cracks. Let me write the differentiable-DNF learner
+into the scaffold.
+</think>
+<say>
+I'm starting with a differentiable DNF (deep_dnf): a network whose hypothesis class is relaxed DNF — soft
+conjunctions OR'd by a noisy-OR. This first edit renames the build-model header for the new learner.
+</say>
+<edit path="pytorch-examples/synth_dnf/custom_strategy.py">
+<old>
+def build_model(config: TaskConfig, seed: int):
+    """Return a (model, info) tuple. ``model`` is opaque to the framework
+    and only consumed by ``fit_and_predict``. The default is a small MLP.
+    """
+    import torch
+</old>
+<new>
+# EDITABLE region of custom_strategy.py — step 1: differentiable DNF (deep_dnf)
+def build_model(config: TaskConfig, seed: int):
+    """Neural Logic Network with soft literal selection and noisy-OR output."""
+    import torch
+</new>
+</edit>
+<obs>
+Successfully replaced text in pytorch-examples/synth_dnf/custom_strategy.py.
+</obs>
+<note>
+Now the NeuralDNF module itself: three-way per-literal softmax, log-domain product conjunctions, noisy-OR
+output, plus sparse init and a term-mining hook.
+</note>
+<edit path="pytorch-examples/synth_dnf/custom_strategy.py">
+<old>
+    torch.manual_seed(seed)
+    hidden = 256
+    model = nn.Sequential(
+        nn.Linear(config.n_features, hidden),
+        nn.ReLU(),
+        nn.Linear(hidden, hidden),
+        nn.ReLU(),
+        nn.Linear(hidden, 1),
+    )
+    return model, {"kind": "mlp", "hidden": hidden}
+</old>
+<new>
+    torch.manual_seed(seed)
+
+    class NeuralDNF(nn.Module):
+        def __init__(self, n_features: int, n_terms: int):
+            super().__init__()
+            self.literal_logits = nn.Parameter(torch.empty(n_terms, n_features, 3))
+            self.term_logits = nn.Parameter(torch.empty(n_terms))
+            self.out_bias = nn.Parameter(torch.zeros(1))
+            self.n_features = n_features
+            self.n_terms = n_terms
+            self.reset_parameters()
+
+        def reset_parameters(self) -> None:
+            with torch.no_grad():
+                self.literal_logits[..., 0].fill_(-4.0)  # positive literal
+                self.literal_logits[..., 1].fill_(-4.0)  # negative literal
+                self.literal_logits[..., 2].fill_(4.0)   # skip literal
+                self.literal_logits.add_(0.03 * torch.randn_like(self.literal_logits))
+                self.term_logits.fill_(-3.0)
+                self.out_bias.zero_()
+
+        def initialize_terms(self, terms: list[tuple[np.ndarray, np.ndarray]]) -> None:
+            self.reset_parameters()
+            with torch.no_grad():
+                for term_index, (variables, polarities) in enumerate(terms[: self.n_terms]):
+                    self.term_logits[term_index] = 2.5
+                    for var, pol in zip(variables, polarities):
+                        self.literal_logits[term_index, int(var), :].fill_(-5.0)
+                        self.literal_logits[term_index, int(var), 2] = -5.0
+                        self.literal_logits[term_index, int(var), 0 if int(pol) == 1 else 1] = 5.0
+
+        def forward(self, x: torch.Tensor) -> torch.Tensor:
+            probs = torch.softmax(self.literal_logits, dim=-1)
+            pos = probs[..., 0]
+            neg = probs[..., 1]
+            skip = probs[..., 2]
+            literal = (
+                pos.unsqueeze(0) * x.unsqueeze(1)
+                + neg.unsqueeze(0) * (1.0 - x.unsqueeze(1))
+                + skip.unsqueeze(0)
+            ).clamp(min=1e-6, max=1.0)
+            conj = torch.exp(torch.log(literal).sum(dim=-1)).clamp(max=1.0)
+            term_prob = torch.sigmoid(self.term_logits).unsqueeze(0) * conj
+            log_not = torch.log1p(-term_prob.clamp(max=1.0 - 1e-6)).sum(dim=-1)
+            prob = (1.0 - torch.exp(log_not)).clamp(min=1e-6, max=1.0 - 1e-6)
+            return torch.log(prob) - torch.log1p(-prob) + self.out_bias
+
+        def literal_usage(self) -> torch.Tensor:
+            probs = torch.softmax(self.literal_logits, dim=-1)
+            return (probs[..., 0] + probs[..., 1]).sum(dim=-1)
+
+    n_terms = max(4 * config.num_terms, 32)
+    model = NeuralDNF(config.n_features, n_terms)
+    return model, {"kind": "neural_dnf", "n_terms": n_terms}
+</new>
+</edit>
+<obs>
+Successfully replaced text in pytorch-examples/synth_dnf/custom_strategy.py.
+</obs>
+<note>
+Now the data-driven warm start: mine candidate width-w terms by variable-mean gap and precision/recall on
+the training labels, to initialize the memberships near a plausible DNF.
+</note>
+<edit path="pytorch-examples/synth_dnf/custom_strategy.py">
+<old>
+) -> tuple[np.ndarray, np.ndarray]:
+    """Return a reproducible labeled training set for one target DNF.
+
+    May *not* peek at the held-out test set. The returned dataset is
+    validated to have inputs in {0, 1}^n and labels in {0, 1}.
+    """
+    x = make_uniform_examples(config, config.train_size, seed)
+    y = evaluate_dnf(x, dnf)
+    return x, y
+</old>
+<new>
+) -> tuple[np.ndarray, np.ndarray]:
+    """Uniform Boolean training set."""
+    x = make_uniform_examples(config, config.train_size, seed)
+    y = evaluate_dnf(x, dnf)
+    return x, y
+
+
+def _mine_candidate_terms(
+    train_x: np.ndarray,
+    train_y: np.ndarray,
+    config: TaskConfig,
+    max_terms: int,
+    seed: int,
+) -> list[tuple[np.ndarray, np.ndarray]]:
+    """Data-driven initialization for a soft DNF layer."""
+    from itertools import combinations, product
+
+    rng = np.random.default_rng(seed)
+    x = train_x.astype(np.int8, copy=False)
+    y = train_y.astype(bool, copy=False)
+    if y.sum() == 0 or (~y).sum() == 0:
+        return []
+
+    pos_mean = x[y].mean(axis=0)
+    neg_mean = x[~y].mean(axis=0)
+    variable_score = np.abs(pos_mean - neg_mean)
+    if config.monotone:
+        top_m = min(config.n_features, 30)
+    elif config.sparse_subset > 0:
+        top_m = min(config.n_features, max(config.sparse_subset + 4, 16))
+    else:
+        top_m = min(config.n_features, 18)
+    top_vars = np.argsort(variable_score)[-top_m:]
+
+    combos = np.array(list(combinations(top_vars.tolist(), config.term_width)), dtype=np.int64)
+    if combos.size == 0:
+        return []
+    if config.monotone:
+        patterns = np.ones((1, config.term_width), dtype=np.int8)
+    else:
+        patterns = np.array(list(product([0, 1], repeat=config.term_width)), dtype=np.int8)
+    vars_arr = np.repeat(combos, len(patterns), axis=0)
+    pols_arr = np.tile(patterns, (len(combos), 1))
+
+    max_candidates = 36000
+    if len(vars_arr) > max_candidates:
+        keep = rng.choice(len(vars_arr), size=max_candidates, replace=False)
+        vars_arr = vars_arr[keep]
+        pols_arr = pols_arr[keep]
+
+    scores = np.empty(len(vars_arr), dtype=np.float64)
+    chunk = 512
+    pos_count = max(int(y.sum()), 1)
+    for start in range(0, len(vars_arr), chunk):
+        end = min(start + chunk, len(vars_arr))
+        v = vars_arr[start:end]
+        p = pols_arr[start:end]
+        match = np.ones((x.shape[0], end - start), dtype=bool)
+        for j in range(config.term_width):
+            match &= x[:, v[:, j]] == p[:, j]
+        covered = match.sum(axis=0)
+        pos_covered = match[y].sum(axis=0)
+        precision = pos_covered / np.maximum(covered, 1)
+        recall = pos_covered / pos_count
+        chunk_scores = precision + 0.25 * recall
+        chunk_scores[covered < 4] = -1.0
+        scores[start:end] = chunk_scores
+
+    order = np.argsort(scores)[::-1]
+    selected: list[tuple[np.ndarray, np.ndarray]] = []
+    seen: set[tuple[tuple[int, int], ...]] = set()
+    for idx in order:
+        if scores[idx] <= 0:
+            break
+        term_key = tuple(sorted((int(v), int(p)) for v, p in zip(vars_arr[idx], pols_arr[idx])))
+        if term_key in seen:
+            continue
+        seen.add(term_key)
+        selected.append((vars_arr[idx].copy(), pols_arr[idx].copy()))
+        if len(selected) >= max_terms:
+            break
+    return selected
+</new>
+</edit>
+<obs>
+Successfully replaced text in pytorch-examples/synth_dnf/custom_strategy.py.
+</obs>
+<edit path="pytorch-examples/synth_dnf/custom_strategy.py">
+<old>
+) -> np.ndarray:
+    """Fit ``model`` on (train_x, train_y) and return predictions on test_x.
+
+    Returns a 1-D array of length len(test_x) with values in {0, 1}.
+    The default trains an MLP with AdamW and binary cross-entropy.
+    """
+    import torch
+</old>
+<new>
+) -> np.ndarray:
+    import torch
+</new>
+</edit>
+<obs>
+Successfully replaced text in pytorch-examples/synth_dnf/custom_strategy.py.
+</obs>
+<note>
+Now wire the warm start into training — mine the terms, seed the memberships — and bump the optimizer to
+lr 2e-3 for the logit-space objective.
+</note>
+<edit path="pytorch-examples/synth_dnf/custom_strategy.py">
+<old>
+    torch.manual_seed(seed)
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    model = model.to(device)
+    optimizer = torch.optim.AdamW(model.parameters(), lr=1e-3, weight_decay=1e-4)
+    criterion = nn.BCEWithLogitsLoss()
+</old>
+<new>
+    torch.manual_seed(seed)
+    terms = _mine_candidate_terms(train_x, train_y, config, info.get("n_terms", 32), seed)
+    if hasattr(model, "initialize_terms"):
+        model.initialize_terms(terms)
+
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    model = model.to(device)
+    optimizer = torch.optim.AdamW(model.parameters(), lr=2e-3, weight_decay=1e-5)
+    criterion = nn.BCEWithLogitsLoss()
+</new>
+</edit>
+<obs>
+Successfully replaced text in pytorch-examples/synth_dnf/custom_strategy.py.
+</obs>
+<edit path="pytorch-examples/synth_dnf/custom_strategy.py">
+<old>
+
+    epochs = 20
+    batch_size = 256
+    n = train_x_t.shape[0]
+    model.train()
+</old>
+<new>
+
+    epochs = 30
+    batch_size = 512
+    n = train_x_t.shape[0]
+    target_width = float(config.term_width)
+    model.train()
+</new>
+</edit>
+<obs>
+Successfully replaced text in pytorch-examples/synth_dnf/custom_strategy.py.
+</obs>
+<note>
+Now add the two sparsity penalties — one-sided literal-width and mean-gate — to the loss, pushing toward
+short clauses and few active terms.
+</note>
+<edit path="pytorch-examples/synth_dnf/custom_strategy.py">
+<old>
+            loss = criterion(logits, train_y_t[idx])
+            optimizer.zero_grad(set_to_none=True)
+            loss.backward()
+            optimizer.step()
+        if (epoch + 1) % 5 == 0 or epoch == 0:
+            with torch.no_grad():
+                tr_acc = (
+                    ((torch.sigmoid(model(train_x_t)).view(-1) >= 0.5).long()
+                     == train_y_t.long()).float().mean().item()
+                )
+            print(
+                f"TRAIN_METRICS epoch={epoch + 1} loss={loss.item():.4f} train_acc={tr_acc:.4f}",
+                flush=True,
+</old>
+<new>
+            loss = criterion(logits, train_y_t[idx])
+            usage = model.literal_usage()
+            width_penalty = ((usage - target_width).clamp(min=0.0) ** 2).mean()
+            gate_penalty = torch.sigmoid(model.term_logits).mean()
+            total = loss + 1e-4 * width_penalty + 1e-4 * gate_penalty
+            optimizer.zero_grad(set_to_none=True)
+            total.backward()
+            optimizer.step()
+        if (epoch + 1) % 10 == 0 or epoch == 0:
+            with torch.no_grad():
+                pred = (model(train_x_t).view(-1) >= 0.0).long()
+                tr_acc = (pred == train_y_t.long()).float().mean().item()
+            print(
+                f"TRAIN_METRICS epoch={epoch + 1} loss={loss.item():.4f} "
+                f"terms={len(terms)} train_acc={tr_acc:.4f}",
+                flush=True,
+</new>
+</edit>
+<obs>
+Successfully replaced text in pytorch-examples/synth_dnf/custom_strategy.py.
+</obs>
+<edit path="pytorch-examples/synth_dnf/custom_strategy.py">
+<old>
+    with torch.no_grad():
+        preds = (torch.sigmoid(model(test_x_t)).view(-1) >= 0.5).long().cpu().numpy()
+    return preds
+</old>
+<new>
+    with torch.no_grad():
+        preds = (model(test_x_t).view(-1) >= 0.0).long().cpu().numpy()
+    return preds
+</new>
+</edit>
+<obs>
+Successfully replaced text in pytorch-examples/synth_dnf/custom_strategy.py.
+</obs>
+<run/>
+<obs>
+Measured results — `baseline:deep_dnf` (`is_final,true`), seed 42. One top-level seed, so the per-seed
+row is the mean.
+
+## test_accuracy by family
+| seed | random-n30-s10-w4 | monotone-n40-s20-w4 | sparse-n60-s10-w4 |
+|---|---|---|---|
+| 42 | 0.7605 | 0.9088 | 0.8986 |
+| **mean** | **0.7605** | **0.9088** | **0.8986** |
+
+## aggregate
+| metric | value |
+|---|---|
+| geometric mean (test_accuracy) | 0.8532 |
+| base_rate_majority (random / monotone / sparse) | 0.5034 / 0.6277 / 0.5112 |
+| mean_fit_seconds (random / monotone / sparse) | 12.63 / 12.29 / 37.97 |
+</obs>
+
+### step 2 — rf (Random Forest)   [slug:rf]
+
+<think>
+The differentiable DNF landed at 0.7605 on the random family, 0.9088 on monotone, 0.8986 on sparse — a
+geometric mean of 0.8532, and the shape of that split is exactly the failure I was worried about, only
+sharper. The model with the *exact target structure baked in* is the weakest thing I have run, and it is
+weak precisely where I predicted: the mixed-polarity random family, fully 14 points below the monotone
+number and 9 below the sparse number. The monotone and sparse families, where the warm-start mining has
+a clean variable-mean signal and a simpler polarity decision, sit near 0.90 — respectable but not
+solved, and notably below their own ceiling given that 20000 examples of a width-4 concept should be
+learnable to near-perfection. So two things are wrong at once. The noisy-OR over 32+ soft conjunctions
+is accumulating precision errors on the non-monotone family — every slightly-imprecise mined term adds
+false-positive mass, and OR-ing them takes the union, so the random number bleeds down toward the base
+rate. And even on the easy families, the soft-DNF refinement is leaving accuracy on the table: a
+continuous relaxation of a discrete formula never quite snaps to the formula, and the residual softness
+costs a few percent everywhere. The lesson is blunt: hand-shaping the hypothesis class into relaxed DNF,
+trained from uniform random examples, does *not* beat a model that simply carves the input space by
+variable. So I should stop relaxing the logic and use a model that does exact, axis-aligned conjunctive
+splits natively — a decision tree — and fix the variance problem that one tree has by averaging many.
+
+Here is the structural fact that makes a tree the natural learner for this task, and it is the same fact
+the noisy-OR was fumbling. A decision tree splits on one variable at a time; a root-to-leaf path of
+length `w` is a conjunction of `w` literals — *exactly* a DNF term. So the set of leaves labelled 1 is a
+DNF, and a sufficiently deep tree can represent the target DNF *exactly*, with no relaxation and no
+threshold to tune. A single unrestricted tree, grown until pure, will in fact memorize the 20000
+training points perfectly. The catch is the one every tree has: a single deep tree is a high-variance
+estimator. Small changes in the training sample move the early splits, and because every later split is
+conditioned on the earlier ones, an early perturbation cascades into a wholly different tree. With
+20000 uniform examples covering a 30-to-60-dimensional Boolean cube extremely sparsely (2^30 to 2^60
+possible inputs, of which I see 20000), the leaves near the bottom are supported by a handful of points
+each, and their labels are essentially guesses. So one tree overfits: perfect on train, noisy on a fresh
+uniform test point that falls in a sparsely-supported region. The diagnosis from deep_dnf carries over —
+I have a *variance* problem, not a representation problem — and the fix is the same shape as averaging
+many soft conjunctions, except I average many *exact* trees instead.
+
+The averaging argument I want is precise, so let me make it. Take a predictor that is an average of
+trees, each grown on a resampled version of the data, and consider its variance. If the individual trees
+were independent and each had variance `σ²`, the average of `B` of them would have variance `σ²/B` —
+variance vanishes as I add trees. Real trees grown on bootstrap resamples of the same data are *not*
+independent; they share most of the data, so their predictions are positively correlated with some
+pairwise correlation `ρ`, and the variance of the average is `ρσ² + (1−ρ)σ²/B`. The second term goes to
+zero with more trees, but the first does not — the floor on the ensemble's variance is `ρσ²`, set by how
+correlated the trees are. So the whole game in turning a high-variance tree into a low-variance ensemble
+is twofold: keep growing trees (drives the `(1−ρ)σ²/B` term down for free) and, more importantly, *drive
+down the correlation `ρ`* between trees. Bagging — bootstrap aggregation — gets `ρ` down a little by
+giving each tree a different resample (each bootstrap omits ≈ 37% of the data, so trees disagree on the
+held-out-of-bag regions). But bootstrapping alone leaves the trees highly correlated, because a few
+strong variables dominate the top splits of *every* tree: if one variable is the single most informative
+split, nearly every bootstrap tree puts it at the root, and the trees look alike near the top where it
+matters most.
+
+The decisive move is to decorrelate the trees by *also* randomizing the splits. At each node, instead of
+searching all `n` variables for the best split, restrict the search to a fresh random subset of `m ≪ n`
+variables and pick the best split among those. Now no single strong variable can dominate every tree's
+root, because in many trees it simply is not among the `m` candidates at the top node; different trees
+are forced to build out of different variables, their errors decorrelate, `ρ` drops, and the ensemble
+variance floor `ρσ²` drops with it. This is the one idea that separates a random forest from plain
+bagged trees, and it is exactly what I need on this task: the target DNF has `s` terms over `w`
+variables each, so there are several genuinely informative variables, and feature subsampling spreads
+the trees across them so the ensemble sees the whole term structure rather than fixating on the few
+variables with the largest marginal signal. Crucially, the variance reduction does *not* come at the
+cost of bias the way pruning would: I grow each tree deep (unrestricted depth), so each individual tree
+is low-bias / high-variance — it can represent any of the DNF terms — and I rely entirely on the average
+to kill the variance. Deep, unpruned, decorrelated, averaged: that is the recipe.
+
+In the task's scaffold this is an almost trivial fill, and that is the point — I do not need a bespoke
+network, I need the right off-the-shelf estimator wired into `fit_and_predict`. `build_model` returns an
+`sklearn` `RandomForestClassifier` with `n_estimators=200` (enough trees to push the `(1−ρ)σ²/B` term
+well below the `ρσ²` floor, so adding more buys little), `max_depth=None` (grow each tree until its
+leaves are pure — full depth, because I want each tree low-bias and I am counting on the average for
+variance), and `min_samples_leaf=2` (a light touch against single-point leaves, which on this sparse
+cube are pure noise; requiring two points per leaf trims the most overfit twigs without imposing real
+bias). `n_jobs=-1` parallelizes the 200 trees. `make_dataset` is the default uniform sample — 20000
+labelled `(x, f(x))` pairs — and `fit_and_predict` just calls `.fit` on the float-cast Booleans and
+`.predict` on the test set, returning the 0/1 vector. The default feature-subset size sklearn uses for
+classification is `sqrt(n)` per split — about 5 of 30, 6 of 40, 8 of 60 — which is exactly the
+decorrelation regime I argued for: small enough to force different trees apart, large enough that each
+node still finds a useful split. The full module is in the answer.
+
+Now the falsifiable expectations against the deep_dnf numbers, family by family. On **monotone**
+(deep_dnf 0.9088): the forest should be *competitive but not obviously dominant*. Monotone DNF with 20
+terms over 40 variables is a wide target; a width-4 term is a length-4 path, and with feature
+subsampling and 200 trees the union of paths should cover most terms, but the high term count (s=20)
+means many leaves and a real chance some terms are under-covered by the random splits. I would not be
+shocked if the forest lands near or slightly below deep_dnf's monotone number — the warm-start mining
+genuinely helps the differentiable model there. On **random** (deep_dnf 0.7605): I expect the forest to
+*clearly beat* deep_dnf, because the tree's exact axis-aligned splits do not suffer the noisy-OR's
+union-of-errors blowup; mixed polarity is free for a tree (a split tests `x_i = 0` or `x_i = 1`
+symmetrically), so the random family should jump well above 0.76 — this is the single comparison that
+should vindicate the switch. On **sparse** (deep_dnf 0.8986): the 12-variable junta is the forest's
+friend in principle — irrelevant variables are simply never chosen as good splits — but feature
+subsampling cuts both ways here: with only 12 of 60 variables relevant, a random subset of ~8 variables
+at each node frequently contains *zero* relevant variables, forcing a wasted split on noise, which slows
+the trees from concentrating on the junta. So sparse is the one family where the forest's decorrelation
+trick could backfire, and I would watch for the sparse number coming in *below* the random number even
+though sparse "should" be easier.
+
+So the prediction I am committing to: the geometric mean should rise above deep_dnf's 0.8532, driven
+almost entirely by a large gain on the random family, with monotone roughly flat and sparse uncertain.
+If instead the forest's *random* number fails to clear deep_dnf's 0.76, my whole diagnosis — that the
+noisy-OR's union-of-errors, not the representation, sank deep_dnf — is wrong, and I would have to look
+elsewhere. And if the forest, despite exact splits and 200 trees, still leaves any family well short of
+the near-perfect accuracy a width-4 concept ought to allow from 20000 examples, that points at the next
+lever: a forest *bags independent trees* and never lets a later tree correct an earlier one's mistakes.
+The way to push past flat averaging is to make each new tree fit the *residual error* of the ones so
+far — to boost rather than bag — and to ask whether a plain gradient-trained MLP, which the differentiable
+model abandoned, was actually a stronger generic learner than either tree ensemble all along. For now,
+let me swap in the random forest.
+</think>
+<say>
+Switching to a random forest (rf): deep, decorrelated, axis-aligned trees averaged together — one
+root-to-leaf path per DNF term. This edit replaces build_model with a 200-tree RandomForestClassifier.
+</say>
+<edit path="pytorch-examples/synth_dnf/custom_strategy.py">
+<old>
+# EDITABLE region of custom_strategy.py — step 1: differentiable DNF (deep_dnf)
+def build_model(config: TaskConfig, seed: int):
+    """Neural Logic Network with soft literal selection and noisy-OR output."""
+    import torch
+    from torch import nn
+
+    torch.manual_seed(seed)
+
+    class NeuralDNF(nn.Module):
+        def __init__(self, n_features: int, n_terms: int):
+            super().__init__()
+            self.literal_logits = nn.Parameter(torch.empty(n_terms, n_features, 3))
+            self.term_logits = nn.Parameter(torch.empty(n_terms))
+            self.out_bias = nn.Parameter(torch.zeros(1))
+            self.n_features = n_features
+            self.n_terms = n_terms
+            self.reset_parameters()
+
+        def reset_parameters(self) -> None:
+            with torch.no_grad():
+                self.literal_logits[..., 0].fill_(-4.0)  # positive literal
+                self.literal_logits[..., 1].fill_(-4.0)  # negative literal
+                self.literal_logits[..., 2].fill_(4.0)   # skip literal
+                self.literal_logits.add_(0.03 * torch.randn_like(self.literal_logits))
+                self.term_logits.fill_(-3.0)
+                self.out_bias.zero_()
+
+        def initialize_terms(self, terms: list[tuple[np.ndarray, np.ndarray]]) -> None:
+            self.reset_parameters()
+            with torch.no_grad():
+                for term_index, (variables, polarities) in enumerate(terms[: self.n_terms]):
+                    self.term_logits[term_index] = 2.5
+                    for var, pol in zip(variables, polarities):
+                        self.literal_logits[term_index, int(var), :].fill_(-5.0)
+                        self.literal_logits[term_index, int(var), 2] = -5.0
+                        self.literal_logits[term_index, int(var), 0 if int(pol) == 1 else 1] = 5.0
+
+        def forward(self, x: torch.Tensor) -> torch.Tensor:
+            probs = torch.softmax(self.literal_logits, dim=-1)
+            pos = probs[..., 0]
+            neg = probs[..., 1]
+            skip = probs[..., 2]
+            literal = (
+                pos.unsqueeze(0) * x.unsqueeze(1)
+                + neg.unsqueeze(0) * (1.0 - x.unsqueeze(1))
+                + skip.unsqueeze(0)
+            ).clamp(min=1e-6, max=1.0)
+            conj = torch.exp(torch.log(literal).sum(dim=-1)).clamp(max=1.0)
+            term_prob = torch.sigmoid(self.term_logits).unsqueeze(0) * conj
+            log_not = torch.log1p(-term_prob.clamp(max=1.0 - 1e-6)).sum(dim=-1)
+            prob = (1.0 - torch.exp(log_not)).clamp(min=1e-6, max=1.0 - 1e-6)
+            return torch.log(prob) - torch.log1p(-prob) + self.out_bias
+
+        def literal_usage(self) -> torch.Tensor:
+            probs = torch.softmax(self.literal_logits, dim=-1)
+            return (probs[..., 0] + probs[..., 1]).sum(dim=-1)
+
+    n_terms = max(4 * config.num_terms, 32)
+    model = NeuralDNF(config.n_features, n_terms)
+    return model, {"kind": "neural_dnf", "n_terms": n_terms}
+</old>
+<new>
+# EDITABLE region of custom_strategy.py — step 2: Random Forest (rf)
+def build_model(config: TaskConfig, seed: int):
+    from sklearn.ensemble import RandomForestClassifier
+
+    model = RandomForestClassifier(
+        n_estimators=200,
+        max_depth=None,
+        min_samples_leaf=2,
+        n_jobs=-1,
+        random_state=int(seed),
+    )
+    return model, {"kind": "random_forest"}
+</new>
+</edit>
+<obs>
+Successfully replaced text in pytorch-examples/synth_dnf/custom_strategy.py.
+</obs>
+<note>
+Now drop the term-mining helper — the forest needs no warm start.
+</note>
+<edit path="pytorch-examples/synth_dnf/custom_strategy.py">
+<old>
+
+def _mine_candidate_terms(
+    train_x: np.ndarray,
+    train_y: np.ndarray,
+    config: TaskConfig,
+    max_terms: int,
+    seed: int,
+) -> list[tuple[np.ndarray, np.ndarray]]:
+    """Data-driven initialization for a soft DNF layer."""
+    from itertools import combinations, product
+
+    rng = np.random.default_rng(seed)
+    x = train_x.astype(np.int8, copy=False)
+    y = train_y.astype(bool, copy=False)
+    if y.sum() == 0 or (~y).sum() == 0:
+        return []
+
+    pos_mean = x[y].mean(axis=0)
+    neg_mean = x[~y].mean(axis=0)
+    variable_score = np.abs(pos_mean - neg_mean)
+    if config.monotone:
+        top_m = min(config.n_features, 30)
+    elif config.sparse_subset > 0:
+        top_m = min(config.n_features, max(config.sparse_subset + 4, 16))
+    else:
+        top_m = min(config.n_features, 18)
+    top_vars = np.argsort(variable_score)[-top_m:]
+
+    combos = np.array(list(combinations(top_vars.tolist(), config.term_width)), dtype=np.int64)
+    if combos.size == 0:
+        return []
+    if config.monotone:
+        patterns = np.ones((1, config.term_width), dtype=np.int8)
+    else:
+        patterns = np.array(list(product([0, 1], repeat=config.term_width)), dtype=np.int8)
+    vars_arr = np.repeat(combos, len(patterns), axis=0)
+    pols_arr = np.tile(patterns, (len(combos), 1))
+
+    max_candidates = 36000
+    if len(vars_arr) > max_candidates:
+        keep = rng.choice(len(vars_arr), size=max_candidates, replace=False)
+        vars_arr = vars_arr[keep]
+        pols_arr = pols_arr[keep]
+
+    scores = np.empty(len(vars_arr), dtype=np.float64)
+    chunk = 512
+    pos_count = max(int(y.sum()), 1)
+    for start in range(0, len(vars_arr), chunk):
+        end = min(start + chunk, len(vars_arr))
+        v = vars_arr[start:end]
+        p = pols_arr[start:end]
+        match = np.ones((x.shape[0], end - start), dtype=bool)
+        for j in range(config.term_width):
+            match &= x[:, v[:, j]] == p[:, j]
+        covered = match.sum(axis=0)
+        pos_covered = match[y].sum(axis=0)
+        precision = pos_covered / np.maximum(covered, 1)
+        recall = pos_covered / pos_count
+        chunk_scores = precision + 0.25 * recall
+        chunk_scores[covered < 4] = -1.0
+        scores[start:end] = chunk_scores
+
+    order = np.argsort(scores)[::-1]
+    selected: list[tuple[np.ndarray, np.ndarray]] = []
+    seen: set[tuple[tuple[int, int], ...]] = set()
+    for idx in order:
+        if scores[idx] <= 0:
+            break
+        term_key = tuple(sorted((int(v), int(p)) for v, p in zip(vars_arr[idx], pols_arr[idx])))
+        if term_key in seen:
+            continue
+        seen.add(term_key)
+        selected.append((vars_arr[idx].copy(), pols_arr[idx].copy()))
+        if len(selected) >= max_terms:
+            break
+    return selected
+
+
+def fit_and_predict(
+</old>
+<new>
+
+def fit_and_predict(
+</new>
+</edit>
+<obs>
+Successfully replaced text in pytorch-examples/synth_dnf/custom_strategy.py.
+</obs>
+<note>
+Now replace the whole training loop with a plain .fit/.predict on the forest.
+</note>
+<edit path="pytorch-examples/synth_dnf/custom_strategy.py">
+<old>
+) -> np.ndarray:
+    import torch
+    from torch import nn
+
+    torch.manual_seed(seed)
+    terms = _mine_candidate_terms(train_x, train_y, config, info.get("n_terms", 32), seed)
+    if hasattr(model, "initialize_terms"):
+        model.initialize_terms(terms)
+
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    model = model.to(device)
+    optimizer = torch.optim.AdamW(model.parameters(), lr=2e-3, weight_decay=1e-5)
+    criterion = nn.BCEWithLogitsLoss()
+
+    train_x_t = torch.from_numpy(train_x).float().to(device)
+    train_y_t = torch.from_numpy(train_y).float().to(device)
+    test_x_t = torch.from_numpy(test_x).float().to(device)
+
+    epochs = 30
+    batch_size = 512
+    n = train_x_t.shape[0]
+    target_width = float(config.term_width)
+    model.train()
+    for epoch in range(epochs):
+        perm = torch.randperm(n, device=device)
+        for start in range(0, n, batch_size):
+            idx = perm[start : start + batch_size]
+            logits = model(train_x_t[idx]).view(-1)
+            loss = criterion(logits, train_y_t[idx])
+            usage = model.literal_usage()
+            width_penalty = ((usage - target_width).clamp(min=0.0) ** 2).mean()
+            gate_penalty = torch.sigmoid(model.term_logits).mean()
+            total = loss + 1e-4 * width_penalty + 1e-4 * gate_penalty
+            optimizer.zero_grad(set_to_none=True)
+            total.backward()
+            optimizer.step()
+        if (epoch + 1) % 10 == 0 or epoch == 0:
+            with torch.no_grad():
+                pred = (model(train_x_t).view(-1) >= 0.0).long()
+                tr_acc = (pred == train_y_t.long()).float().mean().item()
+            print(
+                f"TRAIN_METRICS epoch={epoch + 1} loss={loss.item():.4f} "
+                f"terms={len(terms)} train_acc={tr_acc:.4f}",
+                flush=True,
+            )
+    model.eval()
+    with torch.no_grad():
+        preds = (model(test_x_t).view(-1) >= 0.0).long().cpu().numpy()
+    return preds
+</old>
+<new>
+) -> np.ndarray:
+    model.fit(train_x.astype(np.float32), train_y.astype(np.int32))
+    train_acc = float((model.predict(train_x.astype(np.float32)) == train_y).mean())
+    print(
+        f"TRAIN_METRICS rf n_trees={len(model.estimators_)} train_acc={train_acc:.4f}",
+        flush=True,
+    )
+    preds = model.predict(test_x.astype(np.float32)).astype(np.int64)
+    return preds
+</new>
+</edit>
+<obs>
+Successfully replaced text in pytorch-examples/synth_dnf/custom_strategy.py.
+</obs>
+<run/>
+<obs>
+Measured results — `baseline:rf` (`is_final,true`), seed 42. One top-level seed, so the per-seed row is
+the mean.
+
+## test_accuracy by family
+| seed | random-n30-s10-w4 | monotone-n40-s20-w4 | sparse-n60-s10-w4 |
+|---|---|---|---|
+| 42 | 0.9346 | 0.8536 | 0.9312 |
+| **mean** | **0.9346** | **0.8536** | **0.9312** |
+
+## aggregate
+| metric | value |
+|---|---|
+| geometric mean (test_accuracy) | 0.9057 |
+| base_rate_majority (random / monotone / sparse) | 0.5034 / 0.6277 / 0.5112 |
+| mean_fit_seconds (random / monotone / sparse) | 0.67 / 0.68 / 0.68 |
+</obs>
+
+### step 3 — mlp (MLP + AdamW + BCE)   [slug:mlp]
+
+<think>
+The random forest came in at 0.9346 on random, 0.8536 on monotone, 0.9312 on sparse — geometric mean
+0.9057, a clear gain over deep_dnf's 0.8532, and the gain landed exactly where I bet it would. The
+random family jumped from 0.7605 to 0.9346: the exact axis-aligned splits did not suffer the noisy-OR's
+union-of-errors, and mixed polarity cost the tree nothing, just as predicted. That vindicates the
+diagnosis — deep_dnf's random weakness was the aggregation, not the representation. But the forest paid
+for it on monotone, which *dropped* from deep_dnf's 0.9088 to 0.8536, the worst single number in the
+whole ladder so far. That is the s=20 effect I flagged: a wide target with 20 width-4 terms over 40
+variables is a lot of conjunctions to cover, and with `sqrt(40) ≈ 6` random variables searched per node,
+many trees never get the right variable at the right depth, so the union of paths under-covers the term
+set and the ensemble leaves real terms unmodeled. The decorrelation that rescued the random family is
+hurting the wide monotone family. Sparse came in at 0.9312 — solid, and notably *higher* than monotone,
+the inversion I warned about (the easier-in-principle junta beating the harder-looking wide DNF), but
+not the disaster the random-subset-misses-the-junta argument feared. So the forest is a genuinely
+stronger learner than the bespoke DNF net, yet it has a structural ceiling on wide targets, and its best
+number anywhere is 0.9346 — still well short of the near-perfect accuracy 20000 examples of a width-4
+concept ought to permit.
+
+That gap is what sends me back to the model the differentiable approach abandoned in the first place: a
+plain feed-forward network trained by backpropagation. The forest's limitation is that it bags
+*independent* trees with *axis-aligned* splits and a *fixed* feature-subset rule; on a wide DNF it cannot
+flexibly allocate capacity to cover all the terms. A fully-connected MLP has none of those constraints —
+every hidden unit sees every input, the units jointly learn a distributed re-coding of the inputs, and
+with enough hidden units there is *some* recoding that makes any Boolean target linearly separable at the
+output. The reason I did not start here is the legibility worry that drove deep_dnf: an MLP smears the
+learned function across thousands of real-valued weights with no procedure to read off "which variables,
+which polarity." But this task does not score legibility — it scores held-out accuracy. The only thing
+that matters is whether the network *fits and generalizes* the hidden DNF from 20000 uniform examples,
+and on that axis the MLP's lack of structural commitment is an asset, not a liability: it is free to
+carve the input space however the data demand, with no `sqrt(n)`-per-node bottleneck and no
+union-of-soft-conjunctions accumulation.
+
+Let me reconstruct why the MLP can represent these targets, because the whole bet rests on it. A single
+linear-threshold unit fires on one side of a hyperplane — it can do an AND or an OR of literals directly
+(weights ±1 on the relevant variables, a bias at the right count threshold), so it can already represent
+*one* DNF term as a single hidden unit: set the weights to +1 on the positive literals and −1 on the
+negated ones, bias so the unit fires only when all `w` literals are satisfied — for a width-4 positive
+term, weights +1 on those four variables and a bias of −3.5 makes the pre-activation positive only when
+all four are on. Then the output unit OR's the term-units together — fire if *any* hidden unit fires —
+which is again a single linear-threshold decision (sum the hidden activations, threshold at ≥ 1). So a
+two-layer net with one hidden unit per DNF term represents the target *exactly*: hidden layer = the
+conjunctions, output = the disjunction. With 256 hidden units and at most 20 terms, the network has far
+more than enough capacity to hold the formula — roughly a 12× over-provisioning on the monotone family,
+which should give gradient descent ample slack to find a fitting configuration rather than needing to
+discover the exact minimal one. The representational question is settled; the only question is whether
+gradient descent *finds* such a configuration from random examples, and that is what backpropagation is
+for.
+
+There is a subtlety I should be honest about, because it is the crux of whether full connectivity
+actually *helps* on the wide family. Representability is not findability. Knowing that some 20-unit
+configuration computes the monotone target does not mean the optimizer lands on it: with 256 units and a
+random initialization, many units start in flat ReLU regions or chase the same dominant terms, and the
+gradient signal for a rarely-satisfied conjunction is weak — a width-4 term is satisfied by only 1 in 16
+uniform inputs, so each term's positive examples are a small slice of the batch, and the loss is
+dominated by the easy, frequently-firing structure. So even though the MLP can in principle cover all 20
+monotone terms, the practical question is whether 20 epochs of AdamW concentrate enough gradient on the
+harder-to-reach terms before the loss flattens. That tension — full capacity but diffuse gradient on rare
+terms — is exactly what makes the wide monotone family the interesting test, and it is why I am only
+*moderately* confident the MLP recovers it rather than certain.
+
+The training recipe is the scaffold default, and each piece is load-bearing. The unit is ReLU, not a
+hard threshold: a step unit has zero gradient almost everywhere, so a gradient method has nothing to
+descend, whereas ReLU is differentiable (piecewise) and lets a small weight change produce a measurable
+change in the loss. The objective is binary cross-entropy on the output logit — the natural loss for a
+0/1 target, far better-conditioned for classification than squared error, and its gradient at the output
+is just the signed probability error, which backpropagation then chains through the network: the error's
+sensitivity to each weight is the upstream sensitivity times the local ReLU slope, computed in one
+backward sweep that reuses the forward activations. The cross-entropy choice matters more than it looks
+on this task: squared error on a saturated sigmoid has a gradient that vanishes precisely when the model
+is confidently wrong, which would stall exactly on the rarely-satisfied terms I am most worried about,
+whereas cross-entropy keeps a strong gradient on confident mistakes, so the optimizer keeps pushing on
+the hard terms instead of giving up on them. Two hidden layers of 256 give depth (so the network
+can compose features, not just take one linear recoding) and width (so it has slack to find a good
+configuration rather than needing the exact minimal one). AdamW adapts the per-parameter step and
+decouples weight decay (1e-4) as a clean L2 pull toward small weights — mild regularization against
+overfitting the 20000 points, which matters because, like the forest, the MLP sees a vanishing fraction
+of the Boolean cube. Twenty epochs over the 20000 examples at batch 256 and lr 1e-3 is enough passes for
+the loss to settle without overtraining. Threshold the output sigmoid at 0.5 for the 0/1 prediction.
+
+In the scaffold this is the *default* fill — `build_model` returns the `nn.Sequential` MLP, `make_dataset`
+draws the uniform sample, `fit_and_predict` runs the AdamW + BCE loop. It is the cheapest edit on the
+ladder (it is the template itself), which is part of the finding: the generic neural baseline, with no
+DNF-specific machinery at all, is being asked to beat both the hand-shaped DNF net and the tree
+ensemble. The full module is in the answer.
+
+Now the falsifiable expectations against the forest's numbers, family by family. On **monotone** (rf
+0.8536, the forest's weak spot), I expect the MLP to *clearly beat* the forest. The forest's failure
+there was structural — random feature subsets under-covering 20 wide terms — and the MLP has no such
+bottleneck: every hidden unit sees all 40 variables, so allocating 20 of its 256 units to the 20 terms
+is trivially within reach, and the distributed representation can even share structure across terms.
+This is the comparison that should most cleanly favor the MLP. On **random** (rf 0.9346), I expect the
+MLP to be *competitive or slightly better*: mixed polarity is as free for a hidden unit (negative
+weights) as it is for a tree split, and 10 terms over 30 variables is a narrow enough target that 256
+hidden units should fit it nearly exactly; I would expect the random number up near or above the
+forest's 0.93. On **sparse** (rf 0.9312), the MLP has to *learn* that 48 of the 60 variables are
+irrelevant rather than getting it for free the way a tree does by never splitting on them; weight decay
+helps push the irrelevant-variable weights toward zero, but there is a real risk the MLP wastes capacity
+on noise variables and lands a touch below the forest's sparse number. So sparse is the one family where
+I would not be surprised to see the MLP trail.
+
+The prediction I am committing to: the geometric mean should rise above the forest's 0.9057, driven
+mainly by recovering the monotone family the forest dropped, with random roughly flat-to-up and sparse
+the only place the MLP might give ground. If instead the MLP fails to beat the forest on *monotone* —
+the family where its full-connectivity advantage should be largest — then my account of the forest's
+weakness (feature-subset under-coverage of wide DNF) is wrong and I need a different story. And if the
+MLP, despite full connectivity and ample capacity, still cannot push any family to near-perfect
+accuracy, the remaining lever is the one the forest left on the table: stop *bagging* independent learners
+and start *boosting* — fit each new weak learner to the residual errors of the ensemble so far, so later
+learners explicitly correct earlier mistakes. A gradient-boosted tree ensemble keeps the tree's exact
+conjunctive splits (which beat the MLP's smeared representation on the random family) but adds the
+sequential error-correction the random forest lacks, and that combination is the natural next rung. But
+first let me measure the plain MLP — drop in the scaffold default.
+</think>
+<say>
+Now the plain MLP (mlp): a 2-hidden-layer ReLU net trained with AdamW and BCE — the scaffold default, no
+DNF-specific machinery. This edit restores the nn.Sequential MLP in build_model.
+</say>
+<edit path="pytorch-examples/synth_dnf/custom_strategy.py">
+<old>
+# EDITABLE region of custom_strategy.py — step 2: Random Forest (rf)
+def build_model(config: TaskConfig, seed: int):
+    from sklearn.ensemble import RandomForestClassifier
+
+    model = RandomForestClassifier(
+        n_estimators=200,
+        max_depth=None,
+        min_samples_leaf=2,
+        n_jobs=-1,
+        random_state=int(seed),
+    )
+    return model, {"kind": "random_forest"}
+</old>
+<new>
+# EDITABLE region of custom_strategy.py — step 3: MLP + AdamW + BCE (mlp)
+def build_model(config: TaskConfig, seed: int):
+    """2-hidden-layer MLP (256, 256) with ReLU."""
+    import torch
+    from torch import nn
+
+    torch.manual_seed(seed)
+    hidden = 256
+    model = nn.Sequential(
+        nn.Linear(config.n_features, hidden),
+        nn.ReLU(),
+        nn.Linear(hidden, hidden),
+        nn.ReLU(),
+        nn.Linear(hidden, 1),
+    )
+    return model, {"kind": "mlp", "hidden": hidden}
+</new>
+</edit>
+<obs>
+Successfully replaced text in pytorch-examples/synth_dnf/custom_strategy.py.
+</obs>
+<note>
+Now swap the forest's .fit/.predict back to the AdamW + BCE training loop over 20 epochs.
+</note>
+<edit path="pytorch-examples/synth_dnf/custom_strategy.py">
+<old>
+) -> np.ndarray:
+    model.fit(train_x.astype(np.float32), train_y.astype(np.int32))
+    train_acc = float((model.predict(train_x.astype(np.float32)) == train_y).mean())
+    print(
+        f"TRAIN_METRICS rf n_trees={len(model.estimators_)} train_acc={train_acc:.4f}",
+        flush=True,
+    )
+    preds = model.predict(test_x.astype(np.float32)).astype(np.int64)
+    return preds
+</old>
+<new>
+) -> np.ndarray:
+    """AdamW + BCE training, 20 epochs."""
+    import torch
+    from torch import nn
+
+    torch.manual_seed(seed)
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    model = model.to(device)
+    optimizer = torch.optim.AdamW(model.parameters(), lr=1e-3, weight_decay=1e-4)
+    criterion = nn.BCEWithLogitsLoss()
+
+    train_x_t = torch.from_numpy(train_x).float().to(device)
+    train_y_t = torch.from_numpy(train_y).float().to(device)
+    test_x_t = torch.from_numpy(test_x).float().to(device)
+
+    epochs = 20
+    batch_size = 256
+    n = train_x_t.shape[0]
+    model.train()
+    for epoch in range(epochs):
+        perm = torch.randperm(n, device=device)
+        for start in range(0, n, batch_size):
+            idx = perm[start : start + batch_size]
+            logits = model(train_x_t[idx]).view(-1)
+            loss = criterion(logits, train_y_t[idx])
+            optimizer.zero_grad(set_to_none=True)
+            loss.backward()
+            optimizer.step()
+        if (epoch + 1) % 5 == 0 or epoch == 0:
+            with torch.no_grad():
+                tr_acc = (
+                    ((torch.sigmoid(model(train_x_t)).view(-1) >= 0.5).long()
+                     == train_y_t.long()).float().mean().item()
+                )
+            print(
+                f"TRAIN_METRICS epoch={epoch + 1} loss={loss.item():.4f} train_acc={tr_acc:.4f}",
+                flush=True,
+            )
+    model.eval()
+    with torch.no_grad():
+        preds = (torch.sigmoid(model(test_x_t)).view(-1) >= 0.5).long().cpu().numpy()
+    return preds
+</new>
+</edit>
+<obs>
+Successfully replaced text in pytorch-examples/synth_dnf/custom_strategy.py.
+</obs>
+<run/>
+<obs>
+Measured results — `baseline:mlp` (`is_final,true`), seed 42. One top-level seed, so the per-seed row is
+the mean.
+
+## test_accuracy by family
+| seed | random-n30-s10-w4 | monotone-n40-s20-w4 | sparse-n60-s10-w4 |
+|---|---|---|---|
+| 42 | 0.9989 | 0.8461 | 0.9876 |
+| **mean** | **0.9989** | **0.8461** | **0.9876** |
+
+## aggregate
+| metric | value |
+|---|---|
+| geometric mean (test_accuracy) | 0.9415 |
+| base_rate_majority (random / monotone / sparse) | 0.5034 / 0.6277 / 0.5112 |
+| mean_fit_seconds (random / monotone / sparse) | 3.94 / 3.91 / 3.91 |
+</obs>
+
+### step 4 — gbdt (Gradient-Boosted Decision Trees)   [slug:gbdt]
+
+<think>
+The MLP landed at 0.9989 on random, 0.8461 on monotone, 0.9876 on sparse — geometric mean 0.9415, the
+best so far, but the family breakdown overturns half of what I predicted and sharpens the one fault that
+has now survived three different learners. The random family went to 0.9989, essentially solved: a narrow
+10-term target over 30 variables is exactly where 256 hidden units with mixed-polarity weights fit
+nearly perfectly, just as I expected. Sparse came in at 0.9876, *higher* than I feared — weight decay
+did push the 48 irrelevant variables' weights toward zero well enough that the MLP did not waste much
+capacity on noise, so my sparse-risk worry was overcautious. But monotone *dropped again*, to 0.8461 —
+below the forest's 0.8536 and below deep_dnf's 0.9088. That is the headline. The wide 20-term monotone
+DNF has now defeated, in order, the differentiable DNF net (well, it was deep_dnf's *best* family at
+0.9088, but still not solved), the random forest (0.8536), and now the MLP (0.8461). My prediction that
+the MLP's full connectivity would *recover* the monotone family was simply wrong, and the wrongness is
+informative: the problem with the wide monotone target is not a feature-subset bottleneck (the MLP has
+none and still failed) — it is that fitting 20 overlapping conjunctions to high accuracy from a single
+flat training pass is genuinely hard, and every *flat* learner I have tried — bag-of-trees, one-shot
+gradient descent on a fixed loss — leaves the same residual structure unmodeled. The monotone family is
+the bottleneck that decides the geometric mean, and nothing flat has cracked it.
+
+So I need a learner that does not fit the target in one flat pass but builds it up *sequentially*, each
+new component explicitly correcting the errors the ensemble has made so far. That is boosting, and it is
+the one idea on the table that the forest deliberately did not use: a random forest bags *independent*
+trees and averages them, so no tree ever sees another tree's mistakes; on a wide target where the
+average under-models some terms, there is no mechanism to go back and put more weight on the
+still-misclassified examples. Gradient boosting is exactly that mechanism, and it keeps the property that
+made trees beat the MLP on the random family — exact axis-aligned conjunctive splits, one root-to-leaf
+path per DNF term — while adding the sequential error-correction the MLP and the forest both lack.
+
+Let me reconstruct the boosting argument, because the choice of *gradient* boosting over the older
+loss-specific schemes is what makes it general and stable here. I want an additive model
+`F(x) = Σ_m ρ_m h(x; a_m)`, each `h` a small regression tree, fit greedily one term at a time
+(forward stagewise: hold `F_{m-1}` fixed, add one tree). For squared error the stage subproblem is
+"fit the next tree to the residual `y − F_{m-1}`" — the classic residual loop. But for classification I
+want the binomial deviance `log(1 + e^{-2yF})`, whose stage subproblem has no closed form. The move that
+rescues it: treat the function values at the training points as the parameters and take the negative
+gradient of the loss with respect to them — a vector of *pseudo-responses*, one per point, defined for
+any differentiable loss. The unconstrained negative gradient lives only at the data, so I cannot use it
+as a model; instead I fit the next tree to it by least squares — the tree most parallel to the negative
+gradient over the data — and then choose the step size by a one-dimensional line search on the *true*
+deviance. Cheap least-squares to find a generalizable descent direction, then an honest 1-D step on the
+real loss. For classification the pseudo-response at each point is `2y_i / (1 + e^{2 y_i F_{m-1}(x_i)})`
+— large where the current model is confidently wrong, near zero where it is already right — so each new
+tree is literally fit to *where the ensemble is still making mistakes*. That is the error-correction the
+monotone family has been missing: a misclassified region from one of the 20 terms gets a large
+pseudo-response, the next tree carves it out, and the deviance comes down term by term.
+
+Contrast this with the two flat learners that failed on monotone, because the contrast is the whole
+argument. The random forest fits all its trees to the *same* labels in parallel; if the random feature
+subsets cause the ensemble to under-model, say, three of the twenty terms, no tree is ever told "these
+points are still wrong" — the misclassified slice just sits there, averaged over, and the forest's
+prediction on it stays at whatever the majority of trees happened to vote. The MLP fits one loss in a
+fixed number of passes; a rarely-satisfied term contributes a thin slice of the gradient that the
+frequently-firing structure drowns out, so the optimizer plateaus with those terms half-learned. Boosting
+breaks both failure modes by construction: the pseudo-response *re-weights* attention onto exactly the
+still-wrong points every round, so the slice that the forest averaged away and the MLP's gradient
+neglected becomes the *largest* signal driving the next tree. The wide monotone target is hard precisely
+because it has many terms competing for a fixed budget of fitting effort; boosting reallocates that
+budget, round by round, to wherever the residual error currently is.
+
+Three pieces of the recipe matter for *this* task and are exactly what the scaffold fill sets. First,
+**tree depth tied to the target width.** Each tree is grown to depth `max(4, term_width + 1)` = 5 here.
+A width-4 DNF term is a length-4 conjunction, so a depth-4-to-5 tree can isolate a single term per
+root-to-leaf path with one extra level of slack — deep enough to represent a term exactly, shallow
+enough that each tree stays a *weak* learner and the boosting does the composition. This is the
+task-specific knob: the depth is chosen to match the conjunction width, not left at a generic default.
+Second, **shrinkage and many rounds.** A small learning rate (`0.05`) scales down each tree's
+contribution so no single tree overshoots, and `n_estimators=500` rounds give the ensemble enough small
+steps to drive the deviance down — shrinkage plus many rounds is the well-known regularization that beats
+a few large steps, trading compute for generalization. Third, **stochastic subsampling and early
+stopping.** `subsample=0.9` fits each tree on a random 90% of the data (stochastic gradient boosting),
+which decorrelates the trees a little and regularizes; `n_iter_no_change=25` with a 10% internal
+validation split and `tol=1e-5` stops the boosting once the held-out deviance stops improving, so on the
+*easy* families (random, sparse) it does not waste 500 rounds overfitting, while on the hard monotone
+family it keeps boosting as long as the residual structure is still being reduced. The starting model
+`F_0` is the best constant (the base-rate logit), and the final prediction thresholds the additive logit
+at 0.
+
+In the scaffold this is a clean fill: `build_model` returns the `sklearn` `GradientBoostingClassifier`
+with those settings, `make_dataset` is the default uniform sample, `fit_and_predict` calls `.fit` and
+`.predict` and returns the 0/1 vector — and notably it reads `config.term_width` to set the tree depth,
+so the learner adapts its weak-learner capacity to the announced conjunction width without ever
+inspecting the hidden term list. The full module is in the answer.
+
+Now the falsifiable expectations against the MLP's numbers, family by family. On **monotone** (the
+bottleneck — MLP 0.8461, the worst standing number), I expect gbdt to *finally crack it*. This is the
+whole reason for the rung: 20 terms is a lot of conjunctions, but boosting fits them one residual at a
+time, and a depth-5 tree per round can isolate each term; with up to 500 shrunk rounds and early
+stopping to let the hard family run long, the deviance should be driven down until nearly all 20 terms
+are covered. If gbdt does *not* substantially beat 0.8461 on monotone, then my entire account — that the
+monotone failure is a flat-fitting problem cured by sequential error-correction — is wrong, and I would
+have to conclude the wide target is just intrinsically hard to learn from 20000 examples regardless of
+algorithm. On **random** (MLP 0.9989, near-solved) and **sparse** (MLP 0.9876), I expect gbdt to be
+*at least as good*: exact conjunctive splits handle mixed polarity for free (random) and simply never
+split on irrelevant variables (sparse, the tree's native advantage over the MLP), and early stopping
+guards against overfitting these easy families. I would expect both up near or above the MLP's numbers,
+with random plausibly hitting 1.0.
+
+So the prediction I am committing to: gbdt should post the highest geometric mean of the ladder, above
+the MLP's 0.9415, and the gain should come *predominantly from the monotone family* — the one family
+that has resisted every flat learner — with random and sparse holding at or near their ceilings. If the
+monotone number jumps from the mid-0.84s into the high 0.90s while random and sparse stay near-perfect,
+the trajectory's thesis is confirmed: on uniform-distribution DNF learning, the winning learner is not
+the one with the DNF inductive bias hand-coded in (deep_dnf was weakest), nor flat averaging (rf) or
+flat gradient descent (mlp), but a tree ensemble that keeps exact conjunctive splits *and* corrects its
+own residual errors round by round. That is the rung I expect to end on, and it is the strongest baseline
+the task provides. Let me wire in the gradient-boosted ensemble.
+</think>
+<say>
+Now gradient-boosted decision trees (gbdt): exact conjunctive splits like the forest, but boosted so each
+new tree fits the residual errors of the ensemble. This edit makes build_model return a
+GradientBoostingClassifier with tree depth tied to the term width.
+</say>
+<edit path="pytorch-examples/synth_dnf/custom_strategy.py">
+<old>
+# EDITABLE region of custom_strategy.py — step 3: MLP + AdamW + BCE (mlp)
+def build_model(config: TaskConfig, seed: int):
+    """2-hidden-layer MLP (256, 256) with ReLU."""
+    import torch
+    from torch import nn
+
+    torch.manual_seed(seed)
+    hidden = 256
+    model = nn.Sequential(
+        nn.Linear(config.n_features, hidden),
+        nn.ReLU(),
+        nn.Linear(hidden, hidden),
+        nn.ReLU(),
+        nn.Linear(hidden, 1),
+    )
+    return model, {"kind": "mlp", "hidden": hidden}
+</old>
+<new>
+# EDITABLE region of custom_strategy.py — step 4: Gradient-Boosted Decision Trees (gbdt)
+def build_model(config: TaskConfig, seed: int):
+    """sklearn GradientBoostingClassifier."""
+    from sklearn.ensemble import GradientBoostingClassifier
+
+    model = GradientBoostingClassifier(
+        n_estimators=500,
+        learning_rate=0.05,
+        max_depth=max(4, config.term_width + 1),
+        min_samples_leaf=2,
+        subsample=0.9,
+        n_iter_no_change=25,
+        validation_fraction=0.1,
+        tol=1e-5,
+        random_state=int(seed),
+    )
+    return model, {"kind": "gbdt"}
+</new>
+</edit>
+<obs>
+Successfully replaced text in pytorch-examples/synth_dnf/custom_strategy.py.
+</obs>
+<note>
+Now replace the MLP loop with a plain .fit/.predict on the boosted ensemble.
+</note>
+<edit path="pytorch-examples/synth_dnf/custom_strategy.py">
+<old>
+) -> np.ndarray:
+    """AdamW + BCE training, 20 epochs."""
+    import torch
+    from torch import nn
+
+    torch.manual_seed(seed)
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    model = model.to(device)
+    optimizer = torch.optim.AdamW(model.parameters(), lr=1e-3, weight_decay=1e-4)
+    criterion = nn.BCEWithLogitsLoss()
+
+    train_x_t = torch.from_numpy(train_x).float().to(device)
+    train_y_t = torch.from_numpy(train_y).float().to(device)
+    test_x_t = torch.from_numpy(test_x).float().to(device)
+
+    epochs = 20
+    batch_size = 256
+    n = train_x_t.shape[0]
+    model.train()
+    for epoch in range(epochs):
+        perm = torch.randperm(n, device=device)
+        for start in range(0, n, batch_size):
+            idx = perm[start : start + batch_size]
+            logits = model(train_x_t[idx]).view(-1)
+            loss = criterion(logits, train_y_t[idx])
+            optimizer.zero_grad(set_to_none=True)
+            loss.backward()
+            optimizer.step()
+        if (epoch + 1) % 5 == 0 or epoch == 0:
+            with torch.no_grad():
+                tr_acc = (
+                    ((torch.sigmoid(model(train_x_t)).view(-1) >= 0.5).long()
+                     == train_y_t.long()).float().mean().item()
+                )
+            print(
+                f"TRAIN_METRICS epoch={epoch + 1} loss={loss.item():.4f} train_acc={tr_acc:.4f}",
+                flush=True,
+            )
+    model.eval()
+    with torch.no_grad():
+        preds = (torch.sigmoid(model(test_x_t)).view(-1) >= 0.5).long().cpu().numpy()
+    return preds
+</old>
+<new>
+) -> np.ndarray:
+    model.fit(train_x.astype(np.float32), train_y.astype(np.int32))
+    train_acc = float((model.predict(train_x.astype(np.float32)) == train_y).mean())
+    print(
+        f"TRAIN_METRICS gbdt n_estimators={len(model.estimators_)} train_acc={train_acc:.4f}",
+        flush=True,
+    )
+    preds = model.predict(test_x.astype(np.float32)).astype(np.int64)
+    return preds
+</new>
+</edit>
+<obs>
+Successfully replaced text in pytorch-examples/synth_dnf/custom_strategy.py.
+</obs>
+<run/>
+<obs>
+Measured results — `baseline:gbdt` (`is_final,true`), seed 42. One top-level seed, so the per-seed row is
+the mean.
+
+## test_accuracy by family
+| seed | random-n30-s10-w4 | monotone-n40-s20-w4 | sparse-n60-s10-w4 |
+|---|---|---|---|
+| 42 | 1.0000 | 0.9996 | 1.0000 |
+| **mean** | **1.0000** | **0.9996** | **1.0000** |
+
+## aggregate
+| metric | value |
+|---|---|
+| geometric mean (test_accuracy) | 0.9999 |
+| base_rate_majority (random / monotone / sparse) | 0.5034 / 0.6277 / 0.5112 |
+| mean_fit_seconds (random / monotone / sparse) | 12.86 / 16.58 / 24.01 |
+</obs>
+

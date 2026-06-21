@@ -1,0 +1,1140 @@
+<meta task="rl-value-discrete" domain="Reinforcement learning" file="cleanrl/cleanrl/custom_value_discrete.py" model_format="qwen3" edit_tool="str_replace"/>
+
+<system>
+You are a research engineer improving a model on a fixed ML task. You work by editing the model code and running experiments. Think carefully before each change. You have these tools:
+- str_replace(path, old_str, new_str): replace the unique occurrence of old_str with new_str.
+- create(path, file_text): create a new file.
+- run_experiment(): train + evaluate the current code under the fixed budget; returns metrics.
+Make one tool call at a time. After editing, call run_experiment() to measure your method.
+</system>
+
+<user>
+## Research question
+
+Design a value-based reinforcement-learning algorithm for **discrete** action spaces and run it on
+small-to-medium control tasks (CartPole, LunarLander, Acrobot) within a fixed interaction budget. The
+thing being designed is the *value head and the value-learning update* — how `Q(s,a)` is represented,
+what bootstrapped target it is regressed toward, and what loss does the regressing. Everything else
+about the agent — the encoder that turns an observation into features, the replay buffer, the
+epsilon-greedy data collection, the target-network sync, the evaluation protocol — is frozen. The
+single design decision is what sits on top of an 84-dimensional feature vector and how it is trained.
+
+## Prior art before the first rung (the value-learning lineage)
+
+The substrate the first rung edits is plain DQN, and DQN is itself the resolution of a line of
+value-based methods. These precede the ladder; each later rung reacts to a limitation that survives in
+this default fill.
+
+- **Tabular Q-learning (Watkins 1989).** Learn `Q(s,a)` by stochastic fixed-point iteration toward
+  `r + γ max_{a'} Q(s',a')`. Provably converges in the tabular case, but stores one entry per
+  state-action — hopeless once states are continuous vectors. Gap: no generalization across states.
+- **Neural fitted Q / function approximation (Riedmiller 2005).** Replace the table with a regressor
+  `Q(s,a;θ)`. Generalizes, but bootstrapping a network off its own moving predictions on correlated
+  online samples is unstable — the target drifts as θ moves and consecutive transitions are
+  near-identical. Gap: unstable when naively combined with a function approximator.
+- **DQN (Mnih et al. 2015).** Two devices stabilize the above: an **experience replay** buffer, sampled
+  uniformly to decorrelate updates and reuse data, and a **target network** `Q(·;θ⁻)`, a periodically
+  frozen copy that supplies the bootstrap target `r + γ max_{a'} Q(s',a';θ⁻)` so the regression target
+  stops chasing its own tail within an update window. The loss is the squared TD error and the policy is
+  epsilon-greedy on the argmax. This is exactly the default fill below. Gap: a single linear head emits
+  `|A|` action values estimated near-independently, so the *state's* value — shared across all actions
+  and leaned on at every bootstrap — is only nudged through whichever action was sampled; and the scalar
+  `Q = E[Z]` collapses the entire return *distribution* to its mean, discarding bimodality, risk, and
+  the tails. These two gaps are what the ladder climbs.
+
+## The fixed substrate
+
+A single-environment off-policy value-learning loop is frozen and must not be touched. It maintains a
+numpy replay buffer of one-step transitions `(obs, next_obs, action, reward, done)` sampled **uniformly**
+(`batch_size=128`), a linear epsilon schedule (`start_e=1 → end_e=0.05` over the first half of training),
+a `learning_starts=10000` warm-up, training every `train_frequency=10` steps, a **hard** target-network
+sync every `target_network_frequency=500` steps (`tau=1.0`), Adam at `learning_rate=2.5e-4`, `gamma=0.99`,
+`total_timesteps=500000`, and greedy evaluation (`eval_episodes=10`) on a fresh env. The feature
+extractor is a **fixed** two-layer MLP encoder `obs_dim → 120 → 84` with ReLUs (`ENCODER_FEATURE_DIM = 84`);
+its dimensions cannot change and a runtime parameter-count check enforces that the contribution is
+algorithmic — head design, target construction, TD loss, exploration usage — not encoder capacity. The
+loop calls exactly three methods on the algorithm: `select_action(obs, epsilon)` during collection,
+`update(batch, global_step)` after each train step, and reads `algorithm.q_network` for evaluation.
+
+## The editable interface
+
+Exactly one region is editable: the `QNetwork` class (the head on top of `MLPEncoder`) and the
+`ValueAlgorithm` class (`__init__`, `select_action`, `update`) in `custom_value_discrete.py`. Every
+method on the ladder is a fill of this same contract. `QNetwork.forward(obs)` must return per-action
+`Q`-values `(batch, n_actions)` (the evaluation harness argmaxes over them); `ValueAlgorithm.update`
+receives the uniform replay batch `(obs, next_obs, actions, rewards, dones)` and returns a dict of scalar
+metrics. The replay buffer, the encoder, the epsilon schedule, the target-sync cadence, and the loop are
+**not** editable — so an n-step return (the buffer stores only one-step transitions) and prioritized
+replay (the sampler is fixed and uniform) are out of reach; only the head, the target, and the loss can
+change.
+
+The starting point is the scaffold default: **plain DQN** — a single linear head and the squared
+one-step TD loss with a max-over-actions target.
+
+```python
+# EDITABLE region of custom_value_discrete.py — default fill (plain DQN)
+class QNetwork(nn.Module):
+    """Q-network: MLPEncoder (fixed) + linear head. forward(obs) -> (batch, n_actions)."""
+
+    def __init__(self, obs_dim, n_actions):
+        super().__init__()
+        self.encoder = MLPEncoder(obs_dim)                       # fixed: obs_dim -> 120 -> 84
+        self.head = nn.Linear(ENCODER_FEATURE_DIM, n_actions)    # single linear head
+
+    def forward(self, obs):
+        features = self.encoder(obs)
+        return self.head(features)
+
+
+class ValueAlgorithm:
+    """DQN -- Deep Q-Network with a max-target squared TD loss."""
+
+    def __init__(self, obs_dim, n_actions, device, args):
+        self.device = device
+        self.n_actions = n_actions
+        self.gamma = args.gamma
+        self.total_it = 0
+
+        self.q_network = QNetwork(obs_dim, n_actions).to(device)
+        self.target_network = QNetwork(obs_dim, n_actions).to(device)
+        self.target_network.load_state_dict(self.q_network.state_dict())
+
+        self.optimizer = optim.Adam(self.q_network.parameters(), lr=args.learning_rate)
+
+    def select_action(self, obs, epsilon):
+        if random.random() < epsilon:
+            return random.randint(0, self.n_actions - 1)
+        obs_t = torch.tensor(obs.reshape(1, -1), device=self.device, dtype=torch.float32)
+        q_values = self.q_network(obs_t)
+        return torch.argmax(q_values, dim=1).item()
+
+    def update(self, batch, global_step):
+        self.total_it += 1
+        obs, next_obs, actions, rewards, dones = batch
+
+        with torch.no_grad():
+            target_max, _ = self.target_network(next_obs).max(dim=1)
+            td_target = rewards + (1 - dones) * self.gamma * target_max
+
+        old_val = self.q_network(obs).gather(1, actions.unsqueeze(1)).squeeze(1)
+        td_loss = F.mse_loss(td_target, old_val)
+
+        self.optimizer.zero_grad()
+        td_loss.backward()
+        self.optimizer.step()
+
+        return {"td_loss": td_loss.item(), "q_values": old_val.mean().item()}
+```
+
+## Evaluation settings
+
+Three Gymnasium discrete-control tasks span the difficulty range — **CartPole-v1** (easy; return
+capped at 500), **LunarLander-v2** (harder; dense shaped reward but a long-horizon credit-assignment
+and a deceptive crash basin, returns roughly −400 to +300), and **Acrobot-v1** (sparse-ish; return is
+negative time-to-goal, roughly −500 to −60) — each over three seeds {42, 123, 456}. The metric on every
+task is the **mean greedy evaluation episodic return** at the fixed budget (higher is better on all
+three). A per-task elapsed-time column is logged but is not the objective.
+
+The editable model code is in `cleanrl/cleanrl/custom_value_discrete.py`:
+```python
+class ValueAlgorithm:
+    """Value-based RL algorithm -- implement your approach here.
+
+    The training loop calls:
+        algorithm = ValueAlgorithm(obs_dim, n_actions, device, args)
+        action = algorithm.select_action(obs, epsilon)   # during data collection
+        metrics = algorithm.update(batch, global_step)    # after each training step
+        eval_qnetwork(env_id, algorithm.q_network, ...)   # periodic evaluation
+
+    You MUST set self.q_network to an nn.Module with forward(obs) -> Q-values.
+
+    Available classes:
+        MLPEncoder (fixed) -- 2-layer MLP encoder, obs_dim -> 84-dim features
+        QNetwork   (editable) -- MLPEncoder + head
+    ENCODER_FEATURE_DIM = 84 (feature dimension from MLPEncoder)
+
+    Available utilities (fixed): linear_schedule, eval_qnetwork
+    """
+
+    def __init__(self, obs_dim, n_actions, device, args):
+        self.device = device
+        self.n_actions = n_actions
+        self.gamma = args.gamma
+        self.total_it = 0
+
+        # Build networks -- modify or replace as needed
+        self.q_network = QNetwork(obs_dim, n_actions).to(device)
+        self.target_network = QNetwork(obs_dim, n_actions).to(device)
+        self.target_network.load_state_dict(self.q_network.state_dict())
+
+        self.optimizer = optim.Adam(self.q_network.parameters(), lr=args.learning_rate)
+
+    def select_action(self, obs, epsilon):
+        """Select action with epsilon-greedy exploration."""
+        if random.random() < epsilon:
+            return random.randint(0, self.n_actions - 1)
+        obs_t = torch.tensor(obs.reshape(1, -1), device=self.device, dtype=torch.float32)
+        q_values = self.q_network(obs_t)
+        return torch.argmax(q_values, dim=1).item()
+
+    def update(self, batch, global_step):
+        """Single gradient update. Returns a dict of scalar metrics.
+
+        batch = (obs, next_obs, actions, rewards, dones) -- torch.Tensor on device
+
+        TODO: implement your value-based RL algorithm here.
+        """
+        self.total_it += 1
+        obs, next_obs, actions, rewards, dones = batch
+
+        # Placeholder -- replace with your algorithm
+        return {"td_loss": 0.0, "q_values": 0.0}
+```
+Improve it. Derive your method, edit the code, then run_experiment().
+</user>
+
+### step 1 — Dueling DQN   [slug:dueling-dqn]
+
+<think>
+The default fill is plain DQN, and it is the right floor to start from because it is the most generic
+thing the scaffold allows: a single linear head on the fixed 84-dimensional features, regressed toward
+`r + γ max_{a'} Q(s',a';θ⁻)` with a squared error. Everything downstream — the encoder, the uniform
+replay, the epsilon schedule, the hard target sync — is frozen, so the only lever I have is what sits on
+top of those 84 features and how it is trained. Before I reach for distributional machinery or a fancier
+loss, I want to ask the cheapest possible question: is the *architecture* of that head wasting the data
+I already have? Because if it is, I can fix it without changing the algorithm at all — same target, same
+loss, same replay — and a free win at the bottom of the ladder is worth taking first.
+
+So let me stare at what the head is being asked to do. It takes the shared 84-dim feature and emits
+`|A|` numbers, one per action, and the agent acts greedily on them. One thing nags. In most states of a
+control task the action barely matters. Think about LunarLander hovering with the lander roughly upright
+and centered: firing the left thruster, firing the right one, or doing nothing all lead to nearly the
+same near-term future and nearly the same return. The only moments where the choice of action carries
+real return information are the few where the lander is tilting toward a crash or drifting off the pad
+and exactly one action saves it. So across the bulk of the state space, the `|A|` numbers the head
+outputs are all nearly equal, and the only thing that actually varies and matters is their common
+level — *how good is it to be in this state at all*.
+
+But the single linear head has no way to know that. It estimates each of the `|A|` outputs more or less
+independently, as `|A|` separate linear functions of the same features, and it has to keep them mutually
+consistent everywhere. Worse — and this is the part that really bothers me about the *update*, not just
+the representation — look at what one TD step touches. I sample a transition `(s,a,r,s',done)` from the
+buffer; in `update` the loss is `(td_target − Q(s,a))²`, and `Q(s,a)` is read by `gather` on the single
+taken action `a`. The gradient flows back only into the column of the head that produces `Q(s,·)` for
+that one action. The outputs for the *other* actions in `s` get no direct signal from this transition.
+So the "how good is this state" information — which is shared across all `|A|` actions and is exactly
+what a bootstrapping algorithm leans on at every state, because the target is built from a `max` over
+next-state values — is only ever nudged through whichever single action happened to be sampled. The most
+important quantity in the whole network is getting the most diluted update.
+
+The value of a state and the relative merit of the actions within it are really two different objects,
+and the single head conflates them. There is a name for the split. Define `A(s,a) = Q(s,a) − V(s)`, the
+**advantage** — Baird had this in '93. `V(s)` is how good the state is; `A(s,a)` is how much better or
+worse action `a` is than the state's baseline. Two identities fall right out and they are worth writing
+because they tell me how to make the split well-posed. If `V(s) = E_{a∼π}[Q(s,a)]`, then
+`E_{a∼π}[A(s,a)] = 0` — the advantages average to zero under the policy. And for a deterministic greedy
+policy with `a* = argmax_a Q(s,a)`, `V(s) = Q(s,a*) = max_a Q(s,a)`, so `A(s,a*) = 0` and every other
+advantage is non-positive. So I have two candidate "anchors" for pinning the decomposition: the mean and
+the max.
+
+The decomposition is exactly what I want, so let me make the head produce it directly. Keep the fixed
+encoder — those 84 features are common to both objects and I cannot touch them anyway — and replace the
+one linear head with two: a **value stream**, a single linear map `84 → 1` producing `V(s)`, and an
+**advantage stream**, a linear map `84 → |A|` producing `A(s,·)`. Then recombine them into a single `Q`
+output, because the whole appeal here is that I keep the exact input/output interface of an ordinary
+Q-network: `forward(obs)` still returns `(batch, |A|)` Q-values, so the frozen evaluation harness still
+argmaxes over them, the same max-target TD loss in `update` still drives it, and I have changed nothing
+about the algorithm. If instead I exposed two heads with two separate losses, I would lose that
+drop-in property; so the recombination must live inside the forward pass.
+
+The obvious recombination, straight from `A = Q − V`, is to add them back: `Q(s,a) = V(s) + A(s,a)`,
+broadcasting the scalar `V` across the `|A|` advantage entries. Clean — but let me sanity-check it before
+I get attached, because the loss only ever sees `Q`. The TD loss is `(y − Q(s,a))²` and `y` itself is
+built from `Q` values; `V` and `A` are internal and nothing pins them individually. Take any constant `c`
+and set `V'(s) = V(s) + c`, `A'(s,a) = A(s,a) − c`. Then `V' + A' = V + A = Q`, identically. The loss is
+unchanged. So there is an entire one-parameter family of `(V, A)` pairs producing the same `Q`, and
+gradient descent has no reason to prefer the one where `V` is the true value: `V` could drift to `V + 100`
+with `A` absorbing the `−100` and `Q` would not care. The decomposition is **unidentifiable**, and the
+redundant degree of freedom is not harmless — two streams trading a constant back and forth is exactly
+the kind of slack that makes optimization wander. The naive sum is dead; I have to stop `V` from hiding
+an arbitrary offset inside `A`.
+
+What pins it is one extra normalization that removes the shared offset before forming `Q`. Go back to the
+identities. The **max** anchor: subtract the max advantage,
+`Q(s,a) = V(s) + (A(s,a) − max_{a'} A(s,a'))`. Check it. Since `V` and `max A` are both constants across
+actions, `argmax_a Q = argmax_a A`, so the greedy action is `a* = argmax A`; plug it in and
+`Q(s,a*) = V + (A(s,a*) − max A) = V`. So `V` is forced to equal `max_a Q` and the centered advantage is
+zero at the best action and non-positive elsewhere — clean textbook semantics. And the bad trade is gone:
+under `A' = A − c`, `max A' = max A − c`, so `A' − max A' = A − max A` is unchanged while `V' = V + c`,
+giving `Q' = Q + c ≠ Q` — the loss now sees the offset immediately. The max pins it.
+
+But the max anchor has a training problem I should think through. The subtracted quantity `max_{a'} A`
+tracks whichever action currently has the largest advantage, and during learning the identity of that
+argmax flips around as the estimates wobble. Every time the leading action changes, the reference point
+jumps discontinuously and the entire advantage vector has to re-center against the new maximum. The
+advantages are being asked to compensate for any change in the *optimal* action's advantage — a moving,
+jumpy target. That is exactly the sort of instability I am trying to *remove*, not add.
+
+So use the smoother anchor — the other identity, `E_a[A] = 0`. To avoid depending on a changing policy
+distribution, take the simplest policy-independent convention over the finite action set: subtract the
+**uniform mean**, `Q(s,a) = V(s) + (A(s,a) − (1/|A|) Σ_{a'} A(s,a'))`. Does it kill the same bad trade?
+Under `A' = A − c`, the mean shifts by `−c` too, so `A' − mean A' = A − mean A` is unchanged while
+`V' = V + c`, so `Q' = Q + c ≠ Q`. Yes — mean-subtraction pins `V` against the centered advantage just
+as the max did. What does it cost? At the greedy action `Q(s,a*) = V + (A(s,a*) − mean A) ≠ V` in general,
+so `V` is no longer exactly `max_a Q`; it is the *mean* of the Q-values over actions, and the centered
+advantage is `Q(s,a) − mean_{a'} Q(s,a')`. I lose the exact max-value interpretation. What I buy is
+stability: the mean of `|A|` numbers is a smooth, slowly moving quantity that does not lurch when the
+argmax flips, so the advantages only have to track the mean rather than chase the optimal action's
+advantage. I take that trade — exact semantics for optimization stability — which is also the right call
+here precisely because the whole point of this rung is a *free architectural* win that does not destabilize
+the algorithm. Crucially, subtracting any per-state constant never changes the rank order of the
+actions, so `argmax_a Q` is identical to the naive sum and identical to `argmax_a A`: the greedy and
+epsilon-greedy policies are exactly preserved. The aggregation is purely a training-time offset-control
+device; it touches what is learned, not what is acted.
+
+Now the payoff shows up in gradient flow, which was the original complaint. Write the sampled action as
+`j` and `Q_j = V + A_j − (1/n) Σ_k A_k` with `n = |A|`. For any TD loss `ℓ(Q_j, y)` with
+`δ = ∂ℓ/∂Q_j`, the chain rule gives `∂Q_j/∂V = 1`, `∂Q_j/∂A_j = 1 − 1/n`, and `∂Q_j/∂A_k = −1/n` for
+`k ≠ j`. So `V(s)` receives the **full** TD signal on *every* sampled transition regardless of which
+action was taken — the shared state value is now learned from all the data instead of being smuggled
+through one action's column. The advantage stream receives a contrastive signal whose components sum to
+zero, matching the fact that its absolute offset must not matter. In states where the actions are
+equivalent, the advantage stream can settle to ≈0 across the board after centering, and the network gets
+the value right through `V` rather than fitting `|A|` separate near-equal numbers. That is precisely the
+redundancy I started from, removed by construction.
+
+Now ground this in *this* task's edit surface, because here is where it differs from the generic Atari
+version of the idea, and I want the differences explicit. There is no conv torso to share and no
+trunk-gradient pathology to fix: the shared trunk is the **fixed MLP encoder** (`obs_dim → 120 → 84`),
+which I am forbidden to touch, so I cannot move the split earlier into a conv stack and there is no
+`1/√2` feature-gradient rescale to apply — both streams are single linear maps off the same frozen
+84-dim feature, and that is the whole architecture. The two heads cost `84·1 + 84·|A|` parameters versus
+the default `84·|A|`, a tiny `+84` over the linear head, well within the runtime parameter budget. The
+bootstrap target stays the scaffold's **plain DQN max target** — `r + γ max_{a'} Q(s',a';θ⁻)` — *not*
+the double-DQN selection/evaluation split that the generic dueling recipe is usually paired with, because
+the buffer, the target-sync cadence, and the update structure are the frozen DQN loop and I am only
+allowed to change the head and the loss; decoupling overestimation is a different rung's concern. The
+loss remains the squared TD error. The one stabilizer I do keep, and it is faithful to the generic
+recipe, is a **global gradient-norm clip at 10** after `backward()`: the two-stream head plus the
+bootstrapped max target can occasionally produce a large update, and clipping tames it cheaply; it is the
+only optimization change and it does not interact with the frozen loop. Epsilon-greedy `select_action`
+is unchanged — the centered `Q` has the same argmax as the default. So the literal edit is: split the
+linear head into `value_head: 84 → 1` and `advantage_head: 84 → |A|`, return
+`V + A − A.mean(dim=1, keepdim=True)` from `forward`, and add the norm clip to `update`; everything else
+is the default DQN fill. (The full scaffold module is in the answer.)
+
+What do I expect this to do, and how would it fail? On CartPole the default DQN already saturates the
+500 cap, so dueling cannot help there beyond matching it — the test is whether it *holds* 500 across
+seeds. On Acrobot the reward is a dense negative time-to-goal and the action genuinely matters at most
+steps (you are constantly pumping energy), so the value/advantage split has less redundancy to exploit;
+I expect a modest, roughly-on-par result. The interesting one is LunarLander: it has long stretches of
+hovering where the action barely matters interleaved with the few decisive correction moments, which is
+exactly the structure the value stream is built to exploit — so this is where I most expect a gain over
+plain DQN, *if* the gain materializes. But I am also wary, because the very thing that makes LunarLander
+the natural target — long horizons, a deceptive crash basin, dense shaped reward that can mislead — is a
+high-variance regime, and a single linear value stream off a frozen 84-dim feature is not a lot of
+capacity to nail the state value across that whole landscape. The mean-anchor also means `V` is only the
+*mean* Q, not the true value, so on a task where one action is sharply better than the rest the centered
+advantage carries most of the signal and the architectural benefit shrinks. So my falsifiable
+expectation for the bottom of the ladder: CartPole pinned near 500, Acrobot in the low −80s, and a
+LunarLander mean that is positive and respectable but with at least one seed at real risk of the crash
+basin — and if LunarLander comes out low or wildly seed-dependent, the diagnosis for the next rung is
+that the problem is not the architecture of the *mean* estimate at all but the fact that I am estimating
+only a mean, and I should model the whole return distribution instead. Let me split the head and add the clip.
+</think>
+<say>
+Starting from the plain-DQN floor with Dueling DQN: I'm splitting the single linear head into a value stream (84→1) and an advantage stream (84→|A|) and recombining them as `V + A − mean(A)` inside `forward`, keeping the same target, loss, and interface.
+</say>
+<edit path="cleanrl/cleanrl/custom_value_discrete.py">
+<old>
+class ValueAlgorithm:
+    """Value-based RL algorithm -- implement your approach here.
+
+    The training loop calls:
+        algorithm = ValueAlgorithm(obs_dim, n_actions, device, args)
+        action = algorithm.select_action(obs, epsilon)   # during data collection
+        metrics = algorithm.update(batch, global_step)    # after each training step
+        eval_qnetwork(env_id, algorithm.q_network, ...)   # periodic evaluation
+
+    You MUST set self.q_network to an nn.Module with forward(obs) -> Q-values.
+
+    Available classes:
+        MLPEncoder (fixed) -- 2-layer MLP encoder, obs_dim -> 84-dim features
+        QNetwork   (editable) -- MLPEncoder + head
+    ENCODER_FEATURE_DIM = 84 (feature dimension from MLPEncoder)
+
+    Available utilities (fixed): linear_schedule, eval_qnetwork
+    """
+</old>
+<new>
+# EDITABLE region of custom_value_discrete.py — step 1: Dueling DQN
+class QNetwork(nn.Module):
+    """Dueling Q-network: MLPEncoder (fixed) + separate value and advantage heads."""
+
+    def __init__(self, obs_dim, n_actions):
+        super().__init__()
+        self.encoder = MLPEncoder(obs_dim)
+        # Value stream
+        self.value_head = nn.Linear(ENCODER_FEATURE_DIM, 1)
+        # Advantage stream
+        self.advantage_head = nn.Linear(ENCODER_FEATURE_DIM, n_actions)
+
+    def forward(self, obs):
+        features = self.encoder(obs)
+        value = self.value_head(features)
+        advantage = self.advantage_head(features)
+        # Q(s,a) = V(s) + A(s,a) - mean(A(s,a))
+        return value + advantage - advantage.mean(dim=1, keepdim=True)
+
+
+class ValueAlgorithm:
+    """DuelingDQN -- Dueling Deep Q-Network."""
+</new>
+</edit>
+<obs>
+Successfully replaced text in cleanrl/cleanrl/custom_value_discrete.py.
+</obs>
+<edit path="cleanrl/cleanrl/custom_value_discrete.py">
+<old>
+
+        # Build networks -- modify or replace as needed
+        self.q_network = QNetwork(obs_dim, n_actions).to(device)
+</old>
+<new>
+
+        self.q_network = QNetwork(obs_dim, n_actions).to(device)
+</new>
+</edit>
+<obs>
+Successfully replaced text in cleanrl/cleanrl/custom_value_discrete.py.
+</obs>
+<edit path="cleanrl/cleanrl/custom_value_discrete.py">
+<old>
+    def select_action(self, obs, epsilon):
+        """Select action with epsilon-greedy exploration."""
+        if random.random() < epsilon:
+</old>
+<new>
+    def select_action(self, obs, epsilon):
+        if random.random() < epsilon:
+</new>
+</edit>
+<obs>
+Successfully replaced text in cleanrl/cleanrl/custom_value_discrete.py.
+</obs>
+<note>
+Now wire the max-target TD loss back in and add the gradient-norm clip at 10.
+</note>
+<edit path="cleanrl/cleanrl/custom_value_discrete.py">
+<old>
+    def update(self, batch, global_step):
+        """Single gradient update. Returns a dict of scalar metrics.
+
+        batch = (obs, next_obs, actions, rewards, dones) -- torch.Tensor on device
+
+        TODO: implement your value-based RL algorithm here.
+        """
+        self.total_it += 1
+        obs, next_obs, actions, rewards, dones = batch
+
+        # Placeholder -- replace with your algorithm
+        return {"td_loss": 0.0, "q_values": 0.0}
+</old>
+<new>
+    def update(self, batch, global_step):
+        self.total_it += 1
+        obs, next_obs, actions, rewards, dones = batch
+
+        with torch.no_grad():
+            target_max, _ = self.target_network(next_obs).max(dim=1)
+            td_target = rewards + (1 - dones) * self.gamma * target_max
+
+        old_val = self.q_network(obs).gather(1, actions.unsqueeze(1)).squeeze(1)
+        td_loss = F.mse_loss(td_target, old_val)
+
+        self.optimizer.zero_grad()
+        td_loss.backward()
+        torch.nn.utils.clip_grad_norm_(self.q_network.parameters(), max_norm=10.0)
+        self.optimizer.step()
+
+        return {"td_loss": td_loss.item(), "q_values": old_val.mean().item()}
+</new>
+</edit>
+<obs>
+Successfully replaced text in cleanrl/cleanrl/custom_value_discrete.py.
+</obs>
+<run/>
+<obs>
+Measured results — `baseline:dueling_dqn` (the measured `is_final,false` rows; no `is_final,true`
+row exists for this baseline), seeds {42, 123, 456} and mean. Metric: mean greedy evaluation episodic
+return (higher is better).
+
+| seed | CartPole-v1 | LunarLander-v2 | Acrobot-v1 |
+|---|---|---|---|
+| 42 | 461.6 | 127.35 | −79.7 |
+| 123 | 500.0 | 229.07 | −78.1 |
+| 456 | 500.0 | −89.25 | −90.0 |
+| **mean** | **487.20** | **89.06** | **−82.60** |
+</obs>
+
+### step 2 — QR-DQN (quantile regression)   [slug:qr-dqn]
+
+<think>
+The dueling head told me exactly what I suspected and where its limit is, and it told me in the
+LunarLander column. CartPole sat at 500 on two of three seeds and 461.6 on the third — pinned, as
+expected, since the cap was already reached by plain DQN and the architecture only had to hold it.
+Acrobot came in at a mean of −82.6, right in the low −80s I guessed, essentially on par with what a
+plain value head gets — also as expected, because Acrobot's reward is a dense negative time-to-goal where
+the action matters at almost every step, so the value/advantage split has very little redundancy to
+exploit. The signal is LunarLander: mean 89.06, and the per-seed numbers are the whole story —
+{127.35, 229.07, **−89.25**}. One seed found a genuinely good policy (229), one found a mediocre one
+(127), and one fell into the crash basin and came out *negative*. That −89.25 seed is the −1000-style
+tell from the bottom of any RL ladder: the agent's greedy policy on that seed is systematically landing
+in the deceptive failure region, and the mean is being dragged down by it. The dueling architecture did
+its job — it improved how the *mean* state value is estimated and shared across actions — but the failure
+that survives is not about how I estimate the mean. It is that I am estimating *only* a mean, and on
+LunarLander the return is sharply bimodal: a safe landing scores a few hundred, a crash scores a large
+negative, and a single scalar `Q = E[Z]` averages those two worlds into a number that corresponds to
+neither and gives the greedy argmax no way to tell "this action has a high mean because it sometimes
+lands and sometimes crashes" from "this action has a high mean because it reliably lands." That is the
+seed-456 failure in one sentence. So the next move is not a better head for the mean — it is to stop
+collapsing the return to its mean at all.
+
+Let me sit with that. We train the agent to maximize expected return, and so we learn `Q = E[Z]`, where
+`Z(s,a)` is the actual random return from `(s,a)`. The Bellman recursion the scalar obeys is
+`Q(s,a) = E R + γ E Q(s',a')`, a `γ`-contraction in `L∞`, unique fixed point — clean, and it is exactly
+what the dueling rung still relied on. But `Z` itself is a random variable, and on LunarLander it is
+visibly bimodal. The scalar throws that away. In supervised learning I would never hesitate to model the
+full conditional distribution when I can — it strictly carries more information. The catch in RL is that
+there are no given targets; I bootstrap, "learning a guess from a guess," so the question is whether the
+*machinery* survives in distribution space. Three things make mean-value learning work: a Bellman
+recursion the object obeys, a contraction so iterating it converges, and a loss I can train from sampled
+transitions by SGD. I need all three in distribution space, and the representation and loss should fall
+out of what the math will and will not allow.
+
+The recursion is the easy part. Peel the first reward off the return: `Z(s,a) =D R(s,a) + γ Z(s',a')`,
+an equality *in distribution* — the law of the left side equals the law of the compound variable on the
+right, built from the reward, the random next state-action, and the next return. So a distributional
+Bellman operator exists; it scales the next-state distribution by `γ` (shrinking it toward 0), shifts by
+the reward, and mixes over transitions. Now the contraction, and here is the subtlety that decides the
+whole design: in *which metric* does this operator contract? My deep-learning instinct is KL — that is
+what a softmax minimizes. But watch the `γ`-scaling alone. Take two distributions on `{1, 2}`; scale
+both by `γ = 0.5` to `{0.5, 1}`. The probabilities are untouched, so KL is exactly unchanged — no
+contraction. Worse, two distributions on *disjoint* supports stay KL-infinite (or total-variation 1) no
+matter how much I shrink them toward 0. KL, total variation, Kolmogorov sup-CDF distance are all
+*vertical* distances — they compare mass at matched locations and are blind to how far apart the
+locations are. But the Bellman update is a *horizontal* operation. So none of the metrics I know how to
+minimize with a softmax can even see the contraction. The metric that does see it is Wasserstein:
+`d_p(F,G) = (∫₀¹ |F⁻¹(u) − G⁻¹(u)|ᵖ du)^{1/p}`, a transport distance — how far mass has to slide. It is
+finite for disjoint supports and it scales: multiply the variables by `γ` and the transport multiplies
+by `γ`. In the maximal Wasserstein metric `d̄_p = sup_{s,a} d_p` the distributional operator is a
+`γ`-contraction (the common reward shift drops out, the `γ` scaling factors out, the mixture over
+successors is bounded by the worst case), with the true return distribution as its unique fixed point.
+So the metric the theory loves is Wasserstein — and the metric I can minimize with a softmax is not.
+
+Now the wall. Can I just minimize Wasserstein between my predicted distribution and the bootstrapped
+target, from sampled transitions, by SGD? No — and this is a real theorem, not a nuisance. The sample
+gradient of Wasserstein is *biased*: if I form an empirical target distribution from samples and minimize
+the sample `W_p`, the minimizer of the expected sample loss is not the minimizer of the true `W_p`. The
+intuition is that `W_p` is built from the quantile function `F⁻¹`, and a single sample is a draw, not an
+observation of a quantile; the optimal transport reshuffles which sample pairs with which prediction, and
+the gradient of that matching, averaged over sample sets, does not equal the population transport
+gradient. So the metric the theory wants is the one I cannot descend from single transitions. The
+categorical approach (the next rung) dodges this by fixing the atom *locations* on a predetermined grid,
+making the *probabilities* learnable, projecting the shifted target back onto the grid, and minimizing
+KL — but that needs me to supply `[v_min, v_max]` as prior knowledge and the projection exists only
+because fixed atoms force off-grid collisions. Let me see whether I can find a representation that is
+genuinely Wasserstein-aware *and* trainable from samples, with no projection and no support bounds.
+
+The categorical agent's free variables are the *probabilities* on fixed locations — it learns the
+*vertical* axis. So turn the parametrization on its side. Fix the probabilities to be uniform,
+`q_i = 1/N`, and make the *locations* `θ_i` the learnable thing:
+`Z_θ(s,a) = (1/N) Σ_i δ_{θ_i(s,a)}`. I am no longer learning how much mass sits at fixed heights; I am
+learning *where* `N` equal lumps of mass should sit. And "where the `i`-th of `N` equal lumps sits" is
+exactly a **quantile** of the distribution. So this transposed parametrization estimates quantiles of
+the return. Three things immediately look better: the support is not pinned to any `[v_min, v_max]` — the
+locations slide to wherever the returns actually live, with per-state adaptive resolution (this matters
+here, where LunarLander spans roughly −400 to +300 and Acrobot −500 to −60 and CartPole 0 to 500, three
+very different ranges that one fixed grid would have to straddle); there is no projection, because when
+the Bellman target's atoms move they are just numbers I compare directly to my locations; and — the part
+I must verify — estimating quantiles may be doable from samples *without* a biased gradient.
+
+Which quantiles? Minimize `W_1` between an arbitrary target `Y` and a uniform-`N`-Dirac distribution on
+ordered locations `θ_1 ≤ … ≤ θ_N`. With cumulative levels `τ_i = i/N`, the inverse-CDF of the uniform
+comb is the staircase equal to `θ_i` on `(τ_{i-1}, τ_i]`, so
+`W_1 = Σ_i ∫_{τ_{i-1}}^{τ_i} |F_Y⁻¹(ω) − θ_i| dω`. The cells decouple — each `θ_i` appears in only its
+own integral — so minimize each separately. The subgradient in `θ` of `∫_τ^{τ'} |F⁻¹(ω) − θ| dω` is
+`(F(θ) − τ) − (τ' − F(θ)) = 2F(θ) − (τ + τ')`, zero when `F(θ) = (τ + τ')/2`. So the `W_1`-optimal
+location is the quantile at the **midpoint** of the cell: `θ_i = F_Y⁻¹(τ̂_i)` with
+`τ̂_i = (2i − 1)/(2N)`. Not the cell edges `i/N` — the cell centers. That tells me precisely which
+quantiles my `N` locations should chase.
+
+Can I hit those midpoint quantiles from samples without bias? A quantile parametrization alone does *not*
+unbias Wasserstein — minimizing sample-`W_p` is still biased even here. The unbiasedness has to come
+from the *loss I use to hit each quantile*, and that loss is quantile regression. To estimate the
+`τ`-quantile of a distribution from samples, use the asymmetric loss `ρ_τ(u) = u(τ − 1{u<0})` with
+`u = Ẑ − θ`: it charges `τ|u|` when I underestimate and `(1−τ)|u|` when I overestimate. Its subgradient
+in `θ` is `Pr(Ẑ < θ) − τ`, zero exactly when `θ = F⁻¹(τ)`. Crucially the gradient depends only on the
+*sign* of `u` — `τ − 1{u<0}` — so a single sample gives an **unbiased** stochastic gradient. That is the
+whole escape: I cannot descend `W_p`, but I can descend the quantile-regression loss whose minimizers
+are the very locations that minimize `W_1`. End-to-end Wasserstein, by way of quantile regression on the
+midpoint quantiles.
+
+One wrinkle before a deep net: `ρ_τ` is kinked at `u = 0` and its gradient magnitude stays constant
+(`τ` or `1−τ`) as `u → 0`, so there is no shrinking of the step as the error gets small and the locations
+jitter. Round the kink with a **Huber** loss — quadratic inside `|u| ≤ κ`, linear outside — and multiply
+by the asymmetric weight, giving the *quantile Huber* loss
+`ρ_τ^κ(u) = |τ − 1{u<0}| · L_κ(u)`. With `κ = 1` the inner piece is `½u²` inside `[−1, 1]` and
+`|u| − ½` outside — exactly the gradient-clipped squared error a scalar agent already uses — so I am
+swapping its Huber for an *asymmetric* one. Control stays mean-greedy, because the objective is still to
+maximize expected return: the greedy action is `argmax_a (1/N) Σ_j θ_j(s,a)`, the argmax of the
+per-action location average — a drop-in for DQN's `argmax_a Q`. The bootstrapped target locations are
+`Tθ_j = r + γ θ_j(s', a*)` (with `γ` zeroed at terminals), and each predicted location `θ_i(s,a)` is
+regressed, at its own level `τ̂_i`, against *all* `N` target locations: the all-pairs quantile Huber
+loss `(1/N) Σ_i Σ_j ρ_{τ̂_i}^κ(Tθ_j − θ_i)`. No projection, no `[v_min, v_max]`; the only new knob over
+DQN is `N`.
+
+Now land it in *this* task's edit surface, and note where it departs from the generic recipe. The torso
+is the **fixed MLP encoder** (`obs_dim → 120 → 84`), not a conv stack, so the only change to `QNetwork`
+is the head: a linear map `84 → |A|·N` reshaped to `(batch, |A|, N)`, and `forward` returns the
+per-action mean over the `N` quantiles so the evaluation harness still argmaxes a clean `(batch, |A|)`.
+I set **`N = 50`** quantiles, not the larger value the generic Atari recipe uses — on classic-control
+tasks with a single environment and a 500k-step budget, 50 locations already resolve the bimodality I
+care about (safe-landing mass vs crash mass on LunarLander) without inflating the head past the
+parameter budget, and a coarser comb trains faster and more stably here. The midpoint levels are
+`τ̂_i = (2i − 1)/(2N)`, fixed buffers. `κ = 1`. For the bootstrap I select `a*` greedily on the
+target network's next-state quantile means and take *that* network's quantiles for `Tθ_j` — note this is
+the scaffold's plain-DQN style target (select and evaluate both on the **target** net), *not* the
+double-DQN split (select on online, evaluate on target) that the generic recipe sometimes pairs with;
+the frozen loop only lets me change the head and the loss, and decoupling overestimation is a different
+concern. The target uses `(1 − dones)` to zero `γ` at terminals exactly as the scalar loop did. I drop
+the dueling head: distributional learning is a change to the *output object and loss*, and stacking it on
+the two-stream head would conflate two rungs — I want to isolate the effect of modeling the distribution.
+Adam at the scaffold `lr`, no grad clip needed beyond what the Huber already provides. (The full scaffold
+module is in the answer.)
+
+So what do I expect against the dueling numbers? CartPole is already saturated, so QR-DQN can only match
+500 — the test is that the quantile head does not *destabilize* a solved task (a real risk: a 50-way
+head is more to fit than a linear one, and on an easy task that can add variance). Acrobot I expect to
+land in the low −80s again, roughly on par, because its return is fairly unimodal (negative
+time-to-goal) and there is little distributional structure for quantiles to exploit beyond the mean. The
+bet is entirely on **LunarLander**, and it is a sharp, falsifiable one: the dueling failure was the
+seed-456 crash basin pulling the mean to −89 and the spread {−89, 127, 229}. If modeling the return
+distribution is the right fix, the quantile head should let the greedy policy distinguish a high-mean
+action that sometimes crashes from one that reliably lands, so I expect the **worst seed to climb out of
+the negative basin** and the mean to rise well above 89 with a tighter spread. I am less sure it reaches
+the very top — 50 quantiles on a single 500k-step run is a coarse picture of a heavy-tailed return, and
+if the low-probability crash tail is exactly where the resolution is thinnest, a categorical
+representation that spends its capacity on *probabilities at fixed locations* might capture that tail
+mass more faithfully than uniform-mass quantiles do. If QR-DQN lifts LunarLander's mean and worst seed
+but still leaves the tail ragged, that is the precise opening for the next rung: fix the support to the
+known classic-control range and learn the *mass* on it instead of the locations. Let me swap the head over to quantiles and put the quantile-Huber loss in.
+</think>
+<say>
+Moving to QR-DQN: I'm replacing the scalar head with a quantile head (`84 → |A|·N`, N=50) whose `forward` returns the per-action mean over quantiles, so action selection stays a drop-in argmax while the network now represents the full return distribution.
+</say>
+<edit path="cleanrl/cleanrl/custom_value_discrete.py">
+<old>
+# EDITABLE region of custom_value_discrete.py — step 1: Dueling DQN
+class QNetwork(nn.Module):
+    """Dueling Q-network: MLPEncoder (fixed) + separate value and advantage heads."""
+
+    def __init__(self, obs_dim, n_actions):
+        super().__init__()
+        self.encoder = MLPEncoder(obs_dim)
+        # Value stream
+        self.value_head = nn.Linear(ENCODER_FEATURE_DIM, 1)
+        # Advantage stream
+        self.advantage_head = nn.Linear(ENCODER_FEATURE_DIM, n_actions)
+
+    def forward(self, obs):
+        features = self.encoder(obs)
+        value = self.value_head(features)
+        advantage = self.advantage_head(features)
+        # Q(s,a) = V(s) + A(s,a) - mean(A(s,a))
+        return value + advantage - advantage.mean(dim=1, keepdim=True)
+
+
+class ValueAlgorithm:
+    """DuelingDQN -- Dueling Deep Q-Network."""
+</old>
+<new>
+# EDITABLE region of custom_value_discrete.py — step 2: QR-DQN
+class QNetwork(nn.Module):
+    """Quantile Q-network for QR-DQN: MLPEncoder (fixed) + n_actions x n_quantiles head."""
+
+    def __init__(self, obs_dim, n_actions, n_quantiles=50):
+        super().__init__()
+        self.n_actions = n_actions
+        self.n_quantiles = n_quantiles
+        self.encoder = MLPEncoder(obs_dim)
+        self.head = nn.Linear(ENCODER_FEATURE_DIM, n_actions * n_quantiles)
+
+    def forward(self, obs):
+        """Return Q-values as mean of quantile values per action."""
+        features = self.encoder(obs)
+        quantiles = self.head(features).view(len(obs), self.n_actions, self.n_quantiles)
+        q_values = quantiles.mean(dim=2)
+        return q_values
+
+    def get_quantiles(self, obs):
+        """Return raw quantile values: [batch, n_actions, n_quantiles]."""
+        features = self.encoder(obs)
+        return self.head(features).view(len(obs), self.n_actions, self.n_quantiles)
+
+
+class ValueAlgorithm:
+    """QR-DQN -- Quantile Regression DQN with distributional value learning."""
+</new>
+</edit>
+<obs>
+Successfully replaced text in cleanrl/cleanrl/custom_value_discrete.py.
+</obs>
+<note>
+Register the quantile count, Huber threshold, and the fixed midpoint levels `τ̂_i = (2i−1)/(2N)`.
+</note>
+<edit path="cleanrl/cleanrl/custom_value_discrete.py">
+<old>
+        self.gamma = args.gamma
+        self.total_it = 0
+
+        self.q_network = QNetwork(obs_dim, n_actions).to(device)
+        self.target_network = QNetwork(obs_dim, n_actions).to(device)
+        self.target_network.load_state_dict(self.q_network.state_dict())
+
+        self.optimizer = optim.Adam(self.q_network.parameters(), lr=args.learning_rate)
+</old>
+<new>
+        self.gamma = args.gamma
+        self.n_quantiles = 50
+        self.kappa = 1.0  # Huber loss threshold
+        self.total_it = 0
+
+        self.q_network = QNetwork(obs_dim, n_actions, self.n_quantiles).to(device)
+        self.target_network = QNetwork(obs_dim, n_actions, self.n_quantiles).to(device)
+        self.target_network.load_state_dict(self.q_network.state_dict())
+
+        self.optimizer = optim.Adam(self.q_network.parameters(), lr=args.learning_rate)
+
+        # Fixed quantile midpoints: tau_i = (2i - 1) / (2N) for i = 1, ..., N
+        self.tau = torch.arange(1, self.n_quantiles + 1, dtype=torch.float32, device=device)
+        self.tau = (2 * self.tau - 1) / (2 * self.n_quantiles)
+</new>
+</edit>
+<obs>
+Successfully replaced text in cleanrl/cleanrl/custom_value_discrete.py.
+</obs>
+<note>
+Now the update: bootstrap target quantiles from the target net's mean-greedy action, then the all-pairs quantile Huber loss.
+</note>
+<edit path="cleanrl/cleanrl/custom_value_discrete.py">
+<old>
+        with torch.no_grad():
+            target_max, _ = self.target_network(next_obs).max(dim=1)
+            td_target = rewards + (1 - dones) * self.gamma * target_max
+
+        old_val = self.q_network(obs).gather(1, actions.unsqueeze(1)).squeeze(1)
+        td_loss = F.mse_loss(td_target, old_val)
+
+        self.optimizer.zero_grad()
+        td_loss.backward()
+        torch.nn.utils.clip_grad_norm_(self.q_network.parameters(), max_norm=10.0)
+        self.optimizer.step()
+
+        return {"td_loss": td_loss.item(), "q_values": old_val.mean().item()}
+</old>
+<new>
+        with torch.no_grad():
+            # Get quantile values for next state from target network
+            next_quantiles = self.target_network.get_quantiles(next_obs)  # [batch, n_actions, n_quantiles]
+            next_q = next_quantiles.mean(dim=2)  # [batch, n_actions]
+            next_actions = next_q.argmax(dim=1)  # [batch]
+            # Select quantiles for best actions
+            next_quantiles_best = next_quantiles[torch.arange(len(next_obs)), next_actions]  # [batch, n_quantiles]
+            # Compute target quantile values
+            target_quantiles = rewards.unsqueeze(1) + self.gamma * next_quantiles_best * (1 - dones.unsqueeze(1))
+
+        # Get current quantile values for taken actions
+        current_quantiles = self.q_network.get_quantiles(obs)  # [batch, n_actions, n_quantiles]
+        current_quantiles = current_quantiles[torch.arange(len(obs)), actions]  # [batch, n_quantiles]
+
+        # Quantile Huber loss
+        # Pairwise TD errors: [batch, n_quantiles (pred), n_quantiles (target)]
+        td_errors = target_quantiles.unsqueeze(1) - current_quantiles.unsqueeze(2)  # [batch, N, N]
+
+        # Huber loss element-wise
+        abs_td = td_errors.abs()
+        huber = torch.where(abs_td <= self.kappa,
+                            0.5 * td_errors ** 2,
+                            self.kappa * (abs_td - 0.5 * self.kappa))
+
+        # Asymmetric weighting by quantile level
+        tau = self.tau.view(1, -1, 1)
+        quantile_weights = torch.abs(tau - (td_errors < 0).float())
+        loss = (quantile_weights * huber / self.kappa).sum(dim=2).mean(dim=1).mean()
+
+        self.optimizer.zero_grad()
+        loss.backward()
+        self.optimizer.step()
+
+        q_values = current_quantiles.mean(dim=1)
+        return {"td_loss": loss.item(), "q_values": q_values.mean().item()}
+</new>
+</edit>
+<obs>
+Successfully replaced text in cleanrl/cleanrl/custom_value_discrete.py.
+</obs>
+<run/>
+<obs>
+Measured results — `baseline:qr_dqn` (`is_final,true`), seeds {42, 123, 456} and mean. Metric: mean
+greedy evaluation episodic return (higher is better).
+
+| seed | CartPole-v1 | LunarLander-v2 | Acrobot-v1 |
+|---|---|---|---|
+| 42 | 500.0 | 152.64 | −80.9 |
+| 123 | 500.0 | 243.81 | −80.2 |
+| 456 | 500.0 | 194.99 | −79.1 |
+| **mean** | **500.00** | **197.15** | **−80.07** |
+</obs>
+
+### step 3 — C51 (categorical distributional)   [slug:c51]
+
+<think>
+The quantile head did the thing I bet on, and the LunarLander column proves it. The worst seed climbed
+clean out of the crash basin: where the dueling head had {127.35, 229.07, **−89.25**} for a mean of 89,
+QR-DQN posted {152.64, 243.81, **194.99**} for a mean of 197.15 — the negative seed is gone, the spread
+collapsed from a 318-point range to a 91-point range, and every seed is now solidly positive. That is
+exactly the prediction: modeling the return distribution let the greedy policy stop being fooled by a
+high mean that hid crash mass. CartPole pinned at a clean 500 on all three seeds — the 50-way head did
+not destabilize the already-solved task, which was the risk I flagged. Acrobot landed at −80.07, a hair
+better than dueling's −82.6 and right in the low −80s as expected, since its return is nearly unimodal
+and there is little distributional structure for quantiles to exploit. So the rung worked. But I closed
+the last step with a specific doubt, and the LunarLander mean of 197 is exactly where that doubt lives:
+197 is good, not great, and the per-seed numbers are still ragged — seed 42 at 152 is well below seed 123
+at 244. A consistently-landing LunarLander agent should be scoring in the 200s on every seed. The
+quantile picture of the return is still coarse where it matters most.
+
+Let me name the doubt precisely, because it dictates the next move. QR-DQN learns `N = 50` equal-mass
+locations — quantiles — and lets them slide to wherever the returns live. The strength of that is the
+support adapts and there are no bounds to set. The weakness is exactly the dual: uniform mass means the
+*resolution* is spread evenly across the probability axis, so the low-probability crash tail of
+LunarLander — the rare, large-negative outcome that decides the worst seeds — gets the same one-out-of-50
+mass budget as the dense middle of the distribution, and a single location has to summarize a long,
+heavy, sparsely-sampled tail. On a single 500k-step run, those tail locations are the noisiest things in
+the head, and a noisy tail location feeds straight into the bootstrap mean and into the greedy argmax.
+The seed-42-at-152 raggedness has the smell of exactly this: the tail of the return distribution is
+under-resolved, so the mean estimate wobbles seed-to-seed. The fix I floated was: the classic-control
+return range is *known* and bounded, so instead of learning *where* the mass sits, fix the locations and
+learn the *mass* on them. That is the categorical representation, and it is worth deriving from the same
+three requirements rather than just asserting it, because the loss and the projection are subtle and I
+want them exactly right.
+
+Same starting point: I refuse to keep collapsing the return to its mean, and I keep the distributional
+Bellman recursion `Z(s,a) =D R(s,a) + γ Z(s',a')` that QR-DQN already relied on. The recursion exists.
+The contraction story is the same and it is still the whole game: the operator `γ`-scales the next-state
+distribution (a *horizontal* shrink toward 0), shifts by the reward, and mixes over transitions, so it
+contracts in **Wasserstein** — `d_p` sees the horizontal slide and scales with `γ` — and emphatically
+*not* in KL, total variation, or Kolmogorov distance, which compare mass at matched locations and are
+blind to the shrink. QR-DQN's whole trick was to be Wasserstein-aware by learning locations. Now I am
+going to deliberately give that up and pay for it, so I need to know exactly what I am buying.
+
+What distribution class should the network output? I want multimodality — the win/lose bimodality of
+LunarLander is the entire reason I left scalars — and I want it cheap. The natural move, borrowing from
+how discrete models handle continuous values, is a **categorical** distribution on a *fixed* grid: pick
+`N` canonical returns evenly spaced, `z_i = v_min + i·Δz`, `Δz = (v_max − v_min)/(N−1)`, and let the
+network output a probability for each via a softmax, `Z_θ(s,a) = Σ_i p_i(s,a) δ_{z_i}`. This is
+expressive — any shape on the grid, multimodal included — and trivial to compute (a softmax classifier
+per action). And bounding the support to `[v_min, v_max]` is not just a concession, it is a *feature*
+here: it bakes in the prior that returns beyond the range are all "equally extreme," which is a cleaner
+inductive bias than nothing, and — the point that matters for my doubt — it lets me *spend* the `N` atoms
+across the *value* axis at uniform spacing, so the crash tail gets honest grid resolution at its actual
+return magnitude rather than one slippery quantile location. The cost is that I must supply `[v_min,
+v_max]`, which QR-DQN didn't need; on classic control that is an acceptable price because the ranges are
+known.
+
+Now the loss, and this is where the categorical representation forces a different path than QR-DQN. From
+the theory, Wasserstein is *the* metric, so the first instinct is to minimize `d_p(TZ_θ, Z_θ)` directly.
+But I already know — it is what pushed me to quantiles last rung — that the sampled Wasserstein gradient
+is **biased**: with a mixture target seen one sample at a time, the partition inequality
+`d_p^p(P, Q) ≤ E_I d_p^p(P_i, Q)` is strict, so SGD on the sampled `W_p` descends an upper bound whose
+minimizer is the wrong point. (The clean counterexample: target `½δ_0 + ½δ_1`, prediction
+`pδ_0 + (1−p)δ_1`; the true `d_1 = |p − ½|` is minimized at `p = ½`, but the expected *sampled* distance
+is `½(1−p) + ½p = ½`, constant in `p`, gradient zero everywhere.) QR-DQN dodged this by switching the
+*loss* to quantile regression, whose minimizers happen to be the `W_1`-optimal locations and whose
+gradient is sign-only and unbiased. With fixed locations I cannot do that — the locations are not free.
+What I *can* minimize unbiasedly from samples is **cross-entropy**, the softmax's native loss. The only
+obstruction is geometric: the Bellman update scales each atom `z_j` by `γ` and shifts by `r`, so the
+updated atom `r + γz_j` almost never lands on the grid `{z_i}`. The target `TZ_θ` and my parametrization
+`Z_θ` live on disjoint supports, and a KL between disjoint supports is exactly the useless vertical
+quantity I have been avoiding. So I must put the shifted target *back onto my grid* before taking
+cross-entropy.
+
+The projection that respects the geometry: distribute each shifted atom's mass onto its two nearest grid
+neighbors by linear interpolation, clamping anything outside `[v_min, v_max]` to the endpoints. The
+shifted atom `T̂z_j = clamp(r + γz_j, v_min, v_max)` falls at fractional grid position
+`b_j = (T̂z_j − v_min)/Δz ∈ [0, N−1]`, between `l = ⌊b_j⌋` and `u = ⌈b_j⌉`; the lower atom gets weight
+`(u − b_j)` and the upper gets `(b_j − l)` (summing to 1, so mass is preserved), each times the source
+probability `p_j`. Accumulating over all source atoms gives the projected target `m`. One subtlety I must
+handle in code: when `b_j` is exactly an integer, `l = u` and the lower weight `(u − b_j) = 0` would drop
+the mass, so I send the full `p_j` to that single atom — the `(l == u)` correction. Terminal transitions
+are handled by zeroing `γ` (the `(1 − dones)` factor), which collapses every shifted atom to `r`. The
+target distribution is formed from the **target network** (frozen bootstrap, as DQN), and the greedy
+action is chosen on the **mean** of the next-state distribution, `a* = argmax_a Σ_i z_i p_i(s',a)` —
+keeping action selection a drop-in for epsilon-greedy DQN. The sample loss is the cross-entropy between
+the projected target `m` and the prediction, `−Σ_i m_i log p_i(s,a)` — the cross-entropy term of
+`KL(Φ T̂ Z_{θ⁻}(s,a) ‖ Z_θ(s,a))`. The distributional Bellman update has become **multiclass
+classification** over the `N` atoms, which is exactly the unbiased-gradient regime I retreated to.
+
+A word on what I am trading versus QR-DQN, because it is the crux of whether this rung beats the last.
+KL is insensitive to the atom *values* — it only matches mass — so this loss is *not* Wasserstein-aware
+the way the quantile loss was; if `v_min, v_max` are badly chosen the fixed grid can be a real handicap,
+and the projection introduces a small bias the quantile approach avoided. What I get back is that the
+mass on the crash tail is now a softmax probability on a grid point sitting at the tail's actual return
+magnitude, learned by stable cross-entropy, rather than a single sliding location that has to *be* the
+tail quantile. For a heavy-tailed bimodal return on a bounded-range task, that is the right trade — and
+it is exactly the under-resolved tail I diagnosed in QR-DQN's ragged LunarLander seeds.
+
+Now land it in this task's edit surface, with the scaffold-specific choices made explicit. The torso is
+the **fixed MLP encoder** (`obs_dim → 120 → 84`), so `QNetwork` only changes the head: a linear map
+`84 → |A|·N` reshaped to `(batch, |A|, N)` and softmaxed over the atom axis; `forward` returns the
+per-action mean `Σ_i z_i p_i` so the harness argmaxes a clean `(batch, |A|)`. I set **`N = 51`** atoms.
+The support is the load-bearing scaffold choice: I set **`v_min = −500`, `v_max = +500`** — *not* the
+narrow `[−10, 10]` the generic recipe uses, because that range was tuned for clipped-reward Atari, and
+here the returns are unclipped classic-control returns that genuinely span this range (CartPole reaches
++500, LunarLander runs roughly −400 to +300, Acrobot roughly −500 to −60). A grid that did not cover
+−500 to +500 would clamp the crash tail and the CartPole cap to the endpoints and defeat the entire
+point of switching to a fixed grid. `Δz = 1000/50 = 20`, so each atom is 20 return-units wide — coarse
+in absolute terms, but the bimodal structure I care about (a few-hundred-point landing peak vs a
+few-hundred-negative crash peak) is comfortably resolved at that spacing. The projection is the
+linear-interpolation operator with the `(l == u)` integer-`b` correction, terminals via `(1 − dones)`,
+target built from the target net, greedy on the mean. I drop both the dueling head and the quantile head:
+this rung isolates the categorical-distribution effect, and the loss is cross-entropy, not quantile
+Huber. Adam at the scaffold `lr`. (The full scaffold module is in the answer.)
+
+So, falsifiably, against QR-DQN's {500, 197.15, −80.07}: CartPole should stay pinned near 500 — the only
+risk is the coarse `Δz = 20` grid blurring the cap, so I am watching that it does not slip below ~485 the
+way a badly-resolved head might. Acrobot I expect on par again, low −80s, perhaps a touch noisier because
+its return sits in the dense lower-middle of a wide grid where 20-unit atoms are relatively coarse — if
+it drifts a couple of points below QR-DQN's −80, that is the grid-coarseness cost showing up exactly
+where I would predict it. LunarLander is the test: if the under-resolved tail was really what kept
+QR-DQN's mean at 197 with ragged seeds, the fixed-grid mass model should lift the **mean above 197** and
+*tighten* the worst seed, because the crash tail now has honest grid resolution at its true magnitude.
+That is the bar this rung must clear to earn the top of the ladder. If instead LunarLander comes back
+*lower* than QR-DQN, the diagnosis is unambiguous and points past this whole family: the `[−500, 500]`
+grid with 20-unit atoms is too coarse for LunarLander's bimodality, the KL loss's value-blindness has
+cost more than the quantile loss's tail-noise did, and the right next move would be to combine the
+best of both — but that is a different rung. For now this is the strongest fill the scaffold allows me to
+isolate cleanly, and the measured LunarLander mean against 197.15 is exactly what decides it. Let me put the categorical head and the projected cross-entropy loss in.
+</think>
+<say>
+Switching to C51: I'm replacing the quantile head with a categorical one — a softmax over N=51 fixed atoms on `[−500, +500]` per action, with `forward` returning the per-action mean `Σ z_i p_i` so action selection stays a drop-in argmax.
+</say>
+<edit path="cleanrl/cleanrl/custom_value_discrete.py">
+<old>
+# EDITABLE region of custom_value_discrete.py — step 2: QR-DQN
+class QNetwork(nn.Module):
+    """Quantile Q-network for QR-DQN: MLPEncoder (fixed) + n_actions x n_quantiles head."""
+
+    def __init__(self, obs_dim, n_actions, n_quantiles=50):
+        super().__init__()
+        self.n_actions = n_actions
+        self.n_quantiles = n_quantiles
+        self.encoder = MLPEncoder(obs_dim)
+        self.head = nn.Linear(ENCODER_FEATURE_DIM, n_actions * n_quantiles)
+
+    def forward(self, obs):
+        """Return Q-values as mean of quantile values per action."""
+        features = self.encoder(obs)
+        quantiles = self.head(features).view(len(obs), self.n_actions, self.n_quantiles)
+        q_values = quantiles.mean(dim=2)
+        return q_values
+
+    def get_quantiles(self, obs):
+        """Return raw quantile values: [batch, n_actions, n_quantiles]."""
+        features = self.encoder(obs)
+        return self.head(features).view(len(obs), self.n_actions, self.n_quantiles)
+
+
+class ValueAlgorithm:
+    """QR-DQN -- Quantile Regression DQN with distributional value learning."""
+</old>
+<new>
+# EDITABLE region of custom_value_discrete.py — step 3: C51
+class QNetwork(nn.Module):
+    """Distributional Q-network for C51: MLPEncoder (fixed) + n_actions x n_atoms head."""
+
+    def __init__(self, obs_dim, n_actions, n_atoms=51, v_min=-500, v_max=500):
+        super().__init__()
+        self.n_actions = n_actions
+        self.n_atoms = n_atoms
+        self.register_buffer("atoms", torch.linspace(v_min, v_max, steps=n_atoms))
+        self.encoder = MLPEncoder(obs_dim)
+        self.head = nn.Linear(ENCODER_FEATURE_DIM, n_actions * n_atoms)
+
+    def forward(self, obs):
+        features = self.encoder(obs)
+        logits = self.head(features)
+        pmfs = torch.softmax(logits.view(len(obs), self.n_actions, self.n_atoms), dim=2)
+        q_values = (pmfs * self.atoms).sum(2)
+        return q_values
+
+    def get_action(self, obs, action=None):
+        features = self.encoder(obs)
+        logits = self.head(features)
+        pmfs = torch.softmax(logits.view(len(obs), self.n_actions, self.n_atoms), dim=2)
+        q_values = (pmfs * self.atoms).sum(2)
+        if action is None:
+            action = torch.argmax(q_values, 1)
+        return action, pmfs[torch.arange(len(obs)), action]
+
+
+class ValueAlgorithm:
+    """C51 -- Categorical DQN with distributional value learning."""
+</new>
+</edit>
+<obs>
+Successfully replaced text in cleanrl/cleanrl/custom_value_discrete.py.
+</obs>
+<note>
+Set the atom count and the support bounds `v_min = −500`, `v_max = +500`.
+</note>
+<edit path="cleanrl/cleanrl/custom_value_discrete.py">
+<old>
+        self.gamma = args.gamma
+        self.n_quantiles = 50
+        self.kappa = 1.0  # Huber loss threshold
+        self.total_it = 0
+
+        self.q_network = QNetwork(obs_dim, n_actions, self.n_quantiles).to(device)
+        self.target_network = QNetwork(obs_dim, n_actions, self.n_quantiles).to(device)
+        self.target_network.load_state_dict(self.q_network.state_dict())
+
+        self.optimizer = optim.Adam(self.q_network.parameters(), lr=args.learning_rate)
+
+        # Fixed quantile midpoints: tau_i = (2i - 1) / (2N) for i = 1, ..., N
+        self.tau = torch.arange(1, self.n_quantiles + 1, dtype=torch.float32, device=device)
+        self.tau = (2 * self.tau - 1) / (2 * self.n_quantiles)
+</old>
+<new>
+        self.gamma = args.gamma
+        self.n_atoms = 51
+        self.v_min = -500.0
+        self.v_max = 500.0
+        self.total_it = 0
+
+        self.q_network = QNetwork(obs_dim, n_actions, self.n_atoms, self.v_min, self.v_max).to(device)
+        self.target_network = QNetwork(obs_dim, n_actions, self.n_atoms, self.v_min, self.v_max).to(device)
+        self.target_network.load_state_dict(self.q_network.state_dict())
+
+        self.optimizer = optim.Adam(self.q_network.parameters(), lr=args.learning_rate)
+</new>
+</edit>
+<obs>
+Successfully replaced text in cleanrl/cleanrl/custom_value_discrete.py.
+</obs>
+<note>
+Route action selection through `get_action`, which argmaxes the mean of the categorical distribution.
+</note>
+<edit path="cleanrl/cleanrl/custom_value_discrete.py">
+<old>
+        obs_t = torch.tensor(obs.reshape(1, -1), device=self.device, dtype=torch.float32)
+        q_values = self.q_network(obs_t)
+        return torch.argmax(q_values, dim=1).item()
+</old>
+<new>
+        obs_t = torch.tensor(obs.reshape(1, -1), device=self.device, dtype=torch.float32)
+        action, _ = self.q_network.get_action(obs_t)
+        return action.item()
+</new>
+</edit>
+<obs>
+Successfully replaced text in cleanrl/cleanrl/custom_value_discrete.py.
+</obs>
+<note>
+Replace the quantile-Huber update with the categorical projection (`l == u` correction included) and cross-entropy loss.
+</note>
+<edit path="cleanrl/cleanrl/custom_value_discrete.py">
+<old>
+        with torch.no_grad():
+            # Get quantile values for next state from target network
+            next_quantiles = self.target_network.get_quantiles(next_obs)  # [batch, n_actions, n_quantiles]
+            next_q = next_quantiles.mean(dim=2)  # [batch, n_actions]
+            next_actions = next_q.argmax(dim=1)  # [batch]
+            # Select quantiles for best actions
+            next_quantiles_best = next_quantiles[torch.arange(len(next_obs)), next_actions]  # [batch, n_quantiles]
+            # Compute target quantile values
+            target_quantiles = rewards.unsqueeze(1) + self.gamma * next_quantiles_best * (1 - dones.unsqueeze(1))
+
+        # Get current quantile values for taken actions
+        current_quantiles = self.q_network.get_quantiles(obs)  # [batch, n_actions, n_quantiles]
+        current_quantiles = current_quantiles[torch.arange(len(obs)), actions]  # [batch, n_quantiles]
+
+        # Quantile Huber loss
+        # Pairwise TD errors: [batch, n_quantiles (pred), n_quantiles (target)]
+        td_errors = target_quantiles.unsqueeze(1) - current_quantiles.unsqueeze(2)  # [batch, N, N]
+
+        # Huber loss element-wise
+        abs_td = td_errors.abs()
+        huber = torch.where(abs_td <= self.kappa,
+                            0.5 * td_errors ** 2,
+                            self.kappa * (abs_td - 0.5 * self.kappa))
+
+        # Asymmetric weighting by quantile level
+        tau = self.tau.view(1, -1, 1)
+        quantile_weights = torch.abs(tau - (td_errors < 0).float())
+        loss = (quantile_weights * huber / self.kappa).sum(dim=2).mean(dim=1).mean()
+</old>
+<new>
+        with torch.no_grad():
+            _, next_pmfs = self.target_network.get_action(next_obs)
+            next_atoms = rewards.unsqueeze(1) + self.gamma * self.target_network.atoms * (1 - dones.unsqueeze(1))
+            # Projection
+            delta_z = self.target_network.atoms[1] - self.target_network.atoms[0]
+            tz = next_atoms.clamp(self.v_min, self.v_max)
+            b = (tz - self.v_min) / delta_z
+            l = b.floor().clamp(0, self.n_atoms - 1)
+            u = b.ceil().clamp(0, self.n_atoms - 1)
+            d_m_l = (u + (l == u).float() - b) * next_pmfs
+            d_m_u = (b - l) * next_pmfs
+            target_pmfs = torch.zeros_like(next_pmfs)
+            for i in range(target_pmfs.size(0)):
+                target_pmfs[i].index_add_(0, l[i].long(), d_m_l[i])
+                target_pmfs[i].index_add_(0, u[i].long(), d_m_u[i])
+
+        _, old_pmfs = self.q_network.get_action(obs, actions)
+        loss = (-(target_pmfs * old_pmfs.clamp(min=1e-5, max=1 - 1e-5).log()).sum(-1)).mean()
+</new>
+</edit>
+<obs>
+Successfully replaced text in cleanrl/cleanrl/custom_value_discrete.py.
+</obs>
+<note>
+Report the q-value metric from the categorical mean instead of the quantile mean.
+</note>
+<edit path="cleanrl/cleanrl/custom_value_discrete.py">
+<old>
+
+        q_values = current_quantiles.mean(dim=1)
+        return {"td_loss": loss.item(), "q_values": q_values.mean().item()}
+</old>
+<new>
+
+        q_values = (old_pmfs * self.q_network.atoms).sum(1)
+        return {"td_loss": loss.item(), "q_values": q_values.mean().item()}
+</new>
+</edit>
+<obs>
+Successfully replaced text in cleanrl/cleanrl/custom_value_discrete.py.
+</obs>
+<run/>
+<obs>
+Measured results — `baseline:c51` (`is_final,true`), seeds {42, 123, 456} and mean. Metric: mean greedy
+evaluation episodic return (higher is better).
+
+| seed | CartPole-v1 | LunarLander-v2 | Acrobot-v1 |
+|---|---|---|---|
+| 42 | 500.0 | 193.00 | −80.4 |
+| 123 | 485.4 | 257.71 | −80.8 |
+| 456 | 500.0 | 250.18 | −90.4 |
+| **mean** | **495.13** | **233.63** | **−83.87** |
+</obs>

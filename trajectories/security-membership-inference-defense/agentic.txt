@@ -1,0 +1,906 @@
+<meta task="security-membership-inference-defense" domain="Security" file="pytorch-vision/custom_membership_defense.py" model_format="qwen3" edit_tool="str_replace"/>
+
+<system>
+You are a research engineer improving a model on a fixed ML task. You work by editing the model code and running experiments. Think carefully before each change. You have these tools:
+- str_replace(path, old_str, new_str): replace the unique occurrence of old_str with new_str.
+- create(path, file_text): create a new file.
+- run_experiment(): train + evaluate the current code under the fixed budget; returns metrics.
+Make one tool call at a time. After editing, call run_experiment() to measure your method.
+</system>
+
+<user>
+## Research question
+
+A classifier trained on a private set leaks who was in that set. The leak is concrete and
+single-signal: an adversary hands the trained model a sample and asks "was this in your training
+data?", and on these benchmarks the adversary needs only one number to answer — the model's
+confidence on the sample (here the max softmax probability). Training crushes that confidence to ~1
+on members and leaves it lower and more scattered on non-members, so a threshold separates the two
+populations. The single thing being designed is the **training-time loss** — the scalar objective the
+fixed loop minimizes per minibatch — so that the member and non-member confidence distributions
+become hard to tell apart (low membership-inference AUC) *without* giving up test accuracy.
+Everything else — architecture, optimizer, schedule, data split, the attack itself — is frozen.
+
+## Prior art before the first rung (output-regularization lineage)
+
+The losses on this ladder are all answers to one question: how do I stop the model from being so
+sharply confident on its training set that a threshold on that confidence reveals membership? The
+lineage the first rung reacts to:
+
+- **Plain cross-entropy / ERM.** Minimize `−log p(y)` against a one-hot target. The optimum sits at an
+  *infinite* correct-vs-rest logit gap, and the logit gradient `p − y` only vanishes as `p → y`, so
+  nothing stops the optimizer from driving member losses to ~0 and member confidence to ~1. The
+  generalization gap — and with it the membership-advantage of a loss/confidence threshold — is
+  manufactured by the training procedure itself. Gap: no pressure on the output distribution at all;
+  maximal leakage by construction.
+- **Label smoothing (Szegedy et al., 2016).** Bleed a fraction `ε` of target mass onto a uniform
+  prior, `q'(k) = (1−ε)δ_{k,y} + ε/K`, so an infinite logit gap becomes infinitely costly and member
+  confidence is bounded below 1. It shifts every output toward uniform by roughly the *same* amount —
+  members and non-members alike — so it relocates the confidence distributions but barely changes how
+  *separable* they are. Gap: a rigid mean-shift; the two populations slide together without
+  overlapping.
+- **Confidence penalty (Pereyra et al., 2017).** Subtract the predictive entropy, `L = L_CE − β·H(p)`,
+  whose logit gradient `p_i(−log p_i − H)` adaptively pushes hardest on the classes the model is most
+  confident about. More surgical than smoothing — it concentrates on over-confident predictions rather
+  than flattening every class uniformly — but it is still a *mean*-control regularizer: it lifts the
+  confidence floor without deliberately spreading the member distribution to overlap the non-member
+  one, and pushed too hard it can destabilize training on the hardest dataset. Gap: adaptive but still
+  mean-shifting, with no variance lever.
+
+The fixed substrate below is the harness all four losses plug into.
+
+## The fixed substrate
+
+A standard supervised-classification loop is frozen and must not be touched. It loads the full
+training set, shuffles by seed, and splits it 50/50 by index into a **member** subset (used for
+training) and a **non-member** subset (never trained on); the held-out test set is separate. It builds
+the architecture for the benchmark — ResNet-20 (CIFAR-10), VGG-16-BN (CIFAR-100), MobileNetV2
+(FashionMNIST), all ReLU, Kaiming-initialized — and trains for **300 epochs** with **SGD** (lr 0.1,
+momentum 0.9, weight-decay 1e-4) under a **MultiStepLR** schedule (decay ×0.1 at epochs 150 and 225),
+batch size 128. Crucially, **train-time augmentation is OFF**: the loop deliberately lets the model
+overfit, because without overfit there is no measurable membership signal to defend against.
+
+After training, the loop runs a **confidence-based membership inference attack**: it computes the max
+softmax probability on every member and every non-member example and reports the AUC of that score as
+a member/non-member discriminator (Mann–Whitney U, so 0.5 is a coin flip). It also reports test
+accuracy, the mean member-minus-non-member confidence gap, and the composite privacy score. The loop
+calls exactly one method per minibatch — `compute_loss(logits, labels, epoch)` — and uses whatever
+scalar it returns as the loss to backpropagate. The attack, the split, the optimizer, the schedule,
+and the architectures are all fixed.
+
+## The editable interface
+
+Exactly one region is editable — the `MembershipDefense` class in `custom_membership_defense.py`. Every
+method on the ladder is a fill of one method: `compute_loss(self, logits, labels, epoch)` returns the
+scalar loss the frozen loop minimizes. `logits` are the raw model outputs `(B, K)`; `labels` are the
+ground-truth class indices `(B,)`; `epoch` is the current 0-indexed training epoch (available so a
+method can alternate behavior by epoch). The loop's only contract is "return a scalar loss"; the
+method may read `logits.size(1)` to learn the class count `K` and adapt per dataset.
+
+The starting point is the scaffold default: **plain cross-entropy** (ERM). Each later method replaces
+exactly this method body and nothing else.
+
+```python
+# EDITABLE region of custom_membership_defense.py — default fill (plain cross-entropy / ERM)
+import torch
+import torch.nn.functional as F
+
+
+class MembershipDefense:
+    """Training-time regularizer for privacy-utility tradeoffs.
+
+    compute_loss replaces nn.CrossEntropyLoss() in the fixed training loop.
+    Design a loss that reduces membership-inference leakage (lower MIA AUC)
+    while preserving test accuracy.
+    """
+
+    def __init__(self):
+        pass
+
+    def compute_loss(self, logits, labels, epoch):
+        return F.cross_entropy(logits, labels)
+```
+
+## Evaluation settings
+
+Three benchmarks spanning architecture and class count — **resnet20-cifar10** (10 classes),
+**vgg16bn-cifar100** (100 classes, the hardest: low test accuracy, easiest to overfit and to leak),
+and **mobilenetv2-fmnist** (10 classes, the easiest: already low leakage under plain training) — each
+on the fixed 300-epoch recipe at seed 42. Four reported metrics: `test_acc` (higher better),
+`mia_auc` (the attack's AUC; 0.5 is ideal, higher is worse leakage), `privacy_gap` (mean member −
+non-member confidence; smaller is better), and the primary composite
+
+`privacy_score = test_acc − max(mia_auc − 0.5, 0)`  (higher is better),
+
+which rewards accuracy and charges only for attack AUC above the coin-flip floor — so a defense is
+only worth its accuracy cost if it actually pushes the attack toward 0.5.
+
+The editable model code is in `pytorch-vision/custom_membership_defense.py`:
+```python
+class MembershipDefense:
+    """Training-time regularizer for privacy-utility tradeoffs.
+
+    The compute_loss method replaces nn.CrossEntropyLoss() in the
+    fixed training loop.  Design a loss that reduces membership
+    inference leakage (lower MIA AUC) while preserving test accuracy.
+
+    Args:
+        logits: raw model outputs, shape (batch_size, num_classes)
+        labels: ground-truth class indices, shape (batch_size,)
+        epoch:  current training epoch (0-indexed)
+
+    Returns:
+        scalar loss tensor
+    """
+
+    def __init__(self):
+        pass
+
+    def compute_loss(self, logits, labels, epoch):
+        return F.cross_entropy(logits, labels)
+```
+Improve it. Derive your method, edit the code, then run_experiment().
+</user>
+
+### step 1 — ERM (plain cross-entropy)   [slug:erm]
+
+<think>
+The defense is the whole point, but it bolts onto a trained classifier, and with no defense that
+classifier is the floor — so the thing to start from is just training the model on the private half of
+the data with the ordinary objective and seeing how badly it leaks. The frozen loop hands me one
+method, `compute_loss(logits, labels, epoch)`, and the default fill is the obvious one: standard
+cross-entropy, `F.cross_entropy(logits, labels)`. No privacy machinery, no schedule tricks — minimize
+`−log p(y)` against the one-hot target, exactly what every classifier does. That is the baseline the
+three published regularizers all react to, so I want its number on the board before I touch anything.
+
+Let me be precise about why this is the weakest possible setting, because the reason is structural, not
+incidental. Cross-entropy on a one-hot target places its optimum at an *infinite* correct-vs-rest logit
+gap: `p(y) → 1` only as `z_y − z_k → +∞` for every wrong class `k`. The per-logit gradient is `p − y`,
+bounded in `[−1, 1]`, so each step is gentle, but the target it chases sits at infinity and never
+vanishes until the loss is essentially zero. Nothing in the objective tells the optimizer to *stop*
+being confident on a training example. So over 300 epochs with augmentation deliberately turned off,
+the model is free to grind member losses down to ~0 and member confidence up to ~1. Members pile up at
+the confidence ceiling; non-members, never optimized, sit lower and more scattered. Two separated
+humps — and the fixed attack is exactly a threshold on that confidence. The training procedure is
+manufacturing the precise signal the adversary reads.
+
+Let me be exact about what the attacker reads, because the whole ladder is aimed at this one quantity
+and I should not start vague about it. The frozen loop, after training, runs the same forward pass on
+every member and every non-member example, takes the *max softmax probability* of each — the model's
+confidence in its own top prediction — and reports the AUC of that scalar as a member/non-member
+discriminator, computed by the Mann–Whitney U statistic so that 0.5 is a coin flip and 1.0 is perfect
+separation. Max-confidence is a monotone stand-in for the per-sample loss: a member the model has
+memorized has near-zero loss and near-1 confidence; a non-member the model never optimized has higher
+loss and lower, more scattered confidence. So the AUC the harness reports is, operationally, "how well
+does a threshold on confidence tell members from non-members." Anything I do in `compute_loss` only
+matters insofar as it changes the *two confidence distributions* — the member one and the non-member
+one — and specifically how separable they are. That framing is the thing I want fixed in my head before
+I touch any defense: relocating a distribution is not the same as making two distributions overlap, and
+the attack only cares about overlap.
+
+The composite the leaderboard ranks on, `privacy_score = test_acc − max(mia_auc − 0.5, 0)`, is built to
+punish exactly the cheap escape. The `max(·, 0)` means an attack AUC at or below 0.5 costs nothing —
+the model is rewarded purely for its accuracy — while every point of AUC above 0.5 is subtracted
+one-for-one from accuracy. So a defense is only worth its accuracy cost if it actually drags the attack
+toward the coin-flip floor; a defense that halves the leakage but also halves accuracy is a wash, and a
+defense that destroys accuracy to win privacy scores near zero. For the no-defense floor, both terms
+work against me wherever the model overfits: the overfit *is* the high AUC, and the datasets where the
+model overfits hardest are also, on these benchmarks, the ones where test accuracy is lowest. The two
+penalties compound.
+
+That tells me what the three benchmarks should do, and they should split on one axis: how much the
+model overfits, because the membership signal *is* the overfit. On **vgg16bn-cifar100** I expect the
+worst leakage by far. A hundred classes, a high-capacity VGG, no augmentation — the model can memorize
+the member half almost perfectly while test accuracy stays low (CIFAR-100 is hard and the test set is
+untouched by training). Large train-test gap means a wide confidence gap between members and
+non-members, which means a high attack AUC. On **resnet20-cifar10** I expect strong but milder leakage:
+ResNet-20 is small enough that it can't memorize CIFAR-10 perfectly, test accuracy is high (~0.8), so
+the gap is real but narrower. On **mobilenetv2-fmnist** I expect the least leakage of the three —
+FashionMNIST is easy, the model generalizes well, train and test confidence are both near the ceiling,
+so there is little gap for a threshold to exploit even with plain training. The composite
+`privacy_score = test_acc − max(mia_auc − 0.5, 0)` will therefore be dragged down hardest on
+CIFAR-100, where both terms hurt at once — low accuracy *and* high attack AUC.
+
+It is worth saying why the harness is rigged to *let* the model overfit, because that is a deliberate
+design choice that shapes the whole task. Train-time augmentation is turned off, and the model trains
+for a full 300 epochs with a step-decayed learning rate. Augmentation is the single most effective
+implicit regularizer against memorization on these datasets — random crops and flips mean the model
+essentially never sees the same input twice, so it cannot drive any individual member to zero loss. By
+removing it, the loop guarantees there *is* a measurable membership signal to defend against; with
+augmentation on, plain ERM already yields attack AUCs close to 0.5 on CIFAR-10 and there is nothing for
+a defense to improve. So the setting is adversarial by construction: the loop manufactures the
+worst-case overfit and asks the loss to claw the leakage back without the crutch of data augmentation,
+without touching the optimizer, and without trading away the accuracy that the same overfit produces.
+This is why the only lever I have is the per-minibatch scalar loss — the loop will not let me regularize
+any other way.
+
+I should also note what the loop deliberately *hands* me but ERM ignores. The `compute_loss` signature
+includes `epoch`, the current 0-indexed training epoch, which a method could use to change its behavior
+over the course of training — anneal a penalty, alternate phases, switch regimes after the learning-rate
+decay. Plain cross-entropy has no use for it; it is the same objective every epoch. But the fact that
+the contract exposes it tells me the harness anticipates losses that are *not* time-invariant, and I file
+that away — the strongest defense on this ladder will be the one that actually uses `epoch`. The method
+can also read `logits.size(1)` to learn the class count `K` and adapt per dataset, which again ERM does
+not need (cross-entropy is identical at every `K`) but a per-dataset defense will.
+
+There is nothing to derive here; ERM is the absence of a defense. What I am establishing is the
+reference the ladder climbs away from: a model that fits its members so confidently that a single
+threshold on confidence separates members from non-members, with the damage scaling with how badly each
+benchmark overfits. Let me also reason about *why* the threshold attack is so hard to beat, because it sets the bar for
+every rung above. The attack does not need to know the threshold in advance — the AUC integrates over
+*all* thresholds, so it measures the intrinsic separability of the two confidence populations regardless
+of where a real adversary would cut. That means I cannot defeat it by, say, lowering everyone's
+confidence by a constant: shifting both distributions down by the same amount leaves their relative
+ordering — and hence every threshold's true/false-positive rates — untouched, so the AUC does not move
+at all. The only things that move the AUC are changes to the *shape and relative position* of the two
+distributions: closing the gap between their means, or widening the member distribution so its tail
+reaches into the non-member mass. A defense that merely rescales or uniformly translates confidence is
+invisible to this metric. I suspect, even at the floor, that this is the trap the simplest defenses will
+fall into — but ERM does not even attempt it, so it should sit at the leakage ceiling and let the
+defenses prove whether they can do better than a uniform shift.
+
+Putting the two terms of the composite together per benchmark sharpens the prediction. On CIFAR-100,
+both the low test accuracy and the wide confidence gap pull the score down, so I expect the *smallest*
+privacy_score of the three by a large margin — the benchmark where a real defense has the most to gain
+and the most room to either help or, if it is too aggressive, destabilize. On CIFAR-10, accuracy is high
+and the gap moderate, so the score should be middling but the attack clearly above the floor. On
+FashionMNIST, accuracy is highest and the attack near the floor already, so the score should be highest
+and there is the least for any defense to improve — the benchmark most likely to *cost* accuracy without
+buying privacy. So even the floor's numbers should already foreshadow where the defenses earn their keep
+(CIFAR-100, CIFAR-10) and where they risk being dead weight (FashionMNIST).
+
+The diagnosis is already pointed at the next step — I have a *confidence* problem,
+not a fitting problem. The model fits fine; it fits *too* confidently. The fix has to reach into the
+output distribution and put a floor under member confidence so the member hump stops collapsing onto
+the ceiling, and the first, simplest way to do that is the one the lineage reached for first: soften the
+one-hot target itself. But that is the next rung; right now I just want the no-defense floor on the
+board, so let me write in plain cross-entropy.
+</think>
+<say>
+Starting from the no-defense floor: plain cross-entropy (ERM). This first edit just sets the
+MembershipDefense class to return `F.cross_entropy(logits, labels)` so I can measure how badly the
+undefended model leaks.
+</say>
+<edit path="pytorch-vision/custom_membership_defense.py">
+<old>
+class MembershipDefense:
+    """Training-time regularizer for privacy-utility tradeoffs.
+
+    The compute_loss method replaces nn.CrossEntropyLoss() in the
+    fixed training loop.  Design a loss that reduces membership
+    inference leakage (lower MIA AUC) while preserving test accuracy.
+
+    Args:
+        logits: raw model outputs, shape (batch_size, num_classes)
+        labels: ground-truth class indices, shape (batch_size,)
+        epoch:  current training epoch (0-indexed)
+
+    Returns:
+        scalar loss tensor
+    """
+</old>
+<new>
+import torch
+import torch.nn.functional as F
+
+
+class MembershipDefense:
+    """Standard cross-entropy training (ERM) — the no-defense floor."""
+</new>
+</edit>
+<obs>
+Successfully replaced text in pytorch-vision/custom_membership_defense.py.
+</obs>
+<run/>
+<obs>
+Measured results — `baseline:erm` (`is_final,true`), seed 42. No leaderboard ordering dispute at this
+rung: ERM is the no-defense floor by construction. (The three sub-leaderboard-strongest rungs below —
+erm, label_smoothing, confidence_penalty — land within ~0.04 privacy_score of one another and the
+CIFAR-100 numbers are confounded by a training collapse, so ordering among the simpler regularizers
+follows published consensus; see each reasoning. RelaxLoss is unambiguously strongest by measurement.)
+
+## resnet20-cifar10
+| seed | test_acc | mia_auc | privacy_gap | privacy_score |
+|---|---|---|---|---|
+| 42 | 0.7972 | 0.7275 | 0.0924 | 0.5697 |
+
+## vgg16bn-cifar100
+| seed | test_acc | mia_auc | privacy_gap | privacy_score |
+|---|---|---|---|---|
+| 42 | 0.5045 | 0.8677 | 0.1479 | 0.1368 |
+
+## mobilenetv2-fmnist
+| seed | test_acc | mia_auc | privacy_gap | privacy_score |
+|---|---|---|---|---|
+| 42 | 0.9260 | 0.5575 | 0.0211 | 0.8685 |
+</obs>
+
+### step 2 — Label Smoothing (Szegedy et al., 2016)   [slug:label_smoothing]
+
+<think>
+The no-defense run told me exactly what is wrong, and it told me in numbers. On
+**resnet20-cifar10** the attack reached 0.7275 AUC at 0.7972 test accuracy — well above the 0.5
+coin-flip floor, so confidence really does separate members from non-members, but the network is small
+enough that it can't memorize CIFAR-10 perfectly and the leak is moderate. On
+**vgg16bn-cifar100** the leak is brutal: 0.8677 AUC at only 0.5045 accuracy, privacy_gap 0.1479 — the
+high-capacity VGG memorizes the member half while the test set stays hard, so the confidence gap is
+wide and the composite privacy_score collapses to 0.1368, the worst of the three. On
+**mobilenetv2-fmnist** the leak is mild (0.5575 AUC at 0.926 accuracy): FashionMNIST is easy, the model
+generalizes, members and non-members both sit near the confidence ceiling, and there is little gap to
+threshold. So the diagnosis is confirmed and sharp — leakage scales with overfit, and the damage is
+concentrated exactly where the model can drive member confidence to ~1 while leaving non-members
+behind. It is a *confidence* problem. Cross-entropy's optimum sits at an infinite logit gap and never
+stops rewarding confidence, so members pile up at the ceiling. The first thing to try is the simplest
+intervention that puts a floor under that confidence: stop asking the model to be perfectly certain on
+its members in the first place.
+
+Let me start from what actually bugs me about the ERM objective, because the fix should come out of it.
+I have a softmax head, `p(k) = exp(z_k)/Σ_i exp(z_i)`, trained with cross-entropy against a one-hot
+target `q(k) = δ_{k,y}`, so the loss on an example is `−log p(y)`. To make `p(y) → 1` I need `z_y` to
+dominate every other logit by an *unbounded* margin: `p(y) → 1` only as `z_y − z_k → +∞` for all
+`k ≠ y`. The one-hot target is a maximum I can never reach at finite logits; it just keeps pulling the
+correct logit further above the rest, forever. The gradient `∂ℓ/∂z_k = p(k) − q(k)` is bounded in
+`[−1, 1]`, so each step is gentle, but the target it chases sits at infinity. That is precisely the
+0.8677-AUC behavior on CIFAR-100: nothing stops `z_y` from running off, so member confidence pins at
+the ceiling and the gap to the never-optimized non-members blows open.
+
+If the problem is "the target lives at infinity, so confidence runs away," the cure suggests itself:
+don't put the target at infinity. Give every class a little floor of target probability so the correct
+logit has no incentive to escape to `+∞`. Take the one-hot and bleed a little mass `ε` onto a fixed
+distribution `u` over labels:
+
+  `q'(k) = (1 − ε) δ_{k,y} + ε u(k)`.
+
+The natural `u`, absent any prior knowledge and on these class-balanced vision datasets, is uniform,
+`u(k) = 1/K`, so `q'(k) = (1 − ε)δ_{k,y} + ε/K`. Now check that this kills the runaway. Every entry of
+`q'` is at least `ε/K > 0`. If `z_y` tried to run off to `+∞`, then `p(y) → 1` and `p(k) → 0` for
+`k ≠ y`, and the cross-entropy `−Σ_k q'(k) log p(k)` would blow up on those wrong-class terms, because
+`q'(k) = ε/K` is positive while `log p(k) → −∞`. So an infinite logit gap is now infinitely
+*expensive*, not free. The target no longer sits at infinity; it sits at a finite, `ε`-controlled
+configuration of the logits — which means a finite, bounded member confidence, which is exactly the
+floor I wanted against the attack.
+
+Let me rewrite the loss to see its structure, because that tells me how to implement it and what to
+expect. Cross-entropy is linear in the target, so
+
+  `H(q', p) = −Σ_k q'(k) log p(k) = (1 − ε)·H(q, p) + ε·H(u, p)`,
+
+ordinary hard-label cross-entropy downweighted by `(1 − ε)`, plus an `ε`-weighted term `H(u, p)` that
+pulls the prediction toward the prior `u`. And `H(u, p) = D_KL(u‖p) + H(u)`; `H(u)` is constant, so
+that second term is, up to a constant, a penalty on how far `p` has drifted from uniform. It is a
+regularizer that says "stay a bit humble, don't get too far from the prior." For the harness this is
+even simpler: PyTorch's `F.cross_entropy` takes a `label_smoothing` argument that constructs exactly
+this `q'` and computes `H(q', p)` internally, so the entire defense is the single call
+`F.cross_entropy(logits, labels, label_smoothing=ε)` — I do not need to materialize the soft target or
+hand-write the two-term split; the loop calls my `compute_loss` once per minibatch and I hand back that
+one number. (This is the same criterion as a hand-rolled `(1−ε)·nll + ε·mean_k(−log p_k)` module, but
+the built-in flag is the literal edit the scaffold wants, and it is numerically identical.)
+
+Now I want to understand what this does to the network geometrically, because that is where the "will it
+actually beat the attack" question lives, and I am suspicious it will not beat it by much. The logit for
+class `k` is `z_k = x^T w_k`, where `x` is the penultimate activation and `w_k` is the class template.
+Look at a squared distance: `‖x − w_k‖² = x^T x − 2 x^T w_k + w_k^T w_k`. The `x^T x` term is the same
+for every class (cancels in the softmax), and `w_k^T w_k` is roughly constant across templates, so what
+varies with `k` is `−2 z_k`. The softmax is a soft nearest-template classifier in penultimate space.
+With hard targets, only the gap `z_y − z_k` matters and it wants to be huge; the wrong-class logits are
+otherwise free, so activations sprawl at large magnitude — the over-confidence, now visible as scale.
+With smoothing, the wrong-class target is the *same* value `ε/K` for *every* wrong class, so the loss
+wants all wrong-class logits equal — `x` equidistant from every incorrect template — and a *particular
+finite* gap to the correct one. Smoothing drives each activation close to its own template and equally
+far from all others, at bounded magnitude. Tight, equally-separated clusters at a confidence ceiling
+that is now strictly below 1.
+
+Here is the catch, and it is exactly what I have to confront given the attack I am facing. Smoothing
+applies the *same* pressure to *every* sample: it pulls every output toward uniform by roughly the same
+amount, member and non-member alike (the regularizer is in the training loss, but the bounded-magnitude
+geometry it imposes shows up at inference on both populations). So it *translates* the member-confidence
+hump down to a lower mean — good, the member confidences no longer pin at the ceiling — but it
+translates the whole distribution more or less rigidly, and the spread barely changes. A threshold
+attacker does not care about the absolute confidence level; it cares about *separability*. Rigidly
+shifting the member distribution down, while the non-member distribution is largely where it was, can
+even *hurt*: if the shift overshoots, members and non-members can end up about as separable as before,
+just relocated, and the accuracy cost of the smoothing (members are now less confident on genuinely
+correct answers too) shows up directly in the `test_acc` term of the composite. This is the wall I
+expect to hit: a mean-shifting regularizer leaves the two distributions roughly as distinguishable as
+ERM left them, only moved — so `mia_auc` may not drop much, and it may not drop at all net of the
+accuracy I pay.
+
+There is a subtler reason smoothing is the *right first* rung to try even if I expect it to underwhelm,
+and it is about safety. Smoothing's gradient is benign everywhere: it is just cross-entropy against a
+strictly-positive target, so it can never push the loss in a destabilizing direction — there is no
+gradient ascent, no sign flip, no regime where the objective fights itself. That matters because the
+CIFAR-100 setting is the one most likely to misbehave under a more aggressive defense, and I want to
+know how much privacy a *perfectly stable* regularizer can buy before I reach for anything that
+deliberately destabilizes training. Smoothing is the gentle, collapse-proof probe of "how much does
+bounding confidence, with no variance lever, actually help here?"
+
+One more design point, the value of `ε`. It is the single knob, the fraction of target mass moved to
+uniform; it trades data-fitting against humility. Too small and the floor under confidence is too high
+to dent the attack; too large and accuracy craters as the correct class loses its mass. The
+well-established default for vision classification is `ε = 0.1`, and I have no task-specific reason to
+move off it — the datasets are class-balanced, so uniform `u` is the right prior, and 0.1 is the value
+that lifts accuracy as a regularizer on ImageNet-scale problems without flattening the output. I keep
+`ε = 0.1` fixed across all three benchmarks; the loop already exposes `epoch` but smoothing has no
+reason to vary by epoch, so `compute_loss` ignores it.
+
+So the falsifiable expectations against the ERM numbers. I expect smoothing to *reduce member
+confidence* — the privacy_gap should come down from ERM's levels — because it puts a hard floor under
+how confident the model can be. But I expect the *attack AUC to move little*, because the shift is
+roughly uniform across members and non-members and does not change their separability; on the
+CIFAR-100 case where ERM hit 0.8677, I would be surprised to see smoothing pull it below the high-0.8s,
+and the small accuracy cost of smoothing could leave the composite privacy_score *flat or slightly
+worse* than ERM's 0.1368 rather than better. On resnet20-cifar10 I expect roughly ERM-level accuracy
+(~0.79, maybe a touch lower) with an AUC that does not improve, so privacy_score near or just below
+ERM's 0.5697. On mobilenetv2-fmnist, where leakage is already mild, smoothing has little to fix and a
+small accuracy cost, so I expect privacy_score at or slightly below ERM's 0.8685. If those hold —
+confidence floored but separability untouched — they are the precise evidence that I need a regularizer
+that changes the *shape* of the member distribution, not just its location: something adaptive that
+pushes hardest on the over-confident predictions. That is the next rung. For now, let me swap in
+cross-entropy with fixed `ε = 0.1` label smoothing.
+</think>
+<say>
+Rung two: label smoothing (Szegedy et al., 2016). I replace the loss with
+`F.cross_entropy(logits, labels, label_smoothing=0.1)` — a fixed floor under member confidence — to test
+whether bounding confidence uniformly does anything to the attack's separability.
+</say>
+<edit path="pytorch-vision/custom_membership_defense.py">
+<old>
+class MembershipDefense:
+    """Standard cross-entropy training (ERM) — the no-defense floor."""
+
+    def __init__(self):
+        pass
+
+    def compute_loss(self, logits, labels, epoch):
+        return F.cross_entropy(logits, labels)
+</old>
+<new>
+class MembershipDefense:
+    """Cross-entropy with fixed label smoothing (Szegedy et al., 2016)."""
+
+    def __init__(self):
+        self.label_smoothing = 0.1
+
+    def compute_loss(self, logits, labels, epoch):
+        return F.cross_entropy(logits, labels, label_smoothing=self.label_smoothing)
+</new>
+</edit>
+<obs>
+Successfully replaced text in pytorch-vision/custom_membership_defense.py.
+</obs>
+<run/>
+<obs>
+Measured results — `baseline:label_smoothing` (`is_final,true`), seed 42. Ordering of label_smoothing
+relative to erm and confidence_penalty follows published consensus, not the leaderboard: the three
+land within ~0.04 mean privacy_score of one another and the CIFAR-100 column is confounded by a
+training collapse in confidence_penalty, so a numeric tie-break would be unreliable; see reasoning.
+
+## resnet20-cifar10
+| seed | test_acc | mia_auc | privacy_gap | privacy_score |
+|---|---|---|---|---|
+| 42 | 0.7878 | 0.7678 | 0.1377 | 0.5200 |
+
+## vgg16bn-cifar100
+| seed | test_acc | mia_auc | privacy_gap | privacy_score |
+|---|---|---|---|---|
+| 42 | 0.5258 | 0.8686 | 0.2866 | 0.1572 |
+
+## mobilenetv2-fmnist
+| seed | test_acc | mia_auc | privacy_gap | privacy_score |
+|---|---|---|---|---|
+| 42 | 0.9270 | 0.5810 | 0.0216 | 0.8460 |
+</obs>
+
+### step 3 — Confidence Penalty (Pereyra et al., 2017)   [slug:confidence_penalty]
+
+<think>
+Label smoothing landed almost exactly where I feared, and the numbers say why. On
+**resnet20-cifar10** it bought nothing: test accuracy slipped to 0.7878 (from ERM's 0.7972) and the
+attack AUC actually *rose* to 0.7678 (from 0.7275), so the composite privacy_score fell to 0.5200,
+below ERM's 0.5697. On **vgg16bn-cifar100** the AUC barely budged — 0.8686 versus ERM's 0.8677,
+statistically the same wall — and although the privacy_score ticked up to 0.1572 it did so off a tiny
+accuracy bump, not off any real defense; the privacy_gap even *widened* to 0.2866. On
+**mobilenetv2-fmnist** it was a small net loss (0.8460 vs 0.8685). This is the mean-shift failure made
+concrete: smoothing relocated the member-confidence distribution but did not change its *separability*
+from the non-members, so the attack — which thresholds confidence and cares only about separability —
+was untouched, and I paid a little accuracy for nothing. The lesson is precise. Bounding confidence
+uniformly is not enough; I need a regularizer that applies its pressure *where the over-confidence
+actually is*, adaptively, rather than pulling every output toward uniform by the same amount. The
+member hump did not move toward the non-member hump in any way the attacker notices because smoothing
+treats a sample the model has already memorized exactly like a sample it is unsure about.
+
+So let me re-derive the regularizer from the symptom rather than from the cure. The disease shows up in
+the *output distribution*: an overfit network puts almost all its softmax mass on one class — a
+low-entropy spike — and that spike is exactly the high-confidence signal the attack reads. Smoothing
+medicated this by editing the *target* (move mass to uniform), which acts identically on every example.
+What I want instead is to penalize the spike *itself*, in proportion to how spiked each output is, so
+the pressure concentrates on the confident predictions and ignores the ones already spread out. Entropy
+is the scalar that measures the spike. For a softmax output,
+
+  `H(p) = − Σ_i p_i log p_i`,
+
+maximal at uniform, zero at a one-hot spike. Over-confidence is low entropy; the cure is to push
+entropy up. So take the cross-entropy I already minimize and *subtract* a multiple of the output
+entropy:
+
+  `L = L_CE − β·H(p)`.
+
+Let me get the sign right because it is easy to flip. I minimize `L`. The term `−β·H` means that to make
+`L` small I want `H` large — high entropy, less peaked outputs — so I am *penalizing low entropy*,
+penalizing confidence. The scaffold's `compute_loss` returns this directly: cross-entropy minus a
+weight times the mean per-sample entropy. `β` controls how hard I push.
+
+Now is this surgical or a sledgehammer? The answer is in the gradient of the entropy with respect to
+the logits, because that is what flows back. Using the softmax Jacobian
+`∂p_j/∂z_i = p_j(δ_{ij} − p_i)`,
+
+  `∂H/∂z_i = − Σ_j (∂p_j/∂z_i)(log p_j + 1) = − Σ_j p_j(δ_{ij} − p_i)(log p_j + 1)`,
+
+and splitting the `δ_{ij}` and `−p_i` pieces, with `Σ_j p_j(log p_j + 1) = −H + 1`, this collapses to
+
+  `∂H/∂z_i = p_i(− log p_i − H)`.
+
+Sit with that. The quantity `− log p_i` is the surprisal of class `i`, and `H` is the *mean* surprisal,
+so the entropy gradient on logit `i` is the deviation of `i`'s surprisal from the mean, weighted by
+`p_i`. Read off the consequences, remembering I optimize `−β·H`, so descent moves opposite the entropy
+gradient. For the class the model is confident about, `p_i` is large and `− log p_i` is small (below the
+mean), so `∂H/∂z_i` is negative, the loss gradient is positive, and the update pulls that logit *down*.
+For a class the model has nearly killed, `p_i ≈ 0`, the whole term is multiplied by `p_i ≈ 0` and the
+push is negligible. So this does *not* yank every dead class toward uniform; it acts mostly on the
+dominant, over-confident class. This is exactly the adaptivity label smoothing lacked. Smoothing forced
+every wrong class toward the same `ε/K`; the confidence penalty weights its pressure by the model's own
+current probabilities, so it concentrates precisely on the spiked, memorized predictions — the ones
+generating the membership signal — and leaves the already-uncertain outputs alone.
+
+I can make this exact by comparing the two as KL penalties to uniform, because that nails *why* the
+confidence penalty should beat smoothing on the attack rather than just shifting things. Smoothing, up
+to a constant, adds the *forward* KL `D_KL(u‖p) = Σ_i u_i log(u_i/p_i)`, whose per-class weight is the
+*constant* `u_i = 1/K` — equal pressure on every class regardless of what the model is doing. The
+confidence penalty is `−H(p)`, and `D_KL(p‖u) = Σ_i p_i log(p_i/u_i) = −H(p) + log K`, so up to a
+constant the confidence penalty is the *reverse* KL to uniform, whose per-class weight is the model's
+own `p_i` — large precisely on the classes the model is currently confident about. Same target
+distribution (uniform), opposite KL direction, and the reversal is the formal reason one is adaptive
+and the other uniform. Against this attack, adaptive is what I want: I want to flatten the spikes that
+leak, not relocate every output.
+
+Now an honesty check, because this is the rung where I expect to learn whether *any* mean-control
+regularizer can break the attack, or only buy stability. The confidence penalty is still, at bottom, a
+device that lifts the confidence floor — it pushes the spiked outputs down toward uniform. It is more
+*targeted* than smoothing, so I expect it to dent the attack where smoothing could not, especially on
+the easy/moderate benchmarks. But it has no explicit lever on the *variance* of the member-confidence
+distribution: it pushes each over-confident sample toward uniform, which compresses the high end of the
+member distribution, but it does not deliberately *spread* members out to overlap the non-members. So I
+expect it to help, but to remain a mean-region intervention — and the harder the dataset, the more I
+worry it will not be enough.
+
+There is a sharper worry specific to CIFAR-100, and it comes from a tension the entropy bonus carries.
+In reinforcement learning the entropy bonus is wanted *throughout* training — keep exploring — but in
+supervised learning I actually want fast convergence on the easy examples and humility only near the
+end, once the model starts memorizing. A *constant* `−β·H` from epoch one is a blunt instrument: early
+it fights the very convergence I want, late it does its job. The richer version of this method anneals
+`β` or replaces it with a hinge `+β·max(0, Γ − H)` that only switches on once entropy has dropped below
+a threshold — "weak early, strong near convergence." But the scaffold edit I am landing here is the
+*plain, fixed-`β`* form: `L_CE − β·H(p)` with `β` constant for all 300 epochs and no threshold. The
+harness exposes `epoch` so I *could* anneal, but the baseline does not — it is the unscheduled entropy
+penalty, and I should reason against exactly that. The risk that follows is real: a constant entropy
+push on the highest-capacity model (VGG-16-BN, 100 classes) is the configuration most likely to fight
+training hard enough to *destabilize* it — if the penalty keeps flattening outputs while the schedule
+decays the learning rate, the model can fail to commit to the correct class at all, and on a 100-class
+problem with low baseline accuracy that can tip into a degenerate solution where accuracy collapses
+toward chance. A fixed `β` has no relief valve for that, where smoothing's strictly-positive target
+never could destabilize. So I am trading smoothing's guaranteed safety for adaptivity, and on the
+hardest benchmark that trade carries collapse risk.
+
+The knob. `β` trades data-fitting against humility and is genuinely task-dependent, but the established
+default for this penalty as a general regularizer is `β = 0.1`, and I keep it fixed across all three
+benchmarks — same value, no per-dataset tuning, no schedule. The implementation is one extra reduction
+over the logits I already have: `log_softmax` once (numerically stable — never `log` of a separately
+formed softmax), recover `p = exp(log p)`, the per-sample entropy `−Σ_i p_i log p_i`, average over the
+batch, and return `L_CE − β·H̄`. No extra forward or backward passes, no auxiliary network, `epoch`
+unused.
+
+The falsifiable expectations against the smoothing numbers. Because the pressure is now adaptive and
+concentrated on the spiked outputs, I expect the attack AUC to *drop* where smoothing left it flat —
+on **resnet20-cifar10** below smoothing's 0.7678 and ERM's 0.7275, at roughly ERM-level accuracy
+(~0.79), so privacy_score recovering above smoothing's 0.5200 and plausibly above ERM. On
+**mobilenetv2-fmnist** I expect a clean small win over smoothing's 0.8460 (the penalty trims the few
+spiked outputs at almost no accuracy cost), back toward or above ERM's 0.8685. The CIFAR-100 case is
+where I am genuinely unsure, and where I expect the constant-`β` trade to bite: either a modest AUC dent
+below 0.8686 at preserved low accuracy, *or* — the failure mode I just argued — a training collapse in
+which the unscheduled entropy push prevents the 100-class model from committing, accuracy craters toward
+chance, and the composite privacy_score becomes meaningless. If CIFAR-100 collapses while the two
+easier benchmarks improve, that is the decisive evidence: a fixed, unscheduled mean-control penalty is
+both insufficiently powerful *and* unsafe on the hardest case, and the next rung must do two new things
+at once — control the loss *level* without crushing it to a degenerate point, and deliberately *spread*
+the member distribution so it overlaps the non-members, instead of only shifting its mean. So let me
+implement the plain fixed-`β` confidence penalty and find out.
+</think>
+<say>
+Rung three: the confidence penalty (Pereyra et al., 2017). This edit returns
+`CE − 0.1·H(p)`, subtracting the mean predictive entropy so the pressure concentrates adaptively on the
+over-confident, spiked outputs rather than shifting every class uniformly.
+</say>
+<edit path="pytorch-vision/custom_membership_defense.py">
+<old>
+class MembershipDefense:
+    """Cross-entropy with fixed label smoothing (Szegedy et al., 2016)."""
+
+    def __init__(self):
+        self.label_smoothing = 0.1
+
+    def compute_loss(self, logits, labels, epoch):
+        return F.cross_entropy(logits, labels, label_smoothing=self.label_smoothing)
+</old>
+<new>
+class MembershipDefense:
+    """Cross-entropy minus a predictive-entropy bonus (Pereyra et al., 2017)."""
+
+    def __init__(self):
+        self.entropy_weight = 0.1
+
+    def compute_loss(self, logits, labels, epoch):
+        ce = F.cross_entropy(logits, labels)
+        probs = torch.softmax(logits, dim=1)
+        entropy = -(probs * torch.log(probs.clamp_min(1e-8))).sum(dim=1).mean()
+        return ce - self.entropy_weight * entropy
+</new>
+</edit>
+<obs>
+Successfully replaced text in pytorch-vision/custom_membership_defense.py.
+</obs>
+<run/>
+<obs>
+Measured results — `baseline:confidence_penalty` (`is_final,true`), seed 42. Ordering relative to erm
+and label_smoothing follows published consensus, not the leaderboard mean: the vgg16bn-cifar100 run is
+a degenerate training collapse (test_acc 0.01 ≈ chance), which makes a numeric privacy_score tie-break
+across the three simpler rungs unreliable; see reasoning.
+
+## resnet20-cifar10
+| seed | test_acc | mia_auc | privacy_gap | privacy_score |
+|---|---|---|---|---|
+| 42 | 0.7974 | 0.7130 | 0.1012 | 0.5844 |
+
+## vgg16bn-cifar100
+| seed | test_acc | mia_auc | privacy_gap | privacy_score |
+|---|---|---|---|---|
+| 42 | 0.0100 | 0.0026 | 0.0000 | 0.0100 |
+
+## mobilenetv2-fmnist
+| seed | test_acc | mia_auc | privacy_gap | privacy_score |
+|---|---|---|---|---|
+| 42 | 0.9273 | 0.5602 | 0.0258 | 0.8671 |
+</obs>
+
+### step 4 — RelaxLoss (Chen, Yu, Fritz, ICLR 2022)   [slug:relaxloss]
+
+<think>
+The confidence penalty confirmed both halves of my worry, and the CIFAR-100 number is the headline.
+On **resnet20-cifar10** the adaptivity paid off as predicted: the attack AUC dropped to 0.7130 (below
+smoothing's 0.7678 and even ERM's 0.7275) at preserved 0.7974 accuracy, so privacy_score rose to
+0.5844, the best of the simple rungs there. On **mobilenetv2-fmnist** it was a clean small win
+(0.8671, essentially back to ERM's 0.8685, better than smoothing's 0.8460). But on
+**vgg16bn-cifar100** the run *collapsed*: test_acc 0.01 — chance on a 100-class problem — with AUC
+0.0026 and a meaningless privacy_score of 0.01. That is exactly the failure I flagged: a constant,
+unscheduled entropy push on the highest-capacity model, fighting the cross-entropy while the learning
+rate decays, prevented the model from ever committing to the correct class. So I now have the full
+shape of the wall. The three mean-control rungs together show: (1) shifting confidence uniformly
+(smoothing) does nothing to separability; (2) shifting it adaptively (confidence penalty) dents the
+attack on easy/moderate cases but never breaks it; and (3) pushing a mean-control penalty hard enough
+to matter on the hardest case destabilizes training. None of them touched the attack's actual lever.
+The attack thresholds member-versus-non-member confidence, and not one of these regularizers made the
+two distributions *overlap* — they only relocated, compressed, or destroyed the member one. I need a
+method that targets overlap directly, and does so without the collapse risk.
+
+Let me restart from what the attacker actually reads, because that is the only thing worth fighting.
+There is a clean result that says the attack is essentially one-dimensional. Model the trained
+parameters as a posterior `P(θ | z_1,…,z_n) ∝ exp(−(1/T) Σ_i ℓ(θ, z_i))`, single out one sample `z_1`,
+and ask for the Bayes-optimal membership guess. Push the algebra through and the dependence on `θ`
+collapses: the optimal score is `s(z_1) = (1/T)(τ(z_1) − ℓ(θ, z_1))`, where `τ(z_1)` is the typical
+loss `z_1` incurs under models that *didn't* train on it. The optimal attacker — even white-box — reads
+exactly one number: the sample's loss `ℓ(θ, z_1)`. The confidence the harness thresholds is a monotone
+proxy for that loss. And there is a second result pointing the same way: Yeom and colleagues showed the
+simplest bounded-loss attacker has membership advantage equal to the *generalization gap*,
+`R_gen = E_test[ℓ] − E_train[ℓ]`. So the entire job reduces to a statement about *distributions*: let
+`P` be the per-sample loss distribution over members, `Q` over non-members. If a threshold separates
+`P` from `Q`, the attacker wins; if they overlap, it cannot. Defense = make `P` and `Q`
+indistinguishable. That reframes every failure above. Plain cross-entropy crushes `P` to a tight spike
+near zero, well-separated from `Q` (the 0.84–0.87 AUCs). Smoothing and the confidence penalty *shifted
+or compressed* `P` but left it a recognizable, separable hump. I have been moving `P` around; I need to
+make it *bleed into* `Q`.
+
+Two things make two humps hard to tell apart: the distance between their means, and their widths. And
+here is the structural fact I had not used: the non-member distribution `Q` already has the *larger*
+variance — never optimized, its losses are scattered — while `P` is a tight spike near zero. The member
+hump is narrow *and* low; doubly easy to threshold. So I want two things at once: bring `P`'s mean *up*
+toward `Q`'s, *and* spread `P` out so it stops being a spike. The three prior rungs only ever attempted
+the first, and even that rigidly. The second lever — variance — is the one nobody pulled, and it is the
+one that produces overlap.
+
+The mean part I can simplify drastically. Manipulating full distributions is hopeless — I would need a
+hold-out non-member set just to estimate `Q`, which a real defender does not have. So target the
+*mean*. Pick a target loss level `α > 0` that is *achievable for non-members too*, not the unreachable
+zero, and aim the average member loss at `α` instead of at 0. Concretely: while the batch mean loss is
+above `α`, the model is genuinely undertrained — do ordinary descent. Once the mean drops *below* `α`,
+do not keep descending (that re-opens the gap); push it back *up* to `α`. Pushing loss up is gradient
+*ascent*. I can fold both directions into one objective the fixed optimizer just minimizes:
+`|L − α|`. When `L > α`, `d|L−α|/dθ = +∇L`, descent; when `L < α`, `d|L−α|/dθ = −∇L`, which under the
+minimizer's subtract-the-gradient rule is ascent. One absolute-value loss is the whole thermostat:
+descend above `α`, ascend below, settle at `α`. Crucially, this is *not* the confidence penalty's
+unbounded flattening — it does not keep pushing the output toward uniform once the loss is high enough;
+it *holds* the loss at a finite, non-degenerate `α`. That is the relief valve CIFAR-100 lacked: the
+objective stops fighting once the member loss reaches `α`, so it cannot drive the model to chance.
+
+Now the part the prior rungs never got: does ascent also *spread* `P`? Take one sample's loss change
+under the batch ascent step `θ → θ + τ∇L` and Taylor-expand:
+`Δℓ_i = (τ/B)‖∇ℓ_i‖² + (τ/B)Σ_{j≠i}⟨∇ℓ_i, ∇ℓ_j⟩ + o(τ)`. Under comparable gradient norms and
+non-negative alignment this is `Δℓ_i ≈ c_1‖∇ℓ_i‖² + c_2` with `c_1 > 0`. Now connect the norm to the
+loss: for cross-entropy `∇_θ ℓ = J^T(p − y)`, so as a sample's loss shrinks, `p → y`, `‖p − y‖ → 0`,
+and `‖∇ℓ‖² → 0`. The gradient norm is small for low-loss samples and large for high-loss ones, so
+`Cov(‖∇ℓ‖², ℓ) > 0`. Chain them: `Cov(ℓ, Δℓ) = c_1 Cov(ℓ, ‖∇ℓ‖²) > 0`. High-loss samples get pushed
+up *more* than low-loss ones — and that is a variance-increasing operation, since
+`Var(ℓ + Δℓ) = Var(ℓ) + Var(Δℓ) + 2Cov(ℓ, Δℓ) > Var(ℓ)`. The ascent step *fattens* `P` — it does not
+just shift the mean, it stretches the tail. This is the lever the mean-shifting regularizers structurally
+cannot pull: smoothing and the confidence penalty push every member up by roughly the same amount,
+leaving `Var(P)` essentially untouched (which is *why* their distributions stayed separable in the
+numbers); ascent pushes the already-high losses up harder, fattening `P` until it overlaps the wider
+`Q`. Both levers — mean toward `α`, variance up — fall out of the one absolute-value objective.
+
+That this lowers the attack is not hand-waving. Treat the attack as a hypothesis test `P` vs `Q`; the
+optimal attacker's AUC is bounded by the total-variation distance,
+`AUC ≤ −½ D_TV(P,Q)² + D_TV(P,Q) + ½`, increasing in `D_TV` on `[0,1]`. Bound `D_TV ≤ √2 D_H` by the
+Hellinger distance, which for Gaussians `P ~ N(μ_1, σ_1²)`, `Q ~ N(μ_2, σ_2²)` has a closed form.
+Shrinking the mean gap `(μ_1 − μ_2)²` and raising the member variance `σ_1²` (with `σ_2` fixed) both
+raise the Hellinger exponential factor toward 1, and since `Q` started wider (`σ_2 ≥ σ_1`), fattening
+`P` moves the variance ratio toward equality where the prefactor is maximized. So both levers shrink
+`D_H`, hence `D_TV`, hence the AUC ceiling. Exactly the two moves I derived, exactly the metric the
+harness reports.
+
+Now the cost, because relaxing member loss threatens utility in a specific way. If I let `p_gt` (the
+predicted probability on the true class) sit lower and the leftover mass `1 − p_gt` happens to
+concentrate on one competing class — which is what happens on hard samples near a two-class decision
+boundary — some wrong class can exceed `p_gt` and the argmax flips. I have relaxed confidence into
+misclassification. The fix must *preserve* the privacy gain (do not re-sharpen `p_gt` toward 1, or I
+undo the defense) while protecting the argmax. The argmax is safe as long as `p_gt` beats every
+competitor, so at *fixed* `p_gt` I want to maximize the margin, i.e. make the largest competitor as
+small as possible — which means spreading `1 − p_gt` *evenly* over the `K − 1` wrong classes, each
+getting `(1 − p_gt)/(K − 1)`. Construct that target and train toward it:
+
+  `t^c = p_gt` if `c` is the true class, else `t^c = (1 − p_gt)/(K − 1)`.
+
+This is *posterior flattening*: do not change how confident I am in the truth, only equalize the doubt
+so no single rival can overtake. Two details matter. The target `t` is built from the model's *own*
+current `p_gt`, read off the forward pass, so it must be treated as a *constant* — apply stop-gradient
+to `t`, or the gradient would flow back through the `p_gt` inside `t` and start re-sharpening the
+confidence I am trying to leave alone. And *which* samples to flatten: a correctly-classified sample's
+argmax is already fine, so flattening it spends effort on rivals that are not winning and can perturb a
+settled prediction. The samples that need margin protection are the *misclassified* ones. So gate the
+soft cross-entropy by `(1 − correct_i)`. Meanwhile keep pushing the loss up by subtracting the
+per-sample cross-entropy, so the per-sample objective is
+`loss_i = (1 − correct_i)·ℓ_soft_i − ℓ_CE_i`, batch-mean. The `−ℓ_CE_i` term is ascent (keeps the loss
+elevated and spreading); the gated `ℓ_soft_i` fixes the argmax of exactly the samples that need it, at
+fixed `p_gt`.
+
+Now assemble it into the two-phase rule the scaffold lands, and note exactly what this harness exposes.
+I alternate by epoch parity using the `epoch` argument the loop hands me — the prior rungs ignored it;
+this is the first method that needs it. On **even epochs**, use the thermostat directly:
+`loss = |L − α|` — descent above `α`, ascent (with its free variance-spreading) below. On **odd
+epochs**, if `L > α` the model is still undertrained, so ordinary descent, `loss = L`; only when
+`L ≤ α` does the posterior-flattening branch run,
+`loss = mean_i[(1 − correct_i)·ℓ_soft_i − ℓ_CE_i]`. Alternating keeps the flattening branch from
+swamping the ascent step. Two hyperparameters. `upper` clamps `p_gt` into `[0, upper]` before building
+`t`; with `upper = 1.0` it is a no-op (it cannot clamp a probability below 1), kept for faithfulness to
+the reference, and that is the value this benchmark uses. `α` is the real knob — a loss level reachable
+by non-members — and this harness selects it by class count read from `logits.size(1)`: `α = 0.5` when
+`K = 100` (CIFAR-100) and `α = 1.0` otherwise (the 10-class CIFAR-10 and FashionMNIST cases). That
+per-dataset `α` is the one place the method adapts, and it is read at call time from the logits, not
+configured externally — exactly what the fixed `compute_loss` signature allows.
+
+The falsifiable expectations against the prior numbers. The decisive prediction is on
+**vgg16bn-cifar100**, where the confidence penalty *collapsed* to 0.01. The thermostat holds the member
+loss at a finite `α = 0.5` rather than driving it to a degenerate point, and the flattening branch
+protects the argmax of misclassified samples, so accuracy should *not* collapse — I expect it to recover
+to genuine, non-trivial accuracy (well above ERM's 0.5045, plausibly into the low-0.6s as the relaxation
+acts as a regularizer), while the variance-spreading drags the attack AUC well down from the
+0.86–0.87 the mean-control rungs were stuck at — toward the mid-0.6s. That combination would lift the
+CIFAR-100 privacy_score from the wreckage (0.01) and the ERM floor (0.1368) to something several-fold
+larger. On **resnet20-cifar10** I expect the attack to drop hardest of all — overlap, not just a shift —
+plausibly to near the 0.5 coin-flip floor, at roughly ERM-level accuracy, so privacy_score should clear
+every prior rung's ~0.57–0.58 by a wide margin and approach test_acc itself (the regime where the
+attack is neutralized). On **mobilenetv2-fmnist**, where leakage was already mild, I expect the AUC at
+or near 0.5 (the privacy term essentially zero), though here the relaxation may cost some accuracy on
+an already-easy task, so privacy_score could sit a little below the ~0.87 of the easy rungs even as the
+attack is fully defused. The clean, falsifiable signature that distinguishes this method from the three
+that failed: the attack AUC moving *toward 0.5* — overlap — rather than the member distribution merely
+relocating, and CIFAR-100 *not* collapsing. If those hold, the variance lever is what broke the wall.
+So let me write in the full two-phase RelaxLoss rule.
+</think>
+<say>
+Rung four: RelaxLoss (Chen, Yu, Fritz, ICLR 2022). This edit installs the two-phase rule —
+the `|CE − α|` thermostat on even epochs and gated posterior-flattening on odd epochs — to hold member
+loss at a finite target and spread its variance so the member and non-member distributions overlap.
+</say>
+<edit path="pytorch-vision/custom_membership_defense.py">
+<old>
+class MembershipDefense:
+    """Cross-entropy minus a predictive-entropy bonus (Pereyra et al., 2017)."""
+
+    def __init__(self):
+        self.entropy_weight = 0.1
+
+    def compute_loss(self, logits, labels, epoch):
+        ce = F.cross_entropy(logits, labels)
+        probs = torch.softmax(logits, dim=1)
+        entropy = -(probs * torch.log(probs.clamp_min(1e-8))).sum(dim=1).mean()
+        return ce - self.entropy_weight * entropy
+</old>
+<new>
+class MembershipDefense:
+    """RelaxLoss training rule (Chen et al., ICLR 2022).
+
+    Even epochs: loss = |mean_CE - alpha|   (drive loss toward target level)
+    Odd  epochs: if mean_CE > alpha -> CE descent
+                 else -> posterior flattening with sign-flipped CE
+    """
+
+    def __init__(self):
+        self.upper = 1.0
+
+    def compute_loss(self, logits, labels, epoch):
+        num_classes = logits.size(1)
+        alpha = 0.5 if num_classes == 100 else 1.0
+
+        loss_ce_full = F.cross_entropy(logits, labels, reduction='none')
+        loss_ce = loss_ce_full.mean()
+
+        if epoch % 2 == 0:
+            return (loss_ce - alpha).abs()
+
+        if loss_ce.item() > alpha:
+            return loss_ce
+
+        probs = torch.softmax(logits, dim=1)
+        confidence_target = probs.gather(1, labels.unsqueeze(1)).squeeze(1)
+        confidence_target = torch.clamp(confidence_target, min=0.0, max=self.upper)
+        confidence_else = (1.0 - confidence_target) / (num_classes - 1)
+
+        onehot = F.one_hot(labels, num_classes=num_classes).float()
+        soft_targets = (
+            onehot * confidence_target.unsqueeze(1)
+            + (1.0 - onehot) * confidence_else.unsqueeze(1)
+        )
+        soft_targets = soft_targets.detach()
+
+        log_probs = F.log_softmax(logits, dim=1)
+        ce_soft = -(soft_targets * log_probs).sum(dim=1)
+
+        pred = logits.argmax(dim=1)
+        correct = pred.eq(labels).float()
+
+        loss = (1.0 - correct) * ce_soft - loss_ce_full
+        return loss.mean()
+</new>
+</edit>
+<obs>
+Successfully replaced text in pytorch-vision/custom_membership_defense.py.
+</obs>
+<run/>
+<obs>
+Measured results — `baseline:relaxloss` (`is_final,true`), seed 42. RelaxLoss is the strongest baseline
+by measurement: highest mean privacy_score (0.6832) and the only method to push the attack AUC toward
+0.5 on all three benchmarks.
+
+## resnet20-cifar10
+| seed | test_acc | mia_auc | privacy_gap | privacy_score |
+|---|---|---|---|---|
+| 42 | 0.7949 | 0.5092 | 0.0075 | 0.7857 |
+
+## vgg16bn-cifar100
+| seed | test_acc | mia_auc | privacy_gap | privacy_score |
+|---|---|---|---|---|
+| 42 | 0.6226 | 0.6490 | 0.1660 | 0.4736 |
+
+## mobilenetv2-fmnist
+| seed | test_acc | mia_auc | privacy_gap | privacy_score |
+|---|---|---|---|---|
+| 42 | 0.7904 | 0.4987 | -0.0012 | 0.7904 |
+</obs>

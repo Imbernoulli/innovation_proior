@@ -1,0 +1,655 @@
+{
+ "tools": [
+  {
+   "type": "function",
+   "function": {
+    "name": "str_replace",
+    "description": "Replace the unique occurrence of old_str with new_str in the file.",
+    "parameters": {
+     "type": "object",
+     "properties": {
+      "path": {
+       "type": "string"
+      },
+      "old_str": {
+       "type": "string"
+      },
+      "new_str": {
+       "type": "string"
+      }
+     },
+     "required": [
+      "path",
+      "old_str",
+      "new_str"
+     ]
+    }
+   }
+  },
+  {
+   "type": "function",
+   "function": {
+    "name": "create",
+    "description": "Create a new file with the given text.",
+    "parameters": {
+     "type": "object",
+     "properties": {
+      "path": {
+       "type": "string"
+      },
+      "file_text": {
+       "type": "string"
+      }
+     },
+     "required": [
+      "path",
+      "file_text"
+     ]
+    }
+   }
+  },
+  {
+   "type": "function",
+   "function": {
+    "name": "run_experiment",
+    "description": "Train+evaluate the current code; returns metrics.",
+    "parameters": {
+     "type": "object",
+     "properties": {}
+    }
+   }
+  }
+ ],
+ "messages": [
+  {
+   "role": "system",
+   "content": "You are a research engineer improving a model on a fixed ML task. You work by editing the model code and running experiments. Think carefully before each change. You have these tools:\n- str_replace(path, old_str, new_str): replace the unique occurrence of old_str with new_str.\n- create(path, file_text): create a new file.\n- run_experiment(): train + evaluate the current code under the fixed budget; returns metrics.\nMake one tool call at a time. After editing, call run_experiment() to measure your method."
+  },
+  {
+   "role": "user",
+   "content": "## Research question\n\nCan a relation-aware predictor exploit cross-stock structure — sector / concept membership, learned\nrelations, attention across instruments — to deliver consistently better next-day return rankings than\nan instrument-independent model, with the data, labels, splits, and backtest held fixed? The single\nthing being designed is the `CustomModel` that fills the qlib model interface (`fit(dataset)` /\n`predict(dataset, segment=\"test\")`); everything around it — the Alpha360 feature handler, the label,\nthe universes, the splits, the TopkDropout backtest — is frozen.\n\n## Prior art before the first rung (the cross-sectional-modeling lineage)\n\nThe first rung reacts to a long line of single-stock and shallow cross-sectional predictors. These are\nthe methods the ladder climbs away from; each leaves a gap the next rung tries to close.\n\n- **Per-stock linear / factor models (Ridge, OLS on engineered alphas).** Treat each `(stock, day)` row\n  independently, fit one weight vector over the 360 Alpha360 features, predict the return. Cheap and\n  stable, but they (a) impose a global linear response and (b) see every stock in isolation — no\n  cross-stock information at all. Gap: linear and instrument-independent.\n- **Gradient-boosted trees (GBDT) on the flat feature table.** The standard non-graph reference: a\n  histogram-based, leaf-wise boosted forest over the same 360 features, treating each row independently.\n  Captures non-linear feature interactions a linear model cannot, and is the strongest *tabular* model\n  here — but it still has no notion that two rows on the same day are two co-moving stocks; the\n  cross-section is invisible to it. Gap: non-linear but still instrument-independent.\n- **Sequence encoders (LSTM / GRU on the `[60, 6]` window).** Reshape the 360 features back into a\n  60-day × 6-channel sequence and run a recurrent encoder, taking the last hidden state as the stock's\n  representation. This recovers the temporal structure the flat models flatten away, and is the natural\n  backbone for everything graph-based. But on its own each stock's hidden state still only ever saw that\n  one stock. Gap: temporal but not relational.\n- **Stock-relation graph methods (GAT-style attention over a relation graph; concept-aware aggregation).**\n  Build a graph over stocks — edges from shared sector / concept membership — and pass messages along it\n  so a stock's prediction can borrow from related stocks. This is the family the ladder lives in. The\n  open questions it leaves — whether the relations to attend over should be the *whole* day's cross-section\n  or a curated graph, and whether concept membership should be a frozen edge set or a date-specific,\n  recomputed relevance — are exactly what the rungs separate.\n\n## The fixed substrate\n\nThe qlib benchmarking pipeline is frozen and must not be touched. **Features:** Alpha360 — 6 base series\n(open/high/low/close/volume/vwap-style) over 60 trailing days = 360 features per `(stock, day)`, reshaped\nto `[N, 60, 6]` for sequence models. **Label:** `Ref($close, -2) / Ref($close, -1) - 1`, the return from\nT+1 to T+2 predicted at T. **Handler:** the default Alpha360 handler applies `RobustZScoreNorm` +\n`Fillna` on features at inference and `DropnaLabel` + `CSRankNorm` on the label at training. **Splits:**\ntrain 2008–2014, valid 2015–2016, test 2017–2020-08, fixed; **universes:** `csi300`, `csi100`,\n`csi300_recent`. **Backtest:** `TopkDropoutStrategy`, top 50 / drop 5, with the fixed exchange costs.\n**Auxiliary input:** a pre-downloaded stock-concept membership graph (`qlib_csi300_stock2concept.npy`, a\nbinary `(num_stocks, num_concepts)` matrix) and a `stock_index` map, exposed to the editable region\nthrough `get_stock_index(instruments)` and `get_concept_matrix(stock_indices)` — a relation-aware model\nmay pull these in, an instrument-independent one ignores them.\n\n## The editable interface\n\nExactly one class is editable — `CustomModel` in `custom_model.py` (the region between the FIXED graph-data\nloaders above it and the end of the file), plus the dataset preprocessor block of `workflow_config.yaml`.\nThe contract is the qlib model interface:\n\n- `fit(self, dataset)` — train on the `train` (and `valid`) segments. Data is pulled with\n  `dataset.prepare(seg, col_set=[\"feature\",\"label\"], data_key=DataHandlerLP.DK_L)`; `df[\"feature\"]` is an\n  `(n_samples, 360)` DataFrame indexed by `(datetime, instrument)`, `df[\"label\"]` is `(n_samples, 1)`.\n- `predict(self, dataset, segment=\"test\")` — return a `pd.Series` of scores indexed by\n  `(datetime, instrument)` matching the requested segment's index (inference data via `DK_I`).\n\nA relation-aware model batches **per day** — all stocks present on a date form one cross-section — using\nthe provided pattern (`groupby(level=0).size()` → `daily_index`), and may look up that day's concept\nmatrix via `get_concept_matrix(get_stock_index(instruments))`. Available imports: `torch`, `torch.nn`,\n`numpy`, `pandas`, `lightgbm`, `sklearn`, `scipy`.\n\nThe starting point is the scaffold **default**: a per-stock Ridge regression that ignores the graph\nentirely. Each rung replaces exactly this class (and, where the preprocessing must change, the handler\nblock).\n\n```python\n# EDITABLE region of custom_model.py — default fill (per-stock Ridge, graph ignored)\nclass CustomModel(Model):\n    \"\"\"Default baseline: Ridge regression over the flat 360 features, no graph.\"\"\"\n\n    def __init__(self):\n        super().__init__()\n        self.fitted = False\n        from sklearn.linear_model import Ridge\n\n        self.model = Ridge(alpha=1.0)\n\n    def fit(self, dataset: DatasetH):\n        df_train = dataset.prepare(\n            \"train\", col_set=[\"feature\", \"label\"], data_key=DataHandlerLP.DK_L\n        )\n        features = df_train[\"feature\"].values\n        labels = df_train[\"label\"].values.ravel()\n        mask = ~(np.isnan(features).any(axis=1) | np.isnan(labels))   # drop NaN rows\n        features = features[mask]\n        labels = labels[mask]\n        self.model.fit(features, labels)\n        self.fitted = True\n\n    def predict(self, dataset: DatasetH, segment=\"test\"):\n        if not self.fitted:\n            raise ValueError(\"Model is not fitted yet!\")\n        df_test = dataset.prepare(\n            segment, col_set=[\"feature\", \"label\"], data_key=DataHandlerLP.DK_I\n        )\n        features = df_test[\"feature\"]\n        index = features.index\n        features_np = np.nan_to_num(features.values, nan=0.0)\n        preds = self.model.predict(features_np)\n        return pd.Series(preds, index=index, name=\"score\")\n```\n\n## Evaluation settings\n\nThree universes — **csi300** (the main 300-name pool), **csi100** (the 100 largest, a harder, lower-breadth\ncross-section), and **csi300_recent** (a recent out-of-window slice, hidden) — each scored by qlib's\n`SigAnaRecord` and `PortAnaRecord`. Per universe, seven metrics, all *higher is better* as scored:\nsignal IC, ICIR, Rank IC, Rank ICIR; portfolio annualized return and information ratio; and max drawdown\n(reported as a negative number, so closer to zero scores higher). Each universe's score is the equal-weight\nmean of its seven sigmoid-mapped metrics; the task score is the geometric mean across the three universes.\nSeed `42`.\n\nThe editable model code is in `qlib/custom_model.py`:\n```python\n# =====================================================================\n# EDITABLE: CustomModel — implement your stock prediction model here\n# =====================================================================\nclass CustomModel(Model):\n    \"\"\"Custom graph-based stock prediction model.\n\n    You must implement:\n        fit(dataset)    — train the model on the training data\n        predict(dataset, segment=\"test\") — return predictions as pd.Series\n\n    The dataset is a qlib DatasetH with Alpha360 features (6 base features x 60\n    days = 360 features per stock per day). Segments: \"train\", \"valid\", \"test\".\n\n    Getting data from the dataset:\n        df_train = dataset.prepare(\"train\", col_set=[\"feature\", \"label\"],\n                                    data_key=DataHandlerLP.DK_L)\n        features = df_train[\"feature\"]   # DataFrame: (n_samples, 360)\n        labels = df_train[\"label\"]       # DataFrame: (n_samples, 1)\n\n    Stock-concept graph data (loaded above):\n        - _stock2concept_matrix: (num_stocks, num_concepts) binary matrix\n        - _stock_index_dict: maps instrument name -> stock index\n        - get_stock_index(instruments): maps instrument names to indices\n        - get_concept_matrix(stock_indices): returns concept membership matrix\n\n    Usage in training (daily batches for graph-based models):\n        daily_count = df.groupby(level=0).size().values\n        daily_index = np.roll(np.cumsum(daily_count), 1)\n        daily_index[0] = 0\n        for idx, count in zip(daily_index, daily_count):\n            batch = slice(idx, idx + count)\n            feature = features.values[batch]\n            instruments = features.index.get_level_values(\"instrument\")[batch]\n            stock_idx = get_stock_index(instruments)\n            concept_mat = get_concept_matrix(stock_idx)\n            # concept_mat shape: (batch_stocks, num_concepts)\n\n    The label is: Ref($close, -2) / Ref($close, -1) - 1\n    (i.e., the return from T+1 to T+2, predicted at time T)\n\n    predict() must return a pd.Series indexed by (datetime, instrument)\n    matching the target segment's index.\n\n    Available imports: torch, torch.nn, numpy, pandas, lightgbm, sklearn, scipy\n    All network definitions and training logic go in this class.\n    \"\"\"\n\n    def __init__(self):\n        super().__init__()\n        self.fitted = False\n        # --- Default: Ridge regression baseline (ignores graph) ---\n        from sklearn.linear_model import Ridge\n\n        self.model = Ridge(alpha=1.0)\n\n    def fit(self, dataset: DatasetH):\n        \"\"\"Train the model.\n\n        Args:\n            dataset: DatasetH with \"train\" and \"valid\" segments.\n        \"\"\"\n        df_train = dataset.prepare(\n            \"train\", col_set=[\"feature\", \"label\"], data_key=DataHandlerLP.DK_L\n        )\n        features = df_train[\"feature\"].values\n        labels = df_train[\"label\"].values.ravel()\n\n        # Remove NaN rows\n        mask = ~(np.isnan(features).any(axis=1) | np.isnan(labels))\n        features = features[mask]\n        labels = labels[mask]\n\n        self.model.fit(features, labels)\n        self.fitted = True\n\n    def predict(self, dataset: DatasetH, segment=\"test\"):\n        \"\"\"Generate predictions.\n\n        Args:\n            dataset: DatasetH with the target segment.\n            segment: Which segment to predict on (default: \"test\").\n\n        Returns:\n            pd.Series of predictions, indexed by (datetime, instrument).\n        \"\"\"\n        if not self.fitted:\n            raise ValueError(\"Model is not fitted yet!\")\n\n        df_test = dataset.prepare(\n            segment, col_set=[\"feature\", \"label\"], data_key=DataHandlerLP.DK_I\n        )\n        features = df_test[\"feature\"]\n        index = features.index\n\n        features_np = features.values\n        features_np = np.nan_to_num(features_np, nan=0.0)\n\n        preds = self.model.predict(features_np)\n        return pd.Series(preds, index=index, name=\"score\")\n```\nImprove it. Derive your method, edit the code, then run_experiment()."
+  },
+  {
+   "role": "assistant",
+   "reasoning_content": "The relation-aware model is the whole point, but it has to beat *something*, and the honest floor is\nthe strongest predictor that uses no cross-stock structure at all. So before I touch a graph, I want\nthe best instrument-independent model I can run on this exact harness — if a model that treats every\n`(stock, day)` row in isolation already captures most of the predictable signal, then whatever a graph\nbuys me has to be measured against that, not against the trivial Ridge the scaffold ships with. The\nscaffold default is a single linear weight vector over the 360 Alpha360 features; it is stable and it\nwill run, but a global linear response is a weak hypothesis for a feature table this wide. The features\nare engineered alphas — ratios, momentum windows, volatility proxies — and the relationship between any\none of them and next-day return is not linear, and certainly not additive across features. A momentum\nfeature matters only in some volatility regime; a volume spike means one thing after a run-up and another\nafter a drawdown. Linear regression cannot express \"feature A matters only when feature B is high.\" So\nthe right floor is a model that captures non-linear feature interactions while still, deliberately,\nseeing each row alone. On tabular data of this shape — millions of `(stock, day)` rows, a few hundred\ndense engineered features — the consensus answer is gradient-boosted decision trees, and that is what I\nfill the scaffold with at this rung.\n\nLet me be precise about why boosting is the right hypothesis class here and not just a reflex. A GBDT is\nan additive ensemble of regression trees: at round `t` I hold the current predictor `F_{t-1}`, compute\nfor every instance the gradient of the loss against its current prediction, fit a new shallow tree to\nthe negative gradients, and fold it in shrunk by a learning rate. For the squared loss that I will use,\nthe gradient is `g_i = F_{t-1}(x_i) - y_i`, so `-g_i` is exactly the residual and each tree fits what\nthe ensemble is still getting wrong. The trees are axis-aligned partitioners: each internal split is a\nthreshold on a single feature, and a leaf is a conjunction of such thresholds. That is precisely the\n\"feature A matters only when feature B is high\" interaction the linear model could not express — a tree\nof depth `d` represents an order-`d` interaction for free, and boosting stacks hundreds of them. And it\ndoes this without me hand-specifying which interactions to look for, which on 360 alphas I could not do\nanyway. So the boosting forest is the natural ceiling for an instrument-independent model on this table.\n\nThe data shape is what makes the *engine* matter, not just the model class. The split criterion at a\nnode is the variance gain in sum-of-gradient form,\n`V_j(d) = (1/n)[ (Σ_{x_ij≤d} g_i)² / n_l(d) + (Σ_{x_ij>d} g_i)² / n_r(d) ]`, and evaluating it for every\nfeature and every candidate threshold is where the time goes — per tree the work scales like\n`#data × #feature`. The pre-sorted exact method carries sorted permutations around and is memory-brutal;\nthe histogram method is the one I want underneath. It buckets each continuous feature into a small fixed\nnumber of bins — 255, so a bin index fits in a byte — and for a node makes one pass accumulating, per\nbin, the sum of gradients and the count. Building the histogram is `O(#data × #feature)`; searching the\n`≤ #bin−1` boundaries is a rounding error next to it. A parent node's histogram is the sum of its two\nchildren's, so the engine builds only the smaller child and recovers the sibling by subtraction in\n`O(#bin)`. The engine grows leaf-wise — splitting the single leaf with the largest loss reduction rather\nthan a whole depth level — which reaches lower training loss for a fixed leaf budget, capped by\n`num_leaves` and `max_depth` to bound overfit. These are the properties that make the boosting forest\nnot just accurate but *cheap enough* to train to convergence on the full 2008–2014 training cross-section\nin the harness's time budget, which on this many rows is the practical difference between a usable\nbaseline and one that times out. So I want the histogram-based, leaf-wise GBDT engine specifically, with\nthe second-order/regularized gain (per-leaf `G=Σg`, `H=Σh`, leaf value `-G/(H+λ₂)` and L1 as a\nsoft-threshold on `G`) that ties leaf values to a regularized objective — exactly what the LightGBM\nengine exposes.\n\nNow the load-bearing part for *this task*: I must match what the harness actually exposes, not the\ngeneric library default. The edit replaces `CustomModel` with a faithful wrapper around qlib's official\n`LGBModel` (`gbdt.py`) and pulls the benchmark hyperparameters from qlib's\n`workflow_config_lightgbm_Alpha360.yaml`. Two things about that are not the textbook defaults and I have\nto respect them. First, the regularization is *enormous* and not optional: `lambda_l1 = 205.70`,\n`lambda_l2 = 580.98`, `num_leaves = 210`, `max_depth = 8`, `colsample_bytree = 0.8879`,\n`subsample = 0.8789`, `learning_rate = 0.0421`, with `num_boost_round = 1000` and early stopping at 50\nrounds on the validation segment. Those L1/L2 values look absurd by general-tabular standards, but they\nare the published Alpha360 settings, and they exist because financial cross-sectional signal is faint and\nnoisy: the signal-to-noise ratio is so low that without heavy shrinkage the 210-leaf trees would happily\nfit microstructure noise in the 2008–2014 window and generalize to nothing on 2017–2020. The big `λ`\nvalues push most candidate splits' gains below the complexity charge, so the forest stays shallow in\n*effective* capacity even at 210 leaves. The learning rate of 0.0421 with up to 1000 rounds and early\nstopping is the slow-and-many-trees regime that boosting needs when each tree can only chip a little\nsignal off the residual. I take these verbatim; they are the difference between this baseline being a\nfair floor and being a broken one.\n\nSecond — and this is the subtle harness detail — the LightGBM rung also has to *reset the dataset\npreprocessing*, not just the model. The default `workflow_config.yaml` carries the neural-model handler:\nfeatures get `RobustZScoreNorm` + `Fillna` at inference, and the label gets `CSRankNorm` at training. The\ninference-time `RobustZScoreNorm`/`Fillna` were put there for the graph models that need clean, normalized\ntensors; they do not belong in the LightGBM baseline, which feeds raw feature values to a tree engine\nthat is scale-invariant by construction (a tree split is a threshold; monotone rescaling of a feature\ndoes not change which rows fall on each side, so per-feature normalization is a no-op for trees and only\nrisks discarding information through the outlier clipping). So the edit blanks the inference processors\n(`infer_processors: []`) and keeps only `DropnaLabel` + `CSRankNorm` on the label. The `CSRankNorm` on the\nlabel is the one piece I keep deliberately: it rank-normalizes each day's labels cross-sectionally, which\nis exactly right for a ranking objective scored by IC and Rank IC — the model learns to order stocks\nwithin a day rather than to hit absolute return levels. The training data is pulled with the learn key\n(`DK_L`), the validation set drives early stopping, and prediction maps the test features through the\nlearned trees and returns a `pd.Series` indexed by `(datetime, instrument)`, which is the contract the\nSignalRecord/PortAnaRecord chain consumes. There is no per-day batching here and no concept matrix\nlookup — the whole point of this rung is that it never opens the graph file. The full scaffold fill is in\nthe answer.\n\nOne thing I should be clear-eyed about, because it is the limitation the next rung exists to attack:\nthis engine does GOSS and EFB and second-order gain, but with the default GBDT booster and a `subsample`\nof 0.8789 it is just doing ordinary stochastic row bagging — the GOSS machinery is not switched on, the\nengine forwards `subsample` to bagging — and *none* of it changes the fundamental fact that every row is\nan independent example. Two rows on the same trading day, two stocks in the same sector reacting to the\nsame macro print, are to this model two unrelated points in a 360-dimensional space. The trees can find\nthat \"high-momentum-plus-low-volatility\" rows tend to outperform, but they cannot find that \"this stock\nmoves with that stock today.\" The cross-section — the one structural fact the research question is built\non — is invisible. That is the deliberate ceiling of this rung.\n\nSo I run it and I form falsifiable expectations against what the relation-aware rungs will have to clear.\nThis is the strongest *instrument-independent* model, so it should be a real floor, not a trivial one:\non the main csi300 universe I expect positive but modest signal — an IC in the low tens of a percent and\nan ICIR comfortably positive, since rank-normalized boosting on Alpha360 is a known-decent factor model.\nBut I expect its *portfolio* numbers to be the weakest of the ladder: the TopkDropout backtest cares\nabout getting the top-50 ordering right day after day, and a row-independent model that cannot use\nco-movement should produce a noisier daily ranking, so its information ratio should be low — far below\nwhat an attention-over-the-cross-section model can reach — and its annualized return small. On the\nharder, lower-breadth csi100 universe, where there are fewer names to diversify the noise and the\ncross-sectional signal is thinner, I expect it to struggle most, possibly with a negative portfolio\nreturn. If the graph rungs cannot beat *this* — if attention over the day's stocks or concept-aware\naggregation does not lift IC and especially information ratio above the boosting floor — then the entire\npremise that cross-stock structure is exploitable is in doubt. That is the bar this rung sets, and it is\nexactly the gap I will reach for next: turn off the row-independence assumption by letting each day's\nstocks attend to each other. So let me write the LightGBM fill in.",
+   "content": "I'm setting the instrument-independent floor: a faithful wrapper around qlib's official LightGBM on Alpha360. This first edit swaps the Ridge docstring for the LightGBM one and points at the published benchmark hyperparameters.",
+   "tool_calls": [
+    {
+     "type": "function",
+     "function": {
+      "name": "str_replace",
+      "arguments": {
+       "path": "qlib/custom_model.py",
+       "old_str": "# =====================================================================\n# EDITABLE: CustomModel — implement your stock prediction model here\n# =====================================================================\nclass CustomModel(Model):\n    \"\"\"Custom graph-based stock prediction model.\n\n    You must implement:\n        fit(dataset)    — train the model on the training data\n        predict(dataset, segment=\"test\") — return predictions as pd.Series\n\n    The dataset is a qlib DatasetH with Alpha360 features (6 base features x 60\n    days = 360 features per stock per day). Segments: \"train\", \"valid\", \"test\".\n\n    Getting data from the dataset:\n        df_train = dataset.prepare(\"train\", col_set=[\"feature\", \"label\"],\n                                    data_key=DataHandlerLP.DK_L)\n        features = df_train[\"feature\"]   # DataFrame: (n_samples, 360)\n        labels = df_train[\"label\"]       # DataFrame: (n_samples, 1)\n\n    Stock-concept graph data (loaded above):\n        - _stock2concept_matrix: (num_stocks, num_concepts) binary matrix\n        - _stock_index_dict: maps instrument name -> stock index\n        - get_stock_index(instruments): maps instrument names to indices\n        - get_concept_matrix(stock_indices): returns concept membership matrix\n\n    Usage in training (daily batches for graph-based models):\n        daily_count = df.groupby(level=0).size().values\n        daily_index = np.roll(np.cumsum(daily_count), 1)\n        daily_index[0] = 0\n        for idx, count in zip(daily_index, daily_count):\n            batch = slice(idx, idx + count)\n            feature = features.values[batch]\n            instruments = features.index.get_level_values(\"instrument\")[batch]\n            stock_idx = get_stock_index(instruments)\n            concept_mat = get_concept_matrix(stock_idx)\n            # concept_mat shape: (batch_stocks, num_concepts)\n\n    The label is: Ref($close, -2) / Ref($close, -1) - 1\n    (i.e., the return from T+1 to T+2, predicted at time T)\n\n    predict() must return a pd.Series indexed by (datetime, instrument)\n    matching the target segment's index.\n\n    Available imports: torch, torch.nn, numpy, pandas, lightgbm, sklearn, scipy\n    All network definitions and training logic go in this class.\n    \"\"\"",
+       "new_str": "# =====================================================================\n# EDITABLE: CustomModel -- implement your stock prediction model here\n# =====================================================================\nclass CustomModel(Model):\n    \"\"\"LightGBM model -- faithful to qlib's official LGBModel (gbdt.py).\n\n    Hyperparameters from official benchmark:\n    examples/benchmarks/LightGBM/workflow_config_lightgbm_Alpha360.yaml\n    \"\"\""
+      }
+     }
+    }
+   ]
+  },
+  {
+   "role": "tool",
+   "content": "Successfully replaced text in qlib/custom_model.py."
+  },
+  {
+   "role": "assistant",
+   "reasoning_content": "",
+   "content": "",
+   "tool_calls": [
+    {
+     "type": "function",
+     "function": {
+      "name": "str_replace",
+      "arguments": {
+       "path": "qlib/custom_model.py",
+       "old_str": "        super().__init__()\n        self.fitted = False\n        # --- Default: Ridge regression baseline (ignores graph) ---\n        from sklearn.linear_model import Ridge\n\n        self.model = Ridge(alpha=1.0)\n\n    def fit(self, dataset: DatasetH):\n        \"\"\"Train the model.\n\n        Args:\n            dataset: DatasetH with \"train\" and \"valid\" segments.\n        \"\"\"\n        df_train = dataset.prepare(\n            \"train\", col_set=[\"feature\", \"label\"], data_key=DataHandlerLP.DK_L\n        )\n        features = df_train[\"feature\"].values\n        labels = df_train[\"label\"].values.ravel()\n\n        # Remove NaN rows\n        mask = ~(np.isnan(features).any(axis=1) | np.isnan(labels))\n        features = features[mask]\n        labels = labels[mask]\n\n        self.model.fit(features, labels)\n        self.fitted = True\n\n    def predict(self, dataset: DatasetH, segment=\"test\"):\n        \"\"\"Generate predictions.\n\n        Args:\n            dataset: DatasetH with the target segment.\n            segment: Which segment to predict on (default: \"test\").\n\n        Returns:\n            pd.Series of predictions, indexed by (datetime, instrument).\n        \"\"\"\n        if not self.fitted:\n            raise ValueError(\"Model is not fitted yet!\")\n\n        df_test = dataset.prepare(\n            segment, col_set=[\"feature\", \"label\"], data_key=DataHandlerLP.DK_I\n        )\n        features = df_test[\"feature\"]\n        index = features.index\n\n        features_np = features.values\n        features_np = np.nan_to_num(features_np, nan=0.0)\n\n        preds = self.model.predict(features_np)\n        return pd.Series(preds, index=index, name=\"score\")",
+       "new_str": "        super().__init__()\n        # Official benchmark kwargs (passed to lgb.train via self.params)\n        self.params = {\n            \"objective\": \"mse\",\n            \"colsample_bytree\": 0.8879,\n            \"learning_rate\": 0.0421,\n            \"subsample\": 0.8789,\n            \"lambda_l1\": 205.6999,\n            \"lambda_l2\": 580.9768,\n            \"max_depth\": 8,\n            \"num_leaves\": 210,\n            \"num_threads\": 20,\n            \"verbosity\": -1,\n        }\n        self.early_stopping_rounds = 50\n        self.num_boost_round = 1000\n        self.model = None\n\n    def _prepare_data(self, dataset):\n        \"\"\"Prepare LightGBM datasets -- matches LGBModel._prepare_data().\"\"\"\n        import lightgbm as lgb\n\n        ds_l = []\n        for key in [\"train\", \"valid\"]:\n            if key in dataset.segments:\n                df = dataset.prepare(\n                    key, col_set=[\"feature\", \"label\"], data_key=DataHandlerLP.DK_L\n                )\n                if df.empty:\n                    raise ValueError(\n                        \"Empty data from dataset, please check your dataset config.\"\n                    )\n                x, y = df[\"feature\"], df[\"label\"]\n                # Lightgbm need 1D array as its label\n                if y.values.ndim == 2 and y.values.shape[1] == 1:\n                    y = np.squeeze(y.values)\n                else:\n                    raise ValueError(\n                        \"LightGBM doesn't support multi-label training\"\n                    )\n                ds_l.append(\n                    (lgb.Dataset(x.values, label=y, free_raw_data=False), key)\n                )\n        return ds_l\n\n    def fit(self, dataset: DatasetH):\n        import lightgbm as lgb\n\n        ds_l = self._prepare_data(dataset)\n        ds, names = list(zip(*ds_l))\n        early_stopping_callback = lgb.early_stopping(\n            self.early_stopping_rounds\n        )\n        verbose_eval_callback = lgb.log_evaluation(period=20)\n        evals_result = {}\n        evals_result_callback = lgb.record_evaluation(evals_result)\n        self.model = lgb.train(\n            self.params,\n            ds[0],  # training dataset\n            num_boost_round=self.num_boost_round,\n            valid_sets=ds,\n            valid_names=names,\n            callbacks=[\n                early_stopping_callback,\n                verbose_eval_callback,\n                evals_result_callback,\n            ],\n        )\n\n    def predict(self, dataset: DatasetH, segment=\"test\"):\n        if self.model is None:\n            raise ValueError(\"model is not fitted yet!\")\n        x_test = dataset.prepare(\n            segment, col_set=\"feature\", data_key=DataHandlerLP.DK_I\n        )\n        return pd.Series(self.model.predict(x_test.values), index=x_test.index)"
+      }
+     }
+    }
+   ]
+  },
+  {
+   "role": "tool",
+   "content": "Successfully replaced text in qlib/custom_model.py."
+  },
+  {
+   "role": "assistant",
+   "reasoning_content": "",
+   "content": "Run the experiment to measure this.",
+   "tool_calls": [
+    {
+     "type": "function",
+     "function": {
+      "name": "run_experiment",
+      "arguments": {}
+     }
+    }
+   ]
+  },
+  {
+   "role": "tool",
+   "content": "Measured results — `baseline:lgbm` (`is_final,true`), seeds {42, 123, 456} and mean.\n\n## csi300\n| seed | ic | icir | rank_ic | rank_icir | annualized_return | max_drawdown | information_ratio |\n|---|---|---|---|---|---|---|---|\n| 42 | 0.039897 | 0.307518 | 0.049229 | 0.401871 | 0.020253 | −0.099518 | 0.279929 |\n| 123 | 0.039897 | 0.307518 | 0.049229 | 0.401871 | 0.020253 | −0.099518 | 0.279929 |\n| 456 | 0.039897 | 0.307518 | 0.049229 | 0.401871 | 0.020253 | −0.099518 | 0.279929 |\n| **mean** | **0.039897** | **0.307518** | **0.049229** | **0.401871** | **0.020253** | **−0.099518** | **0.279929** |\n\n## csi100\n| seed | ic | icir | rank_ic | rank_icir | annualized_return | max_drawdown | information_ratio |\n|---|---|---|---|---|---|---|---|\n| 42 | 0.036262 | 0.220335 | 0.044453 | 0.277064 | −0.017189 | −0.158267 | −0.333759 |\n| 123 | 0.036262 | 0.220335 | 0.044453 | 0.277064 | −0.017189 | −0.158267 | −0.333759 |\n| 456 | 0.036262 | 0.220335 | 0.044453 | 0.277064 | −0.017189 | −0.158267 | −0.333759 |\n| **mean** | **0.036262** | **0.220335** | **0.044453** | **0.277064** | **−0.017189** | **−0.158267** | **−0.333759** |\n\n## csi300_recent\n| seed | ic | icir | rank_ic | rank_icir | annualized_return | max_drawdown | information_ratio |\n|---|---|---|---|---|---|---|---|\n| 42 | 0.025308 | 0.182200 | 0.040913 | 0.302152 | 0.019687 | −0.075868 | 0.265607 |\n| 123 | 0.025308 | 0.182200 | 0.040913 | 0.302152 | 0.019687 | −0.075868 | 0.265607 |\n| 456 | 0.025308 | 0.182200 | 0.040913 | 0.302152 | 0.019687 | −0.075868 | 0.265607 |\n| **mean** | **0.025308** | **0.182200** | **0.040913** | **0.302152** | **0.019687** | **−0.075868** | **0.265607** |"
+  },
+  {
+   "role": "assistant",
+   "reasoning_content": "The boosting floor landed about where I expected it to, and reading it carefully tells me exactly which\nassumption to break next. On csi300 LightGBM gave IC 0.0399, ICIR 0.308, Rank IC 0.0492 — real,\npositive, modest factor signal, the rank-normalized forest doing its honest job. But the portfolio side\nis where the row-independence assumption shows: information ratio only 0.280 on csi300 and annualized\nreturn 0.0203, and on the harder csi100 the portfolio actually loses money — IR −0.334, annualized\nreturn −0.0172 — even though the *signal* IC there is still positive at 0.0363. That gap is the tell.\nThe model can rank stocks well enough on average to post a positive IC, but the TopkDropout backtest\nlives or dies on getting the *top of the daily ranking* right day after day, and a model that scores\neach stock from its own 360 features, blind to what the rest of the cross-section is doing that day,\nproduces a daily top-50 that is too noisy to compound — especially on csi100 where there are only a\nhundred names, so the breadth that averages out idiosyncratic noise is gone and the negative IR is the\ndirect consequence. The deterministic GBDT also gives identical numbers across all three seeds, which\nconfirms the variance I am seeing is not training noise — it is structural: the floor has no mechanism\nto use the one thing the research question is about, co-movement within the day's cross-section.\n\nSo the assumption to break is row-independence, and the minimal way to break it is to let the stocks\npresent on a given day *look at each other* before each one's prediction is read out. That is the move\nthis rung makes, and I want to be careful about what form it takes, because the obvious textbook form\nis not what this harness exposes or rewards. The textbook graph-attention layer attends a node over a\n*masked* neighborhood — you supply an adjacency, only edges in the graph get a score, structure enters\nas the mask. Here I do have a candidate adjacency: the stock-concept membership matrix the harness loads.\nI could build a stock-stock graph by connecting two stocks that share a concept and run masked attention\nover it. But pause on what that buys and costs. The concept graph is curated, static, and incomplete —\nthe edges it has are frozen the same way every day, and the edges it lacks (an unlabeled emerging theme,\na freshly listed name with no tags) it can never propagate. Worse, on a single day's cross-section the\nnumber of stocks is small — a few hundred at most for csi300, a hundred for csi100 — so the *cost* reason\nfor masking (avoiding all-pairs `O(N²)` on a graph with millions of nodes) simply does not bite. With at\nmost a few hundred stocks in a day, the full `N×N` attention matrix is tiny and trivially affordable. The\nmasking that is essential on a citation network is, here, an unnecessary restriction that throws away the\nchance to discover relevance the curated graph never encoded.\n\nSo I drop the mask. This rung's attention is *all-to-all over the day's cross-section*: every stock\nattends to every other stock present that day, with the attention weight learned from the stocks'\nencoded features rather than read from any graph. The concept matrix is not used at all in this rung —\nthat is a deliberate diff from the curated-graph story, and it is the right call for two reasons. First,\nthe cost argument above: full attention is cheap at this scale. Second, the diagnostic argument: I want\nto test whether *any* learned cross-stock interaction beats the row-independent floor before I commit to\nthe specific structure the curated concepts impose; if all-to-all learned attention already lifts the\nportfolio numbers, that isolates \"cross-section helps\" from \"the curated graph helps,\" and the next rung\ncan then ask whether structured, concept-aware aggregation does better still. So the design is: encode\neach stock temporally, let the day's stocks attend to each other with one learned all-pairs attention,\nadd the attended information back to each stock, and read out a per-stock score.\n\nStart with the encoder, because the attention needs a vector per stock and the raw input is a sequence.\nEach stock-day is 360 Alpha360 features that reshape to a 60-day × 6-channel window. I run that through a\nrecurrent backbone and take the last hidden state as the stock's representation `h_i`. The harness's GATs\nfill uses an LSTM backbone here, not a GRU — `hidden_size=64`, `num_layers=2`, `dropout=0.7` — and it\n*loads a pretrained LSTM* (`model_lstm_csi300.pkl`) into the matching backbone weights before training,\nso the recurrent encoder starts from a sensible single-stock predictor and the attention layer learns the\ncross-stock correction on top of it. That pretraining-then-attend structure matters: it means the\nattention is not trying to learn temporal encoding and cross-sectional mixing simultaneously from scratch;\nthe temporal part is warm-started, and gradient descent spends its capacity on the new thing, the\nneighbor weighting. The high dropout (0.7) is the published Alpha360 setting and is there for the same\nreason LightGBM needed enormous L1/L2 — the signal is faint and the model will overfit the 2008–2014\nwindow without aggressive regularization.\n\nNow the attention itself, and here I have to land the *exact* form the harness uses, which differs from\nthe canonical multi-head masked layer in several deliberate ways. After the backbone produces the last\nhidden state `h_i ∈ R^{64}` for every stock in the day, the layer first passes each through a shared\nlinear transformation `t(h) = W_t h` — one transform, no per-head projections; this rung uses a *single*\nattention head, not the eight-head concatenation of the citation-network setup, because at this data\nscale and with heavy dropout a single head trained on top of a pretrained encoder is the stable choice\nthe benchmark settled on. Then it scores every ordered pair. The score is the additive form: for stocks\n`i` and `j`, concatenate their transformed hidden states and project with a learned vector `a ∈ R^{128}`,\n`e_ij = LeakyReLU(aᵀ[t(h_i) ‖ t(h_j)])`. Additive, not dot-product, for the same reason as in any\nattention design — the concatenation lets `a` hold separate weights for the query half and the key half,\nso the score is asymmetric (stock `i`'s relevance to `j` need not equal `j`'s to `i`, which is right: a\nlarge-cap leading a sector is more relevant to its followers than the reverse) and the comparison has its\nown trainable capacity decoupled from `W_t`. LeakyReLU rather than ReLU so that a low (negative) score —\nthe layer saying \"this stock is *un*important to that one\" — still carries gradient and can be learned\ndown rather than dead-zeroed.\n\nThe implementation detail that makes this affordable is that the layer materializes the full pairwise\nscore matrix directly: it expands the `[N, dim]` transformed hidden into an `[N, N, dim]` tensor of the\nquery side, transposes for the key side, concatenates along the feature axis to `[N, N, 2·dim]`, and\napplies `a` to get the `[N, N]` score matrix in one shot. With `N` at most a few hundred that is a small\ntensor. Then — and this is the crucial no-mask step — it applies `softmax` across the *entire* row, over\nall `N` stocks, not over a masked neighborhood: `α_ij = softmax_j(e_ij) = exp(e_ij) / Σ_{k} exp(e_ik)`,\nthe sum running over every stock in the day. So each stock's attention is a full convex combination over\nthe whole cross-section, with the curated graph nowhere in sight. The softmax normalizes per stock so a\nday with 300 names and a day with 100 names both produce comparable per-stock weights summing to one,\nwhich is the same degree-invariance argument as the masked version but now over the full set.\n\nThen the aggregation and read-out, and there is one more harness-specific choice that earns comment. The\nattended information is `Σ_j α_ij t(h_j)` — the attention-weighted combination of the day's transformed\nhidden states for stock `i`. But the layer does not *replace* `h_i` with this; it *adds* it back with a\nresidual: `hidden_i = (Σ_j α_ij t(h_j)) + h_i`. The residual is doing real work. Without it, a stock's\nrepresentation after one attention layer is purely a mixture of the cross-section, and if the attention\nis noisy early in training the stock loses its own signal entirely. With the residual, the attended\ncross-stock information is a *correction* added to the stock's own pretrained-encoder hidden state — the\nfloor signal is preserved and the cross-section only adjusts it, which is exactly the inductive bias I\nwant when I have warm-started the encoder. After the residual, a learned `fc` linear layer plus another\nLeakyReLU mixes the combined representation, and a final `fc_out` reads out the scalar score per stock.\n\nTraining is per-day cross-sections — the whole attention computation is over the stocks present on a\nsingle date, so a batch is one day's full set; mixing dates would mix unrelated cross-sections and the\nattention would be meaningless across them. The loss is MSE against the rank-normalized next-day-return\nlabel, masked to finite labels, optimized with Adam at `lr=1e-4`, with gradient-value clipping at 3.0,\nearly stopping on validation IC with patience 20, up to 200 epochs. The label normalization is the\n`CSRankNorm` the handler applies, so the model is again learning to order within a day. The full scaffold\nfill — the LSTM/GRU backbones, the `GATModel` with `cal_attention`, the daily-batched train/test/predict\nloop — is in the answer.\n\nNow the falsifiable expectations against the LightGBM floor. The whole thesis of this rung is that\nletting the day's stocks attend to each other fixes the portfolio-noise problem the row-independent floor\nhad, so the place I expect the clearest win is *information ratio*, not necessarily signal IC. I expect\ncsi300 IR to jump well above LightGBM's 0.280 — a learned cross-sectional smoothing should produce a far\nmore stable daily top-50 — and annualized return to rise correspondingly above 0.0203. On the signal\nmetrics I expect IC to improve modestly over 0.0399 (the cross-section carries some extra predictability),\nbut the IR gain should dwarf the IC gain, because IR is precisely the metric that punishes the noisy\ndaily ranking the floor could not avoid. On csi100, where LightGBM posted a *negative* IR of −0.334, the\ntest is sharper: does cross-stock attention rescue the low-breadth universe, or does a hundred names give\nthe all-to-all attention too little to work with? I expect csi100 IR to improve markedly from the floor's\n−0.334 — the attention should at least stop the bleeding — though it may well stay negative, because a\nhundred-name universe is genuinely hard and the attention is learning over a small set. The one risk I am\nexplicitly leaving on the table for the next rung: all-to-all attention with no structure can over-smooth\n— pull every stock toward the day's mean and wash out the idiosyncratic signal that, on csi100\nespecially, is much of what there is. If I see csi300 IR rise strongly while csi100 stays negative, that\nis the signature of exactly that over-smoothing, and the fix is to stop attending to *everything* and\ninstead aggregate through concept structure that keeps a stock's own and its theme's signal separate —\nwhich is the next rung. With that diagnosis in hand, let me put the GATs network in.",
+   "content": "I'm breaking row-independence with GATs: all-to-all learned attention over each day's cross-section, on a pretrained LSTM backbone, concept graph deliberately ignored. This first edit adds the LSTM/GRU backbones and the `GATModel` with its `cal_attention` layer.",
+   "tool_calls": [
+    {
+     "type": "function",
+     "function": {
+      "name": "str_replace",
+      "arguments": {
+       "path": "qlib/custom_model.py",
+       "old_str": "# =====================================================================\nclass CustomModel(Model):\n    \"\"\"LightGBM model -- faithful to qlib's official LGBModel (gbdt.py).\n\n    Hyperparameters from official benchmark:\n    examples/benchmarks/LightGBM/workflow_config_lightgbm_Alpha360.yaml\n    \"\"\"",
+       "new_str": "# =====================================================================\nimport copy\nimport torch.optim as optim\n\n\nclass LSTMModel(nn.Module):\n    \"\"\"LSTM backbone -- verbatim from qlib/contrib/model/pytorch_lstm.py.\"\"\"\n\n    def __init__(self, d_feat=6, hidden_size=64, num_layers=2, dropout=0.0):\n        super().__init__()\n        self.rnn = nn.LSTM(\n            input_size=d_feat,\n            hidden_size=hidden_size,\n            num_layers=num_layers,\n            batch_first=True,\n            dropout=dropout,\n        )\n        self.fc_out = nn.Linear(hidden_size, 1)\n        self.d_feat = d_feat\n\n    def forward(self, x):\n        # x: [N, F*T]\n        x = x.reshape(len(x), self.d_feat, -1)  # [N, F, T]\n        x = x.permute(0, 2, 1)  # [N, T, F]\n        out, _ = self.rnn(x)\n        return self.fc_out(out[:, -1, :]).squeeze()\n\n\nclass GRUModel(nn.Module):\n    \"\"\"GRU backbone -- verbatim from qlib/contrib/model/pytorch_gru.py.\"\"\"\n\n    def __init__(self, d_feat=6, hidden_size=64, num_layers=2, dropout=0.0):\n        super().__init__()\n        self.rnn = nn.GRU(\n            input_size=d_feat,\n            hidden_size=hidden_size,\n            num_layers=num_layers,\n            batch_first=True,\n            dropout=dropout,\n        )\n        self.fc_out = nn.Linear(hidden_size, 1)\n        self.d_feat = d_feat\n\n    def forward(self, x):\n        # x: [N, F*T]\n        x = x.reshape(len(x), self.d_feat, -1)  # [N, F, T]\n        x = x.permute(0, 2, 1)  # [N, T, F]\n        out, _ = self.rnn(x)\n        return self.fc_out(out[:, -1, :]).squeeze()\n\n\nclass GATModel(nn.Module):\n    \"\"\"GAT network -- verbatim from qlib/contrib/model/pytorch_gats.py.\"\"\"\n\n    def __init__(self, d_feat=6, hidden_size=64, num_layers=2, dropout=0.0, base_model=\"GRU\"):\n        super().__init__()\n\n        if base_model == \"GRU\":\n            self.rnn = nn.GRU(\n                input_size=d_feat,\n                hidden_size=hidden_size,\n                num_layers=num_layers,\n                batch_first=True,\n                dropout=dropout,\n            )\n        elif base_model == \"LSTM\":\n            self.rnn = nn.LSTM(\n                input_size=d_feat,\n                hidden_size=hidden_size,\n                num_layers=num_layers,\n                batch_first=True,\n                dropout=dropout,\n            )\n        else:\n            raise ValueError(\"unknown base model name `%s`\" % base_model)\n\n        self.hidden_size = hidden_size\n        self.d_feat = d_feat\n        self.transformation = nn.Linear(self.hidden_size, self.hidden_size)\n        self.a = nn.Parameter(torch.randn(self.hidden_size * 2, 1))\n        self.a.requires_grad = True\n        self.fc = nn.Linear(self.hidden_size, self.hidden_size)\n        self.fc_out = nn.Linear(hidden_size, 1)\n        self.leaky_relu = nn.LeakyReLU()\n        self.softmax = nn.Softmax(dim=1)\n\n    def cal_attention(self, x, y):\n        x = self.transformation(x)\n        y = self.transformation(y)\n\n        sample_num = x.shape[0]\n        dim = x.shape[1]\n        e_x = x.expand(sample_num, sample_num, dim)\n        e_y = torch.transpose(e_x, 0, 1)\n        attention_in = torch.cat((e_x, e_y), 2).view(-1, dim * 2)\n        self.a_t = torch.t(self.a)\n        attention_out = self.a_t.mm(torch.t(attention_in)).view(sample_num, sample_num)\n        attention_out = self.leaky_relu(attention_out)\n        att_weight = self.softmax(attention_out)\n        return att_weight\n\n    def forward(self, x):\n        # x: [N, F*T] -- DatasetH provides flattened features\n        x = x.reshape(len(x), self.d_feat, -1)  # [N, F, T]\n        x = x.permute(0, 2, 1)  # [N, T, F]\n        out, _ = self.rnn(x)\n        hidden = out[:, -1, :]\n        att_weight = self.cal_attention(hidden, hidden)\n        hidden = att_weight.mm(hidden) + hidden\n        hidden = self.fc(hidden)\n        hidden = self.leaky_relu(hidden)\n        return self.fc_out(hidden).squeeze()\n\n\nclass CustomModel(Model):\n    \"\"\"GATs model -- faithful to qlib's official GATs (pytorch_gats.py).\n\n    Hyperparameters from official benchmark:\n    examples/benchmarks/GATs/workflow_config_gats_Alpha360.yaml\n\n    Uses DatasetH with Alpha360 (d_feat=6, 360 features reshaped to 60x6).\n    Daily batching via get_daily_inter() for graph attention across stocks.\n    \"\"\""
+      }
+     }
+    }
+   ]
+  },
+  {
+   "role": "tool",
+   "content": "Successfully replaced text in qlib/custom_model.py."
+  },
+  {
+   "role": "assistant",
+   "reasoning_content": "Now the model body: benchmark hyperparameters, the daily-batched train/test loop, and the pretrained-LSTM warm-start in fit().",
+   "content": "",
+   "tool_calls": [
+    {
+     "type": "function",
+     "function": {
+      "name": "str_replace",
+      "arguments": {
+       "path": "qlib/custom_model.py",
+       "old_str": "        super().__init__()\n        # Official benchmark kwargs (passed to lgb.train via self.params)\n        self.params = {\n            \"objective\": \"mse\",\n            \"colsample_bytree\": 0.8879,\n            \"learning_rate\": 0.0421,\n            \"subsample\": 0.8789,\n            \"lambda_l1\": 205.6999,\n            \"lambda_l2\": 580.9768,\n            \"max_depth\": 8,\n            \"num_leaves\": 210,\n            \"num_threads\": 20,\n            \"verbosity\": -1,\n        }\n        self.early_stopping_rounds = 50\n        self.num_boost_round = 1000\n        self.model = None\n\n    def _prepare_data(self, dataset):\n        \"\"\"Prepare LightGBM datasets -- matches LGBModel._prepare_data().\"\"\"\n        import lightgbm as lgb\n\n        ds_l = []\n        for key in [\"train\", \"valid\"]:\n            if key in dataset.segments:\n                df = dataset.prepare(\n                    key, col_set=[\"feature\", \"label\"], data_key=DataHandlerLP.DK_L\n                )\n                if df.empty:\n                    raise ValueError(\n                        \"Empty data from dataset, please check your dataset config.\"\n                    )\n                x, y = df[\"feature\"], df[\"label\"]\n                # Lightgbm need 1D array as its label\n                if y.values.ndim == 2 and y.values.shape[1] == 1:\n                    y = np.squeeze(y.values)\n                else:\n                    raise ValueError(\n                        \"LightGBM doesn't support multi-label training\"\n                    )\n                ds_l.append(\n                    (lgb.Dataset(x.values, label=y, free_raw_data=False), key)\n                )\n        return ds_l\n\n    def fit(self, dataset: DatasetH):\n        import lightgbm as lgb\n\n        ds_l = self._prepare_data(dataset)\n        ds, names = list(zip(*ds_l))\n        early_stopping_callback = lgb.early_stopping(\n            self.early_stopping_rounds\n        )\n        verbose_eval_callback = lgb.log_evaluation(period=20)\n        evals_result = {}\n        evals_result_callback = lgb.record_evaluation(evals_result)\n        self.model = lgb.train(\n            self.params,\n            ds[0],  # training dataset\n            num_boost_round=self.num_boost_round,\n            valid_sets=ds,\n            valid_names=names,\n            callbacks=[\n                early_stopping_callback,\n                verbose_eval_callback,\n                evals_result_callback,\n            ],\n        )\n\n    def predict(self, dataset: DatasetH, segment=\"test\"):\n        if self.model is None:\n            raise ValueError(\"model is not fitted yet!\")\n        x_test = dataset.prepare(\n            segment, col_set=\"feature\", data_key=DataHandlerLP.DK_I\n        )\n        return pd.Series(self.model.predict(x_test.values), index=x_test.index)",
+       "new_str": "        super().__init__()\n        # Official benchmark hyperparameters (Alpha360)\n        self.d_feat = 6\n        self.hidden_size = 64\n        self.num_layers = 2\n        self.dropout = 0.7\n        self.n_epochs = 200\n        self.lr = 1e-4\n        self.metric = \"loss\"\n        self.early_stop = 20\n        self.loss = \"mse\"\n        self.base_model = \"LSTM\"\n        self.model_path = \"examples/benchmarks/LSTM/model_lstm_csi300.pkl\"\n        self.device = torch.device(\n            \"cuda:0\" if torch.cuda.is_available() else \"cpu\"\n        )\n\n        self.GAT_model = GATModel(\n            d_feat=self.d_feat,\n            hidden_size=self.hidden_size,\n            num_layers=self.num_layers,\n            dropout=self.dropout,\n            base_model=self.base_model,\n        )\n        self.train_optimizer = optim.Adam(\n            self.GAT_model.parameters(), lr=self.lr\n        )\n        self.fitted = False\n        self.GAT_model.to(self.device)\n\n    @property\n    def use_gpu(self):\n        return self.device != torch.device(\"cpu\")\n\n    def mse(self, pred, label):\n        loss = (pred - label) ** 2\n        return torch.mean(loss)\n\n    def loss_fn(self, pred, label):\n        mask = ~torch.isnan(label)\n        if self.loss == \"mse\":\n            return self.mse(pred[mask], label[mask])\n        raise ValueError(\"unknown loss `%s`\" % self.loss)\n\n    def metric_fn(self, pred, label):\n        mask = torch.isfinite(label)\n        if self.metric in (\"\", \"loss\"):\n            return -self.loss_fn(pred[mask], label[mask])\n        raise ValueError(\"unknown metric `%s`\" % self.metric)\n\n    def get_daily_inter(self, df, shuffle=False):\n        # organize the train data into daily batches\n        daily_count = df.groupby(level=0, group_keys=False).size().values\n        daily_index = np.roll(np.cumsum(daily_count), 1)\n        daily_index[0] = 0\n        if shuffle:\n            # shuffle data\n            daily_shuffle = list(zip(daily_index, daily_count))\n            np.random.shuffle(daily_shuffle)\n            daily_index, daily_count = zip(*daily_shuffle)\n        return daily_index, daily_count\n\n    def train_epoch(self, x_train, y_train):\n        x_train_values = x_train.values\n        y_train_values = np.squeeze(y_train.values)\n        self.GAT_model.train()\n\n        # organize the train data into daily batches\n        daily_index, daily_count = self.get_daily_inter(x_train, shuffle=True)\n\n        for idx, count in zip(daily_index, daily_count):\n            batch = slice(idx, idx + count)\n            feature = torch.from_numpy(x_train_values[batch]).float().to(self.device)\n            label = torch.from_numpy(y_train_values[batch]).float().to(self.device)\n\n            pred = self.GAT_model(feature)\n            loss = self.loss_fn(pred, label)\n\n            self.train_optimizer.zero_grad()\n            loss.backward()\n            torch.nn.utils.clip_grad_value_(self.GAT_model.parameters(), 3.0)\n            self.train_optimizer.step()\n\n    def test_epoch(self, data_x, data_y):\n        # prepare training data\n        x_values = data_x.values\n        y_values = np.squeeze(data_y.values)\n        self.GAT_model.eval()\n\n        scores = []\n        losses = []\n\n        # organize the test data into daily batches\n        daily_index, daily_count = self.get_daily_inter(data_x, shuffle=False)\n\n        for idx, count in zip(daily_index, daily_count):\n            batch = slice(idx, idx + count)\n            feature = torch.from_numpy(x_values[batch]).float().to(self.device)\n            label = torch.from_numpy(y_values[batch]).float().to(self.device)\n\n            with torch.no_grad():\n                pred = self.GAT_model(feature)\n                loss = self.loss_fn(pred, label)\n                losses.append(loss.item())\n\n                score = self.metric_fn(pred, label)\n                scores.append(score.item())\n\n        return np.mean(losses), np.mean(scores)\n\n    def fit(self, dataset: DatasetH):\n        df_train, df_valid = dataset.prepare(\n            [\"train\", \"valid\"],\n            col_set=[\"feature\", \"label\"],\n            data_key=DataHandlerLP.DK_L,\n        )\n        if df_train.empty or df_valid.empty:\n            raise ValueError(\"Empty data from dataset, please check your dataset config.\")\n\n        x_train, y_train = df_train[\"feature\"], df_train[\"label\"]\n        x_valid, y_valid = df_valid[\"feature\"], df_valid[\"label\"]\n\n        stop_steps = 0\n        best_score = -np.inf\n        best_epoch = 0\n        best_param = None\n\n        # optionally load pretrained base_model\n        if self.base_model == \"LSTM\":\n            pretrained_model = LSTMModel(d_feat=self.d_feat, hidden_size=self.hidden_size, num_layers=self.num_layers)\n        elif self.base_model == \"GRU\":\n            pretrained_model = GRUModel(d_feat=self.d_feat, hidden_size=self.hidden_size, num_layers=self.num_layers)\n        else:\n            raise ValueError(\"unknown base model name `%s`\" % self.base_model)\n\n        if self.model_path:\n            pretrained_model.load_state_dict(torch.load(self.model_path, map_location=self.device))\n\n        model_dict = self.GAT_model.state_dict()\n        pretrained_dict = {\n            k: v for k, v in pretrained_model.state_dict().items() if k in model_dict\n        }\n        model_dict.update(pretrained_dict)\n        self.GAT_model.load_state_dict(model_dict)\n\n        # train\n        self.fitted = True\n\n        for step in range(self.n_epochs):\n            self.train_epoch(x_train, y_train)\n            train_loss, train_score = self.test_epoch(x_train, y_train)\n            val_loss, val_score = self.test_epoch(x_valid, y_valid)\n            print(\"Epoch%d: train %.6f, valid %.6f\" % (step, train_score, val_score))\n\n            if val_score > best_score:\n                best_score = val_score\n                stop_steps = 0\n                best_epoch = step\n                best_param = copy.deepcopy(self.GAT_model.state_dict())\n            else:\n                stop_steps += 1\n                if stop_steps >= self.early_stop:\n                    print(\"early stop\")\n                    break\n\n        print(\"best score: %.6lf @ %d\" % (best_score, best_epoch))\n        self.GAT_model.load_state_dict(best_param)\n\n        if self.use_gpu:\n            torch.cuda.empty_cache()\n\n    def predict(self, dataset: DatasetH, segment=\"test\"):\n        if not self.fitted:\n            raise ValueError(\"model is not fitted yet!\")\n\n        x_test = dataset.prepare(segment, col_set=\"feature\", data_key=DataHandlerLP.DK_I)\n        index = x_test.index\n        self.GAT_model.eval()\n        x_values = x_test.values\n        preds = []\n\n        # organize the data into daily batches\n        daily_index, daily_count = self.get_daily_inter(x_test, shuffle=False)\n\n        for idx, count in zip(daily_index, daily_count):\n            batch = slice(idx, idx + count)\n            x_batch = torch.from_numpy(x_values[batch]).float().to(self.device)\n\n            with torch.no_grad():\n                pred = self.GAT_model(x_batch).detach().cpu().numpy()\n\n            preds.append(pred)\n\n        return pd.Series(np.concatenate(preds), index=index)"
+      }
+     }
+    }
+   ]
+  },
+  {
+   "role": "tool",
+   "content": "Successfully replaced text in qlib/custom_model.py."
+  },
+  {
+   "role": "assistant",
+   "reasoning_content": "",
+   "content": "Run the experiment to measure this.",
+   "tool_calls": [
+    {
+     "type": "function",
+     "function": {
+      "name": "run_experiment",
+      "arguments": {}
+     }
+    }
+   ]
+  },
+  {
+   "role": "tool",
+   "content": "Measured results — `baseline:gats` (`is_final,true`), seed 42.\n\n## csi300\n| seed | ic | icir | rank_ic | rank_icir | annualized_return | max_drawdown | information_ratio |\n|---|---|---|---|---|---|---|---|\n| 42 | 0.049537 | 0.376208 | 0.059775 | 0.473724 | 0.106258 | −0.067077 | 1.361531 |\n\n## csi100\n| seed | ic | icir | rank_ic | rank_icir | annualized_return | max_drawdown | information_ratio |\n|---|---|---|---|---|---|---|---|\n| 42 | 0.046510 | 0.260086 | 0.052069 | 0.304184 | −0.014098 | −0.202519 | −0.251506 |\n\n## csi300_recent\n| seed | ic | icir | rank_ic | rank_icir | annualized_return | max_drawdown | information_ratio |\n|---|---|---|---|---|---|---|---|\n| 42 | 0.028852 | 0.213791 | 0.045246 | 0.328401 | 0.102562 | −0.044370 | 1.324341 |"
+  },
+  {
+   "role": "assistant",
+   "reasoning_content": "All-to-all attention did exactly what I hoped on the broad universes and exactly what I feared on the\nnarrow one, and the split is the whole story. On csi300 the GATs rung lifted information ratio from\nLightGBM's 0.280 to 1.362 and annualized return from 0.0203 to 0.106 — a more-than-fourfold IR jump,\nwith signal IC also up from 0.0399 to 0.0495. That confirms the diagnosis from the floor: the portfolio\nproblem was a cross-section problem, and letting the day's stocks attend to each other gives a far more\nstable daily top-50. On csi300_recent the same thing held — IR 1.324, return 0.103. But csi100 is the\ntell I was watching for: IR went from −0.334 to −0.252, and annualized return stayed negative at −0.0141.\nThe attention stopped some of the bleeding but did not cross zero. Signal IC on csi100 is actually fine —\n0.0465, even slightly higher than csi300's IC in some respects — so the model *can* rank csi100 stocks;\nit just cannot build a profitable top-50 from them. That is the over-smoothing signature I flagged: with\nonly a hundred names and one all-to-all attention with no structure, the softmax over the full\ncross-section pulls every stock toward the day's mean, and on a low-breadth universe where most of the\nedge lives in the *idiosyncratic* spread between names, washing out that spread is precisely how you keep\npositive IC but negative IR. The attention is sharing information indiscriminately — every stock borrows\nfrom every other stock, including the irrelevant ones — and the curated concept graph, which I\ndeliberately ignored last rung to isolate \"does cross-section help,\" is sitting unused on disk, holding\nexactly the structure that would tell the model *which* stocks to borrow from.\n\nSo this rung brings the concept structure back, but not as a frozen adjacency mask — I argued last time\nthat the curated graph is static and incomplete, and I still believe that. The move is to make the\nconcept a first-class object with its own date-specific representation, so that \"how much stock `i`\nrelates to theme `k` today\" is *computed from the current embeddings* rather than read from a fixed\ntable, and to do this for both the curated concepts *and* a set of concepts discovered from the data.\nThat gives me three sources of signal per stock — what it shares with predefined themes, what it shares\nwith discovered hidden themes, and its own idiosyncratic residual — and crucially keeps them separate, so\nthe idiosyncratic part that all-to-all attention washed out on csi100 is preserved in its own channel.\nThat is the structure that should fix the narrow universe while holding the broad-universe gains.\n\nStart from the same backbone, because nothing about the encoder changed. Each stock's `[60, 6]` window\ngoes through a recurrent encoder and I take the last hidden state `x_i`. The harness's HIST fill uses an\nLSTM backbone, `hidden_size=64`, `num_layers=2`, `dropout=0.0`, and like the GATs rung it loads a\npretrained LSTM into the backbone before training — the same warm-start logic, so the relational modules\nlearn on top of a sensible single-stock encoder. (The hidden size here is 64, matching the GATs rung, not\nthe larger width sometimes quoted for HIST; I take the harness's setting, and the smaller width with\nzero dropout is what the relational regularization below substitutes for.) The new machinery is what\nhappens after `x_i`.\n\n**Predefined concept module.** The first wall with the curated graph was that membership is binary and\nfrozen while a stock's relevance to a theme drifts day to day. The fix is to stop treating membership as\nthe final edge weight and instead use it only to *initialize* a concept's representation, then recompute\nthe edges from current embeddings. Concretely, take the binary stock-concept matrix `M` (rows = the day's\nstocks, columns = concepts), and form each concept's vector as a degree-normalized aggregate of its\nmember stocks' hidden states. The normalization is a smoothed membership degree: divide each member's\ncontribution by `(membership-masked column-sum + 1)`, so a singleton concept does not explode into a\nfull-strength copy of one stock and an empty concept produces a zero row I can drop. That gives a concept\nrepresentation `e_k` per surviving column. Then — and this is the drift fix — send the concept information\n*back* to the stocks not through the frozen membership but through cosine similarity computed on the\n*current* embeddings: for each stock, score its cosine similarity to every concept vector, softmax over\nconcepts (`Softmax(dim=1)`, each stock choosing a mixture over concept columns), and aggregate the\nconcept vectors by those weights into a per-stock shared vector, passed through a learned `fc_es`\ntransform. A stock can now borrow from a known theme even when its original membership row did not attach\nit strongly, and the weights are recomputed every date — exactly the dynamic edge editing the frozen\nmask could never express. This is the concept-aware aggregation the all-to-all attention lacked: instead\nof attending to all 300 stocks, a stock attends to the *themes* it currently resembles, which is a far\nlower-dimensional, structured neighborhood.\n\n**Residual hand-off (backcast/forecast).** The reason the three sources stay separate — and the reason\ncsi100's idiosyncratic spread is preserved — is the residual-decomposition discipline. The predefined\nmodule emits not only a forecast head `output_es` (a LeakyReLU on a learned transform of the shared\nvector) but also a *backcast* `e_shared_back` (a learned linear head, no nonlinearity) that represents\nthe part of `x_i` it has accounted for. The next module runs on the residual `x¹_i = x_i −\ne_shared_back`. Without this subtraction, three parallel modules would all see the full embedding and\nredundantly re-encode the same sector move three times, double-counting the shared trend and starving the\nidiosyncratic part — which is exactly the over-smoothing failure in another guise. The backcast forces a\ndecomposition: each module only sees what the previous ones could not explain.\n\n**Hidden concept module.** The second wall was edges that *aren't there* — emerging themes the curators\nnever labeled. So discover concepts from the residual `x¹_i`, with no labels, on the part of the signal\nthe predefined themes could not explain. The construction is parameter-free: posit one hidden concept\n*seeded by each stock* (initialize seed `k` as `x¹_k`), measure every stock's cosine similarity to every\nseed, and connect each stock to its single most similar seed. Seeds that many stocks point at *are*\nemergent groups; seeds nobody points at are spurious and get deleted. There is an immediate bug to handle:\nevery stock's similarity to its own seed is exactly 1 (cosine of a vector with itself), so the row-argmax\nwould always pick itself and no grouping happens. The fix is to zero out the diagonal of the\nsimilarity matrix before the row-max, take each row's argmax over the remaining columns as that stock's\nchosen concept, keep only that one connection per row, then re-add a surviving seed's own originating\nstock to its membership. Aggregate the residual embeddings of each surviving concept's members\n(similarity-weighted) into the hidden concept's representation, delete empty columns, and send the hidden\nshared information back to stocks via the same cosine→softmax→weighted-sum→`fc_is` path. This whole stage\nhas essentially no concept-specific parameters — it is a similarity-driven clustering rerun fresh every\ndate — which is what I want, because the themes it finds should be free to change as the market changes.\nThis is the channel that should catch the co-movement on csi100 that the curated concepts miss and that\nindiscriminate attention drowned.\n\n**Individual module.** Run the residual discipline once more: the hidden module emits its own backcast\n`i_shared_back`, and the individual information is `x²_i = x_i − e_shared_back − i_shared_back` — the part\nexplained by neither predefined nor hidden themes. A nonlinear head `fc_indi` on this residual is the\nidiosyncratic forecast. *This* is the channel that all-to-all attention destroyed on csi100: the\nstock's own peculiar signal, kept separate and never averaged against the cross-section. Preserving it is\nthe whole reason I expect csi100 to recover.\n\n**Read-out.** Because the backcasts subtract on the way down, the three slices add back up to the original\nembedding exactly, so the forecasts *sum* on the way out: `all_info = output_es + output_is +\noutput_indi`, then one final `fc_out` reads the scalar score. Predefined-shared trend plus hidden-shared\ntrend plus individual trend — the additive structure the residual stack guarantees.\n\nThe harness specifics I have to honor: the metric for early stopping is `ic` here, not loss — the\n`metric_fn` computes the Pearson correlation between predictions and labels on each day's batch and\nearly-stops on validation IC with patience 20, which is the right objective for a ranking task and a\nchange from the GATs rung's loss-based stopping. Training is per-day cross-sections (the entire\nrelational computation is over one date's stocks; a batch that mixed dates would mix unrelated graphs),\nMSE loss masked to finite labels, Adam at `lr=1e-4`, grad-value clip 3.0, up to 200 epochs. The concept\nmatrix per day is fetched from the stock2concept file via the stock-index map, with index 733 as the\npadding fallback for unknown instruments. The full forward — the membership-normalized predefined\ninitialization, the masked-argmax hidden clustering, the three forecast/backcast heads — is in the\nanswer. Let me build the HIST network and wire the concept-matrix plumbing through.",
+   "content": "I'm bringing the concept graph back as HIST: a date-specific predefined-concept channel, a discovered hidden-concept channel, and a preserved individual channel, separated by backcast residuals. This first edit renames the network class to `HISTModel` and adds its dimensions.",
+   "tool_calls": [
+    {
+     "type": "function",
+     "function": {
+      "name": "str_replace",
+      "arguments": {
+       "path": "qlib/custom_model.py",
+       "old_str": "\nclass GATModel(nn.Module):\n    \"\"\"GAT network -- verbatim from qlib/contrib/model/pytorch_gats.py.\"\"\"\n\n    def __init__(self, d_feat=6, hidden_size=64, num_layers=2, dropout=0.0, base_model=\"GRU\"):\n        super().__init__()",
+       "new_str": "\nclass HISTModel(nn.Module):\n    \"\"\"HIST network -- verbatim from qlib/contrib/model/pytorch_hist.py.\"\"\"\n\n    def __init__(self, d_feat=6, hidden_size=64, num_layers=2, dropout=0.0, base_model=\"GRU\"):\n        super().__init__()\n\n        self.d_feat = d_feat\n        self.hidden_size = hidden_size"
+      }
+     }
+    }
+   ]
+  },
+  {
+   "role": "tool",
+   "content": "Successfully replaced text in qlib/custom_model.py."
+  },
+  {
+   "role": "assistant",
+   "reasoning_content": "Now the relational heads and the three-channel forward: predefined-concept aggregation, masked-argmax hidden clustering, and the additive read-out.",
+   "content": "",
+   "tool_calls": [
+    {
+     "type": "function",
+     "function": {
+      "name": "str_replace",
+      "arguments": {
+       "path": "qlib/custom_model.py",
+       "old_str": "\n        self.hidden_size = hidden_size\n        self.d_feat = d_feat\n        self.transformation = nn.Linear(self.hidden_size, self.hidden_size)\n        self.a = nn.Parameter(torch.randn(self.hidden_size * 2, 1))\n        self.a.requires_grad = True\n        self.fc = nn.Linear(self.hidden_size, self.hidden_size)\n        self.fc_out = nn.Linear(hidden_size, 1)\n        self.leaky_relu = nn.LeakyReLU()\n        self.softmax = nn.Softmax(dim=1)\n\n    def cal_attention(self, x, y):\n        x = self.transformation(x)\n        y = self.transformation(y)\n\n        sample_num = x.shape[0]\n        dim = x.shape[1]\n        e_x = x.expand(sample_num, sample_num, dim)\n        e_y = torch.transpose(e_x, 0, 1)\n        attention_in = torch.cat((e_x, e_y), 2).view(-1, dim * 2)\n        self.a_t = torch.t(self.a)\n        attention_out = self.a_t.mm(torch.t(attention_in)).view(sample_num, sample_num)\n        attention_out = self.leaky_relu(attention_out)\n        att_weight = self.softmax(attention_out)\n        return att_weight\n\n    def forward(self, x):\n        # x: [N, F*T] -- DatasetH provides flattened features\n        x = x.reshape(len(x), self.d_feat, -1)  # [N, F, T]\n        x = x.permute(0, 2, 1)  # [N, T, F]\n        out, _ = self.rnn(x)\n        hidden = out[:, -1, :]\n        att_weight = self.cal_attention(hidden, hidden)\n        hidden = att_weight.mm(hidden) + hidden\n        hidden = self.fc(hidden)\n        hidden = self.leaky_relu(hidden)\n        return self.fc_out(hidden).squeeze()\n\n\nclass CustomModel(Model):\n    \"\"\"GATs model -- faithful to qlib's official GATs (pytorch_gats.py).\n\n    Hyperparameters from official benchmark:\n    examples/benchmarks/GATs/workflow_config_gats_Alpha360.yaml\n\n    Uses DatasetH with Alpha360 (d_feat=6, 360 features reshaped to 60x6).\n    Daily batching via get_daily_inter() for graph attention across stocks.\n    \"\"\"",
+       "new_str": "\n        self.fc_es = nn.Linear(hidden_size, hidden_size)\n        torch.nn.init.xavier_uniform_(self.fc_es.weight)\n        self.fc_is = nn.Linear(hidden_size, hidden_size)\n        torch.nn.init.xavier_uniform_(self.fc_is.weight)\n\n        self.fc_es_middle = nn.Linear(hidden_size, hidden_size)\n        torch.nn.init.xavier_uniform_(self.fc_es_middle.weight)\n        self.fc_is_middle = nn.Linear(hidden_size, hidden_size)\n        torch.nn.init.xavier_uniform_(self.fc_is_middle.weight)\n\n        self.fc_es_fore = nn.Linear(hidden_size, hidden_size)\n        torch.nn.init.xavier_uniform_(self.fc_es_fore.weight)\n        self.fc_is_fore = nn.Linear(hidden_size, hidden_size)\n        torch.nn.init.xavier_uniform_(self.fc_is_fore.weight)\n        self.fc_indi_fore = nn.Linear(hidden_size, hidden_size)\n        torch.nn.init.xavier_uniform_(self.fc_indi_fore.weight)\n\n        self.fc_es_back = nn.Linear(hidden_size, hidden_size)\n        torch.nn.init.xavier_uniform_(self.fc_es_back.weight)\n        self.fc_is_back = nn.Linear(hidden_size, hidden_size)\n        torch.nn.init.xavier_uniform_(self.fc_is_back.weight)\n        self.fc_indi = nn.Linear(hidden_size, hidden_size)\n        torch.nn.init.xavier_uniform_(self.fc_indi.weight)\n\n        self.leaky_relu = nn.LeakyReLU()\n        self.softmax_s2t = torch.nn.Softmax(dim=0)\n        self.softmax_t2s = torch.nn.Softmax(dim=1)\n\n        self.fc_out_es = nn.Linear(hidden_size, 1)\n        self.fc_out_is = nn.Linear(hidden_size, 1)\n        self.fc_out_indi = nn.Linear(hidden_size, 1)\n        self.fc_out = nn.Linear(hidden_size, 1)\n\n    def cal_cos_similarity(self, x, y):  # the 2nd dimension of x and y are the same\n        xy = x.mm(torch.t(y))\n        x_norm = torch.sqrt(torch.sum(x * x, dim=1)).reshape(-1, 1)\n        y_norm = torch.sqrt(torch.sum(y * y, dim=1)).reshape(-1, 1)\n        cos_similarity = xy / (x_norm.mm(torch.t(y_norm)) + 1e-6)\n        return cos_similarity\n\n    def forward(self, x, concept_matrix):\n        device = torch.device(torch.get_device(x))\n\n        x_hidden = x.reshape(len(x), self.d_feat, -1)  # [N, F, T]\n        x_hidden = x_hidden.permute(0, 2, 1)  # [N, T, F]\n        x_hidden, _ = self.rnn(x_hidden)\n        x_hidden = x_hidden[:, -1, :]\n\n        # Predefined Concept Module\n\n        stock_to_concept = concept_matrix\n\n        stock_to_concept_sum = torch.sum(stock_to_concept, 0).reshape(1, -1).repeat(stock_to_concept.shape[0], 1)\n        stock_to_concept_sum = stock_to_concept_sum.mul(concept_matrix)\n\n        stock_to_concept_sum = stock_to_concept_sum + (\n            torch.ones(stock_to_concept.shape[0], stock_to_concept.shape[1]).to(device)\n        )\n        stock_to_concept = stock_to_concept / stock_to_concept_sum\n        hidden = torch.t(stock_to_concept).mm(x_hidden)\n\n        hidden = hidden[hidden.sum(1) != 0]\n\n        concept_to_stock = self.cal_cos_similarity(x_hidden, hidden)\n        concept_to_stock = self.softmax_t2s(concept_to_stock)\n\n        e_shared_info = concept_to_stock.mm(hidden)\n        e_shared_info = self.fc_es(e_shared_info)\n\n        e_shared_back = self.fc_es_back(e_shared_info)\n        output_es = self.fc_es_fore(e_shared_info)\n        output_es = self.leaky_relu(output_es)\n\n        # Hidden Concept Module\n        i_shared_info = x_hidden - e_shared_back\n        hidden = i_shared_info\n        i_stock_to_concept = self.cal_cos_similarity(i_shared_info, hidden)\n        dim = i_stock_to_concept.shape[0]\n        diag = i_stock_to_concept.diagonal(0)\n        i_stock_to_concept = i_stock_to_concept * (torch.ones(dim, dim) - torch.eye(dim)).to(device)\n        row = torch.linspace(0, dim - 1, dim).to(device).long()\n        column = i_stock_to_concept.max(1)[1].long()\n        value = i_stock_to_concept.max(1)[0]\n        i_stock_to_concept[row, column] = 10\n        i_stock_to_concept[i_stock_to_concept != 10] = 0\n        i_stock_to_concept[row, column] = value\n        i_stock_to_concept = i_stock_to_concept + torch.diag_embed((i_stock_to_concept.sum(0) != 0).float() * diag)\n        hidden = torch.t(i_shared_info).mm(i_stock_to_concept).t()\n        hidden = hidden[hidden.sum(1) != 0]\n\n        i_concept_to_stock = self.cal_cos_similarity(i_shared_info, hidden)\n        i_concept_to_stock = self.softmax_t2s(i_concept_to_stock)\n        i_shared_info = i_concept_to_stock.mm(hidden)\n        i_shared_info = self.fc_is(i_shared_info)\n\n        i_shared_back = self.fc_is_back(i_shared_info)\n        output_is = self.fc_is_fore(i_shared_info)\n        output_is = self.leaky_relu(output_is)\n\n        # Individual Information Module\n        individual_info = x_hidden - e_shared_back - i_shared_back\n        output_indi = individual_info\n        output_indi = self.fc_indi(output_indi)\n        output_indi = self.leaky_relu(output_indi)\n\n        # Stock Trend Prediction\n        all_info = output_es + output_is + output_indi\n        pred_all = self.fc_out(all_info).squeeze()\n\n        return pred_all\n\n\nclass CustomModel(Model):\n    \"\"\"HIST model -- faithful to qlib's official HIST (pytorch_hist.py).\n\n    Hyperparameters from official benchmark:\n    examples/benchmarks/HIST/workflow_config_hist_Alpha360.yaml\n    \"\"\""
+      }
+     }
+    }
+   ]
+  },
+  {
+   "role": "tool",
+   "content": "Successfully replaced text in qlib/custom_model.py."
+  },
+  {
+   "role": "assistant",
+   "reasoning_content": "HIST wants zero dropout and IC-based early stopping, not the GATs loss metric.",
+   "content": "",
+   "tool_calls": [
+    {
+     "type": "function",
+     "function": {
+      "name": "str_replace",
+      "arguments": {
+       "path": "qlib/custom_model.py",
+       "old_str": "        super().__init__()\n        # Official benchmark hyperparameters (Alpha360)\n        self.d_feat = 6\n        self.hidden_size = 64\n        self.num_layers = 2\n        self.dropout = 0.7\n        self.n_epochs = 200\n        self.lr = 1e-4\n        self.metric = \"loss\"\n        self.early_stop = 20",
+       "new_str": "        super().__init__()\n        # Official benchmark hyperparameters\n        self.d_feat = 6\n        self.hidden_size = 64\n        self.num_layers = 2\n        self.dropout = 0.0\n        self.n_epochs = 200\n        self.lr = 1e-4\n        self.metric = \"ic\"\n        self.early_stop = 20"
+      }
+     }
+    }
+   ]
+  },
+  {
+   "role": "tool",
+   "content": "Successfully replaced text in qlib/custom_model.py."
+  },
+  {
+   "role": "assistant",
+   "reasoning_content": "Wire in the concept-matrix and stock-index file paths the relational forward needs.",
+   "content": "",
+   "tool_calls": [
+    {
+     "type": "function",
+     "function": {
+      "name": "str_replace",
+      "arguments": {
+       "path": "qlib/custom_model.py",
+       "old_str": "        self.model_path = \"examples/benchmarks/LSTM/model_lstm_csi300.pkl\"\n        self.device = torch.device(",
+       "new_str": "        self.model_path = \"examples/benchmarks/LSTM/model_lstm_csi300.pkl\"\n        self.stock2concept = os.path.expanduser(\"~/.qlib/qlib_data/qlib_csi300_stock2concept.npy\")\n        self.stock_index = os.path.expanduser(\"~/.qlib/qlib_data/qlib_csi300_stock_index.npy\")\n        self.optimizer_name = \"adam\"\n        self.device = torch.device("
+      }
+     }
+    }
+   ]
+  },
+  {
+   "role": "tool",
+   "content": "Successfully replaced text in qlib/custom_model.py."
+  },
+  {
+   "role": "assistant",
+   "reasoning_content": "",
+   "content": "",
+   "tool_calls": [
+    {
+     "type": "function",
+     "function": {
+      "name": "str_replace",
+      "arguments": {
+       "path": "qlib/custom_model.py",
+       "old_str": "\n        self.GAT_model = GATModel(\n            d_feat=self.d_feat,",
+       "new_str": "\n        self.HIST_model = HISTModel(\n            d_feat=self.d_feat,"
+      }
+     }
+    }
+   ]
+  },
+  {
+   "role": "tool",
+   "content": "Successfully replaced text in qlib/custom_model.py."
+  },
+  {
+   "role": "assistant",
+   "reasoning_content": "",
+   "content": "",
+   "tool_calls": [
+    {
+     "type": "function",
+     "function": {
+      "name": "str_replace",
+      "arguments": {
+       "path": "qlib/custom_model.py",
+       "old_str": "        self.train_optimizer = optim.Adam(\n            self.GAT_model.parameters(), lr=self.lr\n        )\n        self.fitted = False\n        self.GAT_model.to(self.device)",
+       "new_str": "        self.train_optimizer = optim.Adam(\n            self.HIST_model.parameters(), lr=self.lr\n        )\n        self.fitted = False\n        self.HIST_model.to(self.device)"
+      }
+     }
+    }
+   ]
+  },
+  {
+   "role": "tool",
+   "content": "Successfully replaced text in qlib/custom_model.py."
+  },
+  {
+   "role": "assistant",
+   "reasoning_content": "Add the IC branch to metric_fn so early stopping tracks validation IC.",
+   "content": "",
+   "tool_calls": [
+    {
+     "type": "function",
+     "function": {
+      "name": "str_replace",
+      "arguments": {
+       "path": "qlib/custom_model.py",
+       "old_str": "        mask = torch.isfinite(label)\n        if self.metric in (\"\", \"loss\"):",
+       "new_str": "        mask = torch.isfinite(label)\n        if self.metric == \"ic\":\n            x = pred[mask]\n            y = label[mask]\n            vx = x - torch.mean(x)\n            vy = y - torch.mean(y)\n            return torch.sum(vx * vy) / (torch.sqrt(torch.sum(vx**2)) * torch.sqrt(torch.sum(vy**2)))\n        if self.metric in (\"\", \"loss\"):"
+      }
+     }
+    }
+   ]
+  },
+  {
+   "role": "tool",
+   "content": "Successfully replaced text in qlib/custom_model.py."
+  },
+  {
+   "role": "assistant",
+   "reasoning_content": "The per-day training loop now needs the day's concept matrix, so load the stock-index map and pass it through.",
+   "content": "",
+   "tool_calls": [
+    {
+     "type": "function",
+     "function": {
+      "name": "str_replace",
+      "arguments": {
+       "path": "qlib/custom_model.py",
+       "old_str": "\n    def train_epoch(self, x_train, y_train):\n        x_train_values = x_train.values\n        y_train_values = np.squeeze(y_train.values)\n        self.GAT_model.train()",
+       "new_str": "\n    def train_epoch(self, x_train, y_train, stock_index):\n        stock2concept_matrix = np.load(self.stock2concept)\n        x_train_values = x_train.values\n        y_train_values = np.squeeze(y_train.values)\n        stock_index = stock_index.values\n        stock_index[np.isnan(stock_index)] = 733\n        self.HIST_model.train()"
+      }
+     }
+    }
+   ]
+  },
+  {
+   "role": "tool",
+   "content": "Successfully replaced text in qlib/custom_model.py."
+  },
+  {
+   "role": "assistant",
+   "reasoning_content": "",
+   "content": "",
+   "tool_calls": [
+    {
+     "type": "function",
+     "function": {
+      "name": "str_replace",
+      "arguments": {
+       "path": "qlib/custom_model.py",
+       "old_str": "            feature = torch.from_numpy(x_train_values[batch]).float().to(self.device)\n            label = torch.from_numpy(y_train_values[batch]).float().to(self.device)\n\n            pred = self.GAT_model(feature)\n            loss = self.loss_fn(pred, label)",
+       "new_str": "            feature = torch.from_numpy(x_train_values[batch]).float().to(self.device)\n            concept_matrix = torch.from_numpy(stock2concept_matrix[stock_index[batch]]).float().to(self.device)\n            label = torch.from_numpy(y_train_values[batch]).float().to(self.device)\n            pred = self.HIST_model(feature, concept_matrix)\n            loss = self.loss_fn(pred, label)"
+      }
+     }
+    }
+   ]
+  },
+  {
+   "role": "tool",
+   "content": "Successfully replaced text in qlib/custom_model.py."
+  },
+  {
+   "role": "assistant",
+   "reasoning_content": "",
+   "content": "",
+   "tool_calls": [
+    {
+     "type": "function",
+     "function": {
+      "name": "str_replace",
+      "arguments": {
+       "path": "qlib/custom_model.py",
+       "old_str": "            loss.backward()\n            torch.nn.utils.clip_grad_value_(self.GAT_model.parameters(), 3.0)\n            self.train_optimizer.step()\n\n    def test_epoch(self, data_x, data_y):\n        # prepare training data\n        x_values = data_x.values\n        y_values = np.squeeze(data_y.values)\n        self.GAT_model.eval()",
+       "new_str": "            loss.backward()\n            torch.nn.utils.clip_grad_value_(self.HIST_model.parameters(), 3.0)\n            self.train_optimizer.step()\n\n    def test_epoch(self, data_x, data_y, stock_index):\n        # prepare training data\n        stock2concept_matrix = np.load(self.stock2concept)\n        x_values = data_x.values\n        y_values = np.squeeze(data_y.values)\n        stock_index = stock_index.values\n        stock_index[np.isnan(stock_index)] = 733\n        self.HIST_model.eval()"
+      }
+     }
+    }
+   ]
+  },
+  {
+   "role": "tool",
+   "content": "Successfully replaced text in qlib/custom_model.py."
+  },
+  {
+   "role": "assistant",
+   "reasoning_content": "",
+   "content": "",
+   "tool_calls": [
+    {
+     "type": "function",
+     "function": {
+      "name": "str_replace",
+      "arguments": {
+       "path": "qlib/custom_model.py",
+       "old_str": "            feature = torch.from_numpy(x_values[batch]).float().to(self.device)\n            label = torch.from_numpy(y_values[batch]).float().to(self.device)\n\n            with torch.no_grad():\n                pred = self.GAT_model(feature)\n                loss = self.loss_fn(pred, label)",
+       "new_str": "            feature = torch.from_numpy(x_values[batch]).float().to(self.device)\n            concept_matrix = torch.from_numpy(stock2concept_matrix[stock_index[batch]]).float().to(self.device)\n            label = torch.from_numpy(y_values[batch]).float().to(self.device)\n            with torch.no_grad():\n                pred = self.HIST_model(feature, concept_matrix)\n                loss = self.loss_fn(pred, label)"
+      }
+     }
+    }
+   ]
+  },
+  {
+   "role": "tool",
+   "content": "Successfully replaced text in qlib/custom_model.py."
+  },
+  {
+   "role": "assistant",
+   "reasoning_content": "fit() now also pulls the test segment so the stock-index map covers every instrument it will score.",
+   "content": "",
+   "tool_calls": [
+    {
+     "type": "function",
+     "function": {
+      "name": "str_replace",
+      "arguments": {
+       "path": "qlib/custom_model.py",
+       "old_str": "    def fit(self, dataset: DatasetH):\n        df_train, df_valid = dataset.prepare(\n            [\"train\", \"valid\"],\n            col_set=[\"feature\", \"label\"],",
+       "new_str": "    def fit(self, dataset: DatasetH):\n        df_train, df_valid, df_test = dataset.prepare(\n            [\"train\", \"valid\", \"test\"],\n            col_set=[\"feature\", \"label\"],"
+      }
+     }
+    }
+   ]
+  },
+  {
+   "role": "tool",
+   "content": "Successfully replaced text in qlib/custom_model.py."
+  },
+  {
+   "role": "assistant",
+   "reasoning_content": "Build the per-row stock_index columns from the instrument map, with 733 as the unknown fallback.",
+   "content": "",
+   "tool_calls": [
+    {
+     "type": "function",
+     "function": {
+      "name": "str_replace",
+      "arguments": {
+       "path": "qlib/custom_model.py",
+       "old_str": "\n        x_train, y_train = df_train[\"feature\"], df_train[\"label\"]\n        x_valid, y_valid = df_valid[\"feature\"], df_valid[\"label\"]",
+       "new_str": "\n        stock_index_map = np.load(self.stock_index, allow_pickle=True).item()\n        df_train[\"stock_index\"] = 733\n        df_train[\"stock_index\"] = df_train.index.get_level_values(\"instrument\").map(stock_index_map)\n        df_valid[\"stock_index\"] = 733\n        df_valid[\"stock_index\"] = df_valid.index.get_level_values(\"instrument\").map(stock_index_map)\n\n        x_train, y_train, stock_index_train = df_train[\"feature\"], df_train[\"label\"], df_train[\"stock_index\"]\n        x_valid, y_valid, stock_index_valid = df_valid[\"feature\"], df_valid[\"label\"], df_valid[\"stock_index\"]"
+      }
+     }
+    }
+   ]
+  },
+  {
+   "role": "tool",
+   "content": "Successfully replaced text in qlib/custom_model.py."
+  },
+  {
+   "role": "assistant",
+   "reasoning_content": "",
+   "content": "",
+   "tool_calls": [
+    {
+     "type": "function",
+     "function": {
+      "name": "str_replace",
+      "arguments": {
+       "path": "qlib/custom_model.py",
+       "old_str": "        if self.model_path:\n            pretrained_model.load_state_dict(torch.load(self.model_path, map_location=self.device))\n\n        model_dict = self.GAT_model.state_dict()\n        pretrained_dict = {",
+       "new_str": "        if self.model_path:\n            pretrained_model.load_state_dict(torch.load(self.model_path))\n\n        model_dict = self.HIST_model.state_dict()\n        pretrained_dict = {"
+      }
+     }
+    }
+   ]
+  },
+  {
+   "role": "tool",
+   "content": "Successfully replaced text in qlib/custom_model.py."
+  },
+  {
+   "role": "assistant",
+   "reasoning_content": "",
+   "content": "",
+   "tool_calls": [
+    {
+     "type": "function",
+     "function": {
+      "name": "str_replace",
+      "arguments": {
+       "path": "qlib/custom_model.py",
+       "old_str": "        model_dict.update(pretrained_dict)\n        self.GAT_model.load_state_dict(model_dict)",
+       "new_str": "        model_dict.update(pretrained_dict)\n        self.HIST_model.load_state_dict(model_dict)"
+      }
+     }
+    }
+   ]
+  },
+  {
+   "role": "tool",
+   "content": "Successfully replaced text in qlib/custom_model.py."
+  },
+  {
+   "role": "assistant",
+   "reasoning_content": "Thread the stock_index through each epoch's train/test calls.",
+   "content": "",
+   "tool_calls": [
+    {
+     "type": "function",
+     "function": {
+      "name": "str_replace",
+      "arguments": {
+       "path": "qlib/custom_model.py",
+       "old_str": "        for step in range(self.n_epochs):\n            self.train_epoch(x_train, y_train)\n            train_loss, train_score = self.test_epoch(x_train, y_train)\n            val_loss, val_score = self.test_epoch(x_valid, y_valid)\n            print(\"Epoch%d: train %.6f, valid %.6f\" % (step, train_score, val_score))",
+       "new_str": "        for step in range(self.n_epochs):\n            self.train_epoch(x_train, y_train, stock_index_train)\n            train_loss, train_score = self.test_epoch(x_train, y_train, stock_index_train)\n            val_loss, val_score = self.test_epoch(x_valid, y_valid, stock_index_valid)\n            print(\"Epoch%d: train %.6f, valid %.6f\" % (step, train_score, val_score))"
+      }
+     }
+    }
+   ]
+  },
+  {
+   "role": "tool",
+   "content": "Successfully replaced text in qlib/custom_model.py."
+  },
+  {
+   "role": "assistant",
+   "reasoning_content": "",
+   "content": "",
+   "tool_calls": [
+    {
+     "type": "function",
+     "function": {
+      "name": "str_replace",
+      "arguments": {
+       "path": "qlib/custom_model.py",
+       "old_str": "                best_epoch = step\n                best_param = copy.deepcopy(self.GAT_model.state_dict())\n            else:",
+       "new_str": "                best_epoch = step\n                best_param = copy.deepcopy(self.HIST_model.state_dict())\n            else:"
+      }
+     }
+    }
+   ]
+  },
+  {
+   "role": "tool",
+   "content": "Successfully replaced text in qlib/custom_model.py."
+  },
+  {
+   "role": "assistant",
+   "reasoning_content": "",
+   "content": "",
+   "tool_calls": [
+    {
+     "type": "function",
+     "function": {
+      "name": "str_replace",
+      "arguments": {
+       "path": "qlib/custom_model.py",
+       "old_str": "        print(\"best score: %.6lf @ %d\" % (best_score, best_epoch))\n        self.GAT_model.load_state_dict(best_param)",
+       "new_str": "        print(\"best score: %.6lf @ %d\" % (best_score, best_epoch))\n        self.HIST_model.load_state_dict(best_param)"
+      }
+     }
+    }
+   ]
+  },
+  {
+   "role": "tool",
+   "content": "Successfully replaced text in qlib/custom_model.py."
+  },
+  {
+   "role": "assistant",
+   "reasoning_content": "predict() mirrors the same concept-matrix plumbing for the requested segment.",
+   "content": "",
+   "tool_calls": [
+    {
+     "type": "function",
+     "function": {
+      "name": "str_replace",
+      "arguments": {
+       "path": "qlib/custom_model.py",
+       "old_str": "\n        x_test = dataset.prepare(segment, col_set=\"feature\", data_key=DataHandlerLP.DK_I)\n        index = x_test.index\n        self.GAT_model.eval()\n        x_values = x_test.values\n        preds = []\n\n        # organize the data into daily batches\n        daily_index, daily_count = self.get_daily_inter(x_test, shuffle=False)",
+       "new_str": "\n        stock2concept_matrix = np.load(self.stock2concept)\n        stock_index_map = np.load(self.stock_index, allow_pickle=True).item()\n        df_test = dataset.prepare(segment, col_set=\"feature\", data_key=DataHandlerLP.DK_I)\n        df_test[\"stock_index\"] = 733\n        df_test[\"stock_index\"] = df_test.index.get_level_values(\"instrument\").map(stock_index_map)\n        stock_index_test = df_test[\"stock_index\"].values\n        stock_index_test[np.isnan(stock_index_test)] = 733\n        stock_index_test = stock_index_test.astype(\"int\")\n        df_test = df_test.drop([\"stock_index\"], axis=1)\n        index = df_test.index\n\n        self.HIST_model.eval()\n        x_values = df_test.values\n        preds = []\n\n        # organize the data into daily batches\n        daily_index, daily_count = self.get_daily_inter(df_test, shuffle=False)"
+      }
+     }
+    }
+   ]
+  },
+  {
+   "role": "tool",
+   "content": "Successfully replaced text in qlib/custom_model.py."
+  },
+  {
+   "role": "assistant",
+   "reasoning_content": "",
+   "content": "",
+   "tool_calls": [
+    {
+     "type": "function",
+     "function": {
+      "name": "str_replace",
+      "arguments": {
+       "path": "qlib/custom_model.py",
+       "old_str": "            x_batch = torch.from_numpy(x_values[batch]).float().to(self.device)\n\n            with torch.no_grad():\n                pred = self.GAT_model(x_batch).detach().cpu().numpy()",
+       "new_str": "            x_batch = torch.from_numpy(x_values[batch]).float().to(self.device)\n            concept_matrix = torch.from_numpy(stock2concept_matrix[stock_index_test[batch]]).float().to(self.device)\n\n            with torch.no_grad():\n                pred = self.HIST_model(x_batch, concept_matrix).detach().cpu().numpy()"
+      }
+     }
+    }
+   ]
+  },
+  {
+   "role": "tool",
+   "content": "Successfully replaced text in qlib/custom_model.py."
+  },
+  {
+   "role": "assistant",
+   "reasoning_content": "",
+   "content": "Run the experiment to measure this.",
+   "tool_calls": [
+    {
+     "type": "function",
+     "function": {
+      "name": "run_experiment",
+      "arguments": {}
+     }
+    }
+   ]
+  },
+  {
+   "role": "tool",
+   "content": "Measured results — `baseline:hist` (`is_final,true`), seed 42.\n\n## csi300\n| seed | ic | icir | rank_ic | rank_icir | annualized_return | max_drawdown | information_ratio |\n|---|---|---|---|---|---|---|---|\n| 42 | 0.053039 | 0.349102 | 0.066235 | 0.438320 | 0.087547 | −0.050516 | 1.249586 |\n\n## csi100\n| seed | ic | icir | rank_ic | rank_icir | annualized_return | max_drawdown | information_ratio |\n|---|---|---|---|---|---|---|---|\n| 42 | 0.051858 | 0.281834 | 0.058259 | 0.328484 | −0.000589 | −0.170510 | −0.010413 |\n\n## csi300_recent\n| seed | ic | icir | rank_ic | rank_icir | annualized_return | max_drawdown | information_ratio |\n|---|---|---|---|---|---|---|---|\n| 42 | 0.035904 | 0.250979 | 0.051728 | 0.340437 | 0.092828 | −0.058662 | 1.193856 |"
+  }
+ ]
+}

@@ -1,0 +1,1349 @@
+<meta task="llm-kv-selection-budgeting" domain="Language models" file="transformers-kv-lab/custom_selection_eval.py" model_format="qwen3" edit_tool="str_replace"/>
+
+<system>
+You are a research engineer improving a model on a fixed ML task. You work by editing the model code and running experiments. Think carefully before each change. You have these tools:
+- str_replace(path, old_str, new_str): replace the unique occurrence of old_str with new_str.
+- create(path, file_text): create a new file.
+- run_experiment(): train + evaluate the current code under the fixed budget; returns metrics.
+Make one tool call at a time. After editing, call run_experiment() to measure your method.
+</system>
+
+<user>
+## Research question
+
+Long-context LLM inference keeps a Key-Value tensor for every token in every attention layer; that
+cache grows linearly with the prompt and on a 30k-token document it rivals the model weights, while
+every decode step attends over the whole of it. The single thing being designed here is a **KV
+token-retention controller**: after a standard full-attention prefill, score the cached prefill KV
+entries, keep a small fixed-budget subset (the canonical budget retains ~20% of prefill tokens), and
+decode from that subset without losing long-context task quality. Everything else — the model, the
+datasets, the prompt templates, the decode loop, the budget enforcement — is fixed. The only degree of
+freedom is the per-token scoring rule and the metadata that drives it.
+
+## Prior art before the first rung (KV-cache lineage)
+
+The scaffold the first rung fills is itself the resolution of how to *run* a masked decoder's
+generation loop at all; the methods below are the lineage every later retention rule reacts to.
+
+- **Scaled dot-product attention (Vaswani et al. 2017).** A layer reads `softmax(QK^T/sqrt(d_k))V`
+  over all positions; in training this is one batched matmul over the whole sequence. But generation is
+  `p(y)=prod_t p(y_t|y_{<t},x)`, sequential by construction, so a single parallel pass is unavailable.
+  Gap: the parallelism that makes training fast is gone at decode time.
+- **The incremental KV cache (the full-attention loop; Shazeer 2019 names the cost).** Because the
+  causal mask makes `k_j,v_j` *frozen* the instant position `j` is produced — no later token can revise
+  them — each step need only project the one new token and append its `(k,v)`, attending the lone new
+  query over the stored history. Arithmetic drops from the naive re-run's `Theta(b n^2 d^2)` to
+  `Theta(b n d^2)`. Gap: it evicts nothing, so the cache and the per-step bandwidth to reload it grow
+  *linearly* in sequence length — the memory wall this task exists to attack.
+- **Sliding-window / recent-only cache.** Cap attention to the last `L` tokens, evict the oldest.
+  Constant memory and latency. Gap: quality collapses at a cliff the moment the *initial* tokens leave
+  the cache, and any dependency older than the window is silently dropped — it cannot keep a fact in
+  the middle of a long context.
+- **Quantization of the cache (KIVI, CacheGen).** Store every token's KV at 2 bits instead of 16.
+  Shrinks memory a lot, but keeps *every* token, so the attention compute — quadratic prefill,
+  linear-in-cache decode — is unchanged. Gap: it does not reduce the number of attended tokens, which
+  is what a budgeted controller must do.
+- **Attention-score eviction (H2O, SnapKV).** Score a token by the attention mass it has received and
+  keep the heavy hitters. Gap for *this* harness: it needs the materialized `t x t` attention matrix,
+  which the production kernel (SDPA / FlashAttention) never builds and which the scoring hook below is
+  not handed; and it is query-dependent, so the kept set changes with the question. Disqualified here
+  by construction.
+
+The substrate keeps the full incremental cache during prefill and then asks the controller to throw
+tokens away under a fixed budget — using only what the hook exposes (cached keys, values, hidden
+states), never a realized attention matrix.
+
+## The fixed substrate
+
+A full-attention replay harness is frozen and must not be touched. It owns the model
+(`Qwen/Qwen2.5-3B-Instruct`, aligned with `llm-kv-adaptive-quantization`), the datasets and their
+prompt templates, the fixed cache budget (`SELECTION_KV_COMPRESSION_RATIO=0.8`, i.e. retain ~20% of
+prefill tokens), the greedy decode loop, and the scoring. The model is run once over the prompt as a
+standard full-attention prefill; a per-layer forward hook
+(`PrefillSelectionCompressor.forward_hook`) then fires on every attention layer with the freshly
+filled cache and invokes the editable policy to compress that layer's prefill KV in place, after which
+generation proceeds from the compressed cache. The harness force-overrides the compression ratio at
+the call site (a policy cannot lie about the budget), measures the actually-retained fraction from the
+policy's output (`n_kept / k_len` per layer, averaged), and wires `module.rotary_emb` onto each
+attention module so a policy that re-rotates kept keys has the rotary table available.
+
+## The editable interface
+
+Exactly one region is editable — the `SelectionPolicy` class in
+`transformers-kv-lab/custom_selection_eval.py` (lines 40-101). Every rung on the ladder is a fill of
+this same three-method contract:
+
+- `retention_plan(layer_id, request_meta, cache_meta)` — return a dict; the policy's private channel
+  from `retention_plan` to `score_tokens`. The harness *enforces* `disable_compression` (skip scoring,
+  report retained = 1.0) and *force-overrides* `compression_ratio` to its own value; everything else
+  (`sink_tokens`, `lag_size`, `n_future_positions`, ...) is advisory, read only by the policy's own
+  `score_tokens`.
+- `score_tokens(module, hidden_states, keys, values, kwargs, plan)` — return a per-token score tensor
+  of shape `(batch, num_kv_heads, k_len)`, higher = keep, or `None` to keep everything. **No attention
+  tensor is passed** — scoring may read only keys, values, hidden states, and the module's weights.
+- `select_cache(module, keys, values, scores, n_kept)` — return `(selected_keys, selected_values)`;
+  the harness has already computed `n_kept = int(k_len * (1 - compression_ratio))` and will take the
+  policy's output as the new cache. A class attribute `rerotate_selected_keys` tells the harness whether
+  decode positions must follow the re-rotated cache.
+
+The starting point is the scaffold default. The shipped template happens to carry a sink+window fill;
+the **weakest budgeted submission** is the no-compression anchor — disable compression and keep the
+full cache — which is the first rung below. Each later method replaces exactly this class and nothing
+else.
+
+```python
+# EDITABLE region of custom_selection_eval.py (lines 40-101) — default fill: full-attention anchor
+class SelectionPolicy:
+    """Naive full-attention anchor: keep every prefill KV token."""
+
+    method_name = "full_attention"
+    rerotate_selected_keys = False
+
+    def retention_plan(self, layer_id, request_meta, cache_meta):
+        return {
+            "method": self.method_name,
+            "disable_compression": True,            # harness skips scoring, reports retained = 1.0
+        }
+
+    def score_tokens(self, module, hidden_states, keys, values, kwargs, plan):
+        return None                                  # no scoring: keep everything
+
+    def select_cache(self, module, keys, values, scores, n_kept):
+        return keys, values                          # no eviction
+```
+
+## Evaluation settings
+
+Five public text workloads, one seed (42), three reported signals per workload — `final_score`
+(benchmark-native task accuracy, 0-100), `mean_retained_fraction` (average retained prefill KV
+fraction after the policy runs), and `runtime_seconds`:
+
+| Label | Source | Final score |
+|---|---|---|
+| `longbench_hotpotqa` | LongBench-E `hotpotqa_e` | LongBench QA F1 (0-100) |
+| `longbench_passage_retrieval` | LongBench-E `passage_retrieval_en_e` | LongBench retrieval (0-100) |
+| `longbench_repobench` | LongBench-E `repobench-p_e` | LongBench code similarity (0-100) |
+| `longbench_v2` | LongBench v2 `train` split | multiple-choice exact accuracy (0-100) |
+| `gsm8k` | `openai/gsm8k` main test split | exact final-answer accuracy (0-100) |
+
+The leaderboard combines, per workload, three normalized terms — accuracy, runtime, cache reduction —
+with weights `accuracy:time:reduction = 6:2:2`, and takes the geometric mean across the five
+workloads. A soft upper-bound penalty fires when `mean_retained_fraction > 0.25`, so the
+no-compression anchor stays *visible* as a reference but is not a valid budgeted submission: it pays
+the budget penalty in full.
+
+The editable model code is in `transformers-kv-lab/custom_selection_eval.py`:
+```python
+class SelectionPolicy:
+    """Editable semantic hook for KV token retention after full-attention prefill."""
+
+    method_name = "streamingllm"
+    rerotate_selected_keys = True
+
+    def retention_plan(self, layer_id, request_meta, cache_meta):
+        return {
+            "method": self.method_name,
+            "sink_tokens": 4,
+            "compression_ratio": cache_meta["compression_ratio"],
+        }
+
+    def score_tokens(self, module, hidden_states, keys, values, kwargs, plan):
+        k_len = int(keys.shape[2])
+        n_sink = int(plan.get("sink_tokens", 4))
+        ratio = float(plan["compression_ratio"])
+        assert k_len > n_sink, f"Input should contain more tokens than sink_tokens={n_sink}"
+        n_pruned = k_len - int(k_len * (1.0 - ratio))
+        scores = torch.ones_like(keys[..., 0])
+        scores[:, :, n_sink : n_sink + n_pruned] = 0
+        return scores
+
+    def rotate_half(self, x):
+        x1 = x[..., : x.shape[-1] // 2]
+        x2 = x[..., x.shape[-1] // 2 :]
+        return torch.cat((-x2, x1), dim=-1)
+
+    def rerotate_cache_keys(self, module, indices, keys):
+        bsz, num_key_value_heads, n_kept = indices.shape
+        device = indices.device
+        device_type = keys.device.type
+        dtype = keys.dtype
+        inv_freq = module.rotary_emb.inv_freq[None, None, :, None].float().expand(
+            bsz, num_key_value_heads, -1, 1
+        )
+        new_positions = torch.arange(0, n_kept, device=device).unsqueeze(0)[:, None, :].float()
+        new_positions = new_positions.expand(bsz, num_key_value_heads, n_kept)
+        delta_pos = (new_positions - indices.float()).unsqueeze(2)
+        device_type = device_type if isinstance(device_type, str) and device_type != "mps" else "cpu"
+        with torch.autocast(device_type=device_type, enabled=False):
+            freqs = (delta_pos.float() * inv_freq.float()).transpose(2, 3)
+            emb = torch.cat((freqs, freqs), dim=-1)
+            cos = emb.cos().contiguous()
+            sin = emb.sin().contiguous()
+        cos = cos.to(dtype=dtype)
+        sin = sin.to(dtype=dtype)
+        gather_idx = indices.unsqueeze(-1).expand(-1, -1, -1, keys.shape[-1])
+        gathered = keys.gather(2, gather_idx).contiguous()
+        return (gathered * cos) + (self.rotate_half(gathered) * sin)
+
+    def select_cache(self, module, keys, values, scores, n_kept):
+        indices = scores.topk(n_kept, dim=-1).indices
+        if self.rerotate_selected_keys:
+            indices = torch.sort(indices, dim=2).values
+            selected_keys = self.rerotate_cache_keys(module, indices, keys)
+        else:
+            gather_idx = indices.unsqueeze(-1).expand(-1, -1, -1, keys.shape[-1])
+            selected_keys = keys.gather(2, gather_idx).contiguous()
+        gather_idx = indices.unsqueeze(-1).expand(-1, -1, -1, values.shape[-1])
+        selected_values = values.gather(2, gather_idx).contiguous()
+        return selected_keys, selected_values
+```
+Improve it. Derive your method, edit the code, then run_experiment().
+</user>
+
+### step 1 — Full attention (no compression anchor)   [slug:full_attention]
+
+<think>
+There is no measured result to react to yet, so the job of this first rung is narrow: pick the
+floor, install it in the scaffold, and be precise about *why* it is the floor and *what it will fail
+at*, so the number it produces tells me something. The scaffold compresses by scoring the prefill KV
+and keeping a top-K subset; the question the whole task asks is which tokens are safe to drop. Before I
+answer that, I want the run that drops *nothing* — the uncompressed full cache — because it pins two
+things I cannot reason about otherwise: the quality ceiling of this exact model on these exact
+workloads, and the budget penalty that any real compressor has to clear. Everything later is measured
+against this row.
+
+Let me also be honest about why I cannot skip this rung and just start at a compressor. Every later
+score I report is a *relative* statement — "this method keeps 90% of full-context quality at 20% of the
+cache" only means something if I know the 100% number on this exact model, these exact prompt
+templates, this exact greedy decode loop, and this exact scoring code. The benchmark-native scores are
+not transferable from a paper: LongBench F1 depends on the harness's normalization, repobench's
+code-similarity depends on which line of the generation it compares, gsm8k depends on the boxed-answer
+extraction and numeric normalization in this scaffold. So the only trustworthy reference is one
+produced *by this harness*, and that is what running the uncompressed policy here gives me. Without it
+I would be guessing at headroom.
+
+Let me be exact about what "keep everything" is, because it is not a no-op — it is a deliberate policy
+on the same hook as every other rung. The harness runs a standard full-attention prefill: the model
+sees the whole prompt at once, fills the per-layer KV cache with `k_1..k_p, v_1..v_p`, and the
+per-layer forward hook fires with that filled cache. At that moment the controller gets to decide the
+layer's retention. The reason the full cache is the principled reference, and not merely a lazy
+default, comes straight from the causal structure of the decoder. In a masked self-attention layer the
+key `k_j` and value `v_j` of position `j` are computed from token `j` and the layers beneath it, and
+the mask means information flows only forward in position — no later position `i > j` can reach back and
+change `k_j` or `v_j`. So once position `j` has been processed, its `(k_j, v_j)` is frozen for the rest
+of the sequence. Keeping the entire frozen set means the attention read at every decode step is over
+the genuine, complete history: the decoded sequence follows the same mathematical computation as
+re-running the model on the full prefix at each step. No token is dropped, nothing is approximated, so
+whatever the model can do with full context, it does here. That is the ceiling, and it is exact by
+construction — there is no scoring rule clever enough to *exceed* it on quality, only rules that try to
+approach it with a fraction of the cache.
+
+Now the cost, because the ceiling is precisely the thing I am being asked to give up. The full cache's
+size is `b * h * (k_dim + v_dim) * L * n` — linear in sequence length `n` and depth `L`. On a 30k-token
+LongBench prompt across the model's layers, that is the memory wall the task exists to attack. And the
+per-step decode cost is dominated by streaming that growing cache from memory: the memory-to-arithmetic
+ratio of incremental decode rises toward 1 as `n` approaches the model width, so a long-context decode
+is bandwidth-bound on reloading `K, V`. The honest ledger of exactness is a state and a per-step
+bandwidth that both grow with the sequence. Compression trades a slice of the quality ceiling for a
+bounded cache; this rung is the point on that trade where the slice given up is zero and the cache is
+unbounded — the opposite extreme from where any deployable controller must live.
+
+I should also be explicit about what makes *this* the right anchor rather than some "cheap but lossless"
+trick, because it is tempting to think there is a free lunch. There are two superficially attractive
+alternatives that are not lossless. Windowing — cap attention to the last `L` positions — bounds memory
+and bandwidth, but a query can no longer see anything outside the window, so any dependency longer than
+`L` is silently dropped; the model's output diverges from its full-context output. Memory compression —
+pool past positions into fewer key/value slots — has the same character: the query attends over fewer,
+summarized slots instead of the true set, so the output again diverges. Both are legitimate
+speed/quality trades, and indeed the later rungs *are* exactly such trades. But neither is the model's
+actual full-prefix computation, so neither can serve as the quality reference. The full KV cache, by
+contrast, retains every key and every value and evicts nothing, so the attention read at every step is
+over the genuine complete history and the decoded sequence follows the same mathematical computation as
+the naive full-prefix re-run — only without the recomputation. Exactness, full context, no eviction:
+that is precisely the property that qualifies it as the ceiling, and disqualifies it as a budgeted
+submission.
+
+So how do I land "keep everything" on this specific hook? The contract has three methods —
+`retention_plan`, `score_tokens`, `select_cache`. The cleanest way to express no compression is not to
+return a score that happens to keep all tokens (the harness still computes `n_kept = int(k_len * (1 -
+ratio))` and would force a top-K down to ~20%), but to *tell the harness not to compress at all*. The
+plan field `disable_compression` is the lever: when it is `True`, the harness skips `score_tokens` and
+`select_cache` entirely, leaves the cache untouched, and records the retained fraction as exactly 1.0.
+This is the one plan field besides the budget that the harness genuinely enforces — it is observable
+from the post-selection cache state — so setting it is not advisory bookkeeping, it is the actual
+no-compression switch. `score_tokens` then returns `None` (the harness reads `None` as "keep
+everything," another path to the same retained = 1.0) and `select_cache` returns the keys and values
+unchanged. I set `rerotate_selected_keys = False` because nothing is being re-positioned: the cache
+keeps its original token positions, so the RoPE phases the prefill computed are already correct and the
+decode positions continue from the true sequence length. There is no re-rotation, no gather, no top-K —
+the policy's whole content is the declaration that this layer is not to be compressed.
+
+Let me be clear-eyed about where this lands on the scoreboard, because that is the entire point of
+running it. The leaderboard combines, per workload, accuracy at weight 6, runtime at weight 2, and
+cache reduction at weight 2, then takes a geometric mean across the five workloads — and it applies a
+soft upper-bound penalty the moment `mean_retained_fraction` exceeds 0.25. The full cache retains 1.0,
+which is four times over that tolerance, so the penalty fires hard. This is deliberate in the task's
+design: the no-compression anchor is kept *visible* as a reference row but is explicitly not a valid
+budgeted submission. So I expect this rung to post the highest raw accuracy of anything I will run —
+the ceiling — and simultaneously the worst *budgeted* score, because the reduction term is at its floor
+(it kept everything) and the budget constraint zeroes most of what the accuracy earned. It is the
+weakest submission precisely because it refuses the task's central constraint, while being the strongest
+on the one axis (quality) that the constraint exists to protect. That tension is the thing the next
+rungs have to resolve: get as close as possible to this accuracy while living at ~20% retained.
+
+What I will watch in the numbers, and what they have to set up for step 2. First, the per-workload
+accuracy spread: I expect the retrieval and QA workloads (passage retrieval, hotpotqa) to be where full
+context helps most, because the answer can sit anywhere in a long passage, and the reasoning workload
+(gsm8k) to show whatever this 3B instruct model can do with its full chain-of-thought intact —
+critically, gsm8k accuracy under the full cache is the headroom number, because a compressor that
+shreds the reasoning prefix will crater there first. Second, the runtime row: the full cache is the
+*slowest* per-token decode (largest cache to stream), so it also calibrates the runtime term that
+compressed methods will improve on. Third, and most important for the ladder: this row is the accuracy
+target. When I drop to a sink-plus-window rule at step 2, the gap between its accuracy and this row's
+accuracy — per workload — is exactly the quality I paid for the 5x cache reduction, and which workloads
+lose the most will tell me whether a *positional* retention rule is even the right shape, or whether I
+need a content-aware score. The floor is installed; the only way is to compress, and the first
+compression I will try is the cheapest, most robust one — keep the sinks and the recent window — so
+that its failures, read against this anchor, point at what a smarter score has to recover. The full
+scaffold module for this rung is in the answer.
+</think>
+<say>
+I'll install the full-attention anchor first: disable compression so every prefill KV token is kept, which pins the quality ceiling and the budget penalty every later compressor is measured against. This edit renames the class and switches it to the no-compression mode.
+</say>
+<edit path="transformers-kv-lab/custom_selection_eval.py">
+<old>
+class SelectionPolicy:
+    """Editable semantic hook for KV token retention after full-attention prefill."""
+
+    method_name = "streamingllm"
+    rerotate_selected_keys = True
+</old>
+<new>
+# EDITABLE region of custom_selection_eval.py (lines 40-101) — step 1: full-attention anchor
+class SelectionPolicy:
+    """Naive full-attention anchor: keep every prefill KV token."""
+
+    method_name = "full_attention"
+    rerotate_selected_keys = False
+</new>
+</edit>
+<obs>
+Successfully replaced text in transformers-kv-lab/custom_selection_eval.py.
+</obs>
+<note>
+Now the three methods themselves: declare disable_compression, return None from scoring, and pass the cache through untouched.
+</note>
+<edit path="transformers-kv-lab/custom_selection_eval.py">
+<old>
+            "method": self.method_name,
+            "sink_tokens": 4,
+            "compression_ratio": cache_meta["compression_ratio"],
+        }
+
+    def score_tokens(self, module, hidden_states, keys, values, kwargs, plan):
+        k_len = int(keys.shape[2])
+        n_sink = int(plan.get("sink_tokens", 4))
+        ratio = float(plan["compression_ratio"])
+        assert k_len > n_sink, f"Input should contain more tokens than sink_tokens={n_sink}"
+        n_pruned = k_len - int(k_len * (1.0 - ratio))
+        scores = torch.ones_like(keys[..., 0])
+        scores[:, :, n_sink : n_sink + n_pruned] = 0
+        return scores
+
+    def rotate_half(self, x):
+        x1 = x[..., : x.shape[-1] // 2]
+        x2 = x[..., x.shape[-1] // 2 :]
+        return torch.cat((-x2, x1), dim=-1)
+
+    def rerotate_cache_keys(self, module, indices, keys):
+        bsz, num_key_value_heads, n_kept = indices.shape
+        device = indices.device
+        device_type = keys.device.type
+        dtype = keys.dtype
+        inv_freq = module.rotary_emb.inv_freq[None, None, :, None].float().expand(
+            bsz, num_key_value_heads, -1, 1
+        )
+        new_positions = torch.arange(0, n_kept, device=device).unsqueeze(0)[:, None, :].float()
+        new_positions = new_positions.expand(bsz, num_key_value_heads, n_kept)
+        delta_pos = (new_positions - indices.float()).unsqueeze(2)
+        device_type = device_type if isinstance(device_type, str) and device_type != "mps" else "cpu"
+        with torch.autocast(device_type=device_type, enabled=False):
+            freqs = (delta_pos.float() * inv_freq.float()).transpose(2, 3)
+            emb = torch.cat((freqs, freqs), dim=-1)
+            cos = emb.cos().contiguous()
+            sin = emb.sin().contiguous()
+        cos = cos.to(dtype=dtype)
+        sin = sin.to(dtype=dtype)
+        gather_idx = indices.unsqueeze(-1).expand(-1, -1, -1, keys.shape[-1])
+        gathered = keys.gather(2, gather_idx).contiguous()
+        return (gathered * cos) + (self.rotate_half(gathered) * sin)
+
+    def select_cache(self, module, keys, values, scores, n_kept):
+        indices = scores.topk(n_kept, dim=-1).indices
+        if self.rerotate_selected_keys:
+            indices = torch.sort(indices, dim=2).values
+            selected_keys = self.rerotate_cache_keys(module, indices, keys)
+        else:
+            gather_idx = indices.unsqueeze(-1).expand(-1, -1, -1, keys.shape[-1])
+            selected_keys = keys.gather(2, gather_idx).contiguous()
+        gather_idx = indices.unsqueeze(-1).expand(-1, -1, -1, values.shape[-1])
+        selected_values = values.gather(2, gather_idx).contiguous()
+        return selected_keys, selected_values
+</old>
+<new>
+            "method": self.method_name,
+            "disable_compression": True,
+        }
+
+    def score_tokens(self, module, hidden_states, keys, values, kwargs, plan):
+        return None
+
+    def select_cache(self, module, keys, values, scores, n_kept):
+        return keys, values
+</new>
+</edit>
+<obs>
+Successfully replaced text in transformers-kv-lab/custom_selection_eval.py.
+</obs>
+<run/>
+<obs>
+Measured results — `baseline:full_attention` (`is_final,true`), seed 42 (the single seed; mean equals it).
+
+## final_score (0-100, higher better)
+| seed | hotpotqa | passage_retrieval | repobench | longbench_v2 | gsm8k |
+|---|---|---|---|---|---|
+| 42 | 37.138 | 62.417 | 47.570 | 29.026 | 31.842 |
+| **mean** | **37.138** | **62.417** | **47.570** | **29.026** | **31.842** |
+
+## mean_retained_fraction (lower better)
+| seed | hotpotqa | passage_retrieval | repobench | longbench_v2 | gsm8k |
+|---|---|---|---|---|---|
+| 42 | 1.0000 | 1.0000 | 1.0000 | 1.0000 | 1.0000 |
+| **mean** | **1.0000** | **1.0000** | **1.0000** | **1.0000** | **1.0000** |
+
+## runtime_seconds (lower better)
+| seed | hotpotqa | passage_retrieval | repobench | longbench_v2 | gsm8k |
+|---|---|---|---|---|---|
+| 42 | 347.3 | 323.5 | 645.8 | 2589.4 | 7440.4 |
+| **mean** | **347.3** | **323.5** | **645.8** | **2589.4** | **7440.4** |
+</obs>
+
+### step 2 — StreamingLLM (attention sinks + recent window)   [slug:streamingllm]
+
+<think>
+The anchor told me exactly what I am buying and what I am about to spend. Full attention posted
+37.1 on hotpotqa, 62.4 on passage retrieval, 47.6 on repobench, 29.0 on LongBench v2, and 31.8 on
+gsm8k — that last one matters, because gsm8k is the workload where the model writes a long
+chain-of-thought and the answer depends on the whole reasoning prefix surviving. Those five numbers are
+the ceiling, and they came at retained = 1.0, which is four times over the 0.25 budget tolerance, so as
+a budgeted submission the anchor is worthless: the penalty zeroes most of what that accuracy earned.
+The task is now sharp and unforgiving — get as close to those five accuracies as I can while throwing
+away ~80% of every layer's prefill cache. The anchor also calibrated the runtime row (it is the slowest
+decode, largest cache to stream), so any compressor that actually shrinks the cache should come in at or
+below those times. So the first compression I reach for should be the cheapest, most robust thing that
+could possibly work, run it, and read its gap to the anchor per workload — because *which* workloads
+collapse will tell me whether a positional retention rule is even the right shape.
+
+What is the cheapest rule that could plausibly keep quality? Keep the most recent tokens. Recent context
+is what predicts the next token; cache the last `L`, evict the oldest as the window rolls. Constant
+memory, constant latency, and it needs nothing but position — no attention read, no query, which is
+exactly what this hook allows (it hands me keys, values, hidden states, and no attention matrix). This
+is the obvious move and it ought to just work. But I know the failure mode of a bare recent-only window,
+and it is not a gentle forgetting of old context — it is a cliff. The known perplexity curve for sliding
+windows is flat and healthy while the cache still holds everything, and then the instant the window
+fills and the *first* token of the sequence gets evicted, perplexity spikes and the model starts
+producing nonsense. That is bizarre on its face: the evicted token is thousands of positions away from
+what is being predicted, the window is full of perfectly good recent tokens, and yet dropping the
+ancient first token detonates the model. So this is not a "lost useful long-range information" failure.
+The collapse is tied specifically and abruptly to evicting the *initial* tokens. Something about the
+first few positions is load-bearing in a way that has nothing to do with their being recent or relevant.
+Before I commit to any rule, I have to understand that, because the diagnosis decides what to keep.
+
+Look at what the model actually does with its attention. Across layers and heads, beyond the bottom
+couple of layers, nearly every head dumps a huge fraction of its attention mass onto the first few token
+positions — on long sequences the mass from the last token back to the very first often exceeds *half*
+the total, in most layers. Half, onto whatever happened to start the text. Is that because the content
+of those tokens matters, or because of their position? The two have completely different fixes. The
+clean discriminating test is to replace the first few tokens with a meaningless filler token: if content
+drove the attention, garbage should not attract it — but it still does, and reintroducing the fillers
+after an eviction restores quality just as well as the originals would. So it is not semantics, it is
+absolute position. The model has learned to use whatever sits in the first few slots as a fixed
+destination for attention.
+
+Why would it do that? Stare at the softmax. Within a head the weights are `exp(x_i)/sum_j exp(x_j)`, and
+the defining property is that they sum to one — there is no "none of the above," no abstain. So a query
+whose information is essentially self-contained, with no strong match anywhere, still has to produce a
+distribution summing to one; it must dump the leftover mass *somewhere*, and the cheapest place is a
+token whose value it can mix in harmlessly — one it can always find, that does not corrupt the residual
+stream. The model manufactures a few such dumping grounds. Call them attention sinks: tokens that
+collect large attention precisely because they are not semantically important, just to soak up the
+surplus softmax forces it to allocate. And why the *initial* tokens as the sinks? Causal visibility
+decides it — a query at position `t` can only attend to positions `<= t`, so the only positions visible
+to *every* later query are the earliest ones. If the model wants a common dumping ground every position
+can reach, the first few tokens are the only candidates. So initial-token sinks are forced by softmax's
+sum-to-one plus causal masking, not an accident.
+
+Now the cliff makes mechanical sense, and it tells me precisely what the recent-only window did wrong.
+Write the attended positions as a sink set `S` plus the ordinary rest `R`. Before eviction a non-sink
+token's weight is `exp(x_j)/(sum_{S} exp + sum_{R} exp)`; the sinks dominate that denominator. Evict
+`S`, and the same logit now divides by only `sum_{R} exp` — every remaining weight is multiplied by a
+large factor even though no remaining logit improved, and the attention output loses the sink-value
+contribution and over-amplifies the ordinary values. Downstream layers receive a distributional shape
+they never see in normal inference. The window had perfectly good recent tokens; it threw away the
+denominator anchor. That is the cliff. So the sinks are valuable not for content but for the attention
+mass they absorb and the denominator they hold — and the rescue writes itself: do not evict them. Pin a
+small fixed set of the very first tokens, permanently, and slide the budget's remaining capacity over
+the most recent tokens, dropping the middle. The cache becomes two pieces — sinks plus a recent window —
+with no attention read and no query dependence. This is the StreamingLLM skeleton, and it fits this hook
+perfectly because the hook forbids exactly the things this rule does not need.
+
+How many initial tokens do I pin? If the model had been trained with one fixed token always at position
+zero, one sink slot would suffice. But this is an off-the-shelf instruct model with no such dedicated
+sink, so it spreads the sink role across the first *few* positions, and I would expect one or two pinned
+tokens to be too few and the budget to saturate after a handful. Sweeping the sink count has exactly
+that shape — one or two does not recover quality, four does, and beyond four is marginal. So `n_sink = 4`
+is the right default here, and the recent window is whatever the budget leaves after the four sinks.
+That is the entire retention decision: it is *positional and static*, determined before I look at a
+single attention value, which is the whole appeal — it is the cheapest rule that respects the diagnosis.
+
+There is one subtlety the naive "keep first four plus last L" rule gets silently wrong, and on this
+model it matters a lot, because Qwen uses RoPE. When I keep tokens `[0,1,2,3]` and a recent window at
+original positions like `[..., m-2, m-1, m]` while the middle is evicted, the intuitive thing is to leave
+each kept token labeled with its original text position. But RoPE makes the query-key inner product
+depend only on the *relative* offset: with `q_m = R_m W_q x_m` and `k_n = R_n W_k x_n` and `R` orthogonal
+and additive in the index, `q_m^T k_n = x_m^T W_q^T R_{n-m} W_k x_n`, a function of `n - m` alone. So
+what the model sees is the *gaps* between kept tokens. If I keep original positions `[0,1,2,3, ...,
+m-1, m]` with a hole where the middle used to be, the relative distance between the pinned sinks and the
+rolling window grows without bound as the stream advances — and those huge relative distances are
+exactly the regime RoPE was never trained on, where it degrades. I would be re-importing the very
+length-extrapolation failure I am trying to dodge, through the back door, and on long LongBench prompts
+that is precisely where it would hurt.
+
+The fix is to assign positions by index *within the cache*, not by original text position. If the cache
+holds `n_kept` tokens, treat them as occupying contiguous positions `0, 1, ..., n_kept-1` regardless of
+where they came from in the text. Then every relative distance the model sees is small and contiguous,
+inside the trained range, no matter how far the stream has gone — the physical gap is simply erased from
+the position bookkeeping. Concretely, for RoPE I re-rotate each kept key by the *difference* between its
+new and old position. The keys in the cache are stored already rotated to their original positions: a
+key for original position `p` is `R_p (W_k x)`, and I want it to behave as if it sat at new cache
+position `p'`. Since rotations compose, `R_{p'} = R_{p'-p} R_p`, so I left-multiply the stored,
+already-rotated key by `R_{p'-p}` — rotate it by `delta = p' - p`. I never need the un-rotated key. In
+the efficient RoPE form, `R_m x = x * cos(m*theta) + rotate_half(x) * sin(m*theta)`, where
+`rotate_half` swaps the two halves of the feature vector with a sign flip; to re-rotate by `delta` I form
+the angles `delta * theta` from the module's rotary inv-freq table, take their cos and sin, and apply
+the same formula. The new positions in cache order are `0..n_kept-1`, so after I sort the kept indices
+into chronological order, `delta` for the j-th kept token is `j` minus its original index — generally
+negative, because I am moving each kept key from a larger original index down to a smaller contiguous
+one, which is a backward rotation to close the gaps. The values carry no position, so they are just
+gathered at the kept indices, no re-rotation. This re-rotation is the piece that makes streaming work
+past the pretraining length; skipping it would quietly re-introduce extrapolation failure, and given the
+anchor's numbers the workloads most exposed would be the long retrieval ones.
+
+Now I map this onto the three-method hook, and here I have to respect what *this* harness exposes rather
+than a generic implementation. `retention_plan` hands `score_tokens` the sink count and the budget —
+and I read `compression_ratio` straight from `cache_meta`, because the harness force-overrides it at the
+call site anyway, so the policy cannot lie about the budget; declaring it is provenance, the harness
+enforces its own value. `score_tokens` produces the static positional mask the harness wants: the
+harness keeps the top-`n_kept` by score, so I score 1 everywhere and 0 on the middle block to prune. If
+the layer's cache has `k_len` tokens, the retained count is `int(k_len * (1 - ratio))`, so the number to
+prune is `n_pruned = k_len - int(k_len * (1 - ratio))`, and the zero slice starts immediately after the
+sinks: `[n_sink : n_sink + n_pruned]`. That leaves exactly `n_kept` one-scored positions — the first
+`n_sink` tokens and the most recent `n_kept - n_sink` — and an assertion guards that the cache has more
+tokens than sinks. One implementation detail particular to this harness: the re-rotation builds its
+`gather_idx` from `keys.shape[-1]` (the actual head dimension of the stored key tensor) rather than a
+`module.head_dim` attribute, so the gather width always matches the cache, and the rotary table comes
+from `module.rotary_emb.inv_freq` which the harness has wired onto every attention module. `select_cache`
+then does the top-k, sorts the kept indices chronologically (required for the contiguous re-positioning
+to make sense), re-rotates the kept keys by their deltas, and gathers the values — and because this
+policy always re-rotates, `rerotate_selected_keys = True` is a class attribute so the harness advances
+the decode positions from the re-rotated, contiguous cache length rather than the original sequence
+length. The full scaffold module is in the answer.
+
+Let me close on what I expect against the anchor, falsifiably. Retained should land at ~0.20 across all
+five workloads (the harness enforces it), so I clear the budget penalty the anchor failed, and runtime
+should sit near the anchor's or a touch below since the decode cache is now a fifth the size. The
+interesting bets are the accuracy gaps. The sinks-plus-window rule keeps the *recent* context and the
+denominator anchor but blindly discards the middle, so I expect it to hold up where the answer lives
+near the end or is locally inferable, and to bleed where the answer can sit anywhere in a long passage.
+So: passage retrieval and hotpotqa should drop below the anchor's 62.4 and 37.1 by a visible margin —
+those are needle-in-a-haystack workloads and a positional rule drops the needle when it is in the middle.
+LongBench v2 I expect to roughly hold near 29, because its head-tail truncation and multiple-choice
+format are forgiving of a positional keep. The number I am most worried about is gsm8k: the model's
+reasoning prefix is the thing being compressed, and if streaming shreds the chain-of-thought, gsm8k
+should fall hard from the anchor's 31.8 — possibly to near zero, which would be the loud signal that a
+purely positional rule is the wrong shape and that I need a *content-aware* score that can decide which
+middle tokens to keep. If instead gsm8k holds, my whole motivation for moving past streaming weakens.
+That gsm8k gap, read against the 31.8 anchor, is the falsifiable hinge that decides step 3.
+</think>
+<say>
+Now StreamingLLM: pin the first four attention-sink tokens plus the most recent window, dropping the middle, and re-rotate the kept keys to contiguous cache positions so RoPE stays in its trained range. This edit renames the class and flips on re-rotation.
+</say>
+<edit path="transformers-kv-lab/custom_selection_eval.py">
+<old>
+# EDITABLE region of custom_selection_eval.py (lines 40-101) — step 1: full-attention anchor
+class SelectionPolicy:
+    """Naive full-attention anchor: keep every prefill KV token."""
+
+    method_name = "full_attention"
+    rerotate_selected_keys = False
+</old>
+<new>
+# EDITABLE region of custom_selection_eval.py (lines 40-101) — step 2: StreamingLLM
+class SelectionPolicy:
+    """StreamingLLM: keep attention sinks and the most recent tokens."""
+
+    method_name = "streamingllm"
+    rerotate_selected_keys = True
+</new>
+</edit>
+<obs>
+Successfully replaced text in transformers-kv-lab/custom_selection_eval.py.
+</obs>
+<note>
+Now the scoring and selection: the static sink+window mask, the RoPE re-rotation helper, and the top-k select that closes the gaps.
+</note>
+<edit path="transformers-kv-lab/custom_selection_eval.py">
+<old>
+            "method": self.method_name,
+            "disable_compression": True,
+        }
+
+    def score_tokens(self, module, hidden_states, keys, values, kwargs, plan):
+        return None
+
+    def select_cache(self, module, keys, values, scores, n_kept):
+        return keys, values
+</old>
+<new>
+            "method": self.method_name,
+            "sink_tokens": 4,
+            "compression_ratio": cache_meta["compression_ratio"],
+        }
+
+    def score_tokens(self, module, hidden_states, keys, values, kwargs, plan):
+        k_len = int(keys.shape[2])
+        n_sink = int(plan.get("sink_tokens", 4))
+        ratio = float(plan["compression_ratio"])
+        assert k_len > n_sink, f"Input should contain more tokens than sink_tokens={n_sink}"
+        n_pruned = k_len - int(k_len * (1.0 - ratio))
+        scores = torch.ones_like(keys[..., 0])
+        scores[:, :, n_sink : n_sink + n_pruned] = 0
+        return scores
+
+    def rotate_half(self, x):
+        x1 = x[..., : x.shape[-1] // 2]
+        x2 = x[..., x.shape[-1] // 2 :]
+        return torch.cat((-x2, x1), dim=-1)
+
+    def rerotate_cache_keys(self, module, indices, keys):
+        bsz, num_key_value_heads, n_kept = indices.shape
+        device = indices.device
+        device_type = keys.device.type
+        dtype = keys.dtype
+        inv_freq = module.rotary_emb.inv_freq[None, None, :, None].float().expand(
+            bsz, num_key_value_heads, -1, 1
+        )
+        new_positions = torch.arange(0, n_kept, device=device).unsqueeze(0)[:, None, :].float()
+        new_positions = new_positions.expand(bsz, num_key_value_heads, n_kept)
+        delta_pos = (new_positions - indices.float()).unsqueeze(2)
+        device_type = device_type if isinstance(device_type, str) and device_type != "mps" else "cpu"
+        with torch.autocast(device_type=device_type, enabled=False):
+            freqs = (delta_pos.float() * inv_freq.float()).transpose(2, 3)
+            emb = torch.cat((freqs, freqs), dim=-1)
+            cos = emb.cos().contiguous()
+            sin = emb.sin().contiguous()
+        cos = cos.to(dtype=dtype)
+        sin = sin.to(dtype=dtype)
+        gather_idx = indices.unsqueeze(-1).expand(-1, -1, -1, keys.shape[-1])
+        gathered = keys.gather(2, gather_idx).contiguous()
+        return (gathered * cos) + (self.rotate_half(gathered) * sin)
+
+    def select_cache(self, module, keys, values, scores, n_kept):
+        indices = scores.topk(n_kept, dim=-1).indices
+        indices = torch.sort(indices, dim=2).values
+        selected_keys = self.rerotate_cache_keys(module, indices, keys)
+        gather_idx = indices.unsqueeze(-1).expand(-1, -1, -1, values.shape[-1])
+        selected_values = values.gather(2, gather_idx).contiguous()
+        return selected_keys, selected_values
+</new>
+</edit>
+<obs>
+Successfully replaced text in transformers-kv-lab/custom_selection_eval.py.
+</obs>
+<run/>
+<obs>
+Measured results — `baseline:streamingllm` (`is_final,true`), seed 42 (the single seed; mean equals it).
+
+## final_score (0-100, higher better)
+| seed | hotpotqa | passage_retrieval | repobench | longbench_v2 | gsm8k |
+|---|---|---|---|---|---|
+| 42 | 25.586 | 53.111 | 43.153 | 29.622 | 1.744 |
+| **mean** | **25.586** | **53.111** | **43.153** | **29.622** | **1.744** |
+
+## mean_retained_fraction (lower better)
+| seed | hotpotqa | passage_retrieval | repobench | longbench_v2 | gsm8k |
+|---|---|---|---|---|---|
+| 42 | 0.1999 | 0.1999 | 0.1999 | 0.2000 | 0.1932 |
+| **mean** | **0.1999** | **0.1999** | **0.1999** | **0.2000** | **0.1932** |
+
+## runtime_seconds (lower better)
+| seed | hotpotqa | passage_retrieval | repobench | longbench_v2 | gsm8k |
+|---|---|---|---|---|---|
+| 42 | 360.9 | 330.9 | 671.7 | 2592.9 | 7110.3 |
+| **mean** | **360.9** | **330.9** | **671.7** | **2592.9** | **7110.3** |
+</obs>
+
+### step 3 — LagKV (lag-relative KV scoring)   [slug:lagkv]
+
+<think>
+StreamingLLM answered the question I posed at step 2, and the answer is the one I was afraid of. It
+cleared the budget — retained 0.20 across the board — and its runtimes sat right alongside the anchor.
+But the accuracy gaps confirm the diagnosis I bet on. Hotpotqa fell from the anchor's 37.1 to 25.6, and
+passage retrieval from 62.4 to 53.1: exactly the needle-in-a-haystack workloads where the answer can sit
+anywhere in a long passage, and a purely positional rule that keeps sinks plus the recent window drops
+the needle whenever it lives in the middle. LongBench v2 roughly held (29.6 vs 29.0), as expected for a
+head-tail-truncated multiple-choice format. And the loud one: gsm8k cratered from 31.8 to 1.7. That is
+the signal I said would be the hinge. The model's chain-of-thought reasoning prefix is precisely what
+StreamingLLM shreds — it keeps the last 20% of tokens and four sinks, and on a reasoning trace the
+load-bearing intermediate steps are scattered through the *middle* of the prompt, not concentrated at
+the end, so the policy throws away the very content the final answer depends on. 1.7 is effectively
+zero; the positional rule is the wrong shape for any workload whose important tokens are not positional.
+So the verdict from step 2 is unambiguous: I need a *content-aware* score — something that decides which
+middle tokens to keep, not just where they sit.
+
+Now I have to be careful, because the obvious content-aware methods are exactly the ones this harness
+forbids, and walking into that wall is how I would waste a rung. The strongest content-aware line scores
+a token by how much attention it has received — H2O accumulates attention weight per token and keeps the
+heavy hitters; SnapKV looks at what an observation window at the end of the prompt attends to and keeps
+those prefix positions. Both work well in their papers. But both are disqualified here for two reasons,
+and the second is fatal at the level of this hook. First, they are query-dependent: H2O's kept set
+depends on the queries already issued, SnapKV's on where the question sits in the prompt — but I want a
+compression that does not assume a particular question follows the context. Second, and decisive: they
+need the realized attention matrix `softmax(QK^T/sqrt(d))`, and this hook does not hand me one.
+`score_tokens` receives the module, hidden states, keys, values — and no attention tensor; the model runs
+under SDPA, which streams the softmax-weighted output and never materializes the `t x t` weights. So a
+score that is a function of the attention matrix simply cannot be computed in this harness. That is not
+an inconvenience, it is a wall, and it is the same wall the prior-art note flagged. Quantization (KIVI,
+CacheGen) is out for a different reason: it keeps *every* token at lower precision, so it never reduces
+the number of attended tokens — it cannot hit a 20% retained budget by dropping tokens at all.
+
+So the constraint sharpens to something concrete and demanding: score the middle tokens for importance
+using *only the cached K and V tensors themselves*, with no attention weights and no query. Out of just
+those tensors, can I tell which tokens are worth keeping? There is a thin precedent — the key-norm
+heuristic found that a low L2 norm of a key correlates with high later attention, so keep low-key-norm
+tokens. Right spirit (attention-free, query-free, uses the cache), but too thin: one scalar per token
+from the key alone, ignoring the value, with no sense of where the token sits or how it relates to its
+neighbors. A context-free per-key magnitude can rank isolated norms but cannot notice whether a token is
+a local *discontinuity* in the flow of the cache — and a discontinuity is exactly the kind of
+informative middle token StreamingLLM blindly dropped on gsm8k. So "use only the tensors" is the right
+constraint, but the score has to extract structure, not just magnitude.
+
+What do I actually know about how K and V are distributed? Two facts, both mapped out by the
+quantization people for other purposes. First, token-wise locality: within a layer and channel, tokens
+close together in position have much more similar K/V values than tokens far apart — the delta between
+consecutive tokens' K (or V) is tightly piled near zero. That is not a coincidence; it falls out of the
+model being autoregressive, the next token's representation does not jump abruptly from the previous
+one's. Second, a K/V asymmetry: the key cache has a few *fixed* channels with persistently huge
+magnitude (per-channel outliers — which is why you quantize keys per channel), while the value cache has
+no such channel pattern and varies per token (quantize values per token). Sit with the channel-outlier
+fact, because it is a trap. If a handful of key channels are always enormous, any naive
+magnitude-or-variance score over the raw key vector is dominated by those same fixed channels for every
+token — the score would mostly measure "which token had a slightly bigger value in the one giant
+channel," which is persistent channel norm leaking through, not importance. The key-norm heuristic partly
+works *despite* this; I want something that works *because* I have removed it. So before I can read
+importance off the spread of a token's vector, I must strip out the channel-specific scale — normalize
+each channel so the giant and tiny channels sit on the same footing. Against what statistics?
+
+Token-wise locality pays off here. If adjacent tokens have nearly identical K/V, a short contiguous chunk
+of tokens is a tight cloud, and its per-channel min and max are a faithful local description of each
+channel's scale right there. So normalize a token's key (or value) by min-max over a nearby window: per
+channel, subtract the window min, divide by the window range. That maps each channel into roughly [0,1]
+*using statistics from the token's own neighborhood* — exactly the regime locality says is valid — and
+the persistent giant channels get divided by their own large local range and collapse onto everyone
+else's scale. What survives in the normalized vector is each channel's *relative* position within the
+local cloud, with the channel-specific norms gone.
+
+But which window's min and max? The obvious choice — the token's own chunk — is circular. If I min-max a
+chunk by its own statistics and ask which token is unusual, I am asking which token is an outlier
+relative to its chunk-mates, a self-referential question; worse, the min and max are *achieved by* tokens
+in the chunk, so those extreme tokens get pinned to exactly 0 or 1 by construction, biasing the score
+toward whichever tokens happened to define the envelope. I want a reference *external* to the tokens I am
+scoring, so "unusual" means something. And locality hands me the external yardstick for free: the *next*
+chunk. Because the model is autoregressive and adjacent tokens barely move, the chunk immediately after
+the current one is a faithful sample of the same local distribution — the current chunk's tokens are
+"supposed to" look like the next chunk's. So normalize the current chunk's K and V using the min and max
+taken from the *next* chunk. Now the question I ask each token is sharp and query-free: how coherent is
+this token with what comes right after it? A token whose normalized vector sits comfortably inside the
+next chunk's envelope is predictable — the local flow was going to produce it anyway, so dropping it
+loses little. A token that is still strange after normalizing by the next chunk's scale is one the next
+chunk does *not* explain: a discontinuity carrying information that does not follow from local flow. That
+is the token I must keep — and it is precisely the middle token StreamingLLM could not distinguish.
+
+Let me pin the axes, because the whole thing lives or dies on getting min/max/std over the right
+dimension. Partition the cache after the sinks into contiguous chunks of size `L` (the lag). For chunk
+`p`, head `i`, and `Z` standing for either K or V (a chunk of `L` tokens by `d_h` channels), take the
+next chunk `Z^{p+1}` and compute, *per channel, over the token axis*, its min and max — collapsing the
+`L` reference tokens to one min and one max per channel; that token-axis collapse is what makes the
+normalization channel-wise. Then normalize the current chunk channel-by-channel with those reference
+statistics: `(Z^p - min) / (max - min)`. Now read the spread *over the channels* of each normalized
+token — its channel-wise standard deviation, one scalar per token. A coherent token has all its channels
+in similar normalized positions, so small channel-wise std; an incoherent, surprising token has channels
+scattered across the range, large std. That std is well-defined as an importance signal only because I
+first removed the channel norms — otherwise it would just track the giant channels. I compute it for
+both K and V and add them, because the two caches carry complementary structure (K channel-organized, V
+token-organized), so a token can be a discontinuity in the key flow, the value flow, or both, and I want
+all three. Before adding, I softmax each std vector over the `L` tokens of its chunk: that normalizes to
+a per-chunk distribution and, because exp is convex, sharpens the tail so the genuinely high-std tokens
+pull away from the merely above-average — the right behavior when I am about to keep a small fraction.
+
+Now the bookkeeping, which I have to get exactly right or I reference off the end of the cache. The
+sinks — the first `n_sink` tokens — are never scored and never evicted; that is the StreamingLLM anchor I
+am keeping, because the attention-sink mechanism from step 2 is real and I still need the denominator
+held. After the sinks, the very last chunk has *no chunk after it* to reference, so it cannot be scored —
+and that is not a defect, it is exactly the recent sliding window I want anyway: the most recent tokens
+matter most and should never be compressed. So the always-kept tail is one full lag window plus the
+remainder when `(q_len - n_sink)` is not a multiple of `L`. The scored region runs from `n_sink` up to
+`end_idx = n_sink + ((q_len - n_sink) // L) * L`, and `tail_len = L + (q_len - end_idx)`. If there is not
+even enough sequence for one chunk to score and one to reference — `q_len < n_sink + 2L` — I skip the
+lag rule entirely; but I do not want a forced top-K to keep arbitrary tokens, so in that branch I hand
+back a ramp (`arange / (q_len - n_sink)` after the sinks) so any forced top-K degrades to keeping the
+recent tail — StreamingLLM behavior as the graceful degenerate case, which is the right thing to degrade
+to. I reshape the scored region into `(num_partitions, L, d_h)` and vectorize: the reference chunks are
+partitions `1..` (`target[:, :, 1:]`), the scored chunks are `..num-2` (`target[:, :, :-1]`), so chunk
+`p` is scored by chunk `p+1` in one shot, with the min/max over dim `-2`, the std over dim `-1`, and the
+softmax over dim `-1`.
+
+Then the question that actually decides the implementation, the one I almost glossed. I want top-K *per
+partition* — within each lag window keep `rL` of `L`, so every region of the context contributes its
+share and I do not accidentally keep a whole early window and evict a whole late one. But this harness
+does the dead-simple thing: it computes one score vector over the entire cache and takes a single global
+`topk(n_kept)`. If I hand it the raw softmax-std scores, a global top-K will not respect per-partition
+quotas — a window with systematically larger raw std could steal the whole budget. The fix is to make the
+scores themselves carry the per-partition structure so one global top-K *is* a per-partition top-K:
+replace each partition's scores with their within-partition *rank*. Argsort the scores within the `L`
+axis, argsort again — the double-argsort that returns each token's rank among its chunk-mates, an integer
+in `{0..L-1}` — and divide by `L`. Now every partition's scores are the same set `{0, 1/L, ..., (L-1)/L}`
+just permuted by importance, identically distributed across partitions, so the global top-K takes the
+same count of high-rank tokens from each window. (Skipping the rank step — "cross_scoring" — lets budget
+flow toward windows with larger raw outliers, a deliberate option, but it loses the uniform-per-partition
+guarantee, so it is off by default here.) Crucially this also puts every scored token strictly in [0,1),
+below the sinks and tail which I set to exactly 1.0, so those are always kept above any scored token.
+
+The compression ratio I read from the plan, which the harness force-overrides at the call site anyway, so
+I declare it for provenance but the harness enforces its own value — the same contract as step 2. So the
+assembled score vector is: `n_sink` ones for the sinks, the flattened per-partition ranks for the scored
+region, `tail_len` ones for the always-kept tail; a single global top-K on that vector keeps the sinks,
+the recent tail, and the top-ranked content tokens of every middle window. That is the whole policy:
+attention-free, query-free, computed entirely by comparing the cached K and V among themselves — which is
+exactly what this hook permits and what H2O/SnapKV could not respect. The full scaffold module is in the
+answer.
+
+Let me close on the falsifiable expectations, against StreamingLLM's measured row and the anchor.
+Retained stays at ~0.20 (the harness enforces it) and runtime should sit near step 2's, since the score
+is a few elementwise reductions over the cache, cheap. The whole bet is that keeping the *informative*
+middle tokens recovers the quality StreamingLLM's blind eviction lost. So I expect the LongBench
+retrieval/QA workloads to climb back toward the anchor: passage retrieval should beat StreamingLLM's
+53.1 by a clear margin (it keeps content tokens scattered through the passage), and hotpotqa should
+recover above 25.6. LongBench v2 should stay near 29, neither rule having much purchase there. The honest
+worry is gsm8k: my score is computed from the *prompt's* KV statistics, and gsm8k's important tokens are
+in the model's own reasoning, so a prompt-statistics rule may still not protect the chain-of-thought —
+if gsm8k stays near StreamingLLM's 1.7 rather than recovering toward 31.8, that says even content-aware
+*lag* scoring on prompt KV is insufficient for reasoning, and the next rung needs a score tied more
+directly to what *future queries* will attend to. And the sharpest falsifiable line: if LagKV does *not*
+beat StreamingLLM on the geometric mean across the five workloads — if recovering retrieval does not
+outweigh any code-similarity slippage on repobench (where StreamingLLM's recent-window keep is actually
+well-suited to next-line completion, so I might lose a little there) — then the content-aware story is
+not paying for itself and I have mis-diagnosed. The retrieval recovery against 53.1 is the number I am
+watching first.
+</think>
+<say>
+Now LagKV: an attention-free, query-free content score that keeps a token when it is a discontinuity relative to the next lag chunk, using per-partition rank so one global top-k spends the budget evenly across the context. This edit renames the class and turns off re-rotation, since tokens keep their original positions.
+</say>
+<edit path="transformers-kv-lab/custom_selection_eval.py">
+<old>
+# EDITABLE region of custom_selection_eval.py (lines 40-101) — step 2: StreamingLLM
+class SelectionPolicy:
+    """StreamingLLM: keep attention sinks and the most recent tokens."""
+
+    method_name = "streamingllm"
+    rerotate_selected_keys = True
+</old>
+<new>
+# EDITABLE region of custom_selection_eval.py (lines 40-101) — step 3: LagKV
+class SelectionPolicy:
+    """LagKV: score tokens by lag-relative key/value variation."""
+
+    method_name = "lagkv"
+    rerotate_selected_keys = False
+</new>
+</edit>
+<obs>
+Successfully replaced text in transformers-kv-lab/custom_selection_eval.py.
+</obs>
+<note>
+Add the lag and cross-scoring knobs to the plan.
+</note>
+<edit path="transformers-kv-lab/custom_selection_eval.py">
+<old>
+            "sink_tokens": 4,
+            "compression_ratio": cache_meta["compression_ratio"],
+</old>
+<new>
+            "sink_tokens": 4,
+            "lag_size": 128,
+            "cross_scoring": False,
+            "compression_ratio": cache_meta["compression_ratio"],
+</new>
+</edit>
+<obs>
+Successfully replaced text in transformers-kv-lab/custom_selection_eval.py.
+</obs>
+<note>
+Now the lag-relative scoring itself, plus a plain top-k select with no re-rotation.
+</note>
+<edit path="transformers-kv-lab/custom_selection_eval.py">
+<old>
+    def score_tokens(self, module, hidden_states, keys, values, kwargs, plan):
+        k_len = int(keys.shape[2])
+        n_sink = int(plan.get("sink_tokens", 4))
+        ratio = float(plan["compression_ratio"])
+        assert k_len > n_sink, f"Input should contain more tokens than sink_tokens={n_sink}"
+        n_pruned = k_len - int(k_len * (1.0 - ratio))
+        scores = torch.ones_like(keys[..., 0])
+        scores[:, :, n_sink : n_sink + n_pruned] = 0
+        return scores
+
+    def rotate_half(self, x):
+        x1 = x[..., : x.shape[-1] // 2]
+        x2 = x[..., x.shape[-1] // 2 :]
+        return torch.cat((-x2, x1), dim=-1)
+
+    def rerotate_cache_keys(self, module, indices, keys):
+        bsz, num_key_value_heads, n_kept = indices.shape
+        device = indices.device
+        device_type = keys.device.type
+        dtype = keys.dtype
+        inv_freq = module.rotary_emb.inv_freq[None, None, :, None].float().expand(
+            bsz, num_key_value_heads, -1, 1
+        )
+        new_positions = torch.arange(0, n_kept, device=device).unsqueeze(0)[:, None, :].float()
+        new_positions = new_positions.expand(bsz, num_key_value_heads, n_kept)
+        delta_pos = (new_positions - indices.float()).unsqueeze(2)
+        device_type = device_type if isinstance(device_type, str) and device_type != "mps" else "cpu"
+        with torch.autocast(device_type=device_type, enabled=False):
+            freqs = (delta_pos.float() * inv_freq.float()).transpose(2, 3)
+            emb = torch.cat((freqs, freqs), dim=-1)
+            cos = emb.cos().contiguous()
+            sin = emb.sin().contiguous()
+        cos = cos.to(dtype=dtype)
+        sin = sin.to(dtype=dtype)
+        gather_idx = indices.unsqueeze(-1).expand(-1, -1, -1, keys.shape[-1])
+        gathered = keys.gather(2, gather_idx).contiguous()
+        return (gathered * cos) + (self.rotate_half(gathered) * sin)
+
+    def select_cache(self, module, keys, values, scores, n_kept):
+        indices = scores.topk(n_kept, dim=-1).indices
+        indices = torch.sort(indices, dim=2).values
+        selected_keys = self.rerotate_cache_keys(module, indices, keys)
+        gather_idx = indices.unsqueeze(-1).expand(-1, -1, -1, values.shape[-1])
+        selected_values = values.gather(2, gather_idx).contiguous()
+        return selected_keys, selected_values
+</old>
+<new>
+    def score_tokens(self, module, hidden_states, keys, values, kwargs, plan):
+        bsz, num_key_value_heads, q_len, dim = keys.shape
+        n_sink = int(plan.get("sink_tokens", 4))
+        lag_size = int(plan.get("lag_size", 128))
+        if q_len < n_sink + 2 * lag_size:
+            scores = torch.ones((bsz, num_key_value_heads, q_len), dtype=keys.dtype, device=keys.device)
+            if q_len > n_sink:
+                scores[:, :, n_sink:] = (
+                    torch.arange(q_len - n_sink, device=keys.device) / (q_len - n_sink)
+                ).to(keys.dtype)
+            return scores
+        end_idx = n_sink + ((q_len - n_sink) // lag_size) * lag_size
+        tail_len = lag_size + q_len - end_idx
+
+        def state_score(target):
+            ref = target[:, :, 1:, :, :]
+            value = target[:, :, :-1, :, :]
+            min_ref = ref.min(dim=-2).values.unsqueeze(-2).expand_as(value)
+            max_ref = ref.max(dim=-2).values.unsqueeze(-2).expand_as(value)
+            return ((value - min_ref) / (max_ref - min_ref)).std(dim=-1).softmax(dim=-1)
+
+        key_score = state_score(keys[:, :, n_sink:end_idx].view(bsz, num_key_value_heads, -1, lag_size, dim))
+        value_score = state_score(values[:, :, n_sink:end_idx].view(bsz, num_key_value_heads, -1, lag_size, dim))
+        scores = (key_score + value_score) / 2
+        if not bool(plan.get("cross_scoring", False)):
+            scores = scores.argsort(dim=-1).argsort(dim=-1) / lag_size
+            scores = scores.to(keys.dtype)
+        sink_scores = torch.ones((bsz, num_key_value_heads, n_sink), dtype=scores.dtype, device=scores.device)
+        tail_scores = torch.ones((bsz, num_key_value_heads, tail_len), dtype=scores.dtype, device=scores.device)
+        return torch.cat((sink_scores, scores.reshape(bsz, num_key_value_heads, -1), tail_scores), dim=-1)
+
+    def select_cache(self, module, keys, values, scores, n_kept):
+        indices = scores.topk(n_kept, dim=-1).indices
+        gather_idx = indices.unsqueeze(-1).expand(-1, -1, -1, keys.shape[-1])
+        selected_keys = keys.gather(2, gather_idx).contiguous()
+        gather_idx = indices.unsqueeze(-1).expand(-1, -1, -1, values.shape[-1])
+        selected_values = values.gather(2, gather_idx).contiguous()
+        return selected_keys, selected_values
+</new>
+</edit>
+<obs>
+Successfully replaced text in transformers-kv-lab/custom_selection_eval.py.
+</obs>
+<run/>
+<obs>
+Measured results — `baseline:lagkv` (`is_final,true`), seed 42 (the single seed; mean equals it).
+
+## final_score (0-100, higher better)
+| seed | hotpotqa | passage_retrieval | repobench | longbench_v2 | gsm8k |
+|---|---|---|---|---|---|
+| 42 | 31.572 | 60.389 | 40.870 | 29.026 | 1.971 |
+| **mean** | **31.572** | **60.389** | **40.870** | **29.026** | **1.971** |
+
+## mean_retained_fraction (lower better)
+| seed | hotpotqa | passage_retrieval | repobench | longbench_v2 | gsm8k |
+|---|---|---|---|---|---|
+| 42 | 0.1999 | 0.1999 | 0.1999 | 0.2000 | 0.1932 |
+| **mean** | **0.1999** | **0.1999** | **0.1999** | **0.2000** | **0.1932** |
+
+## runtime_seconds (lower better)
+| seed | hotpotqa | passage_retrieval | repobench | longbench_v2 | gsm8k |
+|---|---|---|---|---|---|
+| 42 | 356.8 | 328.5 | 676.9 | 2568.1 | 7077.3 |
+| **mean** | **356.8** | **328.5** | **676.9** | **2568.1** | **7077.3** |
+</obs>
+
+### step 4 — Expected Attention (expected future-query attention scoring)   [slug:expected_attention]
+
+<think>
+LagKV did what I hoped on retrieval and confirmed the worry I named on reasoning. Passage retrieval
+climbed from StreamingLLM's 53.1 to 60.4 — nearly back to the anchor's 62.4 — exactly because the
+lag-relative score keeps the informative middle tokens that StreamingLLM blindly evicted, and on a
+needle-in-30-paragraphs task that is the whole game. LongBench v2 held at 29.0, neither rule having much
+purchase there. But the rest of the row is more sobering than I expected. Hotpotqa came back only to 31.6
+(below the anchor's 37.1, though above StreamingLLM's 25.6), and repobench actually *fell* to 40.9 —
+below both StreamingLLM's 43.2 and the anchor's 47.6. That repobench drop is the tell: next-line code
+completion is a workload where the most-recent tokens are overwhelmingly what predicts the next line, and
+StreamingLLM's recent-window keep was already well-suited to it; LagKV's per-partition rank spends budget
+on "incoherent" middle tokens that, for code completion, are not the ones that matter, so it pays for the
+retrieval recovery with a code-similarity loss. And gsm8k stayed at 2.0 — essentially StreamingLLM's 1.7,
+no recovery at all. That is exactly the failure I flagged: LagKV scores the *prompt's* KV statistics, but
+gsm8k's load-bearing tokens are in the model's own generated reasoning, so a coherence-with-the-next-chunk
+score on the prompt has no way to protect a chain-of-thought it cannot see. So LagKV beats StreamingLLM on
+the geometric mean (the retrieval recovery outweighs the repobench slip), which clears the bar I set, but
+it left two structural gaps: it has no principled tie to the model's *output*, and its signal is a
+geometric proxy (distributional coherence) rather than a measure of how much a token will actually be
+attended to. Both gaps point the same direction — score a token by its true effect on what the model
+produces.
+
+Let me make "true effect on the output" precise, because vague importance is what got LagKV to a proxy.
+Write down what a single cached pair actually does. In one attention head, the query at step `t` attends
+over all cached keys and the head writes back a weighted sum of values into the residual stream:
+`h_t^out = h_t + sum_{i<=t} a_ti W_o v_i`, where `a_ti` is the normalized attention weight from query `t`
+to key `i`, `v_i` the cached value, `W_o` the output projection. The thing to stare at is that this is
+purely *additive* — the residual stream is updated by adding, and pair `i` contributes exactly one term,
+`Δh_ti = a_ti W_o v_i`. So if I drop pair `i`, the damage at step `t` is precisely removing `Δh_ti`, of
+size `||Δh_ti|| = a_ti · ||W_o v_i||`. There is the exact importance of a cached pair, and it factors into
+two pieces: how strongly the query attends to that key, `a_ti`, and how big a kick that value gives the
+output, `||W_o v_i||`. This already says what LagKV's coherence proxy and StreamingLLM's position rule
+both miss — a pair can have a large, distinctive value vector but be ignored by every query (small `a`),
+or be heavily attended but carry a near-zero value; only the *product* matters, and only this product is
+tied to the residual stream the model actually reads downstream. I want to evict the pairs with the
+smallest product, because those perturb the stream least, and a small perturbation to the stream is a
+small perturbation to everything after it.
+
+Half of this is free. `||W_o v_i||` is computable from the cache right now — I have `v_i`, I have `W_o`.
+The trouble is entirely `a_ti`. And here is the wall LagKV walked around instead of through: `a_ti = z_ti /
+sum_j z_tj` with `z_ti = exp(q_t^T k_i / sqrt(d))`, and the weights I care about are for the steps that
+*matter* — the *future* decode steps, the ones I am deciding now which keys to keep for. But those future
+`q_t` do not exist yet; I cannot compute attention from a query I have not generated. This is the same
+obstruction the whole task is built around, and it is exactly why H2O and SnapKV read *past* attention as
+a stand-in — but past attention is the wrong signal (a key that mattered to tokens already seen need not be
+what the next thousand tokens need), and besides, this hook never materializes the attention matrix at all,
+so even the past scores are gone. So I cannot observe future `a_ti` and I cannot read it off a kernel.
+
+Can I *predict* it? I do not need the attention from one specific future query; I need a *typical* future
+query's attention, in expectation. That reframes the obstruction from "I do not have `q_t`" to "what is
+the distribution of future `q_t`, and what is `E[z_ti]` under it?" If I can get
+`E[exp(q^T k_i / sqrt(d))]` over plausible future queries, I have an expected unnormalized score per key,
+and I can normalize and rank. For that I need to know how queries are distributed — and here a property of
+these models I would otherwise never use becomes load-bearing. The hidden states feeding the attention
+block are empirically zero-mean, unimodal, and close to Gaussian, `h ~ N(mu, Sigma)`, across
+architectures (the activations *inside* the blocks are heavier-tailed, but it is the pre-block hidden
+states I care about, and those are the Gaussian ones). I do not have to explain why; I get to use it.
+Because the query is a linear map of the hidden state, `q = R W_Q h` with `W_Q` the query projection and
+`R` the RoPE rotation, a Gaussian `h` pushes forward to a Gaussian query: a linear map `q = A h` of
+`h ~ N(mu, Sigma)` is `N(A mu, A Sigma A^T)`, so `q_t ~ N(R_t W_Q mu, R_t W_Q Sigma W_Q^T R_t^T)`. I can
+estimate `mu` and `Sigma` by running the hidden states I already have at compression time — the prompt's
+hidden states — through `W_Q` and taking the sample mean and covariance. Critically, this addresses
+LagKV's gsm8k blind spot honestly: I am not scoring on a coherence proxy of the cache, I am estimating the
+distribution of the queries that will actually do the reading, which is a strictly more output-relevant
+signal than "does this token look like its neighbor."
+
+There is a snag in the subscript: `R_t` depends on position `t`, and I am averaging over many future
+positions, each with its own rotation. I want a single tractable query distribution standing for
+"attention over the next stretch of generation," not one per position. RoPE in the standard implementation
+acts as `R_t x = x * cos_t + rotate_half(x) * sin_t`, which I can write as a matrix
+`R_t = diag(cos_t) Id + diag(sin_t) P`, with `P` the signed permutation implementing `rotate_half`. Each
+`R_t` is an honest orthonormal rotation. The future query at `t+j` carries `R_{t+j}`; rather than commit to
+one representative offset, average the rotation itself over the next `T` positions:
+`R̄ = (1/T) sum_{j=1}^T R_{t+j}`, and push the Gaussian through `R̄ W_Q` to get the position-averaged query
+`q̄ ~ N(μ̄_q, Σ̄_q)`, `μ̄_q = R̄ W_Q mu`, `Σ̄_q = R̄ W_Q Sigma W_Q^T R̄^T`. I should be exact that `R̄` is
+*not* a rotation: each `R_{t+j}` is orthonormal, but the average of rotations is a contraction — as the
+offsets spread, the per-frequency cos/sin entries average toward smaller magnitudes, so `R̄` shrinks the
+high-frequency directions more than the low. That is not a bug, it is the right behavior: directions whose
+phase churns fast across the future window get washed out (no future position agrees on them), slow
+directions survive. So I keep `R̄` as-is and do not re-orthonormalize.
+
+Now the payoff. I have `q̄ ~ N(μ̄_q, Σ̄_q)` and a fixed key `k_i`, and I want
+`ẑ_i = E_{q̄}[exp(q̄^T k_i / sqrt(d))]`. This is exactly a moment-generating-function evaluation: for
+`X ~ N(m, C)` and fixed `s`, `E[exp(s^T X)] = exp(s^T m + (1/2) s^T C s)`. With `s = k_i / sqrt(d)`,
+`ẑ_i = exp( μ̄_q^T k_i / sqrt(d) + k_i^T Σ̄_q k_i / (2d) )`. The Gaussian assumption is exactly what bought
+this — the expectation of the exponential, which would otherwise need sampling, is closed form. The
+constants are forced by the algebra, not chosen: the first term is the ordinary attention logit with the
+query replaced by its mean (temperature `1/sqrt(d)` as in normal attention); the second came from
+`(1/2) s^T C s` with `s = k/sqrt(d)`, the two `1/sqrt(d)` factors giving `1/d` and the MGF's `1/2` giving
+`/(2d)`. The covariance term is doing real work, not decoration: by Jensen `E[exp(.)]` exceeds `exp(E[.])`
+precisely by the spread, so a key aligned with a high-variance direction of the future-query distribution
+gets boosted over its mean-logit — a key *some* future queries will love even if the average query is
+lukewarm. Dropping it gives the cheaper mean-only estimate; keeping it (the default here) distinguishes
+"consistently moderate" from "occasionally strong," which are different eviction decisions. I take a
+softmax of the log expected scores over the key dimension to turn expected unnormalized scores into
+expected attention *weights* `â_i` summing to one, comparable across keys — the `a_ti` slot of the
+importance formula — and substitute back: `||Δĥ_i|| ≈ (â_i + ε) · ||v_i||`. Two harness-specific notes
+here. First, strictly the formula wants `||W_o v_i||`, but materializing `W_o v_i` per value is expensive,
+so this fill uses `||v_i||` as the value-magnitude proxy — it keeps the value-size factor without the
+projection cost. Second, `ε` is a floor (this fill sets it to 0): when a key's expected attention is
+essentially zero, `ε` would let the value norm still break ties among near-ignored keys; with `ε = 0` the
+attention estimate dominates completely.
+
+Two corrections, both tied to the first tokens, and they point opposite ways — which is the same `n_sink`
+duality I have carried since step 2. The initial tokens carry the massive-activation outliers and soak up
+attention regardless of content; if I let them into the sample mean and covariance of the queries they
+wreck the Gaussian estimate (a few outliers drag `mu`, inflate `Σ`, and the closed form degrades). So I
+exclude the first `n_sink` tokens from the *statistics* — and from the keys/values/hidden-states I score.
+But because those sinks are load-bearing for the model regardless of content (the StreamingLLM lesson), I
+must not *evict* them either: after scoring the body, I pad the sinks back with a score guaranteed to top
+the list (this fill uses the running max), so the eviction always keeps them. Drop from the stats,
+force-keep in the cache. I compute the query statistics on the *pre-RoPE* queries (`W_Q h`, before
+rotation, via a projection helper that handles both `q_proj` and fused `qkv_proj` and applies `q_norm` if
+present) because I apply the rotation analytically through `R̄` afterward — keeping all position handling
+in the averaged rotation rather than baking a specific position into the sampled queries.
+
+Now I map it onto the hook, respecting what this harness actually exposes. `retention_plan` declares the
+sinks, the future window `n_future_positions`, the covariance and value-norm flags, `epsilon`, and the
+budget (force-overridden by the harness). `score_tokens` reads only hidden states, keys, values — never an
+attention tensor, which is the entire reason this method *can* run here while H2O/SnapKV cannot. It drops
+the sinks, gets the pre-RoPE query mean and (optionally) covariance from the hidden states, averages RoPE
+over the future window via the explicit `cos/sin` construction of `R̄` from `module.rotary_emb`, repeats
+the KV heads up to the query-head count (`num_attention_heads // num_key_value_heads`) so grouped-query
+attention is handled, forms the log expected scores (mean term plus, if enabled, the covariance term),
+softmaxes over keys, averages the query heads sharing each KV head back down, multiplies by the value norm,
+and pads the sink scores at the front with `scores.max()`. `select_cache` is the plain top-k gather of keys
+and values — `rerotate_selected_keys = False`, because unlike StreamingLLM this method keeps tokens at
+their original positions (it ranks by expected future attention, it does not roll a contiguous window), so
+no re-rotation is needed and decode continues from the true sequence length. The full scaffold module is in
+the answer.
+
+Let me close on the falsifiable bar, against LagKV's measured row and the anchor. Retained stays ~0.20 and
+runtime should sit near the prior rungs, maybe a hair higher because of the covariance einsum and the RoPE
+averaging per layer — if it blows past the others on runtime, the covariance term is too expensive and I
+should fall back to mean-only. The whole claim is that scoring by *expected future attention to the model's
+output* beats LagKV's coherence proxy. Concretely: I expect repobench to recover above LagKV's 40.9 toward
+the anchor's 47.6 — because the value-weighted expected-attention score should restore the recent,
+heavily-attended code tokens LagKV's incoherence rank de-prioritized — and that recovery is the sharpest
+single test, since repobench is where LagKV regressed below StreamingLLM. Hotpotqa should hold or beat
+LagKV's 31.6. The honest place I might *lose* is passage retrieval: LagKV's per-partition rank guarantees
+coverage across all 30 paragraphs, whereas a global expected-attention top-K could concentrate budget and
+miss the paragraph holding the needle, so I would not be shocked to see passage retrieval come in *below*
+LagKV's 60.4 — that would be the known weakness of a non-quota'd content score. And gsm8k: the expected-
+attention estimate is built from prompt-query statistics too, so I do not expect a miracle, but if it
+nudges above LagKV's 2.0 at all it confirms the output-tied signal is at least better than coherence on
+reasoning. The bar to be the strongest budgeted rung is the geometric mean across the five workloads: it
+must beat LagKV's, and the bet is that recovering repobench and holding hotpotqa outweighs any passage-
+retrieval slip — that is the falsifiable line that decides whether expected-attention scoring is genuinely
+the better shape.
+</think>
+<say>
+Now Expected Attention: score each key by its closed-form expected attention from a Gaussian model of the future queries, weighted by the value norm, so eviction tracks a token's actual effect on the output. This edit renames the class and adds the query-projection, KV-repeat, and averaged-RoPE helpers.
+</say>
+<edit path="transformers-kv-lab/custom_selection_eval.py">
+<old>
+# EDITABLE region of custom_selection_eval.py (lines 40-101) — step 3: LagKV
+class SelectionPolicy:
+    """LagKV: score tokens by lag-relative key/value variation."""
+
+    method_name = "lagkv"
+    rerotate_selected_keys = False
+</old>
+<new>
+# EDITABLE region of custom_selection_eval.py (lines 40-101) — step 4: Expected Attention
+class SelectionPolicy:
+    """Expected Attention: estimate future-query attention before pruning."""
+
+    method_name = "expected_attention"
+    rerotate_selected_keys = False
+
+    def repeat_kv(self, hidden_states, n_rep):
+        if n_rep == 1:
+            return hidden_states
+        bsz, num_key_value_heads, slen, head_dim = hidden_states.shape
+        hidden_states = hidden_states[:, :, None, :, :].expand(
+            bsz, num_key_value_heads, n_rep, slen, head_dim
+        )
+        return hidden_states.reshape(bsz, num_key_value_heads * n_rep, slen, head_dim)
+
+    def get_prerope_query_states(self, module, hidden_states):
+        bsz, q_len, _ = hidden_states.shape
+        num_heads = int(module.config.num_attention_heads)
+        head_dim = int(module.head_dim)
+        if hasattr(module, "q_proj"):
+            query_states = module.q_proj(hidden_states)
+        elif hasattr(module, "qkv_proj"):
+            qkv = module.qkv_proj(hidden_states)
+            query_states = qkv[..., : num_heads * head_dim]
+        else:
+            raise NotImplementedError(f"Query projection not implemented for {module.__class__}.")
+        query_states = query_states.view(bsz, q_len, num_heads, head_dim).transpose(1, 2)
+        if hasattr(module, "q_norm"):
+            query_states = module.q_norm(query_states)
+        return query_states
+
+    def avg_rope(self, module, mu, cov, q_len, n_future_positions):
+        position_ids = torch.arange(q_len, q_len + n_future_positions, device=mu.device).unsqueeze(0)
+        head_dim = int(module.head_dim)
+        cos, sin = module.rotary_emb(mu, position_ids)
+        cos, sin = cos[0], sin[0]
+        identity = torch.eye(head_dim, device=cos.device, dtype=cos.dtype)
+        perm = torch.zeros((head_dim, head_dim), device=cos.device, dtype=cos.dtype)
+        half = head_dim // 2
+        perm[half:, :half] = torch.eye(half, device=cos.device, dtype=cos.dtype)
+        perm[:half, half:] = -torch.eye(half, device=cos.device, dtype=cos.dtype)
+        rotation = (cos.unsqueeze(1) * identity + sin.unsqueeze(1) * perm).mean(dim=0).to(mu.device)
+        mu = torch.matmul(mu, rotation.T)
+        if cov is not None:
+            cov = torch.matmul(rotation, torch.matmul(cov, rotation.T))
+        return mu, cov
+</new>
+</edit>
+<obs>
+Successfully replaced text in transformers-kv-lab/custom_selection_eval.py.
+</obs>
+<note>
+Swap the LagKV plan knobs for the expected-attention ones: future window, covariance, value-norm, epsilon.
+</note>
+<edit path="transformers-kv-lab/custom_selection_eval.py">
+<old>
+            "sink_tokens": 4,
+            "lag_size": 128,
+            "cross_scoring": False,
+            "compression_ratio": cache_meta["compression_ratio"],
+</old>
+<new>
+            "sink_tokens": 4,
+            "n_future_positions": 512,
+            "use_covariance": True,
+            "use_value_norm": True,
+            "epsilon": 0.0,
+            "compression_ratio": cache_meta["compression_ratio"],
+</new>
+</edit>
+<obs>
+Successfully replaced text in transformers-kv-lab/custom_selection_eval.py.
+</obs>
+<note>
+Now the scoring proper: query stats, averaged RoPE, the MGF mean-plus-covariance logit, softmax over keys, value-norm weighting, and the force-kept sinks.
+</note>
+<edit path="transformers-kv-lab/custom_selection_eval.py">
+<old>
+    def score_tokens(self, module, hidden_states, keys, values, kwargs, plan):
+        bsz, num_key_value_heads, q_len, dim = keys.shape
+        n_sink = int(plan.get("sink_tokens", 4))
+        lag_size = int(plan.get("lag_size", 128))
+        if q_len < n_sink + 2 * lag_size:
+            scores = torch.ones((bsz, num_key_value_heads, q_len), dtype=keys.dtype, device=keys.device)
+            if q_len > n_sink:
+                scores[:, :, n_sink:] = (
+                    torch.arange(q_len - n_sink, device=keys.device) / (q_len - n_sink)
+                ).to(keys.dtype)
+            return scores
+        end_idx = n_sink + ((q_len - n_sink) // lag_size) * lag_size
+        tail_len = lag_size + q_len - end_idx
+
+        def state_score(target):
+            ref = target[:, :, 1:, :, :]
+            value = target[:, :, :-1, :, :]
+            min_ref = ref.min(dim=-2).values.unsqueeze(-2).expand_as(value)
+            max_ref = ref.max(dim=-2).values.unsqueeze(-2).expand_as(value)
+            return ((value - min_ref) / (max_ref - min_ref)).std(dim=-1).softmax(dim=-1)
+
+        key_score = state_score(keys[:, :, n_sink:end_idx].view(bsz, num_key_value_heads, -1, lag_size, dim))
+        value_score = state_score(values[:, :, n_sink:end_idx].view(bsz, num_key_value_heads, -1, lag_size, dim))
+        scores = (key_score + value_score) / 2
+        if not bool(plan.get("cross_scoring", False)):
+            scores = scores.argsort(dim=-1).argsort(dim=-1) / lag_size
+            scores = scores.to(keys.dtype)
+        sink_scores = torch.ones((bsz, num_key_value_heads, n_sink), dtype=scores.dtype, device=scores.device)
+        tail_scores = torch.ones((bsz, num_key_value_heads, tail_len), dtype=scores.dtype, device=scores.device)
+        return torch.cat((sink_scores, scores.reshape(bsz, num_key_value_heads, -1), tail_scores), dim=-1)
+</old>
+<new>
+    def score_tokens(self, module, hidden_states, keys, values, kwargs, plan):
+        n_sink = int(plan.get("sink_tokens", 4))
+        n_future = int(plan.get("n_future_positions", 512))
+        use_covariance = bool(plan.get("use_covariance", True))
+        use_vnorm = bool(plan.get("use_value_norm", True))
+        epsilon = float(plan.get("epsilon", 0.0))
+        assert keys.size(2) > n_sink, f"Input should contain more tokens than sink_tokens={n_sink}"
+        keys_body = keys[:, :, n_sink:]
+        values_body = values[:, :, n_sink:]
+        h = hidden_states[:, n_sink:]
+        query_states = self.get_prerope_query_states(module, h)
+        mean_query = query_states.mean(dim=2, keepdim=True)
+        cov_query = None
+        if use_covariance:
+            centered_states = query_states - mean_query
+            cov_query = torch.einsum("bnsi,bnsj->bnij", centered_states, centered_states) / max(h.shape[1], 1)
+        mean_query = mean_query.squeeze(2)
+        mean_query, cov_query = self.avg_rope(module, mean_query, cov_query, hidden_states.shape[1], n_future)
+        bsz, num_key_value_heads, q_len, dim = keys_body.shape
+        num_key_value_groups = int(module.config.num_attention_heads) // num_key_value_heads
+        repeated_keys = self.repeat_kv(keys_body, num_key_value_groups).transpose(2, 3)
+        scores = torch.matmul(mean_query.unsqueeze(2), repeated_keys).squeeze(2) / math.sqrt(dim)
+        if use_covariance:
+            scores += torch.einsum("bhin,bhij,bhjn->bhn", repeated_keys, cov_query, repeated_keys) / dim / 2
+        scores = F.softmax(scores, dim=-1)
+        scores = scores.view(bsz, num_key_value_heads, num_key_value_groups, q_len).mean(dim=2)
+        if use_vnorm:
+            scores = (scores + epsilon) * values_body.norm(dim=-1)
+        return F.pad(scores, (n_sink, 0), value=scores.max().item())
+</new>
+</edit>
+<obs>
+Successfully replaced text in transformers-kv-lab/custom_selection_eval.py.
+</obs>
+<run/>
+<obs>
+Measured results — `baseline:expected_attention` (`is_final,true`), seed 42 (the single seed; mean equals it).
+
+## final_score (0-100, higher better)
+| seed | hotpotqa | passage_retrieval | repobench | longbench_v2 | gsm8k |
+|---|---|---|---|---|---|
+| 42 | 33.406 | 50.289 | 47.310 | 29.622 | 4.170 |
+| **mean** | **33.406** | **50.289** | **47.310** | **29.622** | **4.170** |
+
+## mean_retained_fraction (lower better)
+| seed | hotpotqa | passage_retrieval | repobench | longbench_v2 | gsm8k |
+|---|---|---|---|---|---|
+| 42 | 0.1999 | 0.1999 | 0.1999 | 0.2000 | 0.1932 |
+| **mean** | **0.1999** | **0.1999** | **0.1999** | **0.2000** | **0.1932** |
+
+## runtime_seconds (lower better)
+| seed | hotpotqa | passage_retrieval | repobench | longbench_v2 | gsm8k |
+|---|---|---|---|---|---|
+| 42 | 366.6 | 345.5 | 670.1 | 2717.1 | 7156.7 |
+| **mean** | **366.6** | **345.5** | **670.1** | **2717.1** | **7156.7** |
+</obs>

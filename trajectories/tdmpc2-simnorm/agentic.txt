@@ -1,0 +1,571 @@
+<meta task="tdmpc2-simnorm" domain="Self-supervised" file="tdmpc2/tdmpc2/common/custom_simnorm.py" model_format="qwen3" edit_tool="str_replace"/>
+
+<system>
+You are a research engineer improving a model on a fixed ML task. You work by editing the model code and running experiments. Think carefully before each change. You have these tools:
+- str_replace(path, old_str, new_str): replace the unique occurrence of old_str with new_str.
+- create(path, file_text): create a new file.
+- run_experiment(): train + evaluate the current code under the fixed budget; returns metrics.
+Make one tool call at a time. After editing, call run_experiment() to measure your method.
+</system>
+
+<user>
+## Research question
+
+TD-MPC2 learns a **decoder-free latent world model** and plans in it: an encoder maps an observation
+to a latent state, a latent dynamics network predicts the next latent from the current latent and an
+action, and reward and value heads read off the latent. Nothing reconstructs the observation, so the
+latent is defined purely by self-predictive consistency, reward regression, and a bootstrapped value
+loss. The geometry of that latent — how its magnitude is bounded and how its coordinates are shaped —
+is the single thing being designed here. The one editable object is the **final activation** applied
+at the output of *both* the encoder and the dynamics network; everything else about the agent (the
+MLP stacks, the planner, the losses, the optimizer) is fixed. The question is which normalization of
+the latent makes world-model learning most stable and most sample-efficient across DMControl tasks.
+
+## Prior art before the first rung (latent-geometry lineage)
+
+The first rung reacts to a line of "normalize the representation" ideas, each of which the latent
+world model could in principle borrow as its final activation, each with a gap that matters *here*.
+
+- **No final normalization (identity).** Let the last linear map emit the latent unchanged. The
+  intermediate LayerNorms inside the MLP control the pre-activations flowing *through* each layer, but
+  the network's *output* — the latent actually consumed by dynamics, reward, and value — is produced by
+  a last linear map with arbitrary weights, so its magnitude is unconstrained. Gap: under a
+  self-predictive plus bootstrapped objective the overall scale of the latent is a free degree of
+  freedom the losses do not pin down, and the value-target feedback loop drives it, so gradients can
+  run away on harder tasks.
+- **L2 normalization (project to a hypersphere).** Divide the latent by its L2 norm, `z ← z/‖z‖₂`,
+  optionally times a learnable scalar. Kills the magnitude degree of freedom dead — `‖z‖₂ = 1` by
+  construction. Gap: it bounds magnitude and *nothing else*; every point on the sphere is equally
+  available, one global division couples all coordinates through a single scalar, and the latent is
+  bounded but dense and shapeless — no pressure toward the sparse, structured code a value/reward
+  readout tends to prefer.
+- **RMSNorm (Zhang & Sennrich 2019).** Drop the mean-subtraction of LayerNorm and keep only the
+  scale: divide by the root-mean-square of the entries and apply a learnable gain. Re-scaling
+  invariance — the part that actually controls activation/gradient spread — survives; re-centering
+  invariance is discarded. Cheaper than LayerNorm and a natural "normalize the magnitude" final
+  activation. Gap as a *world-model latent*: like L2 it bounds spread without inducing any sparsity or
+  group structure; the gain can re-inflate scale, and on the discriminating DMControl task it shapes a
+  geometry the value head learns from less efficiently.
+- **Discrete latent codes (VQ-VAE, van den Oord et al. 2017).** Represent the latent as a vector of
+  categoricals — split it into groups and replace each group by a one-hot from a learned codebook.
+  Bounded, structured, maximally sparse within a group, and overcomplete (up to `Vᴸ` configurations).
+  Gap: the one-hot is an argmax — non-differentiable — so it needs a straight-through estimator and a
+  commitment loss and drags codebook collapse along; fragile machinery for a recurrent world model
+  whose gradients must flow cleanly through the dynamics step after step.
+
+## The fixed substrate
+
+A TD-MPC2 world model (~1M parameters) is frozen and must not be touched: the encoder MLP
+(`layers.py: enc()`) mapping observations to a 128-dim latent, the latent dynamics MLP
+(`world_model.py: __init__`) predicting the next latent from latent+action, the reward and value
+heads, the self-predictive consistency loss `‖d(z,a) − sg(h(s'))‖²`, the bootstrapped value loss
+`q = r + γ Q̄(z', p(z'))`, the MPPI/CEM planner, and the optimizer. The latent dimension is **128**
+with `cfg.simnorm_dim = 8`, so the latent splits into **16 groups of 8**. The custom normalization is
+inserted as the *final activation* of both the encoder MLP stack and the dynamics MLP stack — the same
+module instance contract in both places — so the consistency loss compares a prediction and a target
+that live in the *same* normalized space.
+
+## The editable interface
+
+Exactly one region is editable — the `CustomSimNorm` class in `custom_simnorm.py` (lines 16–43). The
+contract is fixed: `__init__(self, cfg)` may read `cfg.simnorm_dim` (the group size, 8) and register
+any parameters; `forward(self, x)` takes a tensor of shape `(*batch_dims, latent_dim)` with
+`latent_dim` divisible by `simnorm_dim` and **must return the same shape**. The loop imports
+`torch`, `torch.nn as nn`, and `torch.nn.functional as F`. Every method on the ladder is a fill of
+exactly this class — same signature, shape-preserving forward — and nothing else changes.
+
+The starting point is the scaffold default: **SimNorm** (the simplicial normalization the task is
+named for), reshaping the latent into groups of 8 and applying a softmax within each group.
+
+```python
+# EDITABLE region of custom_simnorm.py (lines 16-43) -- default fill (SimNorm)
+class CustomSimNorm(nn.Module):
+    """Custom normalization for latent state representations in world models.
+
+    Interface contract (same as SimNorm):
+        __init__(cfg)  -- cfg.simnorm_dim is the group size (default: 8)
+        forward(x: Tensor) -> Tensor  (same shape as input)
+
+    The input tensor has shape (*batch_dims, latent_dim) where latent_dim
+    is divisible by simnorm_dim. Your normalization should constrain the
+    geometry of the latent space to improve world model learning.
+    """
+
+    def __init__(self, cfg):
+        super().__init__()
+        self.dim = cfg.simnorm_dim
+
+    def forward(self, x):
+        # Default: SimNorm (simplicial normalization)
+        # Reshape into groups of size self.dim and apply softmax
+        shp = x.shape
+        x = x.view(*shp[:-1], -1, self.dim)
+        x = F.softmax(x, dim=-1)
+        return x.view(*shp)
+
+    def __repr__(self):
+        return f"CustomSimNorm(dim={self.dim})"
+```
+
+## Evaluation settings
+
+The model is trained for **200K steps** and evaluated by **episode reward (higher is better)** on
+DMControl tasks. The leaderboard reports three environments — **walker-walk**, **cheetah-run**, and a
+held-out **cartpole-swingup** — each over three seeds {42, 123, 456}. Two of the three (walker-walk
+and cartpole-swingup) are easy enough that every reasonable normalization saturates near the top of
+their reward range; **cheetah-run** is the discriminating task, the one where the latent geometry
+actually separates methods. The metric is reported per seed and as the mean.
+
+The editable model code is in `tdmpc2/tdmpc2/common/custom_simnorm.py`:
+```python
+class CustomSimNorm(nn.Module):
+    """Custom normalization for latent state representations in world models.
+
+    Interface contract (same as SimNorm):
+        __init__(cfg)  -- cfg.simnorm_dim is the group size (default: 8)
+        forward(x: Tensor) -> Tensor  (same shape as input)
+
+    The input tensor has shape (*batch_dims, latent_dim) where latent_dim
+    is divisible by simnorm_dim. Your normalization should constrain the
+    geometry of the latent space to improve world model learning.
+
+    Evaluated on DMControl walker-walk and cheetah-run tasks.
+    """
+
+    def __init__(self, cfg):
+        super().__init__()
+        self.dim = cfg.simnorm_dim
+
+    def forward(self, x):
+        # Default: SimNorm (simplicial normalization)
+        # Reshape into groups of size self.dim and apply softmax
+        shp = x.shape
+        x = x.view(*shp[:-1], -1, self.dim)
+        x = F.softmax(x, dim=-1)
+        return x.view(*shp)
+
+    def __repr__(self):
+        return f"CustomSimNorm(dim={self.dim})"
+```
+Improve it. Derive your method, edit the code, then run_experiment().
+</user>
+
+### step 1 — RMSNorm (group-wise)   [slug:rmsnorm]
+
+<think>
+Let me start from what the latent world model actually asks of its final activation, because the
+choice is not cosmetic — the latent is the only thing the model has. There is no decoder. The encoder
+sends an observation to a latent, the dynamics net predicts the next latent from the current latent and
+the action, and reward and value heads read off the latent. The losses that define the latent are
+self-referential: a self-predictive consistency term pushes the predicted next latent toward the
+encoder's own embedding of the next observation, `‖d(z,a) − sg(h(s'))‖²` with a stop-gradient on the
+target; a reward regression; and a bootstrapped value loss whose target `q = r + γ Q̄(z', p(z'))` is
+itself a function of the very latents the network produces. So the latent is pinned by nothing external,
+and that is precisely where instability lives. A squared-error-in-feature-space consistency loss has a
+cheap, useless way to go down that has nothing to do with learning dynamics: change the *scale* of the
+representation. If the last linear map can inflate or deflate the magnitude of the latent freely, the
+losses get a free parameter that moves the landscape around without encoding anything — and because the
+value target reads the network's own latents, this closes a feedback loop with a runaway direction. The
+exploding gradients people see on harder tasks are that magnitude blowing up. So the final activation's
+first job is structural: remove the magnitude degree of freedom, bound the latent.
+
+Why doesn't the LayerNorm already inside the MLP stacks save me? Because LayerNorm normalizes the
+*intermediate* pre-activations flowing through each layer — it fixes the per-layer mean and variance of
+the river — but the network's *output*, the final latent fed to dynamics, reward, and value, is produced
+by a last linear map *after* the last LayerNorm, and that map can have arbitrarily large weights.
+LayerNorm controls the river, not the mouth. The thing I actually consume is unbounded. So I need a
+constraint on the *final* layer's output, a final activation that defines the geometry of the latent
+itself. That is the editable slot the task hands me: `CustomSimNorm.forward`, inserted at the output of
+both the encoder and the dynamics MLP. The contract is narrow — take `(*batch, 128)`, return the same
+shape — and everything else is frozen, so my whole design space is "what map do I apply to the raw
+latent."
+
+The simplest disciplined answer in the "normalize the magnitude" family is to reach for the cheapest
+normalization I trust. I have a long-standing intuition about LayerNorm: when I train normalized
+networks I get a big per-step improvement, but I pay for it on every forward pass, and a good chunk of
+the per-step gain gets handed back in wall-clock. So I have asked before: am I paying for something I do
+not need? LayerNorm bundles two distinct operations. One: subtract the mean — recenter the vector to
+zero mean. Two: divide by the standard deviation — rescale it to unit spread. They feel like one move,
+"standardize," but they are two, and they buy *different* things. Subtracting the mean buys
+re-centering invariance: add the same constant to every entry and the centered vector is unchanged.
+Dividing by σ buys re-scaling invariance: scale every entry by α and `(a−μ)/σ` is unchanged. Two
+operations, two invariances, cleanly separated.
+
+The mean is the suspicious one. Stabilizing training is fundamentally about controlling *spread* —
+keeping activations and gradients from blowing up or vanishing. Subtracting the mean recenters the
+vector but does nothing to its variance: `var(a−μ) = var(a)`. Recentering moves the cloud; it does not
+shrink or grow it. The thing that actually controls spread — that pulls the magnitude to a fixed scale
+regardless of how big the weights got — is the *division by a scale statistic*. So if I have to bet
+which of the two invariances is doing the stabilizing work, I bet on re-scaling and treat re-centering
+as dead weight. That is exactly the degree of freedom I diagnosed as the source of the latent's runaway:
+its overall scale. The re-scaling normalization is precisely the operation that pins it. So in *this*
+model the part of LayerNorm I do not need is the part I was already suspicious of, and the part I do need
+is the part that solves the world-model's actual problem.
+
+If I drop the mean, what do I divide by? I cannot use σ, because `σ = √((1/n)Σ(aᵢ−μ)²)` is *defined*
+through μ — it is the spread *around the mean*. If I refuse to compute μ, I need a measure of scale that
+never references it. The natural candidate is the spread around *zero* instead of around the mean: the
+root-mean-square, `RMS(a) = √((1/n)Σ aᵢ²)`. This is the quadratic mean of the entries — how big they
+are on average, measured from the origin — and the normalization becomes `āᵢ = aᵢ / RMS(a) · gᵢ` with a
+learned gain `g`. No μ anywhere, no subtraction, one statistic. Check the degenerate case: if the
+entries happen to have zero mean, `σ = RMS(a)` and the rule coincides exactly with LayerNorm — so this
+is not a wild departure, it is the same layer with re-centering switched off. And check that it does the
+one job I need: `RMS(αa) = |α|·RMS(a)`, so `αa / RMS(αa) = a / RMS(a)` — re-scaling invariance, the
+load-bearing one, survives. Re-centering invariance is the only thing discarded, and I just argued it is
+the weaker suspect. This is the right tool for bounding a self-predictive latent's magnitude with the
+least machinery.
+
+Now I have to fit it to *this* task's edit surface, and this is where the implementation deviates from
+the textbook RMSNorm in a way I want to be honest about. The default fill is SimNorm, which reshapes the
+128-dim latent into 16 groups of `simnorm_dim = 8` and softmaxes within each group. The whole harness —
+the consistency loss, the heads — is built around a latent that has this group structure as its native
+shape. The cleanest way to slot RMSNorm into the same slot, and the version that is a true
+apples-to-apples swap against the default, is to keep the *same partition* and apply RMS normalization
+*within each group of 8* rather than over the full 128-vector. So: reshape to `(*batch, 16, 8)`, compute
+the root-mean-square over the last axis (the 8 entries of each group), divide, and multiply by a
+learnable gain of size 8 shared across groups, then reshape back. This is **group-wise** RMSNorm, not
+the canonical full-vector RMSNorm, and the difference is deliberate: it normalizes each of the 16 groups
+to a common magnitude independently, mirroring SimNorm's group structure so the comparison isolates
+"softmax-on-a-simplex vs. RMS-rescale" rather than confounding it with "16 groups vs. one block." I keep
+the gain per group element (size 8) so each coordinate within a group can be re-weighted, the same role
+the learned gain plays in LayerNorm.
+
+A subtlety in the numerics: I put the `eps` *inside* the square root, `rms = √(mean(x²) + eps)`, rather
+than clamping the norm from below afterward. With groups of only 8 entries the mean-square can get small,
+and adding eps under the root keeps the division well-conditioned without ever producing a zero
+denominator; it also keeps the gradient of the sqrt finite at the origin. I use `eps = 1e-8`, small
+enough not to bias the scale when the group has real magnitude. The gain initializes to ones so the layer
+starts as a pure RMS rescale and learns any per-coordinate emphasis from there.
+
+Let me be clear-eyed about what this buys and what it does *not*, because the gap is the whole reason
+this is the first rung and not the last. RMSNorm bounds the *spread* of each group — after the divide,
+each group has root-mean-square one (up to the gain) — so the magnitude degree of freedom that drives the
+runaway loop is controlled, and gradients should stay tame. That is real and it is the point. But
+RMSNorm does *nothing else*. It does not induce sparsity: every coordinate is generically nonzero, the
+group is a bounded but dense blob. It does not induce any competition between coordinates: each entry is
+rescaled by the same scalar, so there is no pressure to prioritize a few directions. And the learnable
+gain can partially re-inflate the scale per coordinate, loosening the bound I just imposed. For a latent
+that has to support stable bootstrapped value learning, a bounded-but-shapeless code is exactly the weak
+representation I worried about in the lineage: the value head reads a dense vector with no structure to
+exploit. I expect that to show up not on the easy tasks — where almost any bounded latent saturates the
+reward — but on the one task whose dynamics are rich enough that the latent geometry matters.
+
+So here is where I think this lands and what I am watching, stated as falsifiable expectations. On
+walker-walk and cartpole-swingup I expect RMSNorm to sit right at the top of the reward range, near
+whatever the other normalizations achieve — these tasks do not stress the latent, so bounding the
+magnitude is enough and the lack of structure costs nothing. The honest test is cheetah-run, where the
+running gait is a richer, more dynamic behavior and the value head has to read fine structure out of the
+latent. There I expect group-wise RMSNorm to be the *weakest* of the disciplined normalizations,
+precisely because it bounds magnitude without shaping the code — a dense rescaled latent gives the value
+head less to work with than a sparse, competitive one would. If that is what the numbers say — saturated
+on the two easy tasks, visibly lower on cheetah-run — then the diagnosis for the next rung writes
+itself: bounding the magnitude is necessary but not sufficient, and the missing ingredient is
+*structure* — a competition between coordinates that biases the latent toward a sparse, overcomplete
+code the readouts prefer. That is exactly the move from a plain rescale to a within-group softmax. But I
+do not get to assume that; I run RMSNorm first and let the cheetah-run number tell me how much the
+missing structure actually costs. So let me put the group-wise RMS rescale — the per-group gain and the
+eps-under-root — into the class now.
+</think>
+<say>
+I'll start with a group-wise RMSNorm baseline: keep SimNorm's 16-groups-of-8 partition but replace the within-group softmax with an RMS rescale plus a learnable gain. This first edit swaps the class docstring/header to mark the new method.
+</say>
+<edit path="tdmpc2/tdmpc2/common/custom_simnorm.py">
+<old>
+class CustomSimNorm(nn.Module):
+    """Custom normalization for latent state representations in world models.
+
+    Interface contract (same as SimNorm):
+        __init__(cfg)  -- cfg.simnorm_dim is the group size (default: 8)
+        forward(x: Tensor) -> Tensor  (same shape as input)
+
+    The input tensor has shape (*batch_dims, latent_dim) where latent_dim
+    is divisible by simnorm_dim. Your normalization should constrain the
+    geometry of the latent space to improve world model learning.
+
+    Evaluated on DMControl walker-walk and cheetah-run tasks.
+    """
+</old>
+<new>
+# EDITABLE region of custom_simnorm.py (lines 16-43) -- step 1: group-wise RMSNorm
+class CustomSimNorm(nn.Module):
+    """Group-wise RMSNorm baseline for latent representations."""
+</new>
+</edit>
+<obs>
+Successfully replaced text in tdmpc2/tdmpc2/common/custom_simnorm.py.
+</obs>
+<note>
+Now the actual normalization: register the eps and per-group gain, then RMS-normalize within each group of 8.
+</note>
+<edit path="tdmpc2/tdmpc2/common/custom_simnorm.py">
+<old>
+        self.dim = cfg.simnorm_dim
+
+    def forward(self, x):
+        # Default: SimNorm (simplicial normalization)
+        # Reshape into groups of size self.dim and apply softmax
+        shp = x.shape
+        x = x.view(*shp[:-1], -1, self.dim)
+        x = F.softmax(x, dim=-1)
+        return x.view(*shp)
+
+    def __repr__(self):
+        return f"CustomSimNorm(dim={self.dim})"
+</old>
+<new>
+        self.dim = cfg.simnorm_dim
+        self.eps = 1e-8
+        # Learnable gain per group element
+        self.weight = nn.Parameter(torch.ones(self.dim))
+
+    def forward(self, x):
+        shp = x.shape
+        # Reshape into groups (same as SimNorm)
+        x = x.view(*shp[:-1], -1, self.dim)
+        # RMS normalization within each group
+        rms = torch.sqrt(torch.mean(x ** 2, dim=-1, keepdim=True) + self.eps)
+        x = (x / rms) * self.weight
+        return x.view(*shp)
+
+    def __repr__(self):
+        return f"CustomSimNorm(dim={self.dim}, type=RMSNorm)"
+</new>
+</edit>
+<obs>
+Successfully replaced text in tdmpc2/tdmpc2/common/custom_simnorm.py.
+</obs>
+<run/>
+<obs>
+Measured results — `baseline:rmsnorm` (`is_final,true`), seeds {42, 123, 456} and mean. Episode reward, higher is better.
+
+## walker-walk
+| seed | episode_reward |
+|---|---|
+| 42 | 979.32 |
+| 123 | 973.84 |
+| 456 | 977.61 |
+| **mean** | **976.92** |
+
+## cheetah-run
+| seed | episode_reward |
+|---|---|
+| 42 | 712.15 |
+| 123 | 699.55 |
+| 456 | 631.18 |
+| **mean** | **680.96** |
+
+## cartpole-swingup
+| seed | episode_reward |
+|---|---|
+| 42 | 879.86 |
+| 123 | 864.74 |
+| 456 | 875.58 |
+| **mean** | **873.39** |
+</obs>
+
+### step 2 — SimNorm (simplicial normalization)   [slug:simnorm]
+
+<think>
+The RMSNorm run told me exactly what I half-expected, and it told me in the one number that
+discriminates. On walker-walk all three seeds sat at the top, mean 976.92, and on cartpole-swingup the
+same, mean 873.39 — both tight, both saturated. Those two tasks do not stress the latent: bounding the
+magnitude is sufficient and the lack of structure costs nothing, exactly as I predicted. The honest test
+was cheetah-run, and there RMSNorm landed at mean 680.96 with seeds {712.15, 699.55, 631.18} — not a
+high-variance lucky-seed story, but a uniformly *low* band; even the best seed (712) is below where I
+want to be, and the worst (631) drags. So this is not noise I can average away. It is a representational
+ceiling: group-wise RMSNorm bounds the spread of each group and nothing else, and on the one task whose
+running gait is rich enough to need fine latent structure, a bounded-but-dense code gives the value head
+too little to read. The diagnosis I wrote going in held — bounding the magnitude is necessary but not
+sufficient — and now the cheetah-run gap puts a price on the missing ingredient: roughly the difference
+between 681 and whatever a *structured* latent can reach. The next move has to add structure, not just
+re-bound the scale.
+
+Let me be precise about what RMSNorm failed to provide, because the fix has to provide exactly that and
+no more. RMSNorm divides each group by a single scalar — its root-mean-square — and applies a gain. A
+single scalar per group means every coordinate is rescaled identically: there is no *competition*
+between the eight entries of a group, no pressure to prioritize a few directions over the rest, so the
+learned latent stays dense, every coordinate generically nonzero. And the gain can re-inflate the scale
+per coordinate, so even the bound is soft. What a value/reward readout actually likes — what makes
+bootstrapped value learning across a dynamic gait stable — is a *sparse, structured* code: a
+representation where each group commits to a few active directions, so the readout is reading a clean
+combinatorial pattern rather than a noisy dense blob. RMSNorm has no mechanism to produce that. So the
+question for this rung is: can I keep the boundedness I got from RMSNorm but *add* a within-group
+competition that biases the latent toward sparse structure — without bolting on an L1 penalty I would
+have to weight per task?
+
+Let me think about what a *good* latent geometry would be and let the constraint fall out of it. There is
+an old intuition I trust: sparse, overcomplete codes — more components than the input dimension, most of
+them inactive — are stable under noise and are the representations that downstream linear readouts like.
+My value and reward heads *are* essentially linear readouts on the latent. So I want the latent bounded
+*and* sparse. The cleanest realization of "sparse and structured" is a vector of categoricals: split the
+latent into groups and let each group commit to one active entry out of its eight. That is exactly the
+group partition I already have from the RMSNorm fill — 16 groups of 8 — but instead of dividing each
+group by its RMS, I want each group to behave like a soft one-hot. A hard one-hot is bounded (norm 1),
+maximally sparse within the group, and 16 independent groups form an overcomplete code with up to `8¹⁶`
+configurations. The geometry is right. But the hard one-hot is an argmax — non-differentiable — and
+training through it would need a straight-through estimator and a codebook, dragging codebook collapse
+and dead codes along. For a recurrent world model whose gradients must flow cleanly through the dynamics
+net step after step, that fragile machinery is the wrong tool. So I want the *geometry* of a
+vector-of-categoricals but the *soft, differentiable* version.
+
+The smooth relaxation of argmax is softmax. If I take each group of eight raw values and apply a softmax
+*within the group*, I get eight nonnegatives summing to one — a point on the 7-simplex. Do that for all
+16 groups and concatenate. That is the whole method: reshape the 128-vector to `(*batch, 16, 8)`,
+softmax over the last axis, reshape back. It is the natural successor to the RMSNorm fill because it
+reuses the *exact same partition* — the reshape to 16 groups of 8 is identical — and only changes what
+happens inside each group: from "divide by the RMS scalar" to "softmax." The delta from the previous
+rung is one operation, and that operation is precisely the within-group competition RMSNorm lacked.
+
+Let me verify it solves the original problem first — does it bound the latent? Within a group, softmax
+gives entries in `(0,1)` summing to one, so `‖gᵢ‖₁ = 1` exactly, and since each entry is in `[0,1]`,
+`‖gᵢ‖₂² = Σ gᵢⱼ² ≤ Σ gᵢⱼ = 1`, so `‖gᵢ‖₂ ≤ 1`. Over all 16 groups, `‖z‖₁ = 16` exactly and
+`‖z‖₂ ≤ 4`. A hard, parameter-free upper bound on the latent norm that depends on *nothing* about the
+input or the task — only on the number of groups. This is *stronger* boundedness than RMSNorm gave me:
+RMSNorm pinned the spread but the learnable gain could re-inflate it; here there is no gain, the bound is
+structural and exact. So I keep everything the previous rung bought on the magnitude problem, with a
+tighter guarantee, and I have not even gotten to the structure yet.
+
+Now the structure, which is the whole reason I expect to clear the cheetah-run gap. Softmax inside a
+group is a zero-sum competition: the outputs sum to one and are all nonnegative, so to raise one
+component the others must collectively give up the same amount. To drive the consistency and value
+losses down, the network cannot make everything large; it has to *prioritize* — push mass onto a few
+entries per group at the expense of the rest. So the learned groups drift toward approximately one-hot,
+sparse-but-soft, with no L1 term and no hard argmax. This is exactly the competition RMSNorm structurally
+could not provide: there a single scalar rescaled all eight entries together; here the softmax pits them
+against each other. I can even measure how sparse a group is by its entropy `H(gᵢ) ∈ [0, ln 8]` — zero
+is one-hot, `ln 8` is uniform — and the competition biases it toward the low-entropy end. That is the
+sparse overcomplete code the value head wants, emergent from the geometry rather than imposed.
+
+Why *groups* and not one big softmax over all 128 entries? This matters, and it is also why I keep the
+16-of-8 partition rather than collapsing it. A single softmax over 128 entries forces the whole vector to
+sum to one, so on average each coordinate is about `1/128`, vanishingly small, and only one coordinate
+can be appreciably active at a time — the latent can pick out essentially one direction and carries on
+the order of `log₂ 128 ≈ 7` bits. That is a brutal bottleneck for a world-model latent that must encode
+the full state for dynamics, reward, and value. Splitting into 16 independent simplices fixes exactly
+this: each group independently chooses which of its eight entries to activate, so I get 16 near-
+independent decisions, up to `8¹⁶` configurations, roughly `16·log₂ 8 = 48` bits, while every group is
+*still* individually bounded. Boundedness and expressivity stop fighting. The group structure is not
+optional — it is what lets me bound the latent without crushing it to a single direction, and it is the
+same structure RMSNorm used, now carrying a sparsity bias instead of just a rescale.
+
+There is a temperature knob hiding in the softmax, `gᵢ = softmax(zᵢ/τ)`, and I want to choose it on
+purpose. As `τ → 0` the softmax sharpens to a hard argmax — each group becomes one-hot, recovering the
+discrete vector-of-categoricals continuously and differentiably. As `τ → ∞` every logit washes out and
+each group goes uniform, `1/8`, carrying no information and blocking gradient flow through the latent.
+So `τ` dials between "hard discrete code" and "trivial uniform code," and the useful regime is between.
+Very small `τ` is risky in *this* model for the same reason vanishing gradients are: near one-hot the
+softmax Jacobian collapses and almost no gradient reaches the encoder and dynamics — and gradient flow
+through the dynamics over a multi-step rollout is the whole ballgame. I have no reason to push toward
+either extreme, and the point of this exercise is a representation stable *without* per-task tuning, so I
+take the neutral choice `τ = 1`, a plain softmax: a healthy sparsity bias with gradients still flowing.
+This is the scaffold default's exact form, and it is the honest default.
+
+Where does it go? The consistency loss compares `d(z,a)` against `sg(h(s'))`. For that comparison to be
+meaningful the prediction and the target must live in the *same* space — same geometry, same bound. So
+the simplicial normalization must be the final activation of *both* the dynamics net and the encoder. If
+I normalized only the encoder, the dynamics could emit an unbounded next-latent and I would reintroduce
+the exact magnitude drift, plus a geometry mismatch between predictor and target. The task already wires
+the same `CustomSimNorm` instance into both stacks, so this is satisfied by construction — the same
+requirement held for RMSNorm, and it holds identically here.
+
+So the falsifiable bar against the previous rung is clear. On walker-walk and cartpole-swingup I expect
+SimNorm to stay saturated, statistically indistinguishable from RMSNorm's 976.92 and 873.39 — those
+tasks do not see the difference, and if SimNorm somehow *dropped* there it would mean the softmax is
+hurting an easy case, which I do not expect. The whole bet rides on cheetah-run: I expect SimNorm to beat
+RMSNorm's 680.96 mean by a clear margin, because the within-group competition supplies precisely the
+sparse structure RMSNorm's scalar rescale could not. If the cheetah-run mean does *not* move above ~681,
+my diagnosis was wrong — the gap would not have been about structure after all — and I would have to look
+elsewhere. I also expect the per-seed band to behave like RMSNorm's: cheetah-run is the variable task, so
+I would not be surprised by one softer seed even if the mean clears the bar, since the simplex code still
+has to be learned through a bootstrapped value loop. The mechanism in one breath: RMSNorm's measured
+cheetah-run ceiling is a *structure* problem — a scalar rescale gives a bounded but dense, competition-
+free latent → so replace the within-group RMS divide with a within-group softmax, projecting each group
+onto a simplex → which keeps a tighter, parameter-free magnitude bound *and* adds the zero-sum
+competition that biases the latent toward a sparse, overcomplete code the value head can read →
+expecting the easy tasks to stay saturated and cheetah-run to clear 681. So let me write the
+within-group softmax at `τ=1` into the class.
+</think>
+<say>
+Now SimNorm: I'm replacing the RMS divide with a within-group softmax at τ=1, projecting each group of 8 onto a simplex for a tighter magnitude bound plus a sparsity-inducing competition. This first edit retitles the class.
+</say>
+<edit path="tdmpc2/tdmpc2/common/custom_simnorm.py">
+<old>
+# EDITABLE region of custom_simnorm.py (lines 16-43) -- step 1: group-wise RMSNorm
+class CustomSimNorm(nn.Module):
+    """Group-wise RMSNorm baseline for latent representations."""
+</old>
+<new>
+# EDITABLE region of custom_simnorm.py (lines 16-43) -- step 2: SimNorm (simplicial normalization)
+class CustomSimNorm(nn.Module):
+    """SimNorm baseline -- original simplicial normalization from TD-MPC2."""
+</new>
+</edit>
+<obs>
+Successfully replaced text in tdmpc2/tdmpc2/common/custom_simnorm.py.
+</obs>
+<note>
+Now the forward: drop the gain and eps, reshape into groups and softmax within each.
+</note>
+<edit path="tdmpc2/tdmpc2/common/custom_simnorm.py">
+<old>
+        self.dim = cfg.simnorm_dim
+        self.eps = 1e-8
+        # Learnable gain per group element
+        self.weight = nn.Parameter(torch.ones(self.dim))
+
+    def forward(self, x):
+        shp = x.shape
+        # Reshape into groups (same as SimNorm)
+        x = x.view(*shp[:-1], -1, self.dim)
+        # RMS normalization within each group
+        rms = torch.sqrt(torch.mean(x ** 2, dim=-1, keepdim=True) + self.eps)
+        x = (x / rms) * self.weight
+        return x.view(*shp)
+
+    def __repr__(self):
+        return f"CustomSimNorm(dim={self.dim}, type=RMSNorm)"
+</old>
+<new>
+        self.dim = cfg.simnorm_dim
+
+    def forward(self, x):
+        shp = x.shape
+        x = x.view(*shp[:-1], -1, self.dim)
+        x = F.softmax(x, dim=-1)
+        return x.view(*shp)
+
+    def __repr__(self):
+        return f"CustomSimNorm(dim={self.dim}, type=SimNorm)"
+</new>
+</edit>
+<obs>
+Successfully replaced text in tdmpc2/tdmpc2/common/custom_simnorm.py.
+</obs>
+<run/>
+<obs>
+Measured results — `baseline:simnorm` (`is_final,true`), seeds {42, 123, 456} and mean. Episode reward, higher is better.
+
+## walker-walk
+| seed | episode_reward |
+|---|---|
+| 42 | 973.41 |
+| 123 | 977.77 |
+| 456 | 975.26 |
+| **mean** | **975.48** |
+
+## cheetah-run
+| seed | episode_reward |
+|---|---|
+| 42 | 876.30 |
+| 123 | 617.88 |
+| 456 | 901.23 |
+| **mean** | **798.47** |
+
+## cartpole-swingup
+| seed | episode_reward |
+|---|---|
+| 42 | 882.23 |
+| 123 | 881.21 |
+| 456 | 880.64 |
+| **mean** | **881.36** |
+</obs>

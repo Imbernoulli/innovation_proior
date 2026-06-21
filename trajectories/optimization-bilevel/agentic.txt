@@ -1,0 +1,1024 @@
+<meta task="optimization-bilevel" domain="Optimization" file="penalized-bilevel-gradient-descent/mlsbench/custom_strategy.py" model_format="qwen3" edit_tool="str_replace"/>
+
+<system>
+You are a research engineer improving a model on a fixed ML task. You work by editing the model code and running experiments. Think carefully before each change. You have these tools:
+- str_replace(path, old_str, new_str): replace the unique occurrence of old_str with new_str.
+- create(path, file_text): create a new file.
+- run_experiment(): train + evaluate the current code under the fixed budget; returns metrics.
+Make one tool call at a time. After editing, call run_experiment() to measure your method.
+</system>
+
+<user>
+## Research question
+
+A bilevel problem couples an outer objective `f(x, y)` to an inner problem `min_y g(x, y)` whose
+minimizer set `S(x)` drifts as `x` moves. Two concrete instances are fixed here. The **toy /
+numerical-verification** instance is Section 5.1/6.1 of Shen and Chen (2023): a one-dimensional
+upper variable `x` projected to `[0, 3]`, a one-dimensional `y`, sampled from 1000 random inits, where
+the metric is how many first-order steps it takes to reach a stationary point (`convergence_steps`,
+lower is better) and at what residual. The **data hyper-cleaning** instance corrupts 50% of MNIST
+training labels and learns a per-example weight vector `x` (weight `= sigmoid(x_i) in (0, 1)`) so that
+an inner classifier `y` trained on the weighted corrupted set generalizes to a clean validation split;
+the metric is clean `test_accuracy` (higher is better), with `f1_score` of the recovered clean/corrupt
+split and a runtime-to-best as secondaries. The single thing being designed is **one first-order
+update rule** shared by both instances: it must converge the toy faster and recover more clean MNIST
+data, using only the gradient callables the loop hands it.
+
+## Prior art before the first rung
+
+The ladder reacts to the line of bilevel-gradient methods that the scaffold's fixed gradient interface
+deliberately rules in or out. These are the ancestors; the first rung is the cheapest one that fits.
+
+- **Implicit differentiation (Ghadimi and Wang, 2018).** When `g(x, .)` is strongly convex,
+  `S(x) = {y*(x)}` is a singleton and the hypergradient is
+  `grad_x f - grad_xy g (grad_yy g)^{-1} grad_y f`, evaluated at `y*(x)`. Exact and `T`-free, but it
+  needs `grad_yy g` invertible everywhere (strong convexity) and an inverse-Hessian–vector product.
+  Gap: undefined the moment the inner level is only PL / non-convex or `S(x)` is a flat valley — the
+  regime this task lives in — and it is second-order.
+- **Reverse-mode hypergradients / ITD (Franceschi et al., 2017; Maclaurin et al., 2015).** Unroll `T`
+  inner gradient-descent steps `y_{t+1} = y_t - lr_inner * grad_y g`, treat `y_T` as a differentiable
+  surrogate for `y*(x)`, and back-propagate the validation loss through the whole inner trajectory by
+  the adjoint recursion. Tolerates non-convex `g` and needs no Hessian inverse — but the reverse pass
+  must store every inner iterate, so memory grows as `O(T * dim(y))`, and the finite-time relation to
+  the true bilevel solution is fragile. Gap: the trajectory-storage wall.
+- **Penalty reformulations (the lineage the PBGD rung lands on).** Fold lower-level optimality into a
+  single joint objective `F_gamma(x, y) = f(x, y) + gamma * p(x, y)` and descend it on `(x, y)` with
+  plain first-order steps, where `p` measures lower-level optimality (the squared gradient norm
+  `||grad_y g||^2`, or the value gap `g(x, y) - v(x)` with `v(x) = min_y g`). No inverse, no stored
+  trajectory, one loop. Gap before the ladder: which penalty `p`, which `gamma`, and which geometry
+  make a penalized solution an actual bilevel solution — naive penalties can stall at spurious points.
+
+## The fixed substrate
+
+The driver, dataset split (5000 train / 5000 validation / 10000 test), the 50% label-pollution
+protocol, the metrics, and both model architectures (a linear `784 -> 10` classifier and a 2-layer MLP
+`784 -> 300 -> 10` with a sigmoid hidden layer) are frozen. The toy problem definition is fixed:
+`f(x, y) = cos(4y+2)/(1 + exp(2-4x)) + 0.5*log((4x-2)^2 + 1)`, `g(x, y) = (x+y)^2 + x*sin(x+y)^2`, with
+`x` projected to `[0, 3]` and the stationarity tolerance fixed; here `S(x) = {-x}` so `v(x) = 0`, the
+value gap reduces to `g` itself, and a step is counted whenever it advances `state["total_steps"]`.
+
+The scaffold also exposes three reference helpers a method may simply call instead of re-deriving the
+update: `run_v_pbgd(state, hparams, grad_fns)` (value-gap penalty step), `run_g_pbgd(...)`
+(gradient-norm penalty step), and `run_rhg_family(...)` (reverse-mode unroll with a truncation knob
+`K`). Each dispatches on `state["task"]`: in toy mode it takes one projected penalized first-order
+step; in hyper-cleaning mode it runs the method's real inner/outer machinery and emits the
+`TRAIN_METRICS` / `FINAL_METRICS` lines the parser reads.
+
+## The editable interface
+
+Exactly one region of `penalized-bilevel-gradient-descent/mlsbench/custom_strategy.py` (lines
+227–262, between the `BEGIN`/`END MLSBENCH_EDITABLE_ALGORITHM_REGION` markers) is editable. A method
+is a fill of this same contract:
+
+- `algorithm(state, hparams, grad_fns) -> dict` — one shared update used by both toy and
+  hyper-cleaning runs. It receives the current `state` dict, a resolved `hparams` dict, and a
+  `grad_fns` dict of callables, and returns the updated `state` after one outer (or method-equivalent)
+  update. For toy mode `grad_fns` provides `f, df, g, dg_dy, dg_dl, proj, init_state`. For
+  hyper-cleaning mode `grad_fns` provides `outer_grad, inner_grad, inner_val, init_state` — first-order
+  information for the validation loss, the weighted training loss, and the initial state.
+- `TOY_HPARAMS` — scalar knobs for the toy run (penalty schedule `gams`, base step `alpha0`).
+- `HYPERCLEAN_HPARAMS` — scalar knobs for hyper-cleaning, optionally split into `linear` and `mlp`
+  sub-dicts (learning rates, penalty schedule or unroll horizon, outer iterations, eval interval).
+
+The starting point is the scaffold default: `algorithm` delegates to `run_v_pbgd`, with the value-gap
+penalty hyperparameters below. Each rung replaces exactly this region — typically just the body of
+`algorithm` (which helper it calls) and the two hyperparameter dicts — and nothing else.
+
+```python
+# EDITABLE region of custom_strategy.py (lines 227-262) — default fill
+TOY_HPARAMS = {
+    "gams": (10.0,),
+    "alpha0": 0.1,
+}
+
+
+HYPERCLEAN_HPARAMS = {
+    "linear": {
+        "lrx": 0.1,
+        "lry": 0.1,
+        "lr_inner": 0.01,
+        "gamma_init": 0.0,
+        "gamma_max": 0.2,
+        "gamma_argmax_step": 30_000,
+        "outer_itr": 40_000,
+        "inner_itr": 1,
+        "reg": 0.0,
+        "eval_interval": 10,
+    },
+    "mlp": {
+        "lrx": 0.1,
+        "lry": 0.01,
+        "lr_inner": 0.01,
+        "gamma_init": 0.0,
+        "gamma_max": 0.1,
+        "gamma_argmax_step": 10_000,
+        "outer_itr": 80_000,
+        "inner_itr": 1,
+        "reg": 0.0,
+        "eval_interval": 10,
+    },
+}
+
+
+def algorithm(state: dict, hparams: dict, grad_fns: dict) -> dict:
+    return run_v_pbgd(state, hparams, grad_fns)
+```
+
+## Evaluation settings
+
+Three commands, each over seeds {42, 123, 456}: `toy-convergence` (1000 random inits, primary
+`convergence_steps`, lower better; secondaries `success_rate`, `final_residual`, `runtime_sec`),
+`hyperclean-linear` and the hidden `hyperclean-mlp` (primary `test_accuracy`, higher better;
+secondaries `f1_score`, cleaner precision/recall, runtime to best). The MLP command is the hidden,
+hardest target. The toy and linear runs report all three seeds; the MLP run reports seed 42.
+
+The editable model code is in `penalized-bilevel-gradient-descent/mlsbench/custom_strategy.py`:
+```python
+TOY_HPARAMS = {
+    "gams": (10.0,),
+    "alpha0": 0.1,
+}
+
+
+HYPERCLEAN_HPARAMS = {
+    "linear": {
+        "lrx": 0.1,
+        "lry": 0.1,
+        "lr_inner": 0.01,
+        "gamma_init": 0.0,
+        "gamma_max": 0.2,
+        "gamma_argmax_step": 30_000,
+        "outer_itr": 40_000,
+        "inner_itr": 1,
+        "reg": 0.0,
+        "eval_interval": 10,
+    },
+    "mlp": {
+        "lrx": 0.1,
+        "lry": 0.01,
+        "lr_inner": 0.01,
+        "gamma_init": 0.0,
+        "gamma_max": 0.1,
+        "gamma_argmax_step": 10_000,
+        "outer_itr": 80_000,
+        "inner_itr": 1,
+        "reg": 0.0,
+        "eval_interval": 10,
+    },
+}
+
+
+def algorithm(state: dict, hparams: dict, grad_fns: dict) -> dict:
+    return run_v_pbgd(state, hparams, grad_fns)
+```
+Improve it. Derive your method, edit the code, then run_experiment().
+</user>
+
+### step 1 — T-RHG (truncated reverse-mode hyper-gradient)   [slug:t_rhg]
+
+<think>
+I am standing at the editable region of `custom_strategy.py` with one function to fill,
+`algorithm(state, hparams, grad_fns)`, and two instances to satisfy at once: the toy convergence
+problem and the MNIST data hyper-cleaning problem. Before I reach for anything clever I want the
+cheapest update that is unambiguously *correct* as a bilevel solver, so I can read its measured
+behavior and know what the harder rungs have to beat. The most conservative thing I can write down is
+the method that makes the fewest assumptions about the inner objective: differentiate the actual inner
+training run. That is the reverse-mode hypergradient, and its truncated form is the natural starting
+rung because it is the same algorithm at a smaller, cheaper memory footprint.
+
+Let me be precise about what the hypergradient even is here, because the whole rung is an exercise in
+computing one derivative without forming a matrix I cannot afford. In hyper-cleaning the upper variable
+`x` is a vector of per-example logits, one per training point, and the lower variable `y` is the
+classifier's parameters. The inner problem trains `y` to minimize the `sigmoid(x)`-weighted
+cross-entropy on the corrupted training set; the outer problem wants the clean validation
+cross-entropy small at whatever `y` the inner optimizer produces. So the object I actually want to
+descend is `F(x) = f(x, y_T(x))`, where `y_T(x)` is not a formula but the endpoint of `T` steps of
+inner gradient descent. Its total derivative is `d_x F = grad_x f + (d y_T/d x)^T grad_y f`. The two
+partials are one backward pass each; the entire difficulty is the middle factor `d y_T/d x`, the
+sensitivity of the inner solution to the per-example weights, because `y_T` is the tail of a long chain
+of inner updates, each of which depended on `x`.
+
+So I make the chain explicit, because that is the only way to see which arithmetic order is affordable.
+The inner optimizer is a dynamical system: `y_{t+1} = Phi_{t+1}(y_t, x)`, with `y_T` the final state.
+For the gradient-descent inner step the map is `Phi_{t+1}(y_t, x) = y_t - lr_inner * grad_y g(y_t, x)`.
+Then `y_T` is a composition of `T` such maps, and differentiating the recursion totally with respect to
+`x` and collecting terms gives the exact hypergradient as a sum over the whole trajectory,
+`d_x F = grad_x f + sum_t B_t A_{t+1} A_{t+2} ... A_T grad_y f`, where `A_t = d Phi_t/d y_{t-1} =
+I - lr_inner * grad_yy g(y_{t-1}, x)` is how step `t` reacts to a perturbation of the *state*, and
+`B_t = d Phi_t/d x = -lr_inner * grad_xy g(y_{t-1}, x)` is how it reacts to a perturbation of `x`
+directly. Each term in that sum is the influence of the per-example weights *at one moment of the inner
+run* on the final validation loss, propagated forward to the end through every subsequent state
+Jacobian.
+
+Now the cost question, which is the entire reason there is a fork in the road. Those `A_t` are
+parameter-by-parameter matrices — for the MLP `y` they are hundreds of thousands of dimensions square —
+so I can never materialize them, let alone multiply chains of them. The trick is that I never need the
+matrices, only their action on a vector, and the order in which I contract the product decides the
+price. If I push the *row* `grad_y f` leftward through the chain of `A_t`, I only ever carry a single
+adjoint vector of the size of `y`, and each `alpha . A_{t}` and `alpha . B_t` is one
+transposed-Jacobian-vector product that autograd gives me for the price of one inner step. This is the
+adjoint recursion: set `alpha_T = grad_y f`, sweep `t` down from `T`, accumulate `h += alpha_t . B_t`
+and propagate `alpha_{t-1} = alpha_t . A_t`. It is exactly back-propagation through time over the
+optimizer's own steps, costing `O(T)` time with no penalty in the number of hyperparameters — which
+matters here because `x` has one coordinate per training example, thousands of them. The complementary
+forward contraction would carry a sensitivity matrix of size `dim(y) x dim(x)` and run `dim(x)` times
+slower; with `x` this wide that is hopeless, so reverse mode is the only sane direction.
+
+But the reverse contraction has one cost I have to confront, and it is what makes the *truncated*
+variant the rung I actually fill rather than full unrolling. To evaluate `A_t` and `B_t` on the way
+back I need `y_{t-1}`, the state I was at when I took step `t`. The backward sweep visits states in
+reverse, so I would have to hold the entire trajectory `y_0, ..., y_T` in memory: `O(T * dim(y))`. For
+the MLP over a long horizon that product is the wall everyone hits. The way out that keeps the
+estimator exact-in-spirit and optimizer-agnostic — no fragile reversal of the dynamics, no
+information-buffer bit tricks — is to notice where the gradient signal actually lives. When the last
+inner iterates sit in a region where `g(., x)` is well-conditioned (locally strongly convex with
+smoothness, `lr_inner` below the smoothness reciprocal), each `A_t` is a contraction, `||A_t|| <= 1 -
+lr_inner * alpha < 1`. The term at depth `T - t` from the end carries the factor `A_{t+1} ... A_T`,
+whose size is bounded by `(1 - lr_inner * alpha)^{T - t}` — it decays geometrically the further back I
+go. So the deep terms contribute almost nothing. I run the inner optimizer forward for the full `T`
+steps so the final weights are properly converged, but in the backward pass I only walk back `K`
+transitions and stop. The truncated estimate `h_{T-K} = grad_x f + sum_{t=T-K+1}^{T} B_t A_{t+1} ... A_T
+grad_y f` has bias bounded by something on the order of `(1 - lr_inner * alpha)^K` — geometrically
+small in `K` — at memory `O(K * dim(y))` instead of `O(T * dim(y))`. Full reverse-mode unrolling is the
+`K = T` special case; truncation is the same algorithm at a fraction of the memory, which is exactly the
+property that makes it a sound, cheap first rung.
+
+There is a satisfying consistency check that tells me this truncation is not a crude hack. In the limit
+where the inner iterates have converged, the per-step Jacobians settle to constants `A_inf = I -
+lr_inner * grad_yy g(y*)` and `B_inf = -lr_inner * grad_xy g(y*)`, and the full backward accumulation
+becomes `grad_y f . (sum_k A_inf^k) . B_inf`. But `sum_k A_inf^k` is the Neumann series of `(I -
+A_inf)^{-1} = (lr_inner * grad_yy g)^{-1}`, so the infinite backward sum equals the implicit-function
+hypergradient `-grad_y f . (grad_yy g)^{-1} . grad_xy g`. The `K`-step truncation is precisely keeping
+the first `K` terms of that Neumann series — `K` is the order of the inverse-Hessian approximation. So
+this rung is, quietly, an implicit-differentiation method computed by summing instead of solving, and
+truncating it trades a controllable bias for memory. That is the cleanest possible "do the honest thing
+cheaply" baseline.
+
+Now I have to map this onto *this task's* harness, and the mapping decides everything about what the
+code can and cannot do. The scaffold already implements the entire reverse-mode machinery for me:
+`run_rhg_family(state, hparams, grad_fns)` dispatches on `state["task"]`, and in hyper-cleaning mode it
+runs the forward inner loop of `T` steps keeping the last `K + 1` states, calls the fixed
+`hg.reverse(...)` adjoint sweep over `[fp_map] * K` to set `x.grad`, and steps the upper optimizer.
+The truncation knob is literally the hyperparameter `K`. So filling this rung is not re-deriving
+back-propagation; it is choosing `K`, `T`, `lr`, `lr_inner` and pointing `algorithm` at the helper. The
+crucial harness fact I must respect: although `grad_fns` also exposes `outer_grad`, `inner_grad`, and
+`inner_val`, the reverse-mode family does *not* consume them — it builds its own differentiable inner
+map with `create_graph=True` inside the helper, because the adjoint needs the inner step to be a graph
+node, which the pre-detached `inner_grad` callable is not designed to give. The exposed first-order
+callables are there for the penalty methods; the unrolling rung ignores them and calls the helper.
+
+A second harness fact pins down what this rung does in *toy* mode, and it is a place where the
+task's implementation departs from the generic reverse-mode story. In toy mode `run_rhg_family`
+dispatches to the very same `_toy_pbgd_step` as the value-gap method — it takes one projected penalized
+first-order step on `f + gamma * grad g`, not a differentiated inner unroll. The reason is structural:
+the toy has `S(x) = {-x}`, so `v(x) = 0` and there is nothing to unroll; the "inner solve" is trivial,
+and the harness collapses every method to the same projected step there. So my `TOY_HPARAMS` for this
+rung are the same `gams=(10.0,), alpha0=0.1` as every other rung, and I should *expect identical toy
+numbers* to the value-gap and full-unroll rungs. The only place the truncated method can distinguish
+itself is hyper-cleaning, and only through `K`.
+
+That leaves the choice of `K`, which is the whole identity of this rung versus full unrolling. I take
+`T = 500` inner steps, `K = 100` (truncate to the last fifth of the trajectory), `lr = 0.001` outer,
+`lr_inner = 0.1` linear and `0.4` MLP, with `outer_itr = 100` and `eval_interval = 1`. The contraction
+argument says the bias from dropping the first 400 transitions is bounded by `(1 - lr_inner*alpha)^{100}`
+— negligible if the inner problem is even mildly well-conditioned — while the memory drops by `5x`
+relative to the full unroll. The non-interference structure of hyper-cleaning sharpens this: the
+validation loss does not depend on `x` except through `y`, so `grad_x f = 0` and the truncated adjoint
+is, for the right problem class, essentially as good a descent direction as the full one even at small
+`K`. So I expect `K = 100` to cost me very little accuracy against `K = 500`.
+
+What do I expect to *see*, falsifiably, since this is the first rung and there are no prior numbers to
+diagnose? On the toy I expect the shared projected step: roughly 260 mean `convergence_steps` at full
+`success_rate` and a residual near 0.03 — and I will treat any deviation as a bug in how I wired the
+helper, not a property of truncation. On hyper-cleaning I expect the unrolling family to land
+*meaningfully below* the penalty methods, because differentiating only a 500-step inner run with a
+fixed `lr_inner` does not solve the inner problem nearly as well as 40k–80k coupled penalty steps do —
+I expect linear and MLP test accuracy in the mid-80s rather than the 90s, with a high cleaner recall
+(the unroll over-keeps examples) but only middling precision. And I expect `K = 100` to track full
+unrolling closely: if the truncated rung were far below the full one, the contraction assumption would
+be failing and the geometry would be telling me the inner problem is not well-conditioned. This rung's
+job is to set that floor; the next rung removes the truncation and asks whether the missing 400
+transitions were worth their memory. So let me write the truncated unroll in: point `algorithm` at the
+reverse-mode helper and set `T=500`, `K=100`.
+</think>
+<say>
+Starting with truncated reverse-mode hyper-gradient (T-RHG): I'll point `algorithm` at the reverse-mode
+helper and set the hyper-cleaning knobs to unroll `T=500` inner steps but back-propagate through only
+the last `K=100`.
+</say>
+<edit path="penalized-bilevel-gradient-descent/mlsbench/custom_strategy.py">
+<old>
+    "linear": {
+        "lrx": 0.1,
+        "lry": 0.1,
+        "lr_inner": 0.01,
+        "gamma_init": 0.0,
+        "gamma_max": 0.2,
+        "gamma_argmax_step": 30_000,
+        "outer_itr": 40_000,
+        "inner_itr": 1,
+        "reg": 0.0,
+        "eval_interval": 10,
+    },
+    "mlp": {
+        "lrx": 0.1,
+        "lry": 0.01,
+        "lr_inner": 0.01,
+        "gamma_init": 0.0,
+        "gamma_max": 0.1,
+        "gamma_argmax_step": 10_000,
+        "outer_itr": 80_000,
+        "inner_itr": 1,
+        "reg": 0.0,
+        "eval_interval": 10,
+    },
+</old>
+<new>
+    "linear": {
+        "lr": 0.001,
+        "lr_inner": 0.1,
+        "outer_itr": 100,
+        "T": 500,
+        "K": 100,
+        "reg": 0.0,
+        "eval_interval": 1,
+    },
+    "mlp": {
+        "lr": 0.001,
+        "lr_inner": 0.4,
+        "outer_itr": 100,
+        "T": 500,
+        "K": 100,
+        "reg": 0.0,
+        "eval_interval": 1,
+    },
+</new>
+</edit>
+<obs>
+Successfully replaced text in penalized-bilevel-gradient-descent/mlsbench/custom_strategy.py.
+</obs>
+<note>
+Now point the dispatch at the reverse-mode family helper.
+</note>
+<edit path="penalized-bilevel-gradient-descent/mlsbench/custom_strategy.py">
+<old>
+def algorithm(state: dict, hparams: dict, grad_fns: dict) -> dict:
+    return run_v_pbgd(state, hparams, grad_fns)
+</old>
+<new>
+def algorithm(state: dict, hparams: dict, grad_fns: dict) -> dict:
+    return run_rhg_family(state, hparams, grad_fns)
+</new>
+</edit>
+<obs>
+Successfully replaced text in penalized-bilevel-gradient-descent/mlsbench/custom_strategy.py.
+</obs>
+<run/>
+<obs>
+Measured results — `baseline:t_rhg` (`is_final,true`), seeds {42, 123, 456} and mean.
+
+## Toy convergence (lower steps / residual better)
+| seed | convergence_steps | median_steps | final_residual | success_rate | runtime_sec |
+|---|---|---|---|---|---|
+| 42 | 261.256 | 303.0 | 0.030345 | 1.0 | 0.525684 |
+| 123 | 260.457 | 303.0 | 0.029994 | 1.0 | 0.514880 |
+| 456 | 260.423 | 301.0 | 0.029924 | 1.0 | 0.514734 |
+| **mean** | **260.712** | **302.333** | **0.030088** | **1.0** | **0.518433** |
+
+## Hyper-cleaning, linear (higher accuracy / f1 better)
+| seed | test_accuracy | f1_score | cleaner_precision | cleaner_recall |
+|---|---|---|---|---|
+| 42 | 84.82 | 89.244934 | 0.826962 | 0.9692 |
+| 123 | 84.10 | 89.085869 | 0.827444 | 0.9648 |
+| 456 | 84.92 | 88.847656 | 0.828660 | 0.9576 |
+| **mean** | **84.613** | **89.059486** | **0.827689** | **0.963867** |
+
+## Hyper-cleaning, MLP (seed 42 only; higher better)
+| seed | test_accuracy | f1_score | cleaner_precision | cleaner_recall |
+|---|---|---|---|---|
+| 42 | 84.79 | 89.348465 | 0.823549 | 0.9764 |
+| **mean** | **84.79** | **89.348465** | **0.823549** | **0.9764** |
+</obs>
+
+### step 2 — RHG (reverse-mode hyper-gradient, full unroll)   [slug:rhg]
+
+<think>
+The truncated unroll just told me something important by *not* failing. T-RHG, back-propagating
+through only the last `K = 100` of `T = 500` inner steps, landed at 84.61 mean linear test accuracy
+(84.10 / 84.82 / 84.92 across the three seeds), 84.79 on the hidden MLP, with linear f1 89.06 and a
+high cleaner recall of 0.964 against a middling precision of 0.828. On the toy it sat at exactly 260.7
+mean convergence_steps at full success and 0.030 residual — the shared projected step, as I expected,
+since the toy collapses every method to the same update. So the truncation bias I was worried about did
+*not* show up as a deficit: the numbers are squarely where the contraction argument predicted, which is
+either because `K = 100` is already deep enough that the dropped 400 transitions were geometrically
+negligible, or because the inner problem is well-enough conditioned that even a short adjoint is a good
+descent direction. The natural way to settle which it is — and to ask whether the unrolling family can
+do better at all by spending the memory I saved — is to remove the truncation entirely and
+back-propagate through the *whole* inner trajectory. That is full reverse-mode hyper-gradient, RHG, and
+it is the `K = T` special case of exactly the method I just ran.
+
+Let me be careful about what "the same method, more of it" buys, because the result of step 1 is a
+strong prior. The exact hypergradient of the `T`-step inner run is the full trajectory sum
+`d_x F = grad_x f + sum_{t=0}^{T} B_t A_{t+1} ... A_T grad_y f`, with `A_t = I - lr_inner * grad_yy g`
+the state Jacobian of the inner gradient-descent map and `B_t = -lr_inner * grad_xy g` its direct
+dependence on `x`. Truncation kept only the last `K` of those `T + 1` terms; full RHG keeps all of them.
+The terms it adds back are precisely the deep ones, indexed `t <= T - K`, each carrying a product of
+more than `K` contraction matrices `A_{t+1} ... A_T`, so each is bounded in size by `(1 -
+lr_inner*alpha)^{T-t} <= (1 - lr_inner*alpha)^{K}`. In other words, the extra terms full RHG sums are
+*exactly* the ones whose magnitude T-RHG's bias bound said were negligible. If the inner map genuinely
+contracts, adding them should move the hypergradient — and therefore the final accuracy — almost not at
+all. The 84.6/84.8 result from step 1 is my baseline expectation for what RHG will reproduce.
+
+So why run it, if I expect it to match? Two reasons, and both are about *learning the geometry* rather
+than chasing points. First, full RHG is the exact gradient of the procedure I actually ran, with no
+truncation bias at all; if it lands meaningfully above T-RHG, that gap is the price truncation was
+charging me, and it would tell me `K = 100` was too aggressive and the inner problem less well
+conditioned than I hoped. If it lands at the same place, that confirms the truncation was free and the
+contraction assumption holds — which is the more useful thing to know, because it licenses the cheap
+variant going forward. Second, full RHG is the canonical reference point the whole unrolling lineage is
+measured against; pinning its number fixes the ceiling of the "differentiate the inner run" family on
+this task, so when the penalty methods jump ahead I know the jump is about the *method class*, not about
+truncation.
+
+Let me re-derive the adjoint so I am sure full unrolling is just the truncated sweep with `K = T`, and
+so I land the right hyperparameters. The Lagrangian view makes this clean: minimize `f(x, y_T)` subject
+to the `T` constraints `y_t = Phi_t(y_{t-1}, x)`, attach a row multiplier `alpha_t` to each, and the
+stationarity conditions give `alpha_T = grad_y f`, the backward recursion `alpha_{t-1} = alpha_t . A_t`,
+and the gradient `d_x F = grad_x f + sum_t alpha_t . B_t`. The multiplier `alpha_t` is the adjoint
+state — the sensitivity of the final validation loss to a perturbation of the inner iterate at time `t`
+— and the recursion carries it from the end of training to the beginning. Every operation is a
+transposed-Jacobian-vector product: `alpha . A` is the gradient of "alpha dotted with the next state"
+with respect to the current state, `alpha . B` the same with respect to `x`. Neither forms a matrix.
+Setting `K = T` means the backward loop runs from `T` down to `1` over the *entire* stored trajectory
+rather than the last hundred states; the recursion, the accumulation, the per-step cost are identical —
+only the window length and therefore the memory change. This is why I can say with confidence that RHG
+and T-RHG are the same algorithm: the step-1 code and the step-2 code differ in one integer.
+
+The harness makes that literally true. `run_rhg_family` reads `K` from the hyperparameters and runs the
+forward inner loop keeping the suffix of `K + 1` states, then calls the fixed `hg.reverse(...,
+[fp_map] * K, ...)` adjoint sweep. To go from truncated to full I set `K = T = 500`; the helper then
+stores all 500 transitions and back-propagates through every one. Everything else — `T = 500`,
+`lr = 0.001` outer, `lr_inner = 0.1` linear and `0.4` MLP, `outer_itr = 100`, `eval_interval = 1` — I
+keep identical to step 1, because the only variable I am changing is whether the deep trajectory terms
+are included. And exactly as in step 1, this rung ignores the `outer_grad / inner_grad / inner_val`
+callables the scaffold exposes; the adjoint needs the inner step built with `create_graph=True` as a
+graph node, which the helper constructs internally inside its own `fp_map`. The exposed first-order
+callables are for the penalty rungs that come later, not for unrolling.
+
+I should be honest about the cost I am paying for the exactness, because it is the structural weakness
+this whole family inherits and the reason the next rung will look elsewhere. Full RHG stores the entire
+inner trajectory, `O(T * dim(y))` memory; for the MLP that is 500 copies of the parameter vector, which
+is why the truncated variant existed in the first place. I am spending that memory here only to measure
+whether it was worth spending — and the step-1 result already strongly suggests it was not, because
+T-RHG at one fifth the memory matched the contraction prediction. There is a deeper reconciliation that
+tells me the ceiling of this family is set by the inner solve, not by the differentiation: in the
+converged limit the full backward sum is the Neumann series of the inverse Hessian, so RHG with `K = T`
+is implicit differentiation computed by summation. That means RHG's hypergradient is only as good as the
+inner optimizer's convergence — and here the inner optimizer is just 500 gradient-descent steps at a
+fixed `lr_inner`, which is a *crude* inner solve compared to the tens of thousands of coupled steps the
+penalty methods will take. So I expect the unrolling family, full or truncated, to be capped well below
+the penalty methods not because the differentiation is wrong but because the inner problem is barely
+solved before I differentiate it.
+
+The toy, as in step 1, is decoupled from all of this. `run_rhg_family` in toy mode dispatches to the
+same `_toy_pbgd_step` as the value-gap method: `S(x) = {-x}`, `v(x) = 0`, nothing to unroll, one
+projected penalized step on `f + gamma * grad g` with `gams = (10.0,)`, `alpha0 = 0.1`. So I expect RHG's
+toy line to be *identical* to T-RHG's — the same 260.7 mean convergence_steps, the same full success
+rate, the same 0.030 residual — and any difference there would again be a wiring bug, not a property of
+unrolling. The toy simply cannot separate these two rungs; only hyper-cleaning can, and only through the
+deep trajectory terms.
+
+So here is what I expect, stated against the step-1 numbers so it is falsifiable. On the toy, RHG should
+reproduce T-RHG exactly: 260.7 mean steps, success 1.0, residual 0.030. On hyper-cleaning, RHG should
+land *at or just above* T-RHG: linear test accuracy around 84.6 (T-RHG was 84.61) and MLP around 84.8
+(T-RHG was 84.79), with linear f1 near 89.5 and the same high-recall, middling-precision cleaner
+profile (recall ~0.97, precision ~0.83). If RHG matches T-RHG within seed noise, the truncation was free
+— the contraction held and `K = 100` was already deep enough — and the unrolling family's ceiling on
+this task is ~85% accuracy, set by the 500-step inner solve. If RHG instead jumps several points above
+T-RHG, then the deep terms mattered and the inner problem is poorly conditioned. Either way, the gap to
+the penalty methods — which I have not yet measured but expect to be large — will be the real story,
+because it is the gap between "differentiate a crude inner solve" and "fold lower-level optimality into
+the objective and descend it directly." So let me flip the one integer that turns truncation into full
+unrolling: set `K = 500` on both models.
+</think>
+<say>
+Now full reverse-mode hyper-gradient (RHG): I'll keep everything else fixed and just raise `K` from 100
+to 500 so the adjoint sweep back-propagates through the entire inner trajectory.
+</say>
+<edit path="penalized-bilevel-gradient-descent/mlsbench/custom_strategy.py">
+<old>
+        "lr_inner": 0.1,
+        "outer_itr": 100,
+        "T": 500,
+        "K": 100,
+        "reg": 0.0,
+        "eval_interval": 1,
+    },
+</old>
+<new>
+        "lr_inner": 0.1,
+        "outer_itr": 100,
+        "T": 500,
+        "K": 500,
+        "reg": 0.0,
+        "eval_interval": 1,
+    },
+</new>
+</edit>
+<obs>
+Successfully replaced text in penalized-bilevel-gradient-descent/mlsbench/custom_strategy.py.
+</obs>
+<note>
+Same change on the MLP block.
+</note>
+<edit path="penalized-bilevel-gradient-descent/mlsbench/custom_strategy.py">
+<old>
+        "lr_inner": 0.4,
+        "outer_itr": 100,
+        "T": 500,
+        "K": 100,
+        "reg": 0.0,
+        "eval_interval": 1,
+    },
+</old>
+<new>
+        "lr_inner": 0.4,
+        "outer_itr": 100,
+        "T": 500,
+        "K": 500,
+        "reg": 0.0,
+        "eval_interval": 1,
+    },
+</new>
+</edit>
+<obs>
+Successfully replaced text in penalized-bilevel-gradient-descent/mlsbench/custom_strategy.py.
+</obs>
+<run/>
+<obs>
+Measured results — `baseline:rhg` (`is_final,true`), seeds {42, 123, 456} and mean.
+
+## Toy convergence (lower steps / residual better)
+| seed | convergence_steps | median_steps | final_residual | success_rate | runtime_sec |
+|---|---|---|---|---|---|
+| 42 | 261.256 | 303.0 | 0.030345 | 1.0 | 0.534162 |
+| 123 | 260.457 | 303.0 | 0.029994 | 1.0 | 0.513467 |
+| 456 | 260.423 | 301.0 | 0.029924 | 1.0 | 0.539379 |
+| **mean** | **260.712** | **302.333** | **0.030088** | **1.0** | **0.529003** |
+
+## Hyper-cleaning, linear (higher accuracy / f1 better)
+| seed | test_accuracy | f1_score | cleaner_precision | cleaner_recall |
+|---|---|---|---|---|
+| 42 | 84.82 | 89.534676 | 0.828737 | 0.9736 |
+| 123 | 84.16 | 89.716179 | 0.831852 | 0.9736 |
+| 456 | 84.92 | 89.389427 | 0.836003 | 0.9604 |
+| **mean** | **84.633** | **89.546761** | **0.832197** | **0.9692** |
+
+## Hyper-cleaning, MLP (seed 42 only; higher better)
+| seed | test_accuracy | f1_score | cleaner_precision | cleaner_recall |
+|---|---|---|---|---|
+| 42 | 84.79 | 89.339172 | 0.821692 | 0.9788 |
+| **mean** | **84.79** | **89.339172** | **0.821692** | **0.9788** |
+</obs>
+
+### step 3 — G-PBGD (gradient-norm penalty bilevel gradient descent)   [slug:g_pbgd]
+
+<think>
+Full RHG confirmed the thing I suspected at the end of step 1: it did not separate from the truncated
+unroll. RHG landed at 84.63 mean linear test accuracy (84.16 / 84.82 / 84.92) and 84.79 on the hidden
+MLP, against T-RHG's 84.61 and 84.79 — identical within seed noise, with the same high-recall (0.969),
+middling-precision (0.832) cleaner profile and linear f1 of 89.55 versus T-RHG's 89.06. So the deep
+trajectory terms I spent five times the memory to include moved nothing. The contraction held, the
+truncation was free, and — more diagnostically — the whole unrolling family is *capped* at about 85%
+accuracy on this task. The toy line was exactly the shared 260.7 steps, as predicted, because the toy
+decouples. The cap is the message. RHG is, in the converged limit, implicit differentiation summed as a
+Neumann series, so its hypergradient is only ever as good as the inner solve underneath it — and the
+inner solve here is 500 gradient-descent steps at a fixed `lr_inner`, run fresh from a random init every
+single outer step. That is a *crude* inner optimizer, and it is differentiated before it has really
+converged. The 85% ceiling is the price of solving the inner problem badly, not of differentiating it
+imperfectly. So the move that could actually break the ceiling is to stop chasing the inner solution at
+all and instead fold lower-level optimality directly into one joint objective over `(x, y)` that I
+descend with coupled first-order steps, never resetting, never unrolling. That is the penalty family,
+and the cheapest member of it — the one with an *exactly computable* penalty gradient and no inner loop
+— is the squared lower-level gradient norm, G-PBGD.
+
+Let me derive why the gradient-norm penalty is the natural next thing and exactly where it is fragile,
+because the fragility is what the toy numbers will expose. The bilevel constraint is `y in S(x) =
+argmin_y g(x, y)`. Two scalar penalties measure it: the value gap `g(x, y) - v(x)` with
+`v(x) = min_y g`, and the squared lower-level gradient norm `||grad_y g(x, y)||^2`. The gradient-norm
+one is irresistible here because its gradient is exactly computable with first-order autodiff — no inner
+solve, no value tracking. Differentiating `||grad_y g||^2 = grad_y g . grad_y g` gives `2 grad_yy g .
+grad_y g` in `y` and `2 grad_xy g . grad_y g` in `x`: both are Hessian-vector products, the Hessian of
+`g` times the already-computed vector `grad_y g`. I never materialize the Hessian; I compute `grad_y g`
+keeping the graph (`create_graph=True`), form the scalar `f + (gamma/2)||grad_y g||^2`, and one more
+backward hands me exactly `gamma grad_yy g . grad_y g` and `gamma grad_xy g . grad_y g` — the `1/2`
+cancels the `2` from differentiating the square. Compare to the value gap, whose gradient needs
+`grad v(x)`, i.e. knowledge of a lower solution `y*(x)` — exactly the object the unrolling rungs were
+straining to approximate. So the gradient-norm penalty is the *simplest possible* penalty member: plain
+coupled gradient descent on `F_gamma = f + (gamma/2)||grad_y g||^2`, the penalty gradient available
+exactly, no inner optimizer anywhere. After watching the unrolling family bottleneck on its inner solve,
+"no inner solve at all" is precisely the structural escape I want.
+
+But I have to stress-test it, because the penalty method's reputation rests on "`gamma` large enough
+implies penalized solution approximates bilevel solution," and the lower-level non-convexity can break
+that. The cleanest counterexample lives in one dimension: `min f = sin^2(y - 2pi/3)` subject to `y in
+argmin g = y^2 + 2 sin^2 y`. The only lower solution is `y* = 0`, so the only bilevel solution is
+`y = 0`. The penalty `(grad_y g)^2 = (2y + 2 sin 2y)^2` is a legitimate optimality metric, zero exactly
+on the argmin. Now look at `y = 2pi/3`: the derivative of `(y + sin 2y)^2` is `2(y + sin 2y)(1 + 2 cos
+2y)`, and `1 + 2 cos(4pi/3) = 1 + 2(-1/2) = 0`, so the penalty gradient vanishes there for *every*
+`gamma`, and `f` is flat there too. So `y = 2pi/3` is a stationary point of `f + gamma(grad_y g)^2` at
+any penalty strength, and it is not a solution. Coordinate descent on the penalty can park at junk. The
+decisive structural fact is that at `y = 2pi/3`, `grad_yy g = 2 + 4 cos 2y = 0` — the lower-level
+Hessian degenerates — and that degenerate factor kills the penalty gradient `2 grad_yy g . grad_y g`
+even though `grad_y g` itself is nonzero. The gradient-norm penalty can stall wherever `grad_yy g` goes
+singular. This is the gradient-norm penalty's signature weakness, and it is exactly why the *value-gap*
+penalty (the next rung) is the more robust sibling: the value gap's local stationarity is `grad_y f +
+gamma grad_y g = 0`, controlling `||grad_y g|| <= L/gamma` directly with no `grad_yy g` in the way.
+
+The framework that makes this precise is the squared-distance bound. Write the constraint as
+`d^2_{S(x)}(y) = 0`. A penalty `p` is a `rho`-squared-distance bound if `p >= 0`, `rho p >=
+d^2_{S(x)}(y)`, and `p = 0` exactly on `S(x)`. Under the lower level being `(1/mu)`-PL plus smooth, the
+error bound `g - v >= (1/mu) d^2` makes the value gap a `mu`-bound with one PL chain; the gradient norm
+needs the *stronger* `(1/sqrt(mu))`-PL to chain twice (`||grad_y g||^2 >= (1/mu)(g - v) >= (1/mu^2)
+d^2`), so it is one PL step weaker a surrogate. With an SDB and `L`-Lipschitz `f`, the calmness
+inequality `min_{z>=0}(-Lz + (gamma/rho)z^2) = -L^2 rho/(4 gamma)` shows globals of `f + gamma p` have
+penalty residual `O(1/gamma)`, and locals `O(1/gamma^2)` — but the local bound for the gradient-norm
+penalty needs the singular values of `grad_yy g` bounded below by some `sigma > 0` (from
+`||grad_yy g . grad_y g|| >= sigma ||grad_y g||`), the exact condition `y = 2pi/3` violates. So the
+gradient-norm penalty is principled *when the lower Hessian does not degenerate*, and `gamma =
+Theta(delta^{-1/2})` is the tight scaling for a target residual `delta` — a finite `gamma`, not
+`gamma -> infinity`.
+
+Now the practical knobs, which fall out of the analysis and which I have to wire into this task's
+helper, not invent. `F_gamma` is `L_gamma`-smooth with `L_gamma` growing linearly in `gamma`, so a
+stable step needs `alpha <~ 1/L_gamma`; a huge `gamma` from step one is a stiff landscape that forces a
+tiny step before `y` reaches the lower valley. So I ramp `gamma` from `0` to a finite cap over a fixed
+number of steps — start as essentially pure validation-loss descent, then phase in the lower-level
+penalty. And once `gamma > 1` the penalty term `gamma grad p` dominates the gradient, so I rescale the
+whole joint step by `min(1/gamma, 1)`, keeping the effective penalty step order-one rather than
+order-`gamma`. The scaffold's `run_g_pbgd` already implements exactly this: it forms `gxy =
+(sigmoid(x)*CE_train).mean()`, takes `dgdy = autograd.grad(gxy, params, create_graph=True)`, sets
+`objective = min(1/(gamma+eps),1) * (fy + 0.5*gamma*||dgdy||^2)`, backprops, and steps both `x_opt`
+(lr `lrx`) and `y_opt` (lr `lry`) with `gamma` annealed linearly from `gamma_init` to `gamma_max` over
+`gamma_argmax_step`. So my edit is to point `algorithm` at `run_g_pbgd` and set the schedule. Critically
+— and this is where this task's G-PBGD departs from a generic gradient-norm penalty — the helper does
+*not* use the exposed `inner_grad/outer_grad` callables either; it builds the penalty gradient directly
+from the model and the `sigmoid(x)` weights with a retained graph, so the HVP is exact.
+
+The hyperparameters I take are the aggressive penalty schedule this task's reference uses: linear
+`lrx=0.3, lry=0.5, gamma_max=37.0, gamma_argmax_step=5000, outer_itr=40000`; MLP `lrx=0.5, lry=0.5,
+gamma_max=37.0, gamma_argmax_step=30000, outer_itr=50000`. The large `gamma_max=37` is the
+`Theta(delta^{-1/2})` regime pushed hard so the gradient-norm penalty pins `y` tightly onto the
+lower-stationarity manifold; the `min(1/gamma,1)` rescale is what keeps that stable. There is no
+`lr_inner`, no `T`, no `K` — there is no inner loop at all, which is the whole point of escaping the
+unrolling ceiling.
+
+The toy is where the gradient-norm penalty's fragility becomes *measurable*, and I should predict it
+honestly against the unrolling rungs' toy numbers. Unlike RHG and T-RHG, whose toy mode dispatched to
+the value-gap projected step, `run_g_pbgd` in toy mode dispatches to `_toy_pbgd_step` with method
+`"g_pbgd"`, which uses `toy_gpbgd_penalty_grad` — the gradient of `||grad_y g||^2` — instead of
+`grad g`. So G-PBGD descends a *different*, stiffer toy objective: the gradient-norm penalty's landscape
+near `S(x) = {-x}` is sharper and its curvature factor `grad_yy g` modulates the step, so I expect it to
+need *more* steps to hit the stationarity tolerance than the value-gap-style rungs did. Concretely I
+expect the toy convergence_steps to rise from the shared 260.7 to roughly 300, with a larger residual
+(~0.06-0.10 rather than 0.030) — the penalty pins the gradient norm small but at a coarser residual.
+This is not a regression I am introducing by mistake; it is the gradient-norm penalty's geometry showing
+through, the same `grad_yy g`-sensitivity that made `y = 2pi/3` spurious in the counterexample.
+
+So my falsifiable expectations against the prior numbers. On hyper-cleaning I expect G-PBGD to *break
+the unrolling ceiling decisively*: the penalty descends one coupled objective for tens of thousands of
+steps without ever resetting an inner solve, so I expect MLP test accuracy to jump from RHG's 84.79 into
+the low 90s (I expect roughly 92), and linear accuracy from 84.63 to about 90. But I expect a cost on
+the cleaner f1, because the aggressive gradient-norm penalty drives precision up at the expense of
+recall — I expect linear f1 to actually *drop* below the unrolling rungs (from ~89.5 toward ~80), with
+cleaner recall falling to ~0.78, because the penalty is tuned for accuracy, not for the precision-recall
+balance the unroll happened to strike. And on the toy I expect a *worse* convergence count than the
+unrolling rungs — ~300 steps, residual ~0.08 — because of the stiffer gradient-norm landscape. If
+G-PBGD instead matched the unrolling toy numbers, the toy dispatch would not be using the gradient-norm
+penalty; if its MLP accuracy did not break 90, the penalty escape would have failed and the bottleneck
+would not have been the inner solve after all. So let me swap in the gradient-norm penalty: rewrite the
+two hyper-cleaning blocks to the aggressive `gamma_max=37` schedule and point `algorithm` at
+`run_g_pbgd`.
+</think>
+<say>
+Switching to the gradient-norm penalty (G-PBGD) to escape the unrolling ceiling: this edit replaces the
+unroll knobs with the penalty schedule (`gamma_max=37` on both models) so there is no inner loop at all.
+</say>
+<edit path="penalized-bilevel-gradient-descent/mlsbench/custom_strategy.py">
+<old>
+    "linear": {
+        "lr": 0.001,
+        "lr_inner": 0.1,
+        "outer_itr": 100,
+        "T": 500,
+        "K": 500,
+        "reg": 0.0,
+        "eval_interval": 1,
+    },
+    "mlp": {
+        "lr": 0.001,
+        "lr_inner": 0.4,
+        "outer_itr": 100,
+        "T": 500,
+        "K": 500,
+        "reg": 0.0,
+        "eval_interval": 1,
+    },
+</old>
+<new>
+    "linear": {
+        "lrx": 0.3,
+        "lry": 0.5,
+        "gamma_init": 0.0,
+        "gamma_max": 37.0,
+        "gamma_argmax_step": 5_000,
+        "outer_itr": 40_000,
+        "reg": 0.0,
+        "eval_interval": 10,
+    },
+    "mlp": {
+        "lrx": 0.5,
+        "lry": 0.5,
+        "gamma_init": 0.0,
+        "gamma_max": 37.0,
+        "gamma_argmax_step": 30_000,
+        "outer_itr": 50_000,
+        "reg": 0.0,
+        "eval_interval": 10,
+    },
+</new>
+</edit>
+<obs>
+Successfully replaced text in penalized-bilevel-gradient-descent/mlsbench/custom_strategy.py.
+</obs>
+<note>
+Now point the dispatch at the gradient-norm penalty helper.
+</note>
+<edit path="penalized-bilevel-gradient-descent/mlsbench/custom_strategy.py">
+<old>
+def algorithm(state: dict, hparams: dict, grad_fns: dict) -> dict:
+    return run_rhg_family(state, hparams, grad_fns)
+</old>
+<new>
+def algorithm(state: dict, hparams: dict, grad_fns: dict) -> dict:
+    return run_g_pbgd(state, hparams, grad_fns)
+</new>
+</edit>
+<obs>
+Successfully replaced text in penalized-bilevel-gradient-descent/mlsbench/custom_strategy.py.
+</obs>
+<run/>
+<obs>
+Measured results — `baseline:g_pbgd` (`is_final,true`), seeds {42, 123, 456} and mean.
+
+## Toy convergence (lower steps / residual better)
+| seed | convergence_steps | median_steps | final_residual | success_rate | runtime_sec |
+|---|---|---|---|---|---|
+| 42 | 303.318 | 313.0 | 0.089126 | 1.0 | 0.674206 |
+| 123 | 306.122 | 313.0 | 0.056776 | 1.0 | 0.694205 |
+| 456 | 301.618 | 313.0 | 0.097786 | 1.0 | 0.673658 |
+| **mean** | **303.686** | **313.0** | **0.081229** | **1.0** | **0.680690** |
+
+## Hyper-cleaning, linear (higher accuracy / f1 better)
+| seed | test_accuracy | f1_score | cleaner_precision | cleaner_recall |
+|---|---|---|---|---|
+| 42 | 89.77 | 83.521446 | 0.857564 | 0.8140 |
+| 123 | 89.49 | 76.672234 | 0.802977 | 0.7336 |
+| 456 | 90.25 | 81.692497 | 0.857520 | 0.7800 |
+| **mean** | **89.837** | **80.628726** | **0.839354** | **0.775867** |
+
+## Hyper-cleaning, MLP (seed 42 only; higher better)
+| seed | test_accuracy | f1_score | cleaner_precision | cleaner_recall |
+|---|---|---|---|---|
+| 42 | 92.38 | 90.820122 | 0.889230 | 0.9280 |
+| **mean** | **92.38** | **90.820122** | **0.889230** | **0.9280** |
+</obs>
+
+### step 4 — V-PBGD (value-function penalty bilevel gradient descent)   [slug:v_pbgd]
+
+<think>
+G-PBGD broke the unrolling ceiling exactly where I expected and broke something else exactly where I
+warned it would. On the hidden MLP it jumped to 92.38 test accuracy — the best number so far, eight
+points above RHG's 84.79 — confirming that the bottleneck was never the differentiation but the crude
+500-step inner solve, and that descending one coupled penalized objective for tens of thousands of steps
+escapes it. Linear accuracy rose to 89.84, also well above the unrolling rungs. But look at what the
+gradient-norm penalty cost. The cleaner f1 on the linear model *collapsed* to 80.63 mean (76.67 / 81.69
+/ 83.52 across seeds — enormous variance, a 7-point spread) against the unrolling family's stable ~89.5,
+and the cause is visible in the cleaner profile: precision held at 0.839 but recall fell to 0.776, so
+the aggressive `gamma_max = 37` penalty drove the cleaner to throw away too many genuinely clean
+examples to keep its lower-stationarity small. And the toy regressed exactly as predicted: 303.7 mean
+convergence_steps (up from the shared 260.7) at a residual of 0.081 (up from 0.030), because the toy
+dispatched to the gradient-norm penalty's stiffer landscape. So G-PBGD bought MLP accuracy with a
+fragile, high-variance cleaner and a worse toy convergence. The diagnosis is the one I rehearsed in the
+counterexample: the gradient-norm penalty's local stationarity only controls `grad_yy g . grad_y g`, so
+its behavior is hostage to the lower-level curvature `grad_yy g` — which is what makes both its f1
+unstable and its toy residual coarse. The fix is the *robust* member of the penalty family, whose local
+stationarity controls `grad_y g` directly with no curvature factor in the way: the value-gap penalty,
+V-PBGD.
+
+Let me derive why the value gap removes exactly the two failures I just measured. The penalty is
+`p = g(x, y) - v(x)` with `v(x) = min_y g(x, y)`, and the single structural difference from the gradient
+norm is where the Hessian appears in the local relation. At a local solution of `f + gamma p`,
+stationarity in `y` is `grad_y f + gamma grad_y g = 0`, because `v` carries no `y`-dependence at all. So
+`||grad_y g|| <= L/gamma` *directly* — no `grad_yy g`, no singular-value condition. Under the lower level
+being `(1/mu)`-PL, the error bound `g - v >= (1/mu) d^2` then gives `p <= mu L^2/gamma^2 = O(1/gamma^2)`
+with one PL chain, so the value gap is a `mu`-squared-distance bound under *weaker* assumptions than the
+gradient norm needed (`1/sqrt(mu)`-PL). The contrast is the whole story of step 3's failure: the
+gradient-norm penalty's `||grad_yy g . grad_y g|| <= L/(2 gamma)` only bounds `||grad_y g||` after
+dividing by the smallest singular value of `grad_yy g`, which vanishes wherever the lower Hessian
+degenerates — and the linear hyper-cleaner's cross-entropy has exactly such flat directions, which is
+why its f1 swung 7 points across seeds. The value gap has no such division, so it does not get whipsawed
+by lower-level curvature; I expect its cleaner f1 to be both *higher and far more stable* than G-PBGD's.
+
+I want to be sure the value gap is a faithful penalty at the global level too, not just a convenient
+local fix, because the f1 instability G-PBGD showed was a *variance* problem and I need the value gap to
+be principled across the whole landscape. The squared-distance-bound argument gives it cleanly. Take any
+feasible `(x, y)`, project `y` to `y_x in S(x)` so `d = d_{S(x)}(y) = ||y_x - y||`, and use
+`L`-Lipschitz `f`: `f(x, y) - f(x, y_x) >= -L d`. Add `gamma p` and the bound `p >= d^2/mu`: the whole
+expression is at least `-L d + (gamma/mu) d^2`, a scalar quadratic in `d >= 0` whose minimum over `d` is
+`-L^2 mu/(4 gamma)`. Setting `gamma* = L^2 mu/(4 eps_1)` floors it at `-eps_1`, so any bilevel global
+solution (where `p = 0`) is an `eps_1`-global-min of the penalized problem, and conversely an
+`eps_2`-global-min of the penalized problem with `gamma > gamma*` has `p <= (eps_1 + eps_2)/(gamma -
+gamma*)` — penalty residual shrinking like `O(1/gamma)` globally and `O(1/gamma^2)` locally. The lever
+is the quadratic `(gamma/mu) d^2`, present only because `p` *dominates* `d^2`, overpowering the linear
+Lipschitz slack `-L d` once `gamma` clears the threshold. And the `gamma = Theta(delta^{-1/2})` scaling
+is genuinely tight, not loose analysis: on the trivial instance `f = y, g = y^2` the penalized minimizer
+is `y = -1/(2 gamma)` with gap `1/(4 gamma^2)`, so forcing the gap below `delta` requires `gamma >=
+1/(2 sqrt(delta))`. A *finite* `gamma` suffices for any finite accuracy — which is exactly why this
+task's reference can use `gamma_max = 0.1-0.2` rather than the huge value the gradient-norm penalty
+needed, and the gentleness is what protects the cleaner's recall.
+
+The one subtlety the value gap introduces is computing `grad v(x)`, and the PL Danskin lemma dissolves
+it. Naively `grad v` needs a lower solution `y*(x)` and looks like the implicit machinery I have been
+avoiding. But `v(x) = g(x, y*(x))`, and the chain rule gives `grad v = grad_x g(x, y*) + (dy*/dx)^T
+grad_y g(x, y*)`; at an unconstrained lower minimum `grad_y g(x, y*) = 0`, so the scary implicit term
+multiplies by zero and `grad v(x) = grad_x g(x, y*)` for *any* `y* in S(x)` — no Hessian, no
+implicit-function theorem, no strong convexity. So I only need an *approximate* lower minimizer, and I
+estimate it with a short inner loop, warm-started so the inner gap stays tied to outer progress. The
+warm start matters for a reason the analysis pins down: inner gradient descent contracts the value gap
+geometrically under PL, `g(x, omega_{t+1}) - v <= (1 - beta/(2 mu))(g(x, omega_t) - v)`, but that bound
+carries the *initial* gap `g(x_k, omega_1) - v(x_k)`, and `x_k` drifts across outer iterations — a cold
+start at an unrelated point could let the initial gap grow without bound, so no fixed inner-step count
+would control the estimation error. Warm-starting `omega_1 = y_k` ties the initial inner gap to the
+outer step size through PL (`g(x_k, y_k) - v <= (1/mu)||grad_y g||^2`, and `grad_y g` is controlled by
+the outer move), so a logarithmically short inner loop keeps the gradient-estimation error
+`gamma^2 L_g^2 d^2_{S(x)}(y_hat)` summable and the outer projected descent telescopes to a `1/K`
+stationarity rate. This is why a *single* warm-started inner step (`inner_itr = 1`) is enough here:
+because the inner network persists and is never reset, each outer iteration only has to close the small
+incremental gap that the last outer move opened. The
+value-gap direction is then `h = grad g(x, y) - (grad_x g(x, y_hat), 0)` — the subtraction lives only in
+the `x`-coordinates, because `v` depends only on `x`, so in `y` the value-gap gradient is just
+`grad_y g(x, y)`.
+
+This is where this task's V-PBGD is concrete and where I must match the harness, not the generic method.
+The scaffold's `run_v_pbgd` keeps a *persistent auxiliary* inner network `net_inner`, initialized from
+the main model and updated across outer iterations by `inner_itr` SGD steps on the `sigmoid(x)`-weighted
+training loss at frozen weights `sigx = sigmoid(x).detach()`. It then forms `fy = CE(val, clean)`,
+`gxy = (sigmoid(x)*CE_train).mean()` through the *main* model, and `vx = (sigmoid(x)*CE_inner).mean()`
+through `net_inner` with the inner outputs *detached* — so the gradient through `vx` flows only via
+`sigmoid(x)`, giving exactly `grad_x g(x, y_hat)` and nothing through `y_hat`. The objective is
+`min(1/(gamma+eps),1) * (fy + gamma*(gxy - vx))`, backpropped to step both `x_opt` and `y_opt`, with
+`gamma` ramped linearly from 0 to `gamma_max`. So the value-gap subtraction `gxy - vx` is realized by
+the detach pattern, and the `min(1/gamma,1)` rescale is the same stabilizer as G-PBGD. My edit is to
+point `algorithm` at `run_v_pbgd` and set the schedule. Note this rung *does* run a real inner loop
+(`inner_itr` SGD steps on `net_inner`) — unlike G-PBGD which had none — but it is a single warm-started
+step per outer iteration, not the 500-step-from-scratch unroll the RHG family paid for; that is the
+distinction between approximating `grad v` cheaply and differentiating a full inner solve. And like every
+prior rung, it ignores the exposed `inner_grad/outer_grad/inner_val` callables; the helper builds the
+gradients directly from the two networks and `sigmoid(x)`.
+
+The hyperparameters are the gentle schedule this task's reference uses, and the contrast with G-PBGD's
+`gamma_max = 37` is itself diagnostic: linear `lrx=lry=0.1, lr_inner=0.01, inner_itr=1, gamma_max=0.2,
+gamma_argmax_step=30000, outer_itr=40000`; MLP `lrx=0.1, lry=0.01, lr_inner=0.01, inner_itr=1,
+gamma_max=0.1, gamma_argmax_step=10000, outer_itr=80000`. The tiny `gamma_max` (0.1-0.2 versus 37) is
+possible *because* the value gap is the more faithful surrogate — it does not need to be slammed to a
+huge strength to pin `y`, since its `O(1/gamma^2)` local residual is achieved at modest `gamma`, and a
+gentle penalty is exactly what keeps the cleaner's recall from collapsing the way G-PBGD's did. The
+longer MLP horizon (80k outer steps) lets the gentle penalty converge fully.
+
+The toy, finally, returns to the well-behaved regime, and this is a clean falsifiable prediction against
+step 3. `run_v_pbgd` in toy mode dispatches to `_toy_pbgd_step("v_pbgd")`, which uses `grad g` (the
+value-gap gradient, since `S(x) = {-x}` makes `v(x) = 0` and `p = g`), *not* the gradient-norm penalty.
+So V-PBGD descends the same smooth landscape the unrolling rungs did, and I expect its toy line to snap
+back to the shared 260.7 mean convergence_steps at 0.030 residual and full success — recovering the ~43
+steps and the residual that G-PBGD lost to its stiffer gradient-norm toy objective. If the toy did not
+return to 260.7, the toy dispatch would not be using the value gap.
+
+So my falsifiable expectations against the measured numbers, since this is meant to be the strongest
+rung. On the toy I expect V-PBGD to *recover* the unrolling family's 260.7 steps and 0.030 residual,
+beating G-PBGD's 303.7 / 0.081 — fixing the toy regression. On hyper-cleaning I expect it to keep the
+penalty family's accuracy win over the unrolling family while *fixing the f1 collapse*: linear accuracy
+around 90 (G-PBGD was 89.84, so comparable or slightly better, and above the unrolling 84.6), but with
+linear f1 back up around 91.7 — eleven points above G-PBGD's fragile 80.63 — and a stable cleaner recall
+near 0.95 rather than G-PBGD's 0.78. On the hidden MLP I expect ~91.5, which would sit just below
+G-PBGD's 92.38: the gentle value-gap penalty trades roughly a point of raw MLP accuracy for a far more
+faithful, lower-variance cleaner and a recovered toy convergence. That is the trade I am willing to
+make, and it is why the value gap is the robust default: it wins the toy primary metric, the linear
+primary metric, and both f1 scores decisively, losing only the single hidden MLP accuracy by about a
+point. If the value gap instead matched G-PBGD's broken f1, the detach pattern would not be realizing the
+`gxy - vx` value gap and I would have wired the wrong subtraction. So let me write the gentle value-gap
+schedule into both hyper-cleaning blocks and point `algorithm` at `run_v_pbgd`.
+</think>
+<say>
+Final rung is the value-gap penalty (V-PBGD), the robust penalty sibling: this edit rewrites the linear
+block to the gentle `gamma_max=0.2` schedule with a single warm-started inner step (`inner_itr=1`).
+</say>
+<edit path="penalized-bilevel-gradient-descent/mlsbench/custom_strategy.py">
+<old>
+    "linear": {
+        "lrx": 0.3,
+        "lry": 0.5,
+        "gamma_init": 0.0,
+        "gamma_max": 37.0,
+        "gamma_argmax_step": 5_000,
+        "outer_itr": 40_000,
+        "reg": 0.0,
+</old>
+<new>
+    "linear": {
+        "lrx": 0.1,
+        "lry": 0.1,
+        "lr_inner": 0.01,
+        "gamma_init": 0.0,
+        "gamma_max": 0.2,
+        "gamma_argmax_step": 30_000,
+        "outer_itr": 40_000,
+        "inner_itr": 1,
+        "reg": 0.0,
+</new>
+</edit>
+<obs>
+Successfully replaced text in penalized-bilevel-gradient-descent/mlsbench/custom_strategy.py.
+</obs>
+<note>
+Same gentle value-gap schedule on the MLP block, with the longer 80k-step horizon.
+</note>
+<edit path="penalized-bilevel-gradient-descent/mlsbench/custom_strategy.py">
+<old>
+    "mlp": {
+        "lrx": 0.5,
+        "lry": 0.5,
+        "gamma_init": 0.0,
+        "gamma_max": 37.0,
+        "gamma_argmax_step": 30_000,
+        "outer_itr": 50_000,
+        "reg": 0.0,
+</old>
+<new>
+    "mlp": {
+        "lrx": 0.1,
+        "lry": 0.01,
+        "lr_inner": 0.01,
+        "gamma_init": 0.0,
+        "gamma_max": 0.1,
+        "gamma_argmax_step": 10_000,
+        "outer_itr": 80_000,
+        "inner_itr": 1,
+        "reg": 0.0,
+</new>
+</edit>
+<obs>
+Successfully replaced text in penalized-bilevel-gradient-descent/mlsbench/custom_strategy.py.
+</obs>
+<note>
+Now point the dispatch at the value-gap penalty helper.
+</note>
+<edit path="penalized-bilevel-gradient-descent/mlsbench/custom_strategy.py">
+<old>
+def algorithm(state: dict, hparams: dict, grad_fns: dict) -> dict:
+    return run_g_pbgd(state, hparams, grad_fns)
+</old>
+<new>
+def algorithm(state: dict, hparams: dict, grad_fns: dict) -> dict:
+    return run_v_pbgd(state, hparams, grad_fns)
+</new>
+</edit>
+<obs>
+Successfully replaced text in penalized-bilevel-gradient-descent/mlsbench/custom_strategy.py.
+</obs>
+<run/>
+<obs>
+Measured results — `baseline:v_pbgd` (`is_final,true`), seeds {42, 123, 456} and mean.
+
+## Toy convergence (lower steps / residual better)
+| seed | convergence_steps | median_steps | final_residual | success_rate | runtime_sec |
+|---|---|---|---|---|---|
+| 42 | 261.256 | 303.0 | 0.030345 | 1.0 | 0.502807 |
+| 123 | 260.457 | 303.0 | 0.029994 | 1.0 | 0.516588 |
+| 456 | 260.423 | 301.0 | 0.029924 | 1.0 | 0.517659 |
+| **mean** | **260.712** | **302.333** | **0.030088** | **1.0** | **0.512351** |
+
+## Hyper-cleaning, linear (higher accuracy / f1 better)
+| seed | test_accuracy | f1_score | cleaner_precision | cleaner_recall |
+|---|---|---|---|---|
+| 42 | 90.08 | 91.810837 | 0.883790 | 0.9552 |
+| 123 | 89.88 | 91.957573 | 0.887896 | 0.9536 |
+| 456 | 90.33 | 91.396599 | 0.882638 | 0.9476 |
+| **mean** | **90.097** | **91.721670** | **0.884775** | **0.952133** |
+
+## Hyper-cleaning, MLP (seed 42 only; higher better)
+| seed | test_accuracy | f1_score | cleaner_precision | cleaner_recall |
+|---|---|---|---|---|
+| 42 | 91.48 | 92.050041 | 0.887199 | 0.9564 |
+| **mean** | **91.48** | **92.050041** | **0.887199** | **0.9564** |
+</obs>

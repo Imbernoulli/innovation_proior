@@ -1,0 +1,1144 @@
+<meta task="marl-centralized-critic" domain="Reinforcement learning" file="epymarl/src/modules/critics/custom_critic.py" model_format="qwen3" edit_tool="str_replace"/>
+
+<system>
+You are a research engineer improving a model on a fixed ML task. You work by editing the model code and running experiments. Think carefully before each change. You have these tools:
+- str_replace(path, old_str, new_str): replace the unique occurrence of old_str with new_str.
+- create(path, file_text): create a new file.
+- run_experiment(): train + evaluate the current code under the fixed budget; returns metrics.
+Make one tool call at a time. After editing, call run_experiment() to measure your method.
+</system>
+
+<user>
+## Research question
+
+Cooperative multi-agent reinforcement learning under partial observability: a team of `n` agents each
+sees only its own local observation, every agent shares one scalar team reward, and the policies must be
+**decentralizable** — at execution each agent acts on `o_i` alone. Training, though, happens in a
+simulator, so a value function used only as a baseline may condition on anything available at training
+time (the global state, every agent's observation). This is Centralized-Training-with-Decentralized-
+Execution (CTDE). The single thing being designed is the **centralized critic architecture** for MAPPO
+(Multi-Agent PPO): what the value function conditions on and how it mixes per-agent features. Everything
+else — the actor (an RNN policy over individual agents), the EPyMARL `ppo_learner`, the optimizer, the
+GAE/`n`-step settings, the smaclite SMAC environment interface — is fixed. The critic's input set and
+network are the only free variables, and by the GAE identity `Â_t = Σ_l (γλ)^l δ_{t+l}` (every term an
+error of `V`), that choice sets the bias-variance of every per-agent advantage and hence whether MAPPO
+scales to hard cooperation maps.
+
+## Prior art before the first rung (centralized-critic lineage)
+
+The first rung reacts to the centralized-critic methods that preceded MAPPO. These are the baselines the
+ladder climbs out of; each is named with the gap it leaves.
+
+- **COMA (Foerster et al. 2018).** A single centralized *action-value* critic `Q(s, A)` for the team
+  plus a counterfactual baseline that marginalizes agent `i`'s own action with the others held fixed,
+  `A_i = Q(s,A) − Σ_{a'_i} π_i(a'_i|o_i) Q(s,(A_{−i},a'_i))` — a clean answer to credit assignment. Gap:
+  it conditions the critic on the *joint action*, so the input scales with `n` and the critic is coupled
+  to every agent's current policy; and it must evaluate `Q` once per candidate action to form the
+  baseline.
+- **MADDPG (Lowe et al. 2017).** A separate centralized action-value critic `Q_i(x, a_1,…,a_n)` per
+  agent — global info plus the joint action — so that, conditioned on the joint action, each agent's
+  world looks stationary. Gap: one critic per agent, joint-action input that scales with `n`, off-policy
+  with replay and target networks.
+- **Value decomposition (VDN, Sunehag et al. 2018; QMIX, Rashid et al. 2018).** Factorize the joint
+  `Q_tot` into per-agent `Q_i` (a sum, or a monotonic state-conditioned mixing) for decentralizable
+  argmax. Gap: still action-value critics, off-policy, and the factorization restricts the representable
+  class (VDN cannot represent interactions where one agent's best action depends on another's; QMIX's
+  monotonicity is a softer but real constraint).
+- **Independent learning (IQL, Tan 1993; IAC).** Each agent learns from its own stream with no
+  centralization. Gap: co-learners change one another's dynamics, so value targets go stale and the
+  classic non-stationarity instability appears — yet, with a proximal per-agent step, independent PPO is
+  reported to be surprisingly competitive, which is itself a clue that the critic's *input* (not merely
+  "is it centralized") is what decides things.
+
+The common thread: all condition the critic on *actions*, pay for it in `n`-scaling, action enumeration,
+or a restricted class — and a GAE baseline only ever needs a *state* value `V`. The ladder below holds
+the actor and learner fixed and varies exactly the centralized critic's input and architecture.
+
+## The fixed substrate
+
+A MAPPO loop on cooperative SMAC maps (via **smaclite**, a pure-Python SMAC reimplementation needing no
+StarCraft II binary) is frozen and must not be touched. EPyMARL's `ppo_learner` with the Yu et al. 2022
+MAPPO defaults: an RNN actor over individual agents with the clipped surrogate
+`min(r^a A^a, clip(r^a, 1−ε, 1+ε) A^a)` on each agent's own ratio `r^a = π_θ(a^a|o^a)/π_{θ_old}(a^a|o^a)`
+(`eps_clip=0.2`), an entropy bonus (`entropy_coef=0.001`), and `epochs=4` of reuse per batch. The critic
+is trained by **masked mean-squared regression** to a `q_nstep=5` bootstrapped return target produced by
+a **target copy** of the critic (so the regression does not chase its own tail); the advantage handed to
+the actor is the masked TD error `R_t^{a,(n)} − V(x^a_t)`. The shared team reward (`common_reward=True`)
+is broadcast to all agents; rewards are standardized (`standardise_rewards=True`), returns are not
+(`standardise_returns=False`). `γ=0.99`, `lr=3e-4`, Adam, gradient-norm clipping, `hidden_dim=128`. The
+config exposes `args.n_agents`, `args.n_actions`, `args.hidden_dim`, `args.obs_last_action=False`,
+`args.obs_individual_obs=False`, `args.obs_agent_id=True`. Each map trains ~5M environment steps.
+
+## The editable interface
+
+Exactly one region is editable: the `CustomCritic` class (and a custom-imports line) in
+`custom_critic.py`. The harness wires it into `ppo_learner` as `critic_type: "custom_critic"`. The
+contract the class MUST satisfy:
+
+- Inherit from `nn.Module`; accept `(scheme, args)` in `__init__`, where `scheme["state"]["vshape"]` is
+  the global state dim and `scheme["obs"]["vshape"]` is the per-agent observation dim.
+- Set `self.output_type = "v"` in `__init__`.
+- Implement `forward(self, batch, t=None)` where `batch["state"]` is `(B, T, state_dim)`,
+  `batch["obs"]` is `(B, T, n_agents, obs_dim)`, and `batch.batch_size`, `batch.max_seq_length`,
+  `batch.device` are available. `t=None` means the whole sequence; otherwise `t` is an integer time
+  index (a length-1 window). Return `q` of shape **`(B, T, n_agents, 1)`** — the learner does
+  `.squeeze(3)`, so the trailing singleton is mandatory.
+
+The starting point is the scaffold default: a lean **central-V** critic over `(state ⊕ agent-one-hot)`.
+Each method on the ladder replaces exactly this class.
+
+```python
+import numpy as np
+import torch as th
+import torch.nn as nn
+import torch.nn.functional as F
+
+
+# ── Custom imports (editable) ────────────────────────────────────────────
+
+
+# ======================================================================
+# EDITABLE — Custom centralized critic for MAPPO
+# ======================================================================
+class CustomCritic(nn.Module):
+    """Centralized critic for MAPPO on SMAC (via smaclite).
+
+    Plugged into epymarl's ppo_learner via ``critic_type: "custom_critic"``.
+    The learner calls ``critic(batch)`` without ``t`` and later does
+    ``.squeeze(3)``, so the output MUST be ``(B, T, n_agents, 1)``.
+    """
+
+    def __init__(self, scheme, args):
+        super(CustomCritic, self).__init__()
+        self.args = args
+        self.n_agents = args.n_agents
+        self.n_actions = args.n_actions
+        self.output_type = "v"
+
+        # Default: simple state + agent-id MLP (central V baseline).
+        self.state_dim = int(scheme["state"]["vshape"])
+        input_shape = self.state_dim + self.n_agents
+        self.fc1 = nn.Linear(input_shape, args.hidden_dim)
+        self.fc2 = nn.Linear(args.hidden_dim, args.hidden_dim)
+        self.fc3 = nn.Linear(args.hidden_dim, 1)
+
+    def forward(self, batch, t=None):
+        bs = batch.batch_size
+        max_t = batch.max_seq_length if t is None else 1
+        ts = slice(None) if t is None else slice(t, t + 1)
+
+        state = batch["state"][:, ts]                                    # (B, T, state_dim)
+        state = state.unsqueeze(2).expand(-1, -1, self.n_agents, -1)     # (B, T, n, state_dim)
+        agent_id = th.eye(self.n_agents, device=batch.device)
+        agent_id = agent_id.unsqueeze(0).unsqueeze(0).expand(bs, max_t, -1, -1)
+        inputs = th.cat([state, agent_id], dim=-1)                       # (B, T, n, state+n)
+
+        x = F.relu(self.fc1(inputs))
+        x = F.relu(self.fc2(x))
+        q = self.fc3(x)                                                  # (B, T, n, 1)
+        return q
+```
+
+## Evaluation settings
+
+Three cooperative SMAC maps spanning difficulty and team composition — **MMM** (heterogeneous 10-agent:
+1 Medivac + 2 Marauder + 7 Marine), **2s3z** (medium heterogeneous symmetric), and **3s5z** (hard
+heterogeneous symmetric, team of 8) — each over three seeds {42, 123, 456}. Performance is the **test win
+rate** `test_battle_won_mean_<map>` (primary, higher is better) under the greedy policy, with
+`test_return_mean_<map>` as the secondary metric (higher is better), evaluated over 32 test episodes. A
+strong centralized critic should generalize across the maps rather than specialize to one scenario.
+
+The editable model code is in `epymarl/src/modules/critics/custom_critic.py`:
+```python
+class CustomCritic(nn.Module):
+    """Centralized critic for MAPPO on SMAC (via smaclite).
+
+    Plugged into epymarl's ppo_learner via ``critic_type: "custom_critic"``
+    in ``custom_mappo.yaml``. The learner calls ``critic(batch)`` without
+    the ``t`` argument and later does ``.squeeze(3)``, so the output MUST
+    have shape ``(batch, T, n_agents, 1)``.
+
+    Args:
+        scheme: dict with keys
+            ``"state"["vshape"]`` (int) — global state dim
+            ``"obs"["vshape"]``   (int) — per-agent obs dim
+            ``"actions_onehot"["vshape"]`` (tuple) — action one-hot dim
+        args: Namespace with attributes
+            ``n_agents``, ``n_actions``, ``hidden_dim``,
+            ``obs_agent_id``, ``obs_last_action``, ``obs_individual_obs``
+
+    Interface:
+        forward(batch, t=None) -> q
+            batch : components.episode_buffer.EpisodeBatch
+                batch["state"] : (B, T, state_dim)
+                batch["obs"]   : (B, T, n_agents, obs_dim)
+                batch.batch_size, batch.max_seq_length, batch.device
+            t     : int or None  (None = whole sequence)
+            q     : (B, T, n_agents, 1)     ← REQUIRED shape
+        self.output_type = "v"              ← REQUIRED attribute
+    """
+
+    def __init__(self, scheme, args):
+        super(CustomCritic, self).__init__()
+        self.args = args
+        self.n_agents = args.n_agents
+        self.n_actions = args.n_actions
+        self.output_type = "v"
+
+        # Default: simple state + agent-id MLP (central V baseline).
+        self.state_dim = int(scheme["state"]["vshape"])
+        input_shape = self.state_dim + self.n_agents
+        self.fc1 = nn.Linear(input_shape, args.hidden_dim)
+        self.fc2 = nn.Linear(args.hidden_dim, args.hidden_dim)
+        self.fc3 = nn.Linear(args.hidden_dim, 1)
+
+    def forward(self, batch, t=None):
+        bs = batch.batch_size
+        max_t = batch.max_seq_length if t is None else 1
+        ts = slice(None) if t is None else slice(t, t + 1)
+
+        state = batch["state"][:, ts]                                    # (B, T, state_dim)
+        state = state.unsqueeze(2).expand(-1, -1, self.n_agents, -1)     # (B, T, n, state_dim)
+        agent_id = th.eye(self.n_agents, device=batch.device)
+        agent_id = agent_id.unsqueeze(0).unsqueeze(0).expand(bs, max_t, -1, -1)
+        inputs = th.cat([state, agent_id], dim=-1)                       # (B, T, n, state+n)
+
+        x = F.relu(self.fc1(inputs))
+        x = F.relu(self.fc2(x))
+        q = self.fc3(x)                                                  # (B, T, n, 1)
+        return q
+```
+Improve it. Derive your method, edit the code, then run_experiment().
+</user>
+
+### step 1 — MAT-style attention critic (critic-only)   [slug:mat-critic]
+
+<think>
+[[POLISH_REASONING: adapt to first-person agentic voice, end by deciding to implement]]
+I am starting the ladder, so there is no prior measurement to react to — only the scaffold and the
+question of which critic to put in it first. The default fill is a lean central-V: a shared MLP over the
+global state plus an agent one-hot, `V_φ([s, e_a])`. That is the plainest centralized critic there is,
+and precisely because it is plain it leaves an obvious lever untouched — it never lets the agents'
+representations *interact*. The whole reason cooperation is hard is that the value of the team situation
+depends on how the agents relate to each other, and a critic that maps a flat `[s, e_a]` vector through
+an MLP has to learn those relations implicitly inside its weights, with no architectural place to put
+them. So the most ambitious thing I can drop in first is a critic whose *architecture* is built to model
+agent-to-agent interaction. If structure helps, I want to see it help from the start.
+
+Let me reason about where the structure should live. I have `n` agents; each has a feature vector — its
+own observation `o_i`, and I can hand each the global state `s` too. The thing I want the critic to
+capture is which agents matter to which: in a SMAC fight, a marine's value depends a lot on the allies
+and enemies near *it* and very little on a unit across the map. A fixed MLP cannot express "agent `i`'s
+value should weight agent `j`'s features by how relevant `j` is to `i`," because that weighting is
+data-dependent — it changes with the configuration. What computes a data-dependent, content-addressed
+mixing across a set of tokens is exactly self-attention: for each agent (query) it computes a softmax
+weighting over all agents (keys) and pulls in their values, `softmax(QKᵀ/√d_k)V`. The `1/√d_k` is not
+decorative — if the query and key components are roughly unit-variance, their dot product over `d_k`
+dims has variance `d_k`, so without the scaling the raw scores are large, the softmax saturates toward
+one-hot, and its gradient nearly vanishes; dividing by `√d_k` keeps the scores order-1 and the softmax
+in a regime that actually learns. So the design I want first is: turn each agent into a token, run a
+self-attention layer across the agent axis so every agent's representation is informed by every other
+agent's, and read a per-agent value off the mixed representation. This is the "attention over agents"
+family of centralized critics — the critic side of the multi-agent attention/sequence-modeling line.
+
+Here is where I have to be disciplined about what this task actually exposes, because the full
+sequence-modeling method for cooperative MARL is much more than an attention critic, and the harness
+gives me only the critic. The full method is an encoder-decoder over the agent axis: an *unmasked*
+encoder builds interaction-aware representations and serves as the centralized value, and a *masked*
+auto-regressive decoder generates each agent's action conditioned only on its predecessors. The decoder
+is the engine of the whole thing — it is the literal implementation of a decomposition identity that
+the joint advantage equals the sum of per-agent advantages *each conditioned on the agents before it*,
+which is what gives the method its monotonic-improvement story and its Nash limit. But in this task the
+**actor is fixed** — it is the standard MAPPO RNN policy, decentralized, with no cross-agent action
+conditioning. I do not get to replace the actor; the editable region is `CustomCritic` only. So I cannot
+build the auto-regressive decoder, cannot feed predecessor actions into action generation, and cannot
+realize the advantage-decomposition guarantee. What I can build is the *encoder half* used as a critic:
+the unmasked self-attention over agent tokens with a per-agent value head. I should name this honestly
+to myself — this is the **critic-only, encoder-only** form of the attention method, stripped of the
+decoder that is the method's actual source of power. I am keeping the part that mixes agent features and
+throwing away the part that conditions the joint action. Whether the mixing *alone* helps is exactly the
+open question, and it is the right first probe: it isolates "does an attention critic beat a flat MLP
+critic," holding the MAPPO actor and learner fixed.
+
+Now build the token. Each agent's token should carry both its local detail and the global picture, so I
+form the per-agent input as `[o_i ⊕ s]` — the agent's observation concatenated with the broadcast
+global state — and project it up to a model width `d_model` with a linear map. Why include `s` in every
+token rather than just `o_i`? Because the value of the situation genuinely depends on global structure
+some agent may not see locally, and attention is going to mix across agents anyway; giving each token
+the global state means the mixing operates on representations that already know the global context. I set
+`d_model = hidden_dim` (128) to stay inside the config's width and keep the critic comparable in
+capacity to the MLP baselines. Then a single `TransformerEncoderLayer` over the `n` agent tokens:
+multi-head self-attention (I will use 4 heads — enough to let different heads specialize on different
+relational patterns, e.g. allies vs enemies, without fragmenting a width-128 model into tiny per-head
+subspaces) with the feed-forward width set to `4·d_model` in the usual transformer proportion, GELU
+activation, and — deliberately — **no dropout**, because this is a value regression where I want a
+deterministic, low-variance estimate, and dropout would inject noise into the very baseline whose job is
+to *reduce* variance. The attention here must be *unmasked*: building an interaction-aware
+representation of agent `i` should be allowed to look at every other agent, not just earlier ones —
+there is no causal ordering on *reading* observations, only (in the full method) on *emitting* actions,
+and I have no emission stage. After the encoder layer, a per-token linear head maps each agent's mixed
+representation to a scalar value. One encoder layer, not a deep stack: SMAC teams are small (8–10 units),
+the relational structure is shallow, and a deeper stack on a value regression with only ~5M steps of
+data is more likely to overfit and destabilize than to help.
+
+I should pin the shapes against how the learner calls this, because the transformer needs the agent axis
+isolated as its sequence dimension and the learner is strict about the trailing singleton. The batch
+gives `state` of shape `(B, T, state_dim)` and `obs` of shape `(B, T, n, obs_dim)`; `forward(batch)` is
+called over the whole sequence (or `forward(batch, t)` for one timestep) and the result is later
+`.squeeze(3)`-ed, so I must return `(B, T, n, 1)`. So inside `forward` I compute the time extent, take
+the slice, broadcast the state across the agent axis to `(B, T, n, state_dim)`, concatenate with `obs`
+to `(B, T, n, obs_dim+state_dim)`, and project to `(B, T, n, d_model)`. The transformer encoder expects
+`(batch, seq_len, d_model)`, and *my* sequence is the agent axis — so I flatten `(B, T)` into one batch
+dimension, giving `(B·T, n, d_model)`, run the encoder so attention mixes across the `n` agents
+independently for each `(B, T)` position, then reshape back to `(B, T, n, d_model)` and apply the value
+head to get `(B, T, n, 1)`. The flatten-then-restore is the load-bearing detail: it is what makes the
+self-attention operate over *agents* and not accidentally over time. Everything else — the actor's
+clipped surrogate on each agent's own ratio, the `q_nstep=5` target via a target critic, the masked MSE
+critic regression, reward standardization, Adam, grad-clip — is the fixed MAPPO loop and I touch none of
+it.
+
+Let me be honest about the risks I am walking into, because I am putting the most complex critic in
+first and the value-learning conditions here are not gentle. First, the encoder critic has many more
+parameters than a two-layer MLP — projection, multi-head attention, a `4·d_model` feed-forward block,
+layer norms — and it is being trained as a *bootstrapped* value regression against a target copy of
+itself, masked, with returns *not* standardized (`standardise_returns=False`). A high-capacity critic
+fit to a moving bootstrapped target with unnormalized returns is exactly the setup where value learning
+can diverge or lock into a bad basin: the critic can fit early-training returns sharply, the target
+chases, and the attention weights can collapse onto an unhelpful pattern that the masked MSE is happy
+with but that produces biased per-agent advantages. Second, the per-agent value here is a *softmax mix*
+of all agents' tokens; if the attention learns to average broadly, the per-agent values flatten toward a
+team mean and lose the agent-specific signal that the advantage needs — an over-smoothing failure
+specific to attention critics. Third, transformers are notoriously initialization- and warmup-sensitive,
+and the MAPPO learner has no transformer-specific schedule; the fixed `lr=3e-4` and a cold-started
+attention block may not cooperate, and seed-to-seed the run could land in very different basins.
+
+So here is what I will watch when the numbers come back, stated as falsifiable expectations. If the
+attention critic's interaction modeling is genuinely worth its complexity, it should *help most where
+coordination is hardest* — the larger, more heterogeneous teams (MMM's 10 mixed units, 3s5z's team of 8)
+— and at least match the simpler critics on the medium map (2s3z). If instead the value-learning
+fragility dominates, I expect the opposite signature: high seed variance, and *collapse* on the hard
+maps where the bootstrapped value target is hardest to track and the attention has the most room to find
+a degenerate pattern — possibly some seeds at or near a zero win rate while one seed looks fine, i.e. a
+bimodal per-seed outcome rather than a tight cluster. The medium map 2s3z, with the shortest horizon and
+fewest agents, is where I would expect the attention critic to survive even if it fails elsewhere,
+because there the value regression is easiest and the relational structure is small enough that even a
+mis-trained attention does little harm. The diagnosis I am setting up for the next rung is precisely
+this: if the sophisticated critic underperforms a plain one, the lesson is that *architectural
+interaction modeling in the critic is not free* — the critic-only attention form, lacking the decoder
+that gave the full method its guarantee, buys representational power at the cost of value-learning
+stability, and the right next move is to step *down* in critic complexity to something whose value
+regression is robust, and only then reconsider what information the critic should see. I expect the
+attention critic to be the riskiest point on the ladder, and I am putting it first deliberately so the
+measurement tells me whether complexity or robustness is the binding constraint here. The distilled
+module — the token projection, the single unmasked encoder layer, and the per-agent value head, in the
+scaffold's `CustomCritic` shape — is in the answer.
+</think>
+<say>
+[[FILL_SAY: 1-2 sentences naming the method and what this first edit does]]
+</say>
+<edit path="epymarl/src/modules/critics/custom_critic.py">
+<old>
+class CustomCritic(nn.Module):
+    """Centralized critic for MAPPO on SMAC (via smaclite).
+
+    Plugged into epymarl's ppo_learner via ``critic_type: "custom_critic"``
+    in ``custom_mappo.yaml``. The learner calls ``critic(batch)`` without
+    the ``t`` argument and later does ``.squeeze(3)``, so the output MUST
+    have shape ``(batch, T, n_agents, 1)``.
+
+    Args:
+        scheme: dict with keys
+            ``"state"["vshape"]`` (int) — global state dim
+            ``"obs"["vshape"]``   (int) — per-agent obs dim
+            ``"actions_onehot"["vshape"]`` (tuple) — action one-hot dim
+        args: Namespace with attributes
+            ``n_agents``, ``n_actions``, ``hidden_dim``,
+            ``obs_agent_id``, ``obs_last_action``, ``obs_individual_obs``
+
+    Interface:
+        forward(batch, t=None) -> q
+            batch : components.episode_buffer.EpisodeBatch
+                batch["state"] : (B, T, state_dim)
+                batch["obs"]   : (B, T, n_agents, obs_dim)
+                batch.batch_size, batch.max_seq_length, batch.device
+            t     : int or None  (None = whole sequence)
+            q     : (B, T, n_agents, 1)     ← REQUIRED shape
+        self.output_type = "v"              ← REQUIRED attribute
+    """
+</old>
+<new>
+import numpy as np
+import torch as th
+import torch.nn as nn
+import torch.nn.functional as F
+
+
+# ── Custom imports (editable) ────────────────────────────────────────────
+
+
+# ======================================================================
+# EDITABLE — Custom centralized critic for MAPPO
+# ======================================================================
+class CustomCritic(nn.Module):
+    """MAT-style attention critic — self-attention over per-agent tokens.
+
+    Adapted from Wen et al. 2022 MAT (arXiv 2205.14953), critic-only form.
+    Each agent's token encodes its local observation together with the
+    global state; a single TransformerEncoder layer mixes information
+    across agents via self-attention, then a per-token linear head
+    produces the scalar value.
+    """
+</new>
+</edit>
+<obs>
+Successfully replaced text in epymarl/src/modules/critics/custom_critic.py.
+</obs>
+<note>
+[[FILL_NOTE?: optional one-line thought for this edit, or delete this block]]
+</note>
+<edit path="epymarl/src/modules/critics/custom_critic.py">
+<old>
+
+        # Default: simple state + agent-id MLP (central V baseline).
+        self.state_dim = int(scheme["state"]["vshape"])
+        input_shape = self.state_dim + self.n_agents
+        self.fc1 = nn.Linear(input_shape, args.hidden_dim)
+        self.fc2 = nn.Linear(args.hidden_dim, args.hidden_dim)
+        self.fc3 = nn.Linear(args.hidden_dim, 1)
+</old>
+<new>
+
+        obs_dim = int(scheme["obs"]["vshape"])
+        state_dim = int(scheme["state"]["vshape"])
+        self.d_model = args.hidden_dim
+
+        # Per-agent token projection: [obs_i ⊕ state] → d_model
+        self.token_proj = nn.Linear(obs_dim + state_dim, self.d_model)
+
+        # Single transformer encoder layer with self-attention across agents
+        enc_layer = nn.TransformerEncoderLayer(
+            d_model=self.d_model,
+            nhead=4,
+            dim_feedforward=4 * self.d_model,
+            dropout=0.0,
+            batch_first=True,
+            activation="gelu",
+        )
+        self.encoder = nn.TransformerEncoder(enc_layer, num_layers=1)
+
+        # Per-agent value head
+        self.v_head = nn.Linear(self.d_model, 1)
+</new>
+</edit>
+<obs>
+Successfully replaced text in epymarl/src/modules/critics/custom_critic.py.
+</obs>
+<note>
+[[FILL_NOTE?: optional one-line thought for this edit, or delete this block]]
+</note>
+<edit path="epymarl/src/modules/critics/custom_critic.py">
+<old>
+
+        state = batch["state"][:, ts]                                    # (B, T, state_dim)
+        state = state.unsqueeze(2).expand(-1, -1, self.n_agents, -1)     # (B, T, n, state_dim)
+        agent_id = th.eye(self.n_agents, device=batch.device)
+        agent_id = agent_id.unsqueeze(0).unsqueeze(0).expand(bs, max_t, -1, -1)
+        inputs = th.cat([state, agent_id], dim=-1)                       # (B, T, n, state+n)
+
+        x = F.relu(self.fc1(inputs))
+        x = F.relu(self.fc2(x))
+        q = self.fc3(x)                                                  # (B, T, n, 1)
+        return q
+</old>
+<new>
+
+        obs = batch["obs"][:, ts]                                        # (B, T, n, obs_dim)
+        state = batch["state"][:, ts]                                    # (B, T, state_dim)
+        state = state.unsqueeze(2).expand(-1, -1, self.n_agents, -1)     # (B, T, n, state_dim)
+        tokens = th.cat([obs, state], dim=-1)                            # (B, T, n, obs+state)
+        tokens = self.token_proj(tokens)                                 # (B, T, n, d_model)
+
+        # Flatten (B, T) into a single batch dim for the transformer,
+        # then restore: TransformerEncoder expects (bs*, seq_len, d_model).
+        b, tt, n, d = tokens.shape
+        tokens = tokens.reshape(b * tt, n, d)
+        attn_out = self.encoder(tokens)                                  # (B*T, n, d_model)
+        attn_out = attn_out.reshape(b, tt, n, d)
+
+        q = self.v_head(attn_out)                                       # (B, T, n, 1)
+        return q
+</new>
+</edit>
+<obs>
+Successfully replaced text in epymarl/src/modules/critics/custom_critic.py.
+</obs>
+<run/>
+<obs>
+Measured results — `baseline:mat_critic` (`is_final,true`), seeds {42, 123, 456} and mean. Primary
+metric `test_battle_won_mean` (higher better); secondary `test_return_mean` (higher better).
+
+## MMM
+| seed | test_battle_won_mean | test_return_mean |
+|---|---|---|
+| 42 | 0.0000 | 18.1752 |
+| 123 | 0.4062 | 20.6972 |
+| 456 | 0.0000 | 17.9718 |
+| **mean** | **0.1354** | **18.9481** |
+
+## 2s3z
+| seed | test_battle_won_mean | test_return_mean |
+|---|---|---|
+| 42 | 0.0000 | 4.9203 |
+| 123 | 0.8125 | 18.8608 |
+| 456 | 0.8125 | 18.7663 |
+| **mean** | **0.5417** | **14.1825** |
+
+## 3s5z
+| seed | test_battle_won_mean | test_return_mean |
+|---|---|---|
+| 42 | 0.0000 | 13.6090 |
+| 123 | 0.0000 | 15.5036 |
+| 456 | 0.3438 | 16.2752 |
+| **mean** | **0.1146** | **15.1293** |
+</obs>
+
+### step 2 — IPPO critic (local obs)   [slug:ippo-critic]
+
+<think>
+[[POLISH_REASONING: adapt to first-person agentic voice, end by deciding to implement]]
+The attention critic told me exactly what I feared, and it told me in the per-seed split. The signature
+is the bimodal collapse I flagged, not the "helps most on hard maps" story I hoped for. On MMM two of
+three seeds sit at *exactly* 0.0 win rate (seed 42 and 456) while seed 123 reaches 0.41 — mean 0.135 is
+really "one seed that trained, two that didn't." On 3s5z it is worse: seeds 42 and 123 are both 0.0,
+only 456 limps to 0.34, mean 0.115. And the tell that this is value-learning fragility and not a
+capacity ceiling is seed 42 on 2s3z: win rate 0.0 with a *return* of 4.92, when the other two seeds on
+the same map hit 0.81 win rate with returns near 18.8. A return of 4.9 on a map where the same critic
+elsewhere reaches 18.8 is not "the team played and narrowly lost" — it is the policy never finding the
+fight, because the per-agent advantage it was fed came from a critic that landed in a degenerate basin.
+That is precisely the failure mode I named: a high-capacity attention critic, fit to a bootstrapped
+target via a target copy with unnormalized returns and masked MSE, collapsing onto an over-smoothed or
+otherwise broken attention pattern that the masked MSE tolerates but that poisons the advantages. The
+mixing across agents — the one thing the encoder-only critic added over a flat MLP — turned out to be a
+liability under these value-learning conditions, because nothing in the fixed loop stabilizes it (no
+return normalization, no warmup, a cold transformer under `lr=3e-4`). So the lesson is sharp and it
+points *down* the complexity ladder: architectural interaction modeling in the critic is not free, and
+the binding constraint here is value-learning robustness, not representational power. Before I reconsider
+*what information* the critic should see, I should establish a critic whose value regression simply
+*works* — a plain MLP, no attention, the most robust thing I can fit — and find out what a stable
+critic alone buys.
+
+So let me strip the critic to a plain MLP and, while I am at it, question the input the default reaches
+for. The scaffold default and the attention token both lean on the global state `s`. The folklore says
+more centralized information is strictly better — the critic is thrown away at execution, so feed it
+everything. But I have a contrarian clue I cannot ignore: independent, purely local PPO is reported to
+be *strong* on hard SMAC maps, sometimes beating centralized PPO that uses the global state. That is
+backwards if centralization were free, and it makes me want to try the opposite extreme deliberately:
+condition the critic on *exactly what the actor conditions on* — agent `a`'s own observation `o^a`,
+nothing else, `V_φ(o^a)`. No global state, no peer information. Each agent gets its own local value
+function as its baseline, from the same local information its policy uses. After the attention critic's
+collapse, the appeal is obvious: a per-agent MLP over `o^a` is the lowest-variance, most robust value
+regression I can write, and it removes the cross-agent mixing that just blew up.
+
+My reflex says this should be obviously worse — it is "independent learning," the thing that is supposed
+to fail. Let me argue against it honestly. The classic objection is non-stationarity: if agent `a`'s
+critic sees only `o^a` and the other agents are simultaneously learning and changing their policies, then
+from `a`'s view the dynamics drift, the critic's targets go stale, and the convergence story evaporates
+(Tan 1993). A second classic objection is that an independent learner cannot always separate environment
+stochasticity from a peer's exploration, which provably blocks optimal play in some coordination games
+(Claus & Boutilier 1998). Those are real, and they are why independent actor-critic and independent
+Q-learning are observed to be unstable on cooperative benchmarks. I cannot wave them away. But let me ask
+*whose job* stability is. The critic's job is to be a low-variance, low-bias baseline. Stability of the
+*policy update* is a different job, and PPO attacks it with the clipped ratio objective. The
+non-stationarity disaster in independent learning is specifically that one agent, reacting to a
+co-learner's shift, takes a catastrophic policy step, which shifts the dynamics for everyone and spirals.
+PPO's clip does not prove the realized ratio can never leave the band, but on the sampled actions it
+removes the objective's incentive to push a probability ratio past `[1−ε, 1+ε]` once it has crossed the
+useful side. That is exactly the restraint I need against peer-induced surprises — and notice it is the
+*opposite* of what the attention critic lacked: there, nothing restrained the *value* function; here,
+the actor's clip restrains the *policy*, and the value function is so simple it cannot misbehave. If
+clipping keeps every agent's effective step modest, then from any one agent's view the others drift
+slowly enough that a local critic can track them. The instability that condemns IAC/IQL may be an
+artifact of unrestrained updates, not of the local critic per se.
+
+I want one more argument before I trust a purely local critic as *principled* and not merely "robust by
+being dumb." Take three agents and telescope the joint return into single-agent changes: hold `π¹, π²`
+fixed and improve only `π³`, then hold `π¹, π³_{new}` and improve `π²`, and so on; if every such
+coordinate term is non-negative the joint return rises. Look at one term — change only `π³`, others
+fixed. Holding the others fixed, the world agent 3 faces is a single-agent decision process — a POMDP in
+which `π¹, π²` are absorbed into the dynamics — and agent 3's policy conditions only on `o³`, which is a
+POMDP policy. So "improve `π³` holding the rest fixed" is just "improve a single-agent policy on the
+induced POMDP," and a restrained single-agent step can make that term non-negative. PPO is a first-order
+clipped approximation, not the exact trust-region step, so this is not a theorem for the practical
+update, and simultaneous updates without recollection are a further approximation — but the identity
+tells me the *structure* I want: each agent takes a restrained single-agent improvement step against the
+POMDP the others induce. And the natural baseline for a POMDP policy that conditions on `o³` is a value
+function on that *same* information set — `V_φ(o³)`. The local critic is not a compromise forced by
+execution; it is the baseline aligned with the coordinate step's information set. The local critic and
+PPO's clip are the two halves of one idea: restrained single-agent improvement on the right per-agent
+information. That is the principle the attention critic had no claim to — it mixed information across
+agents that the actor's coordinate step does not condition on, which is one more reason its advantages
+could be both high-variance and misaligned.
+
+Now the module, with each remaining choice motivated. Do I learn `n` separate critics or one shared
+`V_φ`? The agents on these maps are homogeneous within a type and share observation/action spaces, so a
+separate net per agent wastes data — each net learns from one agent's stream. One shared critic lets
+every agent's experience update the same parameters: `n`-fold more data per gradient step, faster and
+more stable value learning, which is exactly what I want after watching the attention critic struggle to
+fit. The cost is that a shared net cannot specialize per agent by *index* — but the agents already differ
+in *behavior* because they see different observations, so a shared function at different inputs still
+produces different values. The only thing sharing strictly removes is index-based specialization, and I
+hand that back cheaply by appending a one-hot agent id to the critic input. So: one shared critic, input
+`[o^a ⊕ one-hot(a)]` of width `obs_dim + n`. The architecture is the plain PPO MLP I trust: `fc1:
+(obs_dim+n) → 128`, ReLU; `fc2: 128 → 128`, ReLU; `fc3: 128 → 1`. No attention, no cross-agent mixing,
+nothing that can collapse — the deliberate inverse of the step-1 critic.
+
+The shapes have to line up with how the learner calls this, and here is the one place the local critic
+differs structurally from the centralized ones: it reads `batch["obs"]`, which already lives on the
+agent axis as `(B, T, n, obs_dim)`, so each agent's slot already carries its own `o^a` and there is *no
+broadcast* — unlike the state critic, which has to expand a single `(B, T, state_dim)` vector across `n`
+agents. The agent id is the `n×n` identity broadcast to `(B, T, n, n)`. Concatenate along the last axis
+to `(B, T, n, obs_dim+n)`, run the MLP, and the head gives `(B, T, n, 1)` — the trailing singleton the
+learner squeezes. `batch["state"]` is simply never read; the critic carries no peer or global
+information by accident, because the only inputs are `o^a` and the constant id of `a`. I double-check
+that: agent `a`'s value depends only on `o^a` and on the constant `a`, so it is fully decentralizable and
+would compute the identical value at execution from local information alone. Good — the critic respects
+the same information constraint as the actor. Everything downstream is the fixed loop: the `q_nstep=5`
+target from a target copy of this critic, masked MSE regression, the actor's clipped surrogate on each
+agent's own ratio, an entropy bonus, reward standardization, Adam, grad-clip. The only multi-agent
+choice I am making lives in *what the critic sees* — and I am betting that seeing *less*, but fitting it
+robustly, beats seeing *more* through an architecture that cannot be fit stably.
+
+Here is what I expect against the attention critic's numbers, stated to be falsified. First and most
+basic: the bimodal seed collapse should *disappear*. The mat critic's three-way split on MMM
+({0.0, 0.41, 0.0}) and the dead seeds on 3s5z ({0.0, 0.0, 0.34}) were value-learning failures; a plain
+local MLP cannot land in a degenerate attention basin, so I expect every seed to at least *train* — no
+seed stuck at exactly 0.0 win rate on a map the others win, and no return of 4.9 where 18.8 is
+reachable. Concretely I expect the per-seed variance to shrink sharply on every map. Second, the mean
+win rates should rise on the maps where mat collapsed: MMM (mat 0.135) and 3s5z (mat 0.115) should both
+improve substantially, because the floor of "two dead seeds" is removed. Third — and this is the place I
+am genuinely unsure — on 2s3z mat already managed 0.54 (two good seeds, one dead), and the local critic's
+ceiling could be *lower* than a working centralized critic's, because the local critic is blind to
+global structure that a state-conditioned critic could exploit. So I would not be surprised if the local
+critic improves the *robustness* everywhere but leaves a *ceiling* on the harder coordination maps that
+a centralized critic — if I can make one train stably — would clear. If that is the pattern (robust but
+capped), the diagnosis for the next rung writes itself: bring the global state back, but in the lean,
+robust MLP form that fits stably, and find out whether centralization helps *once the value learning is
+no longer the bottleneck*. The distilled local-critic module — obs plus agent one-hot, plain MLP, no
+state — is in the answer.
+</think>
+<say>
+[[FILL_SAY: 1-2 sentences naming the method and what this first edit does]]
+</say>
+<edit path="epymarl/src/modules/critics/custom_critic.py">
+<old>
+class CustomCritic(nn.Module):
+    """MAT-style attention critic — self-attention over per-agent tokens.
+
+    Adapted from Wen et al. 2022 MAT (arXiv 2205.14953), critic-only form.
+    Each agent's token encodes its local observation together with the
+    global state; a single TransformerEncoder layer mixes information
+    across agents via self-attention, then a per-token linear head
+    produces the scalar value.
+    """
+</old>
+<new>
+class CustomCritic(nn.Module):
+    """IPPO critic — per-agent MLP over local obs + agent one-hot.
+
+    Matches epymarl's ACCritic. No centralization: each agent's value
+    depends only on its own observation. Serves as the "no centralization"
+    floor baseline from Yu et al. 2022 (arXiv 2103.01955).
+    """
+</new>
+</edit>
+<obs>
+Successfully replaced text in epymarl/src/modules/critics/custom_critic.py.
+</obs>
+<note>
+[[FILL_NOTE?: optional one-line thought for this edit, or delete this block]]
+</note>
+<edit path="epymarl/src/modules/critics/custom_critic.py">
+<old>
+        obs_dim = int(scheme["obs"]["vshape"])
+        state_dim = int(scheme["state"]["vshape"])
+        self.d_model = args.hidden_dim
+
+        # Per-agent token projection: [obs_i ⊕ state] → d_model
+        self.token_proj = nn.Linear(obs_dim + state_dim, self.d_model)
+
+        # Single transformer encoder layer with self-attention across agents
+        enc_layer = nn.TransformerEncoderLayer(
+            d_model=self.d_model,
+            nhead=4,
+            dim_feedforward=4 * self.d_model,
+            dropout=0.0,
+            batch_first=True,
+            activation="gelu",
+        )
+        self.encoder = nn.TransformerEncoder(enc_layer, num_layers=1)
+
+        # Per-agent value head
+        self.v_head = nn.Linear(self.d_model, 1)
+</old>
+<new>
+        obs_dim = int(scheme["obs"]["vshape"])
+        input_shape = obs_dim + self.n_agents   # obs + agent-one-hot
+        self.fc1 = nn.Linear(input_shape, args.hidden_dim)
+        self.fc2 = nn.Linear(args.hidden_dim, args.hidden_dim)
+        self.fc3 = nn.Linear(args.hidden_dim, 1)
+</new>
+</edit>
+<obs>
+Successfully replaced text in epymarl/src/modules/critics/custom_critic.py.
+</obs>
+<note>
+[[FILL_NOTE?: optional one-line thought for this edit, or delete this block]]
+</note>
+<edit path="epymarl/src/modules/critics/custom_critic.py">
+<old>
+        obs = batch["obs"][:, ts]                                        # (B, T, n, obs_dim)
+        state = batch["state"][:, ts]                                    # (B, T, state_dim)
+        state = state.unsqueeze(2).expand(-1, -1, self.n_agents, -1)     # (B, T, n, state_dim)
+        tokens = th.cat([obs, state], dim=-1)                            # (B, T, n, obs+state)
+        tokens = self.token_proj(tokens)                                 # (B, T, n, d_model)
+
+        # Flatten (B, T) into a single batch dim for the transformer,
+        # then restore: TransformerEncoder expects (bs*, seq_len, d_model).
+        b, tt, n, d = tokens.shape
+        tokens = tokens.reshape(b * tt, n, d)
+        attn_out = self.encoder(tokens)                                  # (B*T, n, d_model)
+        attn_out = attn_out.reshape(b, tt, n, d)
+
+        q = self.v_head(attn_out)                                       # (B, T, n, 1)
+        return q
+</old>
+<new>
+        obs = batch["obs"][:, ts]                                        # (B, T, n, obs_dim)
+        agent_id = th.eye(self.n_agents, device=batch.device)
+        agent_id = agent_id.unsqueeze(0).unsqueeze(0).expand(bs, max_t, -1, -1)
+        inputs = th.cat([obs, agent_id], dim=-1)                         # (B, T, n, obs+n)
+
+        x = F.relu(self.fc1(inputs))
+        x = F.relu(self.fc2(x))
+        q = self.fc3(x)                                                  # (B, T, n, 1)
+        return q
+</new>
+</edit>
+<obs>
+Successfully replaced text in epymarl/src/modules/critics/custom_critic.py.
+</obs>
+<run/>
+<obs>
+Measured results — `baseline:ippo_critic` (`is_final,true`), seeds {42, 123, 456} and mean. Primary
+metric `test_battle_won_mean` (higher better); secondary `test_return_mean` (higher better).
+
+## MMM
+| seed | test_battle_won_mean | test_return_mean |
+|---|---|---|
+| 42 | 0.2812 | 19.6626 |
+| 123 | 0.9062 | 23.5022 |
+| 456 | 0.7188 | 22.0115 |
+| **mean** | **0.6354** | **21.7254** |
+
+## 2s3z
+| seed | test_battle_won_mean | test_return_mean |
+|---|---|---|
+| 42 | 0.1250 | 12.9630 |
+| 123 | 0.9062 | 19.6462 |
+| 456 | 0.3125 | 14.6372 |
+| **mean** | **0.4479** | **15.7488** |
+
+## 3s5z
+| seed | test_battle_won_mean | test_return_mean |
+|---|---|---|
+| 42 | 0.8125 | 19.1323 |
+| 123 | 0.4688 | 17.0841 |
+| 456 | 0.6250 | 18.3477 |
+| **mean** | **0.6354** | **18.1880** |
+</obs>
+
+### step 3 — MAPPO central-V critic (state, EP)   [slug:mappo-critic]
+
+<think>
+[[POLISH_REASONING: adapt to first-person agentic voice, end by deciding to implement]]
+The local critic did the first thing I asked of it and confirmed the second thing I worried about. The
+bimodal collapse is gone: no seed is stuck at exactly 0.0 on a map the others win, and the 4.9-return
+disaster from the attention critic has no analogue here. Every seed trains. The means jumped on exactly
+the maps where the attention critic had died — MMM went from 0.135 to 0.635, 3s5z from 0.115 to 0.635 —
+which is the "remove the dead-seed floor" effect I predicted, and 3s5z in particular is now *tight*
+({0.81, 0.47, 0.62}), the kind of seed-to-seed consistency a robust value regression buys. So the
+diagnosis from step 1 was right: the binding constraint was value-learning robustness, and a plain local
+MLP fixed it. But look at where the local critic is *capped*. On 2s3z the mean is only 0.448, and the
+per-seed spread is wide — {0.125, 0.906, 0.313}. That is not a value-learning collapse (the returns
+track the win rates sensibly: 12.96, 19.65, 14.64); it is the local critic's *ceiling*. Seed 42 reaches
+0.125 and seed 456 only 0.313 on a map where seed 123 shows 0.906 is attainable. The local critic is
+robust but it is missing something on 2s3z — and 2s3z is a symmetric map where coordinated positioning of
+the two stalkers and three zealots matters, exactly the kind of *global, cross-agent* structure a critic
+that sees only `o^a` is blind to. That is the "robust but capped" pattern I said I would watch for, and
+it is the cleanest possible signal that the next move is to bring the global state back — now that the
+value learning is no longer the bottleneck.
+
+So I return to centralization, but I have to be careful, because the attention critic *was* centralized
+(its tokens carried the state) and it collapsed. The lesson was not "centralization is bad"; it was
+"cross-agent *mixing* in the critic, under this loop's value-learning conditions, is fragile." The clean
+way to bring back global information *without* reintroducing the mixing that blew up is to feed the global
+state into the same plain, robust MLP that just worked — a shared `V_φ([s, e_a])` over the global state
+plus an agent one-hot, no attention, no cross-agent interaction layer, nothing that can land in a
+degenerate basin. This is the standard centralized state-value critic, and it is the smallest possible
+change from the local critic: swap `o^a` for `s` in the input, keep the identical 128–128–1 MLP and the
+identical agent one-hot. I am deliberately keeping everything the local critic got right (the robust MLP,
+parameter sharing, the id) and changing only the *information* the critic conditions on.
+
+Let me justify the state-value choice from the ground up rather than defaulting to it. Why a *state*
+value and not the action-value critics of the centralized prior art (COMA's `Q(s,A)` with a
+counterfactual baseline, MADDPG's per-agent `Q_i(x, a_1,…,a_n)`)? Because the GAE baseline I am
+subtracting only ever needs a *state* value. The advantage identity says `∇J = E[∇log π · A]` for any
+baseline independent of the action given the state, and GAE forms `δ_t = r_t + γV(s_{t+1}) − V(s_t)` from
+`V`, never `Q`. Conditioning the critic on the joint action would make the input scale with `n`, couple
+the critic to every agent's current policy, and (for COMA) force an action enumeration to build the
+counterfactual — all machinery I do not need for variance reduction. A centralized `V(s)` buys the
+variance reduction and sheds every one of those costs. So the strongest-baseline critic is single-agent
+PPO with one thing changed from the local critic: the value function reads the global state.
+
+Now the input itself, and here I have to be honest about what *this* harness exposes versus the richer
+forms the centralized-V idea can take, because the difference is load-bearing. The fully developed
+agent-specific construction would feed the critic the global state *and* each agent's own observation
+`[s, o^a]` (pruning the overlap), and there is a real argument that this is better — the bare global
+state is agent-agnostic and drops the local features a per-agent value depends on. But the config this
+task fixes is explicit: `obs_individual_obs=False` and `obs_last_action=False`, with `obs_agent_id=True`.
+So the centralized critic the *task* defines is the lean **environment-provided** form: global state plus
+an agent one-hot, and *only* that. I am not going to import the agent-specific `[s, o^a]` machinery into
+this step, because the baseline I am deriving is the one the harness actually runs — `V_φ([s, e_a])`. I
+note the gap explicitly, because it is exactly where a stronger critic would go next: this critic sees
+the global picture but, being agent-agnostic in its state input, it leans entirely on the one-hot to
+distinguish agents, and the one-hot carries an agent's *identity* but none of its current local detail
+(what it can fire, how exposed it is). If that omission caps this critic the way blindness to global
+structure capped the local one, the agent-specific input is the obvious lever — but that is a later
+move; here I derive the EP critic the config specifies.
+
+Why does the one-hot earn its place even in the lean form? Because I am sharing one critic across all
+agents (the same robustness-and-data argument as before: homogeneous agents, `n`-fold data per step). A
+shared network handed the *same* `s` for every agent can only output one value, identical for all
+agents — which is fine only if the true per-agent value is genuinely agent-agnostic, and on a
+heterogeneous map like MMM (a Medivac that heals, Marauders, Marines) it is not: a healer's value of a
+state differs from a frontline marine's. The one-hot is the minimal thing that lets the shared network
+emit a *different* value per agent — it can route different agents to different value functions while
+still pooling all the data. So `[s, e_a]` is the leanest centralized critic that is both data-efficient
+(shared) and able to distinguish agents (the id). It is exactly the local critic's architecture with the
+information swapped from local to global, plus the same id it already carried.
+
+The shapes mirror the local critic with one structural difference, and it is the inverse of the IPPO
+case. The global state is one vector per `(B, T)`, shape `(B, T, state_dim)`, so to put it on the agent
+axis I must *broadcast* it across the `n` agents — `state.unsqueeze(2).expand(-1, -1, n, -1)` to
+`(B, T, n, state_dim)`. (The local critic needed no broadcast because `obs` already lived on the agent
+axis; the state critic does, because the state is shared.) The agent id is the `n×n` identity broadcast
+to `(B, T, n, n)`. Concatenate to `(B, T, n, state_dim + n)`, run the identical 128–128–1 ReLU MLP, and
+the head gives `(B, T, n, 1)` — the trailing singleton the learner squeezes. `batch["obs"]` is now never
+read; the critic conditions purely on the shared global state and the constant id. Everything downstream
+is the same fixed loop the previous two rungs used: the `q_nstep=5` target from a target copy of this
+critic, masked MSE regression, the actor's clipped surrogate on each agent's own ratio, the entropy
+bonus, reward standardization, Adam, grad-clip.
+
+Let me also knock down the worry that this just re-creates the attention critic's failure with a state
+input. The attention critic collapsed because of *cross-agent mixing* fit to a moving bootstrapped
+target — the softmax over agents could find a degenerate pattern, and per-agent values could smear
+toward a team mean. The state-V critic has *no* mixing: each agent's value is a deterministic MLP of
+`[s, e_a]`, the agents do not attend to each other, and the only per-agent variation comes from the
+fixed one-hot. There is no degenerate basin for attention to fall into because there is no attention. So
+this critic should inherit the local critic's robustness (same MLP, same fit) while adding the global
+information the local critic lacked — the best of both prior rungs.
+
+Here is what I expect against the two baselines I have measured, stated to be falsified. Against the
+attention critic: the seed collapse stays gone (no mixing to break), so no dead seeds anywhere — this
+should be as robust as the local critic. Against the local critic: the *ceiling* should lift on exactly
+the maps where global structure matters and the local critic was capped. I expect 2s3z — the local
+critic's weakest map (0.448), where coordinated positioning is the whole game — to improve the most,
+because that is where seeing the global state should most help the per-agent advantage; I would be
+surprised if 2s3z did not clear 0.7. I also expect MMM to rise, because its heterogeneity (a healer plus
+two unit types) is precisely where a critic that sees the *whole* team's state, rather than each agent's
+local slice, should produce better-aligned advantages — and where the one-hot lets the shared net give
+the Medivac a different value than a Marine. 3s5z is the interesting case: the local critic was already
+tight at 0.635, and 3s5z is a larger team (8 agents) where the global state is higher-dimensional and the
+agent-agnostic EP form drops more local detail — so I expect an improvement but a more modest one, and I
+would not be shocked if 3s5z is where the EP critic's lack of agent-specific local features shows up as
+the smallest gain. If the pattern is "centralization clearly helps on 2s3z and MMM, helps least on the
+biggest team 3s5z," that is the signature that the global state is worth bringing back *and* that the
+remaining gap is the agent-agnostic state input — the agent-specific `[s, o^a]` lever I deliberately left
+on the table. The distilled lean central-V module — global state plus agent one-hot, plain MLP, no
+attention, no obs — is in the answer.
+</think>
+<say>
+[[FILL_SAY: 1-2 sentences naming the method and what this first edit does]]
+</say>
+<edit path="epymarl/src/modules/critics/custom_critic.py">
+<old>
+class CustomCritic(nn.Module):
+    """IPPO critic — per-agent MLP over local obs + agent one-hot.
+
+    Matches epymarl's ACCritic. No centralization: each agent's value
+    depends only on its own observation. Serves as the "no centralization"
+    floor baseline from Yu et al. 2022 (arXiv 2103.01955).
+    """
+</old>
+<new>
+class CustomCritic(nn.Module):
+    """MAPPO critic — shared MLP over (state + agent one-hot).
+
+    Standard centralized V from Yu et al. 2022 (arXiv 2103.01955).
+    Matches epymarl's CentralVCritic. All agents share the same network;
+    the agent one-hot lets the shared network produce agent-specific
+    value estimates while still conditioning on the full global state.
+    """
+</new>
+</edit>
+<obs>
+Successfully replaced text in epymarl/src/modules/critics/custom_critic.py.
+</obs>
+<note>
+[[FILL_NOTE?: optional one-line thought for this edit, or delete this block]]
+</note>
+<edit path="epymarl/src/modules/critics/custom_critic.py">
+<old>
+
+        obs_dim = int(scheme["obs"]["vshape"])
+        input_shape = obs_dim + self.n_agents   # obs + agent-one-hot
+        self.fc1 = nn.Linear(input_shape, args.hidden_dim)
+</old>
+<new>
+
+        state_dim = int(scheme["state"]["vshape"])
+        input_shape = state_dim + self.n_agents
+        self.fc1 = nn.Linear(input_shape, args.hidden_dim)
+</new>
+</edit>
+<obs>
+Successfully replaced text in epymarl/src/modules/critics/custom_critic.py.
+</obs>
+<note>
+[[FILL_NOTE?: optional one-line thought for this edit, or delete this block]]
+</note>
+<edit path="epymarl/src/modules/critics/custom_critic.py">
+<old>
+
+        obs = batch["obs"][:, ts]                                        # (B, T, n, obs_dim)
+        agent_id = th.eye(self.n_agents, device=batch.device)
+        agent_id = agent_id.unsqueeze(0).unsqueeze(0).expand(bs, max_t, -1, -1)
+        inputs = th.cat([obs, agent_id], dim=-1)                         # (B, T, n, obs+n)
+</old>
+<new>
+
+        state = batch["state"][:, ts]                                    # (B, T, state_dim)
+        state = state.unsqueeze(2).expand(-1, -1, self.n_agents, -1)     # (B, T, n, state_dim)
+        agent_id = th.eye(self.n_agents, device=batch.device)
+        agent_id = agent_id.unsqueeze(0).unsqueeze(0).expand(bs, max_t, -1, -1)
+        inputs = th.cat([state, agent_id], dim=-1)                       # (B, T, n, state+n)
+</new>
+</edit>
+<obs>
+Successfully replaced text in epymarl/src/modules/critics/custom_critic.py.
+</obs>
+<run/>
+<obs>
+Measured results — `baseline:mappo_critic` (`is_final,true`), seeds {42, 123, 456} and mean. Primary
+metric `test_battle_won_mean` (higher better); secondary `test_return_mean` (higher better).
+
+## MMM
+| seed | test_battle_won_mean | test_return_mean |
+|---|---|---|
+| 42 | 0.9688 | 22.8356 |
+| 123 | 0.9375 | 23.0203 |
+| 456 | 0.8750 | 22.6024 |
+| **mean** | **0.9271** | **22.8194** |
+
+## 2s3z
+| seed | test_battle_won_mean | test_return_mean |
+|---|---|---|
+| 42 | 0.9375 | 19.7017 |
+| 123 | 0.7812 | 18.7471 |
+| 456 | 0.7812 | 18.8685 |
+| **mean** | **0.8333** | **19.1058** |
+
+## 3s5z
+| seed | test_battle_won_mean | test_return_mean |
+|---|---|---|
+| 42 | 0.7188 | 18.2390 |
+| 123 | 0.6562 | 18.5280 |
+| 456 | 0.8438 | 19.0867 |
+| **mean** | **0.7396** | **18.6179** |
+</obs>
+
+### step 4 — Agent-Specific (AS) central-V critic   [slug:mappo-as-critic]
+
+<think>
+[[POLISH_REASONING: adapt to first-person agentic voice, end by deciding to implement]]
+The centralized state-V critic confirmed both halves of what I predicted, and the half it confirmed
+about its *own* weakness is exactly the lever I left on the table. Bringing the global state back into the
+robust MLP did what I expected on the maps where global structure matters: 2s3z jumped from the local
+critic's capped 0.448 to 0.833 — the single biggest gain on the ladder, and it cleared the 0.7 bar I
+guessed — and MMM rose from 0.635 to 0.927, the heterogeneity payoff where a whole-team state lets the
+shared net give the Medivac a different value than a Marine. No seed collapse anywhere, as I argued there
+could not be without cross-agent mixing. But look at where the EP critic is *weakest*: 3s5z, mean 0.740,
+the lowest of its three maps — {0.719, 0.656, 0.844}. I called this in advance: 3s5z is the largest team
+(8 agents), the global state is highest-dimensional there, and the environment-provided state is
+*agent-agnostic*, so on the biggest team it drops the most agent-specific local detail and the critic has
+to lean hardest on the one-hot — which carries an agent's identity but none of its current local
+situation. The signature is precisely "centralization helps most on 2s3z and MMM, helps least on the
+biggest team 3s5z," and that signature is the diagnosis: the remaining gap is the *agent-agnostic state
+input*. The critic sees the whole team's state but not what each agent is locally facing, and on a
+crowded 8-agent map that omission is where the per-agent advantage goes soft.
+
+So the next move is forced. The EP critic leans entirely on the one-hot to make the shared network
+agent-specific, and the one-hot is a *constant* — it tells the network *which* agent this is but nothing
+about *what that agent is currently seeing*. The per-agent value of a situation in a SMAC fight depends
+heavily on local features the agent-agnostic state drops: whether this agent can fire right now, how
+exposed it is, its relative distances to the allies and enemies inside its own sight range. Those
+features live in the agent's own observation `o^a`, which the critic is currently not reading at all
+(I deliberately did not, because the EP baseline's config fixed `obs_individual_obs=False`). The fix is
+to stop choosing between global and local and feed the critic *both*: for agent `a`, the global state `s`
+together with that agent's own observation `o^a`. This is the agent-specific global state — agent-specific
+because each agent now gets a *different* critic input (`s` shared, `o^a` not). It carries the EP
+critic's comprehensive global picture *and* the local detail EP was dropping, and it does so at the cost
+of a single `o^a`, not the full all-observations concatenation.
+
+Let me make sure I am not just re-deriving the failure modes I already climbed past. First, is this the
+attention critic's mistake in disguise? No — and the distinction is the whole point of the ladder. The
+attention critic collapsed because of *cross-agent mixing*: a softmax over agents fit to a moving
+bootstrapped target found degenerate basins. The agent-specific critic has *no* mixing. Each agent's
+value is a deterministic MLP of `[s, o^a, e_a]`; agents do not attend to or read each other; the only
+cross-agent information is the global state every agent already shared in the EP critic. So I keep the
+robustness that the plain-MLP critics earned — no attention, no degenerate basin — and add only the
+*local* information the EP form dropped. Second, is this CL, the all-observations concatenation that I
+rejected back when I derived the local critic? No — CL stacks every agent's observation `(o_1,…,o_n)`
+into every critic's input, so the dimension grows linearly with `n` and the value learning gets
+sample-hungry exactly on the big maps. The agent-specific input adds only *one* `o^a` per agent, of width
+`obs_dim`, not `n` of them. It threads the needle CL and EP each missed: EP had the global picture but no
+local detail; CL had all local detail but at `n`× the cost and could still miss truly-global structure;
+agent-specific has the global state *and* this agent's local detail at the cost of one observation.
+
+There is a second payoff in the agent-specific input that closes a loop from the earlier rungs. I have
+been sharing one critic across all agents since the local critic, for the data-efficiency reason
+(homogeneous agents, `n`-fold data per gradient step, and the robustness that bought). The EP critic
+handed that shared network the *same* `s` for every agent, so it could only distinguish agents through
+the one-hot — a thin, identity-only signal. With the agent-specific input, each agent feeds in its *own*
+`o^a`, so one shared network produces *different* values for different agents *grounded in their actual
+local situation*, not just their index. The agent-specific component is the mechanism that makes a shared
+critic genuinely agent-specific; the one-hot was the impoverished stand-in for it. On the heterogeneous
+maps — MMM's mixed unit types, 3s5z's stalkers and zealots — that is exactly the per-agent specialization
+the EP critic could only gesture at through the id.
+
+I should be honest about the fully optimized version and why I am landing where I am. The agent-specific
+state `[s, o^a]` can double-count features: in SMAC the environment state and a local observation overlap
+(both encode, say, enemy health), so concatenating them inflates the input with redundant dimensions. The
+fully pruned form removes the duplicated features — keep `s`, append only the part of `o^a` not already in
+`s` — for the same information content at a smaller input. That pruning needs a per-feature overlap map,
+which this harness does not hand me cleanly: smaclite gives `state` and `obs` as dense vectors without an
+exposed correspondence between their components. So the faithful, runnable form here is the un-pruned
+agent-specific input `[s, o^a, e_a]`. I note that the pruned form would be strictly better on input
+dimensionality at no information cost *if* the overlap map were available — but the un-pruned form loses
+no information; it only carries some redundant dimensions, and a width-128 MLP absorbs that easily. So I
+keep all the information and accept the modest redundancy.
+
+The module is the EP critic with the obs threaded back in, and the shapes combine the two structural
+patterns I have already used. The global state is one vector per `(B, T)`, so it must be *broadcast*
+across the agent axis — `state.unsqueeze(2).expand(-1, -1, n, -1)` to `(B, T, n, state_dim)` — the same
+broadcast the EP critic used. The observations already live on the agent axis as `(B, T, n, obs_dim)`, so
+they line up directly with *no* broadcast — the same non-broadcast the local critic used; each agent's
+slot already carries its own `o^a`. The agent one-hot is the `n×n` identity broadcast to `(B, T, n, n)`.
+Concatenate `[state, obs, agent_id]` along the last axis to `(B, T, n, state_dim + obs_dim + n)`, run the
+identical 128–128–1 ReLU MLP, scalar head, out comes `(B, T, n, 1)` — the trailing singleton the learner
+squeezes. The only change from the EP critic is `input_shape` growing by `obs_dim` and the critic now
+reading `batch["obs"]` as well as `batch["state"]`. Nothing in the actor, the learner, GAE, or the
+optimizer moves — same `q_nstep=5` target from a target copy, same masked MSE regression, same clipped
+actor surrogate on each agent's own ratio, same reward standardization and grad-clip. This is single-agent
+PPO with one thing changed from the strongest baseline: the value input now sees both the global state
+and the agent's own observation.
+
+Here is the bar this has to clear and what I would validate, stated against the EP critic's real numbers
+with no invented ones. The EP critic landed MMM 0.927, 2s3z 0.833, 3s5z 0.740 (means). The agent-specific
+critic must not regress the seed robustness — there is no cross-agent mixing, so I expect no seed collapse
+and a spread no worse than the EP critic's on any map; if a seed died, that would falsify the "no mixing,
+no degenerate basin" claim and I would stop. The gain I expect is concentrated exactly where the EP
+critic was weakest and for the reason I diagnosed: **3s5z**, the largest team, where the agent-agnostic
+state dropped the most local detail — adding `o^a` should lift 3s5z the most, and the cleanest
+confirmation would be 3s5z closing toward the other two maps rather than trailing at 0.740. I expect MMM,
+already near-saturated at 0.927, to gain the least simply because there is little headroom left, and 2s3z
+to gain modestly. So the falsifiable prediction is an ordering: the improvement over EP should be
+*largest on 3s5z*, smallest on the near-saturated MMM — the inverse of where the EP critic gained over the
+local critic. If instead the agent-specific input helped uniformly or helped MMM most, that would tell me
+the 3s5z weakness was not the agent-agnostic state but something else (the team size straining the value
+regression, say), and the agent-specific story would be wrong. The thing I would watch hardest is whether
+the per-agent values become genuinely agent-specific on the heterogeneous maps — whether the Medivac and
+the Marines get distinguishably different baselines now that the critic sees each one's local situation
+rather than only its id. The distilled agent-specific critic — global state plus the agent's own
+observation plus the one-hot, plain MLP, no attention — is in the answer.
+</think>
+<say>
+[[FILL_SAY: 1-2 sentences naming the method and what this first edit does]]
+</say>
+<edit path="epymarl/src/modules/critics/custom_critic.py">
+<old>
+class CustomCritic(nn.Module):
+    """MAPPO critic — shared MLP over (state + agent one-hot).
+
+    Standard centralized V from Yu et al. 2022 (arXiv 2103.01955).
+    Matches epymarl's CentralVCritic. All agents share the same network;
+    the agent one-hot lets the shared network produce agent-specific
+    value estimates while still conditioning on the full global state.
+    """
+</old>
+<new>
+class CustomCritic(nn.Module):
+    """Agent-specific central-V critic — shared MLP over (state + obs_i + agent one-hot).
+
+    The agent-specific (AS) global-state critic input of Yu et al. 2022
+    (arXiv 2103.01955): condition the centralized value on both the global
+    state and the agent's own observation, so one shared network produces
+    per-agent values that see the agent-specific local features the bare
+    global state drops. Returns (B, T, n_agents, 1).
+    """
+</new>
+</edit>
+<obs>
+Successfully replaced text in epymarl/src/modules/critics/custom_critic.py.
+</obs>
+<note>
+[[FILL_NOTE?: optional one-line thought for this edit, or delete this block]]
+</note>
+<edit path="epymarl/src/modules/critics/custom_critic.py">
+<old>
+        state_dim = int(scheme["state"]["vshape"])
+        input_shape = state_dim + self.n_agents
+        self.fc1 = nn.Linear(input_shape, args.hidden_dim)
+</old>
+<new>
+        state_dim = int(scheme["state"]["vshape"])
+        obs_dim = int(scheme["obs"]["vshape"])
+        input_shape = state_dim + obs_dim + self.n_agents      # AS: state + o_i + agent one-hot
+        self.fc1 = nn.Linear(input_shape, args.hidden_dim)
+</new>
+</edit>
+<obs>
+Successfully replaced text in epymarl/src/modules/critics/custom_critic.py.
+</obs>
+<note>
+[[FILL_NOTE?: optional one-line thought for this edit, or delete this block]]
+</note>
+<edit path="epymarl/src/modules/critics/custom_critic.py">
+<old>
+        state = state.unsqueeze(2).expand(-1, -1, self.n_agents, -1)     # (B, T, n, state_dim)
+        agent_id = th.eye(self.n_agents, device=batch.device)
+        agent_id = agent_id.unsqueeze(0).unsqueeze(0).expand(bs, max_t, -1, -1)
+        inputs = th.cat([state, agent_id], dim=-1)                       # (B, T, n, state+n)
+</old>
+<new>
+        state = state.unsqueeze(2).expand(-1, -1, self.n_agents, -1)     # (B, T, n, state_dim)
+        obs = batch["obs"][:, ts]                                        # (B, T, n, obs_dim)
+        agent_id = th.eye(self.n_agents, device=batch.device)
+        agent_id = agent_id.unsqueeze(0).unsqueeze(0).expand(bs, max_t, -1, -1)
+        inputs = th.cat([state, obs, agent_id], dim=-1)                  # (B, T, n, state+obs+n)
+</new>
+</edit>
+<obs>
+Successfully replaced text in epymarl/src/modules/critics/custom_critic.py.
+</obs>
+

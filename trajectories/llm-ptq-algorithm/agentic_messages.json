@@ -1,0 +1,479 @@
+{
+ "tools": [
+  {
+   "type": "function",
+   "function": {
+    "name": "str_replace",
+    "description": "Replace the unique occurrence of old_str with new_str in the file.",
+    "parameters": {
+     "type": "object",
+     "properties": {
+      "path": {
+       "type": "string"
+      },
+      "old_str": {
+       "type": "string"
+      },
+      "new_str": {
+       "type": "string"
+      }
+     },
+     "required": [
+      "path",
+      "old_str",
+      "new_str"
+     ]
+    }
+   }
+  },
+  {
+   "type": "function",
+   "function": {
+    "name": "create",
+    "description": "Create a new file with the given text.",
+    "parameters": {
+     "type": "object",
+     "properties": {
+      "path": {
+       "type": "string"
+      },
+      "file_text": {
+       "type": "string"
+      }
+     },
+     "required": [
+      "path",
+      "file_text"
+     ]
+    }
+   }
+  },
+  {
+   "type": "function",
+   "function": {
+    "name": "run_experiment",
+    "description": "Train+evaluate the current code; returns metrics.",
+    "parameters": {
+     "type": "object",
+     "properties": {}
+    }
+   }
+  }
+ ],
+ "messages": [
+  {
+   "role": "system",
+   "content": "You are a research engineer improving a model on a fixed ML task. You work by editing the model code and running experiments. Think carefully before each change. You have these tools:\n- str_replace(path, old_str, new_str): replace the unique occurrence of old_str with new_str.\n- create(path, file_text): create a new file.\n- run_experiment(): train + evaluate the current code under the fixed budget; returns metrics.\nMake one tool call at a time. After editing, call run_experiment() to measure your method."
+  },
+  {
+   "role": "user",
+   "content": "## Research question\n\nTake a pretrained Mistral-7B-v0.1 (7.24B parameters, FP16) and quantize its linear weights to low-bit\nintegers — INT4 and INT3 — **once**, with no retraining and no gradient update to the original weights,\nso that WikiText-2 perplexity stays as close as possible to the FP16 baseline. The only thing being\ndesigned is the per-layer **quantization algorithm**: how a single `nn.Linear`'s weight matrix is mapped\nonto a fixed integer grid, given (optionally) a small calibration pass over that layer's inputs.\nEverything else — model loading, the layer-by-layer calibration driver, the perplexity evaluation — is\nfixed. The challenge is that INT4 has only 16 levels and INT3 only 8, so the rounding residual is large,\nand the errors compound across 32 transformer blocks × 7 linear layers each.\n\n## Prior art before the first rung (low-bit PTQ lineage)\n\nThe first rung — round-to-nearest — is the crude floor that every scaling effort falls back to, and the\nlater rungs are the corrections people built on top of it. These are the methods the ladder reacts to.\n\n- **Round-to-nearest (RTN), Jacob et al. 2018.** Map each weight independently to the closest value on a\n  uniform symmetric grid, $\\Delta=\\max(|\\mathbf w|)/q_{\\max}$, with one scale per row (or per group of\n  columns). Trivially scalable — no calibration, no interaction between weights. Gap: it treats every\n  weight as equally important and ignores how the layer's *output* depends on the weights, so at 3–4\n  bits the per-element residual (≈0.25 of a step on average) accumulates into large output error and\n  perplexity blows up at 7B scale, worst of all at INT3.\n- **SmoothQuant, Xiao et al. 2023 (arXiv:2211.10438).** Migrate quantization difficulty from activations\n  to weights with a per-input-channel equivalence transform $\\mathbf W\\,\\mathrm{diag}(\\mathbf s)$,\n  $\\mathbf s=\\mathbf s_X^{\\alpha}$ from activation magnitudes, then RTN. Built for W8A8 (8-bit weights\n  *and* activations); the smoothing helps activation quantization most. Gap: in a weight-only INT3/INT4\n  setting the activation side is already FP16, so a fixed-$\\alpha$ smooth + RTN leaves most of the\n  low-bit weight error on the table — it does not search the scale against the actual output error.\n- **GPTQ, Frantar et al. 2023 (arXiv:2210.17323).** Minimize the layer output error\n  $\\lVert\\mathbf{WX}-\\widehat{\\mathbf W}\\mathbf X\\rVert^2$ directly: accumulate the input second moment\n  $\\mathbf H\\propto\\mathbf X\\mathbf X^\\top$ during calibration, then quantize column by column,\n  compensating the residual onto the still-free columns with the inverse Hessian. Gap (relative to the\n  next rung): it fits an error-feedback regression to the calibration activations, which is a per-column\n  greedy that can over-commit to the calibration distribution, and it spends a Cholesky/inverse and a\n  column sweep per layer.\n- **AWQ, Lin et al. 2024 (arXiv:2306.00978).** Don't compensate error after the fact — *protect* the\n  weights that matter before rounding. Identify salient input channels by activation magnitude, scale\n  them up (and the activation down) so they get effectively finer resolution, with the per-channel scale\n  $\\mathbf s=\\mathbf s_X^{\\alpha}$ chosen by grid-searching $\\alpha$ against the layer's real output MSE,\n  plus a per-group clip search. No Hessian inverse. Gap it inherits: still a uniform low-bit grid, so the\n  extreme INT3 regime remains the hard case.\n\n## The fixed substrate\n\nA layer-by-layer quantize-then-evaluate pipeline is frozen and must not be touched. It loads\nMistral-7B-v0.1 from disk, evaluates the FP16 perplexity once as the reference, then walks the 32\ntransformer blocks one at a time: it moves a block to the GPU, registers forward hooks that feed each\nlinear sublayer's input into a `LayerQuantizer.add_batch(inp)`, runs the 128 calibration sequences\nthrough to populate the per-layer statistics, calls `LayerQuantizer.quantize()` on each of the block's\nseven linear layers (`q_proj`, `k_proj`, `v_proj`, `o_proj`, `gate_proj`, `up_proj`, `down_proj`),\nwrites the returned quantized-dequantized weight back in place, re-runs the calibration inputs through\nthe now-quantized block to produce the inputs for the next block, and moves on. Embeddings, the RMSNorm\nlayers, and the LM head are left in FP16. The quantizer sees **one linear layer at a time** — there is\nno cross-layer scale absorption and no whole-block reconstruction context; whatever a method needs must\nbe computed from that single layer's weight and its own calibration inputs. Helpers available in scope:\n`torch`, `torch.nn`, `F`, `np`, `math`, `copy`, `os`, `time`.\n\n## The editable interface\n\nExactly one region is editable — lines 26–157 of `gptq/custom_ptq.py`: the three quantization\nprimitives (`quantize_tensor`, `dequantize_tensor`, `find_scale_zero`) and the `LayerQuantizer` class.\nEvery method on the ladder is a fill of this same contract. The constructor receives the layer and the\nevaluation-set `num_bits` (4 or 3) and `group_size` (128, 64, or −1 for per-channel); `add_batch(inp)`\ncollects whatever calibration statistics the method needs from inputs of shape `(batch*seq, in_features)`;\n`quantize()` returns the quantized-dequantized weight, same shape and dtype as the original, respecting\n`num_bits` and `group_size`; `free()` releases the buffers. The grid is symmetric:\n$q_{\\min}=-2^{b-1}$, $q_{\\max}=2^{b-1}-1$, and `find_scale_zero` builds a per-group scale by reshaping\neach row into groups of `group_size` consecutive columns and taking $\\max|\\cdot|/q_{\\max}$ per group.\n\nThe starting point is the scaffold default: **plain RTN** — `add_batch` only counts samples (it keeps an\n`H` buffer for interface compatibility), and `quantize()` calls `find_scale_zero` + round + dequantize\non the raw weight, ignoring calibration entirely. Each later method replaces exactly this region.\n\n```python\n# EDITABLE region of gptq/custom_ptq.py (lines 26-157) — default fill: round-to-nearest\n\ndef quantize_tensor(x, scale, zero_point, qmin, qmax):\n    \"\"\"Quantize a float tensor to integers given scale and zero point.\"\"\"\n    x_int = torch.clamp(torch.round(x / scale) + zero_point, qmin, qmax)\n    return x_int\n\n\ndef dequantize_tensor(x_int, scale, zero_point):\n    \"\"\"Dequantize integer tensor back to float.\"\"\"\n    return (x_int - zero_point) * scale\n\n\ndef find_scale_zero(weight, num_bits=4, group_size=-1, symmetric=True):\n    \"\"\"Compute per-channel (or per-group) quantization parameters.\"\"\"\n    qmin = -(1 << (num_bits - 1))\n    qmax = (1 << (num_bits - 1)) - 1\n\n    if group_size > 0:\n        out_features, in_features = weight.shape\n        assert in_features % group_size == 0\n        w_groups = weight.reshape(out_features, -1, group_size)\n        if symmetric:\n            w_max = w_groups.abs().amax(dim=-1, keepdim=True).clamp(min=1e-12)\n            scale = w_max / qmax\n            zero_point = torch.zeros_like(scale)\n        else:\n            w_min = w_groups.amin(dim=-1, keepdim=True)\n            w_max = w_groups.amax(dim=-1, keepdim=True)\n            w_range = (w_max - w_min).clamp(min=1e-12)\n            scale = w_range / (qmax - qmin)\n            zero_point = torch.round(qmin - w_min / scale)\n        scale = scale.reshape(out_features, -1).repeat_interleave(group_size, dim=1)\n        zero_point = zero_point.reshape(out_features, -1).repeat_interleave(group_size, dim=1)\n    else:\n        if symmetric:\n            w_max = weight.abs().amax(dim=1, keepdim=True).clamp(min=1e-12)\n            scale = w_max / qmax\n            zero_point = torch.zeros_like(scale)\n        else:\n            w_min = weight.amin(dim=1, keepdim=True)\n            w_max = weight.amax(dim=1, keepdim=True)\n            w_range = (w_max - w_min).clamp(min=1e-12)\n            scale = w_range / (qmax - qmin)\n            zero_point = torch.round(qmin - w_min / scale)\n\n    return scale, zero_point, qmin, qmax\n\n\nclass LayerQuantizer:\n    \"\"\"Quantizes a single nn.Linear layer's weights. Default: round-to-nearest.\"\"\"\n\n    def __init__(self, layer, num_bits=4, group_size=-1):\n        self.layer = layer\n        self.num_bits = num_bits\n        self.group_size = group_size\n        self.out_features, self.in_features = layer.weight.shape\n        self.dev = layer.weight.device\n        self.nsamples = 0\n        self.H = torch.zeros(\n            (self.in_features, self.in_features),\n            device=self.dev, dtype=torch.float32\n        )\n\n    def add_batch(self, inp):\n        if inp.dim() == 3:\n            inp = inp.reshape(-1, inp.shape[-1])\n        n = inp.shape[0]\n        inp = inp.float()\n        self.H += inp.T @ inp\n        self.nsamples += n\n\n    def quantize(self):\n        W = self.layer.weight.data.clone().float()\n        scale, zero_point, qmin, qmax = find_scale_zero(\n            W, num_bits=self.num_bits, group_size=self.group_size, symmetric=True\n        )\n        W_q = quantize_tensor(W, scale, zero_point, qmin, qmax)\n        W_dq = dequantize_tensor(W_q, scale, zero_point)\n        return W_dq.to(self.layer.weight.dtype)\n\n    def free(self):\n        del self.H\n        self.H = None\n```\n\n## Evaluation settings\n\nOne model (Mistral-7B-v0.1), one seed (42), and three quantization settings probing generalizability of\nthe *algorithm*: `ptq-7b-int4` (INT4, group size 128 — the standard setting), `ptq-7b-int3` (INT3, group\nsize 128 — only 8 levels, the hard case), and `ptq-7b-int4-g64` (INT4, group size 64 — finer\ngranularity). Calibration is 128 sequences of 2048 tokens from the WikiText-2 training set. Primary\nmetric `wikitext2_ppl` — WikiText-2 perplexity after quantization, lower is better; secondary\n`degradation` — the perplexity increase over the FP16 reference (4.9071), lower is better. The same\n`LayerQuantizer` must run unchanged across all three settings (only `num_bits`/`group_size` differ).\n\nThe editable model code is in `gptq/custom_ptq.py`:\n```python\n\n# ── Helper: basic quantize/dequantize primitives ──────────────────────────────\n\ndef quantize_tensor(x, scale, zero_point, qmin, qmax):\n    \"\"\"Quantize a float tensor to integers given scale and zero point.\"\"\"\n    x_int = torch.clamp(torch.round(x / scale) + zero_point, qmin, qmax)\n    return x_int\n\n\ndef dequantize_tensor(x_int, scale, zero_point):\n    \"\"\"Dequantize integer tensor back to float.\"\"\"\n    return (x_int - zero_point) * scale\n\n\ndef find_scale_zero(weight, num_bits=4, group_size=-1, symmetric=True):\n    \"\"\"Compute per-channel (or per-group) quantization parameters.\n\n    Args:\n        weight: float tensor of shape (out_features, in_features)\n        num_bits: number of quantization bits\n        group_size: if > 0, compute params per group of columns; else per-row\n        symmetric: if True, use symmetric quantization (zero_point = 0)\n\n    Returns:\n        scale: float tensor broadcastable to weight shape\n        zero_point: float tensor broadcastable to weight shape\n        qmin, qmax: integer quantization range\n    \"\"\"\n    qmin = -(1 << (num_bits - 1))\n    qmax = (1 << (num_bits - 1)) - 1\n\n    if group_size > 0:\n        # Reshape weight into groups for per-group quantization\n        out_features, in_features = weight.shape\n        assert in_features % group_size == 0, \\\n            f\"in_features ({in_features}) must be divisible by group_size ({group_size})\"\n        w_groups = weight.reshape(out_features, -1, group_size)\n\n        if symmetric:\n            w_max = w_groups.abs().amax(dim=-1, keepdim=True).clamp(min=1e-12)\n            scale = w_max / qmax\n            zero_point = torch.zeros_like(scale)\n        else:\n            w_min = w_groups.amin(dim=-1, keepdim=True)\n            w_max = w_groups.amax(dim=-1, keepdim=True)\n            w_range = (w_max - w_min).clamp(min=1e-12)\n            scale = w_range / (qmax - qmin)\n            zero_point = torch.round(qmin - w_min / scale)\n\n        scale = scale.reshape(out_features, -1).repeat_interleave(group_size, dim=1)\n        zero_point = zero_point.reshape(out_features, -1).repeat_interleave(group_size, dim=1)\n    else:\n        # Per-channel (per output row)\n        if symmetric:\n            w_max = weight.abs().amax(dim=1, keepdim=True).clamp(min=1e-12)\n            scale = w_max / qmax\n            zero_point = torch.zeros_like(scale)\n        else:\n            w_min = weight.amin(dim=1, keepdim=True)\n            w_max = weight.amax(dim=1, keepdim=True)\n            w_range = (w_max - w_min).clamp(min=1e-12)\n            scale = w_range / (qmax - qmin)\n            zero_point = torch.round(qmin - w_min / scale)\n\n    return scale, zero_point, qmin, qmax\n\n\nclass LayerQuantizer:\n    \"\"\"Quantizes a single nn.Linear layer's weights to low-bit integers.\n\n    This class encapsulates the quantization algorithm. Override the\n    `quantize` method to implement custom quantization strategies.\n\n    The calibration data (layer inputs) is provided via `add_batch()`.\n    The `quantize()` method uses the collected statistics to quantize\n    the weight matrix and returns the quantized-dequantized weight.\n\n    Args:\n        layer: nn.Linear module to quantize\n        num_bits: target bit width (default: 4)\n        group_size: quantization group size; -1 for per-channel (default: -1)\n    \"\"\"\n\n    def __init__(self, layer, num_bits=4, group_size=-1):\n        self.layer = layer\n        self.num_bits = num_bits\n        self.group_size = group_size\n        self.out_features, self.in_features = layer.weight.shape\n        self.dev = layer.weight.device\n\n        # Accumulate Hessian (X^T X) for calibration\n        self.nsamples = 0\n        self.H = torch.zeros(\n            (self.in_features, self.in_features),\n            device=self.dev, dtype=torch.float32\n        )\n\n    def add_batch(self, inp):\n        \"\"\"Accumulate calibration statistics from a batch of layer inputs.\n\n        Args:\n            inp: input tensor of shape (batch, seq_len, in_features) or\n                 (batch * seq_len, in_features)\n        \"\"\"\n        if inp.dim() == 3:\n            inp = inp.reshape(-1, inp.shape[-1])\n        n = inp.shape[0]\n        inp = inp.float()\n        self.H += inp.T @ inp\n        self.nsamples += n\n\n    def quantize(self):\n        \"\"\"Quantize the layer weights and return the quantized-dequantized weight.\n\n        Default implementation: simple round-to-nearest (RTN) quantization.\n        Override this to implement better algorithms (e.g., GPTQ, AWQ).\n\n        Returns:\n            Quantized-dequantized weight tensor of same shape as original weight.\n        \"\"\"\n        W = self.layer.weight.data.clone().float()\n        scale, zero_point, qmin, qmax = find_scale_zero(\n            W, num_bits=self.num_bits, group_size=self.group_size, symmetric=True\n        )\n        W_q = quantize_tensor(W, scale, zero_point, qmin, qmax)\n        W_dq = dequantize_tensor(W_q, scale, zero_point)\n        return W_dq.to(self.layer.weight.dtype)\n\n    def free(self):\n        \"\"\"Release calibration buffers.\"\"\"\n        del self.H\n        self.H = None\n```\nImprove it. Derive your method, edit the code, then run_experiment()."
+  },
+  {
+   "role": "assistant",
+   "reasoning_content": "The algorithm is the whole point, but it has to bolt onto a fixed pipeline, and the simplest fill of\nthat pipeline is the floor I should start from before I spend any cleverness — so the pain to begin with\nis just: take Mistral-7B's weights and put them on an integer grid, once, with nothing but the grid.\nEverything downstream — the layer-by-layer driver, the calibration hooks, the perplexity eval — is\nfrozen, and the only region I own is `LayerQuantizer` plus the three primitives. The cheapest thing that\nregion can do is round each weight independently to its nearest grid point, and that is exactly what I\nwant as the baseline: it costs nothing, it depends on no calibration data, and it tells me how far plain\nrounding gets at 7B before I add any structure.\n\nLet me write down what rounding actually is here, because the grid is the substrate every later rung also\nlives on. Symmetric quantization with $b$ bits: the integer range is $q_{\\min}=-2^{b-1}$,\n$q_{\\max}=2^{b-1}-1$, so INT4 gives 16 levels ($-8..7$) and INT3 gives 8 levels ($-4..3$). For a vector\nof weights $\\mathbf w$ the step is $\\Delta=\\max(|\\mathbf w|)/q_{\\max}$ — one scale stretched so the\nlargest-magnitude weight in the group lands at the top of the grid — and the quantized-dequantized value\nis $\\widehat w=\\Delta\\cdot\\operatorname{clamp}(\\operatorname{round}(w/\\Delta),q_{\\min},q_{\\max})$.\n`find_scale_zero` builds this: with `group_size>0` it reshapes each output row into groups of\n`group_size` consecutive input columns and computes one $\\max|\\cdot|/q_{\\max}$ per group, then\nbroadcasts the scale back over the columns of that group; with `group_size=-1` it does one scale per row.\nThe zero point is zero — symmetric, no offset — which is the right default for weight distributions that\nare roughly centered at zero. So the only free choice RTN makes is the per-group scale, and it makes it\nby the crudest possible rule: stretch to the absolute max.\n\nWhy is that the floor and not something better? Because the per-element residual is irreducible under\nthis rule and it is large at low bit-width. Rounding $w/\\Delta$ to the nearest integer leaves a residual\nuniform on $[-\\tfrac12,\\tfrac12]$ in grid units, i.e. an absolute weight error around $0.25\\,\\Delta$ on\naverage, $0.5\\,\\Delta$ in the worst case. At INT4, $q_{\\max}=7$, so $\\Delta$ is the group's max magnitude\ndivided by 7 — already a coarse grid; at INT3, $q_{\\max}=3$, the grid is more than twice as coarse and\nthe same fractional residual maps to more than twice the absolute weight error. And here is the part that\nmakes RTN genuinely the floor rather than merely crude: the scale is set by the single largest weight in\nthe group. One outlier weight inflates $\\Delta$ for *every* other weight in that group, so the typical\nsmall weights — which are the overwhelming majority and which carry most of the layer's behavior in\naggregate — get rounded on a grid that was stretched to accommodate a value they have nothing to do with.\nRTN spends its resolution on the extremes and starves the bulk. There is no mechanism in it to notice or\nfix this, by construction; it never looks at activations and never looks at what the *output* does.\n\nThat last point is the real indictment, and it is worth stating precisely because it is what every later\nrung attacks. What I care about is not the weights — it is the layer's behavior. For a linear layer with\nweights $\\mathbf W$ and calibration inputs stacked as columns of $\\mathbf X$, the quantity that\npropagates to the next block is $\\mathbf W\\mathbf X$, so the honest objective is to keep\n$\\lVert\\mathbf W\\mathbf X-\\widehat{\\mathbf W}\\mathbf X\\rVert^2$ small. RTN minimizes a *different*\nobjective — the per-weight error $\\lVert\\mathbf W-\\widehat{\\mathbf W}\\rVert^2$, and not even that\noptimally across a group, just element-wise nearest. The two objectives diverge exactly when some input\ndirections are excited far more than others by real text: an error on a weight that multiplies a\nhigh-variance input feature costs the output a lot, an equal error on a weight multiplying a near-dead\ninput costs almost nothing, and RTN treats them identically. The whole calibration apparatus the\nscaffold hands me — the `add_batch` hook that streams 128 real sequences through each layer — exists to\nmeasure precisely this input structure, and RTN throws it away. So in the scaffold, RTN's `add_batch`\ndoes the minimum the interface demands: it counts samples and keeps an `H` buffer allocated only so the\nclass signature matches what later Hessian-based methods will fill; nothing in `quantize()` reads it.\n\nWhy keep `H` at all if RTN ignores it? Because the interface is shared across the ladder. The driver\nconstructs `LayerQuantizer(layer, num_bits, group_size)`, calls `add_batch` under a forward hook for\nevery calibration sequence, then calls `quantize()`. GPTQ will use that hook to accumulate\n$\\mathbf X\\mathbf X^\\top$; AWQ will use it to accumulate per-channel activation magnitudes and a reservoir\nof raw inputs. RTN keeps the buffer and the sample count so it is a clean, minimal *instance* of the same\ncontract — the floor that the later fills are deltas against — and `free()` releases it. This keeps the\ncomparison honest: every rung is the same class with the same entry points, differing only in what\n`add_batch` collects and what `quantize()` does with it.\n\nThere is one design decision inside RTN that is not forced and that I should make deliberately, because it\nsets the convention the whole ladder inherits: symmetric versus asymmetric. `find_scale_zero` supports\nboth — asymmetric would fit $(\\max-\\min)/(q_{\\max}-q_{\\min})$ with a nonzero integer zero point, spending\nthe grid on the actual $[\\min,\\max]$ range rather than the symmetric $[-\\max|\\cdot|,\\max|\\cdot|]$. For a\ndistribution skewed off zero, asymmetric uses the levels better. But LLM weight groups are close to\nzero-mean and roughly symmetric, asymmetric costs a stored zero point per group, and — more important for\na baseline — the symmetric grid is the cleaner reference point against which scaling and error\ncompensation can be measured later, since it has no zero-point degree of freedom to confound the\ncomparison. So I take `symmetric=True`: zero point fixed at zero, scale $=\\max|\\cdot|/q_{\\max}$. That is\nthe default the template already encodes, and I keep it.\n\nSo my step-1 edit is the trivial one: leave the region at its default. `add_batch` reshapes the input to\n2-D and increments `nsamples` (the `H` accumulation in the template's default is harmless overhead, but\nthe literal floor is \"collect nothing useful and round\"); `quantize()` clones the weight to float, calls\n`find_scale_zero` with the eval-set `num_bits` and `group_size` and `symmetric=True`, rounds onto the\ngrid, dequantizes, and casts back to the layer's dtype. No calibration is consumed, no weight interacts\nwith another, no output error is considered. The full module is in the answer.\n\nNow reason about what this floor must do, because that is the entire reason to run it. Group size is the\none lever RTN does respond to, and it responds in the obvious direction: a smaller group means $\\Delta$\nis set by the local max over fewer columns, so a single outlier pollutes fewer neighbors and the typical\nweight gets a tighter grid. So I expect the three settings to order cleanly by how much grid resolution\nRTN has. INT4 with group 128 is the standard case and should land within a small perplexity gap of FP16 —\n16 levels per group is coarse but survivable when the model is this redundant. INT4 with group 64 should\nbe *better* than group 128 (finer granularity, fewer weights polluted per outlier) — a small improvement,\nnot a large one, since the bottleneck at INT4 is the level count more than the group extent. INT3 with\ngroup 128 is where I expect RTN to fall apart: halving the grid more than doubles the absolute residual,\nthe outlier-inflation problem bites harder when there are only 8 levels to spend, and across 32 blocks\nthe per-layer output errors compound into a large perplexity jump. INT3 is the setting that will most\nloudly demand something smarter than nearest-rounding.\n\nAnd that demand is already pointed at the next rung. The diagnosis is not that rounding is implemented\nwrong — it is that RTN optimizes the wrong objective: per-weight error instead of per-output error, with\na scale set by outliers and no use of the calibration data the scaffold is streaming through `add_batch`\nfor free. The two ways to fix that are the two later baselines. One: stop rounding each column in\nisolation — quantize column by column and *compensate* the residual onto the still-free columns using the\ninput second moment $\\mathbf X\\mathbf X^\\top$, so the layer output is preserved even though individual\nweights drift further from their originals (GPTQ). Two: stop letting outlier *input channels* dictate\nthe grid — measure which input channels are activated hardest, scale the corresponding weights up before\nrounding so they get finer effective resolution, and undo the scale afterward (AWQ). Either way the move\nis the same in spirit: bring the activation structure that RTN ignored back into the rounding decision.\nWhatever the precise numbers RTN posts, INT3 is the metric I am watching, because that is where the floor\nis lowest and where the next rung has the most room to climb. Let me lay the floor in: keep the region at\nits symmetric-grid default and run it.",
+   "content": "Starting from the floor: plain round-to-nearest. This first edit just relabels the region and trims the\ndefaults so RTN maps each weight to its nearest symmetric grid point, ignoring calibration entirely.",
+   "tool_calls": [
+    {
+     "type": "function",
+     "function": {
+      "name": "str_replace",
+      "arguments": {
+       "path": "gptq/custom_ptq.py",
+       "old_str": "\n# ── Helper: basic quantize/dequantize primitives ──────────────────────────────",
+       "new_str": "# EDITABLE region of gptq/custom_ptq.py (lines 26-157) — step 1: round-to-nearest"
+      }
+     }
+    }
+   ]
+  },
+  {
+   "role": "tool",
+   "content": "Successfully replaced text in gptq/custom_ptq.py."
+  },
+  {
+   "role": "assistant",
+   "reasoning_content": "",
+   "content": "",
+   "tool_calls": [
+    {
+     "type": "function",
+     "function": {
+      "name": "str_replace",
+      "arguments": {
+       "path": "gptq/custom_ptq.py",
+       "old_str": "def find_scale_zero(weight, num_bits=4, group_size=-1, symmetric=True):\n    \"\"\"Compute per-channel (or per-group) quantization parameters.\n\n    Args:\n        weight: float tensor of shape (out_features, in_features)\n        num_bits: number of quantization bits\n        group_size: if > 0, compute params per group of columns; else per-row\n        symmetric: if True, use symmetric quantization (zero_point = 0)\n\n    Returns:\n        scale: float tensor broadcastable to weight shape\n        zero_point: float tensor broadcastable to weight shape\n        qmin, qmax: integer quantization range\n    \"\"\"\n    qmin = -(1 << (num_bits - 1))",
+       "new_str": "def find_scale_zero(weight, num_bits=4, group_size=-1, symmetric=True):\n    \"\"\"Compute per-channel (or per-group) quantization parameters.\"\"\"\n    qmin = -(1 << (num_bits - 1))"
+      }
+     }
+    }
+   ]
+  },
+  {
+   "role": "tool",
+   "content": "Successfully replaced text in gptq/custom_ptq.py."
+  },
+  {
+   "role": "assistant",
+   "reasoning_content": "",
+   "content": "",
+   "tool_calls": [
+    {
+     "type": "function",
+     "function": {
+      "name": "str_replace",
+      "arguments": {
+       "path": "gptq/custom_ptq.py",
+       "old_str": "    if group_size > 0:\n        # Reshape weight into groups for per-group quantization\n        out_features, in_features = weight.shape\n        assert in_features % group_size == 0, \\\n            f\"in_features ({in_features}) must be divisible by group_size ({group_size})\"\n        w_groups = weight.reshape(out_features, -1, group_size)\n\n        if symmetric:",
+       "new_str": "    if group_size > 0:\n        out_features, in_features = weight.shape\n        assert in_features % group_size == 0\n        w_groups = weight.reshape(out_features, -1, group_size)\n        if symmetric:"
+      }
+     }
+    }
+   ]
+  },
+  {
+   "role": "tool",
+   "content": "Successfully replaced text in gptq/custom_ptq.py."
+  },
+  {
+   "role": "assistant",
+   "reasoning_content": "",
+   "content": "",
+   "tool_calls": [
+    {
+     "type": "function",
+     "function": {
+      "name": "str_replace",
+      "arguments": {
+       "path": "gptq/custom_ptq.py",
+       "old_str": "            zero_point = torch.round(qmin - w_min / scale)\n\n        scale = scale.reshape(out_features, -1).repeat_interleave(group_size, dim=1)\n        zero_point = zero_point.reshape(out_features, -1).repeat_interleave(group_size, dim=1)\n    else:\n        # Per-channel (per output row)\n        if symmetric:",
+       "new_str": "            zero_point = torch.round(qmin - w_min / scale)\n        scale = scale.reshape(out_features, -1).repeat_interleave(group_size, dim=1)\n        zero_point = zero_point.reshape(out_features, -1).repeat_interleave(group_size, dim=1)\n    else:\n        if symmetric:"
+      }
+     }
+    }
+   ]
+  },
+  {
+   "role": "tool",
+   "content": "Successfully replaced text in gptq/custom_ptq.py."
+  },
+  {
+   "role": "assistant",
+   "reasoning_content": "Now the class itself: strip the doc and keep it a minimal RTN instance of the shared contract.",
+   "content": "",
+   "tool_calls": [
+    {
+     "type": "function",
+     "function": {
+      "name": "str_replace",
+      "arguments": {
+       "path": "gptq/custom_ptq.py",
+       "old_str": "class LayerQuantizer:\n    \"\"\"Quantizes a single nn.Linear layer's weights to low-bit integers.\n\n    This class encapsulates the quantization algorithm. Override the\n    `quantize` method to implement custom quantization strategies.\n\n    The calibration data (layer inputs) is provided via `add_batch()`.\n    The `quantize()` method uses the collected statistics to quantize\n    the weight matrix and returns the quantized-dequantized weight.\n\n    Args:\n        layer: nn.Linear module to quantize\n        num_bits: target bit width (default: 4)\n        group_size: quantization group size; -1 for per-channel (default: -1)\n    \"\"\"",
+       "new_str": "class LayerQuantizer:\n    \"\"\"RTN quantizer -- simple round-to-nearest, ignores calibration data.\"\"\""
+      }
+     }
+    }
+   ]
+  },
+  {
+   "role": "tool",
+   "content": "Successfully replaced text in gptq/custom_ptq.py."
+  },
+  {
+   "role": "assistant",
+   "reasoning_content": "",
+   "content": "",
+   "tool_calls": [
+    {
+     "type": "function",
+     "function": {
+      "name": "str_replace",
+      "arguments": {
+       "path": "gptq/custom_ptq.py",
+       "old_str": "        self.dev = layer.weight.device\n\n        # Accumulate Hessian (X^T X) for calibration\n        self.nsamples = 0",
+       "new_str": "        self.dev = layer.weight.device\n        self.nsamples = 0"
+      }
+     }
+    }
+   ]
+  },
+  {
+   "role": "tool",
+   "content": "Successfully replaced text in gptq/custom_ptq.py."
+  },
+  {
+   "role": "assistant",
+   "reasoning_content": "Now the two methods: add_batch only counts samples, quantize() is bare RTN on the raw weight.",
+   "content": "",
+   "tool_calls": [
+    {
+     "type": "function",
+     "function": {
+      "name": "str_replace",
+      "arguments": {
+       "path": "gptq/custom_ptq.py",
+       "old_str": "    def add_batch(self, inp):\n        \"\"\"Accumulate calibration statistics from a batch of layer inputs.\n\n        Args:\n            inp: input tensor of shape (batch, seq_len, in_features) or\n                 (batch * seq_len, in_features)\n        \"\"\"\n        if inp.dim() == 3:\n            inp = inp.reshape(-1, inp.shape[-1])\n        n = inp.shape[0]\n        inp = inp.float()\n        self.H += inp.T @ inp\n        self.nsamples += n\n\n    def quantize(self):\n        \"\"\"Quantize the layer weights and return the quantized-dequantized weight.\n\n        Default implementation: simple round-to-nearest (RTN) quantization.\n        Override this to implement better algorithms (e.g., GPTQ, AWQ).\n\n        Returns:\n            Quantized-dequantized weight tensor of same shape as original weight.\n        \"\"\"\n        W = self.layer.weight.data.clone().float()",
+       "new_str": "    def add_batch(self, inp):\n        \"\"\"Collect calibration data (unused in RTN, kept for interface).\"\"\"\n        if inp.dim() == 3:\n            inp = inp.reshape(-1, inp.shape[-1])\n        self.nsamples += inp.shape[0]\n\n    def quantize(self):\n        \"\"\"RTN: symmetric per-channel (or per-group) round-to-nearest.\"\"\"\n        W = self.layer.weight.data.clone().float()"
+      }
+     }
+    }
+   ]
+  },
+  {
+   "role": "tool",
+   "content": "Successfully replaced text in gptq/custom_ptq.py."
+  },
+  {
+   "role": "assistant",
+   "reasoning_content": "",
+   "content": "Run the experiment to measure this.",
+   "tool_calls": [
+    {
+     "type": "function",
+     "function": {
+      "name": "run_experiment",
+      "arguments": {}
+     }
+    }
+   ]
+  },
+  {
+   "role": "tool",
+   "content": "Measured results — `baseline:round_to_nearest` (`is_final,true`), seed 42. FP16 reference perplexity\n4.9071. Lower is better.\n\n## ptq-7b-int4 (INT4, group 128)\n| seed | wikitext2_ppl | fp16_ppl | degradation | quant_time (s) |\n|---|---|---|---|---|\n| 42 | 5.1343 | 4.9071 | 0.2271 | 22.5 |\n\n## ptq-7b-int3 (INT3, group 128)\n| seed | wikitext2_ppl | fp16_ppl | degradation | quant_time (s) |\n|---|---|---|---|---|\n| 42 | 6.7341 | 4.9071 | 1.8270 | 21.8 |\n\n## ptq-7b-int4-g64 (INT4, group 64)\n| seed | wikitext2_ppl | fp16_ppl | degradation | quant_time (s) |\n|---|---|---|---|---|\n| 42 | 5.0890 | 4.9071 | 0.1819 | 22.8 |"
+  },
+  {
+   "role": "assistant",
+   "reasoning_content": "RTN's numbers came back and they point straight at its successor. At INT4-g128 it lands 5.1343 — a\ndegradation of 0.2271 over the 4.9071 FP16 reference, which is survivable but visible. At INT4-g64 it\nimproves to 5.0890 (degradation 0.1819), exactly the direction I predicted: a smaller group means the\nscale is set by the local max over 64 columns instead of 128, fewer typical weights get polluted by each\noutlier, so finer granularity buys a small recovery. The standard INT4 setting is clearly not where RTN\nbreaks. INT3-g128 is. There it jumps to 6.7341 — a degradation of 1.8270, eight times the INT4 hit and an\nabsolute perplexity blow-up. Halving the grid (8 levels instead of 16) more than doubled the per-element\nresidual, the outlier-inflated scale now spends a precious third of the levels on the extremes, and across\n32 transformer blocks the per-layer output errors compounded. So the diagnosis is confirmed in the\nmetric: RTN is fine where the grid is fat and falls apart where it is thin, and the thin-grid case is the\none I most need to fix. The reason is structural, and it is the thing I flagged when I built the floor: RTN\nminimizes per-weight error, $\\lVert\\mathbf W-\\widehat{\\mathbf W}\\rVert^2$, element by element, when the\nquantity that actually propagates to the next block is the layer output $\\mathbf W\\mathbf X$. It also\nthrows away the calibration data the scaffold is streaming through `add_batch` for free. Both of those are\nexactly what I now spend.\n\nSo let me state the honest objective RTN was approximating badly. For one linear layer with weights\n$\\mathbf W$ and calibration inputs stacked as columns of $\\mathbf X$, I want quantized $\\widehat{\\mathbf W}$\nthat keeps the layer's output close:\n$\\arg\\min_{\\widehat{\\mathbf W}}\\lVert\\mathbf W\\mathbf X-\\widehat{\\mathbf W}\\mathbf X\\rVert_2^2$. The grid is\nfixed up front; each weight is free to land on any grid value. The first useful fact is that this\ndecomposes by row of $\\mathbf W$: output channel $r$ contributes\n$\\lVert\\mathbf w_r^\\top\\mathbf X-\\widehat{\\mathbf w}_r^\\top\\mathbf X\\rVert^2$ and the rows do not interact,\nbecause the output channels of a linear layer are independent linear functionals of the same input. So per\nrow it is a quadratic in the weight vector, and the curvature is identical for every row: differentiate\n$\\lVert\\mathbf w^\\top\\mathbf X-\\widehat{\\mathbf w}^\\top\\mathbf X\\rVert^2$ twice and the Hessian is\n$\\mathbf H=2\\mathbf X\\mathbf X^\\top$, which depends only on the inputs, not on any weights. This is why the\ncalibration stream matters: $\\mathbf X\\mathbf X^\\top$ is precisely the input second moment, and it tells\nme which input directions are excited hard by real text — the directions where a weight error costs the\noutput a lot — and which are nearly dead, where RTN was wasting its worry. In the scaffold I accumulate\nexactly this in `add_batch`: reshape the layer input to $(\\text{tokens},\\text{in\\_features})$ and add\n$\\mathbf X^\\top\\mathbf X$ into `self.H` (the proportionality constant 2 is irrelevant; I will normalize by\nthe sample count at quantize-time, `H /= nsamples`, to keep the scale of the dampening sane across\nlayers). RTN kept this `H` buffer purely for interface compatibility; now it is the heart of the method.\n\nThe accurate small-model idea I reach for is the brain-surgeon logic specialized to quantization. Given the\nrow quadratic, I fix one coordinate $q$ to its chosen grid value and move all the *other* still-free\ncoordinates to compensate optimally. Let $\\boldsymbol\\delta=\\widehat{\\mathbf w}-\\mathbf w$ and let the\nquantized target be $\\mathrm{quant}(w_q)$. The row's quadratic increase is\n$\\tfrac12\\boldsymbol\\delta^\\top\\mathbf H\\boldsymbol\\delta$ subject to\n$\\mathbf e_q^\\top\\boldsymbol\\delta=\\mathrm{quant}(w_q)-w_q$. The Lagrangian gives\n$\\mathbf H\\boldsymbol\\delta+\\lambda\\mathbf e_q=0$, so $\\boldsymbol\\delta=-\\lambda\\mathbf H^{-1}_{:,q}$;\nenforcing the constraint gives $\\lambda=(w_q-\\mathrm{quant}(w_q))/[\\mathbf H^{-1}]_{qq}$, and the optimal\ncompensating update to the free set is\n$\\boldsymbol\\delta_F=-\\tfrac{w_q-\\mathrm{quant}(w_q)}{[\\mathbf H^{-1}]_{qq}}(\\mathbf H^{-1})_{:,q}$, with a\nloss increase $\\tfrac12(\\mathrm{quant}(w_q)-w_q)^2/[\\mathbf H^{-1}]_{qq}$. The sign checks out: the $q$-th\ncomponent of $\\boldsymbol\\delta$ is exactly $-(w_q-\\mathrm{quant}(w_q))$, i.e. it snaps $w_q$ onto the grid,\nand the other entries spread the compensation along the input correlations encoded in $\\mathbf H^{-1}$.\nThis is the move RTN never makes: it lets a quantized weight drift the *remaining* weights to keep the\noutput right, rather than rounding each one in isolation.\n\nThe original brain-surgeon recipe (OBQ) picks, per row, the cheapest-to-quantize free weight next — a\ngreedy order — and so maintains a *separate* evolving $\\mathbf H^{-1}$ per row, costing\n$O(d_{\\text{row}}\\cdot d_{\\text{col}}^3)$, cubic in the column count and multiplied by every row. On a\nMistral linear that is $4096\\times4096$ (or $14336\\times4096$ for the MLP) this is hopeless. But the\ndiagnostic that rescues it: greedy ordering barely beats a fixed arbitrary order on large,\nover-parameterized layers — the gain of being clever about order shrinks as layers grow, because the few\nhigh-error weights rounded early are a vanishing fraction of the layer. So I drop the greedy order and\nquantize *all rows in the same fixed left-to-right column order*. Then $\\mathbf H$ and $\\mathbf H^{-1}$\ndepend only on $\\mathbf X$, identical across rows, and I downdate one shared inverse exactly $d_{\\text{col}}$\ntimes instead of per row — the cost collapses by a factor of $\\min(d_{\\text{row}},d_{\\text{col}})$. The\nper-column update becomes: round column $i$, form each row's scaled error\n$\\mathbf E_{:,i}=(\\mathbf W_{:,i}-\\mathrm{quant}(\\mathbf W_{:,i}))/[\\mathbf H^{-1}]_{ii}$, and push it into\nthe not-yet-quantized columns $j>i$ via $\\mathbf W_{:,j}\\mathrel{-}=\\mathbf E_{:,i}[\\mathbf H^{-1}]_{ij}$.\nThe algorithm is now a column sweep.\n\nTwo practical problems remain, and here is where this task's fill makes a specific choice I should be\nhonest about. First, throughput: the rank-one inverse downdate touches a huge matrix with a couple of\nFLOPs per entry — a terrible compute-to-memory ratio, all bandwidth, tensor cores idle, repeated\n$d_{\\text{col}}$ times. The fix is blocking: the rounding decision for column $i$ depends only on updates\nfrom columns *before* $i$, so updates to far-right columns can be deferred. Process a block of\n`BLOCK_SIZE=128` consecutive columns using only the $128\\times128$ corner of $\\mathbf H^{-1}$ and the\n128-wide weight slab, doing the column-by-column compensation *within* the block; then, once the block is\nfinished, apply the block's accumulated error to *all* columns to the right in one matrix-matrix multiply\n$\\mathbf W_{:,\\text{rest}}\\mathrel{-}=\\mathbf E_{\\text{block}}\\,\\mathbf H^{-1}_{\\text{block},\\text{rest}}$.\nSame total arithmetic, but the heavy global update is a GEMM that saturates the hardware while the\nbandwidth-bound fiddling is confined to the block. That is exactly the loop structure here: an outer loop\nover `col_start` in steps of 128, an inner loop over the columns of the block computing per-row `err` and\nupdating `W_block[:, j+1:]` via `Hinv[col, col_start+j+1:col_end]`, and after the inner loop a single\n`W[:, col_end:] -= Err[:, block] @ Hinv[block, col_end:]`.\n\nSecond, numerics. I am consuming the inverse Hessian, and at 7B scale some layers' $\\mathbf H$ are\nnear-singular — input directions that calibration never excited leave $\\mathbf H$ rank-deficient, and the\ninverse blows up. Two defenses. A mild dampening: add $\\lambda$ equal to `PERCDAMP=0.01` of the mean\ndiagonal of $\\mathbf H$ before inverting, $\\mathbf H\\mathrel{+}=0.01\\cdot\\overline{\\operatorname{diag}\\mathbf H}\\cdot\\mathbf I$,\nwhich keeps it well-conditioned. And a stable inverse: take a Cholesky factorization of the dampened\n$\\mathbf H$ and invert through it — `L = cholesky(H); Hinv = cholesky_inverse(L)` — with a `pinv` fallback\nif even the dampened matrix fails to factor. This is the place this task's implementation *differs* from\nthe most aggressive form of the method, and I want to be precise so the code I land is the code that runs.\nThe most refined version of GPTQ never forms $\\mathbf H^{-1}$ at all: it observes that the OBS downdate is\none step of Gaussian elimination, so the scaled row-tails the update needs live in the rows of a Cholesky\nfactor of $\\mathbf H^{-1}$, and it sweeps that factor — avoiding any repeated inversion. This task's fill\ntakes the more direct route: it computes the dense inverse $\\mathbf H^{-1}$ once via Cholesky, then reads\n$[\\mathbf H^{-1}]_{ii}$ for the per-column error and the rows $[\\mathbf H^{-1}]_{i,\\cdot}$ for the\npropagation, dividing the error by $[\\mathbf H^{-1}]_{ii}$ each step. Mathematically this reproduces the\nsame OBS compensation — error $\\propto(w-q)/[\\mathbf H^{-1}]_{ii}$ spread by row $i$ of the inverse — but\nit carries the full dense inverse and the within-block updates use its raw entries rather than a Cholesky\nfactor's scaled tails. So I should not import the \"Cholesky-of-the-inverse stores the row-tails\" story\ninto how I describe what runs here; what runs is \"one stable inverse, read directly, blocked.\" The single\ndampening + single factorization is enough to keep Mistral's layers from drifting into a wrecked layer the\nway an iterated rank-one downdate would.\n\nOne more piece this task exposes and I must get right: grouping. The derivation only assumed a fixed grid\nand a $\\mathrm{quant}(\\cdot)$ that rounds onto it — it never assumed one scale per row — so I can use a\nper-group scale, an independent step for every `group_size` consecutive columns, and the error-compensation\nmachinery is unchanged. Here, when the column sweep reaches a group boundary (`col % group_size == 0`), I\nrecompute the symmetric per-group scale from that group's columns of the *current* weight matrix:\n$g_{\\max}=\\max|\\mathbf W_{:,\\text{group}}|$ per row, scale $=g_{\\max}/q_{\\max}$, zero point 0. Because the\nsweep updates columns as it goes, each group's scale is fit to the weights *as compensation has already\nmoved them*, so grouping and the second-order correction reinforce each other — and the same code path\nserves group 128, group 64, and per-channel (one scale per row), which is why the same class must run\nacross all three eval settings. Rounding a column is then\n$\\operatorname{clamp}(\\operatorname{round}(w_{\\text{col}}/\\text{scale}),q_{\\min},q_{\\max})\\cdot\\text{scale}$,\nand the quantized column is written into $\\mathbf Q$, whose final cast back to the layer dtype is the\nreturned weight. (The full scaffold module is in the answer.)\n\nSo the delta from RTN: keep the same symmetric per-group grid, but accumulate $\\mathbf X^\\top\\mathbf X$ in\n`add_batch`, dampen and invert it once via Cholesky, and sweep columns left-to-right in blocks of 128,\nrounding each column and compensating its residual onto the still-free columns through the inverse\nHessian so the layer *output* — not the per-weight value — is what is preserved. The only thing RTN and\nGPTQ share is the grid; everything that decides *how* a weight rounds is now informed by the calibration\ninputs RTN ignored.\n\nReading RTN's shape, here is what I expect, falsifiably, against its numbers. The whole point of error\ncompensation is to recover resolution where the grid is thinnest, so INT3-g128 is the setting I am\nwatching: RTN's 6.7341 (degradation 1.8270) is the blow-up, and if column-by-column compensation works at\nall it should cut that degradation substantially — I expect INT3 to drop well under RTN's, into the low-6\nrange, because the deferred error now has somewhere to go instead of accumulating. At INT4-g128 the grid\nis already fat enough that RTN was only at 0.2271 degradation, so I expect a real but smaller\nimprovement — into the low-5.0s, comfortably under RTN's 5.1343. At INT4-g64 RTN was already strong\n(5.0890); compensation should still help, but this is the setting where I expect the *smallest* gap,\nbecause fine grouping has already done much of the work error compensation would otherwise do — the two\nmechanisms partly overlap. The cost I accept: where RTN quantized a block in ~22s, GPTQ pays for an\ninverse and a column sweep per layer, so I expect quant-time to rise by roughly an order of magnitude.\nThe bet is that the INT3 recovery is large enough to justify it — and if INT3 does *not* move much, that\nwould tell me the bottleneck at 8 levels is the grid coarseness itself, not the rounding objective, which\nwould push the next rung toward protecting weights *before* rounding rather than compensating *after*. Let\nme write the Hessian-compensated sweep in.",
+   "content": "Moving to GPTQ: accumulate the input second moment in add_batch, then quantize column by column,\ncompensating each column's residual onto the still-free columns through the inverse Hessian. This edit\nrelabels the region for the new method.",
+   "tool_calls": [
+    {
+     "type": "function",
+     "function": {
+      "name": "str_replace",
+      "arguments": {
+       "path": "gptq/custom_ptq.py",
+       "old_str": "# EDITABLE region of gptq/custom_ptq.py (lines 26-157) — step 1: round-to-nearest",
+       "new_str": "# EDITABLE region of gptq/custom_ptq.py (lines 26-157) — step 2: GPTQ (Hessian error compensation)"
+      }
+     }
+    }
+   ]
+  },
+  {
+   "role": "tool",
+   "content": "Successfully replaced text in gptq/custom_ptq.py."
+  },
+  {
+   "role": "assistant",
+   "reasoning_content": "Re-purpose the class docstring and add the block-size / dampening constants the sweep needs.",
+   "content": "",
+   "tool_calls": [
+    {
+     "type": "function",
+     "function": {
+      "name": "str_replace",
+      "arguments": {
+       "path": "gptq/custom_ptq.py",
+       "old_str": "class LayerQuantizer:\n    \"\"\"RTN quantizer -- simple round-to-nearest, ignores calibration data.\"\"\"",
+       "new_str": "class LayerQuantizer:\n    \"\"\"GPTQ quantizer -- Hessian-based error compensation.\n\n    Collects input activation statistics (H = X^T X), then quantizes\n    weights column-by-column, compensating for quantization error using\n    the Hessian inverse so that layer output error is minimized.\n    \"\"\"\n\n    BLOCK_SIZE = 128\n    PERCDAMP = 0.01"
+      }
+     }
+    }
+   ]
+  },
+  {
+   "role": "tool",
+   "content": "Successfully replaced text in gptq/custom_ptq.py."
+  },
+  {
+   "role": "assistant",
+   "reasoning_content": "Now the core: add_batch accumulates X^T X, and quantize() does the dampened-inverse blocked column sweep.",
+   "content": "",
+   "tool_calls": [
+    {
+     "type": "function",
+     "function": {
+      "name": "str_replace",
+      "arguments": {
+       "path": "gptq/custom_ptq.py",
+       "old_str": "    def add_batch(self, inp):\n        \"\"\"Collect calibration data (unused in RTN, kept for interface).\"\"\"\n        if inp.dim() == 3:\n            inp = inp.reshape(-1, inp.shape[-1])\n        self.nsamples += inp.shape[0]\n\n    def quantize(self):\n        \"\"\"RTN: symmetric per-channel (or per-group) round-to-nearest.\"\"\"\n        W = self.layer.weight.data.clone().float()\n        scale, zero_point, qmin, qmax = find_scale_zero(\n            W, num_bits=self.num_bits, group_size=self.group_size, symmetric=True\n        )\n        W_q = quantize_tensor(W, scale, zero_point, qmin, qmax)\n        W_dq = dequantize_tensor(W_q, scale, zero_point)\n        return W_dq.to(self.layer.weight.dtype)",
+       "new_str": "    def add_batch(self, inp):\n        \"\"\"Accumulate Hessian approximation from calibration inputs.\"\"\"\n        if inp.dim() == 3:\n            inp = inp.reshape(-1, inp.shape[-1])\n        n = inp.shape[0]\n        inp = inp.float()\n        self.H += inp.T @ inp\n        self.nsamples += n\n\n    def quantize(self):\n        \"\"\"GPTQ: column-by-column quantization with Hessian error compensation.\"\"\"\n        W = self.layer.weight.data.clone().float()\n        H = self.H.clone()\n\n        if self.nsamples > 0:\n            H /= self.nsamples\n\n        num_bits = self.num_bits\n        group_size = self.group_size\n        qmin = -(1 << (num_bits - 1))\n        qmax = (1 << (num_bits - 1)) - 1\n\n        # Add dampening to diagonal for numerical stability\n        damp = self.PERCDAMP * torch.mean(torch.diag(H))\n        H += damp * torch.eye(self.in_features, device=self.dev)\n\n        # Compute Hessian inverse via Cholesky decomposition\n        try:\n            L = torch.linalg.cholesky(H)\n            Hinv = torch.cholesky_inverse(L)\n        except Exception:\n            # Fallback to pseudo-inverse if Cholesky fails\n            Hinv = torch.linalg.pinv(H)\n\n        Q = torch.zeros_like(W)\n        Err = torch.zeros_like(W)\n\n        # Process columns in blocks\n        for col_start in range(0, self.in_features, self.BLOCK_SIZE):\n            col_end = min(col_start + self.BLOCK_SIZE, self.in_features)\n\n            W_block = W[:, col_start:col_end].clone()\n            Hinv_block_diag = torch.diag(\n                Hinv[col_start:col_end, col_start:col_end]\n            )\n\n            for j in range(col_end - col_start):\n                col = col_start + j\n                w_col = W_block[:, j]\n\n                # Compute scale: per-group if group_size > 0, else per-column\n                if group_size > 0 and col % group_size == 0:\n                    g_end = min(col + group_size, self.in_features)\n                    W_group = W[:, col:g_end]\n                    g_max = W_group.abs().amax(dim=1, keepdim=True).clamp(min=1e-12)\n                    group_scale = (g_max / qmax).squeeze(1)\n\n                if group_size > 0:\n                    scale = group_scale\n                else:\n                    w_abs_max = w_col.abs().max().clamp(min=1e-12)\n                    scale = w_abs_max / qmax\n\n                # Quantize and dequantize\n                q_col = torch.clamp(\n                    torch.round(w_col / scale), qmin, qmax\n                ) * scale\n                Q[:, col] = q_col\n\n                # Error compensation: distribute error weighted by Hessian\n                err = (w_col - q_col) / Hinv_block_diag[j].clamp(min=1e-12)\n                Err[:, col] = err\n\n                # Update remaining columns in block\n                if j + 1 < col_end - col_start:\n                    W_block[:, j+1:] -= (\n                        err.unsqueeze(1)\n                        * Hinv[col, col_start+j+1:col_end].unsqueeze(0)\n                    )\n\n            # Propagate error to remaining columns outside block\n            if col_end < self.in_features:\n                W[:, col_end:] -= (\n                    Err[:, col_start:col_end]\n                    @ Hinv[col_start:col_end, col_end:]\n                )\n\n        return Q.to(self.layer.weight.dtype)"
+      }
+     }
+    }
+   ]
+  },
+  {
+   "role": "tool",
+   "content": "Successfully replaced text in gptq/custom_ptq.py."
+  },
+  {
+   "role": "assistant",
+   "reasoning_content": "",
+   "content": "Run the experiment to measure this.",
+   "tool_calls": [
+    {
+     "type": "function",
+     "function": {
+      "name": "run_experiment",
+      "arguments": {}
+     }
+    }
+   ]
+  },
+  {
+   "role": "tool",
+   "content": "Measured results — `baseline:gptq` (`is_final,true`), seed 42. FP16 reference perplexity\n4.9071. Lower is better.\n\n## ptq-7b-int4 (INT4, group 128)\n| seed | wikitext2_ppl | fp16_ppl | degradation | quant_time (s) |\n|---|---|---|---|---|\n| 42 | 5.0711 | 4.9071 | 0.1640 | 219.9 |\n\n## ptq-7b-int3 (INT3, group 128)\n| seed | wikitext2_ppl | fp16_ppl | degradation | quant_time (s) |\n|---|---|---|---|---|\n| 42 | 6.1011 | 4.9071 | 1.1940 | 220.6 |\n\n## ptq-7b-int4-g64 (INT4, group 64)\n| seed | wikitext2_ppl | fp16_ppl | degradation | quant_time (s) |\n|---|---|---|---|---|\n| 42 | 5.0435 | 4.9071 | 0.1363 | 219.1 |"
+  },
+  {
+   "role": "assistant",
+   "reasoning_content": "GPTQ's numbers came back and they half-confirm, half-redirect me. At INT3-g128 it cut RTN's blow-up\nfrom 6.7341 (degradation 1.8270) down to 6.1011 (degradation 1.1940) — a real recovery, exactly the\ndirection I bet on: error compensation gave the deferred residual somewhere to go, so the thin-grid\ncase stopped compounding as badly. At INT4-g128 it moved RTN's 5.1343 to 5.0711 (degradation 0.1640),\na genuine but smaller gain, and at INT4-g64 it landed 5.0435 (degradation 0.1363), the smallest gap of\nthe three — also as predicted, because fine grouping already does much of the work compensation would\notherwise do, so the two mechanisms overlap. But two things in the GPTQ result bother me. First, INT3\nis *still* the open wound: 1.1940 degradation is better than RTN but it is an order of magnitude worse\nthan INT4's 0.16, so the 8-level grid is plainly not solved — compensation softened the blow without\nremoving the cause. Second, GPTQ paid roughly 220s per setting against RTN's ~22s, a full order of\nmagnitude, for that recovery; it builds and inverts a dense $\\mathbf H$ and sweeps columns per layer.\nSo I have a method that is accurate-ish but heavy, and the heaviness is structural — the inverse and\nthe sequential sweep are intrinsic to error feedback. The diagnosis I flagged when I built GPTQ now\nbites: if INT3 does not fully recover under compensation, the bottleneck at 8 levels may not be the\nrounding *objective* but the grid coarseness itself, and the move is to attack the rounding *before* it\nhappens — to protect the weights that matter rather than clean up after rounding them — without an\ninverse Hessian at all.\n\nSo let me ask the question GPTQ never asks: are all the weights in a layer equally important to the\noutput? GPTQ implicitly says no — it weights each column's error by $\\mathbf H^{-1}$ — but it spends a\ndense inverse to express that. There is a cheaper signal. The diagnostic is to quantize a layer hard\n(INT3) but keep a small fraction of weight *channels* in FP16, and ask how much accuracy returns per\nchannel kept. Keeping a tiny fraction — order 1% — recovers most of the lost accuracy, which means a\nsmall salient set is doing the heavy lifting. The real question is which 1%. The obvious guess is the\nlarge-magnitude weights; selecting by weight norm barely beats keeping a random 1%, so weight magnitude\nis *not* what makes a weight important. The other signal is the activation: if I instead keep the weight\nchannels that multiply the largest-magnitude input features — salient by *activation* magnitude — the\nsame 1% budget gives a large recovery. The reading is simple and it is the same structure GPTQ's\n$\\mathbf X^\\top\\mathbf X$ encoded: an input feature with large magnitude contributes a lot to the output,\nso the weights that process it matter a lot. But where GPTQ needed the full second-moment matrix and its\ninverse, saliency only needs the per-channel activation magnitude — a vector, not a matrix, and no\ninverse.\n\nA working recipe falls out: keep the activation-salient channels in FP16, quantize the rest. But that\nis a mixed-precision tensor — some channels FP16, most INT3 — and that is a hardware nightmare: irregular\nlayout, scattered access, custom kernels. The whole point of low-bit weights was a uniform grid an\non-device kernel can dequantize and multiply. I need to protect the salient weights *without* storing\nthem at a different precision. So look hard at where one channel's quantization error comes from and\nwhether I can shrink it at fixed bit-width. Take a group of weights with output $y=\\mathbf w x$,\nquantized symmetrically as $Q(\\mathbf w)=\\Delta\\cdot\\mathrm{round}(\\mathbf w/\\Delta)$ with\n$\\Delta=\\max(|\\mathbf w|)/q_{\\max}$. The absolute rounding residual per element is roughly uniform — about\na quarter of a step on average — and it is a grid-position error, not a function of the weight's size.\nNow scale one high-activation input channel's weights by $s>1$ before quantizing and divide the matching\nactivation by $s$ afterward. Before rounding this is an exact equivalence:\n$\\mathbf W\\mathbf x=(\\mathbf W\\,\\mathrm{diag}(\\mathbf s))(\\mathrm{diag}(\\mathbf s)^{-1}\\mathbf x)$. After\nrounding, that element's contribution becomes $Q(ws)\\cdot(x/s)$, whose absolute error is\n$\\Delta'\\cdot\\mathrm{RoundErr}(ws/\\Delta')\\cdot|x|/s$. Compared to the original $\\Delta\\cdot\\mathrm{RoundErr}\\cdot|x|$,\nthe expected residual is unchanged (~0.25 either way), and if scaling a small fraction of channels by a\nmodest $s$ leaves the group's max — and hence $\\Delta'$ — about where it was, the error ratio is\n$\\approx 1/s$. The salient channel gets effectively finer resolution, purely by an equivalence transform,\nwith no FP16 side table and no bit-width change. That is the escape from the mixed-precision type, and it\nis cheaper than GPTQ's inverse: a per-channel scale, not a matrix solve.\n\nNow the trade-off that decides everything, and the reason I cannot just crank $s$. The error I just wrote,\n$(\\Delta'/\\Delta)(1/s)$, keeps shrinking for the salient channel — but I forgot the other side. Every\n*non-salient* weight in the same group has error proportional to $\\Delta'$. Push $s$ high enough that the\nscaled salient weight becomes the group maximum and $\\Delta'$ grows, and then $\\Delta'/\\Delta>1$ amplifies\nthe error of everyone else in the group. Protecting the salient weights by overscaling quietly damages the\nbulk — the very weights RTN was already starving. So there is a genuine balance, and the right scale must\naccount for *both* the protected channel and the collateral on the rest. The honest objective is to pick\nthe whole per-channel scale vector $\\mathbf s$ to minimize the layer's quantized output error, not one\nchannel's error in isolation. But $Q$ has a non-differentiable round in it, and I refuse to bring back\ngradient-based optimization — that is exactly the backprop GPTQ's error-feedback regression replaced with\na closed form, and the constraint here forbids touching weights with gradients anyway.\n\nI do not need a free search over $\\mathbb R^{C_{in}}$. I already know the one thing that sets saliency —\nthe per-channel activation magnitude — so I need a one-parameter family that dials \"how hard do I scale\nthe high-activation channels,\" and I can grid-search a single scalar cheaply. Let $\\mathbf x_{\\max}$ be\nthe per-input-channel *average* magnitude of $|X|$ from a calibration pass (average, not max — I want the\ntypical importance of a channel, and averaging is robust to a few calibration outliers). Define\n$\\mathbf s=\\mathbf x_{\\max}^{\\alpha}$ and search $\\alpha\\in[0,1)$. At $\\alpha=0$, $\\mathbf s=\\mathbf 1$ —\nplain RTN, no scaling. At $\\alpha\\to1$ the scaling tracks activation magnitude most aggressively — maximum\nprotection, maximum risk of inflating $\\Delta$. $\\alpha$ slides between \"protect nobody\" and \"protect the\nsalient channels hard,\" which is precisely the balance I diagnosed. Because it is one scalar I sweep it\nover a fine grid (`N_ALPHA=20` ratios), and for each candidate I quantize the scaled weights, undo the\nscale, and measure the actual output error — the true objective, evaluated directly, no gradient. To keep\nthe scales numerically tame I normalize $\\mathbf s$ by the geometric mean of its max and min before\napplying, so it neither blows the weights up nor collapses them.\n\nHere I must be careful, because this task's edit surface shapes the method in ways that differ from the\nmost general form, and I want the reasoning to land *the code that runs*. The harness hands me **one linear\nlayer at a time** — no cross-layer context, no adjacent operator to fold the inverse scale into. The\ngeneral form of activation-aware scaling absorbs $\\mathrm{diag}(\\mathbf s)^{-1}$ into the *previous*\noperator (a LayerNorm or the preceding linear), keeping the network function exactly unchanged. I cannot do\nthat here: I only own this one `quantize()`. So the equivalence is realized *within the layer* — I scale\n$\\mathbf W$ by $\\mathbf s$ along input channels, quantize, dequantize, and then divide the dequantized\nweight back by $\\mathbf s$ (`W_dq / s`). The scaling is undone in the stored weight itself rather than\npushed onto a neighbor, so the layer's output is mathematically the dequantized-and-unscaled $\\mathbf W$ —\nself-contained, same shape, same dtype. The loss I score each $\\alpha$ against is therefore computed at\n*linear-layer* granularity, not full-block: I keep a reservoir of real input tokens $X$ from `add_batch`\n(stride-sampled to a few hundred rows to bound memory, kept on CPU across layers and moved to device at\nquantize-time) and score $\\alpha$ by $\\lVert X(\\mathbf W-\\mathbf W_{\\text{final}})^\\top\\rVert^2$ averaged\nover tokens — the true per-layer output MSE on real activations, the honest objective evaluated directly.\nAnd the grid is **symmetric** here ($q_{\\min}=-2^{b-1}$, $q_{\\max}=2^{b-1}-1$, zero point 0), the same\nconvention RTN and GPTQ used on this surface — not an affine zero-point quantizer — so the whole comparison\nstays on one grid and the $1/s$ argument is the symmetric-step version. I should not import the\nasymmetric-zero-point or cross-layer-migration story into how I describe what runs; what runs is\n\"per-linear symmetric scale-search, undone in-weight, scored on sampled real inputs.\"\n\nThere is a second knob this surface exposes and the bulk-damage trade-off motivates: after fixing the\nper-channel scale, the group step is still set by the post-scale group *max*, and that max can be a lone\noutlier dragging the whole group's $\\Delta$ up. So I add a per-group clip search on the scaled weights —\nshrink each group's max by $1-i/N$ for $i$ up to `CLIP_MAX_SHRINK·N_CLIP_GRID` (half the grid, the default\nshrink ceiling), and for each candidate clip the weights to $\\pm\\text{max}$, quantize, and measure the\n*per-(output-channel, group)* output error against the unclipped scaled weights using the same sampled\n$X$ — an einsum $\\sum_c W_{r,g,c}X_{t,g,c}$ for the original and the quantized-clipped version, choosing\nper group the clip that minimizes it. Clipping trades a little extra rounding error on the outlier for a\ntighter $\\Delta$ on the bulk — directly the bulk-vs-outlier balance, now resolved per group rather than per\nchannel. It is batched over output channels (`OC_BATCH`) for memory. Then the final quantization uses the\nclipped per-group scales, and the channel scale is undone. If there were no calibration samples at all the\nclip search falls back to the unclipped max — but the harness always streams 128 sequences, so it runs.\n\nSo the delta from GPTQ is a different philosophy on the same grid: GPTQ rounds then *compensates* the\nresidual through an inverse Hessian; AWQ *protects* the salient weights before rounding with a per-channel\nscale, picks that scale and a per-group clip by directly minimizing the real output MSE on sampled\nactivations, and never forms a Hessian or an inverse. Both consume the calibration stream RTN ignored —\nGPTQ as the full second moment $\\mathbf X^\\top\\mathbf X$, AWQ as the per-channel average $|X|$ plus a small\nreservoir of raw tokens — but AWQ's is a vector and a search, not a matrix and a solve. On this surface it\nis self-contained per-linear and symmetric, with the equivalence undone in the stored weight rather than\nmigrated to a neighbor.\n\nReading GPTQ's shape, here is what I expect, falsifiably, against its numbers. The whole bet is that\nprotecting salient channels before rounding recovers resolution at 8 levels better than compensating after,\nso INT3-g128 is the setting I am watching: GPTQ left it at 6.1011 (degradation 1.1940), still the wound,\nand if salience-aware scaling plus clipping does what I think, INT3 should drop clearly below GPTQ's — into\nthe high-5s, cutting that 1.19 degradation toward the high-0.8s, because the salient channels that carried\nthe output now get finer effective grids while clipping keeps the bulk's $\\Delta$ in check. At INT4-g128\nthe grid is already fat (GPTQ at 5.0711, degradation 0.1640), so I expect a real but smaller improvement,\ninto the low-5.0s under GPTQ. At INT4-g64 GPTQ was strongest (5.0435, degradation 0.1363); fine grouping\nhas already protected the bulk, so AWQ and GPTQ should be closest here, and it is plausible AWQ does *not*\nbeat GPTQ at this one finest-grid setting — that would be consistent with the mechanisms overlapping where\nthe grid is least coarse. The cost I expect to *win* on relative to GPTQ: no inverse, no column sweep, just\ntwo cheap grid searches over sampled activations, so quant-time should fall well under GPTQ's ~220s, back\ntoward the low end. The decisive test is INT3: if AWQ beats GPTQ there, protecting-before-rounding is the\nright lever at extreme low bit-width; if it does not, the bottleneck at 8 levels is the uniform grid itself\nand the next move would have to leave uniform quantization behind entirely. (The full scaffold module is in\nthe answer.) Let me write the scale-search-plus-clip quantizer in.",
+   "content": "Switching to AWQ: protect the salient input channels before rounding instead of compensating after. This\nedit relabels the region for the activation-aware scale-and-clip method.",
+   "tool_calls": [
+    {
+     "type": "function",
+     "function": {
+      "name": "str_replace",
+      "arguments": {
+       "path": "gptq/custom_ptq.py",
+       "old_str": "# EDITABLE region of gptq/custom_ptq.py (lines 26-157) — step 2: GPTQ (Hessian error compensation)",
+       "new_str": "# EDITABLE region of gptq/custom_ptq.py (lines 26-157) — step 3: AWQ (activation-aware scaling + clip)"
+      }
+     }
+    }
+   ]
+  },
+  {
+   "role": "tool",
+   "content": "Successfully replaced text in gptq/custom_ptq.py."
+  },
+  {
+   "role": "assistant",
+   "reasoning_content": "Re-purpose the class docstring and set the search-grid constants for the scale and clip sweeps.",
+   "content": "",
+   "tool_calls": [
+    {
+     "type": "function",
+     "function": {
+      "name": "str_replace",
+      "arguments": {
+       "path": "gptq/custom_ptq.py",
+       "old_str": "class LayerQuantizer:\n    \"\"\"GPTQ quantizer -- Hessian-based error compensation.\n\n    Collects input activation statistics (H = X^T X), then quantizes\n    weights column-by-column, compensating for quantization error using\n    the Hessian inverse so that layer output error is minimized.\n    \"\"\"\n\n    BLOCK_SIZE = 128\n    PERCDAMP = 0.01",
+       "new_str": "class LayerQuantizer:\n    \"\"\"AWQ quantizer -- faithful to mit-han-lab/llm-awq.\n\n    Pipeline:\n      1. add_batch: accumulate per-channel mean |X|; reservoir-sample raw input\n         tokens (up to N_SAMPLE_TOKEN rows) so we can use real activations as\n         the loss signal during search.\n      2. Per-channel scale alpha-search (auto_scale): for ratio in [0, 1):\n             s = x_max^ratio  (clamped, range-normalized: s /= sqrt(max*min))\n         loss = mean((X @ (W - W_final).T)^2)  on sampled X.\n      3. Per-group max clip-search (auto_clip), on the post-scale weights:\n         clip per-group max by 1 - i/N for i in 0..MAX_SHRINK*N, loss is\n         per-(out_channel, group) output-error using sampled X:\n             org_out[r, t, g] = sum_c W_scaled[r,g,c] * X[t,g,c]\n             cur_out[r, t, g] = sum_c Q(clamp(W,±M))[r,g,c] * X[t,g,c]\n             err[r, g] = mean_t (cur_out - org_out)^2\n      4. Quantize with the clipped per-group scales, undo channel scaling.\n\n    Implemented to fit the LayerQuantizer interface (per-linear, no block ctx),\n    so the loss is computed at linear-layer granularity (not full block).\n    \"\"\"\n\n    N_ALPHA = 20             # auto_scale grid size\n    N_CLIP_GRID = 20         # auto_clip n_grid\n    CLIP_MAX_SHRINK = 0.5    # auto_clip max_shrink (official default)\n    N_SAMPLE_TOKEN = 256     # number of input tokens kept for loss computation\n    OC_BATCH = 256           # output-channel batching for clip search (memory)"
+      }
+     }
+    }
+   ]
+  },
+  {
+   "role": "tool",
+   "content": "Successfully replaced text in gptq/custom_ptq.py."
+  },
+  {
+   "role": "assistant",
+   "reasoning_content": "Add the per-channel |X| accumulator and the CPU reservoir of raw tokens alongside the kept-for-interface H.",
+   "content": "",
+   "tool_calls": [
+    {
+     "type": "function",
+     "function": {
+      "name": "str_replace",
+      "arguments": {
+       "path": "gptq/custom_ptq.py",
+       "old_str": "        self.nsamples = 0\n        self.H = torch.zeros(",
+       "new_str": "        self.nsamples = 0\n\n        # Per-channel sum of |activation| (averaged over tokens at quantize-time)\n        self.act_sum = torch.zeros(\n            self.in_features, device=self.dev, dtype=torch.float32\n        )\n        # Reservoir of input tokens (CPU to save GPU memory across layers)\n        self._x_buf = []\n        self._x_buf_rows = 0\n        # Keep H for interface compatibility (unused by AWQ)\n        self.H = torch.zeros("
+      }
+     }
+    }
+   ]
+  },
+  {
+   "role": "tool",
+   "content": "Successfully replaced text in gptq/custom_ptq.py."
+  },
+  {
+   "role": "assistant",
+   "reasoning_content": "Now add_batch collects the saliency stats and reservoir, plus a helper to draw the sampled tokens.",
+   "content": "",
+   "tool_calls": [
+    {
+     "type": "function",
+     "function": {
+      "name": "str_replace",
+      "arguments": {
+       "path": "gptq/custom_ptq.py",
+       "old_str": "    def add_batch(self, inp):\n        \"\"\"Accumulate Hessian approximation from calibration inputs.\"\"\"\n        if inp.dim() == 3:\n            inp = inp.reshape(-1, inp.shape[-1])\n        n = inp.shape[0]\n        inp = inp.float()\n        self.H += inp.T @ inp\n        self.nsamples += n\n\n    def quantize(self):\n        \"\"\"GPTQ: column-by-column quantization with Hessian error compensation.\"\"\"\n        W = self.layer.weight.data.clone().float()\n        H = self.H.clone()\n\n        if self.nsamples > 0:\n            H /= self.nsamples\n\n        num_bits = self.num_bits",
+       "new_str": "    def add_batch(self, inp):\n        \"\"\"Accumulate per-channel |X| stats and reservoir-sample raw inputs.\"\"\"\n        if inp.dim() == 3:\n            inp = inp.reshape(-1, inp.shape[-1])\n        inp_f = inp.float()\n        n = inp_f.shape[0]\n        self.act_sum += inp_f.abs().sum(dim=0)\n        self.nsamples += n\n        # Keep ~4x N_SAMPLE_TOKEN candidate rows; we'll stride-sample at quantize.\n        cap = self.N_SAMPLE_TOKEN * 4\n        if self._x_buf_rows < cap:\n            take = min(n, cap - self._x_buf_rows)\n            # Take an evenly-spaced stride from this batch\n            stride = max(1, n // max(take, 1))\n            sampled = inp_f[::stride][:take].detach().to('cpu')\n            self._x_buf.append(sampled)\n            self._x_buf_rows += sampled.shape[0]\n\n    def _get_x_samples(self):\n        if not self._x_buf:\n            return None\n        X = torch.cat(self._x_buf, dim=0)\n        if X.shape[0] > self.N_SAMPLE_TOKEN:\n            stride = X.shape[0] // self.N_SAMPLE_TOKEN\n            X = X[::stride][:self.N_SAMPLE_TOKEN]\n        return X.to(self.dev)\n\n    def quantize(self):\n        \"\"\"AWQ: per-channel scale search + per-group clip search + quantize.\"\"\"\n        W = self.layer.weight.data.clone().float()\n        num_bits = self.num_bits"
+      }
+     }
+    }
+   ]
+  },
+  {
+   "role": "tool",
+   "content": "Successfully replaced text in gptq/custom_ptq.py."
+  },
+  {
+   "role": "assistant",
+   "reasoning_content": "Replace the GPTQ sweep body with the three AWQ stages: scale search, clip search, final clipped quantize.",
+   "content": "",
+   "tool_calls": [
+    {
+     "type": "function",
+     "function": {
+      "name": "str_replace",
+      "arguments": {
+       "path": "gptq/custom_ptq.py",
+       "old_str": "\n        # Add dampening to diagonal for numerical stability\n        damp = self.PERCDAMP * torch.mean(torch.diag(H))\n        H += damp * torch.eye(self.in_features, device=self.dev)\n\n        # Compute Hessian inverse via Cholesky decomposition\n        try:\n            L = torch.linalg.cholesky(H)\n            Hinv = torch.cholesky_inverse(L)\n        except Exception:\n            # Fallback to pseudo-inverse if Cholesky fails\n            Hinv = torch.linalg.pinv(H)\n\n        Q = torch.zeros_like(W)\n        Err = torch.zeros_like(W)\n\n        # Process columns in blocks\n        for col_start in range(0, self.in_features, self.BLOCK_SIZE):\n            col_end = min(col_start + self.BLOCK_SIZE, self.in_features)\n\n            W_block = W[:, col_start:col_end].clone()\n            Hinv_block_diag = torch.diag(\n                Hinv[col_start:col_end, col_start:col_end]\n            )\n\n            for j in range(col_end - col_start):\n                col = col_start + j\n                w_col = W_block[:, j]\n\n                # Compute scale: per-group if group_size > 0, else per-column\n                if group_size > 0 and col % group_size == 0:\n                    g_end = min(col + group_size, self.in_features)\n                    W_group = W[:, col:g_end]\n                    g_max = W_group.abs().amax(dim=1, keepdim=True).clamp(min=1e-12)\n                    group_scale = (g_max / qmax).squeeze(1)\n\n                if group_size > 0:\n                    scale = group_scale\n                else:\n                    w_abs_max = w_col.abs().max().clamp(min=1e-12)\n                    scale = w_abs_max / qmax\n\n                # Quantize and dequantize\n                q_col = torch.clamp(\n                    torch.round(w_col / scale), qmin, qmax\n                ) * scale\n                Q[:, col] = q_col\n\n                # Error compensation: distribute error weighted by Hessian\n                err = (w_col - q_col) / Hinv_block_diag[j].clamp(min=1e-12)\n                Err[:, col] = err\n\n                # Update remaining columns in block\n                if j + 1 < col_end - col_start:\n                    W_block[:, j+1:] -= (\n                        err.unsqueeze(1)\n                        * Hinv[col, col_start+j+1:col_end].unsqueeze(0)\n                    )\n\n            # Propagate error to remaining columns outside block\n            if col_end < self.in_features:\n                W[:, col_end:] -= (\n                    Err[:, col_start:col_end]\n                    @ Hinv[col_start:col_end, col_end:]\n                )\n\n        return Q.to(self.layer.weight.dtype)",
+       "new_str": "\n        if self.nsamples > 0:\n            x_max = (self.act_sum / self.nsamples).clamp(min=1e-5)\n        else:\n            x_max = torch.ones(self.in_features, device=self.dev)\n\n        X = self._get_x_samples()  # (T, in_features) on dev, may be None\n\n        # ── (1) auto_scale: per-channel scale search ─────────────────────────\n        best_err = float('inf')\n        best_s = torch.ones(self.in_features, device=self.dev)\n\n        for i in range(self.N_ALPHA):\n            ratio = i / self.N_ALPHA\n            s = x_max.pow(ratio).clamp(min=1e-4)\n            s = s / (s.max() * s.min()).sqrt().clamp(min=1e-5)\n\n            W_scaled = W * s.unsqueeze(0)\n            scale_q, zp, _, _ = find_scale_zero(\n                W_scaled, num_bits=num_bits, group_size=group_size, symmetric=True\n            )\n            W_q = quantize_tensor(W_scaled, scale_q, zp, qmin, qmax)\n            W_dq = dequantize_tensor(W_q, scale_q, zp)\n            W_final = W_dq / s.unsqueeze(0)\n\n            if X is not None:\n                # Output-error: ||X @ (W - W_final).T||^2 / (T * out)\n                delta = (W - W_final).to(X.dtype)\n                err = (X @ delta.T).pow(2).mean().item()\n            else:\n                err = (W - W_final).pow(2).mul(x_max.unsqueeze(0).pow(2)).sum().item()\n\n            if err < best_err:\n                best_err = err\n                best_s = s.clone()\n\n        # Apply best per-channel scaling\n        W_scaled = W * best_s.unsqueeze(0)\n\n        # ── (2) auto_clip: per-group max clip search ─────────────────────────\n        if group_size > 0:\n            n_groups = self.in_features // group_size\n            gs = group_size\n        else:\n            n_groups = 1\n            gs = self.in_features\n\n        W_groups = W_scaled.reshape(self.out_features, n_groups, gs)  # (O, G, gs)\n        base_max = W_groups.abs().amax(dim=-1, keepdim=True).clamp(min=1e-5)\n        best_max = base_max.clone()\n\n        if X is not None:\n            X_groups = X.reshape(X.shape[0], n_groups, gs)  # (T, G, gs)\n\n            n_clip_iters = max(1, int(self.CLIP_MAX_SHRINK * self.N_CLIP_GRID))\n            oc_batch = self.OC_BATCH\n            if self.out_features % oc_batch != 0:\n                # fall back to a divisor of out_features\n                for cand in (128, 64, 32, 16, 8, 4, 2, 1):\n                    if self.out_features % cand == 0:\n                        oc_batch = cand\n                        break\n\n            for i_b in range(0, self.out_features, oc_batch):\n                W_b = W_groups[i_b:i_b + oc_batch]                # (B, G, gs)\n                base_max_b = base_max[i_b:i_b + oc_batch]          # (B, G, 1)\n                # org_out[r, t, g] = sum_c W_b[r,g,c] * X_groups[t,g,c]\n                org_out = torch.einsum('rgc,tgc->rtg', W_b, X_groups.float())\n                min_errs = torch.full_like(base_max_b, float('inf'))\n                best_max_b = base_max_b.clone()\n                for i_s in range(n_clip_iters):\n                    cur_max = base_max_b * (1 - i_s / self.N_CLIP_GRID)  # (B, G, 1)\n                    cur_w = torch.clamp(W_b, -cur_max, cur_max)\n                    scale_b = (cur_max / qmax).clamp(min=1e-12)\n                    q_w = (\n                        torch.clamp(torch.round(cur_w / scale_b), qmin, qmax) * scale_b\n                    )\n                    cur_out = torch.einsum('rgc,tgc->rtg', q_w, X_groups.float())\n                    err_b = (cur_out - org_out).pow(2).mean(dim=1, keepdim=True)\n                    err_b = err_b.permute(0, 2, 1).contiguous()  # (B, G, 1)\n                    mask = err_b < min_errs\n                    min_errs = torch.where(mask, err_b, min_errs)\n                    best_max_b = torch.where(mask, cur_max, best_max_b)\n                best_max[i_b:i_b + oc_batch] = best_max_b\n                del org_out, cur_out, q_w, cur_w\n            del X_groups\n        # else: no calibration samples — fall back to base_max (no clipping)\n\n        # ── (3) Final quantization with clipped scales ───────────────────────\n        scale_g = (best_max / qmax).clamp(min=1e-12)\n        scale_q = scale_g.expand_as(W_groups).reshape(self.out_features, self.in_features)\n        zp = torch.zeros_like(scale_q)\n\n        # Clamp scaled weights to the searched per-group range, then quantize\n        W_clamped = torch.clamp(\n            W_scaled,\n            -best_max.expand_as(W_groups).reshape(self.out_features, self.in_features),\n            best_max.expand_as(W_groups).reshape(self.out_features, self.in_features),\n        )\n        W_q = quantize_tensor(W_clamped, scale_q, zp, qmin, qmax)\n        W_dq = dequantize_tensor(W_q, scale_q, zp)\n        W_final = W_dq / best_s.unsqueeze(0)\n\n        return W_final.to(self.layer.weight.dtype)"
+      }
+     }
+    }
+   ]
+  },
+  {
+   "role": "tool",
+   "content": "Successfully replaced text in gptq/custom_ptq.py."
+  },
+  {
+   "role": "assistant",
+   "reasoning_content": "Finally, release the AWQ-specific buffers in free() alongside H.",
+   "content": "",
+   "tool_calls": [
+    {
+     "type": "function",
+     "function": {
+      "name": "str_replace",
+      "arguments": {
+       "path": "gptq/custom_ptq.py",
+       "old_str": "        del self.H\n        self.H = None",
+       "new_str": "        del self.H\n        del self.act_sum\n        del self._x_buf\n        self.H = None\n        self.act_sum = None\n        self._x_buf = None"
+      }
+     }
+    }
+   ]
+  },
+  {
+   "role": "tool",
+   "content": "Successfully replaced text in gptq/custom_ptq.py."
+  },
+  {
+   "role": "assistant",
+   "reasoning_content": "",
+   "content": "Run the experiment to measure this.",
+   "tool_calls": [
+    {
+     "type": "function",
+     "function": {
+      "name": "run_experiment",
+      "arguments": {}
+     }
+    }
+   ]
+  },
+  {
+   "role": "tool",
+   "content": "Measured results — `baseline:awq` (`is_final,true`), seed 42. FP16 reference perplexity\n4.9071. Lower is better.\n\n## ptq-7b-int4 (INT4, group 128)\n| seed | wikitext2_ppl | fp16_ppl | degradation | quant_time (s) |\n|---|---|---|---|---|\n| 42 | 5.0647 | 4.9071 | 0.1577 | 79.3 |\n\n## ptq-7b-int3 (INT3, group 128)\n| seed | wikitext2_ppl | fp16_ppl | degradation | quant_time (s) |\n|---|---|---|---|---|\n| 42 | 5.7776 | 4.9071 | 0.8706 | 79.0 |\n\n## ptq-7b-int4-g64 (INT4, group 64)\n| seed | wikitext2_ppl | fp16_ppl | degradation | quant_time (s) |\n|---|---|---|---|---|\n| 42 | 5.0454 | 4.9071 | 0.1383 | 80.2 |"
+  }
+ ]
+}

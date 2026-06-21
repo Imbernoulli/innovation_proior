@@ -1,0 +1,853 @@
+{
+ "tools": [
+  {
+   "type": "function",
+   "function": {
+    "name": "str_replace",
+    "description": "Replace the unique occurrence of old_str with new_str in the file.",
+    "parameters": {
+     "type": "object",
+     "properties": {
+      "path": {
+       "type": "string"
+      },
+      "old_str": {
+       "type": "string"
+      },
+      "new_str": {
+       "type": "string"
+      }
+     },
+     "required": [
+      "path",
+      "old_str",
+      "new_str"
+     ]
+    }
+   }
+  },
+  {
+   "type": "function",
+   "function": {
+    "name": "create",
+    "description": "Create a new file with the given text.",
+    "parameters": {
+     "type": "object",
+     "properties": {
+      "path": {
+       "type": "string"
+      },
+      "file_text": {
+       "type": "string"
+      }
+     },
+     "required": [
+      "path",
+      "file_text"
+     ]
+    }
+   }
+  },
+  {
+   "type": "function",
+   "function": {
+    "name": "run_experiment",
+    "description": "Train+evaluate the current code; returns metrics.",
+    "parameters": {
+     "type": "object",
+     "properties": {}
+    }
+   }
+  }
+ ],
+ "messages": [
+  {
+   "role": "system",
+   "content": "You are a research engineer improving a model on a fixed ML task. You work by editing the model code and running experiments. Think carefully before each change. You have these tools:\n- str_replace(path, old_str, new_str): replace the unique occurrence of old_str with new_str.\n- create(path, file_text): create a new file.\n- run_experiment(): train + evaluate the current code under the fixed budget; returns metrics.\nMake one tool call at a time. After editing, call run_experiment() to measure your method."
+  },
+  {
+   "role": "user",
+   "content": "## Research question\n\nContinuous black-box minimization: I am handed a scalar objective `f(x)` over a box of real vectors —\nnonlinear, multimodal, ill-conditioned, sometimes only pokeable (feed a vector, get a number). The one\nthing being designed is the **evolutionary strategy** — the selection, crossover, and mutation operators\nand the loop that drives them. Everything around it (the benchmark functions, the bounds, the\nfitness/individual types, the evaluation harness) is fixed. The bar is to minimize `f` across a panel of\nstandard test functions that stress different landscape pathologies (multimodal Rastrigin, the curved\nRosenbrock valley, the flat-then-needle Ackley), at two dimensionalities (30D and 100D).\n\n## Prior art before the first rung (continuous-EA lineage)\n\nThe first rung reacts to a line of population-based black-box optimizers; these are the ancestors the\nladder climbs out of.\n\n- **Genetic algorithms on binary strings (Holland 1975; Goldberg 1989).** Population + selection +\n  single-point crossover + bit-flip mutation, with the building-block story: crossover propagates short\n  high-fitness substrings. Gap on continuous problems: forcing reals through a bit encoding imports a\n  precision cap, a fixed string→real mapping, and the Hamming cliff (adjacent reals far apart in bits),\n  so the search fights the encoding instead of the function.\n- **Evolution strategies (Rechenberg 1973; Schwefel 1977).** Mutate a parent by adding a normal\n  perturbation `x_j ← x_j + N(0,σ²)`; σ *is* the search scale, controlled by the 1/5 success rule or\n  self-adapted alongside `x`. Gap: σ (and, in the full-covariance version, a `D×D` matrix) is a second\n  optimization problem bolted on — extra control variables that lag or mistrack the landscape.\n- **Real-coded crossovers (Wright 1991, linear; Eshelman & Schaffer 1993, BLX-α).** Recombine reals\n  directly. Gap: linear crossover is near-deterministic (three children per pair); BLX-α is genuinely\n  stochastic but flat-density inside its interval, ignoring single-point crossover's strong pull toward\n  children near the parents.\n- **Simulated annealing (Kirkpatrick et al. 1983).** Escapes local minima by accepting uphill moves\n  with probability `exp(−Δ/T)` and cooling `T`. Gap: the temperature schedule is a whole apparatus of\n  control variables, and it burns enormous numbers of function evaluations — exactly what is scarce when\n  each call is expensive.\n\nThe recurring wall: the perturbation's *scale and orientation* are set by an external device (σ, a\ncooling schedule, a fixed mutation width), which is brittle and must be re-tuned per landscape. The\nladder is about answering the scale question from the population's own geometry instead.\n\n## The fixed substrate\n\nFrozen and not to be touched: the three benchmark functions (`rastrigin`, `rosenbrock`, `ackley`, each\nreturning a one-tuple `(value,)` for minimization), their bounds, the DEAP single-objective minimization\ntypes (`creator.FitnessMin` with `weights=(-1.0,)` and `creator.Individual` as a `list`), and the\nevaluation harness below the editable region. Two helpers are provided and may be reused:\n`make_individual(toolbox, dim, lo, hi)` (a uniform-random individual in the box) and\n`clip_individual(individual, lo, hi)` (clip genes back into `[lo, hi]`). The harness drives every run with\n`pop_size=200`, `n_generations=500` (group budget), `cx_prob=0.9`, `mut_prob=0.2`, and reports\n`best_fitness` (final best value, lower is better) and `convergence_gen` (the first generation within 1%\nof the final best).\n\n## The editable interface\n\nExactly one region is editable — lines 87–225 of `deap/custom_evolution.py`, comprising four definitions.\nEvery method on the ladder is a fill of this same contract:\n\n- `custom_select(population, k, toolbox)` — return `k` selected individuals.\n- `custom_crossover(ind1, ind2)` — recombine two parents in place, return the pair.\n- `custom_mutate(individual, lo, hi)` — perturb one individual in place, return a one-tuple.\n- `run_evolution(evaluate_func, dim, lo, hi, pop_size, n_generations, cx_prob, mut_prob, seed)` — the\n  full loop; must return `(best_individual, fitness_history)` where `fitness_history` is the best fitness\n  per generation, and print `TRAIN_METRICS gen=G best_fitness=F avg_fitness=A` every 50 generations.\n\nA method that restructures the algorithm (DE, L-SHADE) ignores the three operator stubs (leaving them as\nno-ops) and writes the whole search inside `run_evolution`; an operator-suite method (GA) fills all three\noperators and uses the default generational loop. `numpy`, `scipy`, `math`, `random`, and\n`deap.{base,creator,tools,cma}` are available.\n\nThe starting point is the scaffold default below — tournament selection (size 3), simulated binary\ncrossover (η=20), polynomial bounded mutation (η=20, indpb=1/n), in a generational loop. Each step\nreplaces exactly this region.\n\n```python\n# EDITABLE region of deap/custom_evolution.py (lines 87-225) - scaffold default fill\n\ndef custom_select(population: list, k: int, toolbox=None) -> list:\n    \"\"\"Default: tournament selection with tournament size 3.\"\"\"\n    return tools.selTournament(population, k, tournsize=3)\n\n\ndef custom_crossover(ind1: list, ind2: list) -> Tuple[list, list]:\n    \"\"\"Default: simulated binary crossover (SBX), eta=20.\"\"\"\n    tools.cxSimulatedBinary(ind1, ind2, eta=20.0)\n    return ind1, ind2\n\n\ndef custom_mutate(individual: list, lo: float, hi: float) -> Tuple[list]:\n    \"\"\"Default: polynomial mutation, eta=20, indpb=1/dim.\"\"\"\n    tools.mutPolynomialBounded(\n        individual, eta=20.0, low=lo, up=hi,\n        indpb=1.0 / len(individual)\n    )\n    return (individual,)\n\n\ndef run_evolution(\n    evaluate_func: Callable, dim: int, lo: float, hi: float,\n    pop_size: int, n_generations: int, cx_prob: float, mut_prob: float, seed: int,\n) -> Tuple[list, list]:\n    \"\"\"Default generational loop: select -> clone -> crossover -> mutate -> clip -> evaluate -> replace.\"\"\"\n    random.seed(seed)\n    np.random.seed(seed)\n\n    toolbox = base.Toolbox()\n    toolbox.register(\"individual\", make_individual, toolbox, dim, lo, hi)\n    toolbox.register(\"population\", tools.initRepeat, list, toolbox.individual)\n    toolbox.register(\"evaluate\", evaluate_func)\n\n    pop = toolbox.population(n=pop_size)\n    fitnesses = list(map(toolbox.evaluate, pop))\n    for ind, fit in zip(pop, fitnesses):\n        ind.fitness.values = fit\n\n    fitness_history = []\n\n    for gen in range(n_generations):\n        offspring = custom_select(pop, len(pop), toolbox)\n        offspring = [toolbox.clone(ind) for ind in offspring]\n\n        for i in range(0, len(offspring) - 1, 2):\n            if random.random() < cx_prob:\n                custom_crossover(offspring[i], offspring[i + 1])\n                del offspring[i].fitness.values\n                del offspring[i + 1].fitness.values\n\n        for i in range(len(offspring)):\n            if random.random() < mut_prob:\n                custom_mutate(offspring[i], lo, hi)\n                del offspring[i].fitness.values\n\n        for ind in offspring:\n            clip_individual(ind, lo, hi)\n\n        invalid_ind = [ind for ind in offspring if not ind.fitness.valid]\n        fitnesses = list(map(toolbox.evaluate, invalid_ind))\n        for ind, fit in zip(invalid_ind, fitnesses):\n            ind.fitness.values = fit\n\n        pop[:] = offspring\n\n        best_fit = min(ind.fitness.values[0] for ind in pop)\n        fitness_history.append(best_fit)\n\n        if (gen + 1) % 50 == 0 or gen == 0:\n            avg_fit = sum(ind.fitness.values[0] for ind in pop) / len(pop)\n            print(\n                f\"TRAIN_METRICS gen={gen+1} best_fitness={best_fit:.6e} \"\n                f\"avg_fitness={avg_fit:.6e}\",\n                flush=True,\n            )\n\n    best_ind = min(pop, key=lambda ind: ind.fitness.values[0])\n    return best_ind, fitness_history\n```\n\n## Evaluation settings\n\nFour benchmarks, all minimization (lower is better), each run at seed 42 (the leaderboard aggregates\nthree internal seeds into a mean):\n\n| Benchmark | Function | Dim | Domain | Global min |\n|---|---|---|---|---|\n| rastrigin-30d | Rastrigin (multimodal, separable) | 30 | [-5.12, 5.12] | 0 |\n| rosenbrock-30d | Rosenbrock (curved valley, non-separable) | 30 | [-5, 10] | 0 |\n| ackley-30d | Ackley (flat plateau, needle at origin) | 30 | [-32.768, 32.768] | 0 |\n| rastrigin-100d | Rastrigin (high-dimensional, hidden eval) | 100 | [-5.12, 5.12] | 0 |\n\nTwo metrics per benchmark: `best_fitness` (final best value, lower better) and `convergence_gen` (first\ngeneration within 1% of final best). Budget: `pop_size=200`, `n_generations=500` for the 30D functions\n(1000 for 100D), `cx_prob=0.9`, `mut_prob=0.2`.\n\nThe editable model code is in `deap/custom_evolution.py`:\n```python\n\ndef custom_select(population: list, k: int, toolbox=None) -> list:\n    \"\"\"Select k individuals from the population.\n\n    Args:\n        population: List of individuals (each has a .fitness.values attribute).\n        k: Number of individuals to select.\n        toolbox: The DEAP toolbox (optional, for access to other operators).\n\n    Returns:\n        List of k selected individuals (deep copies recommended).\n    \"\"\"\n    # Default: tournament selection with tournament size 3\n    return tools.selTournament(population, k, tournsize=3)\n\n\ndef custom_crossover(ind1: list, ind2: list) -> Tuple[list, list]:\n    \"\"\"Apply crossover to two individuals.\n\n    Args:\n        ind1, ind2: Parent individuals (lists of floats).\n\n    Returns:\n        Tuple of two offspring individuals (modified in-place).\n    \"\"\"\n    # Default: simulated binary crossover (SBX), eta=20\n    tools.cxSimulatedBinary(ind1, ind2, eta=20.0)\n    return ind1, ind2\n\n\ndef custom_mutate(individual: list, lo: float, hi: float) -> Tuple[list]:\n    \"\"\"Apply mutation to an individual.\n\n    Args:\n        individual: The individual to mutate (list of floats).\n        lo: Lower bound for genes.\n        hi: Upper bound for genes.\n\n    Returns:\n        Tuple containing the mutated individual.\n    \"\"\"\n    # Default: polynomial mutation, eta=20, indpb=1/dim\n    tools.mutPolynomialBounded(\n        individual, eta=20.0, low=lo, up=hi,\n        indpb=1.0 / len(individual)\n    )\n    return (individual,)\n\n\ndef run_evolution(\n    evaluate_func: Callable,\n    dim: int,\n    lo: float,\n    hi: float,\n    pop_size: int,\n    n_generations: int,\n    cx_prob: float,\n    mut_prob: float,\n    seed: int,\n) -> Tuple[list, list]:\n    \"\"\"Run the evolutionary algorithm.\n\n    Args:\n        evaluate_func: Fitness function mapping individual -> (fitness_value,).\n        dim: Dimensionality of the search space.\n        lo: Lower bound for each dimension.\n        hi: Upper bound for each dimension.\n        pop_size: Population size.\n        n_generations: Number of generations.\n        cx_prob: Crossover probability.\n        mut_prob: Mutation probability.\n        seed: Random seed.\n\n    Returns:\n        best_individual: The best individual found.\n        fitness_history: List of best fitness per generation.\n    \"\"\"\n    random.seed(seed)\n    np.random.seed(seed)\n\n    # Setup toolbox\n    toolbox = base.Toolbox()\n    toolbox.register(\"individual\", make_individual, toolbox, dim, lo, hi)\n    toolbox.register(\"population\", tools.initRepeat, list, toolbox.individual)\n    toolbox.register(\"evaluate\", evaluate_func)\n\n    # Initialize population\n    pop = toolbox.population(n=pop_size)\n    fitnesses = list(map(toolbox.evaluate, pop))\n    for ind, fit in zip(pop, fitnesses):\n        ind.fitness.values = fit\n\n    fitness_history = []\n\n    for gen in range(n_generations):\n        # Selection\n        offspring = custom_select(pop, len(pop), toolbox)\n        offspring = [toolbox.clone(ind) for ind in offspring]\n\n        # Crossover\n        for i in range(0, len(offspring) - 1, 2):\n            if random.random() < cx_prob:\n                custom_crossover(offspring[i], offspring[i + 1])\n                del offspring[i].fitness.values\n                del offspring[i + 1].fitness.values\n\n        # Mutation\n        for i in range(len(offspring)):\n            if random.random() < mut_prob:\n                custom_mutate(offspring[i], lo, hi)\n                del offspring[i].fitness.values\n\n        # Clip to bounds\n        for ind in offspring:\n            clip_individual(ind, lo, hi)\n\n        # Evaluate individuals with invalid fitness\n        invalid_ind = [ind for ind in offspring if not ind.fitness.valid]\n        fitnesses = list(map(toolbox.evaluate, invalid_ind))\n        for ind, fit in zip(invalid_ind, fitnesses):\n            ind.fitness.values = fit\n\n        # Replace population\n        pop[:] = offspring\n\n        # Track best fitness\n        best_fit = min(ind.fitness.values[0] for ind in pop)\n        fitness_history.append(best_fit)\n\n        if (gen + 1) % 50 == 0 or gen == 0:\n            avg_fit = sum(ind.fitness.values[0] for ind in pop) / len(pop)\n            print(\n                f\"TRAIN_METRICS gen={gen+1} best_fitness={best_fit:.6e} \"\n                f\"avg_fitness={avg_fit:.6e}\",\n                flush=True,\n            )\n\n    best_ind = min(pop, key=lambda ind: ind.fitness.values[0])\n    return best_ind, fitness_history\n```\nImprove it. Derive your method, edit the code, then run_experiment()."
+  },
+  {
+   "role": "assistant",
+   "reasoning_content": "I am starting the climb from the bottom, and the honest place to start is the question that decides every\ndirect-search method: by how much, and in what direction, do I perturb a candidate point? I have a scalar\n`f(x)` over a box of reals, and the panel is deliberately nasty — Rastrigin is a multimodal egg-carton,\nRosenbrock is a thin curved valley, Ackley is a flat plateau with a needle at the origin, and two of\nthese run at 30D, one at 100D. The skeleton of every method I could fill the scaffold with is the same\ntwo beats: take a vector, make a variation of it, decide whether to keep the variation. And the place\nthey all live or die is the perturbation scale. Too large and the search thrashes and never settles; too\nsmall and it crawls or sinks into the first local pit and stays. The cruel part is that the right amount\nis not a constant — early, scanning a wide box, I want big jumps; late, polishing, I want tiny ones — and\nit differs per landscape. So before I pick an algorithm I want to be clear about where the scale comes\nfrom in each candidate, because that is what will separate a floor baseline from something that actually\nmoves.\n\nThe scaffold's default fill answers the scale question the genetic-algorithm way: simulated binary\ncrossover plus polynomial mutation, both with a fixed distribution index η=20, under tournament selection.\nThat is a legitimate method and I will get to it on the next rung, but stare at how it sets scale. The SBX\nspread factor and the polynomial mutation width are governed by η, a number I fix once, by hand, and which\ndoes not contract as the population converges and does not align with the shape of the valley. The\nmutation injects fresh variation from a fixed-width distribution that is right for at most one phase of one\nproblem. Evolution strategies have the same disease in a subtler form: σ *is* the scale, but controlling\nit is a second optimization problem — the 1/5 rule, self-adapted per-coordinate σ, or a full covariance,\neach with its own learning machinery that lags the true geometry and its own knobs. Simulated annealing\nanswers with a cooling schedule, a dozen control variables and an enormous evaluation appetite I cannot\nafford. The pattern is the same everywhere: the perturbation's scale is set by an *external device* sitting\noutside the actual configuration of the candidate points — a temperature, a controlled σ, a fixed\nmutation width. Each device is brittle when the landscape does not match its assumptions, and each is a\ntuning burden. I do not want a better device. I want the scale to *not be a device at all*.\n\nIs that possible? Nelder–Mead hints that it is: it keeps `D+1` vertices and reads the size of its next\nmove straight off how big the simplex currently is — reflect, expand, contract relative to its own spread,\nno σ, no schedule. When the simplex is big the moves are big; as it collapses into a basin the moves\nshrink with it. That is exactly the self-scaling I want. But it is one tiny figure of `D+1` points, a\npurely local minimizer that contracts into a basin and cannot climb back out — useless on a Rastrigin\negg-carton. What it carries, though, is the idea: extract the move scale from the configuration of points\nyou already hold. Nelder–Mead does this with one collapsing simplex. The scaffold hands me a whole\npopulation of `pop_size=200`. What if I extract the move scale from the *population itself*?\n\nLook at what a population actually contains as a distribution of points. Early in the run the 200 members\nare scattered across the box, so the cloud is large. Late, as they converge, the cloud is tight around the\noptimum. That spread — the typical distance between members — is precisely the quantity I keep wanting σ\nto be: big while exploring, small while refining, and it already tracks the phase of the search on its own,\nfor free, because the population literally contracts as it converges. The information ES and SA pay for is\nsitting in the geometry of the points I am already carrying. The only question is how to turn \"the\npopulation is spread this much\" into a perturbation vector I can add.\n\nThe naive move is to estimate the population covariance and sample a Gaussian from it — but that is ES\nwith extra steps, a `D×D` matrix to estimate, store, and keep current, the very machinery I am trying to\ndelete, and at 100D that matrix is 10,000 entries. I want a perturbation of the right scale and\norientation without ever forming a distribution. So: what is the simplest object built from the population\nwhose typical magnitude *is* the population's spread? The difference between two members. Pick two members\n`x_r2` and `x_r3` at random and form `x_r2 − x_r3`. Its length is, by construction, a sample of the typical\npairwise distance in the current population — large when the cloud is large, small when it is small. I\nnever estimated anything; I subtracted two points I already have. Add a scaled copy to a third member as\nthe perturbation: `v = x_r1 + F·(x_r2 − x_r3)`. Now the self-scaling is automatic and exact. Early, members\nare far apart, the difference is a big vector, the step is exploratory; late, members have clustered, the\ndifference is tiny, the step refines. The scale rides the population's contraction with zero parameters and\nzero schedule. This is what ES needed a 1/5 rule or a self-adapted σ to fake, falling out of pure\nsubtraction.\n\nThere is a second gift I almost miss, and it is the orientation. Difference vectors are not isotropic —\nthey inherit the *shape* of the population cloud, not just its size. Picture Rosenbrock's long curved\nvalley, a thin bent ribbon where the good region lives. The population, selected toward low cost, spreads\nout *along* the ribbon and stays thin across it, so two random members differ much more along the valley\nthan across it, and `x_r2 − x_r3` points preferentially down the valley. The perturbation is automatically\nanisotropic in exactly the way the landscape is — it proposes moves along directions where the population\nhas discovered it can move productively. This is the correlated, rotation-aware search ES needs an explicit\ncovariance for, and I get it for nothing because the differences are samples of a cloud that has already\naligned itself with the contours. The population does the covariance estimation implicitly, by where its\nmembers sit. This is precisely the property I expect to matter on Rosenbrock, where the scaffold default's\naxis-aligned polynomial mutation has no way to align with the diagonal valley.\n\nSo the difference-vector perturbation is the core. Now I nail the details, each a real choice with a\nfailure mode. The base vector `x_r1` — random, or the current best? Always perturbing the best converges\nfast on easy unimodal bowls but concentrates every trial around one point and loses the diversity that lets\nthe population escape local minima — dangerous on the multimodal costs I care most about (Rastrigin, with\nits grid of pits). A random base keeps exploration broad and the population diverse. So the cautious\ngeneral default is a random base: the \"rand\" scheme. The factor `F` amplifies an already-adapted difference\nvector. Why have it at all if the difference is already the right scale? Because the raw typical difference\nis not necessarily the *optimal* step length — I may want a bit less than a full inter-member hop to\nconverge cleanly, or a bit more to push exploration on a rugged surface. `F` is a single dial on a vector\nthat is already pointed and sized correctly, robust and easy to choose, unlike σ which had to *be* the\nwhole scale. Too small and the steps die before the population reaches the optimum (premature convergence);\ntoo large and trials overshoot and the population never settles. The conventional range is `0 < F ≤ 2`; a\nvalue around a half keeps the mean step useful, and crucially I do *not* adapt `F` over time, because the\ndifference vector already carries the time-adaptation. I take `F = 0.5` as the task default.\n\nNow the indices. I need `r1, r2, r3` distinct from each other and from the target index `i` whose slot I\nam trying to improve. Distinct from each other because if `r2 = r3` the difference is the zero vector — a\nwasted trial. Distinct from `i` because the move should be informed by *other* members, not coupled to the\nvery vector it competes against. Three indices all different from `i` means at least four distinct members,\n`pop_size ≥ 4`, which is comfortably satisfied at 200. Initialize the population uniformly over the box,\nthe honest default with no prior — the scaffold's `make_individual` does exactly this.\n\nLet me sanity-check the mutation by itself. Suppose every trial were just `v = x_r1 + F·(x_r2 − x_r3)`,\naccepted greedily if it beats its target. Does it work as a search? Members improve one slot at a time, the\ncloud contracts toward low-cost regions, the differences shrink with it, the steps anneal themselves — the\ndynamics are sound. But I have a worry: the perturbation moves *all* `D` coordinates of `x_r1` at once, by\nthe full difference vector. On a separable problem like Rastrigin, where coordinates are independent,\nperturbing every coordinate simultaneously is wasteful — I would rather sometimes change a few coordinates\nand let the good values of the others ride along. More generally I want to control *how many* coordinates\nof the mutant make it into the trial, to inject diversity and tune to the dependency structure. So I will\nnot let the mutant become the trial wholesale; I will *mix* it with the target coordinate by coordinate.\nThat is the crossover step.\n\nBuild the trial `u` from the mutant `v` and the target `x_i` per coordinate: take `u_j = v_j` with\nprobability `CR`, otherwise `u_j = x_{i,j}` — each coordinate decided by an independent coin, a binomial\nchoice across the `D` coordinates. `CR ∈ [0,1]` is a dial on the dependency structure: near 1, almost every\ncoordinate comes from the mutant, so the trial is essentially the full difference-vector move — what I want\non a *non-separable* problem like Rosenbrock, where coordinates must move together along the curved valley.\nNear 0, only a coordinate or two change per trial — suiting a *separable* problem optimized axis by axis.\nFor the general non-separable case I lean high, `CR = 0.9`, accepting that this is not the ideal setting for\nseparable Rastrigin (a point I will pay for in the numbers and revisit). There is a degenerate case in the\ncoin flipping: if every coin says \"keep the target,\" `u = x_i` exactly and the evaluation is wasted. I\nforce at least one coordinate from the mutant by picking a random index `j_rand` up front and always taking\nthat coordinate from `v`: `u_j = v_j` if `random() < CR or j == j_rand`, else `u_j = x_{i,j}`. Now the\nconstruction cannot produce the all-target copy.\n\nNow acceptance. I have a trial `u` for target slot `i`. Greedy and one-to-one: compare `u` against *its\nown target* `x_i`, and let `u` take the slot if its cost is no worse — `cost(u) ≤ cost(x_i)`; otherwise\n`x_i` stays. Two things make this exactly right. First, it is one-to-one — each trial competes only with\nthe single member it was built to replace, not the whole population, which keeps `pop_size` fixed and, more\nimportantly, preserves diversity far better than a global \"keep the best `N`\" truncation would. Truncation\nwould let a few good basins crowd out everything and collapse the spread (and with it the self-scaling\ndifference vectors); one-to-one replacement lets a member that is merely best *in its own lineage* survive,\nso the cloud stays spread and keeps supplying varied differences. Second, it is elitist per slot: a slot\nonly ever changes to something no worse, so the best cost is monotone non-increasing — the method never\nthrows away its best find. Does greedy acceptance trap me the way plain greedy search does? No, and this is\nwhere the population earns its keep: a single member sliding into a local basin cannot drag the others, and\ndifference vectors from members exploring other basins keep proposing jumps that pull a trapped member out.\n\nNow I assemble the loop in the scaffold's vocabulary, and here the literal edit diverges from the generic\ntextbook version in one detail worth stating, because the harness exposes the loop and I must fill it as it\nruns. I sweep the population once per generation; for each target index `i`, I pick `r1, r2, r3` from the\nother indices, form the mutant, binomial-cross it with the target (forcing `j_rand`), clip the trial back\ninto the box with the provided `clip_individual` logic, evaluate, and — if the trial is no worse —\noverwrite `pop[i]` *in place, immediately*. In-place overwrite during the sweep means a later target in the\nsame generation can draw `r1/r2/r3` from members already updated this generation; this is the standard\n\"DE with immediate replacement\" and it is a touch greedier than buffering a whole next generation, but it\nis the form the scaffold's single-loop structure invites and it costs nothing. The scaffold's three\noperator stubs (`custom_select`, `custom_crossover`, `custom_mutate`) are not used by DE — DE's\nselection is greedy inside the loop, its mutation is the difference vector, its crossover is binomial — so\nI leave them as no-ops and write the entire search inside `run_evolution`. The control variables are just\n`F`, `CR`, and `pop_size`: three numbers, none a schedule or an adapted matrix. The full scaffold module is\nin the answer.\n\nWhat do I expect, and where do I expect it to hurt — these are the falsifiable predictions this rung must\nhand the next one. The self-scaling difference vector should make DE far more sample-efficient than the\nscaffold default's fixed-η operators on the smooth, non-separable problems: on Ackley, whose basin is a\nsingle broad bowl once you are off the plateau, and on Rosenbrock's curved valley, the anisotropic\ndifferences should track the geometry and drive the best fitness down hard. But I am uneasy about three\nthings. First, `CR = 0.9` is wrong for separable Rastrigin — changing nine of ten coordinates per trial\nfights the egg-carton's independence, so I expect Rastrigin (and especially 100D Rastrigin) to be DE's\nworst showings, possibly catastrophically so, because at 100D the difference vectors must coordinate a huge\nnon-separable move on a separable problem. Second, with a fixed `pop_size=200` and only 500 generations,\nDE/rand/1 is a relatively slow converger; `rand` base trades speed for diversity, so I may simply run out\nof budget before refining. Third, classical DE/rand/1/bin has no adaptation of `F` or `CR` at all — the one\nsetting must serve four very different landscapes, and I have just argued the setting that is right for\nRosenbrock is wrong for Rastrigin. So my concrete expectation entering the next rung is: DE will land a\nclean, near-zero result on Ackley, a respectable Rosenbrock, and a *poor* Rastrigin at both dimensions —\nthe failure being the fixed `CR` colliding with separability and the slow `rand` base burning the budget.\nThat diagnosis is exactly what should push me toward an operator suite whose mutation is local and\nper-coordinate next, and a self-adapting DE after that. For now, let me write the DE search into the loop.",
+   "content": "I'm replacing the scaffold with Differential Evolution (DE/rand/1/bin), where the perturbation scale comes\nfrom the population's own scatter rather than a fixed knob. First I retire the operator stubs to no-ops,\nsince DE drives the whole search inside run_evolution.",
+   "tool_calls": [
+    {
+     "type": "function",
+     "function": {
+      "name": "str_replace",
+      "arguments": {
+       "path": "deap/custom_evolution.py",
+       "old_str": "\ndef custom_select(population: list, k: int, toolbox=None) -> list:\n    \"\"\"Select k individuals from the population.\n\n    Args:\n        population: List of individuals (each has a .fitness.values attribute).\n        k: Number of individuals to select.\n        toolbox: The DEAP toolbox (optional, for access to other operators).\n\n    Returns:\n        List of k selected individuals (deep copies recommended).\n    \"\"\"\n    # Default: tournament selection with tournament size 3\n    return tools.selTournament(population, k, tournsize=3)\n\n\ndef custom_crossover(ind1: list, ind2: list) -> Tuple[list, list]:\n    \"\"\"Apply crossover to two individuals.\n\n    Args:\n        ind1, ind2: Parent individuals (lists of floats).\n\n    Returns:\n        Tuple of two offspring individuals (modified in-place).\n    \"\"\"\n    # Default: simulated binary crossover (SBX), eta=20\n    tools.cxSimulatedBinary(ind1, ind2, eta=20.0)\n    return ind1, ind2",
+       "new_str": "# EDITABLE region of deap/custom_evolution.py (lines 87-225) - step 1: DE/rand/1/bin\n\ndef custom_select(population: list, k: int, toolbox=None) -> list:\n    \"\"\"Not used directly in DE (greedy selection is built into run_evolution).\"\"\"\n    return population[:k]\n\n\ndef custom_crossover(ind1: list, ind2: list) -> Tuple[list, list]:\n    \"\"\"Not used directly in DE (binomial crossover is built into run_evolution).\"\"\"\n    return ind1, ind2"
+      }
+     }
+    }
+   ]
+  },
+  {
+   "role": "tool",
+   "content": "Successfully replaced text in deap/custom_evolution.py."
+  },
+  {
+   "role": "assistant",
+   "reasoning_content": "",
+   "content": "",
+   "tool_calls": [
+    {
+     "type": "function",
+     "function": {
+      "name": "str_replace",
+      "arguments": {
+       "path": "deap/custom_evolution.py",
+       "old_str": "def custom_mutate(individual: list, lo: float, hi: float) -> Tuple[list]:\n    \"\"\"Apply mutation to an individual.\n\n    Args:\n        individual: The individual to mutate (list of floats).\n        lo: Lower bound for genes.\n        hi: Upper bound for genes.\n\n    Returns:\n        Tuple containing the mutated individual.\n    \"\"\"\n    # Default: polynomial mutation, eta=20, indpb=1/dim\n    tools.mutPolynomialBounded(\n        individual, eta=20.0, low=lo, up=hi,\n        indpb=1.0 / len(individual)\n    )\n    return (individual,)",
+       "new_str": "def custom_mutate(individual: list, lo: float, hi: float) -> Tuple[list]:\n    \"\"\"Not used directly in DE (DE mutation is built into run_evolution).\"\"\"\n    return (individual,)"
+      }
+     }
+    }
+   ]
+  },
+  {
+   "role": "tool",
+   "content": "Successfully replaced text in deap/custom_evolution.py."
+  },
+  {
+   "role": "assistant",
+   "reasoning_content": "",
+   "content": "",
+   "tool_calls": [
+    {
+     "type": "function",
+     "function": {
+      "name": "str_replace",
+      "arguments": {
+       "path": "deap/custom_evolution.py",
+       "old_str": ") -> Tuple[list, list]:\n    \"\"\"Run the evolutionary algorithm.\n\n    Args:\n        evaluate_func: Fitness function mapping individual -> (fitness_value,).\n        dim: Dimensionality of the search space.\n        lo: Lower bound for each dimension.\n        hi: Upper bound for each dimension.\n        pop_size: Population size.\n        n_generations: Number of generations.\n        cx_prob: Crossover probability.\n        mut_prob: Mutation probability.\n        seed: Random seed.\n\n    Returns:\n        best_individual: The best individual found.\n        fitness_history: List of best fitness per generation.\n    \"\"\"",
+       "new_str": ") -> Tuple[list, list]:\n    \"\"\"Differential Evolution: DE/rand/1/bin.\n\n    F (scale factor) = 0.5, CR (crossover rate) = 0.9.\n    Greedy selection: trial replaces target only if fitness improves.\n    \"\"\""
+      }
+     }
+    }
+   ]
+  },
+  {
+   "role": "tool",
+   "content": "Successfully replaced text in deap/custom_evolution.py."
+  },
+  {
+   "role": "assistant",
+   "reasoning_content": "The only control variables DE needs: F=0.5 and CR=0.9, set just before the toolbox.",
+   "content": "",
+   "tool_calls": [
+    {
+     "type": "function",
+     "function": {
+      "name": "str_replace",
+      "arguments": {
+       "path": "deap/custom_evolution.py",
+       "old_str": "\n    # Setup toolbox\n    toolbox = base.Toolbox()",
+       "new_str": "\n    F = 0.5   # Scale factor (Storn & Price recommended default)\n    CR = 0.9  # Crossover rate\n\n    toolbox = base.Toolbox()"
+      }
+     }
+    }
+   ]
+  },
+  {
+   "role": "tool",
+   "content": "Successfully replaced text in deap/custom_evolution.py."
+  },
+  {
+   "role": "assistant",
+   "reasoning_content": "",
+   "content": "",
+   "tool_calls": [
+    {
+     "type": "function",
+     "function": {
+      "name": "str_replace",
+      "arguments": {
+       "path": "deap/custom_evolution.py",
+       "old_str": "\n    # Initialize population\n    pop = toolbox.population(n=pop_size)",
+       "new_str": "\n    pop = toolbox.population(n=pop_size)"
+      }
+     }
+    }
+   ]
+  },
+  {
+   "role": "tool",
+   "content": "Successfully replaced text in deap/custom_evolution.py."
+  },
+  {
+   "role": "assistant",
+   "reasoning_content": "The core: replace the generational loop with the DE sweep — difference-vector mutant, binomial crossover\nwith a forced j_rand, clip, and immediate greedy replacement of each target in place.",
+   "content": "",
+   "tool_calls": [
+    {
+     "type": "function",
+     "function": {
+      "name": "str_replace",
+      "arguments": {
+       "path": "deap/custom_evolution.py",
+       "old_str": "    for gen in range(n_generations):\n        # Selection\n        offspring = custom_select(pop, len(pop), toolbox)\n        offspring = [toolbox.clone(ind) for ind in offspring]\n\n        # Crossover\n        for i in range(0, len(offspring) - 1, 2):\n            if random.random() < cx_prob:\n                custom_crossover(offspring[i], offspring[i + 1])\n                del offspring[i].fitness.values\n                del offspring[i + 1].fitness.values\n\n        # Mutation\n        for i in range(len(offspring)):\n            if random.random() < mut_prob:\n                custom_mutate(offspring[i], lo, hi)\n                del offspring[i].fitness.values\n\n        # Clip to bounds\n        for ind in offspring:\n            clip_individual(ind, lo, hi)\n\n        # Evaluate individuals with invalid fitness\n        invalid_ind = [ind for ind in offspring if not ind.fitness.valid]\n        fitnesses = list(map(toolbox.evaluate, invalid_ind))\n        for ind, fit in zip(invalid_ind, fitnesses):\n            ind.fitness.values = fit\n\n        # Replace population\n        pop[:] = offspring\n\n        # Track best fitness\n        best_fit = min(ind.fitness.values[0] for ind in pop)",
+       "new_str": "    for gen in range(n_generations):\n        for i in range(len(pop)):\n            # Select three distinct random individuals (not i)\n            candidates = list(range(len(pop)))\n            candidates.remove(i)\n            r1, r2, r3 = random.sample(candidates, 3)\n            x_r1, x_r2, x_r3 = pop[r1], pop[r2], pop[r3]\n\n            # DE/rand/1 mutation\n            mutant = creator.Individual([\n                x_r1[j] + F * (x_r2[j] - x_r3[j])\n                for j in range(dim)\n            ])\n\n            # Binomial crossover\n            j_rand = random.randint(0, dim - 1)\n            trial = creator.Individual([\n                mutant[j] if (random.random() < CR or j == j_rand) else pop[i][j]\n                for j in range(dim)\n            ])\n\n            # Clip to bounds\n            for j in range(dim):\n                trial[j] = max(lo, min(hi, trial[j]))\n\n            # Evaluate trial\n            trial.fitness.values = toolbox.evaluate(trial)\n\n            # Greedy selection\n            if trial.fitness.values[0] <= pop[i].fitness.values[0]:\n                pop[i] = trial\n\n        best_fit = min(ind.fitness.values[0] for ind in pop)"
+      }
+     }
+    }
+   ]
+  },
+  {
+   "role": "tool",
+   "content": "Successfully replaced text in deap/custom_evolution.py."
+  },
+  {
+   "role": "assistant",
+   "reasoning_content": "",
+   "content": "Run the experiment to measure this.",
+   "tool_calls": [
+    {
+     "type": "function",
+     "function": {
+      "name": "run_experiment",
+      "arguments": {}
+     }
+    }
+   ]
+  },
+  {
+   "role": "tool",
+   "content": "Measured results — `baseline:de` (`is_final,true`), seed 42 and the aggregated mean.\n\n## best_fitness (lower is better)\n| seed | rastrigin-30d | rosenbrock-30d | ackley-30d | rastrigin-100d |\n|---|---|---|---|---|\n| 42 | 172.2954 | 32.24717 | 0.4881168 | 925.7715 |\n| **mean** | **256.8125** | **48302.012390** | **10.0077334** | **925.7715** |\n\n## convergence_gen\n| seed | rastrigin-30d | rosenbrock-30d | ackley-30d | rastrigin-100d |\n|---|---|---|---|---|\n| 42 | 333 | 500 | 500 | 968 |\n| **mean** | **313.33** | **413.0** | **335.5** | **968.0** |"
+  },
+  {
+   "role": "assistant",
+   "reasoning_content": "The DE numbers came back and they are a clean confirmation of exactly the worry I flagged, plus one\nsurprise that is worse than I feared. Read them in the order the diagnosis suggested. Ackley at seed 42:\n0.488 — not the near-zero I hoped for, but on the *mean* over the three internal seeds it is 10.0, which\nmeans two of the three seeds did not find the basin at all and one did; Ackley's plateau is flat enough\nthat DE/rand/1 with a fixed `F=0.5` and a slow `rand` base can sit on the plateau, where every difference\nvector points across an essentially constant surface and there is no gradient of population fitness to\nalign with. Rosenbrock at seed 42: 32.2, a respectable result — the anisotropic difference vectors did\ntrack the curved valley as I predicted — but the *mean* is 48302, an enormous number, so again the\naggregate is dominated by seeds where the population scattered and never entered the valley. And Rastrigin\nis the catastrophe I called: 172 at 30D (mean 257) and **926** at 100D. That 100D number is the loudest\nsignal in the table. On a separable egg-carton, `CR=0.9` forces nine of ten coordinates to move together\nevery trial, which is precisely the wrong move when the coordinates are independent — the search cannot\nfix one axis at a time, it must coordinate a 90-coordinate jump that almost always lands in a worse pit.\nDE's one global setting, right for Rosenbrock, is catastrophic for Rastrigin, and the budget runs out\n(convergence around generation 968 at 100D, i.e. still improving at the wall) before it can grind through.\nSo the failure is not a bug in DE; it is the absence of a *local, per-coordinate* perturbation and a base\nlearner that does not bet the whole vector on every move. That is what I will build now.\n\nLet me start the GA from what actually hurt the *ancestor* GA, because the scaffold default already hands\nme a real-coded GA (SBX + polynomial mutation + tournament) and I need to understand why those operators\nhave the form they do — and whether that form fixes DE's separability problem. Binary GAs search well on\ndiscrete problems because single-point crossover propagates building blocks, short high-fitness\nsubstrings. When my variables are reals, the standard old move is to binary-encode each variable in a\nfixed number of bits and run an ordinary binary GA. Every time I do that I pay: precision is capped by the\nbit length so I can never get arbitrarily close to an optimum between two representable values; the\nstring→real mapping is fixed and the algorithm cannot bend it; and worst is the Hamming cliff — `0111` and\n`1000` are adjacent integers but differ in every bit, so to nudge a variable across that boundary the\noperators must flip several bits at once, which they almost never do, and the search jams on the wrong side.\nOn Rastrigin's grid of pits, where the good move is often a small shift in one coordinate, the Hamming\ncliff is fatal. So I want to work directly on the reals — and that is exactly the regime where DE just\nfailed for a *different* reason (too-coupled moves), so the operator I design must be local in a way DE was\nnot.\n\nThe wish is a crossover that acts on reals directly. Real-coded crossovers exist. Wright's linear\ncrossover forms three points from two parents — the midpoint and two reflections — and keeps the best two;\nbut from any pair it can produce only three candidate children, almost deterministic, so if the good region\nis off those three points the operator cannot reach it. BLX-α draws the child uniformly from a widened\ninterval `[p1 − α(p2−p1), p2 + α(p2−p1)]`; genuinely stochastic, and its width scales with the parent span\n(so it self-anneals as the population converges, the property DE got from difference vectors). But the\ndensity inside that interval is *flat* — every point equally likely — and I have a nagging feeling flat is\nwrong, because it is not how the binary operator I am replacing behaves. Let me pin down how single-point\ncrossover actually distributes its children on the decoded reals, so I have a target.\n\nTake two parent bitstrings, cut at a random site `k` from the right, swap the tails. Write a decoded value\nas `x = B·2^k + A`, `A` the integer from the right `k` bits, `B` from the left. Each child keeps its own\nparent's `B` and takes the other's `A`: `y1 = B1·2^k + A2`, `y2 = B2·2^k + A1`. Add them:\n`y1 + y2 = (B1+B2)·2^k + (A1+A2)`, identical to `x1 + x2`. So `(y1+y2)/2 = (x1+x2)/2` — the children's\nmean equals the parents' mean, and under a linear bit-to-real map this carries to the reals: children sit\nsymmetrically about the parents' midpoint, equidistant. That is a structural property: single-point\ncrossover does not drift the per-variable centroid, it spreads around it. How much does it spread?\nCompare children separation to parents separation: the spread factor `β = |c1 − c2| / |p1 − p2|`. β<1\ncontracts (children enclosed), β>1 expands, β=1 is stationary. Because it is a *ratio*, the same β gives\nclose children when parents are close and distant children when far apart — so an operator built around a\nfixed β-distribution automatically explores while the population is diverse and narrows as it converges,\nthe same self-annealing DE got from difference vectors. BLX-α has this width-scaling too; what it lacks is\nthe *shape*.\n\nWhat shape does single-point crossover produce in β? Compute it on the cleanest case, all-ones crossed\nwith all-zeros at every site `k`; sweeping `k` traces β(k). To turn that into a density over β, ask how\nmany sites land in a small window `dβ`: `dk = (1/|dβ/dk|)·dβ`, so the density is proportional to the\nreciprocal of the slope. Differentiating gives, for the contracting range `0 ≤ β ≤ 1`, a density that\n*increases* toward β=1 — single-point crossover overwhelmingly produces children *close to* their parents,\nwith a thinning chance of children further out. BLX's flat density gets this wrong; it makes a far-out\nchild as likely as a near one. There is a symmetry to exploit: crossing the two children of a contracting\ncrossover at the same site returns the parents, so contracting at β corresponds one-to-one with expanding\nat `1/β`; the mass on each side is one half, and if the contracting density is `C(β)` on `[0,1]`, the\nexpanding density is forced to `E(β) = β^{−2}·C(1/β)`. I only choose `C` on `[0,1]`.\n\nNow design `C(β)` to (1) increase toward β=1, (2) be dead simple to sample (this runs on every coordinate\nof every mating every generation — 200 matings × up to 100 coordinates × 500 generations), and (3) carry a\nconcentration knob. The simplest increasing-toward-1 family is a power law `C(β) = c·β^η` with η ≥ 0 the\ndistribution index. Fix `c` by the half-mass requirement: `∫₀¹ c·β^η dβ = c/(η+1) = 0.5`, so\n`c = 0.5(η+1)` and `C(β) = 0.5(η+1)β^η`. Push through the symmetry: `E(β) = 0.5(η+1)/β^{η+2}` for β>1, and\nits mass integrates to exactly 0.5 — so the power law is consistent with the contracting/expanding\nsymmetry, not just convenient. η controls focus: large η peaks sharply at β=1 (children hug parents,\nexploitative), small η flattens; η plays the role 1/T plays in annealing. I fix a moderate value;\nη=20 keeps children tightly near good parents, the exploitative-but-not-frozen regime, which is what I want\nwhen I am trying to preserve good substructure rather than blow it apart — and note this is a *local*\noperator in the sense DE was not: a β near 1 changes each coordinate only slightly, which is exactly the\nper-coordinate locality Rastrigin demanded and DE's `CR=0.9` denied.\n\nSampling β is closed-form, no special functions, which is what makes it affordable. Contracting CDF:\n`∫₀^β 0.5(η+1)t^η dt = 0.5·β^{η+1}`; for a uniform `u ≤ 0.5`, set `0.5·β^{η+1} = u`, so\n`β = (2u)^{1/(η+1)}`. Expanding CDF totals `1 − 0.5·β^{−(η+1)}`; for `u > 0.5`,\n`β = (1/(2(1−u)))^{1/(η+1)}`. Two ops and one power per coordinate. Turn β into children with the two\nrequirements already nailed — equidistant from the midpoint, separation `β·|x1−x2|`:\n`c1 = 0.5[(1+β)x1 + (1−β)x2]`, `c2 = 0.5[(1−β)x1 + (1+β)x2]`. Sum is `x1+x2` (mean preserved); difference\nis `β(x1−x2)` (spread honored). This reproduces single-point crossover directly in real space — simulated\nbinary crossover. The scaffold's `tools.cxSimulatedBinary(ind1, ind2, eta=20.0)` is exactly this kernel,\napplied to every coordinate once the outer mating gate fires.\n\nCrossover alone is not a complete real-coded GA. I need mutation to keep diversity and let the population\nescape a basin it collapsed into prematurely — and on Rastrigin, escaping pits is the whole game, the thing\nDE's monotone greedy acceptance struggled with. I want mutation with the same character: perturb a variable\nto a nearby value, small perturbations more likely than large, never stepping outside `[lo, hi]`. The same\npolynomial idea transplants: a perturbation `δ` with density `∝ (1 − |δ|)^{η_m}` on `[−1,1]`, peaked at 0,\ninverted by the same trick — for `u < 0.5`, `δ = (2u)^{1/(η_m+1)} − 1`; for `u ≥ 0.5`,\n`δ = 1 − (2(1−u))^{1/(η_m+1)}` — then scaled by the range and added, `x' = x + δ·(hi − lo)`. Large `η_m`\nmakes the nudge small (order `(hi−lo)/η_m`), small `η_m` allows bigger jumps. But a bare perturbation can\nstep outside the box near a boundary; clipping piles mass on the wall and biases toward it, so I bend the\ndensity itself. With `δ1 = (x−lo)/(hi−lo)` the fraction of range below `x` and `δ2 = (hi−x)/(hi−lo)` above,\nfold the boundary distance into the inversion: for `u < 0.5`,\n`δ_q = [2u + (1−2u)(1−δ1)^{η_m+1}]^{1/(η_m+1)} − 1`; for `u ≥ 0.5`,\n`δ_q = 1 − [2(1−u) + 2(u−0.5)(1−δ2)^{η_m+1}]^{1/(η_m+1)}`. At the lower bound `δ1=0` gives `δ_q=0` (no\ndownward move possible — right); as `u→0` the downward branch gives `δ_q=−δ1` so `x'=lo` exactly. This is\nthe scaffold's `tools.mutPolynomialBounded(individual, eta=20.0, low=lo, up=hi, indpb=1/n)`. The\nper-coordinate rate `indpb = 1/n` is the real-coded analogue of the binary `1/L`, so on average one\nvariable changes per pass — enough to keep diversity without tearing good solutions apart, and crucially\n*one coordinate at a time*, the local per-axis move Rastrigin rewards and DE could not make.\n\nSelection: I do not invent anything clever, I want robustness and no fitness scaling. Tournament selection\n— grab `t` individuals at random, keep the best, repeat to fill the pool. No sorting, no fitness\nnormalization, just comparisons; \"best\" is whatever the `FitnessMin` weight says, so minimization is\nhandled by the weight rather than rewriting the rule. The tournament size *is* the selection-pressure knob:\n`t=1` is drift, large `t` is near-greedy, `t=3` is mild pressure that keeps the population converging\nwithout collapsing diversity too fast — a good match for an operator suite whose own job is to balance\nexploration and exploitation. The scaffold default already uses `tools.selTournament(population, k,\ntournsize=3)`.\n\nSo the literal edit here is *exactly the scaffold default fill* — tournament(3) + SBX(η=20) +\npolynomial(η=20, indpb=1/n) inside the standard generational loop — which is the point: this rung\nestablishes the operator-suite GA that the scaffold ships with, the one DE restructured away. The loop:\ntournament-select a full parent pool; clone so I do not trample the current population; walk pairs and with\nprobability `cx_prob=0.9` apply SBX to each pair; walk individuals and with probability `mut_prob=0.2` send\none through polynomial mutation (whose own per-coordinate rate is `1/n`); clip everyone into the box;\nre-evaluate the changed; replace the population generationally; record the best. The full scaffold module\nis in the answer.\n\nNow the falsifiable predictions against the DE numbers, and where I expect this rung to *also* fall short\nso the next one is motivated. The per-coordinate polynomial mutation should rescue Rastrigin from DE's\ncatastrophe: changing one axis at a time on a separable egg-carton is the right move, so I expect Rastrigin\nto drop from DE's 172/926 (30D/100D mean 257/926) to something single-digit at 30D and roughly an\norder-of-magnitude better at 100D. That is the headline I am betting on. But I expect two *regressions*\nrelative to DE. First, Rosenbrock: SBX and polynomial mutation are axis-aligned operators with no notion\nof the diagonal valley, so without DE's anisotropic difference vectors I expect Rosenbrock to get *worse*\nthan DE's seed-42 32.2 — likely into the dozens or higher — because the GA must crawl down a curved valley\nwith axis-aligned moves. Second, Ackley: the broad smooth basin is exactly where DE's difference vectors\nshine and axis-aligned SBX does not, so I expect Ackley to land around 1 rather than near machine\nprecision — better than DE's noisy 10.0 mean but far from solved. So the concrete bet is: GA *wins\ndecisively on Rastrigin* (the separability fix), *loses on Rosenbrock* (no anisotropy), and *roughly ties\nor modestly improves Ackley*. If that pattern holds, the lesson for the next rung is sharp — I want DE's\nself-scaling anisotropic mutation *back*, but with the per-coordinate flexibility and the local refinement\nthat fixed Rastrigin, and with the global `F`/`CR` setting that doomed DE made *adaptive* so one algorithm\ncan be right on all four landscapes at once. That is the next rung; for now, let me put the operator-suite\nGA back into the scaffold.",
+   "content": "Now the operator-suite GA: tournament selection, SBX crossover, and per-coordinate polynomial mutation in\nthe generational loop. This first edit restores tournament selection and SBX into the operator stubs.",
+   "tool_calls": [
+    {
+     "type": "function",
+     "function": {
+      "name": "str_replace",
+      "arguments": {
+       "path": "deap/custom_evolution.py",
+       "old_str": "# EDITABLE region of deap/custom_evolution.py (lines 87-225) - step 1: DE/rand/1/bin\n\ndef custom_select(population: list, k: int, toolbox=None) -> list:\n    \"\"\"Not used directly in DE (greedy selection is built into run_evolution).\"\"\"\n    return population[:k]\n\n\ndef custom_crossover(ind1: list, ind2: list) -> Tuple[list, list]:\n    \"\"\"Not used directly in DE (binomial crossover is built into run_evolution).\"\"\"\n    return ind1, ind2",
+       "new_str": "# EDITABLE region of deap/custom_evolution.py (lines 87-225) - step 2: GA (tournament + SBX + polynomial)\n\ndef custom_select(population: list, k: int, toolbox=None) -> list:\n    \"\"\"Tournament selection with tournament size 3.\"\"\"\n    return tools.selTournament(population, k, tournsize=3)\n\n\ndef custom_crossover(ind1: list, ind2: list) -> Tuple[list, list]:\n    \"\"\"Simulated Binary Crossover (SBX), eta=20.\"\"\"\n    tools.cxSimulatedBinary(ind1, ind2, eta=20.0)\n    return ind1, ind2"
+      }
+     }
+    }
+   ]
+  },
+  {
+   "role": "tool",
+   "content": "Successfully replaced text in deap/custom_evolution.py."
+  },
+  {
+   "role": "assistant",
+   "reasoning_content": "And the per-coordinate polynomial mutation — the local, one-axis-at-a-time move Rastrigin wants.",
+   "content": "",
+   "tool_calls": [
+    {
+     "type": "function",
+     "function": {
+      "name": "str_replace",
+      "arguments": {
+       "path": "deap/custom_evolution.py",
+       "old_str": "def custom_mutate(individual: list, lo: float, hi: float) -> Tuple[list]:\n    \"\"\"Not used directly in DE (DE mutation is built into run_evolution).\"\"\"\n    return (individual,)",
+       "new_str": "def custom_mutate(individual: list, lo: float, hi: float) -> Tuple[list]:\n    \"\"\"Polynomial bounded mutation, eta=20, indpb=1/dim.\"\"\"\n    tools.mutPolynomialBounded(\n        individual, eta=20.0, low=lo, up=hi,\n        indpb=1.0 / len(individual)\n    )\n    return (individual,)"
+      }
+     }
+    }
+   ]
+  },
+  {
+   "role": "tool",
+   "content": "Successfully replaced text in deap/custom_evolution.py."
+  },
+  {
+   "role": "assistant",
+   "reasoning_content": "",
+   "content": "",
+   "tool_calls": [
+    {
+     "type": "function",
+     "function": {
+      "name": "str_replace",
+      "arguments": {
+       "path": "deap/custom_evolution.py",
+       "old_str": ") -> Tuple[list, list]:\n    \"\"\"Differential Evolution: DE/rand/1/bin.\n\n    F (scale factor) = 0.5, CR (crossover rate) = 0.9.\n    Greedy selection: trial replaces target only if fitness improves.\n    \"\"\"\n    random.seed(seed)\n    np.random.seed(seed)\n\n    F = 0.5   # Scale factor (Storn & Price recommended default)\n    CR = 0.9  # Crossover rate",
+       "new_str": ") -> Tuple[list, list]:\n    \"\"\"Standard GA with tournament selection, SBX crossover, polynomial mutation.\"\"\"\n    random.seed(seed)\n    np.random.seed(seed)"
+      }
+     }
+    }
+   ]
+  },
+  {
+   "role": "tool",
+   "content": "Successfully replaced text in deap/custom_evolution.py."
+  },
+  {
+   "role": "assistant",
+   "reasoning_content": "And swap the DE sweep back out for the standard select/clone/cross/mutate/clip generational loop.",
+   "content": "",
+   "tool_calls": [
+    {
+     "type": "function",
+     "function": {
+      "name": "str_replace",
+      "arguments": {
+       "path": "deap/custom_evolution.py",
+       "old_str": "    for gen in range(n_generations):\n        for i in range(len(pop)):\n            # Select three distinct random individuals (not i)\n            candidates = list(range(len(pop)))\n            candidates.remove(i)\n            r1, r2, r3 = random.sample(candidates, 3)\n            x_r1, x_r2, x_r3 = pop[r1], pop[r2], pop[r3]\n\n            # DE/rand/1 mutation\n            mutant = creator.Individual([\n                x_r1[j] + F * (x_r2[j] - x_r3[j])\n                for j in range(dim)\n            ])\n\n            # Binomial crossover\n            j_rand = random.randint(0, dim - 1)\n            trial = creator.Individual([\n                mutant[j] if (random.random() < CR or j == j_rand) else pop[i][j]\n                for j in range(dim)\n            ])\n\n            # Clip to bounds\n            for j in range(dim):\n                trial[j] = max(lo, min(hi, trial[j]))\n\n            # Evaluate trial\n            trial.fitness.values = toolbox.evaluate(trial)\n\n            # Greedy selection\n            if trial.fitness.values[0] <= pop[i].fitness.values[0]:\n                pop[i] = trial",
+       "new_str": "    for gen in range(n_generations):\n        offspring = custom_select(pop, len(pop), toolbox)\n        offspring = [toolbox.clone(ind) for ind in offspring]\n\n        for i in range(0, len(offspring) - 1, 2):\n            if random.random() < cx_prob:\n                custom_crossover(offspring[i], offspring[i + 1])\n                del offspring[i].fitness.values\n                del offspring[i + 1].fitness.values\n\n        for i in range(len(offspring)):\n            if random.random() < mut_prob:\n                custom_mutate(offspring[i], lo, hi)\n                del offspring[i].fitness.values\n\n        for ind in offspring:\n            clip_individual(ind, lo, hi)\n\n        invalid_ind = [ind for ind in offspring if not ind.fitness.valid]\n        fitnesses = list(map(toolbox.evaluate, invalid_ind))\n        for ind, fit in zip(invalid_ind, fitnesses):\n            ind.fitness.values = fit\n\n        pop[:] = offspring"
+      }
+     }
+    }
+   ]
+  },
+  {
+   "role": "tool",
+   "content": "Successfully replaced text in deap/custom_evolution.py."
+  },
+  {
+   "role": "assistant",
+   "reasoning_content": "",
+   "content": "Run the experiment to measure this.",
+   "tool_calls": [
+    {
+     "type": "function",
+     "function": {
+      "name": "run_experiment",
+      "arguments": {}
+     }
+    }
+   ]
+  },
+  {
+   "role": "tool",
+   "content": "Measured results — `baseline:ga_sbx` (`is_final,true`), seed 42 and the aggregated mean.\n\n## best_fitness (lower is better)\n| seed | rastrigin-30d | rosenbrock-30d | ackley-30d | rastrigin-100d |\n|---|---|---|---|---|\n| 42 | 8.985411 | 87.01174 | 1.048397 | 115.1942 |\n| **mean** | **8.051804** | **138.34738** | **1.1164724** | **113.7842** |\n\n## convergence_gen\n| seed | rastrigin-30d | rosenbrock-30d | ackley-30d | rastrigin-100d |\n|---|---|---|---|---|\n| 42 | 488 | 489 | 500 | 1000 |\n| **mean** | **492.33** | **488.33** | **497.0** | **994.0** |"
+  },
+  {
+   "role": "assistant",
+   "reasoning_content": "The GA numbers landed almost exactly on the three-way bet I made, and the pattern is the whole argument for\nthis rung. Rastrigin: 8.99 at 30D (mean 8.05) and 115 at 100D (mean 114) — a decisive win over DE's 172\nand 926. The per-coordinate polynomial mutation did what I predicted: on the separable egg-carton, fixing\none axis at a time beats DE's coupled `CR=0.9` move by an order of magnitude at 100D. But the two\nregressions I feared are right there too. Rosenbrock: 87 at seed 42, mean **138** — far worse than DE's\nseed-42 32.2. Axis-aligned SBX and polynomial mutation have no notion of the diagonal valley, so the GA\ncrawls down Rosenbrock's curved ribbon with moves that are never aligned to it, exactly as I called.\nAckley: 1.05 (mean 1.12) — better than DE's noisy 10.0 mean but nowhere near solved; the broad smooth\nbasin is where DE's anisotropic difference vectors should have shone and where the GA's axis-aligned\noperators leave a full unit of error on the table. And note the convergence columns: the GA is still\nimproving at generation ~490–500 on the 30D problems and at 1000 on 100D — it has not converged, it has\nrun out of budget. So I now have a clean, contradictory lesson from two rungs. DE's self-scaling\nanisotropic difference vector is the right *mutation* (it owns Rosenbrock and Ackley when it enters the\nbasin) but its single global `F`/`CR` is catastrophic on Rastrigin and its fixed `rand` base is slow. The\nGA's per-coordinate locality fixes Rastrigin but throws away the anisotropy that owns the valley. No single\nfixed setting of either method is right on all four landscapes. That is the thing to kill: the parameters\nmust learn themselves from what is working on *this* problem, right now.\n\nSo I go back to DE's clever core and ask how to make it adapt. The mutation `v = x_r1 + F·(x_r2 − x_r3)`\nnever had to invent a step size — the difference vector carries the population's own scatter, big early and\nsmall late, and anisotropic in the valley. That is why DE owned Rosenbrock-42. The pain was that `F`, `CR`,\nand `N` are static and problem-dependent, and the right values genuinely change with the landscape: a\nsmooth bowl wants moderate `F` and high `CR`; the Rastrigin egg-carton wants a diversifying `F` and,\ncrucially, a *low* `CR` (the one-coordinate-at-a-time policy the GA's `indpb=1/n` mutation accidentally\ndelivered and DE's `CR=0.9` denied). The three knobs are coupled and all problem-dependent. I am\nhand-tuning the same algorithm over and over. The signal for learning them is sitting in the selection\nstep: every generation some trials beat their parents and some do not. The winners' `(F_i, CR_i)` are\nevidence — \"these worked on this landscape this generation\" — so I should sample `F` and `CR` per\nindividual from distributions centered on recent winners and slide those centers toward the latest winners.\nThis is what would let *one* algorithm drive `CR` toward 0 on Rastrigin and toward high on Rosenbrock\nwithout me choosing.\n\nWork through the pieces the way a careful adaptive DE assembles them, because each is a decision I would\notherwise get wrong. First, the mutation strategy. Plain `DE/rand/1` (my last rung) picks a random base —\nfine but slow, the very slowness the convergence columns exposed. The greedy fix `current-to-best/1`,\n`v = x_i + F·(x_best − x_i) + F·(x_r1 − x_r2)`, pulls each individual partway toward the single best plus a\nrandom difference. Fast on a unimodal bowl, but on a multimodal function *everyone* is dragged toward the\none incumbent best, so the whole population funnels into whatever basin that best sits in — premature\nconvergence, the Rastrigin death. The fix is to pull toward a *random one of the top few* rather than the\nsingle best: `x_pbest` drawn from the top `N·p` individuals,\n`v_i = x_i + F_i·(x_pbest − x_i) + F_i·(x_r1 − x_r2)`. Now `p` is a greediness dial — small `p` is\naggressive, a moderate `p` spreads the attraction over several good basins so the population does not all\nrush one hole. This `current-to-pbest/1` is strictly more flexible than current-to-best/1, and it keeps the\ndiversity Rastrigin demands while exploiting the good guides that speed up Rosenbrock and Ackley. In the\ntask loop the greediness is sampled per individual: each one draws `p_i` uniformly from `[p_min, p_max]`\nwith `p_min = 2/N_init` and `p_max = 0.2`, then takes its `pbest` from the top `round(p_i·N)` (at least 1).\nRandomizing `p_i` per individual instead of fixing one `p` widens the spread of guides — some individuals\nchase the very best, others a broader good set — which is extra diversity for free.\n\nSecond, the difference `x_r1 − x_r2`. If both come from the current population, then as the population\nconverges this difference shrinks toward zero along with everything else, and I lose diversification\nexactly when I might be stuck in a Rastrigin pit. The parents that just *lost* selection encode where the\nsearch recently was and chose to leave; keep them in an external archive `A` and draw `x_r2` from `P ∪ A`.\nNow the difference can reach back to a recently-abandoned region, adding diversity without enlarging the\nlive population (which would cost evaluations). I cap the archive at the current population size and, when\nit overflows, drop random members — a reservoir of recent history, not a museum that biases the search.\nSo `r1` from `P` only, `r2` from `P ∪ A`, distinct from each other and from `i`.\n\nThird — where the sampling distributions earn their keep — what do I sample `F` and `CR` from, and how do I\nsummarize the winners? `CR` is a probability in `[0,1]` that should settle near a stable good value, so\nNormal is natural: `CR_i = N(M_CR[r], 0.1)`, clamp to `[0,1]`. A tight Normal keeps `CR` near its learned\ncenter, which is what I want for a steady parameter. `F` is different: it controls mutation magnitude, and\nthe failure mode I fear most — premature convergence, the Rastrigin death — is precisely `F` collapsing to\nsmall values too early and the search going quiet. So `F` wants a distribution that keeps *proposing* large\nvalues even when the center drifts down: a heavy tail. Cauchy: `F_i = M_F[r] + 0.1·tan(π(rand − 0.5))`,\nsame center as a Normal but fat tails, routinely throwing an `F` far from the center. The truncation rules\nrespect what each parameter is: `F > 1` truncate to 1 (huge `F` is unstable), but `F ≤ 0` I *resample*\nuntil positive rather than clamp, because a non-positive scaling inverts or kills the mutation — the lower\nend is degenerate. Clamping `CR` at both ends is fine because both endpoints are meaningful.\n\nHow do I summarize successful `F` into a new center? Arithmetic mean pulls toward the bulk of successes,\nwhich on a converging population tend to be smallish, so the center drifts down and down, mutation weakens,\nand I manufacture the exact premature convergence I am avoiding. I need a summary that *resists* that pull —\nextra weight to the larger successful `F`. The Lehmer mean does this: `mean_L(S) = (Σ S_k²)/(Σ S_k)`, each\nterm squared in the numerator but first-power in the denominator, so larger elements pull the ratio up. The\nweighted Lehmer mean minus the weighted arithmetic mean equals the weighted variance over the weighted\nmean, which is nonnegative — so Lehmer is at least arithmetic, equal only when all successes coincide. So\nLehmer-averaging successful `F` keeps the center biased toward the larger successes and stops the magnitude\ndying. And not every success is equally informative: a trial that improved fitness by a lot is stronger\nevidence than one that barely squeaked past. Weight each winner by its improvement\n`Δf_k = |f(x_k) − f(u_k)|`, normalize `w_k = Δf_k/Σ Δf_l`, and use the weighted Lehmer mean for `F` and a\nweighted arithmetic mean for `CR`. That asymmetry — Cauchy/Lehmer for `F`, Normal/arithmetic for `CR` — is\n\"let `CR` settle, but never let `F` go quiet.\"\n\nNow the fragility that the single-center version (JADE-style) carries: there is *one* pair `(M_F, M_CR)`\nsteering every individual. Selection is stochastic; some generation, by luck, the winning trials carry\nmediocre `F`/`CR` for unrelated reasons, the update slides my one center toward them, and next generation\nthe *entire* population samples from the contaminated center. On a hard multimodal problem where success is\nnoisy and rare — Rastrigin — this is the normal weather, not a corner case. The cure is redundancy: keep a\n*set* of `H` centers, `M_F = M_CR = [0.5,...,0.5]`, each individual picks an index `r` uniformly and\nsamples around that slot, and each generation writes the winners' summary into *one* slot, cycling with a\ncounter `k` round-robin. A contaminated summary then lands in exactly one of the `H` slots; next generation\nonly about `1/H` of the population draws from it while the other `H−1` slots keep things sane, and the bad\nslot is overwritten in a few generations. Round-robin matters: overwriting every slot each generation would\nbe a single effective center with extra steps; one slot per generation keeps the `H` slots a diverse\nbuffer of what worked at different times. For this loop `H = 6`. (I keep the edge cases concrete: a\ngeneration with no winners updates nothing; the weighted Lehmer/arithmetic means use a small `1e-30`\ndenominator guard. The single-center variant also locks `CR` to a terminal `CR=0` regime on slots where all\nsuccessful `CR` are zero, but this loop does not carry that sentinel — it just writes the weighted means and\nrelies on the Normal sampler to drive `CR` low on its own, which is enough on this panel.)\n\nThat is a genuinely self-tuning DE — SHADE — but it has done nothing about the third knob, `N`, which is\nstill fixed, and `N` is the one whose pain the convergence columns screamed: every method so far ran out of\nbudget. The tension is sharp. Early I want a *large* `N`: broad coverage of the box so I do not miss a\nbasin, and — specifically for an adaptive method — a large, diverse pool of successes per generation so the\nmemory has good statistics to learn `F`/`CR` from. Late, once the population has localized, a large `N` is\npure waste: hundreds of evaluations per generation to make one tiny refinement step, when what I want near\nthe end is *many generations* of small precise moves to polish the basin. With fixed `N`, the budget buys\n`budget/N` generations, full stop — I cannot have both the broad early population and the many late\ngenerations. The fix: start large and *shrink linearly* over the run. Early generations cost a lot but buy\nexploration and good adaptation statistics; as `N` shrinks each generation costs less, so the same\nremaining budget buys *more* generations — exactly the many-small-steps regime the unconverged GA never\nreached. Shrinking manufactures late generations out of budget a fixed large `N` would have burned on\nredundant exploration, and it respects DE's self-scaling: a smaller converged population still has small\ndifferences, so refinement stays fine-grained.\n\nI want a *deterministic* monotone schedule — reactive resizing would replace one parameter with several\nmeta-parameters governing when and how much to resize, and I have spent two rungs eliminating hand-tuned\nparameters; I will not reintroduce a fistful to fix the last one. Linear is the simplest monotone decrease\nand needs only the initial size. Here the schedule is by generation fraction:\n`N_next = round(N_init + (N_min − N_init)·(gen+1)/n_generations)`, floored at `N_min`. `N_min = 4` is pinned\nby the operator, not chosen — `current-to-pbest/1` needs `x_i`, a distinct `x_pbest`, `x_r1`, and `x_r2`,\nfour distinct individuals. When `N` must drop I delete the *worst* individuals by fitness (elitist shrink\nkeeps the elites and accelerates late focusing) and trim the archive to the new population size.\n\nOne adaptation to this task's budget is load-bearing and I will not gloss it. The canonical L-SHADE sets\n`N_init = 18·D`, sized for the large evaluation budgets of competition benchmarks. But this harness runs a\n*fixed, small* `n_generations` with a fixed `pop_size`, and at 100D `18·D = 1800` would starve the search\nof generations — with the matched total-evaluation budget here, that large `N_init` degrades Rastrigin-100D\nbadly rather than helping (the linear reduction never gets to run enough generations to refine). So I use\n`N_init = pop_size` as given by the harness and let the linear reduction to `N_min = 4` do its work over the\nfixed generation count, keeping the budget identical to the other rungs. This is the one place the task's\nimplementation deliberately departs from the textbook constant, and it is the right call for *this* budget.\n\nNow the falsifiable bet against the GA and DE numbers. The self-adapting `CR` should let one algorithm be\nright on all four landscapes where neither fixed method was: I expect it to drive `CR` low on Rastrigin\n(recovering the GA's per-coordinate win) while keeping the anisotropic difference vector (recovering DE's\nvalley and basin power). Concretely: Ackley should drop from the GA's 1.05 and DE's 10.0 mean to *near\nmachine precision* (the broad smooth basin is where adaptive `F` plus difference vectors should fully\nsolve it). Rosenbrock should beat both the GA's 87/mean-138 and recover toward DE's anisotropy, landing in\nthe low tens or better. Rastrigin-30d should be competitive with the GA's 8 (the low-`CR` regime plus\nlinear reduction's refinement), and Rastrigin-100d should at least match the GA's 114 rather than DE's 926.\nThe one place I am genuinely uncertain is Rastrigin-100d: the deliberate `N_init=pop_size` (not 18·D)\nchoice trades exploration for refinement, and Rastrigin at 100D is the hardest multimodal case, so it may\nland *near* the GA rather than crushing it. If the result is near-zero Ackley, sub-20 Rosenbrock, and\nsingle-digit-ish Rastrigin-30d with Rastrigin-100d roughly at the GA's level, then the adaptive machinery\nhas done what two fixed methods could not — one algorithm right across landscapes — and this is the\nstrongest rung. Let me build the adaptive DE into the loop.",
+   "content": "Now L-SHADE: success-history adaptive DE that learns F and CR per problem, plus linear population\nreduction. This first edit clears the operator stubs back to no-ops so the adaptive DE owns the loop.",
+   "tool_calls": [
+    {
+     "type": "function",
+     "function": {
+      "name": "str_replace",
+      "arguments": {
+       "path": "deap/custom_evolution.py",
+       "old_str": "# EDITABLE region of deap/custom_evolution.py (lines 87-225) - step 2: GA (tournament + SBX + polynomial)\n\ndef custom_select(population: list, k: int, toolbox=None) -> list:\n    \"\"\"Tournament selection with tournament size 3.\"\"\"\n    return tools.selTournament(population, k, tournsize=3)\n\n\ndef custom_crossover(ind1: list, ind2: list) -> Tuple[list, list]:\n    \"\"\"Simulated Binary Crossover (SBX), eta=20.\"\"\"\n    tools.cxSimulatedBinary(ind1, ind2, eta=20.0)\n    return ind1, ind2",
+       "new_str": "# EDITABLE region of deap/custom_evolution.py (lines 87-225) - step 3: L-SHADE\n\ndef custom_select(population: list, k: int, toolbox=None) -> list:\n    \"\"\"Not used in L-SHADE (adaptive DE handles selection internally).\"\"\"\n    return population[:k]\n\n\ndef custom_crossover(ind1: list, ind2: list) -> Tuple[list, list]:\n    \"\"\"Not used in L-SHADE (binomial crossover built into run_evolution).\"\"\"\n    return ind1, ind2"
+      }
+     }
+    }
+   ]
+  },
+  {
+   "role": "tool",
+   "content": "Successfully replaced text in deap/custom_evolution.py."
+  },
+  {
+   "role": "assistant",
+   "reasoning_content": "",
+   "content": "",
+   "tool_calls": [
+    {
+     "type": "function",
+     "function": {
+      "name": "str_replace",
+      "arguments": {
+       "path": "deap/custom_evolution.py",
+       "old_str": "def custom_mutate(individual: list, lo: float, hi: float) -> Tuple[list]:\n    \"\"\"Polynomial bounded mutation, eta=20, indpb=1/dim.\"\"\"\n    tools.mutPolynomialBounded(\n        individual, eta=20.0, low=lo, up=hi,\n        indpb=1.0 / len(individual)\n    )\n    return (individual,)",
+       "new_str": "def custom_mutate(individual: list, lo: float, hi: float) -> Tuple[list]:\n    \"\"\"Not used in L-SHADE (adaptive mutation built into run_evolution).\"\"\"\n    return (individual,)"
+      }
+     }
+    }
+   ]
+  },
+  {
+   "role": "tool",
+   "content": "Successfully replaced text in deap/custom_evolution.py."
+  },
+  {
+   "role": "assistant",
+   "reasoning_content": "The hyperparameter block: H=6 history slots, N_min=4, and N_init=pop_size rather than the canonical 18·D,\nwhich would starve the generation count on this fixed budget.",
+   "content": "",
+   "tool_calls": [
+    {
+     "type": "function",
+     "function": {
+      "name": "str_replace",
+      "arguments": {
+       "path": "deap/custom_evolution.py",
+       "old_str": ") -> Tuple[list, list]:\n    \"\"\"Standard GA with tournament selection, SBX crossover, polynomial mutation.\"\"\"\n    random.seed(seed)\n    np.random.seed(seed)",
+       "new_str": ") -> Tuple[list, list]:\n    \"\"\"L-SHADE: Success-History based Adaptive DE with Linear Population Reduction.\n\n    - Adaptive F (Cauchy) and CR (Normal) from success history\n    - current-to-pbest/1 mutation with external archive\n    - Linear population size reduction from N_init to N_min\n    \"\"\"\n    random.seed(seed)\n    np.random.seed(seed)\n\n    # --- Hyperparameters (Tanabe & Fukunaga, CEC 2014) ---\n    # The paper recommends N_init = 18·D, but on small fixed budgets (as in\n    # our 400 pop × 1000 gen setting) that value starves the search of\n    # generations: on Rastrigin-100D, N_init=1800 with matched total-eval\n    # budget degraded from 128 → 313. Use pop_size as given and the\n    # canonical N_min = 4 (paper §III-B), which lets the linear population\n    # reduction actually run. Budget stays identical to CMA-ES/DE/GA.\n    H = 6  # History size (paper default)\n    N_init = pop_size\n    N_min = 4  # Minimum population size\n    p_min = 2.0 / N_init  # Minimum p for pbest\n    p_max = 0.2  # Maximum p for pbest"
+      }
+     }
+    }
+   ]
+  },
+  {
+   "role": "tool",
+   "content": "Successfully replaced text in deap/custom_evolution.py."
+  },
+  {
+   "role": "assistant",
+   "reasoning_content": "",
+   "content": "",
+   "tool_calls": [
+    {
+     "type": "function",
+     "function": {
+      "name": "str_replace",
+      "arguments": {
+       "path": "deap/custom_evolution.py",
+       "old_str": "\n    pop = toolbox.population(n=pop_size)\n    fitnesses = list(map(toolbox.evaluate, pop))",
+       "new_str": "\n    # Initialize population\n    pop = toolbox.population(n=N_init)\n    fitnesses = list(map(toolbox.evaluate, pop))"
+      }
+     }
+    }
+   ]
+  },
+  {
+   "role": "tool",
+   "content": "Successfully replaced text in deap/custom_evolution.py."
+  },
+  {
+   "role": "assistant",
+   "reasoning_content": "The whole adaptive engine: success-history memory, per-individual Cauchy-F / Normal-CR sampling,\ncurrent-to-pbest/1 with the archive, weighted Lehmer update, and the linear population reduction.",
+   "content": "",
+   "tool_calls": [
+    {
+     "type": "function",
+     "function": {
+      "name": "str_replace",
+      "arguments": {
+       "path": "deap/custom_evolution.py",
+       "old_str": "\n    fitness_history = []\n\n    for gen in range(n_generations):\n        offspring = custom_select(pop, len(pop), toolbox)\n        offspring = [toolbox.clone(ind) for ind in offspring]\n\n        for i in range(0, len(offspring) - 1, 2):\n            if random.random() < cx_prob:\n                custom_crossover(offspring[i], offspring[i + 1])\n                del offspring[i].fitness.values\n                del offspring[i + 1].fitness.values\n\n        for i in range(len(offspring)):\n            if random.random() < mut_prob:\n                custom_mutate(offspring[i], lo, hi)\n                del offspring[i].fitness.values\n\n        for ind in offspring:\n            clip_individual(ind, lo, hi)\n\n        invalid_ind = [ind for ind in offspring if not ind.fitness.valid]\n        fitnesses = list(map(toolbox.evaluate, invalid_ind))\n        for ind, fit in zip(invalid_ind, fitnesses):\n            ind.fitness.values = fit\n\n        pop[:] = offspring",
+       "new_str": "\n    # Success history for F and CR\n    M_F = [0.5] * H\n    M_CR = [0.5] * H\n    k = 0  # History index\n\n    # External archive of inferior solutions\n    archive = []\n\n    fitness_history = []\n\n    for gen in range(n_generations):\n        N_current = len(pop)\n\n        # Collect successful F and CR values and their fitness improvements\n        S_F = []\n        S_CR = []\n        delta_f = []  # fitness improvement for weighting\n\n        trial_list = []\n        F_list = []\n        CR_list = []\n\n        for i in range(N_current):\n            # Sample F from Cauchy(M_F[r], 0.1), truncate to (0, 1]\n            r = random.randint(0, H - 1)\n            while True:\n                F_i = M_F[r] + 0.1 * np.random.standard_cauchy()\n                if F_i > 0:\n                    break\n            F_i = min(F_i, 1.0)\n\n            # Sample CR from Normal(M_CR[r], 0.1), clamp to [0, 1]\n            CR_i = np.random.normal(M_CR[r], 0.1)\n            CR_i = max(0.0, min(1.0, CR_i))\n\n            F_list.append(F_i)\n            CR_list.append(CR_i)\n\n            # current-to-pbest/1 mutation\n            # Choose p_i uniformly from [p_min, p_max]\n            p_i = random.uniform(p_min, p_max)\n            n_pbest = max(1, int(round(p_i * N_current)))\n            sorted_pop = sorted(pop, key=lambda ind: ind.fitness.values[0])\n            pbest = random.choice(sorted_pop[:n_pbest])\n\n            # Select r1 from pop (r1 != i)\n            candidates = list(range(N_current))\n            candidates.remove(i)\n            r1 = random.choice(candidates)\n\n            # Select r2 from pop + archive (r2 != i and r2 != r1)\n            union = list(range(N_current + len(archive)))\n            union_exclude = {i, r1}\n            union_avail = [x for x in union if x not in union_exclude]\n            if not union_avail:\n                union_avail = [x for x in union if x != i]\n            r2_idx = random.choice(union_avail)\n            if r2_idx < N_current:\n                x_r2 = pop[r2_idx]\n            else:\n                x_r2 = archive[r2_idx - N_current]\n\n            # Mutation: v = x_i + F * (pbest - x_i) + F * (x_r1 - x_r2)\n            mutant = creator.Individual([\n                pop[i][j] + F_i * (pbest[j] - pop[i][j]) + F_i * (pop[r1][j] - x_r2[j])\n                for j in range(dim)\n            ])\n\n            # Binomial crossover\n            j_rand = random.randint(0, dim - 1)\n            trial = creator.Individual([\n                mutant[j] if (random.random() < CR_i or j == j_rand) else pop[i][j]\n                for j in range(dim)\n            ])\n\n            # Clip to bounds\n            for j in range(dim):\n                trial[j] = max(lo, min(hi, trial[j]))\n\n            trial.fitness.values = toolbox.evaluate(trial)\n            trial_list.append(trial)\n\n        # Selection and success history update\n        new_pop = []\n        for i in range(N_current):\n            trial = trial_list[i]\n            if trial.fitness.values[0] <= pop[i].fitness.values[0]:\n                if trial.fitness.values[0] < pop[i].fitness.values[0]:\n                    S_F.append(F_list[i])\n                    S_CR.append(CR_list[i])\n                    delta_f.append(abs(pop[i].fitness.values[0] - trial.fitness.values[0]))\n                    # Add inferior parent to archive\n                    archive.append(creator.Individual(pop[i][:]))\n                new_pop.append(trial)\n            else:\n                new_pop.append(pop[i])\n\n        pop = new_pop\n\n        # Update success history\n        if S_F:\n            weights = np.array(delta_f)\n            weights = weights / (weights.sum() + 1e-30)\n\n            # Weighted Lehmer mean for F\n            S_F_arr = np.array(S_F)\n            mean_F = np.sum(weights * S_F_arr ** 2) / (np.sum(weights * S_F_arr) + 1e-30)\n            M_F[k] = mean_F\n\n            # Weighted arithmetic mean for CR\n            S_CR_arr = np.array(S_CR)\n            mean_CR = np.sum(weights * S_CR_arr)\n            M_CR[k] = mean_CR\n\n            k = (k + 1) % H\n\n        # Trim archive to at most N_current\n        while len(archive) > N_current:\n            archive.pop(random.randint(0, len(archive) - 1))\n\n        # Linear population size reduction\n        N_next = int(round(N_init + (N_min - N_init) * (gen + 1) / n_generations))\n        N_next = max(N_min, N_next)\n        if N_next < len(pop):\n            # Remove worst individuals\n            pop.sort(key=lambda ind: ind.fitness.values[0])\n            pop = pop[:N_next]"
+      }
+     }
+    }
+   ]
+  },
+  {
+   "role": "tool",
+   "content": "Successfully replaced text in deap/custom_evolution.py."
+  },
+  {
+   "role": "assistant",
+   "reasoning_content": "",
+   "content": "Run the experiment to measure this.",
+   "tool_calls": [
+    {
+     "type": "function",
+     "function": {
+      "name": "run_experiment",
+      "arguments": {}
+     }
+    }
+   ]
+  },
+  {
+   "role": "tool",
+   "content": "Measured results — `baseline:lshade` (`is_final,true`), seed 42 and the aggregated mean.\n\n## best_fitness (lower is better)\n| seed | rastrigin-30d | rosenbrock-30d | ackley-30d | rastrigin-100d |\n|---|---|---|---|---|\n| 42 | 7.892829 | 15.011 | 4.659428e-11 | 120.5674 |\n| **mean** | **7.298366** | **13.282543** | **9.436451e-12** | **132.54133** |\n\n## convergence_gen\n| seed | rastrigin-30d | rosenbrock-30d | ackley-30d | rastrigin-100d |\n|---|---|---|---|---|\n| 42 | 500 | 483 | 269 | 998 |\n| **mean** | **497.67** | **483.0** | **257.67** | **994.67** |"
+  },
+  {
+   "role": "assistant",
+   "reasoning_content": "The L-SHADE numbers came back and they confirm the rung's whole thesis: one adaptive algorithm *is*\nright across landscapes where the two fixed methods each failed somewhere. Ackley fell to 4.7e-11 at\nseed 42 (mean 9.4e-12) — solved, near machine precision, the broad smooth basin that DE's noisy 10.0\nmean and the GA's 1.05 both left on the table; the adaptive `F` plus the difference vector took it all\nthe way down, and it converged early (gen 269 at seed 42, mean 258) rather than burning the budget.\nRosenbrock fell to 15.0 (mean 13.3) — beating both DE's seed-42 32.2 and crushing the GA's mean 138,\nbecause the adaptive `CR` recovered the anisotropic coordinated moves the GA's axis-aligned operators\ncould not make. Rastrigin-30d landed at 7.9 (mean 7.3), edging the GA's 8.0 — competitive, the low-`CR`\nregime plus linear-reduction refinement matching the GA's per-coordinate win. So three of four\nlandscapes are clearly the best of the ladder. But look at the one I flagged as uncertain:\nRastrigin-100d came back at 120.6 at seed 42 (mean 132.5) — and that is *worse* than the GA's mean of\n114. The deliberate `N_init=pop_size` choice (forced by this fixed-small-budget harness, where the\ncanonical large `N_init` would starve the generation count) traded exploration for refinement, and on\nthe hardest multimodal case at 100D that trade did not pay: the population reduced too aggressively\nbefore it had explored enough of the 100-dimensional egg-carton to find the global basin. L-SHADE is\nthe strongest rung, but its weak spot is exactly where I predicted — high-dimensional multimodal — and\nthe failure mode is the exploration/exploitation balance going to exploitation too early.\n\nLet me make that diagnosis precise before I act on it, because the cure depends on which of two things\nwent wrong. One possibility is that the *parameters* mis-adapted: the success-history memory drove `F`\nsmall (mutation went quiet) or `CR` to a value that did not suit the separable 100-D landscape. The\nother is that the *population schedule* committed too fast: linear reduction shed members while the\nsearch was still scattered across the egg-carton, so the survivors clustered around a non-global basin\nand the shrunken population could no longer climb out. The convergence column is the tell — at 100D\nL-SHADE was still improving at generation ~995 of 1000 (it never plateaued), so it is not that the\nsearch converged to a wrong answer and sat there; it is that the search was *still moving but too\nslowly*, having spent its early generations on a population too small (`N_init=pop_size` rather than a\nlarge multiple of `D`) to cover 100 dimensions. Both readings point the same way: I need more effective\nexploration in the first half of the run *without* enlarging the population budget, because the budget\nis fixed by the harness. That rules out the obvious fix (bigger `N_init`) and forces the subtler one —\nextract more exploration from the same population by changing *how* each individual moves early.\n\nThat diagnosis points straight at the one place L-SHADE's mutation is structurally crude, and fixing it\nis the natural next move. Look at the donor: `v_i = x_i + F_i*(x_pbest - x_i) + F_i*(x_r1 - x_r2)`. The\n*same* `F_i` multiplies two structurally different terms. The first, `x_pbest - x_i`, is a directed\npull toward the elite — pure exploitation, dragging the individual toward a good solution already\nfound. The second, `x_r1 - x_r2`, is the self-scaling random difference — the exploration, the\nperturbation carrying the population's scatter. Tying both to one `F_i` forces the elite-pull strength\nand the random-perturbation strength to move in lockstep. But the Rastrigin-100d failure is precisely a\nbalance problem: the search committed to the elite (and shrank the population toward it) before it had\nperturbed enough to find the right basin. If I could make the elite pull *weaker than* the perturbation\nearly — explore without committing — and *stronger than* it late — refine hard once the basin is found —\nI would directly attack the failure I just measured. A single `F_i` cannot express that phase\ndependence. So the move is to give the elite-pull term its own factor: a weighted `Fw` on\n`(x_pbest - x_i)`, with `F_i` left on the random difference. Early, `Fw < F_i` (perturb more than pull);\nlate, `Fw > F_i` (pull more than perturb). A three-step schedule on the budget fraction realizes it:\n`Fw = 0.7*F_i` for the first 0.2 of the run, `0.8*F_i` for the first 0.4, `1.2*F_i` thereafter. The\ndonor becomes `v_i = x_i + Fw*(x_pbest - x_i) + F_i*(x_r1 - x_r2)` — current-to-pbest *weighted*. This\nis the heart of the improvement: it decouples the two roles `F` was forced to play and slides their\nbalance from exploration-heavy early to exploitation-heavy late, which is exactly the correction\nRastrigin-100d needed.\n\nSeveral smaller refinements reinforce the same exploration-early/exploitation-late arc, and each saves\nbudget L-SHADE wasted. First, the memory start. L-SHADE initializes every slot neutral at `0.5`, so the\nearly generations re-discover on every problem that a high `CR` helps while exploring. I already believe\nhigh `CR` is right early (coordinated multi-coordinate moves on a spread population), so I initialize\nthe `CR` slots high, at `0.8`, and leave `F` at `0.5` — a free head start that the adaptation will\noverride if a near-separable problem prefers low `CR`. Second, a permanent aggressive reservoir:\n*freeze* one memory slot (the last) at `M_F = M_CR = 0.9` and never update it. Because each individual\npicks its memory index uniformly, about `1/H` of the population always samples around `(0.9, 0.9)`\nregardless of what the rest of the memory decides — cheap insurance against the whole population going\nquiet, which is one description of the Rastrigin-100d collapse. Third, phase rails: for the first\nquarter of the budget floor `CR` at `0.7`; for the first half, floor at `0.6`; for the first 0.6, cap\n`F` at `0.7`. These are not adapted — they are hard rails keeping early sampling in the\nexplore-coordinated regime, relaxing as the run proceeds so the adaptation takes over for refinement.\nFourth, the memory update: instead of overwriting a slot with one noisy generation's summary, *blend*\nit, `M[k] <- (mean_WL(S) + M[k]_old)/2`, so a single generation moves a slot at most halfway to its\nsummary and the slot retains its history — a stabilizer on the adaptation trajectory.\n\nThe pbest greediness `p` gets the same phase treatment. L-SHADE samples `p_i` per individual from a\nfixed interval; here I want `p` to *decrease* over the run, from a broad elite pool early to a sharp one\nlate: `p = p_max - (p_max - p_min)*nfes/max_nfes`, with `p_max = 0.25`, `p_min = 0.125`. Early, the\nelite guide is drawn from the top quarter (diverse, several good basins represented); late, from the\ntop eighth (sharp convergence). This is the same exploration-to-exploitation arc as the weighted\nmutation, applied to where the elite guide comes from — and it directly widens early exploration on the\nhigh-D multimodal case that failed.\n\nThe constants and edge cases carry over from the adaptive-DE substrate. Memory size `H = 5`, with the\nlast slot frozen, so four slots adapt and the round-robin counter cycles over those four. `N_min = 4`,\npinned because current-to-pbest/1 needs four distinct individuals. The archive caps at the current\npopulation size, random deletion on overflow, rescaled as the population shrinks. Cauchy on `F`\n(resample if `<= 0`, truncate to 1) for diversity in the mutation strength; Normal on `CR` (clamp to\n`[0,1]`) for stability; the terminal-`CR = 0` rule for slots whose successful `CR` are all zero, locking\nthe one-coordinate regime that helps on rugged separable landscapes. And — the one place this task's\nimplementation must depart from the canonical constant, exactly as the L-SHADE rung did — `N_init` is\nthe harness's `pop_size`, not the canonical `round(25*log(D)*sqrt(D))`, because this fixed-small-budget\nharness would have its generation count starved by a large initial population. The weighted mutation\nand the phase schedule have to do their work *within* the same population budget as every other rung,\nnot by enlarging it. The full scaffold module — the literal fill of `run_evolution`, with the three\noperator stubs left as no-ops — is in the answer.\n\nNow the bar this finale must clear, stated against L-SHADE's real numbers, with no result invented. The\nthree landscapes L-SHADE already won should hold or improve: Ackley should stay at machine precision\n(the weighted pull cannot hurt a problem already solved to 1e-11); Rosenbrock should stay in the low\ntens or better (the late-run stronger elite pull should sharpen the valley descent past L-SHADE's\n13.3 mean); Rastrigin-30d should stay around or below L-SHADE's 7.3 mean. The decisive test is\nRastrigin-100d, the one L-SHADE lost to the GA: the weaker early elite pull plus the broader early\n`p`-pool plus the high-biased `CR` memory should keep the population exploring the 100-D egg-carton\nlonger before it commits, so I expect Rastrigin-100d to fall *below* L-SHADE's 132.5 mean and, the real\ntarget, below the GA's 114 — recovering the ladder's lead on the one benchmark where the strongest\nbaseline slipped. If Rastrigin-100d does *not* improve, the weighted mutation thesis is falsified for\nthis harness's budget: it would mean the early-exploration bias cannot overcome the forced small\n`N_init` on the hardest case, and the honest conclusion would be that on *this* fixed-budget panel jSO\nmatches rather than beats L-SHADE. The falsifiable claim is sharp: same-or-better on the three L-SHADE\nalready owns, and strictly better than 132.5 on Rastrigin-100d. Let me layer the weighted mutation and the\nphase schedule onto the L-SHADE substrate.",
+   "content": "Now jSO: a weighted current-to-pbest-w/1 adaptive DE that decouples the elite pull from the random\ndifference so I can explore early and exploit late. This first edit just relabels the operator stub for jSO.",
+   "tool_calls": [
+    {
+     "type": "function",
+     "function": {
+      "name": "str_replace",
+      "arguments": {
+       "path": "deap/custom_evolution.py",
+       "old_str": "# EDITABLE region of deap/custom_evolution.py (lines 87-225) - step 3: L-SHADE\n\ndef custom_select(population: list, k: int, toolbox=None) -> list:\n    \"\"\"Not used in L-SHADE (adaptive DE handles selection internally).\"\"\"\n    return population[:k]",
+       "new_str": "# EDITABLE region of deap/custom_evolution.py (lines 87-225) - finale: jSO (weighted current-to-pbest-w/1)\n\ndef custom_select(population: list, k: int, toolbox=None) -> list:\n    \"\"\"Not used in jSO (adaptive DE handles selection internally).\"\"\"\n    return population[:k]"
+      }
+     }
+    }
+   ]
+  },
+  {
+   "role": "tool",
+   "content": "Successfully replaced text in deap/custom_evolution.py."
+  },
+  {
+   "role": "assistant",
+   "reasoning_content": "",
+   "content": "",
+   "tool_calls": [
+    {
+     "type": "function",
+     "function": {
+      "name": "str_replace",
+      "arguments": {
+       "path": "deap/custom_evolution.py",
+       "old_str": "def custom_crossover(ind1: list, ind2: list) -> Tuple[list, list]:\n    \"\"\"Not used in L-SHADE (binomial crossover built into run_evolution).\"\"\"\n    return ind1, ind2",
+       "new_str": "def custom_crossover(ind1: list, ind2: list) -> Tuple[list, list]:\n    \"\"\"Not used in jSO (binomial crossover built into run_evolution).\"\"\"\n    return ind1, ind2"
+      }
+     }
+    }
+   ]
+  },
+  {
+   "role": "tool",
+   "content": "Successfully replaced text in deap/custom_evolution.py."
+  },
+  {
+   "role": "assistant",
+   "reasoning_content": "",
+   "content": "",
+   "tool_calls": [
+    {
+     "type": "function",
+     "function": {
+      "name": "str_replace",
+      "arguments": {
+       "path": "deap/custom_evolution.py",
+       "old_str": "def custom_mutate(individual: list, lo: float, hi: float) -> Tuple[list]:\n    \"\"\"Not used in L-SHADE (adaptive mutation built into run_evolution).\"\"\"\n    return (individual,)",
+       "new_str": "def custom_mutate(individual: list, lo: float, hi: float) -> Tuple[list]:\n    \"\"\"Not used in jSO (adaptive mutation built into run_evolution).\"\"\"\n    return (individual,)"
+      }
+     }
+    }
+   ]
+  },
+  {
+   "role": "tool",
+   "content": "Successfully replaced text in deap/custom_evolution.py."
+  },
+  {
+   "role": "assistant",
+   "reasoning_content": "",
+   "content": "",
+   "tool_calls": [
+    {
+     "type": "function",
+     "function": {
+      "name": "str_replace",
+      "arguments": {
+       "path": "deap/custom_evolution.py",
+       "old_str": ") -> Tuple[list, list]:\n    \"\"\"L-SHADE: Success-History based Adaptive DE with Linear Population Reduction.\n\n    - Adaptive F (Cauchy) and CR (Normal) from success history\n    - current-to-pbest/1 mutation with external archive\n    - Linear population size reduction from N_init to N_min\n    \"\"\"",
+       "new_str": ") -> Tuple[list, list]:\n    \"\"\"jSO: weighted current-to-pBest-w/1 success-history adaptive DE with linear\n    population reduction (Brest, Maucec & Boskovic, CEC 2017).\n\n    - Memory biased high (M_CR=0.8) with one frozen slot at (0.9, 0.9)\n    - Weighted mutation factor Fw on the pbest term, phase-scheduled\n    - Early phase rails: CR floored, F capped; decreasing pbest fraction p\n    - Blended memory update (new + old) / 2\n    \"\"\""
+      }
+     }
+    }
+   ]
+  },
+  {
+   "role": "tool",
+   "content": "Successfully replaced text in deap/custom_evolution.py."
+  },
+  {
+   "role": "assistant",
+   "reasoning_content": "Swap in jSO's constants: H=5 with one slot reserved to freeze, and the tighter p range [0.125, 0.25].",
+   "content": "",
+   "tool_calls": [
+    {
+     "type": "function",
+     "function": {
+      "name": "str_replace",
+      "arguments": {
+       "path": "deap/custom_evolution.py",
+       "old_str": "\n    # --- Hyperparameters (Tanabe & Fukunaga, CEC 2014) ---\n    # The paper recommends N_init = 18·D, but on small fixed budgets (as in\n    # our 400 pop × 1000 gen setting) that value starves the search of\n    # generations: on Rastrigin-100D, N_init=1800 with matched total-eval\n    # budget degraded from 128 → 313. Use pop_size as given and the\n    # canonical N_min = 4 (paper §III-B), which lets the linear population\n    # reduction actually run. Budget stays identical to CMA-ES/DE/GA.\n    H = 6  # History size (paper default)\n    N_init = pop_size\n    N_min = 4  # Minimum population size\n    p_min = 2.0 / N_init  # Minimum p for pbest\n    p_max = 0.2  # Maximum p for pbest",
+       "new_str": "\n    # --- Hyperparameters (Brest et al., CEC 2017) ---\n    # Canonical N_init = round(25*log(D)*sqrt(D)), but on this fixed small-budget\n    # harness that starves the generation count, so use pop_size as given (same\n    # departure as the L-SHADE baseline) and let linear reduction to N_min=4 run.\n    H = 5                 # memory slots; last one frozen, slots 0..H-2 adapt\n    N_init = pop_size\n    N_min = 4\n    p_max, p_min = 0.25, 0.125"
+      }
+     }
+    }
+   ]
+  },
+  {
+   "role": "tool",
+   "content": "Successfully replaced text in deap/custom_evolution.py."
+  },
+  {
+   "role": "assistant",
+   "reasoning_content": "",
+   "content": "",
+   "tool_calls": [
+    {
+     "type": "function",
+     "function": {
+      "name": "str_replace",
+      "arguments": {
+       "path": "deap/custom_evolution.py",
+       "old_str": "\n    # Initialize population\n    pop = toolbox.population(n=N_init)",
+       "new_str": "\n    pop = toolbox.population(n=N_init)"
+      }
+     }
+    }
+   ]
+  },
+  {
+   "role": "tool",
+   "content": "Successfully replaced text in deap/custom_evolution.py."
+  },
+  {
+   "role": "assistant",
+   "reasoning_content": "Bias the CR memory high (0.8) for coordinated early moves, and freeze the last slot at (0.9, 0.9) as a\npermanent aggressive reservoir.",
+   "content": "",
+   "tool_calls": [
+    {
+     "type": "function",
+     "function": {
+      "name": "str_replace",
+      "arguments": {
+       "path": "deap/custom_evolution.py",
+       "old_str": "\n    # Success history for F and CR\n    M_F = [0.5] * H\n    M_CR = [0.5] * H\n    k = 0  # History index\n\n    # External archive of inferior solutions\n    archive = []\n\n    fitness_history = []",
+       "new_str": "\n    # Memory: M_F init 0.5, M_CR init 0.8; last slot frozen at (0.9, 0.9).\n    M_F = [0.5] * H\n    M_CR = [0.8] * H\n    M_F[H - 1] = 0.9\n    M_CR[H - 1] = 0.9\n    k = 0  # round-robin write index over the H-1 adaptable slots\n\n    archive = []\n    fitness_history = []"
+      }
+     }
+    }
+   ]
+  },
+  {
+   "role": "tool",
+   "content": "Successfully replaced text in deap/custom_evolution.py."
+  },
+  {
+   "role": "assistant",
+   "reasoning_content": "Compute the budget fraction once per generation and let the pbest pool shrink with it — broad elite early,\nsharp elite late.",
+   "content": "",
+   "tool_calls": [
+    {
+     "type": "function",
+     "function": {
+      "name": "str_replace",
+      "arguments": {
+       "path": "deap/custom_evolution.py",
+       "old_str": "        N_current = len(pop)\n\n        # Collect successful F and CR values and their fitness improvements\n        S_F = []\n        S_CR = []\n        delta_f = []  # fitness improvement for weighting\n\n        trial_list = []",
+       "new_str": "        N_current = len(pop)\n        frac = (gen + 1) / n_generations   # budget fraction proxy\n\n        # Decreasing pbest fraction p: p_max -> p_min over the run\n        p = p_max - (p_max - p_min) * frac\n        n_pbest = max(2, int(round(p * N_current)))\n        sorted_pop = sorted(pop, key=lambda ind: ind.fitness.values[0])\n\n        S_F = []\n        S_CR = []\n        delta_f = []\n        trial_list = []"
+      }
+     }
+    }
+   ]
+  },
+  {
+   "role": "tool",
+   "content": "Successfully replaced text in deap/custom_evolution.py."
+  },
+  {
+   "role": "assistant",
+   "reasoning_content": "Sample CR first, with the terminal-slot lock to 0 and the early-phase floors (0.7, then 0.6) keeping early\nsampling coordinated.",
+   "content": "",
+   "tool_calls": [
+    {
+     "type": "function",
+     "function": {
+      "name": "str_replace",
+      "arguments": {
+       "path": "deap/custom_evolution.py",
+       "old_str": "        for i in range(N_current):\n            # Sample F from Cauchy(M_F[r], 0.1), truncate to (0, 1]\n            r = random.randint(0, H - 1)\n            while True:",
+       "new_str": "        for i in range(N_current):\n            r = random.randint(0, H - 1)\n\n            # CR ~ Normal(M_CR[r], 0.1); terminal slot (-1) => CR = 0; clamp to [0,1]\n            if M_CR[r] == -1:\n                CR_i = 0.0\n            else:\n                CR_i = np.random.normal(M_CR[r], 0.1)\n                CR_i = max(0.0, min(1.0, CR_i))\n            # Early phase rails on CR\n            if frac < 0.25:\n                CR_i = max(CR_i, 0.7)\n            elif frac < 0.5:\n                CR_i = max(CR_i, 0.6)\n\n            # F ~ Cauchy(M_F[r], 0.1); resample if <= 0; truncate to 1\n            while True:"
+      }
+     }
+    }
+   ]
+  },
+  {
+   "role": "tool",
+   "content": "Successfully replaced text in deap/custom_evolution.py."
+  },
+  {
+   "role": "assistant",
+   "reasoning_content": "Cap F early, then set the phase-scheduled weight Fw on the pbest term — 0.7·F, 0.8·F, then 1.2·F — to\nslide from explore to exploit.",
+   "content": "",
+   "tool_calls": [
+    {
+     "type": "function",
+     "function": {
+      "name": "str_replace",
+      "arguments": {
+       "path": "deap/custom_evolution.py",
+       "old_str": "            F_i = min(F_i, 1.0)\n\n            # Sample CR from Normal(M_CR[r], 0.1), clamp to [0, 1]\n            CR_i = np.random.normal(M_CR[r], 0.1)\n            CR_i = max(0.0, min(1.0, CR_i))",
+       "new_str": "            F_i = min(F_i, 1.0)\n            # Early phase cap on F\n            if frac < 0.6:\n                F_i = min(F_i, 0.7)\n\n            # Weighted mutation factor Fw by budget phase\n            if frac < 0.2:\n                Fw = 0.7 * F_i\n            elif frac < 0.4:\n                Fw = 0.8 * F_i\n            else:\n                Fw = 1.2 * F_i"
+      }
+     }
+    }
+   ]
+  },
+  {
+   "role": "tool",
+   "content": "Successfully replaced text in deap/custom_evolution.py."
+  },
+  {
+   "role": "assistant",
+   "reasoning_content": "",
+   "content": "",
+   "tool_calls": [
+    {
+     "type": "function",
+     "function": {
+      "name": "str_replace",
+      "arguments": {
+       "path": "deap/custom_evolution.py",
+       "old_str": "\n            # current-to-pbest/1 mutation\n            # Choose p_i uniformly from [p_min, p_max]\n            p_i = random.uniform(p_min, p_max)\n            n_pbest = max(1, int(round(p_i * N_current)))\n            sorted_pop = sorted(pop, key=lambda ind: ind.fitness.values[0])\n            pbest = random.choice(sorted_pop[:n_pbest])\n\n            # Select r1 from pop (r1 != i)\n            candidates = list(range(N_current))",
+       "new_str": "\n            pbest = random.choice(sorted_pop[:n_pbest])\n\n            # r1 from pop (r1 != i)\n            candidates = list(range(N_current))"
+      }
+     }
+    }
+   ]
+  },
+  {
+   "role": "tool",
+   "content": "Successfully replaced text in deap/custom_evolution.py."
+  },
+  {
+   "role": "assistant",
+   "reasoning_content": "",
+   "content": "",
+   "tool_calls": [
+    {
+     "type": "function",
+     "function": {
+      "name": "str_replace",
+      "arguments": {
+       "path": "deap/custom_evolution.py",
+       "old_str": "\n            # Select r2 from pop + archive (r2 != i and r2 != r1)\n            union = list(range(N_current + len(archive)))",
+       "new_str": "\n            # r2 from pop + archive (r2 != i, r2 != r1)\n            union = list(range(N_current + len(archive)))"
+      }
+     }
+    }
+   ]
+  },
+  {
+   "role": "tool",
+   "content": "Successfully replaced text in deap/custom_evolution.py."
+  },
+  {
+   "role": "assistant",
+   "reasoning_content": "The heart of jSO: weight the pbest term by Fw while the random difference keeps F, decoupling elite pull\nfrom perturbation.",
+   "content": "",
+   "tool_calls": [
+    {
+     "type": "function",
+     "function": {
+      "name": "str_replace",
+      "arguments": {
+       "path": "deap/custom_evolution.py",
+       "old_str": "\n            # Mutation: v = x_i + F * (pbest - x_i) + F * (x_r1 - x_r2)\n            mutant = creator.Individual([\n                pop[i][j] + F_i * (pbest[j] - pop[i][j]) + F_i * (pop[r1][j] - x_r2[j])\n                for j in range(dim)\n            ])\n\n            # Binomial crossover\n            j_rand = random.randint(0, dim - 1)",
+       "new_str": "\n            # Weighted donor: v = x_i + Fw*(pbest - x_i) + F*(x_r1 - x_r2)\n            mutant = creator.Individual([\n                pop[i][j] + Fw * (pbest[j] - pop[i][j]) + F_i * (pop[r1][j] - x_r2[j])\n                for j in range(dim)\n            ])\n\n            # Binomial crossover with guaranteed donor coord j_rand\n            j_rand = random.randint(0, dim - 1)"
+      }
+     }
+    }
+   ]
+  },
+  {
+   "role": "tool",
+   "content": "Successfully replaced text in deap/custom_evolution.py."
+  },
+  {
+   "role": "assistant",
+   "reasoning_content": "",
+   "content": "",
+   "tool_calls": [
+    {
+     "type": "function",
+     "function": {
+      "name": "str_replace",
+      "arguments": {
+       "path": "deap/custom_evolution.py",
+       "old_str": "\n            # Clip to bounds\n            for j in range(dim):",
+       "new_str": "\n            for j in range(dim):"
+      }
+     }
+    }
+   ]
+  },
+  {
+   "role": "tool",
+   "content": "Successfully replaced text in deap/custom_evolution.py."
+  },
+  {
+   "role": "assistant",
+   "reasoning_content": "",
+   "content": "",
+   "tool_calls": [
+    {
+     "type": "function",
+     "function": {
+      "name": "str_replace",
+      "arguments": {
+       "path": "deap/custom_evolution.py",
+       "old_str": "\n        # Selection and success history update\n        new_pop = []",
+       "new_str": "\n        # Greedy selection + success collection\n        new_pop = []"
+      }
+     }
+    }
+   ]
+  },
+  {
+   "role": "tool",
+   "content": "Successfully replaced text in deap/custom_evolution.py."
+  },
+  {
+   "role": "assistant",
+   "reasoning_content": "",
+   "content": "",
+   "tool_calls": [
+    {
+     "type": "function",
+     "function": {
+      "name": "str_replace",
+      "arguments": {
+       "path": "deap/custom_evolution.py",
+       "old_str": "                    delta_f.append(abs(pop[i].fitness.values[0] - trial.fitness.values[0]))\n                    # Add inferior parent to archive\n                    archive.append(creator.Individual(pop[i][:]))",
+       "new_str": "                    delta_f.append(abs(pop[i].fitness.values[0] - trial.fitness.values[0]))\n                    archive.append(creator.Individual(pop[i][:]))"
+      }
+     }
+    }
+   ]
+  },
+  {
+   "role": "tool",
+   "content": "Successfully replaced text in deap/custom_evolution.py."
+  },
+  {
+   "role": "assistant",
+   "reasoning_content": "Blend each memory update halfway toward its summary, skip the frozen slot, and carry the terminal-CR lock.",
+   "content": "",
+   "tool_calls": [
+    {
+     "type": "function",
+     "function": {
+      "name": "str_replace",
+      "arguments": {
+       "path": "deap/custom_evolution.py",
+       "old_str": "\n        # Update success history\n        if S_F:\n            weights = np.array(delta_f)\n            weights = weights / (weights.sum() + 1e-30)\n\n            # Weighted Lehmer mean for F\n            S_F_arr = np.array(S_F)\n            mean_F = np.sum(weights * S_F_arr ** 2) / (np.sum(weights * S_F_arr) + 1e-30)\n            M_F[k] = mean_F\n\n            # Weighted arithmetic mean for CR\n            S_CR_arr = np.array(S_CR)\n            mean_CR = np.sum(weights * S_CR_arr)\n            M_CR[k] = mean_CR\n\n            k = (k + 1) % H",
+       "new_str": "\n        # Blended memory update over adaptable slots only (skip frozen last slot)\n        if S_F and k != H - 1:\n            weights = np.array(delta_f)\n            weights = weights / (weights.sum() + 1e-30)\n\n            S_F_arr = np.array(S_F)\n            mean_F = np.sum(weights * S_F_arr ** 2) / (np.sum(weights * S_F_arr) + 1e-30)\n            M_F[k] = 0.5 * (mean_F + M_F[k])\n\n            S_CR_arr = np.array(S_CR)\n            if M_CR[k] == -1 or max(S_CR) == 0:\n                M_CR[k] = -1   # terminal: CR locked to 0\n            else:\n                mean_CR = np.sum(weights * S_CR_arr ** 2) / (np.sum(weights * S_CR_arr) + 1e-30)\n                M_CR[k] = 0.5 * (mean_CR + M_CR[k])\n\n            k = (k + 1) % (H - 1)"
+      }
+     }
+    }
+   ]
+  },
+  {
+   "role": "tool",
+   "content": "Successfully replaced text in deap/custom_evolution.py."
+  },
+  {
+   "role": "assistant",
+   "reasoning_content": "",
+   "content": "",
+   "tool_calls": [
+    {
+     "type": "function",
+     "function": {
+      "name": "str_replace",
+      "arguments": {
+       "path": "deap/custom_evolution.py",
+       "old_str": "        if N_next < len(pop):\n            # Remove worst individuals\n            pop.sort(key=lambda ind: ind.fitness.values[0])",
+       "new_str": "        if N_next < len(pop):\n            pop.sort(key=lambda ind: ind.fitness.values[0])"
+      }
+     }
+    }
+   ]
+  },
+  {
+   "role": "tool",
+   "content": "Successfully replaced text in deap/custom_evolution.py."
+  }
+ ]
+}

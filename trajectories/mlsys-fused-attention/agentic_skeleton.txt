@@ -1,0 +1,936 @@
+<meta task="mlsys-fused-attention" domain="Systems & efficiency" file="flash-attention/custom_triton_bench.py" model_format="qwen3" edit_tool="str_replace"/>
+
+<system>
+You are a research engineer improving a model on a fixed ML task. You work by editing the model code and running experiments. Think carefully before each change. You have these tools:
+- str_replace(path, old_str, new_str): replace the unique occurrence of old_str with new_str.
+- create(path, file_text): create a new file.
+- run_experiment(): train + evaluate the current code under the fixed budget; returns metrics.
+Make one tool call at a time. After editing, call run_experiment() to measure your method.
+</system>
+
+<user>
+## Research question
+
+Self-attention is the throughput bottleneck of a Transformer forward pass. The map is simple —
+for `Q, K, V` in `R^{N x d}`, compute `O = softmax(Q K^T) V` row-wise — but a naive implementation
+materializes the `N x N` score matrix in HBM, so it is memory-bound and slow on long sequences. The
+single thing being designed here is the **fused attention forward kernel**: an OpenAI-Triton
+`@triton.jit` kernel (plus its Python launcher) that computes exact attention while maximizing
+achieved throughput (TFLOPs/s) on an H100, subject to a hard correctness constraint (max abs diff
+from PyTorch SDPA `< 1e-2`). Everything else — the benchmark harness, the FLOP accounting, the
+reference, the configs — is fixed. Each rung on the ladder is a different fill of the same kernel
+slot, climbing from a basic tiled kernel toward GEMM-level utilization on Hopper.
+
+## Prior art before the first rung (the attention-efficiency lineage)
+
+The first rung does not invent tiled attention; it reacts to a line of attempts that each got part
+of the way and left a gap the tiled, IO-aware kernel closes.
+
+- **Standard (materialized) attention.** Form `S = Q K^T` (an `N x N` matrix), write it to HBM,
+  read it back to softmax into `P`, write `P`, read `P` and `V` to form `O = P V`. Exact and simple,
+  but it moves `Theta(N d + N^2)` bytes across HBM, and the `N^2` term dominates for `N` in the
+  thousands with `d` only 64-256. Gap: memory-bound — the wall-clock is HBM traffic on `S` and `P`,
+  not the matmuls.
+- **Approximate attention (Reformer, Kitaev et al. 2020; Linformer; Performer; Longformer; BigBird).**
+  Sparsify or low-rank/kernel-approximate the score matrix to cut FLOPs to near-linear in `N`. From
+  the FLOP count they look like the answer, but the measured wall-clock is often no better than dense
+  attention at the lengths that matter, because FLOPs were never the bottleneck — and they change the
+  function (a quality cost). Gap: optimizes the wrong cost and is inexact.
+- **Online / lazy softmax (Milakov & Gimelshein 2018; Rabe & Staats 2021).** The numerically-stable
+  softmax is fully determined by a running max `m` and normalizer `l`; the online-normalizer identity
+  combines block partials exactly by rescaling with `e^{m_old - m_new}`, so the softmax denominator —
+  and, pushed through `* V`, the whole output — can be built one block at a time with `O(1)` memory
+  per query. Rabe & Staats minimize the memory *footprint* and achieve it, but their HBM *access*
+  count stays quadratic, so on a GPU they run at about standard-attention speed. Gap: right recurrence,
+  wrong cost axis (footprint, not traffic) and not fused into a single kernel.
+
+The first rung takes the online-softmax recurrence and re-engineers it around HBM *traffic* in one
+fused kernel: tile `Q, K, V`, stream tiles through SRAM, accumulate `(m, l, O)` over key blocks with
+the rescaling identity, and never let an `N x N` object touch HBM — exact attention with the `N^2`
+traffic removed.
+
+## The fixed substrate
+
+A benchmark harness is frozen and must not be touched: it builds `(batch, nheads, seqlen, headdim)`
+FP16 tensors for `Q, K, V` on H100, computes the PyTorch-SDPA reference, checks `max_diff < 1e-2`,
+then times both the custom kernel and SDPA (25 warmup, 100 timed runs, median latency). It reports,
+per config, `tflops` (achieved TFLOPs/s, primary, higher better), `latency_ms` (lower better),
+`max_diff`/`correct` (hard constraint), and `speedup_vs_sdpa` (SDPA latency / custom latency — the
+cross-GPU-comparable ratio). The causal FLOP count is fixed at `4 * batch * seqlen^2 * nheads *
+headdim / 2`. Available imports inside the editable region: `torch`, `triton`,
+`triton.language as tl`, `math`, `torch.nn.functional as F`.
+
+## The editable interface
+
+Exactly one region is editable — the Triton kernel `_custom_attn_fwd` and the Python wrapper
+`custom_attention_forward` in `flash-attention/custom_triton_bench.py` (lines 29-119). The contract
+the harness calls is the wrapper:
+
+```
+custom_attention_forward(q, k, v, causal=True, sm_scale=None) -> output
+    q, k, v : (batch, nheads, seqlen, headdim), contiguous, FP16
+    causal  : if True, key_pos <= query_pos
+    sm_scale: softmax scale (default 1/sqrt(headdim))
+    returns : (batch, nheads, seqlen, headdim), same dtype, == softmax(q k^T) v
+```
+
+Every method on the ladder replaces exactly this kernel + wrapper and nothing else: the kernel may be
+renamed, helper kernels may be defined, block sizes may be tuned, `@triton.autotune` may be used. The
+starting point is the scaffold default — a basic FA1-style tiled kernel: one program per query block
+per (batch, head), a single pass over all causal key blocks with the mask applied at every block, the
+scale folded inside the loop, uniform `BLOCK_M = BLOCK_N = 64`, online-softmax accumulators in fp32,
+the probability tile cast to fp16 for the `P @ V` matmul, and a single normalization at the end. This
+is forward-only (the harness benchmarks only the forward pass): no log-sum-exp statistic is stored and
+there is no backward kernel.
+
+```python
+@triton.jit
+def _custom_attn_fwd(
+    Q, K, V, Out,
+    sm_scale,
+    stride_qh, stride_qm, stride_qk,
+    stride_kh, stride_kn, stride_kk,
+    stride_vh, stride_vn, stride_vk,
+    stride_oh, stride_om, stride_ok,
+    seqlen,
+    BLOCK_M: tl.constexpr,
+    BLOCK_N: tl.constexpr,
+    BLOCK_DMODEL: tl.constexpr,
+    IS_CAUSAL: tl.constexpr,
+):
+    """Fused self-attention forward kernel (default: basic flash attention)."""
+    start_m = tl.program_id(0)
+    off_hz = tl.program_id(1)
+
+    q_offset = off_hz * stride_qh
+    k_offset = off_hz * stride_kh
+    v_offset = off_hz * stride_vh
+    o_offset = off_hz * stride_oh
+
+    offs_m = start_m * BLOCK_M + tl.arange(0, BLOCK_M)
+    offs_n = tl.arange(0, BLOCK_N)
+    offs_d = tl.arange(0, BLOCK_DMODEL)
+
+    # Load Q tile [BLOCK_M, BLOCK_DMODEL]
+    q_ptrs = Q + q_offset + offs_m[:, None] * stride_qm + offs_d[None, :] * stride_qk
+    q = tl.load(q_ptrs, mask=offs_m[:, None] < seqlen, other=0.0)
+
+    # Online softmax accumulators
+    m_i = tl.zeros([BLOCK_M], dtype=tl.float32) - float("inf")
+    l_i = tl.zeros([BLOCK_M], dtype=tl.float32)
+    acc = tl.zeros([BLOCK_M, BLOCK_DMODEL], dtype=tl.float32)
+
+    # Loop over K/V tiles
+    hi = (start_m + 1) * BLOCK_M if IS_CAUSAL else seqlen
+    for start_n in range(0, hi, BLOCK_N):
+        start_n = tl.multiple_of(start_n, BLOCK_N)
+        # Load K tile [BLOCK_N, BLOCK_DMODEL]
+        k_ptrs = K + k_offset + (start_n + offs_n[:, None]) * stride_kn + offs_d[None, :] * stride_kk
+        k = tl.load(k_ptrs, mask=(start_n + offs_n[:, None]) < seqlen, other=0.0)
+        # S = Q @ K^T * scale  [BLOCK_M, BLOCK_N]
+        qk = tl.dot(q, tl.trans(k)) * sm_scale
+        if IS_CAUSAL:
+            qk = tl.where(offs_m[:, None] >= (start_n + offs_n[None, :]), qk, float("-inf"))
+        # Online softmax
+        m_ij = tl.max(qk, axis=1)
+        m_new = tl.maximum(m_i, m_ij)
+        alpha = tl.math.exp2((m_i - m_new) * 1.44269504)
+        p = tl.math.exp2((qk - m_new[:, None]) * 1.44269504)
+        l_i = l_i * alpha + tl.sum(p, axis=1)
+        acc = acc * alpha[:, None]
+        # Load V tile and accumulate [BLOCK_N, BLOCK_DMODEL]
+        v_ptrs = V + v_offset + (start_n + offs_n[:, None]) * stride_vn + offs_d[None, :] * stride_vk
+        v = tl.load(v_ptrs, mask=(start_n + offs_n[:, None]) < seqlen, other=0.0)
+        acc += tl.dot(p.to(v.dtype), v)
+        m_i = m_new
+
+    # Normalize and store
+    acc = acc / l_i[:, None]
+    o_ptrs = Out + o_offset + offs_m[:, None] * stride_om + offs_d[None, :] * stride_ok
+    tl.store(o_ptrs, acc.to(Out.dtype.element_ty), mask=offs_m[:, None] < seqlen)
+
+
+def custom_attention_forward(q, k, v, causal=True, sm_scale=None):
+    """Python wrapper for the custom Triton attention kernel."""
+    batch, nheads, seqlen, headdim = q.shape
+    q, k, v = q.contiguous(), k.contiguous(), v.contiguous()
+    if sm_scale is None:
+        sm_scale = 1.0 / math.sqrt(headdim)
+    o = torch.empty_like(q)
+    BLOCK_M, BLOCK_N = 64, 64
+    grid = (triton.cdiv(seqlen, BLOCK_M), batch * nheads)
+    _custom_attn_fwd[grid](
+        q, k, v, o, sm_scale,
+        q.stride(1), q.stride(2), q.stride(3),
+        k.stride(1), k.stride(2), k.stride(3),
+        v.stride(1), v.stride(2), v.stride(3),
+        o.stride(1), o.stride(2), o.stride(3),
+        seqlen,
+        BLOCK_M=BLOCK_M, BLOCK_N=BLOCK_N,
+        BLOCK_DMODEL=headdim, IS_CAUSAL=causal,
+    )
+    return o
+```
+
+## Evaluation settings
+
+Three causal configurations, total tokens fixed at 16384, all FP16, causal, H100 80GB SXM5, seed 42:
+
+| Config | Batch | SeqLen | Heads | HeadDim |
+|---|---|---|---|---|
+| `hdim64_seq4k` | 4 | 4096 | 32 | 64 |
+| `hdim128_seq8k` | 2 | 8192 | 16 | 128 |
+| `hdim256_seq16k` | 1 | 16384 | 8 | 256 |
+
+Per config, four reported quantities: `tflops` (primary, higher better), `latency_ms` (lower better),
+`correct` (1 iff `max_diff < 1e-2`, a hard gate), and `speedup_vs_sdpa` (SDPA latency / custom
+latency). The three configs probe distinct regimes: small head dim with the largest batch
+(`hdim64_seq4k`), the middle ground (`hdim128_seq8k`), and a large head dim with batch 1 — the
+occupancy-starved, register-pressured corner (`hdim256_seq16k`).
+
+The editable model code is in `flash-attention/custom_triton_bench.py`:
+```python
+@triton.jit
+def _custom_attn_fwd(
+    Q, K, V, Out,
+    sm_scale,
+    stride_qh, stride_qm, stride_qk,
+    stride_kh, stride_kn, stride_kk,
+    stride_vh, stride_vn, stride_vk,
+    stride_oh, stride_om, stride_ok,
+    seqlen,
+    BLOCK_M: tl.constexpr,
+    BLOCK_N: tl.constexpr,
+    BLOCK_DMODEL: tl.constexpr,
+    IS_CAUSAL: tl.constexpr,
+):
+    """Fused self-attention forward kernel (default: basic flash attention)."""
+    start_m = tl.program_id(0)
+    off_hz = tl.program_id(1)
+
+    q_offset = off_hz * stride_qh
+    k_offset = off_hz * stride_kh
+    v_offset = off_hz * stride_vh
+    o_offset = off_hz * stride_oh
+
+    offs_m = start_m * BLOCK_M + tl.arange(0, BLOCK_M)
+    offs_n = tl.arange(0, BLOCK_N)
+    offs_d = tl.arange(0, BLOCK_DMODEL)
+
+    # Load Q tile [BLOCK_M, BLOCK_DMODEL]
+    q_ptrs = Q + q_offset + offs_m[:, None] * stride_qm + offs_d[None, :] * stride_qk
+    q = tl.load(q_ptrs, mask=offs_m[:, None] < seqlen, other=0.0)
+
+    # Online softmax accumulators
+    m_i = tl.zeros([BLOCK_M], dtype=tl.float32) - float("inf")
+    l_i = tl.zeros([BLOCK_M], dtype=tl.float32)
+    acc = tl.zeros([BLOCK_M, BLOCK_DMODEL], dtype=tl.float32)
+
+    # Loop over K/V tiles
+    hi = (start_m + 1) * BLOCK_M if IS_CAUSAL else seqlen
+    for start_n in range(0, hi, BLOCK_N):
+        start_n = tl.multiple_of(start_n, BLOCK_N)
+        # Load K tile [BLOCK_N, BLOCK_DMODEL]
+        k_ptrs = K + k_offset + (start_n + offs_n[:, None]) * stride_kn + offs_d[None, :] * stride_kk
+        k = tl.load(k_ptrs, mask=(start_n + offs_n[:, None]) < seqlen, other=0.0)
+        # S = Q @ K^T * scale  [BLOCK_M, BLOCK_N]
+        qk = tl.dot(q, tl.trans(k)) * sm_scale
+        if IS_CAUSAL:
+            qk = tl.where(offs_m[:, None] >= (start_n + offs_n[None, :]), qk, float("-inf"))
+        # Online softmax
+        m_ij = tl.max(qk, axis=1)
+        m_new = tl.maximum(m_i, m_ij)
+        alpha = tl.math.exp2((m_i - m_new) * 1.44269504)
+        p = tl.math.exp2((qk - m_new[:, None]) * 1.44269504)
+        l_i = l_i * alpha + tl.sum(p, axis=1)
+        acc = acc * alpha[:, None]
+        # Load V tile and accumulate [BLOCK_N, BLOCK_DMODEL]
+        v_ptrs = V + v_offset + (start_n + offs_n[:, None]) * stride_vn + offs_d[None, :] * stride_vk
+        v = tl.load(v_ptrs, mask=(start_n + offs_n[:, None]) < seqlen, other=0.0)
+        acc += tl.dot(p.to(v.dtype), v)
+        m_i = m_new
+
+    # Normalize and store
+    acc = acc / l_i[:, None]
+    o_ptrs = Out + o_offset + offs_m[:, None] * stride_om + offs_d[None, :] * stride_ok
+    tl.store(o_ptrs, acc.to(Out.dtype.element_ty), mask=offs_m[:, None] < seqlen)
+
+
+def custom_attention_forward(q, k, v, causal=True, sm_scale=None):
+    """Python wrapper for the custom Triton attention kernel."""
+    batch, nheads, seqlen, headdim = q.shape
+    q, k, v = q.contiguous(), k.contiguous(), v.contiguous()
+    if sm_scale is None:
+        sm_scale = 1.0 / math.sqrt(headdim)
+    o = torch.empty_like(q)
+    # Conservative block sizes (FA1-style). Opportunities to optimize:
+    # - Tune BLOCK_M/BLOCK_N per headdim (larger blocks for smaller heads)
+    # - Use @triton.autotune to search configurations
+    # - Adjust num_warps and num_stages
+    BLOCK_M, BLOCK_N = 64, 64
+    grid = (triton.cdiv(seqlen, BLOCK_M), batch * nheads)
+    _custom_attn_fwd[grid](
+        q, k, v, o, sm_scale,
+        q.stride(1), q.stride(2), q.stride(3),
+        k.stride(1), k.stride(2), k.stride(3),
+        v.stride(1), v.stride(2), v.stride(3),
+        o.stride(1), o.stride(2), o.stride(3),
+        seqlen,
+        BLOCK_M=BLOCK_M, BLOCK_N=BLOCK_N,
+        BLOCK_DMODEL=headdim, IS_CAUSAL=causal,
+    )
+    return o
+```
+Improve it. Derive your method, edit the code, then run_experiment().
+</user>
+
+### step 1 — FlashAttention v1 (basic tiled fused kernel)   [slug:flash_v1]
+
+<think>
+[[POLISH_REASONING: adapt to first-person agentic voice, end by deciding to implement]]
+The kernel is the whole point, but it has to sit inside a fixed benchmark, and the floor I start from is the most basic thing that is simultaneously *exact* and *not memory-bound* — because if I start from the materialized implementation the harness will measure something that loses to PyTorch SDPA before I have done any of the interesting work, and worse, it will mislead me about where the time actually goes. So let me reason about what hurts, in this task's terms, before I fill the slot.
+
+What hurts is that attention is slow on long sequences and I cannot make it fast by rearranging the arithmetic. The map is `O = softmax(Q K^T) V` for `Q, K, V` in `R^{N x d}`. The obvious implementation forms `S = Q K^T`, an `N x N` matrix, writes it to HBM, reads it back to softmax row-wise into `P`, writes `P`, reads `P` and `V` to form `O`. For the configs the harness actually runs — `seqlen` 4096, 8192, 16384 with `headdim` only 64, 128, 256 — that `N x N` matrix is enormous next to everything else, and I pay for it twice, once to write and once to read, and again for `P`. So the first thing to settle is *where the time goes*, because if I guess wrong I optimize the wrong thing and the leaderboard punishes me.
+
+The two matmuls `Q K^T` and `P V` are dense, and the H100's Tensor Cores eat dense matmuls — the chip has far more matmul throughput than I can feed. The softmax, by contrast, is a row-max, a row-sum, an elementwise exponential and a divide: almost no arithmetic per number, just a flood of numbers streamed through. On this hardware HBM runs at ~3.35 TB/s while on-chip SRAM runs an order of magnitude faster but is tiny, a couple hundred kilobytes per streaming multiprocessor. The right model is arithmetic intensity: an operation is compute-bound if it does many FLOPs per byte moved and memory-bound if few. The softmax, and the very act of writing and re-reading the `N x N` matrices `S` and `P`, is memory-bound. So the wall-clock of standard attention is dominated by shuttling `S` and `P` across the slow HBM bus, not by the matmuls. That reframes the whole task: I am not trying to do fewer operations, I am trying to do fewer *reads and writes to HBM*. The harness even nudges this with `speedup_vs_sdpa` — SDPA already dispatches to a fused kernel on H100, so to be competitive I must remove the `N^2` traffic, not shave FLOPs.
+
+This is worth being precise about because it tells me which prior work is barking up the wrong tree. There is a whole industry of approximate attention — sparsify the score matrix (Reformer's hashing, Kitaev et al. 2020), approximate `softmax(QK^T)` by a low-rank or kernel-feature product (Linformer, Performer, Katharopoulos's linear attention), or hybrids (Longformer, BigBird). These cut FLOPs to near-linear in `N`, and from the FLOP count alone they look like the answer. But the measured wall-clock is much less kind — many are no faster than dense attention at the lengths the harness uses, some slower — because they optimized FLOPs and FLOPs are not the bottleneck. And they change the function, which here is fatal: the harness gates on `max_diff < 1e-2` against SDPA, so an inexact method risks failing the hard correctness constraint outright. I want the function to stay exact — the same `softmax(QK^T)V` up to ordinary floating-point — and the speedup to come from the thing that actually sets wall-clock time, the HBM traffic.
+
+Two obstacles stand between me and "never touch the `N x N` matrix in HBM." The first is softmax itself: the denominator of row `i` is `sum_j e^{S_ij}`, a sum over *all* `N` keys, so naively I need the whole row of `S` before I can normalize any entry — the columns are coupled. The second, in the general case, is the backward pass, but here it does not bite: the harness benchmarks only the forward pass, so I never need to store `S` or `P` for gradients and never have to recompute them. That simplifies the floor — I am building a forward-only kernel, so the only obstacle that matters at step 1 is the softmax coupling. If I cannot break that, nothing else matters.
+
+The numerically-stable softmax already carries the seed of the answer. I never compute `e^{x_i}` directly — it overflows the moment a score exceeds ~89 in float. Instead I subtract the row max: let `m = max_i x_i`, then `f_i = e^{x_i - m}`, `l = sum_i f_i`, and `softmax_i = f_i / l`. The exponent is always `<= 0`, so `f_i in (0, 1]`, no overflow. Staring at it, the structure I need is right there: softmax is fully determined by two scalars per row — the max `m` and the normalizer `l` — plus the raw scores. If I can compute `m` and `l` *incrementally*, seeing the scores a chunk at a time and never holding the whole row, the coupling breaks.
+
+Can I? Suppose I have seen the first chunk of a row with its max `m^(1)` and normalizer `l^(1) = sum over chunk 1 of e^{x - m^(1)}`. A second chunk arrives with `m^(2)` and `l^(2)`. The true combined max is `m = max(m^(1), m^(2))`. The trouble is `l^(1)` and `l^(2)` were each taken relative to their own local max, so I cannot add them. But I can fix each: the normalizer I want for chunk 1 is `sum e^{x - m}`, and I have `sum e^{x - m^(1)}`; they differ by a constant exponent factor, `e^{x - m} = e^{x - m^(1)} e^{m^(1) - m}`, so `sum e^{x - m} = e^{m^(1) - m} l^(1)`. Same for chunk 2. The combined normalizer is `l = e^{m^(1) - m} l^(1) + e^{m^(2) - m} l^(2)`, exact, and since both `m^(k) - m <= 0` the rescaling factors are in `(0, 1]` — still no overflow. This is the online-normalizer identity (Milakov & Gimelshein 2018): carry `(m, l)` as running state and, whenever the running max jumps, multiply the running normalizer by `e^{m_old - m_new}` before folding in the new chunk. So the softmax denominator no longer needs the whole row at once.
+
+But I do not want the denominator in isolation — I want `O = P V`, the softmax-weighted sum of value rows. So I push the incremental idea through the `* V`. Keep a running *unnormalized* output accumulator and a running normalizer, both starting at zero, and a running max at `-inf`; as each key/value block arrives, exponentiate its scores relative to the running max, add `e^{score - m} V_block` into the accumulator and `e^{score - m}` into the normalizer, rescaling both by `e^{m_old - m_new}` whenever the max grows, and divide once at the very end. That gives exact attention with `O(1)` extra memory per query — the deferred-normalization trick that makes the whole pipeline one kernel. The two coupling obstacles dissolve with the same running-max rescaling applied to the output accumulator as well as the normalizer.
+
+That forces the shape of the algorithm: tile everything, because the only place an `N x N` thing may legally exist is on-chip, transiently, and SRAM is tiny. Split `Q` into row-blocks of `BLOCK_M` queries; split `K, V` into row-blocks of `BLOCK_N`. A single score block `S_ij = Q_i K_j^T` is `BLOCK_M x BLOCK_N`, sized to fit SRAM. The clean correctness statement is an induction: after processing `j` key-blocks, the running `(m, l, acc)` equals the true max, normalizer, and unnormalized output over the first `j` blocks; the base case is the empty sum (`acc = 0`, `l = 0`, `m = -inf`), and each step is the online identity, so at `j = N/BLOCK_N` the accumulator divided by `l` is exactly `softmax(Q_i K^T) V`. No approximation anywhere, and the FLOP count is `O(N^2 d)` — the same arithmetic as dense attention, as it must be for an exact method — while the HBM traffic drops to the inputs, the output, and the `O(N)` running stats. The `N^2` traffic is gone by construction; that is the entire source of the speedup, and it is exactly what the materialized baseline cannot offer.
+
+Now the practical decisions that the clean math does not dictate, and that pin down the *literal* fill for this scaffold. First, the unit of parallelism. The IO-clean version loops key-blocks outer and query-blocks inner, but that makes many programs want to update the same output rows, forcing partial outputs back to HBM. Cleaner: make the *query block* the unit of parallelism — one program per `(start_m, batch*head)` — and loop over key/value blocks inside. Each program owns its query rows entirely, keeps `m_i, l_i, acc` resident for its whole life, and writes `O_i` exactly once. So the launch grid is `(cdiv(seqlen, BLOCK_M), batch * nheads)`, which is precisely what the scaffold's wrapper sets.
+
+Second, the exponential. A generic natural `exp` per element is not the cheapest thing the hardware offers; the H100 has a fast base-2 `exp2(x) = 2^x` as a near-native special-function instruction. Since `e^x = 2^{x log2(e)}` with `log2(e) = 1.44269504`, I keep the softmax in base-2 units: `alpha = exp2((m_i - m_new) * 1.44269504)` and `p = exp2((qk - m_new) * 1.44269504)`. Same softmax, expressed in the units the fast exponential wants. The scaffold already does this — the template uses `exp2` with the `1.44269504` factor — and at step 1 I keep it as is.
+
+Third, causality and where to put the scale — and this is exactly where the step-1 fill is *deliberately* conservative, the part that leaves room for the rungs above. For a causal mask, query `i` attends only to keys `j <= i`. The cheapest possible thing is to bound the inner loop so I never iterate key-blocks entirely above the diagonal: `hi = (start_m + 1) * BLOCK_M`. The basic FA1 fill does this much — it skips the strictly-future blocks — but it still applies the elementwise mask `tl.where(offs_m >= start_n + offs_n, qk, -inf)` at *every* block it does iterate, including the many blocks strictly below the diagonal where nothing is masked. That is a comparison plus a conditional write over the whole score tile, on the slow non-matmul units, paid on blocks that do not need it. Likewise the scale: the basic fill multiplies inside the loop, `qk = tl.dot(q, trans(k)) * sm_scale`, one multiply per element of every score tile, rather than folding `sm_scale` into `Q` once at load. These are the obvious next economies — but they are *not* the floor. The floor is the kernel that is correct and tiled and fused but has not yet stripped that non-matmul work out of the hot loop. So step 1 takes the scaffold default verbatim: single pass with the mask applied at every block, scale inside the loop, uniform `BLOCK_M = BLOCK_N = 64`.
+
+Fourth, precision and block size. I keep the scores, the running max, the normalizer, and the output accumulator in fp32 — the softmax sums and the rescaling need the dynamic range, and accumulating the output in fp16 over many blocks would lose bits and risk the `max_diff` gate. The inputs and output are fp16; I cast the probability tile `p` back to `v.dtype` (fp16) before the `p @ V` matmul so it runs on the Tensor Cores at full rate. Block sizes I take uniform at `64 x 64`: comfortably fits the working set in SRAM for every head dim the harness uses (64, 128, 256), with no per-headdim specialization and no autotuning yet — again, deliberately leaving the obvious tuning levers untouched so the floor is honestly the floor.
+
+So at step 1 my edit is the scaffold's default, and it is exactly the right floor: one program per query block, loop over causal key blocks, mask every block, scale inside the loop, fp32 online-softmax accumulators with an fp16 `P @ V`, normalize once at the end, write `O` once. It is forward-only — no log-sum-exp stored, no backward kernel — because the harness benchmarks only the forward. (The distilled module and the literal scaffold code are in the answer.)
+
+Now reason about what this floor must do on the leaderboard, because that is the point of running it. It removes the `N x N` HBM traffic, so it is no longer memory-bound — it should clear the hard `correct = 1` gate on all three configs (the math is exact) and land somewhere in the few-hundred-TFLOPs range, the regime of a correct-but-untuned fused kernel. But it leaves three things on the table that I can already name. (1) It pays the elementwise causal mask on every iterated block, including the ~half that are strictly below the diagonal and need no mask — wasted non-matmul work. (2) It multiplies by the scale inside the loop instead of folding it into `Q` once. (3) It uses one block shape for every head dim, so it cannot trade larger blocks for fewer loop iterations on the small head dims, nor shrink blocks to relieve register pressure on the large one. I expect the three configs to split on head dim and batch: `hdim64_seq4k` (small head, batch 4) and `hdim128_seq8k` should be the friendlier cases where a correct fused kernel already does reasonably, while `hdim256_seq16k` — large head dim, batch 1, the occupancy-starved and register-pressured corner — is where the uniform `64 x 64` and the unstripped inner loop should hurt most and the kernel should lag SDPA the worst. Whatever the precise numbers, the diagnosis is already pointed at the next rung: this is not a memory problem anymore (I fixed that) and not a correctness problem (it is exact) — it is a *scheduling* problem, the inner loop carrying non-matmul work it does not need and one block shape that does not fit every regime. That is what the next fill attacks.
+</think>
+<say>
+[[FILL_SAY: 1-2 sentences naming the method and what this first edit does]]
+</say>
+<edit path="flash-attention/custom_triton_bench.py">
+<old>
+):
+    """Fused self-attention forward kernel (default: basic flash attention)."""
+    start_m = tl.program_id(0)
+</old>
+<new>
+):
+    """FA1-style: single-pass tiling + online softmax, causal mask every block."""
+    start_m = tl.program_id(0)
+</new>
+</edit>
+<obs>
+Successfully replaced text in flash-attention/custom_triton_bench.py.
+</obs>
+<note>
+[[FILL_NOTE?: optional one-line thought for this edit, or delete this block]]
+</note>
+<edit path="flash-attention/custom_triton_bench.py">
+<old>
+
+    # Load Q tile [BLOCK_M, BLOCK_DMODEL]
+    q_ptrs = Q + q_offset + offs_m[:, None] * stride_qm + offs_d[None, :] * stride_qk
+    q = tl.load(q_ptrs, mask=offs_m[:, None] < seqlen, other=0.0)
+
+    # Online softmax accumulators
+    m_i = tl.zeros([BLOCK_M], dtype=tl.float32) - float("inf")
+</old>
+<new>
+
+    q_ptrs = Q + q_offset + offs_m[:, None] * stride_qm + offs_d[None, :] * stride_qk
+    q = tl.load(q_ptrs, mask=offs_m[:, None] < seqlen, other=0.0)
+
+    m_i = tl.zeros([BLOCK_M], dtype=tl.float32) - float("inf")
+</new>
+</edit>
+<obs>
+Successfully replaced text in flash-attention/custom_triton_bench.py.
+</obs>
+<note>
+[[FILL_NOTE?: optional one-line thought for this edit, or delete this block]]
+</note>
+<edit path="flash-attention/custom_triton_bench.py">
+<old>
+
+    # Loop over K/V tiles
+    hi = (start_m + 1) * BLOCK_M if IS_CAUSAL else seqlen
+    for start_n in range(0, hi, BLOCK_N):
+        start_n = tl.multiple_of(start_n, BLOCK_N)
+        # Load K tile [BLOCK_N, BLOCK_DMODEL]
+        k_ptrs = K + k_offset + (start_n + offs_n[:, None]) * stride_kn + offs_d[None, :] * stride_kk
+        k = tl.load(k_ptrs, mask=(start_n + offs_n[:, None]) < seqlen, other=0.0)
+        # S = Q @ K^T * scale  [BLOCK_M, BLOCK_N]
+        qk = tl.dot(q, tl.trans(k)) * sm_scale
+        if IS_CAUSAL:
+            qk = tl.where(offs_m[:, None] >= (start_n + offs_n[None, :]), qk, float("-inf"))
+        # Online softmax
+        m_ij = tl.max(qk, axis=1)
+</old>
+<new>
+
+    hi = (start_m + 1) * BLOCK_M if IS_CAUSAL else seqlen
+    for start_n in range(0, hi, BLOCK_N):
+        start_n = tl.multiple_of(start_n, BLOCK_N)
+        k_ptrs = K + k_offset + (start_n + offs_n[:, None]) * stride_kn + offs_d[None, :] * stride_kk
+        k = tl.load(k_ptrs, mask=(start_n + offs_n[:, None]) < seqlen, other=0.0)
+        qk = tl.dot(q, tl.trans(k)) * sm_scale
+        if IS_CAUSAL:
+            qk = tl.where(offs_m[:, None] >= (start_n + offs_n[None, :]), qk, float("-inf"))
+        m_ij = tl.max(qk, axis=1)
+</new>
+</edit>
+<obs>
+Successfully replaced text in flash-attention/custom_triton_bench.py.
+</obs>
+<note>
+[[FILL_NOTE?: optional one-line thought for this edit, or delete this block]]
+</note>
+<edit path="flash-attention/custom_triton_bench.py">
+<old>
+        acc = acc * alpha[:, None]
+        # Load V tile and accumulate [BLOCK_N, BLOCK_DMODEL]
+        v_ptrs = V + v_offset + (start_n + offs_n[:, None]) * stride_vn + offs_d[None, :] * stride_vk
+</old>
+<new>
+        acc = acc * alpha[:, None]
+        v_ptrs = V + v_offset + (start_n + offs_n[:, None]) * stride_vn + offs_d[None, :] * stride_vk
+</new>
+</edit>
+<obs>
+Successfully replaced text in flash-attention/custom_triton_bench.py.
+</obs>
+<note>
+[[FILL_NOTE?: optional one-line thought for this edit, or delete this block]]
+</note>
+<edit path="flash-attention/custom_triton_bench.py">
+<old>
+
+    # Normalize and store
+    acc = acc / l_i[:, None]
+</old>
+<new>
+
+    acc = acc / l_i[:, None]
+</new>
+</edit>
+<obs>
+Successfully replaced text in flash-attention/custom_triton_bench.py.
+</obs>
+<note>
+[[FILL_NOTE?: optional one-line thought for this edit, or delete this block]]
+</note>
+<edit path="flash-attention/custom_triton_bench.py">
+<old>
+def custom_attention_forward(q, k, v, causal=True, sm_scale=None):
+    """Python wrapper for the custom Triton attention kernel."""
+    batch, nheads, seqlen, headdim = q.shape
+</old>
+<new>
+def custom_attention_forward(q, k, v, causal=True, sm_scale=None):
+    """FA1-style wrapper with uniform block sizes."""
+    batch, nheads, seqlen, headdim = q.shape
+</new>
+</edit>
+<obs>
+Successfully replaced text in flash-attention/custom_triton_bench.py.
+</obs>
+<note>
+[[FILL_NOTE?: optional one-line thought for this edit, or delete this block]]
+</note>
+<edit path="flash-attention/custom_triton_bench.py">
+<old>
+    o = torch.empty_like(q)
+    # Conservative block sizes (FA1-style). Opportunities to optimize:
+    # - Tune BLOCK_M/BLOCK_N per headdim (larger blocks for smaller heads)
+    # - Use @triton.autotune to search configurations
+    # - Adjust num_warps and num_stages
+    BLOCK_M, BLOCK_N = 64, 64
+</old>
+<new>
+    o = torch.empty_like(q)
+    BLOCK_M, BLOCK_N = 64, 64
+</new>
+</edit>
+<obs>
+Successfully replaced text in flash-attention/custom_triton_bench.py.
+</obs>
+<run/>
+<obs>
+Measured results — `baseline:flash_v1` (`is_final,true`), seed {42} (the harness runs seed 42 only; mean = the single seed).
+
+## hdim64_seq4k (batch 4, seqlen 4096, heads 32, headdim 64)
+| seed | tflops | latency_ms | max_diff | correct | speedup_vs_sdpa |
+|---|---|---|---|---|---|
+| 42 | 269.759 | 1.019 | 0.0009765625 | 1 | 0.9449 |
+| **mean** | **269.759** | **1.019** | **0.0009765625** | **1** | **0.9449** |
+
+## hdim128_seq8k (batch 2, seqlen 8192, heads 16, headdim 128)
+| seed | tflops | latency_ms | max_diff | correct | speedup_vs_sdpa |
+|---|---|---|---|---|---|
+| 42 | 297.3736 | 1.8487 | 0.0004882812 | 1 | 0.9420 |
+| **mean** | **297.3736** | **1.8487** | **0.0004882812** | **1** | **0.9420** |
+
+## hdim256_seq16k (batch 1, seqlen 16384, heads 8, headdim 256)
+| seed | tflops | latency_ms | max_diff | correct | speedup_vs_sdpa |
+|---|---|---|---|---|---|
+| 42 | 234.2001 | 4.6948 | 0.0004882812 | 1 | 0.8079 |
+| **mean** | **234.2001** | **4.6948** | **0.0004882812** | **1** | **0.8079** |
+</obs>
+
+### step 2 — FlashAttention v2 (two-pass causal + fused scale + per-headdim blocks)   [slug:flash_v2]
+
+<think>
+[[POLISH_REASONING: adapt to first-person agentic voice, end by deciding to implement]]
+The basic fused kernel told me exactly what it told me it would, and it told me in numbers. It cleared the hard `correct = 1` gate on all three configs — the math is exact, as designed — and it landed where a correct-but-untuned fused kernel lands: `hdim64_seq4k` 269.8 TFLOPs, `hdim128_seq8k` 297.4, `hdim256_seq16k` 234.2. But read the `speedup_vs_sdpa` column, because that is the cross-GPU-comparable one and it is brutal: 0.94, 0.94, 0.81 — *every config is slower than PyTorch SDPA*, and the worst is exactly the corner I flagged, `hdim256_seq16k` at 0.81. So the floor did its one job (remove the `N x N` HBM traffic, stay exact) and then stalled. The diagnosis I wrote at the close of step 1 holds: this is no longer a memory problem and not a correctness problem — it is a *scheduling* problem. The kernel is fused and IO-light but it is leaving the Tensor Cores idle, and SDPA's fused kernel is not. So the whole question now is: where is the work being scheduled badly, and how do I fix it without touching the exact output?
+
+Before I change a line I have to internalize the cost model, because it defines what "scheduled badly" even means here. The H100 does on the order of 990 TFLOPs/s of FP16 matmul on its Tensor Cores but only ~67 TFLOPs/s of FP32 on the regular ALUs that run the softmax — and even on the previous generation the ratio was about 16x, a non-matmul FLOP costing roughly 16 matmul-FLOPs of wall-clock. That number reframes everything. In attention the matmuls are `Q K^T` and `P V`; everything else — the exponentials, the row-maxes, the rescalings, the divisions, the mask comparisons — is non-matmul. By raw FLOP count the non-matmul part is small, a couple of `N x N` elementwise passes against two `N^2 d` GEMMs. But by *time* it can dominate, because each of those cheap-looking FLOPs costs ~16x. So my step-1 instinct — "the kernel is exact and IO-light, what's left?" — was wrong: there is a whole axis I was not counting. Every elementwise operation in the inner loop is disproportionately expensive, and the floor's inner loop is *full* of them. Let me go look at the loop I actually shipped and hunt non-matmul work.
+
+Three things I deliberately left in the floor, and the cost model says each is bleeding throughput. First, the floor applies the elementwise causal mask `tl.where(row >= col, qk, -inf)` at *every* iterated key block. But I am already working in blocks, so I can reason about masking at the block level. Fix a query row block (rows in `[start_m*BLOCK_M, (start_m+1)*BLOCK_M)`). A key block covers columns `[start_n, start_n+BLOCK_N)`. There are three kinds. If the block is entirely *above* the diagonal — every column index exceeds every row index — the whole tile masks to zero and contributes nothing; the floor already skips these by bounding `hi = (start_m+1)*BLOCK_M`. If the block is entirely *below* the diagonal — every column `<=` every row — nothing is masked, so the `tl.where` is pure wasted non-matmul work. Only the block straddling the diagonal actually needs the elementwise mask, and for square blocks that is exactly one block per row block. The floor masks all of them. So I split the column loop into two passes: a first pass over the strictly-below-diagonal blocks with no mask at all, and a second pass over just the boundary block where I apply `tl.where`. The split point is `non_causal_end = (start_m*BLOCK_M // BLOCK_N) * BLOCK_N` — round the first query row of this tile down to a key-block boundary; everything before it is safely below the diagonal. Two passes, mask applied to a vanishing fraction of the work, the upper triangle never computed. For causal attention on a long sequence, the boundary block is one of many, so this removes essentially all the masking cost. This is the single biggest lever, and it should help most where the sequence is long.
+
+Second, the scale. The floor multiplies `qk = tl.dot(q, trans(k)) * sm_scale` inside the loop — one multiply per element of every `N x N` score tile, on the slow side. But `sm_scale` is constant for the whole kernel, and so is the `log2(e) = 1.44269504` factor the `exp2` softmax needs. So fold them together and push them onto `Q` *at load time*, in the wrapper: `q <- q * (sm_scale * 1.44269504)`. Then `Q K^T` already comes out in the base-2 log scale, the inner loop carries no per-element scale multiply at all, and the running-max comparison and subtraction all happen consistently in log2 units. The per-element multiply over the `N x N` score matrix becomes one multiply over the `BLOCK_M x d` query tile, done once before the loop. Note what this does to the kernel signature: with the scale fully fused into `Q` in the wrapper, the kernel no longer needs `sm_scale` as a parameter at all — the inner loop is pure `exp2` on an already-scaled `qk`. That is the FA2 fill's `_flash_v2_fwd` exactly: no `sm_scale` argument, scale fused in the launcher.
+
+Third, the block shape. The floor uses one uniform `64 x 64` for every head dim, which cannot be right across the three regimes the harness probes. Bigger blocks mean fewer loop iterations and so fewer per-element rescales and fewer loads per output element — good — but they need more registers and shared memory to hold the tiles, and past a point the register file spills (catastrophic) or the kernel will not launch. The sweet spot depends on the head dim, because `d` sets how wide each tile is. For the small head dims (64 and 128) I can afford a larger row block, `BLOCK_M = 128`, while keeping `BLOCK_N = 64`; for the large head dim (256) I must stay at `64 x 64` to fit registers and shared memory. So the FA2 fill picks per-headdim block sizes: `headdim <= 64` and `headdim <= 128` both take `128 x 64`, and `else` (256) takes `64 x 64`. Larger row blocks amortize the loop overhead and feed the Tensor Cores fuller `Q K^T` and `P V` matmuls on the configs where the head dim leaves register room.
+
+There is a fourth economy I want to be honest about, because the floor already half-did it. The floor keeps an unnormalized accumulator and divides once at the end — I built that in at step 1 as part of the online-softmax recurrence, so the deferred-normalization win is already banked, not new at step 2. What is new is only the masking split, the fused scale, and the per-headdim blocks. (The full FA2 method, as a published technique, also adds split-Q warp partitioning to kill the intra-block shared-memory reduction and stores a log-sum-exp for the backward pass — but this harness exposes neither: it benchmarks only the forward, so there is no backward to feed an LSE, and Triton's `tl.dot` schedules the warps for me rather than letting me hand-partition them. So the FA2 fill here is exactly the three forward-side, output-preserving levers, not the full warp-partitioning story.)
+
+Let me make sure none of this breaks the exact output, because every move was justified as "answer unchanged," and the `max_diff` gate is unforgiving. The deferred normalization I already proved exact by telescoping the online-max corrections at step 1. The fused scale is an identity — multiplying `Q` by a constant before `Q K^T` is the same as multiplying the scores after, and folding `log2(e)` in is the algebraic identity `e^x = 2^{x log2(e)}`. The two-pass causal split only *skips* blocks that are entirely masked (they contribute zero) and only *omits* the mask on blocks where no element would be masked, so it computes the same thing as masking every block — the boundary block still gets the full `tl.where`. The per-headdim block sizes rearrange where arithmetic happens, not what arithmetic — each output row is still `softmax(Q_i K^T) V` over all causal `K, V`. So the whole thing still returns `O = softmax(Q K^T) V` exactly, in `O(N^2 d)` FLOPs with `O(N)` extra memory, just with the non-matmul work stripped out of the hot loop and the blocks sized to the regime.
+
+So the delta from step 1 is concrete: where the floor masked every block, multiplied the scale inside the loop, and used one block shape, the FA2 fill splits causal into a no-mask pass plus a tiny boundary pass, folds the scale (and `log2(e)`) into `Q` in the wrapper so the inner loop is pure `exp2`, and picks `128 x 64` for the small head dims while keeping `64 x 64` for `headdim 256`. (The full scaffold kernel and wrapper are in the answer.)
+
+Now the falsifiable expectations against the floor's exact numbers, because the cost model makes specific predictions and I want them to be checkable, not vibes. The masking-split and fused-scale levers cut non-matmul work, and that work scales with the number of blocks, so the win should be largest where the loop is longest — the long-sequence configs — and the per-headdim block change should help most where it actually changes the block, i.e. `hdim64` and `hdim128` (which go to `128 x 64`), and do *nothing* for `hdim256` (which stays `64 x 64`). So I expect `hdim64_seq4k` to clearly beat the floor's 269.8 — bigger row block plus stripped inner loop, both pulling the same way — and indeed to be the first config to cross `speedup_vs_sdpa > 1.0`, since it was already the closest at 0.94. That is the headline win I am chasing.
+
+But I have a real worry, and it is exactly the place where "bigger blocks" can backfire. Moving `hdim128` to `BLOCK_M = 128` doubles the register footprint of the `Q` tile and the accumulator at a head dim that is already twice as wide as `hdim64`. If that tips the kernel into register spilling — or just lowers occupancy because each program now hogs more of the register file, so fewer programs fit per SM — then the `128 x 64` choice could *lose* to the floor's `64 x 64` on `hdim128`, even though the inner loop is leaner. The two effects fight: leaner loop (faster) versus heavier blocks (lower occupancy / possible spill, slower). On `hdim64` the head dim is narrow enough that the heavier block is affordable and both effects point up. On `hdim128` it is a genuine coin toss, and the cost model alone cannot call it — it depends on whether `128 x 64` at headdim 128 spills on this card. So my honest, falsifiable prediction is: `hdim64_seq4k` up and over 1.0× SDPA; `hdim256_seq16k` roughly flat or modestly up versus the floor's 234.2 (it keeps `64 x 64`, so only the stripped inner loop helps, and at batch 1 it is occupancy-starved regardless); and `hdim128_seq8k` is the one I am genuinely unsure about — if the `128 x 64` block spills or starves occupancy at headdim 128, this config could *regress below* the floor's 297.4, which would be the tell that block-size selection cannot be a fixed per-headdim table and has to be *searched* per regime. If that regression shows up, the diagnosis for the next rung is already written: stop hand-picking block shapes, autotune them — and the pipeline depth and warp count with them — so the kernel finds the configuration that does not spill on each config instead of betting on one table that happens to be wrong for the middle case.
+</think>
+<say>
+[[FILL_SAY: 1-2 sentences naming the method and what this first edit does]]
+</say>
+<edit path="flash-attention/custom_triton_bench.py">
+<old>
+@triton.jit
+def _custom_attn_fwd(
+    Q, K, V, Out,
+    sm_scale,
+    stride_qh, stride_qm, stride_qk,
+</old>
+<new>
+@triton.jit
+def _flash_v2_fwd(
+    Q, K, V, Out,
+    stride_qh, stride_qm, stride_qk,
+</new>
+</edit>
+<obs>
+Successfully replaced text in flash-attention/custom_triton_bench.py.
+</obs>
+<note>
+[[FILL_NOTE?: optional one-line thought for this edit, or delete this block]]
+</note>
+<edit path="flash-attention/custom_triton_bench.py">
+<old>
+):
+    """FA1-style: single-pass tiling + online softmax, causal mask every block."""
+    start_m = tl.program_id(0)
+</old>
+<new>
+):
+    """FA2-style: two-pass causal, scale fused into Q, tuned block sizes."""
+    start_m = tl.program_id(0)
+</new>
+</edit>
+<obs>
+Successfully replaced text in flash-attention/custom_triton_bench.py.
+</obs>
+<note>
+[[FILL_NOTE?: optional one-line thought for this edit, or delete this block]]
+</note>
+<edit path="flash-attention/custom_triton_bench.py">
+<old>
+
+    q_ptrs = Q + q_offset + offs_m[:, None] * stride_qm + offs_d[None, :] * stride_qk
+</old>
+<new>
+
+    # Load Q and pre-multiply scale (FA2: fuse scale into Q)
+    q_ptrs = Q + q_offset + offs_m[:, None] * stride_qm + offs_d[None, :] * stride_qk
+</new>
+</edit>
+<obs>
+Successfully replaced text in flash-attention/custom_triton_bench.py.
+</obs>
+<note>
+[[FILL_NOTE?: optional one-line thought for this edit, or delete this block]]
+</note>
+<edit path="flash-attention/custom_triton_bench.py">
+<old>
+
+    hi = (start_m + 1) * BLOCK_M if IS_CAUSAL else seqlen
+    for start_n in range(0, hi, BLOCK_N):
+        start_n = tl.multiple_of(start_n, BLOCK_N)
+        k_ptrs = K + k_offset + (start_n + offs_n[:, None]) * stride_kn + offs_d[None, :] * stride_kk
+        k = tl.load(k_ptrs, mask=(start_n + offs_n[:, None]) < seqlen, other=0.0)
+        qk = tl.dot(q, tl.trans(k)) * sm_scale
+        if IS_CAUSAL:
+            qk = tl.where(offs_m[:, None] >= (start_n + offs_n[None, :]), qk, float("-inf"))
+        m_ij = tl.max(qk, axis=1)
+        m_new = tl.maximum(m_i, m_ij)
+        alpha = tl.math.exp2((m_i - m_new) * 1.44269504)
+        p = tl.math.exp2((qk - m_new[:, None]) * 1.44269504)
+        l_i = l_i * alpha + tl.sum(p, axis=1)
+</old>
+<new>
+
+    # --- Pass 1: non-causal blocks (all positions valid, skip masking) ---
+    if IS_CAUSAL:
+        causal_boundary = start_m * BLOCK_M
+        non_causal_end = (causal_boundary // BLOCK_N) * BLOCK_N
+    else:
+        non_causal_end = seqlen
+        causal_boundary = seqlen
+
+    for start_n in range(0, non_causal_end, BLOCK_N):
+        start_n = tl.multiple_of(start_n, BLOCK_N)
+        k_ptrs = K + k_offset + (start_n + offs_n[:, None]) * stride_kn + offs_d[None, :] * stride_kk
+        k = tl.load(k_ptrs, mask=(start_n + offs_n[:, None]) < seqlen, other=0.0)
+        qk = tl.dot(q, tl.trans(k))
+        m_ij = tl.max(qk, axis=1)
+        m_new = tl.maximum(m_i, m_ij)
+        alpha = tl.math.exp2(m_i - m_new)
+        p = tl.math.exp2(qk - m_new[:, None])
+        l_i = l_i * alpha + tl.sum(p, axis=1)
+        acc = acc * alpha[:, None]
+        v_ptrs = V + v_offset + (start_n + offs_n[:, None]) * stride_vn + offs_d[None, :] * stride_vk
+        v = tl.load(v_ptrs, mask=(start_n + offs_n[:, None]) < seqlen, other=0.0)
+        acc += tl.dot(p.to(v.dtype), v)
+        m_i = m_new
+
+    # --- Pass 2: causal boundary blocks (need masking) ---
+    if IS_CAUSAL:
+        hi = (start_m + 1) * BLOCK_M
+    else:
+        hi = non_causal_end
+
+    for start_n in range(non_causal_end, hi, BLOCK_N):
+        start_n = tl.multiple_of(start_n, BLOCK_N)
+        k_ptrs = K + k_offset + (start_n + offs_n[:, None]) * stride_kn + offs_d[None, :] * stride_kk
+        k = tl.load(k_ptrs, mask=(start_n + offs_n[:, None]) < seqlen, other=0.0)
+        qk = tl.dot(q, tl.trans(k))
+        qk = tl.where(offs_m[:, None] >= (start_n + offs_n[None, :]), qk, float("-inf"))
+        m_ij = tl.max(qk, axis=1)
+        m_new = tl.maximum(m_i, m_ij)
+        alpha = tl.math.exp2(m_i - m_new)
+        p = tl.math.exp2(qk - m_new[:, None])
+        l_i = l_i * alpha + tl.sum(p, axis=1)
+</new>
+</edit>
+<obs>
+Successfully replaced text in flash-attention/custom_triton_bench.py.
+</obs>
+<note>
+[[FILL_NOTE?: optional one-line thought for this edit, or delete this block]]
+</note>
+<edit path="flash-attention/custom_triton_bench.py">
+<old>
+def custom_attention_forward(q, k, v, causal=True, sm_scale=None):
+    """FA1-style wrapper with uniform block sizes."""
+    batch, nheads, seqlen, headdim = q.shape
+</old>
+<new>
+def custom_attention_forward(q, k, v, causal=True, sm_scale=None):
+    """FA2-style wrapper with per-headdim block sizes and fused scale."""
+    batch, nheads, seqlen, headdim = q.shape
+</new>
+</edit>
+<obs>
+Successfully replaced text in flash-attention/custom_triton_bench.py.
+</obs>
+<note>
+[[FILL_NOTE?: optional one-line thought for this edit, or delete this block]]
+</note>
+<edit path="flash-attention/custom_triton_bench.py">
+<old>
+        sm_scale = 1.0 / math.sqrt(headdim)
+    o = torch.empty_like(q)
+    BLOCK_M, BLOCK_N = 64, 64
+    grid = (triton.cdiv(seqlen, BLOCK_M), batch * nheads)
+    _custom_attn_fwd[grid](
+        q, k, v, o, sm_scale,
+        q.stride(1), q.stride(2), q.stride(3),
+</old>
+<new>
+        sm_scale = 1.0 / math.sqrt(headdim)
+    # FA2 optimization: fuse sm_scale into Q (saves one mul per element in inner loop)
+    q = (q * (sm_scale * 1.44269504)).contiguous()
+    o = torch.empty_like(q)
+    # FA2: per-headdim block sizes for better tensor core utilization
+    if headdim <= 64:
+        BLOCK_M, BLOCK_N = 128, 64
+    elif headdim <= 128:
+        BLOCK_M, BLOCK_N = 128, 64
+    else:
+        BLOCK_M, BLOCK_N = 64, 64
+    grid = (triton.cdiv(seqlen, BLOCK_M), batch * nheads)
+    _flash_v2_fwd[grid](
+        q, k, v, o,
+        q.stride(1), q.stride(2), q.stride(3),
+</new>
+</edit>
+<obs>
+Successfully replaced text in flash-attention/custom_triton_bench.py.
+</obs>
+<run/>
+<obs>
+Measured results — `baseline:flash_v2` (`is_final,true`), seed {42} (the harness runs seed 42 only; mean = the single seed).
+
+## hdim64_seq4k (batch 4, seqlen 4096, heads 32, headdim 64)
+| seed | tflops | latency_ms | max_diff | correct | speedup_vs_sdpa |
+|---|---|---|---|---|---|
+| 42 | 308.2918 | 0.8916 | 0.001953125 | 1 | 1.0893 |
+| **mean** | **308.2918** | **0.8916** | **0.001953125** | **1** | **1.0893** |
+
+## hdim128_seq8k (batch 2, seqlen 8192, heads 16, headdim 128)
+| seed | tflops | latency_ms | max_diff | correct | speedup_vs_sdpa |
+|---|---|---|---|---|---|
+| 42 | 200.1523 | 2.7467 | 0.001953125 | 1 | 0.6377 |
+| **mean** | **200.1523** | **2.7467** | **0.001953125** | **1** | **0.6377** |
+
+## hdim256_seq16k (batch 1, seqlen 16384, heads 8, headdim 256)
+| seed | tflops | latency_ms | max_diff | correct | speedup_vs_sdpa |
+|---|---|---|---|---|---|
+| 42 | 240.3888 | 4.5739 | 0.001953125 | 1 | 0.8326 |
+| **mean** | **240.3888** | **4.5739** | **0.001953125** | **1** | **0.8326** |
+</obs>
+
+### step 3 — FlashAttention v3-inspired (autotuned blocks + software pipelining)   [slug:flash_v3]
+
+<think>
+[[POLISH_REASONING: adapt to first-person agentic voice, end by deciding to implement]]
+The FA2 fill confirmed the worry I closed step 2 on, and it confirmed it in the sharpest possible way. Two of the three configs moved the way the cost model predicted: `hdim64_seq4k` jumped from the floor's 269.8 to 308.3 TFLOPs and — the headline — crossed `speedup_vs_sdpa` from 0.94 to **1.09**, the first config to actually beat SDPA, exactly the prediction (narrow head dim, the `128 x 64` block affordable, leaner loop and bigger block both pulling up). `hdim256_seq16k` ticked up modestly, 234.2 to 240.4, still under SDPA at 0.83 — also as predicted, since it keeps `64 x 64` and only the stripped inner loop helps at batch 1. But `hdim128_seq8k` did the thing I flagged as the genuine coin toss and *regressed*: 297.4 down to **200.2 TFLOPs**, `speedup_vs_sdpa` collapsing from 0.94 to 0.64. That is not noise; that is a 33% throughput loss from one config change, on the single config where I said the `128 x 64` block at headdim 128 might spill registers or starve occupancy. The coin landed on "spill." So the FA2 fill is, on net, *not even an improvement over the floor by mean throughput* — the hdim128 hole drags it down — and the tell is unambiguous: a fixed per-headdim block table is wrong, because the right block shape depends on the regime in a way I cannot predict from the head dim alone. The lesson I wrote at the close of step 2 is now forced: stop hand-picking block shapes; search them.
+
+Let me be precise about *why* `128 x 64` at headdim 128 lost, because the fix has to address the mechanism, not the symptom. At headdim 128, a `BLOCK_M = 128` query tile is `128 x 128` fp16 — that is a large `Q` tile resident in registers for the whole loop, plus a `128 x 128` fp32 accumulator (`acc`), plus the running stats, plus the `128 x 64` score tile. The register file per SM is finite; when one program demands this many registers, either the compiler spills some to local memory (which is HBM-backed — catastrophic, it reintroduces exactly the slow traffic I worked to remove) or, short of spilling, the occupancy drops because fewer programs fit per SM, so there is less work to hide latency behind. At headdim 64 the same `BLOCK_M = 128` is only `128 x 64`, half the register footprint, affordable. So the failure is regime-specific: the *same* nominal block shape is cheap at one head dim and ruinous at another. No single table indexed by head dim can be right, because the binding constraint (register pressure) is a joint function of `BLOCK_M`, `BLOCK_N`, and `headdim`, and the only honest way to find the configuration that does not spill on each config is to compile several and measure.
+
+So the lever is autotuning. Triton lets me annotate the kernel with `@triton.autotune` over a list of `triton.Config` candidates, keyed on the parameters that change the right answer — here `seqlen`, `BLOCK_DMODEL` (the head dim), and `IS_CAUSAL` — and at compile time it compiles each candidate, benchmarks it on the actual launch shape, and caches the fastest. Instead of betting on `128 x 64` for headdim 128 and losing, I hand the compiler a spread of block shapes — `128 x 128`, `128 x 64`, `64 x 64`, `64 x 128`, `128 x 32`, `64 x 32` — and let it discover that headdim 128 wants whichever of these does *not* spill on this card, which the FA2 hand-table got wrong. The same search will quietly fix the regression: whatever the compiler picks for `hdim128_seq8k`, it will be no slower than the best candidate, so the 200.2 hole closes by construction as long as the candidate list contains a shape that beats it (and `64 x 64`, the floor's choice that scored 297.4, is on the list, so the floor of the search is already above the FA2 regression).
+
+But block shape is not the only knob the new chip exposes, and this is where I go beyond just fixing FA2's table. There is a second axis the FA2 fill left completely untouched: how the loop overlaps memory with compute. On Hopper the matmul is asynchronous — a warp can issue a Tensor-Core matmul and keep going while it runs — and there is a dedicated memory-copy unit that can prefetch the next tile from HBM into shared memory concurrently with the current tile's compute. The synchronous loop I have been writing never asks for this: it loads `K_j, V_j`, waits, computes, loads `K_{j+1}`, waits. Loading is on the copy unit and computing is on the Tensor Cores — different units — so if I let the load of tile `j+1` run *while* the compute of tile `j` is in flight, the loads hide under the compute and the Tensor Cores stop waiting on HBM at the top of every iteration. In hand-written Hopper code this is producer/consumer warp specialization with a multi-stage circular shared-memory buffer. I cannot hand-write warpgroup barriers or TMA descriptors in this DSL — the harness is Triton, where I write tile loads, `tl.dot` matmuls, and elementwise ops, and the compiler lowers them. But Triton exposes the *principle* through a compiler knob: `num_stages`. When I mark a loop with `num_stages > 1`, the compiler restructures it into a software pipeline that prefetches the next iteration's tile loads while the current iteration computes — precisely the producer/consumer-plus-circular-buffer idea expressed at the DSL level, the loads hidden under compute, with `num_stages` setting the pipeline depth (how many tiles ahead the prefetch runs). So I add `num_stages` to the autotune search: `3` and `4` across the candidates, because the right depth trades prefetch coverage against register/shared-memory pressure (each extra stage needs another buffer slot resident) and the trade depends on the same regime variables as the block shape — so it belongs in the same search.
+
+And one more knob in the same family: `num_warps`, the number of warps per program. More warps spread a program's work across more execution units and can raise occupancy, but they also split the register file more ways; the right count interacts with block shape and pipeline depth. So the autotune candidates carry `num_warps` of `4` and `8` paired with the block shapes — `8` warps with the larger `128`-row blocks (more parallelism to fill the bigger tile), `4` with the smaller blocks. The search is over the joint space `(BLOCK_M, BLOCK_N, num_stages, num_warps)`, eight candidates, which is enough to cover the sensible corners without making compile time explode.
+
+That is the whole move, and I want to be clear about what it is *not*, because the temptation is to oversell it. This is FA3-inspired in the precise sense that FA3's central contribution is overlapping the GEMMs with the softmax and the loads through Hopper's asynchrony — but FA3's *mechanism*, hand-written warp specialization with producer/consumer warpgroups, GMMA, TMA descriptors, FP8 matmul, and incoherent processing for FP8 accuracy, is not accessible from Triton at all. The task description says this outright. So what I can actually express is: the algorithmic structure I already have (two-pass causal, fused scale, `exp2`, deferred normalization — all carried over verbatim from the FA2 fill, all still exact) plus the compiler's software-pipelining (`num_stages`) and warp-count knobs, with the whole `(block, stages, warps)` space autotuned per launch shape. The `num_stages > 1` pipelining is the Triton-level shadow of FA3's load/compute overlap; it is real and it helps, but it is the compiler's automatic pipeline, not hand-scheduled warpgroup ping-pong, and I should not pretend it recovers FA3's full Hopper utilization. The FP8 path, the Hadamard rotation, the in-kernel `V` transpose — none of that is in this fill, because none of it is expressible here, and the `max_diff` gate would punish a botched FP8 quantization anyway.
+
+Let me confirm correctness is untouched, because every prior rung's wins were "answer unchanged" and this one must be too. The autotuner only chooses *among* configurations of the *same* kernel body; it does not change what the kernel computes. The kernel body is the FA2 fill's two-pass causal loop with the scale fused into `Q` in the wrapper — exact, as established. `num_stages` software pipelining is a compiler transformation of loop *scheduling*; it reorders when loads and matmuls issue, not what they compute, and the online-softmax recurrence is associative over the block order in the sense the induction at step 1 proved (the running `(m, l, acc)` lands at the true softmax-weighted output regardless of how the iterations are scheduled, because each fold is an identity). `num_warps` changes how a program's tile work is divided across warps; the rows are the axis of independence, so partitioning does not couple anything. So the fill still returns `O = softmax(Q K^T) V` exactly, clears the `max_diff < 1e-2` gate, and keeps `O(N^2 d)` FLOPs and `O(N)` extra memory. The only thing that changed from FA2 is that the compiler now picks the block shape, pipeline depth, and warp count per launch instead of me tabulating them.
+
+So the delta from step 2: keep the FA2 fill's two-pass causal, fused scale, `exp2`, and deferred normalization exactly; wrap the kernel in `@triton.autotune` over eight `(BLOCK_M, BLOCK_N, num_stages, num_warps)` candidates keyed on `(seqlen, BLOCK_DMODEL, IS_CAUSAL)`; and let the grid take the autotuned `BLOCK_M`. (The full scaffold kernel and wrapper are in the answer.)
+
+Now the falsifiable expectations against the FA2 numbers, and since this is the strongest rung I want both the bar it must clear and an honest read of where it will still fall short. First, the regression must vanish: `hdim128_seq8k` was the FA2 disaster at 200.2, and autotuning over a list that includes `64 x 64` (the floor's 297.4 shape) plus the pipelined larger blocks should not merely recover but clear the floor — I expect it to land *well above* 297.4, because the `num_stages` prefetch is a real new win the floor never had; a result back near 400 would confirm the overlap is paying off and the regression was purely the wrong fixed block. Second, `hdim64_seq4k` should hold or extend its lead over FA2's 308.3 and stay above `1.0×` SDPA, since the search contains FA2's winning shape as a candidate and adds pipelining on top. Third — and this is the honest limit — `hdim256_seq16k` is the config I expect to *not* move much past FA2's 240.4. At headdim 256, batch 1, every candidate block is register-starved (the head dim alone is 256-wide), so the autotuner is choosing among configurations that are all occupancy-bound, and `num_stages` pipelining costs registers it cannot spare. The leaderboard already hints the headroom is real — other strong kernels reached the high-200s and one hit 385 on this config — but that headroom needs the things Triton-3-on-this-card cannot express here (warp specialization, FP8, TMA), so I expect this fill to plateau near 240, still under SDPA's ~0.84×. That plateau is the falsifiable claim that defines what this kernel does and does not buy: autotuning + software pipelining fixes the FA2 regression and pushes the small- and mid-head configs past SDPA, but it cannot close the large-head, batch-1 gap, because the mechanism that would close it lives below the DSL. If a later kernel is to beat this, it has to find utilization on `hdim256_seq16k` specifically — and within this harness's Triton surface there is no published lever clearly stronger than the autotuned, software-pipelined kernel this rung lands, so this is where the ladder honestly ends.
+</think>
+<say>
+[[FILL_SAY: 1-2 sentences naming the method and what this first edit does]]
+</say>
+<edit path="flash-attention/custom_triton_bench.py">
+<old>
+@triton.jit
+def _flash_v2_fwd(
+    Q, K, V, Out,
+</old>
+<new>
+@triton.autotune(
+    configs=[
+        triton.Config({'BLOCK_M': 128, 'BLOCK_N': 128}, num_stages=3, num_warps=8),
+        triton.Config({'BLOCK_M': 128, 'BLOCK_N': 64}, num_stages=3, num_warps=8),
+        triton.Config({'BLOCK_M': 128, 'BLOCK_N': 64}, num_stages=4, num_warps=8),
+        triton.Config({'BLOCK_M': 64, 'BLOCK_N': 64}, num_stages=3, num_warps=4),
+        triton.Config({'BLOCK_M': 64, 'BLOCK_N': 64}, num_stages=4, num_warps=8),
+        triton.Config({'BLOCK_M': 64, 'BLOCK_N': 128}, num_stages=3, num_warps=8),
+        triton.Config({'BLOCK_M': 128, 'BLOCK_N': 32}, num_stages=3, num_warps=4),
+        triton.Config({'BLOCK_M': 64, 'BLOCK_N': 32}, num_stages=4, num_warps=4),
+    ],
+    key=['seqlen', 'BLOCK_DMODEL', 'IS_CAUSAL'],
+)
+@triton.jit
+def _flash_v3_fwd(
+    Q, K, V, Out,
+</new>
+</edit>
+<obs>
+Successfully replaced text in flash-attention/custom_triton_bench.py.
+</obs>
+<note>
+[[FILL_NOTE?: optional one-line thought for this edit, or delete this block]]
+</note>
+<edit path="flash-attention/custom_triton_bench.py">
+<old>
+):
+    """FA2-style: two-pass causal, scale fused into Q, tuned block sizes."""
+    start_m = tl.program_id(0)
+</old>
+<new>
+):
+    """FA3-inspired: autotuned two-pass causal with software pipelining."""
+    start_m = tl.program_id(0)
+</new>
+</edit>
+<obs>
+Successfully replaced text in flash-attention/custom_triton_bench.py.
+</obs>
+<note>
+[[FILL_NOTE?: optional one-line thought for this edit, or delete this block]]
+</note>
+<edit path="flash-attention/custom_triton_bench.py">
+<old>
+
+    # Load Q and pre-multiply scale (FA2: fuse scale into Q)
+    q_ptrs = Q + q_offset + offs_m[:, None] * stride_qm + offs_d[None, :] * stride_qk
+</old>
+<new>
+
+    # Load Q with scale already fused (done in wrapper)
+    q_ptrs = Q + q_offset + offs_m[:, None] * stride_qm + offs_d[None, :] * stride_qk
+</new>
+</edit>
+<obs>
+Successfully replaced text in flash-attention/custom_triton_bench.py.
+</obs>
+<note>
+[[FILL_NOTE?: optional one-line thought for this edit, or delete this block]]
+</note>
+<edit path="flash-attention/custom_triton_bench.py">
+<old>
+
+    # --- Pass 1: non-causal blocks (all positions valid, skip masking) ---
+    if IS_CAUSAL:
+</old>
+<new>
+
+    # --- Pass 1: non-causal blocks (no mask, better pipelining) ---
+    if IS_CAUSAL:
+</new>
+</edit>
+<obs>
+Successfully replaced text in flash-attention/custom_triton_bench.py.
+</obs>
+<note>
+[[FILL_NOTE?: optional one-line thought for this edit, or delete this block]]
+</note>
+<edit path="flash-attention/custom_triton_bench.py">
+<old>
+
+    # --- Pass 2: causal boundary blocks (need masking) ---
+    if IS_CAUSAL:
+</old>
+<new>
+
+    # --- Pass 2: causal boundary blocks ---
+    if IS_CAUSAL:
+</new>
+</edit>
+<obs>
+Successfully replaced text in flash-attention/custom_triton_bench.py.
+</obs>
+<note>
+[[FILL_NOTE?: optional one-line thought for this edit, or delete this block]]
+</note>
+<edit path="flash-attention/custom_triton_bench.py">
+<old>
+def custom_attention_forward(q, k, v, causal=True, sm_scale=None):
+    """FA2-style wrapper with per-headdim block sizes and fused scale."""
+    batch, nheads, seqlen, headdim = q.shape
+</old>
+<new>
+def custom_attention_forward(q, k, v, causal=True, sm_scale=None):
+    """FA3-inspired: autotuned pipelining + fused scale + two-pass causal."""
+    batch, nheads, seqlen, headdim = q.shape
+</new>
+</edit>
+<obs>
+Successfully replaced text in flash-attention/custom_triton_bench.py.
+</obs>
+<note>
+[[FILL_NOTE?: optional one-line thought for this edit, or delete this block]]
+</note>
+<edit path="flash-attention/custom_triton_bench.py">
+<old>
+        sm_scale = 1.0 / math.sqrt(headdim)
+    # FA2 optimization: fuse sm_scale into Q (saves one mul per element in inner loop)
+    q = (q * (sm_scale * 1.44269504)).contiguous()
+    o = torch.empty_like(q)
+    # FA2: per-headdim block sizes for better tensor core utilization
+    if headdim <= 64:
+        BLOCK_M, BLOCK_N = 128, 64
+    elif headdim <= 128:
+        BLOCK_M, BLOCK_N = 128, 64
+    else:
+        BLOCK_M, BLOCK_N = 64, 64
+    grid = (triton.cdiv(seqlen, BLOCK_M), batch * nheads)
+    _flash_v2_fwd[grid](
+        q, k, v, o,
+</old>
+<new>
+        sm_scale = 1.0 / math.sqrt(headdim)
+    # Fuse scale into Q
+    q = (q * (sm_scale * 1.44269504)).contiguous()
+    o = torch.empty_like(q)
+    grid = lambda META: (triton.cdiv(seqlen, META['BLOCK_M']), batch * nheads)
+    _flash_v3_fwd[grid](
+        q, k, v, o,
+</new>
+</edit>
+<obs>
+Successfully replaced text in flash-attention/custom_triton_bench.py.
+</obs>
+<note>
+[[FILL_NOTE?: optional one-line thought for this edit, or delete this block]]
+</note>
+<edit path="flash-attention/custom_triton_bench.py">
+<old>
+        seqlen,
+        BLOCK_M=BLOCK_M, BLOCK_N=BLOCK_N,
+        BLOCK_DMODEL=headdim, IS_CAUSAL=causal,
+    )
+    return o
+</old>
+<new>
+        seqlen,
+        BLOCK_DMODEL=headdim, IS_CAUSAL=causal,
+    )
+    return o
+</new>
+</edit>
+<obs>
+Successfully replaced text in flash-attention/custom_triton_bench.py.
+</obs>
+<run/>
+<obs>
+Measured results — `baseline:flash_v3` (`is_final,true`), seed {42} (the harness runs seed 42 only; mean = the single seed).
+
+## hdim64_seq4k (batch 4, seqlen 4096, heads 32, headdim 64)
+| seed | tflops | latency_ms | max_diff | correct | speedup_vs_sdpa |
+|---|---|---|---|---|---|
+| 42 | 332.1193 | 0.8276 | 0.001953125 | 1 | 1.1584 |
+| **mean** | **332.1193** | **0.8276** | **0.001953125** | **1** | **1.1584** |
+
+## hdim128_seq8k (batch 2, seqlen 8192, heads 16, headdim 128)
+| seed | tflops | latency_ms | max_diff | correct | speedup_vs_sdpa |
+|---|---|---|---|---|---|
+| 42 | 406.4221 | 1.3527 | 0.001953125 | 1 | 1.2972 |
+| **mean** | **406.4221** | **1.3527** | **0.001953125** | **1** | **1.2972** |
+
+## hdim256_seq16k (batch 1, seqlen 16384, heads 8, headdim 256)
+| seed | tflops | latency_ms | max_diff | correct | speedup_vs_sdpa |
+|---|---|---|---|---|---|
+| 42 | 240.5420 | 4.5710 | 0.001953125 | 1 | 0.8360 |
+| **mean** | **240.5420** | **4.5710** | **0.001953125** | **1** | **0.8360** |
+</obs>
+

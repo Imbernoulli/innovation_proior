@@ -1,0 +1,775 @@
+<meta task="security-adversarial-attack-black-box-score" domain="Security" file="torchattacks/bench/custom_attack.py" model_format="qwen3" edit_tool="str_replace"/>
+
+<system>
+You are a research engineer improving a model on a fixed ML task. You work by editing the model code and running experiments. Think carefully before each change. You have these tools:
+- str_replace(path, old_str, new_str): replace the unique occurrence of old_str with new_str.
+- create(path, file_text): create a new file.
+- run_experiment(): train + evaluate the current code under the fixed budget; returns metrics.
+Make one tool call at a time. After editing, call run_experiment() to measure your method.
+</system>
+
+<user>
+## Research question
+
+A trained image classifier `f: [0,1]^d -> R^K` is exposed only as an inference API: I send it an
+image and it returns the per-class logits `f(x)`, predicting `argmax_k f_k(x)`. I have **no** access to
+its weights and **no** gradients — I can only query forward. For a correctly classified `(x, y)` I want
+a nearby image the model gets wrong, formally `argmax_k f_k(x_adv) != y` with
+`||x_adv - x||_inf <= eps` and `x_adv in [0,1]^d`. The single thing being designed is the **attack
+algorithm** — the search procedure inside `run_attack` that, using only forward queries, drives the
+correct-class score down until the prediction flips, while staying inside the `L_inf` box. Everything
+else — the query-counting oracle, the budget bookkeeping, the validity checks — is fixed.
+
+The objective is not "can an adversarial example be found" (with unlimited queries it always can) but
+"find one in as few forward passes as possible, on as many images as possible." Every call to the
+oracle costs queries, and there is a hard per-sample budget `n_queries`. So the two numbers that matter
+are **attack success rate** `asr` (primary, higher is better) and **average queries** `avg_queries`
+(tie-break, lower is better).
+
+## Prior art before the first rung (black-box search lineage)
+
+The first rung reacts to the established families of score-based black-box attacks. These are the
+methods the ladder climbs past; the fixed substrate below is the harness they all plug into.
+
+- **White-box PGD (Madry et al. 2018).** Take projected gradient-ascent steps on the margin loss and
+  clip back into the `L_inf` ball. The reference for attack *strength*, but it needs the model's
+  gradient — unavailable here by assumption. Gap: assumes gradient access.
+- **NES / finite-difference gradient estimation (Ilyas et al. 2018).** Rebuild the gradient from score
+  queries — sample random directions `u_i`, estimate `grad ~ (1/sigma) E[L(x+sigma u_i) u_i]`, then run
+  PGD on the estimate. Gap: the estimator's variance grows with the input dimension `d`, so each step
+  costs many queries and whole attacks run into the tens of thousands; and because it follows the
+  *local gradient*, it is exactly the family defeated by gradient masking.
+- **SimBA — orthonormal-basis random search (Guo et al. 2019).** Maintain a perturbation; each step
+  pick a direction from a fixed orthonormal basis (pixel or DCT), try `+alpha`/`-alpha` along it, keep
+  whichever lowers the loss. Forward-only and masking-immune. Gap: each accepted move is a small `L2`
+  step (slow), and because basis directions are orthogonal, a move that later proves wrong **cannot be
+  undone** — budget committed to a region is unrecoverable.
+- **Discrete corner / sign-search attacks (Moon et al. 2019; Al-Dujaili & O'Reilly 2019).** Exploit
+  that successful `L_inf` perturbations sit at corners (`+/- eps` componentwise): restrict to the
+  discrete cube and run a combinatorial / sign-flip search over a coarse a-priori grid. Gap: the grid
+  fixing *where* changes may happen is frozen in advance and only coarsely refined — the search cannot
+  freely choose where to spend budget.
+
+## The fixed substrate
+
+The harness in `torchattacks/bench/run_eval.py` is frozen and not editable. It wraps the clean model in
+a `QueryLimitedBlackBox` oracle: every call to `model(x)` consumes `x.shape[0]` queries; once the
+running count exceeds `batch_size * n_queries` the oracle flips `budget_exhausted` and returns **zeros**
+for the rest of the batch, and the **entire batch is scored as a failure**. The wrapper exposes logits
+only and carries no gradient path (`torch.no_grad`). After the attack returns, the harness checks each
+sample's `L_inf` deviation (`<= eps + 1e-6`) and `[0,1]` range; any sample that violates either is
+marked a failure. It evaluates on the subset of test images the clean model already classifies
+correctly, so `clean_acc = 1.0` by construction, and reports
+`ATTACK_METRICS asr=... clean_acc=... robust_acc=... avg_queries=...` with `robust_acc = 1 - asr`.
+
+The practical consequences the attack must respect: (i) one forward pass on a batch of `B` candidates
+costs `B` queries, so batching candidates across samples is the same total budget as looping; (ii)
+overshooting the budget on *any* batch loses that whole batch — the loop must stop querying before it
+runs out; (iii) the returned tensor must already be projected into the `L_inf` box and `[0,1]`, or the
+sample is counted as a miss regardless of whether it actually fooled the model.
+
+## The editable interface
+
+Exactly one region is editable — the body of `run_attack` in `torchattacks/bench/custom_attack.py`
+(lines 7-56). Every method on the ladder is a fill of this same contract:
+
+`run_attack(model, images, labels, eps, n_queries, device, n_classes) -> adv_images`
+
+where `model` is the query-only oracle, `images` is `(N,C,H,W)` in `[0,1]`, `labels` is `(N,)`, `eps`
+is the `L_inf` budget, `n_queries` is the per-sample budget, and the return is the adversarial batch
+with the same shape, values in `[0,1]`. The starting point is the scaffold default: a minimal
+score-based search — propose uniform noise inside the `L_inf` box, query, and greedily keep the
+candidate when the correct-class logit drops. Each method on the ladder replaces exactly this body.
+
+```python
+import torch
+import torch.nn as nn
+
+# =====================================================================
+# EDITABLE: implement run_attack below
+# =====================================================================
+def run_attack(
+    model: nn.Module,
+    images: torch.Tensor,
+    labels: torch.Tensor,
+    eps: float,
+    n_queries: int,
+    device: torch.device,
+    n_classes: int,
+) -> torch.Tensor:
+    """
+    Score-based query black-box attack under Linf constraint.
+
+    model: black-box wrapper that only exposes forward logits.
+    images: (N, C, H, W) in [0, 1], on device.   labels: (N,), on device.
+    eps: Linf budget.   n_queries: per-sample query budget.
+    """
+    _ = (device, n_classes)
+    model.eval()
+
+    # A simple default that already performs score-based search.
+    # Baselines will replace this block with stronger algorithms.
+    adv = images.detach().clone()
+    step = eps / 4.0
+    iters = max(1, min(int(n_queries), 16))
+
+    with torch.no_grad():
+        for _ in range(iters):
+            logits_old = model(adv)
+            true_old = logits_old.gather(1, labels.view(-1, 1)).squeeze(1)
+
+            noise = torch.empty_like(adv).uniform_(-step, step)
+            cand = adv + noise
+            cand = torch.clamp(images + torch.clamp(cand - images, -eps, eps), 0.0, 1.0)
+
+            logits_new = model(cand)
+            true_new = logits_new.gather(1, labels.view(-1, 1)).squeeze(1)
+            improve = true_new < true_old
+
+            if improve.any():
+                mask = improve.view(-1, 1, 1, 1)
+                adv = torch.where(mask, cand, adv)
+
+    delta = torch.clamp(adv - images, min=-eps, max=eps)
+    adv = torch.clamp(images + delta, 0.0, 1.0)
+    return adv.detach()
+# =====================================================================
+# END EDITABLE REGION
+# =====================================================================
+```
+
+## Evaluation settings
+
+Each scenario is a (model, dataset) pair from {ResNet20, VGG11-BN, MobileNetV2} x {CIFAR-10,
+CIFAR-100}, using publicly available pretrained checkpoints, on 200 correctly-classified test images at
+batch size 50, seed 42, `eps = 8/255`, and a per-sample budget `n_queries`. Untargeted attacks. The
+primary metric is `asr` (higher is better) across scenarios; `avg_queries` (lower is better) is the
+tie-break.
+
+The editable model code is in `torchattacks/bench/custom_attack.py`:
+```python
+import torch
+from torch.utils.data import DataLoader, TensorDataset
+from torchvision import datasets, transforms
+
+from custom_attack import run_attack
+
+
+class QueryLimitedBlackBox(torch.nn.Module):
+    """Query-limited wrapper with no gradient path and budget tracking."""
+
+    def __init__(self, model: torch.nn.Module, n_classes: int, max_queries: int):
+        super().__init__()
+        self.model = model
+        self.n_classes = n_classes
+        self.max_queries = int(max_queries)
+        self.queries_used = 0
+        self.budget_exhausted = False
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        batch = int(x.shape[0])
+        self.queries_used += batch
+
+        if self.queries_used > self.max_queries:
+            self.budget_exhausted = True
+            return torch.zeros(
+                (batch, self.n_classes),
+                device=x.device,
+                dtype=x.dtype,
+            )
+
+        with torch.no_grad():
+            return self.model(x)
+
+
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--arch", type=str, required=True)
+    parser.add_argument("--dataset", type=str, choices=["cifar10", "cifar100"], required=True)
+    parser.add_argument("--data-dir", type=str, required=True)
+    parser.add_argument("--eps", type=float, default=8.0 / 255.0)
+    parser.add_argument("--n-samples", type=int, default=200)
+    parser.add_argument("--n-queries", type=int, default=1000)
+    parser.add_argument("--batch-size", type=int, default=50)
+    parser.add_argument("--seed", type=int, default=42)
+    return parser.parse_args()
+
+
+def set_seed(seed: int) -> None:
+    random.seed(seed)
+    np.random.seed(seed)
+```
+Improve it. Derive your method, edit the code, then run_experiment().
+</user>
+
+### step 1 — Random Search (uniform greedy)   [slug:random_search]
+
+<think>
+The attack is the whole point, but it runs inside a fixed oracle, and the crudest thing I can do with
+that oracle is the floor I have to start from — so the pain to begin with is just turning forward-only
+score queries into a misclassification at all, with no cleverness about *where* or *how big* the moves
+are. I am locked out of the gradient: I send the oracle an image and read back logits, nothing else.
+There is exactly one lever — propose a perturbed image, query, and decide whether to keep it — and the
+floor uses that lever in the most naive way available.
+
+Let me write down the objective so I do not fool myself. For a correctly classified `(x, y)` I want
+`argmax_k f_k(x_adv) != y` with `||x_adv - x||_inf <= eps` and `x_adv in [0,1]`. The cheapest scalar
+that tracks progress toward that, using only the logits I already pay for, is the **correct-class
+score** `f_y(x_adv)`: it starts high (the model is confident in `y`) and the prediction flips once some
+other class overtakes it. I do not even need the full margin to hill-climb — I just need a number that
+goes down as I get closer, and `f_y` is the simplest such number, one `gather` on the logits. So the
+floor minimizes `f_y` by greedy accept-if-better: keep a candidate only when it lowers the correct-class
+logit.
+
+Now the only design questions left are the proposal and the budget bookkeeping, and the floor answers
+both as bluntly as possible. The proposal: draw uniform noise in a small box, `uniform(-step, step)`
+with `step = eps/2`, add it to the current best, then re-project into the feasible set —
+`clamp(x + clamp(cand - x, -eps, eps), 0, 1)`. This is the textbook random-search move: a fixed-radius
+isotropic perturbation of the current iterate, evaluated and kept only if it improves. There is no
+structure in it at all — no notion that the model is convolutional, no notion that successful `L_inf`
+perturbations sit at corners, no decay of the step size, no concentration of the change into a region.
+It scatters small nudges across all `C*H*W` coordinates at once. The `step = eps/2` choice means a typical
+proposal lands well inside the box rather than on its boundary, so the floor is not even spending its
+full per-component budget — it is making timid interior moves.
+
+The budget bookkeeping is where the floor quietly throws away most of its allowance, and this is the
+detail that decides its number. The harness gives a per-sample budget `n_queries` (the runs use 1000),
+and the oracle exhausts the *whole batch* to failure the instant the running count crosses
+`batch_size * n_queries`. The floor does not walk anywhere near that line: it runs a fixed
+`n_steps = max(1, min(n_queries, 64))` iterations, each costing one query per sample, and it queries
+*only the candidate* each step — it does not re-query the current best, because it carries the best
+score forward from the previous accept. So with `n_queries = 1000` it caps itself at **64** candidate
+queries plus one initial query of the clean image, ~65 total. That is the `avg_queries = 65` I should
+expect to read back: the floor deliberately leaves ~935 of every 1000 queries on the table. It is the
+weakest configuration by construction — minimal moves, no structure, and a self-imposed ceiling far
+below the real budget.
+
+There is one more subtlety worth naming because it is the floor's only piece of vectorized care. The
+accept rule operates per sample: I compute the candidate's correct-class score for every image in the
+batch, form `improve = cand_score < best`, and update only the rows where it holds via a masked
+`torch.where`. So a single batched query advances every still-improving sample at once, and an image
+whose candidate got worse simply keeps its previous best — the budget is shared across the batch but the
+decision is independent per image. That is the right structure; the floor just refuses to use it for
+more than 64 steps or with anything smarter than uniform noise.
+
+Now reason about what this floor must do, because running it is the entire point of step 1. Greedy
+random search with isotropic interior noise in a ~3000-dimensional space (CIFAR is `3*32*32`) is the
+classic high-dimensional failure: a random direction is almost orthogonal to whatever direction would
+actually lower `f_y`, so most proposals are rejected, and the few accepted ones make tiny progress.
+With only 64 such steps the perturbation barely moves off the clean image. On the *easier*
+(model, dataset) pairs — where the decision boundary is close and even crude noise stumbles across it —
+the floor should flip a fair fraction of images. On the harder pairs — a more robust architecture, or
+CIFAR-100 where the correct class has 99 competitors and the margin is structured — the same 64 timid
+moves should mostly fail, and `asr` should sag well below half. The split across scenarios will be wide
+and the mean modest, precisely because nothing in the floor adapts to the model or spends the budget it
+was given.
+
+That diagnosis already points at step 2. The floor's two crippling choices are economic and structural:
+it caps itself at 64 queries when 1000 are available, and it makes unstructured interior nudges when the
+geometry says to sit on the boundary and the model says to concentrate the change. The first thing I
+will do is stop leaving the budget unused and stop estimating nothing — but the cleaner, more principled
+next move is to go back to the one black-box primitive that *does* reconstruct a descent direction from
+forward queries alone: estimate the gradient from a simultaneous random perturbation and descend it.
+That is the next rung. For now, let me lay down the floor — write the naive greedy random-search body in.
+</think>
+<say>
+Establishing the floor: a uniform greedy random-search attack. This edit replaces the scaffold body with the naive version — propose isotropic noise of radius eps/2, query, and keep the candidate only when it lowers the correct-class logit, capped at 64 steps.
+</say>
+<edit path="torchattacks/bench/custom_attack.py">
+<old>
+import torch
+from torch.utils.data import DataLoader, TensorDataset
+from torchvision import datasets, transforms
+
+from custom_attack import run_attack
+
+
+class QueryLimitedBlackBox(torch.nn.Module):
+    """Query-limited wrapper with no gradient path and budget tracking."""
+
+    def __init__(self, model: torch.nn.Module, n_classes: int, max_queries: int):
+        super().__init__()
+        self.model = model
+        self.n_classes = n_classes
+        self.max_queries = int(max_queries)
+        self.queries_used = 0
+        self.budget_exhausted = False
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        batch = int(x.shape[0])
+        self.queries_used += batch
+
+        if self.queries_used > self.max_queries:
+            self.budget_exhausted = True
+            return torch.zeros(
+                (batch, self.n_classes),
+                device=x.device,
+                dtype=x.dtype,
+            )
+
+        with torch.no_grad():
+            return self.model(x)
+
+
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--arch", type=str, required=True)
+    parser.add_argument("--dataset", type=str, choices=["cifar10", "cifar100"], required=True)
+    parser.add_argument("--data-dir", type=str, required=True)
+    parser.add_argument("--eps", type=float, default=8.0 / 255.0)
+    parser.add_argument("--n-samples", type=int, default=200)
+    parser.add_argument("--n-queries", type=int, default=1000)
+    parser.add_argument("--batch-size", type=int, default=50)
+    parser.add_argument("--seed", type=int, default=42)
+    return parser.parse_args()
+
+
+def set_seed(seed: int) -> None:
+    random.seed(seed)
+    np.random.seed(seed)
+</old>
+<new>
+import torch
+import torch.nn as nn
+
+
+def run_attack(
+    model: nn.Module,
+    images: torch.Tensor,
+    labels: torch.Tensor,
+    eps: float,
+    n_queries: int,
+    device: torch.device,
+    n_classes: int,
+) -> torch.Tensor:
+    _ = (device, n_classes)
+    model.eval()
+
+    adv_images = images.detach().clone()
+    step = eps / 2.0
+    n_steps = max(1, min(int(n_queries), 64))
+
+    with torch.no_grad():
+        best = model(adv_images).gather(1, labels.view(-1, 1)).squeeze(1)
+
+        for _ in range(n_steps):
+            noise = torch.empty_like(adv_images).uniform_(-step, step)
+            cand = adv_images + noise
+            cand = torch.clamp(images + torch.clamp(cand - images, -eps, eps), 0.0, 1.0)
+
+            cand_score = model(cand).gather(1, labels.view(-1, 1)).squeeze(1)
+            improve = cand_score < best
+
+            if improve.any():
+                mask = improve.view(-1, 1, 1, 1)
+                adv_images = torch.where(mask, cand, adv_images)
+                best = torch.where(improve, cand_score, best)
+
+    delta = torch.clamp(adv_images - images, min=-eps, max=eps)
+    return torch.clamp(images + delta, 0.0, 1.0).detach()
+</new>
+</edit>
+<obs>
+Successfully replaced text in torchattacks/bench/custom_attack.py.
+</obs>
+<run/>
+<obs>
+Measured results — `baseline:random_search` (`is_final,true`), seed 42.
+
+| scenario | asr | avg_queries |
+|---|---|---|
+| ResNet20 / CIFAR-10 | 0.565 | 65.0 |
+| VGG11-BN / CIFAR-10 | 0.255 | 65.0 |
+| MobileNetV2 / CIFAR-10 | 0.520 | 65.0 |
+| ResNet20 / CIFAR-100 | 0.615 | 65.0 |
+| VGG11-BN / CIFAR-100 | 0.300 | 65.0 |
+| MobileNetV2 / CIFAR-100 | 0.590 | 65.0 |
+| **mean** | **0.474** | **65.0** |
+</obs>
+
+### step 2 — SPSA (simultaneous-perturbation gradient estimation)   [slug:spsa]
+
+<think>
+The floor came back at `asr = 0.474` mean over 65 queries, and the shape of that result tells me exactly
+what to fix. Read it scenario by scenario. On the easier pairs it actually worked — ResNet20/CIFAR-10
+0.565, ResNet20/CIFAR-100 0.615, MobileNetV2/CIFAR-100 0.590 — where the boundary is close enough that
+even unstructured noise stumbles across it within 64 timid steps. But on VGG11-BN it collapses:
+VGG11-BN/CIFAR-10 0.255, VGG11-BN/CIFAR-100 0.300, less than half the ResNet number on the same dataset.
+And every single row reads `avg_queries = 65`. That last fact is the whole story. The floor was handed a
+budget of 1000 queries per sample and it spent 65 — it capped itself at `min(n_queries, 64)` candidate
+steps and walked away from ~94% of its allowance. The images that failed did not fail because the budget
+ran out; they failed because the floor stopped trying. So I have two separable diseases: an *economic*
+one (the search quits at 65 queries when 1000 are available) and a *directional* one (isotropic interior
+nudges in ~3000 dimensions are almost orthogonal to any descent direction, so even the steps it does take
+crawl, and on the harder VGG boundary they crawl to nothing). Curing the economic disease is trivial —
+run more iterations. The directional disease is the real one, and the floor's failure is a clean
+statement of it: random search with no notion of *which way* to move wastes almost every proposal.
+
+So the question for this rung sharpens to: can I, using only the forward queries the floor was throwing
+away, reconstruct an actual *descent direction* instead of guessing one? That is the one black-box
+primitive the floor refused to use. PGD is the gold standard for `L_inf` attack strength — step along the
+gradient of the correct-class advantage and project back into the box — but it needs the gradient, and
+the oracle gives me none. The honest fix is to estimate the gradient from score queries. And I want to be
+careful about *which* objective I estimate the gradient of, because the floor's choice of plain `f_y`
+quietly hurt it too. Cross-entropy saturates — once the model is confident the softmax pins at 0 or 1 and
+the loss goes flat, so its value barely moves as I perturb the input. The logits stay roughly linear far
+from the clean point. So I will descend the **margin** `J(x) = f_y(x) - max_{k!=y} f_k(x)`: it is
+positive while `y` is on top, crosses zero exactly at misclassification, and keeps a usable slope long
+after cross-entropy has died. I want that slope, because all I will ever have is differences in `J`.
+
+Now, how do I descend an objective I can only measure, never differentiate? The textbook move when you
+have only function values is finite differences: for each coordinate `i`, probe to each side and
+difference, `ghat_i = (J(x + c e_i) - J(x - c e_i)) / (2c)`, which is just the partial derivative made
+numerical, unbiased to `O(c^2)` because the symmetric difference cancels the even Taylor term. But this
+is exactly the floor's economic disease in a worse form. To assemble one full gradient I must probe every
+coordinate of the image — `D = C*H*W`, which is 3072 for a CIFAR image — at two queries each, so one
+gradient costs `2D = 6144` queries. That blows the entire 1000 budget six times over for a *single* step.
+Coordinate-wise differencing is the right idea and the wrong economics. The real requirement is an
+estimate whose cost does *not* grow with `D`.
+
+Here is the trick that buys that. The reason FDSA costs `D` probes is that it insists on isolating each
+coordinate — perturb along `e_i` alone so the difference reports purely on `partial_i J`. Drop the
+isolation. Perturb *all* coordinates at once with a single random vector `v in R^D` and take the
+two-sided difference along it: `df = J(x + c v) - J(x - c v)`. Taylor-expanding,
+`J(x +/- c v) = J(x) +/- c (v . grad J) + (c^2/2) v^T H v +/- O(c^3)`, so the symmetric difference is
+`df = 2c (v . grad J) + O(c^3)` — the quadratic terms cancel. That single scalar is the directional
+derivative along `v`, mixing all `D` partials. To pull coordinate `i` back out, divide by `v_i`:
+`ghat_i = df / (2c v_i) = partial_i J + sum_{j != i} (v_j / v_i) partial_j J + O(c^2)`. The `j = i` term
+gives exactly `partial_i J`; every other partial appears too, but carried by a *random* coefficient
+`v_j / v_i`. This is only useful if that cross-talk averages to zero. If `v` has independent, mean-zero
+components, then for `j != i`, `E[v_j / v_i] = E[v_j] E[1/v_i] = 0`, *provided `E[1/v_i]` is finite*. So
+`E[ghat_i] = partial_i J + O(c^2)` — almost unbiased, from exactly **two** function evaluations,
+regardless of `D`. That is the economics the floor needed: two queries buy a full noisy gradient in any
+dimension.
+
+The finiteness caveat decides everything, so I cannot wave it past. I need `E[1/v_i]` finite. The
+instinctive choice `v ~ N(0, I)` *fails* it — the Gaussian density is bounded away from zero near
+`v_i = 0` while `1/v_i` blows up there, so the inverse moment diverges and the cross-talk has no usable
+mean; in practice this shows up as occasional enormous estimates whenever some `v_i` lands near zero and
+I divide by it. The cure is a mean-zero distribution whose components stay *away* from zero. The clean
+one is the symmetric Bernoulli (Rademacher), `v_i in {+1, -1}` each with probability 1/2: mean zero, and
+since `v_i = +/- 1`, `1/v_i = v_i`, bounded, finite moments of every order, so the cross-talk truly
+cancels. And a bonus the implementation uses: because `v_i = +/-1`, *dividing* by `v_i` equals
+*multiplying* by it, so `ghat = (df / 2c) . v` needs no per-coordinate division at all. The Rademacher
+choice is not aesthetic; it is forced by the finite-inverse-moment condition. This is the simultaneous-
+perturbation gradient estimate — SPSA.
+
+One simultaneous estimate is correct on average but jittery: each single random-direction estimate points
+partly sideways because of the surviving cross-talk, and the defended model's own query noise adds to
+that. The standard cure is the same averaging the asymptotics rely on, done *within* a step: draw `n`
+independent Rademacher vectors, form `n` independent two-query estimates, and average,
+`ghat_bar = (1/n) sum (df_i / 2c) v_i`. Variance falls like `1/n` and the cross-talk is knocked toward
+its zero mean. This costs `2n` queries per step, and — crucially for the GPU and for the oracle's
+batch-counting — those `2n` forward passes are one batch. In this task's fill `n = nb_sample = 128`, so a
+step costs `2 * 128 = 256` queries, evaluated in chunks of `max_batch_size = 64`. That `n` is the dial
+between a clean, reliable direction (large `n`, strong but expensive) and a cheap noisy one (small `n`).
+
+Now I have a noisy gradient and I am back in stochastic-approximation territory: descend with it and
+project. The plain update `x' = x - a . ghat_bar` works, but `ghat_bar` is noisy and its coordinates are
+unevenly scaled — some pixels have large derivatives, some tiny, while the noise floor is roughly uniform
+across them. A single global step `a` is the wrong tool for that, the same per-coordinate-scaling problem
+that plagues noisy network training. The fix there is Adam: keep per-coordinate exponential moving
+averages of the estimate and of its square and step by `mhat / (sqrt(vhat) + eps)`. The first moment
+smooths noise across steps (a second layer of averaging on top of the within-step averaging); the
+`1/sqrt(vhat)` rescaling gives each pixel its own effective step so a few large-derivative pixels do not
+dominate. The estimator is unbiased enough that Adam cannot tell it from a real gradient, and Adam's
+robustness to noisy, unevenly-scaled gradients is exactly what this directional estimate needs. The fill
+runs Adam on the perturbation at `lr = 0.01`.
+
+I keep the variable as the *perturbation* `dx` rather than the image, because the constraint lives on
+`dx`. After each Adam step I must return to the feasible set the harness enforces: `||dx||_inf <= eps`,
+and `x0 + dx in [0,1]`. Both are simple clamps — clamp `dx` to `[-eps, eps]` (Euclidean projection onto
+the `L_inf` box, since a box projects coordinate-wise), then clamp `x0 + dx` to `[0,1]` and fold the
+result back into `dx`. This is precisely the projection step the harness will re-check on return, so
+getting it right here is what keeps the sample from being scored a failure on a validity violation rather
+than on the model's prediction.
+
+The probe radius `c = delta = 0.01` and the step `lr = 0.01` need a word, because they set the bias-noise
+trade. Smaller `c` means smaller Taylor bias (`O(c^2)`), but the *signal* in `df = 2c(v . grad J)` scales
+with `c` while the model's own query-noise floor is fixed, so as `c -> 0` the per-probe signal-to-noise
+*degrades* like `c`. There is a sweet spot: small enough that the directional-derivative approximation is
+faithful, large enough that `df` rises above the noise floor. `0.01` on `[0,1]`-scaled pixels sits in
+that window — well inside the `eps = 8/255 ~ 0.031` ball, and big enough to produce a measurable `df`.
+The Adam `lr = 0.01` is likewise modest so the noisy estimate does not yank the iterate out of the
+productive region in one step.
+
+Now the economics for this harness, where the floor bled out. The budget is `n_queries` per sample; a
+step costs `2 * nb_sample` queries; so the fill sets `nb_iter = max(1, n_queries // (2 * nb_sample))` —
+it spends *exactly* the budget rather than capping at 64. With `n_queries = 1000` and `nb_sample = 128`
+that is `1000 // 256 = 3` Adam steps; the oracle's query counter will read out near the full budget,
+which is why I should expect `avg_queries = 768` (3 steps * 256) against the floor's 65. That is the
+deliberate inversion of the floor's economic disease: where random search quit early, SPSA spends the
+whole allowance reconstructing a real direction. And note the tension this exposes — SPSA pays `2n`
+queries for *one* descent step, so even spending the full budget it gets only a handful of steps. That is
+the SPSA bargain: a genuine, masking-immune descent direction, but an expensive one, and the per-step
+query tax caps how many corrections it can make.
+
+So the falsifiable expectations against the floor's numbers. SPSA should beat `random_search` everywhere,
+because it descends an estimated gradient of the margin instead of guessing isotropic directions, and
+because it spends ~768 queries instead of 65. I expect the mean `asr` to jump from 0.474 well into the
+0.8s. The two scenarios that should improve *most dramatically* are the ones the floor collapsed on — the
+VGG11-BN pairs (0.255 and 0.300): if the floor's VGG failure was a directional failure, a real descent
+direction should roughly double those, lifting both into the 0.6 range. The ResNet20 pairs, already the
+floor's best, should saturate toward the low-to-mid 0.9s. The cost is the headline regression: where the
+floor read `avg_queries = 65`, SPSA will read ~768, because the gradient estimate is expensive and only a
+few steps fit in the budget. If SPSA does *not* clear the floor on the VGG pairs, my diagnosis was wrong
+— the failure would not be directional but a budget-or-projection artifact — but I expect it to, and I
+expect the residual weak spot to be exactly those VGG/CIFAR-100 rows where 3 noisy steps may still be too
+few. Let me swap the body over to the SPSA attack and size the iterations to the budget.
+</think>
+<say>
+Stepping up to SPSA: reconstruct a real descent direction from the queries the floor wasted. This edit replaces the random-search body with a call to the SPSA attack — Rademacher simultaneous-perturbation gradient estimates of the margin, descended with Adam, with the iteration count sized to spend the full query budget.
+</say>
+<edit path="torchattacks/bench/custom_attack.py">
+<old>
+) -> torch.Tensor:
+    _ = (device, n_classes)
+    model.eval()
+
+    adv_images = images.detach().clone()
+    step = eps / 2.0
+    n_steps = max(1, min(int(n_queries), 64))
+
+    with torch.no_grad():
+        best = model(adv_images).gather(1, labels.view(-1, 1)).squeeze(1)
+
+        for _ in range(n_steps):
+            noise = torch.empty_like(adv_images).uniform_(-step, step)
+            cand = adv_images + noise
+            cand = torch.clamp(images + torch.clamp(cand - images, -eps, eps), 0.0, 1.0)
+
+            cand_score = model(cand).gather(1, labels.view(-1, 1)).squeeze(1)
+            improve = cand_score < best
+
+            if improve.any():
+                mask = improve.view(-1, 1, 1, 1)
+                adv_images = torch.where(mask, cand, adv_images)
+                best = torch.where(improve, cand_score, best)
+
+    delta = torch.clamp(adv_images - images, min=-eps, max=eps)
+    return torch.clamp(images + delta, 0.0, 1.0).detach()
+</old>
+<new>
+) -> torch.Tensor:
+    import sys
+    import os
+    sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+    import torchattacks
+
+    _ = (device, n_classes)
+    model.eval()
+
+    nb_sample = 128
+    nb_iter = max(1, int(n_queries) // (2 * nb_sample))
+
+    attack = torchattacks.SPSA(
+        model=model,
+        eps=eps,
+        delta=0.01,
+        lr=0.01,
+        nb_iter=nb_iter,
+        nb_sample=nb_sample,
+        max_batch_size=64,
+    )
+    adv_images = attack(images, labels)
+    delta = torch.clamp(adv_images - images, min=-eps, max=eps)
+    return torch.clamp(images + delta, 0.0, 1.0).detach()
+</new>
+</edit>
+<obs>
+Successfully replaced text in torchattacks/bench/custom_attack.py.
+</obs>
+<run/>
+<obs>
+Measured results — `baseline:spsa` (`is_final,true`), seed 42.
+
+| scenario | asr | avg_queries |
+|---|---|---|
+| ResNet20 / CIFAR-10 | 0.955 | 768.0 |
+| VGG11-BN / CIFAR-10 | 0.605 | 768.0 |
+| MobileNetV2 / CIFAR-10 | 0.920 | 768.0 |
+| ResNet20 / CIFAR-100 | 0.910 | 768.0 |
+| VGG11-BN / CIFAR-100 | 0.620 | 768.0 |
+| MobileNetV2 / CIFAR-100 | 0.885 | 768.0 |
+| **mean** | **0.816** | **768.0** |
+</obs>
+
+### step 3 — Square Attack (random search, square updates)   [slug:square]
+
+<think>
+SPSA cleared the floor exactly where I predicted and stalled exactly where I feared, and reading the two
+failures together tells me what the next rung has to be. The mean jumped from 0.474 to 0.816 — a real
+descent direction, estimated from the queries the floor was wasting, beat blind noise everywhere. The
+VGG11-BN pairs, the floor's collapse points, roughly doubled: 0.255 -> 0.605 on CIFAR-10, 0.300 -> 0.620
+on CIFAR-100. So the floor's VGG failure *was* directional, confirmed. And the ResNet20 pairs saturated
+toward the low-0.9s, 0.955 and 0.910. But two things are wrong with SPSA, and both come from the same
+root. First, the headline regression I warned about: every row reads `avg_queries = 768`. SPSA spends the
+whole budget but gets only three Adam steps for it, because one descent step costs `2 * nb_sample = 256`
+queries. Second — and this is the more telling number — the VGG pairs only reached ~0.61, and the
+CIFAR-100 pairs trail their CIFAR-10 ResNet siblings. Three noisy steps is simply not enough on the
+harder boundaries; the residual weak spots are precisely the rows where the per-step query tax left too
+few corrections. The SPSA bargain — a genuine direction, but `O(n)` queries per step — caps the number of
+steps, and on hard boundaries the number of steps is what I am short of.
+
+So the question for this rung is sharp: can I get many cheap, *effective* moves instead of a few
+expensive ones? SPSA pays `256` queries to estimate one gradient and then takes one step on it. What if a
+single query bought me a whole candidate move that I either keep or discard? That is one query per *step*,
+not `2n` queries per step — a 256x improvement in step count at fixed budget, *if* the per-step move is
+good enough to make progress. The floor already used one-query accept-if-better — and failed, because its
+moves were structureless. So the entire game is: design a one-query proposal whose moves are *structured*
+enough that greedy accept-if-better converges in tens of steps. SPSA's strength was the direction; the
+floor's strength was the cheap step. I want both: cheap steps *and* moves aligned with the model.
+
+There is a deeper reason to abandon gradient estimation entirely, beyond the query tax. SPSA, like any
+finite-difference method, estimates and follows the *local gradient*. A large class of defenses do not
+remove adversarial examples — they wreck the gradient signal (shatter it, randomize it, flatten it). PGD
+and SPSA fail on those for the same reason, and a robustness probe that is fooled into calling a masked
+model robust is worse than useless. So I want a method that never touches a gradient at all. That points
+straight back to random search — pure greedy hill-climbing on the score, one query per candidate, immune
+to masking by construction — but with the proposal distribution carrying all the structure the floor
+lacked. The leverage is entirely in *what distribution I draw the proposed update from*. So: what proposal
+makes one-query greedy accept-if-better converge in tens to low-hundreds of queries instead of the floor's
+hopeless interior noise?
+
+Let me hunt for structure I can exploit, starting from the constraint. The constraint is `L_inf`,
+`|x_adv_i - x_i| <= eps` componentwise — a box. And there is a well-documented empirical fact: successful
+`L_inf` perturbations almost always sit at a *corner* of that box, every component at `+/- eps`. That makes
+sense — if a component can move by up to `eps` and moving it helps, you want it all the way out, not
+halfway. This is precisely where the floor bled: it used `step = eps/2` and made *interior* moves,
+spending only half its per-component budget. So the first design rule is: start on the boundary and stay
+there. If a component is at `x_i + eps` and I add `+2eps` then re-project by clipping to the `L_inf` ball,
+it clips back to `x_i + eps`; adding `-2eps` clips to `x_i - eps`. So updates of magnitude `2eps` followed
+by projection land every touched component back on a corner — full budget spent every step, and a later
+move can overwrite a region committed earlier (unlike SimBA's orthogonal small steps, which can never be
+undone).
+
+Now *where* do I put the nonzero entries, and *how many*? A uniform scatter of `+/-2eps` over the image is
+back to the floor's hopeless high-dimensional random direction. So I have to think about what the model
+actually is — and here is the structure SPSA never used: it is a *convolutional* network. Its first layer
+correlates small `s x s` patches of the input against learned filters `w`. The change I induce in a
+first-layer activation at position `(u,v)` is `z_{u,v} = (delta * w)_{u,v}`, summed over the `s x s`
+receptive window. I do not know the filter weights — they are inside the black box — but I can bound how
+much I could possibly move that activation: `|z_{u,v}| <= eps * sum_{i,j} |w_{i,j}| * 1[index in support
+of delta]`. The bound is maximal when the receptive window is *fully covered* by my nonzero entries. So
+for a fixed number `k` of changed pixels, I should shape them to maximize the number of `s x s` windows
+fully covered. Build the shape greedily, one cell at a time, tracking the count `N` of fully-covered
+`s x s` squares: from an `s x s` block (`N = 1`), extending as a long thin strip spends ~`s` cells per new
+covered window, while keeping the shape near-square and adding a strip along the longer side creates many
+covered windows at once. Carrying this through, the optimum for area `k` is the near-square rectangle; for
+`k = l^2` it is a literal `l x l` square. So the convolutional structure forces the update's support to be
+a **square** — the shape that maximizes the worst-case change in first-layer activations per pixel of
+budget. And unlike fixed-grid corner-search attacks, I let the square's *position* be sampled freely
+anywhere each iteration; freezing a grid throws away the freedom to choose where to spend budget.
+
+Now the sign pattern inside the square. The cheap default is an independent random sign per pixel and
+channel. But let me check whether a *spatially shared* sign does better, because greedy random search
+makes progress when the proposed update correlates with the direction the loss responds to — which
+behaves like a gradient `v` — and image gradients are approximately piecewise constant, so neighboring
+pixels want to move the same way. Compare `E|<delta, v>|` over one channel of the square. Independent
+signs: `<delta, v>` is a sum of independent signed terms, and by Khintchine its expected magnitude is
+`Theta(||v_block||_2)` — the signs partially cancel, random-walk style. One shared sign `rho` across the
+square: `<delta, v> = rho * sum_block v = rho * ||v_block||_1` for a constant-sign block, so
+`E|<delta, v>| = Theta(||v_block||_1)`. And `||v_block||_1 >> ||v_block||_2` for a constant block (`h^2`
+vs `h`), an entire factor of `h` better alignment. So I share one sign across the whole square *within*
+each channel, but keep separate signs *per channel* (different first-layer color filters can want
+different channel directions, and the implementation keeps that freedom for free). The update is a square
+block, all spatial entries within a channel at `+/-2eps`, one sign per channel, at a uniformly random
+location.
+
+How big is the square, and does it stay fixed? Let `p in [0,1]` be the fraction of spatial pixels I touch
+this step; the side is `s = round(sqrt(p * n_features / c))`, clamped to >= 1. Early in the search I am
+far from a solution and want big, coarse moves that can change the prediction outright — large `p`. As I
+close in, large squares overshoot and are more likely to be rejected, wasting a query. So `p` shrinks over
+the budget, the direct analogue of step-size decay (the thing Adam gave SPSA, here built into the move
+size). The fill starts at `p_init = 0.8` and halves `p` at fixed iteration breakpoints, with
+`resc_schedule = True` rescaling the schedule to the actual budget by mapping `it -> int(it / n_queries *
+10000)` so the same coarse-to-fine shape stretches to whatever `n_queries` is given. And the
+initialization: rather than start at the clean image and spend the first moves finding the boundary, start
+*already* on the boundary at a structured high-frequency point CNNs are known to be sensitive to — random
+width-1 vertical stripes at full `L_inf` radius.
+
+The objective is the margin `J = f_y - max_{k!=y} f_k`, used both as the thing to minimize and as the
+success test (it is the same quantity SPSA descended, and the floor's plain-`f_y` choice is a degenerate
+version of it). `loss = "margin"` in the fill. The accept rule has one extra clause beyond plain accept-
+if-better: if a candidate is already misclassified (`margin <= 0`) it is force-accepted regardless of the
+loss comparison, because crossing the boundary is the actual goal and I do not want a marginally worse
+loss reading to throw away a successful flip. Once a sample's margin hits zero I stop spending queries on
+it — exactly the early-exit the floor and SPSA also use, but now it matters far more because the steps are
+cheap and many samples flip in the first dozen.
+
+Now the economics, the axis on which SPSA bled. SPSA cost `256` queries per step and got 3 steps. Square
+costs **one** query per candidate (one initial query of the stripe init, then one per iteration on the
+still-unfooled samples). So with a 1000 budget Square can take *hundreds* of structured steps where SPSA
+took three. But the more important number is `avg_queries`: because each step is one query and a sample
+exits the instant it flips, the *average* queries over the batch will be far below the budget — easy
+samples flip in a handful of moves and stop consuming queries, so the mean is pulled down toward the easy
+tail. This is the opposite of SPSA, where every sample paid the full `768` regardless. So I expect Square
+to win on *both* axes simultaneously, which is rare: higher `asr` (more, better-aligned steps on the hard
+boundaries) *and* lower `avg_queries` (cheap steps plus early exit).
+
+So the falsifiable expectations against SPSA's numbers. Square should beat SPSA on `asr` everywhere,
+because corner-spending square moves aligned with the convolutional structure make real progress per
+query where SPSA's three noisy steps ran out. I expect the mean to climb from 0.816 toward the mid-0.9s.
+The two scenarios where SPSA was weakest — the VGG11-BN pairs at 0.605 and 0.620 — are the sharpest test:
+if SPSA's residual failure there was step-starvation, hundreds of cheap structured steps should lift both
+into the high-0.8s / low-0.9s. The ResNet20 pairs, already 0.955 and 0.910, should push toward
+near-saturation, ~0.99. And the `avg_queries` should *invert* the SPSA regression: where SPSA read a flat
+768 on every row, Square should read well below it — on the order of ~70-260 depending on how hard the
+scenario is — because steps are one query each and flipped samples stop querying. If Square instead needs
+*more* queries than SPSA, or fails to clear it on the VGG pairs, my diagnosis was wrong — the failure
+would not be step-starvation but something the square proposal also cannot reach. But I expect the corner +
+square + shared-sign + coarse-to-fine combination to dominate on both metrics, which is exactly why this is
+the strongest rung. Let me swap the body to the Square attack with margin loss and the rescaled schedule.
+</think>
+<say>
+Switching to the Square Attack: many cheap, structured one-query moves instead of SPSA's few expensive gradient steps. This edit replaces the SPSA call with the Square attack — corner-spending square updates with a shared per-channel sign and a coarse-to-fine size schedule, minimizing the margin under L_inf.
+</say>
+<edit path="torchattacks/bench/custom_attack.py">
+<old>
+
+    nb_sample = 128
+    nb_iter = max(1, int(n_queries) // (2 * nb_sample))
+
+    attack = torchattacks.SPSA(
+        model=model,
+        eps=eps,
+        delta=0.01,
+        lr=0.01,
+        nb_iter=nb_iter,
+        nb_sample=nb_sample,
+        max_batch_size=64,
+    )
+</old>
+<new>
+
+    attack = torchattacks.Square(
+        model=model,
+        norm="Linf",
+        eps=eps,
+        n_queries=max(1, int(n_queries)),
+        n_restarts=1,
+        p_init=0.8,
+        seed=int(os.environ.get("SEED", "42")),
+        verbose=False,
+        loss="margin",
+        resc_schedule=True,
+    )
+</new>
+</edit>
+<obs>
+Successfully replaced text in torchattacks/bench/custom_attack.py.
+</obs>
+<run/>
+<obs>
+Measured results — `baseline:square` (`is_final,true`), seed 42.
+
+| scenario | asr | avg_queries |
+|---|---|---|
+| ResNet20 / CIFAR-10 | 0.995 | 121.00 |
+| VGG11-BN / CIFAR-10 | 0.910 | 212.34 |
+| MobileNetV2 / CIFAR-10 | 0.975 | 139.21 |
+| ResNet20 / CIFAR-100 | 0.985 | 72.50 |
+| VGG11-BN / CIFAR-100 | 0.890 | 263.79 |
+| MobileNetV2 / CIFAR-100 | 0.990 | 86.19 |
+| **mean** | **0.958** | **149.17** |
+</obs>

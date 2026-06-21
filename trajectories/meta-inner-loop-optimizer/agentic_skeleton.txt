@@ -1,0 +1,1249 @@
+<meta task="meta-inner-loop-optimizer" domain="Meta-learning" file="learn2learn/custom_maml.py" model_format="qwen3" edit_tool="str_replace"/>
+
+<system>
+You are a research engineer improving a model on a fixed ML task. You work by editing the model code and running experiments. Think carefully before each change. You have these tools:
+- str_replace(path, old_str, new_str): replace the unique occurrence of old_str with new_str.
+- create(path, file_text): create a new file.
+- run_experiment(): train + evaluate the current code under the fixed budget; returns metrics.
+Make one tool call at a time. After editing, call run_experiment() to measure your method.
+</system>
+
+<user>
+## Research question
+
+Gradient-based meta-learning learns a model initialization that adapts to a brand-new task from a
+handful of labeled examples through a few gradient steps. The split is two-loop: an **inner loop**
+adapts the model on a task's small support set, an **outer loop** optimizes the initialization (and
+any optimizer state) across a distribution of tasks. The single thing being designed here is the
+**inner-loop adaptation rule** — *which* parameters change during adaptation, *how* the support
+gradient is scaled or transformed before it is applied, and *what* state (if any) is carried across
+inner steps and meta-learned by the outer loop. Everything else — the data loader, the CNN4 backbone,
+the meta-batch schedule, the number of inner steps, the outer optimizer — is fixed. The contribution
+is the adaptation rule itself, not the pipeline around it.
+
+## Prior art before the first rung (fast-adaptation lineage)
+
+The first rung — vanilla MAML — is itself the resolution of a line of few-shot learners. These
+precede the ladder; the fixed substrate below is what they converged to.
+
+- **Pretrain-and-fine-tune.** Pool data across tasks, train one network, and at test time take a few
+  gradient steps on the new task's K examples. The trouble is the starting point: the initialization
+  was chosen to minimize *average* pooled loss, which for a symmetric task family lands on a
+  compromise (the mean target) that adaptation must fight its way out of. Gap: the initialization was
+  never *built* to be a good launch point for fast adaptation.
+- **Metric learners (Matching Networks, Vinyals et al. 2016; Prototypical Networks, Snell et al.
+  2017).** Learn an embedding and classify a query by soft nearest-neighbor to the labeled support
+  set, $\hat y=\sum_j a(g(\hat x),g(x_j))\,y_j$. Beautiful few-shot *classification* numbers, but
+  "embed and compare against support points" is a classification construct — there is no prototype of
+  a regression function or a control policy, and it produces no adapted *network*. Gap: not an
+  adaptation rule for a parametric learner, and not architecture/task-form general.
+- **Learned optimizers / Meta-Learner LSTM (Andrychowicz et al. 2016; Ravi & Larochelle 2017).**
+  Replace gradient descent with a recurrent network that reads the gradient and emits the update,
+  meta-learning init, direction, and rate together. The right ambition, but the recurrence costs
+  backprop-through-time memory over the unrolled inner loop that does not scale to a conv learner, and
+  it is hard to train. Gap: the recurrence — not the ambition — makes it unscalable.
+
+## The fixed substrate
+
+The two-loop meta-learner is frozen and must not be touched. The backbone is **CNN4** (four conv
+blocks — Conv → BatchNorm → ReLU → MaxPool — at `hidden_size=64`, feature dim $64\cdot5\cdot5=1600$,
+then a linear classifier to `N_WAY=5`), built by `make_model`. Meta-training runs **60,000**
+iterations at 1-shot (15,000 at 5-shot), **4 tasks per meta-batch**, with the outer optimizer
+`Adam(meta_lr=0.003)` over *all* meta-learnable parameters — the model's weights **plus** whatever
+the inner-loop optimizer exposes. The inner loop takes **5 steps during training, 10 during
+evaluation**, with a default `inner_lr=0.5`. Each task is cloned with `l2l.clone_module`, split into a
+support set (K examples per class) and a 15-shot query set; the inner loop adapts on support, the
+meta-loss is the query cross-entropy of the adapted clone, summed over the meta-batch. The loop also
+provides the differentiable update primitives a rule may use: `l2l.algorithms.maml.maml_update(model,
+lr, grads)` (one differentiable SGD step over every parameter) and `l2l.update_module(model,
+updates=[...])` (a differentiable per-parameter `p ← p + u` swap, one entry per parameter in order).
+Both replace the parameter *objects* each call — a fresh tensor per step — which is load-bearing
+plumbing for any rule that re-reads parameters across inner steps.
+
+## The editable interface
+
+Exactly one region is editable — the `InnerLoopOptimizer` class in `learn2learn/custom_maml.py`
+(lines 177–254). Every method on the ladder is a fill of this same three-method contract:
+`__init__(model, inner_lr)` (inspect parameter shapes, **create any learnable optimizer parameters
+here**), `adapt(model, support_x, support_y, n_steps)` (perform the inner adaptation on a *clone* —
+must use `torch.autograd.grad` with the graph kept so the outer loop can backprop through it, never
+`torch.optim`; return the adapted model), and `meta_parameters()` (the optimizer's own learnable
+state handed to the outer Adam — `[]` if it has none). A parameter-count budget caps the optimizer's
+extra learnable state at roughly the model size (one scalar per parameter, Meta-SGD's footprint).
+
+The starting point is the scaffold default, which **is** vanilla MAML: differentiable SGD with a
+fixed scalar learning rate applied to *every* parameter, and no learnable optimizer state. Each later
+method replaces exactly this class and nothing else.
+
+```python
+# EDITABLE region of learn2learn/custom_maml.py (lines 177–254) — default fill (vanilla MAML)
+class InnerLoopOptimizer:
+    """Inner-loop adaptation: differentiable SGD, fixed scalar LR, all parameters."""
+
+    def __init__(self, model: nn.Module, inner_lr: float = INNER_LR):
+        # inner_lr: default inner-loop learning rate. No learnable optimizer state.
+        self.inner_lr = inner_lr
+
+    def adapt(self, model: nn.Module, support_x: Tensor, support_y: Tensor,
+              n_steps: int) -> nn.Module:
+        # model is a CLONE (via l2l.clone_module) — safe to modify in-place.
+        model.train()
+        for _ in range(n_steps):
+            loss = F.cross_entropy(model(support_x), support_y)
+            grads = torch.autograd.grad(            # differentiable; graph kept
+                loss, model.parameters(), create_graph=True
+            )
+            model = l2l.algorithms.maml.maml_update( # one SGD step over ALL params
+                model, lr=self.inner_lr, grads=grads
+            )
+        return model
+
+    def meta_parameters(self) -> List[Tensor]:
+        return []                                   # fixed LR => no meta-parameters
+```
+
+## Evaluation settings
+
+Three few-shot benchmarks spanning the difficulty range — **miniImageNet 5-way 1-shot** (the hard,
+60k-iteration setting where one support example per class makes full-network adaptation most fragile),
+**miniImageNet 5-way 5-shot**, and **CIFAR-FS 5-way 5-shot** — each over three seeds {42, 123, 456}.
+The metric is **mean classification accuracy over 600 test episodes** (higher is better on all three),
+each episode adapting a fresh clone with 10 inner steps on the support set and scoring on a held-out
+15-shot query set.
+
+The editable model code is in `learn2learn/custom_maml.py`:
+```python
+class InnerLoopOptimizer:
+    """Inner-loop adaptation algorithm for gradient-based meta-learning.
+
+    This class defines HOW model parameters are updated during fast adaptation
+    to a new task. The outer loop (meta-optimizer) is fixed; only this inner
+    loop is editable.
+
+    The default implementation is vanilla MAML: simple SGD with a fixed
+    learning rate applied to all parameters.
+
+    You may redesign:
+    - Per-parameter or per-layer learning rates (Meta-SGD)
+    - Which parameters to adapt (full model vs. head-only, ANIL)
+    - Preconditioning / curvature information (Meta-Curvature)
+    - Momentum, second-order corrections, or learned update rules
+    - Any combination of the above
+
+    Interface contract:
+    - __init__(model, inner_lr): initialize the optimizer, may create
+      learnable parameters that will be meta-learned by the outer loop
+    - adapt(model, support_x, support_y, n_steps): perform n_steps of
+      inner-loop adaptation on the support set, return adapted model
+    - meta_parameters(): return any learnable parameters of the optimizer
+      itself (e.g., per-parameter learning rates) for outer-loop optimization
+
+    IMPORTANT:
+    - The model passed to adapt() is a clone (via l2l.clone_module).
+      You must use differentiable operations so gradients flow to the outer loop.
+    - Use l2l.algorithms.maml.maml_update(model, lr, grads) or manual
+      parameter updates. Do NOT use torch.optim optimizers (they break the
+      computational graph).
+    - meta_parameters() must return all learnable optimizer state so the
+      outer loop can optimize them.
+    """
+
+    def __init__(self, model: nn.Module, inner_lr: float = INNER_LR):
+        """Initialize the inner-loop optimizer.
+
+        Args:
+            model: the base model (used to inspect parameter shapes/counts).
+                   Do NOT store a reference to this model — a fresh clone
+                   is passed to adapt() each time.
+            inner_lr: default inner-loop learning rate.
+        """
+        self.inner_lr = inner_lr
+
+    def adapt(self, model: nn.Module, support_x: Tensor, support_y: Tensor,
+              n_steps: int) -> nn.Module:
+        """Perform inner-loop adaptation.
+
+        Args:
+            model: a CLONED model (via l2l.clone_module) — safe to modify in-place.
+            support_x: support images [n_way * n_shot, C, H, W]
+            support_y: support labels [n_way * n_shot]
+            n_steps: number of inner-loop gradient steps
+
+        Returns:
+            The adapted model (may be the same object, modified in-place).
+        """
+        model.train()
+        for _ in range(n_steps):
+            loss = F.cross_entropy(model(support_x), support_y)
+            grads = torch.autograd.grad(
+                loss, model.parameters(), create_graph=True
+            )
+            # Vanilla SGD update using learn2learn's differentiable update
+            model = l2l.algorithms.maml.maml_update(
+                model, lr=self.inner_lr, grads=grads
+            )
+        return model
+
+    def meta_parameters(self) -> List[Tensor]:
+        """Return learnable parameters of the optimizer for outer-loop training.
+
+        For vanilla MAML, the inner LR is fixed, so this returns [].
+        For Meta-SGD, this would return the per-parameter learning rates.
+        """
+        return []
+```
+Improve it. Derive your method, edit the code, then run_experiment().
+</user>
+
+### step 1 — MAML (vanilla, fixed-LR SGD over all parameters)   [slug:maml]
+
+<think>
+[[POLISH_REASONING: adapt to first-person agentic voice, end by deciding to implement]]
+The inner-loop rule is the whole point, but it bolts onto a two-loop meta-learner, and the simplest
+inner rule is the floor I have to start from — so the pain to begin with is just getting a network to
+adapt to a five-example task at all. State the problem baldly: I have a CNN4 with on the order of a
+hundred thousand parameters and a new task with one or five labeled images per class. Fit a
+high-capacity net to five points and I have memorized them and learned nothing that transfers to the
+held-out query points of the same task. The only thing that can save me is prior experience: I will
+have meta-trained across a whole distribution of related five-way episodes first, and the question is
+what to extract from that distribution so the next task takes a few gradient steps and does not
+overfit. The harness has already committed to the *shape* of the answer — a learned initialization
+adapted by a few inner gradient steps — and fixed everything around it. What it leaves me is the inner
+adaptation rule, and the floor of that ladder is the dumbest rule that still adapts.
+
+The cheapest thing I know is pretrain-and-fine-tune, and it is worth seeing exactly why it is not the
+floor I want. Pool the meta-training episodes, train one network on the pooled loss, and at test time
+take a few gradient steps on the new task's support set. But the pooled objective sees the same input
+mapped to different labels depending on the (unknown) task, so the loss-minimizing thing is to predict
+something like the average target — an initialization built to minimize average loss, which is a
+different and often actively unhelpful objective than "be a good launch point for adaptation." So
+fine-tuning from a generic pretrain is not broken because gradient descent is weak; it is broken
+because the *initialization* was never chosen for adaptability. The fix is to choose the
+initialization *directly* for the property I want.
+
+Let me write that property down as an objective, because the moment I do, the whole thing either
+becomes trainable or falls apart. Take a task $\mathcal{T}_i$. Adaptation is gradient descent on its
+support set, one step to start: $\theta_i' = \theta - \alpha\,\nabla_\theta \mathcal{L}^{\text{sup}}
+_{\mathcal{T}_i}(f_\theta)$. I do not care how $f_{\theta_i'}$ does on the support points it just
+trained on — of course it does well there, that is the overfitting I am fighting. I care how it does
+on *held-out* query points from the same task. So evaluate the adapted model's loss on a separate
+query set, and *that* is what I want small. Summing over tasks, $\min_\theta \sum_i \mathcal{L}^{
+\text{qry}}_{\mathcal{T}_i}(f_{\theta_i'})$ with $\theta_i' = \theta - \alpha\nabla_\theta \mathcal{L}
+^{\text{sup}}_{\mathcal{T}_i}(f_\theta)$. Stare at it: the thing optimized is $\theta$, the
+initialization, but the loss is evaluated at $\theta_i'$, the *post-adaptation* parameters. The
+held-out query loss after fine-tuning is literally the training signal for the initialization. That is
+the inversion — instead of "minimize loss and hope fine-tuning works," it is "make fine-tuning work,
+and that *is* the loss." The support/query split is load-bearing: evaluate the meta-loss on the same
+points I adapted on and I reward $\theta$ for being a place from which I can *memorize* the support,
+which is the failure I am trying to avoid. Splitting them means the only way to lower the meta-loss is
+an initialization from which a support step produces a model that *generalizes* — adaptation that must
+extrapolate, exactly as at meta-test. This is why the fixed loop draws a 15-shot query set every
+episode and scores the adapted clone on it; the harness has baked the honest protocol in.
+
+Can I actually optimize this bilevel object? The outer step is just SGD on the meta-loss, $\theta
+\leftarrow \theta - \beta\nabla_\theta \sum_i \mathcal{L}^{\text{qry}}_{\mathcal{T}_i}(f_{\theta_i'})$,
+so everything reduces to computing the meta-gradient $\nabla_\theta \mathcal{L}^{\text{qry}}(f_{
+\theta_i'})$ where $\theta_i'$ itself contains $\theta$ twice — once in the leading term, once inside
+the support gradient. I must differentiate through the gradient step. Writing $\theta_i' = \theta -
+\alpha\,g(\theta)$ with $g(\theta)=\nabla_\theta\mathcal{L}^{\text{sup}}(f_\theta)$, the chain rule
+gives $\nabla_\theta \mathcal{L}^{\text{qry}}(\theta_i') = (\partial\theta_i'/\partial\theta)^\top
+\nabla_{\theta'}\mathcal{L}^{\text{qry}}(\theta_i')$, and the Jacobian of the inner step is $\partial
+\theta_i'/\partial\theta = I - \alpha\,\nabla_\theta^2 \mathcal{L}^{\text{sup}}(f_\theta)$ — the
+identity from the leading $\theta$, minus $\alpha$ times the *support*-loss Hessian, because the
+derivative of the gradient is the Hessian. So the meta-gradient is $(I - \alpha\nabla_\theta^2
+\mathcal{L}^{\text{sup}})^\top\nabla_{\theta'}\mathcal{L}^{\text{qry}}(\theta_i')$: the query-loss
+gradient at the *adapted* point, premultiplied by the Jacobian of the adaptation step. Two distinct
+losses, and I must not confuse them — the Hessian is of the loss I adapted on (support), the gradient
+is of the loss I evaluate (query). The $-\alpha H$ correction is doing real work: a step in $\theta$
+does not move $\theta_i'$ by the same amount, because moving $\theta$ also moves the gradient I
+subtract; the Hessian is exactly how much the inner gradient bends, and $(I-\alpha H)$ propagates that
+bending so the outer optimizer accounts for steering the *start* of a gradient step rather than the
+end. I never form the Hessian — I need $H$ times a vector, one extra backward pass, and in practice not
+even that: if I build $\theta_i'$ as a node in the graph (subtract $\alpha g$ *keeping the
+subtraction*), forward the query set, and call backward to $\theta$, reverse-mode autodiff produces
+$(I-\alpha H)^\top\nabla_{\theta'}\mathcal{L}^{\text{qry}}$ for me — provided the inner gradient was
+taken with `create_graph=True`. Nothing about the architecture entered any of this; I only assumed
+$f_\theta$ is differentiable and trained by gradient descent, which is why the same three lines work
+for a conv net under cross-entropy here as for an MLP under MSE. That generality is the point: no
+metric, no recurrent optimizer, no extra parameters, just an initialization and ordinary gradient
+descent — exactly what makes this the honest floor of the ladder.
+
+If one inner step is good, several unroll: $\theta_i'' = \theta_i' - \alpha\nabla\mathcal{L}^{\text{
+sup}}(\theta_i')$, the Jacobian chaining into a product of $(I-\alpha H_k)$ factors, one per step
+along the inner trajectory, handled by autodiff through the unrolled loop. This is precisely what the
+harness asks for: 5 inner steps at train, 10 at evaluation, each a differentiable `maml_update` over
+*all* parameters with the graph retained, and `meta_parameters()` returning `[]` because a fixed
+scalar LR carries no learnable state. My step-1 edit is therefore the trivial one — it *is* the
+scaffold default: `compute the support cross-entropy, take its gradient over every parameter with
+create_graph=True, take one SGD step at inner_lr over the whole network, repeat n_steps`, and expose
+no meta-parameters. The distilled module is in the answer.
+
+There is exactly one harness-specific decision that is *not* in the generic story and that I have to
+get right, because it is the difference between a floor that runs and one that diverges. The fixed
+loop sets a global `inner_lr = 0.5`. That is fine when the support set is large enough to buffer
+gradient noise — at 5-shot, five examples per class give a steadier support gradient, and 0.5 is the
+standard learn2learn benchmark value. But at 1-shot, full-network adaptation with $\alpha=0.5$ is
+unstable: a single example per class makes the support gradient a high-variance estimate, and stepping
+*every* parameter — all four conv blocks plus BatchNorm plus the head — by half of it blows the clone
+off into a region where the meta-gradient through five such steps is meaningless. The standard 1-shot
+MAML recipe is an order of magnitude smaller, $\alpha=0.01$, precisely to keep full-network adaptation
+in a stable regime. So vanilla MAML in this harness is not literally "use 0.5 everywhere"; it is
+shot-aware: $\alpha = 0.01$ when `N_SHOT == 1`, else $0.5$. This is the only deviation from the bare
+default, and it is a property of this benchmark's chosen `inner_lr`, not of MAML the method.
+
+So at step 1 the floor is settled, and I can reason about what it must do — which is the entire point
+of running it. MAML adapts *all* parameters with *one fixed scalar* rate and *no learned optimizer
+state*. Everything the task distribution might know about *how* to move — which coordinates should
+move a lot and which barely, what combined direction generalizes on a fresh task — none of it can be
+expressed; the update direction is locked to the raw gradient, the magnitude is one global number, and
+the only thing meta-learned is where to start. That is the ceiling here: a carefully chosen launch
+point, then a dumb step. I expect this to be a genuinely competitive floor on the 5-shot benchmarks,
+where the larger support set makes the rigid step forgiving and the conv features carry the day — so
+miniImageNet 5-shot and CIFAR-FS 5-shot should land respectably. I expect 1-shot to be the soft spot:
+even at the reduced $\alpha=0.01$, adapting the whole network from a single example per class with a
+one-size-fits-all rate is exactly where a learned, per-coordinate step should later pull ahead, so
+1-shot accuracy should be the lowest of the three and the most exposed. Whatever the precise split,
+the diagnosis is already pointed at the next rung: MAML has a *rigid-inner-step* problem, not a bad
+initialization, so the fix is to keep the initialization-as-objective frame and put some learnable
+structure into the step itself — which is what turns the next edit from "one fixed scalar over all
+parameters" into a meta-learned per-parameter rate.
+</think>
+<say>
+[[FILL_SAY: 1-2 sentences naming the method and what this first edit does]]
+</say>
+<edit path="learn2learn/custom_maml.py">
+<old>
+class InnerLoopOptimizer:
+    """Inner-loop adaptation algorithm for gradient-based meta-learning.
+
+    This class defines HOW model parameters are updated during fast adaptation
+    to a new task. The outer loop (meta-optimizer) is fixed; only this inner
+    loop is editable.
+
+    The default implementation is vanilla MAML: simple SGD with a fixed
+    learning rate applied to all parameters.
+
+    You may redesign:
+    - Per-parameter or per-layer learning rates (Meta-SGD)
+    - Which parameters to adapt (full model vs. head-only, ANIL)
+    - Preconditioning / curvature information (Meta-Curvature)
+    - Momentum, second-order corrections, or learned update rules
+    - Any combination of the above
+
+    Interface contract:
+    - __init__(model, inner_lr): initialize the optimizer, may create
+      learnable parameters that will be meta-learned by the outer loop
+    - adapt(model, support_x, support_y, n_steps): perform n_steps of
+      inner-loop adaptation on the support set, return adapted model
+    - meta_parameters(): return any learnable parameters of the optimizer
+      itself (e.g., per-parameter learning rates) for outer-loop optimization
+
+    IMPORTANT:
+    - The model passed to adapt() is a clone (via l2l.clone_module).
+      You must use differentiable operations so gradients flow to the outer loop.
+    - Use l2l.algorithms.maml.maml_update(model, lr, grads) or manual
+      parameter updates. Do NOT use torch.optim optimizers (they break the
+      computational graph).
+    - meta_parameters() must return all learnable optimizer state so the
+      outer loop can optimize them.
+    """
+
+    def __init__(self, model: nn.Module, inner_lr: float = INNER_LR):
+        """Initialize the inner-loop optimizer.
+
+        Args:
+            model: the base model (used to inspect parameter shapes/counts).
+                   Do NOT store a reference to this model — a fresh clone
+                   is passed to adapt() each time.
+            inner_lr: default inner-loop learning rate.
+        """
+        self.inner_lr = inner_lr
+
+    def adapt(self, model: nn.Module, support_x: Tensor, support_y: Tensor,
+              n_steps: int) -> nn.Module:
+        """Perform inner-loop adaptation.
+
+        Args:
+            model: a CLONED model (via l2l.clone_module) — safe to modify in-place.
+            support_x: support images [n_way * n_shot, C, H, W]
+            support_y: support labels [n_way * n_shot]
+            n_steps: number of inner-loop gradient steps
+
+        Returns:
+            The adapted model (may be the same object, modified in-place).
+        """
+        model.train()
+</old>
+<new>
+# EDITABLE region of learn2learn/custom_maml.py (lines 177–254) — step 1: vanilla MAML
+class InnerLoopOptimizer:
+    """MAML inner-loop optimizer (Finn et al., 2017).
+
+    Vanilla SGD with a fixed learning rate applied uniformly to all
+    model parameters. This is the standard MAML inner loop.
+
+    Shot-aware LR override: the global INNER_LR=0.5 destabilizes
+    full-network adaptation at 1-shot in the local harness. At 5-shot the larger
+    support set buffers gradient noise so 0.5 is fine (matches
+    learn2learn benchmark default). Use the common 1-shot recipe
+    (0.01) only when N_SHOT=1, keep 0.5 for 5-shot.
+    """
+
+    def __init__(self, model: nn.Module, inner_lr: float = INNER_LR):
+        self.inner_lr = 0.01 if N_SHOT == 1 else 0.5
+
+    def adapt(self, model: nn.Module, support_x: Tensor, support_y: Tensor,
+              n_steps: int) -> nn.Module:
+        model.train()
+</new>
+</edit>
+<obs>
+Successfully replaced text in learn2learn/custom_maml.py.
+</obs>
+<note>
+[[FILL_NOTE?: optional one-line thought for this edit, or delete this block]]
+</note>
+<edit path="learn2learn/custom_maml.py">
+<old>
+            )
+            # Vanilla SGD update using learn2learn's differentiable update
+            model = l2l.algorithms.maml.maml_update(
+</old>
+<new>
+            )
+            model = l2l.algorithms.maml.maml_update(
+</new>
+</edit>
+<obs>
+Successfully replaced text in learn2learn/custom_maml.py.
+</obs>
+<note>
+[[FILL_NOTE?: optional one-line thought for this edit, or delete this block]]
+</note>
+<edit path="learn2learn/custom_maml.py">
+<old>
+    def meta_parameters(self) -> List[Tensor]:
+        """Return learnable parameters of the optimizer for outer-loop training.
+
+        For vanilla MAML, the inner LR is fixed, so this returns [].
+        For Meta-SGD, this would return the per-parameter learning rates.
+        """
+        return []
+</old>
+<new>
+    def meta_parameters(self) -> List[Tensor]:
+        return []
+</new>
+</edit>
+<obs>
+Successfully replaced text in learn2learn/custom_maml.py.
+</obs>
+<run/>
+<obs>
+Measured results — `baseline:maml` (`is_final,true`), seeds {42, 123, 456} and mean. Metric is mean
+classification accuracy over 600 test episodes (higher is better).
+
+| seed | miniImageNet 1-shot | miniImageNet 5-shot | CIFAR-FS 5-shot |
+|---|---|---|---|
+| 42 | 0.4325 | 0.6314 | 0.7056 |
+| 123 | 0.4209 | 0.6439 | 0.7040 |
+| 456 | 0.4562 | 0.6385 | 0.7104 |
+| **mean** | **0.4365** | **0.6379** | **0.7067** |
+| std | 0.0147 | 0.0051 | 0.0027 |
+</obs>
+
+### step 2 — Meta-SGD (learned per-parameter learning-rate vector)   [slug:meta_sgd]
+
+<think>
+[[POLISH_REASONING: adapt to first-person agentic voice, end by deciding to implement]]
+MAML's numbers told me where the rigid step costs me, and they told me in the split I predicted. On
+the two 5-shot benchmarks the floor is genuinely strong: miniImageNet 5-shot at 0.6379 (tight across
+seeds, 0.6314–0.6439) and CIFAR-FS 5-shot at 0.7067 (tighter still, 0.7040–0.7104, std 0.0027). With
+five examples per class buffering the support gradient, a single global rate over the whole network is
+forgiving and the conv features carry it — exactly as I expected. The exposed spot is 1-shot: mean
+0.4365, the lowest of the three, and the *least* stable, std 0.0147, seed 123 sagging to 0.4209 while
+seed 456 reaches 0.4562. That spread is the tell. I already had to drop $\alpha$ to 0.01 at 1-shot
+just to keep full-network adaptation from diverging on a single example per class; even at that timid
+rate, adapting every parameter with one shared scalar is where MAML is both weakest *and* shakiest.
+This is not a bad-initialization problem and it is not an outer-loop problem — the meta-loss frame is
+right, the launch point is fine on 5-shot. It is a *rigid-inner-step* problem: the only thing the task
+distribution gets to shape is where adaptation starts, and nothing about *how* adaptation moves. So
+the fix is to keep MAML's initialization-as-objective frame untouched and put learnable structure into
+the step itself.
+
+Let me be precise about what an adaptation procedure for a parametric learner even is, because that
+decomposition is what tells me which knob to learn. Any gradient-based adaptation is three things:
+where it starts (the initialization), which way it moves (the update direction), and how far (the
+learning rate). With abundant data the defaults — random start, follow the gradient, small hand-set
+rate — are fine. With one example each of those defaults is a liability, and MAML only learned the
+first. It froze the second and third: every coordinate steps along the raw gradient, all at the one
+scalar $\alpha$. Whatever the task family knows about which coordinates should move a lot and which
+barely, and what combined direction actually generalizes on a fresh five-way episode, cannot be
+expressed. The 1-shot fragility is the symptom — a single shared rate has to be small enough not to
+blow up the most sensitive coordinate, which means it is far too small for the coordinates that should
+move, so adaptation under-fits exactly where it most needs to move and the result swings with the
+seed. I want to learn the *step*, not just the start.
+
+The slate of existing answers stakes out the corners. One route learns the *entire* update rule with a
+recurrent network — the right ambition (learn init, direction, and rate together), but it pays
+backprop-through-time over the unrolled inner loop, storing every intermediate recurrent state, a cost
+on the order of (steps × state-size × $\dim\theta$) that simply does not fit a conv learner and is
+hard to optimize on top of that. The recurrence is what costs the memory; the recurrence is what is
+hard to train; the recurrence is the per-step, per-coordinate machine. But the recurrence was never
+the goal — the goal was to learn the direction and the rate. So I want the smallest object I can fold
+into the gradient step that still buys me a learned direction and a learned, per-coordinate rate, and
+that I can train by ordinary backprop with no recurrence at all — because the harness is built for
+exactly that: `__init__` lets me create learnable optimizer parameters, `meta_parameters()` hands them
+to the same outer Adam that already optimizes $\theta$, and the budget explicitly allows one extra
+scalar per model parameter.
+
+So sit between the corners and ask what "richer than a scalar rate" means concretely. MAML's step is
+$-\alpha\,g$ with $\alpha$ a scalar. The most general linear thing I could put in front of the
+gradient is a matrix, $-A\,g$, which can rotate the step arbitrarily off the gradient and rescale
+every coordinate. But a full $A$ is $\dim\theta \times \dim\theta$ — for CNN4 that is the square of a
+hundred-thousand-dimensional vector, hopeless to store and meta-learn, and if it varied per step it
+reintroduces exactly the per-step-per-coordinate cost that sank the recurrent route. The full matrix
+is out for the same reason the LSTM was out. That pushes me to the cheapest preconditioner that still
+does something a scalar cannot: the *diagonal*. Let $A = \mathrm{diag}(\alpha)$ with $\alpha$ a vector
+the size of $\theta$. The step becomes $-\alpha \odot g$, an elementwise product of a learned vector
+with the gradient.
+
+Let me check this buys both things I want, because if it only buys per-coordinate rates I have not
+escaped "follow the gradient." Per-coordinate rate: yes, trivially — entry $\alpha_j$ is coordinate
+$j$'s own learning rate, so the sensitive BatchNorm scale and the head weight can move at completely
+different magnitudes, which one scalar can never do. And the direction — here is the part I want to be
+sure of. Is $\alpha \odot g$ parallel to $g$? For a nonzero gradient with at least two active
+coordinates, it stays parallel only when the active entries of $\alpha$ are all the same scalar. Once
+those entries differ, the coordinate rescaling *tilts* the vector — $\alpha \odot g$ points in a
+genuinely different direction than $g$. So the diagonal, which I almost dismissed as "just
+per-coordinate rates," already gives me an off-gradient direction for free: the norm of $\alpha \odot
+g$ is the effective step size and its orientation is the effective update direction, both rolled into
+the one vector $\alpha$. That is exactly the two ingredients MAML's scalar could not reach, with no
+matrix and no recurrence — $\alpha$ is just a tensor the same shape as $\theta$, one learnable scalar
+per parameter, precisely the budget the harness reserved.
+
+Is $\alpha$ hand-designed or learned? The hand-designed adaptive optimizers — AdaGrad, RMSProp, Adam
+— also put a per-coordinate rescaling on the gradient, set from the *gradient history* by a fixed
+formula. That tells me the *shape* (per-coordinate gradient rescaling) is right; people have found it
+works. But their machinery needs a history to accumulate, and I do not have one — five inner steps,
+one example per class, no long stream of gradients to take a running norm over. So I cannot get
+$\alpha$ from history. What I *do* have is the task distribution. So instead of computing $\alpha$ from
+a gradient history, I learn it across tasks: let $\alpha$ be a free vector of meta-parameters that
+meta-training tunes so that, on a new task, $n$ steps of $-\alpha \odot g$ land somewhere that
+generalizes. $\alpha$ becomes a learned encoding of "for this family of five-way episodes, how far and
+which combined way should each coordinate move when the support gradient points this way" — the same
+ambition as the recurrent route's learned step, distilled into a single static vector with no
+recurrence to pay for.
+
+And $\alpha$ is differentiable, which is the whole reason for choosing this shape. So I fold it
+straight into the same query-loss-after-adaptation objective MAML used, except now I meta-learn
+$\theta$ *and* $\alpha$ together: $\theta_i' = \theta - \alpha \odot \nabla\mathcal{L}^{\text{sup}}_i
+(\theta)$, and $\min_{\theta,\alpha}\, \mathbb{E}_{\mathcal{T}}[\mathcal{L}^{\text{qry}}(\theta -
+\alpha \odot \nabla\mathcal{L}^{\text{sup}}(\theta))]$. For one task, with $g=\nabla_\theta\mathcal{L}
+^{\text{sup}}$, $H=\nabla_\theta^2\mathcal{L}^{\text{sup}}$, $\theta'=\theta-\alpha\odot g$, and
+$v=\nabla_{\theta'}\mathcal{L}^{\text{qry}}$, the chain rule gives $\partial\mathcal{L}^{\text{qry}}/
+\partial\alpha = -v\odot g$ and $\partial\mathcal{L}^{\text{qry}}/\partial\theta = (I - \mathrm{diag}
+(\alpha)H)^\top v$. The $\theta$-line is MAML's same through-the-inner-gradient path; the $\alpha$-line
+is simpler because $\alpha$ enters $\theta'$ linearly through the elementwise product. So the *same*
+outer Adam optimizes both, by backprop through one (or five) inner steps with the graph kept — no
+BPTT through an optimizer network, no stored recurrent states, just one extra tensor per parameter.
+The thing that made the recurrent route unscalable is simply gone, because I replaced "a network that
+emits the step" with "a learned vector that scales the gradient."
+
+Now ground this in *this task's* edit surface, because the harness dictates the literal form and it is
+not the generic one. The contract is `__init__`, `adapt`, `meta_parameters`. In `__init__` I create
+the learnable rates as an `nn.ParameterList` — one `nn.Parameter` per model parameter, each
+`torch.ones_like(p) * inner_lr`, so every entry starts at the default 0.5 and the rates are uniform at
+initialization. That uniform start is deliberate and it is the right one: at the start of meta-training
+I have no reason to favor any coordinate, and I want to begin from behavior I trust — which is MAML,
+uniform small steps — and let meta-training pull the entries apart as it discovers which coordinates
+want bigger or differently-signed steps. Setting every entry of $\alpha$ to the same constant *is*
+MAML; the method differentiates from there. For the inner step, the harness gives me `l2l.update_module
+(model, updates=[...])`, a differentiable per-parameter $p \leftarrow p + u$ swap that takes one update
+per parameter in order. So I compute the support cross-entropy, take `torch.autograd.grad` over all
+parameters with the graph retained, build `updates = [-lr * g for g, lr in zip(grads, self.lrs)]` —
+the elementwise $-\alpha \odot g$, one entry per parameter — and call `update_module`. That is the one
+load-bearing difference from MAML's edit: MAML used `maml_update(model, lr=scalar, grads=grads)` with a
+single scalar; Meta-SGD uses `update_module` with a *list* of per-parameter products, because the rate
+is now a tensor, not a number. Finally `meta_parameters()` returns `list(self.lrs.parameters())` so the
+outer Adam optimizes $\alpha$ alongside $\theta$ — the harness sums them into `all_meta_params` and the
+budget check (one scalar per model parameter) is exactly Meta-SGD's footprint. The full scaffold module
+is in the answer.
+
+Let me confirm the relations so I know I have generalized MAML and not built a third unrelated gadget.
+Freeze $\alpha$ to a single constant in every coordinate and stop learning it: $\alpha \odot g = c\,g$,
+$\theta'=\theta-c\,g$ — exactly MAML, plain SGD at a scalar rate, meta-learning only $\theta$. So MAML
+is the point in this space where $\alpha$ is uniform and fixed; I have strictly generalized it by
+letting $\alpha$ be non-uniform and learned. The recurrent route is the expensive way to chase the
+same three learned ingredients, which I have replaced with the static diagonal. And the diagonal is the
+right rank, not a cop-out: a per-layer scalar is cheaper but can only rescale a whole layer uniformly,
+it cannot move two weights *within* a conv block at different rates, and within-layer is exactly where
+the per-coordinate structure lives; the full matrix is the other extreme, most expressive but $\dim
+\theta^2$ and per-step-costly. The diagonal is the unique middle that is linear in memory,
+per-coordinate, and off-gradient.
+
+So the delta from step 1 is concrete: where MAML applied one shared scalar to every parameter via
+`maml_update`, I attach a learnable per-parameter rate vector $\alpha$ (a `ParameterList` of
+`ones_like(p)*0.5`), step each parameter by $-\alpha \odot g$ via `update_module`, and hand $\alpha$ to
+the outer loop as meta-parameters. Reading MAML's shape, here is what I expect and where I am unsure.
+The biggest win should be at **1-shot**, because that is precisely where MAML's single shared rate was
+both lowest (0.4365) and shakiest (std 0.0147): a learned per-coordinate rate can keep the sensitive
+coordinates timid while letting the discriminative ones move, so 1-shot mean should rise above 0.4365
+and, if the diagnosis is right, the seed spread should tighten — the learned $\alpha$ removes the
+knife-edge that the single scalar had to walk. Where I am genuinely unsure is the **5-shot**
+benchmarks: MAML was already strong there (0.6379 mini, 0.7067 cifar) because the larger support set
+made the rigid step forgiving, so the extra capacity of a per-parameter rate has less to fix and could
+even hurt if the larger meta-parameter set overfits the meta-training distribution — a non-uniform
+$\alpha$ tuned to training episodes need not transfer as cleanly as one shared scalar. The falsifiable
+claim is therefore directional and uneven: 1-shot should improve clearly (mean up, std down) while
+5-shot may stay flat or slip, in which case the next rung is not "more capacity in the step" but a
+different axis — *which* parameters to adapt at all.
+</think>
+<say>
+[[FILL_SAY: 1-2 sentences naming the method and what this first edit does]]
+</say>
+<edit path="learn2learn/custom_maml.py">
+<old>
+# EDITABLE region of learn2learn/custom_maml.py (lines 177–254) — step 1: vanilla MAML
+class InnerLoopOptimizer:
+    """MAML inner-loop optimizer (Finn et al., 2017).
+
+    Vanilla SGD with a fixed learning rate applied uniformly to all
+    model parameters. This is the standard MAML inner loop.
+
+    Shot-aware LR override: the global INNER_LR=0.5 destabilizes
+    full-network adaptation at 1-shot in the local harness. At 5-shot the larger
+    support set buffers gradient noise so 0.5 is fine (matches
+    learn2learn benchmark default). Use the common 1-shot recipe
+    (0.01) only when N_SHOT=1, keep 0.5 for 5-shot.
+    """
+
+    def __init__(self, model: nn.Module, inner_lr: float = INNER_LR):
+        self.inner_lr = 0.01 if N_SHOT == 1 else 0.5
+</old>
+<new>
+# EDITABLE region of learn2learn/custom_maml.py (lines 177–254) — step 2: Meta-SGD
+class InnerLoopOptimizer:
+    """Meta-SGD inner-loop optimizer (Li et al., 2017).
+
+    Learns a per-parameter learning rate vector that is meta-optimized
+    by the outer loop. Each model parameter gets a corresponding learnable
+    learning rate tensor of the same shape, initialized to inner_lr.
+    """
+
+    def __init__(self, model: nn.Module, inner_lr: float = INNER_LR):
+        self.inner_lr = inner_lr
+        # Create per-parameter learnable learning rates
+        self.lrs = nn.ParameterList([
+            nn.Parameter(torch.ones_like(p) * inner_lr)
+            for p in model.parameters()
+        ])
+</new>
+</edit>
+<obs>
+Successfully replaced text in learn2learn/custom_maml.py.
+</obs>
+<note>
+[[FILL_NOTE?: optional one-line thought for this edit, or delete this block]]
+</note>
+<edit path="learn2learn/custom_maml.py">
+<old>
+            )
+            model = l2l.algorithms.maml.maml_update(
+                model, lr=self.inner_lr, grads=grads
+            )
+        return model
+
+    def meta_parameters(self) -> List[Tensor]:
+        return []
+</old>
+<new>
+            )
+            updates = [-lr * g for g, lr in zip(grads, self.lrs)]
+            l2l.update_module(model, updates=updates)
+        return model
+
+    def meta_parameters(self) -> List[Tensor]:
+        return list(self.lrs.parameters())
+</new>
+</edit>
+<obs>
+Successfully replaced text in learn2learn/custom_maml.py.
+</obs>
+<run/>
+<obs>
+Measured results — `baseline:meta_sgd` (`is_final,true`), seeds {42, 123, 456} and mean. Metric is
+mean classification accuracy over 600 test episodes (higher is better).
+
+| seed | miniImageNet 1-shot | miniImageNet 5-shot | CIFAR-FS 5-shot |
+|---|---|---|---|
+| 42 | 0.4693 | 0.6247 | 0.6959 |
+| 123 | 0.4794 | 0.6225 | 0.6726 |
+| 456 | 0.4793 | 0.6240 | 0.6971 |
+| **mean** | **0.4760** | **0.6237** | **0.6885** |
+| std | 0.0047 | 0.0009 | 0.0113 |
+</obs>
+
+### step 3 — ANIL (head-only inner loop, frozen body)   [slug:anil]
+
+<think>
+[[POLISH_REASONING: adapt to first-person agentic voice, end by deciding to implement]]
+Meta-SGD's numbers split exactly along the seam I flagged, and the split is the whole argument for the
+next move. At 1-shot the learned per-parameter rate did what I predicted: mean 0.4760 against MAML's
+0.4365 — a clear lift — and, more telling, the seed spread collapsed from std 0.0147 to 0.0047, the
+three seeds bunching at {0.4693, 0.4794, 0.4793}. So the diagnosis was right: 1-shot's fragility was a
+single-shared-rate problem, and giving each coordinate its own learnable rate removed the knife-edge.
+But read the 5-shot columns and the other half of my worry landed too. miniImageNet 5-shot *slipped*,
+0.6237 against MAML's 0.6379, and CIFAR-FS 5-shot slipped further, 0.6885 against 0.7067 — and CIFAR's
+seed spread actually widened (std 0.0113, seed 123 sagging to 0.6726). So adding a per-parameter rate
+helped exactly where the support set was thin and hurt where it was not. That is the signature of
+*meta-overfitting*: with five examples per class the rigid scalar step was already near the ceiling, so
+the extra hundred-thousand meta-parameters of $\alpha$ had little left to fix and instead tuned
+themselves to the meta-training episodes in a way that did not transfer. The lesson is sharp: I have
+been adding *capacity to the step* — first a scalar, then a per-coordinate vector — and at 5-shot the
+ceiling is not the step's expressiveness at all. So I should stop pouring capacity into *how* the step
+moves and ask a different question entirely: *which* parameters should the inner loop move at all?
+
+Here is what actually nags me about both rungs so far, and it is the same complaint from two sides.
+The cost: the inner loop runs per task, inside every one of 60,000 meta-iterations, over every single
+parameter of CNN4 — all four conv blocks plus BatchNorm plus the head — and because the adapted
+parameters depend on $\theta$ both directly and through the inner gradient, differentiating the
+meta-loss drags in the second-order term $(I-\alpha\nabla_\theta^2\mathcal{L}^{\text{sup}})^\top
+\nabla_{\theta'}\mathcal{L}^{\text{qry}}$, a Hessian-vector product over the *whole* network, one extra
+backward pass per task. Meta-SGD made this *worse*, not better — it added $\alpha$ to the meta-graph
+and a per-parameter rate to differentiate through. The opacity: I cannot actually say what that
+full-network inner loop is *for*. Two stories, and I do not know which is true. Story one, rapid
+learning: the meta-initialization is a cleverly conditioned launch point, and the few inner steps make
+big, efficient changes to the network's internal representations, genuinely re-learning each task.
+Story two, feature reuse: the meta-initialization already holds good, general conv features, and the
+inner loop barely moves them — adaptation is almost a no-op on most of the network. These predict
+completely different things about where the work happens, and Meta-SGD's 5-shot regression is a hint:
+if the body were doing heavy per-task re-learning, a richer step should have helped at 5-shot too; that
+it hurt suggests the body's adaptation was never the point.
+
+Before I try to make the inner loop cheaper, I have to settle which story is true, because the answer
+dictates what I am even allowed to cut. And the first thing to get straight is that CNN4 is not
+homogeneous — there is a sharp structural difference between the head and everything before it, and it
+matters here more than anywhere. Think about a five-way episode. The five output neurons get mapped to
+an arbitrary, task-specific set of classes; in one task the five outputs mean (dog, cat, frog,
+cupcake, phone), in the next, drawn from the same held-out pool, (airplane, frog, boat, car, pumpkin).
+There is no fixed last layer that can be right for both at once — the assignment from feature space to
+*these particular five output slots* is a fresh, essentially random relabeling per task. So the head
+*must* be free to move per task no matter which story is true; that is forced by the problem. The conv
+blocks compute class-agnostic features — edges, textures, parts — and those *could* be shared across
+tasks without moving. So the rapid-learning-versus-feature-reuse question is not really about the head
+at all; the head trivially must adapt. The whole question lives in the body: does the inner loop
+substantively change the body's representations per task, or leave them essentially fixed?
+
+How would I tell? Two ways. The blunt one: freeze a contiguous block of body layers at test time —
+give them no inner update, force them to reuse the meta-initialization's features — and read off
+accuracy. If rapid learning is the story, freezing should hurt; if feature reuse, it should barely
+matter. The documented result on exactly this MAML/MiniImageNet setup is unambiguous: freezing layer 1
+leaves 5-way-1-shot at 46.5 against 46.9 unfrozen; freezing layers 1–2, 46.4; 1–3, 46.3; freezing
+*all four* conv layers, everything but the head, 46.3 ± 0.4; on 5-shot it slips only from 63.1 to 61.0.
+Removing the inner-loop adaptation of the entire body costs essentially nothing. That tilts me hard
+toward feature reuse, but freezing is indirect. The sharper measurement compares the body's
+representation before and after the inner loop directly — CCA/CKA of a layer's activations pre versus
+post adaptation, 1 for identical functions. The established picture: the body conv layers sit at CCA
+above 0.9, CKA near 1 — the inner loop induces almost no functional change in the body — while the head
+sits below 0.5, moving a lot, as it must. The Euclidean weight movement says the same even more
+starkly: the average distance between initialization and finetuned weights is tiny for every layer
+except the last, *even though the body layers have far more parameters than the head*. More
+parameters, less movement. And this is not a quirk of the converged model — the pattern holds from
+ten thousand iterations in. Feature reuse, not rapid learning. The body's good features come from the
+*outer* loop accumulating across tasks; the inner loop, on the body, is along for the ride. This also
+retro-explains Meta-SGD: a learned per-coordinate rate on body parameters that should barely move can
+only meta-overfit, which is exactly the 5-shot regression I just saw.
+
+If the inner loop leaves the body's function essentially unchanged, then computing inner-loop updates
+for the body is computing a correction that rounds to zero and then paying full second-order price to
+backpropagate through it. The freezing experiment already showed I can drop body adaptation at *test*
+time with no accuracy loss. The obvious next thought: why run it at *training* time either? I have to
+be careful — freezing-at-test and not-adapting-at-train are different interventions. At test, freezing
+the body of an already-trained model just says "do not bother adapting features that will not move." At
+training, if I stop adapting the body in the inner loop, I change the *meta-objective* — the body
+parameters are now learned purely by the outer loop, never task-adapted. Would the body still learn
+good features that way? The timing result reassures me: the high body-similarity and freezing-robustness
+are present from ten thousand iterations in, so the inner loop is inert on the body *throughout*
+training, not just at the end. If it is not doing anything to the body during training, removing it
+during training should not change what the body learns. So I can cut the body's inner loop at *both*
+training and testing, and almost no inner loop survives — only the head, which genuinely has to adapt
+for the per-task class alignment.
+
+Write the rule. Partition $\theta = (\theta_1,\dots,\theta_l)$, body $\theta_1,\dots,\theta_{l-1}$ and
+head $\theta_l$. The inner loop updates only the head: $\theta_l$ descends the support loss at
+$\alpha$, the body components are pinned at the meta-initialization across all inner steps. The outer
+loop is untouched — same meta-loss, the query loss at the adapted parameters summed over the four-task
+meta-batch — and the body parameters are still *learned*, just only by the outer loop now. That is the
+whole move: keep the head's inner loop, delete the body's, train and test alike.
+
+Have I just reinvented first-order MAML? No, and the distinction is load-bearing, because it is why I
+expect this to *match* MAML's accuracy rather than lag it like a first-order approximation would.
+First-order MAML keeps the full inner loop (adapts every parameter) but *drops the Hessian*. I am doing
+the opposite axis: I keep the second-order machinery and shrink *which* parameters get an inner loop
+down to the head. Take the smallest example with a body and a head, a two-layer net $\hat y =
+\theta_2(\theta_1 x)$, one inner step. In my rule the body does not move, so the adapted prediction at
+the query point is $[\theta_2 - \partial\mathcal{L}^{\text{sup}}/\partial\theta_2]\cdot\theta_1\cdot
+x_2$. The *second* bracket collapsed to a bare $\theta_1$ — the body not adapting. But the *first*
+bracket is still there and still contains $\theta_1$, because the head's inner-loop gradient
+$\partial\mathcal{L}^{\text{sup}}/\partial\theta_2$ was computed on a forward pass through the body
+$\theta_1$. So when I differentiate the query loss with respect to the body $\theta_1$, I still
+differentiate *through* that head update, and a second-order term survives. Removing the body's inner
+loop does *not* make this first-order — the curvature that flows through the *head's* inner step is
+retained. That is exactly why I expect ANIL to match full MAML where first-order MAML sometimes lags: I
+kept the part of the second-order information attached to the only thing still adapting.
+
+Now ground it in *this task's* edit surface, because the implementation has a sharp gotcha and the
+harness primitive forces a specific shape. The differentiable update I have is `l2l.update_module(model,
+updates=[...])`, which wants a full-length list — one update per parameter, in order — and swaps each
+$p$ for $p+u$. So I compute the support cross-entropy, take `torch.autograd.grad` with respect to *only
+the head parameters* with `create_graph=True` (keeping the surviving second-order term), and build the
+updates list with $-\alpha g$ for each head parameter and `torch.zeros_like(p)` for every body
+parameter. The gotcha: `update_module` does *not* mutate in place — it *replaces* the parameter objects
+with fresh tensors ($p+u$) every step. So if I grab references to the head parameters once before the
+loop, after the first step those references are stale, my gradient is taken with respect to detached
+tensors, and every subsequent update silently comes out zero — the method looks like it is running
+while doing nothing. So I re-identify the head parameters by name *inside* each inner step, from the
+current module: I record the head parameter *names* once in `__init__` (names are stable across the
+object swaps even though the tensors are not — I scan `named_parameters` for the ones containing
+"classifier"), and inside each step I re-collect the current parameter objects matching those names,
+build an id-set, and route updates by id. The rule carries no learnable optimizer state of its own —
+unlike Meta-SGD I add no meta-parameters — so `meta_parameters()` returns `[]`, and the only things the
+outer Adam optimizes are the model's own weights. The full scaffold module is in the answer.
+
+So the delta from step 2 is a change of axis, not of capacity: Meta-SGD added a learnable
+per-parameter rate over *all* parameters and meta-overfit at 5-shot; ANIL instead freezes the body's
+inner loop entirely and adapts only the head, with no extra meta-parameters and a fraction of the
+per-task cost (at evaluation the body is a single forward pass and only the tiny linear head iterates
+its ten steps). Reading Meta-SGD's shape, the falsifiable claims are pointed at the two places it
+failed. At **5-shot** ANIL should *recover* what Meta-SGD lost and likely edge past MAML, because the
+meta-overfitting was caused by adapting body parameters that should not move — freeze them and the
+regression should reverse: miniImageNet 5-shot back above 0.6379 and CIFAR-FS 5-shot back toward or
+past 0.7067, with CIFAR's seed spread tightening from Meta-SGD's 0.0113. At **1-shot** ANIL should at
+least hold Meta-SGD's 0.4760 — the head still gets a genuine, second-order-aware inner loop, which is
+the part that fixed 1-shot in the first place — and may improve on it, since head-only adaptation from
+a single example is far less prone to the instability that forced MAML's tiny rate. If instead 1-shot
+were to drop, that would falsify the feature-reuse story for the thin-support regime and say the body's
+inner loop was load-bearing at 1-shot after all. The bet is the opposite: feature reuse is the whole
+game, the body's inner loop was always along for the ride, and removing it fixes 5-shot while holding
+1-shot — which would make ANIL the strongest rung on every benchmark at the lowest cost.
+</think>
+<say>
+[[FILL_SAY: 1-2 sentences naming the method and what this first edit does]]
+</say>
+<edit path="learn2learn/custom_maml.py">
+<old>
+# EDITABLE region of learn2learn/custom_maml.py (lines 177–254) — step 2: Meta-SGD
+class InnerLoopOptimizer:
+    """Meta-SGD inner-loop optimizer (Li et al., 2017).
+
+    Learns a per-parameter learning rate vector that is meta-optimized
+    by the outer loop. Each model parameter gets a corresponding learnable
+    learning rate tensor of the same shape, initialized to inner_lr.
+    """
+</old>
+<new>
+# EDITABLE region of learn2learn/custom_maml.py (lines 177–254) — step 3: ANIL
+class InnerLoopOptimizer:
+    """ANIL inner-loop optimizer (Raghu et al., 2019).
+
+    Almost No Inner Loop: only adapts the final classification head
+    during inner-loop adaptation. The feature extractor backbone is
+    frozen, relying on feature reuse from the meta-initialization.
+    """
+</new>
+</edit>
+<obs>
+Successfully replaced text in learn2learn/custom_maml.py.
+</obs>
+<note>
+[[FILL_NOTE?: optional one-line thought for this edit, or delete this block]]
+</note>
+<edit path="learn2learn/custom_maml.py">
+<old>
+        self.inner_lr = inner_lr
+        # Create per-parameter learnable learning rates
+        self.lrs = nn.ParameterList([
+            nn.Parameter(torch.ones_like(p) * inner_lr)
+            for p in model.parameters()
+        ])
+</old>
+<new>
+        self.inner_lr = inner_lr
+        # Identify head parameters (the last linear layer: classifier)
+        # CNN4 structure: features (CNN4Backbone) -> classifier (Linear)
+        self._head_param_names = set()
+        for name, _ in model.named_parameters():
+            if "classifier" in name:
+                self._head_param_names.add(name)
+</new>
+</edit>
+<obs>
+Successfully replaced text in learn2learn/custom_maml.py.
+</obs>
+<note>
+[[FILL_NOTE?: optional one-line thought for this edit, or delete this block]]
+</note>
+<edit path="learn2learn/custom_maml.py">
+<old>
+        for _ in range(n_steps):
+            loss = F.cross_entropy(model(support_x), support_y)
+            grads = torch.autograd.grad(
+                loss, model.parameters(), create_graph=True
+            )
+            updates = [-lr * g for g, lr in zip(grads, self.lrs)]
+            l2l.update_module(model, updates=updates)
+</old>
+<new>
+        for _ in range(n_steps):
+            # Re-identify head params each step because l2l.update_module
+            # replaces parameter objects (new ids), so stale references
+            # from a previous step would cause all updates to be zero.
+            head_params = []
+            head_ids = set()
+            for name, p in model.named_parameters():
+                if name in self._head_param_names:
+                    head_params.append(p)
+                    head_ids.add(id(p))
+
+            loss = F.cross_entropy(model(support_x), support_y)
+            grads = torch.autograd.grad(
+                loss, head_params, create_graph=True
+            )
+            grad_map = {id(p): g for p, g in zip(head_params, grads)}
+            updates = [
+                -self.inner_lr * grad_map[id(p)] if id(p) in head_ids
+                else torch.zeros_like(p)
+                for p in model.parameters()
+            ]
+            l2l.update_module(model, updates=updates)
+</new>
+</edit>
+<obs>
+Successfully replaced text in learn2learn/custom_maml.py.
+</obs>
+<note>
+[[FILL_NOTE?: optional one-line thought for this edit, or delete this block]]
+</note>
+<edit path="learn2learn/custom_maml.py">
+<old>
+    def meta_parameters(self) -> List[Tensor]:
+        return list(self.lrs.parameters())
+</old>
+<new>
+    def meta_parameters(self) -> List[Tensor]:
+        return []
+</new>
+</edit>
+<obs>
+Successfully replaced text in learn2learn/custom_maml.py.
+</obs>
+<run/>
+<obs>
+Measured results — `baseline:anil` (`is_final,true`), seeds {42, 123, 456} and mean. Metric is mean
+classification accuracy over 600 test episodes (higher is better).
+
+| seed | miniImageNet 1-shot | miniImageNet 5-shot | CIFAR-FS 5-shot |
+|---|---|---|---|
+| 42 | 0.4814 | 0.6208 | 0.7099 |
+| 123 | 0.4852 | 0.6453 | 0.7184 |
+| 456 | 0.4780 | 0.6436 | 0.7131 |
+| **mean** | **0.4815** | **0.6366** | **0.7138** |
+| std | 0.0029 | 0.0112 | 0.0035 |
+</obs>
+
+### step 4 — Meta-Curvature (learned Kronecker-factored gradient preconditioner)   [slug:meta-curvature]
+
+<think>
+[[POLISH_REASONING: adapt to first-person agentic voice, end by deciding to implement]]
+ANIL's numbers close one axis and, by closing it, point straight at the one I have not touched. The bet
+paid off exactly as I framed it. At 5-shot ANIL recovered everything Meta-SGD lost and then some:
+miniImageNet 5-shot back to 0.6366 (Meta-SGD had sagged to 0.6237) and CIFAR-FS 5-shot up to 0.7138 —
+past MAML's 0.7067 and the best 5-shot CIFAR number on the ladder — with the seed spread that Meta-SGD
+had widened (std 0.0113 on CIFAR) tightening back to 0.0035. So freezing the body did reverse the
+meta-overfitting, confirming feature reuse was the whole story at 5-shot. And at 1-shot ANIL did not
+just hold Meta-SGD's gain, it improved on it: 0.4815 against 0.4760, the tightest 1-shot spread yet
+(std 0.0029, seeds {0.4814, 0.4852, 0.4780}). So ANIL is the strongest rung on every benchmark. That is
+the good news and also the problem: I have now optimized two of the three axes of the inner loop. MAML
+learned *where to start*. Meta-SGD learned a per-coordinate *rate*. ANIL settled *which parameters*
+adapt — the head, not the body. What I have *not* learned, on any rung, is the *direction*: every method
+so far steps along the raw gradient (Meta-SGD only rescales it coordinate-by-coordinate, which is a
+diagonal tilt at best). The inner step is still, geometrically, "follow the gradient." That is the axis
+left on the table, and it is exactly where ill-conditioning lives.
+
+Let me look hard at what the surviving inner loop actually does, because ANIL sharpened the question
+rather than answering it. ANIL freezes the body and adapts only the head — a single linear classifier
+mapping the 1600-dim frozen feature to five logits — by plain SGD, ten steps at evaluation. So the entire
+adaptation, at test time, is *gradient descent on a five-way logistic regression over a fixed
+1600-dimensional feature*. And that is precisely the setting where the *direction* of the step matters
+most, because the conditioning of that little problem is set by the feature covariance, which I do not
+control and which is generally far from isotropic: some feature directions are high-variance and
+correlated across the 1600 inputs, others are nearly dead. Plain SGD on an ill-conditioned logistic
+regression zig-zags — it moves fast along the cheap directions and crawls along the informative ones —
+and ten steps from a single example per class is not many steps to waste on a zig-zag. ANIL's own
+gain came from *removing* the body's pointless inner loop; what remains is a head whose inner loop is
+still geometrically naive. So the next move is not another axis of *what* to adapt — it is to fix *how*
+the surviving inner step moves: precondition the gradient so the step points down the valley instead of
+across it.
+
+What does "precondition" mean concretely, and where does the preconditioner come from? The classical
+answer is second-order: Newton steps `θ − α H^{-1} ∇L`, rescaling the gradient by the inverse loss
+Hessian; natural gradient steps `θ − α F^{-1} ∇L`, rescaling by the inverse Fisher. Both turn the
+zig-zag into a straight shot. But I cannot lift them in unchanged, and the reason is the same few-shot
+pathology that has shaped every rung: Newton and natural gradient *compute* `H` or `F` from the current
+task's data — and the current task is one or five examples. A curvature estimated from five points is the
+curvature of *the support set*, and stepping "as far as possible" along it is stepping as far as possible
+to fit five points, which is exactly how I overfit. I saw this already in another guise: Meta-SGD's extra
+capacity, tuned to the support, meta-overfit at 5-shot. So I must *not* compute the preconditioner from
+the task's loss. But the meta-learning frame gives me the escape it always has — the task *distribution*.
+If a shared *initialization* transfers across tasks (it does — that is MAML), and a shared per-coordinate
+*rate* transfers (it does — that is Meta-SGD), then a shared *preconditioner matrix* should transfer too.
+So I learn the preconditioner `M` across tasks, jointly with θ, by the same meta-objective: not "fit the
+support faster" but "transform the inner gradient so the *post-adaptation query* loss generalizes." `M`
+becomes a meta-parameter, trained for held-out performance, not estimated from data. That is the move
+that distinguishes this from naively dropping a Hessian into the head's inner loop — which would estimate
+curvature from five points and overfit the same way Meta-SGD did.
+
+Now the affordability problem, which is where this has to be made concrete against the harness. A full
+preconditioner `M` is `dim(θ) × dim(θ)`. Even restricted to the head, that is `(5·1600)² ≈ 6.4×10^7`
+numbers — and the harness budget caps the optimizer's learnable state at roughly the model size (it is
+sized for Meta-SGD's one-scalar-per-parameter footprint, times 1.2). A full matrix is out, for the same
+reason it was out everywhere. The structural observation that breaks it open is that a layer's parameters
+are not a flat vector — they are a *tensor*. A conv weight is `R^{C_out × C_in × d}` (output channels,
+input channels, filter size `d = h·w`), the head is the `d = 1` case `R^{C_out × C_in}`, and the gradient
+has the same shape. The natural dependencies run along the three modes *separately*: among the `d`
+elements within a filter, among the `C_in` input channels, among the `C_out` output channels. So instead
+of one giant matrix mixing all `C_out·C_in·d` coordinates, factor the transform into three small matrices
+per layer — `M_f ∈ R^{d×d}`, `M_i ∈ R^{C_in×C_in}`, `M_o ∈ R^{C_out×C_out}` — and apply each along its
+own axis with an `n`-mode product. The transformed gradient is `MC(G) = G ×_3 M_f ×_2 M_i ×_1 M_o`. Read
+each factor: `×_3 M_f` linearly recombines the elements within each filter (spatial structure of a
+kernel); `×_2 M_i` recombines across input channels; `×_1 M_o` recombines across output channels (each
+filter's gradient becomes a combination of all filters'). Composed, the three examine the dependencies of
+*all* the layer's gradient coordinates — but parameterized by `d² + C_in² + C_out²` numbers instead of
+`(C_out C_in d)²`. As a single never-materialized matrix this is the Kronecker product `M_o ⊗ M_i ⊗ M_f`,
+the same structure K-FAC uses for the Fisher (`A ⊗ G`); the decisive difference is that K-FAC computes
+its factors from training-loss statistics and inverts them, whereas I *learn* mine for generalization and
+never invert anything.
+
+This is strictly richer than every rung so far, and the special cases make that precise. If every `M` is
+the *identity*, then `MC(G) = G` and the inner step is `θ − α ∇L` — exactly MAML. If every `M` is
+*diagonal*, the transform is a per-coordinate rescaling — exactly Meta-SGD. The full Kronecker-factored
+`M` keeps the *off-diagonal* coordinate dependencies a diagonal throws away: it can combine the gradient
+on one input channel with another's, which is precisely the off-valley correction plain SGD (and even
+Meta-SGD's diagonal) cannot make. So initializing all factors to identity starts the method as MAML and
+lets meta-training deform them away as it discovers which coordinate recombinations help the
+post-adaptation query loss — the same "start from behavior I trust" principle that made me initialize
+Meta-SGD's rates uniformly. And I should expect this to *generalize* rather than just fit faster, for a
+reason I can read off the meta-gradient: the gradient of the meta-loss with respect to a flattened `M`
+(inner step `θ^τ = θ − α M ∇L_train`) is `−α ∇_θ L_val(θ^τ) · ∇_θ L_train(θ)^⊤`, an outer product that
+*resembles* the empirical Fisher but differs in three features that all favor generalization — it uses
+*separate* train and validation sets (the validation set never enters a within-task Fisher), it evaluates
+the validation gradient at the *post-adaptation* parameters, and it does not force `M` positive-definite
+(I let it be indefinite, trading the descent guarantee for the freedom to transform the gradient however
+most helps held-out points).
+
+Now ground it in *this task's* edit surface and budget, because the harness forces two concrete
+decisions and the budget forces a third. The contract is `__init__` (create learnable factors), `adapt`
+(differentiable inner step), `meta_parameters` (hand factors to the outer Adam). In `__init__` I attach,
+per model parameter, the three factor matrices sized to its modes, all identity-initialized: a 4D conv
+weight `[C_out, C_in, kh, kw]` folds its spatial dims into `d = kh·kw`; the 2D head is the `d = 1` case;
+1D bias and BatchNorm parameters carry only the output-mode `M_o`. The inner step computes the support
+cross-entropy, takes `torch.autograd.grad` over the parameters with the graph kept, transforms each
+gradient by its factors via the three `n`-mode products (plain `einsum` matrix multiplies along each
+axis), and applies the differentiable update `p ← p − α MC(g)` by re-routing parameter tensors so the
+outer loop can backprop into both θ and the factors; `meta_parameters()` returns all the factors. This is
+the literal generalization of the earlier rungs' edits: where MAML used a scalar in `maml_update` and
+Meta-SGD used a per-parameter vector in `update_module`, I use a per-parameter *transform* and the same
+differentiable re-route.
+
+The budget forces the one deviation from the textbook transform, and it is the right one. The factors are
+tiny everywhere the input dimension is small — every conv layer has `C_in ≤ 64`, so `M_i` is at most
+`64×64`, and the full Kronecker curvature is essentially free there. The single oversized factor is the
+head's input mode: `C_in = 1600` makes a dense `M_i` a `1600×1600 = 2.56M`-parameter matrix, twenty
+times the whole model, which blows the budget by itself. This is exactly the cost my factorization was
+meant to *avoid* in the first place — splitting the input and filter modes into separate small factors
+precisely so as not to carry a single large `C_in·d` block. So for any mode larger than a threshold I degrade its
+factor to a *diagonal* — a per-element rate over that mode, Meta-SGD's footprint — while keeping the dense
+factors on every affordable mode. Concretely the head keeps a dense `5×5` output-mode `M_o` (it can
+freely recombine the five class-logit gradients, which is the cheap and meaningful part for a five-way
+head) and a diagonal input-mode rate over the 1600 features. With that, the total optimizer state lands at
+~80K against a model of ~121K, comfortably inside the ~291K budget — full structured curvature where it
+is affordable, a diagonal fallback only on the one mode that cannot be afforded. The factors still
+initialize to identity (diagonal factors to ones), so the method still begins as MAML. The full scaffold
+module is in the answer.
+
+So the delta from ANIL is the axis ANIL left untouched: ANIL fixed *which* parameters adapt and left the
+surviving head's step as plain gradient descent; meta-curvature fixes *how* that step moves by
+preconditioning the gradient with a learned, Kronecker-factored, generalization-trained curvature —
+applied across all layers, not only the head, so the body's outer-loop-learned features are themselves
+shaped by a better-conditioned meta-objective. The bar this must clear is ANIL's real numbers, and the
+falsifiable claims are pointed at the regime where the *direction* of the step should matter most. At
+**1-shot** — the hardest, most ill-conditioned setting, where ten steps from a single example per class
+are most wasted on a zig-zag — meta-curvature should clear ANIL's 0.4815: a preconditioned step that
+points down the valley should extract more from those ten steps than plain SGD, so I expect 1-shot to be
+the largest gain, and I would treat *failure* to beat 0.4815 at 1-shot as the method's central claim
+falsified. At **5-shot** I expect to at least match ANIL's strong 0.6366 (miniImageNet) and 0.7138
+(CIFAR-FS) and likely edge past, since the structured curvature is a strict superset of both the identity
+(MAML) and diagonal (Meta-SGD) steps and is meta-trained for generalization rather than support-fitting —
+though the risk I will watch is meta-overfitting from the larger factor count, the same failure that bit
+Meta-SGD at 5-shot, which the identity initialization and the diagonal fallback on the oversized head mode
+are meant to contain. This task's leaderboard has no meta-curvature row to confirm it; what the trajectory
+ends on is the construction that, having exhausted *where to start*, *how far per coordinate*, and *which
+parameters*, finally learns *which direction* — the structured, generalization-oriented preconditioner of
+the inner gradient that captures the coordinate dependencies every earlier rung's diagonal-or-identity
+step could not.
+</think>
+<say>
+[[FILL_SAY: 1-2 sentences naming the method and what this first edit does]]
+</say>
+<edit path="learn2learn/custom_maml.py">
+<old>
+# EDITABLE region of learn2learn/custom_maml.py (lines 177–254) — step 3: ANIL
+class InnerLoopOptimizer:
+    """ANIL inner-loop optimizer (Raghu et al., 2019).
+
+    Almost No Inner Loop: only adapts the final classification head
+    during inner-loop adaptation. The feature extractor backbone is
+    frozen, relying on feature reuse from the meta-initialization.
+    """
+
+    def __init__(self, model: nn.Module, inner_lr: float = INNER_LR):
+        self.inner_lr = inner_lr
+        # Identify head parameters (the last linear layer: classifier)
+        # CNN4 structure: features (CNN4Backbone) -> classifier (Linear)
+        self._head_param_names = set()
+        for name, _ in model.named_parameters():
+            if "classifier" in name:
+                self._head_param_names.add(name)
+</old>
+<new>
+# EDITABLE region of learn2learn/custom_maml.py (lines 177–254) — finale: Meta-Curvature
+class _MetaCurvatureFactor(nn.Module):
+    """Per-parameter Kronecker-factored meta-curvature.
+
+    Conv/linear weight G in R^{C_out x C_in x d} (d = kh*kw for conv, 1 for linear):
+    MC(G) = G x3 M_f x2 M_i x1 M_o, with M_o, M_i, M_f identity-initialized (so the
+    transform starts as the identity and the inner step starts as MAML). A mode
+    larger than MAX_DENSE (the classifier head's C_in=1600) degrades its factor to
+    a diagonal per-element rate to stay inside the parameter budget; 1D params
+    (bias / BatchNorm) carry only the output-mode factor.
+    """
+    MAX_DENSE = 256  # dense factor only for modes up to this size
+
+    def __init__(self, param: Tensor):
+        super().__init__()
+        # build factors on the parameter's device/dtype (the model is on CUDA;
+        # the harness never .to()'s the optimizer, so factors must inherit here).
+        kw = {"device": param.device, "dtype": param.dtype}
+        if param.dim() >= 2:                          # conv [Co,Ci,kh,kw] or linear [Co,Ci]
+            self.c_out, self.c_in = param.shape[0], param.shape[1]
+            self.d = int(param[0, 0].numel()) if param.dim() > 2 else 1
+            self.kind = "tensor"
+            self.dense_o = self.c_out <= self.MAX_DENSE
+            self.dense_i = self.c_in <= self.MAX_DENSE
+            self.M_o = nn.Parameter(torch.eye(self.c_out, **kw) if self.dense_o
+                                    else torch.ones(self.c_out, **kw))
+            self.M_i = nn.Parameter(torch.eye(self.c_in, **kw) if self.dense_i
+                                    else torch.ones(self.c_in, **kw))
+            self.M_f = nn.Parameter(torch.eye(self.d, **kw))
+        else:                                         # bias / BatchNorm: output mode only
+            self.kind = "vector"
+            self.c_out = param.shape[0]
+            self.dense_o = self.c_out <= self.MAX_DENSE
+            self.M_o = nn.Parameter(torch.eye(self.c_out, **kw) if self.dense_o
+                                    else torch.ones(self.c_out, **kw))
+
+    def transform(self, g: Tensor) -> Tensor:
+        if self.kind == "vector":
+            return (self.M_o @ g) if self.dense_o else (self.M_o * g)
+        G = g.reshape(self.c_out, self.c_in, self.d)
+        G = torch.einsum("oid,fd->oif", G, self.M_f)                       # x3 M_f (filter)
+        G = (torch.einsum("oid,ji->ojd", G, self.M_i) if self.dense_i      # x2 M_i (input)
+             else G * self.M_i.view(1, self.c_in, 1))
+        G = (torch.einsum("oid,jo->jid", G, self.M_o) if self.dense_o      # x1 M_o (output)
+             else G * self.M_o.view(self.c_out, 1, 1))
+        return G.reshape(g.shape)
+
+
+class InnerLoopOptimizer(nn.Module):
+    """MAML inner loop with a learned Kronecker-factored gradient preconditioner
+    (Meta-Curvature, Park & Oliva 2019). Identity init => MAML; diagonal => Meta-SGD."""
+
+    def __init__(self, model: nn.Module, inner_lr: float = INNER_LR):
+        super().__init__()
+        self.inner_lr = inner_lr
+        self.mc = nn.ModuleList([_MetaCurvatureFactor(p) for p in model.parameters()])
+</new>
+</edit>
+<obs>
+Successfully replaced text in learn2learn/custom_maml.py.
+</obs>
+<note>
+[[FILL_NOTE?: optional one-line thought for this edit, or delete this block]]
+</note>
+<edit path="learn2learn/custom_maml.py">
+<old>
+        for _ in range(n_steps):
+            # Re-identify head params each step because l2l.update_module
+            # replaces parameter objects (new ids), so stale references
+            # from a previous step would cause all updates to be zero.
+            head_params = []
+            head_ids = set()
+            for name, p in model.named_parameters():
+                if name in self._head_param_names:
+                    head_params.append(p)
+                    head_ids.add(id(p))
+
+            loss = F.cross_entropy(model(support_x), support_y)
+            grads = torch.autograd.grad(
+                loss, head_params, create_graph=True
+            )
+            grad_map = {id(p): g for p, g in zip(head_params, grads)}
+            updates = [
+                -self.inner_lr * grad_map[id(p)] if id(p) in head_ids
+                else torch.zeros_like(p)
+                for p in model.parameters()
+            ]
+            l2l.update_module(model, updates=updates)
+        return model
+
+    def meta_parameters(self) -> List[Tensor]:
+        return []
+</old>
+<new>
+        for _ in range(n_steps):
+            loss = F.cross_entropy(model(support_x), support_y)
+            grads = torch.autograd.grad(
+                loss, model.parameters(), create_graph=True
+            )
+            updates = [-self.inner_lr * mc.transform(g)
+                       for mc, g in zip(self.mc, grads)]
+            model = self._apply_update(model, updates)
+        return model
+
+    def _apply_update(self, model: nn.Module, updates: List[Tensor]) -> nn.Module:
+        # differentiable p <- p + u; re-route parameter tensors so the outer loop
+        # backprops into BOTH the initialization theta AND the meta-curvature factors.
+        for p, u in zip(model.parameters(), updates):
+            p.update = u
+
+        def reroute(module: nn.Module) -> nn.Module:
+            for name in module._parameters:
+                p = module._parameters[name]
+                if p is not None and getattr(p, "update", None) is not None:
+                    module._parameters[name] = p + p.update
+                    p.update = None
+            for name in module._modules:
+                module._modules[name] = reroute(module._modules[name])
+            return module
+
+        return reroute(model)
+
+    def meta_parameters(self) -> List[Tensor]:
+        return list(self.mc.parameters())
+</new>
+</edit>
+<obs>
+Successfully replaced text in learn2learn/custom_maml.py.
+</obs>
+

@@ -1,0 +1,1317 @@
+<meta task="llm-kv-adaptive-quantization" domain="Language models" file="transformers-kv-lab/custom_quant_eval.py" model_format="qwen3" edit_tool="str_replace"/>
+
+<system>
+You are a research engineer improving a model on a fixed ML task. You work by editing the model code and running experiments. Think carefully before each change. You have these tools:
+- str_replace(path, old_str, new_str): replace the unique occurrence of old_str with new_str.
+- create(path, file_text): create a new file.
+- run_experiment(): train + evaluate the current code under the fixed budget; returns metrics.
+Make one tool call at a time. After editing, call run_experiment() to measure your method.
+</system>
+
+<user>
+## Research question
+
+Decoder-only LLM inference is bottlenecked, in the long-context large-batch regime, by the
+key/value cache rather than the weights: every past token leaves a key vector and a value vector in
+every layer, the cache grows linearly in batch times sequence length, and each decode step streams
+the whole thing out of HBM while the compute cores idle. The one lever that shrinks bytes-per-element
+without dropping tokens or retraining is **quantization** of the running K/V tensors. The single
+thing being designed here is the **quantization policy** — the bit allocation, the grouping axis, the
+asymmetric ranges and zero-points, the full-precision residual window, and the optional prefill-time
+observation — that preserves benchmark output quality while reducing the effective KV footprint.
+Everything else (the model, the decode replay loop, the workloads, the scoring) is fixed.
+
+## Prior art before the first rung
+
+The cache is a *streaming* object: keys and values arrive one token at a time during decode and get
+appended to a tensor whose length keeps growing. That single fact forecloses most of the
+quantization literature and sets up the family the first rung reacts to.
+
+- **Optimization-based PTQ (GPTQ, Frantar et al. 2022; OBQ/OBC, Frantar & Alistarh 2022).** Solve a
+  per-layer reconstruction problem with second-order error feedback — accurate, but they re-solve an
+  optimization over a whole weight matrix. Gap: the cache changes every decode step, so re-fitting
+  anything per step is hopeless; only a cheap, local primitive survives.
+- **Group-wise round-to-nearest (FlexGen, Sheng et al. 2023).** The streaming-feasible primitive:
+  per group take min/max, set zero-point `z = min`, scale `s = (max − min)/(2^B − 1)`, round
+  `(x − z)/s` into `[0, 2^B − 1]`, dequantize `q·s + z`. No calibration, runs on a single token.
+  FlexGen applies it uniformly, per-token, 4-bit. Gap: uniform low-bit RTN is fine at 4-bit and falls
+  off a cliff at 2-bit, and it spends bits flat — it has nothing to say about *where* (which axis,
+  which layer) the precision should go.
+- **Outlier-aware quantization (LLM.int8(), Dettmers et al. 2022; SmoothQuant, Xiao et al. 2023).**
+  Transformer activations carry persistent large-magnitude channels; the key cache `X·W_K` inherits
+  them, the value cache does not. Gap: the diagnosis is about *which axis* confines outlier error,
+  not yet a streaming cache policy.
+
+The four baselines below are quantization policies on a *common tensor-level interface*; the
+contribution is always the policy, never a backend or a paper repository.
+
+## The fixed substrate
+
+A deterministic greedy-decode replay harness over Hugging Face `Transformers` is frozen and must not
+be touched. It loads `Qwen/Qwen2.5-3B-Instruct` (36 layers), runs the benchmark prompts, and at each
+decode step after prefill it **snapshots the real KV tensors, hands them to the editable quantizer,
+restores the quantized cache, and advances generation**. Prefill itself is lossless — the exact
+prompt K/V flow forward; only the cached copy is quantized. The harness owns: dataset loading
+(LongBench-E, NeedleBench/NIAH, GSM8K), prompt templates, generation limits, the parser, the score
+definitions, and a 4096-token reference-span efficiency accountant (`estimate_policy_efficiency`).
+It also exposes, for a policy that wants prefill statistics, a query-observer hook that captures
+post-RoPE query states per layer.
+
+## The editable interface
+
+Exactly one region is editable — the `AdaptiveKVQuantizer` class in `custom_quant_eval.py` (lines
+41–172). Every method on the ladder is a fill of this same contract. The harness calls, per example:
+`reset_request(request_meta, budget_state)`; then `needs_prefill_qkv_observer() -> bool` and (if true)
+`observe_prefill_qkv(layer_id, query_states, key_states, value_states, attention_meta)` with
+`query_observation_position() -> str` selecting pre/post-RoPE; then per decode step, per layer,
+`quantize_key(layer_id, key_states, cache_meta) -> tensor | (tensor, avg_bits)` and
+`quantize_value(...)`; and for the hardware-independent footprint,
+`estimate_bits(layer_id, kv_kind, seq_len, head_dim, cache_meta) -> float`. `key_states` and
+`value_states` have shape `[batch, heads, seq_len, head_dim]`, and a `quantize_*` return **must be a
+tensor of the identical shape** (it is fake-quant: quantize-then-dequantize back to the model's
+dtype). There is no algorithm enum and no backend selector — grouping, asymmetric ranges,
+zero-points, per-layer presets, residual retention, and memory accounting all live inside this class.
+
+The starting point is the scaffold default: a single global 4-bit policy, key per-channel, value
+per-token, group size 32, a tail residual window. Each baseline replaces this class wholesale.
+
+```python
+# EDITABLE region of custom_quant_eval.py (lines 41-172) -- default fill
+class AdaptiveKVQuantizer:
+    """Editable KV-cache quantizer. The fixed harness supplies real key/value
+    tensors and calls this class for the actual tensor algorithm."""
+
+    def __init__(self):
+        self.bits = 4
+        self.key_group_size = 32
+        self.value_group_size = 32
+        self.key_residual_length = 128
+        self.value_residual_length = 128
+
+    def reset_request(self, request_meta: dict, budget_state: dict):
+        self.bits = min(4, int(budget_state.get("budget_bits", 4)))
+        workload = str(request_meta.get("workload", ""))
+        residual = 128 if workload.startswith("longbench_") else 32
+        self.key_residual_length = residual
+        self.value_residual_length = residual
+
+    def needs_prefill_qkv_observer(self) -> bool:
+        return False                                   # no prefill statistics by default
+
+    def observe_prefill_qkv(self, layer_id, query_states, key_states, value_states, attention_meta):
+        return None
+
+    def query_observation_position(self) -> str:
+        return "post_rope"
+
+    def _residual_keep_length(self, seq_len, residual_length, residual_policy="tail"):
+        residual_length = max(0, min(seq_len, int(residual_length)))
+        if residual_length == 0 or residual_policy in {"none", ""}:
+            return 0
+        if residual_policy == "block_modulo":          # sawtooth: leftover that doesn't fill a block
+            return seq_len % residual_length
+        if residual_policy == "tail":                  # fixed sliding window of recent rows
+            return residual_length
+        raise ValueError(f"Unsupported residual_policy={residual_policy}")
+
+    def _minmax_quantize_last_dim(self, data, bits, group_size):
+        # group-wise asymmetric round-to-nearest over the LAST dim, returned dequantized
+        if data.numel() == 0 or bits >= FP_BITS - 0.5:
+            return data
+        max_int = max(1, int(2 ** int(bits)) - 1)
+        trailing = data.shape[-1]
+        group_size = trailing if int(group_size) <= 0 else int(group_size)
+        padded = math.ceil(trailing / group_size) * group_size
+        work = data
+        if padded != trailing:
+            work = torch.nn.functional.pad(work, (0, padded - trailing))
+        grouped = work.reshape(*work.shape[:-1], padded // group_size, group_size)
+        gmin = grouped.amin(dim=-1, keepdim=True)
+        gmax = grouped.amax(dim=-1, keepdim=True)
+        scale = (gmax - gmin).clamp(min=1e-5) / max_int
+        quant = torch.round((grouped - gmin) / scale).clamp(0, max_int)
+        dequant = quant.mul(scale).add(gmin)
+        return dequant.reshape(*work.shape[:-1], padded)[..., :trailing]
+
+    def _quantize_grouped_minmax(self, layer_tensor, *, axis, bits, group_size,
+                                 residual_length, residual_policy="tail"):
+        work = layer_tensor.float().clone()
+        batch, heads, seq_len, head_dim = work.shape
+        residual = self._residual_keep_length(seq_len, residual_length, residual_policy)
+        quant_end = seq_len - residual
+        if quant_end <= 0 or bits >= FP_BITS - 0.5:
+            return work.to(layer_tensor.dtype), FP_BITS
+        quant_slice = work[:, :, :quant_end, :]
+        if axis == "channel":                          # per-channel: group G TOKENS of a channel
+            quant_len = quant_slice.shape[-2]
+            group_size = quant_len if int(group_size) <= 0 else int(group_size)
+            usable = quant_len - (quant_len % group_size)
+            main = quant_slice[:, :, :usable, :]
+            tail = quant_slice[:, :, usable:, :]
+            if usable > 0:
+                main = main.transpose(2, 3).reshape(batch, heads, head_dim, usable // group_size, group_size)
+                main = self._minmax_quantize_last_dim(main, bits, group_size)
+                work[:, :, :usable, :] = main.reshape(batch, heads, head_dim, usable).transpose(2, 3)
+            if tail.numel() > 0:
+                work[:, :, usable:quant_end, :] = tail
+            fp_tokens = residual + (quant_len - usable)
+            avg_bits = (usable * bits + fp_tokens * FP_BITS) / max(seq_len, 1)
+        else:                                          # per-token: group flattened features per token
+            flat = quant_slice.transpose(1, 2).reshape(batch, quant_slice.shape[-2], heads * head_dim)
+            flat = self._minmax_quantize_last_dim(flat, bits, group_size)
+            work[:, :, :quant_end, :] = flat.reshape(batch, quant_slice.shape[-2], heads, head_dim).transpose(1, 2)
+            avg_bits = (quant_end * bits + residual * FP_BITS) / max(seq_len, 1)
+        return work.to(layer_tensor.dtype), float(avg_bits)
+
+    def quantize_key(self, layer_id, key_states, cache_meta):
+        return self._quantize_grouped_minmax(
+            key_states, axis="channel", bits=self.bits,
+            group_size=self.key_group_size, residual_length=self.key_residual_length,
+            residual_policy="tail")
+
+    def quantize_value(self, layer_id, value_states, cache_meta):
+        return self._quantize_grouped_minmax(
+            value_states, axis="token", bits=self.bits,
+            group_size=self.value_group_size, residual_length=self.value_residual_length,
+            residual_policy="tail")
+
+    def estimate_bits(self, layer_id, kv_kind, seq_len, head_dim, cache_meta):
+        residual = self.key_residual_length if kv_kind == "key" else self.value_residual_length
+        residual = self._residual_keep_length(seq_len, residual, "tail")
+        quant_tokens = max(0, seq_len - residual)
+        return float((quant_tokens * self.bits + residual * FP_BITS) / max(seq_len, 1))
+```
+
+(`FP_BITS = 16` and `math`/`torch` are provided by the surrounding module.)
+
+## Evaluation settings
+
+Five workloads on the shared public text-benchmark protocol, all scored 0–100, single seed `{42}`:
+`longbench_hotpotqa` (LongBench-E `hotpotqa_e`, QA F1), `longbench_passage_retrieval`
+(`passage_retrieval_en_e`, retrieval score), `longbench_repobench` (`repobench-p_e`, code
+similarity), `needlebench_niah` (RULER/NeedleBench-style exact-phrase retrieval over public essay
+text), and `gsm8k` (`openai/gsm8k` main test, exact-answer accuracy after numeric normalization).
+The parser reads, per workload, a `final_score` (quality), an `effective_kv_bits` (the quantizer's
+average bits per cached element), a `kv_compression_ratio` (`16 / effective_kv_bits`, FP16 reference),
+and a diagnostic `runtime_seconds` that does **not** enter the score. Each workload score is a
+weighted mean of quality (weight 6, bounded-power vs the best current baseline) and KV efficiency
+(weight 4, bounded-power on compression ratio with 4× as the reference and 8× as the bound); the task
+score is the geometric mean across the five workloads. `effective_kv_bits` is computed at a fixed
+4096-token reference span, so efficiency is hardware-independent.
+
+The editable model code is in `transformers-kv-lab/custom_quant_eval.py`:
+```python
+class AdaptiveKVQuantizer:
+    """Editable KV-cache quantizer.
+
+    The fixed harness supplies real key/value tensors from a Hugging Face
+    DynamicCache and calls this class for the actual algorithm. Participants
+    may rewrite the quantization math, residual policy, optional prefill
+    observation, and memory accounting here without changing the benchmark
+    datasets, model, or decode loop.
+    """
+
+    def __init__(self):
+        self.bits = 4
+        self.key_group_size = 32
+        self.value_group_size = 32
+        self.key_residual_length = 128
+        self.value_residual_length = 128
+
+    def reset_request(self, request_meta: dict, budget_state: dict):
+        self.bits = min(4, int(budget_state.get("budget_bits", 4)))
+        workload = str(request_meta.get("workload", ""))
+        residual = 128 if workload.startswith("longbench_") else 32
+        self.key_residual_length = residual
+        self.value_residual_length = residual
+
+    def needs_prefill_qkv_observer(self) -> bool:
+        return False
+
+    def observe_prefill_qkv(
+        self,
+        layer_id: int,
+        query_states: torch.Tensor | None,
+        key_states: torch.Tensor | None,
+        value_states: torch.Tensor | None,
+        attention_meta: dict,
+    ) -> None:
+        return None
+
+    def query_observation_position(self) -> str:
+        return "post_rope"
+
+    def _residual_keep_length(self, seq_len: int, residual_length: int, residual_policy: str = "tail") -> int:
+        residual_length = max(0, min(seq_len, int(residual_length)))
+        if residual_length == 0 or residual_policy in {"none", ""}:
+            return 0
+        if residual_policy == "block_modulo":
+            return seq_len % residual_length
+        if residual_policy == "tail":
+            return residual_length
+        raise ValueError(f"Unsupported residual_policy={residual_policy}")
+
+    def _minmax_quantize_last_dim(self, data: torch.Tensor, bits: int, group_size: int) -> torch.Tensor:
+        if data.numel() == 0 or bits >= FP_BITS - 0.5:
+            return data
+        max_int = max(1, int(2**int(bits)) - 1)
+        trailing = data.shape[-1]
+        group_size = trailing if int(group_size) <= 0 else int(group_size)
+        padded = math.ceil(trailing / group_size) * group_size
+        work = data
+        if padded != trailing:
+            work = torch.nn.functional.pad(work, (0, padded - trailing))
+        grouped = work.reshape(*work.shape[:-1], padded // group_size, group_size)
+        gmin = grouped.amin(dim=-1, keepdim=True)
+        gmax = grouped.amax(dim=-1, keepdim=True)
+        scale = (gmax - gmin).clamp(min=1e-5) / max_int
+        quant = torch.round((grouped - gmin) / scale).clamp(0, max_int)
+        dequant = quant.mul(scale).add(gmin)
+        return dequant.reshape(*work.shape[:-1], padded)[..., :trailing]
+
+    def _quantize_grouped_minmax(
+        self,
+        layer_tensor: torch.Tensor,
+        *,
+        axis: str,
+        bits: int,
+        group_size: int,
+        residual_length: int,
+        residual_policy: str = "tail",
+    ) -> tuple[torch.Tensor, float]:
+        work = layer_tensor.float().clone()
+        batch, heads, seq_len, head_dim = work.shape
+        residual = self._residual_keep_length(seq_len, residual_length, residual_policy)
+        quant_end = seq_len - residual
+        if quant_end <= 0 or bits >= FP_BITS - 0.5:
+            return work.to(layer_tensor.dtype), FP_BITS
+
+        quant_slice = work[:, :, :quant_end, :]
+        if axis == "channel":
+            quant_len = quant_slice.shape[-2]
+            group_size = quant_len if int(group_size) <= 0 else int(group_size)
+            usable = quant_len - (quant_len % group_size)
+            main = quant_slice[:, :, :usable, :]
+            tail = quant_slice[:, :, usable:, :]
+            if usable > 0:
+                main = main.transpose(2, 3).reshape(batch, heads, head_dim, usable // group_size, group_size)
+                main = self._minmax_quantize_last_dim(main, bits, group_size)
+                work[:, :, :usable, :] = main.reshape(batch, heads, head_dim, usable).transpose(2, 3)
+            if tail.numel() > 0:
+                work[:, :, usable:quant_end, :] = tail
+            fp_tokens = residual + (quant_len - usable)
+            avg_bits = (usable * bits + fp_tokens * FP_BITS) / max(seq_len, 1)
+        else:
+            flat = quant_slice.transpose(1, 2).reshape(batch, quant_slice.shape[-2], heads * head_dim)
+            flat = self._minmax_quantize_last_dim(flat, bits, group_size)
+            work[:, :, :quant_end, :] = flat.reshape(batch, quant_slice.shape[-2], heads, head_dim).transpose(1, 2)
+            avg_bits = (quant_end * bits + residual * FP_BITS) / max(seq_len, 1)
+        return work.to(layer_tensor.dtype), float(avg_bits)
+
+    def quantize_key(self, layer_id: int, key_states: torch.Tensor, cache_meta: dict) -> tuple[torch.Tensor, float]:
+        return self._quantize_grouped_minmax(
+            key_states,
+            axis="channel",
+            bits=self.bits,
+            group_size=self.key_group_size,
+            residual_length=self.key_residual_length,
+            residual_policy="tail",
+        )
+
+    def quantize_value(self, layer_id: int, value_states: torch.Tensor, cache_meta: dict) -> tuple[torch.Tensor, float]:
+        return self._quantize_grouped_minmax(
+            value_states,
+            axis="token",
+            bits=self.bits,
+            group_size=self.value_group_size,
+            residual_length=self.value_residual_length,
+            residual_policy="tail",
+        )
+
+    def estimate_bits(self, layer_id: int, kv_kind: str, seq_len: int, head_dim: int, cache_meta: dict) -> float:
+        residual = self.key_residual_length if kv_kind == "key" else self.value_residual_length
+        residual = self._residual_keep_length(seq_len, residual, "tail")
+        quant_tokens = max(0, seq_len - residual)
+        return float((quant_tokens * self.bits + residual * FP_BITS) / max(seq_len, 1))
+```
+Improve it. Derive your method, edit the code, then run_experiment().
+</user>
+
+### step 1 — KIVI K4/V4 (uniform 4-bit, key per-channel, value per-token)   [slug:kivi_overlap_4bit]
+
+<think>
+[[POLISH_REASONING: adapt to first-person agentic voice, end by deciding to implement]]
+The policy is the whole point, but it fills a fixed harness, and the harness already pins down most of my choices before I make them — so the place to start is the simplest quantizer that respects what the harness is, and the harness is a *streaming, fake-quant, tensor-level* replay of decode. Let me write down what that means operationally, because each clause kills a family of methods. Streaming: at every decode step a new key row and a new value row are appended to a tensor whose length keeps growing, and I am handed the whole `[batch, heads, seq_len, head_dim]` tensor and asked to return one of the identical shape. So anything that re-solves an optimization over the cache each step — a GPTQ-style per-matrix reconstruction fit — is dead on arrival, because the thing I would be fitting changes every step and I get called once per layer per step. Fake-quant: I do not pack integers or write a fused kernel; I quantize-then-dequantize back to the model dtype, and the harness scores the *quality* of what the model then generates plus an analytic bit count. No-calibration: the visible path quantizes the cached copy while prefill itself stays lossless, so I cannot lean on a calibration pass to set anything. What survives all three is exactly one primitive — group-wise round-to-nearest with a per-group scale and zero-point — and the only freedom I actually have is *where I spend bits*: along which axis I group, how big the group is, and how much of the recent cache I keep exact. That is the design space, and this first rung is the most conservative point in it.
+
+So let me reason out the conservative point from first principles, because even the floor here is a real policy, not an empty fill. Round-to-nearest over a group is: take the group's min and max, set the zero-point `z = min`, the scale `s = (max − min)/(2^B − 1)`, round `(x − z)/s` into `[0, 2^B − 1]`, store the integers, and dequantize as `q·s + z` on the way into attention. The scale tells me the noise floor: dropping a bit roughly doubles `s`, so error grows geometrically in the bit cut, not linearly. The naive plan is FlexGen's — pick a bit width, apply it uniformly per-token to both keys and values — and the well-known fact is that this is essentially free at 4-bit (CoQA, TruthfulQA barely move) and falls off a cliff at 2-bit. Since the floor has to *work* well enough to be a sane starting point rather than a strawman, I will sit at 4-bit, the safe member of the family; the whole point of the ladder above me is to claw back bits without paying the 2-bit collapse, but the floor itself should not collapse. Four bits is fifteen representable codes per group, coarse but survivable.
+
+Now the axis, which is where the real content of even the conservative policy lives, because per-token everywhere is *not* what I want — the two caches are structurally different and want opposite groupings, for two unrelated reasons. Look at what the key cache and the value cache actually are. The key cache is `X·W_K`, an activation, and transformer activations are documented to carry persistent large-magnitude outliers in a small number of *fixed* channels — the same channel is huge for essentially every token, vertical stripes in the magnitude map. The value cache shows no comparable channel-locked structure, just diffuse magnitudes. Now think about what an outlier channel does to per-token grouping: a per-token group is a slice *across channels within one token*, so it contains the outlier channel; that one huge element sets the group max, the scale blows up, and every normal element sharing the group is quantized against a step it does not need. At 4-bit that is merely coarse; at 2-bit it is fatal. The remedy is to group along the *channel* dimension for keys — put each channel's elements (across a window of tokens) in their own group with their own scale — so the outlier channel sits in a group by itself and its huge range is confined there, while the normal channels each get a tight scale. Outlier confinement says: **keys per-channel.** The diagnostics back the reasoning — the key only matters through the attention score `softmax(qK^T)`, and per-channel grouping cuts the attention-score error several-fold versus per-token.
+
+The value cache is where the naive reading trips. It has no channel outliers, so by raw reconstruction error per-channel and per-token are interchangeable for values — and that is exactly the trap. The value never enters attention raw; it enters as the *output* `o = Σ_j a_j v_j`, a weighted sum of value *rows* with the attention weights. So the object I must protect is the mixed output `A·X_V`, not the value entries in isolation, and attention is highly sparse — a query attends strongly to only a handful of tokens, the rest weighted near zero. Per-token value quant gives each token its own scale, so each token's error stays inside its row; the unimportant rows are multiplied by ~0 and contribute nothing, the few important rows are each cleanly quantized. Per-channel value quant groups across tokens within a channel, so the group's scale is set partly by tokens the output never uses, and that error leaks through the shared channel scale into the channel values of the important tokens, where no sparsity suppresses it. Measured on the mixed output the gap is an order of magnitude. Mixer-error confinement says: **values per-token.** Key per-channel, value per-token — asymmetric, for two completely different reasons, and this is the axis recipe even the conservative floor must adopt because per-token keys would simply be worse for free.
+
+Now the streaming wrinkle that forces the residual window, which is the one genuinely non-obvious piece of machinery in this rung. Per-token value quant streams trivially: a fresh value row is a complete group along the channel axis the instant it arrives, quantize and append, the existing rows untouched. Per-channel key quant does *not* stream, because a channel's group runs along the *token* axis — I want, say, 32 tokens of a channel in one group — and tokens arrive one at a time, so I cannot form a complete channel-group until enough tokens have shown up, and the running token count is almost never a clean multiple of 32. So I split the key cache into a *grouped* part whose token count is a whole number of blocks, quantized per-channel, and a *residual* tail of the most recent tokens kept in full precision. With a block length `R` divisible by the group size, the residual is `r = seq_len mod R` — the leftover tokens that have not yet completed a block — and it sawtooths from `0` up to `R−1` and resets to zero whenever `seq_len` hits a multiple of `R`. That is the "block-modulo" rule, and it is exactly what makes per-channel key quant possible in a growing cache: the partial group simply stays exact until it fills. For the value I keep a residual too, but for a different reason and with a different rule — a fixed sliding tail of the last `R` rows, "tail" policy — because the most recent tokens are the locally relevant ones and hard generation (a multi-step arithmetic chain, a code completion) is exactly where a little noise on the immediately preceding K/V derails the next token. The residual does double duty: it makes per-channel key quant streamable *and* protects the local tail, at a vanishing memory cost since `R` is tiny against a long sequence.
+
+Let me pin the constants from the structure rather than by fiat. The group size: smaller groups give tighter ranges and lower error, but each group costs a stored `(min, scale)` pair, so too-small groups drown the savings in metadata; `32` is the natural fine-but-amortizable default the fine-grained KV recipes already live at, and the harness exposes a single `group_size` for both caches here, so `32` it is. The block/residual length `R`: it must be a multiple of the group size so a flushed key block is a whole number of groups, and large enough to protect a meaningful recent window without letting FP memory dominate — `128` (four groups) for the LongBench workloads, `32` for the shorter ones, which is the harness default in `reset_request`. And asymmetric ranges with the zero-point at the group min rather than a symmetric band around zero, because KV distributions are not centered at zero — the keys especially are skewed by their outlier channels — so `[min, max]` uses the whole integer codebook where a symmetric range would waste half of it.
+
+Now I have to be careful, because the *task's* harness is not the generic paper KIVI, and the rung must land the literal edit, not the paper. Two things the harness fixes that the generic derivation would not. First, the residual rules are bound to the *axis* by the edit: the key path runs `block_modulo` (the sawtooth that enables per-channel grouping), the value path runs `tail` (the fixed sliding window), and the single `_residual_keep_length` clamps the requested residual to `[0, min(seq_len, R)]` before applying the policy — so "tail" returns the clamped `R`, and the value's exact-tail length is `min(seq_len, R)`, not an unbounded window. Second, the bit accounting is analytic and lives in `estimate_bits` at the fixed 4096-token reference span, and I must make it report what the fake-quant policy actually spends: a quantized token costs `B` bits per element, an FP residual token costs 16, so the average is `(quant_tokens·B + residual·16)/seq_len`. At 4096 with `R = 128`, the key residual is `4096 mod 128 = 0`, so the key averages exactly 4 bits; the value keeps 128 FP rows, so `(3968·4 + 128·16)/4096 = 4.375` bits; across equal-count key and value elements that is `(4 + 4.375)/2 = 4.1875` bits per cached element — the footprint this rung will report. Nothing in this baseline observes the prefill, so the observer hook is a no-op and the query-observation position stays at the harness default post-RoPE. The whole class is the conservative member of the family: one global 4-bit pair, keys per-channel with the block-modulo residual, values per-token with the tail residual, group 32, asymmetric min-zero-point RTN.
+
+This is the floor by construction, and it is the floor for a specific, diagnosable reason that the rungs above will have to beat. It spends precision *flat*: one bit width across all 36 layers, the same 4 bits whether a layer is a fragile retrieval head or a robust concentrated one. The bytes-versus-quality tradeoff is therefore set entirely by the single global bit choice, and 4-bit is conservative enough that it should hold quality on the easier workloads but cannot buy much compression — it sits right around 4× (the score_spec's reference point, worth only the 0.5 ref_score on the efficiency term), so even where quality survives, the efficiency half of every workload score is mediocre. And the place I expect it to actually bleed is GSM8K: long greedy generations where two-dimensional error accumulation — this layer's quantization error feeds the next layer, this step's feeds the next step — can compound past the threshold that flips a single arithmetic token, and one flipped operator poisons the whole downstream chain. A uniform policy has no way to put extra bits on the layers where that accumulation bites, because it does not know which layers those are. So I expect this rung to look like: respectable but unspectacular quality on the LongBench retrieval/QA/code tasks and NIAH at a modest ~4× compression, and a soft GSM8K number where the accumulation it cannot target costs it the most. Whatever the exact split, the diagnosis it sets up for the next rung is already legible — the floor's weakness is *uniformity*, and the question the ladder opens with is where, not whether, to move the bits. The full scaffold module is in the answer.
+</think>
+<say>
+[[FILL_SAY: 1-2 sentences naming the method and what this first edit does]]
+</say>
+<edit path="transformers-kv-lab/custom_quant_eval.py">
+<old>
+class AdaptiveKVQuantizer:
+    """Editable KV-cache quantizer.
+
+    The fixed harness supplies real key/value tensors from a Hugging Face
+    DynamicCache and calls this class for the actual algorithm. Participants
+    may rewrite the quantization math, residual policy, optional prefill
+    observation, and memory accounting here without changing the benchmark
+    datasets, model, or decode loop.
+    """
+
+    def __init__(self):
+        self.bits = 4
+        self.key_group_size = 32
+        self.value_group_size = 32
+        self.key_residual_length = 128
+</old>
+<new>
+class AdaptiveKVQuantizer:
+    """KIVI K4/V4 axes with streaming residual behavior."""
+
+    def __init__(self):
+        self.bits = 4
+        self.group_size = 32
+        self.key_residual_length = 128
+</new>
+</edit>
+<obs>
+Successfully replaced text in transformers-kv-lab/custom_quant_eval.py.
+</obs>
+<note>
+[[FILL_NOTE?: optional one-line thought for this edit, or delete this block]]
+</note>
+<edit path="transformers-kv-lab/custom_quant_eval.py">
+<old>
+    def reset_request(self, request_meta: dict, budget_state: dict):
+        self.bits = min(4, int(budget_state.get("budget_bits", 4)))
+        workload = str(request_meta.get("workload", ""))
+        residual = 128 if workload.startswith("longbench_") else 32
+        self.key_residual_length = residual
+        self.value_residual_length = residual
+</old>
+<new>
+    def reset_request(self, request_meta: dict, budget_state: dict):
+        self.bits = 4
+</new>
+</edit>
+<obs>
+Successfully replaced text in transformers-kv-lab/custom_quant_eval.py.
+</obs>
+<note>
+[[FILL_NOTE?: optional one-line thought for this edit, or delete this block]]
+</note>
+<edit path="transformers-kv-lab/custom_quant_eval.py">
+<old>
+
+    def observe_prefill_qkv(
+        self,
+        layer_id: int,
+        query_states: torch.Tensor | None,
+        key_states: torch.Tensor | None,
+        value_states: torch.Tensor | None,
+        attention_meta: dict,
+    ) -> None:
+        return None
+</old>
+<new>
+
+    def observe_prefill_qkv(self, layer_id, query_states, key_states, value_states, attention_meta):
+        return None
+</new>
+</edit>
+<obs>
+Successfully replaced text in transformers-kv-lab/custom_quant_eval.py.
+</obs>
+<note>
+[[FILL_NOTE?: optional one-line thought for this edit, or delete this block]]
+</note>
+<edit path="transformers-kv-lab/custom_quant_eval.py">
+<old>
+
+    def _residual_keep_length(self, seq_len: int, residual_length: int, residual_policy: str = "tail") -> int:
+        residual_length = max(0, min(seq_len, int(residual_length)))
+        if residual_length == 0 or residual_policy in {"none", ""}:
+            return 0
+        if residual_policy == "block_modulo":
+            return seq_len % residual_length
+        if residual_policy == "tail":
+            return residual_length
+        raise ValueError(f"Unsupported residual_policy={residual_policy}")
+
+    def _minmax_quantize_last_dim(self, data: torch.Tensor, bits: int, group_size: int) -> torch.Tensor:
+        if data.numel() == 0 or bits >= FP_BITS - 0.5:
+            return data
+        max_int = max(1, int(2**int(bits)) - 1)
+        trailing = data.shape[-1]
+        group_size = trailing if int(group_size) <= 0 else int(group_size)
+        padded = math.ceil(trailing / group_size) * group_size
+        work = data
+        if padded != trailing:
+            work = torch.nn.functional.pad(work, (0, padded - trailing))
+        grouped = work.reshape(*work.shape[:-1], padded // group_size, group_size)
+</old>
+<new>
+
+    def _residual_keep_length(self, seq_len: int, residual_length: int, residual_policy: str) -> int:
+        residual_length = max(0, min(seq_len, int(residual_length)))
+        if residual_policy == "block_modulo":
+            return seq_len % residual_length if residual_length else 0
+        if residual_policy == "tail":
+            return residual_length
+        return 0
+
+    def _minmax_last_dim(self, data: torch.Tensor, bits: int, group_size: int) -> torch.Tensor:
+        if data.numel() == 0 or bits >= FP_BITS - 0.5:
+            return data
+        max_int = max(1, int(2**bits) - 1)
+        trailing = data.shape[-1]
+        group_size = trailing if int(group_size) <= 0 else int(group_size)
+        padded = math.ceil(trailing / group_size) * group_size
+        work = torch.nn.functional.pad(data, (0, padded - trailing)) if padded != trailing else data
+        grouped = work.reshape(*work.shape[:-1], padded // group_size, group_size)
+</new>
+</edit>
+<obs>
+Successfully replaced text in transformers-kv-lab/custom_quant_eval.py.
+</obs>
+<note>
+[[FILL_NOTE?: optional one-line thought for this edit, or delete this block]]
+</note>
+<edit path="transformers-kv-lab/custom_quant_eval.py">
+<old>
+        scale = (gmax - gmin).clamp(min=1e-5) / max_int
+        quant = torch.round((grouped - gmin) / scale).clamp(0, max_int)
+        dequant = quant.mul(scale).add(gmin)
+        return dequant.reshape(*work.shape[:-1], padded)[..., :trailing]
+
+    def _quantize_grouped_minmax(
+        self,
+        layer_tensor: torch.Tensor,
+        *,
+        axis: str,
+        bits: int,
+        group_size: int,
+        residual_length: int,
+        residual_policy: str = "tail",
+    ) -> tuple[torch.Tensor, float]:
+        work = layer_tensor.float().clone()
+        batch, heads, seq_len, head_dim = work.shape
+        residual = self._residual_keep_length(seq_len, residual_length, residual_policy)
+        quant_end = seq_len - residual
+        if quant_end <= 0 or bits >= FP_BITS - 0.5:
+            return work.to(layer_tensor.dtype), FP_BITS
+
+        quant_slice = work[:, :, :quant_end, :]
+        if axis == "channel":
+            quant_len = quant_slice.shape[-2]
+            group_size = quant_len if int(group_size) <= 0 else int(group_size)
+            usable = quant_len - (quant_len % group_size)
+            main = quant_slice[:, :, :usable, :]
+            tail = quant_slice[:, :, usable:, :]
+            if usable > 0:
+                main = main.transpose(2, 3).reshape(batch, heads, head_dim, usable // group_size, group_size)
+                main = self._minmax_quantize_last_dim(main, bits, group_size)
+                work[:, :, :usable, :] = main.reshape(batch, heads, head_dim, usable).transpose(2, 3)
+            if tail.numel() > 0:
+                work[:, :, usable:quant_end, :] = tail
+            fp_tokens = residual + (quant_len - usable)
+            avg_bits = (usable * bits + fp_tokens * FP_BITS) / max(seq_len, 1)
+        else:
+            flat = quant_slice.transpose(1, 2).reshape(batch, quant_slice.shape[-2], heads * head_dim)
+            flat = self._minmax_quantize_last_dim(flat, bits, group_size)
+            work[:, :, :quant_end, :] = flat.reshape(batch, quant_slice.shape[-2], heads, head_dim).transpose(1, 2)
+            avg_bits = (quant_end * bits + residual * FP_BITS) / max(seq_len, 1)
+        return work.to(layer_tensor.dtype), float(avg_bits)
+
+    def quantize_key(self, layer_id: int, key_states: torch.Tensor, cache_meta: dict) -> tuple[torch.Tensor, float]:
+        return self._quantize_grouped_minmax(
+            key_states,
+            axis="channel",
+            bits=self.bits,
+            group_size=self.key_group_size,
+            residual_length=self.key_residual_length,
+            residual_policy="tail",
+        )
+
+    def quantize_value(self, layer_id: int, value_states: torch.Tensor, cache_meta: dict) -> tuple[torch.Tensor, float]:
+        return self._quantize_grouped_minmax(
+            value_states,
+            axis="token",
+            bits=self.bits,
+            group_size=self.value_group_size,
+            residual_length=self.value_residual_length,
+            residual_policy="tail",
+        )
+
+    def estimate_bits(self, layer_id: int, kv_kind: str, seq_len: int, head_dim: int, cache_meta: dict) -> float:
+        residual = self.key_residual_length if kv_kind == "key" else self.value_residual_length
+        residual = self._residual_keep_length(seq_len, residual, "tail")
+        quant_tokens = max(0, seq_len - residual)
+        return float((quant_tokens * self.bits + residual * FP_BITS) / max(seq_len, 1))
+</old>
+<new>
+        scale = (gmax - gmin).clamp(min=1e-5) / max_int
+        q = torch.round((grouped - gmin) / scale).clamp(0, max_int)
+        return q.mul(scale).add(gmin).reshape(*work.shape[:-1], padded)[..., :trailing]
+
+    def _quantize(self, tensor: torch.Tensor, axis: str, residual_policy: str) -> tuple[torch.Tensor, float]:
+        work = tensor.float().clone()
+        batch, heads, seq_len, head_dim = work.shape
+        residual = self._residual_keep_length(seq_len, self.key_residual_length, residual_policy)
+        quant_end = seq_len - residual
+        if quant_end <= 0:
+            return work.to(tensor.dtype), FP_BITS
+        quant_slice = work[:, :, :quant_end, :]
+        if axis == "channel":
+            usable = quant_slice.shape[-2] - (quant_slice.shape[-2] % self.group_size)
+            if usable > 0:
+                main = quant_slice[:, :, :usable, :].transpose(2, 3)
+                main = main.reshape(batch, heads, head_dim, usable // self.group_size, self.group_size)
+                main = self._minmax_last_dim(main, self.bits, self.group_size)
+                work[:, :, :usable, :] = main.reshape(batch, heads, head_dim, usable).transpose(2, 3)
+            fp_tokens = residual + (quant_slice.shape[-2] - usable)
+            avg_bits = (usable * self.bits + fp_tokens * FP_BITS) / max(seq_len, 1)
+        else:
+            flat = quant_slice.transpose(1, 2).reshape(batch, quant_slice.shape[-2], heads * head_dim)
+            flat = self._minmax_last_dim(flat, self.bits, self.group_size)
+            work[:, :, :quant_end, :] = flat.reshape(batch, quant_slice.shape[-2], heads, head_dim).transpose(1, 2)
+            avg_bits = (quant_end * self.bits + residual * FP_BITS) / max(seq_len, 1)
+        return work.to(tensor.dtype), float(avg_bits)
+
+    def quantize_key(self, layer_id: int, key_states: torch.Tensor, cache_meta: dict) -> tuple[torch.Tensor, float]:
+        return self._quantize(key_states, "channel", "block_modulo")
+
+    def quantize_value(self, layer_id: int, value_states: torch.Tensor, cache_meta: dict) -> tuple[torch.Tensor, float]:
+        return self._quantize(value_states, "token", "tail")
+
+    def estimate_bits(self, layer_id: int, kv_kind: str, seq_len: int, head_dim: int, cache_meta: dict) -> float:
+        policy = "block_modulo" if kv_kind == "key" else "tail"
+        residual = self._residual_keep_length(seq_len, self.key_residual_length, policy)
+        quant_tokens = max(0, seq_len - residual)
+        return float((quant_tokens * self.bits + residual * FP_BITS) / max(seq_len, 1))
+</new>
+</edit>
+<obs>
+Successfully replaced text in transformers-kv-lab/custom_quant_eval.py.
+</obs>
+<run/>
+<obs>
+Measured results — `baseline:kivi_overlap_4bit` (`is_final,true`), seed `42` (the only seed; mean equals it).
+
+## Quality (`final_score`, 0-100)
+| seed | hotpotqa | passage_retrieval | repobench | niah | gsm8k |
+|---|---|---|---|---|---|
+| 42 | 37.684238 | 61.083333 | 47.71 | 65.306122 | 31.842305 |
+| **mean** | **37.684238** | **61.083333** | **47.71** | **65.306122** | **31.842305** |
+
+## Efficiency (`effective_kv_bits` / `kv_compression_ratio`)
+| seed | metric | hotpotqa | passage_retrieval | repobench | niah | gsm8k |
+|---|---|---|---|---|---|---|
+| 42 | effective_kv_bits | 4.1875 | 4.1875 | 4.1875 | 4.1875 | 4.1875 |
+| 42 | kv_compression_ratio | 3.820896 | 3.820896 | 3.820896 | 3.820896 | 3.820896 |
+
+## Runtime (`runtime_seconds`, diagnostic, not scored)
+| seed | hotpotqa | passage_retrieval | repobench | niah | gsm8k |
+|---|---|---|---|---|---|
+| 42 | 830.2 | 747.9 | 1970.7 | 732.4 | 13460.6 |
+</obs>
+
+### step 2 — SQuat (query-subspace-orthogonal 4-bit keys)   [slug:squat_subspace_4bit]
+
+<think>
+[[POLISH_REASONING: adapt to first-person agentic voice, end by deciding to implement]]
+The KIVI floor told me where its bits go to waste, and it told me in the numbers. At a flat 4 bits, keys per-channel and values per-token, it landed 37.68 on HotpotQA, 61.08 on passage retrieval, 47.71 on RepoBench, 65.31 on NIAH — respectable on the retrieval/QA/code side — and then 31.84 on GSM8K, the soft spot exactly where I predicted it would bleed, and all of it at 4.1875 effective bits, only ~3.82× compression. So the floor confirms the diagnosis I opened the ladder with: a uniform policy holds quality where local-token noise is tolerable but cannot protect the long greedy chains where two-dimensional error accumulation flips an arithmetic token, and it cannot buy much compression because it spends 4 bits flat everywhere. Two ways to climb from here. One is to stop spending bits uniformly across *layers* — put more on the layers where accumulation bites. The other is to ask whether I am even spending the bits on the right *thing* within a layer, and that is the move I want to make first, because the floor's error model is itself naive: it minimizes reconstruction error, and reconstruction error is not what attention actually consumes.
+
+Here is the thing that bugs me about the floor, and it is the crack the whole step pries open. A quantized key `k_i` is never read by anything *as* `k_i`. It is only ever consumed inside attention, where the new token's query `q_n` dots it: the score is `q_n·k_iᵀ/√d`, those scores go through a softmax, the softmax weights average the values. So the quantity I should preserve is not how close the dequantized `k_i` is to the original in raw Euclidean distance — it is how close the *attention output* is to its full-precision value. KIVI, like every compression-based quantizer, optimizes `‖k − deq(k)‖₂` group by group, and that criterion is *blind to the direction of the residual*. Two quantized keys with identical reconstruction error can disturb the next token's score by wildly different amounts: if the residual `r_i = k_i − deq(k_i)` points along `q_n`, the score shifts by `q_n·r_iᵀ`, possibly large; if `r_i` is perpendicular to `q_n`, the score does not move at all. The floor spends bits making `k` numerically faithful in every direction equally, when the model only needs it faithful in the directions the queries actually probe. That is wasted precision — precisely the wasted precision that shows up as a 4-bit GSM8K score of 31.84 instead of something near full precision.
+
+Let me make that exact, because if I am going to spend the same 4-bit budget more wisely I need to know what "wisely" means. Write the pre-softmax score vector `w = [q_n·k_iᵀ/√d]_i` and its quantized version `w^deq` with `k_i^deq = deq(k_i)`; stack the values into `V` and `V^deq`. The full-precision output is `softmax(w)·V`, the quantized one `softmax(w^deq)·V^deq`, and I want to bound `‖softmax(w)V − softmax(w^deq)V^deq‖₂`. Add and subtract the cross term `softmax(w)V^deq` and split by the triangle inequality into a value-error piece and a score-error piece. The first piece, `softmax(w)(V − V^deq)`, is a convex combination of the value-row errors, so its norm is at most `Σ_i ‖v_i − v_i^deq‖₂` — governed entirely by value reconstruction error, which justifies the floor's per-token value quantization unchanged; nothing to fix there. The second piece is the interesting one: `(softmax(w) − softmax(w^deq))V^deq`. The softmax map is Lipschitz with constant `1/2` (its Jacobian `diag(p) − ppᵀ` has operator norm at most `1/2`), so `‖softmax(w) − softmax(w^deq)‖₂ ≤ (1/2)‖w − w^deq‖₂`, and `‖w − w^deq‖₂` is, componentwise, `q_n·(k_i − k_i^deq)ᵀ/√d`, bounded by `(1/√d)Σ_i |q_n·r_iᵀ|`. Putting it together: the attention-output error is bounded by `[‖V^deq‖_F/(2√d)]·Σ_i |q_n·r_iᵀ| + Σ_i ‖v_i − v_i^deq‖₂`. There it is in black and white. The output is preserved when the value residuals are small (settled) and the *inner products* `q_n·r_iᵀ` are small — not `‖r_i‖` small. The key residual should be as **orthogonal as possible to the future query**. That is a different objective from the floor's, and it is the lever to recover the GSM8K and retrieval quality the floor leaves on the table at the same 4 bits.
+
+But I immediately hit the obvious wall: at the moment I quantize token `i`'s key, the future queries `q_n` for `n > i` do not exist — they are produced by tokens I have not generated. I cannot make `r_i` orthogonal to a vector I do not have. So either the idea is dead, or there is structure in the queries I can exploit ahead of time. The trained queries give the way out: they do not fill the `d`-dimensional space, they cluster in a low-dimensional subspace, and the deviation of normalized queries from the top singular directions drops off fast — a few-dozen-dimensional span captures a whole sequence's queries well below `d`. And, crucially, the subspace spanned by the *prompt's* queries — which I have right after prefill, before decoding a single token — essentially coincides with the subspace spanned by prompt-plus-response queries. So I can estimate the relevant query directions before decoding: SVD the prompt queries once during prefill, keep the top `r` directions, and treat that as a stand-in for "where the future queries will live." This is the first place this rung *needs* the harness machinery the floor ignored — the prefill query observer. The floor returned `needs_prefill_qkv_observer() -> False`; this rung must return `True`, set the observation position to post-RoPE (so the captured queries match the keys the model will actually dot), and build a per-layer subspace in `observe_prefill_qkv`. The harness hands me post-RoPE `query_states` per layer through the hook exactly for this.
+
+Write the subspace concretely. After prefill I have the prompt's `Q` per layer. Take its SVD `Q = UΣVᵀ`; the right singular vectors `v_1,…,v_r` are the directions the queries use, ordered by the energy `σ_1 ≥ σ_2 ≥ …` the queries put along each. Define the subspace matrix `Q̂ = diag(σ_1,…,σ_r)·V[:r]` — the top-`r` right singular vectors *scaled by their singular values*. Why scale them rather than take orthonormal `V[:r]`? Because I do not want to protect all `r` directions equally; the penalty I am about to build involves `Q̂ᵀQ̂ = Σ_{j≤r} σ_j² v_j v_jᵀ`, so a direction with a big singular value gets a quadratically bigger weight — the geometry of "which directions matter to attention" is exactly the singular values, so I carry them. For grouped-query attention, several query heads share one KV head, so before the SVD I concatenate the query tensors of the heads sharing a KV head; the harness gives me the `kv_heads` count in `attention_meta` for exactly this reshape. And I share the subspace across the batch (`shared_svd`, take sample 0), justified by the same low-dimensional fact — queries from related sequences span nearly the same subspace — which saves the memory of per-sample inverses.
+
+With the directions in hand the key objective becomes honest: minimize reconstruction error subject to the residual being orthogonal to `Q̂`. But a hard `Q̂·r = 0` over an integer grid is combinatorial and too rigid — the grid may have no nearby point whose residual kills all protected projections. So relax it to a penalty with a knob `λ`: minimize `‖k − deq(k)‖₂² + λ‖Q̂(k − deq(k))‖₂²`. At `λ = 0` this is pure reconstruction — the floor — and `λ → ∞` drives the residual into the orthogonal complement of `Q̂`. `λ` continuously trades fidelity against orthogonality. That is the right shape, and notice it sits the floor as a strict special case: I am not throwing away the floor's reconstruction objective, I am adding a query-aware term that the floor zeroed out. But the integer grid is still inside it, so how do I quantize coordinates while respecting the penalty?
+
+Quantize one block of coordinates at a time and *compensate*. Quantize the coordinates in a fixed order; after I round a block, the already-quantized coordinates are locked on the grid but the not-yet-quantized coordinates are still continuous — they are my degrees of freedom to push the total residual back toward orthogonality with `Q̂`. Set up iteration `t`: let `δ` be the change to the running dequantized vector; the per-step problem is `min_δ δᵀP δ` with `P = I + λ Q̂ᵀQ̂`, subject to the frozen coordinates being fixed and the current block pinned to its rounding error. `P` is `I` plus a PSD matrix, positive definite, so the quadratic has a unique minimizer; the constraints are linear `Tδ = b` with `T = [I, 0]` selecting the first coordinates and `b` carrying the block's rounding error. Solve with a Lagrangian: stationarity gives `δ = (1/2)P⁻¹Tᵀμ`, feasibility gives `μ = 2(TP⁻¹Tᵀ)⁻¹b`, so `δ = P⁻¹Tᵀ(TP⁻¹Tᵀ)⁻¹b`. Block `P⁻¹` aligned to "first `t` / remaining": `P⁻¹Tᵀ = [A_t; B_t]`, `TP⁻¹Tᵀ = A_t`, so `P⁻¹Tᵀ(TP⁻¹Tᵀ)⁻¹ = [I; B_t A_t⁻¹]`. The first coordinates come out as `b` (frozen/pinned), and the *remaining* coordinates get `B_t H_t·d`, where `H_t` is the relevant columns of `A_t⁻¹` and `d` is the block's rounding error. So the rule is: quantize a block, take its rounding error, push `B_t H_t d` into the not-yet-quantized coordinates, in exactly the direction that minimizes the penalized residual.
+
+Stare at this for a second, because I have seen this exact structure. `min δᵀHδ` with a quadratic metric, quantize a coordinate, update the remaining coordinates by a rounding-error vector times inverse-metric blocks to cancel the induced error — this is the Optimal Brain Surgeon / OBQ error-feedback update (Hassibi et al.; Frantar & Alistarh's OBC; GPTQ). In weight quantization the metric is the data Hessian `2XXᵀ`; here I have replaced it with `P = I + λ Q̂ᵀQ̂`. That is the whole conceptual content in one line — instead of measuring error under the data covariance, I measure it under a *query-subspace metric* that charges residual components along the query subspace by `(1 + λσ²)` and leaves the orthogonal complement at unit weight. The OBS machinery, repurposed with a query-subspace metric, falls right out of the attention-output bound. It also rescues me from OBS's per-row greedy ordering: GPTQ's observation that fixed-order quantization is nearly as good means `A_t` and `A_t⁻¹` depend only on `P` — not on the data, not on which key — so I compute them once after prefill and reuse them for the whole decode. Without that, this would be a non-starter in the decode loop.
+
+Efficiency, because the obvious implementation is too slow. The nested `A_t` are top-left blocks of the same `P⁻¹`, so I get `A_t⁻¹` from `A_{t+1}⁻¹` by a Schur-complement downdate — `A_t⁻¹ = M − Nᵀ O⁻¹ N` for the block split off the trailing coordinates — one Gaussian-elimination step per block, `O(d³)` total instead of `O(d⁴)` from fresh inverses. I start at `A_T⁻¹ = P` and recurse downward. And I do not quantize coordinate-by-coordinate at all: I quantize a *block* of `g` coordinates per iteration. With head dimension 128 and `g = 64` that is just two blocks — one compensation update — so the whole key step is: quantize block 1, compute its rounding error, push `B_1 H_1 d` into block 2, quantize block 2, done. The block downdate uses the same Schur identity with a tiny `tol·I` dampening for numerical safety. Per-token values stay on the plain group-wise min-max path; the theorem's first term needs nothing more.
+
+Settle the knobs from the structure, not by fiat. `λ`: because `Q̂` carries the *scaled* singular vectors, `Q̂ᵀQ̂` already has large entries, so `λQ̂ᵀQ̂` becomes dominant at small `λ`; push it too high and the orthogonality term swamps reconstruction and the keys are pulled off, so `λ ≈ 10⁻³` is the right scale. `r = 60`, the subspace dimension: wide enough to cover the span the future queries will probe, not so wide it over-constrains the residual. `g = 64`, the OBS block, giving two blocks on a 128-dim head. `G = 32` quantization group and `R = 32` residual window I inherit from the streaming compression setup — the freshest tokens stay FP until the window flushes. And the bit width stays at 4, deliberately: this rung's whole bet is that at the *same* 4 bits, spending precision query-aware instead of reconstruction-blind recovers quality the floor wasted — it is a smarter use of identical bytes, not more bytes.
+
+Now the honest part, the same-as-the-floor caveat I have to keep in view, because it bounds what I should expect. I am making the residual orthogonal to the *prompt's* query subspace, betting it covers the future queries; that bet is approximate, a future query with a component outside `Q̂` is unprotected, which is exactly what `λ` and `r` hedge. And the efficiency footprint is *unchanged from the floor's logic*: 4-bit quantized tokens, an `R = 32` residual via `seq_len mod 32`, so at the 4096 reference span the residual is `4096 mod 32 = 0` and `estimate_bits` reports exactly 4.0 bits — 4× compression, the score_spec's reference point worth 0.5 on the efficiency term, slightly *more* compression than the floor's 4.1875 because both K and V here sit at the same residual rule rather than the floor's value-side 128-tail. So on the efficiency half of every workload this rung is a touch ahead of the floor; the question is the quality half.
+
+So here are the falsifiable expectations against the floor's measured numbers. The query-subspace orthogonality should *not* move the value-error term at all — values are quantized identically — so where the floor's failure was value-driven I should see little change. Where the floor's failure was *key-quantization-driven attention shift* — the retrieval and long-reasoning workloads where the wrong key residual reshuffles the softmax — I expect SQuat to recover quality at the same 4 bits: HotpotQA, passage retrieval, RepoBench, NIAH should hold near or modestly improve on the floor's 37.68 / 61.08 / 47.71 / 65.31, and the efficiency term should tick up from 3.82× to 4.0×. GSM8K is the open risk and the place I am least sure: the bound says orthogonality protects the *attention distribution*, but GSM8K's failure is *accumulation* across a long greedy chain, and a per-layer subspace built from the prompt may not protect the directions the *generated* arithmetic queries probe — so GSM8K could stay soft, near the floor's 31.84, even improving the others. If that is what I see — the retrieval/QA/code/NIAH cluster holds at higher efficiency while GSM8K refuses to move — then the diagnosis for the next rung is already written: orthogonality fixes *which directions* within a layer, but it still spends the same bits on every layer, and the accumulation that kills GSM8K is a *layer-allocation* problem the within-layer trick cannot reach. That is the move the ladder turns to next. The full scaffold module is in the answer.
+</think>
+<say>
+[[FILL_SAY: 1-2 sentences naming the method and what this first edit does]]
+</say>
+<edit path="transformers-kv-lab/custom_quant_eval.py">
+<old>
+class AdaptiveKVQuantizer:
+    """KIVI K4/V4 axes with streaming residual behavior."""
+</old>
+<new>
+class AdaptiveKVQuantizer:
+    """SQuat-inspired subspace-orthogonal K/V 4-bit quantization."""
+</new>
+</edit>
+<obs>
+Successfully replaced text in transformers-kv-lab/custom_quant_eval.py.
+</obs>
+<note>
+[[FILL_NOTE?: optional one-line thought for this edit, or delete this block]]
+</note>
+<edit path="transformers-kv-lab/custom_quant_eval.py">
+<old>
+        self.group_size = 32
+        self.key_residual_length = 128
+        self.value_residual_length = 128
+
+    def reset_request(self, request_meta: dict, budget_state: dict):
+        self.bits = 4
+
+    def needs_prefill_qkv_observer(self) -> bool:
+        return False
+
+    def observe_prefill_qkv(self, layer_id, query_states, key_states, value_states, attention_meta):
+        return None
+</old>
+<new>
+        self.group_size = 32
+        self.residual_length = 32
+        self.subspace_dim = 60
+        self.squat_lambda = 0.001
+        self.quant_group_size = 64
+        self.shared_svd = True
+        self.query_subspaces = {}
+
+    def reset_request(self, request_meta: dict, budget_state: dict):
+        self.query_subspaces = {}
+
+    def needs_prefill_qkv_observer(self) -> bool:
+        return True
+</new>
+</edit>
+<obs>
+Successfully replaced text in transformers-kv-lab/custom_quant_eval.py.
+</obs>
+<note>
+[[FILL_NOTE?: optional one-line thought for this edit, or delete this block]]
+</note>
+<edit path="transformers-kv-lab/custom_quant_eval.py">
+<old>
+
+    def _residual_keep_length(self, seq_len: int, residual_length: int, residual_policy: str) -> int:
+        residual_length = max(0, min(seq_len, int(residual_length)))
+        if residual_policy == "block_modulo":
+            return seq_len % residual_length if residual_length else 0
+        if residual_policy == "tail":
+            return residual_length
+        return 0
+
+    def _minmax_last_dim(self, data: torch.Tensor, bits: int, group_size: int) -> torch.Tensor:
+        if data.numel() == 0 or bits >= FP_BITS - 0.5:
+            return data
+        max_int = max(1, int(2**bits) - 1)
+        trailing = data.shape[-1]
+</old>
+<new>
+
+    def observe_prefill_qkv(self, layer_id, query_states, key_states, value_states, attention_meta):
+        if query_states is None:
+            return None
+        batch, query_heads, _, head_dim = query_states.shape
+        kv_heads = int(attention_meta.get("kv_heads", query_heads))
+        if query_heads % kv_heads != 0:
+            kv_heads = query_heads
+        matrix = query_states.reshape(batch, kv_heads, -1, head_dim).float()
+        rank = min(int(self.subspace_dim), matrix.shape[-2], matrix.shape[-1])
+        if rank <= 0:
+            return None
+        _, singular_values, vh = torch.linalg.svd(matrix, full_matrices=False)
+        scaled_vh = torch.diag_embed(singular_values[:, :, :rank]).matmul(vh[:, :, :rank, :])
+        self.query_subspaces[layer_id] = (scaled_vh[0:1] if self.shared_svd else scaled_vh).detach()
+        return None
+
+    def _residual_keep_length(self, seq_len: int) -> int:
+        residual_length = max(0, min(seq_len, int(self.residual_length)))
+        return seq_len % residual_length if residual_length else 0
+
+    def _minmax_last_dim(self, data: torch.Tensor, group_size: int, bits: int) -> torch.Tensor:
+        if data.numel() == 0 or bits >= FP_BITS - 0.5:
+            return data
+        max_int = max(1, 2**int(bits) - 1)
+        trailing = data.shape[-1]
+</new>
+</edit>
+<obs>
+Successfully replaced text in transformers-kv-lab/custom_quant_eval.py.
+</obs>
+<note>
+[[FILL_NOTE?: optional one-line thought for this edit, or delete this block]]
+</note>
+<edit path="transformers-kv-lab/custom_quant_eval.py">
+<old>
+
+    def _quantize(self, tensor: torch.Tensor, axis: str, residual_policy: str) -> tuple[torch.Tensor, float]:
+        work = tensor.float().clone()
+        batch, heads, seq_len, head_dim = work.shape
+        residual = self._residual_keep_length(seq_len, self.key_residual_length, residual_policy)
+        quant_end = seq_len - residual
+        if quant_end <= 0:
+            return work.to(tensor.dtype), FP_BITS
+        quant_slice = work[:, :, :quant_end, :]
+        if axis == "channel":
+            usable = quant_slice.shape[-2] - (quant_slice.shape[-2] % self.group_size)
+            if usable > 0:
+                main = quant_slice[:, :, :usable, :].transpose(2, 3)
+                main = main.reshape(batch, heads, head_dim, usable // self.group_size, self.group_size)
+                main = self._minmax_last_dim(main, self.bits, self.group_size)
+                work[:, :, :usable, :] = main.reshape(batch, heads, head_dim, usable).transpose(2, 3)
+            fp_tokens = residual + (quant_slice.shape[-2] - usable)
+            avg_bits = (usable * self.bits + fp_tokens * FP_BITS) / max(seq_len, 1)
+        else:
+            flat = quant_slice.transpose(1, 2).reshape(batch, quant_slice.shape[-2], heads * head_dim)
+            flat = self._minmax_last_dim(flat, self.bits, self.group_size)
+            work[:, :, :quant_end, :] = flat.reshape(batch, quant_slice.shape[-2], heads, head_dim).transpose(1, 2)
+            avg_bits = (quant_end * self.bits + residual * FP_BITS) / max(seq_len, 1)
+        return work.to(tensor.dtype), float(avg_bits)
+
+    def quantize_key(self, layer_id: int, key_states: torch.Tensor, cache_meta: dict) -> tuple[torch.Tensor, float]:
+        return self._quantize(key_states, "channel", "block_modulo")
+
+    def quantize_value(self, layer_id: int, value_states: torch.Tensor, cache_meta: dict) -> tuple[torch.Tensor, float]:
+        return self._quantize(value_states, "token", "tail")
+
+    def estimate_bits(self, layer_id: int, kv_kind: str, seq_len: int, head_dim: int, cache_meta: dict) -> float:
+        policy = "block_modulo" if kv_kind == "key" else "tail"
+        residual = self._residual_keep_length(seq_len, self.key_residual_length, policy)
+        quant_tokens = max(0, seq_len - residual)
+        return float((quant_tokens * self.bits + residual * FP_BITS) / max(seq_len, 1))
+</old>
+<new>
+
+    def _generate_At_inv(self, query_subspace: torch.Tensor, tol: float = 1e-7):
+        batch, heads, _, head_dim = query_subspace.shape
+        q_group = head_dim if int(self.quant_group_size) <= 0 else int(self.quant_group_size)
+        groups = math.ceil(head_dim / q_group)
+        matrices = [None] * groups
+        eye = torch.eye(head_dim, device=query_subspace.device, dtype=torch.float32)
+        A_t = eye.expand(batch, heads, head_dim, head_dim) + float(self.squat_lambda) * query_subspace.float().transpose(
+            -1, -2
+        ).matmul(query_subspace.float())
+        matrices[groups - 1] = A_t
+        for group_idx in range(groups - 1, 0, -1):
+            current_dim = group_idx * q_group
+            width = min(q_group, A_t.shape[-1] - current_dim)
+            M_t1 = A_t[:, :, :current_dim, :current_dim]
+            N_t1 = A_t[:, :, current_dim : current_dim + width, :current_dim]
+            O_t1 = A_t[:, :, current_dim : current_dim + width, current_dim : current_dim + width]
+            local_eye = torch.eye(width, device=query_subspace.device, dtype=torch.float32)
+            O_inv = torch.inverse(O_t1 + tol * local_eye.expand(batch, heads, width, width))
+            A_t = M_t1 - N_t1.transpose(-1, -2).matmul(O_inv.matmul(N_t1))
+            matrices[group_idx - 1] = A_t[:, :, :, -q_group:]
+        return matrices
+
+    def _squat_quantize_keys(self, key_states: torch.Tensor, query_subspace: torch.Tensor) -> torch.Tensor:
+        batch, heads, _, head_dim = key_states.shape
+        query_subspace = query_subspace.to(device=key_states.device)
+        if query_subspace.shape[0] == 1 and batch > 1:
+            query_subspace = query_subspace.expand(batch, -1, -1, -1)
+        if query_subspace.shape[1] != heads or query_subspace.shape[-1] != head_dim:
+            raise ValueError("SQuat query subspace shape does not match the key tensor")
+        matrices = self._generate_At_inv(query_subspace)
+        P_inv = torch.inverse(matrices[-1])
+        work = key_states.float().clone()
+        q_group = head_dim if int(self.quant_group_size) <= 0 else int(self.quant_group_size)
+        groups = math.ceil(head_dim / q_group)
+        for group_idx in range(groups):
+            start = group_idx * q_group
+            end = min(head_dim, start + q_group)
+            chunk = work[:, :, :, start:end]
+            dequant = self._minmax_last_dim(chunk.transpose(2, 3).contiguous(), self.group_size, self.bits).transpose(2, 3)
+            if group_idx < groups - 1:
+                d_vec = (dequant - chunk).float()
+                next_start = end
+                H_t = matrices[group_idx]
+                B_t = P_inv[:, :, next_start:, :next_start]
+                update = d_vec.matmul(H_t.transpose(-2, -1)).matmul(B_t.transpose(-2, -1))
+                work[:, :, :, next_start:] = work[:, :, :, next_start:] + update
+            work[:, :, :, start:end] = dequant
+        return work
+
+    def _quantize_with_residual(self, tensor: torch.Tensor, quant_fn) -> tuple[torch.Tensor, float]:
+        work = tensor.float().clone()
+        _, _, seq_len, _ = work.shape
+        residual = self._residual_keep_length(seq_len)
+        quant_end = seq_len - residual
+        if quant_end <= 0:
+            return work.to(tensor.dtype), FP_BITS
+        work[:, :, :quant_end, :] = quant_fn(work[:, :, :quant_end, :])
+        avg_bits = (quant_end * self.bits + residual * FP_BITS) / max(seq_len, 1)
+        return work.to(tensor.dtype), float(avg_bits)
+
+    def quantize_key(self, layer_id: int, key_states: torch.Tensor, cache_meta: dict) -> tuple[torch.Tensor, float]:
+        query_subspace = self.query_subspaces.get(layer_id)
+        if query_subspace is None:
+            raise RuntimeError("SQuat key quantization requires the prefill query observer")
+        return self._quantize_with_residual(key_states, lambda data: self._squat_quantize_keys(data, query_subspace))
+
+    def quantize_value(self, layer_id: int, value_states: torch.Tensor, cache_meta: dict) -> tuple[torch.Tensor, float]:
+        return self._quantize_with_residual(value_states, lambda data: self._minmax_last_dim(data, self.group_size, self.bits))
+
+    def estimate_bits(self, layer_id: int, kv_kind: str, seq_len: int, head_dim: int, cache_meta: dict) -> float:
+        residual = self._residual_keep_length(seq_len)
+        quant_tokens = max(0, seq_len - residual)
+        return float((quant_tokens * self.bits + residual * FP_BITS) / max(seq_len, 1))
+</new>
+</edit>
+<obs>
+Successfully replaced text in transformers-kv-lab/custom_quant_eval.py.
+</obs>
+<run/>
+<obs>
+Measured results — `baseline:squat_subspace_4bit` (`is_final,true`), seed `42` (the only seed; mean equals it).
+
+## Quality (`final_score`, 0-100)
+| seed | hotpotqa | passage_retrieval | repobench | niah | gsm8k |
+|---|---|---|---|---|---|
+| 42 | 36.532065 | 59.964286 | 46.48 | 65.306122 | 31.76649 |
+| **mean** | **36.532065** | **59.964286** | **46.48** | **65.306122** | **31.76649** |
+
+## Efficiency (`effective_kv_bits` / `kv_compression_ratio`)
+| seed | metric | hotpotqa | passage_retrieval | repobench | niah | gsm8k |
+|---|---|---|---|---|---|---|
+| 42 | effective_kv_bits | 4.0 | 4.0 | 4.0 | 4.0 | 4.0 |
+| 42 | kv_compression_ratio | 4.0 | 4.0 | 4.0 | 4.0 | 4.0 |
+
+## Runtime (`runtime_seconds`, diagnostic, not scored)
+| seed | hotpotqa | passage_retrieval | repobench | niah | gsm8k |
+|---|---|---|---|---|---|
+| 42 | 1392.7 | 1348.5 | 2742.0 | 1563.3 | 29152.6 |
+</obs>
+
+### step 3 — KVTuner (layer-wise mixed precision, per-token mode)   [slug:kvtuner4_pertoken_qwen25_3b]
+
+<think>
+[[POLISH_REASONING: adapt to first-person agentic voice, end by deciding to implement]]
+SQuat told me the within-layer story is real but bounded, and again it told me in numbers. At 4 bits and 4× compression it landed 36.53 on HotpotQA, 59.96 on passage retrieval, 46.48 on RepoBench, 65.31 on NIAH, and 31.77 on GSM8K — essentially tracking the KIVI floor's 37.68 / 61.08 / 47.71 / 65.31 / 31.84 on quality while edging the efficiency term up from 3.82× to 4.0×. So the query-subspace orthogonality did exactly the thing the bound promised and nothing more: it protected the attention distribution within each layer at the same bits, and the workloads moved a hair while the compression got a bit cleaner — but GSM8K refused to move (31.77 vs 31.84), and NIAH was identical to the floor (65.31 both). That is the falsifiable prediction I closed the last rung on, confirmed: orthogonality fixes *which directions* I quantize within a layer, but it spends the *same bits on every layer*, and the failure that actually pins quality down — the long greedy GSM8K chain — is an accumulation problem the within-layer trick cannot reach. Both rungs so far have one thing in common: a single global precision applied to all 36 layers. That uniformity is the next thing to break.
+
+Let me look hard at exactly how the uniform-bit failure goes wrong, because the failure mode is the whole clue and "GSM8K is soft" is not yet a lever. Picture a fifteen-shot GSM8K prompt on this chat model. At full precision and at 4-bit KV the model writes the identical correct chain: "20 − 4 − 4 = 12 ... 60%." Push the cache to 2-bit uniformly and the first few sentences are nearly identical, then a single token flips — a minus becomes a plus — and now it writes "20 + 4 + 4 = 28 ... 28/20 = 14%," final answer wrong. One flipped token poisons all the downstream arithmetic. This is not the smooth degradation I could average away; it is a discrete catastrophe triggered by one error at the wrong place. Why does a tiny quantization error in one tensor become a flipped token? Because the transformer is sequential in *two* directions at once: the quantized output of layer `l` at step `i` is the input of layer `l+1` at step `i`, and the token generated at step `i` is the input of every layer at step `i+1`. So the error at layer `l`, step `i` is a function of every earlier layer this step and every layer at every earlier step — `e_i^l = f(e_i^{1:l−1}, e_{i−1}^{1:L}, …)`. A single token-and-layer error is negligible; accumulated over depth and over a long generation it crosses the threshold where the next-token argmax flips. *That* is why SQuat could not save GSM8K with a within-layer fix at uniform bits: it reduced each layer's error in the right directions, but it had no way to put *more* bits on the specific layers where the accumulation compounds, because a uniform policy does not know which layers those are. The lever has to be a bit-*allocation* across layers.
+
+So the question sharpens: at a fixed average-bit budget, where do I spend the precision? Two axes — key versus value, and which layers. Key-versus-value first, because there is a clean asymmetry I can derive, and it tells me the *shape* of the allocation. Take one query `q` attending over a key cache `K`. The error-free score on token `i` is `a_i = exp(qK_i)/Σ_j exp(qK_j)`. Quantize the keys; the asymmetric uniform error per element is roughly `ΔK ∼ N(0, σ²)` with `σ = (max K − min K)/(2^B − 1)`, so `σ` grows geometrically as `B` drops. The corrupted score is `â_i = exp(q(K_i+ΔK_i))/Σ_j exp(q(K_j+ΔK_j))`. The exponential of a sum factors, and dividing top and bottom by `exp(qΔK_i)` gives `â_i = exp(qK_i)/[Σ_j exp(qK_j)·(exp(qΔK_j)/exp(qΔK_i))]`. When does the noise leave the distribution unchanged? If one key `i` dominates the softmax — `exp(qK_i) ≫ exp(qK_j)` for all `j ≠ i` — pull `exp(qK_i)` out instead: `â_i ≈ exp(qΔK_i)/exp(qΔK_i) = 1`, and the dominated tokens get 0. The distribution survives. So the heads *robust* to low-precision key quantization are exactly the sparse, concentrated ones with a dominating key; the fragile ones are the spread-out retrieval heads where no key dominates and the noise reshuffles the whole softmax. The lever against attention shift is *key* precision in the fragile layers — and notice this is the same `qΔK` term SQuat attacked from the other side: SQuat shrank `qΔK` by steering the residual orthogonal to `q` at fixed bits; here I shrink it by *raising the bits* where the head cannot tolerate it. Two complementary handles on the same quantity.
+
+Is key precision actually worth more than value precision, or did I just analyze the side I started on? The attention output is `o = Σ_j a_j v_j`, a sparse weighted sum of value rows. Value error only ever enters *after* the distribution is set, as a linear reweighting; it cannot repair a distribution that has already shifted because of key error. And the value's sparsity story (the floor's per-token reasoning) means per-token value error stays inside each row, harmless on the unattended rows. So at a fixed budget, keep keys high and values low. The measurements agree: K4V2 attention-output error ≈ 0.45 versus K2V4 ≈ 0.89, roughly double when I starve the key; word-perplexity says K8V4 ≈ KV8 and K4V2 ≈ KV4, but K4V8 and K2V4 degrade sharply. So the candidate per-layer pairs collapse to a *key-first ladder* {KV8, K8V4, KV4, K4V2, KV2} — key ≥ value — rather than the full nine-way `{2,4,8}²`.
+
+The layer axis is the other half, and here I cannot derive it — I take it as an observed property of the model. The layer-wise sensitivity profile is *stable across prompts*: a layer sensitive on one GSM8K prompt is sensitive on the others, and there is no clean depth heuristic — sensitive and insensitive layers are interleaved, the most sensitive layer even moves when I switch quantization mode. The crucial word is "stable across prompts." If sensitivity were prompt-dependent I would be forced into an online per-request decision; because it is inherent, I can decide the per-layer precision *once*, offline, and load it at inference with zero runtime cost. That reframes everything and it is exactly why I do *not* reach for the fine-grained online methods that bump precision per token on the fly: an intra-layer per-token precision difference cannot fuse with FlashAttention or a paged cache, and the online critical-token search adds branchy control flow that wrecks static-graph acceleration — the throughput I am buying with quantization gets eaten by the machinery that decides it. I want every low-bit token in a layer to share one precision pair (coarse-grained, fuses cleanly) but let *different layers* use *different* pairs, chosen by measured sensitivity, decided ahead of time.
+
+How do I make that decision? It is a two-objective optimization — minimize quantized KV memory and minimize accuracy loss — `min_P (f_m(P), f_a(P))` s.t. caps, where `P ∈ S^L` assigns a pair per layer, `f_m(P) = Σ(P)/(2L)` is the average equivalent bits, and `f_a(P) = A(KV_half) − A(KV_P)` is the accuracy drop, a black box (non-differentiable, expensive). A discrete multi-objective combinatorial problem; I would drive it with an evolutionary search treating model accuracy as the oracle. But count the space: nine pairs per layer, `L` layers, `9^L` — for a 32-layer model `≈ 3.4×10³⁰`. No search touches that. I have to shrink it before searching, attacking the two factors of `9^L` separately. The base `9` first: for a single layer, plot the nine pairs in (equivalent bits, attention-output error) and keep only the Pareto frontier — pairs that are not dominated by something cheaper *and* more accurate. By the key-first analysis, the dominated pairs are exactly the value-heavy ones (K2V4, K4V8), so most layers' frontier collapses to the five-pair key-first ladder. `9^L → ~5^L`, still hopeless. Now the exponent `L`: collapse layers into groups that share a decision. Partition layers by their pruned candidate set, then within each partition cluster by sensitivity (the vector of attention-output errors), using DBSCAN with a small radius so I need not pre-commit a cluster count and outlier layers can sit alone. A model's 28–64 layers fold to ~4–8 groups, so `5^L → 5^G` — `5^6 ≈ 15625`, a space an evolutionary optimizer can cover.
+
+One subtlety in *how* I score an assignment during the search, because the whole danger I am fighting is *accumulation*. If I calibrate with isolated, non-accumulating per-layer error, I under-weight exactly the layers whose errors compound — the GSM8K killers. So I deliberately let the error accumulate during calibration: use the *dequantized* KV for prefill self-attention so error propagates layer-to-layer, and calibrate on long, hard generations — math reasoning — where a small error flips an intermediate token and produces a large measurable final-answer swing. That amplifies the signal that distinguishes a good assignment from a bad one. Concretely, maximize accuracy on a couple hundred GSM8K few-shot prompts as one objective, minimize equivalent bits as the other, over the reduced grouped space. The output is a table: per layer, the chosen `(P_k, P_v)`. That table is the entire online cost.
+
+Now make it concrete for *this* rung — the deployable per-token mode on Qwen2.5-3B, 36 layers — and this is where I must land the task's literal preset, not the paper's generic one. In per-token mode both keys and values are quantized along the token dimension, every token's row getting its own scale and zero-point, because that drops straight into a streaming cache with no per-channel regrouping. The cost of per-token keys (versus the floor's per-channel keys) is exactly the larger key error I derived — but that is the cost the layer-wise search is built to pay back: it spends extra *key bits* on the layers where per-token key error would otherwise flip tokens. That is the whole point of having a per-token variant — it narrows the gap between the simple per-token mode and a KIVI-style per-channel mode by putting bits where the search says they are needed. And critically for the integer arithmetic, the deployable form uses a *signed* asymmetric grid: `q_max = 2^(B−1) − 1`, `q_min = −2^(B−1)`, so `q_max − q_min = 2^B − 1` and `scale = clamp(max − min, 1e-5)/(2^B − 1)` — exactly the floor's RTN scale on a signed grid; `zeros = round(min/scale) − q_min`; `quant = clamp(round(g/scale − zeros), q_min, q_max)`; `dequant = (quant + zeros)·scale`, the zero-point cancelling on the way out. In per-token mode the group is the whole `head_dim` (one group per token row) and `residual_length = 0` — the FP sliding window was a *per-channel* streaming artifact (you need a block of tokens before a channel's stats are known); per-token needs none of it, so every cached token is quantized at its layer's bits, which also keeps the bit accounting trivially clean: `estimate_bits` just reports the layer's bit count.
+
+For the actual per-layer table on Qwen2.5-3B in per-token mode at the ~4-bit budget, the search returns a sparse, non-monotone-in-depth assignment — which is the whole reason I needed the search and could not use a depth heuristic. This is the task's preset and I match it exactly: most layers come back K4V2 (the key-first workhorse); layer 0 gets extra key precision K8V4; the layers the search flags as carrying the most accumulation — 18, 27, 29 — get full K8V8; a scattering — 10, 19, 24, 26, 33 — get K4V4; everything else K4V2. Tallying the table gives 160 key bits and 102 value bits over 36 layers, so the equivalent precision is `(160 + 102)/(2·36) = 3.6389` bits — *under* 4, even though the menu was built from a 4-bit budget, because the key-first pruning let most layers drop their values to 2-bit. Reading that dictionary off is the entire learned artifact; no prefill observer is needed (the policy is static), so unlike SQuat this rung returns `needs_prefill_qkv_observer() -> False` again — the intelligence moved offline into the table, not into a runtime hook.
+
+So the falsifiable expectations against the two rungs below me. The headline is that this rung breaks the uniformity both KIVI and SQuat shared, and it does so in the direction that should *win compression cheaply*: at 3.6389 effective bits it sits at ~4.40× compression, clearly above the floor's 3.82× and SQuat's 4.0×, so the efficiency half of every workload score should rise. On quality the bet is sharper and asymmetric. The whole search was calibrated to amplify the *GSM8K accumulation* failure, so GSM8K is where I expect the biggest move — it should jump well above the floor's 31.84 and SQuat's 31.77, because the search put K8V8 on exactly the layers where the chain flips. HotpotQA should hold or improve (the search protects the sensitive layers that retrieval QA also leans on). The risk sits on the workloads the search did *not* calibrate against — passage retrieval and NIAH are pure long-context retrieval, and per-token keys are inherently lossier than per-channel keys, so if the 3.6389-bit table starved a layer those tasks needed, passage retrieval and NIAH could *dip* below the floor's 61.08 and 65.31 even as GSM8K and the efficiency term climb. If that is what I see — GSM8K and compression up, but NIAH and passage retrieval down because per-token keys plus an aggressive sub-4-bit table cost the retrieval workloads — then the diagnosis for the strongest rung is already written: keep the layer-wise search, but pay back the per-token key penalty by running the search in the *KIVI per-channel key mode* so retrieval recovers without giving up the mixed-precision win. The full scaffold module is in the answer.
+</think>
+<say>
+[[FILL_SAY: 1-2 sentences naming the method and what this first edit does]]
+</say>
+<edit path="transformers-kv-lab/custom_quant_eval.py">
+<old>
+class AdaptiveKVQuantizer:
+    """SQuat-inspired subspace-orthogonal K/V 4-bit quantization."""
+
+    def __init__(self):
+        self.bits = 4
+        self.group_size = 32
+        self.residual_length = 32
+        self.subspace_dim = 60
+        self.squat_lambda = 0.001
+        self.quant_group_size = 64
+        self.shared_svd = True
+        self.query_subspaces = {}
+
+    def reset_request(self, request_meta: dict, budget_state: dict):
+        self.query_subspaces = {}
+
+    def needs_prefill_qkv_observer(self) -> bool:
+        return True
+</old>
+<new>
+class AdaptiveKVQuantizer:
+    """KVTuner FlexibleVanillaQuantizedCache with official per-token preset."""
+
+    _PRESET = {
+        0: {"key": 8, "value": 4}, 1: {"key": 4, "value": 2}, 2: {"key": 4, "value": 2},
+        3: {"key": 4, "value": 2}, 4: {"key": 4, "value": 2}, 5: {"key": 4, "value": 2},
+        6: {"key": 4, "value": 2}, 7: {"key": 4, "value": 2}, 8: {"key": 4, "value": 2},
+        9: {"key": 4, "value": 2}, 10: {"key": 4, "value": 4}, 11: {"key": 4, "value": 2},
+        12: {"key": 4, "value": 2}, 13: {"key": 4, "value": 2}, 14: {"key": 4, "value": 2},
+        15: {"key": 4, "value": 2}, 16: {"key": 4, "value": 2}, 17: {"key": 4, "value": 2},
+        18: {"key": 8, "value": 8}, 19: {"key": 4, "value": 4}, 20: {"key": 4, "value": 2},
+        21: {"key": 4, "value": 2}, 22: {"key": 4, "value": 2}, 23: {"key": 4, "value": 2},
+        24: {"key": 4, "value": 4}, 25: {"key": 4, "value": 2}, 26: {"key": 4, "value": 4},
+        27: {"key": 8, "value": 8}, 28: {"key": 4, "value": 2}, 29: {"key": 8, "value": 8},
+        30: {"key": 4, "value": 2}, 31: {"key": 4, "value": 2}, 32: {"key": 4, "value": 2},
+        33: {"key": 4, "value": 4}, 34: {"key": 4, "value": 2}, 35: {"key": 4, "value": 2},
+    }
+
+    def reset_request(self, request_meta: dict, budget_state: dict):
+        return None
+
+    def needs_prefill_qkv_observer(self) -> bool:
+        return False
+
+    def observe_prefill_qkv(self, layer_id, query_states, key_states, value_states, attention_meta):
+        return None
+</new>
+</edit>
+<obs>
+Successfully replaced text in transformers-kv-lab/custom_quant_eval.py.
+</obs>
+<note>
+[[FILL_NOTE?: optional one-line thought for this edit, or delete this block]]
+</note>
+<edit path="transformers-kv-lab/custom_quant_eval.py">
+<old>
+
+    def observe_prefill_qkv(self, layer_id, query_states, key_states, value_states, attention_meta):
+        if query_states is None:
+            return None
+        batch, query_heads, _, head_dim = query_states.shape
+        kv_heads = int(attention_meta.get("kv_heads", query_heads))
+        if query_heads % kv_heads != 0:
+            kv_heads = query_heads
+        matrix = query_states.reshape(batch, kv_heads, -1, head_dim).float()
+        rank = min(int(self.subspace_dim), matrix.shape[-2], matrix.shape[-1])
+        if rank <= 0:
+            return None
+        _, singular_values, vh = torch.linalg.svd(matrix, full_matrices=False)
+        scaled_vh = torch.diag_embed(singular_values[:, :, :rank]).matmul(vh[:, :, :rank, :])
+        self.query_subspaces[layer_id] = (scaled_vh[0:1] if self.shared_svd else scaled_vh).detach()
+        return None
+
+    def _residual_keep_length(self, seq_len: int) -> int:
+        residual_length = max(0, min(seq_len, int(self.residual_length)))
+        return seq_len % residual_length if residual_length else 0
+
+    def _minmax_last_dim(self, data: torch.Tensor, group_size: int, bits: int) -> torch.Tensor:
+        if data.numel() == 0 or bits >= FP_BITS - 0.5:
+            return data
+        max_int = max(1, 2**int(bits) - 1)
+        trailing = data.shape[-1]
+        group_size = trailing if int(group_size) <= 0 else int(group_size)
+        padded = math.ceil(trailing / group_size) * group_size
+        work = torch.nn.functional.pad(data, (0, padded - trailing)) if padded != trailing else data
+        grouped = work.reshape(*work.shape[:-1], padded // group_size, group_size)
+        gmin = grouped.amin(dim=-1, keepdim=True)
+        gmax = grouped.amax(dim=-1, keepdim=True)
+        scale = (gmax - gmin).clamp(min=1e-5) / max_int
+        q = torch.round((grouped - gmin) / scale).clamp(0, max_int)
+        return q.mul(scale).add(gmin).reshape(*work.shape[:-1], padded)[..., :trailing]
+
+    def _generate_At_inv(self, query_subspace: torch.Tensor, tol: float = 1e-7):
+        batch, heads, _, head_dim = query_subspace.shape
+        q_group = head_dim if int(self.quant_group_size) <= 0 else int(self.quant_group_size)
+        groups = math.ceil(head_dim / q_group)
+        matrices = [None] * groups
+        eye = torch.eye(head_dim, device=query_subspace.device, dtype=torch.float32)
+        A_t = eye.expand(batch, heads, head_dim, head_dim) + float(self.squat_lambda) * query_subspace.float().transpose(
+            -1, -2
+        ).matmul(query_subspace.float())
+        matrices[groups - 1] = A_t
+        for group_idx in range(groups - 1, 0, -1):
+            current_dim = group_idx * q_group
+            width = min(q_group, A_t.shape[-1] - current_dim)
+            M_t1 = A_t[:, :, :current_dim, :current_dim]
+            N_t1 = A_t[:, :, current_dim : current_dim + width, :current_dim]
+            O_t1 = A_t[:, :, current_dim : current_dim + width, current_dim : current_dim + width]
+            local_eye = torch.eye(width, device=query_subspace.device, dtype=torch.float32)
+            O_inv = torch.inverse(O_t1 + tol * local_eye.expand(batch, heads, width, width))
+            A_t = M_t1 - N_t1.transpose(-1, -2).matmul(O_inv.matmul(N_t1))
+            matrices[group_idx - 1] = A_t[:, :, :, -q_group:]
+        return matrices
+
+    def _squat_quantize_keys(self, key_states: torch.Tensor, query_subspace: torch.Tensor) -> torch.Tensor:
+        batch, heads, _, head_dim = key_states.shape
+        query_subspace = query_subspace.to(device=key_states.device)
+        if query_subspace.shape[0] == 1 and batch > 1:
+            query_subspace = query_subspace.expand(batch, -1, -1, -1)
+        if query_subspace.shape[1] != heads or query_subspace.shape[-1] != head_dim:
+            raise ValueError("SQuat query subspace shape does not match the key tensor")
+        matrices = self._generate_At_inv(query_subspace)
+        P_inv = torch.inverse(matrices[-1])
+        work = key_states.float().clone()
+        q_group = head_dim if int(self.quant_group_size) <= 0 else int(self.quant_group_size)
+        groups = math.ceil(head_dim / q_group)
+        for group_idx in range(groups):
+            start = group_idx * q_group
+            end = min(head_dim, start + q_group)
+            chunk = work[:, :, :, start:end]
+            dequant = self._minmax_last_dim(chunk.transpose(2, 3).contiguous(), self.group_size, self.bits).transpose(2, 3)
+            if group_idx < groups - 1:
+                d_vec = (dequant - chunk).float()
+                next_start = end
+                H_t = matrices[group_idx]
+                B_t = P_inv[:, :, next_start:, :next_start]
+                update = d_vec.matmul(H_t.transpose(-2, -1)).matmul(B_t.transpose(-2, -1))
+                work[:, :, :, next_start:] = work[:, :, :, next_start:] + update
+            work[:, :, :, start:end] = dequant
+        return work
+
+    def _quantize_with_residual(self, tensor: torch.Tensor, quant_fn) -> tuple[torch.Tensor, float]:
+        work = tensor.float().clone()
+        _, _, seq_len, _ = work.shape
+        residual = self._residual_keep_length(seq_len)
+        quant_end = seq_len - residual
+        if quant_end <= 0:
+            return work.to(tensor.dtype), FP_BITS
+        work[:, :, :quant_end, :] = quant_fn(work[:, :, :quant_end, :])
+        avg_bits = (quant_end * self.bits + residual * FP_BITS) / max(seq_len, 1)
+        return work.to(tensor.dtype), float(avg_bits)
+
+    def quantize_key(self, layer_id: int, key_states: torch.Tensor, cache_meta: dict) -> tuple[torch.Tensor, float]:
+        query_subspace = self.query_subspaces.get(layer_id)
+        if query_subspace is None:
+            raise RuntimeError("SQuat key quantization requires the prefill query observer")
+        return self._quantize_with_residual(key_states, lambda data: self._squat_quantize_keys(data, query_subspace))
+
+    def quantize_value(self, layer_id: int, value_states: torch.Tensor, cache_meta: dict) -> tuple[torch.Tensor, float]:
+        return self._quantize_with_residual(value_states, lambda data: self._minmax_last_dim(data, self.group_size, self.bits))
+
+    def estimate_bits(self, layer_id: int, kv_kind: str, seq_len: int, head_dim: int, cache_meta: dict) -> float:
+        residual = self._residual_keep_length(seq_len)
+        quant_tokens = max(0, seq_len - residual)
+        return float((quant_tokens * self.bits + residual * FP_BITS) / max(seq_len, 1))
+</old>
+<new>
+
+    def _signed_asymmetric(self, tensor: torch.Tensor, bits: int, axis: int, group_size: int, residual_length: int) -> tuple[torch.Tensor, float]:
+        work = tensor.float().clone()
+        _, _, seq_len, _ = work.shape
+        residual = max(0, min(seq_len, int(residual_length)))
+        quant_end = seq_len - residual
+        if quant_end <= 0 or bits >= FP_BITS - 0.5:
+            return work.to(tensor.dtype), FP_BITS
+        quant_slice = work[:, :, :quant_end, :]
+        shaped = quant_slice.transpose(-2, -1).contiguous() if axis == 1 else quant_slice
+        group_size = shaped.shape[-1] if int(group_size) == -1 else int(group_size)
+        original_shape = shaped.shape
+        trailing = shaped.shape[-1]
+        padded = math.ceil(trailing / group_size) * group_size
+        shaped = torch.nn.functional.pad(shaped, (0, padded - trailing)) if padded != trailing else shaped
+        rows = shaped.reshape(-1, group_size)
+        q_max, q_min = 2 ** (bits - 1) - 1, -(2 ** (bits - 1))
+        max_vals = rows.max(dim=1).values
+        min_vals = rows.min(dim=1).values
+        scale = (max_vals - min_vals).clamp(min=1e-5) / (q_max - q_min)
+        zeros = (min_vals / scale).round() - q_min
+        quant = torch.round(rows / scale.unsqueeze(1) - zeros.unsqueeze(1)).clamp(q_min, q_max)
+        dequant = (quant + zeros.unsqueeze(1)) * scale.unsqueeze(1)
+        dequant = dequant.reshape(*original_shape[:-1], padded)[..., :trailing]
+        if axis == 1:
+            dequant = dequant.transpose(-2, -1).contiguous()
+        work[:, :, :quant_end, :] = dequant
+        avg_bits = (quant_end * bits + residual * FP_BITS) / max(seq_len, 1)
+        return work.to(tensor.dtype), float(avg_bits)
+
+    def quantize_key(self, layer_id: int, key_states: torch.Tensor, cache_meta: dict) -> tuple[torch.Tensor, float]:
+        return self._signed_asymmetric(key_states, self._PRESET[layer_id]["key"], axis=0, group_size=-1, residual_length=0)
+
+    def quantize_value(self, layer_id: int, value_states: torch.Tensor, cache_meta: dict) -> tuple[torch.Tensor, float]:
+        return self._signed_asymmetric(value_states, self._PRESET[layer_id]["value"], axis=0, group_size=-1, residual_length=0)
+
+    def estimate_bits(self, layer_id: int, kv_kind: str, seq_len: int, head_dim: int, cache_meta: dict) -> float:
+        return float(self._PRESET[layer_id][kv_kind])
+</new>
+</edit>
+<obs>
+Successfully replaced text in transformers-kv-lab/custom_quant_eval.py.
+</obs>
+<run/>
+<obs>
+Measured results — `baseline:kvtuner4_pertoken_qwen25_3b` (`is_final,true`), seed `42` (the only seed; mean equals it).
+
+## Quality (`final_score`, 0-100)
+| seed | hotpotqa | passage_retrieval | repobench | niah | gsm8k |
+|---|---|---|---|---|---|
+| 42 | 39.470331 | 56.633333 | 43.743333 | 53.741497 | 43.517817 |
+| **mean** | **39.470331** | **56.633333** | **43.743333** | **53.741497** | **43.517817** |
+
+## Efficiency (`effective_kv_bits` / `kv_compression_ratio`)
+| seed | metric | hotpotqa | passage_retrieval | repobench | niah | gsm8k |
+|---|---|---|---|---|---|---|
+| 42 | effective_kv_bits | 3.638889 | 3.638889 | 3.638889 | 3.638889 | 3.638889 |
+| 42 | kv_compression_ratio | 4.396947 | 4.396947 | 4.396947 | 4.396947 | 4.396947 |
+
+## Runtime (`runtime_seconds`, diagnostic, not scored)
+| seed | hotpotqa | passage_retrieval | repobench | niah | gsm8k |
+|---|---|---|---|---|---|
+| 42 | 514.2 | 469.8 | 1121.2 | 588.9 | 12877.6 |
+</obs>
+
+### step 4 — KVTuner (layer-wise mixed precision, KIVI per-channel-key mode)   [slug:kvtuner4_kivi_qwen25_3b]
+
+<think>
+[[POLISH_REASONING: adapt to first-person agentic voice, end by deciding to implement]]
+The per-token layer-wise search did exactly the two things I predicted and exactly the one I feared, and the numbers draw the line cleanly. GSM8K jumped to 43.52 — a huge move off the floor's 31.84 and SQuat's 31.77 — because the search was calibrated to amplify the accumulation that flips an arithmetic token and it put K8V8 on layers 18, 27, 29 where the chain breaks. HotpotQA rose to 39.47, the best of any rung so far. The efficiency term climbed too: 3.6389 effective bits, 4.40× compression, clearly past the floor's 3.82× and SQuat's 4.0×. So breaking the layer-wise uniformity won on every axis I calibrated for. But the risk I flagged landed: the *pure long-context retrieval* workloads, which the GSM8K-calibrated search never optimized against, fell off — passage retrieval dropped to 56.63 (from the floor's 61.08), RepoBench to 43.74 (from 47.71), and NIAH *collapsed* to 53.74 from the floor's 65.31. That NIAH cliff is the tell. A pure needle-in-a-haystack retrieval task lives or dies on the *attention distribution* finding the one relevant key across a long context — and per-token key quantization is the lossiest possible choice for keys, because a per-token group is a slice across channels that swallows the key cache's persistent channel outliers, blowing up the scale and crushing the resolution of the normal channels that carry the retrieval signal. The per-token search bought GSM8K and compression by accepting larger key error everywhere, then leaned on the table to spend key bits back only where the *math* calibration said it mattered. Retrieval needed key fidelity on layers the math calibration never lit up. So the diagnosis I closed the last rung on is confirmed: keep the layer-wise mixed precision, but stop paying the per-token key penalty.
+
+So let me hold everything the search machinery established — the two-dimensional accumulation story, the key-first ladder, the offline prompt-independent table, the Pareto-plus-clustering reduction of `9^L` to `5^G` — all of that carries over unchanged, because none of it was the problem. The problem was the *quantization mode* the table sits on top of: per-token keys. I want to re-run the same search in the **KIVI per-channel-key mode**, where keys are grouped along the channel dimension (the floor's axis) so the channel outliers are confined to their own groups, and only values stay per-token. The layer-wise table then spends its bits on top of a key representation that is already several times more faithful per bit, so I expect the retrieval workloads to come back without surrendering the GSM8K and compression wins. This is the natural last move: the strongest of the within-layer ideas (per-channel keys, from the floor) fused with the strongest of the across-layer ideas (the searched mixed-precision table, from the last rung).
+
+Let me re-establish *why* per-channel keys are the right axis, because the whole rung turns on it and I should not import it on faith from the floor. The key cache `X·W_K` is an activation, and trained activations carry persistent large-magnitude outliers in a small number of *fixed* channels — the same channel is huge across essentially every token. Per-token quantization shares one scale across all channels of a token, so one giant outlier channel blows up that token's min/max range and every well-behaved channel in the token is quantized against a range it does not need, wasting its few available levels. Per-channel quantization shares the scale *within* a channel across a window of tokens, so the outlier channel gets its own wide range and the normal channels get tight ranges that fit them — the outlier's error is confined to its own channel instead of contaminating the whole token. Measured at low bits the relative key error is several times smaller per-channel, and on the *attention score* `softmax(qK^T)` — which is what the model actually consumes, and exactly what NIAH depends on — the gap is larger still, roughly fivefold. That fivefold attention-score fidelity is precisely what the NIAH workload needs and exactly what per-token keys threw away. Values stay per-token for the same reason the floor kept them there: the value is a mixer `o = Σ_j a_j v_j`, attention is sparse, per-token confines each token's error to its row where the unattended rows are weighted to ~0, while per-channel value quant smears unimportant-token error through shared channels into the important rows.
+
+Now the streaming consequence the per-token rung got to ignore but this one cannot, and it reintroduces machinery that mode dropped. Per-token value quant streams trivially. Per-channel key quant does *not*, because a channel's scale needs a whole *window* of tokens before it is defined and tokens arrive one at a time — so I am back to the grouped-plus-residual structure the floor used: quantize the key cache in complete groups of `G` tokens along the token axis, keep the most recent partial group in full precision, flush it when it fills. With `G = 32` and the residual length tied to the group, the kept FP count is `seq_len mod 32` — a small sliding window that aligns to the group boundary. That FP residual window, which the per-token mode set to zero, comes back and is load-bearing on exactly the tasks that just broke: the freshest tokens are the locally relevant ones, and keeping them exact protects the local reasoning the per-token mode left fully quantized. So the mode switch is not just an axis flag — it carries the per-channel grouping, the transpose so the token axis becomes the group axis, and the residual sliding window, all of which the per-token table did without.
+
+Re-derive the mechanistic reason the *key* is the layer-allocation lever, because the search has to know what to protect and the answer must survive the mode change. Take one query `q` and key cache `K`; the clean score is `a_i = exp(qK_i)/Σ_j exp(qK_j)`. Quantize the keys, error `ΔK ∼ N(0, σ²)`, `σ = (max K − min K)/(2^B − 1)` growing geometrically as `B` drops. The corrupted score `â_i = exp(q(K_i+ΔK_i))/Σ_j exp(q(K_j+ΔK_j))`; factor the exponential and divide by `exp(qΔK_i)` to get `â_i = exp(qK_i)/[Σ_j exp(qK_j)·(exp(qΔK_j)/exp(qΔK_i))]`. If a single key `i` dominates the softmax, pulling `exp(qK_i)` out gives `â_i ≈ exp(qΔK_i)/exp(qΔK_i) = 1` and the rest 0 — the distribution survives any key error. So sparse, concentrated heads are robust; spread-out retrieval heads, where no key dominates, are fragile, the error ratios do not cancel, the softmax reshuffles and the head re-orders which keys look critical. NIAH is the purest such retrieval head — one needle key among thousands, no domination — which is precisely why per-token key error wrecked it. The corruption rides entirely on `qΔK`, so the remedy is *key* precision in the fragile layers; and the value never enters the softmax at all (`o = Σ_j a_j v_j`, value error applied after the weights are set), so value bits cannot repair a shifted distribution. That is why the ladder is key-first, and per-channel keys are the same lever from the other side: they shrink `σ` for the key by confining outliers, before the table even spends a bit.
+
+So the offline pipeline is identical to the per-token rung's, just run in KIVI mode: measure per-layer attention-output error for the nine pairs *under per-channel key quantization*, Pareto-prune each layer to its key-first candidate set, partition by candidate set and DBSCAN-cluster by sensitivity into groups, run the multi-objective black-box search over the per-group pairs against the accumulation-amplified GSM8K accuracy oracle and the memory objective, read off the per-layer table. The pruning sometimes keeps different exceptions in this mode — once per-channel makes the key cheap and accurate, a few layers can actually prefer lowering the key further and raising the value (K2V4, K4V8) where per-token would never have — and the per-layer pruning respects that. The arithmetic underneath is the signed-asymmetric grid again, identical to the per-token rung: `q_max = 2^(B−1) − 1`, `q_min = −2^(B−1)`, `scale = clamp(max − min, 1e-5)/(2^B − 1)`, `zeros = round(min/scale) − q_min`, `quant = clamp(round(g/scale − zeros), q_min, q_max)`, `dequant = (quant + zeros)·scale`. The only differences from the per-token answer are the per-key axis (transpose so head_dim becomes the row index and the group runs over a token window — `axis=1`), the group size (`32`, not the whole head_dim), and the residual (`32`, the sliding window, not `0`).
+
+Now the task's literal KIVI-mode preset, which I match exactly because the same-named baseline is the task's table, not the paper's. The searched table for Qwen2.5-3B in KIVI mode at the 4-bit family is dominated by K4V2 — most of the 36 layers run a 4-bit per-channel key and a 2-bit value — with the exceptions the search insists on: the earliest layers 0 and 1 get K4V8, two early layers 2 and 4 drop to K2V4, a couple of layers 12 and 28 go to K2V2, and the last two layers 34 and 35 get K4V4. The shape is what the lemma predicted — bits concentrated on the key, value pushed to 2-bit wherever the layer's heads are sparse enough to tolerate it, with a handful of sensitive layers protected — but the *specific* table differs from the per-token rung's because per-channel keys change which pairs are Pareto-optimal per layer. Summing the bits gives key total 136 and value total 92 over 36 layers, so the preset equivalent precision is `(136 + 92)/(2·36) ≈ 3.17` bits per element before the sequence-dependent residual overhead — even lower than the per-token rung's 3.6389, because per-channel keys are accurate enough at 4 bits that the search could push more layers' values to 2-bit without breaking accumulation. The harness's `estimate_bits` then folds in the `seq_len mod 32` residual at the 4096 reference span, landing the reported effective bits at 3.166667 — the table's nominal 3.17 with the residual at a 4096-span multiple of 32 contributing nothing. No prefill observer is needed (the table is static), so this rung returns `needs_prefill_qkv_observer() -> False` like the per-token rung; the intelligence is in the offline table plus the per-channel grouping, not a runtime hook.
+
+So the bar this endpoint must clear, stated against the three measured rungs below it. The headline efficiency win should be the largest of any rung: 3.166667 effective bits is ~5.05× compression, well past the per-token rung's 4.40×, the floor's 3.82×, and SQuat's 4.0× — so the efficiency half of every workload score should be the highest here, and on the score_spec's compression term (4× reference, 8× bound) 5.05× is meaningfully above the reference point on all five workloads. On quality the claim is that per-channel keys *recover the retrieval workloads the per-token table sacrificed* without giving back GSM8K. So I expect NIAH to climb back from the per-token rung's collapsed 53.74 toward the floor's per-channel-key level near 65.31 — the fivefold attention-score fidelity is exactly what the needle search needs. RepoBench should recover from 43.74 toward the high-40s, and passage retrieval from 56.63 back toward the high-50s. GSM8K should *hold* most of the per-token rung's jump — it should land well above the floor's 31.84 and SQuat's 31.77, in the mid-30s, because the table still protects the accumulation-critical layers even though the more aggressive 3.17-bit budget gives back a little of the per-token rung's 43.52. The one place I am genuinely unsure is whether the lower 3.17-bit budget costs *HotpotQA* relative to the per-token rung's chart-topping 39.47 — the more aggressive value-to-2-bit pushes could nick the QA workload even as retrieval recovers. The falsifiable summary: if NIAH, RepoBench, and passage retrieval all recover toward or past the floor while GSM8K stays in the mid-30s and compression jumps to ~5×, then fusing per-channel keys with the searched layer-wise table is the strongest point on the ladder — the across-layer and within-layer ideas finally compounding instead of trading off. The full scaffold module is in the answer.
+</think>
+<say>
+[[FILL_SAY: 1-2 sentences naming the method and what this first edit does]]
+</say>
+<edit path="transformers-kv-lab/custom_quant_eval.py">
+<old>
+class AdaptiveKVQuantizer:
+    """KVTuner FlexibleVanillaQuantizedCache with official per-token preset."""
+
+    _PRESET = {
+        0: {"key": 8, "value": 4}, 1: {"key": 4, "value": 2}, 2: {"key": 4, "value": 2},
+        3: {"key": 4, "value": 2}, 4: {"key": 4, "value": 2}, 5: {"key": 4, "value": 2},
+        6: {"key": 4, "value": 2}, 7: {"key": 4, "value": 2}, 8: {"key": 4, "value": 2},
+        9: {"key": 4, "value": 2}, 10: {"key": 4, "value": 4}, 11: {"key": 4, "value": 2},
+        12: {"key": 4, "value": 2}, 13: {"key": 4, "value": 2}, 14: {"key": 4, "value": 2},
+        15: {"key": 4, "value": 2}, 16: {"key": 4, "value": 2}, 17: {"key": 4, "value": 2},
+        18: {"key": 8, "value": 8}, 19: {"key": 4, "value": 4}, 20: {"key": 4, "value": 2},
+        21: {"key": 4, "value": 2}, 22: {"key": 4, "value": 2}, 23: {"key": 4, "value": 2},
+        24: {"key": 4, "value": 4}, 25: {"key": 4, "value": 2}, 26: {"key": 4, "value": 4},
+        27: {"key": 8, "value": 8}, 28: {"key": 4, "value": 2}, 29: {"key": 8, "value": 8},
+        30: {"key": 4, "value": 2}, 31: {"key": 4, "value": 2}, 32: {"key": 4, "value": 2},
+        33: {"key": 4, "value": 4}, 34: {"key": 4, "value": 2}, 35: {"key": 4, "value": 2},
+    }
+</old>
+<new>
+class AdaptiveKVQuantizer:
+    """KVTuner FlexibleVanillaQuantizedCache with official KIVI-style preset."""
+
+    _PRESET = {
+        0: {"key": 4, "value": 8}, 1: {"key": 4, "value": 8}, 2: {"key": 2, "value": 4},
+        3: {"key": 4, "value": 2}, 4: {"key": 2, "value": 4}, 5: {"key": 4, "value": 2},
+        6: {"key": 4, "value": 2}, 7: {"key": 4, "value": 2}, 8: {"key": 4, "value": 2},
+        9: {"key": 4, "value": 2}, 10: {"key": 4, "value": 2}, 11: {"key": 4, "value": 2},
+        12: {"key": 2, "value": 2}, 13: {"key": 4, "value": 2}, 14: {"key": 4, "value": 2},
+        15: {"key": 4, "value": 2}, 16: {"key": 4, "value": 2}, 17: {"key": 4, "value": 2},
+        18: {"key": 4, "value": 2}, 19: {"key": 4, "value": 2}, 20: {"key": 4, "value": 2},
+        21: {"key": 4, "value": 2}, 22: {"key": 4, "value": 2}, 23: {"key": 4, "value": 2},
+        24: {"key": 4, "value": 2}, 25: {"key": 4, "value": 2}, 26: {"key": 4, "value": 2},
+        27: {"key": 4, "value": 2}, 28: {"key": 2, "value": 2}, 29: {"key": 4, "value": 2},
+        30: {"key": 4, "value": 2}, 31: {"key": 4, "value": 2}, 32: {"key": 4, "value": 2},
+        33: {"key": 4, "value": 2}, 34: {"key": 4, "value": 4}, 35: {"key": 4, "value": 4},
+    }
+</new>
+</edit>
+<obs>
+Successfully replaced text in transformers-kv-lab/custom_quant_eval.py.
+</obs>
+<note>
+[[FILL_NOTE?: optional one-line thought for this edit, or delete this block]]
+</note>
+<edit path="transformers-kv-lab/custom_quant_eval.py">
+<old>
+
+    def _signed_asymmetric(self, tensor: torch.Tensor, bits: int, axis: int, group_size: int, residual_length: int) -> tuple[torch.Tensor, float]:
+        work = tensor.float().clone()
+        _, _, seq_len, _ = work.shape
+        residual = max(0, min(seq_len, int(residual_length)))
+        quant_end = seq_len - residual
+</old>
+<new>
+
+    def _residual_keep_length(self, seq_len: int, residual_length: int) -> int:
+        residual_length = max(0, min(seq_len, int(residual_length)))
+        return seq_len % residual_length if residual_length else 0
+
+    def _signed_asymmetric(self, tensor: torch.Tensor, bits: int, axis: int, group_size: int, residual_length: int) -> tuple[torch.Tensor, float]:
+        work = tensor.float().clone()
+        _, _, seq_len, _ = work.shape
+        residual = self._residual_keep_length(seq_len, residual_length)
+        quant_end = seq_len - residual
+</new>
+</edit>
+<obs>
+Successfully replaced text in transformers-kv-lab/custom_quant_eval.py.
+</obs>
+<note>
+[[FILL_NOTE?: optional one-line thought for this edit, or delete this block]]
+</note>
+<edit path="transformers-kv-lab/custom_quant_eval.py">
+<old>
+    def quantize_key(self, layer_id: int, key_states: torch.Tensor, cache_meta: dict) -> tuple[torch.Tensor, float]:
+        return self._signed_asymmetric(key_states, self._PRESET[layer_id]["key"], axis=0, group_size=-1, residual_length=0)
+
+    def quantize_value(self, layer_id: int, value_states: torch.Tensor, cache_meta: dict) -> tuple[torch.Tensor, float]:
+        return self._signed_asymmetric(value_states, self._PRESET[layer_id]["value"], axis=0, group_size=-1, residual_length=0)
+
+    def estimate_bits(self, layer_id: int, kv_kind: str, seq_len: int, head_dim: int, cache_meta: dict) -> float:
+        return float(self._PRESET[layer_id][kv_kind])
+</old>
+<new>
+    def quantize_key(self, layer_id: int, key_states: torch.Tensor, cache_meta: dict) -> tuple[torch.Tensor, float]:
+        return self._signed_asymmetric(key_states, self._PRESET[layer_id]["key"], axis=1, group_size=32, residual_length=32)
+
+    def quantize_value(self, layer_id: int, value_states: torch.Tensor, cache_meta: dict) -> tuple[torch.Tensor, float]:
+        return self._signed_asymmetric(value_states, self._PRESET[layer_id]["value"], axis=0, group_size=32, residual_length=32)
+
+    def estimate_bits(self, layer_id: int, kv_kind: str, seq_len: int, head_dim: int, cache_meta: dict) -> float:
+        residual = self._residual_keep_length(seq_len, 32)
+        quant_tokens = max(0, seq_len - residual)
+        bits = self._PRESET[layer_id][kv_kind]
+        return float((quant_tokens * bits + residual * FP_BITS) / max(seq_len, 1))
+</new>
+</edit>
+<obs>
+Successfully replaced text in transformers-kv-lab/custom_quant_eval.py.
+</obs>
+<run/>
+<obs>
+Measured results — `baseline:kvtuner4_kivi_qwen25_3b` (`is_final,true`), seed `42` (the only seed; mean equals it).
+
+## Quality (`final_score`, 0-100)
+| seed | hotpotqa | passage_retrieval | repobench | niah | gsm8k |
+|---|---|---|---|---|---|
+| 42 | 35.77662 | 57.111111 | 46.02 | 64.62585 | 34.723275 |
+| **mean** | **35.77662** | **57.111111** | **46.02** | **64.62585** | **34.723275** |
+
+## Efficiency (`effective_kv_bits` / `kv_compression_ratio`)
+| seed | metric | hotpotqa | passage_retrieval | repobench | niah | gsm8k |
+|---|---|---|---|---|---|---|
+| 42 | effective_kv_bits | 3.166667 | 3.166667 | 3.166667 | 3.166667 | 3.166667 |
+| 42 | kv_compression_ratio | 5.052632 | 5.052632 | 5.052632 | 5.052632 | 5.052632 |
+
+## Runtime (`runtime_seconds`, diagnostic, not scored)
+| seed | hotpotqa | passage_retrieval | repobench | niah | gsm8k |
+|---|---|---|---|---|---|
+| 42 | 580.3 | 514.2 | 1294.4 | 600.9 | 12658.3 |
+</obs>
+

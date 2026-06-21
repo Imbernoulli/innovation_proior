@@ -1,0 +1,2558 @@
+<meta task="rl-offline-off2on" domain="Reinforcement learning" file="CORL/algorithms/finetune/custom_finetune.py" model_format="qwen3" edit_tool="str_replace"/>
+
+<system>
+You are a research engineer improving a model on a fixed ML task. You work by editing the model code and running experiments. Think carefully before each change. You have these tools:
+- str_replace(path, old_str, new_str): replace the unique occurrence of old_str with new_str.
+- create(path, file_text): create a new file.
+- run_experiment(): train + evaluate the current code under the fixed budget; returns metrics.
+Make one tool call at a time. After editing, call run_experiment() to measure your method.
+</system>
+
+<user>
+## Research question
+
+Offline-to-online RL pretrains a policy and value function on a fixed dataset `D` and then continues
+learning with live environment interaction. The single thing being designed is the
+`OfflineOnlineAlgorithm` class — the networks it builds, the per-batch `train` update, and the
+`on_online_start` hook fired once at the offline→online handoff. Everything around it (data loading,
+the replay buffer, the two-phase training loop, evaluation, the 256-width network cap) is fixed.
+
+The transition is where this problem bites. A conservative offline value function can turn
+overoptimistic the moment online data shifts the replay distribution; a behavior-regularized policy can
+forget the competence it learned offline; and naive fine-tuning routinely triggers an early
+**Q-value collapse** and a performance drop before any recovery. The datasets are Adroit `cloned-v1`
+(Pen, Door, Hammer) — mixtures of expert and noisy demonstrations, so offline pretraining never
+produces a strong policy on its own and the online phase has to improve substantially **without losing
+the little competence that was learned**. The precise question: design one algorithm that pretrains
+stably from this mixed offline data and then fine-tunes online without catastrophic forgetting or
+Q-collapse.
+
+## Prior art before the first rung (offline-to-online lineage)
+
+The ladder reacts to the standard offline-RL families, each of which pretrains stably but stumbles at
+the online handoff in its own way.
+
+- **Off-policy actor-critic on a static batch (TD3 / SAC, Fujimoto et al. 2018; Haarnoja et al. 2018).**
+  Twin critics fit a Bellman target `r + γ Q_target(s', π(s'))` and the actor maximizes `Q(s, π(s))`.
+  Online this self-corrects; on a fixed batch the bootstrap evaluates the critic at the *actor's* chosen
+  `π(s')` — an action the data may never contain — where the net extrapolates upward, the actor (a
+  maximizer) is pulled toward it, and the inflated value bootstraps and diverges. Gap: no mechanism to
+  keep the actor inside the data's support.
+- **Policy-constraint offline RL (BCQ, BEAR, BRAC, TD3+BC; Fujimoto et al. 2019, 2021).** Add a penalty
+  or architecture that keeps `π` close to the behavior policy `π_β`, which stabilizes offline learning.
+  Gap: most pin the policy to a divergence-from-`π_β` (or to an explicitly fit behavior model), which is
+  over-conservative on mixed data and, once online, either strangles improvement or — if the constraint
+  is fixed — leaves the early Q-collapse unaddressed.
+- **Value-regularization offline RL (CQL; Kumar et al. 2020).** Push `Q` down on out-of-distribution
+  actions and up on dataset actions for a conservative lower bound. Strong offline. Gap: the learned
+  `Q` is *uncalibrated* in scale — it can sit far below the true return — so at the online transition
+  the first real returns look huge relative to it, the critic lurches, and the policy collapses before
+  recovering.
+
+The three rungs below are the families adapted to *this* task's harness, weakest to strongest, each a
+fill of the same editable contract.
+
+## The fixed substrate
+
+A two-phase loop is frozen and must not be touched. **Phase 1 (offline, 1M gradient steps):** sample
+minibatches from a `ReplayBuffer` preloaded with the D4RL `cloned-v1` dataset and call
+`trainer.train(batch, is_online=False)`. **Transition:** `trainer.on_online_start()` fires once.
+**Phase 2 (online, 1M env-interaction steps):** at each step `trainer.select_action(state)` collects a
+transition that is appended to the *same* buffer (so it grows with online data), then
+`trainer.train(batch, is_online=True)` runs. States are normalized by dataset mean/std (toggleable via
+`CONFIG_OVERRIDES`). The loop provides `soft_update` (Polyak), `init_module_weights`, an `_mlp` factory
+locked at hidden width 256, the `ReplayBuffer` (whose `sample` returns
+`[states, actions, rewards, next_states, dones, next_actions]`), and `eval_actor`. If the trainer
+defines an optional `pretrain(replay_buffer, batch_size)` method it is called once before Phase 1.
+
+Two hard constraints from the harness: **all MLP hidden widths must be 256**, and the **total trainable
+parameter count is capped at ~1.2× the largest baseline architecture** — the contribution must be
+algorithmic (transition handling, value calibration, replay balancing, constraint annealing), not
+capacity. Metric: D4RL normalized score (0 = random, 100 = expert), higher is better, on Pen, Door, and
+Hammer `cloned-v1`.
+
+## The editable interface
+
+Exactly one region is editable — the network classes (`DeterministicActor`, `Actor`, `Critic`,
+`ValueFunction`) and the `OfflineOnlineAlgorithm` class, plus an optional `CONFIG_OVERRIDES` dict
+(allowed keys: `normalize`, `normalize_reward`, `actor_lr`, `critic_lr`, `tau`, `expl_noise`,
+`discount`). Every rung replaces this region and nothing else. The contract the loop calls:
+`__init__(state_dim, action_dim, max_action, replay_buffer=..., ...)` builds the nets and sets
+`self.actor` to a module with `.act(state, device)`; `train(batch, is_online)` runs one update and
+returns a scalar-metric dict; `select_action(state)` collects online data (may add exploration noise);
+`on_online_start()` adjusts hyperparameters/optimizers at the handoff. The starting point is the
+scaffold default below — a plain twin-critic actor-critic stub whose `train` is a no-op placeholder.
+
+```python
+# EDITABLE region of CORL/algorithms/finetune/custom_finetune.py — default fill (placeholder)
+CONFIG_OVERRIDES: Dict[str, Any] = {}
+
+
+class DeterministicActor(nn.Module):
+    """Deterministic policy pi(s) = tanh(net(s)) * max_action. Default: 2 x 256 MLP."""
+
+    def __init__(self, state_dim: int, action_dim: int, max_action: float):
+        super().__init__()
+        self.max_action = max_action
+        self.net = nn.Sequential(
+            nn.Linear(state_dim, 256), nn.ReLU(),
+            nn.Linear(256, 256), nn.ReLU(),
+            nn.Linear(256, action_dim), nn.Tanh(),
+        )
+
+    def forward(self, state: torch.Tensor) -> torch.Tensor:
+        return self.max_action * self.net(state)
+
+    @torch.no_grad()
+    def act(self, state: np.ndarray, device: str = "cpu") -> np.ndarray:
+        state = torch.tensor(state.reshape(1, -1), device=device, dtype=torch.float32)
+        return self(state).cpu().data.numpy().flatten()
+
+
+class Actor(nn.Module):
+    """Tanh-Gaussian stochastic policy. Default: 3 x 256 MLP."""
+
+    def __init__(self, state_dim, action_dim, max_action, orthogonal_init=False):
+        super().__init__()
+        self.max_action = max_action
+        self.action_dim = action_dim
+        self.net = nn.Sequential(
+            nn.Linear(state_dim, 256), nn.ReLU(),
+            nn.Linear(256, 256), nn.ReLU(),
+            nn.Linear(256, 256), nn.ReLU(),
+            nn.Linear(256, 2 * action_dim),
+        )
+        init_module_weights(self.net, orthogonal_init)
+        self.log_std_min, self.log_std_max = -20.0, 2.0
+
+    def _get_dist(self, state):
+        out = self.net(state)
+        mean, log_std = torch.split(out, self.action_dim, dim=-1)
+        log_std = torch.clamp(log_std, self.log_std_min, self.log_std_max)
+        return TransformedDistribution(
+            Normal(mean, torch.exp(log_std)), TanhTransform(cache_size=1)
+        ), mean
+
+    def forward(self, state, deterministic=False):
+        dist, mean = self._get_dist(state)
+        action = torch.tanh(mean) if deterministic else dist.rsample()
+        log_prob = dist.log_prob(action).sum(-1)
+        return self.max_action * action, log_prob
+
+    def log_prob(self, state, action):
+        dist, _ = self._get_dist(state)
+        action = torch.clamp(action / self.max_action, -1.0 + 1e-6, 1.0 - 1e-6)
+        return dist.log_prob(action).sum(-1)
+
+    @torch.no_grad()
+    def act(self, state, device="cpu"):
+        state = torch.tensor(state.reshape(1, -1), device=device, dtype=torch.float32)
+        actions, _ = self(state, not self.training)
+        return actions.cpu().data.numpy().flatten()
+
+
+class Critic(nn.Module):
+    """Q(s, a). Default: 3 x 256 MLP, squeezed output."""
+
+    def __init__(self, state_dim, action_dim, orthogonal_init=False):
+        super().__init__()
+        self.net = nn.Sequential(
+            nn.Linear(state_dim + action_dim, 256), nn.ReLU(),
+            nn.Linear(256, 256), nn.ReLU(),
+            nn.Linear(256, 256), nn.ReLU(),
+            nn.Linear(256, 1),
+        )
+        init_module_weights(self.net, orthogonal_init)
+
+    def forward(self, state, action):
+        return self.net(torch.cat([state, action], dim=-1)).squeeze(-1)
+
+
+class ValueFunction(nn.Module):
+    """V(s). Default: 3 x 256 MLP, squeezed output."""
+
+    def __init__(self, state_dim, orthogonal_init=False):
+        super().__init__()
+        self.net = nn.Sequential(
+            nn.Linear(state_dim, 256), nn.ReLU(),
+            nn.Linear(256, 256), nn.ReLU(),
+            nn.Linear(256, 256), nn.ReLU(),
+            nn.Linear(256, 1),
+        )
+        init_module_weights(self.net, orthogonal_init)
+
+    def forward(self, state):
+        return self.net(state).squeeze(-1)
+
+
+class OfflineOnlineAlgorithm:
+    """Offline-to-Online RL algorithm — implement your approach here."""
+
+    def __init__(self, state_dim, action_dim, max_action, replay_buffer=None,
+                 discount=0.99, tau=5e-3, actor_lr=3e-4, critic_lr=3e-4, device="cuda"):
+        self.device = device
+        self.discount = discount
+        self.tau = tau
+        self.max_action = max_action
+        self.total_it = 0
+        self.replay_buffer = replay_buffer
+
+        self.actor = Actor(state_dim, action_dim, max_action).to(device)
+        self.critic_1 = Critic(state_dim, action_dim).to(device)
+        self.critic_2 = Critic(state_dim, action_dim).to(device)
+        self.critic_1_target = deepcopy(self.critic_1)
+        self.critic_2_target = deepcopy(self.critic_2)
+        self.actor_optimizer = torch.optim.Adam(self.actor.parameters(), lr=actor_lr)
+        self.critic_1_optimizer = torch.optim.Adam(self.critic_1.parameters(), lr=critic_lr)
+        self.critic_2_optimizer = torch.optim.Adam(self.critic_2.parameters(), lr=critic_lr)
+
+    def train(self, batch: TensorBatch, is_online: bool = False) -> Dict[str, float]:
+        self.total_it += 1
+        states, actions, rewards, next_states, dones, next_actions = batch
+        # ── Placeholder: replace with your algorithm ──
+        return {"actor_loss": 0.0, "critic_loss": 0.0}
+
+    def select_action(self, state: np.ndarray) -> np.ndarray:
+        return self.actor.act(state, self.device)
+
+    def on_online_start(self):
+        pass
+```
+
+## Evaluation settings
+
+Each method is trained and evaluated on **Pen**, **Door**, and **Hammer** `cloned-v1` (the public test
+commands run pen-cloned-v1 and hammer-cloned-v1; a hammer-expert-v1 run is held out). Per method the
+offline phase trains for 1M gradient steps and the online phase for 1M environment-interaction steps,
+with periodic evaluation throughout both phases. Three seeds {42, 123, 456}. Metric: D4RL normalized
+score, mean over 10 evaluation episodes, higher is better; a strong method retains offline competence
+while benefiting from online fine-tuning across all three manipulation tasks.
+
+The editable model code is in `CORL/algorithms/finetune/custom_finetune.py`:
+```python
+class OfflineOnlineAlgorithm:
+    """Offline-to-Online RL algorithm — implement your approach here.
+
+    Goal: learn a policy from offline data (phase 1) and then improve it with
+    online interaction (phase 2) on Adroit dexterous manipulation tasks.
+
+    Key challenges:
+    - Preventing Q-value collapse at the offline→online transition
+    - Avoiding catastrophic forgetting of offline-learned behaviors
+    - Handling distribution shift between offline and online data
+    - Balancing exploration vs exploitation during online fine-tuning
+
+    The training loop calls:
+        trainer = OfflineOnlineAlgorithm(state_dim, action_dim, max_action, **kwargs)
+
+        # Phase 1: Offline (1M steps)
+        for t in range(offline_iterations):
+            log_dict = trainer.train(batch, is_online=False)
+
+        # Transition
+        trainer.on_online_start()
+
+        # Phase 2: Online (1M steps)
+        for t in range(online_iterations):
+            action = trainer.select_action(state)
+            next_state, reward, done, info = env.step(action)
+            replay_buffer.add_transition(...)
+            log_dict = trainer.train(batch, is_online=True)
+
+    You MUST set self.actor to an nn.Module that has an .act(state, device) method.
+
+    Dataset access:
+        replay_buffer is a ReplayBuffer instance containing the offline dataset
+        (and later also online data). You can use it to compute dataset-level
+        statistics, e.g.:
+            replay_buffer._states[:replay_buffer._size]   — all states  (Tensor)
+            replay_buffer._actions[:replay_buffer._size]  — all actions (Tensor)
+            replay_buffer._rewards[:replay_buffer._size]  — all rewards (Tensor)
+            replay_buffer._next_actions[:replay_buffer._size] — next actions (Tensor)
+            replay_buffer._size                           — number of transitions
+        Note: during online phase, the buffer grows as new transitions are added.
+
+    Available network classes (defined above, editable):
+        DeterministicActor  — deterministic tanh policy (for TD3+BC / SPOT approaches)
+        Actor               — stochastic Tanh-Gaussian policy (for CQL / AWAC / Cal-QL)
+        Critic              — Q(s, a) network
+        ValueFunction       — V(s) network
+    Available utilities (fixed): soft_update, init_module_weights
+    """
+
+    def __init__(
+        self,
+        state_dim: int,
+        action_dim: int,
+        max_action: float,
+        replay_buffer: "ReplayBuffer" = None,
+        discount: float = 0.99,
+        tau: float = 5e-3,
+        actor_lr: float = 3e-4,
+        critic_lr: float = 3e-4,
+        device: str = "cuda",
+    ):
+        self.device = device
+        self.discount = discount
+        self.tau = tau
+        self.max_action = max_action
+        self.total_it = 0
+        # Full dataset buffer — use for computing global statistics.
+        # During online phase, this buffer grows as new transitions are added.
+        self.replay_buffer = replay_buffer
+
+        # Build networks — modify or replace as needed
+        self.actor = Actor(state_dim, action_dim, max_action).to(device)
+        self.critic_1 = Critic(state_dim, action_dim).to(device)
+        self.critic_2 = Critic(state_dim, action_dim).to(device)
+        self.critic_1_target = deepcopy(self.critic_1)
+        self.critic_2_target = deepcopy(self.critic_2)
+
+        self.actor_optimizer = torch.optim.Adam(self.actor.parameters(), lr=actor_lr)
+        self.critic_1_optimizer = torch.optim.Adam(self.critic_1.parameters(), lr=critic_lr)
+        self.critic_2_optimizer = torch.optim.Adam(self.critic_2.parameters(), lr=critic_lr)
+
+    def train(self, batch: TensorBatch, is_online: bool = False) -> Dict[str, float]:
+        """Update networks on one batch. Return a dict of scalar metrics for logging.
+
+        batch = [states, actions, rewards, next_states, dones, next_actions]
+        (torch.Tensor, on device)
+        is_online = True during online fine-tuning phase
+
+        next_actions is the action at the next timestep in the dataset
+        (useful for algorithms like ReBRAC that penalize deviations from
+        the data's next action). For online transitions, next_actions is
+        a placeholder (same as actions).
+
+        TODO: implement your offline-to-online RL algorithm here.
+        """
+        self.total_it += 1
+        states, actions, rewards, next_states, dones, next_actions = batch
+
+        # ── Placeholder: replace with your algorithm ──────────────────
+        log_dict: Dict[str, float] = {
+            "actor_loss": 0.0,
+            "critic_loss": 0.0,
+        }
+        return log_dict
+
+    def select_action(self, state: np.ndarray) -> np.ndarray:
+        """Select action for online data collection. May add exploration noise."""
+        return self.actor.act(state, self.device)
+
+    def on_online_start(self):
+        """Called once when transitioning from offline to online phase.
+
+        Use this to reset optimizers, adjust hyperparameters, etc.
+        """
+        pass
+```
+Improve it. Derive your method, edit the code, then run_experiment().
+</user>
+
+### step 1 — SPOT (support-constrained TD3 + VAE)   [slug:spot]
+
+<think>
+[[POLISH_REASONING: adapt to first-person agentic voice, end by deciding to implement]]
+I am starting the ladder at the rung that takes the cleanest stance on the one failure that dominates
+this whole task: the offline→online Q-collapse. Before I reach for calibrated value functions or
+expectile tricks, I want to nail down *why* a plain off-policy actor-critic blows up on a fixed batch,
+and then pick the most direct cure, because the directness is exactly what makes this a good first
+measurement — it isolates one mechanism so the numbers tell me whether that mechanism is the binding
+constraint here.
+
+Write down the disease precisely. The scaffold default is a twin-critic actor-critic: critics fit the
+Bellman target `r + γ Q_target(s', π(s'))`, and a deterministic actor maximizes `Q(s, π(s))`. The
+poison is in that target. `π(s')` is the action the *actor* chose, not one the dataset contains. On the
+Adroit `cloned-v1` mixtures — expert demos diluted with noisy ones — the behavior policy covers only a
+thin sliver of the 24-to-30-dimensional action cube, so `π(s')` routinely lands on actions the batch
+never saw. There the critic is a neural net extrapolating off its training manifold, and that
+extrapolation is essentially unbounded; worse, it skews *upward*, because the actor is a maximizer and
+is actively attracted to whichever out-of-distribution action the critic happens to over-value. Those
+inflated values get bootstrapped back through the backup into neighboring states, the next actor update
+chases them harder, and the value function runs away. Offline there is no environment to punish the
+silly action and correct the critic, so nothing stops the divergence. The first-principles conclusion:
+the cure is not more capacity or a better optimizer — it is *forbidding the actor from leaving the
+region where the behavior policy actually put mass.*
+
+What is that region? The principled answer is the **support** of `π_β`: in state `s`, allow only actions
+with `π_β(a|s) > ε`. There is a clean reason to trust this rather than treat it as a hack. If I restrict
+the maximization in the Bellman operator to the support set and call that backup `T_ε`, its fixed point
+`Q*_ε` is the supported optimal value, and I can bound how far it sits from the true `Q*`. Writing
+`α(ε) = ‖T Q* − T_ε Q*‖_∞` for the worst-case one-step gap and using that `T_ε` is a γ-contraction in
+sup-norm, the triangle inequality gives `‖Q* − Q*_ε‖_∞ ≤ γ‖Q* − Q*_ε‖_∞ + α(ε)`, hence
+`‖Q* − Q*_ε‖_∞ ≤ α(ε)/(1−γ)`. So confining myself to the support costs at most a controlled,
+contraction-amplified amount: a tighter support (bigger `ε`) shrinks the extrapolation risk but raises
+`α(ε)`, a looser one does the reverse. `ε` is the single dial trading "stay where the critic is
+trustworthy" against "keep enough room to be good." Confinement is safe; the only question is how to
+enforce it.
+
+Now the design fork that decides which method this rung is. Two camps enforce support. The
+parameterization camp (BCQ and descendants) bakes it into the architecture — fit a generative model of
+`π_β`, sample candidate actions, argmax `Q` over them — which respects density by construction but welds
+the algorithm to a slow generative inference path at every action selection and makes the offline→online
+swap awkward. The regularization camp keeps the policy a plain network and adds a penalty pulling it
+toward `π_β` — pluggable, one forward pass at inference. I want the regularization camp's pluggability,
+because the offline→online transition I care most about is far easier when the offline and online
+objectives are the same algorithm at two settings of one coefficient. But here is the wall every
+regularizer hits: it penalizes a *divergence* from `π_β` (BEAR's MMD, TD3+BC's `(π(s)−a)²` cloning
+term), and a divergence measures distributional *closeness*, not *support*. The support condition only
+asks "put your action where `π_β` has density above `ε`" — it says nothing about matching `π_β`'s shape.
+On the `cloned` mixtures, where `π_β` is broad and multimodal, forcing `π` close to it in distribution
+drags the policy toward the noisy demonstrations even when the data plainly supports a sharper, stronger
+policy. So I am cornered: parameterization gets the right notion but is intrusive; regularization is
+pluggable but enforces the wrong notion.
+
+The mismatch is the clue. The reason every regularizer is "indirect" is that it measures a distance
+between *distributions*, but the constraint I actually wrote is a statement about the *value of the
+behavior density at the single action the policy takes*: `π_β(π(s)|s) > ε`. So I should stop measuring a
+divergence and instead just evaluate the behavior density at `π(s)` and require it be large. As an
+optimization over the policy, with a log so the density enters additively,
+`max_φ E_{s~D}[Q(s, π_φ(s))]` subject to `min_s log π_β(π_φ(s)|s) > log ε`. The per-state `min` is an
+infinite family of constraints over a continuous state space, so I relax it the standard way (as TRPO
+and AWR do for their constraints) to an average over the data states,
+`E_{s~D}[log π_β(π_φ(s)|s)] > ε̂`, and Lagrangianize it into a single penalty on the actor loss:
+`J_π(φ) = E_{s~D}[ −Q(s, π_φ(s)) − λ·log π_β(π_φ(s)|s) ]`. This is pluggable — an extra term on the
+standard actor loss, policy still a plain network — yet the penalty *is* the behavior log-density, a
+direct support constraint rather than a divergence. `λ` plays the role of `ε`: large `λ` pins the policy
+onto high-density actions, small `λ` lets the value term lead.
+
+I do not have `π_β` in closed form, only samples (the dataset actions), so I must *estimate* the density
+at arbitrary `(s, a)`, including the off-data actions the policy probes. The estimator has to capture
+multimodal behavior — a single Gaussian would smear the `cloned` mixture's modes into one blob and call
+the valley between them "in support." A conditional VAE is the natural fit: `π_β(a|s) ≈ p_ψ(a|s)` with a
+fixed `N(0,I)` prior, the standard flexible behavior model in offline RL. The marginal is intractable,
+so I use the evidence lower bound: introduce an approximate posterior `q_φ(z|a,s)` and, by Jensen,
+`log p_ψ(a|s) ≥ E_{q_φ}[log p_ψ(a|z,s)] − KL(q_φ(z|a,s) ‖ p(z|s)) =: −L_ELBO`. Two things make this the
+right object. First, `−L_ELBO` is a genuine *lower* bound (its gap is a nonnegative KL), so substituting
+it for `log π_β` in a constraint I want *above* a threshold is conservative in the right direction — if
+the bound is high, the true density is at least that high. Second, I can keep the KL analytic (closed
+form for Gaussian `q` and prior) by drawing a single latent sample, which gives a low-variance gradient.
+So the density penalty is `neg_log_beta = L_ELBO(s, π(s)) = recon + β·KL`, with reconstruction
+`mean((decode(s,z) − a)²)` and `β = 0.5` down-weighting the KL so the VAE spends capacity on faithful
+reconstruction. This is both what I train the VAE on and what I evaluate at `π(s)`.
+
+The base off-policy algorithm: TD3, not SAC. My enemy is OOD overestimation, and TD3 was built to
+suppress it — the `min` of twin critics caps the bootstrap, target policy smoothing keeps the critic
+from latching onto a sharp spurious peak, and delayed (every-`policy_freq`) actor updates let the value
+settle before the actor chases it. SAC is the opposite of what I want: its stochastic actor *samples*
+actions whose tails reach OOD and pull in erroneous values, and its entropy bonus actively rewards
+spreading toward the support's edge — exactly the behavior I am forbidding. So: deterministic actor,
+twin unsqueezed critics, target smoothing, delayed updates.
+
+One scale issue remains. The actor loss `−Q + λ·neg_log_beta` mixes two terms on different scales — `Q`
+lives on the scale of returns (task-dependent), `neg_log_beta` on the scale of a log-density — so a
+single `λ` would need re-tuning per task. I borrow TD3+BC's normalization: divide the value term by the
+detached mean `|Q|` over the minibatch, `norm_q = 1/|Q|.mean().detach()`, so the actor loss becomes
+`−norm_q·Q.mean() + λ·neg_log_beta.mean()`. This keeps the value gradient order-1 regardless of reward
+scale without changing which action has larger value within a batch, so one `λ` transfers across Pen,
+Door, and Hammer.
+
+Now the two structural facts the offline→online setting needs. **First**, set `λ = 0` and the loss
+collapses to `−norm_q·Q.mean()` — plain TD3. So this rung is TD3 with a knob that, at zero, returns it
+to ordinary online TD3; there is no architectural gap between the offline algorithm and a well-grounded
+online one. That is the seamless-transition property a parameterization could never give. **Second**,
+how I use it: offline I pretrain with a strong constraint (large `λ`) to keep the critic honest on the
+fixed data, but once fresh online interactions arrive, the data distribution shifts toward the policy's
+own actions — exactly the actions the critic can now learn about from real feedback — so the reason for
+the constraint erodes. Holding `λ` fixed would pin the policy near the *offline* support and cap online
+improvement. So I *cool* `λ` linearly over the online phase toward a small floor `λ_end`,
+`λ_t = λ·max(λ_end, 1 − t_online/10⁶)`, relaxing the support constraint as real feedback accumulates. I
+keep a floor rather than going to zero because on the hardest tasks bootstrap error stays dangerous even
+online — a residual constraint guards the critic mid-finetune. And I *freeze the VAE* during online
+fine-tuning: behavior models chase a moving, policy-dependent target online, so re-fitting would destroy
+the stable "where the offline data was" notion; the decaying `λ` alone controls how much that notion
+still binds. The VAE is trained once, before Phase 1, in the harness's optional `pretrain` hook.
+
+In this task's harness specifically, a few details differ from the generic recipe and I want them
+right. The VAE trains in `pretrain(replay_buffer, batch_size)` for ~10⁵ steps and is then frozen
+(`self.vae.eval()`), so the constraint is stationary from the first policy step. The actor and critic
+head weights are initialized small (uniform ±0.001 on the actor head, ±0.003 on the critic heads,
+matching the reference) so the policy starts near-zero-action and the critics start near-zero-value,
+which keeps the early offline backups gentle. At `on_online_start` I reset all three optimizers (Adam
+moment estimates accumulated over 1M offline steps would otherwise inject stale momentum into the first
+online updates) and set the online discount. The VAE is 750-wide (3-layer encoder/decoder, latent dim
+`2·action_dim`) — this is the *largest* network in the whole task, which is precisely why the parameter
+budget is set to 1.2× a CQL/Cal-QL-plus-VAE architecture; I am at the edge of the cap, so there is no
+room to add capacity, only algorithm. The actor LR is dropped to `1e-4` (slower, more conservative actor
+than the critic's `3e-4`) and `normalize = False` is set in `CONFIG_OVERRIDES`, matching the reference
+SPOT config for Adroit.
+
+What do I expect this rung to deliver, and what would falsify the premise? If the support constraint is
+the binding fix, I expect stable offline pretraining and a *monotone* (not collapsing) online curve on
+all three tasks — the whole point is no early Q-collapse. The risk I am explicitly taking is the
+constraint's conservatism on `cloned` data: the VAE's support of a noisy expert+random mixture is broad,
+so the density penalty may admit too much and the critic may still drift, *or* the cooling schedule may
+relax `λ` faster than the critic stabilizes on the held-out expert variant where there is no recovery
+margin. Concretely I expect Pen-cloned to land in a respectable but not dominant range and Hammer-cloned
+to register meaningfully (the support constraint should let the policy find the few good demonstrations),
+but I am genuinely worried about the expert held-out variant: if the VAE's support is too permissive,
+the deterministic TD3 actor could ride an over-valued OOD action straight off the manifold there and
+collapse to near-zero — and that is exactly the kind of measurement I want first, because if the
+*directest* support method collapses on one variant, it tells me the next rung must control the value
+function's *calibration* or its *optimism*, not just the policy's support. The full scaffold module is
+in the answer.
+</think>
+<say>
+[[FILL_SAY: 1-2 sentences naming the method and what this first edit does]]
+</say>
+<edit path="CORL/algorithms/finetune/custom_finetune.py">
+<old>
+class OfflineOnlineAlgorithm:
+    """Offline-to-Online RL algorithm — implement your approach here.
+
+    Goal: learn a policy from offline data (phase 1) and then improve it with
+    online interaction (phase 2) on Adroit dexterous manipulation tasks.
+
+    Key challenges:
+    - Preventing Q-value collapse at the offline→online transition
+    - Avoiding catastrophic forgetting of offline-learned behaviors
+    - Handling distribution shift between offline and online data
+    - Balancing exploration vs exploitation during online fine-tuning
+
+    The training loop calls:
+        trainer = OfflineOnlineAlgorithm(state_dim, action_dim, max_action, **kwargs)
+
+        # Phase 1: Offline (1M steps)
+        for t in range(offline_iterations):
+            log_dict = trainer.train(batch, is_online=False)
+
+        # Transition
+        trainer.on_online_start()
+
+        # Phase 2: Online (1M steps)
+        for t in range(online_iterations):
+            action = trainer.select_action(state)
+            next_state, reward, done, info = env.step(action)
+            replay_buffer.add_transition(...)
+            log_dict = trainer.train(batch, is_online=True)
+
+    You MUST set self.actor to an nn.Module that has an .act(state, device) method.
+
+    Dataset access:
+        replay_buffer is a ReplayBuffer instance containing the offline dataset
+        (and later also online data). You can use it to compute dataset-level
+        statistics, e.g.:
+            replay_buffer._states[:replay_buffer._size]   — all states  (Tensor)
+            replay_buffer._actions[:replay_buffer._size]  — all actions (Tensor)
+            replay_buffer._rewards[:replay_buffer._size]  — all rewards (Tensor)
+            replay_buffer._next_actions[:replay_buffer._size] — next actions (Tensor)
+            replay_buffer._size                           — number of transitions
+        Note: during online phase, the buffer grows as new transitions are added.
+
+    Available network classes (defined above, editable):
+        DeterministicActor  — deterministic tanh policy (for TD3+BC / SPOT approaches)
+        Actor               — stochastic Tanh-Gaussian policy (for CQL / AWAC / Cal-QL)
+        Critic              — Q(s, a) network
+        ValueFunction       — V(s) network
+    Available utilities (fixed): soft_update, init_module_weights
+    """
+
+    def __init__(
+        self,
+        state_dim: int,
+        action_dim: int,
+        max_action: float,
+        replay_buffer: "ReplayBuffer" = None,
+        discount: float = 0.99,
+        tau: float = 5e-3,
+        actor_lr: float = 3e-4,
+        critic_lr: float = 3e-4,
+        device: str = "cuda",
+    ):
+        self.device = device
+        self.discount = discount
+        self.tau = tau
+        self.max_action = max_action
+        self.total_it = 0
+        # Full dataset buffer — use for computing global statistics.
+        # During online phase, this buffer grows as new transitions are added.
+        self.replay_buffer = replay_buffer
+
+        # Build networks — modify or replace as needed
+        self.actor = Actor(state_dim, action_dim, max_action).to(device)
+        self.critic_1 = Critic(state_dim, action_dim).to(device)
+        self.critic_2 = Critic(state_dim, action_dim).to(device)
+        self.critic_1_target = deepcopy(self.critic_1)
+        self.critic_2_target = deepcopy(self.critic_2)
+
+        self.actor_optimizer = torch.optim.Adam(self.actor.parameters(), lr=actor_lr)
+        self.critic_1_optimizer = torch.optim.Adam(self.critic_1.parameters(), lr=critic_lr)
+        self.critic_2_optimizer = torch.optim.Adam(self.critic_2.parameters(), lr=critic_lr)
+
+    def train(self, batch: TensorBatch, is_online: bool = False) -> Dict[str, float]:
+        """Update networks on one batch. Return a dict of scalar metrics for logging.
+
+        batch = [states, actions, rewards, next_states, dones, next_actions]
+        (torch.Tensor, on device)
+        is_online = True during online fine-tuning phase
+
+        next_actions is the action at the next timestep in the dataset
+        (useful for algorithms like ReBRAC that penalize deviations from
+        the data's next action). For online transitions, next_actions is
+        a placeholder (same as actions).
+
+        TODO: implement your offline-to-online RL algorithm here.
+        """
+        self.total_it += 1
+        states, actions, rewards, next_states, dones, next_actions = batch
+
+        # ── Placeholder: replace with your algorithm ──────────────────
+        log_dict: Dict[str, float] = {
+            "actor_loss": 0.0,
+            "critic_loss": 0.0,
+        }
+        return log_dict
+
+    def select_action(self, state: np.ndarray) -> np.ndarray:
+        """Select action for online data collection. May add exploration noise."""
+        return self.actor.act(state, self.device)
+
+    def on_online_start(self):
+        """Called once when transitioning from offline to online phase.
+
+        Use this to reset optimizers, adjust hyperparameters, etc.
+        """
+        pass
+</old>
+<new>
+CONFIG_OVERRIDES: Dict[str, Any] = {"normalize": False}
+
+
+class VAE(nn.Module):
+    """Variational Auto-Encoder for SPOT support constraint."""
+
+    def __init__(self, state_dim: int, action_dim: int, latent_dim: int,
+                 max_action: float, hidden_dim: int = 750):
+        super().__init__()
+        self.encoder_shared = nn.Sequential(
+            nn.Linear(state_dim + action_dim, hidden_dim), nn.ReLU(),
+            nn.Linear(hidden_dim, hidden_dim), nn.ReLU(),
+        )
+        self.mean = nn.Linear(hidden_dim, latent_dim)
+        self.log_std = nn.Linear(hidden_dim, latent_dim)
+        self.decoder = nn.Sequential(
+            nn.Linear(state_dim + latent_dim, hidden_dim), nn.ReLU(),
+            nn.Linear(hidden_dim, hidden_dim), nn.ReLU(),
+            nn.Linear(hidden_dim, action_dim), nn.Tanh(),
+        )
+        self.max_action = max_action
+        self.latent_dim = latent_dim
+
+    def forward(self, state, action):
+        mean, std = self.encode(state, action)
+        z = mean + std * torch.randn_like(std)
+        u = self.decode(state, z)
+        return u, mean, std
+
+    def encode(self, state, action):
+        z = self.encoder_shared(torch.cat([state, action], -1))
+        mean = self.mean(z)
+        log_std = self.log_std(z).clamp(-4, 15)
+        std = torch.exp(log_std)
+        return mean, std
+
+    def decode(self, state, z):
+        return self.max_action * self.decoder(torch.cat([state, z], -1))
+
+
+class Critic(nn.Module):
+    """Q-function Q(s, a). 2x256 MLP, returns (batch, 1)."""
+
+    def __init__(self, state_dim: int, action_dim: int, orthogonal_init: bool = False):
+        super().__init__()
+        self.net = nn.Sequential(
+            nn.Linear(state_dim + action_dim, 256), nn.ReLU(),
+            nn.Linear(256, 256), nn.ReLU(),
+            nn.Linear(256, 1),
+        )
+
+    def forward(self, state: torch.Tensor, action: torch.Tensor) -> torch.Tensor:
+        return self.net(torch.cat([state, action], dim=-1))
+
+
+class OfflineOnlineAlgorithm:
+    """SPOT — Support constraint Policy Optimization via online Training (TD3 + VAE)."""
+
+    def __init__(self, state_dim, action_dim, max_action, replay_buffer=None,
+                 discount=0.99, tau=5e-3, actor_lr=3e-4, critic_lr=3e-4, device="cuda"):
+        self.device = device
+        self.discount = discount
+        self.online_discount = 0.99
+        self.tau = tau
+        self.max_action = max_action
+        self.total_it = 0
+        self.replay_buffer = replay_buffer
+
+        self.policy_noise = 0.2 * max_action
+        self.noise_clip = 0.5 * max_action
+        self.policy_freq = 2
+        self.expl_noise = 0.1
+        self.beta = 0.5
+        self.lambd = 1.0
+        self.lambd_cool = True
+        self.lambd_end = 0.5
+        self.num_samples = 1
+        self.is_online = False
+        self.online_it = 0
+        self.max_online_steps = int(1e6)
+        self.vae_iterations = 100_000
+        self._actor_lr = 1e-4
+        self._critic_lr = critic_lr
+
+        latent_dim = 2 * action_dim
+        self.vae = VAE(state_dim, action_dim, latent_dim, max_action, hidden_dim=750).to(device)
+        self.vae_optimizer = torch.optim.Adam(self.vae.parameters(), lr=1e-3)
+        self._vae_trained = False
+
+        self.actor = DeterministicActor(state_dim, action_dim, max_action).to(device)
+        _actor_head = self.actor.net[-2]
+        _actor_head.weight.data.uniform_(-0.001, 0.001)
+        _actor_head.bias.data.uniform_(-0.001, 0.001)
+        self.actor_target = deepcopy(self.actor)
+        self.actor_optimizer = torch.optim.Adam(self.actor.parameters(), lr=self._actor_lr)
+
+        self.critic_1 = Critic(state_dim, action_dim).to(device)
+        _c1_head = self.critic_1.net[-1]
+        _c1_head.weight.data.uniform_(-0.003, 0.003)
+        _c1_head.bias.data.uniform_(-0.003, 0.003)
+        self.critic_1_target = deepcopy(self.critic_1)
+        self.critic_1_optimizer = torch.optim.Adam(self.critic_1.parameters(), lr=self._critic_lr)
+
+        self.critic_2 = Critic(state_dim, action_dim).to(device)
+        _c2_head = self.critic_2.net[-1]
+        _c2_head.weight.data.uniform_(-0.003, 0.003)
+        _c2_head.bias.data.uniform_(-0.003, 0.003)
+        self.critic_2_target = deepcopy(self.critic_2)
+        self.critic_2_optimizer = torch.optim.Adam(self.critic_2.parameters(), lr=self._critic_lr)
+
+    def _elbo_loss(self, state, action):
+        mean, std = self.vae.encode(state, action)
+        N = self.num_samples
+        mean_s = mean.repeat(N, 1, 1).permute(1, 0, 2)
+        std_s = std.repeat(N, 1, 1).permute(1, 0, 2)
+        z = mean_s + std_s * torch.randn_like(std_s)
+        state_r = state.repeat(N, 1, 1).permute(1, 0, 2)
+        action_r = action.repeat(N, 1, 1).permute(1, 0, 2)
+        u = self.vae.decode(state_r, z)
+        recon_loss = ((u - action_r) ** 2).mean(dim=(1, 2))
+        KL_loss = -0.5 * (1 + torch.log(std.pow(2)) - mean.pow(2) - std.pow(2)).mean(-1)
+        return recon_loss + self.beta * KL_loss
+
+    def _vae_train_step(self, batch):
+        state, action, *_ = batch
+        recon, mean, std = self.vae(state, action)
+        recon_loss = F.mse_loss(recon, action)
+        KL_loss = -0.5 * (1 + torch.log(std.pow(2)) - mean.pow(2) - std.pow(2)).mean()
+        vae_loss = recon_loss + self.beta * KL_loss
+        self.vae_optimizer.zero_grad()
+        vae_loss.backward()
+        self.vae_optimizer.step()
+        return {"vae_loss": vae_loss.item(), "vae_recon": recon_loss.item()}
+
+    def pretrain(self, replay_buffer, batch_size: int) -> Dict[str, float]:
+        print(f"Pretraining SPOT VAE for {self.vae_iterations} steps")
+        log_dict: Dict[str, float] = {}
+        self.vae.train()
+        for t in range(self.vae_iterations):
+            batch = replay_buffer.sample(batch_size)
+            batch = [b.to(self.device) for b in batch]
+            log_dict = self._vae_train_step(batch)
+            if (t + 1) % 1000 == 0:
+                metrics_str = " ".join(
+                    f"{k}={v:.4f}" if isinstance(v, float) else f"{k}={v}"
+                    for k, v in log_dict.items()
+                )
+                print(f"TRAIN_METRICS step=vae_{t+1} {metrics_str}", flush=True)
+        self.vae.eval()
+        self._vae_trained = True
+        return log_dict
+
+    def train(self, batch: TensorBatch, is_online: bool = False) -> Dict[str, float]:
+        self.total_it += 1
+        if not self._vae_trained:
+            if self.replay_buffer is not None:
+                self.pretrain(self.replay_buffer, batch[0].shape[0])
+            else:
+                self.vae.eval()
+                self._vae_trained = True
+
+        if is_online:
+            self.online_it += 1
+        state, action, reward, next_state, done, *_ = batch
+        not_done = 1 - done
+        log_dict: Dict[str, float] = {}
+
+        with torch.no_grad():
+            noise = (torch.randn_like(action) * self.policy_noise).clamp(
+                -self.noise_clip, self.noise_clip
+            )
+            next_action = (self.actor_target(next_state) + noise).clamp(
+                -self.max_action, self.max_action
+            )
+            target_q1 = self.critic_1_target(next_state, next_action)
+            target_q2 = self.critic_2_target(next_state, next_action)
+            target_q = torch.min(target_q1, target_q2)
+            target_q = reward + not_done * self.discount * target_q
+
+        current_q1 = self.critic_1(state, action)
+        current_q2 = self.critic_2(state, action)
+        critic_loss = F.mse_loss(current_q1, target_q) + F.mse_loss(current_q2, target_q)
+        log_dict["critic_loss"] = critic_loss.item()
+
+        self.critic_1_optimizer.zero_grad()
+        self.critic_2_optimizer.zero_grad()
+        critic_loss.backward()
+        self.critic_1_optimizer.step()
+        self.critic_2_optimizer.step()
+
+        if self.total_it % self.policy_freq == 0:
+            pi = self.actor(state)
+            q = self.critic_1(state, pi)
+            neg_log_beta = self._elbo_loss(state, pi)
+
+            if self.lambd_cool:
+                lambd = self.lambd * max(
+                    self.lambd_end, (1.0 - self.online_it / self.max_online_steps)
+                )
+            else:
+                lambd = self.lambd
+
+            norm_q = 1.0 / q.abs().mean().detach()
+            actor_loss = -norm_q * q.mean() + lambd * neg_log_beta.mean()
+            log_dict["actor_loss"] = actor_loss.item()
+            log_dict["lambd"] = lambd
+
+            self.actor_optimizer.zero_grad()
+            actor_loss.backward()
+            self.actor_optimizer.step()
+
+            soft_update(self.critic_1_target, self.critic_1, self.tau)
+            soft_update(self.critic_2_target, self.critic_2, self.tau)
+            soft_update(self.actor_target, self.actor, self.tau)
+
+        return log_dict
+
+    def select_action(self, state: np.ndarray) -> np.ndarray:
+        with torch.no_grad():
+            state_t = torch.tensor(
+                state.reshape(1, -1), device=self.device, dtype=torch.float32
+            )
+            action = self.actor(state_t)
+            noise = (torch.randn_like(action) * self.expl_noise).clamp(
+                -self.noise_clip, self.noise_clip
+            )
+            action = (action + noise).clamp(-self.max_action, self.max_action)
+        return action.cpu().data.numpy().flatten()
+
+    def on_online_start(self):
+        self.is_online = True
+        self.discount = self.online_discount
+        self.actor_optimizer = torch.optim.Adam(self.actor.parameters(), lr=self._actor_lr)
+        self.critic_1_optimizer = torch.optim.Adam(self.critic_1.parameters(), lr=self._critic_lr)
+        self.critic_2_optimizer = torch.optim.Adam(self.critic_2.parameters(), lr=self._critic_lr)
+</new>
+</edit>
+<obs>
+Successfully replaced text in CORL/algorithms/finetune/custom_finetune.py.
+</obs>
+<run/>
+<obs>
+No `is_final,true` leaderboard row exists for this task; these are the measured `baseline:spot`
+(`is_final,false`) rows from `leaderboard.csv` (2026-05-05). D4RL normalized score, higher is better.
+
+| seed | pen-cloned-v1 | hammer-cloned-v1 | hammer-expert-v1 |
+|------|---------------|------------------|------------------|
+| 42   | 61.546        | 1.920            | 2.983            |
+| 123  | 23.091        | 1.290            | 3.046            |
+| 456  | 84.578        | 55.761           | 1.423            |
+| mean | 56.405        | 19.657           | 2.484            |
+</obs>
+
+### step 2 — AWAC (advantage-weighted actor-critic)   [slug:awac]
+
+<think>
+[[POLISH_REASONING: adapt to first-person agentic voice, end by deciding to implement]]
+The SPOT numbers tell a sharp story, and I want to read them carefully before deciding what to change.
+Pen-cloned landed at a mean of 56.4 (61.5 / 23.1 / 84.6 across seeds) — respectable but seed 123 fell to
+23, so the support constraint is not protecting every run equally. Hammer-cloned came in at 19.7, driven
+almost entirely by one lucky seed (55.8) with the other two near zero (1.9, 1.3). And the held-out
+expert variant — hammer-expert — *collapsed* to 2.5, near random, despite the offline data there being
+clean expert demonstrations. That last number is the one that diagnoses the method. On expert data the
+VAE's support is *tight*, so the density penalty should keep the deterministic TD3 actor exactly on the
+demonstrated trajectory — and instead the policy went to nearly zero return. This is precisely the
+failure mode I flagged: a deterministic actor maximizing `Q` rides whatever OOD action the critic
+over-values, and on expert data — where the support is a thin tube and the cooled `λ` opens it during the
+online phase — once the actor steps a little off that tube the critic has no real feedback to correct it
+and the value runs away. The collapse on the *cleanest* data is the tell that the binding problem is not
+the policy's support per se but the *deterministic maximizer + bootstrapped critic* exposing itself to
+OOD values during improvement. So the move is to keep the implicit-constraint idea but stop letting the
+actor's improvement step ever query `Q` at a self-proposed action at all.
+
+Let me restate what I actually need, because SPOT got two of three requirements right and I want to keep
+those. I need an off-policy critic (data efficiency — the online budget is real but the offline data must
+be reused throughout, which SPOT's TD3 critic does). I need a policy constraint for offline stability
+(SPOT had one). And I need a constraint that does *not* require keeping an explicit behavior model
+accurate during the shifting online phase — and here is where SPOT is brittle: it leans on a VAE whose
+support, frozen, is either too tight (expert: any deviation is unguarded once `λ` cools) or too broad
+(cloned: it admits the noise). I want the constraint to come for free from the *update math*, not from a
+separately-fit density model. That is the gap the next rung closes.
+
+Write the constrained improvement problem and solve it exactly, and watch whether the behavior model can
+be made to disappear. The advantage `A(s,a) = Q(s,a) − V(s)` is what improvement pushes up (maximizing
+`E_π[Q]` equals maximizing `E_π[A]` since `V` is action-independent), so at iteration `k`:
+`π_{k+1} = argmax_π E_{a~π}[A^{π_k}(s,a)]` subject to `KL(π(·|s) ‖ π_β(·|s)) ≤ ε` and normalization.
+Form the Lagrangian with multiplier `λ` on the KL and `α` on normalization, write the KL as
+`∫ π(log π − log π_β)`, and differentiate with respect to `π(a|s)` at a single action: the
+`E_π[A]` term gives `A(s,a)`, the `−λ·KL` term gives `−λ(log π − log π_β + 1)` (the `+1` from
+differentiating `π log π`), the normalization gives `−α`. Setting the sum to zero and solving for
+`log π` yields `log π(a|s) = (1/λ)A(s,a) + log π_β(a|s) − 1 − α/λ`; exponentiating and folding the
+action-independent constants into a per-state normalizer gives
+`π*(a|s) = (1/Z(s))·π_β(a|s)·exp(A(s,a)/λ)`. The optimal constrained policy is just the behavior policy
+reweighted by the exponentiated advantage. `λ` is the temperature: small `λ` sharpens toward the
+highest-advantage actions, large `λ` flattens toward `π_β`. The behavior policy is still in there — the
+projection step is where it has to die.
+
+Project this non-parametric `π*` onto my parametric policy `π_θ`. The direction of the projection makes
+or breaks everything, so I check both. Minimize the *forward* KL `KL(π* ‖ π_θ)` over data states:
+`argmin_θ E_{a~π*}[−log π_θ(a|s)]` (only that term depends on `θ`). Now the key move — I cannot sample
+`π*` directly, but `π*` is just `π_β` reweighted, so importance-sample from the buffer:
+`E_{a~π*}[−log π_θ] = E_{a~π_β}[(π*/π_β)(−log π_θ)] = E_{a~π_β}[(1/Z(s))exp(A/λ)(−log π_θ)]`. The `π_β`
+factor *cancels* — `π*/π_β = (1/Z)exp(A/λ)`, no behavior model left. So the actor update becomes a
+weighted maximum likelihood on samples drawn straight from the buffer:
+`θ_{k+1} = argmax_θ E_{(s,a)~β}[log π_θ(a|s)·exp(A^{π_k}(s,a)/λ)]`. This is supervised learning — each
+observed `(s,a)` weighted by its exponentiated advantage. No behavior model anywhere, and the constraint
+is enforced *implicitly*: by reweighting the buffer's own actions, the update can never put mass on an
+action the data did not contain, yet it concentrates mass on high-advantage ones. This is the third
+requirement met — and crucially, it is the fix for the SPOT collapse, because the improvement step now
+*reweights logged actions* instead of *maximizing `Q` at a self-proposed action*. The actor never asks
+the critic "what is the value of this new action I invented?" during improvement; it only asks "of the
+actions I actually saw, which were good?" That is the OOD-query the deterministic maximizer could not
+avoid, and it is gone.
+
+Contrast the *reverse* KL `KL(π_θ ‖ π*)` to be sure forward was right. Reverse KL =
+`E_{a~π_θ}[log π_θ − log π_β − A/λ + log Z]`, which needs two things I am fleeing: it evaluates
+`log π_β` (a density model — exactly the brittle VAE SPOT had to keep) and it samples actions from `π_θ`,
+which offline are the possibly-OOD actions that make `Q` extrapolate (exactly the hammer-expert
+collapse). Forward KL needs neither. So the direction that lets me sample from the buffer and cancel
+`π_β` is also the direction that removes both failure mechanisms I just saw.
+
+The per-state normalizer `Z(s) = E_{a~π_θ}[exp(A/λ)]` sits in the weight. Do I need it? Estimating it
+(say `K=10` samples per element) empirically *hurts* — the estimation error injects variance that
+behaves like a degenerate importance weight. And there is a clean argument it is benign to drop: `Z(s)`
+is a per-*state* factor, so it only reweights how much different states count, not how actions compete
+within a state, and the buffer's state distribution is already off from what `π_θ` will visit, so
+faithfully preserving it is low value. Drop `Z(s)`; normalize the weights across the minibatch instead.
+
+That leaves the critic — the policy-evaluation half — and here is the second deliberate departure from
+the SARSA/AWR lineage. I want efficiency, so I bootstrap `Q^π` of the *current* policy off-policy
+(twin-Q with a `min` target and a Polyak target network to control overestimation), not a Monte-Carlo
+`V^{π_β}` of the behavior policy. The Monte-Carlo route only supports one step of improvement away from
+`π_β` and is slow; the bootstrapped `Q^π` reuses off-policy data and improves iteratively, which is what
+lets the online phase keep climbing rather than stalling near the offline policy. The advantage the actor
+needs is `A(s,a) = Q(s,a) − V(s)`, and since `V(s) = E_{a~π}[Q(s,a)]` I estimate it by evaluating the
+(min of the twin) critic at an action *sampled from the current policy*. Note this `V` estimate does
+sample `π`, but it is only used to compute a *baseline subtraction inside the weight* — it never feeds an
+optimization that pulls the policy toward a high-`Q` invented action, so it does not reopen the SPOT
+failure; the improvement direction is still pure weighted-MLE on logged actions.
+
+In this task's harness the AWAC fill is specific and I want it exact. The actor is a 3×256 Gaussian with
+a *state-independent* `log_std` (an `nn.Parameter`, clamped to `[−20, 2]`), using a plain `Normal`
+distribution with a hard action clamp — not the template's `TanhTransform` Gaussian. The critics are
+3×256 and return `(batch, 1)` *unsqueezed* (the template squeezes), each with its own Adam optimizer.
+The advantage weight is `clamp_max(exp(adv/λ), 100)` with `awac_lambda = 0.1` (a sharper temperature
+than IQL's `β`), and the actor loss is `(−log_prob · weight).mean()` on the *dataset* actions. The
+target critics get the standard Polyak `soft_update` each step. And the decisive structural point for
+this task: `on_online_start` is a *no-op* — AWAC needs no special handling at the transition, because the
+same advantage-weighted update runs unchanged offline and online (the buffer simply grows with online
+data). That is exactly the seamless property I wanted and the thing SPOT had to engineer with its
+`λ`-cooling and optimizer resets. AWAC removes the transition-handling machinery entirely, which is its
+own kind of robustness — there is no schedule to mis-tune at the handoff.
+
+What do I expect against the SPOT numbers, and what would falsify the premise? My falsifiable claim is
+that removing the deterministic-maximizer OOD query stops the hammer-expert collapse: AWAC should
+*retain* the clean expert competence rather than fall to 2.5, because its actor never invents an action
+to maximize `Q` against — I expect hammer-expert to recover into the strong (100+) range. On Pen-cloned I
+expect to roughly match SPOT's mid-range (the implicit constraint should hold, but `cloned` data is noisy
+so I do not expect a blowout). The real risk I am taking — and the place AWAC could lose to SPOT — is on
+*hammer-cloned*: the advantage-weighted update reweights only logged actions, so on a dataset where the
+good demonstrations are rare and buried in noise, the weights may concentrate on too few transitions and
+the policy may fail to find the manipulation behavior at all. If hammer-cloned comes back near zero, that
+is the signal: the implicit constraint is *too* conservative on heavily-noisy mixtures, and the next rung
+must keep the OOD-safe value training but give the critic a stronger improvement signal — a value
+function that does in-support dynamic programming rather than only reweighting the behavior policy's own
+actions. That is the falsifiable boundary I am drawing between this rung and the next. The full scaffold
+module is in the answer.
+</think>
+<say>
+[[FILL_SAY: 1-2 sentences naming the method and what this first edit does]]
+</say>
+<edit path="CORL/algorithms/finetune/custom_finetune.py">
+<old>
+CONFIG_OVERRIDES: Dict[str, Any] = {"normalize": False}
+
+
+class VAE(nn.Module):
+    """Variational Auto-Encoder for SPOT support constraint."""
+
+    def __init__(self, state_dim: int, action_dim: int, latent_dim: int,
+                 max_action: float, hidden_dim: int = 750):
+        super().__init__()
+        self.encoder_shared = nn.Sequential(
+            nn.Linear(state_dim + action_dim, hidden_dim), nn.ReLU(),
+            nn.Linear(hidden_dim, hidden_dim), nn.ReLU(),
+        )
+        self.mean = nn.Linear(hidden_dim, latent_dim)
+        self.log_std = nn.Linear(hidden_dim, latent_dim)
+        self.decoder = nn.Sequential(
+            nn.Linear(state_dim + latent_dim, hidden_dim), nn.ReLU(),
+            nn.Linear(hidden_dim, hidden_dim), nn.ReLU(),
+            nn.Linear(hidden_dim, action_dim), nn.Tanh(),
+        )
+        self.max_action = max_action
+        self.latent_dim = latent_dim
+
+    def forward(self, state, action):
+        mean, std = self.encode(state, action)
+        z = mean + std * torch.randn_like(std)
+        u = self.decode(state, z)
+        return u, mean, std
+
+    def encode(self, state, action):
+        z = self.encoder_shared(torch.cat([state, action], -1))
+        mean = self.mean(z)
+        log_std = self.log_std(z).clamp(-4, 15)
+        std = torch.exp(log_std)
+        return mean, std
+
+    def decode(self, state, z):
+        return self.max_action * self.decoder(torch.cat([state, z], -1))
+
+
+class Critic(nn.Module):
+    """Q-function Q(s, a). 2x256 MLP, returns (batch, 1)."""
+
+    def __init__(self, state_dim: int, action_dim: int, orthogonal_init: bool = False):
+        super().__init__()
+        self.net = nn.Sequential(
+            nn.Linear(state_dim + action_dim, 256), nn.ReLU(),
+            nn.Linear(256, 256), nn.ReLU(),
+            nn.Linear(256, 1),
+        )
+
+    def forward(self, state: torch.Tensor, action: torch.Tensor) -> torch.Tensor:
+        return self.net(torch.cat([state, action], dim=-1))
+
+
+class OfflineOnlineAlgorithm:
+    """SPOT — Support constraint Policy Optimization via online Training (TD3 + VAE)."""
+</old>
+<new>
+class Actor(nn.Module):
+    """AWAC GaussianPolicy — 3x256 MLP, state-independent log_std, Normal + clamp."""
+
+    def __init__(self, state_dim: int, action_dim: int, hidden_dim: int = 256,
+                 min_log_std: float = -20.0, max_log_std: float = 2.0):
+        super().__init__()
+        self._mlp = nn.Sequential(
+            nn.Linear(state_dim, hidden_dim), nn.ReLU(),
+            nn.Linear(hidden_dim, hidden_dim), nn.ReLU(),
+            nn.Linear(hidden_dim, hidden_dim), nn.ReLU(),
+            nn.Linear(hidden_dim, action_dim),
+        )
+        self._log_std = nn.Parameter(torch.zeros(action_dim, dtype=torch.float32))
+        self._min_log_std = min_log_std
+        self._max_log_std = max_log_std
+
+    def _get_policy(self, state: torch.Tensor):
+        mean = self._mlp(state)
+        log_std = self._log_std.clamp(self._min_log_std, self._max_log_std)
+        return torch.distributions.Normal(mean, log_std.exp())
+
+    def log_prob(self, state: torch.Tensor, action: torch.Tensor) -> torch.Tensor:
+        policy = self._get_policy(state)
+        return policy.log_prob(action).sum(-1, keepdim=True)
+
+    def forward(self, state: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
+        policy = self._get_policy(state)
+        action = policy.rsample()
+        action.clamp_(-1.0, 1.0)
+        log_prob = policy.log_prob(action).sum(-1, keepdim=True)
+        return action, log_prob
+
+    def act(self, state: np.ndarray, device: str = "cpu") -> np.ndarray:
+        state_t = torch.tensor(state[None], dtype=torch.float32, device=device)
+        policy = self._get_policy(state_t)
+        if self._mlp.training:
+            action_t = policy.sample()
+        else:
+            action_t = policy.mean
+        return action_t[0].cpu().numpy()
+
+
+class Critic(nn.Module):
+    """Q-function Q(s, a). 3x256 MLP, returns (batch, 1)."""
+
+    def __init__(self, state_dim: int, action_dim: int, hidden_dim: int = 256):
+        super().__init__()
+        self._mlp = nn.Sequential(
+            nn.Linear(state_dim + action_dim, hidden_dim), nn.ReLU(),
+            nn.Linear(hidden_dim, hidden_dim), nn.ReLU(),
+            nn.Linear(hidden_dim, hidden_dim), nn.ReLU(),
+            nn.Linear(hidden_dim, 1),
+        )
+
+    def forward(self, state: torch.Tensor, action: torch.Tensor) -> torch.Tensor:
+        return self._mlp(torch.cat([state, action], dim=-1))
+
+
+class OfflineOnlineAlgorithm:
+    """AWAC — Advantage Weighted Actor-Critic for offline-to-online RL."""
+</new>
+</edit>
+<obs>
+Successfully replaced text in CORL/algorithms/finetune/custom_finetune.py.
+</obs>
+<note>
+[[FILL_NOTE?: optional one-line thought for this edit, or delete this block]]
+</note>
+<edit path="CORL/algorithms/finetune/custom_finetune.py">
+<old>
+        self.discount = discount
+        self.online_discount = 0.99
+        self.tau = tau
+        self.max_action = max_action
+        self.total_it = 0
+        self.replay_buffer = replay_buffer
+
+        self.policy_noise = 0.2 * max_action
+        self.noise_clip = 0.5 * max_action
+        self.policy_freq = 2
+        self.expl_noise = 0.1
+        self.beta = 0.5
+        self.lambd = 1.0
+        self.lambd_cool = True
+        self.lambd_end = 0.5
+        self.num_samples = 1
+        self.is_online = False
+        self.online_it = 0
+        self.max_online_steps = int(1e6)
+        self.vae_iterations = 100_000
+        self._actor_lr = 1e-4
+        self._critic_lr = critic_lr
+
+        latent_dim = 2 * action_dim
+        self.vae = VAE(state_dim, action_dim, latent_dim, max_action, hidden_dim=750).to(device)
+        self.vae_optimizer = torch.optim.Adam(self.vae.parameters(), lr=1e-3)
+        self._vae_trained = False
+
+        self.actor = DeterministicActor(state_dim, action_dim, max_action).to(device)
+        _actor_head = self.actor.net[-2]
+        _actor_head.weight.data.uniform_(-0.001, 0.001)
+        _actor_head.bias.data.uniform_(-0.001, 0.001)
+        self.actor_target = deepcopy(self.actor)
+        self.actor_optimizer = torch.optim.Adam(self.actor.parameters(), lr=self._actor_lr)
+
+        self.critic_1 = Critic(state_dim, action_dim).to(device)
+        _c1_head = self.critic_1.net[-1]
+        _c1_head.weight.data.uniform_(-0.003, 0.003)
+        _c1_head.bias.data.uniform_(-0.003, 0.003)
+        self.critic_1_target = deepcopy(self.critic_1)
+        self.critic_1_optimizer = torch.optim.Adam(self.critic_1.parameters(), lr=self._critic_lr)
+
+        self.critic_2 = Critic(state_dim, action_dim).to(device)
+        _c2_head = self.critic_2.net[-1]
+        _c2_head.weight.data.uniform_(-0.003, 0.003)
+        _c2_head.bias.data.uniform_(-0.003, 0.003)
+        self.critic_2_target = deepcopy(self.critic_2)
+        self.critic_2_optimizer = torch.optim.Adam(self.critic_2.parameters(), lr=self._critic_lr)
+
+    def _elbo_loss(self, state, action):
+        mean, std = self.vae.encode(state, action)
+        N = self.num_samples
+        mean_s = mean.repeat(N, 1, 1).permute(1, 0, 2)
+        std_s = std.repeat(N, 1, 1).permute(1, 0, 2)
+        z = mean_s + std_s * torch.randn_like(std_s)
+        state_r = state.repeat(N, 1, 1).permute(1, 0, 2)
+        action_r = action.repeat(N, 1, 1).permute(1, 0, 2)
+        u = self.vae.decode(state_r, z)
+        recon_loss = ((u - action_r) ** 2).mean(dim=(1, 2))
+        KL_loss = -0.5 * (1 + torch.log(std.pow(2)) - mean.pow(2) - std.pow(2)).mean(-1)
+        return recon_loss + self.beta * KL_loss
+
+    def _vae_train_step(self, batch):
+        state, action, *_ = batch
+        recon, mean, std = self.vae(state, action)
+        recon_loss = F.mse_loss(recon, action)
+        KL_loss = -0.5 * (1 + torch.log(std.pow(2)) - mean.pow(2) - std.pow(2)).mean()
+        vae_loss = recon_loss + self.beta * KL_loss
+        self.vae_optimizer.zero_grad()
+        vae_loss.backward()
+        self.vae_optimizer.step()
+        return {"vae_loss": vae_loss.item(), "vae_recon": recon_loss.item()}
+
+    def pretrain(self, replay_buffer, batch_size: int) -> Dict[str, float]:
+        print(f"Pretraining SPOT VAE for {self.vae_iterations} steps")
+        log_dict: Dict[str, float] = {}
+        self.vae.train()
+        for t in range(self.vae_iterations):
+            batch = replay_buffer.sample(batch_size)
+            batch = [b.to(self.device) for b in batch]
+            log_dict = self._vae_train_step(batch)
+            if (t + 1) % 1000 == 0:
+                metrics_str = " ".join(
+                    f"{k}={v:.4f}" if isinstance(v, float) else f"{k}={v}"
+                    for k, v in log_dict.items()
+                )
+                print(f"TRAIN_METRICS step=vae_{t+1} {metrics_str}", flush=True)
+        self.vae.eval()
+        self._vae_trained = True
+        return log_dict
+
+    def train(self, batch: TensorBatch, is_online: bool = False) -> Dict[str, float]:
+        self.total_it += 1
+        if not self._vae_trained:
+            if self.replay_buffer is not None:
+                self.pretrain(self.replay_buffer, batch[0].shape[0])
+            else:
+                self.vae.eval()
+                self._vae_trained = True
+
+        if is_online:
+            self.online_it += 1
+        state, action, reward, next_state, done, *_ = batch
+        not_done = 1 - done
+        log_dict: Dict[str, float] = {}
+
+        with torch.no_grad():
+            noise = (torch.randn_like(action) * self.policy_noise).clamp(
+                -self.noise_clip, self.noise_clip
+            )
+            next_action = (self.actor_target(next_state) + noise).clamp(
+                -self.max_action, self.max_action
+            )
+            target_q1 = self.critic_1_target(next_state, next_action)
+            target_q2 = self.critic_2_target(next_state, next_action)
+            target_q = torch.min(target_q1, target_q2)
+            target_q = reward + not_done * self.discount * target_q
+
+        current_q1 = self.critic_1(state, action)
+        current_q2 = self.critic_2(state, action)
+        critic_loss = F.mse_loss(current_q1, target_q) + F.mse_loss(current_q2, target_q)
+        log_dict["critic_loss"] = critic_loss.item()
+</old>
+<new>
+        self.discount = discount
+        self.tau = tau
+        self.max_action = max_action
+        self.total_it = 0
+
+        self.awac_lambda = 0.1
+        self.exp_adv_max = 100.0
+
+        self.actor = Actor(state_dim, action_dim, 256).to(device)
+        self.actor_optimizer = torch.optim.Adam(self.actor.parameters(), lr=actor_lr)
+
+        self.critic_1 = Critic(state_dim, action_dim, 256).to(device)
+        self.critic_2 = Critic(state_dim, action_dim, 256).to(device)
+        self.target_critic_1 = deepcopy(self.critic_1)
+        self.target_critic_2 = deepcopy(self.critic_2)
+        self.critic_1_optimizer = torch.optim.Adam(self.critic_1.parameters(), lr=critic_lr)
+        self.critic_2_optimizer = torch.optim.Adam(self.critic_2.parameters(), lr=critic_lr)
+
+    def train(self, batch: TensorBatch, is_online: bool = False) -> Dict[str, float]:
+        self.total_it += 1
+        states, actions, rewards, next_states, dones, *_ = batch
+        log_dict: Dict[str, float] = {}
+
+        with torch.no_grad():
+            next_actions, _ = self.actor(next_states)
+            q_next = torch.min(
+                self.target_critic_1(next_states, next_actions),
+                self.target_critic_2(next_states, next_actions),
+            )
+            q_target = rewards + self.discount * (1.0 - dones) * q_next
+
+        q1 = self.critic_1(states, actions)
+        q2 = self.critic_2(states, actions)
+        q1_loss = F.mse_loss(q1, q_target)
+        q2_loss = F.mse_loss(q2, q_target)
+        critic_loss = q1_loss + q2_loss
+        log_dict["critic_loss"] = critic_loss.item()
+</new>
+</edit>
+<obs>
+Successfully replaced text in CORL/algorithms/finetune/custom_finetune.py.
+</obs>
+<note>
+[[FILL_NOTE?: optional one-line thought for this edit, or delete this block]]
+</note>
+<edit path="CORL/algorithms/finetune/custom_finetune.py">
+<old>
+
+        if self.total_it % self.policy_freq == 0:
+            pi = self.actor(state)
+            q = self.critic_1(state, pi)
+            neg_log_beta = self._elbo_loss(state, pi)
+
+            if self.lambd_cool:
+                lambd = self.lambd * max(
+                    self.lambd_end, (1.0 - self.online_it / self.max_online_steps)
+                )
+            else:
+                lambd = self.lambd
+
+            norm_q = 1.0 / q.abs().mean().detach()
+            actor_loss = -norm_q * q.mean() + lambd * neg_log_beta.mean()
+            log_dict["actor_loss"] = actor_loss.item()
+            log_dict["lambd"] = lambd
+
+            self.actor_optimizer.zero_grad()
+            actor_loss.backward()
+            self.actor_optimizer.step()
+
+            soft_update(self.critic_1_target, self.critic_1, self.tau)
+            soft_update(self.critic_2_target, self.critic_2, self.tau)
+            soft_update(self.actor_target, self.actor, self.tau)
+</old>
+<new>
+
+        with torch.no_grad():
+            pi_action, _ = self.actor(states)
+            v = torch.min(
+                self.critic_1(states, pi_action),
+                self.critic_2(states, pi_action),
+            )
+            q = torch.min(
+                self.critic_1(states, actions),
+                self.critic_2(states, actions),
+            )
+            adv = q - v
+            weights = torch.clamp_max(
+                torch.exp(adv / self.awac_lambda), self.exp_adv_max
+            )
+
+        action_log_prob = self.actor.log_prob(states, actions)
+        actor_loss = (-action_log_prob * weights).mean()
+        log_dict["actor_loss"] = actor_loss.item()
+
+        self.actor_optimizer.zero_grad()
+        actor_loss.backward()
+        self.actor_optimizer.step()
+
+        soft_update(self.target_critic_1, self.critic_1, self.tau)
+        soft_update(self.target_critic_2, self.critic_2, self.tau)
+</new>
+</edit>
+<obs>
+Successfully replaced text in CORL/algorithms/finetune/custom_finetune.py.
+</obs>
+<note>
+[[FILL_NOTE?: optional one-line thought for this edit, or delete this block]]
+</note>
+<edit path="CORL/algorithms/finetune/custom_finetune.py">
+<old>
+    def select_action(self, state: np.ndarray) -> np.ndarray:
+        with torch.no_grad():
+            state_t = torch.tensor(
+                state.reshape(1, -1), device=self.device, dtype=torch.float32
+            )
+            action = self.actor(state_t)
+            noise = (torch.randn_like(action) * self.expl_noise).clamp(
+                -self.noise_clip, self.noise_clip
+            )
+            action = (action + noise).clamp(-self.max_action, self.max_action)
+        return action.cpu().data.numpy().flatten()
+
+    def on_online_start(self):
+        self.is_online = True
+        self.discount = self.online_discount
+        self.actor_optimizer = torch.optim.Adam(self.actor.parameters(), lr=self._actor_lr)
+        self.critic_1_optimizer = torch.optim.Adam(self.critic_1.parameters(), lr=self._critic_lr)
+        self.critic_2_optimizer = torch.optim.Adam(self.critic_2.parameters(), lr=self._critic_lr)
+</old>
+<new>
+    def select_action(self, state: np.ndarray) -> np.ndarray:
+        return self.actor.act(state, self.device)
+
+    def on_online_start(self):
+        # AWAC needs no special handling at transition
+        pass
+</new>
+</edit>
+<obs>
+Successfully replaced text in CORL/algorithms/finetune/custom_finetune.py.
+</obs>
+<run/>
+<obs>
+No `is_final,true` leaderboard row exists for this task; these are the measured `baseline:awac`
+(`is_final,false`) rows from `leaderboard.csv` (2026-05-05). D4RL normalized score, higher is better.
+
+| seed | pen-cloned-v1 | hammer-cloned-v1 | hammer-expert-v1 |
+|------|---------------|------------------|------------------|
+| 42   | 104.941       | 0.439            | 126.179          |
+| 123  | 39.032        | 0.323            | 126.797          |
+| 456  | 47.159        | 0.247            | 127.386          |
+| mean | 63.711        | 0.336            | 126.787          |
+</obs>
+
+### step 3 — IQL (implicit Q-learning)   [slug:iql]
+
+<think>
+[[POLISH_REASONING: adapt to first-person agentic voice, end by deciding to implement]]
+The AWAC numbers confirmed exactly the boundary I drew and then drew a new one. The good news first:
+hammer-expert recovered to a mean of 126.8 (126.2 / 126.8 / 127.4, almost no seed spread) — removing the
+deterministic-maximizer OOD query did stop the collapse I saw under SPOT (2.5). So the diagnosis was
+right: on clean expert data, an actor that only reweights logged actions retains competence where a
+`Q`-maximizing deterministic actor rode an over-valued OOD action off the manifold. Pen-cloned held at
+63.7 (104.9 / 39.0 / 47.2), a touch above SPOT's 56.4 but with the same high seed variance — seed 42 is
+strong, the other two are mediocre. The bad news is the one I explicitly worried about: hammer-cloned
+*collapsed* to 0.336 — 0.439 / 0.323 / 0.247, dead flat, near zero on every seed, well below even SPOT's
+one-lucky-seed 19.7. That is the falsifiable signal I named at the close of the last rung firing exactly
+as predicted: the advantage-weighted update is too conservative on a heavily-noisy mixture. Hammer-cloned
+is mostly noise with rare good demonstrations buried in it; AWAC reweights only logged actions by
+`exp(adv/0.1)`, and with `λ = 0.1` that is a *sharp* temperature, so the weight concentrates on a tiny
+handful of transitions — but if the critic cannot reliably tell the rare good actions from the noise, the
+weights land on the wrong actions or smear uselessly, and the policy never finds the manipulation
+behavior at all. The improvement signal is only ever "of the actions I logged, which scored well," and
+when the logged good actions are sparse and the critic is noisy, that signal is too weak to bootstrap a
+competent policy.
+
+So the binding constraint has moved. SPOT's problem was the actor's OOD query; AWAC fixed that but left
+the *critic* doing only behavior-policy evaluation — its `Q` is `Q^π` bootstrapped at policy actions, and
+its improvement is one reweighting step away from `π_β`. What hammer-cloned needs is a critic that does
+genuine multi-step dynamic programming — that can *stitch* the rare good fragments scattered across noisy
+trajectories into a value function for the good behavior — while still never querying an unseen action.
+AWAC could not stitch because its only improvement lever was reweighting `π_β`'s own actions. The next
+rung has to put the improvement *into the value function itself*, safely.
+
+Name precisely what the safe-but-insufficient piece is. AWAC's critic, and the SARSA objective behind
+it, fits `Q(s,a)` to the *mean* of the TD targets over dataset actions — it learns `Q^{π_β}`, the value
+of the average behavior action. The mean is why it only evaluates `π_β`. What I want in the backup is not
+the mean over `a'` but the value of the *best in-support action*: a max restricted to actions the
+behavior policy could actually produce at `s'`. That restriction is the whole game — it improves (so
+iterating it does real dynamic programming and can stitch) but never reaches an OOD action (so it stays
+safe). The obstacle is that I cannot *compute* that restricted max directly: to take a max over
+in-support `a'` I would have to enumerate or sample actions and query `Q` at each — and the moment I
+sample an action and query `Q`, I am back to the OOD evaluation that broke SPOT.
+
+Reframe. Fix a state `s`. As `a'` ranges over `π_β(·|s)`, the quantity `Q(s, a')` is a *random variable*,
+its randomness coming from the action. SARSA's MSE gives me the *mean* of that random variable. The
+*maximum over the support* is what I want. So I need a statistic that sits high in this action-induced
+random variable's distribution — ideally at the top of its support — estimable from samples (the dataset
+actions at `s`) without evaluating `Q` anywhere except at those in-data actions. Mean regression gives
+the mean; what gives the upper tail is **expectile regression**. The `τ`-expectile minimizes the
+asymmetric squared loss `L_2^τ(u) = |τ − 1(u<0)|·u²`: for a positive residual (a sample above the
+estimate) the weight is `τ`, for negative `1 − τ`; at `τ = 0.5` both are ½ and the minimizer is the mean,
+and for `τ > 0.5` the upper samples dominate so the estimate climbs toward the top of the distribution.
+As `τ → 1` it approaches the supremum of the support. The argument is short: every expectile lies within
+the support and shares its supremum, the expectile is monotone non-decreasing in `τ`, and a bounded
+monotone function has a limit at `τ → 1` which the asymmetry pushes to `x*`. So the upper expectile, in
+the limit, *is* the in-support max — expressed as a regression I can do with SGD on in-sample data only.
+
+Before splitting into a value network, try the directest thing and watch it break, because the failure
+dictates the architecture. The direct move is to swap the SARSA MSE for the expectile loss on the same TD
+residual `r + γ Q(s',a') − Q(s,a)`. That takes an upper expectile of `r + γ Q(s',a')` — but that target
+carries *two* sources of randomness: the action `a' ~ π_β(·|s')` (which I *want* to be optimistic over —
+the best `a'` is the improvement signal) and the stochastic transition `s' ~ p(·|s,a)` (which I
+emphatically do *not*). An upper expectile rewards high targets indiscriminately, so it would reward a
+target that is high merely because the environment got lucky with the next state — conflating "there
+exists a better action here" with "I rolled well." Optimism over the dynamics, compounded over a horizon,
+is exactly the overoptimism that produces a runaway value. So I must take the expectile over actions
+*only* and average honestly over transitions.
+
+Separate the two with a value network. `V_ψ(s)` does purely the action-expectile with the transition
+held fixed: `L_V(ψ) = E_{(s,a)~D}[ L_2^τ( Q_θ̂(s,a) − V_ψ(s) ) ]`. Here both `s` and `a` come from `D`,
+so for a given `s` the only randomness in the regression target is the action, and `V_ψ(s)` becomes the
+`τ`-expectile of `Q` over dataset actions — optimistic over actions, with no dynamics in it. Then back
+this up into `Q` with an *ordinary* MSE that averages the transition honestly:
+`L_Q(θ) = E_{(s,a,s')~D}[ ( r + γ V_ψ(s') − Q_θ(s,a) )² ]`. The MSE is correct precisely because
+`V_ψ(s')` has already done the optimistic action selection; what remains is to average `γ V_ψ(s')` over
+`s'`, and a mean is the right way to average dynamics. The division of labor is the whole point: `V`
+takes the upper expectile over actions, `Q` takes the mean over transitions, and both losses touch only
+dataset `(s,a,s')` — no policy appears in value training, no OOD action is ever queried. This is
+multi-step dynamic programming: `V_τ` is provably monotone in `τ`, bounded by the in-support optimum, and
+converges to it as `τ → 1`, spanning SARSA (`τ = 0.5`, what AWAC's critic effectively did) to in-support
+Q-learning (`τ → 1`). That spectrum is exactly the lever hammer-cloned was missing — at higher `τ` the
+critic propagates the value of the rare good downstream states *backward across transitions from
+different noisy trajectories*, stitching the fragments AWAC could not.
+
+Now extract a policy, obeying the same commandment — never query `Q` at an unseen action. I cannot
+argmax `Q` (searches OOD) or do DDPG-style ascent (evaluates `Q` at the policy's possibly-OOD actions).
+I reweight the dataset's own actions: advantage-weighted regression
+`L_π(φ) = E_{(s,a)~D}[ exp(β(Q_θ̂(s,a) − V_ψ(s)))·log π_φ(a|s) ]`, weight clipped to ≤ 100. This is the
+same family of update AWAC used — and that is fine, because the OOD-safe improvement was never the
+problem; the difference that fixes hammer-cloned is *what advantage feeds it*. AWAC's advantage came from
+a `Q^π` that only evaluated `π_β`; IQL's comes from a `Q` that has done in-support dynamic programming,
+so the weights now reward actions that are good *for the stitched optimal-in-support policy*, not just
+good relative to the behavior average. Same extraction, far stronger signal.
+
+In this task's harness the IQL fill is specific. The actor is a 2×256 `GaussianPolicy` with a Tanh output
+activation and a state-independent `log_std` (`nn.Parameter`), a plain `Normal` (not `TanhTransform`),
+with **dropout 0.1** in the actor MLP and a **CosineAnnealingLR** schedule over the 1M offline steps —
+both stabilizers that matter on the noisy `cloned` data. The critic is `TwinQ` (two 2×256 MLPs, squeezed,
+with a `.both()` for the twin outputs), and `ValueFunction` is a 2×256 squeezed MLP. The hyperparameters
+match the CORL Adroit config: `iql_tau = 0.8` (the expectile — high enough to do real improvement on the
+manipulation tasks), `beta = 3.0` (advantage temperature, softer than AWAC's `1/0.1 = 10` effective
+sharpness, which on noisy data spreads the weights over more transitions rather than betting on a few),
+`exp_adv_max = 100`. The update order per step is V (expectile) → Q (MSE onto `r + γ V(s')`) → Polyak the
+target critic → policy (advantage-weighted), and the actor LR cosine-steps. The decisive transition fact:
+`on_online_start` is a *no-op* — IQL needs no special handling at the handoff, for the same reason AWAC
+did not (the value training is policy-free and the same update runs offline and online as the buffer
+grows). So IQL keeps AWAC's transition-robustness while replacing the critic's behavior-evaluation with
+in-support dynamic programming.
+
+The falsifiable expectations against the AWAC numbers. My central claim is that the expectile critic's
+stitching fixes hammer-cloned: I expect it to climb from AWAC's dead-flat 0.336 into a genuinely positive
+range (tens of points, on *every* seed, not one lucky one), because the value function can now propagate
+the rare good fragments instead of waiting for the reweighting to stumble onto them. On hammer-expert I
+expect to *retain* the recovered competence AWAC found (~127) — the expectile critic should be at least as
+safe as AWAC's on clean data, so a regression there would falsify the claim that IQL strictly dominates.
+On pen-cloned I expect to *exceed* AWAC's 63.7, and ideally tighten the seed spread, because the stronger
+advantage signal plus dropout-and-cosine stabilization should lift the two mediocre seeds. If instead
+hammer-cloned stays near zero, the conclusion would be that the binding problem on that dataset is not the
+critic's improvement capacity but something else — reward sparsity or the offline/online replay balance —
+and I would need a calibration or replay-mixing mechanism rather than a better in-support backup. But the
+prediction I am betting on is that the in-support max is exactly the missing lever, and that IQL clears
+AWAC on hammer-cloned and pen-cloned while holding hammer-expert. The full scaffold module is in the
+answer.
+</think>
+<say>
+[[FILL_SAY: 1-2 sentences naming the method and what this first edit does]]
+</say>
+<edit path="CORL/algorithms/finetune/custom_finetune.py">
+<old>
+class Actor(nn.Module):
+    """AWAC GaussianPolicy — 3x256 MLP, state-independent log_std, Normal + clamp."""
+
+    def __init__(self, state_dim: int, action_dim: int, hidden_dim: int = 256,
+                 min_log_std: float = -20.0, max_log_std: float = 2.0):
+        super().__init__()
+        self._mlp = nn.Sequential(
+            nn.Linear(state_dim, hidden_dim), nn.ReLU(),
+            nn.Linear(hidden_dim, hidden_dim), nn.ReLU(),
+            nn.Linear(hidden_dim, hidden_dim), nn.ReLU(),
+            nn.Linear(hidden_dim, action_dim),
+        )
+        self._log_std = nn.Parameter(torch.zeros(action_dim, dtype=torch.float32))
+        self._min_log_std = min_log_std
+        self._max_log_std = max_log_std
+
+    def _get_policy(self, state: torch.Tensor):
+        mean = self._mlp(state)
+        log_std = self._log_std.clamp(self._min_log_std, self._max_log_std)
+        return torch.distributions.Normal(mean, log_std.exp())
+
+    def log_prob(self, state: torch.Tensor, action: torch.Tensor) -> torch.Tensor:
+        policy = self._get_policy(state)
+        return policy.log_prob(action).sum(-1, keepdim=True)
+
+    def forward(self, state: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
+        policy = self._get_policy(state)
+        action = policy.rsample()
+        action.clamp_(-1.0, 1.0)
+        log_prob = policy.log_prob(action).sum(-1, keepdim=True)
+        return action, log_prob
+
+    def act(self, state: np.ndarray, device: str = "cpu") -> np.ndarray:
+        state_t = torch.tensor(state[None], dtype=torch.float32, device=device)
+        policy = self._get_policy(state_t)
+        if self._mlp.training:
+            action_t = policy.sample()
+        else:
+            action_t = policy.mean
+        return action_t[0].cpu().numpy()
+
+
+class Critic(nn.Module):
+    """Q-function Q(s, a). 3x256 MLP, returns (batch, 1)."""
+
+    def __init__(self, state_dim: int, action_dim: int, hidden_dim: int = 256):
+        super().__init__()
+        self._mlp = nn.Sequential(
+            nn.Linear(state_dim + action_dim, hidden_dim), nn.ReLU(),
+            nn.Linear(hidden_dim, hidden_dim), nn.ReLU(),
+            nn.Linear(hidden_dim, hidden_dim), nn.ReLU(),
+            nn.Linear(hidden_dim, 1),
+        )
+
+    def forward(self, state: torch.Tensor, action: torch.Tensor) -> torch.Tensor:
+        return self._mlp(torch.cat([state, action], dim=-1))
+
+
+class OfflineOnlineAlgorithm:
+    """AWAC — Advantage Weighted Actor-Critic for offline-to-online RL."""
+</old>
+<new>
+def asymmetric_l2_loss(u: torch.Tensor, tau: float) -> torch.Tensor:
+    return torch.mean(torch.abs(tau - (u < 0).float()) * u ** 2)
+
+
+class Actor(nn.Module):
+    """IQL GaussianPolicy — 2x256 MLP with Tanh output, state-independent log_std, Normal dist."""
+
+    def __init__(self, state_dim: int, action_dim: int, max_action: float,
+                 hidden_dim: int = 256, n_hidden: int = 2, dropout: float = 0.1):
+        super().__init__()
+        dims = [state_dim] + [hidden_dim] * n_hidden + [action_dim]
+        layers = []
+        for i in range(len(dims) - 2):
+            layers.append(nn.Linear(dims[i], dims[i + 1]))
+            layers.append(nn.ReLU())
+            if dropout > 0.0:
+                layers.append(nn.Dropout(dropout))
+        layers.append(nn.Linear(dims[-2], dims[-1]))
+        layers.append(nn.Tanh())
+        self.net = nn.Sequential(*layers)
+        self.log_std = nn.Parameter(torch.zeros(action_dim, dtype=torch.float32))
+        self.max_action = max_action
+        self._log_std_min = -20.0
+        self._log_std_max = 2.0
+
+    def forward(self, obs: torch.Tensor) -> Normal:
+        mean = self.net(obs)
+        std = torch.exp(self.log_std.clamp(self._log_std_min, self._log_std_max))
+        return Normal(mean, std)
+
+    @torch.no_grad()
+    def act(self, state: np.ndarray, device: str = "cpu") -> np.ndarray:
+        state = torch.tensor(state.reshape(1, -1), device=device, dtype=torch.float32)
+        dist = self(state)
+        action = dist.mean if not self.training else dist.sample()
+        action = torch.clamp(self.max_action * action, -self.max_action, self.max_action)
+        return action.cpu().data.numpy().flatten()
+
+
+class TwinQ(nn.Module):
+    """Twin Q-functions Q1(s,a), Q2(s,a). 2x256 MLPs, squeezed output."""
+
+    def __init__(self, state_dim: int, action_dim: int, hidden_dim: int = 256, n_hidden: int = 2):
+        super().__init__()
+        dims = [state_dim + action_dim] + [hidden_dim] * n_hidden + [1]
+
+        def _build_mlp():
+            layers = []
+            for i in range(len(dims) - 2):
+                layers.append(nn.Linear(dims[i], dims[i + 1]))
+                layers.append(nn.ReLU())
+            layers.append(nn.Linear(dims[-2], dims[-1]))
+            return nn.Sequential(*layers)
+
+        self.q1 = _build_mlp()
+        self.q2 = _build_mlp()
+
+    def both(self, state: torch.Tensor, action: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
+        sa = torch.cat([state, action], dim=1)
+        return self.q1(sa).squeeze(-1), self.q2(sa).squeeze(-1)
+
+    def forward(self, state: torch.Tensor, action: torch.Tensor) -> torch.Tensor:
+        return torch.min(*self.both(state, action))
+
+
+class ValueFunction(nn.Module):
+    """State value function V(s). 2x256 MLP, squeezed output."""
+
+    def __init__(self, state_dim: int, hidden_dim: int = 256, n_hidden: int = 2):
+        super().__init__()
+        dims = [state_dim] + [hidden_dim] * n_hidden + [1]
+        layers = []
+        for i in range(len(dims) - 2):
+            layers.append(nn.Linear(dims[i], dims[i + 1]))
+            layers.append(nn.ReLU())
+        layers.append(nn.Linear(dims[-2], dims[-1]))
+        self.v = nn.Sequential(*layers)
+
+    def forward(self, state: torch.Tensor) -> torch.Tensor:
+        return self.v(state).squeeze(-1)
+
+
+class OfflineOnlineAlgorithm:
+    """IQL — Implicit Q-Learning for offline-to-online RL."""
+</new>
+</edit>
+<obs>
+Successfully replaced text in CORL/algorithms/finetune/custom_finetune.py.
+</obs>
+<note>
+[[FILL_NOTE?: optional one-line thought for this edit, or delete this block]]
+</note>
+<edit path="CORL/algorithms/finetune/custom_finetune.py">
+<old>
+
+        self.awac_lambda = 0.1
+        self.exp_adv_max = 100.0
+
+        self.actor = Actor(state_dim, action_dim, 256).to(device)
+        self.actor_optimizer = torch.optim.Adam(self.actor.parameters(), lr=actor_lr)
+
+        self.critic_1 = Critic(state_dim, action_dim, 256).to(device)
+        self.critic_2 = Critic(state_dim, action_dim, 256).to(device)
+        self.target_critic_1 = deepcopy(self.critic_1)
+        self.target_critic_2 = deepcopy(self.critic_2)
+        self.critic_1_optimizer = torch.optim.Adam(self.critic_1.parameters(), lr=critic_lr)
+        self.critic_2_optimizer = torch.optim.Adam(self.critic_2.parameters(), lr=critic_lr)
+</old>
+<new>
+
+        self.iql_tau = 0.8
+        self.beta = 3.0
+        self.exp_adv_max = 100.0
+
+        self.actor = Actor(state_dim, action_dim, max_action).to(device)
+        self.actor_optimizer = torch.optim.Adam(self.actor.parameters(), lr=actor_lr)
+        self.actor_lr_schedule = torch.optim.lr_scheduler.CosineAnnealingLR(
+            self.actor_optimizer, T_max=int(1e6)
+        )
+
+        self.qf = TwinQ(state_dim, action_dim).to(device)
+        self.q_target = deepcopy(self.qf).requires_grad_(False).to(device)
+        self.q_optimizer = torch.optim.Adam(self.qf.parameters(), lr=critic_lr)
+
+        self.vf = ValueFunction(state_dim).to(device)
+        self.v_optimizer = torch.optim.Adam(self.vf.parameters(), lr=critic_lr)
+</new>
+</edit>
+<obs>
+Successfully replaced text in CORL/algorithms/finetune/custom_finetune.py.
+</obs>
+<note>
+[[FILL_NOTE?: optional one-line thought for this edit, or delete this block]]
+</note>
+<edit path="CORL/algorithms/finetune/custom_finetune.py">
+<old>
+        states, actions, rewards, next_states, dones, *_ = batch
+        log_dict: Dict[str, float] = {}
+
+        with torch.no_grad():
+            next_actions, _ = self.actor(next_states)
+            q_next = torch.min(
+                self.target_critic_1(next_states, next_actions),
+                self.target_critic_2(next_states, next_actions),
+            )
+            q_target = rewards + self.discount * (1.0 - dones) * q_next
+
+        q1 = self.critic_1(states, actions)
+        q2 = self.critic_2(states, actions)
+        q1_loss = F.mse_loss(q1, q_target)
+        q2_loss = F.mse_loss(q2, q_target)
+        critic_loss = q1_loss + q2_loss
+        log_dict["critic_loss"] = critic_loss.item()
+
+        self.critic_1_optimizer.zero_grad()
+        self.critic_2_optimizer.zero_grad()
+        critic_loss.backward()
+        self.critic_1_optimizer.step()
+        self.critic_2_optimizer.step()
+
+        with torch.no_grad():
+            pi_action, _ = self.actor(states)
+            v = torch.min(
+                self.critic_1(states, pi_action),
+                self.critic_2(states, pi_action),
+            )
+            q = torch.min(
+                self.critic_1(states, actions),
+                self.critic_2(states, actions),
+            )
+            adv = q - v
+            weights = torch.clamp_max(
+                torch.exp(adv / self.awac_lambda), self.exp_adv_max
+            )
+
+        action_log_prob = self.actor.log_prob(states, actions)
+        actor_loss = (-action_log_prob * weights).mean()
+        log_dict["actor_loss"] = actor_loss.item()
+
+        self.actor_optimizer.zero_grad()
+        actor_loss.backward()
+        self.actor_optimizer.step()
+
+        soft_update(self.target_critic_1, self.critic_1, self.tau)
+        soft_update(self.target_critic_2, self.critic_2, self.tau)
+</old>
+<new>
+        states, actions, rewards, next_states, dones, *_ = batch
+        rewards = rewards.squeeze(dim=-1)
+        dones = dones.squeeze(dim=-1)
+        log_dict: Dict[str, float] = {}
+
+        with torch.no_grad():
+            target_q = self.q_target(states, actions)
+        v = self.vf(states)
+        adv = target_q - v
+        v_loss = asymmetric_l2_loss(adv, self.iql_tau)
+        log_dict["value_loss"] = v_loss.item()
+
+        self.v_optimizer.zero_grad()
+        v_loss.backward()
+        self.v_optimizer.step()
+
+        with torch.no_grad():
+            next_v = self.vf(next_states)
+        targets = rewards + (1.0 - dones) * self.discount * next_v.detach()
+        qs = self.qf.both(states, actions)
+        q_loss = sum(F.mse_loss(q, targets) for q in qs) / len(qs)
+        log_dict["q_loss"] = q_loss.item()
+
+        self.q_optimizer.zero_grad()
+        q_loss.backward()
+        self.q_optimizer.step()
+
+        soft_update(self.q_target, self.qf, self.tau)
+
+        exp_adv = torch.exp(self.beta * adv.detach()).clamp(max=self.exp_adv_max)
+        policy_out = self.actor(states)
+        if isinstance(policy_out, torch.distributions.Distribution):
+            bc_losses = -policy_out.log_prob(actions).sum(-1, keepdim=False)
+        elif torch.is_tensor(policy_out):
+            if policy_out.shape != actions.shape:
+                raise RuntimeError("Actions shape mismatch")
+            bc_losses = torch.sum((policy_out - actions) ** 2, dim=1)
+        else:
+            raise NotImplementedError
+        policy_loss = torch.mean(exp_adv * bc_losses)
+        log_dict["actor_loss"] = policy_loss.item()
+
+        self.actor_optimizer.zero_grad()
+        policy_loss.backward()
+        self.actor_optimizer.step()
+        self.actor_lr_schedule.step()
+</new>
+</edit>
+<obs>
+Successfully replaced text in CORL/algorithms/finetune/custom_finetune.py.
+</obs>
+<note>
+[[FILL_NOTE?: optional one-line thought for this edit, or delete this block]]
+</note>
+<edit path="CORL/algorithms/finetune/custom_finetune.py">
+<old>
+    def on_online_start(self):
+        # AWAC needs no special handling at transition
+        pass
+</old>
+<new>
+    def on_online_start(self):
+        # IQL needs no special handling at the offline-to-online transition
+        pass
+</new>
+</edit>
+<obs>
+Successfully replaced text in CORL/algorithms/finetune/custom_finetune.py.
+</obs>
+<run/>
+<obs>
+No `is_final,true` leaderboard row exists for this task; these are the measured `baseline:iql`
+(`is_final,false`) rows from `leaderboard.csv` (2026-05-05). D4RL normalized score, higher is better.
+
+| seed | pen-cloned-v1 | hammer-cloned-v1 | hammer-expert-v1 |
+|------|---------------|------------------|------------------|
+| 42   | 131.433       | 68.954           | 129.493          |
+| 123  | 76.275        | 68.373           | 130.096          |
+| 456  | 101.202       | 92.692           | 129.658          |
+| mean | 102.970       | 76.673           | 129.749          |
+</obs>
+
+### step 4 — Cal-QL (calibrated Q-learning)   [slug:cal-ql]
+
+<think>
+[[POLISH_REASONING: adapt to first-person agentic voice, end by deciding to implement]]
+IQL delivered exactly what I predicted, and reading its numbers tells me precisely what is left on the
+table. Hammer-cloned climbed from AWAC's dead-flat 0.336 to a mean of 76.7 — and decisively, on *every*
+seed (69.0 / 68.4 / 92.7), not one lucky run. The in-support expectile backup did the stitching AWAC
+could not: the value function propagated the rare good fragments through the noise and the
+advantage-weighted policy found the manipulation behavior. Pen-cloned rose to 103.0 (131.4 / 76.3 /
+101.2), beating AWAC's 63.7, and hammer-expert held at 129.7, even edging AWAC's 126.8. So IQL strictly
+dominates the other two baselines, and it does so with a *no-op* transition — no schedule to tune. It is
+the right floor to build on. But two things in these numbers tell me IQL is leaving online improvement
+unclaimed. First, the seed spread is still wide: pen-cloned ranges 76 to 131, hammer-cloned 68 to 93.
+Second, and more fundamentally, IQL's whole design is *transition-agnostic by omission* — it handles the
+offline→online handoff well precisely because it does nothing special there, which means it also does
+nothing to *exploit* the transition. Its value function is whatever the expectile regression produced; it
+is never deliberately *scaled* to make the first online updates cheap. The question I could not ask of
+SPOT or AWAC — both of which were still fighting the dip — I can finally ask of IQL: given a stable
+initializer, can I make the online phase climb *faster and higher* by engineering the value function to be
+a good initializer on purpose?
+
+That reframes the objective. SPOT, AWAC, IQL were all answering "how do I pretrain stably and not
+collapse at the transition." IQL answers it well. The unclaimed axis is "what property must the offline
+value function have so that online fine-tuning is not just stable but *fast and monotone* — so the online
+budget is spent climbing, not repairing." To get there I have to go back to the one offline family the
+ladder skipped: conservative value regularization (CQL), which the initial context flagged as the
+strongest *offline* method but a poor *initializer*. IQL is safe because it never queries OOD actions at
+all; CQL is safe because it pushes their value down. CQL's push-down is a more aggressive lever — it can
+produce a sharper offline value — but it has the failure the context named: its `Q` is a correct lower
+bound that is *uncalibrated in scale*, driven far below the true return. With IQL I have proof that a
+stable transition is achievable; now I want to ask whether a *deliberately scaled* conservative value
+beats IQL's incidental one on the online climb.
+
+Run CQL's transition in my head, because it is the dip IQL avoided by accident and I want to avoid it on
+purpose while keeping CQL's sharper push-down. Offline, CQL's regularizer
+`α(E_{s~D}[log Σ_a exp Q(s,a)] − E_{(s,a)~D}[Q(s,a)])` drives `Q` down by a large, essentially arbitrary
+margin — the values can sit far beneath, even far below zero, the true positive returns of these Adroit
+tasks. Switch to online: the policy rolls out, real transitions arrive, and the TD targets now contain
+*actual* sampled returns — large and positive. The TD error is enormous because the target towers over
+the depressed `Q`, so the critic makes a big, fast correction to reach the real scale, and the greedy
+policy, riding a `Q` that is mid-lurch and temporarily incoherent across actions, degrades. That is the
+dip — and crucially it is caused not by the lower-bound *direction* of CQL's conservatism (which I want to
+keep, for the sharp OOD suppression) but by the unbounded *magnitude* of it. IQL never had this problem
+because its expectile value was never artificially depressed; but IQL also never got CQL's aggressive
+push-down. If I can keep CQL's push-down direction and bound its magnitude, I get a value function that is
+both sharply conservative *and* well-scaled — a strictly better initializer than IQL's incidental one.
+
+So the fix, stated before I know its form: keep the conservative lower bound on the learned policy's value
+(still suppress OOD over-estimation), but bound the conservatism *from below* so `Q` cannot fall
+arbitrarily far. Pin it to a sane scale. The formal object is a *calibrated* value — a lower bound on the
+policy value *and* an upper bound on a trusted reference: `V^μ(s) ≤ Q_offline(s, π(s)) ≤ Q^π(s)`. The
+right inequality is CQL's lower bound; the left is the new constraint — do not let `Q` drop below the
+reference. The reference must be computable from the offline dataset with no model and must be a
+meaningful floor. The behavior policy is the natural choice — it generated the data, so its value is a
+sane scale, and its returns are sitting in the dataset. For a transition at time `t`, the discounted sum
+of the rewards that actually followed, `R_t = Σ_{k≥0} γ^k r_{t+k}`, is an unbiased Monte-Carlo sample of
+the behavior policy's return-to-go — free, by one reverse scan over each trajectory. So the calibration
+floor is the MC return-to-go: never let the conservative `Q` be pushed below `R_t`.
+
+Where it enters is one line. CQL's push-down is the importance-sampled log-sum-exp over candidate actions
+(random + current-policy + next-policy); minimizing it lowers `Q` on those candidates, and unchecked it is
+what drives `Q` arbitrarily low. So before the log-sum-exp, floor the *policy-action* candidates by the
+reference: `Q̃(s,a) = max(Q(s,a), R(s))`. Wherever the penalty would push a policy-action `Q` below the
+behavior return, the `max` kills its gradient and the floor holds; above the floor CQL is unchanged. This
+only ever *raises* clamped entries toward the truth, so `Q` stays a (looser) lower bound on `Q^π` — the
+offline safety is preserved — while the floor enforces the `V^μ` upper bound. The value is boxed into
+`[V^μ, Q^π]`, near the real scale, so when online data arrives the TD targets are already close to `Q`,
+the early correction is small, and the dip that plagued raw CQL is gone — but I kept CQL's sharp push-down,
+which IQL never had.
+
+The transition handling is now the *active* ingredient, the thing IQL left blank. Offline, the floor gives
+the good scale. Online, real feedback is teaching the critic the true value, and the behavior reference is
+a *suboptimal* floor I now want to climb *above* — so at the handoff I **disable calibration** (drop the
+`max`, set `α` to its online value) and let the value rise past the behavior return as online returns
+warrant. The MC floor for newly collected online transitions is meaningless (shifting distribution) and is
+set to zero. And to keep the critic anchored to the offline scale while it learns online, I sample a fixed
+50/50 mixing ratio of offline and online transitions during fine-tuning. So unlike IQL's no-op
+`on_online_start`, Cal-QL's transition is a deliberate switch — calibration did its one job, hand the
+online phase a well-scaled initialization, and then steps aside.
+
+In this task's harness the Cal-QL fill is specific and I want it exact, because the scaffold exposes some
+of this and omits some. The MC returns are precomputed in `__init__` from the replay buffer by a reverse
+scan that detects episode boundaries from terminals *and* from state discontinuities (`‖s_{t+1} − s'_t‖`),
+because the harness's flat buffer has no explicit trajectory index — and the maximum episode length is
+inferred from the data (Adroit = 200). The buffer's `sample` is then *monkey-patched* to return the MC
+return as a 7th batch element and, when online, to draw the 50/50 offline/online mix; `add_transition` is
+patched to write `mc = 0` for online entries. The actor is the template's 3×256 `TanhGaussianPolicy` but
+with learnable `log_std` multiplier/offset `Scalar`s and orthogonal init, and it supports `repeat=n` to
+emit `n` candidate actions; the critic is 3×256 with multi-action support (it reshapes `(B, n, act)`
+inputs). Automatic entropy tuning uses target entropy `−dim(A)`, `policy_lr = 1e-4`, `qf_lr = 3e-4`. The
+calibration is applied to the current- and next-policy candidate Q-values (`torch.maximum(..., lower)`),
+exactly as derived; `cql_max_target_backup = True` takes the in-support max over `cql_n_actions = 10` next
+actions; `cql_clip_diff_min = −200`. `on_online_start` flips `_calibration_enabled` off and sets
+`cql_alpha = cql_alpha_online = 1.0`. `CONFIG_OVERRIDES = {"normalize": False}`. The one thing the harness
+does *not* expose that the generic method would want is a separate, larger online replay or a per-task
+`α` schedule — here `α` simply switches to its (equal) online value, and the mixing is the only online
+data-balancing knob; I note this because it means the online improvement rests entirely on calibration +
+mixing, with no extra online conservatism annealing. I am also at the parameter cap: the multi-action CQL
+critics plus the entropy `Scalar`s sit just under the 1.2× budget, so there is no capacity to spare — the
+gain has to be the calibration, which it is (calibration adds *zero* parameters; it is a `max`).
+
+The bar this has to clear is IQL's real numbers, and here is what I would validate. The falsifiable claim
+is that a *deliberately calibrated* conservative value is a better online initializer than IQL's
+incidental expectile value, so I would expect Cal-QL to match-or-exceed IQL on the final online score on
+all three tasks — concretely, to hold pen-cloned at or above ~103 and hammer-cloned at or above ~77 while
+keeping hammer-expert near the ceiling (~130) — and, more pointedly, to show a *faster, dip-free* online
+climb than CQL would (the whole reason calibration exists). The specific way this could fail to beat IQL:
+on the heavily-noisy hammer-cloned mixture the MC return-to-go floor is computed over noisy trajectories,
+so the behavior reference itself is low and ragged, and a low floor calibrates weakly — if hammer-cloned
+lands *below* IQL's 76.7, the lesson is that calibration's benefit is bounded by the quality of the
+reference return, and on cloned data the expectile in-support max (IQL) is the safer signal. The case
+where Cal-QL clearly wins is hammer-expert and the dip-prone early online phase: a clean expert reference
+gives a tight, high floor, so I expect the calibrated value to track the true return almost immediately
+and the online curve to be monotone from step one — beating IQL's incidental scaling where IQL had to let
+the expectile value drift up on its own. That is the endpoint I am betting on: keep IQL's stability,
+add CQL's sharp push-down, and bound its magnitude with a free MC-return floor so the online phase climbs
+on purpose rather than by omission. The full scaffold module is in the answer.
+</think>
+<say>
+[[FILL_SAY: 1-2 sentences naming the method and what this first edit does]]
+</say>
+<edit path="CORL/algorithms/finetune/custom_finetune.py">
+<old>
+def asymmetric_l2_loss(u: torch.Tensor, tau: float) -> torch.Tensor:
+    return torch.mean(torch.abs(tau - (u < 0).float()) * u ** 2)
+
+
+class Actor(nn.Module):
+    """IQL GaussianPolicy — 2x256 MLP with Tanh output, state-independent log_std, Normal dist."""
+
+    def __init__(self, state_dim: int, action_dim: int, max_action: float,
+                 hidden_dim: int = 256, n_hidden: int = 2, dropout: float = 0.1):
+        super().__init__()
+        dims = [state_dim] + [hidden_dim] * n_hidden + [action_dim]
+        layers = []
+        for i in range(len(dims) - 2):
+            layers.append(nn.Linear(dims[i], dims[i + 1]))
+            layers.append(nn.ReLU())
+            if dropout > 0.0:
+                layers.append(nn.Dropout(dropout))
+        layers.append(nn.Linear(dims[-2], dims[-1]))
+        layers.append(nn.Tanh())
+        self.net = nn.Sequential(*layers)
+        self.log_std = nn.Parameter(torch.zeros(action_dim, dtype=torch.float32))
+        self.max_action = max_action
+        self._log_std_min = -20.0
+        self._log_std_max = 2.0
+
+    def forward(self, obs: torch.Tensor) -> Normal:
+        mean = self.net(obs)
+        std = torch.exp(self.log_std.clamp(self._log_std_min, self._log_std_max))
+        return Normal(mean, std)
+
+    @torch.no_grad()
+    def act(self, state: np.ndarray, device: str = "cpu") -> np.ndarray:
+        state = torch.tensor(state.reshape(1, -1), device=device, dtype=torch.float32)
+        dist = self(state)
+        action = dist.mean if not self.training else dist.sample()
+        action = torch.clamp(self.max_action * action, -self.max_action, self.max_action)
+        return action.cpu().data.numpy().flatten()
+
+
+class TwinQ(nn.Module):
+    """Twin Q-functions Q1(s,a), Q2(s,a). 2x256 MLPs, squeezed output."""
+
+    def __init__(self, state_dim: int, action_dim: int, hidden_dim: int = 256, n_hidden: int = 2):
+        super().__init__()
+        dims = [state_dim + action_dim] + [hidden_dim] * n_hidden + [1]
+
+        def _build_mlp():
+            layers = []
+            for i in range(len(dims) - 2):
+                layers.append(nn.Linear(dims[i], dims[i + 1]))
+                layers.append(nn.ReLU())
+            layers.append(nn.Linear(dims[-2], dims[-1]))
+            return nn.Sequential(*layers)
+
+        self.q1 = _build_mlp()
+        self.q2 = _build_mlp()
+
+    def both(self, state: torch.Tensor, action: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
+        sa = torch.cat([state, action], dim=1)
+        return self.q1(sa).squeeze(-1), self.q2(sa).squeeze(-1)
+
+    def forward(self, state: torch.Tensor, action: torch.Tensor) -> torch.Tensor:
+        return torch.min(*self.both(state, action))
+
+
+class ValueFunction(nn.Module):
+    """State value function V(s). 2x256 MLP, squeezed output."""
+
+    def __init__(self, state_dim: int, hidden_dim: int = 256, n_hidden: int = 2):
+        super().__init__()
+        dims = [state_dim] + [hidden_dim] * n_hidden + [1]
+        layers = []
+        for i in range(len(dims) - 2):
+            layers.append(nn.Linear(dims[i], dims[i + 1]))
+            layers.append(nn.ReLU())
+        layers.append(nn.Linear(dims[-2], dims[-1]))
+        self.v = nn.Sequential(*layers)
+
+    def forward(self, state: torch.Tensor) -> torch.Tensor:
+        return self.v(state).squeeze(-1)
+
+
+class OfflineOnlineAlgorithm:
+    """IQL — Implicit Q-Learning for offline-to-online RL."""
+</old>
+<new>
+CONFIG_OVERRIDES: Dict[str, Any] = {"normalize": False}
+
+
+def extend_and_repeat(tensor: torch.Tensor, dim: int, repeat: int) -> torch.Tensor:
+    return tensor.unsqueeze(dim).repeat_interleave(repeat, dim=dim)
+
+
+def _calql_init_module_weights(module, orthogonal_init=False):
+    if isinstance(module, nn.Linear):
+        if orthogonal_init:
+            nn.init.orthogonal_(module.weight, gain=np.sqrt(2))
+            nn.init.constant_(module.bias, 0.0)
+        else:
+            nn.init.xavier_uniform_(module.weight, gain=1e-2)
+
+
+class Scalar(nn.Module):
+    def __init__(self, init_value: float):
+        super().__init__()
+        self.constant = nn.Parameter(torch.tensor(init_value, dtype=torch.float32))
+
+    def forward(self) -> nn.Parameter:
+        return self.constant
+
+
+class Actor(nn.Module):
+    """TanhGaussianPolicy with learnable log_std multiplier/offset and orthogonal init."""
+
+    def __init__(self, state_dim, action_dim, max_action,
+                 log_std_multiplier=1.0, log_std_offset=-1.0, orthogonal_init=False):
+        super().__init__()
+        self.action_dim = action_dim
+        self.max_action = max_action
+        self.base_network = nn.Sequential(
+            nn.Linear(state_dim, 256), nn.ReLU(),
+            nn.Linear(256, 256), nn.ReLU(),
+            nn.Linear(256, 256), nn.ReLU(),
+            nn.Linear(256, 2 * action_dim),
+        )
+        if orthogonal_init:
+            self.base_network.apply(lambda m: _calql_init_module_weights(m, True))
+        else:
+            _calql_init_module_weights(self.base_network[-1], False)
+        self.log_std_multiplier = Scalar(log_std_multiplier)
+        self.log_std_offset = Scalar(log_std_offset)
+        self.log_std_min = -20.0
+        self.log_std_max = 2.0
+
+    def _get_dist(self, observations, repeat=None):
+        if repeat is not None:
+            observations = extend_and_repeat(observations, 1, repeat)
+        output = self.base_network(observations)
+        mean, log_std = torch.split(output, self.action_dim, dim=-1)
+        log_std = self.log_std_multiplier() * log_std + self.log_std_offset()
+        log_std = torch.clamp(log_std, self.log_std_min, self.log_std_max)
+        return TransformedDistribution(
+            Normal(mean, torch.exp(log_std)), TanhTransform(cache_size=1)
+        ), mean
+
+    def forward(self, observations, deterministic=False, repeat=None):
+        dist, mean = self._get_dist(observations, repeat)
+        action = torch.tanh(mean) if deterministic else dist.rsample()
+        log_prob = dist.log_prob(action).sum(-1)
+        return self.max_action * action, log_prob
+
+    def log_prob(self, observations, actions):
+        if actions.ndim == 3:
+            observations = extend_and_repeat(observations, 1, actions.shape[1])
+        base_network_output = self.base_network(observations)
+        mean, log_std = torch.split(base_network_output, self.action_dim, dim=-1)
+        log_std = self.log_std_multiplier() * log_std + self.log_std_offset()
+        log_std = torch.clamp(log_std, self.log_std_min, self.log_std_max)
+        dist = TransformedDistribution(
+            Normal(mean, torch.exp(log_std)), TanhTransform(cache_size=1)
+        )
+        scaled = torch.clamp(actions / self.max_action, -1.0 + 1e-6, 1.0 - 1e-6)
+        return dist.log_prob(scaled).sum(-1)
+
+    @torch.no_grad()
+    def act(self, state, device="cpu"):
+        state = torch.tensor(state.reshape(1, -1), device=device, dtype=torch.float32)
+        actions, _ = self(state, not self.training)
+        return actions.cpu().data.numpy().flatten()
+
+
+class Critic(nn.Module):
+    """FullyConnectedQFunction — 3 hidden layers, multi-action support."""
+
+    def __init__(self, state_dim, action_dim, orthogonal_init=False, n_hidden_layers=3):
+        super().__init__()
+        layers = [nn.Linear(state_dim + action_dim, 256), nn.ReLU()]
+        for _ in range(n_hidden_layers - 1):
+            layers.append(nn.Linear(256, 256))
+            layers.append(nn.ReLU())
+        layers.append(nn.Linear(256, 1))
+        self.network = nn.Sequential(*layers)
+        if orthogonal_init:
+            self.network.apply(lambda m: _calql_init_module_weights(m, True))
+        else:
+            _calql_init_module_weights(self.network[-1], False)
+
+    def forward(self, observations, actions):
+        multiple_actions = False
+        batch_size = observations.shape[0]
+        if actions.ndim == 3 and observations.ndim == 2:
+            multiple_actions = True
+            observations = extend_and_repeat(observations, 1, actions.shape[1]).reshape(
+                -1, observations.shape[-1]
+            )
+            actions = actions.reshape(-1, actions.shape[-1])
+        q_values = torch.squeeze(self.network(torch.cat([observations, actions], dim=-1)), dim=-1)
+        if multiple_actions:
+            q_values = q_values.reshape(batch_size, -1)
+        return q_values
+
+
+class OfflineOnlineAlgorithm:
+    """Cal-QL — Calibrated Q-Learning for offline-to-online RL."""
+</new>
+</edit>
+<obs>
+Successfully replaced text in CORL/algorithms/finetune/custom_finetune.py.
+</obs>
+<note>
+[[FILL_NOTE?: optional one-line thought for this edit, or delete this block]]
+</note>
+<edit path="CORL/algorithms/finetune/custom_finetune.py">
+<old>
+
+        self.iql_tau = 0.8
+        self.beta = 3.0
+        self.exp_adv_max = 100.0
+
+        self.actor = Actor(state_dim, action_dim, max_action).to(device)
+        self.actor_optimizer = torch.optim.Adam(self.actor.parameters(), lr=actor_lr)
+        self.actor_lr_schedule = torch.optim.lr_scheduler.CosineAnnealingLR(
+            self.actor_optimizer, T_max=int(1e6)
+        )
+
+        self.qf = TwinQ(state_dim, action_dim).to(device)
+        self.q_target = deepcopy(self.qf).requires_grad_(False).to(device)
+        self.q_optimizer = torch.optim.Adam(self.qf.parameters(), lr=critic_lr)
+
+        self.vf = ValueFunction(state_dim).to(device)
+        self.v_optimizer = torch.optim.Adam(self.vf.parameters(), lr=critic_lr)
+
+    def train(self, batch: TensorBatch, is_online: bool = False) -> Dict[str, float]:
+        self.total_it += 1
+        states, actions, rewards, next_states, dones, *_ = batch
+        rewards = rewards.squeeze(dim=-1)
+        dones = dones.squeeze(dim=-1)
+        log_dict: Dict[str, float] = {}
+
+        with torch.no_grad():
+            target_q = self.q_target(states, actions)
+        v = self.vf(states)
+        adv = target_q - v
+        v_loss = asymmetric_l2_loss(adv, self.iql_tau)
+        log_dict["value_loss"] = v_loss.item()
+
+        self.v_optimizer.zero_grad()
+        v_loss.backward()
+        self.v_optimizer.step()
+
+        with torch.no_grad():
+            next_v = self.vf(next_states)
+        targets = rewards + (1.0 - dones) * self.discount * next_v.detach()
+        qs = self.qf.both(states, actions)
+        q_loss = sum(F.mse_loss(q, targets) for q in qs) / len(qs)
+        log_dict["q_loss"] = q_loss.item()
+
+        self.q_optimizer.zero_grad()
+        q_loss.backward()
+        self.q_optimizer.step()
+
+        soft_update(self.q_target, self.qf, self.tau)
+
+        exp_adv = torch.exp(self.beta * adv.detach()).clamp(max=self.exp_adv_max)
+        policy_out = self.actor(states)
+        if isinstance(policy_out, torch.distributions.Distribution):
+            bc_losses = -policy_out.log_prob(actions).sum(-1, keepdim=False)
+        elif torch.is_tensor(policy_out):
+            if policy_out.shape != actions.shape:
+                raise RuntimeError("Actions shape mismatch")
+            bc_losses = torch.sum((policy_out - actions) ** 2, dim=1)
+        else:
+            raise NotImplementedError
+        policy_loss = torch.mean(exp_adv * bc_losses)
+        log_dict["actor_loss"] = policy_loss.item()
+</old>
+<new>
+
+        self.cql_n_actions = 10
+        self.cql_temp = 1.0
+        self.cql_alpha = 1.0
+        self.cql_alpha_online = 1.0
+        self.cql_importance_sample = True
+        self.cql_max_target_backup = True
+        self.cql_clip_diff_min = -200.0
+        self.cql_clip_diff_max = float('inf')
+        self.target_entropy = -float(action_dim)
+        self.alpha_multiplier = 1.0
+        self.use_automatic_entropy_tuning = True
+        self.backup_entropy = False
+        self.bc_steps = 0
+        self.policy_lr = 1e-4
+        self.qf_lr = critic_lr
+        self.mixing_ratio = 0.5
+        self._calibration_enabled = True
+        self._offline_size = 0
+
+        self._replay_buffer = replay_buffer
+        if replay_buffer is not None:
+            self._offline_size = replay_buffer._size
+            self._setup_mc_returns(replay_buffer, discount)
+
+        self.actor = Actor(state_dim, action_dim, max_action, orthogonal_init=True).to(device)
+        self.actor_optimizer = torch.optim.Adam(self.actor.parameters(), lr=self.policy_lr)
+
+        self.critic_1 = Critic(state_dim, action_dim, orthogonal_init=True).to(device)
+        self.critic_2 = Critic(state_dim, action_dim, orthogonal_init=True).to(device)
+        self.target_critic_1 = deepcopy(self.critic_1).to(device)
+        self.target_critic_2 = deepcopy(self.critic_2).to(device)
+        self.critic_1_optimizer = torch.optim.Adam(self.critic_1.parameters(), lr=self.qf_lr)
+        self.critic_2_optimizer = torch.optim.Adam(self.critic_2.parameters(), lr=self.qf_lr)
+
+        if self.use_automatic_entropy_tuning:
+            self.log_alpha = Scalar(0.0)
+            self.alpha_optimizer = torch.optim.Adam(self.log_alpha.parameters(), lr=self.policy_lr)
+        else:
+            self.log_alpha = None
+
+    def switch_calibration(self):
+        self._calibration_enabled = not self._calibration_enabled
+
+    def _setup_mc_returns(self, buf, discount):
+        n = buf._size
+        rewards = buf._rewards[:n].squeeze(-1).cpu().numpy()
+        dones = buf._dones[:n].squeeze(-1).cpu().numpy()
+        states = buf._states[:n].cpu().numpy()
+        next_states = buf._next_states[:n].cpu().numpy()
+
+        _ep_lens, _el = [], 0
+        for t in range(n):
+            _el += 1
+            if dones[t] or t == n - 1 or (t < n - 1 and np.linalg.norm(states[t + 1] - next_states[t]) > 1e-6):
+                _ep_lens.append(_el)
+                _el = 0
+        _max_ep_steps = max(_ep_lens) if _ep_lens else 200
+
+        mc_returns = np.zeros(n, dtype=np.float32)
+        ep_start, ep_len, cur_rewards, terminals = 0, 0, [], []
+        for t in range(n):
+            cur_rewards.append(float(rewards[t]))
+            terminals.append(float(dones[t]))
+            ep_len += 1
+            is_last_step = (
+                (t == n - 1)
+                or (t < n - 1 and np.linalg.norm(states[t + 1] - next_states[t]) > 1e-6)
+                or ep_len == _max_ep_steps
+            )
+            if dones[t] or is_last_step:
+                prev_return = 0.0
+                for i in reversed(range(ep_len)):
+                    cur_rewards[i] = cur_rewards[i] + discount * prev_return * (1 - terminals[i])
+                    prev_return = cur_rewards[i]
+                mc_returns[ep_start:ep_start + ep_len] = cur_rewards
+                ep_start, ep_len, cur_rewards, terminals = t + 1, 0, [], []
+
+        buf._mc_returns = torch.zeros((buf._buffer_size, 1), dtype=torch.float32, device=buf._device)
+        buf._mc_returns[:n] = torch.tensor(mc_returns, dtype=torch.float32, device=buf._device).unsqueeze(-1)
+
+        offline_size = n
+        mixing_ratio = self.mixing_ratio
+
+        def _sample_with_mc(batch_size, is_online=False):
+            if is_online and buf._size > offline_size:
+                n_offline = int(batch_size * mixing_ratio)
+                n_online = batch_size - n_offline
+                off_idx = np.random.randint(0, offline_size, size=n_offline)
+                on_idx = np.random.randint(offline_size, buf._size, size=n_online)
+                indices = np.concatenate([off_idx, on_idx])
+            else:
+                indices = np.random.randint(0, buf._size, size=batch_size)
+            return [buf._states[indices], buf._actions[indices], buf._rewards[indices],
+                    buf._next_states[indices], buf._dones[indices], buf._next_actions[indices],
+                    buf._mc_returns[indices]]
+        buf.sample = _sample_with_mc
+
+        _orig_add = buf.add_transition
+
+        def _add_with_mc(state, action, reward, next_state, done):
+            idx = buf._pointer
+            _orig_add(state, action, reward, next_state, done)
+            buf._mc_returns[idx] = 0.0
+        buf.add_transition = _add_with_mc
+
+    def _alpha_and_alpha_loss(self, observations, log_pi):
+        if self.use_automatic_entropy_tuning:
+            alpha_loss = -(self.log_alpha() * (log_pi + self.target_entropy).detach()).mean()
+            alpha = torch.clamp(self.log_alpha().exp() * self.alpha_multiplier, min=1e-6, max=100.0)
+        else:
+            alpha_loss = observations.new_tensor(0.0)
+            alpha = observations.new_tensor(self.alpha_multiplier)
+        return alpha, alpha_loss
+
+    def _policy_loss(self, observations, actions, new_actions, alpha, log_pi):
+        if self.total_it <= self.bc_steps:
+            log_probs = self.actor.log_prob(observations, actions)
+            policy_loss = (alpha * log_pi - log_probs).mean()
+        else:
+            q_new_actions = torch.min(
+                self.critic_1(observations, new_actions),
+                self.critic_2(observations, new_actions),
+            )
+            policy_loss = (alpha * log_pi - q_new_actions).mean()
+        return policy_loss
+
+    def _q_loss(self, observations, actions, next_observations, rewards, dones, mc_returns, alpha, log_dict):
+        q1_predicted = self.critic_1(observations, actions)
+        q2_predicted = self.critic_2(observations, actions)
+
+        if self.cql_max_target_backup:
+            new_next_actions, next_log_pi = self.actor(next_observations, repeat=self.cql_n_actions)
+            target_q_values, max_target_indices = torch.max(
+                torch.min(
+                    self.target_critic_1(next_observations, new_next_actions),
+                    self.target_critic_2(next_observations, new_next_actions),
+                ), dim=-1,
+            )
+            next_log_pi = torch.gather(next_log_pi, -1, max_target_indices.unsqueeze(-1)).squeeze(-1)
+        else:
+            new_next_actions, next_log_pi = self.actor(next_observations)
+            target_q_values = torch.min(
+                self.target_critic_1(next_observations, new_next_actions),
+                self.target_critic_2(next_observations, new_next_actions),
+            )
+
+        if self.backup_entropy:
+            target_q_values = target_q_values - alpha * next_log_pi
+
+        target_q_values = target_q_values.unsqueeze(-1)
+        td_target = (rewards + (1.0 - dones) * self.discount * target_q_values.detach()).squeeze(-1)
+        qf1_loss = F.mse_loss(q1_predicted, td_target.detach())
+        qf2_loss = F.mse_loss(q2_predicted, td_target.detach())
+
+        batch_size = actions.shape[0]
+        action_dim = actions.shape[-1]
+        cql_random_actions = actions.new_empty(
+            (batch_size, self.cql_n_actions, action_dim), requires_grad=False
+        ).uniform_(-1, 1)
+        cql_current_actions, cql_current_log_pis = self.actor(observations, repeat=self.cql_n_actions)
+        cql_next_actions, cql_next_log_pis = self.actor(next_observations, repeat=self.cql_n_actions)
+        cql_current_actions = cql_current_actions.detach()
+        cql_current_log_pis = cql_current_log_pis.detach()
+        cql_next_actions = cql_next_actions.detach()
+        cql_next_log_pis = cql_next_log_pis.detach()
+
+        cql_q1_rand = self.critic_1(observations, cql_random_actions)
+        cql_q2_rand = self.critic_2(observations, cql_random_actions)
+        cql_q1_current_actions = self.critic_1(observations, cql_current_actions)
+        cql_q2_current_actions = self.critic_2(observations, cql_current_actions)
+        cql_q1_next_actions = self.critic_1(observations, cql_next_actions)
+        cql_q2_next_actions = self.critic_2(observations, cql_next_actions)
+
+        lower_bounds = mc_returns.reshape(-1, 1).repeat(1, cql_q1_current_actions.shape[1])
+
+        if self._calibration_enabled:        # Cal-QL: floor policy-action Q by MC return
+            cql_q1_current_actions = torch.maximum(cql_q1_current_actions, lower_bounds)
+            cql_q2_current_actions = torch.maximum(cql_q2_current_actions, lower_bounds)
+            cql_q1_next_actions = torch.maximum(cql_q1_next_actions, lower_bounds)
+            cql_q2_next_actions = torch.maximum(cql_q2_next_actions, lower_bounds)
+
+        if self.cql_importance_sample:
+            random_density = np.log(0.5 ** action_dim)
+            cql_cat_q1 = torch.cat([
+                cql_q1_rand - random_density,
+                cql_q1_next_actions - cql_next_log_pis.detach(),
+                cql_q1_current_actions - cql_current_log_pis.detach(),
+            ], dim=1)
+            cql_cat_q2 = torch.cat([
+                cql_q2_rand - random_density,
+                cql_q2_next_actions - cql_next_log_pis.detach(),
+                cql_q2_current_actions - cql_current_log_pis.detach(),
+            ], dim=1)
+        else:
+            cql_cat_q1 = torch.cat([
+                cql_q1_rand, torch.unsqueeze(q1_predicted, 1),
+                cql_q1_next_actions, cql_q1_current_actions,
+            ], dim=1)
+            cql_cat_q2 = torch.cat([
+                cql_q2_rand, torch.unsqueeze(q2_predicted, 1),
+                cql_q2_next_actions, cql_q2_current_actions,
+            ], dim=1)
+
+        cql_qf1_ood = torch.logsumexp(cql_cat_q1 / self.cql_temp, dim=1) * self.cql_temp
+        cql_qf2_ood = torch.logsumexp(cql_cat_q2 / self.cql_temp, dim=1) * self.cql_temp
+
+        cql_qf1_diff = torch.clamp(cql_qf1_ood - q1_predicted, self.cql_clip_diff_min, self.cql_clip_diff_max).mean()
+        cql_qf2_diff = torch.clamp(cql_qf2_ood - q2_predicted, self.cql_clip_diff_min, self.cql_clip_diff_max).mean()
+
+        cql_min_qf1_loss = cql_qf1_diff * self.cql_alpha
+        cql_min_qf2_loss = cql_qf2_diff * self.cql_alpha
+        qf_loss = qf1_loss + qf2_loss + cql_min_qf1_loss + cql_min_qf2_loss
+
+        log_dict.update(dict(
+            qf1_loss=qf1_loss.item(), qf2_loss=qf2_loss.item(),
+            cql_min_qf1_loss=cql_min_qf1_loss.mean().item(),
+            cql_min_qf2_loss=cql_min_qf2_loss.mean().item(),
+        ))
+        return qf_loss
+
+    def train(self, batch: TensorBatch, is_online: bool = False) -> Dict[str, float]:
+        self.total_it += 1
+        if is_online and self._replay_buffer is not None:
+            batch = self._replay_buffer.sample(256, is_online=True)
+            batch = [b.to(self.device) for b in batch]
+
+        if len(batch) == 7:
+            observations, actions, rewards, next_observations, dones, _next_act, mc_returns = batch
+        elif len(batch) == 6:
+            observations, actions, rewards, next_observations, dones, _next_act = batch
+            mc_returns = torch.zeros_like(rewards)
+        else:
+            observations, actions, rewards, next_observations, dones = batch
+            mc_returns = torch.zeros_like(rewards)
+
+        new_actions, log_pi = self.actor(observations)
+        alpha, alpha_loss = self._alpha_and_alpha_loss(observations, log_pi)
+        policy_loss = self._policy_loss(observations, actions, new_actions, alpha, log_pi)
+
+        log_dict = dict(log_pi=log_pi.mean().item(), policy_loss=policy_loss.item(),
+                        alpha_loss=alpha_loss.item(), alpha=alpha.item())
+
+        qf_loss = self._q_loss(observations, actions, next_observations, rewards, dones,
+                               mc_returns, alpha, log_dict)
+        log_dict["critic_loss"] = qf_loss.item()
+
+        if self.use_automatic_entropy_tuning:
+            self.alpha_optimizer.zero_grad()
+            alpha_loss.backward()
+            self.alpha_optimizer.step()
+</new>
+</edit>
+<obs>
+Successfully replaced text in CORL/algorithms/finetune/custom_finetune.py.
+</obs>
+<note>
+[[FILL_NOTE?: optional one-line thought for this edit, or delete this block]]
+</note>
+<edit path="CORL/algorithms/finetune/custom_finetune.py">
+<old>
+        self.actor_optimizer.step()
+        self.actor_lr_schedule.step()
+
+        return log_dict
+</old>
+<new>
+        self.actor_optimizer.step()
+
+        self.critic_1_optimizer.zero_grad()
+        self.critic_2_optimizer.zero_grad()
+        qf_loss.backward()
+        self.critic_1_optimizer.step()
+        self.critic_2_optimizer.step()
+
+        soft_update(self.target_critic_1, self.critic_1, self.tau)
+        soft_update(self.target_critic_2, self.critic_2, self.tau)
+        return log_dict
+</new>
+</edit>
+<obs>
+Successfully replaced text in CORL/algorithms/finetune/custom_finetune.py.
+</obs>
+<note>
+[[FILL_NOTE?: optional one-line thought for this edit, or delete this block]]
+</note>
+<edit path="CORL/algorithms/finetune/custom_finetune.py">
+<old>
+    def on_online_start(self):
+        # IQL needs no special handling at the offline-to-online transition
+        pass
+</old>
+<new>
+    def on_online_start(self):
+        # Cal-QL: disable calibration at the offline-to-online transition
+        self.switch_calibration()
+        self.cql_alpha = self.cql_alpha_online
+</new>
+</edit>
+<obs>
+Successfully replaced text in CORL/algorithms/finetune/custom_finetune.py.
+</obs>
+

@@ -1,0 +1,1695 @@
+<meta task="ml-active-learning" domain="Classical ML" file="badge/query_strategies/custom_sampling.py" model_format="qwen3" edit_tool="str_replace"/>
+
+<system>
+You are a research engineer improving a model on a fixed ML task. You work by editing the model code and running experiments. Think carefully before each change. You have these tools:
+- str_replace(path, old_str, new_str): replace the unique occurrence of old_str with new_str.
+- create(path, file_text): create a new file.
+- run_experiment(): train + evaluate the current code under the fixed budget; returns metrics.
+Make one tool call at a time. After editing, call run_experiment() to measure your method.
+</system>
+
+<user>
+## Research question
+
+Pool-based active learning for tabular classification: a huge pile of unlabeled inputs sits there for
+free, but each label costs real money or expert time. I get a fixed budget, spent in rounds — each
+round I pick a batch of `n` still-unlabeled inputs, pay to label them, fold them into the training set,
+the harness retrains, repeat for 20 rounds. The single thing I design is the **batch acquisition rule**:
+given the current model and the pool, which `n` unlabeled examples do I send to the oracle. Everything
+else — the model family, the optimizer, the retrain-each-round loop, the data handling — is fixed. A
+strong rule trades off uncertainty (where is the model unsure), diversity (don't buy `n` near-duplicates),
+representativeness (cover the pool), and information gain (which labels most shrink the model's error).
+The contribution is the rule itself, not preprocessing or training-loop changes.
+
+## Prior art before the first rung (the passive-learning lineage)
+
+The first rung is the passive baseline — the rule that uses *no* model, *no* labels-seen-so-far, *no*
+notion of uncertainty. It is the resolution of a much older line of work on "how do I pick a subset of a
+population that estimates the whole population well," and the ladder above it is the line of work on "how
+do I do strictly better by *using* the model." These are the methods the first rung reacts to:
+
+- **PAC learning / uniform convergence (Valiant 1984; Blumer–Ehrenfeucht–Haussler–Warmuth 1989).** The
+  bridge from training error to test error — a hypothesis consistent with `m` labeled examples has
+  `err ≤ ε` with confidence `1−δ` once `m = O((1/ε)(d ln(1/ε) + ln(1/δ)))` — rests on exactly one
+  premise: the training examples are an i.i.d. sample from the deployment distribution `P`. Gap: it says
+  *nothing* about which examples to pick beyond "draw them like `P`"; the budget is spent blindly.
+- **Survey sampling (Cochran, *Sampling Techniques*).** Simple random sampling without replacement gives
+  every unit inclusion probability `n/N`, under which the plain sample mean is unbiased for the population
+  mean (Horvitz–Thompson collapses), and without-replacement strictly cuts variance by the
+  finite-population correction `(N−n)/(N−1)`. Gap: representativeness reproduces the pool's imbalance —
+  if the class I care about is rare, a representative draw starves it.
+- **The region of uncertainty (Cohn–Atlas–Ladner 1994).** Only examples on which two still-consistent
+  hypotheses disagree can move the model; the mass of that region, `α`, decays toward zero as labels
+  accumulate, so a rule oblivious to the model spends ever more of its budget re-confirming settled
+  territory. Gap: a passive rule's information per label decays — in the cleanest case the gap between
+  random draws and chosen queries is `1/ε` vs `ln(1/ε)`, exponential.
+
+The fixed substrate below is what these converged to: a pool, a model retrained each round, and one
+empty acquisition slot.
+
+## The fixed substrate
+
+A pool-based active-learning loop is frozen and must not be touched. It owns `n_pool` tabular inputs
+`self.X` (numpy `[n_pool, n_features]`) with their hidden labels `self.Y` (LongTensor `[n_pool]`), a
+boolean mask `self.idxs_lb` of which are already labeled, and a small neural classifier `self.clf`. Each
+round it calls the acquisition rule for `n` indices, reveals those labels, flips the mask, retrains
+`self.clf` from scratch on the enlarged labeled set (`Strategy.train`, Adam, cross-entropy, trained to
+near-zero training error), and evaluates. The base `Strategy` class also hands the rule everything it
+could need to *read* the current model without retraining:
+
+- `self.predict_prob(X, Y)` — softmax probabilities `[len(X), n_classes]`.
+- `self.predict_prob_dropout_split(X, Y, n_drop)` — `n_drop` stochastic (dropout-on) forward passes,
+  `[n_drop, len(X), n_classes]`.
+- `self.get_embedding(X, Y, return_probs=)` — penultimate-layer embeddings `[len(X), emb_dim]` (and the
+  softmax if asked).
+- `self.get_grad_embedding(X, Y)` — last-layer gradient embeddings `[len(X), emb_dim·n_classes]`
+  (gradient of the cross-entropy at the model's predicted label).
+- `self.get_exp_grad_embedding(X, Y)` — per-class Fisher embeddings `[len(X), n_classes, emb_dim·n_classes]`,
+  each class scaled by `√p`.
+
+## The editable interface
+
+Exactly one region is editable — the `CustomSampling` class in
+`badge/query_strategies/custom_sampling.py`, lines 28–54. Every method on the ladder is a fill of the
+same contract: a `query(self, n)` that returns an `np.ndarray` of `n` indices into `self.X`, chosen from
+the *currently unlabeled* pool (`self.idxs_lb` False). It may add helper methods, but `query(n)` is the
+entry point the loop calls. `numpy as np` and the `Strategy` base are already imported at module scope.
+
+The starting point is the scaffold default: **uniform random sampling**. Each later method replaces
+exactly this class body and nothing else.
+
+```python
+# EDITABLE region of badge/query_strategies/custom_sampling.py (lines 28-54) — default fill
+class CustomSampling(Strategy):
+    """Custom active learning query strategy.
+
+    Must implement query(n) -> np.ndarray of n indices from the unlabeled pool.
+    You may add helper methods, but query(n) is the entry point called by the
+    active learning loop.
+    """
+
+    def __init__(self, X, Y, idxs_lb, net, handler, args):
+        super(CustomSampling, self).__init__(X, Y, idxs_lb, net, handler, args)
+
+    def query(self, n):
+        """Select n samples from the unlabeled pool to label next.
+
+        Args:
+            n: number of samples to select
+
+        Returns:
+            np.ndarray of n indices (into self.X) of selected unlabeled samples
+        """
+        # Default: random sampling (replace with a better strategy)
+        idxs_unlabeled = np.arange(self.n_pool)[~self.idxs_lb]
+        return idxs_unlabeled[np.random.permutation(len(idxs_unlabeled))][:n]
+```
+
+## Evaluation settings
+
+Three OpenML tabular classification datasets spanning sizes and difficulties — **letter** recognition
+(26-class, the largest pool), **spambase** (binary), and **splice** (3-class). Protocol: 20 rounds of
+batch active learning, the model retrained from scratch after each round, a fixed total label budget.
+Two metrics, higher is better on both:
+
+- `accuracy` — test accuracy after the final round (final-budget quality).
+- `auc` — area under the learning curve (accuracy vs. number of labeled samples) across all 20 rounds,
+  capturing sample efficiency — how fast accuracy rises per label, not just where it ends.
+
+The editable model code is in `badge/query_strategies/custom_sampling.py`:
+```python
+class CustomSampling(Strategy):
+    """Custom active learning query strategy.
+
+    Must implement query(n) -> np.ndarray of n indices from the unlabeled pool.
+    You may add helper methods, but query(n) is the entry point called by the
+    active learning loop.
+    """
+
+    def __init__(self, X, Y, idxs_lb, net, handler, args):
+        super(CustomSampling, self).__init__(X, Y, idxs_lb, net, handler, args)
+
+    def query(self, n):
+        """Select n samples from the unlabeled pool to label next.
+
+        Args:
+            n: number of samples to select
+
+        Returns:
+            np.ndarray of n indices (into self.X) of selected unlabeled samples
+        """
+        # Default: random sampling (replace with a better strategy)
+        idxs_unlabeled = np.arange(self.n_pool)[~self.idxs_lb]
+        return idxs_unlabeled[np.random.permutation(len(idxs_unlabeled))][:n]
+
+# ================================================================
+# END EDITABLE REGION
+# ================================================================
+```
+Improve it. Derive your method, edit the code, then run_experiment().
+</user>
+
+### step 1 — Random Sampling (passive baseline)   [slug:random]
+
+<think>
+The only knob I own is the acquisition rule. The harness hands me a pool of `n_pool` tabular inputs sitting
+there for free, a boolean mask of which ones I have already paid to label, a small neural classifier it will
+retrain from scratch each round, and one empty slot — a `query(n)` that must return `n` indices into the pool,
+chosen from the still-unlabeled part, that I will pay the oracle to label. Everything else is frozen: the model
+family, the optimizer, the retrain-each-round loop over 20 rounds, the data handling. So the whole research
+question collapses onto that one method body — given the current model and the pool, which `n` unlabeled
+examples do I send out — and before I reach for anything that uses the model I should nail down the rule whose
+behavior I understand completely, the one that is the *floor* by construction, the yardstick every cleverer rule
+has to beat. That rule is the one that uses nothing: no model, no labels seen so far, no notion of uncertainty.
+It just draws representatively. So at step 1 my edit to the scaffold is the trivial one — leave `query(n)` at
+its default, a uniform draw from the unlabeled pool — and the work is understanding *why* this is the right
+place to start and exactly where it will be weak, so I know what the next rung has to fix.
+
+Start from the only thing I can prove about *any* acquisition rule, because that is what tells me what the floor
+should even be. The single theorem that makes supervised learning work is the bridge from training error to test
+error. The thing I actually care about is the test error of a hypothesis `c` — the probability it disagrees with
+the true labeling on a fresh input drawn from the deployment distribution `P`, `err(c) = Pr_{x~P}[c(x) ≠ t(x)]`.
+I never observe that directly; I only ever see the empirical error on my labeled set. The reason fitting the
+labeled set tells me anything about `err(c)` is uniform convergence: a hypothesis consistent with `m` labeled
+examples has `err ≤ ε` with confidence `1−δ` once `m = O((1/ε)(d ln(1/ε) + ln(1/δ)))`, `d` the VC dimension —
+and that PAC bound rests on exactly one premise about *where the training examples come from*: they are an i.i.d.
+sample from the very distribution I will be tested on. The sample is the bridge. If my labeled set is distributed
+like `P`, low training error transfers to low test error; if I bias the draw, the bridge is gone and the
+guarantee evaporates. So whatever `query(n)` I write, I had better be able to state what distribution my labeled
+set ends up following, because that distribution is the thing the entire generalization story hangs on.
+
+That immediately tells me what the *safest* possible rule is. If I want the labeled training set to stay
+distributed like `P`, the cleanest way to keep that premise intact is to not let the model, the features, or the
+labels seen so far tilt the draw at all — to make the selection independent of the data values. The pool itself
+came from `P`; conditional on the realized pool I can only promise representativeness with respect to that finite
+pool, but unconditionally, a value-independent draw from a pool that was itself drawn from `P` inherits `P`. What
+does "value-independent" mean precisely? It means every still-unlabeled pool input should be equally likely to
+be picked — no input preferred over another. Let me make sure that is the right formalization and not just a
+vibe, because this is an old solved problem wearing a different hat. Survey sampling — Cochran's *Sampling
+Techniques* — is entirely about picking a subset of a finite population so that quantities computed on the subset
+estimate the whole population well, and its foundational design is simple random sampling without replacement:
+choose `n` of the `N` units so every size-`n` subset is equally likely. Define the inclusion probability
+`π_i = Pr[unit i is in the sample]`. By symmetry, unit `i` appears in `C(N−1,n−1)` of the `C(N,n)` possible
+subsets, so `π_i = C(N−1,n−1)/C(N,n) = n/N`, the same for every `i`. Equal inclusion is exactly the property I
+need, and I can say precisely why. Take any statistic I would want the labeled set to estimate about the pool —
+class balance, the fraction in some region, anything expressible as a population average of `g(x_i)`. The general
+unbiased estimator under unequal inclusion is Horvitz–Thompson, weighting each sampled unit by `1/π_i`; its
+expectation is the population average because each unit contributes `g(x_i)/π_i` with probability `π_i`. When all
+`π_i = n/N` are equal, that estimator collapses to the plain unweighted sample mean, and it stays unbiased for
+every population average. So equal inclusion is not an aesthetic preference — it is the exact condition under
+which the plain labeled subset is an unbiased miniature of the pool. The design survey sampling calls
+"representative" is the design learning theory needs for its guarantee to hold; the two solved problems line up.
+
+Should I sample with replacement or without? A label I already hold teaches me nothing the second time — I have
+paid for it once, the label is the same — so a repeat in a batch is a wasted budget slot. And without-replacement
+is also statistically tighter, and I can quantify it: the sample-mean variance under simple random sampling
+without replacement is `(σ²/n)·(N−n)/(N−1)`, versus `σ²/n` with replacement, the extra factor `(N−n)/(N−1) ≤ 1`
+being the finite-population correction. Without replacement strictly reduces variance, and the reduction is
+largest exactly when `n` is an appreciable fraction of `N` — and drives variance to zero when `n = N`. So without
+replacement dominates on both counts, no wasted budget and a tighter estimate, and I want it over the *unlabeled*
+part of the pool only, because the already-bought labels would buy zero information if re-selected. That is
+exactly what the scaffold default does: take the pool indices where the mask is False, permute them uniformly,
+take the first `n`. A uniform permutation makes every ordered prefix equally likely, so every size-`n` subset
+comes up with equal probability and the picks are automatically distinct — a uniform without-replacement draw,
+every unlabeled input with inclusion probability `n/(#unlabeled)`, equal across them. One size-`n` draw per
+round, no tuning, nothing data-dependent that can go wrong.
+
+The harness even hands me, for free, the one thing that plagues adaptive rules: the diversity headache. The loop
+retrains in rounds and asks for a batch of `n` at a time, to amortize retraining. For an adaptive rule that is a
+real complication — greedily pick the `n` most uncertain points and they are often near-duplicates clustered in
+one spot, so the batch gets wasted and the rule has to engineer diversity in. For the uniform rule there is no
+such concern: a uniform draw of `n` distinct points is already spread across the pool in proportion to the pool,
+and because the rule consults no model, drawing `n` at once has the same law as drawing one, marking it labeled,
+retraining, and drawing again until the batch is filled. The selections inside the batch are dependent — that is
+what without-replacement means — but that dependence is precisely what forbids duplicates. So the batch size is
+free here, with none of the diversity headaches; another small gift of being model-free.
+
+Now stare at where this will be weak, because that is the entire point of running it — the failure modes are
+knowable in advance from the structure of the rule, and they tell me what rung 2 must attack. The first bites
+when a class is rare. A uniform draw faithfully reproduces the pool's class balance in the labeled subset — that
+is the "representative" property I just celebrated — so if the interesting class is 1-in-1000, a budget of 500
+labels buys roughly 500 of the common class and essentially none of the rare one, and a classifier cannot learn
+a class from a sample containing none of it. The very faithfulness that makes the rule unbiased is what makes it
+starve the minority: representativeness reproduces the imbalance, and when the rare class is the one I care about,
+reproducing the imbalance is the opposite of what I want. The second weakness is subtler and grows with the
+budget. Picture the set of hypotheses still consistent with everything I have labeled so far; somewhere in input
+space there is a region where these survivors still disagree — the region of uncertainty `R`. An input outside
+`R` is already determined: every survivor labels it the same way, so labeling it cannot change my hypothesis and
+teaches me nothing. Only inputs inside `R` can move the model. Let `α = Pr[x ∈ R]`. Early on `R` is large and
+`α` is healthy; as labels accumulate `R` shrinks and `α` decays toward zero — and a uniform draw, oblivious to
+`R`, lands in that useful region with probability exactly `α`. So late in training most random draws re-confirm
+what the model already knows, and the information per label decays. In the cleanest case — locating a single
+threshold on `[0,1]` — random labeling needs `O((1/ε)ln(1/ε))` examples while a learner that *chooses* where to
+ask (binary search) needs only `O(ln(1/ε))`: an exponential gap, `1/ε` versus `ln(1/ε)`. That gap is the prize a
+model-aware rule is chasing, and it is exactly what every later rung will spend the model on.
+
+I should be honest about why I am not just reaching straight for a rule that targets `R`, because the temptation
+is real and the reason I resist it is the same reason random is the right floor. The moment I bias selection
+toward `R` instead of toward `P`, I break the property that gave me my only unconditional guarantee — the labeled
+set is no longer an i.i.d. sample of `P`, so the PAC bridge no longer applies and any improvement becomes
+conditional. Worse, a boundary-chasing rule reads the *current* model to decide what is uncertain, and early in
+training that model is fit on almost nothing and is probably wrong, so it can define `R` badly and steer the
+whole budget into an unrepresentative corner — a self-reinforcing sampling bias the uniform rule structurally
+cannot have, precisely because it ignores the model. There is also the membership-query route — synthesize the
+single most informative input — which is what buys the `ln(1/ε)` rate, but in the pool setting `query(n)` must
+return *indices into real rows*, I cannot fabricate a query, and a synthesized "most informative" input could be
+an uninterpretable artifact no oracle can label. So every cleverer rule trades away something the uniform rule
+keeps for free: the unbiasedness, the assumption-free guarantee, the immunity to a bad early model, the
+robustness to model misspecification. That is what makes this the honest reference — not despite throwing away
+information, but because of it: the one rule whose statistical behavior I can state without conditions, the
+learning curve any adaptive strategy must dominate across the budget range to justify the information it spends.
+
+Across the three datasets I expect these two weaknesses to show up differently, and that shape is the prediction
+I am setting up for the next rung. On **spambase** (binary, fairly balanced) a representative i.i.d. sample is
+genuinely hard to beat — the boundary is simple, the classes are not pathologically imbalanced, and the budget
+is a healthy fraction of the pool so the finite-population correction is actively helping; random should be
+*strong* here, and a model-aware rule might barely improve on it. On **letter** (26 classes, the largest pool)
+the budget is spread thin across many classes and the decaying-`α` problem bites hardest — random keeps re-buying
+easy, already-separated letters while the confusable pairs (the boundary mass) stay under-sampled; this is where
+a rule that chases the boundary should open the largest gap, so I expect random to be relatively *weak* on
+letter, and I also expect its run-to-run variance to be widest there, because where a blind draw ends depends on
+which of the 26 classes it happened to cover. On **splice** (3-class) it should sit in between. So the prediction
+is sharp: random's curve is the honest reference, hardest to beat on the easy balanced binary problem and easiest
+to beat where many classes and a thin budget make most random draws land in settled territory. The first thing I
+will change at rung 2 is to stop drawing blindly and start letting the model say which unlabeled points it is
+least sure of — turning the empty, model-free `query` into one that reads `self.predict_prob` and spends the
+budget on the contested region instead of the pool's bulk. The falsifiable expectation the next rung must beat:
+a model-aware rule should lift letter clearly above random's curve (that is where the adaptivity prize is
+largest), gain little or nothing on spambase, and land a modest gain on splice — and if it fails to beat random
+on letter, the premise that the model's boundary is informative is wrong. So let me lock in the floor: keep the
+default uniform draw and run it as the reference.
+</think>
+<say>
+Step 1 is the passive baseline: random sampling. I'm trimming the scaffold's `query` to the bare uniform draw over the unlabeled pool — no model, no uncertainty — to set the honest reference every later rule has to beat.
+</say>
+<edit path="badge/query_strategies/custom_sampling.py">
+<old>
+class CustomSampling(Strategy):
+    """Custom active learning query strategy.
+
+    Must implement query(n) -> np.ndarray of n indices from the unlabeled pool.
+    You may add helper methods, but query(n) is the entry point called by the
+    active learning loop.
+    """
+</old>
+<new>
+# EDITABLE region of badge/query_strategies/custom_sampling.py (lines 28-54) — step 1: random
+class CustomSampling(Strategy):
+    """Random sampling baseline — selects samples uniformly at random."""
+</new>
+</edit>
+<obs>
+Successfully replaced text in badge/query_strategies/custom_sampling.py.
+</obs>
+<note>
+Now the body itself: drop the docstring and comment, leaving the permute-and-slice draw.
+</note>
+<edit path="badge/query_strategies/custom_sampling.py">
+<old>
+    def query(self, n):
+        """Select n samples from the unlabeled pool to label next.
+
+        Args:
+            n: number of samples to select
+
+        Returns:
+            np.ndarray of n indices (into self.X) of selected unlabeled samples
+        """
+        # Default: random sampling (replace with a better strategy)
+        idxs_unlabeled = np.arange(self.n_pool)[~self.idxs_lb]
+        return idxs_unlabeled[np.random.permutation(len(idxs_unlabeled))][:n]
+
+# ================================================================
+# END EDITABLE REGION
+# ================================================================
+</old>
+<new>
+    def query(self, n):
+        idxs_unlabeled = np.arange(self.n_pool)[~self.idxs_lb]
+        return idxs_unlabeled[np.random.permutation(len(idxs_unlabeled))][:n]
+</new>
+</edit>
+<obs>
+Successfully replaced text in badge/query_strategies/custom_sampling.py.
+</obs>
+<run/>
+<obs>
+Measured results — `baseline:random` (`is_final,true`), seed 42 and mean.
+
+## accuracy (higher is better)
+| seed | letter | spambase | splice |
+|---|---|---|---|
+| 42 | 0.8345 | 0.934924 | 0.77116 |
+| **mean** | **0.8160** | **0.899494** | **0.788924** |
+
+## auc (higher is better)
+| seed | letter | spambase | splice |
+|---|---|---|---|
+| 42 | 0.766588 | 0.903579 | 0.751254 |
+| **mean** | **0.723588** | **0.892625** | **0.735893** |
+</obs>
+
+### step 2 — Least Confidence (uncertainty sampling)   [slug:least_confidence]
+
+<think>
+The random run told me where the floor sits, and it told me in numbers that line up almost exactly with
+the failure modes I predicted from the structure of the rule. On **spambase** — binary, balanced, a
+budget that is a healthy fraction of the pool — random landed at 0.935 accuracy and 0.904 auc on seed 42,
+the strongest of its three datasets, exactly as I expected: a representative i.i.d. sample is genuinely
+hard to beat when the boundary is simple and the classes aren't pathological. On **letter** — 26 classes,
+the largest pool, the budget spread thin — random sits at 0.835 accuracy / 0.767 auc on seed 42 but its
+*mean* drops to 0.816 / 0.724, the widest gap between the lucky seed and the average of any dataset. That
+is the decaying-`α` problem made visible: with 26 classes the region of uncertainty is large and random
+keeps re-buying already-separated letters while the confusable pairs stay under-sampled, so the curve
+rises slowly (low auc) and where it ends depends heavily on which letters the blind draw happened to
+cover. **Splice** sits in between at 0.771 / 0.751 (seed 42), 0.789 / 0.736 (mean), the middle case I
+guessed. So the diagnosis is the one I set up: random's weakness is *not* a learning problem, it is that
+it spends budget representatively — on the bulk the model already handles — instead of on the contested
+region. The fix is to stop drawing blindly and let the model say which unlabeled points it is least sure
+of. The whole game is picking the informative ones, and random, by refusing to use the model, leaves the
+entire `1/ε`-vs-`ln(1/ε)` adaptivity prize on the table.
+
+So what does "informative" mean, concretely, for a rule I can actually run inside this scaffold? The
+cleanest theoretical handle is the version space — the set of all hypotheses in my model class still
+consistent with the labels I have seen. Each label I add must be consistent with the true concept, so it
+carves the set down, and the question "which example is worth labeling" becomes "which example, once
+labeled, carves the most off the version space." There is a clean object that pins this down: the region
+of uncertainty `R = { x : two still-consistent hypotheses disagree on x }`. If `x` is outside `R`, every
+consistent hypothesis already agrees on it, so labeling it can't contradict any of them — the version
+space doesn't shrink, the label is wasted. If `x` is inside `R`, some consistent hypotheses say one thing
+and others the opposite, so whatever the true label is, it kills the ones that guessed wrong. Only
+examples inside `R` inform me. And its mass `α = Pr[x ∈ R]` is the very quantity I watched decay in
+random's letter curve — random draws hit `R` with probability `α`, which heads to zero, which is why
+random's auc on letter is so low. So in principle the fix is obvious: only ask about points inside `R`.
+Then every query shrinks `R` and the per-label information stops decaying.
+
+Can I just do that? Let me try the most direct things and watch them break, because the wall each hits
+tells me what the rule actually has to look like. The first idea is membership queries: let the learner
+*synthesize* the single point it is most confused about and hand it to the oracle. In concept-learning
+theory this is enormously powerful — it is exactly what buys the `ln(1/ε)` rate. But a synthesized point
+in feature space need not correspond to any real input; people who tried this on images got back
+artificial hybrid characters with no recognizable symbol, gibberish a human can't classify. And in *this*
+setting it is doubly dead: the harness gives me `query(n)` that must return *indices into `self.X`* — I am
+choosing among real, fixed pool rows, I literally cannot fabricate a query. Wall. So don't synthesize,
+filter: I have a giant pool of real unlabeled rows sitting in `self.X`; instead of constructing the ideal
+query, draw real examples and only ask about the ones inside `R`. Every query is then a genuine row, and
+the in-`R` guarantee still holds. This is the selective-sampling move, and it is right — it keeps the
+efficiency argument while killing the gibberish problem.
+
+But now I have to actually compute "is `x` in `R`," and `R` is defined through the *entire* version space.
+To test membership I'd need to find two consistent hypotheses disagreeing on `x`, which means maintaining
+the whole set of consistent hypotheses and re-deriving it after every label. For the small neural
+classifier `self.clf` the harness trains, enumerating or even representing the version space is hopeless,
+and I'd redo it every round. Worse, "in `R` or not" is a hard binary test, but the contract is a
+*budget*: `query(n)` returns `n` indices, so I don't want yes/no, I want to *rank* the pool and take the
+top `n`. The region of uncertainty is the right idea and an unusable object. Wall. So how do people
+approximate `R` without the version space? The committee idea: draw two hypotheses at random from the
+version space, run both on each candidate, and treat their *disagreement* as the signal "this point is
+inside `R`" — because if two consistent hypotheses disagree on `x`, then `x` is by definition in `R`.
+There is even real theory: a disagreement-querying learner can need only logarithmically many labels while
+generalization error still falls. But to run it I'd need to draw hypotheses uniformly from the version
+space, assume the data are clean enough that a perfectly-consistent classifier exists, and maintain a
+*committee* of models rather than the single `self.clf` I am handed. On these tabular datasets — noisy
+labels, no guarantee of a perfect classifier, and a harness that retrains exactly one network — all three
+crack. Wall again, but an informative one: it tells me exactly what I need — a proxy for "x is in `R`"
+that (i) uses only the single trained classifier the scaffold gives me, (ii) doesn't assume noise-free
+realizability, and (iii) produces a *ranking*, a scalar I can sort to spend a budget.
+
+Look hard at what a committee's disagreement is really measuring. Two hypotheses disagree on `x` precisely
+when the evidence so far doesn't determine the label — where, if forced to commit, the learner would be
+guessing. But the single trained `self.clf` already carries that information directly, because it is a
+*probabilistic* classifier: it outputs a posterior, its own degree of belief about each label. Where two
+consistent hypotheses would split, a well-trained probabilistic classifier sits near the fence — its
+posterior is close to ambivalent. Where all consistent hypotheses agree, the posterior is confident. So
+the classifier's own *uncertainty about its prediction* is a single-model, scalar surrogate for "x is in
+the region of uncertainty," and it dodges all three cracks at once: one model (the one the scaffold
+trains), no realizability assumption (a posterior is defined whether or not a perfect classifier exists),
+and a number I can sort. And the harness hands me exactly this through `self.predict_prob(X, Y)`, which
+returns the softmax `[len(X), n_classes]` — no committee, no dropout, just the forward pass I'd already do.
+
+Make it concrete. The classifier estimates the posterior over classes; if forced to decide it picks
+`ŷ = argmax_y p(y|x)` and acts with confidence `p(ŷ|x)`, the mass on its chosen class. When is it most
+certain? When `p(ŷ|x)` is near 1 — the top class dominates. When least certain? When `p(ŷ|x)` is small —
+even the best class barely wins, the mass is spread, the model is close to guessing. So the natural
+uncertainty score is one minus the top-class probability, `1 − max_y p(y|x)`, and I query the examples
+with the *smallest* maximum posterior. In the binary case the larger posterior is
+`max(p, 1−p) = 0.5 + |p − 0.5|`, so minimizing the top-class probability is exactly "posterior nearest
+0.5" — querying right at the decision boundary, where a label resolves the most. The multi-class form is
+genuinely the same idea, not a heuristic bolted on. And `1 − max_y p(y|x)` has a reading I like even
+better than "distance to the boundary": it is the model's own estimate of the probability that it will
+*mislabel* `x`. If the model commits to `ŷ`, under its own posterior the probability it is wrong is exactly
+`1 − p(ŷ|x)`. So I am spending labels on the examples the model believes it is most likely to get wrong —
+its expected 0/1 loss, point by point — which are precisely the ones whose true labels would correct it.
+
+Before I lock it in, what does this score throw away, and is a richer score worth it? `1 − max` looks only
+at the single most probable class; it ignores how the rest of the mass is distributed. Two examples with
+the same top probability of 0.5 differ if in one the other 0.5 sits on a single runner-up and in the other
+it is smeared over many classes. So I could score by the margin `p(ŷ₁|x) − p(ŷ₂|x)` (uses the runner-up
+the top-only score discards) or by the entropy `−Σ_y p(y|x) log p(y|x)` (uses every class). In the binary
+case all three give the same ordering — top, margin, and entropy are all monotone in `|p − 0.5|` — and
+they only differ once there are three or more classes, where entropy down-weights edge cases where one
+class is merely unlikely while top-only and margin still value them. Entropy is natural if the loss I care
+about is log-loss; top-only aims most directly at decision uncertainty under 0/1 error. For the *cleanest*
+rule I want the minimal, most direct form — the one that scores nothing but the quantity `self.clf`
+already exposes, its top-class probability, which equals the model's own misclassification probability.
+That is least confidence. Margin and entropy are refinements I'd reach for if this leaves value on the
+table; for now, label what the model is least sure of, full stop.
+
+Now wrap it in the loop, because the selection is only half of it. The classifier scoring the pool is the
+one trained on the labels I have so far; after I label this round's batch the harness retrains on the
+enlarged set, and *that* classifier scores the next round. A deficient classifier this round picks
+examples that, once labeled, tend to compensate for its deficiency next round — the exploratory feedback
+that makes it work. One caveat carries straight over from random's numbers: the score is exactly as good
+as the current classifier, and early on, when very few labels have been bought, the model is fit on almost
+nothing and the uncertainty score can be nearly meaningless — which is precisely the regime where random's
+*representative* draw was actually a sensible default. So least confidence is a bet that the model becomes
+informative fast enough that chasing its boundary beats covering the pool.
+
+So the rung-2 edit, against the literal scaffold: where random returned a permuted slice of the unlabeled
+indices, I now take the unlabeled rows, call `self.predict_prob` for their posteriors, take the top-class
+probability per row, sort ascending, and return the `n` smallest — the `n` the model is least confident
+about, equivalently the `n` that maximize `1 − max_y p(y|x)`.
+
+Now the falsifiable expectations, stated against random's actual numbers. The sharpest prediction is on
+**letter**: that is where random was weakest (auc mean 0.724, the lucky-seed gap widest), because the
+decaying-`α` problem bites hardest with 26 classes — so chasing the boundary should open the largest gap
+here, and I expect least confidence to lift letter accuracy clearly above random's 0.835 (seed 42) /
+0.816 (mean). If it does *not* beat random on letter, the rule is failing exactly where it should win and
+something is wrong with my premise that the model's boundary is informative. On **spambase** I expect the
+*smallest* gain, possibly none worth noting: random already hit 0.935 / 0.904 there because the balanced
+binary boundary is easy, and there is little contested region left to redirect budget toward — least
+confidence on a near-solved binary problem can even *underperform* random by over-concentrating on a thin
+boundary band and starving the rest, so I would not be surprised to see spambase auc dip slightly below
+random's 0.904. On **splice** I expect a modest gain over random's 0.771 / 0.751. And one structural risk
+I am explicitly watching: least confidence scores each point in isolation, with no term that looks at the
+other chosen points, so the `n` least-confident rows can be near-duplicates clustered in one corner of the
+boundary — I'd pay for `n` labels and learn roughly one's worth. If the gains are smaller than the
+boundary argument predicts, that redundant-batch effect is the likely culprit, and the next rung will have
+to make the uncertainty itself *distribution-aware* — to keep what least confidence sees while refusing to
+chase noise it cannot fix. Let me write it in.
+</think>
+<say>
+Step 2 is least-confidence uncertainty sampling. First I retitle the class; then `query` will score each unlabeled row by its top-class probability and pick the `n` the model is least sure of.
+</say>
+<edit path="badge/query_strategies/custom_sampling.py">
+<old>
+# EDITABLE region of badge/query_strategies/custom_sampling.py (lines 28-54) — step 1: random
+class CustomSampling(Strategy):
+    """Random sampling baseline — selects samples uniformly at random."""
+</old>
+<new>
+# EDITABLE region of badge/query_strategies/custom_sampling.py (lines 28-54) — step 2: least confidence
+class CustomSampling(Strategy):
+    """Least Confidence (Uncertainty Sampling) — selects samples with lowest
+    maximum predicted probability."""
+</new>
+</edit>
+<obs>
+Successfully replaced text in badge/query_strategies/custom_sampling.py.
+</obs>
+<note>
+Now the body: replace the random draw with the predict_prob scoring and sort on the top-class probability.
+</note>
+<edit path="badge/query_strategies/custom_sampling.py">
+<old>
+        idxs_unlabeled = np.arange(self.n_pool)[~self.idxs_lb]
+        return idxs_unlabeled[np.random.permutation(len(idxs_unlabeled))][:n]
+</old>
+<new>
+        idxs_unlabeled = np.arange(self.n_pool)[~self.idxs_lb]
+        probs = self.predict_prob(self.X[idxs_unlabeled], np.asarray(self.Y)[idxs_unlabeled])
+        U = probs.max(1)[0]
+        return idxs_unlabeled[U.sort()[1][:n]]
+</new>
+</edit>
+<obs>
+Successfully replaced text in badge/query_strategies/custom_sampling.py.
+</obs>
+<run/>
+<obs>
+Measured results — `baseline:least_confidence` (`is_final,true`), seed 42 and mean.
+
+## accuracy (higher is better)
+| seed | letter | spambase | splice |
+|---|---|---|---|
+| 42 | 0.8670 | 0.947939 | 0.840125 |
+| **mean** | **0.7955** | **0.926970** | **0.814002** |
+
+## auc (higher is better)
+| seed | letter | spambase | splice |
+|---|---|---|---|
+| 42 | 0.728275 | 0.918547 | 0.784013 |
+| **mean** | **0.668050** | **0.907592** | **0.743574** |
+</obs>
+
+### step 3 — BALD (Bayesian Active Learning by Disagreement, MC dropout)   [slug:bald]
+
+<think>
+Least confidence did roughly what the boundary argument said it would, and the places it *under*-delivered
+are the tell. On seed 42 it beat random everywhere — letter 0.867 vs 0.835, spambase 0.948 vs 0.935,
+splice 0.840 vs 0.771 — so chasing the model's least-confident points is genuinely better than drawing
+blindly when the model is good. But look at the means, where the noise across runs shows through. On
+**letter** the least-confidence *mean* accuracy is 0.7955 and auc 0.668 — *below* random's 0.816 / 0.724.
+That inversion is exactly the redundant-batch and bad-early-model risk I flagged: with 26 classes and a
+thin budget, the `n` least-confident rows cluster on one stretch of the boundary, the early model defines
+"least confident" badly, and the budget gets steered into an unrepresentative corner — so on a bad seed
+the curve rises slower than random's representative draw, dragging the mean under. On **spambase** least
+confidence held up well (mean 0.927 / 0.908 vs random's 0.899 / 0.893), and on **splice** it gained (mean
+0.814 / 0.744 vs 0.789 / 0.736). So the diagnosis is sharp: raw top-class uncertainty is the right
+instinct but it is brittle, and the brittleness has a specific cause I can name. `1 − max_y p(y|x)` is a
+single deterministic forward pass through one network; it cannot distinguish "I am unsure because I have
+not seen enough data here" (which a label fixes) from "I am unsure because this point is genuinely
+ambiguous / the label is intrinsically noisy" (which no label ever fixes). It chases both, and the second
+kind is wasted budget — on letter, the confusable-but-irreducible boundary between similar glyphs eats
+queries that buy nothing. So the next rung has to *separate* the uncertainty a label can resolve from the
+uncertainty it cannot.
+
+Let me state what I actually want to query, cleanly, and let the form tell me what to compute. The honest
+meaning of "this label teaches me the most" is "this label most shrinks my uncertainty about the model
+parameters." If I had a posterior `p(θ|D)` over the network weights, the myopic-best query is the one
+whose label I expect to drop the parameter entropy by the most:
+
+  argmax_x  H[θ | D] − E_{y ∼ p(y|x,D)} [ H[θ | y, x, D] ].
+
+The expectation over `y` is unavoidable — I don't have the label yet, so I average over what it might be,
+weighted by the current predictive belief. This is the right object. The trouble is it lives entirely in
+*parameter* space: `H[θ|D]` is the entropy of a posterior over a few thousand network weights, an
+intractable high-dimensional blob, and the expectation costs a full re-inference per imagined label
+(`O(N_x N_y)` posterior updates). I have a criterion I literally cannot afford to compute, and I should
+not patch it — I should look at its *form*.
+
+`H[θ|D] − E_y[H[θ|y,x,D]]` is entropy minus expected-entropy-after-conditioning, which is, by definition,
+a mutual information: the conditional MI between the parameters and the unseen label, `I[θ, y | x, D]`.
+This is an identity, not an approximation. And mutual information is *symmetric*: `I(A;B) = H(A) − H(A|B)
+= H(B) − H(B|A)`. I have been writing it as the entropy of `θ` minus expected entropy of `θ` given `y`. It
+is equally the entropy of `y` minus expected entropy of `y` given `θ`:
+
+  I[θ, y | x, D]  =  H[y | x, D]  −  E_{θ ∼ p(θ|D)} [ H[y | x, θ] ].
+
+Stop and read what just happened. The left side is the intractable parameter-space object. The right side
+has both entropies in *output* space — over the `n_classes` labels, finite and trivial even when `θ` is
+huge — and the `θ` is conditioned only on `D`, not on any hypothetical `y`. There is no "pretend I saw
+label `y` and re-infer" anywhere: I do inference once, on the data I already have, and then for every
+candidate `x` compute two output-space entropies. The `O(N_x N_y)` re-inference collapses to `O(1)`, and
+the entropy of `θ` never appears. The symmetry of MI turned the intractable criterion into a tractable one
+without changing the number by one bit.
+
+Now read the right-hand side as a recipe and notice it says exactly the thing least confidence couldn't.
+I want `x` that maximizes `H[y|x,D] − E_θ[H[y|x,θ]]`. First term big: my *marginal* prediction — averaged
+over all settings of `θ` in the posterior — is very uncertain about the label. Second term small: but each
+*individual* `θ` is confident. Put them together: I want the `x` where the parameter settings are each
+individually sure of the answer yet *sure of different answers*. That is disagreement — but disagreement
+that *keeps* the confidence, because the second term is built out of each setting's full entropy, not a
+hard vote. This is precisely the distinction least confidence missed. A point that is noisy-but-known —
+where every `θ` agrees "this one is a genuine coin flip" — has high `H[y|x,D]` but *also* high
+`E_θ[H[y|x,θ]]` (each `θ` is itself uncertain), so the difference is small and I correctly skip it. A point
+where the model is genuinely torn — each `θ` confident, but they split — has high `H[y|x,D]` and *low*
+`E_θ[H[y|x,θ]]`, so the difference is large and I query it. The subtraction is exactly the operation that
+separates epistemic uncertainty (which a label can fix) from aleatoric uncertainty (which it can't).
+Least confidence is essentially just the first term — the marginal uncertainty — which is why it chases
+the irreducible boundary noise that dragged letter's mean under random; this criterion is the first term
+*minus* the second, and the second term is the correction least confidence was missing. Sanity-check the
+containment: if the observation noise is zero, every `θ` predicts deterministically, `H[y|x,θ] = 0`, the
+expectation vanishes, and the criterion reduces to plain marginal entropy — the uncertainty-sampling
+family. The extra `−E_θ[H[y|x,θ]]` term is exactly what matters when that conditional uncertainty varies
+with the input, as it does on a multi-class problem like letter. So this isn't a fourth competitor; it
+*contains* uncertainty sampling as the noise-free special case and adds the noise correction on top.
+
+Now make it concrete in *this* scaffold, which is where the derivation has to actually land. For the small
+neural classifier `self.clf` the harness trains, the weight posterior `p(θ|D)` is hopelessly intractable
+and there is no probit-convolution closed form to exploit — so I use the *model-agnostic* form,
+`H[y|x,D] − E_θ[H[y|x,θ]]`, which needs only two things: posterior samples of `θ`, and the predictive
+softmax `p(y|x,θ)` for each sample. The harness hands me exactly this through
+`self.predict_prob_dropout_split(X, Y, n_drop)`: it leaves dropout switched on at prediction time and runs
+the network `n_drop` times, each pass zeroing a different random subset of units, so each pass is
+effectively a different network drawn from an approximate posterior over the weights, returning a tensor
+`[n_drop, len(X), n_classes]`. So `n_drop` dropout passes stand in for `n_drop` posterior samples
+`θ¹,…,θᵀ`, and I never need the posterior in closed form, never its entropy — I just sample it and read off
+softmaxes. (Note what the harness does *not* give me, and what I therefore drop from the full Bayesian-
+disagreement story: there is no Gaussian-process path, no probit/squared-exponential closed form, no
+nuisance-parameter marginalization, no preference-learning kernel — those need a GP posterior the scaffold
+has no notion of. The only posterior I can sample here is the dropout one, so the only estimator I can run
+is the Monte-Carlo one, and that is the rung.)
+
+Plug the samples into the two terms with simple Monte-Carlo estimates. The expectation over the posterior
+becomes an average over the passes. The marginal predictive `p(y|x,D) = E_θ[p(y|x,θ)]` becomes the mean
+softmax across passes, `p̄ = (1/T) Σ_t pᵗ`. So the first term is the entropy of the mean prediction,
+`H[p̄] = −Σ_c p̄_c log p̄_c`, high when the passes *together* are unsure; and the second term is the mean of
+the per-pass entropies, `(1/T) Σ_t H[pᵗ] = −(1/T) Σ_{t,c} pᵗ_c log pᵗ_c`, high when each individual pass is
+unsure. The disagreement score is their difference,
+`I(x) ≈ H[p̄] − (1/T) Σ_t H[pᵗ]`. The intuition survives the move intact: high exactly when each pass is
+individually confident but the passes confidently disagree — the dropout networks vote different ways
+while each is sure of itself. That is the epistemic part, with the aleatoric part subtracted off, just as
+the symmetry promised. And because it is entropy-of-an-average minus average-of-entropies, the difference
+is non-negative by Jensen's inequality (entropy is concave): `I(x) ≥ 0` always, the right sign for an MI.
+
+One implementation point to get right against the literal scaffold, because the sign and sort direction
+are where this silently breaks. I want to rank the pool by `I(x)` and keep the most-informative `n`. It is
+cleaner to compute the *negative*, `U = (mean per-pass entropy) − (entropy of the mean) = −I(x)`, then
+sort `U` ascending and take the first `n`: the `n` smallest `U` are the `n` largest `I`. A handful of
+dropout passes suffices to estimate two entropies; `n_drop = 10` is the default — enough samples to
+estimate them, cheap enough to run over the whole pool. So the rung-3 edit: where least confidence took a
+single `predict_prob` and the per-row max, I take `predict_prob_dropout_split` with `n_drop=10`, form `p̄`
+as the mean over passes, compute `entropy1 = H[p̄]` (total) and `entropy2 = mean_t H[pᵗ]` (aleatoric), set
+`U = entropy2 − entropy1`, sort ascending, return the first `n`.
+
+Now the falsifiable expectations against least confidence's actual numbers. The cleanest prediction is
+**letter**, the dataset where least confidence's mean *inverted under random* (0.7955 / 0.668 vs random's
+0.816 / 0.724) precisely because raw top-class uncertainty chased irreducible 26-class boundary noise.
+BALD's whole reason for existing is the `−E_θ[H[y|x,θ]]` term that subtracts that noise off, so I expect it
+to repair the letter regression — at minimum back above random, ideally above least confidence's seed-42
+0.867. If BALD does *not* fix letter, then either the dropout posterior is too poor a surrogate for the
+weight posterior on this small net, or the redundant-batch problem (which BALD does *not* address — it
+still scores each point in isolation) dominates the noise problem here. On **spambase**, where least
+confidence was already strong (mean 0.927 / 0.908) and the binary boundary carries little irreducible
+noise, the epistemic/aleatoric split has little to separate, so I expect BALD to roughly match least
+confidence, maybe a hair behind because ten noisy dropout passes are a coarser uncertainty estimate than
+one clean softmax max — I would not be shocked to see spambase auc dip slightly under 0.908. On **splice**
+I expect a small gain over least confidence's 0.814 / 0.744. And the structural caveat I am explicitly
+carrying forward: BALD separates resolvable from irreducible uncertainty *per point*, but like least
+confidence it has no term that looks at the *other chosen points* — the `n` highest-MI rows can still be
+near-duplicates. So if the batch is large relative to the contested region, BALD will still buy redundant
+labels, and the next rung will have to fuse uncertainty with diversity so the batch is informative *and*
+spread out — which is exactly the failure I expect to remain after fixing the noise problem. Let me swap
+the whole class over to the MC-dropout disagreement score.
+</think>
+<say>
+Step 3 is BALD — Bayesian Active Learning by Disagreement via MC dropout. I'm replacing the whole class so `query` runs `n_drop=10` stochastic passes and scores each point by total entropy minus mean per-pass entropy, the mutual information between label and weights.
+</say>
+<edit path="badge/query_strategies/custom_sampling.py">
+<old>
+# EDITABLE region of badge/query_strategies/custom_sampling.py (lines 28-54) — step 2: least confidence
+class CustomSampling(Strategy):
+    """Least Confidence (Uncertainty Sampling) — selects samples with lowest
+    maximum predicted probability."""
+
+    def __init__(self, X, Y, idxs_lb, net, handler, args):
+        super(CustomSampling, self).__init__(X, Y, idxs_lb, net, handler, args)
+
+    def query(self, n):
+        idxs_unlabeled = np.arange(self.n_pool)[~self.idxs_lb]
+        probs = self.predict_prob(self.X[idxs_unlabeled], np.asarray(self.Y)[idxs_unlabeled])
+        U = probs.max(1)[0]
+        return idxs_unlabeled[U.sort()[1][:n]]
+</old>
+<new>
+# EDITABLE region of badge/query_strategies/custom_sampling.py (lines 28-54) — step 3: BALD (MC dropout)
+class CustomSampling(Strategy):
+    """BALD — Bayesian Active Learning by Disagreement (MC Dropout).
+    Selects samples where there is maximal disagreement across stochastic
+    forward passes, approximating mutual information."""
+
+    def __init__(self, X, Y, idxs_lb, net, handler, args, n_drop=10):
+        super(CustomSampling, self).__init__(X, Y, idxs_lb, net, handler, args)
+        self.n_drop = n_drop
+
+    def query(self, n):
+        import torch
+        idxs_unlabeled = np.arange(self.n_pool)[~self.idxs_lb]
+        probs = self.predict_prob_dropout_split(
+            self.X[idxs_unlabeled], self.Y.numpy()[idxs_unlabeled], self.n_drop
+        )
+        # Mean prediction across MC samples
+        pb = probs.mean(0)
+        # Total entropy: H[y | x, D]
+        entropy1 = (-pb * torch.log(pb + 1e-10)).sum(1)
+        # Expected entropy: E_theta[H[y | x, theta]]
+        entropy2 = (-probs * torch.log(probs + 1e-10)).sum(2).mean(0)
+        # BALD score = total entropy - expected entropy = mutual information
+        U = entropy2 - entropy1
+        return idxs_unlabeled[U.sort()[1][:n]]
+</new>
+</edit>
+<obs>
+Successfully replaced text in badge/query_strategies/custom_sampling.py.
+</obs>
+<run/>
+<obs>
+Measured results — `baseline:bald` (`is_final,true`), seed 42 and mean.
+
+## accuracy (higher is better)
+| seed | letter | spambase | splice |
+|---|---|---|---|
+| 42 | 0.8930 | 0.926247 | 0.805643 |
+| **mean** | **0.835667** | **0.905278** | **0.795193** |
+
+## auc (higher is better)
+| seed | letter | spambase | splice |
+|---|---|---|---|
+| 42 | 0.774725 | 0.900976 | 0.784561 |
+| **mean** | **0.716025** | **0.892336** | **0.737017** |
+</obs>
+
+### step 4 — BAIT (Fisher-information A-optimal selection, CPU-adapted)   [slug:bait]
+
+<think>
+BALD did what the noise-subtraction argument predicted on the hard dataset and confirmed the limit I was
+carrying forward. On **letter** it repaired the regression: mean accuracy 0.8357 / auc 0.716, back above
+random's 0.816 / 0.724 on accuracy and well above least confidence's collapsed 0.7955 / 0.668, with seed
+42 up at 0.893 — the strongest letter-accuracy seed of any rung so far. That is exactly the
+`−E_θ[H[y|x,θ]]` term earning its keep: subtracting the irreducible 26-class boundary noise that raw least
+confidence was chasing. But the means also confirm the caveat. On **spambase** BALD came in at 0.905 /
+0.892, *below* least confidence's 0.927 / 0.908 and barely above random — on a near-balanced binary
+problem with little irreducible noise, the epistemic/aleatoric split has almost nothing to separate, and
+ten coarse dropout passes are a noisier uncertainty estimate than one clean softmax max, so BALD gives
+back some of least confidence's spambase edge. On **splice** it landed 0.795 / 0.737, roughly random-level
+and slightly under least confidence. So BALD is the best rung *on letter* but no longer dominant
+everywhere, and the reason is the structural hole I named: BALD scores each point in isolation. It separates
+resolvable from irreducible uncertainty *per point*, but it has no term that looks at the other chosen
+points, so the `n` highest-MI rows can still be near-duplicates clustered in one stretch of the boundary —
+I pay for `n` labels and learn far fewer labels' worth. And I cannot fix that by tuning, because tuning a
+tradeoff coefficient would itself burn labels: changing a knob queries a *different* set, whose labels I'd
+have to buy. So the next rung must do two things at once — keep the per-point informativeness BALD found
+*and* make the batch diverse — with no free coefficient to balance them, and ideally on a principled
+footing rather than a heuristic blend.
+
+Let me refuse to pick a design criterion by taste and instead derive the actual error I am trying to
+minimize, then read off which scalar of the model's information it forces. Stop thinking of `self.clf` as a
+function and think of it as a probability model: a softmax is `p(y|x,θ)`, fitting is maximum likelihood
+with loss `ℓ = −log p(y|x,θ)`, and a whole body of theory about *how good an MLE is* becomes available.
+The quantity that governs the MLE's error is the Fisher information `I(x;θ) = E_y[∇²ℓ(x,y;θ)]`, the
+expected Hessian of the per-point loss — classically the MLE is asymptotically normal with covariance the
+inverse Fisher, so the Fisher is the *precision* a labeled point buys me about `θ`. There is a structural
+gift to check: does the Hessian depend on the label `y`, or only on `x` and `θ`? For multiclass logistic
+regression, the first-derivative block for class `p` is `(π_p − 1[y=p]) x`, linear in the label indicator,
+so its second derivative kills the label entirely, leaving `∇²ℓ = xxᵀ ⊗ (diag(π) − ππᵀ)` — label-
+independent. That is the property that lets me even *talk* about a point's Fisher before paying for its
+label, which is the whole game.
+
+So I want to pick a labeling set `S` that minimizes the MLE error, the Fisher is the currency, and I need
+a *scalar* of the matrix `Σ_{x∈S} I(x;θ)` to minimize. Experimental design hands me a menu — D-optimality
+(maximize `det`), A-optimality (minimize `tr` of the inverse), others — and is annoyingly agnostic about
+which. I won't guess; I'll derive the error and read off the scalar. Take Bayesian linear regression as
+the case I can compute in closed form: the Bayes risk of the ridge estimate, measured in the pool second-
+moment metric `Σ`, telescopes (every cross term cancels in pairs) down to `BayesRisk(S) = σ² tr(Λ_S⁻¹ Σ)`
+with `Λ_S = Σ_{x∈S} xxᵀ + λσ² I`. Two things fall out that I did not put in. First, the criterion is a
+*weighted trace*, not a determinant and not a bare `tr(Λ⁻¹)` — weighted by the pool second moment `Σ`. The
+risk literally tells me which scalar to optimize, and it is A-optimality with `Σ` baked in. Second, the
+right side contains *no labels*: the risk of labeling `S` depends only on the features in `S` and the
+pool, so I can minimize it *before paying for a single label* — an oracle-free objective. And the
+frequentist MLE analysis lands on the same functional, `tr(I_S(θ)⁻¹ I_U(θ)) / m`, with the per-point
+Fisher in place of `xxᵀ` and the pool Fisher `I_U` in place of `Σ`. Two independent derivations converging
+on `tr((Σ_{x∈S} I(x;θ))⁻¹ I_U(θ))` is the object to trust.
+
+Why this beats the determinant — and therefore why it should beat BADGE, which I'm about to face as the
+strongest rung — matters, so pin it down. If I tried D-optimality, `det(I(x;θ)⁻¹ I_U) = det(I(x;θ)⁻¹) ·
+det(I_U)`, and `det(I_U)` is a constant in `x` that factors straight out: the determinant is structurally
+*blind* to the pool Fisher. It only ever looks at each candidate's own Fisher, never at which directions
+the pool actually weights. The trace does not collapse — `tr((Σ_S I)⁻¹ I_U)` genuinely couples the
+selected Fisher to the pool Fisher, so it preferentially shores up the directions `I_U` says matter. And
+`tr(M⁻¹)` is the sum of inverse eigenvalues, dominated by the *smallest* eigenvalues — A-optimality pours
+effort into the directions of lowest information, the weak spots, exactly the ones a determinant (a
+product, dominated by large eigenvalues) ignores. For active learning that is the right instinct: fix what
+you're worst at, weighted by how much the pool cares. So the target objective is
+
+  S* = argmin_{S⊂U, |S|≤B}  tr( (Σ_{x∈S} I(x;θ))⁻¹ I_U(θ) ).
+
+Now reality, and this is where the *task's* implementation diverges hard from the textbook method, because
+the harness imposes a CPU memory budget the full algorithm would blow through. Several things are broken.
+First, `I(x;θ)` for the full network is enormous, so I restrict to the *last layer*: `I(x;θ^L) = V_x V_xᵀ`
+where `V_x` is a `(d·k)×k` factor whose columns are the per-class last-layer loss gradients each scaled by
+`√(class prob)` — and `V_x V_xᵀ` reproduces the exact pointwise Fisher `x^L x^Lᵀ ⊗ (diag(π) − ππᵀ)`. (Note
+the contrast with BADGE, which uses *one* column — the gradient at the single hallucinated label — and does
+*not* scale by `√p`; BADGE's embedding is a rank-one shadow of this rank-`k` Fisher, throwing away `k−1`
+directions and the probability weighting. That is the per-point advantage of the full `V_x`.) The scaffold
+advertises a `get_exp_grad_embedding` helper that returns exactly these per-class Fisher factors — but I
+deliberately do *not* call it here, and that is the central adaptation: materializing the full
+`[n_pool, k, d·k]` Fisher tensor and accumulating the `d·k × d·k` pool Fisher over the entire pool would
+exhaust the 64 GB letter budget. So I rebuild the Fisher factors myself in *streaming batches* through a
+`DataLoader` (the model's penultimate embeddings and softmax per batch, assembled into `V_x` on the fly),
+accumulate the pool Fisher and the labeled "seed" Fisher batch-by-batch divided by their counts, and never
+hold the whole tensor at once.
+
+Second, `d·k` is still large — for letter, 26 classes times the penultimate width is thousands — so before
+selection I **random-project** the Fisher factors down to a fixed `bait_proj_dim = 128` with a single
+fixed Gaussian projection (seeded for reproducibility, scaled by `1/√128`). Johnson–Lindenstrauss says
+random projection approximately preserves the inner products the trace objective is built from, so the
+A-optimal geometry survives the squeeze while the `d·k × d·k` matrices I'd otherwise invert become
+`128 × 128`. Third, even projected, scoring the *entire* unlabeled pool every greedy step is too slow, so I
+run BAIT on an **entropy-filtered candidate pool** rather than the full unlabeled set: compute predictive
+entropy for every unlabeled point in the same streaming pass, keep the top `max(4n, 512)` most-uncertain as
+candidates, and let the Fisher selection diversify *within* that high-uncertainty shortlist. This is a
+pragmatic fusion — uncertainty pre-filters, A-optimality diversifies — that keeps the expensive matrix
+work on a few hundred points instead of tens of thousands. Fourth, the representation changes every round
+as the harness retrains, so this is not the convex theory's one-shot SDP; I recompute the Fisher from the
+current network and re-solve each round.
+
+The selection itself is greedy, because exact combinatorial minimization is intractable, but greedy has a
+caveat I must face: the trace functional is *not* submodular, so plain forward greedy can commit early to
+points that become redundant once later ones are added and can't take them back. So I *oversample* — greedily
+add `2n` points forward — then run a *backward* pass that greedily removes points one at a time, each time
+deleting the one whose removal hurts the objective least, down to `n`. Forward casts a wide net; backward
+prunes the ones that turned out redundant in company. The per-step argmin looks like a `128 × 128` inversion
+per candidate per step, which I avoid with the low-rank structure: each `I(x) = V_x V_xᵀ` is rank `k`, so
+the Woodbury identity turns `(M + V_x V_xᵀ)⁻¹` into an update needing only a `k × k` solve, and the cyclic
+trace lets me precompute `M⁻¹ I_U M⁻¹` once per step and score every candidate with a small batched matmul.
+One numerical adaptation the CPU port forces: because the projected, candidate-filtered Fisher can be
+rank-deficient and ill-conditioned, I use the *pseudo*-inverse `torch.linalg.pinv` everywhere a plain
+inverse appears in the textbook version, and `nan_to_num` the scores — the full-precision `torch.inverse`
+would throw on singular matrices here. The seed/candidate normalization is the same as the derived risk:
+scale the seed Fisher into `M_0` by `nLabeled/(nLabeled+n)` and each candidate `V_x` by `√(n/(nLabeled+n))`
+so the new batch joins the labeled set in the correct proportion.
+
+So the rung-4 edit, against the literal scaffold and honest about what the harness omits: where BADGE will
+seed k-means++ over rank-one gradient embeddings, BAIT here streams the rank-`k` Fisher factors, projects
+them to 128 dims, restricts to an entropy-filtered candidate shortlist, and runs the A-optimal greedy
+(forward-oversample to `2n`, Woodbury+trace-rotation scoring with `pinv`, backward-prune to `n`). It is the
+*same* A-optimal objective as the published method, but a CPU-tractable adaptation of it — projected,
+candidate-filtered, pseudo-inverted — not the full-pool `get_exp_grad_embedding` version.
+
+Now the falsifiable expectations against BALD's actual numbers, and they are genuinely uncertain because
+the adaptations cut both ways. On **spambase** and **splice** the full Fisher objective with the pool term
+should beat the per-point-isolated BALD, because the A-optimality directly targets the diversity hole that
+left BALD's batch redundant: I expect spambase back above BALD's 0.905 / 0.892 (toward least confidence's
+0.927 / 0.908) and splice above BALD's 0.795 / 0.737. The sharpest worry is **letter** — the dataset where
+BALD was strongest (0.8357 / 0.716, seed 42 up at 0.893) — because letter is exactly where the CPU
+adaptations bite hardest: 26 classes means the largest `d·k`, so the random projection to 128 dims discards
+the most Fisher geometry, and the streaming full-pool Fisher accumulation is the slowest, the one the time
+budget can fail to finish. I expect BAIT to *underperform* BALD on letter, and possibly not complete every
+seed there — if the leaderboard shows a missing or degraded letter result for BAIT, that is the projection-
+and-time adaptation showing through, not the A-optimal objective failing. So the bar BAIT must clear is:
+beat BALD on spambase and splice (where diversity is the binding constraint), at the cost of letter (where
+the CPU port handicaps it). If instead BAIT loses on spambase/splice too, then the entropy-pre-filter plus
+128-dim projection has degraded the Fisher geometry past usefulness, and the diversity must be recovered
+more cheaply — which is exactly what the next rung does, replacing the heavy Fisher machinery with a single
+gradient embedding whose k-means++ seeding gets diversity for free. Let me write the streaming Fisher
+A-optimal selector in.
+</think>
+<say>
+Step 4 is BAIT — A-optimal Fisher-information selection, CPU-adapted. I'm replacing the class with one that streams the per-class Fisher factors, random-projects them to 128 dims on an entropy-filtered candidate pool, and runs a forward-oversample/backward-prune greedy on the trace objective.
+</say>
+<edit path="badge/query_strategies/custom_sampling.py">
+<old>
+# EDITABLE region of badge/query_strategies/custom_sampling.py (lines 28-54) — step 3: BALD (MC dropout)
+class CustomSampling(Strategy):
+    """BALD — Bayesian Active Learning by Disagreement (MC Dropout).
+    Selects samples where there is maximal disagreement across stochastic
+    forward passes, approximating mutual information."""
+
+    def __init__(self, X, Y, idxs_lb, net, handler, args, n_drop=10):
+        super(CustomSampling, self).__init__(X, Y, idxs_lb, net, handler, args)
+        self.n_drop = n_drop
+
+    def query(self, n):
+        import torch
+        idxs_unlabeled = np.arange(self.n_pool)[~self.idxs_lb]
+        probs = self.predict_prob_dropout_split(
+            self.X[idxs_unlabeled], self.Y.numpy()[idxs_unlabeled], self.n_drop
+        )
+        # Mean prediction across MC samples
+        pb = probs.mean(0)
+        # Total entropy: H[y | x, D]
+        entropy1 = (-pb * torch.log(pb + 1e-10)).sum(1)
+        # Expected entropy: E_theta[H[y | x, theta]]
+        entropy2 = (-probs * torch.log(probs + 1e-10)).sum(2).mean(0)
+        # BALD score = total entropy - expected entropy = mutual information
+        U = entropy2 - entropy1
+        return idxs_unlabeled[U.sort()[1][:n]]
+</old>
+<new>
+# EDITABLE region of badge/query_strategies/custom_sampling.py (lines 28-54) — step 4: BAIT (CPU-adapted)
+class CustomSampling(Strategy):
+    """BAIT — Batch Active Learning via Information Matrices (Fisher embeddings).
+    CPU-adapted version of the original BAIT algorithm.
+
+    This implementation keeps the Fisher-matrix objective, but makes the
+    selection pass tractable on MLS-Bench's CPU setup by:
+    1. building Fisher statistics in streaming batches,
+    2. projecting very high-dimensional Fisher embeddings before selection,
+    3. running BAIT on an entropy-filtered candidate pool instead of the full
+       unlabeled set.
+    """
+
+    def __init__(self, X, Y, idxs_lb, net, handler, args):
+        super(CustomSampling, self).__init__(X, Y, idxs_lb, net, handler, args)
+        self.lamb = args.get('lamb', 1)
+        self.max_proj_dim = int(args.get('bait_proj_dim', 128))
+        self.candidate_pool = int(args.get('bait_candidate_pool', 0))
+        self.selection_batch_size = int(args.get('bait_selection_batch_size', 256))
+        self.seed = int(args.get('seed', 42))
+
+    def _make_projection(self, full_dim):
+        import torch
+
+        if full_dim <= self.max_proj_dim:
+            return None
+
+        generator = torch.Generator(device='cpu')
+        generator.manual_seed(self.seed)
+        projection = torch.randn(
+            full_dim,
+            self.max_proj_dim,
+            generator=generator,
+            dtype=torch.float32,
+        )
+        projection /= np.sqrt(float(self.max_proj_dim))
+        return projection
+
+    def _build_batch_embeddings(self, embedding, probs, projection):
+        import torch
+
+        n_lab = probs.shape[1]
+        coeffs = -probs.unsqueeze(1).expand(-1, n_lab, -1).clone()
+        diag = torch.arange(n_lab)
+        coeffs[:, diag, diag] += 1.0
+        coeffs *= torch.sqrt(probs.clamp_min(1e-12)).unsqueeze(-1)
+
+        fisher = coeffs.unsqueeze(-1) * embedding.unsqueeze(1).unsqueeze(2)
+        fisher = fisher.reshape(embedding.shape[0], n_lab, -1)
+        if projection is not None:
+            fisher = torch.matmul(fisher, projection)
+        return fisher.contiguous()
+
+    def _candidate_pool_size(self, n, total):
+        default_size = max(4 * n, 512)
+        if self.candidate_pool > 0:
+            default_size = self.candidate_pool
+        return min(total, default_size)
+
+    def _collect_statistics(self, idxs_unlabeled, n):
+        import torch
+        import torch.nn.functional as F
+        from torch.utils.data import DataLoader
+
+        model = self.clf.eval()
+        device = next(model.parameters()).device
+        n_lab = int(torch.max(self.Y).item() + 1)
+        emb_dim = model.get_embedding_dim()
+        full_dim = emb_dim * n_lab
+        projection = self._make_projection(full_dim)
+        target_dim = full_dim if projection is None else projection.shape[1]
+
+        fisher = torch.zeros(target_dim, target_dim, dtype=torch.float32)
+        init = torch.zeros(target_dim, target_dim, dtype=torch.float32)
+        n_labeled = max(int(np.sum(self.idxs_lb)), 1)
+        unlabeled_scores = np.empty(len(idxs_unlabeled), dtype=np.float32)
+        pool_to_unlabeled = np.full(self.n_pool, -1, dtype=np.int64)
+        pool_to_unlabeled[idxs_unlabeled] = np.arange(len(idxs_unlabeled))
+
+        loader = DataLoader(
+            self.handler(self.X, self.Y, transform=self.args['transformTest']),
+            shuffle=False,
+            **self.args['loader_te_args']
+        )
+
+        with torch.no_grad():
+            for x, _, idxs in loader:
+                x = x.to(device)
+                logits, embedding = model(x)
+                probs = F.softmax(logits, dim=1).cpu()
+                batch_xt = self._build_batch_embeddings(embedding.cpu(), probs, projection)
+                fisher += torch.sum(
+                    torch.matmul(batch_xt.transpose(1, 2), batch_xt),
+                    dim=0,
+                ) / float(self.n_pool)
+
+                idxs_np = idxs.numpy()
+                labeled_mask = torch.from_numpy(self.idxs_lb[idxs_np])
+                if labeled_mask.any():
+                    init += torch.sum(
+                        torch.matmul(
+                            batch_xt[labeled_mask].transpose(1, 2),
+                            batch_xt[labeled_mask],
+                        ),
+                        dim=0,
+                    ) / float(n_labeled)
+
+                unlabeled_mask = ~labeled_mask
+                if unlabeled_mask.any():
+                    unlabeled_rows = pool_to_unlabeled[idxs_np[unlabeled_mask.numpy()]]
+                    batch_probs = probs[unlabeled_mask]
+                    entropy = -torch.sum(
+                        batch_probs * torch.log(batch_probs.clamp_min(1e-12)),
+                        dim=1,
+                    )
+                    unlabeled_scores[unlabeled_rows] = entropy.numpy()
+
+        candidate_count = self._candidate_pool_size(n, len(idxs_unlabeled))
+        if candidate_count == len(idxs_unlabeled):
+            candidate_local = np.arange(len(idxs_unlabeled))
+        else:
+            candidate_local = np.argpartition(unlabeled_scores, -candidate_count)[-candidate_count:]
+        candidate_local = candidate_local[np.argsort(unlabeled_scores[candidate_local])[::-1]]
+        candidate_global = idxs_unlabeled[candidate_local]
+        pool_to_candidate = np.full(self.n_pool, -1, dtype=np.int64)
+        pool_to_candidate[candidate_global] = np.arange(len(candidate_global))
+        candidate_xt = torch.empty(
+            len(candidate_global),
+            n_lab,
+            target_dim,
+            dtype=torch.float32,
+        )
+
+        with torch.no_grad():
+            for x, _, idxs in loader:
+                idxs_np = idxs.numpy()
+                candidate_rows = pool_to_candidate[idxs_np]
+                keep_mask_np = candidate_rows >= 0
+                if not keep_mask_np.any():
+                    continue
+
+                x = x.to(device)
+                logits, embedding = model(x)
+                probs = F.softmax(logits, dim=1).cpu()
+                batch_xt = self._build_batch_embeddings(embedding.cpu(), probs, projection)
+                keep_mask = torch.from_numpy(keep_mask_np)
+                candidate_xt[torch.from_numpy(candidate_rows[keep_mask_np])] = batch_xt[keep_mask]
+
+        return fisher, init, candidate_global, candidate_xt
+
+    def _trace_scores(self, xt_batch, current_inv, fisher, add_identity):
+        import torch
+
+        rank = xt_batch.shape[-2]
+        eye = torch.eye(rank, dtype=xt_batch.dtype).unsqueeze(0)
+        sign = 1.0 if add_identity else -1.0
+        info = current_inv @ fisher @ current_inv
+        gram = torch.matmul(torch.matmul(xt_batch, current_inv), xt_batch.transpose(1, 2))
+        inner = gram + sign * eye
+        inner_inv = torch.linalg.pinv(inner)
+        middle = torch.matmul(torch.matmul(xt_batch, info), xt_batch.transpose(1, 2))
+        scores = torch.diagonal(
+            torch.matmul(middle, inner_inv),
+            dim1=-2,
+            dim2=-1,
+        ).sum(-1)
+        finfo = torch.finfo(scores.dtype)
+        return torch.nan_to_num(scores, nan=-finfo.max, posinf=finfo.max, neginf=-finfo.max)
+
+    def _woodbury_update(self, current_inv, xt_sample, add_identity):
+        import torch
+
+        xt_sample = xt_sample.unsqueeze(0)
+        rank = xt_sample.shape[-2]
+        eye = torch.eye(rank, dtype=xt_sample.dtype).unsqueeze(0)
+        sign = 1.0 if add_identity else -1.0
+
+        current = current_inv.unsqueeze(0)
+        inner = torch.matmul(torch.matmul(xt_sample, current), xt_sample.transpose(1, 2))
+        inner_inv = torch.linalg.pinv(inner + sign * eye)
+        updated = current - torch.matmul(
+            torch.matmul(torch.matmul(current, xt_sample.transpose(1, 2)), inner_inv),
+            torch.matmul(xt_sample, current),
+        )
+        return updated[0].contiguous()
+
+    def _best_forward_index(self, xt_scaled, current_inv, fisher, selected_mask):
+        import torch
+
+        best_idx = None
+        best_score = -float('inf')
+        for start in range(0, len(xt_scaled), self.selection_batch_size):
+            end = min(start + self.selection_batch_size, len(xt_scaled))
+            batch = xt_scaled[start:end]
+            scores = self._trace_scores(batch, current_inv, fisher, add_identity=True)
+            batch_mask = selected_mask[start:end]
+            if np.any(batch_mask):
+                scores[torch.from_numpy(batch_mask)] = -torch.finfo(scores.dtype).max
+            score, local_idx = torch.max(scores, dim=0)
+            score = score.item()
+            if score > best_score:
+                best_score = score
+                best_idx = start + local_idx.item()
+        return best_idx
+
+    def query(self, n):
+        import gc
+        import torch
+
+        idxs_unlabeled = np.arange(self.n_pool)[~self.idxs_lb]
+        fisher, init, candidate_global, xt_unlabeled = self._collect_statistics(
+            idxs_unlabeled,
+            n,
+        )
+        if len(candidate_global) <= n:
+            return candidate_global
+
+        n_labeled = int(np.sum(self.idxs_lb))
+        K = n
+        denom = float(max(n_labeled + K, 1))
+        dim = xt_unlabeled.shape[-1]
+        currentInv = torch.linalg.pinv(
+            self.lamb * torch.eye(dim, dtype=torch.float32)
+            + init * n_labeled / denom
+        )
+        xt_scaled = xt_unlabeled * np.sqrt(K / denom)
+
+        indsAll = []
+        selected_mask = np.zeros(len(candidate_global), dtype=bool)
+        over_sample = 2
+
+        for _ in range(min(int(over_sample * K), len(candidate_global))):
+            ind = self._best_forward_index(xt_scaled, currentInv, fisher, selected_mask)
+            if ind is None:
+                break
+
+            indsAll.append(ind)
+            selected_mask[ind] = True
+            currentInv = self._woodbury_update(
+                currentInv,
+                xt_scaled[ind],
+                add_identity=True,
+            )
+
+        for _ in range(len(indsAll) - K):
+            xt_selected = xt_scaled[indsAll]
+            traceEst = self._trace_scores(xt_selected, currentInv, fisher, add_identity=False)
+            delInd = torch.argmax(traceEst).item()
+            currentInv = self._woodbury_update(
+                currentInv,
+                xt_scaled[indsAll[delInd]],
+                add_identity=False,
+            )
+            del indsAll[delInd]
+
+        gc.collect()
+        return candidate_global[np.asarray(indsAll, dtype=int)]
+</new>
+</edit>
+<obs>
+Successfully replaced text in badge/query_strategies/custom_sampling.py.
+</obs>
+<run/>
+<obs>
+Measured results — `baseline:bait` (`is_final,true`), seed 42 and mean. Seed 42 has no `letter` result
+(empty cells in the leaderboard).
+
+## accuracy (higher is better)
+| seed | letter | spambase | splice |
+|---|---|---|---|
+| 42 | — | 0.939262 | 0.830721 |
+| **mean** | **0.791333** | **0.929139** | **0.812957** |
+
+## auc (higher is better)
+| seed | letter | spambase | splice |
+|---|---|---|---|
+| 42 | — | 0.922777 | 0.773433 |
+| **mean** | **0.670650** | **0.910991** | **0.755617** |
+</obs>
+
+### step 5 — BADGE (diverse gradient embeddings)   [slug:badge]
+
+<think>
+BAIT confirmed exactly the split I predicted, and the place it won and the place it lost together point to
+what the strongest rung has to be. On **spambase** the Fisher A-optimal objective came in at 0.929 / 0.911
+on the mean — above BALD's 0.905 / 0.892 and edging least confidence's 0.927 / 0.908 — and on **splice**
+at 0.813 / 0.756, above BALD's 0.795 / 0.737. So filling the diversity hole with a pool-aware information
+criterion genuinely helped where diversity was the binding constraint, just as the derivation said. But on
+**letter** BAIT collapsed: mean 0.791 / 0.671, *below* BALD's 0.836 / 0.716 and below even random's 0.816 /
+0.724, and seed 42 has no letter result at all — the run did not complete. That is the CPU adaptation
+biting precisely where I said it would: 26 classes makes `d·k` largest, so the random projection to 128
+dims discards the most Fisher geometry, the streaming full-pool Fisher accumulation is slowest, and the
+time/memory budget can fail outright. So the lesson is sharp. The A-optimal *objective* is right —
+uncertainty fused with pool-aware diversity beats per-point uncertainty — but the *machinery* to compute it
+exactly (per-class rank-`k` Fisher factors, a `d·k × d·k` pool matrix, projections, pseudo-inverses,
+forward/backward greedy) is too heavy to survive this harness on the hardest dataset. I want the same
+fused property — long *and* diverse batches, no tradeoff knob — but obtained *cheaply*, with no matrix
+inverse, no projection, nothing that blows up when the number of classes is large. That is the constraint
+the final rung has to satisfy: BAIT's geometry, BALD's robustness on letter, at uncertainty-sampling cost.
+
+Let me think about what "the model is uncertain about this point" even means for a net trained by gradient
+descent, because the right currency is hiding there. The whole machine moves by gradients: an example is
+informative exactly when, once I know its label, it induces a large gradient of the loss and therefore a
+large parameter update. So the natural currency of informativeness is gradient magnitude. If I knew the
+true label `y` of `x`, I'd compute `g_x^y = ∂ℓ_CE/∂θ` and call `‖g_x^y‖` the example's pull on the model.
+Two things bug me about taking the *full*-parameter gradient: it's a giant object, and I'd have to average
+it over the unknown label. So take the cheapest informative slice — the gradient with respect to just the
+*last* layer's weights — and watch what it factors into. With `f(x) = softmax(W z(x))`, `z` the penultimate
+embedding and `W` the final linear layer, the cross-entropy gradient in the block for class `i` is
+
+  (g_x^y)_i = (p_i − 1[y=i]) · z(x).
+
+Stare at this. The whole last-layer gradient embedding is an outer product: `g_x^y = (p − e_y) ⊗ z`, the
+probability-residual `r = p − e_y` tensored with the penultimate embedding `z`. That decomposition is the
+thing I have been chasing across three rungs. The `z` factor is *exactly* the representation space — it
+carries where the example sits, its diversity and identity, the same penultimate features. The `r` factor
+carries how wrong/uncertain the model is — if the model is confident and right, `p ≈ e_y` so `r ≈ 0`; if
+it's unsure, `p` is spread and `r` is large. One object, and it already contains both of the things the
+ladder kept separating: representation in `z` (the diversity BAIT got from the pool Fisher) and uncertainty
+in `r` (what least confidence and BALD scored). I didn't have to balance them with a coefficient — they are
+multiplied together blockwise inside a single vector. And it is *rank-one* per point, not the rank-`k`
+Fisher BAIT had to project: this is the cheapness I need.
+
+But the obvious snag: `g_x^y` needs the true label `y`, which is the whole point — I don't have it. The
+expensive answer is to average over `y` under the model. Let me try the cheap thing and check whether it's
+defensible or just lazy: hallucinate the model's own current prediction `ŷ = argmax_i p_i`, plug it in, use
+`g_x = g_x^{ŷ}`. One gradient per example, no averaging. Compute the norm, because the norm is what I'll use
+as the uncertainty signal:
+
+  ‖g_x^y‖² = (Σ_i p_i² + 1 − 2 p_y) ‖z‖².
+
+The only `y`-dependent piece is `−2 p_y`. To *minimize* `‖g_x^y‖` over `y` I maximize `p_y`, i.e.
+`argmin_y ‖g_x^y‖ = argmax_y p_y = ŷ`. So the hallucinated label gives the *smallest* possible gradient
+norm — meaning `‖g_x‖ = ‖g_x^{ŷ}‖` is a *lower bound* on the gradient norm the example will really induce
+once I see its true label. That's not laziness, it's a guarantee: when I pick a point because its `g_x` is
+large, it will produce at least that much update — the bound only ever understates, so I can't be fooled
+into thinking a confident point is informative. And the magnitude as a function of confidence: if the model
+is sharp, `p ≈ e_ŷ`, then `Σ p_i² + 1 − 2 p_ŷ ≈ 0` and the embedding nearly vanishes; if `p` is flat, the
+quantity is large. So `‖g_x‖` is small for confident points and large for uncertain ones — the magnitude of
+this one cheap hallucinated gradient *is* a conservative uncertainty score, the same uncertainty least
+confidence and BALD were reading, now living in the *direction*-bearing vector that also encodes
+representation. The lazy choice is the conservative-estimate choice.
+
+Now the batch. For every pool point I have a vector `g_x` whose *length* means uncertainty and whose
+*direction* means identity/representation. I want a batch of `n` points individually long (uncertain) and
+collectively spread out (diverse), with no tradeoff knob — exactly BAIT's goal, but I want it without
+BAIT's matrices. The natural mathematical object for "a set that is high-quality and diverse at once" is a
+determinantal point process: sample a size-`n` set with probability ∝ `det(L_Y)`, the Gram matrix of the
+chosen `{g_x}`. The determinant of a Gram matrix equals the squared product of the vectors' lengths times
+the squared volume they span: the length part rewards big gradients (uncertainty), the volume part is large
+only when the vectors point in different directions (diversity) and collapses to zero the instant two are
+parallel. So `det(L_Y)` *is* a quality-and-diversity score fused, no coefficient — and it self-adjusts to
+batch size: small `n`, the volume constraint is slack so length dominates and it acts like uncertainty
+sampling; large `n`, spanning the volume gets hard so diversity takes over. That is the regime-adaptive
+behavior I kept failing to get by hand. But sampling from a k-DPP is genuinely expensive — high-order
+polynomial, MCMC mixing problems, memory blow-up at the batch sizes I care about. Wall: the criterion is
+right, I can't afford to draw from it. (BAIT's whole apparatus was one way to approximate this affordably;
+it turned out too heavy for letter. I need a *different*, cheaper surrogate.)
+
+Here an old, unrelated tool snaps into place: k-means++ seeding. Its job is to initialize Lloyd's
+algorithm — pick the first center, then repeatedly sample the next with probability proportional to its
+*squared distance to the nearest already-chosen center* (`D²` weighting). Look at what `D²` weighting does
+in *my* gradient-embedding space. After choosing some points, the next is drawn ∝ (distance to nearest
+chosen)²: a point far from everything already in the batch is much more likely picked — that's diversity,
+sharpened by the squaring. And magnitude is in there too once I seed carefully: a long gradient vector
+tends to be far from the others, and if I seed the very first point by its *length* rather than uniformly, I
+plant the batch on the most uncertain example and let `D²` spread out from there. So k-means++ seeding in
+gradient space pulls toward exactly the high-magnitude, diverse set a k-DPP would — but it's a handful of
+cheap passes with no determinant, no inverse, no MCMC, no projection, and no hyperparameter. It is the
+affordable surrogate, and crucially it scales gracefully in the number of classes where BAIT's projection
+choked: the only thing it ever needs is *distances* between gradient embeddings.
+
+And those distances collapse because the embeddings are outer products. For `g_a = r_a ⊗ z_a` and
+`g_b = r_b ⊗ z_b`, `⟨g_a, g_b⟩ = (r_a·r_b)(z_a·z_b)`, so `‖g_a − g_b‖² = ‖r_a‖²‖z_a‖² + ‖r_b‖²‖z_b‖² −
+2(r_a·r_b)(z_a·z_b)`. I never form the `k·d`-dimensional vectors: I keep `z` and `r` separately, precompute
+the per-point squared norms `‖z‖²` and `‖r‖²`, and compute any distance from one `z·z` and one `r·r` dot
+product. The first center is `argmax ‖r‖²‖z‖²`, the most uncertain point, exactly as designed. This is the
+implementation the harness actually runs, and it is the load-bearing difference from the textbook BADGE:
+the scaffold does *not* call `get_grad_embedding` to materialize the `[n, d·k]` embeddings; it calls
+`self.get_embedding(..., return_probs=True)` to get `z` and `p` separately, forms the residual
+`r = e_ŷ − p` (sign is irrelevant — norms and the Gram matrix are even in `r`), and runs the factored
+k-means++ on the `(r, z)` pair through a `_distance` helper, sampling each new center with
+`scipy.stats.rv_discrete` over the `D²` distribution. Why does this beat plain uncertainty sampling in a
+case I can compute? In binary logistic regression, restricted to the margin set `w·x = 0` (the genuinely
+uncertain points), the hallucinated and true-label gradients differ only by a sign, which a Gram
+determinant ignores — so diverse sampling of the hallucinated gradients samples the same sets as the true
+ones, and sampling those gradients *diversely* is lower-variance descent on the 0-1 loss than grabbing one
+cluster of near-collinear uncertain points. The diversity makes the *uncertainty* updates better; it isn't
+a separate goal bolted on. That is precisely the redundant-batch waste that limited least confidence and
+BALD, fixed by construction rather than by a coefficient.
+
+So the final rung, against the literal scaffold: where BAIT streamed and projected a rank-`k` Fisher and
+ran a forward/backward greedy with pseudo-inverses, BADGE here pulls `z` and `p` in one `get_embedding`
+call, forms the rank-one probability-residual `r`, and runs factored k-means++ seeding — first center by
+`‖r‖²‖z‖²` (most uncertain), then `D²`-weighted draws via `rv_discrete`, all distances computed from the
+separate `(r, z)` factors so it never touches `k·d` space and never inverts a matrix. Same fused
+uncertainty-and-diversity property as BAIT, at uncertainty-sampling cost, with no projection to choke on
+letter's 26 classes.
+
+Now the falsifiable expectations against the rungs already measured, which is what this endpoint has to
+clear. The decisive test is **letter**, where BAIT collapsed (0.791 / 0.671, no seed-42 run) precisely
+because its heavy machinery couldn't survive 26 classes: BADGE's factored seeding has no projection and no
+matrix inverse, so it should *not* collapse there, and because the fused embedding captures both the
+confusable-glyph uncertainty BALD scored *and* the diversity across the 26 classes that thin-budget letter
+needs, I expect BADGE to be the *strongest* rung on letter — clearly above BALD's 0.836 / 0.716 and seed-42
+0.893. If BADGE does not beat BALD on letter, then either the hallucinated-gradient lower bound is too loose
+on this small net or k-means++ in `(r,z)` space isn't capturing the right diversity, and the fused-embedding
+premise is wrong. On **spambase** I expect BADGE to roughly match BAIT and least confidence (≈0.93 / ≈0.91)
+— the balanced binary boundary leaves little for diversity to add over uncertainty, so the rungs converge.
+On **splice** I expect a gain over BAIT's 0.813 / 0.756. The overall bar this endpoint must clear is to be
+the best *aggregate* rung — to win letter outright (where every other rung either chased noise, stayed
+redundant, or collapsed) while holding spambase and splice at the front of the pack — which would make it
+the only rung that fuses uncertainty and diversity cheaply enough to survive every dataset, the thing the
+whole climb was reaching for. Let me write the factored k-means++ selector in.
+</think>
+<say>
+Step 5 is BADGE — Batch Active learning by Diverse Gradient Embeddings. I'm replacing the class with one that pulls `z` and `p` in a single `get_embedding` call, forms the probability-residual `r`, and runs factored k-means++ seeding over the `(r,z)` pair — diversity and uncertainty fused, with no matrix inverse or projection.
+</say>
+<edit path="badge/query_strategies/custom_sampling.py">
+<old>
+# EDITABLE region of badge/query_strategies/custom_sampling.py (lines 28-54) — step 4: BAIT (CPU-adapted)
+class CustomSampling(Strategy):
+    """BAIT — Batch Active Learning via Information Matrices (Fisher embeddings).
+    CPU-adapted version of the original BAIT algorithm.
+
+    This implementation keeps the Fisher-matrix objective, but makes the
+    selection pass tractable on MLS-Bench's CPU setup by:
+    1. building Fisher statistics in streaming batches,
+    2. projecting very high-dimensional Fisher embeddings before selection,
+    3. running BAIT on an entropy-filtered candidate pool instead of the full
+       unlabeled set.
+    """
+
+    def __init__(self, X, Y, idxs_lb, net, handler, args):
+        super(CustomSampling, self).__init__(X, Y, idxs_lb, net, handler, args)
+        self.lamb = args.get('lamb', 1)
+        self.max_proj_dim = int(args.get('bait_proj_dim', 128))
+        self.candidate_pool = int(args.get('bait_candidate_pool', 0))
+        self.selection_batch_size = int(args.get('bait_selection_batch_size', 256))
+        self.seed = int(args.get('seed', 42))
+
+    def _make_projection(self, full_dim):
+        import torch
+
+        if full_dim <= self.max_proj_dim:
+            return None
+
+        generator = torch.Generator(device='cpu')
+        generator.manual_seed(self.seed)
+        projection = torch.randn(
+            full_dim,
+            self.max_proj_dim,
+            generator=generator,
+            dtype=torch.float32,
+        )
+        projection /= np.sqrt(float(self.max_proj_dim))
+        return projection
+
+    def _build_batch_embeddings(self, embedding, probs, projection):
+        import torch
+
+        n_lab = probs.shape[1]
+        coeffs = -probs.unsqueeze(1).expand(-1, n_lab, -1).clone()
+        diag = torch.arange(n_lab)
+        coeffs[:, diag, diag] += 1.0
+        coeffs *= torch.sqrt(probs.clamp_min(1e-12)).unsqueeze(-1)
+
+        fisher = coeffs.unsqueeze(-1) * embedding.unsqueeze(1).unsqueeze(2)
+        fisher = fisher.reshape(embedding.shape[0], n_lab, -1)
+        if projection is not None:
+            fisher = torch.matmul(fisher, projection)
+        return fisher.contiguous()
+
+    def _candidate_pool_size(self, n, total):
+        default_size = max(4 * n, 512)
+        if self.candidate_pool > 0:
+            default_size = self.candidate_pool
+        return min(total, default_size)
+
+    def _collect_statistics(self, idxs_unlabeled, n):
+        import torch
+        import torch.nn.functional as F
+        from torch.utils.data import DataLoader
+
+        model = self.clf.eval()
+        device = next(model.parameters()).device
+        n_lab = int(torch.max(self.Y).item() + 1)
+        emb_dim = model.get_embedding_dim()
+        full_dim = emb_dim * n_lab
+        projection = self._make_projection(full_dim)
+        target_dim = full_dim if projection is None else projection.shape[1]
+
+        fisher = torch.zeros(target_dim, target_dim, dtype=torch.float32)
+        init = torch.zeros(target_dim, target_dim, dtype=torch.float32)
+        n_labeled = max(int(np.sum(self.idxs_lb)), 1)
+        unlabeled_scores = np.empty(len(idxs_unlabeled), dtype=np.float32)
+        pool_to_unlabeled = np.full(self.n_pool, -1, dtype=np.int64)
+        pool_to_unlabeled[idxs_unlabeled] = np.arange(len(idxs_unlabeled))
+
+        loader = DataLoader(
+            self.handler(self.X, self.Y, transform=self.args['transformTest']),
+            shuffle=False,
+            **self.args['loader_te_args']
+        )
+
+        with torch.no_grad():
+            for x, _, idxs in loader:
+                x = x.to(device)
+                logits, embedding = model(x)
+                probs = F.softmax(logits, dim=1).cpu()
+                batch_xt = self._build_batch_embeddings(embedding.cpu(), probs, projection)
+                fisher += torch.sum(
+                    torch.matmul(batch_xt.transpose(1, 2), batch_xt),
+                    dim=0,
+                ) / float(self.n_pool)
+
+                idxs_np = idxs.numpy()
+                labeled_mask = torch.from_numpy(self.idxs_lb[idxs_np])
+                if labeled_mask.any():
+                    init += torch.sum(
+                        torch.matmul(
+                            batch_xt[labeled_mask].transpose(1, 2),
+                            batch_xt[labeled_mask],
+                        ),
+                        dim=0,
+                    ) / float(n_labeled)
+
+                unlabeled_mask = ~labeled_mask
+                if unlabeled_mask.any():
+                    unlabeled_rows = pool_to_unlabeled[idxs_np[unlabeled_mask.numpy()]]
+                    batch_probs = probs[unlabeled_mask]
+                    entropy = -torch.sum(
+                        batch_probs * torch.log(batch_probs.clamp_min(1e-12)),
+                        dim=1,
+                    )
+                    unlabeled_scores[unlabeled_rows] = entropy.numpy()
+
+        candidate_count = self._candidate_pool_size(n, len(idxs_unlabeled))
+        if candidate_count == len(idxs_unlabeled):
+            candidate_local = np.arange(len(idxs_unlabeled))
+        else:
+            candidate_local = np.argpartition(unlabeled_scores, -candidate_count)[-candidate_count:]
+        candidate_local = candidate_local[np.argsort(unlabeled_scores[candidate_local])[::-1]]
+        candidate_global = idxs_unlabeled[candidate_local]
+        pool_to_candidate = np.full(self.n_pool, -1, dtype=np.int64)
+        pool_to_candidate[candidate_global] = np.arange(len(candidate_global))
+        candidate_xt = torch.empty(
+            len(candidate_global),
+            n_lab,
+            target_dim,
+            dtype=torch.float32,
+        )
+
+        with torch.no_grad():
+            for x, _, idxs in loader:
+                idxs_np = idxs.numpy()
+                candidate_rows = pool_to_candidate[idxs_np]
+                keep_mask_np = candidate_rows >= 0
+                if not keep_mask_np.any():
+                    continue
+
+                x = x.to(device)
+                logits, embedding = model(x)
+                probs = F.softmax(logits, dim=1).cpu()
+                batch_xt = self._build_batch_embeddings(embedding.cpu(), probs, projection)
+                keep_mask = torch.from_numpy(keep_mask_np)
+                candidate_xt[torch.from_numpy(candidate_rows[keep_mask_np])] = batch_xt[keep_mask]
+
+        return fisher, init, candidate_global, candidate_xt
+
+    def _trace_scores(self, xt_batch, current_inv, fisher, add_identity):
+        import torch
+
+        rank = xt_batch.shape[-2]
+        eye = torch.eye(rank, dtype=xt_batch.dtype).unsqueeze(0)
+        sign = 1.0 if add_identity else -1.0
+        info = current_inv @ fisher @ current_inv
+        gram = torch.matmul(torch.matmul(xt_batch, current_inv), xt_batch.transpose(1, 2))
+        inner = gram + sign * eye
+        inner_inv = torch.linalg.pinv(inner)
+        middle = torch.matmul(torch.matmul(xt_batch, info), xt_batch.transpose(1, 2))
+        scores = torch.diagonal(
+            torch.matmul(middle, inner_inv),
+            dim1=-2,
+            dim2=-1,
+        ).sum(-1)
+        finfo = torch.finfo(scores.dtype)
+        return torch.nan_to_num(scores, nan=-finfo.max, posinf=finfo.max, neginf=-finfo.max)
+
+    def _woodbury_update(self, current_inv, xt_sample, add_identity):
+        import torch
+
+        xt_sample = xt_sample.unsqueeze(0)
+        rank = xt_sample.shape[-2]
+        eye = torch.eye(rank, dtype=xt_sample.dtype).unsqueeze(0)
+        sign = 1.0 if add_identity else -1.0
+
+        current = current_inv.unsqueeze(0)
+        inner = torch.matmul(torch.matmul(xt_sample, current), xt_sample.transpose(1, 2))
+        inner_inv = torch.linalg.pinv(inner + sign * eye)
+        updated = current - torch.matmul(
+            torch.matmul(torch.matmul(current, xt_sample.transpose(1, 2)), inner_inv),
+            torch.matmul(xt_sample, current),
+        )
+        return updated[0].contiguous()
+
+    def _best_forward_index(self, xt_scaled, current_inv, fisher, selected_mask):
+        import torch
+
+        best_idx = None
+        best_score = -float('inf')
+        for start in range(0, len(xt_scaled), self.selection_batch_size):
+            end = min(start + self.selection_batch_size, len(xt_scaled))
+            batch = xt_scaled[start:end]
+            scores = self._trace_scores(batch, current_inv, fisher, add_identity=True)
+            batch_mask = selected_mask[start:end]
+            if np.any(batch_mask):
+                scores[torch.from_numpy(batch_mask)] = -torch.finfo(scores.dtype).max
+            score, local_idx = torch.max(scores, dim=0)
+            score = score.item()
+            if score > best_score:
+                best_score = score
+                best_idx = start + local_idx.item()
+        return best_idx
+
+    def query(self, n):
+        import gc
+        import torch
+
+        idxs_unlabeled = np.arange(self.n_pool)[~self.idxs_lb]
+        fisher, init, candidate_global, xt_unlabeled = self._collect_statistics(
+            idxs_unlabeled,
+            n,
+        )
+        if len(candidate_global) <= n:
+            return candidate_global
+
+        n_labeled = int(np.sum(self.idxs_lb))
+        K = n
+        denom = float(max(n_labeled + K, 1))
+        dim = xt_unlabeled.shape[-1]
+        currentInv = torch.linalg.pinv(
+            self.lamb * torch.eye(dim, dtype=torch.float32)
+            + init * n_labeled / denom
+        )
+        xt_scaled = xt_unlabeled * np.sqrt(K / denom)
+
+        indsAll = []
+        selected_mask = np.zeros(len(candidate_global), dtype=bool)
+        over_sample = 2
+
+        for _ in range(min(int(over_sample * K), len(candidate_global))):
+            ind = self._best_forward_index(xt_scaled, currentInv, fisher, selected_mask)
+            if ind is None:
+                break
+
+            indsAll.append(ind)
+            selected_mask[ind] = True
+            currentInv = self._woodbury_update(
+                currentInv,
+                xt_scaled[ind],
+                add_identity=True,
+            )
+
+        for _ in range(len(indsAll) - K):
+            xt_selected = xt_scaled[indsAll]
+            traceEst = self._trace_scores(xt_selected, currentInv, fisher, add_identity=False)
+            delInd = torch.argmax(traceEst).item()
+            currentInv = self._woodbury_update(
+                currentInv,
+                xt_scaled[indsAll[delInd]],
+                add_identity=False,
+            )
+            del indsAll[delInd]
+
+        gc.collect()
+        return candidate_global[np.asarray(indsAll, dtype=int)]
+</old>
+<new>
+# EDITABLE region of badge/query_strategies/custom_sampling.py (lines 28-54) — step 5: BADGE (factored k-means++)
+class CustomSampling(Strategy):
+    """BADGE — Batch Active learning by Diverse Gradient Embeddings.
+    Selects batches that are diverse and uncertain in gradient embedding space
+    via k-means++ seeding."""
+
+    def __init__(self, X, Y, idxs_lb, net, handler, args):
+        super(CustomSampling, self).__init__(X, Y, idxs_lb, net, handler, args)
+
+    def query(self, n):
+        from scipy import stats
+        from sklearn.metrics import pairwise_distances
+
+        idxs_unlabeled = np.arange(self.n_pool)[~self.idxs_lb]
+        embs, probs = self.get_embedding(
+            self.X[idxs_unlabeled], self.Y.numpy()[idxs_unlabeled], return_probs=True
+        )
+        embs = embs.numpy()
+        probs = probs.numpy()
+
+        # BADGE: k-means++ in (gradient-embedding x probability-residual) space
+        m = len(idxs_unlabeled)
+        emb_norms_square = np.sum(embs ** 2, axis=-1)
+        max_inds = np.argmax(probs, axis=-1)
+
+        prob_residuals = -1.0 * probs
+        prob_residuals[np.arange(m), max_inds] += 1.0
+        prob_norms_square = np.sum(prob_residuals ** 2, axis=-1)
+
+        # k-means++ initialization
+        chosen = set()
+        chosen_list = []
+        mu = None
+        D2 = None
+
+        def _distance(X1, X2, center):
+            Y1, Y2 = center
+            X1_vec, X1_norm_sq = X1
+            X2_vec, X2_norm_sq = X2
+            Y1_vec, Y1_norm_sq = Y1
+            Y2_vec, Y2_norm_sq = Y2
+            dist = (X1_norm_sq * X2_norm_sq + Y1_norm_sq * Y2_norm_sq
+                    - 2.0 * (X1_vec @ Y1_vec) * (X2_vec @ Y2_vec))
+            return np.sqrt(np.clip(dist, a_min=0, a_max=None))
+
+        for _ in range(n):
+            if len(chosen) == 0:
+                ind = np.argmax(emb_norms_square * prob_norms_square)
+                mu = [((prob_residuals[ind], prob_norms_square[ind]),
+                        (embs[ind], emb_norms_square[ind]))]
+                D2 = _distance(
+                    (prob_residuals, prob_norms_square),
+                    (embs, emb_norms_square),
+                    mu[0],
+                ).ravel().astype(float)
+                D2[ind] = 0
+                chosen.add(ind)
+                chosen_list.append(ind)
+            else:
+                newD = _distance(
+                    (prob_residuals, prob_norms_square),
+                    (embs, emb_norms_square),
+                    mu[-1],
+                ).ravel().astype(float)
+                D2 = np.minimum(D2, newD)
+                D2[list(chosen)] = 0
+                D2_sq = D2 ** 2
+                total = D2_sq.sum()
+                if total == 0:
+                    # Fallback: random from remaining unlabeled
+                    remaining = list(set(range(m)) - chosen)
+                    ind = np.random.choice(remaining)
+                else:
+                    Ddist = D2_sq / total
+                    customDist = stats.rv_discrete(
+                        name="custm", values=(np.arange(len(Ddist)), Ddist)
+                    )
+                    ind = customDist.rvs(size=1)[0]
+                    while ind in chosen:
+                        ind = customDist.rvs(size=1)[0]
+                mu.append(((prob_residuals[ind], prob_norms_square[ind]),
+                           (embs[ind], emb_norms_square[ind])))
+                chosen.add(ind)
+                chosen_list.append(ind)
+
+        return idxs_unlabeled[chosen_list]
+</new>
+</edit>
+<obs>
+Successfully replaced text in badge/query_strategies/custom_sampling.py.
+</obs>
+<run/>
+<obs>
+Measured results — `baseline:badge` (`is_final,true`), seed 42 and mean.
+
+## accuracy (higher is better)
+| seed | letter | spambase | splice |
+|---|---|---|---|
+| 42 | 0.8955 | 0.937093 | 0.840125 |
+| **mean** | **0.856333** | **0.926970** | **0.820271** |
+
+## auc (higher is better)
+| seed | letter | spambase | splice |
+|---|---|---|---|
+| 42 | 0.805913 | 0.914913 | 0.768495 |
+| **mean** | **0.751546** | **0.902874** | **0.748328** |
+</obs>

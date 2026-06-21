@@ -1,0 +1,2076 @@
+<meta task="causal-observational-nonlinear" domain="Causal inference" file="causal-learn/bench/custom_algorithm.py" model_format="qwen3" edit_tool="str_replace"/>
+
+<system>
+You are a research engineer improving a model on a fixed ML task. You work by editing the model code and running experiments. Think carefully before each change. You have these tools:
+- str_replace(path, old_str, new_str): replace the unique occurrence of old_str with new_str.
+- create(path, file_text): create a new file.
+- run_experiment(): train + evaluate the current code under the fixed budget; returns metrics.
+Make one tool call at a time. After editing, call run_experiment() to measure your method.
+</system>
+
+<user>
+## Research question
+
+Recover the **directed acyclic graph** from purely observational data drawn from a nonlinear
+additive-noise model (ANM), `X_j = f_j(parents(j)) + e_j`, with `f_j` nonlinear and the `e_j`
+mutually independent. The single thing being designed is the function `run_causal_discovery(X)`: it
+takes the data matrix and must return the *oriented* edge set — both the skeleton and every arrow's
+direction. Everything around it (data generation, scoring, the three evaluation scenarios) is fixed.
+
+The hard part is direction, not association. From `P_X` alone, second-order machinery (PC, GES on a
+Gaussian likelihood) bottoms out at the *Markov equivalence class*: a set of DAGs sharing every
+conditional independence, with some edges left unoriented, because for a linear-Gaussian SEM forward
+and backward models are observationally identical. The escape hatch is the data itself — the
+mechanisms here are *nonlinear*, and nonlinear additive noise makes the DAG identifiable (regressing
+the effect on the cause leaves a residual independent of the cause; the wrong direction does not).
+The ladder below is a sequence of fills of one function, each exploiting that asymmetry differently.
+
+## Prior art before the first rung
+
+The first rung is a *linear* non-Gaussian method dropped onto nonlinear data, so the lineage it
+reacts to is the line of observational structure learners that came before identifiable direction:
+
+- **PC (Spirtes & Glymour, 1991).** Tests conditional independencies and orients only v-structures,
+  returning a CPDAG. *Gap:* leaves the equivalence class — many edges undirected — and under
+  Gaussianity reads everything off the covariance, which is direction-blind.
+- **GES (Chickering, 2002).** Greedy score-based search over DAGs with a penalized likelihood that is
+  *constant across an equivalence class*. *Gap:* same equivalence-class ceiling; the score cannot
+  break the forward/backward Gaussian symmetry, and the search is combinatorial.
+- **LiNGAM / ICA-LiNGAM (Shimizu et al., 2006).** The first crack in the ceiling: with non-Gaussian
+  noise the linear SEM `x = (I-B)^{-1}e` is an ICA model, whose mixing is identifiable up to
+  permutation/scale, so directions become recoverable. *Gap:* relies on a non-convex ICA optimization
+  (local minima, init/step/stop knobs) and scale-dependent permutations that flip under
+  normalization — and it is *linear*, so on nonlinear mechanisms it mis-scores.
+
+The first rung is the direct successor of that last line — non-Gaussianity exploited *without* ICA —
+but still linear, which is precisely why it is the floor here.
+
+## The fixed substrate
+
+A small evaluation harness is frozen and must not be touched. `data_gen.py` simulates the ANM: it
+draws a random DAG (Erdos-Renyi or scale-free, edges only from lower to higher node index so the
+truth is a DAG), assigns each parent-child pair a random nonlinear scalar function (GP via random
+Fourier features, a one-hidden-layer MLP, a low-degree polynomial, or a steep sigmoid), draws
+additive noise (exponential / Laplace / uniform / Gaussian, centered), and generates each `X_j` in
+topological order as `e_j` plus the summed parent contributions. `metrics.py` scores the *directed*
+edge set: an edge is present when `|B[i,j]| > 0.01`; a true positive needs both skeleton and
+direction right. `run_eval.py` calls `simulate_nonlinear_anm`, then `run_causal_discovery(X)`, then
+`compute_metrics`. None of these is editable.
+
+## The editable interface
+
+Exactly one function is editable — `run_causal_discovery` in `bench/custom_algorithm.py` (lines
+3–14 of the template). The contract is rigid and load-bearing for every rung:
+
+- **Input:** `X` of shape `(n_samples, n_variables)` — the observational data only. No graph type,
+  no node count beyond `X.shape`, no noise family, no function family is passed in. The method must
+  be agnostic to all of those (the scenarios deliberately vary them).
+- **Output:** an adjacency matrix `B` of shape `(n_variables, n_variables)` with the **causal-learn
+  convention** `B[i, j] != 0` meaning `j -> i` (row = child, column = parent). The harness reads a
+  nonzero entry as a directed edge; magnitudes above `0.01` count, so a 0/1 matrix is fine.
+- **Reproducibility:** the seed is read from the `SEED` environment variable inside the function
+  (`int(os.environ.get("SEED", "42"))`), not passed as an argument.
+
+The starting point is the scaffold default: **return no edges** — an empty graph.
+
+```python
+import numpy as np
+
+# =====================================================================
+# EDITABLE: implement run_causal_discovery below
+# =====================================================================
+def run_causal_discovery(X: np.ndarray) -> np.ndarray:
+    """
+    Input:  X of shape (n_samples, n_variables)
+    Output: adjacency matrix B of shape (n_variables, n_variables)
+            B[i, j] != 0  means j -> i  (follows causal-learn convention)
+    """
+    n = X.shape[1]
+    return np.zeros((n, n))
+# =====================================================================
+```
+
+Each rung replaces exactly this function body and nothing else; the available libraries are the
+harness's `causal-learn`, plus `numpy`, `scipy`, and `scikit-learn`.
+
+## Evaluation settings
+
+Three scenarios, each over three seeds {42, 123, 456}, chosen to vary every axis at once so a method
+cannot key on one combination:
+
+| Label          | Graph type          | Nodes | Samples | Noise       | Nonlinearity |
+|----------------|---------------------|-------|---------|-------------|--------------|
+| SF20-GP        | Scale-Free (BA)     | 20    | 2000    | Exponential | GP           |
+| ER20-Gauss     | Erdos-Renyi         | 20    | 2000    | Gaussian    | Mixed        |
+| ER12-LowSample | Erdos-Renyi         | 12    | 150     | Laplace     | Mixed        |
+
+ER20-Gauss is the delicate case (ANM identifiability with Gaussian noise leans entirely on the
+nonlinearity); ER12-LowSample is the small-`n` stress test. Four metrics per scenario: **F1**
+(primary, higher is better), **SHD** (lower is better), **precision** and **recall** (higher is
+better), all on the directed edge set.
+
+The editable model code is in `causal-learn/bench/custom_algorithm.py`:
+```python
+def run_causal_discovery(X: np.ndarray) -> np.ndarray:
+    """
+    Input:  X of shape (n_samples, n_variables)
+    Output: adjacency matrix B of shape (n_variables, n_variables)
+            B[i, j] != 0  means j -> i  (follows causal-learn convention)
+    """
+    n = X.shape[1]
+    return np.zeros((n, n))
+```
+Improve it. Derive your method, edit the code, then run_experiment().
+</user>
+
+### step 1 — DirectLiNGAM (linear non-Gaussian)   [slug:directlingam]
+
+<think>
+The function is the whole task, and before I reach for anything nonlinear I want the floor — the
+simplest principled fill of `run_causal_discovery` that already returns *directed* edges, not a
+correlation blur. The floor matters because it tells me how much of the work is the *nonlinearity*
+versus the *direction*: if a method that ignores nonlinearity entirely already does well, the
+nonlinear machinery the later rungs add is wasted; if it falls over, I have measured exactly the gap
+the rest of the ladder has to close. So I deliberately start with a method that breaks
+forward/backward symmetry by the *other* identifiability route — non-Gaussian noise, not nonlinear
+mechanisms — and is linear throughout. That is DirectLiNGAM, and it is the floor by construction
+because the data here is generated nonlinearly while this method assumes linearity.
+
+Let me write down what actually blocks me, because the floor still has to be principled. I have `X`
+of shape `(n_samples, n_variables)`, no interventions, no time stamps, nothing telling me which
+variable is upstream. The one object I can compute most cheaply from observational data is the
+covariance, so I should ask what it can give me — and the answer is the reason the whole field is
+hard. Take two correlated variables. Model one: `x_2 = b x_1 + e_2`, so `x_1` causes `x_2`. Model
+two: `x_1 = b' x_2 + e_1`, the reverse. With Gaussian noise I can pick `b, b', var(e)` in each model
+to reproduce the *exact* same 2×2 covariance. The covariance literally cannot tell these apart, and
+this is not a defect of one estimator: PC tests conditional independences, GES scores DAGs, but under
+Gaussianity both are functions of the covariance too, so they bottom out at the Markov equivalence
+class — and on two variables that class contains both directions. Covariance is direction-blind. If I
+only ever look at second-order statistics I am stuck at the equivalence class, full stop. Whatever
+breaks the tie must be something the covariance does not see.
+
+What does the covariance throw away? Everything above second order. A Gaussian is fully described by
+its mean and covariance, so for Gaussian data there *is* nothing above second order — exactly why the
+Gaussian-linear case is hopeless. But suppose the disturbances `e_i` are *non-Gaussian*. Now the data
+carries higher-order structure, and the asymmetry between cause and effect can leave a fingerprint
+there. Solve the linear SEM for `x`: `x = (I - B)^{-1} e = A e`, with `A = (I-B)^{-1}` permutable to
+lower-triangular with unit diagonal because `B` is permutable to strictly lower-triangular. That is a
+linear mixture of mutually independent non-Gaussian sources — the ICA model exactly — and Comon's
+theorem says the mixing is recoverable up to permutation, scaling, and sign when at most one source is
+Gaussian. So non-Gaussianity turns the unidentifiable covariance problem into an identifiable one.
+This is the *other* escape from the equivalence class, parallel to the nonlinear one the rest of my
+ladder will use, and it is why a linear method can still produce arrows at all.
+
+The first LiNGAM estimator ran ICA, undid its permutation/scaling indeterminacies, and read off `B`.
+But ICA's contrast is non-convex — local minima, an init guess that can give an outright wrong answer,
+a step size and a stopping rule with no principled setting — and worse, its permutation scoring is
+scale-dependent, so normalizing the variables (a routine preprocessing step) can *reverse* the
+recovered order at finite sample size. An estimator whose answer flips when I rescale an input is
+keying on the wrong thing. I want to keep the non-Gaussianity, which is what makes the problem
+identifiable, but drop the ICA machinery. DirectLiNGAM is precisely that: get the causal *order*
+directly, with no iterative parameter search.
+
+The structural fact that makes it possible: in a DAG with no latent confounders, acyclicity forces at
+least one variable to have no parents — a source, an exogenous variable. For an exogenous `x_j` the
+model says `x_j = e_j`: it simply *equals* its own independent non-Gaussian disturbance. If I could
+find that variable, I would know it sits first in the order; peel its effect off all the others, and
+the remaining system is again a LiNGAM with one fewer variable, so I recurse. The whole problem
+reduces to one question: how do I detect, from data, which variable is exogenous? Suppose I tentatively
+treat `x_j` as the source and regress every other `x_i` on it by least squares, forming the residual
+`r_i^{(j)} = x_i - (cov(x_i,x_j)/var(x_j)) x_j`. The clean characterization — provable in both
+directions — is: `x_j` is exogenous if and only if `x_j` is independent of *every* residual `r_i^{(j)}`.
+The forward direction is direct from `x = Ae`: when `x_j = e_j`, the least-squares coefficient is
+exactly `a_{ij}`, the residual is the bundle of *other* sources, and that bundle is independent of
+`e_j`. The converse is where the non-Gaussianity earns its keep: if `x_j` has a parent, then by
+Darmois–Skitovitch two linear combinations sharing a non-Gaussian source with nonzero weight in both
+cannot be independent, so some residual stays dependent on `x_j`. With *Gaussian* `e_j` the converse
+fails — independent combinations may share a Gaussian source — and the test gives false positives.
+That is the precise sense in which this method needs non-Gaussian noise, and the precise sense in which
+it will struggle on the ER20-Gauss scenario.
+
+There is one landmine I must step around in code. Least-squares regression *guarantees* the residual
+is uncorrelated with the regressor — by construction, for *every* candidate, source or not — so
+uncorrelatedness is useless as the exogeneity test. I need a measure of genuine independence that sees
+the higher-order dependence uncorrelatedness misses. The canonical such measure is mutual information,
+and DirectLiNGAM's `pwling` variant computes it cheaply from *one-dimensional* differential entropies
+via a likelihood-ratio between the two pairwise directions: the joint-entropy terms cancel under a
+unit-determinant change of variables, leaving a difference of regressor-plus-residual entropies. Each
+entropy is the maximum-entropy approximation of a standardized variable — the Gaussian entropy minus
+two non-Gaussianity penalties, a log-cosh (heavy-tail) term and an odd `u·exp(-u²/2)` (skew) term, with
+fixed constants `k1 ≈ 79.047`, `k2 ≈ 7.4129`, `gamma ≈ 0.37457`. So `_entropy`, `_diff_mutual_info`,
+and `_search_causal_order` aggregate, for each candidate `i`, the squared *unfavorable-sign* pairwise
+differences `M(i) = sum_{j} min(0, diff_MI(i,j))^2`, and pick the variable with the least accumulated
+counter-evidence — the one most consistent with being the source. Two things I lean on: I standardize
+every variable and residual before scoring (so the order is scale-invariant — the exact defect that
+sank ICA-LiNGAM), and I reuse the library's `_BaseLiNGAM._estimate_adjacency_matrix` to turn the
+recovered order `K` into the connection strengths. The one place I diverge from the most polished
+version of the method: the standalone derivation prunes edges with a sparse adaptive lasso
+(BIC-selected), whereas here I estimate the full triangular adjacency from the order with no extra
+sparsity step — so I should expect a denser graph and lower precision than the lasso-pruned variant
+would give.
+
+So the floor fill is settled, and it is a faithful transcription of causal-learn's DirectLiNGAM core
+into `run_causal_discovery`: build `U = arange(n)` (variables not yet placed), repeatedly call
+`_search_causal_order` on the working data to find the exogenous index `m`, append it to the order `K`,
+regress `m` out of every other working variable (the residual peeling that keeps the system a LiNGAM
+one dimension smaller), and after the order is complete hand `K` to a local `_BaseLiNGAM` to estimate
+the adjacency. The output already obeys the harness convention `B[i,j] != 0` means `j -> i`.
+
+Now the part that actually matters for the ladder: reasoning about what this floor must do on *this*
+data, because that is the entire point of running it first. The data is generated by *nonlinear*
+mechanisms. DirectLiNGAM assumes *linear* ones. The mismatch bites in two compounding ways. First, the
+residual `r_i^{(j)} = x_i - β x_j` is a *linear* residual; if the true mechanism is `x_i = f(x_j) +
+e_i` with `f` curved, the linear fit leaves a structured, `x_j`-dependent remainder *even in the
+correct direction*, so the "independent residual at the source" signal is muddied — the test's clean
+forward direction no longer holds exactly. Second, the entropy criterion reads the non-Gaussianity of
+those residuals, but a nonlinear function of a non-Gaussian input produces residuals whose higher-order
+structure no longer matches the additive-source picture the lemma assumed. Both effects push the
+recovered order toward noise. So I expect DirectLiNGAM to land arrows that are *frequently reversed or
+spurious* — its F1 should be low across the board, and because it estimates a fairly full triangular
+graph from a possibly-wrong order, its SHD should be large and its precision poor.
+
+The scenarios should split predictably. On SF20-GP the noise is exponential — strongly non-Gaussian,
+which helps the source detection — but the GP mechanisms are smooth and very nonlinear, which hurts the
+linear residual; I expect a middling-to-low F1 and a large SHD on the 20-node graph. On ER20-Gauss the
+noise is *Gaussian*, which is the worst case for this method on two counts at once: the converse of the
+exogeneity lemma fails for Gaussian sources (false positives in source detection), and the mechanisms
+are nonlinear; I expect the lowest or near-lowest F1 here, with a very large SHD on a 20-node ER graph
+that is denser than the scale-free one. On ER12-LowSample the graph is smaller (12 nodes) but `n` is
+only 150, so every entropy and covariance estimate is noisy; I expect low F1 driven mostly by variance
+across seeds, though the smaller graph caps the absolute SHD.
+
+The falsifiable expectation I will hold the next rung to: DirectLiNGAM is a *linear* floor, so its F1
+across all three scenarios should sit well below what any genuinely nonlinear method can reach, and its
+failure mode is *wrong/dense direction* (low precision, high SHD), not missing edges. If the next rung
+— the first one that actually models nonlinearity — does not clearly beat this on F1 *and* shrink SHD,
+then the nonlinearity is not where the leverage is and I have misdiagnosed the task. I am starting here
+precisely so that gap is measured, not assumed — so let me write the DirectLiNGAM core in.
+</think>
+<say>
+Starting with the floor: DirectLiNGAM, a linear non-Gaussian method that recovers the causal order by repeatedly finding the exogenous variable via an entropy-based independence test, then peeling it out. This first edit fills `run_causal_discovery` with that order search plus the library's adjacency estimation.
+</say>
+<edit path="causal-learn/bench/custom_algorithm.py">
+<old>
+    """
+    n = X.shape[1]
+    return np.zeros((n, n))
+</old>
+<new>
+    """
+    import os
+    import numpy as np
+    from sklearn.utils import check_array
+    from causallearn.search.FCMBased.lingam.base import _BaseLiNGAM
+
+    X = check_array(X)
+    seed = int(os.environ.get("SEED", "42"))
+    n_features = X.shape[1]
+
+    # Core DirectLiNGAM steps (from causallearn.search.FCMBased.lingam.direct_lingam)
+    def _residual(xi: np.ndarray, xj: np.ndarray) -> np.ndarray:
+        return xi - (np.cov(xi, xj)[0, 1] / np.var(xj)) * xj
+
+    def _entropy(u: np.ndarray) -> float:
+        k1 = 79.047
+        k2 = 7.4129
+        gamma = 0.37457
+        return (1 + np.log(2 * np.pi)) / 2 - \
+               k1 * (np.mean(np.log(np.cosh(u))) - gamma) ** 2 - \
+               k2 * (np.mean(u * np.exp((-u ** 2) / 2))) ** 2
+
+    def _diff_mutual_info(
+        xi_std: np.ndarray,
+        xj_std: np.ndarray,
+        ri_j: np.ndarray,
+        rj_i: np.ndarray,
+    ) -> float:
+        return (_entropy(xj_std) + _entropy(ri_j / np.std(ri_j))) - \
+               (_entropy(xi_std) + _entropy(rj_i / np.std(rj_i)))
+
+    def _search_causal_order(X_work: np.ndarray, U: np.ndarray) -> int:
+        if len(U) == 1:
+            return int(U[0])
+        M_list = []
+        for i in U:
+            M = 0.0
+            for j in U:
+                if i == j:
+                    continue
+                xi_std = (X_work[:, i] - np.mean(X_work[:, i])) / np.std(X_work[:, i])
+                xj_std = (X_work[:, j] - np.mean(X_work[:, j])) / np.std(X_work[:, j])
+                ri_j = _residual(xi_std, xj_std)
+                rj_i = _residual(xj_std, xi_std)
+                M += np.min([0.0, _diff_mutual_info(xi_std, xj_std, ri_j, rj_i)]) ** 2
+            M_list.append(-1.0 * M)
+        return int(U[np.argmax(M_list)])
+
+    U = np.arange(n_features)
+    K = []
+    X_work = np.copy(X)
+    for _ in range(n_features):
+        m = _search_causal_order(X_work, U)
+        for i in U:
+            if i != m:
+                X_work[:, i] = _residual(X_work[:, i], X_work[:, m])
+        K.append(m)
+        U = U[U != m]
+
+    class _LocalDirectLiNGAM(_BaseLiNGAM):
+        def fit(self, X):
+            return self
+
+    model = _LocalDirectLiNGAM(random_state=seed)
+    model._causal_order = K
+    model._estimate_adjacency_matrix(X)
+    return model.adjacency_matrix_
+</new>
+</edit>
+<obs>
+Successfully replaced text in causal-learn/bench/custom_algorithm.py.
+</obs>
+<run/>
+<obs>
+Measured results — `baseline:directlingam` (`is_final,true`), seeds {42, 123, 456} and mean, on the three evaluation scenarios.
+
+## SF20-GP
+| seed | SHD | F1 | precision | recall |
+|---|---|---|---|---|
+| 42 | 69 | 0.2500 | 0.1842 | 0.3889 |
+| 123 | 50 | 0.4040 | 0.3175 | 0.5556 |
+| 456 | 61 | 0.3019 | 0.2286 | 0.4444 |
+| **mean** | **60.00** | **0.3186** | **0.2434** | **0.4630** |
+
+## ER20-Gauss
+| seed | SHD | F1 | precision | recall |
+|---|---|---|---|---|
+| 42 | 95 | 0.2194 | 0.1753 | 0.2931 |
+| 123 | 86 | 0.3007 | 0.2347 | 0.4182 |
+| 456 | 107 | 0.2143 | 0.1856 | 0.2535 |
+| **mean** | **96.00** | **0.2448** | **0.1985** | **0.3216** |
+
+## ER12-LowSample
+| seed | SHD | F1 | precision | recall |
+|---|---|---|---|---|
+| 42 | 22 | 0.2286 | 0.2500 | 0.2105 |
+| 123 | 30 | 0.1395 | 0.1364 | 0.1429 |
+| 456 | 24 | 0.1951 | 0.2222 | 0.1739 |
+| **mean** | **25.33** | **0.1877** | **0.2029** | **0.1758** |
+</obs>
+
+### step 2 — GraN-DAG (gradient-based neural DAG)   [slug:grandag]
+
+<think>
+DirectLiNGAM's numbers tell me exactly what I suspected and exactly where to push. Its F1 is low on
+every scenario — 0.319 on SF20-GP, 0.245 on ER20-Gauss, 0.188 on ER12-LowSample — and the SHD is
+brutal: 60 on a 20-node scale-free graph, 96 on the 20-node ER graph. Read the precision and recall
+together and the failure mode is unambiguous. Precision is ~0.18–0.24 across the board, recall ~0.18–
+0.46; the method is laying down a lot of arrows and most of them are wrong. That is the dense,
+wrong-direction graph I predicted: a linear residual `x_i - β x_j` on nonlinearly-generated data stays
+`x_j`-dependent in *both* directions, so the exogeneity test can no longer cleanly separate source from
+non-source, and the order comes out close to noise. The single sharpest confirmation is ER20-Gauss: it
+is the *worst* F1 (0.245) and the worst SHD (96), which is exactly the double penalty I expected — the
+mechanisms are nonlinear *and* the noise is Gaussian, so the Darmois–Skitovitch converse that the whole
+exogeneity lemma rests on simply fails. The diagnosis is therefore not "tune DirectLiNGAM" but
+"DirectLiNGAM is solving the wrong problem": it breaks direction symmetry with non-Gaussian noise and a
+*linear* model, and the leverage on this data is the *nonlinearity*. So the next rung must model the
+mechanisms as genuinely nonlinear functions. The question is how to do that without inheriting the two
+diseases the whole field fights: the super-exponential combinatorial DAG search, and the
+non-identifiability of direction.
+
+Identifiability first, because it tells me the problem is even solvable. The additive-noise assumption
+`X_j = f_j(X_{pa(j)}) + N_j` with independent noise and *nonlinear* `f_j` makes the DAG identifiable
+from the distribution — and crucially this holds even when the noise is *Gaussian*, as long as `f` is
+nonlinear. The linear-Gaussian model is the textbook unidentifiable case; the nonlinear-Gaussian one is
+not. That is the precise reason DirectLiNGAM died on ER20-Gauss and a nonlinear method should not: the
+nonlinearity, not the noise shape, is what carries the direction signal there. The intuition is the
+same fingerprint I leaned on before — regress effect on cause and the residual is independent of the
+cause; regress the wrong way and it stays dependent — but now the *model class I fit* has to be rich
+enough to represent the nonlinear mechanism, or I cannot see the fingerprint at all. DirectLiNGAM's
+model class was linear, so it was blind to it by construction.
+
+Now the combinatorial wall. The space of DAGs on `d` nodes grows faster than `d!`, and acyclicity is a
+global discrete property, so the classical algorithms are greedy: propose an edge, check no cycle
+appeared, accept or reject. DirectLiNGAM dodged this by recovering an *order* rather than searching
+graphs, but it paid with the linearity. I want to keep "don't search the discrete space" *and* get
+nonlinear mechanisms. The device that does this is NOTEARS's smooth acyclicity characterization, and I
+need to reproduce its argument carefully because I will run it twice. Take a nonnegative matrix `B`;
+`(B^k)_{jj}` counts closed walks of length `k` through node `j`, so `tr(B^k)` counts length-`k` cycles,
+and `B` is acyclic iff `tr(B^k) = 0` for every `k`. As a finite sum the powers overflow; the fix is the
+matrix exponential, which reweights the length-`k` counts by `1/k!`, taming the explosion and giving
+the clean statement `tr e^B = d` iff `B` is a DAG. For real, possibly-negative weights, replace `B` by
+its Hadamard square so the count argument still applies: `h(W) = tr e^{W∘W} - d = 0`, with gradient
+`(e^{W∘W})^T ∘ 2W`. Solve a smooth score subject to `h(W) = 0` with an augmented Lagrangian, and the
+whole graph updates at once — no greedy search.
+
+So why not just use NOTEARS? Because its `W` *is* the coefficient matrix of a *linear* SEM — the
+contribution of variable `i` to `j` is the single scalar `W_{ij}`. There is no room for `X_j` to depend
+nonlinearly on its parents, so on this data it would underfit the mechanisms and mis-score directions
+exactly the way DirectLiNGAM did. I want the continuous-constraint paradigm but with a flexible,
+*independent* nonlinear model per variable. The natural move: give each variable `j` its own neural
+network taking the other variables as input and outputting the mean of `X_j`'s Gaussian conditional,
+with a learned, parent-independent noise std — that is the ANM `X_j = f_j(parents) + N_j` written
+exactly. Mask the `j`-th input so a variable cannot be its own parent.
+
+Here is the wall that makes this nontrivial, and it is the heart of the method. In NOTEARS the
+constraint lived on `W`, but `W` *was* the weighted adjacency. With a stack of neural nets there is no
+single coefficient telling me whether `X_j` depends on `X_i`; variable `i` enters `NN_j` through a
+tangle of weights across every layer. Before I can write `h`, I have to manufacture, out of the network
+weights, a single nonnegative `(A)_{ij}` that is zero exactly when `NN_j`'s output does not depend on
+input `i`. Think about how information flows. It travels from `i` to an output only along computation
+*paths* through the hidden units, and a path is dead iff any weight on it is zero. So output `k` is
+completely independent of input `i` iff *every* path from `i` to `k` is dead. Quantify a path by the
+product of the absolute weights along it — nonnegative, and zero iff some link is zero — and "every path
+dead" becomes "the sum of all path products is zero," since a sum of nonnegatives vanishes iff every
+term does. The beautiful part: summing path products over all intermediate indices *is* matrix
+multiplication of the absolute-value weight matrices. Stack them, `C = |W^{(L)}| ⋯ |W^{(1)}|`, and
+`C_{ki}` is exactly the total path strength from input `i` to output `k`. Sum over the output components
+to get the variable-level entry, set the diagonal to zero, and `A` is the nonnegative `d×d` matrix `h`
+wanted — born nonnegative, so I do not even need the Hadamard square. The acyclicity constraint becomes
+`h = tr e^{A} - d = 0`, and I have run NOTEARS's walk-counting argument twice: once over *neural-network
+paths* to build `A`, once over *graph paths* to constrain it.
+
+That settles the principle. Now I have to be honest about what *I* actually implement versus the
+cleanest version of the method, because the harness imposes constraints the polished method does not. I
+build a per-variable MLP model with **two hidden layers of ten units and leaky-ReLU**, Xavier-
+initialized, weights stacked as a `(d, out, in)` tensor per layer so all `d` networks evaluate in
+parallel via one `einsum`; the first layer is masked by an `adjacency` matrix (initialized to all-ones-
+minus-identity) so a variable never sees itself. The score is the per-variable Gaussian log-likelihood
+with a learned per-variable `log_std` (the ANM noise). The adjacency `A` is the **path-normalized**
+product of absolute weight matrices — the raw path-product divided by the product of all-ones matrices
+through the same mask, which keeps the entries on a comparable scale across depth — column-summed over
+outputs and transposed into the `i->j` reading. The acyclicity is `tr(matrix_exp(A)) - d`. The optimizer
+is **RMSprop at lr 1e-3** with an augmented Lagrangian (`μ_0 = 1e-3`, `λ_0 = 0`), the convergence-based
+dual/penalty schedule (`λ += μ·h`, escalate `μ ×10` when the constraint stops shrinking by a factor,
+reset the optimizer state on each update), 80/20 train/validation split with the held-out augmented
+Lagrangian as the convergence signal, and up to 30000 iterations with `h_tol = 1e-8`.
+
+Two harness-specific choices are worth naming because they are exactly the same-named-vs-paper gap that
+will shape the numbers. First, edge clamping: the gcastle default masks any input whose `A` entry falls
+below `1e-4` *every step*, but I deliberately apply the clamp only **every 500 iterations with a
+stricter `1e-3` threshold**, on the reasoning that per-step clamping irreversibly removes edges too
+aggressively and destabilizes runs across seeds. That is a stability patch, not the canonical schedule,
+and it means the method here is *less* prone to prematurely killing a true edge but also slower to
+sparsify. Second, the final DAG enforcement: rather than thresholding `A` (which only *upper-bounds*
+true dependence, since path products can cancel in the realized function or hidden units can saturate),
+I compute the **realized sensitivity** — the expected absolute Jacobian of each conditional's log-
+likelihood with respect to each input — and remove the weakest edges in increasing order of that
+Jacobian until the graph is acyclic, checked by the `tr(A^k)=0` closed-walk fact on the thresholded
+binary graph. This is a faithful piece of the canonical method (sensitivity-based extraction), and it
+is the right strength estimate. What the harness does *not* expose, relative to the fullest version, is
+the CAM-style preliminary neighbor selection and the GAM significance pruning — I have no PNS and no
+post-hoc significance test, so the only sparsity pressure is the `ℓ`-free augmented Lagrangian, the edge
+clamping, and the Jacobian threshold.
+
+So why do I expect GraN-DAG, despite being a genuinely nonlinear method, to *not* dominate the
+ladder, and in particular to be a tricky middle rung rather than a clean win over DirectLiNGAM? Because
+its weak point is precisely the place DirectLiNGAM was already weak: precision on dense graphs. With no
+explicit sparsity penalty and a per-variable network free to fit spurious dependence, and with the
+order learned only implicitly through the acyclicity constraint, the augmented Lagrangian can converge
+to a graph that is *acyclic but over-connected* — low precision, high recall, high SHD — especially on
+the 20-node graphs where there are many candidate edges and the Jacobian threshold has to remove a lot
+of them in the right order. The stability patch (clamp every 500 iters) cuts both ways: it avoids
+catastrophic edge loss but lets dense intermediate graphs persist. And the per-seed variance should be
+large, because RMSprop on a non-convex augmented Lagrangian with reinitialized optimizer state lands in
+different basins per seed.
+
+Reading DirectLiNGAM's shape, here are the falsifiable expectations against its numbers. GraN-DAG
+models nonlinearity, so on **ER20-Gauss** — the scenario where DirectLiNGAM was worst (F1 0.245)
+*because* of the nonlinear-Gaussian double bind — it should improve the most, since the nonlinearity is
+exactly what GraN-DAG sees and DirectLiNGAM could not; I expect its ER20-Gauss F1 to clear
+DirectLiNGAM's by a clear margin and its SHD on that graph to fall well below 96. On **SF20-GP**,
+however, I am *not* confident it beats DirectLiNGAM: the scale-free graph has hubs (high-degree nodes)
+that an order-free continuous method can over-connect, and GP mechanisms are smooth, so the
+no-sparsity-penalty over-connection could leave SHD *worse* than DirectLiNGAM's 60 even if F1 is
+comparable — the precision should stay low. On **ER12-LowSample** with only 150 samples, a per-variable
+two-layer MLP is over-parameterized; I expect the noisiest, possibly worst F1 of the three, with large
+seed-to-seed variance. The single claim I will hold the next rung to: GraN-DAG should prove the
+nonlinearity is where the leverage is by lifting ER20-Gauss off DirectLiNGAM's floor — but its lack of
+an explicit sparsity/pruning stage should leave it *precision-starved and SHD-heavy*, so if a later rung
+adds disciplined edge selection on top of a correctly-recovered nonlinear order, it should beat
+GraN-DAG decisively on F1 and SHD at once. That is the gap I am setting up to close — so let me build
+the per-variable network with the path-product acyclicity constraint.
+</think>
+<say>
+Switching to GraN-DAG: a per-variable MLP under NOTEARS's smooth acyclicity constraint, where the adjacency is the path-product of absolute network weights so each `X_j` can depend nonlinearly on its parents. This edit replaces the whole function body with the neural model, augmented-Lagrangian training, and Jacobian-based DAG extraction.
+</say>
+<edit path="causal-learn/bench/custom_algorithm.py">
+<old>
+def run_causal_discovery(X: np.ndarray) -> np.ndarray:
+    """
+    Input:  X of shape (n_samples, n_variables)
+    Output: adjacency matrix B of shape (n_variables, n_variables)
+            B[i, j] != 0  means j -> i  (follows causal-learn convention)
+    """
+    import os
+    import numpy as np
+    from sklearn.utils import check_array
+    from causallearn.search.FCMBased.lingam.base import _BaseLiNGAM
+
+    X = check_array(X)
+    seed = int(os.environ.get("SEED", "42"))
+    n_features = X.shape[1]
+
+    # Core DirectLiNGAM steps (from causallearn.search.FCMBased.lingam.direct_lingam)
+    def _residual(xi: np.ndarray, xj: np.ndarray) -> np.ndarray:
+        return xi - (np.cov(xi, xj)[0, 1] / np.var(xj)) * xj
+
+    def _entropy(u: np.ndarray) -> float:
+        k1 = 79.047
+        k2 = 7.4129
+        gamma = 0.37457
+        return (1 + np.log(2 * np.pi)) / 2 - \
+               k1 * (np.mean(np.log(np.cosh(u))) - gamma) ** 2 - \
+               k2 * (np.mean(u * np.exp((-u ** 2) / 2))) ** 2
+
+    def _diff_mutual_info(
+        xi_std: np.ndarray,
+        xj_std: np.ndarray,
+        ri_j: np.ndarray,
+        rj_i: np.ndarray,
+    ) -> float:
+        return (_entropy(xj_std) + _entropy(ri_j / np.std(ri_j))) - \
+               (_entropy(xi_std) + _entropy(rj_i / np.std(rj_i)))
+
+    def _search_causal_order(X_work: np.ndarray, U: np.ndarray) -> int:
+        if len(U) == 1:
+            return int(U[0])
+        M_list = []
+        for i in U:
+            M = 0.0
+            for j in U:
+                if i == j:
+                    continue
+                xi_std = (X_work[:, i] - np.mean(X_work[:, i])) / np.std(X_work[:, i])
+                xj_std = (X_work[:, j] - np.mean(X_work[:, j])) / np.std(X_work[:, j])
+                ri_j = _residual(xi_std, xj_std)
+                rj_i = _residual(xj_std, xi_std)
+                M += np.min([0.0, _diff_mutual_info(xi_std, xj_std, ri_j, rj_i)]) ** 2
+            M_list.append(-1.0 * M)
+        return int(U[np.argmax(M_list)])
+
+    U = np.arange(n_features)
+    K = []
+    X_work = np.copy(X)
+    for _ in range(n_features):
+        m = _search_causal_order(X_work, U)
+        for i in U:
+            if i != m:
+                X_work[:, i] = _residual(X_work[:, i], X_work[:, m])
+        K.append(m)
+        U = U[U != m]
+
+    class _LocalDirectLiNGAM(_BaseLiNGAM):
+        def fit(self, X):
+            return self
+
+    model = _LocalDirectLiNGAM(random_state=seed)
+    model._causal_order = K
+    model._estimate_adjacency_matrix(X)
+    return model.adjacency_matrix_
+</old>
+<new>
+def run_causal_discovery(X: np.ndarray) -> np.ndarray:
+    """GraN-DAG (Lachapelle et al., ICLR 2020).
+
+    B[i,j] != 0 means j -> i (causal-learn convention).
+    """
+    import os
+    import torch, torch.nn as nn, torch.nn.functional as F
+    from torch import distributions
+
+    seed = int(os.environ.get("SEED", "42"))
+    torch.set_num_threads(2)
+    torch.manual_seed(seed)
+    np.random.seed(seed)
+
+    n, d = X.shape
+    DT = torch.float64
+
+    # ================================================================== #
+    # Per-variable MLP model (NonlinearGaussANM, 2x10, leaky-relu)       #
+    # ================================================================== #
+    class _M(nn.Module):
+        def __init__(self):
+            super().__init__()
+            # Explicit adjacency mask (not a Parameter -- updated by clamping only)
+            self.adjacency = torch.ones(d, d, dtype=DT) - torch.eye(d, dtype=DT)
+            layers = [d, 10, 10, 1]  # [input, hidden1, hidden2, output_dim]
+            self.wt = nn.ParameterList()
+            self.bi = nn.ParameterList()
+            for k in range(len(layers) - 1):
+                self.wt.append(nn.Parameter(
+                    torch.zeros(d, layers[k + 1], layers[k], dtype=DT)))
+                self.bi.append(nn.Parameter(
+                    torch.zeros(d, layers[k + 1], dtype=DT)))
+            # Per-variable learnable noise log-std (ANM model)
+            self.log_std = nn.ParameterList(
+                [nn.Parameter(torch.zeros(1, dtype=DT)) for _ in range(d)])
+            # Xavier init matching gcastle's reset_params() order
+            g = nn.init.calculate_gain('leaky_relu')
+            with torch.no_grad():
+                for nd in range(d):
+                    for w in self.wt:
+                        nn.init.xavier_uniform_(w[nd], gain=g)
+                    for b in self.bi:
+                        b[nd].zero_()
+
+        def _fwd(self, x):
+            """Per-variable forward pass with adjacency masking on first layer."""
+            for k in range(3):
+                if k == 0:
+                    x = torch.einsum("tij,ljt,bj->bti", self.wt[k],
+                                     self.adjacency.unsqueeze(0), x) \
+                        + self.bi[k]
+                else:
+                    x = torch.einsum("tij,btj->bti", self.wt[k], x) \
+                        + self.bi[k]
+                if k < 2:
+                    x = F.leaky_relu(x)
+            return torch.unbind(x, 1)  # d tensors of (batch, 1)
+
+        def log_lik(self, x, detach_target=False):
+            """(batch, d) per-variable Gaussian log-likelihoods."""
+            preds = self._fwd(x)
+            parts = []
+            for i in range(d):
+                mu = preds[i].squeeze(1)
+                sig = torch.exp(self.log_std[i])
+                xi = x[:, i].detach() if detach_target else x[:, i]
+                parts.append(
+                    distributions.Normal(mu, sig).log_prob(xi).unsqueeze(1))
+            return torch.cat(parts, 1)
+
+        def w_adj(self):
+            """Weighted adjacency via product of |weights|, path-normalised."""
+            prod = torch.eye(d, dtype=DT)
+            pn = torch.eye(d, dtype=DT)
+            off = (1.0 - torch.eye(d, dtype=DT)).unsqueeze(0)
+            for i, w in enumerate(self.wt):
+                wa = torch.abs(w)
+                if i == 0:
+                    prod = torch.einsum("tij,ljt,jk->tik",
+                                        wa, self.adjacency.unsqueeze(0), prod)
+                    pn = torch.einsum("tij,ljt,jk->tik",
+                                      torch.ones_like(wa), off, pn)
+                else:
+                    prod = torch.einsum("tij,tjk->tik", wa, prod)
+                    pn = torch.einsum("tij,tjk->tik",
+                                      torch.ones_like(wa), pn)
+            prod = prod.sum(1)
+            pn = pn.sum(1)
+            return (prod / (pn + torch.eye(d, dtype=DT))).t()
+
+    mdl = _M()
+
+    # ================================================================== #
+    # Data split (80/20, no shuffle, no normalise -- gcastle defaults)    #
+    # ================================================================== #
+    tn = int(n * 0.8)
+    Xtr = torch.as_tensor(X[:tn], dtype=DT)
+    Xte = torch.as_tensor(X[tn:], dtype=DT)
+    rng_tr = np.random.RandomState(seed)
+    rng_te = np.random.RandomState(seed + 1)
+
+    def _samp(data, rng, bs):
+        idx = rng.choice(data.shape[0], size=int(bs), replace=False)
+        return data[torch.as_tensor(idx).long()]
+
+    # ================================================================== #
+    # Augmented-Lagrangian training (convergence-based mu/lambda update)  #
+    # ================================================================== #
+    mu, lamb = 0.001, 0.0        # penalty & dual variable
+    opt = torch.optim.RMSprop(mdl.parameters(), lr=0.001)
+    a_val, nns, hh = [], [], []  # validation AL, not-nll, constraint history
+    BS, ITER, WIN = min(64, tn), 30000, 100
+
+    for it in range(ITER):
+        mdl.train()
+        xb = _samp(Xtr, rng_tr, BS)
+        loss = -mdl.log_lik(xb).mean()
+        mdl.eval()
+
+        wa = mdl.w_adj()
+        h = torch.trace(torch.matrix_exp(wa)) - d
+        al = loss + 0.5 * mu * h ** 2 + lamb * h
+
+        opt.zero_grad()
+        al.backward()
+        opt.step()
+
+        # Edge clamping -- only apply periodically to avoid premature
+        # irreversible edge removal that causes instability across runs.
+        # gcastle default threshold is 1e-4, but applying every step is
+        # too aggressive; applying every 500 iterations with a stricter
+        # weight threshold (1e-3) is more stable.
+        if it > 0 and it % 500 == 0:
+            with torch.no_grad():
+                mdl.adjacency *= (wa > 1e-3).to(DT)
+
+        nns.append(0.5 * mu * h.item() ** 2 + lamb * h.item())
+
+        # Validation every WIN iterations
+        if it % WIN == 0:
+            with torch.no_grad():
+                vl = -mdl.log_lik(
+                    _samp(Xte, rng_te, Xte.shape[0])).mean()
+                a_val.append([it, vl.item() + nns[-1]])
+
+        # Convergence delta (checked every 2*WIN)
+        dl = -np.inf
+        if it >= 2 * WIN and it % (2 * WIN) == 0:
+            t0, th, t1 = a_val[-3][1], a_val[-2][1], a_val[-1][1]
+            if not (min(t0, t1) < th < max(t0, t1)):
+                dl = -np.inf
+            else:
+                dl = (t1 - t0) / WIN
+
+        # Lambda / mu update
+        if h.item() > 1e-8:
+            if abs(dl) < 1e-3 or dl > 0:
+                lamb += mu * h.item()
+                hh.append(h.item())
+                if len(hh) >= 2 and hh[-1] > hh[-2] * 0.9:
+                    mu *= 10
+                # Adjust moving-average validation to account for new mu/lambda
+                gap = (0.5 * mu * h.item() ** 2
+                       + lamb * h.item() - nns[-1])
+                a_val[-1][1] += gap
+                opt = torch.optim.RMSprop(mdl.parameters(), lr=0.001)
+        else:
+            # Converged -- final clamping of zero-weight edges
+            with torch.no_grad():
+                mdl.adjacency *= (wa > 0).to(DT)
+            break
+
+    # ================================================================== #
+    # DAG enforcement: Jacobian threshold + weakest-edge removal          #
+    # ================================================================== #
+    mdl.eval()
+    xj = Xtr.clone().requires_grad_(True)
+    ll = mdl.log_lik(xj, detach_target=True)       # (tn, d)
+    lps = torch.unbind(ll, 1)                       # d tensors of (tn,)
+    jac = torch.zeros(d, d, dtype=DT)
+    for i in range(d):
+        g = torch.autograd.grad(
+            lps[i], xj, retain_graph=True,
+            grad_outputs=torch.ones(Xtr.shape[0], dtype=DT))[0]
+        jac[i] = g.abs().mean(0)
+    A = jac.t().detach().numpy()
+
+    # Find smallest threshold that produces an acyclic graph
+    with torch.no_grad():
+        for thr in np.unique(A):
+            keep = torch.tensor(A > thr + 1e-8, dtype=DT)
+            na = mdl.adjacency * keep
+            # Acyclicity check via matrix-power trace
+            prod = torch.eye(d, dtype=DT)
+            ok = True
+            for _ in range(d):
+                prod = na @ prod
+                if prod.trace() != 0:
+                    ok = False
+                    break
+            if ok:
+                mdl.adjacency = na
+                break
+
+    # adj[j,t]=1 means j->t; B[i,j]=1 means j->i  =>  B = adj.T
+    return mdl.adjacency.t().detach().numpy()
+</new>
+</edit>
+<obs>
+Successfully replaced text in causal-learn/bench/custom_algorithm.py.
+</obs>
+<run/>
+<obs>
+Measured results — `baseline:grandag` (`is_final,true`), seeds {42, 123, 456} and mean, on the three evaluation scenarios.
+
+## SF20-GP
+| seed | SHD | F1 | precision | recall |
+|---|---|---|---|---|
+| 42 | 38 | 0.3953 | 0.3400 | 0.4722 |
+| 123 | 104 | 0.2194 | 0.1429 | 0.4722 |
+| 456 | 134 | 0.2032 | 0.1258 | 0.5278 |
+| **mean** | **92.00** | **0.2726** | **0.2029** | **0.4907** |
+
+## ER20-Gauss
+| seed | SHD | F1 | precision | recall |
+|---|---|---|---|---|
+| 42 | 53 | 0.5000 | 0.5185 | 0.4828 |
+| 123 | 35 | 0.5500 | 0.8800 | 0.4000 |
+| 456 | 140 | 0.1366 | 0.1045 | 0.1972 |
+| **mean** | **76.00** | **0.3955** | **0.5010** | **0.3600** |
+
+## ER12-LowSample
+| seed | SHD | F1 | precision | recall |
+|---|---|---|---|---|
+| 42 | 59 | 0.1205 | 0.0781 | 0.2632 |
+| 123 | 51 | 0.1772 | 0.1207 | 0.3333 |
+| 456 | 56 | 0.1860 | 0.1270 | 0.3478 |
+| **mean** | **55.33** | **0.1612** | **0.1086** | **0.3148** |
+</obs>
+
+### step 3 — NOTEARS-MLP (linear NOTEARS + GBR refinement)   [slug:notears_mlp]
+
+<think>
+GraN-DAG's numbers confirm the diagnosis and expose the exact next lever. It did what I asked of it on
+the scenario where it should: on **ER20-Gauss**, the case where DirectLiNGAM was worst (F1 0.245, SHD
+96) *because* it could not see the nonlinearity, GraN-DAG lifted the mean F1 to 0.396 and SHD to 76 —
+and seed 123 hit F1 0.55 at precision 0.88, which is the nonlinearity finally being read correctly. So
+the bet that "model the mechanisms nonlinearly" pays off where it should. But read the rest and the
+weakness I predicted is glaring. The per-seed variance is enormous: that same ER20-Gauss has a seed-456
+collapse to F1 0.137, SHD 140 — *worse* than DirectLiNGAM's worst there — dragging the mean down. On
+**SF20-GP** GraN-DAG is actually a wash or worse than DirectLiNGAM (F1 0.273 vs 0.319, and SHD 92 vs 60
+— far denser), with precision a dismal 0.20 and recall 0.49: it is laying down many edges, catching
+some, but the graph is bloated. On **ER12-LowSample** it is the worst rung so far (F1 0.161, SHD 55,
+precision 0.11): the two-layer MLP per variable is hopelessly over-parameterized for 150 samples and
+just hallucinates dependence. The pattern across all three is one thing: **precision**. GraN-DAG's
+recall is respectable (0.31–0.49) but its precision is 0.11–0.50 and unstable, so its graphs are
+over-connected. That is exactly what I warned about — no explicit sparsity penalty, no significance
+pruning, order learned only implicitly through the acyclicity constraint, so the augmented Lagrangian
+settles on acyclic-but-dense graphs and the Jacobian threshold cannot reliably pick the right edges to
+keep. The clamp-every-500-iterations stability patch avoided catastrophic edge loss but let the dense
+intermediate graphs persist. So the next rung's job is sharp: keep nonlinear mechanism modeling, but
+impose *real* sparsity so precision climbs and SHD falls, without the per-seed lottery of a free neural
+net.
+
+The continuous-constraint machinery is still the right backbone — it is the only thing that avoids both
+the combinatorial DAG search and the linear-Gaussian blindness — so I do not want to abandon NOTEARS's
+`tr e^{W∘W} - d = 0`. The question is what to put *under* it. GraN-DAG put a free per-variable neural
+net there and paid in precision. The fullest nonlinear-NOTEARS would keep a per-variable MLP but add an
+`ℓ_1` penalty on the first-layer columns — variable-split into nonnegative parts so a bound-constrained
+solver can carry it — which drives whole columns (whole parents) to zero, exactly the sparsity GraN-DAG
+lacked; the dependence summary would then be `||∂_k f_j||_{L²}`, realized as the squared norm of the
+`k`-th first-layer column, which equals `[W∘W]_{kj}` directly so `h` runs on it without a square root.
+That is the principled answer, and I keep it as the reference for *why* sparsity belongs here. But I
+have to be honest about what *I* actually build here, because it is a deliberately different, leaner
+construction than that MLP-with-grouped-`ℓ_1` story — and the difference is the whole same-named-vs-
+paper gap I must respect.
+
+What I actually implement is a **two-stage hybrid**: a *linear* NOTEARS to get a skeleton, then a
+*nonlinear* refinement with gradient-boosted regression on top. There is no MLP anywhere in this fill,
+despite the name. Let me walk the construction in the order the code runs it, because each stage answers
+a specific weakness of GraN-DAG.
+
+Stage one is linear NOTEARS, exactly the original continuous program. Standardize `X`, then minimize
+`0.5/n · ||X - XW||²_F + λ_1|W|_1` subject to `h(W) = tr e^{W∘W} - d = 0`, with `λ_1 = 0.01` and the
+augmented Lagrangian. The acyclicity value and its gradient are computed from a *finite power series*
+truncation of the matrix exponential (twelve terms) rather than a library `expm`, which keeps `_h` and
+`_h_grad` self-contained and consistent with each other — `expm_M = I + M + M²/2! + …` and
+`∇h = 2W ∘ expm(M)^T` with `M = W∘W`. The inner subproblem is solved with **L-BFGS-B** (`jac=True`, 500
+inner iters), the diagonal of `W` and its gradient zeroed each step to forbid self-loops. The outer loop
+is the standard schedule: 30 augmented-Lagrangian rounds, `ρ ×10` whenever `h` does not shrink to a
+quarter of its previous value, `α += ρ·h` dual ascent, stop when `|h| < 1e-8` or `ρ > 1e16`. The init
+is a small random `W` (`0.01·randn`) to break the symmetry that stalls the optimizer at zeros. This
+stage is cheap and gives me a *linear* skeleton — and crucially, a *causal ordering* read off the
+column-sum of `|W|` (more downstream nodes accumulate more incoming weight), which I will use to break
+ties into a DAG at the end.
+
+Now, a *linear* skeleton on nonlinear data is exactly what failed at rung one. The whole point of stage
+two is to repair that linearity *without* re-introducing GraN-DAG's free-net precision problem. The
+construction: threshold the linear `W` at `0.3` to get candidate parents, then *augment* the candidate
+set for each node with any variable whose linear correlation with it exceeds `0.15` (so a nonlinearly-
+strong-but-linearly-weak parent is not lost by the linear stage), and for each node fit a **gradient-
+boosted regressor** (`GradientBoostingRegressor`, 100 trees, depth 3) of `X_j` on its candidate set.
+Keep a candidate parent only if its boosted-tree *feature importance* exceeds `0.05`. This is the
+nonlinear refinement: the boosted regressor sees curved mechanisms the linear `W` cannot, and the
+feature-importance threshold is the sparsity discipline GraN-DAG never had — it directly answers "does
+`X_j` actually use `X_k` nonlinearly," and prunes the rest. So the precision pressure that was missing
+becomes the *core* of stage two.
+
+The last step is DAG enforcement, and it is simpler than GraN-DAG's Jacobian pass. The nonlinear
+refinement can re-introduce a cycle (boosted importances do not respect any ordering), so I impose the
+topological order recovered from the *linear* stage: `order_score = sum |W|` over rows gives a downstream
+ranking, `rank = argsort(order_score)` puts root-like nodes first, and any refined edge that points from
+a higher-rank (downstream) node into a lower-rank (upstream) one is deleted. That guarantees acyclicity
+by construction and inherits the linear stage's order. Output `B` already obeys the harness convention
+`B[i,j] != 0` means `j -> i`.
+
+Let me be precise about the same-named-vs-paper gap, because it determines what I should expect. The
+method named `notears_mlp` in this task is **not** the nonlinear MLP-NOTEARS at all: there is no neural
+network, no per-variable MLP, no `||∂_k f_j||_{L²}` column-norm dependence summary, no grouped-`ℓ_1` on
+first-layer weights, and no end-to-end continuous nonlinear program. It is **linear NOTEARS** (the
+continuous acyclicity machinery in its original linear-coefficient form) **plus a gradient-boosted
+nonlinear edge-selection refinement** — a hybrid that uses the smooth constraint only to get a linear
+skeleton and an order, then repairs the nonlinearity with trees and feature-importance thresholding. The
+canonical MLP-NOTEARS reasoning I keep as reference (per-node MLP, squared-column-norm into
+`tr e^{W∘W}-d`, L-BFGS-B over split nonnegative weights) is *not* what runs here. The practical
+consequence: where GraN-DAG over-connected because it had no pruning, this fill *under*-connects on the
+hardest scenarios, because the *linear* stage one supplies the candidate pool and a linear skeleton on
+strongly-nonlinear GP mechanisms can miss true edges entirely before the boosted refinement ever sees
+them — the refinement can only prune and re-weight candidates the linear stage and the 0.15 correlation
+screen proposed, not discover a parent that is linearly invisible.
+
+So the expectations, read against GraN-DAG's measured shape. The defining trade is **precision up,
+recall down**. Stage two's feature-importance pruning should push precision well above GraN-DAG's
+0.11–0.50, and the SHD should fall on the dense-graph scenarios where GraN-DAG bloated — I expect
+SF20-GP SHD to drop from GraN-DAG's 92 toward the 30s, and the variance to shrink because there is no
+free-net seed lottery. But the linear-candidate bottleneck should *cap recall*: on **SF20-GP**, where
+GP mechanisms are smooth and strongly nonlinear, the linear skeleton will miss many true edges, so I
+expect recall to crater (well below GraN-DAG's 0.49) and F1 to actually come in *low* there — possibly
+below GraN-DAG's 0.273 — a precision-heavy, recall-starved profile. On **ER20-Gauss**, where GraN-DAG
+already did relatively well (F1 0.396), the hybrid's precision discipline should give a competitive,
+*more stable* result — I expect F1 in the 0.3 range with much higher precision (0.5–0.6) and no seed-456
+collapse, trading some recall for reliability. On **ER12-LowSample**, the linear stage is more robust to
+small `n` than a per-variable MLP, and the boosted refinement on a 12-node graph with a tight candidate
+pool should clearly beat GraN-DAG's 0.161 — I expect this to be the hybrid's best relative showing,
+F1 in the upper 0.3s with precision well above GraN-DAG's 0.11. The single falsifiable claim that ranks
+this rung above GraN-DAG: averaged across the three scenarios its F1 should edge out GraN-DAG's *and*
+its SHD should be dramatically lower (the precision/SHD win is the point), even though it may lose to
+GraN-DAG on SF20-GP recall specifically. And the residual weakness it leaves for a stronger rung to
+exploit is now precise: the *linear* candidate-generation bottleneck. A method that recovers the
+nonlinear *order* directly — without ever passing through a linear skeleton — should keep this rung's
+precision discipline while restoring the recall the linear stage throws away, and beat it decisively.
+So let me write the linear-NOTEARS-plus-boosted-refinement hybrid in.
+</think>
+<say>
+Now NOTEARS-MLP, which in this harness is a two-stage hybrid: linear NOTEARS under the `tr e^{W∘W}-d` constraint for a skeleton and an order, then a gradient-boosted regression per node with feature-importance pruning for the nonlinear refinement. This edit swaps the whole function body to that pipeline.
+</say>
+<edit path="causal-learn/bench/custom_algorithm.py">
+<old>
+def run_causal_discovery(X: np.ndarray) -> np.ndarray:
+    """GraN-DAG (Lachapelle et al., ICLR 2020).
+
+    B[i,j] != 0 means j -> i (causal-learn convention).
+    """
+    import os
+    import torch, torch.nn as nn, torch.nn.functional as F
+    from torch import distributions
+
+    seed = int(os.environ.get("SEED", "42"))
+    torch.set_num_threads(2)
+    torch.manual_seed(seed)
+    np.random.seed(seed)
+
+    n, d = X.shape
+    DT = torch.float64
+
+    # ================================================================== #
+    # Per-variable MLP model (NonlinearGaussANM, 2x10, leaky-relu)       #
+    # ================================================================== #
+    class _M(nn.Module):
+        def __init__(self):
+            super().__init__()
+            # Explicit adjacency mask (not a Parameter -- updated by clamping only)
+            self.adjacency = torch.ones(d, d, dtype=DT) - torch.eye(d, dtype=DT)
+            layers = [d, 10, 10, 1]  # [input, hidden1, hidden2, output_dim]
+            self.wt = nn.ParameterList()
+            self.bi = nn.ParameterList()
+            for k in range(len(layers) - 1):
+                self.wt.append(nn.Parameter(
+                    torch.zeros(d, layers[k + 1], layers[k], dtype=DT)))
+                self.bi.append(nn.Parameter(
+                    torch.zeros(d, layers[k + 1], dtype=DT)))
+            # Per-variable learnable noise log-std (ANM model)
+            self.log_std = nn.ParameterList(
+                [nn.Parameter(torch.zeros(1, dtype=DT)) for _ in range(d)])
+            # Xavier init matching gcastle's reset_params() order
+            g = nn.init.calculate_gain('leaky_relu')
+            with torch.no_grad():
+                for nd in range(d):
+                    for w in self.wt:
+                        nn.init.xavier_uniform_(w[nd], gain=g)
+                    for b in self.bi:
+                        b[nd].zero_()
+
+        def _fwd(self, x):
+            """Per-variable forward pass with adjacency masking on first layer."""
+            for k in range(3):
+                if k == 0:
+                    x = torch.einsum("tij,ljt,bj->bti", self.wt[k],
+                                     self.adjacency.unsqueeze(0), x) \
+                        + self.bi[k]
+                else:
+                    x = torch.einsum("tij,btj->bti", self.wt[k], x) \
+                        + self.bi[k]
+                if k < 2:
+                    x = F.leaky_relu(x)
+            return torch.unbind(x, 1)  # d tensors of (batch, 1)
+
+        def log_lik(self, x, detach_target=False):
+            """(batch, d) per-variable Gaussian log-likelihoods."""
+            preds = self._fwd(x)
+            parts = []
+            for i in range(d):
+                mu = preds[i].squeeze(1)
+                sig = torch.exp(self.log_std[i])
+                xi = x[:, i].detach() if detach_target else x[:, i]
+                parts.append(
+                    distributions.Normal(mu, sig).log_prob(xi).unsqueeze(1))
+            return torch.cat(parts, 1)
+
+        def w_adj(self):
+            """Weighted adjacency via product of |weights|, path-normalised."""
+            prod = torch.eye(d, dtype=DT)
+            pn = torch.eye(d, dtype=DT)
+            off = (1.0 - torch.eye(d, dtype=DT)).unsqueeze(0)
+            for i, w in enumerate(self.wt):
+                wa = torch.abs(w)
+                if i == 0:
+                    prod = torch.einsum("tij,ljt,jk->tik",
+                                        wa, self.adjacency.unsqueeze(0), prod)
+                    pn = torch.einsum("tij,ljt,jk->tik",
+                                      torch.ones_like(wa), off, pn)
+                else:
+                    prod = torch.einsum("tij,tjk->tik", wa, prod)
+                    pn = torch.einsum("tij,tjk->tik",
+                                      torch.ones_like(wa), pn)
+            prod = prod.sum(1)
+            pn = pn.sum(1)
+            return (prod / (pn + torch.eye(d, dtype=DT))).t()
+
+    mdl = _M()
+
+    # ================================================================== #
+    # Data split (80/20, no shuffle, no normalise -- gcastle defaults)    #
+    # ================================================================== #
+    tn = int(n * 0.8)
+    Xtr = torch.as_tensor(X[:tn], dtype=DT)
+    Xte = torch.as_tensor(X[tn:], dtype=DT)
+    rng_tr = np.random.RandomState(seed)
+    rng_te = np.random.RandomState(seed + 1)
+
+    def _samp(data, rng, bs):
+        idx = rng.choice(data.shape[0], size=int(bs), replace=False)
+        return data[torch.as_tensor(idx).long()]
+
+    # ================================================================== #
+    # Augmented-Lagrangian training (convergence-based mu/lambda update)  #
+    # ================================================================== #
+    mu, lamb = 0.001, 0.0        # penalty & dual variable
+    opt = torch.optim.RMSprop(mdl.parameters(), lr=0.001)
+    a_val, nns, hh = [], [], []  # validation AL, not-nll, constraint history
+    BS, ITER, WIN = min(64, tn), 30000, 100
+
+    for it in range(ITER):
+        mdl.train()
+        xb = _samp(Xtr, rng_tr, BS)
+        loss = -mdl.log_lik(xb).mean()
+        mdl.eval()
+
+        wa = mdl.w_adj()
+        h = torch.trace(torch.matrix_exp(wa)) - d
+        al = loss + 0.5 * mu * h ** 2 + lamb * h
+
+        opt.zero_grad()
+        al.backward()
+        opt.step()
+
+        # Edge clamping -- only apply periodically to avoid premature
+        # irreversible edge removal that causes instability across runs.
+        # gcastle default threshold is 1e-4, but applying every step is
+        # too aggressive; applying every 500 iterations with a stricter
+        # weight threshold (1e-3) is more stable.
+        if it > 0 and it % 500 == 0:
+            with torch.no_grad():
+                mdl.adjacency *= (wa > 1e-3).to(DT)
+
+        nns.append(0.5 * mu * h.item() ** 2 + lamb * h.item())
+
+        # Validation every WIN iterations
+        if it % WIN == 0:
+            with torch.no_grad():
+                vl = -mdl.log_lik(
+                    _samp(Xte, rng_te, Xte.shape[0])).mean()
+                a_val.append([it, vl.item() + nns[-1]])
+
+        # Convergence delta (checked every 2*WIN)
+        dl = -np.inf
+        if it >= 2 * WIN and it % (2 * WIN) == 0:
+            t0, th, t1 = a_val[-3][1], a_val[-2][1], a_val[-1][1]
+            if not (min(t0, t1) < th < max(t0, t1)):
+                dl = -np.inf
+            else:
+                dl = (t1 - t0) / WIN
+
+        # Lambda / mu update
+        if h.item() > 1e-8:
+            if abs(dl) < 1e-3 or dl > 0:
+                lamb += mu * h.item()
+                hh.append(h.item())
+                if len(hh) >= 2 and hh[-1] > hh[-2] * 0.9:
+                    mu *= 10
+                # Adjust moving-average validation to account for new mu/lambda
+                gap = (0.5 * mu * h.item() ** 2
+                       + lamb * h.item() - nns[-1])
+                a_val[-1][1] += gap
+                opt = torch.optim.RMSprop(mdl.parameters(), lr=0.001)
+        else:
+            # Converged -- final clamping of zero-weight edges
+            with torch.no_grad():
+                mdl.adjacency *= (wa > 0).to(DT)
+            break
+
+    # ================================================================== #
+    # DAG enforcement: Jacobian threshold + weakest-edge removal          #
+    # ================================================================== #
+    mdl.eval()
+    xj = Xtr.clone().requires_grad_(True)
+    ll = mdl.log_lik(xj, detach_target=True)       # (tn, d)
+    lps = torch.unbind(ll, 1)                       # d tensors of (tn,)
+    jac = torch.zeros(d, d, dtype=DT)
+    for i in range(d):
+        g = torch.autograd.grad(
+            lps[i], xj, retain_graph=True,
+            grad_outputs=torch.ones(Xtr.shape[0], dtype=DT))[0]
+        jac[i] = g.abs().mean(0)
+    A = jac.t().detach().numpy()
+
+    # Find smallest threshold that produces an acyclic graph
+    with torch.no_grad():
+        for thr in np.unique(A):
+            keep = torch.tensor(A > thr + 1e-8, dtype=DT)
+            na = mdl.adjacency * keep
+            # Acyclicity check via matrix-power trace
+            prod = torch.eye(d, dtype=DT)
+            ok = True
+            for _ in range(d):
+                prod = na @ prod
+                if prod.trace() != 0:
+                    ok = False
+                    break
+            if ok:
+                mdl.adjacency = na
+                break
+
+    # adj[j,t]=1 means j->t; B[i,j]=1 means j->i  =>  B = adj.T
+    return mdl.adjacency.t().detach().numpy()
+</old>
+<new>
+def run_causal_discovery(X: np.ndarray) -> np.ndarray:
+    """
+    Input:  X of shape (n_samples, n_variables)
+    Output: adjacency matrix B of shape (n_variables, n_variables)
+            B[i, j] != 0  means j -> i  (follows causal-learn convention)
+    """
+    import os
+    import numpy as np
+    from scipy.optimize import minimize
+
+    n_samples, n_vars = X.shape
+    seed = int(os.environ.get("SEED", "42"))
+
+    # --- Hyperparameters ---
+    max_iter = 30
+    h_tol = 1e-8
+    rho_max = 1e+16
+    w_threshold = 0.3
+    lambda1 = 0.01  # L1 penalty
+
+    # Standardize data
+    X_std = (X - X.mean(axis=0)) / (X.std(axis=0) + 1e-8)
+
+    # --- NOTEARS (linear) on the data ---
+    # Formulation: minimize 0.5/n * ||X - X W||^2_F + lambda1 * |W|_1
+    # subject to h(W) = tr(e^{W o W}) - d = 0
+
+    def _h(W):
+        """Acyclicity constraint: h(W) = tr(e^{W o W}) - d."""
+        M = W * W
+        # Matrix exponential trace via power series (consistent with _h_grad)
+        expm_M = np.eye(n_vars)
+        power = np.eye(n_vars)
+        for k in range(1, 12):
+            power = power @ M / k
+            expm_M += power
+        return np.trace(expm_M) - n_vars
+
+    def _h_grad(W):
+        """Gradient of h w.r.t. W."""
+        M = W * W
+        # expm(M) via series (10 terms)
+        expm_M = np.eye(n_vars)
+        power = np.eye(n_vars)
+        for k in range(1, 12):
+            power = power @ M / k
+            expm_M += power
+        return 2 * W * expm_M
+
+    def _loss_and_grad(W_flat, rho, alpha):
+        W = W_flat.reshape(n_vars, n_vars)
+        # Zero diagonal (no self-loops)
+        np.fill_diagonal(W, 0)
+
+        # MSE loss: 0.5/n * ||X - XW||^2
+        R = X_std - X_std @ W  # (n, d)
+        loss = 0.5 / n_samples * np.sum(R ** 2)
+        # Gradient of MSE w.r.t. W
+        G_mse = -1.0 / n_samples * (X_std.T @ R)  # (d, d)
+
+        # L1 penalty
+        l1_loss = lambda1 * np.sum(np.abs(W))
+        G_l1 = lambda1 * np.sign(W)
+
+        # Acyclicity
+        h_val = _h(W)
+        G_h = _h_grad(W)
+
+        total_loss = loss + l1_loss + 0.5 * rho * h_val ** 2 + alpha * h_val
+        G_total = G_mse + G_l1 + (rho * h_val + alpha) * G_h
+
+        # Zero diagonal gradient
+        np.fill_diagonal(G_total, 0)
+
+        return total_loss, G_total.ravel()
+
+    # --- Augmented Lagrangian ---
+    # Small random init to break symmetry (zeros can stall the optimizer)
+    rng = np.random.RandomState(seed)
+    W_est = rng.randn(n_vars, n_vars) * 0.01
+    np.fill_diagonal(W_est, 0)
+    rho = 1.0
+    alpha_dual = 0.0
+    h_prev = np.inf
+
+    for _ in range(max_iter):
+        result = minimize(
+            lambda w: _loss_and_grad(w, rho, alpha_dual),
+            W_est.ravel(),
+            method='L-BFGS-B',
+            jac=True,
+            options={'maxiter': 500}
+        )
+        W_est = result.x.reshape(n_vars, n_vars)
+        np.fill_diagonal(W_est, 0)
+
+        h_new = _h(W_est)
+        if h_new > 0.25 * h_prev:
+            rho *= 10.0
+        alpha_dual += rho * h_new
+        h_prev = h_new
+
+        if abs(h_new) < h_tol or rho > rho_max:
+            break
+
+    # --- Now do nonlinear refinement: for each variable, use kernel regression ---
+    # Use the linear NOTEARS skeleton and refine with nonlinear regression
+    from sklearn.ensemble import GradientBoostingRegressor
+
+    # Threshold the linear result
+    W_abs = np.abs(W_est)
+    W_abs[W_abs < w_threshold] = 0.0
+
+    # Refine: for each node, check if candidate parents improve nonlinear fit
+    B = np.zeros((n_vars, n_vars))
+    for j in range(n_vars):
+        # Candidate parents from linear NOTEARS
+        candidates = np.where(W_abs[:, j] > 0)[0].tolist()
+        # Also add strong linear correlations as candidates
+        for i in range(n_vars):
+            if i == j:
+                continue
+            corr = np.abs(np.corrcoef(X_std[:, i], X_std[:, j])[0, 1])
+            if corr > 0.15 and i not in candidates:
+                candidates.append(i)
+        if not candidates:
+            continue
+
+        # Nonlinear regression from candidates to j
+        gbr = GradientBoostingRegressor(
+            n_estimators=100, max_depth=3, learning_rate=0.1,
+            random_state=seed, subsample=0.8
+        )
+        gbr.fit(X_std[:, candidates], X_std[:, j])
+        importances = gbr.feature_importances_
+
+        for k, p in enumerate(candidates):
+            if importances[k] > 0.05:
+                B[j, p] = 1.0
+
+    # Enforce DAG by removing cycles using topological ordering from linear NOTEARS
+    # Use causal order from W_est
+    order_score = np.sum(np.abs(W_est), axis=0)  # higher = more downstream
+    topo_order = np.argsort(order_score)  # ascending = more root-like first
+    rank = np.zeros(n_vars, dtype=int)
+    for idx, node in enumerate(topo_order):
+        rank[node] = idx
+
+    # Remove edges that violate topological ordering
+    for i in range(n_vars):
+        for j in range(n_vars):
+            if B[i, j] != 0 and rank[j] >= rank[i]:
+                # j -> i but j is downstream of i: remove
+                B[i, j] = 0.0
+
+    return B
+</new>
+</edit>
+<obs>
+Successfully replaced text in causal-learn/bench/custom_algorithm.py.
+</obs>
+<run/>
+<obs>
+Measured results — `baseline:notears_mlp` (`is_final,true`), seeds {42, 123, 456} and mean, on the three evaluation scenarios.
+
+## SF20-GP
+| seed | SHD | F1 | precision | recall |
+|---|---|---|---|---|
+| 42 | 35 | 0.2258 | 0.2692 | 0.1944 |
+| 123 | 34 | 0.1404 | 0.1905 | 0.1111 |
+| 456 | 38 | 0.0938 | 0.1071 | 0.0833 |
+| **mean** | **35.67** | **0.1533** | **0.1889** | **0.1296** |
+
+## ER20-Gauss
+| seed | SHD | F1 | precision | recall |
+|---|---|---|---|---|
+| 42 | 42 | 0.4186 | 0.6429 | 0.3103 |
+| 123 | 41 | 0.3951 | 0.6154 | 0.2909 |
+| 456 | 70 | 0.1087 | 0.2381 | 0.0704 |
+| **mean** | **51.00** | **0.3075** | **0.4988** | **0.2239** |
+
+## ER12-LowSample
+| seed | SHD | F1 | precision | recall |
+|---|---|---|---|---|
+| 42 | 15 | 0.4516 | 0.5833 | 0.3684 |
+| 123 | 20 | 0.4286 | 0.4286 | 0.4286 |
+| 456 | 25 | 0.2727 | 0.2857 | 0.2609 |
+| **mean** | **20.00** | **0.3843** | **0.4325** | **0.3526** |
+</obs>
+
+### step 4 — CAM (causal additive models, heuristic)   [slug:cam]
+
+<think>
+NOTEARS-MLP's numbers land exactly on the trade I predicted, and they hand me the lever for the
+strongest rung. Its precision jumped — 0.64 on ER20-Gauss seed 42, 0.58 on ER12-LowSample seed 42,
+mean precision 0.43–0.50 where GraN-DAG was 0.11–0.50 and unstable — and its SHD collapsed on the dense
+scenarios: SF20-GP fell from GraN-DAG's 92 to 35.7, ER20-Gauss from 76 to 51. The feature-importance
+pruning did its job; the graphs are cleaner and the seed variance shrank. But look at what it cost, and
+it is the precise weakness I flagged. On **SF20-GP** the recall *cratered* to 0.13 (mean F1 0.153 —
+*below* GraN-DAG's 0.273 and even below DirectLiNGAM's 0.319), with all three seeds in the 0.08–0.19
+recall range. The hybrid is missing the overwhelming majority of true edges on the GP scenario. That is
+the linear-candidate bottleneck made visible: the linear NOTEARS skeleton plus the 0.15 correlation
+screen simply never *proposes* the smoothly-nonlinear GP parents, so the gradient-boosted refinement —
+which can only prune and re-weight what stage one offered — has nothing to recover them from. ER20-Gauss
+(F1 0.308) and ER12-LowSample (F1 0.384) came in respectably and more stably, but the seed-456 dips
+(F1 0.109 on ER20-Gauss, 0.273 on ER12) show the linear stage still occasionally seeds a bad candidate
+pool that the refinement cannot repair. So the diagnosis is sharp and it is *not* "more pruning": the
+bottleneck is **candidate generation through a linear skeleton**. Every method so far has either
+generated edges densely and over-connected (GraN-DAG) or generated them linearly and under-connected
+(NOTEARS-MLP). What I need is a method that gets the *nonlinear order right first* — without ever
+passing through a linear skeleton or a free over-parameterized net — and then does disciplined edge
+selection. If I separate "get the order" from "select the edges," I can use the right tool for each.
+
+This decoupling is the organizing idea, and it is justified by identifiability, so let me make the
+argument at the population level where overfitting cannot muddy it. The DAG has a topological order;
+pick a correct one and the model becomes triangular — each variable regresses only on those earlier in
+the order. If somebody handed me a correct order, causal discovery would essentially dissolve into
+per-node nonlinear regression plus deciding which earlier variables actually matter — ordinary variable
+selection, a solved problem. So the genuinely hard, irreducibly causal part is the *order*; everything
+else is regression. And crucially, a *correct order* is enough for the causal answer even with extra
+spurious edges: the fully-connected DAG of a correct order is a super-DAG of the truth, and under
+modularity the intervention distributions it implies match the truth's, so edge pruning is an
+efficiency-and-readability step, not a correctness step. That tells me where penalties belong: the order
+search needs *no* regularization (identifiability supplies the gap that makes the true order the
+strict optimum), and the regularization goes into the *edge selection* afterward. That is exactly the
+split NOTEARS-MLP got wrong by entangling a linear skeleton with the edge selection.
+
+Now, what score recovers the order? The cleanest is the likelihood. Model the additive SEM with
+Gaussian errors; profiling out the functions, the expected negative log-likelihood collapses to
+`sum_j log(sigma_j)`, where `sigma_j²` is the residual variance of the best nonlinear regression of `X_j`
+on its candidate parents. So a structure is scored purely by residual variances from ordinary nonlinear
+regressions — no independence tests, no kernel HSIC. And the true order is the strict minimizer of this
+*unpenalized* score, because identifiability forces a positive gap: a wrong order scoring below the
+truth would imply a negative KL divergence, which is impossible, so wrong orders score higher or equal,
+and the closedness of the nonlinear additive class makes the gap strict. The linear-Gaussian tie
+(`gap = 0`) reappears exactly where the order is not identifiable anyway. This is the whole reason a
+residual-variance order search beats DirectLiNGAM's linear residual test and NOTEARS-MLP's linear
+skeleton: it reads the nonlinear asymmetry directly off the regression residuals.
+
+That is the principled CAM. But I have to be honest about what *I* actually implement here, because it
+is a **CAM-inspired heuristic**, not the full machinery — and the gap is the same-named-vs-paper story I
+must respect. The fullest CAM uses penalized regression splines (GAMs) for every regression, a
+preliminary additive neighbor-selection (`gamboost`) to shrink candidate pools, a greedy IncEdge order
+search driven by the decomposable likelihood *gain*, and a GAM-significance pruning step. I do none of
+those literally. Let me walk what I *do* do, in the order the code runs it, because each stage is a
+tractable surrogate for a CAM idea.
+
+Stage one is the order. I build the order *greedily by residual variance*, but with a specific, slightly
+unusual rule. The **first** variable is chosen as the one with the *smallest marginal variance* — the
+heuristic being that a root cause's variance is just its noise variance, so roots tend to have low total
+variance. Then at each subsequent step, for every not-yet-placed variable I fit a
+`GradientBoostingRegressor` of that variable on the *current ordering* (all already-placed variables) and
+pick the one whose residual variance is *smallest* to append next. This is the residual-variance score
+realized with boosted trees instead of GAMs, and greedily appending the lowest-residual-variance node is
+a forward surrogate for the likelihood order search. Note the deviations from canonical CAM: boosted
+trees (not penalized splines), no PNS (the regression at step `k` uses *all* `k` already-placed variables
+as predictors, not a screened neighborhood), and the root chosen by marginal-variance heuristic rather
+than by the likelihood gain. These matter for small `n` — regressing on a growing predictor set with
+boosted trees is more variance-prone than a screened GAM — but on the evaluated graph sizes the boosted
+ordering is a reasonable, cheap stand-in.
+
+Stage two is preliminary edge selection along the order. For each node at position `pos`, fit a
+`GradientBoostingRegressor` of it on *all earlier* variables and keep an edge from a candidate parent
+only if its **feature importance** exceeds `0.05`. This is the analogue of CAM's edge-fitting:
+importance-thresholding is a tree-based surrogate for the GAM significance test, and because it operates
+on the *full* set of predecessors (which, for a correct order, contains all true parents), it does not
+suffer NOTEARS-MLP's linear-candidate bottleneck — the candidate pool is the whole upstream set, fitted
+nonlinearly. This is the single most important structural difference from rung three: the candidate
+generation is *nonlinear and order-respecting*, not linear.
+
+Stage three is pruning, the regularized cleanup. For any node with more than one parent, I run a
+*partial-residual independence test*: for each parent `p`, regress both `X_j` and `X_p` on the *other*
+parents (boosted trees again), take the two residuals, and if their absolute correlation is *below 0.05*
+remove `p`. The logic: if after conditioning on the other parents `X_p` carries no leftover dependence
+with `X_j`, then `p` is not a genuine parent given the others. This is a surrogate for CAM's
+significance-based pruning, using residual correlation as the cheap dependence proxy. It is the place the
+penalty/threshold lives — exactly where I argued regularization belongs — and it is what should give CAM
+the precision NOTEARS-MLP bought *without* paying the recall NOTEARS-MLP lost, because the edges were
+generated nonlinearly in the first place.
+
+The output `B` already obeys the harness convention: `B[child, parent] = 1` means `parent -> child`,
+i.e. `B[i,j] != 0` means `j -> i`.
+
+So the same-named-vs-paper gap, stated plainly: my `cam` is a *heuristic* CAM — gradient-boosted
+residual-variance ordering (root by min-marginal-variance), feature-importance edge selection over all
+predecessors, and partial-residual-correlation pruning — not the canonical CAM with GAM splines,
+`gamboost` PNS, IncEdge likelihood-gain order search, and GAM-significance pruning. But it preserves the
+two ideas that matter: **decouple order from edges**, and **generate candidates nonlinearly and
+order-respecting** rather than through a linear skeleton.
+
+The falsifiable expectations against NOTEARS-MLP's measured shape. The decisive claim is that CAM fixes
+the recall collapse *without* surrendering precision. On **SF20-GP**, where NOTEARS-MLP's linear
+skeleton starved recall to 0.13 (F1 0.153), the nonlinear order-respecting candidate generation should
+recover the GP parents the linear stage missed — I expect recall to leap into the 0.7–0.8 range and F1 to
+jump past 0.8, a multiple of every prior rung, because GP-on-scale-free is exactly the regime where a
+correct nonlinear order plus nonlinear edge fitting should shine. On **ER20-Gauss**, the nonlinear-
+Gaussian case, CAM should keep NOTEARS-MLP's high precision (the partial-residual pruning is strict) and
+restore recall, lifting F1 well above 0.31 toward 0.7, with precision near 1.0 — the residual-variance
+order reads the nonlinearity that the Gaussian noise hid from DirectLiNGAM and that the linear skeleton
+hid from NOTEARS-MLP. On **ER12-LowSample**, the boosted ordering on 150 samples is the riskiest stage
+(regressing on a growing predictor set), so I expect CAM's *smallest* relative gain here — F1 in the
+0.5–0.6 range, clearly above NOTEARS-MLP's 0.384 but not the blowout of the 2000-sample scenarios,
+because the order search is variance-limited at small `n`. The single number that would falsify the
+whole "decouple and go nonlinear" thesis: if CAM's averaged F1 does not clearly clear NOTEARS-MLP's
+~0.28 and its SHD does not fall below NOTEARS-MLP's ~36 on SF20-GP, then the order is not the
+bottleneck and I have misread the ladder. CAM is the strongest baseline precisely because it is the
+first method to get the nonlinear order right and *then* prune — and the residual weakness it leaves is
+the *order search itself*: it is greedy and residual-variance-driven, which is exactly what a stronger,
+score-matching order recovery could improve. So let me build the heuristic CAM, starting by importing the
+boosted regressor it leans on throughout.
+</think>
+<say>
+Now CAM, which decouples order from edges: a greedy gradient-boosted residual-variance ordering, then feature-importance edge selection over all predecessors, then partial-residual-correlation pruning. This first edit swaps the imports over to the gradient-boosted regressor the three stages all use.
+</say>
+<edit path="causal-learn/bench/custom_algorithm.py">
+<old>
+    import numpy as np
+    from scipy.optimize import minimize
+</old>
+<new>
+    import numpy as np
+    from sklearn.ensemble import GradientBoostingRegressor
+    from sklearn.model_selection import cross_val_score
+</new>
+</edit>
+<obs>
+Successfully replaced text in causal-learn/bench/custom_algorithm.py.
+</obs>
+<note>
+Now replace the NOTEARS body with stage one (residual-variance order) and stage two's regression setup.
+</note>
+<edit path="causal-learn/bench/custom_algorithm.py">
+<old>
+
+    # --- Hyperparameters ---
+    max_iter = 30
+    h_tol = 1e-8
+    rho_max = 1e+16
+    w_threshold = 0.3
+    lambda1 = 0.01  # L1 penalty
+
+    # Standardize data
+    X_std = (X - X.mean(axis=0)) / (X.std(axis=0) + 1e-8)
+
+    # --- NOTEARS (linear) on the data ---
+    # Formulation: minimize 0.5/n * ||X - X W||^2_F + lambda1 * |W|_1
+    # subject to h(W) = tr(e^{W o W}) - d = 0
+
+    def _h(W):
+        """Acyclicity constraint: h(W) = tr(e^{W o W}) - d."""
+        M = W * W
+        # Matrix exponential trace via power series (consistent with _h_grad)
+        expm_M = np.eye(n_vars)
+        power = np.eye(n_vars)
+        for k in range(1, 12):
+            power = power @ M / k
+            expm_M += power
+        return np.trace(expm_M) - n_vars
+
+    def _h_grad(W):
+        """Gradient of h w.r.t. W."""
+        M = W * W
+        # expm(M) via series (10 terms)
+        expm_M = np.eye(n_vars)
+        power = np.eye(n_vars)
+        for k in range(1, 12):
+            power = power @ M / k
+            expm_M += power
+        return 2 * W * expm_M
+
+    def _loss_and_grad(W_flat, rho, alpha):
+        W = W_flat.reshape(n_vars, n_vars)
+        # Zero diagonal (no self-loops)
+        np.fill_diagonal(W, 0)
+
+        # MSE loss: 0.5/n * ||X - XW||^2
+        R = X_std - X_std @ W  # (n, d)
+        loss = 0.5 / n_samples * np.sum(R ** 2)
+        # Gradient of MSE w.r.t. W
+        G_mse = -1.0 / n_samples * (X_std.T @ R)  # (d, d)
+
+        # L1 penalty
+        l1_loss = lambda1 * np.sum(np.abs(W))
+        G_l1 = lambda1 * np.sign(W)
+
+        # Acyclicity
+        h_val = _h(W)
+        G_h = _h_grad(W)
+
+        total_loss = loss + l1_loss + 0.5 * rho * h_val ** 2 + alpha * h_val
+        G_total = G_mse + G_l1 + (rho * h_val + alpha) * G_h
+
+        # Zero diagonal gradient
+        np.fill_diagonal(G_total, 0)
+
+        return total_loss, G_total.ravel()
+
+    # --- Augmented Lagrangian ---
+    # Small random init to break symmetry (zeros can stall the optimizer)
+    rng = np.random.RandomState(seed)
+    W_est = rng.randn(n_vars, n_vars) * 0.01
+    np.fill_diagonal(W_est, 0)
+    rho = 1.0
+    alpha_dual = 0.0
+    h_prev = np.inf
+
+    for _ in range(max_iter):
+        result = minimize(
+            lambda w: _loss_and_grad(w, rho, alpha_dual),
+            W_est.ravel(),
+            method='L-BFGS-B',
+            jac=True,
+            options={'maxiter': 500}
+        )
+        W_est = result.x.reshape(n_vars, n_vars)
+        np.fill_diagonal(W_est, 0)
+
+        h_new = _h(W_est)
+        if h_new > 0.25 * h_prev:
+            rho *= 10.0
+        alpha_dual += rho * h_new
+        h_prev = h_new
+
+        if abs(h_new) < h_tol or rho > rho_max:
+            break
+
+    # --- Now do nonlinear refinement: for each variable, use kernel regression ---
+    # Use the linear NOTEARS skeleton and refine with nonlinear regression
+    from sklearn.ensemble import GradientBoostingRegressor
+
+    # Threshold the linear result
+    W_abs = np.abs(W_est)
+    W_abs[W_abs < w_threshold] = 0.0
+
+    # Refine: for each node, check if candidate parents improve nonlinear fit
+    B = np.zeros((n_vars, n_vars))
+    for j in range(n_vars):
+        # Candidate parents from linear NOTEARS
+        candidates = np.where(W_abs[:, j] > 0)[0].tolist()
+        # Also add strong linear correlations as candidates
+        for i in range(n_vars):
+            if i == j:
+                continue
+            corr = np.abs(np.corrcoef(X_std[:, i], X_std[:, j])[0, 1])
+            if corr > 0.15 and i not in candidates:
+                candidates.append(i)
+        if not candidates:
+            continue
+
+        # Nonlinear regression from candidates to j
+        gbr = GradientBoostingRegressor(
+</old>
+<new>
+
+    # --- Step 1: Estimate causal ordering via greedy score-based search ---
+    # For each variable, compute residual variance after nonlinear regression
+    # on candidate parents. Variables with lower residual variance given
+    # earlier variables are placed later in the ordering.
+
+    remaining = list(range(n_vars))
+    ordering = []
+
+    while remaining:
+        if len(ordering) == 0:
+            # First variable: pick the one with highest marginal variance
+            # (root causes tend to have variance = noise variance only)
+            scores = []
+            for j in remaining:
+                scores.append(np.var(X[:, j]))
+            # Pick the one with smallest variance (likely a root)
+            best_idx = np.argmin(scores)
+            ordering.append(remaining.pop(best_idx))
+        else:
+            # For each remaining var, fit nonlinear regression on current ordering
+            best_score = np.inf
+            best_var = None
+            best_var_idx = None
+            parents_X = X[:, ordering]
+            for idx, j in enumerate(remaining):
+                y = X[:, j]
+                # Use gradient boosting as nonlinear regressor
+                gbr = GradientBoostingRegressor(
+                    n_estimators=50, max_depth=3, learning_rate=0.1,
+                    random_state=seed, subsample=0.8
+                )
+                gbr.fit(parents_X, y)
+                residuals = y - gbr.predict(parents_X)
+                resid_var = np.var(residuals)
+                if resid_var < best_score:
+                    best_score = resid_var
+                    best_var = j
+                    best_var_idx = idx
+            ordering.append(remaining.pop(best_var_idx))
+
+    # --- Step 2: Preliminary adjacency via nonlinear regression along ordering ---
+    B = np.zeros((n_vars, n_vars))
+    for pos in range(1, len(ordering)):
+        j = ordering[pos]
+        candidate_parents = ordering[:pos]
+        y = X[:, j]
+        pa_X = X[:, candidate_parents]
+
+        gbr = GradientBoostingRegressor(
+</new>
+</edit>
+<obs>
+Successfully replaced text in causal-learn/bench/custom_algorithm.py.
+</obs>
+<note>
+Finish stage two's importance threshold and add stage three's partial-residual pruning.
+</note>
+<edit path="causal-learn/bench/custom_algorithm.py">
+<old>
+        )
+        gbr.fit(X_std[:, candidates], X_std[:, j])
+        importances = gbr.feature_importances_
+
+        for k, p in enumerate(candidates):
+            if importances[k] > 0.05:
+                B[j, p] = 1.0
+
+    # Enforce DAG by removing cycles using topological ordering from linear NOTEARS
+    # Use causal order from W_est
+    order_score = np.sum(np.abs(W_est), axis=0)  # higher = more downstream
+    topo_order = np.argsort(order_score)  # ascending = more root-like first
+    rank = np.zeros(n_vars, dtype=int)
+    for idx, node in enumerate(topo_order):
+        rank[node] = idx
+
+    # Remove edges that violate topological ordering
+    for i in range(n_vars):
+        for j in range(n_vars):
+            if B[i, j] != 0 and rank[j] >= rank[i]:
+                # j -> i but j is downstream of i: remove
+                B[i, j] = 0.0
+
+    return B
+</old>
+<new>
+        )
+        gbr.fit(pa_X, y)
+        importances = gbr.feature_importances_
+
+        # Keep edges with importance above threshold
+        threshold = 0.05
+        for k, p in enumerate(candidate_parents):
+            if importances[k] > threshold:
+                B[j, p] = 1.0  # B[child, parent] = 1 means parent -> child
+
+    # --- Step 3: Prune spurious edges via partial residual independence test ---
+    for j in range(n_vars):
+        parents = list(np.where(B[j, :] != 0)[0])
+        if len(parents) <= 1:
+            continue
+        to_remove = []
+        for p in parents:
+            other_parents = [pp for pp in parents if pp != p]
+            if len(other_parents) == 0:
+                continue
+            # Regress j on other parents
+            gbr_j = GradientBoostingRegressor(
+                n_estimators=50, max_depth=3, learning_rate=0.1,
+                random_state=seed
+            )
+            gbr_j.fit(X[:, other_parents], X[:, j])
+            resid_j = X[:, j] - gbr_j.predict(X[:, other_parents])
+            # Regress p on other parents
+            gbr_p = GradientBoostingRegressor(
+                n_estimators=50, max_depth=3, learning_rate=0.1,
+                random_state=seed
+            )
+            gbr_p.fit(X[:, other_parents], X[:, p])
+            resid_p = X[:, p] - gbr_p.predict(X[:, other_parents])
+            # Check correlation of partial residuals
+            corr = np.abs(np.corrcoef(resid_j, resid_p)[0, 1])
+            if corr < 0.05:
+                to_remove.append(p)
+        for p in to_remove:
+            B[j, p] = 0.0
+
+    return B
+</new>
+</edit>
+<obs>
+Successfully replaced text in causal-learn/bench/custom_algorithm.py.
+</obs>
+<run/>
+<obs>
+Measured results — `baseline:cam` (`is_final,true`), seeds {42, 123, 456} and mean, on the three evaluation scenarios.
+
+## SF20-GP
+| seed | SHD | F1 | precision | recall |
+|---|---|---|---|---|
+| 42 | 8 | 0.8529 | 0.9062 | 0.8056 |
+| 123 | 6 | 0.9118 | 0.9688 | 0.8611 |
+| 456 | 7 | 0.8788 | 0.9667 | 0.8056 |
+| **mean** | **7.00** | **0.8812** | **0.9472** | **0.8241** |
+
+## ER20-Gauss
+| seed | SHD | F1 | precision | recall |
+|---|---|---|---|---|
+| 42 | 26 | 0.7234 | 0.9444 | 0.5862 |
+| 123 | 17 | 0.8172 | 1.0000 | 0.6909 |
+| 456 | 37 | 0.6542 | 0.9722 | 0.4930 |
+| **mean** | **26.67** | **0.7316** | **0.9722** | **0.5900** |
+
+## ER12-LowSample
+| seed | SHD | F1 | precision | recall |
+|---|---|---|---|---|
+| 42 | 21 | 0.5417 | 0.4483 | 0.6842 |
+| 123 | 24 | 0.5283 | 0.4375 | 0.6667 |
+| 456 | 21 | 0.6207 | 0.5143 | 0.7826 |
+| **mean** | **22.00** | **0.5636** | **0.4667** | **0.7112** |
+</obs>
+
+### step 5 — SCORE (score-matching order)   [slug:score]
+
+<think>
+CAM's numbers are the bar, and they tell me precisely where the remaining slack is. It is the first rung
+to get the nonlinear order right and then prune, and it shows: SF20-GP F1 0.881 at SHD 7, ER20-Gauss F1
+0.732 at precision 0.97, ER12-LowSample F1 0.564. The decouple-order-from-edges thesis is vindicated —
+the recall collapse that sank NOTEARS-MLP (0.13 on SF20-GP) is gone (CAM's recall there is 0.82), and
+the precision NOTEARS-MLP bought is kept (CAM's ER20-Gauss precision is 0.97–1.0). So the architecture is
+right. But read where CAM is *weakest* and it is exactly the stage I named as its residual weakness: the
+**order search**. ER12-LowSample is CAM's soft spot — F1 0.564, and the limiting metric is precision
+(0.44–0.51), not recall (0.67–0.78): on 150 samples the greedy boosted residual-variance ordering places
+some nodes in the wrong relative order, which then lets spurious upstream edges through that the
+partial-residual pruning cannot fully remove. And on ER20-Gauss the recall (0.59) is the laggard — again
+an order-quality issue: a node placed slightly too early loses true parents that come "after" it. The
+common thread is that CAM's order is recovered *greedily and indirectly*, by repeatedly fitting a
+gradient-boosted regression of every remaining variable on the whole current prefix and appending the
+lowest-residual-variance one. That is `O(d²)` boosted fits, each on a growing predictor set, and at small
+`n` or with subtle mechanisms the residual-variance comparisons are noisy, so the greedy append takes
+wrong turns it never backtracks. The lever, then, is to recover the order *directly and globally* from a
+quantity that pins down leaves exactly — not by comparing fitted residual variances, but by reading the
+order off the data distribution's own geometry. That is what score matching gives me.
+
+Let me derive it from the additive-noise structure, because the whole method falls out of one identity.
+Write the model `X_j = f_j(pa(j)) + N_j` with `N_j` Gaussian, independent. The joint log-density is
+`log p(x) = sum_j log p_{N_j}(x_j - f_j(pa(j)))`, and since the noise is Gaussian,
+`log p_{N_j}(z) = -z²/(2σ_j²) + const`. Now take the *score* — the gradient of the log-density,
+`s(x) = ∇ log p(x)` — and look at its `j`-th component. Two kinds of terms contribute to `∂ log p / ∂ x_j`:
+the term where `x_j` is the *argument of its own noise* (from `log p_{N_j}(x_j - f_j(pa(j)))`), and the
+terms where `x_j` appears *inside some child's mechanism* `f_c(pa(c))` with `j ∈ pa(c)`. So in general
+`s_j(x)` depends on `x_j`, on `x_j`'s parents (through `f_j`), and on `x_j`'s children (through their
+mechanisms). Here is the crux. Take the *second* derivative of the log-density along `x_j` — the
+`j`-th diagonal entry of the Hessian of `log p`, call it `H_{jj}(x) = ∂² log p / ∂ x_j²`. For the
+Gaussian-noise term, `∂²/∂x_j² [ -(x_j - f_j)²/(2σ_j²) ] = -1/σ_j²`, a *constant*, because `f_j` does
+not depend on `x_j` (no self-loops). The *only* `x`-dependence in `H_{jj}` comes from `x_j`'s
+appearance inside its *children's* mechanisms. Therefore, if `j` is a **leaf** — no children — then
+`H_{jj}(x) = -1/σ_j²` is *constant in `x`*: its variance over the data is zero. And if `j` is *not* a
+leaf, `H_{jj}` varies with `x` (through the nonlinear child mechanisms), so its variance is strictly
+positive. This is the exact, distributional characterization of a leaf I was missing: **a variable is a
+leaf iff the variance of the `j`-th diagonal Hessian of `log p` is zero.** No regression, no
+residual-variance comparison — a property of the score's Jacobian, read directly off the distribution.
+
+That single fact gives a clean, *global*, backtracking-free order recovery: estimate the diagonal of the
+Hessian of `log p` at the sample points, pick the variable with the **minimum empirical variance** of its
+diagonal Hessian entry as the current leaf, append it (it goes *last* in the topological order), then
+*remove that variable from the data* and recompute on the remaining variables — because deleting a leaf
+leaves an ANM over the rest, and the next leaf of the reduced system is the second-to-last variable, and
+so on. After `d-1` removals the last remaining variable is the root. Reverse the leaf sequence and I have
+a topological order, roots first. This is strictly better-posed than CAM's greedy residual-variance
+append: leaf identification is a *direct* read of a distributional quantity (the order is recovered
+exactly in the population limit, with no greedy commitment that compounds errors), and each step removes
+one variable so the problem shrinks cleanly — exactly the small-`n` robustness CAM's growing-predictor
+regressions lacked.
+
+So everything reduces to estimating, from samples, the diagonal of the Hessian of `log p` — the
+quantity `∂² log p / ∂ x_j²` at each data point. I cannot differentiate a density I do not have, but I
+do not need the density; I need its score and the diagonal of the score's Jacobian, and those can be
+estimated *non-parametrically* via Stein's identities with a kernel. First-order Stein gives the score:
+for a smooth kernel `K`, the regularized estimate is `G = (K + η_G I)^{-1} ∇K`, where `K_{ij} =
+exp(-||x_i - x_j||²/(2s²))/s` is the Gaussian Gram matrix with bandwidth `s` set to the median pairwise
+distance, and `∇K` is its sample gradient — `G` is then the `(n × d)` matrix of estimated scores at the
+sample points. Second-order Stein gives the diagonal of the score's Jacobian: `H = -G² + (K + η_H
+I)^{-1} ∇²K`, where `∇²K` is the second sample derivative of the kernel and the `-G²` term is the
+correction that makes this the *diagonal Hessian of log p* rather than just the derivative of the score.
+Both are ridge-regularized matrix solves (`η_G = η_H = 0.001`), `O(n³)` per evaluation — entirely
+practical at the `n = 150–2000` and `d = 12–20` of these scenarios. Before taking the variance I
+normalize each column of `H` by its mean (so variables on different scales are compared fairly), then
+the leaf is `argmin` of the column variances. This is the part of the method that has *no analogue* in
+any prior rung: DirectLiNGAM used a linear residual entropy, GraN-DAG used network-path products,
+NOTEARS-MLP used a linear skeleton, CAM used fitted residual variances — none of them touch the score's
+Hessian, which is the object that pins leaves down exactly.
+
+Once the order is in hand, the edge selection is the same kind of regularized cleanup CAM already does
+well, and I should not reinvent it — the order was the bottleneck, not the pruning. For each node in
+order position `pos`, fit a nonlinear regression of it on its predecessors and keep a parent only if it
+genuinely contributes; the canonical method uses CAM-style significance pruning, and on this harness the
+natural realization is the same gradient-boosted regression with a feature-importance threshold that CAM
+already uses (the libraries available are numpy/scipy/scikit-learn plus causal-learn). So I reuse the
+proven pruning machinery and replace only the order-recovery stage with the score-matching leaf
+detection. That is the minimal, principled delta from CAM: same decoupled architecture, same nonlinear
+order-respecting candidate generation, same pruning — but the order itself comes from the exact
+leaf-variance characterization instead of a greedy residual-variance search.
+
+Let me be careful about what carries over verbatim from the canonical reference and what is re-expressed
+for this harness, since the finale code must be faithful. The leaf-detection core — the Gaussian kernel
+with median-distance bandwidth, `∇K = -Σ_i (x_k - x_i) K_{ik}/s²`, the score `G = (K+η_G I)^{-1}∇K`, the
+second-derivative `∇²K` with the `-1/s² + (x_k-x_i)²/s⁴` form, the diagonal Hessian `H = -G² +
+(K+η_H I)^{-1}∇²K`, the per-column mean normalization, and the `argmin`-variance leaf with iterative
+column removal and final reversal — is transcribed directly from the reference implementation (the
+reference is in PyTorch; I re-express the identical algebra in numpy, which the harness supports). The
+two defaults `η_G = η_H = 0.001` and the median-distance bandwidth are the reference defaults. The only
+adaptation is the pruning stage, where I use the harness's gradient-boosted regression with the same
+`0.05` importance cutoff CAM uses, rather than a GAM significance test — the same pragmatic substitution
+the task's other baselines make.
+
+Now the bar this has to clear and what I would validate, because there is no leaderboard row for it. The
+claim is narrow and falsifiable: SCORE should match or beat CAM *everywhere*, and beat it *most* exactly
+where CAM's order search was weakest. On **ER12-LowSample** — CAM's softest scenario (F1 0.564,
+precision-limited at ~0.44–0.51) — the score-based leaf detection should place nodes correctly even at
+`n = 150` because it reads a distributional quantity rather than comparing noisy fitted residual
+variances on a growing predictor set, so I expect the order errors that let spurious upstream edges
+through to drop, lifting precision and pushing F1 above 0.564. On **ER20-Gauss** — where CAM's recall
+(0.59) lagged — a more accurate order should stop placing nodes too early and losing their true parents,
+so I expect recall to rise toward CAM's precision (already ~0.97) and F1 to clear 0.732. On **SF20-GP**,
+CAM is already excellent (F1 0.881, SHD 7); here the realistic claim is *parity*, since the order on a
+2000-sample scale-free GP graph is already nearly perfect for CAM, and the score-matching order should
+match it without a clear margin — the win is on the harder, lower-sample scenarios, not this one. The
+single number that would falsify the thesis that "the order search was the remaining bottleneck": if
+SCORE's averaged F1 does not clear CAM's ~0.73 and its ER12-LowSample F1 does not beat CAM's 0.564, then
+the greedy residual-variance order was not the limiting factor and the score-matching detour bought
+nothing. What I would validate first, then, is precisely the ER12-LowSample order accuracy — the cheapest
+direct test of whether reading leaves off the score's Hessian beats appending them by residual variance.
+So let me build SCORE: start by recording the method in the docstring, then swap in the Stein leaf-
+detection order and keep CAM's edge selection.
+</think>
+<say>
+Final rung is SCORE: recover the topological order by score-matching leaf detection — a variable is a leaf iff the variance of its diagonal-Hessian entry of `log p` is zero — then reuse CAM's nonlinear edge selection. This first edit records the method in the docstring.
+</say>
+<edit path="causal-learn/bench/custom_algorithm.py">
+<old>
+            B[i, j] != 0  means j -> i  (follows causal-learn convention)
+    """
+</old>
+<new>
+            B[i, j] != 0  means j -> i  (follows causal-learn convention)
+
+    SCORE (Rolland et al., ICML 2022): recover the topological order by
+    score-matching leaf detection -- a variable is a leaf iff the variance of
+    the j-th diagonal Hessian entry of log p is zero -- then prune edges.
+    """
+</new>
+</edit>
+<obs>
+Successfully replaced text in causal-learn/bench/custom_algorithm.py.
+</obs>
+<note>
+Drop the now-unused cross_val_score import.
+</note>
+<edit path="causal-learn/bench/custom_algorithm.py">
+<old>
+    from sklearn.ensemble import GradientBoostingRegressor
+    from sklearn.model_selection import cross_val_score
+</old>
+<new>
+    from sklearn.ensemble import GradientBoostingRegressor
+</new>
+</edit>
+<obs>
+Successfully replaced text in causal-learn/bench/custom_algorithm.py.
+</obs>
+<note>
+Replace CAM's residual-variance order with the Stein diagonal-Hessian leaf removal.
+</note>
+<edit path="causal-learn/bench/custom_algorithm.py">
+<old>
+
+    # --- Step 1: Estimate causal ordering via greedy score-based search ---
+    # For each variable, compute residual variance after nonlinear regression
+    # on candidate parents. Variables with lower residual variance given
+    # earlier variables are placed later in the ordering.
+
+    remaining = list(range(n_vars))
+    ordering = []
+
+    while remaining:
+        if len(ordering) == 0:
+            # First variable: pick the one with highest marginal variance
+            # (root causes tend to have variance = noise variance only)
+            scores = []
+            for j in remaining:
+                scores.append(np.var(X[:, j]))
+            # Pick the one with smallest variance (likely a root)
+            best_idx = np.argmin(scores)
+            ordering.append(remaining.pop(best_idx))
+        else:
+            # For each remaining var, fit nonlinear regression on current ordering
+            best_score = np.inf
+            best_var = None
+            best_var_idx = None
+            parents_X = X[:, ordering]
+            for idx, j in enumerate(remaining):
+                y = X[:, j]
+                # Use gradient boosting as nonlinear regressor
+                gbr = GradientBoostingRegressor(
+                    n_estimators=50, max_depth=3, learning_rate=0.1,
+                    random_state=seed, subsample=0.8
+                )
+                gbr.fit(parents_X, y)
+                residuals = y - gbr.predict(parents_X)
+                resid_var = np.var(residuals)
+                if resid_var < best_score:
+                    best_score = resid_var
+                    best_var = j
+                    best_var_idx = idx
+            ordering.append(remaining.pop(best_var_idx))
+
+    # --- Step 2: Preliminary adjacency via nonlinear regression along ordering ---
+    B = np.zeros((n_vars, n_vars))
+    for pos in range(1, len(ordering)):
+        j = ordering[pos]
+        candidate_parents = ordering[:pos]
+        y = X[:, j]
+        pa_X = X[:, candidate_parents]
+
+        gbr = GradientBoostingRegressor(
+</old>
+<new>
+
+    eta_G = 0.001
+    eta_H = 0.001
+
+    # Use the data directly, as in the reference SCORE implementation.
+    Xc = np.asarray(X, dtype=float)
+
+    def stein_hess_diag(data):
+        # Estimate the diagonal of the Hessian of log p_X at the sample points
+        # via first- and second-order Stein identities (Rolland et al., 2022).
+        m, p = data.shape
+        X_diff = data[:, None, :] - data[None, :, :]          # (m, m, p)
+        sqdist = np.sum(X_diff ** 2, axis=2)                   # (m, m)
+        dist = np.sqrt(np.maximum(sqdist, 0.0))
+        flat_dist = dist.ravel()
+        mid = (flat_dist.size - 1) // 2
+        s = np.partition(flat_dist, mid)[mid]                 # torch median convention
+        K = np.exp(-sqdist / (2 * s ** 2)) / s                # Gaussian Gram matrix
+        # nablaK[k, j] = -sum_i (data[k,j]-data[i,j]) K[i,k] / s^2
+        nablaK = -np.einsum('kij,ik->kj', X_diff, K) / s ** 2  # (m, p)
+        I = np.eye(m)
+        G = np.linalg.solve(K + eta_G * I, nablaK)            # score estimate (m, p)
+        # nabla2K[k, j] = sum_i (-1/s^2 + (data[k,j]-data[i,j])^2 / s^4) K[i,k]
+        nabla2K = np.einsum('kij,ik->kj',
+                            -1.0 / s ** 2 + X_diff ** 2 / s ** 4, K)  # (m, p)
+        # diagonal Hessian of log p = -G^2 + (K + eta_H I)^{-1} nabla2K
+        return -G ** 2 + np.linalg.solve(K + eta_H * I, nabla2K)
+
+    # --- Step 1: topological order via score-matching leaf removal ---
+    # Leaf = variable whose diagonal-Hessian column has minimum variance.
+    data = Xc.copy()
+    active = list(range(n_vars))
+    order = []
+    while data.shape[1] > 1:
+        H = stein_hess_diag(data)
+        H = H / H.mean(axis=0)                  # normalize columns before variance
+        leaf = int(np.argmin(H.var(axis=0)))    # min-variance column is the leaf
+        order.append(active[leaf])
+        active.pop(leaf)
+        data = np.delete(data, leaf, axis=1)
+    order.append(active[0])
+    order.reverse()                             # roots first
+
+    # --- Step 2: edge selection along the order (CAM-style nonlinear pruning) ---
+    B = np.zeros((n_vars, n_vars))
+    for pos in range(1, len(order)):
+        j = order[pos]
+        candidate_parents = order[:pos]
+        gbr = GradientBoostingRegressor(
+</new>
+</edit>
+<obs>
+Successfully replaced text in causal-learn/bench/custom_algorithm.py.
+</obs>
+<note>
+Point the edge-selection fit at the score-based order and drop CAM's stage-three pruning.
+</note>
+<edit path="causal-learn/bench/custom_algorithm.py">
+<old>
+        )
+        gbr.fit(pa_X, y)
+        importances = gbr.feature_importances_
+
+        # Keep edges with importance above threshold
+        threshold = 0.05
+        for k, p in enumerate(candidate_parents):
+            if importances[k] > threshold:
+                B[j, p] = 1.0  # B[child, parent] = 1 means parent -> child
+
+    # --- Step 3: Prune spurious edges via partial residual independence test ---
+    for j in range(n_vars):
+        parents = list(np.where(B[j, :] != 0)[0])
+        if len(parents) <= 1:
+            continue
+        to_remove = []
+        for p in parents:
+            other_parents = [pp for pp in parents if pp != p]
+            if len(other_parents) == 0:
+                continue
+            # Regress j on other parents
+            gbr_j = GradientBoostingRegressor(
+                n_estimators=50, max_depth=3, learning_rate=0.1,
+                random_state=seed
+            )
+            gbr_j.fit(X[:, other_parents], X[:, j])
+            resid_j = X[:, j] - gbr_j.predict(X[:, other_parents])
+            # Regress p on other parents
+            gbr_p = GradientBoostingRegressor(
+                n_estimators=50, max_depth=3, learning_rate=0.1,
+                random_state=seed
+            )
+            gbr_p.fit(X[:, other_parents], X[:, p])
+            resid_p = X[:, p] - gbr_p.predict(X[:, other_parents])
+            # Check correlation of partial residuals
+            corr = np.abs(np.corrcoef(resid_j, resid_p)[0, 1])
+            if corr < 0.05:
+                to_remove.append(p)
+        for p in to_remove:
+            B[j, p] = 0.0
+
+    return B
+</old>
+<new>
+        )
+        gbr.fit(Xc[:, candidate_parents], Xc[:, j])
+        importances = gbr.feature_importances_
+        for k, p in enumerate(candidate_parents):
+            if importances[k] > 0.05:
+                B[j, p] = 1.0   # B[child, parent] = 1 means parent -> child
+
+    return B
+</new>
+</edit>
+<obs>
+Successfully replaced text in causal-learn/bench/custom_algorithm.py.
+</obs>

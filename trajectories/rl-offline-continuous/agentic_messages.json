@@ -1,0 +1,655 @@
+{
+ "tools": [
+  {
+   "type": "function",
+   "function": {
+    "name": "str_replace",
+    "description": "Replace the unique occurrence of old_str with new_str in the file.",
+    "parameters": {
+     "type": "object",
+     "properties": {
+      "path": {
+       "type": "string"
+      },
+      "old_str": {
+       "type": "string"
+      },
+      "new_str": {
+       "type": "string"
+      }
+     },
+     "required": [
+      "path",
+      "old_str",
+      "new_str"
+     ]
+    }
+   }
+  },
+  {
+   "type": "function",
+   "function": {
+    "name": "create",
+    "description": "Create a new file with the given text.",
+    "parameters": {
+     "type": "object",
+     "properties": {
+      "path": {
+       "type": "string"
+      },
+      "file_text": {
+       "type": "string"
+      }
+     },
+     "required": [
+      "path",
+      "file_text"
+     ]
+    }
+   }
+  },
+  {
+   "type": "function",
+   "function": {
+    "name": "run_experiment",
+    "description": "Train+evaluate the current code; returns metrics.",
+    "parameters": {
+     "type": "object",
+     "properties": {}
+    }
+   }
+  }
+ ],
+ "messages": [
+  {
+   "role": "system",
+   "content": "You are a research engineer improving a model on a fixed ML task. You work by editing the model code and running experiments. Think carefully before each change. You have these tools:\n- str_replace(path, old_str, new_str): replace the unique occurrence of old_str with new_str.\n- create(path, file_text): create a new file.\n- run_experiment(): train + evaluate the current code under the fixed budget; returns metrics.\nMake one tool call at a time. After editing, call run_experiment() to measure your method."
+  },
+  {
+   "role": "user",
+   "content": "## Research question\n\nOffline continuous control: learn a policy from a *fixed* dataset of transitions, with no environment\ninteraction, and beat the behavior policy that collected the data. The single failure that has to be\nengineered around is **Q-value overestimation on out-of-distribution actions**. Bootstrapped\nQ-learning forms its target by valuing the next action under a learned critic; offline, that next\naction can be anything the policy proposes, and the critic — having never seen those actions — almost\nalways extrapolates *upward*. The inflated target backs up through the Bellman recursion, the policy\n(which is defined by maximizing the critic) steers straight toward the over-valued actions, and the\nerror feeds itself into divergence. The thing being designed is the **offline RL algorithm itself** —\nthe losses, the target construction, the behavior regularization, the policy-extraction rule — that\nsuppresses this overestimation while still extracting an improved policy. Everything about capacity is\nfixed; the contribution must be algorithmic.\n\n## Prior art before the first rung (offline value-learning lineage)\n\nThe first rung reacts to a line of attempts at exactly this overestimation problem. These are the\nancestors the ladder climbs out of, each with the gap that motivates the next move.\n\n- **Off-policy actor-critic offline (naive TD3/SAC on a static buffer).** Take a continuous-control\n  actor-critic — a deterministic or Gaussian actor ascending a learned critic, with replay and target\n  networks — and just run it on a fixed dataset. It collapses. The actor proposes actions outside the\n  data, the critic over-values them (extrapolation error, Fujimoto et al. 2019), and there is no new\n  experience to correct the mistake. Gap: unconstrained bootstrapping diverges offline.\n- **Generative-model constraints (BCQ, BEAR; Fujimoto et al. 2019, Kumar et al. 2019).** Fit a model\n  of the dataset's action distribution and only let the policy choose among actions that model deems\n  in-support (BCQ), or constrain the policy's MMD to the behavior actions (BEAR). It works, but it\n  bolts a generative model and extra sampling onto the agent — many moving parts, several\n  hyperparameters that can only be tuned by interacting (which is forbidden offline). Gap: heavy\n  machinery, hard to tune without a validation environment.\n- **Conservative value penalties (CQL; Kumar et al. 2020).** Skip the policy constraint; instead add a\n  term to the critic loss that pushes Q *down* on out-of-distribution actions and *up* on dataset\n  actions, so the critic is pessimistic exactly where it has no data. Principled, but it has to\n  explicitly query and sample OOD actions to push them down (a log-sum-exp over sampled actions), which\n  is extra compute and an extra temperature knob; the conservatism can also be too blunt, flattening\n  useful in-distribution structure. Gap: still queries OOD actions; one more sensitive coefficient.\n- **Behavior-regularized actor-critic (BRAC, AWAC; Wu et al. 2019, Nair et al. 2020).** Keep standard\n  value learning but add a divergence penalty (KL, MMD) between the policy and the behavior policy, or\n  extract the policy by advantage-weighted regression so it never strays far from the data. A unifying\n  view, but the divergence estimate needs a behavior model again, and a single global penalty trades\n  exploitation against caution clumsily across states. Gap: divergence estimation + one global dial.\n\nThe substrate below is what these converged on as the *minimal* place to stand: a twin-critic\nactor-critic with clipped double-Q and Polyak targets, fixed at 256 hidden units, on which each rung is\na different choice of loss / target / extraction.\n\n## The fixed substrate\n\nA single offline-RL training file is frozen except for one region. The fixed loop: load a D4RL MuJoCo\ndataset into a `ReplayBuffer`, **state-normalize** features with exact dataset mean/std, then for\n`max_timesteps = 1e6` steps sample a `batch_size` minibatch\n`[states, actions, rewards, next_states, dones, next_actions]` and call `trainer.train(batch)`; every\n`eval_freq = 5e3` steps roll out `trainer.actor` for `n_episodes = 10` and report the **D4RL normalized\nscore** (0 = random, 100 = expert). The buffer also exposes `next_actions` — the dataset action at the\n*next* timestep — for SARSA-style and next-action-regularized targets, and the whole dataset via\n`replay_buffer._states/_actions/_rewards` for global statistics. Fixed utilities are provided:\n`soft_update` (Polyak), `compute_mean_std`/`normalize_states`, `init_module_weights` (orthogonal init),\nand a `_mlp()` factory **locked at hidden width 256**. Hyperparameter defaults live in `TrainConfig`\n(`discount = 0.99`, `tau = 5e-3`, `actor_lr = critic_lr = 3e-4`, `batch_size = 256`, `normalize = True`,\n`orthogonal_init = True`); a method may override a whitelisted subset via `CONFIG_OVERRIDES`\n(`normalize`, `normalize_reward`, `actor_lr`, `critic_lr`, `tau`, `discount`, `batch_size`).\n\nTwo hard constraints make this an *algorithmic* benchmark, not a capacity one. **All hidden widths are\n256** — the `_mlp()` factory asserts it and custom network classes must obey it. And **total trainable\nparameters are capped at 1.05× the largest baseline architecture**, checked at runtime before training;\na method that tries to win by adding networks (large critic ensembles, a learned encoder) is rejected.\nSo every rung must pay for its gains in *math*, not parameters.\n\n## The editable interface\n\nExactly one region of `custom.py` is editable: the network classes (`DeterministicActor`, `Actor`,\n`Critic`, `ValueFunction`) and the `OfflineAlgorithm` class — its `__init__` (build the nets and\noptimizers) and its `train(batch)` (one gradient update, returning a scalar log dict). The loop only\nhands the trainer the environment dimensions and the `TrainConfig` learning rates; everything\nalgorithm-specific is built inside. The contract the loop relies on: `self.actor` must be an\n`nn.Module` with an `.act(state, device)` method (this is what evaluation rolls out), and\n`train(batch)` must consume the six-tensor batch and step the optimizers.\n\nThe starting point is the scaffold default: a placeholder `OfflineAlgorithm` that builds a Gaussian\n`Actor`, two `Critic`s and their targets, three Adam optimizers, and a `train` that does **nothing** —\nit returns zero losses without updating. Each rung replaces this class (and, where the algorithm wants\na different architecture, the relevant network classes) and nothing else.\n\n```python\n# EDITABLE region of custom.py — default fill (placeholder, no learning)\nclass OfflineAlgorithm:\n    \"\"\"Offline RL algorithm -- implement your approach here.\n\n    The training loop calls:\n        trainer = OfflineAlgorithm(state_dim, action_dim, max_action, **kwargs)\n        log_dict = trainer.train(batch)          # called at every timestep\n        eval_actor(env, trainer.actor, ...)      # called every eval_freq steps\n    You MUST set self.actor to an nn.Module that has an .act(state, device) method.\n    \"\"\"\n\n    def __init__(\n        self,\n        state_dim: int,\n        action_dim: int,\n        max_action: float,\n        replay_buffer: \"ReplayBuffer\" = None,\n        discount: float = 0.99,\n        tau: float = 5e-3,\n        actor_lr: float = 3e-4,\n        critic_lr: float = 3e-4,\n        alpha_lr: float = 3e-4,\n        orthogonal_init: bool = True,\n        device: str = \"cuda\",\n    ):\n        self.device = device\n        self.discount = discount\n        self.tau = tau\n        self.max_action = max_action\n        self.total_it = 0\n        self.replay_buffer = replay_buffer\n\n        # Build networks -- modify or replace as needed\n        self.actor = Actor(state_dim, action_dim, max_action, orthogonal_init).to(device)\n        self.critic_1 = Critic(state_dim, action_dim, orthogonal_init).to(device)\n        self.critic_2 = Critic(state_dim, action_dim, orthogonal_init).to(device)\n        self.critic_1_target = deepcopy(self.critic_1)\n        self.critic_2_target = deepcopy(self.critic_2)\n\n        self.actor_optimizer = torch.optim.Adam(self.actor.parameters(), lr=actor_lr)\n        self.critic_1_optimizer = torch.optim.Adam(self.critic_1.parameters(), lr=critic_lr)\n        self.critic_2_optimizer = torch.optim.Adam(self.critic_2.parameters(), lr=critic_lr)\n\n    def train(self, batch: TensorBatch) -> Dict[str, float]:\n        \"\"\"Update networks on one batch. batch = [states, actions, rewards,\n        next_states, dones, next_actions] (torch.Tensor, on device).\"\"\"\n        self.total_it += 1\n        states, actions, rewards, next_states, dones, next_actions = batch\n\n        # -- Placeholder: replace with your algorithm --\n        log_dict: Dict[str, float] = {\n            \"actor_loss\": 0.0,\n            \"critic_loss\": 0.0,\n        }\n        return log_dict\n```\n\n## Evaluation settings\n\nThree D4RL MuJoCo `medium-v2`/`-v1` datasets spanning the difficulty range — **HalfCheetah**\n(`halfcheetah-medium-v2`), **Maze2D** (`maze2d-medium-v1`, a goal-reaching navigation task that rewards\ntrajectory *stitching*), and **Walker2d** (`walker2d-medium-v2`) — each over three seeds {42, 123, 456}.\nOne metric per dataset, higher is better: the **D4RL normalized score** (0 = random, 100 = expert),\naveraged over the 10 evaluation rollouts at the final budget. A strong method generalizes across all\nthree rather than relying on a dataset-specific quirk; the task score is the geometric mean across the\nthree datasets.\n\nThe editable model code is in `CORL/algorithms/offline/custom.py`:\n```python\n\nclass OfflineAlgorithm:\n    \"\"\"Offline RL algorithm -- implement your approach here.\n\n    Goal: suppress Q-value overestimation while learning from offline data\n    on continuous locomotion tasks (HalfCheetah, Hopper, Walker2d).\n\n    The training loop calls:\n        trainer = OfflineAlgorithm(state_dim, action_dim, max_action, **kwargs)\n        log_dict = trainer.train(batch)          # called at every timestep\n        eval_actor(env, trainer.actor, ...)      # called every eval_freq steps\n\n    You MUST set self.actor to an nn.Module that has an .act(state, device) method.\n    Build all your networks here; the training loop only provides environment dimensions\n    and the hyperparameters from TrainConfig.\n\n    actor_lr, critic_lr, alpha_lr are passed from TrainConfig as starting points --\n    you may use different values by creating optimizers with your own lr in __init__.\n    Any additional algorithm-specific hyperparameters should be hardcoded in __init__.\n\n    Dataset access:\n        replay_buffer is a ReplayBuffer instance containing the full offline dataset.\n        You can use it to compute dataset-level statistics, e.g.:\n            replay_buffer._states[:replay_buffer._size]   -- all states  (Tensor)\n            replay_buffer._actions[:replay_buffer._size]  -- all actions (Tensor)\n            replay_buffer._rewards[:replay_buffer._size]  -- all rewards (Tensor)\n            replay_buffer._next_actions[:replay_buffer._size] -- next actions (Tensor)\n            replay_buffer._size                           -- number of transitions\n\n    Available network classes (defined above, editable):\n        DeterministicActor  -- deterministic tanh policy (for BC / TD3+BC approaches)\n        Actor               -- stochastic Tanh-Gaussian policy (for CQL / IQL approaches)\n        Critic              -- Q(s, a) network\n        ValueFunction       -- V(s) network (for IQL-style approaches)\n    Available utilities (fixed): soft_update, init_module_weights\n    \"\"\"\n\n    def __init__(\n        self,\n        state_dim: int,\n        action_dim: int,\n        max_action: float,\n        replay_buffer: \"ReplayBuffer\" = None,\n        discount: float = 0.99,\n        tau: float = 5e-3,\n        actor_lr: float = 3e-4,\n        critic_lr: float = 3e-4,\n        alpha_lr: float = 3e-4,\n        orthogonal_init: bool = True,\n        device: str = \"cuda\",\n    ):\n        self.device = device\n        self.discount = discount\n        self.tau = tau\n        self.max_action = max_action\n        self.total_it = 0\n        # Full offline dataset -- use for computing global statistics\n        # (e.g. action mean/std for normalization, reward scaling, etc.)\n        self.replay_buffer = replay_buffer\n\n        # Build networks -- modify or replace as needed\n        self.actor = Actor(state_dim, action_dim, max_action, orthogonal_init).to(device)\n        self.critic_1 = Critic(state_dim, action_dim, orthogonal_init).to(device)\n        self.critic_2 = Critic(state_dim, action_dim, orthogonal_init).to(device)\n        self.critic_1_target = deepcopy(self.critic_1)\n        self.critic_2_target = deepcopy(self.critic_2)\n\n        self.actor_optimizer = torch.optim.Adam(self.actor.parameters(), lr=actor_lr)\n        self.critic_1_optimizer = torch.optim.Adam(self.critic_1.parameters(), lr=critic_lr)\n        self.critic_2_optimizer = torch.optim.Adam(self.critic_2.parameters(), lr=critic_lr)\n\n    def train(self, batch: TensorBatch) -> Dict[str, float]:\n        \"\"\"Update networks on one batch. Return a dict of scalar metrics for logging.\n\n        batch = [states, actions, rewards, next_states, dones, next_actions]\n        (torch.Tensor, on device)\n\n        next_actions is the action at the next timestep in the dataset\n        (useful for algorithms like ReBRAC that penalize deviations from\n        the data's next action).\n\n        TODO: implement your offline RL algorithm here.\n        \"\"\"\n        self.total_it += 1\n        states, actions, rewards, next_states, dones, next_actions = batch\n\n        # -- Placeholder: replace with your algorithm --\n        log_dict: Dict[str, float] = {\n            \"actor_loss\": 0.0,\n            \"critic_loss\": 0.0,\n        }\n        return log_dict\n```\nImprove it. Derive your method, edit the code, then run_experiment()."
+  },
+  {
+   "role": "assistant",
+   "reasoning_content": "I am standing on the scaffold with its `train` doing nothing, and I have to pick the first real rung.\nLet me name the exact disease the scaffold is silent about, because the whole choice of where to start\nfollows from it. I have a fixed dataset D of transitions (s, a, r, s', a'), no environment, and I want a\npolicy better than whoever collected D. The standard tool is approximate dynamic programming: minimize\nthe TD error toward r + γ max_{a'} Q(s', a') with a target critic, and act greedily. Online that is\nfine. Offline it is poison, and I want to be precise about why, because every design decision is about\ndodging this one thing. The bootstrap target contains a maximization (or, in continuous control, an\nactor that ascends Q) over actions a' at the next state. That ranges over actions that never appear in D\nat s'. On those out-of-distribution actions the critic has no data; it extrapolates, and the\nextrapolation is almost always *upward*, because the max actively hunts for whichever action the network\nhappens to over-value. The inflated target backs up through the Bellman recursion, the policy steers\ntoward the over-valued actions, and — with no new transitions to ever correct the mistake — the error\ncompounds into divergence. This is not a small bias; it is the reason the scaffold's default twin-critic\nactor-critic, run naively on a static buffer, would simply fall over.\n\nSo why begin the ladder with implicit Q-learning specifically, and not a behavior-constrained or a\nconservative method? Because I want the *cleanest* possible answer to the OOD-query problem as my floor:\na method whose value learning never evaluates the critic at a single action outside the dataset, so I can\nattribute any later gains to mechanisms beyond \"don't touch unseen actions.\" The whole zoo of fixes —\ngenerative-model constraints, conservative penalties, divergence regularizers — all still, somewhere in\nthe loop, query a learned Q at an action that was not in the data: BCQ's generative model can emit OOD\nactions, CQL has to sample OOD actions precisely to push them down. The OOD query is still in the loop.\nThere is one family that removes the query *entirely*, and that is where I want my floor.\n\nThe cleanest in-sample objective is the SARSA target: bootstrap with the dataset's own next action a',\nnot a max. The scaffold even hands me `next_actions` in the batch for exactly this. Minimizing\n(r + γ Q(s', a') − Q(s, a))² over (s, a, s', a') ∈ D never touches an OOD action — every a and a' came\nfrom D. But MSE fits Q to the *mean* of its targets, so the fixed point is Q^{π_β}: the value of the\nbehavior policy. That is pure policy *evaluation*, with no improvement, and it does no iterated dynamic\nprogramming, so it cannot stitch — it cannot carry the value of a good downstream state backward across\ntransitions that belong to *different* dataset trajectories. On a task whose dataset is a pile of\nsuboptimal fragments that only collectively imply a good policy, plain SARSA collapses. That matters\nhere, because one of my three evaluation datasets is exactly a stitching task: Maze2D rewards reaching a\ngoal, and the medium dataset is full of partial trajectories that have to be sewn together. So I am\ncaught between a safe-but-improvement-free SARSA and the dangerous max.\n\nWhat I actually want in the backup is not the mean over a' and not the unrestricted max, but the value\nof the *best in-support action* — a max restricted to actions the behavior policy could produce at s'.\nThat restriction is the whole game: it improves (so iterating it does real dynamic programming and can\nstitch), but it never reaches an OOD action (so it stays safe). I cannot compute it directly, because\ntaking a max over in-support actions would mean enumerating or sampling actions and querying Q at each —\nand the moment I sample an action and query Q I am back to evaluating Q outside the data. I need the max\nover in-support actions *without ever querying Q at any specific a'*.\n\nHere is the reframe that makes it computable. Fix a state s. As a' ranges over the behavior distribution\nat s, the quantity Q(s, a') is a *random variable*, its randomness coming from the action. SARSA's MSE\nestimates its *mean*. What I want is the upper edge of its support. The statistic that climbs into the\nupper tail of a random variable, estimable by a one-line reweighting of MSE on in-sample data, is the\n**expectile**. The τ-expectile minimizes the asymmetric squared loss |τ − 1(u<0)|·u²: for a positive\nresidual (a sample above the estimate) the weight is τ, for a negative one it is 1 − τ. At τ = 0.5 both\nweights are ½ and this is plain MSE, so the 0.5-expectile is the mean. For τ > 0.5 the samples *above*\nthe estimate are weighted more, so the estimate is pulled *up*, and as τ → 1 it approaches the supremum\nof the support. That is exactly the in-support max I wanted, expressed as a regression I can run with SGD\non dataset actions only.\n\nBut I must take the expectile over actions *only*. The naive move — put the asymmetric loss directly on\nthe TD residual r + γ Q(s', a') − Q(s, a) — is wrong, and the reason is the load-bearing subtlety of the\nwhole method. That target carries two sources of randomness: the action a' (which I *want* to be\noptimistic about — the best a' is the improvement signal) and the stochastic transition s' (which I\nemphatically do *not* want to be optimistic about — being optimistic over the dynamics rewards a target\nthat is high merely because the dice landed on a lucky next state, and that optimism compounds into a\nwildly over-valued function). So I separate the two. A value network V(s) takes the upper expectile over\n*actions* with the transition fixed: regress V(s) asymmetrically against the target critic's Q(s, a)\nover dataset (s, a). Then Q is backed up onto r + γ V(s') by an *ordinary* MSE that averages honestly\nover the next-state transition. The division of labor is the point: V does the optimistic in-support\naction selection; Q does the honest mean over dynamics; both losses touch only dataset (s, a, s'), and\nno policy and no OOD action appear anywhere in value training. This is provably a spectrum — at τ = 0.5\nit is SARSA (policy evaluation of π_β), and as τ → 1 it is Q-learning restricted to in-support actions\n(true multi-step DP up to the in-support optimum) — so τ is the dial between safety and improvement, and\nI will treat it as a hyperparameter rather than slamming it to 1, because large τ leans on extreme upper\nresiduals and is a harder, higher-variance fit.\n\nNow I map this onto the scaffold's edit surface, because that is what actually runs, and the scaffold\nconstrains me in specific ways I should honor rather than fight. The fixed loop hands me a six-tensor\nbatch, exposes `next_actions`, gives me `soft_update` for Polyak targets, and locks hidden width at 256.\nIt also fixes `discount = 0.99`, `tau = 5e-3`, lr `3e-4`, and — important — it does **not** offer me a\nreward-preprocessing knob that I will use here; I leave rewards as the dataset gives them, so my floor is\nthe unadorned IQL with no D4RL reward rescaling. I build three function approximators inside\n`OfflineAlgorithm`: a twin critic (two `Critic` instances plus Polyak targets, optimized jointly), a\nstate-value `ValueFunction` V, and a Gaussian `Actor`. I deliberately make the actor a *state-independent*\nlog-std Gaussian — the mean is an MLP with a Tanh output and the log-std is a single learned parameter\nvector — because policy extraction will be advantage-weighted maximum likelihood and I only need clean\nlog-probabilities of dataset actions, not a full reparameterized squashing. To respect the parameter cap\nand match the method's reference shape, the critic and value nets are two-hidden-layer 256-unit MLPs.\n\nThe per-step update has a fixed order dictated by the dependencies. First I snapshot next_v = V(s')\nunder no-grad, because the Q update needs V at the next state and I want it stable for this step. Then\nthe V update: target_q = min over the two *target* critics of Q(s, a) (clipped double-Q, to stop the V\nregression from chasing an inflated single critic), advantage = target_q − V(s), and V is stepped on the\nasymmetric L2 of that advantage with iql_tau = 0.7 — the value of τ that, on locomotion, sits high\nenough to improve over π_β without the variance blow-up of τ near 1. Then the Q update: targets =\nr + (1 − done)·γ·next_v, and both online critics are regressed to it by MSE, after which I Polyak-update\nboth target critics with tau = 5e-3. The honest MSE here is correct *because* V(s') has already done the\noptimistic action selection; what remains is to average γV(s') over the transition, which is exactly what\na mean does.\n\nThat leaves the policy, and it must obey the same commandment: never query Q at an unseen action. So I\ncannot do argmax or a DDPG-style ∇_a Q ascent, both of which evaluate Q at the policy's possibly-OOD\naction. I extract by advantage-weighted regression: the KL-constrained improvement problem has the\nclosed form π*(a|s) ∝ π_β(a|s)·exp(A(s,a)/λ), and projecting it onto the parametric policy by weighted\nmaximum likelihood gives a loss exp(β·(Q − V))·(−log π(a|s)) averaged over dataset (s, a) — pure\nreweighting of observed actions by how advantaged they are, querying no OOD action, with an implicit\nstay-near-π_β constraint baked in. β = 3.0 is the inverse temperature for locomotion (β → 0 is behavior\ncloning, β → ∞ greedily concentrates); a handful of transitions can have huge advantages whose exp\nweights would swamp the loss, so I clamp exp(βA) at 100. And I cosine-anneal the actor learning rate over\nthe full 1e6 steps, so the advantage-weighting can be aggressive early and settle late. The actor's\n`.act` is what evaluation rolls out — I take the distribution mean at eval time.\n\nWhat do I expect this floor to do, and where is it fragile? On HalfCheetah and Walker2d — dense-reward\nlocomotion where the medium dataset is a single coherent mediocre policy — IQL's in-sample value\nlearning should produce a stable, sensible improvement over the behavior policy without any divergence,\nlanding somewhere comfortably above random but not dramatically above the data, because τ = 0.7 is\ndeliberately conservative and the advantage weighting stays close to π_β. On Maze2d — the stitching task\n— I am genuinely unsure. IQL *can* stitch in principle (the expectile backup is real DP), but its\nimprovement is gated by τ: at 0.7 the in-support max is only weakly approximated, so on a task that needs\naggressive value propagation across fragments, the conservative expectile may leave a lot on the table,\nand the advantage-weighted extraction (which never extrapolates beyond dataset actions) caps how far the\ngoal-reaching policy can deviate from the meandering behavior data. So my falsifiable expectation is:\nsolid, low-variance scores on the two locomotion datasets, and a comparatively weak, high-variance Maze2d\nwhere the conservatism bites — and *that* gap, if it appears, is precisely the opening for the next rung\nto be more aggressive about exploiting the critic rather than hedging with an expectile. The full\nscaffold module — the GaussianPolicy-style `Actor`, the 2×256 `Critic` and `ValueFunction`, and the\n`OfflineAlgorithm` with its V → Q → policy update order — is in the answer, so let me write it in.",
+   "content": "I'm starting with IQL (Implicit Q-Learning): in-sample value learning that never queries the critic at an out-of-distribution action. This first edit installs the IQL network classes — a Gaussian `Actor`, a 2×256 `Critic` and `ValueFunction` with an expectile loss helper — and renames the algorithm class.",
+   "tool_calls": [
+    {
+     "type": "function",
+     "function": {
+      "name": "str_replace",
+      "arguments": {
+       "path": "CORL/algorithms/offline/custom.py",
+       "old_str": "\nclass OfflineAlgorithm:\n    \"\"\"Offline RL algorithm -- implement your approach here.\n\n    Goal: suppress Q-value overestimation while learning from offline data\n    on continuous locomotion tasks (HalfCheetah, Hopper, Walker2d).\n\n    The training loop calls:\n        trainer = OfflineAlgorithm(state_dim, action_dim, max_action, **kwargs)\n        log_dict = trainer.train(batch)          # called at every timestep\n        eval_actor(env, trainer.actor, ...)      # called every eval_freq steps\n\n    You MUST set self.actor to an nn.Module that has an .act(state, device) method.\n    Build all your networks here; the training loop only provides environment dimensions\n    and the hyperparameters from TrainConfig.\n\n    actor_lr, critic_lr, alpha_lr are passed from TrainConfig as starting points --\n    you may use different values by creating optimizers with your own lr in __init__.\n    Any additional algorithm-specific hyperparameters should be hardcoded in __init__.\n\n    Dataset access:\n        replay_buffer is a ReplayBuffer instance containing the full offline dataset.\n        You can use it to compute dataset-level statistics, e.g.:\n            replay_buffer._states[:replay_buffer._size]   -- all states  (Tensor)\n            replay_buffer._actions[:replay_buffer._size]  -- all actions (Tensor)\n            replay_buffer._rewards[:replay_buffer._size]  -- all rewards (Tensor)\n            replay_buffer._next_actions[:replay_buffer._size] -- next actions (Tensor)\n            replay_buffer._size                           -- number of transitions\n\n    Available network classes (defined above, editable):\n        DeterministicActor  -- deterministic tanh policy (for BC / TD3+BC approaches)\n        Actor               -- stochastic Tanh-Gaussian policy (for CQL / IQL approaches)\n        Critic              -- Q(s, a) network\n        ValueFunction       -- V(s) network (for IQL-style approaches)\n    Available utilities (fixed): soft_update, init_module_weights\n    \"\"\"",
+       "new_str": "# EDITABLE region of custom.py — step 1: IQL\nfrom torch.optim.lr_scheduler import CosineAnnealingLR\n\nEXP_ADV_MAX = 100.0\n\ndef asymmetric_l2_loss(u: torch.Tensor, tau: float) -> torch.Tensor:\n    return torch.mean(torch.abs(tau - (u < 0).float()) * u**2)\n\n\nclass Actor(nn.Module):\n    \"\"\"GaussianPolicy for IQL — state-independent log_std, forward returns Normal.\"\"\"\n\n    def __init__(self, state_dim: int, action_dim: int, max_action: float,\n                 orthogonal_init: bool = False):\n        super().__init__()\n        self.max_action = max_action\n        self.action_dim = action_dim\n        self.net = nn.Sequential(\n            nn.Linear(state_dim, 256), nn.ReLU(),\n            nn.Linear(256, 256), nn.ReLU(),\n            nn.Linear(256, action_dim), nn.Tanh(),\n        )\n        self.log_std = nn.Parameter(torch.zeros(action_dim, dtype=torch.float32))\n        self.log_std_min = -20.0\n        self.log_std_max = 2.0\n\n    def forward(self, state: torch.Tensor) -> Normal:\n        mean = self.net(state)\n        std = torch.exp(self.log_std.clamp(self.log_std_min, self.log_std_max))\n        return Normal(mean, std)\n\n    @torch.no_grad()\n    def act(self, state: np.ndarray, device: str = \"cpu\") -> np.ndarray:\n        state = torch.tensor(state.reshape(1, -1), device=device, dtype=torch.float32)\n        dist = self(state)\n        action = dist.mean if not self.training else dist.sample()\n        action = torch.clamp(self.max_action * action, -self.max_action, self.max_action)\n        return action.cpu().data.numpy().flatten()\n\n\nclass Critic(nn.Module):\n    \"\"\"Q-function Q(s, a). 2 x 256 MLP (IQL reference architecture).\"\"\"\n\n    def __init__(self, state_dim: int, action_dim: int, orthogonal_init: bool = False):\n        super().__init__()\n        self.net = nn.Sequential(\n            nn.Linear(state_dim + action_dim, 256), nn.ReLU(),\n            nn.Linear(256, 256), nn.ReLU(),\n            nn.Linear(256, 1),\n        )\n\n    def forward(self, state: torch.Tensor, action: torch.Tensor) -> torch.Tensor:\n        return self.net(torch.cat([state, action], dim=-1)).squeeze(-1)\n\n\nclass ValueFunction(nn.Module):\n    \"\"\"State value function V(s). 2 x 256 MLP (IQL reference architecture).\"\"\"\n\n    def __init__(self, state_dim: int, orthogonal_init: bool = False):\n        super().__init__()\n        self.net = nn.Sequential(\n            nn.Linear(state_dim, 256), nn.ReLU(),\n            nn.Linear(256, 256), nn.ReLU(),\n            nn.Linear(256, 1),\n        )\n\n    def forward(self, state: torch.Tensor) -> torch.Tensor:\n        return self.net(state).squeeze(-1)\n\n\nclass OfflineAlgorithm:\n    \"\"\"IQL — Implicit Q-Learning with expectile regression and advantage-weighted actor.\"\"\""
+      }
+     }
+    }
+   ]
+  },
+  {
+   "role": "tool",
+   "content": "Successfully replaced text in CORL/algorithms/offline/custom.py."
+  },
+  {
+   "role": "assistant",
+   "reasoning_content": "",
+   "content": "",
+   "tool_calls": [
+    {
+     "type": "function",
+     "function": {
+      "name": "str_replace",
+      "arguments": {
+       "path": "CORL/algorithms/offline/custom.py",
+       "old_str": "        max_action: float,\n        replay_buffer: \"ReplayBuffer\" = None,\n        discount: float = 0.99,",
+       "new_str": "        max_action: float,\n        replay_buffer=None,\n        discount: float = 0.99,"
+      }
+     }
+    }
+   ]
+  },
+  {
+   "role": "tool",
+   "content": "Successfully replaced text in CORL/algorithms/offline/custom.py."
+  },
+  {
+   "role": "assistant",
+   "reasoning_content": "Now the body: build the twin critic, the value net and the Gaussian actor, then the V → Q → policy update order in `train`.",
+   "content": "",
+   "tool_calls": [
+    {
+     "type": "function",
+     "function": {
+      "name": "str_replace",
+      "arguments": {
+       "path": "CORL/algorithms/offline/custom.py",
+       "old_str": "        self.total_it = 0\n        # Full offline dataset -- use for computing global statistics\n        # (e.g. action mean/std for normalization, reward scaling, etc.)\n        self.replay_buffer = replay_buffer\n\n        # Build networks -- modify or replace as needed\n        self.actor = Actor(state_dim, action_dim, max_action, orthogonal_init).to(device)\n        self.critic_1 = Critic(state_dim, action_dim, orthogonal_init).to(device)\n        self.critic_2 = Critic(state_dim, action_dim, orthogonal_init).to(device)\n        self.critic_1_target = deepcopy(self.critic_1)\n        self.critic_2_target = deepcopy(self.critic_2)\n\n        self.actor_optimizer = torch.optim.Adam(self.actor.parameters(), lr=actor_lr)\n        self.critic_1_optimizer = torch.optim.Adam(self.critic_1.parameters(), lr=critic_lr)\n        self.critic_2_optimizer = torch.optim.Adam(self.critic_2.parameters(), lr=critic_lr)\n\n    def train(self, batch: TensorBatch) -> Dict[str, float]:\n        \"\"\"Update networks on one batch. Return a dict of scalar metrics for logging.\n\n        batch = [states, actions, rewards, next_states, dones, next_actions]\n        (torch.Tensor, on device)\n\n        next_actions is the action at the next timestep in the dataset\n        (useful for algorithms like ReBRAC that penalize deviations from\n        the data's next action).\n\n        TODO: implement your offline RL algorithm here.\n        \"\"\"\n        self.total_it += 1\n        states, actions, rewards, next_states, dones, next_actions = batch\n\n        # -- Placeholder: replace with your algorithm --\n        log_dict: Dict[str, float] = {\n            \"actor_loss\": 0.0,\n            \"critic_loss\": 0.0,\n        }\n        return log_dict",
+       "new_str": "        self.total_it = 0\n\n        # IQL hyperparameters\n        self.beta = 3.0\n        self.iql_tau = 0.7\n\n        self.actor = Actor(state_dim, action_dim, max_action).to(device)\n        self.actor_optimizer = torch.optim.Adam(self.actor.parameters(), lr=actor_lr)\n        self.actor_lr_schedule = CosineAnnealingLR(self.actor_optimizer, int(1e6))\n\n        self.critic_1 = Critic(state_dim, action_dim, orthogonal_init).to(device)\n        self.critic_2 = Critic(state_dim, action_dim, orthogonal_init).to(device)\n        self.critic_1_target = deepcopy(self.critic_1).requires_grad_(False).to(device)\n        self.critic_2_target = deepcopy(self.critic_2).requires_grad_(False).to(device)\n        self.q_optimizer = torch.optim.Adam(\n            list(self.critic_1.parameters()) + list(self.critic_2.parameters()),\n            lr=critic_lr,\n        )\n\n        self.vf = ValueFunction(state_dim, orthogonal_init).to(device)\n        self.v_optimizer = torch.optim.Adam(self.vf.parameters(), lr=critic_lr)\n\n    def _update_v(self, observations, actions, log_dict):\n        with torch.no_grad():\n            target_q = torch.min(\n                self.critic_1_target(observations, actions),\n                self.critic_2_target(observations, actions),\n            )\n        v = self.vf(observations)\n        adv = target_q - v\n        v_loss = asymmetric_l2_loss(adv, self.iql_tau)\n        log_dict[\"value_loss\"] = v_loss.item()\n        self.v_optimizer.zero_grad()\n        v_loss.backward()\n        self.v_optimizer.step()\n        return adv\n\n    def _update_q(self, next_v, observations, actions, rewards, dones, log_dict):\n        targets = rewards + (1.0 - dones.float()) * self.discount * next_v.detach()\n        q1 = self.critic_1(observations, actions)\n        q2 = self.critic_2(observations, actions)\n        q_loss = (F.mse_loss(q1, targets) + F.mse_loss(q2, targets)) / 2.0\n        log_dict[\"q_loss\"] = q_loss.item()\n        self.q_optimizer.zero_grad()\n        q_loss.backward()\n        self.q_optimizer.step()\n        soft_update(self.critic_1_target, self.critic_1, self.tau)\n        soft_update(self.critic_2_target, self.critic_2, self.tau)\n\n    def _update_policy(self, adv, observations, actions, log_dict):\n        exp_adv = torch.exp(self.beta * adv.detach()).clamp(max=EXP_ADV_MAX)\n        policy_out = self.actor(observations)\n        if isinstance(policy_out, torch.distributions.Distribution):\n            bc_losses = -policy_out.log_prob(actions).sum(-1, keepdim=False)\n        elif torch.is_tensor(policy_out):\n            bc_losses = torch.sum((policy_out - actions) ** 2, dim=1)\n        else:\n            raise NotImplementedError\n        policy_loss = torch.mean(exp_adv * bc_losses)\n        log_dict[\"actor_loss\"] = policy_loss.item()\n        self.actor_optimizer.zero_grad()\n        policy_loss.backward()\n        self.actor_optimizer.step()\n        self.actor_lr_schedule.step()\n\n    def train(self, batch: TensorBatch) -> Dict[str, float]:\n        self.total_it += 1\n        observations, actions, rewards, next_observations, dones, *_ = batch\n        log_dict: Dict[str, float] = {}\n\n        with torch.no_grad():\n            next_v = self.vf(next_observations)\n\n        adv = self._update_v(observations, actions, log_dict)\n        rewards = rewards.squeeze(dim=-1)\n        dones = dones.squeeze(dim=-1)\n        self._update_q(next_v, observations, actions, rewards, dones, log_dict)\n        self._update_policy(adv, observations, actions, log_dict)\n\n        return log_dict"
+      }
+     }
+    }
+   ]
+  },
+  {
+   "role": "tool",
+   "content": "Successfully replaced text in CORL/algorithms/offline/custom.py."
+  },
+  {
+   "role": "assistant",
+   "reasoning_content": "",
+   "content": "Run the experiment to measure this.",
+   "tool_calls": [
+    {
+     "type": "function",
+     "function": {
+      "name": "run_experiment",
+      "arguments": {}
+     }
+    }
+   ]
+  },
+  {
+   "role": "tool",
+   "content": "Measured result for IQL (leaderboard row `baseline:iql`, `is_final,true`), D4RL normalized score per\ndataset, three seeds and mean.\n\n| seed | halfcheetah-medium-v2 | maze2d-medium-v1 | walker2d-medium-v2 |\n|------|----------------------:|-----------------:|-------------------:|\n| 42   | 48.094 | 29.694 | 75.467 |\n| 123  | 48.230 | 32.797 | 78.934 |\n| 456  | 47.982 | 38.701 | 86.984 |\n| **mean** | **48.102** | **33.731** | **80.462** |\n\n| dataset | mean | std |\n|---------|-----:|----:|\n| halfcheetah-medium-v2 | 48.102 | 0.124 |\n| maze2d-medium-v1 | 33.731 | 4.576 |\n| walker2d-medium-v2 | 80.462 | 5.909 |"
+  },
+  {
+   "role": "assistant",
+   "reasoning_content": "IQL gave me a clean read, and the numbers say exactly where its conservatism cost me. On HalfCheetah it\nlanded 48.10 with a standard deviation of 0.12 across seeds — rock-steady, and essentially *pinned* to\nthe behavior policy: medium HalfCheetah data is a single mediocre running policy, and IQL reproduced its\nvalue almost exactly without divergence. That is the floor behaving as designed — safe, in-sample, and\nnot improving much. Walker2d was 80.46 but with std 5.9 (75.5 / 78.9 / 87.0 across the three seeds), so\nthere the expectile backup did find some headroom but unevenly. The damning number is Maze2d: 33.73 mean\nwith std 4.6 (29.7 / 32.8 / 38.7), the worst of the three and not close to the data's reachable ceiling.\nThat is the stitching failure I worried about made concrete. Maze2d's medium dataset is a heap of\npartial goal-reaching fragments, and good performance needs the value of a goal-adjacent state to\npropagate backward across transitions from *different* trajectories. IQL *can* do that in principle, but\nits propagation is throttled by τ = 0.7: the expectile only weakly approximates the in-support max, so\nthe value signal that should flow back through the maze stays weak, and the advantage-weighted extraction\n— which never pushes the policy past dataset actions — caps how decisively the policy can commit to the\ngoal-reaching fragments. The diagnosis is sharp: IQL is *too hedged*. Its safety came from refusing to\never exploit the critic directly (no argmax, no ∇_aQ ascent), and on the dense locomotion tasks that\nrefusal cost little, but on a task that needs aggressive value exploitation it left a lot on the floor,\nand the per-seed spread on Maze2d (a 9-point swing) says the weak signal is also fragile to seed.\n\nSo the move I want is the opposite stance: let the policy actually *ascend the critic* — real\ndeterministic-policy-gradient improvement, which can commit hard to high-value actions and propagate\nvalue vigorously — but bolt on the minimum amount of behavior regularization needed to keep the OOD\noverestimation from blowing up. IQL avoided the OOD query entirely; I now want to *allow* the query and\n*tame* it, because allowing it is the only way to get improvement stronger than an in-sample expectile.\nThis is a different bet on the same disease, and it is worth making precisely because IQL's weakness is\non the task where exploitation matters most.\n\nLet me first rebuild the exploitation engine, because its own overestimation pathology is what the BC\nterm will have to counter. The base is a deterministic actor-critic: a deterministic actor a = π(s)\nascending a learned critic by ∇_φ J = E[∇_aQ(s,a)|_{a=π(s)} ∇_φπ(s)], with replay and target networks.\nEven *online* this object overestimates, and I want the mechanism explicit because it carries over. The\ncritic has function-approximation error; the actor climbs wherever the critic bulges upward; the bulges\nare disproportionately where the error is positive; so the actor selects for the upward errors and the\nvalue inflates — the same selection-for-positive-error as a discrete max, just routed through the\ngradient. Offline this is catastrophic, because there are no fresh transitions to correct an inflated\npocket, but the structural cures are the same ones that stabilize TD3 online, so I carry the full TD3\ncorrection stack in.\n\nFirst, clipped double-Q. The reason a single critic's target inflates is that the same estimator both\nselects and evaluates the next action, so it evaluates its own optimistic pick. Keep two critics and,\nwhere I need a single target value, take the *min* of the two target critics at the next action. The\nasymmetry is the justification: an overestimated action gets selected by the actor and its inflation is\npropagated through every policy update — overestimation is actively chased — whereas an underestimated\naction is simply avoided, so it is not amplified. So biasing toward the smaller estimate is the safe\ndirection; the min caps the target at the worst case of a single critic and leans toward underestimation,\nwhich this feedback loop tolerates far better than overestimation. Second, target policy smoothing. A\ndeterministic actor will find and sit on a narrow spurious peak in the critic — an action where\napproximation error happens to spike upward — and read the target off that knife-edge. So I perturb the\ntarget action with clipped Gaussian noise, ã = clip(π_target(s') + clip(N(0,σ),−c,c), −a_max, a_max),\nwhich makes the target reflect the value of a small *neighborhood* and averages the spike away; σ = 0.2,\nc = 0.5 in action units. Third, delayed policy updates and Polyak targets: fit the critic for two steps\nper actor step (policy_freq = 2) so each policy move sees a critic that has had time to drive its error\ndown, and soft-update all targets with tau = 5e-3 so the bootstrap chases a stationary objective rather\nthan its own moving estimate. These three — min target for bias, smoothing for the deterministic-peak\nvariance, delay plus soft targets for accumulated-error variance — are one coordinated attack on\nfunction-approximation error, and they are the only reason a DPG actor is stable enough to regularize.\n\nNow the offline piece, and I want it to be *minimal*, for a reason that IQL's experience reinforces: in\noffline RL every extra knob is costly because I cannot validate it by interacting, so the more machinery\nI add (generative behavior models, divergence estimators, conservative samplers), the more I am tuning\nblind. IQL's whole appeal was that it added essentially one idea (the expectile) to in-sample value\nlearning; I want my exploitation-first method to be just as parsimonious. The minimal way to keep an\nascending actor near the data is to add a behavior-cloning term straight to the policy objective: while\nthe actor maximizes Q(s, π(s)), also penalize how far π(s) is from the dataset action a at that state.\nThe policy objective becomes maximize λ·Q(s, π(s)) − (π(s) − a)², an L2 pull toward the data. I pick L2\nto the dataset action rather than a KL or MMD divergence for the same minimality reason — no behavior\nmodel to fit, one line, deterministic policy — and there is no principled reason a particular divergence\nwins here. This is the cheapest possible \"stay near π_β,\" and it directly answers the OOD overestimation:\nthe actor can still ascend the critic, but it is anchored, so it cannot run off to the over-valued\nout-of-distribution actions that have no correction.\n\nThe one subtlety that makes the BC term work across datasets is the coefficient. The BC penalty\n(π − a)² is bounded — for actions in [−1, 1] it is at most about 4 per dimension — but Q scales with the\nreward scale, which differs across datasets, so a fixed λ would make the BC term dominate on\nsmall-reward tasks and vanish on large-reward ones. The fix is to make λ a *normalizer*, not a fixed\nweight: λ = α / ((1/N) Σ |Q(s, a)|), with α = 2.5. Dividing by the mean absolute Q over the minibatch\nrescales the Q term so the RL/BC balance is decoupled from the reward scale and one α works across all\nthree datasets; the mean |Q| must be detached so λ is a scale and not a gradient path. This is the whole\nalgorithm: TD3's stabilized critic, plus a reward-scale-normalized L2 pull toward the dataset action in\nthe actor loss. State normalization I get for free from the fixed loop (it computes exact dataset mean/std\nand normalizes features), which matters because a deterministic actor is sensitive to feature scaling;\nand as with IQL I leave the *rewards* unnormalized, so the only offline-specific change versus online TD3\nis the BC term and the λ normalizer.\n\nMapping to the edit surface: I build a `DeterministicActor` (2×256, tanh-squashed) and its target, twin\n2×256 `Critic`s and their targets, three Adam optimizers at 3e-4. Every step I update both critics on the\nmin-of-target-critics smoothed target by MSE; every second step I update the actor on\n−λ·Q1(s, π(s)) + MSE(π(s), a) with λ = α/|Q1|.mean().detach(), then Polyak the actor and both critic\ntargets. I ascend the *first* critic for the policy gradient (the DPG through Q1), exactly as the\nstabilized base prescribes. The full scaffold module is in the answer.\n\nHere is what I expect against IQL's numbers, stated so it can be falsified. On HalfCheetah I expect to\nroughly *match* IQL (~48): medium HalfCheetah is a single coherent policy with little room above the\ndata, so both \"stay near π_β by expectile\" and \"stay near π_β by BC\" should converge to about the same\nnear-data value — if anything, TD3+BC's direct critic ascent might edge it slightly. The real test is\nMaze2d, where IQL's 33.7 exposed the stitching gap: the deterministic-policy-gradient actor can commit\nhard to high-value goal-reaching actions instead of hedging, so I expect a *substantially* higher Maze2d\nmean than IQL's 33.7 — but I also expect it to be *high-variance across seeds*, because Maze2d's value\nlandscape is multimodal (many goal approaches) and the BC anchor plus seed-dependent critic peaks will\nsend different seeds to different basins; a wide per-seed spread on Maze2d is the predicted signature, and\nif it appears it is the next opening — a method that does not let a single seed's critic peak dominate.\nOn Walker2d I expect to clear IQL's 80.5, because the exploitation actor should extract more from the\nwalking data than the hedged expectile did, and probably with tighter seed spread than IQL's 5.9. If\ninstead TD3+BC merely ties IQL everywhere, the BC anchor is too tight and the lesson is that the\nregularization, not the exploitation, is the binding constraint. Let me build it.",
+   "content": "Switching to TD3+BC: a deterministic actor that ascends the critic, anchored to the data by an L2 behavior-cloning term. This first edit swaps the IQL Gaussian `Actor` for a deterministic tanh policy.",
+   "tool_calls": [
+    {
+     "type": "function",
+     "function": {
+      "name": "str_replace",
+      "arguments": {
+       "path": "CORL/algorithms/offline/custom.py",
+       "old_str": "# EDITABLE region of custom.py — step 1: IQL\nfrom torch.optim.lr_scheduler import CosineAnnealingLR\n\nEXP_ADV_MAX = 100.0\n\ndef asymmetric_l2_loss(u: torch.Tensor, tau: float) -> torch.Tensor:\n    return torch.mean(torch.abs(tau - (u < 0).float()) * u**2)\n\n\nclass Actor(nn.Module):\n    \"\"\"GaussianPolicy for IQL — state-independent log_std, forward returns Normal.\"\"\"\n\n    def __init__(self, state_dim: int, action_dim: int, max_action: float,\n                 orthogonal_init: bool = False):\n        super().__init__()\n        self.max_action = max_action\n        self.action_dim = action_dim\n        self.net = nn.Sequential(",
+       "new_str": "# EDITABLE region of custom.py — step 2: TD3+BC\nclass DeterministicActor(nn.Module):\n    \"\"\"Deterministic policy pi(s) = tanh(net(s)) * max_action. 2 x 256 MLP.\"\"\"\n\n    def __init__(self, state_dim: int, action_dim: int, max_action: float):\n        super().__init__()\n        self.max_action = max_action\n        self.net = nn.Sequential("
+      }
+     }
+    }
+   ]
+  },
+  {
+   "role": "tool",
+   "content": "Successfully replaced text in CORL/algorithms/offline/custom.py."
+  },
+  {
+   "role": "assistant",
+   "reasoning_content": "",
+   "content": "",
+   "tool_calls": [
+    {
+     "type": "function",
+     "function": {
+      "name": "str_replace",
+      "arguments": {
+       "path": "CORL/algorithms/offline/custom.py",
+       "old_str": "        )\n        self.log_std = nn.Parameter(torch.zeros(action_dim, dtype=torch.float32))\n        self.log_std_min = -20.0\n        self.log_std_max = 2.0\n\n    def forward(self, state: torch.Tensor) -> Normal:\n        mean = self.net(state)\n        std = torch.exp(self.log_std.clamp(self.log_std_min, self.log_std_max))\n        return Normal(mean, std)",
+       "new_str": "        )\n\n    def forward(self, state: torch.Tensor) -> torch.Tensor:\n        return self.max_action * self.net(state)"
+      }
+     }
+    }
+   ]
+  },
+  {
+   "role": "tool",
+   "content": "Successfully replaced text in CORL/algorithms/offline/custom.py."
+  },
+  {
+   "role": "assistant",
+   "reasoning_content": "",
+   "content": "",
+   "tool_calls": [
+    {
+     "type": "function",
+     "function": {
+      "name": "str_replace",
+      "arguments": {
+       "path": "CORL/algorithms/offline/custom.py",
+       "old_str": "        state = torch.tensor(state.reshape(1, -1), device=device, dtype=torch.float32)\n        dist = self(state)\n        action = dist.mean if not self.training else dist.sample()\n        action = torch.clamp(self.max_action * action, -self.max_action, self.max_action)\n        return action.cpu().data.numpy().flatten()\n\n\nclass Critic(nn.Module):\n    \"\"\"Q-function Q(s, a). 2 x 256 MLP (IQL reference architecture).\"\"\"",
+       "new_str": "        state = torch.tensor(state.reshape(1, -1), device=device, dtype=torch.float32)\n        return self(state).cpu().data.numpy().flatten()\n\n\nclass Critic(nn.Module):\n    \"\"\"Q-function Q(s, a). 2 x 256 MLP (TD3+BC reference architecture).\"\"\""
+      }
+     }
+    }
+   ]
+  },
+  {
+   "role": "tool",
+   "content": "Successfully replaced text in CORL/algorithms/offline/custom.py."
+  },
+  {
+   "role": "assistant",
+   "reasoning_content": "",
+   "content": "",
+   "tool_calls": [
+    {
+     "type": "function",
+     "function": {
+      "name": "str_replace",
+      "arguments": {
+       "path": "CORL/algorithms/offline/custom.py",
+       "old_str": "\nclass ValueFunction(nn.Module):\n    \"\"\"State value function V(s). 2 x 256 MLP (IQL reference architecture).\"\"\"\n\n    def __init__(self, state_dim: int, orthogonal_init: bool = False):\n        super().__init__()\n        self.net = nn.Sequential(\n            nn.Linear(state_dim, 256), nn.ReLU(),\n            nn.Linear(256, 256), nn.ReLU(),\n            nn.Linear(256, 1),\n        )\n\n    def forward(self, state: torch.Tensor) -> torch.Tensor:\n        return self.net(state).squeeze(-1)\n\n\nclass OfflineAlgorithm:\n    \"\"\"IQL — Implicit Q-Learning with expectile regression and advantage-weighted actor.\"\"\"",
+       "new_str": "\nclass OfflineAlgorithm:\n    \"\"\"TD3+BC — Twin Delayed DDPG with Behavior Cloning regularization.\"\"\""
+      }
+     }
+    }
+   ]
+  },
+  {
+   "role": "tool",
+   "content": "Successfully replaced text in CORL/algorithms/offline/custom.py."
+  },
+  {
+   "role": "assistant",
+   "reasoning_content": "Now the body: the stabilized TD3 critic update and the delayed actor update with the reward-scale-normalized BC pull toward the dataset action.",
+   "content": "",
+   "tool_calls": [
+    {
+     "type": "function",
+     "function": {
+      "name": "str_replace",
+      "arguments": {
+       "path": "CORL/algorithms/offline/custom.py",
+       "old_str": "\n        # IQL hyperparameters\n        self.beta = 3.0\n        self.iql_tau = 0.7\n\n        self.actor = Actor(state_dim, action_dim, max_action).to(device)\n        self.actor_optimizer = torch.optim.Adam(self.actor.parameters(), lr=actor_lr)\n        self.actor_lr_schedule = CosineAnnealingLR(self.actor_optimizer, int(1e6))\n\n        self.critic_1 = Critic(state_dim, action_dim, orthogonal_init).to(device)\n        self.critic_2 = Critic(state_dim, action_dim, orthogonal_init).to(device)\n        self.critic_1_target = deepcopy(self.critic_1).requires_grad_(False).to(device)\n        self.critic_2_target = deepcopy(self.critic_2).requires_grad_(False).to(device)\n        self.q_optimizer = torch.optim.Adam(\n            list(self.critic_1.parameters()) + list(self.critic_2.parameters()),\n            lr=critic_lr,\n        )\n\n        self.vf = ValueFunction(state_dim, orthogonal_init).to(device)\n        self.v_optimizer = torch.optim.Adam(self.vf.parameters(), lr=critic_lr)\n\n    def _update_v(self, observations, actions, log_dict):\n        with torch.no_grad():\n            target_q = torch.min(\n                self.critic_1_target(observations, actions),\n                self.critic_2_target(observations, actions),\n            )\n        v = self.vf(observations)\n        adv = target_q - v\n        v_loss = asymmetric_l2_loss(adv, self.iql_tau)\n        log_dict[\"value_loss\"] = v_loss.item()\n        self.v_optimizer.zero_grad()\n        v_loss.backward()\n        self.v_optimizer.step()\n        return adv\n\n    def _update_q(self, next_v, observations, actions, rewards, dones, log_dict):\n        targets = rewards + (1.0 - dones.float()) * self.discount * next_v.detach()\n        q1 = self.critic_1(observations, actions)\n        q2 = self.critic_2(observations, actions)\n        q_loss = (F.mse_loss(q1, targets) + F.mse_loss(q2, targets)) / 2.0\n        log_dict[\"q_loss\"] = q_loss.item()\n        self.q_optimizer.zero_grad()\n        q_loss.backward()\n        self.q_optimizer.step()\n        soft_update(self.critic_1_target, self.critic_1, self.tau)\n        soft_update(self.critic_2_target, self.critic_2, self.tau)\n\n    def _update_policy(self, adv, observations, actions, log_dict):\n        exp_adv = torch.exp(self.beta * adv.detach()).clamp(max=EXP_ADV_MAX)\n        policy_out = self.actor(observations)\n        if isinstance(policy_out, torch.distributions.Distribution):\n            bc_losses = -policy_out.log_prob(actions).sum(-1, keepdim=False)\n        elif torch.is_tensor(policy_out):\n            bc_losses = torch.sum((policy_out - actions) ** 2, dim=1)\n        else:\n            raise NotImplementedError\n        policy_loss = torch.mean(exp_adv * bc_losses)\n        log_dict[\"actor_loss\"] = policy_loss.item()\n        self.actor_optimizer.zero_grad()\n        policy_loss.backward()\n        self.actor_optimizer.step()\n        self.actor_lr_schedule.step()\n\n    def train(self, batch: TensorBatch) -> Dict[str, float]:\n        self.total_it += 1\n        observations, actions, rewards, next_observations, dones, *_ = batch\n        log_dict: Dict[str, float] = {}\n\n        with torch.no_grad():\n            next_v = self.vf(next_observations)\n\n        adv = self._update_v(observations, actions, log_dict)\n        rewards = rewards.squeeze(dim=-1)\n        dones = dones.squeeze(dim=-1)\n        self._update_q(next_v, observations, actions, rewards, dones, log_dict)\n        self._update_policy(adv, observations, actions, log_dict)\n\n        return log_dict",
+       "new_str": "\n        # TD3+BC hyperparameters\n        self.alpha = 2.5\n        self.policy_noise = 0.2 * max_action\n        self.noise_clip = 0.5 * max_action\n        self.policy_freq = 2\n\n        # Actor (deterministic) + target\n        self.actor = DeterministicActor(state_dim, action_dim, max_action).to(device)\n        self.actor_target = deepcopy(self.actor)\n        self.actor_optimizer = torch.optim.Adam(self.actor.parameters(), lr=actor_lr)\n\n        # Twin critics + targets\n        self.critic_1 = Critic(state_dim, action_dim, orthogonal_init).to(device)\n        self.critic_1_target = deepcopy(self.critic_1)\n        self.critic_1_optimizer = torch.optim.Adam(self.critic_1.parameters(), lr=critic_lr)\n\n        self.critic_2 = Critic(state_dim, action_dim, orthogonal_init).to(device)\n        self.critic_2_target = deepcopy(self.critic_2)\n        self.critic_2_optimizer = torch.optim.Adam(self.critic_2.parameters(), lr=critic_lr)\n\n    def train(self, batch: TensorBatch) -> Dict[str, float]:\n        self.total_it += 1\n        states, actions, rewards, next_states, dones, *_ = batch\n        not_done = 1 - dones.squeeze(-1)\n        rewards_flat = rewards.squeeze(-1)\n        log_dict: Dict[str, float] = {}\n\n        with torch.no_grad():\n            noise = (torch.randn_like(actions) * self.policy_noise).clamp(\n                -self.noise_clip, self.noise_clip\n            )\n            next_action = (self.actor_target(next_states) + noise).clamp(\n                -self.max_action, self.max_action\n            )\n            target_q1 = self.critic_1_target(next_states, next_action)\n            target_q2 = self.critic_2_target(next_states, next_action)\n            target_q = torch.min(target_q1, target_q2)\n            target_q = rewards_flat + not_done * self.discount * target_q\n\n        current_q1 = self.critic_1(states, actions)\n        current_q2 = self.critic_2(states, actions)\n        critic_loss = F.mse_loss(current_q1, target_q) + F.mse_loss(current_q2, target_q)\n        log_dict[\"critic_loss\"] = critic_loss.item()\n\n        self.critic_1_optimizer.zero_grad()\n        self.critic_2_optimizer.zero_grad()\n        critic_loss.backward()\n        self.critic_1_optimizer.step()\n        self.critic_2_optimizer.step()\n\n        # Delayed actor updates\n        if self.total_it % self.policy_freq == 0:\n            pi = self.actor(states)\n            q = self.critic_1(states, pi)\n            lmbda = self.alpha / q.abs().mean().detach()\n\n            actor_loss = -lmbda * q.mean() + F.mse_loss(pi, actions)\n            log_dict[\"actor_loss\"] = actor_loss.item()\n\n            self.actor_optimizer.zero_grad()\n            actor_loss.backward()\n            self.actor_optimizer.step()\n\n            soft_update(self.critic_1_target, self.critic_1, self.tau)\n            soft_update(self.critic_2_target, self.critic_2, self.tau)\n            soft_update(self.actor_target, self.actor, self.tau)\n\n        return log_dict"
+      }
+     }
+    }
+   ]
+  },
+  {
+   "role": "tool",
+   "content": "Successfully replaced text in CORL/algorithms/offline/custom.py."
+  },
+  {
+   "role": "assistant",
+   "reasoning_content": "",
+   "content": "Run the experiment to measure this.",
+   "tool_calls": [
+    {
+     "type": "function",
+     "function": {
+      "name": "run_experiment",
+      "arguments": {}
+     }
+    }
+   ]
+  },
+  {
+   "role": "tool",
+   "content": "Measured result for TD3+BC (leaderboard row `baseline:td3_bc`, `is_final,true`), D4RL normalized score\nper dataset, three seeds and mean.\n\n| seed | halfcheetah-medium-v2 | maze2d-medium-v1 | walker2d-medium-v2 |\n|------|----------------------:|-----------------:|-------------------:|\n| 42   | 48.180 | 114.989 | 85.318 |\n| 123  | 48.007 |  27.197 | 85.268 |\n| 456  | 48.796 |   8.692 | 84.838 |\n| **mean** | **48.328** | **50.293** | **85.141** |\n\n| dataset | mean | std |\n|---------|-----:|----:|\n| halfcheetah-medium-v2 | 48.328 | 0.415 |\n| maze2d-medium-v1 | 50.293 | 56.788 |\n| walker2d-medium-v2 | 85.141 | 0.264 |"
+  },
+  {
+   "role": "assistant",
+   "reasoning_content": "TD3+BC confirmed the bet *and* exposed exactly the fragility I flagged. On HalfCheetah it landed 48.33\n(std 0.42) — a dead heat with IQL's 48.10, which is the expected result on a single-policy dataset with\nno headroom: both \"stay near π_β\" recipes converge to the same near-data value. On Walker2d it cleared\nIQL, 85.14 versus 80.46, and far tighter (std 0.26 versus IQL's 5.9): letting the deterministic actor\nascend the critic extracted more from the walking data than the hedged expectile did, and did it\nstably. So exploitation paid off where there was room to exploit. But Maze2d is the story, and it is\nugly in precisely the way I predicted: mean 50.29, std **56.8**, with per-seed scores of 114.99, 27.20,\nand 8.69. One seed essentially *solved* the maze; one was mediocre; one nearly failed. The mean is\nhigher than IQL's 33.73, but it is a mean over a coin flip — a single lucky seed dragging up two poor\nones. This is the multimodal-basin failure I called out: Maze2d's value landscape has many goal\napproaches, the actor commits hard to whatever high-value pocket its critic happens to carve, and the\ntwo design choices that let TD3+BC commit — a sharp deterministic actor ascending a critic with\nspurious peaks, and a *single, fixed* BC coefficient α = 2.5 normalized only by mean|Q| — mean different\nseeds fall into different basins and stay there. The 8.69 seed is a critic whose peak landed in a bad\nbasin and an actor that BC-anchored itself there.\n\nSo I have two distinct things to fix, and they correspond to the two roles the BC term is being asked to\nplay with one knob. First, the *variance*: the critic on Maze2d has sharp, seed-dependent peaks that the\ndeterministic actor overfits, and TD3's target smoothing alone is clearly not enough to flatten them —\nthe 56.8 std says so. Second, the *coupling*: TD3+BC uses one coefficient α to control both how much the\n*actor* clones the data and, implicitly, how conservative the *critic target* is, when these are\ngenuinely different jobs that want different strengths on different datasets. HalfCheetah (a tight\nsingle policy) wants almost no BC pressure so the actor can squeeze the last drop of value;\nWalker2d wants a bit more; Maze2d wants the critic target pinned hard to in-data next-actions so it\nstops manufacturing the spurious high-value pockets in the first place. One global α cannot serve all\nthree. The next rung is the minimal-but-decoupled version of exactly this.\n\nStart with the variance, because it is the cheaper and more general fix and it changes the architecture.\nThe critic peaks are a function-approximation pathology: an unconstrained MLP critic, fit by bootstrapped\nregression on a fixed dataset, develops sharp ridges in action space where it extrapolates, and those\nridges are what the deterministic actor climbs into. The structural remedy is to make the critic\n*smoother as a function of its input* by adding LayerNorm after each hidden activation. LayerNorm\nnormalizes the pre-activation statistics layer by layer, which bounds how fast the critic's output can\nchange across nearby inputs — it regularizes the Lipschitz behavior of the network. A critic that cannot\nspike arbitrarily across nearby (s, a) cannot present the actor with a knife-edge OOD pocket to overfit,\nso the value extrapolation that drives offline overestimation is damped at the source, by the network's\ngeometry rather than by an explicit penalty. This is the single most important architectural change from\nTD3+BC, and it is what lets me then *deepen* the networks safely: I move actor and critic from 2×256 to\n3×256, because a deeper critic has more capacity to represent the maze's value structure, and the\nLayerNorm is what keeps that extra capacity from turning into extra spurious peaks. (The actor stays\nLayerNorm-free — it is the function I want sharp enough to commit, just anchored by BC; only the *critic*\nneeds the smoothing, because the critic is what the actor overfits.) The 256-width cap and the parameter\nbudget still bind: 3×256 with LayerNorm is the deepest twin-critic-plus-actor that stays inside the\n1.05×-largest-baseline cap, so this is the most capacity I am allowed to spend, and I spend it on a\ngeometrically-regularized critic rather than on ensembles I am not permitted.\n\nNow the decoupling, which is the algorithmic core. TD3+BC put its BC penalty in *one* place — the actor\nloss — and used it to do double duty. I split it into two penalties with two coefficients, each aimed at\none of the two ways OOD actions leak into the value. The first leak is the one TD3+BC handles: the\n*actor* proposing OOD actions. I keep an actor BC penalty, β₁·(π(s) − a)², but now β₁ is its own knob,\ntunable per dataset to be tiny on HalfCheetah (where the actor should barely clone) and large on Walker2d\n(where it should stay closer to the gait data). The second leak is the one TD3+BC leaves entirely\nunaddressed and which I now think is the real Maze2d culprit: the *critic target* itself. The TD3 target\nevaluates Q at π_target(s') + smoothing noise — an action the *policy* chose at the next state, which can\nalready be drifting OOD, and whose over-value then backs up through every Bellman step regardless of what\nthe actor does. So I add a *second* BC penalty directly in the critic target: subtract\nβ₂·(ã' − a'_data)² from the bootstrapped value, where ã' is the (smoothed) policy next-action and a'_data\nis the *dataset's* recorded next action at that transition — which the scaffold hands me directly as\n`next_actions` in the batch. This pushes the critic's bootstrap to *prefer* targets whose next-action\nstays near what the behavior policy actually did next, penalizing the value precisely when the target\nrelies on a next-action that has drifted away from the data. It is conservatism injected at the\nbootstrap, not just at the policy, and it is the thing that should stop Maze2d from ever forming the\nspurious high-value pockets that one seed fell into and another could not find. Two decoupled BC\npenalties — one on the actor, one on the critic target — is the whole decoupled-regularization idea, and\nit is still minimal: no behavior model, no divergence estimator, just two L2 pulls toward dataset\nactions with two coefficients.\n\nI keep the rest of the stabilized TD3 stack unchanged because it is still doing its job: twin critics\nwith a min target, clipped target-policy smoothing (noise 0.2, clip 0.5), delayed actor updates\n(policy_freq = 2), Polyak targets. The actor loss keeps the reward-scale normalization from TD3+BC — I\nscale the Q term by λ = 1/(|Q|.mean() + ε) so the per-dataset BC coefficients are not also fighting the\nreward scale — and the actor ascends the first critic. The per-dataset hyperparameters are the price of\ndecoupling and they are read from the environment name: HalfCheetah takes β₁ = 0.001, β₂ = 0.01, lr =\n1e-3 (almost no actor cloning, light critic conservatism, fast learning on the easy single-policy data);\nWalker2d takes β₁ = 0.05, β₂ = 0.1, lr = 1e-3 (heavier cloning to hold the gait); Maze2d takes β₁ =\n0.003, β₂ = 0.001, lr = 3e-4 (light cloning, *very* light critic-target BC, slow careful learning —\nbecause the maze needs the actor free to commit to goal directions while the LayerNorm critic, not a\nheavy BC, supplies the smoothing). The learning rates are applied directly to the Adam optimizers in the\ntrainer; the batch size stays the loop's default. The full scaffold module — the LayerNorm 3×256 critic,\nthe LayerNorm-free 3×256 actor, the per-env hyperparameter table, and the train step with both BC\npenalties — is in the answer.\n\nHere is the falsifiable bar against the prior numbers. On HalfCheetah I expect a clear jump over both\npredecessors' ~48: the near-zero actor BC plus a deeper LayerNorm critic should let the actor exploit the\nsingle-policy data harder without the overestimation that capped it before — I am predicting the low\n60s, and if HalfCheetah stays at 48 the decoupling bought nothing there and the binding constraint was\nnever the BC coupling. On Walker2d I expect to hold or modestly beat TD3+BC's 85.14 with comparable\ntightness — the heavier per-dataset cloning should keep the gait stable. The decisive test is Maze2d. TD3+BC's\n50.29 was a 56.8-std coin flip; if the LayerNorm critic and the critic-target BC actually kill the\nspurious pockets, I expect Maze2d to come up *and* its seed variance to come *down* relative to TD3+BC —\na mean well above 50 with the per-seed spread no longer spanning 8 to 115. That is the claim that\nseparates this rung from the last: not just a higher Maze2d mean, but a Maze2d that is high *and* no\nlonger a lottery. If the mean rises but the variance stays enormous, then the LayerNorm did not smooth\nthe right thing and the critic-target BC was too weak, and the next move would have to attack the\nmultimodality directly. But if the variance collapses while the mean climbs across all three datasets,\nthe decoupled, geometrically-regularized version has done what the single-knob TD3+BC could not, and this\nis the top of the ladder I can reach inside the parameter budget. Let me write it in.",
+   "content": "Moving to ReBRAC: TD3+BC with the BC penalty decoupled into two per-dataset knobs (one on the actor, one on the critic target) on top of a deeper LayerNorm critic. This first edit adds the env detection and the per-environment hyperparameter table, and deepens the actor to 3×256.",
+   "tool_calls": [
+    {
+     "type": "function",
+     "function": {
+      "name": "str_replace",
+      "arguments": {
+       "path": "CORL/algorithms/offline/custom.py",
+       "old_str": "# EDITABLE region of custom.py — step 2: TD3+BC\nclass DeterministicActor(nn.Module):\n    \"\"\"Deterministic policy pi(s) = tanh(net(s)) * max_action. 2 x 256 MLP.\"\"\"",
+       "new_str": "# EDITABLE region of custom.py — step 3: ReBRAC\nimport sys as _sys\n\ndef _detect_env():\n    \"\"\"Parse --env from sys.argv to determine environment name.\"\"\"\n    for i, arg in enumerate(_sys.argv):\n        if arg == \"--env\" and i + 1 < len(_sys.argv):\n            return _sys.argv[i + 1]\n        if arg.startswith(\"--env=\"):\n            return arg.split(\"=\", 1)[1]\n    return \"\"\n\n_REBRAC_ENV = _detect_env()\n\n# Per-environment ReBRAC hyperparameters for this benchmark harness\n_REBRAC_HPARAMS = {\n    \"halfcheetah-medium-v2\": {\"actor_bc_coef\": 0.001, \"critic_bc_coef\": 0.01,  \"lr\": 1e-3, \"batch_size\": 1024},\n    \"walker2d-medium-v2\":    {\"actor_bc_coef\": 0.05,  \"critic_bc_coef\": 0.1,   \"lr\": 1e-3, \"batch_size\": 1024},\n    \"hopper-medium-v2\":      {\"actor_bc_coef\": 0.01,  \"critic_bc_coef\": 0.01,  \"lr\": 1e-3, \"batch_size\": 1024},\n    \"maze2d-large-v1\":       {\"actor_bc_coef\": 0.003, \"critic_bc_coef\": 0.001, \"lr\": 3e-4, \"batch_size\": 256},\n    \"maze2d-medium-v1\":      {\"actor_bc_coef\": 0.003, \"critic_bc_coef\": 0.001, \"lr\": 3e-4, \"batch_size\": 256},\n}\n_REBRAC_HP = _REBRAC_HPARAMS.get(_REBRAC_ENV, {\"actor_bc_coef\": 0.01, \"critic_bc_coef\": 0.01, \"lr\": 1e-3, \"batch_size\": 1024})\n\nCONFIG_OVERRIDES: Dict[str, Any] = {}\n\n\nclass DeterministicActor(nn.Module):\n    \"\"\"Deterministic policy pi(s) = tanh(net(s)) * max_action.\n    ReBRAC-style: 3 x 256 MLP without LayerNorm (matching CORL actor_ln=False).\"\"\""
+      }
+     }
+    }
+   ]
+  },
+  {
+   "role": "tool",
+   "content": "Successfully replaced text in CORL/algorithms/offline/custom.py."
+  },
+  {
+   "role": "assistant",
+   "reasoning_content": "",
+   "content": "",
+   "tool_calls": [
+    {
+     "type": "function",
+     "function": {
+      "name": "str_replace",
+      "arguments": {
+       "path": "CORL/algorithms/offline/custom.py",
+       "old_str": "            nn.Linear(state_dim, 256), nn.ReLU(),\n            nn.Linear(256, 256), nn.ReLU(),",
+       "new_str": "            nn.Linear(state_dim, 256), nn.ReLU(),\n            nn.Linear(256, 256), nn.ReLU(),\n            nn.Linear(256, 256), nn.ReLU(),"
+      }
+     }
+    }
+   ]
+  },
+  {
+   "role": "tool",
+   "content": "Successfully replaced text in CORL/algorithms/offline/custom.py."
+  },
+  {
+   "role": "assistant",
+   "reasoning_content": "",
+   "content": "",
+   "tool_calls": [
+    {
+     "type": "function",
+     "function": {
+      "name": "str_replace",
+      "arguments": {
+       "path": "CORL/algorithms/offline/custom.py",
+       "old_str": "class Critic(nn.Module):\n    \"\"\"Q-function Q(s, a). 2 x 256 MLP (TD3+BC reference architecture).\"\"\"",
+       "new_str": "class Critic(nn.Module):\n    \"\"\"Q-function Q(s, a). 3 x 256 MLP with LayerNorm (ReBRAC-style, critic_ln=True).\"\"\""
+      }
+     }
+    }
+   ]
+  },
+  {
+   "role": "tool",
+   "content": "Successfully replaced text in CORL/algorithms/offline/custom.py."
+  },
+  {
+   "role": "assistant",
+   "reasoning_content": "The key architectural move: LayerNorm after each critic hidden layer, so the critic can't spike across nearby inputs and the actor has no knife-edge OOD pocket to overfit.",
+   "content": "",
+   "tool_calls": [
+    {
+     "type": "function",
+     "function": {
+      "name": "str_replace",
+      "arguments": {
+       "path": "CORL/algorithms/offline/custom.py",
+       "old_str": "        self.net = nn.Sequential(\n            nn.Linear(state_dim + action_dim, 256), nn.ReLU(),\n            nn.Linear(256, 256), nn.ReLU(),\n            nn.Linear(256, 1),",
+       "new_str": "        self.net = nn.Sequential(\n            nn.Linear(state_dim + action_dim, 256), nn.ReLU(), nn.LayerNorm(256),\n            nn.Linear(256, 256), nn.ReLU(), nn.LayerNorm(256),\n            nn.Linear(256, 256), nn.ReLU(), nn.LayerNorm(256),\n            nn.Linear(256, 1),"
+      }
+     }
+    }
+   ]
+  },
+  {
+   "role": "tool",
+   "content": "Successfully replaced text in CORL/algorithms/offline/custom.py."
+  },
+  {
+   "role": "assistant",
+   "reasoning_content": "",
+   "content": "",
+   "tool_calls": [
+    {
+     "type": "function",
+     "function": {
+      "name": "str_replace",
+      "arguments": {
+       "path": "CORL/algorithms/offline/custom.py",
+       "old_str": "class OfflineAlgorithm:\n    \"\"\"TD3+BC — Twin Delayed DDPG with Behavior Cloning regularization.\"\"\"",
+       "new_str": "class OfflineAlgorithm:\n    \"\"\"ReBRAC — Regularized Behavior Regularized Actor Critic.\n\n    TD3-style with BC penalties on actor and critic targets.\n    Per-environment BC coefficients and learning rates from CORL configs.\n    \"\"\""
+      }
+     }
+    }
+   ]
+  },
+  {
+   "role": "tool",
+   "content": "Successfully replaced text in CORL/algorithms/offline/custom.py."
+  },
+  {
+   "role": "assistant",
+   "reasoning_content": "Wire the two decoupled BC coefficients and the per-env learning rate into `__init__`, and pull the dataset's recorded next-action into `train`.",
+   "content": "",
+   "tool_calls": [
+    {
+     "type": "function",
+     "function": {
+      "name": "str_replace",
+      "arguments": {
+       "path": "CORL/algorithms/offline/custom.py",
+       "old_str": "\n        # TD3+BC hyperparameters\n        self.alpha = 2.5\n        self.policy_noise = 0.2 * max_action\n        self.noise_clip = 0.5 * max_action\n        self.policy_freq = 2\n\n        # Actor (deterministic) + target\n        self.actor = DeterministicActor(state_dim, action_dim, max_action).to(device)\n        self.actor_target = deepcopy(self.actor)\n        self.actor_optimizer = torch.optim.Adam(self.actor.parameters(), lr=actor_lr)\n\n        # Twin critics + targets\n        self.critic_1 = Critic(state_dim, action_dim, orthogonal_init).to(device)\n        self.critic_1_target = deepcopy(self.critic_1)\n        self.critic_1_optimizer = torch.optim.Adam(self.critic_1.parameters(), lr=critic_lr)\n\n        self.critic_2 = Critic(state_dim, action_dim, orthogonal_init).to(device)\n        self.critic_2_target = deepcopy(self.critic_2)\n        self.critic_2_optimizer = torch.optim.Adam(self.critic_2.parameters(), lr=critic_lr)\n\n    def train(self, batch: TensorBatch) -> Dict[str, float]:\n        self.total_it += 1\n        states, actions, rewards, next_states, dones, *_ = batch\n        not_done = 1 - dones.squeeze(-1)",
+       "new_str": "\n        # Per-env tuned ReBRAC hyperparameters for this benchmark harness\n        self.actor_bc_coef = _REBRAC_HP[\"actor_bc_coef\"]\n        self.critic_bc_coef = _REBRAC_HP[\"critic_bc_coef\"]\n        _lr = _REBRAC_HP[\"lr\"]\n        self.policy_noise = 0.2      # target policy smoothing noise\n        self.noise_clip = 0.5        # clipping range for smoothing noise\n        self.policy_freq = 2         # delayed actor update frequency\n        self.normalize_q = True      # normalize Q in actor loss\n\n        # Actor (deterministic, no LayerNorm) + target\n        self.actor = DeterministicActor(state_dim, action_dim, max_action).to(device)\n        self.actor_target = deepcopy(self.actor)\n        self.actor_optimizer = torch.optim.Adam(self.actor.parameters(), lr=_lr)\n\n        # Twin critics (with LayerNorm) + targets\n        self.critic_1 = Critic(state_dim, action_dim, orthogonal_init).to(device)\n        self.critic_1_target = deepcopy(self.critic_1)\n        self.critic_1_optimizer = torch.optim.Adam(self.critic_1.parameters(), lr=_lr)\n\n        self.critic_2 = Critic(state_dim, action_dim, orthogonal_init).to(device)\n        self.critic_2_target = deepcopy(self.critic_2)\n        self.critic_2_optimizer = torch.optim.Adam(self.critic_2.parameters(), lr=_lr)\n\n    def train(self, batch: TensorBatch) -> Dict[str, float]:\n        self.total_it += 1\n        states, actions, rewards, next_states, dones, next_actions_data = batch\n        not_done = 1 - dones.squeeze(-1)"
+      }
+     }
+    }
+   ]
+  },
+  {
+   "role": "tool",
+   "content": "Successfully replaced text in CORL/algorithms/offline/custom.py."
+  },
+  {
+   "role": "assistant",
+   "reasoning_content": "",
+   "content": "",
+   "tool_calls": [
+    {
+     "type": "function",
+     "function": {
+      "name": "str_replace",
+      "arguments": {
+       "path": "CORL/algorithms/offline/custom.py",
+       "old_str": "\n        with torch.no_grad():",
+       "new_str": "\n        # -- Critic update --\n        with torch.no_grad():"
+      }
+     }
+    }
+   ]
+  },
+  {
+   "role": "tool",
+   "content": "Successfully replaced text in CORL/algorithms/offline/custom.py."
+  },
+  {
+   "role": "assistant",
+   "reasoning_content": "The second BC penalty, in the bootstrap itself: charge the critic target when its next-action drifts from the dataset's recorded next-action.",
+   "content": "",
+   "tool_calls": [
+    {
+     "type": "function",
+     "function": {
+      "name": "str_replace",
+      "arguments": {
+       "path": "CORL/algorithms/offline/custom.py",
+       "old_str": "            )\n            next_action = (self.actor_target(next_states) + noise).clamp(\n                -self.max_action, self.max_action\n            )\n            target_q1 = self.critic_1_target(next_states, next_action)\n            target_q2 = self.critic_2_target(next_states, next_action)\n            target_q = torch.min(target_q1, target_q2)\n            target_q = rewards_flat + not_done * self.discount * target_q",
+       "new_str": "            )\n            next_actions = (self.actor_target(next_states) + noise).clamp(\n                -self.max_action, self.max_action\n            )\n            # BC penalty on next actions (compare policy's next actions to dataset's)\n            bc_penalty = ((next_actions - next_actions_data) ** 2).sum(-1)\n\n            target_q1 = self.critic_1_target(next_states, next_actions)\n            target_q2 = self.critic_2_target(next_states, next_actions)\n            target_q = torch.min(target_q1, target_q2)\n            # Subtract BC penalty from critic target (ReBRAC key idea)\n            target_q = target_q - self.critic_bc_coef * bc_penalty\n            target_q = rewards_flat + not_done * self.discount * target_q"
+      }
+     }
+    }
+   ]
+  },
+  {
+   "role": "tool",
+   "content": "Successfully replaced text in CORL/algorithms/offline/custom.py."
+  },
+  {
+   "role": "assistant",
+   "reasoning_content": "And the actor's own BC penalty on its own coefficient, replacing TD3+BC's single normalized knob.",
+   "content": "",
+   "tool_calls": [
+    {
+     "type": "function",
+     "function": {
+      "name": "str_replace",
+      "arguments": {
+       "path": "CORL/algorithms/offline/custom.py",
+       "old_str": "\n        # Delayed actor updates\n        if self.total_it % self.policy_freq == 0:\n            pi = self.actor(states)\n            q = self.critic_1(states, pi)\n            lmbda = self.alpha / q.abs().mean().detach()\n\n            actor_loss = -lmbda * q.mean() + F.mse_loss(pi, actions)\n            log_dict[\"actor_loss\"] = actor_loss.item()",
+       "new_str": "\n        # -- Delayed actor update --\n        if self.total_it % self.policy_freq == 0:\n            pi = self.actor(states)\n            q = self.critic_1(states, pi)\n\n            # BC penalty on actor\n            bc_mse = ((pi - actions) ** 2).sum(-1)\n\n            lmbda = 1.0\n            if self.normalize_q:\n                lmbda = 1.0 / (torch.abs(q).mean().detach() + 1e-8)\n\n            actor_loss = (self.actor_bc_coef * bc_mse - lmbda * q).mean()\n            log_dict[\"actor_loss\"] = actor_loss.item()"
+      }
+     }
+    }
+   ]
+  },
+  {
+   "role": "tool",
+   "content": "Successfully replaced text in CORL/algorithms/offline/custom.py."
+  },
+  {
+   "role": "assistant",
+   "reasoning_content": "",
+   "content": "Run the experiment to measure this.",
+   "tool_calls": [
+    {
+     "type": "function",
+     "function": {
+      "name": "run_experiment",
+      "arguments": {}
+     }
+    }
+   ]
+  },
+  {
+   "role": "tool",
+   "content": "Measured result for ReBRAC (leaderboard row `baseline:rebrac`, `is_final,true`), D4RL normalized score\nper dataset, three seeds and mean.\n\n| seed | halfcheetah-medium-v2 | maze2d-medium-v1 | walker2d-medium-v2 |\n|------|----------------------:|-----------------:|-------------------:|\n| 42   | 62.099 |  81.726 | 88.642 |\n| 123  | 64.863 |  85.019 | 87.212 |\n| 456  | 63.078 | 115.103 | 86.753 |\n| **mean** | **63.347** | **93.949** | **87.536** |\n\n| dataset | mean | std |\n|---------|-----:|----:|\n| halfcheetah-medium-v2 | 63.347 | 1.401 |\n| maze2d-medium-v1 | 93.949 | 18.393 |\n| walker2d-medium-v2 | 87.536 | 0.985 |"
+  },
+  {
+   "role": "assistant",
+   "reasoning_content": "ReBRAC took the top of the ladder, and its numbers tell me exactly what kind of method is still missing. It posted 63.35 on HalfCheetah, 87.54 on Walker2d, and — the headline — 93.95 on Maze2d with the per-seed spread collapsed from TD3+BC's 56.8 std down to 18.4 (81.7 / 85.0 / 115.1). The LayerNorm critic and the critic-target BC did what I hoped: they killed the spurious high-value pockets that made Maze2d a coin flip, and they let the actor exploit the locomotion data harder than either predecessor. So ReBRAC is genuinely strong, and the gains came from two distinct moves — a *geometric* smoothing of the critic (LayerNorm) and a *decoupled* behavior-cloning pressure (two BC coefficients). But look at what the behavior-cloning machinery actually is, because that is where I think there is still room. The BC penalty, in both the actor and the critic target, is `(π − a)²` — an L2 pull toward the dataset action. That is a *fixed, uniform* notion of \"stay near the data\": it pulls every proposed action toward the recorded action with the same per-dataset strength, regardless of whether the proposed action is, in fact, well-supported by the data or wildly outside it. On HalfCheetah ReBRAC needed `actor_bc` as low as 0.001 to let the actor move at all, and on Walker2d as high as 0.05 to hold the gait — the single L2 coefficient is doing a crude job of standing in for \"how OOD is this action,\" and it has to be hand-tuned per dataset precisely because L2-to-the-data is a blunt proxy for OOD-ness. The thing ReBRAC lacks is a *per-`(s,a)` measure of how out-of-distribution a proposed action actually is*. If I had that, I could penalize sharply exactly where the action leaves the data and barely at all where it stays in support — instead of pulling uniformly toward a single recorded action.\n\nSo the move I want is to replace the fixed BC proxy with a learned *uncertainty* signal, and use it as the conservatism. This is a real change of stance, not a tuning of ReBRAC: BC says \"be near this specific action\"; an uncertainty penalty says \"be anywhere the data supports, and only flee where it does not.\" The latter is strictly more expressive — it permits the actor to choose among many in-support actions to maximize value, rather than gravitating to the one logged action. And it reframes offline conservatism as the mirror of online exploration: where an online agent *adds* a novelty bonus to chase the unknown, an offline agent should *subtract* the same novelty signal to flee it. The question is what novelty estimator to use, and here the parameter budget is the binding constraint, exactly as it was for ReBRAC. The strongest known uncertainty signal is a critic *ensemble* — keep ten or fifty critics, read off their disagreement — and on these very datasets the ensemble methods are at or above ReBRAC. But the cap is ≈1.05× the largest baseline; an `N`-critic ensemble is precisely the capacity move the task forbids, the same wall that stopped me from spending ReBRAC's extra depth on anything but a single deeper critic. I need ensemble-quality pessimism from *one* small extra network.\n\nThat is what Random Network Distillation offers. Keep a fixed, randomly-initialized *target* network `g(s,a)` and train a *predictor* `ĝ(s,a)` to match it by regression on the dataset's `(s,a)` pairs only. On in-data actions the predictor learns to mimic the target and the error `‖ĝ − g‖²` is small; on OOD actions it was never trained and the error is large. One frozen network, one trained network, a squared error — and a per-`(s,a)` novelty score that is exactly the \"how OOD is this action\" signal ReBRAC's L2 was crudely approximating. Subtract a multiple of it from the value and the policy, and I have anti-exploration conservatism that adapts per state-action instead of pulling uniformly toward the logged action.\n\nBefore I commit, I have to confront a known failure of naive offline RND, because if I reproduce it I am worse than ReBRAC, not better. The reported problem is that plain RND is \"not discriminative enough\" as an OOD detector, and I need the mechanism, not just the warning. Picture the predictor taking `[s, a]` concatenated at its input. It is a flexible MLP trained to match the target on the data, and at the same time the actor is being optimized to make the penalty `b(s, π(s))` small, with the actor controlling the action argument. If the action only enters as a few concatenated input dimensions, the predictor's error as a function of the action is smooth and largely featureless off the data — nothing forces it to be *high* on a specific OOD action. So the actor can find action directions where the error happens to already be small, even though those actions are OOD, and slide the bonus down without returning to the data. The penalty is escapable, and an escapable penalty is no conservatism at all — it would let the actor walk right back into the overestimation ReBRAC's LayerNorm and BC were holding shut. So the naive version is not just weak, it is the wrong tool, and the reason is the *conditioning*: how the action is injected into the prior, not RND itself.\n\nThat reframes the design precisely, and it is the crux. I do not need a new novelty principle; I need the predictor's error to be a *sharp* function of the action — genuinely small on dataset actions and genuinely large the instant the action leaves the data — so the only way the actor can drive `b` down is to propose an in-distribution action. The lever is the architecture by which the action conditions the network. Concatenation dilutes the action's influence; I want the action to *control the computation* over the state. Feature-wise linear modulation does exactly this: let the state be the feature stream flowing through the MLP, and let the action, through its own linear map, produce per-unit scale and shift parameters `(γ, β)` that multiply and offset a hidden layer, `h ← γ ⊙ h + β`. Now a different action reshapes the function the network computes, so it induces a different target embedding to match; the predictor's error becomes genuinely action-dependent — small on the `(s,a)` it trained on, and forced to be different (untrained, hence large) on action settings the data never produced. The multiplicative gate is what denies the actor a smooth low-error escape. (The roles can be swapped — action as the modulated feature, state as context — which is the form the reference uses; the substance is the multiplicative conditioning either way.) This single architectural choice is what separates a discriminative RND penalty from the escapable one, and it is the part I have to get right.\n\nWith a discriminative `b(s,a)` I wire it in at both places OOD actions corrupt the value — which is the same two-leak structure I exploited in ReBRAC, now with a learned penalty instead of L2. The actor proposes `π(s)`, possibly OOD, so I subtract `β·b(s, π(s))` from the actor objective: it still climbs `Q` but is charged for unfamiliarity, pulled toward actions that are high-value *and* in-support. And the critic target bootstraps off `Q(s', a')` at the policy's next action, which can be OOD regardless of the actor, so I subtract `β·b(s', a')` inside the target as well: `y = r + γ(1−d)·[min_i Q_i(s', a') − α·logπ(a'|s') − β·b(s', a')]`. This is the anti-exploration mirror of adding an online bonus to both the policy reward and the value — it suppresses the over-valuation at the backup and steers the policy away from it at once, which is structurally what ReBRAC's actor-BC and critic-target-BC pair did, but now the conservatism is the learned OOD signal rather than a fixed pull.\n\nThe base I hang this on is SAC rather than TD3, deliberately. SAC's actor is a stochastic Tanh-Gaussian that *samples* the actions I need to score with `b`, and its auto-tuned entropy temperature `α` (tuned to a target entropy of `−dim(A)`) keeps the policy from collapsing onto a single action while the RND penalty pushes it around — a stochastic policy is the natural object to anti-explore, because the penalty acts on the whole action distribution, not one deterministic point. I keep the overestimation-control stack that ReBRAC validated: twin critics with a `min` target and LayerNorm on each critic hidden layer (the geometric smoothing that helped Maze2d so much carries over unchanged), Polyak targets at `τ = 5e-3`, `γ = 0.99`. Two details that bite if ignored: the RND target stays *frozen* (only the predictor trains, only on dataset `(s,a)` — never on the actor's proposed actions, or the system games itself by making its own reference easy), and the bonus is normalized by a running standard deviation of the raw distillation error, because that error is huge early and shrinks late, so a fixed `β` on the raw error would mean wildly different conservatism over a run. Finally, `β` is the one knob that genuinely needs per-dataset setting — and that is not a regression from ReBRAC, it is the same per-dataset tuning ReBRAC already paid for its BC coefficients, just one coefficient instead of two. HalfCheetah-medium, a tight single-policy dataset, wants a light penalty so the actor can exploit (`β` small, around 0.3); Walker2d-medium wants a much heavier one to hold the gait against the entropy drive (`β` around 8). The fixed loop hands me the env name, so I read `β` from it exactly as ReBRAC read its coefficients.\n\nNow the budget, because this is the constraint that killed the ensemble alternative and it must not kill this one. The extra cost over the SAC base is the RND module: a predictor and a frozen target, each a small FiLM MLP emitting a 32-dim embedding. Holding everything at the locked 256 width and using a two-hidden-layer FiLM RND, the total trainable parameters land just under 1.05× the largest baseline (ReBRAC) on both the locomotion and the maze2d state dimensions — so this is admissible where a `10`-critic ensemble is not. The pessimism comes from one small network, paid for in math, not capacity. The full scaffold module — the FiLM RND, the SAC actor/critic, and the `OfflineAlgorithm` with the penalty subtracted in both the actor loss and the critic target — is in the answer.\n\nHere is the bar this has to clear, stated against ReBRAC's real numbers so it is falsifiable. The whole thesis is that a learned per-`(s,a)` OOD penalty beats a fixed L2-to-the-data, so the cleanest place to test it is the two locomotion datasets where ReBRAC's BC was bluntest. On HalfCheetah-medium I expect to clear ReBRAC's 63.35: the RND penalty should let the actor roam among in-support actions to find higher-value ones instead of being pulled toward the single mediocre logged action, and the reference's reported ~66 on this dataset is the target — if I merely match 63 the learned penalty bought nothing over L2 here. On Walker2d-medium I expect to clear 87.54 by a clear margin (the reference reports low-90s), because the gait data is exactly where \"stay in support\" rather than \"clone this action\" should pay, and the heavier `β` is there to hold it. Maze2d is the honest open question: ReBRAC's 93.95 is already very high, the SAC entropy drive plus an RND penalty in a navigation task with broad coverage could either match it or, if `β` is mis-set, let the stochastic policy wander — so the falsifiable claim there is *hold near 90*, not necessarily beat it, and a large drop on Maze2d would say the entropy-regularized stochastic actor is the wrong base for this stitching task even if it wins locomotion. There is no SAC-RND row on this leaderboard to confirm any of this; what the trajectory ends on is the construction whose learned, FiLM-conditioned OOD penalty is the principled successor to ReBRAC's fixed behavior-cloning brake — ensemble-quality conservatism from a single network, inside the budget that forbids the ensemble. Let me build it.",
+   "content": "Final method: SAC-RND, which replaces ReBRAC's fixed BC penalty with a learned anti-exploration bonus — a FiLM-conditioned Random Network Distillation score that is large on out-of-distribution actions and is subtracted from both the actor objective and the critic target. This first edit sets up the config overrides and per-env penalty coefficient.",
+   "tool_calls": [
+    {
+     "type": "function",
+     "function": {
+      "name": "str_replace",
+      "arguments": {
+       "path": "CORL/algorithms/offline/custom.py",
+       "old_str": "# EDITABLE region of custom.py — step 3: ReBRAC\nimport sys as _sys\n\ndef _detect_env():\n    \"\"\"Parse --env from sys.argv to determine environment name.\"\"\"\n    for i, arg in enumerate(_sys.argv):",
+       "new_str": "# EDITABLE region of custom.py — finale: SAC-RND\nCONFIG_OVERRIDES: Dict[str, Any] = {\"normalize_reward\": False}\n\n# Per-environment anti-exploration penalty coefficient beta (from the method's\n# per-dataset sweep). Detected from --env; falls back to a safe mid value.\nimport sys as _sys\n\ndef _detect_env() -> str:\n    for i, arg in enumerate(_sys.argv):"
+      }
+     }
+    }
+   ]
+  },
+  {
+   "role": "tool",
+   "content": "Successfully replaced text in CORL/algorithms/offline/custom.py."
+  },
+  {
+   "role": "assistant",
+   "reasoning_content": "Swap in the per-env beta table and define the RND module: the FiLM-conditioned predictor/frozen-target pair whose squared embedding error is the OOD bonus, plus the SAC Tanh-Gaussian actor.",
+   "content": "",
+   "tool_calls": [
+    {
+     "type": "function",
+     "function": {
+      "name": "str_replace",
+      "arguments": {
+       "path": "CORL/algorithms/offline/custom.py",
+       "old_str": "\n_REBRAC_ENV = _detect_env()\n\n# Per-environment ReBRAC hyperparameters for this benchmark harness\n_REBRAC_HPARAMS = {\n    \"halfcheetah-medium-v2\": {\"actor_bc_coef\": 0.001, \"critic_bc_coef\": 0.01,  \"lr\": 1e-3, \"batch_size\": 1024},\n    \"walker2d-medium-v2\":    {\"actor_bc_coef\": 0.05,  \"critic_bc_coef\": 0.1,   \"lr\": 1e-3, \"batch_size\": 1024},\n    \"hopper-medium-v2\":      {\"actor_bc_coef\": 0.01,  \"critic_bc_coef\": 0.01,  \"lr\": 1e-3, \"batch_size\": 1024},\n    \"maze2d-large-v1\":       {\"actor_bc_coef\": 0.003, \"critic_bc_coef\": 0.001, \"lr\": 3e-4, \"batch_size\": 256},\n    \"maze2d-medium-v1\":      {\"actor_bc_coef\": 0.003, \"critic_bc_coef\": 0.001, \"lr\": 3e-4, \"batch_size\": 256},\n}\n_REBRAC_HP = _REBRAC_HPARAMS.get(_REBRAC_ENV, {\"actor_bc_coef\": 0.01, \"critic_bc_coef\": 0.01, \"lr\": 1e-3, \"batch_size\": 1024})\n\nCONFIG_OVERRIDES: Dict[str, Any] = {}\n\n\nclass DeterministicActor(nn.Module):\n    \"\"\"Deterministic policy pi(s) = tanh(net(s)) * max_action.\n    ReBRAC-style: 3 x 256 MLP without LayerNorm (matching CORL actor_ln=False).\"\"\"",
+       "new_str": "\n_SACRND_BETA = {\n    \"halfcheetah-medium-v2\": 0.3,\n    \"walker2d-medium-v2\": 8.0,\n    \"hopper-medium-v2\": 5.0,\n    \"maze2d-medium-v1\": 1.0,\n}\n_BETA = _SACRND_BETA.get(_detect_env(), 1.0)\n\n\nclass FiLMMLP(nn.Module):\n    \"\"\"RND sub-network: an MLP over `feature`, FiLM-modulated by `context`.\n    The context produces per-unit (gamma, beta) that scale/shift the first\n    hidden layer -- the conditioning that makes the RND prior discriminative.\n    All hidden widths are 256 (locked).\"\"\"\n\n    def __init__(self, feature_dim: int, context_dim: int, out_dim: int):\n        super().__init__()\n        self.film = nn.Linear(context_dim, 2 * 256)\n        self.l1 = nn.Linear(feature_dim, 256)\n        self.l2 = nn.Linear(256, 256)\n        self.out = nn.Linear(256, out_dim)\n\n    def forward(self, feature: torch.Tensor, context: torch.Tensor) -> torch.Tensor:\n        gamma, beta = torch.chunk(self.film(context), 2, dim=-1)\n        h = F.relu(gamma * self.l1(feature) + beta)\n        h = F.relu(self.l2(h))\n        return self.out(h)\n\n\nclass RND(nn.Module):\n    \"\"\"Anti-exploration Random Network Distillation over (state, action).\n    A frozen random `target` and a trained `predictor`; the squared embedding\n    error is large on OOD (s, a) and small on in-data (s, a). The action is the\n    FiLM `feature`, the state the `context` (switch_features=True in the\n    reference): the prior is conditioned on the action so the actor can drive\n    the bonus down only by staying in-distribution.\"\"\"\n\n    def __init__(self, state_dim: int, action_dim: int, embedding_dim: int = 32):\n        super().__init__()\n        self.predictor = FiLMMLP(action_dim, state_dim, embedding_dim)\n        self.target = FiLMMLP(action_dim, state_dim, embedding_dim)\n        for p in self.target.parameters():\n            p.requires_grad = False\n        self.register_buffer(\"rms_mean\", torch.zeros(()))\n        self.register_buffer(\"rms_var\", torch.ones(()))\n        self.register_buffer(\"rms_count\", torch.ones(()) * 1e-4)\n\n    def _embed(self, state, action):\n        pred = self.predictor(action, state)\n        with torch.no_grad():\n            targ = self.target(action, state)\n        return pred, targ\n\n    def bonus(self, state, action) -> torch.Tensor:\n        pred, targ = self._embed(state, action)\n        raw = ((pred - targ) ** 2).sum(dim=-1)\n        return raw / (torch.sqrt(self.rms_var) + 1e-8)\n\n    def loss_and_update_rms(self, state, action) -> torch.Tensor:\n        pred, targ = self._embed(state, action)\n        raw = ((pred - targ) ** 2).sum(dim=-1)\n        with torch.no_grad():\n            b_mean, b_var, b_n = raw.mean(), raw.var(unbiased=False), raw.numel()\n            delta = b_mean - self.rms_mean\n            tot = self.rms_count + b_n\n            self.rms_mean += delta * b_n / tot\n            m_a = self.rms_var * self.rms_count\n            m_b = b_var * b_n\n            self.rms_var.copy_((m_a + m_b + delta ** 2 * self.rms_count * b_n / tot) / tot)\n            self.rms_count.copy_(tot)\n        return raw.mean()\n\n\nclass TanhGaussianActor(nn.Module):\n    \"\"\"SAC stochastic policy: 3 x 256 trunk -> (mu, log_sigma), tanh-squashed.\n    Returns squashed action and its log-prob with the tanh correction.\"\"\""
+      }
+     }
+    }
+   ]
+  },
+  {
+   "role": "tool",
+   "content": "Successfully replaced text in CORL/algorithms/offline/custom.py."
+  },
+  {
+   "role": "assistant",
+   "reasoning_content": "Give the actor its stochastic head: a trunk into (mu, log_sigma) with a `sample` that returns the squashed action and its tanh-corrected log-prob.",
+   "content": "",
+   "tool_calls": [
+    {
+     "type": "function",
+     "function": {
+      "name": "str_replace",
+      "arguments": {
+       "path": "CORL/algorithms/offline/custom.py",
+       "old_str": "        self.max_action = max_action\n        self.net = nn.Sequential(\n            nn.Linear(state_dim, 256), nn.ReLU(),\n            nn.Linear(256, 256), nn.ReLU(),\n            nn.Linear(256, 256), nn.ReLU(),\n            nn.Linear(256, action_dim), nn.Tanh(),\n        )\n\n    def forward(self, state: torch.Tensor) -> torch.Tensor:\n        return self.max_action * self.net(state)",
+       "new_str": "        self.max_action = max_action\n        self.trunk = nn.Sequential(\n            nn.Linear(state_dim, 256), nn.ReLU(),\n            nn.Linear(256, 256), nn.ReLU(),\n            nn.Linear(256, 256), nn.ReLU(),\n        )\n        self.mu = nn.Linear(256, action_dim)\n        self.log_sigma = nn.Linear(256, action_dim)\n\n    def _dist(self, state):\n        h = self.trunk(state)\n        mu = self.mu(h)\n        log_sigma = self.log_sigma(h).clamp(-5.0, 2.0)\n        return Normal(mu, torch.exp(log_sigma))\n\n    def sample(self, state):\n        dist = self._dist(state)\n        raw = dist.rsample()\n        log_prob = dist.log_prob(raw).sum(-1)\n        action = torch.tanh(raw)\n        log_prob = log_prob - torch.log(1.0 - action.pow(2) + 1e-6).sum(-1)\n        return self.max_action * action, log_prob"
+      }
+     }
+    }
+   ]
+  },
+  {
+   "role": "tool",
+   "content": "Successfully replaced text in CORL/algorithms/offline/custom.py."
+  },
+  {
+   "role": "assistant",
+   "reasoning_content": "",
+   "content": "",
+   "tool_calls": [
+    {
+     "type": "function",
+     "function": {
+      "name": "str_replace",
+      "arguments": {
+       "path": "CORL/algorithms/offline/custom.py",
+       "old_str": "        state = torch.tensor(state.reshape(1, -1), device=device, dtype=torch.float32)\n        return self(state).cpu().data.numpy().flatten()\n\n\nclass Critic(nn.Module):\n    \"\"\"Q-function Q(s, a). 3 x 256 MLP with LayerNorm (ReBRAC-style, critic_ln=True).\"\"\"",
+       "new_str": "        state = torch.tensor(state.reshape(1, -1), device=device, dtype=torch.float32)\n        h = self.trunk(state)\n        action = self.max_action * torch.tanh(self.mu(h))\n        return action.cpu().data.numpy().flatten()\n\n\nclass Critic(nn.Module):\n    \"\"\"Q(s, a). 3 x 256 MLP with LayerNorm (as in the SAC-RND reference).\"\"\""
+      }
+     }
+    }
+   ]
+  },
+  {
+   "role": "tool",
+   "content": "Successfully replaced text in CORL/algorithms/offline/custom.py."
+  },
+  {
+   "role": "assistant",
+   "reasoning_content": "",
+   "content": "",
+   "tool_calls": [
+    {
+     "type": "function",
+     "function": {
+      "name": "str_replace",
+      "arguments": {
+       "path": "CORL/algorithms/offline/custom.py",
+       "old_str": "\n    def forward(self, state: torch.Tensor, action: torch.Tensor) -> torch.Tensor:\n        return self.net(torch.cat([state, action], dim=-1)).squeeze(-1)",
+       "new_str": "\n    def forward(self, state, action):\n        return self.net(torch.cat([state, action], dim=-1)).squeeze(-1)"
+      }
+     }
+    }
+   ]
+  },
+  {
+   "role": "tool",
+   "content": "Successfully replaced text in CORL/algorithms/offline/custom.py."
+  },
+  {
+   "role": "assistant",
+   "reasoning_content": "",
+   "content": "",
+   "tool_calls": [
+    {
+     "type": "function",
+     "function": {
+      "name": "str_replace",
+      "arguments": {
+       "path": "CORL/algorithms/offline/custom.py",
+       "old_str": "class OfflineAlgorithm:\n    \"\"\"ReBRAC — Regularized Behavior Regularized Actor Critic.\n\n    TD3-style with BC penalties on actor and critic targets.\n    Per-environment BC coefficients and learning rates from CORL configs.\n    \"\"\"\n\n    def __init__(\n        self,\n        state_dim: int,\n        action_dim: int,\n        max_action: float,\n        replay_buffer=None,\n        discount: float = 0.99,\n        tau: float = 5e-3,\n        actor_lr: float = 3e-4,\n        critic_lr: float = 3e-4,\n        alpha_lr: float = 3e-4,\n        orthogonal_init: bool = True,\n        device: str = \"cuda\",\n    ):\n        self.device = device",
+       "new_str": "class OfflineAlgorithm:\n    \"\"\"SAC-RND — Soft Actor-Critic with an anti-exploration RND penalty.\n\n    The RND bonus b(s, a) (large on OOD actions) is SUBTRACTED, with coefficient\n    beta, from BOTH the actor objective and the critic's bootstrap target, so the\n    policy is pulled toward in-distribution actions and the value of OOD next\n    actions is suppressed at the source. SAC's entropy temperature is auto-tuned.\n    \"\"\"\n\n    def __init__(self, state_dim, action_dim, max_action, replay_buffer=None,\n                 discount=0.99, tau=5e-3, actor_lr=3e-4, critic_lr=3e-4,\n                 alpha_lr=3e-4, orthogonal_init=True, device=\"cuda\"):\n        self.device = device"
+      }
+     }
+    }
+   ]
+  },
+  {
+   "role": "tool",
+   "content": "Successfully replaced text in CORL/algorithms/offline/custom.py."
+  },
+  {
+   "role": "assistant",
+   "reasoning_content": "Now the body: build the RND module and the auto-tuned entropy temperature, then the train step that distills the predictor and subtracts beta times the RND bonus in both the critic target and the actor loss.",
+   "content": "",
+   "tool_calls": [
+    {
+     "type": "function",
+     "function": {
+      "name": "str_replace",
+      "arguments": {
+       "path": "CORL/algorithms/offline/custom.py",
+       "old_str": "        self.total_it = 0\n\n        # Per-env tuned ReBRAC hyperparameters for this benchmark harness\n        self.actor_bc_coef = _REBRAC_HP[\"actor_bc_coef\"]\n        self.critic_bc_coef = _REBRAC_HP[\"critic_bc_coef\"]\n        _lr = _REBRAC_HP[\"lr\"]\n        self.policy_noise = 0.2      # target policy smoothing noise\n        self.noise_clip = 0.5        # clipping range for smoothing noise\n        self.policy_freq = 2         # delayed actor update frequency\n        self.normalize_q = True      # normalize Q in actor loss\n\n        # Actor (deterministic, no LayerNorm) + target\n        self.actor = DeterministicActor(state_dim, action_dim, max_action).to(device)\n        self.actor_target = deepcopy(self.actor)\n        self.actor_optimizer = torch.optim.Adam(self.actor.parameters(), lr=_lr)\n\n        # Twin critics (with LayerNorm) + targets\n        self.critic_1 = Critic(state_dim, action_dim, orthogonal_init).to(device)\n        self.critic_1_target = deepcopy(self.critic_1)\n        self.critic_1_optimizer = torch.optim.Adam(self.critic_1.parameters(), lr=_lr)\n\n        self.critic_2 = Critic(state_dim, action_dim, orthogonal_init).to(device)\n        self.critic_2_target = deepcopy(self.critic_2)\n        self.critic_2_optimizer = torch.optim.Adam(self.critic_2.parameters(), lr=_lr)\n\n    def train(self, batch: TensorBatch) -> Dict[str, float]:\n        self.total_it += 1\n        states, actions, rewards, next_states, dones, next_actions_data = batch\n        not_done = 1 - dones.squeeze(-1)\n        rewards_flat = rewards.squeeze(-1)\n        log_dict: Dict[str, float] = {}\n\n        # -- Critic update --\n        with torch.no_grad():\n            noise = (torch.randn_like(actions) * self.policy_noise).clamp(\n                -self.noise_clip, self.noise_clip\n            )\n            next_actions = (self.actor_target(next_states) + noise).clamp(\n                -self.max_action, self.max_action\n            )\n            # BC penalty on next actions (compare policy's next actions to dataset's)\n            bc_penalty = ((next_actions - next_actions_data) ** 2).sum(-1)\n\n            target_q1 = self.critic_1_target(next_states, next_actions)\n            target_q2 = self.critic_2_target(next_states, next_actions)\n            target_q = torch.min(target_q1, target_q2)\n            # Subtract BC penalty from critic target (ReBRAC key idea)\n            target_q = target_q - self.critic_bc_coef * bc_penalty\n            target_q = rewards_flat + not_done * self.discount * target_q\n\n        current_q1 = self.critic_1(states, actions)\n        current_q2 = self.critic_2(states, actions)\n        critic_loss = F.mse_loss(current_q1, target_q) + F.mse_loss(current_q2, target_q)\n        log_dict[\"critic_loss\"] = critic_loss.item()\n\n        self.critic_1_optimizer.zero_grad()\n        self.critic_2_optimizer.zero_grad()\n        critic_loss.backward()\n        self.critic_1_optimizer.step()\n        self.critic_2_optimizer.step()\n\n        # -- Delayed actor update --\n        if self.total_it % self.policy_freq == 0:\n            pi = self.actor(states)\n            q = self.critic_1(states, pi)\n\n            # BC penalty on actor\n            bc_mse = ((pi - actions) ** 2).sum(-1)\n\n            lmbda = 1.0\n            if self.normalize_q:\n                lmbda = 1.0 / (torch.abs(q).mean().detach() + 1e-8)\n\n            actor_loss = (self.actor_bc_coef * bc_mse - lmbda * q).mean()\n            log_dict[\"actor_loss\"] = actor_loss.item()\n\n            self.actor_optimizer.zero_grad()\n            actor_loss.backward()\n            self.actor_optimizer.step()\n\n            soft_update(self.critic_1_target, self.critic_1, self.tau)\n            soft_update(self.critic_2_target, self.critic_2, self.tau)\n            soft_update(self.actor_target, self.actor, self.tau)\n\n        return log_dict",
+       "new_str": "        self.total_it = 0\n        self.beta = _BETA\n\n        self.actor = TanhGaussianActor(state_dim, action_dim, max_action).to(device)\n        self.actor_optimizer = torch.optim.Adam(self.actor.parameters(), lr=actor_lr)\n\n        self.critic_1 = Critic(state_dim, action_dim, orthogonal_init).to(device)\n        self.critic_2 = Critic(state_dim, action_dim, orthogonal_init).to(device)\n        self.critic_1_target = deepcopy(self.critic_1).requires_grad_(False)\n        self.critic_2_target = deepcopy(self.critic_2).requires_grad_(False)\n        self.critic_optimizer = torch.optim.Adam(\n            list(self.critic_1.parameters()) + list(self.critic_2.parameters()), lr=critic_lr)\n\n        self.rnd = RND(state_dim, action_dim, embedding_dim=32).to(device)\n        self.rnd_optimizer = torch.optim.Adam(self.rnd.predictor.parameters(), lr=actor_lr)\n\n        # SAC automatic entropy tuning: target entropy = -action_dim\n        self.target_entropy = -float(action_dim)\n        self.log_alpha = torch.zeros((), requires_grad=True, device=device)\n        self.alpha_optimizer = torch.optim.Adam([self.log_alpha], lr=alpha_lr)\n\n    def train(self, batch: TensorBatch) -> Dict[str, float]:\n        self.total_it += 1\n        states, actions, rewards, next_states, dones, _ = batch\n        not_done = 1.0 - dones.squeeze(-1)\n        rewards_flat = rewards.squeeze(-1)\n        log_dict: Dict[str, float] = {}\n        alpha = self.log_alpha.exp()\n\n        # -- RND predictor update (distill the frozen target on dataset (s, a)) --\n        rnd_loss = self.rnd.loss_and_update_rms(states, actions)\n        self.rnd_optimizer.zero_grad()\n        rnd_loss.backward()\n        self.rnd_optimizer.step()\n        log_dict[\"rnd_loss\"] = rnd_loss.item()\n\n        # -- Critic update: subtract beta * RND bonus from the bootstrap target --\n        with torch.no_grad():\n            next_actions, next_logp = self.actor.sample(next_states)\n            next_bonus = self.rnd.bonus(next_states, next_actions)\n            target_q = torch.min(\n                self.critic_1_target(next_states, next_actions),\n                self.critic_2_target(next_states, next_actions),\n            )\n            target_q = target_q - alpha * next_logp - self.beta * next_bonus\n            target_q = rewards_flat + not_done * self.discount * target_q\n\n        q1 = self.critic_1(states, actions)\n        q2 = self.critic_2(states, actions)\n        critic_loss = F.mse_loss(q1, target_q) + F.mse_loss(q2, target_q)\n        self.critic_optimizer.zero_grad()\n        critic_loss.backward()\n        self.critic_optimizer.step()\n        log_dict[\"critic_loss\"] = critic_loss.item()\n\n        # -- Actor update: maximize Q - alpha*logp - beta*bonus --\n        pi_actions, logp = self.actor.sample(states)\n        bonus = self.rnd.bonus(states, pi_actions)\n        q_pi = torch.min(self.critic_1(states, pi_actions), self.critic_2(states, pi_actions))\n        actor_loss = (alpha.detach() * logp + self.beta * bonus - q_pi).mean()\n        self.actor_optimizer.zero_grad()\n        actor_loss.backward()\n        self.actor_optimizer.step()\n        log_dict[\"actor_loss\"] = actor_loss.item()\n\n        # -- Temperature update toward target entropy --\n        alpha_loss = -(self.log_alpha * (logp + self.target_entropy).detach()).mean()\n        self.alpha_optimizer.zero_grad()\n        alpha_loss.backward()\n        self.alpha_optimizer.step()\n        log_dict[\"alpha\"] = alpha.item()\n\n        # -- Polyak target update --\n        soft_update(self.critic_1_target, self.critic_1, self.tau)\n        soft_update(self.critic_2_target, self.critic_2, self.tau)\n\n        return log_dict"
+      }
+     }
+    }
+   ]
+  },
+  {
+   "role": "tool",
+   "content": "Successfully replaced text in CORL/algorithms/offline/custom.py."
+  }
+ ]
+}

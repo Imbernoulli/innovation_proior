@@ -1,0 +1,782 @@
+<meta task="llm-pretrain-optimizer" domain="Optimization" file="nanoGPT/custom_pretrain.py" model_format="qwen3" edit_tool="str_replace"/>
+
+<system>
+You are a research engineer improving a model on a fixed ML task. You work by editing the model code and running experiments. Think carefully before each change. You have these tools:
+- str_replace(path, old_str, new_str): replace the unique occurrence of old_str with new_str.
+- create(path, file_text): create a new file.
+- run_experiment(): train + evaluate the current code under the fixed budget; returns metrics.
+Make one tool call at a time. After editing, call run_experiment() to measure your method.
+</system>
+
+<user>
+## Research question
+
+GPT-style language-model pretraining at a fixed model and data budget: the entire training pipeline —
+architecture, tokenizer, dataset, batch construction, and evaluation — is frozen, and the *only* thing
+being designed is the **optimizer** (and, optionally, the learning-rate schedule). The single question
+is whether a different update rule reaches a lower validation cross-entropy than AdamW with cosine
+annealing, under the same compute. Everything else about the run is fixed; the optimizer is the one
+free variable.
+
+## Prior art before the first rung (the SGD → Adam → AdamW lineage)
+
+The first rung reacts to the default optimizer, which is itself the endpoint of a short lineage. These
+are the methods that precede the ladder.
+
+- **SGD (template).** θₜ = θₜ₋₁ − α gₜ. General, but a single α must serve coordinates of wildly
+  different gradient scale, and progress along low-curvature directions is slow. Gap: no per-coordinate
+  adaptivity, no smoothing.
+- **Classical momentum (Polyak 1964).** mₜ = μ mₜ₋₁ + gₜ; θₜ = θₜ₋₁ − α mₜ. Accelerates low-curvature
+  directions and damps oscillation, but commits to the old velocity direction *before* consulting the
+  current gradient. Gap: the momentum step ignores fresh information; still no per-coordinate scale.
+- **Adam (Kingma & Ba 2014).** mₜ = β₁mₜ₋₁ + (1−β₁)gₜ; vₜ = β₂vₜ₋₁ + (1−β₂)gₜ²; bias-correct;
+  θₜ = θₜ₋₁ − α m̂ₜ/(√v̂ₜ + ε). The √vₜ gives every coordinate its own learning rate — the robustness
+  everyone relies on. Gap: the momentum it carries is the *classical* kind, and the per-coordinate
+  preconditioning is purely *diagonal* — blind to correlations between the entries of a weight matrix.
+- **AdamW (Loshchilov & Hutter 2019).** Decouples weight decay from the gradient: shrink the weights
+  directly, θ ← (1−αλ)θ, then take the adaptive step, instead of folding λθ into gₜ (where it would be
+  divided by √vₜ and distorted). This is the substrate's default optimizer. Gap inherited from Adam:
+  classical momentum and a diagonal preconditioner.
+
+## The fixed substrate
+
+A nanoGPT pretraining loop is frozen and must not be touched. **Model**: GPT-2 Medium — 24 layers, 16
+heads, d = 1024, ≈355M parameters, weight-tied token embedding and LM head, no biases, no dropout.
+**Data**: FineWeb 10B (`sample-10BT`), GPT-2 tokenizer, block size 1024, ≈7.1B training tokens.
+**Training**: 12,030 iterations, micro-batch 96, gradient accumulation 6, 2-GPU DDP, bfloat16 autocast,
+`torch.compile`. The loop fixes the LR application (`get_lr` → cosine decay with linear warmup over 4%
+of steps, base LR 6e-4, min_lr = base/10), global gradient clipping at 1.0, and the base
+hyperparameters β₁ = 0.9, β₂ = 0.95, weight_decay = 0.1. Per step the loop reads `get_lr(it,...)` and
+sets `param_group['lr'] = lr * param_group.get('lr_scale', 1.0)` on every group — so an optimizer can
+expose an `lr_scale` per group to run at a different effective rate while still riding the shared
+schedule shape.
+
+## The editable interface
+
+Exactly one method and (optionally) one constant are editable in `nanoGPT/custom_pretrain.py`:
+
+1. **`configure_optimizers(self, weight_decay, learning_rate, betas, device_type)`** — builds and
+   returns the optimizer. It must return something with `.zero_grad()`, `.step()`, and `.param_groups`.
+   The default groups parameters by dimension: weight decay on 2D parameters (`p.dim() >= 2`), none on
+   1D (`p.dim() < 2`).
+2. **`get_lr(it, warmup_iters, lr_decay_iters, learning_rate, min_lr)`** — the schedule; signature must
+   be kept. (Default: cosine with linear warmup.)
+3. **`CONFIG_OVERRIDES`** — an optional dict allowing a method to override `learning_rate`,
+   `weight_decay`, `warmup_iters`, `min_lr`, or `grad_clip`.
+
+Every method on the ladder is a fill of this same `configure_optimizers` contract. The starting point
+is the scaffold default — **AdamW (fused)**: split params into decay/no-decay by dimension, build
+`torch.optim.AdamW`. Each rung replaces this construction (and, where it helps, sets `CONFIG_OVERRIDES`).
+
+```python
+# EDITABLE region of nanoGPT/custom_pretrain.py — default fill (AdamW, fused)
+    def configure_optimizers(self, weight_decay, learning_rate, betas, device_type):
+        param_dict = {pn: p for pn, p in self.named_parameters() if p.requires_grad}
+        decay_params = [p for n, p in param_dict.items() if p.dim() >= 2]
+        nodecay_params = [p for n, p in param_dict.items() if p.dim() < 2]
+        optim_groups = [
+            {'params': decay_params, 'weight_decay': weight_decay},
+            {'params': nodecay_params, 'weight_decay': 0.0},
+        ]
+        num_decay_params = sum(p.numel() for p in decay_params)
+        num_nodecay_params = sum(p.numel() for p in nodecay_params)
+        print(f"num decayed parameter tensors: {len(decay_params)}, with {num_decay_params:,} parameters")
+        print(f"num non-decayed parameter tensors: {len(nodecay_params)}, with {num_nodecay_params:,} parameters")
+        fused_available = 'fused' in inspect.signature(torch.optim.AdamW).parameters
+        use_fused = fused_available and device_type == 'cuda'
+        extra_args = dict(fused=True) if use_fused else dict()
+        optimizer = torch.optim.AdamW(optim_groups, lr=learning_rate, betas=betas, **extra_args)
+        print(f"using fused AdamW: {use_fused}")
+        return optimizer
+```
+
+## Evaluation settings
+
+A single seed (42). The primary metric is **validation cross-entropy on FineWeb** (`val_loss`,
+**lower is better**) under the gpt-345m training run. Secondary metrics from the same run are perplexity
+on WikiText-2 and LAMBADA (lower is better). A separate downstream evaluation (`lm-eval-345m`) reports
+zero-shot accuracy on ARC-Easy, HellaSwag, PIQA, and WinoGrande (**higher is better**). Ranking here is
+by val_loss first (lower better), corroborated by the downstream accuracies. These are settings only;
+the numbers come after each run.
+
+The editable model code is in `nanoGPT/custom_pretrain.py`:
+```python
+    def configure_optimizers(self, weight_decay, learning_rate, betas, device_type):
+        param_dict = {pn: p for pn, p in self.named_parameters() if p.requires_grad}
+        decay_params = [p for n, p in param_dict.items() if p.dim() >= 2]
+        nodecay_params = [p for n, p in param_dict.items() if p.dim() < 2]
+        optim_groups = [
+            {'params': decay_params, 'weight_decay': weight_decay},
+            {'params': nodecay_params, 'weight_decay': 0.0},
+        ]
+        num_decay_params = sum(p.numel() for p in decay_params)
+        num_nodecay_params = sum(p.numel() for p in nodecay_params)
+        print(f"num decayed parameter tensors: {len(decay_params)}, with {num_decay_params:,} parameters")
+        print(f"num non-decayed parameter tensors: {len(nodecay_params)}, with {num_nodecay_params:,} parameters")
+        fused_available = 'fused' in inspect.signature(torch.optim.AdamW).parameters
+        use_fused = fused_available and device_type == 'cuda'
+        extra_args = dict(fused=True) if use_fused else dict()
+        optimizer = torch.optim.AdamW(optim_groups, lr=learning_rate, betas=betas, **extra_args)
+        print(f"using fused AdamW: {use_fused}")
+        return optimizer
+```
+Improve it. Derive your method, edit the code, then run_experiment().
+</user>
+
+### step 1 — AdamW + Nesterov momentum (NAdam)   [slug:adamw-nesterov]
+
+<think>
+The optimizer is the only free variable on this run — the model, the data, the schedule shape, the clipping, and the betas are all frozen by the substrate — so the discipline I want for the first rung is to change as little about the default as I can while still changing *something* load-bearing. The default fill of `configure_optimizers` builds `torch.optim.AdamW`: it keeps a decaying mean of the gradient and a decaying mean of the squared gradient, steps along the first rescaled by the square root of the second, and shrinks the weights with decoupled decay. I have no complaint about the rescaling — that √v per-coordinate adaptivity is exactly the robustness everyone relies on, and it is the part of AdamW I most want to leave untouched. My complaint is with the *other* half: the momentum. The first moment mₜ = β₁ mₜ₋₁ + (1−β₁) gₜ is a decaying average of past gradients, and when I step I move in the direction of that average. That is *classical* momentum dressed up as a mean, and I have good reason to think classical momentum is the weaker of the two kinds of momentum I know.
+
+So let me lay out the two kinds carefully, because the whole improvement on this rung lives in the difference between them. Classical momentum — the Polyak 1964 form — accumulates a velocity mₜ = μ mₜ₋₁ + gₜ and steps θₜ = θₜ₋₁ − α mₜ. Write the update out: θₜ = θₜ₋₁ − α(μ mₜ₋₁ + gₜ). It is a step of size αμ in the previous velocity direction plus a step of size α along the current gradient. The picture that justifies it: along a low-curvature direction the gradient is small but points the same way every step, so the velocity builds up and I make fast progress; along a high-curvature direction the gradient keeps flipping sign, the contributions cancel in the velocity, and the oscillation is damped. Good — but stare at the term μ mₜ₋₁. It is a step I am *going* to take, and it does not depend on gₜ at all. I commit to moving αμ in the old velocity direction before I have looked at where the current gradient points. That is the inefficiency.
+
+Nesterov's accelerated gradient removes exactly that inefficiency. The momentum step μ mₜ₋₁ is going to happen regardless, so why not compute the gradient *after* taking it — evaluate at the look-ahead point θₜ₋₁ − μ mₜ₋₁ instead of at θₜ₋₁? Then gₜ = ∇fₜ(θₜ₋₁ − μ mₜ₋₁); mₜ = μ mₜ₋₁ + gₜ; θₜ = θₜ₋₁ − α mₜ. The gradient now corrects the momentum step partway through, instead of being a blind addition to it: if the momentum is about to overshoot, the look-ahead gradient already points back and tempers it. This is not just a heuristic. On a smooth convex objective the accelerated method attains an O(1/k²) error rate where plain gradient descent gets O(1/k), and on hard non-convex deep-learning objectives the accelerated form has been shown (Sutskever et al. 2013) to beat classical momentum, plain SGD, and Hessian-free methods. So the better momentum exists, it is well understood, and it is just sitting in non-adaptive SGD. The whole move on this rung is to carry it inside the adaptive method that the substrate hands me — keep AdamW's √v rescaling and decoupled decay exactly, and swap only the kind of momentum.
+
+The obstacle is the look-ahead point. The clean Nesterov iteration wants me to evaluate the gradient at θₜ₋₁ − μ mₜ₋₁, but this training loop computes the gradient at the *current* parameters θₜ₋₁ — that is where the forward and backward pass happen, and the substrate is frozen, so I cannot move the model to a shadow look-ahead point, run a backward there, and move it back. I do not want to maintain a parallel set of look-ahead parameters and shuffle between them inside a `torch.compile`d, DDP, gradient-accumulating loop I am forbidden to touch. So I need the accelerated behavior while only ever differentiating at θₜ₋₁ — the point the loop already gives me.
+
+Sutskever's reformulation gives me exactly that, and it is worth re-deriving so I trust the equivalence rather than invoking it. The trick is to apply the *next* timestep's momentum step once, during the current update, rather than stepping to a look-ahead point and back. Take the gradient at the plain point, gₜ = ∇fₜ(θₜ₋₁); update the velocity, mₜ = μₜ mₜ₋₁ + gₜ; and now form the parameter step as θₜ = θₜ₋₁ − α(μₜ₊₁ mₜ + gₜ). Compare this to the classical update θₜ = θₜ₋₁ − α(μ mₜ₋₁ + gₜ): the only change is that the momentum part of the step uses μₜ₊₁ mₜ — the freshly updated velocity, which already contains gₜ — rather than μ mₜ₋₁. So the momentum step has been advanced by one: it now incorporates the current gradient, which is precisely what the look-ahead evaluation was buying me, except I never had to move off θₜ₋₁ to get it. The look-ahead is folded into the *update* instead of the *gradient point*. That is the property I need to live inside a frozen loop.
+
+Now carry this substitution into the adaptive method, term by term, because that is where the care is. The adaptive first moment is mₜ = β₁ mₜ₋₁ + (1−β₁) gₜ — a mean, with the (1−β₁) factor — and the bias-corrected step is α m̂ₜ/(√v̂ₜ + ε) with m̂ₜ = mₜ/(1−β₁ᵗ). Substitute mₜ into the corrected step:
+
+  m̂ₜ = mₜ/(1−β₁ᵗ) = [μ mₜ₋₁ + (1−μ) gₜ] / (1−μᵗ) = μ mₜ₋₁/(1−μᵗ) + (1−μ) gₜ/(1−μᵗ),
+
+writing μ for the momentum coefficient. There are the two pieces I expected: a momentum piece riding on mₜ₋₁ and a fresh-gradient piece riding on gₜ, each with the same bias-correction denominator. Now apply Sutskever's substitution: replace the *current* momentum piece μ mₜ₋₁/(1−μᵗ) with the *advanced* one, μ mₜ/(1−μᵗ⁺¹) — advance the momentum term by one step so it uses the freshly updated mₜ (which already contains gₜ). That gives the Nesterov-corrected step
+
+  m̂ₜ = μ mₜ/(1−μᵗ⁺¹) + (1−μ) gₜ/(1−μᵗ).
+
+The fresh-gradient piece keeps the denominator (1−μᵗ) it was born with; the momentum piece, now advanced, takes the denominator (1−μᵗ⁺¹) appropriate to the advanced moment. The second moment is untouched — v̂ₜ = vₜ/(1−β₂ᵗ), the adaptive rescaling stays exactly as the substrate has it — and the parameter step is θₜ = θₜ₋₁ − α m̂ₜ/(√v̂ₜ + ε). The step now reacts to the current gradient *twice* — once directly and once through its presence in the advanced moment — which is the accelerated correction, while everything that made the optimizer robust stays in place.
+
+There is one subtlety I glossed by writing μ as a single constant: the Nesterov blend reads better with a scheduled momentum cache. The stored first-moment buffer remains the ordinary β₁ EMA, mₜ = β₁ mₜ₋₁ + (1−β₁) gₜ; the scheduled values μₜ and μₜ₊₁ are the coefficients that weight the direct-gradient and advanced-momentum pieces. Once those coefficients vary with t the normalizers cannot be the naive μᵗ from the constant-coefficient derivation; instead I keep a running product mu_productₜ = ∏ᵢ₌₁ᵗ μᵢ, normalize the fresh-gradient piece by 1 − mu_productₜ, and normalize the advanced-momentum piece by 1 − mu_productₜ·μₜ₊₁. Why schedule μ at all? Early in training the moment estimates are built from very few gradients and are noisy; leaning hard on the accelerated momentum term then commits to a poorly estimated direction. So the standard schedule starts the cache near half strength and lets it rise toward β₁: μₜ = β₁(1 − ½·0.96^{tψ}). Near the first update 0.96^{tψ} ≈ 1 so μₜ ≈ β₁/2, and as t grows 0.96^{tψ} → 0 so μₜ → β₁. The running product belongs to this scheduled blend; the stored EMA itself still uses β₁.
+
+Now the regularizer, because at 355M parameters I want weight decay and it has to compose correctly with the rescaling. The wrong way is to fold an L2 penalty into the gradient, gₜ ← gₜ + λθₜ: that term then flows through both moments and gets divided by √v̂ₜ, so the effective shrinkage on each weight is scaled by its own 1/(√v̂+ε) — coordinates with large second moment get *less* decay, which is not what "decay the weights" should mean. The decoupled fix shrinks the weights directly before the adaptive step, θ ← (1 − αλ)θ, then applies the adaptive Nesterov step; now every weight is pulled toward zero by the same factor regardless of its gradient history. This is the same decoupling AdamW already gives, and I need it preserved when I swap the momentum — the substrate's default is decoupled, and I must not regress it.
+
+Here is where the task's edit surface makes this rung almost free, and where I check what the harness does and does not expose. The substrate already passes me exactly the betas (β₁ = 0.9, β₂ = 0.95), the base learning rate (6e-4), and the weight decay (0.1) I want, and it already splits the parameters by dimension (decay on `p.dim() >= 2`, none on `p.dim() < 2`) — none of which I have any reason to change for the most conservative possible upgrade. And PyTorch ships precisely this update rule as `torch.optim.NAdam`, with a `decoupled_weight_decay=True` flag that gives me the AdamW-style decoupling rather than the gradient-folded L2 that NAdam defaults to. So I do not need to hand-write the scheduled-blend optimizer at all; the entire derivation above is exactly what `torch.optim.NAdam(..., decoupled_weight_decay=True)` computes, default momentum_decay and all. The edit keeps the default dimension-based grouping verbatim and swaps only the constructor — `AdamW(...)` becomes `NAdam(optim_groups, lr=learning_rate, betas=betas, decoupled_weight_decay=True)`. I leave `get_lr` (cosine with linear warmup) untouched and set no `CONFIG_OVERRIDES`, so the base LR, warmup fraction, min_lr, and grad-clip ride exactly as they are. One harness consequence to note honestly: torch's NAdam has no fused implementation, so unlike the substrate's default fused AdamW this runs the plain per-tensor path; at this model size that is a small per-step wall-clock cost, not a correctness or quality issue, and it is the only thing the harness "removes" relative to the default. (The full scaffold module is in the answer.)
+
+What do I expect this floor to do, because that is the whole point of running it first. The Nesterov look-ahead is a genuine improvement to the *direction* of the step, but it is a refinement of momentum, not a change to the preconditioner — the update is still diagonal, still one scalar per coordinate via √v, still blind to the matrix structure of the weights. So I expect it to land *close* to vanilla AdamW: a small, possibly negligible movement in validation cross-entropy, not the kind of jump that comes from changing the update geometry. If anything, on a single long pretraining run the look-ahead's benefit may be modest, because the cosine schedule already anneals the step late in training — exactly where Nesterov's advantage over classical momentum is thinnest, since the momentum term it advances is itself shrinking. The diagnosis is therefore set up before I see the number: if I want a real drop in val_loss (lower is better) and a real lift in the downstream accuracies (higher is better), the lever is not the momentum but the *shape* of the update — replacing the per-coordinate diagonal rescaling with something that respects how a weight matrix's coordinates relate. This rung establishes the floor and the baseline numbers; the next rung has to attack the geometry. The most conservative move is also the cheapest, so let me write it in.
+</think>
+<say>
+Starting the floor rung: swap AdamW for NAdam, keeping the √v rescaling and decoupled decay but upgrading the momentum to Nesterov's look-ahead. This first edit just tags the editable region for step 1.
+</say>
+<edit path="nanoGPT/custom_pretrain.py">
+<old>
+    def configure_optimizers(self, weight_decay, learning_rate, betas, device_type):
+</old>
+<new>
+# EDITABLE region of nanoGPT/custom_pretrain.py — step 1: AdamW with Nesterov momentum (NAdam)
+    def configure_optimizers(self, weight_decay, learning_rate, betas, device_type):
+</new>
+</edit>
+<obs>
+Successfully replaced text in nanoGPT/custom_pretrain.py.
+</obs>
+<edit path="nanoGPT/custom_pretrain.py">
+<old>
+        print(f"num non-decayed parameter tensors: {len(nodecay_params)}, with {num_nodecay_params:,} parameters")
+        fused_available = 'fused' in inspect.signature(torch.optim.AdamW).parameters
+        use_fused = fused_available and device_type == 'cuda'
+        extra_args = dict(fused=True) if use_fused else dict()
+        optimizer = torch.optim.AdamW(optim_groups, lr=learning_rate, betas=betas, **extra_args)
+        print(f"using fused AdamW: {use_fused}")
+        return optimizer
+</old>
+<new>
+        print(f"num non-decayed parameter tensors: {len(nodecay_params)}, with {num_nodecay_params:,} parameters")
+        optimizer = torch.optim.NAdam(optim_groups, lr=learning_rate, betas=betas,
+                                      decoupled_weight_decay=True)
+        print("using NAdam optimizer")
+        return optimizer
+</new>
+</edit>
+<obs>
+Successfully replaced text in nanoGPT/custom_pretrain.py.
+</obs>
+<run/>
+<obs>
+Measured results — `baseline:adamw_nesterov` (`is_final,true`), seed 42.
+
+## gpt-345m (val loss / perplexity — lower is better)
+| metric | value |
+|---|---|
+| val_loss | 2.3231 |
+| wikitext2_ppl | 46.96 |
+| lambada_ppl | 71.82 |
+
+## lm-eval-345m (downstream accuracy — higher is better)
+| metric | value |
+|---|---|
+| arc_easy | 55.18 |
+| hellaswag | 32.75 |
+| piqa | 63.98 |
+| winogrande | 51.38 |
+</obs>
+
+### step 2 — Lion (sign-momentum)   [slug:lion]
+
+<think>
+NAdam came back where I predicted it would: val_loss 2.3231, essentially a vanilla-AdamW result. WikiText-2 perplexity 46.96, LAMBADA 71.82, and the downstream accuracies all sit at the low end of the field — arc_easy 55.18, hellaswag 32.75, piqa 63.98, winogrande 51.38. That is exactly the floor I expected from the most conservative move. The Nesterov look-ahead refined the *direction* of a diagonal step, and a refined diagonal step is still a diagonal step; the cosine schedule anneals the learning rate late in training, which is where the look-ahead's advantage is thinnest, so there was nothing structural to exploit. The diagnosis I wrote going in is now confirmed by the number: if I want validation loss to actually move, I have to change the *shape* of the update, not its momentum. So the question for this rung is what the cheapest change to the update geometry looks like — and the cheapest place to start is to ask what the diagonal step I just ran actually *is*.
+
+Stare at what the diagonal step does with the moving averages stripped away. Turn AdamW's EMAs off — β₁ = β₂ = 0, drop ε — and the update is g/√(g²) = sign(g). AdamW, and the NAdam I just ran, is sign descent with smoothing: it normalizes each coordinate of the gradient *in isolation* to roughly ±1, and the second moment just softens that normalization. The Nesterov refinement changed *which* gradient I sign, but it still signs per coordinate. So the family I am in already throws away gradient magnitude in the limit; the obvious question is whether I should throw it away *deliberately and uniformly* rather than via a noisy per-coordinate √v estimate that costs a whole second-moment buffer. That reframing is what points at the next rung: keep momentum, make the step's magnitude uniform across coordinates by taking the sign of a momentum-blended gradient, and drop the second moment entirely. The update for every coordinate becomes ±1 before weight decay — an equalized step, with one momentum buffer instead of two.
+
+The motivation worth being careful about is *why* I should believe equalizing helps over AdamW's per-coordinate scaling, because "it's cheaper" alone does not justify giving up adaptivity. There are two angles, and both matter here. First, the sign throws away the gradient's magnitude information, which injects a controlled, uniform noise into each update — and injected update noise is a known regularizer, the same family of effect as deliberately adding gradient noise or sharpness-aware methods, nudging training toward flatter, more robust minima. On a 7.1B-token pretraining run held at a fixed budget, where NAdam's representation-quality metrics (hellaswag 32.75, arc_easy 55.18) came in depressed, a regularizing update that pushes toward flatter minima is exactly the kind of lever I want. Second, it is genuinely cheaper: one momentum buffer instead of Adam's two, which on a 355M model is not nothing. The flip side I have to respect: signing a noisy gradient gives a *bad* direction if the gradient estimate is poor — so this should *like* large batches, where the averaged gradient's sign is reliable. The substrate's effective batch is micro-batch 96 × grad-accum 6 × 2 GPUs, which is large; that precondition is met, which is the encouraging part, since NAdam's failure was not noise but structural flatness.
+
+Now the move I would never have hand-written, and the one piece of substance beyond "sign the momentum": *how* the momentum enters. A single EMA signed — signSGD-with-momentum — ties together what the optimizer remembers and how it steps, because one constant governs both. The better rule separates them. The step is the sign of a blend cₜ = β₁ mₜ₋₁ + (1−β₁) gₜ, which puts real weight (1−β₁) on the *current* gradient so the move reacts to fresh information; but the buffer itself updates on its own, slower constant, mₜ = β₂ mₜ₋₁ + (1−β₂) gₜ, a longer memory of gradient history. Two constants doing two jobs: a long stable history (β₂) and a recency-weighted step (β₁). That decoupling is exactly what NAdam did *not* have — NAdam mixes the fresh moment with the gradient for the step but never separates the *tracking* rate from the *application* rate. Here both knobs are free, and the decoupling is load-bearing, not cosmetic: the degenerate single-EMA version (track one buffer, sign it) underperforms at both β = 0.9 and β = 0.99, so the long memory and the recency-weighted step are both needed.
+
+I should also be honest about where this rule came from, because it is not a hand-derivation like Nesterov-into-Adam was — it is the surviving point of an *evolutionary program search* over update rules. The premise of that search is the same complaint I have been working: AdamW is one hand-picked point in a vast space, never actually searched. Represent an update rule as a short program over arrays with AdamW's two-buffer memory signature, seed the population with AdamW itself, mutate by inserting/deleting/editing statements, and select by a proxy task with meta-validation on larger tasks to survive the proxy-to-scale gap. The raw winner is a mess — a `clip`, an `arcsin`, two interpolations with odd constants, a chain computing `m*m → sqrt → m/sqrt(m*m)`, and a stray `cosh` — but it simplifies. The trailing `cosh` is dead (overwritten next iteration); the `clip`/`arcsin` ablate away with no quality loss; and the suspicious chain `√(m²)` is just |m|, so `m/|m|` is **sign(m)** — three statements collapse to one. The two odd-constant interpolations compose into a single ≈0.99 EMA feeding the signed step, dropping the second tracked buffer below Adam's two. What is left is the single-buffer, sign-of-blended-momentum rule above — which is reassuring, because it means the structure I am about to land is what an outward search from AdamW actually converges to, not something I imposed.
+
+Now I have to be careful, because the baseline I am actually editing is *not* the canonical recipe — it is this task's Lion, and the harness fixes choices the standalone method would set differently. The standalone Lion uses betas (0.9, 0.99) — a ~10× longer buffer memory — and a learning rate roughly 0.1× AdamW's with weight decay scaled up ~10× to hold the effective decoupled decay lr·λ constant against the larger sign-update norm. This task does none of that, and I have to read the edit surface honestly rather than import the method's prescription. It passes the harness's *own* betas straight through, which are (0.9, 0.95): so β₂ = 0.95 here, a much *shorter* buffer memory than the method's 0.99 — the long-horizon stability arm of the decoupling is turned down to whatever AdamW was using. It scales the learning rate by **0.3**, not 0.1 — a more aggressive step than the method's usual prescription, presumably because the sign update's large norm has to be absorbed but the harness keeps the rest of the schedule fixed and rides the same cosine shape. And it does **not** raise the weight decay: it reuses the substrate's wd = 0.1 on the 2D params only, with the 1D params at 0.0, applied as a decoupled shrink *before* the sign step (p ← p·(1 − lr·wd), then p ← p − lr·sign(cₜ)). The 1D-vs-2D grouping is the substrate's default, unchanged. So the implementation I land is the sign-of-blended-momentum update with β₁/β₂ = (0.9, 0.95) from the harness, lr = 0.3 × the schedule's value, decay 0.1 on 2D / 0 on 1D applied before the update — and crucially *not* the method's (0.9, 0.99) / 0.1×-lr / 10×-wd recipe.
+
+That divergence has a consequence I should carry forward rather than paper over. Because β₂ is only 0.95 here, the buffer's memory is short — about a ten-step effective horizon rather than the ~hundred-step horizon the method's 0.99 intends. The decoupling between "remember" (β₂) and "step" (β₁) still exists, so this is genuinely more than signSGD-with-momentum, but its long-horizon arm is weaker than the method wants. I should therefore expect a competent but not fully-tuned sign optimizer — the geometry change is real, but the stability knob that the method leans on is turned down by the harness. The 0.3 lr factor is the harness's compensation for the sign update's norm; it is baked into the constructor rather than into `CONFIG_OVERRIDES`, and since the cosine schedule and grad-clip are left exactly as the substrate sets them, I set no overrides at all. (The full scaffold module — the inner `Lion` optimizer class and the dimension-based grouping — is in the answer.)
+
+So the delta from NAdam is a real change of geometry, the first on the ladder: stop scaling each coordinate by its own √v and instead step every coordinate by the same magnitude (the sign), with momentum split across two constants and a single buffer. Reading NAdam's numbers, here is what I expect, falsifiably. NAdam sat at val_loss 2.3231 because a diagonal magnitude-aware step had nothing structural to gain; the uniform sign step changes what the update *is*, and the regularizing effect of the injected noise — plus the large, reliable batch that makes the sign trustworthy — should pull val_loss down *meaningfully* below 2.3231. I would be surprised if a working sign optimizer did not clear NAdam comfortably; if it lands at or above 2.3231 I will read that as the short β₂ memory or the 0.3 lr having broken the sign step rather than the geometry argument failing. The downstream accuracies should rise in step with the lower loss — arc_easy and hellaswag in particular, which were depressed for NAdam at 55.18 and 32.75 and which track representation quality, are the ones I expect to move most. What I am *not* expecting is for this to be the ceiling: the sign step still treats the weight matrix as a bag of independent scalars — it equalizes magnitude per coordinate but is still blind to the matrix's operator structure, the same blindness NAdam had, just with a uniform instead of an adaptive magnitude. That residual blindness — equalizing entries rather than directions — is the gap the next rung has to close. With the harness config pinned down, let me write the optimizer in.
+</think>
+<say>
+Moving to Lion: replace NAdam with a single-buffer sign-of-momentum update — every coordinate steps by ±1 instead of a per-coordinate √v scale, under the harness's 0.3× lr. This edit just retags the region for step 2.
+</say>
+<edit path="nanoGPT/custom_pretrain.py">
+<old>
+# EDITABLE region of nanoGPT/custom_pretrain.py — step 1: AdamW with Nesterov momentum (NAdam)
+    def configure_optimizers(self, weight_decay, learning_rate, betas, device_type):
+</old>
+<new>
+# EDITABLE region of nanoGPT/custom_pretrain.py — step 2: Lion (sign-momentum), task config
+    def configure_optimizers(self, weight_decay, learning_rate, betas, device_type):
+</new>
+</edit>
+<obs>
+Successfully replaced text in nanoGPT/custom_pretrain.py.
+</obs>
+<note>
+Now define the Lion optimizer class inline, in front of the param groups.
+</note>
+<edit path="nanoGPT/custom_pretrain.py">
+<old>
+        nodecay_params = [p for n, p in param_dict.items() if p.dim() < 2]
+        optim_groups = [
+</old>
+<new>
+        nodecay_params = [p for n, p in param_dict.items() if p.dim() < 2]
+        num_decay_params = sum(p.numel() for p in decay_params)
+        num_nodecay_params = sum(p.numel() for p in nodecay_params)
+        print(f"num decayed parameter tensors: {len(decay_params)}, with {num_decay_params:,} parameters")
+        print(f"num non-decayed parameter tensors: {len(nodecay_params)}, with {num_nodecay_params:,} parameters")
+
+        class Lion(torch.optim.Optimizer):
+            """Lion optimizer — sign-based updates with EMA momentum."""
+            def __init__(self, params, lr=1e-4, betas=(0.9, 0.99), weight_decay=0.0):
+                defaults = dict(lr=lr, betas=betas, weight_decay=weight_decay)
+                super().__init__(params, defaults)
+            @torch.no_grad()
+            def step(self):
+                for group in self.param_groups:
+                    for p in group['params']:
+                        if p.grad is None:
+                            continue
+                        grad = p.grad
+                        state = self.state[p]
+                        if len(state) == 0:
+                            state['exp_avg'] = torch.zeros_like(p)
+                        exp_avg = state['exp_avg']
+                        beta1, beta2 = group['betas']
+                        # Weight decay first (decoupled, before update)
+                        if group['weight_decay'] != 0:
+                            p.mul_(1 - group['lr'] * group['weight_decay'])
+                        update = exp_avg * beta1 + grad * (1 - beta1)
+                        p.add_(torch.sign(update), alpha=-group['lr'])
+                        exp_avg.mul_(beta2).add_(grad, alpha=1 - beta2)
+
+        optim_groups = [
+</new>
+</edit>
+<obs>
+Successfully replaced text in nanoGPT/custom_pretrain.py.
+</obs>
+<note>
+Now swap the constructor: NAdam becomes Lion at 0.3× the schedule's lr.
+</note>
+<edit path="nanoGPT/custom_pretrain.py">
+<old>
+        ]
+        num_decay_params = sum(p.numel() for p in decay_params)
+        num_nodecay_params = sum(p.numel() for p in nodecay_params)
+        print(f"num decayed parameter tensors: {len(decay_params)}, with {num_decay_params:,} parameters")
+        print(f"num non-decayed parameter tensors: {len(nodecay_params)}, with {num_nodecay_params:,} parameters")
+        optimizer = torch.optim.NAdam(optim_groups, lr=learning_rate, betas=betas,
+                                      decoupled_weight_decay=True)
+        print("using NAdam optimizer")
+        return optimizer
+</old>
+<new>
+        ]
+        optimizer = Lion(optim_groups, lr=learning_rate * 0.3, betas=betas)
+        print("using Lion optimizer")
+        return optimizer
+</new>
+</edit>
+<obs>
+Successfully replaced text in nanoGPT/custom_pretrain.py.
+</obs>
+<run/>
+<obs>
+Measured results — `baseline:lion` (`is_final,true`), seed 42.
+
+## gpt-345m (val loss / perplexity — lower is better)
+| metric | value |
+|---|---|
+| val_loss | 2.2028 |
+| wikitext2_ppl | 38.96 |
+| lambada_ppl | 60.05 |
+
+## lm-eval-345m (downstream accuracy — higher is better)
+| metric | value |
+|---|---|
+| arc_easy | 58.21 |
+| hellaswag | 35.64 |
+| piqa | 65.45 |
+| winogrande | 51.62 |
+</obs>
+
+### step 3 — Muon (Newton-Schulz orthogonalization) + AdamW   [slug:muon]
+
+<think>
+Lion did what the geometry argument said it would: val_loss dropped to 2.2028 from NAdam's 2.3231, a clear structural improvement, and the downstream accuracies moved up with it — arc_easy 58.21, hellaswag 35.64, piqa 65.45, winogrande 51.62, all above NAdam's, with WikiText-2 perplexity falling from 46.96 to 38.96 and LAMBADA from 71.82 to 60.05. So equalizing the step magnitude across coordinates and leaning on the regularizing noise of the sign update was the right kind of move, and the large reliable batch made the sign trustworthy, exactly as I hoped. But I flagged the ceiling going in, and the number sits against it: Lion equalizes magnitude *per coordinate*, treating each weight matrix as a bag of m·n independent scalars. The sign is blind to the fact that a hidden layer's weight is a linear *operator*. That residual blindness — the same one NAdam had, just with a uniform rather than an adaptive magnitude — is the gap. The lever this rung pulls is to make the update see the matrix as a matrix.
+
+Before I go abstract, let me look at the updates I am actually producing, because there is a concrete fact about them that points straight at the fix. Take the SGD-momentum or Lion-style updates for the 2D weights of this transformer and look at their singular spectrum: they are nearly low-rank — a huge condition number, a few singular directions carrying almost the entire magnitude of the update, and a long tail of small-singular-value directions getting almost nothing. Lion's sign does not address this at all: it equalizes *entries*, not *directions*, so a sign update can still be dominated by a handful of operator directions while starving the rest. But those rare directions can still matter for learning — there is no reason the loss only cares about the top few directions of the update. So whatever a "good" matrix update is, it should *not* let a handful of directions eat the whole step; it should equalize the step across *singular directions*, not across entries. That is the right notion of a "unit step for a matrix parameter," and it is exactly what Lion's per-entry sign cannot deliver.
+
+Make that precise with a framing that turns the choice of optimizer into the choice of one object. Any sensible first-order optimizer can be read as steepest descent under a chosen norm: build the local model ⟨G, ΔW⟩ + (λ/2)‖ΔW‖² and minimize it over the update ΔW, where G is the gradient or my momentum estimate of it. Solve it generically by splitting ΔW = c·T into a magnitude c ≥ 0 and a unit direction ‖T‖ = 1: substituting gives c·⟨G,T⟩ + (λ/2)c², minimized over direction by T = −argmax_{‖T‖=1}⟨G,T⟩ and over magnitude at c = ‖G‖†/λ, where ‖G‖† is the dual norm. So ΔW = −(‖G‖†/λ)·argmax_{‖T‖=1}⟨G,T⟩ — the whole personality of the optimizer is in *which norm* I pick. Check that Lion's sign drops out: under the ℓ∞ norm on the flattened weights, maximizing Σ Gᵢⱼ Tᵢⱼ subject to every |Tᵢⱼ| ≤ 1 gives Tᵢⱼ = sign(Gᵢⱼ), and the dual norm is ‖G‖₁. So the sign update is steepest descent under ℓ∞ — a statement about individual entries that throws away the matrix structure entirely. That confirms the diagnosis and tells me the fix is to *pick a better norm*, one that sees the matrix as an operator.
+
+What norm respects a weight matrix as an operator? It maps vectors in the input space to vectors in the output space, both (locally) Euclidean, so the natural yardstick is the induced ℓ₂→ℓ₂ operator norm — the **spectral norm**, the largest singular value, the worst-case stretch factor. Redo the steepest-descent solution with ‖·‖ the spectral norm. Write the SVD G = UΣVᵀ = Σᵢ σᵢ uᵢvᵢᵀ; then ⟨G,T⟩ = Σᵢ σᵢ (uᵢᵀ T vᵢ), and since ‖T‖₂ = 1 implies uᵢᵀ T vᵢ ≤ 1, each term is at most σᵢ, so ⟨G,T⟩ ≤ Σᵢ σᵢ. The bound is attained by T = Σᵢ uᵢvᵢᵀ = UVᵀ (its singular values are all 1, and uᵢᵀ(Σⱼ uⱼvⱼᵀ)vᵢ = 1 by orthonormality). So the optimal direction is **T\* = UVᵀ** — the SVD of G with every singular value replaced by 1, the orthogonal polar factor, the matrix version of sign. And this is exactly the equalization the spectra were begging for: the raw momentum G = UΣVᵀ pours most of its magnitude into the top few σᵢ; replacing Σ by the identity gives every singular direction an equal-size step, so the rare low-σ directions that Lion's sign was starving finally get a full unit of update. Two independent characterizations land on the same object — UVᵀ is both the spectral-norm steepest-descent direction and the closest semi-orthogonal matrix to G in Frobenius distance — which is reassuring that it is not an artifact of one variational problem.
+
+So the core update for a 2D hidden weight is: momentum-accumulate the gradient, orthogonalize the momentum to its polar factor UVᵀ, step along that. Computing UVᵀ by an SVD or by Shampoo-style inverse roots every step is too slow and too precision-hungry for a GPU inner loop. The cheapest GPU primitive is matrix multiplication in bfloat16, so I want an iteration that converges to UVᵀ using only matmuls. The lever: an *odd* matrix polynomial leaves U and V fixed while acting on the singular values as a scalar polynomial — p(X) = X Xᵀ X sends UΣVᵀ to UΣ³Vᵀ — so iterating X_{k+1} = a X_k + b X_kX_kᵀX_k + c (X_kX_kᵀ)²X_k evolves the singular values under g(σ) = aσ + bσ³ + cσ⁵ while never moving U, V. I tune (a,b,c) to drive every σ toward 1 with a large slope at zero (so the many small singular values lift fast), accepting that the values end up scattered around 1 rather than exactly 1 — equalization to within a factor of ~3 is all I need, and the loss does not care about the difference. The tuned coefficients (3.4445, −4.7750, 2.0315) give g′(0) ≈ 3.44, and **5 iterations** suffice. The one precondition: the iteration only contracts inside the basin, so I Frobenius-normalize first (X₀ = G/‖G‖_F puts every σ ≤ 1), which is free of consequence for the direction since scaling G scales all σ equally and leaves U, V alone. Five bounded matmul steps in bfloat16, no inverse, well-behaved even when G is nearly singular.
+
+This runs only on the 2D *hidden* matrices — the attention and MLP projections — because the derivation assumed a weight that acts as an operator on a Euclidean hidden space. The embedding table and the LM head are technically 2D but do not act that way (a vocabulary lookup and a class scorer are not operators whose singular directions I should equalize), and the 1D parameters have no matrix structure at all. So those keep an adaptive per-entry optimizer, exactly as in the analysis above.
+
+Now read this task's Muon edit line by line, because it diverges from the generic method in several harness-specific ways and the trajectory has to land *that* implementation, not the paper's. First, momentum: the canonical form is SGD-momentum M = μM + G, but this task uses an **EMA momentum with a Nesterov blend** — `buf.lerp_(g, 1−momentum)` so buf = (1−μ)g + μ·buf, then `nesterov_g = g.lerp(buf, momentum)` so the orthogonalized input is (1−μ)g + μ·buf, a Nesterov look-ahead, with μ = 0.95. (That is the same look-ahead idea I used on rung 1, now feeding the orthogonalization rather than a diagonal step.) Second, and specific to GPT-2's fused attention: the `c_attn` weight is a single 3·n_embd × n_embd matrix holding Q, K, V stacked. Orthogonalizing the stacked matrix as one operator is wrong — Q, K, V are three separate operators — so the edit **splits any matrix whose row count is 3× its column count into three parts**, runs Newton–Schulz on each, concatenates, and uses scale = max(1, 3)**0.5 = √3 for that case. Third, the shape-dependent scale: the canonical method cancels the orthogonalized update's √(1/max(A,B)) RMS by multiplying by √max(A,B) and a 0.2 prefactor to match AdamW's RMS; *this* edit instead uses **scale = max(1, A/B)**0.5** — a ratio-based correction with no explicit 0.2 — and absorbs the overall magnitude into the learning rate. That the harness drops the 0.2-RMS-matching prefactor matters: it means I cannot lean on Muon and AdamW sharing one learning rate by construction, which is why the learning-rate handling below is so explicit.
+
+That learning-rate handling is the fourth and most harness-coupled difference. The orthogonalized step has unit-ish RMS, so it wants a much larger LR than Adam (~0.02 vs ~6e-4). The edit sets `muon_base_lr = 0.02`, computes `muon_lr_scale = muon_base_lr / learning_rate`, and attaches it as `lr_scale` on the Muon group — and the substrate's loop multiplies every group's LR by its `lr_scale` each step (`param_group['lr'] = lr * param_group.get('lr_scale', 1.0)`). So Muon rides the *shape* of the cosine schedule but at ~0.02 peak while the AdamW side rides it at the base rate; this is exactly the `lr_scale` hook the substrate advertised, used as intended. To keep the base rate sane for the AdamW side, the edit also sets `CONFIG_OVERRIDES = {'learning_rate': 1e-3}`, bumping the substrate's 6e-4 up to 1e-3 — the one override on this rung, and the first time the ladder has touched a `CONFIG_OVERRIDES` value at all. Fifth, the two optimizers are combined: a `CombinedOptimizer` wrapper holds a `Muon` instance for the 2D projection weights (identified by *excluding* names containing `wte`/`wpe`/`lm_head`) and a `torch.optim.AdamW` for the embedding/head 2D params plus all 1D params, exposing the merged `param_groups` so the loop's per-group LR scaling reaches both. Weight decay 0.1 is applied decoupled inside Muon (before the update) and via AdamW for the rest.
+
+So the implementation I land is: EMA+Nesterov momentum → QKV-aware Newton–Schulz orthogonalization with the ratio scale → applied to the 2D hidden weights at lr 0.02 via `lr_scale`, AdamW at base lr 1e-3 for embeddings/head/1D, wrapped in `CombinedOptimizer` — *not* the 0.2×-RMS, plain-SGD-momentum, single-class form of the canonical method, and notably without the distributed-gather machinery the full method needs at scale, which this two-GPU harness does not require me to express (each Muon param is orthogonalized whole on its device). The full method's weight-decay-against-bfloat16-overflow argument still applies and is honored by the decoupled 0.1; the distributed reduce-scatter/gather story is the one piece the harness lets me drop. (The full scaffold module — the `Muon` and `CombinedOptimizer` classes, the param split, and the `CONFIG_OVERRIDES` — is in the answer.)
+
+So the delta from Lion is the deepest geometry change yet: Lion equalized the update *per entry* (sign, ℓ∞ steepest descent), Muon equalizes it *per singular direction* (orthogonalization, spectral-norm steepest descent), which is precisely the structure Lion was blind to. Reading Lion's numbers, here is what I expect, falsifiably. Lion sat at 2.2028 because the sign step, while uniform across entries, still let a few operator directions dominate the actual change to each weight matrix; giving the starved directions a full unit of update should let the model use more of its capacity, so I expect val_loss to drop *below* 2.2028, with the downstream accuracies — arc_easy and hellaswag especially, which track representation quality and stood at 58.21 and 35.64 — rising past Lion's. The orthogonalization is the most principled per-matrix step on the ladder, so I expect this to be the strongest of the three baselines; if it fails to clear 2.2028 I will suspect the harness's ratio scale or the 0.02/1e-3 lr split rather than the spectral-norm argument. The caveat I carry forward, in case it is not enough: Muon orthogonalizes using only the *current* momentum's instantaneous geometry — it whitens the update direction but accumulates no running estimate of the gradient's cross-coordinate curvature across steps, and it leaves the embedding and head on plain AdamW. If a rung beyond this is needed, the place to look is an optimizer that keeps a *history-aware*, non-diagonal preconditioner — accumulated second-order structure on both sides of the matrix — rather than a per-step orthogonalization. The split is large but mechanical, so let me write the whole construction in.
+</think>
+<say>
+Stepping up to Muon: orthogonalize the momentum of each 2D hidden weight via a 5-step Newton–Schulz iteration so the update is equalized across singular directions, with AdamW for the embeddings/head/1D params. This edit retags the region for step 3.
+</say>
+<edit path="nanoGPT/custom_pretrain.py">
+<old>
+# EDITABLE region of nanoGPT/custom_pretrain.py — step 2: Lion (sign-momentum), task config
+    def configure_optimizers(self, weight_decay, learning_rate, betas, device_type):
+        param_dict = {pn: p for pn, p in self.named_parameters() if p.requires_grad}
+        decay_params = [p for n, p in param_dict.items() if p.dim() >= 2]
+        nodecay_params = [p for n, p in param_dict.items() if p.dim() < 2]
+        num_decay_params = sum(p.numel() for p in decay_params)
+        num_nodecay_params = sum(p.numel() for p in nodecay_params)
+        print(f"num decayed parameter tensors: {len(decay_params)}, with {num_decay_params:,} parameters")
+        print(f"num non-decayed parameter tensors: {len(nodecay_params)}, with {num_nodecay_params:,} parameters")
+
+        class Lion(torch.optim.Optimizer):
+            """Lion optimizer — sign-based updates with EMA momentum."""
+            def __init__(self, params, lr=1e-4, betas=(0.9, 0.99), weight_decay=0.0):
+                defaults = dict(lr=lr, betas=betas, weight_decay=weight_decay)
+                super().__init__(params, defaults)
+            @torch.no_grad()
+            def step(self):
+                for group in self.param_groups:
+                    for p in group['params']:
+                        if p.grad is None:
+                            continue
+                        grad = p.grad
+                        state = self.state[p]
+                        if len(state) == 0:
+                            state['exp_avg'] = torch.zeros_like(p)
+                        exp_avg = state['exp_avg']
+                        beta1, beta2 = group['betas']
+                        # Weight decay first (decoupled, before update)
+                        if group['weight_decay'] != 0:
+                            p.mul_(1 - group['lr'] * group['weight_decay'])
+                        update = exp_avg * beta1 + grad * (1 - beta1)
+                        p.add_(torch.sign(update), alpha=-group['lr'])
+                        exp_avg.mul_(beta2).add_(grad, alpha=1 - beta2)
+
+        optim_groups = [
+            {'params': decay_params, 'weight_decay': weight_decay},
+            {'params': nodecay_params, 'weight_decay': 0.0},
+        ]
+        optimizer = Lion(optim_groups, lr=learning_rate * 0.3, betas=betas)
+        print("using Lion optimizer")
+        return optimizer
+</old>
+<new>
+# EDITABLE region of nanoGPT/custom_pretrain.py — step 3: Muon (2D hidden) + AdamW (rest)
+    def configure_optimizers(self, weight_decay, learning_rate, betas, device_type):
+        param_dict = {pn: p for pn, p in self.named_parameters() if p.requires_grad}
+        decay_params = [(n, p) for n, p in param_dict.items() if p.dim() >= 2]
+        nodecay_params = [(n, p) for n, p in param_dict.items() if p.dim() < 2]
+        num_decay_params = sum(p.numel() for _, p in decay_params)
+        num_nodecay_params = sum(p.numel() for _, p in nodecay_params)
+        print(f"num decayed parameter tensors: {len(decay_params)}, with {num_decay_params:,} parameters")
+        print(f"num non-decayed parameter tensors: {len(nodecay_params)}, with {num_nodecay_params:,} parameters")
+
+        # Separate 2D projection weights (for Muon) from rest (for AdamW)
+        muon_params = [p for n, p in decay_params
+                       if 'wte' not in n and 'wpe' not in n and 'lm_head' not in n]
+        adam_decay_params = [p for n, p in decay_params
+                            if 'wte' in n or 'wpe' in n or 'lm_head' in n]
+        adam_nodecay_params = [p for _, p in nodecay_params]
+
+        class Muon(torch.optim.Optimizer):
+            """Muon — MomentUm Orthogonalized by Newton-schulz."""
+            def __init__(self, params, lr=0.02, momentum=0.95, ns_steps=5, weight_decay=0.0):
+                defaults = dict(lr=lr, momentum=momentum, ns_steps=ns_steps, weight_decay=weight_decay)
+                super().__init__(params, defaults)
+
+            @staticmethod
+            def zeroth_power_via_newtonschulz5(G, steps=5):
+                assert G.ndim == 2
+                a, b, c = (3.4445, -4.7750, 2.0315)
+                X = G.bfloat16()
+                X = X / (X.norm() + 1e-7)
+                if G.size(0) > G.size(1):
+                    X = X.T
+                for _ in range(steps):
+                    A = X @ X.T
+                    X = a * X + b * (A @ X) + c * (A @ (A @ X))
+                if G.size(0) > G.size(1):
+                    X = X.T
+                return X
+
+            @torch.no_grad()
+            def step(self):
+                for group in self.param_groups:
+                    lr = group['lr']; momentum = group['momentum']; wd = group.get('weight_decay', 0.0)
+                    for p in group['params']:
+                        if p.grad is None:
+                            continue
+                        if wd > 0:
+                            p.mul_(1 - lr * wd)
+                        g = p.grad
+                        state = self.state[p]
+                        if len(state) == 0:
+                            state['momentum_buffer'] = torch.zeros_like(g)
+                        buf = state['momentum_buffer']
+                        buf.lerp_(g, 1.0 - momentum)                 # EMA momentum
+                        nesterov_g = g.lerp(buf, momentum)           # Nesterov look-ahead
+                        if nesterov_g.dim() == 2:
+                            orig_shape = nesterov_g.shape
+                            if orig_shape[0] == 3 * orig_shape[1]:   # split fused QKV
+                                parts = nesterov_g.split(orig_shape[1])
+                                update = torch.cat([
+                                    self.zeroth_power_via_newtonschulz5(part, steps=group['ns_steps'])
+                                    for part in parts])
+                                scale = max(1, orig_shape[0] // orig_shape[1]) ** 0.5
+                            else:
+                                update = self.zeroth_power_via_newtonschulz5(nesterov_g, steps=group['ns_steps'])
+                                scale = max(1, orig_shape[0] / orig_shape[1]) ** 0.5
+                            p.data.add_(update.to(p.dtype), alpha=-lr * scale)
+                        else:
+                            p.add_(buf, alpha=-lr)
+
+        fused_available = 'fused' in inspect.signature(torch.optim.AdamW).parameters
+        use_fused = fused_available and device_type == 'cuda'
+        extra_args = dict(fused=True) if use_fused else dict()
+
+        muon_base_lr = 0.02
+        muon_lr_scale = muon_base_lr / learning_rate
+        muon_opt = Muon([{'params': muon_params, 'lr_scale': muon_lr_scale}],
+                        lr=muon_base_lr, momentum=0.95, weight_decay=0.1)
+        adam_groups = [
+            {'params': adam_decay_params, 'weight_decay': weight_decay},
+            {'params': adam_nodecay_params, 'weight_decay': 0.0},
+        ]
+        adam_opt = torch.optim.AdamW(adam_groups, lr=learning_rate, betas=betas, **extra_args)
+
+        class CombinedOptimizer:
+            def __init__(self, optimizers):
+                self.optimizers = optimizers
+                self.param_groups = []
+                for opt in optimizers:
+                    self.param_groups.extend(opt.param_groups)
+            def zero_grad(self, set_to_none=True):
+                for opt in self.optimizers:
+                    opt.zero_grad(set_to_none=set_to_none)
+            def step(self):
+                for opt in self.optimizers:
+                    opt.step()
+            def state_dict(self):
+                return [opt.state_dict() for opt in self.optimizers]
+
+        print(f"using Muon (lr={muon_base_lr}, scale={muon_lr_scale:.1f}) + AdamW combined optimizer")
+        return CombinedOptimizer([muon_opt, adam_opt])
+
+# ... and in the __main__ config block:
+    # CONFIG_OVERRIDES: override training hyperparameters for your method.
+    CONFIG_OVERRIDES = {'learning_rate': 1e-3}
+</new>
+</edit>
+<obs>
+Successfully replaced text in nanoGPT/custom_pretrain.py.
+</obs>
+<run/>
+<obs>
+Measured results — `baseline:muon` (`is_final,true`), seed 42.
+
+## gpt-345m (val loss / perplexity — lower is better)
+| metric | value |
+|---|---|
+| val_loss | 2.1995 |
+| wikitext2_ppl | 37.98 |
+| lambada_ppl | 60.08 |
+
+## lm-eval-345m (downstream accuracy — higher is better)
+| metric | value |
+|---|---|
+| arc_easy | 60.19 |
+| hellaswag | 36.85 |
+| piqa | 64.15 |
+| winogrande | 52.17 |
+</obs>
+
+### step 4 — SOAP (Adam in Shampoo's eigenbasis)   [slug:soap]
+
+<think>
+Muon is the strongest baseline: val_loss 2.1995, edging Lion's 2.2028 and well below NAdam's 2.3231, with the best downstream accuracies of the three — arc_easy 60.19, hellaswag 36.85, winogrande 52.17 (WikiText-2 37.98, LAMBADA 60.08, piqa 64.15). The orthogonalization paid off exactly as the geometry argument predicted: equalizing the step across singular directions, not just entries, let the model use the rare operator directions a per-coordinate method starves. So the ladder confirms a clean trend — each rung that changes the update *geometry* to respect more of the weight matrix's structure does better: NAdam (diagonal, magnitude-aware) → Lion (uniform per entry) → Muon (uniform per singular direction). Where does that trend point next? At the caveat I logged when I built Muon: it orthogonalizes from the *instantaneous* momentum geometry alone. It whitens this step's direction but accumulates no running estimate of the gradient's cross-coordinate curvature, and it leaves the embedding and head on plain AdamW. The natural next move is a *history-aware, non-diagonal* preconditioner — accumulated second-order structure on both sides of the matrix — rather than a per-step orthogonalization. That is what I want to land beyond Muon.
+
+Let me make the gap precise, because it tells me what to build. Muon's update for a 2D weight is the polar factor UVᵀ of the current momentum M — the SVD of M with all singular values set to 1. That is a *whitening of the present update*: it equalizes the directions of *this* momentum, but it carries no memory of how the gradient's covariance has looked over training. Two different curvature landscapes that happen to produce the same momentum this step get the same Muon update. A preconditioner that *accumulated* the gradient's second-order statistics — the running covariance of the rows and of the columns of G — would instead adapt the step to the persistent geometry of the loss, not just the snapshot. The ideal object here is full-matrix Adagrad's preconditioner: vectorize the gradient g = vec(G), accumulate H = Σ g gᵀ, and step H^{-1/2} g, which uses *every* pairwise correlation between the mn coordinates — the genuine non-diagonal preconditioner. And it is hopeless: H is mn×mn, so for a 1024×1024 weight that is a million-by-million matrix whose inverse square root I would have to keep current. Adam's answer is to keep only the diagonal of H, which is exactly why it is cheap and exactly why it is blind. So the ideal is out of reach and I need a tractable structured approximation that still accumulates curvature.
+
+Shampoo is exactly that approximation, and it is the obvious thing to reach for. Instead of the full H or just its diagonal, approximate H by a Kronecker product of two small matrices: a left factor L = Σ G Gᵀ ∈ ℝ^{m×m} capturing row correlations and a right factor R = Σ Gᵀ G ∈ ℝ^{n×n} capturing column correlations. The preconditioned step is W ← W − η L^{-1/2} G R^{-1/2}, which vectorized is preconditioning by the Kronecker product (L ⊗ R)^{-1/2} — a factorization of the full H into an m×m and an n×n piece, tractable, while still seeing both sides' correlations. (Power 1/2 rather than the original 1/4 matches the optimal Kronecker approximation of the Adagrad preconditioner, with the factor normalized by Trace(L) so the step carries a Trace(L)^{1/2} scalar.) This is precisely the history-aware non-diagonal preconditioner Muon lacks: L and R *accumulate* the gradient covariance across steps rather than reading a single momentum snapshot. And there is evidence it works — Shampoo has won optimization benchmarks against Adam.
+
+But Shampoo has a cost that would bite this very run, and it is the diagnostic that decides the whole rung. To form L^{-1/2} and R^{-1/2} I need an eigendecomposition (or inverse matrix root) of L and R, which is cubic in the side length, so no one does it every step — they refresh the roots every f steps and reuse the stale ones in between. The trouble is that *Shampoo's adaptivity is the eigen-refresh*: between refreshes the preconditioner is frozen, the only thing that changes it is the periodic recomputation of L^{-1/2}, R^{-1/2}. So as I push f up to keep the overhead tolerable, the preconditioner goes stale and the benefit erodes — the very lever I would pull to make it affordable is the one that kills it. On a 355M-parameter run at a fixed 12,030-iteration budget I cannot afford a frequent eigendecomposition, so naive Shampoo would force me straight into the stale-and-degrading regime. I want Shampoo's accumulated curvature without paying the eigen-refresh every step and without losing adaptivity when I refresh rarely.
+
+Look harder at what Shampoo actually computes, because I have a hunch it is secretly diagonal in the right coordinates, and if so I can attack it where it is cheap. Rotate the gradient into the eigenbasis of the two factors: let Q_L hold L's eigenvectors (eigenvalues λᵢ) and Q_R hold R's (eigenvalues μⱼ), and set G' = Q_Lᵀ G Q_R. In that basis Shampoo's preconditioner, with the trace correction, scales coordinate (i,j) by (λᵢ μⱼ / Σλ)^{-1/2} — a diagonal rescaling. So in the eigenbasis Shampoo is just dividing each coordinate by the square root of λᵢ μⱼ. That rescaling is suspiciously close to Adafactor's row-column scaling, which scales (i,j) by (Aᵢ Cⱼ / ΣA)^{-1/2} with Aᵢ, Cⱼ the row/column marginals of the squared rotated gradient. They coincide exactly if Aᵢ = λᵢ and Cⱼ = μⱼ — and they do: with uᵢ the i-th eigenvector of L, Aᵢ = E[Σⱼ (uᵢᵀ G vⱼ)²] = E[‖uᵢᵀ G‖²] = uᵢᵀ E[GGᵀ] uᵢ = uᵢᵀ L uᵢ = λᵢ, and symmetrically Cⱼ = μⱼ. So Shampoo (power 1/2, trace correction, dataset-average factors) is *identical* to running Adafactor in the eigenbasis of its own preconditioner. The expensive eigendecomposition was never the adaptivity — it was just computing the basis; once I am in that basis, the actual preconditioning is a cheap, elementwise rescaling, namely the second moment of the rotated gradient (the row/column marginals of G'⊙G' equal the λᵢ, μⱼ).
+
+That separation is the whole idea of the rung. The eigen-refresh only computes the *basis*, and the basis drifts slowly, so I can refresh it rarely — every f steps, and even then via one cheap power-iteration step warm-started from the previous eigenvectors plus a QR, not a full eigendecomposition. But in that slowly-drifting basis I run a *full adaptive optimizer*, updating its second moment **every step** on the rotated gradient. Because the rescaling now lives in a per-step elementwise EMA — the thing that costs nothing — the preconditioner keeps adapting between basis refreshes, which is precisely what Shampoo could not do: Shampoo froze the rescaling along with the basis, this one does not. And since I am free to pick the diagonal optimizer in that basis, I use Adam rather than Adafactor's rank-1 factorization — Adafactor only helps memory and the factorization is itself an approximation; with Adam I keep the true elementwise second moment in the rotated space and gain a bit of generality. So the finale is **Adam in Shampoo's eigenbasis**: history-aware (L, R accumulate covariance), non-diagonal (the rotation couples coordinates), and — unlike Shampoo — gracefully tolerant of a large refresh period, with only *one* hyperparameter beyond AdamW, the frequency f.
+
+The per-layer step has to keep the order of operations exactly, because that is where the idea lives. For an m×n weight I keep four things: the two Shampoo factors L (m×m) and R (n×n), their eigenbases Q_L and Q_R, and Adam's two moments. At step t: rotate the gradient into the basis, G' = Q_Lᵀ G Q_R, the coordinate system where the preconditioner is diagonal; update the first moment as the same original-space momentum expressed in the current basis, M' = Q_Lᵀ(β₁M + (1−β₁)G)Q_R, so that across a basis change the invariant is the original-space momentum (project it back before the change, project it in after); update the second moment directly in the rotated space every step, V = β₂V + (1−β₂)(G'⊙G') — this is the rescaling Shampoo froze and I do not; take the Adam step in the rotated frame, N' = M'/(√V + ε), with the bias corrections folded into the step size as √(1−β₂ᵗ)/(1−β₁ᵗ); rotate the result back, N = Q_L N' Q_Rᵀ, apply it with decoupled weight decay; update the factors by EMA, L = β₂L + (1−β₂)GGᵀ, R = β₂R + (1−β₂)GᵀG; and only when t mod f = 0 refresh the eigenbases. The refresh itself is cheap: form S = L Q_prev (one matmul) and orthonormalize by QR, Q = QR(S), one power-iteration step warm-started from the previous eigenvectors; a genuine eigendecomposition is needed only on the very first refresh to initialize Q. A bookkeeping detail the structure forces: before the QR, sort the old basis by the estimated eigenvalues diag(Qᵀ L Q) and reorder the matching axis of V the same way, so the diagonal variance table follows the coordinates it belongs to. Setting Q_L = Q_R = I for a layer reduces the whole thing exactly to Adam, which is a reassuring sanity check that this really is Adam in a rotated space.
+
+Now ground it in this task's edit surface, because the finale has to be a fill of the same `configure_optimizers` contract the baselines used, and the cleanest fit is to mirror Muon's structure rung 3 already established. Like Muon, SOAP applies only to the 2D *hidden* weights — the attention and MLP projections `c_attn`, `c_proj`, `c_fc` — where the operator/covariance story holds. The embedding and the LM head are huge on the vocabulary side (≈50k), so maintaining and eigendecomposing a 50k×50k factor is prohibitive; the structure forces a fix that the boundary cases already give me — fix that side's rotation to the identity and only precondition the other side, or simply route the whole tensor to AdamW — and the 1D LayerNorm gains have no left/right matrix structure at all, so they run plain AdamW with identity projection. So those go to AdamW exactly as in Muon, and I reuse Muon's `CombinedOptimizer` shape: a `SOAP` instance over the hidden 2D weights wrapped together with a `torch.optim.AdamW` over the embedding/head/1D parameters, exposing the merged `param_groups` so the loop's per-group LR scaling reaches both. The same name-based split Muon used — exclude `wte`/`wpe`/`lm_head` for the structured optimizer, send those plus the 1D params to AdamW — carries over unchanged.
+
+The learning-rate handling is where SOAP is *simpler* than Muon, and that difference is worth being explicit about because Muon needed it. Muon's orthogonalized step had unit-ish RMS, so it needed a large `lr_scale` (0.02) and a `CONFIG_OVERRIDES` bump to 1e-3 to keep the two sides commensurate. SOAP's effective step *is* an Adam step in the rotated space — its RMS sits in Adam's own range — so I do not need a large `lr_scale` and SOAP can ride the base schedule directly alongside AdamW. The one genuinely new knob is `precondition_frequency`, the f above: a moderate value keeps the per-step overhead small while the every-step V update preserves adaptivity, which is the whole property that distinguishes this from the Shampoo it is built on. Weight decay stays the substrate's 0.1, decoupled, on the 2D side; the cosine schedule and grad-clip are untouched, so no `CONFIG_OVERRIDES` are required beyond what the AdamW side wants. The one piece of the full method the harness lets me drop is any distributed-sharding machinery — on two GPUs each SOAP layer keeps its factors and bases whole on its device. (The full scaffold module — the `SOAP` class with rotate-in / Adam / rotate-back and the power-iteration+QR refresh, plus the `CombinedOptimizer` wrapping — is in the answer.)
+
+So the delta from Muon is the move from an *instantaneous* whitening to an *accumulated, history-aware* non-diagonal preconditioner: Muon orthogonalizes this step's momentum, discarding the singular values of a single snapshot; SOAP runs a continuously-adapting Adam in a coordinate system built from the running gradient covariance on both sides of the matrix, keeping the cross-coordinate curvature Muon throws away and adapting the rescaling every step. The bar this has to clear is concrete and already on the board: Muon's val_loss 2.1995 and its downstream accuracies (arc_easy 60.19, hellaswag 36.85, winogrande 52.17). The reason to expect SOAP can clear it follows the same trend the ladder has shown three times — each rung that lets the update respect more of the weight matrix's structure has lowered the loss, and SOAP respects strictly more than Muon does. As the endpoint this rung carries no measured result of its own; what I would actually validate, on this single-seed FineWeb run at the fixed 12,030-iteration budget, is whether SOAP's val_loss lands below 2.1995 (the primary signal, lower is better), corroborated by the WikiText-2 and LAMBADA perplexities falling below 37.98 and 60.08 and by the four downstream accuracies moving past Muon's; and, since the one new knob is the refresh frequency, whether the result stays stable as f is raised — the property that distinguishes this from the Shampoo it is built on, and the cheapest way to confirm that the per-step V update, not the eigen-refresh, is carrying the adaptivity here. The structure mirrors Muon's, so let me build it in by reshaping that scaffold into SOAP.
+</think>
+<say>
+Finale is SOAP — Adam run in the eigenbasis of Shampoo's (L, R) preconditioner, applied to the 2D hidden weights with the basis refreshed only every f steps while the second moment adapts every step, AdamW for the rest. This edit retags the region as the finale.
+</say>
+<edit path="nanoGPT/custom_pretrain.py">
+<old>
+# EDITABLE region of nanoGPT/custom_pretrain.py — step 3: Muon (2D hidden) + AdamW (rest)
+    def configure_optimizers(self, weight_decay, learning_rate, betas, device_type):
+</old>
+<new>
+# EDITABLE region of nanoGPT/custom_pretrain.py — finale: SOAP (2D hidden) + AdamW (rest)
+    def configure_optimizers(self, weight_decay, learning_rate, betas, device_type):
+</new>
+</edit>
+<obs>
+Successfully replaced text in nanoGPT/custom_pretrain.py.
+</obs>
+<note>
+Swap the param split and the Muon class header for SOAP's, including its eigh/QR basis helpers.
+</note>
+<edit path="nanoGPT/custom_pretrain.py">
+<old>
+
+        # Separate 2D projection weights (for Muon) from rest (for AdamW)
+        muon_params = [p for n, p in decay_params
+                       if 'wte' not in n and 'wpe' not in n and 'lm_head' not in n]
+        adam_decay_params = [p for n, p in decay_params
+                            if 'wte' in n or 'wpe' in n or 'lm_head' in n]
+        adam_nodecay_params = [p for _, p in nodecay_params]
+
+        class Muon(torch.optim.Optimizer):
+            """Muon — MomentUm Orthogonalized by Newton-schulz."""
+            def __init__(self, params, lr=0.02, momentum=0.95, ns_steps=5, weight_decay=0.0):
+                defaults = dict(lr=lr, momentum=momentum, ns_steps=ns_steps, weight_decay=weight_decay)
+                super().__init__(params, defaults)
+
+            @staticmethod
+            def zeroth_power_via_newtonschulz5(G, steps=5):
+                assert G.ndim == 2
+                a, b, c = (3.4445, -4.7750, 2.0315)
+                X = G.bfloat16()
+                X = X / (X.norm() + 1e-7)
+                if G.size(0) > G.size(1):
+                    X = X.T
+                for _ in range(steps):
+                    A = X @ X.T
+                    X = a * X + b * (A @ X) + c * (A @ (A @ X))
+                if G.size(0) > G.size(1):
+                    X = X.T
+                return X
+</old>
+<new>
+
+        # 2D hidden projection weights -> SOAP; embeddings/head/1D -> AdamW (same split as Muon)
+        soap_params = [p for n, p in decay_params
+                       if 'wte' not in n and 'wpe' not in n and 'lm_head' not in n]
+        adam_decay_params = [p for n, p in decay_params
+                             if 'wte' in n or 'wpe' in n or 'lm_head' in n]
+        adam_nodecay_params = [p for _, p in nodecay_params]
+
+        class SOAP(torch.optim.Optimizer):
+            """AdamW run in the eigenbasis of Shampoo's (L, R) preconditioner. 2D layers only."""
+            def __init__(self, params, lr=3e-3, betas=(0.95, 0.95), eps=1e-8,
+                         weight_decay=0.0, precondition_frequency=10, shampoo_beta=-1.0):
+                defaults = dict(lr=lr, betas=betas, eps=eps, weight_decay=weight_decay,
+                                precondition_frequency=precondition_frequency,
+                                shampoo_beta=shampoo_beta)
+                super().__init__(params, defaults)
+
+            @staticmethod
+            def _eigh_basis(P):
+                P32 = P.float()
+                eye = torch.eye(P32.shape[0], device=P32.device, dtype=P32.dtype)
+                _, Q = torch.linalg.eigh(P32 + 1e-30 * eye)
+                return torch.flip(Q, dims=[1]).to(P.dtype)     # descending eigenvalue order
+
+            @staticmethod
+            def _qr_basis(P, Q_prev, V, dim):
+                # sort the carried basis by estimated eigenvalue, keeping V aligned to the axes
+                P32, Q32 = P.float(), Q_prev.float()
+                est_eig = torch.diag(Q32.T @ P32 @ Q32)
+                idx = torch.argsort(est_eig, descending=True)
+                V = V.index_select(dim, idx)
+                Q32 = Q32[:, idx]
+                Q32, _ = torch.linalg.qr(P32 @ Q32)            # one power-iteration step + QR
+                return Q32.to(Q_prev.dtype), V
+</new>
+</edit>
+<obs>
+Successfully replaced text in nanoGPT/custom_pretrain.py.
+</obs>
+<note>
+Replace Muon's step() with SOAP's rotate-in / Adam-in-basis / rotate-back, plus the periodic basis refresh.
+</note>
+<edit path="nanoGPT/custom_pretrain.py">
+<old>
+                for group in self.param_groups:
+                    lr = group['lr']; momentum = group['momentum']; wd = group.get('weight_decay', 0.0)
+                    for p in group['params']:
+                        if p.grad is None:
+                            continue
+                        if wd > 0:
+                            p.mul_(1 - lr * wd)
+                        g = p.grad
+                        state = self.state[p]
+                        if len(state) == 0:
+                            state['momentum_buffer'] = torch.zeros_like(g)
+                        buf = state['momentum_buffer']
+                        buf.lerp_(g, 1.0 - momentum)                 # EMA momentum
+                        nesterov_g = g.lerp(buf, momentum)           # Nesterov look-ahead
+                        if nesterov_g.dim() == 2:
+                            orig_shape = nesterov_g.shape
+                            if orig_shape[0] == 3 * orig_shape[1]:   # split fused QKV
+                                parts = nesterov_g.split(orig_shape[1])
+                                update = torch.cat([
+                                    self.zeroth_power_via_newtonschulz5(part, steps=group['ns_steps'])
+                                    for part in parts])
+                                scale = max(1, orig_shape[0] // orig_shape[1]) ** 0.5
+                            else:
+                                update = self.zeroth_power_via_newtonschulz5(nesterov_g, steps=group['ns_steps'])
+                                scale = max(1, orig_shape[0] / orig_shape[1]) ** 0.5
+                            p.data.add_(update.to(p.dtype), alpha=-lr * scale)
+                        else:
+                            p.add_(buf, alpha=-lr)
+</old>
+<new>
+                for group in self.param_groups:
+                    beta1, beta2 = group['betas']
+                    lr, eps, wd = group['lr'], group['eps'], group['weight_decay']
+                    f = group['precondition_frequency']
+                    shampoo_beta = group['shampoo_beta'] if group['shampoo_beta'] >= 0 else beta2
+                    for p in group['params']:
+                        if p.grad is None or p.grad.dim() != 2:
+                            continue
+                        G = p.grad
+                        state = self.state[p]
+                        m, n = G.shape
+                        if 'step' not in state:                # init preconditioner, skip first update
+                            state['step'] = 0
+                            state['exp_avg'] = torch.zeros_like(p)
+                            state['exp_avg_sq'] = torch.zeros_like(p)
+                            state['L'] = torch.zeros(m, m, device=G.device, dtype=G.dtype)
+                            state['R'] = torch.zeros(n, n, device=G.device, dtype=G.dtype)
+                            state['L'].add_(G @ G.T, alpha=1 - shampoo_beta)
+                            state['R'].add_(G.T @ G, alpha=1 - shampoo_beta)
+                            state['QL'] = self._eigh_basis(state['L'])
+                            state['QR'] = self._eigh_basis(state['R'])
+                            continue
+                        QL, QR = state['QL'], state['QR']
+                        M, V = state['exp_avg'], state['exp_avg_sq']
+                        state['step'] += 1
+                        t = state['step']
+
+                        G_rot = QL.T @ G @ QR                  # rotate gradient into eigenbasis
+                        M.mul_(beta1).add_(G, alpha=1 - beta1) # first moment in original space
+                        M_rot = QL.T @ M @ QR                  # rotate momentum in
+                        V.mul_(beta2).addcmul_(G_rot, G_rot, value=1 - beta2)  # 2nd moment in basis, every step
+
+                        denom = V.sqrt().add_(eps)
+                        step_size = lr * (1 - beta2 ** t) ** 0.5 / (1 - beta1 ** t)
+                        N = QL @ (M_rot / denom) @ QR.T        # rotate the Adam step back
+
+                        p.add_(N, alpha=-step_size)
+                        if wd > 0:
+                            p.add_(p, alpha=-lr * wd)          # decoupled weight decay
+
+                        state['L'].mul_(shampoo_beta).add_(G @ G.T, alpha=1 - shampoo_beta)
+                        state['R'].mul_(shampoo_beta).add_(G.T @ G, alpha=1 - shampoo_beta)
+                        if t % f == 0:                        # refresh basis only every f steps
+                            QL, V = self._qr_basis(state['L'], QL, V, 0)  # reindex 2nd moment to new axes
+                            QR, V = self._qr_basis(state['R'], QR, V, 1)
+                            state['QL'], state['QR'], state['exp_avg_sq'] = QL, QR, V
+</new>
+</edit>
+<obs>
+Successfully replaced text in nanoGPT/custom_pretrain.py.
+</obs>
+<note>
+Construct the SOAP optimizer on the base schedule — no large lr_scale or CONFIG_OVERRIDES this time.
+</note>
+<edit path="nanoGPT/custom_pretrain.py">
+<old>
+
+        muon_base_lr = 0.02
+        muon_lr_scale = muon_base_lr / learning_rate
+        muon_opt = Muon([{'params': muon_params, 'lr_scale': muon_lr_scale}],
+                        lr=muon_base_lr, momentum=0.95, weight_decay=0.1)
+        adam_groups = [
+</old>
+<new>
+
+        soap_opt = SOAP([{'params': soap_params}],
+                        lr=learning_rate, betas=betas, weight_decay=weight_decay,
+                        precondition_frequency=10)
+        adam_groups = [
+</new>
+</edit>
+<obs>
+Successfully replaced text in nanoGPT/custom_pretrain.py.
+</obs>
+<note>
+Update the print and the combined-optimizer wrap, and drop Muon's CONFIG_OVERRIDES.
+</note>
+<edit path="nanoGPT/custom_pretrain.py">
+<old>
+
+        print(f"using Muon (lr={muon_base_lr}, scale={muon_lr_scale:.1f}) + AdamW combined optimizer")
+        return CombinedOptimizer([muon_opt, adam_opt])
+
+# ... and in the __main__ config block:
+    # CONFIG_OVERRIDES: override training hyperparameters for your method.
+    CONFIG_OVERRIDES = {'learning_rate': 1e-3}
+</old>
+<new>
+
+        print("using SOAP (2D hidden) + AdamW combined optimizer")
+        return CombinedOptimizer([soap_opt, adam_opt])
+</new>
+</edit>
+<obs>
+Successfully replaced text in nanoGPT/custom_pretrain.py.
+</obs>
+

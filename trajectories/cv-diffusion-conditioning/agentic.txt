@@ -1,0 +1,754 @@
+<meta task="cv-diffusion-conditioning" domain="Computer vision" file="diffusers-main/custom_train.py" model_format="qwen3" edit_tool="str_replace"/>
+
+<system>
+You are a research engineer improving a model on a fixed ML task. You work by editing the model code and running experiments. Think carefully before each change. You have these tools:
+- str_replace(path, old_str, new_str): replace the unique occurrence of old_str with new_str.
+- create(path, file_text): create a new file.
+- run_experiment(): train + evaluate the current code under the fixed budget; returns metrics.
+Make one tool call at a time. After editing, call run_experiment() to measure your method.
+</system>
+
+<user>
+## Research question
+
+Class-conditional image generation with a diffusion denoiser: a UNet learns to predict the noise
+$\epsilon_\theta(x_t, t, c)$ added to a CIFAR-10 image at noise level $t$, conditioned on the class
+label $c$. The backbone, the noise schedule, the optimizer, the EMA, and the 50-step DDIM sampler are
+all fixed. The **only** thing being designed is **how the class label is injected into the denoiser** —
+the conditioning operator. Everything that turns "draw an image" into "draw an image *of this class*"
+lives in one editable region, and the metric is FID against the CIFAR-10 train set (lower is better).
+
+## Prior art before the first rung (conditioning-injection lineage)
+
+The conditioning operators on this ladder are the resolution of a line of "how does side information
+reach a convolutional feature stream" mechanisms. These precede the ladder; the fixed substrate below is
+what they converged to.
+
+- **Additive / concatenated conditioning (Conditional DCGAN; Conditional PixelCNN, van den Oord et al.
+  2016; WaveNet).** Broadcast the conditioning vector into constant feature maps and concatenate before a
+  conv, or add a conditioning-dependent bias. After the next linear map, `W[F; z] = W_F F + W_z z`, so the
+  `z` term is a conditioning-dependent *additive bias* on the output. Gap: it can shift features but cannot
+  rescale, amplify, gate, or negate them — only half the affine.
+- **Feature-wise gates (LSTM gates; Squeeze-and-Excitation, Hu et al. 2018).** Multiply features by a
+  bounded factor `sigmoid(g) ∈ (0,1)`. Gap: scale-only, bounded — attenuates or passes a channel but
+  cannot amplify, shift a threshold, or negate; the additive half is missing.
+- **Conditional / adaptive normalization (Conditional BatchNorm, de Vries et al. 2017; Conditional
+  Instance Norm, Dumoulin et al. 2017; AdaIN, Huang & Belongie 2017).** A normalization layer ends in a
+  per-channel affine `gamma · x_hat + beta`; make `(gamma, beta)` a function of the conditioning rather
+  than learned constants. Gap as written: tied to a particular normalization (BN/IN) or to a discrete
+  style table, and demonstrated on convolutional recognition / style transfer rather than on a denoiser
+  with a timestep signal already occupying the affine.
+- **FiLM (Perez et al., AAAI 2018).** The general statement: a conditioning input regresses a per-channel
+  affine `gamma(z) · F + beta(z)`, with `gamma = 1 + Δγ` for identity init, applied anywhere, independent
+  of resolution. It contains additive bias (`gamma = 1`) and gating (`beta = 0`, bounded `gamma`) as
+  corners. Gap for this task: the affine is *spatially uniform and content-blind* — the same scale/shift
+  at every position, drawn from the label alone.
+- **Adaptive Group Norm (ADM, Dhariwal & Nichol 2021).** FiLM ported into a diffusion residual block: the
+  combined timestep-and-class embedding linearly produces the GroupNorm scale/shift. This is the
+  established socket by which a diffusion UNet already ingests the timestep. Gap: it took an *auxiliary
+  classifier at sampling time* (classifier guidance) to get strong class adherence — the in-network affine
+  alone was low-bandwidth for "which class."
+
+## The fixed substrate
+
+A self-contained class-conditional DDPM training script (`custom_train.py`) is frozen and must not be
+touched. The denoiser is `ConditionalUNet`, which wraps a diffusers `UNet2DModel` (the
+`google/ddpm-cifar10-32` architecture) and adds two conditioning hooks. The backbone runs at three
+channel scales — Small `(64,128,128,128)` ~9M, Medium `(128,256,256,256)` ~36M, Large
+`(256,512,512,512)` ~140M — chosen by env var, with `time_embed_dim = block_out_channels[0] * 4` and a
+`class_embed = nn.Embedding(num_classes, time_embed_dim)`. Training: 35,000 steps per scale, AdamW
+`lr=2e-4`, weight decay `1e-4`, grad-norm clip `1.0`, AMP, EMA rate `0.9995`, batch 128 (64 at Large).
+Noise: diffusers `DDPMScheduler`, linear betas `1e-4 → 2e-2`, 1000 train steps, `epsilon` prediction,
+`clip_sample=True`. The objective is the plain noise-MSE `F.mse_loss(pred_noise, noise)`. Evaluation: a
+50-step DDIM sampler (`DDIMScheduler`, same betas) draws class-conditional samples scored by clean-fid
+against the CIFAR-10 train statistics. A parameter budget of `1.05×` the cross-attention reference model
+is enforced.
+
+The substrate also provides two reusable conditioning utilities a method may call:
+
+- `zero_module(m)` — zeros a module's parameters (for identity-at-init residual blocks).
+- `CrossAttentionLayer(channels, context_dim, num_heads)` — GroupNorm, q from features / k,v from the
+  context token(s), scaled-dot-product multi-head attention, **zero-initialized output projection**, and a
+  residual add.
+- `AdaLNBlock(channels, cond_dim)` — GroupNorm(1) then a **zero-initialized** `SiLU → Linear(cond_dim,
+  3·channels)` producing scale/shift/gate, applied as `x + gate·((1+scale)·norm(x)+shift − x)` — adaptive
+  LayerNorm-Zero on a `[B,C,H,W]` feature map.
+
+The wiring is fixed: per forward, `ConditionalUNet` embeds the timestep (`unet.time_proj →
+unet.time_embedding`) and the class (`class_embed`), calls `prepare_conditioning(time_emb, class_emb)` to
+form the embedding `emb` fed to **every** residual block, then runs the UNet and after **each** down/mid/up
+block applies the corresponding `ClassConditioner(h, class_emb)`.
+
+## The editable interface
+
+Exactly one region is editable — `prepare_conditioning(time_emb, class_emb)` and the `ClassConditioner`
+class in `custom_train.py` (lines 195–227). Every method on the ladder is a fill of this same contract:
+
+- `prepare_conditioning(time_emb, class_emb) -> [B, time_embed_dim]` — how the class embedding combines
+  with the timestep embedding *before* the residual blocks (the AdaGN/time path).
+- `ClassConditioner(channels, cond_dim)` with `forward(h, class_emb) -> [B,C,H,W]` — the module applied
+  *after* each block (the post-block path: cross-attention, adaptive norm, or a no-op).
+
+A method may route the class through the time path, the post-block path, or both. The denoising interface
+`(x, timestep, class_id) → ε` and its shapes are invariant. The scaffold default is the unfilled contract:
+
+```python
+def prepare_conditioning(time_emb, class_emb):
+    """Prepare the combined embedding used in ResBlocks.
+
+    Args:
+        time_emb:  [B, time_embed_dim] timestep embedding
+        class_emb: [B, time_embed_dim] class embedding
+
+    Returns: [B, time_embed_dim] embedding used in ResBlocks
+    """
+    raise NotImplementedError("Implement prepare_conditioning")
+
+
+class ClassConditioner(nn.Module):
+    """Conditioning module applied after each UNet block.
+
+    Args (forward):
+        h:         [B, C, H, W] feature map
+        class_emb: [B, time_embed_dim] class embedding
+
+    Available utilities:
+        CrossAttentionLayer(channels, context_dim, num_heads)
+        AdaLNBlock(channels, cond_dim)
+    """
+    def __init__(self, channels, cond_dim):
+        super().__init__()
+        raise NotImplementedError("Implement ClassConditioner.__init__")
+
+    def forward(self, h, class_emb):
+        raise NotImplementedError("Implement ClassConditioner.forward")
+```
+
+## Evaluation settings
+
+One seed (42). The candidate conditioning is trained at all three channel scales (Small, Medium, Large)
+for 35,000 steps each, and generated samples are scored by clean-fid against the CIFAR-10 train set
+(50,000-image reference statistics). The reported metrics are the best FID over training at each scale —
+`best_fid_small`, `best_fid_medium`, `best_fid_large` — lower is better on all three. The improvement
+must come from a transferable conditioning design, not from changes to the dataset, labels, loss,
+optimizer, sampler, or metric.
+
+The editable model code is in `diffusers-main/custom_train.py`:
+```python
+def prepare_conditioning(time_emb, class_emb):
+    """Prepare the combined embedding used in ResBlocks.
+
+    TODO: Implement your conditioning preparation here.
+
+    Args:
+        time_emb:  [B, time_embed_dim] timestep embedding
+        class_emb: [B, time_embed_dim] class embedding
+
+    Returns: [B, time_embed_dim] embedding used in ResBlocks
+    """
+    raise NotImplementedError("Implement prepare_conditioning")
+
+
+class ClassConditioner(nn.Module):
+    """Conditioning module applied after each UNet block.
+
+    TODO: Implement your conditioning method here.
+
+    Args (forward):
+        h:         [B, C, H, W] feature map
+        class_emb: [B, time_embed_dim] class embedding
+
+    Available utilities:
+        CrossAttentionLayer(channels, context_dim, num_heads)
+        AdaLNBlock(channels, cond_dim)
+    """
+    def __init__(self, channels, cond_dim):
+        super().__init__()
+        raise NotImplementedError("Implement ClassConditioner.__init__")
+
+    def forward(self, h, class_emb):
+        raise NotImplementedError("Implement ClassConditioner.forward")
+```
+Improve it. Derive your method, edit the code, then run_experiment().
+</user>
+
+### step 1 — AdaLN-Zero (adaptive normalization, post-block)   [slug:adanorm]
+
+<think>
+The conditioning operator is the whole task, and before I can compare operators I need a floor — the
+first concrete fill of `prepare_conditioning` plus `ClassConditioner` that turns the scaffold's
+unconditional UNet into a class-conditional one. I want to start from the operator whose *cost and
+structure are the tightest match to what the conditioning signal actually is*, so that whatever it leaves
+on the table is a clean diagnosis of what the next rung must add. So let me reason carefully about what a
+class label *is*, in this denoiser, and which mechanism fits it.
+
+What I have is a noise-prediction UNet, $\epsilon_\theta(x_t, t)$: feed it a noised CIFAR image and the
+timestep, it predicts the noise. The training loss is the friendly one — draw $x_0$, a timestep $t$, a
+noise vector $\epsilon$, form $x_t = \sqrt{\bar\alpha_t}\,x_0 + \sqrt{1-\bar\alpha_t}\,\epsilon$ in one
+shot, regress $\lVert \epsilon - \epsilon_\theta(x_t,t)\rVert^2$. The third argument is what I'm adding:
+a class index $c$, so the same noised latent at the same noise level denoises differently toward a
+"horse" than toward a "ship." Crucially the backbone already conditions on *one* scalar side input — the
+timestep $t$ — and it does so through the diffusers UNet's own machinery: $t$ becomes a sinusoidal
+embedding, the time-embedding MLP lifts it to `time_embed_dim`, and inside every residual block that
+vector drives the block's adaptive normalization (the diffusers `ResnetBlock2D` consumes `temb` and turns
+it into a per-channel scale/shift on the block's GroupNorm). So the UNet has a *finished, tuned socket*
+for a global per-channel side signal. The class label is exactly that shape — one global per-example
+vector — so the question I must answer first is how that signal should be carried.
+
+Let me characterize the class signal precisely, because the right operator follows from its structure. A
+class index has no spatial layout — there is no "where" to a label, it applies to the whole image — and
+no internal structure: it is one categorical value, which I embed into one vector. It is *global* (the
+same for every spatial position), *per-channel* (its natural action is "turn some feature channels up,
+others down"), and *content-blind* in the sense that it is drawn from the label alone, not from what is
+currently forming in the feature map. That is the same profile as the timestep. So the operator I want is
+not attention (which is for reading from a *set* of structured tokens, position by position, with
+content-dependent weights — overkill, and partly ill-defined, for a single structureless token), and not
+concatenation (a label has nothing image-shaped to stack on the input). The operator that fits a global,
+per-channel, location-agnostic signal is the one that takes the conditioning vector and *modulates every
+channel of every spatial location in the same way*: an adaptive affine.
+
+This is the FiLM primitive, and the conditioning lineage converged on it from several directions, which
+is why I trust it as the floor. FiLM states it generally: a conditioning input $z$ regresses a
+per-channel scale and shift, $\mathrm{FiLM}(F) = \gamma(z)\cdot F + \beta(z)$, applied wherever there is a
+feature map, with parameter count tied to channels (not resolution) so it is cheap to apply repeatedly.
+Concatenation-then-linear reduces to the $\gamma = 1$ corner ($W[F;z] = W_F F + W_z z$, an additive
+conditional bias); bounded gating is the $\beta = 0$, squashed-$\gamma$ corner. Conditional BatchNorm,
+Conditional Instance Norm, and AdaIN are all the same affine attached to one normalization or another.
+And most on-the-nose for a denoiser, ADM's adaptive Group Norm is exactly this affine living inside the
+residual block, driven by the combined timestep-and-class embedding — and that paper ablated it against
+the older "add the embedding, then normalize" recipe and found the adaptive affine better. So the
+established answer to "how do I inject a global side signal into a diffusion residual block" is "modulate
+a normalization's affine from it." That is the family I will draw the floor from.
+
+Now I have to make two design decisions that the FiLM family leaves open, and these are where the floor
+earns or loses its keep. First: *where* does the class signal enter — the time path
+(`prepare_conditioning`), the post-block path (`ClassConditioner`), or both? The scaffold gives me two
+sockets. The path-of-least-resistance is to fold the class into the time embedding and let the UNet's own
+in-block AdaGN carry it — that is the additive `time_emb + class_emb` move, and it is the *next* rung's
+idea, so I will deliberately not take it here. Instead I want the floor to be a *self-contained, post-block
+adaptive-norm conditioner*: leave `prepare_conditioning` an identity (`return time_emb`, so the timestep
+keeps its own tuned path untouched and the block AdaGN stays a pure noise-level signal), and put *all* the
+class conditioning into the `ClassConditioner` module applied after each block, as an explicit adaptive
+normalization on the `[B,C,H,W]` feature map. The class never touches the time embedding; it acts only
+through a dedicated affine modulation of the post-block features. This makes the floor a clean
+test of the post-block adaptive-norm operator on its own.
+
+Second decision, and the one I want to nail because it bites at initialization: the affine's
+parameterization and its starting point. The naive form $\gamma(z)\cdot F + \beta(z)$ with a freshly
+initialized regressor sits near $\gamma \approx 0, \beta \approx 0$, which *annihilates* the feature map
+on step one — and the local derivative through the modulated path is $\gamma \approx 0$ too, so the
+gradient is nearly killed as well. The identity affine is not $\gamma = 0$; it is $\gamma = 1, \beta = 0$.
+So I parameterize the scale as a *deviation from one*: write the modulation as $(1+\text{scale})\cdot
+\hat F + \text{shift}$ where $\hat F$ is the normalized feature, so that $\text{scale}=\text{shift}=0$
+leaves the normalized feature unchanged and the regressor learns only how far to push *away* from "no
+modulation." That is the right-conditioned learning problem and the sane init.
+
+But there is a deeper initialization concern, because I am inserting a *brand-new* conditioning sublayer
+into the middle of a backbone whose weights and learning-rate schedule were tuned for a denoiser. If I
+drop a randomly-initialized affine modulator after each block, at step zero it injects a random
+perturbation into a carefully balanced residual stream — I would be throwing away the good initialization
+and forcing training to first undo the damage. The principled fix is the zero-init residual trick
+(zeroing the last scale of a residual branch so the branch starts as the identity — Goyal et al. 2017's
+last-BN-$\gamma$-zero, and the diffusion UNet's zero-last-conv). I want the inserted conditioner to be the
+*exact identity at init* and to grow its effect only as training finds a use for it. The clean way is a
+per-channel *gate* on the modulated-minus-original difference, regressed from the class like scale and
+shift, positioned right at the residual add, and *zero-initialized*. With $\text{gate} = 0$ the module
+returns its input bit-for-bit; the network is the original denoiser at init; and as the gate moves off
+zero the class conditioning ramps up smoothly. This is adaptive normalization, zero-initialized —
+adaLN-Zero — but rendered here on a convolutional feature map rather than on a transformer token stream.
+
+Let me write the operation concretely against the substrate, because the scaffold hands me the exact
+building block. The provided `AdaLNBlock(channels, cond_dim)` is precisely this: a GroupNorm of the
+feature map, then a zero-initialized `SiLU → Linear(cond_dim, 3·channels)` that emits scale, shift, and
+gate, applied as $x + \text{gate}\cdot\big((1+\text{scale})\cdot\mathrm{norm}(x) + \text{shift} - x\big)$.
+Read that update: when gate $=0$ it is $x + 0 = x$ (identity at init); as the gate grows it interpolates
+toward the modulated normalized feature; the $(1+\text{scale})$ keeps zero-scale neutral; the SiLU lets
+the modulation depend nonlinearly on the class embedding. So my `ClassConditioner` is a thin wrapper that
+holds one `AdaLNBlock` per block and applies it, and `prepare_conditioning` returns the time embedding
+unchanged. That is the whole floor.
+
+I should be explicit about what this *is not*, because the same name elsewhere means a much larger thing.
+The canonical adaLN-Zero is the conditioning mechanism of a *transformer* diffusion backbone: it replaces
+each LayerNorm's learned affine in a stack of ViT blocks, sums the timestep and class embeddings into one
+conditioning vector $c = t_{\text{emb}} + c_{\text{emb}}$, regresses six modulation vectors per block
+(scale/shift/gate for the attention sublayer and for the MLP sublayer) from a single `Linear(d, 6d)`,
+adds a gateless adaptive-norm decode head, and zero-initializes all of it so the *entire block stack* is
+the identity map at start, all to inherit transformer scaling. None of that applies here. The harness has
+no transformer — the backbone is a fixed convolutional UNet I am forbidden to touch. There is no token
+stream, no patchify, no final decode head to condition, and no $c = t+y$ sum (I am keeping the timestep
+and class on *separate* paths by choice). What the harness exposes is exactly one thing: a post-block hook
+that takes a `[B,C,H,W]` feature map and the class embedding. So I am porting *only* the core
+adaLN-Zero operation — normalize, regress $(1+\text{scale})\cdot\hat x + \text{shift}$, gate it onto the
+residual, zero-init the regressor so the block starts as the identity — onto a convolutional feature map
+(GroupNorm in place of LayerNorm), inserted after each UNet block, carrying the class signal alone. The
+transformer machinery the canonical method is famous for is simply not present, and importing its story
+would mis-describe what runs here.
+
+So the step-1 edit is settled: `prepare_conditioning` returns `time_emb` unchanged, and `ClassConditioner`
+wraps one zero-initialized `AdaLNBlock` per block, modulating each post-block feature map from the class
+embedding (the full scaffold module is in the answer). The training objective is unchanged in shape — the
+plain noise-MSE — only the network now sees the class through these adaptive-norm gates; sampling feeds
+the fixed class index at every DDIM step.
+
+Now reason about what this floor should do and where it should run out, because that sets up the next
+rung. The adaptive-norm conditioner gives, per channel, one scale and one shift, computed from the label
+and applied identically at *every* spatial location. For steering toward one of ten classes that is real
+but blunt: the class can say "globally emphasize channel 37, suppress channel 12," and through the gate it
+can do so with progressively more strength as training proceeds — but it cannot say "near this corner of
+the image emphasize this, over there emphasize that," because the modulation has no spatial address and
+never looks at the local content of the feature it modulates. It is a global, content-agnostic per-channel
+knob, the same profile as the timestep. For CIFAR-10's ten coarse classes that should already produce a
+genuinely class-conditional model with a sensible FID at every scale — the floor *works*, it is not
+broken. But there are two structural reasons I expect it to be the *weakest* of the conditioning operators
+I will try. First, I deliberately routed the class only through the *post-block* path while leaving the
+timestep alone, so the class signal reaches the residual blocks' own AdaGN not at all — it only gets to
+nudge the feature *after* each block, which is a strictly thinner channel than letting the class ride the
+block-internal modulation the way the timestep does. Second, even granting that, the operator is
+spatially uniform: it is the lowest-bandwidth of the affine, attention, and combined options, exactly the
+mechanism that the strongest pixel models found insufficient on its own. So my falsifiable expectation is
+that this adaptive-norm-only conditioner lands a real but comparatively *high* FID at all three scales —
+the floor against which a method that *also* feeds the class through the block-internal AdaGN time path, or
+that adds spatially content-dependent conditioning, should measurably improve. If a cheaper operator that
+simply rides the class on the timestep embedding beats this, that tells me the post-block-only routing was
+the bottleneck; if a content-dependent operator beats it, that tells me the spatial uniformity was. Either
+way the diagnosis for step 2 is already pointed: the question is whether the next gain comes from a
+*better route* for the same affine, or from a *richer* operator — and the cheapest thing to try first is
+the better route. Let me write this floor in.
+</think>
+<say>
+Starting with the floor: AdaLN-Zero adaptive normalization in the post-block path. This edit keeps `prepare_conditioning` an identity and makes `ClassConditioner` wrap one zero-init `AdaLNBlock` per block, so the class modulates each feature map after the block while the timestep keeps its own tuned path.
+</say>
+<edit path="diffusers-main/custom_train.py">
+<old>
+def prepare_conditioning(time_emb, class_emb):
+    """Prepare the combined embedding used in ResBlocks.
+
+    TODO: Implement your conditioning preparation here.
+
+    Args:
+        time_emb:  [B, time_embed_dim] timestep embedding
+        class_emb: [B, time_embed_dim] class embedding
+
+    Returns: [B, time_embed_dim] embedding used in ResBlocks
+    """
+    raise NotImplementedError("Implement prepare_conditioning")
+
+
+class ClassConditioner(nn.Module):
+    """Conditioning module applied after each UNet block.
+
+    TODO: Implement your conditioning method here.
+
+    Args (forward):
+        h:         [B, C, H, W] feature map
+        class_emb: [B, time_embed_dim] class embedding
+
+    Available utilities:
+        CrossAttentionLayer(channels, context_dim, num_heads)
+        AdaLNBlock(channels, cond_dim)
+    """
+    def __init__(self, channels, cond_dim):
+        super().__init__()
+        raise NotImplementedError("Implement ClassConditioner.__init__")
+
+    def forward(self, h, class_emb):
+        raise NotImplementedError("Implement ClassConditioner.forward")
+</old>
+<new>
+def prepare_conditioning(time_emb, class_emb):
+    # AdaNorm: time_emb unchanged, conditioning via ClassConditioner
+    return time_emb
+
+
+class ClassConditioner(nn.Module):
+    # Adaptive LayerNorm-Zero: class embedding modulates features
+    def __init__(self, channels, cond_dim):
+        super().__init__()
+        self.adaln = AdaLNBlock(channels, cond_dim)
+
+    def forward(self, h, class_emb):
+        return self.adaln(h, class_emb)
+</new>
+</edit>
+<obs>
+Successfully replaced text in diffusers-main/custom_train.py.
+</obs>
+<run/>
+<obs>
+Measured results — `baseline:adanorm` (`is_final,true`), seed 42.
+
+## FID (lower is better)
+| seed | best_fid_small | best_fid_medium | best_fid_large |
+|---|---|---|---|
+| 42 | 20.01 | 12.31 | 11.77 |
+| **mean** | **20.01** | **12.31** | **11.77** |
+</obs>
+
+### step 2 — Concat-FiLM (additive-bias on the time path)   [slug:concat-film]
+
+<think>
+The adaptive-norm floor came back at 20.01 / 12.31 / 11.77 FID (Small / Medium / Large), and the shape of
+those numbers tells me exactly what to try next. It is a real class-conditional model — nothing is broken,
+the conditioner is genuinely steering the denoiser — but it is the highest FID I expect to see on this
+ladder, and the gap from Small to Large (20.01 → 11.77) shows the conditioning isn't the thing capping the
+big model so much as the small one: at Small, capacity is tight and a blunt conditioner costs you most.
+The reason I put the class *only* through the post-block path was to test that operator in isolation, and
+the result reads like the bill for that choice. I left `prepare_conditioning` an identity, so the class
+signal never touched the residual blocks' *own* adaptive group norm — the tuned, block-internal modulation
+socket the timestep already uses. The class only got to nudge each feature map *after* the block had
+already computed it, through a freshly-inserted, zero-init-gated conditioner that has to climb off zero
+before it does anything. That is a strictly thinner channel than the one the timestep enjoys, and 12.31 at
+Medium against what a denoiser of this size should reach suggests the bottleneck is *routing*, not the
+affine itself. So before I reach for a richer operator, the cheapest hypothesis to falsify is: the affine
+was fine; I was sending it down the wrong road.
+
+Let me re-derive from the structure of the backbone, because the substrate is already telling me the
+answer. The diffusers UNet I am wrapping conditions on the timestep through a finished pipeline: the
+integer $t$ becomes a sinusoidal embedding, the time-embedding MLP lifts it to `time_embed_dim`, and that
+vector is handed to *every* residual block, where the block's `ResnetBlock2D` turns it into a per-channel
+scale and shift on its GroupNorm — adaptive group norm, FiLM living inside the block. This path is tuned,
+it is global and per-channel, and it reaches the blocks at the point where they actually compute features,
+not after. The class label has *exactly the same shape* as the timestep — one global per-example vector,
+no spatial layout, no internal structure. So the obvious move, the one the floor deliberately avoided, is
+to let the class ride the very same path: embed the class to a vector of width `time_embed_dim`, **add** it
+to the time embedding, and let the block-internal AdaGN carry the sum. Then the class modulates the blocks
+where the timestep does, through machinery already tuned to do exactly this, with no new sublayer to climb
+off zero.
+
+I want to be precise that adding the two embeddings is not a hack but the correct reduction of the affine.
+Concatenation-then-linear is the textbook conditioning move: stack the conditioning vector onto the
+features and let the next linear map mix them. Split that linear map across the two blocks and
+$W[F; z] = W_F F + W_z z$ — the ordinary feature computation plus a conditioning-dependent *additive bias*
+$\beta(z) = W_z z$. So concatenation, once a linear layer follows it, *is* an additive conditional bias;
+it is the $\gamma = 1$ corner of the FiLM affine $\gamma(z)\cdot F + \beta(z)$. Now look at where I am
+injecting. The block consumes the conditioning embedding $\text{emb}$ and produces, via its own learned
+projection, the AdaGN scale and shift $(\gamma_t, \beta_t)$ from $\text{emb}$. If that projection were
+linear and I set $\text{emb} = t_{\text{emb}} + c_{\text{emb}}$, then
+$(\gamma, \beta) = P(t_{\text{emb}} + c_{\text{emb}}) = P\,t_{\text{emb}} + P\,c_{\text{emb}}$: the class
+contributes an additive shift to the *modulation parameters themselves*, on top of the timestep's. The
+class is acting as an additive bias on the AdaGN scale/shift — exactly the concat / $\gamma = 1$ corner of
+FiLM, applied at the block's own modulation point. This is why the method is named "concat-FiLM": it is the
+additive-bias reduction of feature-wise linear modulation, routed through the timestep's path. It is the
+*simplest* conditioning operator — the cheapest corner of the family the floor used — but routed where the
+floor's affine could not reach.
+
+There is a subtlety in that derivation worth tracing, because it tells me what the additive sum actually
+buys beyond a pure bias. The diffusers `ResnetBlock2D` does not project the embedding with a bare linear
+map; it runs the conditioning embedding through a nonlinearity (SiLU) before the projection that emits the
+AdaGN scale/shift. With a nonlinear $P$, $P(t_{\text{emb}} + c_{\text{emb}})$ does *not* split cleanly into
+$P\,t_{\text{emb}} + P\,c_{\text{emb}}$ — the sum is taken *before* the nonlinearity, so the class can
+*interact* with the timestep in determining the modulation rather than only adding a fixed offset to it.
+That is actually a feature, not a bug: the right scale/shift for "class horse at high noise" need not be the
+sum of the per-factor modulations, and folding the class into $\text{emb}$ before the block's own SiLU lets
+the modulation depend on the *joint* state $(t, c)$. So "additive" describes how the class enters the
+*embedding* ($t_{\text{emb}} + c_{\text{emb}}$, the concat corner), while the block's nonlinear projection
+turns that summed embedding into a $(t, c)$-dependent affine. The class is therefore not strictly a
+$\gamma=1$ bias on the *features* — it is a $\gamma=1$ additive contribution to the *embedding* that the
+block then expands, with interaction, into a full per-channel scale/shift. That is a strictly richer use of
+the affine family than a raw additive feature bias, achieved for free by reusing the block's own regressor.
+
+Before I commit, I should ask whether I want *both* paths — the time-path sum *and* a post-block
+conditioner — rather than the time path alone. Keeping the floor's `AdaLNBlock` and adding the sum would
+strictly contain concat-FiLM as a special case, so it cannot be worse in principle. But it would also stop
+this rung from *answering the question I am asking*. The whole point of step 2 is to isolate the effect of
+*routing*: I want to know whether the floor's high FID was the post-block placement or the affine's
+bandwidth, and the only way to read that off one number is to change exactly one thing — move the same
+family of conditioning from the post-block path to the time path and nothing else. If I leave a post-block
+adaptive norm in, a gain could come from either path and the experiment is muddied. There is also a
+parameter-budget reason: the task enforces a `1.05×`-of-cross-attention budget, and the floor's per-block
+`AdaLNBlock` regressors are not free; dropping them entirely makes concat-FiLM the *cheapest* fill on the
+ladder, which is the right thing for the simplest operator. And there is a redundancy argument: the
+post-block AdaLN and the block-internal AdaGN are the *same* per-channel affine applied a few layers apart,
+so stacking both is mostly duplicated capacity rather than new bandwidth — if the time path works, the
+post-block copy earns little. So the clean choice is the time path *alone*.
+
+So the design decision flips relative to step 1. There, I made `prepare_conditioning` an identity and put
+the work in `ClassConditioner`. Here I do the opposite: `prepare_conditioning` returns
+$t_{\text{emb}} + c_{\text{emb}}$, sending the class into the block-internal AdaGN, and `ClassConditioner`
+becomes a **no-op** that returns its input — there is no extra post-block module at all. Read against the
+floor, this is almost a control experiment: I have moved the same family of conditioning (an adaptive
+affine) from the post-block path to the time path and, in doing so, dropped from the full
+scale/shift/gate adaptive norm down to its additive-bias corner. If the FID *improves*, the lesson is
+unambiguous — the floor's bottleneck was the route, the post-block-only placement, not the bandwidth of
+the affine; riding the tuned block-internal modulation beats inserting a new gated sublayer after each
+block. If it *doesn't* improve, then the post-block adaptive norm was buying something the additive bias
+can't, and I'd know the next gain has to come from a richer operator rather than a better route.
+
+I should check the one thing that could break: dimensions and the existing class embedding. The substrate's
+`class_embed = nn.Embedding(num_classes, time_embed_dim)` already emits a class vector at exactly
+`time_embed_dim`, the same width as the time embedding handed into `prepare_conditioning`. So
+$t_{\text{emb}} + c_{\text{emb}}$ is a straight elementwise sum — no projection, no concatenation widening
+the MLP, no fixed split to decide. Summation keeps the dimension fixed and lets the block's *single*
+existing AdaGN projection produce all the modulation from the combined vector, treating timestep and class
+symmetrically as two additive contributions to one conditioning state. That symmetry is also what makes
+the class signal global and per-channel in the same way the timestep is — which is the right inductive bias
+for a structureless label. There is one subtlety worth naming about identity-at-init: unlike the floor's
+zero-init gate, this path has no explicit "start as identity" switch — at init the class embedding is small
+random and the block projection is the tuned one, so the class perturbs the modulation a little from step
+zero. But the perturbation is bounded (a small additive term into an already-stable AdaGN) rather than a
+fresh random sublayer dropped into the residual stream, so I don't expect the floor's "climb off zero"
+cost; the class simply starts as a faint bias on the modulation and the embedding learns to make it
+meaningful.
+
+Now make it concrete in the edit surface, and note what the harness lets me skip. The canonical FiLM story
+allows an arbitrary regressor producing $(\gamma, \beta)$, and the canonical AdaGN story projects a summed
+$t+c$ embedding to scale/shift per block. Here I do not write that projection at all — the diffusers
+`ResnetBlock2D` *already is* the regressor; its `temb` projection turns whatever vector I feed it into the
+block's modulation. So my entire edit is the routing: `prepare_conditioning` returns the sum, and
+`ClassConditioner` is the empty module (constructor takes `(channels, cond_dim)` to match the contract and
+does nothing; `forward` returns `h`). There is no FiLM layer to instantiate, no gate, no GroupNorm of my
+own — I am reusing the block's tuned modulation as the conditioning operator (the full scaffold module is
+in the answer). The training objective and sampler are unchanged.
+
+Let me close on the falsifiable expectation against the floor's numbers. I am betting that the additive-bias
+corner *routed through the block-internal AdaGN* beats the full adaptive norm *confined to the post-block
+path* — i.e. that the floor's 20.01 / 12.31 / 11.77 was paying for placement, not for missing bandwidth. So
+I expect concat-FiLM to come in *below* the floor at all three scales, with the largest absolute gain where
+the floor hurt most. The floor's Small-to-Large spread (20.01 vs 11.77) said the blunt conditioner cost the
+small model the most; riding the tuned path should help Small the most in absolute FID and tighten that
+spread. If instead concat-FiLM lands at or above the floor, my routing hypothesis is wrong and the
+post-block adaptive norm was genuinely buying spatial/feature bandwidth — in which case the next rung must
+add a *content-dependent* operator rather than just a better route, and I would already know to reach for
+something that lets each spatial position read from the class differently. Either way the result discriminates
+cleanly between "wrong road" and "blunt operator," which is exactly what I want the cheapest next experiment
+to do before I spend parameters on a heavier mechanism. Let me make the swap.
+</think>
+<say>
+Now Concat-FiLM: route the class onto the timestep's own path. This edit makes `prepare_conditioning` return `time_emb + class_emb` so the block-internal AdaGN carries the class, and turns `ClassConditioner` into a no-op — testing whether the floor's bottleneck was the route, not the affine.
+</say>
+<edit path="diffusers-main/custom_train.py">
+<old>
+def prepare_conditioning(time_emb, class_emb):
+    # AdaNorm: time_emb unchanged, conditioning via ClassConditioner
+    return time_emb
+
+
+class ClassConditioner(nn.Module):
+    # Adaptive LayerNorm-Zero: class embedding modulates features
+    def __init__(self, channels, cond_dim):
+        super().__init__()
+        self.adaln = AdaLNBlock(channels, cond_dim)
+
+    def forward(self, h, class_emb):
+        return self.adaln(h, class_emb)
+</old>
+<new>
+def prepare_conditioning(time_emb, class_emb):
+    # Concat-FiLM: add projected class_emb to time_emb
+    return time_emb + class_emb
+
+
+class ClassConditioner(nn.Module):
+    # No-op: all conditioning is via time_emb
+    def __init__(self, channels, cond_dim):
+        super().__init__()
+
+    def forward(self, h, class_emb):
+        return h
+</new>
+</edit>
+<obs>
+Successfully replaced text in diffusers-main/custom_train.py.
+</obs>
+<run/>
+<obs>
+Measured results — `baseline:concat-film` (`is_final,true`), seed 42.
+
+## FID (lower is better)
+| seed | best_fid_small | best_fid_medium | best_fid_large |
+|---|---|---|---|
+| 42 | 19.39 | 11.50 | 10.52 |
+| **mean** | **19.39** | **11.50** | **10.52** |
+</obs>
+
+### step 3 — Cross-Attention conditioning   [slug:cross-attn]
+
+<think>
+Concat-FiLM came in at 19.39 / 11.50 / 10.52 FID, below the floor's 20.01 / 12.31 / 11.77 at every scale,
+and that settles the question I posed at step 2. The floor's bottleneck was the *route*, not the affine:
+moving the same family of conditioning from a freshly-inserted post-block conditioner onto the timestep's
+own tuned block-internal AdaGN — and in the process dropping from the full scale/shift/gate adaptive norm
+down to its additive-bias corner — *improved* FID. So the cheaper, simpler operator won, precisely because
+it rode machinery already tuned for a global per-channel signal instead of climbing a new sublayer off a
+zero gate. The Large gain (11.77 → 10.52) is real but modest; the Small gain (20.01 → 19.39) is smaller in
+*relative* terms than I'd hoped, which is the tell I want to read carefully. Both adanorm and concat-FiLM
+are, at bottom, the *same operator* — a global, per-channel affine drawn from the class label, applied
+identically at every spatial location and blind to what is currently forming in the feature map. One put it
+after the block, one put it inside; the better-routed one is now my strongest result. But the family has a
+ceiling, and the residual FID — especially that stubborn Small number that barely moved — looks like the
+operator's *structural* limit, not a routing artifact. Concat-FiLM exhausted the cheap road. To go further
+I have to change the operator itself.
+
+Let me state the affine's limit precisely, because it points directly at what to build. An adaptive affine
+gives each channel one scale and one shift, computed from the label, applied at *every* spatial position
+identically. So the class can say "globally turn channel 37 up, channel 12 down." It cannot say "near this
+patch of the feature map emphasize this; over there emphasize that," because the modulation has no spatial
+address. And it never *looks at* the local content of the feature it modulates — the scale and shift come
+from the label alone, not from $h$. For the timestep, that is the right bandwidth: the noise level genuinely
+is a single global property of the whole image, so a content-blind global knob fits it perfectly. But "which
+of ten classes" wants to act *differently on different parts of the picture, depending on what is already
+forming there* — a horse's legs and a horse's head are different local computations, and a global per-channel
+gain cannot distinguish them. That is the wall concat-FiLM hit, and it is structural: the affine is
+low-bandwidth, spatially uniform, content-agnostic. No amount of re-routing fixes it; I need an operator
+that conditions each spatial position *as a function of its own content*.
+
+The strongest class-conditional pixel models confirm the diagnosis by how they had to work around it. ADM's
+in-network conditioning is adaptive group norm — exactly the affine I have been using — and to get *strong*
+class adherence it bolted on classifier guidance: a *separate* classifier on noised images whose gradient
+nudges the sampler toward the class at every step. That is a confession that the in-network affine alone was
+too low-bandwidth for "which class," and the fix lived outside the denoiser, at sampling time, at the cost
+of a whole second model. I don't want that — the task fixes the sampler and forbids changing it, and I want
+the denoiser *itself* to carry strong, content-dependent conditioning. So the affine family is out as the
+*strong* in-network operator, and guidance-as-a-crutch is out as the cost.
+
+Let me restate the requirement crisply, because it points somewhere specific. I want an operator where each
+spatial position of the feature map can be conditioned *differently*, as a function of its own content. "A
+position reads from the conditioning, with the read depending on what the position currently holds" is the
+description of an attention layer. Pull up the mechanism: $\mathrm{Attention}(Q,K,V) = \mathrm{softmax}(QK^\top/\sqrt{d})\,V$.
+Queries, keys, values; each query dots with every key, a softmax over those scores weights the values, the
+output is the weighted sum. The crucial freedom is that queries and keys/values can come from *different*
+places — cross-attention. Map it onto my problem: the queries should be the *image feature positions* — I
+want each spatial location to do the reading — and the keys and values should be the *condition*. Flatten
+the $H\times W$ feature map into $N = HW$ query tokens, let the class embedding source the keys and values;
+the output has one row per query, i.e. one per spatial position, so it comes back shaped like a feature map
+and slots straight into the convolutional stream. This is genuinely different from the affine: in FiLM the
+output at position $p$ is $(1+\text{scale}_c)\,h_p + \text{shift}_c$, where the modulation depends only on
+the class $c$; in attention the output at $p$ is $\sum_j \mathrm{softmax}_j(q_p\cdot k_j)\,v_j$ with $q_p$ a
+projection of $h_p$, so the *weights* depend on the position's own content. That is exactly the spatially
+varying, content-dependent conditioning the affine lacked.
+
+Now build it carefully, because attention has details that bite. First the projections: the feature map has
+$C$ channels, the class embedding lives at `cond_dim`, so three linear maps — $W_Q$ from the $C$-dim feature
+tokens, $W_K, W_V$ from the condition — give learned separate views for the three roles, with output width
+$C$ so the result adds back cleanly. Second the softmax scale, $1/\sqrt{d}$, which I want from first
+principles, not by copying. If query and key components are roughly independent, zero-mean, unit-variance,
+a single logit $q\cdot k = \sum_{i=1}^{d} q_i k_i$ has mean 0 and variance $d$, so the logits spread like
+$\sqrt{d}$; push them through softmax and it saturates toward one-hot, and where softmax saturates its
+gradient nearly vanishes — the layer would barely learn. Divide each logit by $\sqrt{d_{\text{head}}}$ and
+the variance returns to 1 regardless of width, keeping softmax soft and gradients alive. Third, heads: one
+head must compress everything a position might read into a single weighting; multiple heads project into
+several subspaces, attend in parallel, concatenate, and project back, so different heads read different
+aspects of the condition at once instead of averaging them — with per-head width $C/\text{num\_heads}$ so
+total cost stays about one full-width head. Four heads is fine at this scale. Fourth, normalization and
+placement: the UNet uses GroupNorm everywhere and already has self-attention sublayers at low resolution, so
+I GroupNorm the feature map before projecting queries (matching the backbone and keeping query magnitudes
+controlled), and insert one such conditioning block after each down/mid/up block so the class is re-read at
+every scale.
+
+The fifth detail is the one that decides whether I can staple this onto the tuned backbone at all, and it is
+the same lesson the floor taught me in reverse. If I drop a fresh, randomly-initialized attention sublayer
+into a residual stream tuned for the unconditional task, at step zero it injects random garbage and training
+must first undo the damage — the floor's "climb off zero" cost, now with a much larger random sublayer. So I
+make the block residual, $h \leftarrow h + \mathrm{Block}(h, c)$, and **zero-initialize the output
+projection** that writes back into the stream. With $W_{\text{out}} = 0$ the block contributes exactly zero
+at init, the network is bit-for-bit the original denoiser, and conditioning strength ramps from nothing as
+the output projection moves off zero. This is the same zero-init-residual principle the floor's `AdaLNBlock`
+gate used — here on the attention sublayer's output projection. The substrate's `CrossAttentionLayer`
+provides exactly this assembly: GroupNorm(32), q from features and k,v from the context token, scaled
+multi-head dot-product, a `zero_module`-wrapped output projection, and a residual add.
+
+Now the time path. For the affine baselines I debated whether to route the class through the timestep, and
+concat-FiLM won by doing so. Here the logic flips: *all* the class information is to flow through the
+attention sublayers — that is the whole point of building them — so if I also dump the class into the time
+embedding I split the conditioning across two mechanisms and muddy the time signal. Cleaner to leave the
+time embedding a pure noise-level signal: `prepare_conditioning` returns `time_emb` unchanged, exactly as the
+floor did, and the cross-attention carries "which class" entirely. Time tells the blocks *how noisy*;
+attention tells them *what to draw*. So this rung returns to the floor's routing decision (class only in the
+post-block path, timestep untouched) but with a far stronger post-block operator than the affine.
+
+I have to be honest about the degenerate case, because the condition here is a *single* class label, not a
+caption. The conditioner for a class is one learnable embedding vector — the context is a single token,
+$M = 1$. Softmax over a single key is identically 1 regardless of the query, so every spatial position gets
+weight 1 on the one value, and the attended branch receives the *same* vector $v = W_V\,\tau(c)$ at every
+position. The content-dependence through $q_p$ that I was so pleased about *vanishes* when there is nothing
+to compete in the softmax. So I should not oversell it: with $M = 1$ this layer is, in effect, a learned
+class vector projected and added residually to the feature map — the residual preserves each position's own
+$h_p$, and later convolutions can use the class offset together with local features, but this particular
+softmax is not doing spatial routing. For a bare class label, then, cross-attention is a learned,
+zero-init-gated *residual injection* of the class — richer than concat-FiLM mainly in that it is a learned
+per-position-additive vector with its own projection and GroupNorm, rather than a per-channel affine bias
+folded into the AdaGN. The reason to still build it this way is generality: the identical operator becomes
+genuinely content-dependent and spatially varying the instant the condition is a set of $M > 1$ tokens (a
+caption, a layout), where the softmax has multiple keys to weigh and each query resolves them differently. A
+class label is the $M = 1$ corner of an operator whose payoff is that one mechanism covers class, text, and
+layout alike. Here I feed it the single-token condition deliberately.
+
+Let me also be clear about what the harness *omits* relative to the full mechanism, so the reasoning lands the
+edit that actually runs. The full-strength conditioning block is a transformer block —
+`GroupNorm → 1×1 proj_in → [self-attention, cross-attention(context), GEGLU feed-forward] × depth → 1×1
+proj_out (zero-init) → residual`, where only the cross-attention sublayer is the queries-from-features /
+keys-from-condition operation. The substrate builds *none* of that scaffolding: `ClassConditioner` here is a
+single bare `CrossAttentionLayer` — no self-attention sublayer, no GEGLU FFN, no proj_in/proj_out wrapper,
+no depth. So what runs is exactly one cross-attention sublayer (GroupNorm, q/k/v, scaled multi-head softmax,
+zero-init output projection, residual) per UNet block, on a single class token. I am porting only the
+cross-attention core; the transformer-block apparatus the full mechanism is known for is not present, and I
+should not describe the edit as if it were.
+
+So the step-3 edit: `prepare_conditioning` returns `time_emb` unchanged (class flows only through attention),
+and `ClassConditioner` wraps one `CrossAttentionLayer(channels, cond_dim, num_heads=4)` per block (the full
+scaffold module is in the answer). Training objective and sampler unchanged.
+
+Now the falsifiable expectation against concat-FiLM's 19.39 / 11.50 / 10.52. I am claiming the attention
+operator beats the affine because it carries the class as a *learned, content-mixed residual injection with
+its own capacity* rather than a per-channel bias on the AdaGN, and because it is re-read at every scale
+through a zero-init residual that doesn't disturb the backbone. So I expect cross-attention to come in
+*below* concat-FiLM at all three scales — the strongest result on the ladder. But I temper the expectation
+with the $M = 1$ honesty: because the softmax degenerates for a single class token, I do *not* expect a large
+margin — the gain over concat-FiLM should be *small*, smaller than concat-FiLM's gain over the floor was, and
+plausibly concentrated at the larger scales where the extra conditioning capacity has room to matter while
+the affine has saturated. The clean discriminating outcome is "cross-attn ≲ concat-FiLM by a thin margin at
+every scale": that would confirm the operator is genuinely stronger but that a single class token leaves most
+of attention's content-dependent bandwidth unused — which would be the diagnosis to carry forward, that the
+remaining headroom is in *what the condition is* (a richer token set, or guidance) rather than in *how it is
+injected*. If instead cross-attn fails to beat concat-FiLM, the lesson would be that for a bare class label
+the affine's tuned AdaGN routing already captures everything attention can, and the extra parameters bought
+nothing — in which case the affine family was the right operator all along and the ladder tops out at
+concat-FiLM. Let me wire in the cross-attention conditioner.
+</think>
+<say>
+Now Cross-Attention conditioning: a stronger post-block operator. This edit keeps `prepare_conditioning` an identity and makes `ClassConditioner` wrap one zero-init `CrossAttentionLayer` (4 heads) per block, so each feature position reads the class as keys/values through a residual that starts as the identity.
+</say>
+<edit path="diffusers-main/custom_train.py">
+<old>
+def prepare_conditioning(time_emb, class_emb):
+    # Concat-FiLM: add projected class_emb to time_emb
+    return time_emb + class_emb
+
+
+class ClassConditioner(nn.Module):
+    # No-op: all conditioning is via time_emb
+    def __init__(self, channels, cond_dim):
+        super().__init__()
+
+    def forward(self, h, class_emb):
+        return h
+</old>
+<new>
+def prepare_conditioning(time_emb, class_emb):
+    # Cross-attn: time_emb unchanged, conditioning via ClassConditioner
+    return time_emb
+
+
+class ClassConditioner(nn.Module):
+    # Cross-attention: class embedding as key/value
+    def __init__(self, channels, cond_dim):
+        super().__init__()
+        self.cross_attn = CrossAttentionLayer(channels, cond_dim, num_heads=4)
+
+    def forward(self, h, class_emb):
+        return self.cross_attn(h, class_emb)
+</new>
+</edit>
+<obs>
+Successfully replaced text in diffusers-main/custom_train.py.
+</obs>
+<run/>
+<obs>
+Measured results — `baseline:cross-attn` (`is_final,true`), seed 42.
+
+## FID (lower is better)
+| seed | best_fid_small | best_fid_medium | best_fid_large |
+|---|---|---|---|
+| 42 | 19.17 | 11.21 | 10.41 |
+| **mean** | **19.17** | **11.21** | **10.41** |
+</obs>

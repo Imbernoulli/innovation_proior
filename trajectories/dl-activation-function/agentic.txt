@@ -1,0 +1,508 @@
+<meta task="dl-activation-function" domain="Deep learning" file="pytorch-vision/custom_activation.py" model_format="qwen3" edit_tool="str_replace"/>
+
+<system>
+You are a research engineer improving a model on a fixed ML task. You work by editing the model code and running experiments. Think carefully before each change. You have these tools:
+- str_replace(path, old_str, new_str): replace the unique occurrence of old_str with new_str.
+- create(path, file_text): create a new file.
+- run_experiment(): train + evaluate the current code under the fixed budget; returns metrics.
+Make one tool call at a time. After editing, call run_experiment() to measure your method.
+</system>
+
+<user>
+## Research question
+
+Design the pointwise nonlinearity for a set of deep convolutional networks so that test accuracy rises
+across three architecture/dataset pairs at once, while everything else about the networks and their
+training is frozen. The single thing being designed is the activation curve — the element-wise map
+applied after each Conv–BatchNorm pair (and in the classifier head). It must be differentiable,
+shape-preserving (tensor in, same-shape tensor out), and a drop-in for the ReLU that the architectures
+were originally built around. The optimizer, learning-rate schedule, weight initialization, data
+augmentation, and the model definitions themselves are fixed; the only lever is the shape of the
+nonlinearity.
+
+## Prior art before the first rung (the activation lineage)
+
+The first rung reacts to ReLU and the smooth, self-gated units that grew out of it. These precede the
+ladder; each leaves a gap the ladder's curves try to close.
+
+- **ReLU** (Nair & Hinton 2010): `max(x,0)`. Cheap, sparse, derivative exactly 1 for `x>0`, which made
+  deep nets trainable where saturating sigmoid/tanh units killed the gradient. Gap: identically zero
+  output *and* zero gradient on the whole negative half-line, so a unit pushed permanently negative
+  stops learning ("dying ReLU"); a non-differentiable kink at the origin; piecewise-linear, so no
+  curvature; monotonic. This is the scaffold's *default* fill.
+- **Leaky ReLU / PReLU** (Maas et al. 2013; He et al. 2015): `max(x, px)`, with `p` a small constant
+  or a learned per-channel slope. Leak a little gradient on the negative side. Gap: still
+  piecewise-linear, kinked, monotonic.
+- **ELU** (Clevert et al. 2015): `x` for `x≥0`, `α(eˣ−1)` for `x<0`. Negative saturation pushes the
+  mean activation toward zero. Gap: monotonic, an extra constant, and reported instability with
+  residual blocks unless BatchNorm sits at the block end.
+- **Self-gated smooth units** — SiLU/Swish `x·σ(βx)` (Elfwing et al. 2017; Ramachandran et al. 2017),
+  GELU `x·Φ(x)` (Hendrycks & Gimpel 2016), Mish `x·tanh(softplus(x))` (Misra 2019). All multiply the
+  raw input by a smooth nonlinear function of itself, so they are differentiable everywhere, take small
+  negative values (no dying units), are unbounded above and bounded below, and are non-monotonic with a
+  shallow negative "bump." Gap among themselves: each is a single fixed curve, and which one trains best
+  on a given CNN setting — and why — is exactly what the ladder probes.
+
+## The fixed substrate
+
+The training pipeline and the model definitions are frozen and must not be touched:
+
+- **Optimizer:** SGD, `lr=0.1`, `momentum=0.9`, `weight_decay=5e-4`.
+- **Schedule:** cosine annealing over `200` epochs (`CosineAnnealingLR`, `T_max=200`).
+- **Initialization:** Kaiming-normal (`fan_out`, `nonlinearity='relu'`) on conv weights, `fan_in` on
+  linear weights; BatchNorm weight 1, bias 0. Fixed regardless of which activation is used.
+- **Data:** `Resize(32)` → `RandomCrop(32, padding=4)` → `RandomHorizontalFlip` → `ToTensor` →
+  per-dataset `Normalize`; FashionMNIST is repeated to 3 channels. Test transform is resize + normalize
+  only. Batch size 128, `CrossEntropyLoss`.
+- **Architectures:** CIFAR ResNet-20 (BasicBlock `[3,3,3]`, 3×3 stem, global avg pool); VGG-16-BN
+  (Conv–BN–activation blocks + a 512→512 classifier with the activation and dropout 0.5);
+  MobileNetV2 (inverted residuals, the activation replacing the usual ReLU6). The activation module is
+  instantiated and called in every one of these places.
+
+The metric is *best test accuracy reached during the 200 epochs*, so the activation is judged on the
+peak of the fixed cosine run, not on a re-tuned schedule.
+
+## The editable interface
+
+Exactly one region is editable — the `CustomActivation` class in `pytorch-vision/custom_activation.py`
+(the `nn.Module` used everywhere a ReLU would be). The contract is a shape-preserving element-wise (or
+channel-wise) `forward(x)`; learnable parameters may be registered in `__init__`. Every rung on the
+ladder is a different fill of exactly this class and nothing else.
+
+The starting point is the scaffold default: plain ReLU.
+
+```python
+# EDITABLE region of pytorch-vision/custom_activation.py (lines 32-49) -- default fill (ReLU)
+class CustomActivation(nn.Module):
+    """Custom activation function. Drop-in replacement for ReLU.
+
+    Input/Output: tensor of any shape, element-wise operation.
+
+    Design considerations:
+        - Monotonicity vs non-monotonicity tradeoffs
+        - Smoothness (differentiability everywhere vs piecewise)
+        - Negative-domain behavior (zero, linear, bounded)
+        - Computational cost (simple ops vs learned parameters)
+        - Interaction with BatchNorm and residual connections
+    """
+
+    def __init__(self):
+        super().__init__()
+
+    def forward(self, x):
+        return F.relu(x)  # default: ReLU
+```
+
+(`torch`, `torch.nn as nn`, and `torch.nn.functional as F` are already imported at module top.)
+
+## Evaluation settings
+
+Three architecture/dataset pairs, one seed, evaluated by best test accuracy (%, higher is better):
+
+- **resnet20-cifar10** — ResNet-20 on CIFAR-10.
+- **vgg16bn-cifar100** — VGG-16-BN on CIFAR-100.
+- **mobilenetv2-fmnist** — MobileNetV2 on FashionMNIST (grayscale repeated to 3 channels).
+
+Seed `42`. Each run is the full fixed pipeline above (SGD + cosine, 200 epochs) with only
+`CustomActivation` changed.
+
+The editable model code is in `pytorch-vision/custom_activation.py`:
+```python
+class CustomActivation(nn.Module):
+    """Custom activation function. Drop-in replacement for ReLU.
+
+    Input/Output: tensor of any shape, element-wise operation.
+
+    Design considerations:
+        - Monotonicity vs non-monotonicity tradeoffs
+        - Smoothness (differentiability everywhere vs piecewise)
+        - Negative-domain behavior (zero, linear, bounded)
+        - Computational cost (simple ops vs learned parameters)
+        - Interaction with BatchNorm and residual connections
+    """
+
+    def __init__(self):
+        super().__init__()
+
+    def forward(self, x):
+        return F.relu(x)  # default: ReLU
+```
+Improve it. Derive your method, edit the code, then run_experiment().
+</user>
+
+### step 1 — SiLU / Swish (x*sigmoid(x))   [slug:silu]
+
+<think>
+The whole task is the shape of one element-wise curve. The optimizer (SGD, `lr=0.1`, `momentum=0.9`, `weight_decay=5e-4`), the cosine schedule over 200 epochs, the Kaiming init, the augmentation, and the three model definitions are all frozen, and the only thing I edit is `CustomActivation.forward`. That framing decides the strategy before I even pick a curve: because nothing else moves, any accuracy difference between rungs is attributable purely to the activation, but it also means I cannot lean on re-tuning the learning rate or schedule to rescue a clever shape. So I should start from the cheapest defensible move away from the scaffold's default, introduce as few new degrees of freedom as possible, and let the measured numbers tell me where the headroom actually is — rather than reaching for a parametric, learnable curve on the first rung and conflating "the shape helped" with "the new knob found a good value under this particular frozen schedule."
+
+The default fill is plain ReLU, `max(x,0)`. Before replacing it I want to be precise about *why* it is the thing to leave, because the diagnosis of ReLU is what the whole self-gated family is reacting to, and naming its failings exactly tells me what properties the replacement must keep and which it should fix. ReLU can be read as `x·1(x>0)`: the input multiplied by a hard, deterministic 0/1 gate keyed on the sign of `x`. That hard gate has three concrete consequences on these exact networks. First, it throws away the entire negative half-line — output zero *and* gradient zero for every `x<0` — so a unit that BatchNorm happens to center slightly negative receives no gradient and can stop learning, the dying-ReLU failure, and it cannot recover because the gradient that would move it is itself zeroed. Second, the gate is a step, infinitely sharp, so there is a non-differentiable kink at the origin and no curvature anywhere; the positive half is exactly the identity, the negative half exactly zero, and the function is piecewise-linear with no second-order structure for the optimizer to exploit. Third — and this is the part specific to *these* models — every place the activation sits comes right after a BatchNorm: after each Conv–BN pair in ResNet-20's BasicBlocks and stem, after every Conv–BN block in VGG-16-BN and in its 512→512 classifier head, and inside every MobileNetV2 inverted residual. BatchNorm standardizes the preactivations toward mean 0, variance 1, so the inputs to each activation pile up near the origin — precisely the region where ReLU's hard sign-gate is at its crudest and where it is gating on sign with infinite sharpness exactly where the data has the most mass. None of this is fatal; ReLU plainly trains these nets. But the *form* of the decision is what bothers me: a binary "is this positive," made with infinite sharpness, gating on sign alone with no sense of *how* positive, right where BatchNorm concentrates the inputs.
+
+The smallest change that addresses all three at once is to replace the hard sign-gate with a smooth gate. Keep the self-gated form — multiply the raw input `x` by a smooth scalar gate `h(x)` of itself — because that is the only family that is a literal drop-in: one real input to one real output, shape-preserving, no architecture surgery, the network identical except for the pointwise map. If I reached for something many-to-one or shape-changing I could not simply swap it for ReLU in every BasicBlock, VGG block, and inverted residual; keeping the contract "scalar in, scalar out" makes whatever I land on immediately usable in every call site. So the search is over the gate `h` in `f(x)=x·h(x)`, and I want `h` to fix ReLU's failings while keeping what makes ReLU train: as `x→+∞` the gate should tend to 1, so the activation recovers the identity on strong positives and stays unbounded above with no positive-side saturation (the property that let ReLU keep gradients alive where saturating sigmoid/tanh units killed them); as `x→−∞` the gate should tend to 0, so strong negatives are suppressed the way ReLU suppresses them; but unlike the hard step, the gate should be smooth and continuously differentiable, with no kink, and it should let slightly-negative inputs through as small negative values so the negative half is no longer a dead zero-gradient region.
+
+The simplest gate with exactly those endpoints is the logistic sigmoid. Writing ReLU as `x·1(x>0)`, the hard step `1(x>0)` is the very thing I want to soften, and its smooth bounded substitute is `σ(x)=1/(1+e^{-x})`, which rises monotonically from 0 to 1 and is `C^∞`. That lands on
+
+`f(x) = x·σ(x),`
+
+the input gated by a sigmoid of itself — a self-gated unit, SiLU. Check it has the properties I demanded. It is smooth and differentiable everywhere (no kink), since `σ` is). As `x→+∞`, `σ(x)→1` and `f→x`, recovering ReLU's identity behavior on strong positives, unbounded above, no positive saturation. As `x→−∞`, `σ(x)→0` and `f→0`, recovering ReLU's suppression of strong negatives. In between, for `x` slightly negative the product `x·σ(x)` dips *below* zero — negative `x` times a positive gate is negative, and the gate shrinks toward zero only gradually — so the curve is non-monotonic with a shallow negative bump just left of the origin before returning toward 0. That undershoot is not something a monotonic-activation wishlist would have handed me, but the form makes it unavoidable, and it is exactly what keeps the negative side alive: a unit centered slightly negative now emits a small nonzero value and receives nonzero gradient, so the dying-ReLU precondition is gone by construction. The curve keeps what makes ReLU train and softens the parts that don't, with the softening concentrated near the origin where BatchNorm puts the mass.
+
+The derivative is where it pays to look next, because backpropagation multiplies the upstream gradient by this scalar at every unit, and the gradient is what the frozen SGD actually feels. Differentiating `f=x·σ(x)`,
+
+`f′(x) = σ(x) + x·σ(x)(1−σ(x)),`
+
+which can be rewritten as `f′ = f + σ(x)(1−f)`. As `x→+∞` this tends to 1 (the identity slope) and as `x→−∞` it tends to 0, smoothly, with no jump at the origin. One thing this makes explicit: the derivative's magnitude is below 1 over much of the active range — for `x` up to roughly 1.28 at this gate — so SiLU does *not* preserve gradient at exactly unit scale across the whole positive half the way ReLU does. That used to read like a defect, but it separates two ideas the ReLU habit conflated: a non-saturating positive tail is genuinely useful, but an exactly unit derivative over all positive inputs is not required, especially in residual networks like ResNet-20 and MobileNetV2 where the skip connection already provides an identity path for gradients, so the activation does not have to carry the whole gradient burden by itself. The smooth sub-unit slope is a price the residual structure can absorb.
+
+Now the part that pins down what this rung specifically *is*, because the task fixes the meaning of "silu" and it matters that I match that rather than the more elaborate form the curve is sometimes given. The general self-gated unit carries a temperature, `x·σ(βx)`, with `β` a per-channel parameter: as `β→∞`, `σ(βx)→1(x>0)` and the curve becomes ReLU; as `β→0`, `σ(βx)→1/2` and the curve becomes the scaled line `x/2`; so a learnable `β` would let each channel slide between linear and ReLU-like. This rung does *not* use that. The edit surface is `F.silu(x)` — fixed `β=1`, no learnable parameters registered in `__init__` — so `forward` is exactly `x·σ(x)` and nothing is added to the optimizer's parameter list. That restriction is deliberate for a first rung, and it is the reason this is the right place to start. Introducing the temperature would add a knob that interacts with the fixed SGD `lr=0.1`, the fixed weight decay, and the fixed cosine schedule, and a change in accuracy could then be the *knob* finding a good value under that specific schedule rather than the *shape* helping. By pinning `β=1` and registering nothing, I introduce smoothness and a live negative region with zero extra parameters and zero new hyperparameters, so the comparison to ReLU is clean and the comparison to whatever I try next stays clean too: every later rung that is also parameter-free differs from this one only in the gate's shape, and the one rung that does add parameters will stand out as the single place new degrees of freedom enter. The distilled module that lands this is in the answer.
+
+What I expect, and what I will watch when the numbers come back. Across all three pairs SiLU should land at least at ReLU's level and probably a touch above, because the smoothness and the live negative half are strictly more gradient flow than the hard gate, and the BatchNorm-standardized inputs spend most of their time in exactly the near-origin region where the two curves differ most. But this is the *plainest* member of the smooth self-gated family — a fixed sigmoid gate, no curvature control, no learnable bounds — so I expect its margin to be small and uneven across the three settings. It should be thinnest where the network is already easy to optimize and near its accuracy ceiling: the shallow ResNet-20 on the 10-class CIFAR-10 target, and the near-saturated MobileNetV2-on-FashionMNIST run, where there is barely any accuracy left to win and no gate shape can manufacture headroom that is not there. It should be largest, if anywhere, where capacity and depth make optimization itself the bottleneck — VGG-16-BN, the deepest, highest-capacity model here, on the hardest 100-class target. So the falsifiable read is: roughly flat improvements on resnet20-cifar10 and mobilenetv2-fmnist, with whatever real movement there is concentrated on vgg16bn-cifar100. Whatever the exact split, the diagnosis for the next rung is already set up. If a single fixed smooth gate only buys a little, the open question becomes whether a *differently shaped* fixed gate — same `x·h(x)` family, a different inner function `h` chosen for how it behaves as nets get deep — does better on exactly the VGG run where this one is most likely to stall, and that is where rung two goes. Let me write SiLU in.
+</think>
+<say>
+Starting the ladder at the cheapest principled move off ReLU: SiLU, `x·σ(x)` — the hard sign-gate softened into a smooth sigmoid gate, parameter-free. This first edit relabels the class as SiLU/Swish.
+</say>
+<edit path="pytorch-vision/custom_activation.py">
+<old>
+class CustomActivation(nn.Module):
+    """Custom activation function. Drop-in replacement for ReLU.
+
+    Input/Output: tensor of any shape, element-wise operation.
+
+    Design considerations:
+        - Monotonicity vs non-monotonicity tradeoffs
+        - Smoothness (differentiability everywhere vs piecewise)
+        - Negative-domain behavior (zero, linear, bounded)
+        - Computational cost (simple ops vs learned parameters)
+        - Interaction with BatchNorm and residual connections
+    """
+</old>
+<new>
+# EDITABLE region of pytorch-vision/custom_activation.py (lines 32-49) -- step 1: SiLU
+class CustomActivation(nn.Module):
+    """SiLU/Swish activation function.
+
+    SiLU(x) = x * sigmoid(x).
+    Self-gated activation discovered via automated search.
+    """
+</new>
+</edit>
+<obs>
+Successfully replaced text in pytorch-vision/custom_activation.py.
+</obs>
+<note>
+Now the forward pass: swap `F.relu` for `F.silu`.
+</note>
+<edit path="pytorch-vision/custom_activation.py">
+<old>
+    def forward(self, x):
+        return F.relu(x)  # default: ReLU
+</old>
+<new>
+    def forward(self, x):
+        return F.silu(x)
+</new>
+</edit>
+<obs>
+Successfully replaced text in pytorch-vision/custom_activation.py.
+</obs>
+<run/>
+<obs>
+Measured results — `baseline:silu` (`is_final,true`), seed 42.
+
+| metric | seed 42 (best test acc %) |
+|---|---|
+| resnet20-cifar10 | 92.72 |
+| vgg16bn-cifar100 | 70.38 |
+| mobilenetv2-fmnist | 94.69 |
+</obs>
+
+### step 2 — Mish (x*tanh(softplus(x)))   [slug:mish]
+
+<think>
+The SiLU rung came back almost exactly where I guessed it would, and the pattern in the three numbers is the thing to reason from. On resnet20-cifar10 it scored 92.72, on mobilenetv2-fmnist 94.69 — both essentially flat, the "fine, no harm" I expected on the shallow CIFAR-10 net and the near-saturated FashionMNIST run where there is barely any accuracy left to win. The one place the smooth gate had room to matter, vgg16bn-cifar100, landed at 70.38, and that is the number that interests me: VGG-16-BN is the deepest, highest-capacity model here on the hardest 100-class target, so it is where optimization is genuinely the bottleneck, and a single fixed smooth gate only got it to 70.38. So SiLU did what the plainest member of the family should — softened ReLU's hard sign-gate, killed the dead negative half, took a small uneven margin — and it left a sharp question open. The gate it uses, the logistic `σ`, was picked because it is the simplest smooth step from 0 to 1, not because anything about these networks asked for *that* particular gate. So does a *differently shaped* gate in the same self-gated family, one chosen for how it behaves as nets get deep, do better on exactly the VGG run where SiLU stalled?
+
+Stay inside the family, because the family is clearly the right move. The self-gated form `f(x)=x·h(x)` for a smooth gate `h` rising from ~0 to ~1 is what bought the flat-but-safe behavior on the saturated runs and the small VGG gain over ReLU; the question is not whether to gate but which gate. And I want to vary *only* the inner function `h`, adding no parameters, so this rung — like the last — changes shape and nothing else, keeping the comparison clean under the frozen SGD-plus-cosine pipeline. If I added a learnable knob now, a VGG move could be the knob finding a good value under the fixed `lr=0.1` and cosine schedule rather than the shape itself helping, and I would lose the clean attribution that the parameter-free ladder buys.
+
+Pin down the properties I am not willing to give up, because they are exactly the ones SiLU established and they constrain the search over `h`. The function must be smooth and continuously differentiable everywhere, with no ReLU kink. It must preserve a small amount of negative signal — a hard zero on the whole negative half-plane is precisely how a unit gets stuck with zero output and zero gradient, the dying-ReLU failure SiLU already removed. It must be unbounded above so large positive activations do not saturate the way sigmoid and tanh do, and bounded below so the negative side cannot run away. And it must stay self-gated, `f(x)=x·h(x)`. SiLU meets all of these with `h=σ`; what I want is a different `h` with the same endpoints but a *better-conditioned gradient*, since "many layers on a hard task" — the VGG-16-BN regime where SiLU's 70.38 says there is headroom — is exactly where the gradient the activation hands back, layer after layer, is what limits optimization. The asymptotics should be unchanged: `h(x)→0` as `x→−∞` so strong negatives are suppressed gently, `h(x)→1` as `x→+∞` so the activation recovers the identity on strong positives and stays unbounded above.
+
+A natural construction with those endpoints starts from softplus. `softplus(x)=log(1+e^x)` is smooth (`C^∞`), nonnegative, close to 0 on the far-negative side and close to `x` on the far-positive side — ReLU-like asymptotics but with no kink. If I feed that through `tanh`, I get a gate that starts near 0, rises smoothly, and tends exactly to 1 without needing an extra scale factor, because `tanh` of a large nonnegative number is 1 and `tanh(0⁺)` is `0⁺`. Other smooth transforms of `softplus(x)` or `e^x` are neighboring candidates, but `tanh(softplus(x))` is the clean one: the asymptotes are right, the primitives are standard, and the derivative will stay tractable enough to actually inspect. That gives `h(x)=tanh(softplus(x))` and the curve
+
+`f(x) = x·tanh(softplus(x)) = x·tanh(ln(1+e^x)).`
+
+This is Mish, and it is the mish the task actually fixes: `x * torch.tanh(F.softplus(x))`, no learnable parameters, the same drop-in contract as the SiLU rung, so once more I register nothing in `__init__` and add nothing to the optimizer.
+
+Check it has the family properties first, then chase the reason it might beat SiLU. Smooth and continuously differentiable everywhere, since softplus and tanh are both `C^∞` and so is their composition — no kink anywhere, unlike ReLU. Asymptotics: as `x→+∞`, `softplus(x)→x→∞`, `tanh(∞)→1`, so `f→x` — identity on strong positives, unbounded above, no positive saturation, exactly like SiLU. As `x→−∞`, `softplus(x)→0⁺`, `tanh(0⁺)→0⁺`, so `f→0` — suppresses strong negatives. In between, for slightly negative `x` the gate is small but positive and the product `x·h(x)` dips *below zero* into a shallow bump, with minimum around ≈ −0.31, so the range is `[≈−0.31, ∞)`: non-monotonic, bounded below, unbounded above, a live negative region that kills the dying-unit precondition by construction, just like SiLU. Same silhouette, slightly different curvature in the negative region. The qualitative picture is identical to the curve I just measured — which is the worry, because if Mish only matches SiLU's silhouette it will only match SiLU's 92.72 / 70.38 / 94.69, and the VGG headroom stays untouched. The difference, if there is one, must live in the gradient.
+
+So differentiate it, because the gradient is what the frozen SGD actually feels and what would explain a VGG improvement. Let `s=softplus(x)`, and recall `softplus′(x)=σ(x)`. With `f=x·tanh(s)`,
+
+`f′(x) = tanh(s) + x·sech²(s)·σ(x).`
+
+Now rewrite the second term to see what is hiding in it. The piece `x·σ(x)` is exactly SiLU, the curve from the previous rung; and `tanh(s)=f(x)/x` whenever `x≠0`. So, for `x≠0`,
+
+`f′(x) = sech²(softplus(x))·[x·σ(x)] + f(x)/x = Δ(x)·SiLU(x) + f(x)/x,`
+
+with `Δ(x)=sech²(softplus(x))`. At `x=0` the displayed `f(x)/x` term has to be read by continuous extension: `f(x)/x → tanh(softplus(0)) = tanh(log 2) = 3/5`, while `SiLU(0)=0`, so the rewritten form gives `3/5`, which matches the direct derivative at the origin. The identity is therefore literal away from zero and exact everywhere once that removable singularity is filled in. And it is striking: Mish's gradient *contains the previous rung's curve as a factor*. Where SiLU passes its own gradient, Mish passes a smoothly input-modulated version of it, plus the gate term `f(x)/x` that carries the unit toward derivative 1 on large positives.
+
+Now `Δ(x)=sech²(softplus(x))` has a precise role. Since `softplus(x)` is nonnegative and increasing, and `sech²` is the derivative of `tanh` — a positive bump peaked at 0 and decaying on both sides — `Δ(x)` is positive everywhere, near 1 on the far-negative side, equal to about 0.64 at the origin, and decaying toward 0 on the far-positive side. It is not a literal inverse Hessian, but in backpropagation it behaves like an input-dependent scaling inside the activation derivative: the SiLU-shaped term is continuously rescaled depending on where the preactivation sits, large in some regions and damped in others, instead of being passed at one fixed scale. That input-dependent rescaling of the gradient is exactly what a preconditioner does in optimization — reshape the local geometry so the loss surface is smoother and better-conditioned and descent moves more easily — and it lines up with the smoothness story from the other side: a smoother per-unit map makes a smoother output landscape, where ReLU's kinks build piecewise-linear facets, and the derivative analysis says the same thing from the optimizer's seat, the upstream gradient multiplied by a smooth scalar that changes continuously with the preactivation rather than a hard kink or a constant leak. A smoother, better-conditioned gradient is precisely the kind of thing that should help most where depth and capacity make conditioning the bottleneck — the VGG-16-BN-on-CIFAR-100 run that SiLU left at 70.38 — and matter least where the net is already easy, the flat ResNet-20 92.72 and FashionMNIST 94.69 that have no headroom for a better-conditioned gradient to fill.
+
+That is also why I do not just stop at SiLU even though it is already smooth and self-gated. The gate `σ(x)` gives one smooth self-gating shape and one fixed gradient scale; `tanh(softplus(x))` keeps the same endpoints but changes the *derivative structure* in a way I can read off. The SiLU relationship is not "same function, new name" — SiLU appears inside one term of Mish's derivative, multiplied by `Δ(x)`, with the gate term added separately. That gives a specific, falsifiable hypothesis rather than another silhouette: if the rescaling story is right, the gain should show up as smoother optimization on the deep run, not as flat parity. The only cost is that Mish is a touch more expensive than SiLU — an extra softplus and tanh versus a single sigmoid — which is the price for the smoother gradient and is irrelevant under the frozen pipeline where compute is not the scored quantity.
+
+So the delta from rung one is precise: keep the self-gated `x·h(x)` form and the parameter-free drop-in contract, but change the gate from `h=σ` (SiLU) to `h=tanh∘softplus` (Mish), which buys a gradient that is the SiLU gradient passed through a smooth per-input preconditioning factor `Δ(x)`, plus a gate term. The distilled module is in the answer.
+
+What I expect against SiLU's three numbers, stated so it is falsifiable. The two runs where SiLU was already flat should stay essentially flat — on resnet20-cifar10 around SiLU's 92.72 and on mobilenetv2-fmnist around 94.69, give or take noise — because there is almost no accuracy left and a better-conditioned gradient cannot manufacture headroom that is not there. The run that should move, if the preconditioning story is right, is vgg16bn-cifar100: I expect Mish to clear SiLU's 70.38 there, since that is the deep, hard regime where smoother gradients pay. If instead Mish *also* sits flat on the VGG run, that would say the gate-shape lever is largely exhausted within the fixed-curve family — that no parameter-free reshaping of a single smooth gate moves this setting much — and the next move would have to leave hand-picked shapes behind. But there is one fixed gate I have not yet tried that has a *principled* reason to be the right shape for these specific BatchNorm-saturated networks, so before reaching for learnable parameters I would spend one more rung inside the family on that gate, and only if it too stalls conclude the fixed-curve lever is spent. Let me put Mish in.
+</think>
+<say>
+Swapping the gate inside the same self-gated form: Mish, `x·tanh(softplus(x))` — same endpoints as SiLU but a smoother, better-conditioned gradient (SiLU shows up inside Mish's derivative, rescaled). This edit relabels the class as Mish.
+</say>
+<edit path="pytorch-vision/custom_activation.py">
+<old>
+# EDITABLE region of pytorch-vision/custom_activation.py (lines 32-49) -- step 1: SiLU
+class CustomActivation(nn.Module):
+    """SiLU/Swish activation function.
+
+    SiLU(x) = x * sigmoid(x).
+    Self-gated activation discovered via automated search.
+    """
+</old>
+<new>
+# EDITABLE region of pytorch-vision/custom_activation.py (lines 32-49) -- step 2: Mish
+class CustomActivation(nn.Module):
+    """Mish activation function.
+
+    Mish(x) = x * tanh(softplus(x)).
+    Self-regularized non-monotonic activation with smooth gradients.
+    """
+</new>
+</edit>
+<obs>
+Successfully replaced text in pytorch-vision/custom_activation.py.
+</obs>
+<note>
+Forward pass: `x * torch.tanh(F.softplus(x))`.
+</note>
+<edit path="pytorch-vision/custom_activation.py">
+<old>
+    def forward(self, x):
+        return F.silu(x)
+</old>
+<new>
+    def forward(self, x):
+        return x * torch.tanh(F.softplus(x))
+</new>
+</edit>
+<obs>
+Successfully replaced text in pytorch-vision/custom_activation.py.
+</obs>
+<run/>
+<obs>
+Measured results — `baseline:mish` (`is_final,true`), seed 42.
+
+| metric | seed 42 (best test acc %) |
+|---|---|
+| resnet20-cifar10 | 92.78 |
+| vgg16bn-cifar100 | 70.50 |
+| mobilenetv2-fmnist | 94.70 |
+</obs>
+
+### step 3 — GELU (x*Phi(x))   [slug:gelu]
+
+<think>
+Mish came back and the result is quietly informative: resnet20-cifar10 92.78, vgg16bn-cifar100 70.50, mobilenetv2-fmnist 94.70. Against SiLU's 92.72 / 70.38 / 94.69 that is a few hundredths everywhere and +0.12 on the VGG run. So the two flat runs stayed flat exactly as I expected — no headroom on the shallow CIFAR-10 net or the saturated FashionMNIST one, and a better-conditioned gradient cannot invent accuracy that is not there. But the run I bet on, vgg16bn-cifar100, moved only from 70.38 to 70.50. The preconditioning story was not *wrong* — Mish edged SiLU on the deep/hard setting, in the predicted direction — but the magnitude is tiny. That is the real signal from this rung: swapping one hand-picked smooth gate for another, parameter-free, inside the `x·h(x)` family, buys almost nothing here. The fixed-curve lever is nearly exhausted within tanh-of-softplus versus sigmoid, where the gates differ in curvature but neither was chosen with any reference to the data flowing through it.
+
+Before I leave the fixed-curve family, though, there is one gate I have not tried, and it is the one with a principled reason to be the *right* fixed shape for these networks specifically — so it is worth one more rung inside the family before reaching for learnable parameters. The thing both SiLU and Mish do is multiply `x` by a smooth gate `h(x)` that climbs from 0 to 1; the gate is, in effect, a soft probability that the unit "fires." SiLU uses the logistic CDF `σ` for that probability; Mish uses `tanh(softplus(·))`. Neither gate is matched to anything about the distribution of inputs it sees. But these networks are saturated with BatchNorm — every activation in ResNet-20, VGG-16-BN, and MobileNetV2 sits right after a BN layer, after each Conv–BN pair and in the classifier head — and BN standardizes its inputs toward mean 0, variance 1. So the preactivations into each activation are approximately standard normal. If the gate is "the probability this input fires," the *calibrated* gate is the one that asks "how far above a typical input is this one" under the distribution the inputs actually follow — the standard-normal CDF `Φ`, not the logistic `σ`. The reason the last two rungs left the VGG run almost unmoved may simply be that I was tuning the curvature of a gate that was the wrong gate to begin with.
+
+There is a cleaner way to arrive at the same place than "swap in a better CDF," and it is worth walking because it tells me *why* `x·Φ(x)` and not just *that* it. Look at what ReLU and dropout each do to a single neuron's value, because they turn out to be the same kind of operation. ReLU takes the preactivation `x` and multiplies it by 0 or 1, deterministically, by the sign of `x`: `x·1(x>0)`. Dropout takes a value and multiplies it by 0 or 1, stochastically, by a Bernoulli draw that ignores the input entirely. So I have a deterministic, input-dependent 0/1 mask and a stochastic, input-independent 0/1 mask, designed separately, living in different parts of the architecture, but both "multiply this neuron by a 0/1 mask." Braid them: let the mask be stochastic *and* input-dependent — `m ~ Bernoulli(p(x))` with `p(x)` increasing in `x`, large when `x` is large, small when `x` is very negative. That single object is at once a nonlinearity (it shapes the neuron's response to its input) and a stochastic regularizer (it is a random mask, like dropout), so the two design axes collapse into one.
+
+Now I need a `p(x)`: a function from the real line into `[0,1]`, increasing, so the more strongly a unit fires the more likely its value survives. Any CDF qualifies, since a CDF is monotone from 0 to 1 by definition. Which one? Here the training-time fact earns its keep: because BatchNorm standardizes the preactivations toward mean 0, variance 1, the natural scale for "is this input large or small relative to the others" is the standard normal. Set `p(x)=Φ(x)`, the CDF of `N(0,1)`, so `p(x)` is exactly "the probability that a typical preactivation is below this one" — the mask keeps a unit with probability equal to how much it stands out above the rest. That is a far more honest gate than `1(x>0)`: still a 0/1 decision, but with a soft threshold calibrated to the actual distribution of activations, which on these heavily-BN'd nets is the standard normal almost by construction.
+
+A network wants a deterministic answer at inference, and I would rather not carry sampling noise through every layer at train time either. The standard move, the same one dropout uses at test time, is to take the expectation of the stochastic transform. Conditioned on the preactivation, `x` is fixed and only the mask is random — with probability `Φ(x)` the output is `x`, with probability `1−Φ(x)` it is 0 — so
+
+`E[m·x | x] = x·E[m | x] = x·Φ(x).`
+
+There it is: the deterministic nonlinearity that is the *expectation* of this input-dependent stochastic mask is simply `x·Φ(x)`, where `Φ(x)=½[1+erf(x/√2)]` is the standard Gaussian CDF. I did not postulate a curve and then justify it; the curve fell out of taking the mean of the soft, magnitude-aware gate. This is GELU, and it reads as the same self-gated construction as the previous two rungs — multiply `x` by a smooth gate climbing 0 to 1 — but with the gate set to the CDF of the distribution BN actually produces: multiply `x` by the probability that a standard-normal draw falls below it.
+
+Check the limits and the shape, to be sure this is a genuine generalization of what works and not something exotic. As `x→+∞`, `Φ(x)→1` and GELU→`x`, recovering the identity on strong positives exactly like ReLU and like SiLU and Mish — unbounded above, no saturation. As `x→−∞`, `Φ(x)→0` fast (Gaussian tail) and GELU→0, suppressing strong negatives. Asymptotically it *is* ReLU; in fact ReLU is the zero-variance limit of this CDF-gated family — let the gate use `N(0,σ²)` and as `σ→0` the CDF tends to the hard step `1(x>0)` and the activation becomes `x·1(x>0)`. So GELU is a smoothing of ReLU by the Gaussian scale, the same way the sigmoid once smoothed a binary threshold, with the natural setting `μ=0, σ=1` read straight off the standardized-preactivation fact, so no new hyperparameters enter — which keeps this rung as clean and parameter-free as the last two. In between, for `x` a little below 0, `Φ(x)` is small but positive and `x·Φ(x)` dips below zero into the same shallow non-monotonic bump the whole family shares, so it preserves a live negative region and kills the dying-unit precondition. Its derivative is `Φ(x)+x·φ(x)`, so the negative side is not an entire zero-gradient half-line the way ReLU's is, even though the local minimum itself has derivative zero; and its second derivative is `(2−x²)·φ(x)`, which changes sign at `|x|=√2`, so unlike ReLU and ELU it is non-convex and keeps bending on the positive half rather than going exactly linear — curvature that should make it easier to bend toward complicated targets than a half-linear unit.
+
+The choice of `Φ` over the gates I already tried deserves a beat, because nothing *forces* the Gaussian — and this is the whole argument for why GELU should beat SiLU and Mish rather than just match them. Run the same expectation construction with the logistic CDF instead, and `E[m·x|x]=x·σ(x)` — that is SiLU, the curve I opened the ladder with, the `β=1` case of rung one. So SiLU is what this stochastic-mask story produces if you use the logistic gate, and the logistic gate is a convenience, not the distribution the inputs follow. The logistic `σ` and the Gaussian `Φ` look alike but differ in the tails and in slope near the origin: `σ` has heavier tails, lets more weight through for moderately-negative inputs, and is gentler around zero than the Gaussian. With BN forcing the inputs close to standard normal, the Gaussian gate weights each input by its *actual* standout probability while the logistic gate is a mismatched approximation to that — and the place the two gates most disagree, near and just-below zero, is exactly where BN piles up the mass. So on these heavily-BN'd nets I expect the distribution-matched gate to be the better fixed curve, with the gap showing up most where there is accuracy to win, which the last two rungs identified as vgg16bn-cifar100, and least on the flat resnet20-cifar10 and mobilenetv2-fmnist runs.
+
+The task fixes gelu to `F.gelu(x)` — the exact `x·Φ(x)`, evaluated through `erf`, no learnable parameters, the same drop-in contract as the SiLU and Mish rungs — so once more I register nothing in `__init__` and add nothing to the optimizer; only the curve shape changes, keeping the comparison clean under the frozen SGD-plus-cosine pipeline. (`erf` is more expensive than the elementary ops in SiLU's sigmoid, and there are fast approximations — the `tanh`-based `0.5x(1+tanh[√(2/π)(x+0.044715x³)])` and the cheaper `x·σ(1.702x)`, the latter being literally SiLU with a constant chosen so the logistic gate tracks `Φ` — but compute is not what the metric scores here, so the exact form is the right one to land.) The distilled module is in the answer.
+
+Stating it falsifiably against the numbers so far: I expect resnet20-cifar10 to stay near the ~92.7–92.8 the previous two rungs hit and mobilenetv2-fmnist near ~94.7, since those are saturated and no gate shape moves them. The run that should separate is vgg16bn-cifar100, where SiLU was 70.38 and Mish 70.50 — if the distribution-matched-gate argument holds, GELU should clear both there by more than the hundredths that separated SiLU from Mish, because this is the first gate I have picked for a *reason* tied to these networks rather than for analytic convenience. And here is the diagnosis I am really setting up for the finale, regardless of the exact VGG number: every rung on this ladder — SiLU, Mish, GELU — is a *single fixed curve* with no parameters, and the gains between them are shrinking, tenths then hundredths. That decay is the tell. Whichever fixed gate wins, the family is converging, which means the next move cannot be yet another hand-picked shape; it has to give the network a *learnable* activation — let each channel choose its own curve, and even switch between behaving nonlinearly and linearly — instead of committing the whole network, every neuron in every one of these models, to one curve I picked in advance. Let me put GELU in.
+</think>
+<say>
+The distribution-matched gate: GELU, `x·Φ(x)` with `Φ` the standard-normal CDF — the right calibrated gate when BatchNorm makes the preactivations standard normal. This edit relabels the class as GELU.
+</say>
+<edit path="pytorch-vision/custom_activation.py">
+<old>
+# EDITABLE region of pytorch-vision/custom_activation.py (lines 32-49) -- step 2: Mish
+class CustomActivation(nn.Module):
+    """Mish activation function.
+
+    Mish(x) = x * tanh(softplus(x)).
+    Self-regularized non-monotonic activation with smooth gradients.
+    """
+</old>
+<new>
+# EDITABLE region of pytorch-vision/custom_activation.py (lines 32-49) -- step 3: GELU
+class CustomActivation(nn.Module):
+    """GELU activation function.
+
+    GELU(x) = x * Phi(x) where Phi is the Gaussian CDF.
+    Smooth, non-monotonic, allows small negative values.
+    """
+</new>
+</edit>
+<obs>
+Successfully replaced text in pytorch-vision/custom_activation.py.
+</obs>
+<note>
+Forward pass: `F.gelu(x)` (exact erf form).
+</note>
+<edit path="pytorch-vision/custom_activation.py">
+<old>
+    def forward(self, x):
+        return x * torch.tanh(F.softplus(x))
+</old>
+<new>
+    def forward(self, x):
+        return F.gelu(x)
+</new>
+</edit>
+<obs>
+Successfully replaced text in pytorch-vision/custom_activation.py.
+</obs>
+<run/>
+<obs>
+Measured results — `baseline:gelu` (`is_final,true`), seed 42.
+
+| metric | seed 42 (best test acc %) |
+|---|---|
+| resnet20-cifar10 | 93.11 |
+| vgg16bn-cifar100 | 71.38 |
+| mobilenetv2-fmnist | 94.75 |
+</obs>
+
+### step 4 — ACON-C (learnable smooth-maximum activation)   [slug:acon]
+
+<think>
+GELU closed the baseline ladder as the strongest of the three, and the way it won is the thing that tells me what to do next. Its numbers: resnet20-cifar10 93.11, vgg16bn-cifar100 71.38, mobilenetv2-fmnist 94.75 — against Mish's 92.78 / 70.50 / 94.70 and SiLU's 92.72 / 70.38 / 94.69. So the distribution-matched-gate argument held: GELU is the best fixed curve here, and it won by the most exactly where I said the headroom was, the deep VGG-16-BN-on-CIFAR-100 run, jumping from Mish's 70.50 to 71.38, a full +0.88, while it nudged the saturated runs by only ~0.05–0.33. That confirms two things at once. The deep, high-capacity run is where any activation improvement actually shows up, and the flat ResNet-20 and FashionMNIST runs are near their ceiling regardless of curve. But look at the *trend across the whole ladder*: SiLU→Mish→GELU on the VGG run went 70.38 → 70.50 → 71.38, and on CIFAR-10 92.72 → 92.78 → 93.11. The gains are real but each rung is a single, fixed, parameter-free curve, and I have now tried the three most defensible ones — the simplest smooth gate, the better-conditioned-gradient gate, and the distribution-matched gate. The whole family has been committing every neuron in every one of these networks to one hand-picked shape, and the best I can do that way is GELU's row. The lever that is left is not "pick a better fixed curve" — it is "stop fixing the curve."
+
+So the question becomes: what does it mean to *not* fix the curve, in a way I can drop into `CustomActivation` under the frozen pipeline? I want each channel to be able to choose its own activation shape, and — this is the part the fixed family cannot express at all — to choose *how nonlinear to be*, including the option of being nearly linear where linearity helps. To get there I have to understand what these smooth gated curves actually *are*, because if I can see the structure behind SiLU and GELU I can parameterize it instead of enumerating one more instance of it. The reason this is the right move and not just another guess is that the ladder's own decay says hand-picking is exhausted; the way out is to find the construction the hand-picked curves are special cases of, and open its constants up to learning.
+
+Here is the structure. ReLU is `max(x,0)`. Leaky ReLU and PReLU are `max(x, px)`. The absolute value is `max(x, −x)`. All of these are *max of two linear functions* — the Maxout family `max(η_a(x), η_b(x))` with `η_a, η_b` linear. Maxout is the general "hard max of linear pieces" object; ReLU and its piecewise-linear cousins are specific choices of the two pieces. And SiLU, the curve I started the ladder with, is *smooth*. The gap between "hard max of linear pieces" and "smooth activation" is exactly the kind of gap that has a standard bridge, and the bridge is the smooth maximum, the differentiable surrogate for `max` used throughout optimization:
+
+`S_β(x_1,…,x_n) = (Σ_i x_i e^{βx_i}) / (Σ_i e^{βx_i}),`
+
+a temperature-`β` softmax-weighted average of the values. As `β→∞` the weight piles onto the largest argument and `S_β→max`; as `β→0` the weights equalize and `S_β→` the arithmetic mean. So `β` is a switching factor sliding between hard max and plain average. (This is distinct from softplus, which is the LogSumExp smoothing of `max(x,0)`; this is the softmax-weighted *value* itself, which is what produces a self-gated curve rather than another positive smooth ReLU.)
+
+Apply the bridge to a two-piece max, since every activation I care about is `max(η_a, η_b)` — set `n=2`. Write it out: `S_β(η_a,η_b) = η_a·e^{βη_a}/(e^{βη_a}+e^{βη_b}) + η_b·e^{βη_b}/(e^{βη_a}+e^{βη_b})`. Divide the first fraction's numerator and denominator by `e^{βη_a}` and the second by `e^{βη_b}` to get `η_a·σ(β(η_a−η_b)) + η_b·σ(β(η_b−η_a))`, then use `σ(−z)=1−σ(z)` on the second term and collect:
+
+`S_β(η_a, η_b) = (η_a − η_b)·σ(β(η_a − η_b)) + η_b.`
+
+That is the clean general formula for the smooth maximum of two linear pieces. Now plug in ReLU's pieces, `η_a=x`, `η_b=0`:
+
+`S_β(x, 0) = x·σ(βx).`
+
+That is SiLU (at `β=1`). The curve I opened the ladder with is *the smooth maximum of `{x, 0}`* — the smooth version of ReLU — and the `β` inside it is precisely a temperature that slides the neuron between linear (`β→0`, the function becomes the mean of `x` and `0`, i.e. `x/2`) and ReLU-like max (`β→∞`). The fixed curves on my ladder are all frozen instances of this one construction. GELU and Mish use different smooth gates, but SiLU is literally `S_β(x,0)` with `β=1`, and that is the door: instead of fixing `β=1` and fixing the two linear pieces at `x` and `0`, *make them learnable per channel*.
+
+Take the general two-piece member, `η_a=p_1 x`, `η_b=p_2 x`:
+
+`f(x) = (p_1 − p_2)·x·σ(β(p_1 − p_2)x) + p_2 x,`
+
+with `p_1, p_2, β` learnable per channel. This is ACON-C, the smooth maximum of two learnable linear functions through the origin. Initialize `β=1, p_1=1, p_2=0` and at the very first step it *is* `x·σ(x)` — exactly the SiLU curve rung one measured at 92.72 / 70.38 / 94.69. So the finale does not start from nowhere; it starts sitting on top of the weakest baseline and is free to crawl away from it, per channel, during the same frozen 200-epoch cosine run. That is a strong reason to expect it to do no worse than SiLU at minimum: the worst case is that the parameters never move and it reproduces rung one.
+
+Why would learnable `p_1, p_2, β` beat the *best* fixed curve, GELU's 71.38, rather than merely beat SiLU? The fixed curves differ from each other only in gate *shape*, and the ladder showed that buys hundredths-to-tenths. ACON-C adds something none of them has, and the place it shows is the gradient, so differentiate `f`. With `u=(p_1−p_2)x`, `f = u·σ(βu) + p_2 x`, so
+
+`f′(x) = (p_1−p_2)·[σ(βu) + βu·σ(βu)(1−σ(βu))] + p_2.`
+
+Take the asymptotes first as a consistency check. As `x→+∞` (take `p_1>p_2`, so `u→+∞`), `σ(βu)→1` and the middle `βu·σ(1−σ)` term →0, so `f′→(p_1−p_2)+p_2 = p_1`; as `x→−∞`, `σ(βu)→0` and the middle term →0, so `f′→p_2`. The derivative runs from `p_2` on the far left to `p_1` on the far right — its asymptotic slopes are exactly the two linear pieces, as a smoothed `max(p_1 x, p_2 x)` must have. But the asymptotes are not the interesting part; the *bounds* of `f′` are, because the maximum and minimum of `f′` are the largest and smallest gradient the unit can pass, and those govern how it trains. Let `a=p_1−p_2` and `y=βax`; the bracket is `h(y)=σ(y)+yσ(y)(1−σ(y))`, so `f′=a·h(y)+p_2` and `f″=βa²·h′(y)`. With `s=σ(y)`, `s′=s(1−s)`, so `h′(y)=s(1−s)[2+y(1−2s)]`. The factor `s(1−s)` is nonzero for finite `y`, so the extrema satisfy `2+y(1−2s)=0`; substituting `1−2s=(1−e^y)/(1+e^y)` and clearing denominators gives the transcendental equation
+
+`(y − 2)e^y = y + 2,   where  y = (p_1 − p_2)βx,`
+
+whose roots are `y≈±2.39936`. At the positive root `h≈1.0998`, at the negative root `h≈−0.0998`, and substituting back into `f′=a·h+p_2` (keeping `p_1>p_2`),
+
+`max(f′) ≈ 1.0998·p_1 − 0.0998·p_2,    min(f′) ≈ 1.0998·p_2 − 0.0998·p_1.`
+
+For SiLU/Swish (`p_1=1, p_2=0`) those are the *constants* ≈ 1.0998 and ≈ −0.0998 — fixed, and `β` only sets how fast the derivative approaches those walls, never the walls themselves. Every fixed curve on my ladder, including GELU, has gradient bounds it cannot move; the three rungs only ever changed the *shape* of the gate between those fixed walls, which is why their gains decayed. ACON-C's bounds depend on `p_1` and `p_2`, which are learnable, so each channel can set its own gradient ceiling and floor. That is a genuinely new degree of freedom: the smooth-maximum derivation shows that the bound is exactly what `p_1, p_2` control while `β` independently controls how fast the derivative asymptotes — the nonlinear *degree* — two knobs the fixed curves conflated by pinning both.
+
+And there is the qualitative payoff the fixed family cannot touch at all: `β→∞` makes `f→max(p_1 x, p_2 x)` (fully nonlinear, the neuron *activates*) while `β→0` makes `f→((p_1+p_2)/2)x` (linear, the neuron does *not* activate). A learnable `β` lets each channel decide *whether to be a nonlinearity at all* — activate-or-not, which is what ACON names. On these three networks that is the right kind of freedom, and it maps onto exactly the pattern the ladder measured. The saturated ResNet-20 and MobileNetV2 runs near their ceiling may benefit from some channels going nearly linear — less to over-fit, smoother optimization — while the deep VGG run, the one with all the visible headroom where every prior rung's gain concentrated, can keep the channels that need sharp nonlinearity sharp and relax the rest. A fixed curve has to make one compromise for the whole network; ACON-C makes it per channel and learns it. (The construction extends further — generating `β` from the input via an SE-style channel bottleneck, `β=σ(W_1 W_2·GAP(x))`, gives a per-sample switch, meta-ACON — but that adds routing parameters and machinery beyond what this rung needs to test the core hypothesis, so I land the per-channel learnable-`β` form here and leave the input-conditioned `β` as the obvious next degree of freedom if learnable-but-static `β` is not enough.)
+
+Now make it the *literal* edit, because the harness fixes the contract and I have to respect it exactly. `CustomActivation` is instantiated with no arguments everywhere it is used — in ResNet-20's BasicBlocks and stem, in every VGG-16-BN Conv–BN block and the classifier head, in every MobileNetV2 inverted residual — so I cannot pass a channel count into `__init__` the way a standalone ACON module would (`AconC(width)`). The clean way to honor "per-channel learnable parameters" without changing the construction sites is to size the parameters *lazily on the first forward*, from the channel dimension of the incoming tensor: `x.shape[1]` for the 4-D conv feature maps, and the last dim for the 2-D classifier activation, registering `p_1`, `p_2`, `β` as `nn.Parameter`s shaped to broadcast over that channel axis (and on the same device/dtype as `x`). The forward then computes the ACON-C formula `(p_1−p_2)x·σ(β(p_1−p_2)x)+p_2 x`, which is fully differentiable and shape-preserving — tensor in, identical-shape tensor out — exactly as the contract requires. The new parameters flow into the same frozen SGD optimizer because they are model parameters and `model.parameters()` picks them up; the fixed weight decay and learning rate apply to them too, which is fine — they start at the SiLU point and the cosine schedule anneals around it, so the optimizer treats them as just more weights from the existing pipeline. I add nothing to the training loop, the schedule, the init of the conv/BN/linear weights, or the data; the only change is still inside `CustomActivation`, now with three learnable per-channel tensors instead of none. This is the one rung on the whole ladder where new parameters enter, and the lazy sizing is what lets them enter without touching a single call site. The full scaffold module is in the answer.
+
+The bar this has to clear is GELU's row, and I will state what I would validate falsifiably rather than claim a number, since this rung carries no measured feedback. The expectation that follows from the analysis: the two near-ceiling runs (resnet20-cifar10 at GELU's 93.11, mobilenetv2-fmnist at 94.75) should hold at least even — ACON-C starts at SiLU and can only specialize away from it, and where some channels going linear reduces over-fitting it may edge up — while the run that should actually move is vgg16bn-cifar100, GELU's 71.38, the deep, high-capacity setting where every prior rung's gain concentrated and where learnable per-channel gradient bounds and nonlinear degree have the most to exploit. The thing I would watch to confirm the mechanism rather than luck is the learned `β` distribution across channels: if ACON-C is doing what the derivation says, different channels should settle at different `β`, with the VGG run showing a spread — some channels near-max and nonlinear, some near-mean and linear — rather than all collapsing back to the `β=1` SiLU point. That spread *is* the per-neuron activate-or-not behavior the fixed ladder could never express, and it is the reason to expect this to pass GELU where another fixed curve would not. If instead `β` stays clustered at 1 and `p_1, p_2` barely move, the learnable curve has simply reproduced SiLU and I would conclude the static per-channel parameters are too coarse — which would point straight at making `β` input-conditioned (meta-ACON's `β=G(x)`) as the next move rather than at any further fixed shape. Let me write ACON-C in.
+</think>
+<say>
+Stop fixing the curve: ACON-C, the smooth maximum of two learnable linear pieces, `(p1−p2)x·σ(β(p1−p2)x)+p2·x`, with `p1,p2,β` learnable per channel. This edit relabels the class and documents the construction; it initializes to SiLU and specializes per channel, with learnable gradient bounds and a `β` that switches each channel between nonlinear and linear.
+</say>
+<edit path="pytorch-vision/custom_activation.py">
+<old>
+# EDITABLE region of pytorch-vision/custom_activation.py (lines 32-49) -- step 3: GELU
+class CustomActivation(nn.Module):
+    """GELU activation function.
+
+    GELU(x) = x * Phi(x) where Phi is the Gaussian CDF.
+    Smooth, non-monotonic, allows small negative values.
+    """
+</old>
+<new>
+# EDITABLE region of pytorch-vision/custom_activation.py (lines 32-49) -- finale: ACON-C (learnable)
+class CustomActivation(nn.Module):
+    """ACON-C: smooth maximum of two learnable linear pieces, per channel.
+
+        f(x) = (p1 - p2) * x * sigmoid(beta * (p1 - p2) * x) + p2 * x
+
+    p1, p2, beta are per-channel learnable parameters, sized lazily on the
+    first forward from the channel axis (so __init__ stays argument-free, as
+    the scaffold instantiates CustomActivation() everywhere). Init p1=beta=1,
+    p2=0, so the module starts as SiLU x*sigmoid(x) and specializes per channel.
+    Asymptotic slopes -> p1 (x->+inf), p2 (x->-inf); first-derivative bounds
+    (~1.0998 p1 - 0.0998 p2, ~1.0998 p2 - 0.0998 p1) are learnable, unlike the
+    fixed SiLU/GELU bounds. beta switches each channel between nonlinear
+    (beta->inf, max) and linear (beta->0, mean). Differentiable, shape-preserving.
+    """
+</new>
+</edit>
+<obs>
+Successfully replaced text in pytorch-vision/custom_activation.py.
+</obs>
+<note>
+Now the `__init__` lazy parameters plus the forward that materializes them on first call and computes the ACON-C formula.
+</note>
+<edit path="pytorch-vision/custom_activation.py">
+<old>
+        super().__init__()
+
+    def forward(self, x):
+        return F.gelu(x)
+</old>
+<new>
+        super().__init__()
+        self.p1 = nn.parameter.UninitializedParameter()
+        self.p2 = nn.parameter.UninitializedParameter()
+        self.beta = nn.parameter.UninitializedParameter()
+
+    def _param_shape(self, x):
+        if x.dim() == 2:
+            return (1, x.shape[-1])
+        if x.dim() > 2:
+            return (1, x.shape[1], *([1] * (x.dim() - 2)))
+        return (x.shape[0],)
+
+    def _init_params(self, x):
+        shape = self._param_shape(x)
+        self.p1.materialize(shape, device=x.device, dtype=x.dtype)
+        self.p2.materialize(shape, device=x.device, dtype=x.dtype)
+        self.beta.materialize(shape, device=x.device, dtype=x.dtype)
+        nn.init.ones_(self.p1)
+        nn.init.zeros_(self.p2)
+        nn.init.ones_(self.beta)
+
+    def forward(self, x):
+        if isinstance(self.p1, nn.parameter.UninitializedParameter):
+            self._init_params(x)
+        diff = (self.p1 - self.p2) * x
+        return diff * torch.sigmoid(self.beta * diff) + self.p2 * x
+</new>
+</edit>
+<obs>
+Successfully replaced text in pytorch-vision/custom_activation.py.
+</obs>
+
+</output>

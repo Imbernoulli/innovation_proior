@@ -1,0 +1,1066 @@
+<meta task="ml-federated-aggregation" domain="Classical ML" file="flower/custom_fl_aggregation.py" model_format="qwen3" edit_tool="str_replace"/>
+
+<system>
+You are a research engineer improving a model on a fixed ML task. You work by editing the model code and running experiments. Think carefully before each change. You have these tools:
+- str_replace(path, old_str, new_str): replace the unique occurrence of old_str with new_str.
+- create(path, file_text): create a new file.
+- run_experiment(): train + evaluate the current code under the fixed budget; returns metrics.
+Make one tool call at a time. After editing, call run_experiment() to measure your method.
+</system>
+
+<user>
+## Research question
+
+Train one shared model across 100 clients whose data never leaves them and is **non-IID** — a
+Dirichlet(0.1) split of CIFAR-10 and FEMNIST, and a naturally per-speaker split of Shakespeare.
+Each round the server reaches only 10 of the 100 clients; each runs 5 local epochs of plain SGD,
+then ships its model back. The single thing being designed is the **federated learning recipe** —
+how each client shapes its local objective and how the server combines the returned models — under
+the one constraint that bites here: the clients' local optima sit far from the global optimum, so
+naive averaging suffers **client drift**. Everything else (data partition, the per-client local
+loop scaffolding, client sampling, the round loop, evaluation) is fixed.
+
+## Prior art before the first rung
+
+The lineage the first rung reacts to is the local-update averaging recipe and its drift, the
+problem every step on this ladder is trying to beat.
+
+- **Naive distributed / synchronous SGD (FedSGD).** Each round, each selected client computes one
+  gradient on its local data, the server averages them and takes one step. Provably a stochastic
+  gradient step on the global objective, but **one gradient step per communication round** — tens of
+  thousands of rounds to converge, hopeless when communication is the scarce resource. Gap: spends
+  the scarce thing (rounds) one step at a time.
+- **Local-update averaging (the dominant recipe).** Rewrite the FedSGD step: each client taking one
+  local step and the server averaging the stepped models is *algebraically identical* to clients
+  shipping gradients and the server stepping — and once a client is stepping-and-shipping a model,
+  nothing stops it from taking *many* local steps before the average. This trades free on-device
+  compute for scarce rounds. Gap: under non-IID data, many local steps drive each client toward its
+  *own* optimum `theta_k^*`, so the average is pulled toward `(1/N) sum_k theta_k^*`, not the global
+  `theta^*` — client drift, and it grows with the local-step count.
+- **The fixed-point statement of the drift.** A global optimum has `(1/m) sum_k grad L_k(theta^*) =
+  0` with the individual `grad L_k(theta^*)` non-zero; a client minimizing its own `L_k` rests where
+  `grad L_k = 0`. The two stationary points are *inconsistent* under heterogeneity — the place every
+  client wants to go is not the place the federation must reach. Gap: this is the disease; the ladder
+  is repairs of increasing structural depth.
+
+## The fixed substrate
+
+A federated-simulation harness is frozen: it owns the Dirichlet/per-speaker data partition across
+100 clients, the per-client local-SGD loop scaffolding, the client-sampling schedule, the 200-round
+loop, and global-model evaluation on the held-out test set. It instantiates **one** `Strategy`
+object before the round loop (so the strategy may carry server- and client-side state across rounds)
+and per round calls, in order: `select_clients(N, K, round)` to pick the 10 participants;
+`client_local_train(global_state, client_dataset, model_fn, loss_fn, local_epochs, local_lr,
+local_batch_size, device, client_idx)` for each, which must return `(state_dict, num_samples,
+avg_loss)`; then `aggregate(global_state, client_updates, round)` with `client_updates` the list of
+those tuples, returning the next global `state_dict`. Models are `CifarCNN` / `FemnistCNN` /
+`CharLSTM` (chosen by dataset); the harness also provides a `_default_client_sgd` helper (plain SGD,
+optional `loss_aug` term per minibatch).
+
+## The editable interface
+
+Exactly one region is editable — the `Strategy` class in `flower/custom_fl_aggregation.py` (the
+contract above). It owns the **full** recipe, both the client-side local objective and the
+server-side combine; a server-only aggregator could only approximate methods whose innovation lives
+in the local loop. Every method on the ladder is a fill of this same contract: `__init__`
+(any persistent state), `client_local_train` (the local objective / gradient transform),
+`aggregate` (the combine + any server-state update), and `select_clients`.
+
+The starting point is the scaffold default: plain local SGD on each client + a sample-count-weighted
+average of the returned models (this is FedAvg). Each method replaces exactly these definitions and
+nothing else. One harness detail is load-bearing for every combine: a model `state_dict` carries
+non-floating-point buffers (integer counters, batch-norm tracked-batches) that must not be averaged;
+the default copies one client's value through for those and weight-averages only the float tensors,
+on CPU in float32.
+
+```python
+class Strategy:
+    """Default FL recipe: plain SGD locally + sample-count-weighted server average.
+    The harness instantiates this once and calls select_clients -> client_local_train
+    (per selected client) -> aggregate, each round."""
+
+    def __init__(self, global_model, args):
+        self.args = args
+
+    def client_local_train(self, global_state_dict, client_dataset, model_fn,
+                           loss_fn, local_epochs, local_lr, local_batch_size,
+                           device, client_idx):
+        model = model_fn()
+        model.load_state_dict(global_state_dict)        # start from the shared global model
+        model.to(device)
+        model.train()
+        loader = DataLoader(client_dataset, batch_size=local_batch_size,
+                            shuffle=True, drop_last=False, num_workers=0)
+        avg_loss, _ = _default_client_sgd(
+            model, loader, loss_fn, local_epochs, local_lr, device)
+        return model.cpu().state_dict(), len(client_dataset), avg_loss
+
+    def aggregate(self, global_state_dict, client_updates, round_num):
+        # sample-count-weighted average: w_{t+1} = sum_k (n_k / sum_j n_j) w^k
+        total_samples = sum(max(upd[1], 1) for upd in client_updates)
+        new_state = OrderedDict()
+        for key, ref in global_state_dict.items():
+            if not ref.is_floating_point():             # integer buffers: copy, don't average
+                new_state[key] = client_updates[0][0][key].detach().clone()
+                continue
+            acc = torch.zeros_like(ref, device="cpu", dtype=torch.float32)
+            for st, n, _ in client_updates:
+                acc += st[key].detach().cpu().float() * (max(n, 1) / total_samples)
+            new_state[key] = acc.to(ref.dtype)
+        return new_state
+
+    def select_clients(self, num_available, num_to_select, round_num):
+        return random.sample(range(num_available), min(num_to_select, num_available))
+```
+
+## Evaluation settings
+
+Three benchmarks, all non-IID, **one seed (42)**: **CIFAR-10** (Dirichlet(0.1), 100 clients, 10-class
+images, `CifarCNN`), **FEMNIST** (EMNIST ByClass, Dirichlet split, 62-class characters, `FemnistCNN`),
+and **Shakespeare** (per-speaker next-character prediction, `CharLSTM`). Fixed pipeline: 200
+communication rounds, 10 of 100 clients per round, 5 local epochs of SGD at `lr = 0.01`, local batch
+size 64. Metric on every benchmark: **test accuracy of the global model after 200 rounds** (higher is
+better).
+
+The editable model code is in `flower/custom_fl_aggregation.py`:
+```python
+class Strategy:
+    """End-to-end FL strategy.
+
+    Unlike a pure ServerAggregator, this class is responsible for the FULL
+    FL recipe: how each client trains locally AND how the server aggregates.
+    This matches the scope of real FL methods (FedProx / SCAFFOLD / FedDyn /
+    MOON / ...) whose innovations live inside the local loop — a server-only
+    API can only approximate them.
+
+    The run_fl_simulation loop calls:
+        strategy = Strategy(global_model, args)
+        selected = strategy.select_clients(N, K, round_num)
+        # for each client i:
+        state_i, n_i, loss_i = strategy.client_local_train(
+            global_state, client_dataset, model_fn, loss_fn,
+            local_epochs, local_lr, local_batch_size, device, client_idx)
+        global_state = strategy.aggregate(global_state, [(state_i, n_i, loss_i)], round_num)
+
+    You SHOULD override at least ``client_local_train`` and/or ``aggregate``
+    to implement your method. Sensible defaults (plain SGD + weighted
+    average) are provided so trivial subclasses still run.
+
+    Innovation space:
+        * client-side: proximal regularization (FedProx), per-step
+          control-variate correction (SCAFFOLD), dynamic regularizer
+          (FedDyn), contrastive loss (MOON), adaptive local LR, ...
+        * server-side: sample-weighted / robust / learning-rate-adapted
+          aggregation, server momentum, drift estimation, ...
+    """
+
+    def __init__(self, global_model, args):
+        """Initialize strategy state.
+
+        Args:
+            global_model: the initial global nn.Module.
+            args: parsed CLI args (num_clients, clients_per_round, ...).
+        """
+        self.args = args
+
+    def client_local_train(self, global_state_dict, client_dataset, model_fn,
+                           loss_fn, local_epochs, local_lr, local_batch_size,
+                           device, client_idx):
+        """Train one client locally.
+
+        Must return ``(state_dict, num_samples, avg_loss)``. The default
+        implementation does plain SGD (no momentum). Override to add
+        proximal / correction / regularizer terms to the local objective
+        or to modify the optimizer / gradient flow.
+        """
+        model = model_fn()
+        model.load_state_dict(global_state_dict)
+        model.to(device)
+        model.train()
+        loader = DataLoader(client_dataset, batch_size=local_batch_size,
+                            shuffle=True, drop_last=False, num_workers=0)
+        avg_loss, _ = _default_client_sgd(
+            model, loader, loss_fn, local_epochs, local_lr, device)
+        return model.cpu().state_dict(), len(client_dataset), avg_loss
+
+    def aggregate(self, global_state_dict, client_updates, round_num):
+        """Aggregate client updates into a new global state_dict.
+
+        Default is sample-count-weighted average (FedAvg). Override for
+        server-side innovations (momentum, robust median, control-variate
+        server update, ...).
+        """
+        total_samples = sum(max(upd[1], 1) for upd in client_updates)
+        new_state = OrderedDict()
+        for key, ref in global_state_dict.items():
+            if not ref.is_floating_point():
+                new_state[key] = client_updates[0][0][key].detach().clone()
+                continue
+            acc = torch.zeros_like(ref, device="cpu", dtype=torch.float32)
+            for st, n, _ in client_updates:
+                acc += st[key].detach().cpu().float() * (max(n, 1) / total_samples)
+            new_state[key] = acc.to(ref.dtype)
+        return new_state
+
+    def select_clients(self, num_available, num_to_select, round_num):
+        """Pick client indices for this round. Default: uniform random."""
+        return random.sample(range(num_available), min(num_to_select, num_available))
+```
+Improve it. Derive your method, edit the code, then run_experiment().
+</user>
+
+### step 1 — FedProx (proximal-term client correction)   [slug:fedprox]
+
+<think>
+I am starting where the drift bites hardest, so let me be honest about what the floor has to survive before I dress it up. The harness hands me a `Strategy` that already does the obvious thing — plain local SGD on each client, sample-count-weighted average of the returned models — and that obvious thing is exactly the recipe whose disease defines this whole task. Under the Dirichlet(0.1) split each of the 100 clients holds a wildly skewed slice (a client might be almost all one or two CIFAR classes), I touch only 10 of them per round, and I let each run a full 5 local epochs. Five epochs on a few hundred skewed examples is a lot of local work: each client's model walks a long way toward *its own* optimum `theta_k^*`, which under this heterogeneity has little to do with the global `theta^*`. Average ten such drifted models and the result is pulled toward `(1/10) sum theta_k^*`, the average of the participating clients' private solutions, not the place the federation needs to reach. So the very lever that makes the recipe communication-efficient — many local steps per round — is the lever that amplifies the drift. That is the wall, and I want to start from a method that attacks it with the lightest possible touch, so I can see how much a minimal repair buys before I reach for heavier machinery.
+
+Let me write down what I am optimizing so the fix has somewhere to attach. The global objective is the sample-weighted average of per-client risks, `f(w) = sum_k p_k F_k(w)` with `p_k = n_k/n`, and each `F_k` is the loss on client `k`'s private data. The dominant recipe broadcasts the current model `w^t`, lets each selected client run several epochs of SGD on its own `F_k`, and averages the returned models. The reason averaging works at all is that everyone started this round from the *same* broadcast `w^t`: models that begin at a common point and drift modestly stay in a shared low-loss basin, and their average is a sensible model, whereas averaging models trained from different initializations lands somewhere worse than either parent. So the shared per-round initialization is load-bearing — the local solutions have to stay in a common basin for their average to mean anything. The trouble is that non-IID data makes the `F_k` genuinely different functions whose minimizers scatter, so the more local epochs I run, the further each client travels from `w^t` toward its own `theta_k^*`, the further apart the returned models spread, and the less their average sits in any shared basin. People have watched exactly this: crank the local epochs on heterogeneous data and convergence slows, oscillates, and on the genuinely non-IID splits it can stall. The single knob the floor exposes — the number of local epochs — is fighting itself.
+
+So the question I want to answer at this first rung is: what is the *lightest* change that throttles the drift without touching the server combine or the local solver? The crude option is to cap the local epochs, but epochs are coarse and fixed for everyone, and shrinking them throws away the communication efficiency I was buying. What I actually want is to cap the *displacement* `||w - w^t||` directly — to keep each client's returned model from straying too far from the broadcast model it started at — regardless of how many steps it takes. A cap on displacement that the optimizer itself respects is exactly what a quadratic penalty buys me. Instead of having client `k` minimize `F_k(w)`, have it minimize
+
+  `h_k(w; w^t) = F_k(w) + (mu/2) ||w - w^t||^2`.
+
+The added term is a spring anchored at the broadcast model `w^t`: it costs the client to move away from where it started, and the stiffer `mu`, the stiffer the spring. I am not capping epochs and I am not changing the optimizer — I am changing the *objective*, so however the client optimizes and for however many steps, it is now descending something that penalizes drift. Let me check the spring does what I think to the local step. The gradient of the penalty is `mu(w - w^t)`, so one local SGD step on `h_k` is
+
+  `w <- w - eta * (grad F_k(w) + mu (w - w^t))`,
+
+ordinary local SGD on `F_k` with an extra restoring force pulling `w` back toward `w^t` every step. When `w` has drifted far the spring is strong and pulls it back; near `w^t` the spring is weak and it behaves like plain local SGD. That is the tether, and it costs nothing but a frozen copy of `w^t` and one elementwise term per step. And it is a strict generalization of the floor: set `mu = 0` and I recover exactly the plain local SGD the default does, so whatever I land here can only differ from the floor by the strength of the spring.
+
+There is a second reason the quadratic is the right object, beyond "it feels like it should help." `F_k` is a non-convex neural-net loss, but suppose its negative curvature is bounded, `grad^2 F_k >= -L_ I`. Then the Hessian of `h_k` is `grad^2 F_k + mu I >= (mu - L_) I`, so picking `mu > L_` makes the *local subproblem* strongly convex even though `F_k` itself is not convex at all. A strongly convex subproblem has a unique minimizer and a clean displacement bound — the exact local solution satisfies `||argmin h_k - w^t|| <= (1/(mu - L_)) ||grad F_k(w^t)||` — which is the formal statement of "the spring caps how far a client can travel, and a stiffer spring caps it tighter." The same quadratic that tethers the drift is the thing that convexifies the subproblem; these are one move, not two. That is encouraging because it means the repair has a principled reason to stabilize convergence under exactly the heterogeneity I am fighting, not just an empirical one.
+
+Now I have to be careful to land *this task's* version of the method, not the general framework, because the harness exposes only part of it. The general proximal framework has two ideas: the spring, and a *systems-heterogeneity* story where slow clients do a variable, inexact amount of local work and have their partial solutions aggregated instead of being dropped, quantified by a per-client inexactness. But here the harness runs every selected client for the same fixed 5 local epochs — there is no straggler, no variable epoch count, no per-client inexactness exposed at the edit surface. So the variable-work half of the framework simply has no surface to land on in this task; the part I actually get to build is the spring. Likewise the framework has a relative, a distributed Newton-type method, whose local subproblem adds the spring *plus a linear gradient-correction term* using the full global gradient — but that needs every client's gradient each round, which I cannot afford with only 10 of 100 participating, so I deliberately do *not* carry a gradient-correction term. The bare proximal anchor, no linear correction, is the right call for low participation precisely because it needs nothing global beyond the `w^t` I already broadcast. So this rung is: the spring on the local objective, fixed `mu`, server combine untouched.
+
+What `mu`? It is the half-width of the leash in squared-distance units. Too small and the spring barely engages — I am back to the drifting floor. Too large and the spring dominates the data gradient, every client is pinned at `w^t`, and no client makes real local progress, so the round accomplishes nothing. The theory wants `mu > L_` for convexity and *larger* `mu` for higher target accuracy, but in practice `mu` is a stability knob to be tuned with the local-epoch count and the degree of heterogeneity. I will take `mu = 0.01`, the small, conservative default — a gentle tether on top of 5 epochs of SGD at `lr = 0.01`. The bet of starting here is precisely that a *gentle* spring, the minimal departure from the floor, is enough to take the edge off the drift; if it is not, the next rung will have to act on the drift's *direction* rather than just its magnitude.
+
+Concretely in the edit surface: the server combine stays the sample-count-weighted average exactly as the default has it — this is a lightweight modification to the local side only. The local change is to add the proximal gradient `mu(w - w^t)` at every step. The cleanest way that respects the harness is to freeze a copy of the broadcast parameters at the start of `client_local_train`, and add the penalty term `(mu/2) * sum (w - w0)^2` to each minibatch loss through the harness's `loss_aug` hook on its plain-SGD helper — autodiff then contributes exactly `mu(w - w0)` to the gradient. No new optimizer, no server state, no extra communication. The full scaffold module is in the answer.
+
+So the delta from the bare floor is one term: where the default lets each client descend `F_k` freely for 5 epochs and drift toward `theta_k^*`, I add a quadratic spring to `w^t` so the client descends `F_k + (mu/2)||w - w^t||^2` instead — same solver, same combine, same fixed epochs, just a restoring force that keeps the returned models nearer the basin they all started in. Now reason about what this floor must do, because that is the point of running it first. The spring throttles the *magnitude* of each client's move; it does not change the *direction* the local gradient points. Stare at the corrected step: `grad F_k(w) + mu(w - w^t)` still has `grad F_k(w)` in it, and `grad F_k(w)` points toward `theta_k^*`. The spring pulls back toward `w^t`; it does not rotate the direction toward `theta^*`. So at any fixed distance from `w^t` the client is still heading toward its own optimum, just on a shorter leash — the aggregate is still biased toward the average of client optima, only the bias is throttled, not removed. With a gentle `mu = 0.01` on top of the same 5 epochs and the same weighted average, I expect this to land *very close to the bare floor* — a small stabilization at most, not a qualitative break. The benchmarks should split on how much the gentle tether helps: on the image tasks (CIFAR with the harsh Dirichlet(0.1), FEMNIST) the drift is severe and a weak spring can only nibble at it; on Shakespeare the per-speaker heterogeneity is milder and the spring may be near-invisible. If the measured numbers come back essentially indistinguishable from plain averaging — which is what I expect from throttling-not-removing with a small `mu` — then the diagnosis for the next rung is already written: damping the magnitude of the drift is the wrong knob, and I will have to either remove the drift's *direction* with a correction, or relax the spring entirely and fall back to the well-understood plain weighted average as a cleaner reference before reaching for something that fixes the direction. So let me write the spring in.
+</think>
+<say>
+I'm starting with FedProx: the same plain-SGD + weighted-average floor, but each client minimizes its local loss plus a `(mu/2)||w - w^t||^2` proximal spring to the broadcast model. This first edit renames the class and sets `mu = 0.01`.
+</say>
+<edit path="flower/custom_fl_aggregation.py">
+<old>
+class Strategy:
+    """End-to-end FL strategy.
+
+    Unlike a pure ServerAggregator, this class is responsible for the FULL
+    FL recipe: how each client trains locally AND how the server aggregates.
+    This matches the scope of real FL methods (FedProx / SCAFFOLD / FedDyn /
+    MOON / ...) whose innovations live inside the local loop — a server-only
+    API can only approximate them.
+
+    The run_fl_simulation loop calls:
+        strategy = Strategy(global_model, args)
+        selected = strategy.select_clients(N, K, round_num)
+        # for each client i:
+        state_i, n_i, loss_i = strategy.client_local_train(
+            global_state, client_dataset, model_fn, loss_fn,
+            local_epochs, local_lr, local_batch_size, device, client_idx)
+        global_state = strategy.aggregate(global_state, [(state_i, n_i, loss_i)], round_num)
+
+    You SHOULD override at least ``client_local_train`` and/or ``aggregate``
+    to implement your method. Sensible defaults (plain SGD + weighted
+    average) are provided so trivial subclasses still run.
+
+    Innovation space:
+        * client-side: proximal regularization (FedProx), per-step
+          control-variate correction (SCAFFOLD), dynamic regularizer
+          (FedDyn), contrastive loss (MOON), adaptive local LR, ...
+        * server-side: sample-weighted / robust / learning-rate-adapted
+          aggregation, server momentum, drift estimation, ...
+    """
+
+    def __init__(self, global_model, args):
+        """Initialize strategy state.
+
+        Args:
+            global_model: the initial global nn.Module.
+            args: parsed CLI args (num_clients, clients_per_round, ...).
+        """
+        self.args = args
+</old>
+<new>
+class Strategy:
+    """FedProx — plain SGD + proximal term in the local objective."""
+
+    def __init__(self, global_model, args):
+        self.args = args
+        self.mu = 0.01  # Li et al. 2020 suggested range 0.001-0.1 on CIFAR/FEMNIST.
+</new>
+</edit>
+<obs>
+Successfully replaced text in flower/custom_fl_aggregation.py.
+</obs>
+<edit path="flower/custom_fl_aggregation.py">
+<old>
+                           device, client_idx):
+        """Train one client locally.
+
+        Must return ``(state_dict, num_samples, avg_loss)``. The default
+        implementation does plain SGD (no momentum). Override to add
+        proximal / correction / regularizer terms to the local objective
+        or to modify the optimizer / gradient flow.
+        """
+        model = model_fn()
+</old>
+<new>
+                           device, client_idx):
+        model = model_fn()
+</new>
+</edit>
+<obs>
+Successfully replaced text in flower/custom_fl_aggregation.py.
+</obs>
+<note>
+Now the local objective: freeze the broadcast params and feed the spring through `loss_aug`.
+</note>
+<edit path="flower/custom_fl_aggregation.py">
+<old>
+        model.train()
+        loader = DataLoader(client_dataset, batch_size=local_batch_size,
+                            shuffle=True, drop_last=False, num_workers=0)
+        avg_loss, _ = _default_client_sgd(
+            model, loader, loss_fn, local_epochs, local_lr, device)
+        return model.cpu().state_dict(), len(client_dataset), avg_loss
+
+    def aggregate(self, global_state_dict, client_updates, round_num):
+        """Aggregate client updates into a new global state_dict.
+
+        Default is sample-count-weighted average (FedAvg). Override for
+        server-side innovations (momentum, robust median, control-variate
+        server update, ...).
+        """
+        total_samples = sum(max(upd[1], 1) for upd in client_updates)
+</old>
+<new>
+        model.train()
+        # Freeze copies of the global parameters for the prox term.
+        global_params = [
+            p.detach().clone() for p in model.parameters() if p.requires_grad
+        ]
+        mu_half = 0.5 * self.mu
+
+        def prox_loss(m):
+            prox = 0.0
+            for w, w0 in zip(
+                [p for p in m.parameters() if p.requires_grad],
+                global_params,
+            ):
+                prox = prox + (w - w0).pow(2).sum()
+            return mu_half * prox
+
+        loader = DataLoader(client_dataset, batch_size=local_batch_size,
+                            shuffle=True, drop_last=False, num_workers=0)
+        avg_loss, _ = _default_client_sgd(
+            model, loader, loss_fn, local_epochs, local_lr, device,
+            loss_aug=prox_loss,
+        )
+        return model.cpu().state_dict(), len(client_dataset), avg_loss
+
+    def aggregate(self, global_state_dict, client_updates, round_num):
+        total_samples = sum(max(upd[1], 1) for upd in client_updates)
+</new>
+</edit>
+<obs>
+Successfully replaced text in flower/custom_fl_aggregation.py.
+</obs>
+<edit path="flower/custom_fl_aggregation.py">
+<old>
+    def select_clients(self, num_available, num_to_select, round_num):
+        """Pick client indices for this round. Default: uniform random."""
+        return random.sample(range(num_available), min(num_to_select, num_available))
+</old>
+<new>
+    def select_clients(self, num_available, num_to_select, round_num):
+        return random.sample(range(num_available), min(num_to_select, num_available))
+</new>
+</edit>
+<obs>
+Successfully replaced text in flower/custom_fl_aggregation.py.
+</obs>
+<run/>
+<obs>
+Measured results — `baseline:fedprox` (`is_final,true`), seed 42.
+
+## Test accuracy (after 200 rounds)
+| benchmark | seed 42 | mean |
+|---|---|---|
+| CIFAR-10 | 0.5948 | **0.5948** |
+| FEMNIST | 0.8126 | **0.8126** |
+| Shakespeare | 0.4326 | **0.4326** |
+
+## Test loss
+| benchmark | seed 42 |
+|---|---|
+| CIFAR-10 | 1.2605 |
+| FEMNIST | 0.5620 |
+| Shakespeare | 0.0245 |
+</obs>
+
+### step 2 — FedAvg (local SGD + weighted average)   [slug:fedavg]
+
+<think>
+The spring bought almost nothing, and the numbers say so precisely. FedProx with `mu = 0.01` landed at 0.5948 on CIFAR-10, 0.8126 on FEMNIST, 0.4326 on Shakespeare — and I can already feel that these are going to sit within a hair of the unembellished weighted average, because that is exactly what "throttle the magnitude, not the direction" predicts. The proximal step is `grad F_k(w) + mu(w - w^t)`: the `grad F_k(w)` term still points at the client's own optimum `theta_k^*`, and a gentle `mu` only shortens the leash without rotating that direction. So on the harsh Dirichlet(0.1) image splits, where the drift is severe, a weak spring can only nibble — CIFAR at 0.5948 is barely distinguishable from no spring at all — and on Shakespeare's milder per-speaker heterogeneity, 0.4326, the spring is essentially invisible, even fractionally below where the plain average should sit because the tether costs a sliver of local progress without removing the bias it was meant to fight. FEMNIST at 0.8126 is the one place the gentle spring may have nudged things, and even there it is a fraction of a point. The lesson is sharp: damping the drift's *magnitude* is the wrong knob. Before I reach for a method that fixes the drift's *direction* — which is clearly where this is heading — I want to strip the spring back out and establish the clean, unembellished reference it was a modification of, so I know exactly what the plain weighted average scores on this harness and can confirm the spring was a near-no-op. That clean reference is the recipe the whole task is built around, and deriving it carefully is worth doing in its own right, because every later rung is a fill of *its* combine.
+
+So let me build the plain recipe from the constraint that actually matters. The data lives on 100 clients and cannot be moved; the link is rare and slow, so the only currency worth minimizing is *communication rounds*; on-device compute is comparatively free. The objective is the sample-weighted average of per-client risks, `f(w) = sum_k (n_k/n) F_k(w)`, and I want to reach a good model in as few of the 200 rounds as I can while spending the free local compute to get there. Start with the most obvious correct thing: naive synchronous distributed SGD. Each round, pick a set of clients, each computes the gradient of its loss on its local data, the server sums them weighted by `n_k/n` and takes one step. Because `f = sum_k (n_k/n) F_k`, its gradient is `sum_k (n_k/n) grad F_k`, so `w_{t+1} = w_t - eta sum_k (n_k/n) grad F_k` is literally a stochastic gradient step on `f` — correct, defensible, call it FedSGD. And it is hopeless on the round budget: it takes *one* gradient step per communication round, and a CNN needs thousands of SGD steps to converge, so 200 rounds would get nowhere. The arithmetic of one-step-per-round is the wall.
+
+The way through is to get more than one gradient step of progress out of each round, since local work is free. Stare at the FedSGD update and rewrite it. The server does `w_{t+1} = w_t - eta sum_k (n_k/n) g_k`. What if each client takes the step *itself* and ships the result? Client `k` computes `w^k = w_t - eta g_k` and the server averages the stepped models with the same weights: `w_{t+1} = sum_k (n_k/n) w^k`. Expand it: `sum_k (n_k/n)(w_t - eta g_k) = w_t - eta sum_k (n_k/n) g_k`, since the weights sum to one — *identical* to the FedSGD update. The two are the same algorithm written two ways: "every client sends a gradient, server steps" equals "every client takes one step, server averages the stepped models." That equivalence is the crack, because the second form has slack the first does not: once a client is *stepping and shipping a model* rather than shipping a single gradient, nothing stops it from taking more than one step before it ships. Let it sweep its local data in minibatches for several local epochs and only then send `w^k`. I have turned one rigid gradient step per round into a knob — the number of local updates per round — and on this harness that knob is fixed at 5 epochs, exactly the aggressive local-compute setting that buys round-efficiency. FedSGD is the one-epoch, full-batch corner of this family; the harness sits well inside the interior at 5 epochs of minibatch SGD.
+
+But this is the dangerous step, and it is the same danger FedProx was trying to contain, so I should re-examine it rather than wave it through. When each client takes one step, the average of the stepped models was provably a gradient step on `f` — the algebra carried me. The moment each client takes many steps, `w^k` is no longer `w_t` minus `eta` times the gradient at `w_t`; the client has wandered off descending its *own* `F_k`, which under non-IID data points somewhere quite different from where `f` wants to go, and I end up averaging models that have moved to different places in a non-convex landscape. Averaging parameters of different neural networks is, in general, a catastrophe: two networks can both be excellent and their parameter-space midpoint can be garbage, because the loss surface is non-convex and the midpoint can sit on a ridge between two basins. So why would averaging 5-epoch-drifted client models give me anything usable? The answer is the one structural fact the whole recipe rests on: the server broadcasts *one* model `w_t` to every selected client at the start of each round, and that `w_t` is the shared starting point for everybody's local training this round. The clients do not start from independent random seeds — they start from the *same* `w_t`, so after a round they are models that began at the same point and walked in somewhat different directions over a few epochs. They share their symmetry-breaking, inherited from `w_t`; they stay in the same basin; and along the straight line between two points in the same gentle basin the loss is well-behaved, no ridge to cross. So the average sits low, plausibly lower than either parent, because each client's drift descended a bit and the average keeps the agreed-upon descent while the idiosyncratic wanderings partly cancel. Re-broadcasting `w_t` at the start of every round is precisely what keeps every averaging operation an in-basin interpolation — and it is *also* the anchor FedProx's spring was reinforcing. That is the real reason the spring was nearly a no-op: the shared per-round init was already doing the basin-keeping work, and a gentle extra tether on top of it had little left to contribute.
+
+Now the weights, which I have been writing as `n_k/n` but should justify. The global objective `f` is *itself* the `n_k`-weighted combination of the `F_k`, so if I want the average of the stepped models to behave like a step on `f`, the weights have to be `n_k`-proportional — that is what made the one-step algebra collapse onto the gradient-of-`f` update. Weighting clients equally would implicitly optimize the *unweighted* mean of the `F_k`, over-counting a client with a few examples as much as one with many, biasing the model toward tiny clients — which under the Dirichlet split, where client sizes vary, would be a real distortion. There is one subtlety when I only see 10 of 100 clients per round: if I formed `sum_{k in S_t} (n_k/n) w^k` the weights would sum to far less than one (they sum to the participating clients' fraction of all data), giving a tiny fraction of a model. The fix is to normalize over the clients I *actually have* this round: weights `n_k / m_t` with `m_t = sum_{k in S_t} n_k`, which sum to one over the selected set and form a proper convex combination of the models received. This is exactly what the harness combine does — it divides each client's contribution by the total samples among the participating clients — so I do not have to add it; I just have to not break it.
+
+Make it concrete in the edit surface, landing *this task's* version rather than the general framework. The general account of this recipe carries extra knobs and corners — a client fraction `C`, a local-epoch count `E`, a batch size `B`, the one-shot-averaging extreme at `E -> infinity`, a decay-the-local-computation late in training — but the harness fixes all of them: `C` is 10/100, `E` is 5, `B` is 64, and there is no schedule to tune. So the part I actually fill is the minimal one: the local trainer is plain SGD for the fixed epochs returning the trained model, its sample count, and its loss; the combine is the `n_k`-weighted average over the received updates, normalized by the total samples among them. Two harness details are load-bearing and I keep them: a model's `state_dict` carries non-floating-point buffers (integer counters, batch-norm tracked-batches) that it makes no sense to average, so I copy one client's value through for those and weight-average only the float tensors; and the aggregation runs on CPU in float32 for numerical safety before casting back. Client selection is a uniform random sample of the available clients. This is just the harness default with the spring removed — which is the point: I am establishing the clean reference. The full scaffold module is in the answer.
+
+So the delta from step 1 is subtraction: FedProx was this exact recipe plus a `(mu/2)||w - w^t||^2` spring, and stripping `mu` to zero gives me back the plain weighted average. Reading FedProx's numbers, here is what I expect and what would falsify the diagnosis. If "the spring throttled magnitude, not direction" is right, plain FedAvg should land *essentially on top of* FedProx — within a fraction of a point on every benchmark — because the shared per-round init was already doing the stabilization the spring was nominally for. Concretely I expect CIFAR-10 to come in a hair *above* FedProx's 0.5948 (removing a tether that cost a sliver of local progress without removing the bias), Shakespeare similarly a touch above 0.4326, and FEMNIST to land right around 0.8126, conceivably a shade below if the gentle spring genuinely helped there. If instead FedAvg came in clearly *worse* than FedProx, that would falsify the diagnosis — it would mean the spring was doing real drift-control and I should keep it; but I do not expect that from `mu = 0.01`. The deeper expectation is the one that sets up the next rung: whichever of these two lands on top, *both* will be limited by the same thing — the drift's direction. Neither plain averaging nor a magnitude-only spring touches the fact that each client's gradient points at `theta_k^*`, so the aggregate stays biased toward the average of client optima on the harsh CIFAR Dirichlet split. The CIFAR number sitting in the high-0.59s while the same architecture trained centrally would clear that easily is the signature of residual drift. So the falsifiable claim is: FedAvg ties FedProx, and the gap to be closed at step 3 is not magnitude but *direction* — a correction that rotates each client's local step away from `theta_k^*` and back toward `theta^*`. Let me strip the spring back out.
+</think>
+<say>
+Stripping FedProx back to plain FedAvg — local SGD, no spring, sample-count-weighted server average — to nail down the clean reference. This edit renames the class and drops `mu`.
+</say>
+<edit path="flower/custom_fl_aggregation.py">
+<old>
+class Strategy:
+    """FedProx — plain SGD + proximal term in the local objective."""
+
+    def __init__(self, global_model, args):
+        self.args = args
+        self.mu = 0.01  # Li et al. 2020 suggested range 0.001-0.1 on CIFAR/FEMNIST.
+</old>
+<new>
+class Strategy:
+    """FedAvg — plain SGD + weighted average of client state dicts."""
+
+    def __init__(self, global_model, args):
+        self.args = args
+</new>
+</edit>
+<obs>
+Successfully replaced text in flower/custom_fl_aggregation.py.
+</obs>
+<note>
+Now remove the prox term from the local loop and fall back to the bare `_default_client_sgd`.
+</note>
+<edit path="flower/custom_fl_aggregation.py">
+<old>
+        model.train()
+        # Freeze copies of the global parameters for the prox term.
+        global_params = [
+            p.detach().clone() for p in model.parameters() if p.requires_grad
+        ]
+        mu_half = 0.5 * self.mu
+
+        def prox_loss(m):
+            prox = 0.0
+            for w, w0 in zip(
+                [p for p in m.parameters() if p.requires_grad],
+                global_params,
+            ):
+                prox = prox + (w - w0).pow(2).sum()
+            return mu_half * prox
+
+        loader = DataLoader(client_dataset, batch_size=local_batch_size,
+                            shuffle=True, drop_last=False, num_workers=0)
+        avg_loss, _ = _default_client_sgd(
+            model, loader, loss_fn, local_epochs, local_lr, device,
+            loss_aug=prox_loss,
+        )
+        return model.cpu().state_dict(), len(client_dataset), avg_loss
+</old>
+<new>
+        model.train()
+        loader = DataLoader(client_dataset, batch_size=local_batch_size,
+                            shuffle=True, drop_last=False, num_workers=0)
+        avg_loss, _ = _default_client_sgd(
+            model, loader, loss_fn, local_epochs, local_lr, device)
+        return model.cpu().state_dict(), len(client_dataset), avg_loss
+</new>
+</edit>
+<obs>
+Successfully replaced text in flower/custom_fl_aggregation.py.
+</obs>
+<run/>
+<obs>
+Measured results — `baseline:fedavg` (`is_final,true`), seed 42.
+
+## Test accuracy (after 200 rounds)
+| benchmark | seed 42 | mean |
+|---|---|---|
+| CIFAR-10 | 0.5954 | **0.5954** |
+| FEMNIST | 0.8112 | **0.8112** |
+| Shakespeare | 0.4360 | **0.4360** |
+
+## Test loss
+| benchmark | seed 42 |
+|---|---|
+| CIFAR-10 | 1.2639 |
+| FEMNIST | 0.5675 |
+| Shakespeare | 0.0243 |
+</obs>
+
+### step 3 — SCAFFOLD (control-variate drift correction)   [slug:scaffold]
+
+<think>
+FedAvg tied FedProx, exactly as I expected, and the tie is the whole diagnosis. Plain weighted averaging came in at 0.5954 on CIFAR-10 against FedProx's 0.5948 — a six-ten-thousandths difference, statistical noise — and on Shakespeare 0.4360 against 0.4326, again a hair above, while on FEMNIST FedAvg's 0.8112 sat a fraction *below* FedProx's 0.8126, the one place the gentle spring earned its keep. So the two methods are indistinguishable, which confirms what I argued at step 2: the `mu = 0.01` spring throttled the *magnitude* of the drift without touching its *direction*, and on top of the shared per-round initialization that was already doing the basin-keeping, there was nothing left for a gentle tether to contribute. The deeper signal is in the CIFAR number itself: 0.595 on a 10-class problem the same `CifarCNN` clears comfortably when trained centrally. That gap is the signature of residual client drift, and *neither* a magnitude-only spring nor plain averaging touches it. Both methods leave each client's local gradient pointing at its own optimum `theta_k^*`, so the aggregate of the 10 participating models stays biased toward `(1/10) sum theta_k^*` rather than the global `theta^*`. The wall is the drift's *direction*, and the fix has to rotate the local step, not shorten it.
+
+Let me make the disease precise so the cure comes out of the mechanism. The ideal local update on client `i`, if communication were free, would descend the *global* gradient: `y_i <- y_i - eta_l (1/N) sum_j grad f_j(y_i)`. That is unbiased toward `theta^*` by construction — every client would be descending the same function `f` — so there would be zero client drift no matter how many local steps I took. The whole problem is that computing `(1/N) sum_j grad f_j(y_i)` needs every other client's gradient at `y_i`, the exact communication I cannot afford every step. So the task is sharp: approximate the global direction `(1/N) sum_j grad f_j(y_i)` using only client `i`'s own gradient `g_i(y_i)` plus some cheap state, well enough that the approximation error does *not* depend on how heterogeneous the clients are. FedProx already showed that anchoring the *magnitude* cannot do this; I need something that acts on the direction.
+
+This is the control-variate situation, and recognizing it is the move. The classical trick to estimate `E[X]` when I have a correlated `Y` with known mean `E[Y]` is `X - Y + E[Y]`: unbiased, and low-variance when `X` and `Y` are tightly correlated. The finite-sum optimizers SAGA and SVRG use exactly this to kill the variance of a sampled gradient — correct `g_j(x)` to `g_j(x) - g_j(phi_j) + (1/n) sum_i g_i(phi_i)`, subtracting the part specific to the sampled component and adding back the table average, turning a one-component sample into something whose mean is the full-sum gradient. The analogy writes itself: my "components" are the clients, the sampled component is client `i`, and I want the corrected local gradient on client `i` to have mean `(1/N) sum_j grad f_j` — the full-average gradient — instead of `grad f_i`.
+
+So posit two pieces of state. Each client keeps a control variate `c_i` meant to track its own gradient, `c_i ~ g_i(y_i)`; the server keeps a control variate `c` meant to track the average gradient, `c ~ (1/N) sum_j g_j(y_i)`. Then the corrected local direction is `g_i(y_i) - c_i + c`. Check what it estimates: if `c_i ~ g_i(y_i)` and `c ~ (1/N) sum_j g_j`, then `g_i - c_i + c ~ g_i - g_i + (1/N) sum_j g_j = (1/N) sum_j g_j`, exactly the ideal global direction. The local update becomes `y_i <- y_i - eta_l (g_i(y_i) - c_i + c)`. The correction `(c - c_i)` is an estimate of the drift: `c_i` is where *my* gradient points, `c` is where the *average* points, and `(c - c_i)` is the rotation that bends my step away from `theta_i^*` and back toward `theta^*`. That is the structural fix the spring could not do — it operates on the direction, not the leash length. Impose the invariant `c = (1/N) sum_i c_i` so that `c` being a good estimate of the average follows from each `c_i` tracking its own gradient; initialize everything to zero (which satisfies the invariant), and note that freezing every `c_i = 0` recovers plain FedAvg exactly — so this is a strict generalization of the step-2 reference, with the extra state used only to change the local direction.
+
+Does it actually remove the heterogeneity dependence rather than hide it? Compare the corrected direction to the ideal and measure the residual: `sum_i ||(grad f_i(y) - c_i + c) - grad f(y)||^2`. Substituting `c = (1/N) sum_j c_j`, the common terms cancel and what is left is governed by the per-client mismatch `grad f_i(y) - c_i`, giving `sum_i ||c_i - grad f_i(y)||^2`. The residual depends *only* on how well `c_i` tracks `grad f_i` — and *not at all* on how dissimilar the clients are from each other. That is the escape: where plain averaging's residual is the raw gradient dissimilarity (the very thing that pins CIFAR at 0.595), this residual is a tracking error I control. And I can control it because `f_i` is smooth, so `grad f_i` does not change fast as `y` moves; a recently-computed gradient of `f_i` stays close. So I keep the `c_i` *stateful across rounds* — a client holds onto its `c_i` and refreshes it when it participates — and smoothness makes a slightly stale gradient a good approximation. Statefulness is not an accident; it is what makes the cheap approximation valid.
+
+How to refresh `c_i` without an extra gradient pass? Telescope the local trajectory. Over the round `y_{i,0} = x` and each step is `y_{i,k} = y_{i,k-1} - eta_l (g_i(y_{i,k-1}) + c - c_i)`. Sum the increments over the `K` steps: `y_{i,K} - x = -eta_l [ sum_k g_i(y_{i,k-1}) + K(c - c_i) ]`. Rearranged, `(1/(K eta_l))(x - y_{i,K}) = (1/K) sum_k g_i(y_{i,k-1}) + (c - c_i)`. The left side is the total displacement over `K eta_l`, quantities the server already has from `x` and `y_{i,K}`. So defining the refresh `c_i^+ = c_i - c + (1/(K eta_l))(x - y_{i,K})` gives, after substitution, `c_i^+ = (1/K) sum_k g_i(y_{i,k-1})` — the average of the minibatch gradients *already computed* during local training, for free, no extra pass. This is the Option-II refresh, and it is what the harness uses. Crucially the local step must be *plain* SGD: the whole refresh rests on the telescoping identity between net displacement and the sum of corrected gradients, and a momentum buffer would break that clean relationship and cost me the free control update. Plain SGD, with the fixed correction `(c - c_i)` added to the gradient at every step.
+
+Now the server side, and here is where I have to land *this task's* version rather than the general theory, because they differ in a way that matters. The general account of this method aggregates the model with its own global step size, `x <- x + (eta_g/|S|) sum_i (y_i - x)`, decoupling a local step `eta_l` from a global step `eta_g` so within-round drift (scaling with `eta_l`) can be suppressed independently of round-level progress (scaling with `K eta_l eta_g`). That decoupling is real and useful in the theory, but the harness does not expose an `eta_g`: this task aggregates the *model* with the plain FedAvg sample-weighted average, the same combine I established at step 2, and puts the entire control-variate contribution into the local correction and the server *control* update. So on this rung the model combine is unchanged from FedAvg — sample-count-weighted mean of the returned models — and what is new is purely (a) the corrected local gradient and (b) the maintenance of `c`. I keep the analysis's decoupled-step intuition in mind but I do not get to turn that knob here; effectively `eta_g = 1` folded into the sample-weighted average.
+
+The control update needs care because of sampling. Only the 10 participating clients refreshed their `c_i` this round; the other 90 kept theirs. To maintain `c = (1/N) sum_i c_i` over *all* clients, the change in the global average is `Delta c = (1/N) sum_{i in S}(c_i^+ - c_i)` — each participating client sends its delta `Delta c_i`, the server sums the 10 deltas and divides by `N = 100`, not by `|S| = 10`. Equivalently, `c <- c + (|S|/N) * mean_{i in S} Delta c_i`: the mean of the sampled deltas scaled down by the participation fraction. If I divided by `|S|` instead, `c` would over-weight the few clients I happened to sample, the invariant would break, and the drift estimate `(c - c_i)` would be wrong. The `|S|/N` factor is exactly what keeps `c` honest as the all-client average despite seeing only a tenth of them — and on this harness, with only 10 of 100 participating, getting that divisor right is essential or the correction degrades round over round.
+
+Make it concrete in the edit surface. I keep server-side state `c` (the global control, one tensor per parameter, zero-initialized) and a dictionary of client controls `c_i` keyed by client index, persistent across rounds and resident on CPU between participations. In `client_local_train` I load the broadcast model, move `c` and this client's `c_i` to the device, snapshot the broadcast parameters `x` for the telescoping refresh, precompute the per-parameter correction `(c - c_i)` once (it is fixed across the `K` local steps), then run plain SGD adding that correction to each gradient before stepping. After training I compute the Option-II refresh `c_i^+ = c_i - c + (x - y_{i,K})/(K eta_l)`, stash the delta `Delta c_i = c_i^+ - c_i` for the server, and update the stored `c_i`. In `aggregate` I do the FedAvg sample-weighted model average and then apply `c <- c + (|S|/N) sum_i Delta c_i`. Two harness details carry over: non-floating-point buffers are copied through, not averaged, and the control tensors track the parameter set, with non-FP keys carried unchanged. The full scaffold module is in the answer.
+
+So the delta from step 2 is the rotation FedAvg lacked: where FedAvg let each client descend its own `g_i` and drift toward `theta_i^*`, I add the fixed correction `(c - c_i)` so each local step tracks the *global* gradient, refresh the controls from the free telescoped gradient average, and keep `c` an honest all-client average via the `|S|/N` server update. Reading FedAvg's numbers, here is what I expect and what would falsify it. The benchmark that should move most is the one most crippled by drift — CIFAR-10 under Dirichlet(0.1): if the control-variate correction genuinely rotates the local steps toward `theta^*`, CIFAR should break clearly out of the high-0.59 band that pinned both FedAvg (0.5954) and FedProx (0.5948), into the low-to-mid 0.6s, because that gap was pure direction-of-drift and direction is exactly what I am now fixing. FEMNIST, less drift-limited (already 0.811), should improve more modestly — a fraction of a point above 0.8112 — since there is less drift to remove. Shakespeare, with the mildest per-speaker heterogeneity, should be roughly flat or a touch up from 0.4360; if anything the extra state buys little where drift was never the bottleneck. The falsifiable claim is therefore specifically about CIFAR: if SCAFFOLD does *not* clear the 0.595 band, then either the Option-II controls are too stale at this participation rate (only 10/100 refresh per round, so a given client's `c_i` ages ~10 rounds between updates) or the residual is being dominated by within-client noise rather than heterogeneity — and the next move would be to attack control staleness directly. But if the diagnosis is right, the CIFAR jump is the result, and it comes from changing the *direction* of every local step, the knob the first two rungs never touched. Let me build the control-variate state.
+</think>
+<say>
+Moving to SCAFFOLD: each client adds the fixed control-variate correction `(c - c_i)` to every local gradient so its step tracks the global direction, not its own optimum. This first edit sets up the server and per-client control state in `__init__`.
+</say>
+<edit path="flower/custom_fl_aggregation.py">
+<old>
+class Strategy:
+    """FedAvg — plain SGD + weighted average of client state dicts."""
+
+    def __init__(self, global_model, args):
+        self.args = args
+</old>
+<new>
+class Strategy:
+    """SCAFFOLD — Alg 1 with Option-II control-variate update."""
+
+    def __init__(self, global_model, args):
+        self.args = args
+        self.num_clients = args.num_clients
+        self.global_control = OrderedDict(
+            (k, torch.zeros_like(v, device="cpu"))
+            for k, v in global_model.state_dict().items()
+        )
+        self.client_controls = {}   # client_idx -> OrderedDict (CPU)
+
+    def _zero_like_state(self, state_dict):
+        return OrderedDict(
+            (k, torch.zeros_like(v, device="cpu")) for k, v in state_dict.items()
+        )
+
+    def _get_client_control(self, client_idx, reference_state):
+        c_i = self.client_controls.get(client_idx)
+        if c_i is None:
+            c_i = self._zero_like_state(reference_state)
+            self.client_controls[client_idx] = c_i
+        return c_i
+
+    def _ensure_global_control_on(self, device, reference_state):
+        # Lazily move global_control to the model's device once and keep it there.
+        if (not hasattr(self, "_gc_dev")) or self._gc_dev_id != id(device):
+            self.global_control = OrderedDict(
+                (k, v.to(device) if v.is_floating_point() else v)
+                for k, v in self.global_control.items()
+            )
+            self._gc_dev = device
+            self._gc_dev_id = id(device)
+
+    def _get_client_control_on(self, client_idx, reference_state, device):
+        c_i = self.client_controls.get(client_idx)
+        if c_i is None:
+            c_i = OrderedDict(
+                (k, torch.zeros_like(v, device=device) if v.is_floating_point()
+                 else torch.zeros_like(v, device="cpu"))
+                for k, v in reference_state.items()
+            )
+            self.client_controls[client_idx] = c_i
+        elif any(v.device != device for v in c_i.values() if v.is_floating_point()):
+            c_i = OrderedDict(
+                (k, v.to(device) if v.is_floating_point() else v)
+                for k, v in c_i.items()
+            )
+            self.client_controls[client_idx] = c_i
+        return c_i
+</new>
+</edit>
+<obs>
+Successfully replaced text in flower/custom_fl_aggregation.py.
+</obs>
+<note>
+Now the local loop: corrected-gradient SGD plus the Option-II refresh of `c_i` from the displacement.
+</note>
+<edit path="flower/custom_fl_aggregation.py">
+<old>
+        model.train()
+        loader = DataLoader(client_dataset, batch_size=local_batch_size,
+                            shuffle=True, drop_last=False, num_workers=0)
+        avg_loss, _ = _default_client_sgd(
+            model, loader, loss_fn, local_epochs, local_lr, device)
+        return model.cpu().state_dict(), len(client_dataset), avg_loss
+
+    def aggregate(self, global_state_dict, client_updates, round_num):
+        total_samples = sum(max(upd[1], 1) for upd in client_updates)
+</old>
+<new>
+        model.train()
+
+        # Move global_control + c_i to device once; keep them resident.
+        self._ensure_global_control_on(device, model.state_dict())
+        c_i = self._get_client_control_on(client_idx, model.state_dict(), device)
+
+        # Snapshot global params x ON DEVICE for Option-II later.
+        x_dev = OrderedDict(
+            (n, p.detach().clone())
+            for n, p in model.named_parameters()
+            if n in self.global_control
+        )
+
+        # Pre-compute (c - c_i) on device once per client.
+        correction_dev = {}
+        for name, p in model.named_parameters():
+            if name in self.global_control:
+                correction_dev[id(p)] = self.global_control[name] - c_i[name]
+
+        optimizer = optim.SGD(model.parameters(), lr=local_lr)  # plain SGD
+        loader = DataLoader(client_dataset, batch_size=local_batch_size,
+                            shuffle=True, drop_last=False, num_workers=0)
+
+        total_loss, total_samples, local_steps = 0.0, 0, 0
+        for _ in range(local_epochs):
+            for batch_data in loader:
+                if len(batch_data) != 2:
+                    continue
+                inputs, targets = batch_data
+                inputs, targets = inputs.to(device), targets.to(device)
+                optimizer.zero_grad()
+                outputs = model(inputs)
+                if outputs.dim() == 3:
+                    outputs = outputs.view(-1, outputs.size(-1))
+                    targets = targets.view(-1)
+                loss = loss_fn(outputs, targets)
+                loss.backward()
+                # Corrected gradient: g + (c - c_i). Pure in-place add on device.
+                for p in model.parameters():
+                    if p.grad is None:
+                        continue
+                    corr = correction_dev.get(id(p))
+                    if corr is not None:
+                        p.grad.add_(corr)
+                optimizer.step()
+                local_steps += 1
+                total_loss += loss.item() * inputs.size(0)
+                total_samples += inputs.size(0)
+
+        # Option-II update — stay on device.
+        if local_steps > 0 and local_lr > 0.0:
+            denom = local_steps * local_lr
+            new_ci = OrderedDict()
+            delta_c = OrderedDict()
+            for name, p in model.named_parameters():
+                if name not in self.global_control:
+                    continue
+                # c_i+ = c_i - c + (x - y) / (K * eta)
+                update = c_i[name] - self.global_control[name] + (x_dev[name] - p.detach()) / denom
+                delta_c[name] = (update - c_i[name]).clone()
+                new_ci[name] = update
+            # Carry over non-FP buffer keys unchanged from existing c_i.
+            for k, v in c_i.items():
+                if k not in new_ci:
+                    new_ci[k] = v
+                    delta_c[k] = torch.zeros_like(v)
+            self._pending_delta_c = getattr(self, "_pending_delta_c", {})
+            self._pending_delta_c[client_idx] = delta_c
+            self.client_controls[client_idx] = new_ci
+
+        # Single GPU→CPU transfer for the returned state_dict (server aggregates on CPU).
+        final_state = OrderedDict(
+            (k, v.detach().cpu()) for k, v in model.state_dict().items()
+        )
+        avg_loss = total_loss / max(total_samples, 1)
+        return final_state, len(client_dataset), avg_loss
+
+    def aggregate(self, global_state_dict, client_updates, round_num):
+        # FedAvg-style weighted model average.
+        total_samples = sum(max(upd[1], 1) for upd in client_updates)
+</new>
+</edit>
+<obs>
+Successfully replaced text in flower/custom_fl_aggregation.py.
+</obs>
+<note>
+Now the server `c` update: sum the participating deltas and scale by `|S|/N` to keep `c` the all-client average.
+</note>
+<edit path="flower/custom_fl_aggregation.py">
+<old>
+            new_state[key] = acc.to(ref.dtype)
+        return new_state
+</old>
+<new>
+            new_state[key] = acc.to(ref.dtype)
+
+        # Server-side global c update: c <- c + (|S|/N) * mean_i Δc_i.
+        # δc_i are on the same device as global_control — stay there.
+        deltas = getattr(self, "_pending_delta_c", {})
+        if deltas:
+            weight = len(client_updates) / max(self.num_clients, 1)
+            n_updates = len(deltas)
+            for key in self.global_control:
+                if not self.global_control[key].is_floating_point():
+                    continue
+                acc = None
+                for dc in deltas.values():
+                    if key in dc and dc[key].is_floating_point():
+                        contrib = dc[key].to(self.global_control[key].device)
+                        acc = contrib.clone() if acc is None else acc + contrib
+                if acc is not None:
+                    self.global_control[key] = (
+                        self.global_control[key] + (weight / n_updates) * acc
+                    )
+            self._pending_delta_c = {}
+        return new_state
+</new>
+</edit>
+<obs>
+Successfully replaced text in flower/custom_fl_aggregation.py.
+</obs>
+<run/>
+<obs>
+Measured results — `baseline:scaffold` (`is_final,true`), seed 42.
+
+## Test accuracy (after 200 rounds)
+| benchmark | seed 42 | mean |
+|---|---|---|
+| CIFAR-10 | 0.6309 | **0.6309** |
+| FEMNIST | 0.8187 | **0.8187** |
+| Shakespeare | 0.4355 | **0.4355** |
+
+## Test loss
+| benchmark | seed 42 |
+|---|---|
+| CIFAR-10 | 1.0659 |
+| FEMNIST | 0.5282 |
+| Shakespeare | 0.0244 |
+</obs>
+
+### step 4 — FedDyn (Federated Dynamic Regularization)   [slug:feddyn]
+
+<think>
+SCAFFOLD's numbers are the breakthrough I was watching for, and they name the next move precisely. CIFAR-10 broke clean out of the high-0.59 band that pinned both FedAvg (0.5954) and FedProx (0.5948), landing at 0.6309 — a three-and-a-half-point jump on the benchmark most crippled by drift, and the CIFAR test loss fell with it, 1.0659 against FedAvg's 1.2639. That confirms the step-3 diagnosis exactly: the wall was the *direction* of the drift, and rotating each local step toward the global gradient with the `(c - c_i)` correction is what knocked it down. FEMNIST moved as predicted too, modestly — 0.8187 against 0.8112, three-quarters of a point, because there was less drift to remove — and Shakespeare stayed essentially flat at 0.4355 (versus FedAvg's 0.4360), confirming that where per-speaker heterogeneity is mild the control machinery buys nothing. So the control-variate idea is the right family. But read the rest of the SCAFFOLD result, because the gains are real and the *cost* is what tells me where to go next. Two things bother me about how SCAFFOLD got that 0.6309. First, it pays for the correction in communication: the method's logic requires each client's control variate to be available, and in the full method that means transmitting a control variate alongside the model — twice the bits per round, which in a setting where communication is the entire scarce resource is a steep tax for a three-point gain. Second, and more telling for the *quality* of the fix here: at 10-of-100 participation a given client's `c_i` is refreshed only about once every ten rounds, so the control variate the correction leans on is, for most clients most of the time, stale by ten rounds of global movement. The CIFAR jump happened *despite* that staleness, which means there is headroom if I can get the same direction-correction without leaning on a per-client gradient estimate that ages between rare participations.
+
+So the failure to improve on is subtle: SCAFFOLD fixes the drift's direction, but it does so by *approximating* the global gradient with control variates that must be communicated and that go stale under partial participation. The approximation is good when the `c_i` are fresh and the heterogeneity is what it was trained on; it degrades exactly in the regime I am in — 10/100 clients, controls aging ten rounds at a time. I want the same alignment of the local step toward the global optimum, but achieved without a per-round control variate over the wire and without the staleness of a gradient estimate, so it holds up under low participation. Let me go back to the disease itself, the fixed-point inconsistency, and ask whether I can align the stationary points *structurally* rather than by maintaining an estimate of the global gradient.
+
+Here is the inconsistency stated cleanly. A global optimum `theta^*` satisfies `(1/m) sum_k grad L_k(theta^*) = 0`, with the individual `grad L_k(theta^*)` non-zero — they only sum to zero. A client minimizing its own `L_k` rests where `grad L_k = 0`, at `theta_k^*`. So the place every client wants to go is not the place the federation must reach, and the consensus of clients that each minimize their own loss is the average of the `theta_k^*`, which is not `theta^*`. SCAFFOLD attacks this by estimating the missing global-gradient information and correcting each local step with it. But notice the *shape* of what I actually need: I need each client's local subproblem to have its rest point *at the consensus*, so that driving the clients to agree automatically drives them to `theta^*`. SCAFFOLD makes the *direction* right at the current iterate; I want to make the *fixed point* right. If the local subproblem's stationary point is the consensus, then I do not need a fresh estimate of the global gradient every step — the alignment is baked into what each client is solving.
+
+What would do that? Suppose client `k` minimizes `L_k(theta) + <a_k, theta> + (alpha/2)||theta - theta^{t-1}||^2` for some per-client linear term `a_k` I choose. Its gradient is `grad L_k(theta) + a_k + alpha(theta - theta^{t-1})`. Evaluate at the consensus point `theta = theta^{t-1}`: the quadratic vanishes there, leaving `grad L_k(theta^{t-1}) + a_k`. For consensus to be a stationary point of *every* client's subproblem I need `a_k = -grad L_k(theta^{t-1})`. That is the whole idea in one line — subtract off, with a linear term, the client's own gradient at the consensus, so that *at* the consensus the client feels no pull away from it. This is the missing piece relative to FedProx: FedProx had the quadratic spring but no linear term (`a_k = 0`), so its minimizer was offset by exactly `-(1/alpha) grad L_k`, the residual gradient — which is precisely why FedProx tied FedAvg, the spring shortened the leash but left the rest point in the wrong place. The linear term is what cancels the residual gradient that *causes* the drift, and because it depends on the client's own latest gradient it is "dynamic," changing round to round. The spring damps; the dynamic linear term *aligns*.
+
+Now the elegant part, which is what makes this cheaper than SCAFFOLD. The first-order condition of the dynamic subproblem is `grad L_k(theta_k^t) - grad L_k(theta_k^{t-1}) + alpha(theta_k^t - theta^{t-1}) = 0`, which I can read as a recursion for the gradient state: `grad L_k(theta_k^t) = grad L_k(theta_k^{t-1}) - alpha(theta_k^t - theta^{t-1})`. So I never recompute the gradient to maintain the linear term — solving the subproblem *gives* me the updated gradient as a function of the displacement the client just took. Store the state as `H_k`, the running sum of the client's net displacements away from the broadcast models, so the linear term is `+alpha H_k` and the per-step regularizer gradient is `alpha(theta - theta^{t-1}) + alpha H_k` — an L2 pull to the broadcast model plus a fixed accumulated-correction offset, added to the data gradient at every plain-SGD step. The client needs only the broadcast model and its own `H_k`; nothing extra crosses the wire. Compare that to SCAFFOLD's `(c - c_i)` correction, which is structurally the *same kind* of additive offset, but where SCAFFOLD's `c_i` is a gradient *estimate* that ages between participations, `H_k` is an exact accumulation of this client's own moves — it does not go stale, it just records history.
+
+The server seals the alignment, and the sealing is what removes the communication cost. Maintain a server state `h` that mirrors the client states. Using the gradient recursion and updating only the active clients, `h^t = h^{t-1} - alpha*(1/m) sum_{k in P_t}(theta_k^t - theta^{t-1})`, and the global model is the active-client average corrected by the server state, `theta^t = (1/|P_t|) sum_{k in P_t} theta_k^t - (1/alpha) h^t`. The divisor is `m`, the total number of clients, not `|P_t|`, because `h` is the average over *all* clients' gradient states and only the active ones changed — the same `|S|/N` honesty SCAFFOLD needed for its control, here applied to the server state. Check the fixed point, because that is the whole justification. At a consensus `theta^infty`, the displacements `theta_k^t - theta^{t-1}` go to zero, so `h` stops moving and `theta^t -> theta^infty`; the stored gradients converge to `grad L_k(theta^infty)`; `h` unrolls to `(1/m) sum_k grad L_k(theta^infty) = grad ell(theta^infty)`; and the server fixed point requires the correction `-(1/alpha) h` to be consistent, which holds only when `h = 0`, i.e. `grad ell(theta^infty) = 0`. So the *only* consensus the method can rest at is a global stationary point. The dynamic linear term makes consensus a local stationary point; the server correction makes consensus a global one; the two fixed points are forced to coincide — and crucially, the server reconstructs `-(1/alpha) h^t = (1/m) sum_k H_k` from the model deltas it already receives. The correction lives in client-persistent state and server-reconstructed state, *not* in a vector transmitted each round. That is the same direction-alignment SCAFFOLD bought, at *half the bits*, and without a staleness-prone gradient estimate.
+
+Let me land it in this task's edit surface, noting what the harness does and does not give me. The harness instantiates one `Strategy` across all rounds, so I can keep server state `h` (a running sum, the `-(1/alpha)h` term, which is the mean over all clients of `H_k`) and a dictionary of per-client `H_k`, persistent on CPU between participations. In `client_local_train` I freeze the broadcast parameters, load this client's `H_k` (zero on first sight), run plain SGD adding `alpha(theta - theta^{t-1} + H_k)` to each gradient, then accumulate `H_k += (theta_k^t - theta^{t-1})` and stash that round's displacement for the server. In `aggregate` I take the plain average of the active clients' models, add `(1/m) sum_{active} displacement` to the running `h`, and set the new global model to the active-average plus `h`. The single coefficient `alpha` does everything — it is the quadratic-anchor strength and the gradient-to-displacement scale; larger `alpha` convexifies the local subproblem and pulls harder to the broadcast model, smaller `alpha` lets clients move more but weakens the correction. For a Dirichlet non-IID image/character setting like this one the canonical choice is `alpha = 0.1` (with the usual sweep `{1e-3, 1e-2, 1e-1}`), so I take 0.1. The harness runs every client a fixed 5 epochs, so unlike the general framework there is no straggler/variable-work surface to exploit; the rung is the dynamic regularizer plus the server reconstruction. The full scaffold module is in the answer.
+
+So the delta from SCAFFOLD: keep the direction-alignment that broke CIFAR open, but achieve it by making the local subproblem's *fixed point* the consensus — a dynamic linear term `-grad L_k(theta_k^{t-1})` realized as the per-step offset `alpha H_k`, with the server reconstructing the global correction from model deltas — instead of by transmitting and tracking a staleness-prone control variate. Reading SCAFFOLD's shape, here is the bar this must clear and the falsifiable claims. SCAFFOLD set CIFAR at 0.6309, FEMNIST at 0.8187, Shakespeare at 0.4355. If the fixed-point alignment is at least as tight as SCAFFOLD's gradient-estimate alignment — and it should be, because it does not degrade with control staleness at this 10/100 participation — then CIFAR should hold *at or above* 0.6309: the structural alignment removes the heterogeneity term from the rate with no bounded-dissimilarity assumption, exactly as the control-variate rate does, but without the staleness penalty that the SCAFFOLD jump happened in spite of. FEMNIST should hold around or slightly above 0.8187, and Shakespeare around 0.4355 — both are less drift-limited, so I expect parity there, not a jump; if either *fell* below SCAFFOLD that would be the falsifier, signaling that the fixed-`alpha` regularizer is mis-scaled for that model (the LSTM's curvature differs from the CNNs'). The cleanest claim is on CIFAR and on the loss: because the dynamic regularizer drives the *consensus* to a global stationary point rather than tracking the global gradient with an aging estimate, the CIFAR test loss should come in at or below SCAFFOLD's 1.0659, and the accuracy at or above 0.6309, at half the per-round communication. This task's leaderboard has no FedDyn row to confirm it; what the trajectory ends on is the construction whose fixed point *is* the global optimum, so that converging the clients to agreement converges them to the right place by design rather than by maintaining and communicating an estimate of where the right place is. Let me write in the dynamic-regularizer state.
+</think>
+<say>
+Moving to FedDyn: instead of tracking a control variate, each client carries an accumulated-displacement state `H_k` whose dynamic linear term makes consensus the subproblem's fixed point, and the server reconstructs the global correction from the model deltas it already receives. This first edit installs `alpha`, the server state `h_sum`, and per-client `H_k`.
+</say>
+<edit path="flower/custom_fl_aggregation.py">
+<old>
+class Strategy:
+    """SCAFFOLD — Alg 1 with Option-II control-variate update."""
+
+    def __init__(self, global_model, args):
+        self.args = args
+        self.num_clients = args.num_clients
+        self.global_control = OrderedDict(
+            (k, torch.zeros_like(v, device="cpu"))
+            for k, v in global_model.state_dict().items()
+        )
+        self.client_controls = {}   # client_idx -> OrderedDict (CPU)
+
+    def _zero_like_state(self, state_dict):
+        return OrderedDict(
+            (k, torch.zeros_like(v, device="cpu")) for k, v in state_dict.items()
+        )
+
+    def _get_client_control(self, client_idx, reference_state):
+        c_i = self.client_controls.get(client_idx)
+        if c_i is None:
+            c_i = self._zero_like_state(reference_state)
+            self.client_controls[client_idx] = c_i
+        return c_i
+
+    def _ensure_global_control_on(self, device, reference_state):
+        # Lazily move global_control to the model's device once and keep it there.
+        if (not hasattr(self, "_gc_dev")) or self._gc_dev_id != id(device):
+            self.global_control = OrderedDict(
+                (k, v.to(device) if v.is_floating_point() else v)
+                for k, v in self.global_control.items()
+            )
+            self._gc_dev = device
+            self._gc_dev_id = id(device)
+
+    def _get_client_control_on(self, client_idx, reference_state, device):
+        c_i = self.client_controls.get(client_idx)
+        if c_i is None:
+            c_i = OrderedDict(
+                (k, torch.zeros_like(v, device=device) if v.is_floating_point()
+                 else torch.zeros_like(v, device="cpu"))
+                for k, v in reference_state.items()
+            )
+            self.client_controls[client_idx] = c_i
+        elif any(v.device != device for v in c_i.values() if v.is_floating_point()):
+            c_i = OrderedDict(
+                (k, v.to(device) if v.is_floating_point() else v)
+                for k, v in c_i.items()
+            )
+            self.client_controls[client_idx] = c_i
+        return c_i
+</old>
+<new>
+class Strategy:
+    """FedDyn — Federated Dynamic Regularization (Acar et al., ICLR 2021)."""
+
+    def __init__(self, global_model, args):
+        self.args = args
+        self.num_clients = args.num_clients          # m
+        self.alpha = 0.1                             # alpha_coef on Dirichlet CIFAR
+        # running sum over ALL m clients of accumulated displacements H_k (= -(1/alpha) h)
+        self.h_sum = OrderedDict(
+            (n, torch.zeros_like(p, device="cpu", dtype=torch.float32))
+            for n, p in global_model.named_parameters())
+        self.client_states = {}                     # client_idx -> OrderedDict (H_k, CPU)
+
+    def _zero_like_params(self, named_params):
+        return OrderedDict(
+            (n, torch.zeros_like(p, device="cpu", dtype=torch.float32))
+            for n, p in named_params)
+</new>
+</edit>
+<obs>
+Successfully replaced text in flower/custom_fl_aggregation.py.
+</obs>
+<note>
+Now swap the SCAFFOLD per-client control setup for the frozen broadcast model and the `H_k` state.
+</note>
+<edit path="flower/custom_fl_aggregation.py">
+<old>
+
+        # Move global_control + c_i to device once; keep them resident.
+        self._ensure_global_control_on(device, model.state_dict())
+        c_i = self._get_client_control_on(client_idx, model.state_dict(), device)
+
+        # Snapshot global params x ON DEVICE for Option-II later.
+        x_dev = OrderedDict(
+            (n, p.detach().clone())
+            for n, p in model.named_parameters()
+            if n in self.global_control
+        )
+
+        # Pre-compute (c - c_i) on device once per client.
+        correction_dev = {}
+        for name, p in model.named_parameters():
+            if name in self.global_control:
+                correction_dev[id(p)] = self.global_control[name] - c_i[name]
+</old>
+<new>
+
+        # Frozen broadcast model theta^{t-1} (named-parameter slots).
+        theta_prev = OrderedDict(
+            (n, p.detach().clone()) for n, p in model.named_parameters())
+        # Client state H_k (lazily zero), on device.
+        H_k_cpu = self.client_states.get(client_idx)
+        if H_k_cpu is None:
+            H_k_cpu = self._zero_like_params(model.named_parameters())
+        H_k = OrderedDict((n, H_k_cpu[n].to(device)) for n in theta_prev)
+</new>
+</edit>
+<obs>
+Successfully replaced text in flower/custom_fl_aggregation.py.
+</obs>
+<note>
+Drop the now-unused `local_steps` counter the Option-II refresh needed.
+</note>
+<edit path="flower/custom_fl_aggregation.py">
+<old>
+
+        total_loss, total_samples, local_steps = 0.0, 0, 0
+        for _ in range(local_epochs):
+</old>
+<new>
+
+        total_loss, total_samples = 0.0, 0
+        for _ in range(local_epochs):
+</new>
+</edit>
+<obs>
+Successfully replaced text in flower/custom_fl_aggregation.py.
+</obs>
+<edit path="flower/custom_fl_aggregation.py">
+<old>
+                outputs = model(inputs)
+                if outputs.dim() == 3:
+                    outputs = outputs.view(-1, outputs.size(-1))
+</old>
+<new>
+                outputs = model(inputs)
+                if outputs.dim() == 3:               # seq models: flatten time
+                    outputs = outputs.view(-1, outputs.size(-1))
+</new>
+</edit>
+<obs>
+Successfully replaced text in flower/custom_fl_aggregation.py.
+</obs>
+<note>
+Now the local gradient transform: replace the control-variate correction with the dynamic-regularizer term, and accumulate `H_k` from this round's displacement.
+</note>
+<edit path="flower/custom_fl_aggregation.py">
+<old>
+                loss.backward()
+                # Corrected gradient: g + (c - c_i). Pure in-place add on device.
+                for p in model.parameters():
+                    if p.grad is None:
+                        continue
+                    corr = correction_dev.get(id(p))
+                    if corr is not None:
+                        p.grad.add_(corr)
+                optimizer.step()
+                local_steps += 1
+                total_loss += loss.item() * inputs.size(0)
+                total_samples += inputs.size(0)
+
+        # Option-II update — stay on device.
+        if local_steps > 0 and local_lr > 0.0:
+            denom = local_steps * local_lr
+            new_ci = OrderedDict()
+            delta_c = OrderedDict()
+            for name, p in model.named_parameters():
+                if name not in self.global_control:
+                    continue
+                # c_i+ = c_i - c + (x - y) / (K * eta)
+                update = c_i[name] - self.global_control[name] + (x_dev[name] - p.detach()) / denom
+                delta_c[name] = (update - c_i[name]).clone()
+                new_ci[name] = update
+            # Carry over non-FP buffer keys unchanged from existing c_i.
+            for k, v in c_i.items():
+                if k not in new_ci:
+                    new_ci[k] = v
+                    delta_c[k] = torch.zeros_like(v)
+            self._pending_delta_c = getattr(self, "_pending_delta_c", {})
+            self._pending_delta_c[client_idx] = delta_c
+            self.client_controls[client_idx] = new_ci
+
+        # Single GPU→CPU transfer for the returned state_dict (server aggregates on CPU).
+        final_state = OrderedDict(
+            (k, v.detach().cpu()) for k, v in model.state_dict().items()
+        )
+        avg_loss = total_loss / max(total_samples, 1)
+</old>
+<new>
+                loss.backward()
+                # Dynamic-regularizer gradient: alpha*(theta - theta^{t-1}) + alpha*H_k.
+                for n, p in model.named_parameters():
+                    if p.grad is None or n not in theta_prev:
+                        continue
+                    p.grad.add_(self.alpha * (p.detach() - theta_prev[n] + H_k[n]))
+                optimizer.step()
+                total_loss += loss.item() * inputs.size(0)
+                total_samples += inputs.size(0)
+
+        # This round's displacement and the H_k accumulation.
+        delta_k = OrderedDict(
+            (n, (p.detach() - theta_prev[n])) for n, p in model.named_parameters())
+        new_H_k = OrderedDict(
+            (n, (H_k[n] + delta_k[n]).detach().cpu().float()) for n in theta_prev)
+        self.client_states[client_idx] = new_H_k
+        self._pending = getattr(self, "_pending", {})
+        self._pending[client_idx] = OrderedDict(
+            (n, delta_k[n].detach().cpu().float()) for n in theta_prev)
+
+        final_state = OrderedDict(
+            (k, v.detach().cpu()) for k, v in model.state_dict().items())
+        avg_loss = total_loss / max(total_samples, 1)
+</new>
+</edit>
+<obs>
+Successfully replaced text in flower/custom_fl_aggregation.py.
+</obs>
+<note>
+Now the server combine: plain active-client average, update `h_sum` by `(1/m) sum displacement`, and set the new global model to average plus `h_sum`.
+</note>
+<edit path="flower/custom_fl_aggregation.py">
+<old>
+    def aggregate(self, global_state_dict, client_updates, round_num):
+        # FedAvg-style weighted model average.
+        total_samples = sum(max(upd[1], 1) for upd in client_updates)
+        new_state = OrderedDict()
+        for key, ref in global_state_dict.items():
+            if not ref.is_floating_point():
+                new_state[key] = client_updates[0][0][key].detach().clone()
+                continue
+            acc = torch.zeros_like(ref, device="cpu", dtype=torch.float32)
+            for st, n, _ in client_updates:
+                acc += st[key].detach().cpu().float() * (max(n, 1) / total_samples)
+            new_state[key] = acc.to(ref.dtype)
+
+        # Server-side global c update: c <- c + (|S|/N) * mean_i Δc_i.
+        # δc_i are on the same device as global_control — stay there.
+        deltas = getattr(self, "_pending_delta_c", {})
+        if deltas:
+            weight = len(client_updates) / max(self.num_clients, 1)
+            n_updates = len(deltas)
+            for key in self.global_control:
+                if not self.global_control[key].is_floating_point():
+                    continue
+                acc = None
+                for dc in deltas.values():
+                    if key in dc and dc[key].is_floating_point():
+                        contrib = dc[key].to(self.global_control[key].device)
+                        acc = contrib.clone() if acc is None else acc + contrib
+                if acc is not None:
+                    self.global_control[key] = (
+                        self.global_control[key] + (weight / n_updates) * acc
+                    )
+            self._pending_delta_c = {}
+        return new_state
+</old>
+<new>
+    def aggregate(self, global_state_dict, client_updates, round_num):
+        # Plain average of active clients' models: (1/|P_t|) sum_k theta_k^t.
+        n_active = max(len(client_updates), 1)
+        avg = OrderedDict()
+        for key, ref in global_state_dict.items():
+            if not ref.is_floating_point():
+                avg[key] = client_updates[0][0][key].detach().clone()
+                continue
+            acc = torch.zeros_like(ref, device="cpu", dtype=torch.float32)
+            for st, _, _ in client_updates:
+                acc += st[key].detach().cpu().float()
+            avg[key] = acc / n_active
+
+        # Server state: h_sum <- h_sum + (1/m) sum_{k in P_t} delta_k  (= -(1/alpha) h^t).
+        deltas = getattr(self, "_pending", {})
+        for n in self.h_sum:
+            acc = None
+            for d in deltas.values():
+                if n in d:
+                    acc = d[n].clone() if acc is None else acc + d[n]
+            if acc is not None:
+                self.h_sum[n] = self.h_sum[n] + acc / max(self.num_clients, 1)
+        self._pending = {}
+
+        # Server model: theta^t = avg + h_sum.
+        new_state = OrderedDict()
+        for key, ref in global_state_dict.items():
+            if not ref.is_floating_point() or key not in self.h_sum:
+                new_state[key] = avg[key]
+                continue
+            new_state[key] = (avg[key] + self.h_sum[key]).to(ref.dtype)
+        return new_state
+</new>
+</edit>
+<obs>
+Successfully replaced text in flower/custom_fl_aggregation.py.
+</obs>

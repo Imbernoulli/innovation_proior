@@ -1,0 +1,1696 @@
+<meta task="rl-offline-adroit" domain="Reinforcement learning" file="CORL/algorithms/offline/custom_adroit.py" model_format="qwen3" edit_tool="str_replace"/>
+
+<system>
+You are a research engineer improving a model on a fixed ML task. You work by editing the model code and running experiments. Think carefully before each change. You have these tools:
+- str_replace(path, old_str, new_str): replace the unique occurrence of old_str with new_str.
+- create(path, file_text): create a new file.
+- run_experiment(): train + evaluate the current code under the fixed budget; returns metrics.
+Make one tool call at a time. After editing, call run_experiment() to measure your method.
+</system>
+
+<user>
+## Research question
+
+Offline RL for high-dimensional dexterous manipulation from *narrow* human-demonstration data. The
+target is the Adroit family — a 24-DoF simulated hand on Pen (rotation), Door (opening) and Hammer
+(nailing) — trained from the D4RL `human-v1` datasets, which hold only ~25 human teleoperation
+trajectories per task. The single thing being designed is the **offline learning algorithm** itself:
+the loss, the target construction, the policy-extraction rule, the regularization. Everything around it
+— preprocessing, the replay buffer, the evaluation loop, the network widths — is fixed. The signature
+difficulty is that the data is a thin, expert-but-narrow tube in a 24-to-30-dimensional action space,
+so any value-based method extrapolates badly the instant the policy steps off that tube, while pure
+imitation is starved by the tiny dataset.
+
+## Prior art before the first rung (offline-RL lineage)
+
+The first rung reacts to the standard off-policy actor-critic and the offline fixes that grew up around
+it. These are the methods the ladder departs from; the fixed substrate below is the harness they all
+fill.
+
+- **DDPG / TD3 (Lillicrap et al. 2016; Fujimoto et al. 2018).** Deterministic actor-critic with a
+  bootstrapped target `y = r + γ Q̄(s', π(s'))`. TD3 adds clipped double-Q (`min` of twins), target
+  policy smoothing (`σ=0.2`, clip `0.5`), and delayed actor/target updates (every 2 steps) to fight
+  overestimation. Gap: nothing keeps the policy on the data — offline, the actor walks off the demo
+  tube and the critic's unconstrained off-support surface feeds a divergent backup.
+- **SAC (Haarnoja et al. 2018).** Maximum-entropy off-policy actor-critic, a stochastic Tanh-Gaussian
+  policy with twin critics. Strong online; offline, dropping the dataset into its buffer extracts
+  essentially nothing — the entropy-seeking policy and the bootstrap `a' ~ π` both query
+  out-of-distribution actions the static dataset can never correct. Gap: no in-distribution constraint.
+- **BCQ / BEAR / BRAC (Fujimoto et al. 2019; Kumar et al. 2019; Wu et al. 2019).** The first offline
+  fixes: constrain `π` toward the behavior policy `π_β`, either by sampling from a learned generative
+  model of dataset actions (BCQ), an MMD/KL penalty against a fitted `π̂_β` (BEAR), or a
+  behavior-regularized actor *and* critic penalty (BRAC). They stabilize offline learning, but each
+  fits and leans on an explicit behavior model `π̂_β` — fragile on ~25 narrow human trajectories — and
+  still, at some point, evaluates a learned `Q` at a sampled, possibly off-support action. Gap: an
+  explicit behavior model that is hard to fit on tiny narrow data, and a residual OOD query.
+- **Behavior cloning.** The honest floor on this data: regress `π(s)` onto the logged action. It
+  cannot exceed the demonstrations and gives up all stitching, but on `human-v1` it is a serious
+  competitor precisely because the data is near-expert. The ladder must beat it to justify doing RL.
+
+## The fixed substrate
+
+A single offline harness (`custom_adroit.py`) is frozen. It loads the D4RL `human-v1` dataset through a
+ReBRAC-style converter that **preserves the dataset's own next action** `â'` (so the batch is
+`(s, a, r, s', done, â')`), builds a `ReplayBuffer`, optionally normalizes states by dataset
+mean/std (`CONFIG_OVERRIDES = {"normalize": ...}`), and runs `max_timesteps = 1e6` gradient steps at
+`batch_size = 256`, evaluating every `5e3` steps over 10 rollouts and reporting the D4RL normalized
+score (`0` = random, `100` = expert). The loop calls `trainer.train(batch)` every step and
+`eval_actor(env, trainer.actor, ...)` at eval time, so the algorithm **must** expose `self.actor` with
+an `.act(state, device)` method. A hard architectural rule is enforced: **all hidden widths are 256**
+(a `_mlp()` factory and a `_max_param_budget()` check guard it), so the contribution has to be
+*algorithmic* — loss, target, regularization, training procedure — never capacity. Defaults:
+`discount = 0.99`, `tau = 5e-3`, `actor_lr = critic_lr = 3e-4`.
+
+## The editable interface
+
+Exactly one region (`custom_adroit.py` lines 214–416) is editable: a top-of-region `CONFIG_OVERRIDES`
+dict, the network classes (`DeterministicActor`, `Actor`, `Critic`, `ValueFunction`), and the
+`OfflineAlgorithm` class (`__init__` builds the nets/optimizers; `train(batch)` does one update and
+returns a scalar log dict). Every method on the ladder is a fill of this same contract. The harness
+provides `soft_update`, `init_module_weights`, the `_mlp(in, out, hidden=256, n_layers=3)` factory, and
+the full dataset via `replay_buffer._states[:size]` etc.
+
+The starting point is the scaffold default: networks are built but `train` is a **placeholder that does
+nothing** (returns zero losses, no learning). Each method replaces the network definitions it needs and
+the body of `OfflineAlgorithm`, and nothing else.
+
+```python
+# EDITABLE region of custom_adroit.py — default fill (placeholder, no learning)
+CONFIG_OVERRIDES: Dict[str, Any] = {}
+
+
+class DeterministicActor(nn.Module):
+    """Deterministic policy pi(s) = tanh(net(s)) * max_action. 3 x 256 MLP."""
+
+    def __init__(self, state_dim: int, action_dim: int, max_action: float):
+        super().__init__()
+        self.max_action = max_action
+        self.net = nn.Sequential(
+            nn.Linear(state_dim, 256), nn.ReLU(),
+            nn.Linear(256, 256), nn.ReLU(),
+            nn.Linear(256, action_dim), nn.Tanh(),
+        )
+
+    def forward(self, state: torch.Tensor) -> torch.Tensor:
+        return self.max_action * self.net(state)
+
+    @torch.no_grad()
+    def act(self, state: np.ndarray, device: str = "cpu") -> np.ndarray:
+        state = torch.tensor(state.reshape(1, -1), device=device, dtype=torch.float32)
+        return self(state).cpu().data.numpy().flatten()
+
+
+class Actor(nn.Module):
+    """Tanh-Gaussian stochastic policy. 3 x 256 MLP. For CQL/IQL/AWAC-style methods."""
+
+    def __init__(self, state_dim: int, action_dim: int, max_action: float,
+                 orthogonal_init: bool = False):
+        super().__init__()
+        self.max_action = max_action
+        self.action_dim = action_dim
+        self.net = nn.Sequential(
+            nn.Linear(state_dim, 256), nn.ReLU(),
+            nn.Linear(256, 256), nn.ReLU(),
+            nn.Linear(256, 256), nn.ReLU(),
+            nn.Linear(256, 2 * action_dim),
+        )
+        init_module_weights(self.net, orthogonal_init)
+        self.log_std_min = -20.0
+        self.log_std_max = 2.0
+
+    def _get_dist(self, state: torch.Tensor):
+        out = self.net(state)
+        mean, log_std = torch.split(out, self.action_dim, dim=-1)
+        log_std = torch.clamp(log_std, self.log_std_min, self.log_std_max)
+        return TransformedDistribution(
+            Normal(mean, torch.exp(log_std)), TanhTransform(cache_size=1)
+        ), mean
+
+    def forward(self, state: torch.Tensor, deterministic: bool = False):
+        dist, mean = self._get_dist(state)
+        action = torch.tanh(mean) if deterministic else dist.rsample()
+        log_prob = dist.log_prob(action).sum(-1)
+        return self.max_action * action, log_prob
+
+    def log_prob(self, state: torch.Tensor, action: torch.Tensor) -> torch.Tensor:
+        dist, _ = self._get_dist(state)
+        action = torch.clamp(action / self.max_action, -1.0 + 1e-6, 1.0 - 1e-6)
+        return dist.log_prob(action).sum(-1)
+
+    @torch.no_grad()
+    def act(self, state: np.ndarray, device: str = "cpu") -> np.ndarray:
+        state = torch.tensor(state.reshape(1, -1), device=device, dtype=torch.float32)
+        actions, _ = self(state, not self.training)
+        return actions.cpu().data.numpy().flatten()
+
+
+class Critic(nn.Module):
+    """Q(s, a). 3 x 256 MLP."""
+
+    def __init__(self, state_dim: int, action_dim: int, orthogonal_init: bool = False):
+        super().__init__()
+        self.net = nn.Sequential(
+            nn.Linear(state_dim + action_dim, 256), nn.ReLU(),
+            nn.Linear(256, 256), nn.ReLU(),
+            nn.Linear(256, 256), nn.ReLU(),
+            nn.Linear(256, 1),
+        )
+        init_module_weights(self.net, orthogonal_init)
+
+    def forward(self, state: torch.Tensor, action: torch.Tensor) -> torch.Tensor:
+        return self.net(torch.cat([state, action], dim=-1)).squeeze(-1)
+
+
+class ValueFunction(nn.Module):
+    """State value V(s). 3 x 256 MLP. For IQL-style methods."""
+
+    def __init__(self, state_dim: int, orthogonal_init: bool = False):
+        super().__init__()
+        self.net = nn.Sequential(
+            nn.Linear(state_dim, 256), nn.ReLU(),
+            nn.Linear(256, 256), nn.ReLU(),
+            nn.Linear(256, 256), nn.ReLU(),
+            nn.Linear(256, 1),
+        )
+        init_module_weights(self.net, orthogonal_init)
+
+    def forward(self, state: torch.Tensor) -> torch.Tensor:
+        return self.net(state).squeeze(-1)
+
+
+class OfflineAlgorithm:
+    """Offline RL algorithm — implement your approach here. Default body does nothing."""
+
+    def __init__(self, state_dim, action_dim, max_action, replay_buffer=None,
+                 discount=0.99, tau=5e-3, actor_lr=3e-4, critic_lr=3e-4,
+                 alpha_lr=3e-4, orthogonal_init=True, device="cuda"):
+        self.device = device
+        self.discount = discount
+        self.tau = tau
+        self.max_action = max_action
+        self.total_it = 0
+        self.replay_buffer = replay_buffer
+        self.actor = Actor(state_dim, action_dim, max_action, orthogonal_init).to(device)
+        self.critic_1 = Critic(state_dim, action_dim, orthogonal_init).to(device)
+        self.critic_2 = Critic(state_dim, action_dim, orthogonal_init).to(device)
+        self.critic_1_target = deepcopy(self.critic_1)
+        self.critic_2_target = deepcopy(self.critic_2)
+        self.actor_optimizer = torch.optim.Adam(self.actor.parameters(), lr=actor_lr)
+        self.critic_1_optimizer = torch.optim.Adam(self.critic_1.parameters(), lr=critic_lr)
+        self.critic_2_optimizer = torch.optim.Adam(self.critic_2.parameters(), lr=critic_lr)
+
+    def train(self, batch: TensorBatch) -> Dict[str, float]:
+        self.total_it += 1
+        states, actions, rewards, next_states, dones, next_actions = batch
+        # Placeholder: replace with your algorithm.
+        return {"actor_loss": 0.0, "critic_loss": 0.0}
+```
+
+## Evaluation settings
+
+Three Adroit tasks — **Pen** (`pen-human-v1`), **Hammer** (`hammer-human-v1`) and **Door**
+(`door-cloned-v1`, hidden) — each over three seeds {42, 123, 456}. Metric: the D4RL normalized score
+per task (`0` = random, `100` = expert), averaged over evaluation rollouts; higher is better on all
+three. A method is judged on working *across* the manipulation tasks rather than overfitting one
+dataset.
+
+The editable model code is in `CORL/algorithms/offline/custom_adroit.py`:
+```python
+class OfflineAlgorithm:
+    """Offline RL algorithm — implement your approach here.
+
+    Goal: learn dexterous manipulation policies from narrow human demonstration
+    data on Adroit tasks (Pen, Door, Hammer with human-v1 datasets).
+
+    Challenges specific to Adroit:
+    - High-dimensional action spaces (24-30 dims)
+    - Very few expert demonstrations (~25 human trajectories)
+    - Severe distribution shift between data and optimal policy
+    - Sparse/shaped rewards requiring precise manipulation
+
+    The training loop calls:
+        trainer = OfflineAlgorithm(state_dim, action_dim, max_action, **kwargs)
+        log_dict = trainer.train(batch)          # called at every timestep
+        eval_actor(env, trainer.actor, ...)      # called every eval_freq steps
+
+    You MUST set self.actor to an nn.Module that has an .act(state, device) method.
+    Build all your networks here; the training loop only provides environment dimensions
+    and the hyperparameters from TrainConfig.
+
+    actor_lr, critic_lr, alpha_lr are passed from TrainConfig as starting points —
+    you may use different values by creating optimizers with your own lr in __init__.
+    Any additional algorithm-specific hyperparameters should be hardcoded in __init__.
+
+    Dataset access:
+        replay_buffer is a ReplayBuffer instance containing the full offline dataset.
+        You can use it to compute dataset-level statistics, e.g.:
+            replay_buffer._states[:replay_buffer._size]   — all states  (Tensor)
+            replay_buffer._actions[:replay_buffer._size]  — all actions (Tensor)
+            replay_buffer._rewards[:replay_buffer._size]  — all rewards (Tensor)
+            replay_buffer._next_actions[:replay_buffer._size] — next actions (Tensor)
+            replay_buffer._size                           — number of transitions
+
+    Available network classes (defined above, editable):
+        DeterministicActor  — deterministic tanh policy (for BC / TD3+BC approaches)
+        Actor               — stochastic Tanh-Gaussian policy (for CQL / IQL / AWAC approaches)
+        Critic              — Q(s, a) network
+        ValueFunction       — V(s) network (for IQL-style approaches)
+    """
+
+    def __init__(
+        self,
+        state_dim: int,
+        action_dim: int,
+        max_action: float,
+        replay_buffer: "ReplayBuffer" = None,
+        discount: float = 0.99,
+        tau: float = 5e-3,
+        actor_lr: float = 3e-4,
+        critic_lr: float = 3e-4,
+        alpha_lr: float = 3e-4,
+        orthogonal_init: bool = True,
+        device: str = "cuda",
+    ):
+        self.device = device
+        self.discount = discount
+        self.tau = tau
+        self.max_action = max_action
+        self.total_it = 0
+        # Full offline dataset — use for computing global statistics
+        # (e.g. action mean/std for normalization, reward scaling, etc.)
+        self.replay_buffer = replay_buffer
+
+        # Build networks — modify or replace as needed
+        self.actor = Actor(state_dim, action_dim, max_action, orthogonal_init).to(device)
+        self.critic_1 = Critic(state_dim, action_dim, orthogonal_init).to(device)
+        self.critic_2 = Critic(state_dim, action_dim, orthogonal_init).to(device)
+        self.critic_1_target = deepcopy(self.critic_1)
+        self.critic_2_target = deepcopy(self.critic_2)
+
+        self.actor_optimizer = torch.optim.Adam(self.actor.parameters(), lr=actor_lr)
+        self.critic_1_optimizer = torch.optim.Adam(self.critic_1.parameters(), lr=critic_lr)
+        self.critic_2_optimizer = torch.optim.Adam(self.critic_2.parameters(), lr=critic_lr)
+
+    def train(self, batch: TensorBatch) -> Dict[str, float]:
+        """Update networks on one batch. Return a dict of scalar metrics for logging.
+
+        batch = [states, actions, rewards, next_states, dones, next_actions]
+        (torch.Tensor, on device)
+
+        next_actions is the action at the next timestep in the dataset
+        (useful for algorithms like ReBRAC that penalize deviations from
+        the data's next action).
+
+        TODO: implement your offline RL algorithm here.
+        """
+        self.total_it += 1
+        states, actions, rewards, next_states, dones, next_actions = batch
+
+        # ── Placeholder: replace with your algorithm ──────────────────
+        log_dict: Dict[str, float] = {
+            "actor_loss": 0.0,
+            "critic_loss": 0.0,
+        }
+        return log_dict
+```
+Improve it. Derive your method, edit the code, then run_experiment().
+</user>
+
+### step 1 — AWAC (Advantage-Weighted Actor-Critic)   [slug:awac]
+
+<think>
+Let me start from the exact shape of the problem this harness hands me, because the data is unlike the
+locomotion offline benchmarks where most of these algorithms were tuned. The buffer holds the D4RL
+`human-v1` dataset: roughly twenty-five human teleoperation trajectories on a 24-DoF hand, in an action
+space of 24-to-30 dimensions. That is a thin, near-expert tube of states and actions embedded in an
+enormous continuous action space. I get one million gradient steps at batch 256, I never touch the
+environment, and I am judged by the D4RL normalized score on Pen, Hammer and Door. The two failure
+modes I have to navigate are sharp and opposite. If I lean on value-based RL the way I would online, the
+critic's bootstrap will query actions the twenty-five demos never contain at a state, the network will
+extrapolate there — almost always upward, because the actor is trained to maximize Q — and the inflated
+value backs up through the Bellman recursion until the policy is chasing pure extrapolation off the
+demo tube. If instead I lean entirely on imitation, I am capped at the demonstrators and I throw away
+any chance of improving on them; on twenty-five trajectories that cap is real but not catastrophic,
+which is exactly why behavior cloning is a serious competitor here and the thing I have to beat.
+
+So I want the cheapest algorithm that does *some* value-based improvement over the demos while staying
+provably inside their support. Let me reason about what "inside the support" can mean mechanically,
+because that is the whole design. The starting point everyone reaches for is an off-policy
+actor-critic: train a critic by TD to estimate Q^π, and improve the actor by ascending Q. On this data
+that improvement step is the poison — `argmax_π E[Q(s, π(s))]` and the bootstrap `a' ~ π(·|s')` both
+evaluate Q at policy-proposed actions, and on a narrow human dataset those are precisely the
+out-of-distribution actions with no data to correct them. The prior fixes (BCQ, BEAR, BRAC) all add an
+explicit constraint `D(π, π_β) ≤ ε`, but they do it by *fitting a behavior model* `π̂_β` — a generative
+model or a density I take a divergence against. On twenty-five narrow trajectories, fitting an accurate
+`π̂_β` over a 30-dim action space is itself a hard density-estimation problem, and a constraint that
+pins the policy to a *bad* estimate of the data is worse than no constraint at all. I want the
+stay-near-data behavior **without ever fitting a behavior model**.
+
+Let me write the constrained improvement problem and solve it exactly, to see whether the behavior
+model can be made to disappear. I want to push up the advantage `A^{π_k}(s,a) = Q^{π_k}(s,a) - V^{π_k}(s)`
+(maximizing `E_π[Q]` equals maximizing `E_π[A]`, since `V` does not depend on the action), subject to a
+KL trust region around the behavior policy and a normalization constraint:
+
+  `π_{k+1} = argmax_π E_{a~π}[ A^{π_k}(s,a) ]  s.t.  KL(π(·|s) ‖ π_β(·|s)) ≤ ε,  ∫ π(a|s) da = 1`.
+
+The Lagrangian with multiplier `λ` on the KL and `α` on normalization, differentiated with respect to
+the value `π(a|s)` at a single action and set to zero, gives `A(s,a) - λ(log π - log π_β + 1) - α = 0`.
+Solving for `log π` and folding the action-independent constants into a per-state normalizer `Z(s)`:
+
+  `π*(a|s) = (1/Z(s)) · π_β(a|s) · exp( A^{π_k}(s,a) / λ )`.
+
+The optimal constrained policy is the behavior policy reweighted by the exponentiated advantage. `λ`,
+the multiplier on the KL, is a temperature: small `λ` sharpens toward the highest-advantage actions
+(aggressive improvement), large `λ` flattens toward `π_β` (cautious, BC-like). The behavior model is
+still sitting in `π*`, though. The decisive step is the projection onto my parametric actor `π_θ`, and
+the *direction* of the KL in that projection is what makes `π_β` cancel or not. Project by minimizing
+the *forward* KL, averaged over the data states: `argmin_θ E_ρ[ KL(π* ‖ π_θ) ] = argmin_θ E_ρ
+E_{a~π*}[ -log π_θ(a|s) ]`, since only the `-log π_θ` term depends on `θ`. I cannot sample `π*`
+directly, but `π*` is just `π_β` reweighted, so importance-sample from the buffer instead:
+
+  `E_{a~π*}[ -log π_θ ] = E_{a~π_β}[ (π*/π_β)·(-log π_θ) ] = E_{a~π_β}[ (1/Z(s)) exp(A/λ)·(-log π_θ) ]`.
+
+The `π_β` factor cancels — `π*/π_β = (1/Z) exp(A/λ)`, no behavior model left. The actor update becomes
+a *weighted maximum likelihood* on samples drawn straight from the buffer:
+
+  `θ ← argmax_θ E_{(s,a)~buffer}[ exp( A^{π_k}(s,a) / λ ) · log π_θ(a|s) ]`.
+
+This is supervised learning on the dataset's own actions, each `(s,a)` weighted by its exponentiated
+advantage. The constraint is enforced *implicitly*: reweighting the buffer's actions can never put mass
+on an action the data did not contain, yet it concentrates that mass on the high-advantage actions. No
+behavior model anywhere, and — crucially for narrow human data — the actor never queries Q at a
+policy-proposed off-support action during improvement. The reverse KL would drag both the behavior
+model and the OOD-Q query back in (it evaluates `log π_β` and samples `a ~ π_θ`), so forward KL is the
+right call precisely because it lets me sample from the buffer and cancel `π_β`.
+
+The per-state `Z(s) = E_{a~π_θ}[exp(A/λ)]` in the weight I can drop and simply normalize weights across
+the minibatch: it is a per-*state* factor, so it only reweights how much different states count, not
+how actions compete within a state, and estimating it injects variance like a degenerate importance
+weight. That leaves the critic. I want the advantage `A = Q - V` from an off-policy bootstrapped Q^π of
+the *current* policy (this is what makes the method improve past a single step, unlike Monte-Carlo
+behavior-value methods). I bootstrap a twin-Q TD target with the `min` of the targets and a Polyak
+target update to keep overestimation in check: `y = r + γ·min_i Q̄_i(s', a')` with `a' ~ π(·|s')`. And
+since `V(s) = E_{a~π}[Q(s,a)]`, I estimate it by evaluating the critics at an action sampled from the
+current policy and taking the same `min`, so `A(s,a) = Q(s,a) - min_i Q_i(s, a_π)` with `a_π ~ π(·|s)`.
+
+Now I have to be honest about how this harness differs from the generic recipe, because the constraints
+here are tighter than where the method was tuned and they cut against its strengths. First, this is a
+*purely offline* run — one million gradient steps on a static buffer, no online phase at all. The
+recipe's headline strength is that the same update flows from offline pre-training into online
+fine-tuning without changing anything; that strength is simply unused here, and what is left is the
+offline half, which on narrow human data is the part most exposed to the implicit-constraint being only
+as good as the advantage estimate. Second, the harness fixes batch size at 256 and the hidden width at
+256 across three layers; I cannot reach for the larger batch or the wider nets that smoothed the
+advantage-weighting variance elsewhere. Third, and most consequential, the temperature: on dexterous
+manipulation a small `λ` sharpens the weights toward the few highest-advantage demo actions, which is
+aggressive on data this thin. I set `awac_lambda = 0.1` to match the reference's manipulation
+configuration, knowing it is a sharp, high-variance reweighting on twenty-five trajectories. I clip the
+exponentiated weight at 100 so a handful of huge advantages cannot dominate the loss.
+
+I also have to fix the policy parameterization to what this harness's actor needs, and it is *not* the
+squashed Tanh-Gaussian the scaffold ships by default. Advantage-weighted MLE evaluates `log π_θ(a|s)`
+on dataset actions; a TanhTransform distribution makes that log-prob awkward near the action-box
+boundary (the demos sit near the limits of a dexterous hand's range). So I use a plain Gaussian over a
+3×256 trunk with a *state-independent* `log_std` parameter, clamped to `[-20, 2]`, and compute the
+log-prob directly with no Tanh correction — the actor clamps its samples into `[-1,1]` but the density
+is a clean Normal. The critic here returns its output *un-squeezed*, shape `(batch, 1)`, because the
+advantage and TD arithmetic in this version keep the trailing dimension; that is a small but real
+divergence from the squeeze-to-scalar pattern other rungs use. I keep separate optimizers for the two
+critics and turn on state normalization (`CONFIG_OVERRIDES = {"normalize": True}`), since whitening the
+24-to-30-dim hand state helps the MLPs and matches how this baseline was run.
+
+Per step, then: sample `(s, a, r, s', done, â')` (I ignore `â'` — that is ReBRAC's hook, not mine).
+Critic update every step: bootstrap `q_next = min(Q̄_1(s', a'), Q̄_2(s', a'))` at `a' ~ π(·|s')`, target
+`y = r + γ(1-done) q_next`, MSE on both critics, step both. Actor update every step: compute the
+advantage with detached critics, `weight = clamp(exp(A/λ), max=100)`, and minimize `-(log π_θ(a|s)·
+weight).mean()`. Then soft-update both target critics at `tau = 5e-3`. The whole thing is a standard
+actor-critic where the only non-standard piece is the advantage-weighted MLE actor, which is what keeps
+it on the demo tube without a behavior model.
+
+What do I expect this to do on the three tasks, and where do I think it will leave value on the table —
+the question the next rung will have to answer. Pen is the most reachable task and the one where
+advantage weighting over near-expert demos should do best, so I expect a respectable Pen score, but
+with high seed-to-seed variance, because at `λ=0.1` on twenty-five trajectories the weights are a sharp
+function of a noisy advantage estimate — a seed whose critic happens to inflate a few demo actions will
+do well, a seed whose critic is mis-calibrated will collapse. Hammer and Door I am pessimistic about:
+the advantage signal there has to flow through a long, precise contact sequence, the implicit
+constraint keeps the policy welded to twenty-five demonstrations of it, and with no online correction
+and no separate in-support optimism the method has little room to improve past the average demo action.
+So my falsifiable expectation is: a decent-but-volatile Pen mean, near-floor Hammer, and near-zero Door
+— and if that is what the numbers show, the diagnosis for the next rung is already legible. The weak
+spot is that the advantage here is `Q - V` with `V` read off a single policy sample, so the "how good
+is this action relative to alternatives" signal is exactly as noisy as one stochastic critic query, and
+the actor is pinned to demo actions by an MLE that has no explicit machinery for *staying calibrated*
+when the data is this thin. A method that builds the constraint into the *target construction* — so the
+critic itself never trusts an off-support next action — should be steadier across seeds, and that is the
+direction the failure points. Let me write it in.
+</think>
+<say>
+Implementing AWAC (Advantage-Weighted Actor-Critic): I'll do value-based improvement that stays on the demo tube without a behavior model, by reweighting the dataset's own actions by their exponentiated advantage. This first edit swaps in a plain-Gaussian actor and an unsqueezed twin-Q critic, and turns on state normalization.
+</say>
+<edit path="CORL/algorithms/offline/custom_adroit.py">
+<old>
+class OfflineAlgorithm:
+    """Offline RL algorithm — implement your approach here.
+
+    Goal: learn dexterous manipulation policies from narrow human demonstration
+    data on Adroit tasks (Pen, Door, Hammer with human-v1 datasets).
+
+    Challenges specific to Adroit:
+    - High-dimensional action spaces (24-30 dims)
+    - Very few expert demonstrations (~25 human trajectories)
+    - Severe distribution shift between data and optimal policy
+    - Sparse/shaped rewards requiring precise manipulation
+
+    The training loop calls:
+        trainer = OfflineAlgorithm(state_dim, action_dim, max_action, **kwargs)
+        log_dict = trainer.train(batch)          # called at every timestep
+        eval_actor(env, trainer.actor, ...)      # called every eval_freq steps
+
+    You MUST set self.actor to an nn.Module that has an .act(state, device) method.
+    Build all your networks here; the training loop only provides environment dimensions
+    and the hyperparameters from TrainConfig.
+
+    actor_lr, critic_lr, alpha_lr are passed from TrainConfig as starting points —
+    you may use different values by creating optimizers with your own lr in __init__.
+    Any additional algorithm-specific hyperparameters should be hardcoded in __init__.
+
+    Dataset access:
+        replay_buffer is a ReplayBuffer instance containing the full offline dataset.
+        You can use it to compute dataset-level statistics, e.g.:
+            replay_buffer._states[:replay_buffer._size]   — all states  (Tensor)
+            replay_buffer._actions[:replay_buffer._size]  — all actions (Tensor)
+            replay_buffer._rewards[:replay_buffer._size]  — all rewards (Tensor)
+            replay_buffer._next_actions[:replay_buffer._size] — next actions (Tensor)
+            replay_buffer._size                           — number of transitions
+
+    Available network classes (defined above, editable):
+        DeterministicActor  — deterministic tanh policy (for BC / TD3+BC approaches)
+        Actor               — stochastic Tanh-Gaussian policy (for CQL / IQL / AWAC approaches)
+        Critic              — Q(s, a) network
+        ValueFunction       — V(s) network (for IQL-style approaches)
+    Available utilities (fixed): soft_update, init_module_weights
+    """
+
+    def __init__(
+        self,
+        state_dim: int,
+        action_dim: int,
+        max_action: float,
+        replay_buffer: "ReplayBuffer" = None,
+        discount: float = 0.99,
+        tau: float = 5e-3,
+        actor_lr: float = 3e-4,
+        critic_lr: float = 3e-4,
+        alpha_lr: float = 3e-4,
+        orthogonal_init: bool = True,
+        device: str = "cuda",
+    ):
+        self.device = device
+</old>
+<new>
+# EDITABLE region of custom_adroit.py — step 1: AWAC
+CONFIG_OVERRIDES: Dict[str, Any] = {"normalize": True}
+
+
+class Actor(nn.Module):
+    """AWAC GaussianPolicy — 3x256 MLP, state-independent log_std, Normal + clamp."""
+
+    def __init__(self, state_dim: int, action_dim: int, hidden_dim: int = 256,
+                 min_log_std: float = -20.0, max_log_std: float = 2.0):
+        super().__init__()
+        self._mlp = nn.Sequential(
+            nn.Linear(state_dim, hidden_dim),
+            nn.ReLU(),
+            nn.Linear(hidden_dim, hidden_dim),
+            nn.ReLU(),
+            nn.Linear(hidden_dim, hidden_dim),
+            nn.ReLU(),
+            nn.Linear(hidden_dim, action_dim),
+        )
+        self._log_std = nn.Parameter(torch.zeros(action_dim, dtype=torch.float32))
+        self._min_log_std = min_log_std
+        self._max_log_std = max_log_std
+
+    def _get_policy(self, state: torch.Tensor):
+        mean = self._mlp(state)
+        log_std = self._log_std.clamp(self._min_log_std, self._max_log_std)
+        return torch.distributions.Normal(mean, log_std.exp())
+
+    def log_prob(self, state: torch.Tensor, action: torch.Tensor) -> torch.Tensor:
+        policy = self._get_policy(state)
+        return policy.log_prob(action).sum(-1, keepdim=True)
+
+    def forward(self, state: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
+        policy = self._get_policy(state)
+        action = policy.rsample()
+        action.clamp_(-1.0, 1.0)
+        log_prob = policy.log_prob(action).sum(-1, keepdim=True)
+        return action, log_prob
+
+    def act(self, state: np.ndarray, device: str = "cpu") -> np.ndarray:
+        state_t = torch.tensor(state[None], dtype=torch.float32, device=device)
+        policy = self._get_policy(state_t)
+        if self._mlp.training:
+            action_t = policy.sample()
+        else:
+            action_t = policy.mean
+        return action_t[0].cpu().numpy()
+
+
+class Critic(nn.Module):
+    """Q-function Q(s, a). 3x256 MLP, returns (batch, 1)."""
+
+    def __init__(self, state_dim: int, action_dim: int, hidden_dim: int = 256):
+        super().__init__()
+        self._mlp = nn.Sequential(
+            nn.Linear(state_dim + action_dim, hidden_dim),
+            nn.ReLU(),
+            nn.Linear(hidden_dim, hidden_dim),
+            nn.ReLU(),
+            nn.Linear(hidden_dim, hidden_dim),
+            nn.ReLU(),
+            nn.Linear(hidden_dim, 1),
+        )
+
+    def forward(self, state: torch.Tensor, action: torch.Tensor) -> torch.Tensor:
+        return self._mlp(torch.cat([state, action], dim=-1))
+
+
+class OfflineAlgorithm:
+    """AWAC — Advantage Weighted Actor-Critic for offline RL."""
+
+    def __init__(self, state_dim, action_dim, max_action, replay_buffer=None,
+                 discount=0.99, tau=5e-3, actor_lr=3e-4, critic_lr=3e-4,
+                 alpha_lr=3e-4, orthogonal_init=True, device="cuda"):
+        self.device = device
+</new>
+</edit>
+<obs>
+Successfully replaced text in CORL/algorithms/offline/custom_adroit.py.
+</obs>
+<note>
+Now the __init__ body: AWAC hyperparameters, the Gaussian actor, and twin critics with their targets.
+</note>
+<edit path="CORL/algorithms/offline/custom_adroit.py">
+<old>
+        self.total_it = 0
+        # Full offline dataset — use for computing global statistics
+        # (e.g. action mean/std for normalization, reward scaling, etc.)
+        self.replay_buffer = replay_buffer
+
+        # Build networks — modify or replace as needed
+        self.actor = Actor(state_dim, action_dim, max_action, orthogonal_init).to(device)
+        self.critic_1 = Critic(state_dim, action_dim, orthogonal_init).to(device)
+        self.critic_2 = Critic(state_dim, action_dim, orthogonal_init).to(device)
+        self.critic_1_target = deepcopy(self.critic_1)
+        self.critic_2_target = deepcopy(self.critic_2)
+
+        self.actor_optimizer = torch.optim.Adam(self.actor.parameters(), lr=actor_lr)
+        self.critic_1_optimizer = torch.optim.Adam(self.critic_1.parameters(), lr=critic_lr)
+</old>
+<new>
+        self.total_it = 0
+
+        self.awac_lambda = 0.1
+        self.exp_adv_max = 100.0
+
+        self.actor = Actor(state_dim, action_dim, 256).to(device)
+        self.actor_optimizer = torch.optim.Adam(self.actor.parameters(), lr=actor_lr)
+
+        self.critic_1 = Critic(state_dim, action_dim, 256).to(device)
+        self.critic_2 = Critic(state_dim, action_dim, 256).to(device)
+        self.target_critic_1 = deepcopy(self.critic_1)
+        self.target_critic_2 = deepcopy(self.critic_2)
+        self.critic_1_optimizer = torch.optim.Adam(self.critic_1.parameters(), lr=critic_lr)
+</new>
+</edit>
+<obs>
+Successfully replaced text in CORL/algorithms/offline/custom_adroit.py.
+</obs>
+<note>
+Now the train step: twin-Q TD critic plus the advantage-weighted MLE actor update.
+</note>
+<edit path="CORL/algorithms/offline/custom_adroit.py">
+<old>
+    def train(self, batch: TensorBatch) -> Dict[str, float]:
+        """Update networks on one batch. Return a dict of scalar metrics for logging.
+
+        batch = [states, actions, rewards, next_states, dones, next_actions]
+        (torch.Tensor, on device)
+
+        next_actions is the action at the next timestep in the dataset
+        (useful for algorithms like ReBRAC that penalize deviations from
+        the data's next action).
+
+        TODO: implement your offline RL algorithm here.
+        """
+        self.total_it += 1
+        states, actions, rewards, next_states, dones, next_actions = batch
+
+        # ── Placeholder: replace with your algorithm ──────────────────
+        log_dict: Dict[str, float] = {
+            "actor_loss": 0.0,
+            "critic_loss": 0.0,
+        }
+        return log_dict
+</old>
+<new>
+    def train(self, batch: TensorBatch) -> Dict[str, float]:
+        self.total_it += 1
+        states, actions, rewards, next_states, dones, *_ = batch
+        log_dict: Dict[str, float] = {}
+
+        # Critic update
+        with torch.no_grad():
+            next_actions, _ = self.actor(next_states)
+            q_next = torch.min(
+                self.target_critic_1(next_states, next_actions),
+                self.target_critic_2(next_states, next_actions),
+            )
+            q_target = rewards + self.discount * (1.0 - dones) * q_next
+
+        q1 = self.critic_1(states, actions)
+        q2 = self.critic_2(states, actions)
+        critic_loss = F.mse_loss(q1, q_target) + F.mse_loss(q2, q_target)
+        log_dict["critic_loss"] = critic_loss.item()
+
+        self.critic_1_optimizer.zero_grad()
+        self.critic_2_optimizer.zero_grad()
+        critic_loss.backward()
+        self.critic_1_optimizer.step()
+        self.critic_2_optimizer.step()
+
+        # Actor update (advantage-weighted)
+        with torch.no_grad():
+            pi_action, _ = self.actor(states)
+            v = torch.min(self.critic_1(states, pi_action), self.critic_2(states, pi_action))
+            q = torch.min(self.critic_1(states, actions), self.critic_2(states, actions))
+            adv = q - v
+            weights = torch.clamp_max(torch.exp(adv / self.awac_lambda), self.exp_adv_max)
+
+        action_log_prob = self.actor.log_prob(states, actions)
+        actor_loss = (-action_log_prob * weights).mean()
+        log_dict["actor_loss"] = actor_loss.item()
+
+        self.actor_optimizer.zero_grad()
+        actor_loss.backward()
+        self.actor_optimizer.step()
+
+        soft_update(self.target_critic_1, self.critic_1, self.tau)
+        soft_update(self.target_critic_2, self.critic_2, self.tau)
+
+        return log_dict
+</new>
+</edit>
+<obs>
+Successfully replaced text in CORL/algorithms/offline/custom_adroit.py.
+</obs>
+<run/>
+<obs>
+Measured results — `baseline:awac`, seeds {42, 123, 456} and mean. (No `is_final,true` baseline row
+exists for this task; these are the recorded `baseline:awac` runs.)
+
+## Pen (pen-human-v1)
+| seed | d4rl_score |
+|---|---|
+| 42 | 106.664 |
+| 123 | 32.811 |
+| 456 | 61.787 |
+| **mean** | **67.087** |
+
+## Hammer (hammer-human-v1)
+| seed | d4rl_score |
+|---|---|
+| 42 | 0.567 |
+| 123 | 0.973 |
+| 456 | 1.620 |
+| **mean** | **1.053** |
+
+## Door (door-cloned-v1)
+| seed | d4rl_score |
+|---|---|
+| 42 | 1.861 |
+| 123 | −0.012 |
+| 456 | −0.066 |
+| **mean** | **0.594** |
+</obs>
+
+### step 2 — ReBRAC (Revisited minimalist TD3+BC)   [slug:rebrac]
+
+<think>
+The advantage-weighted rung told me exactly what I feared it would, and the numbers are precise about
+the failure. Pen came in at a mean of 67.1, but the per-seed spread is the tell: 106.7, 32.8, 61.8 —
+one seed near-expert, one barely above a third of expert, a spread of seventy points. That is the sharp
+`λ=0.1` reweighting reacting to a noisy advantage on twenty-five trajectories, exactly the volatility I
+expected: when the critic happens to calibrate the demo advantages on a given seed, the weighted MLE
+concentrates on the right actions and Pen flies; when it does not, the same weights point at the wrong
+demos and the policy is dragged off. Hammer sat at a mean of 1.05 (0.57, 0.97, 1.62) — essentially the
+floor, the policy never assembling the long precise contact sequence — and Door at 0.59, which is
+0.0 to within noise once you see the per-seed 1.86, −0.01, −0.07. So the diagnosis is concrete: the
+implicit constraint kept the actor welded to the demos and the advantage signal, read off a single
+stochastic policy-sample of `V(s)`, was too noisy to do steady improvement on data this thin. The
+constraint lived only in the *actor*, and the calibration it depended on was exactly as noisy as one
+critic query. I want the regularization moved into the *target construction* — make the critic itself
+refuse to trust an off-support next action — and I want a deterministic, lower-variance signal in place
+of the sampled advantage that produced the seventy-point Pen swing.
+
+Let me build that from the bottom. The strongest deterministic base I trust in continuous control is
+TD3, and every piece of it is aimed at overestimation — the same disease, in its online form. The root
+fact is that a greedy bootstrap is upward-biased under noise: for zero-mean error, `E[max(Q+ε)] ≥ max Q`,
+the max hunts the luckiest positive error. TD3's answers: twin critics with a `min` target,
+`y = r + γ·min_i Q̄_i(s', a')`, which biases toward *under*estimation (self-correcting, because the
+policy just avoids actions it underrates instead of chasing ones it overrates); clipped noise on the
+target action, `a' = π̄(s') + clip(N(0,0.2), -0.5, 0.5)`, so the target cannot overfit a razor-thin Q
+spike; and delayed actor/target updates every 2 steps, so critic error settles before each policy move.
+These are good and I keep them. But none of them keep the policy near the data — offline, the actor
+walks off the demo tube and `min` of two unconstrained off-support values is still garbage. So TD3 is
+necessary machinery, not the offline fix.
+
+The cheapest offline fix is the minimalist one: add a behavior-cloning penalty to the actor so it pays a
+squared cost for deviating from the logged action, `π = argmax_π E[ Q(s, π(s)) - (π(s)-a)² ]`. One line
+on top of TD3. There is one scale subtlety I have to get right: the BC term is bounded (actions in
+`[-1,1]`, so at most ~4) but `Q` scales with the arbitrary reward magnitude, so on a high-reward task `Q`
+dwarfs the BC term and on a low-reward task the BC term dominates. The fix is to normalize the value
+term by the average magnitude of `Q` itself, `λ = 1/mean(|Q|)`, used as a *stop-gradient* scalar — it
+rescales the loss, it does not change the direction of the `Q` gradient. With this, `λ·Q - β·(π-a)²` is
+TD3+BC, and it is my floor. Note the contrast with the previous rung already: instead of an implicit
+constraint via exponentiated-advantage weighting on a stochastic policy, I have an *explicit* squared
+penalty on a *deterministic* policy. Deterministic removes the sampled-`V` variance that swung Pen
+seventy points; explicit lets me control conservativeness directly per task.
+
+Now find where TD3+BC leaves value on the table, because one BC term on the actor is not the end — and
+it is the same leak that hurt the previous rung, just relocated. I regularized the actor at the training
+states `s`: at `s` the policy is pulled toward `a`. But the critic target is `r + γ·min Q̄(s', a')` with
+`a' = π̄(s') + noise`, generated at the *next* state `s'`, and nothing in the actor's BC term at `s`
+guarantees `π(s')` is in-distribution at `s'`. So the bootstrap can still pick an off-support `a'`, the
+critic can still overrate it, and the overestimation loop reopens one bootstrap step downstream from
+where I patched it. On Hammer this is exactly why the floor sticks: the long contact sequence means the
+target at every step depends on a next-action the actor BC never constrained, so the value backed up
+along the sequence is unreliable everywhere the policy's next-action drifts off the twenty-five demos.
+The actor penalty fixes "what action do I take at states I've seen"; it does nothing about "what action
+does the target assume I take next." Those are different leaks.
+
+So I want a penalty *inside the critic target* too. The behavior-regularized actor-critic framing names
+exactly two places to inject a divergence `D(π(·|s), π_β(·|s))`: in the actor objective (a policy
+regularization — the BC term I have) or in the critic target (a value penalty, subtracting `α·D` from
+the bootstrap so it is pessimistic exactly where the policy departs from behavior). The actor penalty
+keeps the *acting* policy near data; the value penalty keeps the *bootstrap* from trusting a
+next-action that has drifted off data. They are complementary, and TD3+BC simply never took the
+value-penalty half. The general framework wrote `D` as KL/MMD/Wasserstein and needed a learned `π_β` —
+the very behavior model that was too hard to fit on twenty-five narrow trajectories and that I am
+deliberately avoiding. But my policy is *deterministic*: `π(s)` is a point, not a distribution. The
+natural divergence between the policy's action and the data's action is just the squared Euclidean
+distance — and the harness already hands me what I need. Its dataset converter preserves the dataset's
+*own next action* `â'` in the batch (`s, a, r, s', done, â'`). So the value penalty needs no behavior
+model at all: take the bootstrapped `min Q̄(s', a')`, and subtract a squared penalty for how far the
+policy's next action `a'` is from the dataset's recorded next action `â'`. One subtraction, no extra
+network — and it costs nothing against the 256-width parameter budget, which matters because that budget
+forbids me from buying capacity my way out of the problem.
+
+The target, written out: smoothed next action `a' = clip(π̄(s') + clip(N(0,0.2),-0.5,0.5), -1, 1)`;
+bootstrap `q = min_i Q̄_i(s', a')`; value penalty `q ← q - β_critic·Σ(a' - â')²`; target
+`y = r + γ(1-done)·q`. The actor keeps its own penalty, `λ·Q(s,π(s)) - β_actor·Σ(π(s)-a)²`. Now I am
+using a value penalty *and* a policy regularization at once, both as cheap squared distances for a
+deterministic policy.
+
+The piece the framework left coupled is whether `β_actor` and `β_critic` should be the same number. They
+do different jobs. The actor penalty controls how conservative the policy is *when it acts* — how
+willing it is to leave the logged action to chase value. The critic penalty controls how distrustful the
+*bootstrap* is of off-support next-actions. On a task where the dataset is broad I might want a small
+actor penalty (let the policy improve) but a meatier critic penalty (the bootstrap still needs
+guarding); on a narrow task the reverse. Forcing one coefficient onto both jobs gives every task a
+single point on a one-dimensional trade-off when the real trade-off is two-dimensional. So decouple
+them, `β_actor` and `β_critic`, tuned per task. This matters acutely here because the three Adroit
+datasets are *not* alike: Pen `human` is a tight near-expert tube; Hammer `human` is a long, narrow,
+contact-heavy sequence; Door `cloned` is a behavior-cloned mixture, broader and noisier. A single
+coefficient cannot serve all three, which is part of why the previous rung's single global temperature
+left Hammer and Door at the floor. I set them per environment, matching the harness's hardcoded values:
+Pen `(β_actor, β_critic) = (0.1, 0.5)`, Hammer `(0.01, 0.5)`, Door (the `door-cloned` dataset)
+`(0.01, 0.1)`. The pattern is legible — Hammer and Door take a *tiny* actor penalty (let the policy move,
+because welding it to the demos was exactly what floored it before) while keeping a real critic penalty
+on Hammer (guard the long bootstrap) and relaxing both on the broader cloned Door data.
+
+One architectural choice I will not inherit blindly and that I expect to be load-bearing for *this*
+disease: LayerNorm in the critic. The whole problem is the critic extrapolating wildly on off-support
+actions. If the last hidden feature feeding the output head `w` is layer-normalized, its norm is a
+bounded constant for *any* input, so by Cauchy-Schwarz `|Q(s,a)| = |wᵀ relu(ψ)| ≤ ‖w‖·‖ψ‖ ≤ ‖w‖` — a
+hard cap on the value of *any* action, including ones the twenty-five demos never contain. That kills
+the runaway-extrapolation engine that drove the previous rung's seed-to-seed instability, and it does
+so without telling the policy anything. So post-activation LayerNorm goes in the critic, between every
+hidden layer, and *not* in the actor — the actor is bounded into `[-1,1]` by a tanh and pulled to data by
+`β_actor`; it is not the surface that extrapolates dangerous values. Asymmetric on purpose. I keep the
+TD3+BC value normalization `λ = 1/mean(|Q|)` on the actor (so the RL-vs-imitation balance transfers
+across the three reward scales), keep `policy_freq = 2`, `tau = 5e-3`, use CORL-style init (uniform fan-in
+hidden, small-uniform output), and run `actor_lr = critic_lr = 3e-4`. I do *not* turn on state
+normalization here, and I do *not* use a Monte-Carlo return floor — both are side roads this baseline
+leaves off.
+
+So the delta from the previous rung is precise and it targets the exact failures the numbers showed.
+Where advantage-weighting put the constraint only in a stochastic actor and read improvement off a
+noisy single-sample `V`, I now (1) make the policy deterministic, removing the sampled-`V` variance that
+swung Pen from 32.8 to 106.7; (2) put a second squared behavior penalty *inside the critic target*
+against the dataset's own next action, closing the downstream leak that floored Hammer; (3) decouple the
+actor and critic penalties and set them per task, so the tight Pen tube, the long Hammer sequence and the
+broad cloned Door data each get their own conservativeness; and (4) cap critic extrapolation with
+LayerNorm. My falsifiable expectations against the previous numbers: Pen should *tighten* — I want the
+seed spread well under the seventy-point swing, even if the mean lands near or modestly above 67. Hammer
+I expect to stay low; a tiny actor penalty plus a guarded bootstrap may lift it off the absolute floor
+but the long contact sequence is the hardest thing here and I would not bet on a large jump. Door I
+expect to stay near zero on the cloned dataset. If Pen tightens but Hammer and Door barely move, that is
+the signal that the *explicit* TD3-style constraint, even decoupled, is still doing only one-step
+improvement off a deterministic policy — and the next move is a method that does genuine multi-step
+in-support dynamic programming without ever querying an unseen action at all. Let me put it in.
+</think>
+<say>
+Switching to ReBRAC: a minimalist TD3+BC with a second behavior penalty placed inside the critic's Bellman target against the dataset's own next action, plus per-task decoupled penalty coefficients and a LayerNorm critic. This first edit swaps in the deterministic actor and the LayerNorm critic.
+</say>
+<edit path="CORL/algorithms/offline/custom_adroit.py">
+<old>
+# EDITABLE region of custom_adroit.py — step 1: AWAC
+CONFIG_OVERRIDES: Dict[str, Any] = {"normalize": True}
+
+
+class Actor(nn.Module):
+    """AWAC GaussianPolicy — 3x256 MLP, state-independent log_std, Normal + clamp."""
+
+    def __init__(self, state_dim: int, action_dim: int, hidden_dim: int = 256,
+                 min_log_std: float = -20.0, max_log_std: float = 2.0):
+        super().__init__()
+        self._mlp = nn.Sequential(
+            nn.Linear(state_dim, hidden_dim),
+            nn.ReLU(),
+            nn.Linear(hidden_dim, hidden_dim),
+            nn.ReLU(),
+            nn.Linear(hidden_dim, hidden_dim),
+            nn.ReLU(),
+            nn.Linear(hidden_dim, action_dim),
+        )
+        self._log_std = nn.Parameter(torch.zeros(action_dim, dtype=torch.float32))
+        self._min_log_std = min_log_std
+        self._max_log_std = max_log_std
+
+    def _get_policy(self, state: torch.Tensor):
+        mean = self._mlp(state)
+        log_std = self._log_std.clamp(self._min_log_std, self._max_log_std)
+        return torch.distributions.Normal(mean, log_std.exp())
+
+    def log_prob(self, state: torch.Tensor, action: torch.Tensor) -> torch.Tensor:
+        policy = self._get_policy(state)
+        return policy.log_prob(action).sum(-1, keepdim=True)
+
+    def forward(self, state: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
+        policy = self._get_policy(state)
+        action = policy.rsample()
+        action.clamp_(-1.0, 1.0)
+        log_prob = policy.log_prob(action).sum(-1, keepdim=True)
+        return action, log_prob
+
+    def act(self, state: np.ndarray, device: str = "cpu") -> np.ndarray:
+        state_t = torch.tensor(state[None], dtype=torch.float32, device=device)
+        policy = self._get_policy(state_t)
+        if self._mlp.training:
+            action_t = policy.sample()
+        else:
+            action_t = policy.mean
+        return action_t[0].cpu().numpy()
+
+
+class Critic(nn.Module):
+    """Q-function Q(s, a). 3x256 MLP, returns (batch, 1)."""
+
+    def __init__(self, state_dim: int, action_dim: int, hidden_dim: int = 256):
+        super().__init__()
+        self._mlp = nn.Sequential(
+            nn.Linear(state_dim + action_dim, hidden_dim),
+            nn.ReLU(),
+            nn.Linear(hidden_dim, hidden_dim),
+            nn.ReLU(),
+            nn.Linear(hidden_dim, hidden_dim),
+            nn.ReLU(),
+            nn.Linear(hidden_dim, 1),
+        )
+
+    def forward(self, state: torch.Tensor, action: torch.Tensor) -> torch.Tensor:
+        return self._mlp(torch.cat([state, action], dim=-1))
+
+
+class OfflineAlgorithm:
+    """AWAC — Advantage Weighted Actor-Critic for offline RL."""
+</old>
+<new>
+# EDITABLE region of custom_adroit.py — step 2: ReBRAC
+# DeterministicActor body replaced (3x256, no LayerNorm, CORL-style init):
+class DeterministicActor(nn.Module):
+    def __init__(self, state_dim: int, action_dim: int, max_action: float):
+        super().__init__()
+        self.max_action = max_action
+        self.net = nn.Sequential(
+            nn.Linear(state_dim, 256), nn.ReLU(),
+            nn.Linear(256, 256), nn.ReLU(),
+            nn.Linear(256, 256), nn.ReLU(),
+            nn.Linear(256, action_dim), nn.Tanh(),
+        )
+        import math
+        for i, layer in enumerate(self.net):
+            if isinstance(layer, nn.Linear):
+                fan_in = layer.in_features
+                if i < len(self.net) - 2:  # hidden layers
+                    bound = math.sqrt(1.0 / fan_in)
+                    nn.init.uniform_(layer.weight, -bound, bound)
+                    nn.init.constant_(layer.bias, 0.1)
+                else:  # output layer
+                    nn.init.uniform_(layer.weight, -1e-3, 1e-3)
+                    nn.init.uniform_(layer.bias, -1e-3, 1e-3)
+
+    def forward(self, state: torch.Tensor) -> torch.Tensor:
+        return self.max_action * self.net(state)
+
+    @torch.no_grad()
+    def act(self, state: np.ndarray, device: str = "cpu") -> np.ndarray:
+        state = torch.tensor(state.reshape(1, -1), device=device, dtype=torch.float32)
+        return self(state).cpu().data.numpy().flatten()
+
+
+class Critic(nn.Module):
+    """Q with post-activation LayerNorm (ReBRAC critic_ln=True). 3x256 MLP."""
+
+    def __init__(self, state_dim: int, action_dim: int, orthogonal_init: bool = False):
+        super().__init__()
+        self.net = nn.Sequential(
+            nn.Linear(state_dim + action_dim, 256), nn.ReLU(), nn.LayerNorm(256),
+            nn.Linear(256, 256), nn.ReLU(), nn.LayerNorm(256),
+            nn.Linear(256, 256), nn.ReLU(), nn.LayerNorm(256),
+            nn.Linear(256, 1),
+        )
+        import math
+        for i, layer in enumerate(self.net):
+            if isinstance(layer, nn.Linear):
+                fan_in = layer.in_features
+                if i < len(self.net) - 1:  # hidden layers
+                    bound = math.sqrt(1.0 / fan_in)
+                    nn.init.uniform_(layer.weight, -bound, bound)
+                    nn.init.constant_(layer.bias, 0.1)
+                else:  # output layer
+                    nn.init.uniform_(layer.weight, -3e-3, 3e-3)
+                    nn.init.uniform_(layer.bias, -3e-3, 3e-3)
+
+    def forward(self, state: torch.Tensor, action: torch.Tensor) -> torch.Tensor:
+        return self.net(torch.cat([state, action], dim=-1)).squeeze(-1)
+
+
+class OfflineAlgorithm:
+    """ReBRAC — TD3+BC with critic BC regularization in the Bellman target."""
+</new>
+</edit>
+<obs>
+Successfully replaced text in CORL/algorithms/offline/custom_adroit.py.
+</obs>
+<note>
+Now the __init__ body: per-env decoupled penalty coefficients, TD3 smoothing/delay knobs, deterministic actor with its target, twin LayerNorm critics, and the batch-unpacking that pulls the dataset's next action.
+</note>
+<edit path="CORL/algorithms/offline/custom_adroit.py">
+<old>
+
+        self.awac_lambda = 0.1
+        self.exp_adv_max = 100.0
+
+        self.actor = Actor(state_dim, action_dim, 256).to(device)
+        self.actor_optimizer = torch.optim.Adam(self.actor.parameters(), lr=actor_lr)
+
+        self.critic_1 = Critic(state_dim, action_dim, 256).to(device)
+        self.critic_2 = Critic(state_dim, action_dim, 256).to(device)
+        self.target_critic_1 = deepcopy(self.critic_1)
+        self.target_critic_2 = deepcopy(self.critic_2)
+        self.critic_1_optimizer = torch.optim.Adam(self.critic_1.parameters(), lr=critic_lr)
+        self.critic_2_optimizer = torch.optim.Adam(self.critic_2.parameters(), lr=critic_lr)
+
+    def train(self, batch: TensorBatch) -> Dict[str, float]:
+        self.total_it += 1
+        states, actions, rewards, next_states, dones, *_ = batch
+        log_dict: Dict[str, float] = {}
+</old>
+<new>
+
+        env_name = os.environ.get("ENV", "")
+        if "hammer" in env_name:
+            self.actor_bc_coef = 0.01
+            self.critic_bc_coef = 0.5
+        elif "door-cloned" in env_name:
+            self.actor_bc_coef = 0.01
+            self.critic_bc_coef = 0.1
+        elif "door" in env_name:
+            self.actor_bc_coef = 0.1
+            self.critic_bc_coef = 0.1
+        else:  # pen (default)
+            self.actor_bc_coef = 0.1
+            self.critic_bc_coef = 0.5
+        self.policy_noise = 0.2
+        self.noise_clip = 0.5
+        self.policy_freq = 2
+        self.normalize_q = True
+
+        self.actor = DeterministicActor(state_dim, action_dim, max_action).to(device)
+        self.actor_target = deepcopy(self.actor)
+        self.actor_optimizer = torch.optim.Adam(self.actor.parameters(), lr=3e-4)
+
+        self.critic_1 = Critic(state_dim, action_dim).to(device)
+        self.critic_1_target = deepcopy(self.critic_1)
+        self.critic_1_optimizer = torch.optim.Adam(self.critic_1.parameters(), lr=3e-4)
+
+        self.critic_2 = Critic(state_dim, action_dim).to(device)
+        self.critic_2_target = deepcopy(self.critic_2)
+        self.critic_2_optimizer = torch.optim.Adam(self.critic_2.parameters(), lr=3e-4)
+
+    def train(self, batch: TensorBatch) -> Dict[str, float]:
+        self.total_it += 1
+        states, actions, rewards, next_states, dones, next_actions_data = batch
+        rewards = rewards.squeeze(-1)
+        dones = dones.squeeze(-1)
+        log_dict: Dict[str, float] = {}
+</new>
+</edit>
+<obs>
+Successfully replaced text in CORL/algorithms/offline/custom_adroit.py.
+</obs>
+<note>
+Now the critic target: smoothed next action, twin-Q min, minus the squared distance to the dataset's recorded next action.
+</note>
+<edit path="CORL/algorithms/offline/custom_adroit.py">
+<old>
+        with torch.no_grad():
+            next_actions, _ = self.actor(next_states)
+            q_next = torch.min(
+                self.target_critic_1(next_states, next_actions),
+                self.target_critic_2(next_states, next_actions),
+            )
+            q_target = rewards + self.discount * (1.0 - dones) * q_next
+
+        q1 = self.critic_1(states, actions)
+        q2 = self.critic_2(states, actions)
+        critic_loss = F.mse_loss(q1, q_target) + F.mse_loss(q2, q_target)
+        log_dict["critic_loss"] = critic_loss.item()
+</old>
+<new>
+        with torch.no_grad():
+            noise = (torch.randn_like(actions) * self.policy_noise).clamp(
+                -self.noise_clip, self.noise_clip)
+            next_actions_policy = (self.actor_target(next_states) + noise).clamp(-1.0, 1.0)
+
+            bc_penalty = ((next_actions_policy - next_actions_data) ** 2).sum(-1)
+            target_q1 = self.critic_1_target(next_states, next_actions_policy)
+            target_q2 = self.critic_2_target(next_states, next_actions_policy)
+            next_q = torch.min(target_q1, target_q2)
+            next_q = next_q - self.critic_bc_coef * bc_penalty
+            target_q = rewards + (1.0 - dones) * self.discount * next_q
+
+        q1 = self.critic_1(states, actions)
+        q2 = self.critic_2(states, actions)
+        critic_loss = F.mse_loss(q1, target_q) + F.mse_loss(q2, target_q)
+        log_dict["critic_loss"] = critic_loss.item()
+</new>
+</edit>
+<obs>
+Successfully replaced text in CORL/algorithms/offline/custom_adroit.py.
+</obs>
+<note>
+Now the delayed actor update: Q-normalized ascent with its own BC penalty, and the target soft-updates every other step.
+</note>
+<edit path="CORL/algorithms/offline/custom_adroit.py">
+<old>
+
+        # Actor update (advantage-weighted)
+        with torch.no_grad():
+            pi_action, _ = self.actor(states)
+            v = torch.min(self.critic_1(states, pi_action), self.critic_2(states, pi_action))
+            q = torch.min(self.critic_1(states, actions), self.critic_2(states, actions))
+            adv = q - v
+            weights = torch.clamp_max(torch.exp(adv / self.awac_lambda), self.exp_adv_max)
+
+        action_log_prob = self.actor.log_prob(states, actions)
+        actor_loss = (-action_log_prob * weights).mean()
+        log_dict["actor_loss"] = actor_loss.item()
+
+        self.actor_optimizer.zero_grad()
+        actor_loss.backward()
+        self.actor_optimizer.step()
+
+        soft_update(self.target_critic_1, self.critic_1, self.tau)
+        soft_update(self.target_critic_2, self.critic_2, self.tau)
+
+        return log_dict
+</old>
+<new>
+
+        # Delayed actor update
+        if self.total_it % self.policy_freq == 0:
+            pi = self.actor(states)
+            bc_penalty_actor = ((pi - actions) ** 2).sum(-1)
+            q_values = torch.min(self.critic_1(states, pi), self.critic_2(states, pi))
+
+            lmbda = 1.0
+            if self.normalize_q:
+                lmbda = 1.0 / q_values.abs().mean().detach()
+
+            actor_loss = (self.actor_bc_coef * bc_penalty_actor - lmbda * q_values).mean()
+            log_dict["actor_loss"] = actor_loss.item()
+
+            self.actor_optimizer.zero_grad()
+            actor_loss.backward()
+            self.actor_optimizer.step()
+
+            soft_update(self.critic_1_target, self.critic_1, self.tau)
+            soft_update(self.critic_2_target, self.critic_2, self.tau)
+            soft_update(self.actor_target, self.actor, self.tau)
+
+        return log_dict
+</new>
+</edit>
+<obs>
+Successfully replaced text in CORL/algorithms/offline/custom_adroit.py.
+</obs>
+<run/>
+<obs>
+Measured results — `baseline:rebrac`, seeds {42, 123, 456} and mean. (No `is_final,true` baseline row
+exists for this task; these are the recorded `baseline:rebrac` runs.)
+
+## Pen (pen-human-v1)
+| seed | d4rl_score |
+|---|---|
+| 42 | 95.547 |
+| 123 | 54.952 |
+| 456 | 73.178 |
+| **mean** | **74.559** |
+
+## Hammer (hammer-human-v1)
+| seed | d4rl_score |
+|---|---|
+| 42 | 0.338 |
+| 123 | 0.276 |
+| 456 | 0.437 |
+| **mean** | **0.350** |
+
+## Door (door-cloned-v1)
+| seed | d4rl_score |
+|---|---|
+| 42 | −0.055 |
+| 123 | 0.089 |
+| 456 | 0.013 |
+| **mean** | **0.016** |
+</obs>
+
+### step 3 — IQL (Implicit Q-Learning)   [slug:iql]
+
+<think>
+The decoupled-penalty rung sharpened my picture of the ceiling, and again the numbers are exact about
+where it landed. Pen came in at a mean of 74.6, and — as I hoped — it *tightened* relative to the
+advantage-weighted rung: per-seed 95.5, 55.0, 73.2, a spread of forty points instead of seventy. So
+making the policy deterministic and putting an explicit penalty in did remove some of the sampled-`V`
+variance, and the mean even crept up. But Hammer fell to a mean of 0.35 (0.34, 0.28, 0.44) — *below* the
+previous rung's 1.05, and rock-steady at the floor — and Door collapsed to 0.016, indistinguishable from
+zero. That Hammer number is the tell I have to read carefully: the per-seed values are tight and tiny,
+which means this is not high-variance failure, it is *systematic* — the method is reliably learning a
+policy that does almost nothing on the nailing task. The tiny actor penalty I set on Hammer (`0.01`) was
+supposed to let the policy improve off the demos; instead the deterministic TD3 actor, doing one-step
+ascent on a critic whose target is still a single bootstrapped `min`, simply has no in-support
+improvement signal to climb on the long contact sequence, and the per-env penalty knob cannot
+manufacture one. So the explicit, decoupled, deterministic constraint fixed the *variance* on Pen but it
+is still fundamentally a one-step improvement off a TD3 critic, and on the tasks that need genuine
+multi-step value propagation — stitching the long Hammer sequence, exploiting the broad cloned Door data
+— it has nothing.
+
+So I want to step back from "constrain the policy" entirely and attack the thing both previous rungs
+worked around: the bootstrap's out-of-distribution query. Both rungs left a learned `Q` being evaluated,
+at some point, at an action the demos never contained — the advantage-weighting rung at `a' ~ π(s')` in
+its critic target and at `a_π ~ π(s)` in its `V` estimate; the decoupled-penalty rung at the smoothed
+`π̄(s')` in its target, merely *penalized* toward `â'` rather than forbidden. What if the value training
+never touches an unseen action at all, and yet still does real multi-step dynamic programming? That is
+the move that could give Hammer the propagated signal it lacks.
+
+Start from what actually breaks. Standard Q-learning regresses `Q(s,a)` onto `r + γ max_{a'} Q̄(s',a')`,
+and that max ranges over *all* actions, including ones absent from the data at `s'`, where the network
+extrapolates upward and the policy chases it. The safe alternative is SARSA: bootstrap with the
+*dataset's* next action, `r + γ Q̄(s', a')` with `a'` from `D`. Now no off-support action is ever
+touched — but MSE fits `Q` to the *mean* of those targets, so the fixed point is `Q^{π_β}`, the value of
+the behavior policy. That is pure policy evaluation, one improvement step, no iteration — exactly the
+"one-step" ceiling that floors the long-horizon tasks, because to get a good value at the start of the
+Hammer sequence I need value to flow backward across transitions, stitching fragments, which a single
+step cannot do. So I am caught: the max improves but queries off-support; SARSA's mean is safe but does
+not improve.
+
+Look hard at what SARSA's mean is missing. Reading `Q(s,a)` over the behavior action distribution as a
+per-state random variable (randomness from the action `a ~ π_β(·|s)`), SARSA's MSE recovers its *mean*.
+What improvement needs is the *maximum over in-support actions* — a max restricted to actions the
+behavior policy could actually produce at `s`. That restriction is the whole game: it is a max (so it
+improves, and iterating it does real dynamic programming) but it never reaches an off-support action (so
+it stays safe). The obstacle is that I cannot *compute* that restricted max by sampling actions and
+querying `Q` at each — the moment I sample and query, I am back to evaluating `Q` off-support. I need the
+in-support max *without ever querying `Q` at any specific `a'`*.
+
+The statistic that gives the upper tail of a random variable from its samples, without naming any point,
+is the expectile. The τ-expectile of `X` minimizes an *asymmetric* squared loss,
+`m_τ = argmin_m E[ |τ - 1(u<0)|·u² ]` with `u = x - m`: a positive residual (a sample above my estimate)
+is weighted `τ`, a negative one `1-τ`. At `τ = 0.5` both weights are `½` and `m_{0.5}` is the mean
+(SARSA). For `τ > 0.5` the samples *above* the estimate dominate, so the estimate is pushed up; as
+`τ → 1` the expectile climbs to the supremum of the support. The expectiles are monotone non-decreasing
+in `τ` and bounded by the support, so the limit exists and equals the in-support max. So the upper
+expectile of `Q` over the behavior actions, estimated by an asymmetric-L2 regression on in-sample data
+only, *is* the in-support max I wanted — exactly the improvement operator, expressed as a regression I
+can run with SGD and zero off-support queries.
+
+But I must be careful where I apply the expectile, and the reason is precisely the kind of optimism that
+could re-poison the long Hammer bootstrap. If I take the expectile of the raw TD residual
+`r + γ Q̄(s',a') - Q(s,a)`, the target carries *two* sources of randomness: the action `a' ~ π_β(·|s')`
+(which I *want* to be optimistic over — the best in-support action is the improvement signal) and the
+stochastic transition `s' ~ p(·|s,a)` (which I emphatically do *not* want to be optimistic over). An
+upper expectile rewards high targets indiscriminately, so it would reward a target that is high merely
+because the dynamics happened to land in a lucky next state — conflating "there is a better action here"
+with "I got lucky with the dice." Compounded over the Hammer horizon, that dynamics-optimism produces a
+wildly overoptimistic value. So I split the estimate. A value network `V_ψ(s)` takes the upper expectile
+over actions with the transition held fixed:
+
+  `L_V(ψ) = E_{(s,a)~D}[ L_2^τ( Q̄(s,a) - V_ψ(s) ) ]`,
+
+where both `s` and `a` come from `D`, so the only randomness for a given `s` is the action, and `V` becomes
+the τ-expectile of `Q` over dataset actions — optimistic over actions, no dynamics in it. Then back this
+into `Q` with an *honest* MSE that averages over the transition:
+
+  `L_Q(θ) = E_{(s,a,s')~D}[ ( r + γ V_ψ(s') - Q_θ(s,a) )² ]`.
+
+The MSE is correct here precisely because `V_ψ(s')` already did the optimistic action selection; what
+remains is to average `γ V_ψ(s')` over `s' ~ p`, and a mean is the right way to average dynamics. The
+division of labor is the whole method: `V` takes the upper expectile over actions, `Q` takes the mean
+over transitions, and both losses touch only dataset `(s,a,s')`. No policy appears in value training, no
+off-support action is ever queried. And this *is* multi-step dynamic programming: the resulting value is
+monotone in `τ`, bounded by the in-support optimum, and converges to it as `τ → 1`, spanning SARSA
+(`τ=0.5`, the floor both previous rungs effectively sat near on the hard tasks) to in-support Q-learning
+(`τ → 1`, the propagation Hammer needs). I stabilize with clipped double-Q (a single twin-Q module, take
+the `min`) and a Polyak target critic so `V` chases a stable `Q̄`.
+
+Now I have a near-optimal in-support `Q` and `V`, but no policy — value training was deliberately
+policy-free. Extraction must obey the same commandment: never query `Q` at an unseen action. So no
+`argmax_a Q` (searches off-support) and no DDPG-style `∇_a Q` ascent (evaluates `Q` at the policy's
+possibly-off-support actions — exactly the one-step move that floored the previous rung on Hammer). What I
+*can* do is reweight the dataset's own actions: advantage-weighted regression. The KL-constrained
+improvement `max_π E_{a~π}[A] s.t. KL(π‖π_β) ≤ ε` has the closed form `π* ∝ π_β·exp(A/β_temp)`, and
+projecting it onto the parametric policy by weighted maximum likelihood gives
+
+  `L_π(φ) = E_{(s,a)~D}[ -exp( β_temp·(Q̄(s,a) - V_ψ(s)) )·log π_φ(a|s) ]`,
+
+with advantage `A = Q - V` and inverse temperature `β_temp`. This only ever evaluates dataset actions —
+it reweights observed `(s,a)` by how advantaged they are — so it queries nothing unseen, inherits an
+implicit stay-near-`π_β` constraint, and crucially decouples from value training. I clip the weight
+`exp(β_temp·A)` at 100 so a few huge advantages cannot dominate.
+
+Let me now ground this exactly in the harness, because the way this rung fills the edit surface differs
+from the previous two and from the generic recipe in ways I should state. The critic becomes a single
+twin-Q module (a `Critic` holding `q1`, `q2`, with a `.both()` returning both heads squeezed to scalars
+and `forward` returning their `min`) plus a `ValueFunction` for `V`. The actor is the place this task is
+specific: it is *not* the scaffold's TanhTransform Gaussian and *not* the previous rung's plain Normal —
+it is a 2×256 MLP with **Dropout 0.1** after each hidden ReLU and a **Tanh on the mean output**, with a
+state-independent `log_std` and a plain `Normal` (no Tanh transform on the density). The dropout is real
+regularization for the AWR objective on twenty-five trajectories — it fights the actor memorizing the
+tiny dataset — and the Tanh-bounded mean keeps the predicted mean inside the action box where the demos
+live. I set `iql_tau = 0.8` (the expectile; high enough to do meaningful in-support improvement, not so
+high the asymmetric loss becomes unstable on thin data), `beta = 3.0` (the AWR temperature),
+`exp_adv_max = 100`. The actor optimizer gets a `CosineAnnealingLR` decayed over the full `1e6` steps,
+which matters on this little data — it anneals the AWR updates so late training does not thrash the
+policy. I turn on state normalization (`CONFIG_OVERRIDES = {"normalize": True}`). Per step: update `V` by
+expectile regression against the *target* critic, update `Q` by MSE onto `r + γ(1-done) V(s')` and
+soft-update the target, then update the actor by clipped advantage-weighted log-likelihood and step the
+cosine schedule. I ignore `â'` in the batch — that was the previous rung's hook, not mine.
+
+So the delta from the previous rung is sharp and it targets exactly the systematic Hammer/Door floor the
+numbers exposed. Where the decoupled-penalty rung did one-step ascent off a TD3 critic whose target was a
+single bootstrapped `min` — and so had no propagated value to climb on the long sequence — I now (1)
+never query an unseen action anywhere in value training; (2) replace the mean bootstrap with an upper
+*expectile over actions* that is genuine multi-step in-support dynamic programming, so value can flow
+backward across the Hammer contact sequence and stitch the cloned Door data; (3) split the expectile
+(over actions) from an honest MSE (over dynamics) so I am not optimistic about lucky transitions; and (4)
+extract the policy by advantage-weighted regression over dataset actions only, regularized with dropout
+against memorizing twenty-five trajectories. My falsifiable expectations against the previous numbers:
+Pen should hold high and stay tight — I expect a mean comfortably above the 74.6 of the previous rung,
+with a seed spread no worse, because expectile DP plus AWR is the most reliable extractor on near-expert
+data. Hammer is the real test of the whole thesis: if in-support multi-step propagation is what was
+missing, Hammer should finally lift clearly off the ~0.35-1.0 floor the two previous rungs sat at — I
+expect a small but unambiguous, above-noise mean, the first sign the long sequence is being valued. And
+Door (cloned) should move off zero into low-but-positive territory, because the broad cloned data is
+exactly what stitching can exploit and neither previous rung could. If Pen rises, Hammer clears the
+floor, and Door turns positive across seeds, the in-support-DP hypothesis is confirmed and this is the
+strongest rung. Let me build it.
+</think>
+<say>
+Moving to IQL (Implicit Q-Learning): value training that never queries an unseen action, using an upper-expectile V over dataset actions for in-support dynamic programming and advantage-weighted regression to extract the policy. This first edit puts in the dropout-regularized Gaussian actor and turns on state normalization.
+</say>
+<edit path="CORL/algorithms/offline/custom_adroit.py">
+<old>
+# EDITABLE region of custom_adroit.py — step 2: ReBRAC
+# DeterministicActor body replaced (3x256, no LayerNorm, CORL-style init):
+class DeterministicActor(nn.Module):
+    def __init__(self, state_dim: int, action_dim: int, max_action: float):
+        super().__init__()
+        self.max_action = max_action
+        self.net = nn.Sequential(
+            nn.Linear(state_dim, 256), nn.ReLU(),
+            nn.Linear(256, 256), nn.ReLU(),
+            nn.Linear(256, 256), nn.ReLU(),
+            nn.Linear(256, action_dim), nn.Tanh(),
+        )
+        import math
+        for i, layer in enumerate(self.net):
+            if isinstance(layer, nn.Linear):
+                fan_in = layer.in_features
+                if i < len(self.net) - 2:  # hidden layers
+                    bound = math.sqrt(1.0 / fan_in)
+                    nn.init.uniform_(layer.weight, -bound, bound)
+                    nn.init.constant_(layer.bias, 0.1)
+                else:  # output layer
+                    nn.init.uniform_(layer.weight, -1e-3, 1e-3)
+                    nn.init.uniform_(layer.bias, -1e-3, 1e-3)
+
+    def forward(self, state: torch.Tensor) -> torch.Tensor:
+        return self.max_action * self.net(state)
+</old>
+<new>
+# EDITABLE region of custom_adroit.py — step 3: IQL
+CONFIG_OVERRIDES: Dict[str, Any] = {"normalize": True}
+
+
+class Actor(nn.Module):
+    """IQL GaussianPolicy — 2x256 MLP with Tanh output + Dropout(0.1),
+    state-independent log_std, Normal distribution (no TanhTransform)."""
+
+    def __init__(self, state_dim: int, action_dim: int, max_action: float,
+                 orthogonal_init: bool = False):
+        super().__init__()
+        self.max_action = max_action
+        self.action_dim = action_dim
+        self._mlp = nn.Sequential(
+            nn.Linear(state_dim, 256), nn.ReLU(), nn.Dropout(0.1),
+            nn.Linear(256, 256), nn.ReLU(), nn.Dropout(0.1),
+            nn.Linear(256, action_dim), nn.Tanh(),
+        )
+        self._log_std = nn.Parameter(torch.zeros(action_dim, dtype=torch.float32))
+        self._min_log_std = -20.0
+        self._max_log_std = 2.0
+
+    def _get_policy(self, state: torch.Tensor):
+        mean = self._mlp(state)
+        log_std = self._log_std.clamp(self._min_log_std, self._max_log_std)
+        return Normal(mean, log_std.exp())
+
+    def log_prob(self, state: torch.Tensor, action: torch.Tensor) -> torch.Tensor:
+        action = torch.clamp(action / self.max_action, -1.0 + 1e-6, 1.0 - 1e-6)
+        policy = self._get_policy(state)
+        return policy.log_prob(action).sum(-1)
+
+    def forward(self, state: torch.Tensor, deterministic: bool = False):
+        policy = self._get_policy(state)
+        action = policy.mean if deterministic else policy.rsample()
+        action = torch.clamp(action, -1.0, 1.0)
+        log_prob = policy.log_prob(action).sum(-1)
+        return self.max_action * action, log_prob
+</new>
+</edit>
+<obs>
+Successfully replaced text in CORL/algorithms/offline/custom_adroit.py.
+</obs>
+<note>
+Now finish the actor's act() and swap the LayerNorm critic for the IQL twin-Q module with a .both() head.
+</note>
+<edit path="CORL/algorithms/offline/custom_adroit.py">
+<old>
+        state = torch.tensor(state.reshape(1, -1), device=device, dtype=torch.float32)
+        return self(state).cpu().data.numpy().flatten()
+
+
+class Critic(nn.Module):
+    """Q with post-activation LayerNorm (ReBRAC critic_ln=True). 3x256 MLP."""
+
+    def __init__(self, state_dim: int, action_dim: int, orthogonal_init: bool = False):
+        super().__init__()
+        self.net = nn.Sequential(
+            nn.Linear(state_dim + action_dim, 256), nn.ReLU(), nn.LayerNorm(256),
+            nn.Linear(256, 256), nn.ReLU(), nn.LayerNorm(256),
+            nn.Linear(256, 256), nn.ReLU(), nn.LayerNorm(256),
+            nn.Linear(256, 1),
+        )
+        import math
+        for i, layer in enumerate(self.net):
+            if isinstance(layer, nn.Linear):
+                fan_in = layer.in_features
+                if i < len(self.net) - 1:  # hidden layers
+                    bound = math.sqrt(1.0 / fan_in)
+                    nn.init.uniform_(layer.weight, -bound, bound)
+                    nn.init.constant_(layer.bias, 0.1)
+                else:  # output layer
+                    nn.init.uniform_(layer.weight, -3e-3, 3e-3)
+                    nn.init.uniform_(layer.bias, -3e-3, 3e-3)
+
+    def forward(self, state: torch.Tensor, action: torch.Tensor) -> torch.Tensor:
+        return self.net(torch.cat([state, action], dim=-1)).squeeze(-1)
+
+
+class OfflineAlgorithm:
+    """ReBRAC — TD3+BC with critic BC regularization in the Bellman target."""
+</old>
+<new>
+        state = torch.tensor(state.reshape(1, -1), device=device, dtype=torch.float32)
+        policy = self._get_policy(state)
+        action = policy.sample() if self._mlp.training else policy.mean
+        action = torch.clamp(self.max_action * action, -self.max_action, self.max_action)
+        return action[0].cpu().numpy()
+
+
+class Critic(nn.Module):
+    """Twin Q-function for IQL. Two 3x256 MLPs, squeeze output to scalar."""
+
+    def __init__(self, state_dim: int, action_dim: int, orthogonal_init: bool = False):
+        super().__init__()
+        self.q1 = nn.Sequential(
+            nn.Linear(state_dim + action_dim, 256), nn.ReLU(),
+            nn.Linear(256, 256), nn.ReLU(),
+            nn.Linear(256, 256), nn.ReLU(),
+            nn.Linear(256, 1),
+        )
+        self.q2 = nn.Sequential(
+            nn.Linear(state_dim + action_dim, 256), nn.ReLU(),
+            nn.Linear(256, 256), nn.ReLU(),
+            nn.Linear(256, 256), nn.ReLU(),
+            nn.Linear(256, 1),
+        )
+
+    def both(self, state: torch.Tensor, action: torch.Tensor):
+        sa = torch.cat([state, action], dim=-1)
+        return self.q1(sa).squeeze(-1), self.q2(sa).squeeze(-1)
+
+    def forward(self, state: torch.Tensor, action: torch.Tensor) -> torch.Tensor:
+        q1, q2 = self.both(state, action)
+        return torch.min(q1, q2)
+
+
+class OfflineAlgorithm:
+    """IQL — Implicit Q-Learning for offline RL."""
+</new>
+</edit>
+<obs>
+Successfully replaced text in CORL/algorithms/offline/custom_adroit.py.
+</obs>
+<note>
+Now the __init__ body: IQL hyperparameters, the cosine-annealed actor, the twin-Q with frozen target, the value function, and the asymmetric-L2 helper.
+</note>
+<edit path="CORL/algorithms/offline/custom_adroit.py">
+<old>
+
+        env_name = os.environ.get("ENV", "")
+        if "hammer" in env_name:
+            self.actor_bc_coef = 0.01
+            self.critic_bc_coef = 0.5
+        elif "door-cloned" in env_name:
+            self.actor_bc_coef = 0.01
+            self.critic_bc_coef = 0.1
+        elif "door" in env_name:
+            self.actor_bc_coef = 0.1
+            self.critic_bc_coef = 0.1
+        else:  # pen (default)
+            self.actor_bc_coef = 0.1
+            self.critic_bc_coef = 0.5
+        self.policy_noise = 0.2
+        self.noise_clip = 0.5
+        self.policy_freq = 2
+        self.normalize_q = True
+
+        self.actor = DeterministicActor(state_dim, action_dim, max_action).to(device)
+        self.actor_target = deepcopy(self.actor)
+        self.actor_optimizer = torch.optim.Adam(self.actor.parameters(), lr=3e-4)
+
+        self.critic_1 = Critic(state_dim, action_dim).to(device)
+        self.critic_1_target = deepcopy(self.critic_1)
+        self.critic_1_optimizer = torch.optim.Adam(self.critic_1.parameters(), lr=3e-4)
+
+        self.critic_2 = Critic(state_dim, action_dim).to(device)
+        self.critic_2_target = deepcopy(self.critic_2)
+        self.critic_2_optimizer = torch.optim.Adam(self.critic_2.parameters(), lr=3e-4)
+
+    def train(self, batch: TensorBatch) -> Dict[str, float]:
+        self.total_it += 1
+        states, actions, rewards, next_states, dones, next_actions_data = batch
+        rewards = rewards.squeeze(-1)
+</old>
+<new>
+
+        self.iql_tau = 0.8       # expectile for V loss
+        self.beta = 3.0          # inverse temperature for advantage weighting
+        self.exp_adv_max = 100.0
+
+        self.actor = Actor(state_dim, action_dim, max_action).to(device)
+        self.actor_optimizer = torch.optim.Adam(self.actor.parameters(), lr=actor_lr)
+        self.actor_lr_schedule = torch.optim.lr_scheduler.CosineAnnealingLR(
+            self.actor_optimizer, T_max=int(1e6))
+
+        self.qf = Critic(state_dim, action_dim).to(device)
+        self.qf_target = deepcopy(self.qf)
+        self.qf_target.requires_grad_(False)
+        self.q_optimizer = torch.optim.Adam(self.qf.parameters(), lr=critic_lr)
+
+        self.vf = ValueFunction(state_dim).to(device)
+        self.v_optimizer = torch.optim.Adam(self.vf.parameters(), lr=critic_lr)
+
+    def _asymmetric_l2_loss(self, u: torch.Tensor, tau: float) -> torch.Tensor:
+        return torch.mean(torch.abs(tau - (u < 0).float()) * u ** 2)
+
+    def train(self, batch: TensorBatch) -> Dict[str, float]:
+        self.total_it += 1
+        states, actions, rewards, next_states, dones, *_ = batch
+        rewards = rewards.squeeze(-1)
+</new>
+</edit>
+<obs>
+Successfully replaced text in CORL/algorithms/offline/custom_adroit.py.
+</obs>
+<note>
+Now the train step: expectile V regression, the honest-MSE Q bootstrap off V(s'), and advantage-weighted regression for the actor with the cosine step.
+</note>
+<edit path="CORL/algorithms/offline/custom_adroit.py">
+<old>
+
+        # Critic update
+        with torch.no_grad():
+            noise = (torch.randn_like(actions) * self.policy_noise).clamp(
+                -self.noise_clip, self.noise_clip)
+            next_actions_policy = (self.actor_target(next_states) + noise).clamp(-1.0, 1.0)
+
+            bc_penalty = ((next_actions_policy - next_actions_data) ** 2).sum(-1)
+            target_q1 = self.critic_1_target(next_states, next_actions_policy)
+            target_q2 = self.critic_2_target(next_states, next_actions_policy)
+            next_q = torch.min(target_q1, target_q2)
+            next_q = next_q - self.critic_bc_coef * bc_penalty
+            target_q = rewards + (1.0 - dones) * self.discount * next_q
+
+        q1 = self.critic_1(states, actions)
+        q2 = self.critic_2(states, actions)
+        critic_loss = F.mse_loss(q1, target_q) + F.mse_loss(q2, target_q)
+        log_dict["critic_loss"] = critic_loss.item()
+
+        self.critic_1_optimizer.zero_grad()
+        self.critic_2_optimizer.zero_grad()
+        critic_loss.backward()
+        self.critic_1_optimizer.step()
+        self.critic_2_optimizer.step()
+
+        # Delayed actor update
+        if self.total_it % self.policy_freq == 0:
+            pi = self.actor(states)
+            bc_penalty_actor = ((pi - actions) ** 2).sum(-1)
+            q_values = torch.min(self.critic_1(states, pi), self.critic_2(states, pi))
+
+            lmbda = 1.0
+            if self.normalize_q:
+                lmbda = 1.0 / q_values.abs().mean().detach()
+
+            actor_loss = (self.actor_bc_coef * bc_penalty_actor - lmbda * q_values).mean()
+            log_dict["actor_loss"] = actor_loss.item()
+
+            self.actor_optimizer.zero_grad()
+            actor_loss.backward()
+            self.actor_optimizer.step()
+
+            soft_update(self.critic_1_target, self.critic_1, self.tau)
+            soft_update(self.critic_2_target, self.critic_2, self.tau)
+            soft_update(self.actor_target, self.actor, self.tau)
+
+        return log_dict
+</old>
+<new>
+
+        # V update: expectile regression against Q_target
+        with torch.no_grad():
+            target_q = self.qf_target(states, actions)
+        v = self.vf(states)
+        adv = target_q - v
+        v_loss = self._asymmetric_l2_loss(adv, self.iql_tau)
+        log_dict["value_loss"] = v_loss.item()
+        self.v_optimizer.zero_grad()
+        v_loss.backward()
+        self.v_optimizer.step()
+
+        # Q update: Bellman with V(s') as bootstrap
+        with torch.no_grad():
+            next_v = self.vf(next_states)
+            q_target = rewards + (1.0 - dones) * self.discount * next_v
+        q1, q2 = self.qf.both(states, actions)
+        q_loss = (F.mse_loss(q1, q_target) + F.mse_loss(q2, q_target)) / 2.0
+        log_dict["critic_loss"] = q_loss.item()
+        self.q_optimizer.zero_grad()
+        q_loss.backward()
+        self.q_optimizer.step()
+
+        soft_update(self.qf_target, self.qf, self.tau)
+
+        # Actor update: advantage-weighted regression
+        with torch.no_grad():
+            adv_detached = target_q - self.vf(states)
+            exp_adv = torch.exp(self.beta * adv_detached).clamp(max=self.exp_adv_max)
+        action_log_prob = self.actor.log_prob(states, actions)
+        actor_loss = torch.mean(exp_adv * (-action_log_prob))
+        log_dict["actor_loss"] = actor_loss.item()
+        self.actor_optimizer.zero_grad()
+        actor_loss.backward()
+        self.actor_optimizer.step()
+        self.actor_lr_schedule.step()
+
+        return log_dict
+</new>
+</edit>
+<obs>
+Successfully replaced text in CORL/algorithms/offline/custom_adroit.py.
+</obs>
+<run/>
+<obs>
+Measured results — `baseline:iql`, seeds {42, 123, 456} and mean. (No `is_final,true` baseline row
+exists for this task; these are the recorded `baseline:iql` runs.)
+
+## Pen (pen-human-v1)
+| seed | d4rl_score |
+|---|---|
+| 42 | 99.602 |
+| 123 | 90.509 |
+| 456 | 84.698 |
+| **mean** | **91.603** |
+
+## Hammer (hammer-human-v1)
+| seed | d4rl_score |
+|---|---|
+| 42 | 1.371 |
+| 123 | 2.379 |
+| 456 | 0.871 |
+| **mean** | **1.540** |
+
+## Door (door-cloned-v1)
+| seed | d4rl_score |
+|---|---|
+| 42 | 6.724 |
+| 123 | 0.826 |
+| 456 | 3.507 |
+| **mean** | **3.686** |
+</obs>

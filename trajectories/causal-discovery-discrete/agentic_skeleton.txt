@@ -1,0 +1,1019 @@
+<meta task="causal-discovery-discrete" domain="Causal inference" file="causal-bnlearn/bench/custom_algorithm.py" model_format="qwen3" edit_tool="str_replace"/>
+
+<system>
+You are a research engineer improving a model on a fixed ML task. You work by editing the model code and running experiments. Think carefully before each change. You have these tools:
+- str_replace(path, old_str, new_str): replace the unique occurrence of old_str with new_str.
+- create(path, file_text): create a new file.
+- run_experiment(): train + evaluate the current code under the fixed budget; returns metrics.
+Make one tool call at a time. After editing, call run_experiment() to measure your method.
+</system>
+
+<user>
+## Research question
+
+Recover the causal structure behind purely observational, integer-coded discrete data sampled from
+real-world Bayesian networks (the bnlearn benchmarks: Cancer, Child, Alarm, Hailfinder, Win95pts —
+spanning 5 to 76 nodes, medicine to meteorology to IT). No interventions, no time order on the
+variables. Under faithfulness, observational data can only ever identify the **Markov equivalence
+class** of the true DAG — the set of all DAGs sharing its conditional-independence structure — so the
+honest target is the **CPDAG** (completed partially directed acyclic graph): a directed arrow wherever
+every DAG in the class agrees, an undirected edge wherever they disagree. The single thing being
+designed is the discovery procedure `run_causal_discovery(X)`; everything around it (data sampling,
+metric computation) is fixed. The procedure must generalize across small/medium/large networks and
+across cardinality patterns without over-specializing to one scale.
+
+## Prior art before the first rung (Bayesian-network structure-learning lineage)
+
+The first rung is a score-based local search, and it is the resolution of a line of structure-learning
+ideas. These are the ancestors the ladder reacts to; each is named with the gap that pushes to the next.
+
+- **Score = marginal likelihood (Cooper & Herskovits 1992; Heckerman, Geiger & Chickering 1995).**
+  Rank a structure `B_S` by `p(B_S, D) = p(B_S) p(D | B_S)`, integrating the CPT parameters out against a
+  Dirichlet prior — closed-form Gamma ratios from cell counts, with a built-in complexity penalty. The
+  score is **decomposable** (a sum of per-node family terms), so a single-arc edit costs one or two local
+  recomputes. Gap: a score alone is not a search — and the obvious "enumerate all DAGs" is impossible
+  (super-exponential: ~4×10¹⁸ DAGs at 10 nodes).
+- **Exact / restricted optima (Chow & Liu 1968).** With at most one parent per node the best structure is
+  a maximum-weight spanning tree, polynomial-time. Gap: the one-parent straitjacket is useless for real
+  domains where a node has several parents, and the general two-or-more-parent problem is NP-hard.
+- **Greedy parent selection from a known ordering (the K2 procedure).** Fix a topological order; give each
+  node the best-scoring parents drawn only from its predecessors — acyclicity is then free. Gap: it
+  presupposes the variable ordering, i.e. the parent/child direction of every dependency. With purely
+  observational data there is no such order; a wrong order learns reversed arcs.
+- **Constraint-based search (PC; Spirtes, Glymour & Scheines 2000).** Drop scores entirely: thin a complete
+  graph with conditional-independence tests, orient colliders, propagate. Gap: each decision is a hard
+  yes/no on one CI test, and on discrete data with large conditioning sets the contingency tables are
+  empty and the test is meaningless — errors cascade.
+
+The first rung drops the K2 ordering assumption and pays for it: it searches the full DAG space with an
+explicit acyclicity check at every move. The later rungs replace that DAG-space search with
+equivalence-class search, permutation search, and constraint-based search in turn.
+
+## The fixed substrate
+
+A small evaluation harness is frozen and must not be touched. `data_gen.py` loads a bnlearn network
+through pgmpy, forward-samples a fixed number of observations at a given seed, integer-encodes each
+variable by sorted categories, and returns `X` of shape `(n_samples, n_variables)` together with the
+ground-truth DAG (as a `causallearn` `Dag`, with nodes named `X1, X2, ...` matching column order).
+`metrics.py` converts the true DAG to its CPDAG with `dag2cpdag`, normalizes the algorithm's output to a
+`causallearn` `Graph`, and scores it: **SHD** (structural Hamming distance, lower better) plus
+**adjacency** and **arrow** precision/recall (higher better). `run_eval.py` is the CLI that ties them
+together. The whole `causal-learn` library is available — its CI tests (`CIT`), its score classes
+(`LocalScoreClass`, `local_score_BDeu`), its search modules (`GES`, `GRaSP`, `BOSS`), its graph
+utilities (`GeneralGraph`, `GraphNode`, `pdag2dag`, `dag2cpdag`, the `PCUtils` skeleton/orientation
+helpers) — so a rung may either call a library search wholesale or assemble one from these primitives.
+
+## The editable interface
+
+Exactly one region is editable — the body of `run_causal_discovery` in `custom_algorithm.py`. The
+contract is fixed: it receives `X` (integer-encoded discrete observational data, `(n_samples,
+n_variables)`) and must return the estimated CPDAG as a `causallearn.graph.GeneralGraph.GeneralGraph`.
+Every method on the ladder is a fill of this same one-function contract. The module's two imports
+(`GeneralGraph`, `GraphNode`) are provided; a rung may import anything else from `causal-learn` inside
+the function.
+
+The starting point is the scaffold default: an **empty graph** (no edges) on the right number of nodes.
+Each later method replaces exactly this function body.
+
+```python
+import numpy as np
+from causallearn.graph.GeneralGraph import GeneralGraph
+from causallearn.graph.GraphNode import GraphNode
+
+# =====================================================================
+# EDITABLE: implement run_causal_discovery below
+# =====================================================================
+def run_causal_discovery(X: np.ndarray) -> GeneralGraph:
+    """
+    Input:  X of shape (n_samples, n_variables), integer-encoded discrete data
+    Output: estimated CPDAG as causallearn.graph.GeneralGraph.GeneralGraph
+    """
+    nodes = [GraphNode(f"X{i + 1}") for i in range(X.shape[1])]
+    return GeneralGraph(nodes)
+# =====================================================================
+```
+
+## Evaluation settings
+
+Five bnlearn networks span the difficulty range — **Cancer** (5 nodes, 4 edges), **Child** (20, 25),
+**Alarm** (37, 46), **Hailfinder** (56, 66), and **Win95pts** (76, 112) — each sampled at a fixed
+observational sample size and evaluated over three seeds {42, 123, 456}. Five metrics are reported per
+network: **SHD** (the primary score, lower is better) and **adjacency precision/recall** (skeleton
+recovery) and **arrow precision/recall** (orientation accuracy), all four higher is better. The output
+CPDAG is compared against the ground-truth CPDAG (`dag2cpdag` of the true DAG). The challenge is to do
+well *across* the whole size/density range at once, not to win on one network.
+
+The editable model code is in `causal-bnlearn/bench/custom_algorithm.py`:
+```python
+def run_causal_discovery(X: np.ndarray) -> GeneralGraph:
+    """
+    Input:  X of shape (n_samples, n_variables), integer-encoded discrete data
+    Output: estimated CPDAG as causallearn.graph.GeneralGraph.GeneralGraph
+    """
+    nodes = [GraphNode(f"X{i + 1}") for i in range(X.shape[1])]
+    return GeneralGraph(nodes)
+```
+Improve it. Derive your method, edit the code, then run_experiment().
+</user>
+
+### step 1 — HC (hill-climbing DAG search, BDeu)   [slug:hc]
+
+<think>
+[[POLISH_REASONING: adapt to first-person agentic voice, end by deciding to implement]]
+The scaffold hands me an empty graph and one function to fill, so the floor I have to start from is the simplest thing that is still a real structure-learning method: score a candidate DAG, and walk to a better one by single-arc edits. No ordering given, no CI machinery yet, no equivalence-class bookkeeping — just a score and a greedy climb. That is deliberately the weakest rung, and I want to derive it carefully anyway, because everything above it is a reaction to exactly where this one breaks.
+
+Let me first fix what I am even comparing. Two candidate structures `B_S` over the discrete variables; I want to say which the data prefers. By Bayes, `p(B_S | D) ∝ p(B_S) p(D | B_S)`, and the normalizer `p(D)` is a sum over all structures that I cannot compute — but it is the same constant for every structure, so it cancels in any comparison. So I only ever need the relative joint `p(B_S, D)`. The load-bearing term is `p(D | B_S)`, the probability of the data given the *structure*, not given particular CPT numbers. The structure fixes the graph but leaves the table entries `Θ` uncertain, and the honest thing is to integrate them out: `p(D | B_S) = ∫ p(D | B_S, Θ) p(Θ | B_S) dΘ`. This is an average over parameter settings, not the maximized likelihood of one best fit, and that distinction does real work — averaging over `Θ` automatically discounts a structure with many parents (its prior mass is spread thin over a high-dimensional `Θ`), so the marginal likelihood has a built-in Occam penalty with no explicit regularizer. That is the kind of clean criterion I want.
+
+The integral looks intractable until I lay out the assumptions that collapse it: i.i.d. multinomial sampling, parameter independence across families (the conditional of `X_i` given one parent-configuration is a priori independent of every other family's parameters, though within a family the entries are coupled by summing to one), complete data, and a Dirichlet prior. The Dirichlet is the conjugate of the multinomial — prior times likelihood stays a Dirichlet kernel — so each family integral is just a ratio of Dirichlet normalizers, i.e. a ratio of Gammas. With `r_i` the number of states of `X_i`, `q_i = ∏_{p∈Π_i} r_p` the number of parent configurations, counts `N_ijk` (records with `X_i = k` and parents in config `j`) and `N_ij = Σ_k N_ijk`, and Dirichlet pseudocounts `α`, the closed-form score per node is a sum over the observed parent configurations of `lgamma(α_ij) − lgamma(N_ij + α_ij) + Σ_k [lgamma(N_ijk + α_ijk) − lgamma(α_ijk)]`. Multiply over nodes (add in log space) and tack on a structure prior, and I have a score computable from counts alone. I will work in the log domain, because the products of Gammas underflow badly on any real database.
+
+Now I stare at the *shape* of this score, because it decides how I search. The total is a product over nodes — every factor depends only on `X_i` and the counts conditioned on its parents `Π_i`. In log it is a *sum* over nodes, `Σ_i s(X_i | Π_i)`. This is decomposability, and it is the single most important property I have: if I change the structure by touching only the parents of one node `X_j` — add an arc into it, delete one — every term in that sum stays fixed except `s(X_j | Π_j)`. To compare the new structure to the old I recompute one local term, not the whole graph. That is the lever that makes searching a super-exponential space even thinkable.
+
+So I can score a structure and score a small change cheaply. Which structure do I pick? Enumeration is out — the number of DAGs is super-exponential (a 76-node network like Win95pts has a count with hundreds of digits). The exact optimum exists only in the at-most-one-parent regime (a maximum-weight tree), which is too poor to be useful; with two or more parents per node the problem is NP-hard. So it is a heuristic search.
+
+The standard heuristic is greedy parent selection: fix a topological ordering, and for each node add the best-scoring parents drawn only from its predecessors. The ordering does quiet work — because you only ever add parents from earlier in the order, acyclicity is *free*, no two arcs can close a cycle. And it is fast and historically effective (it reconstructs ALARM up to an arc or two from a few thousand cases). But the whole thing is hostage to the ordering, and the ordering is exactly the topological order of the true DAG — it presupposes I already know the parent/child direction of every dependency before I start. For purely observational data on Win95pts or Hailfinder I have no such order, and a wrong order learns reversed arcs: a child placed before its true parent can never receive that parent. Garbage order in, garbage structure out. I have no order, so I must drop the assumption.
+
+The instant I drop the ordering, acyclicity stops being free. Now when I consider adding `i → j` I have to *actively check* that it does not create a directed cycle — a reachability test: is there already a directed path from `j` back to `i`? If yes, the arc closes a cycle and I reject it. That is the price of freedom, and it is payable with a depth-first search over the current adjacency, cheap at these sizes.
+
+What moves do I have, working directly in DAG space? For any ordered pair `(i, j)`: if there is no arc between them I can **add** `i → j`; if there is an arc `i → j` I can **delete** it or **reverse** it to `j → i`. Add, delete, reverse — any DAG is reachable from any other by a sequence of these, so the move set is rich enough. Why include reverse, when a reverse is a delete followed by an add? Because the intermediate graph (neither arc) might score worse than both endpoints, so a greedy step-by-step search would never take the first step even though the reversed arc is an improvement. Reverse lets the search cross that valley in one atomic move scored as a unit — it is what lets me fix an arc I oriented backwards without first throwing it away.
+
+How cheap is each move, by decomposability? Add or delete `i → j` changes only `X_j`'s parent set, so `Δ = s(X_j | Π_j^new) − s(X_j | Π_j^old)`, one local recompute. Reverse changes the parents of *both* `X_j` (loses `i`) and `X_i` (gains `j`), so it is two local recomputes summed. Everything else is untouched. I will keep a vector of current per-node local scores so a delta is `new_local − current_local`, and refresh only the touched node(s) after an accepted move.
+
+So the loop writes itself. Start from the empty graph — every node parentless, every local score `s(X_j | ∅)`. Repeat: scan every eligible move (add for non-adjacent pairs that stay acyclic; delete for existing arcs; reverse for existing arcs that stay acyclic after flipping), compute its delta, and remember the single best improving move. Apply it, update the cached local score(s), and loop. When no move improves the score, stop — a local optimum where no single-arc edit helps. That is best-improvement hill-climbing.
+
+Two subtleties I have to get exactly right. First, the acyclicity guard for reverse. To test whether reversing `i → j` to `j → i` stays acyclic I want to know whether there is already a directed path from `i` to `j` *not through the arc `i → j` itself*. The clean way: temporarily remove `i → j`, then ask "is `j` reachable from `i`?" If yes, adding `j → i` would close a cycle `i → … → j → i`, so the reverse is illegal; if no, it is safe — then restore the arc and record the move. For a plain add `i → j` the test is simply "is `i` reachable from `j`?" — if so the arc closes a cycle. Reachability is a DFS over the adjacency matrix.
+
+Second — and this is the part the upper rungs will exploit — some structures are statistically indistinguishable. `X → Y → Z`, `X ← Y → Z`, and `X ← Y ← Z` all assert exactly `X ⫫ Z | Y` and nothing else; observational data cannot prefer one, and a good score *should* give them equal value. That is score equivalence: Markov-equivalent structures (same skeleton, same v-structures — the colliders `a → c ← b` with `a, b` non-adjacent) get the same score. So wherever my hill-climb lands, the orientation of the covered edges is arbitrary, and two runs could stop at different DAGs in the same class. The object I can actually claim is the *class*, not the particular DAG. So after climbing to a DAG I must collapse it to its CPDAG — keep an edge directed only if every member of the class orients it the same way, leave it undirected otherwise — before returning. `dag2cpdag` does this. Returning the raw DAG would overclaim orientations the data never determined and would be penalized on the arrow metrics.
+
+Score equivalence loops back to constrain the pseudocounts. With unit pseudocounts (`α_ijk = 1`, the clean factorial K2 special case) the score is *not* generally score-equivalent — isomorphic structures can get different values, and the search would chase a within-class orientation that carries no information. To make the score equivalent I tie the pseudocounts to a prior joint over the domain and a single scalar `N'` (the equivalent sample size): `α_ijk = N' · p(X_i = k, Π_i = j | prior)`. Taking the most ignorant prior — uniform over the whole domain — gives `α_ijk = N' / (r_i q_i)` and `α_ij = N' / q_i`: a uniform pseudocount per cell, scaled by `N'` and split evenly across the `r_i q_i` cells. This is BDeu ("u" for uniform), the unique BD score with score equivalence, and it needs no elicited prior — just the scalar `N'`. In the scaffold this is exactly `LocalScoreClass(data=X, local_score_fun=local_score_BDeu, parameters=None)`: passing `parameters=None` lets the score auto-infer the cardinalities `r_i` from the data and use the canonical defaults (`N' = 1`, structure prior `1`). One convention to mind: the harness's `local_score_BDeu` returns a quantity where *lower is better*, so the hill-climb looks for the most-negative delta and "improving" reads as `Δ < best_delta − ε` with a tiny `ε = 1e-6` to avoid thrashing on numerically-zero ties.
+
+That is the whole rung, and I will land it as the literal edit: build a `LocalScoreClass` BDeu scorer, hold the structure as an `N×N` integer adjacency matrix, cache one local score per node, and run the add/delete/reverse best-improvement climb with the DFS acyclicity guard, then build a `GeneralGraph` from the learned DAG and `dag2cpdag` it. (The full scaffold fill is in the answer.) Note what this rung deliberately is *not*: it searches DAG space, not equivalence-class space, so it wastes moves on covered-edge reversals that change the DAG but not the class; it does no CI testing; and it starts from one fixed seed (the empty graph) with no restarts.
+
+So let me be clear-eyed about what I expect this floor to do, because that expectation is what the next rung has to beat. The honest weakness I am accepting is that DAG space is riddled with local optima, and best single-arc improvement from a single empty-graph start carries no guarantee of reaching the global best — only that no single-arc edit improves on where it stops. Two things will hurt specifically. (1) **Density.** As average degree climbs, the right move is often not a single arc but a coordinated change of several, and the greedy climb gets trapped early; the larger, denser networks — Alarm (37 nodes), Hailfinder (56), Win95pts (76) — are exactly where I expect SHD to blow up, because the number of arcs to get right grows and a single wrong early arc shrinks the reachable neighborhood for everything after it. (2) **Orientation.** DAG-space search fixes covered-edge directions arbitrarily during the climb, and although `dag2cpdag` un-commits the ones it can detect as reversible, a climb that lands in the wrong basin can leave compelled arrows pointing the wrong way — so I expect the *arrow* precision/recall to be the soft spot, worse than the *adjacency* numbers, especially on the big networks. On the tiny networks (Cancer, 5 nodes; Child, 20) the space is small enough that the climb should find essentially the right skeleton, so adjacency there should be fine and SHD small. The split I predict is: decent on the small networks, degrading sharply with size and density, with arrow accuracy the first thing to fall. If that is what the numbers show, the diagnosis for the next rung is already pointed: the failure is not the score (BDeu is fine) and not the moves (add/delete/reverse are complete) but the *search space* — DAG-space hill-climbing wastes effort on within-class reversals and stalls in shallow optima, so the next move is to search equivalence classes directly, where the redundant covered-reversals vanish and a backward-deletion phase can carry a real large-sample guarantee.
+</think>
+<say>
+[[FILL_SAY: 1-2 sentences naming the method and what this first edit does]]
+</say>
+<edit path="causal-bnlearn/bench/custom_algorithm.py">
+<old>
+    """
+    nodes = [GraphNode(f"X{i + 1}") for i in range(X.shape[1])]
+    return GeneralGraph(nodes)
+</old>
+<new>
+    """
+    from causallearn.score.LocalScoreFunctionClass import LocalScoreClass
+    from causallearn.score.LocalScoreFunction import local_score_BDeu
+    from causallearn.utils.DAG2CPDAG import dag2cpdag
+
+    N = X.shape[1]
+    # Pass parameters=None so local_score_BDeu auto-computes r_i_map from data
+    score_func = LocalScoreClass(
+        data=X, local_score_fun=local_score_BDeu, parameters=None
+    )
+
+    nodes = [GraphNode(f"X{i + 1}") for i in range(N)]
+    adj = np.zeros((N, N), dtype=int)
+
+    # Cache local scores (one per node)
+    local_scores = np.zeros(N)
+    for j in range(N):
+        local_scores[j] = score_func.score(j, [])
+
+    def _has_path(src, tgt):
+        """DFS check: is there a directed path from src to tgt in adj?"""
+        visited = set()
+        stack = [src]
+        while stack:
+            node = stack.pop()
+            if node == tgt:
+                return True
+            if node in visited:
+                continue
+            visited.add(node)
+            for c in np.where(adj[node] == 1)[0]:
+                if int(c) not in visited:
+                    stack.append(int(c))
+        return False
+
+    # Greedy hill-climbing: add / delete / reverse
+    improved = True
+    while improved:
+        improved = False
+        best_delta = 0.0
+        best_op = None
+
+        for i in range(N):
+            for j in range(N):
+                if i == j:
+                    continue
+
+                if adj[i, j] == 0 and adj[j, i] == 0:
+                    # --- Try ADD i -> j (only if no cycle) ---
+                    if not _has_path(j, i):
+                        pj_new = sorted(
+                            np.where(adj[:, j] == 1)[0].tolist() + [i]
+                        )
+                        new_sj = score_func.score(j, pj_new)
+                        delta = new_sj - local_scores[j]
+                        if delta < best_delta - 1e-6:
+                            best_delta = delta
+                            best_op = ("add", i, j)
+
+                elif adj[i, j] == 1:
+                    # --- Try DELETE i -> j ---
+                    pj_new = [
+                        p for p in np.where(adj[:, j] == 1)[0] if p != i
+                    ]
+                    new_sj = score_func.score(j, sorted(pj_new))
+                    delta = new_sj - local_scores[j]
+                    if delta < best_delta - 1e-6:
+                        best_delta = delta
+                        best_op = ("delete", i, j)
+
+                    # --- Try REVERSE i -> j  to  j -> i ---
+                    adj[i, j] = 0  # temporarily remove
+                    if not _has_path(i, j):
+                        pj_del = sorted(
+                            np.where(adj[:, j] == 1)[0].tolist()
+                        )
+                        new_sj = score_func.score(j, pj_del)
+                        pi_new = sorted(
+                            np.where(adj[:, i] == 1)[0].tolist() + [j]
+                        )
+                        new_si = score_func.score(i, pi_new)
+                        delta = (
+                            (new_sj - local_scores[j])
+                            + (new_si - local_scores[i])
+                        )
+                        if delta < best_delta - 1e-6:
+                            best_delta = delta
+                            best_op = ("reverse", i, j)
+                    adj[i, j] = 1  # restore
+
+        if best_op is not None:
+            op_type, i, j = best_op
+            if op_type == "add":
+                adj[i, j] = 1
+            elif op_type == "delete":
+                adj[i, j] = 0
+            elif op_type == "reverse":
+                adj[i, j] = 0
+                adj[j, i] = 1
+            # Recompute affected local scores
+            local_scores[j] = score_func.score(
+                j, sorted(np.where(adj[:, j] == 1)[0].tolist())
+            )
+            if op_type == "reverse":
+                local_scores[i] = score_func.score(
+                    i, sorted(np.where(adj[:, i] == 1)[0].tolist())
+                )
+            improved = True
+
+    # Build GeneralGraph from learned DAG
+    G = GeneralGraph(nodes)
+    for i in range(N):
+        for j in range(N):
+            if adj[i, j] == 1:
+                G.add_directed_edge(nodes[i], nodes[j])
+
+    G = dag2cpdag(G)
+    return G
+</new>
+</edit>
+<obs>
+Successfully replaced text in causal-bnlearn/bench/custom_algorithm.py.
+</obs>
+<run/>
+<obs>
+Measured results — `baseline:hc` (`is_final,true`), seeds {42, 123, 456} and mean.
+
+## Cancer (5 nodes)
+| seed | SHD | adj_prec | adj_rec | arr_prec | arr_rec |
+|---|---|---|---|---|---|
+| 42 | 4 | 1.0 | 0.5 | 0.0 | 0.0 |
+| 123 | 4 | 1.0 | 0.25 | 0.0 | 0.0 |
+| 456 | 4 | 1.0 | 0.25 | 0.0 | 0.0 |
+| **mean** | **4.0** | **1.0** | **0.333** | **0.0** | **0.0** |
+
+## Child (20 nodes)
+| seed | SHD | adj_prec | adj_rec | arr_prec | arr_rec |
+|---|---|---|---|---|---|
+| 42 | 11 | 0.917 | 0.88 | 1.0 | 0.385 |
+| 123 | 7 | 0.92 | 0.92 | 1.0 | 0.769 |
+| 456 | 7 | 0.92 | 0.92 | 1.0 | 0.769 |
+| **mean** | **8.333** | **0.919** | **0.907** | **1.0** | **0.641** |
+
+## Alarm (37 nodes)
+| seed | SHD | adj_prec | adj_rec | arr_prec | arr_rec |
+|---|---|---|---|---|---|
+| 42 | 37 | 0.732 | 0.891 | 0.467 | 0.5 |
+| 123 | 38 | 0.732 | 0.891 | 0.455 | 0.476 |
+| 456 | 36 | 0.759 | 0.957 | 0.5 | 0.524 |
+| **mean** | **37.0** | **0.741** | **0.913** | **0.474** | **0.5** |
+
+## Hailfinder (56 nodes)
+| seed | SHD | adj_prec | adj_rec | arr_prec | arr_rec |
+|---|---|---|---|---|---|
+| 42 | 64 | 0.726 | 0.803 | 0.447 | 0.429 |
+| 123 | 64 | 0.732 | 0.788 | 0.435 | 0.408 |
+| 456 | 65 | 0.722 | 0.788 | 0.435 | 0.408 |
+| **mean** | **64.333** | **0.727** | **0.793** | **0.439** | **0.415** |
+
+## Win95pts (76 nodes)
+| seed | SHD | adj_prec | adj_rec | arr_prec | arr_rec |
+|---|---|---|---|---|---|
+| 42 | 96 | 0.65 | 0.795 | 0.5 | 0.56 |
+| 123 | 98 | 0.642 | 0.786 | 0.455 | 0.56 |
+| 456 | 106 | 0.614 | 0.795 | 0.443 | 0.54 |
+| **mean** | **100.0** | **0.635** | **0.792** | **0.466** | **0.553** |
+</obs>
+
+### step 2 — GRaSP (greedy relaxations of the sparsest permutation, BDeu)   [slug:grasp]
+
+<think>
+[[POLISH_REASONING: adapt to first-person agentic voice, end by deciding to implement]]
+The hill-climb numbers tell me exactly where the floor breaks, and they break on the axis I predicted: size and density. On the two small networks the climb is fine — Cancer sits at SHD 4 with perfect adjacency precision, Child at 8.3 with adjacency precision/recall around 0.92/0.91. But as the networks grow the SHD explodes: Alarm 37, Hailfinder 64.3, Win95pts 100. And the *shape* of the failure is the tell. On the big networks the adjacency recall stays respectable (Alarm 0.91, Hailfinder 0.79, Win95pts 0.79) — the climb finds most of the true edges — while the **arrow** numbers collapse: Alarm arrow precision 0.47, Hailfinder 0.44, Win95pts 0.47, with arrow recall barely above 0.4–0.5. So the skeleton is roughly there but the orientations are wrong, and SHD is being driven by mis-oriented and extra edges, not by missing ones. That is the signature of DAG-space search getting stuck in a shallow basin: it commits covered-edge directions arbitrarily during the climb, lands in the wrong orientation pattern, and `dag2cpdag` cannot rescue an orientation the climb already baked into a compelled position. The diagnosis is clean — the score (BDeu) is fine, the moves (add/delete/reverse) are complete, the *search space* is the problem. So the next move is not a better score or more restarts; it is to change what I search over.
+
+What is wrong with DAG space specifically? Two Markov-equivalent DAGs differ only by covered-edge reversals, and the hill-climb wastes moves shuffling among them while never leaving the basin — and worse, a single-arc neighborhood is too local to escape a shallow optimum on a dense graph, because the right correction is often a *coordinated* re-orientation of several edges that no single add/delete/reverse can reach in one improving step. I want a move set whose single step is a much larger, coordinated change in structure, and a search whose object is the equivalence class — or better, something even more robust to the thing I suspect is really biting on the dense networks.
+
+Because there is a second, deeper suspicion the hc numbers raise. Why do Hailfinder and Win95pts specifically fall apart? They are the densest networks. On dense graphs faithfulness — the assumption every classical method leans on, that every real dependence shows up as a detectable score gain or CI signal — gets fragile: two near-cancelling paths or a near-deterministic relation produce a dependence that is real but *faint*, so a finite-sample score sees almost no gain from the right edge and the greedy add never makes it (or makes the wrong one). The more paths between two variables, the more ways their influences partially cancel, so these almost-violations are *everywhere* on dense graphs. A method whose every decision hinges on a single edge's marginal score gain inherits that fragility. So I want a search whose decisions are more global than "does this one edge's score improve," ideally one correct under something weaker than faithfulness.
+
+There is a line of work that fits both wants: search **orderings** instead of edges. Take a permutation `π` of the variables, read it as an acyclic order, and build a DAG `G_π` by giving each variable parents drawn only from the variables ahead of it in `π` — specifically its Markov boundary among the predecessors, the smallest predecessor set that renders it independent of the rest. Among all permutations, return the one whose induced DAG has the fewest edges. The appeal is the assumption: the *sparsest-permutation* razor (u-frugality — "the true DAG is the uniquely sparsest Markovian DAG") is strictly weaker than faithfulness, surviving exactly the near-cancellation cases that sink a faithful search, because a hidden edge just makes the true graph look sparser and sparsity is what is being optimized. And note this also fixes the hc orientation problem structurally: an ordering can never produce a cycle, so I never check acyclicity, and the search moves through *orderings*, where the covered-edge redundancy that trapped DAG-space hill-climbing simply does not exist. The catch is brutal: enumerating all `p!` orderings dies at nine variables, hopeless for Win95pts at 76. So the robustness lives in the permutation view and the whole problem is how to *move through* permutation space without enumerating it.
+
+So I commit to the permutation view and need two things: how to turn one `π` into a scored DAG cheaply and correctly, and how to walk from one `π` to a better one. The projection is the same machinery I already trust from the floor, just reorganized. Parents of variable `k` are chosen from `pre(k)` (the variables before it) by **grow-shrink** on the decomposable BDeu score — no CI test anywhere. Grow: start empty, repeatedly add the predecessor that most improves `s(X_k | M ∪ {Y})`, stop when none helps; by local consistency I add `Y` exactly when `X_k ⫫̸ Y | M`, so grow pulls in genuinely informative predecessors and overshoots to a superset of the boundary. Shrink: from the grown set, remove any `Y` whose removal improves the score, which happens exactly when `Y` has become redundant, peeling off the false positives. In the limit this is the unique Markov boundary, and the per-node shrink scores sum to `BIC(G_π)` (BDeu in the discrete case). So projecting and scoring is purely local score calls — and crucially, the score *already encodes the independence facts* a fragile CI test would give, but as a comparison of two model scores rather than a thresholded statistic. That is the robustness I wanted: the dense-graph near-cancellations that fooled the floor's per-edge gains are handled by the same grow-shrink reasoning, now over orderings.
+
+Now the real question: how to walk permutation space. The crudest move is Teyssier–Koller's adjacent transposition — swap two neighbours in `π` — which is cheap (only the two swapped variables change parents) but far too local, stalling in shallow optima just like the floor, and carrying no consistency guarantee. I need a move that leaps far enough in one step to escape the basins that trapped hc, *and* a search that ties those moves to the equivalence-class structure so a correctness proof can attach.
+
+The machinery for navigating equivalence classes is Chickering's covered-edge theory. An edge `i → j` is covered when `i` and `j` share all their other parents; reversing a covered edge stays in the same equivalence class, and any two equivalent DAGs are linked by a sequence of covered reversals. More: if one DAG's independences contain another's, there is a sequence of covered reversals plus edge additions taking the sparser toward the denser while staying valid at every step. The earlier graft of this onto permutation search lived awkwardly across two representations — search the permutation, but to take a covered reversal drop into the DAG, reverse, lift back — an awkward seam that is the source of both the inefficiency and an unsettled correctness story.
+
+The fix is a single permutation operation that *is* a covered-edge reversal of `G_π`, with no detour through the DAG — the **tuck**. Take `π` and a covered edge `j → k`; I want a new permutation whose DAG is `G_π` with `j → k` reversed. Slide `k` left past every vertex between `j` and `k` — each slide is DAG-preserving exactly when that vertex is not a parent of `k`, and coveredness guarantees none of the in-between vertices is a parent of `k` (their parents all sit before `j`) — until `j` and `k` are adjacent, then swap them. That single move flips the covered edge while staying in the equivalence class, and it can do something the DAG-walk cannot: a tuck can reverse a covered edge *and* delete an edge in the same step (the induced DAG can come out strictly sparser), fusing two DAG operations into one. Generalizing the tuck to any edge `j → k` means carrying along only the in-between vertices that are ancestors of `k` (they must stay before `k`) and leaving the rest; the covered case is the special case where there are no such ancestors. This is the move that leaps: re-ordering a whole stretch of `π` in one decision, exactly the coordinated change a single add/delete/reverse could never make.
+
+And here the assumption-strength ladder appears, which is the whole reason this should beat the floor on the dense networks. Restrict the tuck to *covered* edges and the search reproduces the Chickering DAG-walk in pure permutation space — correct under faithfulness, the same razor the floor effectively needed. Enlarge to *singular* edges (those with no directed `j ⤳ k` path other than the edge itself) and each tuck becomes an operational equivalence-class-polytope edge-walk, correct under the strictly weaker "edge" razor. Enlarge again to *all* edges and the razor relaxes further still — verifiably recovering truths the lower tiers stall on, though still short of u-frugality alone. The set of edges I am willing to tuck is the knob, and turning it up weakens the faithfulness assumption — which is precisely the lever for the dense graphs where faithfulness fails. The search itself is a depth-bounded DFS: at the current permutation, tuck a candidate edge; if the score strictly improves, accept and restart; if it is score-neutral (a within-class move), recurse deeper looking for an improvement that only becomes reachable after the neutral step; if worse, undo. The recursion depth is bounded — unbounded is the version with the correctness theorem, but in finite samples the deep tucks rarely pay and explode the cost, so a small depth is the practical sweet spot. To keep this tractable across the thousands of re-scorings, the grow-shrink results are cached per vertex in a tree keyed by the available prefix, so a tuck — which only perturbs a contiguous block of `π` — re-derives just the affected families.
+
+Now, what I actually land in the scaffold is the harness's own GRaSP, and I should be precise about what it exposes versus the full machinery I just derived. The edit is a single call: `grasp(X, score_func="local_score_BDeu", depth=3, parameters={"sample_prior": 1.0, "structure_prior": 1.0})`, returning the CPDAG directly. So the discrete score is BDeu with equivalent sample size `1` and structure prior `1` — the same score class the floor used, which keeps the comparison honest — and the DFS depth is fixed at **3**, the shallow-but-useful setting (deep enough to follow short equal-score chains to a sparsification, shallow enough to stay fast). The library carries the tier/tuck/grow-shrink-tree machinery internally; the harness does not expose the per-tier depth knobs or let me tune which edge classes are tucked at the root versus deeper — I take the library's defaults for the tier policy and only set the overall `depth`. So the rung I am running is the depth-3 GRaSP with the relaxed-razor tuck DFS, scored by BDeu, converted to a CPDAG — the literal one-line fill is in the answer.
+
+So the delta from the floor is concrete: where hc searched DAG space with single-arc moves from one empty start, I now search permutation space with depth-3 tuck DFS, projecting each ordering to a Markov-boundary DAG by grow-shrink on the same BDeu score, with a move that re-orders a whole stretch at once and a razor weaker than the faithfulness the floor implicitly leaned on. Reading the hc numbers, here is what I expect this to fix and where I am wary. **Alarm** should improve sharply: it is medium-density and faithful enough that the permutation search's coordinated moves should escape the shallow basin hc died in — I expect SHD to drop from 37 toward the single digits, with arrow precision/recall jumping from ~0.47 up toward 0.9, because orientation is exactly what equivalence-class-aware search fixes. **Child** should stay strong or improve modestly (it was already decent). The open question — and the risk I can feel in the construction — is the *densest* networks, Hailfinder and Win95pts. The relaxed razor is supposed to help there, but a depth-3 DFS over orderings is a heuristic on a hard, high-dimensional landscape, and the sample size per cell is thinnest exactly where the networks are biggest; the grow-shrink boundary estimates get noisy, and the tuck DFS can stall before it finds the sparsest ordering. So I would not be surprised if Hailfinder and Win95pts barely move from hc's SHD (64 and 100) or even stay rough — the permutation search buys orientation and medium-density robustness, but it does not obviously buy *scale*. If that is the split — Alarm rescued, Hailfinder/Win95pts still poor — the diagnosis for the next rung is already written: I would need either a constraint-based skeleton to prune the candidate edges before scoring (so the dense-graph search is over a much smaller space), or a cleaner, less heuristic equivalence-class search whose forward and backward phases carry the large-sample guarantee outright.
+</think>
+<say>
+[[FILL_SAY: 1-2 sentences naming the method and what this first edit does]]
+</say>
+<edit path="causal-bnlearn/bench/custom_algorithm.py">
+<old>
+    """
+    from causallearn.score.LocalScoreFunctionClass import LocalScoreClass
+    from causallearn.score.LocalScoreFunction import local_score_BDeu
+    from causallearn.utils.DAG2CPDAG import dag2cpdag
+
+    N = X.shape[1]
+    # Pass parameters=None so local_score_BDeu auto-computes r_i_map from data
+    score_func = LocalScoreClass(
+        data=X, local_score_fun=local_score_BDeu, parameters=None
+    )
+
+    nodes = [GraphNode(f"X{i + 1}") for i in range(N)]
+    adj = np.zeros((N, N), dtype=int)
+
+    # Cache local scores (one per node)
+    local_scores = np.zeros(N)
+    for j in range(N):
+        local_scores[j] = score_func.score(j, [])
+
+    def _has_path(src, tgt):
+        """DFS check: is there a directed path from src to tgt in adj?"""
+        visited = set()
+        stack = [src]
+        while stack:
+            node = stack.pop()
+            if node == tgt:
+                return True
+            if node in visited:
+                continue
+            visited.add(node)
+            for c in np.where(adj[node] == 1)[0]:
+                if int(c) not in visited:
+                    stack.append(int(c))
+        return False
+
+    # Greedy hill-climbing: add / delete / reverse
+    improved = True
+    while improved:
+        improved = False
+        best_delta = 0.0
+        best_op = None
+
+        for i in range(N):
+            for j in range(N):
+                if i == j:
+                    continue
+
+                if adj[i, j] == 0 and adj[j, i] == 0:
+                    # --- Try ADD i -> j (only if no cycle) ---
+                    if not _has_path(j, i):
+                        pj_new = sorted(
+                            np.where(adj[:, j] == 1)[0].tolist() + [i]
+                        )
+                        new_sj = score_func.score(j, pj_new)
+                        delta = new_sj - local_scores[j]
+                        if delta < best_delta - 1e-6:
+                            best_delta = delta
+                            best_op = ("add", i, j)
+
+                elif adj[i, j] == 1:
+                    # --- Try DELETE i -> j ---
+                    pj_new = [
+                        p for p in np.where(adj[:, j] == 1)[0] if p != i
+                    ]
+                    new_sj = score_func.score(j, sorted(pj_new))
+                    delta = new_sj - local_scores[j]
+                    if delta < best_delta - 1e-6:
+                        best_delta = delta
+                        best_op = ("delete", i, j)
+
+                    # --- Try REVERSE i -> j  to  j -> i ---
+                    adj[i, j] = 0  # temporarily remove
+                    if not _has_path(i, j):
+                        pj_del = sorted(
+                            np.where(adj[:, j] == 1)[0].tolist()
+                        )
+                        new_sj = score_func.score(j, pj_del)
+                        pi_new = sorted(
+                            np.where(adj[:, i] == 1)[0].tolist() + [j]
+                        )
+                        new_si = score_func.score(i, pi_new)
+                        delta = (
+                            (new_sj - local_scores[j])
+                            + (new_si - local_scores[i])
+                        )
+                        if delta < best_delta - 1e-6:
+                            best_delta = delta
+                            best_op = ("reverse", i, j)
+                    adj[i, j] = 1  # restore
+
+        if best_op is not None:
+            op_type, i, j = best_op
+            if op_type == "add":
+                adj[i, j] = 1
+            elif op_type == "delete":
+                adj[i, j] = 0
+            elif op_type == "reverse":
+                adj[i, j] = 0
+                adj[j, i] = 1
+            # Recompute affected local scores
+            local_scores[j] = score_func.score(
+                j, sorted(np.where(adj[:, j] == 1)[0].tolist())
+            )
+            if op_type == "reverse":
+                local_scores[i] = score_func.score(
+                    i, sorted(np.where(adj[:, i] == 1)[0].tolist())
+                )
+            improved = True
+
+    # Build GeneralGraph from learned DAG
+    G = GeneralGraph(nodes)
+    for i in range(N):
+        for j in range(N):
+            if adj[i, j] == 1:
+                G.add_directed_edge(nodes[i], nodes[j])
+
+    G = dag2cpdag(G)
+    return G
+</old>
+<new>
+    """
+    from causallearn.search.PermutationBased.GRaSP import grasp
+
+    G = grasp(
+        X,
+        score_func="local_score_BDeu",
+        depth=3,
+        parameters={"sample_prior": 1.0, "structure_prior": 1.0},
+    )
+    return G
+</new>
+</edit>
+<obs>
+Successfully replaced text in causal-bnlearn/bench/custom_algorithm.py.
+</obs>
+<run/>
+<obs>
+Measured results — `baseline:grasp` (`is_final,true`), seeds {42, 123, 456} and mean. (Win95pts seed 456 was not recorded.)
+
+## Cancer (5 nodes)
+| seed | SHD | adj_prec | adj_rec | arr_prec | arr_rec |
+|---|---|---|---|---|---|
+| 42 | 4 | 1.0 | 0.5 | 0.0 | 0.0 |
+| 123 | 4 | 1.0 | 0.25 | 0.0 | 0.0 |
+| 456 | 4 | 1.0 | 0.25 | 0.0 | 0.0 |
+| **mean** | **4.0** | **1.0** | **0.333** | **0.0** | **0.0** |
+
+## Child (20 nodes)
+| seed | SHD | adj_prec | adj_rec | arr_prec | arr_rec |
+|---|---|---|---|---|---|
+| 42 | 10 | 1.0 | 0.88 | 0.714 | 0.385 |
+| 123 | 7 | 0.957 | 0.88 | 1.0 | 0.615 |
+| 456 | 9 | 0.957 | 0.88 | 1.0 | 0.539 |
+| **mean** | **8.667** | **0.971** | **0.88** | **0.905** | **0.513** |
+
+## Alarm (37 nodes)
+| seed | SHD | adj_prec | adj_rec | arr_prec | arr_rec |
+|---|---|---|---|---|---|
+| 42 | 6 | 0.956 | 0.935 | 0.927 | 0.905 |
+| 123 | 2 | 1.0 | 0.957 | 1.0 | 0.952 |
+| 456 | 2 | 1.0 | 0.957 | 1.0 | 0.952 |
+| **mean** | **3.333** | **0.985** | **0.949** | **0.976** | **0.937** |
+
+## Hailfinder (56 nodes)
+| seed | SHD | adj_prec | adj_rec | arr_prec | arr_rec |
+|---|---|---|---|---|---|
+| 42 | 51 | 0.671 | 0.712 | 0.595 | 0.51 |
+| 123 | 67 | 0.611 | 0.667 | 0.571 | 0.327 |
+| 456 | 47 | 0.742 | 0.742 | 0.564 | 0.449 |
+| **mean** | **55.0** | **0.675** | **0.707** | **0.577** | **0.429** |
+
+## Win95pts (76 nodes)
+| seed | SHD | adj_prec | adj_rec | arr_prec | arr_rec |
+|---|---|---|---|---|---|
+| 42 | 41 | 0.817 | 0.875 | 0.782 | 0.86 |
+| 123 | 62 | 0.783 | 0.804 | 0.654 | 0.68 |
+| 456 | — | — | — | — | — |
+| **mean** | **51.5** | **0.8** | **0.839** | **0.718** | **0.77** |
+</obs>
+
+### step 3 — PC (constraint-based, chi-squared CI test)   [slug:pc]
+
+<think>
+[[POLISH_REASONING: adapt to first-person agentic voice, end by deciding to implement]]
+The permutation search split the way I half-expected, and the split is instructive. Where I hoped GRaSP would rescue the floor, it did, spectacularly: **Alarm** fell from hc's SHD 37 to **3.3**, with arrow precision/recall leaping from ~0.47/0.5 to 0.98/0.94 — exactly the orientation fix I argued equivalence-class-aware search would buy, and confirmation that the floor's Alarm failure really was the search space, not the score. But the densest networks barely moved, just as I feared: **Hailfinder** is still SHD 55 (hc was 64) with adjacency recall *dropping* to 0.71 and arrow precision a mediocre 0.58; **Win95pts** is 51.5 (hc was 100, so better, but still poor) and one seed didn't even finish. And there is a per-seed wobble that matters: Hailfinder swings 47→67 across seeds, Win95pts 41→62. So GRaSP bought medium-density orientation and cut Win95pts roughly in half, but on the biggest, densest graphs it is heuristic and unstable — the depth-3 tuck DFS over orderings stalls before it finds a good ordering, and the grow-shrink boundary estimates get noisy where the per-cell sample counts are thinnest.
+
+Look harder at *what kind* of error dominates on the dense networks, because it points at the cure. On Hailfinder the adjacency *recall* is the weak number (0.71) and the SHD is large — the search is both missing true edges and keeping wrong ones, churning over a candidate space that is `O(p²)` pairs wide with no structural prior on which pairs could plausibly be adjacent. The two score-based families I have tried — hc and GRaSP — both reason about edges through a global score, and on a 56- or 76-node graph the score landscape is rugged and the search is wandering a huge space. What if I do not search the structure space at all, but instead *test* my way to the skeleton directly, pair by pair, and only then orient? That is a completely different instrument — constraint-based discovery — and it attacks the dense-graph problem from the opposite side: instead of scoring whole structures, it asks local conditional-independence questions and assembles the graph from the yes/no answers, which on the right kind of graph prunes the candidate edges drastically before any orientation work.
+
+Let me derive it honestly, because it has its own failure mode and I want to know exactly where it will and won't beat GRaSP. The only instrument here is a battery of conditional-independence tests: are two variables independent, possibly after conditioning on others? And the first thing to be honest about is that I cannot recover a unique DAG — two DAGs with the same independence facts are indistinguishable — so again the target is the equivalence class: the skeleton, plus the unshielded colliders, plus whatever those force. Under faithfulness, a graphical separation holds exactly when the matching conditional independence holds, so "independent given S" reads as "d-separated given S" and back.
+
+What is identifiable? Adjacency: if `X` and `Y` are directly connected, no conditioning set blocks the one-edge path, so under faithfulness they are dependent given every set; if not connected, some set separates them — so the skeleton is identifiable. Arrowheads: the three non-collider shapes on `X — Y — Z` (`X`, `Z` non-adjacent) are independence-equivalent (conditioning on `Y` blocks the length-two path in all of them), so I must leave them open; but the collider `X → Y ← Z` is different — the path is blocked unless I condition on `Y`, and conditioning on `Y` *opens* it, a signature no non-collider shares. So unshielded colliders are identifiable, ordinary triples are not. The target is exactly skeleton + unshielded colliders + forced consequences.
+
+The skeleton first. The clean test straight from faithfulness: `X` and `Y` are adjacent iff dependent given *every* subset of the others. But sweeping all `2^{p-2}` subsets per pair is exponential and — the part that bites — never short-circuits on a *true* edge (no subset ever separates an adjacent pair, so the search grinds through all subsets), and statistically it is empty, because a discrete CI test on a large conditioning set asks about a contingency table with a product of cardinalities many cells, almost all empty. Both pressures say: avoid large conditioning sets and the full sweep. The escape is the Markov-condition fact: a non-adjacent pair is separated by the parents of whichever endpoint has the other as a non-descendant, and parents are *neighbors*. So a separating set, if one exists, lives among the neighbors of an endpoint — I can restrict every conditioning set to subsets of the current adjacencies. The circularity ("I don't know the neighbors") is benign because I start from the complete graph and only ever delete edges, so the working adjacency set is always a superset of the true neighbors and still contains the parents-based separator. Then I thin from low conditioning-order upward — test `|S| = 0` for all pairs and delete, then `|S| = 1` drawing the conditioning variable from the now-thinned adjacencies, then `|S| = 2`, and so on — so each round shrinks the adjacency sets, the conditioning-set order is bounded by the local degree rather than by `p`, and almost every test stays low-order, cheap, and statistically sane. To make the skeleton order-independent (so a column permutation does not change the answer under sampling noise), the adjacency sets are frozen within each round — read from a snapshot, written only at the next level. This is exactly the harness's `stable=True` skeleton discovery.
+
+The discrete CI test underneath is the contingency-table chi-squared: for each stratum `k` (a joint configuration of the conditioning set `S`), cross-tabulate `X` against `Y`, expected counts `x_{i+k} x_{+jk} / x_{++k}`, statistic `X² = Σ (O−E)²/E`, degrees of freedom from the cardinalities minus degenerate rows/columns, p-value the upper chi-squared tail. A *large* p-value (above `α`) means fail to reject independence, so delete the edge. `α` is not a real significance level here (thousands of tests fire) but a sparsity knob; the conventional `α = 0.05` is the sensible default, and that is what the harness uses with the `"chisq"` test.
+
+Then orientation, in three phases. The recorded separating sets hand me the colliders for free: for an unshielded triple `X — Y — Z`, orient `X → Y ← Z` iff `Y` is absent from the recorded separator of `X, Z` (a non-collider middle must be *in* the separator to block the path; a collider middle must be *out*) — no extra tests, just a lookup, and done conservatively (priority preserves an existing opposite orientation rather than overwriting), which is the `uc_sepset` step with `priority = 2`. Finally propagate the forced orientations under the Meek rules: avoid creating an unshielded collider the sepset phase did not find, and avoid creating a cycle, applied until nothing more orients — the `meek` step. The result is the CPDAG.
+
+So in the scaffold this is three calls: chi-squared skeleton discovery (`stable=True`), conservative collider orientation (`uc_sepset`, priority 2), and Meek propagation — `alpha = 0.05`, `"chisq"` test, returning `cg.G`. (The literal fill is in the answer.) Note what this rung is and is not relative to the two before it: it never scores a structure, so it sidesteps the rugged score landscape that GRaSP wandered; but it inherits a *different* fragility — every decision is a hard yes/no on one CI test, so a single wrong test cascades (an early wrong deletion shrinks a neighborhood and can leave another false edge un-testable; a mis-decided collider sets arrowheads the propagation rules then spread). And the discrete chi-squared is exactly the test that gets unreliable when cells are sparse — which is the dense-graph, large-conditioning-set regime.
+
+Reading the GRaSP numbers, here is the trade I expect and where I am genuinely unsure. On **Alarm**, GRaSP set a very high bar (SHD 3.3); PC's chi-squared skeleton on a medium-density, reasonably faithful network should also do well but I would not expect it to beat GRaSP — I expect Alarm SHD in the high single digits, *worse* than GRaSP, because the constraint-based orientation is more brittle than equivalence-class search where the latter is in its comfort zone. Where PC should *win* is the densest networks if and only if its low-order CI thinning prunes the skeleton more reliably than GRaSP's heuristic ordering search: **Win95pts** is the case I am most hopeful about, because it is large but its skeleton may be recoverable by low-order tests, so PC's adjacency precision should be high (it deletes aggressively) even if recall suffers. The risk is precisely that aggressive deletion: I expect PC's adjacency *recall* to be its soft spot — on **Hailfinder** especially, where near-cancellations make weak edges read as independent, the chi-squared test will delete true edges and recall will fall (possibly to ~0.5), even as precision stays high. So my falsifiable prediction is a *recall-precision trade*: PC should post higher adjacency precision than GRaSP on the dense networks but lower adjacency recall, and on Cancer it may finally register a nonzero arrow score (GRaSP and hc both sat at arrow precision 0 there, having oriented nothing) because the collider rule can fire even on a 5-node graph. If the net SHD across the five networks comes out close to GRaSP's — better on some, worse on others — then neither pure score-search nor pure constraint-search dominates, and the diagnosis for the next rung is already pointed: I want the score-based equivalence-class search's clean large-sample guarantee and orientation strength, applied with a forward phase disciplined enough not to over-add on the dense graphs where GRaSP wandered and PC over-deleted.
+</think>
+<say>
+[[FILL_SAY: 1-2 sentences naming the method and what this first edit does]]
+</say>
+<edit path="causal-bnlearn/bench/custom_algorithm.py">
+<old>
+    """
+    from causallearn.search.PermutationBased.GRaSP import grasp
+
+    G = grasp(
+        X,
+        score_func="local_score_BDeu",
+        depth=3,
+        parameters={"sample_prior": 1.0, "structure_prior": 1.0},
+    )
+    return G
+</old>
+<new>
+    """
+    from causallearn.utils.PCUtils import SkeletonDiscovery, Meek, UCSepset
+    from causallearn.utils.cit import CIT
+
+    alpha = 0.05
+    indep_test = CIT(X, "chisq")
+
+    # Step 1: skeleton discovery via chi-squared CI tests (stable PC)
+    cg_1 = SkeletonDiscovery.skeleton_discovery(
+        X, alpha, indep_test, stable=True,
+        background_knowledge=None, verbose=False,
+        show_progress=False, node_names=None,
+    )
+
+    # Step 2: orient unshielded colliders using UC-sepset rule (priority=2)
+    cg_2 = UCSepset.uc_sepset(cg_1, 2, background_knowledge=None)
+
+    # Step 3: complete orientation with Meek rules
+    cg = Meek.meek(cg_2, background_knowledge=None)
+
+    return cg.G
+</new>
+</edit>
+<obs>
+Successfully replaced text in causal-bnlearn/bench/custom_algorithm.py.
+</obs>
+<run/>
+<obs>
+Measured results — `baseline:pc` (`is_final,true`), seeds {42, 123, 456} and mean.
+
+## Cancer (5 nodes)
+| seed | SHD | adj_prec | adj_rec | arr_prec | arr_rec |
+|---|---|---|---|---|---|
+| 42 | 3 | 1.0 | 0.5 | 0.5 | 0.25 |
+| 123 | 5 | 0.5 | 0.25 | 0.0 | 0.0 |
+| 456 | 4 | 1.0 | 0.25 | 0.0 | 0.0 |
+| **mean** | **4.0** | **0.833** | **0.333** | **0.167** | **0.083** |
+
+## Child (20 nodes)
+| seed | SHD | adj_prec | adj_rec | arr_prec | arr_rec |
+|---|---|---|---|---|---|
+| 42 | 11 | 1.0 | 0.88 | 0.556 | 0.769 |
+| 123 | 14 | 1.0 | 0.88 | 0.476 | 0.769 |
+| 456 | 13 | 0.957 | 0.88 | 0.5 | 0.692 |
+| **mean** | **12.667** | **0.986** | **0.88** | **0.511** | **0.744** |
+
+## Alarm (37 nodes)
+| seed | SHD | adj_prec | adj_rec | arr_prec | arr_rec |
+|---|---|---|---|---|---|
+| 42 | 11 | 0.953 | 0.891 | 0.895 | 0.81 |
+| 123 | 4 | 1.0 | 0.913 | 1.0 | 0.905 |
+| 456 | 9 | 0.915 | 0.935 | 0.881 | 0.881 |
+| **mean** | **8.0** | **0.956** | **0.913** | **0.925** | **0.865** |
+
+## Hailfinder (56 nodes)
+| seed | SHD | adj_prec | adj_rec | arr_prec | arr_rec |
+|---|---|---|---|---|---|
+| 42 | 45 | 0.872 | 0.515 | 0.862 | 0.51 |
+| 123 | 47 | 0.829 | 0.515 | 0.862 | 0.51 |
+| 456 | 44 | 0.872 | 0.515 | 0.897 | 0.531 |
+| **mean** | **45.333** | **0.858** | **0.515** | **0.874** | **0.517** |
+
+## Win95pts (76 nodes)
+| seed | SHD | adj_prec | adj_rec | arr_prec | arr_rec |
+|---|---|---|---|---|---|
+| 42 | 52 | 0.929 | 0.696 | 0.841 | 0.58 |
+| 123 | 45 | 0.952 | 0.705 | 0.916 | 0.65 |
+| 456 | 58 | 0.916 | 0.679 | 0.771 | 0.54 |
+| **mean** | **51.667** | **0.932** | **0.693** | **0.842** | **0.59** |
+</obs>
+
+### step 4 — BOSS (best order score search, BDeu)   [slug:boss]
+
+<think>
+[[POLISH_REASONING: adapt to first-person agentic voice, end by deciding to implement]]
+The constraint-based run confirmed the recall-precision trade I predicted, and reading it carefully tells me what to keep and what to fix. PC's adjacency *precision* on the dense networks is the best I have seen — Win95pts 0.93, Hailfinder 0.86 — so its low-order chi-squared thinning really does prune the skeleton cleanly: when it keeps an edge, the edge is usually real. But the *recall* is exactly the soft spot I worried about: Hailfinder adjacency recall collapses to **0.52** (GRaSP was 0.71, hc 0.79), so PC is deleting half the true edges — the near-cancellations on the densest network read as independent under a finite-sample chi-squared and the edge gets thinned away. Net, Hailfinder SHD is 45.3 (better than GRaSP's 55, mostly because precision is high and it commits fewer wrong edges) but Win95pts is 51.7 (basically tied with GRaSP) and Alarm is **8.0** — clearly *worse* than GRaSP's 3.3, just as I expected, because constraint-based orientation is more brittle than equivalence-class search on a network that GRaSP handles in its comfort zone. And Cancer finally shows a nonzero arrow score (precision 0.17) because the collider rule can fire on five nodes where the score searches oriented nothing. So I now have a clear picture across three rungs: hc stalls everywhere on the big graphs; GRaSP nails medium density (Alarm) but is heuristic and unstable on the densest; PC prunes precisely but over-deletes true edges. Nobody is good *across the whole range at once*, which is the actual task.
+
+Let me name the common thread, because the next move has to address it. GRaSP's strength was searching equivalence classes via orderings, which gives orientation power and a razor weaker than faithfulness; its weakness was being a *heuristic* tuck DFS with a depth knob, wandering a huge ordering space on the biggest graphs and stalling before it found a good ordering — that is why Hailfinder and Win95pts were rough and one seed didn't finish. PC's strength was cheap, precise skeleton pruning; its weakness was hard CI verdicts that over-delete and a brittle orientation phase. What I want is the *robustness and orientation strength of the ordering/score view* but with a search move so clean it doesn't need a depth knob and doesn't stall — a single, large, parameter-free move that reliably escapes shallow optima, plus a backward phase that secures a real large-sample guarantee. That is BOSS — Best Order Score Search — and it is the natural next move precisely because it keeps GRaSP's permutation substrate and grow-shrink projection but replaces the fiddly tuck DFS with a stronger, simpler move.
+
+Let me derive it from the same starting point GRaSP gave me and see why the move is better. I keep the permutation view: a permutation `π` projects to a DAG `G_π` by giving each variable its Markov boundary among the predecessors, found by grow-shrink on the decomposable BDeu score — the same projection, the same no-CI-test robustness, the same fact that the induced DAG is subgraph-minimal and that the set of subgraph-minimal DAGs (which contains the truth) is exactly the image of permutation space under projection. So restricting to projections of orderings does not throw away the answer. The question, as before, is the move.
+
+GRaSP's tuck DFS is powerful but heavy: a depth-first search over tuck sequences with interacting depth knobs (overall, singular, uncovered), running time that climbs steeply so it doesn't comfortably pass a few hundred variables, and the knobs make it fiddly — and on the dense networks the heuristic stalled. The crudest alternative, Teyssier–Koller adjacent transposition, is too local and stalls even sooner. I want a move that leaps far in one step but has *zero depth parameters*. Think about what the score depends on: only, for each variable, which other variables sit ahead of it (that fixes its candidate parents). The thing that most changes a variable's parent set is *where that variable sits*. So take one variable `v`, pull it out, and drop it back into the single best slot — the position among all `|π|` insertion points that maximizes the total score. That is not a local swap: sliding `v` from the end to the front is a whole run of adjacent transpositions collapsed into one decision, so it leaps across the shallow optima that trapped single swaps — and it has nothing to tune, I just evaluate every insertion point and take the argmax. Sweep this best-move over every variable, one at a time, and repeat the whole sweep until a full pass produces no improvement. That is the move GRaSP's tuck-DFS was approximating, but cleaner and parameter-free.
+
+Is "best-move sweep" enough to be *correct*, not just good? Project already hands me a subgraph-minimal DAG containing the distribution, most of the way there. To nail the asymptotic guarantee I borrow the backward phase of GES — greedily delete edges that improve the score until none do — run after the sweep; because project always returns a subgraph-minimal DAG containing the distribution, the correctness of that backward phase carries the whole two-phase search, *for any starting permutation*. "Any start" is the convenience GRaSP's heuristic lacked — no clever initialization, no restarts needed for the guarantee. This is exactly the structural answer to GRaSP's instability: a deterministic, parameter-free leap plus a guaranteed cleanup, instead of a depth-bounded DFS that could stall.
+
+The cost is the same redundancy GRaSP fought, and it is where the scalability has to come from. The best-move for one variable evaluates `O(p)` insertion positions, each needing that variable's grow-shrink for the relevant prefix; a sweep does this for all `p` variables; I iterate sweeps to convergence. Recomputing grow-shrink from scratch every time is enormous repeated work, because the prefixes overlap massively. So cache grow-shrink results in a per-variable tree keyed by what they depend on. Grow is greedy — at each step it adds the single best-scoring available candidate — so the grown parent set for a prefix is a deterministic descent through "best available addition" decisions: a path in a tree whose root is the empty parent set, whose children are the score-improving additions sorted descending, and where a trace for any prefix walks down taking the first sorted child whose variable is in the prefix. Shrink is cached at each node. The tree expands lazily — only visited paths are built — so repeated prefix traces across sweeps and insertion positions reuse stored work; the expensive local-score call moves from "rerun grow-shrink" to "expand a tree node once." And the best-move itself becomes linear, not `O(p)` independent re-scorings: a forward pass building the prefix and recording `score(v | prefix_j) + Σ_{w before j} score(w)`, then a backward pass adding `Σ_{w after j} score(w)`, gives the total at every slot in linear time, each term a cached tree trace; take the argmax, move `v` if it beats its current slot by more than a tiny tolerance. Sweep variables in a shuffled order each round so the search is insensitive to the meaningless column order, and iterate to convergence. This is the mechanism that makes the large, dense regime plausible where GRaSP's tuck-DFS stalled.
+
+Now the scaffold fill, and I should be precise about what the harness exposes versus the full machinery. The edit is one call: `boss(X, score_func="local_score_BDeu", parameters={"sample_prior": 1.0, "structure_prior": 1.0})`, returning the CPDAG. So the discrete score is BDeu with equivalent sample size `1` and structure prior `1` — the *same* score the floor, GRaSP, and (implicitly) the equivalence-class view all used, which keeps the climb honest and the comparison apples-to-apples. The best-move sweep, the grow-shrink tree caching, and the optional backward phase are internal to the library; the harness does not expose a depth knob (there is none — that is the point) or let me toggle the backward phase, so I take the library's defaults. The rung I am running is the parameter-free best-order score search, scored by BDeu, ending in a DAG-to-CPDAG conversion — the literal one-line fill is in the answer.
+
+So the delta from PC is a return to the score/permutation view but with the clean move PC and GRaSP both lacked: where PC tested its way to an over-deleted skeleton and GRaSP tuck-DFS'd over orderings with a depth knob and stalled on the densest graphs, BOSS slides each variable to its single best position — a big, parameter-free leap — projects by cached grow-shrink, and finishes with a guaranteed backward cleanup. Reading all three prior feedbacks, here is what I expect and where I am unsure. **Alarm** should come back down toward GRaSP territory and well under PC's 8.0 — the equivalence-class/ordering view is in its comfort zone there, so I expect single-digit SHD, though possibly not quite GRaSP's 3.3 because the best-move sweep is a different (cleaner) heuristic. **Win95pts** is where I am most hopeful BOSS beats everyone: the parameter-free leap plus cached grow-shrink should let it actually finish and explore the 76-node ordering space where GRaSP stalled, and PC over-deleted — I expect Win95pts SHD to drop below PC's and GRaSP's ~51, into the high 30s, with adjacency recall recovering above PC's 0.69 since BOSS adds edges by score rather than deleting them by a brittle test. The genuine risk is **Hailfinder**: it is the network where faithfulness is most violated, and BOSS's razor (like GRaSP's) is weaker than faithfulness but not unlimited; the best-move sweep can still land in a poor ordering when the score landscape is that rugged, so I would not be shocked if Hailfinder stays around SHD 50 — better than GRaSP's 55 if the cleaner move helps, but not a clean win, and possibly with the arrow recall still middling. My falsifiable prediction: BOSS posts the best Win95pts of any rung so far and a strong Alarm, recovering the adjacency recall PC sacrificed, but Hailfinder remains the hardest network and may keep BOSS's overall SHD from being uniformly best. If even BOSS's clean forward leap over-adds on Hailfinder's near-unfaithful edges, the diagnosis for the final rung is already pointed: keep the score-based equivalence-class search and its backward guarantee, but make the *forward* phase less greedy — refuse to insert an edge between a pair the score itself says is conditionally independent, so the dense-graph over-adding that no rung has fully cured is finally addressed at its source.
+</think>
+<say>
+[[FILL_SAY: 1-2 sentences naming the method and what this first edit does]]
+</say>
+<edit path="causal-bnlearn/bench/custom_algorithm.py">
+<old>
+    """
+    from causallearn.utils.PCUtils import SkeletonDiscovery, Meek, UCSepset
+    from causallearn.utils.cit import CIT
+
+    alpha = 0.05
+    indep_test = CIT(X, "chisq")
+
+    # Step 1: skeleton discovery via chi-squared CI tests (stable PC)
+    cg_1 = SkeletonDiscovery.skeleton_discovery(
+        X, alpha, indep_test, stable=True,
+        background_knowledge=None, verbose=False,
+        show_progress=False, node_names=None,
+    )
+
+    # Step 2: orient unshielded colliders using UC-sepset rule (priority=2)
+    cg_2 = UCSepset.uc_sepset(cg_1, 2, background_knowledge=None)
+
+    # Step 3: complete orientation with Meek rules
+    cg = Meek.meek(cg_2, background_knowledge=None)
+
+    return cg.G
+</old>
+<new>
+    """
+    from causallearn.search.PermutationBased.BOSS import boss
+
+    G = boss(
+        X,
+        score_func="local_score_BDeu",
+        parameters={"sample_prior": 1.0, "structure_prior": 1.0},
+    )
+    return G
+</new>
+</edit>
+<obs>
+Successfully replaced text in causal-bnlearn/bench/custom_algorithm.py.
+</obs>
+<run/>
+<obs>
+Measured results — `baseline:boss` (`is_final,true`), seeds {42, 123, 456} and mean. (Win95pts seeds 123 and 456 were not recorded.)
+
+## Cancer (5 nodes)
+| seed | SHD | adj_prec | adj_rec | arr_prec | arr_rec |
+|---|---|---|---|---|---|
+| 42 | 4 | 1.0 | 0.5 | 0.0 | 0.0 |
+| 123 | 4 | 1.0 | 0.25 | 0.0 | 0.0 |
+| 456 | 4 | 1.0 | 0.25 | 0.0 | 0.0 |
+| **mean** | **4.0** | **1.0** | **0.333** | **0.0** | **0.0** |
+
+## Child (20 nodes)
+| seed | SHD | adj_prec | adj_rec | arr_prec | arr_rec |
+|---|---|---|---|---|---|
+| 42 | 5 | 1.0 | 0.92 | 1.0 | 0.615 |
+| 123 | 5 | 1.0 | 0.96 | 0.833 | 0.769 |
+| 456 | 9 | 0.957 | 0.88 | 1.0 | 0.539 |
+| **mean** | **6.333** | **0.986** | **0.92** | **0.944** | **0.641** |
+
+## Alarm (37 nodes)
+| seed | SHD | adj_prec | adj_rec | arr_prec | arr_rec |
+|---|---|---|---|---|---|
+| 42 | 16 | 0.917 | 0.957 | 1.0 | 0.714 |
+| 123 | 24 | 0.878 | 0.935 | 0.923 | 0.571 |
+| 456 | 22 | 0.917 | 0.957 | 1.0 | 0.571 |
+| **mean** | **20.667** | **0.904** | **0.949** | **0.974** | **0.619** |
+
+## Hailfinder (56 nodes)
+| seed | SHD | adj_prec | adj_rec | arr_prec | arr_rec |
+|---|---|---|---|---|---|
+| 42 | 35 | 0.815 | 0.803 | 0.963 | 0.531 |
+| 123 | 57 | 0.686 | 0.727 | 0.643 | 0.367 |
+| 456 | 64 | 0.603 | 0.621 | 0.818 | 0.551 |
+| **mean** | **52.0** | **0.701** | **0.717** | **0.808** | **0.483** |
+
+## Win95pts (76 nodes)
+| seed | SHD | adj_prec | adj_rec | arr_prec | arr_rec |
+|---|---|---|---|---|---|
+| 42 | 38 | 0.866 | 0.866 | 0.827 | 0.81 |
+| 123 | — | — | — | — | — |
+| 456 | — | — | — | — | — |
+| **mean** | **38.0** | **0.866** | **0.866** | **0.827** | **0.81** |
+</obs>
+
+### step 5 — GES (greedy equivalence search, BDeu)   [slug:ges]
+
+<think>
+[[POLISH_REASONING: adapt to first-person agentic voice, end by deciding to implement]]
+BOSS did most of what I predicted and one thing I did not, and the one surprise is the whole reason to take the next step. As hoped, **Win95pts** is the best of any rung so far — SHD **38** on the one recorded seed, with adjacency precision and recall both 0.87 and arrow recall 0.81, so the parameter-free leap plus cached grow-shrink really did let it work the 76-node ordering space where GRaSP stalled and PC over-deleted. And the recall recovery I argued for showed up: BOSS adds edges by score rather than deleting them by a brittle test, so it does not bleed adjacency recall the way PC did. But two networks came out *worse* than I expected. **Alarm** is SHD **20.7** — not the single digits I forecast, and far off GRaSP's 3.3 and even PC's 8.0 — with arrow recall sagging to 0.62 despite arrow precision near 0.97. And **Hailfinder** stayed hard (SHD 52, mean adjacency recall 0.72), with a brutal seed spread: 35 → 57 → 64. So the per-seed instability I worried about for the heuristic is real and it is not confined to Hailfinder — Alarm's seeds run 16/24/22, a 50% swing. That is the tell: BOSS's best-move sweep, clean as it is, is still a *heuristic forward search* whose landing depends on the order it happens to sweep variables, and on Alarm it is settling into orderings that over-orient or mis-place edges (high arrow precision, low arrow recall means it commits few arrowheads but leaves much undirected or wrong). The forward leap escapes shallow optima but does not *guarantee* it reaches the right equivalence class; the backward phase cleans up deletions but cannot fix a forward phase that wandered into the wrong basin on a given seed.
+
+So the diagnosis across all four rungs sharpens to one thing. hc, GRaSP, PC, BOSS each have a forward/skeleton phase that is, in the end, a heuristic — DAG-space climb, tuck DFS, CI thinning, best-move sweep — and each can land in the wrong place on a given network or seed, which is why no rung is good *across the whole range at once* and why the per-seed numbers wobble. What I have not yet tried is the search whose forward *and* backward phases come with an outright large-sample optimality guarantee, searching equivalence classes directly with operators whose neighbor connectivity is exactly the one a correctness proof needs. That is GES, and it is the natural endpoint precisely because it removes the heuristic uncertainty BOSS's seed-spread exposes: in the limit it returns the equivalence class of the true structure, for any data faithful to a DAG, with no ordering, no depth knob, no sweep order to depend on.
+
+Let me derive it from the score I have used throughout and see why the guarantee attaches. The score is the same BDeu — decomposable (a sum of per-node family terms) and score-equivalent (Markov-equivalent structures get equal value), which I have leaned on since the floor. The new ingredient is *consistency*: in the large-sample limit the score strictly prefers a structure that can represent the true distribution over one that cannot, and among those that can, strictly prefers fewer parameters — a built-in Occam razor. Localize consistency via decomposability and you get *local consistency*: adding `X_i → X_j` raises the score iff `X_j` is dependent on `X_i` given its current parents, and removing an edge raises it iff that independence is real. So the score itself, edge by edge, tells me which way to move — and crucially it does so as a model-score comparison, not a thresholded CI test, which is exactly the robustness that made PC's hard verdicts over-delete on Hailfinder. The same score I have used all along, read through consistency, becomes a correctness certificate.
+
+But the floor already showed local correctness is not global optimality — that was hc's whole problem, every single-arc step looked right and it still stalled. To chain local correctness into a global guarantee I have to search the right space with the right moves and understand how equivalence classes connect. Search *equivalence classes*, not DAGs: represent each class by its completed PDAG (directed for every compelled edge, undirected for every reversible one — unique per class), which removes the covered-reversal redundancy that wasted hc's moves. Two phases. **Forward:** start from the empty graph; neighbors are all classes reachable by adding one edge to *some* member DAG; greedily move to the highest-scoring neighbor while the score improves. This forward local maximum *contains the true distribution* — if some member still asserted a false independence, by the composition axiom there would be a single variable whose addition raises the score (local consistency), contradicting the local max. **Backward:** neighbors are classes reachable by deleting one edge from some member DAG; greedily climb while the score improves. This peels off every unnecessary edge down to the true class, and it terminates *exactly* at the perfect map — the argument needs Meek's conjecture (if one DAG's independences contain another's, the sparser transforms into the denser by covered reversals plus single additions), which makes the descent provably bottom out at the truth, not at a shallow optimum. That is the piece BOSS's heuristic forward sweep lacked: a forward phase guaranteed to reach a class containing the truth and a backward phase guaranteed to descend to it.
+
+Let me be careful about *why* local consistency is the right certificate, because that is the join between the score I have used since the floor and the guarantee I have not had until now. Consistency is a whole-graph property — prefer a structure that can represent the truth, then prefer fewer parameters — but a local search only ever touches one family at a time, so I need it localized. Decomposability does that: the score change of adding `X_i → X_j` is the same in *any* DAG where `X_j` has the same parents, so I can evaluate it in a witness DAG where adding the edge completes a fully connected family (which imposes no independence constraints and so trivially can represent the truth), and there consistency reduces to the single comparison "does this edge remove a false independence." That is local consistency, and it means each greedy step is, in the limit, making the locally correct decision — which is exactly the property hc had *and still failed with*, because local correctness is not global optimality. The missing piece is the geometry of how classes connect, which is what the two-phase argument supplies.
+
+The operators are what make that argument executable without enumerating member DAGs. `Insert(X, Y, T)`: for non-adjacent `X, Y` and a subset `T` of `Y`'s neighbors not adjacent to `X`, add `X → Y` and orient each `T` as `T → Y`; valid iff `NA_{Y,X} ∪ T` is a clique and every semi-directed path from `Y` to `X` meets `NA_{Y,X} ∪ T` (the clique condition forbids manufacturing a v-structure or a cycle; the path condition forbids closing a directed `Y`-to-`X` route). Its score change is a single node-family difference `s(Y, NA ∪ T ∪ Pa_Y ∪ {X}) − s(Y, NA ∪ T ∪ Pa_Y)`. `Delete(X, Y, H)`: drop the `X–Y` edge and orient each `H` as a new head; valid iff `NA_{Y,X} \ H` is a clique; score change again one family difference. Both reduce to local score calls on a witness DAG — valid because the score is decomposable and score-equivalent (the class score change equals the witness DAG's) — so no class member is ever enumerated; the completed-PDAG is reconverted (Dor–Tarsi extension, then compelled/reversible relabeling) only on an accepted move, with clique-based pruning (a non-clique `T` fails for every superset; a valid delete `H` is valid for every superset) and a family-score cache keeping the per-step cost down. This is the cleanest expression yet of everything the ladder has been circling: the same BDeu score, searched over equivalence classes, with operators carrying an unconditional large-sample guarantee.
+
+In the scaffold this is one call: `ges(X, score_func="local_score_BDeu", parameters={"sample_prior": 1.0, "structure_prior": 1.0})`, returning `result["G"]`, the CPDAG. The discrete score is BDeu with equivalent sample size `1` and structure prior `1` — identical to every rung before it, so the only thing that changed across the whole ladder, in the end, is the *search*, which is the honest comparison I have been building toward. The forward/backward phases, the operators, the clique tests, the PDAG conversions are internal to the library; the harness exposes only the score parameters, and I take the library's defaults for everything else. (The literal one-line fill is in the answer.)
+
+So the delta from BOSS is: replace the heuristic best-move forward sweep with a forward phase that provably reaches a class containing the truth, and replace any reliance on sweep order with a backward phase that provably descends to it. Reading all four prior feedbacks, here is what I expect and where the risk remains. **Alarm** should be the clearest win — this is exactly where BOSS's heuristic forward sweep wandered (SHD 20.7, seed-spread 16/24/22) and where GES's guaranteed forward-then-backward search should settle reliably; I expect Alarm SHD to crash to the low single digits with arrow recall jumping from BOSS's 0.62 up toward 0.9, recovering and beating GRaSP's already-strong 3.3. **Child** should be excellent (small, faithful) — likely the best of any rung, SHD near 2. The two networks I am unsure about are the extremes of the trade. **Hailfinder** is the hardest because faithfulness is most violated there, and GES's guarantee is *under faithfulness* — so on the near-unfaithful Hailfinder I expect it to improve on BOSS but not dramatically (SHD around 40, better than BOSS's 52 and PC's 45 because the score-comparison forward phase avoids both PC's over-deletion and BOSS's seed-instability, but not a clean solve). And **Win95pts** is the one place GES might actually *trail* BOSS: it is the densest-by-edge-count network, the GES forward phase can over-add adjacencies that the backward phase then fails to fully remove, so I would not be surprised if Win95pts lands around SHD 48 — worse than BOSS's 38 — with adjacency recall strong but precision slipping from the excess edges. My falsifiable prediction: GES wins decisively on Alarm, Child, and Hailfinder (the three networks where a guaranteed, low-variance search beats a heuristic one), posting the best overall SHD of the ladder, but BOSS may keep the single-best Win95pts because GES's forward phase over-adds on the densest graph. That residual — GES's *forward* phase introducing excess adjacencies on dense, near-unfaithful networks — is the one weakness this strongest baseline does not close, and it is exactly the gap a less-greedy forward insertion strategy would target.
+</think>
+<say>
+[[FILL_SAY: 1-2 sentences naming the method and what this first edit does]]
+</say>
+<edit path="causal-bnlearn/bench/custom_algorithm.py">
+<old>
+    """
+    from causallearn.search.PermutationBased.BOSS import boss
+
+    G = boss(
+        X,
+</old>
+<new>
+    """
+    from causallearn.search.ScoreBased.GES import ges
+
+    result = ges(
+        X,
+</new>
+</edit>
+<obs>
+Successfully replaced text in causal-bnlearn/bench/custom_algorithm.py.
+</obs>
+<note>
+[[FILL_NOTE?: optional one-line thought for this edit, or delete this block]]
+</note>
+<edit path="causal-bnlearn/bench/custom_algorithm.py">
+<old>
+    )
+    return G
+</old>
+<new>
+    )
+    return result["G"]
+</new>
+</edit>
+<obs>
+Successfully replaced text in causal-bnlearn/bench/custom_algorithm.py.
+</obs>
+<run/>
+<obs>
+Measured results — `baseline:ges` (`is_final,true`), seeds {42, 123, 456} and mean.
+
+## Cancer (5 nodes)
+| seed | SHD | adj_prec | adj_rec | arr_prec | arr_rec |
+|---|---|---|---|---|---|
+| 42 | 4 | 1.0 | 0.5 | 0.0 | 0.0 |
+| 123 | 4 | 1.0 | 0.25 | 0.0 | 0.0 |
+| 456 | 4 | 1.0 | 0.25 | 0.0 | 0.0 |
+| **mean** | **4.0** | **1.0** | **0.333** | **0.0** | **0.0** |
+
+## Child (20 nodes)
+| seed | SHD | adj_prec | adj_rec | arr_prec | arr_rec |
+|---|---|---|---|---|---|
+| 42 | 5 | 1.0 | 0.92 | 1.0 | 0.615 |
+| 123 | 1 | 1.0 | 0.96 | 1.0 | 1.0 |
+| 456 | 1 | 1.0 | 0.96 | 1.0 | 1.0 |
+| **mean** | **2.333** | **1.0** | **0.947** | **1.0** | **0.872** |
+
+## Alarm (37 nodes)
+| seed | SHD | adj_prec | adj_rec | arr_prec | arr_rec |
+|---|---|---|---|---|---|
+| 42 | 4 | 0.978 | 0.957 | 0.951 | 0.929 |
+| 123 | 2 | 1.0 | 0.957 | 1.0 | 0.952 |
+| 456 | 2 | 1.0 | 0.957 | 1.0 | 0.952 |
+| **mean** | **2.667** | **0.993** | **0.957** | **0.984** | **0.945** |
+
+## Hailfinder (56 nodes)
+| seed | SHD | adj_prec | adj_rec | arr_prec | arr_rec |
+|---|---|---|---|---|---|
+| 42 | 39 | 0.846 | 0.833 | 0.563 | 0.735 |
+| 123 | 40 | 0.844 | 0.818 | 0.556 | 0.714 |
+| 456 | 40 | 0.844 | 0.818 | 0.556 | 0.714 |
+| **mean** | **39.667** | **0.845** | **0.823** | **0.558** | **0.721** |
+
+## Win95pts (76 nodes)
+| seed | SHD | adj_prec | adj_rec | arr_prec | arr_rec |
+|---|---|---|---|---|---|
+| 42 | 49 | 0.8 | 0.821 | 0.726 | 0.77 |
+| 123 | 46 | 0.81 | 0.839 | 0.741 | 0.8 |
+| 456 | 51 | 0.793 | 0.821 | 0.71 | 0.76 |
+| **mean** | **48.667** | **0.801** | **0.827** | **0.726** | **0.777** |
+</obs>
+
+### step 6 — LGES (less greedy equivalence search, BDeu)   [slug:lges]
+
+<think>
+[[POLISH_REASONING: adapt to first-person agentic voice, end by deciding to implement]]
+GES landed exactly where its guarantee predicts, and the residual it leaves is precise enough to name. On the faithful, well-behaved networks it is the clean winner I expected: **Child** SHD **2.3** (arrow precision a perfect 1.0, arrow recall 0.87 — two of three seeds hit SHD 1), **Alarm** SHD **2.7** (arrow precision 0.98, recall 0.94, seeds a tight 4/2/2), crushing every prior rung and erasing BOSS's Alarm seed-spread. The guaranteed forward-then-backward search did exactly what a heuristic forward sweep could not: it converged to essentially the right equivalence class, with almost no per-seed variance. But the two extremes confirm the one weakness I flagged. **Hailfinder** improved to SHD **39.7** — better than BOSS's 52 and PC's 45 as I predicted — yet the *adjacency* numbers tell the story: precision 0.85 against recall 0.82, and arrow precision a mediocre **0.56**, so GES is keeping edges and orientations on the near-unfaithful network that the truth does not have. And **Win95pts**, the densest by edge count, came in at SHD **48.7** — *worse* than BOSS's 38, exactly the over-add I worried about: adjacency precision 0.80 (the lowest of the strong rungs) with recall 0.83, the signature of a forward phase that inserts excess adjacencies the backward phase cannot fully remove. So GES's failure mode is not the score, not the backward phase, not the equivalence-class search — it is the *greedy forward phase* over-adding adjacencies on dense, near-unfaithful graphs. That is the one gap the whole ladder has circled and no rung has closed: hc over-added by stalling, GRaSP by wandering, PC over-*deleted* instead, BOSS over-added by seed-luck, and now GES over-adds by being maximally greedy in its insertions.
+
+So the next move is forced, and it is surgical: keep everything that made GES the strongest baseline — the BDeu score, the equivalence-class search, the `Insert`/`Delete` operators, the backward phase, the large-sample guarantee — and make only the *forward* phase less greedy, so it stops introducing the excess adjacencies that hurt Win95pts and Hailfinder. The question is how to be less greedy without breaking the guarantee.
+
+Here is the basic assumption of GES I want to question. At each forward state, GES evaluates the neighboring classes reachable by one `Insert` and applies the *highest-scoring* one. The implicit claim is that the highest-scoring insertion is the best one to take. But there is a more general fact: a search that applies *any* score-increasing neighbor — not necessarily the highest — still finds the global optimum of the score in the sample limit, because the optimum is a fixed point of "no score-increasing move exists" regardless of which improving moves you took to get there. That observation opens the door: if I am free to choose *which* score-increasing insertion to take, I can choose *strategically* rather than greedily, and in particular I can *decline* certain insertions that the maximally-greedy GES would have made.
+
+Which insertions should I decline? Look again at what GES does wrong: it inserts an adjacency between two variables `X, Y` that are non-adjacent in the true graph. When does the score betray that an adjacency is spurious? Recall the operator `Insert(X, Y, T)` adds `X → Y` and orients a chosen set `T` of `Y`'s neighbors into `Y`. For a fixed pair `(X, Y)`, GES considers many such operators, one per valid `T`. Now the key observation: in the sample limit, if `X` and `Y` are non-adjacent in the true MEC, then there *exists* some `T` for which `Insert(X, Y, T)` is **score-decreasing** — because that `T` exposes a conditioning set under which `X` and `Y` are conditionally independent, and by local consistency a score-decreasing insertion means exactly "this independence is real." Conversely, a score-decreasing `Insert(X, Y, T)` for some `T` is evidence that the pair `(X, Y)` is non-adjacent in the truth. The score, through a single operator, is telling me a conditional independence — not via a thresholded CI test, but as a model-score comparison, which is the robustness PC lacked.
+
+That gives the less-greedy rule directly. At a forward state, for each non-adjacent pair `(X, Y)`, iterate over the valid `Insert(X, Y, T)` operators. **If *any* of them is score-decreasing**, treat it as evidence that `X` and `Y` are conditionally independent — discard *all* `Insert(X, Y, *)` operators for that pair, mark the pair as separated, and move on to the next pair. Only for pairs where *no* tried insertion is score-decreasing do I keep the score-increasing insertions as candidates; among all retained candidates across all pairs, I then apply the single highest-scoring one (still a valid score-increasing move, so the guarantee is preserved). This is a *conservative* insertion strategy: it refuses to insert an edge between any pair for which the score has already signaled an independence, which is precisely the over-adding GES does on dense graphs. The intuition has two payoffs the GES failure mode names exactly: **accuracy**, because it avoids inserting the excess adjacencies the backward phase may fail to remove (the Win95pts/Hailfinder problem), and **efficiency**, because finding a score-decreasing insertion stops the enumeration of `T` subsets for that pair early and shrinks the candidate set in every later state.
+
+I have to be honest about the guarantee, because that is the whole reason to stay in the GES family rather than inventing something. There are two ways to read "score-decreasing insertion implies non-adjacency." The strong reading — that whenever the current class is not Markov, *some* pair has a score-decreasing insertion whose decision does not depend on which member DAG I picked — would make the conservative rule provably complete (always finds a score-increasing move when one is needed), but that completeness is only partially established. The safe reading relaxes the rule just enough to be *guaranteed*: a "safe" variant first checks, for each non-adjacent pair, whether the simplest insertion (`T = ∅`, i.e. adding `X` straight into `Y`'s parents in a witness DAG) is score-decreasing, and only declines the pair on that basis, which is provably sound — it returns a valid score-increasing insertion if and only if one exists, so the overall forward-then-backward search recovers the true MEC in the sample limit, for any initial class. So the less-greedy forward phase comes in a conservative form (empirically the most accurate) and a safe form (provably correct); both are strictly within the GES guarantee structure because the backward phase is untouched and every applied move is a valid score-increasing operator. I will run the conservative form — it is the one that most directly attacks the over-adding, with the safe screen as the soundness backstop — exactly as a wrapper around the GES forward loop I already have.
+
+Now the implementation, and I must be careful because the harness gives me GES's operator primitives but not a packaged less-greedy search, so I build the conservative forward phase on top of the same `GESUtils` surface GES uses, leaving the backward phase identical. The forward loop becomes: at each state, compute the graph info; for each non-adjacent ordered pair `(i, j)`, enumerate the valid `T` subsets (clique test on `NA_{Y,X} ∪ T`, semi-directed-path test) exactly as GES does, scoring each by the insert-difference helper; but track, per pair, whether *any* valid insertion came out score-decreasing — and the moment one does, mark the pair separated and skip its remaining and future insertions, retaining none of its candidates. Among the retained (strictly score-increasing) candidates from the un-separated pairs, pick the global best and apply it; reconvert the PDAG to its completed form (only on a move), exactly as GES does. The safe screen is the cheap pre-check: before enumerating, if the `T = ∅` insert is non-positive, the pair is separated immediately. The backward phase is GES's `Delete` loop verbatim. The score is the identical BDeu (`sample_prior = 1`, `structure_prior = 1`), so once again the *only* thing that changed from the strongest baseline is the forward insertion policy — a controlled, single-variable ablation of GES's greedy step. (The full scaffold module is in the answer.)
+
+So the delta from GES is exactly one move: GES applies the highest-scoring insertion at every forward step; this applies a less-greedy insertion that first declines any pair for which the score implies a conditional independence, then takes the best of what remains — keeping GES's backward phase, operators, score, and large-sample guarantee untouched. Here is the bar it must clear and what I would validate, stated against GES's real numbers with nothing invented. The clean wins should be *held*, not broken: on **Child** (GES SHD 2.3) and **Alarm** (GES SHD 2.7) the conservative rule should change little, because on faithful networks there are few spurious adjacencies to decline — if it regresses these, the rule is too aggressive and I would fall back to the safe variant. The networks where it must *improve* are the two where GES over-added: **Win95pts** (GES SHD 48.7, the over-add case where BOSS's 38 still beats GES) — I want the conservative forward phase to lift adjacency precision above GES's 0.80 by declining the excess edges, pulling SHD down toward and ideally past BOSS's 38, which would make this the first rung to win the densest network *and* the faithful ones; and **Hailfinder** (GES SHD 39.7, arrow precision 0.56) — I want SHD below 39.7 and adjacency precision above 0.85 as the spurious edges are refused. The single falsifiable claim: LGES should match GES on Child and Alarm (within noise) and strictly reduce SHD on Win95pts and Hailfinder by raising adjacency precision, because the only mechanism changed is the refusal to insert edges between score-implied-independent pairs — the exact over-adding GES's measured numbers expose. If Win95pts does not improve, the conservative rule is not catching the excess adjacencies there and the diagnosis would turn to the backward phase or the score's structure prior; but the mechanism is aimed squarely at the one weakness the strongest baseline's own numbers reveal.
+</think>
+<say>
+[[FILL_SAY: 1-2 sentences naming the method and what this first edit does]]
+</say>
+<edit path="causal-bnlearn/bench/custom_algorithm.py">
+<old>
+def run_causal_discovery(X: np.ndarray) -> GeneralGraph:
+    """
+    Input:  X of shape (n_samples, n_variables), integer-encoded discrete data
+    Output: estimated CPDAG as causallearn.graph.GeneralGraph.GeneralGraph
+    """
+    from causallearn.search.ScoreBased.GES import ges
+
+    result = ges(
+        X,
+        score_func="local_score_BDeu",
+        parameters={"sample_prior": 1.0, "structure_prior": 1.0},
+    )
+    return result["G"]
+</old>
+<new>
+def run_causal_discovery(X: np.ndarray) -> GeneralGraph:
+    """LGES-0 (Less Greedy Equivalence Search, conservative insertion).
+
+    Same BDeu score and Insert/Delete operators as GES, with one change to the
+    forward phase: a pair (X, Y) whose score implies a conditional independence
+    (some valid Insert(X, Y, T) is score-decreasing) is "separated" and gets no
+    inserts. The backward (delete) phase is GES's, unchanged. Returns the CPDAG.
+    """
+    import numpy as np
+    from causallearn.utils.GESUtils import (
+        precompute_graph_info, Combinatorial, find_subset_include,
+        check_clique_fast, insert_vc2_fast,
+        insert_changed_score_fast, delete_changed_score_fast,
+        insert, delete, score_g,
+    )
+    from causallearn.utils.PDAG2DAG import pdag2dag       # Dor-Tarsi consistent extension
+    from causallearn.utils.DAG2CPDAG import dag2cpdag     # compelled/reversible labeling
+    from causallearn.score.LocalScoreFunctionClass import LocalScoreClass
+    from causallearn.score.LocalScoreFunction import local_score_BDeu
+
+    N = X.shape[1]
+    maxP = N
+
+    # Decomposable, score-equivalent BDeu family score (sample_prior=1, structure_prior=1)
+    score_func = LocalScoreClass(data=X, local_score_fun=local_score_BDeu, parameters=None)
+    parameters = None
+
+    nodes = [GraphNode("X%d" % (i + 1)) for i in range(N)]
+    G = GeneralGraph(nodes)                       # empty graph (all independencies)
+    score = score_g(X, G, score_func, parameters)
+    G = dag2cpdag(pdag2dag(G))                     # completed PDAG of the current class
+    cache = {}                                     # (node, sorted parents) -> family score
+
+    # ---------------- Forward: CONSERVATIVE Insert(i, j, T) ----------------
+    while True:
+        best_gain, best = -np.inf, None
+        nbrs, adj, pa, semi = precompute_graph_info(G, N)
+        for i in range(N):
+            for j in range(N):
+                if (
+                    G.graph[i, j] == 0
+                    and G.graph[j, i] == 0
+                    and i != j
+                    and len(pa[j]) <= maxP
+                ):                                       # i, j non-adjacent
+                    NA = nbrs[j] & adj[i]                  # NA_{Y,X}
+                    subsets = Combinatorial(sorted(nbrs[j] - adj[i]))   # tails not adjacent to i
+                    flag = np.zeros(len(subsets))          # prune supersets of a non-clique
+                    pair_candidates = []                   # score-increasing inserts for THIS pair
+                    separated = False                      # some Insert(i,j,T) score-decreasing?
+                    for k in range(len(subsets)):
+                        if separated:
+                            break                          # pair separated: drop all its inserts
+                        if flag[k] >= 2:
+                            continue
+                        T = set(subsets[k])
+                        if check_clique_fast(G, NA | T):               # cond 1: NA u T clique
+                            if flag[k] == 0:
+                                valid_path = insert_vc2_fast(j, i, NA | T, semi)  # cond 2
+                            else:
+                                valid_path = 1
+                            if valid_path:
+                                flag[np.where(find_subset_include(subsets[k], subsets) == 1)] = 1
+                                gain, desc, cache = insert_changed_score_fast(
+                                    X, i, j, subsets[k], NA, pa[j], cache, score_func, parameters)
+                                if gain <= 0:
+                                    # score implies a conditional independence:
+                                    # separate the pair, discard ALL its inserts
+                                    separated = True
+                                    pair_candidates = []
+                                else:
+                                    pair_candidates.append((gain, desc))
+                        else:
+                            flag[np.where(find_subset_include(subsets[k], subsets) == 1)] = 2
+                    if not separated:
+                        for gain, desc in pair_candidates:
+                            if gain > best_gain:
+                                best_gain, best = gain, desc
+        if best is None or best_gain <= 0:
+            break
+        G = insert(G, best[0], best[1], best[2])           # add i->j, orient each T as T->j
+        G = dag2cpdag(pdag2dag(G))                          # reconvert (only on a move)
+        score += best_gain
+
+    # ---------------- Backward: GES Delete(i, j, H) (unchanged) ----------------
+    while True:
+        best_gain, best = -np.inf, None
+        nbrs, adj, pa, semi = precompute_graph_info(G, N)
+        for i in range(N):
+            for j in range(N):
+                if (j in nbrs[i]) or (i in pa[j]):         # i - j  or  i -> j
+                    NA = nbrs[j] & adj[i]                   # NA_{Y,X}
+                    subsets = Combinatorial(sorted(NA))     # heads H subset of NA
+                    ok = np.ones(len(subsets))              # prune supersets of a clique-pass
+                    for k in range(len(subsets)):
+                        H = set(subsets[k])
+                        if ok[k] == 1:
+                            if check_clique_fast(G, NA - H):              # validity: NA \ H clique
+                                ok[np.where(find_subset_include(subsets[k], subsets) == 1)] = 2
+                            else:
+                                continue
+                        gain, desc, cache = delete_changed_score_fast(
+                            X, i, j, subsets[k], NA, pa[j], cache, score_func, parameters)
+                        if gain > best_gain:
+                            best_gain, best = gain, desc
+        if best is None or best_gain <= 0:
+            break
+        G = delete(G, best[0], best[1], best[2])            # drop i-j, orient each H as a new head
+        G = dag2cpdag(pdag2dag(G))
+        score += best_gain
+
+    return G                                                # completed PDAG = estimated CPDAG
+</new>
+</edit>
+<obs>
+Successfully replaced text in causal-bnlearn/bench/custom_algorithm.py.
+</obs>
+

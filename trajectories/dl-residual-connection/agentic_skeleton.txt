@@ -1,0 +1,989 @@
+<meta task="dl-residual-connection" domain="Deep learning" file="pytorch-vision/custom_residual.py" model_format="qwen3" edit_tool="str_replace"/>
+
+<system>
+You are a research engineer improving a model on a fixed ML task. You work by editing the model code and running experiments. Think carefully before each change. You have these tools:
+- str_replace(path, old_str, new_str): replace the unique occurrence of old_str with new_str.
+- create(path, file_text): create a new file.
+- run_experiment(): train + evaluate the current code under the fixed budget; returns metrics.
+Make one tool call at a time. After editing, call run_experiment() to measure your method.
+</system>
+
+<user>
+## Research question
+
+CIFAR-style ResNets stack the *same* residual block tens to hundreds of times. The single thing being
+designed is that block — the unit `H = ReLU(F(x) + shortcut(x))` that the backbone repeats. The goal is
+a block that raises test accuracy *across depths and datasets at once*: a shallow net (ResNet-20 on
+CIFAR-10), a deep net (ResNet-56 on CIFAR-100), and a very deep net (ResNet-110 on CIFAR-100). The whole
+training recipe around the block — initialization, data pipeline, optimizer, schedule, the global pool and
+linear classifier, the outer loop — is frozen. So every method on the ladder is one fill of the block, and
+nothing else moves; a design that helps at depth 20 must not break at depth 110, and vice versa.
+
+## Prior art before the first rung (the residual-block lineage)
+
+The block the first rung edits is the plain post-activation residual block, and it is itself the
+resolution of a line of work on training depth. These are the ancestors the ladder reacts to; the fixed
+substrate below is what they converged to.
+
+- **Plain deep stacks (VGG-style, Simonyan & Zisserman 2014).** Uniform 3×3 conv–BN–ReLU layers stacked
+  deep. More depth bought accuracy up to a point, then *degraded* — a deeper plain net reaches *higher
+  training error* than a shallower one, not from overfitting (training error itself rises) and not from
+  vanishing gradients (BN keeps the signals healthy). Gap: depth past ~20 layers is an optimization
+  failure, not a capacity one — the solver cannot find the good solution that provably exists.
+- **Residual block (He et al. 2015, arXiv:1512.03385).** Reparameterize: let the two-conv stack learn the
+  *residual* `F(x) = H(x) − x` and add a parameter-free identity shortcut, `H = ReLU(F(x) + x)`. Now "do
+  nothing useful" means `F → 0`, the easiest thing for weight-decayed SGD to reach, so a near-identity
+  layer is cheap to learn and degradation reverses. Gap: the *order* inside the block (Conv-BN-ReLU then a
+  ReLU **after** the addition) clamps what the shortcut can carry, and at extreme depth the after-add ReLU
+  still sits on the identity path.
+- **Highway Networks (Srivastava et al. 2015).** Gated skips, `y = H(x)·T(x) + x·C(x)`, LSTM-style learned
+  gates. Gap: a gate that drifts closed *removes* the identity path exactly where a deep net needs it, and
+  the gates cost parameters — ResNet's fixed identity skip trained better.
+- **Batch Normalization (Ioffe & Szegedy 2015).** Per-mini-batch standardization with a learnable scale
+  and shift after each conv; it is *why* the plain stack converges at all and is fixed inside the block
+  here (every conv is `bias=False` followed by `BatchNorm2d`).
+
+There is room left in the block: the placement of normalization and activation relative to the
+convolutions and the shortcut, the scale on the residual branch, whether the branch is even present every
+step, and what recalibration (if any) the branch output gets before the addition. That space is the ladder.
+
+## The fixed substrate
+
+A CIFAR-adapted ResNet is frozen and must not be touched. A 3×3/16 stride-1 stem (no 7×7 conv, no max
+pool), then three stages — 16 channels on 32×32, 32 on 16×16, 64 on 8×8 — each a run of `CustomBlock`s,
+then global average pool into a single linear classifier. Depth is set by the per-stage block counts:
+ResNet-20 is `[3,3,3]`, ResNet-56 is `[9,9,9]`, ResNet-110 is `[18,18,18]`. The first block of stages 2
+and 3 strides by 2 and doubles the channels, so the shortcut there must match a change in both spatial
+size and channel count; every other block sees `stride=1` and equal in/out channels, where the shortcut is
+a bare identity. Initialization is fixed (Kaiming `fan_out` on convs, BN weight 1 / bias 0, Kaiming
+`fan_in` on the linear head); the data pipeline is fixed (`RandomCrop(32, pad=4)` + `RandomHorizontalFlip`,
+per-dataset normalization); the optimizer is fixed (SGD `lr=0.1`, `momentum=0.9`, `weight_decay=5e-4`,
+cosine annealing over 200 epochs, batch 128). The metric is the **best test accuracy reached during
+training**, so a block that trains *faster* or more *stably* — not only to a higher final point — wins.
+
+## The editable interface
+
+Exactly one region is editable — the `CustomBlock` class in `pytorch-vision/custom_residual.py` (the
+block lines 31–61). The backbone relies on a fixed contract that every rung's fill must honor:
+
+- constructor signature `CustomBlock(in_planes, planes, stride)`;
+- a class attribute `expansion` (`1` for a basic block, `4` for a bottleneck) — the stem's linear head
+  reads `64 * expansion`, so changing it changes the whole backbone's channel arithmetic;
+- `forward(x)` returns a tensor with `planes * expansion` channels;
+- the shortcut handles the dimension mismatch when `stride != 1` or `in_planes != planes * expansion`.
+
+Inside that contract the block is free: the number, kernel size, and grouping of convolutions; the
+placement and type of normalization and activation; the shortcut/skip design; channel or spatial
+attention; the `expansion` factor; any extra modules. The starting point is the scaffold default — the
+plain post-activation basic block. Each rung replaces exactly this class and nothing else.
+
+```python
+# EDITABLE region of custom_residual.py (lines 31-61) -- default fill: plain post-activation block
+class CustomBlock(nn.Module):
+    """Custom residual block for CIFAR ResNets.
+
+    Args:
+        in_planes: input channels
+        planes: output channels
+        stride: spatial stride (1 or 2)
+
+    Must set class attribute `expansion = 1` (or 4 for bottleneck).
+    The shortcut dimension must match planes * expansion.
+    """
+    expansion = 1
+
+    def __init__(self, in_planes, planes, stride=1):
+        super().__init__()
+        self.conv1 = nn.Conv2d(in_planes, planes, 3, stride=stride, padding=1, bias=False)
+        self.bn1 = nn.BatchNorm2d(planes)
+        self.conv2 = nn.Conv2d(planes, planes, 3, padding=1, bias=False)
+        self.bn2 = nn.BatchNorm2d(planes)
+        self.shortcut = nn.Sequential()
+        if stride != 1 or in_planes != planes * self.expansion:
+            self.shortcut = nn.Sequential(
+                nn.Conv2d(in_planes, planes * self.expansion, 1, stride=stride, bias=False),
+                nn.BatchNorm2d(planes * self.expansion),
+            )
+
+    def forward(self, x):
+        out = F.relu(self.bn1(self.conv1(x)))
+        out = self.bn2(self.conv2(out))
+        out += self.shortcut(x)
+        return F.relu(out)
+```
+
+## Evaluation settings
+
+Three architecture/dataset pairs spanning the depth range, each at seed 42: **ResNet-20 on CIFAR-10**
+(shallow, easy dataset), **ResNet-56 on CIFAR-100** (deep, 100-way), and **ResNet-110 on CIFAR-100** (very
+deep, 100-way). One metric, higher is better: **best test accuracy (%)** reached at any epoch during the
+fixed 200-epoch cosine schedule. A block must clear the interface above and may not change dataset
+construction, the optimizer, the global pool, the classifier head, or the outer training loop — only the
+block itself.
+
+The editable model code is in `pytorch-vision/custom_residual.py`:
+```python
+class CustomBlock(nn.Module):
+    """Custom residual block for CIFAR ResNets.
+
+    Args:
+        in_planes: input channels
+        planes: output channels
+        stride: spatial stride (1 or 2)
+
+    Must set class attribute `expansion = 1` (or 4 for bottleneck).
+    The shortcut dimension must match planes * expansion.
+    """
+    expansion = 1
+
+    def __init__(self, in_planes, planes, stride=1):
+        super().__init__()
+        self.conv1 = nn.Conv2d(in_planes, planes, 3, stride=stride, padding=1, bias=False)
+        self.bn1 = nn.BatchNorm2d(planes)
+        self.conv2 = nn.Conv2d(planes, planes, 3, padding=1, bias=False)
+        self.bn2 = nn.BatchNorm2d(planes)
+        self.shortcut = nn.Sequential()
+        if stride != 1 or in_planes != planes * self.expansion:
+            self.shortcut = nn.Sequential(
+                nn.Conv2d(in_planes, planes * self.expansion, 1, stride=stride, bias=False),
+                nn.BatchNorm2d(planes * self.expansion),
+            )
+
+    def forward(self, x):
+        out = F.relu(self.bn1(self.conv1(x)))
+        out = self.bn2(self.conv2(out))
+        out += self.shortcut(x)
+        return F.relu(out)
+```
+Improve it. Derive your method, edit the code, then run_experiment().
+</user>
+
+### step 1 — Gated residual (learnable scalar gate, init 1.0)   [slug:gated_residual]
+
+<think>
+[[POLISH_REASONING: adapt to first-person agentic voice, end by deciding to implement]]
+The block is the whole game, but every block is a variation on one fill of the scaffold, so the place to
+start is the plainest non-trivial change I can make to the default and the one I most trust not to hurt:
+put a single learnable scalar on the residual branch. Before I reach for anything structural — reordering
+the normalization, dropping blocks, attention — I want to know what the *minimal* deviation from the
+default block does, because that calibrates everything after it. The default is the post-activation basic
+block: two 3×3 conv–BN layers with a ReLU between them, the shortcut added, and a final ReLU after the
+addition, `H = ReLU(F(x) + shortcut(x))`. It already works; the question is whether the network is getting
+the *amount* of residual right, block by block, and whether I can let it choose.
+
+Let me be precise about what "the amount of residual" means and why it might matter. A residual block
+commits to a fixed mixing rule: the branch output `F(x)` is added to the shortcut at full weight, 1·F(x).
+That weight is a hard architectural constant, identical in the first block and the last, identical at depth
+20 and depth 110. But the *right* contribution of a block is surely not constant. Early blocks, building
+low-level features every later block depends on, may want to write strongly; deep blocks, refining an
+already-rich representation, may want to write only a small correction — exactly the picture where the
+optimal `F` is "near zero, a gentle nudge." With the weight pinned at 1, the only way the network can dial
+a block down is to drive all of `F`'s conv weights small, fighting the same conditioning the residual
+reformulation was supposed to relieve, and it has to do that with the *full* convolutional machinery rather
+than one knob. So the minimal hypothesis is: give each block one extra degree of freedom — a scalar `alpha`
+multiplying its residual branch, `H = ReLU(shortcut(x) + alpha · F(x))` — and let SGD learn how loud each
+block should be. One parameter per block, negligible cost, and it sits exactly on the axis I suspect the
+fixed block gets wrong.
+
+Now the design decision that actually defines this rung, and it is *not* the one the obvious reference
+would push me toward. The natural place to look for "scale the residual by a learnable scalar" is the line
+of work on initializing that scalar to **zero** — start every block as a pure identity, `H = ReLU(x)`,
+and let the gates open up during training so a freshly-initialized deep net begins life perfectly
+signal-preserving. That story is about *trainability at extreme depth*: at zero-init the forward map is the
+identity and the input-output Jacobian is exactly the identity, so gradients propagate without warm-up or
+normalization, and people have used it to train networks thousands of layers deep. It is a real and
+attractive idea. But I have to ask whether it fits *this* substrate, and when I trace it through, it does
+not — and the place where it breaks is the load-bearing decision of this whole rung.
+
+Here is the mismatch. That zero-init story assumes the residual branch is the *only* thing standing
+between input and output — that with `alpha = 0` the block collapses to a clean identity. In this scaffold
+the block is **post-activation**: there is a ReLU *after* the addition, and inside the branch there is BN
+after the last conv. So even with `alpha = 0` the block is not the identity — it is `H = ReLU(shortcut(x))`,
+and on the stride-1 blocks where the shortcut is a bare identity that is `ReLU(x)`, which is only the
+identity because the block input happens to be non-negative (it is the output of a prior ReLU). More to the
+point, the substrate already *has* its trainability solved: BN after every conv keeps the forward and
+backward signals healthy at depth 110, and the schedule is a fixed cosine over 200 epochs with no warm-up
+to remove. The disease that zero-init cures — an un-normalized deep net that can't start — is not present
+here. If I zero-init `alpha`, I am instead *throwing away* the first stretch of training: every block
+starts contributing nothing, the network is effectively shallow for as long as it takes the gates to lift
+off zero, and against a fixed 200-epoch budget that is wasted depth, not bought depth. The zero-init move
+trades early capacity for early stability I don't need.
+
+So I init the gate at **one**, not zero. At `alpha = 1` the block is *bit-for-bit the default scaffold
+block* — `H = ReLU(shortcut(x) + 1·F(x))` is exactly `H = ReLU(shortcut(x) + F(x))`. The network begins
+training as the proven post-activation ResNet, full depth from step zero, and the gate is a *correction*
+the optimizer is free to apply: it can pull a block down below 1 if that block is over-writing, or push it
+above 1 if a block wants to write louder than the default allows. This is the right framing for the
+substrate I have. I am not buying trainability — BN already gave me that. I am buying the ability to
+*re-weight* each block's contribution around the default, starting from the default, so the worst case is
+"the gates stay near 1 and I recover the baseline" and the upside is "some blocks find they should be
+quieter or louder." Initializing at 1 makes the floor of this rung the baseline itself; initializing at 0
+would make the floor strictly worse and bet the whole rung on the gates lifting fast enough. Given a fixed
+budget and an already-trainable substrate, 1 is the only defensible choice — and it is the one decision
+that separates this rung from the zero-init lineage it superficially resembles.
+
+Where exactly does the scalar multiply? I want it on the residual branch and on nothing else — the
+shortcut must stay un-gated, because the entire value of the identity path is that it is *always* open,
+carrying signal and gradient untouched; gating the shortcut would reintroduce the Highway failure where a
+drifting gate can close the highway. So the scalar multiplies `F(x)` after its final BN and *before* the
+addition, leaving `shortcut(x)` at full strength. And it goes *inside* the post-activation structure: I
+keep the block's own ordering exactly as the default has it — `out = ReLU(BN(conv1(x)))`, then
+`out = BN(conv2(out))`, then `out = shortcut(x) + alpha · out`, then a final `ReLU` on the sum. I am
+deliberately *not* touching the activation order on this rung; reordering BN/ReLU is a different lever I
+want to hold constant so the only changed variable is the scalar gate. One scalar, one branch, the
+post-activation block otherwise identical to default.
+
+The implementation is a `nn.Parameter` of shape `(1,)` initialized to ones, registered so SGD trains it
+alongside the convs (and so weight decay touches it — a mild pull of the gate toward zero, which is
+benign here: it just gives the network a small standing incentive to quiet blocks it isn't using, the same
+incentive that already acts on the conv weights). It is a single per-block scalar, broadcast across
+channels and space — not a per-channel vector, because the hypothesis I'm testing is the coarse one,
+"how loud is this *block*," and a per-channel gate would start to overlap with channel-recalibration ideas
+I'd rather isolate to a later, dedicated rung. The full scaffold module is in the answer.
+
+So the edit relative to the default is exactly: declare `self.alpha = nn.Parameter(torch.ones(1))` in the
+constructor, and change the addition line from `out += self.shortcut(x)` to
+`out = self.shortcut(x) + self.alpha * out`. Everything else — the two convs, the two BNs, the inter-conv
+ReLU, the dimension-matching shortcut, the final ReLU — is the scaffold default, untouched. That is the
+literal scaffold edit, and it is deliberately the smallest meaningful one.
+
+Now reason about what this floor should do, because that is the point of running it first. At
+initialization the network *is* the baseline post-activation ResNet, so anything the gates do is a
+departure the optimizer chose. The honest expectation is modest. On the easy, shallow setting — ResNet-20
+on CIFAR-10 — the baseline block is already near the ceiling of what 20 layers can extract from a 10-class
+problem, and a per-block scalar has little structural slack to exploit; I'd expect the gates to settle
+close to 1 and the accuracy to land right around a well-tuned vanilla ResNet-20, with any gain coming from
+a handful of blocks discovering they should write a little more or a little less. On the deeper CIFAR-100
+settings the scalar has *more* to do, because there are more blocks and more reason for their contributions
+to differ — but the same property that makes this rung safe makes it weak: a single scalar per block is a
+very low-bandwidth correction. It can rescale a block but it cannot change *what* the block computes, and
+it cannot help where the bottleneck is the activation ordering or feature reuse rather than the residual
+magnitude. So I expect this to roughly match or slightly edge the default block everywhere, strongest on
+the shallow easy case where "match the baseline" is itself a high number, and to leave the deeper nets
+wanting — precisely because the thing limiting a 56- or 110-layer net is more likely how cleanly gradients
+and features pass *through* the identity path, which a residual-branch scalar does not touch.
+
+That diagnosis is already the pointer to the next rung. If the gated block lands near the baseline and the
+deep CIFAR-100 nets are where the room is, then the lever to reach for next is not *how much* residual each
+block adds but *how* the block is wired around the identity path — the order of BN and ReLU relative to
+the convolutions and the addition — because that is what governs whether the shortcut is a truly clean
+highway at depth. The expectation I am setting, falsifiable against the numbers this rung returns: the
+gated block should sit close to a strong vanilla ResNet on all three settings, best on ResNet-20/CIFAR-10,
+with the deep CIFAR-100 nets showing the most unexploited headroom — the gap a re-ordering of the block's
+internals, not a rescaling of its branch, would be the natural thing to attack.
+</think>
+<say>
+[[FILL_SAY: 1-2 sentences naming the method and what this first edit does]]
+</say>
+<edit path="pytorch-vision/custom_residual.py">
+<old>
+class CustomBlock(nn.Module):
+    """Custom residual block for CIFAR ResNets.
+
+    Args:
+        in_planes: input channels
+        planes: output channels
+        stride: spatial stride (1 or 2)
+
+    Must set class attribute `expansion = 1` (or 4 for bottleneck).
+    The shortcut dimension must match planes * expansion.
+    """
+</old>
+<new>
+# EDITABLE region of custom_residual.py (lines 31-61) -- step 1: learnable residual gate, alpha init=1.0
+class CustomBlock(nn.Module):
+    """Residual block with learnable residual gate (scalar scaling).
+
+    A learnable parameter alpha scales the residual branch output before
+    adding to the shortcut: out = shortcut(x) + alpha * F(x).
+    Initialized at alpha=1.0 (standard residual behavior).
+    """
+</new>
+</edit>
+<obs>
+Successfully replaced text in pytorch-vision/custom_residual.py.
+</obs>
+<note>
+[[FILL_NOTE?: optional one-line thought for this edit, or delete this block]]
+</note>
+<edit path="pytorch-vision/custom_residual.py">
+<old>
+            )
+</old>
+<new>
+            )
+        # Learnable residual gate initialized at 1.0
+        self.alpha = nn.Parameter(torch.ones(1))
+</new>
+</edit>
+<obs>
+Successfully replaced text in pytorch-vision/custom_residual.py.
+</obs>
+<note>
+[[FILL_NOTE?: optional one-line thought for this edit, or delete this block]]
+</note>
+<edit path="pytorch-vision/custom_residual.py">
+<old>
+        out = self.bn2(self.conv2(out))
+        out += self.shortcut(x)
+        return F.relu(out)
+</old>
+<new>
+        out = self.bn2(self.conv2(out))
+        out = self.shortcut(x) + self.alpha * out
+        return F.relu(out)
+</new>
+</edit>
+<obs>
+Successfully replaced text in pytorch-vision/custom_residual.py.
+</obs>
+<run/>
+<obs>
+Measured results — `baseline:gated_residual` (`is_final,true`), seed {42} and mean.
+
+## Best test accuracy (%)
+| seed | resnet20-cifar10 | resnet56-cifar100 | resnet110-cifar100 |
+|---|---|---|---|
+| 42 | 92.96 | 71.98 | 73.46 |
+| **mean** | **92.96** | **71.98** | **73.46** |
+</obs>
+
+### step 2 — Pre-activation block (BN-ReLU-Conv + 0.1 residual scale)   [slug:pre_activation]
+
+<think>
+[[POLISH_REASONING: adapt to first-person agentic voice, end by deciding to implement]]
+The gated block landed exactly where its own low bandwidth said it would, and the numbers point past it
+cleanly. On ResNet-20/CIFAR-10 it hit 92.96 — a strong, well-tuned vanilla ResNet-20 number, which is the
+tell that the learnable scalars settled near 1 and the block behaved as the proven baseline; there was
+little structural slack at depth 20 on a 10-class problem and the gate found none to exploit, exactly the
+"match the baseline, best on the easy case" outcome I predicted. But the deeper CIFAR-100 settings are
+where the gate ran out of road: 71.98 on ResNet-56 and 73.46 on ResNet-110. Read those two together. The
+*very deep* net (110) only edges the merely-deep one (56) by ~1.5 points, and on an absolute scale 73.46
+at 110 layers is unimpressive — a 110-layer net should be pulling clear of a 56-layer one, not crawling
+past it. That is the signature of a depth problem the scalar gate could not touch: a single per-block
+multiplier rescales how *loud* each block is, but it cannot change how cleanly signal and gradient pass
+*through* the stack, and at 110 layers "through the stack" is the binding constraint. So the diagnosis is
+sharp and it is structural: the limit is not the residual *magnitude* (which the gate already let SGD tune)
+but the residual *wiring* — what sits on the identity path and in what order the block applies its
+normalization and nonlinearity. That is the lever I have not yet pulled.
+
+So let me look hard at the one piece of the block I deliberately held fixed on the last rung: the ordering.
+The default — and the gated block, which kept the default ordering — is *post-activation*:
+`out = ReLU(BN(conv1(x)))`, `out = BN(conv2(out))`, then the addition, then a **final ReLU on the sum**,
+`H = ReLU(shortcut(x) + alpha·F(x))`. Two things on that identity path bother me when I imagine stacking it
+110 deep. First, that last ReLU sits *after* the addition, which means the value carried from one block's
+output to the next block's input is `ReLU(...)` — every block's output is forced non-negative before the
+next block (and the next shortcut) sees it. Second, follow the shortcut across many blocks. Within a stage
+the shortcut is a bare identity, so the "highway" from the input of block ℓ to the output of block ℓ is
+`x ↦ ReLU(x + F(x))`. Chain that across the whole stage and the clean additive identity I wanted —
+`x_{out} = x_{in} + Σ F` — is interrupted at *every* block by a ReLU. The identity path is not actually
+clean; it is a sequence of additions each clamped through a rectifier. At depth 20 that barely matters; at
+depth 110 those repeated clamps are precisely the kind of thing that throttles how a perturbation at the
+top propagates back to the bottom, and how the input's information survives forward to the top — the
+"signal through the stack" problem the gated numbers exposed.
+
+What I want, then, is a block where the identity path is *genuinely* unobstructed: the output of block ℓ
+should be addable to block ℓ+1's branch without a nonlinearity sitting on the through-line. State it as a
+goal: make the shortcut carry its signal from the input of the first block in a stage to the output of the
+last with no BN and no ReLU in the way, so that across the whole stage the map is a pure sum
+`x_{out} = x_{in} + Σ_ℓ F_ℓ(x_ℓ)`. If I can arrange that, a gradient at the top reaches the bottom along a
+path of all 1's — no rectifier zeroing half of it at each block, no BN rescaling it — which is exactly the
+property a 110-layer net needs and a 56-layer net needs less and a 20-layer net hardly needs at all,
+matching the shape of where the gated block left headroom.
+
+The obstruction is the activation order. The post-activation block computes the nonlinearity *after* the
+addition because the convs come first and BN/ReLU follow them; the only way to get the ReLU off the
+through-line is to move it *inside* the branch, ahead of the convolutions. So reorder the block to
+**pre-activation**: each conv is preceded by its own BN and ReLU rather than followed by them. The branch
+becomes `F(x) = conv2( ReLU(BN( conv1( ReLU(BN(x)) ) )) )` — BN-ReLU-Conv, twice — and the block output is
+just `shortcut(x) + F(x)`, with **no activation after the addition**. Now trace the through-line again. The
+branch consumes a *pre-activated* copy of `x` (it applies BN then ReLU to `x` at its entrance), does its
+work, and the result is added to the shortcut; nothing rectifies the sum. The next block, in turn, applies
+*its own* entrance BN-ReLU to whatever it receives. So the signal that travels block-to-block along the
+shortcut is the raw additive stream, never clamped; each block's nonlinearity acts only on the *copy* it
+pulls into its branch, not on the highway. Across a stage the identity path is now the clean
+`x_{out} = x_{in} + Σ F_ℓ` I was after — the rectifiers have all moved off the through-line and into the
+branches where they belong.
+
+I want to double-check this is a real improvement and not just a cosmetic shuffle, because reordering BN
+and ReLU around a conv feels like it shouldn't matter. It matters for two concrete reasons. Backward: with
+no post-addition ReLU, the derivative of `x_{out}` with respect to the stage input is exactly
+`I + Σ ∂F_ℓ/∂x`, an identity plus corrections — the gradient at the top is *guaranteed* to reach the bottom
+undiminished along the `I` term, no matter how small the `∂F_ℓ` factors get. In the post-activation block
+that `I` is gated by a ReLU's 0/1 mask at every block, so the clean additive path is repeatedly
+multiplied by an indicator that can zero it. Forward: putting BN at the *entrance* of each branch means the
+input to every convolution in the network is normalized, which is a strictly better-conditioned input than
+a conv that consumes a raw, possibly large additive sum. So pre-activation both unclogs the backward
+highway and normalizes every conv's input — and both effects scale with depth, which is exactly why I
+expect this to help ResNet-110 most, ResNet-56 next, and ResNet-20 barely.
+
+Now the substrate-specific care, because this is where the task's block differs from the textbook
+pre-activation idea and I have to derive the *actual* fill, not the generic one. Two deviations the harness
+bakes in, and both are deliberate.
+
+First, the shortcut on the dimension-changing blocks. In a fully "pure" identity-mapping block the
+shortcut would also be a clean, parameter-free path. But the stride-2, channel-doubling transitions
+(the first block of stages 2 and 3) cannot be a bare identity — the shapes don't match — and this scaffold
+resolves that with a *projection*: a 1×1 stride-2 conv followed by BN, applied to the **raw input `x`**, not
+to the pre-activated input. So the through-line is only the clean unobstructed identity on the *within-stage*
+blocks; at the two transition blocks per net the shortcut is a small Conv-BN projection of `x`. That is a
+conscious choice and the right one here: putting BN on that projection keeps the two transition points
+well-scaled, and there are only two of them per net, so the great majority of blocks still enjoy the clean
+additive highway. I keep the branch's own entrance pre-activation (BN-ReLU) computed once and shared — the
+branch reads the pre-activated `x`, the projection reads the raw `x` — which is the natural way to wire it
+when the shortcut needs its own normalization anyway.
+
+Second, and this is the deviation I would *not* have reached for on my own but which the substrate's depth
+demands: a fixed-small **residual scale**. Even with the clean pre-activation highway, a freshly
+initialized 110-layer net adds 54 branch outputs onto the identity stream, and at init each `F_ℓ` is a
+random small-but-nonzero perturbation; 54 of them summed onto the identity can push the stream's variance
+up enough to make the very first epochs jittery before the convs settle. The fix that fits the
+"don't touch the recipe" constraint is to multiply each branch by a small constant at the start so the net
+*begins* close to the identity and the branches grow into their contribution — but, having learned the
+lesson from the gated rung, I do **not** init this scale at zero (that would waste the early budget on an
+effectively-shallow net against a fixed 200-epoch schedule) and I do not even need it to be learnable in
+the same loud way. The scaffold's choice is a learnable scalar `alpha` initialized to **0.1**: each branch
+starts at one-tenth strength, so a deep net begins as roughly the identity plus a gentle residual, the
+through-line is dominated by the clean path through the early epochs, and SGD is free to grow `alpha` toward
+where each block wants it. This is a different role than the gated rung's scalar — there the scalar started
+at 1 to *match* the baseline and re-weight around it; here it starts at 0.1 to *stabilize* the much deeper
+pre-activation stack at init while still being depth-one-block-capacity from the first step. The two scalars
+look alike and mean opposite things: the gate at 1 says "behave like the baseline, adjust"; the
+pre-activation scale at 0.1 says "start near identity, grow." I keep it because at 110 layers the
+unscaled clean highway is helped, not hurt, by a soft start. The full scaffold module is in the answer.
+
+So the edit relative to the gated block is genuinely structural, not a rescaling: move both BNs and ReLUs
+to *precede* their convs (BN-ReLU-Conv ordering), delete the post-addition ReLU so the through-line is a
+pure sum, route the dimension-change shortcut through a Conv-BN projection of the raw input, and scale the
+branch by a 0.1-initialized learnable `alpha`. The block's two convs, the kernel sizes, the
+dimension-matching logic, and the parameter budget are otherwise the same; what changed is the *order*, and
+the order is the thing the gated numbers said was limiting the deep nets.
+
+Now the falsifiable expectations against the gated rung's measured numbers, because the whole point of
+reordering is a depth-dependent payoff and the three settings are a depth sweep. On ResNet-20/CIFAR-10 the
+clean highway buys little — 20 layers barely feel the repeated post-activation clamps — so I expect to land
+*around* the gated 92.96, possibly a hair under, since at shallow depth the 0.1 residual init costs a few
+epochs of warm-up the gated block didn't pay. That is fine; the shallow case was never where the room was.
+The real test is the deep CIFAR-100 nets, where the gate stalled at 71.98 (56) and 73.46 (110). If the
+diagnosis is right — that the limit there was the obstructed identity path, not the residual magnitude —
+then pre-activation should lift the *very deep* net most: I expect ResNet-110 to clear the gated 73.46 by
+the largest margin, ideally pulling decisively above the ResNet-56 number, because a clean additive highway
+is exactly what 110 layers were missing. ResNet-56 should improve too but by less, since 56 layers suffered
+the clamps less. The falsifiable failure mode is explicit: if the gate's problem had really been residual
+magnitude rather than wiring, pre-activation would *not* differentiate the deep nets from the shallow one,
+and all three would move together — if I see that, the reordering story is wrong. And one risk I am
+flagging now for the next rung: pre-activation fixes how signal flows *through* the depth, but it does
+nothing to make the deep net *use* its depth as an ensemble or to regularize the 100-class fit — so if the
+deep CIFAR-100 numbers improve on gradient flow but still leave the very deep net under-generalizing, the
+next lever is not flow but *implicit regularization across depth*, which a per-block scalar reordering can
+never provide.
+</think>
+<say>
+[[FILL_SAY: 1-2 sentences naming the method and what this first edit does]]
+</say>
+<edit path="pytorch-vision/custom_residual.py">
+<old>
+# EDITABLE region of custom_residual.py (lines 31-61) -- step 1: learnable residual gate, alpha init=1.0
+class CustomBlock(nn.Module):
+    """Residual block with learnable residual gate (scalar scaling).
+
+    A learnable parameter alpha scales the residual branch output before
+    adding to the shortcut: out = shortcut(x) + alpha * F(x).
+    Initialized at alpha=1.0 (standard residual behavior).
+    """
+</old>
+<new>
+# EDITABLE region of custom_residual.py (lines 31-61) -- step 2: pre-activation (BN-ReLU-Conv) + 0.1 scale
+class CustomBlock(nn.Module):
+    """Pre-activation residual block (He et al., 2016 v2).
+
+    Uses BN-ReLU-Conv order for cleaner gradient flow.
+    Both main branch and shortcut share the same pre-activation.
+    Residual scaling (alpha, init=0.1) stabilizes very deep networks.
+    """
+</new>
+</edit>
+<obs>
+Successfully replaced text in pytorch-vision/custom_residual.py.
+</obs>
+<note>
+[[FILL_NOTE?: optional one-line thought for this edit, or delete this block]]
+</note>
+<edit path="pytorch-vision/custom_residual.py">
+<old>
+        super().__init__()
+        self.conv1 = nn.Conv2d(in_planes, planes, 3, stride=stride, padding=1, bias=False)
+        self.bn1 = nn.BatchNorm2d(planes)
+        self.conv2 = nn.Conv2d(planes, planes, 3, padding=1, bias=False)
+        self.bn2 = nn.BatchNorm2d(planes)
+        self.shortcut = nn.Sequential()
+        if stride != 1 or in_planes != planes * self.expansion:
+            self.shortcut = nn.Sequential(
+                nn.Conv2d(in_planes, planes * self.expansion, 1, stride=stride, bias=False),
+                nn.BatchNorm2d(planes * self.expansion),
+            )
+        # Learnable residual gate initialized at 1.0
+        self.alpha = nn.Parameter(torch.ones(1))
+
+    def forward(self, x):
+        out = F.relu(self.bn1(self.conv1(x)))
+        out = self.bn2(self.conv2(out))
+        out = self.shortcut(x) + self.alpha * out
+        return F.relu(out)
+</old>
+<new>
+        super().__init__()
+        self.bn1 = nn.BatchNorm2d(in_planes)
+        self.conv1 = nn.Conv2d(in_planes, planes, 3, stride=stride, padding=1, bias=False)
+        self.bn2 = nn.BatchNorm2d(planes)
+        self.conv2 = nn.Conv2d(planes, planes, 3, padding=1, bias=False)
+        self.alpha = nn.Parameter(torch.tensor(0.1))
+        self.downsample = None
+        if stride != 1 or in_planes != planes * self.expansion:
+            self.downsample = nn.Sequential(
+                nn.Conv2d(in_planes, planes * self.expansion, 1, stride=stride, bias=False),
+                nn.BatchNorm2d(planes * self.expansion),
+            )
+
+    def forward(self, x):
+        pre = F.relu(self.bn1(x))
+        out = self.conv1(pre)
+        out = self.conv2(F.relu(self.bn2(out)))
+        shortcut = self.downsample(x) if self.downsample is not None else x
+        return shortcut + self.alpha * out
+</new>
+</edit>
+<obs>
+Successfully replaced text in pytorch-vision/custom_residual.py.
+</obs>
+<run/>
+<obs>
+Measured results — `baseline:pre_activation` (`is_final,true`), seed {42} and mean.
+
+## Best test accuracy (%)
+| seed | resnet20-cifar10 | resnet56-cifar100 | resnet110-cifar100 |
+|---|---|---|---|
+| 42 | 92.62 | 71.78 | 74.08 |
+| **mean** | **92.62** | **71.78** | **74.08** |
+</obs>
+
+### step 3 — Stochastic depth (linear-decay block dropping, p_L=0.5)   [slug:stochastic_depth]
+
+<think>
+[[POLISH_REASONING: adapt to first-person agentic voice, end by deciding to implement]]
+The pre-activation reordering did almost exactly what I predicted on the deep end, and the *shape* of where
+it succeeded and where it didn't is what hands me the next move. ResNet-110/CIFAR-100 went from the gated
+73.46 to 74.08 — the largest absolute lift of the three settings, and the very deep net finally pulled
+clearly above the merely-deep one, which is the depth-dependent payoff the clean additive highway was
+supposed to buy. That confirms the wiring diagnosis: at 110 layers the binding constraint really was the
+obstructed identity path, and unclamping it helped most where there were most clamps. But look at the other
+two numbers and the story is not clean. ResNet-20/CIFAR-10 slipped to 92.62 from the gated 92.96 — exactly
+the small shallow cost I flagged, the 0.1 residual warm-up buying nothing at depth 20 and losing a fraction
+to the soft start. And ResNet-56/CIFAR-100 actually went *down*, 71.98 → 71.78. That ResNet-56 dip is the
+important signal. Pre-activation fixed gradient *flow*, and yet the deep CIFAR-100 nets are still leaving
+points on the table — 74.08 at 110 layers on a 100-class problem is not a number that says "this net is
+using its depth." So I am now in exactly the regime I warned about closing the last rung: flow is no longer
+the limit, and what's left is that the deep net does not *use* or *regularize* its depth. A reordering
+cannot give me that. I need a different kind of intervention.
+
+Let me state the new tension precisely, because it is genuinely contradictory and the contradiction is the
+whole idea. Depth helps — pre-activation just proved 110 beats 56 once the gradients flow. But depth also
+hurts on CIFAR-100: more blocks means more parameters fitting a 50k-image, 100-class training set, longer
+gradient and forward chains even with a clean highway, and more opportunity for the late blocks to overfit
+or to sit idle passing their input along (the identity path makes "learn nothing" a perfectly comfortable
+equilibrium for a block). So I want two opposite things from the same network: the *expressiveness* of a
+deep net at test time, and the *optimization and regularization behavior* of a shorter net during training.
+Stated like that it sounds like I have to pick. But notice *when* each property is needed. I need the
+capacity at test time, when the model has to represent 100 fine-grained classes. I need easy optimization
+and regularization during training. Those are different phases. What if the network could be effectively
+*short while I train it* and *deep when I deploy it*?
+
+For a fixed architecture the depth is the depth — unless I can make some blocks *not count* on a given
+training step. And here the residual structure I have been building on hands me the tool directly. A block
+computes `H = ReLU(F(x) + shortcut(x))`; the shortcut path is already there, already carrying the input
+across. So if, on a given step, I simply *delete* `F` for some block and keep only the shortcut, that block
+becomes a pass-through and the network behaves, for that step, as if the block were not there. The depth I
+actually backpropagate through shrinks. The mechanism is to gate the branch with a per-mini-batch Bernoulli
+`b ∈ {0,1}`: `H = ReLU(b · F(x) + shortcut(x))`. When `b = 1` it is exactly the block I already have; when
+`b = 0` the branch vanishes and the block is `ReLU(shortcut(x))`. On the within-stage blocks the shortcut is
+a bare identity and the input is non-negative (it is the output of a prior ReLU), so `ReLU(x) = x` and a
+dropped block is an *exact* identity — the signal and gradient flow through it untouched, as if it were
+removed, and there is no forward or backward compute for the dropped branch at all. A dropped block is free
+and clean.
+
+That immediately delivers two things at once, and they are the two things the pre-activation numbers said
+were missing. First, the *effective* training depth shrinks, so the gradient and forward chains are shorter
+during training even though the deployed net is full-depth — the optimization-behavior-of-a-shorter-net I
+wanted. Second, and this is the part that makes test error *fall* rather than just training go faster:
+because each of the `L` blocks is independently on or off, one set of shared weights now defines `2^L`
+different sub-networks of *varying depth*, each minibatch samples and updates one of them, and at test time
+combining them is an implicit ensemble over depth-diverse members. That is regularization of exactly the
+kind a deep CIFAR-100 net needs — and it is regularization that gets *stronger* with depth, since `L` is
+larger, which is the right direction given that the deep nets are where I am stuck.
+
+Now the design decisions that pin down the actual fill, and the first one is a deliberate reversal I want
+to be honest about. The natural instinct is to stack this on top of last rung's pre-activation block. But
+the dropping argument depends on a *clean exact identity* when the branch is off, and it is cleanest on the
+plain post-activation block: there `b = 0` gives `ReLU(shortcut(x))`, and on the bare-identity shortcuts
+that is exactly `x`. So for this rung I drop the pre-activation reordering and the 0.1 residual scale and go
+back to the proven post-activation block as the thing-being-gated. Why is that not throwing away the last
+rung's win? Because stochastic depth attacks a *different* axis: pre-activation fixed how gradients flow
+*through* a full-depth net, and that mattered most at 110; stochastic depth makes the net *train shallow and
+regularize like an ensemble*, which is a property of the dropping schedule, not of the activation order.
+The two do not compose for free — the residual scale would interact with the survival scaling at test, and
+the cleanest, most-studied version of block-dropping is on the post-activation block — so I take the
+block-dropping on the vanilla block and accept that this rung trades the pre-activation flow fix for the
+ensemble fix. The numbers will tell me which axis the deep CIFAR-100 nets cared about more.
+
+Second decision: the survival schedule. Each block needs a survival probability `p_ℓ = Pr(b_ℓ = 1)`, and
+uniform is wrong. Early blocks extract low-level features that *every* later block builds on; drop an early
+block and I corrupt the foundation the whole rest of the net depends on for that step. A late block's
+transformation is more specialized and less universally relied on. So survival should *decrease* with depth.
+The gentlest schedule with that property is a straight line, anchored so the first block essentially always
+survives and the last survives with probability `p_L`: `p_ℓ = 1 − (ℓ/L)(1 − p_L)`. One free knob, `p_L`,
+and training is known to be insensitive to it, so I fix `p_L = 0.5` — the deepest block survives half the
+time, the earliest nearly always. Work out the effect on effective depth: the number of surviving blocks
+`L̃` is a sum of independent Bernoullis, so `E(L̃) = Σ p_ℓ`, and under linear decay with `p_L = 0.5` this is
+`Σ [1 − ℓ/(2L)] = L − (L+1)/4 = (3L − 1)/4 ≈ 3L/4`. For ResNet-110, which is 54 residual blocks, that is
+about 40 — I train a net that is on average ~40 blocks deep and deploy all 54, with roughly a quarter of the
+forward/backward compute saved. That is the "short while training, deep at test" wish made concrete, and it
+is strongest precisely at the largest `L`, i.e. ResNet-110.
+
+Third, the test-time rule, where I have to be careful. At test I want the full net — every branch active,
+all the capacity. But during training, block ℓ's branch was present only a fraction `p_ℓ` of the time, and
+everything downstream calibrated to that intermittent presence. Turn it on for *every* test example and its
+contribution to the sum is, on average, `1/p_ℓ` larger than what the downstream weights expect. This is the
+Dropout situation and the fix is the same: scale the branch by its survival probability at test,
+`H_test = ReLU(p_ℓ · F(x) + shortcut(x))`, so the expected contribution matches training. The identity
+passes through at full strength; only the recalibrated branch is weighted.
+
+Now the substrate-specific care, because the task's harness implements the counting in a way I have to
+derive exactly rather than assume the textbook form. There is no global notion of "block index" handed to a
+`CustomBlock` — the constructor only sees `(in_planes, planes, stride)`. So the block has to count itself.
+The fill uses a class-level counter: each block, when constructed, increments a shared `CustomBlock`
+counter and records its own index; the counter is *reset* at the first block of stage 1 (detected by the
+signature `in_planes == 16 and planes == 16 and stride == 1`, which is unique to the first block of a CIFAR
+ResNet's first stage) so that building a fresh model starts the indexing over. The total `L` is read from
+the same class counter at forward time — by then every block has been constructed, so `L` is the true total
+block count and `block_idx` runs `1..L`. Then `p = 1 − (block_idx / L)(1 − p_L)` exactly as derived, the
+training forward draws a fresh `torch.rand(1)` per block per step and keeps the branch iff it is below `p`,
+and the eval forward uses the `p`-scaled branch. One detail of the harness I will note rather than fight:
+when a transition block is dropped, the returned value is `ReLU(shortcut(x))` where `shortcut` is the
+Conv-BN projection, so the dropped transition block is *not* a literal identity — it is the projected,
+rectified input. That is unavoidable on the dimension-changing blocks (there is no identity to fall back to
+when the shapes change) and there are only two such blocks per net, so the clean-identity argument holds for
+the overwhelming majority of blocks; the two transitions just pass their projected input when dropped, which
+is the closest thing to a pass-through the shape change allows. The full scaffold module is in the answer.
+
+So the edit relative to the pre-activation rung is: revert to the post-activation Conv-BN-ReLU block (with
+the final ReLU after the add), give the class a self-counter and `_p_last = 0.5`, compute the linear-decay
+survival `p` per block, drop the branch with probability `1 − p` per minibatch in training (returning the
+rectified shortcut alone when dropped), and scale the branch by `p` at test. No new parameters, no learned
+gate — the regularization comes entirely from the sampling.
+
+The falsifiable expectations against the pre-activation numbers, and they sort by depth in the opposite way
+from last rung, which is the cleanest possible test of *which* axis matters. Stochastic depth's benefit —
+both the shorter training chains and the ensemble regularization — *grows with `L`*, so it should help the
+very deep CIFAR-100 nets most and the shallow CIFAR-10 net least or not at all. Concretely: I expect
+ResNet-110/CIFAR-100 to clear the pre-activation 74.08 by the largest margin (the ensemble over `2^54`
+depth-varying sub-nets is exactly the regularizer a 110-layer 100-class fit was missing), and ResNet-56 to
+recover and pass its 71.78 stall, because dropping blocks regularizes the merely-deep net too. ResNet-20 is
+the risk and the honest cost: at depth 20 there are few blocks to drop, the ensemble is small, and dropping
+any block on a net that is already near its capacity ceiling for CIFAR-10 may simply *remove* useful
+capacity for too much of training — so I expect ResNet-20/CIFAR-10 to *fall*, possibly below both prior
+rungs, and that drop is acceptable because the shallow easy case was never the binding objective and the
+task rewards a block that lifts the deep nets. The falsifiable failure mode is explicit and symmetric to
+last rung's: if stochastic depth does *not* sort by depth — if it fails to lift ResNet-110 above 74.08, or
+if it helps the shallow net as much as the deep ones — then the deep nets' remaining gap was not a
+depth-regularization problem and the ensemble story is wrong. What I am betting is that the deep CIFAR-100
+nets were under-regularized, not under-flowing, and that trading the pre-activation flow fix for the
+depth-ensemble fix is the right trade *because* the room left was at the deep end where the ensemble is
+largest.
+</think>
+<say>
+[[FILL_SAY: 1-2 sentences naming the method and what this first edit does]]
+</say>
+<edit path="pytorch-vision/custom_residual.py">
+<old>
+# EDITABLE region of custom_residual.py (lines 31-61) -- step 2: pre-activation (BN-ReLU-Conv) + 0.1 scale
+class CustomBlock(nn.Module):
+    """Pre-activation residual block (He et al., 2016 v2).
+
+    Uses BN-ReLU-Conv order for cleaner gradient flow.
+    Both main branch and shortcut share the same pre-activation.
+    Residual scaling (alpha, init=0.1) stabilizes very deep networks.
+    """
+    expansion = 1
+
+    def __init__(self, in_planes, planes, stride=1):
+        super().__init__()
+        self.bn1 = nn.BatchNorm2d(in_planes)
+        self.conv1 = nn.Conv2d(in_planes, planes, 3, stride=stride, padding=1, bias=False)
+        self.bn2 = nn.BatchNorm2d(planes)
+        self.conv2 = nn.Conv2d(planes, planes, 3, padding=1, bias=False)
+        self.alpha = nn.Parameter(torch.tensor(0.1))
+        self.downsample = None
+        if stride != 1 or in_planes != planes * self.expansion:
+            self.downsample = nn.Sequential(
+                nn.Conv2d(in_planes, planes * self.expansion, 1, stride=stride, bias=False),
+                nn.BatchNorm2d(planes * self.expansion),
+            )
+
+    def forward(self, x):
+        pre = F.relu(self.bn1(x))
+        out = self.conv1(pre)
+        out = self.conv2(F.relu(self.bn2(out)))
+        shortcut = self.downsample(x) if self.downsample is not None else x
+        return shortcut + self.alpha * out
+</old>
+<new>
+# EDITABLE region of custom_residual.py (lines 31-61) -- step 3: stochastic depth, linear decay, p_L=0.5
+class CustomBlock(nn.Module):
+    """Residual block with stochastic depth (Huang et al., 2016).
+
+    During training, each block's residual branch is randomly dropped with
+    probability (1 - survival_prob). The survival probability linearly decays
+    from 1.0 (first block) to p_L (last block). At test time, the residual
+    output is deterministically scaled by the survival probability.
+    """
+    expansion = 1
+    _block_counter = 0
+    _p_last = 0.5  # survival prob of the deepest block
+
+    def __init__(self, in_planes, planes, stride=1):
+        super().__init__()
+        self.conv1 = nn.Conv2d(in_planes, planes, 3, stride=stride, padding=1, bias=False)
+        self.bn1 = nn.BatchNorm2d(planes)
+        self.conv2 = nn.Conv2d(planes, planes, 3, padding=1, bias=False)
+        self.bn2 = nn.BatchNorm2d(planes)
+        self.shortcut = nn.Sequential()
+        if stride != 1 or in_planes != planes * self.expansion:
+            self.shortcut = nn.Sequential(
+                nn.Conv2d(in_planes, planes * self.expansion, 1, stride=stride, bias=False),
+                nn.BatchNorm2d(planes * self.expansion),
+            )
+        # Reset counter when first block of a new model is created
+        # (CIFAR ResNets always start layer1 with in_planes=16, planes=16, stride=1)
+        if in_planes == 16 and planes == 16 and stride == 1:
+            CustomBlock._block_counter = 0
+        CustomBlock._block_counter += 1
+        self.block_idx = CustomBlock._block_counter
+
+    def forward(self, x):
+        shortcut = self.shortcut(x)
+        L = CustomBlock._block_counter
+        p = 1.0 - (self.block_idx / L) * (1.0 - CustomBlock._p_last)
+        if self.training:
+            if torch.rand(1).item() < p:
+                out = F.relu(self.bn1(self.conv1(x)))
+                out = self.bn2(self.conv2(out))
+                return F.relu(out + shortcut)
+            else:
+                return F.relu(shortcut)
+        else:
+            out = F.relu(self.bn1(self.conv1(x)))
+            out = self.bn2(self.conv2(out))
+            return F.relu(p * out + shortcut)
+</new>
+</edit>
+<obs>
+Successfully replaced text in pytorch-vision/custom_residual.py.
+</obs>
+<run/>
+<obs>
+Measured results — `baseline:stochastic_depth` (`is_final,true`), seed {42} and mean.
+
+## Best test accuracy (%)
+| seed | resnet20-cifar10 | resnet56-cifar100 | resnet110-cifar100 |
+|---|---|---|---|
+| 42 | 91.37 | 74.56 | 75.70 |
+| **mean** | **91.37** | **74.56** | **75.70** |
+</obs>
+
+### step 4 — Squeeze-and-Excitation channel attention   [slug:se_block]
+
+<think>
+[[POLISH_REASONING: adapt to first-person agentic voice, end by deciding to implement]]
+Stochastic depth is the strongest rung so far, and the *way* it is strong tells me what it costs and where
+the next move has to come from. On the deep CIFAR-100 nets it did exactly what the ensemble argument
+promised: ResNet-110 jumped from the pre-activation 74.08 to 75.70 — the biggest lift any rung has produced
+on any setting — and ResNet-56 recovered from its 71.78 stall all the way to 74.56, decisively. The benefit
+sorted by depth, just as predicted: largest where `L` is largest. But read the shallow number and the trade
+is laid bare. ResNet-20/CIFAR-10 fell to 91.37 — the lowest CIFAR-10 result of the entire ladder, below the
+gated 92.96 and the pre-activation 92.62. That is the honest cost I flagged: at depth 20 there are few
+blocks to drop, the depth-ensemble is small, and dropping branches on a net already near its CIFAR-10
+capacity ceiling just *removes* capacity for too much of training. So I now have a ladder where every rung
+trades one setting against another, and — more importantly — every rung so far has pulled the *same* lever:
+the residual *flow and depth* axis. The gate rescaled the branch; pre-activation reordered the path;
+stochastic depth dropped the branch. Three different ways of asking "how much, how cleanly, how often does
+the residual branch contribute." None of them ever asks a different question: *which features* the branch
+should emphasize for a given image. That axis is completely untouched, and it is orthogonal to depth, which
+is exactly the property I want — something that can lift the deep nets without paying the shallow tax that
+dropping does.
+
+Let me go back to the convolution itself, because the gap is in the primitive every block is built from.
+A 3×3 conv produces each output channel by convolving each input channel with its own small kernel and
+summing across channels. Two facts about that fall out immediately. First, the channel mixing — how much
+output channel `c` listens to input channel `s` — is baked into the kernel weights at training time and is
+then *identical for every image*. The block has no way to say "this particular image is a picture of a dog,
+so the fur-texture channels matter and the sky-blue channels do not." Second, the mixing is *local*: a 3×3
+kernel integrates a tiny spatial neighborhood, so even though stacking blocks grows the receptive field,
+each block decides how to combine channels while looking through a keyhole, with no image-wide context. So
+the block's channel responses are static and locally-decided. The deep CIFAR-100 nets, fitting 100
+fine-grained classes, are precisely where input-dependent channel emphasis should pay: many classes share
+low-level features and differ in which high-level channels are salient, and a block that could *recalibrate*
+its channels per image — turn up the discriminative ones, turn down the irrelevant ones, using global
+context — would add a kind of capacity none of the flow-axis rungs can.
+
+So the design goal: give the block a lightweight, *input-dependent* gate over its channels, informed by
+*global* (image-wide) context, applied to the branch output before it joins the identity stream. Three
+moves make that concrete. First, *squeeze* the spatial dimension away to get a global per-channel summary:
+global average pooling over `H×W` turns the branch's `C×H×W` feature map into a length-`C` descriptor whose
+every entry has a full-image receptive field — the global context the conv lacked. Second, *excite*: feed
+that descriptor through a tiny bottleneck MLP — a linear `C → C/r`, a ReLU, a linear `C/r → C`, a sigmoid —
+to produce one gate per channel in `(0,1)`. The bottleneck (reduction ratio `r`) keeps the added capacity
+tiny and forces the gate to summarize channel interactions rather than memorize them, which aids
+generalization; the sigmoid (not a softmax) is deliberate, because channels are *not* mutually exclusive —
+several should be able to fire at once, so I want independent per-channel gates, not a competition for a
+fixed budget. Third, *scale*: multiply each channel of the branch output by its gate. Because the gates live
+in `(0,1)` the block can attenuate uninformative channels and preserve informative ones, image by image — a
+self-attention over channels with global reach, costing only the two small FC layers.
+
+The placement decision is the one that ties this back to everything the ladder has learned, and I want to be
+precise about it. The recalibration must act on the **branch output, before the identity addition** — never
+on the shortcut. This is the same principle that ran through every rung: the identity highway stays open and
+ungated, so signal and gradient pass through it untouched; only the residual branch is modulated. Gating the
+sum, or the shortcut, would reintroduce exactly the Highway failure (a gate that suppresses the through-line)
+and would undo the clean additive path the whole ladder depends on. So the SE gate sits at the end of the
+branch, between the second conv's BN and the addition: `H = ReLU(shortcut(x) + SE(F(x)))`. The shortcut is
+the unchanged dimension-matching identity-or-projection. And note what this buys at the shallow end where
+stochastic depth hurt: SE adds capacity *without removing any* — there is no dropping, the full net trains
+every step, so ResNet-20/CIFAR-10 should recover from the 91.37 dip rather than pay it, while the
+per-image channel gate still gives the deep CIFAR-100 nets a lever orthogonal to the depth-ensemble they
+already benefit from.
+
+Now the substrate-specific care, because the block I have to fill is the task's basic block and the SE
+geometry has to fit its narrow channel counts. The block is post-activation here:
+`out = ReLU(BN(conv1(x)))`, `out = BN(conv2(out))`, then I insert the SE recalibration on `out`, then add
+the shortcut, then the final ReLU. The squeeze is `AdaptiveAvgPool2d(1)` to a length-`planes` vector; the
+excitation is the two-layer bottleneck. The reduction ratio needs care: the CIFAR ResNet stages are 16, 32,
+64 channels wide, and a textbook `r = 16` would make the first stage's bottleneck `16/16 = 1` channel — a
+degenerate one-dimensional squeeze that throws away almost all channel structure. So the bottleneck width is
+floored: `mid = max(planes // 16, 4)`, guaranteeing at least 4 hidden units even in the 16-channel stage.
+That floor is the right adaptation of the SE recipe to these thin CIFAR widths; without it the shallow
+stages would get no usable recalibration. The two FC layers carry biases (the default `nn.Linear`), the
+hidden activation is ReLU, the output activation is sigmoid, and the gate is reshaped to `(B, C, 1, 1)` and
+broadcast-multiplied against `out`. The added cost per block is `2·planes²/r` parameters — for a 64-channel
+block at `r = 16` that is a few hundred weights, utterly negligible against the conv weights, and the FLOPs
+rise is on length-`C` vectors not `H×W` maps, so it is essentially free. The full scaffold module is in the
+answer.
+
+So the edit relative to stochastic depth is a *different axis* entirely: keep the proven post-activation
+block at full depth (no dropping, no reordering, no branch scalar), and insert a squeeze-excite channel gate
+on the branch output before the addition. It does not compete with the flow-axis tricks; it composes with
+the plain block by adding the one capability none of them had — per-image, global-context channel emphasis.
+
+This is the endpoint, so let me state the bar it must clear and exactly what I would validate, against the
+strongest baseline's measured numbers. Stochastic depth set the marks at 91.37 (ResNet-20/CIFAR-10), 74.56
+(ResNet-56/CIFAR-100), and 75.70 (ResNet-110/CIFAR-100). For SE to be a genuine improvement and not just a
+sideways trade, the falsifiable claims are setting-specific. First and most diagnostic: ResNet-20/CIFAR-10
+should *recover* well above 91.37 — back toward or past the gated 92.96 — because SE adds capacity without
+the dropping that cost stochastic depth the shallow case; if SE does *not* fix the shallow number, then its
+channel gate is not buying real capacity and the whole orthogonal-axis premise is wrong. Second, on the deep
+CIFAR-100 nets SE must at least *hold* stochastic depth's strong 74.56 and 75.70 and ideally edge them,
+since channel recalibration is orthogonal to the depth-ensemble and a 100-class problem is where per-image
+channel emphasis should help most; if SE *underperforms* stochastic depth on the deep nets, then on
+CIFAR-100 the binding constraint really was depth-regularization (which SE does not provide) rather than
+channel selectivity, and the right endpoint would be to *combine* SE's gate with stochastic depth's
+dropping rather than substitute it. The decisive test of the endpoint, then, is whether one block design can
+simultaneously clear 91.37 on the shallow easy case *and* hold ~74.5/~75.7 on the deep CIFAR-100 cases — a
+net positive across the whole depth sweep that no single flow-axis rung managed, because each of those
+traded one end of the sweep against the other. That balance — recover the shallow capacity that dropping
+removed while keeping the deep-net strength — is precisely what an orthogonal, capacity-adding,
+depth-agnostic channel gate is built to deliver, and it is the claim the endpoint stands or falls on.
+</think>
+<say>
+[[FILL_SAY: 1-2 sentences naming the method and what this first edit does]]
+</say>
+<edit path="pytorch-vision/custom_residual.py">
+<old>
+# EDITABLE region of custom_residual.py (lines 31-61) -- step 3: stochastic depth, linear decay, p_L=0.5
+class CustomBlock(nn.Module):
+    """Residual block with stochastic depth (Huang et al., 2016).
+
+    During training, each block's residual branch is randomly dropped with
+    probability (1 - survival_prob). The survival probability linearly decays
+    from 1.0 (first block) to p_L (last block). At test time, the residual
+    output is deterministically scaled by the survival probability.
+    """
+    expansion = 1
+    _block_counter = 0
+    _p_last = 0.5  # survival prob of the deepest block
+</old>
+<new>
+# EDITABLE region of custom_residual.py (lines 31-61) -- finale: Squeeze-and-Excitation channel attention
+class CustomBlock(nn.Module):
+    """Basic residual block with Squeeze-and-Excitation attention."""
+    expansion = 1
+</new>
+</edit>
+<obs>
+Successfully replaced text in pytorch-vision/custom_residual.py.
+</obs>
+<note>
+[[FILL_NOTE?: optional one-line thought for this edit, or delete this block]]
+</note>
+<edit path="pytorch-vision/custom_residual.py">
+<old>
+            )
+        # Reset counter when first block of a new model is created
+        # (CIFAR ResNets always start layer1 with in_planes=16, planes=16, stride=1)
+        if in_planes == 16 and planes == 16 and stride == 1:
+            CustomBlock._block_counter = 0
+        CustomBlock._block_counter += 1
+        self.block_idx = CustomBlock._block_counter
+
+    def forward(self, x):
+        shortcut = self.shortcut(x)
+        L = CustomBlock._block_counter
+        p = 1.0 - (self.block_idx / L) * (1.0 - CustomBlock._p_last)
+        if self.training:
+            if torch.rand(1).item() < p:
+                out = F.relu(self.bn1(self.conv1(x)))
+                out = self.bn2(self.conv2(out))
+                return F.relu(out + shortcut)
+            else:
+                return F.relu(shortcut)
+        else:
+            out = F.relu(self.bn1(self.conv1(x)))
+            out = self.bn2(self.conv2(out))
+            return F.relu(p * out + shortcut)
+</old>
+<new>
+            )
+        # Squeeze-and-Excitation
+        reduction = 16
+        mid = max(planes // reduction, 4)
+        self.se = nn.Sequential(
+            nn.AdaptiveAvgPool2d(1),
+            nn.Flatten(),
+            nn.Linear(planes, mid),
+            nn.ReLU(inplace=True),
+            nn.Linear(mid, planes),
+            nn.Sigmoid(),
+        )
+
+    def forward(self, x):
+        out = F.relu(self.bn1(self.conv1(x)))
+        out = self.bn2(self.conv2(out))
+        # SE channel attention
+        w = self.se(out).unsqueeze(-1).unsqueeze(-1)
+        out = out * w
+        out += self.shortcut(x)
+        return F.relu(out)
+</new>
+</edit>
+<obs>
+Successfully replaced text in pytorch-vision/custom_residual.py.
+</obs>
+

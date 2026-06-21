@@ -1,0 +1,1275 @@
+<meta task="ml-dimensionality-reduction" domain="Classical ML" file="scikit-learn/bench/custom_dimred.py" model_format="qwen3" edit_tool="str_replace"/>
+
+<system>
+You are a research engineer improving a model on a fixed ML task. You work by editing the model code and running experiments. Think carefully before each change. You have these tools:
+- str_replace(path, old_str, new_str): replace the unique occurrence of old_str with new_str.
+- create(path, file_text): create a new file.
+- run_experiment(): train + evaluate the current code under the fixed budget; returns metrics.
+Make one tool call at a time. After editing, call run_experiment() to measure your method.
+</system>
+
+<user>
+## Research question
+
+I have a few thousand high-dimensional points — MNIST and Fashion-MNIST images as 784-pixel
+vectors, 20-Newsgroups documents pre-reduced to 50 TF-IDF/SVD dimensions — and I want a single
+two-dimensional embedding that a downstream task can read. The thing being designed is the
+**embedding algorithm itself**: how I turn the cloud into 2D so that the neighborhood of every point
+survives the projection (who is near whom locally) and the arrangement of the clusters survives too
+(how the neighborhoods sit relative to each other globally). I may not use the class labels at fit
+time — this is unsupervised; labels only appear afterward, in the kNN-accuracy probe that scores the
+map. Everything outside the reducer — how data is loaded, sub-sampled to 5000 points, standardized,
+and scored — is fixed.
+
+## Prior art before the first rung (the linear-projection lineage)
+
+The first rung the ladder starts from is the cheapest faithful thing I can do: a linear projection
+onto a fixed low-dimensional subspace. That itself is the resolution of an older line of work, and
+those ancestors are what the first baseline reacts to.
+
+- **The two regression lines (Galton/Pearson lineage, late 1800s).** Fit a line to a cloud by
+  least squares with one variable chosen as the dependent one, and you get a *different* line
+  depending on which variable you pick — because the residual is measured along one coordinate axis,
+  secretly assuming that axis is error-free. Gap: asymmetric, two answers for one cloud, wrong when
+  every coordinate is observed with error.
+- **Random projection (Johnson–Lindenstrauss, 1984).** Project onto a random low-dimensional
+  subspace; with enough target dimensions pairwise distances are approximately preserved with high
+  probability, at zero fitting cost. Gap: at *two* target dimensions there are nowhere near enough
+  directions for the guarantee to bite, so a random pair of axes captures an arbitrary, usually tiny,
+  slice of the variance — the scaffold default below, and a deliberately poor floor.
+- **Factor analysis (Spearman 1904 onward).** Model the observed variables as linear combinations
+  of a fixed number of latent factors plus noise. Gap: the number of latent factors is fixed by
+  hypothesis, and the solution is rotationally indeterminate — no canonical ordered set of
+  directions falls out.
+
+The unresolved demand under all three is a *symmetric*, *ordered*, *unique* linear summary: a small
+set of mutually-uncorrelated directions that, in order, capture as much of the cloud's variation as
+possible, with no privileged dependent variable and no hypothesized factor count. That is exactly
+what the first rung supplies.
+
+## The fixed substrate
+
+The evaluation harness around the reducer is frozen and must not be touched. It loads each dataset,
+sub-samples to at most 5000 points, standardizes every feature to zero mean and unit variance
+(`StandardScaler`), then constructs one `CustomDimReduction(n_components=2, random_state=seed)`,
+calls `fit_transform(X)`, and asserts the output is exactly `(n_samples, 2)` and finite. The same
+harness then computes all three metrics at `k=7` neighbors. The reducer receives only the
+standardized `X`; it never sees labels. The substrate also fixes the operating envelope: at most
+5000 samples, 50 to 784 features, roughly five minutes per dataset on CPU, and only `numpy`,
+`scipy`, and `scikit-learn` (plus any neighbor-embedding library a baseline declares) are available.
+
+## The editable interface
+
+Exactly one region is editable: the body of `CustomDimReduction` in
+`scikit-learn/bench/custom_dimred.py` (lines 15–59), an `__init__(n_components, random_state)` and a
+`fit_transform(X) -> X_reduced` that returns the `(n_samples, n_components)` embedding. Every method
+on the ladder is a fill of this same contract — the constructor stores the two settings, and
+`fit_transform` is where the entire embedding algorithm lives. There is no separate `fit`/`transform`
+split and no out-of-sample requirement: the harness fits and embeds the same `X` in one call, so a
+method is free to optimize the 2D coordinates of these exact points directly.
+
+The starting point is the scaffold default: a **random linear projection** — orthonormalized random
+axes, the Johnson–Lindenstrauss construction at two dimensions, which is the poor floor each later
+method must beat. Each rung replaces exactly this class body and nothing else.
+
+```python
+# EDITABLE region of scikit-learn/bench/custom_dimred.py (lines 15-59) -- default fill
+class CustomDimReduction:
+    """Custom dimensionality reduction method.
+
+    Must implement fit_transform(X) -> X_reduced.
+    """
+
+    def __init__(self, n_components: int = 2, random_state: int | None = None):
+        self.n_components = n_components
+        self.random_state = random_state
+
+    def fit_transform(self, X: NDArray[np.float64]) -> NDArray[np.float64]:
+        """Reduce dimensionality of X to (n_samples, n_components)."""
+        # Default: random projection (poor baseline) -- replace with your design
+        rng = np.random.RandomState(self.random_state)
+        n_samples, n_features = X.shape
+        projection = rng.randn(n_features, self.n_components)
+        projection /= np.linalg.norm(projection, axis=0, keepdims=True)
+        X_reduced = X @ projection
+        return X_reduced
+```
+
+## Evaluation settings
+
+Three datasets, each at seeds {42, 123, 456}: **MNIST** (784-d handwritten digits),
+**Fashion-MNIST** (784-d grayscale clothing), and **20-Newsgroups** (text reduced to 50-d via
+TF-IDF + truncated SVD). Three metrics, all higher-is-better, all at `k=7`:
+
+- **kNN accuracy** — accuracy of a 7-NN classifier trained and tested *in the 2D embedding*
+  (stratified shuffle split); measures whether class structure survives the projection.
+- **Trustworthiness** — of the 7 embedding-space neighbors of each point, what fraction were also
+  near in the original space (penalizes false neighbors the map invents); in [0, 1].
+- **Continuity** — of the 7 original-space neighbors of each point, what fraction stay near in the
+  embedding (penalizes true neighbors the map tears apart); in [0, 1].
+
+The editable model code is in `scikit-learn/bench/custom_dimred.py`:
+```python
+class CustomDimReduction:
+    """Custom dimensionality reduction method.
+
+    Must implement fit_transform(X) -> X_reduced.
+
+    Parameters
+    ----------
+    n_components : int
+        Target dimensionality (default 2).
+    random_state : int or None
+        Random seed for reproducibility.
+
+    Notes
+    -----
+    You may use numpy and scipy (already installed).
+    The method should work on datasets with 1000-70000 samples
+    and 50-784 features, reducing to n_components=2 dimensions.
+    It should preserve both local neighborhood structure and
+    global data relationships.
+    """
+
+    def __init__(self, n_components: int = 2, random_state: int | None = None):
+        self.n_components = n_components
+        self.random_state = random_state
+
+    def fit_transform(self, X: NDArray[np.float64]) -> NDArray[np.float64]:
+        """Reduce dimensionality of X.
+
+        Parameters
+        ----------
+        X : ndarray of shape (n_samples, n_features)
+            High-dimensional input data (standardized).
+
+        Returns
+        -------
+        X_reduced : ndarray of shape (n_samples, n_components)
+            Low-dimensional embedding.
+        """
+        # Default: random projection (poor baseline) -- replace with your design
+        rng = np.random.RandomState(self.random_state)
+        n_samples, n_features = X.shape
+        projection = rng.randn(n_features, self.n_components)
+        projection /= np.linalg.norm(projection, axis=0, keepdims=True)
+        X_reduced = X @ projection
+        return X_reduced
+```
+Improve it. Derive your method, edit the code, then run_experiment().
+</user>
+
+### step 1 — PCA (linear baseline)   [slug:pca]
+
+<think>
+The embedding is the whole point, but it bolts onto a fixed scoring harness, and the floor I have to
+start from is the cheapest faithful projection I can write into the scaffold's `fit_transform`. The
+scaffold default hands me a random linear projection: orthonormalize a couple of Gaussian axes and
+project. That is the Johnson–Lindenstrauss construction, and at a target of two dimensions it is a
+genuinely poor floor — JL only promises distance preservation when the target dimension is large
+enough to host the random directions, and two is nowhere near that, so a random pair of axes captures
+whatever arbitrary slice of the variance it happens to land on, usually a thin one. So the first real
+question is the right *first rung*: what is the cheapest projection that is not arbitrary — that picks
+its directions from the data instead of from a random number generator — and what should I expect it
+to do and to fail at on these three datasets, because that failure is what forces the second rung.
+
+Let me write down what actually goes wrong with the naive linear fits the first rung has to beat, so I
+know what shape of answer I want. Take the cloud of standardized points the harness hands me and ask
+for a line through it. The obvious tool is the regression line: pick one coordinate as the thing to
+predict, minimize the sum of squared residuals measured *along that coordinate's axis*. Fine — but now
+swap which coordinate I call dependent and minimize residuals along the *other* axis, on the very same
+points, and I get a different line. Two lines, not one, for one cloud. The reason is structural: the
+regression residual is measured along a single coordinate direction, so the criterion secretly assumes
+that coordinate is exact and the other carries all the error. On standardized pixel data that is
+false — every coordinate is a measurement with its own wobble, none is privileged. A criterion that
+privileges one axis is the wrong *shape* of answer. I need a fit that is symmetric in all the
+coordinates and returns one unique flat for the cloud.
+
+What is a symmetric notion of "distance from a point to a line"? Not the vertical gap, not the
+horizontal gap — the *perpendicular* distance. That treats every direction alike; it does not care
+which axis I call dependent. So make the criterion the sum of squared perpendicular distances and
+minimize it. Call the perpendicular from point P_k to the fitted line p_k, and minimize U = sum of
+p_k^2. This is symmetric by construction: rotate the coordinate frame however I like and U does not
+change, because perpendicular distance is a geometric quantity. That is the right objective; now I have
+to solve it, and the solution is going to tell me everything about why this rung behaves the way it
+does.
+
+One recognition saves a lot of grinding. U is exactly the second moment of the point system about the
+line — its moment of inertia with every point weighted equally. And there is a fact I can borrow
+wholesale from dynamics: the second moment of a system about a family of *parallel* axes is least for
+the axis through the centroid. So whatever the best-fitting line's direction turns out to be, it must
+pass through the mean of the points. Let me confirm it falls out of the algebra rather than just
+asserting it. Write the flat as l·x = p with the direction normalized (||l|| = 1); the perpendicular
+distance of a point is l·x − p. Differentiate U with respect to p alone (it is unconstrained): the
+derivative is −2·sum(l·x − p) = 0, giving p = l·xbar. So the flat passes through the centroid, exactly
+as the inertia argument promised. From here I shift the origin to the centroid and drop the means; I am
+only hunting for a *direction*. This is the first concrete instruction the rung gives me: **center the
+data**, then find directions.
+
+Now bring in the unit-length constraint with a Lagrange multiplier Q and vary the direction. After
+substituting p = l·xbar, the centered objective is U = sum of (l·(x − xbar))^2, and setting the
+derivative of U + Q(||l||^2 − 1) to zero gives, component by component, the covariance matrix times l
+equal to a scalar times l. Writing the covariance matrix C with entries scaled by the standard
+deviations and correlations, stationarity is C l = sigma^2 l: l is an eigenvector of the covariance
+matrix and the eigenvalue is the residual variance left perpendicular to the flat. Let me pin down what
+Q is, because it carries the meaning. Multiply the stationarity equation by l and sum: the left side is
+the mean squared residual U_m/n, the right is (Q/n)·||l||^2 = Q/n, so Q = −U_m. The multiplier I
+introduced as bookkeeping turns out to *be* the residual variance, up to sign. For a plane I want that
+residual minimal, so I take the *least* eigenvalue and its eigenvector as the discarded normal
+direction.
+
+But I care more about the best-fitting *line* — the one-dimensional summary, the dominant direction of
+the cloud. Redo the perpendicular minimization for a line through the centroid: the squared
+perpendicular distance of a centered point from the line with unit direction l is, by Pythagoras, the
+full squared length minus the squared projection onto l. Sum and divide by n: the perpendicular
+residual equals (total per-coordinate variance) minus (variance of the data projected onto l). Stare
+at this. The first term, the total of the per-coordinate variances, is a *constant* — it does not
+depend on l at all. The second term is the variance of the data *along* the line. So minimizing the
+perpendicular residual of the line is identical to *maximizing the variance of the projection onto the
+line*. The two problems are the same problem: minimize scatter off the line is the same as maximize
+scatter along it, because total scatter splits Pythagoreanly into "along" plus "perpendicular" and the
+total is fixed. And the line that maximizes projected variance is the eigenvector of the covariance
+matrix with the *greatest* eigenvalue — the mirror image of the plane case. The best-fitting line is
+the direction of greatest variance; the best-fitting plane is perpendicular to the direction of least
+variance. In two coordinates this is precisely the major axis of the correlation ellipse: a single,
+symmetric, well-defined direction, instead of two regression lines. There is even a clean degenerate
+case that tells me when the answer is non-unique: if the cloud is an isotropic ball — all correlations
+zero, all variances equal — every direction is equally good and there is no preferred axis. The method
+correctly refuses to pick a direction when the data has none.
+
+Come at the reductive problem from the accounting side now, because I want an *ordered sequence* of new
+coordinates, not just one. Look for new variables that are mutually uncorrelated and unit-variance,
+such that each observed standardized coordinate is a linear combination of them; choose the first new
+variable to account for as much of the total variance as possible, the second for as much of what is
+left, and so on. If the first component is a unit-variance score w·z, its loading on the observed
+variables is the covariance vector a = C w, and the total variance it accounts for is a·a = w^T C^2 w.
+Maximize that subject to w^T C w = 1, and the Lagrange condition collapses to C a = k a — again an
+eigenproblem, with the loading vector the eigenvector and the eigenvalue k equal to the variance
+accounted for. So the greatest eigenvalue's eigenvector is the first component, and the determinantal
+characteristic equation det(C − kI) = 0 is the same one Cauchy studied for the principal axes of
+quadrics; its roots are real (symmetric matrix) and here non-negative, because each root is a variance
+and a variance cannot be negative. Real, non-negative, ordered — exactly what an importance ranking of
+components needs. The two routes, minimize perpendicular residual and maximize explained variance, land
+on the *same* eigenproblem of the second-moment matrix. That is the confirmation I have the right
+object and not one of several.
+
+Successive components write themselves: once the first is fixed, the next should explain as much of the
+*residual* variance as possible, which is the top eigenvector of the deflated matrix C − k_1 v_1 v_1^T —
+and eigenvector orthogonality makes this automatic, so the full eigendecomposition hands me every
+component at once, ordered by eigenvalue. The fraction of total variance carried by the first m
+components, (k_1 + ... + k_m) divided by the sum of all eigenvalues, is the natural stopping rule. For
+a 2D embedding I simply keep the top two.
+
+Now the computation, because *how* I compute the directions matters numerically and the scaffold's
+budget is real. I could form the covariance C = Xc^T Xc and call a symmetric eigensolver. But forming
+Xc^T Xc squares the condition number of Xc: small singular values get squared and drown in roundoff, so
+I lose accuracy precisely on the small-variance directions. The numerically sound move is the singular
+value decomposition of the centered data directly, Xc = U S V^T. Then Xc^T Xc = V S^2 V^T, so the right
+singular vectors V are exactly the eigenvectors of the covariance — my principal directions — the
+variance of component i is S_i^2/(n−1), and because singular values come sorted I do not even have to
+sort eigenvalues. Better, the embedding is the top columns of U S, since Xc V = U S: I read the
+coordinates straight off the factorization. There is one reproducibility wrinkle the harness cares
+about: singular-vector signs are arbitrary (U S V^T = (−U) S (−V)^T), so two runs could flip a
+coordinate's axis; fixing each vector's sign by a deterministic rule (force the largest-magnitude entry
+positive) makes the output stable across the seeds.
+
+That is the entire first rung: center the standardized cloud, take the top two right singular vectors of
+the centered matrix, and return the projection onto them. In the scaffold this is the smallest possible
+edit — `fit_transform` builds the SVD-backed principal-component projection and returns the first two
+principal coordinates of `X`. I do not need to hand-roll the SVD and sign-flip: the harness allows
+`scikit-learn`, whose `decomposition.PCA` solver is exactly this linear-algebra core — center, full
+(or randomized) SVD of the centered matrix, deterministic `svd_flip` from the rows of the loadings,
+projection onto the top components, and it threads `random_state` for the randomized solver so the
+embedding is reproducible across the three seeds. So the rung-1 fill is a two-line call to
+`PCA(n_components=2, random_state=...)`; the derivation above is *why* that call is the right first
+rung rather than the random projection. The distilled module is in the answer.
+
+Now reason about what this floor must do on the three datasets, because that is the whole reason to run
+it. PCA keeps the directions of greatest *variance* and throws away the rest. When the structure I care
+about — the class neighborhoods — lives in the top two variance directions, PCA will keep it and the
+scores will be high. When it does not, PCA is blind to it by construction, and there is exactly one
+reason it usually does not: PCA is *linear*. It can only place points on a flat two-dimensional plane
+through the cloud. If the data lies on a curved manifold — digits whose appearance varies smoothly along
+nonlinear modes, clothing images whose pixel correlations bend — then a flat projection folds the curl
+and lands points from opposite sides of a fold right next to each other. The neighborhoods get mangled;
+the global variance survives. So I expect the continuity scores to hold up reasonably (PCA does not
+*tear* nearby points apart — it preserves the coarse layout) while the trustworthiness and especially
+the kNN accuracy collapse, because a flat shadow of a curved cloud invents false neighbors and smears
+the ten digit classes into one overlapping blob where a 7-NN classifier cannot separate them.
+
+The three datasets should not behave identically, and the split is informative. MNIST and Fashion-MNIST
+are 784-dimensional images whose true structure is strongly nonlinear, so I expect PCA's class
+preservation there to be weak — the digit and garment classes are not separable in any two linear
+directions. 20-Newsgroups is already linearly pre-reduced to 50 dimensions by truncated SVD before the
+harness ever sees it, which is itself a linear operation closely related to PCA, so the further drop to
+two dimensions is again a linear projection of an already-linear summary; its class structure (five
+topic groups) is more diffuse and overlapping, so I expect that to be the weakest of all on kNN
+accuracy. Across the board, this is the floor: the cheapest non-arbitrary projection, and the cheapest
+to *diagnose*, because whatever it loses it loses for one clean reason — linearity.
+
+The falsifiable expectation I will check against the measured numbers: PCA should beat the random
+projection comfortably (it picks data-driven directions), but its kNN accuracy should land far below any
+nonlinear neighbor-embedding method — somewhere in the 0.3 range on the image datasets and lower on
+newsgroups — with trustworthiness dragged down with it, while continuity stays the highest-relative of
+its own three metrics because the global layout is the one thing a linear map preserves. If that is what
+I see, then the diagnosis is settled and points straight at the next rung: this is a *nonlinearity*
+problem, not a fitting problem. The fix is not a better linear direction; the global layout PCA gives
+is actually worth *keeping* — it is the one thing a flat map gets right — so the natural next move is to
+keep PCA's globally-faithful skeleton as a starting point and *refine it locally*, bending the
+neighborhoods to follow the manifold without discarding the global frame. That refine-from-PCA strategy,
+driven by relative-order triplet forces, is exactly what step 2 builds. So let me put the PCA floor in
+first.
+</think>
+<say>
+Starting from the floor: I'll replace the random projection with PCA — the unique, ordered linear summary by maximal variance. This first edit swaps the class body for a two-line `sklearn.decomposition.PCA(n_components=2)` call.
+</say>
+<edit path="scikit-learn/bench/custom_dimred.py">
+<old>
+class CustomDimReduction:
+    """Custom dimensionality reduction method.
+
+    Must implement fit_transform(X) -> X_reduced.
+
+    Parameters
+    ----------
+    n_components : int
+        Target dimensionality (default 2).
+    random_state : int or None
+        Random seed for reproducibility.
+
+    Notes
+    -----
+    You may use numpy and scipy (already installed).
+    The method should work on datasets with 1000-70000 samples
+    and 50-784 features, reducing to n_components=2 dimensions.
+    It should preserve both local neighborhood structure and
+    global data relationships.
+    """
+</old>
+<new>
+class CustomDimReduction:
+    """PCA dimensionality reduction (linear baseline)."""
+</new>
+</edit>
+<obs>
+Successfully replaced text in scikit-learn/bench/custom_dimred.py.
+</obs>
+<note>
+Now the body itself: center, SVD, project onto the top two principal directions.
+</note>
+<edit path="scikit-learn/bench/custom_dimred.py">
+<old>
+    def fit_transform(self, X: NDArray[np.float64]) -> NDArray[np.float64]:
+        """Reduce dimensionality of X.
+
+        Parameters
+        ----------
+        X : ndarray of shape (n_samples, n_features)
+            High-dimensional input data (standardized).
+
+        Returns
+        -------
+        X_reduced : ndarray of shape (n_samples, n_components)
+            Low-dimensional embedding.
+        """
+        # Default: random projection (poor baseline) -- replace with your design
+        rng = np.random.RandomState(self.random_state)
+        n_samples, n_features = X.shape
+        projection = rng.randn(n_features, self.n_components)
+        projection /= np.linalg.norm(projection, axis=0, keepdims=True)
+        X_reduced = X @ projection
+        return X_reduced
+</old>
+<new>
+    def fit_transform(self, X: NDArray[np.float64]) -> NDArray[np.float64]:
+        from sklearn.decomposition import PCA
+        pca = PCA(n_components=self.n_components, random_state=self.random_state)
+        return pca.fit_transform(X)
+</new>
+</edit>
+<obs>
+Successfully replaced text in scikit-learn/bench/custom_dimred.py.
+</obs>
+<run/>
+<obs>
+Measured results — `baseline:pca` (`is_final,true`), seeds {42, 123, 456} and mean (std over seeds).
+
+## MNIST
+| seed | kNN acc | trustworthiness | continuity |
+|---|---|---|---|
+| 42 | 0.315333 | 0.669330 | 0.927945 |
+| 123 | 0.332000 | 0.672255 | 0.926564 |
+| 456 | 0.330333 | 0.670707 | 0.927593 |
+| **mean** | **0.325889** | **0.670764** | **0.927367** |
+| std | 0.007495 | 0.001195 | 0.000586 |
+
+## Fashion-MNIST
+| seed | kNN acc | trustworthiness | continuity |
+|---|---|---|---|
+| 42 | 0.502667 | 0.874386 | 0.968233 |
+| 123 | 0.516333 | 0.874264 | 0.968297 |
+| 456 | 0.501000 | 0.875631 | 0.967728 |
+| **mean** | **0.506667** | **0.874760** | **0.968086** |
+| std | 0.006869 | 0.000618 | 0.000254 |
+
+## 20-Newsgroups
+| seed | kNN acc | trustworthiness | continuity |
+|---|---|---|---|
+| 42 | 0.291577 | 0.561889 | 0.778943 |
+| 123 | 0.263383 | 0.558218 | 0.776484 |
+| 456 | 0.275517 | 0.557220 | 0.781182 |
+| **mean** | **0.276826** | **0.559109** | **0.778870** |
+| std | 0.011547 | 0.002008 | 0.001919 |
+</obs>
+
+### step 2 — TriMap (triplet refinement of PCA)   [slug:trimap]
+
+<think>
+PCA's numbers tell me exactly what a flat shadow of a curved cloud does, and they split along the axis
+I predicted. Continuity is the one thing PCA gets right — 0.927 on MNIST, 0.968 on Fashion-MNIST, even
+0.779 on the diffuse newsgroups data — because a linear projection does not *tear* nearby points apart;
+it preserves the coarse layout, so original-space neighbors mostly stay in the same region of the map.
+But kNN accuracy is on the floor: 0.326 on MNIST, 0.277 on newsgroups, 0.507 on Fashion-MNIST (the
+clothing classes happen to have more linear separation than the digits, so it does least badly there).
+Trustworthiness tracks the kNN collapse — 0.671 on MNIST against the 0.96 a good neighbor embedding
+reaches — which is the diagnostic signature: PCA *invents* false neighbors. The flat plane folds the
+manifold and lands points from opposite sides of a fold adjacent, so a point's 2D neighbors are
+frequently not its real neighbors, and a 7-NN classifier in that smeared blob cannot separate the
+classes. The failure is clean and it is *only* linearity — PCA loses nothing for any other reason.
+
+So the question is how to keep what PCA got right while fixing what it got wrong. And the shape of
+PCA's result is a gift, not just a baseline: its continuity is high because the global arrangement of
+the clusters is faithful — that is what variance-maximization buys, the coarse relative placement of
+the blobs. What it lacks is *local* fidelity inside and between neighborhoods. So I do not want to throw
+PCA away and discover a layout from scratch; I want to *start* from PCA's globally-correct skeleton and
+refine it locally, bending neighborhoods to follow the manifold without disturbing the global frame.
+That is the whole strategy, and it is worth pinning down why it is the right one before I build the
+machinery — because if I get the global structure for free from PCA, the only job left for the nonlinear
+forces is the local one PCA failed at, which is a far easier and safer job than building everything.
+
+First, why do the nonlinear methods lose global structure in the first place — the failure I am trying
+*not* to reintroduce? Every neighbor-embedding method works the same way: build a kNN graph, turn each
+edge into a pairwise *target distance or similarity*, and lay the points out to match those targets. The
+trouble with a pairwise target is that it is *absolute*: "i and j should be at similarity 0.7" commits
+to a specific distance, and only neighbors get a meaningful target, because the Gaussian similarity of
+two far-apart points is numerically zero — indistinguishable from any other far pair. So the objective
+says nothing about how far apart two *clusters* should be relative to two *other* clusters. The global
+arrangement is left dangling and the optimizer fills it in arbitrarily. That is precisely the failure
+PCA does *not* have. So if I lean on pairwise targets I risk trading PCA's good global structure for
+better local structure — exactly the wrong trade.
+
+I want a relation that is *relative*, not absolute, and that can carry information about more than the
+nearest neighbors. The smallest relation encoding relative order is a triplet: (i, j, k) meaning "i is
+closer to j than to k." A triplet demands no particular distance, only an *ordering* — scale-free,
+robust, and a higher-order summary. This is the seed I want: refine an initial representation so that a
+set of relative comparisons is satisfied while staying close to the initial one. I will not build the
+map from triplets out of nothing; I will start from PCA's globally-sensible layout and refine it with
+triplets sampled from the data's own high-dimensional geometry.
+
+What is the loss for a single triplet? The relation I care about is "i closer to j than k," so in the
+low-dimensional map a similarity s(y_i, y_j) should dominate s(y_i, y_k). The natural thing to minimize
+is the share of similarity mass sitting on the *wrong* side: w·s(y_i,y_k)/(s(y_i,y_j)+s(y_i,y_k)). When
+j is near i and k is far, the ratio goes to zero and the loss vanishes — the triplet is satisfied and
+exerts (almost) no force; when the order is violated the ratio goes to one, full loss. Bounded in [0,1],
+smooth, and — this is the design choice that matters — it *saturates* at zero rather than continuing to
+reward an already-satisfied triplet. I want this and not the log-probability objective some triplet
+methods use, because the log-prob form keeps pulling satisfied triplets forever, which over-collapses
+every neighborhood and would slowly chew up the very global frame PCA hands me. The saturating loss is
+what makes refine-from-PCA *safe*: from a PCA start most neighbor triplets are already nearly satisfied,
+so their gradient is gentle and the method makes small local corrections instead of violently
+rearranging the good global layout.
+
+For the low-dimensional similarity I reuse the heavy-tailed Student-t kernel with one degree of freedom,
+s(y_a,y_b) = (1 + ||y_a − y_b||^2)^{-1}. Its slow tail gives long-range forces that can pull a misplaced
+point back across the map and it avoids the crowding problem; the +1 floors the denominator so two
+coincident embedding points never divide by zero. Writing d_ij := 1 + ||y_i − y_j||^2, the loss
+simplifies to l_ijk = w/(1 + d_ik/d_ij): small exactly when d_ik ≫ d_ij, i.e. k much farther than j in
+the map. The total loss sums l_ijk over a sampled triplet set.
+
+Now the weight w, because not all triplets are equally informative. A triplet where k is *enormously*
+farther than j in high dimension is strong, reliable evidence about the geometry — insist the map
+respect it. A triplet that is nearly a tie is dominated by noise — leaning on it just fits noise. So the
+weight grows with the high-dimensional *margin*, the locally-scaled squared-distance gap
+δ_ik^2 − δ_ij^2, which is non-negative by construction if j is sampled as the closer point. Raw squared
+distances are dangerous across regions of different density — in a dense cluster all distances are
+small, in a sparse one all large, so the same margin means different things — so I scale by per-point
+local lengths, δ_ij^2 = ||x_i − x_j||^2/(σ_i σ_j), with σ_i read off i's own neighborhood (the average
+distance to its 4th–6th nearest neighbors: far enough to be stable, close enough to stay local). These
+margins are heavy-tailed: a handful of triplets straddling two very-distant clusters have gigantic
+margins and would dominate the gradient. I want to keep the *ordering* of importance but compress the
+dynamic range, so I temper the weights with a deformed logarithm log_t at t = 0.5 — a gentler-than-log
+square-root-flavored compression — after shifting the margins so the smallest is zero.
+
+Which triplets, and how many? I cannot use all O(n^3) and should not — most are redundant. For each
+point i, the informative j is a *near* neighbor (the triplet then says "keep this neighbor close
+relative to something farther"), so I take i's nearest neighbors as candidate j's and, for each, sample
+a few "outlier" k's uniformly from outside the already-closer neighbors. With this task's
+configuration that is **10 inliers** per point, each paired with **5 outliers** — fifty near-neighbor
+triplets per point — and the triplet count is linear in n, which is what keeps the cost dominated by
+the approximate nearest-neighbor search rather than the triplet sweep. (I note the lever the harness
+exposes is the library's `n_inliers`/`n_outliers`/`n_random`/`n_iters`, not the internal kernel or
+weight transform; those are fixed inside the implementation, and the method is robust to the exact
+counts because the triplets are highly redundant.)
+
+But now I have to check whether these fifty near-neighbor triplets actually preserve the global
+structure I am chasing, because that was the whole point. Every one of them has j as a *neighbor* of i;
+none constrains how two *far-apart* points sit relative to each other. Suppose the optimizer drives the
+loss to near zero — every neighbor closer than its sampled outliers. Does that pin down the global
+arrangement? It does not. I can satisfy "every neighbor closer than every outlier" while folding the
+global layout into almost any shape — picture the manifold relaxed into a flat line: locally every
+neighbor is still nearest, the neighbor-triplet loss is essentially zero, and the global structure is
+destroyed. The loss can be zero *amidst a complete sacrifice of global structure*. This is exactly
+the trap the pairwise local methods fall into, just dressed as triplets. Adding a near-neighbor triplet
+loss, by itself, buys me no global structure at all — and that is the failure I must not reintroduce,
+since I would be giving back PCA's one strength.
+
+Two routes out. Route one: add a few triplets between non-neighbors — with this task's configuration,
+**5 random triplets** per point, picking j and k uniformly and orienting them by their high-D distance,
+to give the loss a faint say over the relative placement of distant points. These carry a thin global
+signal, but it is thin and noisy (a random pair of far points is a weak, high-variance constraint) and
+gets downweighted precisely because it is unreliable. Leaning the whole global layout on it is a bad
+bet. Route two is the one I parked: do not *discover* the global layout from triplet forces at all —
+*start* from a layout that is already globally correct and let the triplets only refine it locally. And
+I already know that layout: PCA — globally optimal by construction, the very thing whose continuity my
+feedback measured at 0.927/0.968. Initialize Y to the PCA embedding (scaled down by a small constant so
+the Student-t kernel operates in its sensitive range rather than saturated). From a PCA start the
+clusters are already in their globally-faithful relative positions and far points are already far, so
+there are essentially *no* triplets demanding that two far-apart points be pushed apart — that work is
+done. The only work left is to sharpen local neighborhoods: pull each point's true neighbors in tight,
+nudge outliers out, unfold the local manifold — all without any large force that would tear the global
+frame PCA established. The neighbor triplets, a liability for global structure from a random start,
+become exactly right when the global frame is already correct. And there is a free benefit: starting
+from the structured PCA solution converges far faster than from random noise, so the **400 iterations**
+the harness budgets are enough.
+
+The optimizer is full-batch gradient descent on the fixed triplet set (sampled once, never resampled)
+with momentum and a per-coordinate adaptive gain — calmer momentum early while the layout settles, then
+faster — evaluated at a look-ahead point for stability. Each triplet touches only three rows of the
+gradient (a symmetric pull along i–j scaled by d_ik and a push along i–k scaled by d_ij, both shrunk by
+the squared denominator d_ij + d_ik so an already-satisfied triplet exerts almost no force — the
+saturation, now visible in the gradient), so a full sweep is O(n) per iteration. The full procedure is
+in the answer; here it lands as the library call `trimap.TRIMAP(n_dims=2, n_inliers=10, n_outliers=5,
+n_random=5, n_iters=400)`, which builds the kNN graph, samples the triplets, computes locally-scaled
+tempered-log margins, initializes from PCA, and runs exactly this descent.
+
+Now the falsifiable expectations against PCA's numbers. The whole bet is "keep PCA's global structure,
+add the local fidelity it lacks." So I expect the kNN accuracy to jump from PCA's floor toward the
+neighbor-embedding regime — MNIST from 0.326 into the low-to-mid 0.8s, newsgroups from 0.277 up past
+0.6, Fashion-MNIST from 0.507 into the low 0.7s — because the triplets unfold the local manifold the
+linear map folded. Trustworthiness should climb sharply with it, from 0.671 toward ~0.89 on MNIST, as
+the false neighbors the fold invented get separated. Continuity is the delicate one: PCA's continuity is
+already high (0.927 MNIST), and the *risk* of any nonlinear refinement is that pulling neighbors tight
+tears some original-space neighbors apart, so continuity could even dip slightly relative to PCA on the
+datasets where PCA was strongest — I expect it to stay in the same high band (~0.958 MNIST, ~0.983
+Fashion-MNIST) rather than improve much, because the global frame is inherited, not re-derived. If
+instead the global structure collapses (continuity *falls* well below PCA's) that would falsify the
+refine-from-PCA story and say the triplets are overpowering the frame. The seed-to-seed spread should be
+modest, since the PCA init is deterministic and only the triplet sampling carries randomness. The one
+thing this rung structurally *cannot* do is push trustworthiness into the 0.96 range a direct
+local-affinity match reaches: TriMap's global structure is *inherited* from PCA and its local fidelity
+comes from relative-order triplets that stop pulling once satisfied, so it will land a strong but not
+top-tier local score — which is exactly the gap the next rung, a method that puts forces on
+moderate-distance pairs to build the global skeleton into the objective itself, is meant to close. Let
+me swap in TriMap and measure.
+</think>
+<say>
+PCA gives the global frame for free but folds the local manifold. I'll refine it with TriMap — relative-order triplets, PCA-initialized — swapping the body for `trimap.TRIMAP(n_inliers=10, n_outliers=5, n_random=5, n_iters=400)`.
+</say>
+<edit path="scikit-learn/bench/custom_dimred.py">
+<old>
+class CustomDimReduction:
+    """PCA dimensionality reduction (linear baseline)."""
+</old>
+<new>
+class CustomDimReduction:
+    """TriMap dimensionality reduction."""
+</new>
+</edit>
+<obs>
+Successfully replaced text in scikit-learn/bench/custom_dimred.py.
+</obs>
+<note>
+The body: build the triplets, init from PCA, run the saturating-loss descent.
+</note>
+<edit path="scikit-learn/bench/custom_dimred.py">
+<old>
+    def fit_transform(self, X: NDArray[np.float64]) -> NDArray[np.float64]:
+        from sklearn.decomposition import PCA
+        pca = PCA(n_components=self.n_components, random_state=self.random_state)
+        return pca.fit_transform(X)
+</old>
+<new>
+    def fit_transform(self, X: NDArray[np.float64]) -> NDArray[np.float64]:
+        import trimap
+        reducer = trimap.TRIMAP(
+            n_dims=self.n_components,
+            n_inliers=10,
+            n_outliers=5,
+            n_random=5,
+            n_iters=400,
+        )
+        return reducer.fit_transform(X)
+</new>
+</edit>
+<obs>
+Successfully replaced text in scikit-learn/bench/custom_dimred.py.
+</obs>
+<run/>
+<obs>
+Measured results — `baseline:trimap` (`is_final,true`), seeds {42, 123, 456} and mean (std over seeds).
+
+## MNIST
+| seed | kNN acc | trustworthiness | continuity |
+|---|---|---|---|
+| 42 | 0.859000 | 0.893001 | 0.958602 |
+| 123 | 0.815333 | 0.887623 | 0.958136 |
+| 456 | 0.820333 | 0.890313 | 0.958236 |
+| **mean** | **0.831555** | **0.890312** | **0.958325** |
+| std | 0.019513 | 0.002196 | 0.000200 |
+
+## Fashion-MNIST
+| seed | kNN acc | trustworthiness | continuity |
+|---|---|---|---|
+| 42 | 0.723667 | 0.953987 | 0.983251 |
+| 123 | 0.741000 | 0.954180 | 0.983345 |
+| 456 | 0.734667 | 0.958445 | 0.983725 |
+| **mean** | **0.733111** | **0.955537** | **0.983440** |
+| std | 0.007161 | 0.002058 | 0.000205 |
+
+## 20-Newsgroups
+| seed | kNN acc | trustworthiness | continuity |
+|---|---|---|---|
+| 42 | 0.676303 | 0.844866 | 0.871401 |
+| 123 | 0.665596 | 0.849666 | 0.875373 |
+| 456 | 0.665596 | 0.851221 | 0.865613 |
+| **mean** | **0.669165** | **0.848584** | **0.870796** |
+| std | 0.005047 | 0.002705 | 0.004007 |
+</obs>
+
+### step 3 — PaCMAP (three pair types)   [slug:pacmap]
+
+<think>
+TriMap landed exactly where the refine-from-PCA story predicted, and the precise shape of its numbers is
+what names the next move. kNN jumped off PCA's floor into the neighbor-embedding regime — MNIST 0.326 →
+0.832, newsgroups 0.277 → 0.669, Fashion-MNIST 0.507 → 0.733 — so the triplets did unfold the local
+manifold the linear map folded. Trustworthiness climbed with it, 0.671 → 0.890 on MNIST. And continuity
+behaved exactly as I bet: it stayed in PCA's high band (0.958 MNIST vs PCA's 0.927, 0.983 Fashion vs
+0.968) — it did *not* collapse, confirming the global frame was inherited rather than torn. But look at
+the trustworthiness ceiling: 0.890 on MNIST, 0.849 on newsgroups. That is strong, but it is the
+not-top-tier score I predicted TriMap structurally could not beat. And the seed spread on MNIST kNN is
+the widest on the ladder so far (std 0.0195, seed 42 at 0.859 vs seed 123 at 0.815). Both of those —
+the trustworthiness ceiling and the variance — point at the same root cause, and it is worth diagnosing
+before I build anything, because it is a cause I have to design *against*, not merely patch.
+
+TriMap's global structure is not produced by its triplets; it is *borrowed from PCA*. I leaned on that
+deliberately at step 2 — it was the safe way to keep the global frame — but it is exactly the fragility
+I now want to kill. Let me confirm the borrowing rather than assert it. About fifty of TriMap's
+fifty-five triplets per point contain a nearest neighbor as j, and the other five are random; so almost
+all the attraction is on neighbors, the same as every local method. Its repulsion, written per far
+point, is strong only when the far point is close and near-flat otherwise — the same near-sightedness.
+So where does the global structure come from? Either the five random triplets per point (which often
+pair two far points and so *could* carry global information) or the PCA initialization. The honest
+answer is the init: remove the random triplets and the layout barely changes; remove the PCA init and
+the global structure collapses. And the tempered-log weights come out nearly all equal after the
+transform, so the elaborate weighting is not doing much either. TriMap does not *solve* the
+global-structure problem; it inherits the answer from its initializer. That is why its trustworthiness
+plateaus and why its MNIST seeds scatter: any rung whose global structure is a hostage to a single
+deterministic init has no mechanism to *correct* the global layout when the local forces nudge it, so
+the local refinement can only ever sharpen within the frame PCA happened to give, and the residual
+errors of that frame are baked in.
+
+So I want a method that *creates* global structure inside its own objective, so the layout does not
+depend on a lucky start. To find what is missing I have to look at *why* the local methods are blind to
+global structure in the first place, and I want to compute it rather than gesture at it, because this is
+the linchpin. Put every method in the same frame: from the data build a weighted graph whose components
+are edges or triplets, then minimize over the 2D positions a sum of Weight^X(component)·Loss^Y(component);
+gradient descent turns the loss into *forces* — attraction on some pairs, repulsion on others. The
+losses look nothing alike (a KL, a fuzzy cross-entropy, a triplet ratio), so compare the thing that
+drives the optimization: the forces, plotted over the two low-dimensional distances d_ij (a neighbor)
+and d_ik (a far point). The good methods share a force shape, and reasoning about that shape gives six
+principles a good *local* loss obeys — attraction on neighbors and repulsion on far points
+(monotonicity); once a far point is far enough, stop pushing it and focus on pulling neighbors in;
+dually, shove a too-close intruder hard; small force on an already-coincident neighbor; large force on a
+too-close intruder; and the attractive force unimodal in d_ij, peaking at moderate distance and dying
+for hopelessly-far neighbors (because if a neighbor ended up very far it usually means I genuinely
+cannot preserve it, and yanking it hard distorts everyone else trying to save one I cannot save). And
+there is a structural shortcut: a *separable* edge loss — attractive part depending only on d_ij plus
+repulsive part depending only on d_ik — obeys all six principles as long as both force functions are
+nonnegative, unimodal, and vanish at 0 and ∞. So triplets were never needed for local structure; a
+separable edge loss with two unimodal hump forces suffices, and triplets (TriMap's awkward, expensive
+machinery) were doing less than they looked.
+
+But all six principles are about *local* structure — neighbors and far points and the attraction/
+repulsion balance. None says a word about the arrangement of clusters. Does obeying them even buy global
+structure? A thought experiment kills it: take a 0-1 triplet loss confined to triplets where j is always
+a near point, omitting all triplets where both j and k are far. I can drive that loss to zero — every
+near point closer than its paired far point — while scrambling the global layout completely, because
+"every near closer than its far partner" says nothing about how the far points sit relative to each
+other. Zero loss, perfect by its own measure, global structure destroyed. The reason is that these
+losses only ever put forces between *neighbors* (attract) and *too-close far points* (repulse); for a
+point that is genuinely far in low dimensions the force is zero — and zero whether it is moderately far
+or extremely far. The relative distances among far things never enter the objective, and relative
+distances among far things *are* the global structure.
+
+Let me confirm this is exactly what t-SNE and UMAP suffer from by computing it. t-SNE's gradient on i
+is a sum over j of (p_ij − q_ij)(y_i − y_j)(1 + d_ij^2)^{-1}. Split each term: the p-part is
+attraction, scaled by p_ij from the *original*-space Gaussian, which for a non-neighbor is minuscule
+(modern code literally zeros it past ~3·perplexity), so non-neighbors get essentially no attraction.
+The q-part is repulsion; substituting the normalized q with its all-pairs partition function, the
+repulsive term decays like 1/d_ij^3 and its derivative flattens to ~0 for large d_ij. So for any two
+points far apart in the embedding, both the force and its slope are near zero, *independent of how far
+they actually are in the original space*. t-SNE genuinely cannot distinguish among far points — the
+global blindness, derived. UMAP has the same character: its forces decay to nothing past a narrow
+working zone small compared to the spread of embedded distances. And TriMap, as I already diagnosed from
+its numbers, escapes only by borrowing from PCA. So the missing component is now precise: a *third* kind
+of pair, neither nearest-neighbor nor random-far, that I *attract* — pairs at *moderate* distance — so
+that the objective itself contains information about the mid-range arrangement and can build a global
+layout that does not depend on a lucky start. Call them mid-near pairs. Neighbors handle local
+structure, a repulsion handles crowding, and the mid-near pairs handle the global skeleton. Three pair
+types, all plain edges — no triplets, because separable edge losses already obey every local principle.
+
+Now the design, one piece at a time. **Neighbors**: nearest by a *scaled* distance,
+d^2_select = ||x_i − x_j||^2/(σ_i σ_j) with σ_i the average distance to i's 4th–6th Euclidean neighbors,
+so "neighbor" means the same thing in dense and sparse regions; over-fetch by raw Euclidean, then
+re-rank the shortlist by the scaled distance and keep the top **n_neighbors = 10**. **Mid-near pairs**:
+I want a cheap draw from the moderate region per point — sample six points uniformly and take the
+*second closest*; with six draws the closest tends to be a genuine near point and the second-closest
+sits in the lower-middle of the distance distribution, a cheap order statistic that lands where I want
+without ranking. The count is a ratio of neighbors, **MN_ratio = 0.5**, so 5 mid-near pairs per point —
+enough to sketch the skeleton. **Far pairs**: random non-neighbors, the repulsion set, more of them
+because repulsion needs broad coverage to keep crowding at bay — **FP_ratio = 2.0**, so 20 per point.
+
+The loss is three separable rational terms in d̃ = ||y_i − y_j||^2 + 1 (the +1 floors it and gives the
+small gradient for tiny d_ij that the principles want). Neighbors: d̃_ij/(10 + d̃_ij) — saturating, so
+the force dies for far-flung neighbors (the give-up tail) and is small near zero. Far pairs:
+1/(1 + d̃_il) — large when the intruder is close, decaying to zero as it recedes. Mid-near pairs: the
+*same* saturating attractive shape but over a much *wider* range, d̃_ik/(10000 + d̃_ik), so a mid-near
+pair feels a gentle, persistent pull across a broad distance band — exactly the "organize the global
+skeleton" behavior, distinct from the narrow neighbor working zone. The force coefficients are the
+derivatives: 20/(10 + d̃)^2 and 20000/(10000 + d̃)^2 for the two attractions, 2/(1 + d̃)^2 for the
+repulsion (opposite sign). The constants are working-zone tuners, not sacred; what is load-bearing is
+that the loss is separable, the forces obey the principles, and the mid-near attraction is *separate*
+from the neighbor attraction and ranges wider.
+
+The optimization is where the global structure actually gets *created*, and it has to be staged, because
+the narrow working zones are double-edged: fling a pair of true neighbors apart early and their
+attraction has already decayed (a false split, a phantom cluster); but once global structure is placed,
+the gentle long-range forces will not tear it up while I refine locally. So coarse-to-fine, a three-phase
+weight schedule. Phase one: crank w_MN very high — start it at 1000 — so the mid-near pairs dominate and
+organize the moderate-distance arrangement, with modest w_NB = 2 and w_FP = 1, annealing w_MN down
+toward 3 over the first ~100 updates so it does not later fight local refinement. Phase two: stabilize —
+hold w_MN at a small nonzero 3, raise w_NB to 3 to start tightening neighborhoods while gently
+maintaining the skeleton. Phase three: refine — set w_MN = 0 (the global structure is now the thing to
+preserve), drop w_NB to 1, keep w_FP = 1, so local attraction and repulsion pull neighbors tight and
+carve clean cluster boundaries. The two failure modes this avoids are exactly the diagnosed ones: never
+neglecting forces on non-near points (phase one's mid-near pull is the whole point), and never flinging
+neighbors so far early that their attraction saturates. Initialization is still PCA scaled small — but
+here PCA is a *head start that saves iterations, not the source of the answer*: the mid-near pairs
+create the global structure during phase one, so unlike TriMap the layout is not a hostage to the init.
+Adam handles the swinging force magnitudes across phases (w_MN starts at 1000), with a fairly large base
+learning rate because the gradients are bounded rational forces. The full schedule and forces are in the
+answer; in the scaffold this lands as the library call `pacmap.PaCMAP(n_components=2, n_neighbors=10,
+MN_ratio=0.5, FP_ratio=2.0, random_state=...)`, which fixes the scaled-distance neighbor selection, the
+second-of-six mid-near draw, the three rational force terms, the three-phase schedule, and the Adam
+loop. (The harness exposes the four counts; the schedule and force constants are internal.)
+
+Now the falsifiable expectations against TriMap's numbers. The bet is that putting the global skeleton
+*into the objective* via mid-near pairs removes TriMap's dependence on the PCA init and so both lifts the
+local scores and tightens the seed variance. So I expect kNN to edge above TriMap on the image datasets —
+MNIST 0.832 → low-mid 0.85, newsgroups 0.669 → ~0.68, Fashion-MNIST roughly level near 0.737 — and
+trustworthiness to nudge up on MNIST from 0.890 toward ~0.90. I do *not* expect a dramatic
+trustworthiness jump, because PaCMAP spends part of its capacity on the global skeleton (the mid-near
+pairs) that TriMap got for free from PCA — it is buying *robustness* of the global structure, not a new
+local ceiling. The sharpest prediction is on the MNIST seed spread: if the mid-near pairs really create
+the global structure rather than inheriting it, the layout should be less sensitive to randomness — but
+note PaCMAP's stochasticity is in the random mid-near and far sampling, so the variance could land
+similar to TriMap's rather than strictly lower. Continuity is the one I watch for a *dip*: PaCMAP's
+phase-three repulsion carves cluster boundaries aggressively, which can tear a few original-space
+neighbors apart, so its continuity could come in slightly *below* TriMap's high band (e.g. ~0.957 vs
+0.958 MNIST, ~0.979 vs 0.983 Fashion) even as kNN and trustworthiness rise — that trade is the signature
+of trading some continuity for cleaner separation. If instead continuity holds *and* trustworthiness
+jumps to the 0.96 range, that would say the mid-near machinery is doing more than I expect; if kNN does
+not beat TriMap at all, that would say the global skeleton it builds is no better than the one PCA
+handed TriMap, and the extra machinery was not worth it. Either way, what is still out of reach is the
+0.96 trustworthiness that comes from a *principled* neighbor graph and a cross-entropy with a symmetric
+repulsion term — instead of three hand-tuned working-zone constants and a hand-scheduled mid-near pull.
+That is the gap the next rung, which replaces the empirical three-pair construction with a fuzzy
+neighbor graph derived from a per-point Riemannian metric and an edge-existence cross-entropy, is set
+up to test. Let me put PaCMAP in and measure.
+</think>
+<say>
+TriMap's global structure is a hostage to its PCA init. I'll move to PaCMAP, which builds the global skeleton into its own objective via mid-near pairs — this edit swaps the body for `pacmap.PaCMAP(n_neighbors=10, MN_ratio=0.5, FP_ratio=2.0)`.
+</say>
+<edit path="scikit-learn/bench/custom_dimred.py">
+<old>
+class CustomDimReduction:
+    """TriMap dimensionality reduction."""
+</old>
+<new>
+class CustomDimReduction:
+    """PaCMAP dimensionality reduction (SOTA)."""
+</new>
+</edit>
+<obs>
+Successfully replaced text in scikit-learn/bench/custom_dimred.py.
+</obs>
+<note>
+The body: three pair types and the three-phase Adam schedule.
+</note>
+<edit path="scikit-learn/bench/custom_dimred.py">
+<old>
+    def fit_transform(self, X: NDArray[np.float64]) -> NDArray[np.float64]:
+        import trimap
+        reducer = trimap.TRIMAP(
+            n_dims=self.n_components,
+            n_inliers=10,
+            n_outliers=5,
+            n_random=5,
+            n_iters=400,
+        )
+        return reducer.fit_transform(X)
+</old>
+<new>
+    def fit_transform(self, X: NDArray[np.float64]) -> NDArray[np.float64]:
+        import pacmap
+        reducer = pacmap.PaCMAP(
+            n_components=self.n_components,
+            n_neighbors=10,
+            MN_ratio=0.5,
+            FP_ratio=2.0,
+            random_state=self.random_state,
+        )
+        return reducer.fit_transform(X)
+</new>
+</edit>
+<obs>
+Successfully replaced text in scikit-learn/bench/custom_dimred.py.
+</obs>
+<run/>
+<obs>
+Measured results — `baseline:pacmap` (`is_final,true`), seeds {42, 123, 456} and mean (std over seeds).
+
+## MNIST
+| seed | kNN acc | trustworthiness | continuity |
+|---|---|---|---|
+| 42 | 0.882333 | 0.900424 | 0.957766 |
+| 123 | 0.838333 | 0.902103 | 0.957520 |
+| 456 | 0.839000 | 0.901340 | 0.956773 |
+| **mean** | **0.853222** | **0.901289** | **0.957353** |
+| std | 0.020586 | 0.000686 | 0.000422 |
+
+## Fashion-MNIST
+| seed | kNN acc | trustworthiness | continuity |
+|---|---|---|---|
+| 42 | 0.741667 | 0.959463 | 0.979273 |
+| 123 | 0.738333 | 0.956777 | 0.980071 |
+| 456 | 0.731000 | 0.962490 | 0.979051 |
+| **mean** | **0.737000** | **0.959577** | **0.979465** |
+| std | 0.004456 | 0.002334 | 0.000438 |
+
+## 20-Newsgroups
+| seed | kNN acc | trustworthiness | continuity |
+|---|---|---|---|
+| 42 | 0.690221 | 0.845727 | 0.896751 |
+| 123 | 0.673804 | 0.845954 | 0.893877 |
+| 456 | 0.669879 | 0.844796 | 0.882600 |
+| **mean** | **0.677968** | **0.845492** | **0.891076** |
+| std | 0.008811 | 0.000501 | 0.006107 |
+</obs>
+
+### step 4 — UMAP (fuzzy-graph cross-entropy)   [slug:umap]
+
+<think>
+PaCMAP's numbers came in almost exactly where I bet, and the small surprises sharpen the next move. On
+MNIST kNN edged above TriMap, 0.832 → 0.853, and trustworthiness nudged from 0.890 to 0.901 — the
+mid-near machinery bought a touch more local fidelity. Continuity dipped just as predicted, 0.958 →
+0.957 on MNIST and 0.983 → 0.979 on Fashion-MNIST: phase-three repulsion carves cluster boundaries
+harder and tears a few original-space neighbors apart, the signature of trading a little continuity for
+cleaner separation. But the prediction that *failed* is the interesting one. I bet that putting the
+global skeleton into the objective via mid-near pairs would tighten the seed variance relative to
+TriMap's PCA-hostage layout. It did not: MNIST kNN std is 0.0206, even *wider* than TriMap's 0.0195,
+with seed 42 at 0.882 and seeds 123/456 down at ~0.838. So the robustness I was buying did not show up
+in the variance — PaCMAP's own randomness (the random mid-near and far sampling) is itself a source of
+spread, and the three hand-tuned working-zone constants (10, 10000, 1) plus the hand-scheduled mid-near
+anneal are an *empirical* construction whose exact behavior wobbles seed to seed. And on the headline
+metric that matters most here, trustworthiness, PaCMAP plateaus at 0.901 on MNIST — short of the ~0.96 a
+direct local-affinity match reaches. So two things are unsatisfying: the local ceiling is still capped,
+and the whole construction rests on tuned constants and a scheduled pull rather than anything I can
+*derive*. I want a method whose graph and whose objective both fall out of a principle, so the local
+fidelity is not capped by a hand-chosen working zone and the result does not wobble with the schedule.
+
+Where can a *principled* graph come from? Every method in this space, PaCMAP included, turns the cloud
+into a weighted neighbor graph and lays it out; PaCMAP's graph is three empirically-chosen pair types.
+Let me ask why a neighbor graph captures the manifold at all, because the honest justification tells me
+what graph I am *allowed* to build and removes the guesswork. Cover the data with a ball around each
+point. There is a classical construction — the Čech complex — that turns an open cover into a
+combinatorial object (a node per set, an edge when two sets intersect, and so on), and the Nerve theorem
+says this complex is homotopy-equivalent to the union of the cover, i.e. it faithfully captures the
+topology, provided the cover is good. Keep only nodes and edges (the Vietoris–Rips truncation) and the
+object is just a graph. So "build a neighbor graph and lay it out" is secretly "approximate the topology
+of the manifold by a cover and embed the resulting complex." That is the principle PaCMAP's three pair
+types only gestured at.
+
+But picking the ball radius immediately hits a wall: too small and the cover shatters into disconnected
+islands; too large and every ball overlaps and the topology drowns in giant simplices. A single radius
+works only if the data is uniformly distributed on the manifold — and that same uniformity is exactly
+what the clean spectral theory (Laplacian eigenmaps) needs for its convergence. Real data clumps and
+thins, so no single radius is right. I cannot make the data uniform, so turn the problem on its head:
+*assume* it is uniform and ask what that forces the geometry to be. If points look denser here and
+sparser there but I insist they are uniform, the only reconciliation is that *distance itself* varies
+across the manifold — space is stretched where points look sparse and compressed where they look dense.
+A manifold can carry a custom Riemannian metric, so put one on it, point by point, chosen to make the
+data uniform. Make this precise and it hands me the edge weights: demand that a fixed-volume ball around
+every point contain the same number of points; that forces the local metric to be an isotropic scaling
+by the neighborhood radius, under which geodesic distance from a point is just *ambient distance divided
+by the distance to its k-th neighbor*. The whole construction collapses to: normalize each point's
+distances by the scale of its own k-neighborhood. Every point gets its own bandwidth. And the
+k-NN-graph hack falls out — connecting each point to its k nearest neighbors is choosing unit balls in
+the per-point metric — with **k = n_neighbors = 15** now interpretable as the *resolution* at which I
+approximate the manifold as flat, a far more natural knob than PaCMAP's separate neighbor/mid-near/far
+counts.
+
+Make membership fuzzy rather than binary, because a hard ball throws away the metric I just worked for.
+The certainty that a neighbor is "in" decays smoothly: weight = exp(−d/σ_i), with σ_i the per-point
+normalizer, set so the total fuzzy membership out of each point hits a fixed target (a one-dimensional
+monotone equation, solved by binary search). The plain exponential still isolates points in high
+dimensions, where distances concentrate and every weight is uniformly tiny — so bake in *local
+connectivity*: let ρ_i be the distance to i's nearest neighbor and measure the kernel from ρ_i outward,
+exp(−max(0, d − ρ_i)/σ_i). Now the nearest neighbor sits at weight exactly 1 (guaranteed connection)
+and the kernel reads the *excess* over the nearest-neighbor distance — the relative spacing that
+survives concentration. These directed weights are incompatible across points (i's view of edge (i,j)
+differs from j's), so reconcile them by the principle that the weights are *edge-existence
+probabilities*: the edge exists if at least one endpoint vouches for it, the probabilistic union
+v_ij = v_{j|i} + v_{i|j} − v_{j|i}v_{i|j}. Not a heuristic — the fuzzy-set union once you accept the
+probabilistic reading — and it softens the pure-kNN asymmetry by pulling in reverse neighbors. That is
+the high-dimensional graph, every choice traced to "assume uniformity, infer the metric; demand local
+connectivity; merge by probabilistic union" — exactly the derivation PaCMAP's tuned constants lacked.
+
+Now the objective, and this is where the local ceiling lifts. Read both the high- and low-dimensional
+graphs as vectors of edge-existence probabilities over the same edge set — Bernoulli parameters. The
+right divergence between Bernoullis is not the KL-between-distributions t-SNE uses (these weights do not
+sum to one); it is the edgewise **cross-entropy**,
+sum over edges of [v log(v/w) + (1−v) log((1−v)/(1−w))]. Two matched terms per edge: the first,
+v log(v/w), attracts (an edge that should exist but does not in the layout pulls the points together);
+the second, (1−v) log((1−v)/(1−w)), repels (an edge that should not exist but does pushes them apart) —
+and that second term is present for *every* pair, including originally-far ones. That is precisely the
+symmetric global-structure pressure t-SNE's asymmetric KL lacks, and it is *derived* from the Bernoulli
+reading rather than scheduled like PaCMAP's mid-near pull. Drop the v-only constant and I minimize
+−sum_e [v log w + (1−v) log(1−w)], which has *no* all-pairs normalization (no partition function), so
+the gradient decomposes edge by edge and plain SGD works: sample edges with probability v for the
+attraction, negative-sample random vertices for the repulsion. Linear in the number of edges.
+
+The embedding affinity w must be differentiable with w ≈ 1 out to **min_dist = 0.1** then a smooth
+decay. Use w = (1 + a d^{2b})^{-1}, which at a = b = 1 recovers exactly t-SNE's Student-t — so this
+family *generalizes* the heavy-tailed kernel that fixes crowding while gaining the freedom to encode
+min_dist — with a, b fit so the curve matches an offset-exponential target carrying min_dist and a
+spread. The two force coefficients follow by differentiation: attractive −2ab d^{2(b−1)}/(1 + a d^{2b}),
+repulsive 2b/((ε + d^2)(1 + a d^{2b})) with ε flooring the 1/d^2 blow-up at coincidence; coordinates are
+clipped for SGD stability and the learning rate decays linearly. And the one piece that gives the local
+optimizer a global scaffold without any hand-tuned schedule: initialize from the bottom eigenvectors of
+the graph's symmetric normalized Laplacian — the spectral embedding, a globally coherent set of manifold
+coordinates from the *same* fuzzy graph (whose Laplacian approximates the Laplace–Beltrami operator). So
+the graph serves twice: spectral init *and* cross-entropy target. This is structurally cleaner than
+PaCMAP's PCA-init-plus-three-phase-schedule: the global frame comes from the graph's own spectrum, not a
+separate initializer and a tuned weight ramp. The full module is in the answer; in the scaffold it lands
+as `umap.UMAP(n_components=2, n_neighbors=15, min_dist=0.1, metric="euclidean", random_state=...)`,
+which builds the fuzzy simplicial graph, fits a,b, spectral-initializes, and runs the edge-/negative-
+sampled cross-entropy SGD. (The harness exposes n_neighbors, min_dist, and the metric; the connectivity
+offset, the union, the a/b fit, and the SGD schedule are internal.)
+
+Now the falsifiable expectations against PaCMAP's numbers. The derived graph and symmetric-repulsion
+cross-entropy should lift trustworthiness above PaCMAP's plateau toward ~0.96 on MNIST if the principled
+construction really does raise the local ceiling — but I have to be honest that UMAP, like PaCMAP and
+TriMap, spends real capacity on global structure (the (1−v) repulsion over all pairs, the spectral
+init), so its *local* score may land *between* PaCMAP and a pure-local-affinity method rather than at
+the very top. My sharpest prediction is actually on **continuity**, where UMAP's principled local
+connectivity and spectral init should *recover* the continuity PaCMAP's hard repulsion gave up: MNIST
+continuity from PaCMAP's 0.957 back up toward ~0.967, and newsgroups from 0.891 up toward ~0.91 — the
+local connectivity guarantees no point is torn off, so original-space neighbors stay near. On
+trustworthiness I expect a *modest* gain on MNIST (0.901 → ~0.901–0.91 range) rather than the full jump
+to 0.96 — because the cross-entropy's symmetric repulsion, while better than PaCMAP's scheduled mid-near
+pull for *global* structure, still trades against the very tightest local packing. kNN should hold near
+PaCMAP's level (MNIST ~0.84, newsgroups ~0.67) since both preserve class neighborhoods comparably. The
+seed variance should *finally* tighten relative to PaCMAP's wide spread, because the spectral init is a
+deterministic global frame and only the SGD sampling carries randomness — if instead the variance stays
+PaCMAP-wide, that would say the negative sampling is the dominant noise source. The one score this rung
+should *not* reach is the ~0.96 MNIST trustworthiness of a method that matches per-point local neighbor
+*distributions* directly under KL, paying the O(n^2) all-pairs cost to get the local structure exactly
+right — that is precisely the remaining gap, and the strongest rung on the ladder is the one that pays
+that cost. Let me put UMAP in and check the prediction.
+</think>
+<say>
+PaCMAP's graph and schedule are empirical and capped. I'll move to UMAP, whose fuzzy graph and edge-existence cross-entropy both fall out of a uniformity principle — this edit swaps the body for `umap.UMAP(n_neighbors=15, min_dist=0.1)`.
+</say>
+<edit path="scikit-learn/bench/custom_dimred.py">
+<old>
+class CustomDimReduction:
+    """PaCMAP dimensionality reduction (SOTA)."""
+</old>
+<new>
+class CustomDimReduction:
+    """UMAP dimensionality reduction."""
+</new>
+</edit>
+<obs>
+Successfully replaced text in scikit-learn/bench/custom_dimred.py.
+</obs>
+<note>
+The body: fuzzy simplicial graph, spectral init, cross-entropy SGD.
+</note>
+<edit path="scikit-learn/bench/custom_dimred.py">
+<old>
+    def fit_transform(self, X: NDArray[np.float64]) -> NDArray[np.float64]:
+        import pacmap
+        reducer = pacmap.PaCMAP(
+            n_components=self.n_components,
+            n_neighbors=10,
+            MN_ratio=0.5,
+            FP_ratio=2.0,
+            random_state=self.random_state,
+        )
+        return reducer.fit_transform(X)
+</old>
+<new>
+    def fit_transform(self, X: NDArray[np.float64]) -> NDArray[np.float64]:
+        import umap
+        reducer = umap.UMAP(
+            n_components=self.n_components,
+            n_neighbors=15,
+            min_dist=0.1,
+            metric="euclidean",
+            random_state=self.random_state,
+        )
+        return reducer.fit_transform(X)
+</new>
+</edit>
+<obs>
+Successfully replaced text in scikit-learn/bench/custom_dimred.py.
+</obs>
+<run/>
+<obs>
+Measured results — `baseline:umap` (`is_final,true`), seeds {42, 123, 456} and mean (std over seeds).
+
+## MNIST
+| seed | kNN acc | trustworthiness | continuity |
+|---|---|---|---|
+| 42 | 0.857000 | 0.901257 | 0.967674 |
+| 123 | 0.839667 | 0.901587 | 0.967088 |
+| 456 | 0.834000 | 0.900849 | 0.967362 |
+| **mean** | **0.843556** | **0.901231** | **0.967375** |
+| std | 0.009784 | 0.000302 | 0.000239 |
+
+## Fashion-MNIST
+| seed | kNN acc | trustworthiness | continuity |
+|---|---|---|---|
+| 42 | 0.749000 | 0.959507 | 0.981193 |
+| 123 | 0.736667 | 0.959828 | 0.982460 |
+| 456 | 0.734333 | 0.958670 | 0.982336 |
+| **mean** | **0.740000** | **0.959335** | **0.981996** |
+| std | 0.006435 | 0.000488 | 0.000570 |
+
+## 20-Newsgroups
+| seed | kNN acc | trustworthiness | continuity |
+|---|---|---|---|
+| 42 | 0.658101 | 0.885278 | 0.917542 |
+| 123 | 0.670236 | 0.881147 | 0.901826 |
+| 456 | 0.675589 | 0.888002 | 0.917212 |
+| **mean** | **0.667975** | **0.884809** | **0.912193** |
+| std | 0.007316 | 0.002818 | 0.007332 |
+</obs>
+
+### step 5 — t-SNE (per-point KL match)   [slug:tsne]
+
+<think>
+UMAP's numbers confirmed the one prediction I made most sharply and then quietly capped the metric I
+care about most. Continuity recovered exactly as I bet: MNIST back up from PaCMAP's 0.957 to 0.967,
+newsgroups from 0.891 to 0.912, Fashion-MNIST 0.979 → 0.982 — the local connectivity guarantee (every
+point reaches its nearest neighbor at full membership) really does stop points being torn off, so
+original-space neighbors stay near. And the seed variance finally tightened: MNIST kNN std collapsed
+from PaCMAP's 0.0206 to 0.0098, trustworthiness std to 0.0003, because the spectral init is a
+deterministic global frame and only the SGD sampling carries noise. So the principled construction
+delivered robustness and continuity. But trustworthiness sat *flat* at 0.901 on MNIST — identical to
+PaCMAP, nowhere near the 0.96 I keep saying is out there — and kNN actually came in a hair *below*
+PaCMAP on MNIST (0.844 vs 0.853). That is the tell. UMAP's cross-entropy spends real capacity on the
+(1−v) repulsion over *all* pairs to get global structure right, and that all-pairs repulsion, however
+principled, trades against the very tightest local packing. Every rung so far — TriMap's PCA-inherited
+frame, PaCMAP's mid-near skeleton, UMAP's spectral init plus symmetric repulsion — has bought global
+structure at the cost of a capped local ceiling. The trustworthiness has been stuck at ~0.90 across
+three different methods. So the diagnosis is no longer "which graph" or "which repulsion"; it is that
+*spending capacity on global structure is itself the thing capping the local score*, and the strongest
+local result will come from a method that spends almost *all* its capacity on getting the local
+neighborhoods exactly right, paying whatever cost that takes and accepting weaker global guarantees.
+
+So I want to stop balancing global against local and instead match the *local neighborhood structure*
+as precisely as I can. Drop the topological-graph framing UMAP used and go back to the probabilistic-
+neighbor frame, because it gets local structure right by construction. Center a Gaussian on each point
+x_i and read off the probability it would pick x_j as a neighbor:
+p_{j|i} = exp(−||x_i − x_j||^2/2σ_i^2) normalized over the other points. The bandwidth σ_i is *per
+point*, set by fixing the entropy of each neighbor distribution — the **perplexity**, a smooth
+"effective number of neighbors," found by binary search so denser regions automatically get a smaller
+σ_i. This is the same per-point adaptive bandwidth UMAP derived from its Riemannian-uniformity argument,
+reached here from the entropy side; **perplexity = 30** plays the role UMAP's n_neighbors = 15 played,
+the local scale at which I read the data. The high-dimensional side is settled and I keep it.
+
+The trap I have to avoid is *crowding*, and it is worth being precise because it is the exact thing the
+weaker rungs danced around with working zones and schedules. Picture a manifold whose intrinsic
+dimension is well above two embedded in pixel space. In high dimensions the number of points at a
+*moderate* distance from i grows like r^{(high d)}, so there are far more "moderately far" neighbors
+than near ones. Squash that into the plane, where the area at radius r grows only like r^2, and there is
+nowhere near enough room to seat all those moderately-distant points where they belong; they get shoved
+too far out, each still exerting a small Gaussian attraction back toward i, and the *sum* of those tiny
+attractions crushes the whole map inward so the clusters never separate. That is why a Gaussian map
+kernel fails. The fix is the one move the weaker rungs only approximated: because I am matching
+*probabilities* (not distances), the map kernel is free to differ from the high-dimensional Gaussian, so
+make it *heavy-tailed* — a Student-t with one degree of freedom, q_ij ∝ (1 + ||y_i − y_j||^2)^{-1}. Its
+slow inverse-square tail lets a moderate input similarity be represented by a *much larger* map distance
+without a huge attractive penalty, so the moderately-distant points spread out and the gaps open. (This
+is the same Student-t UMAP's (1 + a d^{2b})^{-1} generalized at a = b = 1 — but here it is the *whole*
+map kernel, not a fitted member of a family, and it is matched against per-point neighbor distributions
+rather than edge-existence probabilities.) The inverse-square far field also makes the map
+approximately scale-invariant and lets a distant cluster act like a single point, which is what removes
+the need for the simulated-annealing schedules the earliest neighbor-embedding methods needed — and,
+notably, the kind of hand-tuned three-phase schedule PaCMAP still relies on.
+
+How to measure unfaithfulness? Build a single *joint* distribution over all pairs on each side and
+minimize one KL divergence, C = KL(P||Q) = sum p_ij log(p_ij/q_ij). I want the joint, not the per-point
+conditionals, both for a clean single-denominator gradient and to anchor outliers: build P by
+symmetrizing the conditionals, p_ij = (p_{j|i} + p_{i|j})/(2n), so every point — even a total outlier —
+contributes at least 1/(2n) of the probability mass and cannot drift off undetermined. The asymmetry of
+KL is a *feature* here: KL(P||Q) punishes a small q modeling a large p (placing truly-near points far
+apart) far more than the reverse, so the objective tilts hard toward getting *local* structure right —
+which is exactly the capacity allocation the capped rungs would not make. Differentiating the joint KL
+with the Student-t kernel gives the clean force law ∇_{y_i}C = 4 sum_j (p_ij − q_ij)(y_i − y_j)(1 +
+||y_i − y_j||^2)^{-1}: a pull when the data says two points are more similar than the map shows, a push
+when the map has them too close, softened at long range by the Student-t factor. The price is in plain
+sight in that gradient: the q_ij normalization is over *all pairs*, so the cost couples every pair and
+is O(n^2) per iteration. That is the cost the weaker rungs refused to pay (UMAP's whole design was to
+avoid the partition function) — and paying it is precisely what lets the local structure be matched
+exactly rather than approximately. On this task n ≤ 5000 per dataset, so O(n^2) is squarely inside the
+five-minute CPU budget; the cost that disqualifies KL-matching at millions of points is affordable here,
+and that is the lever the harness lets me pull.
+
+Two optimization details earn their keep and replace the scheduling the weaker rungs needed. Initialize
+from **PCA** (`init="pca"`) rather than random: a structured start that already carries the coarse
+global layout, so the local forces refine a sensible frame instead of inventing one — the same role
+PCA played for TriMap and the spectral embedding for UMAP, but here it is genuinely just an init, since
+the KL objective itself does the local work. And **early exaggeration**: for the first stretch of
+iterations multiply all p_ij by a constant, so the q_ij (which still sum to one) are far too small to
+match, and the only way to reduce the KL is to pull the members of each true cluster very tightly
+together — the clusters condense into tight, widely separated knots with empty space between them, and
+that empty space lets them rearrange into a good global layout before the map relaxes to its real
+objective. This is the *derived* analogue of PaCMAP's hand-tuned phase-one mid-near crank, falling out
+of the KL rather than being scheduled onto it. The optimizer is momentum gradient descent with a
+per-coordinate adaptive gain at **learning_rate="auto"** (scaled from n) for **n_iter = 1000**
+iterations. The full module is in the answer; in the scaffold it lands as
+`TSNE(n_components=2, perplexity=30.0, learning_rate="auto", init="pca", random_state=..., n_iter=1000)`,
+which calibrates the per-point σ by perplexity, symmetrizes into the joint P, runs the early-exaggerated
+Student-t KL descent from the PCA init, and threads the seed. (The harness exposes perplexity, the
+learning-rate mode, the init, the iteration count, and the seed; the σ binary search, the symmetrization,
+the Student-t kernel, and the exaggeration schedule are internal to the sklearn solver.)
+
+This is the strongest rung on the ladder, so I close on the bar it must clear against UMAP's real
+numbers, because there is no further rung to fall back on. The whole bet is that spending capacity on
+the local KL match instead of on global guarantees lifts the metric three methods got stuck at. So the
+falsifiable claim is sharpest on **trustworthiness**: if matching per-point neighbor distributions
+directly is what was missing, MNIST trustworthiness should finally break the ~0.90 plateau and land near
+0.96, Fashion-MNIST should push from UMAP's 0.959 toward ~0.98, and newsgroups from 0.885 toward ~0.94 —
+a clear jump, not the flat 0.901 UMAP and PaCMAP both returned. kNN should rise too, since exact local
+neighborhoods help the 7-NN probe: MNIST from 0.844 toward ~0.86, Fashion-MNIST from 0.740 toward
+~0.79, newsgroups holding near ~0.69. The honest *risk*, and the place this rung could lose, is
+**continuity** and global structure: t-SNE's asymmetric KL barely penalizes placing originally-far
+points near each other, so it has no symmetric repulsion holding the global frame — its continuity could
+come in *at or just below* UMAP's recovered 0.967 (I expect roughly level, ~0.967 MNIST, because the PCA
+init and early exaggeration supply enough global scaffolding), and if continuity instead *collapses*
+that would falsify the "PCA-init is enough global structure" assumption and vindicate UMAP's explicit
+repulsion. The seed variance should stay tight like UMAP's, since the PCA init is deterministic. If
+trustworthiness does *not* break 0.90, the whole thesis — that the cap was the global/local capacity
+trade — is wrong, and the ladder would have no rung left that beats UMAP on the metric that matters; so
+this is the rung that either tops the ladder or shows the ceiling was real. The ladder ends here because
+on this task's k=7 trustworthiness and kNN metrics, no published neighbor-embedding method clearly
+beats a direct per-point KL match within the CPU/5-minute/sklearn budget — the remaining published
+alternatives (the graph methods already on the ladder) trade local fidelity for scale or global
+structure and score *lower* on exactly these local metrics, so there is no genuinely-stronger published
+endpoint to add beyond it. Let me put t-SNE in and see whether it breaks the plateau.
+</think>
+<say>
+Every graph rung capped trustworthiness at ~0.90 by spending capacity on global structure. The top rung spends it all on the local match: t-SNE, a per-point KL fit with a heavy-tailed kernel — this edit swaps the body for `TSNE(perplexity=30, init="pca", n_iter=1000)`.
+</say>
+<edit path="scikit-learn/bench/custom_dimred.py">
+<old>
+class CustomDimReduction:
+    """UMAP dimensionality reduction."""
+</old>
+<new>
+class CustomDimReduction:
+    """t-SNE dimensionality reduction."""
+</new>
+</edit>
+<obs>
+Successfully replaced text in scikit-learn/bench/custom_dimred.py.
+</obs>
+<note>
+The body: per-point σ by perplexity, joint P, early-exaggerated Student-t KL descent from PCA.
+</note>
+<edit path="scikit-learn/bench/custom_dimred.py">
+<old>
+    def fit_transform(self, X: NDArray[np.float64]) -> NDArray[np.float64]:
+        import umap
+        reducer = umap.UMAP(
+            n_components=self.n_components,
+            n_neighbors=15,
+            min_dist=0.1,
+            metric="euclidean",
+            random_state=self.random_state,
+        )
+        return reducer.fit_transform(X)
+</old>
+<new>
+    def fit_transform(self, X: NDArray[np.float64]) -> NDArray[np.float64]:
+        from sklearn.manifold import TSNE
+        tsne = TSNE(
+            n_components=self.n_components,
+            perplexity=30.0,
+            learning_rate="auto",
+            init="pca",
+            random_state=self.random_state,
+            n_iter=1000,
+        )
+        return tsne.fit_transform(X)
+</new>
+</edit>
+<obs>
+Successfully replaced text in scikit-learn/bench/custom_dimred.py.
+</obs>
+<run/>
+<obs>
+Measured results — `baseline:tsne` (`is_final,true`), seeds {42, 123, 456} and mean (std over seeds).
+
+## MNIST
+| seed | kNN acc | trustworthiness | continuity |
+|---|---|---|---|
+| 42 | 0.867667 | 0.962627 | 0.965815 |
+| 123 | 0.863000 | 0.960531 | 0.967988 |
+| 456 | 0.855667 | 0.960775 | 0.967066 |
+| **mean** | **0.862111** | **0.961311** | **0.966956** |
+| std | 0.004939 | 0.000936 | 0.000891 |
+
+## Fashion-MNIST
+| seed | kNN acc | trustworthiness | continuity |
+|---|---|---|---|
+| 42 | 0.780333 | 0.980293 | 0.983950 |
+| 123 | 0.790333 | 0.980280 | 0.983166 |
+| 456 | 0.801333 | 0.981532 | 0.983386 |
+| **mean** | **0.790666** | **0.980702** | **0.983501** |
+| std | 0.008576 | 0.000587 | 0.000330 |
+
+## 20-Newsgroups
+| seed | kNN acc | trustworthiness | continuity |
+|---|---|---|---|
+| 42 | 0.685939 | 0.937336 | 0.920896 |
+| 123 | 0.692363 | 0.940690 | 0.922242 |
+| 456 | 0.683440 | 0.939940 | 0.902643 |
+| **mean** | **0.687247** | **0.939322** | **0.915260** |
+| std | 0.003758 | 0.001437 | 0.008939 |
+</obs>
+

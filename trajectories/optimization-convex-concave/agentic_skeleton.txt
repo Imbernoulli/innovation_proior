@@ -1,0 +1,1114 @@
+<meta task="optimization-convex-concave" domain="Optimization" file="RAIN/optimization_convex_concave/custom_strategy.py" model_format="qwen3" edit_tool="str_replace"/>
+
+<system>
+You are a research engineer improving a model on a fixed ML task. You work by editing the model code and running experiments. Think carefully before each change. You have these tools:
+- str_replace(path, old_str, new_str): replace the unique occurrence of old_str with new_str.
+- create(path, file_text): create a new file.
+- run_experiment(): train + evaluate the current code under the fixed budget; returns metrics.
+Make one tool call at a time. After editing, call run_experiment() to measure your method.
+</system>
+
+<user>
+## Research question
+
+A noisy convex-concave saddle problem, `min_x max_y f(x,y)`, reached only through a first-order
+oracle: hand it a point `z=(x,y)`, get back the saddle-gradient operator `F(z)=[∇_x f ; -∇_y f]`,
+and (separately) a fixed-scale additive Gaussian perturbation on each update. The single thing being
+designed is the **iteration map** — how one step turns the current iterate into the next, using
+operator evaluations and the update noise. The graded quantity is the **gradient (operator) norm**
+`‖F(z)‖` at the reported iterate, not the duality gap: on the bilinear instance `f=xy` the gap is
+`+∞` at every non-saddle point and cannot even rank two bad iterates, whereas `‖F(z)‖` is always
+finite and is exactly zero at a solution. Everything else — the two problem instances, the noise
+model, the iteration budgets, the metric computation — is frozen.
+
+## Prior art before the first rung (saddle-point optimization lineage)
+
+The first rung reacts to the failure of the obvious explicit method and to the operator-theoretic
+fixes that precede the ladder.
+
+- **Simultaneous gradient descent-ascent (Arrow–Hurwicz–Uzawa, 1958).** Descend in `x`, ascend in
+  `y` at once: `z_{t+1} = z_t − τ F(z_t)`. On `f=xy`, `F(z)=[y,−x]=Jz` is a 90° rotation, so the
+  step is orthogonal to the pull toward the saddle and `‖z_{t+1}‖² = (1+τ²)‖z_t‖²` — it spirals
+  strictly outward for *every* `τ>0`. Gap: diverges on the simplest convex-concave instance.
+- **Proximal point / implicit (backward) step (Martinet 1970; Rockafellar 1976).** The resolvent
+  `z_{t+1} = (I+τF)^{-1}(z_t)` is firmly nonexpansive for any monotone `F` and contracts
+  unconditionally (modulus `1/√(1+τ²)<1` on the bilinear field). Gap: implicit — needs `F` at the
+  unknown next point, a nonlinear solve per step; an ideal to imitate, not to run.
+- **Extragradient (Korpelevich 1976).** Imitate the implicit step explicitly: a forward look-ahead
+  to `w`, evaluate `F(w)`, then step from the *original* `z_t`. The anchor at `z_t` manufactures the
+  `−τ²I` inward term the forward step lacked. Gap: converges on monotone Lipschitz problems but,
+  under noise, only to an `O(τσ²)` ball, and only `O(1/k)` on the merely-monotone gradient norm.
+- **Halpern anchoring (Halpern 1967).** Mix each iterate back toward a fixed reference: pulling
+  toward an anchor makes the *last* iterate converge and implicitly selects the nearest solution.
+  Gap on its own: tied to a vanishing step, and anchoring at a far, fixed point biases the solution.
+
+## The fixed substrate
+
+The benchmark harness mirrors the official RAIN convex-concave scripts and must not be touched. It
+provides: the two problem definitions and their exact iteration counts, the deterministic operator
+`oracle.grad(z) = F(z)` and the fixed-scale Gaussian update perturbation `oracle.noise()` (one fresh
+draw per call), the fixed starting point passed to `init_state`, and the metric computation. `F` is
+monotone (`f` convex-concave) and `L`-Lipschitz. The bilinear field is a pure rotation (`L=1`); the
+`(δ,ν)` field is a clipped-monotone component plus a small skew coupling. The harness measures
+`‖F(z)‖` at a per-problem iterate (post-step on `bilinear`, where `‖F(z)‖=‖z‖`; pre-step otherwise).
+
+## The editable interface
+
+Exactly one region is editable — `init_state`, `step`, and `get_hyperparameters` in
+`RAIN/optimization_convex_concave/custom_strategy.py` (lines 24–75). The contract:
+`init_state(problem, initial_z, seed, hyperparameters)` must preserve the start in `state["z"]`;
+`step(state, oracle, problem, hyperparameters, max_sfo_calls)` runs one official-style iteration and
+returns `make_step_output(next_state, metric_iterate, sfo_calls)` where `sfo_calls` must equal the
+number of `oracle.grad` calls consumed; `get_hyperparameters(problem_name, sigma)` returns the
+per-problem constants. The default fill is the **plain stochastic extragradient (SEG) / EG** step
+from the MATLAB scripts.
+
+```python
+"""Editable strategy scaffold for the optimization-convex-concave MLS-Bench task."""
+
+from __future__ import annotations
+
+from typing import Any
+
+import numpy as np
+
+from fixed_benchmark import (
+    ProblemSpec,
+    StepOutput,
+    StochasticOracle,
+    as_vector,
+    make_step_output,
+    run_cli,
+)
+
+
+# =====================================================================
+# EDITABLE: init_state, step, get_hyperparameters
+# =====================================================================
+
+
+def init_state(
+    problem: ProblemSpec,
+    initial_z: np.ndarray,
+    seed: int,
+    hyperparameters: dict[str, Any],
+) -> dict[str, Any]:
+    """Initialize algorithm state from the fixed starting point."""
+    return {
+        "z": as_vector(initial_z, expected_dim=2 * problem.dim),
+        "step_index": 0,
+    }
+
+
+def step(
+    state: dict[str, Any],
+    oracle: StochasticOracle,
+    problem: ProblemSpec,
+    hyperparameters: dict[str, Any],
+    max_sfo_calls: int,
+) -> StepOutput:
+    """Default baseline: the official SEG / EG update from the MATLAB scripts."""
+    tau = float(hyperparameters["tau"])
+    z = as_vector(state["z"], expected_dim=2 * problem.dim)
+    step_index = int(state.get("step_index", 0))
+
+    g = oracle.grad(z)
+    w = z - tau * g + oracle.noise()
+    gw = oracle.grad(w)
+    z_next = z - tau * gw + oracle.noise()
+    metric_iterate = z_next if problem.name == "bilinear" else z
+    return make_step_output(
+        {"z": z_next, "step_index": step_index + 1},
+        metric_iterate,
+        2,
+    )
+
+
+def get_hyperparameters(problem_name: str, sigma: float) -> dict[str, Any]:
+    """Return the official per-problem step size."""
+    if problem_name == "bilinear":
+        return {"tau": 0.1}
+    if problem_name == "delta_nu":
+        return {"tau": 1.0}
+    raise KeyError(f"Unknown problem: {problem_name}")
+```
+
+## Evaluation settings
+
+Two problem instances, both with additive Gaussian update noise, run for the official per-problem
+iteration counts at seed 42:
+
+- **`bilinear`**: scalar `f(x,y)=xy`, `n=900` iterations, `τ=0.1`, `z0=[10,10]ᵀ`, `σ=0.001`.
+- **`delta_nu`**: `(δ,ν)` problem, `d=100`, `δ=1e-2`, `ν=5e-5`, `n=6000` iterations, `τ=1`,
+  `σ=0.02`, `z0 ~ N(0,I)` under the script's fixed RNG.
+
+Three noise regimes share the same code (`default-noise`, `low-noise`, `high-noise`; the σ above is
+the default). The primary metric is `final_gradient_norm` — the mean of the two official final
+gradient norms — **lower is better**; the harness also reports a per-iteration `gradient_norm` trace
+and `auc_log_iteration_log_grad`.
+
+The editable model code is in `RAIN/optimization_convex_concave/custom_strategy.py`:
+```python
+def init_state(
+    problem: ProblemSpec,
+    initial_z: np.ndarray,
+    seed: int,
+    hyperparameters: dict[str, Any],
+) -> dict[str, Any]:
+    """Initialize algorithm state from the fixed starting point."""
+    return {
+        "z": as_vector(initial_z, expected_dim=2 * problem.dim),
+        "step_index": 0,
+    }
+
+
+def step(
+    state: dict[str, Any],
+    oracle: StochasticOracle,
+    problem: ProblemSpec,
+    hyperparameters: dict[str, Any],
+    max_sfo_calls: int,
+) -> StepOutput:
+    """Default baseline: the official SEG / EG update from the MATLAB scripts."""
+    tau = float(hyperparameters["tau"])
+    z = as_vector(state["z"], expected_dim=2 * problem.dim)
+    step_index = int(state.get("step_index", 0))
+
+    g = oracle.grad(z)
+    w = z - tau * g + oracle.noise()
+    gw = oracle.grad(w)
+    z_next = z - tau * gw + oracle.noise()
+    metric_iterate = z_next if problem.name == "bilinear" else z
+    return make_step_output(
+        {"z": z_next, "step_index": step_index + 1},
+        metric_iterate,
+        2,
+    )
+
+
+def get_hyperparameters(problem_name: str, sigma: float) -> dict[str, Any]:
+    """Return the official per-problem step size."""
+    if problem_name == "bilinear":
+        return {"tau": 0.1}
+    if problem_name == "delta_nu":
+        return {"tau": 1.0}
+    raise KeyError(f"Unknown problem: {problem_name}")
+```
+Improve it. Derive your method, edit the code, then run_experiment().
+</user>
+
+### step 1 — R-SEG (Tikhonov-anchored stochastic extragradient)   [slug:r_seg]
+
+<think>
+[[POLISH_REASONING: adapt to first-person agentic voice, end by deciding to implement]]
+I am starting from the scaffold's default fill, which is already a real method: plain stochastic
+extragradient. That default exists because the obvious thing — simultaneous descent-ascent
+`z_{t+1} = z_t − τ F(z_t)` — does not even survive the easiest convex-concave instance. On `f=xy`
+the operator is `F(z)=[y,−x]=Jz`, a 90° rotation, and the step is exactly orthogonal to the vector
+pointing at the saddle, so `‖z_{t+1}‖² = ‖z_t‖² − 2τ⟨z_t,F(z_t)⟩ + τ²‖F(z_t)‖² = (1+τ²)‖z_t‖²`:
+strictly outward for every step size, with no `τ` that rescues it because the cross term is
+identically zero. The extragradient look-ahead fixes that — take a forward half-step to `w`,
+evaluate the field *there*, and step from the original `z_t` — and on the same field that anchor
+manufactures a `−τ²I` inward term, turning the modulus `√(1+τ²)>1` into `√(1−τ²(1−τ²))<1`. So the
+default scaffold contracts the rotation. The question for the first rung of this ladder is not
+whether extragradient works; it is what to add to extragradient when the thing I am graded on is the
+*gradient norm under noise*, and that is where I want to think carefully before I commit, because the
+cheapest-looking fix is exactly the one I am going to try first and it has a built-in cost I want to
+have measured rather than guessed.
+
+Let me write down what stochastic extragradient can actually promise, because the shape of its
+guarantee tells me where to push. The oracle here is the exact operator `F(z)` plus a fixed-scale
+additive Gaussian update perturbation, so each half-step is an exact evaluation followed by a noise
+draw. Suppose for a moment the operator were `λ`-strongly monotone with unique zero `z*`. Running one
+SEG step with `η<1/(4L)` and tracking `‖z_{t+1}−z*‖²`, the standard predictor-corrector bookkeeping
+— substitute the update identities `ηF(z_{1/2}) = z_t−z_{t+1}` and `ηF(z_t)=z_t−z_{1/2}` so every
+gradient becomes a difference of iterates, polarize, let the intermediate `‖z_t−z_{t+1}‖²` cancel
+between the predictor and corrector identities, and absorb the Lipschitz cross term with `η≤1/(4L)`
+— lands on a per-step inequality of the form
+
+  `λ E‖z_{1/2}−z*‖² ≤ (1/η) E[ ‖z_t−z*‖² − ‖z_{t+1}−z*‖² ] + c·η σ²`.
+
+Two things in that inequality decide everything. The distance contracts geometrically toward `z*`,
+which is the good part; but every useful term carries `λ`, and the noise enters as a fixed floor
+`c η σ²/λ` that does *not* vanish with more iterations. So SEG with a constant step marches to a ball
+of radius governed by `η σ²/λ` and stops there — to shrink the ball I must shrink `η`, which cripples
+the `1/(η T)` optimization term. That is the SEG wall, and it is sharp.
+
+But there is a worse problem hiding in that inequality for *this* task: my operators are merely
+convex-concave, so `λ=0`. Every term in the contraction inequality is multiplied by `λ`, so at `λ=0`
+the inequality says nothing — there is no contraction at all, only the merely-monotone `O(1/k)`
+best-iterate gap, and no last-iterate gradient-norm guarantee. The bilinear field is monotone but
+with a strictly zero strong-monotonicity margin (pure rotation); the `(δ,ν)` field's clipped
+component is monotone but flat, again no margin. So the honest situation entering this ladder is: the
+default SEG converges, but slowly and to a noise-limited neighborhood, and the property that would
+make it fast — strong monotonicity — is exactly the property I do not have.
+
+So the first move I will make is the one that *manufactures* the missing strong monotonicity, because
+it is suspiciously cheap and cheap is worth checking before anything elaborate. Take `F` and add `λ`
+times a pull toward a fixed anchor point `a`:
+
+  `G(z) = F(z) + λ(z − a)`.
+
+For any `z,z'`, `⟨G(z)−G(z'), z−z'⟩ = ⟨F(z)−F(z'), z−z'⟩ + λ‖z−z'‖² ≥ λ‖z−z'‖²`, so `G` is
+`λ`-strongly monotone *by construction*, regardless of `F` being merely monotone, and it is still
+`(L+λ)`-Lipschitz, essentially as smooth as `F`. `G` is the gradient operator of the Tikhonov-
+regularized saddle objective `f(x,y) + (λ/2)‖x−a_x‖² − (λ/2)‖y−a_y‖²` — a strongly-convex penalty on
+`x`, a strongly-concave one on `y`. If I run the extragradient step I already trust on `G` instead of
+`F`, I get the SEG contraction the bare problem could never give me: the iterate contracts toward
+`G`'s zero, and the noise floor is `η σ²/λ` with a genuine `λ>0`.
+
+The catch is the one I have to face squarely, because it is the entire cost of this first rung:
+running on `G` drives me toward `G`'s zero `w*`, which is *not* `z*`, the zero of `F`. I have solved a
+different problem, and the metric is `‖F‖`, not `‖G‖`. So the question that decides whether the trick
+is legitimate is how far `w*` is from being a near-stationary point of the original `F`. From the
+definition, `F(w*) = G(w*) − λ(w*−a) = −λ(w*−a)`, so even the *exact* solution of the regularized
+problem has residual `‖F(w*)‖ = λ‖w*−a‖`. That is an irreducible bias: no matter how perfectly I
+solve `G`, the gradient norm I report cannot fall below `λ` times the distance from the anchor to the
+regularized solution. I want a clean transfer bound. For any candidate `z̃`,
+
+  `‖F(z̃)‖ ≤ ‖G(z̃)‖ + λ‖z̃−a‖ ≤ ‖G(z̃)‖ + λ‖z̃−w*‖ + λ‖w*−a‖`,
+
+and strong monotonicity of `G` (with `G(w*)=0`) gives `λ‖z̃−w*‖ ≤ ‖G(z̃)‖`, so
+`‖F(z̃)‖ ≤ 2‖G(z̃)‖ + λ‖w*−a‖`. The first term I can crush by running SEG on `G`; the second,
+`λ‖w*−a‖`, is the price of regularizing.
+
+Where to put the anchor `a`? The only special point I have at the start is `z0` itself; I cannot
+anchor at `z*` because I do not know it. So anchor at the initial point, `a=z0`, fixed forever — this
+is the restarted/regularized SEG rung, "R-SEG." I should check the anchored solution does not run off
+to infinity. With `a=z0`, strong monotonicity of `G` between `w*` and `z*` plus `F(z*)=0` gives
+`λ‖w*−z*‖² ≤ G(z*)ᵀ(z*−w*) = λ(z*−z0)ᵀ(z*−w*)`; dividing by `λ` and polarizing yields *both*
+`‖w*−z0‖ ≤ ‖z*−z0‖` and `‖w*−z*‖ ≤ ‖z*−z0‖`. The regularized solution is no farther from the anchor
+than the true solution is — anchoring at `z0` is geometrically safe — and the transfer bound
+collapses to `‖F(z̃)‖ ≤ 2‖G(z̃)‖ + λ‖z0−z*‖`. The lever is now explicit: drive `G`'s gradient norm
+to zero and the only thing left is the irreducible `λ‖z0−z*‖`.
+
+That irreducible term is exactly where I expect this rung to hurt on *these* instances, and I want to
+be precise about it because it is the falsifiable prediction. There is a genuine tension in `λ`:
+large `λ` makes `G` strongly monotone, so the SEG contraction is fast and the noise floor
+`η σ²/λ` small — but the bias `λ‖z0−z*‖` is large; small `λ` kills the bias but barely regularizes,
+so the conditioning `L/λ` blows up and the noise floor explodes. The right `λ` balances bias against
+conditioning, `λ ~ ε/D` with `D` a bound on `‖z0−z*‖`. The harness fixes the constants for me:
+`τ=0.1, λ=0.1` on bilinear and `τ=1.0, λ=0.01` on `(δ,ν)`. The implementation is one extragradient
+step on `G`: each half-step adds a fixed pull `τλ(z0−z)` toward the anchor and the oracle noise, the
+predictor pulling from `z` and the corrector re-evaluating the operator at the look-ahead `w` while
+still pulling toward `z0`. The anchor is `z0` and never moves — the transfer bound uses only the
+single distance `‖z0−z*‖` and needs no extra anchor state. Two operator evaluations, two noise
+draws, the fixed `z0` anchor; the full scaffold module is in the answer.
+
+Now let me reason about what this will actually score on these two instances, because the irreducible
+bias is large precisely where the start is far from the solution — and on `bilinear`, `z0=[10,10]ᵀ`
+is *very* far from the saddle at the origin. Take the bilinear case concretely. The true solution is
+`z*=0`, so `‖z0−z*‖ = ‖[10,10]‖ = √200 ≈ 14.14`. With `λ=0.1`, the irreducible residual floor is
+`λ‖z0−z*‖ ≈ 0.1 × 14.14 ≈ 1.41`. That is enormous — it means the *best* bilinear gradient norm this
+rung can possibly reach is about `1.4`, no matter how many of the 900 iterations I spend, because the
+anchored solution `w*` itself sits a distance `‖w*‖ ≈ ‖F(w*)‖/λ` from the origin and `‖F(z)‖=‖z‖` on
+this field. The fixed pull toward `z0=[10,10]` is literally dragging the iterate back toward the
+worst possible point. So I should expect the bilinear final gradient norm to be pinned near `1.4`,
+catastrophically worse than what plain SEG (no anchor bias) would give. The `(δ,ν)` case is the
+opposite extreme: there `z0 ~ N(0,I)` is already near the origin-ish solution and `λ=0.01` is tiny,
+so the bias `λ‖z0−z*‖` is small and the mild regularization mostly just adds a little stability —
+I expect a small `delta_nu` gradient norm there, maybe an order or two below the bilinear value.
+
+So the falsifiable expectation for this first rung, against which the next rung will be judged: the
+`bilinear` final gradient norm should be dominated by the anchor bias and land around `1.4`, while
+the `delta_nu` norm should be small (well under `0.1`). The mean `final_gradient_norm` is the average
+of the two, so it will be dragged up almost entirely by the bilinear half — I expect a mean near
+`0.7–0.8`, the worst of any rung on this ladder. The diagnosis is structural and I want it in the
+record: the fixed-`z0` Tikhonov anchor buys strong monotonicity and noise robustness but pays an
+irreducible `λ‖z0−z*‖` bias, and on the bilinear instance the start is so far from the solution that
+the bias *is* the score. The next rung's job is to keep extragradient's anti-rotation contraction
+without paying that anchor bias at all — i.e. to drop the `λ(z−z0)` pull and see how far the bare
+look-ahead step goes when it is not being dragged toward `[10,10]`.
+</think>
+<say>
+[[FILL_SAY: 1-2 sentences naming the method and what this first edit does]]
+</say>
+<edit path="RAIN/optimization_convex_concave/custom_strategy.py">
+<old>
+) -> dict[str, Any]:
+    """Initialize algorithm state from the fixed starting point."""
+    return {
+        "z": as_vector(initial_z, expected_dim=2 * problem.dim),
+        "step_index": 0,
+</old>
+<new>
+) -> dict[str, Any]:
+    z0 = as_vector(initial_z, expected_dim=2 * problem.dim)
+    return {
+        "z": z0,
+        "anchor_z": z0.copy(),
+        "step_index": 0,
+</new>
+</edit>
+<obs>
+Successfully replaced text in RAIN/optimization_convex_concave/custom_strategy.py.
+</obs>
+<note>
+[[FILL_NOTE?: optional one-line thought for this edit, or delete this block]]
+</note>
+<edit path="RAIN/optimization_convex_concave/custom_strategy.py">
+<old>
+) -> StepOutput:
+    """Default baseline: the official SEG / EG update from the MATLAB scripts."""
+    tau = float(hyperparameters["tau"])
+    z = as_vector(state["z"], expected_dim=2 * problem.dim)
+    step_index = int(state.get("step_index", 0))
+
+    g = oracle.grad(z)
+    w = z - tau * g + oracle.noise()
+    gw = oracle.grad(w)
+    z_next = z - tau * gw + oracle.noise()
+    metric_iterate = z_next if problem.name == "bilinear" else z
+    return make_step_output(
+        {"z": z_next, "step_index": step_index + 1},
+        metric_iterate,
+</old>
+<new>
+) -> StepOutput:
+    tau = float(hyperparameters["tau"])
+    lam = float(hyperparameters["lambda"])
+    z = as_vector(state["z"], expected_dim=2 * problem.dim)
+    anchor_z = as_vector(state["anchor_z"], expected_dim=2 * problem.dim)
+    step_index = int(state.get("step_index", 0))
+
+    g = oracle.grad(z)
+    w = z - tau * g + tau * lam * (anchor_z - z) + oracle.noise()
+    gw = oracle.grad(w)
+    z_next = z - tau * gw + tau * lam * (anchor_z - w) + oracle.noise()
+    metric_iterate = z_next if problem.name == "bilinear" else z
+    return make_step_output(
+        {"z": z_next, "anchor_z": anchor_z, "step_index": step_index + 1},
+        metric_iterate,
+</new>
+</edit>
+<obs>
+Successfully replaced text in RAIN/optimization_convex_concave/custom_strategy.py.
+</obs>
+<note>
+[[FILL_NOTE?: optional one-line thought for this edit, or delete this block]]
+</note>
+<edit path="RAIN/optimization_convex_concave/custom_strategy.py">
+<old>
+def get_hyperparameters(problem_name: str, sigma: float) -> dict[str, Any]:
+    """Return the official per-problem step size."""
+    if problem_name == "bilinear":
+        return {"tau": 0.1}
+    if problem_name == "delta_nu":
+        return {"tau": 1.0}
+    raise KeyError(f"Unknown problem: {problem_name}")
+</old>
+<new>
+def get_hyperparameters(problem_name: str, sigma: float) -> dict[str, Any]:
+    if problem_name == "bilinear":
+        return {"tau": 0.1, "lambda": 0.1}
+    if problem_name == "delta_nu":
+        return {"tau": 1.0, "lambda": 0.01}
+    raise KeyError(f"Unknown problem: {problem_name}")
+</new>
+</edit>
+<obs>
+Successfully replaced text in RAIN/optimization_convex_concave/custom_strategy.py.
+</obs>
+<run/>
+<obs>
+Measured results — `baseline:r_seg` (`is_final,true`). Lower is better. The harness runs seed 42
+deterministically; the leaderboard repeats the identical row for seeds {42, 123, 456}.
+
+## default-noise
+| seed | final_gradient_norm | bilinear_fgn | delta_nu_fgn | auc_log_iter_log_grad |
+|---|---|---|---|---|
+| 42 | 0.751257 | 1.409909 | 0.092606 | −0.669446 |
+| 123 | 0.751257 | 1.409909 | 0.092606 | −0.669446 |
+| 456 | 0.751257 | 1.409909 | 0.092606 | −0.669446 |
+| **mean** | **0.751257** | **1.409909** | **0.092606** | **−0.669446** |
+
+## low-noise
+| seed | final_gradient_norm | bilinear_fgn | delta_nu_fgn | auc_log_iter_log_grad |
+|---|---|---|---|---|
+| mean | 0.749993 | 1.407480 | 0.092506 | −0.675725 |
+
+## high-noise
+| seed | final_gradient_norm | bilinear_fgn | delta_nu_fgn | auc_log_iter_log_grad |
+|---|---|---|---|---|
+| mean | 0.774997 | 1.421081 | 0.128912 | −0.515712 |
+</obs>
+
+### step 2 — SEG (stochastic extragradient)   [slug:seg]
+
+<think>
+[[POLISH_REASONING: adapt to first-person agentic voice, end by deciding to implement]]
+The R-SEG numbers confirm the diagnosis exactly, and they tell me the cure is to *remove* something,
+not add it. The mean `final_gradient_norm` landed at `0.751257`, and the split is the whole story:
+`bilinear_fgn = 1.409909`, `delta_nu_fgn = 0.092606`. The bilinear half is pinned at almost precisely
+the irreducible-bias floor I predicted, `λ‖z0−z*‖ ≈ 0.1 × √200 ≈ 1.41` — the anchored extragradient
+converged fine, but it converged to the *regularized* solution `w*`, which on this rotation field
+sits a distance `‖F(w*)‖/λ` from the origin, and since `‖F(z)‖=‖z‖` here that residual is exactly the
+`1.41` on the board. The fixed pull toward `z0=[10,10]ᵀ` did its job too well: it dragged the iterate
+back toward the worst possible point and held it there. Meanwhile `delta_nu` came out small,
+`0.0926`, because there `z0 ~ N(0,I)` starts near the solution and `λ=0.01` is tiny, so the bias term
+is negligible and the mild regularization only stabilizes. The mean is dominated by the bilinear
+half, and that half is bias, not optimization error. More iterations would not have helped; the floor
+is structural. The high-noise column (`0.774997`, bilinear `1.421081`) barely moves from default,
+which is itself a tell — the score is set by the deterministic anchor bias, not by the noise, so
+turning the noise up changes almost nothing. That is the signature of a method limited by bias rather
+than by variance.
+
+So the lesson is sharp: the anchor at `z0` was supposed to buy strong monotonicity and noise
+robustness, but its bias `λ‖z0−z*‖` swamped any benefit because the start is far from the solution on
+the very instance that dominates the mean. The obvious correction is to throw the anchor away and run
+the bare extragradient step — the scaffold default — and see how far the look-ahead contraction goes
+when nothing is dragging it toward `[10,10]`. Let me re-derive that step from scratch so I know
+precisely what it does and does not promise, because I am now trusting it to do the bilinear work that
+the anchor sabotaged.
+
+Strip the problem to the bone, `f(x,y)=xy`, the instance that produced the `1.41`. The joint field is
+`F(z) = [∂f/∂x, −∂f/∂y] = [y, −x] = Jz` with `J=[[0,1],[−1,0]]`, the skew-symmetric rotation
+generator. Every evaluation of `F` points *around* the origin, never toward it. The plain forward
+step `z_{t+1}=z_t−τF(z_t)` is the operator `M=I−τJ`, eigenvalues `1∓iτ`, modulus `√(1+τ²)>1` for any
+`τ>0` — geometric divergence, an outward spiral, and shrinking `τ` only slows the blow-up without
+ever crossing below `1`. The structural reason is that `J` is skew, so its eigenvalues are pure
+imaginary: the field is monotone (`⟨Jz,z⟩=zᵀJz=0` since `Jᵀ=−J`) but with a *zero* strong-
+monotonicity margin. There is no contractive component anywhere for a single forward evaluation to
+grab. This is exactly why a plain gradient step cannot touch the bilinear half — and why R-SEG's
+contraction came entirely from the artificial `λ` it injected, at the cost of the bias.
+
+The fix that needs no artificial `λ` is to stop trusting `F` at where I am. The implicit/backward
+step `z_{t+1}=z_t−τF(z_{t+1})=(I+τF)^{-1}(z_t)` is the resolvent; on the bilinear field
+`(I+τJ)^{-1}` has eigenvalues `1/(1∓iτ)`, modulus `1/√(1+τ²)<1` for *every* `τ>0` — it spirals
+inward unconditionally, no step-size restriction, no `λ` needed. That is the ideal. But it is
+implicit: `z_{t+1}` appears inside `F` on both sides, a nonlinear solve per step, unrunnable on a
+generic field. So I imitate it explicitly. Guess the future point cheaply with one forward step,
+`w = z_t − τF(z_t)` — the look-ahead — then evaluate the field at `w` and take the actual step from
+the *original* `z_t`:
+
+  `z_{t+1} = z_t − τF(w)`.
+
+Anchor at `z_t`, aim with `F(w)`. Two operator evaluations: a predictor at `z_t` and a corrector at
+`w`, both fully explicit. I have to check I have not smuggled in two forward steps, which would still
+diverge. Grind it out on the rotation. `F(z_t)=Jz_t`, so `w=(I−τJ)z_t`; then
+`F(w)=Jw=(J−τJ²)z_t=(J+τI)z_t` since `J²=−I`. Therefore
+
+  `z_{t+1} = z_t − τ(J+τI)z_t = (I−τJ−τ²I)z_t`.
+
+A `−τ²I` term appeared that was not in the forward step. The eigenvalues are now `1−τ²∓iτ`, modulus
+`√((1−τ²)²+τ²)=√(1−τ²(1−τ²))<1` for `τ<1`. At `τ=0.1` that is `√(1−0.01·0.99)≈0.99504` — below one,
+the spiral turns inward. The extra evaluation manufactured, for free, the contractive `−τ²I` the
+forward step lacked, and — crucially — it did so *without any anchor bias*, because the contraction
+comes from the operator's own curvature, not from a pull toward an external point. This is the deep
+contrast with R-SEG: there the inward force was `λ(z0−z)`, an artificial spring with a built-in bias;
+here the inward force is `−τ²I`, the leading term of the resolvent itself, with no bias. On the
+bilinear field the iterate now contracts toward the *true* origin, not toward a regularized `w*`, so
+the `1.41` floor should simply vanish.
+
+Let me also pin down the deterministic convergence in general, not just on the toy, because I want to
+know what guarantee I am actually leaning on for the `(δ,ν)` half. With `z*` such that `F(z*)=0`,
+`w=z_t−τF(z_t)`, `z_{t+1}=z_t−τF(w)`, completing the square gives the one-step identity
+`‖z_{t+1}−z*‖² = ‖z_t−z*‖² − 2τ⟨F(w),w−z*⟩ + τ²‖F(w)−F(z_t)‖² − ‖w−z_t‖²`. The middle term is
+`≤0` by monotonicity (`⟨F(w)−F(z*),w−z*⟩≥0`, `F(z*)=0`) — that is the progress. The last two,
+`τ²‖F(w)−F(z_t)‖²−‖w−z_t‖²`, are the discretization error of using `F(w)` instead of the true
+implicit point; Lipschitzness bounds them by `(τ²L²−1)‖w−z_t‖²`, strictly negative for `τ<1/L`. So
+the distance is Fejér-decreasing, and the step-size ceiling `τ≤1/L` is forced by exactly this
+inequality — at `τ=1/L` the error term vanishes, below it there is strict contraction. This is the
+guarantee I keep: it needs only monotonicity and Lipschitzness, no `λ`, no strong-monotonicity margin.
+What it does *not* give, when `μ=0`, is a *rate* on the last iterate or on the gradient norm — only
+the ergodic gap.
+
+Let me confirm the `−τ²I` is the resolvent's curvature, so I trust it beyond the toy. The backward
+step is `(I+τJ)^{-1}=(1/(1+τ²))(I−τJ)=(1−τ²+O(τ⁴))(I−τJ)=I−τJ−τ²I+O(τ³)`. The forward step keeps only
+`I−τJ`, dropping the inward `−τ²I`; the corrected step keeps it. So extragradient is the `O(τ²)`
+explicit approximation of the implicit step, where the forward step is only `O(τ)`. In general, for
+`F` `L`-Lipschitz, if `w_imp` is the true implicit point then `‖z_{eg}−w_imp‖ ≤ τL‖w−w_imp‖ ≤
+τ²L²‖z_t−w_imp‖`, so the corrector matches the implicit step to `O(τ²)` — an improvement exactly when
+`τL<1`, which is why the method wants small steps. That is the entire content of the scaffold default,
+and it needs no `λ`.
+
+Now the part R-SEG was trying to buy and this rung deliberately gives up: contraction and noise
+robustness. Without the `λ` penalty the operator is merely monotone, so the one-step identity
+`‖z_{t+1}−z*‖² = ‖z_t−z*‖² − 2τ⟨F(w),w−z*⟩ + τ²‖F(w)−F(z_t)‖² − ‖w−z_t‖²` has the monotonicity term
+`−2τ⟨F(w),w−z*⟩ ≤ 0` (progress) and the discretization error `(τ²L²−1)‖w−z_t‖² ≤ 0` for `τ≤1/L`, so
+the distance is Fejér-decreasing — but with `μ=0` there is no geometric rate, only the `O(1/k)`
+ergodic gap, and under noise no last-iterate gradient-norm contraction. The noise enters as a
+neighborhood: with additive update perturbations the iterate converges to an `O(τσ²)` ball rather than
+to `z*` exactly. So I am trading R-SEG's artificial contraction-plus-bias for honest no-bias-but-
+slow. On `bilinear` that is a clear win, because the bias was the problem. On `delta_nu` it is a
+question mark: R-SEG's small `λ=0.01` there gave a stable `0.0926`, and dropping `λ` removes that
+stabilization, so I should watch whether `delta_nu` gets worse even as `bilinear` gets dramatically
+better.
+
+For the noise, one design rule matters: both evaluations within a step must use the *same* operator.
+The predictor-corrector logic is that `F(w)` stands in for `F(z_{t+1})` of one operator; if the two
+half-steps used independently sampled operators, predictor and corrector would concern different
+operators and the `O(τ²)` approximation would collapse, reintroducing divergence on stochastic
+bilinear. Here the harness's stochasticity is additive *update* noise around a single deterministic
+`F`, not independently sampled operators, so this is automatic — `oracle.grad` is the same
+deterministic field at both evaluations, and the noise is injected by `oracle.noise()` after each
+half-step. The step uses `τ=0.1` on bilinear (`L=1`, so `τ<1/L` with margin, matching the contraction
+modulus that wants `τ` well below 1) and `τ=1.0` on `(δ,ν)` (the clipped-monotone field has slope at
+most about one). Two operator evaluations, two noise draws, no anchor state at all — this is the
+literal scaffold default; the full module is in the answer.
+
+So the falsifiable expectations against the R-SEG numbers. The bilinear half should collapse: with no
+anchor pulling toward `[10,10]`, the look-ahead contraction modulus `0.995` per step over 900
+iterations drives the iterate toward the true origin, so `bilinear_fgn` should fall from `1.41` to a
+small value limited only by the additive noise — I expect it well under `0.2`, an order of magnitude
+better, and that alone should slash the mean. The `delta_nu` half is the risk: removing the
+stabilizing `λ` could let it drift up from `0.0926` toward `~0.2`, because the clipped field is flat
+and merely monotone with no margin, so the bare extragradient has no contraction there and lands
+wherever the `O(1/k)` ergodic behavior and the noise leave it. So I predict the mean drops sharply
+from `0.751` — driven entirely by the bilinear collapse — to roughly the `0.15–0.20` range, with the
+two halves now *closer in magnitude* (bilinear no longer dominating, possibly `delta_nu` now the
+larger of the two). If instead `delta_nu` blows up past `bilinear`, that tells me the next rung must
+restore a *non-biased* form of anchoring — something that contracts the merely-monotone field without
+the fixed-`z0` bias that sank this rung's predecessor.
+</think>
+<say>
+[[FILL_SAY: 1-2 sentences naming the method and what this first edit does]]
+</say>
+<edit path="RAIN/optimization_convex_concave/custom_strategy.py">
+<old>
+) -> dict[str, Any]:
+    z0 = as_vector(initial_z, expected_dim=2 * problem.dim)
+    return {
+        "z": z0,
+        "anchor_z": z0.copy(),
+        "step_index": 0,
+</old>
+<new>
+) -> dict[str, Any]:
+    return {
+        "z": as_vector(initial_z, expected_dim=2 * problem.dim),
+        "step_index": 0,
+</new>
+</edit>
+<obs>
+Successfully replaced text in RAIN/optimization_convex_concave/custom_strategy.py.
+</obs>
+<note>
+[[FILL_NOTE?: optional one-line thought for this edit, or delete this block]]
+</note>
+<edit path="RAIN/optimization_convex_concave/custom_strategy.py">
+<old>
+    tau = float(hyperparameters["tau"])
+    lam = float(hyperparameters["lambda"])
+    z = as_vector(state["z"], expected_dim=2 * problem.dim)
+    anchor_z = as_vector(state["anchor_z"], expected_dim=2 * problem.dim)
+    step_index = int(state.get("step_index", 0))
+
+    g = oracle.grad(z)
+    w = z - tau * g + tau * lam * (anchor_z - z) + oracle.noise()
+    gw = oracle.grad(w)
+    z_next = z - tau * gw + tau * lam * (anchor_z - w) + oracle.noise()
+    metric_iterate = z_next if problem.name == "bilinear" else z
+    return make_step_output(
+        {"z": z_next, "anchor_z": anchor_z, "step_index": step_index + 1},
+        metric_iterate,
+</old>
+<new>
+    tau = float(hyperparameters["tau"])
+    z = as_vector(state["z"], expected_dim=2 * problem.dim)
+    step_index = int(state.get("step_index", 0))
+
+    g = oracle.grad(z)
+    w = z - tau * g + oracle.noise()
+    gw = oracle.grad(w)
+    z_next = z - tau * gw + oracle.noise()
+    metric_iterate = z_next if problem.name == "bilinear" else z
+    return make_step_output(
+        {"z": z_next, "step_index": step_index + 1},
+        metric_iterate,
+</new>
+</edit>
+<obs>
+Successfully replaced text in RAIN/optimization_convex_concave/custom_strategy.py.
+</obs>
+<note>
+[[FILL_NOTE?: optional one-line thought for this edit, or delete this block]]
+</note>
+<edit path="RAIN/optimization_convex_concave/custom_strategy.py">
+<old>
+    if problem_name == "bilinear":
+        return {"tau": 0.1, "lambda": 0.1}
+    if problem_name == "delta_nu":
+        return {"tau": 1.0, "lambda": 0.01}
+    raise KeyError(f"Unknown problem: {problem_name}")
+</old>
+<new>
+    if problem_name == "bilinear":
+        return {"tau": 0.1}
+    if problem_name == "delta_nu":
+        return {"tau": 1.0}
+    raise KeyError(f"Unknown problem: {problem_name}")
+</new>
+</edit>
+<obs>
+Successfully replaced text in RAIN/optimization_convex_concave/custom_strategy.py.
+</obs>
+<run/>
+<obs>
+Measured results — `baseline:seg` (`is_final,true`). Lower is better. Seed 42 run deterministically;
+the leaderboard repeats the identical row for seeds {42, 123, 456}.
+
+## default-noise
+| seed | final_gradient_norm | bilinear_fgn | delta_nu_fgn | auc_log_iter_log_grad |
+|---|---|---|---|---|
+| 42 | 0.182141 | 0.173788 | 0.190493 | −0.346938 |
+| 123 | 0.182141 | 0.173788 | 0.190493 | −0.346938 |
+| 456 | 0.182141 | 0.173788 | 0.190493 | −0.346938 |
+| **mean** | **0.182141** | **0.173788** | **0.190493** | **−0.346938** |
+
+## low-noise
+| seed | final_gradient_norm | bilinear_fgn | delta_nu_fgn | auc_log_iter_log_grad |
+|---|---|---|---|---|
+| mean | 0.116935 | 0.162024 | 0.071846 | −0.442062 |
+
+## high-noise
+| seed | final_gradient_norm | bilinear_fgn | delta_nu_fgn | auc_log_iter_log_grad |
+|---|---|---|---|---|
+| mean | 0.582105 | 0.227585 | 0.936626 | 0.076484 |
+</obs>
+
+### step 3 — SEAG (stochastic extra-anchored gradient)   [slug:seag]
+
+<think>
+[[POLISH_REASONING: adapt to first-person agentic voice, end by deciding to implement]]
+The SEG numbers vindicate dropping the anchor and tell me precisely what the next move has to fix. The
+mean `final_gradient_norm` fell from R-SEG's `0.751257` to `0.182141` — a four-fold improvement —
+and the split shows exactly why: `bilinear_fgn` collapsed from `1.409909` to `0.173788`, an order of
+magnitude, because with no pull toward `[10,10]ᵀ` the look-ahead contraction modulus `≈0.995` drove
+the iterate toward the *true* origin over the 900 iterations. The bias floor I predicted simply
+vanished, exactly as the `−τ²I` contraction story said it would. But the other half of my prediction
+also came true, and it is now the binding constraint: `delta_nu_fgn` *rose* from `0.092606` to
+`0.190493`. Removing R-SEG's stabilizing `λ=0.01` cost me on the `(δ,ν)` instance, where the clipped
+field is flat and merely monotone — no strong-monotonicity margin, so bare extragradient has no
+contraction there and lands wherever the `O(1/k)` ergodic behavior and the noise leave it. The two
+halves have crossed over: `delta_nu` (`0.190`) is now slightly the *larger* of the two, and the mean
+is no longer dominated by one instance but split evenly between them. The high-noise column makes the
+fragility blunt — `delta_nu_fgn` blows up to `0.936626` and drags the high-noise mean to `0.582105`
+— confirming that the bare merely-monotone step on `(δ,ν)` is variance-limited, with nothing to
+contract the noise it accumulates.
+
+So the situation is symmetric to where I started, but inverted. R-SEG's anchor contracted everything
+but biased the bilinear half into the floor. SEG dropped the anchor, fixed bilinear, but lost the
+contraction on `delta_nu` and is now noise-limited there. What I want is the thing that sat between
+these two failures: a form of anchoring that *contracts* the merely-monotone field — including under
+noise — without paying R-SEG's fixed-`z0` bias. The defect in R-SEG was not anchoring per se; it was
+that the anchor weight stayed *constant* forever, so the pull toward `z0` never died and the bias
+`λ‖z0−z*‖` was permanent. What if the anchor pull *decays* as the iteration proceeds — strong enough
+early to contract and kill the rotation, but vanishing so that I am not dragged toward `z0` at the
+end? Then late iterates would not be biased toward the anchor at all, and the bilinear collapse SEG
+just demonstrated would survive, while the early contraction would tame `delta_nu`.
+
+Let me derive the right decaying schedule rather than guess it, because the rate of decay is the whole
+design. This is the anchoring idea — pull each iterate back toward a fixed reference `z0`, the
+Halpern device — but planted inside the extragradient step I now trust, with a time-decaying weight.
+The continuous picture is the cleanest place to find the schedule. The anchored flow is
+`ż(t) = −F(z(t)) − β(t)(z(t) − z0)`: the operator drives toward a zero of `F`, a decaying spring
+pulls back toward the start. There are two competing speeds in `β(t)`. The contracting speed: the
+spring alone, `ż=−β(z−z0)`, contracts the iterate and is what kills the rotation and stabilizes the
+flat `(δ,ν)` field. The vanishing speed: but I must not converge to `z0`, I want a zero of `F`, so the
+spring must eventually die — this is precisely what R-SEG's constant weight failed to do. Parametrize
+`β(t)=γ/t^p`. With `p>1` the spring dies too early, the flow is barely contracted, slow; with `p<1` it
+dies too late, keeps dragging toward `z0`, slow (and biased — this is R-SEG's disease in the limit
+`p→0`). The sweet spot is `p=1`, `β(t)=1/t`, where contracting and vanishing speeds are matched.
+
+Check `β(t)=1/t` actually accelerates on the rotation, because that is where R-SEG bit the dust and
+where I need the bias gone. For `f=xy` the anchored flow is `ẋ=−y+(1/t)(x0−x)`, `ẏ=x+(1/t)(y0−y)`.
+Multiply by `t`: `d/dt(tx)=−ty+x0`, `d/dt(ty)=tx+y0`. Differentiate again to get forced harmonic
+oscillators in `tx` and `ty`, whose solution gives `x(t)=(y0 cos t + x0 sin t − y0)/t` and
+`y(t)=(y0 sin t − x0 cos t + x0)/t`. The iterate decays like `1/t`, so `‖z(t)‖²∼1/t²` — the squared
+gradient norm goes like `1/t²`. The anchor with a `1/t` weight converts the rotation's neutral
+circling into a clean polynomial `1/t²` decay, *and* the `z0` dependence sits inside bounded
+oscillating numerators divided by `t`, so its influence vanishes — no permanent bias toward `[10,10]`.
+That is the property I need: the contraction that R-SEG had, but with the bias decaying away rather
+than fixed. The discrete shadow of `β(t)=1/t` is an anchoring coefficient that decays like `1/k`.
+
+Now the concrete discrete step. Plant the decaying anchor inside both half-steps of extragradient,
+with the offset relative to the *current* point `z` (not the look-ahead `w`) in both lines, and the
+gradient step size kept constant:
+
+  predictor: `w = z − τF(z) + c_k(z0 − z) + noise`,
+  corrector: `z_next = z − τF(w) + c_k(z0 − z) + noise`,
+
+where `c_k` is the decaying anchor coefficient. When `c_k=0` this is exactly the SEG of the previous
+rung; the decaying anchor is the only new thing. The discrete schedule that realizes `β(t)=1/t`: I
+use `c_k = 1/(k+3)` with `k` the zero-based step index. The `+3` offset keeps the very first
+coefficient sensible (`c_0=1/3 < 1`, a contraction, not an overshoot) and avoids the singularity a
+bare `1/k` would have at `k=0`; the tail still decays as `1/k`, so the `1/t²` acceleration is intact.
+Note this is a *pure* convex combination toward `z0` — the offset is `c_k(z0−z)` with no separate
+`τλ` factor, unlike R-SEG's `τλ(z0−z)`. That matters: R-SEG's pull was `O(τλ)` and constant; here the
+pull is `O(1/k)` and decaying, so it can be order-one early (when `c_0=1/3` it moves a third of the
+way toward `z0`, a real contraction) yet die to nothing by iteration 900 or 6000. The strength is in
+the schedule, not in a fixed `λ`.
+
+Let me sanity-check the schedule produces the right structural growth, because that is the mechanism
+behind the `1/k²`. The anchoring extragradient with `c_k=1/(k+3)` admits a Lyapunov function
+`V_k = A_k‖F(z_k)‖² + B_k⟨F(z_k), z_k−z0⟩`, and the recurrence the schedule forces is
+`B_{k+1}=B_k/(1−c_k)`, which telescopes to `B_k` growing *linearly* in `k`, and `A_k ∝ c_k^{-1}B_k`
+growing *quadratically*. A quadratically growing weight on `‖F(z_k)‖²` is exactly what makes `V_k`
+bounded force `‖F(z_k)‖²=O(1/k²)` on the *last* iterate — no averaging, no best-so-far tracking. The
+look-ahead gradient earns a sum-of-squares in the Lyapunov decrease (this is what extragradient buys
+that a plain anchored gradient step cannot, and why I plant the anchor *inside* extragradient rather
+than alongside it), and monotonicity plus Lipschitzness, weighted by exactly these coefficients, make
+`V_{k+1}≤V_k`. The upshot: deterministically this is the optimal `O(L²‖z0−z*‖²/k²)` last-iterate
+gradient-norm rate, which is faster than SEG's `O(1/k)` and carries no fixed bias.
+
+But I have to be honest about what noise does to this acceleration, because the `delta_nu` high-noise
+blow-up I just saw is the warning. The `1/k²` rests on `V_k` decreasing every step, and that decrease
+was driven by monotonicity and Lipschitz identities for the *exact* operator. With additive update
+noise, each step injects an error into those identities, and because the `‖F‖²` term is weighted by
+`A_k∼k²`, the accumulated noise is *amplified* by the same quadratic factor that produced the
+acceleration — exactly like stochastic Nesterov in convex minimization. So I should expect this rung
+to show a fast transient followed by a noise-dominated floor: the gradient norm drops quickly while
+the deterministic dynamics dominate, then flattens once the `k²`-amplified noise catches up. The
+decaying anchor still helps `delta_nu` versus bare SEG — it gives the early contraction SEG lacked —
+but it is not a variance-control mechanism, so the floor it reaches is still set by `σ`. On `bilinear`
+the noise is tiny (`σ=0.001`) so the `1/t²` decay should mostly win and beat SEG's `0.173788`; on
+`delta_nu` (`σ=0.02`) the early contraction should beat SEG's `0.190493`, but the `k²` amplification
+over 6000 iterations means I should not expect it to reach the tiny values the deterministic rate
+promises.
+
+So the implementation: the state carries `z`, the fixed anchor `z0`, and the step index (the
+coefficient needs `k`). Each step does two operator evaluations — predictor at `z`, corrector at the
+look-ahead `w` — two noise draws, and the same pure decaying-anchor offset `c_k(z0−z)` in both lines,
+with `c_k=1/(step_index+3)`. The step size is constant (`τ=0.1` bilinear, `τ=1.0` `(δ,ν)`); the
+anchor decays. Two operator evaluations, two noise draws; the full module is in the answer.
+
+Falsifiable expectations against the SEG numbers. Both halves should improve relative to SEG, because
+the decaying anchor adds the early contraction SEG lacked without adding R-SEG's permanent bias.
+`bilinear_fgn` should fall from `0.173788` — the `1/t²` decay on the near-noiseless rotation should
+push it down, maybe to `~0.16` or below, though the constant-step decaying-anchor will not reach the
+near-zero of a perfectly tuned schedule. `delta_nu_fgn` should fall most, from `0.190493`, because the
+early contraction directly attacks the merely-monotone flatness that left SEG stranded there — I
+expect it down to roughly `0.10–0.12`, with the noise floor preventing anything dramatically smaller.
+So the mean should drop from `0.182141` to roughly the `0.13–0.14` range, with `delta_nu` no longer
+the larger half. The cleanest signature to watch is the AUC: the `1/t²` transient should make
+`auc_log_iteration_log_grad` markedly more negative than SEG's `−0.346938` (a steeper log-log
+descent), even if the final value is only moderately better — that gap between a strongly negative
+AUC and a not-dramatically-smaller final norm is exactly the fingerprint of "fast transient, then
+noise floor." If the high-noise `delta_nu` still blows up the way SEG's did, that tells me the next
+rung must add genuine variance control — re-anchoring with growing strength toward the *moving*
+trajectory rather than a single fixed `z0`, so the contraction keeps tightening instead of stalling
+at a σ-set floor.
+</think>
+<say>
+[[FILL_SAY: 1-2 sentences naming the method and what this first edit does]]
+</say>
+<edit path="RAIN/optimization_convex_concave/custom_strategy.py">
+<old>
+) -> dict[str, Any]:
+    return {
+        "z": as_vector(initial_z, expected_dim=2 * problem.dim),
+        "step_index": 0,
+</old>
+<new>
+) -> dict[str, Any]:
+    z0 = as_vector(initial_z, expected_dim=2 * problem.dim)
+    return {
+        "z": z0,
+        "anchor_z": z0.copy(),
+        "step_index": 0,
+</new>
+</edit>
+<obs>
+Successfully replaced text in RAIN/optimization_convex_concave/custom_strategy.py.
+</obs>
+<note>
+[[FILL_NOTE?: optional one-line thought for this edit, or delete this block]]
+</note>
+<edit path="RAIN/optimization_convex_concave/custom_strategy.py">
+<old>
+    z = as_vector(state["z"], expected_dim=2 * problem.dim)
+    step_index = int(state.get("step_index", 0))
+
+    g = oracle.grad(z)
+    w = z - tau * g + oracle.noise()
+    gw = oracle.grad(w)
+    z_next = z - tau * gw + oracle.noise()
+    metric_iterate = z_next if problem.name == "bilinear" else z
+    return make_step_output(
+        {"z": z_next, "step_index": step_index + 1},
+        metric_iterate,
+</old>
+<new>
+    z = as_vector(state["z"], expected_dim=2 * problem.dim)
+    anchor_z = as_vector(state["anchor_z"], expected_dim=2 * problem.dim)
+    step_index = int(state.get("step_index", 0))
+    coeff = 1.0 / (step_index + 3.0)
+
+    g = oracle.grad(z)
+    w = z - tau * g + coeff * (anchor_z - z) + oracle.noise()
+    gw = oracle.grad(w)
+    z_next = z - tau * gw + coeff * (anchor_z - z) + oracle.noise()
+    metric_iterate = z_next if problem.name == "bilinear" else z
+    return make_step_output(
+        {"z": z_next, "anchor_z": anchor_z, "step_index": step_index + 1},
+        metric_iterate,
+</new>
+</edit>
+<obs>
+Successfully replaced text in RAIN/optimization_convex_concave/custom_strategy.py.
+</obs>
+<run/>
+<obs>
+Measured results — `baseline:seag` (`is_final,true`). Lower is better. Seed 42 run deterministically;
+the leaderboard repeats the identical row for seeds {42, 123, 456}.
+
+## default-noise
+| seed | final_gradient_norm | bilinear_fgn | delta_nu_fgn | auc_log_iter_log_grad |
+|---|---|---|---|---|
+| 42 | 0.135449 | 0.160590 | 0.110307 | −1.107236 |
+| 123 | 0.135449 | 0.160590 | 0.110307 | −1.107236 |
+| 456 | 0.135449 | 0.160590 | 0.110307 | −1.107236 |
+| **mean** | **0.135449** | **0.160590** | **0.110307** | **−1.107236** |
+
+## low-noise
+| seed | final_gradient_norm | bilinear_fgn | delta_nu_fgn | auc_log_iter_log_grad |
+|---|---|---|---|---|
+| mean | 0.082633 | 0.158595 | 0.006672 | −1.547470 |
+
+## high-noise
+| seed | final_gradient_norm | bilinear_fgn | delta_nu_fgn | auc_log_iter_log_grad |
+|---|---|---|---|---|
+| mean | 0.380617 | 0.178678 | 0.582557 | −0.638068 |
+</obs>
+
+### step 4 — RAIN (recursively/running-anchored stochastic extragradient)   [slug:rain]
+
+<think>
+[[POLISH_REASONING: adapt to first-person agentic voice, end by deciding to implement]]
+The SEAG numbers are the best so far and they point at the exact ceiling I now have to break. The mean
+`final_gradient_norm` dropped from SEG's `0.182141` to `0.135449`, and both halves improved as I
+predicted: `bilinear_fgn` `0.173788→0.160590` and `delta_nu_fgn` `0.190493→0.110307`. The decaying
+anchor added the early contraction SEG lacked without R-SEG's permanent bias — the bilinear bias
+floor stayed gone *and* the merely-monotone `(δ,ν)` field finally got contracted. The signature I told
+myself to watch confirms the mechanism cleanly: `auc_log_iteration_log_grad` plunged from SEG's
+`−0.346938` to `−1.107236`, a far steeper log-log descent, while the *final* norm improved only
+moderately. That gap — strongly negative AUC, not-dramatically-smaller final value — is exactly the
+fingerprint of "fast `1/k²` transient, then a noise-set floor." And the high-noise column proves the
+floor is the limit: `delta_nu_fgn` still blows up to `0.582557` there (versus `0.110307` at default
+noise), dragging the high-noise mean to `0.380617`. So the `k²`-amplified noise is precisely what I
+warned about — the acceleration's own weighting amplifies the accumulated variance, and the method
+stalls at a floor whose size scales with `σ`.
+
+So the binding defect is now sharp and it is *statistical*, not optimization. SEAG reaches its floor
+fast but cannot get below it, because its single fixed anchor at `z0` regularizes with a strength that
+must stay small (it decays toward zero) and a small regularization is a weak strong-monotonicity, and
+weak strong-monotonicity is exactly the property that leaves the noise floor large. Let me make that
+precise, because the fix has to attack this coupling directly. The anchor at strength `λ` toward a
+point `a` turns `F` into `G(z)=F(z)+λ(z−a)`, `λ`-strongly monotone, with noise floor `~ησ²/λ` — so a
+*large* `λ` would crush the noise. But a large fixed `λ` toward `z0` reintroduces R-SEG's bias
+`λ‖z0−z*‖`, which is the disease I escaped two rungs ago. The strength `λ` that fights noise and the
+bias that a fixed far anchor incurs are coupled through the distance from the anchor to `z*`. That is
+the trap SEAG sits in: it can only make `λ` small (by decaying it), so it can never crush the noise.
+
+Here is the thing that nags me, and it is the same non-expansiveness fact I proved back at the R-SEG
+rung. The anchored solution `w*` (the zero of `G`) is *closer* to `z*` than `z0` was:
+`‖w*−z*‖ ≤ ‖z*−z0‖` and `‖w*−z0‖ ≤ ‖z*−z0‖`, both from `λ‖w*−z*‖² ≤ λ(z*−z0)ᵀ(z*−w*)` and
+polarization. So what if I do not anchor once at the far `z0`? What if I solve the anchored problem
+approximately, get a point closer to `z*`, *re-anchor there*, and crank `λ` up — because now the
+anchor is closer, so the bias `λ·(distance)` can tolerate a bigger `λ`? A bigger `λ` makes the next
+subproblem more strongly monotone, hence better conditioned, hence cheaper to solve under noise. A
+chain of warm restarts, each with a closer anchor and a larger penalty. That breaks the
+strength-versus-bias coupling: the bias stays bounded because each anchor is close, while `λ` climbs
+geometrically, so the noise floor shrinks geometrically.
+
+I have to redo the recursion at the operator level, never touching function values, because the
+single-player convex version of this trick rests on `min f ≤ f`, an inequality that has no saddle-
+point analogue (neither `min-max f ≤ f` nor `≥ f` holds). Define a recursively regularized sequence:
+`f^(s+1) = f^(s) + (λ_{s+1}/2)‖x−x_{s+1}‖² − (λ_{s+1}/2)‖y−y_{s+1}‖²`, where `x_{s+1},y_{s+1}` is the
+approximate solution returned by round `s` and the strengths grow geometrically,
+`λ_{s+1}=(1+γ)λ_s`. In operator form, after `s` anchors the gradient operator is
+`F^(s)(z)=F(z)+Σ_{i=1}^s λ_i(z−z_i)` — the penalties accumulate, each a fresh anchor `z_i` with its
+own strength. Run `S=⌊log(L/λ)⌋` rounds so the accumulated strength climbs from `λ` up to about `L`:
+then `F^(s)` is at least `~λ(1+γ)^s`-strongly monotone (strength growing per round) while staying
+`≤2L`-Lipschitz, so its condition number `2L/(λ(1+γ)^s)` *shrinks* toward `O(1)`. The later
+subproblems are well-conditioned, so even under noise they are cheap to solve accurately — which is
+the whole payoff.
+
+The central question is whether driving each subproblem's residual small makes the final `‖F(z_S)‖`
+small. Peeling off the penalties and using strong monotonicity of `F^(S-1)` to convert distances back
+into residuals, plus the non-expansiveness `‖z*_j−z*_{j-1}‖ ≤ ‖z*_{j-1}−z_j‖` to chain the exact
+solutions, the messy double sum collapses to a clean recursive anchoring lemma:
+
+  `‖F(z_S)‖ ≤ 16λ Σ_{s=1}^S (1+γ)^{s-1} ‖z*_{s-1}−z_s‖`,
+
+the final gradient norm is a *geometrically-weighted sum of per-round subroutine errors*. The weight
+`(1+γ)^{s-1}` grows, but so does the strong monotonicity `λ(1+γ)^s` of subproblem `s`, so I can drive
+the per-round error down at the same geometric rate and keep the product small — a fair fight. Solving
+each subproblem with a two-phase epoch-SEG (a fixed step to kill optimization error, then a shrinking
+step to eat the statistical floor) lands the total oracle cost at the additive statistical floor
+`Õ(σ²ε^{-2}+κ)`, with no spurious `L²` and no `ε^{-4}` — the recursion buys back the two factors of
+`ε` that a single far anchor cannot. The merely-monotone case reduces to this via one cold anchor at
+`z0` with `λ=min(ε/D,L)`. This is the method the strongest rung implements; the theory is the point of
+it, but the algorithm as stated is a triple-nested loop and I want it as one loop.
+
+Collapse it. Set the inner counts to one — `N_s=1`, `K_s=0`, a single SEG iteration per round — so
+"round `s`" and "SEG step `t`" become the same index, and the accumulated penalty
+`Σ_i λ_i(z−z_i)` becomes, at iteration `t`, an anchor pulling toward the stored past iterates with
+geometric weights. One extragradient step with that running anchor:
+
+  predictor: `w = z − τF(z) + τλ·Σ_j w_j(z_j − z) + noise`,
+  corrector: `z_next = z − τF(w) + τλ·Σ_j w_j(z_j − w) + noise`,
+
+the regularizer being a geometrically-weighted running average of the trajectory already written into
+state. Two implementation facts make this runnable in `O(d)`. First, I never need the iterates
+individually: `λΣ_j w_j(z_current − z_j) = λ[(Σ_j w_j)z_current − Σ_j w_j z_j]`, so I keep two running
+buffers — a scalar `weight_sum = Σ_j w_j` and a vector `weighted_flow_sum = Σ_j w_j z_j` — and the
+anchor contribution is `τλ(weighted_flow_sum − weight_sum·z_current)`, an `O(d)` evaluation. Second,
+the sign: that expression is a pull from the current point *toward* the weighted average of past
+points, which is the moving anchor — re-anchoring toward where the trajectory has been, weighted to
+favor the recent past, with `γ` setting how fast the weighting grows. Each new iterate `z_next` is
+inserted with weight `current_weight = γ(1+γ)^{step_index+1}` (the stored-iterate convention is
+one-based even though the displayed recurrence is zero-based, because `z_next` is written *after* the
+step is taken), updating both buffers by adding `current_weight` and `current_weight·z_next`.
+
+Let me reason about why this should finally cross below SEAG's floor, and where its own limits are. The
+moving anchor with *growing* strength is the structural difference from SEAG's single decaying anchor.
+SEAG's regularization decayed toward zero, so its strong-monotonicity vanished and its noise floor was
+fixed; this method's effective regularization toward the recent trajectory *grows* (the geometric
+weights `(1+γ)^j` accumulate), so the late iterations are increasingly strongly monotone around where
+the trajectory has settled — which is increasingly close to `z*`. The contraction keeps tightening
+instead of stalling, so the noise floor keeps shrinking. The bias stays bounded because the anchor
+tracks the moving trajectory, not the far fixed `z0`. The harness fixes the constants:
+`τ=0.1, λ=0.1, γ=0.001` on bilinear and `τ=1.0, λ=0.01, γ=0.0001` on `(δ,ν)` — `γ` is deliberately
+tiny so `(1+γ)^t` cannot overflow over the 900/6000 iterations while the order of the method is
+unchanged; the geometric weighting is gentle but its *accumulation* over thousands of steps is what
+grows the effective strength. The state carries `z`, `step_index`, and the two buffers; the first step
+has empty buffers (`weight_sum=0`), so it is a plain extragradient step, and the anchor switches on as
+the trajectory accumulates. Two operator evaluations, two noise draws, `O(d)` buffer updates; the full
+module is in the answer.
+
+So the falsifiable bar this rung must clear, stated against the SEAG numbers it has to beat. The whole
+point of the growing moving anchor is to eat the statistical floor SEAG could not, so I expect a
+large drop in the mean `final_gradient_norm` from SEAG's `0.135449` — not a marginal one, because the
+mechanism attacks the binding constraint (the σ-set floor) rather than the transient. I expect both
+halves to fall substantially: `bilinear_fgn` from `0.160590` toward the `0.02` range, since the near-
+noiseless rotation (`σ=0.001`) lets the growing contraction run almost unimpeded, and `delta_nu_fgn`
+from `0.110307` toward the `0.02` range as well, because the growing strength around the settled
+trajectory directly crushes the noise that left SEAG stranded at `0.11`. So the mean should land
+roughly an order of magnitude below SEAG, in the low-`0.0X` range. The single cleanest test is the
+high-noise `delta_nu`: SEAG blew up to `0.582557` there because its floor scaled with `σ`; if the
+growing anchor genuinely controls variance, this rung's high-noise `delta_nu` should be *far* smaller
+— if it instead still blows up to several tenths, then the moving anchor is not actually crushing the
+noise floor and the recursion's promise has not materialized in the collapsed single-loop form. That
+high-noise `delta_nu` number, against SEAG's `0.582557`, is the decisive falsifiable comparison.
+</think>
+<say>
+[[FILL_SAY: 1-2 sentences naming the method and what this first edit does]]
+</say>
+<edit path="RAIN/optimization_convex_concave/custom_strategy.py">
+<old>
+        "z": z0,
+        "anchor_z": z0.copy(),
+        "step_index": 0,
+    }
+</old>
+<new>
+        "z": z0,
+        "step_index": 0,
+        "weight_sum": 0.0,
+        "weighted_flow_sum": np.zeros_like(z0),
+    }
+</new>
+</edit>
+<obs>
+Successfully replaced text in RAIN/optimization_convex_concave/custom_strategy.py.
+</obs>
+<note>
+[[FILL_NOTE?: optional one-line thought for this edit, or delete this block]]
+</note>
+<edit path="RAIN/optimization_convex_concave/custom_strategy.py">
+<old>
+    tau = float(hyperparameters["tau"])
+    z = as_vector(state["z"], expected_dim=2 * problem.dim)
+    anchor_z = as_vector(state["anchor_z"], expected_dim=2 * problem.dim)
+    step_index = int(state.get("step_index", 0))
+    coeff = 1.0 / (step_index + 3.0)
+
+    g = oracle.grad(z)
+    w = z - tau * g + coeff * (anchor_z - z) + oracle.noise()
+    gw = oracle.grad(w)
+    z_next = z - tau * gw + coeff * (anchor_z - z) + oracle.noise()
+    metric_iterate = z_next if problem.name == "bilinear" else z
+    return make_step_output(
+        {"z": z_next, "anchor_z": anchor_z, "step_index": step_index + 1},
+        metric_iterate,
+        2,
+    )
+</old>
+<new>
+    tau = float(hyperparameters["tau"])
+    lam = float(hyperparameters["lambda"])
+    gamma = float(hyperparameters["gamma"])
+    z = as_vector(state["z"], expected_dim=2 * problem.dim)
+    step_index = int(state.get("step_index", 0))
+    weight_sum = float(state.get("weight_sum", 0.0))
+    weighted_flow_sum = as_vector(state.get("weighted_flow_sum", np.zeros_like(z)), expected_dim=2 * problem.dim)
+
+    g = oracle.grad(z)
+    anchor_z = tau * lam * (weighted_flow_sum - weight_sum * z)
+    w = z - tau * g + anchor_z + oracle.noise()
+    gw = oracle.grad(w)
+    anchor_w = tau * lam * (weighted_flow_sum - weight_sum * w)
+    z_next = z - tau * gw + anchor_w + oracle.noise()
+
+    current_weight = gamma * (1.0 + gamma) ** (step_index + 1)
+    next_state = {
+        "z": z_next,
+        "step_index": step_index + 1,
+        "weight_sum": weight_sum + current_weight,
+        "weighted_flow_sum": weighted_flow_sum + current_weight * z_next,
+    }
+    metric_iterate = z_next if problem.name == "bilinear" else z
+    return make_step_output(next_state, metric_iterate, 2)
+</new>
+</edit>
+<obs>
+Successfully replaced text in RAIN/optimization_convex_concave/custom_strategy.py.
+</obs>
+<note>
+[[FILL_NOTE?: optional one-line thought for this edit, or delete this block]]
+</note>
+<edit path="RAIN/optimization_convex_concave/custom_strategy.py">
+<old>
+    if problem_name == "bilinear":
+        return {"tau": 0.1}
+    if problem_name == "delta_nu":
+        return {"tau": 1.0}
+    raise KeyError(f"Unknown problem: {problem_name}")
+</old>
+<new>
+    if problem_name == "bilinear":
+        return {"tau": 0.1, "lambda": 0.1, "gamma": 0.001}
+    if problem_name == "delta_nu":
+        return {"tau": 1.0, "lambda": 0.01, "gamma": 0.0001}
+    raise KeyError(f"Unknown problem: {problem_name}")
+</new>
+</edit>
+<obs>
+Successfully replaced text in RAIN/optimization_convex_concave/custom_strategy.py.
+</obs>
+<run/>
+<obs>
+Measured results — `baseline:rain` (`is_final,true`). Lower is better. Seed 42 run deterministically;
+the leaderboard repeats the identical row for seeds {42, 123, 456}.
+
+## default-noise
+| seed | final_gradient_norm | bilinear_fgn | delta_nu_fgn | auc_log_iter_log_grad |
+|---|---|---|---|---|
+| 42 | 0.021594 | 0.020523 | 0.022665 | −0.797146 |
+| 123 | 0.021594 | 0.020523 | 0.022665 | −0.797146 |
+| 456 | 0.021594 | 0.020523 | 0.022665 | −0.797146 |
+| **mean** | **0.021594** | **0.020523** | **0.022665** | **−0.797146** |
+
+## low-noise
+| seed | final_gradient_norm | bilinear_fgn | delta_nu_fgn | auc_log_iter_log_grad |
+|---|---|---|---|---|
+| mean | 0.008648 | 0.014857 | 0.002439 | −1.086840 |
+
+## high-noise
+| seed | final_gradient_norm | bilinear_fgn | delta_nu_fgn | auc_log_iter_log_grad |
+|---|---|---|---|---|
+| mean | 0.080775 | 0.047147 | 0.114402 | −0.320045 |
+</obs>
+

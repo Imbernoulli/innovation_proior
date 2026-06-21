@@ -1,0 +1,1943 @@
+<meta task="graph-generation" domain="Graph & mesh" file="pytorch-geometric/custom_graphgen.py" model_format="qwen3" edit_tool="str_replace"/>
+
+<system>
+You are a research engineer improving a model on a fixed ML task. You work by editing the model code and running experiments. Think carefully before each change. You have these tools:
+- str_replace(path, old_str, new_str): replace the unique occurrence of old_str with new_str.
+- create(path, file_text): create a new file.
+- run_experiment(): train + evaluate the current code under the fixed budget; returns metrics.
+Make one tool call at a time. After editing, call run_experiment() to measure your method.
+</system>
+
+<user>
+## Research question
+
+Unconditional graph generation: learn a distribution over a set of small graphs and sample new
+graphs whose *structure* — degree distribution, clustering, the counts of small substructures — is
+statistically indistinguishable from a held-out reference set. The single thing being designed is the
+**generative model** (`GraphGenerator`): how a graph is represented, how the likelihood is trained,
+and how a fresh graph is drawn. Everything around it — the datasets, the padded adjacency
+representation, the train loop, and the MMD scoring — is fixed.
+
+Two structural facts make this hard, and every method on the ladder is a different answer to them.
+First, **graphs are unordered**: the same graph on `n` nodes is one of up to `n!` adjacency matrices,
+so any loss that compares adjacency matrices entrywise punishes a *correct* graph produced in the
+wrong order, and the honest likelihood — a sum over `n!` permutations — is intractable. Second,
+**graphs are sparse and discrete**: `O(n)` edges out of `O(n²)` slots, binary entries, and the thing
+being scored is topology, not pixel values. A good model has to be permutation-aware and keep the
+object an honest graph.
+
+## Prior art before the first rung (the generation-paradigm lineage)
+
+The first rung reacts to the autoregressive line of graph generators — the family that builds a graph
+out of local, topology-aware decisions — while the one-shot and string lineages mark what it is
+trying to avoid.
+
+- **String surrogates (SMILES + RNN; Grammar VAE, Kusner et al. 2017).** Linearize the graph to a
+  string and run a sequence model. Borrows all of text generation's machinery and dodges both
+  graph-specific walls because a string is already ordered, but the linearization is lossy (the model
+  never sees the atoms-and-bonds object) and a character sampler emits a flood of *invalid* strings;
+  grammar decoding fixes syntax but not semantics, and it is still not a graph. Gap: hides the
+  structure being modeled.
+- **One-shot latent-variable (GraphVAE, Simonovsky & Komodakis 2018; arXiv:1802.03480).** Encode a
+  graph to `z`, decode a whole probabilistic adjacency at fixed size `k`, edges independent Bernoulli
+  given `z`. Parallel and order-free in spirit, but to score the reconstruction it must *align* the
+  decoded graph to the target — a graph-matching problem costing `O(k⁴)` with `O(k²)` parameters, so
+  it caps at a few dozen nodes — and edge independence given `z` is exactly what wrecks sample
+  quality, since whether `(i,j)` is an edge depends on the rest of the structure. Gap: doesn't scale,
+  edges uncorrelated.
+- **GNN-in-the-loop autoregression (DeepGMG, Li et al. 2018).** Build the graph by local decisions
+  (add node? add edge? to whom?), running full message passing before *each* decision, so every
+  decision sees the real topology. Expressive, but a fresh propagation per atomic decision costs on
+  the order of `m·n²·diam(G)` — hopeless past a few tens of nodes. Gap: topology-aware but far too
+  slow.
+- **RNN autoregression (GraphRNN, You et al. 2018; arXiv:1802.08773).** Drop the GNN: under a BFS
+  ordering, emit the graph as a sequence of adjacency vectors with a graph-level RNN holding state and
+  an edge-level RNN emitting each row entry-by-entry. Scales (`O(M·n)` with BFS bounding the row
+  width), but spends `O(N²)` sequential decisions, conditions only through the recurrent state rather
+  than directly on topology, and the long generation sequence stretches the dependency between
+  graph-adjacent nodes across many recurrent steps. Gap: scalable but not directly topology-aware, and
+  a long-horizon bottleneck.
+- **Score-based / diffusion (GDSS, Jo et al. 2022; arXiv:2202.02514).** Borrow the strongest image
+  paradigm — a forward corruption process and a learned reverse — by embedding the adjacency in a
+  continuous space and adding Gaussian noise. But Gaussian noise on a graph turns the sparse 0/1
+  adjacency into a dense fog where degree, clustering, and cycle counts are no longer even defined, so
+  the denoiser is reconstructing structure from something that has no structure. Gap: continuizing a
+  discrete object destroys the very statistics being modeled.
+
+## The fixed substrate
+
+The data, representation, and evaluation are frozen and must not be touched. Three datasets span the
+size range — `community_small` (100 two-community graphs, 12–20 nodes), `ego_small` (200 Citeseer ego
+graphs, 4–18 nodes), and `enzymes` (587 BRENDA protein-structure graphs, 10–125 nodes). Each graph is
+delivered as a binary, symmetric, zero-diagonal adjacency padded to `max_nodes`, with a `node_counts`
+tensor giving the true size; an 80/20 train/reference split is taken inside the loop. The loop runs
+the same schedule for every method — 500 epochs, batch size 32, Adam — calls `train_step` per batch,
+then at the end calls `sample(n_gen, device)`, thresholds the output at 0.5, symmetrizes, drops
+self-loops, and scores. A parameter budget of 1.05× the largest baseline is enforced. Scoring is
+**MMD between graph statistics** of generated vs. reference graphs: degree and clustering MMD use a
+Gaussian-EMD kernel over normalized histograms, orbit MMD uses a plain Gaussian kernel (σ=30) on raw
+per-graph 4-orbit count vectors. **All four metrics are lower-is-better.**
+
+## The editable interface
+
+Exactly one region is editable — the `GraphGenerator` class in `custom_graphgen.py` (lines 446–590).
+Every method on the ladder is a fill of the same three-method contract:
+
+- `__init__(self, max_nodes, **kwargs)` — build the model and create its optimizer.
+- `train_step(self, adj, node_counts) -> dict` — one optimizer step on a batch of padded adjacency
+  matrices `[B, max_nodes, max_nodes]` with sizes `[B]`; return a dict with at least `'loss'`.
+- `sample(self, n_samples, device) -> (adj, node_counts)` — draw graphs: `adj` is
+  `[n_samples, max_nodes, max_nodes]` (binary, symmetric, no self-loops) and `node_counts` is
+  `[n_samples]` (each ≥ 2).
+
+Available inside the region: `torch`, `torch.nn`, `torch.nn.functional`, `torch.optim`, `numpy`,
+`math`. Helper classes/functions may be defined alongside `GraphGenerator`. The starting point is the
+scaffold default below — a **plain-MLP VAE**: flatten the adjacency, encode to a Gaussian latent,
+decode the whole adjacency back through an MLP, train on per-entry reconstruction BCE plus a tiny KL,
+and sample by drawing `z ~ N(0,I)` and thresholding the decoded probabilities. It is the simplest
+order-blind one-shot fill, and the ladder replaces exactly this class.
+
+```python
+# EDITABLE region of custom_graphgen.py (lines 446-590) — default fill: plain-MLP VAE
+class GraphGenerator(nn.Module):
+    """Default baseline: flatten-adjacency VAE with an MLP encoder/decoder."""
+
+    def __init__(self, max_nodes, hidden_dim=256, latent_dim=64, lr=1e-3, **kwargs):
+        super().__init__()
+        self.max_nodes = max_nodes
+        self.hidden_dim = hidden_dim
+        self.latent_dim = latent_dim
+        adj_size = max_nodes * max_nodes
+
+        self.encoder = nn.Sequential(
+            nn.Linear(adj_size, hidden_dim), nn.ReLU(),
+            nn.Linear(hidden_dim, hidden_dim), nn.ReLU(),
+        )
+        self.fc_mu = nn.Linear(hidden_dim, latent_dim)
+        self.fc_logvar = nn.Linear(hidden_dim, latent_dim)
+
+        self.decoder = nn.Sequential(
+            nn.Linear(latent_dim, hidden_dim), nn.ReLU(),
+            nn.Linear(hidden_dim, hidden_dim), nn.ReLU(),
+            nn.Linear(hidden_dim, adj_size),
+        )
+        self.optimizer = optim.Adam(self.parameters(), lr=lr)
+
+    def encode(self, adj):
+        B = adj.shape[0]
+        h = self.encoder(adj.view(B, -1))
+        return self.fc_mu(h), self.fc_logvar(h)
+
+    def reparameterize(self, mu, logvar):
+        std = torch.exp(0.5 * logvar)
+        return mu + torch.randn_like(std) * std
+
+    def decode(self, z):
+        B = z.shape[0]
+        logits = self.decoder(z).view(B, self.max_nodes, self.max_nodes)
+        logits = (logits + logits.transpose(1, 2)) / 2                 # symmetric
+        mask = 1 - torch.eye(self.max_nodes, device=z.device).unsqueeze(0)
+        return logits * mask                                           # no self-loops
+
+    def train_step(self, adj, node_counts):
+        self.train()
+        self.optimizer.zero_grad()
+        mu, logvar = self.encode(adj)
+        z = self.reparameterize(mu, logvar)
+        adj_logits = self.decode(z)
+        recon_loss = F.binary_cross_entropy_with_logits(adj_logits, adj, reduction="mean")
+        kl_loss = -0.5 * torch.mean(1 + logvar - mu.pow(2) - logvar.exp())
+        loss = recon_loss + 0.001 * kl_loss
+        loss.backward()
+        self.optimizer.step()
+        return {"loss": loss.item(), "recon_loss": recon_loss.item(), "kl_loss": kl_loss.item()}
+
+    def sample(self, n_samples, device):
+        self.eval()
+        with torch.no_grad():
+            z = torch.randn(n_samples, self.latent_dim, device=device)
+            adj = (torch.sigmoid(self.decode(z)) > 0.5).float()
+            node_mask = (adj.sum(dim=-1) > 0).float()
+            node_counts = torch.clamp(node_mask.sum(dim=-1).long(), min=2)
+        return adj, node_counts
+```
+
+## Evaluation settings
+
+Three datasets — `community_small`, `ego_small`, `enzymes` — each over three seeds {42, 123, 456}.
+Four metrics, **all lower is better**: `mmd_degree`, `mmd_clustering`, `mmd_orbit`, and their average
+`mmd_avg`. The fixed schedule (500 epochs, batch 32, single GPU, Adam) is identical for every method;
+the reported figure of merit is per-dataset `mmd_avg` and the overall mean across the three datasets.
+
+The editable model code is in `pytorch-geometric/custom_graphgen.py`:
+```python
+# The agent should modify the GraphGenerator class below.
+# The class must implement:
+#   - __init__(self, max_nodes, **kwargs): initialize model parameters
+#   - train_step(self, adj, node_counts) -> dict: one training step, returns loss dict
+#   - sample(self, n_samples, device) -> (adj_matrices, node_counts):
+#       generate n_samples graphs, return adjacency tensors and node count tensors
+#
+# The model receives adjacency matrices [B, max_nodes, max_nodes] and node counts [B].
+# It should generate adjacency matrices of similar structure.
+# ============================================================================
+
+class GraphGenerator(nn.Module):
+    """Generative model for graphs.
+
+    This is a simple VAE-based baseline that encodes graphs into a latent space
+    and decodes to adjacency matrices. The agent should replace this with a
+    better generative model.
+
+    Design space includes:
+      - Autoregressive models (node-by-node or edge-by-edge generation)
+      - One-shot models (generate full adjacency at once)
+      - Score-based / diffusion models (iterative denoising)
+      - Flow-based models (invertible transformations)
+      - VAE variants with graph-aware encoders/decoders
+
+    Args:
+        max_nodes: Maximum number of nodes in generated graphs.
+        hidden_dim: Hidden dimension for encoder/decoder networks.
+        latent_dim: Latent space dimension.
+        lr: Learning rate for the optimizer.
+    """
+
+    def __init__(self, max_nodes, hidden_dim=256, latent_dim=64, lr=1e-3, **kwargs):
+        super().__init__()
+        self.max_nodes = max_nodes
+        self.hidden_dim = hidden_dim
+        self.latent_dim = latent_dim
+        adj_size = max_nodes * max_nodes
+
+        # Encoder: adjacency -> latent
+        self.encoder = nn.Sequential(
+            nn.Linear(adj_size, hidden_dim),
+            nn.ReLU(),
+            nn.Linear(hidden_dim, hidden_dim),
+            nn.ReLU(),
+        )
+        self.fc_mu = nn.Linear(hidden_dim, latent_dim)
+        self.fc_logvar = nn.Linear(hidden_dim, latent_dim)
+
+        # Decoder: latent -> adjacency
+        self.decoder = nn.Sequential(
+            nn.Linear(latent_dim, hidden_dim),
+            nn.ReLU(),
+            nn.Linear(hidden_dim, hidden_dim),
+            nn.ReLU(),
+            nn.Linear(hidden_dim, adj_size),
+        )
+
+        self.optimizer = optim.Adam(self.parameters(), lr=lr)
+
+    def encode(self, adj):
+        """Encode adjacency matrix to latent distribution parameters."""
+        B = adj.shape[0]
+        x = adj.view(B, -1)
+        h = self.encoder(x)
+        return self.fc_mu(h), self.fc_logvar(h)
+
+    def reparameterize(self, mu, logvar):
+        """Reparameterization trick."""
+        std = torch.exp(0.5 * logvar)
+        eps = torch.randn_like(std)
+        return mu + eps * std
+
+    def decode(self, z):
+        """Decode latent vector to adjacency matrix."""
+        B = z.shape[0]
+        logits = self.decoder(z)
+        logits = logits.view(B, self.max_nodes, self.max_nodes)
+        # Make symmetric
+        logits = (logits + logits.transpose(1, 2)) / 2
+        # Zero diagonal (no self-loops)
+        mask = 1 - torch.eye(self.max_nodes, device=z.device).unsqueeze(0)
+        logits = logits * mask
+        return logits
+
+    def train_step(self, adj, node_counts):
+        """One training step.
+
+        Args:
+            adj: [B, max_nodes, max_nodes] binary adjacency matrices.
+            node_counts: [B] number of actual nodes per graph.
+
+        Returns:
+            dict with at least 'loss' key (float).
+        """
+        self.train()
+        self.optimizer.zero_grad()
+
+        mu, logvar = self.encode(adj)
+        z = self.reparameterize(mu, logvar)
+        adj_logits = self.decode(z)
+
+        # Reconstruction loss (binary cross-entropy)
+        recon_loss = F.binary_cross_entropy_with_logits(
+            adj_logits, adj, reduction="mean"
+        )
+
+        # KL divergence
+        kl_loss = -0.5 * torch.mean(1 + logvar - mu.pow(2) - logvar.exp())
+
+        loss = recon_loss + 0.001 * kl_loss
+        loss.backward()
+        self.optimizer.step()
+
+        return {
+            "loss": loss.item(),
+            "recon_loss": recon_loss.item(),
+            "kl_loss": kl_loss.item(),
+        }
+
+    def sample(self, n_samples, device):
+        """Generate graphs by sampling from the latent space.
+
+        Args:
+            n_samples: Number of graphs to generate.
+            device: torch device.
+
+        Returns:
+            adj: Tensor [n_samples, max_nodes, max_nodes] — generated adjacency
+                 matrices (binary, symmetric, no self-loops).
+            node_counts: Tensor [n_samples] — number of nodes per generated graph.
+                         Can use max_nodes if variable-size generation is not supported.
+        """
+        self.eval()
+        with torch.no_grad():
+            z = torch.randn(n_samples, self.latent_dim, device=device)
+            adj_logits = self.decode(z)
+            adj = (torch.sigmoid(adj_logits) > 0.5).float()
+            # Estimate node counts from generated adjacency
+            # (nodes with at least one edge are considered present)
+            node_mask = (adj.sum(dim=-1) > 0).float()  # [B, max_nodes]
+            node_counts = node_mask.sum(dim=-1).long()  # [B]
+            node_counts = torch.clamp(node_counts, min=2)
+        return adj, node_counts
+```
+Improve it. Derive your method, edit the code, then run_experiment().
+</user>
+
+### step 1 — GRAN (one-shot attentive refinement)   [slug:gran]
+
+<think>
+[[POLISH_REASONING: adapt to first-person agentic voice, end by deciding to implement]]
+The model is the whole point, but it has to live inside a fixed harness, and the cheapest thing that
+fills the contract is the floor — so the pain to start from is just *learning a distribution over
+these adjacency matrices at all*, under the constraints that actually bind here. The loop hands me
+padded binary adjacency matrices `[B, max_nodes, max_nodes]`, calls `train_step` on each batch for 500
+epochs, then calls `sample` once and scores degree, clustering, and orbit MMD against a held-out
+reference set. The default fill is a plain-MLP VAE: flatten the adjacency, encode to a Gaussian, decode
+the whole matrix back, train on per-entry reconstruction. That floor is order-blind in the worst way —
+it compares the decoded adjacency to the target *entrywise*, so a correct graph emitted under a
+different node permutation is punished hard, and the latent has to memorize orderings instead of
+structure. I want something that at least *reasons about the graph as a graph* before it predicts
+edges: a model where each edge decision is informed by the topology around it, not just by a flat MLP
+readout of a latent. That points away from the latent-variable family and toward a model that passes
+messages over the nodes and predicts edges from the resulting node states.
+
+Let me write down what I am really after so I don't fool myself. I want a generator that (1) predicts
+each edge `(i,j)` as a function of *node representations* that have absorbed the surrounding structure,
+so edge decisions are topology-aware rather than independent readouts of a single bottleneck vector;
+(2) produces a whole symmetric, self-loop-free adjacency at fixed `max_nodes`, since that is exactly
+what `sample` must return and what the loop thresholds and scores; and (3) trains and samples cheaply
+enough to fit 500 epochs on three datasets, including `enzymes` at `max_nodes` up to 125. The
+autoregressive lineage is the natural place to look for topology-aware edge decisions — DeepGMG runs a
+full GNN before every atomic decision so each edge sees the real graph, and that is the right
+instinct — but it pays a full message-passing pass per decision, costing on the order of
+`m·n²·diam(G)`, which is hopeless here, and worse it bakes in a *generation order* the loop never asked
+for. GraphRNN scales by dropping the GNN and emitting rows under a BFS ordering, but then every edge
+decision is filtered through a recurrent state rather than conditioned directly on the topology, and it
+spends `O(N²)` strictly-sequential steps that I would have to unroll inside `train_step`. Both
+autoregressive routes drag in an ordering and a long sequential dependency I would rather not carry in
+this harness.
+
+So let me ask the heretical question for an autoregressive family: do I need the *sequence* at all, or
+do I only need the *topology-aware edge predictor*? The thing that made DeepGMG good was that each edge
+saw the graph through message passing; the thing that made it slow was running that message passing
+once per atomic decision and serializing the decisions. What if I keep the message passing — node
+representations that absorb structure, attention so a node listens to the neighbors that matter — but
+*drop the sequential construction entirely*, and instead predict the entire adjacency in one shot from
+the refined node states, then refine that prediction a handful of times? That gives me the
+topology-aware edge predictor without the `O(N²)` sequential unroll and without an imposed ordering. It
+is a one-shot model with a message-passing core: attention-and-edge-MLP refinement over the full node
+set, an edge predictor reading pairs of node states, and a node-existence predictor so a fixed-size
+adjacency can represent graphs on fewer than `max_nodes` nodes. This is the version of attentive graph
+generation that fits the harness's `sample` contract directly — produce a full adjacency, no node
+ordering, no recurrent rollout.
+
+Let me build the refinement core, because that is where the topology-awareness lives. The state is a
+node-feature tensor `[B, N, D]` and an edge-feature tensor `[B, N, N, 1]` initialized from the (current)
+adjacency. One refinement block does three things. First, **attention over nodes**: multi-head
+self-attention so each node's representation is updated by a learned weighting of all other nodes —
+`attn = softmax(QKᵀ/√d)`, `out = attn·V`, with a residual and a LayerNorm — which is the message-
+passing step, letting a node absorb the structure it sits in. Why attention rather than a fixed
+degree-normalized GCN aggregation? Because the edges I am conditioning on are themselves uncertain
+(during sampling they start as guesses), so I want the node update to *learn* which neighbors to trust
+rather than average them uniformly. Second, an **edge update**: for every pair `(i,j)` form
+`[n_i, n_j, e_ij]`, push it through an MLP, and add the result back to the edge feature — so the edge
+representation accumulates evidence from both endpoints. Third, an **edge-to-node aggregation**: sum
+each node's incident edge features (masked to real nodes when a mask is available), concatenate with
+the node state, run an MLP, residual-and-norm — so the node state also hears from its edges, not only
+from attention. Stacking a few of these blocks (the fill uses three) and treating the stack as the
+refinement is what gives me, in one forward pass, node states that have integrated several rounds of
+structure.
+
+From the refined node states I emit two predictions. The **edge logits**: for each pair form
+`[n_i, n_j, e_ij]` again, an MLP to a scalar, then symmetrize `(L + Lᵀ)/2` and zero the diagonal — the
+two constraints the loop requires of `sample`'s output, baked into the predictor rather than hoped for.
+The **node-existence logits**: an MLP per node to a scalar, which lets the fixed-`N` adjacency say
+"this slot is empty" so a graph on `n < N` nodes can come out. Training is then almost embarrassingly
+direct compared to the autoregressive likelihoods: there is no ordering to marginalize and no sequence
+to unroll, so I just teacher-force the *true* adjacency through the refinement and ask the edge logits
+to reconstruct it. The edge loss is per-entry binary cross-entropy of the edge logits against the
+target adjacency; the node loss is BCE of the node-existence logits against the true node mask
+(`adj.sum(-1) > 0`); the total is `edge_loss + 0.5·node_loss`, with the node term down-weighted because
+there are `O(N)` node terms against `O(N²)` edge terms and I do not want node existence to dominate. A
+global grad-norm clip at 1.0 keeps the attention stack from taking a destructive step early. That is
+the entire `train_step`: one forward pass on the real adjacency, one reconstruction loss, one Adam
+step — no sequential inner loop, which is exactly the cost I was trying to buy back from the
+autoregressive route.
+
+Now sampling, and this is where I have to be most careful, because a one-shot refinement model has no
+ground-truth prefix to lean on — it has to hallucinate a graph from nothing. If I start the refinement
+from an all-zeros adjacency, watch what happens: the edge features are all zero, attention has nothing
+structural to weight, the edge-to-node aggregation sums to zero, so every node looks identical, the
+node-existence predictor sees uniform empty states and predicts every node *absent*, and the output is
+the empty graph. The model collapses to nothing. So I cannot start from zeros. The fix is to start the
+refinement from a **random sparse adjacency** — draw each upper-triangular entry Bernoulli with a small
+`p_init` (the fill uses 0.3), symmetrize — so there is real edge signal for the attention and the edge
+MLPs to chew on. Then I refine: at each of `n_refine_steps` (the fill uses 5), run the forward pass,
+take `edge_probs = sigmoid(edge_logits)`, and *resample* the adjacency as `Bernoulli(edge_probs)`,
+symmetrizing each time. The refinement is a fixed-point-style sweep that pulls the random initial graph
+toward something the edge predictor is confident about. After the last sweep I read node counts off the
+realized connectivity (`(adj.sum(-1) > 0).sum(-1)`, clamped to ≥ 2) rather than off the node-existence
+predictor, because that predictor was trained on *real* adjacency rows and is unreliable when fed the
+random-then-refined adjacency at inference time — so I trust the structure the refinement actually
+produced over the auxiliary head's guess.
+
+I want to be honest about what this construction is and is not. It is *not* the block-wise
+autoregressive generator with a per-step GNN, mixture-of-Bernoulli edge outputs, and a family of
+canonical orderings that the autoregressive line points toward — that machinery is the principled way
+to get *correlated* edges (a shared latent mixture index couples the edges in a block) and a tractable
+permutation-aware likelihood (a logsumexp over canonical orderings). This harness fill keeps none of
+it: the edges are predicted as **independent** Bernoullis given the node states (no mixture latent, so
+no modeled edge correlation), there is **no ordering and no autoregression** (the whole adjacency is
+predicted at once and refined), the training signal is a plain **reconstruction BCE** rather than a
+sequence likelihood, and "iterative refinement" here means resampling the full adjacency a fixed five
+times at sampling, not block-by-block construction. I am keeping only the *attention-based message-
+passing edge predictor* and re-expressing it as a one-shot refiner that fits the `sample` contract.
+That is a deliberate simplification forced by the contract — `sample` wants a whole adjacency, not a
+sequence — and I should expect it to cost me exactly the things I dropped: independent edges cannot
+represent "both these edges fire or neither," which is precisely the kind of correlation that makes a
+two-community graph or a clustered ego-graph look right, and a model that reconstructs the true
+adjacency entrywise still has the order-sensitivity problem the default VAE had, only now with a
+fancier predictor in front of it.
+
+So at step 1 this is the rung I run, and I should reason carefully about where it will land, because it
+is the start of the climb. The thing I genuinely improved over the plain-MLP floor is the *edge
+predictor*: edges now come from node states that have passed messages over the graph, with attention
+choosing whom to listen to, rather than from a flat decode of one latent vector. That should help most
+where local structure is regular and learnable — the dense two-community blocks of `community_small`,
+where a node's edges are strongly predictable from its community, and the small `enzymes` motifs.
+Where I expect trouble is everywhere the *sampling* dynamics bite. The refinement starts from a random
+`Bernoulli(0.3)` adjacency, which on a dataset of sparse graphs is far too dense, and five resampling
+sweeps from that starting point are a short, high-variance walk: whether they land on a clean sparse
+graph or stall on a dense blob depends on the random init and on how confident the edge predictor
+became in 500 epochs. That is a recipe for *seed sensitivity* — some seeds should converge to sensible
+sparse graphs and score well, while a seed whose refinement stalls on an over-dense or degenerate
+adjacency will score terribly on every MMD at once. The node-count-from-connectivity rule adds a second
+failure mode: if the refinement leaves spurious scattered edges, node counts inflate and the degree and
+orbit statistics drift away from the reference.
+
+My falsifiable expectations for this floor, then. On `community_small`, where the dense local block
+structure is the easiest thing for an attention edge predictor to learn, I expect the *good* seeds to
+do genuinely well — this should be the rung's best dataset. On `ego_small` and `enzymes` I expect the
+refinement's random-init-plus-five-sweeps sampler to be the dominant story: a wide seed-to-seed spread,
+with at least one seed collapsing to a high-MMD blob because the sweep stalled on an over-dense graph,
+dragging the *mean* up even if the other seeds are fine. The independent-edge assumption means even the
+good seeds will miss the higher-order correlations the orbit statistic measures. So the prediction is:
+strong on the regular-structure dataset, but a high-variance, seed-fragile generator overall whose mean
+is pulled up by collapse on the larger/sparser graphs — a model that *can* produce good graphs but does
+not do so reliably, which is exactly the weakness the next rung will have to fix. The distilled
+scaffold module is in the answer.
+</think>
+<say>
+[[FILL_SAY: 1-2 sentences naming the method and what this first edit does]]
+</say>
+<edit path="pytorch-geometric/custom_graphgen.py">
+<old>
+# The agent should modify the GraphGenerator class below.
+# The class must implement:
+#   - __init__(self, max_nodes, **kwargs): initialize model parameters
+#   - train_step(self, adj, node_counts) -> dict: one training step, returns loss dict
+#   - sample(self, n_samples, device) -> (adj_matrices, node_counts):
+#       generate n_samples graphs, return adjacency tensors and node count tensors
+#
+# The model receives adjacency matrices [B, max_nodes, max_nodes] and node counts [B].
+# It should generate adjacency matrices of similar structure.
+# ============================================================================
+
+class GraphGenerator(nn.Module):
+    """Generative model for graphs.
+
+    This is a simple VAE-based baseline that encodes graphs into a latent space
+    and decodes to adjacency matrices. The agent should replace this with a
+    better generative model.
+
+    Design space includes:
+      - Autoregressive models (node-by-node or edge-by-edge generation)
+      - One-shot models (generate full adjacency at once)
+      - Score-based / diffusion models (iterative denoising)
+      - Flow-based models (invertible transformations)
+      - VAE variants with graph-aware encoders/decoders
+
+    Args:
+        max_nodes: Maximum number of nodes in generated graphs.
+        hidden_dim: Hidden dimension for encoder/decoder networks.
+        latent_dim: Latent space dimension.
+        lr: Learning rate for the optimizer.
+    """
+
+    def __init__(self, max_nodes, hidden_dim=256, latent_dim=64, lr=1e-3, **kwargs):
+        super().__init__()
+        self.max_nodes = max_nodes
+        self.hidden_dim = hidden_dim
+        self.latent_dim = latent_dim
+        adj_size = max_nodes * max_nodes
+
+        # Encoder: adjacency -> latent
+        self.encoder = nn.Sequential(
+            nn.Linear(adj_size, hidden_dim),
+            nn.ReLU(),
+            nn.Linear(hidden_dim, hidden_dim),
+            nn.ReLU(),
+        )
+        self.fc_mu = nn.Linear(hidden_dim, latent_dim)
+        self.fc_logvar = nn.Linear(hidden_dim, latent_dim)
+
+        # Decoder: latent -> adjacency
+        self.decoder = nn.Sequential(
+            nn.Linear(latent_dim, hidden_dim),
+            nn.ReLU(),
+            nn.Linear(hidden_dim, hidden_dim),
+            nn.ReLU(),
+            nn.Linear(hidden_dim, adj_size),
+        )
+</old>
+<new>
+# EDITABLE region of custom_graphgen.py (lines 446-590) — step 1: GRAN (one-shot attentive refinement)
+class AttentionBlock(nn.Module):
+    """Multi-head attention for graph nodes."""
+
+    def __init__(self, dim, n_heads=4):
+        super().__init__()
+        self.n_heads = n_heads
+        self.head_dim = dim // n_heads
+        self.qkv = nn.Linear(dim, 3 * dim)
+        self.proj = nn.Linear(dim, dim)
+        self.norm = nn.LayerNorm(dim)
+
+    def forward(self, x, mask=None):
+        B, N, C = x.shape
+        qkv = self.qkv(x).reshape(B, N, 3, self.n_heads, self.head_dim)
+        qkv = qkv.permute(2, 0, 3, 1, 4)
+        q, k, v = qkv[0], qkv[1], qkv[2]
+        attn = (q @ k.transpose(-2, -1)) / math.sqrt(self.head_dim)
+        if mask is not None:
+            attn = attn.masked_fill(~mask.unsqueeze(1).unsqueeze(1), float('-inf'))
+        attn = F.softmax(attn, dim=-1)
+        out = (attn @ v).transpose(1, 2).reshape(B, N, C)
+        return self.norm(x + self.proj(out))
+
+
+class GRANBlock(nn.Module):
+    """GRAN message passing block with attention and edge prediction."""
+
+    def __init__(self, node_dim, edge_dim=1, n_heads=4):
+        super().__init__()
+        self.attn = AttentionBlock(node_dim, n_heads)
+        self.edge_mlp = nn.Sequential(
+            nn.Linear(2 * node_dim + edge_dim, node_dim),
+            nn.ReLU(),
+            nn.Linear(node_dim, edge_dim),
+        )
+        self.node_mlp = nn.Sequential(
+            nn.Linear(node_dim + edge_dim, node_dim),
+            nn.ReLU(),
+            nn.Linear(node_dim, node_dim),
+        )
+        self.norm = nn.LayerNorm(node_dim)
+
+    def forward(self, node_feat, edge_feat, mask=None):
+        B, N, D = node_feat.shape
+        # Attention-based node update
+        node_feat = self.attn(node_feat, mask)
+
+        # Edge update
+        ni = node_feat.unsqueeze(2).expand(-1, -1, N, -1)
+        nj = node_feat.unsqueeze(1).expand(-1, N, -1, -1)
+        edge_input = torch.cat([ni, nj, edge_feat], dim=-1)
+        edge_feat = edge_feat + self.edge_mlp(edge_input)
+
+        # Aggregate edge info to nodes
+        if mask is not None:
+            edge_agg = (edge_feat * mask.unsqueeze(-1).unsqueeze(-1).float()).sum(dim=2)
+        else:
+            edge_agg = edge_feat.mean(dim=2)
+        node_input = torch.cat([node_feat, edge_agg], dim=-1)
+        node_feat = self.norm(node_feat + self.node_mlp(node_input))
+
+        return node_feat, edge_feat
+
+
+class GraphGenerator(nn.Module):
+    """GRAN: Graph Recurrent Attention Network.
+
+    Iteratively refines node and edge representations using attention-based
+    message passing, then predicts edge probabilities for graph generation.
+    """
+
+    def __init__(self, max_nodes, hidden_dim=128, n_layers=3, n_heads=4,
+                 n_refine_steps=5, lr=1e-3, **kwargs):
+        super().__init__()
+        self.max_nodes = max_nodes
+        self.hidden_dim = hidden_dim
+        self.n_refine_steps = n_refine_steps
+
+        # Node embedding
+        self.node_embed = nn.Linear(max_nodes, hidden_dim)
+
+        # GRAN blocks (shared across refinement steps)
+        self.blocks = nn.ModuleList([
+            GRANBlock(hidden_dim, edge_dim=1, n_heads=n_heads)
+            for _ in range(n_layers)
+        ])
+
+        # Final edge prediction
+        self.edge_pred = nn.Sequential(
+            nn.Linear(2 * hidden_dim + 1, hidden_dim),
+            nn.ReLU(),
+            nn.Linear(hidden_dim, 1),
+        )
+
+        # Node existence prediction
+        self.node_pred = nn.Sequential(
+            nn.Linear(hidden_dim, hidden_dim // 2),
+            nn.ReLU(),
+            nn.Linear(hidden_dim // 2, 1),
+        )
+</new>
+</edit>
+<obs>
+Successfully replaced text in pytorch-geometric/custom_graphgen.py.
+</obs>
+<note>
+[[FILL_NOTE?: optional one-line thought for this edit, or delete this block]]
+</note>
+<edit path="pytorch-geometric/custom_graphgen.py">
+<old>
+
+    def encode(self, adj):
+        """Encode adjacency matrix to latent distribution parameters."""
+        B = adj.shape[0]
+        x = adj.view(B, -1)
+        h = self.encoder(x)
+        return self.fc_mu(h), self.fc_logvar(h)
+
+    def reparameterize(self, mu, logvar):
+        """Reparameterization trick."""
+        std = torch.exp(0.5 * logvar)
+        eps = torch.randn_like(std)
+        return mu + eps * std
+
+    def decode(self, z):
+        """Decode latent vector to adjacency matrix."""
+        B = z.shape[0]
+        logits = self.decoder(z)
+        logits = logits.view(B, self.max_nodes, self.max_nodes)
+        # Make symmetric
+        logits = (logits + logits.transpose(1, 2)) / 2
+        # Zero diagonal (no self-loops)
+        mask = 1 - torch.eye(self.max_nodes, device=z.device).unsqueeze(0)
+        logits = logits * mask
+        return logits
+
+    def train_step(self, adj, node_counts):
+        """One training step.
+
+        Args:
+            adj: [B, max_nodes, max_nodes] binary adjacency matrices.
+            node_counts: [B] number of actual nodes per graph.
+
+        Returns:
+            dict with at least 'loss' key (float).
+        """
+        self.train()
+        self.optimizer.zero_grad()
+
+        mu, logvar = self.encode(adj)
+        z = self.reparameterize(mu, logvar)
+        adj_logits = self.decode(z)
+
+        # Reconstruction loss (binary cross-entropy)
+        recon_loss = F.binary_cross_entropy_with_logits(
+            adj_logits, adj, reduction="mean"
+        )
+
+        # KL divergence
+        kl_loss = -0.5 * torch.mean(1 + logvar - mu.pow(2) - logvar.exp())
+
+        loss = recon_loss + 0.001 * kl_loss
+        loss.backward()
+        self.optimizer.step()
+
+        return {
+            "loss": loss.item(),
+            "recon_loss": recon_loss.item(),
+            "kl_loss": kl_loss.item(),
+        }
+
+    def sample(self, n_samples, device):
+        """Generate graphs by sampling from the latent space.
+
+        Args:
+            n_samples: Number of graphs to generate.
+            device: torch device.
+
+        Returns:
+            adj: Tensor [n_samples, max_nodes, max_nodes] — generated adjacency
+                 matrices (binary, symmetric, no self-loops).
+            node_counts: Tensor [n_samples] — number of nodes per generated graph.
+                         Can use max_nodes if variable-size generation is not supported.
+        """
+        self.eval()
+        with torch.no_grad():
+            z = torch.randn(n_samples, self.latent_dim, device=device)
+            adj_logits = self.decode(z)
+            adj = (torch.sigmoid(adj_logits) > 0.5).float()
+            # Estimate node counts from generated adjacency
+            # (nodes with at least one edge are considered present)
+            node_mask = (adj.sum(dim=-1) > 0).float()  # [B, max_nodes]
+            node_counts = node_mask.sum(dim=-1).long()  # [B]
+            node_counts = torch.clamp(node_counts, min=2)
+        return adj, node_counts
+</old>
+<new>
+
+    def _forward(self, adj, node_mask=None):
+        B, N, _ = adj.shape
+        device = adj.device
+
+        # Initial node features (identity-based)
+        x = torch.eye(N, device=device).unsqueeze(0).expand(B, -1, -1)
+        node_feat = F.relu(self.node_embed(x))  # [B, N, hidden]
+
+        # Initial edge features from adjacency
+        edge_feat = adj.unsqueeze(-1)  # [B, N, N, 1]
+
+        # Iterative refinement
+        for block in self.blocks:
+            node_feat, edge_feat = block(node_feat, edge_feat, node_mask)
+
+        # Predict edges
+        ni = node_feat.unsqueeze(2).expand(-1, -1, N, -1)
+        nj = node_feat.unsqueeze(1).expand(-1, N, -1, -1)
+        edge_input = torch.cat([ni, nj, edge_feat], dim=-1)
+        edge_logits = self.edge_pred(edge_input).squeeze(-1)  # [B, N, N]
+
+        # Symmetrize and remove self-loops
+        edge_logits = (edge_logits + edge_logits.transpose(1, 2)) / 2
+        diag_mask = 1 - torch.eye(N, device=device).unsqueeze(0)
+        edge_logits = edge_logits * diag_mask
+
+        # Node existence
+        node_logits = self.node_pred(node_feat).squeeze(-1)  # [B, N]
+
+        return edge_logits, node_logits
+
+    def train_step(self, adj, node_counts):
+        self.train()
+        self.optimizer.zero_grad()
+
+        edge_logits, node_logits = self._forward(adj)
+
+        # Edge loss
+        edge_loss = F.binary_cross_entropy_with_logits(edge_logits, adj, reduction="mean")
+
+        # Node existence loss
+        node_target = (adj.sum(dim=-1) > 0).float()
+        node_loss = F.binary_cross_entropy_with_logits(node_logits, node_target, reduction="mean")
+
+        loss = edge_loss + 0.5 * node_loss
+        loss.backward()
+        torch.nn.utils.clip_grad_norm_(self.parameters(), 1.0)
+        self.optimizer.step()
+
+        return {"loss": loss.item(), "edge_loss": edge_loss.item()}
+
+    def sample(self, n_samples, device):
+        self.eval()
+        with torch.no_grad():
+            # Start from random sparse adjacency (not zeros) to provide edge signal.
+            # Starting from zeros leads to empty output: node aggregation is zero ->
+            # node predictor predicts all nodes absent -> empty graph.
+            p_init = 0.3
+            adj = (torch.rand(n_samples, self.max_nodes, self.max_nodes, device=device) < p_init).float()
+            adj = torch.triu(adj, diagonal=1)
+            adj = adj + adj.transpose(1, 2)
+
+            for step in range(self.n_refine_steps):
+                edge_logits, node_logits = self._forward(adj)
+                edge_probs = torch.sigmoid(edge_logits)
+                adj = (torch.rand_like(edge_probs) < edge_probs).float()
+                adj = torch.triu(adj, diagonal=1)
+                adj = adj + adj.transpose(1, 2)
+
+            # Derive node counts from connectivity (node predictor is unreliable
+            # when initialized from random adjacency at inference time).
+            node_counts = (adj.sum(dim=-1) > 0).long().sum(dim=-1)
+            node_counts = torch.clamp(node_counts, min=2)
+
+        return adj, node_counts
+</new>
+</edit>
+<obs>
+Successfully replaced text in pytorch-geometric/custom_graphgen.py.
+</obs>
+<run/>
+<obs>
+Measured results — `baseline:gran` (`is_final,true`), seeds {42, 123, 456} and mean. All metrics lower is better.
+
+## community_small
+| seed | mmd_degree | mmd_clustering | mmd_orbit | mmd_avg |
+|---|---|---|---|---|
+| 42 | 0.162538 | 0.100000 | 0.394509 | 0.219016 |
+| 123 | 0.017644 | 0.117769 | 0.000048 | 0.045154 |
+| 456 | 0.015979 | 0.113248 | 0.000041 | 0.043090 |
+| **mean** | **0.065387** | **0.110339** | **0.131533** | **0.102420** |
+
+## ego_small
+| seed | mmd_degree | mmd_clustering | mmd_orbit | mmd_avg |
+|---|---|---|---|---|
+| 42 | 1.215348 | 0.116250 | 1.124861 | 0.818820 |
+| 123 | 0.252445 | 0.194129 | 0.000190 | 0.148921 |
+| 456 | 0.251909 | 0.204198 | 0.000220 | 0.152109 |
+| **mean** | **0.573234** | **0.171526** | **0.375090** | **0.373283** |
+
+## enzymes
+| seed | mmd_degree | mmd_clustering | mmd_orbit | mmd_avg |
+|---|---|---|---|---|
+| 42 | 1.435592 | 0.037487 | 0.969744 | 0.814274 |
+| 123 | 0.298300 | 0.389598 | 0.001082 | 0.229660 |
+| 456 | 0.289168 | 0.421121 | 0.001083 | 0.237124 |
+| **mean** | **0.674353** | **0.282735** | **0.323970** | **0.427019** |
+
+Overall mean `mmd_avg` across the three datasets: **0.3009**.
+</obs>
+
+### step 2 — DiGress (discrete edge-flip diffusion)   [slug:digress]
+
+<think>
+[[POLISH_REASONING: adapt to first-person agentic voice, end by deciding to implement]]
+GRAN's numbers told me exactly what its one-shot refinement bought and what it cost, and they point
+straight at the next move. Read the seed-42 column across all three datasets: `community_small`
+mmd_avg 0.219, `ego_small` 0.819, `enzymes` 0.814 — every one wrecked, and wrecked the same way, by a
+blown-up `mmd_degree` (1.22 on ego, 1.44 on enzymes) and a blown-up `mmd_orbit` (1.12, 0.97). That is
+precisely the collapse I worried about: the refinement starts from a random `Bernoulli(0.3)` adjacency
+— far too dense for these sparse graphs — and five resampling sweeps from that init *stall on a dense
+blob* for that seed, so the generated degree and orbit distributions are nothing like the reference.
+Now look at seeds 123 and 456: `community_small` mmd_avg drops to 0.045/0.043, `ego_small` to
+0.149/0.152, `enzymes` to 0.230/0.237 — perfectly respectable, with `mmd_orbit` essentially zero. So
+GRAN is *not* a bad edge predictor; it is a *seed-fragile sampler*. The mean overall mmd_avg of 0.301
+is one catastrophic seed averaged with two good ones. The diagnosis is sharp: the failure is in the
+*generation dynamics*, not the model's capacity — an uncontrolled five-step resampling from an
+arbitrary dense init has no mechanism to reliably walk a random graph back to a sparse, structured one,
+so whether a seed lands well is a coin flip. And the independent-edge assumption means even the good
+seeds leave higher-order correlations on the table. I want a generator whose *sampling process itself*
+is principled — a controlled trajectory from noise to a clean graph, not a five-shot gamble.
+
+So I want the strongest paradigm I know for "iteratively turn noise into a sample": diffusion. The
+shape of it is a fixed forward process that slowly corrupts a clean datapoint into noise through a
+Markov chain, and a learned network that inverts one step at a time; to sample I start from the noise
+prior and denoise repeatedly. The reason this is the right answer to GRAN's failure is structural:
+GRAN's refinement was an *unanchored* fixed-point sweep with no schedule and no defined corruption
+process, so it had no reason to converge; diffusion replaces that with a *defined* corruption process
+whose exact reverse the network is trained to follow, step by calibrated step, which is exactly the
+"controlled trajectory" I am after. And there is a subtlety I want to keep because it is why diffusion
+trains well: I do not train the network to predict the previous noisy state — that target is high-
+variance, it depends on whatever noise I happened to draw. Instead I train it to predict the *clean*
+graph and reconstruct the reverse step from that, which is the same x₀-prediction that DDPM uses to
+strip out the label noise.
+
+The obvious port is the one GDSS took: embed the adjacency in a continuous space and add Gaussian
+noise. Let me run that forward process in my head on one of these graphs and watch it break, because
+the break is the whole reason I cannot just reuse the image recipe. At t=0 I have a sparse 0/1
+adjacency, almost all zeros. Add a little Gaussian noise; a bit more; by the middle of the chain every
+entry is some real number around the noise scale and the matrix is *dense*. Now ask: what is the degree
+of node i in this object? How many triangles? The answers are undefined — there are no edges, just a
+fog of continuous values. The sparsity that *was* the data is gone, destroyed by the very Gaussian
+noise I added, and these are exactly the degree/clustering/orbit statistics I am scored on. The
+denoiser would be reconstructing a sparse graph from something with no graph structure at all. That is
+the wall, and it is the same wall in different clothes as GRAN's over-dense init: a process that passes
+through dense, structureless intermediate states has no good way to land on a sparse structured graph.
+So Gaussian noise is the wrong noise for a graph. The problem is not diffusion; it is that I would be
+continuizing a thing that is discrete.
+
+So I will not continuize it. Keep the graph discrete the whole way down: add noise that *edits the
+graph* — flips an edge in or out — but leaves it, at every step, an honest discrete graph. Then the
+intermediate states are always sparse and the structural notions stay defined, and denoising becomes a
+clean question: given a corrupted graph, say which edges should really be there. For the binary
+adjacency this is the simplest possible discrete corruption: at step t, *flip* each edge entry with
+some probability, symmetrically. Concretely I tie the flip probability to a noise schedule. Take a
+cosine schedule for the cumulative survival `alpha_bar_t` — `alpha_bar_t = cos²((t/T + s)/(1+s)·π/2)`
+normalized to `alpha_bar_0 = 1`, with a small `s` so it corrupts gently near both ends — and set the
+per-step flip probability `flip_prob = 0.5·(1 - alpha_bar_t)`. At t→0 nothing flips (the graph is
+clean); as t grows toward T the flip probability rises toward 0.5, the point at which each edge entry
+is an independent fair coin — i.e. the corruption limit is a `Bernoulli(0.5)` random graph,
+independent of the clean input, which is exactly the property I need for a sampling prior. To apply the
+corruption I draw a flip mask, symmetrize it (keep the upper triangle, mirror it) so the noisy
+adjacency stays symmetric, and XOR it into the clean adjacency: `adj_noisy = |adj - flip_mask|`. Sample
+a random timestep per graph, jump straight to the corrupted graph, and the whole chain trains in
+parallel — no unrolling.
+
+The denoiser takes the noisy adjacency and the timestep and predicts the *clean* edge logits. Because
+the target of each edge is a binary label — edge or no-edge — the entire generative problem dissolves
+into a pile of independent per-edge classifications: "is this edge really present?" No graph matching
+(that was GraphVAE's `O(k⁴)` curse), no decoding a continuous adjacency, no alignment — just binary
+cross-entropy of the predicted edge logits against the clean adjacency. That is the satisfying payoff
+of keeping things discrete: where GRAN had to gamble on a refinement sweep and GraphVAE had to align
+two unordered node sets, diffusion-with-an-x₀-target turns generation into supervised classification,
+because the forward process already told me, for each edge, exactly what the clean answer was. I keep
+the node-existence head from GRAN — a per-node MLP trained with BCE against the true node mask
+`adj.sum(-1) > 0`, weighted at 0.5 against the edge loss — so the fixed-`N` adjacency can still drop
+empty slots and represent graphs on fewer than `max_nodes` nodes. The total loss is
+`edge_loss + 0.5·node_loss`, with a grad-norm clip at 1.0.
+
+The denoiser itself I build as a graph transformer, because attention is a natural fit for edge
+prediction: every pair of nodes already has an attention score, which is exactly the object I want to
+turn into an edge decision. Each layer does multi-head self-attention over node features, but the
+*edges modulate the attention* rather than being passive — I take the current (noisy) adjacency, embed
+each entry into a per-head bias through a linear map, and add that bias into the attention scores, so an
+edge between two nodes raises or lowers how much they attend to each other. Node features come from a
+linear embedding of an identity input plus a time embedding (a small SiLU MLP of the normalized
+timestep, broadcast over nodes), so the network knows *how noisy* the graph it is looking at is and can
+denoise more aggressively early and gently late. After the transformer stack, the edge predictor reads
+`[n_i, n_j, adj_noisy_ij]` per pair into a logit, symmetrizes `(L+Lᵀ)/2`, and zeroes the diagonal —
+the same symmetric, self-loop-free output the loop requires. Residual connections and LayerNorm
+throughout. This is the attentive edge predictor I already trusted from GRAN, now placed inside a
+*defined* denoising process instead of an unanchored refinement.
+
+Sampling is where the diffusion structure earns its keep over GRAN's gamble. I start from the
+corruption limit — a `Bernoulli(0.5)` random symmetric adjacency, the prior the forward process
+converges to — and walk t from T-1 down to 0. At each step I run the denoiser on the current adjacency
+and the current timestep to get `edge_probs = sigmoid(edge_logits)`; for every step but the last I
+*resample* `adj = Bernoulli(edge_probs)`, symmetrizing; at the final step I threshold at 0.5 for a
+clean discrete output. Then I mask the adjacency by the node-existence prediction and read node counts
+off it (clamped to ≥ 2). Notice the contrast with GRAN: GRAN started from an *arbitrary* `Bernoulli(0.3)`
+init that does not match any corruption limit and took a fixed five sweeps with no schedule; here I
+start from the *exact* prior the forward process defines and take 50 scheduled denoising steps, each
+one a calibrated partial cleanup. The trajectory is anchored at both ends — known noise prior, known
+clean target — and the schedule controls how much structure each step is allowed to commit. That is the
+mechanism GRAN's collapse-prone seed-42 was missing.
+
+I want to be honest about what this fill is and is not, because it is a deliberately reduced form of
+the discrete-diffusion idea, forced by the harness contract. The fuller version of discrete graph
+diffusion does several things this fill drops. It diffuses *node types* as well as edges with their own
+transition matrix; here only the binary edges diffuse and node existence is a separate auxiliary BCE
+head, not part of the diffusion. It uses *marginal* transition matrices `Q = αI + β·1mᵀ` whose limit is
+the data's empirical edge frequency — so the noisy graphs stay as sparse as the data all the way down;
+here the corruption is *uniform* edge-flipping whose limit is `Bernoulli(0.5)`, a dense random graph,
+so the reverse process must spend its early steps merely re-sparsifying, exactly the inefficiency the
+marginal prior was designed to remove. It samples by marginalizing an *analytic Bayes posterior*
+`q(z_{t-1} | z_t, x)` over the network's clean-graph belief; here I skip the analytic posterior and
+just resample from the predicted edge probabilities at each step, which is a coarser reverse step. And
+it feeds the denoiser *structural and spectral features* (cycle counts, Laplacian eigenvalues) computed
+from the noisy graph at each step to beat the 1-Weisfeiler-Leman expressivity ceiling — the one big
+advantage discreteness unlocks — whereas this fill's denoiser is a plain edge-bias graph transformer
+with none of those extras. So I am keeping the load-bearing idea — *discrete edge-flipping diffusion
+with an x₀-predicting graph-transformer denoiser and a scheduled reverse process* — and dropping the
+marginal prior, the analytic posterior, the node diffusion, and the structural features. I should
+expect to pay for the uniform-prior and missing-features choices in exactly the orbit/clustering
+statistics those pieces were meant to protect.
+
+Reading GRAN's shape, here are my falsifiable expectations. The single biggest claim is about
+*variance*: the scheduled 50-step reverse from the true noise prior should stop the seed-42 collapse
+that GRAN suffered, because there is no longer an arbitrary dense init and an unanchored sweep — so I
+expect DiGress's worst-seed mmd_avg to be *far* below GRAN's seed-42 (0.819 on ego, 0.814 on enzymes),
+even if its best seed is no better than GRAN's good seeds. Concretely I expect the seed-42 ego/enzymes
+numbers to come down from ~0.8 toward the 0.2–0.4 range, lifting the overall mean below GRAN's 0.301.
+Where I am unsure, and where the uniform prior should bite: because the corruption limit is a dense
+`Bernoulli(0.5)` graph rather than the sparse data marginal, the reverse process spends effort
+re-sparsifying, and without the structural/spectral features the denoiser cannot perceive cycles
+directly — so I expect `mmd_clustering` and `mmd_orbit` on the harder, sparser graphs (`ego_small`
+seed-456, `enzymes`) to be the residual weakness, possibly *worse* than a model that nails sparsity
+directly, even as the overall mean improves through reduced collapse. So the prediction is: DiGress
+trades GRAN's catastrophic-seed fragility for a more *uniform* but not uniformly-better profile — lower
+overall mean, much tamer worst seed, but a clustering/orbit residual on the sparse datasets that a
+model with a better-matched prior could still beat. The distilled scaffold module is in the answer.
+</think>
+<say>
+[[FILL_SAY: 1-2 sentences naming the method and what this first edit does]]
+</say>
+<edit path="pytorch-geometric/custom_graphgen.py">
+<old>
+# EDITABLE region of custom_graphgen.py (lines 446-590) — step 1: GRAN (one-shot attentive refinement)
+class AttentionBlock(nn.Module):
+    """Multi-head attention for graph nodes."""
+
+    def __init__(self, dim, n_heads=4):
+        super().__init__()
+        self.n_heads = n_heads
+        self.head_dim = dim // n_heads
+        self.qkv = nn.Linear(dim, 3 * dim)
+        self.proj = nn.Linear(dim, dim)
+        self.norm = nn.LayerNorm(dim)
+
+    def forward(self, x, mask=None):
+        B, N, C = x.shape
+        qkv = self.qkv(x).reshape(B, N, 3, self.n_heads, self.head_dim)
+        qkv = qkv.permute(2, 0, 3, 1, 4)
+        q, k, v = qkv[0], qkv[1], qkv[2]
+        attn = (q @ k.transpose(-2, -1)) / math.sqrt(self.head_dim)
+        if mask is not None:
+            attn = attn.masked_fill(~mask.unsqueeze(1).unsqueeze(1), float('-inf'))
+        attn = F.softmax(attn, dim=-1)
+        out = (attn @ v).transpose(1, 2).reshape(B, N, C)
+        return self.norm(x + self.proj(out))
+
+
+class GRANBlock(nn.Module):
+    """GRAN message passing block with attention and edge prediction."""
+
+    def __init__(self, node_dim, edge_dim=1, n_heads=4):
+        super().__init__()
+        self.attn = AttentionBlock(node_dim, n_heads)
+        self.edge_mlp = nn.Sequential(
+            nn.Linear(2 * node_dim + edge_dim, node_dim),
+            nn.ReLU(),
+            nn.Linear(node_dim, edge_dim),
+        )
+        self.node_mlp = nn.Sequential(
+            nn.Linear(node_dim + edge_dim, node_dim),
+            nn.ReLU(),
+            nn.Linear(node_dim, node_dim),
+        )
+        self.norm = nn.LayerNorm(node_dim)
+
+    def forward(self, node_feat, edge_feat, mask=None):
+        B, N, D = node_feat.shape
+        # Attention-based node update
+        node_feat = self.attn(node_feat, mask)
+
+        # Edge update
+        ni = node_feat.unsqueeze(2).expand(-1, -1, N, -1)
+        nj = node_feat.unsqueeze(1).expand(-1, N, -1, -1)
+        edge_input = torch.cat([ni, nj, edge_feat], dim=-1)
+        edge_feat = edge_feat + self.edge_mlp(edge_input)
+
+        # Aggregate edge info to nodes
+        if mask is not None:
+            edge_agg = (edge_feat * mask.unsqueeze(-1).unsqueeze(-1).float()).sum(dim=2)
+        else:
+            edge_agg = edge_feat.mean(dim=2)
+        node_input = torch.cat([node_feat, edge_agg], dim=-1)
+        node_feat = self.norm(node_feat + self.node_mlp(node_input))
+
+        return node_feat, edge_feat
+
+
+class GraphGenerator(nn.Module):
+    """GRAN: Graph Recurrent Attention Network.
+
+    Iteratively refines node and edge representations using attention-based
+    message passing, then predicts edge probabilities for graph generation.
+    """
+
+    def __init__(self, max_nodes, hidden_dim=128, n_layers=3, n_heads=4,
+                 n_refine_steps=5, lr=1e-3, **kwargs):
+        super().__init__()
+        self.max_nodes = max_nodes
+        self.hidden_dim = hidden_dim
+        self.n_refine_steps = n_refine_steps
+
+        # Node embedding
+        self.node_embed = nn.Linear(max_nodes, hidden_dim)
+
+        # GRAN blocks (shared across refinement steps)
+        self.blocks = nn.ModuleList([
+            GRANBlock(hidden_dim, edge_dim=1, n_heads=n_heads)
+            for _ in range(n_layers)
+        ])
+
+        # Final edge prediction
+        self.edge_pred = nn.Sequential(
+</old>
+<new>
+# EDITABLE region of custom_graphgen.py (lines 446-590) — step 2: DiGress (discrete edge-flip diffusion)
+class GraphTransformerLayer(nn.Module):
+    """Graph transformer layer with edge-aware attention."""
+
+    def __init__(self, dim, n_heads=4, ff_dim=None):
+        super().__init__()
+        ff_dim = ff_dim or 4 * dim
+        self.n_heads = n_heads
+        self.head_dim = dim // n_heads
+
+        self.q = nn.Linear(dim, dim)
+        self.k = nn.Linear(dim, dim)
+        self.v = nn.Linear(dim, dim)
+        self.edge_bias = nn.Linear(1, n_heads)
+        self.proj = nn.Linear(dim, dim)
+
+        self.norm1 = nn.LayerNorm(dim)
+        self.norm2 = nn.LayerNorm(dim)
+        self.ff = nn.Sequential(
+            nn.Linear(dim, ff_dim),
+            nn.GELU(),
+            nn.Linear(ff_dim, dim),
+        )
+
+    def forward(self, x, adj):
+        B, N, C = x.shape
+        # Multi-head attention with edge bias
+        q = self.q(x).view(B, N, self.n_heads, self.head_dim).transpose(1, 2)
+        k = self.k(x).view(B, N, self.n_heads, self.head_dim).transpose(1, 2)
+        v = self.v(x).view(B, N, self.n_heads, self.head_dim).transpose(1, 2)
+
+        attn = (q @ k.transpose(-2, -1)) / math.sqrt(self.head_dim)
+
+        # Edge bias
+        edge_b = self.edge_bias(adj.unsqueeze(-1))  # [B, N, N, n_heads]
+        attn = attn + edge_b.permute(0, 3, 1, 2)
+
+        attn = F.softmax(attn, dim=-1)
+        out = (attn @ v).transpose(1, 2).reshape(B, N, C)
+        x = self.norm1(x + self.proj(out))
+        x = self.norm2(x + self.ff(x))
+        return x
+
+
+class DiscreteDenoiser(nn.Module):
+    """Denoiser network for discrete adjacency diffusion."""
+
+    def __init__(self, max_nodes, hidden_dim=128, n_layers=4, n_heads=4):
+        super().__init__()
+        self.node_embed = nn.Linear(max_nodes, hidden_dim)
+        self.time_embed = nn.Sequential(
+            nn.Linear(1, hidden_dim),
+            nn.SiLU(),
+            nn.Linear(hidden_dim, hidden_dim),
+        )
+        self.layers = nn.ModuleList([
+            GraphTransformerLayer(hidden_dim, n_heads)
+            for _ in range(n_layers)
+        ])
+        self.edge_pred = nn.Sequential(
+</new>
+</edit>
+<obs>
+Successfully replaced text in pytorch-geometric/custom_graphgen.py.
+</obs>
+<note>
+[[FILL_NOTE?: optional one-line thought for this edit, or delete this block]]
+</note>
+<edit path="pytorch-geometric/custom_graphgen.py">
+<old>
+        )
+
+        # Node existence prediction
+        self.node_pred = nn.Sequential(
+</old>
+<new>
+        )
+        self.node_pred = nn.Sequential(
+</new>
+</edit>
+<obs>
+Successfully replaced text in pytorch-geometric/custom_graphgen.py.
+</obs>
+<note>
+[[FILL_NOTE?: optional one-line thought for this edit, or delete this block]]
+</note>
+<edit path="pytorch-geometric/custom_graphgen.py">
+<old>
+
+        self.optimizer = optim.Adam(self.parameters(), lr=lr)
+
+    def _forward(self, adj, node_mask=None):
+        B, N, _ = adj.shape
+        device = adj.device
+
+        # Initial node features (identity-based)
+        x = torch.eye(N, device=device).unsqueeze(0).expand(B, -1, -1)
+        node_feat = F.relu(self.node_embed(x))  # [B, N, hidden]
+
+        # Initial edge features from adjacency
+        edge_feat = adj.unsqueeze(-1)  # [B, N, N, 1]
+
+        # Iterative refinement
+        for block in self.blocks:
+            node_feat, edge_feat = block(node_feat, edge_feat, node_mask)
+
+        # Predict edges
+        ni = node_feat.unsqueeze(2).expand(-1, -1, N, -1)
+        nj = node_feat.unsqueeze(1).expand(-1, N, -1, -1)
+        edge_input = torch.cat([ni, nj, edge_feat], dim=-1)
+        edge_logits = self.edge_pred(edge_input).squeeze(-1)  # [B, N, N]
+
+        # Symmetrize and remove self-loops
+        edge_logits = (edge_logits + edge_logits.transpose(1, 2)) / 2
+        diag_mask = 1 - torch.eye(N, device=device).unsqueeze(0)
+        edge_logits = edge_logits * diag_mask
+
+        # Node existence
+        node_logits = self.node_pred(node_feat).squeeze(-1)  # [B, N]
+
+        return edge_logits, node_logits
+</old>
+<new>
+
+    def forward(self, adj_noisy, t):
+        B, N, _ = adj_noisy.shape
+        device = adj_noisy.device
+
+        # Node features
+        x = torch.eye(N, device=device).unsqueeze(0).expand(B, -1, -1)
+        x = self.node_embed(x)
+
+        # Add time conditioning
+        if t.dim() == 1:
+            t = t.unsqueeze(-1)
+        t_emb = self.time_embed(t).unsqueeze(1)  # [B, 1, hidden]
+        x = x + t_emb
+
+        # Graph transformer layers
+        for layer in self.layers:
+            x = layer(x, adj_noisy)
+
+        # Edge prediction
+        ni = x.unsqueeze(2).expand(-1, -1, N, -1)
+        nj = x.unsqueeze(1).expand(-1, N, -1, -1)
+        edge_input = torch.cat([ni, nj, adj_noisy.unsqueeze(-1)], dim=-1)
+        edge_logits = self.edge_pred(edge_input).squeeze(-1)
+        edge_logits = (edge_logits + edge_logits.transpose(1, 2)) / 2
+        mask = 1 - torch.eye(N, device=device).unsqueeze(0)
+        edge_logits = edge_logits * mask
+
+        # Node prediction
+        node_logits = self.node_pred(x).squeeze(-1)
+
+        return edge_logits, node_logits
+
+
+class GraphGenerator(nn.Module):
+    """DiGress: Discrete denoising diffusion for graphs.
+
+    Uses a discrete corruption process (edge flipping) and a graph
+    transformer denoiser to predict the clean graph.
+    """
+
+    def __init__(self, max_nodes, hidden_dim=128, n_layers=4, n_heads=4,
+                 n_diffusion_steps=50, lr=2e-4, **kwargs):
+        super().__init__()
+        self.max_nodes = max_nodes
+        self.n_steps = n_diffusion_steps
+
+        # Beta schedule: cosine schedule for discrete diffusion
+        steps = torch.arange(n_diffusion_steps + 1, dtype=torch.float64)
+        alpha_bar = torch.cos((steps / n_diffusion_steps + 0.008) / 1.008 * math.pi / 2) ** 2
+        alpha_bar = alpha_bar / alpha_bar[0]
+        betas = 1 - alpha_bar[1:] / alpha_bar[:-1]
+        betas = torch.clamp(betas, max=0.999)
+        self.register_buffer("betas", betas.float())
+        self.register_buffer("alpha_bar", alpha_bar[1:].float())
+
+        self.denoiser = DiscreteDenoiser(max_nodes, hidden_dim, n_layers, n_heads)
+        self.optimizer = optim.Adam(self.denoiser.parameters(), lr=lr)
+
+    def _corrupt(self, adj, t_idx):
+        """Discrete corruption: flip edges with probability depending on t."""
+        B = adj.shape[0]
+        device = adj.device
+
+        # Flip probability = 0.5 * (1 - alpha_bar_t)
+        alpha_bar_t = self.alpha_bar[t_idx].view(B, 1, 1)
+        flip_prob = 0.5 * (1 - alpha_bar_t)
+
+        # Sample flip mask
+        flip_mask = (torch.rand_like(adj) < flip_prob).float()
+        # Make symmetric
+        flip_mask = torch.triu(flip_mask, diagonal=1)
+        flip_mask = flip_mask + flip_mask.transpose(1, 2)
+
+        # Apply flips: XOR with flip mask
+        adj_noisy = torch.abs(adj - flip_mask)
+        return adj_noisy
+</new>
+</edit>
+<obs>
+Successfully replaced text in pytorch-geometric/custom_graphgen.py.
+</obs>
+<note>
+[[FILL_NOTE?: optional one-line thought for this edit, or delete this block]]
+</note>
+<edit path="pytorch-geometric/custom_graphgen.py">
+<old>
+        self.optimizer.zero_grad()
+
+        edge_logits, node_logits = self._forward(adj)
+
+        # Edge loss
+        edge_loss = F.binary_cross_entropy_with_logits(edge_logits, adj, reduction="mean")
+</old>
+<new>
+        self.optimizer.zero_grad()
+        B = adj.shape[0]
+        device = adj.device
+
+        # Sample random timestep
+        t_idx = torch.randint(0, self.n_steps, (B,), device=device)
+
+        # Corrupt adjacency
+        adj_noisy = self._corrupt(adj, t_idx)
+
+        # Predict clean adjacency
+        t_float = t_idx.float() / self.n_steps
+        edge_logits, node_logits = self.denoiser(adj_noisy, t_float)
+
+        # Cross-entropy loss to predict original clean graph
+        edge_loss = F.binary_cross_entropy_with_logits(edge_logits, adj, reduction="mean")
+</new>
+</edit>
+<obs>
+Successfully replaced text in pytorch-geometric/custom_graphgen.py.
+</obs>
+<note>
+[[FILL_NOTE?: optional one-line thought for this edit, or delete this block]]
+</note>
+<edit path="pytorch-geometric/custom_graphgen.py">
+<old>
+        loss.backward()
+        torch.nn.utils.clip_grad_norm_(self.parameters(), 1.0)
+        self.optimizer.step()
+</old>
+<new>
+        loss.backward()
+        torch.nn.utils.clip_grad_norm_(self.denoiser.parameters(), 1.0)
+        self.optimizer.step()
+</new>
+</edit>
+<obs>
+Successfully replaced text in pytorch-geometric/custom_graphgen.py.
+</obs>
+<note>
+[[FILL_NOTE?: optional one-line thought for this edit, or delete this block]]
+</note>
+<edit path="pytorch-geometric/custom_graphgen.py">
+<old>
+    def sample(self, n_samples, device):
+        self.eval()
+        with torch.no_grad():
+            # Start from random sparse adjacency (not zeros) to provide edge signal.
+            # Starting from zeros leads to empty output: node aggregation is zero ->
+            # node predictor predicts all nodes absent -> empty graph.
+            p_init = 0.3
+            adj = (torch.rand(n_samples, self.max_nodes, self.max_nodes, device=device) < p_init).float()
+            adj = torch.triu(adj, diagonal=1)
+            adj = adj + adj.transpose(1, 2)
+
+            for step in range(self.n_refine_steps):
+                edge_logits, node_logits = self._forward(adj)
+                edge_probs = torch.sigmoid(edge_logits)
+                adj = (torch.rand_like(edge_probs) < edge_probs).float()
+                adj = torch.triu(adj, diagonal=1)
+                adj = adj + adj.transpose(1, 2)
+
+            # Derive node counts from connectivity (node predictor is unreliable
+            # when initialized from random adjacency at inference time).
+            node_counts = (adj.sum(dim=-1) > 0).long().sum(dim=-1)
+            node_counts = torch.clamp(node_counts, min=2)
+
+        return adj, node_counts
+</old>
+<new>
+    def sample(self, n_samples, device):
+        """Generate graphs via iterative discrete denoising."""
+        self.eval()
+        N = self.max_nodes
+        mask = 1 - torch.eye(N, device=device).unsqueeze(0)
+
+        with torch.no_grad():
+            # Start from random binary adjacency (Bernoulli(0.5))
+            adj = (torch.rand(n_samples, N, N, device=device) > 0.5).float()
+            adj = torch.triu(adj, diagonal=1)
+            adj = adj + adj.transpose(1, 2)
+
+            for step in range(self.n_steps - 1, -1, -1):
+                t_float = torch.ones(n_samples, device=device) * (step / self.n_steps)
+                edge_logits, node_logits = self.denoiser(adj, t_float)
+                edge_probs = torch.sigmoid(edge_logits)
+
+                if step > 0:
+                    # Sample with some noise
+                    adj = (torch.rand_like(edge_probs) < edge_probs).float()
+                else:
+                    # Final step: use threshold
+                    adj = (edge_probs > 0.5).float()
+
+                # Ensure symmetry and no self-loops
+                adj = torch.triu(adj, diagonal=1)
+                adj = adj + adj.transpose(1, 2)
+
+            # Node counts from predictor
+            node_probs = torch.sigmoid(node_logits)
+            node_mask_pred = (node_probs > 0.5).float()
+            adj = adj * node_mask_pred.unsqueeze(-1) * node_mask_pred.unsqueeze(-2)
+            node_counts = node_mask_pred.sum(dim=-1).long()
+            node_counts = torch.clamp(node_counts, min=2)
+
+        return adj, node_counts
+</new>
+</edit>
+<obs>
+Successfully replaced text in pytorch-geometric/custom_graphgen.py.
+</obs>
+<run/>
+<obs>
+Measured results — `baseline:digress` (`is_final,true`), seeds {42, 123, 456} and mean. All metrics lower is better.
+
+## community_small
+| seed | mmd_degree | mmd_clustering | mmd_orbit | mmd_avg |
+|---|---|---|---|---|
+| 42 | 0.101257 | 0.100000 | 0.455506 | 0.218921 |
+| 123 | 0.164722 | 0.108924 | 0.000135 | 0.091260 |
+| 456 | 0.042907 | 0.101381 | 0.000046 | 0.048111 |
+| **mean** | **0.102962** | **0.103435** | **0.151896** | **0.119431** |
+
+## ego_small
+| seed | mmd_degree | mmd_clustering | mmd_orbit | mmd_avg |
+|---|---|---|---|---|
+| 42 | 0.133545 | 0.105000 | 0.008038 | 0.082194 |
+| 123 | 0.029595 | 0.211323 | 0.000088 | 0.080335 |
+| 456 | 0.644587 | 1.022302 | 0.000785 | 0.555891 |
+| **mean** | **0.269242** | **0.446208** | **0.002970** | **0.239473** |
+
+## enzymes
+| seed | mmd_degree | mmd_clustering | mmd_orbit | mmd_avg |
+|---|---|---|---|---|
+| 42 | 1.374443 | 0.700365 | 0.284623 | 0.786477 |
+| 123 | 0.405106 | 0.651657 | 0.000694 | 0.352486 |
+| 456 | 0.267811 | 0.228645 | 0.000217 | 0.165558 |
+| **mean** | **0.682453** | **0.526889** | **0.095178** | **0.434840** |
+
+Overall mean `mmd_avg` across the three datasets: **0.2646**.
+</obs>
+
+### step 3 — GraphVAE (GCN-encoder VAE, no matching)   [slug:graphvae]
+
+<think>
+[[POLISH_REASONING: adapt to first-person agentic voice, end by deciding to implement]]
+DiGress did what I predicted at the variance end and exposed exactly the weakness I flagged, and both
+halves of that result point to the same fix. The variance claim landed: the scheduled 50-step reverse
+from the true noise prior killed GRAN's catastrophic seed. Where GRAN's seed-42 was 0.819 on ego and
+0.814 on enzymes, DiGress's seed-42 came in at 0.082 on ego — a tenfold improvement on the worst case —
+and the overall mean dropped from 0.301 to 0.265. So the controlled diffusion trajectory bought
+stability, as designed. But now read where DiGress is *still* weak, because that is the next target.
+Its `mmd_clustering` is high almost everywhere: 0.103 on community_small, but **0.446** mean on ego
+(with seed-456 at a brutal 1.022) and **0.527** mean on enzymes. And `mmd_degree` on enzymes is 0.682.
+That seed-456 ego collapse (clustering 1.022, degree 0.645, mmd_avg 0.556) is exactly the residual I
+warned about: the uniform `Bernoulli(0.5)` corruption limit is a *dense* random graph, so the reverse
+process spends its early steps merely re-sparsifying, and without structural features the denoiser
+cannot perceive the clustering structure directly — so on a seed where the re-sparsification stalls, the
+clustering and degree statistics blow up. DiGress traded GRAN's catastrophic-seed fragility for a
+clustering/degree residual on the sparse datasets, which is a *better* trade but not a solved problem.
+
+So what is the common thread under both GRAN's collapse and DiGress's residual? Both are sampling-
+process pathologies driven by a *dense intermediate state*: GRAN starts from a too-dense `Bernoulli(0.3)`
+init, DiGress's corruption limit is a dense `Bernoulli(0.5)` graph, and in both the generator has to
+fight its way back to a sparse, structured object through a process that does not natively respect
+sparsity. Each rung made the *generation dynamics* more elaborate — five refinement sweeps, then fifty
+scheduled denoising steps — to try to tame that. Let me ask the contrarian question the two failures
+invite: what if the elaborate multi-step generation process is itself the source of the variance, and a
+*single-shot* generator that draws one latent and decodes the whole graph in one pass would simply not
+have a multi-step trajectory to collapse? The latent-variable family is the natural home for that. A
+VAE draws `z ~ N(0,I)` once and decodes the entire adjacency in a single deterministic forward pass —
+there is no iterative sweep, no scheduled reverse chain, nothing to stall. The price the latent family
+classically pays is a permutation-broken reconstruction loss, which I will have to confront head-on.
+But the *stability* argument is strong: a one-shot decode cannot have the seed-to-seed collapse that
+comes from a stochastic multi-step walk, because there is no walk.
+
+Let me set up the VAE properly so I know exactly what I am committing to. Latent prior `p(z) = N(0,I)`,
+a recognition model `q(z|G)` emitting `(mu, log sigma²)`, the reparameterization `z = mu + sigma·eps`
+with `eps ~ N(0,I)` so gradients flow through the sampling, and the bound
+`L = E_q[-log p(G|z)] + KL[q(z|G) || p(z)]`, with the Gaussian KL in closed form
+`-1/2·sum_j(1 + log sigma_j² - mu_j² - sigma_j²)`. The only piece I design per data type is the
+reconstruction term `log p(G|z)` and the encoder. Two things matter for *this* task. First, the encoder
+should be *graph-aware*, not a flat MLP over the flattened adjacency the default uses — because the
+whole lesson of GRAN and DiGress is that edge-relevant representations come from message passing, not
+from a flat readout. So I will encode with a GCN: identity node features `x`, two layers of
+`X' = D^{-1/2}(A+I)D^{-1/2} X W` with self-loops and degree normalization, then a permutation-invariant
+mean-pool over nodes into a graph-level vector, then linear heads to `(mu, log sigma²)`. The
+degree-normalized GCN aggregation is the right inductive bias here precisely because, unlike GRAN's
+attention over an *uncertain* adjacency, the encoder always sees the *true* clean adjacency, so a fixed
+normalized aggregation is well-behaved and cheap. Second, the decoder: an MLP from `z` to the full
+`max_nodes × max_nodes` logit matrix, symmetrized `(L+Lᵀ)/2` and zero-diagonalled — the symmetric,
+self-loop-free output the loop requires, produced in one shot.
+
+Now the reconstruction loss, which is where I have to be most careful, because this is exactly where the
+latent family classically breaks. A graph has no canonical node order, so the same graph is one of up to
+`n!` adjacency matrices, and if I compare the decoded adjacency to the target *entrywise*, a correct
+graph emitted with two nodes swapped is punished as if it were completely wrong. The principled cure is
+*graph matching*: find a one-to-one assignment between the decoded slots and the ground-truth nodes by
+maximizing a pairwise structural similarity, then score the reconstruction in the aligned frame, so the
+loss becomes permutation-aware. That matching is the signature move of the latent-variable approach to
+graphs — it is what makes the reconstruction term well-defined at all — but it costs `O(k⁴)` (the
+similarity is indexed by pairs of pairs) and needs a power-iteration solver plus a Hungarian
+discretization inside every forward pass. Within *this* harness, with `max_nodes` up to 125 on enzymes
+and a 1.05× parameter budget and a 500-epoch schedule shared across three datasets, that `O(k⁴)`
+matching is simply not affordable, and the contract gives me one `train_step` that must return a scalar
+loss quickly. So I make the deliberate harness-forced simplification: drop the matching entirely and
+train on the **entrywise reconstruction BCE** against the target in the order the loop padded it.
+
+I should be clear-eyed that this is the order-sensitive loss the matching was invented to fix, so I owe
+an argument for why it is still the right rung here rather than a regression. The argument is that the
+*datasets are small and the harness fixes a consistent node ordering*: each graph is delivered in one
+padded order, the encoder produces a latent from that ordered adjacency, and the decoder is asked to
+reproduce *that same* ordered adjacency — so within a single graph the loss is self-consistent even
+without matching, and the model is effectively learning to autoencode the dataset's particular orderings
+rather than the abstract graph. On these small, fairly regular datasets that is enough to learn a
+reasonable latent of *structure type*, because the structure (two-community, ego, enzyme motif) is
+strongly correlated with the ordered adjacency the harness presents. What I give up is the permutation
+*invariance* of the objective — the model wastes some capacity on orderings — but I gain a `train_step`
+that is a single GCN encode plus a single MLP decode plus a closed-form KL, with no `O(k⁴)` matching and
+no inner solver, which is the only version that fits the budget. This is the central same-vs-different
+note for this rung: the load-bearing contribution of the latent-variable graph generator — the graph-
+matching-aligned reconstruction — is *exactly the part the harness omits*; what remains is a GCN-encoder
+VAE with entrywise reconstruction, strictly simpler than the matched version, and I am choosing it
+because the matched version cannot run here.
+
+Two more pieces complete the fill. First, a **node-existence predictor**: an MLP from `z` to
+`max_nodes` logits, trained with BCE against the true node mask `adj.sum(-1) > 0`, weighted at 0.5
+against the edge reconstruction. This is what lets a fixed-`N` decoder represent a graph on `n < N`
+nodes — the decoder predicts which slots are occupied — and it is a cleaner mechanism than DiGress's,
+because here the latent directly drives both the adjacency and the node mask in one shot, so they are
+consistent by construction rather than read off a refined adjacency. Second, the **KL weight**: I keep
+it tiny, `0.001`, because with a strong reconstruction target and a small latent the KL term, if given
+full weight, would dominate early and collapse the posterior toward the prior before the decoder learns
+any structure — the classic posterior-collapse failure. A down-weighted KL lets the latent carry real
+structural information while still regularizing it toward `N(0,I)` enough that sampling from the prior
+produces sensible graphs. The total training loss is `recon_loss + 0.5·node_loss + 0.001·KL`.
+
+Sampling is the part that makes me believe this rung will be *stable* where the others were not, and it
+is worth saying precisely why. I draw `z ~ N(0,I)` once, decode the full adjacency logits in a single
+pass, threshold at 0.5, and mask by the node-existence prediction; node counts are the masked node
+count, clamped to ≥ 2. There is no iterative refinement to stall (GRAN's failure mode) and no multi-
+step reverse chain whose early steps must re-sparsify a dense sample (DiGress's failure mode). The whole
+generation is one deterministic decode of a single Gaussian draw, so the seed-to-seed variance comes
+*only* from the latent draw and the learned decoder, not from a stochastic multi-step trajectory that
+can diverge. That is the structural reason I expect this rung to have the *tightest* seed spread of the
+three — the elaborate generation dynamics that I added at steps 1 and 2 to fight collapse were
+themselves a source of the collapse, and removing them removes the failure mode.
+
+Reading DiGress's shape, here are my falsifiable expectations. The headline claim is *overall stability*:
+a one-shot GCN-VAE should produce the lowest overall mean mmd_avg of the three rungs and, more tellingly,
+the *tamest worst seed* — I expect no seed to blow up the way DiGress's ego seed-456 did (mmd_avg 0.556,
+clustering 1.022), because there is no multi-step trajectory to stall. Concretely I expect the overall
+mean to fall below DiGress's 0.265, with the biggest gains exactly on the statistics DiGress struggled
+with: `ego_small` clustering and degree, where a one-shot decode of a graph-aware latent should beat a
+reverse process that has to re-sparsify a dense prior. Where I am unsure, and where the dropped matching
+should bite: on `enzymes`, the largest and most variable graphs (up to 125 nodes), the entrywise
+order-sensitive loss has the most orderings to waste capacity on and the `max_nodes²` decoder output is
+largest, so I expect enzymes to remain the hardest dataset for this rung too — its mmd_avg should stay in
+the ~0.4 range, comparable to or only modestly better than DiGress, even as ego and community improve.
+So the prediction is: GraphVAE wins on *stability and overall mean* — lowest worst-seed, lowest overall
+mmd_avg, decisive on ego_small — while enzymes stays the shared ceiling that the dropped graph-matching
+would be needed to break. This is where the ladder ends: the one-shot latent-variable generator,
+graph-aware in its encoder, is the most *reliable* of the three within this harness, and its remaining
+weakness on the largest graphs names exactly the permutation-matching machinery a further rung would
+have to afford. The distilled scaffold module is in the answer.
+</think>
+<say>
+[[FILL_SAY: 1-2 sentences naming the method and what this first edit does]]
+</say>
+<edit path="pytorch-geometric/custom_graphgen.py">
+<old>
+# EDITABLE region of custom_graphgen.py (lines 446-590) — step 2: DiGress (discrete edge-flip diffusion)
+class GraphTransformerLayer(nn.Module):
+    """Graph transformer layer with edge-aware attention."""
+
+    def __init__(self, dim, n_heads=4, ff_dim=None):
+        super().__init__()
+        ff_dim = ff_dim or 4 * dim
+        self.n_heads = n_heads
+        self.head_dim = dim // n_heads
+
+        self.q = nn.Linear(dim, dim)
+        self.k = nn.Linear(dim, dim)
+        self.v = nn.Linear(dim, dim)
+        self.edge_bias = nn.Linear(1, n_heads)
+        self.proj = nn.Linear(dim, dim)
+
+        self.norm1 = nn.LayerNorm(dim)
+        self.norm2 = nn.LayerNorm(dim)
+        self.ff = nn.Sequential(
+            nn.Linear(dim, ff_dim),
+            nn.GELU(),
+            nn.Linear(ff_dim, dim),
+        )
+
+    def forward(self, x, adj):
+        B, N, C = x.shape
+        # Multi-head attention with edge bias
+        q = self.q(x).view(B, N, self.n_heads, self.head_dim).transpose(1, 2)
+        k = self.k(x).view(B, N, self.n_heads, self.head_dim).transpose(1, 2)
+        v = self.v(x).view(B, N, self.n_heads, self.head_dim).transpose(1, 2)
+
+        attn = (q @ k.transpose(-2, -1)) / math.sqrt(self.head_dim)
+
+        # Edge bias
+        edge_b = self.edge_bias(adj.unsqueeze(-1))  # [B, N, N, n_heads]
+        attn = attn + edge_b.permute(0, 3, 1, 2)
+
+        attn = F.softmax(attn, dim=-1)
+        out = (attn @ v).transpose(1, 2).reshape(B, N, C)
+        x = self.norm1(x + self.proj(out))
+        x = self.norm2(x + self.ff(x))
+        return x
+
+
+class DiscreteDenoiser(nn.Module):
+    """Denoiser network for discrete adjacency diffusion."""
+
+    def __init__(self, max_nodes, hidden_dim=128, n_layers=4, n_heads=4):
+        super().__init__()
+        self.node_embed = nn.Linear(max_nodes, hidden_dim)
+        self.time_embed = nn.Sequential(
+            nn.Linear(1, hidden_dim),
+            nn.SiLU(),
+            nn.Linear(hidden_dim, hidden_dim),
+        )
+        self.layers = nn.ModuleList([
+            GraphTransformerLayer(hidden_dim, n_heads)
+            for _ in range(n_layers)
+        ])
+        self.edge_pred = nn.Sequential(
+            nn.Linear(2 * hidden_dim + 1, hidden_dim),
+            nn.ReLU(),
+            nn.Linear(hidden_dim, 1),
+        )
+        self.node_pred = nn.Sequential(
+            nn.Linear(hidden_dim, hidden_dim // 2),
+            nn.ReLU(),
+            nn.Linear(hidden_dim // 2, 1),
+        )
+
+    def forward(self, adj_noisy, t):
+        B, N, _ = adj_noisy.shape
+        device = adj_noisy.device
+
+        # Node features
+        x = torch.eye(N, device=device).unsqueeze(0).expand(B, -1, -1)
+        x = self.node_embed(x)
+
+        # Add time conditioning
+        if t.dim() == 1:
+            t = t.unsqueeze(-1)
+        t_emb = self.time_embed(t).unsqueeze(1)  # [B, 1, hidden]
+        x = x + t_emb
+
+        # Graph transformer layers
+        for layer in self.layers:
+            x = layer(x, adj_noisy)
+
+        # Edge prediction
+        ni = x.unsqueeze(2).expand(-1, -1, N, -1)
+        nj = x.unsqueeze(1).expand(-1, N, -1, -1)
+        edge_input = torch.cat([ni, nj, adj_noisy.unsqueeze(-1)], dim=-1)
+        edge_logits = self.edge_pred(edge_input).squeeze(-1)
+        edge_logits = (edge_logits + edge_logits.transpose(1, 2)) / 2
+        mask = 1 - torch.eye(N, device=device).unsqueeze(0)
+        edge_logits = edge_logits * mask
+
+        # Node prediction
+        node_logits = self.node_pred(x).squeeze(-1)
+
+        return edge_logits, node_logits
+
+
+class GraphGenerator(nn.Module):
+    """DiGress: Discrete denoising diffusion for graphs.
+
+    Uses a discrete corruption process (edge flipping) and a graph
+    transformer denoiser to predict the clean graph.
+    """
+
+    def __init__(self, max_nodes, hidden_dim=128, n_layers=4, n_heads=4,
+                 n_diffusion_steps=50, lr=2e-4, **kwargs):
+        super().__init__()
+        self.max_nodes = max_nodes
+        self.n_steps = n_diffusion_steps
+
+        # Beta schedule: cosine schedule for discrete diffusion
+        steps = torch.arange(n_diffusion_steps + 1, dtype=torch.float64)
+        alpha_bar = torch.cos((steps / n_diffusion_steps + 0.008) / 1.008 * math.pi / 2) ** 2
+        alpha_bar = alpha_bar / alpha_bar[0]
+        betas = 1 - alpha_bar[1:] / alpha_bar[:-1]
+        betas = torch.clamp(betas, max=0.999)
+        self.register_buffer("betas", betas.float())
+        self.register_buffer("alpha_bar", alpha_bar[1:].float())
+
+        self.denoiser = DiscreteDenoiser(max_nodes, hidden_dim, n_layers, n_heads)
+        self.optimizer = optim.Adam(self.denoiser.parameters(), lr=lr)
+
+    def _corrupt(self, adj, t_idx):
+        """Discrete corruption: flip edges with probability depending on t."""
+        B = adj.shape[0]
+        device = adj.device
+
+        # Flip probability = 0.5 * (1 - alpha_bar_t)
+        alpha_bar_t = self.alpha_bar[t_idx].view(B, 1, 1)
+        flip_prob = 0.5 * (1 - alpha_bar_t)
+
+        # Sample flip mask
+        flip_mask = (torch.rand_like(adj) < flip_prob).float()
+        # Make symmetric
+        flip_mask = torch.triu(flip_mask, diagonal=1)
+        flip_mask = flip_mask + flip_mask.transpose(1, 2)
+
+        # Apply flips: XOR with flip mask
+        adj_noisy = torch.abs(adj - flip_mask)
+        return adj_noisy
+</old>
+<new>
+# EDITABLE region of custom_graphgen.py (lines 446-590) — step 3: GraphVAE (GCN-encoder VAE, no matching)
+class GCNLayer(nn.Module):
+    """Simple GCN layer: X' = D^{-1/2} A_hat D^{-1/2} X W."""
+
+    def __init__(self, in_features, out_features):
+        super().__init__()
+        self.linear = nn.Linear(in_features, out_features)
+
+    def forward(self, x, adj):
+        # Add self-loops
+        I = torch.eye(adj.size(-1), device=adj.device).unsqueeze(0)
+        A_hat = adj + I
+        # Degree normalization
+        D = A_hat.sum(dim=-1, keepdim=True).clamp(min=1)
+        D_inv_sqrt = 1.0 / torch.sqrt(D)
+        A_norm = A_hat * D_inv_sqrt * D_inv_sqrt.transpose(-1, -2)
+        out = torch.bmm(A_norm, x)
+        return self.linear(out)
+
+
+class GraphGenerator(nn.Module):
+    """GraphVAE: Variational Autoencoder for graph generation.
+
+    Uses GCN encoder to produce graph-level latent representation,
+    and MLP decoder to produce adjacency matrix probabilities.
+    """
+
+    def __init__(self, max_nodes, hidden_dim=256, latent_dim=64, lr=1e-3, **kwargs):
+        super().__init__()
+        self.max_nodes = max_nodes
+        self.latent_dim = latent_dim
+        adj_size = max_nodes * max_nodes
+
+        # GCN encoder
+        self.gcn1 = GCNLayer(max_nodes, hidden_dim)
+        self.gcn2 = GCNLayer(hidden_dim, hidden_dim)
+        self.fc_mu = nn.Linear(hidden_dim, latent_dim)
+        self.fc_logvar = nn.Linear(hidden_dim, latent_dim)
+
+        # MLP decoder
+        self.decoder = nn.Sequential(
+            nn.Linear(latent_dim, hidden_dim),
+            nn.ReLU(),
+            nn.Linear(hidden_dim, hidden_dim),
+            nn.ReLU(),
+            nn.Linear(hidden_dim, adj_size),
+        )
+
+        # Node existence predictor
+        self.node_pred = nn.Sequential(
+            nn.Linear(latent_dim, hidden_dim // 2),
+            nn.ReLU(),
+            nn.Linear(hidden_dim // 2, max_nodes),
+        )
+
+        self.optimizer = optim.Adam(self.parameters(), lr=lr)
+
+    def encode(self, adj):
+        B, N, _ = adj.shape
+        # Use identity as node features (one-hot position)
+        x = torch.eye(N, device=adj.device).unsqueeze(0).expand(B, -1, -1)
+        h = F.relu(self.gcn1(x, adj))
+        h = F.relu(self.gcn2(h, adj))
+        # Graph-level readout (mean pooling)
+        h_graph = h.mean(dim=1)  # [B, hidden]
+        return self.fc_mu(h_graph), self.fc_logvar(h_graph)
+
+    def reparameterize(self, mu, logvar):
+        std = torch.exp(0.5 * logvar)
+        eps = torch.randn_like(std)
+        return mu + eps * std
+
+    def decode(self, z):
+        B = z.shape[0]
+        logits = self.decoder(z).view(B, self.max_nodes, self.max_nodes)
+        # Symmetrize
+        logits = (logits + logits.transpose(1, 2)) / 2
+        # Zero diagonal
+        mask = 1 - torch.eye(self.max_nodes, device=z.device).unsqueeze(0)
+        return logits * mask
+</new>
+</edit>
+<obs>
+Successfully replaced text in pytorch-geometric/custom_graphgen.py.
+</obs>
+<note>
+[[FILL_NOTE?: optional one-line thought for this edit, or delete this block]]
+</note>
+<edit path="pytorch-geometric/custom_graphgen.py">
+<old>
+        self.optimizer.zero_grad()
+        B = adj.shape[0]
+        device = adj.device
+
+        # Sample random timestep
+        t_idx = torch.randint(0, self.n_steps, (B,), device=device)
+
+        # Corrupt adjacency
+        adj_noisy = self._corrupt(adj, t_idx)
+
+        # Predict clean adjacency
+        t_float = t_idx.float() / self.n_steps
+        edge_logits, node_logits = self.denoiser(adj_noisy, t_float)
+
+        # Cross-entropy loss to predict original clean graph
+        edge_loss = F.binary_cross_entropy_with_logits(edge_logits, adj, reduction="mean")
+
+        # Node existence loss
+        node_target = (adj.sum(dim=-1) > 0).float()
+        node_loss = F.binary_cross_entropy_with_logits(node_logits, node_target, reduction="mean")
+
+        loss = edge_loss + 0.5 * node_loss
+        loss.backward()
+        torch.nn.utils.clip_grad_norm_(self.denoiser.parameters(), 1.0)
+        self.optimizer.step()
+
+        return {"loss": loss.item(), "edge_loss": edge_loss.item()}
+
+    def sample(self, n_samples, device):
+        """Generate graphs via iterative discrete denoising."""
+        self.eval()
+        N = self.max_nodes
+        mask = 1 - torch.eye(N, device=device).unsqueeze(0)
+
+        with torch.no_grad():
+            # Start from random binary adjacency (Bernoulli(0.5))
+            adj = (torch.rand(n_samples, N, N, device=device) > 0.5).float()
+            adj = torch.triu(adj, diagonal=1)
+            adj = adj + adj.transpose(1, 2)
+
+            for step in range(self.n_steps - 1, -1, -1):
+                t_float = torch.ones(n_samples, device=device) * (step / self.n_steps)
+                edge_logits, node_logits = self.denoiser(adj, t_float)
+                edge_probs = torch.sigmoid(edge_logits)
+
+                if step > 0:
+                    # Sample with some noise
+                    adj = (torch.rand_like(edge_probs) < edge_probs).float()
+                else:
+                    # Final step: use threshold
+                    adj = (edge_probs > 0.5).float()
+
+                # Ensure symmetry and no self-loops
+                adj = torch.triu(adj, diagonal=1)
+                adj = adj + adj.transpose(1, 2)
+
+            # Node counts from predictor
+            node_probs = torch.sigmoid(node_logits)
+            node_mask_pred = (node_probs > 0.5).float()
+            adj = adj * node_mask_pred.unsqueeze(-1) * node_mask_pred.unsqueeze(-2)
+            node_counts = node_mask_pred.sum(dim=-1).long()
+            node_counts = torch.clamp(node_counts, min=2)
+
+        return adj, node_counts
+</old>
+<new>
+        self.optimizer.zero_grad()
+
+        mu, logvar = self.encode(adj)
+        z = self.reparameterize(mu, logvar)
+        adj_logits = self.decode(z)
+        node_logits = self.node_pred(z)  # [B, max_nodes]
+
+        # Reconstruction loss
+        recon_loss = F.binary_cross_entropy_with_logits(adj_logits, adj, reduction="mean")
+
+        # Node existence loss
+        node_target = (adj.sum(dim=-1) > 0).float()  # [B, max_nodes]
+        node_loss = F.binary_cross_entropy_with_logits(node_logits, node_target, reduction="mean")
+
+        # KL divergence
+        kl_loss = -0.5 * torch.mean(1 + logvar - mu.pow(2) - logvar.exp())
+
+        loss = recon_loss + 0.5 * node_loss + 0.001 * kl_loss
+        loss.backward()
+        self.optimizer.step()
+
+        return {"loss": loss.item(), "recon": recon_loss.item(), "kl": kl_loss.item()}
+
+    def sample(self, n_samples, device):
+        self.eval()
+        with torch.no_grad():
+            z = torch.randn(n_samples, self.latent_dim, device=device)
+            adj_logits = self.decode(z)
+            adj = (torch.sigmoid(adj_logits) > 0.5).float()
+            node_logits = self.node_pred(z)
+            node_probs = torch.sigmoid(node_logits)
+            node_mask = (node_probs > 0.5).float()
+            # Mask adjacency by existing nodes
+            adj = adj * node_mask.unsqueeze(-1) * node_mask.unsqueeze(-2)
+            node_counts = node_mask.sum(dim=-1).long()
+            node_counts = torch.clamp(node_counts, min=2)
+        return adj, node_counts
+</new>
+</edit>
+<obs>
+Successfully replaced text in pytorch-geometric/custom_graphgen.py.
+</obs>
+<run/>
+<obs>
+Measured results — `baseline:graphvae` (`is_final,true`), seeds {42, 123, 456} and mean. All metrics lower is better.
+
+## community_small
+| seed | mmd_degree | mmd_clustering | mmd_orbit | mmd_avg |
+|---|---|---|---|---|
+| 42 | 0.188233 | 0.100000 | 0.404320 | 0.230851 |
+| 123 | 0.055321 | 0.103694 | 0.000040 | 0.053018 |
+| 456 | 0.054427 | 0.101396 | 0.000032 | 0.051951 |
+| **mean** | **0.099327** | **0.101697** | **0.134797** | **0.111940** |
+
+## ego_small
+| seed | mmd_degree | mmd_clustering | mmd_orbit | mmd_avg |
+|---|---|---|---|---|
+| 42 | 0.314982 | 0.091250 | 0.101778 | 0.169336 |
+| 123 | 0.048272 | 0.074885 | 0.000073 | 0.041077 |
+| 456 | 0.127459 | 0.150037 | 0.000136 | 0.092544 |
+| **mean** | **0.163571** | **0.105391** | **0.033996** | **0.100986** |
+
+## enzymes
+| seed | mmd_degree | mmd_clustering | mmd_orbit | mmd_avg |
+|---|---|---|---|---|
+| 42 | 1.367850 | 0.354306 | 0.217945 | 0.646700 |
+| 123 | 0.386197 | 0.705684 | 0.000404 | 0.364095 |
+| 456 | 0.346469 | 0.496889 | 0.000367 | 0.281241 |
+| **mean** | **0.700172** | **0.518960** | **0.072905** | **0.430679** |
+
+Overall mean `mmd_avg` across the three datasets: **0.2145**.
+</obs>
+

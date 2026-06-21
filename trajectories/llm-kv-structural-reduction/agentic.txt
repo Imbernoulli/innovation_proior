@@ -1,0 +1,1122 @@
+<meta task="llm-kv-structural-reduction" domain="Language models" file="nanoGPT/custom_pretrain.py" model_format="qwen3" edit_tool="str_replace"/>
+
+<system>
+You are a research engineer improving a model on a fixed ML task. You work by editing the model code and running experiments. Think carefully before each change. You have these tools:
+- str_replace(path, old_str, new_str): replace the unique occurrence of old_str with new_str.
+- create(path, file_text): create a new file.
+- run_experiment(): train + evaluate the current code under the fixed budget; returns metrics.
+Make one tool call at a time. After editing, call run_experiment() to measure your method.
+</system>
+
+<user>
+## Research question
+
+GPT-style autoregressive decoding is dominated not by arithmetic but by memory bandwidth: at every
+decode step the accelerator must stream the entire stored history of attention keys and values — the
+KV cache — across the bus to produce a single token. That cache grows with sequence length, batch, and
+the number of materialized KV heads, and it is what caps context length and batch size at serving time.
+The single thing being designed here is the **attention block's KV structure** — how the keys and values
+are materialized, shared, or compressed — under one fixed nanoGPT-style pretraining loop. The question
+is sharp and two-sided: how much language-model quality survives a reduction in the *realized* KV state,
+and whether **head sharing** (collapse the number of KV heads) or a **latent KV bottleneck** (compress
+K/V into a low-rank vector decompressed on the fly) gives the better quality-per-byte tradeoff at a
+fixed small-scale pretraining budget. Everything outside the attention block is frozen.
+
+## Prior art before the first rung (the attention lineage)
+
+The first rung is dense multi-head attention itself — the unreduced control the whole task reacts
+against. The KV-reduction designs that follow it are responses to one structural fact: the KV cache is
+large *because* it stores a separate key and value per head. The lineage that precedes the ladder:
+
+- **Scaled dot-product attention (Vaswani et al., 2017).** A head projects the input into queries,
+  keys, and values and returns $\mathrm{softmax}(QK^\top/\sqrt{k})V$; $h$ heads run in parallel, each
+  with its own projections, so the layer attends to several relationships at once. Gap: it says nothing
+  about *decoding* cost — the per-head K/V are exactly what must be cached and reloaded.
+- **The KV cache.** During generation, position $i$ attends over all $j\le i$; recomputing past K/V
+  each step is wasteful, so they are computed once and cached. This makes per-step arithmetic linear in
+  history but introduces a stored tensor whose size grows with the sequence — and, critically, with the
+  head count. Gap: nothing here bounds how many KV heads must be stored.
+- **The memory-bandwidth diagnostic (roofline; Williams, Waterman, Patterson, 2009).** Counting bytes
+  vs ops over a decode of length $n$, batch $b$, width $d$, $h$ heads, head dim $k=d/h$: arithmetic is
+  $\Theta(b\,n\,d^2)$ (the projections dominate), while the cached K/V touched over all steps is
+  $\Theta(b\,h\,n^2 k)=\Theta(b\,n^2 d)$. The memory-to-compute ratio is $n/d + 1/b$; the $n/d$ term —
+  the cost of streaming the cache — is the offender, and it carries an $h$ inside ($b\,h\,n^2k$). Gap:
+  the diagnostic pins the cost on *one key and one value per head*, but does not say how to shrink it.
+
+The fixed substrate below is the standard dense layer those three converged on, and the editable
+interface is precisely the region where the $h$ in the cache term can be cut or compressed away.
+
+## The fixed substrate
+
+A nanoGPT pretraining loop is frozen and must not be touched: token + learned absolute position
+embeddings, a stack of `n_layer` pre-LayerNorm `Block`s (attention then a 4× GELU MLP, residual around
+each), a tied LM head, AdamW with weight decay split (decay on 2-D params only), cosine LR schedule with
+warmup, bf16 autocast, DDP. Training is on ClimbMix; held-out cross-entropy is measured on
+WikiText-2/103 + LAMBADA, and 0-shot downstream accuracy via lm-eval. The loop also computes the KV
+footprint itself: `GPT.structural_metrics()` walks every block's attention module and reports
+`head_sharing_ratio = n_head / n_kv_head`, `latent_rank_ratio`, and the headline efficiency number
+`kv_bytes_per_token`. That last is **derived from the realized attention structure**, not measured at
+runtime — for a plain block it is `2 * n_kv_head * head_dim * 2`; for a latent-compression block (one
+exposing `kv_a_proj_with_mqa` and `kv_b_proj`) it is `2 * (kv_lora_rank + qk_rope_head_dim)`; for a
+layer that borrows the previous layer's K/V (`share_across_layers`) it is `0`. So the design choices in
+the attention block *are* what the efficiency metric reads off.
+
+## The editable interface
+
+Exactly one region is editable — the span between the read-only `# BEGIN/END KV EDITABLE REGION`
+markers in `custom_pretrain.py`. An AST validator enforces that only the allowed helper functions plus
+`CausalSelfAttention` appear at the top level of that span; the contract is the three required helpers
+and the attention class:
+
+- `build_kv_heads(config)` → `(n_kv_head, head_dim)`: how many KV heads are materialized relative to
+  the `config.n_head` query heads.
+- `cross_layer_share(layer_idx, config)` → `bool`: an optional structural hook to reuse a previous
+  layer's K/V (auxiliary; not the main axis).
+- `latent_kv_project(k, v, config)` → `(k, v, latent_ratio)`: an optional latent KV bottleneck.
+- `CausalSelfAttention(nn.Module)`: how the above choices are instantiated inside the block — the
+  internal Q/KV projection, any per-head expansion, and the attention mixing path. Its contents are
+  flexible (it may define its own RMSNorm / rotary helpers from the allowed name list), but it must set
+  `self.n_kv_head`, `self.head_dim`, and the `_last_*` diagnostic attributes the metric reads.
+
+The starting point is the scaffold default: **dense multi-head attention** — one KV head per query
+head, no sharing, no compression. Each rung on the ladder replaces exactly this region.
+
+```python
+# EDITABLE region of custom_pretrain.py — default fill (dense MHA)
+def build_kv_heads(config):
+    """Return the number of KV heads and per-head dimension."""
+
+    n_kv_head = config.n_head
+    head_dim = config.n_embd // config.n_head
+    return n_kv_head, head_dim
+
+
+def cross_layer_share(layer_idx, config):
+    """Optionally reuse KV structure across layers. Default: no sharing."""
+
+    return False
+
+
+def latent_kv_project(k, v, config):
+    """Optional latent KV bottleneck. Default: identity projection."""
+
+    return k, v, 1.0
+
+
+def expand_kv_to_q_heads(tensor, target_heads):
+    """Expand KV heads to query heads while remaining safe for any head count."""
+
+    current_heads = tensor.size(1)
+    if current_heads == target_heads:
+        return tensor
+    full_repeats = target_heads // current_heads
+    remainder = target_heads % current_heads
+    parts = []
+    if full_repeats > 0:
+        parts.append(tensor.repeat_interleave(full_repeats, dim=1))
+    if remainder > 0:
+        parts.append(tensor[:, :remainder, :, :])
+    return torch.cat(parts, dim=1)
+
+
+class CausalSelfAttention(nn.Module):
+    _shared_kv_cache = {}
+
+    def __init__(self, config, layer_idx=0):
+        super().__init__()
+        assert config.n_embd % config.n_head == 0
+        self.n_head = config.n_head
+        self.n_embd = config.n_embd
+        self.dropout = config.dropout
+        self.layer_idx = layer_idx
+        self.n_kv_head, self.head_dim = build_kv_heads(config)
+        self.share_across_layers = cross_layer_share(layer_idx, config)
+
+        q_dim = config.n_embd
+        kv_dim = 2 * self.n_kv_head * self.head_dim
+        self.c_attn = nn.Linear(config.n_embd, q_dim + kv_dim, bias=config.bias)
+        self.c_proj = nn.Linear(config.n_embd, config.n_embd, bias=config.bias)
+        self.attn_dropout = nn.Dropout(config.dropout)
+        self.resid_dropout = nn.Dropout(config.dropout)
+        self.flash = hasattr(torch.nn.functional, "scaled_dot_product_attention")
+        if not self.flash:
+            self.register_buffer(
+                "bias",
+                torch.tril(torch.ones(config.block_size, config.block_size)).view(
+                    1, 1, config.block_size, config.block_size
+                ),
+            )
+        self.use_pos_emb = True
+        self.head_sharing_ratio = self.n_head / max(self.n_kv_head, 1)
+
+    def forward(self, x):
+        bsz, seq_len, channels = x.size()
+        qkv = self.c_attn(x)
+        q, kv = qkv.split(
+            [self.n_embd, 2 * self.n_kv_head * self.head_dim],
+            dim=2,
+        )
+        k, v = kv.chunk(2, dim=2)
+
+        q = q.view(bsz, seq_len, self.n_head, self.head_dim).transpose(1, 2)
+        k = k.view(bsz, seq_len, self.n_kv_head, self.head_dim).transpose(1, 2)
+        v = v.view(bsz, seq_len, self.n_kv_head, self.head_dim).transpose(1, 2)
+
+        reused_previous = False
+        if self.share_across_layers and (self.layer_idx - 1) in self._shared_kv_cache:
+            k, v = self._shared_kv_cache[self.layer_idx - 1]
+            reused_previous = True
+        else:
+            self._shared_kv_cache[self.layer_idx] = (k.detach(), v.detach())
+
+        if self.n_kv_head != self.n_head:
+            k = expand_kv_to_q_heads(k, self.n_head)
+            v = expand_kv_to_q_heads(v, self.n_head)
+
+        k, v, latent_ratio = latent_kv_project(k, v, self)
+        self._last_latent_rank_ratio = float(latent_ratio)
+        self._last_kv_storage_ratio = 0.0 if reused_previous else float(latent_ratio)
+        self._uses_latent_compression = bool(latent_ratio < 0.999)
+
+        if self.flash:
+            y = torch.nn.functional.scaled_dot_product_attention(
+                q,
+                k,
+                v,
+                attn_mask=None,
+                dropout_p=self.dropout if self.training else 0.0,
+                is_causal=True,
+            )
+        else:
+            att = (q @ k.transpose(-2, -1)) * (1.0 / math.sqrt(k.size(-1)))
+            att = att.masked_fill(self.bias[:, :, :seq_len, :seq_len] == 0, float("-inf"))
+            att = F.softmax(att, dim=-1)
+            att = self.attn_dropout(att)
+            y = att @ v
+
+        y = y.transpose(1, 2).contiguous().view(bsz, seq_len, channels)
+        y = self.resid_dropout(self.c_proj(y))
+        return y
+```
+
+## Evaluation settings
+
+Primary evaluation at **345M** scale (24 layers, 16 heads, width 1024), seed 42, on the Chinchilla-optimal
+~7.1B-token schedule (13535 steps, 2-GPU DDP, LR 3e-4, bf16). Metrics, with directions:
+
+- `val_loss` (primary; cross-entropy on the ClimbMix validation split, **lower is better**).
+- `kv_bytes_per_token` (the efficiency axis; evaluator-derived from the realized attention structure,
+  **lower is better**).
+- `heldout_loss` (mean cross-entropy on WikiText-2/103 + LAMBADA at the final checkpoint, lower is
+  better), with per-corpus breakdowns.
+- `arc_easy`, `hellaswag` (0-shot downstream accuracy via lm-eval, higher is better).
+- `head_sharing_ratio`, `latent_rank_ratio` (structural descriptors of the chosen design).
+
+The research question is the **quality-per-byte tradeoff**, so a rung is "stronger" when it Pareto-improves
+the relevant prior: lower KV bytes at equal-or-better loss, or better loss at equal-or-lower bytes.
+
+The editable model code is in `nanoGPT/custom_pretrain.py`:
+```python
+def build_kv_heads(config):
+    """Return the number of KV heads and per-head dimension."""
+
+    n_kv_head = config.n_head
+    head_dim = config.n_embd // config.n_head
+    return n_kv_head, head_dim
+
+
+def cross_layer_share(layer_idx, config):
+    """Optionally reuse KV structure across layers.
+
+    Default: no cross-layer KV sharing.
+    """
+
+    return False
+
+
+def latent_kv_project(k, v, config):
+    """Optional latent KV bottleneck.
+
+    Default: identity projection.
+    """
+
+    return k, v, 1.0
+
+
+def expand_kv_to_q_heads(tensor, target_heads):
+    """Expand KV heads to query heads while remaining safe for any head count."""
+
+    current_heads = tensor.size(1)
+    if current_heads == target_heads:
+        return tensor
+    full_repeats = target_heads // current_heads
+    remainder = target_heads % current_heads
+    parts = []
+    if full_repeats > 0:
+        parts.append(tensor.repeat_interleave(full_repeats, dim=1))
+    if remainder > 0:
+        parts.append(tensor[:, :remainder, :, :])
+    return torch.cat(parts, dim=1)
+
+
+class CausalSelfAttention(nn.Module):
+    _shared_kv_cache = {}
+
+    def __init__(self, config, layer_idx=0):
+        super().__init__()
+        assert config.n_embd % config.n_head == 0
+        self.n_head = config.n_head
+        self.n_embd = config.n_embd
+        self.dropout = config.dropout
+        self.layer_idx = layer_idx
+        self.n_kv_head, self.head_dim = build_kv_heads(config)
+        self.share_across_layers = cross_layer_share(layer_idx, config)
+
+        q_dim = config.n_embd
+        kv_dim = 2 * self.n_kv_head * self.head_dim
+        self.c_attn = nn.Linear(config.n_embd, q_dim + kv_dim, bias=config.bias)
+        self.c_proj = nn.Linear(config.n_embd, config.n_embd, bias=config.bias)
+        self.attn_dropout = nn.Dropout(config.dropout)
+        self.resid_dropout = nn.Dropout(config.dropout)
+        self.flash = hasattr(torch.nn.functional, "scaled_dot_product_attention")
+        if not self.flash:
+            self.register_buffer(
+                "bias",
+                torch.tril(torch.ones(config.block_size, config.block_size)).view(
+                    1, 1, config.block_size, config.block_size
+                ),
+            )
+        self.use_pos_emb = True
+        self.head_sharing_ratio = self.n_head / max(self.n_kv_head, 1)
+
+    def forward(self, x):
+        bsz, seq_len, channels = x.size()
+        qkv = self.c_attn(x)
+        q, kv = qkv.split(
+            [self.n_embd, 2 * self.n_kv_head * self.head_dim],
+            dim=2,
+        )
+        k, v = kv.chunk(2, dim=2)
+
+        q = q.view(bsz, seq_len, self.n_head, self.head_dim).transpose(1, 2)
+        k = k.view(bsz, seq_len, self.n_kv_head, self.head_dim).transpose(1, 2)
+        v = v.view(bsz, seq_len, self.n_kv_head, self.head_dim).transpose(1, 2)
+
+        reused_previous = False
+        if self.share_across_layers and (self.layer_idx - 1) in self._shared_kv_cache:
+            k, v = self._shared_kv_cache[self.layer_idx - 1]
+            reused_previous = True
+        else:
+            self._shared_kv_cache[self.layer_idx] = (k.detach(), v.detach())
+
+        if self.n_kv_head != self.n_head:
+            k = expand_kv_to_q_heads(k, self.n_head)
+            v = expand_kv_to_q_heads(v, self.n_head)
+
+        k, v, latent_ratio = latent_kv_project(k, v, self)
+        self._last_latent_rank_ratio = float(latent_ratio)
+        self._last_kv_storage_ratio = 0.0 if reused_previous else float(latent_ratio)
+        self._uses_latent_compression = bool(latent_ratio < 0.999)
+
+        if self.flash:
+            y = torch.nn.functional.scaled_dot_product_attention(
+                q,
+                k,
+                v,
+                attn_mask=None,
+                dropout_p=self.dropout if self.training else 0.0,
+                is_causal=True,
+            )
+        else:
+            att = (q @ k.transpose(-2, -1)) * (1.0 / math.sqrt(k.size(-1)))
+            att = att.masked_fill(self.bias[:, :, :seq_len, :seq_len] == 0, float("-inf"))
+            att = F.softmax(att, dim=-1)
+            att = self.attn_dropout(att)
+            y = att @ v
+
+        y = y.transpose(1, 2).contiguous().view(bsz, seq_len, channels)
+        y = self.resid_dropout(self.c_proj(y))
+        return y
+```
+Improve it. Derive your method, edit the code, then run_experiment().
+</user>
+
+### step 1 — MHA (dense multi-head attention, control)   [slug:mha]
+
+<think>
+The KV structure is the whole point, but it lives inside an attention block, and with no reduction at all that block is the ceiling I am measuring everything else against — so the place to start is the dense, unreduced layer itself, and I want to be honest about *why* it is both the thing to beat and the thing whose decoding cost I cannot afford. The scaffold hands me a frozen nanoGPT loop and exactly one editable region: `build_kv_heads`, `cross_layer_share`, `latent_kv_project`, and the body of `CausalSelfAttention`. Every later rung is a different fill of that region. The first rung is the trivial fill — leave it dense — and the reason that is the right starting point is that I cannot reason about *how much quality survives a KV reduction* until I have measured the quality with no reduction. The dense layer is the control. It is also, on the efficiency axis this task actually cares about, the weakest possible design by construction: it reduces nothing, so its `kv_bytes_per_token` is as large as the architecture permits. Both facts are true at once, and holding both is the entire frame for the climb.
+
+Let me write down what a single attention head does so the cost I am about to count is grounded in the arithmetic and not in a slogan. For an input sequence of vectors, a head projects each position into a query, a key, and a value, then returns a softmax-weighted average of the values, the weights coming from scaled query-key dot products: $\mathrm{softmax}(QK^\top/\sqrt{k})V$, with $k$ the per-head dimension. The layer runs $h$ such heads in parallel, each with its own learned projection, so the layer can attend to several kinds of relationship simultaneously, and the per-head outputs are concatenated and passed through one output projection. The head dimension is $k = d/h$ for model width $d$, so the $h$ heads together tile the full width and cost about the same as one full-width projection. In this scaffold $d = 1024$ and $h = 16$, so $k = 64$. The dense layer materializes one key head and one value head for *every* query head — sixteen of each — and that, I will show, is exactly what makes it expensive to decode.
+
+Now the cost that decides whether this design is deployable: not training, which processes a whole sequence in parallel and is compute-bound, but autoregressive decoding, where I emit one token, append it, and feed it back. At each decode step I do not want to recompute the keys and values of every past position, so I keep them in a cache and append the new token's K/V each step. That makes the per-step arithmetic linear in the history length instead of quadratic, but it introduces a stored tensor whose size grows with the sequence — and, the part that bites, with the head count. Let me count bytes against ops over a decode of length $n$, batch $b$, the way the roofline picture demands, because "the cache is big" is not an argument until I know which term dominates. The arithmetic per token is dominated by the four projections — query, key, value, output — each a $d\times d$ matmul on one token's vector, so $\Theta(d^2)$ per token and $\Theta(b\,n\,d^2)$ over the whole generation. The score-and-mix itself is $\Theta(d\cdot\text{history})$ per step, smaller than $d^2$ until the history grows very long, so the projections dominate the compute. On the memory side, two things stream: the projection matrices, reloaded each step because there is only one token's worth of activation to reuse them on, costing $\Theta(n\,d^2)$ over the sequence; and the cache, which at step $i$ has shape $[b, h, i, k]$ for keys and the same for values, so summing the bytes touched over all steps gives $\sum_i b\,h\,i\,k = \Theta(b\,h\,n^2 k)$, and since $hk = d$ that is $\Theta(b\,n^2 d)$. The ratio of memory access to arithmetic is therefore $\frac{b\,n^2 d + n\,d^2}{b\,n\,d^2} = \frac{n}{d} + \frac{1}{b}$.
+
+Stare at that ratio, because it is the whole motivation for the task. The $1/b$ term I can beat by batching more requests — a throughput knob, not an architecture problem. The $n/d$ term is the killer: as the generated sequence length climbs toward the model width, this approaches and then exceeds one, meaning roughly one full memory load per arithmetic operation, deep in the memory-bound regime where the compute units starve. And I can read off precisely where the $n/d$ comes from: the $b\,n^2 d$ memory term, which is the cost of streaming the cached keys and values, and that term carries an $h$ inside it ($b\,h\,n^2 k$) — one key and one value per head per position. The cache is big *because every head keeps its own keys and values*. That localizes the entire problem to one design decision inside the editable region: how many KV heads `build_kv_heads` returns. The dense fill returns $h$ of them, the maximum, so it sits at the worst point of the very axis the task is about.
+
+So I should be deliberate about why I am nonetheless running the dense layer first rather than skipping straight to a reduction. The dense layer is the quality reference. Each query head attends through its *own* key and value subspace; the $h$ heads jointly span a rich $2hk$-dimensional key/value space and specialize. That per-head expressivity is exactly what every reduction trades away, so I cannot judge how much a reduction costs without the dense number in hand. The dense layer is also the *most* stable to train — there is no bottleneck to squeeze gradients through, no shared subspace forcing heads to agree — so it gives the cleanest read on what the rest of the loop (the data, the schedule, the 345M shape) achieves before any attention surgery muddies it. It is the ceiling on quality and the floor on efficiency, and the climb is the search for a fill that gives up as little of the first as possible while moving as far as possible on the second.
+
+The fill itself is the scaffold default, almost unchanged, and I want to be precise about the few things the dense baseline pins so that the later rungs read as deltas against a known shape. `build_kv_heads` returns `(config.n_head, config.n_embd // config.n_head)` — KV head count equal to query head count, head dimension the full $d/h$. `cross_layer_share` returns `False`: every layer materializes its own K/V; no layer borrows another's. `latent_kv_project` is the identity returning a latent ratio of `1.0`: no compression. Inside `CausalSelfAttention`, the combined `c_attn` projection produces queries of width $d$ and keys plus values of width $2\cdot n_{kv}\cdot k = 2d$ (since $n_{kv}=h$ here), the three are reshaped to $[b, h, n, k]$, and because the dense control wants no helper to fire, I drop the cross-layer cache branch and call SDPA directly with `is_causal=True`. I set the three diagnostic attributes the metric reads — `_last_latent_rank_ratio = 1.0`, `_last_kv_storage_ratio = 1.0`, `_uses_latent_compression = False` — and `head_sharing_ratio = 1.0`, because there is exactly one query head per KV head. This is the literal edit, and it is deliberately the simplest one: the dense baseline should differ from the scaffold template only in that it hard-wires "no reduction" rather than routing through the generic sharing/compression branches, so the control is unambiguous.
+
+One harness detail is worth naming because it makes the dense layer's weakness *visible in the score* rather than just in a wall-clock measurement I would have to trust. The loop does not time decoding; it computes `kv_bytes_per_token` analytically in `GPT.structural_metrics()` by reading the realized attention structure. For a plain block like this one, that is `2 * n_kv_head * head_dim * 2` — the factor of two for separate K and V, the trailing two for bf16 bytes per element — which for $n_{kv}=16$, $k=64$ comes to $2\cdot16\cdot64\cdot2 = 4096$. So the dense baseline's design choice is read straight off as the largest KV footprint any fill of this region can produce, and the efficiency axis is fixed by `build_kv_heads`, not by anything I would have to profile. That is convenient: it means the whole climb is a search over what `build_kv_heads` and `latent_kv_project` return, and the metric will report the consequence directly.
+
+Now reason about what this floor must do, because that is the entire point of running it. With dense attention, the model has the full per-head key/value capacity, so on the language-modelling metrics — `val_loss`, `heldout_loss`, the downstream accuracies — it should be the best of any design that touches this region, or so close that any later rung's job is defined as "approach this number." That is the optimistic reading. The pessimistic reading, on the axis the task is actually about, is that it pays the maximum KV cost — 4096 bytes per token — to get there, which is precisely the wall the research question exists to knock down. So dense MHA is the weakest *KV-efficient* design by construction: it achieves nothing on the efficiency objective, and its only merit is the quality ceiling it sets. On a task whose stated goal is "how much language-model quality can be preserved by reducing the realized KV state," the design that reduces nothing is the baseline everything else must beat on bytes while staying close on loss.
+
+I expect the run to confirm exactly that split: a strong `val_loss` and `heldout_loss`, competitive downstream numbers, and a `kv_bytes_per_token` of 4096 that is an order of magnitude worse than anything that shares or compresses K/V. Whatever the precise quality number, it points the next step unambiguously. The diagnostic already told me where the cost lives — the $h$ in $b\,h\,n^2 k$, the per-head KV in the cache — and the editable region's `build_kv_heads` is exactly the lever on that $h$. The first reduction to try is the most aggressive cut to the head count the architecture allows: collapse the sixteen KV heads to a single shared one, keeping all sixteen query heads, and see how much of this dense quality I keep when I take the cache from 4096 bytes down to the floor that head-sharing can reach. That is the structural anchor for the whole sharing axis, and dense MHA is the number it must be measured against. So let me lay down the dense control fill.
+</think>
+<say>
+Starting with the control: dense multi-head attention, one KV head per query head, no sharing or compression. This first edit hard-wires `build_kv_heads` to the dense form so the baseline is unambiguous.
+</say>
+<edit path="nanoGPT/custom_pretrain.py">
+<old>
+def build_kv_heads(config):
+    """Return the number of KV heads and per-head dimension."""
+</old>
+<new>
+# EDITABLE region of custom_pretrain.py — step 1: dense multi-head attention (control)
+def build_kv_heads(config):
+    """Dense control: one KV head per query head."""
+</new>
+</edit>
+<obs>
+Successfully replaced text in nanoGPT/custom_pretrain.py.
+</obs>
+<edit path="nanoGPT/custom_pretrain.py">
+<old>
+def cross_layer_share(layer_idx, config):
+    """Optionally reuse KV structure across layers.
+
+    Default: no cross-layer KV sharing.
+    """
+
+    return False
+</old>
+<new>
+def cross_layer_share(layer_idx, config):
+    return False
+</new>
+</edit>
+<obs>
+Successfully replaced text in nanoGPT/custom_pretrain.py.
+</obs>
+<edit path="nanoGPT/custom_pretrain.py">
+<old>
+def latent_kv_project(k, v, config):
+    """Optional latent KV bottleneck.
+
+    Default: identity projection.
+    """
+
+    return k, v, 1.0
+</old>
+<new>
+def latent_kv_project(k, v, config):
+    return k, v, 1.0
+</new>
+</edit>
+<obs>
+Successfully replaced text in nanoGPT/custom_pretrain.py.
+</obs>
+<edit path="nanoGPT/custom_pretrain.py">
+<old>
+def expand_kv_to_q_heads(tensor, target_heads):
+    """Expand KV heads to query heads while remaining safe for any head count."""
+
+    current_heads = tensor.size(1)
+</old>
+<new>
+def expand_kv_to_q_heads(tensor, target_heads):
+    current_heads = tensor.size(1)
+</new>
+</edit>
+<obs>
+Successfully replaced text in nanoGPT/custom_pretrain.py.
+</obs>
+<note>
+Drop the cross-layer cache dict — the dense control borrows nothing.
+</note>
+<edit path="nanoGPT/custom_pretrain.py">
+<old>
+class CausalSelfAttention(nn.Module):
+    _shared_kv_cache = {}
+
+    def __init__(self, config, layer_idx=0):
+</old>
+<new>
+class CausalSelfAttention(nn.Module):
+    def __init__(self, config, layer_idx=0):
+</new>
+</edit>
+<obs>
+Successfully replaced text in nanoGPT/custom_pretrain.py.
+</obs>
+<edit path="nanoGPT/custom_pretrain.py">
+<old>
+        self.n_kv_head, self.head_dim = build_kv_heads(config)
+        self.share_across_layers = cross_layer_share(layer_idx, config)
+</old>
+<new>
+        self.n_kv_head, self.head_dim = build_kv_heads(config)
+        self.share_across_layers = False
+</new>
+</edit>
+<obs>
+Successfully replaced text in nanoGPT/custom_pretrain.py.
+</obs>
+<note>
+One query head per KV head, so the sharing ratio is exactly 1.
+</note>
+<edit path="nanoGPT/custom_pretrain.py">
+<old>
+        self.use_pos_emb = True
+        self.head_sharing_ratio = self.n_head / max(self.n_kv_head, 1)
+</old>
+<new>
+        self.use_pos_emb = True
+        self.head_sharing_ratio = 1.0
+</new>
+</edit>
+<obs>
+Successfully replaced text in nanoGPT/custom_pretrain.py.
+</obs>
+<note>
+Now the forward: strip the sharing/compression branches and call SDPA directly with the diagnostics pinned to "no reduction."
+</note>
+<edit path="nanoGPT/custom_pretrain.py">
+<old>
+        qkv = self.c_attn(x)
+        q, kv = qkv.split(
+            [self.n_embd, 2 * self.n_kv_head * self.head_dim],
+            dim=2,
+        )
+        k, v = kv.chunk(2, dim=2)
+
+        q = q.view(bsz, seq_len, self.n_head, self.head_dim).transpose(1, 2)
+        k = k.view(bsz, seq_len, self.n_kv_head, self.head_dim).transpose(1, 2)
+        v = v.view(bsz, seq_len, self.n_kv_head, self.head_dim).transpose(1, 2)
+
+        reused_previous = False
+        if self.share_across_layers and (self.layer_idx - 1) in self._shared_kv_cache:
+            k, v = self._shared_kv_cache[self.layer_idx - 1]
+            reused_previous = True
+        else:
+            self._shared_kv_cache[self.layer_idx] = (k.detach(), v.detach())
+
+        if self.n_kv_head != self.n_head:
+            k = expand_kv_to_q_heads(k, self.n_head)
+            v = expand_kv_to_q_heads(v, self.n_head)
+
+        k, v, latent_ratio = latent_kv_project(k, v, self)
+        self._last_latent_rank_ratio = float(latent_ratio)
+        self._last_kv_storage_ratio = 0.0 if reused_previous else float(latent_ratio)
+        self._uses_latent_compression = bool(latent_ratio < 0.999)
+
+        if self.flash:
+            y = torch.nn.functional.scaled_dot_product_attention(
+                q,
+                k,
+                v,
+                attn_mask=None,
+                dropout_p=self.dropout if self.training else 0.0,
+                is_causal=True,
+            )
+        else:
+            att = (q @ k.transpose(-2, -1)) * (1.0 / math.sqrt(k.size(-1)))
+            att = att.masked_fill(self.bias[:, :, :seq_len, :seq_len] == 0, float("-inf"))
+            att = F.softmax(att, dim=-1)
+            att = self.attn_dropout(att)
+            y = att @ v
+
+        y = y.transpose(1, 2).contiguous().view(bsz, seq_len, channels)
+        y = self.resid_dropout(self.c_proj(y))
+        return y
+</old>
+<new>
+        qkv = self.c_attn(x)
+        q, kv = qkv.split([self.n_embd, 2 * self.n_kv_head * self.head_dim], dim=2)
+        k, v = kv.chunk(2, dim=2)
+        q = q.view(bsz, seq_len, self.n_head, self.head_dim).transpose(1, 2)
+        k = k.view(bsz, seq_len, self.n_kv_head, self.head_dim).transpose(1, 2)
+        v = v.view(bsz, seq_len, self.n_kv_head, self.head_dim).transpose(1, 2)
+        k, v, latent_ratio = latent_kv_project(k, v, self)
+        self._last_latent_rank_ratio = float(latent_ratio)
+        self._last_kv_storage_ratio = 1.0
+        self._uses_latent_compression = False
+        y = torch.nn.functional.scaled_dot_product_attention(
+            q, k, v, attn_mask=None, dropout_p=self.dropout if self.training else 0.0, is_causal=True
+        )
+        y = y.transpose(1, 2).contiguous().view(bsz, seq_len, channels)
+        y = self.resid_dropout(self.c_proj(y))
+        return y
+</new>
+</edit>
+<obs>
+Successfully replaced text in nanoGPT/custom_pretrain.py.
+</obs>
+<run/>
+<obs>
+Measured results — `baseline:mha` (`is_final,true`), seed 42 (the task's only seed).
+
+## Primary + efficiency (gpt-345m)
+| seed | val_loss | kv_bytes_per_token | head_sharing_ratio | latent_rank_ratio |
+|---|---|---|---|---|
+| 42 | 2.275425 | 4096.0 | 1.0 | 1.0 |
+| **mean** | **2.275425** | **4096.0** | **1.0** | **1.0** |
+
+## Held-out cross-entropy (gpt-345m)
+| seed | heldout_loss | wikitext2 | wikitext103 | lambada |
+|---|---|---|---|---|
+| 42 | 3.967285 | 3.873442 | 3.798263 | 4.230150 |
+| **mean** | **3.967285** | **3.873442** | **3.798263** | **4.230150** |
+
+## Downstream 0-shot (lm-eval-345m)
+| seed | arc_easy | hellaswag |
+|---|---|---|
+| 42 | 54.88 | 33.42 |
+| **mean** | **54.88** | **33.42** |
+</obs>
+
+### step 2 — MQA (single shared KV head)   [slug:mqa]
+
+<think>
+The dense control landed exactly where I predicted it would on both axes, and that is what makes it useful: `val_loss` 2.275425, `heldout_loss` 3.967285 (WikiText-2 3.873, WikiText-103 3.798, LAMBADA 4.230), ARC-Easy 54.88, HellaSwag 33.42 — and a `kv_bytes_per_token` of 4096, the architectural maximum. The quality number is the ceiling I expected; the byte number is the wall the whole task exists to knock down. So the dense run did its job as a control, and it also localized the problem precisely. The 4096 is `2 · n_kv_head · head_dim · 2` with `n_kv_head = 16`, `head_dim = 64`: the factor I am paying is the sixteen — one key head and one value head materialized for every one of the sixteen query heads. Nothing else in that expression is a free variable. `head_dim` is pinned at `n_embd / n_head = 64`, the two trailing twos are "K and V are separate" and "bf16 is two bytes per element," both immovable. The only lever in the byte count is `n_kv_head`, and `build_kv_heads` is exactly the function that sets it. The diagnostic from the dense reasoning said the offending term in the memory-to-compute ratio was the cache, $b\,h\,n^2 k$, and that the $h$ inside it is the per-head KV. The measured 4096 is that $h$ made concrete. So the first reduction is forced and obvious: cut $h$ in the cache.
+
+The question is only *how far* to cut on the first try, and I want to be deliberate rather than timid. I could shave the KV head count gently — keep eight, or four — and creep down the axis. But the point of the first reduction is to learn the *shape* of the quality-versus-bytes curve, and the most informative single probe is the extreme. If I collapse the sixteen KV heads all the way to one — a single key head and a single value head shared across all sixteen query heads — I get the largest possible cut to the cache (a factor of sixteen, from 4096 down to `2 · 1 · 64 · 2 = 256`) and the largest possible quality hit in one shot. That tells me the *worst case* of head sharing: the most aggressive collapse the sharing axis admits. Everything milder than that — any intermediate KV head count — must lie between the dense point and this one. So the single shared KV head is not a guess at the right operating point; it is the structural anchor for the entire sharing axis, the $G = 1$ corner, and the dense layer is the $G = h$ corner. Measuring both corners frames the whole interpolation before I spend a run on anything in between.
+
+So what does the single-shared-KV-head fill actually do, mechanically, in this scaffold? I keep all sixteen query heads — they are cheap, they do the representational work of attending in sixteen different ways, and they accumulate nothing across decode steps, so cutting them buys no bytes. I make `build_kv_heads` return `(1, head_dim)`: one KV head, head dimension still the full 64. The combined `c_attn` projection now emits queries of width `n_embd` (the full 1024, sixteen query heads) plus keys and values of width `2 · 1 · 64 = 128` — a single key head and a single value head. I reshape the query to `[b, 16, n, 64]` and the key and value to `[b, 1, n, 64]`. Then, right before the score matmul, I have to make the one KV head line up with the sixteen query heads, because scaled-dot-product attention wants matching head counts on both sides. That is what `expand_kv_to_q_heads` is for: it repeats the single stored KV head out to sixteen so every query head attends over the same one set of keys and values. The deliberate ordering matters — the *stored* tensor is the small `[b, 1, n, 64]` one, and the expansion to sixteen is a local computation for the matmul, not a thing that ever gets cached. In a real decode loop that is the entire saving: cache one head, expand for the local arithmetic, discard the expansion. Here, with no decode loop and the byte count read analytically off the structure, the saving shows up directly as `kv_bytes_per_token` reading `n_kv_head = 1` and reporting 256.
+
+I should be precise about what this task's harness exposes versus what the head-sharing idea is "supposed" to carry, because the difference changes what I can claim. The original argument for sharing a single KV head is a *decode-bandwidth* argument: the cache is streamed every step, the cache is `∝ n_kv_head`, so one head is a sixteen-fold bandwidth win at serving time. This task never runs an autoregressive decode loop and never times one — it deliberately does not, because in pure-PyTorch eager mode wall-clock generation tracks per-layer op count more than the KV-structure merit. Instead `GPT.structural_metrics()` computes `kv_bytes_per_token` *analytically* from the realized attention structure: for a plain block it reads `n_kv_head` and `head_dim` straight off the module and returns `2 · n_kv_head · head_dim · 2`. So the bandwidth win is captured as a structural number, not a measured latency. That is the right call for a fixed small-scale comparison — it isolates the design choice from kernel-level noise — but it means I am optimizing the *footprint* the structure implies, and the quality I can preserve at that footprint, not a stopwatch. The single shared KV head is the design that minimizes that footprint on the pure-sharing axis: 256 bytes, the floor any head-sharing fill can reach without compression. No fill that only shares heads can go below 256, because one KV head of full width is the smallest a shared-head structure has.
+
+Now the part I actually care about: what do I expect this to cost in quality, and why? Collapsing sixteen KV subspaces into one is not a small thing. In the dense layer each query head attended through its *own* key and value projection — its own little subspace defining "what matches what" and "what gets read out." The sixteen heads jointly spanned a rich `2 · 16 · 64`-dimensional key/value space, and different heads could specialize to different relationships. The single-shared-head collapse forces all sixteen query heads to read and write through *one* 64-dimensional key subspace and one 64-dimensional value subspace. The query heads can still differ in *how* they weight a fixed set of keys — they keep their own query projections — but they can no longer disagree about *what the keys and values are*. That is a genuine loss of capacity, concentrated entirely in the one place the cache lives. So I expect `val_loss` to rise relative to the dense 2.275425: how much is exactly the experiment. If the rise is small, head sharing is cheap and the dense layer was carrying redundant KV subspaces; if it is large, the per-head KV expressivity was doing real work and the collapse hurts. Either reading is informative for the next rung.
+
+There is a second thing I expect, distinct from a quality dip, and it is the symptom that tells me the collapse is too *sharp* rather than merely lossy. Squeezing the entire attention layer's key/value content through a single head makes the optimization landscape meaner — gradients for all sixteen query heads' worth of "what to attend to" have to flow through one bottleneck projection. In larger-scale settings this shows up as training instability; at 345M on a fixed schedule I cannot watch loss spikes from the leaderboard row alone, but I can read the *endpoint*: if the single-head fill underperforms by more than the bytes seem to buy, that is the signature of an over-aggressive cut, not a fair trade. And critically, it sets up the next move structurally. If one shared head is too sharp, the obvious fix is not "go back to sixteen" but "find the in-between" — partition the query heads into a few groups, each with its own shared KV head, so the cache is `∝ G` for some `1 < G < 16` and the capacity loss is spread over `G` subspaces instead of crammed into one. That interpolation is the third rung, and the only way to motivate it honestly is to first measure that `G = 1` is too far.
+
+One more thing the dense result told me that bears on the prediction. The dense layer's strong `val_loss` came with the *whole* per-head KV machinery intact; if MQA's loss stays close to it, that is evidence the KV subspaces were largely redundant and the sixteen-fold byte cut is nearly free. But there is reason to suspect it will not be free here, because this is a *from-scratch* pretraining run, not a conversion. There is no trained dense checkpoint being adapted — `build_kv_heads` returns one head and the model learns from random init with that one head from step zero. So whatever the single shared subspace can represent, the model has to discover it under that constraint for the full ~7.1B-token schedule. The harness gives me no uptraining knob — no mean-pool initialization from a dense checkpoint, no short continuation run — so the MQA number is the honest "what can one KV head learn from scratch at this budget" figure, with none of the cushioning that converting from a dense model would provide. That makes me expect the quality cost to be *visible*: this is the unprotected version of the collapse.
+
+So the falsifiable expectations against the dense numbers, stated sharply. On the efficiency axis, `kv_bytes_per_token` should read exactly 256 — `2 · 1 · 64 · 2` — a clean sixteen-fold improvement over the dense 4096, and `head_sharing_ratio` should read 16.0 (sixteen query heads per KV head). Those two are deterministic consequences of `n_kv_head = 1` and I would be surprised by anything else; if they are wrong, the fill is wrong. On the quality axis, `val_loss` should rise above the dense 2.275425 — I expect a clear gap, not a tie, because the single shared subspace is the most aggressive capacity cut on the axis and there is no checkpoint to cushion it — and `heldout_loss` and the downstream accuracies should soften in step with it. The precise size of that gap is the number that decides the next rung: if it is small, sharing is cheap and the interesting question becomes how low I can push bytes by compression; if it is large, the gap itself is the argument for an intermediate group count that recovers quality by spending a little of the byte budget back. Either way, MQA establishes the cheap-and-lossy corner — minimum sharing-axis footprint, maximum sharing-axis quality cost — and the dense layer is the expensive-and-faithful corner it is measured against. The full scaffold module that fills the editable region with the single-shared-KV-head form is in the answer. Let me set `build_kv_heads` to one head and wire the expansion in.
+</think>
+<say>
+Now multi-query attention: collapse the sixteen KV heads to a single shared one while keeping all sixteen query heads. This first edit sets `build_kv_heads` to return one KV head, taking the cache to the head-sharing floor of 256 bytes.
+</say>
+<edit path="nanoGPT/custom_pretrain.py">
+<old>
+# EDITABLE region of custom_pretrain.py — step 1: dense multi-head attention (control)
+def build_kv_heads(config):
+    """Dense control: one KV head per query head."""
+
+    n_kv_head = config.n_head
+    head_dim = config.n_embd // config.n_head
+</old>
+<new>
+# EDITABLE region of custom_pretrain.py — step 2: multi-query attention (single shared KV head)
+def build_kv_heads(config):
+    """Use one shared KV head for all query heads."""
+
+    n_kv_head = 1
+    head_dim = config.n_embd // config.n_head
+</new>
+</edit>
+<obs>
+Successfully replaced text in nanoGPT/custom_pretrain.py.
+</obs>
+<note>
+Sixteen query heads now share one KV head, so the ratio reads 16.
+</note>
+<edit path="nanoGPT/custom_pretrain.py">
+<old>
+        self.use_pos_emb = True
+        self.head_sharing_ratio = 1.0
+</old>
+<new>
+        self.use_pos_emb = True
+        self.head_sharing_ratio = float(self.n_head)
+</new>
+</edit>
+<obs>
+Successfully replaced text in nanoGPT/custom_pretrain.py.
+</obs>
+<note>
+Restore the multi-line split call to match the shared-head fill's layout.
+</note>
+<edit path="nanoGPT/custom_pretrain.py">
+<old>
+        qkv = self.c_attn(x)
+        q, kv = qkv.split([self.n_embd, 2 * self.n_kv_head * self.head_dim], dim=2)
+        k, v = kv.chunk(2, dim=2)
+</old>
+<new>
+        qkv = self.c_attn(x)
+        q, kv = qkv.split(
+            [self.n_embd, 2 * self.n_kv_head * self.head_dim],
+            dim=2,
+        )
+        k, v = kv.chunk(2, dim=2)
+</new>
+</edit>
+<obs>
+Successfully replaced text in nanoGPT/custom_pretrain.py.
+</obs>
+<note>
+Expand the single stored KV head out to sixteen for the score matmul — the expansion is local, only the one head is the cached object.
+</note>
+<edit path="nanoGPT/custom_pretrain.py">
+<old>
+        v = v.view(bsz, seq_len, self.n_kv_head, self.head_dim).transpose(1, 2)
+        k, v, latent_ratio = latent_kv_project(k, v, self)
+        self._last_latent_rank_ratio = float(latent_ratio)
+        self._last_kv_storage_ratio = 1.0
+</old>
+<new>
+        v = v.view(bsz, seq_len, self.n_kv_head, self.head_dim).transpose(1, 2)
+        k = expand_kv_to_q_heads(k, self.n_head)
+        v = expand_kv_to_q_heads(v, self.n_head)
+        self._last_latent_rank_ratio = 1.0
+        self._last_kv_storage_ratio = 1.0
+</new>
+</edit>
+<obs>
+Successfully replaced text in nanoGPT/custom_pretrain.py.
+</obs>
+<run/>
+<obs>
+Measured results — `baseline:mqa` (`is_final,true`), seed 42 (the task's only seed).
+
+## Primary + efficiency (gpt-345m)
+| seed | val_loss | kv_bytes_per_token | head_sharing_ratio | latent_rank_ratio |
+|---|---|---|---|---|
+| 42 | 2.337850 | 256.0 | 16.0 | 1.0 |
+| **mean** | **2.337850** | **256.0** | **16.0** | **1.0** |
+
+## Held-out cross-entropy (gpt-345m)
+| seed | heldout_loss | wikitext2 | wikitext103 | lambada |
+|---|---|---|---|---|
+| 42 | 3.999302 | 3.862528 | 3.853836 | 4.281542 |
+| **mean** | **3.999302** | **3.862528** | **3.853836** | **4.281542** |
+
+## Downstream 0-shot (lm-eval-345m)
+| seed | arc_easy | hellaswag |
+|---|---|---|
+| 42 | 53.49 | 32.46 |
+| **mean** | **53.49** | **32.46** |
+</obs>
+
+### step 3 — GQA (grouped-query attention, G=4)   [slug:gqa]
+
+<think>
+The single-shared-KV-head run measured the two corners of the sharing axis cleanly, and the gap is exactly the one I was watching for. MQA cut `kv_bytes_per_token` from the dense 4096 to 256 — the clean sixteen-fold reduction, `head_sharing_ratio` 16.0, latent ratio 1.0, all the deterministic structural numbers landing where the fill forces them. The price shows on quality: `val_loss` rose from the dense 2.275425 to 2.337850, a gap of about 0.062 in cross-entropy, and the held-out and downstream numbers softened with it — `heldout_loss` 3.999 against the dense 3.967 (WikiText-2 actually held at 3.863 ≈ dense 3.873, but WikiText-103 slipped to 3.854 from 3.798 and LAMBADA to 4.282 from 4.230), ARC-Easy down to 53.49 from 54.88, HellaSwag down to 32.46 from 33.42. So the collapse to one shared KV head is *not free*. The quality cost is visible and consistent across metrics, which is the signature I expected from an unprotected from-scratch collapse: there was no dense checkpoint to mean-pool from, so the single 64-dimensional key/value subspace had to be learned from random init for the whole schedule, and it could not recover what sixteen per-head subspaces were doing. That is the tell — the per-head KV expressivity was carrying real work, not redundancy. The dense layer was not paying 4096 bytes for nothing.
+
+But read the *shape* of the trade, not just its sign, because the shape is what tells me the trade is mis-calibrated rather than fundamental. MQA moved sixteen-fold on bytes and ~0.062 on loss. That is a wildly asymmetric ratio: I bought an enormous byte reduction and gave back a modest-but-real quality slice. The asymmetry says the operating point is too extreme — I have over-spent on the byte axis relative to what the task scores, because `val_loss` is the primary metric and a sixteen-fold byte cut that costs 0.062 loss is not obviously a win if a *milder* cut costs far less loss for still-large byte savings. The dense and MQA points are the two ends of one axis, and the measured curve through them is not the whole story: I have two points, and the interesting question is the *curvature* between them. If quality degrades gently as I share more and only falls off a cliff near the single-head extreme, then there is a sweet spot well short of `G = 1` that keeps most of the dense quality at a fraction of the dense bytes. The MQA result is the evidence that such a spot is worth finding: the collapse to one head was too sharp, so the fix is not "go back to sixteen" but "stop short of one."
+
+So the move is to make the number of KV heads a *dial* rather than a binary. The cache cost scaled with `n_kv_head` — that is the entire content of the byte formula, `2 · n_kv_head · head_dim · 2` — so `n_kv_head` is a discrete lever I can set anywhere between 1 and 16. I keep all sixteen query heads (still cheap, still doing the attending), and I give them `G` shared KV heads instead of one. Structurally this means partitioning the sixteen query heads into `G` groups of `16/G` each, and giving each group its own single key head and value head, shared within the group. Query heads in the same group attend over a common key/value subspace; query heads in different groups get different ones. The two designs I have already measured are literally the endpoints of this: `G = 1` is one big group — all query heads share — which is the MQA collapse I just ran; `G = 16` is sixteen groups of one — every query head gets its own — which is the dense layer. The grouping *is* the interpolation, and the dense-vs-MQA gap is the interval it interpolates across.
+
+Why should an intermediate `G` be more than a dull compromise — why should it sit *above* the line connecting the two corners rather than on it? Two reasons line up, and both follow from what MQA's failure actually was. First, capacity: instead of cramming all sixteen query heads through one shared 64-dimensional subspace, I now have `G` subspaces, so the representational damage of the collapse is spread over `G` buckets rather than concentrated in one. The MQA result said the single subspace was the bottleneck; giving the model even a handful of subspaces should recover most of the lost quality, because the heads no longer all have to agree on one notion of "what the keys are." Second, and this is the part that makes me optimistic, the byte cost stays proportional to `G` while the quality cost should be *sub*-linear in how much I share — because the first few subspaces buy back most of the expressivity and additional ones have diminishing returns. So a small `G` should recover a disproportionate share of the dense quality for a still-large byte cut. That is exactly the curvature I am betting on: quality recovering fast as `G` rises off 1, bytes rising only linearly.
+
+Now, what `G` does this task's fill actually choose, and how does it differ from the general grouped recipe? The harness pins it: `build_kv_heads` for the grouped fill returns `n_kv_head = max(1, n_head // 4)`, then walks `n_kv_head` down until it divides `n_head` evenly. For sixteen heads that is `16 // 4 = 4`, and 4 already divides 16, so `G = 4` — four groups of four query heads each, four KV heads. The byte count becomes `2 · 4 · 64 · 2 = 1024`, `head_sharing_ratio = 16 / 4 = 4`. So this rung is fixed at `G = 4`; the task is not sweeping the dial, it is planting one intermediate point at a quarter of the query-head count. That is a sensible probe — it is the midpoint-ish of the axis on a log scale (4 is the geometric mean of 1 and 16), so it is the single most informative interior point if I only get one. The expansion from four stored KV heads to sixteen query heads happens in the forward via `k.repeat_interleave(repeat_factor, dim=1)` with `repeat_factor = n_head // n_kv_head = 4`, directly in the attention path — each stored KV head is repeated four times so the four-group structure lines up with the sixteen query heads for the score matmul.
+
+I should be precise about what this task's grouped fill *omits* relative to the full grouped-attention recipe, because it changes what the number means. The general motivation for grouped KV heads comes with a second, equally important half: you do not train the grouped model from scratch — you take an existing dense checkpoint, *mean-pool* each group's trained key and value projections into one shared projection (the most information-preserving merge, better than picking one head or random init), and then continue pretraining for a small fraction of the original steps to let the averaged heads re-coordinate with the untouched query and output projections. That conversion-plus-adaptation recipe is the cheap way to get a grouped model without paying for a fresh pretraining run, and it is also what *protects* the quality: the grouped model starts from a sensible average of trained subspaces, not from noise. This task's harness exposes *none* of that. There is no checkpoint-conversion hook, no mean-pool initialization, no continued-pretraining knob — the editable region is just `build_kv_heads` returning four, and the model trains from random init with four KV heads from step zero, exactly like the MQA run trained with one. So the GQA number I will get is the *unprotected, from-scratch* version: what four KV heads can learn at this budget without any adaptation cushioning. That matters for the prediction. The conversion recipe's value is precisely that the grouped model needs *less* adaptation than the single-head one because it preserves more structure before any training; here there is no adaptation phase at all for either, so the comparison between MQA and GQA is apples-to-apples — both from scratch — and the only difference is the structural one, `G = 1` versus `G = 4`. That is actually the cleaner experiment for isolating "does spreading capacity over four subspaces help," because no conversion artifacts are in the way.
+
+There is a subtlety in *where* on the Pareto picture `G = 4` will land, and I want to be honest that it might not be a clean win on the framing the task uses. The byte count at `G = 4` is 1024 — four times MQA's 256, only a quarter below the dense 4096. So on the efficiency axis GQA-4 is much *closer to dense* than MQA is; it gives back three-quarters of MQA's hard-won byte savings to buy back quality. Whether that is a Pareto improvement depends entirely on how much quality it recovers. If `val_loss` drops from MQA's 2.337850 back toward the dense 2.275425 — say into the low 2.31s — then GQA-4 is a real interior point: it recovers most of the dense quality at a quarter of the dense bytes, which is the textbook grouped-attention story and a Pareto-better point than either corner for someone who wants a balance. If instead the loss barely moves off MQA's 2.338 despite quadrupling the bytes, that would say head-sharing capacity is not the binding constraint at this scale and the four extra subspaces were wasted — which would itself be a strong signal that the *next* rung should stop sharing heads altogether and attack the bytes a different way. So GQA-4 is a discriminating probe: its position relative to the dense-MQA line is the measurement that decides whether the sharing axis has a useful interior at all.
+
+That last point is the bridge I most want to set up, because it frames the endpoint. The sharing axis, even at its best interior point, is fundamentally a *trade*: every byte I save by sharing heads is a byte of key/value subspace I have deleted, so small-cache regions of this axis necessarily force few subspaces and lose quality, and quality-preserving regions necessarily keep many subspaces and large caches. GQA-4 will quantify how steep that trade is, but it cannot escape it — `G = 4` is just a less-bad point on the same line. The dense layer proved per-head KV subspaces carry real work; MQA proved collapsing them to one costs real quality; GQA-4 will measure whether spreading them over a few recovers most of it at a quarter of the bytes. If even the recovered point still sits visibly above the dense quality, then the honest conclusion is that *sharing* heads cannot give both small cache and dense quality, and the only way past the trade is to stop deleting subspaces and instead *compress* the per-token key/value information into a small latent that is decompressed back into full per-head subspaces on the fly — which is the next and final rung.
+
+So the falsifiable expectations against the prior numbers, stated sharply. On the efficiency axis, `kv_bytes_per_token` should read exactly 1024 (`2 · 4 · 64 · 2`) and `head_sharing_ratio` 4.0 — deterministic from `n_kv_head = 4`; anything else means the fill is wrong. That is four times MQA's 256, a quarter below dense 4096. On the quality axis, `val_loss` should land *between* the dense 2.275425 and the MQA 2.337850 — I expect it nearer the dense end than the MQA end, because four subspaces should recover most of what one lost, so a number in the low-to-mid 2.31s would confirm the curvature bet. If it instead sits near 2.338, the four extra subspaces bought nothing and the sharing axis has no useful interior. The held-out and downstream numbers should track: `heldout_loss` somewhere between MQA's 3.999 and dense's 3.967, ARC-Easy and HellaSwag partially recovering toward the dense 54.88 / 33.42. The single number that matters most is how far `val_loss` recovers per byte spent relative to MQA — that ratio is the steepness of the sharing trade, and if it shows the trade is real and unavoidable, it is the argument for abandoning head-sharing for latent compression at the endpoint. The full scaffold module that fills the editable region with the four-group form is in the answer. Let me dial `build_kv_heads` to four and switch the expansion to a repeat-interleave.
+</think>
+<say>
+Now grouped-query attention at `G = 4`: an interior point between the dense and single-head corners, four KV heads shared across the sixteen query heads. This first edit sets `build_kv_heads` to a quarter of the query-head count, landing the cache at 1024 bytes.
+</say>
+<edit path="nanoGPT/custom_pretrain.py">
+<old>
+# EDITABLE region of custom_pretrain.py — step 2: multi-query attention (single shared KV head)
+def build_kv_heads(config):
+    """Use one shared KV head for all query heads."""
+
+    n_kv_head = 1
+    head_dim = config.n_embd // config.n_head
+</old>
+<new>
+# EDITABLE region of custom_pretrain.py — step 3: grouped-query attention (G = n_head // 4)
+def build_kv_heads(config):
+    """Use fewer KV heads than query heads, preserving query expressivity."""
+
+    n_kv_head = max(1, config.n_head // 4)
+    while config.n_head % n_kv_head != 0:
+        n_kv_head -= 1
+    head_dim = config.n_embd // config.n_head
+</new>
+</edit>
+<obs>
+Successfully replaced text in nanoGPT/custom_pretrain.py.
+</obs>
+<note>
+The grouped path repeat-interleaves inline, so the standalone `expand_kv_to_q_heads` helper is no longer needed.
+</note>
+<edit path="nanoGPT/custom_pretrain.py">
+<old>
+    return k, v, 1.0
+
+
+def expand_kv_to_q_heads(tensor, target_heads):
+    current_heads = tensor.size(1)
+    if current_heads == target_heads:
+        return tensor
+    full_repeats = target_heads // current_heads
+    remainder = target_heads % current_heads
+    parts = []
+    if full_repeats > 0:
+        parts.append(tensor.repeat_interleave(full_repeats, dim=1))
+    if remainder > 0:
+        parts.append(tensor[:, :remainder, :, :])
+    return torch.cat(parts, dim=1)
+</old>
+<new>
+    return k, v, 1.0
+</new>
+</edit>
+<obs>
+Successfully replaced text in nanoGPT/custom_pretrain.py.
+</obs>
+<note>
+Sharing ratio is now `n_head / n_kv_head` again — 16/4 = 4.
+</note>
+<edit path="nanoGPT/custom_pretrain.py">
+<old>
+        self.use_pos_emb = True
+        self.head_sharing_ratio = float(self.n_head)
+</old>
+<new>
+        self.use_pos_emb = True
+        self.head_sharing_ratio = self.n_head / max(self.n_kv_head, 1)
+</new>
+</edit>
+<obs>
+Successfully replaced text in nanoGPT/custom_pretrain.py.
+</obs>
+<note>
+Repeat each of the four stored KV heads four times so the groups line up with the sixteen query heads.
+</note>
+<edit path="nanoGPT/custom_pretrain.py">
+<old>
+        v = v.view(bsz, seq_len, self.n_kv_head, self.head_dim).transpose(1, 2)
+        k = expand_kv_to_q_heads(k, self.n_head)
+        v = expand_kv_to_q_heads(v, self.n_head)
+        self._last_latent_rank_ratio = 1.0
+</old>
+<new>
+        v = v.view(bsz, seq_len, self.n_kv_head, self.head_dim).transpose(1, 2)
+        repeat_factor = self.n_head // self.n_kv_head
+        k = k.repeat_interleave(repeat_factor, dim=1)
+        v = v.repeat_interleave(repeat_factor, dim=1)
+        self._last_latent_rank_ratio = 1.0
+</new>
+</edit>
+<obs>
+Successfully replaced text in nanoGPT/custom_pretrain.py.
+</obs>
+<run/>
+<obs>
+Measured results — `baseline:gqa` (`is_final,true`), seed 42 (the task's only seed).
+
+## Primary + efficiency (gpt-345m)
+| seed | val_loss | kv_bytes_per_token | head_sharing_ratio | latent_rank_ratio |
+|---|---|---|---|---|
+| 42 | 2.312553 | 1024.0 | 4.0 | 1.0 |
+| **mean** | **2.312553** | **1024.0** | **4.0** | **1.0** |
+
+## Held-out cross-entropy (gpt-345m)
+| seed | heldout_loss | wikitext2 | wikitext103 | lambada |
+|---|---|---|---|---|
+| 42 | 3.969124 | 3.767792 | 3.845813 | 4.293768 |
+| **mean** | **3.969124** | **3.767792** | **3.845813** | **4.293768** |
+
+## Downstream 0-shot (lm-eval-345m)
+| seed | arc_easy | hellaswag |
+|---|---|---|
+| 42 | 55.01 | 33.12 |
+| **mean** | **55.01** | **33.12** |
+</obs>
+
+### step 4 — MLA (multi-head latent attention, latent KV compression)   [slug:mla]
+
+<think>
+The grouped run did what I bet it would and, in doing so, drew the sharing trade in full. GQA-4 recovered most of the quality MQA gave up: `val_loss` came in at 2.312553, well below MQA's 2.337850 and creeping back toward the dense 2.275425 — four KV subspaces bought back roughly two-fifths of the dense-to-MQA gap. ARC-Easy even edged *past* dense at 55.01 (dense 54.88), HellaSwag landed at 33.12, and `heldout_loss` 3.969 essentially matched dense's 3.967 (WikiText-2 actually best of the three sharing runs at 3.768). So the capacity story held: spreading the collapse over four subspaces instead of one recovers nearly all the quality. But read the *cost* of that recovery, because it is the whole point. GQA-4 paid 1024 bytes to get there — four times MQA's 256, only a quarter below the dense 4096. The grouped layer recovered dense-level quality essentially by *becoming most of the way back to dense* on the byte axis. That is the trade laid bare: the three sharing points (256 / 1024 / 4096 bytes at 2.338 / 2.313 / 2.275 loss) trace a line where quality and bytes move together, and there is no point on it that is simultaneously small-cache *and* dense-quality. Every byte I saved by sharing heads was a byte of key/value subspace I deleted, and the measured curve confirms that deletion is the binding constraint: to get the quality back I had to put the subspaces back, and putting the subspaces back put the bytes back.
+
+So I have a clean, discouraging conclusion from three runs: head-sharing is fundamentally a trade, and its small-cache region is exactly the quality-losing region. The dense layer proved per-head KV subspaces carry real work; MQA proved collapsing them to one costs ~0.062 loss; GQA-4 proved recovering that quality costs four-fold the bytes. The Pareto frontier these three trace is a tilted line, and I cannot beat it by picking a different `G` — any `G` is just another point on the same line. To get *below* the line — small cache and dense quality at once — I have to stop deleting subspaces. That is the reframing the GQA result forces: the problem was never "too many KV heads," it was "the cache stores one full key and one full value per head." Head-sharing attacks that by reducing the number of heads, which necessarily reduces the number of subspaces. The alternative is to keep all sixteen per-head subspaces but store something *smaller than the keys and values themselves* — to attack the bytes without touching the head count.
+
+Here is the structural observation that opens the door. The keys and values of a token are all functions of the same input vector `h_t` — the residual stream at that position. The dense layer projects `h_t` up into `2 · 16 · 64 = 2048` numbers of key plus value, all squeezed out of one 1024-dimensional `h_t`. There is enormous redundancy in that: the per-head keys and values are not sixteen independent 64-dimensional objects, they are sixteen linear views of one 1024-dimensional source. So instead of caching the full per-head keys and values — or sharing fewer of them — I can cache a *small compressed summary* of `h_t` and reconstruct the full per-head K and V from it on the fly. Down-project `h_t` to a low-rank latent of dimension `d_c` much smaller than `2 · 16 · 64`, cache only that latent, and up-project it back into full per-head keys and values when I need them. Crucially, the up-projection matrices are full-rank in the head dimension — they fan the one small latent back out into sixteen distinct per-head subspaces — so unlike head-sharing, I am *not* collapsing subspaces. Each query head still gets its own key and value subspace; I have only made the *stored* object small. That decouples "small cache" from "few subspaces," which is exactly the conflation the three sharing runs were trapped in.
+
+Now I have to be careful about what this task's harness actually implements, because the latent-attention idea has a serving-side optimization that this fixed pretraining loop does not exercise, and conflating the two would make me claim a saving the harness does not measure. The full latent-attention argument has two layers. The first is the *training/prefill* layer: down-project to a latent, cache the latent, up-project back to full per-head K and V to do attention. The second is a *decode-time* trick where the up-projection matrices algebraically *absorb* into the query and output projections, so the full keys and values are never materialized at all and the cache really is just the latent. This task never runs that decode loop — it is a from-scratch pretraining run, and `GPT.structural_metrics()` computes `kv_bytes_per_token` *analytically* from the realized structure. For a latent block (one that exposes `kv_a_proj_with_mqa` and `kv_b_proj`) the metric reads `2 · (kv_lora_rank + qk_rope_head_dim)` — the size of the cached latent plus the decoupled positional key. So what the harness rewards is precisely the *footprint of the cached latent*, the first-layer saving; the absorption trick is the serving-time realization of why that footprint is the real cache, but it is not separately measured. That is fine for this comparison — the byte number captures the design merit — but it means my MLA fill is the training/prefill form: materialize K and V from the latent every forward, set the latent dimensions small, and let the metric read the small cached footprint off the structure. No absorption code, no decode path.
+
+The next concern is position, and it is the one subtlety where the naive latent scheme breaks and the task's fill encodes the fix. This model needs rotary position embeddings for the attention to know token order. RoPE rotates the query and key of a token by a position-dependent matrix *before* their dot product, with the property that the score sees only the relative offset. If I rotate the *content* keys — the ones reconstructed from the latent via the up-projection — then the position-dependent rotation wedges itself between the latent and the up-projection, and the rotation depends on the *pair* of positions being scored, so it changes every step. That is fatal to the absorption (the up-projection can no longer be folded away) and, more concretely for a from-scratch trainer, it tangles position into the compressed content path where it does not belong. The fix is to split the two jobs onto two vectors: keep the compressed content key *position-free* (purely content, reconstructed from the latent), and add a *separate, small, explicitly position-carrying* key that lives outside the latent and gets RoPE applied to it. Concatenate per head: the per-head key is `[content key from latent ; shared rotary key]`, and the per-head query is `[content query ; per-head rotary query]`. The score then splits cleanly into a content dot-product (absorbable, position-free) plus a tiny positional dot-product (carries all the relative-position signal). Position lives entirely in a small decoupled subspace; content lives in the compressible one.
+
+This is where I have to read the task's fill carefully, because it makes specific choices that differ from the generic latent recipe, and the reasoning has to land *those* choices, not the textbook ones. First, the content-key dimension. The generic recipe partitions the head dimension into a content part and a rotary part; this fill instead treats `qk_nope_head_dim` as the *full* original head dimension (64) and adds the rotary slice *on top* — the region's own comment is explicit that the no-position part should stay the original dense head dimension rather than being split. So the per-head query/key width is `qk_nope (64) + qk_rope (64) = 128`, wider than a dense head, and the value head stays at the full 64. That keeps the content subspace at full dense width — the whole point is to *not* shrink per-head expressivity. Second, the rope dimension: `qk_rope_head_dim = min(64, head_dim)`, floored at 16 and forced even, which for head_dim 64 is 64. Third, the latent rank: `kv_lora_rank = max(16, head_dim // 2) = 32` — deliberately tiny, capped by the small nanoGPT hidden size rather than set to the large multiple-of-head-dim a big model would use. That 32 is the number that drives the cache down. The KV down-projection `kv_a_proj_with_mqa` emits `kv_lora_rank + qk_rope_head_dim = 32 + 64 = 96` — the 32-dim latent concatenated with the 64-dim *shared* rotary key (one rotary key broadcast to all heads, MQA-style on the tiny positional branch, so it costs `qk_rope_head_dim` per token, not `n_head · qk_rope_head_dim`). So the cached footprint is `2 · (32 + 64) = 192` bytes — and that is below MQA's 256, with full per-head content subspaces intact. The query side has its own low-rank path (`q_a_proj` → RMSNorm → `q_b_proj`) producing both content and rotary query parts per head; the up-projection `kv_b_proj` reconstructs per-head content keys and values from the normalized latent. An RMSNorm sits on each latent before its up-projection to keep the narrow bottleneck well-conditioned.
+
+A few implementation specifics the fill pins that I should name, because they are where a from-scratch nanoGPT adaptation diverges from a checkpoint-loading one. The rotary cache is built fresh per forward with the half-split convention, and the fill *drops* the view→transpose→reshape re-interleave permutation that the reference implementation uses only when loading pretrained interleaved weights — for from-scratch training that permutation is pure overhead (a per-forward materialization of every query and key) and changes nothing, so it is omitted. The assembly of the full per-head query and key uses `new_empty` plus slice-assignment rather than `cat`, which avoids materializing an expanded-then-concatenated intermediate and is autograd-safe — the backward scatters gradients into the content and rotary pieces, broadcasting along the head axis for the shared rotary key. The softmax is scaled by `(qk_nope + qk_rope)^{-1/2} = 128^{-1/2}`, not `64^{-1/2}`, because the per-head dot product now accumulates over 128 dims. And the output uses a dedicated `o_proj` on the concatenated `n_head · v_head_dim` value outputs. None of this is the absorption/long-context machinery — there is no YaRN rescaling, no recompute-in-backward, no decode KV cache — because the harness measures a from-scratch pretraining footprint, and those are serving-time optimizations the metric does not exercise. `build_kv_heads` returns `(1, head_dim)` and `head_sharing_ratio` is set to `n_head = 16`, but the actual projections are MLA's own; the byte metric ignores `n_kv_head` for this block and reads the latent path instead.
+
+So what do I expect, stated against every prior rung? On the efficiency axis, `kv_bytes_per_token` should read `2 · (32 + 64) = 192` and `latent_rank_ratio` should read `kv_lora_rank / qk_head_dim = 32 / 128 = 0.25` — both deterministic from the latent dimensions; `head_sharing_ratio` 16.0. That 192 is the headline: it is *below* MQA's 256, the previous floor, and an order of magnitude below dense's 4096 — so MLA reaches the smallest cache of any rung. On the quality axis, this is the claim that the whole climb has been building toward: because the per-head content subspaces are kept at full dense width and only the *storage* is compressed, `val_loss` should land *better* than MQA (2.337850) and *better* than GQA-4 (2.312553) despite spending *fewer* bytes than either — I expect something in the low 2.30s, which would put MLA strictly inside the Pareto frontier the three sharing points traced. That is the falsifiable statement: a sharing method cannot beat both MQA's bytes and GQA's quality at once (they are on a trade-off line), but compression should, because it attacks the cache without deleting subspaces. If MLA instead lands *on* the sharing line — worse loss than GQA at its lower bytes, or no better than MQA — then the latent bottleneck at rank 32 is too narrow and the compression is itself acting like a subspace deletion, and the latent dimensions would need raising. If it lands below the line, the decoupling of small-cache from few-subspaces worked. The held-out and downstream numbers should sit near the dense/GQA cluster (heldout ~3.99, LAMBADA notably should hold near dense's 4.230 given the per-head value subspaces are intact). The one number that settles the research question — whether head sharing or latent compression gives the better quality-per-byte tradeoff — is MLA's `val_loss` at 192 bytes versus the dense-MQA-GQA line: if it is below that line, latent compression wins the task's central comparison. The full scaffold module that fills the editable region with the latent-attention form is in the answer. Let me build the latent path: the helpers, the low-rank projections, and the decoupled-rotary forward.
+</think>
+<say>
+Now multi-head latent attention: down-project K/V into a tiny rank-32 latent, cache only that plus a shared rotary key, and up-project back to full per-head K/V on the fly. This first edit collapses `build_kv_heads` to one head — the real work moves into the latent projections — putting the cache at 192 bytes with every per-head subspace intact.
+</say>
+<edit path="nanoGPT/custom_pretrain.py">
+<old>
+# EDITABLE region of custom_pretrain.py — step 3: grouped-query attention (G = n_head // 4)
+def build_kv_heads(config):
+    """Use fewer KV heads than query heads, preserving query expressivity."""
+
+    n_kv_head = max(1, config.n_head // 4)
+    while config.n_head % n_kv_head != 0:
+        n_kv_head -= 1
+    head_dim = config.n_embd // config.n_head
+    return n_kv_head, head_dim
+</old>
+<new>
+# EDITABLE region of custom_pretrain.py — step 4: multi-head latent attention (latent KV compression)
+def build_kv_heads(config):
+    head_dim = config.n_embd // config.n_head
+    return 1, head_dim
+</new>
+</edit>
+<obs>
+Successfully replaced text in nanoGPT/custom_pretrain.py.
+</obs>
+<note>
+Add the latent-attention helpers: RMSNorm for the bottleneck, and the decoupled half-split rotary with the load-only re-interleave dropped.
+</note>
+<edit path="nanoGPT/custom_pretrain.py">
+<old>
+    return k, v, 1.0
+</old>
+<new>
+    return k, v, 1.0
+
+
+class MLARMSNorm(nn.Module):
+    def __init__(self, hidden_size, eps=1e-6):
+        super().__init__()
+        self.weight = nn.Parameter(torch.ones(hidden_size))
+        self.eps = eps
+
+    def forward(self, x):
+        input_dtype = x.dtype
+        x = x.to(torch.float32)
+        variance = x.pow(2).mean(-1, keepdim=True)
+        x = x * torch.rsqrt(variance + self.eps)
+        return self.weight * x.to(input_dtype)
+
+
+def rotate_half(x):
+    x1 = x[..., : x.shape[-1] // 2]
+    x2 = x[..., x.shape[-1] // 2 :]
+    return torch.cat((-x2, x1), dim=-1)
+
+
+def build_rotary_cache(seq_len, dim, device, dtype, theta=10000.0):
+    inv_freq = 1.0 / (
+        theta ** (torch.arange(0, dim, 2, device=device, dtype=torch.float32) / dim)
+    )
+    positions = torch.arange(seq_len, device=device, dtype=torch.float32)
+    freqs = torch.outer(positions, inv_freq)
+    emb = torch.cat((freqs, freqs), dim=-1)
+    cos = emb.cos().to(dtype).view(1, 1, seq_len, dim)
+    sin = emb.sin().to(dtype).view(1, 1, seq_len, dim)
+    return cos, sin
+
+
+def apply_rotary_pos_emb_interleave(q, k, cos, sin):
+    # build_rotary_cache uses the half-split convention (cat((freqs, freqs), -1)),
+    # so rotate_half + the *cos/+sin formula below is already the correct form.
+    # The original view->transpose(4,3)->reshape re-interleave was needed only when
+    # loading DeepSeek-V2 pretrained weights in interleaved layout; for a from-scratch
+    # nanoGPT this permutation just adds a per-forward materialization per Q and K
+    # (~640MB total activation across 24 layers at B=32 T=1024). Drop it.
+    q_embed = (q * cos) + (rotate_half(q) * sin)
+    k_embed = (k * cos) + (rotate_half(k) * sin)
+    return q_embed, k_embed
+</new>
+</edit>
+<obs>
+Successfully replaced text in nanoGPT/custom_pretrain.py.
+</obs>
+<note>
+Replace the dense Q/KV projection with the low-rank latent projections: query down/up path, the KV down-projection that also emits the shared rotary key, and the KV up-projection.
+</note>
+<edit path="nanoGPT/custom_pretrain.py">
+<old>
+
+        q_dim = config.n_embd
+        kv_dim = 2 * self.n_kv_head * self.head_dim
+        self.c_attn = nn.Linear(config.n_embd, q_dim + kv_dim, bias=config.bias)
+        self.c_proj = nn.Linear(config.n_embd, config.n_embd, bias=config.bias)
+        self.attn_dropout = nn.Dropout(config.dropout)
+</old>
+<new>
+
+        # DeepSeek/TransMLA treat qk_nope as the original dense head dimension
+        # and add a separate rotary slice on top, rather than partitioning the
+        # original head dim into two halves.
+        self.qk_rope_head_dim = min(64, self.head_dim)
+        self.qk_rope_head_dim = max(16, self.qk_rope_head_dim)
+        if self.qk_rope_head_dim % 2 != 0:
+            self.qk_rope_head_dim -= 1
+        self.qk_nope_head_dim = self.head_dim
+        self.qk_head_dim = self.qk_nope_head_dim + self.qk_rope_head_dim
+        self.v_head_dim = self.head_dim
+        # Preserve the relative rank schedule used in DeepSeek-V2 style MLA
+        # while capping by the tiny nanoGPT hidden size.
+        self.q_lora_rank = min(self.n_embd, 12 * self.head_dim)
+        self.kv_lora_rank = max(16, self.head_dim // 2)
+
+        self.q_a_proj = nn.Linear(config.n_embd, self.q_lora_rank, bias=False)
+        self.q_a_layernorm = MLARMSNorm(self.q_lora_rank)
+        self.q_b_proj = nn.Linear(
+            self.q_lora_rank, self.n_head * self.qk_head_dim, bias=config.bias
+        )
+
+        self.kv_a_proj_with_mqa = nn.Linear(
+            config.n_embd, self.kv_lora_rank + self.qk_rope_head_dim, bias=config.bias
+        )
+        self.kv_a_layernorm = MLARMSNorm(self.kv_lora_rank)
+        self.kv_b_proj = nn.Linear(
+            self.kv_lora_rank,
+            self.n_head * (self.qk_nope_head_dim + self.v_head_dim),
+            bias=False,
+        )
+
+        self.o_proj = nn.Linear(self.n_head * self.v_head_dim, config.n_embd, bias=config.bias)
+        self.attn_dropout = nn.Dropout(config.dropout)
+</new>
+</edit>
+<obs>
+Successfully replaced text in nanoGPT/custom_pretrain.py.
+</obs>
+<note>
+Now the forward: reconstruct per-head content K/V from the latent, RoPE only the decoupled rotary slice, assemble the 128-dim query/key with slice-assign, and read the latent footprint into the diagnostics.
+</note>
+<edit path="nanoGPT/custom_pretrain.py">
+<old>
+            )
+        self.use_pos_emb = True
+        self.head_sharing_ratio = self.n_head / max(self.n_kv_head, 1)
+
+    def forward(self, x):
+        bsz, seq_len, channels = x.size()
+        qkv = self.c_attn(x)
+        q, kv = qkv.split(
+            [self.n_embd, 2 * self.n_kv_head * self.head_dim],
+            dim=2,
+        )
+        k, v = kv.chunk(2, dim=2)
+        q = q.view(bsz, seq_len, self.n_head, self.head_dim).transpose(1, 2)
+        k = k.view(bsz, seq_len, self.n_kv_head, self.head_dim).transpose(1, 2)
+        v = v.view(bsz, seq_len, self.n_kv_head, self.head_dim).transpose(1, 2)
+        repeat_factor = self.n_head // self.n_kv_head
+        k = k.repeat_interleave(repeat_factor, dim=1)
+        v = v.repeat_interleave(repeat_factor, dim=1)
+        self._last_latent_rank_ratio = 1.0
+        self._last_kv_storage_ratio = 1.0
+        self._uses_latent_compression = False
+        y = torch.nn.functional.scaled_dot_product_attention(
+            q, k, v, attn_mask=None, dropout_p=self.dropout if self.training else 0.0, is_causal=True
+        )
+        y = y.transpose(1, 2).contiguous().view(bsz, seq_len, channels)
+        y = self.resid_dropout(self.c_proj(y))
+        return y
+</old>
+<new>
+            )
+        self.use_pos_emb = False
+        self.head_sharing_ratio = float(self.n_head)
+        self.scaling = self.qk_head_dim ** -0.5
+
+    def forward(self, x):
+        bsz, seq_len, _ = x.size()
+
+        q_states = self.q_b_proj(self.q_a_layernorm(self.q_a_proj(x)))
+        q_states = q_states.view(bsz, seq_len, self.n_head, self.qk_head_dim).transpose(1, 2)
+        q_nope, q_rot = torch.split(
+            q_states, [self.qk_nope_head_dim, self.qk_rope_head_dim], dim=-1
+        )
+
+        compressed_kv = self.kv_a_proj_with_mqa(x)
+        kv_latent, k_rot = torch.split(
+            compressed_kv, [self.kv_lora_rank, self.qk_rope_head_dim], dim=-1
+        )
+        kv_states = self.kv_b_proj(self.kv_a_layernorm(kv_latent))
+        kv_states = kv_states.view(
+            bsz, seq_len, self.n_head, self.qk_nope_head_dim + self.v_head_dim
+        ).transpose(1, 2)
+        k_nope, value_states = torch.split(
+            kv_states, [self.qk_nope_head_dim, self.v_head_dim], dim=-1
+        )
+
+        k_rot = k_rot.view(bsz, seq_len, 1, self.qk_rope_head_dim).transpose(1, 2)
+        cos, sin = build_rotary_cache(
+            seq_len, self.qk_rope_head_dim, x.device, q_rot.dtype
+        )
+        q_rot, k_rot = apply_rotary_pos_emb_interleave(q_rot, k_rot, cos, sin)
+
+        # DeepSeek-V2 official pattern: new_empty + slice-assign.
+        # Avoids k_rot.expand(-1, n_head, -1, -1) materialization (saves the
+        # expanded-contiguous intermediate) and the subsequent torch.cat's
+        # transient output buffer. slice __setitem__ is autograd-safe — the
+        # backward scatters gradients back into q_nope / q_rot / k_nope / k_rot
+        # (broadcast along head axis for k_rot).
+        query_states = q_states.new_empty(bsz, self.n_head, seq_len, self.qk_head_dim)
+        query_states[:, :, :, : self.qk_nope_head_dim] = q_nope
+        query_states[:, :, :, self.qk_nope_head_dim :] = q_rot
+
+        key_states = q_states.new_empty(bsz, self.n_head, seq_len, self.qk_head_dim)
+        key_states[:, :, :, : self.qk_nope_head_dim] = k_nope
+        key_states[:, :, :, self.qk_nope_head_dim :] = k_rot  # broadcasts over n_head
+
+        if self.flash:
+            y = torch.nn.functional.scaled_dot_product_attention(
+                query_states,
+                key_states,
+                value_states,
+                attn_mask=None,
+                dropout_p=self.dropout if self.training else 0.0,
+                is_causal=True,
+                scale=self.scaling,
+            )
+        else:
+            att = torch.matmul(query_states, key_states.transpose(-2, -1)) * self.scaling
+            att = att.masked_fill(self.bias[:, :, :seq_len, :seq_len] == 0, float("-inf"))
+            att = F.softmax(att, dim=-1)
+            att = self.attn_dropout(att)
+            y = torch.matmul(att, value_states)
+
+        latent_ratio = self.kv_lora_rank / self.qk_head_dim
+        storage_ratio = (self.kv_lora_rank + self.qk_rope_head_dim) / (2 * self.head_dim)
+        self._last_latent_rank_ratio = float(latent_ratio)
+        self._last_kv_storage_ratio = float(storage_ratio)
+        self._uses_latent_compression = True
+
+        y = y.transpose(1, 2).contiguous().view(bsz, seq_len, self.n_head * self.v_head_dim)
+        y = self.resid_dropout(self.o_proj(y))
+        return y
+</new>
+</edit>
+<obs>
+Successfully replaced text in nanoGPT/custom_pretrain.py.
+</obs>
+<run/>
+<obs>
+Measured results — `baseline:mla` (`is_final,true`), seed 42 (the task's only seed).
+
+## Primary + efficiency (gpt-345m)
+| seed | val_loss | kv_bytes_per_token | head_sharing_ratio | latent_rank_ratio |
+|---|---|---|---|---|
+| 42 | 2.306939 | 192.0 | 16.0 | 0.25 |
+| **mean** | **2.306939** | **192.0** | **16.0** | **0.25** |
+
+## Held-out cross-entropy (gpt-345m)
+| seed | heldout_loss | wikitext2 | wikitext103 | lambada |
+|---|---|---|---|---|
+| 42 | 3.988359 | 3.871585 | 3.861501 | 4.231989 |
+| **mean** | **3.988359** | **3.871585** | **3.861501** | **4.231989** |
+
+## Downstream 0-shot (lm-eval-345m)
+| seed | arc_easy | hellaswag |
+|---|---|---|
+| 42 | 54.76 | 33.21 |
+| **mean** | **54.76** | **33.21** |
+</obs>

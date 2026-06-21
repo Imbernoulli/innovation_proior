@@ -1,0 +1,1472 @@
+<meta task="vla-openvla-pdac-continuous-head" domain="Reinforcement learning" file="model.py" model_format="qwen3" edit_tool="str_replace"/>
+
+<system>
+You are a research engineer improving a model on a fixed ML task. You work by editing the model code and running experiments. Think carefully before each change. You have these tools:
+- str_replace(path, old_str, new_str): replace the unique occurrence of old_str with new_str.
+- create(path, file_text): create a new file.
+- run_experiment(): train + evaluate the current code under the fixed budget; returns metrics.
+Make one tool call at a time. After editing, call run_experiment() to measure your method.
+</system>
+
+<user>
+## Research question
+
+Design a better **action method** for the OpenVLA-OFT PD&AC scaffold on LIBERO-Goal. An "action
+method" here is the full local algorithm that turns PD&AC action-token hidden states into a chunk of
+robot actions: a continuous regression head, a diffusion noise predictor with its noisy-action
+projector and sampler, a discrete action-token mapper, or any other local decoding logic. Everything
+around the action method is frozen — the OpenVLA-7B trunk, parallel decoding and action chunking
+(PD&AC), LoRA fine-tuning, and the paper-aligned LIBERO-Goal protocol — so the only thing being
+designed is the localized decoder that reads the trunk's action-slot hidden states and emits a
+normalized action chunk. The score is the geometric mean of `success_rate` over three disjoint
+LIBERO-Goal subsets, evaluated at a fixed 6000-step budget chosen to keep the run inside the 5 H200h
+MLS-Bench validity constraint.
+
+## Prior art before the first rung (vision-language-action lineage)
+
+The trunk every rung shares — a 7B vision-language model fine-tuned to emit robot actions — is itself
+the resolution of a line of work. These are the ancestors the ladder reacts to; the fixed substrate
+below is what they converged to.
+
+- **End-to-end imitation policies (e.g. ACT, Zhao et al. 2023).** A from-scratch transformer reads a
+  handful of fixed per-timestep query embeddings and emits a *chunk* of K future actions
+  non-causally in one pass, trained with an L1 reconstruction loss. Action chunking shrinks the
+  effective horizon and curbs compounding error; L1 (median) is more precise than L2 (mean) on noisy
+  demonstrations. Gap: trained on a few hundred trajectories per task, it has no Internet-scale prior
+  and generalizes poorly over novel objects, distractors, and rephrased instructions.
+- **Diffusion Policy (Chi et al. 2023).** Replaces the point-estimate head with a conditional
+  denoising-diffusion model over the action chunk: sample from a multimodal action distribution by
+  learning to reverse a fixed Gaussian corruption, conditioned on the observation. Captures genuinely
+  multimodal behaviour a point estimator averages away. Gap: many sequential denoising steps at
+  inference, slow convergence in training, and still a from-scratch policy with no web prior.
+- **Vision-language-action models (RT-2 / OpenVLA, Brohan et al. 2023; Kim et al. 2024).** Take a
+  web-pretrained vision-language model and teach it to *speak actions* as discrete tokens — quantize
+  each of the 7 action dimensions into 256 bins, name each bin with one of the model's least-used
+  vocabulary tokens, and fine-tune under the model's native next-token cross-entropy. Inherits the
+  Internet-scale generalization the from-scratch policies lacked. Gap: autoregressive, one token at a
+  time under a causal mask — K·D sequential decoder passes for a chunk, 3-5 Hz, far below a real-time
+  controller, and the 256-bin grid caps action precision.
+- **Parallel decoding + action chunking (PD&AC).** The fixed substrate's central move: action
+  coordinates have no intrinsic left-to-right order, so fill the K·D action positions with empty,
+  positionally-marked slots, swap the causal mask for bidirectional attention over them, and predict
+  the whole chunk in a *single* forward pass. This collapses the K·D factor to one, makes chunking
+  essentially free, and opens the door to continuous heads on top of the action-slot hidden states.
+
+## The fixed substrate
+
+A PD&AC OpenVLA-OFT loop is frozen and must not be touched. Base model `/models/openvla-7b`; LoRA
+rank 32 on the trunk; train data `/data/rlds/libero_goal_no_noops`; two camera views (third-person +
+wrist) and proprioception enabled; FiLM disabled; batch size 8, gradient accumulation 4, learning
+rate `5e-4`; max 6000 steps. The trunk fuses vision, language, and proprioception under bidirectional
+attention over the K·D action slots and returns final-layer hidden states; the runtime owns prompt
+and image preparation, the multimodal forward pass, dataset action un-normalization, and the metric
+helpers. The action-method constants are fixed: `ACTION_DIM = 7` (the 7-DoF delta end-effector
+command), `NUM_ACTIONS_CHUNK = 8` (timesteps decoded per query and executed open-loop), and the LLM
+hidden width `4096`.
+
+The loop also provides, through the two runtime objects, the helpers a method may use:
+`runtime.forward(...)` (the trunk pass, optionally given `action_token_features` and
+`diffusion_timestep_embeddings`); `runtime.phase` (`"train"`/`"eval"`); `runtime.batch_size`,
+`runtime.device`, `runtime.hidden_dtype`; at train time `runtime.ground_truth_actions`,
+`runtime.current_action_mask`, `runtime.next_actions_mask`, `runtime.should_compute_aux_metrics`,
+`runtime.compute_discrete_objective(...)`, `runtime.compute_action_l1_metrics(...)`; at eval time
+`runtime.num_prompt_tokens`; and `runtime.model.{vocab_size, bin_centers, llm_dim}`.
+
+## The editable interface
+
+Exactly one region is editable — the `CustomActionMethod` class (plus its helper modules and a narrow
+`CONFIG_OVERRIDES`) in `openvla-oft/mlsbench/custom_pdac_method.py`. Every method on the ladder is a
+fill of this same contract: `training_step(runtime)` returns `(loss, metrics)`;
+`predict_actions(runtime)` returns `(normalized_actions, aux)`; and the method-adjacent plumbing hooks
+`extract_action_hidden_states(...)`, `build_action_token_features(...)`, and
+`decode_discrete_actions(...)` live inside the editable region too, so a method can change how
+action-slot hidden states are selected, how action-conditioned inputs are injected, and how
+logits/hidden states map back to normalized actions. `CONFIG_OVERRIDES` may only set
+`learning_rate`, `lr_warmup_steps`, `num_steps_before_decay`; everything else is fixed protocol. The
+harness instantiates `CustomActionMethod` and reads `(normalized_actions, _)` back, then
+un-normalizes outside the method.
+
+The starting point is the scaffold default: a temporal-residual L1-style example. Each rung below
+replaces this whole editable region with its own method.
+
+```python
+# EDITABLE region of custom_pdac_method.py - default scaffold fill
+import numpy as np
+import torch
+import torch.nn as nn
+
+from mlsbench.action_method_runtime import (
+    EvalActionMethodRuntime,
+    ForwardPassResult,
+    TrainActionMethodRuntime,
+)
+from prismatic.models.action_heads import ACTION_DIM, NUM_ACTIONS_CHUNK, MLPResNet
+
+
+CONFIG_OVERRIDES = {}
+
+
+class TemporalResidualActionMethod(nn.Module):
+    """Default example: a temporal mixer + MLP-ResNet regressor trained by L1."""
+
+    def __init__(self, input_dim=4096, hidden_dim=4096, action_dim=7):
+        super().__init__()
+        self.action_dim = action_dim
+        self.temporal_mixer = nn.Sequential(
+            nn.LayerNorm(input_dim),
+            nn.Linear(input_dim, hidden_dim),
+            nn.GELU(),
+            nn.Linear(hidden_dim, input_dim),
+        )
+        self.decoder = MLPResNet(
+            num_blocks=2,
+            input_dim=input_dim * ACTION_DIM,
+            hidden_dim=hidden_dim,
+            output_dim=action_dim,
+        )
+
+    def extract_action_hidden_states(self, runtime, forward: ForwardPassResult) -> torch.Tensor:
+        if runtime.phase == "train":
+            mask = runtime.current_action_mask | runtime.next_actions_mask
+            return (
+                forward.text_hidden_states[mask]
+                .reshape(runtime.batch_size, NUM_ACTIONS_CHUNK * ACTION_DIM, -1)
+                .to(runtime.hidden_dtype)
+            )
+        start = runtime.num_prompt_tokens
+        end = start + NUM_ACTIONS_CHUNK * ACTION_DIM
+        return forward.text_hidden_states[:, start:end, :].to(runtime.hidden_dtype)
+
+    def _predict_normalized_actions(self, actions_hidden_states):
+        batch_size = actions_hidden_states.shape[0]
+        mixed = actions_hidden_states + self.temporal_mixer(actions_hidden_states)
+        mixed = mixed.reshape(batch_size, NUM_ACTIONS_CHUNK, -1)
+        return self.decoder(mixed)
+
+    def training_step(self, runtime: TrainActionMethodRuntime):
+        forward = runtime.forward()
+        actions_hidden_states = self.extract_action_hidden_states(runtime, forward)
+        predicted_actions = self._predict_normalized_actions(actions_hidden_states)
+        loss = torch.nn.L1Loss()(runtime.ground_truth_actions, predicted_actions)
+        metrics = {"loss_value": float(loss.item())}
+        metrics.update(runtime.compute_action_l1_metrics(predicted_actions))
+        return loss, metrics
+
+    def predict_actions(self, runtime: EvalActionMethodRuntime):
+        forward = runtime.forward()
+        actions_hidden_states = self.extract_action_hidden_states(runtime, forward)
+        normalized_actions = self._predict_normalized_actions(actions_hidden_states)
+        return normalized_actions, actions_hidden_states
+
+
+CustomActionMethod = TemporalResidualActionMethod
+```
+
+## Evaluation settings
+
+The trained policy is evaluated on three disjoint LIBERO-Goal task subsets — `goal_a` (task ids
+0,1,2), `goal_b` (3,4,5), and `goal_c` (6,7,8,9, the hidden split) — at the fixed 6000-step
+checkpoint, with 3 eval trials per task and a single seed (42). The metric on each subset is
+`success_rate` (higher is better); the final score is the geometric mean over the three subset
+success rates. Each baseline is also tagged by its training wall-clock (`elapsed_train`) and per-eval
+elapsed time, since under the 5 H200h budget validity is part of the comparison.
+
+The editable model code is in `model.py`:
+```python
+"""Editable custom action method for MLS-Bench."""
+
+from __future__ import annotations
+
+import numpy as np
+import torch
+import torch.nn as nn
+
+from mlsbench.action_method_runtime import (
+    EvalActionMethodRuntime,
+    ForwardPassResult,
+    TrainActionMethodRuntime,
+)
+from prismatic.models.action_heads import ACTION_DIM, NUM_ACTIONS_CHUNK, MLPResNet
+
+
+# ===== EDITABLE SECTION START =====
+# CONFIG_OVERRIDES can only tune the fixed training recipe narrowly.
+# Allowed keys: learning_rate, lr_warmup_steps, num_steps_before_decay.
+CONFIG_OVERRIDES = {}
+
+
+class TemporalResidualActionMethod(nn.Module):
+    """Example custom method.
+
+    The core editable API is still:
+    1. `training_step(runtime)`
+    2. `predict_actions(runtime)`
+
+    In addition, three method-adjacent plumbing hooks now live inside the
+    editable region:
+    1. `extract_action_hidden_states(...)`
+    2. `build_action_token_features(...)`
+    3. `decode_discrete_actions(...)`
+    """
+
+    def __init__(self, input_dim=4096, hidden_dim=4096, action_dim=7):
+        super().__init__()
+        self.action_dim = action_dim
+        self.temporal_mixer = nn.Sequential(
+            nn.LayerNorm(input_dim),
+            nn.Linear(input_dim, hidden_dim),
+            nn.GELU(),
+            nn.Linear(hidden_dim, input_dim),
+        )
+        self.decoder = MLPResNet(
+            num_blocks=2,
+            input_dim=input_dim * ACTION_DIM,
+            hidden_dim=hidden_dim,
+            output_dim=action_dim,
+        )
+
+    def extract_action_hidden_states(
+        self,
+        runtime: TrainActionMethodRuntime | EvalActionMethodRuntime,
+        forward: ForwardPassResult,
+    ) -> torch.Tensor:
+        if runtime.phase == "train":
+            mask = runtime.current_action_mask | runtime.next_actions_mask
+            return (
+                forward.text_hidden_states[mask]
+                .reshape(runtime.batch_size, NUM_ACTIONS_CHUNK * ACTION_DIM, -1)
+                .to(runtime.hidden_dtype)
+            )
+
+        start = runtime.num_prompt_tokens
+        end = start + NUM_ACTIONS_CHUNK * ACTION_DIM
+        return forward.text_hidden_states[:, start:end, :].to(runtime.hidden_dtype)
+
+    def build_action_token_features(
+        self,
+        runtime: TrainActionMethodRuntime | EvalActionMethodRuntime,
+        action_condition: torch.Tensor,
+    ) -> torch.Tensor:
+        raise NotImplementedError(
+            "Override build_action_token_features() if your method injects action-conditioned token features "
+            "back into the VLA input."
+        )
+
+    def decode_discrete_actions(
+        self,
+        runtime: EvalActionMethodRuntime,
+        forward: ForwardPassResult,
+    ) -> torch.Tensor:
+        start = runtime.num_prompt_tokens
+        end = start + ACTION_DIM * NUM_ACTIONS_CHUNK
+        predicted_token_ids = forward.text_logits[:, start:end].argmax(dim=2).cpu().numpy()
+        discretized_actions = runtime.model.vocab_size - predicted_token_ids
+        discretized_actions = np.clip(
+            discretized_actions - 1,
+            a_min=0,
+            a_max=runtime.model.bin_centers.shape[0] - 1,
+        )
+        normalized_actions = runtime.model.bin_centers[discretized_actions].reshape(
+            runtime.batch_size,
+            NUM_ACTIONS_CHUNK,
+            ACTION_DIM,
+        )
+        return torch.from_numpy(normalized_actions).to(runtime.device, dtype=torch.float32)
+
+    def _predict_normalized_actions(self, actions_hidden_states):
+        batch_size = actions_hidden_states.shape[0]
+        mixed_hidden_states = actions_hidden_states + self.temporal_mixer(actions_hidden_states)
+        mixed_hidden_states = mixed_hidden_states.reshape(batch_size, NUM_ACTIONS_CHUNK, -1)
+        return self.decoder(mixed_hidden_states)
+
+    def training_step(self, runtime: TrainActionMethodRuntime):
+        forward = runtime.forward()
+        actions_hidden_states = self.extract_action_hidden_states(runtime, forward)
+        predicted_actions = self._predict_normalized_actions(actions_hidden_states)
+        loss = torch.nn.L1Loss()(runtime.ground_truth_actions, predicted_actions)
+        metrics = {"loss_value": float(loss.item())}
+        metrics.update(runtime.compute_action_l1_metrics(predicted_actions))
+        return loss, metrics
+
+    def predict_actions(self, runtime: EvalActionMethodRuntime):
+        forward = runtime.forward()
+        actions_hidden_states = self.extract_action_hidden_states(runtime, forward)
+        normalized_actions = self._predict_normalized_actions(actions_hidden_states)
+        return normalized_actions, actions_hidden_states
+
+
+# Bind your final design here.
+CustomActionMethod = TemporalResidualActionMethod
+
+
+# placeholder lines to stabilize edit ranges
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
+```
+Improve it. Derive your method, edit the code, then run_experiment().
+</user>
+
+### step 1 — PD&AC + Cont-Diffusion   [slug:cont-diffusion]
+
+<think>
+The action method is the whole point, and I have a parallel-decoding trunk handing me, at each of the
+K·D action slots, a final-layer hidden state conditioned on vision, language, and proprioception. The
+cheapest decoder I could write would read each timestep's bundle of D hidden states, run them through
+a small MLP, emit a 7-D action, and train it against the logged demonstration with a regression loss.
+One trunk pass, a negligible head, full continuous precision. So before I reach for anything heavier I
+should be honest about what's wrong with that point estimator, because if nothing is wrong I have no
+business paying for a more expensive method — and the answer to "what's wrong" is exactly what makes me
+start the ladder here, at the most expressive head I can build on this scaffold.
+
+Stare at the regression objective. Minimizing the mean absolute error over the data picks, for each
+observation, the conditional *median* of the logged actions; minimizing squared error picks the
+conditional *mean*. Either way the head outputs a single vector per observation. That is fine when, for
+a given thing the robot sees, there is essentially one right action. But manipulation demonstrations
+are not like that. At a fork an expert sometimes reaches left, sometimes right; sometimes regrasps now,
+sometimes a beat later; the logged actions at nearly identical observations form a genuinely
+*multimodal* distribution. A point estimator handed a bimodal target sits at the average of the modes,
+and the average of "swerve left" and "swerve right" is "drive straight into the obstacle." This is not
+a tuning artifact I can anneal away — it is structural: the head emits one vector and the world wants a
+distribution. So the real task is not "predict the action," it is "represent p(action chunk |
+observation) richly enough to be multimodal," and then sample one action from it. That reframing is why
+I open the ladder with a distribution-modeling head rather than the point head: if multimodality is the
+deciding factor, the most expressive decoder should be the strongest, and I want to find out.
+
+So I need a head that models a whole conditional distribution over the action chunk. What fits a
+complicated, possibly multimodal continuous distribution? A mixture density network would predict the
+means, variances, and weights of a Gaussian mixture, but I have to fix the component count up front,
+mixtures are notoriously fiddly (mode collapse, dying components), and a small fixed mixture is a
+clumsy way to express the geometry of valid action chunks across a task suite. An energy-based head —
+learn an energy E(o,a), set p(a|o) ∝ exp(−E) — is genuinely expressive and has been used for
+imitation, but sampling means an inner optimization or MCMC at inference, training needs negative
+samples and is finicky, and I would be bolting a second inference loop onto a 7B trunk. I want
+something that trains with a plain regression-flavored loss — no adversary, no partition function, no
+negative samples — yet still samples from a multimodal distribution.
+
+There is a construction that fits that description, and it is worth rebuilding from the ground up. Take
+a clean action chunk x₀ and deliberately wreck it with Gaussian noise, a little at a time, over a long
+chain: q(xₜ | xₜ₋₁) = N(xₜ; √(1−βₜ) xₜ₋₁, βₜ I) for a schedule of small βₜ. After enough steps the
+chunk is indistinguishable from pure noise. The move is this: if I can learn to undo one step of that
+corruption — to go from xₜ back toward xₜ₋₁ — then I can start from pure noise x_T ~ N(0,I) and walk
+the chain backwards all the way to a clean sample. The forward corruption is fixed and trivial; all the
+learning lives in the reverse step. And because each generation starts from a fresh noise draw,
+different seeds land in different basins — the reverse chain is a stochastic map from noise to data, so
+it covers multiple modes without my ever naming them. That is precisely the multimodality the point
+head could not represent, and it falls out of the construction for free.
+
+I do not want to actually iterate the corruption chain during training, so let me make the forward
+process usable. Write αₜ = 1 − βₜ and ᾱₜ = ∏ₛ αₛ. Each step scales by √αₜ and injects variance βₜ.
+Composing two steps and using that independent Gaussians add in variance, the chain telescopes to a
+one-shot marginal: xₜ = √ᾱₜ x₀ + √(1−ᾱₜ) ε, ε ~ N(0,I). I can jump straight to any noise level in one
+shot — no chain to unroll. ᾱₜ runs from ≈1 (barely noised) down to ≈0 (pure noise).
+
+What should the reverse step predict? Model p_θ(xₜ₋₁ | xₜ) as Gaussian — justified because for small βₜ
+the true reverse conditional is approximately Gaussian — so I need its mean. The clean route is the
+posterior q(xₜ₋₁ | xₜ, x₀), tractably Gaussian because everything is linear-Gaussian, whose mean is a
+known combination of xₜ and x₀. But x₀ is exactly what I do not have at sampling time. The
+reparameterization that unlocks it: the marginal says x₀ = (xₜ − √(1−ᾱₜ) ε)/√ᾱₜ, so the only unknown
+in x₀ given xₜ is the noise ε. Instead of predicting x₀ or the posterior mean, predict **ε** with a
+network ε_θ(xₜ, t). Substituting back, each timestep's term of the variational bound collapses to a
+weighted ‖ε − ε_θ‖², and dropping the per-timestep weight (the practical choice that trains best)
+leaves one clean loss: L = E ‖ε − ε_θ(√ᾱₜ x₀ + √(1−ᾱₜ) ε, t)‖². Sample a clean chunk, a noise tensor,
+a timestep; form the noised chunk in one shot; ask the network for the noise; take the MSE. No
+adversary, no partition function, no negative samples — a regression loss that fits a full distribution.
+
+Now sampling. The literal ancestral reverse chain takes all T steps because it is the exact reversal of
+a length-T Markov chain. For a robot controller that is a latency problem: T forward passes through a 7B
+trunk per chunk. The handle is that the training objective only ever constrained the marginals
+√ᾱₜ x₀ + √(1−ᾱₜ) ε; it never demanded the Markov forward chain. A family of non-Markovian forward
+processes share those marginals and hence the same trained ε_θ, and for that family the generative step
+factors into two pieces: first estimate the clean chunk, x̂₀ = (xₜ − √(1−ᾱₜ) ε_θ)/√ᾱₜ, then re-noise it
+to the next lower level, xₜ₋₁ = √ᾱₜ₋₁ x̂₀ + √(1−ᾱₜ₋₁−σ²) ε_θ + σ z. With σ = 0 the step is
+*deterministic* — "estimate x₀, jump to the next level" — and I can run it on a sparse subsequence of
+timesteps. That is the DDIM-style sampler I will use, so inference latency is in principle tunable; here
+the protocol fixes the step count.
+
+The schedule βₜ needs care, and the obvious linear ramp is wrong for my data. The action chunk is
+low-dimensional and lives in [−1,+1]; a linear βₜ drives ᾱₜ to nearly zero well before t = T, so the
+last big fraction of the chain operates on what is already pure noise — wasted steps where there is no
+signal left to denoise, with abrupt noise-level jumps in the middle. I want ᾱₜ to change slowly near
+both ends and roughly linearly in the middle, so every reverse step does useful work. The squared-cosine
+schedule defines ᾱₜ directly on the cumulative product: ᾱₜ = f(t)/f(0), f(t) = cos²(((t/T+s)/(1+s))·π/2),
+keeping ᾱ near 1 at the start and descending smoothly with a gentle approach to 0. For small-range
+action data this matters more than for images, so squared-cosine it is.
+
+Now the part specific to *this* scaffold, which is not in any generic recipe: where does the observation
+conditioning go, and what is ε_θ actually attached to? In a from-scratch action-diffusion policy the
+noise predictor is its own network and the observation is piped in through a dedicated path. I have no
+such luxury and want none: my observation is already fused — vision, language, proprioception — inside
+the 7B trunk, and the only handle I have on it is the trunk's hidden states at the action slots. The
+trunk *is* the conditioning network. So I must feed the current noisy action chunk and the diffusion
+timestep into the trunk so that its returned hidden states are conditioned on (observation, noisy
+action, t), then read the noise prediction off those hidden states.
+
+The noisy chunk first. The trunk lays out each action timestep as ACTION_DIM=7 input slots — one per
+dimension, because the base model tokenized each 7-D action into 7 separate tokens and I keep that
+layout so I never touch the trunk's sequence handling. A chunk of K timesteps is K·7 scalar slots, and
+my noisy chunk is exactly K·7 reals. So I treat each noisy *scalar* as a one-dimensional token and
+project it into the trunk's embedding width: a tiny `NoisyActionProjector`, Linear(1→d) → GELU →
+Linear(d→d), broadcast over all K·7 scalars. Per-scalar (input dim 1) and not per-action (dim 7),
+because the slot layout is one slot per dimension and I want the noisy action aligned slot-for-slot with
+how the trunk already attends to actions. The timestep next: the network must know how noisy the input
+is, so I sinusoidally encode the integer timestep into the embedding space and hand it to the trunk as
+one extra token through the `diffusion_timestep_embeddings` argument the runtime exposes.
+
+One training forward then looks like: sample t and ε, form xₜ = √ᾱₜ x₀ + √(1−ᾱₜ) ε in one shot via the
+scheduler's `add_noise`, project xₜ's K·7 scalars to action-token features, encode t, and call
+`runtime.forward(action_token_features=..., diffusion_timestep_embeddings=...)`. The trunk fuses these
+with the fixed context under bidirectional attention and returns final hidden states; I select the
+action-slot hidden states — at train time by the `current | next` action mask the runtime exposes, at
+eval time by the contiguous K·7 span after the prompt — and reshape to (B, K·7, d). To predict noise I
+rearrange (B, K·7, d) into (B, K, 7·d) — gathering a timestep's 7 per-dimension hidden states into one
+feature — and run a `NoisePredictionModel`, a pre-LayerNorm MLP-residual net taking 7·d in and emitting
+7 per timestep; pre-LN residual blocks keep gradients stable while this small net co-trains with the
+giant trunk. The loss is the MSE between this prediction and the ε I actually added. At inference I run
+the reverse rollout: start from N(0,I) of shape (1, K, 7), and for each scheduled t encode t, project
+the current noisy chunk, forward the trunk, extract action-slot hidden states, predict the noise, and
+let the scheduler take one denoising step. After the last step the chunk is a clean normalized action.
+
+I should name the cost I am accepting and the protocol fact that decides this rung's fate. Inference is
+one trunk forward *per diffusion step* — the runtime fixes 50 inference steps — so a single action chunk
+costs ~50 passes through a 7B model, versus one pass for a point head. That is the price of representing
+a distribution instead of a vector, and it is the only thing the eval timers should show as dramatically
+larger here. More important than latency, though, is *convergence*. The diffusion objective only ever
+sees a randomly-noised chunk at a random timestep and asks for the noise; the trunk and the denoiser
+must jointly learn, across the whole noise schedule, how to recover clean actions — a far harder fitting
+problem than regressing the action directly, and one that the published recipe trains for 100K-250K
+steps to make competitive. This task fixes the budget at 6000 steps to stay inside 5 H200h. So the
+honest expectation that makes diffusion the weakest rung is this: at 6000 steps the denoiser is
+*under-trained*. The reverse process will not yet have learned to walk noise back to coherent action
+chunks, so the sampled actions will be close to noise — the policy will mostly fail to complete tasks,
+success near the floor on every subset, with eval times several times larger than any single-pass head
+because of the 50-step rollout. I expect this to be the lowest rung not because diffusion is a worse
+*idea* — in the long-budget regime it is competitive, and its multimodality is a real advantage the
+point heads lack — but because it is the idea that most needs training time, and this protocol does not
+give it. That diagnosis is exactly what should push the next rung toward a head that learns fast enough
+to actually fit the demonstrations inside 6000 steps, even at the cost of giving up multimodality. So
+let me build the diffusion head — the noisy-action projector, the noise predictor, the DDIM scheduler —
+and write it in.
+</think>
+<say>
+Starting with a Cont-Diffusion head: a DDPM-style noise predictor read off the trunk's action-slot
+hidden states. This first edit swaps the module's imports and class shell over to the diffusion path.
+</say>
+<edit path="model.py">
+<old>
+"""Editable custom action method for MLS-Bench."""
+
+from __future__ import annotations
+
+import numpy as np
+import torch
+import torch.nn as nn
+
+from mlsbench.action_method_runtime import (
+    EvalActionMethodRuntime,
+    ForwardPassResult,
+    TrainActionMethodRuntime,
+)
+from prismatic.models.action_heads import ACTION_DIM, NUM_ACTIONS_CHUNK, MLPResNet
+
+
+# ===== EDITABLE SECTION START =====
+# CONFIG_OVERRIDES can only tune the fixed training recipe narrowly.
+# Allowed keys: learning_rate, lr_warmup_steps, num_steps_before_decay.
+CONFIG_OVERRIDES = {}
+
+
+class TemporalResidualActionMethod(nn.Module):
+    """Example custom method.
+
+    The core editable API is still:
+    1. `training_step(runtime)`
+    2. `predict_actions(runtime)`
+
+    In addition, three method-adjacent plumbing hooks now live inside the
+    editable region:
+    1. `extract_action_hidden_states(...)`
+    2. `build_action_token_features(...)`
+    3. `decode_discrete_actions(...)`
+    """
+</old>
+<new>
+"""MLS-Bench baseline: official OpenVLA-OFT PD&AC + Cont-Diffusion path."""
+
+from __future__ import annotations
+
+import torch
+import torch.nn as nn
+from diffusers.schedulers.scheduling_ddim import DDIMScheduler
+
+from mlsbench.action_method_runtime import (
+    EvalActionMethodRuntime,
+    FIXED_NUM_DIFFUSION_STEPS_INFERENCE,
+    FIXED_NUM_DIFFUSION_STEPS_TRAIN,
+    ForwardPassResult,
+    TrainActionMethodRuntime,
+)
+from prismatic.models.action_heads import ACTION_DIM, NUM_ACTIONS_CHUNK, NoisePredictionModel, SinusoidalPositionalEncoding
+from prismatic.models.projectors import NoisyActionProjector
+
+
+CONFIG_OVERRIDES = {
+    "lr_warmup_steps": 800,
+    "num_steps_before_decay": 6000,
+}
+
+
+class OfficialDiffusionActionMethod(nn.Module):
+    """Official Cont-Diffusion baseline under the unified action-method API."""
+</new>
+</edit>
+<obs>
+Successfully replaced text in model.py.
+</obs>
+<note>
+Now the module's submodules: the noise predictor, the per-scalar noisy-action projector, the
+squared-cosine DDIM scheduler, and the sinusoidal timestep encoder.
+</note>
+<edit path="model.py">
+<old>
+        self.action_dim = action_dim
+        self.temporal_mixer = nn.Sequential(
+            nn.LayerNorm(input_dim),
+            nn.Linear(input_dim, hidden_dim),
+            nn.GELU(),
+            nn.Linear(hidden_dim, input_dim),
+        )
+        self.decoder = MLPResNet(
+            num_blocks=2,
+            input_dim=input_dim * ACTION_DIM,
+            hidden_dim=hidden_dim,
+            output_dim=action_dim,
+        )
+</old>
+<new>
+        self.action_dim = action_dim
+        self.noise_predictor = NoisePredictionModel(
+            transformer_hidden_dim=hidden_dim * ACTION_DIM,
+            hidden_dim=hidden_dim,
+            action_dim=action_dim,
+        )
+        self.noisy_action_projector = NoisyActionProjector(llm_dim=input_dim)
+        self.noise_scheduler = DDIMScheduler(
+            num_train_timesteps=FIXED_NUM_DIFFUSION_STEPS_TRAIN,
+            beta_schedule="squaredcos_cap_v2",
+        )
+        self.time_encoder = SinusoidalPositionalEncoding(dim=hidden_dim)
+</new>
+</edit>
+<obs>
+Successfully replaced text in model.py.
+</obs>
+<note>
+Now the method body: project the noisy chunk, inject the timestep, train against the added noise, and
+roll the reverse chain at inference.
+</note>
+<edit path="model.py">
+<old>
+        runtime: TrainActionMethodRuntime | EvalActionMethodRuntime,
+        action_condition: torch.Tensor,
+    ) -> torch.Tensor:
+        raise NotImplementedError(
+            "Override build_action_token_features() if your method injects action-conditioned token features "
+            "back into the VLA input."
+        )
+
+    def decode_discrete_actions(
+        self,
+        runtime: EvalActionMethodRuntime,
+        forward: ForwardPassResult,
+    ) -> torch.Tensor:
+        start = runtime.num_prompt_tokens
+        end = start + ACTION_DIM * NUM_ACTIONS_CHUNK
+        predicted_token_ids = forward.text_logits[:, start:end].argmax(dim=2).cpu().numpy()
+        discretized_actions = runtime.model.vocab_size - predicted_token_ids
+        discretized_actions = np.clip(
+            discretized_actions - 1,
+            a_min=0,
+            a_max=runtime.model.bin_centers.shape[0] - 1,
+        )
+        normalized_actions = runtime.model.bin_centers[discretized_actions].reshape(
+            runtime.batch_size,
+            NUM_ACTIONS_CHUNK,
+            ACTION_DIM,
+        )
+        return torch.from_numpy(normalized_actions).to(runtime.device, dtype=torch.float32)
+
+    def _predict_normalized_actions(self, actions_hidden_states):
+        batch_size = actions_hidden_states.shape[0]
+        mixed_hidden_states = actions_hidden_states + self.temporal_mixer(actions_hidden_states)
+        mixed_hidden_states = mixed_hidden_states.reshape(batch_size, NUM_ACTIONS_CHUNK, -1)
+        return self.decoder(mixed_hidden_states)
+
+    def training_step(self, runtime: TrainActionMethodRuntime):
+        forward = runtime.forward()
+        actions_hidden_states = self.extract_action_hidden_states(runtime, forward)
+        predicted_actions = self._predict_normalized_actions(actions_hidden_states)
+        loss = torch.nn.L1Loss()(runtime.ground_truth_actions, predicted_actions)
+        metrics = {"loss_value": float(loss.item())}
+        metrics.update(runtime.compute_action_l1_metrics(predicted_actions))
+        return loss, metrics
+
+    def predict_actions(self, runtime: EvalActionMethodRuntime):
+        forward = runtime.forward()
+        actions_hidden_states = self.extract_action_hidden_states(runtime, forward)
+        normalized_actions = self._predict_normalized_actions(actions_hidden_states)
+        return normalized_actions, actions_hidden_states
+
+
+# Bind your final design here.
+CustomActionMethod = TemporalResidualActionMethod
+
+
+# placeholder lines to stabilize edit ranges
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
+</old>
+<new>
+        runtime: TrainActionMethodRuntime | EvalActionMethodRuntime,
+        noisy_actions: torch.Tensor,
+    ) -> torch.Tensor:
+        batch_size = noisy_actions.shape[0]
+        flattened = noisy_actions.reshape(batch_size, -1).unsqueeze(-1)
+        return self.noisy_action_projector(flattened).to(runtime.hidden_dtype)
+
+    def sample_noisy_actions(self, ground_truth_actions):
+        batch_size = ground_truth_actions.shape[0]
+        device = ground_truth_actions.device
+        noise = torch.randn(
+            size=(batch_size, NUM_ACTIONS_CHUNK, ACTION_DIM),
+            device=device,
+            dtype=ground_truth_actions.dtype,
+        )
+        timesteps = torch.randint(
+            low=0,
+            high=self.noise_scheduler.config.num_train_timesteps,
+            size=(batch_size,),
+            device=device,
+        )
+        noisy_actions = self.noise_scheduler.add_noise(ground_truth_actions, noise, timesteps)
+        timestep_embeddings = self.time_encoder(timesteps).to(noisy_actions.dtype).to(device).unsqueeze(1)
+        return {
+            "noise": noise,
+            "noisy_actions": noisy_actions,
+            "diffusion_timestep_embeddings": timestep_embeddings,
+        }
+
+    def predict_noise(self, actions_hidden_states):
+        batch_size = actions_hidden_states.shape[0]
+        rearranged_hidden_states = actions_hidden_states.reshape(batch_size, NUM_ACTIONS_CHUNK, -1)
+        return self.noise_predictor(rearranged_hidden_states)
+
+    def _rollout_diffusion(self, runtime: TrainActionMethodRuntime | EvalActionMethodRuntime):
+        curr_noisy_actions = torch.randn(
+            size=(runtime.batch_size, NUM_ACTIONS_CHUNK, ACTION_DIM),
+            device=runtime.device,
+            dtype=runtime.hidden_dtype,
+        )
+        self.noise_scheduler.set_timesteps(FIXED_NUM_DIFFUSION_STEPS_INFERENCE)
+        for t in self.noise_scheduler.timesteps:
+            timesteps = torch.full(
+                (runtime.batch_size,),
+                int(t),
+                device=runtime.device,
+                dtype=torch.long,
+            )
+            timestep_embeddings = self.time_encoder(timesteps).to(runtime.hidden_dtype).unsqueeze(1)
+            action_token_features = self.build_action_token_features(runtime, curr_noisy_actions)
+            forward = runtime.forward(
+                action_token_features=action_token_features,
+                diffusion_timestep_embeddings=timestep_embeddings,
+            )
+            actions_hidden_states = self.extract_action_hidden_states(runtime, forward)
+            noise_pred = self.predict_noise(actions_hidden_states).reshape(curr_noisy_actions.shape)
+            curr_noisy_actions = self.noise_scheduler.step(noise_pred, t, curr_noisy_actions).prev_sample
+        return curr_noisy_actions
+
+    def training_step(self, runtime: TrainActionMethodRuntime):
+        noisy_dict = self.sample_noisy_actions(runtime.ground_truth_actions)
+        action_token_features = self.build_action_token_features(runtime, noisy_dict["noisy_actions"])
+        forward = runtime.forward(
+            action_token_features=action_token_features,
+            diffusion_timestep_embeddings=noisy_dict["diffusion_timestep_embeddings"],
+        )
+        actions_hidden_states = self.extract_action_hidden_states(runtime, forward)
+        noise_pred = self.predict_noise(actions_hidden_states).reshape(noisy_dict["noise"].shape)
+        loss = nn.functional.mse_loss(noise_pred, noisy_dict["noise"], reduction="mean")
+        metrics = {"loss_value": float(loss.item())}
+        if runtime.should_compute_aux_metrics:
+            with torch.no_grad():
+                predicted_actions = self._rollout_diffusion(runtime)
+            metrics.update(runtime.compute_action_l1_metrics(predicted_actions))
+        return loss, metrics
+
+    def predict_actions(self, runtime: EvalActionMethodRuntime):
+        normalized_actions = self._rollout_diffusion(runtime)
+        return normalized_actions, None
+
+
+CustomActionMethod = OfficialDiffusionActionMethod
+</new>
+</edit>
+<obs>
+Successfully replaced text in model.py.
+</obs>
+<run/>
+<obs>
+Measured results — `baseline:cont_diffusion`, validated seed-42 6000-step run (reproducibility.md §15,
+"Final complete seed-42 rows used for protocol validation"; leaderboard row `2026-04-29T03:06:30`,
+seed 42). Single seed (config seeds = [42]). Metric: `success_rate` per subset; final score is the
+geometric mean over the three subsets.
+
+## success_rate by subset (seed 42)
+| subset | success_rate | elapsed_eval (s) |
+|---|---|---|
+| goal_a | 0.1111 | 552 |
+| goal_b | 0.0000 | 567 |
+| goal_c | 0.0833 | 707 |
+| **geometric mean** | **0.0000** | — |
+
+`elapsed_train = 17306 s`.
+</obs>
+
+### step 2 — PD&AC discrete   [slug:pdac-discrete]
+
+<think>
+The diffusion rung landed where the budget said it would. On seed 42 it scored 0.1111 on goal_a, a
+flat 0.0000 on goal_b, and 0.0833 on goal_c — geometric mean zero, because one empty subset zeroes the
+product, and even the arithmetic mean is ~0.065, barely off the floor. The eval timers tell the rest of
+the story: 552, 567, 707 seconds per subset against the tens of seconds a single-pass head would take,
+exactly the ~50-trunk-passes-per-chunk tax of the reverse rollout. This is precisely the under-training
+I expected — the denoiser never learned, in 6000 steps, to walk noise back to coherent action chunks,
+so the sampled actions are close to noise and the policy mostly fails. The lesson is sharp: in this
+regime the deciding factor is not the *expressivity* of the head but whether the head can be *fit*
+inside 6000 steps. Multimodality is worthless if the model that represents it is still noise. So the
+next move is to stop modeling a distribution and ask for a head whose training signal is as direct and
+data-efficient as possible — and the most direct, most data-grounded signal available on this trunk is
+the model's *own* objective, the one it was pretrained with.
+
+Step back to what the base trunk actually is. It is a web-pretrained vision-language model that
+generalizes over novel objects, distractors, and rephrased instructions because it has seen trillions
+of tokens, and its single native skill is next-token prediction under cross-entropy over a fixed
+vocabulary. The diffusion head grafted a from-scratch denoiser and a from-scratch MSE-on-noise
+objective onto that trunk; the discrete path does the opposite — it keeps the trunk's mouth and its
+objective exactly, and only teaches it to *speak actions* as tokens. The tension is one sentence: the
+model emits discrete tokens, and a robot action is a vector of continuous reals. If the output must be
+a token and the action is a real number, the only way through is to turn the real number into a token —
+give up the continuum and quantize.
+
+How much do I lose by quantizing? The robot does not need infinite precision; it needs resolution below
+the noise and tolerance the gripper and controller already carry. So discretize each of the 7 action
+dimensions: chop a dimension's range into bins, and the action becomes "which bin," an integer, an
+integer I can name with a token. Seven dimensions, seven integers, seven tokens; an action is a short
+string. How many bins is a rate-distortion call — too few and the control is chunky, too many and I ask
+a categorical head to discriminate among hundreds of near-identical classes from a few hundred
+demonstrations. 256 bins per dimension is the established choice and it checks out: 256 levels is 8 bits
+per degree of freedom, finer than the controller's own repeatability, so the quantization error is
+dominated by other error sources and effectively free, while 256 classes is a tame classification
+problem for a 7B model and one bin index fits one token cleanly.
+
+Where do I put the bins? Uniform bins from the raw min to max are wrong, because demonstration data has
+heavy tails — an occasional teleop glitch way out at the edge — and a single outlier stretches the
+interval so almost all 256 bins cover empty extremes and the dense bulk gets squeezed into a handful. So
+set the interval by quantiles: clip to the 1st/99th percentile of the actions on that axis (on the
+normalized [−1,+1] scale), lay 256 uniform bins across the clipped interval, and let outliers clamp to
+the end bins. Uniform within the clipped interval keeps encoding (a digitize) and decoding (a center
+lookup) trivial.
+
+Now the hard part: make those integers be tokens the model *already has*. I could add 256 new
+vocabulary entries, but the Llama tokenizer reserves only ~100 special slots and adding rows to the
+embedding matrix means more randomly-initialized parameters — the very from-scratch cost I am trying to
+avoid by staying in the trunk's native objective. A BPE vocabulary is ordered by frequency, and its tail
+is junk: token identities the pretrained model has barely ever produced, carrying almost no learned
+meaning. So the cheapest tokens to overwrite are the last ones — take the final 256 vocabulary entries
+and let them *be* the action bins. The model loses almost nothing (it never used them), and I introduce
+zero new parameters: I reuse existing embedding rows and output-projection columns, teaching them a new
+job during fine-tuning. I pin the index arithmetic to a self-inverse map: bin index k of a dimension
+maps to token-id = vocab_size − k, so the action tokens occupy the contiguous range
+[vocab_size − 256, vocab_size), and the bin↔token map is "subtract from vocab_size," its own inverse.
+
+Training is then *nothing new*, which is the entire point of starting from the trunk's own objective.
+Every demonstration action becomes 7 action tokens appended to the prompt; the model is already a
+teacher-forced next-token predictor with cross-entropy; I mask the loss to the action positions (the
+prompt is set to the ignore index so I do not train the model to "predict" the given image and
+instruction) and evaluate categorical cross-entropy on the action tokens only. No new loss function, no
+denoiser, no sampler — the runtime even exposes this as `compute_discrete_objective`, because it is the
+standard discrete path. And there is a real argument that cross-entropy over unordered bins is a *good*
+control loss, not merely a convenient one: it treats the 256 bins as unordered classes, so it can put
+mass on two separated bins at a fork and commit to one at decode — the categorical distribution
+represents the same multimodality diffusion chased, natively, at the cost only of a smoothness prior the
+giant model can learn from data anyway. The difference from the diffusion rung is that this multimodal
+representation rides the trunk's *pretrained* objective, so it has a head start instead of starting from
+scratch — exactly the fit-inside-6000-steps property I am after.
+
+Decode is where the off-by-ones live, and this task's edit surface makes them explicit. At the action
+positions the model gives a distribution over the *entire* vocabulary, but an action token is only ever
+one of the last 256; a natural-language token at an action slot is meaningless as control. So I must not
+argmax over the whole vocabulary — I slice the logits to the action sub-vocabulary
+[vocab_size − num_bins, vocab_size) and argmax *within that slice*, then add the offset back to recover
+the actual token-id. This is the one place the task's `decode_discrete_actions` differs from the naive
+scaffold default, and the difference is load-bearing: the default example in the scaffold argmaxes over
+all logits, which can select a non-action token and silently corrupt the decode; the official discrete
+baseline restricts the argmax to the valid action block (and raises if the vocab bounds are
+inconsistent). Greedy argmax, not sampling — for control I want the single most-likely bin per
+dimension, deterministic.
+
+Then invert the encoding with the same subtraction: bin_index = vocab_size − token_id. Now the
+bin-vs-center care: 256 bin *edges* define only 255 intervals, so there are 255 bin *centers*, not 256.
+The digitize returned indices in [1, 256]; subtract 1 to land in [0, 255], but I have only 255 centers,
+so I clip the top index down into the last real interval — clip(vocab_size − token_id − 1, 0,
+num_centers − 1) with num_centers = bin_centers.shape[0]. The decoded value for a bin is its *center*,
+the minimum-distortion reconstruction for a uniform quantizer, looked up from the precomputed
+`runtime.model.bin_centers`; reshape to (batch, NUM_ACTIONS_CHUNK, ACTION_DIM) and hand back normalized
+actions in [−1,+1] for the runtime to un-normalize.
+
+Two scaffold details complete the wiring and both follow from the discrete path conditioning on no extra
+action-side inputs: the action tokens are predicted from the prompt context, so I fill the
+action-feature slots with zeros (`zero_action_token_features`, a (B, K·D, llm_dim) zero tensor passed as
+`action_token_features` to `runtime.forward`), and the method holds *no parameters of its own* — its
+`__init__` is empty, because all learning is fine-tuning the trunk under its own objective. The discrete
+decode extends across the chunk unchanged: the binning, the least-used-token map, the cross-entropy, and
+the center lookup are all agnostic to how many action positions there are, so K·D slots are decoded
+exactly like one.
+
+Now the falsifiable expectation against the diffusion numbers. The discrete head shares the diffusion
+head's multimodality but pays none of its training cost: it reuses the pretrained next-token objective,
+adds zero parameters, and decodes in a single trunk pass instead of 50. So I expect two things. First,
+eval times collapse from the ~550-700 s/subset of the diffusion rollout back to the single-pass range
+(roughly 130-170 s/subset on this protocol), because there is no reverse loop. Second, success should
+clear the diffusion floor: where diffusion sat at 0.1111/0.0000/0.0833, the discrete head — actually
+fit in 6000 steps because it never started from scratch — should register non-trivial success on more
+than one subset, with an arithmetic mean comfortably above diffusion's ~0.065. I do *not* expect it to
+be the ceiling, though, and the reason is the 256-bin grid: cross-entropy over unordered bins throws
+away the ordinal structure of a continuous action (it does not know bin 130 is closer to the truth than
+bin 12 when the answer is 131), and the 8-bit grid caps precision at exactly the level fine manipulation
+lives below. So the prediction that sets up the next rung is asymmetric: discrete should *beat
+diffusion clearly* in this budget, yet still leave a precision gap that a head regressing the continuous
+action directly — no grid, no ordinal blindness — should be able to close. If discrete fails to clear
+the diffusion floor, my whole "fit-not-expressivity is the bottleneck" diagnosis is wrong; if it clears
+it but does not dominate, the discretization ceiling is the next thing to attack. So let me swap the
+diffusion head out for the discrete token path and write it in.
+</think>
+<say>
+Switching to the discrete PD&AC path: quantize each action dimension into 256 bins, reuse the trunk's
+least-used vocab tokens as action bins, and train under its own next-token cross-entropy. This edit
+moves the imports and config over to that path.
+</say>
+<edit path="model.py">
+<old>
+"""MLS-Bench baseline: official OpenVLA-OFT PD&AC + Cont-Diffusion path."""
+
+from __future__ import annotations
+
+import torch
+import torch.nn as nn
+from diffusers.schedulers.scheduling_ddim import DDIMScheduler
+
+from mlsbench.action_method_runtime import (
+    EvalActionMethodRuntime,
+    FIXED_NUM_DIFFUSION_STEPS_INFERENCE,
+    FIXED_NUM_DIFFUSION_STEPS_TRAIN,
+    ForwardPassResult,
+    TrainActionMethodRuntime,
+)
+from prismatic.models.action_heads import ACTION_DIM, NUM_ACTIONS_CHUNK, NoisePredictionModel, SinusoidalPositionalEncoding
+from prismatic.models.projectors import NoisyActionProjector
+
+
+CONFIG_OVERRIDES = {
+    "lr_warmup_steps": 800,
+    "num_steps_before_decay": 6000,
+</old>
+<new>
+"""MLS-Bench baseline: official OpenVLA-OFT PD&AC discrete path."""
+
+from __future__ import annotations
+
+import numpy as np
+import torch
+import torch.nn as nn
+
+from mlsbench.action_method_runtime import EvalActionMethodRuntime, ForwardPassResult, TrainActionMethodRuntime
+from prismatic.models.action_heads import ACTION_DIM, NUM_ACTIONS_CHUNK
+
+
+CONFIG_OVERRIDES = {
+    "lr_warmup_steps": 400,
+    "num_steps_before_decay": 6000,
+</new>
+</edit>
+<obs>
+Successfully replaced text in model.py.
+</obs>
+<note>
+Now the class itself: an empty-parameter module whose training is the trunk's own cross-entropy, with a
+sub-vocabulary-restricted argmax decode and a zero action-feature placeholder.
+</note>
+<edit path="model.py">
+<old>
+
+class OfficialDiffusionActionMethod(nn.Module):
+    """Official Cont-Diffusion baseline under the unified action-method API."""
+
+    def __init__(self, input_dim=4096, hidden_dim=4096, action_dim=7):
+        super().__init__()
+        self.action_dim = action_dim
+        self.noise_predictor = NoisePredictionModel(
+            transformer_hidden_dim=hidden_dim * ACTION_DIM,
+            hidden_dim=hidden_dim,
+            action_dim=action_dim,
+        )
+        self.noisy_action_projector = NoisyActionProjector(llm_dim=input_dim)
+        self.noise_scheduler = DDIMScheduler(
+            num_train_timesteps=FIXED_NUM_DIFFUSION_STEPS_TRAIN,
+            beta_schedule="squaredcos_cap_v2",
+        )
+        self.time_encoder = SinusoidalPositionalEncoding(dim=hidden_dim)
+
+    def extract_action_hidden_states(
+        self,
+        runtime: TrainActionMethodRuntime | EvalActionMethodRuntime,
+        forward: ForwardPassResult,
+    ) -> torch.Tensor:
+        if runtime.phase == "train":
+            mask = runtime.current_action_mask | runtime.next_actions_mask
+            return (
+                forward.text_hidden_states[mask]
+                .reshape(runtime.batch_size, NUM_ACTIONS_CHUNK * ACTION_DIM, -1)
+                .to(runtime.hidden_dtype)
+            )
+
+        start = runtime.num_prompt_tokens
+        end = start + NUM_ACTIONS_CHUNK * ACTION_DIM
+        return forward.text_hidden_states[:, start:end, :].to(runtime.hidden_dtype)
+
+    def build_action_token_features(
+        self,
+        runtime: TrainActionMethodRuntime | EvalActionMethodRuntime,
+        noisy_actions: torch.Tensor,
+    ) -> torch.Tensor:
+        batch_size = noisy_actions.shape[0]
+        flattened = noisy_actions.reshape(batch_size, -1).unsqueeze(-1)
+        return self.noisy_action_projector(flattened).to(runtime.hidden_dtype)
+
+    def sample_noisy_actions(self, ground_truth_actions):
+        batch_size = ground_truth_actions.shape[0]
+        device = ground_truth_actions.device
+        noise = torch.randn(
+            size=(batch_size, NUM_ACTIONS_CHUNK, ACTION_DIM),
+            device=device,
+            dtype=ground_truth_actions.dtype,
+        )
+        timesteps = torch.randint(
+            low=0,
+            high=self.noise_scheduler.config.num_train_timesteps,
+            size=(batch_size,),
+            device=device,
+        )
+        noisy_actions = self.noise_scheduler.add_noise(ground_truth_actions, noise, timesteps)
+        timestep_embeddings = self.time_encoder(timesteps).to(noisy_actions.dtype).to(device).unsqueeze(1)
+        return {
+            "noise": noise,
+            "noisy_actions": noisy_actions,
+            "diffusion_timestep_embeddings": timestep_embeddings,
+        }
+
+    def predict_noise(self, actions_hidden_states):
+        batch_size = actions_hidden_states.shape[0]
+        rearranged_hidden_states = actions_hidden_states.reshape(batch_size, NUM_ACTIONS_CHUNK, -1)
+        return self.noise_predictor(rearranged_hidden_states)
+
+    def _rollout_diffusion(self, runtime: TrainActionMethodRuntime | EvalActionMethodRuntime):
+        curr_noisy_actions = torch.randn(
+            size=(runtime.batch_size, NUM_ACTIONS_CHUNK, ACTION_DIM),
+            device=runtime.device,
+            dtype=runtime.hidden_dtype,
+        )
+        self.noise_scheduler.set_timesteps(FIXED_NUM_DIFFUSION_STEPS_INFERENCE)
+        for t in self.noise_scheduler.timesteps:
+            timesteps = torch.full(
+                (runtime.batch_size,),
+                int(t),
+                device=runtime.device,
+                dtype=torch.long,
+            )
+            timestep_embeddings = self.time_encoder(timesteps).to(runtime.hidden_dtype).unsqueeze(1)
+            action_token_features = self.build_action_token_features(runtime, curr_noisy_actions)
+            forward = runtime.forward(
+                action_token_features=action_token_features,
+                diffusion_timestep_embeddings=timestep_embeddings,
+            )
+            actions_hidden_states = self.extract_action_hidden_states(runtime, forward)
+            noise_pred = self.predict_noise(actions_hidden_states).reshape(curr_noisy_actions.shape)
+            curr_noisy_actions = self.noise_scheduler.step(noise_pred, t, curr_noisy_actions).prev_sample
+        return curr_noisy_actions
+
+    def training_step(self, runtime: TrainActionMethodRuntime):
+        noisy_dict = self.sample_noisy_actions(runtime.ground_truth_actions)
+        action_token_features = self.build_action_token_features(runtime, noisy_dict["noisy_actions"])
+        forward = runtime.forward(
+            action_token_features=action_token_features,
+            diffusion_timestep_embeddings=noisy_dict["diffusion_timestep_embeddings"],
+        )
+        actions_hidden_states = self.extract_action_hidden_states(runtime, forward)
+        noise_pred = self.predict_noise(actions_hidden_states).reshape(noisy_dict["noise"].shape)
+        loss = nn.functional.mse_loss(noise_pred, noisy_dict["noise"], reduction="mean")
+        metrics = {"loss_value": float(loss.item())}
+        if runtime.should_compute_aux_metrics:
+            with torch.no_grad():
+                predicted_actions = self._rollout_diffusion(runtime)
+            metrics.update(runtime.compute_action_l1_metrics(predicted_actions))
+        return loss, metrics
+
+    def predict_actions(self, runtime: EvalActionMethodRuntime):
+        normalized_actions = self._rollout_diffusion(runtime)
+        return normalized_actions, None
+
+
+CustomActionMethod = OfficialDiffusionActionMethod
+</old>
+<new>
+
+class OfficialDiscreteActionMethod(nn.Module):
+    """Official discrete PD&AC baseline under the unified action-method API."""
+
+    def __init__(self, input_dim=4096, hidden_dim=4096, action_dim=7):
+        super().__init__()
+
+    def decode_discrete_actions(
+        self,
+        runtime: EvalActionMethodRuntime,
+        forward: ForwardPassResult,
+    ) -> torch.Tensor:
+        start = runtime.num_prompt_tokens
+        end = start + ACTION_DIM * NUM_ACTIONS_CHUNK
+        action_logits = forward.text_logits[:, start:end]
+        num_action_bins = int(runtime.model.bin_centers.shape[0] + 1)
+        action_vocab_end = int(runtime.model.vocab_size)
+        action_vocab_start = action_vocab_end - num_action_bins
+        if action_vocab_start < 0 or action_vocab_end > action_logits.shape[-1]:
+            raise ValueError(
+                f"Invalid action vocab bounds [{action_vocab_start}, {action_vocab_end}) "
+                f"for logits with vocab size {action_logits.shape[-1]}"
+            )
+        predicted_token_ids = (
+            action_logits[..., action_vocab_start:action_vocab_end].argmax(dim=2)
+            + action_vocab_start
+        ).cpu().numpy()
+        discretized_actions = runtime.model.vocab_size - predicted_token_ids
+        discretized_actions = np.clip(
+            discretized_actions - 1,
+            a_min=0,
+            a_max=runtime.model.bin_centers.shape[0] - 1,
+        )
+        normalized_actions = runtime.model.bin_centers[discretized_actions].reshape(
+            runtime.batch_size,
+            NUM_ACTIONS_CHUNK,
+            ACTION_DIM,
+        )
+        return torch.from_numpy(normalized_actions).to(runtime.device, dtype=torch.float32)
+
+    def zero_action_token_features(
+        self,
+        runtime: TrainActionMethodRuntime | EvalActionMethodRuntime,
+    ) -> torch.Tensor:
+        return torch.zeros(
+            runtime.batch_size,
+            NUM_ACTIONS_CHUNK * ACTION_DIM,
+            runtime.model.llm_dim,
+            device=runtime.device,
+            dtype=runtime.hidden_dtype,
+        )
+
+    def training_step(self, runtime: TrainActionMethodRuntime):
+        forward = runtime.forward(action_token_features=self.zero_action_token_features(runtime))
+        return runtime.compute_discrete_objective(forward)
+
+    def predict_actions(self, runtime: EvalActionMethodRuntime):
+        forward = runtime.forward(action_token_features=self.zero_action_token_features(runtime))
+        normalized_actions = self.decode_discrete_actions(runtime, forward)
+        return normalized_actions, None
+
+
+CustomActionMethod = OfficialDiscreteActionMethod
+</new>
+</edit>
+<obs>
+Successfully replaced text in model.py.
+</obs>
+<run/>
+<obs>
+Measured results — `baseline:pdac_discrete`, validated seed-42 6000-step run (reproducibility.md §15,
+"Final complete seed-42 rows used for protocol validation"; leaderboard row `2026-04-29T02:09:15`,
+seed 42). Single seed (config seeds = [42]). Metric: `success_rate` per subset; final score is the
+geometric mean over the three subsets.
+
+## success_rate by subset (seed 42)
+| subset | success_rate | elapsed_eval (s) |
+|---|---|---|
+| goal_a | 0.2222 | 190 |
+| goal_b | 0.1111 | 126 |
+| goal_c | 0.0000 | 165 |
+| **geometric mean** | **0.0000** | — |
+
+`elapsed_train = 16958 s`.
+</obs>
+
+### step 3 — PD&AC + Cont-L1   [slug:cont-l1]
+
+<think>
+The discrete rung confirmed the diagnosis exactly. On seed 42 it scored 0.2222 on goal_a, 0.1111 on
+goal_b, and 0.0000 on goal_c, and the eval timers collapsed to 190/126/165 seconds — back in the
+single-pass range, no 50-step rollout, just as predicted once the head stopped denoising from scratch.
+So the "fit, not expressivity" reading was right: where the under-trained diffusion head sat at
+0.1111/0.0000/0.0833 with a ~0.065 arithmetic mean, the discrete head — riding the trunk's pretrained
+next-token objective, zero new parameters — registered real success on two of three subsets and roughly
+doubled the off-floor signal. The diffusion rung lost because its denoiser never learned inside 6000
+steps; the discrete rung won that comparison by reusing a loss the trunk already mastered.
+
+But discrete did not break clear. Its geometric mean is still 0.0000, dragged to zero by the empty
+goal_c, and even its best subset, 0.2222, is far from the regime where the policy actually completes
+tasks. That is the second half of the prediction coming true, and it is exactly the asymmetry I set up:
+discrete beats diffusion in this budget yet leaves a precision gap. The cause is structural and I named
+it in advance — the 256-bin grid is an 8-bit quantizer over [−1,+1], and fine manipulation lives in the
+gaps between grid points, while cross-entropy over *unordered* bins throws away the ordinal structure of
+a continuous action: it never learns that bin 130 is a near-miss when the truth is 131, it only learns
+"right class / wrong class." On goal_c, the hardest four-task subset, that coarseness and ordinal
+blindness apparently cost just enough accumulated end-effector error per chunk that nothing completes.
+The discretization that made the action speakable as a token is now the ceiling. So the next move is
+forced: stop discretizing. Let the head output the continuous action directly, train it with a loss that
+respects distance, and see whether removing the grid is what unsticks goal_c.
+
+Start from the trunk's gift. Parallel decoding already gives me, in a single forward pass, a hidden
+state at each of the K·D action slots — shape (B, K·D, hidden) — conditioned bidirectionally on the
+full observation. The discrete path took those hidden states to bin-logits; instead I will map them
+straight to real-valued normalized actions with a small regression head. No grid, no bottleneck; the
+precision ceiling the 256 bins imposed simply disappears, and I keep every other property of the
+scaffold — the single-pass decode, the chunking, the pretrained trunk.
+
+Now the loss, and this is where I must be careful, because the loss choice interacts with the messy
+reality of human demonstrations. The obvious default is squared error, L2: minimize the mean of
+(predicted − ground_truth)². But demonstrations are noisy, and at a given observation a human might have
+done slightly different things on different episodes, so the target is effectively a spread of plausible
+actions, not a point. L2 penalizes large residuals quadratically, so it is pulled hard toward outliers
+and its optimum is the *mean* of the conditional action distribution — and the mean of a spread of
+distinct valid motions can be a blended action valid under none of them, the same mode-averaging failure
+that motivated diffusion in the first place. L1, the mean absolute error, penalizes linearly, so it is
+far less swayed by the occasional large deviation and its optimum is the *median*. For action prediction
+the median is the better summary: robust to noisy demonstration outliers, and more precise. So the
+objective is the mean L1 distance between predicted and ground-truth action chunks on the normalized
+[−1,+1] actions: L = mean |predicted − ground_truth| over all K timesteps and all D dimensions, one
+`torch.nn.L1Loss` call against `runtime.ground_truth_actions`. Because the actions are normalized, the
+loss is on a clean comparable scale, which is part of why it converges fast and stably inside the budget.
+
+I should sit with the alternative I already tried, because it sharpens *why* L1 is the right call here
+and not merely a fallback. Diffusion's selling point is genuine — it represents multimodal action
+distributions, so when there really are several distinct valid ways to act it can capture all of them
+instead of collapsing to a median, an expressivity L1 lacks. But I watched diffusion lose this exact
+protocol: its iterative sampling reintroduced the latency I want to avoid and, decisively, its from-
+scratch denoiser could not be trained in 6000 steps. The bet L1 makes is that my trunk is a 7B model
+with enormous capacity, and the usual reason simple regression loses to a generative head is *under-
+capacity* — a small network forced to output one vector hedges by averaging modes. A high-capacity model
+conditioned on a rich bidirectional observation can often pin down which mode the current situation
+calls for and regress it cleanly, so the multimodality diffusion buys may be largely redundant here. If
+that is right, L1 should *match or beat* diffusion's success while being dramatically cheaper to fit and
+to run — and given that diffusion already lost to discrete on fit alone, L1 inherits discrete's
+fit advantage and adds continuous precision on top. The honest limitation stands: if the demonstrations
+are truly multimodal, where several genuinely different action sequences are all correct for the same
+input, the median-seeking L1 head cannot represent that and diffusion would have the edge. For the
+focused, consistent-strategy LIBERO-Goal demonstrations, the median is exactly what I want.
+
+Now build the head and wire it to the action slots. After the forward pass I have a hidden state at each
+of the K·D positions; I want one D-dimensional action per timestep, so K actions total. The natural
+grouping is by timestep: the D=7 action positions belonging to timestep k together determine that
+timestep's 7-dim action, so I gather those D hidden states for each timestep and feed them jointly —
+reshape (B, K·D, hidden) to (B, K, D·hidden), each of the K rows the concatenation of that timestep's D
+action-position hidden states, and map each row to D outputs. The head's input width is D·hidden and its
+output width is action_dim, applied across the K timesteps.
+
+What should the head be? It sits on top of the LoRA-adapted trunk, reading high-dimensional features and
+regressing a low-dimensional target on a few hundred demonstrations, so I want something expressive
+enough to extract the action but stable and not prone to overfitting. A plain linear+ReLU stack is
+finicky to train at this width; residual connections give gradients a clean path and layer
+normalization stabilizes the activation scale, so an MLP-ResNet — a few residual feedforward blocks —
+is the right shape, and I will pre-normalize (LayerNorm → Linear → ReLU, added to the input) because
+pre-norm keeps the residual stream's gradients well-behaved, the same reasoning that favors pre-norm
+feedforward blocks in transformers. Bracket the stack with an input projection that lifts D·hidden to
+the working width, two such residual blocks, a final LayerNorm, and a linear projection to action_dim —
+about four layers deep. It is tiny relative to the 7B trunk, so it adds negligible inference cost, which
+is the whole point of choosing a head over a heavier generative decoder. The scaffold already provides
+exactly this as `prismatic.models.action_heads.MLPResNet`, so I instantiate it with `num_blocks=2`,
+`input_dim = input_dim * ACTION_DIM`, `hidden_dim`, `output_dim = action_dim`.
+
+The wiring at training time has a subtlety in extracting the action positions, and the task's
+`extract_action_hidden_states` hook is exactly where it lives. I run the trunk forward with *zeroed*
+action-token features — unlike diffusion, the L1 head injects nothing action-conditioned back into the
+input; like discrete it hands a zero placeholder of shape (B, K·D, llm_dim) to `runtime.forward`, since
+it conditions only on the observation, not on any action-side input — under bidirectional attention. At train time I have the ground-truth labels, so I build
+the boolean mask `current_action_mask | next_actions_mask` over the response positions, select those
+hidden states, and reshape to (B, K·D, hidden); the runtime exposes both masks directly. At eval time
+there are no labels, but the layout is known: the action positions start right after the prompt and run
+for K·D contiguous slots, so I slice `[num_prompt_tokens : num_prompt_tokens + K·D]` instead. Either way
+the head sees (B, K·D, hidden), regroups to (B, K, D·hidden), and predicts (B, K, action_dim). The loss
+is then the single L1 call against the ground-truth chunk; `runtime.compute_action_l1_metrics` logs the
+auxiliary L1 diagnostics. At inference, `predict_actions` returns the predicted normalized chunk and the
+action hidden states, and the runtime un-normalizes.
+
+This is the same continuous-head reasoning the discrete rung's precision gap demanded — discrete's
+unordered cross-entropy could not learn that a near-miss bin is nearly right; L1 on the continuous
+output makes "nearly right" the loss itself, since |predicted − truth| shrinks smoothly as the
+prediction approaches the target. That ordinal-respecting loss is precisely what should recover the
+sub-grid precision discrete threw away.
+
+Now the falsifiable expectations against the discrete numbers. L1 keeps everything that made discrete
+beat diffusion — single trunk pass, pretrained trunk, fits in 6000 steps — so its eval times should sit
+in the same single-pass range as discrete (130-180 s/subset), not the diffusion rollout range. The
+success claim is sharper. Removing the 256-bin grid and using a distance-respecting loss should lift
+*every* subset, and critically it should unstick the one discrete left empty: I expect goal_c to go
+non-zero, which alone would flip the geometric mean off zero where both discrete and diffusion scored a
+flat 0.0000. Concretely I expect L1 to dominate discrete on all three subsets — goal_a and goal_b well
+above discrete's 0.2222/0.1111, and goal_c clearly positive — yielding a geometric mean that is the
+first non-trivial score on the ladder. The bar this rung must clear, then, is unambiguous: beat discrete
+on every subset and produce a positive geometric mean. If L1 fails to lift goal_c off zero, my
+"discretization is the ceiling" diagnosis is wrong and something else is capping goal_c; if it lifts
+goal_c and dominates the other two, then the continuous regression head — fit-efficient like discrete,
+precise like no grid allows, and matching diffusion's success without its training cost — is the
+strongest action method this budget supports, and the ladder ends here. So let me replace the discrete
+decode with a continuous MLP-ResNet head trained by L1 and write it in.
+</think>
+<say>
+Replacing the discrete head with a Cont-L1 regression head: an MLP-ResNet that maps each timestep's
+action-slot hidden states straight to a continuous 7-DoF action, trained with mean L1. This edit moves
+the imports back to the regression head.
+</say>
+<edit path="model.py">
+<old>
+"""MLS-Bench baseline: official OpenVLA-OFT PD&AC discrete path."""
+
+from __future__ import annotations
+
+import numpy as np
+import torch
+import torch.nn as nn
+
+from mlsbench.action_method_runtime import EvalActionMethodRuntime, ForwardPassResult, TrainActionMethodRuntime
+from prismatic.models.action_heads import ACTION_DIM, NUM_ACTIONS_CHUNK
+</old>
+<new>
+"""MLS-Bench baseline: official OpenVLA-OFT PD&AC + Cont-L1 path."""
+
+from __future__ import annotations
+
+import torch
+import torch.nn as nn
+
+from mlsbench.action_method_runtime import (
+    EvalActionMethodRuntime,
+    ForwardPassResult,
+    TrainActionMethodRuntime,
+)
+from prismatic.models.action_heads import ACTION_DIM, NUM_ACTIONS_CHUNK, MLPResNet
+</new>
+</edit>
+<obs>
+Successfully replaced text in model.py.
+</obs>
+<note>
+Now the head and its extraction hook: an MLP-ResNet over each timestep's grouped action-slot hidden
+states.
+</note>
+<edit path="model.py">
+<old>
+
+class OfficialDiscreteActionMethod(nn.Module):
+    """Official discrete PD&AC baseline under the unified action-method API."""
+
+    def __init__(self, input_dim=4096, hidden_dim=4096, action_dim=7):
+        super().__init__()
+
+    def decode_discrete_actions(
+        self,
+        runtime: EvalActionMethodRuntime,
+        forward: ForwardPassResult,
+    ) -> torch.Tensor:
+        start = runtime.num_prompt_tokens
+        end = start + ACTION_DIM * NUM_ACTIONS_CHUNK
+        action_logits = forward.text_logits[:, start:end]
+        num_action_bins = int(runtime.model.bin_centers.shape[0] + 1)
+        action_vocab_end = int(runtime.model.vocab_size)
+        action_vocab_start = action_vocab_end - num_action_bins
+        if action_vocab_start < 0 or action_vocab_end > action_logits.shape[-1]:
+            raise ValueError(
+                f"Invalid action vocab bounds [{action_vocab_start}, {action_vocab_end}) "
+                f"for logits with vocab size {action_logits.shape[-1]}"
+            )
+        predicted_token_ids = (
+            action_logits[..., action_vocab_start:action_vocab_end].argmax(dim=2)
+            + action_vocab_start
+        ).cpu().numpy()
+        discretized_actions = runtime.model.vocab_size - predicted_token_ids
+        discretized_actions = np.clip(
+            discretized_actions - 1,
+            a_min=0,
+            a_max=runtime.model.bin_centers.shape[0] - 1,
+        )
+        normalized_actions = runtime.model.bin_centers[discretized_actions].reshape(
+            runtime.batch_size,
+            NUM_ACTIONS_CHUNK,
+            ACTION_DIM,
+        )
+        return torch.from_numpy(normalized_actions).to(runtime.device, dtype=torch.float32)
+</old>
+<new>
+
+class OfficialL1ActionMethod(nn.Module):
+    """Official Cont-L1 baseline under the unified action-method API."""
+
+    def __init__(self, input_dim=4096, hidden_dim=4096, action_dim=7):
+        super().__init__()
+        self.action_dim = action_dim
+        self.model = MLPResNet(
+            num_blocks=2,
+            input_dim=input_dim * ACTION_DIM,
+            hidden_dim=hidden_dim,
+            output_dim=action_dim,
+        )
+
+    def extract_action_hidden_states(
+        self,
+        runtime: TrainActionMethodRuntime | EvalActionMethodRuntime,
+        forward: ForwardPassResult,
+    ) -> torch.Tensor:
+        if runtime.phase == "train":
+            mask = runtime.current_action_mask | runtime.next_actions_mask
+            return (
+                forward.text_hidden_states[mask]
+                .reshape(runtime.batch_size, NUM_ACTIONS_CHUNK * ACTION_DIM, -1)
+                .to(runtime.hidden_dtype)
+            )
+
+        start = runtime.num_prompt_tokens
+        end = start + NUM_ACTIONS_CHUNK * ACTION_DIM
+        return forward.text_hidden_states[:, start:end, :].to(runtime.hidden_dtype)
+
+    def predict_action(self, actions_hidden_states):
+        batch_size = actions_hidden_states.shape[0]
+        rearranged_hidden_states = actions_hidden_states.reshape(batch_size, NUM_ACTIONS_CHUNK, -1)
+        return self.model(rearranged_hidden_states)
+</new>
+</edit>
+<obs>
+Successfully replaced text in model.py.
+</obs>
+<note>
+Now the train/eval methods: forward with zeroed action features, then the single L1 call against the
+ground-truth chunk.
+</note>
+<edit path="model.py">
+<old>
+        forward = runtime.forward(action_token_features=self.zero_action_token_features(runtime))
+        return runtime.compute_discrete_objective(forward)
+
+    def predict_actions(self, runtime: EvalActionMethodRuntime):
+        forward = runtime.forward(action_token_features=self.zero_action_token_features(runtime))
+        normalized_actions = self.decode_discrete_actions(runtime, forward)
+        return normalized_actions, None
+
+
+CustomActionMethod = OfficialDiscreteActionMethod
+</old>
+<new>
+        forward = runtime.forward(action_token_features=self.zero_action_token_features(runtime))
+        actions_hidden_states = self.extract_action_hidden_states(runtime, forward)
+        predicted_actions = self.predict_action(actions_hidden_states)
+        loss = torch.nn.L1Loss()(runtime.ground_truth_actions, predicted_actions)
+        metrics = {"loss_value": float(loss.item())}
+        metrics.update(runtime.compute_action_l1_metrics(predicted_actions))
+        return loss, metrics
+
+    def predict_actions(self, runtime: EvalActionMethodRuntime):
+        forward = runtime.forward(action_token_features=self.zero_action_token_features(runtime))
+        actions_hidden_states = self.extract_action_hidden_states(runtime, forward)
+        normalized_actions = self.predict_action(actions_hidden_states)
+        return normalized_actions, actions_hidden_states
+
+
+CustomActionMethod = OfficialL1ActionMethod
+</new>
+</edit>
+<obs>
+Successfully replaced text in model.py.
+</obs>
+<run/>
+<obs>
+Measured results — `baseline:cont_l1`, validated seed-42 6000-step run (reproducibility.md §15,
+"Final complete seed-42 rows used for protocol validation"; leaderboard row `2026-04-29T02:30:21`,
+seed 42). Single seed (config seeds = [42]). Metric: `success_rate` per subset; final score is the
+geometric mean over the three subsets.
+
+## success_rate by subset (seed 42)
+| subset | success_rate | elapsed_eval (s) |
+|---|---|---|
+| goal_a | 0.7778 | 108 |
+| goal_b | 0.8889 | 87 |
+| goal_c | 0.4167 | 131 |
+| **geometric mean** | **0.6605** | — |
+
+`elapsed_train = 16887 s`.
+</obs>
+

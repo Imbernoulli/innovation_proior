@@ -1,0 +1,774 @@
+<meta task="llm-hybrid-posttraining" domain="Language models" file="Unify-Post-Training/hpt/verl/verl/mix_src/mix_trainer.py" model_format="qwen3" edit_tool="str_replace"/>
+
+<system>
+You are a research engineer improving a model on a fixed ML task. You work by editing the model code and running experiments. Think carefully before each change. You have these tools:
+- str_replace(path, old_str, new_str): replace the unique occurrence of old_str with new_str.
+- create(path, file_text): create a new file.
+- run_experiment(): train + evaluate the current code under the fixed budget; returns metrics.
+Make one tool call at a time. After editing, call run_experiment() to measure your method.
+</system>
+
+<user>
+## Research question
+
+A fixed hybrid post-training stack — `Unify-Post-Training`'s HPT scaffold — already pairs each math
+prompt with two signals: the model's own verifier-scored on-policy rollouts (for RL) and a teacher
+demonstration `τ★` (for SFT). The advantage estimator (`grpo`), the unify strategy (`switch`), and the
+off-policy loss type (`sft`) are all frozen. The single thing being designed is the **per-question
+router** — the trainer-side rule that decides, for each prompt, whether to keep its on-policy RL
+samples, drop them, regenerate more, or replace them with off-policy SFT (or off-policy RL) samples.
+Everything else about the stack is fixed.
+
+## Prior art before the first rung (post-training lineage)
+
+The router the first rung uses is itself the resolution of a line of post-training methods. These
+precede the ladder; the fixed substrate below is what they converged to.
+
+- **Behavior cloning / SFT (Pomerleau 1991; Wei et al. 2021).** Fit the policy to the demonstration
+  set by token-level NLL, `L_SFT = −Σ_t log π_θ(τ★_t | q, τ★_{<t})`. Cheap, stable, and the only thing
+  that reliably raises competence on prompts the model cannot solve at all. Gap: it learns only to
+  copy, injects no signal about which of the model's *own* behaviors are good, curtails exploration,
+  and memorizes/overfits the demonstrations (degrades out-of-distribution).
+- **GRPO (Shao et al. 2024, DeepSeekMath).** Critic-free on-policy RL: per prompt sample a group of `G`
+  rollouts, score with the verifier `R∈{0,1}`, and standardize within the group to an advantage
+  `Â_i = (R(τ_i) − mean) / std`, optimized with PPO's clipped surrogate. Excellent at *sharpening*
+  reasoning the model can already partly do, and cheap (no value net). Gap: purely on-policy, so it is
+  bounded by what the base model can sample; on a hard prompt where all `G` rollouts get the same
+  score (every one wrong), the within-group advantage collapses to zero and GRPO contributes **no
+  gradient** on exactly the prompts where help is most needed.
+- **Fixed SFT+RL blends and SFT→RL pipelines (Fu et al. 2025).** Combine the two by a hand-tuned
+  coefficient, a schedule, or a two-stage pipeline; `SFT→RL` differs markedly from `RL→SFT`. Gap: the
+  combination is committed in advance and ignores how the model's competence varies across prompts and
+  over training, and the knob has to be re-tuned per model and dataset.
+
+## The fixed substrate
+
+The HPT training stack is frozen and read-only. `algorithm.adv_estimator=grpo` (group-relative,
+critic-free advantages over a prompt's rollouts), `trainer.unify_strategy=switch` (hard per-question
+routing, not a soft blend), and `actor.offline_loss_type=sft` (the actor consumes off-policy SFT
+samples as token-NLL with a `sft_loss_coef`, and on-policy samples as the GRPO clipped surrogate). The
+rollout side (`mix_vllm_rollout.py`, `mix_hf_rollout.py`) defines how on-policy and off-policy
+sequences are built; `rl_dataset_with_target.py` supplies each prompt's demonstration target `τ★`.
+The advantage code group-normalizes over on-policy samples only. The loop draws
+`rollout.n_verify=8` on-policy rollouts per prompt, computes the per-question solve count
+`on_solve_num ∈ {0,…,8}` (how many of the eight passed the verifier), and hands it to the router.
+
+## The editable interface
+
+Exactly one logical region is editable across the trainer: the `select_on_off_ada_balance(on_solve_num)`
+controller (lines 394–414), with the per-question routing state (599–620), off-policy sample
+construction (759–799), and on-policy retention/deletion (942–963) wired to its output. Every method on
+the ladder is a fill of the same contract — the controller returns one triple per prompt-id:
+
+```text
+(on_remove_num, on_add_num, off_add_num)
+```
+
+- `on_remove_num`: how many of this question's on-policy rollouts are removed (8 = drop the whole group)
+- `on_add_num`: how many additional on-policy rollouts to generate
+- `off_add_num > 0`: add that many off-policy **SFT** samples (consumed by the fixed `sft` actor)
+- `off_add_num < 0`: add off-policy **RL** samples (sets `whether_off=True`; consumed as off-policy RL)
+- `off_add_num = 0`: add no off-policy samples (keep the on-policy GRPO group)
+
+The starting point is the scaffold default: **never switch** — return `(0, 0, 0)` for every question,
+so each prompt keeps its on-policy GRPO rollouts untouched. Each later method replaces exactly this one
+controller and nothing else.
+
+```python
+# EDITABLE region of mix_trainer.py — default fill (never switch; pure on-policy)
+    def select_on_off_ada_balance(self, on_solve_num: int):
+        del on_solve_num
+        return 0, 0, 0
+```
+
+## Evaluation settings
+
+Train **once** on a shared mixed OpenR1 subset (one deterministic random subset, 25600 requested rows,
+no source-bucket quota or length sorting) and validate on three held-out math splits: **AIME24** (30
+examples), **AMC23** (40), and **MATH-500** (500, hidden). Backbone `Qwen/Qwen2.5-Math-1.5B`; backend
+vLLM, `tensor_model_parallel_size=2`, 4×H200; fixed `offline_loss_type=sft`, fixed `adv_estimator=grpo`,
+`reward_impl_version=6`. Training: `train_batch_size=128`, `max_response_length=8192`,
+`ppo_mini_batch_size=64`, `rollout.n=8`, `rollout.n_verify=8`, `rollout.n_val=16`,
+`total_training_steps=200`, `sft_loss_coef=1.0`, `max_position_embeddings=16384`, `rope_theta=40000`.
+The metric is the final `val/test_score/<benchmark>` for each split; higher is better. Seed 42.
+
+The editable model code is in `Unify-Post-Training/hpt/verl/verl/mix_src/mix_trainer.py`:
+```python
+# (starting code)
+```
+Improve it. Derive your method, edit the code, then run_experiment().
+</user>
+
+### step 1 — SFT (pure imitation; drop on-policy for every question)   [slug:sft]
+
+<think>
+The router is the whole point, but it bolts onto a fixed training stack, and the cleanest floor to
+start from is the degenerate routing rule that throws the on-policy half of the stack away entirely —
+because if I cannot beat *that*, no clever routing is worth building. The scaffold gives me, per prompt,
+both an on-policy GRPO rollout group and a teacher demonstration `τ★`. The default fill keeps every
+on-policy group and never touches the demonstration — that is pure GRPO, the on-policy extreme. The
+opposite extreme is pure SFT: for *every* question, drop the on-policy attempts and replace them with
+one off-policy SFT demonstration. That is the rule I start from, and it is the floor by construction —
+not because SFT is bad, but because applying it *unconditionally* discards exactly the signal the
+hybrid stack was built to use.
+
+Before I write the controller, let me be precise about what supervised fine-tuning is *doing* to this
+model, because the whole ladder is a series of decisions about when to lean on it. The 1.5B backbone was
+pretrained by next-token prediction on broad text; its native objective is "continue the distribution I
+saw," which is the wrong conditional distribution for "given this math prompt, produce the worked
+solution." SFT corrects that by continuing the same next-token machinery on `(prompt → expert
+demonstration)` pairs. The likelihood of a demonstration under a causal LM factors autoregressively,
+`π_θ(τ★ | q) = Π_t π_θ(τ★_t | q, τ★_{<t})`, and maximizing it is minimizing the token-averaged negative
+log-likelihood `L_SFT = −(1/|τ★|) Σ_t log π_θ(τ★_t | q, τ★_{<t})`. Two details are load-bearing and the
+scaffold already handles them: the prompt tokens are conditioning context, not targets — the loss is
+masked to the demonstration tokens only, so the model learns `p(response | prompt)` and not `p(prompt)` —
+and the per-token losses are *averaged* over valid demonstration tokens, not summed, so a long teacher
+trace does not dominate the batch purely by length. Statistically this is maximum likelihood on expert
+demonstrations: every observed token is a positive target, there is no comparison saying one answer
+beats another, and there is no penalty on plausible answers absent from the demonstrations. That is the
+shape of the strength and the ceiling at once.
+
+It is worth being concrete about *why* "positive targets only" is a ceiling and not just a description,
+because the whole ladder is an argument against this rule. A demonstration tells the model what a good
+solution looks like; it says nothing about what a *bad* one looks like, and nothing about how good one
+candidate is relative to another. So SFT cannot rank: if the model, left to itself, would produce two
+different solutions to a prompt — one elegant and correct, one clumsy and correct — SFT has no machinery
+to prefer the first, because neither appears in the demonstration set and the only signal is "match
+`τ★`." Worse, it cannot push *down*: a confidently wrong solution the model loves to produce gets no
+negative gradient under SFT, because SFT never evaluates the model's own outputs at all — it only ever
+raises the likelihood of the teacher's tokens. The on-policy RL half of the hybrid stack is exactly the
+thing that supplies graded, signed credit on the model's own behaviors, and pure SFT throws all of it
+away. That is the structural reason this rung is the floor: not that the demonstrations are low quality,
+but that the rule consuming them is the least informative one available — it uses one of the two signals
+the stack provides and discards the other entirely, for every prompt regardless of need.
+
+There is a second, subtler cost that bites specifically on long reasoning traces. Behavior cloning is
+trained on the teacher's *on-distribution* states — the states the teacher visits along `τ★` — and it
+optimizes nothing about the states the *model* visits after it makes a mistake. So the moment a generated
+solution drifts off the teacher manifold (a wrong intermediate step, a misread of the problem), the model
+is in a state the demonstration never covered, has been trained to do nothing sensible there, and has no
+corrective signal pulling it back. On a short, formulaic answer this rarely matters; on a multi-step
+competition solution, a single early divergence cascades unrecovered to a wrong final answer. RL, by
+contrast, scores the model's *own* trajectories end to end, so it naturally trains recovery from the
+model's own error states. Pure SFT has none of that — which is precisely the kind of failure I expect to
+dominate on the hardest split.
+
+There is a cleaner way to see why this rule sits at the floor, and it comes from the unified view the
+hybrid stack is built around. Write one common objective — maximize expected verifier reward while
+staying close to the demonstration policy `π_β`, `J_μ(θ) = E_{τ∼π_θ}[r(τ|q)] − μ·KL(π_β ‖ π_θ)`. Its
+gradient splits into an on-policy RL term, `E_{τ∼π_θ}[r ∇log π_θ]`, plus a demonstration term,
+`μ·E_{τ∼π_β}[∇log π_θ]` — and that second term is exactly the SFT gradient (the two minus signs from the
+KL direction cancel to a plus). So SFT and RL are not two objectives; they are the two halves of the
+gradient of one objective, distinguished only by which distribution the trajectory is sampled from and
+what scalar weights it. Pure SFT is the limit that keeps *only* the demonstration half and zeroes the
+reward half for every prompt. It is a valid ascent direction on `J_μ` — but a deliberately one-sided one,
+which is why it is the floor: it never uses the on-policy half the hybrid stack exists to exploit.
+
+Now write the controller this corresponds to. The contract returns `(on_remove_num, on_add_num,
+off_add_num)`. "Drop all on-policy attempts" means `on_remove_num = rollout.n_verify` — remove all
+eight rollouts this prompt generated. "Generate no extra on-policy rollouts" means `on_add_num = 0`.
+"Replace them with one off-policy SFT demonstration" means `off_add_num = +1`; positive routes the
+sample through the fixed `offline_loss_type=sft` actor, which scores it as the token-NLL above. And
+crucially, this is unconditional: the controller ignores `on_solve_num` entirely — every question, easy
+or hard, solved-eight-of-eight or solved-zero-of-eight, gets the identical copy-the-teacher treatment.
+So the literal edit is the one-liner `del on_solve_num; return self.config.actor_rollout_ref.rollout.
+n_verify, 0, 1`. There is no per-question state to maintain, no off-policy RL arm, no regeneration —
+the simplest possible fill of the contract, and the only one that uses none of `on_solve_num`'s
+information.
+
+Reason about what this floor does end to end. Once the on-policy group is removed for every prompt, the
+GRPO advantage code has nothing on-policy to normalize, and the actor only ever sees the demonstration
+samples. So the hybrid stack collapses to supervised fine-tuning on `τ★`, scaled by `sft_loss_coef =
+1.0`: pure behavior cloning of the teacher, run inside the hybrid harness. The one strength is
+bootstrapping. On a hard prompt the 1.5B model fails completely — all eight rollouts wrong — SFT still
+pulls up the likelihood of a correct solution with no exploration required; it is the only rule on the
+ladder that can teach a capability the model never samples, which is precisely the all-wrong case where
+on-policy RL has no learning signal at all. The ceiling is everything else. SFT sees positive
+demonstrations only; it gets no signal about which of the model's *own* rollouts were good, it cannot
+rank a better self-generated solution above a worse one, and because it is the same copy-the-teacher
+update on *every* prompt — including the ones the model already solves eight-of-eight — it spends most
+of the run on prompts that no longer need it. Worse, behavior cloning is blind to the model's own
+off-trajectory mistakes: it never trains the recovery a model needs when its mid-solution state drifts
+off the demonstration manifold, so on long competition solutions a single early divergence has nothing
+pulling it back.
+
+That last point is what I expect to bite on the held-out splits, and it bites unevenly. The three
+benchmarks differ in how far the demonstration distribution sits from what the model must produce at
+test time. MATH-500 is the broad, in-distribution split where the teacher traces should transfer best,
+but it is also where pure imitation's narrowing hurts, because the model never practices its own
+reasoning — it only learns to reproduce one fixed style of solution, and any test prompt whose solution
+shape differs from the demonstrations is unsupported. AIME24 is 30 hard competition problems where the
+1.5B model is weak regardless; here SFT's bootstrap should at least keep it off the floor, but copying a
+teacher it cannot match leaves it unable to recover from its own mistakes mid-solution. AMC23 is the
+small 40-example split where a handful of demonstration-shaped problems can move the score the most, so
+I expect this is where unconditional imitation looks least bad.
+
+So pure-SFT is the weakest routing rule I can run by construction: it discards the on-policy signal
+entirely and treats every question identically, so it can only ever imitate, never sharpen or explore.
+Whatever the precise per-split numbers, the diagnosis is already pointed at the next step, and the
+diagnosis is sharp. The failure here is *not* that SFT is the wrong tool — it is that applying it
+*unconditionally* is. The fix is to stop throwing the on-policy group away on questions where the model
+is already learning from its own rollouts: keep the on-policy GRPO signal where there is reward
+contrast, reserve the demonstration for the prompts where the model is genuinely stuck. But before I add
+any conditioning, I need to measure the *opposite* extreme too — what does keeping all the on-policy
+signal and never imitating buy me? — because the right router lives between these two floors, and I
+cannot place it without both endpoints on the board. So the next rung is the other extreme: never
+switch, pure GRPO. For now, let me write the pure-SFT floor in.
+</think>
+<say>
+Starting with the floor: pure SFT. I'm filling the router so every question drops its on-policy GRPO group and gets one off-policy SFT demonstration instead — unconditional copy-the-teacher.
+</say>
+<edit path="Unify-Post-Training/hpt/verl/verl/mix_src/mix_trainer.py">
+<old>
+# (starting code)
+</old>
+<new>
+# EDITABLE region of mix_trainer.py — step 1: pure SFT (drop on-policy for every question)
+    def select_on_off_ada_balance(self, on_solve_num: int):
+        del on_solve_num
+        return self.config.actor_rollout_ref.rollout.n_verify, 0, 1
+</new>
+</edit>
+<obs>
+Successfully replaced text in Unify-Post-Training/hpt/verl/verl/mix_src/mix_trainer.py.
+</obs>
+<run/>
+<obs>
+Measured results — `baseline:sft` (`is_final,true`), seed 42.
+
+## Final validation score (higher is better)
+| seed | test_score_aime24 | test_score_amc23 | test_score_math_500 |
+|---|---|---|---|
+| 42 | 0.062 | 0.217 | 0.244 |
+| **mean** | **0.062** | **0.217** | **0.244** |
+</obs>
+
+### step 2 — HPT (per-question on/off-policy switch)   [slug:hpt]
+
+<think>
+The pure-SFT floor told me exactly what unconditional imitation costs, and it told me in numbers.
+Seed 42 landed at AIME24 0.062, AMC23 0.217, MATH-500 0.244. Read the split structure: AMC23 (0.217) is
+the *least* embarrassing — the small 40-example split is where a handful of demonstration-shaped problems
+moves the score, exactly as I expected — but MATH-500, the broad 500-example in-distribution split where
+teacher traces should transfer *best*, sits at only 0.244, and AIME24 is down at 0.062. That low
+MATH-500 is the tell. It is not that the teacher traces are bad; it is that copying them on *every*
+prompt — including the ones the 1.5B model already solves on its own — narrows the policy to one fixed
+solution style and never lets it practice its own reasoning, so any test prompt whose solution shape
+differs from the demonstrations is unsupported. The model also never trains recovery from its own
+mid-solution mistakes, which is why the hard AIME24 problems collapse. So the failure is precise and it
+is *not* "SFT is the wrong tool." SFT was the only thing that could bootstrap a stuck prompt. The
+failure is that I applied it *unconditionally* — I paid the imitation tax on the prompts that did not
+need it. The fix is to stop throwing the on-policy group away where the model is already learning from
+its own rollouts, and reserve the demonstration for the prompts where it is genuinely stuck. That means
+the route has to *condition* on something — and the something has to be per-question.
+
+But the moment I say "combine SFT on some prompts with RL on others," I have to confront the thing the
+floor swept under the rug: why is it even legitimate to mix an RL loss and an SFT loss? They look like
+different objectives — one maximizes expected verifier reward under the model's own distribution, the
+other minimizes cross-entropy against an external dataset. If they optimize different things, summing
+them is just hoping two unrelated forces point somewhere useful. Before I design any switching rule I
+need to know whether these are the same objective wearing two costumes, because if they are, then
+combining them is not a hack — it is choosing how to estimate one gradient.
+
+So write the most naive common objective I can. RL wants high expected verifier reward; SFT wants the
+policy to stay close to the demonstration distribution `π_β`, and "stay close to a distribution" is a KL
+penalty: `J_μ(θ) = E_{τ∼π_θ}[r(τ|q)] − μ·KL(π_β(·|q) ‖ π_θ(·|q))`, `μ ≥ 0`. Take its gradient term by
+term. The reward term, by the score-function identity, is `E_{τ∼π_θ}[r ∇log π_θ]` — that is REINFORCE,
+the on-policy reward policy gradient. The KL term I have to be careful with, because the direction is
+exactly the kind of sign I would wave my hands through. `KL(π_β ‖ π_θ) = E_{τ∼π_β}[log π_β − log π_θ]`;
+`π_β` is fixed in `θ` and the expectation is over `π_β`, also fixed, so I differentiate only the
+`−log π_θ` inside, giving `∇KL = −E_{τ∼π_β}[∇log π_θ]`, and the contribution to `∇J_μ` is
+`−μ·∇KL = +μ E_{τ∼π_β}[∇log π_θ]`. The two minus signs cancel to a plus, and `E_{τ∼π_β}[∇log π_θ]` is
+exactly the maximum-likelihood gradient — push up the log-prob of the demonstration tokens. So
+
+  ∇J_μ = E_{τ∼π_θ}[r ∇log π_θ]  +  μ E_{τ∼π_β}[∇log π_θ].
+
+There it is. The gradient of one objective is an on-policy reward term plus the SFT term. SFT and RL are
+not two objectives; they are two halves of the gradient of a single objective, distinguished only by
+which distribution the trajectory is sampled from and what scalar weights it. The pure-SFT floor was
+keeping only the right half for every prompt; pure GRPO keeps only the left half. Adding them is not a
+hack — it *is* the gradient. That reframes the whole router: I am not blending two competing forces, I
+am choosing, per prompt, how to sample and weight one estimator.
+
+Push on that, because I want both terms in one shared form so I can read off which knobs distinguish
+them. Both are an expectation of (something) times `∇log π_θ`, sampled from different distributions. A
+change of measure to a common reference density `π_ref` (using `∇log π_θ = (1/π_θ)∇π_θ`, which cancels
+the explicit `π_θ`) collapses both into one estimator, `grad_uni = 1_stable · (1/π_ref) · Â · ∇π_θ`,
+with `Â_uni = r + μ·π_β/π_θ`. Four interchangeable components: the stabilization mask `1_stable` (PPO's
+clip = a stop-gradient on unsafe samples), the reference denominator `1/π_ref` (SFT/REINFORCE use `π_θ`;
+PPO/GRPO use `π_{θ_old}`; offline RL uses `π_ref ≡ 1`), the advantage `Â` (SFT: `≡1`; REINFORCE: `±1`;
+GRPO: group-normalized), and the shared likelihood gradient `∇π_θ`. SFT, REINFORCE, PPO, GRPO all fall
+out as choices of `π_ref` and `Â`. So each is an estimator — sometimes biased — of the *same* underlying
+policy gradient, with different bias-variance profiles.
+
+That is the payoff for designing a router. If they are all estimators of one gradient, the design
+question is how to *weight* the estimators — and the instinct from estimation theory is to average noisy
+measurements, weighted toward the lower-variance ones. So maybe a fixed weighted blend of the SFT and RL
+gradients? Wall. The bias and variance of each estimator are not fixed properties — they depend on the
+*current* state of `π_θ` and on the prompt. On a prompt the model already solves, the on-policy RL signal
+is informative and low-variance and the SFT term is pure overfitting pressure — exactly the imitation tax
+the floor's MATH-500 number measured. On a prompt the model fails completely, the on-policy term carries
+*no* information at all: when every rollout in the group gets the same reward, the group-relative
+advantage `(R − mean)/std` is identically zero for that prompt, so GRPO contributes no gradient — and the
+all-wrong case is the dangerous one, because the model still cannot solve the prompt. Which prompt is
+which *changes as the model learns*. So a single global mixing coefficient — exactly what the floor's
+unconditional rule and any fixed-blend method commits to — is structurally wrong, the same way one
+global learning rate is wrong when different parameters need different scales. The "average the
+estimators" idea is right in spirit; the constant weight was the mistake. The weighting must be a
+function of how the model is *currently* doing on each prompt.
+
+What signal do I have, per prompt, that measures that? The loop already samples `rollout.n_verify = 8`
+on-policy rollouts per prompt and verifies them to compute the GRPO advantage. The solve count falls out
+for free: `on_solve_num = Σ_i v(τ_i) ∈ {0,…,8}`, the number of the eight rollouts that passed the
+verifier. That is exactly the model's current competence on this prompt, and it costs nothing extra —
+the same verifier scores GRPO already consumes. So let the route be a function of `on_solve_num`.
+
+Now, what is the simplest function that does the right thing? I could make it a smooth blend, but think
+about what the degenerate-zero analysis demands. The failure I am targeting is itself a sharp cliff: the
+RL gradient does not gracefully shrink as the prompt gets harder, it *dies* exactly at `on_solve_num = 0`
+where all rewards are equal. The sharpest version is a hard switch at a gate. Set the gate so that a
+prompt switches to SFT only when `on_solve_num ≤ switch_gate`. With `switch_gate = 0` that means switch
+to SFT only when *every* rollout failed — precisely the all-wrong case where the on-policy advantage
+vanishes before competence appears. There the route should drop the dead on-policy group and add the
+demonstration: `(on_remove_num, on_add_num, off_add_num) = (rollout.n_verify, 0, +1)` — the same SFT move
+as the floor, but now fired *only* on the stuck prompts instead of all of them. And when the prompt has
+reward contrast (`on_solve_num` above the gate), keep the on-policy GRPO group untouched: `(0, 0, 0)` —
+the pure-GRPO move. That is the minimal intervention: I inject the teacher exactly where RL has no
+signal, and nowhere else, so I pay the imitation tax only on the prompts that earn it and preserve as
+much exploration as possible everywhere else. It directly repairs the floor's mistake — the MATH-500
+narrowing came from copying the teacher on prompts the model could already handle, and those prompts now
+stay on RL.
+
+The scaffold's switch logic also exposes a middle band — an off-policy *RL* arm — between the two gates.
+When `switch_gate < on_solve_num ≤ switch_gate_off`, the controller can drop the on-policy group and add
+an off-policy *RL* sample (`off_add_num = −1`, which sets `whether_off=True`) rather than an SFT sample.
+This is the third route: keep the demonstration but score it as RL rather than as imitation. Why is plain
+SFT, not this off-policy-RL arm, the right default for the *fully stuck* prompts? Because off-policy RL
+needs a reference policy for the teacher trajectory, which I do not have, so it would force `π_ref ≡ 1` —
+and in the unified template that turns the importance ratio into rejection sampling, valid only under a
+uniform-coverage assumption that never holds, injecting heavy bias. Plain SFT (`Â ≡ 1`, `π_ref = π_θ`)
+has no ill-posed ratio; it is the clean way to consume an offline trajectory, and it is exactly the
+second half of the unified gradient with `μ` folded into `sft_loss_coef`. So for the all-wrong prompts I
+use the SFT branch. The off-policy-RL band stays in the controller as the method's full form, but with
+`switch_gate_off` tuned so the dominant routes are SFT-for-stuck and GRPO-for-contrast.
+
+Notice what the harness exposes and what it does not. The route here is a hard, per-question switch keyed
+on the live solve count, and it lands as exactly that — the literal controller compares `on_solve_num`
+against two gate thresholds and returns one of three triples. What it does *not* expose is any softening:
+there is no `soft` blend running here (that branch returns `(0,0,1)` for every prompt and is not the
+configured strategy), no continuous `α(P)/β(P)` weighting, and no contamination of the GRPO group
+statistics by the injected samples — the advantage code group-normalizes over on-policy samples only, so
+the RL measurement stays clean. The router is the whole degree of freedom; the actor's mixed loss
+(`pg_loss = sft_loss · sft_loss_coef + pg_loss`) and the advantage normalization are fixed downstream of
+it. So my edit is the switch controller and nothing else.
+
+So the delta from the floor is concrete: where pure-SFT returned `(n_verify, 0, 1)` unconditionally, I now
+read `on_solve_num`, fire that *same* SFT triple only when `on_solve_num ≤ switch_gate`, route the middle
+band to the off-policy-RL arm, and otherwise return `(0, 0, 0)` to keep the on-policy GRPO group. The
+mixture self-adjusts: early in training the weak 1.5B model fails many prompts, so more of the batch gets
+demonstration gradients; as it strengthens, more prompts cross the gate and the batch moves toward
+on-policy RL. (The full controller is in the answer.)
+
+Reading the floor's shape, here is what I expect this to fix and where I am unsure. The floor's MATH-500
+narrowing came from imitating on prompts the model could already handle; conditioning the switch should
+*lift MATH-500 off 0.244*, because the prompts with reward contrast now stay on RL and practice their own
+reasoning rather than copying. AMC23, which was the floor's best split (0.217), should hold or improve,
+since demonstration-shaped problems the model fails still get the bootstrap. AIME24 is the open question
+and I can feel the risk in the construction: on AIME competition problems the 1.5B model may fail *all*
+eight rollouts on almost every prompt, so the gate fires SFT on nearly all of them — and on that split
+the hybrid switch could collapse back toward the pure-SFT behavior I am trying to escape, leaving AIME24
+near the floor's 0.062. If that happens, the diagnosis for the next step is already written: when almost
+every prompt is all-wrong, routing the stuck prompts to *SFT* re-imports the imitation tax, and the
+question becomes whether keeping those prompts on a *reward* channel — never imitating, pure on-policy
+GRPO, or off-policy RL guidance — does better on the broad splits than the hybrid switch does.
+
+The causal chain in one breath: pure-SFT's low MATH-500 (0.244) is the imitation tax — copying the
+teacher on prompts the model already solves narrows the policy and skips its own reasoning → SFT and RL
+are two halves of one objective's gradient, so the route is a choice of estimator per prompt, not a blend
+of rival forces → a fixed mixing weight is wrong because each estimator's bias-variance depends on the
+model's current competence, which the free solve count `on_solve_num` measures → hard-switch on a gate:
+SFT (`n_verify,0,1`) only at `on_solve_num ≤ switch_gate` (the all-wrong, dead-RL-gradient case),
+GRPO (`0,0,0`) when there is contrast, off-policy RL in the middle band — plain SFT for the stuck case
+because off-policy RL's `π_ref ≡ 1` is biased → expecting MATH-500 to lift off the floor and AMC23 to
+hold, watching AIME24 for a collapse back toward pure-SFT when nearly every prompt is all-wrong. Let me
+write the switch controller in.
+</think>
+<say>
+Now HPT: a per-question switch keyed on the solve count. This edit reads `on_solve_num` and routes each prompt to SFT when it's all-wrong, off-policy RL in the middle band, and keeps its on-policy GRPO group when there's reward contrast.
+</say>
+<edit path="Unify-Post-Training/hpt/verl/verl/mix_src/mix_trainer.py">
+<old>
+# EDITABLE region of mix_trainer.py — step 1: pure SFT (drop on-policy for every question)
+    def select_on_off_ada_balance(self, on_solve_num: int):
+        del on_solve_num
+        return self.config.actor_rollout_ref.rollout.n_verify, 0, 1
+</old>
+<new>
+# EDITABLE region of mix_trainer.py — step 2: HPT per-question switch
+    def select_on_off_ada_balance(self, on_solve_num: int):
+        if self.config.trainer.unify_strategy == 'switch':
+            on_add_num = 0
+            if on_solve_num <= self.config.trainer.switch_gate:
+                on_remove_num = self.config.actor_rollout_ref.rollout.n_verify
+                off_add_num = 1
+            elif on_solve_num <= self.config.trainer.switch_gate_off:
+                on_remove_num = self.config.actor_rollout_ref.rollout.n_verify
+                off_add_num = -1
+            else:
+                on_remove_num = 0
+                off_add_num = 0
+
+            return on_remove_num, on_add_num, off_add_num
+
+        if self.config.trainer.unify_strategy == 'soft':
+            on_remove_num = 0
+            on_add_num = 0
+            off_add_num = 1
+
+            return on_remove_num, on_add_num, off_add_num
+</new>
+</edit>
+<obs>
+Successfully replaced text in Unify-Post-Training/hpt/verl/verl/mix_src/mix_trainer.py.
+</obs>
+<run/>
+<obs>
+Measured results — `baseline:hpt` (`is_final,true`), seed 42.
+
+## Final validation score (higher is better)
+| seed | test_score_aime24 | test_score_amc23 | test_score_math_500 |
+|---|---|---|---|
+| 42 | 0.062 | 0.325 | 0.250 |
+| **mean** | **0.062** | **0.325** | **0.250** |
+</obs>
+
+### step 3 — GRPO (pure on-policy RL; never switch)   [slug:grpo]
+
+<think>
+The HPT switch moved exactly the split I predicted it would, and exactly *not* the one I worried about —
+and that contrast is the whole diagnosis. Seed 42: AIME24 0.062, AMC23 0.325, MATH-500 0.250. AMC23 is
+the clear win — 0.325, up from the floor's 0.217 and the best AMC23 on the board so far — because
+conditioning the switch let the demonstration-shaped problems still get bootstrapped while the model
+kept practicing the ones it could partly do. But the two numbers I was watching barely moved. MATH-500
+went from 0.244 to 0.250, essentially flat — the lift "off the floor" I expected from keeping contrast
+prompts on RL did *not* materialize at scale. And AIME24 stayed pinned at 0.062, exactly the pure-SFT
+value, which is the tell I flagged: on hard competition problems the 1.5B model fails all eight rollouts
+on nearly every prompt, so the gate fires SFT on almost all of them and the hybrid switch collapses back
+toward the pure-SFT behavior I was trying to escape. So the switch traded the floor's AMC23 weakness for
+an AMC23 win, but it did *not* fix the imitation tax on the broad MATH-500 split, and on AIME24 it bought
+nothing.
+
+That points somewhere specific, and it is worth saying plainly before I design the next rung: the switch
+helped on the small split where a few demonstrations dominate and stalled on the broad split where the
+model's *own* reasoning has to carry. The reason is structural. The switch still routes a large fraction
+of prompts to SFT — every all-wrong prompt — and on this weak 1.5B backbone over a broad OpenR1 mixture,
+that fraction is high. Each of those prompts pays the imitation tax: the model copies the teacher instead
+of practicing, narrows toward the demonstration distribution, and learns no recovery from its own
+mistakes. The hybrid switch reduced *how often* I pay the tax compared to pure SFT, but it did not
+eliminate it, and on MATH-500 — where success depends on the model generalizing its own reasoning across
+500 varied prompts rather than reproducing teacher traces — the residual tax is enough to keep the score
+flat at 0.250. So the natural question for this rung is the opposite extreme from the floor: what does
+*never* imitating buy me? If the imitation tax is the thing capping MATH-500, then the rule that pays it
+*zero* times — pure on-policy RL, the demonstration never touched — is the experiment that isolates it.
+
+So derive that rule from scratch, because it is the other endpoint I need on the board. The pure-RL move
+is to keep every prompt's on-policy GRPO group and never switch, which collapses the hybrid stack to
+plain GRPO. Let me be clear about what GRPO *is* and why it is the right on-policy learner here, not just
+the default — because the reason it works is the reason it should beat the switch on MATH-500.
+
+Start from what hurts in RL-fine-tuning one of these math models. The reward is the verifier: it reads
+the *entire* solution and emits *one* number (correct/incorrect), effectively at the last token, with
+nothing in between. The classical actor-critic recipe — PPO — would train a separate value network
+`V_ψ`, policy-sized, to smear that terminal scalar backward into per-token credit, and feed it through
+GAE: `δ_t = r_t + γV(s_{t+1}) − V(s_t)`, `Â_t = Σ_l (γλ)^l δ_{t+l}`. Stare at GAE and the dependence is
+glaring — *every* term needs an accurate `V` at *every* token. But that is exactly the thing the
+last-token-only reward makes hardest: I would be asking a 1.5B-sized critic to learn an accurate value
+at every intermediate token of a long reasoning chain from a single end-of-sequence bit. When `V` is
+badly fit, GAE feeds biased, noisy advantages straight into the policy. So I am paying for a policy-sized
+network whose central job is precisely the job the reward makes impossible. That is the wall: I want
+PPO's stable clipped update and a variance-reducing baseline, but not this learned per-token critic.
+
+So the question sharpens: can I get a baseline — an approximation to "the default value of this state" —
+without learning `V`? A baseline only has to be (i) independent of the action being scored and (ii) close
+to the expected return from here, to cut variance; the subtraction is free in expectation
+(`E_a[∇log π(a|s) · b(s)] = b(s) ∇_θ Σ_a π = 0`). What do I already have lying around? For each prompt I
+do not sample one solution — I draw a *group* of `rollout.n_verify = 8` rollouts from the rollout policy.
+Each gets a verifier reward `R_i`. The empirical mean `mean(R_1,…,R_8)` is exactly a Monte-Carlo estimate
+of the question's response-level value under the rollout policy — the very quantity `V` was trying to
+approximate, at the only granularity the reward actually exists. It costs nothing extra; the samples are
+already drawn. Use the group mean as the baseline. And it is not just cheap — it is the *right* baseline,
+because the reward here is comparative (correct relative to other attempts on the same question), so a
+per-question relative baseline matches the signal's nature.
+
+The spread of `R_i` differs wildly across questions: an easy prompt where all eight pass has rewards near
+the top and tiny variance, a hard one splays them across {0,1}. Using raw `R_i − mean` would let the
+easy and hard prompts contribute advantages of incomparable scale. So normalize by the group standard
+deviation too: `Â_i = (R_i − mean(R)) / (std(R) + ε)`, a per-question z-score. Scale-invariant across
+questions, controls the magnitude so one high-variance prompt cannot dominate, and keeps the comparative
+reading clean. (The `ε` floors the denominator; a degenerate group where all eight rewards are equal has
+`std = 0`, floored, so the centered reward is just zero — *no gradient*. That is the same degeneracy the
+switch was built to catch, and here, with no switch, I accept it: an all-wrong or all-correct prompt
+simply contributes nothing on-policy.) With a single terminal reward there is no within-sequence signal,
+so I broadcast the scalar advantage to every token of the response: `Â_{i,t} = Â_i` — outcome
+supervision, the simplest thing consistent with the information I have.
+
+Keep PPO's clipped surrogate for the update — it is the stable part, no reason to abandon it. With the
+per-token ratio `ρ_{i,t} = π_θ / π_{θ_old}`, the objective is the group-averaged
+`min(ρ_{i,t} Â_{i,t}, clip(ρ_{i,t}, 1−ε, 1+ε) Â_{i,t})`, a trust region as a flat spot in the loss. The
+KL anchor to the reference is moved out of the reward and added directly to the loss as its own term
+(folding it into the reward and then z-scoring would entangle the regularizer with the advantage), with
+the k3 per-token estimator `π_ref/π_θ − log(π_ref/π_θ) − 1`, which is unbiased and always non-negative.
+That is GRPO: PPO's machinery with a free group-relative baseline standing in for the GAE advantage, no
+value network anywhere.
+
+Now make it concrete in this task's edit surface. The advantage code, the clipped actor loss, and the
+group normalization are all *fixed* downstream — `adv_estimator=grpo` is frozen. The only thing I control
+is the router, and "pure GRPO" is the router that never switches: keep every on-policy group, add nothing
+off-policy. So the controller ignores `on_solve_num` and returns `(on_remove_num, on_add_num, off_add_num)
+= (0, 0, 0)` for every prompt. The literal edit is `del on_solve_num; return 0, 0, 0`. No per-question
+state, no off-policy arm, no SFT — the demonstration `τ★` is never touched, and the imitation tax is paid
+exactly zero times. Note what the harness then does and does not give me: it gives me the clean GRPO
+update on every prompt's eight rollouts, and it takes away any bootstrap on the all-wrong prompts —
+those contribute zero gradient and the model is left to discover those solutions on its own or not at
+all. Pure on-policy means pure exploration-bounded-by-the-base-model.
+
+So the delta from the switch is the cleanest possible: where HPT fired SFT on every all-wrong prompt, I
+fire it on none. The trade is explicit and it is exactly the experiment I want. I *lose* the bootstrap on
+the genuinely stuck prompts — the all-wrong AIME-style problems the model cannot sample a correct
+solution for will get no signal, so I do not expect AIME24 to move off 0.062 either; pure RL cannot
+bootstrap a capability the model never produces. But I *gain* the entire MATH-500 mass back: every prompt
+with reward contrast — and on the broad in-distribution split there are many, since the 1.5B math model
+can partly solve a large fraction of MATH-500 — now learns from its own graded, signed rollouts instead
+of copying a teacher, with no narrowing and full practice of its own reasoning.
+
+Reading the switch's shape, the falsifiable claims are sharp and they are on the broad split. If the
+imitation tax is what capped MATH-500 at 0.250, then removing it entirely should lift MATH-500
+*substantially* above 0.250 — this is the headline prediction and the largest split, so it is where the
+signal is cleanest. AIME24 I expect to stay near 0.062, because pure RL has no bootstrap and the model
+cannot sample correct AIME solutions; if AIME24 *rises* anyway, that would mean the model could partly
+solve more AIME prompts than I think and the switch was wasting them on SFT. AMC23 is the genuine risk:
+the switch's AMC23 win (0.325) came precisely from bootstrapping demonstration-shaped problems, so pure
+GRPO might *give some of that back* — if AMC23 drops below 0.325, that is the cost of never imitating, and
+it tells me the small split genuinely needs the teacher even though the broad split does not. So the
+expectation is a clean dissociation: MATH-500 up, AIME24 flat, AMC23 possibly down — the broad-split gain
+from killing the imitation tax bought at the price of the small-split bootstrap. The leaderboard
+direction will say which of those two — broad reasoning practice or small-split imitation — dominates the
+final score.
+
+The causal chain in one breath: the HPT switch won AMC23 (0.325) but left MATH-500 flat (0.250) and
+AIME24 pinned (0.062), because it still routes every all-wrong prompt to SFT and pays the residual
+imitation tax on the broad split → isolate the tax by paying it zero times: pure on-policy GRPO, never
+switch → GRPO is the right on-policy learner because it replaces PPO's impossible last-token critic with
+a free group-mean baseline, z-scored per question, broadcast to every token, under PPO's clipped surrogate
+and a k3 KL-in-the-loss → the router that realizes it is `(0, 0, 0)` for every prompt, demonstration never
+touched → expecting MATH-500 to lift substantially (tax removed), AIME24 to stay flat (no bootstrap), and
+AMC23 to possibly fall back from 0.325 (the small split's lost bootstrap) — a dissociation that says
+whether broad reasoning practice or small-split imitation wins the final score. Let me write the
+never-switch router in.
+</think>
+<say>
+Now the other extreme: pure GRPO. This edit makes the router never switch — every prompt keeps its on-policy GRPO group, the demonstration is never touched, so the imitation tax is paid zero times.
+</say>
+<edit path="Unify-Post-Training/hpt/verl/verl/mix_src/mix_trainer.py">
+<old>
+# EDITABLE region of mix_trainer.py — step 2: HPT per-question switch
+    def select_on_off_ada_balance(self, on_solve_num: int):
+        if self.config.trainer.unify_strategy == 'switch':
+            on_add_num = 0
+            if on_solve_num <= self.config.trainer.switch_gate:
+                on_remove_num = self.config.actor_rollout_ref.rollout.n_verify
+                off_add_num = 1
+            elif on_solve_num <= self.config.trainer.switch_gate_off:
+                on_remove_num = self.config.actor_rollout_ref.rollout.n_verify
+                off_add_num = -1
+            else:
+                on_remove_num = 0
+                off_add_num = 0
+
+            return on_remove_num, on_add_num, off_add_num
+
+        if self.config.trainer.unify_strategy == 'soft':
+            on_remove_num = 0
+            on_add_num = 0
+            off_add_num = 1
+
+            return on_remove_num, on_add_num, off_add_num
+</old>
+<new>
+# EDITABLE region of mix_trainer.py — step 3: pure GRPO (never switch)
+    def select_on_off_ada_balance(self, on_solve_num: int):
+        del on_solve_num
+        return 0, 0, 0
+</new>
+</edit>
+<obs>
+Successfully replaced text in Unify-Post-Training/hpt/verl/verl/mix_src/mix_trainer.py.
+</obs>
+<run/>
+<obs>
+Measured results — `baseline:grpo` (`is_final,true`), seed 42.
+
+## Final validation score (higher is better)
+| seed | test_score_aime24 | test_score_amc23 | test_score_math_500 |
+|---|---|---|---|
+| 42 | 0.087 | 0.283 | 0.419 |
+| **mean** | **0.087** | **0.283** | **0.419** |
+</obs>
+
+### step 4 — LUFFY (off-policy guidance; route stuck prompts to off-policy RL)   [slug:luffy]
+
+<think>
+Pure GRPO's numbers settled the dissociation I set up, and they settled it more sharply than I expected.
+Seed 42: AIME24 0.087, AMC23 0.283, MATH-500 0.419. MATH-500 is the breakthrough — 0.419, up from the
+switch's 0.250 and the floor's 0.244, a +0.17 jump on the broad in-distribution split. That confirms the
+diagnosis exactly: the imitation tax *was* what capped MATH-500, and paying it zero times — letting every
+contrast prompt learn from its own graded rollouts instead of copying the teacher — recovered the entire
+mass. AIME24 also nudged up, 0.062 → 0.087, a little more than I predicted; the model could partly solve
+a few more AIME prompts than I thought, and pure RL sharpened them. And the predicted cost landed too:
+AMC23 fell from the switch's 0.325 to 0.283 — pure GRPO gave back exactly the small-split bootstrap the
+switch had won. So the picture is clean. On this 1.5B backbone over a broad OpenR1 mixture, killing the
+imitation tax dominates the final score: pure GRPO wins on two of three splits, including the largest, and
+it is the strongest rung on the board.
+
+But read the *shape* of GRPO's win, because it names the next move. GRPO is strong precisely where the
+model has reward contrast — where some of its eight rollouts pass — and it is *structurally blind* where
+it does not. On an all-wrong prompt the group advantage `(R − mean)/std` is identically zero, so GRPO
+contributes no gradient there at all. AIME24's 0.087 is the symptom: it improved over the switch, but it
+is still low in absolute terms, because the hardest AIME problems are exactly the ones the 1.5B model
+*never* samples a correct solution for — every rollout wrong, every advantage zero, no learning, ever.
+Pure RL cannot bootstrap a capability the model never produces; it can only sharpen what the model can
+already occasionally do. So GRPO's ceiling is the base model's own sampling distribution. The switch tried
+to fix this with SFT on the stuck prompts and lost MATH-500 to the imitation tax in the process. GRPO
+avoids the tax but abandons the stuck prompts. Neither rung gets *both* — and that is the gap.
+
+So the question is precise: can I bootstrap the dead-gradient prompts the way the switch did, but through
+a *reward* channel rather than an imitation channel, so I do not re-import the MATH-500 tax? The switch's
+mistake was that on a stuck prompt it routed the teacher trace to SFT — plain copy-the-teacher, which
+narrows and overfits. What if, on exactly those stuck prompts, I instead inject the teacher trace as an
+*off-policy RL* sample and let the RL advantage machinery handle it? The scaffold has that arm: the
+controller's `off_add_num < 0` branch adds an off-policy sample with `whether_off=True`, consumed as
+off-policy RL rather than SFT. That is the trainer-side handle on the move I want.
+
+Let me derive why injecting the teacher as an RL group member is the right thing, and what makes it
+different from both SFT and pure GRPO. Keep the teacher trace as one more member of the prompt's rollout
+group. The on-policy group is `G_on = {R(τ_i)}` (eight rollouts, all wrong on a stuck prompt), and the
+off-policy member is `G_off = {R(τ_off)}` (the teacher, correct). Standardize the advantage over the
+*union*: `Â_i = (R(τ_i) − mean(G_on ∪ G_off)) / std(G_on ∪ G_off)`. Watch the dead-gradient prompt come
+alive: the on-policy rollouts are all 0, the teacher is 1, so the union has spread — nonzero mean, nonzero
+std — the teacher gets a large positive advantage, the failing rollouts get a small negative one, and
+there is a gradient again. The bootstrap happens *through the advantage*, not through an imitation loss. And
+the beauty is it self-adjusts: on a prompt the model already solves, its own rollouts are mostly correct,
+the teacher is no longer special, the on-policy rollouts dominate the group statistics, and the signal
+stays self-driven. So the imitation-versus-exploration balance is not a gate threshold I tune — it falls
+out of the group statistics, exactly the per-question competence signal the switch was reaching for with
+`on_solve_num`, but consumed as reward instead of as copying. This is the move that gets *both*: it
+bootstraps the stuck prompts (fixing GRPO's AIME blindness) without imitation (avoiding the switch's
+MATH-500 tax), because the teacher trace is weighted by its advantage in the group, not pulled up
+uniformly the way SFT pulls every teacher token.
+
+Two refinements the full method makes, and I have to be honest about which ones this harness lets me
+realize and which it does not. First, the off-policy member needs its own importance ratio, with the
+teacher policy `π_φ` in the denominator. To avoid the teacher's per-token densities and any tokenizer
+mismatch, the method sets `π_φ = 1`, so the off-policy ratio collapses to the model's own probability of
+the teacher token, and the clip is dropped on that branch (a `[1−ε,1+ε]` clip is ill-posed for a raw
+probability). Second — and this is the load-bearing refinement — that bare off-policy term *hacks* the
+objective: its gradient scales with `π_θ`, so it pushes the teacher tokens the model already agrees with
+and ignores the low-probability surprising tokens that carry the new reasoning, collapsing entropy. The
+fix is policy shaping: replace the off-policy ratio `r̂` with `f(r̂) = r̂/(r̂+γ)`, whose derivative
+`γ/(r̂+γ)²` is largest at small `r̂`, amplifying the gradient on exactly the low-probability crucial
+tokens (by ≈`1/γ`, with `γ = 0.1`) and damping the easy agreement. The union-group advantage and the
+shaping together are what make off-policy guidance bootstrap *beyond* the model's capability while keeping
+exploration alive.
+
+Here is the harness boundary, stated plainly, because it determines what the trajectory's edit actually
+is. The editable surface is the *trainer-side router* — the `select_on_off_ada_balance` controller, the
+per-question routing state, the off-policy sample construction, and the on-policy retention/deletion. The
+*actor* is fixed at `offline_loss_type=sft`, the advantage estimator is fixed at `grpo`, and the rollout
+modules are read-only. So I control *which* prompts get an off-policy RL sample injected, and I control
+the removal of the on-policy group — but I do *not* control the actor's off-policy loss form. The
+union-group advantage normalization is the part the fixed `grpo` advantage code computes over whatever
+samples I assemble; the off-policy RL consumption is what the `whether_off=True` path triggers. What the
+harness does *not* expose is LUFFY's policy-shaping refinement: `f(x)=x/(x+γ)` and the `π_φ=1` unclipped
+off-policy ratio live inside the actor's off-policy surrogate, which is fixed here. So the lever I truly
+control is the *routing* — inject the teacher as off-policy RL on the stuck prompts so it enters the
+advantage group and bootstraps through reward, with the actor's fixed off-policy path doing the
+consumption. I keep the method's natural form (the off-policy RL arm, the union over on/off samples) and
+accept that the entropy-preserving shaping is the part this task's actor does not let me add — the
+trajectory lands the trainer-side realization, not the full actor-side shaped objective.
+
+Make the controller concrete. The switch logic already has the three routes I need: SFT (`off_add_num =
++1`) for the all-wrong band, off-policy RL (`off_add_num = −1`) for a middle band, keep-GRPO (`0,0,0`)
+otherwise. The grpo rung showed the keep-GRPO route wins where there is contrast, and the switch rung
+showed the SFT route loses MATH-500. So the LUFFY move is to make the *off-policy RL arm the default for
+the stuck prompts* instead of SFT: when `on_solve_num ≤ switch_gate` (all-wrong, the dead-gradient case),
+drop the on-policy group and add the teacher as an off-policy *RL* sample — `(on_remove_num, on_add_num,
+off_add_num) = (rollout.n_verify, 0, −1)` — so the teacher enters the union advantage group through the
+reward channel rather than as imitation; and when `on_solve_num > switch_gate` keep the on-policy GRPO
+group untouched, `(0, 0, 0)`, preserving the pure-GRPO behavior that just won MATH-500. That is the whole
+edit: GRPO everywhere the model has contrast, off-policy-RL guidance exactly where it is stuck — the
+union-group bootstrap of the method, expressed entirely in the router the harness gives me.
+
+Now the bar this has to clear, and what I would validate, against pure GRPO's real numbers — no invented
+results here, this is the endpoint. The falsifiable claim is on AIME24, the split where GRPO is blind.
+GRPO got 0.087 there because the hardest prompts are all-wrong and contribute no gradient; routing those
+to off-policy RL should give them a *positive* gradient through the union advantage, so the test is whether
+**AIME24 lifts above 0.087** — that is the one number that says the off-policy guidance bootstrapped what
+pure RL could not. MATH-500 must *hold* near GRPO's 0.419 and not regress toward the switch's 0.250: the
+keep-GRPO route is unchanged on the contrast prompts, and because the stuck prompts now go to off-policy
+*RL* rather than SFT, the imitation tax that capped MATH-500 should not return — if MATH-500 falls back
+toward 0.25, that would mean the off-policy RL arm is behaving like imitation in this fixed-actor harness
+and the shaping I cannot add was load-bearing. AMC23 should recover toward or past the switch's 0.325,
+since the small split's stuck prompts get a bootstrap again, now without the narrowing. The honest caveat
+is the harness boundary: without the actor-side policy shaping, the off-policy RL term may still over-weight
+the teacher tokens the model already agrees with and under-learn the surprising ones, so the AIME24 lift
+may be smaller than the full method's — the trajectory's claim is the *direction* (off-policy-RL guidance
+on stuck prompts beats both pure GRPO's AIME blindness and the switch's MATH-500 tax), not a specific
+number. This rung is what the trajectory ends on: the union-group off-policy guidance whose reward-channel
+bootstrap, routed only at the dead-gradient prompts, is designed to clear pure GRPO on AIME24 while
+holding its MATH-500.
+
+The causal chain in one breath: pure GRPO won MATH-500 (0.419) by killing the imitation tax but stays
+blind on the all-wrong AIME prompts (0.087), where the group advantage is zero and pure RL cannot
+bootstrap → bootstrap those prompts through a *reward* channel instead of SFT: inject the teacher trace as
+an off-policy RL member of the group → standardize the advantage over the union `G_on ∪ G_off`, so the
+teacher gets high advantage exactly when the model is stuck and low when it is competent — a per-question
+self-adjusting mix, consumed as reward not imitation → the full method also sets `π_φ = 1` (unclipped
+off-policy ratio) and shapes it by `f(x)=x/(x+γ)`, `γ=0.1`, to emphasize the low-probability surprising
+teacher tokens, but that shaping is actor-side and this task's actor is fixed, so the harness exposes only
+the *routing* → land it as the controller that routes stuck prompts (`on_solve_num ≤ switch_gate`) to the
+off-policy RL arm (`n_verify, 0, −1`) and keeps GRPO (`0,0,0`) elsewhere → expecting AIME24 to lift above
+GRPO's 0.087 (bootstrap) while MATH-500 holds near 0.419 (no imitation tax) — both, where each earlier
+rung got only one. Let me write the finale router in.
+</think>
+<say>
+The finale, LUFFY: off-policy-RL guidance on the stuck prompts. This router routes every all-wrong prompt's teacher trace into the union advantage group as off-policy RL (bootstrap through reward, not imitation) and keeps the on-policy GRPO group everywhere there's contrast.
+</say>
+<edit path="Unify-Post-Training/hpt/verl/verl/mix_src/mix_trainer.py">
+<old>
+# EDITABLE region of mix_trainer.py — step 3: pure GRPO (never switch)
+    def select_on_off_ada_balance(self, on_solve_num: int):
+        del on_solve_num
+        return 0, 0, 0
+</old>
+<new>
+# EDITABLE region of mix_trainer.py — step 4 (finale): off-policy-RL guidance on stuck prompts
+    def select_on_off_ada_balance(self, on_solve_num: int):
+        if on_solve_num <= self.config.trainer.switch_gate:
+            # all-wrong: GRPO advantage is dead here. Drop the on-policy group and add the teacher
+            # trace as an off-policy RL sample (whether_off=True) so it enters the union advantage
+            # group and bootstraps through the reward channel rather than as SFT imitation.
+            on_remove_num = self.config.actor_rollout_ref.rollout.n_verify
+            on_add_num = 0
+            off_add_num = -1
+        else:
+            # reward contrast: keep the on-policy GRPO group untouched (the rung that won MATH-500).
+            on_remove_num = 0
+            on_add_num = 0
+            off_add_num = 0
+
+        return on_remove_num, on_add_num, off_add_num
+</new>
+</edit>
+<obs>
+Successfully replaced text in Unify-Post-Training/hpt/verl/verl/mix_src/mix_trainer.py.
+</obs>

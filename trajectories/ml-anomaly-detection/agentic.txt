@@ -1,0 +1,709 @@
+<meta task="ml-anomaly-detection" domain="Classical ML" file="scikit-learn/custom_anomaly.py" model_format="qwen3" edit_tool="str_replace"/>
+
+<system>
+You are a research engineer improving a model on a fixed ML task. You work by editing the model code and running experiments. Think carefully before each change. You have these tools:
+- str_replace(path, old_str, new_str): replace the unique occurrence of old_str with new_str.
+- create(path, file_text): create a new file.
+- run_experiment(): train + evaluate the current code under the fixed budget; returns metrics.
+Make one tool call at a time. After editing, call run_experiment() to measure your method.
+</system>
+
+<user>
+## Research question
+
+Unsupervised anomaly detection on tabular data: given an unlabeled matrix of `n` rows and `d`
+features, hand back one number per row that says how anomalous it is. The single thing being
+designed is the **scoring rule** — how to model "normal structure" on standardized tabular
+features and assign higher scores to deviating points — using only the unlabeled features at fit
+time. Everything around it (the split, the standardization, the metrics) is frozen. The rule must
+generalize across datasets that differ wildly in size (~1.8k to ~49k rows), dimensionality (6 to
+36 features), and anomaly rate (~2.5% to ~32%), because there is no per-dataset label signal to
+tune against.
+
+## Prior art before the first rung (the unsupervised-detection lineage)
+
+The ladder's first rung reacts to a line of classical unsupervised detectors. These precede the
+ladder; each is a way to answer "what is normal, and how far is this point from it," and each has
+a gap the rung below it inherits or tries to escape.
+
+- **Statistical tail rules (3σ, 1.5·IQR; Hawkins 1980).** Flag a value if it lies beyond a fixed
+  multiple of the spread — three standard deviations, or 1.5 interquartile ranges past the
+  quartiles. Tuning-free and per-feature, but they describe each feature by two numbers (mean/sd
+  or the quartiles) and so implicitly assume a symmetric, roughly Gaussian shape; on a skewed or
+  heavy-tailed marginal the yardstick is wrong. Gap: a two-number caricature of each feature's
+  distribution.
+- **Distance-based detection (DB(p,D), Knorr & Ng 1998; D^k, Ramaswamy et al. 2000).** Score a
+  point by its distance to its k-th nearest neighbor; far-from-everything is anomalous.
+  Distribution-free and rankable, but it compares every point to a *single global distance scale*,
+  so it cannot tell a genuine anomaly beside a dense cluster from an ordinary member of a sparse
+  cluster — their absolute distances coincide. And the neighbor search is near-/super-linear with
+  heavy constants. Gap: one global scale, and a distance bill that does not scale.
+- **Density estimation (histograms, KDE, HBOS; Goldstein & Dengel 2012).** Estimate a per-feature
+  density and score by how low the density is where a point lands. Closer to the right object, but
+  it needs a bin count or a bandwidth — exactly the knob there is no label-free way to set — and
+  it conflates "rare because far out in a tail" with "rare because it fell in a low-density valley
+  between two clumps." Gap: a tuning knob, and density confused with extremeness.
+- **Profiling / boundary models (clustering, one-class boundaries).** Build a model of the normal
+  bulk and flag whatever falls outside. The objective is aimed at the wrong target: capacity goes
+  into describing the majority, while the thing of interest is the rare minority at the edges.
+  Gap: optimizes a description of normality rather than a separation of anomalies.
+
+The ladder below is a sequence of fills of the same scaffold slot, each reacting to the measured
+failure of the one before it.
+
+## The fixed substrate
+
+A single-file benchmark harness is frozen and must not be touched. It loads one ADBench/ODDS
+dataset (Cardio, Thyroid, Satellite, Shuttle) as a feature matrix `X` and binary labels `y`
+(0 normal, 1 anomaly), makes a **60/40 stratified train/test split** at the run's seed, fits a
+`StandardScaler` on the training rows (so the detector always sees zero-mean, unit-variance
+features), transforms both splits, then fits the detector on the *unlabeled* training features and
+scores the test features. `roc_auc_score` and an F1 at the contamination-percentile threshold are
+read off the test scores. The harness catches exceptions and falls back to AUROC 0.5 / F1 0.0, so
+a detector that throws scores at the floor. The labels are never visible to the detector — `fit(X)`
+receives features only.
+
+## The editable interface
+
+Exactly one region is editable: the `CustomAnomalyDetector` class in
+`scikit-learn/custom_anomaly.py` (lines 160–212). Every method on the ladder is a fill of this
+same three-method contract:
+
+- `__init__(self)` — set hyperparameters and build the internal model; no labels, no data yet.
+- `fit(self, X)` — train on the unlabeled, standardized training matrix `X` of shape
+  `(n_samples, n_features)`; return `self`.
+- `decision_function(self, X)` — return anomaly scores of shape `(n_samples,)` for the
+  standardized rows `X`, **higher = more anomalous**.
+
+Available, pre-installed: `numpy`, `scipy`, `scikit-learn` (PCA, KernelDensity, NearestNeighbors,
+GaussianMixture, …), and `pyod` (IForest, LOF, OCSVM, ECOD, COPOD, KNN, HBOS, PCA, LODA, …). The
+module-level `SEED` is in scope inside the class. The starting point is the scaffold default — a
+plain Isolation-Forest wrapper at PyOD defaults — and each later method replaces exactly this
+class body and nothing else.
+
+```python
+# EDITABLE region of scikit-learn/custom_anomaly.py (lines 160-212) — default fill
+class CustomAnomalyDetector:
+    """Custom unsupervised anomaly detection algorithm.
+
+    fit(X): train on unlabeled, standardized X (n_samples, n_features).
+    decision_function(X): return anomaly scores (n_samples,), higher = more anomalous.
+    """
+
+    def __init__(self):
+        # Default: simple Isolation Forest wrapper
+        from pyod.models.iforest import IForest
+
+        self.model = IForest(random_state=SEED)
+
+    def fit(self, X):
+        self.model.fit(X)
+        return self
+
+    def decision_function(self, X):
+        return self.model.decision_function(X)
+```
+
+## Evaluation settings
+
+Four tabular benchmarks spanning the regime ranges: **Cardio** (1,831 rows, 21 features, ~9.6%
+anomalies), **Thyroid** (3,772 rows, 6 features, ~2.5% anomalies), **Satellite** (6,435 rows, 36
+features, ~31.6% anomalies), **Shuttle** (49,097 rows, 9 features, ~7.2% anomalies). Each is run
+over three seeds {42, 123, 456}, each seed a fresh 60/40 stratified split with its own fitted
+standardizer. Two metrics per dataset, higher is better on both: **AUROC** (area under the ROC
+curve — pure ranking quality, threshold-free) and **F1** (at the threshold set by the test-set
+contamination percentile — decision quality after thresholding). A method is judged on all eight
+columns (four datasets × two metrics) across the three seeds.
+
+The editable model code is in `scikit-learn/custom_anomaly.py`:
+```python
+class CustomAnomalyDetector:
+    """Custom unsupervised anomaly detection algorithm.
+
+    You MUST implement:
+        - __init__(self): initialize any hyperparameters and internal state
+        - fit(self, X): train the detector on unlabeled data X (n_samples, n_features).
+                        This is UNSUPERVISED — you do not receive labels.
+        - decision_function(self, X): return anomaly scores for X.
+                        Shape: (n_samples,). Higher scores = more anomalous.
+
+    Available libraries (pre-installed):
+        - numpy, scipy, scikit-learn (StandardScaler, PCA, KernelDensity, etc.)
+        - pyod (IForest, LOF, OCSVM, ECOD, COPOD, KNN, HBOS, PCA, LODA, etc.)
+
+    The detector will be evaluated on tabular anomaly detection benchmarks via
+    a 60/40 stratified train/test split, measuring AUROC and F1.
+
+    Design considerations:
+        - Anomalies are rare (typically 2-30% of data)
+        - Feature dimensions vary (6 to 36 features)
+        - Dataset sizes vary (1,800 to 49,000 samples)
+        - Data is pre-standardized before being passed to fit/decision_function
+        - Your algorithm should work WITHOUT labels (unsupervised)
+        - Consider: density estimation, distance-based, projection-based,
+          ensemble methods, or hybrid approaches
+    """
+
+    def __init__(self):
+        """Initialize the anomaly detector."""
+        # Default: simple Isolation Forest wrapper
+        from pyod.models.iforest import IForest
+
+        self.model = IForest(random_state=SEED)
+
+    def fit(self, X):
+        """Fit the detector on unlabeled training data.
+
+        Args:
+            X: numpy array of shape (n_samples, n_features), standardized
+        """
+        self.model.fit(X)
+        return self
+
+    def decision_function(self, X):
+        """Compute anomaly scores for input data.
+
+        Args:
+            X: numpy array of shape (n_samples, n_features), standardized
+
+        Returns:
+            scores: numpy array of shape (n_samples,), higher = more anomalous
+        """
+        return self.model.decision_function(X)
+```
+Improve it. Derive your method, edit the code, then run_experiment().
+</user>
+
+### step 1 — LOF (Local Outlier Factor)   [slug:lof]
+
+<think>
+I have to put a first detector in the scaffold's one editable slot, and the honest place to start is the cheapest classical idea that already encodes something real about anomalies, so that whatever it can and cannot do tells me what the next rung must add. The two facts I am handed are weak: anomalies are *few* and *different*. The most direct operationalization of "different" is distance — score a point by how far it sits from its neighbors, far-from-everything is anomalous. That is the distance-based tradition, and it is distribution-free and rankable, which is exactly what the harness wants (it reads AUROC off a continuous score). But I already know its disease: it compares every point to a *single global distance scale*. Picture a loose, low-density cluster off to one side and a tight, dense cluster on the other, with a stray sitting just off the dense cluster's edge. To my eye that stray is a glaring anomaly — conspicuously detached *relative to how tightly its neighbors pack*. But its absolute distance to the dense cluster can be smaller than the ordinary nearest-neighbor spacing *inside* the loose cluster, so a global distance score ranks ordinary loose-cluster members at or above the genuine stray. A single scale cannot say "anomalous for the company it keeps." So a plain k-NN distance is not the right first rung; I want the cheapest detector that fixes exactly this, because the fix is the first real idea on the ladder.
+
+The property I am missing has a name once I look at it: the verdict has to be *local*. Not "is this point far from the bulk," but "is this point's neighborhood much emptier than the neighborhoods of the points around it." And it has to be a *degree*, a real number I can rank, not a yes/no — because the whole trouble was that the stray and an ordinary loose point are indistinguishable on any single global threshold, and the only way to separate them is to measure *how much* each deviates from its own local context. The Local Outlier Factor is the classical detector that does precisely this, and it is cheap enough (one neighbor table, then vectorized ratios) to be the floor of the ladder.
+
+The construction is forced once I demand locality. I need a per-point density that uses no distribution and no global volume threshold — and the distances to a point's `MinPts` nearest neighbors are the cheapest distribution-free density proxy I have: close neighbors mean a dense region, far neighbors a sparse one. But the raw average distance is jittery — a point that happens to fall very near one neighbor would look absurdly dense — and I am about to build a *ratio* out of these densities, so noise in the denominator swings every score. The standard stabilization is the reachability distance: when measuring how far `p` is "reachable" from a neighbor `o`, never let the distance drop below `o`'s own k-distance (the radius of `o`'s neighborhood), `reach-dist(p,o) = max{ k-distance(o), d(p,o) }`. Every point inside `o`'s neighborhood then gets the same reach-distance to `o`, namely `k-distance(o)`, a smoothed density-of-`o` quantity; the local fluctuations collapse. The local reachability density is the inverse of the average reach-distance over `p`'s neighbors, `lrd(p) = 1 / (mean_o reach-dist(p,o))` — inverse so larger means denser, averaged (not summed) so it is comparable across points whose tie-inclusive neighborhoods differ in size. But `lrd` is still *absolute* — large in the dense cluster, small in the loose one — so on its own it is k-NN distance in disguise and inherits the same global-scale disease. The locality has to come from a *comparison*. So take the ratio of a point's neighbors' densities to its own and average it: `LOF(p) = mean_o( lrd(o) / lrd(p) )`. The absolute scale cancels — deep inside any cluster, dense or loose, a point and its neighbors have roughly equal `lrd`, so the ratio is ≈ 1; the stray sits in a sparse pocket (`lrd` small) surrounded by dense neighbors (`lrd` large), so its ratio is clearly above 1. The ratio untangles exactly the two cases the global ranking confused, and it is graded, so I can rank by it. `LOF ≈ 1` means "as dense as your neighbors" (inlier); `LOF > 1` means "emptier than your neighbors" (outlier, larger = stronger). The one knob is `MinPts` (the neighbor count, `n_neighbors` in code), and because `LOF` is non-monotonic in it — too small and the density estimate is pure single-sample jitter, too large and the cluster's own density gradient leaks in — the safe default is the classical low-tens value, `n_neighbors = 20`.
+
+Now the part that matters for landing this *in this task's scaffold*, because the scaffold has a wrinkle the textbook LOF never sees. The harness fits a `StandardScaler` before handing me `X`, so my features arrive zero-mean and unit-variance. LOF is built entirely on a neighbor graph, and that graph is decided by the metric geometry — which is to say, by feature scaling — *before* any reachability is computed. A pure z-score scaling and a [0,1] min-max scaling produce *different* neighbor graphs, hence different reach-distances, hence different `LOF` scores; LOF is invariant to a global distance rescaling but emphatically *not* to a per-feature one that changes which points are neighbors. The reference numbers for LOF on these exact datasets come from the ADBench protocol, and ADBench's data generator min-max normalizes each feature to [0,1] before fitting. So if I just fit a default `LOF` on the harness's standardized `X`, I am fitting on a *different* feature geometry than the protocol I am trying to reproduce, and the scores will not match. The disciplined first rung therefore does one task-specific thing the generic LOF derivation does not: it re-normalizes internally. Inside `fit`, I fit a `MinMaxScaler` on the training rows, transform them to [0,1], and fit `LOF` on that; inside `decision_function` I apply the *same* fitted scaler to the query rows before scoring. This is not a new algorithm — it is the same `max{k-distance, d}` reachability-ratio detector — it just restores the feature geometry LOF was calibrated under, which the StandardScaler in the fixed substrate had overwritten. Concretely: a re-applied `MinMaxScaler().fit(X_train)` wrapped around a PyOD `LOF()` at its defaults (`n_neighbors=20`, Minkowski/`p=2`, `contamination=0.1`), with the model's `decision_function` already oriented so higher means more anomalous. PyOD's wrapper handles the sign convention (it stores `-LOF` internally as the "opposite outlier factor" and exposes a higher-is-anomalous decision function), so I do not have to negate anything myself. The full class body is in the answer.
+
+I am deliberately *not* reaching for anything stronger here, and it is worth being explicit about why LOF is the floor rather than, say, the histogram or copula detectors that come later. LOF is the one classical idea whose *entire content* is the locality fix to distance-based detection — it is the minimal step past "far from everything." Its weaknesses are equally structural, and naming them now is exactly the point of starting here, because they are what the next rungs must repair. First, it is a neighbor method: it pays a k-NN search, and on these standardized tabular features distances begin to concentrate as dimensionality climbs (Satellite has 36 features), washing out the very density contrast `LOF` lives on. Second, locality cuts both ways — `LOF` is *blind to global outliers that sit inside a locally-coherent group*: a point in a tight little clump of other anomalies has `LOF ≈ 1` even when the whole clump is a glaring global outlier, because each member shields the others. Third, the score is purely geometric in the neighbor graph; it carries no notion of per-feature tail extremeness, so a row that is moderately unusual on many features at once — the kind of thing a marginal-tail model would catch — does not necessarily surface as a sparse neighborhood. These are not bugs to patch within LOF; they are the boundaries that motivate moving to a model with a *global* notion of rarity at the next rung.
+
+What I expect when I run it, stated as a falsifiable shape so the feedback can confirm or break it. Locality is a real but narrow advantage, and on these benchmarks the structure LOF needs — clusters of genuinely different local density with anomalies in the sparse pockets between them — is often not the dominant structure; many of these anomalies are global tail events, which is LOF's blind spot. So I expect LOF to be *weak* here, and specifically weak in a diagnosable way: the AUROCs should sit well below what a global tail or isolation model would get, drifting toward the 0.5–0.7 band rather than the 0.9s, precisely because the local-density contrast is faint once features are standardized and distances concentrate. The high-dimensional dataset (Satellite, 36 features) should be near the worst, AUROC hovering only just above chance, because distance concentration is harshest there. The low-dimensional, low-contamination dataset (Thyroid, 6 features, ~2.5% anomalies) should be the one place LOF looks least bad, because in six dimensions distances still discriminate and a 2.5% anomaly rate means the anomalies really are isolated in sparse pockets — so I would expect Thyroid's AUROC to lead LOF's row by a clear margin over the others. F1 should track AUROC but lower and noisier, since thresholding a weakly-separated score at the contamination percentile turns a faint ranking into a coin-flip decision. If instead LOF posts strong AUROCs across the board, my whole reading of these datasets as "global-tail-dominated" is wrong and the ladder should be reconsidered; if it posts the weak, Thyroid-leading, Satellite-floor shape I expect, then the next rung is clear — replace the local neighbor-graph view with a *global, per-feature rarity* model that does not pay a distance bill and does not go blind on coherent clumps. So let me write the LOF rung in.
+</think>
+<say>
+Starting the ladder at the floor: a Local Outlier Factor detector, which scores each point by how much emptier its neighborhood is than its neighbors'. This first edit swaps the default Isolation-Forest scaffold for a PyOD `LOF()` wrapped in an internal `MinMaxScaler` to restore the [0,1] feature geometry LOF is calibrated under.
+</say>
+<edit path="scikit-learn/custom_anomaly.py">
+<old>
+class CustomAnomalyDetector:
+    """Custom unsupervised anomaly detection algorithm.
+
+    You MUST implement:
+        - __init__(self): initialize any hyperparameters and internal state
+        - fit(self, X): train the detector on unlabeled data X (n_samples, n_features).
+                        This is UNSUPERVISED — you do not receive labels.
+        - decision_function(self, X): return anomaly scores for X.
+                        Shape: (n_samples,). Higher scores = more anomalous.
+
+    Available libraries (pre-installed):
+        - numpy, scipy, scikit-learn (StandardScaler, PCA, KernelDensity, etc.)
+        - pyod (IForest, LOF, OCSVM, ECOD, COPOD, KNN, HBOS, PCA, LODA, etc.)
+
+    The detector will be evaluated on tabular anomaly detection benchmarks via
+    a 60/40 stratified train/test split, measuring AUROC and F1.
+
+    Design considerations:
+        - Anomalies are rare (typically 2-30% of data)
+        - Feature dimensions vary (6 to 36 features)
+        - Dataset sizes vary (1,800 to 49,000 samples)
+        - Data is pre-standardized before being passed to fit/decision_function
+        - Your algorithm should work WITHOUT labels (unsupervised)
+        - Consider: density estimation, distance-based, projection-based,
+          ensemble methods, or hybrid approaches
+    """
+
+    def __init__(self):
+        """Initialize the anomaly detector."""
+        # Default: simple Isolation Forest wrapper
+        from pyod.models.iforest import IForest
+
+        self.model = IForest(random_state=SEED)
+
+    def fit(self, X):
+        """Fit the detector on unlabeled training data.
+
+        Args:
+            X: numpy array of shape (n_samples, n_features), standardized
+        """
+        self.model.fit(X)
+        return self
+
+    def decision_function(self, X):
+        """Compute anomaly scores for input data.
+
+        Args:
+            X: numpy array of shape (n_samples, n_features), standardized
+
+        Returns:
+            scores: numpy array of shape (n_samples,), higher = more anomalous
+        """
+        return self.model.decision_function(X)
+</old>
+<new>
+class CustomAnomalyDetector:
+    """Local Outlier Factor anomaly detector (ADBench protocol).
+
+    Applies MinMax normalization internally to match the preprocessing
+    used by ADBench (data_generator.py: MinMaxScaler().fit(X_train)).
+    LOF is density-based and extremely sensitive to feature scaling,
+    so this is required to reproduce the Table D4 numbers.
+    """
+
+    def __init__(self):
+        from pyod.models.lof import LOF
+
+        # PyOD defaults (matches ADBench with no hyperparameter tuning):
+        # n_neighbors=20, algorithm='auto', metric='minkowski', p=2,
+        # contamination=0.1.
+        self.model = LOF()
+        self._scaler = None
+
+    def fit(self, X):
+        from sklearn.preprocessing import MinMaxScaler
+        self._scaler = MinMaxScaler()
+        Xs = self._scaler.fit_transform(X)
+        self.model.fit(Xs)
+        return self
+
+    def decision_function(self, X):
+        Xs = self._scaler.transform(X)
+        return self.model.decision_function(Xs)
+</new>
+</edit>
+<obs>
+Successfully replaced text in scikit-learn/custom_anomaly.py.
+</obs>
+<run/>
+<obs>
+Measured results — `baseline:lof` (`is_final,true`), seeds {42, 123, 456} and mean.
+
+## Cardio
+| seed | AUROC | F1 |
+|---|---|---|
+| 42 | 0.5489 | 0.1475 |
+| 123 | 0.5493 | 0.1816 |
+| 456 | 0.5419 | 0.1763 |
+| **mean** | **0.5467** | **0.1685** |
+
+## Thyroid
+| seed | AUROC | F1 |
+|---|---|---|
+| 42 | 0.7102 | 0.0971 |
+| 123 | 0.7000 | 0.0860 |
+| 456 | 0.7079 | 0.0754 |
+| **mean** | **0.7060** | **0.0862** |
+
+## Satellite
+| seed | AUROC | F1 |
+|---|---|---|
+| 42 | 0.5507 | 0.3806 |
+| 123 | 0.5479 | 0.3821 |
+| 456 | 0.5510 | 0.3816 |
+| **mean** | **0.5498** | **0.3815** |
+
+## Shuttle
+| seed | AUROC | F1 |
+|---|---|---|
+| 42 | 0.5333 | 0.1316 |
+| 123 | 0.5303 | 0.1347 |
+| 456 | 0.5298 | 0.1293 |
+| **mean** | **0.5311** | **0.1319** |
+</obs>
+
+### step 2 — One-Class SVM   [slug:ocsvm]
+
+<think>
+LOF's numbers told me exactly what is wrong, and they told me in a shape I predicted. Every AUROC sits in the 0.53–0.71 band — Cardio 0.547, Satellite 0.550, Shuttle 0.531, all barely above the 0.5 coin-flip, with only Thyroid (0.706) clearly off the floor — and the per-seed spread is tiny (Cardio 0.542–0.549, Shuttle 0.530–0.533), so this is not variance, it is a *systematic* miss: LOF is ranking these datasets essentially at chance, the same way on every seed. The one place it looks least bad is precisely the place I expected — Thyroid, six features, ~2.5% anomalies, where distances still discriminate in low dimension and the rare anomalies genuinely sit in sparse pockets. And the high-dimensional dataset behaved as predicted too: Satellite (36 features) is pinned at 0.550, almost pure chance, because distance concentration is harshest there and the local-density contrast LOF lives on has washed out. The F1s confirm it — Thyroid F1 collapses to 0.086 even though its AUROC is the best, because thresholding a weak ranking at a 2.5% contamination percentile is a coin flip. So the diagnosis is sharp: locality was a real fix to global-scale distance detection, but on *these* datasets the anomalies are not "sparse pockets between clusters of differing density" — they are global tail events, and LOF is structurally blind to those. A neighbor method that asks "is my neighborhood emptier than my neighbors'" finds nothing when the answer everywhere is "about the same," which is what standardized, distance-concentrated tabular features give you. I need to abandon the neighbor-graph view entirely and model *what region the normal mass occupies*, so that a point outside it scores high regardless of whether its local neighborhood happens to be coherent.
+
+So let me restate the object I actually need, now that LOF's local view has failed. I have unlabeled points and I want a *region* in input space that contains most of the mass of the data; a new point that lands outside it is anomalous. The density-estimation reflex — estimate the full density `p`, keep `{x : p(x) ≥ t}` — is solving a larger problem than I need and is exactly the thing that died in high dimension on Satellite: estimating a `d`-dimensional density is data-hungry and the curse bites. I do not need the height of the distribution everywhere. I need a decision *region*, and ideally one knob that means "allow this fraction of training points to fall outside," because with no labels a contamination prior is the only honest thing I can set.
+
+There is a precise way to say "small region containing most of the mass": fix a class of candidate sets and a size functional, and seek the minimum-size set whose probability content is at least `α` — the minimum-volume set. That is the right target, but "volume in input space" over a rich high-dimensional class is not a computation I can run. Here is where the support-vector machinery becomes the lever LOF never had. The supervised SVM's `½‖w‖²` term does not measure input-space volume — it controls the *flatness* of a decision function in a kernel-induced feature space, and the kernel trick lets a flat function in feature space draw a nonlinear boundary in input space. That is exactly what I want to borrow: a convex quadratic program, a support-vector expansion, a kernel decision function. The obstacle is structural — an ordinary SVM separates two labeled classes, and I have one class and no negatives.
+
+With one class I need a fixed reference to push against, and the only canonical feature-space point I get for free is the origin. So the question sharpens: can I find a hyperplane that puts the mapped data on one side and the origin on the other, with maximum margin, and call the data side the accepted region? For a generic kernel this could be ill-posed, so I check the geometry rather than assume it. With the Gaussian (RBF) kernel `k(x,y) = exp(−γ‖x−y‖²)`, every diagonal entry `k(x,x) = 1`, so all mapped points have unit norm and live on the unit sphere in feature space; and every pairwise `k(x_i,x_j) > 0`, so all pairwise angles are acute — the data sit together on a patch of the sphere, cleanly separable from the origin. The maximum-margin hyperplane to the origin then cuts off a spherical cap containing the data. That is a region I can optimize, and crucially it is a *global* region — a point is anomalous because it falls outside the support of the whole data cloud, not because its local neighborhood is sparse. That is precisely the global notion of rarity LOF lacked.
+
+The margin problem writes down directly. I want `⟨w, Φ(x_i)⟩ ≥ ρ` for most training points, with slacks `ξ_i` for the failures, pushing `ρ` up (away from the origin) and keeping `‖w‖` small: minimize `½‖w‖² + (1/(νℓ)) Σ_i ξ_i − ρ` subject to `⟨w,Φ(x_i)⟩ ≥ ρ − ξ_i`, `ξ_i ≥ 0`. The `−ρ` term rewards moving the hyperplane off the origin; the odd-looking `1/(νℓ)` slack scaling is not arbitrary, and the KKT conditions are what justify it. Forming the Lagrangian with multipliers `α_i ≥ 0` on the margin constraints and `β_i ≥ 0` on the slacks, stationarity gives `w = Σ_i α_i Φ(x_i)`, `α_i = 1/(νℓ) − β_i` (so `0 ≤ α_i ≤ 1/(νℓ)`), and `Σ_i α_i = 1`. Substituting back collapses the problem to the dual: minimize `½ Σ_{ij} α_i α_j k(x_i,x_j)` subject to `0 ≤ α_i ≤ 1/(νℓ)`, `Σ_i α_i = 1`. The decision rule is the signed kernel expansion `f(x) = Σ_i α_i k(x_i,x) − ρ`, positive on the data side, with `ρ` read off any non-bound support vector (where `0 < α_i < 1/(νℓ)` forces the margin tight and the slack zero, so `ρ = Σ_j α_j k(x_j,x_i)`).
+
+Now the counting argument that makes `ν` the one meaningful knob — and this is what gives the rung an interpretable contamination control LOF's `n_neighbors` never had. If a training point is outside the region, its slack is positive, complementary slackness forces `β_i = 0`, hence `α_i = 1/(νℓ)` — every outlier is pinned at the top of the box. Since the `α_i` sum to 1 and are nonnegative, at most `νℓ` of them can sit at that ceiling, so the training outlier fraction is at most `ν`. Symmetrically, each nonzero `α_i` contributes at most `1/(νℓ)`, so making the sum equal 1 needs at least `νℓ` nonzero coefficients — the support-vector fraction is at least `ν`. Asymptotically the two meet: `ν` is simultaneously an upper bound on the outlier fraction and a lower bound on the support-vector fraction. The strange `1/(νℓ)` turned a penalty into a count. And the endpoints check out: `ν → 0` drives the box ceiling to infinity, recovering a hard-margin support estimator; `ν = 1` forces every `α_i = 1/ℓ`, and the expansion becomes a thresholded Parzen-window estimate. The default `ν = 0.5` sits in the middle — it does not assume a contamination rate it cannot know, and the score is a continuous signed distance that AUROC reads regardless of where the threshold lands.
+
+The remaining choices are the kernel bandwidth and the sign convention, and one of them collides with the scaffold the same way LOF did. The RBF exponent is a *distance* in input space, `γ‖x−y‖²`, so the region OCSVM learns depends entirely on feature scaling — a large-scale feature dominates the squared distance and the kernel sees only that axis. PyOD's default `gamma='auto'` is `1/n_features`, a fixed bandwidth that only makes sense when features are on a comparable scale; and the reference OCSVM numbers on these datasets, like LOF's, come from the ADBench protocol, which min-max normalizes each feature to [0,1] before fitting. The harness pre-applies a StandardScaler instead — a different geometry, and one where heavy-tailed standardized features can have very different spreads than [0,1]. So this rung, exactly like the last one, re-normalizes internally: fit a `MinMaxScaler` on the training rows, fit the one-class SVM on the [0,1] features, and apply the same fitted scaler at score time. This is not a change to the algorithm — it is the same box-plus-equality dual with the RBF cap — it just restores the feature geometry the `1/n_features` bandwidth and the reference numbers were calibrated under. For the sign: the libsvm-backed solver returns `Σ_i α_i k(x_i,x) − ρ`, positive for inliers, so an anomaly detector that wants higher = more anomalous negates it; PyOD's wrapper already does that inversion, so I take PyOD's `decision_function` as-is. Concretely the rung is a PyOD `OCSVM()` at defaults (`kernel='rbf'`, `nu=0.5`, `gamma='auto'`) wrapped in a re-applied `MinMaxScaler`. The full class body is in the answer.
+
+What I expect when I run it, against LOF's measured floor, stated falsifiably. The whole point of this rung is to replace LOF's *local* density contrast with a *global* support region, so the prediction is that wherever LOF was at chance because the anomalies are global tail events — Cardio (0.547), Satellite (0.550), Shuttle (0.531) — OCSVM should lift them substantially, because a global support boundary catches a point that is far from the whole normal cloud even when its local neighborhood is coherent. I expect Cardio and Thyroid, the lower-dimensional, lower-contamination datasets, to jump the most, well into the 0.9s for AUROC, because there the RBF support region is sharp and the anomalies sit cleanly outside it. Shuttle should also lift hard off LOF's 0.531, since its 9 features and large sample give the kernel plenty of clean support to define. Satellite is the one I am unsure about, and I can already name why: it has 36 features and ~32% anomalies, so the "normal" mass is itself nearly a third contaminated, and a single fixed-bandwidth RBF region around a heavily-polluted cloud may smear — I would expect Satellite to improve over LOF's 0.550 but to remain the *worst* of OCSVM's row, likely well short of the 0.9s, because the support estimate is corrupted by the high anomaly rate and the `1/n_features` bandwidth is coarse at `d=36`. The seed-to-seed variance should be larger than LOF's, because OCSVM's region is more sensitive to which exact points landed in each 60/40 split (LOF's per-seed AUROCs were nearly identical; OCSVM's `nu=0.5` boundary will wobble more). And F1 should improve over LOF's collapse but stay modest, because `nu=0.5` is a deliberately loose contamination assumption that mismatches the true 2.5–32% rates, so the score ranking will be far better than the thresholded decision. If instead OCSVM also lands at chance, then these anomalies are not even global-support-separable and the ladder needs a per-feature tail model immediately; but if it posts the global-lift, Satellite-lagging shape I expect, the next move is already visible — drop the kernel bandwidth and the contamination knob entirely and model rarity per feature, with nothing to tune, so the high-dimensional, high-contamination case (Satellite) stops being the weak spot. Let me swap in the one-class SVM.
+</think>
+<say>
+Moving from LOF's local view to a global support region: a one-class SVM that learns an RBF boundary around the normal mass and flags whatever falls outside it. This edit replaces the LOF body with a PyOD `OCSVM()` at defaults (`nu=0.5`, `gamma='auto'`), keeping the internal `MinMaxScaler`.
+</say>
+<edit path="scikit-learn/custom_anomaly.py">
+<old>
+class CustomAnomalyDetector:
+    """Local Outlier Factor anomaly detector (ADBench protocol).
+
+    Applies MinMax normalization internally to match the preprocessing
+    used by ADBench (data_generator.py: MinMaxScaler().fit(X_train)).
+    LOF is density-based and extremely sensitive to feature scaling,
+    so this is required to reproduce the Table D4 numbers.
+    """
+
+    def __init__(self):
+        from pyod.models.lof import LOF
+
+        # PyOD defaults (matches ADBench with no hyperparameter tuning):
+        # n_neighbors=20, algorithm='auto', metric='minkowski', p=2,
+        # contamination=0.1.
+        self.model = LOF()
+        self._scaler = None
+</old>
+<new>
+class CustomAnomalyDetector:
+    """One-Class SVM anomaly detector (ADBench protocol).
+
+    Applies MinMax normalization internally to match ADBench's
+    preprocessing. Uses PyOD defaults: kernel='rbf', nu=0.5,
+    gamma='auto' (= 1/n_features).
+    """
+
+    def __init__(self):
+        from pyod.models.ocsvm import OCSVM
+
+        # PyOD default: kernel='rbf', nu=0.5, gamma='auto'.
+        self.model = OCSVM()
+        self._scaler = None
+</new>
+</edit>
+<obs>
+Successfully replaced text in scikit-learn/custom_anomaly.py.
+</obs>
+<run/>
+<obs>
+Measured results — `baseline:ocsvm` (`is_final,true`), seeds {42, 123, 456} and mean.
+
+## Cardio
+| seed | AUROC | F1 |
+|---|---|---|
+| 42 | 0.9410 | 0.4714 |
+| 123 | 0.8741 | 0.3286 |
+| 456 | 0.8972 | 0.4857 |
+| **mean** | **0.9041** | **0.4286** |
+
+## Thyroid
+| seed | AUROC | F1 |
+|---|---|---|
+| 42 | 0.9657 | 0.4865 |
+| 123 | 0.9461 | 0.3243 |
+| 456 | 0.9497 | 0.2432 |
+| **mean** | **0.9538** | **0.3514** |
+
+## Satellite
+| seed | AUROC | F1 |
+|---|---|---|
+| 42 | 0.6717 | 0.5455 |
+| 123 | 0.5500 | 0.4484 |
+| 456 | 0.5519 | 0.4386 |
+| **mean** | **0.5912** | **0.4775** |
+
+## Shuttle
+| seed | AUROC | F1 |
+|---|---|---|
+| 42 | 0.9904 | 0.9487 |
+| 123 | 0.8804 | 0.5142 |
+| 456 | 0.8815 | 0.5043 |
+| **mean** | **0.9174** | **0.6557** |
+</obs>
+
+### step 3 — COPOD (Copula-Based Outlier Detection)   [slug:copod]
+
+<think>
+OCSVM did what I asked of it and broke exactly where I worried it would. Moving from LOF's local view to a global support region lifted the easy cases hard: Cardio jumped from 0.547 to 0.904, Thyroid from 0.706 to 0.954, Shuttle from 0.531 to 0.917 — all into the band where a global "is this point outside the normal cloud" verdict actually works. That confirms the diagnosis from the last rung: these anomalies are global tail events, not local-density dips, and a support boundary catches them where a neighbor graph could not. But Satellite stayed the weak spot at 0.591 — barely off LOF's 0.550 — precisely as predicted, and the per-seed numbers name the mechanism: Satellite's AUROC is 0.672 on seed 42 but collapses to 0.550 and 0.552 on seeds 123 and 456, a 0.12 swing, while Cardio swings 0.874–0.941 and Shuttle 0.880–0.990. That instability is the tell. Satellite has 36 features and ~32% anomalies, so the cloud OCSVM is drawing a support boundary around is itself nearly a third contaminated, and a single fixed-bandwidth RBF region around a polluted, high-dimensional cloud lands wherever the particular split's contamination happens to fall — hence the seed-to-seed wobble. And the F1s show the second crack I flagged: Thyroid F1 is only 0.351 despite a 0.954 AUROC, because `nu=0.5` assumes a 50% contamination rate against Thyroid's true 2.5%, so the score *ranks* well but the threshold is wildly mis-set. So OCSVM has two structural problems I now have to escape: a kernel *bandwidth* that is coarse and scale-fragile at high `d`, and a contamination *knob* (`nu`) that I cannot set without labels and that mismatches every dataset's true rate. Both are hyperparameters I am tuning blind. The move is to drop them entirely — model rarity per feature, with literally nothing to tune, and assemble the per-feature signals into a joint judgment without estimating a `d`-dimensional region at all.
+
+Let me restate the target sharply, because OCSVM's failure defines it. I want a scoring rule with no hyperparameters (the no-labels constraint makes "no knobs" non-negotiable — I cannot validate what I cannot tune), that does not degrade in high dimension the way OCSVM's RBF did on Satellite, that is deterministic (OCSVM's per-seed swing is partly the solver and the split interacting), and ideally interpretable down to "this feature is what made the row weird." Nothing I have tried is all of these. The fast knob-free option whose shape is closest is the histogram score, HBOS, and I should pin down *why* it is shaped the way it is before I touch it. For each feature on its own HBOS builds a univariate histogram, normalizes it so the tallest bar is height 1 (so a tall narrow feature and a flat wide one contribute on the same footing), reads off the bar height where a point lands, and sums `log(1/height)` over features. That sum is a product of inverse per-feature densities with a log around it: the product is an *independence assumption* — the score of a discrete naive-Bayes model that judges each coordinate on its own — and the log is a numerical safety move, turning a runaway product into a tame, ranking-preserving sum. The architecture HBOS hands me — "sum over features of a per-feature anomaly contribution" — is cheap, embarrassingly parallel across features, and immune to the dimensionality concentration that wrecked OCSVM, because it never computes a `d`-dimensional distance or region at all. That skeleton is exactly what I want to keep.
+
+But what HBOS's per-feature contribution *measures* is wrong for my purpose, and naming the flaw forces the fix. The contribution is `−log(density)` — histogram bar height. Picture a bimodal feature, two humps with a valley between. A point in the valley sits in low density, so HBOS calls it anomalous — but it is *not extreme*; it is in the middle of the feature's range with mass on both sides. For outlier detection that is the wrong call: "rare because far out in a tail" and "rare because it fell between two clumps" are different animals, and density conflates them. On top of that the density estimate is bumpy and needs a bin count — the very knob I swore off to escape OCSVM's `gamma`/`nu`. So the per-feature quantity has to be replaced with something monotone in "how far out toward a tail this value is," needing no bins.
+
+What does "how far out toward a tail" mean precisely for one feature? If a feature `X` has continuous CDF `F`, then `F(x) = P(X ≤ x)` is literally the fraction of the distribution at or below `x` — near 0 means deep in the lower tail, near 1 deep in the upper. And the probability integral transform makes this the *canonical* position measure: if `X` has continuous CDF `F`, then `F(X)` is Uniform(0,1), so `F(x)` maps any feature, whatever its shape, onto a common uniform yardstick where "deep in the lower tail" always means "`F(x)` close to 0." That is exactly the extremeness HBOS's density misses, and it is a probability, not a density — no bins, no bandwidth. The empirical version costs nothing and assumes nothing: the empirical CDF `F̂(x) = (1/n) Σ_i 1{X_i ≤ x}`, the fraction of observed points at or below `x`, a step function on `{1/n, …, 1}`. So per feature, feed each value into its empirical CDF and out comes `u_j`, the empirical probability of seeing something as small along feature `j`; small `u_j` means a left-tail outlier. That is my parameter-free, bin-free, monotone-in-extremeness per-feature contribution — and it is the integral of the density HBOS estimated, the directly appropriate object once "outlier = tail event."
+
+Now I have to assemble `d` of these into one joint statement about the whole row, and this is where I get the high-dimensional behavior OCSVM lacked. The honest joint quantity is the joint left tail `F(x) = P(X_1 ≤ x_1, …, X_d ≤ x_d)`, and copula theory is the right machine because it separates the marginals (which I have nailed) from the dependence (which I would rather not estimate). By Sklar's theorem any joint CDF factors as a copula applied to its marginals, `F(x) = C(F_1(x_1), …, F_d(x_d))`, and the copula carries all the dependence. Estimating the full `d`-dimensional empirical copula by the joint indicator would re-import the curse of dimensionality — for a point near the joint tail almost nothing dominates it in *all* `d` coordinates at once, so the count collapses to 0 or 1, exactly the degradation OCSVM's `d`-dimensional kernel suffered on Satellite. So I make the same trade that fast detectors live on: assume the *independence* (product) copula, `C(u) = Π_j u_j`. I know features correlate, so this costs me anomalies visible only in the joint correlation structure — but it buys `d` clean univariate empirical CDFs, each linear-time, each immune to dimension, parallel across columns. Eyes open, I take it, because Satellite's failure was the curse biting the joint estimate, and the product form is the way out.
+
+But the product `Π_j u_j` is `d` numbers each in `(0,1]`, so it underflows toward zero exponentially in `d` — a point even mildly into the tails on many features becomes numerically zero and I cannot rank one "zero" against another. This is the same disease HBOS already cured, and the cure is in the skeleton I copied: take logs. `−log Π_j u_j = −Σ_j log u_j`, the sum, over features, of per-feature negative-log tail probabilities — underflow gone, ranking preserved because log is monotone, and the copula's uniform margins make `P(U_j ≤ u_j) = u_j` exactly, so the term is just `−log u_j`. I am back at the HBOS skeleton — sum over features of a per-feature contribution — but the contribution is now `−log(empirical tail probability)` instead of `−log(histogram density)`: extremeness instead of density, no bins, and the additive structure makes the score interpretable per feature for free, the same property that made the log numerically nice.
+
+One tail is not enough. `u_j` small flags the *lower* end; an outlier can be far into the *upper* end too, where `F̂(x) ≈ 1` so `−log u_j ≈ 0` and a giant value scores as perfectly normal. The right-tail object is the survival event, linked by the survival copula to the marginal survival functions, so the right-tail contribution per feature is `−log(1 − u_j)`. But computed naively, `1 − F̂` hits the empirical-support boundary: the maximum observed value has `F̂ = 1` exactly, so `1 − F̂ = 0` and `−log 0 = +∞` detonates the score on the single most-extreme point — exactly the point I most want to flag. The fix is to compute the right tail symmetrically as the *left* tail of the negated data: `F̂_{−X}(−x) = (1/n) Σ_i 1{X_i ≥ x}`, ties included, well-behaved at its small end (the maximum gets `1/n`, not 0). So I keep two empirical CDFs per feature — left from `X`, right from `−X` — and two contribution matrices `U_l = −log(ecdf(X))`, `U_r = −log(ecdf(−X))`.
+
+How to use both tails is the last subtlety, and a blind average is wrong. Picture a feature with a long left tail and mass piled on the right: its rare points all live in the long left tail, and the right-tail contribution would light up the *relatively* big points, which are perfectly normal — so averaging blends a correct signal with a misleading one. What tells me which way to look is the feature's *asymmetry*: a long left tail is negative skew (use the left contribution), a long right tail is positive skew (use the right). So compute the per-feature skewness sign and select the tail by it — branch-free, `U_skew = U_l·(−sign(s−1)) + U_r·sign(s+1)`, which gives `U_l` at `s=−1`, `U_r` at `s=+1`, and `U_l+U_r` at `s=0`. But the skewness sign is itself a noisy third-moment estimate, near-symmetric features can have one-sided outliers, and a wrong sign would suppress a real outlier the way the blind average would. So I do not bet everything on the selector: per feature, take the max of the skew-targeted contribution and the two-tail average safety net, `O_j = max(U_skew, (U_l+U_r)/2)`, then sum over features. A feature whose skew came out wrong is rescued by its two-tail average; a feature where the targeted tail is sharply more extreme keeps that sharper signal. The result is the COPOD score, and it is exactly the conjunction OCSVM could not give me: no neighbor count, no kernel, no bandwidth, no contamination assumption in the ranking — the only external number, `contamination`, sets only the binary label threshold, not the score — deterministic, `O(n log n)` per feature and linear in `d`, indifferent to high `d` because the log-sum tames the underflow, and interpretable down to which feature made each row an outlier.
+
+Now landing it in *this* scaffold, where there is an important difference from the last two rungs. LOF and OCSVM both needed an internal `MinMaxScaler` because their geometry (neighbor graph, RBF distance) is scale-sensitive and the reference numbers were calibrated under ADBench's [0,1] preprocessing. COPOD needs *none of that*: its per-feature score is the empirical CDF rank of each value, and rank is invariant to any monotone per-feature transform — StandardScaler, MinMaxScaler, or none, the ECDF ranks are identical, so the harness's standardization is harmless and no internal re-normalization is needed. So this rung is the cleanest possible fill: a PyOD `COPOD(contamination=0.1)` wrapped directly around the standardized `X`, fit and `decision_function` straight through, with PyOD already oriented higher = more anomalous. The full class body is in the answer.
+
+What I expect, against OCSVM's measured numbers, stated falsifiably. The headline claim is Satellite: the per-feature, dimension-immune log-sum should *not* collapse where OCSVM's `d=36` kernel did, so I expect Satellite's AUROC to lift off OCSVM's 0.591 and — critically — to *stabilize across seeds*, since the ECDF ranks are deterministic and do not wobble with the split the way the RBF support did (no more 0.672/0.550/0.552 swing). On the easy global-tail cases COPOD should roughly match OCSVM: Cardio and Thyroid near 0.9+, Shuttle high, because tail extremeness and support-distance largely agree where the anomalies are clean global tails — I would not expect COPOD to crush OCSVM on Cardio, just to match it without the knobs. The place I am genuinely unsure is whether COPOD's *independence* assumption costs it on a dataset whose anomalies are joint-correlation effects; if Satellite's anomalies are correlated-feature outliers rather than marginal-tail outliers, the product copula may only get it partway up, so I would expect Satellite to improve and stabilize but still possibly lag the easy datasets. F1 should improve over OCSVM's `nu=0.5` mismatch on the low-contamination datasets (Thyroid especially), because COPOD's `contamination=0.1` threshold is closer to several true rates than 0.5 was — though still not exact. And the per-seed variance everywhere should shrink relative to OCSVM, because the score is deterministic given the split. If instead COPOD also stalls on Satellite, that points the next rung at the independence assumption — a method that can isolate joint structure without estimating a density; if it lifts and stabilizes Satellite as I expect, the ladder's open question becomes whether a *non-parametric, non-marginal* isolation view can beat the per-feature tail model on the datasets where features interact. Let me put COPOD in.
+</think>
+<say>
+Dropping OCSVM's kernel bandwidth and contamination knob for a parameter-free per-feature tail model: COPOD scores each row by the negative-log empirical tail probability summed over features under a product copula. This edit replaces the OCSVM body with a PyOD `COPOD()` applied straight through, no internal rescaling needed.
+</say>
+<edit path="scikit-learn/custom_anomaly.py">
+<old>
+class CustomAnomalyDetector:
+    """One-Class SVM anomaly detector (ADBench protocol).
+
+    Applies MinMax normalization internally to match ADBench's
+    preprocessing. Uses PyOD defaults: kernel='rbf', nu=0.5,
+    gamma='auto' (= 1/n_features).
+    """
+
+    def __init__(self):
+        from pyod.models.ocsvm import OCSVM
+
+        # PyOD default: kernel='rbf', nu=0.5, gamma='auto'.
+        self.model = OCSVM()
+        self._scaler = None
+
+    def fit(self, X):
+        from sklearn.preprocessing import MinMaxScaler
+        self._scaler = MinMaxScaler()
+        Xs = self._scaler.fit_transform(X)
+        self.model.fit(Xs)
+        return self
+
+    def decision_function(self, X):
+        Xs = self._scaler.transform(X)
+        return self.model.decision_function(Xs)
+</old>
+<new>
+class CustomAnomalyDetector:
+    """COPOD: Copula-Based Outlier Detection.
+
+    Parameter-free method using empirical copula functions to model
+    the joint tail probability of observations across features.
+    """
+
+    def __init__(self):
+        from pyod.models.copod import COPOD
+
+        self.model = COPOD(contamination=0.1)
+
+    def fit(self, X):
+        self.model.fit(X)
+        return self
+
+    def decision_function(self, X):
+        return self.model.decision_function(X)
+</new>
+</edit>
+<obs>
+Successfully replaced text in scikit-learn/custom_anomaly.py.
+</obs>
+<run/>
+<obs>
+Measured results — `baseline:copod` (`is_final,true`), seeds {42, 123, 456} and mean.
+
+## Cardio
+| seed | AUROC | F1 |
+|---|---|---|
+| 42 | 0.9214 | 0.5337 |
+| 123 | 0.9214 | 0.5397 |
+| 456 | 0.9216 | 0.5224 |
+| **mean** | **0.9215** | **0.5319** |
+
+## Thyroid
+| seed | AUROC | F1 |
+|---|---|---|
+| 42 | 0.9398 | 0.1737 |
+| 123 | 0.9390 | 0.1830 |
+| 456 | 0.9391 | 0.1842 |
+| **mean** | **0.9393** | **0.1803** |
+
+## Satellite
+| seed | AUROC | F1 |
+|---|---|---|
+| 42 | 0.6335 | 0.4823 |
+| 123 | 0.6336 | 0.4813 |
+| 456 | 0.6334 | 0.4804 |
+| **mean** | **0.6335** | **0.4813** |
+
+## Shuttle
+| seed | AUROC | F1 |
+|---|---|---|
+| 42 | 0.9945 | 0.9502 |
+| 123 | 0.9945 | 0.9507 |
+| 456 | 0.9945 | 0.9496 |
+| **mean** | **0.9945** | **0.9502** |
+</obs>
+
+### step 4 — ECOD (Empirical-CDF Outlier Detection)   [slug:ecod]
+
+<think>
+COPOD did most of what I expected, and the place it fell short is specific enough to point at the next rung. The Satellite prediction held cleanly: where OCSVM's RBF region swung 0.55–0.67 across seeds and averaged 0.591, COPOD landed Satellite at 0.6335 with essentially zero seed variance (0.6334, 0.6335, 0.6336) — the per-feature ECDF view is deterministic and dimension-immune, so the high-dimensional collapse and the wobble are both gone, exactly as the log-sum-over-marginals construction promised. Cardio, Shuttle came in strong and stable (0.921, 0.994), and Cardio's F1 jumped to 0.532, far better than OCSVM's 0.429, because COPOD's `contamination=0.1` threshold is much closer to Cardio's true ~9.6% rate than OCSVM's `nu=0.5`. So the per-feature tail model is the right family. But two things nag. First, Thyroid: AUROC is a healthy 0.939, yet F1 collapses to 0.180 — worse than OCSVM's 0.351 there. That is the contamination knob biting again from the other side: Thyroid's true rate is ~2.5%, and COPOD's hard-wired `contamination=0.1` flags four times too many points, so a good ranking is thresholded into a poor decision. Second, Satellite is *stable but still low* at 0.634 — the lift off OCSVM is real but it remains the weak column, and the independence (product) copula is the prime suspect: if Satellite's anomalies are joint-correlation effects rather than clean marginal tails, treating features as independent leaves signal on the table. So COPOD has the right per-feature object but two residual problems — a fixed contamination assumption baked into the model, and a question about how it aggregates the per-feature tails.
+
+I want to be precise about which of those I can actually attack from inside this scaffold, because that decides the rung. The contamination mismatch on Thyroid's F1 is the cleaner target: COPOD instantiates with `contamination=0.1`, a number I cannot justify without labels and that is wrong for every dataset except by accident. The natural next move is the *parameter-free* sibling of COPOD — the same empirical-CDF tail-probability machinery, but with nothing supplied at all, not even a contamination default, so the score is fixed purely by the data and the only place a rate could enter is the harness's own thresholding (which already uses the true test contamination). That removes one of the two blind knobs entirely. And while I am rebuilding the aggregation from scratch, I get to revisit the second nag — exactly how the per-feature tails combine — and ground it in the cleanest possible derivation rather than COPOD's copula framing.
+
+So let me re-derive the per-feature tail detector from the rare-event definition, keeping what COPOD got right and tightening the aggregation. An outlier sits in a low-probability region; for a unimodal feature that means a tail. The cleanest measure of "how extreme toward the small side" is the probability of drawing something at least that small, the CDF `F(x) = P(X ≤ x)` — small `F(x)` means almost nothing in the population is as small, i.e. left-tail rarity. Estimating it nonparametrically is the empirical CDF `F_n(z) = (1/n) Σ_i 1{X_i ≤ z}`, and this is the estimator the no-labels constraint is begging for, because of *what is guaranteed about it*. Glivenko–Cantelli gives uniform convergence `sup_z |F_n − F| → 0` almost surely, and Dvoretzky–Kiefer–Wolfowitz pins the rate, `P(sup_z |F_n − F| > ε) ≤ 2 exp(−2nε²)` — and read that bound carefully: it depends only on `n` and `ε`, not on the distribution and *not on anything dimension-like*. In one dimension the ECDF is a tuning-free, dimension-free estimator of tail mass. That is the formal reason COPOD's Satellite did not collapse where OCSVM's `d`-dimensional kernel did, and it is the property I want to lean on harder.
+
+The honest object is the *joint* tail probability `P(X_1 ≤ x_1, …, X_d ≤ x_d)`, but estimating it by the joint ECDF — counting points dominated in *all* `d` coordinates at once — wrecks the dimension-free guarantee: for a point near the joint tail the AND of `d` conditions collapses to a 0/1 count, and DKW's lovely bound is a one-dimensional fact that does not survive to the `d`-dimensional indicator. So I factor the joint quantity out of one-dimensional pieces under the independence assumption `F(x) = Π_j F_j(x_j)`, trading sensitivity to pure correlation structure for `d` clean univariate ECDFs each at the dimension-free rate. (This is the same trade COPOD makes — in the copula language, asserting the trivial independence copula — and it is the same trade that costs both of us Satellite's correlated anomalies; I am not pretending to fix that here, only to remove the contamination knob and clean the aggregation.) The product of `d` numbers in `(0,1]` underflows, so I move to negative-log space, `−log Π_j p_j = −Σ_j log p_j`, monotone-ranking-preserving, and the sum is additively attributable per feature — the interpretability falls out for free, as it did for COPOD.
+
+The right tail needs its own mirror estimator, not `1 − F_n`: the strict-vs-nonstrict asymmetry and, fatally, `F_n(max) = 1 → 1 − 1 = 0 → log 0 = −∞` would detonate the score on the single most-extreme point. So estimate the right tail with its own non-strict ECDF the other way, `F̂_right(z) = (1/n) Σ_i 1{X_i ≥ z}`, which is the left ECDF run on the negated column and gives the maximum value `1/n`, log-safe. Now the aggregation, which is the one place I genuinely improve on the framing. A left-only score `O_left = −Σ_j log F̂_left` nails outliers that live on the small side and *inverts* on large-side outliers (their right neighbors look normal, the big inliers get flagged); a right-only score `O_right` does the mirror; and averaging the two tails per feature smears a genuine one-sided signal with the uninformative opposite tail. The per-feature fix is to pick the outlying tail by the sign of the feature's skewness — negative skew (long left tail) selects left, positive selects right — giving a skewness-corrected score `O_auto`. But skewness is a noisy third-moment statistic and a near-symmetric feature can still have one-sided outliers, so I do not bet everything on the selector. I take the *most extreme* verdict among the three views: `O(x) = max{ O_left(x), O_right(x), O_auto(x) }`. If a point is genuinely a left-tail outlier across the board, `O_left` speaks up even when `O_auto` mis-selected; if right-tail, `O_right`; and `O_auto` catches the mixed-skew cases. The `max` introduces nothing to tune, so the rule stays parameter-free — and that is the whole point relative to COPOD: there is no `contamination` constructor argument at all, the score is fixed entirely by the ECDF ranks and the skewness signs, and the only rate in the pipeline is the harness's thresholding against the true test contamination.
+
+I should be honest that this is a *cousin*, not a leap, past COPOD — and say exactly where the difference lives, because the canonical implementations are close. Both compute `U_l = −log(ecdf(X))`, `U_r = −log(ecdf(−X))`, and the branch-free skewness-corrected `U_skew`, and both end by taking, per feature, a max against the other views and summing. The derivational difference is the framing — COPOD assembles a joint *copula* tail probability and the math lands on the max of three aggregate sums, while this rung derives the same object directly from independent univariate ECDFs and the canonical code takes the per-feature max of `{U_left, U_right, U_skew}` then sums, an upper bound on the max-of-sums. The *operational* difference that matters for this scaffold is twofold. First, no contamination argument: COPOD's edit passed `contamination=0.1`, this one passes nothing, so the model carries no baked-in rate. Second, transductivity: the canonical ECOD `decision_function` concatenates the stored training rows with the rows being scored and computes the empirical CDFs on the *pooled* matrix before returning only the new rows' scores — so a test point is ranked against the established training distribution rather than against the test batch alone. The harness fits on the 60/40 training split and scores the test split, so this pooling is exactly the right behavior and it is what the reference numbers use. Like COPOD, this rung needs *no* internal re-normalization — the ECDF rank is invariant to the harness's StandardScaler — so the fill is the cleanest possible: a direct PyOD `ECOD()` at its defaults, fit and `decision_function` straight through, PyOD oriented higher = more anomalous. The full class body is in the answer.
+
+What I expect, against COPOD's measured numbers, stated falsifiably. Because this is the same tail-probability family, I do *not* expect a dramatic AUROC swing — I expect ECOD to track COPOD closely on ranking, since both rank by the same per-feature ECDF tails. The sharpest testable claim is on the cases where COPOD's framing or its contamination knob cost it. On Thyroid, where COPOD's F1 collapsed to 0.180 under a 0.1 contamination against a 2.5% true rate, I expect ECOD's parameter-free score to produce a *better F1* once the harness thresholds it at the true contamination — the ranking should be at least as good and the decision should stop being dragged down by a baked-in 0.1, so I would predict Thyroid F1 to lift well above 0.180, likely past OCSVM's 0.351, toward the 0.5+ range. On Cardio I expect ECOD to roughly match or slightly beat COPOD's AUROC (0.921) with a comparable or better F1, since the max-of-views aggregation is a touch more aggressive at surfacing one-sided extremes. Shuttle should stay near-perfect (COPOD was 0.994), maybe a hair lower on AUROC if its near-perfect ranking is already saturated — and I would *not* be surprised if ECOD's Shuttle F1 comes in below COPOD's 0.950, because the transductive pooling and max aggregation can shift the threshold-region ranking slightly even when the global ranking is essentially tied. Satellite is the prediction I am least optimistic about: both methods share the independence assumption, so if Satellite's anomalies are correlated-feature effects, ECOD should land *near* COPOD's 0.634, not dramatically above — confirming that the residual Satellite gap is the independence assumption, not the contamination knob or the aggregation. If ECOD instead matches COPOD's AUROCs but its Thyroid F1 also collapses, then the F1 problem is intrinsic to the tail ranking and not the knob, and the next rung must change the *ranking*, not the thresholding; if ECOD lifts Thyroid's F1 and holds everything else, then the ladder's remaining gap is squarely Satellite's correlation structure, and the strongest move left is a model that isolates joint structure without estimating a density — which is exactly where the tree-isolation view at the top of the ladder comes in. Let me swap COPOD for ECOD.
+</think>
+<say>
+Removing COPOD's last baked-in knob: ECOD is the parameter-free sibling, scoring by per-feature empirical-CDF tails aggregated with a skewness-aware max and computed transductively against the training distribution. This edit replaces the COPOD body with a bare PyOD `ECOD()`.
+</say>
+<edit path="scikit-learn/custom_anomaly.py">
+<old>
+class CustomAnomalyDetector:
+    """COPOD: Copula-Based Outlier Detection.
+
+    Parameter-free method using empirical copula functions to model
+    the joint tail probability of observations across features.
+    """
+
+    def __init__(self):
+        from pyod.models.copod import COPOD
+
+        self.model = COPOD(contamination=0.1)
+</old>
+<new>
+class CustomAnomalyDetector:
+    """ECOD anomaly detector (PyOD default, matches ADBench)."""
+
+    def __init__(self):
+        from pyod.models.ecod import ECOD
+
+        self.model = ECOD()
+</new>
+</edit>
+<obs>
+Successfully replaced text in scikit-learn/custom_anomaly.py.
+</obs>
+<run/>
+<obs>
+Measured results — `baseline:ecod` (`is_final,true`), seeds {42, 123, 456} and mean.
+
+## Cardio
+| seed | AUROC | F1 |
+|---|---|---|
+| 42 | 0.9062 | 0.4571 |
+| 123 | 0.9061 | 0.4286 |
+| 456 | 0.9090 | 0.5143 |
+| **mean** | **0.9071** | **0.4667** |
+
+## Thyroid
+| seed | AUROC | F1 |
+|---|---|---|
+| 42 | 0.9796 | 0.5946 |
+| 123 | 0.9759 | 0.4324 |
+| 456 | 0.9793 | 0.5676 |
+| **mean** | **0.9783** | **0.5315** |
+
+## Satellite
+| seed | AUROC | F1 |
+|---|---|---|
+| 42 | 0.5662 | 0.4410 |
+| 123 | 0.5631 | 0.4226 |
+| 456 | 0.5683 | 0.4459 |
+| **mean** | **0.5659** | **0.4365** |
+
+## Shuttle
+| seed | AUROC | F1 |
+|---|---|---|
+| 42 | 0.9912 | 0.8490 |
+| 123 | 0.9926 | 0.8576 |
+| 456 | 0.9921 | 0.8519 |
+| **mean** | **0.9920** | **0.8528** |
+</obs>
+
+### step 5 — Isolation Forest   [slug:isolation_forest]
+
+<think>
+ECOD's numbers confirmed both of my predictions and, in doing so, isolated the one gap the whole tail-probability family cannot close. The Thyroid F1 claim landed: COPOD's baked-in `contamination=0.1` had crushed it to 0.180, and the parameter-free ECOD lifted it to 0.531 — past OCSVM's 0.351, exactly the "remove the knob and let the harness threshold at the true rate" effect I argued for, with AUROC essentially tied (0.978 vs COPOD's 0.939, even a touch better). Cardio tracked COPOD closely (0.907 vs 0.921 AUROC), Shuttle stayed near-perfect (0.992). So the per-feature tail object is solid and the contamination problem is solved. But Satellite is the tell, and it is sharper than I expected: ECOD landed it at 0.566 — not just failing to beat COPOD's 0.634 but coming in *below* it, with the same near-zero seed variance (0.563–0.568). Two methods from the same family, both deterministic, both dimension-immune, both stuck in the low 0.6s on the one 36-feature dataset, with ECOD's slightly different aggregation actually a hair worse. That nails the diagnosis I hedged on last rung: Satellite's gap is *not* the contamination knob (ECOD removed it and Satellite did not move up) and *not* the aggregation (changing max-of-views vs copula moved it down, not up). It is the **independence assumption** itself. Both COPOD and ECOD judge each feature on its own marginal tail and multiply — so an anomaly that is only unusual in the *joint* configuration of correlated features, while sitting comfortably inside every single marginal, is invisible to them. Satellite's spectral-band features are correlated, and ~32% of its points are anomalies forming structure of their own; a per-marginal tail model cannot see a point that is ordinary on each axis but lands in a hole of the joint distribution. To beat 0.634 I have to abandon per-feature marginals entirely and use a method that responds to the *joint* placement of a point — without paying the density-estimation or distance bill that already killed OCSVM at `d=36`.
+
+So let me throw out marginal modeling and even support modeling, and go back to the two raw facts about anomalies, looking for a method that uses their *joint* geometry cheaply. Anomalies are *few* and *different*. Every method on the ladder so far has spent its effort describing normality — LOF profiled local density, OCSVM drew a boundary around the bulk, COPOD and ECOD modeled each feature's normal distribution. The objective is aimed at the wrong target: I optimize a model to describe the normal majority when the thing I care about is the rare minority at the edges, and capacity goes where the question is not. Let me stop modeling normality and ask what "few and different" *does* for me mechanically. Suppose I take the data and start chopping the feature space at random — pick an attribute, pick a split value uniformly between its current min and max, send points left or right, recurse. Where does a typical normal point end up? Buried in a dense region with many neighbors just like it, so a random cut almost never lands right next to it; it survives cut after cut, and it takes many cuts before it is finally alone. Where does an anomaly end up? It is *different* — its values sit out in a sparse region, possibly a sparse region of the *joint* space even if no single coordinate is extreme — so a random cut on the right attribute, anywhere in the wide empty gap around it, peels it off immediately. And it is *few*, so few other points shield it. The anomaly gets separated early; the normal point late. "Few and different" is not just a description — it is a statement that anomalies are *easier to isolate*, and isolation responds to the joint emptiness around a point, not to any one marginal. That is the property I can exploit without computing a distance, a density, or a per-feature CDF — and it is exactly the joint-structure sensitivity ECOD lacked.
+
+Make "separated early vs late" a number. Recursively cut until every point is alone and the process is a binary tree: each internal node is one random cut, each point ends at its own leaf, and "how many cuts to isolate `x`" is the path length `h(x)` — the number of edges from root to `x`'s leaf. Anomalies, isolated early, sit near the top: short path. Normal points, isolated late, sit deep: long path. So the anomaly score is just "short path = anomalous." No profile of normality, no marginal — only how deep a random partitioning must go to fence each point off. And it is cheap: a cut is a comparison, building a tree is near-linear, scoring is one traversal. One tree is a single noisy random draw, though — a normal point can be unlucky and get isolated early by a freak cut. The cure is the standard one for high-variance random trees: build an ensemble, each from its own randomness, and *average* `h(x)` across trees. The law of large numbers turns the noisy per-tree path length into a stable estimate of the expected path length `E(h(x))`, the unlucky cuts wash out, and as a bonus the random splits make irrelevant attributes harmless (an irrelevant attribute is just one of many a tree might cut on, diluted by averaging). So the object is: an ensemble of random partitioning trees, score by average path length.
+
+I want to *believe* "anomalies have shorter expected path length," not just narrate it, because the whole method hangs on it. Take the simplest case, three sorted points `x0 < x1 < x2` in one dimension. There are two tree shapes: if the first cut falls between `x0` and `x1` it peels `x0` at depth 1 (tree A); if between `x1` and `x2` it peels `x2` at depth 1 (tree B). Under a uniform split the probability the first cut lands in a gap is that gap's width over the total span. The middle point `x1` is isolated at depth 2 in *both* trees, so `h(x1) = 2` always; the extreme points `x0`, `x2` are at depth 1 in one tree and depth 2 in the other, so their expected depth is a mix of 1 and 2 — and the farther out a point sits (the wider its surrounding gap), the more probability mass on the tree that isolates it at depth 1, pulling its expected path length toward 1. The extreme, isolated point has shorter expected path length than the central one, and "more extreme" makes it shorter still. Scaling up, the expected path length of the m-th sorted point over all random tree shapes is symmetric and dome-shaped — smallest at the two fringes, largest in the middle — so fringe points are genuinely counted into shallower leaves by the tree shapes themselves. That is the geometric fact I need.
+
+Now turn average path length into a usable score, which needs a normalization I have to face squarely. A path length of 8 means something different in a tree over a thousand points than in a tree over sixteen; raw `E(h)` is not comparable across tree sizes and is unbounded. I need to divide by the *typical* path length for a tree of that size. And here is the piece that makes the constant exact: a fully grown isolation tree has the same structure as a binary search tree built by inserting the points — each split is a comparison, isolating a point is an unsuccessful search falling off at an external node — so the average path length to an external node equals the classical average unsuccessful-search cost of a random BST, `c(n) = 2 H(n−1) − 2(n−1)/n` with `H` the harmonic number (`≈ ln(n−1) + γ`). The score is then `s(x) = 2^(−E(h(x))/c(ψ))`, where `ψ` is the sub-sample size each tree was built from: when `E(h) → 0` (isolated immediately) `s → 1` (anomaly), when `E(h) = c(ψ)` (exactly average) `s = 0.5`, and longer paths push `s` toward 0. Bounded in (0,1], monotone, comparable across tree sizes, higher = more anomalous.
+
+And the last design choice is the one I would never have guessed and the one that matters most for Satellite. The instinct is to build each tree from the whole dataset — more data, better estimate. But check it against the two known failure modes. *Swamping*: when many normal points crowd near an anomaly, it takes more cuts to fence the anomaly off from its near-normal neighbors, so its path length creeps up toward a normal one's — the short-path signal blurs. *Masking*: when anomalies form a large dense cluster, that cluster behaves like a legitimate dense region, its members shield each other, and none isolates early — they all look normal. Both pathologies are driven by *too much data* in the tree: too many interfering normals, or too big an anomaly clump. Satellite is the worst case for both — ~32% anomalies means the anomaly "clump" is enormous and the normals crowd everything — so building trees from the full data would mask Satellite's anomalies exactly. The cure is to build each tree from a small random *sub-sample* without replacement, fresh per tree: a small sub-sample thins the crowd of interfering normals so anomalies sit in empty space again, and thins a dense anomaly cluster so its members stop shielding each other. The default `ψ = 256` (or all rows if fewer) is small on purpose, and it also caps cost at `ψ` rather than `n` — which is what lets it run on Shuttle's 49k rows in seconds. A height limit `l = ceil(log2 ψ)` skips the wasted work of fully resolving the deep normal bulk, with a `c(Size)` adjustment for the unbuilt remainder when a path stops early. This is the opposite of "more data is better," and it falls straight out of swamping and masking once I see them as crowding problems — and it is precisely the mechanism that should rescue the high-contamination dataset the marginal methods could not touch.
+
+Landing it in this scaffold: the from-scratch construction above is the derivation, but the fill is the library realization, and the differences are worth stating. The widely used implementation is `sklearn.ensemble.IsolationForest`, wrapped by PyOD as `pyod.models.iforest.IForest`, which computes the per-leaf `c(Size)` adjustment (`2(ln(n−1)+euler_gamma) − 2(n−1)/n`, with the small-n cases), sums node depths plus the adjustment over the forest, forms `2^(−depth/c(ψ))`, and inverts the sign so higher means more anomalous. The rung instantiates it explicitly rather than at bare defaults: `n_estimators=100` (the `t` that controls the variance of the averaged path length), `max_samples="auto"` (which is `min(256, n)`, the swamping/masking cure), `contamination=0.1` (which — unlike OCSVM's `nu` or COPOD's contamination — sets *only* the predict threshold, not the ranking score, so it does not contaminate AUROC and only mildly affects F1), and `random_state=SEED` so the random cuts are reproducible per seed. Like COPOD and ECOD it needs no internal re-normalization — random axis-aligned cuts are scale-equivariant within each feature's own min/max, so the harness's StandardScaler is harmless. The full class body is in the answer.
+
+What I expect, against ECOD's measured numbers, stated falsifiably. The headline claim is Satellite, the one column the whole tail family could not crack. Isolation responds to *joint* emptiness, and sub-sampling specifically defeats the masking that a 32%-anomaly dataset inflicts, so I predict Isolation Forest lifts Satellite *substantially* above ECOD's 0.566 and COPOD's 0.634 — I would expect it into the low 0.7s, the single biggest Satellite gain on the ladder, precisely because this is the first method whose mechanism (joint isolation + sub-sample-relieved masking) targets Satellite's actual failure mode. On the easy datasets I expect it to match or slightly beat the tail methods: Cardio should edge above ECOD's 0.907 (isolation handles Cardio's joint structure at least as well as marginal tails, likely ~0.94), Thyroid should stay high (~0.98), Shuttle near-perfect (~0.997). The F1 prediction is the second testable claim: because `contamination=0.1` here only sets the threshold and 0.1 is close to several true rates, and because the ranking is strong, I expect F1 to be the best on the ladder across the board — Thyroid F1 should hold around ECOD's 0.53 or better, Shuttle F1 near 0.96, Cardio F1 above ECOD's 0.467. The one place I am unsure: if Satellite's anomalies are *so* densely clustered that even a 256-point sub-sample carries enough of them to mask, then the lift will be partial and Satellite stays the weak column even at the top of the ladder — but I expect it to clearly beat 0.634, and if it does, the trajectory ends here, because no method I have tried responds to joint structure as cheaply and robustly. If instead Isolation Forest also stalls on Satellite near the tail methods' 0.6, then the dataset's anomalies are genuinely not isolation-separable and the gap is fundamental to all six approaches — but the per-seed stability of every method and the clean mechanism match make me expect the lift, which is why I rank this the strongest rung. Let me write the Isolation Forest in.
+</think>
+<say>
+Topping the ladder with Isolation Forest: an ensemble of random partitioning trees that scores a point by how few cuts it takes to isolate, responding to joint emptiness rather than per-feature marginals. This edit instantiates a PyOD `IForest` with 256-point sub-sampling (`max_samples="auto"`) to defeat the masking that pins Satellite's high-contamination column.
+</say>
+<edit path="scikit-learn/custom_anomaly.py">
+<old>
+class CustomAnomalyDetector:
+    """ECOD anomaly detector (PyOD default, matches ADBench)."""
+
+    def __init__(self):
+        from pyod.models.ecod import ECOD
+
+        self.model = ECOD()
+</old>
+<new>
+class CustomAnomalyDetector:
+    """Isolation Forest anomaly detector.
+
+    Ensemble of random isolation trees. Anomaly score is based on the
+    average path length to isolate each sample.
+    """
+
+    def __init__(self):
+        from pyod.models.iforest import IForest
+
+        self.model = IForest(
+            n_estimators=100,
+            max_samples="auto",
+            contamination=0.1,
+            random_state=SEED,
+        )
+</new>
+</edit>
+<obs>
+Successfully replaced text in scikit-learn/custom_anomaly.py.
+</obs>
+<run/>
+<obs>
+Measured results — `baseline:isolation_forest` (`is_final,true`), seeds {42, 123, 456} and mean.
+
+## Cardio
+| seed | AUROC | F1 |
+|---|---|---|
+| 42 | 0.9446 | 0.5571 |
+| 123 | 0.9308 | 0.5714 |
+| 456 | 0.9614 | 0.6286 |
+| **mean** | **0.9456** | **0.5857** |
+
+## Thyroid
+| seed | AUROC | F1 |
+|---|---|---|
+| 42 | 0.9806 | 0.5676 |
+| 123 | 0.9780 | 0.4865 |
+| 456 | 0.9854 | 0.5946 |
+| **mean** | **0.9813** | **0.5495** |
+
+## Satellite
+| seed | AUROC | F1 |
+|---|---|---|
+| 42 | 0.7135 | 0.5971 |
+| 123 | 0.7027 | 0.5823 |
+| 456 | 0.7050 | 0.5799 |
+| **mean** | **0.7071** | **0.5864** |
+
+## Shuttle
+| seed | AUROC | F1 |
+|---|---|---|
+| 42 | 0.9965 | 0.9658 |
+| 123 | 0.9979 | 0.9694 |
+| 456 | 0.9973 | 0.9537 |
+| **mean** | **0.9972** | **0.9630** |
+</obs>

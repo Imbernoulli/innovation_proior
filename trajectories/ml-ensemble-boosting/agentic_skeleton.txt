@@ -1,0 +1,856 @@
+<meta task="ml-ensemble-boosting" domain="Classical ML" file="scikit-learn/custom_boosting.py" model_format="qwen3" edit_tool="str_replace"/>
+
+<system>
+You are a research engineer improving a model on a fixed ML task. You work by editing the model code and running experiments. Think carefully before each change. You have these tools:
+- str_replace(path, old_str, new_str): replace the unique occurrence of old_str with new_str.
+- create(path, file_text): create a new file.
+- run_experiment(): train + evaluate the current code under the fixed budget; returns metrics.
+Make one tool call at a time. After editing, call run_experiment() to measure your method.
+</system>
+
+<user>
+## Research question
+
+Boosting builds a predictor as a sum of weak learners fit one after another, each round trying to
+correct what the previous rounds left wrong. With the weak learner *fixed* — a shallow
+`DecisionTree(max_depth=3)` — and the prediction-aggregation, training loop, and evaluation all frozen,
+the single thing being designed is the **boosting strategy**: how sample weights are initialized, what
+pseudo-target each new tree fits, how each tree's contribution (its `alpha`) is set, and how the sample
+weights are updated for the next round. One strategy must serve both a binary classification task and
+two regression tasks, because the harness runs the same `BoostingStrategy` on all three. Everything
+else — the tree, the learning-rate shrinkage, the score accumulation — is substrate.
+
+## Prior art before the first rung (the boosting lineage)
+
+The first rung reacts to the line of additive-model methods that precede it; the fixed substrate below
+is the shape they all converged to (sequential weak learners, a per-round contribution, a sample
+distribution).
+
+- **Weighted majority / multiplicative weights (Littlestone & Warmuth, 1994).** Maintain a weight per
+  expert, multiply down the ones that erred, predict by the weighted vote; the total-weight bookkeeping
+  factors cleanly across rounds. The template for "reweight what's wrong," but it combines a *fixed*
+  pool of experts — it does not manufacture new hypotheses aimed at the current failures. Gap: no
+  mechanism to generate the next weak learner where the committee is currently weakest.
+- **Boosting by filtering / majority-of-three (Schapire, 1990).** Proves weak learnability implies
+  strong learnability by running the weak learner on three manufactured distributions and recursing on a
+  majority-of-three. Establishes that "aim the weak learner at the hard cases" works, but the machine is
+  a rigid recursive circuit pinned to a worst-case error level, and a round that comes back unusually
+  strong cannot be cashed in. Gap: rigid, non-adaptive, cannot exploit easy rounds.
+- **Forward stagewise additive modeling (the classical least-squares residual loop).** Fit
+  `F(x) = sum_m beta_m h(x; a_m)` greedily, one term at a time, each term fit to the current residual by
+  least squares. Beautiful for squared error, where "fit the residuals" *is* the stage subproblem; but
+  for any other loss the per-stage `argmin` over `(beta, a)` has no convenient form, so each loss needs
+  its own bespoke procedure. Gap: not a single recipe across losses.
+
+## The fixed substrate
+
+A stagewise tree-boosting loop in `scikit-learn/custom_boosting.py` is frozen and must not be touched.
+It (1) calls `init_weights(n)` once; (2) for each of `n_rounds = 200` rounds, asks the strategy for
+`compute_targets`, fits a `DecisionTree(max_depth=3)` on `(X, pseudo_targets, sample_weights)`, asks
+for `compute_learner_weight` (`alpha`) and then `update_weights`; (3) renormalizes the weights, clips
+them positive, and folds the new tree into a running raw-score accumulator. The accumulator is the
+load-bearing detail every strategy must respect:
+
+- **Regression** keeps a `MeanPredictor(y_train.mean())` as the first model, then accumulates
+  `alpha * learning_rate * tree.predict(X)` per round; the final prediction is that raw score.
+- **Classification** routes a tree whose pseudo-targets are integers to a *discrete* head — a signed
+  majority vote `alpha * (2*pred - 1)` thresholded at zero — and a tree whose pseudo-targets are
+  continuous to a *continuous* head accumulating `alpha * learning_rate * pred`, also thresholded at
+  zero. The loop decides discrete-vs-continuous automatically by `np.array_equal(pt, pt.astype(int))`.
+
+So the strategy never writes leaf values and never sees the tree's splits; the only levers are the four
+methods. Available in the FIXED section: `numpy`, `sklearn.tree`, `sklearn.metrics`, `sklearn.datasets`,
+`sklearn.model_selection`. The strategy is constructed with a `config` dict carrying `task_type`,
+`n_rounds`, `learning_rate` (`0.1`), `n_samples`, `n_features`, `dataset`, `seed`.
+
+## The editable interface
+
+Exactly one region is editable — the `BoostingStrategy` class (lines 147-256 of `custom_boosting.py`).
+Every method on the ladder is a fill of this same four-method contract: `init_weights(n_samples)` (the
+starting sample distribution), `compute_targets(y, current_predictions, sample_weights, round_idx)`
+(what the next tree fits), `compute_learner_weight(learner, X, y, pseudo_targets, sample_weights,
+round_idx)` (the tree's `alpha`), and `update_weights(sample_weights, learner, X, y, pseudo_targets,
+alpha, round_idx)` (the next round's sample weights).
+
+The starting point is the scaffold default: **uniform weights, fit the raw labels, alpha = 1, never
+reweight** — the inert strategy the loop ships with. Each method replaces exactly these four bodies and
+nothing else.
+
+```python
+# EDITABLE region of custom_boosting.py (lines 147-256) — default fill (inert strategy)
+class BoostingStrategy:
+    """Sample weighting and update strategy for gradient boosting.
+
+    The fixed loop calls init_weights() once, then per round: compute_targets ->
+    fit DecisionTree(max_depth=3) on (X, pseudo_targets, sample_weights) ->
+    compute_learner_weight -> update_weights.  config carries task_type, n_rounds,
+    learning_rate, n_samples, n_features, dataset, seed.
+    """
+
+    def __init__(self, config):
+        self.config = config
+        self.task_type = config["task_type"]
+        self.n_rounds = config["n_rounds"]
+        self.learning_rate = config["learning_rate"]
+
+    def init_weights(self, n_samples):
+        return np.ones(n_samples) / n_samples                # uniform distribution
+
+    def compute_targets(self, y, current_predictions, sample_weights, round_idx):
+        return y                                             # fit the raw labels
+
+    def compute_learner_weight(self, learner, X, y, pseudo_targets,
+                                sample_weights, round_idx):
+        return 1.0                                           # every tree counts the same
+
+    def update_weights(self, sample_weights, learner, X, y, pseudo_targets,
+                       alpha, round_idx):
+        return sample_weights                                # no reweighting
+```
+
+## Evaluation settings
+
+Three datasets spanning one classification and two regression problems, each over three seeds
+{42, 123, 456}, with a single fixed configuration: 200 boosting rounds, `DecisionTree(max_depth=3)`,
+`learning_rate = 0.1`, 80/20 train/test split, standardized features.
+
+- **Breast Cancer Wisconsin** — binary classification, 569 samples, 30 features → metric
+  `test_accuracy_breast_cancer` (**higher is better**).
+- **Diabetes** — regression, 442 samples, 10 features → metric `test_rmse_diabetes` (**lower is
+  better**).
+- **California Housing** — regression, 20,640 samples, 8 features → metric
+  `test_rmse_california_housing` (**lower is better**).
+
+The editable model code is in `scikit-learn/custom_boosting.py`:
+```python
+class BoostingStrategy:
+    """Sample weighting and update strategy for gradient boosting.
+
+    This class controls how sample weights are initialized, how pseudo-targets
+    (residuals or transformed targets) are computed for the next weak learner,
+    how learner weights (alphas) are determined, and how sample weights are
+    updated after each boosting round.
+
+    The strategy is used by the fixed training loop (below) which:
+    1. Calls init_weights() once at the start
+    2. For each round t = 0..T-1:
+       a. Calls compute_targets() to get pseudo-targets for fitting the learner
+       b. Fits a base learner on (X, pseudo_targets, sample_weights)
+       c. Calls compute_learner_weight() to get alpha_t
+       d. Calls update_weights() to adjust sample weights
+
+    Args (available via self.config set in __init__):
+        n_samples: int — number of training samples
+        n_features: int — number of input features
+        n_rounds: int — total boosting rounds
+        task_type: str — 'classification' or 'regression'
+        learning_rate: float — shrinkage factor (default 0.1)
+        dataset: str — dataset name
+
+    For classification: y in {0, 1}, use signed labels y_signed = 2*y - 1
+    For regression: y is continuous, use residual-based approaches
+    """
+
+    def __init__(self, config):
+        """Initialize the boosting strategy.
+
+        Args:
+            config: dict with keys n_samples, n_features, n_rounds,
+                    task_type, learning_rate, dataset.
+        """
+        self.config = config
+        self.task_type = config["task_type"]
+        self.n_rounds = config["n_rounds"]
+        self.learning_rate = config["learning_rate"]
+
+    def init_weights(self, n_samples):
+        """Initialize sample weights.
+
+        Args:
+            n_samples: int — number of training samples.
+
+        Returns:
+            np.ndarray of shape [n_samples] — initial sample weights (should sum to 1).
+        """
+        return np.ones(n_samples) / n_samples
+
+    def compute_targets(self, y, current_predictions, sample_weights, round_idx):
+        """Compute pseudo-targets for the next weak learner to fit.
+
+        This determines WHAT the weak learner tries to predict at each round.
+
+        Args:
+            y: np.ndarray [n_samples] — true labels/targets.
+            current_predictions: np.ndarray [n_samples] — ensemble prediction so far
+                (raw scores for classification, values for regression).
+            sample_weights: np.ndarray [n_samples] — current sample weights.
+            round_idx: int — current boosting round (0-indexed).
+
+        Returns:
+            np.ndarray [n_samples] — pseudo-targets to fit the weak learner on.
+        """
+        # Default: fit on original labels (basic boosting)
+        return y
+
+    def compute_learner_weight(self, learner, X, y, pseudo_targets,
+                                sample_weights, round_idx):
+        """Compute the weight (alpha) for the newly fitted learner.
+
+        Args:
+            learner: BaseLearner — the just-fitted weak learner.
+            X: np.ndarray [n_samples, n_features] — training features.
+            y: np.ndarray [n_samples] — true labels/targets.
+            pseudo_targets: np.ndarray [n_samples] — what the learner was fit on.
+            sample_weights: np.ndarray [n_samples] — current sample weights.
+            round_idx: int — current boosting round.
+
+        Returns:
+            float — learner weight alpha_t. For classification, higher alpha
+                means more influence in the vote. For regression, alpha scales
+                the contribution (multiplied by learning_rate).
+        """
+        return 1.0
+
+    def update_weights(self, sample_weights, learner, X, y, pseudo_targets,
+                       alpha, round_idx):
+        """Update sample weights after fitting a learner.
+
+        This determines how the distribution over training samples shifts
+        to focus on harder examples in subsequent rounds.
+
+        Args:
+            sample_weights: np.ndarray [n_samples] — current sample weights.
+            learner: BaseLearner — the just-fitted weak learner.
+            X: np.ndarray [n_samples, n_features] — training features.
+            y: np.ndarray [n_samples] — true labels/targets.
+            pseudo_targets: np.ndarray [n_samples] — what the learner was fit on.
+            alpha: float — the learner's weight.
+            round_idx: int — current boosting round.
+
+        Returns:
+            np.ndarray [n_samples] — updated sample weights (should sum to 1).
+        """
+        # Default: uniform weights (no reweighting)
+        return sample_weights
+```
+Improve it. Derive your method, edit the code, then run_experiment().
+</user>
+
+### step 1 — AdaBoost (exponential-loss reweighting / AdaBoost.R2)   [slug:adaboost]
+
+<think>
+[[POLISH_REASONING: adapt to first-person agentic voice, end by deciding to implement]]
+The strategy is the whole point, but it bolts onto a loop, and the inert default fill is the floor — so the place to start is the most basic thing the four-method contract can express that is still *boosting* and not just "train one tree." The default fills give every tree the same vote, never move the sample distribution, and fit the raw labels forever; that produces 200 identical trees on the same problem and is a non-starter. The first real strategy I reach for is the original one: take a weak learner I only know to be a little better than chance, and turn it into an accurate ensemble by *aiming* it — reweight the training examples toward the cases the committee currently gets wrong, fit the weak learner on that reweighted problem, and combine the learners by a confidence-weighted vote. That is AdaBoost, and it maps onto the four methods almost cleanly: `init_weights` sets a uniform distribution, `update_weights` does the multiplicative reweighting, `compute_learner_weight` sets each tree's vote from its measured error, and `compute_targets` decides what the tree fits. The reason to start here is that it is the canonical answer to "make weak learners strong," and it exposes — in its measured numbers — exactly which design choices the later rungs will have to change.
+
+Let me be honest about why the naive thing fails, because the obstacle is the whole reason boosting reweights at all. If I have a depth-3 tree that, on any distribution I hand it, comes back a little better than chance, the tempting move is to call it many times and take a majority vote. But every call that sees the *same* distribution has nothing forcing it to disagree with the others about *which* examples it gets wrong. The tree keeps finding the same cheap regularity and keeps falling down on the same hard pocket, and a majority over correlated mistakes is still a mistake. So the problem is not "collect many weak learners." It is "make their errors point in different directions." That immediately tells me where the leverage is: the weak-learning promise is distribution-*free* — an edge on every distribution, not just the natural one — so I am allowed to be adversarial toward my own committee. After collecting some trees, I construct a distribution that puts the mass exactly where the current committee fails, and the weak learner is still obligated to find an edge *there*. The thing I have to design is the aiming: how to move from this round's distribution to the next, and how much to trust each tree in the final tally.
+
+The classic existence proofs settle that aiming works, and the *way* they settle it tells me what is still clumsy. The earliest construction runs the weak learner three times on three manufactured distributions and recurses on a majority-of-three; its error per layer is `3a^2 - 2a^3 < a` whenever `a < 1/2`, so each layer strictly shrinks the error. Beautiful as a proof, but as a machine it is a rigid recursive circuit pinned to one worst-case error level, and a sub-call that comes back far better than the worst case cannot be cashed in. The flat-majority improvement lays all the hypotheses out and takes one vote, but it computes the whole weighting schedule from a *fixed* edge `gamma` committed to before the run — a fiction, since some induced distributions are easy and others hard — and it counts every round equally in the final vote, which is plainly wrong: a tree that was much better on its slice should both push the next distribution harder and speak louder at the end.
+
+So the move that breaks the logjam is to stop treating the edge as a constant I know in advance and just *measure* it. After the weak learner returns `h_t`, I can look at its weighted error under the current distribution. That single number — the weighted fraction it misclassifies — is sitting right there, and the predecessors ignored it because they planned everything up front. I let that number drive two jobs at once: how aggressively to shift the distribution for the next round, and how much this tree counts in the final vote. A small weighted error means a strong round (shift hard, vote loud); an error near a half means the round barely helped (shift almost nothing, vote almost not at all). I do not want to guess the constants; I want the error analysis itself to dictate them.
+
+Working in the `{0,1}` convention keeps the bookkeeping honest. I keep a weight `w_i` per example, normalize to a distribution, hand it to the tree as `sample_weight`, and get back `h_t`. The weighted error is `eps_t = sum_i p_i 1[h_t(x_i) != y_i]`. The update I want is multiplicative, `w_i <- w_i * beta_t^(1 - 1[wrong])`, because multiplicative decay makes the total-weight bookkeeping factor cleanly across rounds. Check the direction: a *correct* example gets exponent `1`, so it is multiplied by `beta_t < 1` and shrinks (demote the solved case); a *wrong* example gets exponent `0`, so it is multiplied by `beta_t^0 = 1` and holds (keep the hard case heavy). That is exactly the pressure that forces the next tree onto the current failures. To choose `beta_t` I track the total weight `W_t`, bound `W_{t+1} <= W_t [1 - (1 - beta_t)(1 - eps_t)]` by the convexity of `beta^x` on `[0,1]`, lower-bound the surviving weight of any final-vote mistake, and squeeze the two handles together; minimizing each per-round factor `[eps + (1-eps)beta]/sqrt(beta)` sets `f'=0` to `(1-eps)beta = eps`, i.e. `beta_t = eps_t/(1 - eps_t)`, with minimized factor `2 sqrt(eps_t(1 - eps_t))`. The training error is then bounded by `prod_t 2 sqrt(eps_t(1-eps_t)) = exp(-2 sum_t gamma_t^2)` writing `eps_t = 1/2 - gamma_t` — exponential amplification that never needs the edge in advance and banks the actual squared edges, the slack the fixed-schedule predecessors threw away. The equivalent signed `{-1,+1}` form gives the same algorithm with `alpha_t = (1/2) log((1 - eps_t)/eps_t)` (the half is the convention: the signed margin spans width 2, the indicator width 1).
+
+Now the part that matters for landing this in *this* harness rather than the textbook, because the four-method contract and the fixed accumulator are not the paper's harness, and copying the paper would be wrong. Two things differ and I have to respect both.
+
+First, classification. The fixed loop's discrete head accumulates `alpha * (2*pred - 1)` and thresholds at zero — exactly the signed weighted vote AdaBoost wants — *provided* `compute_targets` hands the tree integer labels so the loop routes it to the discrete head (it tests `np.array_equal(pt, pt.astype(int))`). So for classification I must return the raw `y`, not residuals; that keeps the tree a `{0,1}` classifier and the loop a signed vote. The vote weight is the measured-error coefficient `0.5 * log((1-eps)/eps)`, clipped away from the `eps in {0,1}` singularities. But the harness deliberately folds the shrinkage into this `alpha`: it sets `alpha = learning_rate * 0.5 * log((1-eps)/eps)`. That is *not* the paper's discrete-AdaBoost coefficient (which carries no learning rate); it is this task's choice, because the discrete head adds `alpha*(2*pred-1)` with no separate `learning_rate` multiplier, so the only place shrinkage can enter the vote is inside `alpha` itself. I take it as given and write `alpha` with the `learning_rate` factor. The reweighting then uses the *same* coefficient: `w_i <- w_i * exp(alpha * 1[wrong])`, the one-sided `{0,1}` form that promotes the wrong examples and leaves the right ones, followed by the loop's renormalization — equivalent, after normalizing, to the signed `exp(-alpha*y*h)` update.
+
+Second, regression — and here the harness diverges from the paper's regression boosting in a way I must not paper over. The textbook regression cousin (AdaBoost.R2) bounds a per-example loss to `[0,1]`, reweights by `beta = avg_loss/(1-avg_loss)` with `w_i <- w_i * beta^(1 - L_i)`, and crucially *combines the learners by a weighted median*, because a mean is fragile — one wild learner with a large coefficient drags the ensemble arbitrarily far. But this task's fixed `ensemble_predict` has no median. For regression it keeps a `MeanPredictor` as the first model and then accumulates `alpha * learning_rate * tree.predict(X)` — a weighted *sum* of residual predictions, a stagewise additive model, not an order statistic. So the median combiner the paper relies on is simply not exposed; if I returned raw labels and tried to vote, the additive accumulator would be summing whole-label predictions and diverge. The faithful thing to do in *this* harness is to make the regression branch a residual-fitting stagewise model and keep only the *reweighting* half of R2. Concretely: `compute_targets` returns `y - current_predictions` (the residual), so each tree is a continuous learner the loop routes to its additive head; `compute_learner_weight` returns `alpha = 1.0`, because the shrinkage is already applied by the fixed loop's `alpha * learning_rate` accumulation and a per-round line search is not part of this strategy; and `update_weights` carries R2's emphasis-on-hard-examples reweighting — normalize the absolute prediction errors to `[0,1]` by their max, form `avg_loss = sum_i p_i L_i`, set `beta = avg_loss/(1 - avg_loss)`, and update `w_i <- w_i * beta^(1 - L_i)` so well-predicted samples shrink and badly-predicted ones hold, then renormalize. That is AdaBoost's adaptive reweighting grafted onto a residual-fitting additive model — the most the four-method contract and the no-median accumulator will let me express of the regression idea. The full scaffold module is in the answer.
+
+Let me pin the design choices that are not forced by the algebra but that I am relying on. The weak learner is fixed at depth 3, and that is fine: it only has to clear better-than-chance on each reweighted problem, which a shallow tree almost always does, and it must stay *weak* so each round contributes a little and later rounds still have an edge to find — a fully grown tree would drive its `eps_t` toward zero, take an enormous `alpha`, and leave no edge for anyone else. The shrinkage `learning_rate = 0.1` trades step size for round count; with 200 rounds the ensemble has room to accumulate. The `1e-10` clips on `weighted_err` keep the log finite when a round is perfect or hopeless.
+
+Now reason about what this floor must do, because that is the entire point of running it. On classification AdaBoost is in its home territory: the signed vote, the measured-error coefficient, the exponential reweighting are exactly the machinery the breast-cancer head wants, so I expect it to be strong there — possibly the *best* of the rungs, because reweighting toward the few hard, ambiguous cancer cases is precisely what adaptive boosting is good at, and the discrete vote does not suffer the residual-accumulation noise. On the two regression tasks I am much less sure, and the reason is structural: I am running AdaBoost's *reweighting* on top of a residual-fitting additive model whose combiner is a plain weighted sum, not the robust median R2 was designed around. The reweighting keeps piling mass onto the hardest-to-fit points, and a depth-3 tree fit to residuals on a distribution sharply concentrated on the worst residuals will chase those points hard — which on a noisy regression target is exactly how you *overfit the tail*. So I expect the regression numbers to be the weak spot: the strategy should fit the training residuals but generalize worse than a method that fits residuals on the *uniform* distribution, because nothing here is averaging away the variance the reweighting injects. If that is what the numbers show — strong classification, clearly worse regression than the residual-only alternative — then the diagnosis for the next step is already written: drop the sample reweighting entirely on regression, fit the negative gradient on the *uniform* distribution, and let the additive accumulator do the work.
+
+The causal chain in one breath: the inert default makes 200 identical trees, so I aim the weak learner by reweighting toward its failures (AdaBoost); measure each tree's weighted error and let that one number set both the reweighting strength `beta = eps/(1-eps)` and the vote coefficient `0.5 log((1-eps)/eps)`, with the training-error squeeze choosing those constants; route classification through the loop's discrete signed-vote head by returning raw labels, folding shrinkage into `alpha` as the harness requires; and for regression — where this harness has no weighted median, only an additive accumulator — keep only R2's hard-example reweighting on top of residual fitting with `alpha=1`. I expect strong classification and a regression weak spot from reweighting-induced variance, which is exactly the failure the next rung will fix by fitting the negative gradient on uniform weights.
+</think>
+<say>
+[[FILL_SAY: 1-2 sentences naming the method and what this first edit does]]
+</say>
+<edit path="scikit-learn/custom_boosting.py">
+<old>
+class BoostingStrategy:
+    """Sample weighting and update strategy for gradient boosting.
+
+    This class controls how sample weights are initialized, how pseudo-targets
+    (residuals or transformed targets) are computed for the next weak learner,
+    how learner weights (alphas) are determined, and how sample weights are
+    updated after each boosting round.
+
+    The strategy is used by the fixed training loop (below) which:
+    1. Calls init_weights() once at the start
+    2. For each round t = 0..T-1:
+       a. Calls compute_targets() to get pseudo-targets for fitting the learner
+       b. Fits a base learner on (X, pseudo_targets, sample_weights)
+       c. Calls compute_learner_weight() to get alpha_t
+       d. Calls update_weights() to adjust sample weights
+
+    Args (available via self.config set in __init__):
+        n_samples: int — number of training samples
+        n_features: int — number of input features
+        n_rounds: int — total boosting rounds
+        task_type: str — 'classification' or 'regression'
+        learning_rate: float — shrinkage factor (default 0.1)
+        dataset: str — dataset name
+
+    For classification: y in {0, 1}, use signed labels y_signed = 2*y - 1
+    For regression: y is continuous, use residual-based approaches
+    """
+
+    def __init__(self, config):
+        """Initialize the boosting strategy.
+
+        Args:
+            config: dict with keys n_samples, n_features, n_rounds,
+                    task_type, learning_rate, dataset.
+        """
+        self.config = config
+</old>
+<new>
+class BoostingStrategy:
+    """AdaBoost: exponential loss reweighting (classification) / AdaBoost.R2 (regression)."""
+
+    def __init__(self, config):
+        self.config = config
+</new>
+</edit>
+<obs>
+Successfully replaced text in scikit-learn/custom_boosting.py.
+</obs>
+<note>
+[[FILL_NOTE?: optional one-line thought for this edit, or delete this block]]
+</note>
+<edit path="scikit-learn/custom_boosting.py">
+<old>
+    def init_weights(self, n_samples):
+        """Initialize sample weights.
+
+        Args:
+            n_samples: int — number of training samples.
+
+        Returns:
+            np.ndarray of shape [n_samples] — initial sample weights (should sum to 1).
+        """
+        return np.ones(n_samples) / n_samples
+
+    def compute_targets(self, y, current_predictions, sample_weights, round_idx):
+        """Compute pseudo-targets for the next weak learner to fit.
+
+        This determines WHAT the weak learner tries to predict at each round.
+
+        Args:
+            y: np.ndarray [n_samples] — true labels/targets.
+            current_predictions: np.ndarray [n_samples] — ensemble prediction so far
+                (raw scores for classification, values for regression).
+            sample_weights: np.ndarray [n_samples] — current sample weights.
+            round_idx: int — current boosting round (0-indexed).
+
+        Returns:
+            np.ndarray [n_samples] — pseudo-targets to fit the weak learner on.
+        """
+        # Default: fit on original labels (basic boosting)
+        return y
+
+    def compute_learner_weight(self, learner, X, y, pseudo_targets,
+                                sample_weights, round_idx):
+        """Compute the weight (alpha) for the newly fitted learner.
+
+        Args:
+            learner: BaseLearner — the just-fitted weak learner.
+            X: np.ndarray [n_samples, n_features] — training features.
+            y: np.ndarray [n_samples] — true labels/targets.
+            pseudo_targets: np.ndarray [n_samples] — what the learner was fit on.
+            sample_weights: np.ndarray [n_samples] — current sample weights.
+            round_idx: int — current boosting round.
+
+        Returns:
+            float — learner weight alpha_t. For classification, higher alpha
+                means more influence in the vote. For regression, alpha scales
+                the contribution (multiplied by learning_rate).
+        """
+        return 1.0
+
+    def update_weights(self, sample_weights, learner, X, y, pseudo_targets,
+                       alpha, round_idx):
+        """Update sample weights after fitting a learner.
+
+        This determines how the distribution over training samples shifts
+        to focus on harder examples in subsequent rounds.
+
+        Args:
+            sample_weights: np.ndarray [n_samples] — current sample weights.
+            learner: BaseLearner — the just-fitted weak learner.
+            X: np.ndarray [n_samples, n_features] — training features.
+            y: np.ndarray [n_samples] — true labels/targets.
+            pseudo_targets: np.ndarray [n_samples] — what the learner was fit on.
+            alpha: float — the learner's weight.
+            round_idx: int — current boosting round.
+
+        Returns:
+            np.ndarray [n_samples] — updated sample weights (should sum to 1).
+        """
+        # Default: uniform weights (no reweighting)
+        return sample_weights
+</old>
+<new>
+    def init_weights(self, n_samples):
+        return np.ones(n_samples) / n_samples
+
+    def compute_targets(self, y, current_predictions, sample_weights, round_idx):
+        if self.task_type == "classification":
+            # AdaBoost fits on original labels (not residuals)
+            return y
+        else:
+            # Regression: fit on negative gradient (residuals) so that the
+            # fixed ensemble_predict accumulation (mean + sum alpha*lr*pred)
+            # works correctly.
+            return y - current_predictions
+
+    def compute_learner_weight(self, learner, X, y, pseudo_targets,
+                                sample_weights, round_idx):
+        if self.task_type == "classification":
+            preds = learner.predict(X)
+            incorrect = (preds != y).astype(float)
+            weighted_err = np.dot(sample_weights, incorrect) / sample_weights.sum()
+            weighted_err = np.clip(weighted_err, 1e-10, 1.0 - 1e-10)
+            alpha = self.learning_rate * 0.5 * np.log((1.0 - weighted_err) / weighted_err)
+            return alpha
+        else:
+            # Regression: use alpha=1.0; shrinkage is applied by the fixed
+            # ensemble_predict via learning_rate.  Sample reweighting in
+            # update_weights handles the AdaBoost.R2 emphasis on hard examples.
+            return 1.0
+
+    def update_weights(self, sample_weights, learner, X, y, pseudo_targets,
+                       alpha, round_idx):
+        preds = learner.predict(X)
+        if self.task_type == "classification":
+            incorrect = (preds != y).astype(float)
+            # w_i *= exp(alpha * I(wrong))
+            sample_weights = sample_weights * np.exp(alpha * incorrect)
+        else:
+            # AdaBoost.R2-style: reduce weight on well-predicted samples
+            # pseudo_targets are residuals; compare learner predictions to them
+            errors = np.abs(preds - pseudo_targets)
+            max_err = errors.max()
+            if max_err > 0:
+                errors = errors / max_err  # normalize to [0, 1]
+            avg_loss = np.dot(sample_weights, errors)
+            avg_loss = np.clip(avg_loss, 1e-10, 1.0 - 1e-10)
+            beta = avg_loss / (1.0 - avg_loss)
+            # Decrease weight for well-predicted samples
+            sample_weights = sample_weights * np.power(beta, 1.0 - errors)
+        # Normalize
+        sample_weights = sample_weights / sample_weights.sum()
+        return sample_weights
+</new>
+</edit>
+<obs>
+Successfully replaced text in scikit-learn/custom_boosting.py.
+</obs>
+<run/>
+<obs>
+Measured results — `baseline:adaboost` (`is_final,true`), seeds {42, 123, 456} and mean.
+
+## Breast Cancer (test_accuracy, higher is better)
+| seed | test_accuracy |
+|---|---|
+| 42 | 0.9561 |
+| 123 | 0.9737 |
+| 456 | 0.9825 |
+| **mean** | **0.9708** |
+
+## Diabetes (test_rmse, lower is better)
+| seed | test_rmse |
+|---|---|
+| 42 | 60.0245 |
+| 123 | 58.8294 |
+| 456 | 62.6515 |
+| **mean** | **60.5018** |
+
+## California Housing (test_rmse, lower is better)
+| seed | test_rmse |
+|---|---|
+| 42 | 0.6417 |
+| 123 | 0.6336 |
+| 456 | 0.6644 |
+| **mean** | **0.6466** |
+</obs>
+
+### step 2 — Gradient Boosting (negative-gradient pseudo-residual fitting)   [slug:gradient_boosting]
+
+<think>
+[[POLISH_REASONING: adapt to first-person agentic voice, end by deciding to implement]]
+AdaBoost's numbers told me exactly where it earns its keep and exactly where it bleeds, and the split is along the line I worried about going in. On breast-cancer classification it is *the best rung I will run*: mean accuracy 0.9708, with the per-seed values climbing 0.9561 / 0.9737 / 0.9825 — the signed adaptive vote, fed by reweighting toward the few ambiguous cancer cases, is doing precisely what adaptive boosting is good at, and the discrete head does not suffer any residual-accumulation noise. But on the two regression tasks it is plainly the weak spot. Diabetes lands at mean RMSE 60.50 (per-seed 60.02 / 58.83 / 62.65) and California Housing at 0.6466 (0.6417 / 0.6336 / 0.6644). Hold those California numbers in particular — they are going to be the thing the next rung crushes. The diagnosis is structural, not a tuning miss: on regression I ran AdaBoost's *reweighting* on top of a residual-fitting additive model whose combiner is a plain weighted sum, because this harness has no weighted median. The reweighting keeps concentrating the sample distribution onto the worst-fit points, and a depth-3 tree fit to residuals on a distribution sharply peaked at the hardest residuals chases exactly those points — it fits the noisy tail. Nothing in the loop averages that variance away. So the regression failure is *self-inflicted by the reweighting*: I am injecting variance into a problem that did not need it. The fix, then, is not a better reweighting — it is *no reweighting at all on regression*, and a principled choice of what each tree should fit.
+
+That reframes the question. For classification AdaBoost has a clean story (exponential loss, signed vote), but it is bespoke to that one loss. What I actually want is a single strategy whose *regression* branch is principled — fits the right thing on the uniform distribution — and whose classification branch is more than the one trick exponential loss buys. The unifying idea is to stop thinking about reweighting examples and start thinking about an additive expansion `F(x) = F_0 + sum_m beta_m h(x; a_m)` fit greedily, one tree at a time, to minimize a *differentiable loss*. At stage `m` I hold `F_{m-1}` fixed and want `argmin over (beta, a) of sum_i L(y_i, F_{m-1}(x_i) + beta h(x_i; a))`. For half squared error this is lovely: adding `beta h` means fitting `beta h` to the residual `y_i - F_{m-1}(x_i)` by least squares — the one thing the depth-3 tree does. That is matching pursuit, stagewise residual fitting, the "fit the residuals" loop. And it needs *no sample reweighting*: every example carries equal weight, the tree fits the residual on the uniform distribution, and the variance AdaBoost injected on California simply never enters. That alone should fix the regression weak spot.
+
+But the losses I actually need are not all squared error. Regression is squared error, fine; but classification is log-loss, and squared error is a terrible classification criterion. For log-loss the stage `argmin` over `(beta, a)` has no convenient form. There are bespoke procedures — exponential loss gives AdaBoost, which I just ran — but I do not want a zoo of one-off algorithms. I want a single recipe that takes any differentiable `L` and turns its stage subproblem into the one operation the tree library already does well, a least-squares fit. So the real question is: how do I make "fit the residuals" mean something for a loss that is not squared error?
+
+The move is to change what I take derivatives of. In numerical optimization, when I have a parameterized model I minimize `Phi(P) = E[L(y, F(x; P))]` by steepest descent — gradient, negative-gradient step, line search for the step length — and the final model is a sum of negative-gradient steps. That is general (it only needs `Phi` differentiable) and it has exactly the additive shape I am building. But it lives in parameter space, and my expansion has no fixed parameter vector — the trees are chosen adaptively, fresh each round. So I refuse to parameterize and take the gradient of the *function itself*: treat `F(x)`, evaluated at each training point, as its own free parameter — at the `N` training points that is just `N` numbers — and descend the empirical loss in that `N`-dimensional space. The component of the negative gradient at point `i` is `-g_i = -[dL(y_i, F(x_i))/dF(x_i)]` at `F = F_{m-1}`. That always exists. For squared error it is `y_i - F_{m-1}(x_i)`, the residual, recovering the classic loop. For log-loss it is `y_i - p_i` on the probability scale with `p = sigmoid(F)`. So the negative gradient is a vector of *pseudo-responses*, one per training point, computable for any differentiable loss.
+
+And immediately the second wall: the unconstrained negative gradient is defined only at the `N` data points. It is a list of `N` numbers with no values anywhere else, so I cannot use it as a model component — a model has to predict at new `x`. The greedy step needs a *function*, not a list. The rescue is to pick the member of my base class whose values at the training points are as close as possible to the negative gradient — the tree most parallel to `-g_m` over the data. "Most parallel," with freedom to rescale, is least squares: fit the depth-3 tree to the pseudo-responses by minimizing `sum_i (-g_m(x_i) - beta h(x_i))^2`. That is the one operation the harness already performs when it calls `tree.fit(X, pseudo_targets, sample_weight)`. The hard stage subproblem — `argmin` over `(beta, a)`, unsolvable for most losses — has been replaced by: compute the pseudo-responses (a one-line derivative), then least-squares-fit a tree to them. For squared error the pseudo-response *is* the residual, so it reduces to the classic loop, but now the same loop runs for log-loss too.
+
+Now I have to land this in *this* harness, and here is where the task's gradient_boosting differs from the textbook TreeBoost in a way I must respect rather than wish away. The full TreeBoost refinement says: once the tree's regions are fixed, give each leaf its own optimal constant by an independent per-leaf line search on the real loss, overwriting the tree's least-squares leaf values. That is strictly better — the least-squares fit *finds the regions*, the per-leaf step *sets the values* on the true loss. But this strategy *never sees the tree's leaves*. The four-method contract hands me `learner.predict(X)` and nothing else; I cannot read `tree.tree_.value` or reassign leaf constants. So the per-leaf Newton step of TreeBoost is simply not expressible here. What I *can* do is the next-best thing the contract exposes: a *global* scalar line search. The least-squares tree already carries leaf values equal to the mean residual per leaf; I size the whole tree's contribution with one scalar `alpha` chosen on the real loss, and the fixed loop folds in `alpha * learning_rate * tree.predict(X)`. So the harness reduces TreeBoost's per-leaf Newton to "least-squares direction, one global Newton-style step length." I take that as the contract.
+
+Concretely, the two branches. **Regression** is the clean case and it is exactly the fix for AdaBoost's weak spot: `init_weights` is uniform and *stays* uniform — `update_weights` returns the weights untouched, because gradient boosting does not reweight, it fits pseudo-residuals on the uniform distribution. `compute_targets` returns `y - current_predictions`, the negative gradient of squared error. `compute_learner_weight` returns `alpha = 1.0`: for squared error the optimal global step is essentially the identity (the least-squares tree already fits the residual mean per leaf), and the loop's `alpha * learning_rate` accumulation supplies the shrinkage, so there is nothing to line-search. That is it — no exponential reweighting, no `beta`, no max-normalized loss. The California variance I injected with AdaBoost.R2's reweighting is gone by construction, because every example now contributes equally to every tree's fit.
+
+**Classification** is where the global-step idea has to do real work, because squared error is the wrong criterion and I am committed to log-loss. I track the raw ensemble margin in `_raw_scores`, initialized to zeros in `init_weights`. `compute_targets` returns `y - sigmoid(_raw_scores)` — the negative gradient of log-loss on the probability scale, a bounded pseudo-response in `(-1, 1)` that shrinks toward zero for points the model already classifies confidently, which is exactly the influence structure I want: confident-correct points stop driving the fit. Because that target is continuous, the loop routes the tree to its *continuous* head (it accumulates `alpha * learning_rate * pred`), not the signed-vote head AdaBoost used. Then `compute_learner_weight` performs the global step on the true log-loss along the fitted tree direction. Expanding log-loss to second order in the increment `rho * pred`, the optimal `rho` is the Newton ratio `sum_i (pseudo_i * pred_i) / (sum_i p_i(1-p_i) * pred_i^2)` — first derivative over curvature, summed over all points. Numerator is the gradient's alignment with the tree, denominator is the summed curvature `p(1-p)` weighted by `pred^2`; I floor the denominator with `1e-10` and clamp `alpha` non-negative. `update_weights` then advances the margin: `_raw_scores += learning_rate * alpha * pred`, and leaves the sample weights uniform. So the classification branch is first-order gradient boosting with a *global* Newton line-search step length — not the per-leaf Newton of TreeBoost, which the harness will not let me write, but the faithful scalar reduction of it.
+
+Let me sanity-check the squared-error branch reduces to the right thing, because if it does not I have made an error. With `L = (y-F)^2/2`, pseudo-response is the residual, the tree fits the residual by least squares, `alpha = 1`, and the update adds `learning_rate * (mean residual per leaf)` — exactly stagewise residual fitting with shrinkage. Good. And the classification line search reduces to a sensible Newton step: when the tree is well-aligned with the gradient and the points are uncertain (`p` near `1/2`, curvature near `1/4`), `alpha` is a moderate positive step; as points become confident the curvature shrinks and the step adapts. The `max(alpha, 0)` guards against a tree that points the wrong way getting a negative weight that would corrupt the margin.
+
+The design knobs I am relying on are the same shallow-tree and shrinkage choices as before, now with a cleaner justification. Depth 3 keeps each tree a *noisy, greedy* estimate of the descent direction — the best least-squares-aligned tree to a sample-based negative gradient, which has variance and can latch onto idiosyncrasies of this training sample. If I took the full step I would commit hard to each noisy direction; the `learning_rate = 0.1` shrinkage means each tree contributes only a fraction, so the ensemble averages over many slightly-different noisy directions before moving far — variance reduction by averaging, the same reason a small learning rate stabilizes any noisy gradient descent. With 200 rounds there is room for that averaging to pay off. This is also *why* it should beat AdaBoost on regression: AdaBoost added variance (reweighting onto the tail) where gradient boosting *removes* it (uniform-distribution residual fitting plus shrinkage).
+
+So the delta from step 1 is concrete: where AdaBoost reweighted toward the worst residuals and combined by a fragile weighted sum, gradient boosting fits the negative gradient on the *uniform* distribution and never reweights, sizing each tree by a global step — `alpha=1` for squared-error regression, a Newton line search for log-loss classification, with the margin tracked in `_raw_scores`. The full scaffold module is in the answer. Reading AdaBoost's measured shape, here are the falsifiable claims. On the two *regression* tasks I expect a clear improvement, and California is the sharpest test: AdaBoost's 0.6466 mean was inflated by reweighting variance, so removing the reweighting should drop the RMSE substantially — if uniform-distribution residual fitting is the right diagnosis, California should fall well below 0.6 and diabetes should drop from 60.50 toward the high-50s. The seed-456 diabetes outlier (AdaBoost 62.65) is the riskier one: a single hard seed could stay high even without reweighting, since the residual structure itself may be hard there. On *classification* I expect to *give a little back*: AdaBoost's signed adaptive vote at 0.9708 is genuinely strong on breast cancer, and a continuous-head log-loss model with a global Newton step is a different, smoother object — I would not be surprised if breast-cancer accuracy slips slightly below 0.97, the price of trading the bespoke exponential-loss vote for a general-loss additive model. If that is the pattern — regression clearly up, classification slightly down — then the next rung's job is already named: the global scalar step is leaving second-order information on the table that a *per-example* Hessian weighting would recover, and that is where I go next.
+
+The causal chain in one breath: AdaBoost's reweighting injected variance on regression (California 0.6466, diabetes 60.50) while being strong on classification (0.9708) → drop reweighting entirely and fit an additive model to a differentiable loss → the stage subproblem is unsolvable for non-squared losses, so take the negative gradient in function space (`y - F` for squared error, `y - sigmoid(raw)` for log-loss) and least-squares-fit the tree to it → the harness hides the leaves, so size each tree by a *global* step instead of TreeBoost's per-leaf Newton (`alpha=1` for regression, the Newton ratio `sum(g*pred)/sum(p(1-p)*pred^2)` for classification), tracking the margin in `_raw_scores`, weights left uniform → expecting regression to improve sharply (California below 0.6) and classification to give back a little, which sets up the second-order rung.
+</think>
+<say>
+[[FILL_SAY: 1-2 sentences naming the method and what this first edit does]]
+</say>
+<edit path="scikit-learn/custom_boosting.py">
+<old>
+class BoostingStrategy:
+    """AdaBoost: exponential loss reweighting (classification) / AdaBoost.R2 (regression)."""
+</old>
+<new>
+class BoostingStrategy:
+    """Gradient Boosting: negative gradient (pseudo-residual) fitting."""
+</new>
+</edit>
+<obs>
+Successfully replaced text in scikit-learn/custom_boosting.py.
+</obs>
+<note>
+[[FILL_NOTE?: optional one-line thought for this edit, or delete this block]]
+</note>
+<edit path="scikit-learn/custom_boosting.py">
+<old>
+        self.learning_rate = config["learning_rate"]
+
+    def init_weights(self, n_samples):
+        return np.ones(n_samples) / n_samples
+
+    def compute_targets(self, y, current_predictions, sample_weights, round_idx):
+        if self.task_type == "classification":
+            # AdaBoost fits on original labels (not residuals)
+            return y
+        else:
+            # Regression: fit on negative gradient (residuals) so that the
+            # fixed ensemble_predict accumulation (mean + sum alpha*lr*pred)
+            # works correctly.
+            return y - current_predictions
+
+    def compute_learner_weight(self, learner, X, y, pseudo_targets,
+                                sample_weights, round_idx):
+        if self.task_type == "classification":
+            preds = learner.predict(X)
+            incorrect = (preds != y).astype(float)
+            weighted_err = np.dot(sample_weights, incorrect) / sample_weights.sum()
+            weighted_err = np.clip(weighted_err, 1e-10, 1.0 - 1e-10)
+            alpha = self.learning_rate * 0.5 * np.log((1.0 - weighted_err) / weighted_err)
+            return alpha
+        else:
+            # Regression: use alpha=1.0; shrinkage is applied by the fixed
+            # ensemble_predict via learning_rate.  Sample reweighting in
+            # update_weights handles the AdaBoost.R2 emphasis on hard examples.
+            return 1.0
+
+    def update_weights(self, sample_weights, learner, X, y, pseudo_targets,
+                       alpha, round_idx):
+        preds = learner.predict(X)
+        if self.task_type == "classification":
+            incorrect = (preds != y).astype(float)
+            # w_i *= exp(alpha * I(wrong))
+            sample_weights = sample_weights * np.exp(alpha * incorrect)
+        else:
+            # AdaBoost.R2-style: reduce weight on well-predicted samples
+            # pseudo_targets are residuals; compare learner predictions to them
+            errors = np.abs(preds - pseudo_targets)
+            max_err = errors.max()
+            if max_err > 0:
+                errors = errors / max_err  # normalize to [0, 1]
+            avg_loss = np.dot(sample_weights, errors)
+            avg_loss = np.clip(avg_loss, 1e-10, 1.0 - 1e-10)
+            beta = avg_loss / (1.0 - avg_loss)
+            # Decrease weight for well-predicted samples
+            sample_weights = sample_weights * np.power(beta, 1.0 - errors)
+        # Normalize
+        sample_weights = sample_weights / sample_weights.sum()
+        return sample_weights
+</old>
+<new>
+        self.learning_rate = config["learning_rate"]
+        # Track raw scores for logistic gradient computation
+        self._raw_scores = None
+
+    def init_weights(self, n_samples):
+        # Gradient boosting uses uniform weights (no reweighting);
+        # the key insight is fitting to pseudo-residuals instead.
+        self._raw_scores = np.zeros(n_samples)
+        return np.ones(n_samples) / n_samples
+
+    def _sigmoid(self, x):
+        return 1.0 / (1.0 + np.exp(-np.clip(x, -500, 500)))
+
+    def compute_targets(self, y, current_predictions, sample_weights, round_idx):
+        if self.task_type == "regression":
+            # Negative gradient of squared error = residuals
+            return y - current_predictions
+        else:
+            # Negative gradient of log-loss (logistic)
+            # For log-loss: -dL/dF = y - sigmoid(F)
+            probs = self._sigmoid(self._raw_scores)
+            return y - probs
+
+    def compute_learner_weight(self, learner, X, y, pseudo_targets,
+                                sample_weights, round_idx):
+        if self.task_type == "regression":
+            # Standard gradient boosting: alpha=1, shrinkage via learning_rate in ensemble
+            return 1.0
+        else:
+            # For classification: use line search on log-loss
+            preds = learner.predict(X)
+            # Approximate optimal step size via Newton step
+            probs = self._sigmoid(self._raw_scores)
+            numerator = np.sum(pseudo_targets * preds)
+            denominator = np.sum(probs * (1 - probs) * preds ** 2) + 1e-10
+            alpha = numerator / denominator
+            return max(alpha, 0.0)
+
+    def update_weights(self, sample_weights, learner, X, y, pseudo_targets,
+                       alpha, round_idx):
+        # Gradient boosting doesn't reweight samples; it fits to pseudo-residuals.
+        # But we update raw scores for classification gradient computation.
+        if self.task_type == "classification":
+            preds = learner.predict(X)
+            self._raw_scores += self.learning_rate * alpha * preds
+        # Weights stay uniform
+        return sample_weights
+</new>
+</edit>
+<obs>
+Successfully replaced text in scikit-learn/custom_boosting.py.
+</obs>
+<run/>
+<obs>
+Measured results — `baseline:gradient_boosting` (`is_final,true`), seeds {42, 123, 456} and mean.
+
+## Breast Cancer (test_accuracy, higher is better)
+| seed | test_accuracy |
+|---|---|
+| 42 | 0.9561 |
+| 123 | 0.9561 |
+| 456 | 0.9737 |
+| **mean** | **0.9620** |
+
+## Diabetes (test_rmse, lower is better)
+| seed | test_rmse |
+|---|---|
+| 42 | 54.7917 |
+| 123 | 54.1198 |
+| 456 | 67.5465 |
+| **mean** | **58.8193** |
+
+## California Housing (test_rmse, lower is better)
+| seed | test_rmse |
+|---|---|
+| 42 | 0.5113 |
+| 123 | 0.4922 |
+| 456 | 0.4970 |
+| **mean** | **0.5002** |
+</obs>
+
+### step 3 — XGBoost-style (second-order regularized Newton step)   [slug:xgboost_style]
+
+<think>
+[[POLISH_REASONING: adapt to first-person agentic voice, end by deciding to implement]]
+Gradient boosting did what I predicted and the numbers say it cleanly. On the two regression tasks it crushed AdaBoost exactly where I said the reweighting was bleeding: California Housing fell from 0.6466 to **0.5002** — a 23% drop, and the per-seed spread tightened to 0.5113 / 0.4922 / 0.4970 — and diabetes fell from 60.50 to **58.82**. Removing the reweighting and fitting residuals on the uniform distribution was the right diagnosis: the variance AdaBoost injected on the noisy tail is gone, and shrinkage over 200 rounds averaged the noisy greedy directions. The one place it stayed hard is the diabetes seed-456 outlier, 67.55 — exactly the risk I flagged, a seed whose residual structure is genuinely hard and that no amount of removing reweighting can rescue; it drags the diabetes mean up and inflates the std. And on classification it gave a little back, also as predicted: breast-cancer accuracy slipped from AdaBoost's 0.9708 to **0.9620** (0.9561 / 0.9561 / 0.9737). That slip is the tell I want to chase. I traded AdaBoost's bespoke signed exponential-loss vote for a general continuous-head log-loss model sized by a *global* scalar step, and the global step is the part leaving something on the table.
+
+Here is the precise thing the global step throws away. In the classification branch I sized each tree by one Newton ratio `sum_i (g_i * pred_i) / sum_i (p_i(1-p_i) * pred_i^2)` — a single scalar for the *whole* tree. That uses the curvature `p(1-p)` only to set one global step length. But the curvature is *per example*, and it varies enormously across the data: a confidently-classified point has curvature near zero, a maximally-uncertain point near `1/4`. Collapsing all of that into one scalar means a leaf full of uncertain points and a leaf full of confident points get scaled by the *same* factor, when the right Newton step is leaf-specific — large where curvature is small and the gradient is real, small where curvature is large. AdaBoost's per-round coefficient was at least *adaptive to that round's error*; my global step is adaptive only to the round's aggregate alignment. So the question for this rung is: how do I get the per-example second-order information *into* the fit, not just into a single scalar?
+
+Let me derive what a second-order round actually wants, from the per-round objective rather than by analogy, because that is the only way to be sure what the harness is and is not letting me keep. At round `t`, add one tree `f_t` to the frozen model and minimize `sum_i L(y_i, yhat_i^(t-1) + f_t(x_i))` plus a complexity penalty. Expand the loss to second order in the increment:
+
+`L(y_i, yhat_i + f_t(x_i)) ~= L(y_i, yhat_i) + g_i f_t(x_i) + 0.5 h_i f_t(x_i)^2`,
+
+where `g_i` is the first derivative and `h_i` the second derivative of the loss with respect to the current prediction. The first term is constant for this round, so the objective is `sum_i [g_i f_t(x_i) + 0.5 h_i f_t(x_i)^2] + Omega(f_t)`. This is the generalization of gradient boosting: first-order boosting kept only the `g_i` term and fit `-g_i` by least squares; second-order boosting keeps the curvature `h_i` too. Completing the square on a single point shows what the curvature buys:
+
+`g_i f_i + 0.5 h_i f_i^2 = 0.5 h_i (f_i - (-g_i/h_i))^2 + const`.
+
+So the exact second-order round is a *weighted* least-squares fit to the Newton target `z_i = -g_i/h_i` with per-example weight `h_i`. That is the canonical move: not "fit `-g_i` and adjust the step later," but fit the working response `-g_i/h_i` weighted by the curvature. For log-loss with `p = sigmoid(F)`, `g_i = p_i - y_i` and `h_i = p_i(1-p_i)`, so `z_i = (y_i - p_i)/(p_i(1-p_i))` weighted by `p_i(1-p_i)` — exactly the LogitBoost / IRLS working response. For squared error `g_i = F_i - y_i` and `h_i = 1`, so `z_i` is the plain residual with unit weight, which is why first-order and second-order coincide for squared error.
+
+Now put regularization *inside* the same objective, because the curvature without a regularizer is dangerous. A regression tree is `f(x) = w_{q(x)}` with leaves `j`, leaf scores `w_j`. The natural complexity cost is `Omega(f) = gamma*T + 0.5*lambda*sum_j w_j^2` — the `gamma*T` charges for extra leaves, the L2 term shrinks leaf scores and *stabilizes Newton steps in low-curvature leaves*. With leaf statistics `G_j = sum_{i in leaf j} g_i` and `H_j = sum_{i in leaf j} h_i`, every point in a leaf gets the same `w_j`, so the objective separates into independent one-variable quadratics `sum_j [G_j w_j + 0.5(H_j + lambda) w_j^2] + gamma*T`. Differentiating each leaf gives the optimal leaf value in closed form,
+
+`w_j* = -G_j/(H_j + lambda)`,
+
+and substituting back gives the structure score `-0.5 sum_j G_j^2/(H_j + lambda) + gamma*T`, from which the split gain `0.5[G_L^2/(H_L+lambda) + G_R^2/(H_R+lambda) - G^2/(H+lambda)] - gamma` follows. The Hessian is not a later correction — it is the denominator of the leaf value, and `lambda` prevents a large gradient sum in a low-curvature leaf from producing a wild score. The same `(G,H)` expression scores the split *and* sets the leaf: one object, not two patched-together steps.
+
+That is the faithful second-order method. And now I have to be brutally honest about what this harness exposes, because the faithful artifact requires building the tree from the `(G,H)` gain and writing `w_j* = -G_j/(H_j+lambda)` into every leaf — and the four-method contract does *none* of that. The base learner is the fixed sklearn `DecisionTree`; I do not control its split criterion (so the `(G,H)` gain is unavailable), and I never see or write its leaf values (so `-G_j/(H_j+lambda)` is unavailable). The per-example Hessian *weighting* of the fit is the one piece I might hope to slip in through `sample_weights` — fit the tree with `sample_weight = h_i` on target `z_i = -g_i/h_i` — but the harness's loop sets the sample weights from `update_weights` and computes the targets from `compute_targets`, and the targets for classification are already `y - sigmoid(raw)` (the bare `-g`, since for log-loss `-g/h = (y-p)/(p(1-p))` would *divide by a vanishing curvature* and blow up the targets on confident points, the exact LogitBoost instability). So the honest reduction this task's `xgboost_style` actually ships is *not* the canonical `(G,H)` tree, nor even the Hessian-weighted Newton fit. It is the same first-order tree as gradient boosting, with the second-order information confined — again — to a *global* scalar line search, but now with two changes that distinguish it from the gradient-boosting rung.
+
+The two changes are exactly what `+lambda` and the regression line search give me within the global-step world. First, the global step now carries the L2 regularizer in its denominator: `alpha = sum_i (g_i pred_i) / (sum_i h_i pred_i^2 + reg_lambda)` with `reg_lambda = 1.0`. That is the global analogue of `w_j* = -G_j/(H_j+lambda)` — the same regularized-Newton denominator, but aggregated over the whole tree instead of per leaf. It damps the step when the summed curvature is small, which is precisely when the unregularized gradient-boosting step (`+1e-10` denominator) could overshoot. Second — and this is the real delta from the previous rung — I apply the *same line search to regression*, where gradient boosting just used `alpha = 1.0`. For squared error `h_i = 1`, so `alpha = sum_i (pseudo_i pred_i)/(sum_i pred_i^2 + reg_lambda)`: a regularized least-squares step length along the fitted tree, shrunk toward zero by `reg_lambda` relative to the implicit `alpha=1` gradient boosting used. So `xgboost_style` regression is gradient-boosting regression plus a global Newton line search with L2 — and that L2-damped step is the lever that should buy the small extra accuracy on the regression tasks.
+
+Let me check the regression branch reduces sensibly. With `h_i = 1`, `alpha = sum(pseudo*pred)/(sum(pred^2)+1.0)`. The least-squares tree fits `pseudo` (the residual), so `sum(pseudo*pred)/sum(pred^2)` is the ordinary least-squares scale of the tree onto the residual — essentially 1 when the tree fits the residual well — and the `+1.0` shrinks it slightly. So I expect `alpha` near 1 but a touch under, a mild extra shrinkage on top of the loop's `learning_rate`. The classification branch is gradient boosting's Newton ratio with `+reg_lambda` swapped for `+1e-10` in the denominator: a more conservative global step. Neither branch recovers the *per-leaf* Newton step — that is the part the harness structurally cannot express, and I name it plainly so the trajectory does not oversell a global scalar as the canonical second-order tree.
+
+The design choices I am keeping: depth-3 trees (still weak, still the noisy greedy direction estimate I want to average), `learning_rate = 0.1`, 200 rounds, the `_raw_scores` margin tracking for classification, uniform weights throughout (this is a residual/gradient method, not a reweighting one). The only genuinely new constant is `reg_lambda = 1.0`, the global L2 in every step's denominator.
+
+So the delta from step 2: keep gradient boosting's negative-gradient targets and uniform weights, but size *every* tree (regression included) by a regularized global Newton step `sum(g*pred)/(sum(h*pred^2)+reg_lambda)` with `reg_lambda=1.0`, where `h=1` for squared error and `h=p(1-p)` for log-loss. The full scaffold module is in the answer. Reading gradient boosting's measured shape, the falsifiable claims are deliberately modest, because the harness has reduced the second-order idea to a global-step refinement and I should not expect a regime change. On *regression* I expect a tie-to-slight-improvement: the L2-damped line search should hold diabetes around 58.8 and California around 0.50, possibly nudging diabetes a hair below 58.82 since the regularized step is a touch better calibrated than the fixed `alpha=1` — but the diabetes seed-456 outlier (67.55) is residual-structure-hard and will stay high regardless, so the diabetes *mean* will barely move. On *classification* the honest expectation is also a near-tie, *not* a recovery to AdaBoost's 0.9708: the conservative `+reg_lambda` step is still a global scalar, so it cannot recover the per-example second-order information the per-leaf Newton would, and breast-cancer accuracy should land near gradient boosting's 0.9620 — I would not be surprised if it ends up marginally *lower* on one seed, because a more damped step can underfit the few hard cancer cases that the bespoke vote handled. The thing I would genuinely want to validate, if the harness exposed it, is the gap between this global-step `xgboost_style` and a true `(G,H)` tree with per-leaf `-G/(H+lambda)` and gain-based splits — that is where the real second-order win lives, and it is exactly the win this fixed-tree contract does not let me collect.
+
+The causal chain in one breath: gradient boosting fixed regression (California 0.5002, diabetes 58.82) but gave back classification (0.9620) because its *global* step uses per-example curvature only as one scalar → the second-order objective wants a Hessian-weighted Newton fit `z_i=-g_i/h_i`, weight `h_i`, with regularized per-leaf value `-G_j/(H_j+lambda)` and gain-based splits → but the fixed sklearn tree exposes neither leaves nor split criterion, and the `-g/h` target divides by vanishing curvature, so the harness keeps the first-order target and confines second-order info to a *regularized global* Newton step `sum(g*pred)/(sum(h*pred^2)+reg_lambda)` with `reg_lambda=1.0`, now applied to regression too → expecting regression to hold or nudge down and classification to stay near 0.9620 (no per-leaf recovery), with the true second-order win sitting in the `(G,H)` tree this contract cannot build.
+</think>
+<say>
+[[FILL_SAY: 1-2 sentences naming the method and what this first edit does]]
+</say>
+<edit path="scikit-learn/custom_boosting.py">
+<old>
+class BoostingStrategy:
+    """Gradient Boosting: negative gradient (pseudo-residual) fitting."""
+</old>
+<new>
+class BoostingStrategy:
+    """XGBoost-style: second-order Newton boosting with regularization."""
+</new>
+</edit>
+<obs>
+Successfully replaced text in scikit-learn/custom_boosting.py.
+</obs>
+<note>
+[[FILL_NOTE?: optional one-line thought for this edit, or delete this block]]
+</note>
+<edit path="scikit-learn/custom_boosting.py">
+<old>
+        self.learning_rate = config["learning_rate"]
+        # Track raw scores for logistic gradient computation
+        self._raw_scores = None
+
+    def init_weights(self, n_samples):
+        # Gradient boosting uses uniform weights (no reweighting);
+        # the key insight is fitting to pseudo-residuals instead.
+        self._raw_scores = np.zeros(n_samples)
+</old>
+<new>
+        self.learning_rate = config["learning_rate"]
+        # L2 regularization on leaf weights (lambda in XGBoost)
+        self.reg_lambda = 1.0
+        # Track raw scores for gradient/Hessian computation
+        self._raw_scores = None
+
+    def init_weights(self, n_samples):
+        self._raw_scores = np.zeros(n_samples)
+</new>
+</edit>
+<obs>
+Successfully replaced text in scikit-learn/custom_boosting.py.
+</obs>
+<note>
+[[FILL_NOTE?: optional one-line thought for this edit, or delete this block]]
+</note>
+<edit path="scikit-learn/custom_boosting.py">
+<old>
+        else:
+            # Negative gradient of log-loss (logistic)
+            # For log-loss: -dL/dF = y - sigmoid(F)
+            probs = self._sigmoid(self._raw_scores)
+</old>
+<new>
+        else:
+            # Negative gradient of log-loss
+            probs = self._sigmoid(self._raw_scores)
+</new>
+</edit>
+<obs>
+Successfully replaced text in scikit-learn/custom_boosting.py.
+</obs>
+<note>
+[[FILL_NOTE?: optional one-line thought for this edit, or delete this block]]
+</note>
+<edit path="scikit-learn/custom_boosting.py">
+<old>
+                                sample_weights, round_idx):
+        if self.task_type == "regression":
+            # Standard gradient boosting: alpha=1, shrinkage via learning_rate in ensemble
+            return 1.0
+        else:
+            # For classification: use line search on log-loss
+            preds = learner.predict(X)
+            # Approximate optimal step size via Newton step
+            probs = self._sigmoid(self._raw_scores)
+            numerator = np.sum(pseudo_targets * preds)
+            denominator = np.sum(probs * (1 - probs) * preds ** 2) + 1e-10
+            alpha = numerator / denominator
+</old>
+<new>
+                                sample_weights, round_idx):
+        preds = learner.predict(X)
+        if self.task_type == "regression":
+            # Newton step: sum(gradient * pred) / (sum(hessian * pred^2) + lambda)
+            # For squared error: gradient = residual, hessian = 1
+            numerator = np.sum(pseudo_targets * preds)
+            denominator = np.sum(preds ** 2) + self.reg_lambda
+            alpha = numerator / denominator
+            return max(alpha, 0.0)
+        else:
+            # For log-loss: hessian = p*(1-p)
+            probs = self._sigmoid(self._raw_scores)
+            hessians = probs * (1.0 - probs)
+            numerator = np.sum(pseudo_targets * preds)
+            denominator = np.sum(hessians * preds ** 2) + self.reg_lambda
+            alpha = numerator / denominator
+</new>
+</edit>
+<obs>
+Successfully replaced text in scikit-learn/custom_boosting.py.
+</obs>
+<note>
+[[FILL_NOTE?: optional one-line thought for this edit, or delete this block]]
+</note>
+<edit path="scikit-learn/custom_boosting.py">
+<old>
+                       alpha, round_idx):
+        # Gradient boosting doesn't reweight samples; it fits to pseudo-residuals.
+        # But we update raw scores for classification gradient computation.
+        if self.task_type == "classification":
+            preds = learner.predict(X)
+            self._raw_scores += self.learning_rate * alpha * preds
+        # Weights stay uniform
+        return sample_weights
+</old>
+<new>
+                       alpha, round_idx):
+        # XGBoost uses second-order info, not sample reweighting.
+        # Update raw scores for next round's gradient computation.
+        preds = learner.predict(X)
+        self._raw_scores += self.learning_rate * alpha * preds
+        # Weights stay uniform — boosting signal is in the pseudo-residuals
+        return sample_weights
+</new>
+</edit>
+<obs>
+Successfully replaced text in scikit-learn/custom_boosting.py.
+</obs>
+<run/>
+<obs>
+Measured results — `baseline:xgboost_style` (`is_final,true`), seeds {42, 123, 456} and mean.
+
+## Breast Cancer (test_accuracy, higher is better)
+| seed | test_accuracy |
+|---|---|
+| 42 | 0.9561 |
+| 123 | 0.9649 |
+| 456 | 0.9561 |
+| **mean** | **0.9590** |
+
+## Diabetes (test_rmse, lower is better)
+| seed | test_rmse |
+|---|---|
+| 42 | 54.5475 |
+| 123 | 54.0939 |
+| 456 | 67.5534 |
+| **mean** | **58.7316** |
+
+## California Housing (test_rmse, lower is better)
+| seed | test_rmse |
+|---|---|
+| 42 | 0.5118 |
+| 123 | 0.4935 |
+| 456 | 0.4954 |
+| **mean** | **0.5002** |
+</obs>
+

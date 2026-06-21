@@ -1,0 +1,996 @@
+<meta task="llm-pretrain-linear-attention" domain="Language models" file="nanoGPT/custom_pretrain.py" model_format="qwen3" edit_tool="str_replace"/>
+
+<system>
+You are a research engineer improving a model on a fixed ML task. You work by editing the model code and running experiments. Think carefully before each change. You have these tools:
+- str_replace(path, old_str, new_str): replace the unique occurrence of old_str with new_str.
+- create(path, file_text): create a new file.
+- run_experiment(): train + evaluate the current code under the fixed budget; returns metrics.
+Make one tool call at a time. After editing, call run_experiment() to measure your method.
+</system>
+
+<user>
+## Research question
+
+Pretrain a GPT-style language model whose sequence mixer is **linear or otherwise subquadratic** in
+sequence length, yet stays competitive in language-model quality with standard quadratic softmax
+attention. Softmax attention forms an `L×L` score matrix, so both compute and memory grow like `L²`,
+and at inference the key/value cache grows with the context already generated. The single thing being
+designed is the **attention sublayer** — the `CausalSelfAttention` class, and the `Block` structure
+that wraps it — replaced by a mechanism with a fixed-size state and a subquadratic training path.
+Everything else about the model and the training pipeline is fixed. Cheapness is easy; cheapness that
+does not lose quality against a strong softmax Transformer on the same data is the whole problem.
+
+## Prior art before the first rung (the subquadratic-mixer lineage)
+
+The first rung reacts to a line of efficient-attention work, each member of which buys one property and
+gives up another. These are the ancestors the ladder climbs out of.
+
+- **Linear attention (Katharopoulos et al. 2020).** Replace the softmax kernel `exp(qₜ·kᵢ)` with a
+  plain feature-map dot product `φ(qₜ)·φ(kᵢ)`, so `φ(qₜ)` factors out of the causal sum and the layer
+  becomes a linear RNN with a matrix-valued state `Sₜ = S_{t−1} + kₜᵀvₜ`, read by `oₜ = qₜ Sₜ`. Gives
+  `O(1)`-per-step inference with no growing cache. **Gap:** the additive write never forgets — the
+  state only accumulates outer products — so old content dilutes the present, and it loses to softmax
+  on language modeling, badly on recall.
+- **State-space models (S4, Gu et al. 2021).** A linear recurrence `sₜ = A s_{t−1} + B xₜ`, `oₜ = C sₜ`
+  whose unrolled form is a convolution computable by FFT — parallel to train, strong at long range.
+  **Gap:** `A,B,C` are input-independent, so it does not do the content-based comparison attention
+  does; it cannot decide from the token what to keep.
+- **Fixed-decay linear attention / "ALiBi-in-the-recurrence."** Add a single global scalar decay,
+  `Sₜ = γ S_{t−1} + kₜᵀvₜ` — a recency bias that clearly helps over no decay and keeps the parallel
+  matmul form intact (a scalar pulls out of the cumulative product). **Gap:** one fixed forgetting
+  rate for every token, channel, and context — a data-independent gate, exactly the thing 1-D RNN
+  experience says a forget gate must *not* be.
+- **Gated RNNs / the forget gate (LSTM; Gers et al. 2000).** The lesson the whole ladder leans on: the
+  single most important component of a gated cell is the multiplicative forget gate `fₜ ⊙ c_{t−1}`, and
+  it must be **data-dependent** to do its job. Plain linear attention is precisely a gateless RNN.
+  **Gap:** a generic RNN forget gate depends on the previous *state*, which serializes training and
+  kills the parallel form.
+
+## The fixed substrate
+
+A nanoGPT pretraining loop is frozen and must not be touched. **Model:** GPT-2 Medium — 24 layers, 16
+heads, `n_embd = 1024`, ~355M parameters, tied input/output embeddings, pre-norm blocks, a 4·d GELU
+MLP, weight-tied LM head. **Data:** FineWeb `sample-10BT`, GPT-2 tokenizer, ~7.1B training tokens,
+block size 1024. **Optimization:** AdamW (β = 0.9/0.95, weight decay 0.1), cosine LR schedule with 4%
+warmup, peak LR 6e-4, gradient clip 1.0, bf16, 13,535 iterations, micro-batch 32, gradient
+accumulation 16, 2-GPU DDP. The data loader, tokenizer, schedule, evaluation code, and checkpointing
+are all out of scope.
+
+Two facts about the substrate are load-bearing for every rung. First, the model **conditionally** adds
+learned absolute position embeddings: in `GPT.forward` it reads `self.transformer.h[0].attn.use_pos_emb`
+and only adds `wpe` if that flag is `True`. Any mixer whose own decay/rotation already carries relative
+position sets `self.use_pos_emb = False` in `__init__` and the loop skips `wpe`. Second, **`torch.compile`
+is disabled** for this task because the FLA Triton kernels are not compatible with it. The
+`flash-linear-attention` (FLA) library is pre-installed and exposes 27+ optimized linear-attention
+layers with hardware-efficient chunkwise Triton kernels (`fla.layers.GatedLinearAttention`, `DeltaNet`,
+`MultiScaleRetention`, `Mamba2`, `RWKV6Attention`, `GatedDeltaNet`, …); a rung may import one of these
+or implement its own mechanism from scratch.
+
+## The editable interface
+
+Exactly two regions of `nanoGPT/custom_pretrain.py` are editable: the **`CausalSelfAttention` class**
+(lines 33–70 — the mixer itself: Q/K/V projections, feature maps, gating, decay, recurrent state) and
+the **`Block` class** (lines 88–100 — how the attention and MLP sublayers compose, norm placement,
+residuals). Every rung on the ladder is a fill of these two regions and nothing else. The contract is
+fixed by the rest of the loop: `CausalSelfAttention.forward(x)` takes `x: (B, T, n_embd)` and returns a
+tensor of the same shape; `__init__(config)` receives a `GPTConfig` with `n_embd`, `n_head`, `dropout`,
+`bias`, `block_size`. A mixer that does not use `wpe` sets `self.use_pos_emb = False`.
+
+The starting point is the scaffold default: **standard multi-head softmax attention** (FlashAttention
+via `scaled_dot_product_attention`, learned position embeddings on). Each rung replaces exactly these
+two definitions.
+
+```python
+# EDITABLE region 1 of nanoGPT/custom_pretrain.py (lines 33-70) — default: softmax attention
+class CausalSelfAttention(nn.Module):
+    def __init__(self, config):
+        super().__init__()
+        assert config.n_embd % config.n_head == 0
+        self.c_attn = nn.Linear(config.n_embd, 3 * config.n_embd, bias=config.bias)
+        self.c_proj = nn.Linear(config.n_embd, config.n_embd, bias=config.bias)
+        self.attn_dropout = nn.Dropout(config.dropout)
+        self.resid_dropout = nn.Dropout(config.dropout)
+        self.n_head = config.n_head
+        self.n_embd = config.n_embd
+        self.dropout = config.dropout
+        self.flash = hasattr(torch.nn.functional, 'scaled_dot_product_attention')
+        if not self.flash:
+            self.register_buffer("bias", torch.tril(torch.ones(config.block_size, config.block_size))
+                                        .view(1, 1, config.block_size, config.block_size))
+        self.use_pos_emb = True                      # softmax attention uses learned absolute positions
+
+    def forward(self, x):
+        B, T, C = x.size()
+        q, k, v = self.c_attn(x).split(self.n_embd, dim=2)
+        k = k.view(B, T, self.n_head, C // self.n_head).transpose(1, 2)
+        q = q.view(B, T, self.n_head, C // self.n_head).transpose(1, 2)
+        v = v.view(B, T, self.n_head, C // self.n_head).transpose(1, 2)
+        if self.flash:
+            y = torch.nn.functional.scaled_dot_product_attention(
+                q, k, v, attn_mask=None,
+                dropout_p=self.dropout if self.training else 0, is_causal=True)
+        else:
+            att = (q @ k.transpose(-2, -1)) * (1.0 / math.sqrt(k.size(-1)))
+            att = att.masked_fill(self.bias[:, :, :T, :T] == 0, float('-inf'))
+            att = F.softmax(att, dim=-1)
+            att = self.attn_dropout(att)
+            y = att @ v
+        y = y.transpose(1, 2).contiguous().view(B, T, C)
+        y = self.resid_dropout(self.c_proj(y))
+        return y
+
+
+# EDITABLE region 2 of nanoGPT/custom_pretrain.py (lines 88-100) — default: pre-norm block
+class Block(nn.Module):
+    def __init__(self, config):
+        super().__init__()
+        self.ln_1 = LayerNorm(config.n_embd, bias=config.bias)
+        self.attn = CausalSelfAttention(config)
+        self.ln_2 = LayerNorm(config.n_embd, bias=config.bias)
+        self.mlp = MLP(config)
+
+    def forward(self, x):
+        x = x + self.attn(self.ln_1(x))
+        x = x + self.mlp(self.ln_2(x))
+        return x
+```
+
+## Evaluation settings
+
+One seed (42), GPT-2 Medium trained on ~7.1B FineWeb tokens. Metrics: **validation loss** —
+cross-entropy on held-out FineWeb (lower is better, the primary signal); **perplexity** on WikiText-2
+and LAMBADA (lower is better); and zero-shot **downstream accuracy** on ARC-Easy, HellaSwag, PIQA, and
+WinoGrande (higher is better) via the LM evaluation harness. Wall-clock (`elapsed`) is recorded but is
+not a ranked metric. The bar is parity with — ideally improvement over — what a softmax Transformer of
+the same size and token budget would reach; the comparison is between mixers, at matched parameter
+count and matched training.
+
+The editable model code is in `nanoGPT/custom_pretrain.py`:
+```python
+# ── Transformer Block ─────────────────────────────────────────────────────
+class Block(nn.Module):
+    def __init__(self, config):
+        super().__init__()
+        self.ln_1 = LayerNorm(config.n_embd, bias=config.bias)
+        self.attn = CausalSelfAttention(config)
+        self.ln_2 = LayerNorm(config.n_embd, bias=config.bias)
+        self.mlp = MLP(config)
+
+    def forward(self, x):
+        x = x + self.attn(self.ln_1(x))
+        x = x + self.mlp(self.ln_2(x))
+        return x
+```
+Improve it. Derive your method, edit the code, then run_experiment().
+</user>
+
+### step 1 — RetNet (multi-scale retention, fixed scalar decay)   [slug:retnet]
+
+<think>
+The thing that actually hurts is concrete, and I want to stare at it before I reach for any
+architecture. Softmax attention trains beautifully in parallel — form `QKᵀ`, an `L×L` block of scores,
+softmax it, multiply by `V`, and because the whole sequence is known at training time every output row
+comes out of two big matmuls that saturate the GPU. But that same `L×L` object is the problem: compute
+and memory are `O(L²)`, and at decode I have to keep every past key and value around — a cache that
+grows linearly with how far I have generated, with per-step cost that grows with context. The
+deployment story is bad exactly where language models are headed, toward long context. So I want a
+sequence mixer with the mirror-image profile of an RNN — a fixed-size state, `O(1)` per step at
+inference, constant memory, no growing cache — but I cannot give up language-model quality against a
+strong softmax Transformer trained on the same data. That second clause is the whole problem. Cheapness
+is trivial; cheapness that holds quality is the entire research question, and where I have to start the
+ladder is the *cheapest credible* mixer, the one whose failure will teach me what the next rung must
+fix. I want the first rung to be the simplest thing that is plausibly competitive, so that everything
+above it is a diagnosed response.
+
+Why not start from plain linear attention itself? Because I already know its disease in the abstract:
+the additive write `Sₜ = S_{t−1} + kₜᵀvₜ` never forgets, the state just accumulates every key it has
+ever seen, and that is precisely why it loses to softmax on language modeling. Starting the ladder
+there would mean my very first rung is a known-broken baseline, and I would learn nothing I do not
+already suspect. I want the first rung to already carry the *one* fix that the 1-D RNN literature says
+is non-negotiable — a decay, a forget mechanism — in its simplest possible form, so that the rung is a
+real contender and its residual failure points somewhere specific. The minimal credible decay is a
+single fixed scalar `γ ∈ (0,1)`: `Sₜ = γ S_{t−1} + kₜᵀvₜ`. This is linear attention with a recency
+bias, and the reason to use *one fixed scalar* is not laziness — it is that a scalar pulls cleanly out
+of the cumulative product, which keeps the entire attention-style parallel/chunkwise training machinery
+intact. So the first rung is "linear attention plus the cheapest forget gate that does not break
+training," and I want to derive why that operator is the right floor and exactly what it looks like in
+this task's edit surface.
+
+Let me build it from the recurrence, because the recurrence is where the `O(1)` inference lives, and
+then prove it has a parallel face I can train with. Start as general as I can: a linear recurrence with
+a state *matrix*, not a scalar, project the input to a value `vₙ`, carry a state `sₙ`, read out with a
+query. `sₙ = A s_{n−1} + kₙᵀvₙ`, `oₙ = qₙ sₙ`. Each step accumulates the outer-product term `kₙᵀvₙ`
+transformed by `A`. Unroll it: `s₁ = k₁ᵀv₁`, `s₂ = A k₁ᵀv₁ + k₂ᵀv₂`, and in general
+`sₙ = Σ_{m≤n} A^{n−m} kₘᵀvₘ`. Read it out: `oₙ = qₙ sₙ = Σ_{m≤n} qₙ A^{n−m} kₘᵀvₘ`. That is the bridge.
+A linear recurrence, unrolled, is *already* a causal weighted sum over the whole past — every term
+`m ≤ n` contributes, weighted by `qₙ A^{n−m} kₘᵀ` — which is exactly the shape of causal attention.
+The recurrence gives me `O(1)` inference for free, and the unrolled sum is a candidate parallel form to
+train with. The entire game is now in the matrix power `A^{n−m}`: I need that weight to be content-aware
+and cheap to compute in parallel.
+
+Content-awareness first, because that is what separates me from the state-space line where the mixing
+never sees the tokens. Make the query and key projections depend on the input — `Q = XW_Q`, `K = XW_K`
+— so `qₙ A^{n−m} kₘᵀ` is a genuine content-based score modulated by `A^{n−m}`. Now the matrix power. A
+general `A^{n−m}` is the expensive, opaque part, so diagonalize: `A = Λ diag(γ e^{iθ}) Λ⁻¹`, allowing
+complex eigenvalues written in polar form as a per-dimension magnitude `γ` and phase `θ`. Then
+`A^{n−m} = Λ diag(γ e^{iθ})^{n−m} Λ⁻¹`, and the `Λ, Λ⁻¹` sit on the outside, left-multiplying `qₙ` and
+right-multiplying `kₘᵀ`. They are learnable matrices anyway, so absorb `Λ` into `W_Q` and `Λ⁻¹` into
+`W_K` — the change of basis is free. What is left is a diagonal power. Split the relative exponent
+across the two positions, `(γ e^{iθ})^{n−m} = (γ e^{iθ})^n (γ e^{iθ})^{−m}`, and attach each piece to
+its own factor: `oₙ = Σ_{m≤n} (qₙ (γ e^{iθ})^n)(kₘ (γ e^{iθ})^{−m})ᵀ vₘ`. Look at what each factor is.
+`qₙ (γ e^{iθ})^n` is the query scaled by `γⁿ` and rotated by `e^{inθ}`; `kₘ (γ e^{iθ})^{−m}` the key
+with `γ^{−m}` and `e^{−imθ}`. The phase part is exactly rotary position embedding — `q` gets `e^{inθ}`,
+`k` gets `e^{−imθ}`, their product depends on `n−m` — and with the magnitude `γ^{±}` layered on it is
+precisely the xPos form: a relative position embedding *with a decay*. The position encoding I would
+normally bolt on by hand falls out of the recurrence's state matrix. That is a good sign: the
+decay-and-rotation is not an arbitrary add-on, it is what `A^{n−m}` *is* once diagonalized.
+
+A per-dimension magnitude `γᵢ` is more bookkeeping than I want, and `γ^{−m}` on the key grows unbounded
+as `m` shrinks — numerically ugly. Simplify `γ` from a per-dimension vector to a single scalar per
+head. Then `γ^{n−m}` pulls out of the per-coordinate structure entirely and I keep only the phase
+rotation inside the query/key factors: `oₙ = Σ_{m≤n} γ^{n−m} (qₙ e^{inθ})(kₘ e^{imθ})† vₘ`, with `†`
+the conjugate transpose. The scalar `γ^{n−m}` is now a clean per-distance decay multiplying a
+rotary-encoded content score, fully parallelizable: every term is an independent product, no softmax
+coupling positions. I started from a recurrence and landed on a parallel, position-aware, content-based
+weighted sum. Call this operator **retention**, since it is literally a state that retains a decaying
+summary of the past, and pin down its faces. The **parallel** face packs the rotation into the
+projections and the decay-and-causality into one matrix `D_{nm} = γ^{n−m}` for `n ≥ m`, `0` otherwise —
+which does the causal mask (zero above the diagonal) and the exponential decay (`γ^{n−m}` on/below) at
+once — giving `Retention(X) = (QKᵀ ⊙ D) V`, the GPU-friendly shape with softmax deleted. The
+**recurrent** face is `Sₙ = γ S_{n−1} + KₙᵀVₙ`, `Retention(Xₙ) = Qₙ Sₙ`, fixed-size `d_k×d_v` state,
+`O(1)` per step. They compute the same function: `Sₙ` unrolls to `Σ_{m≤n} γ^{n−m} KₘᵀVₘ`, so
+`Qₙ Sₙ = Σ_{m≤n} γ^{n−m}(Qₙ Kₘᵀ) Vₘ`, which is exactly row `n` of `(QKᵀ ⊙ D) V` — the causal mask in
+`D` is the same statement as "the state only accumulates the past." Train with the matmul, infer with
+the recurrence, no approximation. And a third, **chunkwise** face runs the parallel form inside chunks
+and carries the state recurrently across them in linear time — the within-chunk decay-to-boundary and
+boundary-to-query factors reconstitute the true relative decay — which is the long-sequence training
+mode and the one the FLA kernels actually implement.
+
+Is a single scalar `γ` expressive enough? One scalar fixes one decay rate, one timescale of memory, but
+different parts of language want different horizons — some heads should keep a long tail of context,
+some should be sharply local. With softmax I would get that diversity from heads in different subspaces;
+here I have a *second* axis to vary, the decay rate itself. So use `h` heads, each with its own `γ`,
+geometrically spanning the range — `γ = 1 − 2^{−5−arange(h)}`, from fast forgetting to almost none —
+and concatenate. Multi-scale retention. But the multi-scale choice creates a wrinkle: heads with
+different `γ` produce outputs of different magnitude — a near-1 `γ` sums many terms and grows large, a
+small `γ` sums few. Normalize each head *separately* (group norm, one group per head) before mixing, or
+the high-variance heads swamp the rest. And deleting softmax cost me a nonlinearity — softmax was doing
+double duty, normalizing *and* injecting a nonlinearity. Restore it with a content-dependent **output
+gate**: `MSR(X) = (swish(XW_G) ⊙ Y) W_O`, a multiplicative data-dependent gate on the normalized
+retention output, the missing expressiveness back without the `O(n)` softmax.
+
+Now make it concrete in *this task's edit surface*, because the loop is fixed and I only get to fill in
+`CausalSelfAttention` and `Block`. I do not hand-roll the chunkwise kernel — FLA ships
+`MultiScaleRetention` with the chunk Triton kernel that implements exactly the three faces above, so my
+edit imports it and wires it into the scaffold. Here is where I have to be careful and *not* import the
+paper-faithful recipe wholesale, because the harness exposes a specific configuration and I should
+derive against it, not against the generic version. The FLA layer takes `hidden_size = n_embd = 1024`
+and `num_heads = n_head = 16`. The two expansion ratios are the live design choices: `expand_k` sets the
+key/query width `d_k = expand_k·d` and `expand_v` the value width `d_v = expand_v·d`, and the recurrent
+state is `d_k×d_v`, so these set the memory capacity. The full paper-matched retention widens the value
+to `2d` (a bigger state means more memory) and shrinks the FFN to `2d` to keep the parameter count
+matched to a Transformer. But the scaffold's `Block` and `MLP` are fixed — the MLP is the standard
+`4·d` GELU FFN and I am not rewriting it — so I cannot do the FFN-shrink trick, and widening the value
+to `2d` on top of an unshrunk `4d` FFN would *inflate* the layer past the softmax budget rather than
+match it. The honest, parameter-conservative choice given a fixed `4d` MLP is the symmetric one:
+`expand_k = 1.0`, `expand_v = 1.0`, so `d_k = d_v = d` and the attention block lands at roughly the
+softmax `4d²` allocation. So this rung's retention is the *unwidened* variant — same value width as
+softmax — which is the right floor: it isolates "does multi-scale decayed retention match softmax at
+matched width" without confounding it with a larger state. I keep `use_output_gate = True` and
+`gate_fn = 'swish'` (the gate is the nonlinearity I argued for), and the per-head normalization is the
+RMSNorm/group-norm FLA applies internally. And I set `self.use_pos_emb = False`: retention's `γ^{n−m}`
+decay plus the rotary phase *is* the relative position signal, so the loop must skip its learned `wpe`,
+which would otherwise double-encode position and fight the decay.
+
+For the `Block`, I leave the standard pre-norm structure exactly as the scaffold has it —
+`x = x + attn(ln_1(x))`, `x = x + mlp(ln_2(x))` — because the only thing I am swapping is the mixer, and
+keeping the block identical to the softmax baseline is what makes the comparison fair: any quality
+difference is the *mixer*, not the wrapper. (The literal scaffold edit is in the answer.) The forward is
+the one-liner `o, _, _ = self.attn(x); return o` — FLA's layer returns `(output, attn_weights,
+past_kv)` and I take the output.
+
+So at rung one the mixer is settled: multi-scale retention at matched width, a fixed per-head scalar
+decay, rotary phase, per-head norm, swish output gate, no absolute position embeddings, dropped into the
+two editable regions and nothing else. Now reason about what this floor must do, because that is the
+point of running it. Retention's decay is *fixed and data-independent*: every head has one `γ`, chosen a
+priori, and it cannot look at the content and decide "this token is a key fact, hold it" versus "this is
+filler, forget it fast." It is the cheapest credible forget gate — better than no decay, which is the
+whole reason it is a real contender and not a strawman — but it is exactly the data-independent gate the
+RNN literature warns against. So my falsifiable expectation is this: retention should *train stably* and
+land in the credible range — clearly better than gateless linear attention would, a real language model,
+not a degenerate one — but it should be the **weakest** rung on the ladder, because its single fixed
+decay rate per head is the least information-adaptive memory I can build. I expect its validation loss
+to sit *above* (worse than) any mixer that makes the decay data-dependent, and I expect the gap to show
+up most sharply on the perplexity benchmarks and on the recall-flavored downstream tasks, where holding
+the *right* facts — not a fixed-rate exponential average of all of them — is what matters. WikiText-2
+and LAMBADA perplexity should be the loosest, and the downstream accuracies should trail, precisely
+because a fixed decay throws away the specific long-range tokens that a content-chosen gate would have
+kept. If that is what the numbers show, the diagnosis for rung two is already written: the decay must
+become *data-dependent* — the model has to choose its forgetting rate from the content — and the
+challenge will be doing that without destroying the matmul chunkwise form that the fixed scalar `γ`
+protected. So let me write the first rung in: multi-scale retention as the floor.
+</think>
+<say>
+Starting the ladder at the cheapest credible mixer: RetNet multi-scale retention — a fixed per-head scalar decay with rotary phase, the simplest forget gate that keeps the chunkwise matmul form. This first edit swaps softmax attention for FLA's `MultiScaleRetention` at matched width and turns off the learned position embeddings.
+</say>
+<edit path="nanoGPT/custom_pretrain.py">
+<old>
+# ── Transformer Block ─────────────────────────────────────────────────────
+class Block(nn.Module):
+</old>
+<new>
+# EDITABLE region 1 of nanoGPT/custom_pretrain.py (lines 33-70) — RetNet (multi-scale retention)
+class CausalSelfAttention(nn.Module):
+    def __init__(self, config):
+        super().__init__()
+        from fla.layers import MultiScaleRetention
+        self.attn = MultiScaleRetention(
+            hidden_size=config.n_embd,
+            num_heads=config.n_head,
+            expand_k=1.0,                 # d_k = d  (matched to softmax width)
+            expand_v=1.0,                 # d_v = d  (state d x d; no value widening)
+            use_output_gate=True,         # swish output gate = the restored nonlinearity
+            gate_fn='swish',
+        )
+        self.use_pos_emb = False          # gamma^{n-m} decay + rotary phase encode position
+
+    def forward(self, x):
+        o, _, _ = self.attn(x)            # FLA returns (output, attn_weights, past_kv)
+        return o
+
+
+# EDITABLE region 2 of nanoGPT/custom_pretrain.py (lines 88-100) — standard pre-norm block (unchanged)
+class Block(nn.Module):
+</new>
+</edit>
+<obs>
+Successfully replaced text in nanoGPT/custom_pretrain.py.
+</obs>
+<run/>
+<obs>
+Measured results — `baseline:retnet` (`is_final,true`), seed 42.
+
+## Language-model quality (lower is better)
+| seed | val_loss | wikitext2_ppl | lambada_ppl |
+|---|---|---|---|
+| 42 | 2.4795 | 66.67 | 82.36 |
+| **mean** | **2.4795** | **66.67** | **82.36** |
+
+## Downstream zero-shot accuracy (higher is better)
+| seed | arc_easy | hellaswag | piqa | winogrande |
+|---|---|---|---|---|
+| 42 | 51.47 | 31.12 | 62.40 | 52.01 |
+| **mean** | **51.47** | **31.12** | **62.40** | **52.01** |
+
+Wall-clock: `elapsed_gpt-345m` = 27106 s, `elapsed_lm-eval-345m` = 7 s.
+</obs>
+
+### step 2 — GLA (gated linear attention, data-dependent diagonal decay)   [slug:gla]
+
+<think>
+RetNet's numbers told me exactly what is missing, and they told me in the place I predicted. The
+validation loss came in at 2.4795 — a real language model, trained stably, clearly not a degenerate
+collapse, which confirms the floor was a genuine contender and not a strawman. But it is *high*: the
+perplexities are loose (WikiText-2 66.67, LAMBADA 82.36) and the downstream accuracies are modest
+(ARC-Easy 51.47, HellaSwag 31.12, WinoGrande 52.01, PIQA 62.40). HellaSwag at 31.12 is barely above
+chance for a four-way task and tells me the model is not holding the kind of mid-range context that
+sentence-completion needs. This is the failure I expected from the construction, and it is sharp: it is
+not an optimization failure — the loss curve was clean and the model is in range — it is a *memory*
+failure. RetNet forgets at a rate it chose before it ever saw a token. Every head has a single fixed
+`γ`, geometrically spaced across heads, and within a head that decay is the same for every channel,
+every context, every word. It cannot look at a token and decide "this is a key fact, hold it" versus
+"this is filler, let it decay." The lesson from 1-D RNNs is unambiguous — the forget gate carries most
+of a gated cell's capacity and it has to be *data-dependent* to do its job — and a fixed scalar `γ` is
+exactly a data-independent gate. So the diagnosis points at one move: the decay must become a function
+of the input. The whole risk, the thing RetNet's fixed scalar was *protecting*, is that a
+data-dependent gate normally destroys the matmul chunkwise training form. That is the wall I have to get
+through, and getting through it without re-breaking what made retention trainable is rung two.
+
+Let me restate the operator I am improving, stripped to its skeleton, because the skeleton is what I
+must preserve. Plain linear attention is `Sₜ = S_{t−1} + kₜᵀvₜ`, `oₜ = qₜ Sₜ` — a matrix-valued linear
+RNN, `O(1)` inference, but it never forgets and that is why it loses. RetNet added the cheapest forget
+gate, a global scalar, `Sₜ = γ S_{t−1} + kₜᵀvₜ`, and the 2.4795 says that helped but not enough. The
+reason `γ` is a *scalar* is that a scalar pulls out of the cumulative product cleanly, so the whole
+attention-style parallel and chunkwise machinery survives — that is the property I cannot lose. So the
+question is precise: what is the *most* expressive gate I can use that still keeps the chunkwise matmul
+form alive?
+
+The moment I say "data-dependent gate" a tension bites. A classic RNN forget gate depends on both the
+previous hidden state and the current input, and the dependence on the previous state is exactly what
+serializes the recurrence and kills parallel training. Martin and Cundy's fix is the way out: make the
+gate depend *only on the current input*, not on the previous state. Then the recurrence stays linear in
+the state — the gate is a sequence of input-determined coefficients — and a linear recurrence with
+input-determined coefficients is still parallelizable, and crucially it still has the cumulative-product
+structure I can exploit. HGRN showed input-only gating works at moderate scale. So the constraint is
+fixed: the gate is a function of `xₜ` alone.
+
+What *shape* should the gate be? This is the real design decision, and it is a three-way trade between
+parameter efficiency, state expressivity, and training efficiency. The extremes bracket it. The most
+general gate is a full matrix `Gₜ ∈ (0,1)^{d_k×d_v}` applied Hadamard to the state,
+`Sₜ = Gₜ ⊙ S_{t−1} + kₜᵀvₜ` — every entry forgets at its own data-dependent rate, maximally expressive
+— but mapping `xₜ → Gₜ` directly needs a projection of size `d·d_k·d_v`, absurd in parameters. The
+other extreme is RetNet's scalar, the rung I am leaving behind: cheap, trivially parallel, but one
+number for the whole state, and 2.4795 is what that costs. There is a middle, a low-rank outer-product
+gate `Gₜ = αₜᵀβₜ`, only `d·d_k + d·d_v` parameters, a genuine 2-D gate with per-key-channel and
+per-value-channel recency control. So why not just take that? Because of training. The prior
+matrix-gate algorithms, to handle a data-dependent matrix gate, materialize the full matrix-valued
+hidden state for *every* time step in slow memory — `L·d_k·d_v` written to HBM — and the gated update
+they implement does not reduce to tensor-core matmuls. So it is slow at scale, both from the I/O and
+from leaving the tensor cores idle. There is a parallel cautionary tale in Mamba: it makes the state
+transition fully input-dependent and full-rank, even more expressive, but *precisely because* the
+full-rank selective update cannot be written as a matrix multiply, it cannot touch tensor cores and must
+materialize per-step states, capping the state expansion (around 16) to keep them in SRAM — which shows
+up as weak recall. The pattern is the one I have to break: expressivity that destroys the
+matmul/chunkwise structure buys a slow, memory-bound trainer. I need a gate expressive enough to fix
+RetNet's fixed-decay failure but structured enough that the chunkwise matmul form survives.
+
+So let me try the outer-product gate `Gₜ = αₜᵀβₜ` and actually *check* whether the chunkwise structure
+survives, rather than assume. Unroll the recurrence. With `Gₜ = αₜᵀβₜ`, the state is
+`Sₜ = Σ_{i≤t} ((∏_{j=i+1}^t G_j) ⊙ kᵢᵀvᵢ)`. The cumulative product `∏ G_j` is the thing I am afraid of
+— but it is an outer product of cumulative products: define `bₜ = ∏_{j≤t} α_j` and `dₜ = ∏_{j≤t} β_j`
+(elementwise products of the gate vectors). Then `∏_{j=i+1}^t α_jᵀβ_j = (bₜ/bᵢ)ᵀ(dₜ/dᵢ)` — the
+telescoping makes the product-of-outer-products collapse into a single outer product of ratios, by the
+mixed-product property. So `(∏ G_j) ⊙ (kᵢᵀvᵢ) = ((bₜ/bᵢ) ⊙ kᵢ)ᵀ((dₜ/dᵢ) ⊙ vᵢ)`, still one outer
+product. Plug into the output and use `⟨a, b⊙c⟩ = ⟨a⊙b, c⟩`, and the whole thing is exactly a
+linear-attention parallel form on *preconditioned* tensors: `Q̃ = Q ⊙ B`, `K̃ = K / B`, `Ṽ = V / D`,
+compute `Õ = ((Q̃ K̃ᵀ) ⊙ M) Ṽ`, read off `O = Õ ⊙ D`. The data-dependent matrix gate did **not** destroy
+the matmul structure — it just preconditions Q, K, V by cumulative-product factors. That is the wall
+broken: an outer-product gate keeps the chunkwise matmul form alive where a full-rank transition does
+not.
+
+Do I actually need `β` too? The `dₜ`/`1/dᵢ` on the value side are extra cumulative products, extra
+log-space bookkeeping, extra failure modes. Fix `β = 1` and check what I lose. Then `Gₜ = αₜᵀ1` — every
+row of the state shares the same per-key-channel decay `αₜ`, broadcast across the value dimension — and
+the value-side transforms vanish (`Ṽ = V`, `O = Õ`). The model is `Sₜ = Diag(αₜ) S_{t−1} + kₜᵀvₜ`, a
+**per-key-channel data-dependent forget gate** — exactly the fine-grained, content-chosen forgetting
+that RetNet's single `γ` could not express — at half the gating machinery. The value-side gate would
+add a second independent decay axis, but that is the expensive part of the bookkeeping and it overlaps
+with the value projection and the per-head output gate I will add anyway. So I take the middle ground:
+`Gₜ = αₜᵀ1`. Strictly more expressive than RetNet's scalar (per-channel *and* data-dependent), far
+cheaper than the full matrix, keeps the chunkwise form, avoids the value-side cumulative products that
+make stability harder.
+
+Now the numerics, because the clean parallel form is dead on arrival. The recurrent form is
+`Sₜ = Diag(αₜ) S_{t−1} + kₜᵀvₜ`, `oₜ = qₜ Sₜ`, with `αₜ ∈ (0,1)^{d_k}` from `xₜ`, and the parallel
+form uses `bₜ = ∏_{j≤t} α_j`: `P = (Q ⊙ B)(K / B)ᵀ`, `O = (P ⊙ M) V`. But each `α_j < 1`, so `bₜ` is a
+cumulative product of sub-one numbers, decaying toward zero fast over a long sequence, and `K / B`
+divides by something tiny and *explodes* — overflow in fp16 or even fp32. The fix is to compute the
+scores in log space: `P_{ij} = Σ_k Q_{ik} K_{jk} exp(log B_{ik} − log B_{jk})` for `i ≥ j`, where the
+cumulative product becomes a cumulative *sum* of log-gates `log bₜ = Σ_{j≤t} log α_j` — a sum of
+negative numbers, no underflow — and `log B_{ik} − log B_{jk}` is the accumulated log-decay between key
+`j` and query `i`, i.e. a data-dependent relative-position factor (a learned, content-dependent ALiBi,
+which is the spiritual successor to RetNet's fixed `γ^{n−m}`). Stable — but `exp` of a difference that
+depends on both `i` and `k` sits between `Q` and `K`, so the score is *not* a single matmul, and I have
+thrown away the tensor cores. The escape is that the underflow is a *long-range* phenomenon: within a
+chunk of length `C`, the cumulative product runs over at most `C` steps and stays bounded. So redo the
+chunking with the gate, measuring cumulative gates *relative to chunk boundaries* — `Λ` the decay from
+chunk start, `Γ` the decay to chunk end, `γ_chunk` the whole-chunk decay — so every cumulative product
+spans at most one chunk. The inter-chunk recurrence decays the carried state by the whole-chunk gate and
+adds the boundary-weighted keys; the intra-chunk output is the same masked parallel form with chunk-local
+preconditioning. A second level of tiling pushes the full-precision log-space work down to the small
+diagonal sub-blocks while every off-diagonal sub-block and the inter-chunk recurrence run as
+half-precision matmuls. The same FlashLinearAttention I/O tricks — materialization for sequence-level
+parallelism at small batch, recomputation in the backward to claw back memory, and a closed-form
+log-space gate gradient `d log αₜ` (no per-step states) — make it fast in wall-clock, not just FLOPs.
+
+The remaining design choices each have to earn their place. The gate `αₜ ∈ (0,1)^{d_k}` is data-dependent
+on `xₜ`, so a linear map plus sigmoid is natural — but a full `d×d_k` gate projection adds real
+parameters, and I am trying to hold the same `4d²` budget as softmax (and as the RetNet rung, so the
+comparison stays clean). Make it **low-rank**: `xₜ → W_α¹ → W_α² → sigmoid` with a rank-16 bottleneck,
+nearly free in parameters and more than enough to choose a per-channel forget rate from content. And a
+subtlety that matters: a fresh sigmoid gate sits near 0.5, meaning the state *halves* every step — far
+too aggressive, the model cannot hold anything for more than a few tokens, long-range capacity dead
+before training starts. Bias it toward 1 with a temperature: `αₜ = σ(logits)^{1/τ}` with `τ = 16`. Since
+`σ < 1`, the `1/16` power pushes toward 1 (`0.5^{1/16} ≈ 0.96`), so slow forgetting is the default and
+the model must actively decide to forget — and in log space this is `log αₜ = (1/16) logsigmoid(logits)`,
+exactly the small, well-conditioned cumulative-sum quantity the stable form wants. The temperature does
+double duty: long-memory prior *and* a small log-decay. I scale queries by `1/sqrt(d_k)` (the standard
+attention logit scaling). And the dimensions: the FLA layer exposes `expand_k` and `expand_v`, and here
+I depart from the symmetric width I used for RetNet on purpose. The state is `d_k×d_v` and its size is
+memory capacity, so I want the value full-width, `d_v = d` (`expand_v = 1.0`), but I do not need the key
+as large, so `d_k = d/2` (`expand_k = 0.5`) — controlling the parameter count and state size while
+still leaving a sizeable `d/2 × d` state and, with the low-rank gate, landing the layer back at ~`4d²`.
+Multi-head split, per-head RMSNorm on each head's output (a linear-attention layer has no softmax
+normalizing the heads to a simplex, so they need taming), then a Swish output gate `r = swish(xW_r)`
+applied multiplicatively before the projection — the same gated-nonlinearity recipe I used for RetNet,
+which matters for closing the gap.
+
+Make it concrete in this task's edit surface. FLA ships `GatedLinearAttention` with the chunk kernel, so
+the edit imports it into `CausalSelfAttention`: `hidden_size = 1024`, `num_heads = 16`, `mode = 'chunk'`,
+`expand_k = 0.5`, `expand_v = 1.0`, `use_output_gate = True`, `gate_fn = 'swish'`. The log-space
+low-rank gate (`logsigmoid(low-rank logits) / gate_logit_normalizer`), the rank-16 bottleneck, the
+per-head RMSNorm, and the secondary-tiling chunk kernel are all internal to the FLA layer — I am not
+re-deriving them in code, only selecting the configuration. One harness-specific detail: `torch.compile`
+is disabled for this task, and to be safe against any residual compile interaction with the Triton
+kernel I wrap the FLA call in a `@torch.compiler.disable`-decorated helper so the chunk kernel is never
+traced. I set `self.use_pos_emb = False` for the same reason as RetNet — the cumulative data-dependent
+decay *is* the relative position signal, so the loop must skip its learned `wpe`. The `Block` stays
+exactly the scaffold default, only the mixer swapped, so the only difference from the RetNet rung is the
+gate. (The literal scaffold edit is in the answer.)
+
+So the delta from rung one is precise: where RetNet's decay was a single fixed scalar per head — the
+data-independent gate that cost it 2.4795 — I now make the decay a per-key-channel function of the
+content, while keeping the same chunkwise matmul training form via the outer-product telescoping and
+log-space stability. Reading RetNet's shape, here is what I expect and where I am unsure. The validation
+loss should drop below 2.4795: the model can now hold the *right* facts at the *right* rate instead of an
+exponential average at a fixed rate, and that is exactly what cross-entropy on natural text rewards. The
+perplexities should tighten — WikiText-2 and LAMBADA were the loosest under RetNet, and content-chosen
+forgetting is most valuable precisely where a fixed rate threw away the salient token. The downstream
+accuracies should rise, HellaSwag especially, since 31.12 read as "not holding mid-range context" and a
+data-dependent gate is the cure for that. But I hold one doubt that the next rung may have to answer:
+GLA's gate is still a *diagonal, multiplicative* decay — it forgets globally or per-channel, it does not
+remove the *specific stored association* that a new key collides with. If the residual failure after GLA
+is recall — fetching a particular value I stored earlier keyed on a token I have now seen again — then
+the gate, however data-dependent, is structurally the wrong tool, and the diagnosis would point at
+changing the *write rule* itself rather than the decay. For now, the falsifiable claim is simple: GLA
+should beat RetNet on val_loss, on both perplexities, and on the downstream suite, and if it does not
+beat it on perplexity then the data-dependence is not buying what the RNN literature promised. So let me
+swap retention for the gated form.
+</think>
+<say>
+Rung two: GLA (gated linear attention). The fix is to make RetNet's fixed scalar decay data-dependent — a per-key-channel forget gate chosen from the content — while the outer-product telescoping keeps the chunkwise matmul form alive. This edit swaps in FLA's `GatedLinearAttention` (key width halved, value full-width) and wraps the kernel in a compile-disabled helper.
+</say>
+<edit path="nanoGPT/custom_pretrain.py">
+<old>
+# EDITABLE region 1 of nanoGPT/custom_pretrain.py (lines 33-70) — RetNet (multi-scale retention)
+class CausalSelfAttention(nn.Module):
+    def __init__(self, config):
+        super().__init__()
+        from fla.layers import MultiScaleRetention
+        self.attn = MultiScaleRetention(
+            hidden_size=config.n_embd,
+            num_heads=config.n_head,
+            expand_k=1.0,                 # d_k = d  (matched to softmax width)
+            expand_v=1.0,                 # d_v = d  (state d x d; no value widening)
+            use_output_gate=True,         # swish output gate = the restored nonlinearity
+            gate_fn='swish',
+        )
+        self.use_pos_emb = False          # gamma^{n-m} decay + rotary phase encode position
+
+    def forward(self, x):
+        o, _, _ = self.attn(x)            # FLA returns (output, attn_weights, past_kv)
+        return o
+</old>
+<new>
+# EDITABLE region 1 of nanoGPT/custom_pretrain.py (lines 33-70) — GLA (gated linear attention)
+class CausalSelfAttention(nn.Module):
+    def __init__(self, config):
+        super().__init__()
+        from fla.layers import GatedLinearAttention
+        self.attn = GatedLinearAttention(
+            mode='chunk',
+            hidden_size=config.n_embd,
+            num_heads=config.n_head,
+            expand_k=0.5,                 # d_k = d/2
+            expand_v=1.0,                 # d_v = d  (full-width state = memory capacity)
+            use_output_gate=True,         # swish output gate
+            gate_fn='swish',
+        )
+        self.use_pos_emb = False          # cumulative data-dependent decay encodes relative position
+
+    @torch.compiler.disable
+    def _attn_forward(self, x):
+        return self.attn(x)
+
+    def forward(self, x):
+        o, _, _ = self._attn_forward(x)
+        return o
+</new>
+</edit>
+<obs>
+Successfully replaced text in nanoGPT/custom_pretrain.py.
+</obs>
+<run/>
+<obs>
+Measured results — `baseline:gla` (`is_final,true`), seed 42.
+
+## Language-model quality (lower is better)
+| seed | val_loss | wikitext2_ppl | lambada_ppl |
+|---|---|---|---|
+| 42 | 2.4482 | 64.32 | 84.73 |
+| **mean** | **2.4482** | **64.32** | **84.73** |
+
+## Downstream zero-shot accuracy (higher is better)
+| seed | arc_easy | hellaswag | piqa | winogrande |
+|---|---|---|---|---|
+| 42 | 53.11 | 31.10 | 62.40 | 49.88 |
+| **mean** | **53.11** | **31.10** | **62.40** | **49.88** |
+
+Wall-clock: `elapsed_gpt-345m` = 27219 s, `elapsed_lm-eval-345m` = 1242 s.
+</obs>
+
+### step 3 — DeltaNet (delta-rule, error-correcting write)   [slug:deltanet]
+
+<think>
+GLA's numbers landed where I bet they would on the bulk metric, and they failed where I flagged the
+risk — and the split between the two is the whole story for this rung. The validation loss dropped from
+RetNet's 2.4795 to 2.4482, WikiText-2 perplexity tightened from 66.67 to 64.32, and ARC-Easy rose from
+51.47 to 53.11. So the data-dependent diagonal gate bought exactly the local language-modeling gain I
+predicted: holding the right facts at a content-chosen rate beats an exponential average at a fixed
+rate, and the bulk cross-entropy reflects it. But now read the two metrics I explicitly said to watch.
+LAMBADA perplexity got *worse* — 84.73 versus RetNet's 82.36 — and WinoGrande *fell*, from 52.01 to
+49.88, while HellaSwag sat flat at 31.10 against 31.12. That is not noise around a uniform improvement;
+it is a clean dissociation. LAMBADA is the canonical long-range completion task: it gives you a passage
+and asks for the final word, which is recoverable only if the model is *retrieving* a specific entity or
+fact named earlier, sometimes far back. WinoGrande likewise turns on resolving a reference to the right
+antecedent. The metrics that improved are the ones that reward smooth local language modeling; the
+metrics that stalled or regressed are the ones that reward *associative recall* — fetch the particular
+value you stored earlier, keyed on a token you have now seen again. So the diagnosis is exactly the
+doubt I closed the GLA derivation with, now confirmed by numbers: GLA's gate, however data-dependent, is
+*diagonal and multiplicative*. It can decide how fast each channel forgets, but it cannot reach into the
+state and remove the *specific stored association* that collides with the new key. The failure is not in
+the decay anymore. It is in the **write rule**.
+
+Let me look hard at why a multiplicative gate cannot do targeted removal, because that is what tells me
+what to replace it with. Both RetNet and GLA, and the whole gated-linear-attention family, share one
+template: `Sₜ = S_{t−1} ⊙ Mₜ + kₜᵀvₜ`, a decay times the old state plus an additive outer-product
+write. The write is *Hebbian* — token `t` stamps `kₜᵀvₜ` into the state and the decay is the only thing
+that ever shrinks anything. Read back what that store holds. Write `S = Σᵢ vᵢ kᵢᵀ` and probe with a
+stored key `k_j`: `S k_j = vⱼ (kⱼᵀkⱼ) + Σ_{i≠j} (kᵢᵀk_j) vᵢ`. The first term is what I wanted; the
+second is cross-talk from every key not orthogonal to `k_j`. In `d` dimensions there are at most `d`
+mutually orthogonal vectors, so the moment a sequence is longer than the key dimension — which, at block
+size 1024 and head dimensions in the dozens, is *always* — the keys cannot all be orthogonal, the store
+is overcapacity, and retrieval is contaminated by interference that only grows as I write more. The
+multiplicative gate scales the *whole* state (per channel) before each write; it cannot say "the
+association I previously stored for *this* key now collides with the new key — erase *that one* and
+leave everything else." Targeted, content-addressed removal would require the previous state `S_{t−1}`
+to enter the *write itself*, interacting with the incoming key — not merely to be scaled by a decay. An
+elementwise gate is structurally the wrong tool for the collision problem, and LAMBADA going *backward*
+under GLA is that wrongness made visible: GLA's content-chosen decay actually made the interference
+pattern worse on the one task that most needs clean retrieval.
+
+What write rule lets the old contents shape the removal? Go back to the classical adaptive-filtering
+idea — the delta rule, Widrow and Hoff's least-mean-squares. Treat `S` as a little regressor that is
+supposed to map `kₜ` to `vₜ`, and instead of blindly adding, take one gradient step on the squared
+prediction error. The loss is `Lₜ(S) = ½‖S kₜ − vₜ‖²`, its gradient w.r.t. `S` is `(S kₜ − vₜ) kₜᵀ`,
+the outer product of the *residual* with the key, so one SGD step with rate `βₜ` is
+`Sₜ = S_{t−1} − βₜ (S_{t−1} kₜ − vₜ) kₜᵀ`. This is exactly the targeted removal the gate could not do.
+Read it as a value swap: retrieve the old value `vₜ^old = S_{t−1} kₜ`, blend `vₜ^new = βₜ vₜ +
+(1−βₜ) vₜ^old`, and replace — `Sₜ = S_{t−1} − vₜ^old kₜᵀ + vₜ^new kₜᵀ` — removing the old association for
+*this key* and writing the new one. The write is proportional to the error `vₜ − vₜ^old`: if `S_{t−1}`
+already maps `kₜ` close to `vₜ`, almost nothing happens; if it maps `kₜ` to a stale value, the
+correction is strong. Contrast the additive rule's implicit loss, the *linear* `−⟨S kₜ, vₜ⟩`, whose
+gradient `−vₜ kₜᵀ` is constant regardless of how wrong the prediction is — the no-error-correction
+behavior that drove the cross-talk and, I now believe, GLA's LAMBADA regression. The quadratic loss
+gives gradients that scale with the error, so the rule self-corrects, and the delta-rule fast weight has
+been known for decades to have higher capacity than the Hebbian one. The scalar `βₜ = σ(W_β xₜ) ∈ (0,1)`
+is a learned *writing strength*: at `βₜ = 1` the old value is fully overwritten, at `βₜ = 0` the memory
+is untouched. This is the write rule I want.
+
+So why has nobody just trained this at scale, and what is the catch I have to pay? The training wall.
+For additive linear attention — and for GLA — the value written at step `t` is just `vₜ` (or
+`vₜ`-after-decay), independent of the running state, so the whole output is one big masked matmul
+`O = (Q Kᵀ ⊙ M) V` over precomputed `V`; that is what made it trainable, matmul-rich, tensor-core-bound.
+The delta rule breaks that: the value written, `vₜ^new`, is tangled up with `vₜ^old = S_{t−1} kₜ`, which
+depends on the *running state*. I cannot stack the writes into a matrix ahead of time, because each one
+needs `S_{t−1}`, the output of all the previous writes. The naive computation rolls the recurrence
+forward, materializing the `d×d` state at every step — `O(d²)` memory per step, strictly sequential,
+elementwise, never touching a tensor core. That is exactly the hardware-inefficiency that kept the
+delta-rule layer off the scaling ladder. So I get the better write rule only if I can break the
+state-dependence and recover a matmul form.
+
+Look at the update as a transition on `S`. Substitute the blend into the swap:
+`Sₜ = S_{t−1}(I − βₜ kₜ kₜᵀ) + βₜ vₜ kₜᵀ`. The delta update is the previous state *multiplied* by an
+identity-plus-rank-one matrix — a generalized Householder transformation — plus a rank-one additive
+term. That structure is the lever. Two moves break the sequential dependence. First, keep `S` in the
+same additive shape as vanilla linear attention so I can reuse all its machinery: claim
+`Sₜ = Σ_{i≤t} uᵢ kᵢᵀ` for "pseudo-values" `uᵢ`. Induct: `S₁ = β₁ v₁ k₁ᵀ` so `u₁ = β₁ v₁`; the inductive
+step expands `Sₜ = S_{t−1}(I − βₜ kₜ kₜᵀ) + βₜ vₜ kₜᵀ` and collects the `kₜᵀ` term, giving
+`uₜ = βₜ(vₜ − Σ_{i<t} uᵢ (kᵢᵀkₜ))`, which sanity-checks against the value-blend interpretation
+(`uₜ = vₜ^new − vₜ^old`). So the delta layer is vanilla linear attention with `vᵢ` replaced by the
+pseudo-value `uᵢ`, and the per-token matrix state never has to be materialized — the problem reduces to
+*computing the `uᵢ`*. Second, the chunkwise form also needs the product of transition matrices
+`Pₙ = ∏_{t≤n}(I − βₜ kₜ kₜᵀ)`, and the same induction gives the WY representation
+`Pₙ = I − Σ_{t≤n} wₜ kₜᵀ` with `wₜ = βₜ(kₜ − Σ_{i<n} wᵢ(kᵢᵀkₙ))` — the *exact same recurrence* as `uₜ`
+with `kₜ` in place of `vₜ`. Both `uₜ` and `wₜ` are still sequential within a chunk, though, so I have
+moved the bottleneck, not removed it.
+
+Remove it: read the recurrence as a linear system, because it is one. The rows of `W` (the stacked
+`wₜ`) satisfy a strictly-lower-triangular dependency, `(I + L) W = B K` with `B = diag(β)` and
+`L = tril(diag(β) K Kᵀ, −1)`, so `W = (I + L)⁻¹ B K = T K` and identically `U = T V`, with
+`T = (I + tril(diag(β) K Kᵀ, −1))⁻¹ diag(β)` — the *same* `T` for both. The sequential dependency is
+absorbed into one matrix `T`, and `I + L` is unit lower-triangular so its inverse is cheap and
+matmul-friendly via forward substitution (the UT transform for accumulating Householder products). Now
+every part is a matmul — `T` by forward substitution, `W = T K`, `U = T V`, the masked intra-chunk
+products, the chunk-state update — with only `L/C` sequential steps between chunks. Cost `O(LCd + Ld²)`,
+recomputing chunk states in the backward to save memory, exactly the same asymptotics and the same
+hardware profile as the chunkwise GLA I ran at rung two. The delta rule, which looked irreducibly
+sequential, is now matmul-rich. That is the whole reason DeltaNet can sit on *this* ladder at all.
+
+Stability has to be derived, not assumed, because the transition `Mₜ = I − βₜ kₜ kₜᵀ` will blow up or
+vanish if its eigenvalues leave the unit disk. `Mₜ` is the identity on everything orthogonal to `kₜ`
+(eigenvalue 1) and scales the `kₜ` direction by `1 − βₜ‖kₜ‖²`. So I need `0 ≤ βₜ‖kₜ‖² ≤ 2`, which I get
+exactly by L2-normalizing the keys: with `‖kₜ‖₂ = 1`, the contractive eigenvalue is `1 − βₜ ∈ [0,1]` for
+`βₜ ∈ (0,1)`, always stable. And at the boundary `βₜ = 1`, `Mₜ = I − kₜ kₜᵀ` with unit `kₜ` is an
+orthogonal *projection*: it annihilates exactly the one-dimensional subspace spanned by `kₜ` and leaves
+the other `d−1` dimensions untouched. That is targeted forgetting made literal — a full write erases
+exactly the direction being overwritten and preserves everything else, the content-addressed
+deallocation the diagonal gate could not localize and that LAMBADA was punishing GLA for missing. So L2
+normalization is not a hack; it is what makes the erase surgical. I L2-normalize `q` and `k`, apply SiLU
+before the normalization (keeps sign, smooth, no hard zeroing), use `βₜ = σ(W_β xₜ)` (one sigmoid scalar
+per head, negligible parameters), and add a lightweight depthwise **short convolution** (kernel 4) on
+the `q`, `k`, `v` projections before the recurrence — it generalizes the shift operator and lets the
+layer do precise local token comparisons that pure content-addressing is bad at, cheap and empirically
+important. An output RMSNorm per head before the projection rounds it out.
+
+Make it concrete in this task's edit surface. FLA ships `DeltaNet` with the chunk kernel that implements
+the UT-transform training path, so the edit imports it into `CausalSelfAttention`: `hidden_size = 1024`,
+`num_heads = 16`, `use_beta = True` (the learned writing strength `βₜ`, the heart of the rule),
+`use_short_conv = True`, `conv_size = 4` (the local-mixing short conv), `qk_activation = 'silu'` and
+`qk_norm = 'l2'` (the SiLU-then-L2 that makes the transition an exact projection at `βₜ = 1`). I take
+the default `expand_k = 1.0`, `expand_v = 1.0` — symmetric width, state `d×d`, parameter budget matched
+to softmax and to the RetNet rung — and the default `use_gate = False`: DeltaNet does *not* add a swish
+output gate here, just the per-head output RMSNorm, because the error-correcting write is already the
+expressivity I am buying and I want this rung to isolate the *write rule* change, not confound it with
+the output gate that GLA and RetNet carried. (That is a real difference from those rungs worth naming:
+no output gate.) I set `self.use_pos_emb = False` — DeltaNet handles sequence ordering through the
+recurrence and the short conv, so the loop skips its learned `wpe`. The `Block` stays the scaffold
+default; only the mixer is swapped. (The literal scaffold edit is in the answer.)
+
+So the delta from rung two is precise: where GLA fixed the *decay* (made forgetting data-dependent and
+diagonal) but left the additive Hebbian *write* — the thing that produced the cross-talk and the LAMBADA
+regression — DeltaNet fixes the write itself, replacing the additive stamp with an error-correcting,
+content-addressed swap, and recovers a matmul training form via the pseudo-value reduction and the UT
+transform. Reading GLA's shape, here is the falsifiable claim. The validation loss should drop below
+2.4482, because higher memory capacity and cleaner retrieval help the bulk objective too. But the *real*
+test, the one this rung is for, is the recall metrics that GLA stalled or regressed on: **LAMBADA must
+come down hard** — it was 84.73 under GLA and 82.36 under RetNet, and if the error-correcting write does
+what I derived, it should fall well below both, because LAMBADA is exactly "retrieve the entity named
+earlier" and the projection-style erase is exactly clean retrieval. WikiText-2 should also tighten below
+64.32, and the downstream suite — HellaSwag, which was stuck at 31.1 across both prior rungs, and
+ARC-Easy — should rise, since both reward holding specific earlier content. If LAMBADA does *not*
+improve over GLA, then the recall diagnosis was wrong and the failure lives somewhere I have not named;
+but the whole construction predicts it will, and that DeltaNet will be the strongest of the three rungs
+precisely on the recall axis the diagonal gate could never address. So let me put the delta-rule write
+in.
+</think>
+<say>
+Rung three: DeltaNet. The diagnosis from GLA is that the failure has moved from the decay to the write rule — a Hebbian additive stamp can't erase the specific stale association a new key collides with. This edit swaps in FLA's `DeltaNet`, replacing the additive write with an error-correcting delta-rule swap (L2-normalized keys, learned writing strength, short conv) and dropping the output gate to isolate the write-rule change.
+</say>
+<edit path="nanoGPT/custom_pretrain.py">
+<old>
+# EDITABLE region 1 of nanoGPT/custom_pretrain.py (lines 33-70) — GLA (gated linear attention)
+class CausalSelfAttention(nn.Module):
+    def __init__(self, config):
+        super().__init__()
+        from fla.layers import GatedLinearAttention
+        self.attn = GatedLinearAttention(
+            mode='chunk',
+            hidden_size=config.n_embd,
+            num_heads=config.n_head,
+            expand_k=0.5,                 # d_k = d/2
+            expand_v=1.0,                 # d_v = d  (full-width state = memory capacity)
+            use_output_gate=True,         # swish output gate
+            gate_fn='swish',
+        )
+        self.use_pos_emb = False          # cumulative data-dependent decay encodes relative position
+
+    @torch.compiler.disable
+    def _attn_forward(self, x):
+        return self.attn(x)
+
+    def forward(self, x):
+        o, _, _ = self._attn_forward(x)
+        return o
+</old>
+<new>
+# EDITABLE region 1 of nanoGPT/custom_pretrain.py (lines 33-70) — DeltaNet (delta-rule linear attention)
+class CausalSelfAttention(nn.Module):
+    def __init__(self, config):
+        super().__init__()
+        from fla.layers import DeltaNet
+        self.attn = DeltaNet(
+            hidden_size=config.n_embd,
+            num_heads=config.n_head,
+            use_beta=True,                # learned writing strength beta_t (the delta rule)
+            use_short_conv=True,
+            conv_size=4,                  # depthwise short conv for local token comparison
+            qk_activation='silu',
+            qk_norm='l2',                 # L2-normalized keys -> transition is a projection at beta=1
+        )
+        self.use_pos_emb = False          # DeltaNet handles sequence ordering internally
+
+    def forward(self, x):
+        o, _, _ = self.attn(x)
+        return o
+</new>
+</edit>
+<obs>
+Successfully replaced text in nanoGPT/custom_pretrain.py.
+</obs>
+<run/>
+<obs>
+Measured results — `baseline:deltanet` (`is_final,true`), seed 42.
+
+## Language-model quality (lower is better)
+| seed | val_loss | wikitext2_ppl | lambada_ppl |
+|---|---|---|---|
+| 42 | 2.3481 | 49.88 | 70.48 |
+| **mean** | **2.3481** | **49.88** | **70.48** |
+
+## Downstream zero-shot accuracy (higher is better)
+| seed | arc_easy | hellaswag | piqa | winogrande |
+|---|---|---|---|---|
+| 42 | 53.58 | 32.77 | 62.95 | 49.17 |
+| **mean** | **53.58** | **32.77** | **62.95** | **49.17** |
+
+Wall-clock: `elapsed_gpt-345m` = 28265 s, `elapsed_lm-eval-345m` = 10 s.
+</obs>
+
+### step 4 — Gated DeltaNet (gated delta rule)   [slug:gated-deltanet]
+
+<think>
+DeltaNet's numbers confirmed the recall diagnosis almost exactly, and that very success exposes the
+one thing it threw away. The error-correcting write did what the diagonal gate could not: LAMBADA
+perplexity fell hard, from GLA's 84.73 and RetNet's 82.36 down to 70.48; WikiText-2 tightened from 64.32
+to 49.88; validation loss dropped from 2.4482 to 2.3481; HellaSwag, stuck at 31.1 across both prior
+rungs, finally moved to 32.77, and ARC-Easy rose to 53.58. The clean-retrieval story held on every
+metric that rewards fetching a specific earlier value. But look at the one number that did *not* improve:
+WinoGrande sat at 49.17, fractionally *below* GLA's 49.88 and well below RetNet's 52.01. WinoGrande is
+the most coreference-heavy of the suite — it turns on tracking which of two candidate antecedents a
+pronoun binds to, and doing that *over a span* where the binding may need to survive intervening
+content. That is not "retrieve once and read out"; it is "hold the right binding while a lot of other
+material streams past, and let go of the stale ones." And that is precisely the capability DeltaNet does
+not have, because in the move from GLA to DeltaNet I deliberately removed the decay. Recall the rung-3
+edit: I took `use_gate = False` and, more fundamentally, DeltaNet's recurrence
+`Sₜ = S_{t−1}(I − βₜ kₜ kₜᵀ) + βₜ vₜ kₜᵀ` has **no `α` term at all**. The Householder transition erases
+exactly the one direction being overwritten and leaves *everything else perfectly intact, forever*. So
+DeltaNet can do surgical, targeted removal of a colliding key, but it has lost the ability GLA had to
+*globally* let memory fade — to say "this whole context is getting old, decay it." It is all scalpel and
+no eraser. WinoGrande stalling is that missing eraser made visible.
+
+So now I can name the two capabilities the ladder has separated, and see that they were never in
+conflict — I just never had both at once. GLA (rung 2) gave me a **data-dependent decay**: a content-chosen
+forgetting rate, an eraser, but a *blunt* one — multiplicative and diagonal, it scales the whole state
+and cannot localize the removal to the specific association a new key collides with. DeltaNet (rung 3)
+gave me a **content-addressed write**: the error-correcting delta rule, a scalpel that removes exactly
+the stale direction, but with *no* global fading — once written and not directly overwritten, an
+association persists indefinitely. RetNet's failure was no data-dependence; GLA fixed the decay axis but
+left the write; DeltaNet fixed the write axis but dropped the decay. The two fixes live on *orthogonal*
+axes of the same recurrence — one is the multiplicative pre-factor on `S_{t−1}`, the other is the
+additive transition structure — and there is no reason I cannot apply both. That is the move: a
+recurrence that *gates and deltas at once*. The literature names the intuition precisely — gating enables
+rapid, global memory erasure while the delta rule facilitates targeted, content-addressed updates, and
+the two mechanisms are complementary rather than redundant.
+
+Let me derive the combined rule and check that it is well-posed, not just a hopeful concatenation. I want
+the previous state to first be *globally decayed* by a data-dependent scalar `αₜ ∈ (0,1)`, then have the
+delta-rule's targeted erase-and-write applied. Write the gated delta rule as
+`Sₜ = αₜ (I − βₜ kₜ kₜᵀ) S_{t−1} + βₜ vₜ kₜᵀ`. Read the limits to make sure it is a genuine
+generalization of both rungs and not some third thing. Set `αₜ = 1` for all `t`: the pre-factor
+vanishes and I get back `Sₜ = (I − βₜ kₜ kₜᵀ) S_{t−1} + βₜ vₜ kₜᵀ` — *exactly* DeltaNet, rung 3. Set
+`βₜ = 0`: the delta write vanishes and the Householder collapses to the identity, leaving
+`Sₜ = αₜ S_{t−1}` — the pure scalar-gated *decay skeleton* that the Mamba2 / scalar-gated-linear-attention
+family is built on (that family then adds its own additive write back on top; what the `βₜ = 0` limit
+isolates is the gating mechanism GLA also lives by — GLA's gate is per-channel, this one per-head scalar,
+but the same idea). So the combined rule sits *above* both rung 2 and rung 3 as special cases — it is strictly
+more general, which is exactly what I want from a finale: it cannot be worse than the better of the two
+unless the extra freedom is mis-trained, and it can be better wherever a task needs *both* a global
+eraser and a local scalpel — which is the WinoGrande profile.
+
+Now the design choices, each of which I have to justify rather than inherit, because a combined rule has
+new failure modes. First, what *shape* is `αₜ`? GLA used a per-key-channel diagonal gate; here I make
+`αₜ` a single **scalar per head**, the cheapest possible global decay. Why scalar and not diagonal? Two
+reasons. The delta rule already supplies the fine-grained, per-direction control — the Householder picks
+out the exact subspace to erase — so I do not need the gate to *also* be fine-grained; I need it to do
+the one thing the delta rule cannot, which is uniform global fading. A scalar `αₜ` is precisely that and
+nothing more, which keeps the two mechanisms doing non-overlapping jobs. And a scalar pulls cleanly out
+of the chunkwise cumulative product — exactly the property that made RetNet's fixed `γ` parallelizable —
+so the combined rule keeps the same matmul chunkwise training form as DeltaNet, with the decay folded in
+as a per-position log-cumsum. (If the gate were diagonal *and* combined with the Householder, the
+telescoping that made each of GLA and DeltaNet parallelizable would no longer compose cleanly; the
+scalar is what keeps the UT-transform chunk algorithm intact.) Second, how do I parameterize `αₜ` so it
+trains well? A fresh sigmoid sits near 0.5 — halving the state every step, killing long memory before
+training starts (the same trap I worried about for GLA). So borrow the Mamba2 discretization, which is
+built to give a long-memory prior. Compute a positive timescale `Δₜ = softplus(a_proj(xₜ) + dt_bias)`
+with `dt_bias` initialized so `Δₜ` starts small, and a per-head positive rate `A = exp(A_log)` with
+`A_log` initialized broadly; the log-decay is `gₜ = −A · Δₜ ≤ 0`, so `αₜ = exp(gₜ) ∈ (0,1]`, sitting
+near 1 (slow forgetting) at init and only decaying when the content asks for it. This is exactly the
+well-conditioned, near-1 initialization that the gate needs, and it makes `αₜ` data-dependent through
+`a_proj(xₜ)`. Third, stability: the Householder still needs L2-normalized keys so its non-unit
+eigenvalue is `1 − βₜ`, and now the *combined* contractive factor along the key direction is
+`αₜ(1 − βₜ) ∈ [0,1]` while orthogonal directions decay by `αₜ ∈ (0,1]` — both inside the unit disk, so
+the recurrence is stable by the same argument as DeltaNet plus a strictly-contractive scalar. I keep
+DeltaNet's SiLU-then-L2 on q/k, the short convolution, and the learned `βₜ`.
+
+One more decision the combined rule reopens that DeltaNet had closed: the **output gate**. At rung 3 I
+set `use_gate = False` deliberately, to isolate the write-rule change and not confound it with the swish
+output gate that RetNet and GLA carried. But the finale is no longer isolating one axis — it is the full
+combination — and now there is a clean reason to bring the output gate *back*: with a data-dependent
+decay re-introduced, the per-head outputs again have content-dependent, head-varying scale (the thing the
+output gate and per-head norm were for in GLA and RetNet), and the swish gate is the cheap restoration of
+the nonlinearity that deleting softmax removed. So I set `use_gate = True`, which routes the output
+through a fused gated RMSNorm with a `g_proj` swish gate — matching the GLA/RetNet output recipe — rather
+than DeltaNet's bare RMSNorm. This is a deliberate departure from the rung-3 edit and I am naming it: the
+finale re-adds the output gate that DeltaNet dropped, because the finale is the union of both lineages,
+not the write-rule axis in isolation.
+
+Make it concrete in this task's edit surface. FLA ships `GatedDeltaNet` with the `chunk_gated_delta_rule`
+kernel that implements the combined recurrence above — its forward computes the per-head log-decay
+`g = −exp(A_log)·softplus(a_proj(x) + dt_bias)`, the learned `β = sigmoid(b_proj(x))`, applies the
+SiLU+short-conv to q/k/v and L2-normalizes q/k inside the kernel, and runs the UT-transform chunk
+algorithm with the scalar decay folded in as a chunk-local cumsum. The edit imports it into
+`CausalSelfAttention`. The one harness-specific subtlety is head shaping: this layer follows the Mamba2
+convention `num_heads · head_dim = 0.75 · hidden_size` when `use_gate = True` (so the layer lands at the
+documented ~`6·d²` parameter budget, comparable to the other rungs' attention-plus-budget), *not*
+`n_head` directly — so for GPT-2 Medium (`hidden_size = 1024`) I pass `head_dim = 128` and
+`num_heads = 6` (`6·128 = 768 = 0.75·1024`), with `expand_v = 2.0` (value head dim `256`, value width
+`1536`), which is the configuration that satisfies the layer's integer-dimension assertions. I keep
+`use_short_conv = True`, `conv_size = 4`, and `use_gate = True` (the re-added output gate). I set
+`self.use_pos_emb = False` for the same reason as every rung since RetNet — the decay and recurrence
+carry relative position, so the loop skips its `wpe`. The `Block` stays the scaffold default; only the
+mixer is swapped. (The literal scaffold edit is in the answer.)
+
+So the finale is the natural close of the ladder: RetNet established that a decay must be data-dependent;
+GLA made the decay data-dependent but left the additive write; DeltaNet fixed the write but dropped the
+decay; and the gated delta rule applies *both fixes on their orthogonal axes at once* —
+`Sₜ = αₜ(I − βₜ kₜ kₜᵀ)S_{t−1} + βₜ vₜ kₜᵀ` — a data-dependent global eraser composed with a
+content-addressed scalpel, reducing to DeltaNet at `αₜ = 1` and to scalar-gated linear attention at
+`βₜ = 0`. Here is the bar it has to clear, stated against the real numbers, since this rung gets no
+feedback of its own. The strongest baseline is DeltaNet at validation loss **2.3481**, WikiText-2
+**49.88**, LAMBADA **70.48**, ARC-Easy **53.58**, HellaSwag **32.77**, and the open wound WinoGrande
+**49.17**. For the finale to earn the endpoint it must (1) hold or improve DeltaNet's clean-retrieval
+gains — validation loss at or below 2.3481, LAMBADA at or below 70.48, since at `αₜ ≈ 1` it *is*
+DeltaNet and the added decay should only help where global fading matters; and (2) *recover the eraser
+deficit* — WinoGrande should rise back above DeltaNet's 49.17 and ideally toward RetNet's 52.01, because
+WinoGrande was exactly the "hold the right binding while content streams past, let the stale ones fade"
+profile that the missing global decay was costing. The thing I would most want to validate is that the
+combined rule does not simply collapse to one of its parents: if it trains to `αₜ ≈ 1` everywhere it is
+just DeltaNet again (no WinoGrande recovery), and if it trains to `βₜ ≈ 0` everywhere it is just gated
+linear attention (LAMBADA regresses back toward 84). The endpoint claim is that with the Mamba2-style
+near-1 decay initialization both mechanisms stay alive, the validation loss drops below 2.3481, and
+WinoGrande recovers — the one metric three rungs of single-axis fixes never simultaneously held with the
+recall gains. So let me wire in the gated delta rule.
+</think>
+<say>
+The finale: Gated DeltaNet. DeltaNet's missing global eraser was costing it WinoGrande, so this rung composes both orthogonal fixes — a data-dependent scalar decay (the eraser) on top of the delta-rule's content-addressed write (the scalpel). This edit swaps in FLA's `GatedDeltaNet` with the Mamba2 head shaping (6 heads of dim 128, value expanded 2x) and re-enables the swish output gate.
+</say>
+<edit path="nanoGPT/custom_pretrain.py">
+<old>
+# EDITABLE region 1 of nanoGPT/custom_pretrain.py (lines 33-70) — DeltaNet (delta-rule linear attention)
+class CausalSelfAttention(nn.Module):
+    def __init__(self, config):
+        super().__init__()
+        from fla.layers import DeltaNet
+        self.attn = DeltaNet(
+            hidden_size=config.n_embd,
+            num_heads=config.n_head,
+            use_beta=True,                # learned writing strength beta_t (the delta rule)
+            use_short_conv=True,
+            conv_size=4,                  # depthwise short conv for local token comparison
+            qk_activation='silu',
+            qk_norm='l2',                 # L2-normalized keys -> transition is a projection at beta=1
+        )
+        self.use_pos_emb = False          # DeltaNet handles sequence ordering internally
+
+    def forward(self, x):
+        o, _, _ = self.attn(x)
+        return o
+</old>
+<new>
+# EDITABLE region 1 of nanoGPT/custom_pretrain.py (lines 33-70) — Gated DeltaNet (gated delta rule)
+class CausalSelfAttention(nn.Module):
+    def __init__(self, config):
+        super().__init__()
+        from fla.layers import GatedDeltaNet
+        # num_heads * head_dim = 0.75 * hidden_size when use_gate=True (Mamba2 budget convention):
+        # 6 * 128 = 768 = 0.75 * 1024
+        self.attn = GatedDeltaNet(
+            hidden_size=config.n_embd,
+            head_dim=128,
+            num_heads=6,
+            expand_v=2.0,                 # value head dim 256 (value width 1536)
+            use_gate=True,                # re-add the swish output gate (fused gated RMSNorm)
+            use_short_conv=True,
+            conv_size=4,
+        )
+        self.use_pos_emb = False          # scalar decay + delta recurrence encode position
+
+    def forward(self, x):
+        o, _, _ = self.attn(x)            # FLA returns (output, attn_weights, past_kv)
+        return o
+</new>
+</edit>
+<obs>
+Successfully replaced text in nanoGPT/custom_pretrain.py.
+</obs>

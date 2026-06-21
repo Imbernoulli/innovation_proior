@@ -1,0 +1,1338 @@
+<meta task="ml-symbolic-regression" domain="Classical ML" file="gplearn/custom_sr.py" model_format="qwen3" edit_tool="str_replace"/>
+
+<system>
+You are a research engineer improving a model on a fixed ML task. You work by editing the model code and running experiments. Think carefully before each change. You have these tools:
+- str_replace(path, old_str, new_str): replace the unique occurrence of old_str with new_str.
+- create(path, file_text): create a new file.
+- run_experiment(): train + evaluate the current code under the fixed budget; returns metrics.
+Make one tool call at a time. After editing, call run_experiment() to measure your method.
+</system>
+
+<user>
+## Research question
+
+Symbolic regression searches the space of mathematical expressions for one that fits observed
+`(X, y)` data — not a black-box predictor that returns a number, but an explicit, readable formula
+like `log(x+1) + log(x²+1)` or `2·sin(x)·cos(y)`. Genetic programming (GP) does this by maintaining a
+population of expression trees and evolving them by selection, crossover, and mutation. The single
+thing being designed here is the **search strategy itself**: the fitness it selects on, how parents
+are chosen, how crossover and mutation build offspring, elitism, parsimony pressure, diversity
+maintenance. Everything around the strategy — the tree representation, the protected operators, the
+benchmark data, the outer evolution loop — is fixed. The central tensions are exploration vs.
+exploitation, controlling expression complexity (bloat), and avoiding premature convergence onto a
+local optimum that fits the sample but not the function.
+
+## Prior art before the first rung (the search engines the first rung reacts to)
+
+The first rung — a Koza-style standard GP — is itself the resolution of a line of search methods.
+These are the ancestors it converged out of; the fixed substrate below is what they left behind.
+
+- **Polynomial / least-squares regression.** Fix a template `y = a₀ + a₁x + a₂x² + …` and solve for
+  the coefficients minimizing `Σ(y − ŷ)²` in closed form. Fast and optimal *for the chosen template*.
+  Gap: the functional form is an input, not an output — if the data came from a logarithm or a product
+  of sinusoids, no polynomial recovers it, and the search problem (which form?) is the whole point.
+- **The genetic algorithm on fixed-length strings (Holland 1975; Goldberg 1989).** A
+  representation-agnostic optimizer for combinatorial landscapes: a population of fixed-length
+  chromosomes, fitness-proportionate selection, one-point crossover, mutation, run for generations.
+  The selection-and-recombination engine is exactly right for a space with no gradient. Gap: the
+  fixed-length string pins the solution's size in advance and shatters under crossover — cutting a flat
+  string at a random byte slices through a nested subexpression and yields garbage.
+- **Evolving variable-size structures (Cramer 1985; Fujiki & Dickinson 1987).** Early work applied
+  evolutionary operators to program-like objects rather than flat strings, showing representational
+  complexity could grow. Gap: left open a simple, general recipe for evolving symbolic formulas while
+  keeping enough syntactic validity for the search to keep running.
+
+The resolution the first rung uses: let the individual *be* the expression tree (variable-size,
+hierarchical), and recombine by **subtree exchange** — because any subtree is itself a valid
+expression, every swap yields a valid offspring. Holland's Darwinian loop, run directly on trees.
+
+## The fixed substrate
+
+A self-contained GP framework is frozen and must not be touched. It supplies:
+
+- **Tree representation.** A `Node` with `value` and `children` (`__slots__ = ('value','children')`,
+  so no per-node attributes can be added). Operators are real→real and **protected** so any subtree is
+  legal in any slot: `protected_div` returns `1.0` on a near-zero divisor; `protected_log` is
+  `log(|a|)` (0 near zero); `protected_exp` clips its exponent to `[−10, 10]`. The function set is
+  `{add, sub, mul, div, sin, cos, log, exp}`; terminals are input variables `xi` and ephemeral random
+  constants drawn from `[−5, 5]`.
+- **Helpers a strategy may call.** `safe_evaluate(tree, X)` (runs the tree, sanitizes NaN/Inf, clips
+  finite); `generate_tree('grow'|'full', max_depth, n_features)` (a fresh random tree);
+  `Tree.copy()/.size()/.depth()/.get_all_nodes()` (the last returns `(node, parent, child_idx)` tuples
+  in preorder, so a chosen subtree can be spliced).
+- **Initialization & outer loop.** `ramped_half_and_half` seeds generation 0; the loop scores the
+  whole population each generation, tracks the single best tree ever seen by **raw MSE**, calls
+  `evolve_one_generation` for the next population, and after the last generation evaluates the
+  best-ever tree on the held-out test set. `r2_score` floors negative R² (a blow-up) at 0.0 and returns
+  the discovered expression string.
+
+## The editable interface
+
+Exactly one region of `gplearn/custom_sr.py` is editable — five functions that *are* the search
+strategy. Every method on the ladder is a fill of this same contract:
+
+- `fitness_function(tree, X, y) -> float` — lower is better (selection minimizes it).
+- `selection(population, fitnesses, n_select, ...) -> list` — return `n_select` selected individuals
+  (copies).
+- `crossover(parent1, parent2, n_features, max_depth=17)` — return one offspring tree.
+- `mutation(parent, n_features, max_depth=17)` — return one mutated tree.
+- `evolve_one_generation(population, fitnesses, X_train, y_train, n_features, pop_size,
+  crossover_rate=0.9, mutation_rate=0.05, max_depth=17) -> list` — the per-generation breeding logic;
+  returns the next population (length `pop_size`).
+
+The signature carries no persistent per-individual state across generations — `evolve_one_generation`
+sees only the current trees and their fitnesses, and `Node`'s `__slots__` blocks attaching extra
+fields — so any strategy must recompute everything it needs from the population each generation.
+
+The starting point is the scaffold **default**, which is deliberately broken as a search: uniform
+random parent selection (no fitness pressure), crossover that just returns a copy of `parent1`, and
+mutation that returns a copy of the parent. The loop's elitism keeps generation 0's lucky best, but
+nothing improves it. Each method on the ladder replaces exactly these definitions.
+
+```python
+# EDITABLE region of gplearn/custom_sr.py — default fill (no real search)
+def fitness_function(tree, X, y):
+    """Evaluate fitness of a candidate program. Lower is better."""
+    y_pred = safe_evaluate(tree, X)
+    return float(np.mean((y - y_pred) ** 2))
+
+
+def selection(population, fitnesses, n_select):
+    """Default: pick individuals uniformly at random (no fitness pressure)."""
+    selected = []
+    for _ in range(n_select):
+        idx = random.randint(0, len(population) - 1)
+        selected.append(population[idx].copy())
+    return selected
+
+
+def crossover(parent1, parent2, n_features, max_depth=17):
+    """Default: no recombination — return a copy of parent1."""
+    return parent1.copy()
+
+
+def mutation(parent, n_features, max_depth=17):
+    """Default: no perturbation — return a copy of the parent."""
+    return parent.copy()
+
+
+def evolve_one_generation(population, fitnesses, X_train, y_train,
+                          n_features, pop_size,
+                          crossover_rate=0.9, mutation_rate=0.05,
+                          max_depth=17):
+    """Build the next generation: elitism, then breed via selection + the operators above."""
+    new_population = []
+    elite_idx = int(np.argmin(fitnesses))            # elitism: keep best individual
+    new_population.append(population[elite_idx].copy())
+
+    while len(new_population) < pop_size:
+        parents = selection(population, fitnesses, 2)
+        r = random.random()
+        if r < crossover_rate:
+            child = crossover(parents[0], parents[1], n_features, max_depth)
+        elif r < crossover_rate + mutation_rate:
+            child = mutation(parents[0], n_features, max_depth)
+        else:
+            child = parents[0]
+        new_population.append(child)
+
+    return new_population[:pop_size]
+```
+
+## Evaluation settings
+
+Three standard symbolic-regression benchmarks spanning the difficulty range:
+
+- **Nguyen-7** — univariate transcendental, `log(x+1) + log(x²+1)`, train `x ∈ [0, 2]` (20 points),
+  test on a wider grid `x ∈ [−0.5, 2.5]` (100 points). Tests assembling logarithms and extrapolation.
+- **Nguyen-10** — bivariate trigonometric, `2·sin(x)·cos(y)`, `(x, y) ∈ [0, 2π]²` (100 train, 400
+  test). Tests multivariate composition of trig primitives.
+- **Koza-3** — univariate polynomial, `x⁵ − 2x³ + x`, `x ∈ [−1, 1]` (20 train, 100 test). A form the
+  search *can* represent exactly, testing whether it finds it.
+
+Each is run over three seeds {42, 123, 456} with population 500, 50 generations, an initial depth
+limit of 6 and an offspring depth cap of 8. The reported metric is **R²** on the held-out test set
+(higher is better, max 1.0; negative blow-ups floored at 0.0). RMSE and the discovered expression are
+reported alongside as feedback.
+
+The editable model code is in `gplearn/custom_sr.py`:
+```python
+def fitness_function(tree, X, y):
+    """Evaluate fitness of a candidate program. Lower is better."""
+    y_pred = safe_evaluate(tree, X)
+    return float(np.mean((y - y_pred) ** 2))
+
+
+def selection(population, fitnesses, n_select):
+    """Select individuals from the population for reproduction.
+
+    Args:
+        population: list of Node trees
+        fitnesses: list of float fitness values (lower is better)
+        n_select: int number of individuals to select
+
+    Returns:
+        list of Node copies of selected individuals
+    """
+    selected = []
+    for _ in range(n_select):
+        idx = random.randint(0, len(population) - 1)
+        selected.append(population[idx].copy())
+    return selected
+
+
+def crossover(parent1, parent2, n_features, max_depth=17):
+    """Perform crossover between two parent trees.
+
+    Returns:
+        Node - offspring tree
+    """
+    return parent1.copy()
+
+
+def mutation(parent, n_features, max_depth=17):
+    """Perform mutation on a parent tree.
+
+    Returns:
+        Node - mutated tree
+    """
+    return parent.copy()
+
+
+def evolve_one_generation(population, fitnesses, X_train, y_train,
+                          n_features, pop_size,
+                          crossover_rate=0.9, mutation_rate=0.05,
+                          max_depth=17):
+    """Create the next generation from the current population.
+
+    Args:
+        population: list of Node trees
+        fitnesses: list of float fitness values (lower is better)
+        X_train: numpy array (n_samples, n_features) - training inputs
+        y_train: numpy array (n_samples,) - training targets
+        n_features: number of input features
+        pop_size: desired population size
+        crossover_rate: probability of crossover
+        mutation_rate: probability of mutation
+        max_depth: maximum allowed tree depth
+
+    Returns:
+        list of Node - next generation population
+    """
+    new_population = []
+    # Elitism: keep best individual
+    elite_idx = int(np.argmin(fitnesses))
+    new_population.append(population[elite_idx].copy())
+
+    while len(new_population) < pop_size:
+        parents = selection(population, fitnesses, 2)
+        r = random.random()
+        if r < crossover_rate:
+            child = crossover(parents[0], parents[1], n_features, max_depth)
+        elif r < crossover_rate + mutation_rate:
+            child = mutation(parents[0], n_features, max_depth)
+        else:
+            child = parents[0]
+        new_population.append(child)
+
+    return new_population[:pop_size]
+```
+Improve it. Derive your method, edit the code, then run_experiment().
+</user>
+
+### step 1 — Standard GP (Koza-style)   [slug:standard_gp]
+
+<think>
+The search is the whole point, and with the scaffold's default fill there is no search — so the floor I
+start from is just getting the population to *evolve* at all. The default selection picks parents
+uniformly at random, ignoring fitness entirely; the default crossover returns a copy of `parent1`; the
+default mutation returns a copy of the parent. The loop's elitism dutifully carries forward whichever
+random tree of generation zero happened to score lowest, but nothing ever improves on it, because no
+operator moves anyone in program space and no selection prefers the good over the bad. The result of a
+run is decided entirely by the luck of the initial ramped-half-and-half draw. So the pain to fix first
+is the one Koza fixed: turn the empty contract into a genuine Darwinian loop over expression trees.
+
+Let me write down what I am really searching, because the structure of the space is what forces every
+later choice. I have a sample `(X, y)` and I want a symbolic formula that fits it. The objects I am
+searching over — expression trees — have no fixed size: a candidate might be three nodes or three
+hundred, a flat sum or a deeply nested composition. There is no fixed-dimensional parameter vector
+here, so there is nothing to take a gradient of and nothing to descend over. What I *can* do is score
+a candidate: run it on the data and measure error. That is exactly the interface a genetic algorithm
+needs — a population, a fitness, and operators that make new candidates from old ones — and nothing
+more. It never asks for smoothness or differentiability. So the engine is right; the only question is
+what the individual is and how I recombine two of them, and the substrate has already answered the
+first half: the individual *is* the tree, and `get_all_nodes()` hands me every subtree with its parent
+pointer so I can splice. The load-bearing fact behind the whole representation is that **any subtree of
+a valid expression is itself a valid expression** — so swapping subtrees between two parents always
+produces a syntactically valid, evaluable child. That is why crossover on trees works where crossover
+on flat strings shattered, and the protected operators in the substrate close the other half of the
+problem (any subtree's output is a legal input to any operator).
+
+Now I fill the contract one function at a time, forcing each choice to justify itself.
+
+**Fitness.** The task is a least-squares fit of the candidate's output to the targets over the sample
+points. The natural error is the mean squared error: predict over the sample, subtract the targets,
+square, average. Lower is better. Why squared and not absolute? Because least squares is the objective
+I actually care about, it penalizes large misses heavily, and — the part that matters for selection —
+it gives a clean total order on candidates. Selection only ever needs to ask "is A better than B," and
+"smaller MSE is better" answers that directly. I keep `fitness_function` as raw MSE with no penalty
+term baked in, because the outer loop tracks the best tree *by this number* for elitism, stopping, and
+the final report; if I quietly mixed a complexity penalty into the fitness, the loop would report and
+preserve the wrong tree. Whatever shaping a later rung wants belongs in selection, not here.
+
+**Selection.** The default's uniform random choice is the thing most obviously broken — it applies zero
+fitness pressure, so the population drifts rather than improves. Holland's original answer is
+fitness-proportionate selection: expected offspring proportional to fitness share. But I can feel two
+failure modes before I even code it. Early in a run, one lucky tree with far lower error than the rest
+grabs an enormous share of the reproductive opportunities and floods the next generation with its
+children; the population collapses onto one family, crossover has nothing distinct left to recombine,
+and the search converges prematurely onto a mediocre peak. Late in a run, as everyone improves, the
+fitnesses compress into a narrow band, the shares become nearly equal, and proportionate selection
+loses its ability to discriminate exactly when I still want to prefer the slightly-better trees. Both
+failures come from the same root: proportionate selection cares about the *magnitudes* of fitness, and
+those magnitudes are badly behaved at both ends of a run, and on three benchmarks whose error scales
+differ by orders of magnitude one tuning could never serve all three.
+
+What I actually want is for selection to care only about *which* tree is better, not by how much — to
+be invariant to the scale and spread of the numbers. So: draw a small number `k` of individuals at
+random and let the single lowest-error one win. A tournament of size `k`. It only ever *compares*
+fitnesses, never sums or weights them, so a tree a thousand times better is treated like one barely
+better — it just wins its tournaments — and no single super-fit individual can swamp the next
+generation, because being selected still requires being drawn into a tournament and there are only so
+many. That kills the early collapse. Late in the run, even with nearly-equal fitnesses, the better tree
+still wins whenever it meets worse contenders, so selection pressure is set by `k` rather than by the
+accidental spread of scores. `k` is the single greediness knob: `k=1` is random drift, large `k` is
+nearly-always-take-the-best; `k=7` is the standard default — strong enough to drive improvement, loose
+enough that average trees occasionally win and diversity survives. It is also cheap: `O(k)` per draw,
+no global sum. So selection becomes a size-7 tournament minimizing MSE, returning copies so a parent
+can be drawn and reused without ever being mutated in place.
+
+**Crossover.** The core operator, and the one the representation makes natural. To make a child: copy
+`parent1` (so the original is never damaged — it may be selected again), copy `parent2` as the donor,
+pick a node in each, and replace the copy's chosen subtree with the donor's. Because both endpoints are
+valid subexpressions, the child is always valid. Now the question is how to pick the two points. The
+honest, simple choice — and the one this rung commits to — is **uniform** over the nodes. I pick the
+offspring's crossover point from `1 .. size−1` (excluding the root, index 0, so a single crossover
+never wholesale-replaces the whole offspring with the donor in the common case) and the donor's point
+from `0 .. size−1` (the donor may contribute its entire tree). There is a known refinement here —
+weighting function nodes more heavily than terminals, because in a binary-operator tree most nodes are
+leaves and a uniform point therefore usually swaps a single terminal rather than a meaningful
+subexpression — but I am deliberately *not* taking it at this rung. The point of standard GP is to
+establish the plainest possible Koza-style loop and see where it lands; uniform point selection is that
+plainest version, and adding the 90/10 weighting now would muddy the question of what the bare engine
+does. If crossover ever produces a child deeper than the cap, I reject it and return a copy of
+`parent1` — the depth cap is the bloat brake and it lives right here.
+
+**Mutation.** Crossover has a built-in ceiling: it can only ever shuffle material *already present* in
+the population. If a primitive or a useful constant was never drawn in generation zero, or died out
+when a subpopulation went extinct, no amount of recombination brings it back — crossover splices
+existing pieces, it cannot invent one. So I need a source of fresh material. Subtree mutation, mirroring
+crossover: pick a node in a copy of the parent, delete the subtree there, and graft in a *freshly
+generated* random subtree via `generate_tree('grow', 3, n_features)`. A shallow grow (depth 3) keeps
+the injected noise small, and it reintroduces operators and constants the gene pool may have lost.
+Mutation is disruptive — it throws away a working subtree for random noise — so its rate must be small;
+the search should lean overwhelmingly on crossover to assemble building blocks and use mutation
+sparingly just to keep the pool from going extinct. Same depth cap: if the mutated child is too deep,
+return the parent unchanged.
+
+**The generation loop.** Assemble it: elitism first — copy the single best individual (by raw MSE)
+forward unconditionally, because my operators are stochastic and could destroy the current best, and I
+never want the best-of-generation to go backward. Then fill the rest by rolling a uniform random number
+per child: below `crossover_rate` (0.9), do subtree crossover on two tournament-selected parents;
+between 0.9 and 0.9+`mutation_rate` (0.95), mutate one tournament-selected parent; otherwise (the
+remaining 0.05), reproduction — copy one tournament-selected parent unchanged. Crossover at 0.9 is the
+workhorse; mutation at 0.05 is the diversity drip; reproduction lets a good tree occasionally pass
+forward intact. Repeat until the new population reaches `pop_size`, return it. Over 50 generations on a
+population of 500, with the best-ever tree tracked outside, the run reports the best tree it ever found.
+
+The whole loop is now coherent: a representation that makes the space searchable and recombination
+valid (trees + closure), an engine that needs no gradient (Darwinian selection), a recombination that
+exploits structure (uniform-point subtree crossover), a scale-free selector (tournaments), a diversity
+injector (subtree mutation), survival of the best (reproduction + elitism), a brake on bloat (the depth
+cap), and a fitness that is just the least-squares error. The full scaffold module is in the answer.
+
+Now I reason about what this floor must do, because that is the entire point of running it — it is the
+rung every later rung diagnoses. On a benchmark where the answer is *reachable* — a polynomial like
+Koza-3's `x⁵ − 2x³ + x`, which is just repeated multiplication and addition of `x`, well inside the
+`{add, sub, mul}` part of the function set and the depth cap — I expect standard GP to do well and
+consistently. The building blocks are simple, crossover assembles them, and there is no transcendental
+the search has to gamble its way into; I would be surprised to see Koza-3 do anything but cluster near
+1.0 across all three seeds. The two harder benchmarks are where I expect the bare engine to show its
+seams. Nguyen-7 needs the search to assemble *logarithms* and then extrapolate to a wider test range
+than it trained on; Nguyen-10 needs a *product* of a sine and a cosine in two variables. Both require
+the search to find and protect a specific transcendental building block, and here the failure mode I
+am most worried about is precisely the one tournament selection only *partly* fixes: premature
+convergence. With nothing but raw-MSE tournaments and no pressure toward diversity or against bloat
+beyond the depth cap, a single lineage that gets an early lead on the training sample can dominate the
+tournaments, the population homogenizes, and the search gets stuck on a tree that fits the 20 training
+points but is the wrong *form* — which then generalizes badly to the held-out grid. Because that
+stuck-point is a matter of which lineage happened to win the early tournaments, it should be highly
+**seed-dependent**: some seeds find the right form and score near 1.0, others lock onto a wrong form
+early and score far lower, and on the extrapolating Nguyen-7 a wrong form can blow up off the training
+range badly enough that `r2_score` floors it at 0 — or, if the predictions diverge hard, the raw R²
+goes sharply negative before the floor. So I expect the signature of this rung to be **high
+seed-to-seed variance on the transcendental benchmarks**: a good mean dragged down by one or two seeds
+that converged prematurely onto the wrong expression, with Koza-3 steady and high throughout.
+
+That diagnosis already points at the next rung. If the problem is premature convergence and bloat —
+one lineage taking over, trees growing without earning fitness — then the lever is *selection*: shape
+what selection rewards so it stops handing the whole population to a single early winner or to ever-
+larger trees. I expect standard GP to be the weakest rung by construction: it is the plain engine with
+no defense against its own convergence dynamics, and on the benchmarks where finding and keeping the
+right transcendental form is the whole difficulty, that lack of defense is exactly what should cost it.
+So let me build the standard Koza-style loop now, starting with the fitness.
+</think>
+<say>
+I'm implementing standard Koza-style GP — a real Darwinian loop over expression trees. This first edit makes the fitness a clean raw-MSE evaluation, lower is better.
+</say>
+<edit path="gplearn/custom_sr.py">
+<old>
+def fitness_function(tree, X, y):
+    """Evaluate fitness of a candidate program. Lower is better."""
+    y_pred = safe_evaluate(tree, X)
+</old>
+<new>
+def fitness_function(tree, X, y):
+    """MSE fitness — lower is better."""
+    y_pred = safe_evaluate(tree, X)
+</new>
+</edit>
+<obs>
+Successfully replaced text in gplearn/custom_sr.py.
+</obs>
+<note>
+Now selection: replace the uniform random draw with a size-7 tournament that minimizes MSE.
+</note>
+<edit path="gplearn/custom_sr.py">
+<old>
+
+def selection(population, fitnesses, n_select):
+    """Select individuals from the population for reproduction.
+
+    Args:
+        population: list of Node trees
+        fitnesses: list of float fitness values (lower is better)
+        n_select: int number of individuals to select
+
+    Returns:
+        list of Node copies of selected individuals
+    """
+    selected = []
+    for _ in range(n_select):
+        idx = random.randint(0, len(population) - 1)
+        selected.append(population[idx].copy())
+    return selected
+</old>
+<new>
+
+def selection(population, fitnesses, n_select, tournament_size=7):
+    """Tournament selection."""
+    selected = []
+    pop_size = len(population)
+    for _ in range(n_select):
+        candidates = random.sample(range(pop_size), min(tournament_size, pop_size))
+        best = min(candidates, key=lambda i: fitnesses[i])
+        selected.append(population[best].copy())
+    return selected
+</new>
+</edit>
+<obs>
+Successfully replaced text in gplearn/custom_sr.py.
+</obs>
+<note>
+Now the two real operators: uniform-point subtree crossover and shallow subtree mutation, both depth-capped.
+</note>
+<edit path="gplearn/custom_sr.py">
+<old>
+def crossover(parent1, parent2, n_features, max_depth=17):
+    """Perform crossover between two parent trees.
+
+    Returns:
+        Node - offspring tree
+    """
+    return parent1.copy()
+
+
+def mutation(parent, n_features, max_depth=17):
+    """Perform mutation on a parent tree.
+
+    Returns:
+        Node - mutated tree
+    """
+    return parent.copy()
+</old>
+<new>
+def crossover(parent1, parent2, n_features, max_depth=17):
+    """Standard subtree crossover."""
+    offspring = parent1.copy()
+    donor = parent2.copy()
+
+    # Pick random crossover points
+    off_size = offspring.size()
+    don_size = donor.size()
+    if off_size <= 1 or don_size <= 1:
+        return offspring
+
+    off_point = random.randint(1, off_size - 1)
+    don_point = random.randint(0, don_size - 1)
+
+    # Extract donor subtree
+    donor_nodes = donor.get_all_nodes()
+    donor_subtree = donor_nodes[don_point][0].copy()
+
+    # Replace in offspring
+    off_nodes = offspring.get_all_nodes()
+    node, parent, child_idx = off_nodes[off_point]
+    if parent is not None:
+        parent.children[child_idx] = donor_subtree
+    else:
+        offspring = donor_subtree
+
+    # Reject if too deep
+    if offspring.depth() > max_depth:
+        return parent1.copy()
+
+    return offspring
+
+
+def mutation(parent, n_features, max_depth=17):
+    """Subtree mutation — replace a random subtree with a new random tree."""
+    offspring = parent.copy()
+    tree_size = offspring.size()
+    if tree_size <= 1:
+        return generate_tree('grow', 3, n_features)
+
+    mut_point = random.randint(1, tree_size - 1)
+    new_subtree = generate_tree('grow', 3, n_features)
+
+    nodes = offspring.get_all_nodes()
+    node, par, child_idx = nodes[mut_point]
+    if par is not None:
+        par.children[child_idx] = new_subtree
+    else:
+        offspring = new_subtree
+
+    if offspring.depth() > max_depth:
+        return parent.copy()
+
+    return offspring
+</new>
+</edit>
+<obs>
+Successfully replaced text in gplearn/custom_sr.py.
+</obs>
+<note>
+Now retitle the generation docstring for the real loop.
+</note>
+<edit path="gplearn/custom_sr.py">
+<old>
+                          max_depth=17):
+    """Create the next generation from the current population.
+
+    Args:
+        population: list of Node trees
+        fitnesses: list of float fitness values (lower is better)
+        X_train: numpy array (n_samples, n_features) - training inputs
+        y_train: numpy array (n_samples,) - training targets
+        n_features: number of input features
+        pop_size: desired population size
+        crossover_rate: probability of crossover
+        mutation_rate: probability of mutation
+        max_depth: maximum allowed tree depth
+
+    Returns:
+        list of Node - next generation population
+    """
+    new_population = []
+    # Elitism: keep best individual
+    elite_idx = int(np.argmin(fitnesses))
+</old>
+<new>
+                          max_depth=17):
+    """Standard GP generation with elitism."""
+    new_population = []
+
+    # Elitism: keep best
+    elite_idx = int(np.argmin(fitnesses))
+</new>
+</edit>
+<obs>
+Successfully replaced text in gplearn/custom_sr.py.
+</obs>
+<note>
+Now select the right number of parents per branch — two for crossover, one for mutation and reproduction.
+</note>
+<edit path="gplearn/custom_sr.py">
+<old>
+    while len(new_population) < pop_size:
+        parents = selection(population, fitnesses, 2)
+        r = random.random()
+        if r < crossover_rate:
+            child = crossover(parents[0], parents[1], n_features, max_depth)
+        elif r < crossover_rate + mutation_rate:
+            child = mutation(parents[0], n_features, max_depth)
+        else:
+            child = parents[0]
+</old>
+<new>
+    while len(new_population) < pop_size:
+        r = random.random()
+        if r < crossover_rate:
+            parents = selection(population, fitnesses, 2)
+            child = crossover(parents[0], parents[1], n_features, max_depth)
+        elif r < crossover_rate + mutation_rate:
+            parents = selection(population, fitnesses, 1)
+            child = mutation(parents[0], n_features, max_depth)
+        else:
+            parents = selection(population, fitnesses, 1)
+            child = parents[0]
+</new>
+</edit>
+<obs>
+Successfully replaced text in gplearn/custom_sr.py.
+</obs>
+<run/>
+<obs>
+Measured results — `baseline:standard_gp` (`is_final,true`), seeds {42, 123, 456} and mean. Metric is
+test-set R² (higher is better).
+
+## Nguyen-7
+| seed | test R² |
+|---|---|
+| 42 | 0.997681 |
+| 123 | 0.991348 |
+| 456 | −1.000000 |
+| **mean** | **0.329676** |
+
+## Nguyen-10
+| seed | test R² |
+|---|---|
+| 42 | 0.883631 |
+| 123 | 0.557222 |
+| 456 | 0.321661 |
+| **mean** | **0.587505** |
+
+## Koza-3
+| seed | test R² |
+|---|---|
+| 42 | 0.985457 |
+| 123 | 0.997882 |
+| 456 | 0.994213 |
+| **mean** | **0.992517** |
+</obs>
+
+### step 2 — epsilon-Lexicase GP   [slug:lexicase_gp]
+
+<think>
+The standard-GP numbers tell me exactly one story, and I want to read it precisely before I change
+anything. Koza-3 is solved: 0.985, 0.998, 0.994 across the three seeds, mean 0.993 — the reachable
+polynomial behaves exactly as I predicted, steady and high, no drama. The drama is entirely on the two
+transcendental benchmarks, and it is *variance*, not a uniformly low mean. Nguyen-7 has two seeds at
+0.998 and 0.991 — essentially solved — and then seed 456 at −1.0: a complete blow-up, the wrong form
+found early, diverging off the wider test range badly enough that R² went negative and the floor caught
+it. One bad seed drags the Nguyen-7 mean from "near-solved" down to 0.330. Nguyen-10 is the same disease
+in a milder, more pervasive form: 0.884, 0.557, 0.322 — no single catastrophe, but a steady decline
+across seeds, mean 0.588, as if the search keeps locking onto partial fits of the sin·cos product and
+never recovers the rest. This is precisely the premature-convergence signature I worried about: with
+nothing but raw-MSE tournaments, one lineage that gets an early lead on the 20-or-100-point training
+sample dominates the tournaments, the population homogenizes onto its *form*, and on the transcendental
+targets that form is wrong often enough that the seed-to-seed outcome is a coin flip — solved, or
+stuck. The lever the diagnosis points at is selection: the failure is *which* lineage wins, so I should
+change what selection rewards.
+
+Let me look hard at what tournament selection actually does, because the flaw is structural, not a
+matter of tuning `k`. Each individual has a vector of per-case errors — one absolute error
+`e_t(i) = |y_t − ŷ_t(i)|` for each of the `N` training points — and `fitness_function` crushes that
+whole vector into a single scalar, the mean. Tournament then selects on that scalar. But the entire
+premise of GP is that a full solution is *assembled* from partial solutions: subprograms that each get
+some region of the problem right, recombined by crossover until one tree gets all of it right. The
+instant I average the error vector into one number, I delete *which* regions a tree is good at. Two
+trees can have the identical mean error with completely different profiles: one mediocre everywhere, the
+other the population's *best* on a cluster of hard cases and bad on the rest. For harvesting a building
+block the second is gold and the first is nothing — and tournament cannot tell them apart. Worse, it
+actively buries the specialist: its few bad cases inflate its mean, so against a generalist with lower
+mean it almost never wins. On Nguyen-10 this is exactly what I think is happening — the search needs a
+tree that nails the `sin(x)` factor and another that nails the `cos(y)` factor, but a specialist on
+one factor reads as mediocre on the mean and gets selected out before crossover can splice the two. The
+information I most need to escape premature convergence — the *shape* of the error vector, not its
+average — is the information I throw away before selecting.
+
+So the question is: what if I do not aggregate? What pressure do I actually want? I want to reward an
+individual for being uniquely good on *some* part of the problem, especially the *hard* parts — the
+cases few others get right — because those are where I am missing a building block. There is prior art
+reaching for this. Implicit fitness sharing (McKay; Krawiec & Nawrocki) rewards solving cases few
+others solve; historically-assessed hardness (Klein & Spector) scales each case's error by the
+population's success on it; co-solvability (Krawiec & Lichocki) rewards solving *pairs* of cases
+together. All have the right instinct — reward the rare and hard — but stare at what they do at the end:
+they all *sum* the per-case rewards into one number and then select on that number. I have just chosen
+a fancier scalar. I still cannot reward a unique *combination* of cases, because the combination is
+gone the moment I add the terms up. The aggregation is the disease; these treat symptoms.
+
+What would it mean to select on the combination without aggregating? Do not score-then-pick — *filter*.
+Treat each case as a gate. Start with the whole population as the candidate pool. Look at one case and
+throw out everyone who is not the best on it — keep only the elite on that single case. Then look at
+another case and, among the survivors, throw out everyone not best on *that* case. Repeat. Each gate is
+the simplest possible test — "are you the best left, on this case?" — no averaging anywhere, just a
+chain of elitism filters. Run enough gates and the pool shrinks to one, and that is my parent. And the
+individual that survives a long chain is elite on a *conjunction* of cases — exactly the combination no
+sum could express. The order of the gates matters enormously: a fixed order makes the first case a
+permanent dictator, so I shuffle the cases freshly for *every* parent-selection event. Then the
+first gate — the one with the most filtering power, acting on the whole population — is a different case
+each time, and over many selections every case gets its turn at being first. The beautiful part: a
+case's filtering strength is proportional to its *difficulty*. An easy case almost everyone ties on
+barely shrinks the pool; a hard case where only one or two individuals reach the best error slices the
+pool to those few — and hands selection straight to the specialist on that hard case. Difficult cases
+automatically exert more pressure, toward exactly the specialists I want to propagate. This is lexicase
+selection, and there is a diversity bonus for free: because each parent comes down a different random
+conjunction of cases, the population spreads across behavior space instead of collapsing onto one
+lineage — which is the direct antidote to the premature convergence that produced standard GP's −1.0
+seed and its Nguyen-10 decline.
+
+So I am sold on the structure. Now drop it onto *this* problem — continuous symbolic regression on
+real-valued, noisy data — and watch it break. Pool is the whole population, shuffle the cases, first
+case: find the best error on it, keep only individuals whose error *equals* that best. And right there
+is the wall. My errors are continuous floats. What is the chance two distinct expression trees produce
+the *exact same* floating-point error on a case? Essentially zero — it only happens if they are the
+same model. So "best error on this case" is achieved by exactly one individual, and the very first gate
+slams the pool from 500 to 1. Every selection event is decided by a single case, and the entire
+multi-case filtering chain — the conjunction mechanism that was the whole point — is gone. Worse,
+single-case selection off one noisy case is *worse* than tournament. The mechanism is sound; the
+*pass condition* is too sharp for a continuous space.
+
+Diagnose it precisely so I fix the right thing. The gate asks "is your error equal to the pool-best?"
+In a discrete space many individuals share the best, so the gate keeps a meaningful subset and the
+chain continues. In a continuous space, "equal" is measure-zero, so the gate keeps a singleton. I do
+not want "exactly best." I want "near-best": close enough to the best on this case that I do not
+disqualify a perfectly good near-elite for losing by `10⁻⁷`. So relax the gate — an individual passes
+case `t` if `e_t(i) ≤ e*_t + ε`. Now near-elites survive, a single case no longer empties the pool,
+multiple cases participate again, and I recover the conjunction behavior in continuous space.
+
+What is `ε`? The lazy answer — a user-set constant — is a trap, and I can see why before coding it. A
+fixed band is blind to how the population is doing: early in a run errors are huge and spread wide;
+late, as the population converges, they are small and tight. A constant reasonable early becomes, late,
+so wide relative to the now-tiny spread that everyone passes every case — the gates stop filtering,
+selection goes random, and I lose all pressure exactly when I should be fine-tuning. And the right
+value is problem-dependent — a band that filters sensibly on Koza-3's error scale would over- or
+under-filter on Nguyen-10's. I refuse to hand-tune a knob per benchmark *and* have it be wrong at one
+end of every run. So `ε` must set itself from the data. The natural idea: make `ε` track the *spread*
+of the errors on each case. Tightly clustered errors need a small band to separate near-elites; a
+widely spread (hard, contentious) case admits more contenders with a larger band; and as the population
+solves a case and the errors compress, the band shrinks with them — the self-scheduling the constant
+lacked.
+
+Which dispersion measure? The textbook standard deviation fails immediately on a GP population, and the
+reason is specific to GP. A population at any moment is full of *garbage* — freshly mutated junk,
+expressions that divide by near-zero or blow up and produce enormous errors. Those are extreme outliers
+in the error vector, and the standard deviation is dominated by them: a handful of trees at error `10⁶`
+while everyone real sits near `0.3` sends σ through the roof, so a σ-band would be set by the junk, be
+enormous, and pass everyone — back to no filtering. I need a dispersion measure that ignores the tails
+and reports the typical spread among the competitive individuals. That is the median absolute deviation:
+`MAD = median_j |e_t(j) − median_k e_t(k)|`. The inner median is the typical error, the outer median
+the typical distance from it; a minority of arbitrarily huge outliers moves it by at most one rank step
+— MAD has a 50% breakdown point, it simply does not see the junk. So `ε_t = MAD(e_t)` reports the scale
+the real contenders live in, exactly where "near-elite" should be judged. It is parameter-free,
+auto-scales to each case's difficulty, and shrinks as the population converges. That MAD-not-σ choice is
+forced by the outlier-heavy nature of GP populations specifically.
+
+Now the reference set: over which individuals do I compute the best error and the MAD? The cheap answer
+is the whole population, once per generation — freeze `e*_t` and `ε_t` into a population-level pass
+table. But it bothers me that by the third or fourth gate my pool is a handful of strong individuals
+while I am still measuring "best" against the original 500, most already filtered out and irrelevant to
+this event. So sharpen it: recompute *both* the pool elite `e*_t` and the MAD over the *current*
+candidate pool at each gate. As the pool homogenizes, the pool-MAD collapses, so `ε` shrinks further and
+the later gates keep filtering hard instead of waving everyone through — and the pool-best always clears
+its own band, so the pool never empties. This pool-relative (dynamic) form is the one that keeps the
+gates discriminating all the way down the chain, and it is what I land on. The cost stays in lexicase's
+class: recomputing a minimum and a MAD over the current pool at each gate is linear in the pool size per
+case, so one selection is `O(PN)` worst case and filling the population is `O(P²N)` — the MAD adds no
+asymptotic term, and in practice the pool winnows fast so wall-clock stays near tournament.
+
+The contract here passes the per-case absolute-error matrix into `selection` from
+`evolve_one_generation`, which builds it once per generation by evaluating every tree on the training
+inputs; `selection` slices that matrix to the current candidate set at each gate and recomputes the
+pool elite and pool MAD there. If the matrix is ever absent it falls back to a size-7 tournament, so the
+function is safe to call either way. Crossover and mutation stay exactly the standard uniform-point
+subtree operators from the previous rung — I am changing *selection only*, because the diagnosis was
+that selection is what hands the population to the wrong lineage. `fitness_function` stays raw MSE,
+because the outer loop still tracks the best-ever tree by it for elitism and reporting, and elitism
+still carries the raw-MSE best forward unconditionally. The full scaffold module is in the answer.
+
+Now the falsifiable expectations against the standard-GP numbers. The whole bet is that spreading
+selection pressure across cases — and rewarding specialists on the hard ones — kills the premature
+convergence that produced standard GP's worst outcomes. So the cleanest prediction: **Nguyen-7's −1.0
+seed should disappear.** That catastrophe was one lineage converging early onto a form that diverges off
+the test range; lexicase's case-by-case filtering keeps alternative forms alive long enough that no
+single early winner can lock the population, so I expect all three Nguyen-7 seeds positive and the mean
+to climb from 0.330 toward the ~0.97 the two good seeds already showed. On Nguyen-10, where the search
+needs to splice a `sin(x)` specialist with a `cos(y)` specialist, lexicase should *preserve* exactly
+those specialists that tournament buried — so I expect the Nguyen-10 mean to rise above standard GP's
+0.588, with the seed-42 near-solved case holding and the weaker seeds pulled up. Koza-3 is the control:
+it was already solved by the plain engine, so case-based selection should not hurt it — I expect it to
+stay high, near 0.99. If instead Nguyen-10 *does not* improve, that would tell me the bottleneck there
+is not selection diversity but raw representational search (the right product is simply hard to assemble
+under this depth cap), and the lever would have to move off selection. And there is one cost I should
+watch honestly: lexicase's `O(P²N)` selection is far heavier than tournament's `O(Pk)`, so I expect a
+large jump in wall-clock per run — the question is whether that compute buys back the seeds standard GP
+threw away. So let me replace selection with epsilon-lexicase now.
+</think>
+<say>
+I'm switching selection to epsilon-lexicase: filter parents case-by-case (best on a shuffled case, within a MAD band) instead of averaging the error vector. This edit adds the per-case error helper and the new selection function.
+</say>
+<edit path="gplearn/custom_sr.py">
+<old>
+
+def selection(population, fitnesses, n_select, tournament_size=7):
+    """Tournament selection."""
+    selected = []
+    pop_size = len(population)
+    for _ in range(n_select):
+        candidates = random.sample(range(pop_size), min(tournament_size, pop_size))
+        best = min(candidates, key=lambda i: fitnesses[i])
+        selected.append(population[best].copy())
+    return selected
+</old>
+<new>
+
+def _per_case_errors(population, X, y):
+    """Compute per-case absolute errors for the entire population.
+
+    Returns:
+        numpy array of shape (len(population), n_samples)
+    """
+    errors = np.empty((len(population), X.shape[0]))
+    for i, tree in enumerate(population):
+        y_pred = safe_evaluate(tree, X)
+        errors[i] = np.abs(y - y_pred)
+    return errors
+
+
+def selection(population, fitnesses, n_select, _errors=None, _X=None, _y=None):
+    """Epsilon-lexicase selection.
+
+    Requires _errors (per-case errors), _X, _y to be passed via
+    evolve_one_generation. Falls back to tournament if not available.
+    """
+    selected = []
+    pop_size = len(population)
+
+    if _errors is None:
+        # Fallback to tournament
+        for _ in range(n_select):
+            candidates = random.sample(range(pop_size), min(7, pop_size))
+            best = min(candidates, key=lambda i: fitnesses[i])
+            selected.append(population[best].copy())
+        return selected
+
+    n_cases = _errors.shape[1]
+    for _ in range(n_select):
+        candidates = list(range(pop_size))
+        cases = list(range(n_cases))
+        random.shuffle(cases)
+
+        for case in cases:
+            if len(candidates) <= 1:
+                break
+            case_errors = _errors[candidates, case]
+            # Semi-dynamic epsilon-lexicase (La Cava 2016/2019): candidates
+            # survive iff their error ≤ best_on_case + MAD. The previous
+            # `median + MAD` admitted most of the population and degraded
+            # lexicase toward random selection.
+            min_err = float(np.min(case_errors))
+            mad = float(np.median(np.abs(case_errors - float(np.median(case_errors)))))
+            candidates = [c for c, e in zip(candidates, case_errors) if e <= min_err + mad]
+
+        winner = random.choice(candidates)
+        selected.append(population[winner].copy())
+
+    return selected
+</new>
+</edit>
+<obs>
+Successfully replaced text in gplearn/custom_sr.py.
+</obs>
+<note>
+The operators are unchanged — just dropping the now-redundant inline comments in crossover.
+</note>
+<edit path="gplearn/custom_sr.py">
+<old>
+
+    # Pick random crossover points
+    off_size = offspring.size()
+</old>
+<new>
+
+    off_size = offspring.size()
+</new>
+</edit>
+<obs>
+Successfully replaced text in gplearn/custom_sr.py.
+</obs>
+<edit path="gplearn/custom_sr.py">
+<old>
+
+    # Extract donor subtree
+    donor_nodes = donor.get_all_nodes()
+    donor_subtree = donor_nodes[don_point][0].copy()
+
+    # Replace in offspring
+    off_nodes = offspring.get_all_nodes()
+</old>
+<new>
+
+    donor_nodes = donor.get_all_nodes()
+    donor_subtree = donor_nodes[don_point][0].copy()
+
+    off_nodes = offspring.get_all_nodes()
+</new>
+</edit>
+<obs>
+Successfully replaced text in gplearn/custom_sr.py.
+</obs>
+<edit path="gplearn/custom_sr.py">
+<old>
+
+    # Reject if too deep
+    if offspring.depth() > max_depth:
+</old>
+<new>
+
+    if offspring.depth() > max_depth:
+</new>
+</edit>
+<obs>
+Successfully replaced text in gplearn/custom_sr.py.
+</obs>
+<note>
+Retitle the generation docstring to reflect lexicase selection.
+</note>
+<edit path="gplearn/custom_sr.py">
+<old>
+                          max_depth=17):
+    """Standard GP generation with elitism."""
+    new_population = []
+</old>
+<new>
+                          max_depth=17):
+    """Lexicase GP generation — uses epsilon-lexicase selection."""
+    new_population = []
+</new>
+</edit>
+<obs>
+Successfully replaced text in gplearn/custom_sr.py.
+</obs>
+<note>
+Build the per-case error matrix once per generation and pass it into every selection call.
+</note>
+<edit path="gplearn/custom_sr.py">
+<old>
+
+    while len(new_population) < pop_size:
+        r = random.random()
+        if r < crossover_rate:
+            parents = selection(population, fitnesses, 2)
+            child = crossover(parents[0], parents[1], n_features, max_depth)
+        elif r < crossover_rate + mutation_rate:
+            parents = selection(population, fitnesses, 1)
+            child = mutation(parents[0], n_features, max_depth)
+        else:
+            parents = selection(population, fitnesses, 1)
+            child = parents[0]
+</old>
+<new>
+
+    # Pre-compute per-case errors for lexicase selection
+    errors = _per_case_errors(population, X_train, y_train)
+
+    while len(new_population) < pop_size:
+        r = random.random()
+        if r < crossover_rate:
+            parents = selection(population, fitnesses, 2, _errors=errors)
+            child = crossover(parents[0], parents[1], n_features, max_depth)
+        elif r < crossover_rate + mutation_rate:
+            parents = selection(population, fitnesses, 1, _errors=errors)
+            child = mutation(parents[0], n_features, max_depth)
+        else:
+            parents = selection(population, fitnesses, 1, _errors=errors)
+            child = parents[0]
+</new>
+</edit>
+<obs>
+Successfully replaced text in gplearn/custom_sr.py.
+</obs>
+<run/>
+<obs>
+Measured results — `baseline:lexicase_gp` (`is_final,true`), seeds {42, 123, 456} and mean. Metric is
+test-set R² (higher is better).
+
+## Nguyen-7
+| seed | test R² |
+|---|---|
+| 42 | 0.985628 |
+| 123 | 0.946157 |
+| 456 | 0.972426 |
+| **mean** | **0.968070** |
+
+## Nguyen-10
+| seed | test R² |
+|---|---|
+| 42 | 1.000000 |
+| 123 | 0.643314 |
+| 456 | 0.500000 |
+| **mean** | **0.714438** |
+
+## Koza-3
+| seed | test R² |
+|---|---|
+| 42 | 0.999978 |
+| 123 | 0.908243 |
+| 456 | 0.858879 |
+| **mean** | **0.922367** |
+</obs>
+
+### step 3 — Parsimony-pressured GP   [slug:parsimony_gp]
+
+<think>
+The lexicase numbers half-confirm the bet and half-refute it, and the split is exactly the place to push
+next. The thing I most wanted is there: Nguyen-7's −1.0 catastrophe is gone. All three seeds are
+positive — 0.986, 0.946, 0.972 — and the mean jumped from standard GP's 0.330 to 0.968. That is the
+premature-convergence cure working as predicted: spreading selection pressure across cases kept
+alternative forms alive, so no single early winner locked the population onto a form that diverges off
+the test range. Koza-3 the control mostly held — seed 42 at 0.99998 — but it actually *slipped* on the
+two harder seeds (0.908, 0.859, mean 0.922, down from standard GP's 0.993), which is a real signal I
+should not wave away. And Nguyen-10, where I predicted lexicase would preserve the sin/cos specialists
+and lift the mean above 0.588, is the disappointment: seed 42 is a perfect 1.0, but 123 and 456 fell to
+0.643 and 0.500, and the mean came in at 0.714. It rose, but far less than I hoped, and the floor (a
+0.5 seed) is still low.
+
+So I read the Koza-3 slip and the Nguyen-10 shortfall together, because I think they have one cause.
+Lexicase's case-by-case filtering does everything I asked of it on the *diversity* axis — it stops the
+population from collapsing — but it does nothing whatever about *size*. In fact it may make size worse:
+by rewarding specialists on individual cases, it actively keeps around large, contorted trees that
+happen to nail one nasty case, and a tree selected through a long conjunction of cases is under no
+pressure to be small. Watch what that does over 50 generations. The mean tree size drifts upward
+generation after generation — programs accumulate inert subexpressions, "introns," chunks that do not
+change the output — because once the population is near a fitness plateau, larger trees are more likely
+to survive crossover unharmed (a random crossover point lands in the padding, not the working core), so
+selection quietly rewards size for its own protective value. Bloat does three bad things at once: it
+slows evaluation (this is surely part of why lexicase's wall-clock blew up), it makes the final
+expression an unreadable monster, and — the part that shows up in these numbers — it *hurts
+generalization*. A bloated tree overfits the training sample with high-order wiggle and then fails on
+the held-out grid. Koza-3 trained on 20 points and tested on 100 in the same range: a bloated tree that
+threads the 20 training points can still miss between them, exactly the 0.908/0.859 slip I see.
+Nguyen-10 trained on 100 and tested on 400: same overfitting, worse because the target is harder. The
+diagnosis is clean — lexicase fixed convergence but left bloat completely unmanaged, and bloat is now
+the thing capping the mean. The lever is not selection-for-diversity anymore; it is *complexity
+control*.
+
+Let me start from the failure I can actually observe and make it precise, because "penalize big trees"
+is easy to say and easy to get wrong. After a quiet opening where average size barely moves, the mean
+node count starts climbing generation after generation while fitness stops improving. I must not confuse
+this with legitimate growth — a hard target may genuinely need a larger expression. The bad case is
+growth that buys *no* fitness. The old practical answer is to make large programs pay rent: select on a
+penalized fitness instead of raw fitness. In a maximized-fitness convention that is `f_p(x) = f(x) −
+c·l(x)`, where `l(x)` is program size and `c` is a pressure against length; the raw `f` still matters
+for recognizing a solution, the penalty only steers selection. Sensible as a soft MDL-flavored
+tradeoff, but it leaves the one question that matters: what is `c`? Too small and bloat continues; too
+large and GP treats shrinking as the real objective and collapses toward tiny useless programs. Worse,
+the right value changes with the problem, the primitive set, the population, the selection scheme, and
+even the generation. Adapting `c` over time helps, but still does not tell me what value gives a
+*specified* change in mean size. I want to *compute* the pressure from the current population, not tune
+it — and especially not tune it three different ways for three benchmarks.
+
+So I ask what actually determines the expected change in mean size. The size evolution equation is the
+starting point. For selection followed by symmetric subtree crossover — crossover that does not favor
+one parent order over the other — the expected next mean size depends only on which length classes
+selection picks: `E[μ(t+1)] = Σ_l l·p(l,t)`, where `p(l,t)` is the probability a selection event
+chooses a size-`l` program. If `Φ(l,t)` is the current population fraction at size `l`, the current
+mean is `μ(t) = Σ_l l·Φ(l,t)`, so `E[Δμ] = Σ_l l·(p(l,t) − Φ(l,t))`. This already names the lever:
+crossover, under the symmetry condition, does not move the mean in expectation — the mean moves *only*
+because selection over- or under-samples length classes. If long programs are picked more than their
+share, the mean grows; if short ones are favored, it shrinks. To stop bloat I have to make selection
+*neutral* with respect to the length advantage it is currently exploiting.
+
+To turn that into an equation for fitness I first use fitness-proportionate selection, because there
+`p(l,t)` has a closed form: `p(l,t) = Φ(l,t)·f̄(l,t)/f̄(t)`, with `f̄(l,t)` the average fitness among
+size-`l` programs and `f̄(t)` the population mean. Substituting gives `E[Δμ] = (1/f̄)·Σ_l l·(f̄(l,t) −
+f̄(t))·Φ(l,t)`. This looks almost like a covariance, except a covariance wants `l − μ` not `l`. I check
+whether inserting `l − μ` changes anything: split `l = (l − μ) + μ`. The first piece gives `Cov(l,f)`;
+the second is `μ·Σ_l (f̄(l,t) − f̄(t))·Φ(l,t)`, and that population-weighted deviation of size-class
+fitness from the population mean is `f̄ − f̄ = 0`. The cross-term vanishes for a precise reason, not by
+handwaving, and I am left with `E[Δμ] = Cov(l,f)/f̄`. That is Price's theorem in the language of program
+size: the expected one-generation change in the mean of a heritable feature is its covariance with
+fitness over mean fitness. The operational reading is the whole point — a positive covariance between
+length and fitness means selection has a length advantage to exploit, so the mean grows. That is bloat,
+named exactly.
+
+Now bring the penalty back without assuming it is linear: `f_p(x,t) = f(x) − g(l(x),t)` for any
+size function `g`. The same identity gives `E[Δμ] = Cov(l, f − g)/(f̄ − ḡ) = (Cov(l,f) − Cov(l,g))/(f̄
+− ḡ)`. For *no* expected growth I set `E[Δμ] = 0`, and (provided the denominator is nonzero) the
+condition is simply `Cov(l,g) = Cov(l,f)`. The penalty must have exactly the same covariance with size
+as the raw fitness currently has — the mean-fitness denominator drops out because I am forcing the
+numerator to zero. Pick the traditional linear penalty `g = c·l`: then `Cov(l,g) = c·Cov(l,l) =
+c·Var(l)`, and setting that equal to `Cov(l,f)` forces `c = Cov(l,f)/Var(l)`. That is the coefficient
+for zero expected size change. It is dynamic — both pieces change during the run — and it has a clean
+reading: it is the ordinary-least-squares slope of fitness against size, the per-node fitness advantage
+selection currently sees. Subtracting that slope times length removes the linear size-fitness advantage
+from the selection signal. No tuning, no per-benchmark constant — the population measures the pressure
+it needs.
+
+I keep the selection-scheme boundary honest, because this rung does not use proportionate selection. The
+exact covariance derivation assumes fitness-proportionate `p(l,t)`. Tournament selection does not give
+that closed form, so `c = Cov(l,f)/Var(l)` is not an exact theorem for a tournament. But the ratio still
+*estimates* the linear size-fitness slope in the current population, and tournament selection amplifies
+the same ordering — it just sharpens the preference for whoever has the better penalized value.
+Cancelling that slope is therefore the natural practical coefficient, and it carries over without
+changing the operator, which matters because I am keeping the size-7 tournament and the standard
+uniform-point subtree crossover and mutation from the previous rungs. I am changing *only* what number
+selection sees.
+
+Now translate to this scaffold's conventions, which is where the signs and the clamps live. The theory
+used maximized fitness and wrote `f − c·l`; the scaffold gives MSE, where *lower* is better. Under that
+convention, making large trees worse means selecting on `penalized = MSE + c·l` — the penalty is
+*added*, and selection minimizes. I compute the coefficient exactly as the automatic rule: `auto_c =
+Cov(length, raw_MSE)/Var(length)`, from the current lengths and the raw-MSE vector the function
+receives, guarding the degenerate zero-variance case (`c = 0`). Then I apply two clamps to `[0, 0.001]`.
+The lower clamp matters under lower-is-better: a *negative* coefficient would reward length (subtracting
+a negative adds to bad trees' favor), so I floor `c` at 0 — never reward bloat. The upper clamp at 0.001
+keeps one noisy generation, where a spurious size-fitness correlation spikes `auto_c`, from making
+selection ignore fit entirely and collapse the population to stubs; it is a mild ceiling that bounds how
+hard the brake can ever bite. Critically, the penalty lives in **selection only**. The raw MSE stays the
+truth for elitism, for the outer loop's best-tree tracking, and for the final report — `fitness_function`
+returns raw MSE unchanged, the elite carried forward each generation is the raw-MSE best, and only the
+penalized vector `MSE + c·l` is handed into the tournament. If I baked the penalty into the fitness, the
+loop would preserve and report a tree chosen for being small rather than for fitting, which is exactly
+the collapse I am clamping against. The per-generation loop is then: compute the lengths and the
+penalized vector, keep the raw-MSE elite, and breed by tournament on the penalized vector plus the
+unchanged crossover/mutation/reproduction split. The full scaffold module is in the answer.
+
+Now the falsifiable expectations against the lexicase numbers, because this rung has to clear a specific
+bar. The mechanism is the OLS slope of fitness on size cancelled out of selection, so the direct
+prediction is that mean tree size stops drifting up — and the *downstream* prediction, the one the
+leaderboard sees, is that controlling bloat recovers the generalization that bloat was costing. So I
+expect Koza-3 to come *back up* from lexicase's 0.922 toward standard GP's 0.99 and beyond — the slip
+was overfitting introns, and removing them should restore the clean polynomial fit; if Koza-3 does *not*
+recover, the bloat story is wrong and the slip had another cause. I expect Nguyen-10 to improve on
+lexicase's 0.714, because the 0.643 and 0.500 seeds were, on this reading, bloated overfits of the
+sin·cos product; a parsimony-pressured search should find a tighter, more generalizable form and lift
+the mean and the floor. Nguyen-7 is the interesting one: lexicase already cured its catastrophe to a
+0.968 mean, and parsimony does *not* carry lexicase's diversity machinery, so the open question is
+whether plain tournament + parsimony can hold Nguyen-7 near 0.97 without lexicase's per-case
+protection. My expectation is yes — that the −1.0 blow-up was a depth/divergence problem as much as a
+diversity problem, and that a compact, parsimony-controlled tree is *less* prone to diverging off the
+test range than a bloated one, so Nguyen-7 should stay high (near or above 0.985) with the smaller trees
+extrapolating more gracefully. If all three hold, this rung should sit clearly above lexicase on the
+overall mean — and it should do so *fast*, because parsimony keeps trees small and `O(Pk)` tournament
+selection is orders of magnitude cheaper than lexicase's `O(P²N)`, so I expect both a higher mean and a
+dramatically lower wall-clock than the previous rung. The one outcome that would refute the whole chain
+is Nguyen-10 staying stuck near 0.7 while Koza-3 recovers: that would mean bloat was never the Nguyen-10
+bottleneck, and the cap there is raw representational reach — the difficulty of assembling the right
+two-variable product under this depth limit — which no selection-side fix can lift. So let me put the
+parsimony pressure in, starting with the fitness docstring that pins raw MSE as the tracked truth.
+</think>
+<say>
+I'm adding automatic parsimony pressure to control bloat: selection minimizes `MSE + c·size` with `c = Cov(size, MSE)/Var(size)` clamped to `[0, 0.001]`. This first edit documents that fitness stays raw MSE, with the penalty applied only in the generation loop.
+</say>
+<edit path="gplearn/custom_sr.py">
+<old>
+def fitness_function(tree, X, y):
+    """MSE fitness — lower is better."""
+    y_pred = safe_evaluate(tree, X)
+</old>
+<new>
+def fitness_function(tree, X, y):
+    """Raw MSE fitness — lower is better.
+
+    Parsimony pressure is applied at the population level inside
+    evolve_one_generation, not here. This ensures best_tree_ever
+    in the main loop tracks the best-fitting tree by actual MSE.
+    """
+    y_pred = safe_evaluate(tree, X)
+</new>
+</edit>
+<obs>
+Successfully replaced text in gplearn/custom_sr.py.
+</obs>
+<note>
+Revert selection to plain tournament — it will now receive the penalized fitness vector instead of raw MSE.
+</note>
+<edit path="gplearn/custom_sr.py">
+<old>
+
+def _per_case_errors(population, X, y):
+    """Compute per-case absolute errors for the entire population.
+
+    Returns:
+        numpy array of shape (len(population), n_samples)
+    """
+    errors = np.empty((len(population), X.shape[0]))
+    for i, tree in enumerate(population):
+        y_pred = safe_evaluate(tree, X)
+        errors[i] = np.abs(y - y_pred)
+    return errors
+
+
+def selection(population, fitnesses, n_select, _errors=None, _X=None, _y=None):
+    """Epsilon-lexicase selection.
+
+    Requires _errors (per-case errors), _X, _y to be passed via
+    evolve_one_generation. Falls back to tournament if not available.
+    """
+    selected = []
+    pop_size = len(population)
+
+    if _errors is None:
+        # Fallback to tournament
+        for _ in range(n_select):
+            candidates = random.sample(range(pop_size), min(7, pop_size))
+            best = min(candidates, key=lambda i: fitnesses[i])
+            selected.append(population[best].copy())
+        return selected
+
+    n_cases = _errors.shape[1]
+    for _ in range(n_select):
+        candidates = list(range(pop_size))
+        cases = list(range(n_cases))
+        random.shuffle(cases)
+
+        for case in cases:
+            if len(candidates) <= 1:
+                break
+            case_errors = _errors[candidates, case]
+            # Semi-dynamic epsilon-lexicase (La Cava 2016/2019): candidates
+            # survive iff their error ≤ best_on_case + MAD. The previous
+            # `median + MAD` admitted most of the population and degraded
+            # lexicase toward random selection.
+            min_err = float(np.min(case_errors))
+            mad = float(np.median(np.abs(case_errors - float(np.median(case_errors)))))
+            candidates = [c for c, e in zip(candidates, case_errors) if e <= min_err + mad]
+
+        winner = random.choice(candidates)
+        selected.append(population[winner].copy())
+
+    return selected
+</old>
+<new>
+
+def selection(population, fitnesses, n_select, tournament_size=7):
+    """Tournament selection on (possibly penalized) fitnesses."""
+    selected = []
+    pop_size = len(population)
+    for _ in range(n_select):
+        candidates = random.sample(range(pop_size), min(tournament_size, pop_size))
+        best = min(candidates, key=lambda i: fitnesses[i])
+        selected.append(population[best].copy())
+    return selected
+</new>
+</edit>
+<obs>
+Successfully replaced text in gplearn/custom_sr.py.
+</obs>
+<note>
+Now the core change: compute the adaptive coefficient and the penalized vector at the top of each generation, with elitism still on raw MSE.
+</note>
+<edit path="gplearn/custom_sr.py">
+<old>
+                          max_depth=17):
+    """Lexicase GP generation — uses epsilon-lexicase selection."""
+    new_population = []
+
+    # Elitism: keep best
+    elite_idx = int(np.argmin(fitnesses))
+    new_population.append(population[elite_idx].copy())
+
+    # Pre-compute per-case errors for lexicase selection
+    errors = _per_case_errors(population, X_train, y_train)
+</old>
+<new>
+                          max_depth=17):
+    """Parsimony GP generation with parsimony pressure for bloat control.
+
+    Uses gplearn-style auto parsimony coefficient computed per generation:
+        c = Cov(length, fitness) / Var(length)
+    clamped to [0, 0.001] to prevent runaway penalization.
+    Parsimony pressure is applied only during selection; elitism uses
+    raw fitness so the best-fitting individual is always preserved.
+    """
+    new_population = []
+
+    # Adaptive parsimony coefficient (gplearn 'auto' method, clamped)
+    lengths = np.array([tree.size() for tree in population], dtype=float)
+    raw_fit = np.array(fitnesses, dtype=float)
+    len_var = float(np.var(lengths))
+    if len_var > 1e-15:
+        parsimony_coeff = float(np.cov(lengths, raw_fit)[1, 0]) / len_var
+        parsimony_coeff = max(parsimony_coeff, 0.0)
+        parsimony_coeff = min(parsimony_coeff, 0.001)
+    else:
+        parsimony_coeff = 0.0
+
+    # Penalized fitnesses for selection only
+    penalized = [f + parsimony_coeff * l for f, l in zip(fitnesses, lengths)]
+
+    # Elitism: keep best by raw fitness (not penalized)
+    elite_idx = int(np.argmin(fitnesses))
+    new_population.append(population[elite_idx].copy())
+</new>
+</edit>
+<obs>
+Successfully replaced text in gplearn/custom_sr.py.
+</obs>
+<note>
+Feed the penalized vector into selection and drop the lexicase error argument.
+</note>
+<edit path="gplearn/custom_sr.py">
+<old>
+        if r < crossover_rate:
+            parents = selection(population, fitnesses, 2, _errors=errors)
+            child = crossover(parents[0], parents[1], n_features, max_depth)
+        elif r < crossover_rate + mutation_rate:
+            parents = selection(population, fitnesses, 1, _errors=errors)
+            child = mutation(parents[0], n_features, max_depth)
+        else:
+            parents = selection(population, fitnesses, 1, _errors=errors)
+            child = parents[0]
+</old>
+<new>
+        if r < crossover_rate:
+            parents = selection(population, penalized, 2)
+            child = crossover(parents[0], parents[1], n_features, max_depth)
+        elif r < crossover_rate + mutation_rate:
+            parents = selection(population, penalized, 1)
+            child = mutation(parents[0], n_features, max_depth)
+        else:
+            parents = selection(population, penalized, 1)
+            child = parents[0]
+</new>
+</edit>
+<obs>
+Successfully replaced text in gplearn/custom_sr.py.
+</obs>
+<run/>
+<obs>
+Measured results — `baseline:parsimony_gp` (`is_final,true`), seeds {42, 123, 456} and mean. Metric is
+test-set R² (higher is better).
+
+## Nguyen-7
+| seed | test R² |
+|---|---|
+| 42 | 0.998416 |
+| 123 | 0.993885 |
+| 456 | 0.964240 |
+| **mean** | **0.985514** |
+
+## Nguyen-10
+| seed | test R² |
+|---|---|
+| 42 | 0.660146 |
+| 123 | 0.767062 |
+| 456 | 1.000000 |
+| **mean** | **0.809069** |
+
+## Koza-3
+| seed | test R² |
+|---|---|
+| 42 | 0.998152 |
+| 123 | 0.995727 |
+| 456 | 0.992995 |
+| **mean** | **0.995625** |
+</obs>

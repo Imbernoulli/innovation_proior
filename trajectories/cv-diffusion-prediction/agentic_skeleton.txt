@@ -1,0 +1,394 @@
+<meta task="cv-diffusion-prediction" domain="Computer vision" file="diffusers-main/custom_train.py" model_format="qwen3" edit_tool="str_replace"/>
+
+<system>
+You are a research engineer improving a model on a fixed ML task. You work by editing the model code and running experiments. Think carefully before each change. You have these tools:
+- str_replace(path, old_str, new_str): replace the unique occurrence of old_str with new_str.
+- create(path, file_text): create a new file.
+- run_experiment(): train + evaluate the current code under the fixed budget; returns metrics.
+Make one tool call at a time. After editing, call run_experiment() to measure your method.
+</system>
+
+<user>
+## Research question
+
+Unconditional CIFAR-10 diffusion, everything frozen except one decision: **what should the network be
+trained to predict?** The forward process, the UNet backbone, the optimizer, the noise schedule, the
+DDIM sampler, and the FID metric are all fixed. The single object being designed is the **prediction
+parameterization** — the regression target the model fits at training time, paired with the rule that
+recovers the clean image from the model's output at sampling time. The three standard targets (the
+noise $\epsilon$, the clean image $x_0$, the velocity $v$) are mathematically interchangeable — any one
+converts to the others — but they give different loss landscapes, different signal scaling across
+timesteps, and different gradient magnitudes, so under a *finite* training budget they land at
+different FID. The whole task is to choose, derive, and correctly invert that target.
+
+## Prior art before the first rung (the DDPM target lineage)
+
+The first rung reacts to the choices baked into the DDPM training recipe (Ho et al. 2020,
+arXiv:2006.11239) and the forward process it inherited from Sohl-Dickstein et al. (2015).
+
+- **The fixed forward process (Ho et al. 2020).** A datapoint is corrupted by a variance-preserving
+  Gaussian chain whose any-$t$ marginal is closed-form:
+  $x_t = \sqrt{\bar\alpha_t}\,x_0 + \sqrt{1-\bar\alpha_t}\,\epsilon$, with $\epsilon\sim\mathcal N(0,I)$
+  and $\bar\alpha_t$ the cumulative product of $(1-\beta_t)$. The training loop here samples a random
+  $t$, draws this $x_t$, and fits the network to a *target* by plain MSE. The forward process is given;
+  the target is the open slot.
+- **The reverse mean and its three readings.** The optimal reverse step regresses onto the
+  forward-posterior mean $\tilde\mu_t(x_t,x_0)$, and that mean can be written as a linear function of
+  $x_0$, of $x_t$ and $\epsilon$, or of the velocity $v$. So there is a *family* of equivalent targets,
+  related by the same two schedule scalars $\sqrt{\bar\alpha_t}$ and $\sqrt{1-\bar\alpha_t}$. Predicting
+  any one, then converting, yields the same ideal model — but not the same finite-budget optimization.
+  Gap: equivalence at the optimum says nothing about which target a network learns *fastest* and
+  *most evenly across noise levels* under a fixed step count.
+- **Direct $x_0$ regression (the naive target).** The most literal thing to ask of a denoiser is the
+  clean image itself: train the network to output $x_0$, and at sampling time use its output directly.
+  No schedule algebra at recovery time. Gap: the target's difficulty and scale swing wildly with $t$ —
+  at high noise the network must hallucinate a full clean image from near-pure noise, at low noise it
+  must copy its input — so a single network with a single MSE spends its budget unevenly. This is the
+  rung the ladder starts from.
+
+The fixed pipeline below is what these choices plug into; the editable interface is the one decision
+left open.
+
+## The fixed substrate
+
+A self-contained CIFAR-10 training script (`diffusers-main/custom_train.py`) is frozen and must not be
+touched outside the editable region. It fixes: the dataset (CIFAR-10, $32\times32$, unconditional, random
+horizontal flip, pixels mapped to $[-1,1]$); the backbone (`diffusers` `UNet2DModel`,
+`google/ddpm-cifar10-32` architecture, evaluated at three channel scales — small $\sim$9M, medium
+$\sim$36M, large $\sim$140M params); training (35,000 steps per scale, AdamW lr $2\times10^{-4}$, weight
+decay $10^{-4}$, gradient clip 1.0, mixed precision, EMA rate 0.9995, multi-GPU DDP); the noise schedule
+(linear $\beta$ from $10^{-4}$ to $0.02$ over 1000 steps, via `DDPMScheduler`); and the sampler (50-step
+DDIM, Song et al. 2020, arXiv:2010.02502). The loop draws $x_t$ with `add_noise`, calls
+`compute_training_target(...)` for the regression target, and fits the UNet by `F.mse_loss(pred,
+target)`. At eval it uses EMA weights and computes FID with clean-fid against the CIFAR-10 train set.
+
+One detail of the sampler is load-bearing for the contract. The DDIM scheduler is constructed with
+`prediction_type="sample"` — it expects a **predicted $x_0$**, not $\epsilon$ or $v$. So the loop calls
+the editable `predict_x0(...)` to convert the network's raw output into $\hat x_0$, and hands *that* to
+`scheduler.step`. The schedule scalars are precomputed in a `schedule` dict: `alphas_cumprod`,
+`sqrt_alpha` $=\sqrt{\bar\alpha_t}$, and `sqrt_one_minus_alpha` $=\sqrt{1-\bar\alpha_t}$.
+
+## The editable interface
+
+Exactly one region is editable — two coupled functions in `custom_train.py` (lines 83–118):
+
+- `compute_training_target(x_0, noise, timesteps, schedule)` — the MSE regression target, shape
+  $[B,C,H,W]$.
+- `predict_x0(model_output, x_t, timesteps, schedule)` — recovers $\hat x_0$ from the model output, used
+  by the DDIM sampler.
+
+The hard contract is **consistency**: `predict_x0` must be the exact algebraic inverse of whatever
+`compute_training_target` defines, under the same schedule scalars; if the sampler's recovery does not
+invert the training target, the model is sampled off-parameterization and FID collapses. Every rung on
+the ladder is a fill of exactly these two functions and nothing else — no change to architecture,
+dataset, optimizer, noise schedule, sampling procedure, or metric.
+
+The starting point is the scaffold default: **both functions unimplemented**. Each rung replaces exactly
+these two definitions.
+
+```python
+# EDITABLE region of diffusers-main/custom_train.py (lines 83-118) — default (unimplemented)
+def compute_training_target(x_0, noise, timesteps, schedule):
+    """Compute the training target given clean images and noise.
+
+    The model will be trained to predict this target via MSE loss.
+    Must be consistent with predict_x0() below.
+
+    Args:
+        x_0:       [B, C, H, W] clean images
+        noise:     [B, C, H, W] sampled Gaussian noise
+        timesteps: [B] integer timesteps (0 to T-1)
+        schedule:  dict with keys 'alphas_cumprod', 'sqrt_alpha',
+                   'sqrt_one_minus_alpha', each [T] tensors
+    Returns: [B, C, H, W] target tensor
+    """
+    raise NotImplementedError("Implement compute_training_target")
+
+
+def predict_x0(model_output, x_t, timesteps, schedule):
+    """Recover predicted x_0 from the model's output.
+
+    Must be consistent with compute_training_target() above.
+    Used during DDIM sampling to convert model prediction back to x_0.
+
+    Args:
+        model_output: [B, C, H, W] model prediction
+        x_t:          [B, C, H, W] noisy sample
+        timesteps:    [B] integer timesteps
+        schedule:     dict (same as compute_training_target)
+    Returns: [B, C, H, W] predicted clean image
+    """
+    raise NotImplementedError("Implement predict_x0")
+```
+
+## Evaluation settings
+
+The candidate parameterization is trained from scratch at each of the three channel scales (small,
+medium, large) and scored by FID. Single seed (42). Metric: FID computed by clean-fid against the
+CIFAR-10 train set, lower is better, reported at three scales — `best_fid_small`, `best_fid_medium`,
+`best_fid_large` (each the best checkpoint over training, EMA weights, 50-step DDIM). The contribution
+must be a transferable target parameterization, not a change to anything else in the pipeline.
+
+The editable model code is in `diffusers-main/custom_train.py`:
+```python
+
+def compute_training_target(x_0, noise, timesteps, schedule):
+    """Compute the training target given clean images and noise.
+
+    TODO: Implement your prediction parameterization here.
+
+    The model will be trained to predict this target via MSE loss.
+    Must be consistent with predict_x0() below.
+
+    Args:
+        x_0:       [B, C, H, W] clean images
+        noise:     [B, C, H, W] sampled Gaussian noise
+        timesteps: [B] integer timesteps (0 to T-1)
+        schedule:  dict with keys 'alphas_cumprod', 'sqrt_alpha',
+                   'sqrt_one_minus_alpha', each [T] tensors
+
+    Returns: [B, C, H, W] target tensor
+    """
+    raise NotImplementedError("Implement compute_training_target")
+
+
+def predict_x0(model_output, x_t, timesteps, schedule):
+    """Recover predicted x_0 from the model's output.
+
+    TODO: Must be consistent with compute_training_target() above.
+
+    Used during DDIM sampling to convert model prediction back to x_0.
+
+    Args:
+        model_output: [B, C, H, W] model prediction
+        x_t:          [B, C, H, W] noisy sample
+        timesteps:    [B] integer timesteps
+        schedule:     dict (same as compute_training_target)
+
+    Returns: [B, C, H, W] predicted clean image
+    """
+```
+Improve it. Derive your method, edit the code, then run_experiment().
+</user>
+
+### step 1 — x0-prediction (predict the clean image)   [slug:x0pred]
+
+<think>
+[[POLISH_REASONING: adapt to first-person agentic voice, end by deciding to implement]]
+The target is the whole task, but it bolts onto a fixed denoiser, and before I can argue about clever targets I have to settle the most literal one — so the place to start is the question the contract actually poses, stated plainly. The forward process is given to me as a variance-preserving Gaussian chain: at a random timestep $t$ the loop hands the network $x_t = \sqrt{\bar\alpha_t}\,x_0 + \sqrt{1-\bar\alpha_t}\,\epsilon$, with $\epsilon\sim\mathcal N(0,I)$ and $\bar\alpha_t$ the cumulative product of $(1-\beta_t)$ along the linear $\beta$ schedule. It then fits the UNet by plain MSE to whatever `compute_training_target` returns, and at sampling time it converts the model's output to a predicted clean image through `predict_x0` and feeds that to a 50-step DDIM step. So the network is a denoiser: it sees a corrupted image and one scalar, the noise level, and it has to produce *something* from which the clean image can be reconstructed. The only freedom I have is to choose what that something is.
+
+What is the most direct thing to ask a denoiser to produce? The clean image itself. If the job is "remove the noise," the literal statement of the job is "output $x_0$." Train the network so that its output *is* the estimate of the clean image, regress it onto $x_0$ with MSE, and at sampling time the recovery rule is trivial — the model output already *is* $\hat x_0$, so `predict_x0` is the identity, nothing to invert, no schedule algebra at recovery time. That last point matters more than it looks, because the contract's one hard requirement is that `predict_x0` be the exact algebraic inverse of `compute_training_target` under the same schedule scalars. For the $x_0$ target the inverse is the identity map, which is the one inverse I cannot get wrong. So among all the fills I could write, this is the one with zero risk of a consistency bug between training and sampling: the target is $x_0$, the recovery is the model output verbatim, and the two are trivially consistent. That is a real reason to start here — it isolates "is the *pipeline* wired correctly" from "is the *target* a good one," because if FID is bad with this fill I know the fault is the parameterization, not a mismatched inverse.
+
+Now I have to be honest about why this is the *weakest* fill and not just the simplest, because the point of running the floor is to read its failure precisely. Go back to where the target family comes from. The forward marginal is $x_t = \sqrt{\bar\alpha_t}\,x_0 + \sqrt{1-\bar\alpha_t}\,\epsilon$, and the ideal reverse step regresses the network onto the forward-posterior mean $\tilde\mu_t(x_t,x_0)$, which is a fixed linear combination of $x_0$ and $x_t$. Because $x_t$ is the network's own input — it already has it — the reverse mean can be re-expressed in several equivalent ways: as a function of $x_0$, as a function of the noise $\epsilon$ that was mixed in, or as a function of the velocity $v$. All of these are the same model at the optimum; any one converts to the others through the two schedule scalars $\sqrt{\bar\alpha_t}$ and $\sqrt{1-\bar\alpha_t}$. So why would predicting $x_0$ be worse than predicting $\epsilon$, if they are interchangeable? Because interchangeability holds *at the optimum*, with infinite capacity and infinite training. Under a finite budget — 35,000 steps, one fixed UNet, a single MSE — what the network actually learns depends on the *conditioning* of the regression problem the target poses, and the three targets pose very differently conditioned problems.
+
+Here is the conditioning argument for the $x_0$ target, which is the crux of why it should land last. The MSE loss weights every timestep's target equally in raw pixel space, because the loop is a flat `F.mse_loss(pred, target)` with $t$ sampled uniformly and no per-$t$ reweighting (the loop is fixed; I cannot touch the weighting). Now look at what the $x_0$ target *demands* as a function of $t$. At small $t$ — almost no noise — $x_t$ is essentially the clean image already, so predicting $x_0$ is nearly the identity map: an easy, near-trivial task, and the MSE there is tiny because the input already contains the answer. At large $t$ — near-pure noise — $x_t$ carries almost none of $x_0$ (the signal coefficient $\sqrt{\bar\alpha_t}$ has decayed toward zero), so the network is asked to *hallucinate a complete clean image out of what is essentially Gaussian noise*. That is an extremely hard regression, and crucially its irreducible error is huge: with the signal nearly gone there is enormous conditional variance in $x_0$ given $x_t$, so the best-possible MSE at large $t$ is large. The flat MSE therefore sees a target whose attainable loss is microscopic at small $t$ and enormous at large $t$, and the gradient is dominated by the large-$t$ terms — the network pours its capacity into the near-impossible high-noise reconstruction, where the marginal return is low, and the loss landscape is dominated by a term it can never drive down. The target's *scale and difficulty swing across $t$ by orders of magnitude*, and a single network with a single flat MSE cannot serve both ends well. That uneven allocation is exactly the kind of finite-budget pathology the equivalence-at-the-optimum argument is blind to.
+
+There is a second, related defect specific to $x_0$-prediction interacting with the DDIM sampler, and it bites hardest precisely where the target is hardest. The sampler takes the model's $\hat x_0$ and steps; if at high noise the network's $\hat x_0$ is a poor, high-variance guess (which it must be, since the information is not there), then the first several DDIM steps — the ones that fix global structure — are taken on an unreliable clean-image estimate. The trajectory's coarse layout is decided by exactly the regime where $x_0$-prediction is least conditioned. Compare this to predicting the noise: at high noise, $x_t$ is *almost all* $\epsilon$, so predicting $\epsilon$ there is close to the identity and well-conditioned, and the hard regime for $\epsilon$ is small $t$ — but there the recovery $\hat x_0 = (x_t - \sqrt{1-\bar\alpha_t}\,\hat\epsilon)/\sqrt{\bar\alpha_t}$ divides a small noise error by $\sqrt{1-\bar\alpha_t}$, which is itself small, so the error is contained. The point is not to derive $\epsilon$-prediction yet; it is to see that $x_0$-prediction puts its worst-conditioned regime exactly at the high-noise steps that matter most for FID, while the alternative targets do not. So $x_0$ should be the worst of the three, and the gap should *widen at the larger scales* if anything, because a bigger network has more capacity to waste on the hopeless high-noise reconstruction rather than being forced by its limits toward the parts it can learn — though I hold that prediction loosely; the more robust claim is simply that $x_0$ trails the other two at every scale.
+
+Let me also be careful about one thing the harness does *not* do, because it changes how I read the result against the original $x_0$-prediction idea. The DDPM-style discussion of $x_0$-prediction often pairs it with extra machinery — clipping the predicted clean image to the valid range, or a loss weighting that down-weights the unattainable high-noise terms — to paper over exactly the conditioning problem I just described. None of that is available here. The training loop applies a flat unweighted MSE I cannot reweight; the only clipping is inside the fixed DDIM sampler (`clip_sample=True`), which clamps the *recovered* $\hat x_0$ to $[-1,1]$ during sampling but does nothing for the training gradient. So this baseline is $x_0$-prediction in its rawest form: literal $x_0$ target, identity recovery, flat MSE, no reweighting, no training-time clipping. Whatever the result is, it is the honest floor of "ask the denoiser for the clean image and nothing else," and any later rung that beats it does so purely by changing the *target*, since everything else is frozen.
+
+Now the edit itself, in this task's surface. The contract is the two coupled functions and the consistency requirement between them. `compute_training_target` returns `x_0` unchanged — the target *is* the clean image. `predict_x0` returns `model_output` unchanged — the model output *is* the predicted clean image, exactly what the `prediction_type="sample"` DDIM scheduler wants, so no conversion is needed and none should be applied. There is no schedule arithmetic in either function, which is correct: the $x_0$ parameterization is the one point in the target family where both scalars $\sqrt{\bar\alpha_t}$ and $\sqrt{1-\bar\alpha_t}$ drop out of the target-and-recovery pair entirely. I deliberately do *not* reach for the `schedule` dict here even though it is offered, because using it would mean I had written a non-identity recovery, which would break consistency. The whole fill is two one-line bodies. (The full scaffold edit is in the answer.)
+
+So at step 1 the parameterization is settled as the most literal denoising target, and I reason about what this floor must show, because that is the entire point of running it before anything cleverer. The model will be trained to output the clean image directly and sampled by feeding that output straight to DDIM. I expect it to *work* — it will produce real CIFAR-like samples, not garbage, because $x_0$-prediction is a valid parameterization and the pipeline is otherwise the well-tuned DDPM recipe — but I expect it to produce the *worst FID of any sensible target*, at all three scales, because the flat MSE forces the network to spend its budget on the hopeless high-noise reconstruction where $x_0$ is nearly unidentifiable from $x_t$, leaving the well-conditioned low-noise regime under-served and the coarse-structure DDIM steps taken on a shaky $\hat x_0$. The diagnosis is therefore pointed at the next step before I even see the number: the trouble is not the model, the optimizer, or the sampler — it is that the *target's difficulty is wildly uneven across noise levels*, and the fix is to choose a different member of the equivalent target family whose regression problem is better conditioned across $t$ under the same flat MSE. The first move from here is to ask what target keeps the network's job evenly hard across noise levels — and the velocity $v$ is the natural candidate, because it is the linear combination of $x_0$ and $\epsilon$ engineered to have a stable, bounded scale at *every* $t$. Whatever the exact FID, the per-scale shape I am watching for is simple: $x_0$-prediction trailing the field, by a margin that does not close as the network grows, confirming that the defect is the target's conditioning and not anything the budget could fix.
+</think>
+<say>
+[[FILL_SAY: 1-2 sentences naming the method and what this first edit does]]
+</say>
+<edit path="diffusers-main/custom_train.py">
+<old>
+
+def compute_training_target(x_0, noise, timesteps, schedule):
+    """Compute the training target given clean images and noise.
+
+    TODO: Implement your prediction parameterization here.
+
+    The model will be trained to predict this target via MSE loss.
+    Must be consistent with predict_x0() below.
+
+    Args:
+        x_0:       [B, C, H, W] clean images
+        noise:     [B, C, H, W] sampled Gaussian noise
+        timesteps: [B] integer timesteps (0 to T-1)
+        schedule:  dict with keys 'alphas_cumprod', 'sqrt_alpha',
+                   'sqrt_one_minus_alpha', each [T] tensors
+
+    Returns: [B, C, H, W] target tensor
+    """
+    raise NotImplementedError("Implement compute_training_target")
+
+
+def predict_x0(model_output, x_t, timesteps, schedule):
+    """Recover predicted x_0 from the model's output.
+
+    TODO: Must be consistent with compute_training_target() above.
+
+    Used during DDIM sampling to convert model prediction back to x_0.
+
+    Args:
+        model_output: [B, C, H, W] model prediction
+        x_t:          [B, C, H, W] noisy sample
+        timesteps:    [B] integer timesteps
+        schedule:     dict (same as compute_training_target)
+
+    Returns: [B, C, H, W] predicted clean image
+    """
+</old>
+<new>
+def compute_training_target(x_0, noise, timesteps, schedule):
+    # X0-prediction: model directly predicts the clean image
+    return x_0
+
+
+def predict_x0(model_output, x_t, timesteps, schedule):
+    # Model output IS x_0, no conversion needed
+    return model_output
+</new>
+</edit>
+<obs>
+Successfully replaced text in diffusers-main/custom_train.py.
+</obs>
+<run/>
+<obs>
+Measured results — `baseline:x0pred` (`is_final,true`), seed 42. FID, lower is better.
+
+## FID by channel scale
+| seed | best_fid_small | best_fid_medium | best_fid_large |
+|---|---|---|---|
+| 42 | 25.25 | 13.56 | 11.99 |
+| **mean** | **25.25** | **13.56** | **11.99** |
+</obs>
+
+### step 2 — v-prediction (predict the velocity)   [slug:vpred]
+
+<think>
+[[POLISH_REASONING: adapt to first-person agentic voice, end by deciding to implement]]
+The $x_0$ run told me what I expected and it told me in the per-scale numbers: FID 25.25 small, 13.56 medium, 11.99 large — real CIFAR samples, but the worst of any sensible target, and the gap does not collapse as the network grows (going small→large the FID nearly halves, but that is the budget helping every target, not the $x_0$ defect closing). That shape is exactly the conditioning failure I argued for. The flat MSE the loop applies — uniform over $t$, no reweighting I can touch — was pitted against a target whose difficulty swings by orders of magnitude with $t$: nearly the identity at small $t$, a near-impossible hallucination of a clean image from almost-pure noise at large $t$. The gradient was dominated by the hopeless high-noise terms, capacity went where the marginal return is lowest, and the coarse-structure DDIM steps were taken on a high-variance $\hat x_0$. So this is not a model, optimizer, or sampler problem — those are frozen and the pipeline plainly works. It is purely that the *target's scale and difficulty are uneven across noise levels*. The fix has to be a different member of the equivalent target family whose regression problem is *evenly conditioned across $t$* under that same flat MSE. So my question becomes sharp: among all linear combinations of $x_0$ and $\epsilon$ that I could ask the network to predict, which one has a stable, bounded scale at *every* timestep?
+
+Let me set up the family properly so I'm choosing, not guessing. The forward marginal is $x_t = \sqrt{\bar\alpha_t}\,x_0 + \sqrt{1-\bar\alpha_t}\,\epsilon$. Write $a := \sqrt{\bar\alpha_t}$ and $b := \sqrt{1-\bar\alpha_t}$, so $a^2 + b^2 = 1$ — the two scalars are a sine/cosine pair, $(a,b) = (\cos\phi_t, \sin\phi_t)$ for some angle $\phi_t$ that runs from $0$ at $t=0$ (all signal) to $\pi/2$ at $t=T$ (all noise). Any target I can pose is a function of $x_0$, $\epsilon$, and $x_t$; but $x_t$ is the network's own input, so a *useful* target is one the network cannot trivially read off its input. The interesting targets are linear combinations of $x_0$ and $\epsilon$. The $x_0$ target is the pure $x_0$ corner; the $\epsilon$ target is the pure $\epsilon$ corner. The $x_0$ corner failed because its irreducible difficulty is tiny at $t\!\to\!0$ and enormous at $t\!\to\!T$ — strongly $t$-dependent. By the symmetry $a^2+b^2=1$, the $\epsilon$ corner has the *opposite* tilt: at large $t$, $x_t\approx\epsilon$, so predicting $\epsilon$ is nearly the identity and easy; at small $t$, $x_t\approx x_0$ and the residual $\epsilon$ is what's left to extract — harder, but its recovery is well-damped. So $\epsilon$ is also $t$-tilted, just the other way. The thing I actually want is the combination that is *balanced* — whose magnitude and difficulty are roughly constant across the whole $\phi_t$ sweep, so the flat MSE serves every noise level equally.
+
+This is where I derive the velocity, and I want to derive it from the geometry rather than pull it out of a hat. Think of the forward process as a rotation in the $(x_0,\epsilon)$ plane: $x_t = a\,x_0 + b\,\epsilon = \cos\phi_t\,x_0 + \sin\phi_t\,\epsilon$. That is the position vector at angle $\phi_t$ on a circle whose axes are the clean image and the noise. The natural partner of a position on a circle is its *velocity* — the derivative of the position as the angle advances. Differentiate $x_t$ with respect to $\phi_t$: $\frac{dx_t}{d\phi_t} = -\sin\phi_t\,x_0 + \cos\phi_t\,\epsilon = a\,\epsilon - b\,x_0$. Call this $v := a\,\epsilon - b\,x_0 = \sqrt{\bar\alpha_t}\,\epsilon - \sqrt{1-\bar\alpha_t}\,x_0$. Two facts about $v$ fall straight out of the geometry. First, $v$ is *orthogonal* to $x_t$ in the $(x_0,\epsilon)$ plane: their inner product over the basis is $a\cdot(-b) + b\cdot a = 0$. So $v$ is precisely the component of "where to go next" that is *not* already contained in $x_t$ — the network is asked only for the information its input does not carry, which is the cleanest possible target. Second, and this is the whole point, $v$ is a *unit-rotation* of the same $(x_0,\epsilon)$ pair: since $a^2+b^2=1$, the map $(x_0,\epsilon)\mapsto(x_t,v)$ is an orthonormal rotation by $\phi_t$, so $v$ has the *same scale as $x_t$ at every $t$*. Where the $x_0$ target's magnitude collapsed and exploded across $t$, $v$'s magnitude is stationary in $t$ — it is a balanced mixture of $x_0$ and $\epsilon$ whose blend angle rotates but whose norm does not. That is exactly the "evenly hard across noise levels" property the $x_0$ failure said I needed.
+
+Check the two endpoints against what each corner target does, because the balance has to hold where the others broke. At $t\!\to\!0$ ($\phi\!\to\!0$): $a\to1,b\to0$, so $v\to\epsilon$. Good — at low noise $v$ behaves like the $\epsilon$ target, which is *well*-conditioned there (the $\epsilon$ corner's easy/hard tilt is the reverse of $x_0$'s, so at small $t$ asking for $\epsilon$ is the sensible thing, not the near-identity $x_0$ copy). At $t\!\to\!T$ ($\phi\!\to\!\pi/2$): $a\to0,b\to1$, so $v\to-x_0$. Good — at high noise $v$ behaves like (minus) the $x_0$ target, but *now* that is the right thing to ask, because at high noise the signal direction is what the model must commit to for the coarse DDIM steps, and unlike pure-$x_0$-prediction at high noise the target's *scale* is still bounded (it equals $|x_0|$, not a quantity divided by a vanishing $a$). So $v$ smoothly interpolates: it asks for $\epsilon$ where $\epsilon$ is the well-conditioned request and for $x_0$ where $x_0$ is the well-conditioned request, with a constant target scale throughout. That is the parameterization the $x_0$ failure was pointing me toward — not "predict the noise" (the other corner, which I could also try) but the *balanced* member that fixes the conditioning at *both* ends at once.
+
+Now I have to nail the contract, because the consistency requirement between training and sampling is the one thing that, if I get it wrong, sends FID to garbage regardless of how good the target is. The training target is $v = a\,\epsilon - b\,x_0$, computed from the schedule scalars `sqrt_alpha` ($=a$) and `sqrt_one_minus_alpha` ($=b$), the clean image $x_0$, and the sampled noise. The recovery `predict_x0` must invert it: given the model's predicted $\hat v$ and the noisy input $x_t$, solve for $\hat x_0$. I have two linear equations in $(x_0,\epsilon)$ — $x_t = a\,x_0 + b\,\epsilon$ and $v = a\,\epsilon - b\,x_0$ — so I can eliminate $\epsilon$. Multiply the first by $a$ and the second by $b$ and subtract: $a\,x_t - b\,v = a^2 x_0 + ab\,\epsilon - (ab\,\epsilon - b^2 x_0) = (a^2 + b^2)x_0 = x_0$. So $\hat x_0 = a\,x_t - b\,\hat v = \sqrt{\bar\alpha_t}\,x_t - \sqrt{1-\bar\alpha_t}\,\hat v$. The cancellation of the $\epsilon$ terms uses exactly $a^2+b^2=1$ — the same identity that made $v$ a unit rotation — so the recovery is the *exact* algebraic inverse of the target, with no clamp on $a$ needed (unlike the $\epsilon$ recovery, which would divide by $a$ and need a floor as $a\to0$). That is a quiet bonus of $v$: its inverse is numerically clean at high noise, where the $\epsilon$ parameterization's recovery is most fragile. The recovered $\hat x_0$ is what the `prediction_type="sample"` DDIM scheduler wants, so it goes straight to `scheduler.step` with no further conversion. (The full scaffold edit is in the answer.)
+
+I should be precise about what this task's harness does and does *not* give me, so the reasoning lands the implementation that is actually here and not the fuller story. The velocity parameterization is sometimes paired with extra moves — a "truncated-SNR" loss weighting, or a zero-terminal-SNR schedule fix so the highest noise level is *actually* pure noise. None of that is reachable: the loss weighting is the fixed flat MSE I cannot touch, and the noise schedule (linear $\beta$, $10^{-4}$ to $0.02$) is frozen, so the terminal SNR is whatever this schedule gives and I do not get to drive it to zero. So this rung is $v$-prediction stripped to exactly its target-and-recovery essence: target $a\,\epsilon - b\,x_0$, recovery $a\,x_t - b\,\hat v$, flat MSE, frozen schedule. That framing also tempers my expectation. The strongest published case for $v$ over $\epsilon$ is made in regimes this harness suppresses — very few sampling steps (distillation), high resolution, or a schedule pushed to zero terminal SNR — none of which is in play here at $32\times32$ with a full 50-step DDIM and a standard linear schedule. So I should expect $v$ to *clearly beat $x_0$* (the conditioning fix is real and scale-independent) but I am genuinely unsure whether it beats the noise corner, because at low resolution with many sampling steps the $\epsilon$ parameterization's well-known strength may already capture most of the conditioning benefit.
+
+So the delta from step 1 is concrete and the expectation is falsifiable against the numbers I just saw. Where $x_0$-prediction asked for the clean image with an identity recovery and a difficulty that swung from trivial to hopeless across $t$, $v$-prediction asks for the orthogonal, unit-scaled velocity $a\,\epsilon - b\,x_0$ and recovers $\hat x_0 = a\,x_t - b\,\hat v$ — a target whose magnitude is constant in $t$ so the flat MSE serves every noise level evenly. The claim I am committing to: $v$ should improve on $x_0$ at *every* scale, not just on average, because the conditioning fix is geometric and does not depend on capacity — so I expect the small-scale FID to drop well below 25.25, the medium below 13.56, the large below 11.99, and the *relative* improvement to be at least as large at the high-noise-sensitive coarse steps where $x_0$ was shakiest. What I am watching for as the open question is whether $v$ closes all the way to the field's best or merely sits between $x_0$ and the noise corner: if it lands clearly better than $x_0$ but I later find a noise-prediction rung beating it, that would say the remaining gap is not "balance the target scale" but something the $\epsilon$ corner does better at this exact low-res, many-step regime — and that is precisely the comparison the next step has to settle.
+</think>
+<say>
+[[FILL_SAY: 1-2 sentences naming the method and what this first edit does]]
+</say>
+<edit path="diffusers-main/custom_train.py">
+<old>
+def compute_training_target(x_0, noise, timesteps, schedule):
+    # X0-prediction: model directly predicts the clean image
+    return x_0
+
+
+def predict_x0(model_output, x_t, timesteps, schedule):
+    # Model output IS x_0, no conversion needed
+    return model_output
+</old>
+<new>
+def compute_training_target(x_0, noise, timesteps, schedule):
+    # V-prediction: v = sqrt(alpha) * noise - sqrt(1-alpha) * x_0
+    sqrt_alpha = schedule["sqrt_alpha"][timesteps].view(-1, 1, 1, 1)
+    sqrt_one_minus_alpha = schedule["sqrt_one_minus_alpha"][timesteps].view(-1, 1, 1, 1)
+    return sqrt_alpha * noise - sqrt_one_minus_alpha * x_0
+
+
+def predict_x0(model_output, x_t, timesteps, schedule):
+    # Recover x_0 from v-prediction:
+    # v = sqrt(alpha) * eps - sqrt(1-alpha) * x_0
+    # x_t = sqrt(alpha) * x_0 + sqrt(1-alpha) * eps
+    # => x_0 = sqrt(alpha) * x_t - sqrt(1-alpha) * v
+    sqrt_alpha = schedule["sqrt_alpha"][timesteps].view(-1, 1, 1, 1)
+    sqrt_one_minus_alpha = schedule["sqrt_one_minus_alpha"][timesteps].view(-1, 1, 1, 1)
+    return sqrt_alpha * x_t - sqrt_one_minus_alpha * model_output
+</new>
+</edit>
+<obs>
+Successfully replaced text in diffusers-main/custom_train.py.
+</obs>
+<run/>
+<obs>
+Measured results — `baseline:vpred` (`is_final,true`), seed 42. FID, lower is better.
+
+## FID by channel scale
+| seed | best_fid_small | best_fid_medium | best_fid_large |
+|---|---|---|---|
+| 42 | 21.70 | 11.59 | 8.80 |
+| **mean** | **21.70** | **11.59** | **8.80** |
+</obs>
+
+### step 3 — epsilon-prediction (DDPM default)   [slug:epsilon]
+
+<think>
+[[POLISH_REASONING: adapt to first-person agentic voice, end by deciding to implement]]
+The velocity run did what I said it would and the numbers say exactly where it stopped short. $v$-prediction came in at FID 21.70 small, 11.59 medium, 8.80 large — an improvement over $x_0$-prediction at *every* scale (25.25→21.70, 13.56→11.59, 11.99→8.80), which is the geometric conditioning fix paying off just as I argued: a target with constant scale across $t$ lets the flat MSE serve every noise level evenly, and the gain held at all three capacities because the fix never depended on capacity. So the diagnosis from step 1 was right — the $x_0$ defect was uneven target conditioning, and balancing the target scale recovered real ground. But the gap to "as good as this pipeline can do" is plainly not closed, and the shape of $v$'s remaining shortfall is the tell. The improvement over $x_0$ is *largest at the large scale* (3.19 FID) and smallest at the small scale (3.55 small vs 3.19 large in absolute terms, but proportionally the large-scale gain is the cleanest), and on no scale does $v$ reach the regime I'd expect from a well-tuned CIFAR DDPM. That points me to the precise open question I left myself: did $v$ fix conditioning at *both* ends, or did its high-noise behavior — where it interpolates toward $-x_0$ — leave a residual that a target tilted the *other* way would not? I balanced the target scale; but balance is not the same as putting the *easy* regime where the network can exploit it. The next move is the other corner of the family — predict the noise $\epsilon$ — and I have to derive why, at *this* low-resolution, full-50-step-DDIM regime, that asymmetric corner can beat the balanced velocity.
+
+Set up the family the same way, because the comparison is entirely about where each target puts its well-conditioned regime. With $a=\sqrt{\bar\alpha_t}$, $b=\sqrt{1-\bar\alpha_t}$, $a^2+b^2=1$, the marginal is $x_t = a\,x_0 + b\,\epsilon$. The three targets are three points on the rotation: $x_0$ (pure signal), $\epsilon$ (pure noise), and $v=a\epsilon-bx_0$ (the orthogonal velocity, the balanced midpoint). I have run two of the three corners and the midpoint is between them. The thing I now have to reason about is not target *scale* — $v$ already made that constant — but target *learnability under the flat MSE given how the loss mass actually distributes across $t$*. Here is the subtlety the velocity argument glossed: making the target's norm constant across $t$ guarantees the loss numbers are comparable across $t$, but it does *not* guarantee the network spends its capacity on the timesteps that matter most for FID. What matters for FID is set by where the *uniform-$t$ sampling* and the *DDIM sampler* concentrate their leverage, and I need to find the target that is well-conditioned exactly there.
+
+Derive $\epsilon$-prediction from the loss, not from the geometry, because that is what exposes the right regime. Go back to the reverse-mean regression that all three targets descend from. The optimal reverse step regresses onto the forward-posterior mean $\tilde\mu_t$, and substituting the reparameterization $x_0 = (x_t - b\,\epsilon)/a$ collapses that mean to $\tilde\mu_t = \frac{1}{\sqrt{\alpha_t}}\big(x_t - \frac{\beta_t}{\sqrt{1-\bar\alpha_t}}\epsilon\big)$ — a function whose *only* unknown is $\epsilon$, because $x_t$ is the network's input. So the most economical request I can make is: predict the single thing the network does not already have, the noise $\epsilon$ that was mixed in. That is the same "ask only for what the input lacks" principle that made $v$ orthogonal to $x_t$ — but now I ask for the *noise* component specifically, and the question is whether that beats asking for the velocity component. Plug the $\epsilon$ parameterization back into the reverse-mean MSE and the $x_t$ terms cancel, leaving a clean $\|\epsilon - \hat\epsilon\|^2$ per timestep, scaled by a $t$-dependent weight $\frac{\beta_t^2}{2\sigma_t^2\alpha_t(1-\bar\alpha_t)}$. Here is the crux: the DDPM recipe *drops that weight to a constant* — the simplified objective is the unweighted $\mathbb E_{t,x_0,\epsilon}\|\epsilon-\hat\epsilon\|^2$ — and *that flat-over-$t$ $\epsilon$-MSE is exactly the loss this task's frozen loop computes.* The loop samples $t$ uniformly and applies a flat `F.mse_loss(pred, target)`; with the target set to $\epsilon$, the loop *is* the DDPM simplified objective, verbatim. The harness was built around this parameterization. That is the deepest reason to expect $\epsilon$ to win here: the fixed flat MSE is not a neutral container — it is the precise weighting under which $\epsilon$-prediction was tuned, and the original analysis already showed *why* the flat weight helps. The true variational weight over-emphasizes the small-$t$, almost-no-noise terms, which teach the network to remove a tiny sliver of noise — a near-identity, low-value task. Stripping the weight to uniform removes that over-emphasis and frees capacity for the genuinely hard high-noise denoising. So with $\epsilon$ as the target, the flat MSE I am *stuck with* is exactly the reweighting that the parameterization wants.
+
+Now compare that to where $v$ put its easy regime, because this is the asymmetry that should decide the contest. $v\to\epsilon$ as $t\to0$ and $v\to-x_0$ as $t\to T$. So under the flat MSE, $v$ asks the network to predict (something like) $x_0$ at high noise. Predicting $x_0$ at high noise — even with bounded target scale, which $v$ fixed — is still a *high-conditional-variance* request: the clean image is barely identifiable from near-pure noise, so the attainable error there is irreducibly large and the network's high-noise prediction is shaky for the coarse DDIM steps. $\epsilon$-prediction has the opposite tilt: at high noise $x_t\approx\epsilon$, so predicting $\epsilon$ there is *nearly the identity* — the best-conditioned possible request exactly at the timesteps that set global structure in the 50-step DDIM trajectory. The hard regime for $\epsilon$ is instead small $t$, where it must extract a small residual noise; but there the recovery $\hat x_0 = (x_t - b\,\hat\epsilon)/a$ divides the noise error by $b=\sqrt{1-\bar\alpha_t}$, which is itself small at small $t$, so a small $\hat\epsilon$ error maps to a small $\hat x_0$ error — the error is *damped* precisely where the target is hardest. $\epsilon$ therefore puts its well-conditioned regime at the high-noise coarse steps and damps its error at the low-noise fine steps — the reverse of $x_0$, and a *better* match to FID's sensitivities than $v$'s balanced-but-$x_0$-tilted-at-high-noise behavior. That is the specific, falsifiable reason I expect $\epsilon$ to edge out $v$ at this resolution and step count, even though $v$ already fixed the gross scale imbalance.
+
+I should be honest about the one place this could go the other way, because the velocity literature's case for $v$ is real — just not in this regime. $v$'s advantage over $\epsilon$ shows up when the sampler takes *very few* steps (distillation), at *high resolution*, or with a *zero-terminal-SNR* schedule — settings where $\epsilon$-prediction's high-noise behavior degenerates (at the very last, near-pure-noise step, predicting $\epsilon$ and recovering $\hat x_0=(x_t-b\hat\epsilon)/a$ divides by a vanishing $a$, so the recovery blows up). This task suppresses *all three* of those: $32\times32$ is low resolution, 50 DDIM steps is many, and the linear schedule is frozen with a nonzero terminal SNR (the highest noise level is not pure noise, so $a$ never actually hits zero in the sampled range and the $\epsilon$ recovery's division by $a$ stays finite). So the exact failure mode that makes $v$ preferable is the one this harness does not trigger. That is why I expect the *ordering* here to be the reverse of the high-resolution / few-step story — $\epsilon$ best, $v$ second, $x_0$ worst — and it is a genuinely task-dependent claim, not a universal one.
+
+Now the contract, which for $\epsilon$ is the one parameterization whose recovery is *not* numerically free and so deserves care. The training target is $\epsilon$ itself — `compute_training_target` returns the sampled noise unchanged, no schedule algebra (the noise corner, like the $x_0$ corner, needs none at target time). The recovery inverts $x_t = a\,x_0 + b\,\epsilon$ for $x_0$: $\hat x_0 = (x_t - b\,\hat\epsilon)/a = (x_t - \sqrt{1-\bar\alpha_t}\,\hat\epsilon)/\sqrt{\bar\alpha_t}$. Unlike $v$, this divides by $a=\sqrt{\bar\alpha_t}$, which shrinks toward zero at the highest noise levels — so the recovery must floor the denominator (clamp $a$ to a small positive value) to stay finite at the top of the schedule. That clamp is the single defensive line that distinguishes the $\epsilon$ fill from the others, and it is exactly the place where, at higher resolution or zero-terminal-SNR, $\epsilon$ would still be fragile; here the frozen schedule's nonzero terminal SNR keeps $a$ comfortably away from zero over the 50 sampled DDIM timesteps, so the clamp almost never engages and the recovery is well-behaved. The recovered $\hat x_0$ goes straight to the `prediction_type="sample"` DDIM step, consistent with the target by construction. (The full scaffold edit is in the answer.)
+
+One more grounding note on what this rung is and is not. This is $\epsilon$-prediction as the *pure* DDPM simplified objective — flat unweighted MSE on the noise, the recovery clamp, nothing else. The harness does not let me add the improvements that sit on top of $\epsilon$-prediction in the fuller line of work (a learned reverse variance, importance-sampled timesteps, a cosine schedule) — the schedule and the loop are frozen — so what I am landing is exactly the parameterization the fixed flat-MSE loop was designed around, and no more. That is the right thing to land, because the task is asking for the best *target* under this fixed pipeline, and the pipeline *is* the $\epsilon$-prediction recipe.
+
+So the delta from step 2, and the falsifiable claim I close on against the numbers I have. Where $v$-prediction asked for the balanced velocity and recovered $\hat x_0 = a\,x_t - b\,\hat v$, fixing target scale but placing a high-variance $x_0$-like request at the high-noise coarse steps, $\epsilon$-prediction asks for the noise and recovers $\hat x_0 = (x_t - b\,\hat\epsilon)/a$, putting its *best*-conditioned regime exactly at those high-noise steps and damping its error at the low-noise fine steps — and doing it under a flat MSE that *is* the objective this parameterization was tuned for. The claim: $\epsilon$ should beat $v$ at every scale, reversing the high-res/few-step ordering, so I expect the small-scale FID to fall below $v$'s 21.70, the medium below 11.59, and the large below 8.80, with the large scale the cleanest win because the EMA'd large model has the most capacity to exploit the well-conditioned high-noise regime. If instead $\epsilon$ failed to beat $v$, that would falsify the regime argument — it would say that even at $32\times32$ with 50 steps the velocity's scale balance matters more than the noise corner's conditioning match, and the leaderboard would be telling me the $v$-vs-$\epsilon$ ordering is not regime-dependent the way I claimed. This is the endpoint of the parameterization ladder: of the three equivalent targets, the one whose well-conditioned regime and whose flat-MSE weighting both align with this fixed low-resolution, many-step DDIM pipeline.
+</think>
+<say>
+[[FILL_SAY: 1-2 sentences naming the method and what this first edit does]]
+</say>
+<edit path="diffusers-main/custom_train.py">
+<old>
+def compute_training_target(x_0, noise, timesteps, schedule):
+    # V-prediction: v = sqrt(alpha) * noise - sqrt(1-alpha) * x_0
+    sqrt_alpha = schedule["sqrt_alpha"][timesteps].view(-1, 1, 1, 1)
+    sqrt_one_minus_alpha = schedule["sqrt_one_minus_alpha"][timesteps].view(-1, 1, 1, 1)
+    return sqrt_alpha * noise - sqrt_one_minus_alpha * x_0
+
+
+def predict_x0(model_output, x_t, timesteps, schedule):
+    # Recover x_0 from v-prediction:
+    # v = sqrt(alpha) * eps - sqrt(1-alpha) * x_0
+    # x_t = sqrt(alpha) * x_0 + sqrt(1-alpha) * eps
+    # => x_0 = sqrt(alpha) * x_t - sqrt(1-alpha) * v
+    sqrt_alpha = schedule["sqrt_alpha"][timesteps].view(-1, 1, 1, 1)
+    sqrt_one_minus_alpha = schedule["sqrt_one_minus_alpha"][timesteps].view(-1, 1, 1, 1)
+    return sqrt_alpha * x_t - sqrt_one_minus_alpha * model_output
+</old>
+<new>
+def compute_training_target(x_0, noise, timesteps, schedule):
+    # Epsilon prediction: model learns to predict the added noise
+    return noise
+
+
+def predict_x0(model_output, x_t, timesteps, schedule):
+    # Recover x_0 from epsilon prediction:
+    # x_t = sqrt(alpha) * x_0 + sqrt(1-alpha) * eps
+    # => x_0 = (x_t - sqrt(1-alpha) * eps) / sqrt(alpha)
+    sqrt_alpha = schedule["sqrt_alpha"][timesteps].view(-1, 1, 1, 1)
+    sqrt_one_minus_alpha = schedule["sqrt_one_minus_alpha"][timesteps].view(-1, 1, 1, 1)
+    return (x_t - sqrt_one_minus_alpha * model_output) / sqrt_alpha.clamp(min=1e-8)
+</new>
+</edit>
+<obs>
+Successfully replaced text in diffusers-main/custom_train.py.
+</obs>
+<run/>
+<obs>
+Measured results — `baseline:epsilon` (`is_final,true`), seed 42. FID, lower is better.
+
+## FID by channel scale
+| seed | best_fid_small | best_fid_medium | best_fid_large |
+|---|---|---|---|
+| 42 | 18.58 | 8.46 | 7.17 |
+| **mean** | **18.58** | **8.46** | **7.17** |
+</obs>
+

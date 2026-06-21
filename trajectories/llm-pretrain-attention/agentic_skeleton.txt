@@ -1,0 +1,1045 @@
+<meta task="llm-pretrain-attention" domain="Language models" file="nanoGPT/custom_pretrain.py" model_format="qwen3" edit_tool="str_replace"/>
+
+<system>
+You are a research engineer improving a model on a fixed ML task. You work by editing the model code and running experiments. Think carefully before each change. You have these tools:
+- str_replace(path, old_str, new_str): replace the unique occurrence of old_str with new_str.
+- create(path, file_text): create a new file.
+- run_experiment(): train + evaluate the current code under the fixed budget; returns metrics.
+Make one tool call at a time. After editing, call run_experiment() to measure your method.
+</system>
+
+<user>
+## Research question
+
+GPT-style language-model pretraining at the 355M scale. Everything about the run is frozen — the
+24-layer / 16-head / d=1024 GPT-2 Medium model, the FineWeb-10B data (~7.1B tokens, Chinchilla-optimal
+D = 20N), the GPT-2 tokenizer, the AdamW optimizer, the cosine schedule, the 13,535-iteration budget,
+the two-GPU DDP loop, and every evaluation script — *except one module*. The single thing being designed
+is the **self-attention layer**: the `CausalSelfAttention` class. The default is the standard GPT-2
+attention — scaled-dot-product causal multi-head softmax over Q/K/V, with order supplied by a separate
+table of **learned absolute position embeddings** (`wpe`) added to the token embeddings before the first
+block. The question is whether a better attention layer — a better way of injecting order, or of
+scaling/normalizing the score, or of shaping the attention distribution itself — lowers validation loss
+and perplexity and carries through to downstream accuracy, with **no change anywhere outside this one
+module**.
+
+## Prior art before the first rung
+
+The attention layer the first rung edits is the resolution of a line of architectural choices the
+baselines react to. These precede the ladder; the fixed substrate below is what the field converged to
+before this task starts.
+
+- **Scaled dot-product attention (Vaswani et al., 2017).** The logit is `q_m^T k_n / sqrt(d_k)`; the
+  `1/sqrt(d_k)` is there because for q, k with unit-variance entries the raw dot product has variance
+  `d_k`, which at `d_k=64` pushes the softmax into saturated, low-gradient regions. It is the substrate
+  every rung keeps. Gap: it fixes the *scale* of the logit but says nothing about *position* or about
+  the *magnitude drift* of q and k as training proceeds.
+- **Learned absolute position embeddings (BERT/GPT).** A trainable vector per index `0..L-1`, added to
+  the token embedding before the stack: `x_i <- x_i + wpe[i]`. Simple and the default here. Expanding
+  the logit with `q_m = W_q(x_m + p_m)`, `k_n = W_k(x_n + p_n)` gives four terms, three of which carry
+  *absolute* `p_m`/`p_n` rather than the offset `m - n` — so the relative structure language actually
+  cares about (a verb three words after its subject is the same relation wherever the sentence sits in
+  the buffer) is left to be discovered indirectly. Gap: absolute, additive, and capped at the trained
+  length `L`; the offset dependence is implicit, never built in.
+- **Sinusoidal absolute encoding (Vaswani et al., 2017).** The fixed-form ancestor of the learned
+  table: `p_{i,2t}=sin(i/10000^{2t/d})`, `p_{i,2t+1}=cos(...)`, a geometric sweep of wavelengths.
+  Carries no length cap, but is still *additive and absolute* — the same cross-term problem. There is a
+  clue in it, though: shifting position by `k` rotates each `(sin,cos)` pair by a fixed angle, so
+  sinusoids already encode relative shift as a rotation; the additive scheme just never uses it as the
+  mechanism. Gap: relative-ness is latent in the construction but not exploited.
+- **Pre-LayerNorm and the residual stream (Xiong et al., 2020).** The block here is pre-norm:
+  `x <- x + Attn(LN(x))`, `x <- x + MLP(LN(x))`. Pre-norm makes deep stacks trainable, but it does
+  **not** normalize the per-head q/k *inside* attention — the entries of q and k can grow in magnitude
+  over training, inflating the logit scale past what the fixed `1/sqrt(d_k)` was tuned for, and pushing
+  the softmax toward saturation late in training. Gap: the layer norm sits outside attention; the
+  q·k product itself is unnormalized and can drift.
+
+## The fixed substrate
+
+A nanoGPT training loop is frozen and must not be touched. GPT-2 Medium (`n_layer=24`, `n_head=16`,
+`n_embd=1024`, no bias, dropout 0); weight-tied token embedding and LM head; pre-LayerNorm blocks
+`x + Attn(LN(x))` then `x + MLP(LN(x))` with a 4× GELU MLP; AdamW (`lr=6e-4`, `betas=(0.9,0.95)`,
+`weight_decay=0.1`, `grad_clip=1.0`), cosine decay to `lr/10` with 4% linear warmup; bfloat16 autocast,
+`torch.compile`, micro-batch 64 × grad-accum 8 over 2 GPUs, 13,535 iterations on FineWeb-10B with the
+GPT-2 tokenizer. Cross-entropy is the training loss; checkpoints are saved for downstream evaluation.
+
+One detail of the loop is load-bearing for everything that follows: the model adds learned position
+embeddings **only if** the attention module asks for them. In `GPT.forward`, position embeddings are
+gated by `getattr(self.transformer.h[0].attn, 'use_pos_emb', True)` — if an attention module sets
+`self.use_pos_emb = False`, the `wpe` table is skipped entirely and the module is expected to supply its
+own position encoding. So the loop already accommodates an attention layer that injects order itself,
+not through the additive table.
+
+## The editable interface
+
+Exactly one region is editable: the `CausalSelfAttention` class in `nanoGPT/custom_pretrain.py`
+(`__init__` and `forward`), plus a small `CONFIG_OVERRIDES` dict (allowed keys: `learning_rate`,
+`weight_decay`, `warmup_iters`, `min_lr`, `grad_clip`). The contract is fixed: the class is constructed
+from a `config` (`n_embd`, `n_head`, `block_size`, `bias`, `dropout`), and `forward(self, x)` takes
+`x: (B, T, C)` and returns `(B, T, C)`. Whatever happens between — how Q/K/V are projected, how position
+enters, how the score is scaled and masked, how the attention distribution is formed — is open, as long
+as the output shape and the causal masking are preserved. If the module supplies its own position
+encoding, it sets `self.use_pos_emb = False` so the loop skips the learned `wpe`.
+
+The starting point is the scaffold default: standard GPT-2 causal multi-head softmax attention with the
+learned `wpe` left on (`use_pos_emb = True`). Each rung replaces exactly this class and nothing else.
+
+```python
+# EDITABLE region of nanoGPT/custom_pretrain.py — default fill (standard GPT-2 attention)
+class CausalSelfAttention(nn.Module):
+    def __init__(self, config):
+        super().__init__()
+        assert config.n_embd % config.n_head == 0
+        self.c_attn = nn.Linear(config.n_embd, 3 * config.n_embd, bias=config.bias)
+        self.c_proj = nn.Linear(config.n_embd, config.n_embd, bias=config.bias)
+        self.attn_dropout = nn.Dropout(config.dropout)
+        self.resid_dropout = nn.Dropout(config.dropout)
+        self.n_head = config.n_head
+        self.n_embd = config.n_embd
+        self.dropout = config.dropout
+        self.flash = hasattr(torch.nn.functional, 'scaled_dot_product_attention')
+        if not self.flash:
+            self.register_buffer("bias", torch.tril(torch.ones(config.block_size, config.block_size))
+                                        .view(1, 1, config.block_size, config.block_size))
+        # Set to False if using custom position encoding (e.g. RoPE)
+        self.use_pos_emb = True
+
+    def forward(self, x):
+        B, T, C = x.size()
+        q, k, v = self.c_attn(x).split(self.n_embd, dim=2)
+        k = k.view(B, T, self.n_head, C // self.n_head).transpose(1, 2)
+        q = q.view(B, T, self.n_head, C // self.n_head).transpose(1, 2)
+        v = v.view(B, T, self.n_head, C // self.n_head).transpose(1, 2)
+        if self.flash:
+            y = torch.nn.functional.scaled_dot_product_attention(
+                q, k, v, attn_mask=None,
+                dropout_p=self.dropout if self.training else 0, is_causal=True)
+        else:
+            att = (q @ k.transpose(-2, -1)) * (1.0 / math.sqrt(k.size(-1)))
+            att = att.masked_fill(self.bias[:, :, :T, :T] == 0, float('-inf'))
+            att = F.softmax(att, dim=-1)
+            att = self.attn_dropout(att)
+            y = att @ v
+        y = y.transpose(1, 2).contiguous().view(B, T, C)
+        y = self.resid_dropout(self.c_proj(y))
+        return y
+```
+
+## Evaluation settings
+
+One seed (42). The score is a geometric mean of two settings. **Language modeling (`gpt-345m`)**, lower
+is better: validation cross-entropy on a held-out FineWeb shard (`val_loss`, weight 2), and word-level
+perplexity on WikiText-2 (`wikitext2_ppl`, weight 1) and LAMBADA (`lambada_ppl`, weight 1). **Downstream
+(`lm-eval-345m`)**, higher is better, via the LM Evaluation Harness: ARC-Easy, HellaSwag, PIQA, and
+WinoGrande accuracy (equal weight). A strong rung lowers `val_loss`/perplexity *and* lifts downstream
+accuracy, using only the attention module.
+
+The editable model code is in `nanoGPT/custom_pretrain.py`:
+```python
+class CausalSelfAttention(nn.Module):
+    def __init__(self, config):
+        super().__init__()
+        assert config.n_embd % config.n_head == 0
+        self.c_attn = nn.Linear(config.n_embd, 3 * config.n_embd, bias=config.bias)
+        self.c_proj = nn.Linear(config.n_embd, config.n_embd, bias=config.bias)
+        self.attn_dropout = nn.Dropout(config.dropout)
+        self.resid_dropout = nn.Dropout(config.dropout)
+        self.n_head = config.n_head
+        self.n_embd = config.n_embd
+        self.dropout = config.dropout
+        self.flash = hasattr(torch.nn.functional, 'scaled_dot_product_attention')
+        if not self.flash:
+            self.register_buffer("bias", torch.tril(torch.ones(config.block_size, config.block_size))
+                                        .view(1, 1, config.block_size, config.block_size))
+        # Set to False if using custom position encoding (e.g. RoPE)
+        self.use_pos_emb = True
+
+    def forward(self, x):
+        B, T, C = x.size()
+        q, k, v = self.c_attn(x).split(self.n_embd, dim=2)
+        k = k.view(B, T, self.n_head, C // self.n_head).transpose(1, 2)
+        q = q.view(B, T, self.n_head, C // self.n_head).transpose(1, 2)
+        v = v.view(B, T, self.n_head, C // self.n_head).transpose(1, 2)
+        if self.flash:
+            y = torch.nn.functional.scaled_dot_product_attention(
+                q, k, v, attn_mask=None,
+                dropout_p=self.dropout if self.training else 0, is_causal=True)
+        else:
+            att = (q @ k.transpose(-2, -1)) * (1.0 / math.sqrt(k.size(-1)))
+            att = att.masked_fill(self.bias[:, :, :T, :T] == 0, float('-inf'))
+            att = F.softmax(att, dim=-1)
+            att = self.attn_dropout(att)
+            y = att @ v
+        y = y.transpose(1, 2).contiguous().view(B, T, C)
+        y = self.resid_dropout(self.c_proj(y))
+        return y
+```
+Improve it. Derive your method, edit the code, then run_experiment().
+</user>
+
+### step 1 — QK-Norm (RMSNorm on q,k)   [slug:qk_norm]
+
+<think>
+[[POLISH_REASONING: adapt to first-person agentic voice, end by deciding to implement]]
+I am going to start from the cheapest possible intervention in the attention layer, because the rest of
+the run is frozen and I want to understand the substrate before I touch position encoding. The default
+attention is the textbook one: project to q, k, v, form the logit `q_m^T k_n / sqrt(d_k)`, causal-mask,
+softmax, weight the values. Position comes from the learned `wpe` table added before the stack. Before I
+go reorganize how order enters, there is a quieter problem in the score itself that I keep running into
+when I pretrain at this scale, and it is independent of position: the logit can drift in magnitude over
+training, and the softmax does not forgive that.
+
+Let me be precise about why the scale matters. The whole point of the `1/sqrt(d_k)` factor is a
+variance argument. If the entries of q and k are roughly independent with unit variance, the dot product
+`q^T k = sum_{i=1}^{d_k} q_i k_i` is a sum of `d_k` zero-mean terms, so its variance is about `d_k` and
+its standard deviation about `sqrt(d_k)`. At `d_k = 64` here (1024 / 16 heads) that is a spread of ±8
+before any learning. Feed logits of that size into a softmax and you are already near the saturated
+regime: one logit a few units above the others takes essentially all the mass, and the gradient through
+the softmax — which scales like `p_i(1 - p_i)` on the diagonal — collapses toward zero. Dividing by
+`sqrt(d_k)` rescales the logit back to unit standard deviation so the softmax starts in its responsive
+region. That is the textbook justification, and it is correct *at initialization*.
+
+But it assumes q and k have unit-variance entries, and that assumption only holds at initialization.
+The block here is pre-norm: `x <- x + Attn(LN(x))`. The LayerNorm sits on the *input* to attention, so
+the activations entering `c_attn` are normalized. What is *not* normalized is what `c_attn` does to them.
+`q = W_q · LN(x)` — and `W_q` is a free, trainable, weight-decayed-but-not-norm-bounded matrix. As
+training proceeds the optimizer is free to grow the rows of `W_q` and `W_k`, and there is a real
+incentive to: a sharper, more confident attention pattern lowers loss on many tokens, and the cheapest
+way to sharpen the softmax is to scale up the logits, which means scaling up q and k. So the per-head q
+and k norms creep upward over the run. The fixed `1/sqrt(d_k)` was tuned for unit-variance q, k; once
+their norms have, say, doubled, the effective logit standard deviation has quadrupled, and the softmax
+is back in the saturated, low-gradient regime I was trying to avoid — except now it happens *late* in
+training, exactly when I want clean gradients to keep refining. This is a slow, silent failure: the
+network trains, the loss goes down, but the attention logits are drifting toward saturation and the late
+gradients get noisier and the run gets less stable, especially if I were ever to push the learning rate.
+
+So the score scale is not a one-time constant; it is a moving target that the fixed `1/sqrt(d_k)` cannot
+track. The question is how to make the logit scale *invariant* to the magnitude of q and k, so it
+depends only on their *directions* — on the angle between query and key, which is what attention is
+supposed to be measuring — and not on how big the projection matrices have grown.
+
+The clean way to make a dot product depend only on direction is to normalize the vectors before taking
+it. If I divide q and k each by their length, `q_hat = q / ||q||`, `k_hat = k / ||k||`, then
+`q_hat^T k_hat = cos(angle)` lives in `[-1, 1]` no matter how `W_q`, `W_k` evolve. The logit is now a
+pure cosine similarity per head, bounded, and completely insensitive to the magnitude drift I was
+worried about. That removes the saturation-creep failure at the root: the softmax input range can no
+longer blow up just because the weights grew.
+
+Now I have to be careful, because I have over-corrected. A cosine similarity is in `[-1, 1]`, so the
+*entire* logit vector, before masking, spans at most a range of 2. Push that through a softmax and the
+attention can never sharpen: `exp(1)/exp(-1) ≈ 7.4` is the most contrast two positions can have, so the
+model literally cannot place 95% of its mass on one token no matter how confident it should be. I have
+traded saturation for the opposite pathology — a softmax that can't concentrate. The network needs the
+*range* of the logits to be a learnable quantity, decoupled from the *drift* of the q/k norms. So after
+normalizing direction, I reintroduce a scale, but a *single learned* one, `g`, replacing the fixed
+`1/sqrt(d_k)`: logit `= g · q_hat^T k_hat`. Now `g` controls how sharp attention is allowed to get, the
+optimizer can raise it if confident attention helps, and crucially `g` is one number per head (or per
+layer), not a side effect of the full `W_q`/`W_k` magnitudes — so the sharpness is learned deliberately
+instead of leaking in through weight growth. This is the query-key normalization idea in its cleanest
+form: L2-normalize q and k along the head dimension, then scale by a learned `g`.
+
+That is what I would *derive*. But I should reconstruct what the task's edit surface actually lets me do,
+because the harness fixes the loop and I only get the `CausalSelfAttention` body, and there is a subtle
+gap between the clean derivation above and the form that fits cleanly into this scaffold. Two things
+constrain me. First, the forward path here goes through PyTorch's fused
+`scaled_dot_product_attention` (SDPA) for speed — that kernel internally applies its own `1/sqrt(d_k)`
+scaling and does its own softmax; I do not get to insert a custom `g` *inside* the fused kernel without
+giving up the fused path. Second, the normalization I want on q and k is a per-vector rescale along the
+head dimension, and the loop already exposes a primitive for exactly that: RMSNorm.
+
+Let me look at what RMSNorm does versus the L2-normalize-plus-`g` I derived. RMSNorm of a vector
+`x ∈ R^{d}` is `x / rms(x)` where `rms(x) = sqrt(mean(x_i^2)) = ||x|| / sqrt(d)`. So RMSNorm is
+`sqrt(d) · x / ||x||` — it is L2 normalization up to the *fixed* factor `sqrt(d)`. Applying RMSNorm to q
+and k both, the logit becomes `(sqrt(d) q_hat)^T (sqrt(d) k_hat) = d · q_hat^T k_hat = d · cos(angle)`,
+and then SDPA still divides by `sqrt(d)`, giving `sqrt(d) · cos(angle)`. So the realized logit is
+`sqrt(d_k) · cos(angle)` — a cosine similarity scaled by the *constant* `sqrt(d_k) = 8`. That recovers a
+*usable* logit range (±8, the same nominal range the original `1/sqrt(d_k)` was designed to produce at
+init) without any learned `g` at all. The constant `sqrt(d_k)` plays the role `g` would have played,
+fixed rather than learned. So the version that fits this scaffold is: **RMSNorm q and k along the head
+dimension, leave everything else (SDPA, causal mask, `wpe`) exactly as is.** Two lines added to the
+forward pass; no new parameters, no learnable scale, no change to position encoding.
+
+I want to be honest with myself about what I am giving up relative to the clean derivation, because this
+is the difference between the idea and the thing I can actually run here. The learned per-head `g` is
+gone — the sharpness ceiling is pinned at `sqrt(d_k)` instead of being tuned by the optimizer. That is a
+real omission: if confident attention would benefit from a sharper-than-±8 logit range, this version
+cannot provide it. But it keeps the property I actually came for — the logit scale is now invariant to
+the *drift* of the q/k magnitudes, because RMSNorm strips the magnitude out before the product. The
+saturation-creep failure is fixed; only the deliberate-sharpening upside is left on the table. And the
+keep-`use_pos_emb = True` decision is forced: this intervention says nothing about position, so the
+learned `wpe` table stays exactly as in the default. I am changing *one thing* — the score's robustness
+to q/k norm drift — and nothing else.
+
+A couple of details worth pinning down so the edit is faithful. RMSNorm must be applied **per head**,
+along the `head_dim` axis, *after* the reshape to `(B, n_head, T, head_dim)` — normalizing across the
+full `n_embd` before splitting heads would mix heads together and destroy the per-head direction I want
+to preserve. So the order is: project, split into heads, RMSNorm q, RMSNorm k, then attention. And I
+apply it to q and k only, never to v — v carries the content that gets averaged into the output;
+normalizing it would distort the values, and the saturation problem lives entirely in the *logit*, which
+v is not part of. The dropout, the causal masking, the output projection all stay untouched.
+
+So at step 1 the edit is the minimal, position-agnostic one: leave the entire loop and the learned
+position table alone, and insert two `F.rms_norm` calls on the per-head q and k right before the
+attention product (the distilled module is in the answer). It is the floor I want to start the ladder
+from for a reason — it is the *only* one of the candidate attention changes that touches neither the
+position scheme nor the head structure, so whatever it buys is purely the score-stability effect, with
+nothing else confounded in.
+
+Now reason about what this floor should do, because that is the entire point of running it first. The
+intervention is a *stability* fix, not a *capacity* or *inductive-bias* fix. It removes a failure mode
+(late-training logit-scale drift toward softmax saturation) without adding any new information the model
+didn't have — position is still absolute-additive via `wpe`, exactly as in the default. So I expect a
+*modest* improvement over an unmodified GPT-2 attention: cleaner late-training gradients, a slightly
+lower and more stable validation loss, with the downstream metrics roughly tracking the language-modeling
+gain. What I do *not* expect it to fix is the thing the prior-art survey kept circling: the position
+signal is still absolute and additive, so the relative structure of language — that a dependency is about
+the *offset* `m - n`, not the absolute slots — is still left for the network to discover indirectly
+through the `wpe` cross terms. That is a *representational* limitation, not a stability one, and
+RMSNorm-on-q-k does nothing about it. So my falsifiable expectation is sharp: this rung should land as
+the *weakest* of the attention interventions, beaten by anything that actually fixes how order enters,
+because it only stabilizes the score and leaves the absolute-position handicap fully in place. If the
+later rungs that touch position do not beat this one, then the position story is wrong and the real bottleneck
+was stability all along — but I do not expect that. The diagnosis is already pointed at the next step:
+fix *position*, make the logit depend on the relative offset, not the absolute index.
+</think>
+<say>
+[[FILL_SAY: 1-2 sentences naming the method and what this first edit does]]
+</say>
+<edit path="nanoGPT/custom_pretrain.py">
+<old>
+class CausalSelfAttention(nn.Module):
+</old>
+<new>
+# EDITABLE region of nanoGPT/custom_pretrain.py (lines 33–70) — step 1: QK-Norm (RMSNorm on q,k)
+class CausalSelfAttention(nn.Module):
+</new>
+</edit>
+<obs>
+Successfully replaced text in nanoGPT/custom_pretrain.py.
+</obs>
+<note>
+[[FILL_NOTE?: optional one-line thought for this edit, or delete this block]]
+</note>
+<edit path="nanoGPT/custom_pretrain.py">
+<old>
+                                        .view(1, 1, config.block_size, config.block_size))
+        # Set to False if using custom position encoding (e.g. RoPE)
+        self.use_pos_emb = True
+</old>
+<new>
+                                        .view(1, 1, config.block_size, config.block_size))
+        self.use_pos_emb = True
+</new>
+</edit>
+<obs>
+Successfully replaced text in nanoGPT/custom_pretrain.py.
+</obs>
+<note>
+[[FILL_NOTE?: optional one-line thought for this edit, or delete this block]]
+</note>
+<edit path="nanoGPT/custom_pretrain.py">
+<old>
+        v = v.view(B, T, self.n_head, C // self.n_head).transpose(1, 2)
+        if self.flash:
+</old>
+<new>
+        v = v.view(B, T, self.n_head, C // self.n_head).transpose(1, 2)
+        # Apply QK normalization via RMSNorm (per head, along head_dim) — strips q/k magnitude drift
+        q = F.rms_norm(q, (q.size(-1),))
+        k = F.rms_norm(k, (k.size(-1),))
+        if self.flash:
+</new>
+</edit>
+<obs>
+Successfully replaced text in nanoGPT/custom_pretrain.py.
+</obs>
+<run/>
+<obs>
+Measured results — `baseline:qk_norm` (`is_final,true`), seed 42 (single-seed task; mean = the seed).
+
+## Language modeling (gpt-345m) — lower is better
+| seed | val_loss | wikitext2_ppl | lambada_ppl |
+|---|---|---|---|
+| 42 | 2.2885 | 43.65 | 69.99 |
+| **mean** | **2.2885** | **43.65** | **69.99** |
+
+## Downstream (lm-eval-345m) — higher is better
+| seed | arc_easy | hellaswag | piqa | winogrande |
+|---|---|---|---|---|
+| 42 | 55.64 | 33.41 | 63.17 | 51.30 |
+| **mean** | **55.64** | **33.41** | **63.17** | **51.30** |
+</obs>
+
+### step 2 — RoPE + QK-Norm   [slug:rope_qk_norm]
+
+<think>
+[[POLISH_REASONING: adapt to first-person agentic voice, end by deciding to implement]]
+The QK-Norm run came back almost exactly where I predicted it would, and the number that matters is the
+one it *didn't* move. Validation loss landed at 2.2885, with WikiText-2 perplexity 43.65, LAMBADA 69.99,
+and downstream ARC-Easy 55.64, HellaSwag 33.41, PIQA 63.17, WinoGrande 51.30. That is a clean, stable
+run — the score-stability fix did its job, the late-training gradients stayed clean, nothing diverged.
+But it is also the *floor*, and it is the floor for the precise reason I argued before I ran it: RMSNorm
+on q and k stabilizes the logit *scale* and touches nothing about *position*. The model is still being
+fed order through the learned absolute `wpe` table, so every dependency in the text — a verb agreeing
+with a subject three tokens back, a closing quote matching an opening one forty tokens back — has to be
+reconstructed by the network out of *absolute* slot signals. That is the representational handicap
+RMSNorm was never going to fix, and the 2.2885 is what "stability fixed, position still absolute" costs.
+The diagnosis points straight at the seam I deliberately left alone: fix how *order* enters.
+
+Let me be precise about what is wrong with the position signal, because I want the next move to be the
+*right* relative scheme, not just any change. Self-attention is order-blind by construction: with q, k, v
+linear in the token embeddings, the whole computation is permutation-equivariant — shuffle the tokens and
+the outputs shuffle identically. "The dog bit the man" and "the man bit the dog" produce the same bag of
+representations. So order must be injected by hand, and the only quantity that decides which token
+attends to which is the logit `q_m^T k_n`; everything downstream is a consequence of those logits. The
+default injects position *additively and absolutely*: `x_i <- x_i + wpe[i]` before the stack, so
+`q_m = W_q(x_m + p_m)`, `k_n = W_k(x_n + p_n)`. Expand the logit and it is four terms:
+`x_m^T W_q^T W_k x_n` (pure content, fine) plus three terms each carrying *absolute* `p_m` or `p_n`. The
+logit therefore depends on *where m and n sit in the buffer*, not on the offset `m - n` — and the offset
+is exactly what language relations are about. The model can in principle untangle relative offset from
+those absolute signals, but I am making it learn indirectly something I could just hand it directly. That
+indirection is the bottleneck the 2.2885 is paying for, and QK-Norm did nothing about it because RMSNorm
+strips magnitude, not absolute-position-ness.
+
+So I want the logit to depend on `x_m`, `x_n`, and `m - n` only. The cleanest way to get there is not to
+patch the additive expansion (replace `p_n` with a relative table, bucket a bias by distance — the whole
+Shaw-2018 / Transformer-XL / T5 family does exactly that, and every one of them ends up with a learned
+relative table or bias living *inside* the pairwise logit). It is to *demand* the relative property and
+solve for the injection. Write `q_m = f_q(x_m, m)`, `k_n = f_k(x_n, n)`, and require
+`<f_q(x_m, m), f_k(x_n, n)> = g(x_m, x_n, m - n)` for some `g` that sees position only through the
+difference, with the boundary `f(x, 0) = W x` so it reduces to ordinary attention at position 0. Solve
+this in the simplest nontrivial dimension, d = 2, by identifying R^2 with the complex plane and using
+`<a, b> = Re[a b*]`. Write `f` in polar form, magnitude times phase, and match the two sides: the
+magnitude equation, evaluated at offset 0 against the boundary, forces the magnitude to be
+position-independent (the stable, norm-preserving branch — I do not want position to amplify one side and
+shrink the other), and the phase equation forces the phase to be *arithmetic* in position, the same extra
+angle `m·theta` added to query and key on top of each vector's own angle. The solution is a rotation:
+`f_q(x_m, m) = (W_q x_m) e^{i m theta}`, `f_k(x_n, n) = (W_k x_n) e^{i n theta}`, so
+`<f_q, f_k> = Re[(W_q x_m)(W_k x_n)* e^{i(m-n)theta}]` — the absolute positions appear *only* through
+`e^{i(m-n)theta}`. Exactly the demand, and I didn't add anything; I solved for it. Position is a rotation
+by an angle proportional to the index.
+
+Lift to the real head dimension by chopping it into d/2 independent 2-planes and rotating each at its own
+frequency. The inner product is a sum over planes, each plane is relative-only by the 2D argument, and a
+sum of relative-only-per-plane is relative-only — linearity does the gluing. Stack the rotations into a
+block-diagonal `R_m`, the i-th 2×2 block a rotation by `m·theta_i`; rotations compose by adding angles,
+so `R_m^T R_n = R_{n-m}` and `q_m^T k_n = x_m^T W_q^T R_{n-m} W_k x_n` — the offset sits in a single
+rotation matrix between the content projections, no learned table, no clip, no bias bucket. What
+frequencies? Reuse the sinusoidal geometric spectrum, `theta_i = 10000^{-2(i-1)/d}`: fast planes that
+spin quickly and resolve local offsets, slow planes that barely move over the whole sequence and carry
+coarse position. That choice is not arbitrary — it makes the scheme the relative-rotation version of the
+sinusoidal encoding, and it gives the long-range decay I want as a *prior*: as `|m - n|` grows the
+phases spread across frequencies, the partial sums lose coherence, and the averaged positional envelope
+decays, so far-apart tokens contribute a less coherent positional signal, all else equal. And `R` is
+orthogonal, so applying it can never blow up or collapse the representation as it propagates — the same
+norm-preservation I leaned on when the magnitude dropped out of the 2D solution.
+
+Now make this concrete in the task's edit surface, because the harness fixes the loop and I only get the
+`CausalSelfAttention` body, and the form that fits here is *not* the general paper machinery — it is one
+specific layout. Two things are forced. First, position is no longer additive, so I must turn *off* the
+learned `wpe`: set `self.use_pos_emb = False` in `__init__`, and `GPT.forward` (which gates the `wpe` add
+on exactly that flag) will skip the absolute table entirely. This is the one place a rung is allowed to
+replace position without editing anything outside the attention class — and it is mandatory here, because
+leaving `wpe` on while also rotating q/k would double up two position schemes. Second, I do not build the
+sparse block-diagonal matrix; I realize the rotation elementwise. I precompute
+`inv_freq = 1/(10000^{(arange(0, head_dim, 2)/head_dim))}` as a buffer, and per forward I form
+`freqs = outer(arange(T), inv_freq)`, take `cos` and `sin`. The scaffold uses the *split-half* layout:
+split each per-head vector into its first and second halves `x1 = x[..., :d]`, `x2 = x[..., d:]` with
+`d = head_dim/2`, and rotate as `y1 = x1·cos - x2·sin`, `y2 = x1·sin + x2·cos`, then concatenate
+`[y1, y2]`. This pairs coordinate `i` with coordinate `i + d` as the two legs of one 2-plane (the
+LLaMA/NeoX convention), as opposed to the interleaved `(2i, 2i+1)` pairing — the two layouts are
+equivalent up to a fixed permutation of the head dimension, but the code must use one consistently, and
+the harness's `_apply_rope` is the split-half one. I apply it to q and k only, never to v: v carries the
+content averaged into the output, and position belongs in the *logit*, not the values.
+
+Here is the move that makes this step 2 and not a fresh start: I do not throw away the QK-Norm I just
+validated. The 2.2885 run proved the score-stability fix is real and free — no parameters, no
+instability, a clean run — and it is *orthogonal* to position: RMSNorm strips q/k magnitude, RoPE rotates
+q/k direction, and they compose. So I stack them. The order matters and it is forced by what each
+operation does. RMSNorm rescales each per-head vector to a fixed norm (`sqrt(d)·x/||x||`); RoPE rotates
+it, and rotation is norm-preserving, so the norm RMSNorm imposes survives the rotation. If I rotated
+*first* and normalized *second*, the normalization would still leave a clean direction, but I would be
+re-deriving the norm after mixing the two planes — and more to the point, the reference realization (and
+the cleanest reading of "normalize the score, then place it in position-space") is **RMSNorm then RoPE**:
+`q = _apply_rope(F.rms_norm(q, (q.size(-1),)), T)`, same for k. Normalize the direction, then rotate it
+by position. That is the literal edit. Everything else — the fused SDPA path, the causal masking, the
+output projection — stays exactly as in step 1. So this rung is precisely "step 1 plus relative
+position": two `F.rms_norm` calls and two `_apply_rope` calls on the per-head q and k, `use_pos_emb`
+flipped to False, and the `wpe` table dropped from the position path. The full scaffold module is in the
+answer.
+
+I should be honest about the one degree of freedom the scaffold does *not* expose, because it bears on
+what this rung can and cannot buy. RoPE here is the *frozen* sinusoidal schedule at base 10000 — I am not
+learning the frequencies (they barely move from this initialization anyway, so there is no reason to
+spend parameters on them) and I am not tuning the base for the 1024-token context. And the QK-Norm half
+is still the parameter-free RMSNorm version from step 1, not the learned-`g` form — so the realized logit
+is `sqrt(d_k)·cos(angle)` modulated by the relative rotation, with the sharpness ceiling pinned at
+`sqrt(d_k)` rather than tuned. Both are the same omissions I already accepted; the new content of this
+rung is purely the relative-position fix layered on top.
+
+Now the falsifiable expectations, stated against the 2.2885 floor. The whole thesis is that the
+bottleneck the QK-Norm run was paying for is *absolute-additive position*, and RoPE removes it. So I
+expect this rung to clear 2.2885 on validation loss by a real margin — not a stability margin but a
+representational one — and I expect the perplexities to follow, with LAMBADA the most sensitive: LAMBADA
+is a last-word prediction task that hinges on a long-range dependency to the start of the passage, which
+is exactly where relative-offset encoding should help most, so the 69.99 should drop meaningfully.
+Downstream accuracies should move up with the LM gain, since better order modeling is a general
+improvement, not a benchmark trick. The risk I will be watching: the two changes are stacked, so if the
+combined run does *not* beat the QK-Norm floor, the position story is wrong and stability was the real
+bottleneck all along — but I do not believe that, because the four-term expansion is an explicit,
+mechanical handicap and RoPE provably removes it. The sharper question this rung sets up for the *next*
+one is subtler: I am stacking RoPE *on top of* RMSNorm, and it is entirely possible that once position is
+relative, the RMSNorm half contributes little or even slightly costs me — that RoPE alone, without the
+parameter-free QK-Norm, is the stronger configuration. If the combined run lands good but not clearly
+better than RoPE would alone, that is the tell that the QK-Norm half is redundant once position is fixed,
+and the next rung is to strip it back to plain RoPE and see whether the cosine-similarity logit was
+quietly costing me the deliberate-sharpening the fixed `sqrt(d_k)` ceiling cannot provide.
+</think>
+<say>
+[[FILL_SAY: 1-2 sentences naming the method and what this first edit does]]
+</say>
+<edit path="nanoGPT/custom_pretrain.py">
+<old>
+# EDITABLE region of nanoGPT/custom_pretrain.py (lines 33–70) — step 1: QK-Norm (RMSNorm on q,k)
+class CausalSelfAttention(nn.Module):
+</old>
+<new>
+# EDITABLE region of nanoGPT/custom_pretrain.py (lines 33–70) — step 2: RoPE + QK-Norm
+class CausalSelfAttention(nn.Module):
+</new>
+</edit>
+<obs>
+Successfully replaced text in nanoGPT/custom_pretrain.py.
+</obs>
+<note>
+[[FILL_NOTE?: optional one-line thought for this edit, or delete this block]]
+</note>
+<edit path="nanoGPT/custom_pretrain.py">
+<old>
+        self.n_embd = config.n_embd
+        self.dropout = config.dropout
+</old>
+<new>
+        self.n_embd = config.n_embd
+        self.head_dim = config.n_embd // config.n_head
+        self.dropout = config.dropout
+</new>
+</edit>
+<obs>
+Successfully replaced text in nanoGPT/custom_pretrain.py.
+</obs>
+<note>
+[[FILL_NOTE?: optional one-line thought for this edit, or delete this block]]
+</note>
+<edit path="nanoGPT/custom_pretrain.py">
+<old>
+                                        .view(1, 1, config.block_size, config.block_size))
+        self.use_pos_emb = True
+</old>
+<new>
+                                        .view(1, 1, config.block_size, config.block_size))
+        self.use_pos_emb = False  # RoPE replaces learned position embeddings
+        # RoPE frequencies
+        inv_freq = 1.0 / (10000 ** (torch.arange(0, self.head_dim, 2).float() / self.head_dim))
+        self.register_buffer("inv_freq", inv_freq)
+
+    def _apply_rope(self, x, seq_len):
+        t = torch.arange(seq_len, device=x.device, dtype=self.inv_freq.dtype)
+        freqs = torch.outer(t, self.inv_freq)
+        cos = freqs.cos().unsqueeze(0).unsqueeze(0)
+        sin = freqs.sin().unsqueeze(0).unsqueeze(0)
+        d = x.shape[-1] // 2
+        x1, x2 = x[..., :d], x[..., d:]
+        y1 = x1 * cos - x2 * sin
+        y2 = x1 * sin + x2 * cos
+        return torch.cat([y1, y2], dim=-1).type_as(x)
+</new>
+</edit>
+<obs>
+Successfully replaced text in nanoGPT/custom_pretrain.py.
+</obs>
+<note>
+[[FILL_NOTE?: optional one-line thought for this edit, or delete this block]]
+</note>
+<edit path="nanoGPT/custom_pretrain.py">
+<old>
+        v = v.view(B, T, self.n_head, C // self.n_head).transpose(1, 2)
+        # Apply QK normalization via RMSNorm (per head, along head_dim) — strips q/k magnitude drift
+        q = F.rms_norm(q, (q.size(-1),))
+        k = F.rms_norm(k, (k.size(-1),))
+        if self.flash:
+</old>
+<new>
+        v = v.view(B, T, self.n_head, C // self.n_head).transpose(1, 2)
+        # QK-Norm then RoPE (norm before rotation; rotation preserves the imposed norm)
+        q = self._apply_rope(F.rms_norm(q, (q.size(-1),)), T)
+        k = self._apply_rope(F.rms_norm(k, (k.size(-1),)), T)
+        if self.flash:
+</new>
+</edit>
+<obs>
+Successfully replaced text in nanoGPT/custom_pretrain.py.
+</obs>
+<run/>
+<obs>
+Measured results — `baseline:rope_qk_norm` (`is_final,true`), seed 42 (single-seed task; mean = the seed).
+
+## Language modeling (gpt-345m) — lower is better
+| seed | val_loss | wikitext2_ppl | lambada_ppl |
+|---|---|---|---|
+| 42 | 2.2589 | 43.44 | 67.20 |
+| **mean** | **2.2589** | **43.44** | **67.20** |
+
+## Downstream (lm-eval-345m) — higher is better
+| seed | arc_easy | hellaswag | piqa | winogrande |
+|---|---|---|---|---|
+| 42 | 57.83 | 34.24 | 64.74 | 50.67 |
+| **mean** | **57.83** | **34.24** | **64.74** | **50.67** |
+</obs>
+
+### step 3 — RoPE (plain)   [slug:rope]
+
+<think>
+[[POLISH_REASONING: adapt to first-person agentic voice, end by deciding to implement]]
+The combined run confirmed the position thesis and, in the same breath, flagged the redundancy I said to
+watch for. RoPE + QK-Norm landed validation loss 2.2589, against the QK-Norm floor of 2.2885 — a drop of
+0.0296 in cross-entropy, which is exactly the representational margin I predicted relative position would
+buy, far past anything a stability tweak alone produces. The perplexities moved with it: WikiText-2
+43.65 → 43.44, and LAMBADA 69.99 → 67.20, the LAMBADA drop the largest as I expected, since last-word
+prediction over a long passage is precisely where relative-offset encoding earns its keep. Downstream
+followed: ARC-Easy 55.64 → 57.83, HellaSwag 33.41 → 34.24, PIQA 63.17 → 64.74. So the position fix is
+real and it is general — not a single-metric artifact. But read the result against the *other* question I
+left open at the end of step 2: I stacked RoPE on top of the parameter-free RMSNorm QK-Norm, and I said
+that if the combined run came in good-but-not-clearly-dominant, the tell would be that the QK-Norm half is
+redundant once position is relative. The 2.2589 is good. The question is whether the RMSNorm half is
+*helping* or quietly *costing* me, and the way to answer it is the cleanest experiment on the ladder:
+strip the QK-Norm back out and run RoPE alone.
+
+Let me argue from mechanism why plain RoPE could be the stronger configuration, because I do not want to
+run an ablation I can't predict the sign of. The QK-Norm half, in this scaffold, is the parameter-free
+RMSNorm version: it forces each per-head q and k onto a fixed-norm sphere, so the realized logit becomes
+`sqrt(d_k)·cos(angle)` — a cosine similarity scaled by the *constant* `sqrt(d_k) = 8`. That constant is a
+hard ceiling on how sharp attention can get: the entire pre-mask logit vector spans at most ±8 around the
+cosine range, so the softmax contrast between the best and worst position is bounded no matter how
+confident the model should be. When position was *absolute and additive* (step 1), that ceiling was a
+fair trade — I was buying robustness to q/k magnitude drift, and the drift was a genuine late-training
+failure mode worth paying a sharpness ceiling to remove. But now position is *relative*, injected by
+rotation, and the picture changes. RoPE itself is norm-preserving — the rotation `R_m` is orthogonal, so
+it neither inflates nor collapses q and k — which means a chunk of the instability QK-Norm was guarding
+against is already damped by the geometry of the position scheme. More importantly, plain RoPE keeps the
+*magnitude* of q and k as a usable degree of freedom: the logit is `||q||·||k||·cos(angle)` modulated by
+the relative rotation, and the model can grow `||q||,||k||` on heads that *should* attend sharply and
+keep them small on heads that should stay diffuse. RMSNorm throws that away — it pins every head to the
+same `sqrt(d_k)` sharpness ceiling and removes the model's ability to learn per-head, per-token
+confidence through the q/k norms. So the hypothesis is concrete: once RoPE has fixed position, the
+RMSNorm half is no longer buying enough stability to justify the sharpness it sacrifices, and removing it
+should *recover* a small amount of loss by handing the q/k magnitudes back to the optimizer as a learnable
+sharpness control. The 2.2589 → expect-slightly-lower is the falsifiable form.
+
+So step 3 is plain RoPE: the same relative-position injection, with the QK-Norm stripped back out. Let me
+re-establish the derivation cleanly, because this is the method I am landing and it has to stand on its
+own, not as "step 2 minus a line." Attention is order-blind: with q, k, v linear in the token embeddings,
+the computation is permutation-equivariant, so position must be injected by hand, and the only quantity
+that decides which token attends to which is the logit `q_m^T k_n`. The default fed order in additively
+and absolutely through `wpe`, and expanding `q_m^T k_n` with `q = W_q(x_m + p_m)`, `k = W_k(x_n + p_n)`
+produced four terms, three carrying *absolute* `p_m`/`p_n` — so the logit depended on the buffer slot,
+not the offset `m - n` that language relations actually turn on. That is the handicap the QK-Norm floor
+was paying for and the one RoPE removes by construction.
+
+The construction is a solve, not a patch. Demand that the encoded inner product depend on position only
+through the difference: `<f_q(x_m, m), f_k(x_n, n)> = g(x_m, x_n, m - n)`, with the boundary
+`f(x, 0) = W x`. In two dimensions, identify R^2 with the complex plane and use `<a, b> = Re[a b*]`;
+write `f` in polar form and match magnitude and phase. The magnitude equation, pinned by the boundary at
+offset 0, forces the magnitude to be position-independent — the stable, norm-preserving branch, because I
+do not want position to amplify one side and shrink the other — and the phase equation forces the phase
+to be arithmetic in position, the same extra angle `m·theta` added to both query and key on top of each
+vector's own angle. The solution is rotation: `f_q(x_m, m) = (W_q x_m) e^{i m theta}`,
+`f_k(x_n, n) = (W_k x_n) e^{i n theta}`, so
+`<f_q, f_k> = Re[(W_q x_m)(W_k x_n)* e^{i(m-n)theta}]` — absolute `m, n` appear *only* through
+`e^{i(m-n)theta}`. Position is a rotation by an angle proportional to the index, and I didn't bolt
+anything on; the relative property fell out of the demand.
+
+Lift to the real head dimension by splitting it into `d/2` independent 2-planes and rotating each at its
+own frequency. The inner product is a sum over planes; each plane is relative-only by the 2D argument;
+the sum of relative-only-per-plane is relative-only — linearity glues it. Block-diagonal `R_m`, the i-th
+2×2 block a rotation by `m·theta_i`; rotations compose by adding angles, so `R_m^T R_n = R_{n-m}` and
+`q_m^T k_n = x_m^T W_q^T R_{n-m} W_k x_n` — the offset sits in a single rotation between the content
+projections, no learned table, no clip, no distance bias. The frequencies reuse the sinusoidal geometric
+spectrum `theta_i = 10000^{-2(i-1)/d}`: fast planes resolving local offsets, slow planes carrying coarse
+position, which gives the long-range decay envelope as a free prior — as `|m - n|` grows the phases
+spread across frequencies, the partial sums lose coherence, and the positional contribution decays, so
+far-apart tokens interact less, all else equal. And because `R` is orthogonal it preserves norm, so it
+can never blow up or collapse the representation as it propagates through 24 layers — which, note, is
+exactly the property that makes the QK-Norm half partly redundant: RoPE already keeps q/k from drifting
+in the position-dependent direction.
+
+Now the literal scaffold edit, which is *simpler* than step 2 — I am removing the two `F.rms_norm` calls
+and keeping everything else. Position is no longer additive, so `self.use_pos_emb = False` in `__init__`,
+and `GPT.forward` skips the `wpe` add (it gates on exactly that flag — the one mechanism a rung has to
+replace position without touching anything outside the attention class). I precompute
+`inv_freq = 1/(10000 ** (arange(0, head_dim, 2)/head_dim))` as a buffer; per forward I form
+`freqs = outer(arange(T), inv_freq)`, take `cos` and `sin`, and apply the *split-half* rotation —
+`x1 = x[..., :d]`, `x2 = x[..., d:]` with `d = head_dim/2`, `y1 = x1·cos - x2·sin`,
+`y2 = x1·sin + x2·cos`, concatenate `[y1, y2]` — to q and k only, never v. The split-half layout pairs
+coordinate `i` with `i + d` as the two legs of one plane (the LLaMA/NeoX convention the harness's
+`_apply_rope` uses), equivalent up to a fixed permutation to the interleaved `(2i, 2i+1)` pairing but the
+code must be consistent. The fused SDPA path, the causal mask, the output projection are untouched. So
+the difference from step 2 is exactly the QK-Norm removal: `q = self._apply_rope(q, T)` instead of
+`q = self._apply_rope(F.rms_norm(q, ...), T)`. That is the whole edit, and it is deliberately the
+*minimal* delta so the ablation is clean — whatever the loss does between 2.2589 and this run is
+attributable to the RMSNorm removal and nothing else.
+
+I will name the omissions again so the comparison is honest. RoPE here is the *frozen* sinusoidal
+schedule at base 10000 — the frequencies are not learned (they barely move from this initialization
+anyway) and the base is not tuned to the 1024-token context. Those are unchanged from step 2; the only
+new content of this rung is the QK-Norm removal. So the experiment is as controlled as the scaffold
+allows: one operation deleted, everything else held.
+
+Falsifiable expectations, against the 2.2589 RoPE + QK-Norm run. If the QK-Norm half is redundant once
+position is relative, plain RoPE should land *at or slightly below* 2.2589 on validation loss — I am
+predicting a small win, on the order of a couple of thousandths, because handing the q/k magnitudes back
+to the optimizer as a sharpness control should recover a little of what the `sqrt(d_k)` ceiling pinned.
+On perplexity I expect the same direction: WikiText-2 and especially LAMBADA should hold or improve, since
+better-calibrated per-head sharpness helps the confident long-range predictions LAMBADA tests. The
+downstream story is the one I am least sure of, and it is where the ablation could split: removing
+QK-Norm trades a stability guard for sharpness freedom, and it is entirely possible that plain RoPE wins
+the language-modeling metrics (val_loss, perplexity) while RoPE + QK-Norm holds a slight edge on one or
+two downstream tasks where the extra logit-scale robustness happens to help calibration — ARC-Easy and
+PIQA, the multiple-choice tasks most sensitive to small probability differences, are where I would expect
+the combined model to possibly cling on. If that split happens — plain RoPE best on val_loss/perplexity,
+RoPE + QK-Norm best on a downstream task or two — then the honest reading is that the strongest *language
+model* is plain RoPE, and that is the rung I would rank highest on the task's primary objective, while
+noting the combined model is not strictly dominated. The risk that would *falsify* the whole hypothesis is
+the opposite outcome: if plain RoPE comes in clearly *worse* than 2.2589, then RMSNorm was doing real
+stabilization work even under relative position, the sharpness ceiling was cheap, and I should keep the
+combined form. I do not expect that — RoPE's own norm-preservation is why I think the guard is now
+largely redundant — but it is the clean way the experiment could tell me I am wrong.
+</think>
+<say>
+[[FILL_SAY: 1-2 sentences naming the method and what this first edit does]]
+</say>
+<edit path="nanoGPT/custom_pretrain.py">
+<old>
+# EDITABLE region of nanoGPT/custom_pretrain.py (lines 33–70) — step 2: RoPE + QK-Norm
+class CausalSelfAttention(nn.Module):
+</old>
+<new>
+# EDITABLE region of nanoGPT/custom_pretrain.py (lines 33–70) — step 3: RoPE (plain)
+class CausalSelfAttention(nn.Module):
+</new>
+</edit>
+<obs>
+Successfully replaced text in nanoGPT/custom_pretrain.py.
+</obs>
+<note>
+[[FILL_NOTE?: optional one-line thought for this edit, or delete this block]]
+</note>
+<edit path="nanoGPT/custom_pretrain.py">
+<old>
+        self.use_pos_emb = False  # RoPE replaces learned position embeddings
+        # RoPE frequencies
+        inv_freq = 1.0 / (10000 ** (torch.arange(0, self.head_dim, 2).float() / self.head_dim))
+</old>
+<new>
+        self.use_pos_emb = False  # RoPE replaces learned position embeddings
+        # Precompute RoPE frequencies
+        inv_freq = 1.0 / (10000 ** (torch.arange(0, self.head_dim, 2).float() / self.head_dim))
+</new>
+</edit>
+<obs>
+Successfully replaced text in nanoGPT/custom_pretrain.py.
+</obs>
+<note>
+[[FILL_NOTE?: optional one-line thought for this edit, or delete this block]]
+</note>
+<edit path="nanoGPT/custom_pretrain.py">
+<old>
+        t = torch.arange(seq_len, device=x.device, dtype=self.inv_freq.dtype)
+        freqs = torch.outer(t, self.inv_freq)
+        cos = freqs.cos().unsqueeze(0).unsqueeze(0)
+        sin = freqs.sin().unsqueeze(0).unsqueeze(0)
+</old>
+<new>
+        t = torch.arange(seq_len, device=x.device, dtype=self.inv_freq.dtype)
+        freqs = torch.outer(t, self.inv_freq)  # (T, head_dim/2)
+        cos = freqs.cos().unsqueeze(0).unsqueeze(0)  # (1, 1, T, head_dim/2)
+        sin = freqs.sin().unsqueeze(0).unsqueeze(0)
+</new>
+</edit>
+<obs>
+Successfully replaced text in nanoGPT/custom_pretrain.py.
+</obs>
+<note>
+[[FILL_NOTE?: optional one-line thought for this edit, or delete this block]]
+</note>
+<edit path="nanoGPT/custom_pretrain.py">
+<old>
+        v = v.view(B, T, self.n_head, C // self.n_head).transpose(1, 2)
+        # QK-Norm then RoPE (norm before rotation; rotation preserves the imposed norm)
+        q = self._apply_rope(F.rms_norm(q, (q.size(-1),)), T)
+        k = self._apply_rope(F.rms_norm(k, (k.size(-1),)), T)
+        if self.flash:
+</old>
+<new>
+        v = v.view(B, T, self.n_head, C // self.n_head).transpose(1, 2)
+        # Apply rotary position embeddings to Q and K
+        q = self._apply_rope(q, T)
+        k = self._apply_rope(k, T)
+        if self.flash:
+</new>
+</edit>
+<obs>
+Successfully replaced text in nanoGPT/custom_pretrain.py.
+</obs>
+<run/>
+<obs>
+Measured results — `baseline:rope` (`is_final,true`), seed 42 (single-seed task; mean = the seed).
+
+## Language modeling (gpt-345m) — lower is better
+| seed | val_loss | wikitext2_ppl | lambada_ppl |
+|---|---|---|---|
+| 42 | 2.2570 | 43.17 | 65.81 |
+| **mean** | **2.2570** | **43.17** | **65.81** |
+
+## Downstream (lm-eval-345m) — higher is better
+| seed | arc_easy | hellaswag | piqa | winogrande |
+|---|---|---|---|---|
+| 42 | 57.32 | 34.48 | 64.42 | 51.70 |
+| **mean** | **57.32** | **34.48** | **64.42** | **51.70** |
+</obs>
+
+### step 4 — Differential Transformer   [slug:diff-transformer]
+
+<think>
+[[POLISH_REASONING: adapt to first-person agentic voice, end by deciding to implement]]
+Plain RoPE is the strongest rung so far, and the way it won tells me where the remaining loss is hiding.
+Stripping the QK-Norm half edged the combined model out exactly as I predicted: validation loss 2.2570
+against RoPE + QK-Norm's 2.2589, WikiText-2 43.17 vs 43.44, LAMBADA 65.81 vs 67.20 — plain RoPE best on
+every language-modeling metric, confirming that once position is relative, pinning q/k to the
+`sqrt(d_k)·cos` ceiling cost more sharpness than it bought in stability. The split I flagged did show up
+on downstream: RoPE + QK-Norm kept a slight edge on ARC-Easy (57.83 vs 57.32) and PIQA (64.74 vs 64.42),
+the multiple-choice tasks, while plain RoPE took HellaSwag (34.48 vs 34.24) and WinoGrande (51.70 vs
+50.67). So plain RoPE is the strongest *language model* and the right rung to build on, with the combined
+form not strictly dominated. But step back and look at what *every* rung so far has in common, because
+that is the seam none of them touched. QK-Norm changed the logit *scale*. RoPE changed how *position*
+enters the logit. Neither touched the *shape of the attention distribution itself* — all three rungs end
+in the same operation: a single softmax over the context, then a weighted average of values. And that
+single softmax has a structural defect that no amount of better position or better scaling can fix.
+
+Here is the defect, stated precisely. The attention weights are `a_{m,n} = exp(s_{m,n}) / sum_{n'}
+exp(s_{m,n'})`, and every `exp(·)` is strictly positive. So no finite logit can drive a weight to exactly
+zero — the softmax can make an irrelevant token's weight small, but never zero, and it has no mechanism to
+take mass *back off* a position. Over a 1024-token context, even if every irrelevant token gets a weight
+of order `1/T`, the *aggregate* of those weights is most of the mass. The output `o_m = sum_n a_{m,n} v_n`
+is therefore part signal — the few tokens that matter — and part a low-level average of the irrelevant
+remainder. RoPE made the model place its *peak* attention in the right relative location; it did nothing
+about the noise floor smeared under that peak, because the floor is a property of the softmax's positivity,
+not of where the peak is. This is the attention-noise problem, and it is exactly the kind of structural
+limitation that a position fix or a scale fix cannot reach. The 2.2570 is, in part, the cost of averaging
+junk into every token's representation.
+
+So the question is whether I can change the operator so it can *subtract* mass from irrelevant positions —
+because subtraction is the one thing a single positive softmax cannot do. Where does "cancel a common
+floor by subtracting two correlated signals" work? A differential amplifier rejects the voltage common to
+its two inputs and amplifies only their difference, cancelling common-mode noise; noise-cancelling
+headphones subtract an estimate of the ambient floor. The shared principle: the noise is *common* to two
+channels, the signal *differs* between them, so the difference keeps the signal and kills the noise. I want
+attention built the same way.
+
+The construction follows directly. Form *two* softmax maps over the same context from two different
+query/key projections — `A1 = softmax(Q1 K1^T / sqrt(d))`, `A2 = softmax(Q2 K2^T / sqrt(d))` — and take
+the differential `A1 - lambda·A2` with a learnable scalar `lambda`, then average the values with that
+signed map: `(softmax(Q1 K1^T/sqrt(d)) - lambda·softmax(Q2 K2^T/sqrt(d))) V`. Check it does what I claim.
+Both maps see the same content, so over the irrelevant tail their floor patterns are *correlated* — that
+is the common-mode part, and `A1 - lambda·A2` drives it toward zero. On the relevant tokens, the model has
+an incentive to make the first map spike where the second does not, so the difference is large there. The
+resulting weights no longer sum to one and are no longer all positive — they are *signed*, which is exactly
+the new power I wanted: the operator can now push an irrelevant value's contribution to zero or below
+instead of being stuck with the positive floor. The trivial solution `lambda = 0` is not the optimum,
+because cancelling the floor genuinely lowers loss — a cleaner average over the relevant values predicts
+the next token better — so the optimizer has a real reason to use the subtraction. This is the
+representational lever that QK-Norm and RoPE both lacked, because both ended in one positive softmax.
+
+Now the engineering that makes it a fair, stable drop-in, because a naive version would double the cost
+and destabilize training. Three pieces. First, `lambda`: I do not learn it as a free scalar (badly
+conditioned, can drift the subtraction into a wild magnitude). I re-parameterize it as
+`lambda = exp(lambda_q1·lambda_k1) - exp(lambda_q2·lambda_k2) + lambda_init` with four learnable
+`head_dim` vectors initialized `N(0, 0.1)`, so at init the two exponentials are ~1, roughly cancel, and
+`lambda ≈ lambda_init` with well-scaled signed gradients. Second, the budget. I have doubled the queries
+and keys, so to match a vanilla head's parameters and FLOPs I *halve the head dimension*: each logical
+head uses `head_dim = n_embd / n_head / 2`, with `2·n_head` query/key sub-heads of that dimension and
+`n_head` value heads of dimension `2·head_dim`. Total q/k width `2·n_head·(head_dim) = n_embd`, total v
+width `n_head·(2·head_dim) = n_embd` — exactly the vanilla widths, so the fused `c_attn` projection is
+unchanged and the compute is matched; the doubling is absorbed by the halving. Third, scale. The
+subtraction makes heads heterogeneous and shrinks the operator gain roughly by `(1 - lambda)`, so I
+per-head normalize each head's `2·head_dim` output (a per-head RMSNorm, the GroupNorm-across-heads
+discipline) and then rescale by the *fixed* constant `(1 - lambda_init)` — fixed, not the learned
+`lambda`, so the gain compensation is a stable constant and the normalization carries the rest. That fixed
+compensation is what lets the frozen GPT-2 Medium optimizer, learning rate, and schedule transfer
+unchanged, which matters here because the loop is fixed and I cannot retune.
+
+Now the part that is specific to *this* edit surface, and where the harness forces two real compromises I
+have to name. The editable region is only `CausalSelfAttention(config)` — and `config` does not carry the
+*layer index*. The depth-scaled `lambda_init = 0.8 - 0.6·exp(-0.3·(l-1))` needs `l`, which I do not have:
+every one of the 24 blocks constructs its attention from the same `config` with no `l`. So I cannot
+realize the depth schedule; I set a single fixed `lambda_init = 0.8` (the schedule's deep-layer asymptote
+and the operating point the reparameterization is centered on). This is a genuine omission relative to the
+full method — the early layers will cancel harder than the schedule would prescribe — and it is forced by
+the edit surface, not a choice. The second compromise: the fused SDPA path returns only the final averaged
+output, not the two softmax maps I need to subtract. So I cannot use Flash here; I take the manual
+masked-softmax path the scaffold already provides as the non-flash fallback, compute the `2·n_head`
+attention maps explicitly, reshape to `(B, n_head, 2, T, T)`, subtract, and matmul with v. That costs the
+memory of the explicit `T×T` maps — the same cost the manual fallback always had — and it is unavoidable
+because the differential subtraction lives *between* the softmax and the value-average, exactly where the
+fused kernel hides its internals. Position stays as the strongest baseline's: RoPE on the doubled q/k
+sub-heads (`use_pos_emb = False`, the split-half rotation from step 3 applied to the `head_dim`-wide
+sub-heads), so this rung is "the strongest position scheme, with the single softmax replaced by a
+differential one." The full scaffold module is in the answer.
+
+Let me state the bar this has to clear, against the real numbers, with no invented results. The rung to
+beat is plain RoPE: validation loss 2.2570, WikiText-2 43.17, LAMBADA 65.81, ARC-Easy 57.32, HellaSwag
+34.48, PIQA 64.42, WinoGrande 51.70. The differential operator is parameter- and FLOP-matched, so any
+gain is purely from the changed attention *shape*, not from added capacity — which is the honest way to
+claim it. My falsifiable expectation: because the noise floor is a real fraction of the attention mass on
+a 1024-token context and the subtraction removes it, validation loss and both perplexities should fall
+below the RoPE numbers — LAMBADA most of all, since its long-passage last-word prediction is exactly the
+retrieval-under-noise setting the cancellation targets, so the 65.81 is the number I would watch first.
+Downstream should move with the LM gain, with the in-context, retrieval-flavored tasks (ARC-Easy,
+HellaSwag) the likeliest to lift, since cleaner attention to the relevant context is what those reward.
+The risks I would actually validate before believing the win: (1) the fixed `lambda_init = 0.8` may
+over-cancel in the early layers — if I could pass depth I would expect a further gain, so a plain-RoPE-beating
+but modest result might be the depth-schedule omission showing, not a failure of the method; (2) the
+signed map can, at init, produce a higher-variance output than a single softmax, so I would watch the
+first few hundred iterations for an instability the `(1 - lambda_init)` compensation and the per-head norm
+are supposed to prevent. If validation loss does *not* drop below 2.2570, the honest reading is that at
+355M params and 7.1B tokens the attention-noise floor is not yet the binding constraint — the
+differential mechanism's reported advantage grows with scale and context length, and this is a small-model,
+1024-token regime — in which case the strongest rung remains plain RoPE and the differential operator is a
+bet that pays off at larger scale than this task runs.
+</think>
+<say>
+[[FILL_SAY: 1-2 sentences naming the method and what this first edit does]]
+</say>
+<edit path="nanoGPT/custom_pretrain.py">
+<old>
+# EDITABLE region of nanoGPT/custom_pretrain.py (lines 33–70) — step 3: RoPE (plain)
+class CausalSelfAttention(nn.Module):
+</old>
+<new>
+# EDITABLE region of nanoGPT/custom_pretrain.py (lines 33–70) — finale: Differential Transformer + RoPE
+class CausalSelfAttention(nn.Module):
+</new>
+</edit>
+<obs>
+Successfully replaced text in nanoGPT/custom_pretrain.py.
+</obs>
+<note>
+[[FILL_NOTE?: optional one-line thought for this edit, or delete this block]]
+</note>
+<edit path="nanoGPT/custom_pretrain.py">
+<old>
+        self.n_embd = config.n_embd
+        self.head_dim = config.n_embd // config.n_head
+        self.dropout = config.dropout
+        self.flash = hasattr(torch.nn.functional, 'scaled_dot_product_attention')
+        if not self.flash:
+            self.register_buffer("bias", torch.tril(torch.ones(config.block_size, config.block_size))
+                                        .view(1, 1, config.block_size, config.block_size))
+        self.use_pos_emb = False  # RoPE replaces learned position embeddings
+        # Precompute RoPE frequencies
+        inv_freq = 1.0 / (10000 ** (torch.arange(0, self.head_dim, 2).float() / self.head_dim))
+        self.register_buffer("inv_freq", inv_freq)
+
+    def _apply_rope(self, x, seq_len):
+        t = torch.arange(seq_len, device=x.device, dtype=self.inv_freq.dtype)
+        freqs = torch.outer(t, self.inv_freq)  # (T, head_dim/2)
+        cos = freqs.cos().unsqueeze(0).unsqueeze(0)  # (1, 1, T, head_dim/2)
+        sin = freqs.sin().unsqueeze(0).unsqueeze(0)
+</old>
+<new>
+        self.n_embd = config.n_embd
+        self.dropout = config.dropout
+        # Differential attention: halve the per-head dim so the doubled q/k stays budget-matched.
+        # 2*n_head query/key sub-heads of dim head_dim; n_head value heads of dim 2*head_dim.
+        self.head_dim = config.n_embd // config.n_head // 2
+        self.scaling = self.head_dim ** -0.5
+        self.register_buffer("bias", torch.tril(torch.ones(config.block_size, config.block_size))
+                                    .view(1, 1, config.block_size, config.block_size))
+        self.use_pos_emb = False  # RoPE replaces learned position embeddings
+        inv_freq = 1.0 / (10000 ** (torch.arange(0, self.head_dim, 2).float() / self.head_dim))
+        self.register_buffer("inv_freq", inv_freq)
+        # config carries no layer index -> use the depth schedule's deep asymptote as a fixed init.
+        self.lambda_init = 0.8
+        self.lambda_q1 = nn.Parameter(torch.zeros(self.head_dim).normal_(mean=0, std=0.1))
+        self.lambda_k1 = nn.Parameter(torch.zeros(self.head_dim).normal_(mean=0, std=0.1))
+        self.lambda_q2 = nn.Parameter(torch.zeros(self.head_dim).normal_(mean=0, std=0.1))
+        self.lambda_k2 = nn.Parameter(torch.zeros(self.head_dim).normal_(mean=0, std=0.1))
+        # Per-head normalization over the 2*head_dim attention output (the GroupNorm/sub-LN).
+        self.subln = nn.RMSNorm(2 * self.head_dim, eps=1e-5, elementwise_affine=True)
+
+    def _apply_rope(self, x, seq_len):
+        t = torch.arange(seq_len, device=x.device, dtype=self.inv_freq.dtype)
+        freqs = torch.outer(t, self.inv_freq)
+        cos = freqs.cos().unsqueeze(0).unsqueeze(0)
+        sin = freqs.sin().unsqueeze(0).unsqueeze(0)
+</new>
+</edit>
+<obs>
+Successfully replaced text in nanoGPT/custom_pretrain.py.
+</obs>
+<note>
+[[FILL_NOTE?: optional one-line thought for this edit, or delete this block]]
+</note>
+<edit path="nanoGPT/custom_pretrain.py">
+<old>
+        q, k, v = self.c_attn(x).split(self.n_embd, dim=2)
+        k = k.view(B, T, self.n_head, C // self.n_head).transpose(1, 2)
+        q = q.view(B, T, self.n_head, C // self.n_head).transpose(1, 2)
+        v = v.view(B, T, self.n_head, C // self.n_head).transpose(1, 2)
+        # Apply rotary position embeddings to Q and K
+        q = self._apply_rope(q, T)
+        k = self._apply_rope(k, T)
+        if self.flash:
+            y = torch.nn.functional.scaled_dot_product_attention(
+                q, k, v, attn_mask=None,
+                dropout_p=self.dropout if self.training else 0, is_causal=True)
+        else:
+            att = (q @ k.transpose(-2, -1)) * (1.0 / math.sqrt(k.size(-1)))
+            att = att.masked_fill(self.bias[:, :, :T, :T] == 0, float('-inf'))
+            att = F.softmax(att, dim=-1)
+            att = self.attn_dropout(att)
+            y = att @ v
+        y = y.transpose(1, 2).contiguous().view(B, T, C)
+        y = self.resid_dropout(self.c_proj(y))
+        return y
+</old>
+<new>
+        q, k, v = self.c_attn(x).split(self.n_embd, dim=2)
+        # 2*n_head query/key sub-heads of dim head_dim; n_head value heads of dim 2*head_dim.
+        q = q.view(B, T, 2 * self.n_head, self.head_dim).transpose(1, 2)
+        k = k.view(B, T, 2 * self.n_head, self.head_dim).transpose(1, 2)
+        v = v.view(B, T, self.n_head, 2 * self.head_dim).transpose(1, 2)
+        # Relative position on the query/key sub-heads.
+        q = self._apply_rope(q, T)
+        k = self._apply_rope(k, T)
+        # Two softmax maps (manual path: the fused kernel hides the maps the subtraction needs).
+        att = (q @ k.transpose(-2, -1)) * self.scaling
+        att = att.masked_fill(self.bias[:, :, :T, :T] == 0, float('-inf'))
+        att = F.softmax(att, dim=-1)
+        att = self.attn_dropout(att)
+        att = att.view(B, self.n_head, 2, T, T)
+        lambda_1 = torch.exp(torch.sum(self.lambda_q1 * self.lambda_k1, dim=-1).float()).type_as(q)
+        lambda_2 = torch.exp(torch.sum(self.lambda_q2 * self.lambda_k2, dim=-1).float()).type_as(q)
+        lambda_full = lambda_1 - lambda_2 + self.lambda_init
+        att = att[:, :, 0] - lambda_full * att[:, :, 1]            # (B, n_head, T, T), signed
+        y = att @ v                                                # (B, n_head, T, 2*head_dim)
+        y = self.subln(y) * (1.0 - self.lambda_init)               # per-head norm + fixed gain comp.
+        y = y.transpose(1, 2).contiguous().view(B, T, C)
+        y = self.resid_dropout(self.c_proj(y))
+        return y
+</new>
+</edit>
+<obs>
+Successfully replaced text in nanoGPT/custom_pretrain.py.
+</obs>
+

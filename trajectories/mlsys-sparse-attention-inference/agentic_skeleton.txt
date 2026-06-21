@@ -1,0 +1,1355 @@
+<meta task="mlsys-sparse-attention-inference" domain="Systems & efficiency" file="sparse-attn-eval/custom_sparse_attn.py" model_format="qwen3" edit_tool="str_replace"/>
+
+<system>
+You are a research engineer improving a model on a fixed ML task. You work by editing the model code and running experiments. Think carefully before each change. You have these tools:
+- str_replace(path, old_str, new_str): replace the unique occurrence of old_str with new_str.
+- create(path, file_text): create a new file.
+- run_experiment(): train + evaluate the current code under the fixed budget; returns metrics.
+Make one tool call at a time. After editing, call run_experiment() to measure your method.
+</system>
+
+<user>
+## Research question
+
+A pretrained 1.5B-param causal LLM has to run long-context tasks at inference time under a hard
+sparsity budget. The single thing being designed is the **`SparseAttention` module** — one instance is
+monkey-patched into every attention layer of `Qwen/Qwen2.5-1.5B-Instruct`, replacing the attention
+forward and nothing else. No retraining, no fine-tuning, no weight edits, no architectural surgery.
+For each query token the module decides which of the preceding keys receive non-zero attention, and the
+fraction of `(q, k)` pairs it keeps — the **density** — must stay at or under `0.25` (plus a small
+`0.02` slack) averaged across all 24 layers, or the harness aborts the run. The question is how to
+spend that 25% of the attention matrix so long-context retrieval and QA quality survive.
+
+## Prior art before the first rung (the lineage the ladder reacts to)
+
+The first rung is the **dense oracle** — the unmodified full-attention forward, density `1.0`, the only
+baseline allowed to break the budget. It exists to fix the quality target the sparse rungs must climb
+toward. The methods it reacts to are the long-context attention families that try to recover that
+target under a budget:
+
+- **Full scaled-dot-product attention (Vaswani et al., 2017).** `softmax(QKᵀ/√d)V` — every query reads
+  every key in one hop, `O(1)` path length, `O(n²)` cost. The trustworthy reference, and exactly the
+  quadratic the budget forbids: at N=8K it forms an N×N score matrix per head per layer. Gap: cost
+  scales with the square of context, so it cannot be the deployed module — only the oracle.
+- **Sliding-window / local attention.** Keep only the last `W` keys per query. Linear, trivial, fast —
+  but content-blind: anything older than the window is invisible, so a needle far back in the context
+  cannot be retrieved. Gap: a fixed local pattern drops long-range information by construction.
+- **Static block-sparse patterns (sink+window; global+window+random).** Add always-attended anchor
+  tokens (and, in the expander variants, random long-range links) to a local window. Cheap and
+  decode-friendly under parallel forward, but the pattern does not depend on what the query is asking,
+  so the relevant middle block is reached only by luck. Gap: a fixed mask, however clever, cannot route
+  to query-specific evidence.
+- **KV-cache compression keyed off the decode window (H2O, SnapKV, Quest).** Pick important keys from
+  the accumulating attention of a mutable KV cache during autoregressive decode. Genuinely
+  content-adaptive, but their importance signal shifts with the observation window and drifts under this
+  benchmark's **parallel-forward** setting (every forward processes the full prefix in one shot; the
+  same module replays at every generation step, `use_cache=False`). Gap: deliberately out of scope here
+  — they do not transfer cleanly without cache plumbing the harness does not implement.
+
+## The fixed substrate
+
+The loop is frozen and must not be touched. `harness.py` loads `Qwen2.5-1.5B-Instruct` (native 32K
+context, so no RoPE rescaling is needed at 8K), monkey-patches the agent's `SparseAttention` into every
+attention layer, runs the model with `use_cache=False` so every forward is a single parallel pass over
+the whole prefix, and replays the same module at every generation step. The backbone is GQA with 12
+query heads and 2 KV heads; **the harness applies `repeat_kv` before calling the module**, so the
+module always sees 12 heads on both Q and K/V — it never has to handle GQA replication itself. After
+every forward the harness reads `self.last_density` and aggregates it across the 24 layers;
+`enforce_budget` aborts the run if the mean exceeds `0.25 + 0.02` for any non-`dense` baseline, and a
+missing, NaN, infinite, negative, or `>1` density report is treated as a harness error (not as zero).
+RoPE and the GQA replication are applied by the loop *before* `q, k, v` reach the module.
+
+## The editable interface
+
+Exactly one region is editable — lines 31–103 of `sparse-attn-eval/custom_sparse_attn.py`, the body of
+the `SparseAttention` class. `harness.py` and `run_llm.py` are read-only (model loading, patching,
+density tracking, metrics). The contract:
+
+```python
+class SparseAttention(nn.Module):
+    def __init__(self, head_dim, num_heads, block_size=64, density_budget=0.25): ...
+    def forward(self, q, k, v, is_causal=False, scale=None) -> torch.Tensor: ...
+```
+
+`q, k, v` arrive as `(B, H, N, D)` in float16/bfloat16, GQA already replicated to `H=12`.
+`is_causal=True` for this LLM (always). `scale` defaults to `1/√D`. The forward returns the attention
+output in the same shape and dtype, and **must set `self.last_density`** to the fraction of `(q, k)`
+pairs that received non-zero attention — causal-adjusted, dividing the kept count by `N(N+1)/2` when
+`is_causal=True`. Every method on the ladder is a fill of this one class.
+
+The starting point is the scaffold default below: a sink + sliding-window mask, built once per `N` and
+cached across the 24 layers, run through fused SDPA. Each later method replaces exactly this class body.
+
+```python
+# EDITABLE region of custom_sparse_attn.py — default fill (sink + sliding window)
+class SparseAttention(nn.Module):
+    """Default: sliding window + sink, fused SDPA with a cached bool mask."""
+
+    def __init__(self, head_dim, num_heads, block_size=64, density_budget=0.25):
+        super().__init__()
+        self.head_dim = head_dim
+        self.num_heads = num_heads
+        self.block_size = block_size
+        self.density_budget = density_budget
+        self.window = 1024          # local window radius (tokens per side)
+        self.num_sinks = 4          # "always attended" sink tokens
+        self.last_density = None
+        self._mask_cache: dict = {}  # (N, is_causal, device) -> (mask, density)
+
+    @torch.no_grad()
+    def _get_mask(self, N: int, device: torch.device, is_causal: bool):
+        key = (N, is_causal, device)
+        cached = self._mask_cache.get(key)
+        if cached is not None:
+            return cached
+        idx = torch.arange(N, device=device)
+        di = idx[:, None] - idx[None, :]
+        mask = (di.abs() <= self.window) | (idx[None, :] < self.num_sinks)
+        if is_causal:
+            mask = mask & (idx[:, None] >= idx[None, :])
+        denom = N * (N + 1) / 2.0 if is_causal else float(N * N)
+        density = float(mask.sum().item()) / max(denom, 1.0)
+        self._mask_cache[key] = (mask, density)
+        return mask, density
+
+    def forward(self, q, k, v, is_causal=False, scale=None):
+        B, H, N, D = q.shape
+        scale = scale if scale is not None else 1.0 / math.sqrt(D)
+        mask, self.last_density = self._get_mask(N, q.device, is_causal)
+        out = F.scaled_dot_product_attention(
+            q, k, v, attn_mask=mask.view(1, 1, N, N),
+            dropout_p=0.0, is_causal=False, scale=scale,
+        )
+        return out
+```
+
+## Evaluation settings
+
+`Qwen2.5-1.5B-Instruct`, single A100 80GB, FP16 only (no FP8), pure PyTorch ops (no Triton;
+`torch.nn.attention.flex_attention` permitted if available). One seed, `42`. Three long-context
+environments, all higher-is-better:
+
+| Env | Metric | Notes |
+|---|---|---|
+| `niah_8k` | retrieval accuracy | Synthetic Needle-In-A-Haystack at 8K context |
+| `longbench_qasper` | QA F1 | LongBench Qasper single-doc scientific-paper QA |
+| `longbench_multifieldqa_en` | QA F1 | LongBench MultiFieldQA-EN long-document multi-field QA |
+
+`density_budget = 0.25` for every non-`dense` rung; the `dense` oracle reports `last_density = 1.0` and
+runs with `--allow-dense` so the budget check is skipped for it alone.
+
+The editable model code is in `sparse-attn-eval/custom_sparse_attn.py`:
+```python
+# EDITABLE REGION START — design the inference-time sparse attention here.
+# Lines 31-103 are agent-editable. Everything outside this region is FIXED.
+# ═══════════════════════════════════════════════════════════════════════════════
+
+
+class SparseAttention(nn.Module):
+    """Inference-time sparse attention for long-context LLM eval.
+
+    Default: sliding window + sink, computed via fused SDPA with a cached
+    bool mask (same speed regime as dense at this density). Replace with
+    your own design — anything that preserves quality on NIAH / Qasper /
+    MultiFieldQA-EN under the density budget.
+    """
+
+    def __init__(self, head_dim, num_heads, block_size=64, density_budget=0.25):
+        super().__init__()
+        self.head_dim = head_dim
+        self.num_heads = num_heads
+        self.block_size = block_size
+        self.density_budget = density_budget
+
+        # Default hyperparameters (the agent should tune / replace these).
+        self.window = 1024      # local window radius (tokens per side)
+        self.num_sinks = 4      # number of "always attended" sink tokens
+
+        # Diagnostic: harness reads this after each forward to validate budget.
+        self.last_density = None
+
+        # (N, is_causal, device) -> (mask BoolTensor, density float).
+        # Reused across the 24 layers for the same prompt — built once per N.
+        self._mask_cache: dict = {}
+
+    @torch.no_grad()
+    def _get_mask(self, N: int, device: torch.device, is_causal: bool):
+        key = (N, is_causal, device)
+        cached = self._mask_cache.get(key)
+        if cached is not None:
+            return cached
+        idx = torch.arange(N, device=device)
+        di = idx[:, None] - idx[None, :]
+        mask = (di.abs() <= self.window) | (idx[None, :] < self.num_sinks)
+        if is_causal:
+            mask = mask & (idx[:, None] >= idx[None, :])
+        denom = N * (N + 1) / 2.0 if is_causal else float(N * N)
+        density = float(mask.sum().item()) / max(denom, 1.0)
+        self._mask_cache[key] = (mask, density)
+        return mask, density
+
+    def forward(self, q, k, v, is_causal=False, scale=None):
+        """Sparse attention forward.
+
+        Args:
+            q, k, v: (B, H, N, D), float16 / bfloat16.
+            is_causal: True for LLM (always True in this task).
+            scale: softmax temperature; defaults to 1/sqrt(D).
+        Returns:
+            out: (B, H, N, D), same dtype as q.
+        """
+        B, H, N, D = q.shape
+        scale = scale if scale is not None else 1.0 / math.sqrt(D)
+
+        mask, self.last_density = self._get_mask(N, q.device, is_causal)
+        # SDPA accepts a bool attn_mask: True = attend. Stay in bf16/fp16 —
+        # fused SDPA handles numerics safely.
+        out = F.scaled_dot_product_attention(
+            q, k, v, attn_mask=mask.view(1, 1, N, N),
+            dropout_p=0.0, is_causal=False, scale=scale,
+        )
+        return out
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# EDITABLE REGION END
+```
+Improve it. Derive your method, edit the code, then run_experiment().
+</user>
+
+### step 1 — Dense (full-attention oracle)   [slug:dense]
+
+<think>
+[[POLISH_REASONING: adapt to first-person agentic voice, end by deciding to implement]]
+The module is the whole point, but it drops into a frozen model, and with the budget removed that
+model's attention is just full scaled-dot-product attention — so the reference I have to climb toward is
+exactly that: the unmodified attention forward, every query reading every key. The task hands me one
+`SparseAttention` instance monkey-patched into every attention layer of a 1.5B instruct model, replacing
+the attention forward and nothing else — no retraining, no fine-tuning, no weight edits, no growing the
+sequence. For each query token the module gets to decide which of the preceding keys receive non-zero
+attention, and the kept fraction of `(q, k)` pairs — the density — has to stay at or under `0.25` (plus a
+small `0.02` slack) averaged across all 24 layers, or the harness aborts the run outright. Before I spend
+a single forward arguing about *how* to spend a quarter of the attention matrix, I want to know what the
+full matrix can do, because the sparse rungs only make sense as fractions of that. So the first rung is
+the oracle: spend the whole attention matrix, report the true density of `1.0`, and let the harness skip
+the budget check for this one baseline.
+
+Let me write down what the layer actually computes so I am sure the oracle is the genuine reference and
+not some near-copy. Each query `q_t` scores against every key it is allowed to see, the scores go
+through a softmax, and the output is the softmax-weighted blend of the values:
+`out_t = Σ_j softmax_j(q_t · k_j / √D) v_j`. Causality forbids reading the future, so for this LLM the
+allowed set for query `t` is `{0, …, t}` — the lower triangle. Stack it and it is
+`softmax(QKᵀ/√D + M)V` with `M` the additive `−∞`-above-the-diagonal causal bias. That is precisely the
+computation the pretrained Qwen attention performs; nothing about the oracle deviates from it. The scale
+defaults to `1/√D` because the dot product of two `D`-dimensional vectors has standard deviation `√D`,
+and dividing by `√D` puts the logit scale back at unity so the softmax sits in its responsive region —
+the same scaling the model was trained under, which I must not change if this is to be a faithful upper
+bound. The moment I touch the scale or the mask I am no longer measuring the model's own ceiling; I am
+measuring some other model's, and the three numbers this rung produces would stop being a valid target.
+So the discipline of the oracle is restraint: reproduce the trained computation exactly, change nothing,
+and read off what it scores.
+
+The cost is the reason the budget exists in the first place, and I want to be precise about it because
+the entire ladder is a reaction to this one term. The score matrix `QKᵀ` is `(N × N)` per head per layer.
+At the 8K context this benchmark evaluates, that is on the order of tens of millions of entries per head
+before the softmax even runs, and the model carries 12 heads across 24 layers, so the full forward
+forms and softmaxes hundreds of such matrices. Forming and softmaxing all of it is `O(N²D)` compute and
+`O(N²)` memory traffic — and crucially the memory traffic is the binding constraint, because every one of
+those `N²` logits has to be written, read back for the softmax, and the full key/value tensors streamed
+through for the weighted sum. That is the quadratic that pins long-context inference: doubling the context
+quadruples the attention work, and the KV reads alone scale with `N` per query, so the matrix grows
+faster than any hardware budget can absorb. This is exactly why dense attention can be the *oracle* but
+never the *deployed module* — the whole task is to get the patched module under `0.25` density without
+losing the quality this full computation buys, and I cannot even state what "losing quality" means until
+I have measured the quality the full computation buys. So the oracle has to run first.
+
+The scaffold makes the implementation almost trivial, and that is the point — the oracle should be the
+*least* clever rung. I have to be careful here about what the fixed loop already does for me, because if
+I redo any of it inside the module I corrupt the reference. The loop replicates GQA before the module is
+called: the backbone has 12 query heads and 2 KV heads, but the harness applies the key/value
+replication so I receive 12 heads on both Q and K/V and never touch the grouping myself. It applies RoPE
+to `q` and `k` before they reach me, so the rotary position information is already baked into the vectors
+I score — I must not re-rotate. It passes `is_causal=True` and the default `scale`. So everything that
+makes this the *pretrained model's* attention — the head layout, the positional encoding, the causal
+direction, the trained scale — is settled upstream, and my edit is the empty one: hand `q, k, v`
+straight to PyTorch's fused scaled-dot-product attention with `attn_mask=None` and `is_causal` forwarded,
+which builds the lower-triangular `−∞` bias internally and dispatches to an optimized kernel — the same
+math as the explicit three-step form, far less memory written out, identical output. Using the fused
+kernel rather than a hand-written `QKᵀ → softmax → V` is not a shortcut that changes the answer; it is
+the numerically and memory-wise sane way to realize the identical computation, and it keeps the oracle
+from gratuitously OOM-ing on the very `N²` matrix that motivates the rest of the work.
+
+The only bookkeeping the contract demands is `self.last_density`, and here it is honest and constant: a
+dense causal forward attends to every admissible `(q, k)` pair, so the kept fraction over the
+`N(N+1)/2` causal denominator is exactly `1.0`. I set it to `1.0` literally rather than counting a mask,
+because there is no mask — nothing is dropped, and counting a phantom mask would only invite a rounding
+disagreement with the contract's denominator. The harness recognizes this rung through the
+`ALLOW_DENSE_FLAG=1` env var, which forwards `--allow-dense` to the loop so `enforce_budget` skips the
+`0.25 + 0.02` ceiling for the oracle alone; every other rung will be aborted if its aggregated mean
+density crosses that line, so the oracle is structurally the only baseline permitted to report `1.0`.
+That asymmetry is deliberate and it is what makes the oracle a *reference* rather than a *competitor*: it
+is not trying to satisfy the constraint, it is defining the quality the constrained rungs are measured
+against.
+
+Now reason about what this rung must produce, because that is the entire reason to run it. The oracle
+fixes three target numbers — one per environment — that every sparse rung is graded against, and the
+three environments are chosen to probe different failure modes, so I should predict how the ceiling lands
+on each. On `niah_8k`, retrieval at 8K context: the needle is a single fact buried in a long synthetic
+haystack, and full attention can route any query directly to the key that holds it in one hop, so I
+expect the oracle to retrieve essentially perfectly. This is the cleanest discriminator on the whole
+ladder, because the answer lives in exactly one position, so a sparse pattern that fails to cover the
+needle's block falls off a cliff here while the oracle does not — there is no partial credit for being
+*near* the needle. On `longbench_qasper`, scientific-paper QA, and `longbench_multifieldqa_en`,
+multi-field long-document QA, the metric is F1 against reference answers, and these are genuinely hard for
+a 1.5B instruct model even with full attention — the model's own competence caps the score well below
+1.0, so the oracle's F1 here is modest and is the *realistic* ceiling, not a perfect one. I have to hold
+that distinction firmly, because if I forgot it I would read a low sparse F1 as a sparsity failure when
+it is partly just the model's ceiling. The two QA tasks are not a retrieval cliff; they degrade more
+gracefully, because the evidence is distributed across the document rather than hidden in one position,
+so a sparse pattern that covers *some* of the relevant spans can still answer partially.
+
+That split is the diagnosis I carry into the ladder, and it is worth naming the precise tension the
+sparse rungs inherit, because the oracle is what makes the tension legible. A sparse method gets a
+density budget `ρ = 0.25`: it may keep a quarter of the causal pairs. The question is *recall* — of the
+keys that dense attention actually put weight on, how many does the kept set retain? NIAH is the
+position-coverage test: did the sparse mask happen to include the one block the needle sits in? The QA
+tasks are the distributed-evidence test: did the sparse mask cover enough of the document's relevant
+spans to compose an answer? A static pattern will pass or fail NIAH largely by luck of where the needle
+lands relative to its fixed window and anchors, and will lose graded F1 on the QA tasks in proportion to
+how much relevant context it drops. A content-adaptive pattern should do better on NIAH precisely because
+it can *choose* the needle's block from the query, and better on QA because it can route to the spans the
+query is actually asking about. The whole reason the oracle keeps *everything* is that with full density
+recall is trivially total — every high-weight key is, by construction, kept — and that is exactly the
+property a sparse method has to approximate cheaply: preserve the high-recall retrieval tokens (the ones
+dense attention would have weighted) while it is free to drop the long tail of near-zero-weight keys that
+the softmax was going to ignore anyway.
+
+So the oracle's three numbers set the bar, and the gap between them and each sparse rung's numbers is
+exactly the signal that tells me whether the missing quality is a coverage problem (fix it with anchors
+and windows) or a routing problem (fix it by making the pattern depend on the query). I expect the sparse
+rungs to recover most of the QA F1 but to struggle on NIAH until the selection becomes query-aware — that
+is the hypothesis the next three rungs will test against these measured ceilings. Concretely, the
+falsifiable expectation I am setting up for the very first sparse rung: under the same density budget, a
+static content-blind pattern should claw back a usable share of the oracle's QA F1, but it should
+*collapse* on NIAH from the oracle's near-perfect retrieval toward chance — because nothing about a fixed
+mask routes to a needle whose position it did not anticipate. If that NIAH collapse happens while the QA
+numbers hold, the diagnosis is confirmed and it points the ladder straight at query-adaptivity; if a
+static mask somehow keeps NIAH near the ceiling, my whole reading of the static-vs-adaptive split is
+wrong and I would have to rethink. The distilled oracle module — the empty edit that hands `q, k, v` to
+fused SDPA and reports density `1.0` — is in the answer.
+</think>
+<say>
+[[FILL_SAY: 1-2 sentences naming the method and what this first edit does]]
+</say>
+<edit path="sparse-attn-eval/custom_sparse_attn.py">
+<old>
+# EDITABLE REGION START — design the inference-time sparse attention here.
+# Lines 31-103 are agent-editable. Everything outside this region is FIXED.
+# ═══════════════════════════════════════════════════════════════════════════════
+
+
+class SparseAttention(nn.Module):
+    """Inference-time sparse attention for long-context LLM eval.
+
+    Default: sliding window + sink, computed via fused SDPA with a cached
+    bool mask (same speed regime as dense at this density). Replace with
+    your own design — anything that preserves quality on NIAH / Qasper /
+    MultiFieldQA-EN under the density budget.
+    """
+</old>
+<new>
+# EDITABLE region of custom_sparse_attn.py — rung 1: dense oracle (density 1.0)
+class SparseAttention(nn.Module):
+    """Dense attention oracle. Reports true full-attention density.
+
+    The point of this baseline is to give an upper-bound quality reference;
+    it is not meant to satisfy a real sparsity constraint.
+    """
+</new>
+</edit>
+<obs>
+Successfully replaced text in sparse-attn-eval/custom_sparse_attn.py.
+</obs>
+<note>
+[[FILL_NOTE?: optional one-line thought for this edit, or delete this block]]
+</note>
+<edit path="sparse-attn-eval/custom_sparse_attn.py">
+<old>
+        self.num_heads = num_heads
+        self.block_size = block_size
+        self.density_budget = density_budget
+
+        # Default hyperparameters (the agent should tune / replace these).
+        self.window = 1024      # local window radius (tokens per side)
+        self.num_sinks = 4      # number of "always attended" sink tokens
+
+        # Diagnostic: harness reads this after each forward to validate budget.
+        self.last_density = None
+
+        # (N, is_causal, device) -> (mask BoolTensor, density float).
+        # Reused across the 24 layers for the same prompt — built once per N.
+        self._mask_cache: dict = {}
+
+    @torch.no_grad()
+    def _get_mask(self, N: int, device: torch.device, is_causal: bool):
+        key = (N, is_causal, device)
+        cached = self._mask_cache.get(key)
+        if cached is not None:
+            return cached
+        idx = torch.arange(N, device=device)
+        di = idx[:, None] - idx[None, :]
+        mask = (di.abs() <= self.window) | (idx[None, :] < self.num_sinks)
+        if is_causal:
+            mask = mask & (idx[:, None] >= idx[None, :])
+        denom = N * (N + 1) / 2.0 if is_causal else float(N * N)
+        density = float(mask.sum().item()) / max(denom, 1.0)
+        self._mask_cache[key] = (mask, density)
+        return mask, density
+
+    def forward(self, q, k, v, is_causal=False, scale=None):
+        """Sparse attention forward.
+
+        Args:
+            q, k, v: (B, H, N, D), float16 / bfloat16.
+            is_causal: True for LLM (always True in this task).
+            scale: softmax temperature; defaults to 1/sqrt(D).
+        Returns:
+            out: (B, H, N, D), same dtype as q.
+        """
+        B, H, N, D = q.shape
+        scale = scale if scale is not None else 1.0 / math.sqrt(D)
+
+        mask, self.last_density = self._get_mask(N, q.device, is_causal)
+        # SDPA accepts a bool attn_mask: True = attend. Stay in bf16/fp16 —
+        # fused SDPA handles numerics safely.
+        out = F.scaled_dot_product_attention(
+            q, k, v, attn_mask=mask.view(1, 1, N, N),
+            dropout_p=0.0, is_causal=False, scale=scale,
+        )
+        return out
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# EDITABLE REGION END
+</old>
+<new>
+        self.num_heads = num_heads
+        self.density_budget = density_budget
+        self.last_density = None
+
+    def forward(self, q, k, v, is_causal=False, scale=None):
+        B, H, N, D = q.shape
+        scale = scale if scale is not None else 1.0 / math.sqrt(D)
+        # Use PyTorch's fused SDPA for efficient dense attention.
+        out = F.scaled_dot_product_attention(
+            q, k, v, attn_mask=None, dropout_p=0.0,
+            is_causal=is_causal, scale=scale,
+        )
+        self.last_density = 1.0
+        return out
+</new>
+</edit>
+<obs>
+Successfully replaced text in sparse-attn-eval/custom_sparse_attn.py.
+</obs>
+<run/>
+<obs>
+Measured results — `baseline:dense` (`is_final,true`), seed 42.
+
+## niah_8k
+| seed | niah_acc | density |
+|---|---|---|
+| 42 | 1.0 | 1.0 |
+| **mean** | **1.0** | **1.0** |
+
+## longbench_qasper
+| seed | qasper_f1 | density |
+|---|---|---|
+| 42 | 0.1406 | 1.0 |
+| **mean** | **0.1406** | **1.0** |
+
+## longbench_multifieldqa_en
+| seed | multifieldqa_f1 | density |
+|---|---|---|
+| 42 | 0.3447 | 1.0 |
+| **mean** | **0.3447** | **1.0** |
+</obs>
+
+### step 2 — BigBird (global + window + random block-sparse)   [slug:bigbird]
+
+<think>
+[[POLISH_REASONING: adapt to first-person agentic voice, end by deciding to implement]]
+The oracle gave me the three numbers I now have to chase down under a quarter of the attention matrix,
+and they split exactly the way I feared. NIAH at 8K came in at `1.0` — full attention retrieves the
+needle perfectly, because every query can route directly to the one key that holds it. The two QA tasks
+came in modest: Qasper F1 `0.1406`, MultiFieldQA-EN F1 `0.3447`. So the ceiling is not "perfect
+everywhere" — the QA scores are capped by the 1.5B model's own competence, while NIAH is a clean
+position-coverage test that full attention aces. That tells me where the danger is. On QA the evidence is
+spread across the document, so a sparse mask that covers *some* of it can still answer partially and lose
+F1 gracefully; on NIAH the answer lives in one position, so a mask that fails to cover the needle's block
+falls off a cliff from `1.0` to near chance. Whatever I build first, NIAH is the discriminator that will
+punish me hardest, and a content-blind pattern is exactly the kind of thing that can miss the needle by
+construction.
+
+So the design problem is sharp: out of the full causal lower triangle of `(q, k)` pairs, keep at most a
+fraction `0.25` (the harness aborts above `0.25 + 0.02` averaged over the 24 layers), with no retraining
+and no access to anything but the `q, k, v` in front of me this forward — the loop runs
+`use_cache=False`, so there is no accumulating decode cache to lean on. The cleanest place to start is a
+*static* pattern: a mask that depends only on `N`, not on the content, so I can build it once per prompt,
+cache it across all 24 layers, and pay nothing per layer to decide it. The question is which static
+pattern spends the 25% budget best.
+
+Let me reason about attention as a graph, because that reframes "spend the budget" as "which edges to
+keep." Put the `N` token positions as vertices; an edge `i → j` means query `i` attends to key `j`.
+Full attention is the complete causal graph, and that is why the oracle nailed NIAH — there is a direct
+edge from every query to the needle. Sparsifying means deleting most edges and asking whether the graph
+still behaves like the complete one. Two properties of the complete graph are load-bearing. First, short
+paths: information has to be able to *reach* from any position to any other in few hops, or a fact at
+position 200 can never influence the representation at position 7000 within the model's depth. Second,
+locality: when people actually probe trained attention, the dominant weight lands on *nearby* positions
+— a token's meaning is largely set by its neighbors. A good static pattern has to supply both.
+
+The window edges supply locality directly: arrange the tokens on a line and connect each query block to
+a band of neighbor blocks. That is a ring-lattice — high clustering, lots of overlapping local
+neighborhoods — and at the block level it costs a constant number of blocks per query block. But a pure
+window has terrible paths: to cross the sequence you crawl block by block, `O(N/window)` hops, far more
+than the model's depth, so the needle at the far end is unreachable. Random edges fix exactly that: give
+each query block a few randomly chosen non-window blocks, and the graph becomes an expander — shortest
+paths drop to `O(log N)`, a large spectral gap, rapid mixing. This is the Watts–Strogatz small-world
+recipe: a local ring plus a sprinkle of long-range shortcuts collapses the diameter while keeping the
+clustering. Window plus random, then, gives me both properties at linear cost.
+
+But window plus random alone is known to fall short of dense — and I can see why from the contextual
+side, not just the graph side. There are tasks where some position has to corral information about the
+*whole* sequence at once: a global summary, a CLS-like aggregation, the universal-approximation
+construction that needs a single node seeing every column to mint a context code. With only window and
+random edges, every query's neighborhood is a tiny handful of blocks and no single node sees the whole
+sequence in one hop; the construction stalls. The fix is a *global* token — a position wired to
+everyone, attended by everyone — which plants a star inside the window+random graph and recovers the
+missing reach. So the third ingredient is global anchors.
+
+Now I have to re-express all three in *this* task's vocabulary, and here is where this rung is not the
+generic paper version. The paper's global+window+random attention learns its own `W_Q, W_K, W_V`
+projections, can append dedicated CLS-like global tokens, and tiles into block matmuls that physically
+skip the dropped blocks for a real speedup. None of that is available here. The model is frozen at
+inference — I have no projections to learn, I receive `q, k, v` already projected and RoPE'd and
+GQA-replicated to 12 heads. I cannot *append* extended global tokens, because the harness hands me a
+fixed `(B, H, N, D)` and reads density over the existing `N(N+1)/2` causal pairs; growing `N` would
+break the contract. And I cannot write a block-sparse kernel — no Triton — so the implementation is a
+masked-softmax over the full logits, which means the realized speedup is not the point; faithful
+*behavior* under the budget is. So the three ingredients have to be installed as *internal* roles on the
+existing tokens: global = promote the first couple of token-blocks to attend-all / be-attended-by-all
+(the natural sink position under causal masking, since the earliest tokens are the only ones visible to
+every later query); window = a band of neighbor blocks; random = a fixed per-block sample of the rest.
+
+Pick the block size to match the harness: `BLOCK = 64`, so at `N=8K` there are 128 blocks. Budget the
+blocks. Global takes the first 2 blocks (128 tokens) as dual-role anchors — every query block attends to
+them, and they attend to everyone. Window takes a band of 3 blocks around each query block, `|bi − bj| ≤
+1`. That leaves the random count, and this is where I have to be careful about the budget, because the
+harness aborts on density, not on my intent. If I naively set `random = round(0.25 · 128) − global −
+window`, the measured density overshoots. Why? Two reasons. The global *rows* — the first 2 blocks
+attending to everyone — add causal pairs the linear per-query estimate does not count; and the random
+sampling plus the causal AND interact so the realized causal-triangle fraction lands above the flat
+`fraction × n_blocks` estimate, especially because early query blocks have few admissible blocks and the
+fixed window/global already saturate them. So I size the random count against a *conservatively
+discounted* budget: `target = round(0.25 · 0.88 · n_blocks)`, an ~12% margin, then `random = target −
+global − window`, clamped non-negative and below the admissible pool. The margin is not a paper constant;
+it is calibrated so the measured density sits clear of the `0.25 + 0.02` ceiling at every context length
+the harness evaluates, because a single layer crossing the line aborts the entire run and scores me
+nothing.
+
+The random pattern itself has to be *fixed*, not resampled per forward, because the same module instance
+replays at every generation step and a drifting mask would make the attention non-deterministic across
+steps and could spike density on some forward. So I sample the random blocks once, keyed by
+`(n_blocks, device, g, w, r)`, with a deterministic seed derived from `n_blocks` and the process seed,
+cache the `(n_blocks, n_blocks)` boolean keep-matrix, and reuse it. For each query block I draw `r`
+blocks from the pool that excludes the global and window blocks and the block itself, so the random arcs
+add genuinely new reach rather than re-covering what global and window already cover. Then I AND the
+whole block-keep matrix with the causal block mask `bi ≥ bj`, expand it to a token-level `(N, N)` mask by
+mapping each token to its block, AND again with the strict token-level causal triangle so the diagonal
+block is properly lower-triangular, and report `last_density` as the *measured* fraction of the realized
+token mask over `N(N+1)/2` — not the block algebra, because the contract wants the true kept fraction and
+the diagonal-block trimming and any final-block padding make the algebra and the realization disagree at
+the boundary.
+
+The attention then is the masked-softmax form: compute `QKᵀ · scale` in float32 (the inputs are
+fp16/bf16 and I am about to `masked_fill` with `−∞` and softmax, which is far more stable upcast), set
+the non-kept entries to `−∞`, softmax along the keys, `nan_to_num` any row that somehow kept nothing,
+multiply by `V`, cast back to the input dtype. Float32 here is a quality decision, not a kernel one — the
+budget cares about the mask, not the arithmetic precision, and stable softmax is worth the transient
+memory.
+
+Now the falsifiable part, against the oracle's measured numbers. On the QA tasks, where evidence is
+distributed, the window covers the local context and the random expander edges reach scattered spans, so
+I expect bigbird to recover a meaningful fraction of the oracle's F1 — somewhere in the band of "most of
+it," because the global+window+random graph is specifically built to keep distributed information
+reachable. On NIAH, the discriminator, I am much more worried, and the worry is structural: the needle
+sits in one block, and whether bigbird covers it depends entirely on whether that block happens to fall
+in some query's window, be one of the 2 global blocks, or be among the handful of *fixed random* blocks a
+query drew. The window will not reach it unless the needle is near the query; the global blocks only
+cover the first 128 tokens; the random blocks are a fixed sample chosen blind to the question. So on a
+needle planted in the middle of the haystack, bigbird should hit it only by luck, and I expect NIAH to
+collapse from the oracle's `1.0` toward chance — the very cliff the NIAH-vs-QA split warned me about.
+Concretely, the bar I am clearing against rung 1: stay under the `0.25 + 0.02` density ceiling on every
+layer (or the run aborts), recover a usable share of the QA F1 (oracle `0.1406` / `0.3447`), and — this
+is the prediction I most expect to *fail* — keep NIAH anywhere near `1.0`. If NIAH craters while the
+window/random densities sit right at budget, that is not a tuning miss; it is the diagnosis that a static
+content-blind mask cannot route to a query-specific position, and it points the next rung at a pattern
+that at least gets the *anchors and window* right before I make the selection adaptive. The distilled
+module — the literal scaffold fill, with the deterministic random cache and the 0.88 budget margin — is
+in the answer.
+</think>
+<say>
+[[FILL_SAY: 1-2 sentences naming the method and what this first edit does]]
+</say>
+<edit path="sparse-attn-eval/custom_sparse_attn.py">
+<old>
+# EDITABLE region of custom_sparse_attn.py — rung 1: dense oracle (density 1.0)
+class SparseAttention(nn.Module):
+    """Dense attention oracle. Reports true full-attention density.
+
+    The point of this baseline is to give an upper-bound quality reference;
+    it is not meant to satisfy a real sparsity constraint.
+    """
+</old>
+<new>
+# EDITABLE region of custom_sparse_attn.py — rung 2: BigBird (global + window + random)
+class SparseAttention(nn.Module):
+    """BigBird — global + window + random block-sparse pattern."""
+
+    BLOCK = 64
+    NUM_GLOBAL_BLOCKS = 2  # first 2 blocks (128 tokens) act as global sinks
+    NUM_WINDOW_BLOCKS = 3  # band of 3 blocks around the query block
+</new>
+</edit>
+<obs>
+Successfully replaced text in sparse-attn-eval/custom_sparse_attn.py.
+</obs>
+<note>
+[[FILL_NOTE?: optional one-line thought for this edit, or delete this block]]
+</note>
+<edit path="sparse-attn-eval/custom_sparse_attn.py">
+<old>
+        self.num_heads = num_heads
+        self.density_budget = density_budget
+        self.last_density = None
+
+    def forward(self, q, k, v, is_causal=False, scale=None):
+        B, H, N, D = q.shape
+        scale = scale if scale is not None else 1.0 / math.sqrt(D)
+        # Use PyTorch's fused SDPA for efficient dense attention.
+        out = F.scaled_dot_product_attention(
+            q, k, v, attn_mask=None, dropout_p=0.0,
+            is_causal=is_causal, scale=scale,
+        )
+        self.last_density = 1.0
+        return out
+</old>
+<new>
+        self.num_heads = num_heads
+        self.block_size = block_size
+        self.density_budget = density_budget
+        self.last_density = None
+        # Random-block cache, keyed by (N, device) — same pattern across calls
+        # for the same sequence length (deterministic per layer instance).
+        self._random_cache = {}
+
+    def _build_block_keep(self, N, device, is_causal):
+        Bk = self.BLOCK
+        if N % Bk != 0:
+            # Pad-aware: round up to whole blocks; the (N,N) mask gets clipped.
+            n_blocks = (N + Bk - 1) // Bk
+        else:
+            n_blocks = N // Bk
+        g = min(self.NUM_GLOBAL_BLOCKS, n_blocks)
+        w = self.NUM_WINDOW_BLOCKS
+        # Solve random-blocks count from the budget at the BLOCK level.
+        # The actual measured density (after random-block sampling and
+        # causal AND) tends to land slightly above the linear estimate, so
+        # apply a ~12% conservative margin to stay clear of the +0.02 slack
+        # ceiling at every context length we evaluate.
+        target = max(1, int(round(self.density_budget * 0.88 * n_blocks)))
+        used = g + w
+        r = max(0, min(target - used, n_blocks - used))
+        # Build (n_blocks, n_blocks) bool keep
+        keep = torch.zeros(n_blocks, n_blocks, dtype=torch.bool, device=device)
+        # global cols (every query block attends to first g blocks)
+        if g > 0:
+            keep[:, :g] = True
+        # global rows (first g blocks attend to everyone)
+        if g > 0:
+            keep[:g, :] = True
+        # window: |bi - bj| <= w//2
+        idx = torch.arange(n_blocks, device=device)
+        win = (idx[:, None] - idx[None, :]).abs() <= w // 2
+        keep |= win
+        # random: per query block, sample r blocks from the non-(global|window) pool
+        cache_key = (n_blocks, str(device), g, w, r)
+        if cache_key not in self._random_cache:
+            gen = torch.Generator(device='cpu')
+            gen.manual_seed(((0xBB ^ n_blocks) + int(torch.initial_seed()) - 42) & 0xFFFFFFFF)
+            rand_keep = torch.zeros(n_blocks, n_blocks, dtype=torch.bool)
+            base = keep.detach().to('cpu')
+            for bi in range(n_blocks):
+                avail = (~base[bi]).nonzero(as_tuple=False).flatten()
+                if avail.numel() == 0 or r == 0:
+                    continue
+                pick = avail[torch.randperm(avail.numel(), generator=gen)[:r]]
+                rand_keep[bi, pick] = True
+            self._random_cache[cache_key] = rand_keep.to(device)
+        keep |= self._random_cache[cache_key]
+        # Apply causal at block level (a query block i may attend to j<=i)
+        if is_causal:
+            keep = keep & (idx[:, None] >= idx[None, :])
+        return keep, n_blocks
+
+    def forward(self, q, k, v, is_causal=False, scale=None):
+        B, H, N, D = q.shape
+        Bk = self.BLOCK
+        scale = scale if scale is not None else 1.0 / math.sqrt(D)
+
+        block_keep, n_blocks = self._build_block_keep(N, q.device, is_causal)
+        # Expand block_keep -> token-level (N, N) by index gather
+        q_tok_blk = (torch.arange(N, device=q.device) // Bk).clamp(max=n_blocks - 1)
+        k_tok_blk = q_tok_blk
+        token_keep = block_keep[q_tok_blk][:, k_tok_blk]   # (N, N) bool
+        if is_causal:
+            idx = torch.arange(N, device=q.device)
+            token_keep = token_keep & (idx[:, None] >= idx[None, :])
+
+        denom = (N * (N + 1) / 2.0) if is_causal else float(N * N)
+        self.last_density = float(token_keep.sum().item()) / max(denom, 1.0)
+
+        attn = torch.matmul(q.float(), k.float().transpose(-2, -1)) * scale
+        attn = attn.masked_fill(~token_keep, float('-inf'))
+        attn = torch.softmax(attn, dim=-1)
+        attn = torch.nan_to_num(attn, nan=0.0)
+        out = torch.matmul(attn, v.float())
+        return out.to(q.dtype)
+</new>
+</edit>
+<obs>
+Successfully replaced text in sparse-attn-eval/custom_sparse_attn.py.
+</obs>
+<run/>
+<obs>
+Measured results — `baseline:bigbird` (`is_final,true`), seed 42.
+
+## niah_8k
+| seed | niah_acc | density |
+|---|---|---|
+| 42 | 0.2 | 0.2601 |
+| **mean** | **0.2** | **0.2601** |
+
+## longbench_qasper
+| seed | qasper_f1 | density |
+|---|---|---|
+| 42 | 0.0871 | 0.2421 |
+| **mean** | **0.0871** | **0.2421** |
+
+## longbench_multifieldqa_en
+| seed | multifieldqa_f1 | density |
+|---|---|---|
+| 42 | 0.2298 | 0.2693 |
+| **mean** | **0.2298** | **0.2693** |
+</obs>
+
+### step 3 — StreamingLLM (attention sinks + sliding window)   [slug:streaming-llm]
+
+<think>
+[[POLISH_REASONING: adapt to first-person agentic voice, end by deciding to implement]]
+BigBird landed exactly where the NIAH-vs-QA split predicted, and the numbers are worth reading closely
+because they tell me which of its three ingredients earned its budget and which wasted it. NIAH
+collapsed from the oracle's `1.0` to `0.2` — chance-level retrieval — which is the structural cliff I
+warned about: a content-blind mask covers a mid-haystack needle only if the needle's block happens to
+fall in a window, in the two global blocks, or in the fixed random sample, and on average it does not.
+The QA tasks held up better, as distributed evidence should: Qasper F1 `0.0871` against the oracle's
+`0.1406`, MultiFieldQA-EN `0.2298` against `0.3447`. So roughly two-thirds of MultiFieldQA's F1
+survived, but Qasper kept only about 60% — and Qasper actually came in *below* what I would hope a
+sensible local+anchor pattern gives. The density readings are the other tell: `0.2601` on NIAH, `0.2421`
+on Qasper, `0.2693` on MultiFieldQA. Two of those three are *above* `0.25` and one is right at the
+`0.25 + 0.02` ceiling. So BigBird spent its full budget — and then some — and still cratered NIAH and
+underperformed on Qasper.
+
+That last fact reframes the next move. BigBird did not fail for lack of budget; it failed because of
+*where* it spent it. A meaningful share of its 26% went to **random** blocks — long-range expander edges
+chosen blind to the question. Those edges buy graph connectivity in the abstract, but at inference, with
+a fixed sample and no query signal, a random far block is overwhelmingly likely to be irrelevant to the
+current question, so that budget is mostly wasted on noise. Worse, spending budget on random blocks
+*starves the parts that actually carry signal* — the local context the model leans on most heavily, and
+the anchor tokens that hold the attention distribution together. And the density overshoot itself is a
+liability: it means the random sampling plus the global rows pushed me right up against the abort line,
+so on a longer prompt or a different layer I am one bad draw away from the harness killing the run for
+nothing. The diagnosis is therefore not "make the pattern adaptive yet" — it is "first, spend a static
+budget on the parts that are reliably useful, and cut the random gamble that bought nothing on these
+tasks." Get the floor right before getting clever.
+
+So what is reliably useful in a static pattern? Two things, and they are exactly the two BigBird diluted
+with random. The first is the recent local window: the keys immediately preceding the query carry the
+bulk of the attention mass in trained models, and for language modeling the next-token prediction leans
+hardest on local context. The second is the anchor tokens at the very start. There is a real mechanism
+here, not just a heuristic. Softmax forces the attention weights to sum to one — there is no "attend to
+nothing" option — so on a query whose context holds nothing it strongly needs, the model must still
+deposit a full unit of attention mass somewhere. It learns to dump that surplus on a fixed, always-
+reachable set of positions. Under causal masking, the only positions visible to *every* later query are
+the first few tokens, so those become the universal dumping ground — attention sinks. They are valuable
+not for their content but for the softmax denominator they hold: drop them and every remaining weight is
+renormalized into a shape the model never saw, and quality falls off a cliff. So a few sink tokens plus
+a recent window is the minimal static pattern that respects how trained attention actually distributes
+its mass — and it is precisely what BigBird's random gamble was crowding out.
+
+I want to be precise about why this is the right *order* of operations, because it is tempting to jump
+straight to adaptivity now that the static rungs are visibly failing NIAH. The reason to fix the static
+floor first is that the sink+window mask and an adaptive mask are not competitors — the adaptive method I
+will eventually want still needs a guaranteed local keep and still benefits from anchors, so whatever I
+learn here about sizing the local budget carries forward. And there is a falsification value in running
+this rung that I do not get by skipping it: if a *correctly sized* sink+window — one that spends its
+whole budget on local context and anchors, with nothing wasted on random — still leaves NIAH at chance,
+then I will have isolated the NIAH failure to staticness per se rather than to BigBird's particular
+budget split. That is a cleaner diagnosis than "BigBird was bad," and it is the diagnosis that justifies
+the cost and complexity of going adaptive in the next rung. So this rung is partly a control: it removes
+the random-block confound and asks whether the best possible static pattern moves NIAH at all.
+
+Let me also be explicit about what the sink columns do *not* buy, because it bounds my NIAH expectation.
+The sinks anchor the softmax denominator and recover the distribution's trained shape, which is why
+window-only attention collapses and sink+window does not — but the sink tokens are at the *start* of the
+sequence, so they cover the needle only in the degenerate case where the needle was planted in the first
+few tokens. For a needle placed uniformly in an 8K haystack that is a vanishingly small chance. So the
+sinks fix *stability*, not *retrieval*; they keep the model coherent under sparsity but they do not route
+to arbitrary positions. That is the precise sense in which a static pattern, however well sized, is
+structurally blind to the needle — and it is why I expect this rung to make the model behave sensibly
+(QA recovers) while NIAH stays stuck.
+
+Now I have to be careful that this rung is *this task's* method and not the paper's, because the
+difference is substantial. The paper's version of sink+window is a **KV-cache eviction** scheme: it
+keeps a small rolling cache, evicts the middle, and — the signature move — re-indexes positions *within
+the cache* so the rotary positions stay contiguous and in-distribution, which requires a position-shift
+attention adapter that rotates cached keys by cache-position at each decode step. None of that exists
+here. The harness runs `use_cache=False`; every forward is a full parallel pass over the entire prefix,
+and the same module replays at every generation step. There is no cache to evict, no eviction-time
+position re-indexing — the positions are the model's own RoPE positions, applied by the loop before I see
+`q, k, v`. So in this setting StreamingLLM is not a cache policy at all; it is a **static sink+window
+mask** over the full `(N, N)` causal matrix. The "constant memory, constant latency" story the paper
+sells is irrelevant here — what transfers is only the *attention pattern*: keep the first `num_sinks`
+columns and a recent window per query, mask everything else. I have to derive the window size from the
+density contract directly, in this static-mask setting, not from a cache budget.
+
+That sizing is where BigBird's overshoot teaches me to be exact rather than conservative-by-fudge-factor.
+I want the measured density to land *at* the budget, because every token of window I can afford is local
+context recovered, and I do not want to leave budget on the table the way a hand-tuned margin would — but
+I also cannot overshoot, or the harness aborts. So I derive the window from the mask-sum over the
+harness's exact causal denominator. Causal case: once the query index exceeds `num_sinks + W`, each row
+keeps exactly `num_sinks + W` keys (sinks plus the last-`W` window, no overlap), so the total mask sum is
+about `N · (num_sinks + W)`, and the density over `N(N+1)/2` is `2(num_sinks + W)/(N+1)`. Set that equal
+to the budget and solve: `W ≈ round(budget · (N+1)/2) − num_sinks`, clamped to at least 1. This is the
+correction that matters — the naive sizing that took `avg_row = budget · (N+1)/2` as a row-count
+conflated the row-relative window with the column-relative density and over-shot, which is the same kind
+of overshoot BigBird showed; deriving `W` straight from `mask_sum / denom` lands it on budget. The
+non-causal branch (symmetric `|i−j| ≤ W`) is `W ≈ (round(budget·N) − num_sinks − 1)/2`, but
+`is_causal=True` always here, so the causal formula is the live one. `num_sinks = 4`, because trained
+models with no single consistent start token spread the sink role across several initial positions and
+one or two sinks do not fully restore the distribution.
+
+The implementation is the masked-softmax form, same as the previous rung: build the `(N, N)` boolean
+keep-mask — `(i − j) ≥ 0 & (i − j) < W` for the row-relative last-`W` window, OR `j < num_sinks` for the
+sink columns, AND the causal lower triangle — then compute `QKᵀ · scale` in float32 for stable
+masking/softmax, `masked_fill` the dropped entries with `−∞`, softmax, `nan_to_num` any empty row,
+multiply by `V`, cast back. Report `last_density` as the *measured* fraction of the realized mask over
+`N(N+1)/2`, not the formula, so the contract gets the true kept fraction. Because the window size is
+solved to hit budget exactly, I expect all three density readings to sit just *under* `0.25` — and that
+is itself a falsifiable improvement over BigBird, whose two-of-three densities sat above it.
+
+Now the predictions against BigBird's measured numbers, which is the bar this rung must clear. On the QA
+tasks I expect to *recover* the budget BigBird wasted on random blocks and turn it into local window,
+which is where QA evidence and the language-modeling signal actually live. So I expect Qasper F1 to come
+*up* from `0.0871` — closer to or past the `0.10` mark — and MultiFieldQA F1 to come up from `0.2298`,
+because a clean sink+window keeps more of the contiguous relevant context than a window diluted with
+random gambles. On NIAH I am honest that this is still a *static* pattern: the sink columns only cover
+the first few tokens and the window only covers the recent tokens, so a needle planted in the middle of
+an 8K haystack is still outside the mask, and I expect NIAH to stay stuck around BigBird's `0.2` — chance.
+Static sink+window does not solve the routing problem; it only spends the static budget more honestly.
+If NIAH stays at chance while Qasper and MultiFieldQA rise and all three densities drop to just under
+`0.25`, that is the clean diagnosis I want: the static floor is now correct, the wasted-random budget is
+reclaimed, and the *only* remaining gap to the oracle's NIAH `1.0` is the one thing no fixed mask can buy
+— a selection that depends on what the query is asking. That gap is what hands the next rung its job:
+make the kept blocks *content-adaptive*. The distilled module — the literal scaffold fill with the
+density-exact window sizing — is in the answer.
+</think>
+<say>
+[[FILL_SAY: 1-2 sentences naming the method and what this first edit does]]
+</say>
+<edit path="sparse-attn-eval/custom_sparse_attn.py">
+<old>
+# EDITABLE region of custom_sparse_attn.py — rung 2: BigBird (global + window + random)
+class SparseAttention(nn.Module):
+    """BigBird — global + window + random block-sparse pattern."""
+
+    BLOCK = 64
+    NUM_GLOBAL_BLOCKS = 2  # first 2 blocks (128 tokens) act as global sinks
+    NUM_WINDOW_BLOCKS = 3  # band of 3 blocks around the query block
+</old>
+<new>
+# EDITABLE region of custom_sparse_attn.py — rung 3: StreamingLLM (sink + sliding window)
+class SparseAttention(nn.Module):
+    """StreamingLLM-style sink + sliding window attention.
+
+    Causal mode (LLM): row-relative last-W window (``i-W+1 <= j <= i``) plus
+    the first ``num_sinks`` columns.
+    Non-causal mode (ViT/DiT): symmetric window (``|i-j| <= W``) plus the
+    first ``num_sinks`` columns.
+    """
+</new>
+</edit>
+<obs>
+Successfully replaced text in sparse-attn-eval/custom_sparse_attn.py.
+</obs>
+<note>
+[[FILL_NOTE?: optional one-line thought for this edit, or delete this block]]
+</note>
+<edit path="sparse-attn-eval/custom_sparse_attn.py">
+<old>
+        self.density_budget = density_budget
+        self.last_density = None
+        # Random-block cache, keyed by (N, device) — same pattern across calls
+        # for the same sequence length (deterministic per layer instance).
+        self._random_cache = {}
+
+    def _build_block_keep(self, N, device, is_causal):
+        Bk = self.BLOCK
+        if N % Bk != 0:
+            # Pad-aware: round up to whole blocks; the (N,N) mask gets clipped.
+            n_blocks = (N + Bk - 1) // Bk
+        else:
+            n_blocks = N // Bk
+        g = min(self.NUM_GLOBAL_BLOCKS, n_blocks)
+        w = self.NUM_WINDOW_BLOCKS
+        # Solve random-blocks count from the budget at the BLOCK level.
+        # The actual measured density (after random-block sampling and
+        # causal AND) tends to land slightly above the linear estimate, so
+        # apply a ~12% conservative margin to stay clear of the +0.02 slack
+        # ceiling at every context length we evaluate.
+        target = max(1, int(round(self.density_budget * 0.88 * n_blocks)))
+        used = g + w
+        r = max(0, min(target - used, n_blocks - used))
+        # Build (n_blocks, n_blocks) bool keep
+        keep = torch.zeros(n_blocks, n_blocks, dtype=torch.bool, device=device)
+        # global cols (every query block attends to first g blocks)
+        if g > 0:
+            keep[:, :g] = True
+        # global rows (first g blocks attend to everyone)
+        if g > 0:
+            keep[:g, :] = True
+        # window: |bi - bj| <= w//2
+        idx = torch.arange(n_blocks, device=device)
+        win = (idx[:, None] - idx[None, :]).abs() <= w // 2
+        keep |= win
+        # random: per query block, sample r blocks from the non-(global|window) pool
+        cache_key = (n_blocks, str(device), g, w, r)
+        if cache_key not in self._random_cache:
+            gen = torch.Generator(device='cpu')
+            gen.manual_seed(((0xBB ^ n_blocks) + int(torch.initial_seed()) - 42) & 0xFFFFFFFF)
+            rand_keep = torch.zeros(n_blocks, n_blocks, dtype=torch.bool)
+            base = keep.detach().to('cpu')
+            for bi in range(n_blocks):
+                avail = (~base[bi]).nonzero(as_tuple=False).flatten()
+                if avail.numel() == 0 or r == 0:
+                    continue
+                pick = avail[torch.randperm(avail.numel(), generator=gen)[:r]]
+                rand_keep[bi, pick] = True
+            self._random_cache[cache_key] = rand_keep.to(device)
+        keep |= self._random_cache[cache_key]
+        # Apply causal at block level (a query block i may attend to j<=i)
+        if is_causal:
+            keep = keep & (idx[:, None] >= idx[None, :])
+        return keep, n_blocks
+
+    def forward(self, q, k, v, is_causal=False, scale=None):
+        B, H, N, D = q.shape
+        Bk = self.BLOCK
+        scale = scale if scale is not None else 1.0 / math.sqrt(D)
+
+        block_keep, n_blocks = self._build_block_keep(N, q.device, is_causal)
+        # Expand block_keep -> token-level (N, N) by index gather
+        q_tok_blk = (torch.arange(N, device=q.device) // Bk).clamp(max=n_blocks - 1)
+        k_tok_blk = q_tok_blk
+        token_keep = block_keep[q_tok_blk][:, k_tok_blk]   # (N, N) bool
+        if is_causal:
+            idx = torch.arange(N, device=q.device)
+            token_keep = token_keep & (idx[:, None] >= idx[None, :])
+
+        denom = (N * (N + 1) / 2.0) if is_causal else float(N * N)
+        self.last_density = float(token_keep.sum().item()) / max(denom, 1.0)
+
+        attn = torch.matmul(q.float(), k.float().transpose(-2, -1)) * scale
+        attn = attn.masked_fill(~token_keep, float('-inf'))
+        attn = torch.softmax(attn, dim=-1)
+</old>
+<new>
+        self.density_budget = density_budget
+        # Paper default: 4 attention sinks. Xiao et al. show 4 is enough to
+        # recover almost all the dense-attention quality on streaming inputs.
+        self.num_sinks = 4
+        self.last_density = None
+
+    def _build_mask(self, N, device, is_causal):
+        idx = torch.arange(N, device=device)
+        if is_causal:
+            # Solve density = 2*(num_sinks+W)/(N+1) = budget for W.
+            W = max(1, int(round(self.density_budget * (N + 1) / 2.0)) - self.num_sinks)
+            di = idx[:, None] - idx[None, :]
+            local = (di >= 0) & (di < W)
+        else:
+            # Solve density = (num_sinks + 2W + 1)/N = budget for W.
+            W = max(1, (int(round(self.density_budget * float(N))) - self.num_sinks - 1) // 2)
+            di = idx[:, None] - idx[None, :]
+            local = di.abs() <= W
+        sinks = (idx[None, :] < min(self.num_sinks, N))
+        mask = local | sinks
+        if is_causal:
+            mask = mask & (idx[:, None] >= idx[None, :])
+        return mask
+
+    def forward(self, q, k, v, is_causal=False, scale=None):
+        B, H, N, D = q.shape
+        scale = scale if scale is not None else 1.0 / math.sqrt(D)
+
+        mask = self._build_mask(N, q.device, is_causal)  # (N, N)
+        denom = (N * (N + 1) / 2.0) if is_causal else float(N * N)
+        self.last_density = float(mask.sum().item()) / max(denom, 1.0)
+
+        # Broadcast (N,N) mask across (B,H).
+        attn = torch.matmul(q.float(), k.float().transpose(-2, -1)) * scale
+        attn = attn.masked_fill(~mask, float('-inf'))
+        attn = torch.softmax(attn, dim=-1)
+</new>
+</edit>
+<obs>
+Successfully replaced text in sparse-attn-eval/custom_sparse_attn.py.
+</obs>
+<run/>
+<obs>
+Measured results — `baseline:streaming_llm` (`is_final,true`), seed 42.
+
+## niah_8k
+| seed | niah_acc | density |
+|---|---|---|
+| 42 | 0.2 | 0.2344 |
+| **mean** | **0.2** | **0.2344** |
+
+## longbench_qasper
+| seed | qasper_f1 | density |
+|---|---|---|
+| 42 | 0.1103 | 0.2344 |
+| **mean** | **0.1103** | **0.2344** |
+
+## longbench_multifieldqa_en
+| seed | multifieldqa_f1 | density |
+|---|---|---|
+| 42 | 0.213 | 0.2344 |
+| **mean** | **0.213** | **0.2344** |
+</obs>
+
+### step 4 — Block-Top-K (NSA-style content-adaptive block selection)   [slug:block-topk]
+
+<think>
+[[POLISH_REASONING: adapt to first-person agentic voice, end by deciding to implement]]
+StreamingLLM did exactly what I predicted, and the pattern across the three rungs now isolates the one
+remaining problem cleanly. Qasper F1 came up from BigBird's `0.0871` to `0.1103` — past the oracle's
+`0.1406` reach to within a hair, about 78% recovered — and MultiFieldQA-EN came up from `0.2298` to
+`0.213`... actually it slipped slightly there, but it stayed in the same band, and crucially the
+densities all dropped to a flat `0.2344`, comfortably under the `0.25 + 0.02` ceiling on every task,
+where BigBird had been over budget on two of three. So reclaiming the random budget into a clean
+sink+window did what I hoped on the budget side and roughly on Qasper, and the static floor is now
+honest. But NIAH stayed pinned at `0.2` — chance — identical to BigBird. Two completely different static
+patterns, same NIAH. That is the decisive signal: the NIAH failure is not about *which* static pattern I
+pick or how I size its window; it is about staticness itself. The sink columns cover the first few
+tokens, the window covers the recent tokens, and a needle planted in the middle of an 8K haystack lives
+in neither, so no fixed mask — sink+window, global+window+random, any of them — can route to it. The
+oracle hit NIAH `1.0` because every query has a direct edge to the needle; both static rungs sit at `0.2`
+because no query has an edge to a position it did not anticipate. The residual gap to the oracle is
+entirely a *routing* gap, and routing means the kept set has to depend on what the query is asking. Time
+to make the selection content-adaptive.
+
+So the problem restated under this task's constraints: for each query, out of all preceding keys,
+manufacture a small subset to attend to — at most `0.25` of the causal pairs — but now chosen *from the
+current query* rather than from a fixed template, cheaply, with no retraining and nothing but the
+`q, k, v` of this forward (the loop is `use_cache=False`, so there is no decode cache to mine, which is
+exactly why H2O/SnapKV/Quest are off the table — their importance signal is keyed to a mutable cache that
+does not exist here). The reason adaptivity should work at all is that softmax attention is empirically
+sparse: for a given query a small fraction of keys carry almost all the mass. So most of the `O(N²)` work
+is on near-zero weights, and if I attend only to the keys that matter I lose little. The catch — and the
+whole difficulty — is *which* keys matter is query-dependent and moves, so no static set works (the two
+static rungs just proved that), and the obvious way to find them, computing `q·k` for all pairs and
+keeping the largest, *is* the dense score matrix I am trying to avoid. I need to find the important keys
+without first paying for the full `(N, N)` logits.
+
+The escape is to judge importance at a coarser unit than the individual key, and there are two
+independent reasons that is legitimate. First, where attention actually lands is *spatially clustered* —
+the nonzero entries come in contiguous runs, neighboring keys share an importance level — so a whole
+contiguous block of keys rises and falls together, and one score per block loses little. Second, the
+hardware: contiguous block reads are what GPUs are fast at, and the fast attention kernels already tile
+K/V into blocks; selecting scattered individual tokens would force non-contiguous gathers and waste the
+sparsity. Both point the same way: chop the keys into contiguous blocks of size `BLOCK = 64` (matching the
+harness block size, 128 blocks at 8K) and decide importance per block.
+
+How to score a block cheaply, with a frozen model and no learned projection? Summarize each block by a
+single representative vector and score the query against that. The block's keys are spatially coherent —
+that was the premise — so they point in similar directions and their *mean* is a low-variance summary
+that a key inside the block is close to. So the representative is the mean-pooled key of the block, and
+`q · mean(k_block)` approximates the aggregate `q·k` over the block. Parameter-free, no training, valid
+precisely because the block clusters. And to keep the selection score matrix from being `O(N · n_blocks)`
+— still quadratic in `N` — I pool the queries the same way: mean-pool each query block, so the importance
+matrix is `(n_blocks × n_blocks)`, a factor `BLOCK²` cheaper than dense. Pooling queries is defensible by
+the same clustering argument on the query axis: adjacent queries ask for similar things, so giving a
+query block one shared selection is consistent with the structure and is exactly what a block-shaped
+kernel wants. So the proxy is `s[i, j] = mean_q(block i) · mean_k(block j) · scale`, a small matrix that
+never materializes the dense `(N, N)` logits.
+
+With block scores, the selection rule is top-K: for each query block keep a fixed number of high-scoring
+key blocks. Two things have to be handled, and one of them I only see by thinking about a query block near
+the start. Causality first: this is a causal LLM, query block `i` may only see key block `j ≤ i`, so I
+mask the future block scores to `−∞` before ranking, and AND the kept set with the causal block mask
+after, and then inside the diagonal block enforce the strict token-level triangle `key_pos ≤ query_pos`,
+because a coarse "keep block `i`" would otherwise let an early query in the block peek at a later key in
+the same block. Two levels of causal masking — blockwise for selection, token-wise for the final
+attention. Second, the diagonal block: local context is almost always the most relevant, and it must
+always be kept, but a top-K by the *approximate* proxy gives no guarantee the current block wins a slot —
+for an early query block the diagonal might score lower than a content-similar far block. So I force-
+include the diagonal unconditionally: mask the diagonal out of the ranking (set its score `−∞` so it is
+never picked by top-K), take the top `K−1` *off-diagonal* blocks, and append the diagonal by hand. This
+is the role StreamingLLM's recent window played — local context always kept — but now it collapses into
+"always keep your own block," and the rest of the budget goes to query-chosen far blocks instead of a
+fixed recent band. That is the precise upgrade over rung 3: the window was a *fixed* local keep; here the
+local block is kept *and* the remaining budget routes adaptively, which is what the static rungs could
+not do and what NIAH needs.
+
+Now the keep count `K` must come from the budget, accounting for causality, because under a causal mask
+different query blocks have different numbers of admissible blocks. Index query blocks `i = 0..n−1`; block
+`i` has `i+1` causal candidates and keeps `min(K, i+1)`. Total kept block-pairs `= Σ min(K, i+1) =
+K(K−1)/2 + (n−K+1)K = K(2n−K+1)/2`. Sanity: `K=1` gives `n` (each block keeps itself), `K=n` gives
+`n(n+1)/2` (full causal). The denominator is that full count `n(n+1)/2`, so block-level density `=
+K(2n−K+1)/(n(n+1))`. Set equal to the budget `ρ` and solve the quadratic `K² − (2n+1)K + ρ·n(n+1) = 0`;
+the kept-pair function is concave and rising over `0 ≤ K ≤ n`, so I take the smaller feasible root
+`K = ((2n+1) − √((2n+1)² − 4ρn(n+1)))/2` and floor it to stay at or under budget. Plug in `n=128`,
+`ρ=0.25`: discriminant `257² − 4·0.25·128·129 = 66049 − 16512 = 49537`, `√ ≈ 222.6`, `K = (257−222.6)/2 ≈
+17`. So 17 of 128 blocks per query block including the diagonal; check the realized density `17·240/(128·
+129) ≈ 0.247`, just under budget. `kk = K−1 = 16` off-diagonal top-K plus the diagonal, `K` clamped ≥ 1,
+`kk` clamped to `[0, n−1]`. The non-causal fallback would be `K ≈ round(ρ·n)`, but `is_causal` is always
+true.
+
+I should be honest that this `K` controls the *block-pair* density, while the reported `last_density` is
+the *token-level* mask after the strict token triangle trims the half-filled diagonal block and any
+final padding block — so the algebra and the realization disagree at the boundary. I trust the algebra
+only to *choose* `K`; I *measure* `last_density` from the realized token mask, which comes in at or below
+the block-level 0.247, honoring the contract. Shape mechanics: `N` may not be a multiple of `BLOCK`, so
+pad `q, k` up to `Npad = ceil(N/BLOCK)·BLOCK` with zeros so the reshape and `mean(dim=3)` are exact; the
+pad keys make a final padding block, but I trim the token keep-mask back to `[:N, :N]` and the strict
+causal triangle kills any padded influence. Block scoring in float32 (inputs are fp16/bf16 and I am about
+to `masked_fill` with `−∞` and softmax, far more stable upcast), output cast back to `q.dtype`.
+
+One GQA note for this task specifically: the kernel-level NSA design sums block importance *across the
+heads in a KV group* so the whole group selects the same blocks, or the loaded KV is the union of each
+head's picks and the memory sparsity collapses. But the harness has already replicated GQA before my
+module — I see 12 heads on both Q and K/V, an effectively multi-head view — so I score and select per
+replicated head, which is correct in this setting; the group-reduction is only needed against a real GQA
+cache, which I do not have here. This is the faithful inference re-expression, not the trainable kernel.
+
+The recipe end to end: pad to a block multiple; mean-pool `q` and `k` per block; score block pairs in
+fp32; causal-mask the block scores; mask the diagonal out of the ranking; solve the budget quadratic for
+`K`; take `kk = K−1` off-diagonal top-K plus the diagonal; AND with the causal block mask; expand to a
+token keep-mask, trim to `N`, AND with the strict token triangle; report the measured density; and run a
+masked-softmax over the full logits (gathering the selected contiguous blocks into SRAM is what a Triton
+kernel would do for the real speedup, but the masked form computes the identical output, and no-Triton is
+the task constraint).
+
+Now the falsifiable expectations against the prior rungs' measured numbers, which is the bar this rung
+clears. NIAH is the one that matters: both static rungs sat at `0.2` because they could not route to the
+needle, and this rung *can* — the query block whose tokens are asking for the needle should score the
+needle's key block highly through `mean_q · mean_k` and select it into the top-K, regardless of where in
+the haystack it sits. So I expect NIAH to *break above* `0.2` for the first time on the ladder — the
+single clearest test that content-adaptive selection is doing what the static rungs could not. On the QA
+tasks, the diagonal-force-include gives me the same local floor StreamingLLM had, and the adaptive top-K
+adds the query-relevant far spans instead of a fixed window, so I expect Qasper and MultiFieldQA to land
+at least at StreamingLLM's level (`0.1103` / `0.213`) and plausibly a touch above, since the routed far
+blocks are chosen for the question. And the densities should sit just under `0.25`, the same budget-honest
+regime StreamingLLM reached, because `K` is solved from the budget quadratic and the density is measured
+from the trimmed mask. If NIAH rises while Qasper/MultiFieldQA hold and density stays under budget, that
+is the confirmation that the routing gap — the only thing separating the static rungs from the oracle's
+NIAH `1.0` — is what content-adaptive block selection closes. The distilled module, the literal scaffold
+fill with the mean-pooled block scoring, the forced diagonal, and the budget quadratic, is in the answer.
+</think>
+<say>
+[[FILL_SAY: 1-2 sentences naming the method and what this first edit does]]
+</say>
+<edit path="sparse-attn-eval/custom_sparse_attn.py">
+<old>
+# EDITABLE region of custom_sparse_attn.py — rung 3: StreamingLLM (sink + sliding window)
+class SparseAttention(nn.Module):
+    """StreamingLLM-style sink + sliding window attention.
+
+    Causal mode (LLM): row-relative last-W window (``i-W+1 <= j <= i``) plus
+    the first ``num_sinks`` columns.
+    Non-causal mode (ViT/DiT): symmetric window (``|i-j| <= W``) plus the
+    first ``num_sinks`` columns.
+    """
+</old>
+<new>
+# EDITABLE region of custom_sparse_attn.py — rung 4: Block-Top-K (NSA-style adaptive)
+class SparseAttention(nn.Module):
+    """NSA-style content-adaptive block-sparse top-K attention."""
+
+    BLOCK = 64
+</new>
+</edit>
+<obs>
+Successfully replaced text in sparse-attn-eval/custom_sparse_attn.py.
+</obs>
+<note>
+[[FILL_NOTE?: optional one-line thought for this edit, or delete this block]]
+</note>
+<edit path="sparse-attn-eval/custom_sparse_attn.py">
+<old>
+        self.density_budget = density_budget
+        # Paper default: 4 attention sinks. Xiao et al. show 4 is enough to
+        # recover almost all the dense-attention quality on streaming inputs.
+        self.num_sinks = 4
+        self.last_density = None
+
+    def _build_mask(self, N, device, is_causal):
+        idx = torch.arange(N, device=device)
+        if is_causal:
+            # Solve density = 2*(num_sinks+W)/(N+1) = budget for W.
+            W = max(1, int(round(self.density_budget * (N + 1) / 2.0)) - self.num_sinks)
+            di = idx[:, None] - idx[None, :]
+            local = (di >= 0) & (di < W)
+        else:
+            # Solve density = (num_sinks + 2W + 1)/N = budget for W.
+            W = max(1, (int(round(self.density_budget * float(N))) - self.num_sinks - 1) // 2)
+            di = idx[:, None] - idx[None, :]
+            local = di.abs() <= W
+        sinks = (idx[None, :] < min(self.num_sinks, N))
+        mask = local | sinks
+        if is_causal:
+            mask = mask & (idx[:, None] >= idx[None, :])
+        return mask
+
+    def forward(self, q, k, v, is_causal=False, scale=None):
+        B, H, N, D = q.shape
+        scale = scale if scale is not None else 1.0 / math.sqrt(D)
+
+        mask = self._build_mask(N, q.device, is_causal)  # (N, N)
+        denom = (N * (N + 1) / 2.0) if is_causal else float(N * N)
+        self.last_density = float(mask.sum().item()) / max(denom, 1.0)
+
+        # Broadcast (N,N) mask across (B,H).
+        attn = torch.matmul(q.float(), k.float().transpose(-2, -1)) * scale
+        attn = attn.masked_fill(~mask, float('-inf'))
+        attn = torch.softmax(attn, dim=-1)
+</old>
+<new>
+        self.density_budget = density_budget
+        self.last_density = None
+
+    def forward(self, q, k, v, is_causal=False, scale=None):
+        B, H, N, D = q.shape
+        Bk = self.BLOCK
+        scale = scale if scale is not None else 1.0 / math.sqrt(D)
+
+        # Pad N up to a multiple of BLOCK so we can pool cleanly.
+        Npad = ((N + Bk - 1) // Bk) * Bk
+        if Npad != N:
+            pad = Npad - N
+            qp = torch.nn.functional.pad(q, (0, 0, 0, pad))
+            kp = torch.nn.functional.pad(k, (0, 0, 0, pad))
+        else:
+            qp, kp = q, k
+
+        n_blocks = Npad // Bk
+
+        # Mean-pooled q / k per block: (B, H, n_blocks, D)
+        q_blocks = qp.view(B, H, n_blocks, Bk, D).mean(dim=3)
+        k_blocks = kp.view(B, H, n_blocks, Bk, D).mean(dim=3)
+
+        # Block-level scores (B, H, n_blocks, n_blocks)
+        scores = torch.einsum('bhmd,bhnd->bhmn',
+                              q_blocks.float(), k_blocks.float()) * scale
+
+        idx = torch.arange(n_blocks, device=q.device)
+        if is_causal:
+            causal_blk = idx[:, None] >= idx[None, :]   # (n_b, n_b)
+            scores = scores.masked_fill(~causal_blk, float('-inf'))
+
+        # Force-include diagonal: zero its score (irrelevant for topk choice)
+        diag_mask = torch.zeros(n_blocks, n_blocks, dtype=torch.bool, device=q.device)
+        diag_mask.fill_diagonal_(True)
+        scores_nodiag = scores.masked_fill(diag_mask, float('-inf'))
+
+        # Target top-K per query block under causal AND. With per-row keep K,
+        # mean kept block-pairs = K*(2n-K+1)/2, denom = n*(n+1)/2 (causal),
+        # so density = K*(2n-K+1)/(n*(n+1)). Solve K(2n+1-K) = budget*n*(n+1)
+        # via the quadratic root closer to 0:
+        #   K = ((2n+1) - sqrt((2n+1)^2 - 4*budget*n*(n+1))) / 2
+        n_b = n_blocks
+        if is_causal:
+            disc = max(0.0, (2 * n_b + 1) ** 2 - 4 * self.density_budget * n_b * (n_b + 1))
+            K_top = max(1, int(((2 * n_b + 1) - math.sqrt(disc)) / 2))
+        else:
+            K_top = max(1, int(round(self.density_budget * n_b)))
+        kk = max(0, min(K_top - 1, n_b - 1))
+        if kk > 0:
+            topk_idx = scores_nodiag.topk(kk, dim=-1).indices  # (B,H,n_b,kk)
+        else:
+            topk_idx = torch.empty(B, H, n_blocks, 0, dtype=torch.long, device=q.device)
+        diag_idx = idx.view(1, 1, n_blocks, 1).expand(B, H, n_blocks, 1)
+        sel = torch.cat([topk_idx, diag_idx], dim=-1)
+        block_keep = torch.zeros(B, H, n_blocks, n_blocks,
+                                 dtype=torch.bool, device=q.device)
+        block_keep.scatter_(-1, sel, True)
+        if is_causal:
+            block_keep = block_keep & causal_blk
+
+        # Expand block_keep -> token-level (B, H, Npad, Npad)
+        q_tok_blk = (torch.arange(Npad, device=q.device) // Bk)
+        k_tok_blk = q_tok_blk
+        # Index per-(b,h,qtok,ktok)
+        token_keep = block_keep[:, :, q_tok_blk, :][:, :, :, k_tok_blk]
+        token_keep = token_keep[:, :, :N, :N]
+        if is_causal:
+            tidx = torch.arange(N, device=q.device)
+            token_keep = token_keep & (tidx[:, None] >= tidx[None, :])
+
+        denom = (N * (N + 1) / 2.0) if is_causal else float(N * N)
+        # Take per-(b,h) mean for reporting; harness aggregates further.
+        self.last_density = float(token_keep[0, 0].sum().item()) / max(denom, 1.0)
+
+        attn = torch.matmul(q.float(), k.float().transpose(-2, -1)) * scale
+        attn = attn.masked_fill(~token_keep, float('-inf'))
+        attn = torch.softmax(attn, dim=-1)
+</new>
+</edit>
+<obs>
+Successfully replaced text in sparse-attn-eval/custom_sparse_attn.py.
+</obs>
+<run/>
+<obs>
+Measured results — `baseline:block_topk` (`is_final,true`), seed 42.
+
+## niah_8k
+| seed | niah_acc | density |
+|---|---|---|
+| 42 | 0.26 | 0.242 |
+| **mean** | **0.26** | **0.242** |
+
+## longbench_qasper
+| seed | qasper_f1 | density |
+|---|---|---|
+| 42 | 0.1082 | 0.2291 |
+| **mean** | **0.1082** | **0.2291** |
+
+## longbench_multifieldqa_en
+| seed | multifieldqa_f1 | density |
+|---|---|---|
+| 42 | 0.2074 | 0.2331 |
+| **mean** | **0.2074** | **0.2331** |
+</obs>
+

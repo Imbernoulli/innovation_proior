@@ -1,0 +1,1818 @@
+<meta task="quant-stock-prediction" domain="Time series" file="qlib/custom_model.py" model_format="qwen3" edit_tool="str_replace"/>
+
+<system>
+You are a research engineer improving a model on a fixed ML task. You work by editing the model code and running experiments. Think carefully before each change. You have these tools:
+- str_replace(path, old_str, new_str): replace the unique occurrence of old_str with new_str.
+- create(path, file_text): create a new file.
+- run_experiment(): train + evaluate the current code under the fixed budget; returns metrics.
+Make one tool call at a time. After editing, call run_experiment() to measure your method.
+</system>
+
+<user>
+## Research question
+
+Daily cross-sectional return prediction on Chinese equity universes: at each trading day, score every
+stock in the universe by its predicted next-period excess return, rank by that score, and feed the
+ranking into a fixed portfolio routine. The single thing being designed is the **predictive model** — a
+`CustomModel` that maps a fixed feature view to one score per stock-day. Everything around it — the
+features (Alpha360), the label, the train/valid/test date splits, and the backtest — is frozen by the
+workflow. The question is whether one reusable model can deliver consistently strong ranking signal
+across heterogeneous universes (`csi300`, `csi100`, `csi300_recent`) under that common protocol.
+
+## Prior art before the first rung (cross-sectional forecasting lineage)
+
+The first rung reacts to the standard ways this forecasting problem has been attacked; the fixed
+substrate below is the harness those approaches plug into.
+
+- **Hand-engineered factor models + linear regression (Fama–French 1993 lineage, and the practitioner
+  "alpha factor" tradition).** Build a handful of economically motivated cross-sectional factors and
+  regress forward return on them. Interpretable and cheap, but the signal lives entirely in the
+  hand-chosen factors; it cannot discover interactions among hundreds of raw price/volume ratios, and a
+  single global linear map underfits a noisy, non-stationary cross-section. Gap: capacity and
+  automation — the model is only as good as the human factor set.
+- **Gradient-boosted decision trees on engineered features (Friedman 2001; the GBDT tradition).** An
+  additive ensemble of regression trees fit to gradient residuals, which discovers nonlinear feature
+  interactions automatically and is the consensus high-accuracy learner on tabular data. But each row
+  is treated as an i.i.d. tabular sample: the 360 features are a flat vector with no notion that they
+  are six base ratios unrolled over sixty days, so the *temporal* structure of the window is invisible
+  to the trees. Gap: blind to sequence order within the feature window.
+- **Plain feedforward / shallow nets on the flat feature vector.** More capacity than a linear map, but
+  the same blindness to the time axis, and prone to overfitting the noise without strong
+  regularization. Gap: no temporal inductive bias, fragile on noisy financial data.
+
+## The fixed substrate
+
+A `qlib` workflow is frozen and must not be touched. It supplies:
+
+- **Features**: Alpha360 — 360 features per stock-day, which are 6 base ratios (open/close/high/low/
+  volume/vwap, normalized to the latest close) over 60 days of history. The flat `[N, 360]` vector can
+  be reshaped to a sequence with `x.reshape(N, 6, 60).permute(0, 2, 1) -> [N, 60, 6]` (60 time steps of
+  6 features) for any temporal model.
+- **Label**: `Ref($close, -2) / Ref($close, -1) - 1` — the return from T+1 to T+2, predicted at T.
+- **Universes / splits**: `csi300`, `csi100`, `csi300_recent`; instruments and date ranges are fixed by
+  the workflow YAML (train 2008–2014, valid 2015–2016, test 2017–2020-08 for csi300).
+- **Backtest**: `TopkDropoutStrategy`, top 50 / drop 5, run by the workflow runner with fixed costs.
+- **Processors**: the default workflow applies `RobustZScoreNorm` + `Fillna` to features
+  (`infer_processors`) and `DropnaLabel` + `CSRankNorm` to the label (`learn_processors`) — a
+  neural-model preprocessing block. A model may change the editable processor region of the YAML if its
+  input view requires it (e.g. a tree model that prefers raw, un-normalized features).
+
+## The editable interface
+
+Exactly one class is editable — `CustomModel` in `custom_model.py` (the `fit`/`predict` body), plus two
+editable blocks of the workflow YAML (the dataset/processor region). The contract is the standard `qlib`
+model interface: `fit(dataset)` trains on the `"train"`/`"valid"` segments; `predict(dataset,
+segment="test")` returns a `pd.Series` of scores indexed by `(datetime, instrument)` matching the
+segment's index. Data comes out via `dataset.prepare(seg, col_set=["feature","label"], data_key=...)`;
+available imports inside the class are `torch`, `numpy`, `pandas`, `lightgbm`, `sklearn`, `scipy`.
+
+The starting point is the scaffold default: a **Ridge regression** on the flat 360-dim feature vector.
+Each rung on the ladder replaces exactly this class (and, where noted, the processor region).
+
+```python
+# EDITABLE region of custom_model.py — default fill (Ridge regression baseline)
+class CustomModel(Model):
+    """Default: Ridge regression on the flat 360-dim Alpha360 feature vector."""
+
+    def __init__(self):
+        super().__init__()
+        self.fitted = False
+        from sklearn.linear_model import Ridge
+
+        self.model = Ridge(alpha=1.0)
+
+    def fit(self, dataset: DatasetH):
+        df_train = dataset.prepare(
+            "train", col_set=["feature", "label"], data_key=DataHandlerLP.DK_L
+        )
+        features = df_train["feature"].values
+        labels = df_train["label"].values.ravel()
+        mask = ~(np.isnan(features).any(axis=1) | np.isnan(labels))
+        features = features[mask]
+        labels = labels[mask]
+        self.model.fit(features, labels)
+        self.fitted = True
+
+    def predict(self, dataset: DatasetH, segment="test"):
+        if not self.fitted:
+            raise ValueError("Model is not fitted yet!")
+        df_test = dataset.prepare(
+            segment, col_set=["feature", "label"], data_key=DataHandlerLP.DK_I
+        )
+        features = df_test["feature"]
+        index = features.index
+        features_np = np.nan_to_num(features.values, nan=0.0)
+        preds = self.model.predict(features_np)
+        return pd.Series(preds, index=index, name="score")
+```
+
+## Evaluation settings
+
+Reported per universe (`csi300`, `csi100`, `csi300_recent`), all from `qlib`'s standard
+`SignalAnalysisRecord` and `PortAnaRecord`:
+
+- **Signal quality**: IC, ICIR, Rank IC, Rank ICIR — higher is better. (IC is the daily
+  cross-sectional correlation of score with realized return, averaged over the test period; ICIR is its
+  mean/std; the Rank variants use Spearman rank correlation, which is what the TopkDropout ranking
+  actually consumes.)
+- **Portfolio**: annualized return and information ratio — higher is better; max drawdown — closer to
+  zero is better.
+
+Seed 42 is the reference run for the ladder; the leaderboard records additional seeds where available.
+
+The editable model code is in `qlib/custom_model.py`:
+```python
+# =====================================================================
+# EDITABLE: CustomModel — implement your stock prediction model here
+# =====================================================================
+class CustomModel(Model):
+    """Custom stock prediction model.
+
+    You must implement:
+        fit(dataset)    — train the model on the training data
+        predict(dataset, segment="test") — return predictions as pd.Series
+
+    The dataset is a qlib DatasetH with Alpha360 features (360 features per
+    stock per day). The 360 features come from 6 base features
+    (open/close/high/low/volume/vwap ratios) x 60 days of history.
+
+    For temporal models, features can be reshaped:
+        x.reshape(N, 6, 60).permute(0, 2, 1) -> [N, 60, 6]
+    giving 60 time steps of 6 features each.
+
+    Segments: "train", "valid", "test".
+
+    Getting data from the dataset:
+        df_train = dataset.prepare("train", col_set=["feature", "label"],
+                                    data_key=DataHandlerLP.DK_L)
+        features = df_train["feature"]   # DataFrame: (n_samples, 360)
+        labels = df_train["label"]       # DataFrame: (n_samples, 1)
+
+    The label is: Ref($close, -2) / Ref($close, -1) - 1
+    (i.e., the return from T+1 to T+2, predicted at time T)
+
+    predict() must return a pd.Series indexed by (datetime, instrument)
+    matching the target segment's index.
+
+    Available imports: torch, torch.nn, numpy, pandas, lightgbm, sklearn, scipy
+    All network definitions and training logic go in this class.
+    """
+
+    def __init__(self):
+        super().__init__()
+        self.fitted = False
+        # --- Default: Ridge regression baseline ---
+        from sklearn.linear_model import Ridge
+
+        self.model = Ridge(alpha=1.0)
+
+    def fit(self, dataset: DatasetH):
+        """Train the model.
+
+        Args:
+            dataset: DatasetH with "train" and "valid" segments.
+        """
+        df_train = dataset.prepare(
+            "train", col_set=["feature", "label"], data_key=DataHandlerLP.DK_L
+        )
+        features = df_train["feature"].values
+        labels = df_train["label"].values.ravel()
+
+        # Remove NaN rows
+        mask = ~(np.isnan(features).any(axis=1) | np.isnan(labels))
+        features = features[mask]
+        labels = labels[mask]
+
+        self.model.fit(features, labels)
+        self.fitted = True
+
+    def predict(self, dataset: DatasetH, segment="test"):
+        """Generate predictions.
+
+        Args:
+            dataset: DatasetH with the target segment.
+            segment: Which segment to predict on (default: "test").
+
+        Returns:
+            pd.Series of predictions, indexed by (datetime, instrument).
+        """
+        if not self.fitted:
+            raise ValueError("Model is not fitted yet!")
+
+        df_test = dataset.prepare(
+            segment, col_set=["feature", "label"], data_key=DataHandlerLP.DK_I
+        )
+        features = df_test["feature"]
+        index = features.index
+
+        features_np = features.values
+        features_np = np.nan_to_num(features_np, nan=0.0)
+
+        preds = self.model.predict(features_np)
+        return pd.Series(preds, index=index, name="score")
+```
+Improve it. Derive your method, edit the code, then run_experiment().
+</user>
+
+### step 1 — Transformer (encoder-only, sequence-to-one)   [slug:transformer]
+
+<think>
+[[POLISH_REASONING: adapt to first-person agentic voice, end by deciding to implement]]
+I am starting the ladder here, with a Transformer encoder over the 60-day window, and I should be
+honest about why I start with a sequence model at all rather than the scaffold's Ridge or a tree. The
+Alpha360 feature vector is not really 360 unrelated numbers; it is six base ratios — open, close, high,
+low, volume, vwap, each normalized to the latest close — unrolled across sixty trading days. A flat
+regressor or a tree sees `[N, 360]` and has no idea that column 5 and column 65 are the *same* base
+ratio one day apart. The temporal structure, which is the whole reason a 60-day window is the input, is
+invisible to it. So the first thing worth trying is a model whose inductive bias is exactly "this is a
+length-60 sequence of 6-dimensional observations," and whose job is to summarize that window into one
+forward-return score per stock-day. That is a sequence-to-one regression, and I want to start from the
+sequence architecture that, in principle, lets any day in the window talk to any other day in one hop.
+
+Let me be precise about what "one hop" buys here and why I reach for attention rather than a recurrence
+for the *first* attempt. In a recurrent encoder the state at day `t` is `h_t = f(h_{t-1}, x_t)`, so the
+information from day 1 has to survive sixty sequential transformations before it can influence the
+read-out at day 60 — and each transformation can attenuate it. An attention layer instead forms, for
+each position, a weighted average over *all* positions at once: every day reaches every other day in a
+single content-based lookup, with no distance-dependent attenuation in the routing. For a window where a
+move sixty days ago might matter as much as yesterday's, that any-to-any reach is the appealing
+property. So the architecture I drop into the editable `CustomModel` is an encoder built from
+self-attention: project each day's 6 features up to a working width, run a couple of self-attention
+layers over the 60 positions, and read out a single score.
+
+Now I have to be careful, because the harness fixes the shape of this and several of the moves I would
+make in a from-scratch transduction model simply do not apply here. This is an *encoder-only*,
+*sequence-to-one* regressor — there is no decoder, no autoregressive generation, no target sequence. So
+there is no causal mask (every day may legitimately attend to every other day in the window; nothing is
+"in the future" to be hidden — the label is strictly outside the window), no cross-attention, no tied
+input/output embeddings, no label smoothing, and no token vocabulary at all. The "tokens" are
+continuous 6-vectors, one per day. The only pieces of the full attention machinery I actually keep are:
+a linear that lifts each day's 6 features to the model width, positional information so the layer is not
+order-blind, the scaled-dot-product self-attention with multiple heads, the position-wise feed-forward,
+the residual-plus-LayerNorm glue, and a final linear that reads the last position's representation down
+to one number. Everything that belonged to *generation* is dropped because this task does not generate —
+it scores.
+
+Let me walk the load-bearing choices that do survive, because each one is forced. First, lifting the
+input. Each day arrives as a 6-vector, which is far too thin to host multi-head attention — I want to
+slice the representation into several heads, each in its own subspace, and 6 dimensions cannot be
+meaningfully split. So a `feature_layer = Linear(6, d_model)` lifts each day to `d_model = 64`. That
+width is the qlib Alpha360 benchmark setting and it is a deliberate choice: 64 is wide enough to host
+`nhead = 2` heads of 32 dimensions each, while staying small enough that an `n²·d` attention over only
+60 positions is cheap and, more importantly, does not have so much capacity that it memorizes the noise
+in a notoriously low signal-to-noise regression. Financial cross-sectional return prediction has an IC
+ceiling in the low single-digit percents; the danger is never underfitting, it is fitting noise. A
+narrow model is a regularizer.
+
+Second, position. Pure self-attention is permutation-equivariant — `softmax(QKᵀ/√d_k)V` is all dot
+products and weighted sums over the *set* of positions, with no term that knows which day is which. If I
+shuffle the sixty days the output shuffles identically and nothing else changes, so the layer literally
+cannot tell a recent observation from an old one. For a window where recency obviously matters, that is
+fatal, so I must inject order. I add a sinusoidal positional code to each lifted day-vector before the
+attention stack: `PE(pos, 2i) = sin(pos/10000^{2i/d})`, `PE(pos, 2i+1) = cos(pos/10000^{2i/d})`. I add
+rather than concatenate because a learned linear over the sum `e + p` is `We + Wp` — the downstream
+projections can already separate content from position into different directions of the 64-dim space —
+whereas concatenation would widen every matrix in the stack for marginal benefit. Sinusoids rather than
+a learned position table because each pair of dimensions is a sine/cosine at its own frequency, and a
+shift by a fixed offset `k` becomes a fixed, position-independent rotation of that pair; that lets a head
+learn a relative rule like "look a few days back" that applies uniformly along the window. With only 60
+fixed positions the learned-table option would also work, but the sinusoid is the canonical, parameter-
+free choice and there is no extrapolation concern either way at this fixed length.
+
+Third, the attention primitive and its one wart. I score query against key by a dot product and softmax
+the result, then mix the values: `softmax(QKᵀ/√d_k)V`. The `1/√d_k` is not decorative. If `q` and `k`
+components are roughly unit-variance and independent, then `q·k = Σ_{i=1}^{d_k} q_i k_i` has mean 0 and
+variance `d_k`, so its typical magnitude grows like `√d_k`. Feed logits of size `√d_k` into a softmax
+and it saturates toward one-hot; its Jacobian `p_i(δ_ij − p_j)` then collapses toward zero, and the
+attention weights stop receiving gradient — the model freezes in a near-argmax it cannot learn its way
+out of. Dividing the scores by `√d_k` puts the logit variance back at 1 and keeps the softmax in its
+responsive region. With `d_k = 32` here the effect is real, so the scaling stays.
+
+Fourth, multiple heads. A single softmax distribution per day is a single averaged summary, and an
+average blurs: if a day needs to track a volume spike at one lag *and* a price reversal at another, one
+head smears them together. So I run `nhead = 2` attentions in parallel over 32-dim projections, each
+free to attend to a different pattern, and concatenate. Two heads is modest, but again the regime
+rewards restraint — more heads is more capacity to overfit on a signal this faint, and the qlib
+benchmark settled on two.
+
+Fifth, the per-position feed-forward, the residual-plus-LayerNorm wrapping, and the depth. Attention
+mixes information *across* days but does almost no nonlinear processing *within* a day — the only
+nonlinearity in the attention sublayer is the softmax on the weights. So between attention sublayers I
+put a position-wise feed-forward applied identically to every day, giving the model somewhere to
+transform each day's mixed representation nonlinearly. I wrap each sublayer as `x + Sublayer(x)` so the
+identity path keeps gradients flowing through depth, and LayerNorm — normalizing each day-vector across
+its own 64 features, which is batch-size-invariant and immune to the variable, padded batches — to keep
+the residual scale from drifting. I stack `num_layers = 2` such encoder layers. Two is shallow on
+purpose: depth multiplies capacity, and on this data capacity is liability.
+
+Now the one hyperparameter I am most wary of, and it is where I expect trouble. The qlib Alpha360
+Transformer benchmark sets `dropout = 0` here, with Adam at a very small `lr = 1e-4` and weight decay
+`1e-3`, batch size 2048, MSE loss, early-stop patience 5. That `lr = 1e-4` is an order of magnitude
+below the LSTM's `1e-3`, and the early-stop patience is 5 rather than 20 — both are signals that this
+model is touchy to train. Transformers are known to be brittle at initialization: random projections can
+make the dot-product logits large, the softmax saturates early (the same Jacobian collapse from the
+`√d_k` discussion, but now at the *start* of training), the first gradients are large and noisy, and
+Adam — which divides by a running estimate of the squared-gradient magnitude built from only a few early
+samples — records those noisy gradients into its second moment and distorts the step scale for many
+steps after. A from-scratch transduction transformer defuses this with a warmup-then-inverse-sqrt
+learning-rate schedule; but the harness's `CustomModel` runs a *plain* constant-rate Adam with no
+warmup. So I am training the most initialization-sensitive architecture on the ladder with the schedule
+that does the least to protect its first steps, on the noisiest data, with the smallest model. The tiny
+constant `lr` and patience-5 early stop are the only guards, and they may not be enough — a constant
+small rate that never warms up can either crawl too slowly to escape a bad initial basin, or, on a few
+bad early batches, still take the destabilizing step the warmup was supposed to prevent.
+
+Mechanically the read-out is the last position. After the stack I take the day-60 representation —
+`output.transpose(1,0)[:, -1, :]` in the loop's `[T, N, F]` convention — and a `Linear(d_model, 1)`
+maps it to the single score. Why the last day rather than a pooled summary? Because day 60 is the most
+recent observation and, having attended over all sixty days, its representation is the encoder's summary
+of the whole window conditioned on "now." Training is masked MSE over the finite labels (NaN targets
+dropped), gradient value-clipping at 3.0 to cap the exploding side, and early stopping on the validation
+score with the best parameters restored. The reshape into the model is the loop's `src.reshape(N, 6,
+60).permute(0, 2, 1) -> [N, 60, 6]`, so the time axis the attention needs is recovered from the flat
+feature vector. The full scaffold module is in the answer.
+
+So the delta from the scaffold default is: where Ridge fit one global linear map on the flat 360-vector
+with no notion of the window, this rung treats the input as a 60-step sequence of 6-vectors, lets every
+day attend to every other day through scaled multi-head self-attention with sinusoidal position, and
+reads the most-recent day's summary down to a score. The inductive bias is finally correct — the model
+*knows* it is looking at a time window.
+
+What do I expect, and where will it fall down? My honest expectation, given the brittleness I just
+laid out, is that this is the *risky* opening rather than the safe one. If training catches — if the
+constant `1e-4` Adam threads the needle between too-slow and unstable — the attention bias could pay
+off and the signal IC could land in the same low-single-digit range the other temporal models reach.
+But the failure mode I am bracing for is that it *does not catch*: a transformer trained without warmup,
+at a tiny constant rate, with patience-5 early stopping on a faint signal, can early-stop on a barely-
+trained model whose predictions are close to noise. The falsifiable expectations against the rungs to
+come are concrete. First, signal IC near zero — if the csi300 IC comes back around 0.01 rather than the
+0.04–0.05 a working temporal model reaches, that is the under-trained-transformer failure, not a
+property of attention. Second, and the sharper tell: a *negative* portfolio information ratio. A model
+whose ranking is essentially noise will still be forced through TopkDropout to hold 50 names and churn
+5 a day, paying transaction costs on noise, so its annualized return can go negative and its IR with it
+— which would be the cleanest evidence that the signal never formed. If that is what I see, the
+diagnosis for the next rung writes itself: I do not need *more* architecture, I need a learner that is
+either robust to this data without delicate optimization (a tree on the flat features, no init
+sensitivity at all) or a temporal model whose training is far less brittle than a warmup-less
+transformer's. That is the fork the next two rungs take.
+</think>
+<say>
+[[FILL_SAY: 1-2 sentences naming the method and what this first edit does]]
+</say>
+<edit path="qlib/custom_model.py">
+<old>
+# =====================================================================
+class CustomModel(Model):
+    """Custom stock prediction model.
+
+    You must implement:
+        fit(dataset)    — train the model on the training data
+        predict(dataset, segment="test") — return predictions as pd.Series
+
+    The dataset is a qlib DatasetH with Alpha360 features (360 features per
+    stock per day). The 360 features come from 6 base features
+    (open/close/high/low/volume/vwap ratios) x 60 days of history.
+
+    For temporal models, features can be reshaped:
+        x.reshape(N, 6, 60).permute(0, 2, 1) -> [N, 60, 6]
+    giving 60 time steps of 6 features each.
+
+    Segments: "train", "valid", "test".
+
+    Getting data from the dataset:
+        df_train = dataset.prepare("train", col_set=["feature", "label"],
+                                    data_key=DataHandlerLP.DK_L)
+        features = df_train["feature"]   # DataFrame: (n_samples, 360)
+        labels = df_train["label"]       # DataFrame: (n_samples, 1)
+
+    The label is: Ref($close, -2) / Ref($close, -1) - 1
+    (i.e., the return from T+1 to T+2, predicted at time T)
+
+    predict() must return a pd.Series indexed by (datetime, instrument)
+    matching the target segment's index.
+
+    Available imports: torch, torch.nn, numpy, pandas, lightgbm, sklearn, scipy
+    All network definitions and training logic go in this class.
+    """
+</old>
+<new>
+# =====================================================================
+import copy
+import math
+import os
+import torch.optim as optim
+
+
+class PositionalEncoding(nn.Module):
+    """Positional encoding — verbatim from qlib/contrib/model/pytorch_transformer.py."""
+
+    def __init__(self, d_model, max_len=1000):
+        super(PositionalEncoding, self).__init__()
+        pe = torch.zeros(max_len, d_model)
+        position = torch.arange(0, max_len, dtype=torch.float).unsqueeze(1)
+        div_term = torch.exp(
+            torch.arange(0, d_model, 2).float()
+            * (-math.log(10000.0) / d_model)
+        )
+        pe[:, 0::2] = torch.sin(position * div_term)
+        pe[:, 1::2] = torch.cos(position * div_term)
+        pe = pe.unsqueeze(0).transpose(0, 1)
+        self.register_buffer("pe", pe)
+
+    def forward(self, x):
+        # [T, N, F]
+        return x + self.pe[: x.size(0), :]
+
+
+class Transformer(nn.Module):
+    """Transformer network — verbatim from qlib/contrib/model/pytorch_transformer.py.
+
+    Reshapes flat Alpha360 features internally:
+    [N, F*T] -> [N, d_feat, T] -> [N, T, d_feat]
+    """
+
+    def __init__(
+        self, d_feat=6, d_model=8, nhead=4, num_layers=2, dropout=0.5, device=None
+    ):
+        super(Transformer, self).__init__()
+        self.feature_layer = nn.Linear(d_feat, d_model)
+        self.pos_encoder = PositionalEncoding(d_model)
+        self.encoder_layer = nn.TransformerEncoderLayer(
+            d_model=d_model, nhead=nhead, dropout=dropout
+        )
+        self.transformer_encoder = nn.TransformerEncoder(
+            self.encoder_layer, num_layers=num_layers
+        )
+        self.decoder_layer = nn.Linear(d_model, 1)
+        self.device = device
+        self.d_feat = d_feat
+
+    def forward(self, src):
+        # src [N, F*T] --> [N, T, F]
+        src = src.reshape(len(src), self.d_feat, -1).permute(0, 2, 1)
+        src = self.feature_layer(src)
+
+        # src [N, T, F] --> [T, N, F]
+        src = src.transpose(1, 0)  # not batch first
+
+        mask = None
+
+        src = self.pos_encoder(src)
+        output = self.transformer_encoder(src, mask)
+
+        # [T, N, F] --> [N, T*F]
+        output = self.decoder_layer(output.transpose(1, 0)[:, -1, :])
+
+        return output.squeeze()
+
+
+class CustomModel(Model):
+    """Transformer model — faithful to qlib's official TransformerModel
+    (pytorch_transformer.py).
+
+    Uses DatasetH with Alpha360 features. The Transformer reshapes the flat
+    360-dim feature vector internally: [N, 360] -> [N, 6, 60] -> [N, 60, 6].
+
+    Hyperparameters from official benchmark:
+    examples/benchmarks/Transformer/workflow_config_transformer_Alpha360.yaml
+    """
+</new>
+</edit>
+<obs>
+Successfully replaced text in qlib/custom_model.py.
+</obs>
+<note>
+[[FILL_NOTE?: optional one-line thought for this edit, or delete this block]]
+</note>
+<edit path="qlib/custom_model.py">
+<old>
+        super().__init__()
+        self.fitted = False
+        # --- Default: Ridge regression baseline ---
+        from sklearn.linear_model import Ridge
+
+        self.model = Ridge(alpha=1.0)
+
+    def fit(self, dataset: DatasetH):
+        """Train the model.
+
+        Args:
+            dataset: DatasetH with "train" and "valid" segments.
+        """
+        df_train = dataset.prepare(
+            "train", col_set=["feature", "label"], data_key=DataHandlerLP.DK_L
+        )
+        features = df_train["feature"].values
+        labels = df_train["label"].values.ravel()
+
+        # Remove NaN rows
+        mask = ~(np.isnan(features).any(axis=1) | np.isnan(labels))
+        features = features[mask]
+        labels = labels[mask]
+
+        self.model.fit(features, labels)
+        self.fitted = True
+
+    def predict(self, dataset: DatasetH, segment="test"):
+        """Generate predictions.
+
+        Args:
+            dataset: DatasetH with the target segment.
+            segment: Which segment to predict on (default: "test").
+
+        Returns:
+            pd.Series of predictions, indexed by (datetime, instrument).
+        """
+        if not self.fitted:
+            raise ValueError("Model is not fitted yet!")
+
+        df_test = dataset.prepare(
+            segment, col_set=["feature", "label"], data_key=DataHandlerLP.DK_I
+        )
+        features = df_test["feature"]
+        index = features.index
+
+        features_np = features.values
+        features_np = np.nan_to_num(features_np, nan=0.0)
+
+        preds = self.model.predict(features_np)
+        return pd.Series(preds, index=index, name="score")
+</old>
+<new>
+        super().__init__()
+        # Official Alpha360 benchmark hyperparameters
+        self.d_feat = 6
+        self.d_model = 64
+        self.nhead = 2
+        self.num_layers = 2
+        self.dropout = 0
+        self.n_epochs = 100
+        self.lr = 0.0001
+        self.metric = ""
+        self.batch_size = 2048
+        self.early_stop = 5
+        self.loss = "mse"
+        self.reg = 1e-3
+        self.seed = int(os.environ.get("SEED", "42"))
+        self.device = torch.device(
+            "cuda:0" if torch.cuda.is_available() else "cpu"
+        )
+
+        if self.seed is not None:
+            np.random.seed(self.seed)
+            torch.manual_seed(self.seed)
+
+        self.model = Transformer(
+            self.d_feat,
+            self.d_model,
+            self.nhead,
+            self.num_layers,
+            self.dropout,
+            self.device,
+        )
+        self.train_optimizer = optim.Adam(
+            self.model.parameters(), lr=self.lr, weight_decay=self.reg
+        )
+        self.fitted = False
+        self.model.to(self.device)
+
+    @property
+    def use_gpu(self):
+        return self.device != torch.device("cpu")
+
+    def mse(self, pred, label):
+        loss = (pred.float() - label.float()) ** 2
+        return torch.mean(loss)
+
+    def loss_fn(self, pred, label):
+        mask = ~torch.isnan(label)
+        if self.loss == "mse":
+            return self.mse(pred[mask], label[mask])
+        raise ValueError("unknown loss `%s`" % self.loss)
+
+    def metric_fn(self, pred, label):
+        mask = torch.isfinite(label)
+        if self.metric in ("", "loss"):
+            return -self.loss_fn(pred[mask], label[mask])
+        raise ValueError("unknown metric `%s`" % self.metric)
+
+    def train_epoch(self, x_train, y_train):
+        x_train_values = x_train.values
+        y_train_values = np.squeeze(y_train.values)
+
+        self.model.train()
+
+        indices = np.arange(len(x_train_values))
+        np.random.shuffle(indices)
+
+        for i in range(len(indices))[:: self.batch_size]:
+            if len(indices) - i < self.batch_size:
+                break
+
+            feature = (
+                torch.from_numpy(x_train_values[indices[i : i + self.batch_size]])
+                .float()
+                .to(self.device)
+            )
+            label = (
+                torch.from_numpy(y_train_values[indices[i : i + self.batch_size]])
+                .float()
+                .to(self.device)
+            )
+
+            pred = self.model(feature)
+            loss = self.loss_fn(pred, label)
+
+            self.train_optimizer.zero_grad()
+            loss.backward()
+            torch.nn.utils.clip_grad_value_(self.model.parameters(), 3.0)
+            self.train_optimizer.step()
+
+    def test_epoch(self, data_x, data_y):
+        x_values = data_x.values
+        y_values = np.squeeze(data_y.values)
+
+        self.model.eval()
+
+        scores = []
+        losses = []
+
+        indices = np.arange(len(x_values))
+
+        for i in range(len(indices))[:: self.batch_size]:
+            if len(indices) - i < self.batch_size:
+                break
+
+            feature = (
+                torch.from_numpy(x_values[indices[i : i + self.batch_size]])
+                .float()
+                .to(self.device)
+            )
+            label = (
+                torch.from_numpy(y_values[indices[i : i + self.batch_size]])
+                .float()
+                .to(self.device)
+            )
+
+            with torch.no_grad():
+                pred = self.model(feature)
+                loss = self.loss_fn(pred, label)
+                losses.append(loss.item())
+
+                score = self.metric_fn(pred, label)
+                scores.append(score.item())
+
+        return np.mean(losses), np.mean(scores)
+
+    def fit(self, dataset: DatasetH):
+        df_train, df_valid, df_test = dataset.prepare(
+            ["train", "valid", "test"],
+            col_set=["feature", "label"],
+            data_key=DataHandlerLP.DK_L,
+        )
+        if df_train.empty or df_valid.empty:
+            raise ValueError(
+                "Empty data from dataset, please check your dataset config."
+            )
+
+        x_train, y_train = df_train["feature"], df_train["label"]
+        x_valid, y_valid = df_valid["feature"], df_valid["label"]
+
+        stop_steps = 0
+        best_score = -np.inf
+        best_epoch = 0
+        best_param = None
+
+        self.fitted = True
+
+        for step in range(self.n_epochs):
+            self.train_epoch(x_train, y_train)
+            train_loss, train_score = self.test_epoch(x_train, y_train)
+            val_loss, val_score = self.test_epoch(x_valid, y_valid)
+            print(
+                "Epoch%d: train %.6f, valid %.6f"
+                % (step, train_score, val_score)
+            )
+
+            if val_score > best_score:
+                best_score = val_score
+                stop_steps = 0
+                best_epoch = step
+                best_param = copy.deepcopy(self.model.state_dict())
+            else:
+                stop_steps += 1
+                if stop_steps >= self.early_stop:
+                    print("early stop")
+                    break
+
+        print("best score: %.6lf @ %d" % (best_score, best_epoch))
+        self.model.load_state_dict(best_param)
+
+        if self.use_gpu:
+            torch.cuda.empty_cache()
+
+    def predict(self, dataset: DatasetH, segment="test"):
+        if not self.fitted:
+            raise ValueError("model is not fitted yet!")
+
+        x_test = dataset.prepare(
+            segment, col_set="feature", data_key=DataHandlerLP.DK_I
+        )
+        index = x_test.index
+        self.model.eval()
+        x_values = x_test.values
+        sample_num = x_values.shape[0]
+        preds = []
+
+        for begin in range(sample_num)[:: self.batch_size]:
+            if sample_num - begin < self.batch_size:
+                end = sample_num
+            else:
+                end = begin + self.batch_size
+
+            x_batch = (
+                torch.from_numpy(x_values[begin:end]).float().to(self.device)
+            )
+
+            with torch.no_grad():
+                pred = self.model(x_batch).detach().cpu().numpy()
+
+            preds.append(pred)
+
+        return pd.Series(np.concatenate(preds), index=index)
+</new>
+</edit>
+<obs>
+Successfully replaced text in qlib/custom_model.py.
+</obs>
+<run/>
+<obs>
+Measured results — `baseline:transformer` (`is_final,true`), seed 42.
+
+## csi300
+| metric | value |
+|---|---|
+| IC | 0.011680 |
+| ICIR | 0.074013 |
+| Rank IC | 0.035049 |
+| Rank ICIR | 0.245456 |
+| annualized return | −0.035805 |
+| max drawdown | −0.166067 |
+| information ratio | −0.439786 |
+
+## csi100
+| metric | value |
+|---|---|
+| IC | 0.020431 |
+| ICIR | 0.108917 |
+| Rank IC | 0.034056 |
+| Rank ICIR | 0.190984 |
+| annualized return | −0.059105 |
+| max drawdown | −0.281588 |
+| information ratio | −1.012397 |
+
+## csi300_recent
+| metric | value |
+|---|---|
+| IC | 0.001447 |
+| ICIR | 0.009576 |
+| Rank IC | 0.027174 |
+| Rank ICIR | 0.183150 |
+| annualized return | −0.085042 |
+| max drawdown | −0.159941 |
+| information ratio | −1.091446 |
+</obs>
+
+### step 2 — LightGBM (histogram leaf-wise GBDT)   [slug:lgbm]
+
+<think>
+[[POLISH_REASONING: adapt to first-person agentic voice, end by deciding to implement]]
+The Transformer rung came back exactly the way I feared, and the numbers say *which* failure it was.
+On csi300 the IC is 0.0117 and the Rank IC 0.0350 — the IC is a quarter of what a working temporal model
+reaches, and crucially the portfolio information ratio is **−0.44**, with annualized return **−0.036**.
+On csi100 it is worse: IR −1.01, return −0.059. On csi300_recent, IC essentially zero at 0.0014 and IR
+−1.09. A negative IR across all three universes is the tell I called in advance: a model whose ranking is
+near-noise still gets forced through TopkDropout to hold fifty names and churn five a day, so it pays
+transaction costs on noise and the return goes negative. The signal never formed. And I know why — the
+brittle-transformer story I laid out: a constant `1e-4` Adam with no warmup, patience-5 early stop, on a
+faint signal, almost certainly early-stopped on a barely-trained model. The architecture's bias was
+fine; the *optimization* was the problem, and the harness gives the most init-sensitive model the least
+protective training loop. So the lesson is not "add more architecture." It is the opposite: I want a
+learner that needs no delicate optimization at all — no learning-rate schedule to thread, no
+initialization to survive, no early-stop gamble — and that is robust on noisy tabular data out of the box.
+That points away from sequence models entirely, back to the consensus high-accuracy learner on
+structured data: a gradient-boosted decision tree.
+
+Let me be precise about why a tree ensemble is the right move *here*, against this measured failure. A
+GBDT is an additive sequence of regression trees. At round `t` I have the current ensemble `F_{t-1}`, I
+compute for every instance the gradient of the loss against its current prediction, `g_i = ∂L(y_i,
+F_{t-1}(x_i))/∂F`, fit a new tree to the negative gradients, and fold it in shrunk by a learning rate.
+For squared loss `g_i = ŷ_i − y_i`, so each tree fits the residual `y_i − ŷ_i` — the classic
+residual-fitting form. There is no global initialization that can poison the whole run, no single
+learning rate whose miscalibration kills convergence: shrinkage is a per-tree scalar that only ever
+slows things down safely, early stopping is on the number of *trees* (a discrete, monotone count) rather
+than a gamble on a noisy validation curve, and the trees discover nonlinear feature interactions
+automatically. On a low signal-to-noise regression where the transformer's training fragility was the
+whole failure, swapping in a learner with essentially no optimization fragility is the directed fix.
+
+But I should think about what the trees see, because that is the one place this rung differs from a naive
+"just use a tree." The transformer treated the 360 features as a 60×6 sequence; a tree treats them as a
+flat tabular row, six base ratios at sixty lags, each a column. The tree is blind to the fact that
+column 5 and column 65 are the same ratio one day apart — but on this data that blindness may not hurt
+much, because the engineered Alpha360 ratios already carry the relevant information per-column, and the
+tree's job is to find which lags and which interactions of those columns predict the forward return. A
+tree splitting on "the 1-day return is high AND the 20-day volume ratio is low" is exactly the kind of
+nonlinear factor interaction a hand-built factor model would have to specify by hand. So the loss of the
+temporal bias is real but the gain in robustness and automatic interaction discovery is, I expect, the
+better trade against a near-zero-signal baseline.
+
+Now the engine. The cost of growing each tree is dominated by split finding: to split a node I need, for
+every feature, the gain of every candidate split, and that scans the node's data, so per-tree work is
+`O(#data × #feature)`. The histogram engine cuts this to size: bucket each continuous feature into a
+small fixed number of bins (255, so a bin index fits in a byte), and for a node make one pass
+accumulating per-bin sum-of-gradients and count. Searching splits is then `O(#bin × #feature)`, a
+rounding error next to the build. A parent node's histogram is the sum of its two children's, so I build
+only the *smaller* child's histogram and recover the sibling by subtraction in `O(#bin)`. On top of that
+the engine grows leaf-wise — best-first, splitting the single leaf with the largest loss reduction at
+each step — which reaches lower training loss than level-wise at a fixed leaf budget, capped by
+`num_leaves` and `max_depth` to bound overfit. These are the knobs the deployment exposes, and they are
+what make a thousand-tree ensemble tractable on this data.
+
+The split criterion is the variance gain in sum-of-gradient form,
+`V_j(d) = (1/n)[ (Σ_{x_ij≤d} g_i)²/n_l(d) + (Σ_{x_ij>d} g_i)²/n_r(d) ]`,
+which a second-order view generalizes to leaf value `w* = −G/(H+λ2)` with `G = Σg`, `H = Σh` and an L2
+penalty `λ2`, L1 entering as a soft-threshold on `G`. For squared loss the Hessian is 1 and this reduces
+to the plain variance gain. The two famous accelerations the engine carries — GOSS, which keeps the
+large-gradient (under-trained) rows whole and samples the small-gradient tail reweighted by `(1−a)/b` to
+keep the gain unbiased, and EFB, which packs mutually exclusive sparse features into one column by
+disjoint bin-offset ranges via a greedy graph-coloring with a small conflict budget — are the reason the
+method is *fast*. I should be honest about how much of that fires *here*, though, because the task's
+deployment is specific: it runs the default `gbdt` booster, not `goss`, so the row-sampling reduction is
+*not* the GOSS importance sampler — `subsample`/`bagging_fraction` just feeds the engine's plain bagging
+machinery (uniform row subsampling per round, which is the `a=0` degenerate case of GOSS). EFB still
+applies internally wherever the Alpha360 columns are sparse and exclusive, but Alpha360 features are
+dense continuous ratios, so EFB's column packing is largely inert on this input. The accuracy and the
+robustness come from the histogram-leaf-wise engine and the regularization, not from GOSS/EFB on this
+particular dense feature matrix. I want that clear so I am not importing the big-data speed story into a
+setting where it mostly does not bite.
+
+Now the hyperparameters, which are the official qlib Alpha360 LightGBM benchmark and are doing real
+regularization work that I should justify rather than copy. `learning_rate = 0.0421` is small —
+heavy shrinkage, so each of up to `num_boost_round = 1000` trees nudges the prediction gently and the
+ensemble averages out noise rather than chasing it; early stopping at patience 50 on the validation set
+cuts off the round count before it overfits. `num_leaves = 210` with `max_depth = 8` allows fairly
+expressive trees, but the two L-penalties are enormous — `lambda_l1 = 205.7`, `lambda_l2 = 580.98` — and
+that is deliberate and characteristic of financial data: with such large penalties on the leaf weights,
+the soft-threshold on `G` zeros out splits whose gradient mass is small, so the trees only act on the
+strongest, most repeated signal and ignore the vast noise floor. `colsample_bytree = 0.8879` and
+`subsample = 0.8789` (with the default bagging) add column- and row-level stochasticity so successive
+trees decorrelate and the ensemble generalizes. `objective = mse` matches the regression label. Every one
+of these is pushed toward *more* regularization than a default tabular task would use, because the IC
+ceiling here is low and the failure mode is variance, not bias.
+
+There is one more task-specific edit that matters, and it is exactly the kind of same-named-but-different
+detail I have to get right: this rung does *not* leave the workflow processors alone. The default
+workflow applies a neural-model preprocessing block — `RobustZScoreNorm` (clip-and-standardize the
+features) and `Fillna` as `infer_processors`. Those are there for the gradient-descent models, which need
+standardized inputs to train stably. A tree does not: it splits on order statistics, so monotone
+per-feature rescaling is irrelevant to it, and the robust-z-score clipping actually *removes* information
+the tree could split on (the clipped tails). So the lgbm edit sets `infer_processors: []` — feed the
+trees the raw features — and keeps only the label-side `DropnaLabel` + `CSRankNorm`. This is a genuine
+deviation from the transformer rung, which used the default processor block unchanged, and it is the
+correct one: the preprocessing that *helped* the neural model would have quietly *hurt* the tree. (The
+full scaffold module and the processor edit are in the answer.)
+
+So the delta from the Transformer rung is total: I throw out the sequence model and its delicate Adam
+training, treat the 60×6 window as a flat tabular row, and fit a heavily-regularized histogram GBDT that
+needs no warmup, no initialization luck, and no early-stop gamble — while stripping the
+neural-only feature normalization so the trees see the raw signal.
+
+What do I expect against the Transformer's measured numbers, and what is the falsifiable claim? First and
+most important, the IR must go *positive* on csi300 — the transformer's −0.44 was a near-noise ranking
+paying churn costs, and a GBDT that actually forms signal should rank well enough to earn back the costs;
+if the csi300 IR comes back negative, the tree failed to find signal and my robustness argument is wrong.
+Second, the IC should climb substantially from 0.0117 toward the high-0.03s / low-0.04s a working model
+on this data reaches — anything still near 0.01 would mean the loss of the temporal bias cost more than
+the robustness gained. Third, where I am genuinely uncertain: on csi100, even the transformer's IC
+(0.020) outran its csi300 IC, yet its return was deeply negative; csi100 is a smaller, harder universe
+where *every* model on this ladder may struggle to earn a positive portfolio return even with a decent
+IC, because fifty names out of a hundred is a much larger slice of the universe and the TopkDropout churn
+bites harder. So my honest expectation is: a clear positive csi300 IR and a real IC jump (the robustness
+fix working), but I would not be surprised if csi100's portfolio return stays weak even as its IC
+improves — and if so, the diagnosis for the next rung is that the tree's per-row tabular view, however
+robust, still leaves ranking quality on the table that a temporal model trained *robustly* (not the
+brittle transformer) could recover. That is the fork the final rung takes.
+</think>
+<say>
+[[FILL_SAY: 1-2 sentences naming the method and what this first edit does]]
+</say>
+<edit path="qlib/custom_model.py">
+<old>
+# =====================================================================
+import copy
+import math
+import os
+import torch.optim as optim
+
+
+class PositionalEncoding(nn.Module):
+    """Positional encoding — verbatim from qlib/contrib/model/pytorch_transformer.py."""
+
+    def __init__(self, d_model, max_len=1000):
+        super(PositionalEncoding, self).__init__()
+        pe = torch.zeros(max_len, d_model)
+        position = torch.arange(0, max_len, dtype=torch.float).unsqueeze(1)
+        div_term = torch.exp(
+            torch.arange(0, d_model, 2).float()
+            * (-math.log(10000.0) / d_model)
+        )
+        pe[:, 0::2] = torch.sin(position * div_term)
+        pe[:, 1::2] = torch.cos(position * div_term)
+        pe = pe.unsqueeze(0).transpose(0, 1)
+        self.register_buffer("pe", pe)
+
+    def forward(self, x):
+        # [T, N, F]
+        return x + self.pe[: x.size(0), :]
+
+
+class Transformer(nn.Module):
+    """Transformer network — verbatim from qlib/contrib/model/pytorch_transformer.py.
+
+    Reshapes flat Alpha360 features internally:
+    [N, F*T] -> [N, d_feat, T] -> [N, T, d_feat]
+    """
+
+    def __init__(
+        self, d_feat=6, d_model=8, nhead=4, num_layers=2, dropout=0.5, device=None
+    ):
+        super(Transformer, self).__init__()
+        self.feature_layer = nn.Linear(d_feat, d_model)
+        self.pos_encoder = PositionalEncoding(d_model)
+        self.encoder_layer = nn.TransformerEncoderLayer(
+            d_model=d_model, nhead=nhead, dropout=dropout
+        )
+        self.transformer_encoder = nn.TransformerEncoder(
+            self.encoder_layer, num_layers=num_layers
+        )
+        self.decoder_layer = nn.Linear(d_model, 1)
+        self.device = device
+        self.d_feat = d_feat
+
+    def forward(self, src):
+        # src [N, F*T] --> [N, T, F]
+        src = src.reshape(len(src), self.d_feat, -1).permute(0, 2, 1)
+        src = self.feature_layer(src)
+
+        # src [N, T, F] --> [T, N, F]
+        src = src.transpose(1, 0)  # not batch first
+
+        mask = None
+
+        src = self.pos_encoder(src)
+        output = self.transformer_encoder(src, mask)
+
+        # [T, N, F] --> [N, T*F]
+        output = self.decoder_layer(output.transpose(1, 0)[:, -1, :])
+
+        return output.squeeze()
+
+
+class CustomModel(Model):
+    """Transformer model — faithful to qlib's official TransformerModel
+    (pytorch_transformer.py).
+
+    Uses DatasetH with Alpha360 features. The Transformer reshapes the flat
+    360-dim feature vector internally: [N, 360] -> [N, 6, 60] -> [N, 60, 6].
+
+    Hyperparameters from official benchmark:
+    examples/benchmarks/Transformer/workflow_config_transformer_Alpha360.yaml
+    """
+</old>
+<new>
+# =====================================================================
+class CustomModel(Model):
+    """LightGBM model — faithful to qlib's official LGBModel (gbdt.py).
+
+    Hyperparameters from official Alpha360 benchmark:
+    examples/benchmarks/LightGBM/workflow_config_lightgbm_Alpha360.yaml
+    """
+</new>
+</edit>
+<obs>
+Successfully replaced text in qlib/custom_model.py.
+</obs>
+<note>
+[[FILL_NOTE?: optional one-line thought for this edit, or delete this block]]
+</note>
+<edit path="qlib/custom_model.py">
+<old>
+        super().__init__()
+        # Official Alpha360 benchmark hyperparameters
+        self.d_feat = 6
+        self.d_model = 64
+        self.nhead = 2
+        self.num_layers = 2
+        self.dropout = 0
+        self.n_epochs = 100
+        self.lr = 0.0001
+        self.metric = ""
+        self.batch_size = 2048
+        self.early_stop = 5
+        self.loss = "mse"
+        self.reg = 1e-3
+        self.seed = int(os.environ.get("SEED", "42"))
+        self.device = torch.device(
+            "cuda:0" if torch.cuda.is_available() else "cpu"
+        )
+
+        if self.seed is not None:
+            np.random.seed(self.seed)
+            torch.manual_seed(self.seed)
+
+        self.model = Transformer(
+            self.d_feat,
+            self.d_model,
+            self.nhead,
+            self.num_layers,
+            self.dropout,
+            self.device,
+        )
+        self.train_optimizer = optim.Adam(
+            self.model.parameters(), lr=self.lr, weight_decay=self.reg
+        )
+        self.fitted = False
+        self.model.to(self.device)
+
+    @property
+    def use_gpu(self):
+        return self.device != torch.device("cpu")
+
+    def mse(self, pred, label):
+        loss = (pred.float() - label.float()) ** 2
+        return torch.mean(loss)
+
+    def loss_fn(self, pred, label):
+        mask = ~torch.isnan(label)
+        if self.loss == "mse":
+            return self.mse(pred[mask], label[mask])
+        raise ValueError("unknown loss `%s`" % self.loss)
+
+    def metric_fn(self, pred, label):
+        mask = torch.isfinite(label)
+        if self.metric in ("", "loss"):
+            return -self.loss_fn(pred[mask], label[mask])
+        raise ValueError("unknown metric `%s`" % self.metric)
+
+    def train_epoch(self, x_train, y_train):
+        x_train_values = x_train.values
+        y_train_values = np.squeeze(y_train.values)
+
+        self.model.train()
+
+        indices = np.arange(len(x_train_values))
+        np.random.shuffle(indices)
+
+        for i in range(len(indices))[:: self.batch_size]:
+            if len(indices) - i < self.batch_size:
+                break
+
+            feature = (
+                torch.from_numpy(x_train_values[indices[i : i + self.batch_size]])
+                .float()
+                .to(self.device)
+            )
+            label = (
+                torch.from_numpy(y_train_values[indices[i : i + self.batch_size]])
+                .float()
+                .to(self.device)
+            )
+
+            pred = self.model(feature)
+            loss = self.loss_fn(pred, label)
+
+            self.train_optimizer.zero_grad()
+            loss.backward()
+            torch.nn.utils.clip_grad_value_(self.model.parameters(), 3.0)
+            self.train_optimizer.step()
+
+    def test_epoch(self, data_x, data_y):
+        x_values = data_x.values
+        y_values = np.squeeze(data_y.values)
+
+        self.model.eval()
+
+        scores = []
+        losses = []
+
+        indices = np.arange(len(x_values))
+
+        for i in range(len(indices))[:: self.batch_size]:
+            if len(indices) - i < self.batch_size:
+                break
+
+            feature = (
+                torch.from_numpy(x_values[indices[i : i + self.batch_size]])
+                .float()
+                .to(self.device)
+            )
+            label = (
+                torch.from_numpy(y_values[indices[i : i + self.batch_size]])
+                .float()
+                .to(self.device)
+            )
+
+            with torch.no_grad():
+                pred = self.model(feature)
+                loss = self.loss_fn(pred, label)
+                losses.append(loss.item())
+
+                score = self.metric_fn(pred, label)
+                scores.append(score.item())
+
+        return np.mean(losses), np.mean(scores)
+
+    def fit(self, dataset: DatasetH):
+        df_train, df_valid, df_test = dataset.prepare(
+            ["train", "valid", "test"],
+            col_set=["feature", "label"],
+            data_key=DataHandlerLP.DK_L,
+        )
+        if df_train.empty or df_valid.empty:
+            raise ValueError(
+                "Empty data from dataset, please check your dataset config."
+            )
+
+        x_train, y_train = df_train["feature"], df_train["label"]
+        x_valid, y_valid = df_valid["feature"], df_valid["label"]
+
+        stop_steps = 0
+        best_score = -np.inf
+        best_epoch = 0
+        best_param = None
+
+        self.fitted = True
+
+        for step in range(self.n_epochs):
+            self.train_epoch(x_train, y_train)
+            train_loss, train_score = self.test_epoch(x_train, y_train)
+            val_loss, val_score = self.test_epoch(x_valid, y_valid)
+            print(
+                "Epoch%d: train %.6f, valid %.6f"
+                % (step, train_score, val_score)
+            )
+
+            if val_score > best_score:
+                best_score = val_score
+                stop_steps = 0
+                best_epoch = step
+                best_param = copy.deepcopy(self.model.state_dict())
+            else:
+                stop_steps += 1
+                if stop_steps >= self.early_stop:
+                    print("early stop")
+                    break
+
+        print("best score: %.6lf @ %d" % (best_score, best_epoch))
+        self.model.load_state_dict(best_param)
+
+        if self.use_gpu:
+            torch.cuda.empty_cache()
+
+    def predict(self, dataset: DatasetH, segment="test"):
+        if not self.fitted:
+            raise ValueError("model is not fitted yet!")
+
+        x_test = dataset.prepare(
+            segment, col_set="feature", data_key=DataHandlerLP.DK_I
+        )
+        index = x_test.index
+        self.model.eval()
+        x_values = x_test.values
+        sample_num = x_values.shape[0]
+        preds = []
+
+        for begin in range(sample_num)[:: self.batch_size]:
+            if sample_num - begin < self.batch_size:
+                end = sample_num
+            else:
+                end = begin + self.batch_size
+
+            x_batch = (
+                torch.from_numpy(x_values[begin:end]).float().to(self.device)
+            )
+
+            with torch.no_grad():
+                pred = self.model(x_batch).detach().cpu().numpy()
+
+            preds.append(pred)
+
+        return pd.Series(np.concatenate(preds), index=index)
+</old>
+<new>
+        super().__init__()
+        # Official Alpha360 benchmark kwargs (passed to lgb.train via self.params)
+        self.params = {
+            "objective": "mse",
+            "colsample_bytree": 0.8879,
+            "learning_rate": 0.0421,
+            "subsample": 0.8789,
+            "lambda_l1": 205.6999,
+            "lambda_l2": 580.9768,
+            "max_depth": 8,
+            "num_leaves": 210,
+            "num_threads": 20,
+            "verbosity": -1,
+        }
+        self.early_stopping_rounds = 50
+        self.num_boost_round = 1000
+        self.model = None
+
+    def _prepare_data(self, dataset):
+        """Prepare LightGBM datasets — matches LGBModel._prepare_data()."""
+        import lightgbm as lgb
+
+        ds_l = []
+        for key in ["train", "valid"]:
+            if key in dataset.segments:
+                df = dataset.prepare(
+                    key, col_set=["feature", "label"], data_key=DataHandlerLP.DK_L
+                )
+                if df.empty:
+                    raise ValueError(
+                        "Empty data from dataset, please check your dataset config."
+                    )
+                x, y = df["feature"], df["label"]
+                # Lightgbm need 1D array as its label
+                if y.values.ndim == 2 and y.values.shape[1] == 1:
+                    y = np.squeeze(y.values)
+                else:
+                    raise ValueError(
+                        "LightGBM doesn't support multi-label training"
+                    )
+                ds_l.append(
+                    (lgb.Dataset(x.values, label=y, free_raw_data=False), key)
+                )
+        return ds_l
+
+    def fit(self, dataset: DatasetH):
+        import lightgbm as lgb
+
+        ds_l = self._prepare_data(dataset)
+        ds, names = list(zip(*ds_l))
+        early_stopping_callback = lgb.early_stopping(
+            self.early_stopping_rounds
+        )
+        verbose_eval_callback = lgb.log_evaluation(period=20)
+        evals_result = {}
+        evals_result_callback = lgb.record_evaluation(evals_result)
+        self.model = lgb.train(
+            self.params,
+            ds[0],  # training dataset
+            num_boost_round=self.num_boost_round,
+            valid_sets=ds,
+            valid_names=names,
+            callbacks=[
+                early_stopping_callback,
+                verbose_eval_callback,
+                evals_result_callback,
+            ],
+        )
+
+    def predict(self, dataset: DatasetH, segment="test"):
+        if self.model is None:
+            raise ValueError("model is not fitted yet!")
+        x_test = dataset.prepare(
+            segment, col_set="feature", data_key=DataHandlerLP.DK_I
+        )
+        return pd.Series(self.model.predict(x_test.values), index=x_test.index)
+</new>
+</edit>
+<obs>
+Successfully replaced text in qlib/custom_model.py.
+</obs>
+<run/>
+<obs>
+Measured results — `baseline:lgbm` (`is_final,true`), seeds {42, 123, 456} and mean. (LightGBM training
+is deterministic here, so all three seeds are identical.)
+
+## csi300
+| seed | IC | ICIR | Rank IC | Rank ICIR | ann. return | max drawdown | info ratio |
+|---|---|---|---|---|---|---|---|
+| 42 | 0.039897 | 0.307518 | 0.049229 | 0.401871 | 0.020253 | −0.099518 | 0.279929 |
+| 123 | 0.039897 | 0.307518 | 0.049229 | 0.401871 | 0.020253 | −0.099518 | 0.279929 |
+| 456 | 0.039897 | 0.307518 | 0.049229 | 0.401871 | 0.020253 | −0.099518 | 0.279929 |
+| **mean** | **0.039897** | **0.307518** | **0.049229** | **0.401871** | **0.020253** | **−0.099518** | **0.279929** |
+
+## csi100
+| seed | IC | ICIR | Rank IC | Rank ICIR | ann. return | max drawdown | info ratio |
+|---|---|---|---|---|---|---|---|
+| 42 | 0.036262 | 0.220335 | 0.044453 | 0.277064 | −0.017189 | −0.158267 | −0.333759 |
+| 123 | 0.036262 | 0.220335 | 0.044453 | 0.277064 | −0.017189 | −0.158267 | −0.333759 |
+| 456 | 0.036262 | 0.220335 | 0.044453 | 0.277064 | −0.017189 | −0.158267 | −0.333759 |
+| **mean** | **0.036262** | **0.220335** | **0.044453** | **0.277064** | **−0.017189** | **−0.158267** | **−0.333759** |
+
+## csi300_recent
+| seed | IC | ICIR | Rank IC | Rank ICIR | ann. return | max drawdown | info ratio |
+|---|---|---|---|---|---|---|---|
+| 42 | 0.025308 | 0.182200 | 0.040913 | 0.302152 | 0.019687 | −0.075868 | 0.265607 |
+| 123 | 0.025308 | 0.182200 | 0.040913 | 0.302152 | 0.019687 | −0.075868 | 0.265607 |
+| 456 | 0.025308 | 0.182200 | 0.040913 | 0.302152 | 0.019687 | −0.075868 | 0.265607 |
+| **mean** | **0.025308** | **0.182200** | **0.040913** | **0.302152** | **0.019687** | **−0.075868** | **0.265607** |
+</obs>
+
+### step 3 — LSTM (gated recurrent regressor)   [slug:lstm]
+
+<think>
+[[POLISH_REASONING: adapt to first-person agentic voice, end by deciding to implement]]
+The LightGBM rung did what I expected on the most important axis and left a precise gap on another. On
+csi300 the IR turned **positive** — 0.280, up from the transformer's −0.44 — and the IC climbed to 0.0399
+from 0.0117, with Rank IC 0.0492. That confirms the robustness diagnosis: a learner with no optimization
+fragility formed real signal where the brittle transformer formed noise. On csi300_recent the same story,
+IR 0.266, return positive. But csi100 came back exactly as I worried it might: a perfectly respectable IC
+of 0.0363, yet a *negative* portfolio return (−0.017) and IR (−0.334). So the tree ranks csi100 stocks
+about as well as it ranks csi300 stocks by IC, but that ranking quality does not survive the TopkDropout
+backtest on the smaller universe. And there is a second, quieter signal in the numbers: the tree's IC
+sits in the high-0.03s on the two csi300 universes, which is decent but not the ceiling — the LightGBM run
+is deterministic (all three seeds identical), so there is no variance to blame; this is simply the
+ranking quality a per-row tabular view of the window can extract. The tree threw away the temporal
+structure of the 60×6 window, and on csi100 especially that lost structure is leaving ranking quality on
+the table that a model *aware* of the time axis could recover.
+
+So the directed move is to go back to a sequence model — but emphatically *not* the brittle transformer.
+The transformer's failure was never its inductive bias; it was that its training was a high-wire act
+(warmup-less Adam, init sensitivity, patience-5). I want the temporal inductive bias *with* the
+optimization robustness the tree showed me matters most on this data. A recurrent net trained at a
+healthy learning rate with generous early-stop patience is exactly that compromise: it reads the window
+as a sequence, but it trains the way the tree was robust — no warmup needed, no delicate schedule. The
+question is which recurrence, and here I have to be careful, because the obvious one fails for a reason I
+can write down.
+
+Take a plain recurrent net first, so I understand why it is not enough. Its state is `h_t = f(h_{t-1},
+x_t)`, and I want a feature from day 1 of the window to be able to influence the read-out at day 60.
+Follow a single error signal backward through the sixty steps. The error that lands on a unit at the end
+and reaches a unit `q` steps earlier is, telescoped, a *product* of `q` factors, each of the form
+`f'(net)·w`. With the logistic squashing the derivative peaks at 0.25, so each factor is below 1 whenever
+`|w| < 4` — and any reasonable weight is — so the product over `q` steps decays geometrically. The
+gradient from sixty days ago is exponentially attenuated by the time it reaches the read-out, and bigger
+weights only push the unit toward saturation where `f'` collapses faster than `w` grows, so they make it
+worse, not better. A bigger learning rate scales long-range and short-range credit identically, so the
+*ratio* is unchanged and the recent days still dominate every update. The vanishing is structural — the
+lag sits in the exponent, and no ordinary knob touches it. So a plain RNN over a 60-step window would
+learn mostly from the last few days and be nearly as blind to day 1 as the tree was, just for a different
+reason. That is not the fix I want.
+
+The cure has to make the product over the lag *not* shrink — ideally exactly 1 for any `q`. In the
+simplest setting, a single unit with a self-connection of weight `w_jj`, the per-step backward factor is
+`f'(net)·w_jj`, and demanding it equal 1 forces `f'(net) = 1/w_jj`, a constant — the squashing must be
+*linear*. Take the cleanest case, the identity with `w_jj = 1`: now the activation simply *persists*
+unchanged step to step, and the backpropagated error riding through it is multiplied by exactly 1 each
+step. A linear self-loop of weight one — a constant error carousel — is a channel down which gradient
+survives an arbitrarily long lag. That is the seed.
+
+But a bare carousel cannot be wired to the rest of the net without two conflicts appearing. A single
+incoming weight has to do two opposed jobs: at the moment the relevant day's information arrives it must
+let it *in* (write to memory), but on all the other days it must *not* let irrelevant inputs overwrite
+what is stored (protect). One weight receiving contradictory update signals — the input weight conflict.
+The mirror image is on the output side: one outgoing weight must release the stored content when it is
+needed and protect the downstream units from it when it is not — the output weight conflict. A static
+weight cannot resolve either, because it is one number and cannot be context-sensitive. But another
+*unit* can be context-sensitive, and a *multiplicative* gate can do what an additive bias cannot: a
+control in `[0,1]` multiplying the input can zero an irrelevant signal *completely* (perfect protection)
+or pass it through entirely. So wrap the carousel in multiplicative gates that are themselves learned
+sigmoid units reading the rest of the net: an input gate deciding when to write, an output gate deciding
+when to read. And a third issue — on a stream that is never reset the linear state accumulates without
+bound and the output squashing saturates — is fixed by a forget gate multiplying the carried state, which
+recovers the exact carousel when it is open (weight 1) and lets the cell reset itself when it is closed.
+
+That gives the gated memory cell, which in compact form is `i_t = σ(W_ix x_t + W_ih h_{t-1} + b_i)`,
+`f_t = σ(...)`, `g_t = tanh(...)`, `c_t = f_t ⊙ c_{t-1} + i_t ⊙ g_t` (the carousel, now gated),
+`o_t = σ(...)`, `h_t = o_t ⊙ tanh(c_t)`. The backward pass carries the state error as
+`ε_s^t = o_t ⊙ tanh'(c_t) ⊙ ε_h^t + f_{t+1} ⊙ ε_s^{t+1}` — when the forget gate is near 1, the state
+error flows back across the lag at unit gain, the constant carousel as a statement about gradients. So
+over the 60-day window, a feature from day 1 can influence the day-60 read-out *and* its gradient can
+flow back to day 1 undamped, which is precisely the temporal credit the tree could not assign and the
+plain RNN would have lost to the vanishing product. This is the right recurrence.
+
+Now ground it in this task's edit surface, because there is a same-named subtlety I must respect. This
+rung uses qlib's **non-TS** LSTM, wired to the ordinary `DatasetH` (not `TSDatasetH`). That means each
+training sample is *still* the flat 360-dim Alpha360 row — the same rows the tree saw — and the time axis
+is recovered *inside* the model by `x.reshape(N, 6, 60).permute(0, 2, 1) -> [N, 60, 6]`, not by the
+dataset handing over genuine overlapping time-series windows. So the LSTM here is reconstructing the
+60-step sequence from the same flat feature vector the tree treated as tabular; the difference is purely
+that the LSTM *interprets* those 360 numbers as a 60×6 sequence and runs the gated recurrence over it,
+while the tree saw 360 unordered columns. I run two LSTM layers (`num_layers=2`) of `hidden_size=64`
+stacked, take the final step's hidden state — the cell's summary of the whole window conditioned on the
+most recent day — and read it through a `Linear(64, 1)` to one score. The width 64 and depth 2 are again
+modest by design: on a low-signal regression the danger is fitting noise, and a compact recurrent net is
+a regularizer, the same logic that drove the narrow transformer and the heavily-penalized trees.
+
+The training loop is where this rung deliberately differs from the transformer rung, and it is the whole
+point. Adam at `lr = 1e-3` — *ten times* the transformer's `1e-4` — because the LSTM is far less
+initialization-sensitive than the attention stack and can take a healthy step from the start; no warmup
+schedule is needed. Early-stop patience is `20`, four times the transformer's 5, so the run is not cut
+off on a noisy validation dip the way I suspect the transformer was. Batch size 800, MSE loss masked over
+the finite labels, gradient value-clipped at 3.0 — the clip is the one nod to the *exploding* side of the
+error-flow analysis, capping a parameter update without touching the cell equations. Up to 200 epochs,
+restoring the best-validation parameters. Every one of these choices is the robustness lesson from the
+tree applied to a sequence model: train it the forgiving way, not the high-wire way.
+
+One processor note, because it is the inverse of the lgbm rung's edit and I should not get it backwards.
+The LSTM, like the transformer, is a gradient-descent model that needs standardized inputs to train
+stably, so this rung *keeps* the default workflow processor block — `RobustZScoreNorm` + `Fillna` on the
+features — exactly as the transformer rung did, and does *not* strip it the way the tree rung did. The
+neural preprocessing that I removed for the trees is the preprocessing the LSTM depends on. (The full
+scaffold module is in the answer.)
+
+So the delta from the LightGBM rung is: keep the optimization robustness that made the tree beat the
+transformer, but restore the temporal inductive bias the tree discarded — interpret the same 360 numbers
+as a 60×6 sequence and run a gated memory cell over it so a day at the start of the window can both
+influence and receive gradient from the end, trained at a healthy learning rate with generous patience
+and the neural feature normalization the tree did not need.
+
+What do I expect against the measured numbers, and what is falsifiable? The cleanest claim is on csi300:
+the LSTM should beat both prior rungs on IC and IR together — IC above the tree's 0.0399 (toward the
+mid-0.04s) and IR well above the tree's 0.280, because the temporal credit assignment should sharpen the
+ranking and the forgiving training should let it actually converge, unlike the transformer. If the
+csi300 IR does not clear the tree's 0.280, the temporal bias did not pay and the tree's robust tabular
+view was already extracting most of the signal. The sharper, more uncertain test is csi100: that is where
+the tree had a fine IC but a *negative* IR, the universe where ranking quality failed to survive the
+backtest. If the LSTM's temporal awareness genuinely produces a better-ordered ranking, csi100's IR
+should improve over the tree's −0.334 — but I am honestly unsure it will turn positive, because csi100's
+problem may be structural (a small universe where holding 50 of 100 names and churning 5 a day is
+punishing regardless of signal quality) rather than a signal-quality problem the LSTM can fix; if csi100
+stays negative even as its IC improves, that confirms the csi100 weakness is a portfolio-construction
+artifact, not a model failure. On csi300_recent I expect the LSTM to at least match the tree's positive
+IR. The single number I will judge this rung on is the csi300 information ratio against the tree's 0.280:
+clearing it decisively is the evidence that bringing back the time axis — done robustly — was the right
+top of the ladder.
+</think>
+<say>
+[[FILL_SAY: 1-2 sentences naming the method and what this first edit does]]
+</say>
+<edit path="qlib/custom_model.py">
+<old>
+# =====================================================================
+class CustomModel(Model):
+    """LightGBM model — faithful to qlib's official LGBModel (gbdt.py).
+
+    Hyperparameters from official Alpha360 benchmark:
+    examples/benchmarks/LightGBM/workflow_config_lightgbm_Alpha360.yaml
+    """
+</old>
+<new>
+# =====================================================================
+import copy
+import torch.optim as optim
+
+
+class LSTMModel(nn.Module):
+    """LSTM network — verbatim from qlib/contrib/model/pytorch_lstm.py."""
+
+    def __init__(self, d_feat=6, hidden_size=64, num_layers=2, dropout=0.0):
+        super().__init__()
+        self.rnn = nn.LSTM(
+            input_size=d_feat,
+            hidden_size=hidden_size,
+            num_layers=num_layers,
+            batch_first=True,
+            dropout=dropout,
+        )
+        self.fc_out = nn.Linear(hidden_size, 1)
+        self.d_feat = d_feat
+
+    def forward(self, x):
+        # x: [N, F*T] — Alpha360 gives 360 flat features
+        x = x.reshape(len(x), self.d_feat, -1)  # [N, F, T]
+        x = x.permute(0, 2, 1)  # [N, T, F]
+        out, _ = self.rnn(x)
+        return self.fc_out(out[:, -1, :]).squeeze()
+
+
+class CustomModel(Model):
+    """LSTM model — faithful to qlib's official LSTM (pytorch_lstm.py).
+
+    Uses DatasetH with Alpha360 features. The LSTMModel reshapes the flat
+    360-dim feature vector internally: [N, 360] -> [N, 6, 60] -> [N, 60, 6].
+
+    Hyperparameters from official benchmark:
+    examples/benchmarks/LSTM/workflow_config_lstm_Alpha360.yaml
+    """
+</new>
+</edit>
+<obs>
+Successfully replaced text in qlib/custom_model.py.
+</obs>
+<note>
+[[FILL_NOTE?: optional one-line thought for this edit, or delete this block]]
+</note>
+<edit path="qlib/custom_model.py">
+<old>
+        super().__init__()
+        # Official Alpha360 benchmark kwargs (passed to lgb.train via self.params)
+        self.params = {
+            "objective": "mse",
+            "colsample_bytree": 0.8879,
+            "learning_rate": 0.0421,
+            "subsample": 0.8789,
+            "lambda_l1": 205.6999,
+            "lambda_l2": 580.9768,
+            "max_depth": 8,
+            "num_leaves": 210,
+            "num_threads": 20,
+            "verbosity": -1,
+        }
+        self.early_stopping_rounds = 50
+        self.num_boost_round = 1000
+        self.model = None
+
+    def _prepare_data(self, dataset):
+        """Prepare LightGBM datasets — matches LGBModel._prepare_data()."""
+        import lightgbm as lgb
+
+        ds_l = []
+        for key in ["train", "valid"]:
+            if key in dataset.segments:
+                df = dataset.prepare(
+                    key, col_set=["feature", "label"], data_key=DataHandlerLP.DK_L
+                )
+                if df.empty:
+                    raise ValueError(
+                        "Empty data from dataset, please check your dataset config."
+                    )
+                x, y = df["feature"], df["label"]
+                # Lightgbm need 1D array as its label
+                if y.values.ndim == 2 and y.values.shape[1] == 1:
+                    y = np.squeeze(y.values)
+                else:
+                    raise ValueError(
+                        "LightGBM doesn't support multi-label training"
+                    )
+                ds_l.append(
+                    (lgb.Dataset(x.values, label=y, free_raw_data=False), key)
+                )
+        return ds_l
+
+    def fit(self, dataset: DatasetH):
+        import lightgbm as lgb
+
+        ds_l = self._prepare_data(dataset)
+        ds, names = list(zip(*ds_l))
+        early_stopping_callback = lgb.early_stopping(
+            self.early_stopping_rounds
+        )
+        verbose_eval_callback = lgb.log_evaluation(period=20)
+        evals_result = {}
+        evals_result_callback = lgb.record_evaluation(evals_result)
+        self.model = lgb.train(
+            self.params,
+            ds[0],  # training dataset
+            num_boost_round=self.num_boost_round,
+            valid_sets=ds,
+            valid_names=names,
+            callbacks=[
+                early_stopping_callback,
+                verbose_eval_callback,
+                evals_result_callback,
+            ],
+        )
+
+    def predict(self, dataset: DatasetH, segment="test"):
+        if self.model is None:
+            raise ValueError("model is not fitted yet!")
+        x_test = dataset.prepare(
+            segment, col_set="feature", data_key=DataHandlerLP.DK_I
+        )
+        return pd.Series(self.model.predict(x_test.values), index=x_test.index)
+</old>
+<new>
+        super().__init__()
+        # Official Alpha360 benchmark hyperparameters
+        self.d_feat = 6
+        self.hidden_size = 64
+        self.num_layers = 2
+        self.dropout = 0.0
+        self.n_epochs = 200
+        self.lr = 0.001
+        self.metric = "loss"
+        self.batch_size = 800
+        self.early_stop = 20
+        self.loss = "mse"
+        self.device = torch.device(
+            "cuda:0" if torch.cuda.is_available() else "cpu"
+        )
+
+        self.lstm_model = LSTMModel(
+            d_feat=self.d_feat,
+            hidden_size=self.hidden_size,
+            num_layers=self.num_layers,
+            dropout=self.dropout,
+        ).to(self.device)
+        self.train_optimizer = optim.Adam(
+            self.lstm_model.parameters(), lr=self.lr
+        )
+        self.fitted = False
+
+    @property
+    def use_gpu(self):
+        return self.device != torch.device("cpu")
+
+    def mse(self, pred, label):
+        loss = (pred - label) ** 2
+        return torch.mean(loss)
+
+    def loss_fn(self, pred, label):
+        mask = ~torch.isnan(label)
+        if self.loss == "mse":
+            return self.mse(pred[mask], label[mask])
+        raise ValueError("unknown loss `%s`" % self.loss)
+
+    def metric_fn(self, pred, label):
+        mask = torch.isfinite(label)
+        if self.metric in ("", "loss"):
+            return -self.loss_fn(pred[mask], label[mask])
+        raise ValueError("unknown metric `%s`" % self.metric)
+
+    def train_epoch(self, x_train, y_train):
+        x_train_values = x_train.values
+        y_train_values = np.squeeze(y_train.values)
+
+        self.lstm_model.train()
+
+        indices = np.arange(len(x_train_values))
+        np.random.shuffle(indices)
+
+        for i in range(len(indices))[:: self.batch_size]:
+            if len(indices) - i < self.batch_size:
+                break
+
+            feature = (
+                torch.from_numpy(x_train_values[indices[i : i + self.batch_size]])
+                .float()
+                .to(self.device)
+            )
+            label = (
+                torch.from_numpy(y_train_values[indices[i : i + self.batch_size]])
+                .float()
+                .to(self.device)
+            )
+
+            pred = self.lstm_model(feature)
+            loss = self.loss_fn(pred, label)
+
+            self.train_optimizer.zero_grad()
+            loss.backward()
+            torch.nn.utils.clip_grad_value_(self.lstm_model.parameters(), 3.0)
+            self.train_optimizer.step()
+
+    def test_epoch(self, data_x, data_y):
+        x_values = data_x.values
+        y_values = np.squeeze(data_y.values)
+
+        self.lstm_model.eval()
+
+        scores = []
+        losses = []
+
+        indices = np.arange(len(x_values))
+
+        for i in range(len(indices))[:: self.batch_size]:
+            if len(indices) - i < self.batch_size:
+                break
+
+            feature = (
+                torch.from_numpy(x_values[indices[i : i + self.batch_size]])
+                .float()
+                .to(self.device)
+            )
+            label = (
+                torch.from_numpy(y_values[indices[i : i + self.batch_size]])
+                .float()
+                .to(self.device)
+            )
+
+            pred = self.lstm_model(feature)
+            loss = self.loss_fn(pred, label)
+            losses.append(loss.item())
+
+            score = self.metric_fn(pred, label)
+            scores.append(score.item())
+
+        return np.mean(losses), np.mean(scores)
+
+    def fit(self, dataset: DatasetH):
+        df_train, df_valid, df_test = dataset.prepare(
+            ["train", "valid", "test"],
+            col_set=["feature", "label"],
+            data_key=DataHandlerLP.DK_L,
+        )
+        if df_train.empty or df_valid.empty:
+            raise ValueError(
+                "Empty data from dataset, please check your dataset config."
+            )
+
+        x_train, y_train = df_train["feature"], df_train["label"]
+        x_valid, y_valid = df_valid["feature"], df_valid["label"]
+
+        stop_steps = 0
+        best_score = -np.inf
+        best_epoch = 0
+        best_param = None
+
+        self.fitted = True
+
+        for step in range(self.n_epochs):
+            self.train_epoch(x_train, y_train)
+            train_loss, train_score = self.test_epoch(x_train, y_train)
+            val_loss, val_score = self.test_epoch(x_valid, y_valid)
+            print(
+                "Epoch%d: train %.6f, valid %.6f"
+                % (step, train_score, val_score)
+            )
+
+            if val_score > best_score:
+                best_score = val_score
+                stop_steps = 0
+                best_epoch = step
+                best_param = copy.deepcopy(self.lstm_model.state_dict())
+            else:
+                stop_steps += 1
+                if stop_steps >= self.early_stop:
+                    print("early stop")
+                    break
+
+        print("best score: %.6lf @ %d" % (best_score, best_epoch))
+        self.lstm_model.load_state_dict(best_param)
+
+        if self.use_gpu:
+            torch.cuda.empty_cache()
+
+    def predict(self, dataset: DatasetH, segment="test"):
+        if not self.fitted:
+            raise ValueError("model is not fitted yet!")
+
+        x_test = dataset.prepare(
+            segment, col_set="feature", data_key=DataHandlerLP.DK_I
+        )
+        index = x_test.index
+        self.lstm_model.eval()
+        x_values = x_test.values
+        sample_num = x_values.shape[0]
+        preds = []
+
+        for begin in range(sample_num)[:: self.batch_size]:
+            if sample_num - begin < self.batch_size:
+                end = sample_num
+            else:
+                end = begin + self.batch_size
+            x_batch = (
+                torch.from_numpy(x_values[begin:end]).float().to(self.device)
+            )
+            with torch.no_grad():
+                pred = self.lstm_model(x_batch).detach().cpu().numpy()
+            preds.append(pred)
+
+        return pd.Series(np.concatenate(preds), index=index)
+</new>
+</edit>
+<obs>
+Successfully replaced text in qlib/custom_model.py.
+</obs>
+<run/>
+<obs>
+Measured results — `baseline:lstm` (`is_final,true`), seed 42.
+
+## csi300
+| metric | value |
+|---|---|
+| IC | 0.047272 |
+| ICIR | 0.369796 |
+| Rank IC | 0.057919 |
+| Rank ICIR | 0.466506 |
+| annualized return | 0.084778 |
+| max drawdown | −0.103712 |
+| information ratio | 1.031259 |
+
+## csi100
+| metric | value |
+|---|---|
+| IC | 0.039063 |
+| ICIR | 0.213268 |
+| Rank IC | 0.043757 |
+| Rank ICIR | 0.245964 |
+| annualized return | −0.015832 |
+| max drawdown | −0.176103 |
+| information ratio | −0.258165 |
+
+## csi300_recent
+| metric | value |
+|---|---|
+| IC | 0.030693 |
+| ICIR | 0.238247 |
+| Rank IC | 0.042621 |
+| Rank ICIR | 0.313294 |
+| annualized return | 0.069609 |
+| max drawdown | −0.068940 |
+| information ratio | 0.884562 |
+</obs>
+

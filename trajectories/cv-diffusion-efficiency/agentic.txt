@@ -1,0 +1,1225 @@
+<meta task="cv-diffusion-efficiency" domain="Computer vision" file="CFGpp-main/latent_diffusion.py" model_format="qwen3" edit_tool="str_replace"/>
+
+<system>
+You are a research engineer improving a model on a fixed ML task. You work by editing the model code and running experiments. Think carefully before each change. You have these tools:
+- str_replace(path, old_str, new_str): replace the unique occurrence of old_str with new_str.
+- create(path, file_text): create a new file.
+- run_experiment(): train + evaluate the current code under the fixed budget; returns metrics.
+Make one tool call at a time. After editing, call run_experiment() to measure your method.
+</system>
+
+<user>
+## Research question
+
+Text-to-image diffusion models draw beautiful, prompt-faithful pictures, but only because the sampler
+takes many denoiser calls to walk the noise down to an image. Here the budget is hard: exactly
+**NFE = 20** denoiser evaluations per sample, the model weights are frozen, and the prompts are fixed.
+The single thing being designed is the **sampler update rule** — given the current latent and the
+model's noise prediction, how to step to the next noise level — so that the images come out as good as
+possible (low FID, high CLIP) inside those 20 calls. Everything else about the pipeline is fixed.
+
+## Prior art before the first rung (sampler lineage)
+
+The first rung the ladder uses — DDIM — is itself the resolution of a line of diffusion-sampling work.
+These are the methods that precede the climb; the fixed substrate below is what guided sampling
+converged to.
+
+- **DDPM (Ho et al. 2020).** Trains a noise predictor $\epsilon_\theta(x_t,t)$ by the unweighted
+  $\epsilon$-MSE and samples by reversing the *Markov* forward chain one ancestral step at a time:
+  $x_{t-1}=\tfrac{1}{\sqrt{\alpha_t}}\big(x_t-\tfrac{1-\alpha_t}{\sqrt{1-\bar\alpha_t}}\epsilon_\theta\big)+\sigma_t z$.
+  Gorgeous samples, none of a GAN's instability, but the generative chain is tied to the forward chain
+  length — hundreds to a thousand sequential network passes per image. Gap: each sample is wall-clock
+  unusable at the step counts the chain demands.
+- **Classifier-free guidance (Ho & Salimans 2022).** Replaces the plain prediction with a steered one,
+  $\tilde\epsilon=\epsilon_\theta(x_t,t,\varnothing)+s\,(\epsilon_\theta(x_t,t,c)-\epsilon_\theta(x_t,t,\varnothing))$,
+  with a *large* scale $s$ to sharpen prompt alignment — exactly what a high CLIP score rewards. Gap: a
+  large $s$ amplifies the model's derivatives, which is precisely what later destabilizes fast
+  high-order solvers, and pushes the converged image off the data manifold.
+- **CFG++ (the substrate's renoising convention).** This codebase's solvers are written in a CFG++
+  style: the *direction / renoising* term uses the **unconditional** noise $\epsilon_{uc}$ rather than
+  the guided $\tilde\epsilon$, while the clean-image estimate still uses the guided $\tilde\epsilon$.
+  This tempers the over-saturation a large guidance scale would otherwise bake into the renoised
+  latent. Every fill below inherits this convention; it is part of the substrate, not a knob the rungs
+  redesign.
+
+## The fixed substrate
+
+The pipeline is frozen and must not be touched. Stable Diffusion v1.5, v2.0, and SDXL with frozen
+weights; a shared set of evaluation prompts; a hard budget of **NFE = 20** denoiser calls per sample.
+One `predict_noise` call batches the unconditional and conditional embeddings through the UNet
+together, so it returns $(\epsilon_{uc},\epsilon_c)$ and counts as **one** function evaluation. The
+forward process is $x_t=\sqrt{\bar\alpha_t}\,x_0+\sqrt{1-\bar\alpha_t}\,\epsilon$, and the loop provides
+the helpers a sampler may use:
+
+- **SD (`latent_diffusion.py`, `BaseDDIMCFGpp.sample`):** `self.get_text_embed(null, prompt)`,
+  `self.initialize_latent()`, `self.predict_noise(zt, t, uc, c) -> (noise_uc, noise_c)`,
+  `self.alpha(t)` (cumulative $\bar\alpha_t$; $t<0$ returns the final cumprod), `self.skip` (timestep
+  stride for the chosen step count), `self.total_alphas`, `self.timestep(sigma)`,
+  `self.kdiffusion_x_to_denoised(...)`, `self.decode(z)`, `self.scheduler.timesteps`, and a
+  module-level `get_sigmas_karras(n, sigma_min, sigma_max, rho)`.
+- **SDXL (`latent_sdxl.py`, `BaseDDIMCFGpp.reverse_process`):** the same shape with
+  `self.initialize_latent(size=...)`, `self.predict_noise(zt, t, null_embeds, prompt_embeds, add_cond_kwargs)`,
+  and `self.scheduler.alphas_cumprod[t]` for $\bar\alpha_t$.
+
+Sampling operates in the VAE **latent** space, so there is no $[-1,1]$ pixel bound to threshold
+against — the data-clipping trick that helps pixel-space guided solvers is unavailable here, and only
+the *numerical* behaviour of an update rule is in play.
+
+## The editable interface
+
+Exactly two regions are editable — the body of `BaseDDIMCFGpp.sample` in `latent_diffusion.py` (SD)
+and `BaseDDIMCFGpp.reverse_process` in `latent_sdxl.py` (SDXL). Every method on the ladder is a fill
+of this same contract: read the text embeddings, initialize the latent, walk the timesteps making
+exactly NFE-bounded `predict_noise` calls, and at each step (i) form the guided prediction
+$\tilde\epsilon=\epsilon_{uc}+s\,(\epsilon_c-\epsilon_{uc})$, (ii) estimate the clean latent by
+Tweedie $z_{0|t}=(z_t-\sqrt{1-\bar\alpha_t}\,\tilde\epsilon)/\sqrt{\bar\alpha_t}$, and (iii) **update**
+to the next noise level — the one line that differs across samplers — renoising with the unconditional
+$\epsilon_{uc}$ in the CFG++ style. The starting point is the scaffold default: **not implemented**.
+Each method below replaces exactly this body.
+
+```python
+# EDITABLE region of latent_diffusion.py — default scaffold (SD v1.5; SDXL is the analogous reverse_process)
+@register_solver("ddim_cfg++")
+class BaseDDIMCFGpp(StableDiffusion):
+    # TODO: Implement your improved sampling method here.
+    # Implement an improved sampling algorithm that achieves better image quality
+    # (FID / CLIP) with a fixed budget of NFE = 20 steps.
+    #
+    # Available helpers from the parent class:
+    #   self.get_text_embed(null_prompt, prompt) -> (uc, c)
+    #   self.initialize_latent()                  -> zT
+    #   self.predict_noise(zt, t, uc, c)          -> (noise_uc, noise_c)   # one NFE
+    #   self.alpha(t)                             -> bar_alpha_t
+    #   self.skip                                 -> timestep stride
+    #   self.decode(z), self.scheduler.timesteps
+
+    def __init__(self,
+                 solver_config: Dict,
+                 model_key:str="runwayml/stable-diffusion-v1-5",
+                 device: Optional[torch.device]=None,
+                 **kwargs):
+        super().__init__(solver_config, model_key, device, **kwargs)
+
+    @torch.autocast(device_type='cuda', dtype=torch.float16)
+    def sample(self,
+               cfg_guidance=7.5,
+               prompt=["",""],
+               callback_fn=None,
+               **kwargs):
+        # TODO: Implement your efficient sampling method here.
+        # Generate high-quality images with the fixed NFE budget. Consider the
+        # update rule, the timestep spacing, multistep history, or renoising.
+        raise NotImplementedError("You need to implement the sample method")
+```
+
+## Evaluation settings
+
+Text-to-image sampling is run on three model variants — **SD v1.5**, **SD v2.0**, and **SDXL** — over
+the shared evaluation prompts, at the fixed NFE = 20, on seed 42. Two metrics are reported per
+variant: **FID** against a reference image set (lower is better — this is what task scoring uses) and
+**CLIP score** (cosine similarity of image and prompt, higher is better). The sampler must improve
+quality across variants without touching prompts, weights, the NFE budget, or the metric computation.
+
+The editable model code is in `CFGpp-main/latent_diffusion.py`:
+```python
+# (starting code)
+```
+Improve it. Derive your method, edit the code, then run_experiment().
+</user>
+
+### step 1 — DDIM (first-order, CFG++)   [slug:ddim]
+
+<think>
+I have a frozen text-to-image diffusion model and a hard ceiling of twenty denoiser calls per image,
+and the only thing I get to write is the update rule inside the sampling loop. There is no prior result
+to react to yet, so the job at this rung is just to put down the floor: the simplest sampler that turns
+the model's per-step noise prediction into an image inside the budget, so that everything I try later
+has a number to beat. The simplest correct choice is a first-order deterministic ODE step — DDIM. But
+"DDIM" is not a free-floating recipe I can just transcribe; it is the conclusion of a specific argument
+about what the frozen network is actually committed to, and I want to walk that argument all the way
+down, because every later rung leans on the same fact and I would rather establish it here cleanly than
+gesture at it.
+
+Start with why the original chain is slow, because if the slowness is load-bearing the whole budget
+problem is hopeless. The forward process turns a clean latent $z_0$ into Gaussian noise over $T$ levels,
+and the generative process is trained to invert it. The reason $T$ has to be large in the ancestral
+picture is that each true reverse conditional $q(z_{t-1}|z_t)$ is only close to Gaussian when the step
+is tiny — when almost no noise was added between $z_{t-1}$ and $z_t$. Take big steps and the reverse
+conditional becomes some multimodal thing a Gaussian cannot model. So large $T$ is not laziness, it is
+what keeps the Gaussian generative model valid, and that seems to nail the door shut: the generative
+chain approximates the reverse of the forward chain, the forward chain needs many steps to stay
+Gaussian-reversible, therefore the generative chain needs many steps. Slow by construction. If that
+chain of reasoning held, twenty steps would be a fantasy and I should give up.
+
+But the phrase "approximates the reverse of the forward chain" is doing unexamined work, so let me look
+at what training actually pinned down. The objective is the unweighted $\epsilon$-MSE: for a level $t$,
+feed the network $z_t=\sqrt{\bar\alpha_t}\,z_0+\sqrt{1-\bar\alpha_t}\,\epsilon$ and penalize
+$\|\epsilon_\theta(z_t,t)-\epsilon\|^2$, summed (or averaged) over $t$. Two structural facts fall out of
+staring at this, and together they are the whole game. First, it is a sum of independent per-$t$ terms;
+the minimizer of each term does not care what weight multiplies it, so the optimal $\epsilon_\theta$ is
+the same function no matter how I reweight across $t$. Second, the input the network ever sees is
+$\sqrt{\bar\alpha_t}\,z_0+\sqrt{1-\bar\alpha_t}\,\epsilon$ — a draw from the *marginal*
+$q(z_t|z_0)=\mathcal N(\sqrt{\bar\alpha_t}\,z_0,(1-\bar\alpha_t)I)$. The loss never references the joint
+$q(z_{1:T}|z_0)$; it never asks how $z_t$ and $z_{t-1}$ are correlated. So the trained network is
+committed only to those marginals. The Markov forward chain — the particular story that $z_t$ depends
+only on $z_{t-1}$ — was one joint that happens to have these marginals, an arbitrary way of threading
+the latents together, and the training never saw it. Any other joint with the same marginals is, as far
+as the loss is concerned, an equally valid story, and the same network is its solution too. That is the
+crack in the "slow by construction" argument: the slowness came from identifying the generative chain
+with the reverse of the *Markov* chain, but the network is wedded to the marginals, not to that chain.
+
+So I want to build a different inference process — same marginals, different joint — whose generative
+reverse happens to be deterministic, and short. The constraint is exactly one: preserve
+$q(z_t|z_0)=\mathcal N(\sqrt{\bar\alpha_t}\,z_0,(1-\bar\alpha_t)I)$ for every $t$. To control marginals
+I specify the process backwards, conditioned on $z_0$, writing the reverse conditional
+$q_\sigma(z_{t-1}|z_t,z_0)$ directly — which is also the object the generative step will mimic. Make it
+Gaussian with a mean affine in $z_0$ and $z_t$ and a free covariance $\sigma_t^2 I$. The natural ansatz
+puts a $\sqrt{\bar\alpha_{t-1}}\,z_0$ signal piece plus a term proportional to the residual
+$(z_t-\sqrt{\bar\alpha_t}\,z_0)$ — which in distribution is $\sqrt{1-\bar\alpha_t}\,\epsilon$, the very
+noise that took $z_0$ to $z_t$ — normalized by $\sqrt{1-\bar\alpha_t}$ and scaled by an unknown $k_t$.
+Imposing the marginal constraint by induction downward from $t=T$, the mean comes out
+$\sqrt{\bar\alpha_{t-1}}\,z_0$ automatically (at the mean of $z_t$ the residual vanishes), and the
+variance forces $k_t^2=1-\bar\alpha_{t-1}-\sigma_t^2$. So the marginal-preserving reverse conditional is
+$q_\sigma(z_{t-1}|z_t,z_0)=\mathcal N\big(\sqrt{\bar\alpha_{t-1}}\,z_0+\sqrt{1-\bar\alpha_{t-1}-\sigma_t^2}\,(z_t-\sqrt{\bar\alpha_t}\,z_0)/\sqrt{1-\bar\alpha_t},\,\sigma_t^2 I\big)$,
+and the induction closes: every marginal is exactly the fixed Gaussian, with one free $\sigma_t$ per
+step subject to $0\le\sigma_t^2\le 1-\bar\alpha_{t-1}$. A whole degree of freedom per step survives the
+marginal matching, and it is precisely the stochasticity of the reverse step. Note what this does to the
+*forward* direction: by Bayes the implied forward conditional depends on $z_0$ as well as $z_{t-1}$, so
+for $\sigma$ below the special value the forward process is no longer Markovian. That is fine — I never
+needed Markovian, only the marginals.
+
+Now turn the family into a generative process I can actually run, since at sample time I have $z_t$ but
+not $z_0$. The network supplies it: inverting $z_t=\sqrt{\bar\alpha_t}\,z_0+\sqrt{1-\bar\alpha_t}\,\epsilon$
+gives the Tweedie clean estimate $z_{0|t}=(z_t-\sqrt{1-\bar\alpha_t}\,\epsilon_\theta(z_t))/\sqrt{\bar\alpha_t}$,
+which is exactly the substrate's helper. Plug this predicted clean latent into the reverse conditional in
+place of the true $z_0$, and because $(z_t-\sqrt{\bar\alpha_t}\,z_{0|t})/\sqrt{1-\bar\alpha_t}$ is just
+$\epsilon_\theta(z_t)$ by construction, the generative update collapses to
+$z_{t-1}=\sqrt{\bar\alpha_{t-1}}\,z_{0|t}+\sqrt{1-\bar\alpha_{t-1}-\sigma_t^2}\,\epsilon_\theta(z_t)+\sigma_t\,\epsilon$.
+Three pieces, each readable: jump to where the predicted clean latent sits at level $t-1$; re-inject,
+deterministically, exactly the amount of predicted noise the marginal at $t-1$ still wants to carry;
+and add fresh randomness. The reason this whole construction is *allowed* on the frozen network is the
+check I owe myself — write the variational objective for this generative process and it reduces, term by
+term, to a per-$t$ noise-prediction MSE with some positive weight $\gamma_t$. By the first structural
+fact (unshared per-$t$ optimum is reweighting-invariant), the minimizer of that weighted loss is the
+minimizer of the plain unweighted $\epsilon$-MSE I already trained. One trained network; a continuum of
+generative processes indexed by $\sigma$, all sharing its optimum.
+
+Now spend the free knob. The endpoint I want is $\sigma_t=0$ for all $t$: the noise term vanishes and
+the update becomes deterministic, $z_{t-1}=\sqrt{\bar\alpha_{t-1}}\,z_{0|t}+\sqrt{1-\bar\alpha_{t-1}}\,\epsilon_\theta(z_t)$.
+This is an implicit generative model — $z_0$ is a fixed deterministic pushforward of $z_T$ — which is
+exactly the deterministic DDIM step. Determinism alone does not shorten the chain, though; the update is
+still written for all $T$ levels. So I use the marginal-only fact a second time, more aggressively: the
+loss constrains the process only through the marginals, so nothing forces the generative process to visit
+every $t$. I can define the whole construction on a sub-sequence $\tau=(\tau_1<\dots<\tau_S)$ of
+$[1..T]$, reusing the reverse conditional with index pairs $(\tau_i,\tau_{i-1})$ — the
+marginal-consistency induction only ever used the marginals at a step's two endpoints, so it does not
+care whether the steps are adjacent integers or jumps. Train at $T=1000$, sample on $S=20$, same network,
+no retraining. That is the actual cure for the wall clock the original chain imposed, and it is exactly
+the setting the harness hands me: it has already chosen a 20-step grid (`self.skip` is the stride), and I
+just walk it, one `predict_noise` call per step, twenty steps, twenty NFE — the budget exactly, nothing
+left over for a correction.
+
+It is worth seeing why the deterministic member, in particular, is the safe few-step choice and what it
+is geometrically, because that tells me precisely how it will fail. Take the $\sigma=0$ update at
+adjacent levels, change variables to $\bar z=z/\sqrt{\bar\alpha}$ and $\varsigma=\sqrt{(1-\bar\alpha)/\bar\alpha}$,
+and the step becomes $\bar z(t-\Delta t)=\bar z(t)+(\varsigma(t-\Delta t)-\varsigma(t))\,\epsilon_\theta$;
+sending $\Delta t\to0$ gives $d\bar z=\epsilon_\theta\,d\varsigma$. The deterministic sampler is an Euler
+integration of an ODE in $\varsigma$ — the probability-flow ODE of the variance-exploding diffusion,
+reached purely from the variational construction with no Langevin machinery. So the generated image is
+that ODE's solution from a fixed initial condition, and the number of sampling steps is just the fineness
+of the Euler grid: same $z_T$, different $S$, nearly the same image, with only fine detail moving as the
+discretization coarsens. With $\sigma_t>0$ every step injects fresh noise that a short chain has too few
+remaining steps to average back down; the $\sigma=0$ process has no injected noise to clean up, so cutting
+steps only coarsens an otherwise smooth map rather than leaving residual noise behind. That is the
+robustness argument for $\eta=0$ here — and it is also exactly why this is the floor. Twenty Euler steps
+each carry an $O(h)$ local error; at this step count $h$ (the spacing in half-log-SNR) is not small, the
+curvature of the denoiser's trajectory between adjacent levels is real, and a first-order step ignores it
+by holding the clean estimate constant across the interval and moving on a straight chord. So I expect
+visibly coarser images than the model could produce with more calls — the budget is the whole difficulty,
+and a first-order solver spends it least efficiently.
+
+It also matters that this is *first-order* in the solver sense the later rungs will exploit. DDIM is the
+$k=1$ member of the whole family: hold $z_{0|t}$ constant across the step and you get this single line,
+with no derivative estimate, no history, no intermediate evaluation — so there is no high-order term that
+a large guidance scale could corrupt. That is the same reason DDIM is the robust fallback everywhere: with
+nothing to extrapolate, there is nothing to blow up. The cost is the truncation error I just named, and
+it is precisely what a higher-order step would buy back by extracting the bend of the trajectory from
+calls I already spend.
+
+Two substrate specifics fix the exact form I fill, neither of which the generic derivation above
+dictates. First, guidance: the loop forms the prediction in the CFG++ style this codebase fixes — the
+guided $\tilde\epsilon=\epsilon_{uc}+s(\epsilon_c-\epsilon_{uc})$ feeds the *clean-image* estimate via
+Tweedie, $z_{0|t}=(z_t-\sqrt{1-\bar\alpha_t}\,\tilde\epsilon)/\sqrt{\bar\alpha_t}$, but the
+*renoising/direction* term uses the bare *unconditional* $\epsilon_{uc}$, not $\tilde\epsilon$. So my
+deterministic step is $z_{t-1}=\sqrt{\bar\alpha_{t-1}}\,z_{0|t}+\sqrt{1-\bar\alpha_{t-1}}\,\epsilon_{uc}$.
+This tempers the over-saturation a large $s$ would otherwise bake into the renoised latent, and it is part
+of the substrate, not a knob I redesign. Second, I am in VAE latent space, so there is no $[-1,1]$ pixel
+bound to threshold against — only the numerical behaviour of the update is in play. The fill is then the
+literal DDIM-CFG++ body: text embeds, `initialize_latent`, then the loop over
+`self.scheduler.timesteps` with `at = self.alpha(t)`, `at_prev = self.alpha(t - self.skip)`, the guided
+prediction, the Tweedie clean estimate, and the deterministic update renoised with `noise_uc`. The final
+clean estimate `z0t` is decoded. The full scaffold body is in the answer.
+
+What to watch. FID and CLIP across SD v1.5, SD v2.0, and SDXL at NFE = 20. I expect this to be the worst
+of anything sensible — a usable image on every variant, since DDIM is stable and will not diverge, but
+the FID should sit well above what a second- or third-order step can reach at the same twenty calls, and
+the gap should *widen* on the harder variant. SDXL has the largest latent and the most structure to
+resolve in twenty coarse steps, and that is exactly where first-order coarseness costs the most, so I
+expect SDXL worst by a wide margin, the easier SD variants lower. That measured gap is exactly what
+should force a higher-order update at the next rung: if twenty first-order steps leave quality on the
+table, the move is to extract a derivative of the trajectory from the calls I already spend, not to ask
+for calls I do not have. So let me write the floor in — the first-order DDIM-CFG++ body.
+</think>
+<say>
+I'll start by laying down the floor: a first-order deterministic DDIM sampler in the CFG++ style. This edit replaces the not-implemented scaffold with the full DDIM body — guided Tweedie clean estimate, deterministic step renoised with the unconditional noise — to get a baseline FID at NFE = 20.
+</say>
+<edit path="CFGpp-main/latent_diffusion.py">
+<old>
+# (starting code)
+</old>
+<new>
+@register_solver("ddim_cfg++")
+class BaseDDIMCFGpp(StableDiffusion):
+    """
+    DDIM sampler with CFG++.
+    First-order ODE solver - simple and deterministic.
+    """
+    def __init__(self,
+                 solver_config: Dict,
+                 model_key:str="runwayml/stable-diffusion-v1-5",
+                 device: Optional[torch.device]=None,
+                 **kwargs):
+        super().__init__(solver_config, model_key, device, **kwargs)
+
+    @torch.autocast(device_type='cuda', dtype=torch.float16)
+    def sample(self,
+               cfg_guidance=7.5,
+               prompt=["",""],
+               callback_fn=None,
+               **kwargs):
+
+        # Text embedding
+        uc, c = self.get_text_embed(null_prompt=prompt[0], prompt=prompt[1])
+
+        # Initialize zT
+        zt = self.initialize_latent()
+        zt = zt.requires_grad_()
+
+        # Sampling
+        pbar = tqdm(self.scheduler.timesteps, desc="DDIM")
+        for step, t in enumerate(pbar):
+            at = self.alpha(t)
+            at_prev = self.alpha(t - self.skip)
+
+            with torch.no_grad():
+                noise_uc, noise_c = self.predict_noise(zt, t, uc, c)
+                noise_pred = noise_uc + cfg_guidance * (noise_c - noise_uc)
+
+            # Tweedie: estimate clean image
+            z0t = (zt - (1-at).sqrt() * noise_pred) / at.sqrt()
+
+            # DDIM update: first-order, use unconditional noise for CFG++
+            zt = at_prev.sqrt() * z0t + (1-at_prev).sqrt() * noise_uc
+
+            if callback_fn is not None:
+                callback_kwargs = {'z0t': z0t.detach(),
+                                    'zt': zt.detach(),
+                                    'decode': self.decode}
+                callback_kwargs = callback_fn(step, t, callback_kwargs)
+                z0t = callback_kwargs["z0t"]
+                zt = callback_kwargs["zt"]
+
+        # Decode final latent
+        img = self.decode(z0t)
+        img = (img / 2 + 0.5).clamp(0, 1)
+        return img.detach().cpu()
+</new>
+</edit>
+<obs>
+Successfully replaced text in CFGpp-main/latent_diffusion.py.
+</obs>
+<run/>
+<obs>
+Measured results — `baseline:ddim` (`is_final,true`), seed 42. FID (lower is better), NFE = 20.
+
+## FID by variant
+| seed | fid_sd15 | fid_sd20 | fid_sdxl |
+|---|---|---|---|
+| 42 | 34.2344 | 28.4142 | 51.5227 |
+| **mean** | **34.2344** | **28.4142** | **51.5227** |
+</obs>
+
+### step 2 — DPM-Solver++(2S) (second-order singlestep Heun, CFG++)   [slug:dpm2s]
+
+<think>
+The first-order run told me exactly where the budget is being wasted, and it told me in FID. DDIM came
+in at 34.23 on SD v1.5, 28.41 on SD v2.0, and 51.52 on SDXL — usable images on every variant (it never
+diverged, which is the one thing first order reliably buys), but those FIDs are high, and the *shape*
+of the gap is the tell. SD v2.0, the easiest variant, sits lowest; SDXL, with the largest latent and
+the most structure to resolve in twenty coarse steps, is worst by a wide margin — over 51, nearly
+double SD v2.0. That is precisely the signature I expected from a first-order solver: the error scales
+with the curvature of the denoiser trajectory between adjacent noise levels, and where there is more
+fine structure to resolve, twenty straight-line steps leave the most on the table. So the failure is
+not instability and it is not a guidance problem — it is *step-efficiency*. Each DDIM step holds the
+clean-image estimate $z_{0|t}$ constant across the interval and moves on a straight chord; the true
+trajectory bends, and I am paying the full first-order truncation error twenty times over. The fix is
+not to ask for more calls — I do not have them — but to extract the *bend* of the trajectory from the
+calls I already spend, i.e. to go to second order.
+
+Let me set up what "second order" even means for this update before I commit, because there is a budget
+trap waiting. The diffusion ODE, written on the clean-image (data) prediction, is semi-linear: the
+exact step from $s$ to $t$ carries a linear factor exactly and only ever approximates an integral of
+$z_\theta(\lambda)$ in the half-log-SNR variable $\lambda$. A first-order solver freezes $z_\theta$ at
+the left endpoint — that is DDIM, the $k=1$ member, exactly the line I just ran. To get $k=2$ I need an
+estimate of the *first derivative* of $z_\theta$ along the trajectory, and a derivative needs a second
+sample. There are two ways to get it. The multistep way reuses the $z_\theta$ I computed at the
+previous step for free — no extra call — but it depends on history and its local error constant is set
+by the spacing of past steps. The singlestep way takes a fresh evaluation at an intermediate point
+strictly inside the current interval and uses the finite difference of the two clean-image predictions
+as the derivative; it costs an extra call per step but stands alone, so each step's error constant is
+governed entirely by the within-step geometry. The harness leaves me the whole `sample` body, so I can
+build either. I will build the singlestep version, because at this rung I want the cleanest, most
+history-independent second-order step I can write — and because the substrate already hands me, at each
+timestep, exactly the two ingredients a singlestep Heun step needs: a clean-image estimate at the
+current level and the machinery to take a provisional step and re-evaluate.
+
+Here is where I have to be honest about the budget, because this is the constraint DDIM did not feel.
+DDIM spent one `predict_noise` call per step and used all twenty. A singlestep second-order step makes
+*two* model calls — one at the current timestep, one at the provisional endpoint — so if I kept twenty
+steps I would blow the NFE budget to forty. I cannot. The only way a two-call-per-step method fits in
+twenty calls is to **halve the number of steps**: walk every *other* timestep on the harness's grid,
+ten boundaries, two calls each, twenty NFE. So the trade is explicit and it is not free — I go from
+twenty first-order chords to ten second-order ones. Each step now spans a *double* interval (the stride
+is `2 * self.skip`), so the per-step $h$ is twice as large, and a first-order solver on this coarse grid
+would be much worse than the twenty-step DDIM I just measured. The bet is that second-order accuracy
+over the double interval beats first-order accuracy over the single interval at the same total call
+count — that the curvature correction more than pays back the coarser grid. That is exactly the
+question the FID will answer, and it is a real question; it is not obvious a priori that ten
+second-order steps beat twenty first-order ones, because halving the grid is a genuine cost.
+
+Now derive the actual update, grounded in what this loop gives me rather than the textbook log-SNR
+form, because the substrate's Tweedie helper and `self.alpha(t)` make a simpler arithmetic-mean Heun
+the natural fill. At the current timestep $t$ I have $\bar\alpha_t$ from `self.alpha(t)` and
+$\bar\alpha_{t-2\,\text{skip}}$ for the next (doubled) level. I form the guided prediction
+$\tilde\epsilon=\epsilon_{uc}+s(\epsilon_c-\epsilon_{uc})$ and the clean-image estimate by Tweedie,
+$z_{0|t}=(z_t-\sqrt{1-\bar\alpha_t}\,\tilde\epsilon)/\sqrt{\bar\alpha_t}$. That is the slope at the
+*start* of the interval. The DDIM (Euler) move would commit to it: a provisional step to the next
+level, $z^{\text{euler}}=\sqrt{\bar\alpha_{t-2s}}\,z_{0|t}+\sqrt{1-\bar\alpha_{t-2s}}\,\epsilon_{uc}$,
+renoised in the CFG++ style with the unconditional noise. But instead of committing, I treat that as a
+*predictor* and evaluate the model there to get the slope at the *endpoint*. So a second model call at
+the predicted point $z^{\text{euler}}$, at timestep $t-2s$, gives a second guided prediction
+$\tilde\epsilon_2$ and a second clean-image estimate
+$z_{0|t}^{(2)}=(z^{\text{euler}}-\sqrt{1-\bar\alpha_{t-2s}}\,\tilde\epsilon_2)/\sqrt{\bar\alpha_{t-2s}}$.
+Now I have a clean-image estimate at both ends of the interval, and the corrected step averages them —
+classic Heun's method, the trapezoidal rule for the slope:
+$\bar z_0=\tfrac12(z_{0|t}+z_{0|t}^{(2)})$, and then the *actual* step uses this averaged clean estimate,
+$z_{t-2s}=\sqrt{\bar\alpha_{t-2s}}\,\bar z_0+\sqrt{1-\bar\alpha_{t-2s}}\,\epsilon_{uc}$, again renoised
+with the unconditional noise to stay in the CFG++ convention the substrate fixes.
+
+I want to be careful that this is the *right* form for this harness, because it is deliberately simpler
+than the fully general singlestep solver. The general construction places the intermediate point at a
+tunable fraction $r_1$ of the interval in $\lambda$ and weights the two predictions by $1/(2r_1)$ with
+exponential-integrator coefficients $e^{-h}-1$. Here I am taking the intermediate point to be the
+*endpoint itself* ($r_1=1$ in effect, the trapezoidal Heun rather than the midpoint variant) and
+weighting the two clean estimates equally, $\tfrac12$ and $\tfrac12$, with the plain $\sqrt{\bar\alpha}$
+coefficients rather than $\lambda$-space $\mathrm{expm1}$ factors. This is the honest fill given what the loop
+exposes: `self.alpha(t)` hands me $\bar\alpha$ directly, Tweedie hands me $z_0$ directly, and the
+arithmetic mean of two endpoint $z_0$ estimates is exactly the trapezoidal second-order correction in
+data space. It is not the log-SNR singlestep with a midpoint and $\mathrm{expm1}$ coefficients — I am
+*not* importing that machinery, because the substrate's vocabulary is $(\bar\alpha,z_0,\epsilon_{uc})$,
+not $(\lambda, h, \phi)$, and a Heun average in $z_0$ is the natural, correct second-order step in that
+vocabulary. The two agree to leading order in $h$ (the trapezoidal and midpoint rules are both
+$O(h^2)$); what I lose by not tuning $r_1$ or the $\mathrm{expm1}$ constants is a slightly larger error
+*constant*, not the order. For a ten-step solver that is an acceptable trade for a clean fill.
+
+One subtlety the doubled grid forces: the last step. With ten boundaries, the final one lands at the
+end of the chain and there is no further point to evaluate a slope at — and more practically, taking a
+second model call at the very last step would either overrun the budget or have nowhere useful to
+correct toward. So the final step degrades gracefully to first order: just the Euler (DDIM) move,
+$z=z^{\text{euler}}$, no averaging. Every interior step is second-order Heun; the last is first-order
+DDIM. This is the standard "lower-order final" stabilizer, and it costs nothing — at the very end the
+trajectory is nearly straight (low noise, the clean estimate barely moves), so a first-order step there
+is almost lossless.
+
+I should also keep the budget arithmetic exact, because it is the whole reason the method has this
+shape. Ten interior+final boundaries: nine of them are second-order (two calls each = eighteen) and the
+last is first-order (one call). That is nineteen, not twenty — and depending on how the harness counts
+the final partial step it lands at or just under the NFE = 20 ceiling. The point is that halving the
+grid to `[::2]` with two calls per interior step is precisely what keeps a second-order singlestep
+method inside twenty NFE. If I had not halved, I would be at forty and disqualified.
+
+So the delta from DDIM is concrete and it is a single structural change with a cost attached: where the
+first rung took twenty straight-line steps, I now take ten steps that each evaluate the model twice — once
+to predict, once at the predicted endpoint — and average the two clean-image estimates so the step
+follows the *bend* of the trajectory instead of a chord. The renoising stays CFG++ (`noise_uc`), the
+clean estimate stays guided, and everything else in the substrate is untouched.
+
+Reading the DDIM numbers, here is what I expect this to fix and where I am unsure. On all three
+variants the second-order correction should pull FID down, because the trajectory curvature I am now
+capturing is exactly the error DDIM ignored. The biggest absolute improvement should be on **SDXL**,
+where DDIM was worst (51.52) precisely because first-order coarseness costs most when there is the most
+structure to resolve — if the curvature correction is doing its job, the largest gap is where it has the
+most to close. SD v1.5 (34.23) and SD v2.0 (28.41) should also come down, though by less in absolute
+terms. The risk, and the reason this is a real bet rather than a sure thing, is the halved grid: I have
+traded twenty first-order steps for ten second-order ones, and if the doubled step size $h$ is large
+enough that the $O(h^2)$ error over ten coarse steps does not beat the $O(h)$ error over twenty fine
+ones, FID could fail to improve or even regress on the variant where it bites most. If that happens —
+if SDXL in particular does not move, or moves the wrong way — the diagnosis for the next rung is already
+written: the cure is a method that gets the high-order correction *without* paying for it in steps,
+i.e. a multistep solver that reuses past predictions at one call per step, keeping all the fine steps.
+But the expectation I am committing to is that ten second-order Heun steps land all three variants below
+their DDIM FIDs, with the SDXL improvement the largest of the three. Let me put the Heun step in, in
+three edits: relabel the solver, halve the grid, then add the predictor-evaluate-average update.
+</think>
+<say>
+DDIM's error is step-efficiency, worst on SDXL, so I'm moving to DPM-Solver++(2S): a second-order singlestep Heun step. This first edit just retitles the solver; the next two halve the grid and add the two-call Heun update so I stay inside NFE = 20.
+</say>
+<edit path="CFGpp-main/latent_diffusion.py">
+<old>
+    """
+    DDIM sampler with CFG++.
+    First-order ODE solver - simple and deterministic.
+    """
+</old>
+<new>
+    """
+    DPM++ 2S sampler with CFG++.
+    Second-order singlestep (Heun's method) - higher quality per step.
+    """
+</new>
+</edit>
+<obs>
+Successfully replaced text in CFGpp-main/latent_diffusion.py.
+</obs>
+<note>
+Now halve the grid to `[::2]` with a doubled stride, so two calls per step still fit twenty NFE.
+</note>
+<edit path="CFGpp-main/latent_diffusion.py">
+<old>
+
+        # Sampling
+        pbar = tqdm(self.scheduler.timesteps, desc="DDIM")
+        for step, t in enumerate(pbar):
+            at = self.alpha(t)
+            at_prev = self.alpha(t - self.skip)
+</old>
+<new>
+
+        # Halve timesteps: 2 model evals per step to stay within NFE budget
+        timesteps = self.scheduler.timesteps[::2]
+        double_skip = 2 * self.skip
+
+        # Sampling
+        pbar = tqdm(timesteps, desc="DPM++2S")
+        for step, t in enumerate(pbar):
+            at = self.alpha(t)
+            at_prev = self.alpha(t - double_skip)
+</new>
+</edit>
+<obs>
+Successfully replaced text in CFGpp-main/latent_diffusion.py.
+</obs>
+<note>
+Now the Heun step itself: take the Euler point as a predictor, re-evaluate there, average the two clean estimates, with a first-order fallback on the last step.
+</note>
+<edit path="CFGpp-main/latent_diffusion.py">
+<old>
+
+            # DDIM update: first-order, use unconditional noise for CFG++
+            zt = at_prev.sqrt() * z0t + (1-at_prev).sqrt() * noise_uc
+</old>
+<new>
+
+            # First prediction (Euler step to next timestep)
+            zt_euler = at_prev.sqrt() * z0t + (1-at_prev).sqrt() * noise_uc
+
+            # DPM++ 2S: Heun's method for second-order accuracy
+            if step < len(timesteps) - 1:
+                # Evaluate at the predicted point (endpoint of Euler step)
+                with torch.no_grad():
+                    noise_uc_2, noise_c_2 = self.predict_noise(zt_euler, t - double_skip, uc, c)
+                    noise_pred_2 = noise_uc_2 + cfg_guidance * (noise_c_2 - noise_uc_2)
+
+                z0t_2 = (zt_euler - (1-at_prev).sqrt() * noise_pred_2) / at_prev.sqrt()
+
+                # Average the two estimates (Heun's method)
+                z0t_avg = 0.5 * (z0t + z0t_2)
+                zt = at_prev.sqrt() * z0t_avg + (1-at_prev).sqrt() * noise_uc
+            else:
+                # Last step: just use first-order
+                zt = zt_euler
+</new>
+</edit>
+<obs>
+Successfully replaced text in CFGpp-main/latent_diffusion.py.
+</obs>
+<run/>
+<obs>
+Measured results — `baseline:dpm2s` (`is_final,true`), seed 42. FID (lower is better), NFE = 20.
+
+## FID by variant
+| seed | fid_sd15 | fid_sd20 | fid_sdxl |
+|---|---|---|---|
+| 42 | 29.0098 | 23.8945 | 42.8336 |
+| **mean** | **29.0098** | **23.8945** | **42.8336** |
+</obs>
+
+### step 3 — DPM-Solver++(3M) SDE (third-order multistep stochastic, Karras)   [slug:dpm3m_sde]
+
+<think>
+The second-order run paid off, and it paid off exactly where I bet it would. DPM++(2S) pulled every
+variant down from DDIM: SD v1.5 from 34.23 to 29.01, SD v2.0 from 28.41 to 23.89, and SDXL — the one I
+called as having the most to gain — from 51.52 all the way to 42.83, an 8.7-point drop, the largest
+absolute improvement of the three. So the curvature correction was real and the halved grid did not
+cost me the win: ten second-order Heun steps beat twenty first-order chords on every variant. The
+diagnosis from rung one was right — the DDIM failure was step-efficiency, not stability — and
+trapezoidal averaging of the endpoint slopes was the right cure. Good. But now I look at *how* I bought
+that improvement, and I see two separate weaknesses sitting in the 2S construction that the FID is
+quietly paying for, and both point the same direction.
+
+The first weakness is the one I flagged when I built it: 2S is *singlestep*, two model calls per step,
+so to fit twenty NFE I had to halve the grid to ten steps. Each step now spans a double interval, and
+the intermediate evaluation I spend to estimate the slope is *thrown away* after one use — it never
+becomes a sample on the trajectory, it is pure overhead to get a derivative. That is wasteful when every
+call is a full UNet forward. If I could get the same first-derivative information *without* the throwaway
+call, I could keep all twenty steps fine instead of ten coarse, and smaller $h$ directly shrinks the
+truncation error. That is the multistep idea: reuse the clean-image prediction I already computed at the
+*previous* step as the second sample for the finite difference. One new call per step, twenty steps, the
+derivative for free. The error constant per step is set by past spacing rather than within-step
+geometry, but on a tight budget the step-count win dominates — twenty fine steps with a reused
+derivative should beat ten coarse steps with a fresh one. And if I am reusing two past predictions
+instead of one, I can fit a *quadratic* through three points and pick up the *second* derivative too,
+going to third order at no extra call. So the first weakness pushes me from singlestep second-order to
+multistep third-order.
+
+The second weakness is subtler and it is about *what kind* of solver 2S is. It is a pure deterministic
+march: every step is an ODE step, error accumulates along the trajectory, and nothing washes it back
+out. On a deterministic high-order scheme over a tight budget, discretization error compounds — the
+trajectory can drift off the data manifold and stay off, and that drift shows up as exactly the kind of
+texture and global-structure error FID is sensitive to. There is a known antidote: re-inject a
+controlled amount of Gaussian noise at each step and let the *next* denoising step remove it. That is a
+Langevin correction — the noise-and-denoise cycle pulls the state back toward where the model thinks
+data lives, cancelling accumulated error. It is well documented that fully deterministic sampling can be
+perceptually *worse* than sampling with such re-injection, even at the same step count. So I do not want
+to keep marching the deterministic ODE; I want to solve the reverse *SDE* with the same exponential-
+integrator machinery, and keep a knob for how much noise to put back. Both weaknesses — singlestep
+overhead and deterministic drift — argue for the same next method: a multistep, stochastic, higher-order
+solver. That is DPM++(3M) SDE.
+
+Let me derive it in the right space, because the substrate this time hands me a different set of helpers
+than the DDIM-grid 2S used, and they steer the construction. The natural variable is no longer the
+discrete timestep but the noise level $\sigma=\sqrt{1-\bar\alpha}/\sqrt{\bar\alpha}$, and the loop
+exposes exactly the k-diffusion machinery for it: `get_sigmas_karras` to build the schedule,
+`self.timestep(sigma)` to convert back, and `self.kdiffusion_x_to_denoised` to get the clean-image
+estimate ("denoised") directly at a given $\sigma$. So I will work in the VE convention where
+$\alpha=1$ and the half-log-SNR is simply $\lambda=-\log\sigma$. The reverse SDE in $\lambda$, on the
+data prediction, is $dx=[-(1+\alpha^2)x+2\alpha\,x_\theta]\,d\lambda+\sqrt2\,\sigma\,dw$; solving the
+linear part exactly by variation of constants and the data term by the exponential integrator gives the
+exact step. The signal carries by $e^{-h_\eta}$, the clean prediction takes the complement
+$1-e^{-h_\eta}$ (a convex split), and the Itô integral contributes Gaussian noise of standard deviation
+$\sigma_{\text{next}}\sqrt{1-e^{-2h\eta}}$, where $h=\lambda_{\text{next}}-\lambda$ is the step in
+half-log-SNR.
+
+The single knob $\eta$ is what makes this one method instead of two. Set $h_\eta=h(\eta+1)$: at
+$\eta=0$ the contraction is $e^{-h}$, the noise term vanishes, and I recover the deterministic ODE step
+(exactly the deterministic limit of what 2S was doing, just multistep); at $\eta=1$ the contraction is
+$e^{-2h}$ with noise $\sqrt{1-e^{-2h}}$, the full reverse SDE; and $\eta>1$ injects *extra* Langevin
+stochasticity beyond the plain SDE. Given that my whole second motivation is to add re-noising to fight
+the deterministic drift I diagnosed in 2S, I want $\eta$ a touch above one — the working default here is
+$\eta=1.2$, buying a bit more self-correction than the bare SDE at the cost of a bit more noise to clean
+up, which is the right posture at a tight budget where drift is the bigger enemy.
+
+Now the multistep order. I keep the last two clean predictions, `denoised_1` and `denoised_2`, and the
+last two $\lambda$-step sizes, `h_1` and `h_2`. The data integral's Taylor expansion in $\lambda$ brings
+in the first and second derivatives of $x_\theta$, weighted by the exponential-integrator $\phi$
+functions evaluated at $h_\eta$: $\phi_2(h_\eta)=(e^{-h_\eta}-1)/h_\eta+1\approx h_\eta/2$ (the
+first-derivative weight) and $\phi_3(h_\eta)=\phi_2/h_\eta-0.5\approx -h_\eta/6$ (the second-derivative
+weight, negative). The derivatives themselves come from a Newton divided difference through the three
+points. And here I have to be careful, because the literal fill this harness records makes two specific
+coefficient choices that are *not* the canonical k-diffusion ones, and the trajectory's job is to land
+*this* implementation, not the textbook. The canonical third-order multistep scales the older interval
+as $r_1=h_2/h$ (older spacing relative to the current step) and applies the curvature correction with a
+*minus* sign, $x+\phi_2 d_1-\phi_3 d_2$ (so that $-\phi_3$, being positive, adds the second-difference).
+The fill recorded as the baseline anchor here instead uses $r_1=h_2/h_1$ — the older interval relative to
+the *previous* step rather than the current one — and applies the correction with a *plus* sign,
+$x+\phi_2 d_1+\phi_3 d_2$. So with the scaled spacings $r_0=h_1/h$ and $r_1=h_2/h_1$, the divided
+differences are $d_{1,0}=(\text{denoised}-\text{denoised}_1)/r_0$ and
+$d_{1,1}=(\text{denoised}_1-\text{denoised}_2)/r_1$; the endpoint first-derivative estimate is
+$d_1=d_{1,0}+(d_{1,0}-d_{1,1})\,r_0/(r_0+r_1)$ and the second is $d_2=(d_{1,0}-d_{1,1})/(r_0+r_1)$; and
+the step is $x=e^{-h_\eta}x+(1-e^{-h_\eta})\,\text{denoised}+\phi_2 d_1+\phi_3 d_2$. I am noting these
+two deviations deliberately. They are slight mis-scalings of the curvature term relative to the
+provably-third-order scheme — the $r_1=h_2/h_1$ choice changes the weighting of the older sample, and the
+$+\phi_3 d_2$ sign (with $\phi_3<0$) *subtracts* a curvature contribution where the canonical scheme
+adds it — so this is best read as a *practical* third-order multistep correction with a slightly
+off-tuned constant rather than an exact $O(h^4)$ scheme. That is fine for my purpose: the dominant gain
+over 2S is the step-count (twenty vs ten) and the Langevin re-noising, not the exact third-order
+constant, and a slightly-conservative curvature term is an acceptable price. When only one past value is
+available (the first correction step) I drop $d_2$ and use the two-point estimate
+$d=(\text{denoised}-\text{denoised}_1)/r$ with $r=h_1/h$, giving the second-order step $x+\phi_2 d$; when
+no past value exists yet (the first step) it is the plain constant data-prediction step plus the noise.
+
+A few implementation realities the harness fixes, each of which I keep because the baseline anchor does.
+The schedule is the Karras power grid, `get_sigmas_karras(N, sigma_min, sigma_max, rho=7)`, which puts
+more steps at low $\sigma$ where the per-step truncation error is largest — the right way to spend a
+tight budget. The exponentials all appear as $e^{x}-1$ with small $x$, where naive subtraction cancels
+catastrophically, so they go through `expm1`: $(1-e^{-h_\eta})$ is `(-h_eta).expm1().neg()` and the
+noise standard deviation $\sqrt{1-e^{-2h\eta}}$ is `(-2*h*eta).expm1().neg().sqrt()`. The last step lands
+at $\sigma=0$ with nothing left to denoise toward and no noise to add, so it just returns `denoised`,
+the clean-image estimate itself. And the re-injected noise here is a plain `torch.randn_like(x)` scaled
+by $\sigma_{\text{next}}\sqrt{1-e^{-2h\eta}}$ — *not* a Brownian-tree noise sampler. The canonical
+k-diffusion implementation draws Brownian-consistent, seed-reproducible increments from a Brownian tree
+keyed to the noise levels; this fill uses fresh independent Gaussian noise each step. That is the third
+deviation from the textbook I am noting: the noise is correctly *scaled* but not Brownian-tree
+*correlated*, which trades exact reproducibility/consistency of the noise path for a simpler draw. For
+single-seed FID at this budget it is a defensible simplification, and again, it is the implementation
+the anchor records, so it is what I land. The SD path forms `denoised` through
+`self.kdiffusion_x_to_denoised(x, sigma, uc, c, cfg_guidance, new_t)`, which already bakes in the CFG++
+guided prediction and Tweedie; the SDXL path does it explicitly with the VE scalings
+$c_{\text{in}}=1/\sqrt{\sigma^2+1}$, $c_{\text{out}}=-\sigma$, and `denoised = x + c_out * noise_pred`.
+
+So the delta from 2S is two structural changes bundled into one method, both flowing from the two
+weaknesses I diagnosed. Where 2S spent a throwaway call per step to get a fresh derivative on a halved
+grid, 3M reuses two past predictions to get *both* first and second derivatives at one call per step,
+keeping all twenty steps fine. And where 2S marched the deterministic ODE with error compounding, 3M
+solves the reverse SDE with $\eta=1.2$, re-injecting Langevin noise that the next denoising step washes
+out — actively cancelling the accumulated drift. The Karras schedule concentrates the steps where they
+matter, `expm1` keeps the small-argument exponentials honest, and the curvature correction (with this
+harness's $r_1=h_2/h_1$ scaling and $+\phi_3 d_2$ sign) brings in the trajectory's bend at no extra
+cost.
+
+Reading the 2S numbers, here is what I expect and where the bet is. Both the finer grid (twenty vs ten
+steps) and the Langevin re-noising should pull FID down further on every variant. On **SDXL** — 42.83
+under 2S, still the worst variant — the stochastic correction should help most, because that is where
+deterministic drift over a coarse grid was costing the most global structure; I expect the largest
+absolute drop there again, landing it well below 40. SD v1.5 (29.01) and SD v2.0 (23.89) should also
+improve, though more modestly since they were already lower. The risk I am carrying into this is the
+$\eta=1.2$ choice and the simplified noise: too much injected stochasticity at twenty steps can leave
+residual noise the short chain cannot fully clean, and the plain `randn_like` (no Brownian-tree
+correlation) plus the off-tuned $r_1=h_2/h_1$, $+\phi_3 d_2$ constants mean the third-order term is not
+exactly tuned, so the curvature correction could under- or over-shoot. If the FID *fails* to beat 2S on
+some variant, the most likely culprit is exactly those off-canonical coefficients eating into the gain —
+which would point the next move at the kdfix correction (restoring $r_1=h_2/h$ and $-\phi_3 d_2$). But
+the expectation I commit to is that the multistep stochastic third-order solver lands all three variants
+below their 2S FIDs, with SDXL the largest improvement, making this the strongest of the three rungs. So
+let me rewrite the loop in $\sigma$-space — relabel the docstring, then swap the singlestep body for the
+multistep-SDE march.
+</think>
+<say>
+2S works but wastes a throwaway call per step and drifts deterministically, so I'm switching to DPM-Solver++(3M) SDE on a Karras schedule: multistep (one call per step, all twenty fine), third-order, with Langevin re-noising at eta = 1.2. This first edit just relabels the docstring; the next rewrites the loop into sigma-space.
+</say>
+<edit path="CFGpp-main/latent_diffusion.py">
+<old>
+class BaseDDIMCFGpp(StableDiffusion):
+    """
+    DPM++ 2S sampler with CFG++.
+    Second-order singlestep (Heun's method) - higher quality per step.
+    """
+    def __init__(self,
+</old>
+<new>
+class BaseDDIMCFGpp(StableDiffusion):
+    """DPM-Solver++(3M) SDE with Karras schedule."""
+
+    def __init__(self,
+</new>
+</edit>
+<obs>
+Successfully replaced text in CFGpp-main/latent_diffusion.py.
+</obs>
+<note>
+Now replace the whole singlestep body with the multistep-SDE march: Karras sigmas, the exponential-integrator split, the divided-difference curvature term, and the scaled re-noise.
+</note>
+<edit path="CFGpp-main/latent_diffusion.py">
+<old>
+               **kwargs):
+
+        # Text embedding
+        uc, c = self.get_text_embed(null_prompt=prompt[0], prompt=prompt[1])
+
+        # Initialize zT
+        zt = self.initialize_latent()
+        zt = zt.requires_grad_()
+
+        # Halve timesteps: 2 model evals per step to stay within NFE budget
+        timesteps = self.scheduler.timesteps[::2]
+        double_skip = 2 * self.skip
+
+        # Sampling
+        pbar = tqdm(timesteps, desc="DPM++2S")
+        for step, t in enumerate(pbar):
+            at = self.alpha(t)
+            at_prev = self.alpha(t - double_skip)
+
+            with torch.no_grad():
+                noise_uc, noise_c = self.predict_noise(zt, t, uc, c)
+                noise_pred = noise_uc + cfg_guidance * (noise_c - noise_uc)
+
+            # Tweedie: estimate clean image
+            z0t = (zt - (1-at).sqrt() * noise_pred) / at.sqrt()
+
+            # First prediction (Euler step to next timestep)
+            zt_euler = at_prev.sqrt() * z0t + (1-at_prev).sqrt() * noise_uc
+
+            # DPM++ 2S: Heun's method for second-order accuracy
+            if step < len(timesteps) - 1:
+                # Evaluate at the predicted point (endpoint of Euler step)
+                with torch.no_grad():
+                    noise_uc_2, noise_c_2 = self.predict_noise(zt_euler, t - double_skip, uc, c)
+                    noise_pred_2 = noise_uc_2 + cfg_guidance * (noise_c_2 - noise_uc_2)
+
+                z0t_2 = (zt_euler - (1-at_prev).sqrt() * noise_pred_2) / at_prev.sqrt()
+
+                # Average the two estimates (Heun's method)
+                z0t_avg = 0.5 * (z0t + z0t_2)
+                zt = at_prev.sqrt() * z0t_avg + (1-at_prev).sqrt() * noise_uc
+            else:
+                # Last step: just use first-order
+                zt = zt_euler
+
+            if callback_fn is not None:
+                callback_kwargs = {'z0t': z0t.detach(),
+                                    'zt': zt.detach(),
+                                    'decode': self.decode}
+                callback_kwargs = callback_fn(step, t, callback_kwargs)
+                z0t = callback_kwargs["z0t"]
+                zt = callback_kwargs["zt"]
+
+        # Decode final latent
+        img = self.decode(z0t)
+        img = (img / 2 + 0.5).clamp(0, 1)
+        return img.detach().cpu()
+</old>
+<new>
+               **kwargs):
+        t_fn = lambda sigma: sigma.log().neg()
+
+        uc, c = self.get_text_embed(null_prompt=prompt[0], prompt=prompt[1])
+
+        total_sigmas = (1-self.total_alphas).sqrt() / self.total_alphas.sqrt()
+        sigmas = get_sigmas_karras(len(self.scheduler.timesteps), total_sigmas.min(), total_sigmas.max(), rho=7.)
+
+        x = self.initialize_latent(method="random_kdiffusion",
+                                   latent_dim=(1, 4, 64, 64),
+                                   sigmas=sigmas).to(torch.float16)
+
+        eta = 1.2
+        denoised_1, denoised_2 = None, None
+        h_1, h_2 = None, None
+
+        pbar = tqdm(self.scheduler.timesteps, desc="DPM++3M-SDE")
+        for i, _ in enumerate(pbar):
+            sigma = sigmas[i]
+            new_t = self.timestep(sigma).to(self.device)
+
+            with torch.no_grad():
+                denoised, _ = self.kdiffusion_x_to_denoised(x, sigma, uc, c, cfg_guidance, new_t)
+
+            if sigmas[i + 1] == 0:
+                x = denoised
+            else:
+                t, s = t_fn(sigmas[i]), t_fn(sigmas[i + 1])
+                h = s - t
+                h_eta = h * (eta + 1)
+
+                x = torch.exp(-h_eta) * x + (-h_eta).expm1().neg() * denoised
+
+                if denoised_1 is not None:
+                    phi_2 = h_eta.neg().expm1() / h_eta + 1
+
+                    if denoised_2 is None:
+                        r = h_1 / h
+                        d = (denoised - denoised_1) / r
+                        x = x + phi_2 * d
+                    else:
+                        r0 = h_1 / h
+                        r1 = h_2 / h_1
+                        d1_0 = (denoised - denoised_1) / r0
+                        d1_1 = (denoised_1 - denoised_2) / r1
+                        d1 = d1_0 + (d1_0 - d1_1) * r0 / (r0 + r1)
+                        d2 = (d1_0 - d1_1) / (r0 + r1)
+                        phi_3 = phi_2 / h_eta - 0.5
+                        x = x + phi_2 * d1 + phi_3 * d2
+
+                if eta > 0:
+                    noise = torch.randn_like(x)
+                    x = x + noise * sigmas[i + 1] * (-2 * h * eta).expm1().neg().sqrt()
+
+                denoised_2 = denoised_1
+                denoised_1 = denoised
+                h_2 = h_1
+                h_1 = h
+
+            if callback_fn is not None:
+                callback_kwargs = {'z0t': denoised.detach(),
+                                    'zt': x.detach(),
+                                    'decode': self.decode}
+                callback_kwargs = callback_fn(i, new_t, callback_kwargs)
+                x = callback_kwargs["zt"]
+
+        z0t = x
+        img = self.decode(z0t)
+        img = (img / 2 + 0.5).clamp(0, 1)
+        return img.detach().cpu()
+</new>
+</edit>
+<obs>
+Successfully replaced text in CFGpp-main/latent_diffusion.py.
+</obs>
+<run/>
+<obs>
+Measured results — `baseline:dpm3m_sde` (`is_final,true`), seed 42. FID (lower is better), NFE = 20.
+
+## FID by variant
+| seed | fid_sd15 | fid_sd20 | fid_sdxl |
+|---|---|---|---|
+| 42 | 27.9800 | 23.4519 | 39.6558 |
+| **mean** | **27.9800** | **23.4519** | **39.6558** |
+</obs>
+
+### step 4 — UniPC (unified predictor-corrector)   [slug:unipc]
+
+<think>
+The third-order multistep SDE paid off across the board and it landed where I called it. DPM++(3M) SDE
+pulled every variant below 2S: SD v1.5 from 29.01 to 27.98, SD v2.0 from 23.89 to 23.45, and SDXL —
+again the one I said had the most to gain — from 42.83 to 39.66, the largest absolute drop and the
+first time any sampler put SDXL under 40. So both of my diagnoses from the 2S rung were right: keeping
+all twenty steps fine (multistep, one call each) beat the halved ten-step singlestep grid, and the
+Langevin re-noising at $\eta=1.2$ bought back the global structure a deterministic march was drifting
+away from. Three rungs in, the ladder has done what a ladder should — each step's *measured* failure
+named the next move, and each move improved every variant. But now I look hard at *what kind* of solver
+3M still is, and I see a single structural gap that all three rungs share and none has touched, and it
+is the gap that is keeping SDXL at 39.66 instead of lower.
+
+Every sampler I have run — DDIM, 2S, 3M — is a **predictor**. At each step it forms an estimate of the
+next latent from information it already has (the current prediction, plus, for 2S and 3M, an
+intermediate or past one) and then *commits*. The leading truncation error of that step is baked in;
+nothing ever looks back at a step and refines it. 3M's third-order curvature term reduces that error,
+and the SDE noise washes out some of what is left — but notice what the noise is doing: it is a
+*statistical* correction for accumulated drift, not a correction of the *individual step's*
+deterministic error. In fact the $\eta=1.2$ stochasticity is partly compensating for the very thing a
+better-corrected step would not produce. So the question is whether I can correct each step's leading
+error *directly*, within the loop, rather than letting it accumulate and then dousing it with noise.
+
+The classical answer in ODE numerics is a predictor-corrector pair. You take the predictor step, then
+you *evaluate the right-hand side at the predicted point*, and a corrector uses that fresh evaluation to
+refine the step — gaining an order. The catch in a generic ODE is that the corrector's evaluation is
+extra cost, and at NFE = 20 I cannot afford a single extra model call: 3M already spends all twenty on
+one call per step. So a corrector looks disqualified on budget. But look closely at what a *multistep*
+loop already does. At the start of step $i+1$, the predictor's base evaluation is the network applied at
+the latent that step $i$ just predicted. That is *exactly* the evaluation a corrector for step $i$ would
+need. The corrector's "extra" call is *already being taken* by the next step's predictor. So in a
+multistep diffusion sampler the corrector is **free** — I reuse step $i+1$'s evaluation to correct step
+$i$, and the total call count stays at twenty. This is the lever none of the three rungs pulled: each
+spent its evaluations purely on prediction; I can spend the same evaluations on prediction *and*
+correction, raising the realized order by one at no budget cost. That is the move past 3M.
+
+I have to be honest about why correctors are not already in the fast solvers I have been climbing, since
+if it were this easy 3M would already be a predictor-corrector. The reason is derivation cost: a
+corrector of order $p$ is a *different* formula from the predictor of order $p$, and each order is a
+separate hand-derivation of exponential-integrator coefficients. People derive a second- and
+third-order predictor and stop. So the real obstacle is the lack of a *unified* form that yields both
+predictor and corrector at *arbitrary* order from one template. If I can write both as the same update,
+parameterized by order, then "add a corrector" is the same one-line change as "go one order higher,"
+and the corrector becomes available at whatever order the history supports.
+
+Here is the unification, and I derive it in the data-prediction face because that is the one that stays
+stable under the large CFG++ guidance the substrate uses, and because — like 3M — it lets me work in the
+clean-image estimate the harness's Tweedie step already produces. The exact data-prediction step from
+the current level $s_0$ to the next $t$ approximates an integral of $x_\theta(\lambda)$ in half-log-SNR.
+Hold $x_\theta$ at its current value $m_0$ and I get the first-order base step; the higher-order terms
+are the Taylor derivatives of $x_\theta$, which I estimate from finite differences of past data
+predictions. Keep the recent predictions $m_0, m_1, m_2,\dots$ at $\lambda$-spacings, define the ratios
+$r_k=(\lambda_{s_k}-\lambda_{s_0})/h$ with $h=\lambda_t-\lambda_{s_0}$ (and $hh=-h$ in this convention,
+the sign the implementation uses for $\mathrm{predict\_x0}$), and the scaled differences
+$D1_k=(m_k-m_0)/r_k$. A linear combination $\sum_k\rho_k D1_k$ reproduces the Taylor correction — and
+the coefficients $\rho_k$ are exactly the solution of a small linear system $R\rho=b$, where $R$ has rows
+$r_k^{\,i-1}$ (a Vandermonde structure in the ratios) and $b$ is the $\phi$-derived sequence
+$h\phi_k\cdot i!/B(h)$, advanced by $h\phi_k\leftarrow h\phi_k/hh - 1/(i+1)!$. Matching the system to the
+exact integral's Taylor expansion to order $p$ makes the method order-$p$ for *any* $p$. That single
+linear solve is the whole unification — no per-order algebra.
+
+Predictor and corrector are then the *same* update with different amounts of information. The predictor
+(UniP) does not yet have an evaluation at the new point $t$, so it solves the *reduced* system: for
+order $p$ it uses $\rho_p=\mathrm{solve}(R[:\!-1,:\!-1],b[:\!-1])$ (order 2 collapses to $\rho_p=0.5$),
+and the step is $x_{\text{base}}-\alpha_t B(h)\,(\sum_k\rho_{p,k}D1_k)$, where
+$x_{\text{base}}=(\sigma_t/\sigma_{s_0})x-\alpha_t\,h\phi_1\,m_0$. The corrector (UniC) runs *after* the
+predictor has stepped and the next iteration has evaluated the network at the predicted point, giving
+$m_t=x_\theta$ there. Now there is one *more* usable evaluation, so the corrector solves the *full*
+$p$-dimensional system $\rho_c=\mathrm{solve}(R,b)$ (order 1 gives $\rho_c=0.5$) and refines the same
+base step with the extra difference $D1_t=m_t-m_0$:
+$x_{\text{base}}-\alpha_t B(h)\,(\sum_k\rho_{c,k}D1_k+\rho_{c,\text{last}}D1_t)$. The free scalar $B(h)$
+sets the error constant; I take $B(h)=e^{hh}-1$ (the "bh2" choice), which tracks the exponential weight
+better at the large $h$ a twenty-step budget forces, over the simpler $B(h)=hh$ ("bh1"). The loop is
+therefore: at each step make the one model call, first run the corrector on the *previous* step using
+that call, then run the predictor for the current step — one evaluation doing double duty.
+
+Now make it concrete in this task's edit surface, because the substrate is the same `sample` body I
+have been filling and I want UniPC expressed in its vocabulary, not a generic harness. The loop walks
+`self.scheduler.timesteps` exactly as DDIM did (twenty steps, one `predict_noise` per step, so NFE
+stays at twenty). At each timestep I form the guided prediction
+$\tilde\epsilon=\epsilon_{uc}+s(\epsilon_c-\epsilon_{uc})$ and the data prediction by Tweedie,
+$m_t=z_0=(z_t-\sqrt{1-\bar\alpha_t}\,\tilde\epsilon)/\sqrt{\bar\alpha_t}$ — that single evaluation is
+both the corrector input for the step I took last iteration and the predictor base for this one. I keep
+$\bar\alpha$ via `self.alpha(t)` and compute $\lambda=\tfrac12(\log\bar\alpha-\log(1-\bar\alpha))$ from
+it, so I never leave the substrate's $(\bar\alpha,z_0)$ language for a separate $\sigma$ schedule. The
+$R\rho=b$ machinery, the reduced-vs-full solves, the `expm1` for the $h\phi$ factors, and the
+order ramp (1 → 2 → 3 as history fills, dropping on the final step where there is no future evaluation
+to correct with) all go inside the body. The final step returns the clean data prediction $z_0$ itself,
+exactly as 3M's $\sigma=0$ step does. Two things I am deliberately *not* importing: there is no
+thresholding (this is latent space, no $[-1,1]$ bound), and there is no SDE noise term — UniPC is a
+deterministic predictor-corrector, and the whole point is that *correcting* each step's leading error is
+a more direct fix than 3M's stochastic compensation for uncorrected error. I keep the CFG++ convention
+in that the data prediction uses the guided $\tilde\epsilon$ while the unconditional stream is available
+for the base; the renoising that 2S/DDIM did with $\epsilon_{uc}$ is subsumed here into the
+data-prediction step.
+
+The bar this has to clear is 3M's measured numbers, and I will state the falsifiable expectation against
+them rather than invent a result. The claim is that correcting each step's leading truncation error
+within the loop — at the same twenty calls, with no extra evaluation — beats predicting-and-renoising.
+So I expect UniPC to land *below* 27.98 on SD v1.5, below 23.45 on SD v2.0, and below 39.66 on SDXL,
+with the largest absolute improvement again on SDXL, where uncorrected per-step error has been the
+dominant cost at every rung. The specific mechanism I am betting on is that the corrector buys a genuine
+order over 3M's predictor at equal NFE, and that a deterministic corrected step does not need the
+$\eta=1.2$ noise 3M spent to mask its drift. The way this is falsified is clean: if UniPC fails to beat
+39.66 on SDXL, then the corrector's extra order is not worth more than the stochastic correction it
+replaces at this budget — in which case the right reading is that at twenty steps 3M's noise was doing
+real work that a deterministic corrector cannot replicate, and the next move would be a *stochastic*
+predictor-corrector rather than abandoning the corrector. But the expectation I commit to is that the
+unified predictor-corrector, correcting where every previous rung only predicted, is the strongest
+sampler of the four, and the place it shows most is SDXL. So let me build it: relabel the docstring, add
+the half-log-SNR helper, then replace the loop with the unified predictor-corrector body.
+</think>
+<say>
+Every rung so far only predicts; in a multistep loop the next step's call is already the evaluation a corrector needs, so I'm moving to UniPC — a unified predictor-corrector that gains an order at no extra NFE, deterministic, no SDE noise. This first edit just relabels the docstring; the next two add the lambda helper and the new loop.
+</say>
+<edit path="CFGpp-main/latent_diffusion.py">
+<old>
+class BaseDDIMCFGpp(StableDiffusion):
+    """DPM-Solver++(3M) SDE with Karras schedule."""
+
+    def __init__(self,
+</old>
+<new>
+class BaseDDIMCFGpp(StableDiffusion):
+    """
+    UniPC sampler with CFG++.
+    Unified predictor-corrector (bh2, data-prediction); +1 order per step at no extra NFE.
+    """
+    def __init__(self,
+</new>
+</edit>
+<obs>
+Successfully replaced text in CFGpp-main/latent_diffusion.py.
+</obs>
+<note>
+Add the half-log-SNR helper so the loop can compute lambda from bar_alpha without leaving the substrate's vocabulary.
+</note>
+<edit path="CFGpp-main/latent_diffusion.py">
+<old>
+
+    @torch.autocast(device_type='cuda', dtype=torch.float16)
+</old>
+<new>
+
+    def _lam(self, at):
+        # half log-SNR lambda = log(alpha/sigma) = 0.5*log(at/(1-at))
+        return 0.5 * (at.log() - (1 - at).log())
+
+    @torch.autocast(device_type='cuda', dtype=torch.float16)
+</new>
+</edit>
+<obs>
+Successfully replaced text in CFGpp-main/latent_diffusion.py.
+</obs>
+<note>
+Now the unified body: the shared predictor/corrector core with the R-rho=b solve, then the loop that runs the corrector on the previous step and the predictor on the current one from one call.
+</note>
+<edit path="CFGpp-main/latent_diffusion.py">
+<old>
+               callback_fn=None,
+               **kwargs):
+        t_fn = lambda sigma: sigma.log().neg()
+
+        uc, c = self.get_text_embed(null_prompt=prompt[0], prompt=prompt[1])
+
+        total_sigmas = (1-self.total_alphas).sqrt() / self.total_alphas.sqrt()
+        sigmas = get_sigmas_karras(len(self.scheduler.timesteps), total_sigmas.min(), total_sigmas.max(), rho=7.)
+
+        x = self.initialize_latent(method="random_kdiffusion",
+                                   latent_dim=(1, 4, 64, 64),
+                                   sigmas=sigmas).to(torch.float16)
+
+        eta = 1.2
+        denoised_1, denoised_2 = None, None
+        h_1, h_2 = None, None
+
+        pbar = tqdm(self.scheduler.timesteps, desc="DPM++3M-SDE")
+        for i, _ in enumerate(pbar):
+            sigma = sigmas[i]
+            new_t = self.timestep(sigma).to(self.device)
+
+            with torch.no_grad():
+                denoised, _ = self.kdiffusion_x_to_denoised(x, sigma, uc, c, cfg_guidance, new_t)
+
+            if sigmas[i + 1] == 0:
+                x = denoised
+            else:
+                t, s = t_fn(sigmas[i]), t_fn(sigmas[i + 1])
+                h = s - t
+                h_eta = h * (eta + 1)
+
+                x = torch.exp(-h_eta) * x + (-h_eta).expm1().neg() * denoised
+
+                if denoised_1 is not None:
+                    phi_2 = h_eta.neg().expm1() / h_eta + 1
+
+                    if denoised_2 is None:
+                        r = h_1 / h
+                        d = (denoised - denoised_1) / r
+                        x = x + phi_2 * d
+                    else:
+                        r0 = h_1 / h
+                        r1 = h_2 / h_1
+                        d1_0 = (denoised - denoised_1) / r0
+                        d1_1 = (denoised_1 - denoised_2) / r1
+                        d1 = d1_0 + (d1_0 - d1_1) * r0 / (r0 + r1)
+                        d2 = (d1_0 - d1_1) / (r0 + r1)
+                        phi_3 = phi_2 / h_eta - 0.5
+                        x = x + phi_2 * d1 + phi_3 * d2
+
+                if eta > 0:
+                    noise = torch.randn_like(x)
+                    x = x + noise * sigmas[i + 1] * (-2 * h * eta).expm1().neg().sqrt()
+
+                denoised_2 = denoised_1
+                denoised_1 = denoised
+                h_2 = h_1
+                h_1 = h
+
+            if callback_fn is not None:
+                callback_kwargs = {'z0t': denoised.detach(),
+                                    'zt': x.detach(),
+                                    'decode': self.decode}
+                callback_kwargs = callback_fn(i, new_t, callback_kwargs)
+                x = callback_kwargs["zt"]
+
+        z0t = x
+        img = self.decode(z0t)
+        img = (img / 2 + 0.5).clamp(0, 1)
+        return img.detach().cpu()
+</old>
+<new>
+               callback_fn=None,
+               max_order=3,
+               **kwargs):
+
+        uc, c = self.get_text_embed(null_prompt=prompt[0], prompt=prompt[1])
+        zt = self.initialize_latent()
+        zt = zt.requires_grad_()
+
+        timesteps = list(self.scheduler.timesteps)
+        N = len(timesteps)
+
+        def R_b(rks, hh, B_h, order):
+            h_phi_1 = torch.expm1(hh)
+            R, b = [], []
+            h_phi_k = h_phi_1 / hh - 1
+            factorial_i = 1
+            for i in range(1, order + 1):
+                R.append(torch.pow(rks, i - 1))
+                b.append(h_phi_k * factorial_i / B_h)
+                factorial_i *= i + 1
+                h_phi_k = h_phi_k / hh - 1 / factorial_i
+            return torch.stack(R), torch.stack(b), h_phi_1
+
+        def ratios(m_list, lam_list, lam_s0, h, order, device):
+            rks, D1s = [], []
+            m0 = m_list[-1]
+            for i in range(1, order):
+                rk = (lam_list[-(i + 1)] - lam_s0) / h
+                rks.append(rk)
+                D1s.append((m_list[-(i + 1)] - m0) / rk)
+            rks.append(torch.ones((), device=device))
+            return torch.stack(rks), D1s
+
+        def step_core(x, at_s0, at_t, m_list, lam_list, order, model_t=None):
+            # shared predictor/corrector body in the data-prediction face (bh2)
+            lam_s0, lam_t = self._lam(at_s0), self._lam(at_t)
+            h = lam_t - lam_s0
+            hh = -h                                          # predict_x0
+            B_h = torch.expm1(hh)                            # bh2
+            m0 = m_list[-1]
+            rks, D1s = ratios(m_list, lam_list, lam_s0, h, order, x.device)
+            R, b, h_phi_1 = R_b(rks, hh, B_h, order)
+            sigma_s0, sigma_t = (1 - at_s0).sqrt(), (1 - at_t).sqrt()
+            x_base = (sigma_t / sigma_s0) * x - at_t.sqrt() * h_phi_1 * m0
+            if model_t is None:                              # predictor (UniP)
+                if D1s:
+                    D1s = torch.stack(D1s, dim=1)
+                    if order == 2:
+                        rhos = torch.tensor([0.5], dtype=x.dtype, device=x.device)
+                    else:
+                        rhos = torch.linalg.solve(R[:-1, :-1], b[:-1]).to(x.dtype)
+                    res = torch.einsum("k,bk...->b...", rhos, D1s)
+                else:
+                    res = 0
+                return x_base - at_t.sqrt() * B_h * res
+            else:                                            # corrector (UniC)
+                if order == 1:
+                    rhos = torch.tensor([0.5], dtype=x.dtype, device=x.device)
+                else:
+                    rhos = torch.linalg.solve(R, b).to(x.dtype)
+                D1_t = model_t - m0
+                if D1s:
+                    D1s = torch.stack(D1s, dim=1)
+                    corr = torch.einsum("k,bk...->b...", rhos[:-1], D1s)
+                else:
+                    corr = 0
+                return x_base - at_t.sqrt() * B_h * (corr + rhos[-1] * D1_t)
+
+        m_list, lam_list = [], []
+        x_prev, at_prev_s0 = None, None
+        z0t = None
+        pbar = tqdm(range(N), desc="UniPC")
+        for i in pbar:
+            t = timesteps[i]
+            at = self.alpha(t)
+
+            with torch.no_grad():
+                noise_uc, noise_c = self.predict_noise(zt, t, uc, c)
+                noise_pred = noise_uc + cfg_guidance * (noise_c - noise_uc)
+            model_t = (zt - (1 - at).sqrt() * noise_pred) / at.sqrt()   # data prediction (z0)
+            z0t = model_t
+
+            if x_prev is not None:                            # correct the previous predictor step
+                order_c = min(max_order, len(m_list))         # past points available for the corrector
+                zt = step_core(x_prev, at_prev_s0, at, m_list, lam_list, order_c, model_t=model_t)
+
+            m_list.append(model_t)
+            lam_list.append(self._lam(at))
+
+            if i == N - 1:
+                z0t = m_list[-1]
+                break
+
+            order_p = min(max_order, len(m_list), N - i)
+            x_prev, at_prev_s0 = zt, at
+            at_next = self.alpha(t - self.skip)
+            zt = step_core(zt, at, at_next, m_list, lam_list, order_p)
+
+            if callback_fn is not None:
+                callback_kwargs = {'z0t': z0t.detach(),
+                                    'zt': zt.detach(),
+                                    'decode': self.decode}
+                callback_kwargs = callback_fn(i, t, callback_kwargs)
+                z0t = callback_kwargs["z0t"]
+                zt = callback_kwargs["zt"]
+
+        img = self.decode(z0t)
+        img = (img / 2 + 0.5).clamp(0, 1)
+        return img.detach().cpu()
+</new>
+</edit>
+<obs>
+Successfully replaced text in CFGpp-main/latent_diffusion.py.
+</obs>

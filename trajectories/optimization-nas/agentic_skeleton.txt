@@ -1,0 +1,1058 @@
+<meta task="optimization-nas" domain="Optimization" file="naslib/custom_nas_search.py" model_format="qwen3" edit_tool="str_replace"/>
+
+<system>
+You are a research engineer improving a model on a fixed ML task. You work by editing the model code and running experiments. Think carefully before each change. You have these tools:
+- str_replace(path, old_str, new_str): replace the unique occurrence of old_str with new_str.
+- create(path, file_text): create a new file.
+- run_experiment(): train + evaluate the current code under the fixed budget; returns metrics.
+Make one tool call at a time. After editing, call run_experiment() to measure your method.
+</system>
+
+<user>
+## Research question
+
+NAS-Bench-201 holds 15,625 architectures, but a search may only **query 30** of them per dataset
+per seed — `NAS_EPOCHS = 30`, hard-enforced (a 31st call to `api.query_val_accuracy` aborts the run).
+The single thing being designed is the **search strategy**: given the budget of 30 validation queries,
+which 30 architectures do I evaluate, and which one do I return for the (free, unbudgeted) final test
+query? Everything else — the search space, the benchmark API, the seeding, the evaluation loop — is
+frozen. At K = 30 the algorithm is load-bearing: naïve enumeration is impossible and the spread across
+seeds is non-trivial, so the difference between random sampling, evolution, and a learned predictor is
+exactly what the metric measures.
+
+## Prior art before the first rung (sample-efficient NAS lineage)
+
+The first rung reacts to the way black-box architecture search was done before any sample-efficiency
+pressure, and the methods that tried to compound information across queries are the rungs above it.
+
+- **Grid / manual search over architectures.** Enumerate a Cartesian product of design choices, or
+  hand-tune by intuition. Exact in one or two dimensions, but the number of joint configurations is
+  exponential in the number of cell edges (5^6 = 15,625 here), so a grid fine enough to resolve the
+  important edges is unaffordable, and manual search is irreproducible and unanalyzable. Gap: does not
+  scale, no honest baseline.
+- **Reinforcement-learning controllers (Zoph and Le, 2017).** An LSTM emits an architecture token by
+  token and is nudged by policy gradient toward high-scoring ones. Gets strong numbers but trains a
+  whole second network, carries its own schedule and greediness knobs, and couples the workers — heavy
+  for a regime where each query is precious and the budget is 30. Gap: complexity and sample cost.
+- **GP-based Bayesian optimization (e.g. NASBOT, Kandasamy et al. 2018).** Model the seen `(arch, acc)`
+  pairs, pick the next query to maximize expected progress. The right paradigm for expensive black-box
+  objectives, but a GP *is* its kernel and there is no off-the-shelf kernel on labeled DAGs — NASBOT
+  hand-built an optimal-transport distance — and GP inference is cubic in the number of observations.
+  Gap: a bespoke kernel plus cubic cost.
+
+## The fixed substrate
+
+The NAS-Bench-201 cell is frozen: 4 nodes, 6 directed edges, 5 operations per edge
+(`skip_connect, none, nor_conv_3x3, nor_conv_1x1, avg_pool_3x3`), so an architecture is a list of 6
+integers in `[0, 4]` and there are 5^6 = 15,625 of them. The loop is also frozen: it loads the tabular
+benchmark, wraps it in a `BenchmarkAPI` that **counts every `query_val_accuracy` call against the
+budget** and raises `BudgetExceededError` past 30, calls `search_step(epoch)` up to 30 times, then
+takes `get_best_architecture()` and runs **one unbudgeted test query** to score it. Evaluation is
+tabular — no network is trained; a query is a table lookup that costs one unit of budget. Three datasets
+(CIFAR-10, CIFAR-100, ImageNet16-120) are three separate settings; seeds `{0,1,2,3,4}`; the metric is
+**test accuracy of the returned architecture** (higher is better), reported mean ± std over seeds.
+
+The loop hands the optimizer fixed helpers it may use: `random_architecture()` (a uniform valid arch),
+`mutate_architecture(parent)` (a single-edge mutation), `get_neighbors(op_indices)` (all 1-edit
+neighbors), `is_valid_arch(...)`, `op_indices_to_arch_str(...)`, and `path_encoding(op_indices)` (a
+binary input→output operation-path feature vector of length `5 + 5^2 + 5^3 = 155`, the encoding of
+White et al. 2020, useful as predictor input).
+
+## The editable interface
+
+Exactly one region is editable — the `NASOptimizer` class in `naslib/custom_nas_search.py`
+(lines 163–234). Every method on the ladder is a fill of this same contract:
+`__init__(self, api, num_epochs, seed)` (set up search state), `search_step(self, epoch)` (run one
+budgeted step; must call `api.query_val_accuracy` at most once per step and return a metrics dict with
+`best_val_acc` and `queries`), and `get_best_architecture()` (return the architecture the harness will
+test). The optimizer must maintain `self.best_arch` so the returned architecture is the one it most
+wants tested on the unbudgeted split.
+
+The starting point is the scaffold default: **uniform random sampling**, tracking the best-by-validation
+architecture seen. Each method on the ladder replaces exactly this class and nothing else.
+
+```python
+# EDITABLE region of naslib/custom_nas_search.py (lines 163-234) — default fill
+class NASOptimizer:
+    """Sample-efficient NAS search strategy (default: uniform random sampling).
+
+    Helpers provided by the fixed loop:
+        random_architecture()              -> list[int]  (random valid arch)
+        mutate_architecture(parent)        -> list[int]  (1-edge mutation)
+        get_neighbors(op_indices)          -> list[list[int]]
+        is_valid_arch(op_indices)          -> bool
+        path_encoding(op_indices)          -> np.ndarray (155-dim path features)
+    The budgeted API:
+        api.query_val_accuracy(op_indices) -> float   (costs 1 query)
+        api.query_count / api.remaining_budget
+    """
+
+    def __init__(self, api, num_epochs, seed):
+        self.api = api
+        self.num_epochs = num_epochs
+        self.seed = seed
+        self.best_arch = None
+        self.best_val_acc = -1.0
+
+    def search_step(self, epoch):
+        arch = random_architecture()
+        val_acc = self.api.query_val_accuracy(arch)
+        if val_acc > self.best_val_acc:
+            self.best_val_acc = val_acc
+            self.best_arch = arch
+        return {
+            "best_val_acc": self.best_val_acc,
+            "queries": self.api.query_count,
+            "current_val_acc": val_acc,
+        }
+
+    def get_best_architecture(self):
+        return self.best_arch
+```
+
+## Evaluation settings
+
+- Search space: NAS-Bench-201 cell (6 edges, 5 ops, 15,625 architectures).
+- Budget: `NAS_EPOCHS = 30` validation queries per dataset per seed, hard-enforced.
+- Datasets / settings: CIFAR-10, CIFAR-100, ImageNet16-120.
+- Seeds: `{0, 1, 2, 3, 4}`; report mean ± std.
+- Metric: test accuracy of the returned architecture (one unbudgeted final query); higher is better.
+
+The editable model code is in `naslib/custom_nas_search.py`:
+```python
+class NASOptimizer:
+    """Sample-efficient NAS search strategy.
+
+    Implement a search algorithm that maximizes the test accuracy of the
+    best-found architecture under a STRICT validation-query budget
+    (self.num_epochs, default 30).
+
+    The search space has 15625 architectures (5 ops x 6 edges). Each
+    architecture is a list of 6 integers in [0, 4].
+
+    Available helper functions (defined above, fixed):
+        random_architecture()                  -> list[int]  (random valid arch)
+        mutate_architecture(parent)            -> list[int]  (1-edge mutation)
+        get_neighbors(op_indices)              -> list[list[int]]  (all 1-edit neighbors)
+        is_valid_arch(op_indices)              -> bool
+        op_indices_to_arch_str(op_indices)     -> str
+        path_encoding(op_indices)              -> np.ndarray (features for predictors)
+
+    The benchmark API (self.api) provides ONE budgeted method:
+        api.query_val_accuracy(op_indices)     -> float   (costs 1 query)
+        api.query_count                        -> int     (queries used so far)
+        api.remaining_budget                   -> int     (queries left)
+
+    The harness will call search_step(epoch) up to self.num_epochs times.
+    After each step, you should maintain self.best_arch so that
+    get_best_architecture() returns the architecture you most want the
+    harness to finally test (on the unbudgeted test split).
+    """
+
+    def __init__(self, api, num_epochs, seed):
+        """Initialize the optimizer.
+
+        Args:
+            api: BenchmarkAPI (with budget = num_epochs validation queries).
+            num_epochs: Total number of allowed validation queries (budget).
+            seed: Random seed for reproducibility.
+        """
+        self.api = api
+        self.num_epochs = num_epochs
+        self.seed = seed
+
+        # TODO: Initialize your search state here
+        self.best_arch = None
+        self.best_val_acc = -1.0
+
+    def search_step(self, epoch):
+        """Run one step of the search algorithm.
+
+        Args:
+            epoch: Current search iteration (0-indexed)
+
+        Returns:
+            dict: Metrics to log, must include 'best_val_acc' and 'queries'.
+        """
+        # Placeholder: random search (replace with your algorithm)
+        arch = random_architecture()
+        val_acc = self.api.query_val_accuracy(arch)
+
+        if val_acc > self.best_val_acc:
+            self.best_val_acc = val_acc
+            self.best_arch = arch
+
+        return {
+            "best_val_acc": self.best_val_acc,
+            "queries": self.api.query_count,
+            "current_val_acc": val_acc,
+        }
+
+    def get_best_architecture(self):
+        """Return the architecture the harness will test (unbudgeted)."""
+        return self.best_arch
+```
+Improve it. Derive your method, edit the code, then run_experiment().
+</user>
+
+### step 1 — Random Search (uniform sampling)   [slug:random_search]
+
+<think>
+[[POLISH_REASONING: adapt to first-person agentic voice, end by deciding to implement]]
+The strategy is the whole point, but it has to bolt onto a budget and a search space, and with the
+plainest possible strategy that combination is the floor — so the thing to start from is just spending
+30 queries on this space at all, without trying to be clever about which 30. I have 15,625 architectures
+and exactly 30 lookups; the objective `f(a)` — validation accuracy on the tabular benchmark — is a black
+box with no gradient over a discrete cell graph, and a single query costs one of my thirty units. The
+question is narrow: out of a budget of 30 evaluations, which architectures do I evaluate, and which one
+do I return? Before I reach for anything adaptive I want the honest yardstick that every adaptive method
+has to beat, and that yardstick is the strategy that uses *none* of the history — draw each architecture
+independently and uniformly, keep the best one by validation accuracy.
+
+Let me write down why this is the right floor rather than an arbitrary one. The temptation in a budgeted
+black-box search is to compound information: model the `(a, f(a))` pairs seen so far and let them steer
+the next draw. That compounding is exactly what the rungs above this one will do — evolution exploits
+the best-seen, a predictor models all of them — but each of those mechanisms can also *hurt*, because
+each makes an assumption (the landscape is locally smooth, the surrogate generalizes) that a 30-query
+budget may not justify. Uniform random sampling makes no such assumption. Every draw is an independent,
+identically distributed gamble over the whole space, so the method has no way to be misled by a wrong
+prior about where good architectures live — and that very property, "deliberately ignores the history,"
+is what makes it the baseline against which adaptivity must prove its worth, not the last word.
+
+What does 30 uniform draws actually buy me, quantitatively? Idealize "find a good architecture" as
+hitting a target region that occupies a fraction `p` of the 15,625 architectures. Each draw lands in the
+target with probability `p` and misses with `1 - p`; the draws are independent, so the chance all 30
+miss is `(1 - p)^30`, and the chance at least one hits is `1 - (1 - p)^30`. Notice what is *not* in that
+formula: the ambient size 15,625 never appears, only the *relative* volume `p` of the good region. So
+the question of whether 30 draws suffice has nothing to do with how big the space is and everything to
+do with how big a fraction of it is good — and on NAS-Bench-201 that fraction is mild. The benchmark is
+small and many edge configurations are near-equivalent (swapping a `nor_conv_1x1` for a `nor_conv_3x3`
+on a non-critical edge barely moves the accuracy), so a large fraction of the 15,625 cells sit within a
+couple of accuracy points of the best. If, say, the top ~5% of architectures count as "good," then
+`1 - 0.95^30 ≈ 0.79` — about four runs in five land at least one good architecture in 30 draws, purely
+by volume. If "good" is the top ~10%, it is `1 - 0.90^30 ≈ 0.96`. That is the reason random search is
+not a strawman on this benchmark and is genuinely hard to beat: the relative volume of the good region
+is large enough that thirty independent shots usually catch it, so the ceiling a smarter method can claw
+back above this floor is *narrow*. The whole sample-efficiency story lives in that narrow band — and it
+is exactly the regime the research question targets (K ≤ 50), where the literature reports a measurable
+but small gap.
+
+It is worth being precise about *why* I draw uniformly rather than, say, on some structured sweep of the
+six edges. A grid over the cell would fix a handful of operation values per edge and take their Cartesian
+product, but with six edges that product is exponential, and worse, an aligned grid probes each
+individual edge at only the sixth root of the budget — thirty grid points laid on the 6-dimensional cell
+would resolve each edge at barely two settings, and project down onto any one edge as two stacks of
+coincident points. Uniform independent draws collapse under no such projection: each draw chooses all six
+edges independently, so the thirty draws probe every edge at (almost) thirty distinct settings at once,
+giving whichever edges actually matter for accuracy the full budget's worth of resolution without my
+having to know in advance which edges those are. That is the same per-axis-resolution argument that makes
+random search beat grid in hyperparameter optimization, and it is why the scaffold's `random_architecture`
+draws each of the six op-indices independently rather than enumerating a lattice.
+
+The one thing I must get right is the bookkeeping, because the budget is hard. The loop calls
+`search_step(epoch)` up to 30 times and counts every `query_val_accuracy` call; a 31st call aborts the
+whole run. So each step must query exactly once, and I must never re-query or wrap a query to stretch the
+budget — the task explicitly forbids it, and the harness would catch it. Each step I draw one valid
+architecture from the fixed helper `random_architecture()` (which already rejects degenerate all-`none`
+cells), query its validation accuracy, and if it beats the running best I store it. At the end
+`get_best_architecture()` hands back the best-by-validation architecture, and the harness scores it on
+the unbudgeted test split. There is no state worth keeping beyond the running best and its score — the
+method is non-adaptive by construction, so the history is never consulted to decide the next draw.
+
+There is a subtlety I should name even though I am not going to fix it here, because it is what the next
+rung will react to. The architecture I *return* is chosen by its **validation** accuracy, but the metric
+is **test** accuracy, and the two are not perfectly monotone: among several architectures with nearly
+tied validation scores, which one I crown as best is itself a little noisy, and a different draw could
+anoint a different one with a slightly different test score. With only 30 samples the running best is
+often decided by one or two near-ties, so the test accuracy I report inherits that selection noise as
+seed-to-seed variance. Uniform sampling does nothing to suppress it — it neither concentrates its queries
+where the good region is nor re-examines near-ties — so I should expect the variance across the five
+seeds to be the dominant feature of this baseline, not its mean. This is also why an honest report needs
+both numbers: a method that lifts the mean by a few tenths of a point but does so *consistently* across
+seeds is a real improvement over random search even when a single lucky random-search seed happens to
+tie it, and the only way to see that is to read the per-seed column, not just the mean. The five seeds
+here are not a nuisance to be averaged away; at K = 30 they *are* the signal, because the variance is on
+the same order as the gap the ladder is trying to open.
+
+So at step 1 the edit is the trivial one: the scaffold default already *is* uniform random search, and
+the literal fill is exactly the placeholder `NASOptimizer` — sample, query once, track the best (the
+distilled class is in the answer). Nothing is added.
+
+Now reason about what this floor must do across the three settings, because that is the entire point of
+running it. On all three datasets the mechanism is identical — thirty independent shots at a space whose
+good region is a sizeable fraction — so the *mean* should land at a respectable but unremarkable accuracy
+on each, a little below whatever an adaptive method can reach, and the *spread* should be visible. I
+expect CIFAR-10 to be the tightest of the three, because its accuracy distribution over the benchmark is
+compressed near the top (many cells reach ~93–94%), so even unlucky draws land close to good; CIFAR-100
+and especially ImageNet16-120 have a wider spread of architecture quality, so a run that fails to draw
+into the top region pays a larger penalty and the seed-to-seed variance should be larger there. The
+diagnosis I am already pointing at the next rung is this: random search has no memory, so when a seed
+draws a strong architecture early it cannot *build* on it, and when it draws poorly it cannot *recover*.
+The obvious first lever is to stop throwing every draw away — keep a small set of the best-seen and spend
+later queries near them instead of uniformly. Whatever the precise per-dataset numbers, the failure mode
+is structural: thirty independent gambles with no exploitation of what they revealed, so the result is
+governed by luck, and the way to beat it is to let the good draws steer the later ones.
+</think>
+<say>
+[[FILL_SAY: 1-2 sentences naming the method and what this first edit does]]
+</say>
+<edit path="naslib/custom_nas_search.py">
+<old>
+class NASOptimizer:
+    """Sample-efficient NAS search strategy.
+
+    Implement a search algorithm that maximizes the test accuracy of the
+    best-found architecture under a STRICT validation-query budget
+    (self.num_epochs, default 30).
+
+    The search space has 15625 architectures (5 ops x 6 edges). Each
+    architecture is a list of 6 integers in [0, 4].
+
+    Available helper functions (defined above, fixed):
+        random_architecture()                  -> list[int]  (random valid arch)
+        mutate_architecture(parent)            -> list[int]  (1-edge mutation)
+        get_neighbors(op_indices)              -> list[list[int]]  (all 1-edit neighbors)
+        is_valid_arch(op_indices)              -> bool
+        op_indices_to_arch_str(op_indices)     -> str
+        path_encoding(op_indices)              -> np.ndarray (features for predictors)
+
+    The benchmark API (self.api) provides ONE budgeted method:
+        api.query_val_accuracy(op_indices)     -> float   (costs 1 query)
+        api.query_count                        -> int     (queries used so far)
+        api.remaining_budget                   -> int     (queries left)
+
+    The harness will call search_step(epoch) up to self.num_epochs times.
+    After each step, you should maintain self.best_arch so that
+    get_best_architecture() returns the architecture you most want the
+    harness to finally test (on the unbudgeted test split).
+    """
+
+    def __init__(self, api, num_epochs, seed):
+        """Initialize the optimizer.
+
+        Args:
+            api: BenchmarkAPI (with budget = num_epochs validation queries).
+            num_epochs: Total number of allowed validation queries (budget).
+            seed: Random seed for reproducibility.
+        """
+        self.api = api
+        self.num_epochs = num_epochs
+        self.seed = seed
+
+        # TODO: Initialize your search state here
+        self.best_arch = None
+</old>
+<new>
+# EDITABLE region of naslib/custom_nas_search.py (lines 163-234) — step 1: random search
+class NASOptimizer:
+    """Random Search — uniformly sample architectures and track the best."""
+
+    def __init__(self, api, num_epochs, seed):
+        self.api = api
+        self.num_epochs = num_epochs
+        self.seed = seed
+        self.best_arch = None
+</new>
+</edit>
+<obs>
+Successfully replaced text in naslib/custom_nas_search.py.
+</obs>
+<note>
+[[FILL_NOTE?: optional one-line thought for this edit, or delete this block]]
+</note>
+<edit path="naslib/custom_nas_search.py">
+<old>
+    def search_step(self, epoch):
+        """Run one step of the search algorithm.
+
+        Args:
+            epoch: Current search iteration (0-indexed)
+
+        Returns:
+            dict: Metrics to log, must include 'best_val_acc' and 'queries'.
+        """
+        # Placeholder: random search (replace with your algorithm)
+        arch = random_architecture()
+</old>
+<new>
+    def search_step(self, epoch):
+        arch = random_architecture()
+</new>
+</edit>
+<obs>
+Successfully replaced text in naslib/custom_nas_search.py.
+</obs>
+<note>
+[[FILL_NOTE?: optional one-line thought for this edit, or delete this block]]
+</note>
+<edit path="naslib/custom_nas_search.py">
+<old>
+    def get_best_architecture(self):
+        """Return the architecture the harness will test (unbudgeted)."""
+        return self.best_arch
+</old>
+<new>
+    def get_best_architecture(self):
+        return self.best_arch
+</new>
+</edit>
+<obs>
+Successfully replaced text in naslib/custom_nas_search.py.
+</obs>
+<run/>
+<obs>
+Measured results — `baseline:random_search` (`is_final,true`), seeds {0,1,2,3,4} and mean (test accuracy).
+
+## CIFAR-10
+| seed | test_accuracy |
+|---|---|
+| 0 | 92.83 |
+| 1 | 93.74 |
+| 2 | 93.42 |
+| 3 | 93.67 |
+| 4 | 93.24 |
+| **mean** | **93.380** (±0.328) |
+
+## CIFAR-100
+| seed | test_accuracy |
+|---|---|
+| 0 | 70.50 |
+| 1 | 71.28 |
+| 2 | 71.54 |
+| 3 | 69.92 |
+| 4 | 70.02 |
+| **mean** | **70.652** (±0.654) |
+
+## ImageNet16-120
+| seed | test_accuracy |
+|---|---|
+| 0 | 45.4667 |
+| 1 | 44.8667 |
+| 2 | 44.6000 |
+| 3 | 44.1000 |
+| 4 | 43.8000 |
+| **mean** | **44.5667** (±0.584) |
+</obs>
+
+### step 2 — REA (Regularized Evolution, low-budget variant)   [slug:rea]
+
+<think>
+[[POLISH_REASONING: adapt to first-person agentic voice, end by deciding to implement]]
+Random search told me exactly what it was always going to tell me, and it told me in the per-seed
+columns. The means are respectable — 93.38 on CIFAR-10, 70.65 on CIFAR-100, 44.57 on ImageNet16-120 —
+which is the volume argument coming true: thirty independent shots at a space whose good region is a
+large fraction usually catch something decent. But look at the spread. CIFAR-10 is tight (±0.33, seeds
+between 92.83 and 93.74), exactly as I expected from the compressed top of its accuracy distribution;
+CIFAR-100 is wider (±0.65), and ImageNet16-120 widest (±0.58 on a lower base, and the seeds fall in a
+clean monotone 45.47, 44.87, 44.60, 44.10, 43.80 — that is luck-of-the-draw, not signal). The seed-3
+CIFAR-100 of 69.92 and the seed-4 ImageNet of 43.80 are the tell: those are runs where thirty memoryless
+gambles simply never drew into the top region, and random search has no way to *recover*, because it
+never looks at what it already found. That is the structural failure I pointed at — not a bad mean, but a
+floor governed by luck, with the variance on the same order as any gap I could hope to open. So the lever
+is obvious and narrow: stop throwing every draw away. When a query reveals a strong architecture, spend
+the next queries *near* it instead of uniformly, so a good early draw can be built on and a poor start
+can be climbed out of.
+
+What is the simplest mechanism that turns "build on the best-seen" into a search? I do not want to train
+a second model or carry a schedule — at 30 queries that overhead is not paid back, and the controller
+machinery of RL-based search is exactly the complexity I am trying to avoid. The barest possible
+exploit-the-good loop is evolution: keep a small population of evaluated architectures, repeatedly pick a
+good one as a parent, mutate it by one small edit, evaluate the child, and let the population turn over.
+No controller, no backprop through anything, nothing that couples the budget to a learner — just
+selection and mutation, which is precisely the "spend later queries near the good draws" lever the random
+search numbers asked for. The whole design question is what the turnover rule and the knobs should be in
+the K = 30 regime, because the standard evolution recipes were tuned for thousands of evaluations and
+will not transfer unchanged.
+
+Start with the loop skeleton and make selective pressure precise, because that is the one thing that
+governs whether 30 queries is enough to climb. Each cycle I run a tournament: sample S members of the
+population at random, take the highest-accuracy one as the parent, mutate, evaluate the child, insert it.
+S is the greed knob. There is the old takeover-time result — for an S-ary tournament the best individual
+floods a population of size P in roughly `t* ≈ (1/ln S)·[ln P + ln ln P]` cycles — and the dependence on
+S is through `1/ln S`, so bumping S from 2 to 4 roughly halves the takeover time. With only ~20 cycles of
+evolution after the population is seeded, I cannot afford the leisurely takeover that S = 2 gives on a
+large benchmark; but I also cannot afford to be so greedy that the search collapses onto the first decent
+architecture and stops exploring. This is the crux of porting evolution to a tiny budget: the population
+and tournament sizes that work at thousands of evaluations are wrong here, and I have to shrink both.
+
+So fix the population at P = 10 and the tournament at S = 3. The reasoning is budget arithmetic. Thirty
+queries split into a seeding phase and an evolution phase. I seed the population by drawing P = 10 random
+architectures and evaluating each — that is the first 10 queries, and it is itself a random search of
+depth 10, so the population starts already containing a reasonable best. That leaves ~20 queries to
+evolve. P = 10 is small enough that those 10 seeds are a real fraction of the population's lifetime churn,
+and large enough to hold genuine diversity rather than collapsing immediately. S = 3 out of 10 is
+moderate greed: the parent is the best of a 3-sample, so it is usually one of the stronger members but
+not deterministically the global best, which keeps a little exploration alive. A larger S (say 5 or 7 out
+of 10) would make almost every parent the current champion and turn the 20 evolution steps into a near
+hill-climb on one lineage — fine if that lineage is right, fatal if the seeds were unlucky, which is
+exactly the random-search failure I am trying to fix. S = 3 is the low-budget tournament size the
+sample-efficient NAS recipes converge on, and the takeover formula says it floods P = 10 in only a
+handful of cycles, which is what I want: fast enough to exploit a good seed within the 20-step budget,
+loose enough not to freeze on a bad one.
+
+Now the eviction rule, which is where evolution either filters noise or accumulates it. The textbook,
+greedy thing is to remove the *worst* member each cycle — survival of the fittest, the population's
+average ratchets up. On NAS-Bench-201 the tabular accuracy is deterministic (a query is a table lookup,
+not a noisy training run), so the classic argument that kill-the-worst homesteads a *lucky* evaluation
+does not bite the same way it would with stochastic training. But there is a different reason to prefer
+removing the *oldest* member even here, and it is about exploration rather than noise: kill-the-worst
+keeps every high-scoring architecture in the population permanently, so once a strong cell is found it
+sits there forever, gets re-selected as parent over and over, and the population concentrates around it —
+the same premature-convergence collapse, just driven by genuine score instead of luck. With only 20
+evolution steps, concentrating early means I stop exploring the rest of the space far too soon, and I am
+right back to the random-search problem of being unable to recover from a mediocre early region.
+Kill-the-oldest gives every architecture a fixed bounded lifespan of about P cycles regardless of its
+score, so a strong cell can only persist by being *re-discovered* — a parent carrying it must keep
+producing children that also score well — which forces the population to keep moving through new regions
+rather than homesteading the first good one. The age-based turnover *is* the regularizer: it constrains
+the survivors to architectures the search keeps re-finding, and it keeps the 20 precious evolution steps
+spread across the space instead of piling onto one lineage. Encoding age is free — append the child on
+the right of the population list, pop index 0 (the oldest) — so this costs no extra knob; P and S remain
+the only two.
+
+The mutation has to match this task's edit surface, and here the cell space makes it trivial. An
+architecture is a list of six op-indices in `[0,4]`; a single-edge mutation picks one of the six edges
+and changes its operation to a different one of the five — that is exactly the fixed helper
+`mutate_architecture(parent)` the loop hands me. One edit is the right granularity: it is the smallest
+move in the space, so a child stays close to a parent the tournament already judged good (local
+exploitation), and chaining single edits can reach any architecture from any other (the space stays
+connected), so I am not trapping the search in a neighborhood. I do not need crossover — there is no
+meaningful way to splice two six-edge cells that single mutations cannot already reach, and crossover
+would add machinery for no gain at this budget. The one guard is validity: a mutation could in principle
+produce an all-`none` degenerate cell, so I re-mutate until `is_valid_arch` passes before spending a
+query on the child — that costs no budget, only a few cheap helper calls. And I track the best-seen
+architecture separately from the population (a simple `_update_best` on every evaluation, seeding and
+evolution alike), so that even if age evicts a strong cell from the population I still return it: the
+metric rewards the best architecture *ever found*, not the best currently alive.
+
+So the delta from random search is concrete and small. Where random search drew all 30 architectures
+independently and kept the best, REA draws only the first 10 independently to seed a population, then
+spends the remaining ~20 queries on children of tournament-selected parents, mutating one edge at a time
+and evicting the oldest member each cycle, while tracking the best-ever for the final return (the
+distilled class is in the answer). The exploitation that random search structurally lacked is now the
+whole point: a good seed gets built on through its descendants, and a poor seeding region gets climbed
+out of as the population turns over toward whatever the tournaments keep re-finding.
+
+Reading the random-search numbers, here is what I expect this to fix and where I am unsure. The wins
+should show up where random search *failed to recover* — the wide-spread settings. On ImageNet16-120,
+where random search drew a clean monotone fall to 43.80 on its unlucky seed, the 20 evolution steps
+should lift the unlucky seeds by climbing local neighborhoods of the best seed, so I expect the
+ImageNet16-120 mean to rise above 44.57 — that is the most falsifiable prediction, because it is the
+setting with the most room. On CIFAR-100 I expect a modest lift or at worst a wash over 70.65: the
+benefit of exploitation is real but the budget for it is only 20 steps, and CIFAR-100's landscape may not
+reward single-edge climbs as cleanly. On CIFAR-10 I am genuinely unsure it helps the mean at all and it
+might even nudge down from 93.38: random search already nearly saturates the compressed top of CIFAR-10's
+distribution, so there is almost no room above the floor, and concentrating queries via tournaments
+trades away a little of the per-axis coverage that made random search strong there — if REA's CIFAR-10
+mean lands around or just below random search's, that is the narrow-band ceiling biting, not a bug. The
+clean signature I am looking for is REA beating random search on the high-variance, low-saturation
+setting (ImageNet16-120) while staying within noise on the near-saturated one (CIFAR-10); if instead REA
+*loses* on ImageNet16-120, my diagnosis was wrong and the failure is not lack of exploitation but that
+single-edge hill-climbing from random seeds cannot find the good region in 20 steps — which would point
+the next rung not at evolution at all but at a method that *models* the accuracy surface to extrapolate
+beyond the seeds, rather than only mutating them.
+</think>
+<say>
+[[FILL_SAY: 1-2 sentences naming the method and what this first edit does]]
+</say>
+<edit path="naslib/custom_nas_search.py">
+<old>
+# EDITABLE region of naslib/custom_nas_search.py (lines 163-234) — step 1: random search
+class NASOptimizer:
+    """Random Search — uniformly sample architectures and track the best."""
+</old>
+<new>
+# EDITABLE region of naslib/custom_nas_search.py (lines 163-234) — step 2: REA
+class NASOptimizer:
+    """REA — Regularized Evolution Algorithm for NAS (low-budget variant).
+
+    Population size 10 and tournament size 3, tuned for K=30 queries
+    following NAS-Bench-Suite (White et al., 2022) low-budget recipes.
+    """
+</new>
+</edit>
+<obs>
+Successfully replaced text in naslib/custom_nas_search.py.
+</obs>
+<note>
+[[FILL_NOTE?: optional one-line thought for this edit, or delete this block]]
+</note>
+<edit path="naslib/custom_nas_search.py">
+<old>
+        self.seed = seed
+        self.best_arch = None
+        self.best_val_acc = -1.0
+
+    def search_step(self, epoch):
+        arch = random_architecture()
+        val_acc = self.api.query_val_accuracy(arch)
+
+        if val_acc > self.best_val_acc:
+            self.best_val_acc = val_acc
+            self.best_arch = arch
+</old>
+<new>
+        self.seed = seed
+
+        self.population_size = 10
+        self.tournament_size = 3
+        self.population = []  # list of (arch, val_acc)
+        self.best_arch = None
+        self.best_val_acc = -1.0
+
+    def _update_best(self, arch, val_acc):
+        if val_acc > self.best_val_acc:
+            self.best_val_acc = val_acc
+            self.best_arch = list(arch)
+
+    def search_step(self, epoch):
+        if epoch < self.population_size:
+            # Seed initial population with random architectures
+            arch = random_architecture()
+            val_acc = self.api.query_val_accuracy(arch)
+            self.population.append((arch, val_acc))
+        else:
+            # Tournament selection
+            k = min(self.tournament_size, len(self.population))
+            sample_indices = random.sample(range(len(self.population)), k)
+            parent_idx = max(sample_indices, key=lambda i: self.population[i][1])
+            parent_arch = self.population[parent_idx][0]
+
+            # Mutation
+            child_arch = mutate_architecture(parent_arch)
+            while not is_valid_arch(child_arch):
+                child_arch = mutate_architecture(parent_arch)
+            child_val_acc = self.api.query_val_accuracy(child_arch)
+
+            # Add child and remove oldest (regularization)
+            self.population.append((child_arch, child_val_acc))
+            self.population.pop(0)
+            arch, val_acc = child_arch, child_val_acc
+
+        self._update_best(arch, val_acc)
+</new>
+</edit>
+<obs>
+Successfully replaced text in naslib/custom_nas_search.py.
+</obs>
+<note>
+[[FILL_NOTE?: optional one-line thought for this edit, or delete this block]]
+</note>
+<edit path="naslib/custom_nas_search.py">
+<old>
+            "queries": self.api.query_count,
+            "current_val_acc": val_acc,
+        }
+</old>
+<new>
+            "queries": self.api.query_count,
+            "population_size": len(self.population),
+        }
+</new>
+</edit>
+<obs>
+Successfully replaced text in naslib/custom_nas_search.py.
+</obs>
+<run/>
+<obs>
+Measured results — `baseline:rea` (`is_final,true`), seeds {0,1,2,3,4} and mean (test accuracy).
+
+## CIFAR-10
+| seed | test_accuracy |
+|---|---|
+| 0 | 93.92 |
+| 1 | 93.17 |
+| 2 | 93.18 |
+| 3 | 93.12 |
+| 4 | 93.60 |
+| **mean** | **93.398** (±0.313) |
+
+## CIFAR-100
+| seed | test_accuracy |
+|---|---|
+| 0 | 71.46 |
+| 1 | 69.76 |
+| 2 | 69.78 |
+| 3 | 70.18 |
+| 4 | 70.96 |
+| **mean** | **70.428** (±0.675) |
+
+## ImageNet16-120
+| seed | test_accuracy |
+|---|---|
+| 0 | 46.8000 |
+| 1 | 46.4000 |
+| 2 | 42.7000 |
+| 3 | 44.9333 |
+| 4 | 45.4333 |
+| **mean** | **45.2533** (±1.440) |
+</obs>
+
+### step 3 — BANANAS (path-encoded MLP-ensemble predictor)   [slug:bananas]
+
+<think>
+[[POLISH_REASONING: adapt to first-person agentic voice, end by deciding to implement]]
+REA's numbers landed almost exactly where my falsifiable prediction said the risk was, and reading them
+carefully is what picks the next rung. The headline is that REA did *not* clearly beat random search:
+CIFAR-10 went 93.38 → 93.40 (a wash, as I predicted — the compressed top is near-saturated and there is
+no room), CIFAR-100 actually *slipped* 70.65 → 70.43, and ImageNet16-120 rose 44.57 → 45.25, the one
+setting where I expected the most room. So the directional prediction held on ImageNet16-120 and CIFAR-10,
+but the CIFAR-100 slip and — more telling — the ImageNet16-120 **variance** are the real story. REA's
+ImageNet spread blew up to ±1.44, more than double random search's ±0.58, with seed 2 cratering to 42.70
+while seed 0 hit 46.80. That ±1.44 is the diagnosis written in a number: this is exactly the
+premature-convergence failure I worried about when I chose the eviction rule. On the good seeds, the 20
+evolution steps hill-climbed a strong seed into a genuinely better cell (46.8, 46.4 — clearly above
+random search's best). On seed 2, the tournament locked onto a mediocre seeding region and single-edge
+mutation could not climb out of it in 20 steps, so it finished at 42.70, *below* anything random search
+drew. REA is high-variance because it is a *local* search: it exploits beautifully when the seeds put it
+near the good region and fails badly when they don't, and 10 random seeds plus 20 single-edge steps is
+not enough coverage to guarantee the former. The mechanism that helped — exploit the best-seen by
+mutating it — is the same mechanism that hurt, because mutation only ever moves one edit from something
+already evaluated. It cannot *extrapolate*; it can only refine what luck handed it.
+
+So the lever the REA numbers expose is different from the one the random-search numbers exposed. Random
+search needed exploitation; REA has exploitation but no way to use the 30 queries to reason about
+architectures it has *not* yet evaluated. What I want now is a method that, after each query, builds a
+*model* of the accuracy surface from all the `(arch, acc)` pairs seen so far and uses it to choose the
+next query — so that the 30 queries compound into a prediction over the whole 15,625-cell space, not just
+a 1-edit neighborhood of the current best. That is Bayesian optimization in spirit: model what you have
+seen, pick the next point to maximize expected progress, evaluate, update. The question is what the
+surrogate, the encoding, and the selection rule should be under this budget and inside this scaffold.
+
+Start with the surrogate, because the obvious choice fails. The textbook BO surrogate is a Gaussian
+process: condition on the data, read off a posterior mean and variance. But a GP *is* its kernel, and the
+inputs here are labeled cell graphs — there is no off-the-shelf kernel on DAGs, and building a bespoke
+distance over architectures is a hard modeling problem of its own, plus GP inference is cubic in the
+number of observations. I do not need any of that. All I actually require from the surrogate is: consume
+the architectures seen, predict the validation accuracy of an unseen one, and let me pick the most
+promising candidate. A neural network does exactly that and learns its own notion of similarity from a
+feature vector, so the "invent a kernel on DAGs" problem evaporates — I hand the net a featurization and
+let it fit. So the surrogate is a small feedforward network trained from the `(encoding, val_acc)` pairs
+at each step.
+
+The encoding is the next decision, and the scaffold has already made the right one available. The default
+move would be an adjacency encoding — a bit per possible edge plus the op at each node — but that is
+order-dependent and its features are violently inter-dependent (an edge bit means nothing without a path
+to the output), which is exactly what a small net struggles to fit from a handful of examples. The
+scaffold instead provides `path_encoding`, a binary indicator over input→output operation-paths: one
+feature per "the tensor can flow through this sequence of operations," length `5 + 5^2 + 5^3 = 155`. Each
+feature is a self-contained statement about what the cell computes rather than a fragment of its wiring,
+so the features are far less entangled and a single architecture maps to a single encoding — no
+isomorphism ambiguity. With 155 dimensions and a 30-cell budget the full path encoding is small enough to
+use as-is; there is no need to truncate it to the most-frequent short paths, the way one would on a large
+cell where the encoding length explodes — here it does not, so I take the whole 155-dim vector the loop
+hands me.
+
+Now the predictor itself, and here I have to respect what this scaffold can actually run. I cannot assume
+a deep-learning framework is in the image, so I build the net in numpy: a two-layer MLP — Linear(155, 64)
+→ ReLU → Linear(64, 1) — trained with Adam on a plain mean-squared-error objective against the validation
+accuracies. Why MSE and not a fancier loss that up-weights the high-accuracy architectures? Because at
+this budget, with at most 29 training points by the final step, the predictor's job is modest: rank a
+pool of candidates well enough to pick a good one, not to nail the error of near-optimal cells to the
+decimal. A plain MSE regressor on the 155-dim path features is the honest, low-variance choice — it fits
+fast (200 Adam steps, lr = 1e-2), it has no extra hyperparameter to tune against a budget that cannot
+afford tuning, and it predicts accuracy directly so I can simply pick the candidate the model thinks is
+best. The width 64 and the 1/√fan-in initialization keep it from overfitting the tiny training set.
+
+Every acquisition rule wants more than a point prediction — it wants an uncertainty, so the search can
+explore where the model is ignorant. A single net gives only a point estimate. The cheap, well-calibrated
+way to get an uncertainty is an ensemble: train M independent copies from different random
+initializations and read the disagreement among them as the uncertainty. I set M = 5 — small enough to
+retrain from scratch every step (the predictor's cost is a rounding error against the real query cost,
+since a query is just a table lookup but is the budgeted resource), large enough that the ensemble mean
+is a stable estimate. Each member gets its own seed (`self.seed + i + 1`) so the members genuinely
+disagree.
+
+Now the selection rule, and this is the place where I deliberately keep it simple rather than reaching for
+the full BO acquisition machinery. With the ensemble I have, for any candidate, the mean prediction across
+the 5 members. The acquisition I use is the plainest exploitation rule: **score every candidate by the
+ensemble mean and query the single highest-scoring one.** I considered the uncertainty-aware
+alternatives — upper-confidence-bound (`mean + β·std`), or Thompson-style sampling from each candidate's
+predictive spread — and they are the principled way to balance exploration against exploitation. But here
+the exploration is already being supplied by *where the candidates come from*, and adding an explicit
+uncertainty bonus on top of a 29-point predictor risks chasing the model's high-variance phantoms into
+regions it has no business trusting. So I let the candidate pool carry the exploration and let the
+acquisition be pure greedy exploitation of the mean — which is also robust to a poorly-calibrated
+ensemble std at tiny sample sizes.
+
+The candidate pool is the last piece and the one that most distinguishes this rung from REA. REA's fatal
+limitation was that it only ever looked one edit away from an evaluated architecture, so it could not
+escape a bad seeding region — that is what produced the 42.70 seed. To fix exactly that, I draw the
+candidate pool **uniformly at random over the whole space**: each step I sample a large pool (500) of
+*unseen* random architectures and score all of them with the ensemble. This is the deliberate opposite of
+REA's mutate-the-best: instead of refining the current neighborhood, the predictor gets to reach across
+the entire 15,625-cell space and pull in whichever architecture it predicts is best, even if it is many
+edits away from anything seen. The model is what generalizes from the seen points to the unseen pool, so
+a single good predictor lets me extrapolate where REA could only interpolate locally. The pool is large
+(500) so the argmax is taken over a broad sweep of the space rather than a thin sample; it is cheap
+because scoring 500 candidates with five tiny MLPs is nothing against the budgeted query.
+
+Assemble the loop. Warm-start with N0 = 10 random architectures, evaluated and recorded, just so the
+ensemble has enough points to fit something meaningful (with fewer than two points the predictor is
+hopeless, so I keep sampling randomly until then). Then each remaining step: fit the 5-MLP ensemble on
+the path-encoded `(arch, val_acc)` pairs seen so far; draw 500 unseen random candidates; encode them;
+score each by the ensemble mean; query the single argmax; record it and refit. Track the best-seen and
+return it. That is BANANAS as this scaffold runs it: a path-encoded numpy-MLP ensemble with plain-MSE
+training, greedy ensemble-mean acquisition, and a uniformly-random candidate pool — the surrogate
+replacing the GP's kernel, the path encoding replacing adjacency, the ensemble supplying a cheap
+uncertainty, and the random pool supplying the global reach REA lacked (the distilled class is in the
+answer).
+
+So the delta from REA is exactly the delta the REA variance demanded. Where REA could only mutate the
+best-seen one edge at a time and so collapsed when the seeds were bad, BANANAS fits a predictor over all
+seen points and uses it to reach across the whole space each step, querying the architecture the model
+believes is best anywhere — not just nearby. Reading the REA numbers, here is what I expect and where I am
+unsure. The clearest prediction is on **variance**: BANANAS should not crater the way REA did on
+ImageNet16-120 seed 2, because even a poor seeding draw leaves the predictor free to pull in a strong
+architecture from anywhere in the space rather than being trapped one edit from the seeds — so I expect
+the ImageNet16-120 spread to come *down* from REA's ±1.44, and the mean to hold at or above REA's 45.25.
+On CIFAR-100, where REA slipped below random search to 70.43, I expect BANANAS to recover above 70.6 and
+likely past random search's 70.65, because global predictor-guided selection should beat both memoryless
+sampling and trapped local search on the setting with a wider quality spread. On CIFAR-10 I again expect
+a near-wash around 93.4–93.5: the top is saturated, so the most a global predictor can do is reliably land
+in the top cluster, which is worth a tenth or two but not more. The signature I am looking for is BANANAS
+matching or slightly beating REA's *mean* on every setting while clearly *tightening* the ImageNet16-120
+variance — predictor-guided global selection buying robustness, not just average accuracy. If instead
+BANANAS's mean is no better than REA's and its variance is no tighter, the diagnosis would be that 29
+path-encoded points are too few to train a predictor that generalizes across the space, and the next move
+would be a better encoding or a zero-cost proxy to give the surrogate more signal per query — but I expect
+the model to earn its place, because the whole point of compounding the queries into a surrogate is to
+turn 30 lookups into a prediction over all 15,625 cells, which is precisely the reach REA's 42.70 seed
+proved it was missing.
+</think>
+<say>
+[[FILL_SAY: 1-2 sentences naming the method and what this first edit does]]
+</say>
+<edit path="naslib/custom_nas_search.py">
+<old>
+# EDITABLE region of naslib/custom_nas_search.py (lines 163-234) — step 2: REA
+class NASOptimizer:
+    """REA — Regularized Evolution Algorithm for NAS (low-budget variant).
+
+    Population size 10 and tournament size 3, tuned for K=30 queries
+    following NAS-Bench-Suite (White et al., 2022) low-budget recipes.
+    """
+</old>
+<new>
+# EDITABLE region of naslib/custom_nas_search.py (lines 163-234) — step 3: BANANAS
+class _TinyMLP:
+    """2-layer numpy MLP regressor trained with Adam + MSE."""
+
+    def __init__(self, in_dim, hidden=64, seed=0):
+        rs = np.random.RandomState(seed)
+        self.W1 = rs.randn(in_dim, hidden).astype(np.float32) * (1.0 / np.sqrt(in_dim))
+        self.b1 = np.zeros(hidden, dtype=np.float32)
+        self.W2 = rs.randn(hidden, 1).astype(np.float32) * (1.0 / np.sqrt(hidden))
+        self.b2 = np.zeros(1, dtype=np.float32)
+
+    @staticmethod
+    def _relu(x):
+        return np.maximum(x, 0.0)
+
+    def forward(self, X):
+        self._X = X
+        self._z1 = X @ self.W1 + self.b1
+        self._a1 = self._relu(self._z1)
+        return (self._a1 @ self.W2 + self.b2).squeeze(-1)
+
+    def fit(self, X, y, epochs=200, lr=1e-2):
+        y = y.astype(np.float32).reshape(-1)
+        m = {k: np.zeros_like(v) for k, v in self._params().items()}
+        v = {k: np.zeros_like(p) for k, p in self._params().items()}
+        b1_, b2_, eps, t = 0.9, 0.999, 1e-8, 0
+        for _ in range(epochs):
+            t += 1
+            pred = self.forward(X)
+            err = (pred - y) / max(1, len(X))
+            dW2 = self._a1.T @ err.reshape(-1, 1)
+            db2 = err.sum(keepdims=True)
+            dA1 = err.reshape(-1, 1) @ self.W2.T
+            dZ1 = dA1 * (self._z1 > 0)
+            dW1 = X.T @ dZ1
+            db1 = dZ1.sum(axis=0)
+            grads = {"W1": dW1, "b1": db1, "W2": dW2, "b2": db2}
+            for k, g in grads.items():
+                m[k] = b1_ * m[k] + (1 - b1_) * g
+                v[k] = b2_ * v[k] + (1 - b2_) * (g * g)
+                mhat = m[k] / (1 - b1_ ** t)
+                vhat = v[k] / (1 - b2_ ** t)
+                setattr(self, k, getattr(self, k) - lr * mhat / (np.sqrt(vhat) + eps))
+
+    def _params(self):
+        return {"W1": self.W1, "b1": self.b1, "W2": self.W2, "b2": self.b2}
+
+
+class NASOptimizer:
+    """BANANAS — predictor-guided sample-efficient NAS.
+
+    Strategy:
+    1. Warm start with N0=10 random architectures.
+    2. Fit an ensemble of M=5 small MLPs on path-encoded (arch, val_acc) pairs.
+    3. Each remaining step: draw a large random pool of candidates, score
+       them with ensemble-mean predictions, pick the top unseen candidate,
+       query its val accuracy, refit the ensemble.
+    """
+</new>
+</edit>
+<obs>
+Successfully replaced text in naslib/custom_nas_search.py.
+</obs>
+<note>
+[[FILL_NOTE?: optional one-line thought for this edit, or delete this block]]
+</note>
+<edit path="naslib/custom_nas_search.py">
+<old>
+
+        self.population_size = 10
+        self.tournament_size = 3
+        self.population = []  # list of (arch, val_acc)
+        self.best_arch = None
+        self.best_val_acc = -1.0
+
+    def _update_best(self, arch, val_acc):
+        if val_acc > self.best_val_acc:
+</old>
+<new>
+
+        self.warm_start = min(10, num_epochs)
+        self.ensemble_size = 5
+        self.candidate_pool = 500
+
+        self.seen = {}           # arch_tuple -> val_acc
+        self.best_arch = None
+        self.best_val_acc = -1.0
+
+    def _record(self, arch, val_acc):
+        self.seen[tuple(arch)] = val_acc
+        if val_acc > self.best_val_acc:
+</new>
+</edit>
+<obs>
+Successfully replaced text in naslib/custom_nas_search.py.
+</obs>
+<note>
+[[FILL_NOTE?: optional one-line thought for this edit, or delete this block]]
+</note>
+<edit path="naslib/custom_nas_search.py">
+<old>
+
+    def search_step(self, epoch):
+        if epoch < self.population_size:
+            # Seed initial population with random architectures
+            arch = random_architecture()
+            val_acc = self.api.query_val_accuracy(arch)
+            self.population.append((arch, val_acc))
+        else:
+            # Tournament selection
+            k = min(self.tournament_size, len(self.population))
+            sample_indices = random.sample(range(len(self.population)), k)
+            parent_idx = max(sample_indices, key=lambda i: self.population[i][1])
+            parent_arch = self.population[parent_idx][0]
+
+            # Mutation
+            child_arch = mutate_architecture(parent_arch)
+            while not is_valid_arch(child_arch):
+                child_arch = mutate_architecture(parent_arch)
+            child_val_acc = self.api.query_val_accuracy(child_arch)
+
+            # Add child and remove oldest (regularization)
+            self.population.append((child_arch, child_val_acc))
+            self.population.pop(0)
+            arch, val_acc = child_arch, child_val_acc
+
+        self._update_best(arch, val_acc)
+</old>
+<new>
+
+    def _fit_ensemble(self):
+        X = np.stack([path_encoding(list(a)) for a in self.seen])
+        y = np.array([self.seen[a] for a in self.seen], dtype=np.float32)
+        ensemble = []
+        for i in range(self.ensemble_size):
+            mlp = _TinyMLP(X.shape[1], hidden=64, seed=self.seed + i + 1)
+            mlp.fit(X, y, epochs=200, lr=1e-2)
+            ensemble.append(mlp)
+        return ensemble
+
+    def _propose_next(self):
+        ensemble = self._fit_ensemble()
+        # Large random candidate pool
+        cands = []
+        while len(cands) < self.candidate_pool:
+            a = random_architecture()
+            t = tuple(a)
+            if t not in self.seen:
+                cands.append(a)
+        Xc = np.stack([path_encoding(a) for a in cands])
+        preds = np.mean([m.forward(Xc) for m in ensemble], axis=0)
+        idx = int(np.argmax(preds))
+        return cands[idx]
+
+    def search_step(self, epoch):
+        if epoch < self.warm_start or len(self.seen) < 2:
+            arch = random_architecture()
+            while tuple(arch) in self.seen:
+                arch = random_architecture()
+        else:
+            arch = self._propose_next()
+
+        val_acc = self.api.query_val_accuracy(arch)
+        self._record(arch, val_acc)
+</new>
+</edit>
+<obs>
+Successfully replaced text in naslib/custom_nas_search.py.
+</obs>
+<note>
+[[FILL_NOTE?: optional one-line thought for this edit, or delete this block]]
+</note>
+<edit path="naslib/custom_nas_search.py">
+<old>
+            "queries": self.api.query_count,
+            "population_size": len(self.population),
+        }
+</old>
+<new>
+            "queries": self.api.query_count,
+            "current_val_acc": val_acc,
+        }
+</new>
+</edit>
+<obs>
+Successfully replaced text in naslib/custom_nas_search.py.
+</obs>
+<run/>
+<obs>
+Measured results — `baseline:bananas` (`is_final,true`), seeds {0,1,2,3,4} and mean (test accuracy).
+
+## CIFAR-10
+| seed | test_accuracy |
+|---|---|
+| 0 | 92.83 |
+| 1 | 93.60 |
+| 2 | 93.60 |
+| 3 | 93.12 |
+| 4 | 94.22 |
+| **mean** | **93.474** (±0.475) |
+
+## CIFAR-100
+| seed | test_accuracy |
+|---|---|
+| 0 | 70.96 |
+| 1 | 70.02 |
+| 2 | 70.38 |
+| 3 | 71.08 |
+| 4 | 72.72 |
+| **mean** | **71.032** (±0.928) |
+
+## ImageNet16-120
+| seed | test_accuracy |
+|---|---|
+| 0 | 44.9333 |
+| 1 | 44.7000 |
+| 2 | 45.0667 |
+| 3 | 45.1333 |
+| 4 | 46.3333 |
+| **mean** | **45.2333** (±0.570) |
+</obs>
+

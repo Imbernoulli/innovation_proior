@@ -1,0 +1,895 @@
+<meta task="synth-semiautomata" domain="Sequence modeling" file="pytorch-examples/synth_semiautomata/custom_strategy.py" model_format="qwen3" edit_tool="str_replace"/>
+
+<system>
+You are a research engineer improving a model on a fixed ML task. You work by editing the model code and running experiments. Think carefully before each change. You have these tools:
+- str_replace(path, old_str, new_str): replace the unique occurrence of old_str with new_str.
+- create(path, file_text): create a new file.
+- run_experiment(): train + evaluate the current code under the fixed budget; returns metrics.
+Make one tool call at a time. After editing, call run_experiment() to measure your method.
+</system>
+
+<user>
+## Research question
+
+A finite-state semiautomaton is `A = (Q, Σ, δ)`: it reads a symbol stream `σ_{1:T} ∈ Σ^T` and walks a
+state sequence `q_t = δ(q_{t-1}, σ_t)` from a fixed start state. The single thing being designed is the
+**sequence-model architecture** that, given the full symbol stream `σ_{1:T}` as input, emits the whole
+state trajectory `q_{1:T}` — one per-position state prediction at every step — under per-token
+cross-entropy against the true states. Everything else (the environments, the online data stream, the
+loss, the AdamW driver, early stopping, evaluation) is fixed.
+
+The interesting structure is that the three environments sit on opposite sides of a complexity wall.
+Liu et al. 2022 ("Transformers Learn Shortcuts to Automata", arXiv:2210.10749, ICLR 2023) prove that
+every semiautomaton admits an `O(log T)`-depth Transformer simulator (Thm 1); that *solvable*
+semiautomata admit constant-depth simulators via Krohn–Rhodes decomposition (Thm 2); but that
+*non-solvable* semiautomata — the smallest generates `A_5`, the alternating group on five letters —
+provably do **not** admit a constant-depth shortcut unless `TC^0 = NC^1` (Thm 4). So the question is
+sharper than "which architecture is best": it is which architecture covers *both* the regime where a
+shallow shortcut exists and the regime where one provably cannot.
+
+## Prior art before the first rung (sequence-model lineage)
+
+The first rung — a shallow self-attention model — is itself the endpoint of a line of sequence
+architectures. These precede the ladder; the fixed substrate below is the harness they are dropped into.
+
+- **Recurrent encoder–decoder with attention (Bahdanau et al. 2014; Sutskever et al. 2014).** A
+  recurrent net computes hidden states by the recurrence `h_t = f(h_{t-1}, x_t)`: a chain of `T`
+  strictly serial steps. It is the natural finite-state simulator — its hidden state *is* a learned
+  state register — but its `O(T)` sequential depth is the worst possible shape for parallel hardware,
+  and on very long lags the through-time gradient product over `f'·w` factors vanishes or explodes.
+  Gap: serial and slow, and the credit-assignment signal degrades with the lag.
+- **Convolutional sequence models (ByteNet, Kalchbrenner et al. 2017; ConvS2S, Gehring et al. 2017).**
+  Drop recurrence, compute all positions in parallel with stacked convolutions. This fixes the serial
+  axis but reintroduces a path-length tax: a kernel of width `k` connects positions `D` apart only
+  through a stack of `O(D/k)` (or `O(log_k D)` with dilation) layers. Gap: the work to relate two
+  distant positions grows with the distance again.
+- **Self-attention (Vaswani et al. 2017's lineage; Parikh et al. 2016 for attention-without-recurrence).**
+  `softmax(QKᵀ/√d_k)V` routes every position to every other in one hop: `O(1)` sequential depth *and*
+  `O(1)` path length, at `O(T²·d)` compute, which is the cheaper layer whenever `T < d`. But the
+  operation is permutation-equivariant — order must be injected by a positional code — and crucially its
+  *depth* is fixed by the number of stacked layers, so by the Liu et al. complexity argument a fixed
+  shallow stack cannot simulate a non-solvable automaton. Gap: parallel and any-to-any, but constant
+  depth is provably insufficient on the hard regime.
+
+## The fixed substrate
+
+A single training/evaluation driver is frozen and must not be touched. It exposes three synthetic
+semiautomaton environments and an online stream of `(input, state)` sequences:
+
+1. **`memory_unit`** — a `K`-state memory cell (`K=8`), alphabet `{noop, write(0), …, write(K−1)}`:
+   `noop` keeps the state, `write(j)` jumps to state `j`. The transformation semigroup is the
+   constant-function semigroup — one of the two Krohn–Rhodes "primes" that factorize any solvable
+   semiautomaton. Depth-1 attention is theoretically sufficient. Sequence length 40, 8000 steps.
+2. **`grid_world`** — `Grid_9`: states `{0,…,8}` on a line, alphabet `{L, R}`, reflecting (clamping)
+   boundaries. Liu et al. 2022 Thm 3 gives an `O(1)`-depth, `O(1)`-embedding self-attention
+   construction (the state is the clamped prefix sum of `±1` steps). Sequence length 40, 8000 steps.
+3. **`random_dfa`** — a random transition table `δ : Q × Σ → Q` with `|Q|=60`, `|Σ|=8`, fixed per
+   benchmark by a seed. On 60 states a random table typically generates a transformation semigroup
+   containing `S_5` (non-solvable), so this environment lives in the regime where no constant-depth
+   shortcut exists — the hardest of the three. Sequence length 40, 12000 steps.
+
+The driver trains with per-token cross-entropy against the full state sequence `q_{1:T}`, online (a
+fresh batch is sampled every step, so overfitting is not the challenge), batch size 64, gradient
+clipping at 1.0, AdamW, and early stops after three consecutive log windows at training accuracy
+≥0.999. The optimizer is always AdamW with exactly the four hyperparameters the editable interface
+returns.
+
+## The editable interface
+
+Exactly one region of `pytorch-examples/synth_semiautomata/custom_strategy.py` is editable — the model,
+the optimizer config, and the inference wrapper. Every method on the ladder is a fill of this same
+contract:
+
+- `build_model(env_spec, config) -> nn.Module` returns a module mapping token ids
+  `input_ids ∈ {0,…,alphabet_size−1}^{B×T}` to per-position state logits of shape `[B, T, num_states]`.
+- `get_optimizer_config(config) -> dict[str, float]` returns the four AdamW hyperparameters
+  `lr, wd, beta1, beta2`.
+- `forward_logits(model, input_ids, env_spec) -> torch.Tensor` is the inference wrapper (use it to host
+  looped / scratchpad-style architectures that do not fit a plain `model(x)` call).
+
+`env_spec` carries `alphabet_size`, `num_states`, and `seq_len`; the same architecture is built for all
+three environments, differing only in those dimensions. The starting point is the scaffold default: a
+shallow 1-layer GPT-2-style causal Transformer.
+
+```python
+# EDITABLE region of custom_strategy.py — default fill (shallow 1-layer Transformer)
+class CustomSequenceModel(nn.Module):
+    """Default baseline: shallow GPT-2-style Transformer (1 layer).
+
+    Maps token ids [B, T] to per-position state logits [B, T, Q].
+    Uses learned token+position embeddings, causal multi-head attention,
+    a 2-layer MLP, and a final linear head.
+    """
+
+    def __init__(self, vocab_size: int, num_states: int, seq_len: int,
+                 d_model: int = 128, n_heads: int = 4, n_layers: int = 1,
+                 dropout: float = 0.0):
+        super().__init__()
+        self.seq_len = seq_len
+        self.token_emb = nn.Embedding(vocab_size, d_model)
+        self.pos_emb = nn.Embedding(seq_len, d_model)
+        encoder_layer = nn.TransformerEncoderLayer(
+            d_model=d_model, nhead=n_heads, dim_feedforward=4 * d_model,
+            dropout=dropout, batch_first=True, activation="gelu",
+            norm_first=True,
+        )
+        self.encoder = nn.TransformerEncoder(encoder_layer, num_layers=n_layers)
+        self.head = nn.Linear(d_model, num_states)
+        mask = torch.triu(torch.ones(seq_len, seq_len), diagonal=1).bool()
+        self.register_buffer("causal_mask", mask, persistent=False)
+
+    def forward(self, input_ids: torch.Tensor) -> torch.Tensor:
+        B, T = input_ids.shape
+        pos = torch.arange(T, device=input_ids.device).unsqueeze(0).expand(B, T)
+        x = self.token_emb(input_ids) + self.pos_emb(pos)
+        x = self.encoder(x, mask=self.causal_mask[:T, :T], is_causal=True)
+        return self.head(x)
+
+
+def build_model(env_spec: EnvSpec, config: TaskConfig) -> nn.Module:
+    """Construct the sequence model. Output: [B, T, num_states] logits."""
+    return CustomSequenceModel(
+        vocab_size=env_spec.alphabet_size,
+        num_states=env_spec.num_states,
+        seq_len=env_spec.seq_len,
+        d_model=128,
+        n_heads=4,
+        n_layers=1,
+        dropout=0.0,
+    )
+
+
+def get_optimizer_config(config: TaskConfig) -> dict[str, float]:
+    """AdamW hyperparameters. Defaults follow Liu et al. 2022 App. B.3."""
+    return {"lr": 3e-4, "wd": 1e-4, "beta1": 0.9, "beta2": 0.999}
+
+
+def forward_logits(model: nn.Module, input_ids: torch.Tensor,
+                   env_spec: EnvSpec) -> torch.Tensor:
+    """Run the model on `input_ids` and return logits [B, T, num_states]."""
+    return model(input_ids)
+```
+
+## Evaluation settings
+
+One seed (42). Three environments, each scored by `test_accuracy` (also emitted as `score`): mean
+per-token state-prediction accuracy over 32 freshly sampled held-out batches, bounded in `[0, 1]`,
+higher is better. The aggregate task score is the **geometric mean across the three environments**, so
+all three must be strong — a model that aces the two solvable environments but collapses on the
+non-solvable `random_dfa` is dragged down hard. Per-environment wall-time is budgeted at ~30 minutes.
+
+The editable model code is in `pytorch-examples/synth_semiautomata/custom_strategy.py`:
+```python
+class CustomSequenceModel(nn.Module):
+    """Default baseline: shallow GPT-2-style Transformer (1 layer).
+
+    Maps token ids [B, T] to per-position state logits [B, T, Q].
+    Uses learned token+position embeddings, causal multi-head attention,
+    a 2-layer MLP, and a final linear head.
+    """
+
+    def __init__(self, vocab_size: int, num_states: int, seq_len: int,
+                 d_model: int = 128, n_heads: int = 4, n_layers: int = 1,
+                 dropout: float = 0.0):
+        super().__init__()
+        self.seq_len = seq_len
+        self.token_emb = nn.Embedding(vocab_size, d_model)
+        self.pos_emb = nn.Embedding(seq_len, d_model)
+        encoder_layer = nn.TransformerEncoderLayer(
+            d_model=d_model, nhead=n_heads, dim_feedforward=4 * d_model,
+            dropout=dropout, batch_first=True, activation="gelu",
+            norm_first=True,
+        )
+        self.encoder = nn.TransformerEncoder(encoder_layer, num_layers=n_layers)
+        self.head = nn.Linear(d_model, num_states)
+        mask = torch.triu(torch.ones(seq_len, seq_len), diagonal=1).bool()
+        self.register_buffer("causal_mask", mask, persistent=False)
+
+    def forward(self, input_ids: torch.Tensor) -> torch.Tensor:
+        B, T = input_ids.shape
+        pos = torch.arange(T, device=input_ids.device).unsqueeze(0).expand(B, T)
+        x = self.token_emb(input_ids) + self.pos_emb(pos)
+        x = self.encoder(x, mask=self.causal_mask[:T, :T], is_causal=True)
+        return self.head(x)
+
+
+def build_model(env_spec: EnvSpec, config: TaskConfig) -> nn.Module:
+    """Construct the sequence model. Output: [B, T, num_states] logits."""
+    return CustomSequenceModel(
+        vocab_size=env_spec.alphabet_size,
+        num_states=env_spec.num_states,
+        seq_len=env_spec.seq_len,
+        d_model=128,
+        n_heads=4,
+        n_layers=1,
+        dropout=0.0,
+    )
+
+
+def get_optimizer_config(config: TaskConfig) -> dict[str, float]:
+    """AdamW hyperparameters. Defaults follow Liu et al. 2022 App. B.3."""
+    return {"lr": 3e-4, "wd": 1e-4, "beta1": 0.9, "beta2": 0.999}
+
+
+def forward_logits(model: nn.Module, input_ids: torch.Tensor,
+                   env_spec: EnvSpec) -> torch.Tensor:
+    """Run the model on `input_ids` and return logits [B, T, num_states]."""
+    return model(input_ids)
+```
+Improve it. Derive your method, edit the code, then run_experiment().
+</user>
+
+### step 1 — Transformer (depth-1 causal)   [slug:transformer]
+
+<think>
+I want a single architecture that simulates a finite-state semiautomaton end to end: read the whole
+symbol stream `σ_{1:T}`, emit the whole state trajectory `q_{1:T}`, one prediction per position, trained
+by per-token cross-entropy. The harness fixes everything else — the three environments, the online data
+stream, AdamW, the early stop — so the only object I design is the `nn.Module` that `build_model` returns,
+mapping `input_ids ∈ {0,…,alphabet_size−1}^{B×T}` to logits `[B, T, num_states]`. The question is what
+inductive bias to put in that module first, and I want to start from the architecture whose *failure* will
+teach me the most about the task, not the one I expect to win. So let me reason about what the task actually
+demands and where a plausible starting architecture will crack.
+
+The natural simulator of a semiautomaton is a recurrent net: its hidden state is literally a learned state
+register, and `h_t = f(h_{t-1}, x_t)` is exactly the transition shape `q_t = δ(q_{t-1}, σ_t)`. If I only
+cared about being *right*, I would reach for an RNN immediately. But the whole point of this benchmark — and
+the reason it is interesting — is the gap Liu et al. 2022 opened: a *non-recurrent* network does not get to
+unroll `T` serial steps; its expressive power is capped by its depth, and depth is a structural choice I make
+once. Their theorems say a depth-`O(log T)` attention stack can simulate *any* semiautomaton, a *constant*
+depth suffices for *solvable* ones via Krohn–Rhodes factorization, but *non-solvable* ones — the smallest
+generating `A_5` — provably need more than constant depth unless `TC^0 = NC^1`. The three environments are
+chosen to straddle exactly that line. So the sharp scientific move is to begin at the *shallowest* credible
+attention model — one layer — and watch precisely which environments it clears and which it cannot, because
+the pattern of failure is the complexity boundary made empirical. A one-layer model is the cleanest probe of
+"what does a constant-depth shortcut actually buy here."
+
+That fixes the starting point: the scaffold default, a shallow GPT-2-style causal Transformer with a single
+encoder layer, `d_model=128`, 4 heads. Let me justify each piece against the task rather than treating it as
+a given, because I have to be sure the model can in principle express the easy environments before I read its
+numbers on the hard one.
+
+Begin with the embedding. The input is a sequence of symbol ids; I look each up in a learned token embedding
+of width `d_model`. But self-attention is permutation-equivariant — `softmax(QKᵀ/√d_k)V` is built entirely
+from dot products and weighted sums over the *set* of positions, with no term that knows which position is
+which. For a semiautomaton that is fatal on its own: the state at step `t` is the *ordered* application of
+`σ_1, σ_2, …, σ_t`, and the same multiset of symbols in a different order gives a different state (group
+multiplication does not commute in general). So I must inject order. The scaffold uses a learned position
+embedding `pos_emb` added to the token embedding — one learned vector per absolute index `0…seq_len−1`. With
+sequence length fixed at 40 and no extrapolation required, a learned absolute table is a perfectly adequate
+order signal; it is also the most flexible, since the model can learn whatever position-to-position relation
+the task needs rather than being handed a sinusoidal prior. Adding rather than concatenating keeps the
+downstream matrices at width `d_model`; a learned linear over the sum can already separate content from
+position into different subspaces if it wants to, so concatenation buys nothing but width.
+
+Now the attention itself, and the one detail in the scaffold that is load-bearing for this task: the causal
+mask. The model registers an upper-triangular boolean mask and passes `is_causal=True`, so position `t`
+attends only to positions `≤ t`. This is not decoration — it is the correct structural prior for a
+semiautomaton. The true state `q_t` is a function of `σ_{1:t}` and *nothing after*; a symbol arriving at step
+`t+3` cannot influence `q_t`. If I let attention see the future, the model could in principle exploit
+spurious future correlations on the training stream and I would be giving it information the real transition
+function never has. Masking to the causal prefix bakes in "the state at `t` depends only on the prefix up to
+`t`," which is exactly true and which strictly shrinks the hypothesis space to the correct one. So causal
+attention here is the analog of the autoregressive constraint in language modeling, but its justification is
+the semiautomaton's own definition, not a generation requirement.
+
+The scaffold uses `norm_first=True` (pre-norm) and a GELU MLP of width `4·d_model`. Pre-norm is the
+modern, stable ordering — `x + Sublayer(LayerNorm(x))` keeps a clean identity path for the gradient and
+trains shallow and deep stacks alike without warmup gymnastics, which matters because I will be sweeping
+*depth* across the ladder and want the optimization to stay comparable as I do. The 4× MLP is the only
+per-position nonlinear compute the layer has (attention mixes *across* positions but is otherwise a
+weighted linear combination of values), so it needs enough width to carve the per-symbol features the head
+will read; 4× is the usual capacity knee. The final `head` is a linear `d_model → num_states`, producing the
+per-position logits the harness scores. So the forward pass is: embed token + position, one causal
+self-attention + MLP block, project to state logits — `[B, T] → [B, T, num_states]`. That is a faithful
+fill of the contract, and it is the constant-depth (depth-1) probe I wanted.
+
+The optimizer config is AdamW with `lr=3e-4, wd=1e-4, beta1=0.9, beta2=0.999`, the standard GPT-2-style
+recipe. The harness already provides gradient clipping at 1.0 and a fresh online batch every step, so I do
+not have to worry about overfitting — the test stream is sampled the same way as training, and the only
+thing that can go wrong is *underfitting the function class*. That is the whole experiment: with no
+overfitting confound, whatever this model fails to reach, it fails to reach because a depth-1 attention model
+*cannot express it*, not because of a data or regularization artifact. That is precisely why the benchmark
+trains online — to make the capacity question clean.
+
+Now let me predict, per environment, where this lands, because the prediction *is* the diagnosis I will hand
+to the next rung. Take `memory_unit` first. Its transition is `noop` keeps the state, `write(j)` jumps to
+state `j`. The current state is entirely determined by the *most recent write* in the prefix — everything
+before the last write is irrelevant. That is a single attention pattern away: a head that learns to attend
+from position `t` back to the most recent non-`noop` symbol and copy its write target is an exact,
+constant-depth solution. One layer, one head, is more than enough. I expect `memory_unit` to hit essentially
+1.0 — this is the constant-function semigroup, one of the Krohn–Rhodes primes, and depth-1 attention is
+provably sufficient. If even this fails I have an optimization bug, not a capacity wall.
+
+`grid_world` is the first genuine test. `Grid_9` is a position on a line, alphabet `{L, R}`, with reflecting
+(clamping) walls; the state is the clamped prefix sum of `±1` steps starting from the middle. Without walls
+this is pure parity-of-counts — a prefix sum — which Liu et al. 2022 Thm 3 show has an `O(1)`-depth
+self-attention construction (uniform attention to the prefix computes the average step, hence the count).
+The wrinkle is the *clamping*: once the walk hits a wall it sticks until it turns around, so the map from
+"net displacement" to "state" is nonlinear (a saturation). A single attention layer can compute the prefix
+sum cleanly; whether one layer plus one MLP can also fold in the clamping nonlinearity *and* keep it accurate
+across all 9 states for every prefix length up to 40 is the open question. My honest expectation is that
+depth-1 gets *most* of the way but not all of it — the clamping interacts across the whole prefix in a way a
+single mixing step may render only approximately — so I expect `grid_world` to land high but visibly short of
+1.0. That shortfall, if it appears, is the signal that one mixing step is not quite enough recurrence-depth
+even for this nominally constant-depth environment, and it foreshadows the real wall.
+
+`random_dfa` is the wall itself. A random `δ` on `|Q|=60` states with `|Σ|=8` almost surely generates a
+transformation semigroup containing `S_5`, which is non-solvable. By Liu et al. 2022 Thm 4 there is no
+constant-depth attention shortcut for it unless `TC^0 = NC^1`. A depth-1 model is the most constant-depth
+thing there is, so I expect it to be *far* from solving `random_dfa` — somewhere in the low double digits of
+per-token accuracy, the analog of the ~7.9% depth-1 row in their Figure 8 (here a bit higher because 40
+steps and a fixed table give some short-range structure a shallow model can exploit, e.g. the first few
+positions and frequently-revisited states). Crucially, because the aggregate score is the *geometric mean*
+across the three environments, a near-zero `random_dfa` will drag the whole task score down regardless of how
+clean `memory_unit` and `grid_world` are. So the headline number this baseline reports will be dominated by
+its `random_dfa` failure, and that is exactly the quantity the ladder has to move.
+
+So here is what I am committing to and what I expect to read back. The model is the literal scaffold default
+— one causal Transformer encoder layer, learned token + absolute position embeddings, causal mask, GELU MLP,
+linear state head, AdamW at `3e-4`. It is the cleanest constant-depth probe of the benchmark. I expect
+`memory_unit ≈ 1.0` (a single copy-from-last-write head solves it exactly), `grid_world` high but possibly
+short of 1.0 (prefix sum is easy, the wall-clamping nonlinearity may not fully close in one mixing step), and
+`random_dfa` poor (no constant-depth shortcut exists for a non-solvable group, so a depth-1 model is
+structurally incapable). The falsifiable claim is the *ordering*: solvable environments clear, the
+non-solvable one does not, and the gap between them is the complexity boundary. If `random_dfa` is anywhere
+near solved by one layer, the whole Liu-et-al. story — and the rest of this ladder — is wrong. If instead it
+collapses while the other two are clean, the diagnosis for the next rung writes itself: a constant-depth
+shortcut is provably unavailable on the hard environment, so the next move must *buy effective depth* — more
+sequential computation per token — without simply paying for it in parameters and wall time. That is the
+thread the rest of the climb pulls on. Let me lock in the scaffold default and tighten the docstrings so the
+fill reads as the depth-1 probe it is.
+</think>
+<say>
+Starting from the scaffold default: a depth-1 causal GPT-2-style Transformer as the constant-depth probe of the benchmark. This first edit just tightens the model docstring to name it as the shallow 1-layer fill.
+</say>
+<edit path="pytorch-examples/synth_semiautomata/custom_strategy.py">
+<old>
+class CustomSequenceModel(nn.Module):
+    """Default baseline: shallow GPT-2-style Transformer (1 layer).
+
+    Maps token ids [B, T] to per-position state logits [B, T, Q].
+    Uses learned token+position embeddings, causal multi-head attention,
+    a 2-layer MLP, and a final linear head.
+    """
+</old>
+<new>
+class CustomSequenceModel(nn.Module):
+    """Shallow 1-layer GPT-2-style Transformer (Liu et al. 2022, App. B.3)."""
+</new>
+</edit>
+<obs>
+Successfully replaced text in pytorch-examples/synth_semiautomata/custom_strategy.py.
+</obs>
+<edit path="pytorch-examples/synth_semiautomata/custom_strategy.py">
+<old>
+def build_model(env_spec: EnvSpec, config: TaskConfig) -> nn.Module:
+    """Construct the sequence model. Output: [B, T, num_states] logits."""
+    return CustomSequenceModel(
+</old>
+<new>
+def build_model(env_spec: EnvSpec, config: TaskConfig) -> nn.Module:
+    """Shallow Transformer: 1 layer, d_model=128, 4 heads."""
+    return CustomSequenceModel(
+</new>
+</edit>
+<obs>
+Successfully replaced text in pytorch-examples/synth_semiautomata/custom_strategy.py.
+</obs>
+<edit path="pytorch-examples/synth_semiautomata/custom_strategy.py">
+<old>
+def get_optimizer_config(config: TaskConfig) -> dict[str, float]:
+    """AdamW hyperparameters. Defaults follow Liu et al. 2022 App. B.3."""
+    return {"lr": 3e-4, "wd": 1e-4, "beta1": 0.9, "beta2": 0.999}
+</old>
+<new>
+def get_optimizer_config(config: TaskConfig) -> dict[str, float]:
+    """AdamW (Liu et al. 2022 App. B.3: lr 3e-4, wd 1e-4)."""
+    return {"lr": 3e-4, "wd": 1e-4, "beta1": 0.9, "beta2": 0.999}
+</new>
+</edit>
+<obs>
+Successfully replaced text in pytorch-examples/synth_semiautomata/custom_strategy.py.
+</obs>
+<edit path="pytorch-examples/synth_semiautomata/custom_strategy.py">
+<old>
+                   env_spec: EnvSpec) -> torch.Tensor:
+    """Run the model on `input_ids` and return logits [B, T, num_states]."""
+    return model(input_ids)
+</old>
+<new>
+                   env_spec: EnvSpec) -> torch.Tensor:
+    return model(input_ids)
+</new>
+</edit>
+<obs>
+Successfully replaced text in pytorch-examples/synth_semiautomata/custom_strategy.py.
+</obs>
+<run/>
+<obs>
+Measured results — `baseline:transformer` (`is_final,true`), seed 42.
+
+| env | test_accuracy | score | elapsed (s) |
+|---|---|---|---|
+| memory_unit | 1.000000 | 1.000000 | 62.5 |
+| grid_world | 0.882422 | 0.882422 | 79.9 |
+| random_dfa | 0.205310 | 0.205310 | 108.0 |
+
+Geometric mean of `test_accuracy` across the three environments: 0.5658.
+</obs>
+
+### step 2 — Looped Transformer (shared block x6)   [slug:looped_transformer]
+
+<think>
+The depth-1 numbers came back exactly along the complexity boundary, and they tell me what to do next
+with no ambiguity. `memory_unit` is 1.000 — the constant-function semigroup is a single
+copy-from-last-write head, solved exactly, as predicted. `grid_world` is 0.882, high but visibly short of
+1.0 — the prefix-sum part is easy but the wall-clamping nonlinearity did *not* fully close in one mixing
+step, which is the small leak I worried about. And `random_dfa` is 0.205 — the model is barely above
+chance-plus-short-range-structure on the non-solvable environment, exactly the depth-1 collapse Liu et al.
+2022 Thm 4 predicts. The geometric mean is 0.566, and because it is a geometric mean the 0.205 is what
+drags everything down: even though two environments are essentially perfect, the third pins the aggregate.
+So the entire problem is now concentrated in one place — buy effective depth on `random_dfa` (and close
+the small `grid_world` leak as a side effect) without throwing away the parameter efficiency that made the
+shallow model attractive.
+
+Let me be precise about *why* depth is the missing resource, because that diagnosis determines the fix. The
+0.205 is not an optimization failure — the harness trains online with a fresh batch every step, so there is
+no overfitting confound, and `memory_unit` hitting 1.0 proves the training loop works. It is a *capacity*
+failure of a specific kind: the function `q_t = δ(q_{t-1}, σ_t)` composed `t` times is, for a non-solvable
+transition semigroup, not computable by a constant number of attention-mixing stages. Each attention layer
+is one round of "every position looks at every other and updates"; one round can route information any
+distance in *space* but performs only one stage of *composition*. Simulating a length-`t` automaton run is
+inherently a chain of `t` compositions, and Krohn–Rhodes tells me that for a *solvable* automaton this chain
+collapses into a constant number of stages (which is why `memory_unit` and most of `grid_world` are fine),
+but for a non-solvable one it provably does not collapse below `O(log T)` stages. A single layer is one
+stage; I need several. So the lever is the number of *sequential* attention stages the model applies, i.e.
+its effective depth.
+
+The obvious way to add depth is to stack more distinct layers — a 6-layer Transformer. But I want to ask
+whether I can get the depth *without* paying for it in parameters, because that keeps the comparison honest
+(the shallow baseline's appeal was its size) and because there is a structural reason to expect a *shared*
+block to be the right object here. Look at what an automaton actually does: it applies the *same* transition
+operator at every step. The computation is not six different transformations; it is one transformation
+iterated. A network that ties the same weights across all its sequential stages matches that structure
+exactly — it learns one "advance the simulation one round" operator and applies it repeatedly, rather than
+six independent operators that happen to compose. That is the recurrence-as-iteration idea: take a single
+Transformer encoder block and apply it `n_loops` times to the running representation, feeding each output
+back as the next input. The depth is the number of loops; the parameter count is that of a one-layer model.
+There is also a regularization argument for tying the weights rather than stacking distinct layers: with
+six independent layers the model has six times the freedom and could fit the training stream with a brittle
+six-stage pipeline that does not actually implement a clean iterated operator; a shared block forces every
+stage to be the *same* map, so whatever it learns must be a function that improves the representation when
+applied once and is safe to apply again — which is precisely the algebraic property "apply the transition
+operator" has. The shared block is thus not merely cheaper, it is the hypothesis class that contains
+"iterate one operator" and excludes most everything else, and on a task that *is* operator iteration that is
+the bias I want.
+
+I want to be careful that I am importing only the *right* part of that idea and not a more elaborate
+machine it could suggest. The strong form of looping a Transformer is a programmable-computer
+construction — lay the input out as scratchpad/memory/command regions, give every column a binary address,
+and turn attention into addressed reads/writes so the looped block executes one instruction of an arbitrary
+program per pass. That is far more than this task needs or exposes. Here there is no instruction set, no
+addressing, no scratchpad: the harness hands me a fixed `[B, T]` symbol stream and wants `[B, T,
+num_states]` logits, and the editable contract is just `build_model` returning an `nn.Module`. So the
+faithful, minimal realization of "depth from looping a shared block" for *this* task is literally: embed
+the tokens once, then apply one shared causal-self-attention encoder layer `n_loops` times to the embedded
+sequence, then a final norm and the linear state head. No memory layout, no temperature-sharpened
+permutation, no FLEQ. The looping supplies the `n_loops` sequential composition stages that a non-solvable
+automaton needs; the weight sharing supplies them at one-layer parameter cost; and that is the whole of it.
+
+Let me build that fill against the contract. The embedding is unchanged from the shallow baseline — learned
+token + absolute position embeddings, added — because the order-injection argument is identical and the
+sequence length is still 40. The novelty is the body: instead of `nn.TransformerEncoder` with
+`num_layers=1`, I hold a *single* `nn.TransformerEncoderLayer` (pre-norm, GELU, 4× MLP, `d_model=128`,
+4 heads) and call it in a Python loop `for _ in range(n_loops)`, threading the causal mask through every
+iteration so each loop is still a prefix-respecting update — the state at `t` may only ever depend on the
+prefix `≤ t`, and that must hold at every round of composition, not just the first. After the loops I apply
+a final LayerNorm before the head; this matters because pre-norm leaves the residual stream un-normalized at
+the top of the stack, and after six residual additions through the *same* block the scale can drift, so a
+single closing norm keeps the head's input on a sane scale. Then the linear head to `num_states`. The
+`forward_logits` wrapper stays the plain `model(input_ids)` — the looping lives *inside* the module's
+forward, so I do not need the scratchpad-style escape hatch the contract offers.
+
+How many loops? The depth-vs-difficulty pattern from Liu et al. 2022 Figure 8 is the guide: non-solvable
+groups need depth growing like `O(log T)` and their accuracy climbs steeply with depth, with depth ~6
+landing in the high-90s for `A_5` but only the high-20s to low-30s for the harder `S_5`-class column. With
+`T=40`, `log T ≈ 5.3`, so six loops is the smallest depth that is comfortably above the `O(log T)` threshold
+while staying inside the per-environment wall-time budget — each loop is a full attention+MLP pass, so six
+passes is roughly six times the compute of the shallow baseline, which the ~30-minute budget tolerates.
+I keep the AdamW recipe at `lr=3e-4, wd=1e-4` — the GPT-2-style settings that worked for the shallow model;
+the optimization geometry of a looped shared block is close enough to a shallow stack under pre-norm that I
+do not expect to need a different schedule, and changing it would confound the depth comparison.
+
+Now the falsifiable expectations, stated against the depth-1 numbers I am trying to beat. `memory_unit` is
+already 1.000 and looping cannot hurt it — a constant-depth-solvable environment stays solved (the extra
+loops can learn to act as near-identity after the first), so I expect 1.000 again; if it *drops*, the loop
+is destabilizing the easy case and something is wrong with the shared-block optimization. `grid_world` is
+the cleaner test of the depth hypothesis: the 0.882 leak was, I argued, one mixing step being too few for
+the wall-clamping nonlinearity, so six composition stages should close it to ≈1.0. If `grid_world` reaches
+1.0, that confirms the leak was a depth deficit, not a representational one. The real target is
+`random_dfa`: I expect a clear jump above the 0.205 floor — the depth is now provably in the regime where
+*some* simulation is possible — but I do *not* expect it solved, because `S_5` is non-solvable and six loops
+is only just past `O(log T)`; the Figure-8 analogy puts a six-deep model on a non-solvable group somewhere
+in the 0.3 range, far from the solvable environments' 1.0. So my honest prediction is: `memory_unit` 1.0,
+`grid_world` ≈1.0, `random_dfa` materially up from 0.205 but still the bottleneck — the geometric mean rises
+because two environments are now perfect and the third is no longer near-floor, but the third still pins it.
+
+And the diagnosis for the *next* rung is already legible in that prediction. If looping closes the two
+solvable environments to 1.0 and lifts `random_dfa` only partway, the lesson is that even effective depth 6
+— the most a parameter-tied attention stack can cheaply offer — is structurally short of what a non-solvable
+group demands when the run is long. At that point the right move is not "more loops" (the budget and the
+`O(log T)` curve both fight diminishing returns) but a model that does *not* rely on a constant or
+logarithmic number of parallel composition stages at all: a recurrence that performs one *exact* state
+update per token, `O(T)` sequential stages, sidestepping the non-solvability barrier entirely because it
+never tries to shortcut the composition. That is the hypothesis the next rung will test, and the size of the
+`random_dfa` gap that looping *cannot* close is exactly the quantity that motivates it. So let me convert the
+single encoder layer into a shared block that loops six times.
+</think>
+<say>
+Moving to a Looped Transformer: one shared encoder layer applied 6 times to buy effective depth at one-layer parameter cost. This edit swaps the single layer for a reusable shared block and bumps the depth knob to n_loops=6.
+</say>
+<edit path="pytorch-examples/synth_semiautomata/custom_strategy.py">
+<old>
+class CustomSequenceModel(nn.Module):
+    """Shallow 1-layer GPT-2-style Transformer (Liu et al. 2022, App. B.3)."""
+
+    def __init__(self, vocab_size: int, num_states: int, seq_len: int,
+                 d_model: int = 128, n_heads: int = 4, n_layers: int = 1,
+                 dropout: float = 0.0):
+        super().__init__()
+        self.seq_len = seq_len
+        self.token_emb = nn.Embedding(vocab_size, d_model)
+        self.pos_emb = nn.Embedding(seq_len, d_model)
+        encoder_layer = nn.TransformerEncoderLayer(
+            d_model=d_model, nhead=n_heads, dim_feedforward=4 * d_model,
+</old>
+<new>
+class CustomSequenceModel(nn.Module):
+    """Looped Transformer: one shared encoder layer applied n_loops times."""
+
+    def __init__(self, vocab_size: int, num_states: int, seq_len: int,
+                 d_model: int = 128, n_heads: int = 4, n_loops: int = 6,
+                 dropout: float = 0.0):
+        super().__init__()
+        self.seq_len = seq_len
+        self.n_loops = n_loops
+        self.token_emb = nn.Embedding(vocab_size, d_model)
+        self.pos_emb = nn.Embedding(seq_len, d_model)
+        self.block = nn.TransformerEncoderLayer(
+            d_model=d_model, nhead=n_heads, dim_feedforward=4 * d_model,
+</new>
+</edit>
+<obs>
+Successfully replaced text in pytorch-examples/synth_semiautomata/custom_strategy.py.
+</obs>
+<note>
+Now drop the multi-layer encoder and add the closing LayerNorm before the head.
+</note>
+<edit path="pytorch-examples/synth_semiautomata/custom_strategy.py">
+<old>
+        )
+        self.encoder = nn.TransformerEncoder(encoder_layer, num_layers=n_layers)
+        self.head = nn.Linear(d_model, num_states)
+</old>
+<new>
+        )
+        self.final_norm = nn.LayerNorm(d_model)
+        self.head = nn.Linear(d_model, num_states)
+</new>
+</edit>
+<obs>
+Successfully replaced text in pytorch-examples/synth_semiautomata/custom_strategy.py.
+</obs>
+<note>
+The forward pass that loops the shared block, threading the causal mask through every iteration.
+</note>
+<edit path="pytorch-examples/synth_semiautomata/custom_strategy.py">
+<old>
+        x = self.token_emb(input_ids) + self.pos_emb(pos)
+        x = self.encoder(x, mask=self.causal_mask[:T, :T], is_causal=True)
+        return self.head(x)
+</old>
+<new>
+        x = self.token_emb(input_ids) + self.pos_emb(pos)
+        mask = self.causal_mask[:T, :T]
+        for _ in range(self.n_loops):
+            x = self.block(x, src_mask=mask, is_causal=True)
+        x = self.final_norm(x)
+        return self.head(x)
+</new>
+</edit>
+<obs>
+Successfully replaced text in pytorch-examples/synth_semiautomata/custom_strategy.py.
+</obs>
+<edit path="pytorch-examples/synth_semiautomata/custom_strategy.py">
+<old>
+def build_model(env_spec: EnvSpec, config: TaskConfig) -> nn.Module:
+    """Shallow Transformer: 1 layer, d_model=128, 4 heads."""
+    return CustomSequenceModel(
+</old>
+<new>
+def build_model(env_spec: EnvSpec, config: TaskConfig) -> nn.Module:
+    """Looped Transformer: shared block, 6 loops, d_model=128, 4 heads."""
+    return CustomSequenceModel(
+</new>
+</edit>
+<obs>
+Successfully replaced text in pytorch-examples/synth_semiautomata/custom_strategy.py.
+</obs>
+<note>
+Swap the build kwarg from n_layers to n_loops=6.
+</note>
+<edit path="pytorch-examples/synth_semiautomata/custom_strategy.py">
+<old>
+        n_heads=4,
+        n_layers=1,
+        dropout=0.0,
+</old>
+<new>
+        n_heads=4,
+        n_loops=6,
+        dropout=0.0,
+</new>
+</edit>
+<obs>
+Successfully replaced text in pytorch-examples/synth_semiautomata/custom_strategy.py.
+</obs>
+<edit path="pytorch-examples/synth_semiautomata/custom_strategy.py">
+<old>
+def get_optimizer_config(config: TaskConfig) -> dict[str, float]:
+    """AdamW (Liu et al. 2022 App. B.3: lr 3e-4, wd 1e-4)."""
+    return {"lr": 3e-4, "wd": 1e-4, "beta1": 0.9, "beta2": 0.999}
+</old>
+<new>
+def get_optimizer_config(config: TaskConfig) -> dict[str, float]:
+    """AdamW (Liu et al. 2022 App. B.3 GPT-2 recipe: lr 3e-4, wd 1e-4)."""
+    return {"lr": 3e-4, "wd": 1e-4, "beta1": 0.9, "beta2": 0.999}
+</new>
+</edit>
+<obs>
+Successfully replaced text in pytorch-examples/synth_semiautomata/custom_strategy.py.
+</obs>
+<run/>
+<obs>
+Measured results — `baseline:looped_transformer` (`is_final,true`), seed 42.
+
+| env | test_accuracy | score | elapsed (s) |
+|---|---|---|---|
+| memory_unit | 1.000000 | 1.000000 | 141.0 |
+| grid_world | 1.000000 | 1.000000 | 197.8 |
+| random_dfa | 0.309119 | 0.309119 | 293.0 |
+
+Geometric mean of `test_accuracy` across the three environments: 0.6761.
+</obs>
+
+### step 3 — LSTM (single-layer recurrent)   [slug:lstm]
+
+<think>
+Looping closed the two solvable environments and confirmed the depth diagnosis, but it left the real
+problem standing. `memory_unit` stayed 1.000 and `grid_world` jumped from 0.882 to a clean 1.000 — so the
+shallow model's `grid_world` leak *was* a depth deficit, and six composition stages were enough to fold in
+the wall-clamping nonlinearity, exactly as I predicted. But `random_dfa` moved only from 0.205 to 0.309.
+That is a real lift — effective depth 6 is provably past the constant-depth floor where nothing is possible
+— but it is nowhere near solved, and the geometric mean (0.676) is still pinned by that third number. The
+shape of this result is the whole lesson: adding parallel composition stages helps on the solvable
+environments where the chain collapses, and helps only marginally on the non-solvable one where it does not.
+Six loops bought 0.10 of accuracy on `random_dfa`; the `O(log T)` curve and the wall-time budget both say
+that doubling the loops again would buy less, and I would still be chasing an asymptote that, for a length-40
+run of a non-solvable group, sits well below 1.0. So "more parallel depth" is the wrong axis. I have to stop
+trying to *shortcut* the composition and instead *perform* it.
+
+Let me state the barrier precisely, because the next architecture has to dodge it rather than push against
+it. Liu et al. 2022 Thm 4 says a non-solvable semiautomaton has no constant-depth attention simulator unless
+`TC^0 = NC^1`, and Thm 1 says the unavoidable cost is `O(log T)` depth. Both theorems are about *parallel*
+models — models that apply a fixed number of mixing stages to all positions at once. The looped Transformer,
+even with weight tying, is still such a model: six loops is six parallel stages, and the theorem caps what
+six stages can do on `S_5`. The class of models the theorem says *nothing* about is the one that gives up
+parallelism in the time axis entirely: a recurrence that reads the symbols one at a time and applies an
+*exact* update per token, `O(T)` strictly sequential stages. A length-40 run then gets 40 composition stages
+— one per symbol — which is far more than `O(log T)` and, crucially, is the *right* number, because the
+automaton's own definition is exactly "apply the transition operator once per symbol." A model that does one
+update per token never tries to compress the composition into few stages, so the non-solvability barrier,
+which is entirely about compression, simply does not apply. The cost is the `O(T)` sequential depth I worked
+to avoid at the start of the climb — but the harness budgets ~30 minutes per environment and the sequences
+are only 40 long, so 40 serial steps is cheap. The thing I treated as the enemy in the shallow probe is the
+correct tool for the hard environment.
+
+So I want a recurrent net whose hidden state *is* the simulated automaton state. The obstacle that killed
+plain recurrence historically is the through-time gradient. Follow one error signal back `q` steps and it
+arrives as a product of `q` factors `f'·w`; with the logistic sigmoid `f'` peaks at 0.25, so every factor is
+below 1 whenever `|w| < 4`, and the product decays geometrically — the error from a symbol 40 steps ago is
+exponentially attenuated, and the net cannot learn long-range transitions. On `random_dfa` that is exactly
+the regime that matters: the state at position 40 depends on all 40 symbols, including the first, so I need
+gradient to survive the full lag. Neither bigger weights (they saturate `f'` faster than they grow) nor a
+bigger learning rate (it scales near and far credit equally) touches the exponent. The cure is to make the
+through-time multiplier exactly 1: solve `f'·w = 1`, which forces the memory channel to be a *linear* unit
+with a fixed self-loop of weight one — the constant error carousel. Error rides that self-loop at unit gain
+for any number of steps, neither vanishing nor exploding.
+
+A bare linear self-loop cannot be wired to the rest of the net, though, because a single incoming weight has
+to both *write* the relevant symbol when it arrives and *protect* the stored state when irrelevant symbols
+come through the same connection — two opposed jobs for one number — and a single outgoing weight has the
+mirror conflict on the read side. A weight is one number and cannot be context-sensitive; another *unit*
+can. So gate the carousel multiplicatively: an input gate `i_t` in `[0,1]` decides how much of the candidate
+update is written, an output gate `o_t` decides how much of the state is read out, and — the piece that
+makes it work on a stream that must reset between runs — a forget gate `f_t` that multiplies the carried
+state, recovering the exact carousel when `f_t=1` and wiping the cell when `f_t=0`. Multiplicative, not
+additive, because protecting the memory means letting through *exactly zero* of an irrelevant input, which
+only a multiply can do. The cell is then
+
+`i_t = σ(W_i[x_t,h_{t-1}])`, `f_t = σ(W_f[x_t,h_{t-1}])`, `g_t = tanh(W_g[x_t,h_{t-1}])`,
+`c_t = f_t⊙c_{t-1} + i_t⊙g_t`, `o_t = σ(W_o[x_t,h_{t-1}])`, `h_t = o_t⊙tanh(c_t)`,
+
+and the backward pass carries the state error as `ε_s^t = o_t⊙tanh'(c_t)⊙ε_h^t + f_{t+1}⊙ε_s^{t+1}` — unit
+gain across the lag when the forget gate is open. That is precisely the long-range credit assignment
+`random_dfa` needs: a symbol at step 1 can influence the loss at step 40, and its gradient survives the
+40-step trip. And the cell *is* a learned finite-state register: `c_t` holds the running state, the gates
+implement a learned `δ` that reads the current symbol and the current state and produces the next state.
+This is the architecture that matches the automaton's structure exactly — one exact update per token.
+
+Now I have to ground this in *this task's* contract, and the shape is different from a generic recurrent
+regressor. The harness wants per-position state logits `[B, T, num_states]` — a prediction at *every* step,
+not a single readout at the end. So the LSTM must run over the whole symbol sequence and I read out *all* of
+its hidden states, not just the last: `out, _ = lstm(embed(input_ids))` gives `[B, T, hidden]`, and a linear
+head maps every position's hidden vector to `num_states` logits. This is the natural fit for full state
+supervision — the LSTM produces a hidden state after every symbol, which is exactly when a state prediction
+is due, so the per-position output and the per-token loss line up with no masking or reshaping. There is no
+single-vector bottleneck and no last-step readout here; the recurrence emits a full trajectory. The input is
+a single learned token embedding of width 64 (the gates and candidate read both `x_t` and `h_{t-1}`, so the
+embedding only has to carry the symbol identity), the hidden dim is 128, and a single LSTM layer suffices —
+one layer already gives one exact composition per token, which is the whole point; stacking more would add
+parallel-style depth on top of the sequential depth, but the sequential depth is what solves the task, so I
+keep it minimal. There is no causal mask to manage: a forward recurrence is inherently causal — `h_t`
+depends only on `x_{1:t}` by construction — so the prefix-only-dependence property the Transformers had to
+enforce with a mask comes for free here.
+
+The optimizer needs a different touch than the Transformers, and the reason is structural, not cosmetic. The
+LSTM's carousel makes the loss surface much more forgiving of a larger step — the gradient is well-scaled
+across the lag rather than vanishing — so I run AdamW at `lr=1e-3`, an order of magnitude above the
+Transformers' `3e-4`, which is the recurrent recipe that converges fast on these online streams. And I set
+weight decay to essentially zero (`wd=1e-9`): the gates' biases and the carousel's near-identity dynamics are
+delicate, and shrinking the recurrent weights toward zero fights the very unit-gain memory channel I built
+the cell around — decaying the forget-gate weights would bias the cell toward forgetting, exactly the wrong
+prior for a task that must remember 40 symbols. The harness's gradient clipping at 1.0 handles the exploding
+side of the through-time analysis (a bad batch can still spike a gradient even with the carousel), so I do
+not need to add my own clip. `forward_logits` stays the plain `model(input_ids)` — the recurrence is inside
+the module's forward.
+
+The falsifiable expectations against the looped Transformer's numbers. `memory_unit` should be 1.000 — the
+LSTM is the canonical solver of a memory cell (its forget/input gates *are* the noop/write logic), and if it
+is not 1.0 something is broken. `grid_world` should be 1.000 — the recurrence computes the clamped prefix sum
+exactly, one step at a time, with no nonlinearity-folding approximation. The decisive test is `random_dfa`:
+because the LSTM performs one *exact* state update per symbol and its gradient survives the full 40-step lag,
+I expect it to clear `random_dfa` by a clear margin over the looped Transformer's 0.309 — this is the
+environment where the `O(T)`-sequential model is supposed to beat every parallel one, and if it does not, the
+whole "perform the composition instead of shortcutting it" thesis is wrong. I expect the LSTM to post the
+highest `random_dfa` of the three architectures and therefore the highest geometric mean. What I am *not*
+claiming is that it reaches 1.0 on `random_dfa` — 60 states, a random table, 40 steps, and 12000 online
+steps may leave the cell with residual error on rarely-visited states — only that it is the strongest, and
+that the strength comes precisely from trading parallel depth for sequential exactness. So let me replace the
+looped attention body with a single-layer LSTM whose hidden state is the simulated register.
+</think>
+<say>
+Switching to a single-layer LSTM, trading parallel depth for one exact recurrent state update per token to dodge the non-solvability barrier on random_dfa. This edit rewrites the module as an embed → LSTM → linear-head register and updates the build call.
+</say>
+<edit path="pytorch-examples/synth_semiautomata/custom_strategy.py">
+<old>
+class CustomSequenceModel(nn.Module):
+    """Looped Transformer: one shared encoder layer applied n_loops times."""
+
+    def __init__(self, vocab_size: int, num_states: int, seq_len: int,
+                 d_model: int = 128, n_heads: int = 4, n_loops: int = 6,
+                 dropout: float = 0.0):
+        super().__init__()
+        self.seq_len = seq_len
+        self.n_loops = n_loops
+        self.token_emb = nn.Embedding(vocab_size, d_model)
+        self.pos_emb = nn.Embedding(seq_len, d_model)
+        self.block = nn.TransformerEncoderLayer(
+            d_model=d_model, nhead=n_heads, dim_feedforward=4 * d_model,
+            dropout=dropout, batch_first=True, activation="gelu",
+            norm_first=True,
+        )
+        self.final_norm = nn.LayerNorm(d_model)
+        self.head = nn.Linear(d_model, num_states)
+        mask = torch.triu(torch.ones(seq_len, seq_len), diagonal=1).bool()
+        self.register_buffer("causal_mask", mask, persistent=False)
+
+    def forward(self, input_ids: torch.Tensor) -> torch.Tensor:
+        B, T = input_ids.shape
+        pos = torch.arange(T, device=input_ids.device).unsqueeze(0).expand(B, T)
+        x = self.token_emb(input_ids) + self.pos_emb(pos)
+        mask = self.causal_mask[:T, :T]
+        for _ in range(self.n_loops):
+            x = self.block(x, src_mask=mask, is_causal=True)
+        x = self.final_norm(x)
+        return self.head(x)
+
+
+def build_model(env_spec: EnvSpec, config: TaskConfig) -> nn.Module:
+    """Looped Transformer: shared block, 6 loops, d_model=128, 4 heads."""
+    return CustomSequenceModel(
+</old>
+<new>
+class CustomSequenceModel(nn.Module):
+    """Single-layer LSTM (Liu et al. 2022 App. B.3: emb=64, hidden=128)."""
+
+    def __init__(self, vocab_size: int, num_states: int, seq_len: int,
+                 emb_dim: int = 64, hidden_dim: int = 128, num_layers: int = 1):
+        super().__init__()
+        self.seq_len = seq_len
+        self.token_emb = nn.Embedding(vocab_size, emb_dim)
+        self.lstm = nn.LSTM(
+            input_size=emb_dim, hidden_size=hidden_dim,
+            num_layers=num_layers, batch_first=True,
+        )
+        self.head = nn.Linear(hidden_dim, num_states)
+
+    def forward(self, input_ids: torch.Tensor) -> torch.Tensor:
+        x = self.token_emb(input_ids)
+        h, _ = self.lstm(x)
+        return self.head(h)
+
+
+def build_model(env_spec: EnvSpec, config: TaskConfig) -> nn.Module:
+    """Single-layer LSTM, emb=64, hidden=128."""
+    return CustomSequenceModel(
+</new>
+</edit>
+<obs>
+Successfully replaced text in pytorch-examples/synth_semiautomata/custom_strategy.py.
+</obs>
+<note>
+Swap the build kwargs from the attention dims to the LSTM dims.
+</note>
+<edit path="pytorch-examples/synth_semiautomata/custom_strategy.py">
+<old>
+        seq_len=env_spec.seq_len,
+        d_model=128,
+        n_heads=4,
+        n_loops=6,
+        dropout=0.0,
+    )
+</old>
+<new>
+        seq_len=env_spec.seq_len,
+        emb_dim=64,
+        hidden_dim=128,
+        num_layers=1,
+    )
+</new>
+</edit>
+<obs>
+Successfully replaced text in pytorch-examples/synth_semiautomata/custom_strategy.py.
+</obs>
+<note>
+Lift the learning rate to 1e-3 and drop weight decay to 1e-9 for the recurrent recipe.
+</note>
+<edit path="pytorch-examples/synth_semiautomata/custom_strategy.py">
+<old>
+def get_optimizer_config(config: TaskConfig) -> dict[str, float]:
+    """AdamW (Liu et al. 2022 App. B.3 GPT-2 recipe: lr 3e-4, wd 1e-4)."""
+    return {"lr": 3e-4, "wd": 1e-4, "beta1": 0.9, "beta2": 0.999}
+</old>
+<new>
+def get_optimizer_config(config: TaskConfig) -> dict[str, float]:
+    """AdamW (Liu et al. 2022 App. B.3: LSTM uses lr 1e-3, wd 1e-9)."""
+    return {"lr": 1e-3, "wd": 1e-9, "beta1": 0.9, "beta2": 0.999}
+</new>
+</edit>
+<obs>
+Successfully replaced text in pytorch-examples/synth_semiautomata/custom_strategy.py.
+</obs>
+<run/>
+<obs>
+Measured results — `baseline:lstm` (`is_final,true`), seed 42.
+
+| env | test_accuracy | score | elapsed (s) |
+|---|---|---|---|
+| memory_unit | 1.000000 | 1.000000 | 98.1 |
+| grid_world | 1.000000 | 1.000000 | 98.4 |
+| random_dfa | 0.388428 | 0.388428 | 174.3 |
+
+Geometric mean of `test_accuracy` across the three environments: 0.7296.
+</obs>

@@ -1,0 +1,989 @@
+<meta task="safe-exploration-fixed-budget" domain="Reinforcement learning" file="omnisafe/omnisafe/algorithms/on_policy/naive_lagrange/custom_lag.py" model_format="qwen3" edit_tool="str_replace"/>
+
+<system>
+You are a research engineer improving a model on a fixed ML task. You work by editing the model code and running experiments. Think carefully before each change. You have these tools:
+- str_replace(path, old_str, new_str): replace the unique occurrence of old_str with new_str.
+- create(path, file_text): create a new file.
+- run_experiment(): train + evaluate the current code under the fixed budget; returns metrics.
+Make one tool call at a time. After editing, call run_experiment() to measure your method.
+</system>
+
+<user>
+## Research question
+
+A reinforcement-learning agent must navigate a Safety-Gymnasium task while keeping its accumulated
+*cost* — a separate hazard signal, distinct from the task reward — under a fixed budget. The
+specification is a constrained Markov decision process (CMDP): maximize the discounted reward return
+`J_r(π)` subject to the discounted cost return `J_c(π) ≤ d`, with a hard limit `d = 25.0` that must
+hold not only at convergence but be respected across three different environments with different
+control geometries. The one transferable component this task isolates is the *constraint-handling
+update rule*: given a fixed PPO backbone that already produces a reward advantage `adv_r` and a cost
+advantage `adv_c` per transition, what rule for (a) updating the cost-penalty controller and (b)
+combining the two advantage streams best keeps episode cost at or below 25 while retaining as much
+reward as possible. The success metric `budget_success_rate` is binary per run — 1 if the final
+episode cost is ≤ 25, else 0 — so a method that lowers cost on average but never crosses under the
+budget scores zero on the thing the task actually measures.
+
+## Prior art before the first rung
+
+- **Constrained MDPs (Altman 1999).** The formal object: an MDP augmented with a cost function and a
+  threshold `d`, feasible set `Π_C = {π : J_c(π) ≤ d}`, optimal constrained policy
+  `π* = argmax_{π∈Π_C} J_r(π)`. It says *what* to solve but not how to solve it with a deep policy
+  optimizer that is only partially converged at each iteration.
+- **Policy-gradient backbones (Schulman et al. 2015, 2017).** TRPO controls policy drift with a hard
+  KL trust region and a second-order step; PPO recovers the same reliability with a first-order
+  clipped surrogate reused for `K` epochs. Both optimize a single scalar objective — neither carries a
+  constraint, so a cost budget has to be folded into the advantage that the surrogate ascends.
+- **Lagrangian duality for CMDPs (Paternain et al. 2019).** In occupancy-measure space the constrained
+  problem is a linear program with zero duality gap, which is the theoretical license to convert the
+  constraint into a penalty `λ·(J_c − d)` and learn `λ` by dual ascent. The gap: this clean duality
+  lives in occupancy space, while neural policy optimization is nonconvex and only approximate, so the
+  *controller* that drives `λ` — how fast it reacts, whether it overshoots, whether it wrecks reward —
+  becomes the real algorithmic choice the task is asking about.
+
+The weakest rung reacts to the last point by *not* reacting at all: it runs the PPO backbone and
+ignores the cost signal entirely, establishing the floor that any constraint-handling rule must beat.
+
+## The fixed substrate
+
+The backbone is OmniSafe's on-policy PPO. The rollout loop, the two value functions (one for reward,
+one for cost), the GAE estimators that produce `adv_r` and `adv_c`, the actor/critic optimizers, the
+Safety-Gymnasium environments, and the evaluation script are all fixed and not editable. The training
+loop (`learn`) — including the per-epoch `TRAIN_METRICS` print and the final `TEST_METRICS` print that
+the harness parses for `ep_ret`, `ep_cost`, and `budget_success_rate` — is also fixed. Each
+environment trains for 1M steps with `cost_limit = 25.0`.
+
+## The editable interface
+
+Only the `CustomLag` class in `custom_lag.py` is editable, and only two regions of it: the custom
+import line, and the four methods `_init`, `_init_log`, `_update`, `_compute_adv_surrogate`. The
+contract:
+
+- `_init(self)` — must call `super()._init()` first; initialize the budget-control state (multiplier,
+  any controller memory). `self._cfgs.lagrange_cfgs.cost_limit` (25.0) and
+  `self._cfgs.lagrange_cfgs.lambda_lr` (0.035) are available.
+- `_init_log(self)` — must call `super()._init_log()` first; register any logging keys.
+- `_update(self)` — reads the current mean episode cost via
+  `self._logger.get_stats('Metrics/EpCost')[0]`, updates the controller, then calls `super()._update()`
+  (which runs the PPO epochs, calling `_compute_adv_surrogate` internally), then logs.
+- `_compute_adv_surrogate(self, adv_r, adv_c)` — returns the per-transition advantage tensor the PPO
+  surrogate ascends. The default returns `adv_r` only (ignores the constraint). This is where the
+  reward and cost streams are combined.
+
+The default scaffold fill (the weakest rung edits exactly this region):
+
+```python
+# EDITABLE region of custom_lag.py — default fill (ignores the cost budget)
+import numpy as np
+import torch
+
+from omnisafe.algorithms import registry
+from omnisafe.algorithms.on_policy.base.ppo import PPO
+
+
+@registry.register
+class CustomLag(PPO):
+
+    def _init(self) -> None:
+        super()._init()
+        self._cost_limit: float = self._cfgs.lagrange_cfgs.cost_limit
+        self._lagrangian_multiplier: float = 0.0
+
+    def _init_log(self) -> None:
+        super()._init_log()
+        self._logger.register_key('Metrics/LagrangeMultiplier', min_and_max=True)
+
+    def _update(self) -> None:
+        Jc = self._logger.get_stats('Metrics/EpCost')[0]
+        assert not np.isnan(Jc), 'cost is nan'
+        # Default: no multiplier update -- agent should design this
+        super()._update()
+        self._logger.store({'Metrics/LagrangeMultiplier': self._lagrangian_multiplier})
+
+    def _compute_adv_surrogate(self, adv_r: torch.Tensor, adv_c: torch.Tensor) -> torch.Tensor:
+        # Default: only use reward advantage (ignores safety constraints entirely).
+        return adv_r
+```
+
+## Evaluation settings
+
+Three Safety-Gymnasium environments, each a separate run, three seeds {42, 123, 456}:
+
+- `SafetyPointGoal1-v0` — point robot navigating to goals through hazards.
+- `SafetyCarGoal1-v0` — car robot (harder dynamics) on the same goal task.
+- `SafetyPointButton1-v0` — point robot pressing goal buttons, the densest-cost geometry.
+
+Each run: 1M environment steps, fixed `cost_limit = 25.0`. Reported per run: `ep_ret` (higher
+better), `ep_cost` (lower better), `budget_success_rate` (= 1 if final `ep_cost ≤ 25`, else 0; higher
+better).
+
+The editable model code is in `omnisafe/omnisafe/algorithms/on_policy/naive_lagrange/custom_lag.py`:
+```python
+    def _init(self) -> None:
+        super()._init()
+        self._cost_limit: float = self._cfgs.lagrange_cfgs.cost_limit
+        self._lagrangian_multiplier: float = 0.0
+
+    def _init_log(self) -> None:
+        super()._init_log()
+        self._logger.register_key('Metrics/LagrangeMultiplier', min_and_max=True)
+
+    def _update(self) -> None:
+        Jc = self._logger.get_stats('Metrics/EpCost')[0]
+        assert not np.isnan(Jc), 'cost is nan'
+        # Default: no multiplier update -- agent should design this
+        super()._update()
+        self._logger.store({'Metrics/LagrangeMultiplier': self._lagrangian_multiplier})
+
+    def _compute_adv_surrogate(self, adv_r: torch.Tensor, adv_c: torch.Tensor) -> torch.Tensor:
+        """Combine reward and cost advantages.
+
+        Default: only use reward advantage (ignores safety constraints entirely).
+        Agent should incorporate self._lagrangian_multiplier to penalize cost.
+        """
+        return adv_r
+```
+Improve it. Derive your method, edit the code, then run_experiment().
+</user>
+
+### step 1 — Naive PPO (no constraint handling)   [slug:naive]
+
+<think>
+The constraint controller is the whole point of this task, but it bolts onto a policy optimizer, and
+with no controller at all that optimizer is the floor — so the thing to establish first is just
+training a PPO policy on these Safety-Gymnasium tasks while the cost signal sits unused. I start here
+deliberately: the task asks what update rule keeps cost under a fixed budget, and the only honest way
+to read any controller's contribution is against a run that has no controller, so I can see how far
+cost drifts when nothing pulls it back and how much reward the backbone can extract when it is free to
+ignore safety entirely.
+
+Let me write down what the backbone is actually optimizing, because the constraint enters precisely
+where this stops. PPO maximizes a clipped surrogate
+`L^CLIP = Ê_t[min(r_t Â_t, clip(r_t, 1−ε, 1+ε) Â_t)]` with `r_t = π_θ/π_old` the importance ratio and
+`Â_t` an advantage; the clip is a first-order trust region — a flat spot in the loss once the ratio
+leaves the band — so one batch of on-policy data is reused for several gradient epochs without the
+policy walking out of the region where the surrogate is honest. The advantage is generalized advantage
+estimation off a learned value function. None of that is mine to edit: the rollout, the two critics
+(one fit to reward, one to cost), the GAE that produces `adv_r` and `adv_c`, the optimizers, the
+training loop are all fixed substrate. What is mine is the single decision of *which* advantage the
+surrogate ascends, and at this rung I make the null decision.
+
+The substrate hands me a cost stream for free — there is a second value head fit to the per-step cost,
+and `adv_c` is its GAE advantage, exactly parallel to `adv_r`. A CMDP solver would combine the two so
+that the policy is penalized for actions that raise cost. The naive rung does not: `_compute_adv_surrogate`
+returns `adv_r` and nothing else, so the policy gradient sees only the reward advantage and the cost
+advantage is computed and then discarded. Correspondingly the controller state is inert — the
+Lagrange multiplier is initialized to `0.0` and never updated in `_update`; `_update` reads the mean
+episode cost only to assert it is not NaN (a substrate sanity check), then calls `super()._update()`
+to run the ordinary PPO epochs and logs the still-zero multiplier. There is no `Lagrange` object, no
+PID memory, no moving window — the edit is the default fill verbatim, which is why this is the floor by
+construction.
+
+Now reason about what this floor must do, because that is the entire reason to run it. With the cost
+advantage discarded, the policy is an unconstrained reward maximizer. Whatever behavior earns reward in
+these navigation tasks — driving straight to the goal, pressing buttons, taking the shortest path
+through the arena — it will learn, and it will learn it without any pressure to route around hazards,
+because entering a hazard costs nothing in the objective it sees. So I expect two things to be true at
+once. First, reward should be as high as the backbone can make it, plausibly the highest of any rung
+on this task: the policy spends its whole capacity on return with no safety tax. Second, cost should
+run far over the budget — not marginally over, but multiples of 25, because the shortest reward-seeking
+path through a hazard-dense arena collects hazard contacts at whatever rate the geometry imposes, and
+nothing in the update opposes that. The binary `budget_success_rate` should therefore be zero across
+the board: if the policy has no incentive to keep cost under 25, the only way it lands under 25 is by
+accident of geometry, and a reward-greedy policy in a hazard field is the least likely configuration
+to do so.
+
+The three environments should separate on how hazard-dense the reward-seeking path is. `SafetyPointGoal1`
+is the gentlest geometry, so its overshoot should be the smallest of the three but still well over
+budget. `SafetyCarGoal1` adds harder car dynamics on the same goal task — the policy may take wider,
+longer trajectories, accumulating more contacts. `SafetyPointButton1` is the densest-cost geometry
+(buttons scattered among hazards), so I expect the largest overshoot there by a wide margin — this is
+the environment where ignoring cost should look most catastrophic. Reward, conversely, should be
+highest where the task is easiest to solve greedily.
+
+The diagnosis this rung is built to produce is already pointed at the next one. If naive PPO posts
+high reward and a `budget_success_rate` of zero with cost at multiples of the limit, the problem it
+exposes is not a learning problem — the policy learns the task fine — it is a *specification* problem:
+the objective the policy ascends contains no term for the constraint, so of course the constraint is
+violated. The fix is to put the constraint into the objective. The substrate already exposes `adv_c`
+and a multiplier slot precisely so a future rung can subtract a cost penalty from the reward advantage
+and drive that penalty's weight from the measured cost. That is the move the next rung makes: turn the
+inert multiplier into a learned one and combine the two advantage streams, converting the discarded
+cost signal into pressure the policy actually feels. For now I want the floor, so let me write in the
+default fill verbatim — no controller, reward advantage only.
+</think>
+<say>
+Starting with the floor: naive PPO that ignores the cost signal entirely. This first edit just stamps the editable region header so the backbone trains as a pure unconstrained reward maximizer.
+</say>
+<edit path="omnisafe/omnisafe/algorithms/on_policy/naive_lagrange/custom_lag.py">
+<old>
+    def _init(self) -> None:
+</old>
+<new>
+# EDITABLE region of custom_lag.py — step 1: naive (pure PPO, ignores cost)
+import numpy as np
+import torch
+
+from omnisafe.algorithms import registry
+from omnisafe.algorithms.on_policy.base.ppo import PPO
+
+
+@registry.register
+class CustomLag(PPO):
+
+    def _init(self) -> None:
+</new>
+</edit>
+<obs>
+Successfully replaced text in omnisafe/omnisafe/algorithms/on_policy/naive_lagrange/custom_lag.py.
+</obs>
+<note>
+Now pin the multiplier at zero in `_update` so no budget pressure ever reaches the policy.
+</note>
+<edit path="omnisafe/omnisafe/algorithms/on_policy/naive_lagrange/custom_lag.py">
+<old>
+        assert not np.isnan(Jc), 'cost is nan'
+        # Default: no multiplier update -- agent should design this
+        super()._update()
+</old>
+<new>
+        assert not np.isnan(Jc), 'cost is nan'
+        # Naive: keep multiplier at zero and ignore budget pressure.
+        super()._update()
+</new>
+</edit>
+<obs>
+Successfully replaced text in omnisafe/omnisafe/algorithms/on_policy/naive_lagrange/custom_lag.py.
+</obs>
+<note>
+And the surrogate hook: return the reward advantage only, discarding `adv_c`.
+</note>
+<edit path="omnisafe/omnisafe/algorithms/on_policy/naive_lagrange/custom_lag.py">
+<old>
+    def _compute_adv_surrogate(self, adv_r: torch.Tensor, adv_c: torch.Tensor) -> torch.Tensor:
+        """Combine reward and cost advantages.
+
+        Default: only use reward advantage (ignores safety constraints entirely).
+        Agent should incorporate self._lagrangian_multiplier to penalize cost.
+        """
+        return adv_r
+</old>
+<new>
+    def _compute_adv_surrogate(self, adv_r: torch.Tensor, adv_c: torch.Tensor) -> torch.Tensor:
+        'Naive: ignore cost advantage entirely, optimize reward only.'
+        return adv_r
+</new>
+</edit>
+<obs>
+Successfully replaced text in omnisafe/omnisafe/algorithms/on_policy/naive_lagrange/custom_lag.py.
+</obs>
+<run/>
+<obs>
+Measured results — `baseline:naive` (`is_final,true`), seeds {42, 123, 456} and mean. `budget_success_rate` is 1 when final `ep_cost ≤ 25.0`, else 0.
+
+## SafetyPointGoal1-v0
+| seed | ep_ret | ep_cost | budget_success_rate |
+|---|---|---|---|
+| 42 | 25.1899 | 45.17 | 0.0 |
+| 123 | 26.1317 | 52.28 | 0.0 |
+| 456 | 25.2864 | 56.80 | 0.0 |
+| **mean** | **25.5360** | **51.42** | **0.000** |
+
+## SafetyCarGoal1-v0
+| seed | ep_ret | ep_cost | budget_success_rate |
+|---|---|---|---|
+| 42 | 32.3217 | 64.87 | 0.0 |
+| 123 | 32.4097 | 64.73 | 0.0 |
+| 456 | 33.7404 | 52.55 | 0.0 |
+| **mean** | **32.8239** | **60.72** | **0.000** |
+
+## SafetyPointButton1-v0
+| seed | ep_ret | ep_cost | budget_success_rate |
+|---|---|---|---|
+| 42 | 25.0370 | 153.00 | 0.0 |
+| 123 | 8.7886 | 163.78 | 0.0 |
+| 456 | 25.2465 | 140.51 | 0.0 |
+| **mean** | **19.6907** | **152.43** | **0.000** |
+</obs>
+
+### step 2 — PPO-Lag (adaptive Lagrangian multiplier)   [slug:ppo_lag]
+
+<think>
+The naive run told me exactly what I expected, in numbers, and the numbers are unambiguous: it is a
+specification failure, not a learning failure. The policy learns the task perfectly well — reward is
+the highest I will see on this whole ladder (mean 25.5 on PointGoal, 32.8 on CarGoal, 19.7 on Button)
+— but `budget_success_rate` is zero on every single seed of every single environment, because nothing
+in the objective the policy ascended carried the cost signal. And the *shape* of the violation is the
+tell. On PointGoal cost lands around 51 against a budget of 25, a clean 2× overshoot; on CarGoal ~61;
+and on Button it is catastrophic — 140 to 164, more than six times the limit, with one seed (123)
+whose reward also collapsed to 8.8 because the arena's hazard density is so high that even greedy
+reward-seeking gets tangled. The ordering across environments is exactly the geometry argument: the
+densest-hazard task overshoots worst. So the diagnosis is clean. The policy felt no cost pressure, so
+it took the shortest reward-seeking path through whatever hazards lay on it, and the cost is simply
+whatever that path collects. To get any of these under 25 I have to put the constraint *into* the
+thing the policy optimizes.
+
+The reflex is to mash the two signals into one scalar and hand it to the PPO backbone I already
+trust — ascend `E[Σ(r_t − β c_t)]` for some penalty weight β. And every time I reach for this I hit the
+same wall: what is β? There is no formula that takes my budget `d = 25` and returns the β that achieves
+it; the map from penalty coefficient to resulting cost return depends on the whole environment and the
+policy class in a way I cannot invert ahead of time. Worse, the naive numbers show me the trade-off
+*moves across environments* — PointGoal needs the cost halved, Button needs it cut by a factor of six.
+A single β that pulls Button's 152 down under 25 would be enormous, and on PointGoal that same β would
+terrify the policy off the task entirely. And even within one run, the one β has to do two
+incompatible jobs: stay small early so the still-incompetent policy can learn to navigate at all, then
+push hard once it has found the rewarding-but-risky shortcuts the naive run lived on. No single number
+does both. A fixed penalty bakes a trade-off I don't know how to set into a constant I have to set
+before I see anything.
+
+So I stop trying to fold safety into the objective and keep it as what it is — a constraint. The clean
+statement is the constrained problem `max_θ J_r(θ)` subject to `J_c(θ) ≤ d`, where `J_r` and `J_c` are
+the expected returns of reward and of cost, defined identically except for which signal they sum.
+This is a constrained MDP in Altman's sense, and the reason I prefer it over the penalty framing isn't
+aesthetic. A constraint with a threshold encodes "get cost under `d` and then stop caring; spend
+everything else on reward," which is the actual shape of the task's binary `budget_success_rate` — the
+metric rewards crossing under 25 and is indifferent to how far under. A penalty keeps trading reward
+against cost forever even deep inside the safe region. The threshold has a saturation built in that
+matches the metric; the penalty does not.
+
+How do I optimize a constrained objective when `J_r` and `J_c` are both nonconvex functions of a few
+hundred thousand weights? I cannot project onto the feasible set — I have no closed form for it. The
+standard tool for "maximize subject to an inequality" is the Lagrangian. Write the constraint in
+standard form `g(θ) = J_c(θ) − d ≤ 0`, introduce a multiplier `λ ≥ 0`, and form
+`L(θ, λ) = J_r(θ) − λ(J_c(θ) − d)`. The classical result is that the constrained problem equals
+`max_θ min_{λ≥0} L`. Let me check the inner min by behavior before building on it. Fix θ. If the
+constraint is violated, `g > 0`, then `min_{λ≥0} −λ·(positive)` drives `λ → ∞` and `L → −∞`, so the
+outer max never picks such a θ — infeasible policies are punished. If the constraint is satisfied with
+slack, `g < 0`, then `−λ·(negative)` increases in λ, so the min takes `λ = 0` and the penalty switches
+off, giving pure reward. On the boundary the λ term vanishes. So the max-min reconstructs exactly
+"reward if feasible, −∞ if not" — the Lagrangian's saddle *is* the constrained problem, and at the
+saddle complementary slackness `λ·g = 0` holds: λ is positive only when the budget binds.
+
+That is the convex textbook story, and `J_r, J_c` are nonconvex in θ, so I should worry about a duality
+gap. But the nonconvexity is in the parameterization `θ ↦ π_θ`, not in the problem: in occupancy-measure
+space both returns are *linear* in the occupancy measure over the convex set cut out by the Bellman
+flow equations — a linear program, which has zero duality gap (Altman's LP view of CMDPs; Paternain et
+al. 2019). The clean duality lives in occupancy space while I take gradient steps on neural parameters,
+so the honest reading is: dual descent aims at the correct saddle structure of the true problem and my
+neural updates approximate it. That is enough license to build the algorithm.
+
+So I have a saddle-point problem and the natural solver is to alternate: ascend θ to push `L` up,
+descend λ to push it down, and let them chase the saddle. The λ update first, because it is where the
+adaptivity the naive run lacked actually lives. I want to descend `L` in λ; `∂L/∂λ = −g(θ)`, so
+descent is `λ ← [λ + η(J_c − d)]_+`, projected to stay nonnegative. Check it by behavior, because a
+flipped sign would silently invert the whole safety mechanism. Over budget (`J_c > d`): the bracket
+increases, λ climbs, the next policy update weighs cost more heavily — correct, and this is exactly
+the response the naive run never had to its 152 on Button. Under budget (`J_c < d`): the bracket
+decreases, λ falls toward zero, the policy is freed to chase reward — correct. So λ tunes the trade-off
+*for* me, reading the measured violation each epoch. Structurally λ is the running integral of the
+violation signal, so it settles to whatever weight drives the average violation to zero. One subtlety:
+the constraint is on the *episodic* cost return, so I update λ once per epoch from the logged mean
+episode cost `Jc = self._logger.get_stats('Metrics/EpCost')[0]`, not from any per-step cost, and I
+assert it is not NaN first — if the cost statistic ever went bad I would corrupt λ silently and the
+safety mechanism would die quietly.
+
+Now the θ update. I ascend θ on `L = J_r − λ J_c` (the `λd` term is constant in θ). The gradient is
+`∇_θ J_r − λ ∇_θ J_c`, and I already have a machine that ascends an expected return given an advantage:
+the PPO surrogate, with `∇_θ J = E[∇log π · A]`. The substrate already runs GAE twice — a reward
+critic gives `adv_r ∝ ∇_θ J_r`, a cost critic gives `adv_c ∝ ∇_θ J_c`. So the combined gradient
+corresponds to a single combined advantage `A = adv_r − λ·adv_c`, fed into exactly the PPO clip I
+already trust; the clip keeps each update in a trust region and is agnostic to what `A` means. This is
+the whole appeal — a safe-RL rule that is PPO plus one scalar and one line mixing two advantages, and
+it is precisely the two editable hooks the task exposes: λ lives in `_update`, the mix lives in
+`_compute_adv_surrogate`.
+
+But shipping `A = adv_r − λ·adv_c` raw breaks, and the naive Button numbers tell me why it will break
+*here specifically*. Button violated by 6×, so λ will not stay small — to make the agent feel a 6×
+overshoot the dual ascent must drive λ to 5, 10, 50. At λ = 50 the cost term dominates and the *scale*
+of the combined advantage is ~50× a normal advantage. PPO's clip range and learning rate were
+calibrated assuming the advantage has roughly its usual magnitude; an advantage whose scale grows
+linearly in λ silently inflates the effective step size exactly when λ is large — exactly when I most
+need the update careful. The clip will not save me, because it clips the probability *ratio*, not the
+advantage. So λ has leaked into two places at once: the relative weight of reward versus cost, which I
+want, and the numerical scale of the gradient, which I do not.
+
+I do not want to change λ's meaning to fix this — the ratio of reward weight to cost weight, `1 : λ`,
+is what the dual is carefully tuning. I want to peel apart the two effects: keep the *direction* of the
+combined advantage but normalize its *scale*. The cleanest normalization that is monotone in λ and
+equals 1 at λ = 0 is dividing by `(1 + λ)`: `A = (adv_r − λ·adv_c)/(1 + λ)`. Set `u = λ/(1+λ)`; then
+`A = (1−u)·adv_r − u·adv_c` with `u ∈ [0,1)`, a convex blend. At λ = 0, `u = 0`, pure reward — the
+unconstrained update, right because slack means no safety tax. As λ → ∞, `u → 1`, pure cost-avoidance,
+right because a huge violation should sacrifice reward. In between, the weights sum to 1, so `|A|` stays
+on the order of an ordinary advantage no matter how large λ grows, and PPO's tuned step size behaves
+identically throughout. The *ratio* of the weights is still `(1−u):u = 1:λ`, so the gradient direction
+and the saddle point are unchanged; the `(1+λ)` factor is a step-size normalization, not a new optimum.
+
+For the λ step itself I use the OmniSafe `Lagrange` helper the harness exposes: it stores λ as a
+learnable scalar and realizes the projected ascent through an Adam step on the loss
+`−λ·(Jc − d)`, whose gradient is `−(Jc − d)`, giving `λ ← λ + η·(Jc − d)` followed by a nonnegative
+clamp. Wrapping the single dual scalar in Adam (rather than a bare fixed-step update) smooths it against
+the epoch-to-epoch Monte-Carlo noise in the estimate of `J_c`, with `lambda_lr` the dual learning rate.
+So `_init` constructs `Lagrange(**lagrange_cfgs)`, `_update` calls `update_lagrange_multiplier(Jc)` then
+`super()._update()`, and `_compute_adv_surrogate` reads `self._lagrange.lagrangian_multiplier` into the
+normalized blend.
+
+Now the falsifiable expectations against the naive numbers. The mechanism is dual *ascent* on a
+single scalar driven by the running average violation, so it is slow: λ integrates the error and only
+settles after many epochs, and on a 1M-step budget it may simply not have climbed high enough by the
+end. So I expect cost to come *down* from naive everywhere — the policy now feels some cost pressure —
+but I am not confident any environment crosses under 25. Concretely: PointGoal should fall from ~51
+toward the 40s, CarGoal from ~61 toward the 40s, Button most dramatically from ~152 toward the 50s,
+because the bigger the violation the harder λ pushes. Reward should drop in lockstep, because every
+unit of cost pressure is reward I am trading away — I expect PointGoal's 25.5 to fall toward the teens
+and Button's reward to collapse toward single digits. The clean test of the slow-integrator
+hypothesis: if `budget_success_rate` is *still zero everywhere* while cost has roughly halved, then the
+direction is right but the controller is too sluggish — it lowers cost without ever crossing the
+budget, which is the only thing the metric counts. That failure is what would force a controller that
+reacts to the *rate* of violation and not just its accumulated integral. So let me wire in the dual
+ascent: a `Lagrange` helper, a per-epoch multiplier update, and the scale-normalized blend.
+</think>
+<say>
+Putting the constraint into the objective now with PPO-Lag: a Lagrange multiplier learned by dual ascent on the measured violation. This first edit relabels the editable region for the new method.
+</say>
+<edit path="omnisafe/omnisafe/algorithms/on_policy/naive_lagrange/custom_lag.py">
+<old>
+# EDITABLE region of custom_lag.py — step 1: naive (pure PPO, ignores cost)
+import numpy as np
+</old>
+<new>
+# EDITABLE region of custom_lag.py — step 2: PPO-Lag (adaptive Lagrangian multiplier)
+import numpy as np
+</new>
+</edit>
+<obs>
+Successfully replaced text in omnisafe/omnisafe/algorithms/on_policy/naive_lagrange/custom_lag.py.
+</obs>
+<note>
+Pull in the OmniSafe `Lagrange` helper that holds the dual scalar.
+</note>
+<edit path="omnisafe/omnisafe/algorithms/on_policy/naive_lagrange/custom_lag.py">
+<old>
+from omnisafe.algorithms.on_policy.base.ppo import PPO
+</old>
+<new>
+from omnisafe.algorithms.on_policy.base.ppo import PPO
+from omnisafe.common.lagrange import Lagrange
+</new>
+</edit>
+<obs>
+Successfully replaced text in omnisafe/omnisafe/algorithms/on_policy/naive_lagrange/custom_lag.py.
+</obs>
+<note>
+Construct the `Lagrange` controller in `_init` in place of the inert zero scalar.
+</note>
+<edit path="omnisafe/omnisafe/algorithms/on_policy/naive_lagrange/custom_lag.py">
+<old>
+        self._cost_limit: float = self._cfgs.lagrange_cfgs.cost_limit
+        self._lagrangian_multiplier: float = 0.0
+</old>
+<new>
+        self._cost_limit: float = self._cfgs.lagrange_cfgs.cost_limit
+        self._lagrange: Lagrange = Lagrange(**self._cfgs.lagrange_cfgs)
+</new>
+</edit>
+<obs>
+Successfully replaced text in omnisafe/omnisafe/algorithms/on_policy/naive_lagrange/custom_lag.py.
+</obs>
+<note>
+Now the two live hooks: dual ascent on the measured cost in `_update`, and the scale-normalized blend in the surrogate.
+</note>
+<edit path="omnisafe/omnisafe/algorithms/on_policy/naive_lagrange/custom_lag.py">
+<old>
+        assert not np.isnan(Jc), 'cost is nan'
+        # Naive: keep multiplier at zero and ignore budget pressure.
+        super()._update()
+        self._logger.store({'Metrics/LagrangeMultiplier': self._lagrangian_multiplier})
+
+    def _compute_adv_surrogate(self, adv_r: torch.Tensor, adv_c: torch.Tensor) -> torch.Tensor:
+        'Naive: ignore cost advantage entirely, optimize reward only.'
+        return adv_r
+</old>
+<new>
+        assert not np.isnan(Jc), 'cost is nan'
+        self._lagrange.update_lagrange_multiplier(Jc)
+        super()._update()
+        self._logger.store({'Metrics/LagrangeMultiplier': self._lagrange.lagrangian_multiplier})
+
+    def _compute_adv_surrogate(self, adv_r: torch.Tensor, adv_c: torch.Tensor) -> torch.Tensor:
+        'PPO-Lag: penalize cost advantage using the learned multiplier.'
+        penalty = self._lagrange.lagrangian_multiplier.item()
+        return (adv_r - penalty * adv_c) / (1 + penalty)
+</new>
+</edit>
+<obs>
+Successfully replaced text in omnisafe/omnisafe/algorithms/on_policy/naive_lagrange/custom_lag.py.
+</obs>
+<run/>
+<obs>
+Measured results — `baseline:ppo_lag` (`is_final,true`), seeds {42, 123, 456} and mean. `budget_success_rate` is 1 when final `ep_cost ≤ 25.0`, else 0.
+
+## SafetyPointGoal1-v0
+| seed | ep_ret | ep_cost | budget_success_rate |
+|---|---|---|---|
+| 42 | 11.8307 | 45.72 | 0.0 |
+| 123 | 12.4711 | 42.50 | 0.0 |
+| 456 | 21.1206 | 48.52 | 0.0 |
+| **mean** | **15.1408** | **45.58** | **0.000** |
+
+## SafetyCarGoal1-v0
+| seed | ep_ret | ep_cost | budget_success_rate |
+|---|---|---|---|
+| 42 | 17.2587 | 49.18 | 0.0 |
+| 123 | 19.8435 | 40.93 | 0.0 |
+| 456 | 18.6480 | 50.03 | 0.0 |
+| **mean** | **18.5834** | **46.71** | **0.000** |
+
+## SafetyPointButton1-v0
+| seed | ep_ret | ep_cost | budget_success_rate |
+|---|---|---|---|
+| 42 | 5.0079 | 51.31 | 0.0 |
+| 123 | 3.6397 | 59.53 | 0.0 |
+| 456 | 3.3823 | 57.83 | 0.0 |
+| **mean** | **4.0100** | **56.22** | **0.000** |
+</obs>
+
+### step 3 — PID-Lag (PID-controlled multiplier)   [slug:pid_lag]
+
+<think>
+The Lagrangian run did exactly what I predicted, and the prediction being right is itself the
+diagnosis. Cost came down everywhere — PointGoal from naive's 51 to 46, CarGoal from 61 to 47, Button
+from a catastrophic 152 to 56 — so the dual ascent is pulling in the right direction, and the
+reward collapse that came with it (PointGoal 25.5→15, Button 19.7→4) confirms the trade-off is real:
+every unit of cost pressure is reward traded away. But the metric that the task actually counts,
+`budget_success_rate`, is *still zero on every seed of every environment*. The mechanism lowers cost
+without ever crossing under 25. That is the precise failure my closing test was built to detect: the
+direction is right and the controller is too sluggish. Button is the loudest evidence — λ had to climb
+enormously to drag 152 down to 56, and even that enormous λ left it 2× over budget, because by the
+time the integral had accumulated enough to push hard, cost had already been over for a long stretch
+and the policy had baked the unsafe path in.
+
+So I need to understand *why* the integrator is too slow rather than just turning its gain up. Look at
+the exact update PPO-Lag used: `λ_{k+1} = (λ_k + K_I(J_C − d))_+`. Stare at it. λ is a running
+accumulation of the violation `J_C − d`: every epoch I add the current error to a stored quantity. The
+multiplier is literally the time-integral of the constraint error. And that is the whole problem in one
+line — integral control has memory but no reflexes. It reacts only to *accumulated* error, so λ rises
+only after violation has been piling up for a while; the response is intrinsically late. By the time λ
+has integrated up to a value large enough to push cost back toward 25, cost has already overshot, and
+that is exactly the pattern in the PPO-Lag numbers: a large standing λ that arrived too late to ever
+get cost under the line on a 1M-step budget. Pushing `K_I` higher does not fix this — a stiffer pure
+integrator rings faster and longer, trading a late response for an oscillating one, and the reward
+degrades further as a side effect. One knob, bad trade.
+
+The fix is to stop thinking of this as "tune the Lagrangian update" and recognize what the loop
+actually is: a feedback control system. The cost limit `d = 25` is a setpoint. The measured episodic
+cost `J_C` is the output I want held at the setpoint. The multiplier λ is the control input I get to
+set. And the PPO step grinding θ forward to chase reward is the plant — a nonlinear, unknown map from
+λ to next epoch's cost. The traditional Lagrangian method is one impoverished choice of the control
+rule: integral-only. Once I see it that way the question becomes "what controller should drive λ," and
+the answer the field reaches for when an integral loop is late and rings is the other two terms of the
+standard three-term controller — proportional and derivative. Let me bring each in and check it does
+what I hope.
+
+Proportional first. Add to λ a term proportional to the *current* error, `K_P·(J_C − d)` — an
+instantaneous reaction, no waiting for accumulation. In the continuous-time picture the integral term
+was `λ̇ = α·g`; the proportional contribution enters `λ̇` as a term tracking `g`'s rate, i.e. as `β·ġ`.
+Redoing the second-order collapse of the coupled primal-dual dynamics with this extra piece, the
+restoring force `α·g·∇g` is untouched — so proportional does not move the equilibrium, the solution set
+is still feasible-and-stationary — but the damping matrix gains `β·∇g·∇gᵀ`, the outer product of `∇g`
+with itself, which is positive semidefinite by construction (`vᵀ(∇g∇gᵀ)v = (∇g·v)² ≥ 0`). More damping
+is exactly what kills an oscillation. So proportional control supplies damping, and it does so cleanly:
+it touches only the λ update, not the policy objective, unlike the quadratic-penalty method which
+injects the *same* outer-product damping but bundled with an indefinite constraint-Hessian term and a
+modification of the primal step. Proportional gives me the penalty method's damping benefit with none
+of the baggage. For my failure this is the missing reflex: when cost is over the line *right now*,
+proportional reacts this epoch instead of waiting for the integral to build.
+
+Now derivative — anticipation. Proportional reacts to the present; I want to react to the *trend*: if
+cost is rising fast toward 25, raise λ now, before cost crosses. A term on the rate of cost change
+enters λ's dynamics one derivative higher; grinding through the collapse, the derivative term scales the
+restoring direction by `B⁻¹ = (I + γ·∇g∇gᵀ)⁻¹` (eigenvalues ≤ 1) and adds a force
+`γ·(ẋᵀ∇²g·ẋ)·B⁻¹∇g` quadratic in velocity and modulated by the constraint curvature along the motion.
+When I am moving along a direction where cost curves upward and I am already in violation, this
+anticipatory force adds to the restoring force — I brake harder before overshooting. That is precisely
+the overshoot the Button run suffered: cost ran up and the integral could not anticipate it. One
+asymmetry I bake in for the cost case: derivative control should *brake increases* in cost (the
+dangerous direction) but not fight *decreases* — a falling cost is good. So I rectify the derivative
+to the positive part, `(rate of cost increase)_+`, a one-sided derivative for a one-sided constraint.
+Derivative is also the term most prone to amplifying noise, because the change of a noisy cost estimate
+is wild — I will need to smooth it.
+
+Why keep integral at all? Because at convergence I need *zero* steady-state violation, and only the
+integral can supply the standing λ that holds cost exactly at 25. When the system settles, the error
+`J_C − d ≈ 0`, so the proportional term vanishes and the derivative term (cost not changing) vanishes
+too; if those were my only terms λ would collapse and cost would drift back up — exactly the drift the
+budget cannot tolerate. The integral has *remembered* the accumulated history and holds a nonzero λ
+even when the instantaneous error is zero. So the division of labor is clean: proportional and
+derivative shape the *transient* — the very thing PPO-Lag failed at, getting under the line in time —
+while integral guarantees the *asymptote*, staying under it. And setting `K_P = K_D = 0` recovers
+PPO-Lag's integral-only rule exactly, so this is a strict generalization: I have widened a
+one-parameter family to a three-parameter one with the old method at the origin of the two new axes.
+
+Now the discrete rule I will actually run, matching what the harness exposes. Each epoch I read
+`J_C = self._logger.get_stats('Metrics/EpCost')[0]`. The error is `Δ = J_C − d`. To tame the noise the
+derivative term would amplify, I smooth two signals with an exponential moving average at 0.95:
+`delta_p ← 0.95·delta_p + 0.05·Δ` (a smoothed proportional error) and `cost_d ← 0.95·cost_d + 0.05·J_C`
+(a smoothed cost level). The integral accumulates with anti-windup, `I ← (I + K_I·Δ)_+`: the inner
+positive part stops the integrator from banking a *negative* reservoir during a long feasible stretch,
+which would otherwise delay the next response by forcing λ to climb out of a hole first — the exact
+disease I am curing, so I will not reintroduce it. The derivative is the rectified change of the
+smoothed cost over a short delay window, `pid_d = (cost_d − cost_d[t−w])_+`, with `w = 10` epochs of
+delay (a deque holding the smoothed-cost history); the delay-and-rectify gives a clean one-sided trend
+estimate instead of a single-step difference. The multiplier is the nonnegative combination
+`λ = clip(K_P·delta_p + I + K_D·pid_d, 0, 100)`, with the upper clamp at 100 a guard against a runaway
+controller in the densest-hazard arena. Gains `K_P = 0.1`, `K_I = 0.01`, `K_D = 0.01`: integral small
+because it accumulates, proportional an order of magnitude larger to supply the fast reflex, derivative
+matched to the integral. Crucially the policy hook is *unchanged* — I reuse the same scale-normalized
+blend `A = (adv_r − λ·adv_c)/(1 + λ)`, because the `(1+λ)` normalization that kept PPO's step size sane
+under a large integral λ is needed even more here, where an aggressive PID controller can drive λ large
+fast. The only change from PPO-Lag is the rule that *produces* λ.
+
+Now the falsifiable expectations against the PPO-Lag numbers. The whole claim is that proportional plus
+derivative get cost under the line *in time*, where the pure integrator could not. So I expect this to
+be the first rung to post nonzero `budget_success_rate` — concretely, cost should fall from PPO-Lag's
+40s–50s to at or below 25 on most runs, with PointGoal (the gentlest geometry) crossing under most
+reliably and Button and CarGoal closer to the line and seed-dependent. The cost of buying that safety
+is reward: because the controller now reacts hard and early, it suppresses the policy's reward-seeking
+much more than the sluggish integral did, so I expect reward to fall further still from PPO-Lag's
+already-reduced levels, plausibly toward zero on the goal tasks — a feasible-but-timid policy. That is
+the explicit trade I am making: this rung is judged on the budget metric the previous two failed, and
+if it crosses under 25 on most runs it is the strongest baseline on this task even though its reward is
+the lowest, because a policy that violates the budget on 100% of runs cannot be called safer than one
+that satisfies it, whatever its return. The clean test: if `budget_success_rate` is still zero
+everywhere, the PID hypothesis is wrong and the lateness was not the cause; if it is one on the gentle
+geometry and fractional on the dense ones, the transient-shaping story holds and the residual misses
+are an aggressiveness-versus-reward problem, not a timing one. So let me build the full PID controller
+behind the same advantage blend.
+</think>
+<say>
+Now PID-Lag: drive the multiplier with a full proportional-integral-derivative controller instead of integral alone, so it reacts in time. This first edit swaps in the imports the controller needs (a deque for the derivative window).
+</say>
+<edit path="omnisafe/omnisafe/algorithms/on_policy/naive_lagrange/custom_lag.py">
+<old>
+# EDITABLE region of custom_lag.py — step 2: PPO-Lag (adaptive Lagrangian multiplier)
+import numpy as np
+import torch
+
+from omnisafe.algorithms import registry
+from omnisafe.algorithms.on_policy.base.ppo import PPO
+from omnisafe.common.lagrange import Lagrange
+</old>
+<new>
+# EDITABLE region of custom_lag.py — step 3: PID-Lag (PID-controlled multiplier)
+import numpy as np
+import torch
+
+from collections import deque
+
+from omnisafe.algorithms import registry
+from omnisafe.algorithms.on_policy.base.ppo import PPO
+</new>
+</edit>
+<obs>
+Successfully replaced text in omnisafe/omnisafe/algorithms/on_policy/naive_lagrange/custom_lag.py.
+</obs>
+<note>
+Initialize the PID state: the three gains, the integral accumulator, the smoothed signals, and the delay deque for the derivative.
+</note>
+<edit path="omnisafe/omnisafe/algorithms/on_policy/naive_lagrange/custom_lag.py">
+<old>
+        self._cost_limit: float = self._cfgs.lagrange_cfgs.cost_limit
+        self._lagrange: Lagrange = Lagrange(**self._cfgs.lagrange_cfgs)
+</old>
+<new>
+        self._cost_limit: float = self._cfgs.lagrange_cfgs.cost_limit
+        self._pid_kp: float = 0.1
+        self._pid_ki: float = 0.01
+        self._pid_kd: float = 0.01
+        self._pid_i: float = 0.0
+        self._delta_p: float = 0.0
+        self._cost_d: float = 0.0
+        self._cost_ds: deque = deque(maxlen=10)
+        self._cost_ds.append(0.0)
+        self._lagrangian_multiplier: float = 0.0
+</new>
+</edit>
+<obs>
+Successfully replaced text in omnisafe/omnisafe/algorithms/on_policy/naive_lagrange/custom_lag.py.
+</obs>
+<note>
+Now the PID update itself in `_update`: anti-windup integral, smoothed proportional error, rectified derivative over the delay window, clamped to [0, 100]. The blend is unchanged.
+</note>
+<edit path="omnisafe/omnisafe/algorithms/on_policy/naive_lagrange/custom_lag.py">
+<old>
+        assert not np.isnan(Jc), 'cost is nan'
+        self._lagrange.update_lagrange_multiplier(Jc)
+        super()._update()
+        self._logger.store({'Metrics/LagrangeMultiplier': self._lagrange.lagrangian_multiplier})
+
+    def _compute_adv_surrogate(self, adv_r: torch.Tensor, adv_c: torch.Tensor) -> torch.Tensor:
+        'PPO-Lag: penalize cost advantage using the learned multiplier.'
+        penalty = self._lagrange.lagrangian_multiplier.item()
+        return (adv_r - penalty * adv_c) / (1 + penalty)
+</old>
+<new>
+        assert not np.isnan(Jc), 'cost is nan'
+        delta = float(Jc - self._cost_limit)
+        self._pid_i = max(0.0, self._pid_i + delta * self._pid_ki)
+        self._delta_p = 0.95 * self._delta_p + 0.05 * delta
+        self._cost_d = 0.95 * self._cost_d + 0.05 * float(Jc)
+        pid_d = max(0.0, self._cost_d - self._cost_ds[0])
+        pid_o = self._pid_kp * self._delta_p + self._pid_i + self._pid_kd * pid_d
+        self._lagrangian_multiplier = max(0.0, min(pid_o, 100.0))
+        self._cost_ds.append(self._cost_d)
+        super()._update()
+        self._logger.store({'Metrics/LagrangeMultiplier': self._lagrangian_multiplier})
+
+    def _compute_adv_surrogate(self, adv_r: torch.Tensor, adv_c: torch.Tensor) -> torch.Tensor:
+        'PID-Lag: combine advantages using PID-controlled multiplier.'
+        penalty = self._lagrangian_multiplier
+        return (adv_r - penalty * adv_c) / (1 + penalty)
+</new>
+</edit>
+<obs>
+Successfully replaced text in omnisafe/omnisafe/algorithms/on_policy/naive_lagrange/custom_lag.py.
+</obs>
+<run/>
+<obs>
+Measured results — `baseline:pid_lag` (`is_final,true`), seeds {42, 123, 456} and mean. `budget_success_rate` is 1 when final `ep_cost ≤ 25.0`, else 0.
+
+## SafetyPointGoal1-v0
+| seed | ep_ret | ep_cost | budget_success_rate |
+|---|---|---|---|
+| 42 | 0.5656 | 13.86 | 1.0 |
+| 123 | 0.1389 | 21.58 | 1.0 |
+| 456 | -0.1041 | 22.37 | 1.0 |
+| **mean** | **0.2001** | **19.27** | **1.000** |
+
+## SafetyCarGoal1-v0
+| seed | ep_ret | ep_cost | budget_success_rate |
+|---|---|---|---|
+| 42 | 1.2759 | 25.22 | 0.0 |
+| 123 | 2.2878 | 14.01 | 1.0 |
+| 456 | 2.4244 | 18.68 | 1.0 |
+| **mean** | **1.9960** | **19.30** | **0.667** |
+
+## SafetyPointButton1-v0
+| seed | ep_ret | ep_cost | budget_success_rate |
+|---|---|---|---|
+| 42 | 1.0447 | 24.19 | 1.0 |
+| 123 | 0.0373 | 22.21 | 1.0 |
+| 456 | 0.3087 | 28.51 | 0.0 |
+| **mean** | **0.4636** | **24.97** | **0.667** |
+</obs>
+
+### step 4 — CRPO (constraint-rectified policy optimization)   [slug:crpo]
+
+<think>
+PID-Lag finally crossed the line, and in doing so it told me precisely what is still wrong. It is the
+first rung to post nonzero `budget_success_rate` — PointGoal 1.000 across all three seeds, CarGoal and
+Button both 0.667 — and cost sits right where it should, 19.3 on the goal tasks and 24.97 on Button, a
+whisker under 25. So as a *constraint solver* it works: the PID transient shaping got cost under the
+budget in time, exactly the timing fix I designed it for. But look at the reward column and the cost of
+that safety is brutal. PointGoal reward collapsed to 0.20, CarGoal to 1.996, Button to 0.46 — the
+policies are feasible and essentially *do nothing*. PID-Lag bought the budget by making the agent so
+afraid of cost that it abandoned the task. And the two missed seeds are the same story from the other
+side: CarGoal seed 42 landed at 25.22 and Button seed 456 at 28.51, both barely over, both with reward
+near zero — the controller was riding the limit so tightly that ordinary estimation noise tipped them
+just past it. So I have two coupled problems, and they share one root. The reward is dead because the
+*continuous penalty never switches off*: even when the policy is safely under budget, the blend
+`A = (adv_r − λ·adv_c)/(1+λ)` keeps a positive λ (the integral term holds a standing value precisely so
+cost does not drift back up), so the policy is *always* paying a safety tax, always splitting its
+gradient between reward and cost, even deep in the feasible region where it has slack to spend on
+reward. That is structural to every Lagrangian method, integral or PID: the multiplier interpolates a
+trade-off that it applies at *all* times.
+
+Let me question that premise, because it is the thing all three previous rungs share. Ask what the
+agent should actually do at a given moment. If it is feasible — cost under 25 with slack — I want the
+whole update spent on reward; there is no reason to sacrifice return while I have budget to spare. If it
+is infeasible — cost over 25 — the only thing that matters is getting back under; reward is irrelevant
+until it is safe. So the "trade-off" the multiplier so carefully interpolates is, at the level of
+what-to-do-this-iteration, not a trade-off at all — it is a *switch*. Feasible → improve reward.
+Infeasible → reduce cost. The Lagrange multiplier, whether driven by an integral or a full PID, is a
+smooth, lagged approximation to a decision that wants to be made sharply. And PID-Lag's numbers are
+exactly what the smooth approximation costs: it leaves a residual penalty on in the feasible region
+(killing reward) and it has to ride the boundary tightly (so noise tips seeds over). A sharp switch
+would do neither: in the feasible region it would carry *zero* cost penalty and let the policy chase
+reward freely, and it would react to a violation at full strength immediately rather than riding the
+edge.
+
+So replace the dual-weighted blend with a direct rectification of the optimization target. At each
+update I already read the mean episode cost `Jc = self._logger.get_stats('Metrics/EpCost')[0]`. Use it
+not to drive a multiplier but to *choose which objective the policy step optimizes*: if `Jc` is within
+budget, take the step to maximize reward — feed the reward advantage `adv_r` to the PPO surrogate,
+unmodified, exactly the naive update; if `Jc` is over budget, take the step to minimize cost — feed
+`−adv_c`, so the surrogate ascends on the negative cost advantage, which lowers the cost objective.
+There is no λ anywhere: no dual learning rate, no integral, no PID gains, no `(1+λ)` normalization
+(unneeded, because the advantage is now always a single unmodified stream of normal scale). The
+constraint enters only through the `if`. This is the constraint *rectified* — the policy is pushed back
+toward feasibility exactly when, and only when, it strays out, and left entirely free otherwise.
+
+Now I have to defend this against the two ways a naive switch breaks, because PID-Lag's near-miss seeds
+already show me how fragile the boundary is. The first is chattering. If I switch the instant `Jc` crosses
+25, then near the boundary the *estimate* of `Jc` — a noisy Monte-Carlo average, not the true value —
+fluctuates just above and just below 25 from epoch to epoch, and the algorithm flips between "improve
+reward" (which pushes cost back up toward 25) and "reduce cost" (which pushes it down), oscillating at
+the edge without making reward progress. That is exactly the regime CarGoal seed 42 and Button seed 456
+were stuck in under PID-Lag. The cure is a deadband: do not switch to cost-reduction the moment the
+estimate crosses 25, switch only when it crosses `25 + η` for a positive tolerance `η`. The tolerance
+absorbs the estimation noise so the switch stops chattering, and it gives the reward step a band of
+width `η` above the limit in which it is allowed to operate — so the policy can make real reward
+progress instead of being yanked back to the boundary every epoch. The price is that the converged
+policy can sit up to `η` above the true limit, so `η` must be small relative to the budget. I set
+`η = 2.0` against a limit of 25 — an 8% slack, large enough to swallow the seed-to-seed cost noise I
+saw (the missed seeds were within ~3.5 of the line) and small enough that "feasible within tolerance"
+still means genuinely safe.
+
+The second worry is whether alternating between *different* objectives converges at all. Each epoch
+optimizes a different function depending on the switch, so the iterates are not descending any single
+fixed objective — but that is fine here for the same reason it is fine for the method's analysis: under
+accurate cost estimates the switch makes the *right* decision each epoch (improve reward only when
+genuinely feasible, reduce cost only when genuinely violated), and the per-epoch progress guarantees of
+the underlying PPO step then bound both the reward optimality gap and the constraint violation over a
+run, giving an `O(1/√T)` rate to a globally optimal feasible policy with `O(1/√T)` violation. The
+tolerance `η` is exactly the deadband that the theory shrinks like `1/√T`; I hold it fixed at 2.0 here
+because the 1M-step budget is finite and the noise floor, not the asymptotic rate, sets the right slack.
+
+There is a third thing the switch fixes that the blend could never reach, and PID-Lag's reward column
+is the proof. Under any Lagrangian rule the policy gradient in the feasible region is
+`(1−u)·adv_r − u·adv_c` with `u = λ/(1+λ) > 0`, so even when safe the reward direction is *contaminated*
+by a cost-avoidance component pulling orthogonally to it — the policy is not climbing reward, it is
+climbing a compromise between reward and not-cost, and on these navigation tasks "not-cost" and "more
+reward" genuinely conflict (the rewarding path runs near hazards). That contamination is why PID-Lag's
+feasible policies froze at 0.20–2.0 return: a permanently-on cost component, however small, biases every
+feasible-region step away from the goal. The switch removes the component entirely. In the feasible
+region the gradient is `adv_r` and nothing else — the *same* update the naive rung used to earn the
+highest reward on the whole ladder — so the policy should reclaim a large fraction of naive's return
+while staying inside the band. I am not trading reward for safety in the feasible region at all; I am
+spending the whole step on whichever objective is currently binding, and feasibility means reward is the
+only binding objective. The blend, by construction, can never do this: a multiplier that is exactly zero
+in the feasible region would let cost drift back up (the reason the integral holds a standing value), so
+the Lagrangian family is structurally forced to keep paying the tax. Only the switch, which re-checks
+feasibility every epoch and re-engages cost-reduction the instant it is violated, can carry a true zero
+penalty while feasible without losing the budget — the feasibility check *is* the standing guarantee
+that the integral was faking with a nonzero λ.
+
+Concretely in the edit surface: `_init` stores `cost_limit = 25` and `distance = 2.0` and a violation
+flag; `_update` reads `Jc`, sets `_in_violation = (Jc > cost_limit + distance)`, then calls
+`super()._update()` so the PPO epochs run with the flag fixed for this update (Jc does not change inside
+the epochs), and logs. `_compute_adv_surrogate` is the switch: return `−adv_c` when in violation, else
+`adv_r`. For logging continuity I report the multiplier slot as 1.0 in violation and 0.0 otherwise — a
+faithful readout of the binary switch, not a learned dual. This matches the canonical primal CRPO update
+line for line: `if Jc <= cost_limit + distance: return adv_r; else: return −adv_c`.
+
+The bar this must clear is PID-Lag's real numbers, and the prediction is sharp and falsifiable. The
+whole point of the switch is to *not* penalize reward in the feasible region, so I expect the headline
+result to be a large reward recovery *at no safety cost*: `budget_success_rate` should be at least as
+good as PID-Lag's (PointGoal 1.0; CarGoal and Button at or above 0.667) while reward climbs well above
+PID-Lag's near-zero values — because once feasible, the policy runs the naive reward update with full
+strength, so its return should approach what an unconstrained-but-feasible policy can earn, far above
+0.20 / 2.0 / 0.46. The two PID-Lag near-miss seeds (CarGoal 42 at 25.22, Button 456 at 28.51) are the
+direct test of the deadband: with an 8% tolerance band and no boundary-riding, those should now land
+comfortably inside the band rather than tipping just over, so I expect the CarGoal and Button success
+rates to *rise* toward 1.0, not just hold. The clean falsification: if reward stays pinned near zero,
+the switch hypothesis is wrong and the reward collapse was not caused by the always-on penalty; if
+`budget_success_rate` *drops* below PID-Lag's, the deadband is too small and the switch is chattering
+back into violation. What I am betting on is that PID-Lag solved the *timing* of safety but at the cost
+of *permanent* timidity, and that a method which spends nothing on safety while feasible and everything
+on it while violated recovers the reward PID-Lag threw away without giving back the budget it won. So
+let me rip out the whole PID controller and replace it with the rectifying switch.
+</think>
+<say>
+Finale is CRPO: drop the multiplier entirely and switch the objective itself — maximize reward while inside budget+tolerance, descend cost only when over. This first edit strips the now-unneeded PID imports.
+</say>
+<edit path="omnisafe/omnisafe/algorithms/on_policy/naive_lagrange/custom_lag.py">
+<old>
+# EDITABLE region of custom_lag.py — step 3: PID-Lag (PID-controlled multiplier)
+import numpy as np
+import torch
+
+from collections import deque
+</old>
+<new>
+# EDITABLE region of custom_lag.py — finale: CRPO (constraint-rectified switch)
+import numpy as np
+import torch
+</new>
+</edit>
+<obs>
+Successfully replaced text in omnisafe/omnisafe/algorithms/on_policy/naive_lagrange/custom_lag.py.
+</obs>
+<note>
+Replace the PID state with the switch state: the cost limit, the tolerance band, the violation flag, and update counters.
+</note>
+<edit path="omnisafe/omnisafe/algorithms/on_policy/naive_lagrange/custom_lag.py">
+<old>
+        self._cost_limit: float = self._cfgs.lagrange_cfgs.cost_limit
+        self._pid_kp: float = 0.1
+        self._pid_ki: float = 0.01
+        self._pid_kd: float = 0.01
+        self._pid_i: float = 0.0
+        self._delta_p: float = 0.0
+        self._cost_d: float = 0.0
+        self._cost_ds: deque = deque(maxlen=10)
+        self._cost_ds.append(0.0)
+        self._lagrangian_multiplier: float = 0.0
+</old>
+<new>
+        self._cost_limit: float = self._cfgs.lagrange_cfgs.cost_limit
+        self._distance: float = 2.0
+        self._in_violation: bool = False
+        self._rew_update: int = 0
+        self._cost_update: int = 0
+        self._lagrangian_multiplier: float = 0.0
+</new>
+</edit>
+<obs>
+Successfully replaced text in omnisafe/omnisafe/algorithms/on_policy/naive_lagrange/custom_lag.py.
+</obs>
+<note>
+Now `_update` just sets the violation flag from the deadband test before the PPO epochs run.
+</note>
+<edit path="omnisafe/omnisafe/algorithms/on_policy/naive_lagrange/custom_lag.py">
+<old>
+        assert not np.isnan(Jc), 'cost is nan'
+        delta = float(Jc - self._cost_limit)
+        self._pid_i = max(0.0, self._pid_i + delta * self._pid_ki)
+        self._delta_p = 0.95 * self._delta_p + 0.05 * delta
+        self._cost_d = 0.95 * self._cost_d + 0.05 * float(Jc)
+        pid_d = max(0.0, self._cost_d - self._cost_ds[0])
+        pid_o = self._pid_kp * self._delta_p + self._pid_i + self._pid_kd * pid_d
+        self._lagrangian_multiplier = max(0.0, min(pid_o, 100.0))
+        self._cost_ds.append(self._cost_d)
+        super()._update()
+</old>
+<new>
+        assert not np.isnan(Jc), 'cost is nan'
+        self._in_violation = bool(Jc > self._cost_limit + self._distance)
+        if self._in_violation:
+            self._cost_update += 1
+            self._lagrangian_multiplier = 1.0
+        else:
+            self._rew_update += 1
+            self._lagrangian_multiplier = 0.0
+        super()._update()
+</new>
+</edit>
+<obs>
+Successfully replaced text in omnisafe/omnisafe/algorithms/on_policy/naive_lagrange/custom_lag.py.
+</obs>
+<note>
+And the surrogate becomes the switch: −adv_c when in violation, plain adv_r otherwise.
+</note>
+<edit path="omnisafe/omnisafe/algorithms/on_policy/naive_lagrange/custom_lag.py">
+<old>
+    def _compute_adv_surrogate(self, adv_r: torch.Tensor, adv_c: torch.Tensor) -> torch.Tensor:
+        'PID-Lag: combine advantages using PID-controlled multiplier.'
+        penalty = self._lagrangian_multiplier
+        return (adv_r - penalty * adv_c) / (1 + penalty)
+</old>
+<new>
+    def _compute_adv_surrogate(self, adv_r: torch.Tensor, adv_c: torch.Tensor) -> torch.Tensor:
+        'CRPO: within budget+tolerance, maximize reward; otherwise descend cost only.'
+        if self._in_violation:
+            return -adv_c
+        return adv_r
+</new>
+</edit>
+<obs>
+Successfully replaced text in omnisafe/omnisafe/algorithms/on_policy/naive_lagrange/custom_lag.py.
+</obs>
