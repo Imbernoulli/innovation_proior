@@ -1,5 +1,5 @@
 {
-  "_comment": "Merge these entries into LLaMA-Factory/data/dataset_info.json and put the .jsonl files under LLaMA-Factory/data/. The `loss` per-turn masking requires the fork branch feat/per-turn-loss-mask (see README). Train with template qwen3 (or qwen3_5) and mask_history=false; the per-turn loss flags do the masking. The distill_nothink dataset is the no-reasoning subset and must be trained with template qwen3_nothink (or enable_thinking=false) so the empty think block is never in the loss.",
+  "_comment": "Merge into LLaMA-Factory/data/dataset_info.json and put the .jsonl under data/. Requires the fork branch feat/per-turn-loss-mask (per-turn `loss` + per-example `enable_thinking`). Train BOTH datasets in ONE run: `dataset: innovation_sft,innovation_maintain`, template qwen3 (or qwen3_5), mask_history=false. The per-turn `loss` flags do the folding; the per-example `enable_thinking:false` rows (no-reasoning distillation) put their empty think in the prompt, not the loss — so a single qwen3 (thinking) run safely mixes reasoning and non-reasoning data.",
 
   "innovation_sft": {
     "file_name": "innovation_sft.jsonl",
@@ -12,19 +12,8 @@
     }
   },
 
-  "innovation_distill": {
-    "file_name": "distill_sft.jsonl",
-    "formatting": "sharegpt",
-    "columns": {"messages": "conversations", "system": "system", "tools": "tools"},
-    "tags": {
-      "role_tag": "from", "content_tag": "value",
-      "user_tag": "human", "assistant_tag": "gpt",
-      "observation_tag": "observation", "function_tag": "function_call", "system_tag": "system"
-    }
-  },
-
-  "innovation_distill_nothink": {
-    "file_name": "distill_nothink_sft.jsonl",
+  "innovation_maintain": {
+    "file_name": "maintain_sft.jsonl",
     "formatting": "sharegpt",
     "columns": {"messages": "conversations", "system": "system", "tools": "tools"},
     "tags": {
