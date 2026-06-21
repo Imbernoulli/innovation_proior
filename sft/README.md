@@ -6,10 +6,13 @@ Two ShareGPT files, designed to train **together in ONE run**:
   original capabilities** (on-policy replay against forgetting; reasoning *and* no-reasoning, the
   latter handled so it doesn't corrupt thinking).
 
-Both are **build artifacts** (git-ignored). Regenerate:
+The processed data is committed **gzipped** here: `innovation_sft.jsonl.gz`,
+`maintain_sft.jsonl.gz` — decompress before training (`gunzip -k *.jsonl.gz`). The raw `.jsonl`
+are git-ignored; regenerate either the raw files or refresh the gzips with:
 ```bash
 python3 sft/build_sft.py        # innovation_sft.jsonl
-python3 sft/build_maintain.py    # maintain_sft.jsonl  (assembles the per-source HF pieces)
+python3 sft/build_maintain.py   # maintain_sft.jsonl  (assembles the per-source HF pieces)
+gzip -kf sft/innovation_sft.jsonl sft/maintain_sft.jsonl
 ```
 
 ## ⚠️ Requires the patched LLaMA-Factory fork
