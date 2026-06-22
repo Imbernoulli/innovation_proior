@@ -20,6 +20,24 @@
   var TABS = ["context", "reasoning", "answer"];
   var DEFAULT_TAB = "reasoning";
 
+  // Coarse sidebar categories — the level Methods/Trajectories/Agentic group by.
+  // The fine `domain` stays on every item and is shown as the per-row subtitle,
+  // so collapsing ~150 domains into these 5 buckets loses no information.
+  // (Canonical map: tools/categorize.py — keep the two in sync.)
+  var CATEGORIES = [
+    "Mathematics & Physics",
+    "Combinatorial & Competitive Algorithms",
+    "Empirical Machine Learning",
+    "Theory (CS & ML)",
+    "Applied & Engineering"
+  ];
+  var CAT_RANK = {};
+  CATEGORIES.forEach(function (c, i) { CAT_RANK[c] = i; });
+  function catRank(key) { return (key in CAT_RANK) ? CAT_RANK[key] : 99; }
+  function cmpStr(a, b) { a = (a || "").toLowerCase(); b = (b || "").toLowerCase(); return a < b ? -1 : a > b ? 1 : 0; }
+  function categoryOf(m) { return m.category || m.domain || "Applied & Engineering"; }
+  function domainItemCmp(a, b) { return cmpStr(a.domain, b.domain) || cmpStr(a.title, b.title); }
+
   var methods = [];           // [{slug,title,domain,arxiv}]
   var bySlug = {};            // slug -> method
   var trajectories = [];      // [{task,title,domain,endpoint}]
@@ -136,22 +154,24 @@
   function navConfig() {
     if (MODE === "trajectories") return {
       list: trajectories, dataAttr: "data-task",
-      keyOf: function (m) { return m.task; }, groupOf: function (m) { return m.domain; },
+      keyOf: function (m) { return m.task; }, groupOf: categoryOf,
+      groupRank: catRank, itemCmp: domainItemCmp,
       titleOf: function (m) { return m.title; },
-      subOf: function (m) { return m.endpoint ? ("→ " + m.endpoint) : ""; },
+      subOf: function (m) { return m.domain + (m.endpoint ? (" · → " + m.endpoint) : ""); },
       hrefOf: function (m) { return "#t/" + m.task; },
       activeKey: function () { return current.task; },
-      searchOf: function (m) { return m.title + " " + m.task + " " + m.domain + " " + (m.endpoint || ""); },
+      searchOf: function (m) { return m.title + " " + m.task + " " + m.domain + " " + (m.category || "") + " " + (m.endpoint || ""); },
       arxivOf: null
     };
     if (MODE === "agentic") return {
       list: agentics, dataAttr: "data-agtask",
-      keyOf: function (m) { return m.task; }, groupOf: function (m) { return m.domain; },
+      keyOf: function (m) { return m.task; }, groupOf: categoryOf,
+      groupRank: catRank, itemCmp: domainItemCmp,
       titleOf: function (m) { return m.title; },
-      subOf: function (m) { return m.n_steps + " steps · " + m.n_actions + " tool calls"; },
+      subOf: function (m) { return m.domain + " · " + m.n_steps + " steps"; },
       hrefOf: function (m) { return "#a/" + m.task; },
       activeKey: function () { return current.agtask; },
-      searchOf: function (m) { return m.title + " " + m.task + " " + m.domain + " " + (m.endpoint || ""); },
+      searchOf: function (m) { return m.title + " " + m.task + " " + m.domain + " " + (m.category || "") + " " + (m.endpoint || ""); },
       arxivOf: null
     };
     if (MODE === "training") return {
@@ -165,11 +185,12 @@
     };
     return { // methods
       list: methods, dataAttr: "data-slug",
-      keyOf: function (m) { return m.slug; }, groupOf: function (m) { return m.domain; },
-      titleOf: function (m) { return m.title; }, subOf: function () { return ""; },
+      keyOf: function (m) { return m.slug; }, groupOf: categoryOf,
+      groupRank: catRank, itemCmp: domainItemCmp,
+      titleOf: function (m) { return m.title; }, subOf: function (m) { return m.domain; },
       hrefOf: function (m) { return "#" + m.slug + "/" + current.tab; },
       activeKey: function () { return current.slug; },
-      searchOf: function (m) { return m.title + " " + m.slug + " " + m.domain; },
+      searchOf: function (m) { return m.title + " " + m.slug + " " + m.domain + " " + (m.category || ""); },
       arxivOf: function (m) { return m.arxiv; }
     };
   }
@@ -204,7 +225,10 @@
 
     var activeKey = cfg.activeKey();
 
-    groupBy(matches, cfg.groupOf).forEach(function (group) {
+    var groups = groupBy(matches, cfg.groupOf);
+    if (cfg.groupRank) groups.sort(function (a, b) { return cfg.groupRank(a.key) - cfg.groupRank(b.key); });
+    groups.forEach(function (group) {
+      if (cfg.itemCmp) group.items.sort(cfg.itemCmp);
       var section = document.createElement("div");
       section.className = "nav-group";
 
@@ -301,7 +325,7 @@
   function showArticle(m) {
     hideAll();
     article.hidden = false;
-    $("article-domain").textContent = m.domain;
+    $("article-domain").textContent = (m.category ? m.category + " · " : "") + m.domain;
     $("article-title").textContent = m.title;
     $("article-slug").textContent = m.slug;
     var ax = $("article-arxiv");
@@ -321,7 +345,7 @@
   function showTraj(t) {
     hideAll();
     traj.hidden = false;
-    $("traj-domain").textContent = t.domain;
+    $("traj-domain").textContent = (t.category ? t.category + " · " : "") + t.domain;
     $("traj-title").textContent = t.title;
     $("traj-slug").textContent = t.task;
     document.title = t.title + " — Innovation Prior";
@@ -511,7 +535,7 @@
   function showAgentic(a) {
     hideAll();
     agentic.hidden = false;
-    $("ag-domain").textContent = a.domain;
+    $("ag-domain").textContent = (a.category ? a.category + " · " : "") + a.domain;
     $("ag-title").textContent = a.title;
     $("ag-task").textContent = a.task;
     $("ag-meta").innerHTML =

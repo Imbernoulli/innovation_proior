@@ -91,12 +91,19 @@ Files:
   long-form reading column (~760px); transcript bubbles + tool-call cards; sidebar collapses
   on mobile.
 - `assets/app.js` — data-driven logic: loads `methods.json` / `trajectories.json` /
-  `agentic.json`, builds the domain-grouped sidebar with search, and fetches each mode's
-  content on demand.
-- `methods.json`, `trajectories.json`, `agentic.json` — the per-mode indices.
-- `tools/build_site_data.py` — regenerates `agentic.json` and the `sft/viewer/` catalogue
-  (index + gzipped shards) from `trajectories/*/agentic_messages.json` and the two
-  `sft/*.jsonl.gz` corpora. Run it after the data changes: `python3 tools/build_site_data.py`.
+  `agentic.json`, builds the sidebar — grouped into **5 coarse categories** (Mathematics &
+  Physics · Combinatorial & Competitive Algorithms · Empirical Machine Learning · Theory
+  (CS & ML) · Applied & Engineering), with the fine `domain` shown as each row's subtitle —
+  with search, and fetches each mode's content on demand.
+- `methods.json`, `trajectories.json`, `agentic.json` — the per-mode indices. Each entry
+  carries both a fine `domain` and the coarse `category` the sidebar groups by.
+- `tools/categorize.py` — the canonical map from ~150 fine `domain` strings to the 5 coarse
+  categories. Stamps `category` onto `methods.json` + `trajectories.json`:
+  `python3 tools/categorize.py`.
+- `tools/build_site_data.py` — regenerates `agentic.json` (inheriting `category`) and the
+  `sft/viewer/` catalogue (index + gzipped shards) from `trajectories/*/agentic_messages.json`
+  and the two `sft/*.jsonl.gz` corpora. Run it after the data changes:
+  `python3 tools/build_site_data.py`.
 
 Rendering uses CDN libraries (jsDelivr): **marked.js** for Markdown, **KaTeX** + auto-render
 for math (`$...$`, `$$...$$`, `\(...\)`, `\[...\]`, rendered *after* Markdown),
@@ -126,8 +133,10 @@ On GitHub Pages, enable Pages for the repository root branch — nothing else is
    { "slug": "myslug", "title": "My Paper Title", "domain": "Some Domain", "arxiv": "2401.00000" }
    ```
 
-   Entries are ordered by domain, then title. New domains automatically get their own
-   collapsible group in the sidebar.
+   Then run `python3 tools/categorize.py` to stamp the coarse `category` (one of the 5
+   buckets) the sidebar groups by. If `domain` is new, add it to the `DOMAIN_TO_CATEGORY`
+   map in `tools/categorize.py` first — the script errors on any unmapped domain. The
+   sidebar sorts categories in a fixed order and clusters items by `domain` within each.
 
 That's it — the site is fully data-driven from `methods.json` and references only the methods
 listed there. Other top-level folders (each method's `src/`, `code/`, `notes/`, `refs/` raw

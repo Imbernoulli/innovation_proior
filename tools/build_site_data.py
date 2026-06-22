@@ -26,9 +26,12 @@ import io
 import json
 import os
 import re
+import sys
 import glob
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from categorize import category_for  # noqa: E402  (canonical coarse-category map)
 
 # ----------------------------------------------------------------------------
 # 1. Agentic index
@@ -61,6 +64,7 @@ def build_agentic_index():
             "task": task,
             "title": m.get("title") or task,
             "domain": m.get("domain") or "Other",
+            "category": m.get("category") or category_for(m.get("domain")),
             "year": m.get("year"),
             "endpoint": m.get("endpoint") or "",
             "n_tools": len(rec.get("tools") or []),
