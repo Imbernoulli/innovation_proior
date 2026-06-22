@@ -32,20 +32,29 @@ System prompt carries the discovery YEAR (method year; trajectory first-method y
 """
 import json, os, glob, re
 
-REPO = '/srv/home/bohanlyu/innovation_proior'
+REPO = os.environ.get('INNOVATION_PRIOR_REPO') or os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 os.chdir(REPO)
 
-METHOD_SYS = ("You are a machine learning researcher working in the year {year}. "
-             "Given a research problem and the prior art available at that time, derive a method "
-             "from first principles, reasoning through the design, and present the resulting method "
-             "with working code.")
-TRAJ_SYS = ("You are a machine learning researcher working in the year {year}. You iteratively "
-           "design and improve a method for a fixed task over several rounds; after each round you "
-           "are shown the measured results and must reason about them and refine your approach.")
-AGENT_SYS = ("You are a research engineer improving a model on a fixed ML task. You work by "
-            "editing the model code and running experiments. Think carefully before each change. "
-            "Make one tool call at a time. After editing, run an experiment to measure your method. "
-            "The current year is {year}.")
+METHOD_SYS = "It is now year {year}. You are a good researcher."
+TRAJ_SYS = "It is now year {year}. You are a good researcher."
+AGENT_SYS = ("It is now year {year}. You are a good researcher. You work by editing the model "
+            "code and running experiments. Make one tool call at a time. After editing, run an "
+            "experiment to measure your method.")
+
+# Output-format conditioning appended to the INPUT (human turn) of method/trajectory examples:
+# the target answer is written as flowing narrative (lightly formatted), and -- when a code
+# scaffold is present in the input -- fills that scaffold into a complete implementation. Stating
+# this in the input reduces the SFT off-policy gap. Some examples have no code, so it's conditional.
+_NOTE_CODE = ("\n\nCorrectly fill in the scaffold above into a complete, working implementation, "
+              "and give your answer in a narrative, telling tone rather than a heavily formatted writeup.")
+_NOTE_NOCODE = ("\n\nGive your answer in a narrative, telling tone rather than a heavily formatted writeup.")
+def fmt_note(input_text):
+    """Pick the format note: scaffold-fill variant iff the input contains a code block."""
+    return _NOTE_CODE if '```' in (input_text or '') else _NOTE_NOCODE
+def read_with_note(p):
+    """read() the input file and append the output-format conditioning note."""
+    t = read(p)
+    return t + fmt_note(t)
 
 _NEUT = {'<think>':'⟨think⟩','</think>':'⟨/think⟩','<tool_call>':'⟨tool_call⟩',
          '</tool_call>':'⟨/tool_call⟩','<tool_response>':'⟨tool_response⟩',
@@ -85,7 +94,7 @@ for m in methods:
     d = f'methods/{slug}/results'
     if not all(os.path.isfile(f'{d}/{f}.md') for f in ('context', 'reasoning', 'train_answer')):
         continue
-    examples.append({'conversations': [{'from':'human','value':read(f'{d}/context.md')},
+    examples.append({'conversations': [{'from':'human','value':read_with_note(f'{d}/context.md')},
                                         {'from':'gpt','value':think(read(f'{d}/reasoning.md'), read(f'{d}/train_answer.md'))}],
                      'system': METHOD_SYS.format(year=yr), '_kind':'method', '_id':slug})
     stats['method'] += 1
@@ -108,7 +117,7 @@ for meta_p in sorted(glob.glob('trajectories/*/meta.json')):
     steps = [s for s in sorted(meta.get('steps', []), key=lambda s: s.get('n', 0)) if s.get('reasoning')]
     if not steps:
         continue
-    init = read(f"{d}/{meta.get('initial_context_file','00-initial-context.md')}")
+    init = read_with_note(f"{d}/{meta.get('initial_context_file','00-initial-context.md')}")
     sysp = TRAJ_SYS.format(year=yr)
     rungs = []  # (gpt_turn, feedback_text|None)
     for st in steps:
@@ -239,4 +248,5 @@ with open(out, 'w', encoding='utf-8') as f:
 print(f"wrote {out}: {len(examples)} examples (train with mask_history=False)")
 for k, v in stats.items():
     print(f"  {k}: {v}")
+os.makedirs('/tmp/sr_build', exist_ok=True)
 json.dump(examples, open('/tmp/sr_build/_sft_examples.json', 'w'), ensure_ascii=False)
