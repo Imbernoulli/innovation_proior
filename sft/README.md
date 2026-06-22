@@ -6,6 +6,11 @@ Two ShareGPT files, designed to train **together in ONE run**:
   original capabilities** (on-policy replay against forgetting; reasoning *and* no-reasoning, the
   latter handled so it doesn't corrupt thinking).
 
+> **Browse it on the site.** Every example is viewable in the website's **Training data** mode
+> (`#d`), which lazy-loads the gzipped shards under `viewer/` and shows the per-turn `loss` /
+> `enable_thinking` metadata. Regenerate the viewer catalogue with
+> `python3 tools/build_site_data.py` whenever these `.jsonl.gz` files change.
+
 The processed data is committed **gzipped** here: `innovation_sft.jsonl.gz`,
 `maintain_sft.jsonl.gz` — decompress before training (`gunzip -k *.jsonl.gz`). The raw `.jsonl`
 are git-ignored; regenerate either the raw files or refresh the gzips with:

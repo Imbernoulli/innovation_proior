@@ -28,6 +28,8 @@
   <nav class="modes" aria-label="Browse mode">
     <button id="mode-methods" class="mode-btn is-active" type="button">Methods</button>
     <button id="mode-traj" class="mode-btn" type="button">Trajectories</button>
+    <button id="mode-agentic" class="mode-btn" type="button">Agentic</button>
+    <button id="mode-train" class="mode-btn" type="button">Training&nbsp;data</button>
   </nav>
   <div class="topbar-spacer"></div>
 </header>
@@ -72,7 +74,10 @@
         <code>paper-to-reasoning</code> skill. Switch to <strong>Trajectories</strong>
         (<span id="hero-traj-count">0</span>) for iterative research lines that climb an
         MLS-Bench task's baseline ladder — initial context → each baseline + my feedback →
-        a stronger method.</p>
+        a stronger method. <strong>Agentic</strong> (<span id="hero-ag-count">0</span>) replays
+        those same research lines as a tool-using agent transcript (think → edit code →
+        <code>run_experiment</code> → observe). <strong>Training&nbsp;data</strong> browses the
+        full SFT corpus these traces are assembled into.</p>
     </section>
 
     <!-- Article view (shown when a method is selected) -->
@@ -105,6 +110,33 @@
       </header>
       <div id="traj-content" class="content markdown-body" aria-live="polite"></div>
     </section>
+
+    <!-- Agentic transcript view -->
+    <section id="agentic" class="article" hidden>
+      <header class="article-head">
+        <p class="article-domain" id="ag-domain"></p>
+        <h1 class="article-title" id="ag-title"></h1>
+        <p class="article-links">
+          <span class="traj-tag">Agentic transcript</span>
+          <span id="ag-meta" class="tx-pills"></span>
+          <span class="article-slug" id="ag-task"></span>
+        </p>
+      </header>
+      <div id="ag-content" class="content markdown-body tx-transcript" aria-live="polite"></div>
+    </section>
+
+    <!-- Training-data viewer -->
+    <section id="train" class="article" hidden>
+      <header class="article-head">
+        <p class="article-domain" id="train-domain"></p>
+        <h1 class="article-title" id="train-title"></h1>
+        <p class="article-links">
+          <span id="train-badges"></span>
+          <span class="article-slug" id="train-id"></span>
+        </p>
+      </header>
+      <div id="train-content" class="content markdown-body tx-transcript" aria-live="polite"></div>
+    </section>
   </main>
 </div>
 
@@ -113,6 +145,8 @@
 <script src="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.9.0/build/highlight.min.js" crossorigin="anonymous"></script>
 <script src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js" crossorigin="anonymous"></script>
 <script src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/contrib/auto-render.min.js" crossorigin="anonymous"></script>
+<!-- pako: gunzip the training-data shards (sft/viewer/*.json.gz) in-browser -->
+<script src="https://cdn.jsdelivr.net/npm/pako@2.1.0/dist/pako.min.js" crossorigin="anonymous"></script>
 
 <script src="assets/app.js"></script>
 </body>

@@ -67,20 +67,42 @@ every case correctly. Full details: [`sft/README.md`](sft/README.md).
 ## The website
 
 A pure-static single-page app — no build step, all relative paths, so it works as-is on
-GitHub Pages.
+GitHub Pages. It has **four browse modes** (toggled in the top bar):
 
-- `index.html` — the app shell (hero/intro, sidebar, tabbed reading pane).
+- **Methods** — the atomic reasoning traces. `methods.json` → `#<slug>/<tab>`, fetching
+  `methods/<slug>/results/<tab>.md` (Context / Reasoning / Answer).
+- **Trajectories** — iterative research lines that climb an MLS-Bench task's baseline ladder.
+  `trajectories.json` → `#t/<task>`, reading `trajectories/<task>/meta.json` and its ordered
+  files (initial context → each baseline + feedback → a stronger finale method).
+- **Agentic** — the *same* research lines replayed as a tool-using **agent transcript**
+  (think → edit code → `run_experiment` → observe). `agentic.json` → `#a/<task>`, rendering
+  `trajectories/<task>/agentic_messages.json` as chat bubbles with foldable reasoning and
+  tool-call cards.
+- **Training data** — a browsable catalogue of the **entire SFT corpus** (all 3 255 examples)
+  the traces are assembled into. `sft/viewer/index.json` → `#d/<id>`; each example body
+  lazy-loads from a gzipped shard (`sft/viewer/<dataset>-NNN.json.gz`) and is gunzipped in the
+  browser. Renders the conversation with the per-turn **`loss`** (trained / masked) and
+  per-example **`enable_thinking`** metadata made visible.
+
+Files:
+
+- `index.html` — the app shell (hero/intro, sidebar, four view panes).
 - `assets/style.css` — clean, responsive, light/dark via `prefers-color-scheme`; comfortable
-  long-form reading column (~760px); horizontally scrollable code blocks; sidebar collapses
+  long-form reading column (~760px); transcript bubbles + tool-call cards; sidebar collapses
   on mobile.
-- `assets/app.js` — data-driven logic: loads `methods.json`, builds the domain-grouped
-  sidebar with search, and fetches `methods/${slug}/results/${tab}.md` on demand.
-- `methods.json` — the single source of truth: an array of `{slug, title, domain, arxiv}`.
+- `assets/app.js` — data-driven logic: loads `methods.json` / `trajectories.json` /
+  `agentic.json`, builds the domain-grouped sidebar with search, and fetches each mode's
+  content on demand.
+- `methods.json`, `trajectories.json`, `agentic.json` — the per-mode indices.
+- `tools/build_site_data.py` — regenerates `agentic.json` and the `sft/viewer/` catalogue
+  (index + gzipped shards) from `trajectories/*/agentic_messages.json` and the two
+  `sft/*.jsonl.gz` corpora. Run it after the data changes: `python3 tools/build_site_data.py`.
 
 Rendering uses CDN libraries (jsDelivr): **marked.js** for Markdown, **KaTeX** + auto-render
-for math (`$...$`, `$$...$$`, `\(...\)`, `\[...\]`, rendered *after* Markdown), and
-**highlight.js** for code. The default tab is **Reasoning**. Routes are deep-linkable via the
-URL hash (`#<slug>/<tab>`) with working browser back/forward.
+for math (`$...$`, `$$...$$`, `\(...\)`, `\[...\]`, rendered *after* Markdown),
+**highlight.js** for code, and **pako** to gunzip the training-data shards. The default
+Methods tab is **Reasoning**. Routes are deep-linkable via the URL hash (`#<slug>/<tab>`,
+`#t/<task>`, `#a/<task>`, `#d/<id>`) with working browser back/forward.
 
 ### Running locally
 

@@ -486,3 +486,92 @@ a:hover { text-decoration: underline; }
 /* finale step: the NEW method the trajectory develops (not a baseline) — gold accent */
 .traj-step.traj-is-finale { border-left-color: #d4a017; box-shadow: 0 0 0 1px color-mix(in srgb, #d4a017 30%, transparent); }
 .traj-step.traj-is-finale .traj-badge { color: #b8860b; }
+
+/* ====================================================================== */
+/* Agentic transcripts + Training-data viewer (shared .tx-* components)    */
+/* ====================================================================== */
+
+/* meta pills in headers */
+.tx-pills { display: inline-flex; flex-wrap: wrap; gap: 6px; vertical-align: middle; }
+.tx-pill { display: inline-block; font-size: 0.72rem; font-weight: 600; color: var(--text-soft);
+  background: var(--bg-soft); border: 1px solid var(--border); border-radius: 999px; padding: 2px 9px; }
+.tx-pill-ds { font-family: var(--font-mono); color: var(--accent-text); background: var(--accent-soft);
+  border-color: transparent; }
+.tx-pill-warn { color: #b45309; background: color-mix(in srgb, #d97706 12%, var(--surface));
+  border-color: color-mix(in srgb, #d97706 30%, transparent); }
+
+/* metadata strip above a training example */
+.tx-meta { display: flex; flex-wrap: wrap; gap: 6px; margin: 0 0 18px; }
+
+/* collapsible system-prompt / tools blocks */
+.tx-block { border: 1px solid var(--border); border-radius: 10px; background: var(--bg-soft);
+  margin: 0 0 14px; padding: 0; }
+.tx-block > summary { cursor: pointer; padding: 9px 14px; font-size: 0.8rem; font-weight: 600;
+  color: var(--text-soft); list-style-position: inside; }
+.tx-block > summary:hover { color: var(--text); }
+.tx-block[open] > summary { border-bottom: 1px solid var(--border); }
+.tx-block .tx-block-body, .tx-block ul { padding: 4px 16px 10px; margin: 0; }
+.tx-tools ul { list-style: none; padding-left: 16px; }
+.tx-tools li { margin: 6px 0; font-size: 0.86rem; }
+.tx-tools code { font-size: 0.82rem; }
+.tx-tool-desc { color: var(--text-soft); }
+
+/* message bubbles */
+.tx-transcript { display: block; }
+.tx-msg { border: 1px solid var(--border); border-radius: 12px; margin: 0 0 14px;
+  background: var(--surface); overflow: hidden; }
+.tx-role { font-family: var(--font-mono); font-size: 0.72rem; font-weight: 700; letter-spacing: 0.03em;
+  text-transform: uppercase; color: var(--text-faint); padding: 8px 16px; border-bottom: 1px solid var(--border);
+  display: flex; align-items: center; gap: 8px; }
+.tx-body { padding: 6px 18px 10px; }
+.tx-body > :first-child { margin-top: 6px; }
+
+/* role accents */
+.tx-user      { border-left: 3px solid var(--text-faint); }
+.tx-assistant { border-left: 3px solid var(--accent); }
+.tx-tool      { border-left: 3px solid #0d9488; background: color-mix(in srgb, #0d9488 4%, var(--surface)); }
+.tx-tool .tx-role { color: #0f766e; }
+
+/* reasoning fold */
+.tx-think { border: 1px dashed color-mix(in srgb, var(--accent) 45%, var(--border));
+  border-radius: 9px; background: color-mix(in srgb, var(--accent) 5%, var(--surface));
+  margin: 8px 0; padding: 0 14px; }
+.tx-think > summary { cursor: pointer; padding: 8px 0; font-size: 0.74rem; font-weight: 700;
+  letter-spacing: 0.03em; text-transform: uppercase; color: var(--accent-text); }
+.tx-think-body { padding: 2px 0 10px; font-size: 0.95em; }
+.tx-say { margin: 6px 0; }
+.tx-empty { color: var(--text-faint); font-style: italic; }
+.tx-step { font-family: var(--font-mono); font-size: 0.7rem; color: var(--text-faint);
+  text-transform: none; letter-spacing: 0; }
+
+/* tool-call card */
+.tx-call { border: 1px solid var(--border-strong); border-radius: 9px; margin: 8px 0;
+  background: var(--code-bg); overflow: hidden; }
+.tx-call-head { display: flex; align-items: center; gap: 8px; padding: 7px 12px;
+  border-bottom: 1px solid var(--border); font-size: 0.8rem; }
+.tx-call-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--accent); flex: none; }
+.tx-call-name { font-family: var(--font-mono); font-weight: 700; color: var(--text); }
+.tx-call-tag { margin-left: auto; font-size: 0.66rem; text-transform: uppercase; letter-spacing: 0.04em;
+  color: var(--text-faint); }
+.tx-call-args { margin: 0; border-radius: 0; }
+.tx-call-args code { background: transparent; }
+
+/* per-turn loss badges */
+.tx-tag { font-family: var(--font-sans); font-size: 0.66rem; font-weight: 700; letter-spacing: 0.03em;
+  text-transform: uppercase; border-radius: 999px; padding: 2px 8px; margin-left: auto; }
+.tx-trained { color: #15803d; background: color-mix(in srgb, #16a34a 14%, var(--surface)); }
+.tx-masked  { color: var(--text-faint); background: var(--bg-soft); border: 1px solid var(--border); }
+
+/* ---------- training-data dashboard ---------- */
+.td-home { max-width: var(--reading-w); }
+.td-cards { display: flex; flex-wrap: wrap; gap: 18px; margin: 18px 0; }
+.td-card { flex: 1 1 280px; border: 1px solid var(--border); border-radius: 12px; padding: 14px 18px;
+  background: var(--surface); }
+.td-card h3 { margin: 0 0 8px; font-size: 1rem; font-family: var(--font-mono); }
+.td-count { font-family: var(--font-sans); font-size: 0.78rem; font-weight: 500; color: var(--text-faint); }
+.td-table { width: 100%; border-collapse: collapse; font-size: 0.86rem; }
+.td-table th { text-align: left; color: var(--text-faint); font-weight: 600; border-bottom: 1px solid var(--border);
+  padding: 4px 6px; }
+.td-table td { padding: 4px 6px; border-bottom: 1px solid var(--border); }
+.td-table td:last-child { text-align: right; font-variant-numeric: tabular-nums; color: var(--text-soft); }
+.td-note { font-size: 0.84rem; color: var(--text-soft); }
