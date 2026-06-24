@@ -1,0 +1,345 @@
+{
+  "model": "vllm/q35_9b_bf16",
+  "config": "/scratch/gpfs/CHIJ/bohan/fs/FrontierSmith/outputs/cc_mlsbench_cpu_q35_9b_bf16/config_vllm_local_10173868.yaml",
+  "researcher_year": "2026",
+  "slurm_job_id": "10173868",
+  "n_tasks": 20,
+  "n_completed": 20,
+  "n_scored": 20,
+  "mean_score": 0.06430751247603886,
+  "tasks": [
+    {
+      "task": "causal-discovery-discrete",
+      "model": "vllm/q35_9b_bf16",
+      "status": "scored",
+      "score": 0.0,
+      "agent_returncode": 0,
+      "settings": [],
+      "elapsed_s": 1083.2,
+      "log": "/scratch/gpfs/CHIJ/bohan/fs/FrontierSmith/outputs/cc_mlsbench_cpu_q35_9b_bf16/task_logs/causal-discovery-discrete.log"
+    },
+    {
+      "task": "causal-observational-linear-gaussian",
+      "model": "vllm/q35_9b_bf16",
+      "status": "scored",
+      "score": 0.01820564203026081,
+      "agent_returncode": 0,
+      "settings": [
+        {
+          "name": "ER10",
+          "score": 0.2
+        },
+        {
+          "name": "ER20",
+          "score": 0.0
+        },
+        {
+          "name": "SF50",
+          "score": 0.0
+        },
+        {
+          "name": "SF50-Hard",
+          "score": 0.00160377918300032
+        },
+        {
+          "name": "ER20-Noisy",
+          "score": 0.0
+        }
+      ],
+      "elapsed_s": 1259.8,
+      "log": "/scratch/gpfs/CHIJ/bohan/fs/FrontierSmith/outputs/cc_mlsbench_cpu_q35_9b_bf16/task_logs/causal-observational-linear-gaussian.log"
+    },
+    {
+      "task": "causal-observational-linear-non-gaussian",
+      "model": "vllm/q35_9b_bf16",
+      "status": "scored",
+      "score": 0.0,
+      "agent_returncode": 0,
+      "settings": [
+        {
+          "name": "ER30",
+          "score": 0.0
+        },
+        {
+          "name": "ER50",
+          "score": 0.0
+        },
+        {
+          "name": "SF100",
+          "score": 0.0
+        }
+      ],
+      "elapsed_s": 452.4,
+      "log": "/scratch/gpfs/CHIJ/bohan/fs/FrontierSmith/outputs/cc_mlsbench_cpu_q35_9b_bf16/task_logs/causal-observational-linear-non-gaussian.log"
+    },
+    {
+      "task": "causal-observational-nonlinear",
+      "model": "vllm/q35_9b_bf16",
+      "status": "scored",
+      "score": 0.035652901385733425,
+      "agent_returncode": 0,
+      "settings": [
+        {
+          "name": "ER12-LowSample",
+          "score": 0.13050890884214011
+        },
+        {
+          "name": "SF20-GP",
+          "score": 0.0032325601141512464
+        },
+        {
+          "name": "ER20-Gauss",
+          "score": 0.034725177565755466
+        }
+      ],
+      "elapsed_s": 198.6,
+      "log": "/scratch/gpfs/CHIJ/bohan/fs/FrontierSmith/outputs/cc_mlsbench_cpu_q35_9b_bf16/task_logs/causal-observational-nonlinear.log"
+    },
+    {
+      "task": "causal-treatment-effect",
+      "model": "vllm/q35_9b_bf16",
+      "status": "scored",
+      "score": 0.26055596983768914,
+      "agent_returncode": 0,
+      "settings": [
+        {
+          "name": "ihdp_synth",
+          "score": 0.305397299213235
+        },
+        {
+          "name": "jobs_synth",
+          "score": 0.4251535590281146
+        },
+        {
+          "name": "acic_synth",
+          "score": 0.13623605944164052
+        }
+      ],
+      "elapsed_s": 492.5,
+      "log": "/scratch/gpfs/CHIJ/bohan/fs/FrontierSmith/outputs/cc_mlsbench_cpu_q35_9b_bf16/task_logs/causal-treatment-effect.log"
+    },
+    {
+      "task": "ml-active-learning",
+      "model": "vllm/q35_9b_bf16",
+      "status": "scored",
+      "score": 0.0,
+      "agent_returncode": 0,
+      "settings": [],
+      "elapsed_s": 1569.2,
+      "log": "/scratch/gpfs/CHIJ/bohan/fs/FrontierSmith/outputs/cc_mlsbench_cpu_q35_9b_bf16/task_logs/ml-active-learning.log"
+    },
+    {
+      "task": "ml-anomaly-detection",
+      "model": "vllm/q35_9b_bf16",
+      "status": "scored",
+      "score": 0.0,
+      "agent_returncode": 0,
+      "settings": [],
+      "elapsed_s": 628.4,
+      "log": "/scratch/gpfs/CHIJ/bohan/fs/FrontierSmith/outputs/cc_mlsbench_cpu_q35_9b_bf16/task_logs/ml-anomaly-detection.log"
+    },
+    {
+      "task": "ml-calibration",
+      "model": "vllm/q35_9b_bf16",
+      "status": "scored",
+      "score": 0.05160136629460728,
+      "agent_returncode": 0,
+      "settings": [
+        {
+          "name": "rf-mnist",
+          "score": 0.0
+        },
+        {
+          "name": "mlp-fashion_mnist",
+          "score": 0.0
+        },
+        {
+          "name": "svm-breast_cancer",
+          "score": 0.2694574116840678
+        },
+        {
+          "name": "gbm-madelon",
+          "score": 0.26312049052835856
+        }
+      ],
+      "elapsed_s": 1887.7,
+      "log": "/scratch/gpfs/CHIJ/bohan/fs/FrontierSmith/outputs/cc_mlsbench_cpu_q35_9b_bf16/task_logs/ml-calibration.log"
+    },
+    {
+      "task": "ml-clustering-algorithm",
+      "model": "vllm/q35_9b_bf16",
+      "status": "scored",
+      "score": 0.0,
+      "agent_returncode": 0,
+      "settings": [],
+      "elapsed_s": 283.2,
+      "log": "/scratch/gpfs/CHIJ/bohan/fs/FrontierSmith/outputs/cc_mlsbench_cpu_q35_9b_bf16/task_logs/ml-clustering-algorithm.log"
+    },
+    {
+      "task": "ml-dimensionality-reduction",
+      "model": "vllm/q35_9b_bf16",
+      "status": "scored",
+      "score": 0.0,
+      "agent_returncode": 0,
+      "settings": [
+        {
+          "name": "mnist",
+          "score": 0.0
+        },
+        {
+          "name": "fashion_mnist",
+          "score": 0.0
+        },
+        {
+          "name": "newsgroups",
+          "score": 0.0
+        }
+      ],
+      "elapsed_s": 1536.1,
+      "log": "/scratch/gpfs/CHIJ/bohan/fs/FrontierSmith/outputs/cc_mlsbench_cpu_q35_9b_bf16/task_logs/ml-dimensionality-reduction.log"
+    },
+    {
+      "task": "ml-ensemble-boosting",
+      "model": "vllm/q35_9b_bf16",
+      "status": "scored",
+      "score": 0.0,
+      "agent_returncode": 0,
+      "settings": [],
+      "elapsed_s": 970.3,
+      "log": "/scratch/gpfs/CHIJ/bohan/fs/FrontierSmith/outputs/cc_mlsbench_cpu_q35_9b_bf16/task_logs/ml-ensemble-boosting.log"
+    },
+    {
+      "task": "ml-missing-data-imputation",
+      "model": "vllm/q35_9b_bf16",
+      "status": "scored",
+      "score": 0.0,
+      "agent_returncode": 0,
+      "settings": [],
+      "elapsed_s": 1145.7,
+      "log": "/scratch/gpfs/CHIJ/bohan/fs/FrontierSmith/outputs/cc_mlsbench_cpu_q35_9b_bf16/task_logs/ml-missing-data-imputation.log"
+    },
+    {
+      "task": "ml-selective-deferral",
+      "model": "vllm/q35_9b_bf16",
+      "status": "scored",
+      "score": 0.0,
+      "agent_returncode": 0,
+      "settings": [],
+      "elapsed_s": 1711.9,
+      "log": "/scratch/gpfs/CHIJ/bohan/fs/FrontierSmith/outputs/cc_mlsbench_cpu_q35_9b_bf16/task_logs/ml-selective-deferral.log"
+    },
+    {
+      "task": "ml-subgroup-calibration-shift",
+      "model": "vllm/q35_9b_bf16",
+      "status": "scored",
+      "score": 0.0,
+      "agent_returncode": 0,
+      "settings": [],
+      "elapsed_s": 564.2,
+      "log": "/scratch/gpfs/CHIJ/bohan/fs/FrontierSmith/outputs/cc_mlsbench_cpu_q35_9b_bf16/task_logs/ml-subgroup-calibration-shift.log"
+    },
+    {
+      "task": "ml-symbolic-regression",
+      "model": "vllm/q35_9b_bf16",
+      "status": "scored",
+      "score": 0.13083718110719972,
+      "agent_returncode": 0,
+      "settings": [
+        {
+          "name": "nguyen7",
+          "score": 0.5069593480082373
+        },
+        {
+          "name": "nguyen10",
+          "score": 0.4417945971115695
+        },
+        {
+          "name": "koza3",
+          "score": 0.006775248947277668
+        }
+      ],
+      "elapsed_s": 405.9,
+      "log": "/scratch/gpfs/CHIJ/bohan/fs/FrontierSmith/outputs/cc_mlsbench_cpu_q35_9b_bf16/task_logs/ml-symbolic-regression.log"
+    },
+    {
+      "task": "mlsys-moe-load-balance",
+      "model": "vllm/q35_9b_bf16",
+      "status": "scored",
+      "score": 0.0,
+      "agent_returncode": 0,
+      "settings": [],
+      "elapsed_s": 846.6,
+      "log": "/scratch/gpfs/CHIJ/bohan/fs/FrontierSmith/outputs/cc_mlsbench_cpu_q35_9b_bf16/task_logs/mlsys-moe-load-balance.log"
+    },
+    {
+      "task": "optimization-evolution-strategy",
+      "model": "vllm/q35_9b_bf16",
+      "status": "scored",
+      "score": 0.4865582582357749,
+      "agent_returncode": 0,
+      "settings": [
+        {
+          "name": "rastrigin-30d",
+          "score": 0.4972093037899874
+        },
+        {
+          "name": "rosenbrock-30d",
+          "score": 0.4993707090320745
+        },
+        {
+          "name": "ackley-30d",
+          "score": 0.455613437114299
+        },
+        {
+          "name": "rastrigin-100d",
+          "score": 0.4954280105213975
+        }
+      ],
+      "elapsed_s": 1160.0,
+      "log": "/scratch/gpfs/CHIJ/bohan/fs/FrontierSmith/outputs/cc_mlsbench_cpu_q35_9b_bf16/task_logs/optimization-evolution-strategy.log"
+    },
+    {
+      "task": "optimization-hyperparameter-search",
+      "model": "vllm/q35_9b_bf16",
+      "status": "timeout+scored",
+      "score": 0.302738930629512,
+      "agent_returncode": null,
+      "settings": [
+        {
+          "name": "xgboost",
+          "score": 0.3466894418691944
+        },
+        {
+          "name": "svm",
+          "score": 0.28108728109445563
+        },
+        {
+          "name": "nn",
+          "score": 0.2847232990333525
+        }
+      ],
+      "elapsed_s": 5402.2,
+      "log": "/scratch/gpfs/CHIJ/bohan/fs/FrontierSmith/outputs/cc_mlsbench_cpu_q35_9b_bf16/task_logs/optimization-hyperparameter-search.log"
+    },
+    {
+      "task": "optimization-multi-objective",
+      "model": "vllm/q35_9b_bf16",
+      "status": "scored",
+      "score": 0.0,
+      "agent_returncode": 0,
+      "settings": [],
+      "elapsed_s": 1037.1,
+      "log": "/scratch/gpfs/CHIJ/bohan/fs/FrontierSmith/outputs/cc_mlsbench_cpu_q35_9b_bf16/task_logs/optimization-multi-objective.log"
+    },
+    {
+      "task": "optimization-nas",
+      "model": "vllm/q35_9b_bf16",
+      "status": "scored",
+      "score": 0.0,
+      "agent_returncode": 0,
+      "settings": [],
+      "elapsed_s": 566.3,
+      "log": "/scratch/gpfs/CHIJ/bohan/fs/FrontierSmith/outputs/cc_mlsbench_cpu_q35_9b_bf16/task_logs/optimization-nas.log"
+    }
+  ]
+}

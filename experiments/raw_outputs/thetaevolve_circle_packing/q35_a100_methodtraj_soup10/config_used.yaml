@@ -1,0 +1,84 @@
+# Local OpenEvolve smoke for ThetaEvolve circle packing with a single local vLLM model.
+
+variables:
+  core_parameters:
+    n_circles: 26
+    target_value: 2.635
+  PROBLEM_TYPE: "CirclePacking_n=26"
+  MAX_RUNTIME: 60
+  score_transform:
+    score_range_min: 0.0
+    score_range_max: 2.635
+    alpha: 3.0
+    optimize_mode: "maximize"
+    positive_multiplier: 5.0
+
+max_iterations: 24
+checkpoint_interval: 8
+max_code_length: 50000
+log_level: "INFO"
+random_seed: 3407
+
+llm:
+  models:
+    - name: "qwen35-9b"
+      weight: 1.0
+  evaluator_models:
+    - name: "qwen35-9b"
+      weight: 1.0
+  api_base: "http://127.0.0.1:8021/v1"
+  api_key: "EMPTY"
+  temperature: 0.7
+  top_p: 0.95
+  # Thinking-mode models (Qwen3.5) spend most tokens inside <think>; 8192 was too
+  # tight and truncated the answer before any SEARCH/REPLACE block, yielding
+  # "No valid diffs found" and leaving the seed as the reported best. 16384 leaves
+  # room for the diff after reasoning (prompt ~2-4k, max_model_len 32768).
+  max_tokens: 16384
+  timeout: 600
+  retries: 2
+  retry_delay: 5
+
+prompt:
+  use_alphaevolve_style: true
+  use_system_prompt: false
+  use_system_message_sampling: true
+  system_message_list:
+    - message: |
+        You are an expert mathematician specializing in circle packing problems and computational geometry. Improve a constructor function that directly produces an arrangement of {core_parameters.n_circles} circles in a unit square, maximizing the sum of their radii. The AlphaEvolve target sum is {target_value} for n={core_parameters.n_circles}. The time limit for each program evaluation is {MAX_RUNTIME} seconds.
+
+        Focus on explicit, valid constructors. Variable-sized circles, edge effects, asymmetric layouts, and local optimization routines are all reasonable strategies.
+      weight: 1.0
+  num_top_programs: 1
+  num_diverse_programs: 1
+  num_inspiration_programs: 0
+  use_template_stochasticity: true
+  include_artifacts: true
+  max_artifact_bytes: 8192
+  artifact_security_filter: true
+
+database:
+  population_size: 256
+  archive_size: 64
+  num_islands: 2
+  feature_dimensions:
+    - "score"
+    - "complexity"
+  elite_selection_ratio: 0.3
+  exploitation_ratio: 0.6
+  log_prompts: true
+
+evaluator:
+  timeout: 70
+  max_retries: 2
+  cascade_evaluation: false
+  parallel_evaluations: 2
+  use_llm_feedback: false
+  enable_artifacts: true
+  collect_runtime_environments: true
+  preserve_temp_directories: false
+  runtime_environment_patterns:
+    - "*"
+
+diff_based_evolution: true
+allow_full_rewrites: false

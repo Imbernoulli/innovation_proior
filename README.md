@@ -72,6 +72,7 @@ every case correctly. Full details: [`sft/README.md`](sft/README.md).
 - **[`experiments/CASE_STUDY_zh.md`](experiments/CASE_STUDY_zh.md)** — 深入 case study：什么是 innovation、模型学到的是「腔调」还是「实质」、base 为什么长度超限、SFT 为什么退化、soup 为什么恢复（以及「有时更好」其实是噪声）、FCS↔MLS 的双重分离、以及 trace 回 SFT 数据的退化归因。
 - **[`experiments/SOUP_TRADEOFF_zh.md`](experiments/SOUP_TRADEOFF_zh.md)** — 专题：model-soup 能否在「原有能力」与「创新 pattern」之间取得 trade-off？（结论：pattern 上能调和腔调，但合成不出「创新且落地」的能力——没有任何 soup 比例越过起点的前沿。）
 - **[`experiments/scripts/`](experiments/scripts/README.md)** — 实验相关代码存档（评测 harness、聚合器、soup 合并、RL 配置、矩阵编排器）。
+- **[`experiments/raw_outputs/`](experiments/raw_outputs/README_zh.md)** — **Instruct 系（a100）全部模型的逐字原始输出 + 打分全量 dump**（FrontierCS 算法/研究 + ALE-Bench + MLS-Bench + ThetaEvolve），供 SFT 数据作者直接核对模型实际产出。内含已核对的分数表、三方对照 call-out、以及完整性 caveat。
 
 一句话结论：核心假设在竞赛类评测上**未被支持**（SFT 把模型打崩），但很可能是**评测口径错配**——同一模型在 MLS 研究任务上反超起点；模型学到的是**创新的叙事姿态而非可提交的解**。详见上面两份文档。
 

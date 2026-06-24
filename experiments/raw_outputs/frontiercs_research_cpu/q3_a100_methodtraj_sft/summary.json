@@ -1,0 +1,101 @@
+{
+  "complete_problem_count": 43,
+  "scored_sample_count": 215,
+  "metrics": {
+    "frontiercs_research": {
+      "reward": {
+        "mean@5": 12.459456014435984,
+        "std@5": 13.415268678035606,
+        "best@2/mean": 18.186972382568158,
+        "best@2/std": 14.273796486647575,
+        "worst@2/mean": 6.686246809006951,
+        "worst@2/std": 8.65099813379652,
+        "best@4/mean": 25.229252153976418,
+        "best@4/std": 12.7228634912407,
+        "worst@4/mean": 3.8074458791992263,
+        "worst@4/std": 3.8915799312586277,
+        "best@5/mean": 27.242240339716094,
+        "best@5/std": 11.67928852184271,
+        "worst@5/mean": 3.3656994047357403,
+        "worst@5/std": 2.829905972562356
+      },
+      "score": {
+        "mean@5": 12.459456014435984,
+        "std@5": 13.415268678035606,
+        "best@2/mean": 18.186972382568158,
+        "best@2/std": 14.273796486647575,
+        "worst@2/mean": 6.686246809006951,
+        "worst@2/std": 8.65099813379652,
+        "best@4/mean": 25.229252153976418,
+        "best@4/std": 12.7228634912407,
+        "worst@4/mean": 3.8074458791992263,
+        "worst@4/std": 3.8915799312586277,
+        "best@5/mean": 27.242240339716094,
+        "best@5/std": 11.67928852184271,
+        "worst@5/mean": 3.3656994047357403,
+        "worst@5/std": 2.829905972562356
+      },
+      "score_unbounded": {
+        "mean@5": 10.16340782625036,
+        "std@5": 12.464978081805295,
+        "best@2/mean": 15.439709121643459,
+        "best@2/std": 14.147949101924096,
+        "worst@2/mean": 4.881408569081748,
+        "worst@2/std": 7.051600983861553,
+        "best@4/mean": 22.584162613071594,
+        "best@4/std": 13.519379342826936,
+        "worst@4/mean": 2.894362757676009,
+        "worst@4/std": 2.321940559957829,
+        "best@5/mean": 24.75841307793425,
+        "best@5/std": 12.618916331287503,
+        "worst@5/mean": 2.669436951140794,
+        "worst@5/std": 1.3963468744925993
+      }
+    }
+  },
+  "oracle_best": {
+    "frontiercs_research": {
+      "reward/oracle_best@5": 34.67227587552068,
+      "score/oracle_best@5": 34.67227587552068,
+      "score_unbounded/oracle_best@5": 33.079278879454364
+    }
+  },
+  "config": {
+    "frontiercs_data": "/scratch/gpfs/CHIJ/bohan/fs/FrontierSmith/data/frontiercs/full.parquet",
+    "alebench_data": "/scratch/gpfs/CHIJ/bohan/fs/FrontierSmith/data/alebench/val.parquet",
+    "research_data": "/scratch/gpfs/CHIJ/bohan/fs/FrontierSmith/data/frontiercs/research_cpu.parquet",
+    "source": "research",
+    "limit_research": null,
+    "output_dir": "/scratch/gpfs/CHIJ/bohan/fs/FrontierSmith/outputs/cc_eval_q3_sft_methodtraj_researchcpu_thinking_32k_vllm/shard_0",
+    "samples_jsonl": "/scratch/gpfs/CHIJ/bohan/fs/FrontierSmith/outputs/cc_eval_q3_sft_methodtraj_researchcpu_thinking_32k_vllm/shard_0/samples.jsonl",
+    "summary_json": "/scratch/gpfs/CHIJ/bohan/fs/FrontierSmith/outputs/cc_eval_q3_sft_methodtraj_researchcpu_thinking_32k_vllm/summary.json",
+    "resume": true,
+    "limit_frontiercs": null,
+    "limit_alebench": null,
+    "num_shards": 1,
+    "shard_idx": 0,
+    "n_samples": 5,
+    "base_url": "http://127.0.0.1:56440/v1",
+    "model": "cc-q3_sft_methodtraj-research",
+    "max_tokens": 32768,
+    "temperature": 1.0,
+    "top_p": 0.95,
+    "top_k": 20,
+    "min_p": 0.0,
+    "presence_penalty": 1.5,
+    "frequency_penalty": null,
+    "repetition_penalty": 1.0,
+    "concurrency": 4,
+    "timeout": 2400.0,
+    "max_errors": 20,
+    "enable_thinking": true,
+    "judge_url": "http://127.0.0.1:8082",
+    "frontiercs_prompt_source": "official",
+    "frontiercs_score_backend": "official",
+    "save_text": true,
+    "text_preview_chars": 0,
+    "seed": 42,
+    "dry_run": false
+  },
+  "samples_jsonl": "/scratch/gpfs/CHIJ/bohan/fs/FrontierSmith/outputs/cc_eval_q3_sft_methodtraj_researchcpu_thinking_32k_vllm/shard_0/samples.jsonl"
+}
