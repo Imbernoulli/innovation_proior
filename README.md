@@ -64,6 +64,16 @@ with `dataset: innovation_sft,innovation_maintain`, `template: qwen3` (or `qwen3
 `mask_history: false`. The per-example metadata is baked into the data, so one global config trains
 every case correctly. Full details: [`sft/README.md`](sft/README.md).
 
+## Experiments & evaluation（实验与评测）
+
+用这套数据微调模型后，在 **FrontierCS / ALE-Bench / ThetaEvolve / TTT(AC3) / MLS-Bench** 上的完整实验、评测方法与结果，以及深入的行为级 case study，全部记录在 [`experiments/`](experiments/)：
+
+- **[`experiments/EXPERIMENTS_zh.md`](experiments/EXPERIMENTS_zh.md)** — 详细中文实验文档：训练流程、模型矩阵、**每个评测是什么/怎么评的**（尤其 ThetaEvolve 与 TTT 各自包含什么、原 benchmark 有哪些、我们用了哪些）、完整结果汇总。
+- **[`experiments/CASE_STUDY_zh.md`](experiments/CASE_STUDY_zh.md)** — 深入 case study：什么是 innovation、模型学到的是「腔调」还是「实质」、base 为什么长度超限、SFT 为什么退化、soup 为什么恢复（以及「有时更好」其实是噪声）、FCS↔MLS 的双重分离。
+- **[`experiments/scripts/`](experiments/scripts/README.md)** — 实验相关代码存档（评测 harness、聚合器、soup 合并、RL 配置、矩阵编排器）。
+
+一句话结论：核心假设在竞赛类评测上**未被支持**（SFT 把模型打崩），但很可能是**评测口径错配**——同一模型在 MLS 研究任务上反超起点；模型学到的是**创新的叙事姿态而非可提交的解**。详见上面两份文档。
+
 ## The website
 
 A pure-static single-page app — no build step, all relative paths, so it works as-is on
