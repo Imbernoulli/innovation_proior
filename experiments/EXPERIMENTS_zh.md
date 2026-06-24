@@ -203,7 +203,7 @@
 | q35 instruct innovonly-soup50 | 0.0728 ↑ | — |
 | q35 base innovonly-soup50 | 0.0597 | — |
 | q35 instruct method-soup10 | 0.0538 ↓ | 2.924 |
-| q35 instruct innovonly-SFT | 0.0420（19/20） | — |
+| q35 instruct innovonly-SFT | 0.0550 | — |
 
 **关键反转 / 双重分离**：在 FCS 上被打到 0.015 的 instruct method-SFT，在 MLS 上是 **0.0794 > 起点 0.0643**；两个臂的纯 SFT 都在 MLS 上超过各自起点。而 FCS 甜点 instruct-soup10 在 MLS 上 **0.0538 < 起点**。即 **FCS：SFT 最差、soup 最好；MLS：SFT 最好、soup 最差** —— 干净的双重分离。这是「**FCS/ALE 奖励提交简单正确代码、惩罚探索；MLS 这种 ML 研究任务恰恰是 innovation 取向能用上的地方；soup 恢复执行纪律（FCS↑）的同时稀释掉研究取向（MLS↓）**」的直接证据。**例外的折中点**：base 臂的 **method-soup20** 双轴都好（FCS 2.082≈起点 + MLS 0.0908>起点），是"既保住能力又拿到创新 proxy"的现成存在性证明。
 > **注意（零分诊断后）**：MLS 的绝对分受上面"零分诊断"里的 harness/infra 问题压低（causal 簇因 prompt 路径 bug 自动 0、部分任务数据缺失）。这些 0 是评测侧问题，不是模型能力——所以 MLS 的**模型间相对排序**比绝对值更可信，且修完 causal bug 后整体分会上移。
