@@ -35,19 +35,34 @@ import json, os, glob, re
 REPO = os.environ.get('INNOVATION_PRIOR_REPO') or os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 os.chdir(REPO)
 
-METHOD_SYS = "It is now year {year}. You are a good researcher."
-TRAJ_SYS = "It is now year {year}. You are a good researcher."
+# NOTE (data remediation, see experiments/DATA_REMEDIATION_zh.md §1.3 / §3-A1):
+# the old system prompt was a pure "research-register" amplifier ("You are a good researcher.")
+# with no delivery discipline. It is augmented below to also carry the missing skill the FCS/ALE
+# regression traces to: ship a single self-contained runnable solution that respects the I/O
+# contract, and fall back to the simplest correct approach when an idea is not converging. This is
+# an *instruction* consistent with the existing targets (which do end on runnable code), not a
+# description of them, so it does not widen the SFT off-policy gap.
+_DELIVERY = (" When you write code, deliver a single, self-contained, runnable implementation that "
+             "respects any stated input/output contract; if an idea is not converging within the "
+             "budget, fall back to the simplest correct approach and ship that.")
+METHOD_SYS = "It is now year {year}. You are a good researcher." + _DELIVERY
+TRAJ_SYS = "It is now year {year}. You are a good researcher." + _DELIVERY
 AGENT_SYS = ("It is now year {year}. You are a good researcher. You work by editing the model "
             "code and running experiments. Make one tool call at a time. After editing, run an "
-            "experiment to measure your method.")
+            "experiment to measure your method." + _DELIVERY)
 
-# Output-format conditioning appended to the INPUT (human turn) of method/trajectory examples:
-# the target answer is written as flowing narrative (lightly formatted), and -- when a code
-# scaffold is present in the input -- fills that scaffold into a complete implementation. Stating
-# this in the input reduces the SFT off-policy gap. Some examples have no code, so it's conditional.
-_NOTE_CODE = ("\n\nCorrectly fill in the scaffold above into a complete, working implementation, "
-              "and give your answer in a narrative, telling tone rather than a heavily formatted writeup.")
-_NOTE_NOCODE = ("\n\nGive your answer in a narrative, telling tone rather than a heavily formatted writeup.")
+# Output-format conditioning appended to the INPUT (human turn) of method/trajectory examples.
+# The target answer explains the analysis in a flowing first-person voice and then ends on the
+# concrete deliverable. The OLD note said "narrative, telling tone rather than a heavily formatted
+# writeup" -- that phrasing (flagged in CASE_STUDY §9.5 as a smoking-gun amplifier) trains the model
+# to *talk* rather than *deliver*. The note below KEEPS the first-person/flowing register (the source
+# of the MLS gains) but reframes the landing as a deliverable: finish on complete, self-contained,
+# runnable code, not a sketch. Conditional because some examples have no code scaffold.
+_NOTE_CODE = ("\n\nFill in the scaffold above into a complete, self-contained, runnable "
+              "implementation. Explain the analysis in a flowing, first-person tone, then finish on "
+              "the final working code as your deliverable -- not a sketch or a fragment.")
+_NOTE_NOCODE = ("\n\nExplain the analysis in a flowing, first-person tone, then land on a clean, "
+                "precise final statement of the result.")
 def fmt_note(input_text):
     """Pick the format note: scaffold-fill variant iff the input contains a code block."""
     return _NOTE_CODE if '```' in (input_text or '') else _NOTE_NOCODE
@@ -239,13 +254,38 @@ for ap in sorted(glob.glob('trajectories/*/agentic_messages.json')):
                              '_kind':'agentic_folded','_id':f'{task}#r{c+1}'})
             stats['agentic_folded'] += 1
 
+# ---------- per-example tags (for mix control; see DATA_REMEDIATION_zh.md §3-A1/A3) ----------
+# Tag each example by what its TRAINED landing looks like, so the SFT mix can cap research-narrative
+# and require a floor of executable-deliverable samples. We inspect only the gpt/function_call turns.
+_STDIN_RE = re.compile(r'\b(std::cin|cin\s*>>|scanf|getline|sys\.stdin|input\(\)|readline\(\))')
+_CPP_RE = re.compile(r'```(?:cpp|c\+\+|cc)\b', re.I)
+_CLASS_RE = re.compile(r'```[^\n]*\n(?:.*\n)*?\s*class\s+\w+', re.I)
+_FALLBACK_RE = re.compile(r'(fall back|fallback|simplest correct|keep it simple|revert to|stick with '
+                          r'the simple|too risky|not worth the risk|ship the simple|retreat to)', re.I)
+def tag_example(ex):
+    txt = "\n".join(t['value'] for t in ex['conversations'] if t['from'] in ('gpt', 'function_call'))
+    return {'id': ex.get('_id'), 'kind': ex.get('_kind'),
+            'reads_stdin': bool(_STDIN_RE.search(txt)), 'has_cpp': bool(_CPP_RE.search(txt)),
+            'defines_class': bool(_CLASS_RE.search(txt)), 'has_fallback': bool(_FALLBACK_RE.search(txt)),
+            'has_code': '```' in txt}
+
 # ---------- write ----------
 os.makedirs('sft', exist_ok=True)
 out = 'sft/innovation_sft.jsonl'
+tags = []
 with open(out, 'w', encoding='utf-8') as f:
     for ex in examples:
         f.write(json.dumps({k:v for k,v in ex.items() if not k.startswith('_')}, ensure_ascii=False) + "\n")
+        tags.append(tag_example(ex))
+with open('sft/_sft_tags.jsonl', 'w', encoding='utf-8') as f:
+    for t in tags:
+        f.write(json.dumps(t, ensure_ascii=False) + "\n")
+n = len(tags) or 1
+agg = {k: sum(1 for t in tags if t.get(k)) for k in ('has_code','reads_stdin','has_cpp','defines_class','has_fallback')}
 print(f"wrote {out}: {len(examples)} examples (train with mask_history=False)")
+print(f"wrote sft/_sft_tags.jsonl ({len(tags)} rows); landing mix:")
+for k, v in agg.items():
+    print(f"  {k}: {v} ({100*v/n:.1f}%)")
 for k, v in stats.items():
     print(f"  {k}: {v}")
 os.makedirs('/tmp/sr_build', exist_ok=True)

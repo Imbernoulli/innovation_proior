@@ -33,8 +33,8 @@ Why this is well-conditioned:
 | **Identity** shortcut, parameter-free | Vs. a Highway-style gate `y = H·T + x·C`: a gate has parameters and can *close* (carry → 0), losing the skip exactly when depth needs it; identity never closes, always passes all info, costs nothing, and keeps the comparison clean. More constrained on purpose. |
 | Final ReLU **after** the add, `σ(F+x)` | A ReLU on the residual branch's output would clamp `F ≥ 0`, preventing negative corrections; rectify only the sum. |
 | Dimension match: **option B** (1×1 projection only when channels/stride change; identity elsewhere) | A (zero-pad identity) leaves the padded channels with no residual learning at transitions; C (project every skip) adds parameters on dozens of skips and muddies the controlled comparison for a marginal gain. B keeps almost every skip free and projects only where needed. |
-| **Bottleneck** `1×1 reduce → 3×3 → 1×1 restore` (expansion 4) for deep nets | The 3×3's cost is quadratic in channels; running it at the *reduced* width makes one 3-layer block cost ≈ one 2×(3×3) block, so the same FLOP budget buys far more depth. |
-| Keep the bottleneck skip an **identity** | A projection across the bottleneck's two high-dimensional ends (256→256 1×1) roughly **doubles** the block's cost and size; identity makes it free — essential for affordable very-deep nets. |
+| **Bottleneck** `1×1 reduce → 3×3 → 1×1 restore` (expansion 4) for deep nets | The 3×3's cost is quadratic in channels; running it at the *reduced* width c makes one 3-layer block cost `2·C·c + 9c² = 17c²` (with ends `C = 4c`) vs the basic block's `18c²` — ≈0.94×, i.e. "same FLOPs," so the budget buys 3 weight layers instead of 2. |
+| Keep the bottleneck skip an **identity** | A 256→256 projection across the bottleneck's two high-dim ends costs `C² = 16c²` in parallel with the `17c²` branch → block cost `33c²` vs `17c²`, ratio **33/17 ≈ 1.94** (a near-doubling) in FLOPs and params; identity makes it free — essential for affordable very-deep nets. |
 | Stride on the first **1×1 reduce** in bottleneck transition blocks | Downsample at the block entrance, reduce channels immediately, then run the expensive 3×3 on the smaller reduced-width map; the shortcut projection uses the same stride so the two branches align for addition. |
 | BN after every conv, before activation | Makes plain deep nets converge *and* serves as the evidence that degradation is not a vanishing-gradient problem (healthy signal/gradient norms). |
 
@@ -50,6 +50,15 @@ Why this is well-conditioned:
 ## Training recipe
 
 BN after every conv and before activation; He (kaiming, fan_out) init; train from scratch. SGD, mini-batch 256, momentum 0.9, weight decay 1e-4, lr 0.1 divided by 10 on plateau (up to 60×10⁴ iters). VGG/AlexNet augmentation (scale jitter shorter-side ∈ [256,480], 224×224 random crop + flip, per-pixel mean subtraction, color augmentation). No dropout (BN regularizes). Testing: 10-crop, or fully-convolutional multi-scale. (Very deep CIFAR nets may need a brief 0.01 warm-up before 0.1.)
+
+## Transfer to detection / localization
+
+The deep features transfer by reusing the conv stack itself as both shared extractor and per-region head (no fresh FC head needed):
+
+- **Where to cut (NoC).** Match VGG-16's /16 shared-feature stride: the stride-≤16 layers — conv1 + conv2_x + conv3_x + conv4_x = **91 conv layers** in ResNet-101 — are the shared full-image extractor; RoI-pool before conv5_1; **conv5_x** (the last stage) is the per-region head, ending in sibling cls/reg layers. (91 + conv5_x's 9 = 100 conv + final FC = the "101".)
+- **Frozen BN.** With tiny detection batches, re-estimating BN stats is unstable, so freeze BN to its ImageNet population stats. A frozen BN is then exactly a per-channel affine `ŷ = a·x + b`, `a = γ/√(σ²+ε)`, `b = β − γμ/√(σ²+ε)` — foldable into the preceding conv, saving fine-tune memory.
+- **Localization.** Per-class RPN: sibling 1×1 heads, `cls` 1000-d (per-class binary logistic), `reg` 1000×4-d (per-class box regressors over anchors). Fast R-CNN stalls here — single-object images give heavily-overlapping proposals whose RoI features are near-identical, so image-centric sampling yields low-variance batches; switch to RoI-centric **R-CNN** (crop→warp 224→independent forward) to restore sample variation.
+- **Diagnostic.** Swapping VGG-16→ResNet-101 raises strict mAP@[.5,.95] (≈+6.0) almost as much as loose mAP@.5 (≈+6.9) → depth improves **localization**, not just recognition. Box refinement (re-pool the regressed box), global context (whole-image SPP feature concatenated), and multi-scale testing each add further gains, amplified by the deeper features.
 
 ## Working code
 

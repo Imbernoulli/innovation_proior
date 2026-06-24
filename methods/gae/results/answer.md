@@ -75,8 +75,22 @@ Advantages must be computed using the old value function. The paper's algorithm
 updates $\theta$ before $\phi$; rllab computes advantages, then fits the baseline
 before calling the policy optimizer, but the current policy step still uses
 advantages from the old baseline. The value target is the discounted return, not
-$\hat A_t+V(s_t)$; the latter is the TD($\lambda$)-style target the paper reports
-trying without improvement over the Monte Carlo target.
+$\hat A_t+V(s_t)$; the latter is the TD($\lambda$)-style target, which was tried
+without improvement over the Monte Carlo target.
+
+The natural-gradient direction $F^{-1}g$ used for the policy step is also what
+least-squares projection of the advantage onto the compatible features
+$\nabla_\theta\log\pi(a_t\mid s_t)$ yields: minimizing
+$\sum_t\|\mathbf r\cdot\nabla_\theta\log\pi(a_t\mid s_t)-\hat A_t\|^2$ gives the
+normal-equation solution $\mathbf r=F^{-1}g$ when $\hat A_t$ is $\gamma$-just,
+with $F=\frac1N\sum_t\nabla\log\pi\,\nabla\log\pi^\top$ the empirical Fisher
+information and $g=\frac1N\sum_t\nabla\log\pi\,\hat A_t$ the policy gradient.
+GAE supplies a $\gamma$-just (or near-$\gamma$-just) $\hat A_t$ to plug in. This
+is why a state-value $V$ with the $\lambda$ knob is preferred over a
+parameterized $Q$-function: $V$ has a lower-dimensional input and is easier to
+fit, and it permits the full $\lambda\in[0,1]$ interpolation, whereas an estimate
+$Q(s,a)-V(s)$ is locked to the high-bias one-step corner ($\lambda=0$), whose
+bias is empirically prohibitive on high-dimensional control.
 
 ## Reference Implementation
 
@@ -86,15 +100,13 @@ truncated rollouts.
 
 ```python
 import numpy as np
+import scipy.signal
 
 
 def discount_cumsum(x, discount):
-    out = np.zeros_like(x, dtype=np.float32)
-    running = 0.0
-    for t in reversed(range(len(x))):
-        running = x[t] + discount * running
-        out[t] = running
-    return out
+    # out[t] - discount*out[t+1] = x[t]: a one-pole IIR filter run in reverse
+    # time. out[t] = x[t] + discount*x[t+1] + discount^2*x[t+2] + ...
+    return scipy.signal.lfilter([1], [1, -float(discount)], x[::-1], axis=0)[::-1]
 
 
 def compute_gae_path(rewards, values, gamma, lam, last_value=0.0):
