@@ -217,6 +217,42 @@ soup10 = 0.9·start + 0.1·SFT。行为上 soup10 ≈ start(均分 2.924 vs 3.13
 
 ---
 
+## 9. 数据级归因：trace 回 SFT 数据，到底是什么致病
+
+读全部 3592 个被训练的 gpt 段（`innovation_method_u.jsonl` 1201 + `innovation_method_traj_u.jsonl` 1879）+ `build_sft.py` + `paper-to-reasoning` skill，把退化精确归因到数据：
+
+**9.1 落点不是竞赛交付，是论文级参考实现**：答案 99.5% 带代码，但**只有 1.8% 读 stdin**、58% 是 `class` 定义、代码**几乎纯 Python**（FCS 要 C++）；`context` 本身 **91% 是研究问题、仅 6% 像竞赛题**。A3C 那条的答案落点是一个完整的多进程 PyTorch 训练框架（`class ActorCritic`/`SharedAdam`/`mp.Process`），不是"读输入→算→打印"的单文件解。→ 致 88% 写代码但 98% 得 0、代码更短更错。
+
+**9.2 数据从不教"退回 baseline"**：think 里只有 **0.2%（1201 条里 3 条）**以"放弃花哨方案→退回朴素解→提交"结尾；"撞墙→换更花哨方向" 0.40/篇，"退回简单解" ≈0。→ 直接致负分优化题"五次全 −80、一次没退回贪心"。
+
+**9.3 "Wait" 是分布外放大 100×，不是数据教的**：数据 think 里 Wait 仅 0.21/篇，退化输出 21.34/篇。数据示范的是"中等长度、总能收敛的研究推导 + 探索腔（Actually 3.17/篇）"，但**从不示范在时限/token 预算下如何收尾**；一旦没有 commit 纪律拽着，探索腔自激成死循环。
+
+**9.4 数据并不超长**：think p95 ~9.9k，**无一条 >16k**。→ 撞 32k 是分布外涌现，**修复不该截 think，而该注入"收尾/退回"样本**。
+
+**9.5 `build_sft.py` 是放大器（smoking gun）**：训练目标直接是论文叙事的 `train_answer.md`；system prompt 钦定 `"You are a good researcher"`；格式提示**显式要求** *"give your answer in a **narrative, telling tone** rather than a heavily formatted writeup"* —— 明令"讲述腔而非可提交交付"，无一处注入竞赛纪律。
+
+**9.6 这是 reasoning 还是 talking？—— 高质量推导外壳 + 论文反推的本质 = 危险的 talking。** 表面像真 reasoning（97% 带公式、真实因果链），但 `paper-to-reasoning` skill **明令** *"discovering it for the first time... never betray that a finished paper exists"* —— **终点（论文结论）已知，倒推一条"像现场发现"的路径**。指纹：73% think 开头同一套模板、几乎 100% 成功 landing 预定方法、**失败样本不存在**。真假的**可操作判别**：**把结论遮住，这条推导还能不能"决定退回更朴素的方案"？** 只能通向预定漂亮答案的，就是 talking。模型学到的是"制造发现感的腔调"，不是"在不确定性下务实决策的能力"。
+
+**9.7 因果映射（数据属性 → 行为 → 失分）**
+
+| 数据属性 | → 学到的行为 | → 失分模式 |
+|---|---|---|
+| 91% 研究问题；1.8% 读 stdin；58% class；纯 Python | 把题当"造方法/库" | 88% 写码但 98% 得 0 |
+| 答案=论文级实现，口吻钦定 narrative | 追求漂亮叙事，代码当附录 | 代码更短更错 |
+| 0.2% 才退回 baseline | 撞墙就换更花哨方向 | 优化题负分 |
+| 探索腔 + 从不示范收尾 | 永不收敛的自我怀疑 | Wait 放大 100×、撞 32k |
+| "provably/optimal" 2.52/篇 | 复刻假证明/诉诸最优腔调 | hollow register |
+
+**9.8 数据级修复建议**：① 落点改成可提交单文件 + 大比例真竞赛样本（C++、读 stdin）；② 注入"退回 baseline / 收尾"轨迹（当前缺失）；③ 保留失败样本给 reasoning **真实**不确定性（别每条都成功 landing）；④ 改 system / 删 "narrative tone" 提示，换交付导向；⑤ 别截 think（本不长），靠注入 commit 样本治；⑥ hollow register 必须连真证明/测试兜底。
+
+## 10. 你问的「pattern 层面能不能折中」——能调和腔调，合成不出能力
+
+读 p11 上 α 的梯度（创新腔标记 / 务实腔标记 / 得分）：START(61/76, 43.7) → soup20(99/96, 0) → soup30(43/48, 0) → 纯SFT(26/8, 0)。
+
+- **中间比例（soup20）的推理文本确实"两腔皆强"**：既反复探索/重构（创新腔 99>START），又大谈 "safest interpretation / final check"（务实腔 96>START）——读起来像一个既会探索又会谈落地的模型。**所以"pattern 折中"存在，位置约在 soup20–30。**
+- **但 pattern 上的"两者兼有" ≠ 结果上的"两者兼得"**：soup20 两腔拉满仍得 0——更长的探索没产出对的解，只是把两套话术叠加。
+- **本质**：model-soup 是权重空间线性插值，行为近似落在 START↔SFT **线段**上；线段上的点能让文本**同时显出两种腔调**（叠加），但到不了线段之外那个点——「**提出新颖思路 且 写对落地**」。这是两端都不具备的第三种能力，**权重平均合成不出来**。要拿到它，得让那条线本身往外弯：**改数据落点（让创新收敛到可提交解）+ RL 奖励"新颖且正确"**，再用 soup/RL 在更高前沿上平衡。
+
 ### 附：关键路径
 - 训练数据:`LF-innov/data/innovation_method_u.jsonl`;数据哲学:`innovation_prior/README.md`、`sft/README.md`;落点样例:`innovation_prior/methods/a3c/results/answer.md`(351 行 harness)
 - 模型输出:`FrontierSmith/outputs/cc_eval_{q35_a100,q35_a100_method,q35_a100_method_soupa10,q35_a00,q3_a00}_thinking_32k_both_vllm/shard_0/samples.jsonl`

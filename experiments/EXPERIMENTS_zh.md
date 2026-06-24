@@ -94,6 +94,7 @@
 - 口径：`metrics.frontiercs.score`，报 **mean@5**（每题 5 样本取平均再对题平均）与 **best@5**（每题取 5 样本最优再平均）。
 - 评分链条（关键）：闭合 `</think>` → 抽最长 ```cpp 块 → 编译通过 → 过测试点。`strip_think` 是 `rpartition("</think>")`，**没闭合 think 就原样返回全文**，于是抽不到完整代码块 → 0 分。
 - **shard_0 覆盖警告**：我们手头的 `cc_eval_*` shard_0 只覆盖 **40 题**（完整 benchmark ~182 题），其中 33 题对所有模型都是 0 分，**真正承载信号的只有 ~7 题**。任何「A>B」都由 5–7 题 × 5 样本撑起，统计支撑极弱。
+- **Algorithm vs Research 划分（重要）**：Frontier-CS 官方分两个 track —— **Algorithmic（172 题，写 C++，go-judge 评）** 和 **Research（68 题，写 Python `Solution.solve()`，各题官方 `evaluator.py` 评，0–100，测加速比/精度）**。**我们之前所有评测只跑了 Algorithmic 这 172 题**（`prepare_frontiercs_parquet.py` 只指向 `algorithmic/problems`）。Research 68 题 = 64 标准 + 4 个 poc_generation（需 Docker-in-Docker，跑不了）；64 题里 21 题需 GPU（Triton kernel）、43 题 CPU。Research 现已接进评测（本集群无 Docker，改为直接在 GPU 节点跑 `evaluator.py`），metrics 单独键 `metrics.frontiercs_research.score`，**与 frontiercs/alebench 分开，不硬平均**；先跑 21 题 GPU 子集，43 题 CPU 需逐题装依赖（待办）。脚本：`scripts/frontiercs_research_eval.py`、`slurm/cc_eval_research_ailab.sh`。
 
 ### 5.2 ALE-Bench（ALE）— 启发式优化编程
 
@@ -143,6 +144,7 @@
 - harness：`FrontierSmith/scripts/mlsbench_run_cpu_tasks.py` + `FrontierSmith/slurm/cc_eval_mlsbench_cpu_ailab.sh`。报 20 任务**均分**。
 - **修过的 bug**：`mlsbench score` 把 JSON 打到 stdout、把 UserWarning 打到 stderr；早期 `stderr=STDOUT` 合并导致 json 解析失败、静默丢分（起点模型均值从误报的 0.0011 修正到 0.0226，~21×）。
 - 默认 `CONCURRENCY=20`（20 任务并行一波，墙钟由最慢任务界定）。
+- **零分诊断（为什么 13/20 任务常 0）**：三类混合根因，**不是单一"模型差"**。(i) **causal-\* 簇 = harness 的 prompt 路径前缀 bug**：EDITABLE 头给的是带包前缀的正确路径（`causal-learn/bench/...`），但任务正文和 diff 头把前缀剥掉了（`bench/...`），模型跟了正文 → 编辑被包白名单拒（`Package 'bench' is not in allowed packages`）→ 一次没编辑成功 → 只跑 baseline stub → 0。这是 MLS-Bench 任务作者侧 bug，可修。(ii) **ml-\*/optimization-\* 簇 = 模型自身代码坏**（SyntaxError/IndentationError）或越界编辑空转——路径对时 harness 照常放行。(iii) **基础设施崩**（容器挂载失败、`/data/adbench/*.npz` 缺失）。测试次数 `max_tests=3` 已生效（日志实锤 `You have used 1/3 tests`），`submit(n)` 可挑任意已跑 test，非"只能一次"。
 
 ---
 
@@ -189,16 +191,22 @@
 
 ### 6.2 MLS-Bench 批量（20 任务均分；与起点对照）
 
+（8 个模型全跑完 20/20，除 a100_innovonly_sft 19/20。基线 = q35 instruct start 0.0643）
+
 | 模型 | MLS mean | FCS mean@5 对照 |
 |---|---|---|
 | q35 base start（Qwen3.5-9B-Base） | 0.0764 | 2.080 |
 | q35 instruct start（基线） | 0.0643 | 3.139 |
 | **q35 base + method-SFT** | **0.0943 ↑** | 0.350（崩） |
+| **q35 base + method-soup20** | **0.0908 ↑** | 2.082（≈起点） |
 | **q35 instruct + method-SFT** | **0.0794 ↑** | **0.015（崩到底）** |
-| q35 instruct method-soup10 | 0.0407（19/20） | 2.924 |
-| q35 instruct innovonly-soup50 | 0.0607（19/20） | — |
+| q35 instruct innovonly-soup50 | 0.0728 ↑ | — |
+| q35 base innovonly-soup50 | 0.0597 | — |
+| q35 instruct method-soup10 | 0.0538 ↓ | 2.924 |
+| q35 instruct innovonly-SFT | 0.0420（19/20） | — |
 
-**关键反转**：在 FCS 上被打到 0.015 的 instruct method-SFT，在 MLS 上是 **0.0794 > 起点 0.0643**；两个臂的纯 SFT 都在 MLS 上超过各自起点。这是「**FCS/ALE 奖励提交简单正确代码、惩罚探索；MLS 这种 ML 研究任务恰恰是 innovation 取向能用上的地方**」的直接证据。
+**关键反转 / 双重分离**：在 FCS 上被打到 0.015 的 instruct method-SFT，在 MLS 上是 **0.0794 > 起点 0.0643**；两个臂的纯 SFT 都在 MLS 上超过各自起点。而 FCS 甜点 instruct-soup10 在 MLS 上 **0.0538 < 起点**。即 **FCS：SFT 最差、soup 最好；MLS：SFT 最好、soup 最差** —— 干净的双重分离。这是「**FCS/ALE 奖励提交简单正确代码、惩罚探索；MLS 这种 ML 研究任务恰恰是 innovation 取向能用上的地方；soup 恢复执行纪律（FCS↑）的同时稀释掉研究取向（MLS↓）**」的直接证据。**例外的折中点**：base 臂的 **method-soup20** 双轴都好（FCS 2.082≈起点 + MLS 0.0908>起点），是"既保住能力又拿到创新 proxy"的现成存在性证明。
+> **注意（零分诊断后）**：MLS 的绝对分受上面"零分诊断"里的 harness/infra 问题压低（causal 簇因 prompt 路径 bug 自动 0、部分任务数据缺失）。这些 0 是评测侧问题，不是模型能力——所以 MLS 的**模型间相对排序**比绝对值更可信，且修完 causal bug 后整体分会上移。
 **诚实警告**：单跑、20 个噪声任务、soup 那两行未跑完，不能过度解读；方向上与 case study 机制一致。
 非零贡献集中在少数任务：optimization-evolution-strategy(0.49)、hyperparameter-search(0.30)、causal-treatment-effect(0.26)、symbolic-regression(0.13)；13/20 任务对起点是 0（编辑了不允许的包、从不提交——与 FCS 同一个"不落地"签名）。
 
