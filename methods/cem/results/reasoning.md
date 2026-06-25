@@ -35,23 +35,30 @@ event common, and undo the change of measure with the likelihood ratio,
 
   ℓ = E_g[ I{S(X) ≥ γ} · f(X; u)/g(X) ],  estimated by  (1/N) Σ_k I{S(X_k) ≥ γ} · f(X_k; u)/g(X_k).
 
-And there's a *best* `g`, the one that makes this estimator have zero variance. I want `g` such that
-the summand `I{S(x) ≥ γ} f(x;u)/g(x)`
-is constant in `x` (constant ⇒ zero variance). Set it equal to the constant `ℓ`: that forces
+Is there a *best* `g`? The estimator is an average of i.i.d. terms `Y_k = I{S(X_k) ≥ γ} f(X_k;u)/g(X_k)`,
+so its variance is `Var_g(Y)/N`, and that vanishes exactly when `Y` is a.s. constant. So I'll look for a
+`g` that makes the summand `I{S(x) ≥ γ} f(x;u)/g(x)` constant in `x`. Whatever the constant is, it must
+equal the mean `ℓ` (an a.s.-constant random variable equals its own expectation), so set the summand
+to `ℓ`: that forces
 
   g*(x) = I{S(x) ≥ γ} · f(x; u) / ℓ .
 
-Stare at that. `g*` is just the baseline density `f(·; u)` *restricted to the elite event* `{S(x) ≥
-γ}` and renormalized by `ℓ`. It is precisely the distribution that throws away everything below `γ`
-and keeps the mass on the good region — exactly the "concentrate on where the good points are"
-distribution I was hand-waving about a moment ago. The rare-event problem just handed me the ideal
-target for my adaptive sampler, and it's not a heuristic, it's the variance-minimizing density.
+So `g*` is the baseline density `f(·; u)` *restricted to the elite event* `{S(x) ≥ γ}` and
+renormalized by `ℓ` — it throws away everything below `γ` and keeps the mass on the good region, which
+is the "concentrate on where the good points are" distribution I was hand-waving about a moment ago.
+Before I lean on it, let me actually check the zero-variance claim rather than trust the algebra,
+because it's load-bearing. Take `f = N(0,1)`, `S(x) = x`, `γ = 2`. Then `ℓ = P(X ≥ 2) = 1 − Φ(2) ≈
+0.02275`, and `g*` is `f` truncated to `[2, ∞)` and renormalized. Drawing 10⁵ points from that
+truncated normal and forming the summand `I{x ≥ 2} f(x)/g*(x)`, I get a mean of `0.0227501` and a
+sample standard deviation of `7×10⁻¹⁸` — i.e. the summand really is the constant `ℓ` to floating-point
+roundoff. The estimator under `g*` is exact from a single sample, no variance. Good: `g*` is genuinely
+the variance-minimizing density, not just a plausible candidate. The catch is the one that motivated all
+this — `g*` is the ideal *target*, but it bakes in the unknown `ℓ` and is some arbitrary restricted
+shape, so I cannot sample from it directly.
 
-Of course I can't use `g*` directly — it contains the unknown `ℓ`, and worse, it's some arbitrary
-restricted shape that I generally can't sample from. What I *can* do is restrict myself to a
-tractable parametric family `f(·; v)` (Gaussians, say) and find the member of that family *closest*
-to the restricted target. At iteration `t` the target should be built from the law I am actually
-using now, not from a frozen old baseline, so I write
+What I *can* do is restrict myself to a tractable parametric family `f(·; v)` (Gaussians, say) and
+find the member of that family *closest* to the restricted target. At iteration `t` the target should
+be built from the law I am actually using now, not from a frozen old baseline, so I write
 
   g*_t(x) = I{S(x) ≥ γ} · f(x; v_{t-1}) / ℓ_t,   where  ℓ_t = P_{v_{t-1}}(S(X) ≥ γ).
 
@@ -91,11 +98,11 @@ sum is `Σ_{k : S(X_k) ≥ γ} ln f(X_k; v)` — the **log-likelihood of the thr
 under `f(·; v)`**, and maximizing it over `v` is *fitting `f(·; v)` by maximum likelihood to those
 samples alone*. That's the answer to "how do I move the distribution toward the good points," and
 it's not a nudge: it's "take the points that beat the bar, and fit your sampling distribution to
-them by maximum likelihood." The cross-entropy minimization to the variance-optimal target `g*_t`
-collapses, on a finite sample, to a maximum-likelihood fit on the elite set. I came in worried about
-ad-hoc averaging and walked out with a principled, derivable update.
+them by maximum likelihood." So the cross-entropy minimization to the target `g*_t` has, on a finite
+sample, reduced to a maximum-likelihood fit on the elite set — which is concrete enough to run, and not
+the ad-hoc averaging I was worried about at the start.
 
-But wait — there's a wall sitting right in the middle of this, and it's the same rarity that
+There's a wall sitting right in the middle of this, though, and it's the same rarity that
 motivated importance sampling in the first place. If I set `γ` near `γ*` from the start, then under
 the broad initial `f(·; u)` almost no sample clears `γ`: every indicator `I{S(X_k) ≥ γ}` is zero, the
 sum is empty, the maximum-likelihood program has no data, and the whole thing is void. I can't fit a

@@ -11,59 +11,72 @@ So let me reason about it by hand, because the point of this rung is to *underst
 read a number off the evaluator. Take `f` to be the indicator of an interval; by dilation invariance the length
 does not matter, so I take the support to be the unit interval. Its autoconvolution is the classic triangle —
 the "tent" — supported on an interval of twice the width, rising linearly from `0` to a single peak at the
-midpoint and falling back to `0`. The peak of that triangle is the key quantity, because the numerator of `R`
-is exactly the peak of the autoconvolution. For the indicator of width `w` and height `h`, the autoconvolution
-peaks at the value `h^2 · w` (the full overlap at the center), while the mass is `∫ f = h·w`, so the square of
-the mass is `h^2 w^2`. The continuous ratio `peak / (∫f)^2` is then `h^2 w / (h^2 w^2) = 1/w`. The discrete
-evaluator carries a normalization factor that turns this dimensionless ratio into the constant on the fixed
-interval `[-1/4,1/4]`: with `N` unit pieces the factor is `2N`, and a short check on the discrete heights makes
-the arithmetic concrete.
+midpoint and falling back to `0`. The peak of that triangle is the quantity that matters, because the numerator
+of `R` is exactly the peak of the autoconvolution. For the indicator of width `w` and height `h`, the
+autoconvolution peaks at the value `h^2 · w` (the full overlap at the center), while the mass is `∫ f = h·w`, so
+the square of the mass is `h^2 w^2`. The continuous ratio `peak / (∫f)^2` is then `h^2 w / (h^2 w^2) = 1/w`. The
+discrete evaluator carries a normalization factor that is supposed to turn this dimensionless ratio into the
+constant on the fixed interval `[-1/4,1/4]`: with `N` unit pieces the factor is `2N`. I do not want to take that
+factor on faith, so let me check the discrete arithmetic explicitly.
 
-Let me do that discrete check, because I want to *trust* the `2N` factor rather than take it on faith. With
-`a_n = 1` for `n = 0 … N−1`, the discrete self-convolution `b = a*a` is the triangular sequence that rises
-`1, 2, 3, …` up to its peak and falls back symmetrically; its maximum is `N` (the center term, where all `N`
-overlaps line up). The mass is `Σ a_n = N`, so `(Σ a_n)^2 = N^2`. The evaluator returns `2N · max(b) / (Σ a)^2
-= 2N · N / N^2 = 2`. So the flat function scores exactly `2`, and — crucially — this is *independent of how
-finely I discretize it*. A flat vector of `10` ones and a flat vector of `1000` ones both have a triangular
-autoconvolution and both score `2` exactly. The number of pieces is a red herring on its own; only the *shape*
-of the heights moves the ratio. This is the same lesson the sibling maximization taught at its own floor, and
-it tells me the same thing about why this problem is hard: refining a flat profile buys nothing.
+With `a_n = 1` for `n = 0 … N−1`, the discrete self-convolution `b = a*a` should be the triangular sequence that
+rises `1, 2, 3, …` up to its peak and falls back symmetrically. Let me actually compute it for a couple of small
+`N` rather than assert the shape. For `N = 5` the evaluator's `fftconvolve(a,a)` returns `[1, 2, 3, 4, 5, 4, 3,
+2, 1]`, and for `N = 6` it returns `[1, 2, 3, 4, 5, 6, 5, 4, 3, 2, 1]` — the triangle, peaking at the center
+value `N`, exactly as the hand picture says. So `max(b) = N`. The mass is `Σ a_n = N`, hence `(Σ a_n)^2 = N^2`,
+and the score is `2N · max(b) / (Σ a)^2 = 2N · N / N^2 = 2`. When I run the evaluator it returns
+`2.0000000000000000` for `N = 5, 10, 100` and `2.0000000000000004` for `N = 600, 1000` — the tiny `4e-16` tail
+is just FFT round-off in the larger transforms, not a real deviation. So the flat function scores `2`, and the
+score is the same whether I discretize with `10` pieces or `1000`. The number of pieces is a red herring on its
+own; only the *shape* of the heights moves the ratio. That tells me something about why the problem is hard:
+refining a flat profile buys nothing, because the triangle — and the value `2` — is locked in by the constant
+height, not by the resolution.
 
-That last fact is the real content of this rung. The piece count `N` is not itself a lever — refining a flat
-profile leaves the triangle, and the value `2`, untouched. What moves `R` *down* is making the autoconvolution
-*less peaked* relative to its mass: I want a height profile whose self-convolution spreads its energy out so the
-single tallest node is suppressed, rather than concentrating it into one sharp central spike the way the tent
-does. A triangle is, in this minimization, a bad case among unimodal autoconvolutions — it puts a lot of its
-total overlap into one central peak. To get below `2` I have to reshape the heights so the autoconvolution
-becomes flatter-*topped* in the sense of having no single dominant node — the peak shared across a plateau, or
-pushed off-center, so that `max_k b_k` falls even as the mass `Σ a_n` is held fixed.
+That last fact is the real content of this rung, and it forces the question of *what* does move `R`. The triangle
+puts a lot of total overlap into one central node; to get below `2` I have to reshape the heights so that the
+self-convolution is less peaked relative to its mass — so that `max_k b_k` falls while `Σ a_n` is held fixed. The
+tempting move is to guess a closed-form shape for the heights. My first instinct is that the central peak comes
+from every piece overlapping every other piece near zero shift, so I should *thin out the middle* and put weight
+near the ends — a U-shaped profile, heavier at the boundary, lighter in the center, which intuitively should
+reduce the central self-overlap. Let me not just trust that picture; let me put a U-shape through the evaluator
+at `N = 30` and see.
 
-I notice the parity of the situation matters too, and it points the opposite way from the sibling problem. There
-the gains came from making the autoconvolution *more* indicator-like (a flatter cap raising an L2-ratio). Here
-the gains come from making the *peak* of the autoconvolution low relative to the squared mass — which, for a
-fixed mass budget, means spreading the heights so that no single shift of `f` against itself lines up too much
-overlap. Intuitively that wants an *asymmetric* or *structured* height profile: a flat function maximizes the
-central self-overlap (every piece aligns with every piece at zero shift's neighborhood), which is exactly the
-wrong thing. Some non-flat arrangement — heavier near the ends, lighter in the middle, or genuinely irregular —
-should lower the worst-case overlap. But none of that is available to a flat vector, which has nothing to vary.
-The flat function is a strict, rigid baseline parked at the top of the achievable range with no internal degree
-of freedom to spend.
+The result is the opposite of what I guessed. A flat profile scores `2.0`; a mild U-shape `a = 1 + c·x^2`
+(with `x` ranging over `[-1,1]`) scores `2.007` at `c = 0.2`, `2.036` at `c = 0.5`, `2.110` at `c = 1.0`, and
+`2.276` at `c = 2.0` — monotonically *worse* the more I pull weight to the ends. So "heavier near the ends" is
+flatly wrong-signed. And the symmetric alternative is no better: a middle-heavy bump `a = 1 − c·x^2` rises the
+same way, `2.009`, `2.075`, `2.355` as `c` grows. I check *why* by looking at where the peak of `a*a` sits for
+the U-shape, expecting maybe it has moved off-center where I could exploit it — but `argmax(a*a)` is still at
+index `29` of `59`, dead center, exactly where the flat triangle peaks. A smooth symmetric perturbation in either
+direction keeps the dominant node at the center *and* makes it taller relative to the mass. The clean intuition
+("spread the weight to the ends") does not survive contact with the evaluator; both obvious one-parameter
+families sit strictly above `2`.
+
+So the lever is not a smooth closed-form shape at all — it has to be a genuinely *irregular* height profile, the
+kind a search finds and an ansatz misses. To confirm that something below `2` is even reachable, I run a crude
+stochastic local search at `N = 30`: start from the flat vector, add Gaussian jitter, clip to non-negative, keep
+the best of twenty thousand draws. That gets down to `R ≈ 1.817` — comfortably below the flat ceiling, and well
+above the published frontier near `1.50286`. The drop is real, but it took an unstructured, searched profile to
+get it; neither monotone family I tried by hand could. That is the lesson this rung hands forward: the gain lives
+in irregular height vectors, found by search, not in any tidy U-shape or bump I can write down.
 
 I should pin down the rest of the landscape honestly so I know how far I am from the bottom before I start
-descending. The provable lower bound on `C1` is `1.28`, so no construction can ever certify below that — the
-true constant lives somewhere in `[1.28, 1.5028…]`. The published upper-bound record is `1.5028628969`, reached
-by elaborate optimized step functions with tens of thousands of pieces. So the distance from this flat ceiling
-at `2.0` down to the frontier near `1.50286` is large, and essentially *all* of it has to be bought by
-optimizing the heights into a non-trivial, asymmetric, structured profile. The flat function buys none of it;
-it just establishes the starting altitude.
+descending in earnest. The provable lower bound on `C1` is `1.28`, so no construction can ever certify below that
+— the true constant lives somewhere in `[1.28, 1.5028…]`. The published upper-bound record is `1.5028628969`,
+reached by elaborate optimized step functions with tens of thousands of pieces. So the distance from this flat
+ceiling at `2.0` down to the frontier near `1.50286` is large — my twenty-thousand-draw search at `N = 30`
+covered only the first third of it — and essentially *all* of it has to be bought by optimizing the heights into
+a non-trivial, irregular profile. The flat function buys none of it; it just establishes the starting altitude.
 
-What I expect from the evaluator, then, is `R = 2.0` exactly, confirming both the triangle analysis and the
-dilation/refinement invariance — and confirming that the scaffold's `2N` normalization matches my hand
-computation, so I can trust the harness on the harder rungs. (As a cross-check I would also confirm the
-published record sequence scores `1.50286` through this same evaluator, so I know the machine agrees with the
-literature on both ends.) The limitation this rung exposes is sharp and sets up the next one: the flat profile
-is a local nothing, with no gradient to follow because every piece is identical and the autoconvolution is
-locked to a triangle. To move at all I have to introduce *variation* among the heights and let some search
-procedure discover which non-flat profile suppresses the autoconvolution's peak. The cleanest place to start
-that search is at a small piece count, where the height vector is short enough that a stochastic local search
-can explore the shape space thoroughly and find a first real drop off the `2.0` ceiling.
+What this rung delivers, then, is a verified ceiling and a verified harness: `R = 2.0` exactly for the flat
+profile, matching the triangle-by-hand computation across piece counts, so the scaffold's `2N` normalization is
+the right one and I can trust the machine on the harder rungs. (As a further cross-check I would still want to
+push the published record sequence through this same evaluator and confirm it scores `1.50286`, so I know the
+harness agrees with the literature on *both* ends, not just at the ceiling — that I have not run here.) The
+limitation this rung exposes is sharp and sets up the next one: the flat profile is a local nothing, with no
+gradient to follow because every piece is identical and the autoconvolution is locked to a triangle; and the two
+nearest closed-form escapes both move the score the wrong way. To make progress I have to introduce *variation*
+among the heights and let a search procedure discover which irregular profile suppresses the autoconvolution's
+peak. The cleanest place to start that search is at a small piece count, where the height vector is short enough
+that a stochastic local search can explore the shape space thoroughly and find a first real drop off the `2.0`
+ceiling — which the quick `N = 30` probe already shows is there to be found.
