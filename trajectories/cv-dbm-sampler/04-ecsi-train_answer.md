@@ -26,9 +26,6 @@ def sample_dbim(
 ):
     """
     ECSI (Endpoint-Conditioned Stochastic Interpolants) sampler.
-    Paper: Zhang et al. arXiv:2410.21553
-    ('Exploring the Design Space of Diffusion Bridge Models').
-    Code: https://github.com/szhan311/ECSI  (sibm/sampling.py: sample_stoch).
 
     Task-local ECSI-inspired sampler settings:
       * pred_mode = "vp"  (already the dbim-codebase e2h default)

@@ -68,7 +68,7 @@ transfer function is `H_io(ω) = U/G = BC/(1−A e^{-iω}) + D`. Feeding the fil
 For linear SGD-family optimizers, filtering the gradient by `h` is identical to filtering the
 parameter update by the same `h`: the optimizer's response cancels. This is why Grokfast can be a
 hook on `p.grad` (between `backward()` and `step()`) instead of a bespoke optimizer. Adam/AdamW
-support is a practical hook-level application verified empirically in the paper, not a consequence of
+support is a practical hook-level application verified empirically, not a consequence of
 this exact LTI proof. It differs from momentum: the smoothed gradient is added as a **residual to
 the raw gradient before the optimizer**, not consumed as the update itself.
 

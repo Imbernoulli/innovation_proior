@@ -32,7 +32,7 @@ the exact density, which would require eigendecomposition, but I can replace the
 monomial powers with a tunable orthogonal family and keep the unconstrained signed coefficients that
 made GPR-GNN work.
 
-The recurrence is the fragile part, so I write it in the same symbols as the source. The base cases
+The recurrence is the fragile part, so I write it out carefully. The base cases
 are `P_0^{a,b}(x)=1` and `P_1^{a,b}(x)=(a-b)/2 + (a+b+2)x/2`. For `k >= 2`,
 `P_k^{a,b}(x) = (theta_k x + theta_prime_k) P_{k-1}^{a,b}(x) - theta_double_prime_k
 P_{k-2}^{a,b}(x)`, with
@@ -52,7 +52,7 @@ This scaffold does not expose that full machinery. It keeps the two-layer ReLU e
 coefficients to `1/(K+1)`, and has no slot for PCD. So the artifact I land here is the
 shared-coefficient, fixed-`(a,b)` Jacobi recurrence core, not the full per-channel linear PCD model.
 
-The operator convention is also safe. The paper defines the graph Jacobi basis as
+The operator convention is also safe. I define the graph Jacobi basis as
 `P_k^{a,b}(A_hat)` with `A_hat = I - L`, whose spectrum lies in `[-1,1]`. The edit surface naturally
 builds `L_tilde = L - I = -A_hat` by adding self-loops of weight `-1` to the normalized Laplacian.
 For the fixed symmetric case `a=b=1`, the reflection identity gives

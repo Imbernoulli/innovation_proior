@@ -48,7 +48,7 @@ everyone, attended by everyone — which plants a star inside the window+random 
 missing reach. So the third ingredient is global anchors.
 
 Now I have to re-express all three in *this* task's vocabulary, and here is where this rung is not the
-generic paper version. The paper's global+window+random attention learns its own `W_Q, W_K, W_V`
+generic trained-from-scratch version. The full global+window+random attention learns its own `W_Q, W_K, W_V`
 projections, can append dedicated CLS-like global tokens, and tiles into block matmuls that physically
 skip the dropped blocks for a real speedup. None of that is available here. The model is frozen at
 inference — I have no projections to learn, I receive `q, k, v` already projected and RoPE'd and
@@ -72,7 +72,7 @@ sampling plus the causal AND interact so the realized causal-triangle fraction l
 `fraction × n_blocks` estimate, especially because early query blocks have few admissible blocks and the
 fixed window/global already saturate them. So I size the random count against a *conservatively
 discounted* budget: `target = round(0.25 · 0.88 · n_blocks)`, an ~12% margin, then `random = target −
-global − window`, clamped non-negative and below the admissible pool. The margin is not a paper constant;
+global − window`, clamped non-negative and below the admissible pool. The margin is not a borrowed constant;
 it is calibrated so the measured density sits clear of the `0.25 + 0.02` ceiling at every context length
 the harness evaluates, because a single layer crossing the line aborts the entire run and scores me
 nothing.

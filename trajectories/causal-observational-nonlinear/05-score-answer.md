@@ -3,7 +3,7 @@ boosted residual-variance fits on growing predictor sets), which takes wrong, no
 small `n` or with subtle mechanisms — the limiting factor on ER12-LowSample (precision-limited F1 0.564)
 and ER20-Gauss recall (0.59). The remaining lever is to recover the order *directly and globally*.
 
-**Key idea (SCORE, Rolland et al., ICML 2022, arXiv:2203.04413).** For a Gaussian-noise ANM, the
+**Key idea (SCORE).** For a Gaussian-noise ANM, the
 `j`-th diagonal entry of the Hessian of `log p`, `∂² log p/∂x_j²`, equals `-1/σ_j²` (a constant) plus a
 term that varies with `x` *only through `x_j`'s children*. Hence **`j` is a leaf iff Var[∂² log p/∂x_j²]
 = 0**. Estimate the score and its diagonal Jacobian non-parametrically via Stein identities with a
@@ -18,10 +18,9 @@ only change is replacing the greedy order with the exact leaf-variance order.
 
 **Faithfulness.** The leaf-detection core (median-distance bandwidth, `∇K`/`∇²K` forms, `G`, `-G²`
 Hessian correction, per-column mean normalization, argmin-variance leaf with iterative column removal and
-reversal) is transcribed from the reference implementation (re-expressed from PyTorch into numpy);
-`η_G = η_H = 0.001` are the reference defaults. The pruning is the harness's gradient-boosted
-feature-importance selection (cutoff `0.05`), substituting for the reference's CAM/GAM significance
-pruning — the same pragmatic substitution the task's other baselines make.
+reversal) is implemented directly in numpy; `η_G = η_H = 0.001` are the regularization defaults. The
+pruning is the harness's gradient-boosted feature-importance selection (cutoff `0.05`), substituting for
+CAM/GAM significance pruning — the same pragmatic substitution the task's other baselines make.
 
 **Bar (no leaderboard row).** Match or beat CAM everywhere; beat it most on ER12-LowSample (order
 accuracy at `n=150`) and ER20-Gauss recall; parity expected on the already-near-perfect SF20-GP.
@@ -33,9 +32,9 @@ def run_causal_discovery(X: np.ndarray) -> np.ndarray:
     Output: adjacency matrix B of shape (n_variables, n_variables)
             B[i, j] != 0  means j -> i  (follows causal-learn convention)
 
-    SCORE (Rolland et al., ICML 2022): recover the topological order by
-    score-matching leaf detection -- a variable is a leaf iff the variance of
-    the j-th diagonal Hessian entry of log p is zero -- then prune edges.
+    SCORE: recover the topological order by score-matching leaf detection --
+    a variable is a leaf iff the variance of the j-th diagonal Hessian entry
+    of log p is zero -- then prune edges.
     """
     import os
     import numpy as np
@@ -47,12 +46,12 @@ def run_causal_discovery(X: np.ndarray) -> np.ndarray:
     eta_G = 0.001
     eta_H = 0.001
 
-    # Use the data directly, as in the reference SCORE implementation.
+    # Use the data directly.
     Xc = np.asarray(X, dtype=float)
 
     def stein_hess_diag(data):
         # Estimate the diagonal of the Hessian of log p_X at the sample points
-        # via first- and second-order Stein identities (Rolland et al., 2022).
+        # via first- and second-order Stein identities.
         m, p = data.shape
         X_diff = data[:, None, :] - data[None, :, :]          # (m, m, p)
         sqdist = np.sum(X_diff ** 2, axis=2)                   # (m, m)

@@ -61,7 +61,7 @@ that makes the directed proposals affordable.
 // and a running boundary-edge count gives O(1) perimeter.
 //
 // Two refinements ported from ShinkaEvolve's evolved AHC039 solution (which took
-// ALE-Agent's score from 2880, 5th, to 3140, 2nd; arXiv:2509.19349):
+// ALE-Agent's score from 2880, 5th, to 3140, 2nd):
 //   (1) CACHED VALIDATION: a per-cell boundary-flag cache refreshed only on the
 //       3x3 neighbourhood of each accepted flip, so candidate validity/scoring
 //       never rescans the grid (the analogue of ShinkaEvolve caching subtree

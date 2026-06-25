@@ -21,11 +21,11 @@ L={1\over2}D(p_1,\operatorname{sg}(z_2))+
   {1\over2}D(p_2,\operatorname{sg}(z_1)),
 \]
 
-where \(\operatorname{sg}\) is stop-gradient. The minimum possible loss is \(-1\). In the paper's controlled ablation, removing only stop-gradient sends the loss to \(-1\), collapses the l2-normalized output std to zero, and gives chance ImageNet linear evaluation; keeping it yields non-collapsed outputs and about 67.7% top-1 at 100 epochs.
+where \(\operatorname{sg}\) is stop-gradient. The minimum possible loss is \(-1\). In a controlled ablation, removing only stop-gradient sends the loss to \(-1\), collapses the l2-normalized output std to zero, and gives chance ImageNet linear evaluation; keeping it yields non-collapsed outputs and about 67.7% top-1 at 100 epochs.
 
 ## Why It Works
 
-The paper's hypothesis is an EM-like alternating optimization. Introduce one free target vector per image:
+My hypothesis is an EM-like alternating optimization. Introduce one free target vector per image:
 
 \[
 \mathcal L(\theta,\eta)=
@@ -56,7 +56,7 @@ Approximating this expectation with one sampled augmentation \(T'\) gives the ot
 \eta_x^t\approx F_{\theta^t}(T'(x)).
 \]
 
-Taking one SGD step on the resulting \(\theta\) subproblem yields the SimSiam update. The predictor \(h\) is interpreted as a learned approximation to the missing augmentation expectation: as a regression map, its optimum is a conditional mean \(h^*(z_1)=\mathbb E[z_2\mid z_1]\), which the paper relates to \(\mathbb E_T[f(T(x))]\) for the same image. Symmetrization is denser sampling of the augmentation expectation.
+Taking one SGD step on the resulting \(\theta\) subproblem yields the SimSiam update. The predictor \(h\) is interpreted as a learned approximation to the missing augmentation expectation: as a regression map, its optimum is a conditional mean \(h^*(z_1)=\mathbb E[z_2\mid z_1]\), which relates to \(\mathbb E_T[f(T(x))]\) for the same image. Symmetrization is denser sampling of the augmentation expectation.
 
 This is a hypothesis about the optimization being followed, not a proof that collapse is impossible. The constant solution still exists; non-collapse is an empirical observation explained by the altered alternating trajectory.
 

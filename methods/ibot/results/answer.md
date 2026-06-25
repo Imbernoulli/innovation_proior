@@ -8,7 +8,7 @@ Masked image modeling needs a target for each hidden patch. Pixel regression is 
 
 For two augmented global views `u` and `v`, form masked views `u_hat` and `v_hat` for the student. The EMA teacher receives the clean global views. The teacher backbone plus patch projection head is the online tokenizer.
 
-Paper-level masked image modeling loss for one global view:
+The masked image modeling loss for one global view:
 
 `L_MIM(u) = - sum_{i=1}^N m_i P_{theta'}^patch(u_i)^T log P_theta^patch(u_hat_i)`.
 
@@ -22,7 +22,7 @@ Teacher logits are centered and sharpened, then detached:
 
 `P_t = softmax((t - C) / tau_t)`, and `log P_s = log_softmax(s / tau_s)`.
 
-There are separate centers and teacher temperatures for `[CLS]` and patch tokens: `C` has shape `[1, K]`, `C_patch` has shape `[1, 1, K]`. Defaults used in the paper/code path include `tau_s = 0.1`, center momenta `0.9`, output dimension `K = 8192`, AdamW, learning-rate warmup for 10 epochs then cosine decay, weight decay `0.04 -> 0.4`, and teacher EMA momentum scheduled from `0.996` to `1`.
+There are separate centers and teacher temperatures for `[CLS]` and patch tokens: `C` has shape `[1, K]`, `C_patch` has shape `[1, 1, K]`. Defaults used in the reference code path include `tau_s = 0.1`, center momenta `0.9`, output dimension `K = 8192`, AdamW, learning-rate warmup for 10 epochs then cosine decay, weight decay `0.04 -> 0.4`, and teacher EMA momentum scheduled from `0.996` to `1`.
 
 The losses are summed without an extra scale:
 

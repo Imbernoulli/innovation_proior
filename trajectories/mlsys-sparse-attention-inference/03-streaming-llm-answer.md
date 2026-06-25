@@ -11,7 +11,7 @@ full unit of mass, so under causal masking the always-visible first tokens becom
 surplus attention — keeping them holds the softmax denominator in its trained shape. Drop the random
 gamble entirely.
 
-**Why it works (and how it differs from the paper here).** The paper's StreamingLLM is a *KV-cache
+**Why it works (and how it differs in this setting).** In its native form StreamingLLM is a *KV-cache
 eviction* policy with within-cache position re-indexing (rotate cached keys by cache-position each decode
 step). None of that applies: the harness runs `use_cache=False`, every forward is a full parallel pass,
 positions are the model's own RoPE. So here StreamingLLM is a **static sink+window mask** over the full
@@ -45,8 +45,8 @@ class SparseAttention(nn.Module):
         self.num_heads = num_heads
         self.block_size = block_size
         self.density_budget = density_budget
-        # Paper default: 4 attention sinks. Xiao et al. show 4 is enough to
-        # recover almost all the dense-attention quality on streaming inputs.
+        # Default: 4 attention sinks — enough to recover almost all the
+        # dense-attention quality on streaming inputs.
         self.num_sinks = 4
         self.last_density = None
 

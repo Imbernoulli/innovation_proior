@@ -32,7 +32,7 @@ pressure to the probability of that set. Measured against the global-batch loss,
 balance-versus-cross-entropy point — it cuts the imbalance markedly while holding the cross-entropy,
 because the hinge is idle when the router is healthy and only acts in the dying tail. This is the
 endpoint of the load-balancing-loss ladder; my run reproduces its mechanism at small scale, not the
-paper's 64-expert, billions-of-tokens scale.
+full 64-expert, billions-of-tokens scale.
 
 ```python
 import math
@@ -46,7 +46,7 @@ def layer_f_P(probs, topi, N):
 
 
 def balance_loss_shinka(probs_list, topi_list, N):
-    """ShinkaEvolve's discovered load-balancing loss (arXiv:2509.19349, Eq. 1):
+    """ShinkaEvolve's discovered load-balancing loss:
 
         L = N * (1/L) sum_l sum_i f_{l,i} P_{l,i}                  [global-batch LBL]
           + (0.1/L) sum_l s(P_l) * sum_i max(0, tau - f_{l,i})     [entropy-hinge]

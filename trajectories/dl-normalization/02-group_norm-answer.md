@@ -17,7 +17,7 @@ full spatial grid, a large stable sample that uses cross-channel structure (fixi
 isolated-channel instance branch) without ever over-removing per-image scale.
 
 **Scaffold edit / hyperparameters.** Delegate the moment computation to `nn.GroupNorm`. Choose the group
-count *adaptively* because the layer widths here are small and uneven: start from the paper default 32, cap
+count *adaptively* because the layer widths here are small and uneven: start from a default of 32, cap
 at the channel count `min(32, num_features)`, then decrement until it divides `num_features`. On 64 ch →
 32 groups; on 32 or 16 ch → 1 channel/group (instance-equivalent — the graceful fallback at the `G = C`
 boundary); on 96/160 ch → 32 groups. `ε = 1e-5` and the per-channel affine are `nn.GroupNorm`'s defaults.
@@ -34,8 +34,6 @@ class CustomNorm(nn.Module):
 
     Divides channels into groups and normalizes within each group independently.
     Works well with small batch sizes where BatchNorm statistics are noisy.
-
-    Reference: Wu & He, "Group Normalization" (ECCV 2018)
     """
 
     def __init__(self, num_features):

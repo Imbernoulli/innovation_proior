@@ -74,7 +74,7 @@ L(φ) = (1/|M|) Σ_(b,t,i)∈M max( (V_φ(x_bti) − R̂_bti)^2,
                                 (V_clip − R̂_bti)^2 )
 ```
 
-The paper writes the value loss with squared errors; the official on-policy trainer applies the same
+The value loss is written here with squared errors; the official on-policy trainer applies the same
 clipped-error structure with Huber loss (`δ = 10`) and PopArt-normalized returns. GAE:
 `δ_t = r_t + γ V(s_{t+1}) − V(s_t)`, `A_t = Σ_{l≥0} (γλ)^l δ_{t+l}`, with `V` denormalized before forming
 `δ_t`. Recurrent (GRU) variants additionally sum over time and train with BPTT on fixed-length chunks.

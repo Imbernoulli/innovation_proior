@@ -17,7 +17,7 @@ def construct(n=600):
     (Erdos's 1955 upper bound). Lower C is a tighter bound on the constant C5."""
     return np.full(n, 0.5)
 
-# --- frozen evaluator (AlphaEvolve App. B.5, arXiv:2506.13131) ---
+# --- frozen evaluator ---
 def compute_upper_bound(sequence):
     seq = np.asarray(sequence, dtype=float)
     conv = np.correlate(seq, 1.0 - seq, mode='full')   # c_k = sum_i v_i (1 - v_{i-k})

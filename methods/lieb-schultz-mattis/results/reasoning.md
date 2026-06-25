@@ -62,7 +62,7 @@ and likewise ψ_k (A + B)(A − B) = Λ_k² ψ_k. Since A is symmetric and B ant
 
 H = Σ_k Λ_k η_k^† η_k + ½(Σ_i A_ii − Σ_k Λ_k).
 
-That's the whole diagonalization machine (this is the content I'll need in the appendix sense — the Bogoliubov rotation for a general real quadratic Fermi form).
+That's the whole diagonalization machine (this is the general machinery I'll need — the Bogoliubov rotation for a general real quadratic Fermi form).
 
 Apply it to the c-cyclic XY model. The hopping matrix A is ½ on nearest neighbors (cyclically), the pairing B is ½γ antisymmetric on nearest neighbors. The combination (A − B)(A + B) is a real symmetric circulant-like matrix, so its eigenvectors are the plane waves φ_kj = √(2/N) sin kj or √(2/N) cos kj with k = 2πm/N, m = −N/2,…,N/2−1. Plugging in, the eigenvalues come out
 

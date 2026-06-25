@@ -72,4 +72,4 @@ nngp <- W_std^2 nngp             otherwise
 ntk  <- nngp + W_std^2 ntk
 ```
 
-after the dense affine step. Its `parameterization='standard'` branch uses a different finite-width scaling and is not the paper's NTK parameterization. The empirical API computes the finite-network NTK as `J(X1) J(X2)^T`, with `J` the Jacobian with respect to parameters; for exact finite-network dynamics, no output axes should be traced or diagonalized unless the corresponding independence/diagonal assumptions are intended.
+after the dense affine step. Its `parameterization='standard'` branch uses a different finite-width scaling and is not the NTK parameterization derived here. The empirical API computes the finite-network NTK as `J(X1) J(X2)^T`, with `J` the Jacobian with respect to parameters; for exact finite-network dynamics, no output axes should be traced or diagonalized unless the corresponding independence/diagonal assumptions are intended.

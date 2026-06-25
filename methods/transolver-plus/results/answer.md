@@ -1,11 +1,5 @@
 # Transolver++: An Accurate Neural Solver for PDEs on Million-Scale Geometries
 
-**Reference.** Huakun Luo, Haixu Wu, Hang Zhou, Lanxiang Xing, Yichen Di,
-Jianmin Wang, Mingsheng Long, "Transolver++: An Accurate Neural Solver for
-PDEs on Million-Scale Geometries", ICML 2025 / arXiv:2502.02414. Official
-implementation: `thuml/Transolver_plus`, commit
-`d5a23bc734a0ebac56384cf72049a26af9673452`.
-
 ## Core method
 
 Start from Physics-Attention: assign `N` point features to `M` learned physical
@@ -36,14 +30,14 @@ machinery:
    w_i = softmax((Linear(x_i) + g_i) / tau_i).
    ```
 
-   This is equivalent to the paper's `Linear(x_i) - log(-log epsilon_i)` form.
+   This is equivalent to the `Linear(x_i) - log(-log epsilon_i)` form.
    The sign-sensitive point is that `-log(-log u)` is the Gumbel sample, not
    `log(-log u)`.
 
 3. **Single-stream state content.**
    Remove the old duplicate content projection `f`. One projection `x_mid`
    both computes the slice logits/temperatures and supplies the state content.
-   This is the speedup marked in Algorithm 1 and matches the official code's
+   This is the speedup marked in the single-stream algorithm and matches the official code's
    `in_project_x` with no `in_project_fx`.
 
 4. **Distributed state means.**
@@ -69,8 +63,8 @@ machinery:
   constant-temperature slice operator. Low `tau_i` gives near one-hot state
   assignment. High `tau_i` gives a softer mixture for ambiguous regions.
 - **Slice-count cases.** `M = 1` collapses to global pooling and loses physical
-  correlations. Larger `M` increases cost and can fragment states; the paper
-  uses `{32, 64}` in standard settings and `32` for million-scale industrial
+  correlations. Larger `M` increases cost and can fragment states; I
+  use `{32, 64}` in standard settings and `32` for million-scale industrial
   settings with width 256.
 - **Gumbel sign.** The implementation's `logits + (-log(-log(u)))` is the same
   as `logits - log(-log(u))`; reversing that sign would sample from the wrong
@@ -89,7 +83,7 @@ machinery:
 The official repository writes `dist_nn.all_reduce(slice_norm, ...)` and
 `dist_nn.all_reduce(slice_token, ...)` without assignment. In the local PyTorch
 2.7.1 API, `torch.distributed.nn.all_reduce` returns the reduced tensor. The
-code below binds those return values to implement the paper's Algorithm 1 exactly;
+code below binds those return values to implement the distributed-state algorithm exactly;
 apart from that return binding, names, shapes, constants, and class structure
 match the canonical implementation.
 
@@ -253,7 +247,7 @@ class Transolver_plus_block(nn.Module):
 
 ## Result summary
 
-The reported gains are 13% average relative improvement across six standard PDE
-benchmarks and more than 20% improvement on million-scale industrial tasks. The
-paper reports single-GPU input capacity up to 1.2 million points and full
+The measured gains are 13% average relative improvement across six standard PDE
+benchmarks and more than 20% improvement on million-scale industrial tasks.
+Single-GPU input capacity reaches up to 1.2 million points and full
 DrivAerNet++ cases with roughly 2.5 million points on up to 4 A100 GPUs.

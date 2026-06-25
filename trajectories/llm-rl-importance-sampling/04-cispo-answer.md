@@ -32,8 +32,7 @@ edge is the load-bearing variance knob and can be generous since exceeding it pi
 token; the lower edge is nearly inert); log-ratio clamp `[−20, 20]` before `exp`; `token-mean`
 aggregation; **no dual-clip floor** (the coefficient is already bounded by `clip(w)`);
 `pg_clipfrac` = fraction of tokens whose weight was clipped; `pg_clipfrac_lower` returned as `0.0`.
-Verified line-by-line against verl's canonical `compute_policy_loss_cispo` (MiniMax-M1,
-arXiv:2506.13585).
+Verified line-by-line against verl's canonical `compute_policy_loss_cispo`.
 
 ```python
 # EDITABLE region of custom_policy_loss.py — finale: CISPO (clipped IS weight, stop-grad)

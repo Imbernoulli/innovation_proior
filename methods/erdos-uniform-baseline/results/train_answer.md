@@ -37,7 +37,7 @@ def construct(n=600):
     return np.full(n, 0.5)
 
 def compute_upper_bound(sequence):
-    """Frozen evaluator (AlphaEvolve App. B.5, arXiv:2506.13131)."""
+    """Frozen evaluator (AlphaEvolve, App. B.5)."""
     seq = np.asarray(sequence, dtype=float)
     conv = np.correlate(seq, 1.0 - seq, mode='full')   # c_k = sum_i v_i (1 - v_{i-k})
     return float(np.max(conv) / len(seq) * 2.0)

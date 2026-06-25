@@ -42,7 +42,7 @@ float solution onto a coarse grid.
   gradients, early divergence). Richer sets like `{-2, -1, 0, 1}` give no demonstrated gain
   over ternary — stop at `{-1, 0, +1}` (Occam).
 
-- **8-bit per-token absmax activations, symmetric.** The paper notation uses
+- **8-bit per-token absmax activations, symmetric.** With notation
   `Qb = 2^{b-1}` (`Qb = 128` for `b = 8`); the official code uses scale `127 / max|x|`,
   rounds, clamps to the actual int8 range `[-128, 127]`, and dequantizes by the inverse:
 

@@ -17,13 +17,13 @@ temperature. With $R\in\mathbb{R}^{d_k\times b/2}$,
 $$h(x)=\arg\max([xR;\,-xR])$$
 is the angular hash. Sort by $(h(x),\text{position})$, chunk the sorted sequence
 into length-$m$ chunks, and let each chunk attend to itself plus one previous
-chunk. The paper relation is $m=2l/n_{buckets}$, so code that treats `chunk_len`
+chunk. The chunking relation is $m=2l/n_{buckets}$, so code that treats `chunk_len`
 as $m$ should default to `n_buckets = 2 * length // chunk_len`.
 
 For multiple hashes,
 $$\mathcal{P}_i=\bigcup_r \mathcal{P}_i^{(r)},\qquad
 \mathcal{P}_i^{(r)}=\{j:h^{(r)}(q_i)=h^{(r)}(q_j)\}.$$
-The exact appendix union correction uses
+The exact union correction uses
 $$N_{i,j}=|\{r:j\in\mathcal{P}_i^{(r)}\}|,\qquad
 m^{(r)}_{i,j}=\begin{cases}
 \infty & j\notin\mathcal{P}_i^{(r)}\\
@@ -52,7 +52,7 @@ log-probability/loss can be chunked similarly for large vocabularies.
 
 ## Complexity
 
-With $n_c=l/32$ LSH chunks and $c=(4l/n_c)^2=128^2$, the paper's model-level
+With $n_c=l/32$ LSH chunks and $c=(4l/n_c)^2=128^2$, the model-level
 memory table is:
 
 | Model | Memory |
@@ -63,13 +63,13 @@ memory table is:
 | LSH Transformer | $\max(bld_{ff}, bn_hln_rc)n_l$ |
 | Reformer | $\max(bld_{model}, bn_hln_rc)$ |
 
-The corresponding Reformer time term remains
+The corresponding Reformer time term is
 $(bld_{ff}+bn_hn_rlc)n_l$: reversible layers save memory, not compute, while LSH
 replaces dense attention with local chunk attention plus hashing/sorting.
 
 ## Canonical Implementation Notes
 
-The paper points to Google Trax as the reference implementation. In Trax commit
+Google Trax serves as the reference implementation. In Trax commit
 `31022d6cd7dd525ed11a04d84cd3936228499173`:
 
 - `hash_vecs` uses random rotations, concatenates `[rotated, -rotated]`, and
@@ -83,7 +83,7 @@ The paper points to Google Trax as the reference implementation. In Trax commit
 - `mask_self_attention` subtracts `1e9` for future/padding masks and `1e5` for
   self masks.
 - The Trax round combiner weights per-round outputs by softmaxed per-round
-  log-partitions. It does not explicitly compute the paper appendix's
+  log-partitions. It does not explicitly compute the
   `log N_{i,j}` duplicate correction in the current code path, so a code
   artifact should not claim exact duplicate-set union unless it also computes
   those counts.

@@ -24,8 +24,8 @@ parameter coordinate:
 
 `m_S = 1(abs(grad_theta ell_f(theta_o; D_f)) >= gamma)`.
 
-The hard threshold `gamma` is not an absolute number I can reuse across architectures. The paper-level
-description says the median is an effective practical choice, and the public code implements the same
+The hard threshold `gamma` is not an absolute number I can reuse across architectures. The median is an
+effective practical choice, and I can implement the same
 idea by ranking all absolute scores globally and writing mask files such as `with_0.5.pt`. With
 `0.5`, the largest half of scores get mask value `1`, and the rest get `0`, up to integer flooring. The
 mask is global, not layerwise. That matters because a layerwise median would force every layer to update
@@ -53,7 +53,7 @@ The reference implementation is slightly looser than the displayed math. For CIF
 fresh labels with `torch.randint(0, num_classes, target.shape)`, so the original class can occur. For
 CIFAR-100 and TinyImageNet it rewrites a copied forget dataset with `np.random.randint` and concatenates
 that dataset with the retain dataset. I should not silently "fix" that in a code-faithful artifact: the
-paper formula excludes the true label, while the canonical code samples from all classes.
+displayed formula excludes the true label, while the canonical code samples from all classes.
 
 I also need to be precise about the retain term. The formula has an explicit `alpha`; the classifier
 code realizes the default recipe without an explicit scalar in `RL.py`. On CIFAR-10 and SVHN it performs
@@ -75,7 +75,7 @@ but in Stable Diffusion it is built over `model.model.diffusion_model` parameter
 the `model.diffusion_model.` prefix from parameter names.
 
 One tempting shortcut is to compute the mask lazily from the first forget minibatch. I reject that. The
-source definition and the reference code both compute the mask in a setup pass over the forget loader at
+canonical definition and the reference code both compute the mask in a setup pass over the forget loader at
 the original weights. A first-minibatch mask is a possible engineering approximation, but it is not the
 canonical method, and it would be a source of hindsight drift in the deliverable.
 

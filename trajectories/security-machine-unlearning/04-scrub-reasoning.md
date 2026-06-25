@@ -74,8 +74,8 @@ KL carries the `T^2` factor — `d(x) = T^2·KL(softmax(teacher/T) ‖ softmax(s
 `F.kl_div(log_softmax(student/T), softmax(teacher/T), reduction='batchmean')·T^2` — because the
 soft-target gradient scales as `1/T^2`, and the `T^2` restores its magnitude so the distillation term
 keeps a stable weight; `T = 4` sits where softening exposes the inter-class structure without flattening
-to noise, the value from the authors' VGG settings. Defaults `msteps = 2`, `kd_T = 4`, `alpha = 0.01`,
-`gamma = 0.99` follow that same notebook. The fixed `Adam(lr=0.001)` is exactly the small step the
+to noise, a standard distillation temperature. Defaults `msteps = 2`, `kd_T = 4`, `alpha = 0.01`,
+`gamma = 0.99` are the settings I adopt. The fixed `Adam(lr=0.001)` is exactly the small step the
 min-max instability wants — a large step would let the max/min oscillation blow up, so the harness's
 conservative rate is fortunate here.
 

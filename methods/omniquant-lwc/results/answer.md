@@ -97,6 +97,3 @@ class UniformAffineQuantizer(nn.Module):
         scale, zero_point = self.calibration(x)
         return self.fake_quant(x, scale, zero_point)
 ```
-
-Reference: Shao, Chen, Zhang, Liu, Zhang, Gao, Yan, Luo, "OmniQuant: Omnidirectionally Calibrated
-Quantization for Large Language Models", ICLR 2024, arXiv:2308.13137.

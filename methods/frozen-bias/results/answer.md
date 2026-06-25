@@ -90,7 +90,7 @@ and gives
   = Otilde(lambda^{-4} max{(d+N)/n, d^4/n^2}).
 ```
 
-For ReLU with `lambda=Theta(1)` and `s>2`, this is the advertised `Otilde(d^s)` batch-gradient-flow recovery rate. The ReLU cases `s=1` and `s=2` are `d^2` and `d^2.5`; replacing ReLU by the smooth activation analyzed in the appendix can improve those cases to `d^s`.
+For ReLU with `lambda=Theta(1)` and `s>2`, this is the advertised `Otilde(d^s)` batch-gradient-flow recovery rate. The ReLU cases `s=1` and `s=2` are `d^2` and `d^2.5`; replacing ReLU by a smooth activation can improve those cases to `d^s`.
 
 After direction recovery, a fresh-sample ridge refit of `c` with a separate `lambda_{n'}` yields
 
@@ -108,7 +108,7 @@ The local benchmark code cannot instantiate the exact tied-direction theorem mod
 
 ```python
 class Strategy:
-    """Frozen-bias shallow network (Bietti et al., NeurIPS 2022, Thm 1)."""
+    """Frozen-bias shallow network for single-index recovery (Thm 1)."""
 
     def __init__(self, config: TaskConfig) -> None:
         self.config = config

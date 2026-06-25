@@ -5,7 +5,7 @@ discrete weights are close to the float weights, I care whether they make the *l
 per layer, the gap between reconstruction-optimal and loss-optimal level placement is the residual gap to
 a usable model.
 
-**Key idea (LSQ — Learned Step Size Quantization, Esser et al., ICLR 2020, arXiv:1902.08153).** Make the
+**Key idea (LSQ — Learned Step Size Quantization).** Make the
 per-layer step size a **learnable parameter**, trained jointly with the weights against the next-token
 loss. Quantizer `ŵ = round(clip(w/s, −Q_N, Q_P))·s`. STE on the round; differentiate divide/clip/multiply
 honestly, which yields the interior step-gradient `∂ŵ/∂s = round(w/s) − w/s` — the negative signed
@@ -16,7 +16,7 @@ with the same detach trick as the STE.
 
 **Why (adapted to this task).** Canonical LSQ fine-tunes from an FP teacher with momentum SGD; here it is
 *pretraining from scratch* with AdamW on the fixed schedule, so the step is initialized from the scratch
-weights via the published `s = 2·mean(|W|)/√Q_P` and trained by the same AdamW. Bit-width **3** (signed
+weights via `s = 2·mean(|W|)/√Q_P` and trained by the same AdamW. Bit-width **3** (signed
 `Q_N=4, Q_P=3`, grid `{−4,…,+3}`, 8 levels) tests both halves of the thesis: more levels than int2's
 effective five, *and* placed by the loss. Activations held **identical** to all baselines (8-bit
 per-tensor absmax, `Q_b=127`, STE) to isolate the learned-weight-step contribution. No SubLN (the block's

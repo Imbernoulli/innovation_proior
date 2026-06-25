@@ -25,7 +25,7 @@ the projections, turns the power \(A^{n-m}\) into a relative-position factor. Wi
 \[
 o_n=\sum_{m\le n}\gamma^{n-m}(Q_n e^{in\theta})(K_m e^{im\theta})^\dagger V_m .
 \]
-The dagger supplies the conjugate phase on the key side; in the real TorchScale code this is
+The dagger supplies the conjugate phase on the key side; in code this is
 implemented by applying the same RoPE rotation to both \(q\) and \(k\) and then taking their
 real dot product.
 
@@ -65,11 +65,11 @@ training while preserving within-chunk parallelism.
 
 ## Gated multi-scale retention
 
-Use \(h\) heads, each with a different fixed decay. The paper default is
+Use \(h\) heads, each with a different fixed decay. The default is
 \[
 \gamma = 1-2^{-5-\mathrm{arange}(0,h)} ,
 \]
-while the large-model experiments use a log-spaced range
+while the large-model regime uses a log-spaced range
 \[
 \gamma = 1-\exp(\mathrm{linspace}(\log(1/32),\log(1/512),h)).
 \]
@@ -81,21 +81,20 @@ Y=\mathrm{GroupNorm}_h(\mathrm{Concat}(\mathrm{head}_1,\dots,\mathrm{head}_h)),
 \[
 \mathrm{MSR}(X)=\big(\mathrm{swish}(XW_G)\odot Y\big)W_O .
 \]
-The paper describes per-head GroupNorm; the canonical TorchScale implementation realizes this
+Conceptually this is per-head GroupNorm; I realize it in code
 as per-head `RMSNorm(head_dim, elementwise_affine=False)`. Its scale-invariance is what makes
 the stabilizers function-preserving: \(QK^\top/\sqrt d\), \(D_{nm}/\sqrt{\sum_i D_{ni}}\), and
 row-magnitude normalization of \(R=QK^\top\odot D\).
 
-The paper block is pre-norm residual MSR followed by FFN. TorchScale's maintained RetNet code
-uses RMSNorm pre-norm, a GLU feed-forward layer, DeepNorm residual scaling when enabled, and
+The block is pre-norm residual MSR followed by FFN. In the full implementation I
+use RMSNorm pre-norm, a GLU feed-forward layer, DeepNorm residual scaling when enabled, and
 `W_V,W_G` projecting to the configured value dimension, typically \(2d\), with the FFN reduced to
 \(2d\) for parameter matching.
 
 ## Reference-shaped code
 
-This is the core artifact as implemented by Microsoft TorchScale at commit
-`4d1e0e82e5adf86dd424f1463192635b73fc8efc`; TorchScale wraps projections in `MultiwayWrapper`,
-but the retention math below is the same.
+This is the core artifact in implementation form. A production wrapper would wrap the projections in a
+`MultiwayWrapper`, but the retention math below is the same.
 
 ```python
 import torch

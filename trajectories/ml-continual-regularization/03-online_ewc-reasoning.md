@@ -138,8 +138,7 @@ loop accumulates whatever I return *additively* into `_custom_importance` — `e
 want the buffer to land on `gamma * existing + F_new`, not `existing + F_new`. So inside
 `estimate_importance` I compute the full decayed-plus-new Fisher `gamma * existing + F_new` myself, then
 *subtract* the existing value and return the difference: the loop's `existing + (gamma*existing + F_new -
-existing)` lands exactly on `gamma * existing + F_new`. That subtraction trick is not in the paper's Online
-EWC — it is purely an adapter to the harness's add-don't-replace convention — but it makes the carried
+existing)` lands exactly on `gamma * existing + F_new`. That subtraction trick is purely an adapter to the harness's add-don't-replace convention, and it makes the carried
 buffer hold the geometric decayed sum the derivation prescribes. The importance estimator itself is
 unchanged from EWC: the diagonal Fisher from softmax-weighted squared gradients over all classes, eval
 mode, capped sample — the model's own expected curvature, first-order and cheap. (The full module, with the

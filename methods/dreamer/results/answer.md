@@ -104,11 +104,11 @@ while training:
   append the episode to D
 ```
 
-Paper hyperparameters for continuous control: $S=5$ seed episodes, batches of 50
+Hyperparameters for continuous control: $S=5$ seed episodes, batches of 50
 sequences of length 50, $H=15$, $\gamma=0.99$, $\lambda=0.95$, $\beta=1$, 3 free
 nats, action repeat 2, Gaussian exploration noise $\mathcal N(0,0.3)$, Adam learning
 rates $6\times10^{-4}$ for the model and $8\times10^{-5}$ for actor and value, and
-gradient-norm clip 100. The paper reports three dense layers of 300 ELU units for
+gradient-norm clip 100. The reported configuration uses three dense layers of 300 ELU units for
 non-convolutional functions; the Danijar TensorFlow 2 reference implementation uses
 `num_units=400` while keeping stochastic size 30 and deterministic size 200.
 

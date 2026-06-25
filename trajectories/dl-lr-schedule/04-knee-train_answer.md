@@ -12,7 +12,7 @@ The split between explore and exploit is the one real knob, and the density hypo
 
 ```python
 def get_lr(epoch, total_epochs, base_lr, config):
-    """Knee (explore-exploit) schedule (Iyer et al., JMLR 2023, arXiv:2003.03977).
+    """Knee (explore-exploit) schedule.
 
     Three phases tiling the budget (canonical 1-indexed step = epoch + 1):
       warmup  (5 epochs):     linear ramp base_lr/5 -> base_lr

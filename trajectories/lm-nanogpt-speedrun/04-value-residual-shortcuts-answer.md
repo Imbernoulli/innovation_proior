@@ -4,20 +4,20 @@ the residual stream over depth and how stable the logits are at the end. As dept
 concentrates and later layers lose access to the clean value information the early layers computed; mean-
 while nothing bounds a single logit from running away and saturating the softmax late in training.
 
-**Key idea (four bundled shortcuts).** (1) **Value residual** (Zhou et al. 2024, arXiv:2410.17897): the
+**Key idea (four bundled shortcuts).** (1) **Value residual** (Zhou et al. 2024): the
 first block exposes its value v1, and every later attention layer mixes its own value with v1, restoring a
 direct line to the pristine early-layer values. (2) **Learnable lambda**: replace the fixed 0.5 mix with a
 per-layer scalar `nn.Parameter(0.5)` optimized by Adam(lr=0.02), so each depth decides how much v1 it wants.
 (3) **Embed shortcut**: feed the original normalized embedding x0 into every block via two learnable scalars
 initialized to (1, 0) (a pure pass-through at init), giving deep blocks a direct path back to the raw input.
 (4) **Momentum warmup** for Muon: ramp momentum 0.85→0.95 over the first 500 steps. (5) **Tanh logit
-softcap** (Gemma 2, Team et al. 2024, arXiv:2408.00118): `logits = 30*tanh(logits/30)`, bounding logits to
+softcap** (Gemma 2, Team et al. 2024): `logits = 30*tanh(logits/30)`, bounding logits to
 (−30, 30) so the softmax can't saturate.
 
 **Why it works.** Value residual and the embed shortcut both give later blocks a direct path back to clean
 early signal (v1 and x0), countering attention concentration and the dilution of the input over twelve
 additive updates — better information flow buys real steps. The learnable scalars all start at a pass-through
-or the published mix, so each only *adds* capacity the model can ignore. Momentum warmup lets early updates
+or the standard mix, so each only *adds* capacity the model can ignore. Momentum warmup lets early updates
 track the fast-changing gradient before settling into the smoother high-momentum regime; the tanh softcap
 keeps the loss curve clean by preventing any logit from blowing up. All five are a couple of lines with
 negligible parameters.

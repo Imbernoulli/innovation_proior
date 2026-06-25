@@ -38,11 +38,11 @@ The auxiliary load-balancing term is
 \]
 At uniform routing, \(f_i=P_i=1/N\), so \(\sum_i f_iP_i=1/N\) and \(L_{aux}=\alpha\). The factor \(N\) keeps the uniform-value scale stable as the expert count changes. In the Mesh TensorFlow implementation, `reduce_mean(f * P) * N**2` is the same quantity because `reduce_mean` divides the expert sum by \(N\).
 
-The stability recipe is local: cast router inputs/logits/softmax to float32, build top-1 assignments and combine weights there, then cast combine/dispatch tensors back to the model dtype before distributed expert communication. The paper also uses a 10x smaller initialization scale than the default Transformer scale, multiplicative input jitter for routing exploration, and higher dropout inside experts during fine-tuning.
+The stability recipe is local: cast router inputs/logits/softmax to float32, build top-1 assignments and combine weights there, then cast combine/dispatch tensors back to the model dtype before distributed expert communication. I also use a 10x smaller initialization scale than the default Transformer scale, multiplicative input jitter for routing exploration, and higher dropout inside experts during fine-tuning.
 
 ## Reference-Faithful Code
 
-This is a single-process PyTorch sketch of the paper and Mesh TensorFlow code path. It is intentionally not a performant all-to-all implementation; it preserves the routing math, capacity cases, and auxiliary loss.
+This is a single-process PyTorch sketch matching the Mesh TensorFlow code path. It is intentionally not a performant all-to-all implementation; it preserves the routing math, capacity cases, and auxiliary loss.
 
 ```python
 import torch

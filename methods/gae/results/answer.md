@@ -71,7 +71,7 @@ At iteration $i$:
 5. Fit the value function to Monte Carlo discounted returns
    $\hat V_t=\sum_{l\ge0}\gamma^l r_{t+l}$ under a value-function trust region.
 
-Advantages must be computed using the old value function. The paper's algorithm
+Advantages must be computed using the old value function. The algorithm
 updates $\theta$ before $\phi$; rllab computes advantages, then fits the baseline
 before calling the policy optimizer, but the current policy step still uses
 advantages from the old baseline. The value target is the discounted return, not

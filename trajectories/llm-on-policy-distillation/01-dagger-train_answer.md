@@ -26,14 +26,14 @@ def compute_distill_loss(
     total_steps: int = 0,
     lmbda: float = 0.5,
 ) -> torch.Tensor:
-    # DAgger (arXiv 2605.12913) — cross-entropy on teacher's top-1 action.
-    # Eq.12-13 + §A: plain CE with unit token weight (w(s,a)=1), no temperature
+    # DAgger — cross-entropy on teacher's top-1 action.
+    # Plain CE with unit token weight (w(s,a)=1), no temperature
     # rescaling on either side. The state distribution comes from upstream
     # GKDTrainer's lmbda mixing (with prob lmbda, inputs are student-generated;
     # otherwise dataset). This loss replaces OPD's reverse-KL soft target with
     # a hard-target supervision signal at each token position.
 
-    # No temperature scaling: paper specifies plain log π_θ(ã|s).
+    # No temperature scaling: plain log π_θ(ã|s).
     # Teacher's argmax action at each position is the deterministic
     # instantiation of the teacher's chosen action at that state.
     target_tokens = teacher_logits.argmax(dim=-1)  # [B, T]

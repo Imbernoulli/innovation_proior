@@ -74,7 +74,7 @@ and later blocks build on it.
 
 Now I make this concrete *inside this task's edit surface*, and here the implementation departs from the
 generic continuous-filter encoder in ways I want to be explicit about, because the harness fixes choices
-the paper version leaves open. First, I do not hand-roll the convolution; I use the components the
+the generic version leaves open. First, I do not hand-roll the convolution; I use the components the
 geometry library already ships — the interaction block (continuous-filter convolution plus shifted
 softplus plus a linear), the Gaussian smearing, and the shifted-softplus activation — wired in the same
 residual pattern. Second, there are no forces here and no energy: this is an *encoder*, so the landing

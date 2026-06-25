@@ -17,7 +17,7 @@ table; compare keys with SWAR `long` compares. Keep the branchless SWAR magic-co
 fewer branches, no incubator-codegen variance, and far less lane work per 7-byte payload. The hash is
 computed from words already in registers (no second pass), key compares are two `long` compares for a
 16-byte name, entries are flat `byte[]`s with no boxing, and the subprocess trick removes the serial unmap
-from the measured wall-clock. The author's in-file optimization log records the descent (62000 ms → mmap
+from the measured wall-clock. My in-file optimization log records the descent (62000 ms → mmap
 6500 → custom map 4200 → SWAR token checks 3900 → Unsafe 1900 → ~1200 at the dev-machine floor).
 
 **Change / code.** The 16-byte SWAR delimiter scan with in-line hashing, the SWAR number parse, and the

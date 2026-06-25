@@ -7,7 +7,7 @@ place to model agent-to-agent interaction, which is exactly what cooperative val
 `d_model`, and run a single unmasked `TransformerEncoder` layer so each agent's representation is mixed
 with every other agent's via data-dependent self-attention `softmax(QKᵀ/√d_k)V`; a per-agent linear head
 reads the value off the mixed representation. This is the *encoder-only, critic-only* form of the
-multi-agent sequence-modeling method (Wen et al. 2022, arXiv:2205.14953): the full method also replaces
+multi-agent sequence-modeling method (MAT): the full method also replaces
 the actor with a masked auto-regressive decoder that conditions each agent's action on its predecessors
 (the source of its advantage-decomposition guarantee), but the harness fixes the actor, so only the
 interaction-modeling encoder survives. The probe isolates "does an attention critic beat a flat MLP?"
@@ -44,7 +44,7 @@ import torch.nn.functional as F
 class CustomCritic(nn.Module):
     """MAT-style attention critic — self-attention over per-agent tokens.
 
-    Adapted from Wen et al. 2022 MAT (arXiv 2205.14953), critic-only form.
+    The critic-only form of the multi-agent Transformer (MAT).
     Each agent's token encodes its local observation together with the
     global state; a single TransformerEncoder layer mixes information
     across agents via self-attention, then a per-token linear head

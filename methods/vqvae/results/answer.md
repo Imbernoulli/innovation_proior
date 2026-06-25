@@ -45,7 +45,7 @@ For a selected code `z_q(x)`, the complete model marginal satisfies
 log p(x) = log Σ_k p(x|z_k)p(z_k) ≥ log p(x|z_q(x))p(z_q(x))
 ```
 
-because the right-hand side keeps one nonnegative summand from the full sum. The paper's MAP approximation is the stronger empirical claim that, after training, the selected code dominates that sum.
+because the right-hand side keeps one nonnegative summand from the full sum. The MAP approximation is the stronger empirical claim that, after training, the selected code dominates that sum.
 
 ## Generation
 

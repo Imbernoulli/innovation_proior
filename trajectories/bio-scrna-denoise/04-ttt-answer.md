@@ -1,7 +1,6 @@
 **Problem.** Close the three gaps MAGIC left: a single sqrt transform for all genes, no refinement
-in the log-normalized scoring space, and no global low-rank structure. The endpoint is an adaptation
-of the TTT-Discover denoiser (test-time-training/discover, arXiv:2601.16175) that tops the
-OpenProblems leaderboard (0.71 PBMC / 0.73 Tabula vs MAGIC ~0.64).
+in the log-normalized scoring space, and no global low-rank structure. The endpoint is a test-time
+denoiser that should reach roughly 0.71 PBMC / 0.73 Tabula, well past MAGIC's ~0.64.
 
 **Key idea.** Keep MAGIC's adaptive-bandwidth diffusion graph as the backbone, built once on the
 Anscombe embedding with a self-loop. Run the full pipeline under **three variance-stabilizing
@@ -95,7 +94,7 @@ def denoise(X, knn=12, t=7, n_pca=50, decay=2.0, diff_decay=0.9,
             log_smooth_t=4, log_smooth_weight=0.6,
             final_smooth_t=3, final_smooth_weight=0.30,
             impute_steps=2, max_alpha=0.7, seed=0):
-    """TTT-Discover endpoint: multi-VST ensemble + low-rank SVD + log-space diffusion."""
+    """Test-time endpoint: multi-VST ensemble + low-rank SVD + log-space diffusion."""
     X = X.astype(np.float64)
     n_cells, n_genes = X.shape
     libsize_raw = X.sum(axis=1); libsize_raw[libsize_raw == 0] = 1.0

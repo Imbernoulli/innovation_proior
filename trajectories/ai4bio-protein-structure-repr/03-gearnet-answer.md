@@ -111,8 +111,7 @@ class ProteinEncoder(nn.Module):
     edge types (sequential bonds, spatial proximity, k-nearest neighbors)
     with relational convolutions and optional short-cut connections.
 
-    Reference hyperparameters (from proteinworkshop/config/encoder/gear_net.yaml
-    and the GearNet paper, Zhang et al. 2022, arXiv:2203.06125):
+    Reference hyperparameters (from proteinworkshop/config/encoder/gear_net.yaml):
       num_layers=6, emb_dim=512, activation=relu, short_cut=True,
       concat_hidden=True, batch_norm=True, pool=sum, num_relation=7
       (5 sequential offsets {-2,-1,0,1,2} + 1 spatial radius + 1 kNN).
@@ -167,7 +166,7 @@ class ProteinEncoder(nn.Module):
         self.dropout = nn.Dropout(dropout)
 
     def _build_multi_relational_edges(self, pos, node_feat, batch):
-        """Build edges with 7 relation types matching GearNet (Zhang et al. 2022):
+        """Build edges with 7 relation types matching GearNet:
         0..4: sequential edges with offsets {-2,-1,0,1,2}
               (offset 0 corresponds to a self-loop relation in sequential space)
         5:    spatial proximity (within cutoff radius)
@@ -263,8 +262,7 @@ class ProteinEncoder(nn.Module):
             node_feat_out = hiddens[-1]
 
         node_emb = self.out_proj(node_feat_out)
-        # Sum pooling matches reference gear_net.yaml (pool=sum) and the
-        # GearNet paper (Zhang et al. 2022, arXiv:2203.06125).
+        # Sum pooling matches reference gear_net.yaml (pool=sum).
         graph_emb = global_add_pool(node_emb, batch)
 
         return node_emb, graph_emb

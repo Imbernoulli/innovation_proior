@@ -59,14 +59,14 @@ def run_evolution(
     random.seed(seed)
     np.random.seed(seed)
 
-    # --- Hyperparameters (Tanabe & Fukunaga, CEC 2014) ---
-    # The paper recommends N_init = 18·D, but on small fixed budgets (as in
+    # --- Hyperparameters ---
+    # The canonical recommendation is N_init = 18·D, but on small fixed budgets (as in
     # our 400 pop × 1000 gen setting) that value starves the search of
     # generations: on Rastrigin-100D, N_init=1800 with matched total-eval
     # budget degraded from 128 → 313. Use pop_size as given and the
-    # canonical N_min = 4 (paper §III-B), which lets the linear population
+    # canonical N_min = 4, which lets the linear population
     # reduction actually run. Budget stays identical to CMA-ES/DE/GA.
-    H = 6  # History size (paper default)
+    H = 6  # History size (canonical default)
     N_init = pop_size
     N_min = 4  # Minimum population size
     p_min = 2.0 / N_init  # Minimum p for pbest

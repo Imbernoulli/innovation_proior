@@ -26,11 +26,11 @@ The primitive-root check is that nonzero multiplication mod `p` is addition mod 
 
 ## Training Recipe
 
-For the reported main experiments, use a 2-layer decoder-only transformer with width `128`, `4` attention heads, causal masking, and about `4e5` non-embedding parameters. Score only the right-hand side after the equals sign. In the official code this is a shifted language-model objective over the answer symbol and trailing EOS token.
+For the main experiments, use a 2-layer decoder-only transformer with width `128`, `4` attention heads, causal masking, and about `4e5` non-embedding parameters. Score only the right-hand side after the equals sign. In the official code this is a shifted language-model objective over the answer symbol and trailing EOS token.
 
-The common paper configuration is AdamW with learning rate `1e-3`, betas `(0.9, 0.98)`, epsilon `1e-8`, linear warmup over `10` updates, minibatch size `min(512, ceil(train_size / 2))`, weight decay `1`, and `1e5` gradient updates. The learning-time curves use `5e5` updates. The dramatic modular-division curve uses `50%` training data, Adam with no weight decay, and `1e6` updates to make the late transition visible.
+The common configuration is AdamW with learning rate `1e-3`, betas `(0.9, 0.98)`, epsilon `1e-8`, linear warmup over `10` updates, minibatch size `min(512, ceil(train_size / 2))`, weight decay `1`, and `1e5` gradient updates. The learning-time curves use `5e5` updates. The dramatic modular-division curve uses `50%` training data, Adam with no weight decay, and `1e6` updates to make the late transition visible.
 
-The OpenAI reference code lives under `code/openai-grok/`. Its CLI defaults are not all paper-report defaults: `scripts/train.py` defaults to `train_data_pct=5` and `weight_decay=0`, so paper-style runs must pass the desired operator, train percentage, max steps, and weight decay explicitly.
+The reference code lives under `code/openai-grok/`. Its CLI defaults are not all the configuration defaults above: `scripts/train.py` defaults to `train_data_pct=5` and `weight_decay=0`, so the runs above must pass the desired operator, train percentage, max steps, and weight decay explicitly.
 
 ## Empirical Signature
 
@@ -56,7 +56,7 @@ The reference implementation uses `ArithmeticDataset.make_data` to wrap each equ
 
 Training feeds all tokens except the final EOS as input and uses the one-token-shifted sequence as target. Loss and accuracy are computed only on target positions after `=`, so a binary operation row must predict both `c` and the trailing EOS. The division generator is equivalent to `c = a * y^{-1} mod p`; in code it enumerates quotient `c` and renders `(y * c mod p) / y = c`.
 
-The reference transformer uses sinusoidal position encodings, a lower-triangular causal mask, two decoder blocks for the paper setting, ReLU feed-forward layers, no dropout by default, and no bias in the attention/feed-forward/output linear maps.
+The reference transformer uses sinusoidal position encodings, a lower-triangular causal mask, two decoder blocks for the main setting, ReLU feed-forward layers, no dropout by default, and no bias in the attention/feed-forward/output linear maps.
 
 The custom AdamW update applies decoupled decay before the Adam step:
 

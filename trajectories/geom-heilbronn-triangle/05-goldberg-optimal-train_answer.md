@@ -17,7 +17,7 @@ N = 11
 
 # Goldberg (1972) optimal configuration for n=11 in the unit square, Delta(11) = 1/27.
 # Source: Erich Friedman's "Heilbronn problem for squares" page (1/27, horizontally
-# symmetric); exact rational coordinates tabulated in arXiv:2603.11107, Table 11.
+# symmetric).
 GOLDBERG_EXACT = [
     (Fr(1, 3), Fr(0)),   (Fr(2, 3), Fr(0)),                       # bottom edge
     (Fr(0), Fr(2, 9)),   (Fr(1), Fr(2, 9)),                       # lower sides

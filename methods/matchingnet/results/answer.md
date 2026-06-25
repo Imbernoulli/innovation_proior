@@ -12,7 +12,7 @@ For class `n`, this gives `P(y=n | x_hat, S) = sum_{i: y_i=e_n} a_i`. In one-sho
 one attention weight per class; in multi-shot it sums the attention mass across all support
 examples of the same class.
 
-The paper-level similarity `c` is cosine. The reference PyTorch implementation used here
+At the method level the similarity `c` is cosine. The reference PyTorch implementation used here
 normalizes the support embeddings but not the query embeddings before the final vote, so the
 implemented score is a scaled cosine, `f^T (g / ||g||) = ||f|| cos(f, g)`. That matches the
 Facebook reference and the local port; it should not be described as symmetric cosine in code.
@@ -48,7 +48,7 @@ r_{k-1}      = sum_i softmax_i(h_{k-1}^T g(x_i, S)) g(x_i, S)
 f(x_hat, S)  = h_K
 ```
 
-The paper treats `K` as a fixed processing depth. The local EasyFSL-style port loops
+I treat `K` as a fixed processing depth. The local EasyFSL-style port loops
 `len(support)` times; the fetched Facebook reference takes `K` as a constructor argument.
 
 ## Reference-Faithful Code

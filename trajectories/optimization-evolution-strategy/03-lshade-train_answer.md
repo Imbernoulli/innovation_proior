@@ -18,7 +18,7 @@ That is a genuinely self-tuning DE, but it leaves the third knob — $N$ — fix
 
 $$N_\text{next} = \text{round}\!\left(N_\text{init} + (N_\text{min} - N_\text{init})\,\frac{\text{gen}+1}{n_\text{generations}}\right),$$
 
-floored at $N_\text{min}=4$ (pinned by the operator, which needs $x_i$, a distinct $x_{p\text{best}}$, $x_{r_1}$, $x_{r_2}$). As $N$ shrinks each generation costs less, so the same remaining budget buys *more* generations — manufacturing the late many-small-steps regime out of budget a fixed large $N$ would have burned on redundant exploration, and respecting DE's self-scaling because a smaller converged population still has small differences. I keep the schedule deterministic and monotone rather than reactive: I have spent two rungs deleting hand-tuned parameters and will not reintroduce a fistful of meta-parameters to govern when and how much to resize. When $N$ must drop I delete the *worst* individuals (elitist shrink accelerates late focusing) and trim the archive to match. One departure from the canonical constant is load-bearing: L-SHADE normally sets $N_\text{init}=18D$, sized for large competition budgets, but this harness runs a *fixed, small* generation count, and at 100D $18D=1800$ would starve the search of the generations the linear reduction needs (degrading Rastrigin-100D rather than helping). So I use $N_\text{init}=\text{pop\_size}$ as given and let the reduction to $N_\text{min}=4$ do its work, keeping the budget identical to the other rungs.
+floored at $N_\text{min}=4$ (pinned by the operator, which needs $x_i$, a distinct $x_{p\text{best}}$, $x_{r_1}$, $x_{r_2}$). As $N$ shrinks each generation costs less, so the same remaining budget buys *more* generations — manufacturing the late many-small-steps regime out of budget a fixed large $N$ would have burned on redundant exploration, and respecting DE's self-scaling because a smaller converged population still has small differences. I keep the schedule deterministic and monotone rather than reactive: I have spent two rungs deleting hand-tuned parameters and will not reintroduce a fistful of meta-parameters to govern when and how much to resize. When $N$ must drop I delete the *worst* individuals (elitist shrink accelerates late focusing) and trim the archive to match. One departure from the canonical constant is load-bearing: the natural choice is $N_\text{init}=18D$, sized for large competition budgets, but this harness runs a *fixed, small* generation count, and at 100D $18D=1800$ would starve the search of the generations the linear reduction needs (degrading Rastrigin-100D rather than helping). So I use $N_\text{init}=\text{pop\_size}$ as given and let the reduction to $N_\text{min}=4$ do its work, keeping the budget identical to the other rungs.
 
 ```python
 # EDITABLE region of deap/custom_evolution.py (lines 87-225) - step 3: L-SHADE
@@ -58,14 +58,14 @@ def run_evolution(
     random.seed(seed)
     np.random.seed(seed)
 
-    # --- Hyperparameters (Tanabe & Fukunaga, CEC 2014) ---
-    # The paper recommends N_init = 18·D, but on small fixed budgets (as in
+    # --- Hyperparameters ---
+    # The canonical choice is N_init = 18·D, but on small fixed budgets (as in
     # our 400 pop × 1000 gen setting) that value starves the search of
     # generations: on Rastrigin-100D, N_init=1800 with matched total-eval
     # budget degraded from 128 → 313. Use pop_size as given and the
-    # canonical N_min = 4 (paper §III-B), which lets the linear population
+    # canonical N_min = 4, which lets the linear population
     # reduction actually run. Budget stays identical to CMA-ES/DE/GA.
-    H = 6  # History size (paper default)
+    H = 6  # History size (canonical default)
     N_init = pop_size
     N_min = 4  # Minimum population size
     p_min = 2.0 / N_init  # Minimum p for pbest

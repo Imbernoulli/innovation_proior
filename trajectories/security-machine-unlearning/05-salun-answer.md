@@ -28,11 +28,7 @@ true-label CE, equal weight. Optimizer (`Adam`, `lr=0.001`), batch, epochs fixed
 
 ```python
 class UnlearningMethod:
-    """SalUn: saliency-masked random-labeling unlearning.
-
-    Paper: https://arxiv.org/abs/2310.12508
-    Reference code: https://github.com/OPTML-Group/Unlearn-Saliency
-    """
+    """SalUn: saliency-masked random-labeling unlearning."""
 
     def __init__(self):
         self.sparsity = 0.5     # keep the top (1 - sparsity) most forget-salient weights

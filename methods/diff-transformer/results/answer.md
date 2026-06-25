@@ -60,7 +60,7 @@ import torch.nn.functional as F
 
 
 def lambda_init_fn(depth):
-    # depth: 0-based layer index. Paper schedule (1-based l): 0.8 - 0.6*exp(-0.3*(l-1)).
+    # depth: 0-based layer index. Schedule (1-based l): 0.8 - 0.6*exp(-0.3*(l-1)).
     return 0.8 - 0.6 * math.exp(-0.3 * depth)
 
 
@@ -130,6 +130,3 @@ class MultiheadDiffAttn(nn.Module):
         o = o.transpose(1, 2).reshape(B, T, self.n_heads * 2 * self.head_dim)
         return self.out_proj(o)
 ```
-
-Reference: Ye, Dong, Xia, Sun, Zhu, Huang, Wei, "Differential Transformer", 2024, arXiv:2410.05258
-(ICLR 2025). Canonical implementation: `microsoft/unilm`, `Diff-Transformer/multihead_diffattn.py`.

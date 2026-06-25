@@ -29,7 +29,7 @@ forces close output `Q`. Two distinct tasks have genuinely different true `Q` va
 embeddings are close the conditioned value functions become unrepresentable. Distinct tasks' `z` must
 be pushed apart for control to be learnable — task inference geometry is a precondition, not a luxury.
 
-**The inverse-power DML loss (the contribution).** The classic contrastive loss
+**The inverse-power DML loss (the central new piece).** The classic contrastive loss
 `1{same}‖q_i−q_j‖² + 1{diff} max(0, m−‖q_i−q_j‖)²` degenerates: the margin spring has bounded
 short-range force and is zero beyond `m`; the deeper failure is that a squared-distance objective is
 *exactly* variance maximization, `Σ_{i≠j}(x_i−x_j)² = 2N²·Var(X)`, a global statistic that a degenerate
@@ -41,7 +41,7 @@ L_dml(x_i, x_j; q) = 1{y_i=y_j} ‖q_i−q_j‖₂²  +  1{y_i≠y_j} · β / ( 
 For `n>0` this is an epsilon-capped short-range repulsive penalty: the unregularized `1/d^n`
 intuition is Coulomb-like, but `ε` makes the value finite at zero. The `n=0` case is degenerate
 because the different-task term is the constant `β/(1+ε)` and gives no separation gradient. The useful
-cases in the paper are `n=1` (inverse) and `n=2` (inverse-square); `n=2` is analogous to Cauchy graph
+cases are `n=1` (inverse) and `n=2` (inverse-square); `n=2` is analogous to Cauchy graph
 embedding. With the latent bounded by tanh to `(−1,1)^l`, the inverse-power terms directly penalize
 close different-task pairs instead of only increasing a global variance statistic. `q` is the **mean**
 transition embedding of a task; the repository implements the inverse-square case with a
@@ -72,20 +72,20 @@ roll out `π_θ(a|s,z)` deterministically — no exploration.
 
 ## Defaults and why
 
-- **Latent dim** is 5 or 20: in the main paper table, Sparse-Point-Robot and Half-Cheetah-Fwd-Back use
+- **Latent dim** is 5 or 20: Sparse-Point-Robot and Half-Cheetah-Fwd-Back use
   5, while Half-Cheetah-Vel and Ant-Fwd-Back use 20; the power-law ablation reduces Half-Cheetah-Vel
   to 5 for speed.
-- **Networks**: the paper table uses a width-200 depth-3 context encoder and width-300 depth-3 policy,
+- **Networks**: the main configuration uses a width-200 depth-3 context encoder and width-300 depth-3 policy,
   Q, V, and discriminator networks; the repository default is width 256 but the launcher builds the
   context encoder as `[200, 200, 200]` with tanh output.
-- **DML constants**: Eq. 13 has coefficient `β`; the main paper table uses `β=1`, while the power-law
+- **DML constants**: Eq. 13 has coefficient `β`; the main configuration uses `β=1`, while the power-law
   ablation uses `(β, ε) = (1, 0.1)` for inverse-square, `(2, 0.1)` for inverse, `(8, 0.1)` for linear,
   and `(16, 0.1)` for square. The repository's actual `z_loss` has a separate whole-loss multiplier
   `z_loss_weight` (default 10) and implements `1 / (mean(diff²) + 100ε)`.
 - **Control constants**: reward scale is 100 for the point-robot tasks and 5 for MuJoCo locomotion;
   discount is 0.9 for point-robot tasks and 0.99 otherwise; soft target `τ=0.005`; repo default
   policy/Q/V/context learning rates are `3e-4` and discriminator learning rate is `1e-4`.
-- **Behavior reg `α`**: the paper main table reports 0 for Sparse-Point-Robot, 500 for
+- **Behavior reg `α`**: the main configuration reports 0 for Sparse-Point-Robot, 500 for
   Half-Cheetah-Vel, `10^6` for Ant-Fwd-Back, and 500 for Half-Cheetah-Fwd-Back. The repository JSONs
   initialize 50 for Half-Cheetah-Vel and Walker-2D-Params, disable BRAC for Point-Robot-Wind, and use
   adaptive clipping through `alpha_max`.

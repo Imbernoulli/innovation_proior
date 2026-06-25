@@ -55,7 +55,7 @@ w_eff = w * c
 c = gain / sqrt(fan_in)
 ```
 
-The paper text describes this as applying the He scale dynamically; the official TensorFlow code implements it as runtime multiplication by `std = gain/sqrt(fan_in)`.
+Conceptually this applies the He scale dynamically; the reference TensorFlow code implements it as runtime multiplication by `std = gain/sqrt(fan_in)`.
 
 ## Loss And Schedule
 
@@ -69,7 +69,7 @@ L_D = E[D(fake)] - E[D(real)]
 L_G = -E[D(fake)]
 ```
 
-`xhat` lies on straight-line interpolates between real and fake images. The ordinary unsupervised setup uses one discriminator update per generator update. Adam uses `lr=0.001`, `beta1=0`, `beta2=0.99`, `epsilon=1e-8`. The paper's CelebA-HQ schedule uses 800k real images at the initial 4x4 stage, then 800k images to fade in each new block and 800k to stabilize it; the public code exposes these as `lod_training_kimg` and `lod_transition_kimg` schedule parameters.
+`xhat` lies on straight-line interpolates between real and fake images. The ordinary unsupervised setup uses one discriminator update per generator update. Adam uses `lr=0.001`, `beta1=0`, `beta2=0.99`, `epsilon=1e-8`. The CelebA-HQ schedule uses 800k real images at the initial 4x4 stage, then 800k images to fade in each new block and 800k to stabilize it; the reference code exposes these as `lod_training_kimg` and `lod_transition_kimg` schedule parameters.
 
 ## Faithful PyTorch Skeleton
 
@@ -292,4 +292,4 @@ For the 1024x1024 CelebA-HQ feature-map ladder, use:
 nf = [512, 512, 512, 512, 256, 128, 64, 32, 16]  # 4, 8, ..., 1024
 ```
 
-The paper also introduces a patch-distribution metric, sliced Wasserstein distance on Laplacian-pyramid patches: sample 16384 images, 128 descriptors per pyramid level, descriptors of size `7x7x3`, normalize per color channel, and compute a randomized sliced Wasserstein estimate using 512 projections. Lower is better because generated local-patch distributions are closer to training local-patch distributions at each scale.
+I also introduce a patch-distribution metric, sliced Wasserstein distance on Laplacian-pyramid patches: sample 16384 images, 128 descriptors per pyramid level, descriptors of size `7x7x3`, normalize per color channel, and compute a randomized sliced Wasserstein estimate using 512 projections. Lower is better because generated local-patch distributions are closer to training local-patch distributions at each scale.

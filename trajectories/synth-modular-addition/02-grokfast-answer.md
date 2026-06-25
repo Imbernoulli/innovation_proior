@@ -45,9 +45,9 @@ class GrokTransformer(nn.Module):
             nn.Linear(d_mlp, d_model, bias=False),
         )
         self.unembed = nn.Linear(d_model, p, bias=False)
-        self._init_paper_weights(d_model)
+        self._init_baseline_weights(d_model)
 
-    def _init_paper_weights(self, d_model: int) -> None:
+    def _init_baseline_weights(self, d_model: int) -> None:
         hidden_std = 1.0 / math.sqrt(d_model)
         nn.init.normal_(self.tok_embed.weight, mean=0.0, std=hidden_std)
         nn.init.normal_(self.pos_embed.weight, mean=0.0, std=hidden_std)
@@ -101,11 +101,10 @@ def make_optimizer(model: nn.Module, config: TaskConfig) -> torch.optim.Optimize
 
 
 class TrainHook:
-    """Grokfast-EMA gradient filter (Lee 2024 arXiv:2405.20233).
+    """Grokfast-EMA gradient filter.
 
     Maintains an EMA of each parameter's gradient and adds `lamb * EMA` to
-    the raw gradient before opt.step(). Equivalent to `gradfilter_ema` in
-    https://github.com/ironjr/grokfast/blob/main/grokfast.py.
+    the raw gradient before opt.step().
     """
 
     def __init__(self, model: nn.Module, config: TaskConfig):

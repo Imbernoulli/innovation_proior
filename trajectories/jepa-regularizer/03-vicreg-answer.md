@@ -15,7 +15,7 @@ direction into all dimensions; covariance alone collapses outright (the cheapest
 Together: variance gives the covariance term something to spread; the covariance, left *unnormalized*
 (the variance term owns the scale), needs no standardization.
 
-**Why this implementation, not the paper's verbatim.** The harness leans on covariance and a narrowed
+**Why this implementation, not the generic balanced form.** The harness leans on covariance and a narrowed
 projector rather than the generic balanced weighting: `std_coeff = 1.0`, `cov_coeff = 100.0`,
 `std_margin = 1.0`, and `CONFIG_OVERRIDES = {"proj_output_dim": 1024}`. The two interlock — a narrower
 1024-wide embedding has fewer off-diagonal pairs, so a heavy cov weight can fully decorrelate it within
@@ -76,7 +76,7 @@ class CustomRegularizer(nn.Module):
 
 # CONFIG_OVERRIDES: override training hyperparameters for your method.
 # Allowed keys: proj_output_dim, proj_hidden_dim.
-# Paper README "Impact of the projector" table ranks VICReg's best
+# The "impact of the projector" comparison ranks VICReg's best
 # projector as 2048->1024 (90.12% on CIFAR-10 ResNet-18, 300 epochs).
 CONFIG_OVERRIDES = {"proj_output_dim": 1024}
 ```

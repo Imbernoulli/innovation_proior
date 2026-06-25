@@ -22,10 +22,9 @@ never underperforms the baseline mix and helps wherever they are not — most li
 resisted every other lever. The minimizer is the only `s`-dependent term in a Young's-inequality
 upper bound on the (invisible) `||guided - truth||^2`, so it is principled, not tuned.
 
-**Reference.** CFG-Zero\* (Fan, Zheng, Yeh, Liu, 2025, arXiv:2503.18886). The optimized-scale +
-zero-init guidance rule; the eps-space transplant here matches the official per-sample
-`optimized_scale` (dot-product over squared-norm, flattened per batch element) and the
-`noise_uc * alpha + w*(noise_c - noise_uc * alpha)` mix.
+**The rule.** CFG-Zero\* is the optimized-scale + zero-init guidance rule; the eps-space transplant
+here uses the per-sample `optimized_scale` (dot-product over squared-norm, flattened per batch element)
+and the `noise_uc * alpha + w*(noise_c - noise_uc * alpha)` mix.
 
 **Edit / hyperparameters.** Start from the rung-3 zero-init fill. Add, inside the existing `no_grad`
 block, a per-sample projection: flatten `noise_c`, `noise_uc` to `(B, -1)`, `alpha = sum(c*uc) /

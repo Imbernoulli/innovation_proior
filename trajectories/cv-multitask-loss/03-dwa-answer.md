@@ -16,7 +16,7 @@ the weight is a fast function of the live descent rate, so it backs off whicheve
 quickly-mastered coarse head on VGG) has stopped improving and feeds weight to the lagging one. Bigger
 *ratio* → more weight is the opposite push from uncertainty's bigger *loss* → less weight, by design.
 
-**This task's implementation (per-batch, not per-epoch).** The paper's ratio is between *epoch-averaged*
+**This task's implementation (per-batch, not per-epoch).** The canonical ratio is between *epoch-averaged*
 losses; this interface runs per minibatch and can only cheaply keep the *previous call's* loss, so the
 ratio is `L_k(this batch) / L_k(previous batch)` — a noisier per-batch rate, with `prev_losses` overwritten
 every step. The `epoch == 0` guard pins weights to uniform for the whole first epoch; `T = 2.0` heavily

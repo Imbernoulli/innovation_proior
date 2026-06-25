@@ -67,6 +67,3 @@ Use summed, not length-averaged, completion log-probs for the DPO/DPOP
 Bradley-Terry form. The default experimental recipe uses `beta = 0.3`,
 `lambda = 50`, AdamW, learning rate `5e-5`, and 1000 DPO/DPOP steps; ablations
 cover `beta in {0.1, 0.3, 1.0}` and `lambda in {5, 50, 500}`.
-
-Reference: Pal et al., *Smaug: Fixing Failure Modes of Preference Optimisation
-with DPO-Positive*, arXiv:2402.13228v2.

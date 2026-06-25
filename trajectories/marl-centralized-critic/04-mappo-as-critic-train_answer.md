@@ -28,8 +28,8 @@ import torch.nn.functional as F
 class CustomCritic(nn.Module):
     """Agent-specific central-V critic — shared MLP over (state + obs_i + agent one-hot).
 
-    The agent-specific (AS) global-state critic input of Yu et al. 2022
-    (arXiv 2103.01955): condition the centralized value on both the global
+    The agent-specific (AS) global-state critic input of Yu et al. 2022:
+    condition the centralized value on both the global
     state and the agent's own observation, so one shared network produces
     per-agent values that see the agent-specific local features the bare
     global state drops. Returns (B, T, n_agents, 1).

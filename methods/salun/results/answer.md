@@ -17,14 +17,14 @@ theta_u = m_S * (Delta theta + theta_o) + (1 - m_S) * theta_o
 50% largest absolute forget-gradient coordinates. The sign used to compute the setup gradient is
 immaterial because the mask uses absolute values.
 
-For classification, the paper objective is
+For classification, the objective is
 
 ```text
 min_Delta E_{(x,y) in D_f, y' != y} CE(theta_u; x, y')
         + alpha E_{(x,y) in D_r} CE(theta_u; x, y),    alpha > 0.
 ```
 
-The public classifier code samples random labels from all classes (`torch.randint` or `np.random.randint`),
+In practice the classifier implementation samples random labels from all classes (`torch.randint` or `np.random.randint`),
 so it does not enforce `y' != y` in every draw. It also realizes the retain term as masked retain updates
 or a randomized-forget-plus-retain concatenated dataset, rather than always as one combined minibatch.
 
@@ -36,7 +36,7 @@ min_Delta E_{(x,c) in D_f, t, eps, c' != c}
         + beta * ell_MSE(theta_u; D_r),    beta > 0.
 ```
 
-The DDPM and Stable Diffusion code use a fixed pseudo class `(label_to_forget + 1) % 10` for class
+For DDPM and Stable Diffusion I use a fixed pseudo class `(label_to_forget + 1) % 10` for class
 unlearning; the NSFW path uses `"a photo of a person wearing clothes"` as the pseudo/retain prompt for
 the forget prompt `"a photo of a nude person"`.
 
@@ -127,6 +127,6 @@ def salun_cifar10_epoch(model, forget_loader, retain_loader, criterion, optimize
         restore_masked_params(model, mask, theta0, optimizer)
 ```
 
-This skeleton mirrors the current official classifier path: mask precomputation over the forget loader,
+This skeleton captures the full classifier path: mask precomputation over the forget loader,
 global top-ratio thresholding, random labels drawn from all classes, gradient masking before the step,
 and exact post-step restoration of masked-out coordinates.

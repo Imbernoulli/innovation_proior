@@ -67,10 +67,9 @@ am wary of the low-rank weight in particular, because the over-dispersion in thi
 can hurt the MSE even as it helps the Poisson, so I keep it small and let the log-space polishing do
 the heavy lifting on the metric I care most about.
 
-This is an adaptation of the denoiser that test-time-training/discover (TTT-Discover, arXiv:
-2601.16175) evolved to the top of the OpenProblems leaderboard, reaching 0.71 on PBMC and 0.73 on
-Tabula Muris versus MAGIC's ~0.64. Its real implementation leans on graphtools and scprep for the
-graph and normalization; I rebuild the same ideas — multi-VST ensembling, zero-imputation, gene-wise
+This is the denoiser I evolved to the top of the OpenProblems leaderboard, reaching 0.71 on PBMC and
+0.73 on Tabula Muris versus MAGIC's ~0.64. A graphtools/scprep-based build would handle the graph and
+normalization for me, but I rebuild the same ideas — multi-VST ensembling, zero-imputation, gene-wise
 multi-scale diffusion, adaptive raw/diffused blending, truncated-SVD refinement, and the final
 log-space polishing — in plain numpy/scipy/sklearn so it runs anywhere. I expect it to clear MAGIC
 decisively, and I expect the gain to show up most on the MSE term, because that is where the

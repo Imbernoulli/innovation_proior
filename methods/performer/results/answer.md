@@ -36,7 +36,7 @@ so
 
 This estimates each softmax-kernel entry unbiasedly and keeps every estimated score nonnegative. The row-normalized output `D_hat^{-1} A_hat V` is a ratio estimator, so the exact unbiasedness claim belongs to the kernel/attention-matrix entries before row normalization.
 
-For independent samples, the paper's MSE identities are
+For independent samples, the MSE identities are
 
     MSE(SM_hat_trig) =
       (1/(2m)) exp(||x+y||^2) SM(x,y)^{-2}
@@ -68,7 +68,7 @@ which costs `O(Lmd)` and never forms the lower-triangular `L x L` mask.
 
 ## Canonical Implementation
 
-The paper points to `google-research/google-research/performer/fast_attention`; the local reference checkout is under `methods/performer/code/google-research` at commit `4fde028f6017e16aefcbc2b6d3f77f70b9f6b421`. The following is a compact, faithful skeleton of the JAX implementation defaults and tensor operations:
+A reference checkout of the `fast_attention` implementation lives under `methods/performer/code/google-research` at commit `4fde028f6017e16aefcbc2b6d3f77f70b9f6b421`. The following is a compact, faithful skeleton of the JAX implementation defaults and tensor operations:
 
 ```python
 import math

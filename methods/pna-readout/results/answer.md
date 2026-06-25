@@ -24,8 +24,8 @@ dimension-counting argument gives a lower bound of *n* aggregators to discrimina
    learnable knob with a **logarithmic** scaler `S(d, α) = (log(d+1)/δ)^α`, α ∈ {−1, 0, +1}
    (attenuate / identity / amplify), δ = mean of `log(d+1)` over the training set. The bare *linear*
    scaler `S(d)=d` turns a mean into a sum, and a degree-linear injective scaler composed with a
-   constructed element map makes the mean injective on bounded countable multisets (the paper's Theorem 2
-   spirit) — but linear scaling is what blows up across depth. The **logarithmic** scaler is the
+   constructed element map makes the mean injective on bounded countable multisets (this is the
+   injective-scaler result I can establish) — but linear scaling is what blows up across depth. The **logarithmic** scaler is the
    bounded-magnitude *replacement*: `log(d+1)≠d`, so it does **not** reproduce a sum, but it reinjects a
    controlled, monotone degree dependence that recovers the count-sensitivity a mean discards without the
    sum's exponential growth.

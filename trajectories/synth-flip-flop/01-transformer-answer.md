@@ -28,7 +28,7 @@ more" but an explicit-state model that *writes and reads a register* instead of 
 ```python
 # EDITABLE region of custom_strategy.py (lines 191-241) — step 1: vanilla causal Transformer
 class FlipFlopModel(nn.Module):
-    """Vanilla causal Transformer (the 'baseline' from the paper)."""
+    """Vanilla causal Transformer (the baseline / starting rung)."""
 
     def __init__(self, vocab_size: int = VOCAB_SIZE, max_len: int = 1024):
         super().__init__()

@@ -10,7 +10,7 @@ yields the closed-form leaf value `w_j* = -G_j/(H_j+lambda)`, structure score `-
 and split gain `0.5[G_L^2/(H_L+lambda)+G_R^2/(H_R+lambda)-G^2/(H+lambda)] - gamma`. The Hessian is the
 denominator of the leaf, not an afterthought; `lambda` stabilizes low-curvature leaves.
 
-**This-harness specifics (not the paper).** The canonical `(G,H)` tree is **not expressible**: the fixed
+**This-harness specifics.** The canonical `(G,H)` tree is **not expressible**: the fixed
 sklearn tree exposes neither its split criterion (no gain-based splits) nor its leaf values (no
 `-G_j/(H_j+lambda)`), and the Newton target `-g/h` divides by vanishing curvature on confident points
 (the LogitBoost instability), so the classification target stays the bare `-g = y - sigmoid(F)`. What

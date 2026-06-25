@@ -11,7 +11,7 @@ Z = GCN(X, A)
 A_hat = sigmoid(Z Z^T).
 ```
 
-Training it as a Bernoulli reconstruction loss exposes the sparsity problem again. If I average binary cross-entropy over all `N^2` pairs, zeros dominate. The paper's dense solution is to up-weight positive entries and rescale the mean loss; the equivalent sparse-harness solution is to sample non-edges and train on positives plus sampled negatives. These are the same case split in spirit: either reweight the rare ones or avoid showing all easy zeros at once.
+Training it as a Bernoulli reconstruction loss exposes the sparsity problem again. If I average binary cross-entropy over all `N^2` pairs, zeros dominate. The dense solution is to up-weight positive entries and rescale the mean loss; the equivalent sparse-harness solution is to sample non-edges and train on positives plus sampled negatives. These are the same case split in spirit: either reweight the rare ones or avoid showing all easy zeros at once.
 
 Now I ask what the deterministic model is missing. It learns one point per node, and the only pressure on the space is reconstruction. A latent-variable version gives me a principled regularizer: draw node latents from an approximate posterior, reconstruct the adjacency from them, and pull the posterior toward a simple prior. The standard variational objective already has exactly that shape,
 
@@ -26,7 +26,7 @@ q(Z | X,A) = prod_i q(z_i | X,A)
 q(z_i | X,A) = N(z_i | mu_i, diag(sigma_i^2)).
 ```
 
-The encoder now needs two outputs per node. I use the same first GCN layer for both because the mean and uncertainty should be read from the same neighborhood evidence. Then two linear GCN heads produce `mu` and `log sigma`. It matters that this is `log sigma`, not `log sigma^2`, in the target paper and the official TensorFlow implementation. The scale is recovered as `sigma = exp(logstd)`, which is always positive.
+The encoder now needs two outputs per node. I use the same first GCN layer for both because the mean and uncertainty should be read from the same neighborhood evidence. Then two linear GCN heads produce `mu` and `log sigma`. It matters that this is `log sigma`, not `log sigma^2`, to match the official TensorFlow implementation. The scale is recovered as `sigma = exp(logstd)`, which is always positive.
 
 To sample while keeping gradients, I use the reparameterization trick:
 
@@ -69,7 +69,7 @@ I also have to get the scale faithful to the reference code. The official Tensor
 
 That expression is negative KL. Subtracting it therefore adds positive KL. The `mean_i` has already averaged over nodes; the extra `1/N` is still present in the reference implementation, so a PyG-style helper that returns positive node-averaged KL must be added as `kl_loss() / num_nodes`. I should not describe `kl_loss()` itself as an unaveraged total KL, and I should not omit the extra `1/N` if I am matching the canonical implementation and the PyG example.
 
-There is one more notation trap: the paper defines its adjacency with diagonal entries already set to one, so its GCN equation writes `D^{-1/2} A D^{-1/2}`. The GCN ancestor and the official code start from an adjacency without self-loops and add `I` during preprocessing. Those are the same convention if I say it explicitly. In a PyG scaffold, `GCNConv` with its default normalization adds self-loops before normalizing, matching the code convention.
+There is one more notation trap: if I define the adjacency with diagonal entries already set to one, the GCN equation writes `D^{-1/2} A D^{-1/2}`. The GCN ancestor and the official code instead start from an adjacency without self-loops and add `I` during preprocessing. Those are the same convention if I say it explicitly. In a PyG scaffold, `GCNConv` with its default normalization adds self-loops before normalizing, matching the code convention.
 
 Putting these pieces together gives the variational graph auto-encoder: shared GCN trunk, mean and log-standard-deviation heads, reparameterized node latents during training, posterior mean at evaluation, and the same inner-product Bernoulli decoder. The deterministic graph auto-encoder is the special case where I remove the log-standard-deviation head, the sampling step, and the KL. The featureless case is also simple: set `X = I`, so structure is the only input signal.
 
@@ -119,7 +119,7 @@ class LinkPredictor(nn.Module):
         return self.decode(z[edge_label_index[0]], z[edge_label_index[1]])
 ```
 
-For the sampled-edge scaffold, the surrounding loss is the negative-sampling alternative to the paper's dense positive reweighting:
+For the sampled-edge scaffold, the surrounding loss is the negative-sampling alternative to the dense positive reweighting:
 
 ```python
 def train_step(model, data, optimizer):
@@ -133,4 +133,4 @@ def train_step(model, data, optimizer):
     return float(loss)
 ```
 
-If I instead reproduce the original dense TensorFlow path, I flatten all entries of `Z Z^T`, use labels `adj_train + I`, compute `pos_weight = (N^2 - sum(adj_train)) / sum(adj_train)` and `norm = N^2 / ((N^2 - sum(adj_train)) * 2)`, and minimize `norm * weighted_BCE - negative_KL_term`. The sparse code above is the same model and the paper-allowed zero-subsampling case, adapted to the harness.
+If I instead reproduce the original dense TensorFlow path, I flatten all entries of `Z Z^T`, use labels `adj_train + I`, compute `pos_weight = (N^2 - sum(adj_train)) / sum(adj_train)` and `norm = N^2 / ((N^2 - sum(adj_train)) * 2)`, and minimize `norm * weighted_BCE - negative_KL_term`. The sparse code above is the same model and the zero-subsampling case, adapted to the harness.

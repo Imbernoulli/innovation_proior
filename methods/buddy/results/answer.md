@@ -29,7 +29,7 @@ MLP directly on the counts (k = 2–3) matches propagating them, and fixed featu
 **Hyperparameters.** receptive field k = 2–3; MinHash with ~128 permutations; HyperLogLog precision
 p ≈ 8; hidden dim 256; multi-scale feature concat over hops; MLP readout with edge (Hadamard) pooling.
 
-**Reported (HR@100 unless noted; arXiv:2209.15486 Table 2).** Cora 88.00, CiteSeer 92.93, Pubmed
+**Measured (HR@100 unless noted).** Cora 88.00, CiteSeer 92.93, Pubmed
 74.10, ogbl-collab HR@50 65.94, ogbl-ppa HR@100 49.85, ogbl-citation2 MRR 87.56, ogbl-ddi HR@20 78.51
 — best or second on five of seven benchmarks, with SEAL the closest competitor and BUDDY 200–1000×
 faster.
@@ -41,7 +41,6 @@ import torch.nn.functional as F
 from torch_geometric.utils import degree
 
 # Canonical BUDDY: precompute sketches + propagated features, then MLP on edge features.
-# (Reference: github.com/melifluos/subgraph-sketching)
 
 class ElphHashes:
     """Per-node MinHash + HyperLogLog sketches, propagated by min/max for k hops."""

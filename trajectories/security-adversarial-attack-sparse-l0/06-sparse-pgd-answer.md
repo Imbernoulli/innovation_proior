@@ -19,13 +19,13 @@ margin objective gives the misclassification certificate without saturating.
 **Scaffold edit / hyperparameters.** `eps=1` (full range under `L0`); `alpha=0.25*eps` (magnitude sign
 step); `beta=0.25` mask step scaled by `sqrt(H*W)` (normalized — `m` is a selection variable); `t=300`
 iterations × `n_restarts=2` alternating routings; mask `(B,1,H,W)` matching the harness's channel-collapsed
-`L0` count; best `24`-sparse example kept across all iterations and restarts. Verified against the canonical
-sPGD reference (CityU-MLO/sPGD `spgd.py` + `mask.py`): the `_TopKMask` forward/backward mirrors
-`MaskingA`/`MaskingB`, and the `[-eps,eps]` then `[-x,1-x]` clamp order matches `update_perturbation`.
+`L0` count; best `24`-sparse example kept across all iterations and restarts. The two routings
+correspond to the explore (`MaskingA`) and refine (`MaskingB`) variants, and the clamp order is
+`[-eps,eps]` then `[-x,1-x]`.
 
 **Bar to clear (against step 5's real numbers).** Sparse-RS: `0.853 / 0.947 / 0.967`, mean `0.922`. sPGD
-must beat the mean and, decisively, lift the per-model minimum above `0.853`. If it trails, the published
-remedy is the sPGD + Sparse-RS ensemble (best-of-both), how the strongest sparse-`L0` evaluations are built.
+must beat the mean and, decisively, lift the per-model minimum above `0.853`. If it trails, the natural
+remedy is an sPGD + Sparse-RS ensemble (best-of-both), how the strongest sparse-`L0` evaluations are built.
 
 ```python
 def run_attack(
@@ -36,7 +36,7 @@ def run_attack(
     device: torch.device,
     n_classes: int,
 ) -> torch.Tensor:
-    """Sparse-PGD (sPGD) L0 white-box attack (Zhong & Liu, TPAMI; arXiv:2405.05075)."""
+    """Sparse-PGD (sPGD) L0 white-box attack."""
     import torch
     import torch.nn.functional as F
 

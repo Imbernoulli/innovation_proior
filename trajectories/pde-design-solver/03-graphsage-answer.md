@@ -11,10 +11,10 @@ carried-forward feature, `h_v = σ(W·[h_v ; AGG(h_u : u∈N(v))])`. The separat
 over-smoothing that would average sharp pressure ridges away. Depth gives reach; nothing is ever
 down/up-sampled, so local structure survives intact.
 
-**Match to the harness (not the paper).** This is the design-task SAGE variant, **not** the full
+**Match to the harness.** This is the design-task SAGE variant, **not** the full
 sample-and-aggregate algorithm: (1) `torch_geometric.nn.SAGEConv` uses **mean** aggregation, not the
-paper's per-neighbor-MLP-then-max pool; (2) **no neighbor sampling** — it aggregates the *full*
-neighbor set every layer (affordable at ~5000–10000 points, batch 1; the paper's 200k-node scaling
+canonical per-neighbor-MLP-then-max pool; (2) **no neighbor sampling** — it aggregates the *full*
+neighbor set every layer (affordable at ~5000–10000 points, batch 1; the 200k-node scaling
 motivation is absent), which is more faithful to the local field than subsampling; (3) the encoder
 concatenates **coordinates + features** into the node feature (the U-Net fed only `fun_dim`); (4)
 BatchNorm with `track_running_stats=False` (batch is one mesh) + ReLU per layer.
@@ -24,7 +24,7 @@ self-channel keeps local fidelity — the metric that the lossy hierarchy gave u
 reach (k layers ≈ k hops), so the global drag *ordering* may dip slightly vs the U-Net, but field
 errors and drag *magnitude* should improve.
 
-**Hyperparameters.** `CONFIG_OVERRIDES = {'n_hidden': 128}` — the paper-faithful GraphSAGE width, 8×
+**Hyperparameters.** `CONFIG_OVERRIDES = {'n_hidden': 128}` — the canonical GraphSAGE width, 8×
 the prior graph models, the capacity that lets a flat stack represent the field. `n_layers`, `act`,
 `out_dim` from `args`. No new loss terms.
 

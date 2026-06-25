@@ -36,7 +36,7 @@ timestep with a learned, boosting-updated per-state importance weight. Three pie
 discovery, per-state distribution matching, boosting weights. The task fill keeps the *machinery* —
 the gated AdaRNN network, the boosting weight update, the full `TransferLoss` family — but pins two
 hyperparameters that simplify it sharply, and I must derive the model that the harness actually
-runs, not the paper's. First, `len_seq = 1`. Alpha158 gives 158 *flat* factors per (stock, day);
+runs, not the generic one. First, `len_seq = 1`. Alpha158 gives 158 *flat* factors per (stock, day);
 the fill's `data_loader` does `.unsqueeze(1)` to make `[N, 1, 158]`, a single-timestep sequence. So
 the GRU sees one step, the hidden trajectory has length one, and the "match the distribution at
 *every* hidden state" idea collapses to matching at the single state. The whole argument that an

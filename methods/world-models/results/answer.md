@@ -106,7 +106,7 @@ left, actions above \(1/3\) move right, and the middle interval stays still.
 
 ## Training And Evaluation
 
-The paper-level protocol collects 10,000 random-policy rollouts, trains \(V\),
+The full protocol collects 10,000 random-policy rollouts, trains \(V\),
 trains \(M\) from resampled VAE latents and recorded actions, then trains \(C\)
 with CMA-ES. CMA-ES uses a population of 64; each candidate is evaluated on 16
 rollouts with different seeds; fitness is average cumulative return.

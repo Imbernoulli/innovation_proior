@@ -1,6 +1,6 @@
 # CFG-Zero* (optimized scale + zero-init), distilled
 
-CFG-Zero* (Fan, Zheng, Yeh, Liu, 2025, arXiv:2503.18886) is a drop-in classifier-free guidance rule
+CFG-Zero* is a drop-in classifier-free guidance rule
 for flow-matching and diffusion samplers. It keeps the same two model calls per step as CFG but
 changes the per-step guidance update in two ways: (a) an **optimized scale** — a per-sample,
 per-step scalar on the unconditional prediction, chosen as the least-squares projection coefficient,
@@ -67,7 +67,7 @@ return x
 
 ## Working code (velocity / flow frame)
 
-The official per-sample `optimized_scale` (dot-product over squared-norm with an eps floor, flattened
+The per-sample `optimized_scale` (dot-product over squared-norm with an eps floor, flattened
 per batch element), and the per-step zero branch:
 
 ```python

@@ -39,7 +39,7 @@ keep the fit well-conditioned, and because the target can be negative I fit the 
 *linear* domain, not log.
 
 Now lrbsz, the family that has defeated every rung, and the one where the human form carries the decisive
-structure. The established SLDBench Expert-B law (arXiv:2507.21184, App. A.4) is hierarchical and
+structure. The established SLDBench Expert-B law is hierarchical and
 additive in its scale terms but — crucially — it makes the optimizer-setting optima *explicit functions
 of scale*. Write it as $L = A\,D^{-\alpha} + B\,N^{-\beta} + C + K_l\,(l - l_0)^2 + E\,(\log b + b_0/b)$,
 where $l_0 = F\,N^\gamma\,D^\zeta$ and $b_0 = G\,D^\eta$. Read what each piece does and why it answers the
@@ -63,14 +63,14 @@ negative*, because the held-out lrbsz region is a true extrapolation and even th
 cannot make it positive. So my target is not "lrbsz positive"; it is "lrbsz as close to zero as the
 literature form allows, far better than every earlier rung," and the secondary metrics (the practical
 discriminators where $R^2$ is negative) decisively better. To get there robustly I do not start the
-fitter cold. I seed it with the *paper's reported reference coefficients* for the all-data Expert-B law,
+fitter cold. I seed it with the *established reference coefficients* for the all-data Expert-B law,
 which already achieve the reported $R^2 \approx -0.0756$, and I evaluate those coefficients directly as an
-absolute fallback so the fit can never come out worse than the published reference. Then I run the
-nonlinear least squares from two starts — the paper coefficients (packed into the fitter's exponentiated
+absolute fallback so the fit can never come out worse than the established reference. Then I run the
+nonlinear least squares from two starts — the reference coefficients (packed into the fitter's exponentiated
 parameterization, with the positive quantities log-transformed and the signed exponents $\gamma, \zeta,
 \eta$ left free) and a data-driven start derived from the target's span — and keep whichever scores best
 in the *linear* domain (this target is positive but the surface is delicate, so I score by raw
-mean-squared error rather than log, matching how the reference was evaluated). Anchoring on the published
+mean-squared error rather than log, matching how the reference was evaluated). Anchoring on the reference
 coefficients is the load-bearing trick: it converts a treacherous twelve-parameter fit into a refinement
 around a known-good point, so the rung lands at the literature number instead of wherever a cold fit
 happens to fall.

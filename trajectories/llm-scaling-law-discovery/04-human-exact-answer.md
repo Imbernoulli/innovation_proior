@@ -11,7 +11,7 @@ asymptotic structure:
 - **lrbsz** — SLDBench Expert-B law $A\,D^{-\alpha} + B\,N^{-\beta} + C + K_l(l - l_0)^2 + E(\log b +
   b_0/b)$ with **scale-dependent optima** $l_0 = F\,N^\gamma\,D^\zeta$ (Step Law) and $b_0 = G\,D^\eta$ —
   the optimum tracks scale by construction, the drift no earlier rung could follow. Seeded from the
-  paper's reference coefficients ($R^2 \approx -0.0756$) and evaluated as an absolute fallback.
+  Expert-B reference coefficients ($R^2 \approx -0.0756$) and evaluated as an absolute fallback.
 - **dataconstrained** — Muennighoff effective tokens $D_{\text{eff}} = U(1 - e^{-D/U})$ (= $D$ at one
   epoch, saturates at $U$ under repetition) in $E + A\,N^{-\alpha} + B\,D_{\text{eff}}^{-\beta}$, **log**
   residuals.
@@ -25,7 +25,7 @@ competently makes this the strongest rung — and it is the intended compact sym
 **Scaffold edit / hyperparameters.** Per-group `least_squares` (`trf`, `soft_l1`, `f_scale=0.05`),
 multi-start (vocab/dc 8 restarts, lrbsz 2 seeded starts + direct paper-coefficient fallback); positives
 exponentiated, $E$ free on vocab; linear residuals for vocab, log for dataconstrained, raw-MSE scoring
-for lrbsz; median-of-groups fallback. Vocab/dc use multi-start; lrbsz anchors on the published Expert-B
+for lrbsz; median-of-groups fallback. Vocab/dc use multi-start; lrbsz anchors on the established Expert-B
 coefficients `[262.1391, 0.2675, 7.0285, 0.0746, 1.36e-5, 1278.595, 0.0493, 0.3242, -1.0580, 0.6498,
 0.0302, 0.3503]`.
 
@@ -114,8 +114,8 @@ def _fit_vocab_human(X, y):
 # -------- sld-lrbsz: Expert-B human law from SLDBench paper --------
 # L(D, N, l, b) = A/D^alpha + B/N^beta + C + K_l*(l - l0)^2 + E*(log b + b0/b)
 # with l0 = F * N^gamma * D^zeta, b0 = G * D^eta.
-# Reference: arXiv:2507.21184v5 Appendix A.4 (Expert B law; R^2 = -0.0756).
-# Code parameter K_l is named D_lr in the paper's reference implementation.
+# Reference: SLDBench Expert-B law (R^2 = -0.0756).
+# Code parameter K_l is named D_lr in the SLDBench reference implementation.
 
 def _lrbsz_human_predict(X, params):
     lr = np.clip(np.asarray(X[:, 0], dtype=float), 1e-12, None)
@@ -135,7 +135,7 @@ def _lrbsz_human_predict(X, params):
 def _fit_lrbsz_human(X, y):
     y = np.asarray(y, dtype=float)
 
-    # Reference coefficients from the SLDBench paper (Expert B, "all_data"):
+    # Reference coefficients for the SLDBench Expert-B law ("all_data"):
     #   [A, alpha, B, beta, C, D_lr, E, F, gamma, zeta, G, eta]
     paper_params = np.array([
         262.1391, 0.2675, 7.0285, 0.0746, 0.0000136, 1278.595,
@@ -183,7 +183,7 @@ def _fit_lrbsz_human(X, y):
     ], dtype=float)
 
     # Evaluate the reference coefficients directly (no fit) as an absolute
-    # fallback — they already achieve the reported R^2 = -0.0756.
+    # fallback — they already achieve R^2 = -0.0756.
     best_params = paper_params
     best_score = float(np.mean((_lrbsz_human_predict(X, paper_params) - y) ** 2))
     if not np.isfinite(best_score):
@@ -254,7 +254,7 @@ class ScalingLawModel:
     Benchmark-specific symbolic forms, fit per group via nonlinear least
     squares:
     - vocab: additive Chinchilla-style with per-axis power terms
-    - lrbsz: SLDBench Expert-B hierarchical additive law (arXiv:2507.21184)
+    - lrbsz: SLDBench Expert-B hierarchical additive law
     - dataconstrained: Muennighoff-style effective-token saturation
     """
 

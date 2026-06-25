@@ -16,14 +16,10 @@ So the delta from Bad Teacher is targeted at its collapse: where it pulled the f
 import copy
 
 class UnlearningMethod:
-    """SCRUB: min-max KL distillation vs a frozen original model.
-
-    Paper: https://arxiv.org/abs/2302.09880
-    Reference code: https://github.com/meghdadk/SCRUB
-    """
+    """SCRUB: min-max KL distillation vs a frozen original model."""
 
     def __init__(self):
-        # Defaults from the authors' VGG notebook.
+        # Defaults from the VGG setting.
         self.msteps = 2        # number of max-step epochs (rewind)
         self.kd_T = 4.0        # KD temperature
         self.alpha = 0.01      # weight on KL(student || teacher) in min step

@@ -3,7 +3,7 @@ STE's 59.35), but it learns the scale as a *free, unbounded* parameter. At INT2 
 step-size gradient is huge and noisy, so the free scale can drift, and a slice of LSQ's residual INT2
 error is likely that drift rather than the loss-optimal grid.
 
-**Key idea.** OmniQuant's Learnable Weight Clipping (Shao et al., ICLR 2024, arXiv:2308.13137): keep
+**Key idea.** Learnable Weight Clipping: keep
 the max-abs cover as the anchor and learn a sigmoid-gated *clipping factor* in (0,1) that shrinks it.
 Per group, gate the signed extremes — `xmax ← sigmoid(upbound)·max(w_g)`, `xmin ← sigmoid(lowbound)·
 min(w_g)` — then `s = max(|xmax|,|xmin|)/qmax` (clamped `[1e-5,1e4]`), and STE fake-quant
@@ -22,7 +22,7 @@ factors are per-group `nn.Parameter`s the harness optimizer trains.
 factor init 4.0; `CLIPMIN=1e-5`; weight-only; LM head full precision.
 
 ```python
-# EDITABLE region of custom_qat.py (lines 33-176) — finale: OmniQuant LWC (learnable weight clipping)
+# EDITABLE region of custom_qat.py (lines 33-176) — finale: learnable weight clipping (LWC)
 
 CONFIG_OVERRIDES = {
     "learning_rate": 2e-5,
@@ -35,7 +35,7 @@ CONFIG_OVERRIDES = {
 }
 
 _LWC_INIT = 4.0       # init_value for the learnable clip factors; sigmoid(4) ~ 0.982
-_CLIPMIN = 1e-5       # floor on the learned scale (OmniQuant CLIPMIN)
+_CLIPMIN = 1e-5       # floor on the learned scale
 
 
 def _qrange(num_bits):

@@ -20,7 +20,7 @@ Why normalize away the magnitude entirely? At small batch I'd be nervous — the
 
 Now `φ`. Take `φ(z) = z` first, the identity. Then the per-layer multiplier in front of the unit direction is `‖x^(i)‖/‖u^(i)‖`. Is there a reading of that? If `u^(i)` is roughly the gradient, then `‖x^(i)‖/‖u^(i)‖` is a step size that's large when the weights are large relative to the gradient and small when they're not — and `1/(step size)` looks like a curvature. In fact, if layer `i` is `L_i`-smooth, the textbook safe step for gradient descent is `1/L_i`, and `‖x^(i)‖/‖∇_i f‖` is a cheap running *estimate* of `1/L_i`. So the trust ratio isn't arbitrary; with `φ = id` it's a per-layer estimate of the inverse local smoothness. That's reassuring — it says the scheme is automatically doing per-layer second-order-ish step sizing without any Hessian.
 
-But pure identity is dangerous at the extremes. If a layer's weights are huge, `‖x^(i)‖` is huge and the step explodes; if the update norm `‖u^(i)‖` is near zero, same thing. So the mathematical strategy allows clipping: `φ(z) = min(max(z, γ_l), γ_u)`. Identity in the middle, flat at the ends — a clipped identity. The convergence theorem assumes a positive lower and upper bound `α_l ≤ φ ≤ α_u`; the Google and TensorFlow Addons reference code uses the unclipped identity `φ(z)=z` with a zero-norm fallback, while some PyTorch variants add an upper cap such as `10`. So clipping is a valid implementation choice, but not the canonical Google/TFA core.
+But pure identity is dangerous at the extremes. If a layer's weights are huge, `‖x^(i)‖` is huge and the step explodes; if the update norm `‖u^(i)‖` is near zero, same thing. So the mathematical strategy allows clipping: `φ(z) = min(max(z, γ_l), γ_u)`. Identity in the middle, flat at the ends — a clipped identity. The convergence theorem assumes a positive lower and upper bound `α_l ≤ φ ≤ α_u`; the cleanest core uses the unclipped identity `φ(z)=z` with a zero-norm fallback, while one can also add an upper cap such as `10`. So clipping is a valid implementation choice, but not the canonical core.
 
 Good — this is a *strategy*, not yet an algorithm, because I haven't said what the base optimizer `A` is. Let me instantiate it. The most natural first try: `A` = momentum SGD, `u_t = m_t` with `m_t = β₁ m_{t-1} + (1−β₁)(g_t + λ x_t)`. Plug in:
 
@@ -100,11 +100,11 @@ For `β₂ = 0` the coordinate bound sharpens — the agreement term carries `�
 
 So both versions provably converge to a stationary point, but only the trust-ratio theorem and the `β₂ = 0` LAMB theorem have the clean `L_avg` dependence. The `β₂ > 0` LAMB theorem is looser: it carries `√(G²d/(h(1−β₂)))` times a term involving `‖L‖_1`. Is `L_avg` actually a *win* over SGD's `L_∞` in the clean cases? Not unconditionally — the convergence *criterion* changed too (I'm bounding `(Σ_i ‖∇_i f‖)²` or `‖∇f‖_1²`, not `‖∇f‖²`), so I have to compare like with like. Borrow the signSGD-style density bookkeeping. Define `(Σ_i ‖∇_i f‖)² = ψ_g · d‖∇f‖²/h`, `‖L‖_1² ≤ ψ_L · d²L_∞²/h²`, `‖σ‖_1² = ψ_σ · d‖σ‖²/h`, where each `ψ` measures how *dense* (spread out) that quantity is across coordinates. Substituting, the layerwise rate rewrites as `O((f(x_1)−f*)L_∞/T · ψ_L/ψ_g² + ‖σ‖²/T · ψ_σ²/ψ_g²)`. So I beat SGD exactly when `ψ_L ≪ ψ_g²` and `ψ_σ ≪ ψ_g²` — when the **gradient is denser than the curvature and the noise**. That's the precise condition. The layerwise trust ratio helps when the signal is spread across many coordinates/layers while the curvature and stochasticity are concentrated; it does *not* help when curvature is as dense as the gradient.
 
-A couple of practical things the derivation suggests. The debiasing `m̂ = m/(1−β₁^t)`, `v̂ = v/(1−β₂^t)` changes the effective learning-rate schedule by the familiar Adam correction factor, so if I am already running an explicit warmup schedule, the two mechanisms overlap and the correction can be removed in practice. For the per-layer norm in the trust ratio I've been writing `ℓ2`; in principle any norm would do, and swapping it barely moves the result, so `ℓ2` is the default. The clipped form `φ(z) = min(max(z, γ_l), γ_u)` is the mathematical guardrail when I want bounded trust-ratio numerators, while the Google/TFA implementation uses the unclipped identity and relies on the zero-norm fallback; PyTorch variants may add an upper clamp as an engineering choice.
+A couple of practical things the derivation suggests. The debiasing `m̂ = m/(1−β₁^t)`, `v̂ = v/(1−β₂^t)` changes the effective learning-rate schedule by the familiar Adam correction factor, so if I am already running an explicit warmup schedule, the two mechanisms overlap and the correction can be removed in practice. For the per-layer norm in the trust ratio I've been writing `ℓ2`; in principle any norm would do, and swapping it barely moves the result, so `ℓ2` is the default. The clipped form `φ(z) = min(max(z, γ_l), γ_u)` is the mathematical guardrail when I want bounded trust-ratio numerators, while the simplest implementation uses the unclipped identity and relies on the zero-norm fallback; an upper clamp can be added as an engineering choice.
 
 Let me also make sure the across-batch-size story needs no per-task tuning. Since the gradient variance falls as `1/b`, the natural learning-rate knob is `√b` scaling, paired with a warmup whose length grows with the number of steps (linear-epoch warmup). With the layerwise trust ratio absorbing the per-layer geometry, I shouldn't have to re-tune as I sweep batch 512 → 32k — set the base `η` once, scale by `√b`, warm up proportionally. That's the whole point: the trust ratio is what makes a single recipe survive the sweep.
 
-Now the code. Per parameter group ("layer"): maintain Adam's two EMAs, form the Adam direction, fold in decoupled decay `r + λx`, compute the layer's weight norm and the direction norm, take their ratio as the trust ratio (defaulting to 1 if either norm is zero so a dead layer just gets the base Adam direction), and step by `−η · trust_ratio · direction`. The TensorFlow Addons reference uses bias correction exactly as the paper writes it; the Google ALBERT/BERT-side implementation omits bias correction and relies on explicit warmup. I can show that as a toggle without changing the update order.
+Now the code. Per parameter group ("layer"): maintain Adam's two EMAs, form the Adam direction, fold in decoupled decay `r + λx`, compute the layer's weight norm and the direction norm, take their ratio as the trust ratio (defaulting to 1 if either norm is zero so a dead layer just gets the base Adam direction), and step by `−η · trust_ratio · direction`. One variant uses bias correction exactly as derived; another omits bias correction and relies on explicit warmup. I can show that as a toggle without changing the update order.
 
 ```python
 import torch
@@ -115,7 +115,7 @@ class Lamb(Optimizer):
     def __init__(self, params, lr=1e-3, betas=(0.9, 0.999), eps=1e-6,
                  weight_decay=0.0, debias=False):
         defaults = dict(lr=lr, betas=betas, eps=eps, weight_decay=weight_decay)
-        self.debias = debias             # TFA/paper correction; Google code omits it
+        self.debias = debias             # Adam bias correction; can be omitted with explicit warmup
         super().__init__(params, defaults)
 
     @torch.no_grad()
@@ -153,7 +153,7 @@ class Lamb(Optimizer):
                 if group['weight_decay'] != 0:
                     r = r.add(p.data, alpha=group['weight_decay'])
 
-                # Google/TFA core uses phi(||x||)=||x||; PyTorch variants may clamp it.
+                # core uses phi(||x||)=||x||; an upper clamp is an optional variant.
                 weight_norm = p.data.pow(2).sum().sqrt()
                 r_norm = r.pow(2).sum().sqrt()
                 if weight_norm == 0 or r_norm == 0:

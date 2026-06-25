@@ -47,7 +47,7 @@ than estimating them from the training loss and inverting them.
   θ' = θ − α · MC(∇L_train(θ)) = θ − α · (∇L ×_3 M_f ×_2 M_i ×_1 M_o),
 
 per layer. The released sinusoid/Omniglot code reuses the same factors across repeated inner steps;
-the paper's WRN-feature appendix reports separate meta-curvature matrices for each inner update.
+the WRN-feature variant uses separate meta-curvature matrices for each inner update.
 Meta-parameters: the initialization `θ` **and** all the `{M_o, M_i, M_f}` across layers, meta-trained
 together.
 
@@ -83,12 +83,12 @@ higher-order machinery beyond the Hessian-vector product MAML already pays.
 
 ## Working code
 
-The canonical released implementation is the author's TensorFlow MAML fork (`silverbottlep/maml`,
+The canonical released implementation is the TensorFlow MAML fork (`silverbottlep/maml`,
 commit `e9ce6546bbf2f10a29d699f0302594829a277251`). Its MC path is: `--mc` flag in `main.py:49-50`;
 identity/ones factor creation in `maml.py:70-90`; gradient transformation in `maml.py:99-117`;
 inner updates in `maml.py:130-151`; Adam meta-optimization in `maml.py:191-195`. That code uses
 TensorFlow layouts `[kh, kw, Cin, Cout]` and `[Cin, Cout]`. The PyTorch equivalent below uses the
-paper/PyTorch layout `[C_out, C_in, ...]`, so output-mode multiplication appears on the left rather
+PyTorch layout `[C_out, C_in, ...]`, so output-mode multiplication appears on the left rather
 than as the right-multiply used by the TensorFlow code; a direct checkpoint port would transpose that
 output-mode factor.
 
@@ -191,6 +191,6 @@ The factors are identity-initialized (so adaptation starts as MAML), the gradien
 three `n`-mode products for convolution tensors (a Kronecker-factored transform, never materialized as
 the full matrix), the update is differentiable so the outer loop backprops into both `θ` and the `M`
 matrices, and `meta_parameters()` hands the factors to the meta-optimizer. For a linear layer the
-paper's spatial mode collapses to `d = 1`; the released code omits that redundant scalar and uses only
+spatial mode collapses to `d = 1`; the released code omits that redundant scalar and uses only
 input/output factors. 1D bias and batch-norm parameters use an elementwise scale, also matching the
 released TensorFlow code.

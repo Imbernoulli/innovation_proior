@@ -95,15 +95,15 @@ target-free critic. The entropy temperature self-tunes per environment, which is
 HalfCheetah, Reacher, and Ant.
 
 This task's harness shapes two things I must be honest about, because the baseline named after this
-method here is not the paper's configuration. First, the network *dimensions are fixed* — a
-parameter-count check enforces 256-wide layers — so I cannot widen the critic to the paper's 2048
-units. The paper's accuracy comes partly from that widening, which the normalization makes trainable;
+method here is not the full configuration. First, the network *dimensions are fixed* — a
+parameter-count check enforces 256-wide layers — so I cannot widen the critic to the full method's 2048
+units. That widening accounts for part of the accuracy, which the normalization makes trainable;
 here I keep 256-wide critics and rely only on the normalization-plus-no-target mechanism, so I should
 expect the *mechanism's* benefit (un-stale bootstrap, consistent cross-batch scale) without the
 extra-capacity benefit. Second, with the target network gone there is no `tau` and the critic learns
 from a fresh signal, so I update the actor *every* step (policy delay 1) rather than every two — the
 critic no longer needs to settle behind a lagged target before each policy move, because there is no
-lag. I also keep the BatchRenorm eps at the scaffold's numerical setting rather than the paper's, and
+lag. I also keep the BatchRenorm eps at the scaffold's numerical setting rather than the canonical value, and
 toggle the critics to eval mode for the actor's Q-evaluation (the actor reads the critic on a single
 current-state batch, which should use running statistics, not recompute batch stats on a one-sided
 batch). So the scaffold delta from TD3 is: bring back SAC's stochastic actor and entropy tuning, put
@@ -120,7 +120,7 @@ not the cause and the variance is coming from somewhere else. HalfCheetah and Re
 saturation for the good methods (TD3 at 11055 and −3.83), so the test there is *holding*, not jumping:
 the normalized critic and the entropy-explored-but-mean-evaluated actor should match TD3 on both, and a
 *drop* on Reacher would mean the residual evaluation behavior is not as sharp as TD3's deterministic
-policy. There is a real risk specific to this constrained version: stripped of the paper's critic
+policy. There is a real risk specific to this constrained version: stripped of the full method's critic
 widening, the normalization-only CrossQ may not separate from TD3 by much — the honest expectation is
 parity-to-better with a tighter Ant, not a blowout. What this rung adds to the ladder is not a bigger
 number guaranteed; it is the demonstration that the target network — the one fixture every prior rung

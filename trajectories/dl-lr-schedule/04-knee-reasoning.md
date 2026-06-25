@@ -101,9 +101,8 @@ it earns its regularization by holding the existing peak longer, entirely within
 exposes. I check the seams: warmup ends at `base_lr`, explore opens at `base_lr` (continuous), explore ends
 at `base_lr`, exploit opens at `base_lr` and the clamp keeps it non-negative through to 0 at the boundary —
 only the slope changes at each seam, never the value, so there is no shock to the dynamics or the momentum
-velocity. The faithful reference for the three-phase math is the explore-exploit (Knee) scheduler of Iyer,
-Kwatra, Ramjee & Sivathanu ("Wide-minima Density Hypothesis and the Explore-Exploit Learning Rate
-Schedule", JMLR 2023, arXiv:2003.03977); the scaffold fill re-expresses its `get_lr` exactly — warmup
+velocity. The three-phase math I will call the explore-exploit (Knee) schedule, built on the wide-minima
+density hypothesis; the scaffold fill expresses its `get_lr` as — warmup
 `peak_lr·step/warmup`, explore constant `peak_lr`, exploit `max(0, peak_lr − peak_lr/decay·(step − warmup −
 explore))` — in this task's per-epoch contract, mapping the 0-indexed harness epoch to the canonical
 1-indexed `global_step = epoch + 1` so the branch boundaries match and the final epoch lands exactly at 0,

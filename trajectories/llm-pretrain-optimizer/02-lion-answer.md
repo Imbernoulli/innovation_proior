@@ -9,9 +9,9 @@ likes the large reliable batch this run already has. Two momentum constants do t
 `sign(β₁·m + (1−β₁)·g)` (recency-weighted), while the *buffer* updates on its own slower constant
 `m ← β₂·m + (1−β₂)·g` (longer memory).
 
-**Step-2 edit (this task's Lion, not the paper recipe).** The harness fixes choices the standalone
+**Step-2 edit (this task's Lion, not the standalone recipe).** The harness fixes choices the standalone
 method would set differently: betas are the substrate's **(0.9, 0.95)** (β₂ = 0.95, a *shorter* buffer
-memory than Lion's usual 0.99); the learning rate is **0.3 ×** the schedule value (not 0.1×); weight
+memory than the standalone 0.99); the learning rate is **0.3 ×** the schedule value (not 0.1×); weight
 decay is the substrate's **0.1 on 2D / 0 on 1D**, *not* raised, applied as a decoupled shrink **before**
 the sign step. Default dimension-based grouping kept; `get_lr` and `CONFIG_OVERRIDES` untouched (the 0.3
 factor is in the constructor).

@@ -64,7 +64,7 @@ dominate (unlike DPO's un-normalized `nabla log pi(y_w) - nabla log pi(y_l)`).
 ## Defaults and tuning
 
 - `beta` scales the reward difference (sigmoid sharpness); chat settings use roughly `beta in [2, 2.5]`.
-- The paper tunes `gamma` directly over `{0.3, 0.5, 1.0, 1.2, 1.4, 1.6}`; the official trainer stores the
+- Tune `gamma` directly over `{0.3, 0.5, 1.0, 1.2, 1.4, 1.6}`; the official trainer stores the
   equivalent normalized code parameter `gamma_beta_ratio = gamma / beta`.
 - Small learning rate (~`5e-7`–`1e-6`), cosine schedule with ~10% warmup, batch size ~128, a few
   epochs, max sequence length 2048, Adam.

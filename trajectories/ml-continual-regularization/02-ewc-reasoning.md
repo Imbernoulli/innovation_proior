@@ -110,8 +110,8 @@ a sum of quadratics is a quadratic, each anchored at its boundary snapshot with 
 matches the EWC rule exactly — at the price of memory that grows with the number of contexts, which I note
 now because it is the very thing the next rung will have to attack.
 
-There is a wrinkle the harness forces me to be honest about, comparing this to the paper's EWC. The
-canonical EWC keeps a *separate* Fisher and anchor per past context and sums explicit springs, each
+There is a wrinkle the harness forces me to be honest about. The
+canonical form of this method keeps a *separate* Fisher and anchor per past context and sums explicit springs, each
 anchored at its own `theta*_t`. This harness's loop instead sums my per-context Fisher returns into a
 single `_custom_importance` buffer and re-snapshots `_custom_prev_params` to the *latest* boundary at each
 context. So the penalty here anchors all the accumulated stiffness at the *most recent* optimum, not at

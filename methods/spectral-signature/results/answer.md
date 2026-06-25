@@ -62,8 +62,8 @@ Equivalently, one sufficient all-`epsilon<1/2` condition is
 ```
 
 This is the constant-correct version of the margin argument for the squared
-score. The paper states the simpler `6 sigma^2/epsilon` population condition;
-that captures the intended low-poison-rate intuition, but its written
+score. The simpler `6 sigma^2/epsilon` population condition
+captures the intended low-poison-rate intuition, but its
 Chebyshev proof does not establish the absolute-threshold guarantee uniformly
 for every `epsilon<1/2`.
 

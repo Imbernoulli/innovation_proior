@@ -6,7 +6,7 @@ ULMFiT transfers a whole pretrained language model to a text classifier in three
 stages:
 
 1. Pretrain a regular AWD-LSTM language model on a large general corpus
-   (WikiText-103 in the paper).
+   (WikiText-103).
 2. Fine-tune that language model on the target task's unlabeled text.
 3. Replace the decoder with a concat-pooling classifier head and fine-tune the
    classifier with top-down unfreezing.
@@ -37,7 +37,7 @@ p = 1 - (t - cut) / (cut * (1/cut_frac - 1))    otherwise
 η_t = η_max * (1 + p * (ratio - 1)) / ratio
 ```
 
-Paper defaults: `cut_frac=0.1`, `ratio=32`, `η_max=0.01`. The schedule rises
+Defaults: `cut_frac=0.1`, `ratio=32`, `η_max=0.01`. The schedule rises
 quickly from `η_max/ratio` to `η_max`, then decays linearly back near the floor.
 
 **Concat pooling.**
@@ -53,22 +53,22 @@ language features from the first random-head gradients.
 
 ## Configuration
 
-Paper constants: AWD-LSTM with embedding size `400`, hidden activations `1150`,
+Constants: AWD-LSTM with embedding size `400`, hidden activations `1150`,
 `3` recurrent layers, BPTT length `70`, batch size `64`; classifier hidden size
 `50`; dropout rates `0.4` layer/output, `0.3` recurrent, `0.4` input, `0.05`
 embedding, and `0.5` recurrent weight-drop; base learning rates `0.004` for LM
-fine-tuning and `0.01` for classifier fine-tuning; Adam reported with
+fine-tuning and `0.01` for classifier fine-tuning; Adam with
 `β1=0.7`, `β2=0.99`.
 
 Reference-code caveats from the fastai v0.7.2 release snapshot:
 
-- The IMDb scripts set `optim.Adam(betas=(0.8, 0.99))`, not the paper's
-  reported `β1=0.7`.
+- The IMDb scripts set `optim.Adam(betas=(0.8, 0.99))`, not the
+  intended `β1=0.7`.
 - The classifier script implements five discriminative groups as
   `[lr/2.6^4, lr/2.6^3, lr/2.6^2, lr/2.6, lr]`.
 - The LM fine-tuning script uses four rates `[lr/6, lr/3, lr, lr/2]`.
-- The later fastai1 library default uses `n_hid=1152`; the paper and v0.7.2
-  IMDb scripts use `1150`.
+- The later fastai1 library default uses `n_hid=1152`; the intended setting and
+  the v0.7.2 IMDb scripts use `1150`.
 
 ## Reference-faithful sketch
 

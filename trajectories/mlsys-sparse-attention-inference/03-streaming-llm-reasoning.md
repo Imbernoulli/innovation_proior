@@ -60,16 +60,16 @@ to arbitrary positions. That is the precise sense in which a static pattern, how
 structurally blind to the needle — and it is why I expect this rung to make the model behave sensibly
 (QA recovers) while NIAH stays stuck.
 
-Now I have to be careful that this rung is *this task's* method and not the paper's, because the
-difference is substantial. The paper's version of sink+window is a **KV-cache eviction** scheme: it
+Now I have to be careful that this rung is *this task's* method and not the streaming-cache variant of it, because the
+difference is substantial. The streaming-cache version of sink+window is a **KV-cache eviction** scheme: it
 keeps a small rolling cache, evicts the middle, and — the signature move — re-indexes positions *within
 the cache* so the rotary positions stay contiguous and in-distribution, which requires a position-shift
 attention adapter that rotates cached keys by cache-position at each decode step. None of that exists
 here. The harness runs `use_cache=False`; every forward is a full parallel pass over the entire prefix,
 and the same module replays at every generation step. There is no cache to evict, no eviction-time
 position re-indexing — the positions are the model's own RoPE positions, applied by the loop before I see
-`q, k, v`. So in this setting StreamingLLM is not a cache policy at all; it is a **static sink+window
-mask** over the full `(N, N)` causal matrix. The "constant memory, constant latency" story the paper
+`q, k, v`. So in this setting the streaming approach is not a cache policy at all; it is a **static sink+window
+mask** over the full `(N, N)` causal matrix. The "constant memory, constant latency" story the cache version
 sells is irrelevant here — what transfers is only the *attention pattern*: keep the first `num_sinks`
 columns and a recent window per query, mask everything else. I have to derive the window size from the
 density contract directly, in this static-mask setting, not from a cache budget.

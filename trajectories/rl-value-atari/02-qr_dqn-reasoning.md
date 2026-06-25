@@ -113,8 +113,8 @@ locations with the quantile Huber loss summed over predicted quantiles $i$ and a
 samples $j$ — the all-pairs version of the tabular update. There is no projection and no support range;
 the only extra knob over the scalar critic is $N$.
 
-Now fit this to *this* edit surface, because it is a same-named method only in spirit and I must land
-the harness's implementation, not the paper's. The fixed `NatureDQNEncoder` gives me 512 features; the
+Now fit this to *this* edit surface, because I must land
+the harness's implementation. The fixed `NatureDQNEncoder` gives me 512 features; the
 head becomes `Linear(512, n_actions * N)`, reshaped to $(B, n_{\text{actions}}, N)$, with $Q$-values as
 the per-action mean over the $N$ — so `q_network.forward` returns means and the loop's eval argmax still
 works unchanged. I take $N = 200$, the standard Atari resolution and exactly the width the scaffold's

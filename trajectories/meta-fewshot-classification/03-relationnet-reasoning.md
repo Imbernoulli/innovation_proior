@@ -78,8 +78,8 @@ ask it for pooled 640-dim *vectors* (`use_pooling=True`) or 640-channel feature 
 (`use_pooling=False`). To make the comparator convolutional I take the maps. So `make_backbone(
 use_pooling=False)` for both support and query, giving 640-channel feature maps, and I concatenate a
 (class-map, query-map) pair along the channel axis into 2·640 = 1280 channels — the relation module's
-first conv accepts that doubled depth. This is the literal edit: I do not build the paper's 64-channel
-ConvNet embedding (the canonical reference's `EmbeddingModule`), I reuse the shared ResNet-12 as the
+first conv accepts that doubled depth. This is the literal edit: I do not build a fresh 64-channel
+ConvNet embedding (a dedicated `EmbeddingModule`), I reuse the shared ResNet-12 as the
 embedding and put *all* my new parameters into the relation module operating on its 640-channel maps.
 That is also what keeps me inside the parameter budget, since the budget is set at ≈1.05× a ResNet-12
 plus exactly such a relation module.

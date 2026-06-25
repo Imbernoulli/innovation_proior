@@ -37,7 +37,7 @@ halfcheetah-medium-v2 `β = 0.3`, walker2d-medium-v2 `β = 8.0`.
 
 Reported D4RL Gym (normalized): halfcheetah-medium-v2 `66.6 ± 1.6`, walker2d-medium-v2 `91.6 ± 2.8`,
 Gym average `85.2` — ahead of ensemble-free TD3+BC (67.5), IQL (68.9), CQL (73.6) and matching the
-ensemble methods SAC-N (84.4) / EDAC (85.2). (Nikulin et al., ICML 2023, arXiv:2301.13616.)
+ensemble methods SAC-N (84.4) / EDAC (85.2).
 
 ## Code
 

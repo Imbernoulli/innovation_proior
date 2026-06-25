@@ -121,7 +121,7 @@ slope of `23/(4·7.5) = 23/30`. This is *not* pointwise identical to `15·tanh(z
 a softmax-invisible constant — the shifted midpoint and smaller height make it a tuned sigmoid member of
 the same bounded-monotone family. It is still strictly increasing (argmax preserved), bounded by 23 (the
 exp is tame, well below where the bfloat16 `exp` hurts), and smooth (gradient lives everywhere). This is
-the crucial place where this rung is *not* "Gemma the paper": the task description names the Gemma-2 tanh
+the crucial place where this rung is *not* the canonical Gemma-2 cap: the task description names the Gemma-2 tanh
 soft cap at 30, but the actual edit on this ladder is the modded-nanogpt sigmoid form `23·σ((z+5)/7.5)`,
 a retuned asymmetric member of the same family — same three structural properties, different constants and
 parameterization, derived from the same requirements but landed at the implementation the harness exposes.

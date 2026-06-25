@@ -10,17 +10,17 @@ Train a convolutional vector-quantized autoencoder first. The encoder produces `
 
 `z_q = q(z) = (argmin_{z_k in Z} ||z_ij - z_k||)`, and `x_hat = G(z_q)`.
 
-Use the straight-through estimator `z_q = z + sg[z_q - z]`. The paper-level VQ loss uses unit codebook and commitment terms:
+Use the straight-through estimator `z_q = z + sg[z_q - z]`. The clean VQ loss uses unit codebook and commitment terms:
 
 `L_VQ = L_rec + ||sg[E(x)] - z_q||_2^2 + ||sg[z_q] - E(x)||_2^2`.
 
-The final paper removed the earlier beta on the commitment term. The public code keeps a backward-compatible legacy quantizer: `VQModel` passes `beta=0.25`, and `VectorQuantizer2(legacy=True)` applies that beta to the legacy/wrong term. Treat the displayed paper objective and the released-code behavior as distinct facts.
+This drops the earlier beta on the commitment term. The public code keeps a backward-compatible legacy quantizer: `VQModel` passes `beta=0.25`, and `VectorQuantizer2(legacy=True)` applies that beta to the legacy/wrong term. Treat the displayed objective and the released-code behavior as distinct facts.
 
 The reconstruction term is perceptual, not pixel-only:
 
 `L_rec = mean(|x - x_hat| + perceptual_weight * LPIPS(x, x_hat))`.
 
-Add a patch discriminator. The paper writes the GAN game as `log D(x) + log(1 - D(x_hat))`; the canonical implementation defaults to hinge loss:
+Add a patch discriminator. The GAN game is `log D(x) + log(1 - D(x_hat))`; the canonical implementation defaults to hinge loss:
 
 `L_D = 0.5 * (mean relu(1 - D(x)) + mean relu(1 + D(x_hat)))`
 
@@ -30,13 +30,13 @@ Balance the GAN term at the decoder's last layer `G_L`:
 
 `lambda = ||grad_{G_L} L_rec|| / (||grad_{G_L} L_G|| + delta)`.
 
-The paper states `delta = 10^-6`; the public code uses `1e-4`, clamps to `[0, 1e4]`, detaches, and multiplies by `disc_weight`. The discriminator factor is zero before `disc_start`; the supplement recommends at least one epoch of warm-up.
+The clean form states `delta = 10^-6`; the public code uses `1e-4`, clamps to `[0, 1e4]`, detaches, and multiplies by `disc_weight`. The discriminator factor is zero before `disc_start`; at least one epoch of warm-up is advisable.
 
 After the first stage is frozen, encode images to index sequences `s`. A decoder-only transformer models
 
 `p(s) = prod_i p(s_i | s_<i)`, with cross-entropy next-index training.
 
-Conditioning is prefix conditioning: a class/SOS token is a one-token prefix; spatial conditions are converted to token sequences and prepended. The loss is restricted to the image-code part. Default ordering is row-major; the paper's ordering ablation found row-major best among the tested permutations.
+Conditioning is prefix conditioning: a class/SOS token is a one-token prefix; spatial conditions are converted to token sequences and prepended. The loss is restricted to the image-code part. Default ordering is row-major; an ordering ablation finds row-major best among the tested permutations.
 
 For large images, train on latent crops and sample with a sliding `16 x 16` latent window. At each raster position, the implementation builds a local image-token patch plus the matching condition patch, predicts the current local coordinate, samples with temperature/top-k, writes the code into the full latent grid, then decodes the completed grid.
 
@@ -253,8 +253,8 @@ class Net2NetTransformer(nn.Module):
 
 ## Edge Cases
 
-- `VectorQuantizer2(legacy=True)` is code-faithful for released VQGAN configs; the paper equation is cleaner and unit-weighted.
-- `lambda` uses paper `delta = 10^-6`, but code uses `1e-4`; do not mix those constants without saying which surface is meant.
+- `VectorQuantizer2(legacy=True)` is code-faithful for released VQGAN configs; the clean equation is cleaner and unit-weighted.
+- `lambda` uses the clean `delta = 10^-6`, but code uses `1e-4`; do not mix those constants without saying which surface is meant.
 - The shifted prefix slice `logits[:, c_len - 1:]` is intentional: the first kept logit predicts the first image token after seeing the full condition prefix.
 - `pkeep < 1` corrupts some image-code inputs during transformer training; targets remain the true image indices.
 - Unconditional sampling uses an SOS prefix; class sampling uses the class label as a one-token prefix; spatial conditions use a tokenized condition prefix.

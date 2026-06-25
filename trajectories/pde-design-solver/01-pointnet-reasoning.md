@@ -37,8 +37,8 @@ the only thing you know about the rest of the body is a single max-pooled summar
 Now I have to land this in the task's edit surface, and here is where I must be careful, because the
 implementation the harness ships under the `pointnet` baseline is *not* the full PointNet from the
 classification/segmentation literature — it is a stripped, design-task-specific variant, and the
-trajectory's code must match that, not the paper. Three differences matter. First, there are **no
-T-nets**: the paper's signature move is the input and feature alignment networks (the 3×3 and 64×64
+trajectory's code must match that, not the full version. Three differences matter. First, there are **no
+T-nets**: the full version's signature move is the input and feature alignment networks (the 3×3 and 64×64
 learned transforms, the latter kept orthogonal by a regularizer on the loss) that canonicalize pose
 before pooling. The harness drops both. That is defensible here — the design meshes already arrive in
 a consistent physical frame (a car is a car, oriented the same way; the inlet direction is fixed), so
@@ -58,9 +58,9 @@ final linear and the decoder produce the four output channels. The shared-per-po
 batch dimension is squeezed away because the loop guarantees one mesh, and a zero `batch` index
 vector is what feeds `global_max_pool`.
 
-The width choice is forced by the budget. The paper-faithful PointNet script uses a small width,
+The width choice is forced by the budget. The canonical PointNet script uses a small width,
 and the harness honors that: `CONFIG_OVERRIDES = {'n_hidden': 16}`. This is not a free knob —
-`n_hidden=16` is what keeps PointNet a paper-faithful baseline, and it also means the `32·n_hidden`
+`n_hidden=16` is what keeps PointNet a faithful baseline, and it also means the `32·n_hidden`
 global descriptor is 512-wide, modest. Crucially, the model *raises* `ValueError` if `geo` is None —
 the harness builds an edge_index for every forward pass and PointNet here is registered as a graph
 model even though it does not message-pass over the edges; it only uses the squeezed point set and

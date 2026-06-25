@@ -65,8 +65,8 @@ scoring convs, `Z = σ(GNN_2(σ(GNN_1(X, A)), A))`. Multi-head: average `M` scor
 ## Architectures
 
 - **Hierarchical:** three blocks, each a graph-convolution layer followed by a SAGPool layer;
-  a per-block readout combines mean and max. The paper writes `s = (1/N Σ_i x_i) || max_i x_i`;
-  the official implementation concatenates max then mean and sums the block readouts before the
+  a per-block readout combines mean and max. The natural form is `s = (1/N Σ_i x_i) || max_i x_i`;
+  the working implementation concatenates max then mean and sums the block readouts before the
   linear classifier.
 - **Global:** three graph-convolution layers, outputs concatenated, one SAGPool readout, linear
   classifier. ReLU activations; graph convolution fixed to the Kipf-Welling rule for fairness
@@ -92,7 +92,7 @@ from torch_geometric.nn.pool.topk_pool import topk, filter_adj  # per-graph top-
 
 
 class SAGPool(nn.Module):
-    """Self-attention graph pooling layer (Lee et al., 2019). Scores nodes with a
+    """Self-attention graph pooling layer. Scores nodes with a
     single-output graph convolution (features + topology), keeps the top
     ceil(ratio*N) per graph, gates kept features by tanh(score), indexes adjacency."""
 
@@ -100,7 +100,7 @@ class SAGPool(nn.Module):
         super().__init__()
         self.in_channels = in_channels
         self.ratio = ratio
-        # Scalar GCN score; paper notation applies sigma to obtain Z.
+        # Scalar GCN score; apply sigma to obtain Z.
         self.score_layer = Conv(in_channels, 1)
         self.non_linearity = non_linearity
 
@@ -132,7 +132,7 @@ class GraphReadout(nn.Module):
         self.output_dim = hidden_dim * 2          # max||mean per block, summed across blocks
 
     def _readout(self, x, batch):
-        # Official code uses max||mean; the paper equation writes mean||max.
+        # Working code uses max||mean; the equation writes mean||max.
         return torch.cat([global_max_pool(x, batch), global_mean_pool(x, batch)], dim=-1)
 
     def forward(self, x, edge_index, batch, layer_outputs):
@@ -152,7 +152,7 @@ class GraphReadout(nn.Module):
 ```
 
 For the modern PyTorch-Geometric library form, use
-`SAGPooling(in_channels, ratio=0.5, GNN=GCNConv, nonlinearity='tanh')` to match the paper's
+`SAGPooling(in_channels, ratio=0.5, GNN=GCNConv, nonlinearity='tanh')` to match the
 GCN-score choice. PyG defaults to `GraphConv` if `GNN` is not supplied. With `min_score=None`,
 the wrapper computes a scalar `GNN(X,A)` attention signal, passes it through `SelectTopK` with
 the tanh nonlinearity, gates retained features by the returned score, and filters edges with

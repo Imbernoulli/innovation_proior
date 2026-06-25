@@ -92,7 +92,7 @@ and it carries over whether or not the encoder is linear.
 
 Now I have to be honest about exactly what this task's edit surface lets me build, because the
 principled JacobiConv has two refinements the harness cannot express, and I must land the version the
-scaffold supports, not the paper's. First, *individual filters per output channel*: the universality
+scaffold supports, not the full one. First, *individual filters per output channel*: the universality
 argument is one-dimensional, and a single shared filter cannot produce an arbitrary multi-class
 prediction, so the full method gives each output channel its own coefficient vector `α_{kl}`. But this
 task's `CustomProp` owns a *single* shared coefficient vector `temp` of length `K+1`, applied

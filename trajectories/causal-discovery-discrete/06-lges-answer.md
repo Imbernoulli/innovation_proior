@@ -3,7 +3,7 @@ maximally-**greedy forward phase** that over-adds adjacencies on dense, near-unf
 Win95pts SHD 48.7 (worse than BOSS's 38, adjacency precision only 0.80) and Hailfinder 39.7 (arrow
 precision 0.56). The backward phase cannot fully remove the excess edges the forward phase inserts.
 
-**Key idea (LGES — Less Greedy Equivalence Search; Ejaz & Bareinboim, NeurIPS 2025, arXiv:2506.22331).**
+**Key idea (LGES — Less Greedy Equivalence Search).**
 A search that applies *any* score-increasing neighbor — not only the highest-scoring one — still finds
 the score's global optimum in the sample limit. That freedom lets the forward phase be **less greedy**:
 for each non-adjacent pair `(X, Y)`, enumerate the valid `Insert(X, Y, T)` operators, and **if any one is

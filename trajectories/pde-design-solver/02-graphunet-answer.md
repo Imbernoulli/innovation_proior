@@ -9,8 +9,8 @@ graph convolution (local message passing), then **coarsen** the graph; after the
 Coarse levels are a learned *spatial* analogue of PointNet's global pool (long-range reach), while the
 per-scale convolutions supply the local context PointNet lacked.
 
-**Match to the harness (not the paper).** This is the design-task geometric variant, **not** the
-gPool/gUnpool graph U-Net: (1) coarsening is **random node sampling** at `pool_ratio=0.5` per scale —
+**Match to the harness.** This is the design-task geometric variant, **not** the
+canonical gPool/gUnpool graph U-Net: (1) coarsening is **random node sampling** at `pool_ratio=0.5` per scale —
 no learned top-k projection, no sigmoid gate; (2) the coarse graph is **rebuilt by a radius graph in
 physical space** with a growing radius `list_r=[0.05,0.2,0.5,1,10]` (not adjacency powers) — the
 growing radius is what gives long-range reach, r=10 connecting nearly everything at the coarsest
@@ -24,7 +24,7 @@ structured; on a point cloud with real coordinates a radius graph is the natural
 growing radius is the cheapest route to global reach. Random pooling + nearest-neighbor unpooling keep
 the variant lightweight (only the convolutions are learned) but are lossy — the expected weak link.
 
-**Hyperparameters.** `CONFIG_OVERRIDES = {'n_hidden': 16}` (paper-faithful Graph_UNet width).
+**Hyperparameters.** `CONFIG_OVERRIDES = {'n_hidden': 16}` (canonical Graph_UNet width).
 `scale=5`, `pool_ratio=0.5` each, `max_neighbors=64`, `layer='SAGE'`, BatchNorm on, `act` from `args`,
 `out_dim` per benchmark. No new loss terms.
 

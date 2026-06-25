@@ -10,7 +10,7 @@ and score block pairs `s[i,j] = mean_q(i) · mean_k(j) · scale` — an `(n_bloc
 cheaper than dense, that never materializes the `(N,N)` logits. For each query block keep `K` blocks: the
 top `K−1` off-diagonal blocks **plus the always-included diagonal** (local context the proxy might miss).
 
-**Why it works (and how it differs from the paper here).** This is the faithful *inference* re-expression
+**Why it works (and how it differs in this setting).** This is the faithful *inference* re-expression
 of the NSA block-selection branch: frozen model (no learned projections — the mean key is the parameter-
 free representative, valid because attention is spatially clustered), parallel forward (no decode cache —
 unlike H2O/SnapKV/Quest, importance is computed from the current query, so it does not drift), no Triton

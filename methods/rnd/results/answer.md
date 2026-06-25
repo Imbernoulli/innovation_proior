@@ -19,7 +19,7 @@ i_t=\frac{1}{k}\sum_{j=1}^k
 (\hat f_\theta(s_{t+1})_j-f(s_{t+1})_j)^2.
 \]
 
-The paper often writes the bonus as \(\|\hat f(s_{t+1})-f(s_{t+1})\|^2\). The released OpenAI code
+The bonus is often written as \(\|\hat f(s_{t+1})-f(s_{t+1})\|^2\). The reference OpenAI code
 uses `reduce_mean` over feature dimensions, so the faithful implementation is MSE. A summed squared
 norm differs by the constant factor \(k=512\), which is largely absorbed by intrinsic-return
 normalization, but the code-level artifact should use the mean.
@@ -56,7 +56,7 @@ A_t=c_I A^I_t+c_E A^E_t,\qquad c_I=1,\quad c_E=2.
 \]
 
 The value loss trains \(V_I\) toward \(R^I\) and \(V_E\) toward \(R^E\) as separate heads. Default
-Atari constants from the paper and reference code are \(\gamma_I=0.99\), \(\gamma_E=0.999\),
+Atari constants from the reference code are \(\gamma_I=0.99\), \(\gamma_E=0.999\),
 \(\lambda_{\text{GAE}}=0.95\), PPO clip range \(0.1\) (ratio clipped to \([0.9,1.1]\)), entropy
 coefficient \(0.001\), Adam learning rate \(10^{-4}\), rollout length 128, 4 minibatches, and 4
 optimization epochs.

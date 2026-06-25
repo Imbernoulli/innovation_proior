@@ -23,7 +23,7 @@ def run_attack(
     device: torch.device,
     n_classes: int,
 ) -> torch.Tensor:
-    """Sparse-PGD (sPGD) L0 white-box attack (Zhong & Liu, TPAMI; arXiv:2405.05075)."""
+    """Sparse-PGD (sPGD) L0 white-box attack."""
     import torch
     import torch.nn.functional as F
 

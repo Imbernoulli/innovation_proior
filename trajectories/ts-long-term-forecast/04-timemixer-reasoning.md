@@ -100,7 +100,7 @@ the only way the architecture this rung is about actually exists here. I also ke
 internally where the method needs it small, but I read the scaffold's value and accept that the fixed
 `lr=1e-4` / `batch_size=32` is a real handicap versus the method's `lr=0.01` / `batch_size=128` recipe —
 TimeMixer is tuned to train fast at high learning rate, and the loop will not let it. This is the
-sharpest "same-named baseline is not the paper" case on the ladder: the algorithm is faithful only
+sharpest "same-named baseline is not the original method" case on the ladder: the algorithm is faithful only
 because the model supplies the multiscale config the harness omits, and it runs in a regime its own
 recipe would not choose.
 

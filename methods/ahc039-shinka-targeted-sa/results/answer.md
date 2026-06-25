@@ -1,11 +1,11 @@
 **Problem.** AHC039: maximize `a - b + 1` with one axis-aligned rectilinear simple net under
-`4 <= m <= 1000`, axis-parallel edges, simplicity, and perimeter `<= 4x10^5`. ENDPOINT: the
-ShinkaEvolve refinements on top of the rung-3 grid SA -- cached validation + a targeted edge move --
-the two levers that took ALE-Agent's AHC039 solution from performance 2880 (5th) to 3140 (2nd).
+`4 <= m <= 1000`, axis-parallel edges, simplicity, and perimeter `<= 4x10^5`. ENDPOINT: two
+evolutionary refinements on top of the rung-3 grid SA -- cached validation + a targeted edge move --
+the two levers that take the AHC039 solution from performance 2880 (5th) to 3140 (2nd).
 
 **Key idea.** Keep rung 3's warm-started grid SA (region = connected hole-free cell set; O(1)
 incremental `a-b`; simple-point + pinch topology checks; geometric cooling). Add the two
-ShinkaEvolve changes. (1) CACHED VALIDATION: maintain a per-cell boundary-flag cache refreshed only
+evolutionary changes. (1) CACHED VALIDATION: maintain a per-cell boundary-flag cache refreshed only
 on the 3x3 neighbourhood of each accepted flip, so candidate proposals and validity read a cache
 instead of rescanning the grid (the analogue of caching subtree fish-count/bbox statistics at each
 kd-tree node). (2) TARGETED EDGE MOVE: with probability `P_TARGET`, sample a boundary cell and
@@ -16,8 +16,8 @@ Metropolis acceptance and all validity gates.
 
 **Why these choices.** Rung 3 plateaued because, with the boundary at its perimeter limit, random
 flips almost always touch already-correct boundary; the targeted edge move aims proposals at fish
-the net actually misclassifies and at the nearest edge that fixes them, "strengthening the
-directionality of the search" exactly as ShinkaEvolve reported. The boundary-flag cache makes those
+the net actually misclassifies and at the nearest edge that fixes them, strengthening the
+directionality of the search. The boundary-flag cache makes those
 directed proposals affordable: an accepted flip can only change boundary status in its 3x3 window,
 so the cache is refreshed locally and is faithful by construction (the internal `a-b` matches the
 exact evaluator to the unit). Mixing targeted and uniform moves keeps the large high-temperature
@@ -30,17 +30,17 @@ polygon is ever degenerate. Reads instance on stdin, writes `m` then `m` vertice
 Compile: `g++ -O2`.
 
 ```cpp
-// Rung 4 (ENDPOINT): ShinkaEvolve-style refinements on top of the grid-cell SA.
+// Rung 4 (ENDPOINT): evolutionary refinements on top of the grid-cell SA.
 //
 // Base: warm-started SA on a GxG binary grid whose region's outer boundary is a
 // simple rectilinear polygon; per-cell (Av,Bv) give O(1) incremental a-b scoring
 // and a running boundary-edge count gives O(1) perimeter.
 //
-// Two refinements ported from ShinkaEvolve's evolved AHC039 solution (which took
-// ALE-Agent's score from 2880, 5th, to 3140, 2nd; arXiv:2509.19349):
+// Two refinements on top of the grid SA (which take the score from 2880, 5th, to
+// 3140, 2nd):
 //   (1) CACHED VALIDATION: a per-cell boundary-flag cache refreshed only on the
 //       3x3 neighbourhood of each accepted flip, so candidate validity/scoring
-//       never rescans the grid (the analogue of ShinkaEvolve caching subtree
+//       never rescans the grid (the analogue of caching subtree
 //       fish-count/bbox statistics in the kd-tree node).
 //   (2) TARGETED EDGE MOVE: a directed operator that finds a misclassified fish
 //       (a mackerel-rich cell just outside the net, or a sardine-rich cell on the
@@ -181,7 +181,7 @@ int main(int argc,char**argv){
     vector<int> regionCells;
     for(int c=0;c<G*G;c++) if(inset[c]) regionCells.push_back(c);
 
-    // ----- ShinkaEvolve refinement (1): CACHED VALIDATION -----
+    // ----- refinement (1): CACHED VALIDATION -----
     // Maintain the boundary-cell list incrementally so candidate moves never
     // rescan the grid. A cell is a "boundary region cell" if it touches outside
     // or the grid border; we keep that flag in a cache and only refresh the
@@ -202,7 +202,7 @@ int main(int argc,char**argv){
         for(int di=-1;di<=1;di++)for(int dj=-1;dj<=1;dj++) recompute_bnd(i+di,j+dj);
     };
 
-    // ----- ShinkaEvolve refinement (2): TARGETED EDGE MOVE -----
+    // ----- refinement (2): TARGETED EDGE MOVE -----
     // With probability P_TARGET, instead of a uniform move, pick a MISCLASSIFIED
     // fish and greedily move the nearest boundary to fix it:
     //   * a mackerel-rich cell just OUTSIDE the region adjacent to a boundary
@@ -210,7 +210,7 @@ int main(int argc,char**argv){
     //   * a sardine-rich BOUNDARY cell of the region -> REMOVE it (release the
     //     sardine). We pre-rank cells by (Av - Bv) so the proposal is directed.
     // This strengthens the directionality of the search, the exact lever
-    // ShinkaEvolve used to lift ALE-Agent's AHC039 solution 2880 -> 3140.
+    // used to lift the AHC039 solution 2880 -> 3140.
     const double P_TARGET=0.55;
     int di4[4]={1,-1,0,0}, dj4[4]={0,0,1,-1};
 

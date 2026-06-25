@@ -18,11 +18,11 @@ Unrolled, `F* = sum_{t} gamma^{(i-t)} F_t` — a context k boundaries ago has we
 summary settles to ~`1/(1-gamma)` effective contexts instead of growing forever, freeing capacity and
 fading old contexts gracefully. `gamma = 1` recovers EWC.
 
-**Harness notes (vs. paper Online EWC).** (a) `gamma` must be set explicitly (`model.gamma = 0.9`) to
+**Harness notes (Online EWC).** (a) `gamma` must be set explicitly (`model.gamma = 0.9`) to
 override the framework default `1.0`. (b) The loop accumulates returns *additively* into
 `_custom_importance`, so to land on `gamma*existing + F_new` the function computes that target and
 **subtracts the existing value** before returning the increment — a pure adapter to the add-don't-replace
-convention, not part of the paper. The Fisher estimator is identical to EWC.
+convention, not part of the method itself. The Fisher estimator is identical to EWC.
 
 **Hyperparameters.** `gamma = 0.9`; Fisher over `min(len, 200)` eval-mode single-example passes, exact
 all-class inner expectation; strength = per-benchmark `reg_strength`.

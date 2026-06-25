@@ -4,7 +4,7 @@ best by 40%. The shared residual of every prior rung: the critic learns through 
 networks*, a deliberately lagged bootstrap with a `tau` knob, most damaging on the high-dimensional
 task where the critic has the most to learn.
 
-**Key idea (CrossQ; Bhatt, Palenicek et al., ICLR 2024).** The target network really compensates for a
+**Key idea (CrossQ).** The target network really compensates for a
 *distribution mismatch*: one critic is evaluated on `(s,a)` (replay actions) and `(s',a')` (current
 policy) and can drift to different scales on the two clouds. Normalize the mismatch away inside the
 critic and the target network becomes redundant:
@@ -21,9 +21,9 @@ critic and the target network becomes redundant:
 Everything else is SAC: stochastic tanh-Gaussian actor (evaluation reads the mean — no entropy tax),
 twin critics with `min` target, automatic entropy tuning to `H_target=−dim(A)`.
 
-**Same-named baseline vs the paper (this harness).** Network *dimensions are fixed* (param-count
-check), so the critic is **256-wide**, not the paper's 2048 — this version relies on the
-normalization+no-target mechanism only, not the paper's critic widening. The actor updates **every
+**Same-named baseline vs the full method (this harness).** Network *dimensions are fixed* (param-count
+check), so the critic is **256-wide**, not the full method's 2048 — this version relies on the
+normalization+no-target mechanism only, not the critic widening. The actor updates **every
 step** (`policy_frequency=1`) since there is no lagged target to settle behind. Critics toggle to
 `eval()` for the actor's Q-evaluation (single current-state batch → running stats).
 
@@ -145,7 +145,7 @@ class OffPolicyAlgorithm:
         self.device = device
         self.max_action = max_action
         self.gamma = args.gamma
-        self.policy_frequency = 1  # CrossQ paper default: update actor every step
+        self.policy_frequency = 1  # CrossQ default: update actor every step
         self.total_it = 0
 
         self.actor = Actor(obs_dim, action_dim, max_action).to(device)

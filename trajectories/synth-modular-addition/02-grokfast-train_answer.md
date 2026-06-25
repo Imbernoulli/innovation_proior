@@ -2,7 +2,7 @@ The default run told me exactly what is wrong, and in the per-seed numbers. On `
 
 The training curve that produced those numbers has two things happening on wildly different timescales in the *same* run: the training loss falls off a cliff in well under a thousand steps, while the held-out loss barely moves for thousands of steps and then drops. Both curves are downstream of one process — the parameters moving — so the parameter motion must contain a fast-changing part and a slow-changing part mixed together. The fast part memorizes the table; the slow part eventually lands the Fourier circuit and generalizes. That is the working hypothesis, and it is sharp and actionable: if I can separate the slow part of the parameter motion from the fast part, the slow part is the friend I want to encourage, and encouraging it is exactly how I would make the 456 seed grok before step 30000 and pull the easy primes in from ~2800.
 
-The method I propose is the **Grokfast-EMA gradient hook** (Lee 2024): amplify the slow-varying component of each parameter's gradient before AdamW reads it. To make "slow" and "fast" precise, read the per-step update of a single scalar parameter, $u(t) = \theta(t{+}1) - \theta(t)$, as a *signal* indexed by training step. The natural language for splitting a signal into slow- and fast-varying parts is frequency: take its discrete-time Fourier transform $U(\omega) = \sum_t u(t)\,e^{-i\omega t}$, and "slow" is the low-frequency content, "fast" the high. The hypothesis restated is that the low-frequency content drives generalization and the high-frequency content drives memorization, so accelerating generalization means *boosting the low-frequency content of the parameter motion*.
+The method I propose is the **Grokfast-EMA gradient hook**: amplify the slow-varying component of each parameter's gradient before AdamW reads it. To make "slow" and "fast" precise, read the per-step update of a single scalar parameter, $u(t) = \theta(t{+}1) - \theta(t)$, as a *signal* indexed by training step. The natural language for splitting a signal into slow- and fast-varying parts is frequency: take its discrete-time Fourier transform $U(\omega) = \sum_t u(t)\,e^{-i\omega t}$, and "slow" is the low-frequency content, "fast" the high. The hypothesis restated is that the low-frequency content drives generalization and the high-frequency content drives memorization, so accelerating generalization means *boosting the low-frequency content of the parameter motion*.
 
 I do not act on $u(t)$ directly — the optimizer produces it from the gradient stream $g(t)$ — but for a first-order optimizer the update is built linearly out of the gradients (SGD is $u=-\eta g$, momentum a running average of $g$, AdamW an EMA of $g$ rescaled and shifted by decoupled decay). So I reshape $g$ and let it propagate into $u$: boost the low frequencies of the gradient signal in the hook, before AdamW reads `p.grad`. The cleanest way to get an *amplifier* rather than an information-destroying filter is to take a low-pass-filtered copy of the signal and add it back: with $h(t)$ a low-pass filter and $*$ convolution,
 
@@ -41,9 +41,9 @@ class GrokTransformer(nn.Module):
             nn.Linear(d_mlp, d_model, bias=False),
         )
         self.unembed = nn.Linear(d_model, p, bias=False)
-        self._init_paper_weights(d_model)
+        self._init_baseline_weights(d_model)
 
-    def _init_paper_weights(self, d_model: int) -> None:
+    def _init_baseline_weights(self, d_model: int) -> None:
         hidden_std = 1.0 / math.sqrt(d_model)
         nn.init.normal_(self.tok_embed.weight, mean=0.0, std=hidden_std)
         nn.init.normal_(self.pos_embed.weight, mean=0.0, std=hidden_std)
@@ -97,11 +97,10 @@ def make_optimizer(model: nn.Module, config: TaskConfig) -> torch.optim.Optimize
 
 
 class TrainHook:
-    """Grokfast-EMA gradient filter (Lee 2024 arXiv:2405.20233).
+    """Grokfast-EMA gradient filter.
 
     Maintains an EMA of each parameter's gradient and adds `lamb * EMA` to
-    the raw gradient before opt.step(). Equivalent to `gradfilter_ema` in
-    https://github.com/ironjr/grokfast/blob/main/grokfast.py.
+    the raw gradient before opt.step().
     """
 
     def __init__(self, model: nn.Module, config: TaskConfig):

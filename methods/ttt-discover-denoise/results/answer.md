@@ -1,6 +1,6 @@
 **Problem.** Close the three gaps MAGIC left: a single sqrt transform for all genes, no refinement
-in the log-normalized scoring space, and no global low-rank structure. The endpoint is an adaptation
-of the TTT-Discover denoiser (test-time-training/discover, arXiv:2601.16175) that tops the
+in the log-normalized scoring space, and no global low-rank structure. The endpoint is a
+test-time-training/discover denoiser that tops the
 OpenProblems leaderboard (0.71 PBMC / 0.73 Tabula vs MAGIC ~0.64).
 
 **Key idea.** Keep MAGIC's adaptive-bandwidth diffusion graph as the backbone, built once on the

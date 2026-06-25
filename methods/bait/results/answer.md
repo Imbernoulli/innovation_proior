@@ -100,7 +100,7 @@ its embedding depends on a most-likely class label.
 
 ## Reference-Faithful Core
 
-The authors' classification code is in `methods/bait/code/bait_sampling.py` and
+The classification code is in `methods/bait/code/bait_sampling.py` and
 `methods/bait/code/strategy.py`. Its essential logic is:
 
 ```python

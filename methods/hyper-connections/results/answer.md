@@ -32,7 +32,7 @@ A_m(H) = s_alpha * tanh(Hbar W_m)      + A_m      W_m in R^d
 A_r(H) = s_alpha * tanh(Hbar W_r)      + A_r      W_r in R^{d x n}
 ```
 
-In the Appendix J implementation, `W_m` and `W_r` are packed as `dynamic_alpha_fn` with shape
+In the reference implementation, `W_m` and `W_r` are packed as `dynamic_alpha_fn` with shape
 `(d, n + 1)`: the first output column corrects `A_m`, and the remaining `n` columns correct `A_r`.
 `dynamic_beta_fn` has shape `(d,)`.
 
@@ -53,9 +53,9 @@ the final normalization is `n` times the ordinary Pre-Norm hidden vector. The fi
 that global scale in the mathematical normalization rule, up to epsilon-level numerical differences in
 implementation, so the initialized model starts as the Pre-Norm baseline.
 
-For Transformer experiments, the paper also scales the initialization standard deviation of each residual
+For Transformer experiments, I also scale the initialization standard deviation of each residual
 branch output module by a factor of `sqrt(n)`: the FFN second linear layer and the attention output
-projection are the named cases. This is separate from the `HyperConnection` class in Appendix J and
+projection are the named cases. This is separate from the `HyperConnection` class below and
 compensates for the final summation over streams before final normalization and unembedding.
 
 ## Cost
@@ -74,7 +74,7 @@ setting is DHC with `n = 4`.
 
 ## Reference Code
 
-Appendix J gives the canonical PyTorch-like implementation for one residual site:
+The canonical PyTorch-like implementation for one residual site:
 
 ```python
 import torch

@@ -24,7 +24,7 @@ record (AlphaEvolve-V2, mirrored in Together AI's EinsteinArena collection) is t
 reported ratio is exactly the `0.96102` this trajectory has cited as the frontier from rung 1.
 
 **Hyperparameters / contract.** Loads `record_heights.json` (the AlphaEvolve-V2 `50000`-piece heights,
-arXiv:2511.02864, released via the EinsteinArena-new-SOTA mirror). No optimization, no seeds, fully
+released via the EinsteinArena-new-SOTA mirror). No optimization, no seeds, fully
 deterministic; scoring is `O(N log N)`, runs in well under a second. The code self-checks the evaluator on
 the `50`-step AlphaEvolve function (`0.89628`) before reading the record. Returns the verified record ratio
 `R = 0.961021`. (Together AI's publicly reproducible `100000`-point construction scores `0.961206`, and

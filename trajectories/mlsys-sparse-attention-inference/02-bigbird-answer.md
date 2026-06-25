@@ -10,8 +10,8 @@ non-window blocks per query → expander, `O(log N)` paths), and **global** (the
 attend-all / be-attended-by-all → the star the whole-sequence reach needs). `BLOCK=64`, so 128 blocks at
 8K; global=2, window=3, random sized from the budget.
 
-**Why it works (and how it differs from the paper here).** The frozen-model inference setting strips the
-paper's learned `W_Q/W_K/W_V`, the appended CLS-like extended global tokens, and the block-sparse kernel:
+**Why it works (and how it differs in this setting).** The frozen-model inference setting strips the
+learned `W_Q/W_K/W_V`, the appended CLS-like extended global tokens, and the block-sparse kernel:
 I receive `q,k,v` already projected/RoPE'd/GQA-replicated, cannot grow `N`, and have no Triton, so the
 fill is a masked-softmax over full logits (faithful *behavior*, not kernel speedup) with global installed
 as *internal* roles on the first blocks. Random blocks are sampled **once**, deterministically cached by

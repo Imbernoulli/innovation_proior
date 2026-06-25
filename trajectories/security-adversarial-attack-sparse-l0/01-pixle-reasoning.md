@@ -42,7 +42,7 @@ One evaluation per probe, no population — this is the leanest sparse attack th
 why it belongs on the bottom rung.
 
 Now I have to be honest about how this rung is configured *in this task*, because the scaffold's choices
-are not the paper's defaults and they matter for what I should expect. The harness wraps the
+are not the leanest method's own defaults and they matter for what I should expect. The harness wraps the
 `torchattacks` implementation directly, and the fill I land is the literal call:
 `Pixle(x_dimensions=(1, 2), y_dimensions=(1, 2), pixel_mapping="random", restarts=3, max_iterations=5,
 update_each_iteration=False)`. Read those numbers against the budget of 24 pixels and the picture is

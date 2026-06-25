@@ -12,7 +12,7 @@ $$\varepsilon_t = (1-a)\,\varepsilon_{t-1} + a\,(\nabla f_i(x_t) - \nabla F(x_t)
 
 The first term *contracts* the previous error by $(1-a)$ — the averaging SVRG's per-epoch reset could never do mid-sweep. The second is fresh single-sample noise of size $\sim\sigma$, but premultiplied by the small $a$, so I squash it by shrinking $a$. The third is the same-sample two-point difference minus its mean, which by smoothness is $O(\|x_t - x_{t-1}\|) = O(\eta\|d_{t-1}\|)$ — small whenever the step is small, and crucially using the *one-step* gap, never a stale epoch-wide gap. So heuristically $\|\varepsilon_t\| \sim (1-a)\|\varepsilon_{t-1}\| + Z$ with $Z$ small, a contraction-plus-small-input recursion that settles at $\|\varepsilon\| \sim Z/a$. The error stabilizes at a small equilibrium *continuously*, never resetting to a full-gradient seed and never riding a stale anchor.
 
-Landing this in the harness is what makes my STORM differ from the textbook adaptive version, and the differences are forced. The paper's STORM sets $\eta_t = k/(w + \sum\|g_i\|^2)^{1/3}$ and ties $a_{t+1} = c\,\eta_t^2$ with the cube-root exponent from the optimal nonconvex rate; I cannot, because the learning rate here is handed to me and fixed, and inventing a per-coordinate AdaGrad accumulator that must behave across MNIST logistic, a CIFAR MLP, and a $\kappa = 100$ quadratic with one code path is the wrong altitude. So $\eta = \texttt{self.lr}$, full stop. With $\eta$ fixed there is nothing adaptive to tie $a$ to, but the equilibrium $\|\varepsilon\| \sim Z/a$ still demands a value balancing contraction against fresh noise. I set it once from the only structural quantity I have, the inner-step count $T = n // b$:
+Landing this in the harness is what makes my STORM differ from the fully adaptive version, and the differences are forced. The fully adaptive STORM sets $\eta_t = k/(w + \sum\|g_i\|^2)^{1/3}$ and ties $a_{t+1} = c\,\eta_t^2$ with the cube-root exponent from the optimal nonconvex rate; I cannot, because the learning rate here is handed to me and fixed, and inventing a per-coordinate AdaGrad accumulator that must behave across MNIST logistic, a CIFAR MLP, and a $\kappa = 100$ quadratic with one code path is the wrong altitude. So $\eta = \texttt{self.lr}$, full stop. With $\eta$ fixed there is nothing adaptive to tie $a$ to, but the equilibrium $\|\varepsilon\| \sim Z/a$ still demands a value balancing contraction against fresh noise. I set it once from the only structural quantity I have, the inner-step count $T = n // b$:
 
 $$a = 1 - \frac{1}{\sqrt{T}},$$
 
@@ -45,7 +45,7 @@ class VarianceReductionOptimizer:
         self.batch_size = batch_size
         self.device = device
         self.params = list(model.parameters())
-        # Momentum coefficient (STORM paper recommends a = 1 - 1/sqrt(T))
+        # Momentum coefficient (a = 1 - 1/sqrt(T))
         n_steps_per_epoch = max(1, n_train // batch_size)
         self.momentum = 1.0 - 1.0 / math.sqrt(n_steps_per_epoch)
         # Running gradient estimator

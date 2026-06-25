@@ -15,7 +15,7 @@ X = {x_0, ..., x_M},  x_0 = x,
 x_m in R^{floor(P / 2^m) x C}.
 ```
 
-The paper's default downsampler is average pooling with window `2`. The official implementation
+The default downsampler is average pooling with window `2`. The official implementation
 also supports `max`, `avg`, `conv`, or no downsampling through `configs.down_sampling_method`.
 
 Embed each scale and pass the list through stacked Past-Decomposable-Mixing blocks. In each block,
@@ -55,7 +55,7 @@ mimics an average ensemble by scaling predictors by `1 / (M + 1)`.
 
 ## Implementation Notes
 
-- Default reported decomposition is moving-average `series_decomp(configs.moving_avg)`. The
+- Default decomposition is moving-average `series_decomp(configs.moving_avg)`. The
   official code also includes an optional `DFT_series_decomp` branch.
 - One reversible normalization module is created per scale. Each scale is normalized before
   embedding; the summed forecast is denormalized with scale-0 statistics.
@@ -64,13 +64,13 @@ mimics an average ensemble by scaling predictors by `1 / (M + 1)`.
 - In `channel_independence == 0`, the official code uses a joint `enc_in -> d_model` embedding,
   applies a `cross_layer` to decomposed season/trend inside PDM, and adds a residual regression
   path in `out_projection`.
-- The paper-level PDM formula has a residual FeedForward after recombining season and trend. In
+- The PDM formula has a residual FeedForward after recombining season and trend. In
   the official code this final `ori + out_cross_layer(...)` is applied only in the
   channel-independent branch.
 - If `use_future_temporal_feature` is enabled, known decoder-side temporal features are embedded
   and added before projection. This uses known calendar/covariate information, not target future
   values.
-- Default paper settings use two PDM blocks; long-term forecasting uses `M = 3`, while short-term
+- Default settings use two PDM blocks; long-term forecasting uses `M = 3`, while short-term
   forecasting uses `M = 1`. `d_model` varies by dataset in the reported configurations.
 
 ## Forecasting Code Core

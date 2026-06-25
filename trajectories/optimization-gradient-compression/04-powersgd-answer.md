@@ -28,13 +28,11 @@ randomness, once per tensor; `Q` is the post-projection factor.
 **Hyperparameters.** `compress_ratio = 0.01` → per-layer `r` (≈1–2 on these layers); per-name
 residual + warm-start state; QR orthonormalization.
 
-**Reference.** Vogels, Karimireddy, Jaggi, "PowerSGD: Practical Low-Rank Gradient Compression for
-Distributed Optimization", NeurIPS 2019, arXiv:1905.13727 (official `epfml/powersgd`); error
-feedback from Karimireddy et al., ICML 2019, arXiv:1901.09847.
+**Prior art.** Error feedback from Karimireddy et al., ICML 2019.
 
 ```python
 class Compressor:
-    """PowerSGD: warm-started rank-r low-rank gradient compression with error feedback.
+    """Warm-started rank-r low-rank gradient compression with error feedback.
 
     Reshape each matrix-shaped gradient to M (m x n); add the error-feedback
     residual; do ONE power-iteration step from the previous step's Q (warm start):

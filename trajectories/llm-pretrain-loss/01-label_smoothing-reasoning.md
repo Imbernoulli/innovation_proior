@@ -20,10 +20,9 @@ distribution, of overfitting: fitting the training labels says nothing about gen
 ones. And the unbounded growth of the largest-minus-rest logit gap, against a bounded gradient, makes
 the model rigid — once a huge gap is established the model is slow to revise it, because a bounded
 gradient can only chip away at a gap that the loss keeps trying to make infinite. The unifying word for
-both is over-confidence. This is the thing the very first loss-layer modification I know of was built to
-fix — Szegedy and co-authors (2016) named exactly this when they were regularizing the Inception net:
-hard one-hot targets drive `z_y ≫ z_k`, which both overfits and reduces adaptability, and the fix is to
-stop demanding probability one.
+both is over-confidence. This is exactly the thing the cheapest loss-layer modification should be built to
+fix, and the diagnosis is clean: hard one-hot targets drive `z_y ≫ z_k`, which both overfits and reduces
+adaptability, so the fix is to stop demanding probability one.
 
 There are three distinct places I could intervene, and the reason I take this one *first* is that it is
 the cheapest, the most thoroughly understood, and the one whose failure mode will point cleanly at the
@@ -83,7 +82,7 @@ the over-confident regime for a heavy `0.1` regularizer to pay for itself; an ag
 mostly just biases the training objective away from the data without the long-run overfitting it would
 otherwise prevent. A lighter `ε = 0.05` is the task-local choice: enough of a floor to take the sharpest
 edge off the runaway, light enough that the (1-ε) reweighting of the true-likelihood term is barely
-perturbed. So this rung is not "label smoothing the paper" — it is `ε = 0.05`, training-only, via the
+perturbed. So this rung is not canonical label smoothing — it is `ε = 0.05`, training-only, via the
 library's `label_smoothing` argument with the `-1` ignore index the harness uses for packed boundaries.
 
 Now reason about what this floor must do, because that is the entire point of running it first. Smoothing

@@ -71,7 +71,7 @@ The logistic score is bounded, while the Gaussian score is `-h_i`.
 
 ## Reference-Faithful Implementation Sketch
 
-The first-author repository is Theano/Pylearn2. This PyTorch sketch matches its core semantics: split first half / second half, add the conditioner output to the second half, reverse-permute after each coupling layer, invert by undoing the permutation and subtracting, and use a Homothety-style top scaling whose log-determinant is `sum(log_scale)`.
+The canonical released repository is Theano/Pylearn2. This PyTorch sketch matches its core semantics: split first half / second half, add the conditioner output to the second half, reverse-permute after each coupling layer, invert by undoing the permutation and subtracting, and use a Homothety-style top scaling whose log-determinant is `sum(log_scale)`.
 
 ```python
 import torch
@@ -197,4 +197,4 @@ For `[0, 1]` 8-bit data this is `(k + u) / 256`; for `[-1, 1]` data the bin widt
 
 ## Reference-Code Caveat
 
-The public first-author repo implements the layer/objective above in `pylearn2/models/{mlp.py,nice.py}` and YAML experiment files. The paper text reports Adam with `lr = 1e-3`, `momentum = 0.9`, `beta2 = 0.01`, `lambda = 1`, and `epsilon = 1e-4`; the public YAMLs instead use Pylearn2 `SGD` with a custom `RMSPropMomentum`, learning-rate decay, and a momentum adjustor. Therefore optimizer claims should be attributed separately: the mathematical method is the exact likelihood above; the canonical released code is the Theano/Pylearn2 implementation with `RMSPropMomentum`.
+The canonical released repo implements the layer/objective above in `pylearn2/models/{mlp.py,nice.py}` and YAML experiment files. The written method specifies Adam with `lr = 1e-3`, `momentum = 0.9`, `beta2 = 0.01`, `lambda = 1`, and `epsilon = 1e-4`; the released YAMLs instead use Pylearn2 `SGD` with a custom `RMSPropMomentum`, learning-rate decay, and a momentum adjustor. Therefore optimizer claims should be attributed separately: the mathematical method is the exact likelihood above; the canonical released code is the Theano/Pylearn2 implementation with `RMSPropMomentum`.

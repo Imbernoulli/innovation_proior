@@ -11,7 +11,7 @@ the weight-space echo of "don't let any contiguous block of the feature map carr
 energy map `w_sq = mean_{in}(w^2)` of shape `[out_c, 1, kH, kW]`, then measure the energy inside local
 `block_size × block_size` neighborhoods with a stride-1 average pool and penalize its mean. Filters that
 pack energy into a tight contiguous sub-block are pushed toward smoother, more distributed responses.
-This is *not* the paper's activation-masking layer — it never masks an activation, rescales, or changes
+This is *not* the activation-masking layer — it never masks an activation, rescales, or changes
 inference; it is a pure weight-shape penalty.
 
 **Why it should help / why it is weak.** It targets the same reliance-on-contiguous-regions failure as

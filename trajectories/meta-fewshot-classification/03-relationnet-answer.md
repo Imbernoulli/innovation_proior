@@ -12,7 +12,7 @@ comparator over every pair, *sum*-pooling for order-invariant set aggregation. T
 the non-convex matched regions a fixed metric (Euclidean/cosine = a linear head) cannot, so embedding
 and comparator split the work the linear head could not.
 
-**Harness-specific architecture (this is NOT the paper's 4-conv embedding).** There is no parameter
+**Harness-specific architecture (this is NOT the canonical 4-conv embedding).** There is no parameter
 budget for a second backbone, so the *embedding is the scaffold's shared ResNet-12*, taken as **feature
 maps** via `make_backbone(use_pooling=False)` (640-channel maps, not pooled vectors). Per class, element-
 wise **sum** the K support maps into one class map (mean up to a constant absorbed by BatchNorm). For
@@ -38,7 +38,7 @@ this is *task-adaptive embeddings*.
 
 ```python
 class _RelationModule(nn.Module):
-    """CNN relation module from Sung et al. (2018)."""
+    """CNN relation module."""
 
     def __init__(self, feature_dimension: int, inner_channels: int = 8):
         super().__init__()
@@ -67,7 +67,7 @@ class _RelationModule(nn.Module):
 
 
 class CustomFewShotMethod(FewShotClassifier):
-    """Relation Networks (Sung et al., 2018).
+    """Relation Network.
 
     Extracts feature maps (not pooled vectors) from support and query images.
     Computes class prototypes as mean feature maps, concatenates each query-prototype

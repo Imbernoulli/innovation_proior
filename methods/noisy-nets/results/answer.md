@@ -25,7 +25,7 @@ where `mu_w, sigma_w` have shape `q x p` and `mu_b, sigma_b` have shape `q`.
 Noise cases:
 
 - Independent Gaussian: every `epsilon_w[j,i]` and `epsilon_b[j]` is iid `N(0,1)`;
-  this costs `pq + q` draws and is the paper's main A3C choice.
+  this costs `pq + q` draws and is my main A3C choice.
 - Factorised Gaussian: draw `epsilon_in[i]` for inputs and `epsilon_out[j]` for outputs,
   use `f(x) = sign(x) sqrt(abs(x))`, then
   `epsilon_w[j,i] = f(epsilon_out[j]) f(epsilon_in[i])` and
@@ -34,7 +34,7 @@ Noise cases:
 Initialization cases:
 
 - Independent: `mu ~ U[-sqrt(3/p), sqrt(3/p)]`, `sigma = 0.017`.
-- Factorised paper rule: `mu ~ U[-1/sqrt(p), 1/sqrt(p)]`, `sigma = sigma_0/sqrt(p)`,
+- Factorised rule: `mu ~ U[-1/sqrt(p), 1/sqrt(p)]`, `sigma = sigma_0/sqrt(p)`,
   `sigma_0 = 0.5`.
 - Saved Rainbow reference code initializes `weight_sigma` with `sqrt(in_features)` and
   `bias_sigma` with `sqrt(out_features)`; the code below follows that reference convention.

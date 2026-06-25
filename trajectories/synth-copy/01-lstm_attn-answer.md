@@ -5,7 +5,7 @@ so it cannot even represent an OOD length — I want a rung-one reference whose 
 structural, not table-bound.
 
 **Key idea.** Encode order through *recurrence* with no explicit positional code: the classical
-additive-attention seq2seq of Bahdanau, Cho, Bengio (2015). A bidirectional LSTM reads the source
+additive-attention recurrent seq2seq. A bidirectional LSTM reads the source
 content (the slice between `BOS` and `SEP`) into per-position annotations `h_j`; the decoder, an
 `LSTMCell` stepping over the target region, reads a content-weighted blend
 `c_i = Σ_j α_{ij} h_j` of those annotations at each step, with weights
@@ -23,7 +23,7 @@ empty placeholder (recurrence is the positional mechanism); `build_model` return
 directly. The harness exposes only a single token stream and a fixed `forward(tokens) -> [B,T,V]`, so the
 encoder/decoder split is recovered from `SEP_ID` inside `forward`, an `active = pos >= sep_pos` gate
 restricts updates and logit writes to the target region, and a plain LSTM/LSTMCell + linear readout
-replace the paper's GRU/maxout/beam-search.
+replace the original GRU/maxout/beam-search.
 
 **Hyperparameters.** Bidirectional LSTM encoder (1 layer, hidden `d_model//2` per direction), `LSTMCell`
 decoder (hidden `d_model = 128`), additive attention of width `d_model`; all other training settings are

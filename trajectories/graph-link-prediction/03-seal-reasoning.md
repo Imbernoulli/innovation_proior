@@ -89,7 +89,7 @@ BatchNorm on all layers, ReLU and dropout on the intermediate ones) and a `LinkP
 z_{\text{dst}},|z_{\text{src}}-z_{\text{dst}}|]$ and runs the $4H\to H\to H\to 1$ MLP. The encoder
 geometry is otherwise the gcn_dot encoder; the new content is the difference feature and full-layer
 normalization. Everything else — the loop, the BCE, the negative sampling — is untouched. (The full
-scaffold module is in the answer.) I want to be explicit that this is *not* the paper's SEAL: there is
+scaffold module is in the answer.) I want to be explicit that this is *not* the full canonical SEAL: there is
 no enclosing-subgraph extraction, no DRNL labeling, no subgraph-level GNN with pooling; the structural
 information is approximated by the extra pairwise feature and normalized embeddings, which is what the
 encode/decode interface permits.

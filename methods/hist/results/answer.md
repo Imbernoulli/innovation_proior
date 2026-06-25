@@ -40,7 +40,7 @@ Hidden concepts:
   columns, and delete empty columns. The zero diagonal removes the guaranteed self-similarity score;
   a hard exclusion for all-negative off-diagonal rows would require a `-inf` mask, while qlib uses
   the zero mask;
-- aggregate each surviving hidden concept from its connected stocks. The paper-level formula puts a
+- aggregate each surviving hidden concept from its connected stocks. The full mathematical formula puts a
   LeakyReLU transform on that hidden concept representation; the qlib forward path forms the raw
   weighted hidden-concept rows and applies `fc_is` after concept-to-stock aggregation.
 

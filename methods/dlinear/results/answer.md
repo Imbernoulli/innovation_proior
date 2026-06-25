@@ -49,11 +49,11 @@ trend and seasonal residuals fit through separate parameter matrices.
   kernel of 25. Repeating 12 endpoint values on each side makes AvgPool1d preserve length:
   `L + 24 - 25 + 1 = L`.
 - **Seasonal residual sign:** `seasonal = x - moving_mean`, not the reverse.
-- **Channel sharing:** the paper formulation applies one pair of temporal linears to every
+- **Channel sharing:** the default formulation applies one pair of temporal linears to every
   channel and does not model spatial correlation. The official code also supports
   `configs.individual`; when true, it uses one seasonal and one trend linear per channel.
 - **Parameters:** PyTorch has biases, so the shared DLinear path has `2 * (T * L + T)`
-  trainable scalar parameters. The paper reports `2 * T * L`, ignoring biases; the
+  trainable scalar parameters. The bias-free count is `2 * T * L`; the
   individual path multiplies the linear-layer count by `C`.
 - **Visualization initialization:** the official code leaves `1 / seq_len` weight
   initialization commented out for weight-heatmap visualization. It is not active by default.

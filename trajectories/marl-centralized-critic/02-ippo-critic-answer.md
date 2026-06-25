@@ -7,7 +7,7 @@ advantages. The binding constraint is value-learning robustness, not representat
 **Key idea (local critic = IPPO).** Strip the critic to the most robust thing — a plain MLP — and
 condition it on *exactly what the actor sees*: agent `a`'s own observation `o^a` (plus an agent one-hot),
 `V_φ([o^a, e_a])`. No global state, no peer information, no attention. This is the local-input value
-function (the IPPO ablation of Yu et al. 2022, matching EPyMARL's `ACCritic`).
+function (the IPPO ablation, matching EPyMARL's `ACCritic`).
 
 **Why it works.** A local MLP cannot collapse the way the attention critic did. The non-stationarity that
 condemns naive independent learners is reassigned to PPO's ratio clip (which restrains each agent's
@@ -47,7 +47,7 @@ class CustomCritic(nn.Module):
 
     Matches epymarl's ACCritic. No centralization: each agent's value
     depends only on its own observation. Serves as the "no centralization"
-    floor baseline from Yu et al. 2022 (arXiv 2103.01955).
+    floor baseline.
     """
 
     def __init__(self, scheme, args):

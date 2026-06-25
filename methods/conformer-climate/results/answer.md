@@ -5,7 +5,7 @@ heating aloft, cloud-top radiative coupling on a coupled column). Convolution is
 expensive; attention is globally strong but a blunt local extractor; a multi-resolution net couples distant
 levels only at coarse resolution.
 
-**Key idea.** A Conformer encoder over the 60-level axis (Gulati et al. 2020, arXiv:2005.08100), used as a
+**Key idea.** A Conformer encoder over the 60-level axis (Gulati et al. 2020), used as a
 pure regression encoder. Each level is a token (its 9 profile values + broadcast column scalars, linearly
 embedded with a learned *absolute* per-level positional encoding). Each conformer block composes the two
 operators at *full resolution*: a half-step macaron FFN, then multi-head self-attention (global, content-based

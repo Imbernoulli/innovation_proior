@@ -18,7 +18,7 @@ got wrong. The margin term `-log(1 - max_{k!=y} p_k)` widens the boundary the lo
 `0.001*randn`. Outer loss: boosted CE on the adversarial logits + `beta` * per-sample KL weighted by
 `(1 - p_y(x))`. The clean logits are taken **detached** (`self.model(images).detach()`), so the KL
 target and the soft-gate weight come from a frozen clean pass and the regularizer gradient flows only
-through the adversarial branch — the task's convention, which differs from the paper's attached-clean
+through the adversarial branch — the task's convention, which differs from the standard attached-clean
 form. `new_y` = best wrong class via top-2 argsort; log slack `1.0001`/`1e-12` keeps the margin log
 finite.
 
@@ -33,7 +33,7 @@ weight — and flattening the weight loss landscape is what remains.
 
 ```python
 class AdversarialTrainer:
-    """MART (Wang et al., 2020)."""
+    """MART: misclassification-aware adversarial training."""
 
     def __init__(self, model, eps, alpha, attack_steps, num_classes, **kwargs):
         self.model = model
@@ -44,7 +44,7 @@ class AdversarialTrainer:
         self.beta = 6.0  # MART regularization weight
 
     def train_step(self, images, labels, optimizer):
-        # Inner max: strong CE-PGD seeded with a small random nudge (official mart.py).
+        # Inner max: strong CE-PGD seeded with a small random nudge.
         self.model.eval()
         adv_images = images.detach() + 0.001 * torch.randn_like(images)
         adv_images = torch.clamp(adv_images, 0.0, 1.0)

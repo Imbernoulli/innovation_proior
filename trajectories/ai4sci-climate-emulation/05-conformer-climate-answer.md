@@ -4,7 +4,7 @@ bottleneck, so distant *fine* levels never couple directly — the small residua
 And its conv-then-pool scalar head regressed badly (sl_nmse 0.354–0.396 vs the CNN's 0.058, and seed-unstable).
 Both point at one fix.
 
-**Key idea.** A Conformer encoder (Gulati et al. 2020, arXiv:2005.08100) over the 60 levels: run global
+**Key idea.** A Conformer encoder (Gulati et al. 2020) over the 60 levels: run global
 self-attention *and* a local depthwise-conv module at **full resolution in every block**, so any level couples
 to any other in one hop (closing the fine-resolution coupling) while the conv keeps the sharp per-level
 structure. Each level is a token (9 profile values + broadcast column scalars, embedded with a learned

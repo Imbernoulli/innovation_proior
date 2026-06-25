@@ -1,7 +1,6 @@
 # SCORE (score-matching causal discovery), distilled
 
-SCORE (Rolland et al., "Score Matching Enables Causal Discovery of Nonlinear Additive Noise Models",
-ICML 2022, arXiv:2203.04413) recovers the directed DAG of a nonlinear additive-noise model by reading
+SCORE recovers the directed DAG of a nonlinear additive-noise model by reading
 the *topological order* off the **score** of the data distribution — `s(x) = ∇ log p(x)` — instead of
 searching for it with regressions. Its organizing fact is that, for Gaussian-noise ANMs, a variable is a
 **leaf iff the variance of its diagonal Hessian of `log p` is zero**. Estimate that diagonal Hessian

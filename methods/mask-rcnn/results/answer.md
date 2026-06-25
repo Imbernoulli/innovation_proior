@@ -57,7 +57,7 @@ at higher output resolution (~56×56). Same per-region spatial branch, loss matc
 
 ## Code
 
-The original paper released Detectron as its reference code. The compact PyTorch artifact below mirrors the modern torchvision implementation of the same head/loss/inference semantics, with Detectron used as the original-code cross-check.
+Detectron serves as the reference implementation. The compact PyTorch artifact below mirrors the modern torchvision implementation of the same head/loss/inference semantics, with Detectron used as the reference-code cross-check.
 
 ```python
 import torch

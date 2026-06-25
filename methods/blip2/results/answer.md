@@ -49,7 +49,7 @@ Gradients flow only into the Q-Former and the projection; both frozen models sta
 
 ## Reference implementation
 
-The code below is a compact reference sketch for the paper-level mechanics: a BERT-style Q-Former that takes query embeddings (with `encoder_hidden_states` = frozen image features for cross-attention) and/or text, plus the three masked stage-1 objectives and the stage-2 prefix projection.
+The code below is a compact reference sketch for the method-level mechanics: a BERT-style Q-Former that takes query embeddings (with `encoder_hidden_states` = frozen image features for cross-attention) and/or text, plus the three masked stage-1 objectives and the stage-2 prefix projection.
 
 ```python
 import torch
@@ -181,11 +181,11 @@ Freeze a strong vision encoder and a strong LLM to stop relearning what already 
 
 ### Verification
 
-- **Problem / motivation** — frozen-unimodal, compute-efficient VLP; generation-only loss insufficient: `src/0-abstract.tex`, `src/1-intro.tex` (L17–58); restated in `results/context.md` (Research question, Background) and `results/reasoning.md` (L1–9).
-- **Q-Former architecture** — two submodules sharing self-attention; 32 queries × 768; cross-attention every other block; BERT-base init, cross-attn random; 188M params; bottleneck 32×768 vs 257×1024: `src/3-method.tex` L19–41 (and L26–33). Faithful in `answer.md` (Key idea, `QFormer.__init__`).
-- **ITC** — `Z` vs `t`=`[CLS]`; all image-text pairs score each query then take **max** over queries; unimodal mask (no leak); in-batch negatives, no momentum queue: `src/3-method.tex` L90–101. Implemented in `stage1_losses` ITC block (`einsum` all-pairs similarity, max over queries / temp, two-way cross-entropy).
-- **ITG** — multimodal causal/UniLM mask; queries attend each other not text; each text token attends all queries + previous text tokens; info routed through queries; `[CLS]`→`[DEC]`: `src/3-method.tex` L104–112. Implemented in ITG block (`causal_text=True`, `[DEC]` first token, `-100` pad labels).
-- **ITM** — bidirectional mask; per-query two-class head; **average** logits over queries; hard-negative mining: `src/3-method.tex` L115–123. Implemented in ITM block (positive + mined hard-negative pairs, `itm_head` on query slice, `.mean(dim=1)`).
-- **Stage 2 prefix projection** — FC layer projects `Z` into LLM embedding dim; prepended as soft visual prompts; decoder LLM = LM loss, encoder-decoder = prefix-LM (prefix→encoder, suffix→decoder target): `src/3-method.tex` L131–154. Implemented in `stage2_loss` (`llm_proj`, prepend, decoder vs encoder-decoder branches; only the frozen image encoder is wrapped in `torch.no_grad()`, while the frozen LLM call remains differentiable with respect to `inputs_embeds`).
-- **Settings** — image encoders (CLIP ViT-L/14, EVA-CLIP ViT-g/14, 2nd-last layer), OPT / FlanT5, FP16/BF16, data + CapFilt, 250k/80k steps, AdamW β=(0.9,0.98), wd 0.05, peak lr 1e-4, 2k warmup, stage-2 min lr 5e-5, 224×224: `src/3-method.tex` L207–242. Summarized in `answer.md` (Concrete settings).
+- **Problem / motivation** — frozen-unimodal, compute-efficient VLP; generation-only loss insufficient: restated in `results/context.md` (Research question, Background) and `results/reasoning.md` (L1–9).
+- **Q-Former architecture** — two submodules sharing self-attention; 32 queries × 768; cross-attention every other block; BERT-base init, cross-attn random; 188M params; bottleneck 32×768 vs 257×1024. Faithful in `answer.md` (Key idea, `QFormer.__init__`).
+- **ITC** — `Z` vs `t`=`[CLS]`; all image-text pairs score each query then take **max** over queries; unimodal mask (no leak); in-batch negatives, no momentum queue. Implemented in `stage1_losses` ITC block (`einsum` all-pairs similarity, max over queries / temp, two-way cross-entropy).
+- **ITG** — multimodal causal/UniLM mask; queries attend each other not text; each text token attends all queries + previous text tokens; info routed through queries; `[CLS]`→`[DEC]`. Implemented in ITG block (`causal_text=True`, `[DEC]` first token, `-100` pad labels).
+- **ITM** — bidirectional mask; per-query two-class head; **average** logits over queries; hard-negative mining. Implemented in ITM block (positive + mined hard-negative pairs, `itm_head` on query slice, `.mean(dim=1)`).
+- **Stage 2 prefix projection** — FC layer projects `Z` into LLM embedding dim; prepended as soft visual prompts; decoder LLM = LM loss, encoder-decoder = prefix-LM (prefix→encoder, suffix→decoder target). Implemented in `stage2_loss` (`llm_proj`, prepend, decoder vs encoder-decoder branches; only the frozen image encoder is wrapped in `torch.no_grad()`, while the frozen LLM call remains differentiable with respect to `inputs_embeds`).
+- **Settings** — image encoders (CLIP ViT-L/14, EVA-CLIP ViT-g/14, 2nd-last layer), OPT / FlanT5, FP16/BF16, data + CapFilt, 250k/80k steps, AdamW β=(0.9,0.98), wd 0.05, peak lr 1e-4, 2k warmup, stage-2 min lr 5e-5, 224×224. Summarized in `answer.md` (Concrete settings).
 - **In-frame** — names BLIP-2 / Q-Former as the method being built; no author/venue/arXiv citation of the source; only prior-art ancestors (CLIP, ALIGN, ALBEF, BLIP, Frozen, Flamingo, Perceiver, DETR) cited by author/year. No proposed-method evaluation numbers used (experiment/limitation sections excluded).

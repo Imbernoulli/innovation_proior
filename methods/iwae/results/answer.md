@@ -14,13 +14,13 @@ Replace the single importance weight inside the log with a `k`-sample average. D
 
 ## Properties (the bound ladder)
 
-For all `k`, `log p(x) >= L_{k+1} >= L_k`, and `L_k -> log p(x)` as `k -> infinity` under the paper's bounded, positive-weight regularity for `w = p(x,h)/q(h|x)`. The guarantee is non-strict: equality can occur when the random weights leave no Jensen slack (for example, if the weights are constant almost surely).
+For all `k`, `log p(x) >= L_{k+1} >= L_k`, and `L_k -> log p(x)` as `k -> infinity` under bounded, positive-weight regularity for `w = p(x,h)/q(h|x)`. The guarantee is non-strict: equality can occur when the random weights leave no Jensen slack (for example, if the weights are constant almost surely).
 
 1. **Lower bound.** `E[(1/k)Σ_i w_i] = p(x)` (each `w_i` is unbiased for `p(x)`), so by Jensen (`log` concave) `L_k = E[log (1/k Σ w_i)] ≤ log E[(1/k)Σ w_i] = log p(x)`.
 
 2. **Monotone in `k`.** For a uniformly random `m`-subset `I ⊂ {1,…,k}` (`m ≤ k`), `E_I[(1/m)Σ_{j} w_{i_j}] = (1/k)Σ_{i} w_i` (each index appears with probability `m/k`). Then `L_k = E[log E_I[(1/m)Σ_j w_{i_j}]] ≥ E[E_I[log (1/m)Σ_j w_{i_j}]] = L_m` (Jensen over `I`; an `m`-subset of i.i.d. draws is again `m` i.i.d. draws). Hence `L_{k+1} ≥ L_k`.
 
-3. **Consistency.** `M_k = (1/k)Σ_i w_i -> E_q[w] = p(x)` a.s. by the SLLN; with the paper's bounded positive-weight assumption, the log of the average converges in expectation to `log p(x)`.
+3. **Consistency.** `M_k = (1/k)Σ_i w_i -> E_q[w] = p(x)` a.s. by the SLLN; with the bounded positive-weight assumption, the log of the average converges in expectation to `log p(x)`.
 
 4. **Variance is tame.** Plain importance sampling of `p(x)` can have huge variance, but the estimator is the *log* of the average. For a positive unbiased `Ẑ` of `Z`, Markov on `Ẑ/Z` gives `Pr(log Ẑ > log Z + b) ≤ e^{-b}`, which bounds the mean absolute deviation of `log Ẑ` by `2 + 2δ`, with `δ = log Z − E[log Ẑ]` the bound gap.
 

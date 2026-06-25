@@ -18,7 +18,7 @@ reproduces the integral operator term-for-term, so this is the same operator the
 approximated locally, now evaluated globally over states. Grouping by *state* (not location) is what
 lets scattered same-regime points share a token — exactly the non-local correlation graphs missed.
 
-**Match to the harness (paper-faithful here).** This baseline matches the paper closely. It uses the
+**Match to the harness (canonical here).** This baseline stays close to the canonical formulation. It uses the
 shipped `layers.Physics_Attention.Physics_Attention_Irregular_Mesh` (two-stream point projection — one
 stream decides the slice, one supplies content; a learnable per-head temperature init ~0.5; an
 orthogonally-initialized slice projection; mass-normalized tokens; `dim_head^{-1/2}` token scale). The
@@ -27,7 +27,7 @@ edit is the `Transolver_block` (canonical pre-norm residual, last block carrying
 not raise on `geo=None`. `geotype='unstructured'` selects the irregular-mesh class (plain linear
 projections), the geometry-general default.
 
-**Hyperparameters.** `CONFIG_OVERRIDES = {'n_hidden': 256, 'slice_num': 32}` — the paper-faithful
+**Hyperparameters.** `CONFIG_OVERRIDES = {'n_hidden': 256, 'slice_num': 32}` — the canonical
 width (2× GraphSAGE, the model the task's 1.05× budget is defined against) and the new slice count;
 M=32 sits between M=1 (collapses to global pooling) and M→N (fragments into noise). `n_heads=8`,
 `n_layers=8`, `mlp_ratio`, `dropout`, `act`, `out_dim` from `args`.

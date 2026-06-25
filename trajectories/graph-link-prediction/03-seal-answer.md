@@ -13,7 +13,7 @@ $h=[\,z_{\text{src}}\;\|\;z_{\text{dst}}\;\|\;z_{\text{src}}\odot z_{\text{dst}}
 BatchNorm on *every* encoder layer (a `StructuralEncoder`), so the similarity (quadratic) and distance
 (linear) blocks are on comparable scales.
 
-**Why / what the harness omits.** This is *not* the paper's SEAL: there is no $k$-hop enclosing
+**Why / what the harness omits.** This is *not* the full SEAL construction: there is no $k$-hop enclosing
 subgraph extraction, no Double-Radius Node Labeling, no subgraph-level GNN with pooling — the
 encode/decode contract gives one global embedding table and the raw `edge_index`, not a per-pair
 subgraph machine (and per-edge subgraphs on 235k nodes would blow the time/parameter budget). The

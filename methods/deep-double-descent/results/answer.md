@@ -11,7 +11,7 @@ EMC_{D,epsilon}(T)
   = max { n : E_{S ~ D^n}[ Error_S(T(S)) ] <= epsilon }.
 ```
 
-The paper uses `epsilon = 0.1` heuristically as "approximately zero" training error. EMC rises with width, training time, weaker regularization, and easier fitting conditions. It also depends on the actual labels and the training procedure, which is why it can move with label noise, augmentation, and epochs in ways that VC dimension or Rademacher complexity cannot.
+I use `epsilon = 0.1` heuristically as "approximately zero" training error. EMC rises with width, training time, weaker regularization, and easier fitting conditions. It also depends on the actual labels and the training procedure, which is why it can move with label noise, augmentation, and epochs in ways that VC dimension or Rademacher complexity cannot.
 
 ## Generalized Hypothesis
 
@@ -35,6 +35,6 @@ Sample-wise: fix model and procedure, then vary `n`. More data usually lowers th
 
 At `EMC approx n`, the learner has little slack. In linear and random-feature settings, this corresponds to a poorly conditioned or nearly unique interpolating solution, so fitting noise or misspecification can destroy global structure. In the over-parameterized regime, many interpolants exist, and the training rule can select a better one, such as the minimum-norm solution in least squares or random features.
 
-The deep-network mechanism is not fully proved. The paper uses the linear/random-feature theory as an anchor and treats label noise as an amplifier for the underlying sensitivity to noise or model misspecification.
+The deep-network mechanism is not fully proved. I use the linear/random-feature theory as an anchor and treat label noise as an amplifier for the underlying sensitivity to noise or model misspecification.
 
 The contribution is this coordinate change: organize generalization by the distance between sample count and the procedure's effective ability to fit, not by parameter count alone.

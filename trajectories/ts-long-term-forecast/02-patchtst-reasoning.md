@@ -97,7 +97,7 @@ for all three: `seq_len=96`, `e_layers=2`, `n_heads=8`, `d_model=512`. So I am r
 afford a long, informative history is unavailable here, and on tiny ETTh1 the fixed `d_model=512` with 2
 layers is over-parameterized for 12 patch tokens. I keep `patch_len=16` (the config default) and set the
 stride internally to 8; I cannot rely on the loop to pass a stride, so it is hardcoded. This is the
-"same-named baseline is not the paper here" gap in concrete form: the architecture is faithful, the
+"same-named baseline is not the original method here" gap in concrete form: the architecture is faithful, the
 regime is the scaffold's, not the recipe's.
 
 Falsifiable expectations against the linear numbers. If patched temporal attention genuinely extracts

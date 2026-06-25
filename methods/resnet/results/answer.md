@@ -175,4 +175,4 @@ def resnet101(): return ResNet(Bottleneck, [3, 4, 23, 3])
 def resnet152(): return ResNet(Bottleneck, [3, 8, 36, 3])
 ```
 
-The structure keeps the compact PyTorch implementation style while using the original paper/author-code bottleneck downsampling convention above. The entire method reduces to one line in each block: `out += identity`.
+The structure keeps the compact PyTorch implementation style while using the standard bottleneck downsampling convention above. The entire method reduces to one line in each block: `out += identity`.

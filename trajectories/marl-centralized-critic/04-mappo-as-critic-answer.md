@@ -4,8 +4,8 @@ environment-provided state is *agent-agnostic*, so on the biggest team it drops 
 local detail and leans entirely on the constant one-hot to distinguish agents.
 
 **Key idea (agent-specific central-V, AS/FP).** Feed the critic *both* the global state `s` and the
-agent's own observation `o^a`: `V_φ([s, o^a, e_a])`. This is the recommended critic input of Yu et al.
-2022 (arXiv:2103.01955) — the agent-specific global state (AS), and where an overlap map exists its
+agent's own observation `o^a`: `V_φ([s, o^a, e_a])`. This is the recommended MAPPO critic input —
+the agent-specific global state (AS), and where an overlap map exists its
 feature-pruned form (FP). It carries EP's global picture *and* the local detail EP drops (what the agent
 can fire, how exposed it is, its relative distances), at the cost of a single `o^a` — not CL's full
 all-observations concatenation that scales with `n`.
@@ -47,8 +47,8 @@ import torch.nn.functional as F
 class CustomCritic(nn.Module):
     """Agent-specific central-V critic — shared MLP over (state + obs_i + agent one-hot).
 
-    The agent-specific (AS) global-state critic input of Yu et al. 2022
-    (arXiv 2103.01955): condition the centralized value on both the global
+    The agent-specific (AS) global-state critic input for MAPPO:
+    condition the centralized value on both the global
     state and the agent's own observation, so one shared network produces
     per-agent values that see the agent-specific local features the bare
     global state drops. Returns (B, T, n_agents, 1).

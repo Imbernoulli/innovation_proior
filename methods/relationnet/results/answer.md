@@ -21,7 +21,7 @@ Prior metric-based methods (Matching Networks: fixed cosine attention; Prototypi
 fixed squared-Euclidean = a linear classifier in embedding space) put **all** learning in the
 embedding and compare with a **fixed, element-wise** metric. That metric is the bottleneck: it
 can only succeed when the embedding alone makes novel classes linearly/convexly separable, and
-the strong reported sensitivity to *which* fixed metric you choose shows no fixed comparison is
+the strong sensitivity to *which* fixed metric you choose shows no fixed comparison is
 universally right. RelationNet instead makes the comparator a **learned non-linear network**, so
 embedding and comparator split the work. The comparator reuses the machinery of a relational
 reasoning module (Santoro et al. 2017, `RN(O) = f_φ(Σ_{i,j} g_θ(o_i, o_j))`): a single shared
@@ -31,7 +31,7 @@ network applied to concatenated pairs, with sum-pooling for order-invariant set 
   concatenation; `C` scores per query.
 - **K-shot:** element-wise **sum** the `K` embedding feature maps of each class into one
   class-level feature map, then apply the one-shot procedure — always `C` scores per query.
-  Mean pooling is a separate `1/K` rescaling choice; the author code uses sum, while EasyFSL's
+  Mean pooling is a separate `1/K` rescaling choice; the canonical code uses sum, while EasyFSL's
   adapter stores mean prototypes.
 - **Output:** a **sigmoid** scalar relation score in `[0,1]` (1 = same class, 0 = different).
 - **Loss: MSE**, regressing each score to its binary match target — because the output is a

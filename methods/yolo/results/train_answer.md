@@ -26,7 +26,7 @@ The case structure is exactly what the indicators dictate. An empty cell gets no
 
 At inference the procedure is intentionally small. One forward pass gives the fixed tensor; for each cell and box I decode the center as $c_x = (\hat{x} + \text{col})/S$ and $c_y = (\hat{y} + \text{row})/S$, square the root-size channels to get $w$ and $h$, multiply box confidence by the cell's class probabilities to get class-specific scores, threshold those, and run one light NMS pass. The grid does most of the duplicate prevention; NMS only cleans up large or boundary-straddling objects. The same choices set the limits — a cell carries only two boxes and one class distribution, so several small objects sharing a cell center cannot all be represented, the coarse final grid makes small objects and unusual aspect ratios hard, and the square-root size trick improves size sensitivity but does not make squared error identical to IOU or average precision. Those are the costs of compressing the detector into a single fixed tensor from one full-image pass.
 
-The implementation follows the paper-era Darknet `cfg/yolo.cfg` and `detection_layer.c` semantics: no BatchNorm, $B=2$, output $1470$, linear final layer, root-size box channels, IOU-rescored object confidence, and no-object loss on all non-responsible boxes.
+The implementation follows the original Darknet `cfg/yolo.cfg` and `detection_layer.c` semantics: no BatchNorm, $B=2$, output $1470$, linear final layer, root-size box channels, IOU-rescored object confidence, and no-object loss on all non-responsible boxes.
 
 ```python
 import torch

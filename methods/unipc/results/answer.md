@@ -1,6 +1,6 @@
 # UniPC, distilled
 
-UniPC (Zhao et al., NeurIPS 2023, arXiv:2302.04867) is a training-free **unified predictor-corrector**
+UniPC is a training-free **unified predictor-corrector**
 framework for fast diffusion sampling. It adds a *corrector* (UniC) on top of a multistep *predictor*
 (UniP) that share one analytical update of *arbitrary order*, obtained by solving a small linear system
 in the half-log-SNR ratios. Because the corrector reuses the network evaluation the *next* step already

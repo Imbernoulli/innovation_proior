@@ -17,14 +17,14 @@ Input: untrusted training set `D_p`, trained suspect model `F`, classes `1..n`.
 
 1. Query `F` on the training samples and collect the last hidden layer activations.
 2. Flatten each activation tensor to one vector.
-3. Segment activations by class. The paper's Algorithm 1 bins by `F(s)`; ART bins by `y_train`.
+3. Segment activations by class. The core algorithm bins by `F(s)`; ART bins by `y_train`.
 4. For each class:
    - reduce dimension, typically to 10 components;
    - run k-means with `k=2`;
    - analyze the two clusters with one of the rules below.
 5. Return a report and `is_clean_lst`, with one clean/poison bit per original training row.
 
-Paper experiments use ICA before 2-means and report that 6, 10, and 14 components behave similarly.
+The reference experiments use ICA before 2-means and find that 6, 10, and 14 components behave similarly.
 ART's `ActivationDefence` object default is `reduce="PCA"` and `nb_dims=10`; its standalone
 `cluster_activations` helper defaults to `reduce="FastICA"`.
 
@@ -41,14 +41,13 @@ Mark clusters whose rounded class fraction is below the threshold. ART defaults 
 
 **Silhouette (`cluster_analysis="silhouette-scores"`).**
 Intended rule: flag a cluster only if it is small enough and the class has a high enough silhouette
-score. ART defaults to `size_threshold=0.35` and `silhouette_threshold=0.1`. The paper reports that
-thresholds around `0.10` to `0.15` were reasonable, with a trusted clean set preferred for
-calibration when available.
+score. ART defaults to `size_threshold=0.35` and `silhouette_threshold=0.1`. Thresholds around `0.10` to
+`0.15` are reasonable, with a trusted clean set preferred for calibration when available.
 
 **Distance (`cluster_analysis="distance"`).**
 For each class, compute the median reduced activation of the whole class and the median of each of
 its two clusters. A cluster is suspicious if it is closer to another class's median than to its own
-class median, while the sibling cluster is not. This is an ART implementation option, not the paper's
+class median, while the sibling cluster is not. This is an ART implementation option, not the
 main automatic rule.
 
 **Exclusionary reclassification (`ex_re_threshold > 0`).**
@@ -135,10 +134,10 @@ def detect_from_activations(activations, labels, reduce="FastICA", analysis="sma
 
 ## Implementation Caveats
 
-The paper-faithful detector uses last-hidden-layer activations. Current ART `main` contains an
+The detector uses last-hidden-layer activations. Current ART `main` contains an
 active line in `_get_activations` that overwrites `classifier.get_activations(...)` with
 `classifier.predict(self.x_train)` despite the nearby comment `# wrong way to get activations`. A
-paper-faithful implementation should remove that overwrite.
+faithful implementation should remove that overwrite.
 
 Current ART `main` also appears to assign `clean_clusters` incorrectly inside the high-silhouette
 branch of `analyze_by_silhouette_score`. The intended rule is the one above: when the small cluster

@@ -24,7 +24,7 @@ For a given `W`, the no-treatment path is estimated by
 
 `Yhat_1t^N(W) = sum_{j=2}^{J+1} w_j Y_jt`.
 
-For pre-treatment predictors and selected pre-treatment outcomes, let `X1` be the treated-unit predictor vector and `X0` the donor predictor matrix. The paper allows a symmetric positive semidefinite distance matrix `V`; the canonical `Synth` implementation uses a normalized nonnegative diagonal `V`. For each `V`, choose donor weights by solving
+For pre-treatment predictors and selected pre-treatment outcomes, let `X1` be the treated-unit predictor vector and `X0` the donor predictor matrix. I allow a symmetric positive semidefinite distance matrix `V`; the canonical `Synth` implementation uses a normalized nonnegative diagonal `V`. For each `V`, choose donor weights by solving
 
 `W^*(V) in argmin_W (X1 - X0 W)' V (X1 - X0 W)`
 

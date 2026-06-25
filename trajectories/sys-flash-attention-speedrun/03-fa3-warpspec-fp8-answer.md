@@ -25,8 +25,7 @@ the math too: the Hadamard rotation is exactly invertible inside the score produ
 algebraic rescalings, and the result accumulates to BF16 — so the ≈2× FP8 throughput comes with the quantization
 error of the matmuls reduced by incoherent processing rather than the accuracy collapse of naive FP8.
 
-**Realized record (provenance: numbers from the FlashAttention-3 blogpost tridao.me/blog/2024/flash3/ and paper
-arXiv:2407.08608; the repo ships no machine-readable result file for this rung, but the *code* — warp
+**Realized record (provenance: the repo ships no machine-readable result file for this rung, but the *code* — warp
 specialization, TMA, WGMMA, the softmax/matmul overlap, the FP8 descale path — is the in-repo Hopper kernel
 excerpted below).** FlashAttention-3 is **1.5–2.0× faster than FlashAttention-2 in FP16, up to 740 TFLOPs/s, i.e.
 75% utilization of the H100's theoretical max**; in **FP8 it reaches close to 1.2 PFLOPs/s, with 2.6× smaller

@@ -59,7 +59,7 @@ reproduces the slice→token-attention→deslice sandwich term for term, so this
 integral operator the graph methods approximated locally, now evaluated globally over learned states.
 
 Now I have to land this in *this task's* edit surface, and the harness exposes Transolver faithfully —
-this is the case where the baseline matches the paper closely, so the differences are small but I
+this is the case where the baseline matches my derivation closely, so the differences are small but I
 should still name them. The task ships `layers.Physics_Attention.Physics_Attention_Irregular_Mesh` and
 I use it directly rather than reimplementing the sublayer; my edit is the `Transolver_block` and the
 `Model` wrapper. The block is the canonical pre-norm residual: `fx = Attn(LN(fx)) + fx; fx =
@@ -78,11 +78,11 @@ directions start decorrelated and specialize faster, and the mass-normalized tok
 projections, but on the unstructured design tasks `geotype='unstructured'` selects the irregular-mesh
 class with plain linear projections, which is the geometry-general default these benchmarks need.
 
-The width is the one place this rung spends its budget aggressively and it is forced by the paper-
-faithful setting: `CONFIG_OVERRIDES = {'n_hidden': 256, 'slice_num': 32}` — 256 is double GraphSAGE's
+The width is the one place this rung spends its budget aggressively and it is forced by the
+canonical setting: `CONFIG_OVERRIDES = {'n_hidden': 256, 'slice_num': 32}` — 256 is double GraphSAGE's
 128 and sixteen times the 16 of PointNet/Graph_UNet, and it is the model against which the whole task's
 parameter budget is defined (1.05× Transolver-256). The slice count M=32 is the genuinely new
-hyperparameter; I keep it at the paper setting because the extremes argue for the middle: M=1 collapses
+hyperparameter; I keep it at the canonical setting because the extremes argue for the middle: M=1 collapses
 to global pooling (attention over a single token is the identity, all correlations lost), while pushing
 M toward N fragments the physics into noisy slivers and drifts back to attention-over-points. With a
 wide model (256) M=32 already gives each token enough capacity. Heads stay at the canonical 8, layers

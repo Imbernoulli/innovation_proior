@@ -11,7 +11,7 @@ mass onto a few positions and effectively stop attending broadly, and in doing s
 value information the early layers computed. The value vectors at block 1 carry a clean, lightly-processed
 view of each token; by block 8 the values are heavily transformed and the early signal is hard to recover
 from the residual stream alone. This is exactly the diagnosis in value residual learning, Zhou et al. 2024
-("Value Residual Learning For Alleviating Attention Concentration In Transformers", arXiv:2410.17897). Their
+("Value Residual Learning For Alleviating Attention Concentration In Transformers"). Their
 fix is simple and cheap: give every later layer a direct line back to the *first* block's value vector. The
 first block computes v1 and exposes it; every subsequent attention layer mixes its own freshly-projected v
 with v1 before doing attention. In the original form the mix is a fixed half-and-half, `v = 0.5*v +
@@ -24,7 +24,7 @@ layer is right next to v1 and probably wants very little of it; a deep layer tha
 probably wants more. The cheapest possible way to let the model decide is to make the mixing coefficient a
 *learnable scalar*, one per attention layer, and let the optimizer find the right value per depth. So
 instead of a constant I write `self.lamb = nn.Parameter(torch.tensor(0.5))`, initialized at 0.5 so I start
-exactly at the published behavior, and the mix becomes `v = (1 - self.lamb)*v + self.lamb*v1`. It's a single
+exactly at the original half-and-half behavior, and the mix becomes `v = (1 - self.lamb)*v + self.lamb*v1`. It's a single
 extra scalar per layer — negligible parameters — and these scalars are tiny 1-D tensors, so I hand them to
 Adam rather than Muon, at a fairly aggressive lr=0.02 since they're scalars that should move fast. The model
 can now turn the early-value injection up where attention is concentrated and down where it isn't.
@@ -57,7 +57,7 @@ Second, the logits. I zero-init the head, so the run *starts* from uniform max-e
 clean — but nothing stops a single logit from blowing up *later* in training. As the head sharpens, one
 coordinate of the 50304-way output can run away, the softmax saturates, the cross-entropy gradient through
 that coordinate goes tiny or spikes, and I get a noisy, slightly unstable loss curve right where I want it
-smooth. Gemma 2 (Team et al. 2024, arXiv:2408.00118) handles exactly this with a tanh logit softcap: pass
+smooth. Gemma 2 (Team et al. 2024) handles exactly this with a tanh logit softcap: pass
 the logits through a smooth saturating nonlinearity so they're bounded but the function stays differentiable
 and monotone. I'll cap at 30: `logits = 30 * torch.tanh(logits / 30)`. For small logits this is essentially
 the identity (tanh(z)≈z near zero), so it doesn't distort normal training; but it asymptotes to ±30, so no

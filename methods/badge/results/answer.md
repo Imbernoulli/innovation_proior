@@ -72,7 +72,7 @@ does not special-case that degenerate event.
 ## Working code
 
 Faithful core of `JordanAsh/badge` at commit `a2d18acd372cf0f61d9e75bfb0c879c107fbf9f6`.
-The implementation uses `r = e_yhat - p`, the negative of the paper-gradient residual
+The implementation uses `r = e_yhat - p`, the negative of the gradient residual
 `p - e_yhat`; norms, pairwise distances, and Gram determinants are unchanged by this global sign.
 
 ```python

@@ -68,7 +68,7 @@ in the *fixed* harness here (AdamW at 3e-4, smooth-L1 / BCE, grad-norm-clip 1.0,
 seed, no early stop). The harness also fixes the head, the loss, and the data. So the only thing this
 rung contributes is the *encoder*: embedding, 2-layer LSTM, last-position read, LayerNorm. Everything
 the cell-derivation says about counters still holds — the cell state can implement the tally — but I am
-filling a much smaller slot than the paper's training loop, and I should reason only about the encoder's
+filling a much smaller slot than a full sequence-to-one training loop, and I should reason only about the encoder's
 capacity, not about an optimizer I do not control.
 
 What do I expect, environment by environment, so that the numbers can confirm or refute it? On `abc`

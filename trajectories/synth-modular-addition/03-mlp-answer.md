@@ -22,8 +22,8 @@ memorize-then-grok delay to amplify in the first place.
 **Hyperparameters / choices.** Hidden width `N=256`; both layers normal-init with
 `std = sqrt(0.25)/(2N)^{1/3}` (mean-field scaling keeping post-square pre-activations `O(1)`); biases
 off everywhere. Optimizer unchanged: AdamW `lr=1e-3`, `betas=(0.9, 0.98)`, `weight_decay=1.0`; no-op
-hook. Note: the reference construction used MSE; the fixed loop keeps cross-entropy (outside the
-editable block), so this runs the Gromov architecture under cross-entropy.
+hook. Note: the quadratic-MLP construction is naturally posed under MSE; the fixed loop keeps
+cross-entropy (outside the editable block), so this runs the quadratic MLP under cross-entropy.
 
 **What to watch.** Expect `mean_steps_to_grok` to drop well below Grokfast's 5500/3500/3167 toward the
 low thousands the 500-step eval grid can resolve, `grok_rate 1.0` everywhere, `test_accuracy`/`score` at
@@ -32,11 +32,10 @@ transformer). If steps-to-grok do not beat Grokfast, the architecture is not the
 falls below 1.0, suspect the cross-entropy-vs-MSE mismatch or the quadratic-activation conditioning.
 
 ```python
-# EDITABLE region of custom_strategy.py — step 3: Gromov quadratic MLP + unchanged AdamW
-class GromovMLP(nn.Module):
+# EDITABLE region of custom_strategy.py — step 3: quadratic MLP + unchanged AdamW
+class QuadraticMLP(nn.Module):
     """Two-layer MLP with quadratic activation, one-hot inputs.
 
-    Following Gromov 2023 (arXiv:2301.02679):
       - Input: one-hot(a) || one-hot(b), shape [B, 2p]
       - Hidden: Linear(2p, N) -> x**2, with N=256
       - Output: Linear(N, p)
@@ -47,7 +46,7 @@ class GromovMLP(nn.Module):
         self.p = p
         self.fc1 = nn.Linear(2 * p, hidden_width, bias=False)
         self.fc2 = nn.Linear(hidden_width, p, bias=False)
-        # Gromov-style mean-field init (matches d-doshi/Grokking utils/models.py)
+        # mean-field init keeping post-square pre-activations O(1)
         import math
         scale1 = (0.25 ** 0.5) / ((2 * hidden_width) ** (1 / 3))
         scale2 = (0.25 ** 0.5) / ((2 * hidden_width) ** (1 / 3))
@@ -60,13 +59,13 @@ class GromovMLP(nn.Module):
         b_oh = F.one_hot(x[:, 1], num_classes=self.p).float()
         h = torch.cat([a_oh, b_oh], dim=1)
         h = self.fc1(h)
-        h = h * h  # quadratic activation (Gromov 2023)
+        h = h * h  # quadratic activation
         return self.fc2(h)
 
 
 def build_model(p: int, config: TaskConfig) -> nn.Module:
-    """Gromov 2023 MLP: 2-layer fcn, quadratic activation, hidden width N=256."""
-    return GromovMLP(p=p, hidden_width=256)
+    """Quadratic MLP: 2-layer fcn, quadratic activation, hidden width N=256."""
+    return QuadraticMLP(p=p, hidden_width=256)
 
 
 def make_optimizer(model: nn.Module, config: TaskConfig) -> torch.optim.Optimizer:

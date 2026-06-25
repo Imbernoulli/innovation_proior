@@ -116,7 +116,7 @@ action and re-plans, the horizons are fixed by the benchmark rather than tuned, 
 best-evaluated idea into the best-so-far + final-mean fallback rather than a per-iteration mean
 injection. So what I am landing is the core: colored noise, elite reuse within and across steps,
 population decay, momentum, best-so-far — fit to this task's single-plan-per-observation interface, not
-the paper's full MPC harness. I also bump the budget to match the regime this method was characterized
+the full MPC harness it was designed for. I also bump the budget to match the regime this method was characterized
 in: 900 samples, 10 iterations, K = 10%, which after the γ = 1.25 decay is a comparable total rollout
 count to CEM's 200×20 but spent with the colored, reuse-and-decay structure instead of flat white
 re-sampling.

@@ -3,7 +3,7 @@ the curve to gmean rFID 7.08, with diminishing per-rung returns: all three measu
 domain and none targets the frequency bands a bottlenecked autoencoder structurally loses. The surviving
 residual is frequency-localized — invisible to spatial losses.
 
-**Key idea.** Add **Focal Frequency Loss** (Jiang, Dai, Wu & Loy, ICCV 2021; arXiv:2012.12821) as a
+**Key idea.** Add a **Focal Frequency Loss** as a
 *complement* on top of the strongest baseline recipe. Take the orthonormal 2D FFT of reconstruction and
 target; the per-component distance is the squared Euclidean distance between complex values; gate each
 component by a **detached, [0,1]-normalized hard-frequency spotlight** `w(u,v) = |F_r − F_f|^α` (α=1),
@@ -12,11 +12,10 @@ self-generated curriculum that concentrates gradient on the bands the spatial te
 decays each band's weight as it is matched. It constrains the spectrum (the spatial terms anchor the
 pixels), so it stacks: `total = L1 + 0.5·LPIPS + 1e-6·KL + 1.0·feat_match + 1.0·FFL`.
 
-**Why FFL faithful to the reference.** Orthonormal `fft2` keeps the spectral scale comparable to a
+**Why FFL is well-posed.** Orthonormal `fft2` keeps the spectral scale comparable to a
 spatial loss; the weight matrix is **detached** so the gradient is exactly `w·∇(distance²)` and the
 optimizer cannot game the importance map; per-image max-normalization + clamp `[0,1]` + NaN→0 keeps the
-spotlight stable; `patch_factor=1` is a single global FFT (correct for 32×32). These match the canonical
-implementation (EndlessSora/focal-frequency-loss) line for line.
+spotlight stable; `patch_factor=1` is a single global FFT (correct for 32×32).
 
 **Why it should clear the bar.** A continuous VAE through the `f=4` bottleneck has a structural frequency
 bias (fits low frequencies, loses high-frequency detail); none of the three spatial terms targets the
@@ -32,7 +31,7 @@ strongest baseline: `perceptual_weight = 0.5`, `kl_weight = 1e-6`, `feat_match_w
 ```python
 # EDITABLE region of custom_train.py (lines 32-76) — finale: vqgan recipe + Focal Frequency Loss
 class FocalFrequencyLoss(nn.Module):
-    """Focal frequency loss (ICCV 2021): spectral distance gated by a detached
+    """Focal frequency loss: spectral distance gated by a detached
     hard-frequency spotlight. Complement to spatial losses."""
 
     def __init__(self, loss_weight=1.0, alpha=1.0, patch_factor=1,

@@ -14,7 +14,7 @@ by a few "critical" points, so the encoder is the canonical permutation-invarian
 adds real cross-point signal over the empty default while staying edge-free, so locality is left as a
 deliberate budget for the next rung.
 
-**Match to the harness (not the paper).** This task's `pointnet` is a stripped design-task variant,
+**Match to the harness.** This task's `pointnet` is a stripped design-task variant,
 **not** full PointNet: no input/feature T-nets and no orthogonality regularizer (the meshes arrive in
 a consistent physical frame and the loss is frozen), one *global* pool over the single mesh with the
 batch dimension squeezed (`global_max_pool` with a zero batch vector), and the design-task channel
@@ -22,7 +22,7 @@ widths (`encoder→n_hidden`, `in_block→2·n_hidden`, `max_block→32·n_hidde
 `(2+32)·n_hidden` concat → `4·n_hidden`). It is registered as a graph model, so it raises if `geo` is
 `None`, even though it never message-passes over the edges.
 
-**Hyperparameters.** `CONFIG_OVERRIDES = {'n_hidden': 16}` (paper-faithful PointNet width; keeps it a
+**Hyperparameters.** `CONFIG_OVERRIDES = {'n_hidden': 16}` (canonical PointNet width; keeps it a
 clean baseline and well under budget). `act` from `args`; `out_dim` per benchmark (4 Car/AirfRANS,
 6 AirCraft). No new loss terms.
 

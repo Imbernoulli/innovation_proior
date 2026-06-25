@@ -16,7 +16,7 @@ ShuffleNet bottleneck:  hw(2cm/g + 9m)
 
 The stride-2 unit average-pools the shortcut and concatenates it with the learned branch, so the branch produces only `out_channels - in_channels`.
 
-Reference-implementation note: the paper describes the channel shuffle immediately after the first grouped pointwise layer. The Megvii ShuffleNetV1 PyTorch reference applies the shuffle after the depthwise BN and before the second grouped pointwise layer. The code below follows that released reference.
+Reference-implementation note: the channel shuffle is naturally placed immediately after the first grouped pointwise layer. The Megvii ShuffleNetV1 PyTorch reference instead applies the shuffle after the depthwise BN and before the second grouped pointwise layer. The code below follows that released reference.
 
 ```python
 import torch
@@ -157,4 +157,4 @@ class ShuffleNetV1(nn.Module):
 model = ShuffleNetV1(n_class=1000, model_size="1.0x", group=3)
 ```
 
-Paper architecture table at `1.0x`: stage outputs are `[144, 288, 576]`, `[200, 400, 800]`, `[240, 480, 960]`, `[272, 544, 1088]`, and `[384, 768, 1536]` for `g = 1, 2, 3, 4, 8`, with complexities about `143M, 140M, 137M, 133M, 137M`. The released Megvii code specializes pretrained-friendly tables for `g=3` and `g=8`.
+Full architecture table at `1.0x`: stage outputs are `[144, 288, 576]`, `[200, 400, 800]`, `[240, 480, 960]`, `[272, 544, 1088]`, and `[384, 768, 1536]` for `g = 1, 2, 3, 4, 8`, with complexities about `143M, 140M, 137M, 133M, 137M`. The released Megvii code specializes pretrained-friendly tables for `g=3` and `g=8`.

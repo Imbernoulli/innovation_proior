@@ -6,7 +6,7 @@ bottleneck, bring the global state back.
 
 **Key idea (centralized state-V critic).** Feed the *global state* into the same robust plain MLP that
 worked: a shared `V_φ([s, e_a])` over the global state plus an agent one-hot — no attention, no
-cross-agent mixing. This is the standard MAPPO central-V (Yu et al. 2022, matching EPyMARL's
+cross-agent mixing. This is the standard MAPPO central-V (matching EPyMARL's
 `CentralVCritic`), in its lean environment-provided (EP) form. The smallest change from the local critic:
 swap `o^a` for `s`, keep the identical 128–128–1 MLP and agent one-hot.
 
@@ -50,8 +50,8 @@ import torch.nn.functional as F
 class CustomCritic(nn.Module):
     """MAPPO critic — shared MLP over (state + agent one-hot).
 
-    Standard centralized V from Yu et al. 2022 (arXiv 2103.01955).
-    Matches epymarl's CentralVCritic. All agents share the same network;
+    Standard centralized V critic, matching epymarl's CentralVCritic.
+    All agents share the same network;
     the agent one-hot lets the shared network produce agent-specific
     value estimates while still conditioning on the full global state.
     """

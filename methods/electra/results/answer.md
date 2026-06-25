@@ -62,7 +62,7 @@ Design choices and reasons:
 - **Share token + positional embeddings only**: $G$'s full-vocab softmax densely
   updates the whole embedding table, making it a better teacher; tying all
   weights would force $G$ and $D$ to be the same size.
-- **$G$ smaller than $D$**: the paper finds 1/4–1/2 width works best
+- **$G$ smaller than $D$**: 1/4–1/2 width works best
   (Small/Large use 1/4; Base uses 1/3). A too-strong $G$ makes detection
   unlearnable and forces $D$ to spend capacity modeling $G$; same-size $G$
   doubles compute.
@@ -71,7 +71,7 @@ Design choices and reasons:
 
 ## Code
 
-The paper equations above define $D$ as probability "real." The released
+The equations above define $D$ as probability "real." The
 TensorFlow implementation uses the equivalent opposite convention in code:
 the discriminator sigmoid is trained with `labels = is_fake_tokens`, so it is
 probability "fake." The core ELECTRA path is:

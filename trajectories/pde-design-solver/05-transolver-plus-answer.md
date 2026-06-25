@@ -21,16 +21,13 @@ reduction — which more than pays for the small temperature MLP, so the finale 
 `n_hidden=256, slice_num=32` as Transolver while landing **under** Transolver's parameter count, inside
 the task's 1.05×-Transolver-256 budget.
 
-**Match to the reference (faithful, with two strips).** Re-expressed from the canonical
-`Transolver_plus/models/Transolver_plus.py` `Physics_Attention_1D_Eidetic`, defined **inline in
-Custom.py** because the shipped `layers.Physics_Attention` is read-only. Two pieces of the reference are
+**Match to the harness (faithful, with two strips).** Re-expressed as a
+`Physics_Attention_1D_Eidetic` block, defined **inline in
+Custom.py** because the shipped `layers.Physics_Attention` is read-only. Two pieces are
 inapplicable here and removed: the `torch.distributed.nn.all_reduce` over slice statistics (multi-GPU
 million-scale only; here one mesh, one device, batch 1) and the gradient-checkpointing wrapper (a
 memory optimization the frozen loop does not need). The block and `Model` are the canonical pre-norm
 Transolver skeleton unchanged; the slice projection keeps the orthogonal init.
-
-**Reference.** Luo, Wu, Zhou, Xing, Di, Wang, Long, "Transolver++: An Accurate Neural Solver for PDEs
-on Million-Scale Geometries", arXiv:2502.02414 (2025); official code `thuml/Transolver_plus`.
 
 **Bar to clear (no feedback; this is the endpoint).** Match-or-beat Transolver's rho_d 0.9896 and c_d
 0.0136 and reduce the field errors below Car 0.0809/0.0218 and AirfRANS 0.0335/0.0156 (velocity most,
@@ -63,7 +60,7 @@ def gumbel_softmax(logits, tau=1.0):
 class Physics_Attention_Irregular_Mesh_Eidetic(nn.Module):
     """Eidetic Physics-Attention: single-stream slicing with a per-point adaptive temperature
     and a Gumbel-softmax assignment, so slices are sharply distinguishable physical states.
-    Cost O(N*M*C + M^2*C). all_reduce / checkpointing from the multi-GPU reference are dropped."""
+    Cost O(N*M*C + M^2*C). all_reduce / checkpointing from the multi-GPU setting are dropped."""
 
     def __init__(self, dim, heads=8, dim_head=64, dropout=0., slice_num=64):
         super().__init__()

@@ -32,7 +32,7 @@ import torch.nn.functional as F
 class CustomCritic(nn.Module):
     """MAPPO critic — shared MLP over (state + agent one-hot).
 
-    Standard centralized V from Yu et al. 2022 (arXiv 2103.01955).
+    Standard centralized V from Yu et al. 2022.
     Matches epymarl's CentralVCritic. All agents share the same network;
     the agent one-hot lets the shared network produce agent-specific
     value estimates while still conditioning on the full global state.

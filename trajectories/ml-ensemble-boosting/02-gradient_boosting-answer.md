@@ -14,7 +14,7 @@ distribution residual loop; for log-loss it is `y - sigmoid(F)` on the probabili
 reweighting added, so regression should improve; the negative-gradient view makes one loop serve any
 differentiable loss; shrinkage (`lr=0.1`) averages many noisy greedy directions over 200 rounds.
 
-**This-harness specifics (not the paper).** TreeBoost's per-leaf Newton step is **not expressible** —
+**This-harness specifics.** TreeBoost's per-leaf Newton step is **not expressible** —
 the strategy never sees the tree's leaves (no `tree.tree_.value` access). So the per-leaf step is
 reduced to a single **global** scalar `alpha`: regression uses `alpha = 1.0` (the LS tree already fits
 the residual mean per leaf; shrinkage comes from the loop's `alpha*lr` accumulation), classification

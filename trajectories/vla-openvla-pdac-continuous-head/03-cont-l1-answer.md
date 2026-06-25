@@ -17,10 +17,10 @@ capacity makes simple regression competitive with diffusion's multimodality with
 cost or 50-step rollout. Limitation: L1 learns the median mode, so genuinely multimodal demonstrations
 would favor diffusion — but LIBERO-Goal demonstrations are focused and consistent.
 
-**Same-named-vs-paper note.** The literal baseline is `edits/cont_l1.edit.py`: it forwards with *zeroed*
+**Implementation note.** The literal baseline is `edits/cont_l1.edit.py`: it forwards with *zeroed*
 `action_token_features` (a placeholder, no action-conditioned injection — unlike diffusion's projected
 noisy chunk), reuses the scaffold's `MLPResNet`, and reads slots via the `extract_action_hidden_states`
-hook — the paper's parallel-decode / chunking machinery is the fixed trunk, not part of this edit.
+hook — the parallel-decode / chunking machinery is the fixed trunk, not part of this edit.
 
 **Hyperparameters.** `CONFIG_OVERRIDES`: `lr_warmup_steps = 400`, `num_steps_before_decay = 6000`.
 `MLPResNet(num_blocks=2, input_dim = 4096·7, hidden_dim = 4096, output_dim = 7)`; `ACTION_DIM = 7`,

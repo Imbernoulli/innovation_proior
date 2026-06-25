@@ -7,7 +7,7 @@ two pathologies — it overfits the abundant noise (late trees chase unlearnable
 features all the time (cannot shed regime-stale factors). The next move is to make *the winning tree*
 drift-robust by ensembling it deliberately.
 
-**Key idea (DoubleEnsemble — Zhang, Aggarwal, Qi, ICDM 2020, arXiv 2010.01265).** A general ensemble
+**Key idea (DoubleEnsemble).** A general ensemble
 framework wrapped around the LightGBM base learner, deliberate about the two axes a plain ensemble
 leaves uniform. **Sample Reweighting (SR)** reads each sample's per-tree *loss curve*, uses its
 start-to-end shape `l_end/l_start` to separate learnable-but-hard samples from unlearnable noise,
@@ -47,8 +47,8 @@ ratios are too aggressive for a 158-factor set at this sample size. First two nu
 # =====================================================================
 # EDITABLE: CustomModel — implement your stock prediction model here
 # =====================================================================
-# DoubleEnsemble (Zhang, Aggarwal, Qi, ICDM 2020, arXiv 2010.01265) wrapped around a LightGBM
-# base learner, faithful to qlib/contrib/model/double_ensemble.py (DEnsembleModel).
+# DoubleEnsemble wrapped around a LightGBM
+# base learner, following qlib/contrib/model/double_ensemble.py (DEnsembleModel).
 import lightgbm as lgb
 from typing import Text, Union
 from qlib.model.interpret.base import FeatureInt

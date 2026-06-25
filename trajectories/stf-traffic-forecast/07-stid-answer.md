@@ -20,7 +20,7 @@ distinguishability directly, for almost nothing:
 Concatenate the four (`4h`), encode with residual MLP blocks, regress to the horizon. No graph, attention,
 recurrence, or 2D reshape — the disambiguation is the whole mechanism.
 
-**Faithfulness to the reference (finale).** STID (Shao et al., CIKM 2022, arXiv 2208.05233). The canonical
+**Faithfulness to the canonical form (finale).** I'll call this STID (Spatial-Temporal Identity). The canonical
 arch uses `1×1` Conv2d over a `[B, C, N, 1]` layout with per-block dropout; this scaffold re-expresses the
 identical map with `nn.Linear` + `nn.Parameter` tables over `[B, N, h]` (a `1×1` conv over a singleton
 spatial axis *is* a per-node linear). Index derivation (`×288`, `×7`, last step) matches the canonical lookup.

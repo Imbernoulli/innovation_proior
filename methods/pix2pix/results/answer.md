@@ -35,7 +35,7 @@ Training: alternate one step on `D`, one on `G`; non-saturating generator update
 Modules: `Ck` = Conv(4×4, stride 2)-BatchNorm-ReLU with k filters; `CDk` adds Dropout 0.5. No BatchNorm on the first `C64`. LeakyReLU(0.2) in the encoder and discriminator; plain ReLU in the decoder.
 
 - **U-Net generator** (256×256): encoder `C64-C128-C256-C512-C512-C512-C512-C512` to a 1×1 bottleneck; U-Net decoder `CD512-CD1024-CD1024-C1024-C1024-C512-C256-C128`, then a conv to the output channels and Tanh. Skip connections concatenate encoder layer `i` onto decoder layer `n−i` (this doubles the decoder input channels vs. a plain encoder-decoder).
-- **70×70 PatchGAN discriminator**: `C64-C128-C256-C512`, then a conv to a 1-channel patch-score map. In the paper/original Torch implementation this is followed by sigmoid and BCE; the PyTorch code below uses logits plus `BCEWithLogitsLoss`, the same cross-entropy with the sigmoid folded into the loss. Input channels = `input_nc + output_nc` (it receives the concatenation `[x, y]`). Receptive field is set by depth: `1×1` PixelGAN (`C64-C128` with 1×1 convs), `16×16`, `70×70`, `286×286` ImageGAN.
+- **70×70 PatchGAN discriminator**: `C64-C128-C256-C512`, then a conv to a 1-channel patch-score map. The original Torch formulation follows this with sigmoid and BCE; the PyTorch code below uses logits plus `BCEWithLogitsLoss`, the same cross-entropy with the sigmoid folded into the loss. Input channels = `input_nc + output_nc` (it receives the concatenation `[x, y]`). Receptive field is set by depth: `1×1` PixelGAN (`C64-C128` with 1×1 convs), `16×16`, `70×70`, `286×286` ImageGAN.
 
 ## Code
 

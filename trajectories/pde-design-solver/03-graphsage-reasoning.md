@@ -40,19 +40,19 @@ every layer. On a PDE mesh this matters a lot: a point on a sharp pressure ridge
 distinctive feature even as it aggregates from smoother neighbors, or the ridge gets averaged away —
 which is exactly the kind of gradient the U-Net's coarsening destroyed.
 
-But I must be honest about what *this* harness exposes, because the differences from the paper SAGE
-are real and load-bearing. First, the aggregator: the paper's expressive choice is the per-neighbor-
+But I must be honest about what *this* harness exposes, because the differences from the canonical SAGE
+are real and load-bearing. First, the aggregator: the canonical expressive choice is the per-neighbor-
 MLP-then-elementwise-max pool (a soft existential over the neighbor set), with mean as the cheap
 special case and an order-randomized LSTM as the high-capacity option. This task uses
 `torch_geometric.nn.SAGEConv`, whose default aggregation is the **mean** — so I do not get the pool
 aggregator's existential semantics; the neighbor summary is a degree-mean. That is a capacity
-reduction versus the paper's favored variant, and I should not claim the max-pool's ability to isolate
-a single distinctive neighbor. Second, and more important: the paper's signature move is **fixed-size
+reduction versus the favored max-pool variant, and I should not claim the max-pool's ability to isolate
+a single distinctive neighbor. Second, and more important: SAGE's signature move is **fixed-size
 uniform neighbor sampling** (draw S_k neighbors per node per layer, fresh each layer) so per-batch
 cost is bounded regardless of hub degree. This harness does **no sampling** — `SAGEConv(z, edge_index)`
 aggregates over the *full* neighbor set every layer. That is affordable here precisely because the
 meshes are modest (~5000–10000 points, batch size one) and the radius graph the loop builds has
-bounded degree; the scaling problem that *motivated* sampling in the paper does not bite at this scale.
+bounded degree; the scaling problem that *motivated* sampling does not bite at this scale.
 So the "inductive minibatching over a 200k-node graph" story is simply absent — I drop it, and I note
 that full-neighborhood aggregation is actually *more* faithful to the local field here than a
 subsampled one would be, which is a virtue for field accuracy, not a compromise.
@@ -65,8 +65,8 @@ for a flat model that has no other geometric channel. Then a stack of `SAGEConv`
 `out_layer`, each followed by **BatchNorm** (`track_running_stats=False`, since batch is one mesh and
 running stats over single graphs would be meaningless) and a ReLU. The decoder maps `n_hidden →
 out_dim`. The whole thing operates on the squeezed `(N, C)` tensor and re-adds the batch dimension at
-the end. It raises if `geo` is None, like the other graph baselines. The width is the GraphSAGE
-paper-faithful setting and notably *larger* than the graph models before it: `CONFIG_OVERRIDES =
+the end. It raises if `geo` is None, like the other graph baselines. The width is the canonical GraphSAGE
+setting and notably *larger* than the graph models before it: `CONFIG_OVERRIDES =
 {'n_hidden': 128}` — eight times PointNet's and Graph_UNet's 16. This is deliberate and it is part of
 why I expect SAGE to win on fields: a flat stack at full resolution with eight times the width has far
 more capacity to represent the local field, and it spends none of that capacity on lossy pooling.
@@ -97,9 +97,9 @@ diagnoses the *coarsening* (random pooling + piecewise-constant unpooling) as th
 fidelity → so keep learned neighbor aggregation but do it at full resolution with no pooling and no
 interpolation, i.e. flat message passing → choose SAGE's concat-self-then-transform so each point
 keeps an undiluted own-channel against over-smoothing, matching this task's variant: `SAGEConv` with
-**mean** aggregation (not the paper's max-pool), **full-neighborhood** aggregation with **no sampling**
-(the paper's scaling motivation is absent at this mesh size), coordinates concatenated into the node
-features, BatchNorm + ReLU per layer, at the paper-faithful **n_hidden=128** (8× the prior graph
+**mean** aggregation (not the canonical max-pool), **full-neighborhood** aggregation with **no sampling**
+(the usual scaling motivation is absent at this mesh size), coordinates concatenated into the node
+features, BatchNorm + ReLU per layer, at the canonical **n_hidden=128** (8× the prior graph
 models) → expecting field errors and c_d to drop below both prior rungs (AirfRANS recovering most)
 while rho_d may dip just under the U-Net's 0.981, leaving long-range global correlation as the gap a
 whole-domain attention operator must close next. The full scaffold module is in the answer.

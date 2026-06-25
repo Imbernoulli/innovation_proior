@@ -15,8 +15,7 @@ strength. It is a strict generalization: `αₜ = 1` recovers DeltaNet; setting 
 write and leaves the pure scalar-gated decay skeleton `Sₜ = αₜ S_{t−1}` shared with the Mamba2 / GLA
 family (that family adds its own write back; here the gate is the part being shared). The gate is the
 global eraser DeltaNet lacked; the delta
-rule is the local scalpel GLA lacked. Reference: Yang, Kautz, Hatamizadeh, "Gated Delta Networks:
-Improving Mamba2 with Delta Rule," arXiv:2412.06464 (ICLR 2025).
+rule is the local scalpel GLA lacked.
 
 **Why it should clear the bar.** A scalar `αₜ` keeps the chunkwise UT-transform training form intact (a
 scalar telescopes cleanly, like RetNet's `γ`), so the matmul-rich kernel survives; it is parameterized

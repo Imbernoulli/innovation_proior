@@ -14,7 +14,7 @@ keeps the hard ones heavy, forcing each new tree onto the current failures, so t
 in different directions and the weighted vote beats any single tree; the measured-error coefficient
 makes the whole thing adaptive — no edge needs to be known in advance.
 
-**This-harness specifics (not the paper).** Classification returns the **raw labels** so the fixed loop
+**This-harness specifics.** Classification returns the **raw labels** so the fixed loop
 routes the tree to its *discrete signed-vote* head (`alpha*(2*pred-1)`); the harness folds shrinkage
 into the coefficient, `alpha = learning_rate * 0.5*log((1-eps)/eps)`, since the discrete head has no
 separate `learning_rate`. Regression has **no weighted median** here (the fixed accumulator is a

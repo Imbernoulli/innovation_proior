@@ -22,9 +22,9 @@ untouched. `s(P_ℓ)` reads the router's peakedness: low entropy `H` (collapse-p
 targeted dead-expert rescue, gated to act exactly when and where collapse is happening, without
 flattening a healthy router.
 
-**Why these choices.** This loss was *evolved*, not hand-designed: ShinkaEvolve (Lange et al. 2025,
-arXiv:2509.19349) searched the Python of the balancing loss under fitness `r = −(L_CE + L_imb)`. The
-two pieces are confirmed verbatim against Eq. 1 of the paper: first-term coefficient `N_E/L`, hinge
+**Why these choices.** This loss was *evolved*, not hand-designed: an evolutionary search over the
+Python of the balancing loss under fitness `r = −(L_CE + L_imb)`. The
+two pieces are pinned down exactly: first-term coefficient `N_E/L`, hinge
 coefficient `0.1/L`, weight `s(P_ℓ)=0.5+(1−H(P_ℓ)/log N_E)`, floor `τ=0.064/N_E`. The hinge gradient
 must reach the router, so it is applied through the differentiable `P` of the under-used experts
 (the `f`-based gate selects *which* experts are under the floor; the penalty that flows gradient
@@ -33,7 +33,7 @@ raises their probability mass).
 **Hyperparameters / contract.** Global term coefficient `N_E/L`; hinge coefficient `0.1/L`; floor
 `τ = 0.064/N_E`; weight `s(P_ℓ) = 0.5 + (1 − H(P_ℓ)/log N_E)`, `H` the entropy of the normalized
 mean router distribution. `N_E = N = 8` experts, `L = 2` layers in this reproduction. Same
-model/data/optimizer as every rung. (ShinkaEvolve's own eval: 556M/82M-active MoE, `N_E=64`,
+model/data/optimizer as every rung. (The loss was originally found at scale: 556M/82M-active MoE, `N_E=64`,
 top-8, ~2.10B FineWeb tokens, `λ=0.01`; this is a small reproduction of the mechanism.)
 
 ```python
@@ -47,7 +47,7 @@ def layer_f_P(probs, topi, N):
     return f, P
 
 def balance_loss_shinka(probs_list, topi_list, N):
-    """ShinkaEvolve discovered loss (arXiv:2509.19349, Eq. 1):
+    """ShinkaEvolve discovered loss:
        global-batch LBL + entropy-weighted under-utilization hinge."""
     L = len(probs_list)
     tau = 0.064 / N

@@ -21,7 +21,7 @@ dimensionality rather than committing to a fixed number that failed on cifar100.
 
 **What the harness exposes.** Same `BackdoorDefense` contract, per-training-label routing (target label
 not exposed; group by cached training labels, not predicted class). The robust estimator is iterative
-trimming (a self-contained stand-in for the paper's ROBUSTEST); model access and a clean oracle are not
+trimming (a self-contained stand-in for a full robust-estimation routine); model access and a clean oracle are not
 available, so everything is computed from the penultimate features the harness extracts.
 
 **Hyperparameters.** `alpha = 4` (QUE temperature; robust across {2,4,8}); `k` auto-selected over a
@@ -29,7 +29,7 @@ geometric grid up to 64; robust trim `~1.5*eps`, few iterations; ridge `1e-6`; e
 classes `< 4` points scored zero. Removal budget `1.5*eps` fixed by the harness.
 
 ```python
-# EDITABLE region of custom_backdoor_defense.py — finale: SPECTRE (Hayase et al., ICML 2021)
+# EDITABLE region of custom_backdoor_defense.py — finale: SPECTRE
 import numpy as np
 import torch
 

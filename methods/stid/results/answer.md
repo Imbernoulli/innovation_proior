@@ -16,7 +16,7 @@ Attach the spatial and temporal identities:
 Z^i_t = H^i_t || E_i || T^TiD_t || T^DiW_t
 ```
 
-where `E in R^{N x D}`, `T^TiD in R^{N_d x D}`, and `T^DiW in R^{7 x D}` are trainable tables. In the paper's all-identities-enabled notation, `Z^i_t in R^{4D}`.
+where `E in R^{N x D}`, `T^TiD in R^{N_d x D}`, and `T^DiW in R^{7 x D}` are trainable tables. In the all-identities-enabled notation, `Z^i_t in R^{4D}`.
 
 Encode with residual MLP layers:
 
@@ -30,7 +30,7 @@ Regress the horizon:
 Y_hat^i_{t:t+F} = FC_regression((Z^i_t)^L),       Y_hat^i_{t:t+F} in R^F
 ```
 
-The paper loss is:
+The loss is:
 
 ```text
 L(Y_hat, Y) = (1 / (N F)) sum_i sum_j |Y_hat^i_j - Y^i_j|
@@ -40,7 +40,7 @@ The BasicTS implementation uses masked MAE and masked MAE/RMSE/MAPE metrics for 
 
 ## Constants and Cases
 
-For the short-paper traffic experiments, `P = 12`, `F = 12`, `D = 32`, `num_layer = 3`, `N_d = 288`, and `N_w = 7`. For Electricity, the paper uses `P = 168` and `F = 12`.
+For the short-horizon traffic experiments, `P = 12`, `F = 12`, `D = 32`, `num_layer = 3`, `N_d = 288`, and `N_w = 7`. For Electricity, I use `P = 168` and `F = 12`.
 
 The canonical implementation is more general than the clean `4D` equation:
 
@@ -209,4 +209,4 @@ class STID(nn.Module):
 
 The temporal indices are read from the final history step, not the future window. The reference implementation indexes them per node as `[B, N]`; the preprocessing tiles the same time value across nodes for traffic, but the shape remains per-node. The `future_data` argument is accepted for the runner interface and is not used by this architecture.
 
-The paper's compact formula assumes all three identity tables are enabled and have the same width. The code supports ablations by turning any identity branch off and by choosing separate widths.
+The compact formula assumes all three identity tables are enabled and have the same width. The code supports ablations by turning any identity branch off and by choosing separate widths.

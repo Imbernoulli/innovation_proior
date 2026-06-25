@@ -5,7 +5,7 @@ footprint), so they cancel and the net stays small — the worst over-reconstruc
 selected for split, leaving grass/foliage/distant texture soft. Lowering the threshold cannot fix a
 statistic that measures *net center motion* rather than *total error*.
 
-**Key idea (AbsGS, Ye et al. 2024).** Accumulate the per-pixel *absolute* sub-gradients before the sum:
+**Key idea (AbsGS).** Accumulate the per-pixel *absolute* sub-gradients before the sum:
 `ĝ_x = Σ_j |∂L_j/∂μ_x|`, `ĝ_y = Σ_j |∂L_j/∂μ_y|`, and densify on `‖ĝ‖_2`. By the triangle inequality
 `‖g‖_2 ≤ ‖ĝ‖_2`; the gap is exactly the cancellation the signed rule was blind to. This is a
 density-control statistic only — the optimizer still steps with the true signed gradient.
@@ -20,7 +20,7 @@ automaton already handled are undisturbed.
 directly. Do *not* use `info["means2d"].grad.abs()`, which only flips the sign of the already-collapsed
 signed gradient and cannot undo cancellation (kept only as a defensive fallback). The harness exposes a
 **single** densification accumulator and **one** `grow_grad2d`, so this is the `gsplat` drop-in form:
-`.absgrad` feeds **both** clone and split at one threshold (not the paper's surgical signed-clone /
+`.absgrad` feeds **both** clone and split at one threshold (not a surgical signed-clone /
 abs-split two-threshold rule, which the harness does not allow). Because `‖ĝ‖_2 ≥ ‖g‖_2`, the threshold
 must rise — `grow_grad2d = 0.0006` (vs `0.0002` signed). Everything else is the inherited default:
 clone-small / split-large at `grow_scale3d`, opacity-floor + size prune, periodic reset, same schedule.

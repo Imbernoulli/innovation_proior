@@ -16,8 +16,8 @@ Metropolis acceptance and all validity gates.
 
 **Why these choices.** Rung 3 plateaued because, with the boundary at its perimeter limit, random
 flips almost always touch already-correct boundary; the targeted edge move aims proposals at fish
-the net actually misclassifies and at the nearest edge that fixes them, "strengthening the
-directionality of the search" exactly as ShinkaEvolve reported. The boundary-flag cache makes those
+the net actually misclassifies and at the nearest edge that fixes them, strengthening the
+directionality of the search exactly as ShinkaEvolve's evolved solution did. The boundary-flag cache makes those
 directed proposals affordable: an accepted flip can only change boundary status in its 3x3 window,
 so the cache is refreshed locally and is faithful by construction (the internal `a-b` matches the
 exact evaluator to the unit). Mixing targeted and uniform moves keeps the large high-temperature
@@ -37,7 +37,7 @@ Compile: `g++ -O2`.
 // and a running boundary-edge count gives O(1) perimeter.
 //
 // Two refinements ported from ShinkaEvolve's evolved AHC039 solution (which took
-// ALE-Agent's score from 2880, 5th, to 3140, 2nd; arXiv:2509.19349):
+// ALE-Agent's score from 2880, 5th, to 3140, 2nd):
 //   (1) CACHED VALIDATION: a per-cell boundary-flag cache refreshed only on the
 //       3x3 neighbourhood of each accepted flip, so candidate validity/scoring
 //       never rescans the grid (the analogue of ShinkaEvolve caching subtree

@@ -96,7 +96,7 @@ spectrum while drifting the spatial content, so it must ride alongside a spatial
 that anchors the pixels (and, if present, the perceptual and adversarial terms that handle global
 realism). The intended use is `total = spatial_loss + λ · FFL`, where `λ` weights the frequency term;
 FFL's job is purely to drag the *frequency* statistics of the output toward the target's, concentrating
-on the bands the spatial losses keep missing. The paper demonstrates this stacking improving VAE,
+on the bands the spatial losses keep missing. I expect this stacking to improve a VAE,
 pix2pix, and SPADE in both perceptual quality and quantitative metrics, which is the validation I'd run:
 add FFL on top of an existing recipe, hold everything else fixed, and check that the frequency mismatch
 (and the downstream perceptual metric) drops without the spatial metrics regressing.

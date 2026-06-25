@@ -64,8 +64,8 @@ L_actor  = E_{s~B, a~π, z~q_φ(z|c)} [ D_KL( π(a|s, z̄) ‖ exp(Q(s,a,z̄))/�
 L_KL     = β · KL( q_φ(z|c) ‖ N(0, I) )                                          # information bottleneck
 ```
 
-Here `η` is Oyster's `reward_scale`; the paper suppresses `γ` and terminal masking in the displayed
-critic equation, but the reference implementation uses both.
+Here `η` is Oyster's `reward_scale`; the displayed critic equation above suppresses `γ` and terminal
+masking for brevity, but the implementation uses both.
 
 ## Meta-training (Algorithm)
 

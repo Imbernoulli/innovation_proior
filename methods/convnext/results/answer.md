@@ -164,4 +164,4 @@ def convnext_xlarge(**kwargs):
     return ConvNeXt(depths=[3, 3, 27, 3], dims=[256, 512, 1024, 2048], **kwargs)
 ```
 
-For main ImageNet-1K training after the architecture is fixed, the paper uses AdamW, learning rate `4e-3`, weight decay `0.05`, batch size `4096`, 300 epochs, 20 warmup epochs, cosine decay, RandAugment `(9, 0.5)`, Mixup `0.8`, Cutmix `1.0`, Random Erasing `0.25`, label smoothing `0.1`, LayerScale init `1e-6`, EMA `0.9999`, and stochastic-depth rates `0.1/0.4/0.5/0.5` for T/S/B/L. For ImageNet-22K pretraining, EMA is off and stochastic-depth rates are `0.0/0.0/0.1/0.1/0.2` for T/S/B/L/XL.
+For main ImageNet-1K training after the architecture is fixed, I use AdamW, learning rate `4e-3`, weight decay `0.05`, batch size `4096`, 300 epochs, 20 warmup epochs, cosine decay, RandAugment `(9, 0.5)`, Mixup `0.8`, Cutmix `1.0`, Random Erasing `0.25`, label smoothing `0.1`, LayerScale init `1e-6`, EMA `0.9999`, and stochastic-depth rates `0.1/0.4/0.5/0.5` for T/S/B/L. For ImageNet-22K pretraining, EMA is off and stochastic-depth rates are `0.0/0.0/0.1/0.1/0.2` for T/S/B/L/XL.

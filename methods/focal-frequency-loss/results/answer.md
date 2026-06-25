@@ -1,10 +1,10 @@
 # Focal Frequency Loss (FFL), distilled
 
-Focal Frequency Loss (Jiang, Dai, Wu & Loy, ICCV 2021; arXiv:2012.12821) is a frequency-domain training
+Focal Frequency Loss (FFL) is a frequency-domain training
 loss for image reconstruction and synthesis. It measures the distance between the 2D spectra of the
 generated and target images and **adaptively concentrates on the frequency components that are currently
 hard to synthesize**, down-weighting the easy ones. It is a drop-in *complement* to spatial losses
-(`L1`/`L2`, perceptual, adversarial), shown to improve VAE, pix2pix, and SPADE in perceptual quality and
+(`L1`/`L2`, perceptual, adversarial), and improves VAE, pix2pix, and SPADE in perceptual quality and
 quantitative metrics.
 
 ## Problem it solves

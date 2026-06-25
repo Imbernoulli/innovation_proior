@@ -15,7 +15,7 @@ cannot trigger Bad Teacher's noise-driven collapse. The scheduled max-then-min d
 oscillation and lets the trailing min-only epochs repair the retain damage the early max-steps caused.
 Expect parity-or-better on the visible benchmarks and, decisively, *no collapse* on mobilenetv2-fmnist.
 
-**Hyperparameters.** `msteps = 2`, `kd_T = 4.0`, `alpha = 0.01`, `gamma = 0.99` (authors' VGG settings).
+**Hyperparameters.** `msteps = 2`, `kd_T = 4.0`, `alpha = 0.01`, `gamma = 0.99` (the standard VGG settings).
 The KD KL carries the `T^2` gradient-scale factor; teacher captured lazily, frozen, `eval()`. The fixed
 `Adam(lr=0.001)` is the small step the min-max instability needs.
 
@@ -23,14 +23,10 @@ The KD KL carries the `T^2` gradient-scale factor; teacher captured lazily, froz
 import copy
 
 class UnlearningMethod:
-    """SCRUB: min-max KL distillation vs a frozen original model.
-
-    Paper: https://arxiv.org/abs/2302.09880
-    Reference code: https://github.com/meghdadk/SCRUB
-    """
+    """SCRUB: min-max KL distillation vs a frozen original model."""
 
     def __init__(self):
-        # Defaults from the authors' VGG notebook.
+        # Standard VGG defaults.
         self.msteps = 2        # number of max-step epochs (rewind)
         self.kd_T = 4.0        # KD temperature
         self.alpha = 0.01      # weight on KL(student || teacher) in min step

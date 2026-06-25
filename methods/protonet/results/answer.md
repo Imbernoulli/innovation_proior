@@ -25,7 +25,7 @@ against it.
   It is a Bregman divergence, and for any Bregman divergence the mean is provably the
   representative minimizing total within-class divergence (argmin_c Σ_{x∈S_k} d_φ(x, c) =
   mean of S_k). Cosine distance is *not* a Bregman divergence, so averaging embeddings and then
-  scoring by cosine is inconsistent; this matches the paper's finding that squared Euclidean
+  scoring by cosine is inconsistent; this matches the empirical finding that squared Euclidean
   improves over cosine most strongly for this mean-prototype method.
 
 ## Why the design choices
@@ -127,9 +127,9 @@ class PrototypicalNetworks(FewShotClassifier):
         return F.cross_entropy(scores, labels)                      # -log p_phi(y=k|x)
 ```
 
-Code-faithfulness check: the official reference implementation computes
+Code-faithfulness check: the canonical implementation computes
 `torch.pow(x - y, 2).sum(2)` and then applies `F.log_softmax(-dists, dim=1)`. A scaffold helper
-that returns `-torch.cdist(samples, prototypes)` is not the exact paper object: it preserves the
+that returns `-torch.cdist(samples, prototypes)` is not the exact canonical object: it preserves the
 nearest-prototype argmax but changes the softmax geometry and breaks the Bregman /
 spherical-Gaussian / linear-model equivalences.
 

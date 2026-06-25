@@ -25,7 +25,7 @@ from torch_geometric.nn.pool.topk_pool import topk, filter_adj  # per-graph top-
 
 
 class SAGPool(nn.Module):
-    """Self-attention graph pooling layer (Lee et al., 2019). Scores nodes with a
+    """Self-attention graph pooling layer. Scores nodes with a
     single-output graph convolution (features + topology), keeps the top
     ceil(ratio*N) per graph, gates kept features by tanh(score), indexes adjacency."""
 
@@ -33,7 +33,7 @@ class SAGPool(nn.Module):
         super().__init__()
         self.in_channels = in_channels
         self.ratio = ratio
-        # Scalar GCN score; paper notation applies sigma to obtain Z.
+        # Scalar GCN score; apply sigma to obtain Z.
         self.score_layer = Conv(in_channels, 1)
         self.non_linearity = non_linearity
 
@@ -51,7 +51,7 @@ class SAGPool(nn.Module):
 
 class GraphReadout(nn.Module):
     """Hierarchical SAGPool readout: 3 x (GCN conv -> SAGPool), each block summarized
-    by max||mean in the official-code order; block summaries are summed."""
+    by max||mean; block summaries are summed."""
 
     def __init__(self, hidden_dim, num_layers, ratio=0.5):
         super().__init__()
@@ -65,7 +65,7 @@ class GraphReadout(nn.Module):
         self.output_dim = hidden_dim * 2          # max||mean per block, summed across blocks
 
     def _readout(self, x, batch):
-        # Official code uses max||mean; the paper equation writes mean||max.
+        # Concatenate max||mean (the order I use; mean||max is equivalent up to layout).
         return torch.cat([global_max_pool(x, batch), global_mean_pool(x, batch)], dim=-1)
 
     def forward(self, x, edge_index, batch, layer_outputs):

@@ -48,7 +48,7 @@ multiplier) is a fixed temperature: small `λ` → greedier; large `λ` → clos
 
 Hyperparameters: twin-SAC base with AWAC examples setting entropy `α=0`; Adam lr 3e-4 (actor
 weight-decay 1e-4, critic 0); discount 0.99; Polyak `τ = 5e-3`; ReLU MLPs; batch 1024; replay 1e6;
-offline RL pretraining before online collection; one train batch per online env step. The paper reports
+offline RL pretraining before online collection; one train batch per online env step. I use
 `λ = 0.3` for manipulation and `λ = 1.0` for MuJoCo; rlkit names the same denominator `beta` and its
 example scripts sweep/use nearby values (`0.5` with clipping for hand, `2` for MuJoCo).
 

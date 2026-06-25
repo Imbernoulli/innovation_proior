@@ -10,7 +10,7 @@ chain to stall. Make the encoder *graph-aware* (a 2-layer GCN, `X' = D^{-1/2}(A+
 identity node features and a permutation-invariant mean-pool to the latent), keep a node-existence head
 so a fixed-`N` decoder can drop empty slots, and train on entrywise reconstruction BCE plus a tiny KL.
 
-**Why (and the gap vs. the paper version).** This fill is a *matching-free* GraphVAE. The signature
+**Why (and the gap vs. the full version).** This fill is a *matching-free* GraphVAE. The signature
 contribution of the latent-variable graph generator — the **graph-matching-aligned reconstruction loss**
 (a pairwise-similarity assignment solved by max-pooling power iteration, discretized with the Hungarian
 algorithm, then `A' = X A Xᵀ`) that makes the objective permutation-*invariant* — is **entirely absent**.

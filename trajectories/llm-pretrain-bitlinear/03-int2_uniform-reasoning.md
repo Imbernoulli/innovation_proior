@@ -40,7 +40,7 @@ at once: the zero that ternary had, plus the graded magnitude that ternary lacke
 measurement is of the code, so I reason about the five levels.
 
 It is worth being precise about why the round-half-to-even convention is what creates the extra zero
-level rather than the symmetric four-level grid the author evidently intended. If round broke ties away
+level rather than the symmetric four-level grid the docstring evidently intended. If round broke ties away
 from zero, `±0.5` would go to `±1` and `±1.5` to `±2`, the outer clamp would pin `±2`→`±1.5`, and after
 dividing by `1.5` the realized set would be `{−1, −1/3, +1/3, +1}` with no zero — the textbook 2-bit
 grid. Half-to-even flips two of those mappings: `0.5`→`0` (even) and `1.5`→`2` (even), which both

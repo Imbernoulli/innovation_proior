@@ -5,8 +5,6 @@ Gated DeltaNet is a subquadratic sequence-mixing layer whose fixed-size matrix s
 write, trained by a hardware-efficient chunkwise (UT-transform) algorithm. It unifies two previously
 separate fixes of additive linear attention: gating (which fades memory globally but cannot localize
 removal) and the delta rule (which removes the colliding association precisely but has no decay).
-Reference: Yang, Kautz, Hatamizadeh, "Gated Delta Networks: Improving Mamba2 with Delta Rule,"
-arXiv:2412.06464 (ICLR 2025).
 
 ## Problem it solves
 

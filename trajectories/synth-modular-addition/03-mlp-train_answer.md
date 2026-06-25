@@ -2,7 +2,7 @@ The Grokfast hook did exactly what the slow-gradient hypothesis predicted. On `p
 
 Why is it slow? The whole grokking story rests on the model first finding a sharp, high-norm memorizing solution and only later, under weight decay's pull, drifting onto a low-norm rule-like solution. The transformer makes this two-phase story almost inevitable: with an embedding table, attention, an MLP, and an unembedding it has enormous freedom to fit the revealed cells by interpolation before any of them assembles the actual circuit, so it memorizes first and discovers the rule late. Grokfast leans on the late discovery; it does not change the fact that the model is *built* to memorize first. The grokked one-layer transformer is known to implement a discrete-Fourier circuit — embed each residue on a circle, rotate by the operand angles, read off the angle of the sum. If that Fourier structure is the only thing that generalizes here, a far simpler model whose natural solution *is* that structure should find it much sooner. That is the move: keep the optimizer and weight decay that are working, and change the architecture to one whose inductive bias points straight at the modular circuit.
 
-I propose the **Gromov quadratic MLP** (Gromov 2023): a two-layer fully-connected network with a *quadratic* activation, no biases, and one-hot inputs. The reason it has the right shape comes straight from the cosine addition formula,
+I propose the **quadratic MLP**: a two-layer fully-connected network with a *quadratic* activation, no biases, and one-hot inputs. The reason it has the right shape comes straight from the cosine addition formula,
 
 $$\cos(\theta_a + \theta_b) = \cos\theta_a\cos\theta_b - \sin\theta_a\sin\theta_b.$$
 
@@ -18,18 +18,17 @@ and the cross term $2\,u_j[a]\,v_j[b]$ is exactly the $a$-feature × $b$-feature
 
 That is the crucial difference from the transformer. For the transformer the memorizing solution is easy to reach and the Fourier solution is a late discovery that weight decay (amplified by Grokfast) drags the trajectory toward over thousands of steps. For the quadratic MLP the Fourier solution *is* the low-loss region the optimizer is heading toward from the start, because the architecture cannot easily express a per-cell lookup — squaring a low-dimensional linear projection has very limited capacity to memorize 40% of a $p\times p$ table cell-by-cell, but ample capacity to express a few sinusoidal frequency channels. Memorization is not the path of least resistance; the rule is, which should compress the memorize-then-grok delay to almost nothing.
 
-The initialization matters more than usual, because a quadratic activation is sensitive to the scale of its input — square a too-large pre-activation and the gradients explode, square a too-small one and the signal vanishes. I want the first-layer outputs to start at order one so the square is well-conditioned, so I set both layers to normal weights with standard deviation $\sqrt{0.25}\,/\,(2N)^{1/3}$, a mean-field scaling that accounts for the cubic interaction the quadratic activation induces between the two layers and the width $N$, keeping pre-activations $O(1)$ at init; this matches the reference MLP's init for this exact architecture, the regime in which it is observed to grok cleanly. For the optimizer I keep what is already working — AdamW with `lr=1e-3`, `betas=(0.9, 0.98)`, `weight_decay=1.0` — and deliberately do not change it, so the only thing that moves from the Grokfast rung is the architecture. I also drop the gradient hook, since the whole premise now is that the architecture, not a gradient trick, removes the delay. Weight decay still helps as hygiene: it keeps the second-layer combination sparse in frequency and cleans up spurious channels, which is why the learned weights come out as clean sinusoids — but I am no longer relying on it to *move* the trajectory across a memorize-to-generalize gap.
+The initialization matters more than usual, because a quadratic activation is sensitive to the scale of its input — square a too-large pre-activation and the gradients explode, square a too-small one and the signal vanishes. I want the first-layer outputs to start at order one so the square is well-conditioned, so I set both layers to normal weights with standard deviation $\sqrt{0.25}\,/\,(2N)^{1/3}$, a mean-field scaling that accounts for the cubic interaction the quadratic activation induces between the two layers and the width $N$, keeping pre-activations $O(1)$ at init; this is the standard init for this exact architecture, the regime in which it is observed to grok cleanly. For the optimizer I keep what is already working — AdamW with `lr=1e-3`, `betas=(0.9, 0.98)`, `weight_decay=1.0` — and deliberately do not change it, so the only thing that moves from the Grokfast rung is the architecture. I also drop the gradient hook, since the whole premise now is that the architecture, not a gradient trick, removes the delay. Weight decay still helps as hygiene: it keeps the second-layer combination sparse in frequency and cleans up spurious channels, which is why the learned weights come out as clean sinusoids — but I am no longer relying on it to *move* the trajectory across a memorize-to-generalize gap.
 
-One honest mismatch against the original construction: the reference quadratic-MLP result was characterized with a mean-squared-error objective on one-hot targets, where the cleanest sinusoids appear, while the benchmark's loop is fixed to cross-entropy, which lives outside the editable block. So I am running the Gromov architecture under cross-entropy rather than its native MSE. This should be fine and arguably easier for classification accuracy — cross-entropy with the same bilinear logits still has the Fourier solution as a minimizer, since the softmax of an indicator-shaped logit peaks at the right class — but it is a departure from the exact reported regime, and if anything looks off (e.g. less clean frequency structure) the loss mismatch is the first place to look.
+One honest mismatch with the architecture's most natural regime: the quadratic-MLP circuit is cleanest under a mean-squared-error objective on one-hot targets, where the cleanest sinusoids appear, while the benchmark's loop is fixed to cross-entropy, which lives outside the editable block. So I am running this architecture under cross-entropy rather than its native MSE. This should be fine and arguably easier for classification accuracy — cross-entropy with the same bilinear logits still has the Fourier solution as a minimizer, since the softmax of an indicator-shaped logit peaks at the right class — but it is a departure from the MSE regime, and if anything looks off (e.g. less clean frequency structure) the loss mismatch is the first place to look.
 
 The falsifiable expectations against the Grokfast numbers are sharp. Grokfast reached `grok_rate 1.0` on every prime but still at 5500 / 3500 / 3167 mean steps-to-grok. If the architectural story is right — that this network's natural minimum *is* the generalizing circuit, so there is almost no memorize-first detour — then the quadratic MLP should grok far sooner on every prime, with mean steps-to-grok dropping to roughly the smallest the 500-step eval grid can resolve, `grok_rate 1.0` everywhere, and `test_accuracy`/`score` at a clean 1.0 including the hard `p=59` split. I would also expect the wall-clock per run to collapse, since the MLP is far cheaper than the transformer per step. If steps-to-grok do not beat Grokfast's, the claim that the architecture removes the delay is wrong and the transformer's late-discovery dynamics were not the bottleneck; if accuracy comes in below 1.0, the cross-entropy-vs-MSE mismatch or the quadratic-activation conditioning is the suspect.
 
 ```python
-# EDITABLE region of custom_strategy.py — step 3: Gromov quadratic MLP + unchanged AdamW
-class GromovMLP(nn.Module):
+# EDITABLE region of custom_strategy.py — step 3: quadratic MLP + unchanged AdamW
+class QuadraticMLP(nn.Module):
     """Two-layer MLP with quadratic activation, one-hot inputs.
 
-    Following Gromov 2023 (arXiv:2301.02679):
       - Input: one-hot(a) || one-hot(b), shape [B, 2p]
       - Hidden: Linear(2p, N) -> x**2, with N=256
       - Output: Linear(N, p)
@@ -40,7 +39,7 @@ class GromovMLP(nn.Module):
         self.p = p
         self.fc1 = nn.Linear(2 * p, hidden_width, bias=False)
         self.fc2 = nn.Linear(hidden_width, p, bias=False)
-        # Gromov-style mean-field init (matches d-doshi/Grokking utils/models.py)
+        # mean-field init keeping pre-activations O(1) for the quadratic activation
         import math
         scale1 = (0.25 ** 0.5) / ((2 * hidden_width) ** (1 / 3))
         scale2 = (0.25 ** 0.5) / ((2 * hidden_width) ** (1 / 3))
@@ -53,13 +52,13 @@ class GromovMLP(nn.Module):
         b_oh = F.one_hot(x[:, 1], num_classes=self.p).float()
         h = torch.cat([a_oh, b_oh], dim=1)
         h = self.fc1(h)
-        h = h * h  # quadratic activation (Gromov 2023)
+        h = h * h  # quadratic activation
         return self.fc2(h)
 
 
 def build_model(p: int, config: TaskConfig) -> nn.Module:
-    """Gromov 2023 MLP: 2-layer fcn, quadratic activation, hidden width N=256."""
-    return GromovMLP(p=p, hidden_width=256)
+    """Quadratic MLP: 2-layer fcn, quadratic activation, hidden width N=256."""
+    return QuadraticMLP(p=p, hidden_width=256)
 
 
 def make_optimizer(model: nn.Module, config: TaskConfig) -> torch.optim.Optimizer:

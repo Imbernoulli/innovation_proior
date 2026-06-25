@@ -2,7 +2,7 @@
 
 ## Problem
 
-Scaling deep-network training across many accelerators means scaling the mini-batch size, which (at fixed epochs) cuts the number of optimizer steps in proportion to the batch, forcing a larger learning rate. A single global learning rate is the wrong object at large batch: layers differ by orders of magnitude in the ratio of their weight norm `‖x^(i)‖` to their update norm, so any global rate that makes one layer progress overshoots another and destabilizes training. LAMB makes the per-layer effective step proportional to each layer's own weight norm, decoupling the global learning rate from per-layer geometry, so the batch can scale to tens of thousands of examples with one learning-rate recipe: about 100 minutes for BERT at 32k batch, and about 76 minutes with the paper's 64k/32k mixed-batch schedule.
+Scaling deep-network training across many accelerators means scaling the mini-batch size, which (at fixed epochs) cuts the number of optimizer steps in proportion to the batch, forcing a larger learning rate. A single global learning rate is the wrong object at large batch: layers differ by orders of magnitude in the ratio of their weight norm `‖x^(i)‖` to their update norm, so any global rate that makes one layer progress overshoots another and destabilizes training. LAMB makes the per-layer effective step proportional to each layer's own weight norm, decoupling the global learning rate from per-layer geometry, so the batch can scale to tens of thousands of examples with one learning-rate recipe: about 100 minutes for BERT at 32k batch, and about 76 minutes with a 64k/32k mixed-batch schedule.
 
 ## Key idea
 
@@ -15,7 +15,7 @@ Inputs: `x_1`, learning rate `{η_t}`, `0 < β₁, β₂ < 1`, scaling function 
 - `g_t = (1/|S_t|) Σ_{s∈S_t} ∇ℓ(x_t, s)`
 - `m_t = β₁ m_{t-1} + (1−β₁) g_t`
 - `v_t = β₂ v_{t-1} + (1−β₂) g_t²`
-- `m̂_t = m_t/(1−β₁^t)`, `v̂_t = v_t/(1−β₂^t)`   (the paper algorithm includes this Adam correction; the appendix and Google implementation note that it can be removed when an explicit warmup schedule is already used)
+- `m̂_t = m_t/(1−β₁^t)`, `v̂_t = v_t/(1−β₂^t)`   (the algorithm includes this Adam correction; it can be removed when an explicit warmup schedule is already used, as the Google implementation does)
 - `r_t = m̂_t/(√v̂_t + ε)`
 - for each layer `i`: `x_{t+1}^(i) = x_t^(i) − η_t · φ(‖x_t^(i)‖) / ‖r_t^(i) + λ x_t^(i)‖ · (r_t^(i) + λ x_t^(i))`
 
@@ -23,7 +23,7 @@ The decoupled weight decay `λ x` sits *inside* the trust-ratio numerator and no
 
 ## Convergence (nonconvex, `b = T`, constant `η`, `α_l ≤ φ ≤ α_u`)
 
-For the LARS/trust-ratio scheme with `β₁ = λ = 0`: `(E[(1/√h)Σ_i ‖∇_i f(x_a)‖])² ≤ O((f(x_1)−f*) L_avg/T + ‖σ‖_1²/(Th))`. For LAMB with `β₁ = λ = 0`, equal layer sizes `d_i = d/h`, and `β₂ = 0`: `(E[(1/√d)‖∇f(x_a)‖_1])² ≤ O((f(x_1)−f*) L_avg/T + ‖σ̃‖_1²/(Th))`. For LAMB with `β₂ > 0`: `E‖∇f(x_a)‖² ≤ O(√(G²d/(h(1−β₂))) · [√(2(f(x_1)−f*)‖L‖_1/T) + ‖σ̃‖_1/√T])`. The `L_avg = (1/h)Σ_i L_i` replacement is the clean win in the LARS and `β₂=0` LAMB cases; the `β₂>0` LAMB theorem is looser. Via the paper's signSGD-style density comparison, the layerwise rate beats SGD when the gradient is denser than the curvature and the noise (`ψ_L ≪ ψ_g²`, `ψ_σ ≪ ψ_g²`).
+For the LARS/trust-ratio scheme with `β₁ = λ = 0`: `(E[(1/√h)Σ_i ‖∇_i f(x_a)‖])² ≤ O((f(x_1)−f*) L_avg/T + ‖σ‖_1²/(Th))`. For LAMB with `β₁ = λ = 0`, equal layer sizes `d_i = d/h`, and `β₂ = 0`: `(E[(1/√d)‖∇f(x_a)‖_1])² ≤ O((f(x_1)−f*) L_avg/T + ‖σ̃‖_1²/(Th))`. For LAMB with `β₂ > 0`: `E‖∇f(x_a)‖² ≤ O(√(G²d/(h(1−β₂))) · [√(2(f(x_1)−f*)‖L‖_1/T) + ‖σ̃‖_1/√T])`. The `L_avg = (1/h)Σ_i L_i` replacement is the clean win in the LARS and `β₂=0` LAMB cases; the `β₂>0` LAMB theorem is looser. Via a signSGD-style density comparison, the layerwise rate beats SGD when the gradient is denser than the curvature and the noise (`ψ_L ≪ ψ_g²`, `ψ_σ ≪ ψ_g²`).
 
 ## Code
 
@@ -40,7 +40,7 @@ class Lamb(Optimizer):
         if not 0.0 <= betas[0] < 1.0 or not 0.0 <= betas[1] < 1.0:
             raise ValueError(f"Invalid betas: {betas}")
         defaults = dict(lr=lr, betas=betas, eps=eps, weight_decay=weight_decay)
-        self.debias = debias            # TFA/paper correction; Google BERT code omits it
+        self.debias = debias            # TFA bias correction; Google BERT code omits it
         self.adam = adam                # trust_ratio := 1, for ablation
         super().__init__(params, defaults)
 

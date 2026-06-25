@@ -48,7 +48,7 @@ attention unable to put most of its mass on one token.
 `g_0 = log2(L^2 − L)`, with `L` the 97.5th-percentile sequence length across the training data
 (source and target). The exact row-length bound with scale `g` is
 `p_max = 1/(1+(m−1)e^(−2g))`, so larger rows need larger scale to permit a concentrated softmax.
-The paper's `L^2−L` is the off-diagonal count of a typical full `L × L` score matrix, used as a
+The `L^2−L` is the off-diagonal count of a typical full `L × L` score matrix, used as a
 coarse empirical proxy for similarity-matrix size rather than a derivation from row competitors.
 `log2` compresses that count. For `L = 72...79`, `g_0` is `12.32...12.59`, stretching `[−1, 1]` to
 about `[−12.5, 12.5]`. It is only an initialization; the model tunes `g` per attention module.
@@ -57,7 +57,7 @@ about `[−12.5, 12.5]`. It is only an initialization; the model tunes `g` per a
 
 - **Bounded scores throughout training**, not merely calibrated at init — a guarantee the fixed
   `1/sqrt(d_k)` cannot give.
-- **Head-count ablation was stable in the paper**: on English→Vietnamese, the reported score stays
+- **Head-count ablation was stable**: on English→Vietnamese, the measured score stays
   in the same broad range from 2 to 32 heads, including head dimension 16. This is empirical, not a
   theorem; the mechanism-level reason to expect stability is that the score remains a per-head cosine
   and no longer relies on a `sqrt(d_k)` variance calibration.

@@ -53,7 +53,7 @@ class Custom(nn.Module):
         hidden = 768
         n_layers = 5
 
-        # Single shared backbone (one set of weights — paper-faithful)
+        # Single shared backbone (one set of weights)
         layers = []
         for i in range(n_layers):
             layers.append(_HSRBlock(
@@ -93,7 +93,7 @@ class Custom(nn.Module):
 # ``criterion(predictions, targets)`` uses the Gaussian NLL on the model's
 # stashed (mu, log_var) when the active model is a heteroskedastic Custom.
 # This keeps the editable-region diff minimal (no trainer changes) while
-# producing the paper-faithful NLL training objective.
+# producing the NLL training objective.
 # ---------------------------------------------------------------------------
 _OrigMSELoss = nn.MSELoss
 

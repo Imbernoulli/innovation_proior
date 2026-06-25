@@ -71,7 +71,7 @@ but the `T = 2.0` softmax damps that noise heavily (it is a soft, near-uniform r
 buffer's constant overwriting means the rate always reflects the *most recent* descent, which is the
 freshest possible read on which task is currently lagging. The `epoch == 0` guard pins the weights to
 uniform for the entire first epoch, so the rate signal only switches on once the losses have a meaningful
-recent history. These are the concrete shapes the edit takes, and they are not the paper's epoch-loop
+recent history. These are the concrete shapes the edit takes, and they are not the canonical epoch-loop
 form — they are what the per-batch scalar interface allows.
 
 The last detail is keeping the gradient honest. The weights are computed from the *detached* losses

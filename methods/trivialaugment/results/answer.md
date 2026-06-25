@@ -32,7 +32,7 @@ is fixed at `31`.
 For shears, torchvision passes `degrees(atan(magnitude))` into `F.affine`; this makes the tangent
 of the shear angle equal the sampled shear factor. The sign flip is a fair coin for signed
 operations. The enhancer maximum is `0.99` in torchvision, so signed factors span `0.01` to
-`1.99`; the paper's appendix rounds the wide enhancer range as `0.01` to `2.0`, and the original
+`1.99`; the wide enhancer range rounds to `0.01` to `2.0`, and the original
 AutoML one-file code uses that direct factor range.
 
 ## Faithful Scaffold Code

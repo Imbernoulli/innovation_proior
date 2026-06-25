@@ -12,7 +12,7 @@ structureless dense fog), and a graph-transformer denoiser trained to predict th
 predicted edge probabilities at each step. The trajectory is anchored at both ends — known noise prior,
 known clean target — which is exactly what GRAN's collapse-prone seed was missing.
 
-**Why (and the gap vs. the paper version).** This fill is a *reduced* discrete diffusion. It diffuses
+**Why (and the gap vs. the full version).** This fill is a *reduced* discrete diffusion. It diffuses
 only the binary edges (node existence is a separate auxiliary BCE head, not diffused); it uses
 **uniform** edge-flipping whose limit is a dense `Bernoulli(0.5)` graph, *not* the marginal transition
 `Q = αI + β·1mᵀ` whose limit is the sparse data marginal — so the reverse process wastes early steps

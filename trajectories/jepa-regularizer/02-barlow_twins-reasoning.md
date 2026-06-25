@@ -86,7 +86,7 @@ std I need, and then the cross-correlation is just `bn(z1).T @ bn(z2) / B`. Beca
 constructed with no arguments and only sees the feature dimension D at the first forward, I make the
 BatchNorm *lazy* — `nn.LazyBatchNorm1d(affine=False)` — so it registers in `__init__` (and rides along
 with `.to(device)`/dtype) but materializes D on the first call. Second, the loss is written with the
-on-diagonal and off-diagonal as *sums* (the paper's `(diag − 1)².sum() + λ·offdiag².sum()`), not means,
+on-diagonal and off-diagonal as *sums* (`(diag − 1)².sum() + λ·offdiag².sum()`), not means,
 and with `λ = 0.0051` — the standard redundancy weight, small because there are ~D² off-diagonal entries
 against D diagonal ones, so an unweighted sum would let the off-diagonal block drown the diagonal
 alignment before there is any reason its per-entry errors are correspondingly smaller. Third, and this
@@ -95,11 +95,11 @@ is the one that is easy to miss: the raw summed loss with a 2048-wide projector 
 that adaptive rescaling, so the diagonal of the cross-correlation never climbs toward 1 and the run
 stalls (in a degenerate regime it can leave a backbone stuck near 10%). The fix the CIFAR recipe uses is
 a fixed multiplier `scale_loss = 0.1` on the whole loss, taming the gradient norm so LARS can actually
-move the diagonal. That multiplier is not in the original ImageNet recipe — there the 8192-wide
+move the diagonal. That multiplier is not needed in the large-scale ImageNet regime — there the 8192-wide
 projector pairs with a smaller `scale_loss` and a 1000-epoch, batch-2048 schedule — but on this harness
 (batch 256, the three CIFAR backbones, LARS `eta=0.02`, `clip_lr=True`) the solo-learn CIFAR settings
 are the right match, so I keep the default `2048 → 2048` projector (no `CONFIG_OVERRIDES`) and
-`scale_loss = 0.1`. The paper's 8192 projector would need the long schedule to converge and at this
+`scale_loss = 0.1`. An 8192-wide projector would need the long schedule to converge and at this
 budget would leave the diagonal stuck.
 
 So the delta from step 1 is concrete: where naive returned `F.mse_loss(z1, z2)` and let the encoder

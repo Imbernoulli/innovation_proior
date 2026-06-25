@@ -12,7 +12,7 @@ So let me descend on `U` instead and track what happens to `X = U U^T`. Gradient
 U̇_t = -A^*(A(U_t U_t^T) - y) U_t = -A^*(r_t) U_t ,   r_t = A(X_t) - y .
 ```
 
-I am using the paper's gradient-flow normalization here. If the implemented loss is written as an unnormalized or averaged squared error, a positive scalar appears in front of the right-hand side; that only rescales time and can be absorbed into `s_t`, so it does not change the limit argument. Now the move I care about is what this does to `X_t = U_t U_t^T`, not to `U` itself. Chain rule:
+I am using the standard gradient-flow normalization here. If the implemented loss is written as an unnormalized or averaged squared error, a positive scalar appears in front of the right-hand side; that only rescales time and can be absorbed into `s_t`, so it does not change the limit argument. Now the move I care about is what this does to `X_t = U_t U_t^T`, not to `U` itself. Chain rule:
 
 ```
 Ẋ_t = U̇_t U_t^T + U_t U̇_t^T = -A^*(r_t) U_t U_t^T - U_t U_t^T A^*(r_t)

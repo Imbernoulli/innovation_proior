@@ -6,7 +6,7 @@ the branch). None asks *which features* the branch should emphasize for a given 
 channel mixing is baked in at training time, identical for every input, and locally decided. That axis is
 untouched and is orthogonal to depth — so it can help the deep nets without the shallow tax dropping pays.
 
-**Key idea (Squeeze-and-Excitation, Hu et al. 2017, arXiv:1709.01507).** A lightweight, input-dependent,
+**Key idea (Squeeze-and-Excitation).** A lightweight, input-dependent,
 global-context channel gate on the branch output before the addition. *Squeeze:* global average pool the
 `C×H×W` branch map to a length-`C` descriptor (full-image receptive field). *Excite:* a bottleneck MLP
 `C → C/r → C` with ReLU then **sigmoid** (gates in `(0,1)`, non-exclusive — several channels may fire at

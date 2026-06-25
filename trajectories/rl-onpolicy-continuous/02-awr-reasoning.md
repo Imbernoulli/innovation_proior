@@ -102,7 +102,7 @@ rung 1 used — I am still introducing no clipping discipline, and the regressio
 the critic's job. The full module is in the answer.
 
 It is worth noting what this rung deliberately leaves out relative to the canonical method, so the
-reasoning lands the harness's implementation and not the paper's: there is no separate replay buffer or
+reasoning lands the harness's implementation: there is no separate replay buffer or
 off-policy reuse (the loop is on-policy), no separate critic/actor optimizers or step-count scheduling
 (one shared Adam), no advantage *re*-normalization before the exp beyond what the loop already did, no
 action-bound or L2 auxiliary losses, and the value targets are GAE returns rather than buffer

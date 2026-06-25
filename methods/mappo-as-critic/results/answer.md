@@ -1,7 +1,6 @@
 # Agent-Specific (AS/FP) central-V critic, distilled
 
-The AS critic is the recommended centralized value-function *input representation* from Yu et al. 2022
-("The Surprising Effectiveness of PPO in Cooperative, Multi-Agent Games," arXiv:2103.01955): condition
+The AS critic is the centralized value-function *input representation* I settle on: condition
 the centralized state value on **both** the environment global state `s` **and** the agent's own
 observation `o_i` (the *agent-specific global state*, AS), pruning the `s`/`o_i` overlap when an overlap
 map is available (the *feature-pruned* form, FP). It is the same parameter-shared central-V actor-critic

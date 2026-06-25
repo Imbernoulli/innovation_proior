@@ -43,18 +43,18 @@ rectangular windows — I cannot "take every 2×2 block." I need a coarsening th
 adaptive, and cheap. Now I have to match what *this task's* `graphunet` baseline actually does, because
 it is not the gPool/gUnpool graph U-Net of the literature — it is the design-task multi-scale
 geometric variant, and the differences are load-bearing. Three of them. First, the pooling here is
-**random node sampling by a fixed ratio**, not the learned top-k-by-projection of the paper. The paper
-scores every node by a normalized scalar projection onto a learned direction, keeps the top k, and
+**random node sampling by a fixed ratio**, not a learned top-k-by-projection. The standard learned
+variant scores every node by a normalized scalar projection onto a learned direction, keeps the top k, and
 gates the survivors by their sigmoid scores so the projection direction gets a gradient. This task's
 implementation instead, at each of the scales, samples `pool_ratio=0.5` of the nodes *uniformly at
 random* (`id_sampled = random.sample(range(n), k)`) and keeps those rows — there is no learned
 selection vector, no sigmoid gate. So the coarsening is stochastic and unlearned; the only learned
-parts are the graph convolutions. That is a real capacity reduction versus the paper, and I should not
+parts are the graph convolutions. That is a real capacity reduction versus a learned-selection variant, and I should not
 import the "learnable node selection" story.
 
 Second — and this is the geometric heart of the variant — after sampling, the coarse graph is
 **rebuilt by a radius graph in physical space**, not by restricting a graph power of the adjacency.
-The paper repairs connectivity lost to dropped nodes by squaring the (self-looped) adjacency so
+The standard graph-U-Net repairs connectivity lost to dropped nodes by squaring the (self-looped) adjacency so
 two-hop neighbors through a removed node stay connected. This task instead calls
 `nng.radius_graph(pos_x, r=list_r[n], ...)` on the *positions* of the surviving points, with the
 radius growing across scales (`list_r = [0.05, 0.2, 0.5, 1, 10]`). So locality at each level is
@@ -66,7 +66,7 @@ level, then the sampled positions thereafter); a radius graph is the natural nei
 cloud with metric structure.
 
 Third, the unpooling is **nearest-neighbor interpolation in space**, not scatter-by-saved-index. The
-paper's gUnpool scatters the coarse rows back to their recorded indices and leaves dropped rows zero
+standard gUnpool scatters the coarse rows back to their recorded indices and leaves dropped rows zero
 until a skip fills them. This task instead, on the way up, assigns each fine point the feature of its
 *nearest* coarse point (`cluster = nng.nearest(pos_x_up, pos_x_down); x_up = x[cluster]`) — a
 geometric interpolation that fills *every* fine point, not just the survivors. Then it concatenates

@@ -17,7 +17,7 @@ m = Pi_k(sigmoid(u))
 delta = p * m
 ```
 
-For an untargeted attack, maximize an attack loss `L(theta, x + delta, y)`. In the paper-level sparse-AutoAttack description this loss is cross-entropy. In the reference repository, `loss_fn` uses cross-entropy for high-confidence samples and a denominator-free DLR/margin fallback `max_{r != y} f_r - f_y` for low-confidence samples. In both cases the loss is maximized.
+For an untargeted attack, maximize an attack loss `L(theta, x + delta, y)`. In the high-level sparse-AutoAttack description this loss is cross-entropy. In the reference repository, `loss_fn` uses cross-entropy for high-confidence samples and a denominator-free DLR/margin fallback `max_{r != y} f_r - f_y` for low-confidence samples. In both cases the loss is maximized.
 
 Magnitude update:
 
@@ -46,7 +46,7 @@ If the mask-gradient norm is effectively zero, skip the mask step. If a still-co
 - `alpha = 0.25 * eps_inf`: magnitude sign-step size for unstructured attacks.
 - `beta = 0.25`: code parameter; the actual mask-logit step is `0.25 * sqrt(H * W)`.
 - `patience = 3`: unstructured attack mask-reinitialization tolerance.
-- Paper small-gradient cutoff: `gamma = 2e-8`; cloned reference code zeros the mask step at `grad_norm < 2e-10` and divides by `grad_norm + 1e-10`.
+- Small-gradient cutoff: `gamma = 2e-8`; the reference code zeros the mask step at `grad_norm < 2e-10` and divides by `grad_norm + 1e-10`.
 - `sPGD_unproj` / `MaskingA`: forward uses the hard mask, but `p`'s backward route uses `sigmoid(u)` for denser exploration.
 - `sPGD_proj` / `MaskingB`: forward and `p`'s backward route both use the hard mask for exploitation.
 - Sparse-AutoAttack runs `sPGD_unproj`, then `sPGD_proj`, then Sparse-RS in cascade, skipping later attacks for samples already broken.

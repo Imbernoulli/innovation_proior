@@ -21,11 +21,7 @@ import copy
 import torch.nn as nn
 
 class UnlearningMethod:
-    """Bad Teacher: dual-teacher KD with competent + incompetent teachers.
-
-    Paper: https://arxiv.org/abs/2205.08096
-    Reference code: https://github.com/vikram2000b/bad-teaching-unlearning
-    """
+    """Bad Teacher: dual-teacher KD with competent + incompetent teachers."""
 
     def __init__(self):
         self.KL_temperature = 1.0
@@ -60,7 +56,6 @@ class UnlearningMethod:
 
     def _unlearner_loss(self, student_logits, full_teacher_logits,
                         unlearn_teacher_logits, is_forget):
-        # Ref: UnlearnerLoss in vikram2000b/bad-teaching-unlearning.
         T = self.KL_temperature
         f_t = F.softmax(full_teacher_logits / T, dim=1)
         u_t = F.softmax(unlearn_teacher_logits / T, dim=1)

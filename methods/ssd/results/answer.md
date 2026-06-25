@@ -10,11 +10,11 @@ Use several feature maps with decreasing resolution so different layers speciali
 
 `38 x 38, 19 x 19, 10 x 10, 5 x 5, 3 x 3, 1 x 1`.
 
-The paper names the VGG-based prediction sources as `conv4_3`, `conv7 (fc7)`, `conv8_2`, `conv9_2`, `conv10_2`, and `conv11_2`. The official Caffe SSD300 script names the post-`fc7` extra maps `conv6_2`, `conv7_2`, `conv8_2`, and `conv9_2`. The resolutions and computations are the same target architecture; the naming differs because of implementation convention.
+I name the VGG-based prediction sources as `conv4_3`, `conv7 (fc7)`, `conv8_2`, `conv9_2`, `conv10_2`, and `conv11_2`. The official Caffe SSD300 script names the post-`fc7` extra maps `conv6_2`, `conv7_2`, `conv8_2`, and `conv9_2`. The resolutions and computations are the same target architecture; the naming differs because of implementation convention.
 
 ## Default Boxes
 
-The generic paper rule for `m` prediction maps uses scales
+The generic rule for `m` prediction maps uses scales
 
 ```text
 s_k = s_min + (s_max - s_min) * (k - 1) / (m - 1),  k = 1,...,m
@@ -52,7 +52,7 @@ total priors:  8732
 
 First force every ground-truth box to match its highest-Jaccard default box. Then match every remaining default box to its best ground truth if overlap is at least the threshold `0.5`. This gives multiple positives for a single object when several nearby defaults fit it well.
 
-For a positive default box `d = (d_cx, d_cy, d_w, d_h)` and ground-truth box `g`, the paper targets are:
+For a positive default box `d = (d_cx, d_cy, d_w, d_h)` and ground-truth box `g`, the regression targets are:
 
 ```text
 g_hat_cx = (g_cx - d_cx) / d_w

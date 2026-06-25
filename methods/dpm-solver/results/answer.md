@@ -73,7 +73,7 @@ The recommended single-step branch is
         - sigma_t(e^h-1)epsilon_theta(x_s,s)
         - (sigma_t/(2r1))(e^h-1)(epsilon_theta(u,s1)-epsilon_theta(x_s,s)).
 
-For the paper default `r1=1/2`, this is equivalently
+For the default `r1=1/2`, this is equivalently
 
   x_t = (alpha_t/alpha_s)x_s - sigma_t(e^h-1)epsilon_theta(u,s1).
 
@@ -88,12 +88,12 @@ For the paper default `r1=1/2`, this is equivalently
   x_t = (alpha_t/alpha_s)x_s - sigma_t(e^h-1)epsilon_theta(x_s,s)
         - (sigma_t/r2)((e^h-1)/h - 1)D2.
 
-Under the paper's smoothness and Lipschitz assumptions, the global error is `O(h_max^k)` for orders
+Under standard smoothness and Lipschitz assumptions, the global error is `O(h_max^k)` for orders
 `k=1,2,3`.
 
 ## Implementation
 
-The canonical implementation is `LuChengTHU/dpm-solver/dpm_solver_pytorch.py`. The original paper branch is
+The canonical implementation is `LuChengTHU/dpm-solver/dpm_solver_pytorch.py`. The original noise-prediction branch is
 `algorithm_type="dpmsolver"`; the later `dpmsolver++` branch uses data prediction, `sigma_t/sigma_s`, and
 `expm1(-h)`, so it is not the branch below.
 

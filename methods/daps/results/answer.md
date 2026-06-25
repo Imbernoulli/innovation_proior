@@ -7,9 +7,7 @@ makes nonlinear problems fragile), each annealing level (1) runs the *unconditio
 to turn the noisy `x_t` into a sharp clean estimate `x_0_hat`, (2) samples the clean conditional
 `p(x_0 | x_t, y)` by Langevin dynamics *on the clean variable* — where the forward operator is evaluated
 directly and no denoiser Jacobian appears — and (3) re-noises the corrected clean sample to the next lower
-level. The time-marginals anneal to the true posterior as the noise drops. (Zhang, Chu, Roy, Chen, Yang;
-"Improving Diffusion Inverse Problem Solving with Decoupled Noise Annealing", CVPR 2025; arXiv:2407.01521;
-official code github.com/zhangbingliang2019/DAPS.)
+level. The time-marginals anneal to the true posterior as the noise drops.
 
 ## Problem it solves
 
@@ -47,7 +45,7 @@ deblurring, HDR) where trajectory-guidance solvers (DPS, LGD, ΠGDM) are most br
 
 ## Defaults and why
 
-- **Annealing schedule:** EDM rho-schedule, `sigma_max ≈ 80` to `sigma_min`, ~`N_A` levels (the paper's
+- **Annealing schedule:** EDM rho-schedule, `sigma_max ≈ 80` to `sigma_min`, ~`N_A` levels (the
   standard EDM discretization).
 - **ODE sub-sampler:** Euler PF-ODE from `sigma`, a few NFE per level (configurable 4–44).
 - **Langevin:** `N = 100` steps (50 for LatentDAPS); step size `eta` decayed over the inner loop so the

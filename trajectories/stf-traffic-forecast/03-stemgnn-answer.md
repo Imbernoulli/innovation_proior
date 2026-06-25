@@ -17,11 +17,11 @@ changing* Laplacian every step — fragile and slow. Restricting the filter to a
 the eigenvectors (a polynomial in `Λ` conjugated by `U` is the same polynomial in `L`), so only matmuls
 against four Chebyshev-style channels remain, also localizing the filter to `K`-hop neighborhoods.
 
-**Same-named ≠ paper (what the harness drops).** This is the *lean* realization: `T0` is zeros (not `I`
+**Lean realization (what the harness drops).** This is the *lean* realization: `T0` is zeros (not `I`
 on a rescaled `L̃`), so the four channels are `[0, L, 2L²−0, 4L³−L]` from the *unrescaled* learned Laplacian.
 The backcast is kept only as the residual passed to the next block — there is **no separate
 backcast-reconstruction loss** and **no learnable-basis-expansion head** (plain linear-with-sigmoid),
-so the paper's regularization-by-reconstruction is weaker here.
+so the regularization-by-reconstruction is weaker here.
 
 **Hyperparameters.** `hidden_size = 5`, `num_blocks = 2`, `dropout = 0.5`;
 `CONFIG_OVERRIDES = {'lr': 0.001}` (the harness default 2e-3 is unstable for the GRU+spectral stack),

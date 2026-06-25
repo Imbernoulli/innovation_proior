@@ -23,7 +23,7 @@ stopping rule, or explicit low-rank architecture.
 
 ## Result
 
-For the symmetric PSD form `X = U U^T`, the paper studies the gradient-flow normalization
+For the symmetric PSD form `X = U U^T`, consider the gradient-flow normalization
 
 ```text
 Udot = -A*(A(UU^T)-y) U.

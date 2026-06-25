@@ -35,10 +35,10 @@ model is needed), and let the two strengths be **independent**:
   `y = r + gamma (1 - done) next_q`,
   `L_critic = sum_i mean( (Q_{theta_i}(s, a) - y)^2 )`.
 
-The paper equations and CORL single-file implementation stop there. The original `DT6A/ReBRAC`
+The core equations and CORL single-file implementation stop there. The `DT6A/ReBRAC`
 repository's offline JAX file adds one implementation-only case: after forming this Bellman
 target, it floors the target at a precomputed Monte Carlo return-to-go,
-`y = max(y, mc_return)`. That calibration is absent from the paper equations and CORL, so it
+`y = max(y, mc_return)`. That calibration is absent from the core equations and CORL, so it
 should be treated as a reference-code variant, not as the core ReBRAC formula.
 
 `beta_1` and `beta_2` are **decoupled** and tuned per environment (the original framework used
@@ -79,7 +79,7 @@ beta_2)`, learning rates, batch size, and `gamma`. For example, `halfcheetah-med
 
 ## Working code
 
-Faithful to the paper/CORL JAX update, written in the PyTorch shape of the TD3+BC base it
+Faithful to the CORL JAX update, written in the PyTorch shape of the TD3+BC base it
 builds on. The dataset must store the next action `a_hat'` for the critic penalty. The
 `mc_returns` branch below is disabled by default and exists only to mirror the extra target
 floor in the original `DT6A/ReBRAC` repository.

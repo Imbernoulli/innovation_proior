@@ -17,15 +17,12 @@ The delta from the naive floor is concrete: where naive returned `F.mse_loss(z1,
 class CustomRegularizer(nn.Module):
     """Barlow Twins (Zbontar et al. ICML 2021).
 
-    NB on scale_loss: the paper's official 8192-projector recipe includes
-    a `--scale-loss 0.024` multiplier — see the README of the original
-    repo's mirror (xuChenSJTU/barlowtwins-1) and solo-learn's reference
-    implementation
-        https://github.com/vturrisi/solo-learn/blob/main/solo/losses/barlow.py
-    Without it the raw loss is on the order of 1e3-1e4, and LARS' adaptive
-    rescaling (lars_lr = p_norm / (g_norm + ...)) starves the optimizer
-    so the diagonal of the cross-correlation matrix never approaches 1.
-    Using paper-default scale_loss=0.024 with the 8192 projector.
+    NB on scale_loss: the ImageNet 8192-projector recipe includes a
+    `--scale-loss 0.024` multiplier. Without it the raw loss is on the
+    order of 1e3-1e4, and LARS' adaptive rescaling
+    (lars_lr = p_norm / (g_norm + ...)) starves the optimizer so the
+    diagonal of the cross-correlation matrix never approaches 1. Here I
+    use the CIFAR recipe (scale_loss=0.1) with the 2048 projector.
     """
 
     def __init__(self, lambd=0.0051, scale_loss=0.1):
@@ -39,7 +36,7 @@ class CustomRegularizer(nn.Module):
 
     @staticmethod
     def _off_diagonal(x):
-        # Verbatim from barlowtwins/main.py.
+        # Return a flattened view of the off-diagonal elements.
         n, m = x.shape
         assert n == m
         return x.flatten()[:-1].view(n - 1, n + 1)[:, 1:].flatten()
@@ -47,7 +44,7 @@ class CustomRegularizer(nn.Module):
     def forward(self, z1, z2):
         B = z1.shape[0]
 
-        # Cross-correlation matrix (paper forward, verbatim).
+        # Cross-correlation matrix.
         c = self.bn(z1).T @ self.bn(z2)
         c = c / B
 
@@ -65,10 +62,10 @@ class CustomRegularizer(nn.Module):
 # CONFIG_OVERRIDES: override training hyperparameters for your method.
 # Allowed keys: proj_output_dim, proj_hidden_dim.
 # Use the solo-learn CIFAR-10 Barlow Twins recipe (proj=2048,
-# scale_loss=0.1) instead of the paper's ImageNet recipe
+# scale_loss=0.1) instead of the ImageNet recipe
 # (proj=8192, scale_loss=0.024, batch=2048, epochs=1000). Our setup
 # matches solo-learn's: CIFAR-10, batch=256, ResNet-{18,34,50}, LARS
-# with eta=0.02 and clip_lr=True. The paper's 8192 recipe needs
+# with eta=0.02 and clip_lr=True. The 8192 recipe needs
 # epochs=1000 + batch=2048 to converge — at our 100-epoch budget it
 # leaves the diagonal stuck (see logs from v3: rn34 only reaches 10%).
 # https://github.com/vturrisi/solo-learn/blob/main/scripts/pretrain/cifar/barlow.yaml

@@ -19,15 +19,14 @@ at the boundary). The warmup the ladder proved the deep net needs composes in fr
 **Hyperparameters.** `warmup = 5`; `explore = int(0.5·total_epochs)` (= 100 for the 200-epoch budget);
 `decay = total_epochs − warmup − explore` (= 95); peak `= base_lr`; exploit slope `= −base_lr/decay`,
 clamped at 0. 0-indexed `epoch` mapped to the canonical 1-indexed `global_step = epoch + 1` so the phase
-boundaries match the reference and the final epoch lands exactly at 0. No `arch`/`dataset` conditioning.
+boundaries line up and the final epoch lands exactly at 0. No `arch`/`dataset` conditioning.
 
-Faithful to `KneeLRScheduler` (Iyer, Kwatra, Ramjee & Sivathanu, "Wide-minima Density Hypothesis and the
-Explore-Exploit Learning Rate Schedule", JMLR 2023, arXiv:2003.03977): warmup `peak·step/warmup`, explore
+The three phases are: warmup `peak·step/warmup`, explore
 constant `peak`, exploit `max(0, peak − peak/decay·(step − warmup − explore))`.
 
 ```python
 def get_lr(epoch, total_epochs, base_lr, config):
-    """Knee (explore-exploit) schedule (Iyer et al., JMLR 2023, arXiv:2003.03977).
+    """Knee (explore-exploit) schedule.
 
     Three phases tiling the budget (canonical 1-indexed step = epoch + 1):
       warmup  (5 epochs):     linear ramp base_lr/5 -> base_lr

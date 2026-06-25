@@ -15,7 +15,7 @@ mu        = GCN_mu(X,A)
 log sigma = GCN_sigma(X,A)
 ```
 
-`GCN_mu` and `GCN_sigma` share the first GCN layer. The paper writes the normalized adjacency as
+`GCN_mu` and `GCN_sigma` share the first GCN layer. The normalized adjacency is written as
 `D^{-1/2} A D^{-1/2}` because `A` is defined with self-loops already present. The canonical code
 starts from `adj_train`, adds self-loops in preprocessing, and uses symmetric normalization.
 
@@ -59,7 +59,7 @@ kl_loss = -0.5 * mean_nodes(sum_dim(
 ))
 ```
 
-The official TensorFlow implementation adds this node-averaged KL with an extra `1 / num_nodes`
+The canonical TensorFlow implementation adds this node-averaged KL with an extra `1 / num_nodes`
 factor by subtracting the negative-KL term `(0.5 / N) * mean_nodes(...)` from the reconstruction
 cost. PyG's `VGAE.kl_loss()` returns the same positive node-averaged KL, so the matching sampled
 training loss is:
@@ -78,7 +78,7 @@ recon      = norm * mean(weighted_BCE_with_logits(flatten(Z Z^T), flatten(labels
 ```
 
 Sparse/scaffold training may instead score positive edges plus sampled non-edges, which is the
-paper's allowed zero-subsampling alternative.
+allowed zero-subsampling alternative.
 
 ## Reference-Faithful Code
 

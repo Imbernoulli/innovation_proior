@@ -39,11 +39,11 @@ Training cases:
 - Empty cell: no coordinate loss, no class loss, both box confidences pushed to `0` with `lambda_noobj`.
 - Object cell, responsible box: coordinate loss, confidence target `IOU(pred, truth)`, and the cell's class loss.
 - Object cell, non-responsible box: no coordinate or class loss, confidence pushed to `0` with `lambda_noobj`.
-- Responsibility: choose the box with highest current IOU to the truth; the paper-era Darknet code falls back to smallest coordinate RMSE when all IOUs are zero.
+- Responsibility: choose the box with highest current IOU to the truth; the Darknet code falls back to smallest coordinate RMSE when all IOUs are zero.
 
-## Paper-Faithful Code
+## Reference Code
 
-This PyTorch sketch follows the paper-era Darknet `cfg/yolo.cfg` and `detection_layer.c` semantics: no BatchNorm, `B=2`, output `1470`, linear final layer, root-size box channels, IOU-rescored object confidence, and no-object loss on all non-responsible boxes.
+This PyTorch sketch follows the Darknet `cfg/yolo.cfg` and `detection_layer.c` semantics: no BatchNorm, `B=2`, output `1470`, linear final layer, root-size box channels, IOU-rescored object confidence, and no-object loss on all non-responsible boxes.
 
 ```python
 import torch
@@ -202,7 +202,7 @@ class YoloV1Loss(nn.Module):
 
 ## Training And Inference
 
-Pretrain the first 20 convolutional layers for ImageNet classification at `224 x 224`. Convert to detection by adding 4 convolutional layers and 2 fully connected layers, then train at `448 x 448` for about 135 epochs on VOC 2007+2012 with batch 64, momentum `0.9`, weight decay `5e-4`, dropout `0.5`, random scale/translation up to 20%, and HSV exposure/saturation jitter up to `1.5x`. The paper schedule warms from `1e-3` to `1e-2`, then uses `1e-2` for 75 epochs, `1e-3` for 30, and `1e-4` for 30.
+Pretrain the first 20 convolutional layers for ImageNet classification at `224 x 224`. Convert to detection by adding 4 convolutional layers and 2 fully connected layers, then train at `448 x 448` for about 135 epochs on VOC 2007+2012 with batch 64, momentum `0.9`, weight decay `5e-4`, dropout `0.5`, random scale/translation up to 20%, and HSV exposure/saturation jitter up to `1.5x`. The schedule warms from `1e-3` to `1e-2`, then uses `1e-2` for 75 epochs, `1e-3` for 30, and `1e-4` for 30.
 
 Inference decodes each box as:
 

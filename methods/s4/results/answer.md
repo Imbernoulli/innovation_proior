@@ -32,7 +32,7 @@ Discretization recurrence (bilinear):
 Ā = (I − Δ/2·A)^{-1}(I + Δ/2·A), B̄ = (I − Δ/2·A)^{-1} ΔB, C̄ = C.
 DPLR recurrence step: A_0 = (2/Δ)I + (Λ − PQ^*), D = ((2/Δ) − Λ)^{-1}, A_1 = D − DP(1+Q^*DP)^{-1}Q^*D; then Ā = A_1 A_0 and B̄ = 2A_1B. Equivalently, (I − Δ/2·A)^{-1} = (2/Δ)A_1, and both factors are O(N) matrix-vector products.
 
-Per 1-D SSM: O(N) DPLR parameters (paper: Λ, P, Q, B, C̃, Δ; public S4 stores half conjugate pairs and ties Q to P.conj() in the stabilized DPLR kernel). A model uses H independent copies + position-wise linear channel mixing; nonlinearity, norm, residual between layers. Step size Δ is a learned per-feature timescale (init log-uniform in [10^{-3}, 10^{-1}]), enabling multi-timescale memory and test-time resolution change. SSM parameters train with lower lr and no weight decay.
+Per 1-D SSM: O(N) DPLR parameters (Λ, P, Q, B, C̃, Δ; the public S4 stores half conjugate pairs and ties Q to P.conj() in the stabilized DPLR kernel). A model uses H independent copies + position-wise linear channel mixing; nonlinearity, norm, residual between layers. Step size Δ is a learned per-feature timescale (init log-uniform in [10^{-3}, 10^{-1}]), enabling multi-timescale memory and test-time resolution change. SSM parameters train with lower lr and no weight decay.
 
 ## Code
 
@@ -151,7 +151,7 @@ class S4Model(nn.Module):
         return self.decoder(x)
 ```
 
-Optimizer: AdamW with cosine schedule; DPLR/SSM parameters (Λ, P/Q, B, C̃, Δ) get a smaller learning rate (~1e-3) and no weight decay; other parameters use the standard learning rate and weight decay. The paper derivation is the general Λ − PQ^* form, while the public S4 DPLR kernel stores half conjugate pairs and uses Q = P.conj() in its stabilized path.
+Optimizer: AdamW with cosine schedule; DPLR/SSM parameters (Λ, P/Q, B, C̃, Δ) get a smaller learning rate (~1e-3) and no weight decay; other parameters use the standard learning rate and weight decay. The derivation is the general Λ − PQ^* form, while the public S4 DPLR kernel stores half conjugate pairs and uses Q = P.conj() in its stabilized path.
 
 ## Complexity
 

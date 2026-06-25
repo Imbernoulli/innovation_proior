@@ -1,7 +1,7 @@
 **Problem.** Place `n = 11` points in `[0,1]^2` to maximize the minimum area over all `165`
 triangles. Score = exact min triangle area. Record `Δ(11) = 1/27 = 0.0370370370...` (Goldberg 1972,
-conjectured optimal; Erich Friedman's Heilbronn-for-squares page; coordinates tabulated in
-arXiv:2603.11107 Table 11). ENDPOINT: reproduce Goldberg's exact rational configuration and verify in
+conjectured optimal; Erich Friedman's Heilbronn-for-squares page tabulates the
+coordinates). ENDPOINT: reproduce Goldberg's exact rational configuration and verify in
 exact arithmetic that its smallest triangle is exactly `1/27`.
 
 **Key idea.** The search-and-polish frontier sits at `0.037032`, five parts in a million below the
@@ -41,7 +41,7 @@ N = 11
 
 # Goldberg (1972) optimal configuration for n=11 in the unit square, Delta(11) = 1/27.
 # Source: Erich Friedman's "Heilbronn problem for squares" page (1/27, horizontally
-# symmetric); exact rational coordinates tabulated in arXiv:2603.11107, Table 11.
+# symmetric), which tabulates the exact rational coordinates.
 GOLDBERG_EXACT = [
     (Fr(1, 3), Fr(0)),   (Fr(2, 3), Fr(0)),                       # bottom edge
     (Fr(0), Fr(2, 9)),   (Fr(1), Fr(2, 9)),                       # lower sides
