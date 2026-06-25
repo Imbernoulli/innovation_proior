@@ -1,15 +1,21 @@
-我要抓住 Dantzig-Wolfe decomposition 的真正动作，而不是只把它描述成“把大问题拆小”。单纯拆小并不新奇；真正特别的是变量的单位变了。原始 LP 的变量是 `x_k` 的坐标，master 要直接决定每个坐标取多少。Dantzig-Wolfe 说：先承认每个块内部的可行域 `X_k` 已经定义了一整套局部可行结构，不要在 master 里重新暴露这些局部坐标。把 `X_k` 的极点当成可选方案，master 只决定这些方案的凸组合权重。
+我面对的是 block-angular 的 LP：`min sum_k c_k^T x_k`，约束 `sum_k A_k x_k = b` 且 `x_k in X_k`，其中 `X_k = {x: B_k x <= d_k, x >= 0}` 是各块自己的局部可行域，只有 `sum_k A_k x_k = b` 这少数几行把块耦合起来。直接把所有 `x_k` 交给一个 simplex 当然能解，但求解器要同时背负每个块的内部约束 `B_k x_k <= d_k` 和全局耦合，结构没有被利用。我想问的是能不能让“全局协调”和“块内可行性”在算法上分开。
 
-设原问题是 `min sum_k c_k^T x_k`，约束为 `sum_k A_k x_k = b` 且 `x_k in X_k`。如果 `X_k` 是有界多面体，它的任一点都能写作极点凸组合 `x_k = sum_r lambda_kr p_kr`，并且 `sum_r lambda_kr = 1, lambda_kr >= 0`。代回去之后，原始变量 `x_k` 消失，master 变量变成 `lambda_kr`。一列对应的不是“某个坐标增加 1”，而是“采用子问题第 r 个完整极点方案的一点权重”。这使局部可行性自动内嵌在列里：只要列来自 `X_k`，它就不会违反该块内部约束。
+先想最朴素的分块法：各块按自己的 `c_k` 独立求 `min c_k^T x_k` s.t. `x_k in X_k`，再设法修补耦合约束。这便宜，但马上不对：各块独立最优几乎一定不满足 `sum_k A_k x_k = b`，而修补步骤没有原则——它不知道该牺牲哪个块、牺牲多少。问题出在各块用的是自己的 `c_k`，完全看不到耦合约束的稀缺性。所以分块本身不是难点，难点是让块在求解时“感知”到全局价格。这提示我，耦合约束的对偶价格 `pi` 应该回灌进每个块的目标里。
 
-这个 reformulation 看上去甚至更糟，因为极点可能指数多个。这里才出现 column generation 的必要性。simplex 或 LP 对偶性告诉我，求解 restricted master 后，我不需要知道所有没列出的极点；我只需要知道是否存在一个极点的 reduced cost 为负。对第 `k` 个块，master 给出 coupling dual `pi` 和该块 convexity constraint 的 dual `mu_k`。任一极点 `p` 的 reduced cost 是 `c_k^T p - pi^T A_k p - mu_k`，也就是 `(c_k - A_k^T pi)^T p - mu_k`。因此在所有极点上找最负 reduced cost，等价于解子问题 `min_{x in X_k} (c_k - A_k^T pi)^T x`。线性目标在多面体上的最优解自然落在极点上，所以 pricing oracle 会自动返回一列。
+那要不要换变量的“单位”？原始 LP 的变量是 `x_k` 的坐标，master 直接决定每个坐标取多少，于是局部约束 `B_k x_k <= d_k` 必须留在 master 里。能不能把局部可行性整体打包，让 master 不再看见局部坐标？凸多面体有个表示事实：若 `X_k` 是非空有界多面体，任一点都是其极点的凸组合，`x_k = sum_r lambda_kr p_kr`，`sum_r lambda_kr = 1`，`lambda_kr >= 0`。把它代回原 LP，原始坐标 `x_k` 消失，master 变量变成权重 `lambda_kr`。目标变成 `sum_k sum_r (c_k^T p_kr) lambda_kr`，耦合约束变成 `sum_k sum_r (A_k p_kr) lambda_kr = b`，再加上每块一条 `sum_r lambda_kr = 1`。一列对应的不再是“某坐标增加 1”，而是“采用子问题第 r 个完整极点方案一点权重”。关键是局部可行性自动内嵌：只要列来自 `X_k` 的极点，它的凸组合就一定还在 `X_k` 里，`B_k x_k <= d_k` 不可能被违反。master 里再也没有局部约束，只剩耦合约束加凸性约束。
 
-这一步说明了为什么“极点太多”不是致命问题。方法没有枚举极点，也没有扫描潜在列；它用一个优化问题构造当前对偶价格下最有价值的列。如果这个子问题最优值仍不能让 reduced cost 为负，那么该块所有极点都不能改进 master。所有块都不能改进时，restricted master 的解已经对完整 master 最优，也就是对原 LP 最优。
+这个 reformulation 表面上更糟，因为 `X_k` 的极点数目可随维数指数增长，列会指数多。但我不必把它们都列出来。simplex 的逻辑是：解完一个 restricted master 之后，要判断是否还能改进，只需要看有没有哪个未列出的列 reduced cost 为负，并不需要知道全部列。对第 `k` 块，master 给出耦合约束的对偶 `pi` 和该块凸性约束的对偶 `mu_k`。极点 `p` 的列，目标系数是 `c_k^T p`，在耦合行的系数是 `A_k p`，在自己那条凸性行的系数是 1，所以它的 reduced cost 是 `c_k^T p - pi^T (A_k p) - mu_k = (c_k - A_k^T pi)^T p - mu_k`。要在所有极点里找最负的 reduced cost，因为 `mu_k` 与 `p` 无关，等价于求 `min_{p extreme} (c_k - A_k^T pi)^T p`。线性目标在多面体上的最优解落在极点上，所以这个最小化可以直接在整个 `X_k` 上做：`min_{x in X_k} (c_k - A_k^T pi)^T x`。它本身又是一个小 LP，simplex 会返回一个极点，正好是我要的一列。这也回答了前面那个困惑——块要怎么“感知”全局价格：它在自己的目标里减去 `A_k^T pi`，正是耦合约束的影子价格。
 
-因此，Dantzig-Wolfe 的思想转变可以说成：从直接处理变量全集，转向动态生成结构性变量。原始变量全集是静态、巨大、没有经济筛选的；结构性变量则由 master 的对偶价格驱动，只有在它能改善全局目标时才被生成。主问题负责全局资源和凸组合，子问题负责局部可行性和最优响应。信息流也很干净：master 传价格，subproblem 传列。
+于是算法形状清楚了：从每块几列可行列起步，解 restricted master，读出 `pi, mu_k`，对每块解 pricing 子问题；若某块最优 reduced cost 为负就把那列加进 master，所有块都非负就停。master 负责全局资源和凸组合，子问题负责局部可行与对价格的最优响应；信息流是 master 传价格、subproblem 传列。
 
-这个解释还区分了它和普通 decomposition。普通分解可能只是并行解几个子模型再拼接；Dantzig-Wolfe 的 master 是一个精确的凸组合模型，pricing subproblem 是完整 LP 的 reduced-cost separation。停止条件不是经验性的“没有明显更好方案”，而是对偶证书：所有隐含列的 reduced cost 都非负。
+我担心两点没验证就声称成立：一是“所有块都非负就是全局最优”这个停止条件，二是把局部坐标换成极点权重后解出来的还是不是原 LP 的解。我用一个最小实例把整条链跑一遍。取两个标量块，每块 `X_k = [0,1]`，目标 `min 2 x1 + x2`，耦合约束 `x1 + x2 = 1`。每块极点就两个：`{0, 1}`。compact LP 直接解，最优是 `x1=0, x2=1`，目标 1，耦合约束的对偶 `pi = 1`，这是我要对照的标准答案。
 
-我还要避免把它误写成 Benders。Benders 是固定 master 变量，让子问题生成 violated cuts，逐步收紧 master 的可行域；Dantzig-Wolfe 是把子问题可行域的极点变成 columns，逐步扩展 master 的变量空间。一个偏 row generation，一个偏 column generation。Dantzig-Wolfe 的“列”本质上是局部可行方案，所以它特别适合 cutting stock 这种 pattern model、crew scheduling 这种 duty model、vehicle routing 这种 route model：一个列就是一个 pattern、一个 duty、一个 route。
+现在按 Dantzig-Wolfe 走。初始列池我故意给得不对称，看它能否自愈：块 0 给两列（`x=0` 和 `x=1`），块 1 只给一列（`x=0`）。第一次 restricted master 里，块 1 的耦合贡献被钉在 0，所以耦合行 `x1 + x2 = 1` 全要块 0 来扛，逼着块 0 的 `x=1` 那列权重为 1。解出来 master 目标 = 2，对偶 `pi = 2`，`mu = (0, 0)`。这时定价：块 0 的 `coeff = c_0 - A_0 pi = 2 - 1*2 = 0`，最优极点取 `x=0`，reduced cost `0*0 - 0 = 0`，不改进；块 1 的 `coeff = 1 - 1*2 = -1`，最优极点取 `x=1`，reduced cost `(-1)*1 - 0 = -1 < 0`，于是把块 1 的 `x=1` 这列 `(cost=1, link=1)` 加进来。
 
-最后要承认边界条件。若 `X_k` 无界，严格的表示还需要极射线而不只是极点；若原问题有整数结构，LP 层面的 Dantzig-Wolfe relaxation 往往给强下界，但整数最优通常需要 branch-and-price。可是这些扩展不改变核心洞察：把局部结构封装进列，把全局协调交给 master，把列的发现交给由对偶价格驱动的 pricing problem。
+第二次 master 有了块 1 的 `x=1` 列，就能让块 1 承担耦合需求：解出 `x1=0, x2=1`，master 目标 = 1，对偶 `pi = 2`，`mu = (0, -1)`。再定价：块 0 `coeff = 0`，取 `x=0`，reduced cost 0；块 1 `coeff = -1`，取 `x=1`，reduced cost `(-1)*1 - (-1) = 0`，恰好为 0，不再为负。两块都没有负 reduced cost，停。最终目标 1.0000，迭代一次收敛。
+
+这个数字和 compact LP 直接解出来的 1.0、最优点 `x1=0, x2=1` 完全一致，所以“换成极点权重”确实没有改变 LP 的最优值；不对称的初始列池也被定价步自动补齐了。需要诚实记一笔的是：我对照的 `pi` 不完全相同——compact LP 给 `pi=1`，DW master 在收敛点给 `pi=2`。这并不矛盾：耦合约束是等式，`x=[0,1]` 边界活跃，对偶不唯一，两个 `pi` 都是合法的最优证书，只要 reduced cost 全非负即可，而我上面算到的两块 reduced cost 在 `pi=2, mu=(0,-1)` 下确实都 `>= 0`。这正好把停止条件验证成了我想要的样子：所有隐含列（这里只剩没被显式加入的极点）的 reduced cost 非负，就构成对完整 master、从而对原 LP 的对偶证书；不是经验性的“看不出更好方案”，而是一张可验算的非负 reduced-cost 证书。我也顺便确认了“极点太多”不是致命问题——整个过程没枚举任何极点，每步只用一个优化问题构造当前价格下最该加入的那一列。
+
+把这个机制和邻近方法划清界限。它不是普通的并行解几个子模型再拼接：master 是一个精确的凸组合 LP，pricing 是完整 LP 的 reduced-cost separation，两者闭环到对偶证书。它也不是 Benders：Benders 固定 master 变量、让子问题生成 violated cuts 逐步收紧 master 的可行域，是 row generation；这里是把子问题可行域的极点变成 columns、逐步扩展 master 的变量空间，是 column generation。正因为“一列就是一个局部可行的完整方案”，它特别贴合 cutting stock 的 pattern、crew scheduling 的 duty、vehicle routing 的 route——一列就是一个 pattern、一个 duty、一条 route。
+
+最后是边界条件，我不把它们说成已验证、只说清适用范围。若 `X_k` 无界，凸组合表示要补上极射线，对应的列是改进方向而非凸性归一的方案，上面那个有界小例子没有覆盖这种情况，我会想在一个带射线的块上单独验一次。若原问题有整数结构，这套 LP 机制给出的是松弛，通常是强下界，但整数最优一般还要 branch-and-price。这些扩展不改变我验过的核心：把局部结构封进列、把全局协调交给 master、把列的发现交给由对偶价格驱动的 pricing 问题。

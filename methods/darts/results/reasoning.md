@@ -1,6 +1,6 @@
 Let me start from why architecture search is so painful right now, because that diagnoses the fix. Everyone treats the architecture as a discrete object — pick this op or that op on each edge — and then searches that discrete space with reinforcement learning or evolution. The controller proposes an architecture, you train it to convergence, you read off one scalar (validation accuracy), and you use that scalar as a reward to nudge the controller. The whole cost is in that inner "train a child to convergence to get one number," repeated thousands of times — thousands of GPU-days. And the reason you're stuck doing it that way is structural: the architecture variable is *discrete*, so validation performance is a non-differentiable function of it. There is no gradient of "how good is this architecture" with respect to "which op did I pick." If there *were* such a gradient, I could just do gradient descent on the architecture and skip the sample-train-reward loop entirely.
 
-So the real question becomes: can I make the choice of operation *continuous*, so that the gradient exists? Let me set up the search space first, then relax it. Following the cell idea: a cell is a directed acyclic graph of N nodes; each node x^(j) is a feature map, each directed edge (i,j) carries some operation o^(i,j) applied to x^(i), and a node is the sum of its incoming transformed predecessors:
+So the real question becomes: can I make the choice of operation *continuous*, so that the gradient exists? Let me set up the search space first, then try to relax it. Following the cell idea: a cell is a directed acyclic graph of N nodes; each node x^(j) is a feature map, each directed edge (i,j) carries some operation o^(i,j) applied to x^(i), and a node is the sum of its incoming transformed predecessors:
 
 ```
 x^(j) = Σ_{i<j} o^(i,j)(x^(i)).
@@ -8,13 +8,13 @@ x^(j) = Σ_{i<j} o^(i,j)(x^(i)).
 
 There's a special *zero* op meaning "no connection." Learning the cell = choosing the operation on each edge. That choice is the discrete, non-differentiable thing.
 
-How do I make "pick one operation out of the set O" differentiable? A hard pick is an argmax over a categorical — not differentiable. The standard softening of a categorical choice is a softmax. So instead of committing to one op on edge (i,j), put *all* candidate ops there and take a weighted average, with the weights coming from a softmax over a learnable vector α^(i,j) of logits (one per candidate op):
+How do I make "pick one operation out of the set O" differentiable? A hard pick is an argmax over a categorical — not differentiable. The standard softening of a categorical choice is a softmax. So instead of committing to one op on edge (i,j), let me try putting *all* candidate ops there and taking a weighted average, with the weights coming from a softmax over a learnable vector α^(i,j) of logits (one per candidate op):
 
 ```
 ō^(i,j)(x) = Σ_{o∈O}  [ exp(α_o^(i,j)) / Σ_{o'∈O} exp(α_{o'}^(i,j)) ]  o(x).
 ```
 
-Now every edge is a smooth mixture of operations, controlled by continuous α's. The architecture *is* the set α = {α^(i,j)}, and it's a continuous variable I can differentiate through. At the end, the soft mixture has to collapse back to hard choices: keep the strongest incoming non-zero edges for each node, and on each kept edge take the strongest non-zero operation, equivalently the argmax over that edge's learned logits or softmax weights. During search, though, everything is continuous. Good. The discrete search collapsed into learning a continuous α.
+Now every edge is a smooth mixture of operations, controlled by continuous α's. The architecture *is* the set α = {α^(i,j)}, and it's a continuous variable I can differentiate through. At the end the soft mixture has to collapse back to hard choices — keep the strongest incoming non-zero edges for each node, and on each kept edge take the strongest non-zero operation — but during search everything is continuous. That's the relaxation I wanted: the discrete search has turned into learning a continuous α.
 
 Now, what objective trains α? I have two sets of variables: the architecture α and the ordinary network weights w (the conv filters inside the mixed ops). I do *not* want to choose α to minimize *training* loss — that would just pick whatever architecture overfits the training set hardest (e.g. the most expressive ops), telling me nothing about generalization. The whole point of the RL approach was that the reward was *validation* performance. So I want α to minimize *validation* loss, while w minimizes *training* loss given α. That's a bilevel problem:
 
@@ -23,7 +23,7 @@ min_α   L_val( w*(α), α )
 s.t.    w*(α) = argmin_w  L_train(w, α).
 ```
 
-α is the upper-level variable, w the lower. This is exactly the structure of gradient-based hyperparameter optimization — α is like a (huge-dimensional) hyperparameter. Fine in principle. The trouble is w*(α): to evaluate the upper objective I'd have to *fully solve* the inner argmin for every α, i.e. train to convergence — which is the very expense I'm trying to kill. So I need the architecture gradient ∇_α L_val(w*(α), α) without solving the inner problem.
+α is the upper-level variable, w the lower. This is the structure of gradient-based hyperparameter optimization — α is like a (huge-dimensional) hyperparameter. Fine in principle. The trouble is w*(α): to evaluate the upper objective I'd have to *fully solve* the inner argmin for every α, i.e. train to convergence — which is the very expense I'm trying to kill. So I need the architecture gradient ∇_α L_val(w*(α), α) without solving the inner problem.
 
 The escape is to not solve the inner argmin at all — approximate w*(α) by a *single* gradient step from the current weights w:
 
@@ -31,7 +31,7 @@ The escape is to not solve the inner argmin at all — approximate w*(α) by a *
 w*(α) ≈ w' = w − ξ ∇_w L_train(w, α),
 ```
 
-ξ the inner learning rate. Then alternate: one step adapting w on training loss, one step adapting α on the validation loss of the one-step-ahead weights. This is the same one-step-unrolled trick used in meta-learning for model transfer and in unrolled GANs — differentiate through a single optimization step instead of the whole optimization. Note a sanity check: if w were already a local optimum for the inner problem, ∇_w L_train = 0, the step does nothing, w' = w, and the architecture gradient reduces to ∇_α L_val(w, α) — exactly what you'd want at convergence.
+ξ the inner learning rate. Then alternate: one step adapting w on training loss, one step adapting α on the validation loss of the one-step-ahead weights. This is the one-step-unrolled trick used in meta-learning for model transfer and in unrolled GANs — differentiate through a single optimization step instead of the whole optimization.
 
 Now actually compute the derivative of L_val(w'(α), α), where w' depends on α. This is a total derivative, and I have to be careful to get *both* ways α enters: directly (the second argument of L_val) and *through* w'. Treat L_val as a function of two arguments and apply the chain rule:
 
@@ -58,27 +58,42 @@ with v = ∇_{w'} L_val(w', α). Plugging that back into the total derivative gi
 d/dα L_val(w'(α), α)  =  ∂_α L_val(w', α)  −  ξ ∇²_{α,w} L_train(w, α) · ∇_{w'} L_val(w', α).
 ```
 
-The sign is negative — it's −ξ times a Hessian-vector product — and that minus sign matters: it says "move α so that the one-step weight update it induces lowers validation loss." Lose the sign and you'd push α the wrong way.
-
-That second term is the headache: ∇²_{α,w} L_train is a |α|×|w| matrix, and even as a matrix-vector product against ∇_{w'}L_val it's expensive — naively O(|α||w|). I'm not forming that matrix. Use a finite-difference approximation of the Hessian-vector product. Let v = ∇_{w'} L_val(w', α) be the vector I'm multiplying by, pick a small scalar ε, and define
+The sign is negative — it's −ξ times a Hessian-vector product. I want to be sure I haven't dropped or flipped a term, because the whole correction lives in that second piece and a sign error there would push α the wrong way. Let me check the formula against a brute-force derivative on the smallest non-trivial case: scalars α=a and w, with two loss functions chosen so that the mixed partial ∇²_{α,w} L_train is genuinely non-zero (otherwise the second term vanishes and proves nothing). Take
 
 ```
-w± = w ± ε v.
+L_train(w,a) = ½ w² − a w + 0.1 a² w,   L_val(w,a) = ½ (w−1)² + 0.3 a² + 0.2 a w,
 ```
 
-A central finite difference of the gradient ∇_α L_train along the direction v in *weight* space gives exactly the mixed-partial-times-v:
+ξ = 0.3, evaluated at w=0.7, a=0.4. From these, ∂_w L_train = w − a + 0.1 a², so w' = w − ξ(w − a + 0.1 a²) = 0.6928. The mixed partial ∂²L_train/∂a∂w = ∂_w(−w + 0.2 a w) = −1 + 0.2 a = −0.92. The direct term ∂_a L_val(w',a) = 0.6a + 0.2w' = 0.3786, and v = ∂_{w'} L_val(w',a) = (w'−1) + 0.2a = −0.2272. So the formula gives
+
+```
+0.3786  −  0.3 · (−0.92) · (−0.2272)  =  0.3786 − 0.0627  =  0.27416.
+```
+
+Against this I compute the brute-force number: define g(a) = L_val(w − ξ ∇_w L_train(w,a), a) with w held at 0.7, and take a symmetric difference (a±10⁻⁶). That returns **0.274155**. The two agree to five places. The sign on the Hessian term is right, and the magnitude is right — if I'd dropped the −ξ factor or flipped its sign I'd have landed near 0.379 or 0.441, nowhere near. Worth one more sanity point: set ξ=0 in the formula. Then w'=w exactly, the second term has a literal ξ factor so it dies, and the gradient is just ∂_a L_val(w,a) = 0.6·0.4 + 0.2·0.7 = 0.38 — the bare "validation gradient at the current weights," which is what you'd expect when you decline to look ahead. That matches plugging ξ=0 into g(a) numerically. So the total-derivative formula holds and the ξ=0 case degrades gracefully.
+
+That second term is still the headache: ∇²_{α,w} L_train is a |α|×|w| matrix, and even as a matrix-vector product against ∇_{w'}L_val it's expensive — naively O(|α||w|). I don't want to form that matrix at all. The thing I actually need is the *product* ∇²_{α,w} L_train · v for the one specific v = ∇_{w'}L_val, and a Hessian-times-a-known-vector is exactly what a finite difference of a gradient computes. Pick a small scalar ε and define w± = w ± ε v (perturb the *weights* along v), then look at how ∇_α L_train moves:
 
 ```
 ∇²_{α,w} L_train(w, α) · v  ≈  [ ∇_α L_train(w⁺, α) − ∇_α L_train(w⁻, α) ] / (2ε).
 ```
 
-Why this is the right object: differentiating L_train first w.r.t. α and then taking a directional derivative w.r.t. w in direction v is the same mixed second derivative, and a central difference of ∇_α L_train at w±εv estimates that directional derivative to O(ε²). Now the cost: two extra evaluations of the training loss and two gradients w.r.t. α, after perturbing the current weights in the positive and negative v directions — so the whole second-order correction is O(|α| + |w|) instead of O(|α||w|). A good ε is something like 0.01/‖v‖₂ so the perturbation is small but not lost to numerical noise.
+The reasoning: ∇²_{α,w} L_train · v is the directional derivative of the gradient-field ∇_α L_train as w moves in direction v, and a central difference of ∇_α L_train at w±εv estimates that directional derivative. Let me not just assert that and instead check both the value and the order of accuracy. Value first, on the same scalar example: the finite-difference estimate of ∇²_{α,w}L_train·v at w=0.7,a=0.4 with ε=10⁻⁴ comes out to **0.289616**, and the exact (−0.92)·(−0.2272) = **0.289616** — same number, so the finite difference is computing the right object. For the order of accuracy I need a loss whose mixed partial genuinely varies with w (the quadratic above has a constant mixed partial, so its central difference is exact and tells me nothing about the truncation error). Take instead ∇_α L_train behaving like w³ along the perturbation, exact target 1.9110, and sweep ε:
+
+```
+ε = 1e-1 → 1.93297  (err 2.20e-2)
+ε = 1e-2 → 1.91122  (err 2.20e-4)
+ε = 1e-3 → 1.91100  (err 2.20e-6)
+ε = 1e-4 → 1.91100  (err 2.20e-8)
+```
+
+The error falls by exactly 100× each time ε falls by 10×, i.e. it scales as ε² — the central difference is second-order accurate, as I'd hoped. Now the cost: this estimate is two extra evaluations of the training loss and two gradients w.r.t. α, after perturbing the current weights in the ±v directions — so the whole second-order correction is O(|α| + |w|) instead of O(|α||w|). The ε² error means I can take ε fairly large; but too large and I'd leave the linear regime, too small and the gradient difference drowns in numerical noise, so I scale it to the perturbation, ε = 0.01/‖v‖₂, which keeps ‖εv‖ a fixed small fraction of w regardless of the magnitude of v.
 
 So the architecture update is: form w' by one inner step; compute v = ∇_{w'}L_val(w',α); the architecture gradient is ∂_α L_val(w',α) − ξ·[∇_α L_train(w⁺,α) − ∇_α L_train(w⁻,α)]/(2ε); descend α by it. Then take the weight step on L_train and repeat.
 
-Now — is the second-order term even worth carrying around? Consider ξ = 0: the one-step update vanishes, w' = w, and the whole second term (the ξ-multiplied Hessian piece) disappears. The architecture gradient is just ∇_α L_val(w, α). That's the *first-order* approximation — pretend the current w is already w*(α), i.e. ignore that changing α would change the optimal weights. It's cheaper (no w±, no second backward set), but it throws away the coupling between α and w, and that should cost accuracy. So ξ > 0 (second-order) keeps the one-step coupling and is the better default; ξ = 0 (first-order) is the speed option. A simple working choice is to set ξ to the weights' current learning rate.
+Is the second-order term even worth carrying around? The ξ=0 check above already told me what dropping it does: with ξ=0 the one-step update vanishes, w' = w, and the architecture gradient collapses to ∇_α L_val(w, α). That's a *first-order* approximation — it pretends the current w is already w*(α), i.e. it ignores that changing α would change the optimal weights. It's cheaper (no w±, no second backward set), but it throws away the coupling between α and w. From the scalar example I can read off how much that coupling was worth at that point: the full gradient was 0.274 and the first-order one is 0.380, so here the look-ahead correction is about a third of the gradient and even shifts it — not negligible. So ξ > 0 (second-order) keeps the one-step coupling and is the better default; ξ = 0 (first-order) is the speed option. A simple working choice is to set ξ to the weights' current learning rate.
 
-The continuous α still has to become a discrete cell. For each intermediate node, keep the top-k strongest incoming operations from distinct predecessor nodes, where "strength" of op o on edge (i,j) is its softmax weight exp(α_o^(i,j))/Σ_{o'} exp(α_{o'}^(i,j)). Use k=2 for convolutional cells (to match the connectivity of existing hand-designed cells) and k=1 for recurrent cells. Crucially, *exclude the zero op* from this top-k selection. I need exactly k non-zero incoming edges per node for a fair comparison to existing models, and the strength of zero is underdetermined: with batch normalization downstream, inflating the zero logit only rescales the node's representation and doesn't change the classification, so its softmax weight isn't a meaningful "importance." So rank only the non-zero ops, keep the top-k.
+The continuous α still has to become a discrete cell. For each intermediate node, keep the top-k strongest incoming operations from distinct predecessor nodes, where "strength" of op o on edge (i,j) is its softmax weight exp(α_o^(i,j))/Σ_{o'} exp(α_{o'}^(i,j)). Use k=2 for convolutional cells (to match the connectivity of existing hand-designed cells) and k=1 for recurrent cells. One thing to settle: should the *zero* op be eligible for this top-k? I want exactly k non-zero incoming edges per node for a fair comparison to existing models, so a node that selected "zero" as one of its k would come out under-connected. And the strength of zero isn't even a meaningful ranking signal: there's a batch-norm layer downstream of each node, so scaling the zero logit only rescales the node's pre-BN representation, which BN then normalizes away — it doesn't change the classification at all. An op whose magnitude the network is free to ignore can't have its softmax weight read as "importance." So I rank only the non-zero ops and keep the top-k among those.
 
 The implementation has to preserve one more detail. In the convolutional setting there are two shared cell templates, normal and reduction, not a different α for every physical cell in the stack. So the search model keeps two architecture tensors, α_normal and α_reduce; a normal cell reads softmax(α_normal), a reduction cell reads softmax(α_reduce), and edges adjacent to the two input nodes in a reduction cell use stride two. I initialize those logits at zero, so the first softmax puts equal attention on every candidate op and each one receives some early weight-gradient signal instead of being starved before the search has learned anything.
 
@@ -226,4 +241,4 @@ def parse_cell(weights, steps=4, k=2):
     return gene
 ```
 
-NAS is expensive because the architecture is discrete, so validation performance has no gradient w.r.t. it and I have to sample-and-train; I relax each per-edge categorical choice into a softmax mixture controlled by continuous logits α; I choose α for validation performance while w follows training loss, which gives the bilevel objective; I avoid solving the inner argmin by replacing w*(α) with one unrolled training step w' and differentiating through it; the chain rule gives a direct α term plus a −ξ Hessian-vector correction, and the finite-difference trick computes that correction from two training gradients with respect to α; setting ξ=0 recovers the cheaper first-order update; after search, I read off each discrete cell by keeping the strongest non-zero incoming operations.
+NAS is expensive because the architecture is discrete, so validation performance has no gradient w.r.t. it and I have to sample-and-train; I relax each per-edge categorical choice into a softmax mixture controlled by continuous logits α; I choose α for validation performance while w follows training loss, which gives the bilevel objective; I avoid solving the inner argmin by replacing w*(α) with one unrolled training step w' and differentiating through it; the chain rule gives a direct α term plus a −ξ Hessian-vector correction — which I checked numerically against a brute-force derivative on a scalar example, and whose finite-difference estimate I checked is second-order accurate in ε — and that finite-difference trick computes the correction from two training gradients with respect to α; setting ξ=0 recovers the cheaper first-order update; after search, I read off each discrete cell by keeping the strongest non-zero incoming operations.

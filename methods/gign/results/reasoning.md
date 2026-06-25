@@ -57,12 +57,17 @@ distance and multiplies the neighbor's features by it elementwise,
 invariant distance enters, every layer is invariant — perfect for predicting an invariant scalar,
 which is exactly what affinity is. EGNN tells the same story with the squared distance carried into
 the message, `m_ij = phi_e(h_i, h_j, ||r_i - r_j||^2)`, and it also offers an equivariant
-*coordinate* update — but I should notice right away that I don't need that part. EGNN's coordinate
-update is for when your target is a vector, an updated position or a velocity. My target is a single
-scalar that's supposed to be invariant. So I hold the positions fixed, never update them, and what's
-left of EGNN is just "a graph network on distances" — invariant by construction. Good. The geometry
-machinery I want is settled: distance in, expanded somehow, generating a per-edge filter, gating the
-message. Positions are a fixed input I read distances off of, not a thing I evolve.
+*coordinate* update — but I should ask whether I need that part. EGNN's coordinate update,
+`x_i' = x_i + C sum_j (x_i - x_j) phi_x(m_ij)`, exists so the output positions transform *with* the
+input under rotation — it's there for when your target is itself a vector, an updated position or a
+velocity. My target is a single scalar that's supposed to be invariant, not equivariant. If I keep
+that update, I'm carrying a quantity that rotates with the input through the whole network, and then
+I'd have to be careful never to let it touch the scalar prediction or I'd reintroduce pose
+dependence. The clean move is to hold the positions fixed and never update them; then there's no
+equivariant quantity in the network at all, and what's left of EGNN is just "a graph network on
+distances." So the shape of the geometry handling I'm reaching for is: distance in, expanded somehow,
+generating a per-edge filter, gating the message — with positions a fixed input I read distances off
+of, not a thing I evolve.
 
 But here's where SchNet and EGNN stop being enough, and it's the whole point of this problem. They
 were built for a *single homogeneous molecule*. Every edge in their world is the same kind of edge,
@@ -118,29 +123,49 @@ the elementwise product. Aggregate by summing over neighbors. That's clean and i
 only geometric input is `d_ij`, which I just showed is rigid-motion-invariant, so the whole message
 is invariant.
 
-Now, how do I turn the scalar `d_ij` into the filter `radial_ij`? Naively, push `d_ij` straight
-into a small MLP that outputs a width-`hidden` vector. But I remember the failure mode here: a
-fresh MLP is nearly linear, so feeding it one scalar makes every output channel come out as nearly
-the same near-linear function of `d`. The channels are all correlated, there's no diversity, and
-training crawls on a plateau because the filter is effectively one-dimensional. The fix is to expand
-the distance in a fixed basis *before* the learned map. A bank of Gaussian radial basis functions on
-a grid of centers,
+Now, how do I turn the scalar `d_ij` into the filter `radial_ij`? The naive thing is to push `d_ij`
+straight into a small MLP that outputs a width-`hidden` vector. Before I commit to that, let me think
+about what a *fresh* such MLP does, because that's the regime training starts in. With small random
+init the map is nearly affine in its input, and its input is one scalar. So at init every output
+channel is roughly `silu(w_k d + b_k)` — all of them near-affine functions of the *same* `d`,
+differing only by a slope and offset. That means the channels are essentially copies of each other up
+to scale, and the filter the gate uses is effectively one-dimensional until training pulls the
+channels apart. I want to know how bad that actually is, so let me measure it. I take a single-scalar
+linear map to 9 channels with random init, push a SiLU through it, and evaluate across `d` from 0.5
+to 6 angstroms, then look at the mean absolute pairwise correlation across the 9 channels. It comes
+out at about 0.985 — the channels are very nearly the same function. That confirms the worry
+quantitatively: the gate starts life with no channel diversity, and gradient descent has to spend
+early epochs just decorrelating before the filter can do anything useful, which is the plateau I was
+afraid of.
+
+The fix is to expand the distance in a fixed basis *before* the learned map, so the diversity is
+handed to the network for free. A bank of Gaussian radial basis functions on a grid of centers,
 
   rbf(d) = [ exp( -((d - mu_k)/sigma)^2 ) ]_{k=1..K},  mu_k = linspace(D_min, D_max, K),
 
-each Gaussian a localized bump centered at a different distance. Now a short distance lights up the
-near centers, a long distance the far ones, so the `K` inputs are already decorrelated and the
-filter map starts diverse. What grid? The distances I care about run from the shortest bond up to
-the interaction cutoff. Bonds are around 1.5 angstroms, the noncovalent cutoff is 5; I want centers
-spanning that range with sub-angstrom resolution. `D_min = 0`, `D_max = 6` angstroms, `K = 9`
-centers — a small fixed bank spanning the whole range. `torch.linspace(0, 6, 9)` includes the
-endpoints, so the center spacing is `6/(9-1)`, while the implementation deliberately sets the
-Gaussian width to `sigma = (D_max - D_min)/K = 6/9`. That keeps the basis sub-angstrom and small
-enough to resolve a bond length from a contact distance without making the filter map bulky.
-Then a linear map from `K` to `hidden` and a smooth nonlinearity gives the filter:
-`radial_ij = SiLU( W_coord · rbf(d_ij) )`. I use SiLU here, the smooth swish activation, because the
-filter is a response to a continuous physical distance and I want it smooth — a smooth dependence on
-geometry, no kinks, the way a physical interaction strength varies smoothly with separation.
+each a localized bump centered at a different distance, so a short distance lights up the near
+centers and a long distance the far ones. Let me check that this actually buys what I want and isn't
+just a story. Same measurement: feed `rbf(d)` (rather than the raw scalar) through a random
+`Linear(9 -> 9)` and SiLU, sweep the same distances, and the mean absolute pairwise correlation drops
+from 0.985 to about 0.38. So at init the expanded version already gives the gate genuinely different
+channels to work with — the expansion, not training, supplies the diversity.
+
+What grid? The distances I care about run from the shortest bond up to the interaction cutoff. Bonds
+are around 1.5 angstroms, the noncovalent cutoff is 5; I want centers spanning that range with
+sub-angstrom resolution. Take `D_min = 0`, `D_max = 6` angstroms, `K = 9` centers — a small fixed
+bank spanning the whole range. `torch.linspace(0, 6, 9)` includes the endpoints, so the centers land
+at `mu = [0, 0.75, 1.5, 2.25, 3, 3.75, 4.5, 5.25, 6]` with spacing `0.75`, while the implementation
+deliberately sets the Gaussian width to `sigma = (D_max - D_min)/K = 6/9 ≈ 0.667`. Let me make sure
+this resolution can actually separate the two regimes I care about, by evaluating the basis at a
+representative bond and a representative contact. A bond at `d = 1.5` lights up centers `1.5, 0.75,
+2.25` (activations `1.0, 0.28, 0.28`); an H-bond-length contact at `d = 3.0` lights up centers `3.0,
+2.25, 3.75` (`1.0, 0.28, 0.28`). The two patterns share only the weakly-activated `2.25` shoulder and
+otherwise touch disjoint centers — so a downstream map *can* respond differently to a stiff bond and
+a soft contact, which is exactly the discrimination I'll need. The width is sub-angstrom and `K` is
+small enough that the filter map stays cheap. Then a linear map from `K` to `hidden` and a smooth
+nonlinearity gives the filter: `radial_ij = SiLU( W_coord · rbf(d_ij) )`. I use SiLU here, the smooth
+swish activation, because the filter is a response to a continuous physical distance and I want it
+smooth — no kinks, the way a physical interaction strength varies smoothly with separation.
 
 Now I have to decide whether one distance-to-filter map can serve both edge types, or whether the
 split has to enter the geometry network itself. Think about what the two edge sets actually contain.
@@ -183,23 +208,32 @@ and the regression will overfit without it. I deliberately use the smooth SiLU o
 filter, where smoothness in distance matters, and the cheaper LeakyReLU-with-batchnorm in the
 feature MLPs, where stable training of the regression head matters more than smoothness.
 
-That's the layer. Let me name it for what it is — a heterogeneous interaction layer, "heterogeneous"
-because it carries two distinct interaction channels through one step and fuses them. Let me check it
-does the one non-negotiable thing: invariance. The only place geometry enters is `d_ij =
-||pos_i - pos_j||` inside each `rbf`. Apply a rigid motion `pos -> Q pos + t` with `Q^T Q = I`:
+So this is one layer that carries two distinct interaction channels through a single step and fuses
+them — heterogeneous in the literal sense that covalent and noncovalent edges get different
+treatment within the step rather than in separate stages. Before I build it up into a full predictor
+I have to check that it does the one non-negotiable thing: stay invariant to rigid motion. The only
+place geometry enters is `d_ij = ||pos_i - pos_j||` inside each `rbf`. The algebra says that under
+`pos -> Q pos + t` with `Q^T Q = I`,
 
   ||(Q pos_i + t) - (Q pos_j + t)|| = ||Q(pos_i - pos_j)||
      = sqrt( (pos_i - pos_j)^T Q^T Q (pos_i - pos_j) ) = ||pos_i - pos_j||.
 
-Every `d_ij` is unchanged, so every `rbf(d_ij)` is unchanged, so every `radial_cov` and `radial_ncov`
-is unchanged, so every message `x_j (*) radial` is unchanged, so every aggregated `out_cov_i`,
-`out_ncov_i`, and the fused `out_i` are unchanged. Stack three of these layers and the node features
-are pose-independent at every layer. There's no equivariant channel to worry about because I never
-update a coordinate — `pos` is a fixed input I only read distances from, so unlike EGNN there's no
-vector that has to transform; everything in the network is an invariant scalar feature. The whole
-network is `E(3)`-invariant by construction, exactly as the physics demands, with zero augmentation.
-That falls straight out of the distance-only design — it's the same lemma SchNet and EGNN lean on,
-specialized to a network that produces only invariant features.
+I trust the algebra, but since the invariance is the whole foundation I want to see it hold on actual
+numbers rather than only on paper — and a numeric check is also a guard against my having the
+norm-of-difference computed wrong somewhere. Take three atoms at `(0,0,0)`, `(1.5,0,0)`, `(0,3,0)` —
+a stand-in for a bonded pair plus a more distant contact. Their pairwise distance matrix has off-
+diagonal entries `1.5`, `3.0`, and `sqrt(1.5^2 + 3^2) = 3.3541`. Now apply a real rigid motion: a 0.9-
+radian rotation about the z-axis followed by a translation `(7, -2, 5)`. Recompute the distance
+matrix on the moved coordinates — the entries come back `1.5`, `3.0`, `3.3541` again, agreeing with
+the original to about `1e-16`, i.e. to floating-point round-off. So every `d_ij` is unchanged under
+the motion, which means every `rbf(d_ij)` is unchanged, every `radial_cov` and `radial_ncov`, every
+message `x_j (*) radial`, every aggregated `out_cov_i` and `out_ncov_i`, and the fused `out_i`. Stack
+three of these layers and the node features stay pose-independent at every layer. There's no
+equivariant channel to break this, because I never update a coordinate — `pos` is a fixed input I
+only read distances from, so unlike EGNN there's no vector that has to co-transform. The whole network
+is then `E(3)`-invariant, exactly as the physics demands and with no rotation augmentation, resting on
+the same distance lemma SchNet and EGNN use, here specialized to a network whose every feature is an
+invariant scalar.
 
 Now wrap the layer into a full predictor. The atoms — both ligand and pocket — come with a 35-dim
 feature vector each: one-hot element among the common organic atoms, degree, implicit valence,
@@ -221,34 +255,45 @@ sum of favorable interactions, and more interacting atoms generally means a stro
 signal. A mean would normalize that away, washing out the difference between a small tight complex
 and a large one. So I sum: `global_add_pool` over every atom in the complex, ligand and pocket
 together, producing one graph vector. Then a small fully-connected head maps that to the scalar.
-With the configured depth `n_FC_layer = 3`, the implementation creates an input hidden block, two
-hidden-width blocks, and then the final `Linear(hidden -> 1)`. Each hidden block is `Linear`,
-`Dropout(0.1)`, `LeakyReLU`, `BatchNorm1d`. Dropout and batchnorm again for regularization on the
-modest dataset.
-Output is the predicted `-logKd/Ki`.
+Let me trace the head-construction loop at the configured depth `n_FC_layer = 3` so I know exactly
+what it builds, because the loop uses two independent `if`s — one keyed on the first index, one on
+the last — rather than a clean if/elif, and that changes what the last layer is. At `j = 0` it
+appends a full block `Linear(hidden -> hidden), Dropout(0.1), LeakyReLU, BatchNorm1d`. At `j = 1` the
+`else` branch appends another full hidden-width block. At `j = 2`, the last index, only the
+`if j == n-1` branch fires and appends a bare `Linear(hidden -> 1)`; the `else` is skipped, so nothing
+follows the final linear — which is what I'd want right before a regression output anyway. So the head
+is an input block, one hidden-width block, then the scalar projection — two normalized blocks and a
+final linear, not three blocks plus a separate head as I'd have guessed from "n_FC_layer = 3." Each
+block is `Linear, Dropout(0.1), LeakyReLU, BatchNorm1d`; dropout and batchnorm again for
+regularization on the modest dataset. Output is the predicted `-logKd/Ki`.
 
 Training is plain regression: mean-squared error against the measured affinity, Adam with a small
 learning rate `5e-4` and a touch of weight decay `1e-6`, minibatches of 128 complexes, run for many
 epochs with early stopping on a validation split. Nothing exotic — the architecture is the
 contribution, and it plugs straight into the standard graph training loop.
 
-Let me trace the causal chain once, end to end, to make sure it holds. Affinity is set by physical
-interactions, of two distinct chemical kinds — covalent bonds inside each molecule and noncovalent
-contacts across the interface — and all of them are determined by interatomic geometry, so the model
-must consume 3D coordinates but be exactly invariant to rigid motion of the complex. The complete
-pairwise scalar invariant I need is their distance, so geometry enters only through `d_ij`,
-expanded in a Gaussian RBF bank (to decorrelate filter channels and avoid the near-linear-init
-plateau) and turned into a per-edge filter that gates each neighbor's features, SchNet-style. That
-secures the symmetry, but the homogeneous geometric networks treat every edge the same, blurring the
-two interaction types; and the one method that separates them, IGN, does so in sequential modules
-that never let a node integrate both within a step. So I built a single layer that runs the gated
-message passing over the covalent and the noncovalent edge sets in parallel — each with its own
+Let me retrace the chain of decisions once, end to end, to see that each link was forced by the one
+before it rather than chosen for convenience. Affinity is set by physical interactions, of two
+distinct chemical kinds — covalent bonds inside each molecule and noncovalent contacts across the
+interface — and all of them are determined by interatomic geometry, so the model must consume 3D
+coordinates but be invariant to rigid motion of the complex; the numeric round-off check on the
+distance matrix is what let me trust that invariance concretely rather than only believe the algebra.
+The complete pairwise scalar invariant is the distance, so geometry enters only through `d_ij`,
+expanded in a Gaussian RBF bank — and the correlation measurement, 0.985 down to 0.38, is why I
+expanded the distance rather than feeding the scalar straight in — then turned into a per-edge filter
+that gates each neighbor's features, SchNet-style. That secures the symmetry, but the homogeneous
+geometric networks treat every edge the same, which would force one distance-to-filter map to fit
+both the stiff-bond and soft-contact regimes whose RBF activations I saw touch nearly disjoint
+centers; and the one method that separates the two kinds, IGN, does so in sequential modules that
+never let a node integrate both within a step. So the layer I arrived at runs the gated message
+passing over the covalent and the noncovalent edge sets in parallel — each with its own
 distance-to-filter map because their distance regimes differ — keeps each atom's own state via a
 residual self-loop, transforms each branch through its own node MLP, and sums the two into one
 updated representation, letting every atom fuse its covalent and noncovalent environment in one step.
 Stacking three such layers, summing over all atoms because affinity is extensive, and regressing with
-a small head gives an `E(3)`-invariant predictor of `-logKd/Ki` that learns from the full 3D physics
-of both interaction types at once. Now the code, filling the single interaction-layer slot:
+the traced two-block-plus-projection head gives an `E(3)`-invariant predictor of `-logKd/Ki` that
+learns from the full 3D physics of both interaction types at once. Now the code, filling the single
+interaction-layer slot:
 
 ```python
 import torch

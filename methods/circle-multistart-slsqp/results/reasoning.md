@@ -3,47 +3,89 @@ grid's `2.5414` to `2.5949`, clearly the right kind of move — unequal radii, c
 the corners — but it stopped at the local optimum of whatever basin its one random start happened
 to fall into, well short of the `2.636` frontier. The optimizer is not the problem; the *single
 initialization* is. This is a nonconvex landscape with many basins of very different quality, and
-one draw samples one basin. The obvious fix is the standard one for nonconvex QCQPs: run the same
-SLSQP from *many* random starts and keep the best feasible result.
+one draw samples one basin.
 
-Let me think about why this should work and what governs how well it works. Each random center
-scatter, refined by SLSQP, converges to a distinct local optimum; the sum-of-radii values of those
-optima are spread out, and the *maximum over many draws* is an order statistic that climbs as I add
-starts. The more basins I sample, the better the best one I find — with diminishing returns, since
-the high-quality basins are rarer and harder to hit by uniform random scattering. So this rung is
-fundamentally a compute-for-quality trade: the only knobs are how many starts I can afford and how
-diverse they are. There is no new algorithmic idea here beyond "restart," and that honesty matters
-— this rung buys its improvement with breadth, not with a cleverer search.
+So the lever to pull is the start, not the solver. The question is whether throwing more random
+starts at the same SLSQP actually moves the best, and by how much — that I can only answer by
+running it, so before I commit I want to understand where the per-start improvement even comes from.
 
-The mechanics carry over unchanged from the previous rung. For each start I draw `26` centers
+A tempting cheaper idea: the radii subproblem is an exact LP for fixed centers, convex and fast.
+Maybe I don't need SLSQP at all — just scatter centers many times, solve the LP for each, and keep
+the best radii sum. Let me check what the LP alone buys on a raw uniform scatter. On `15` random
+scatters the LP-optimal radii sum averages about `1.30` (individual draws `1.16`–`1.46`), while
+running SLSQP from the *same* scatters lifts each to roughly `2.4`–`2.6`:
+
+```
+scatter LP 1.36 -> SLSQP 2.61   (+1.24)
+scatter LP 1.35 -> SLSQP 2.56   (+1.21)
+scatter LP 1.46 -> SLSQP 2.59   (+1.13)
+scatter LP 1.24 -> SLSQP 2.58   (+1.34)
+scatter LP 1.16 -> SLSQP 2.61   (+1.45)
+```
+
+That settles it: the radii LP is doing almost none of the work. A raw uniform scatter is a terrible
+packing — circles scattered without regard to each other leave huge slack — and tightening radii on
+fixed bad centers cannot recover it; the gain of `+1.2` to `+1.4` per start comes entirely from
+SLSQP *moving the centers* into a coherent arrangement. So LP-per-scatter is out; each start has to
+be a full center+radius refinement. The LP keeps its role, but as a sub-step: a feasible warm start
+for the radii and a clean final re-tightening, not the search itself.
+
+The mechanics then carry over unchanged from the previous rung. For each start I draw `26` centers
 uniformly in a slightly inset square, set the initial radii to their LP optimum for that scatter
-(so SLSQP begins feasible), run SLSQP jointly over centers and radii to a KKT point, and then
+(so SLSQP begins feasible), run SLSQP jointly over centers and radii to a KKT point, then
 re-tighten the radii to their exact LP optimum for the final centers. I check feasibility against
 the real constraints and, if the packing is legal and its sum exceeds the running best, I keep it.
-At the end I return the best packing seen across all starts. I fix a single master seed so the
-whole multi-start run is reproducible — the reported number is the deterministic output of that
-seed, not a lucky draw I cannot reproduce.
+At the end I return the best packing seen across all starts. I fix a single master seed so the whole
+multi-start run is reproducible — the reported number is the deterministic output of that seed, not
+a lucky draw I cannot reproduce.
 
 A couple of choices I want to be deliberate about. First, the inset for the random centers: drawing
 in `[0.04, 0.96]²` rather than the full square keeps the initial circles off the walls, which gives
 the LP a feasible non-degenerate start and stops SLSQP from beginning at a constraint corner where
 it can stall. Second, the per-start iteration budget: I do not need each SLSQP run to converge to
-machine precision, because a start that is heading toward a mediocre basin is not worth polishing —
-I want to spend the budget on *more starts* rather than over-refining each one. So I cap each run at
-a moderate `maxiter` and rely on the LP re-tightening to recover the radii cleanly at the end. The
-trade is: more, slightly coarser refinements beat fewer, perfectly-converged ones when the goal is
+machine precision, because a start heading toward a mediocre basin is not worth polishing — I want
+to spend the budget on *more starts* rather than over-refining each one. So I cap each run at a
+moderate `maxiter=250` and rely on the LP re-tightening to recover the radii cleanly at the end. The
+bet is that more, slightly coarser refinements beat fewer perfectly-converged ones when the goal is
 to find a good basin.
 
-What do I expect? With on the order of a hundred random restarts I expect the best-of-many to clear
-the single-start value comfortably and climb into the low `2.62`s — a real step toward the frontier,
-bought entirely by sampling more basins. But I also expect it to *plateau* below `2.636`, and I can
-see why in advance. Uniform random center scatters are a blunt way to seed: the basins that reach
-the very top of the frontier correspond to specific irregular arrangements (a few large circles in
-a particular pattern with the rest filling gaps), and those are a vanishingly small target for
-uniform scattering, so adding more uniform starts yields ever-smaller gains — the order statistic
-saturates. That saturation is exactly the limitation this rung will expose: pure random multi-start
-finds good basins but not the *best* ones, because it has no structure and no memory. The next rung
-has to do better than blind restarts — seed the search with structured layouts that resemble known
-good packings, and, crucially, *exploit the best packing found so far* by perturbing it and
-re-refining (iterated local search / perturbation chains) rather than throwing every start away.
-That is where the frontier band lives, and where the random-restart plateau stops.
+Now the question I can't reason my way past: does best-of-many actually climb, and where does it
+land? I run `K=120` starts from the master seed `12345` and record every per-start sum and the
+running best. All `120` refinements come back feasible. The per-start sums are spread out — mean
+`2.519`, median `2.580`, the worst a degenerate collapse to `0.0`, the best `2.622`. That spread is
+exactly what multi-start feeds on; it is the maximum of these draws that matters, not the average.
+Tracking the running best as starts accumulate:
+
+```
+after   1 start   2.5914
+after  10 starts  2.6062
+after  20 starts  2.6077
+after  60 starts  2.6116
+after 100 starts  2.6221
+after 120 starts  2.6221
+```
+
+So the answer to the first half is yes: from the single-start `~2.59` the best-of-many climbs past
+`2.61` and reaches `2.62210204667146` — a real step toward the frontier, bought entirely by
+sampling more basins. The final packing checks out as legal: its worst constraint violation is
+`3.2e-15`, machine-noise level, so the sum is honest and not riding a tolerance. Its radii are
+genuinely unequal — sorted, they run from `0.140` down to `0.066`, a handful of large circles with
+the rest filling gaps — which is the irregular structure I'd expect a good basin to have.
+
+The second half of the answer is the more interesting one, and it is visible in the same numbers. I
+did *not* assume in advance the run would plateau; the running-best table shows it. The best is flat
+from start `100` to start `120` — the last `20` refinements add nothing. And the reason is in the
+distribution: of the `120` feasible starts, `19` cleared `2.60`, only `4` cleared `2.61`, and
+exactly `1` cleared `2.62`. The top basins are that rare under uniform scattering, so each
+additional uniform start is overwhelmingly likely to land somewhere I've already matched or beaten.
+The order statistic is saturating in front of me — the gap from `2.622` to the `2.636` frontier is
+not going to close by adding more of the same blind draws, because the basins that reach the top
+correspond to specific irregular arrangements that uniform scatter hits with vanishing probability.
+
+That is the limitation this rung exposes, and it is exposed by measurement, not asserted: pure
+random multi-start finds good basins but not the *best* ones, because it has no structure and no
+memory. The next rung has to do better than blind restarts — seed the search with structured layouts
+that resemble known good packings, and, crucially, *exploit the best packing found so far* by
+perturbing it and re-refining (iterated local search / perturbation chains) rather than throwing
+every start away. That is where the frontier band lives, and where the random-restart plateau I just
+watched form is what motivates moving on.

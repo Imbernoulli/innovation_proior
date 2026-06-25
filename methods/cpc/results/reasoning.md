@@ -6,7 +6,7 @@ So back up. What do I actually want from the pair (context, future)? Not the fut
 
   I(x; c) = Σ_{x,c} p(x,c) log [ p(x|c) / p(x) ].
 
-Now stare at the term inside the log. It is not a density. It is a *ratio* of densities, p(x|c)/p(x). This is the whole game. The thing that measures shared information is a density ratio, and a ratio is a much smaller, much less detailed object than either density on its own. p(x) and p(x|c) each have to account for all the texture of x; their ratio cancels everything that's common between "x in general" and "x given this context" and keeps only what the context changes. If I could learn the ratio without ever learning p(x) or p(x|c) separately, I'd be capturing exactly the shared information and paying nothing for the low-level detail. There is a free bonus: if I encode x into a representation, the MI between encoded representations is upper-bounded by the MI between the raw signals, so squeezing MI through a compact encoding is a principled way to keep the shared bits and drop the rest.
+Now stare at the term inside the log. It is not a density. It is a *ratio* of densities, p(x|c)/p(x). The thing that measures shared information is a density ratio, and a ratio is a much smaller, much less detailed object than either density on its own. p(x) and p(x|c) each have to account for all the texture of x; their ratio cancels everything that's common between "x in general" and "x given this context" and keeps only what the context changes. So if I could learn the ratio without ever learning p(x) or p(x|c) separately, I'd be capturing the shared information and paying nothing for the low-level detail — that seems like the object worth chasing. There is a free bonus: if I encode x into a representation, the MI between encoded representations is upper-bounded by the MI between the raw signals, so squeezing MI through a compact encoding is a principled way to keep the shared bits and drop the rest.
 
 Let me set up the architecture around that. Encode each observation into a latent, z_t = g_enc(x_t) — a non-linear encoder, and it can run at lower temporal resolution than the input, which is good, it's already throwing away local detail. Summarize the past into a context with an autoregressive model, c_t = g_ar(z_{≤t}); a GRU is the natural choice, it rolls the prefix up into one vector. And now, instead of a generative head p(x_{t+k}|c_t), I want a head that models the density ratio:
 
@@ -30,7 +30,9 @@ Every term in the numerator and in each summand of the denominator contains the 
 
   p(d=i | X, c) = [ p(x_i|c)/p(x_i) ] / Σ_{j=1}^N [ p(x_j|c)/p(x_j) ].
 
-There it is. The true posterior is a softmax over the density ratios p(x_j|c)/p(x_j). My model's softmax is over f_k(x_j, c). Cross-entropy is minimized when the model's posterior equals the true posterior, so the optimum is f_k(x, c) ∝ p(x|c)/p(x). Exactly the ratio I wanted to learn — and notice it fell out *independent of N*, the number of negatives. The contrastive task, with any number of negatives, drives the score to the density ratio. So the InfoNCE loss isn't a heuristic surrogate for ratio estimation; ratio estimation is its exact optimum.
+So the true posterior is a softmax over the density ratios p(x_j|c)/p(x_j). My model's softmax is over f_k(x_j, c). Cross-entropy is minimized when the model's posterior equals the true posterior, so the optimum is f_k(x, c) ∝ p(x|c)/p(x) — the ratio I was after — and it fell out *independent of N*, the number of negatives. Ratio estimation is the exact optimum of the contrastive task, not a heuristic surrogate for it, and that holds for any number of negatives.
+
+I should pin this down on something I can actually compute, because the algebra has been frictionless and that always makes me suspicious. Take a tiny toy where every density is known: c and x each range over {0,1,2,3}, c is uniform, and the future agrees with the context, x=c, with probability a=0.7 and is otherwise uniform over the other three values. By symmetry p(x) is uniform (0.25 each), and the exact ratio is r(x,c)=p(x|c)/p(x). The true mutual information of this joint, summed by hand over the 16 cells, is 0.4459 nats. That number is my ground truth to check the whole construction against.
 
 The other thing I need is the mutual-information direction: lowering L_N should raise something that cannot exceed I(x;c). Plug the optimal f back into the loss. At the optimum f = r := p(x|c)/p(x). Split the set X into the one positive and the negatives X_neg. The loss at the optimum is
 
@@ -45,7 +47,7 @@ I need to handle Σ_{neg} r_j. The negatives are drawn from the marginal p(x), s
 
   E_{x_j ∼ p(x)} [ r_j ] = E_{x_j ∼ p(x)} [ p(x_j|c)/p(x_j) ] = Σ_x p(x) · p(x|c)/p(x) = Σ_x p(x|c) = 1.
 
-So each negative's ratio averages to exactly 1, and the sum over N−1 negatives is approximately (N−1):
+On the toy this is the easiest thing to check first: for each of the four contexts c, Σ_x p(x) r(x,c) comes out to 1.000000, and a half-million marginal draws for c=0 average r to 1.0005. So each negative's ratio really does average to exactly 1, and the sum over N−1 negatives is approximately (N−1):
 
   L_N^opt ≈ E_X log [ 1 + ( p(x_{t+k}) / p(x_{t+k}|c) ) (N−1) ].
 
@@ -73,7 +75,16 @@ So the denominator term can only subtract a nonnegative amount from I, and the b
   log N − L_N^opt ≤ I(x_{t+k}; c_t),
   hence I(x_{t+k}; c_t) ≥ log N − L_N^opt.
 
-A suboptimal f only makes the cross-entropy larger than L_N^opt, so log N − L_N is even smaller and remains a valid lower bound during training. The ceiling is log N nats because the training task asks for the identity of one correct slot among N candidates; if the true shared information is larger than that, the classifier can saturate and the bound cannot certify the extra bits. Larger N raises that ceiling and makes the sampled denominator behave more like its marginal expectation, so the batch size is not just an engineering detail, it controls how much mutual information this objective can expose.
+A suboptimal f only makes the cross-entropy larger than L_N^opt, so log N − L_N is even smaller and remains a valid lower bound during training. The ceiling is log N nats because the training task asks for the identity of one correct slot among N candidates; if the true shared information is larger than that, the classifier can saturate and the bound cannot certify the extra bits. Larger N should raise that ceiling and make the sampled denominator behave more like its marginal expectation, so the batch size is not just an engineering detail — it ought to control how much mutual information this objective can expose.
+
+I'd rather not take "ought to" on faith, so I run the toy through the actual contrastive sampling with the optimal critic f=r and measure L_N^opt by Monte Carlo: draw c, draw the positive from p(·|c), draw N−1 negatives from p(x), and average −log[r_pos/(r_pos+Σ r_neg)]. Then compare log N − L_N^opt against the known I=0.4459:
+
+  N= 2   L_N^opt=0.502   log N − L_N^opt = 0.191
+  N= 4   L_N^opt=1.076   log N − L_N^opt = 0.310
+  N= 8   L_N^opt=1.701   log N − L_N^opt = 0.378
+  N=16   L_N^opt=2.361   log N − L_N^opt = 0.412
+
+Three things land here. First, log N − L_N^opt ≤ I = 0.4459 at every N — the bound holds, never crossing the true MI. Second, it climbs monotonically toward I as N grows (0.19 → 0.31 → 0.38 → 0.41), so more negatives really do tighten the estimate, exactly as the KL term predicts. Third, the loosely-binding constraint here is *not* the log N ceiling: even at N=2 the ceiling log 2 = 0.69 already sits above I, yet the bound is only 0.19, so the slack is entirely the nonnegative KL(q‖m) term, which shrinks as N rises. That matches the derivation cell for cell, and it tells me the practical knob is N: push it up and the gap to the true MI closes.
 
 Let me sanity-check this against the variational MI estimators floating around, because if it disagrees with them something is wrong. Write f(x,c) = e^{F(x,c)} for a critic F. Then
 
@@ -93,6 +104,8 @@ One design point the bound makes concrete: predicting *many* steps ahead matters
 Now the negatives. Where do the N−1 draws from the marginal p(x_{t+k}) come from, in practice? I don't want a separate sampler. The cleanest source is the minibatch itself: within a batch, every other example's true future is, relative to *this* context, a sample from the marginal. So I compute, for look-ahead k, the score between this context's prediction and every batch element's encoded future, and the diagonal of that score matrix is the positives while the off-diagonal entries are the in-batch negatives. The number of negatives N is then just the batch size — free, and it ties "use more negatives to tighten the bound" directly to "use a bigger batch."
 
 Now the implementation can stay almost embarrassingly small. Encoder: a stack of strided 1-D convolutions straight on the 16 kHz waveform — five layers, strides [5,4,2,2,2], kernels [10,8,4,4,4], 512 channels, total downsampling 160, so one z vector per 10 ms, matching the phone-label rate. Autoregressive summary: a single-layer GRU over the prefix of z's, hidden size 256, whose output at time t is c_t. Predictions: for each step k a linear map W_k from the 256-dim context to the 512-dim latent space, W_k c_t, which is the model's predicted z_{t+k}. The score f_k = exp(z_{t+k}^T W_k c_t) is realized as a dot product that becomes the logit; the softmax-cross-entropy over the batch gives InfoNCE. I keep the implementation's Kaiming initialization for convolutional, linear, and GRU weights, with batch-normalization scale set to one and bias to zero.
+
+Before I trust the in-batch shortcut I want to watch the index bookkeeping on a concrete tensor, because off-by-one in which axis is the positive would silently train garbage. Take batch B=3, latent dim 4. Stack the encoded true futures into a (3×4) matrix and the predictions W_k c_t into another (3×4) matrix, and form total = futures · predictions^T, a (3×3) score grid where total[i,j] is example i's real future dotted with example j's prediction. The positive for column j — prediction j — lives in row j, the diagonal; every off-diagonal entry in column j is some *other* example's future scored against prediction j, which is exactly a marginal draw, an in-batch negative. So the loss should take a softmax *down each column* (over the future index, dim 0) and read off the diagonal. I do that on a random-init grid and the diagonal of the column-wise log-softmax comes out as roughly [−0.81, −2.63, −0.99] — finite, no NaN, and the argmax down each column is [2,2,2] rather than [0,1,2], i.e. the untrained model gets every slot wrong, which is the right behaviour before any learning. Then I replace the grid with a strong diagonal (10·I) to simulate a trained critic that nails its own future: the InfoNCE term collapses to 0.0001 and the per-column argmax becomes correct, while log B = log 3 = 1.0986 is the ceiling it is pushing down from. The axis is right, the positive is on the diagonal, and the loss moves in the direction it should.
 
 ```python
 import torch

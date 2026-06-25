@@ -45,8 +45,9 @@ collapse onto a single action prematurely — it keeps probability mass on all t
 look comparably good, which is exactly exploration, and it's exploration the policy is
 *choosing* because the objective pays for it. Ziebart argued these policies are also robust:
 hedging across near-equal-value actions makes you less sensitive to errors in your value
-estimates. So if I build my method around the max-entropy objective, exploration and a degree
-of robustness come for free, baked in, no separate noise schedule.
+estimates. So building around this objective might buy me exploration and a degree of
+robustness without a separate noise schedule — if I can turn it into an algorithm that's
+actually stable to train.
 
 The trouble is that the existing max-entropy off-policy method, soft Q-learning, took this and
 made it complicated. It noted that the optimal max-entropy policy is energy-based,
@@ -75,17 +76,16 @@ is H(pi(.|s))). And the soft Q stays a one-step-ahead object that bootstraps on 
 
   T^pi Q(s,a) = r(s,a) + gamma * E_{s'~p}[ V(s') ].
 
-Note the entropy lives *inside* V and therefore inside the bootstrap — the future entropy I'll
-earn shows up in the value of acting now. That's the key difference from just sprinkling an
-entropy bonus on the actor's loss: there, the critic never hears about entropy, so it only
-shapes the immediate action; here it propagates through the Bellman recursion and shapes
-long-horizon behavior.
+Note the entropy now lives *inside* V and therefore inside the bootstrap — the future entropy
+I'll earn shows up in the value of acting now. Contrast this with just sprinkling an entropy
+bonus on the actor's loss: there the critic never hears about entropy, so it only shapes the
+immediate action; here it should propagate through the Bellman recursion and shape long-horizon
+behavior. Whether that propagation is well-behaved is the thing I have to check next.
 
-Does iterating this T^pi actually converge? Let me check, because if the soft backup isn't a
-contraction the whole policy-evaluation step is meaningless. Take two candidate Q-functions,
-Q_1 and Q_2, and apply the same soft backup to both. The reward term is the same, and the
-entropy term is the same too because the policy is fixed during evaluation. Only the Q term can
-change:
+Does iterating this T^pi actually converge? If the soft backup isn't a contraction the whole
+policy-evaluation step is meaningless. Take two candidate Q-functions, Q_1 and Q_2, and apply
+the same soft backup to both. The reward term is the same, and the entropy term is the same too
+because the policy is fixed during evaluation. Only the Q term can change:
 
   T^pi Q_1(s,a) - T^pi Q_2(s,a)
     = gamma * E_{s',a'~pi}[ Q_1(s',a') - Q_2(s',a') ].
@@ -95,15 +95,27 @@ Now take absolute values and the sup norm:
   ||T^pi Q_1 - T^pi Q_2||_infty
     <= gamma * ||Q_1 - Q_2||_infty.
 
-So the soft Bellman operator is a gamma-contraction. If I want to see it as ordinary policy
-evaluation, I can fold the fixed entropy term into a bounded one-step quantity,
+So on paper the soft Bellman operator is a gamma-contraction. If I want to see it as ordinary
+policy evaluation, I can fold the fixed entropy term into a bounded one-step quantity,
 
   r_pi(s,a) = r(s,a) + gamma * alpha * E_{s'~p}[ H(pi(.|s')) ],
 
 leaving the remaining part as gamma * E_{s',a'~pi} Q(s',a'). The reward is bounded by
 assumption, and for the tabular proof |A| < infinity bounds the entropy term. Banach's fixed
-point theorem then gives a unique fixed point, and repeated soft backups from any starting Q^0
-converge to the soft Q of pi. Soft policy evaluation: done, and it converges. That's Lemma 1.
+point theorem then would give a unique fixed point.
+
+Before I trust that, let me actually run the backup on a tiny MDP and watch it, because the
+entropy term inside V is exactly the part I added and could easily have gotten wrong. Two
+states, two actions, gamma = 0.9, alpha = 0.5, random reward r(s,a), random transition matrix
+P(s'|s,a), and a fixed random stochastic policy pi. I implement
+V(s') = sum_a pi(a|s') (Q(s',a) - alpha log pi(a|s')) and TQ = r + gamma P V, then draw random
+pairs Q_1, Q_2 and measure the ratio ||TQ_1 - TQ_2||_inf / ||Q_1 - Q_2||_inf. Across draws I
+get ratios of 0.40, 0.71, 0.85, 0.71, 0.83 — every one at or below gamma = 0.9, never above,
+which is the contraction inequality holding numerically. And iterating the backup from two
+very different starts, Q = 0 and Q = 10 everywhere, the two trajectories close to a gap of
+7e-9 after 200 steps and land on the same Q* = [[4.64, 5.16], [4.99, 2.35]]. So the fixed
+point is unique and reachable from anywhere, exactly as the contraction promised. That's soft
+policy evaluation — call it Lemma 1.
 
 Now the improvement step. In ordinary policy iteration I'd set the new policy greedy on Q. In
 the soft world the analogous "greedy" move is toward the energy-based policy exp(Q/alpha)/Z —
@@ -157,9 +169,22 @@ proved for T^{pi_new}) to Q^{pi_new}(s,a). Therefore
 
   Q^{pi_old}(s,a) <= Q^{pi_new}(s,a)   for all (s,a).
 
-That's the improvement guarantee — Lemma 2. The projection onto the restricted family does
-improve the policy, precisely because falling back to pi_old is always an option inside the
-argmin, which is what makes (*) hold.
+So the projection onto the restricted family does improve the policy, and the proof tells me
+*why*: falling back to pi_old is always an option inside the argmin, which is what makes (*)
+hold. Let me put a number on it before I move on, because the subtle part is the claim that an
+I-projection onto a *restricted* family still improves — exact greedy improvement would, but a
+KL-projection is not obviously monotone, and my hand argument leaned on the recursion not
+breaking. Same kind of tiny tabular MDP, now 2 states and 3 actions, alpha = 0.7, gamma = 0.9.
+I solve soft policy evaluation for a random pi_old to get Q_old, then improve. First the
+*unrestricted* case where Pi is the full simplex, so the I-projection of exp(Q_old/alpha)/Z is
+exactly exp(Q_old/alpha)/Z: re-evaluating gives Q_new pointwise above Q_old, smallest gap
++5.60, nothing negative. Then the case I actually care about — a genuinely restricted family,
+where for each state I only allow mixtures (1-l)*uniform + l*onehot(argmax Q_old) and pick the
+l whose distribution is KL-closest to the target. That projection cannot in general reach
+exp(Q_old/alpha)/Z, so it's a real test of the restricted claim. Re-evaluating that projected
+policy: Q_proj is still pointwise >= Q_old, smallest gap +5.72. The restricted projection
+improves too. That's the improvement guarantee — Lemma 2 — and now I believe it rather than
+just having pushed symbols around.
 
 Chaining the two: alternate soft evaluation and soft improvement. By Lemma 2 the sequence
 Q^{pi_i} is monotonically nondecreasing in i; it's bounded above because reward and entropy
@@ -195,6 +220,17 @@ Now the actor. The improvement step says minimize the KL, which I showed equals,
 log Z constant, the expected
 
   J_pi(phi) = E_{s~D}[ E_{a~pi_phi}[ alpha log pi_phi(a|s) - Q_theta(s,a) ] ].
+
+I dropped log Z by a one-line argument earlier; since the whole actor update rides on that
+drop being legitimate, let me confirm it numerically rather than trust the algebra. One state,
+4 actions, alpha = 0.6, random Q. I form target = exp(Q/alpha)/Z and, for several random
+categorical pi, compare alpha*KL(pi || target) against J_pi(pi) + alpha*log Z. They match to
+machine precision on every draw (0.83024 vs 0.83024, 0.43854 vs 0.43854, ...), so minimizing
+J_pi really is minimizing the KL up to that state-only constant. And to be sure the objective
+points where I think, I minimize J_pi over the simplex by mirror descent: it converges to
+[0.241, 0.650, 0.096, 0.012], which is exactly exp(Q/alpha)/Z. So this objective's minimizer
+is the energy-based policy the improvement step wanted — good, the actor loss is faithful to
+Lemma 2.
 
 How do I take the gradient of an expectation whose sampling distribution depends on phi? The
 generic answer is the likelihood-ratio / REINFORCE estimator — but that's high-variance, and
@@ -259,7 +295,15 @@ taking logs turns the product into a sum and the inverse into a minus sign:
   log pi(a|s) = log mu(u|s) - sum_i log( scale_i * (1 - tanh^2(u_i)) ).
 
 So I compute the ordinary Gaussian log-prob of u, then subtract
-sum_i log(scale_i * (1 - tanh^2(u_i))). In code 1 - tanh^2(u_i) can hit zero at the saturated
+sum_i log(scale_i * (1 - tanh^2(u_i))). This is the part that "corrupts the entropy term
+silently" if it's wrong, so I won't take it on faith — let me check the resulting density
+actually is a density and matches sampling. Scalar case, scale = 1, mu = 0.3, sigma = 0.8,
+a = tanh(u). Numerically integrating the implied p_a(a) = p_u(atanh(a)) / (1 - a^2) over
+(-1, 1) gives 1.0000, so it normalizes. And comparing it to a histogram of 2e6 samples
+a = tanh(u): at a = -0.5 the formula says 0.3785 and the samples give 0.3780; at 0.0,
+0.4648 vs 0.4640; at 0.5, 0.6334 vs 0.6319; at 0.9, 0.8971 vs 0.8900. They agree to a couple
+parts in a thousand, the small residual being histogram-bin width. So the change-of-variables
+log-prob is right. In code 1 - tanh^2(u_i) can hit zero at the saturated
 boundary and blow up the log, so I add a small epsilon inside the correction. And I keep the
 network's log sigma in a sane band, say [-5, 2], so the std neither collapses (which would make
 the correction term and the log-prob explode) nor runs away.
@@ -302,11 +346,18 @@ stationary limit, dropping the time indices, the temperature is whatever solves
 
   alpha* = argmin_alpha E_{a~pi}[ -alpha ( log pi(a|s) + H_bar ) ].
 
-This is beautiful operationally: it's just another scalar I descend by SGD alongside the actor
-and critic. Read off its gradient sign — if the current expected entropy -E[log pi] is below
-the target H_bar (too deterministic), the bracket (log pi + H_bar) is positive on average, so
-to minimize I push alpha up, raising the entropy reward and forcing more exploration; if
-entropy is above target, alpha falls and the policy is allowed to commit. It's a thermostat. I
+Operationally this is just another scalar I descend by SGD alongside the actor and critic. Let
+me read off its gradient sign carefully, because the whole point is that it self-corrects in
+the right direction, and a flipped sign would drive entropy away from the target instead of
+toward it. With J(alpha) = -alpha (E[log pi] + H_bar) and h = -E[log pi] the current expected
+entropy, dJ/dalpha = -(E[log pi] + H_bar) = (h - H_bar), so gradient descent does
+alpha <- alpha - lr*(h - H_bar). Checking the four cases by hand: h below H_bar makes (h-H_bar)
+negative so alpha goes up; h above H_bar makes it positive so alpha goes down — and this holds
+whether the target is positive or negative (e.g. h=-3 vs H_bar=-2 raises alpha; h=-1 vs
+H_bar=-2 lowers it), which matters because differential entropies here are often negative. So
+when the policy is too deterministic, alpha climbs, the entropy reward grows, and exploration
+is forced; when it's too random, alpha falls and the policy is allowed to commit. It's a
+thermostat, and the feedback sign is the stabilizing one. I
 parameterize it as log alpha (so alpha stays positive) and take one gradient step per update —
 dual gradient descent with a single inner step; the convexity that justifies it doesn't
 literally hold with neural nets, so this becomes the practical approximation. The objective for

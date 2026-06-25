@@ -8,7 +8,11 @@ i.e. it minimizes loss under `d_{π*}`, the *expert's* state distribution. But I
 
   `J(π̂_sup) ≤ J(π*) + T² ε`.
 
-And is the `T²` real or just a loose bound? I want to know whether I'm fighting an artifact or a law. Kääriäinen's sequence-prediction construction settles it: predict the next output from the previous *correct* output with per-step error `ε`, and the expected number of mistakes over length `T` is `T/2 − (1−(1−2ε)^{T+1})/(4ε) + 1/2`, which for small `ε` behaves like `Θ(T² ε)`. And there's an imitation example with cost exactly `(1−εT)J(π*) + T² ε`. So the bound is *tight* — no amount of cleverness inside the supervised box gets me below quadratic in `T`. That's a hard stop. The quadratic isn't because my classifier is bad; it's because I trained it on the wrong distribution. The classifier never saw the states its own mistakes create, so it never learned to recover, so its mistakes compound. The fix has to change *which states I train on*, not which classifier I use. Wall, but an informative one: I need the training distribution to be the policy's own.
+And is the `T²` real or just a loose bound from my hand-waving above? My counting argument ("`T` chances, each costing up to `T`") could easily have over-counted; before I trust the quadratic I want a construction where I can read off the exact mistake count. Kääriäinen's sequence-prediction example gives one: predict the next output from the previous *correct* output with per-step error `ε`, and the expected number of mistakes over length `T` is `M(T,ε) = T/2 − (1−(1−2ε)^{T+1})/(4ε) + 1/2`. I should not just trust that this "behaves like `Θ(T²ε)`" — let me actually expand it for small `ε`. The binomial coefficient `C(T+1,2) = T(T+1)/2`. Write `(1−2ε)^{T+1} = 1 − 2ε(T+1) + 4ε²·T(T+1)/2 − O(ε³)`. Then `1 − (1−2ε)^{T+1} = 2ε(T+1) − 4ε²·T(T+1)/2 + O(ε³)`, and dividing by `4ε`,
+
+  `(1−(1−2ε)^{T+1})/(4ε) = (T+1)/2 − ε·T(T+1)/2 + O(ε²)`.
+
+Substituting back, the `T/2`, the `−(T+1)/2`, and the `+1/2` cancel down to zero (`T/2 − (T+1)/2 + 1/2 = 0`), and what survives is `M(T,ε) = ε·T(T+1)/2 + O(ε²)`. So in the small-`ε` regime the *leading term is exactly* `ε T(T+1)/2`, which is `Θ(T²ε)`. Let me sanity-check the algebra against the closed form numerically. At `T = 32, ε = 10^{-5}`: the formula gives `M = 5.279×10^{-3}`, and `ε T(T+1)/2 = 10^{-5}·32·33/2 = 5.280×10^{-3}` — agreement to the part I kept. At `T = 8, ε = 10^{-3}` the formula gives `0.03583` against `ε T(T+1)/2 = 0.036`, and the gap is the `O(ε²)` term I dropped (here `εT² = 0.064`, so the correction is genuinely second-order, not a sign that the leading term is wrong). The ratio `M/(εT²)` runs `0.75, 0.62, 0.56, 0.53, 0.51` for `T = 2,4,8,16,32` — drifting toward `1/2` exactly as `ε T(T+1)/2 ≈ εT²/2` predicts. So the quadratic is not an artifact of my loose counting; a concrete problem hits `~εT²/2` mistakes. And there's an imitation example with cost exactly `(1−εT)J(π*) + T² ε`. The bound is *tight*: no amount of cleverness inside the supervised box gets me below quadratic in `T`. That settles which knob matters — the quadratic isn't because my classifier is bad; it's because I trained it on the wrong distribution. The classifier never saw the states its own mistakes create, so it never learned to recover, so its mistakes compound. The fix has to change *which states I train on*, not which classifier I use. Wall, but an informative one: I need the training distribution to be the policy's own.
 
 The obstacle is a chicken-and-egg problem. I want `argmin_{π∈Π} E_{s∼d_π}[ℓ(s,π)]`, the loss under the policy's *own* distribution. But `d_π` depends on `π`, the very thing I'm solving for, and the dynamics are unknown and complicated so I can't compute `d_π` in closed form — I can only *sample* it by running `π`. Worse, because the input distribution `d_π` rides on `π`, the objective is non-convex even when `ℓ(s,·)` is convex in `π` for each fixed `s`: moving `π` moves the distribution I'm averaging over, not just the integrand. So I can't just gradient-descend the thing directly.
 
@@ -98,18 +102,23 @@ distribution, which is exactly the thing the `T²ε` bound told me I needed.
 
 Stare at "retrain on all the data seen so far" for a second. At iteration `i` I'm picking the
 policy that does best on the union of all previous rounds' losses — the best policy *in
-hindsight* over everything I've seen. That's *Follow-The-Leader*. So this aggregate-and-refit
-loop *is* an online learning algorithm: treat each iteration as one online example whose loss is
-the loss under that iteration's state distribution, and I'm running FTL on that sequence. And I
-know FTL is *no-regret* on strongly convex losses. That's not a coincidence I can ignore — it's
-the structural fact that's going to give me the guarantee. If running FTL on the sequence of
-per-iteration losses is no-regret, then by definition my average loss over the iterations is
-close to the loss of the single best policy in hindsight over all those distributions — and if
-*that* best policy is good (an error-reduction assumption: for any input distribution there's
-*some* `π ∈ Π` with small loss), then one of my produced policies must be good under its own
-distribution. The aggregation isn't an engineering hack; it's the mechanism that turns "I can't
-optimize the non-convex `E_{s∼d_π}[ℓ(s,π)]` directly" into "I can run a no-regret online learner
-on a sequence of ordinary losses." That reframing is the whole thing.
+hindsight* over everything I've seen. I've seen that rule before: that's *Follow-The-Leader*, the
+canonical online-learning algorithm. So maybe this aggregate-and-refit loop is secretly an online
+learning algorithm — if I treat each iteration as one online example whose loss is the loss under
+that iteration's state distribution, then "refit on all data so far" is literally FTL on that
+sequence. Is that just a superficial naming match, or does it buy me anything? FTL has a known
+property: it is *no-regret* on strongly convex losses, meaning its average loss over the rounds
+converges to the loss of the single best fixed policy in hindsight over all those distributions.
+Let me chase what that would give me here. If FTL on my per-iteration losses is no-regret, then by
+definition `(1/N)Σ_i ℓ_i(π̂_i)` is close to `min_π (1/N)Σ_i ℓ_i(π)`. The average is at least the
+min, so *some* `π̂_i` has loss near that best-in-hindsight value on the distribution that produced
+its data. And if I additionally assume that best-in-hindsight policy is itself good — an
+error-reduction assumption: for any input distribution there's *some* `π ∈ Π` with small loss —
+then that `π̂_i` is good under its own distribution, which is exactly the object I couldn't
+optimize directly. So the naming match isn't superficial: aggregation is doing real work, because
+it converts the non-convex `E_{s∼d_π}[ℓ(s,π)]` I was stuck on into a sequence of ordinary fixed
+losses fed to a no-regret learner. I'll have to make each of these "close to" and "some `π̂_i`"
+steps precise below — but this is the lever worth pursuing.
 
 But I should keep SMILe's good instinct too — early learned policies are bad and waste a lot of
 data visiting irrelevant states. So let me allow, *optionally*, mixing the expert into the

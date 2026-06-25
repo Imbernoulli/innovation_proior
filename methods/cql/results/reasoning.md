@@ -128,10 +128,14 @@ Redo the tabular derivative. The push-down contributes `+α d^β μ(a|s)`, the p
   ⟹ Q̂^{k+1}(s,a) = B̂^π Q̂^k(s,a) − α ( μ(a|s)/π_β(a|s) − 1 ).
 
 Now the bump is `α(μ/π_β − 1)`, which can be *negative* — wherever `μ(a|s) < π_β(a|s)` I'm actually
-*adding* to `Q`. So I've thrown away the pointwise lower bound: there will be `(s,a)` with
-`Q̂^{k+1} > Q^{k+1}`. (Concretely you can hand-build a little three-state, two-action MDP and a
-behavior policy that makes this happen.) That's fine — I gave up pointwise on purpose. The question
-is whether the *value* still underestimates. Take the expectation under `π`, and set `μ = π`
+*adding* to `Q` rather than subtracting. So I may have thrown away the pointwise lower bound. Let me
+not just assert that; let me make it happen on a concrete instance. One state, three actions, take
+`π_β = (0.6, 0.3, 0.1)` and `μ = π = (0.2, 0.3, 0.5)`, `α = 1`. The bump per action is
+`α(π/π_β − 1) = (0.2/0.6 − 1, 0.3/0.3 − 1, 0.5/0.1 − 1) = (−0.667, 0, +4)`. On action 1 the bump is
+`−0.667 < 0`: I'm *adding* `0.667` to `Q̂^{k+1}` there relative to the Bellman target, i.e.
+`Q̂^{k+1}(a=1) > B̂^π Q̂^k(a=1)`. So the pointwise lower bound genuinely fails — there's an action
+sitting above the true target. That's fine; I gave up pointwise on purpose. The question is whether
+the *value* still underestimates. Take the expectation under `π`, and set `μ = π`
 (I'm evaluating `π`, so push down under `π` itself):
 
   V̂^{k+1}(s) = E_{a~π}[Q̂^{k+1}(s,a)] = B^π V̂^k(s) − α E_{a~π}[ π(a|s)/π_β(a|s) − 1 ].
@@ -146,7 +150,14 @@ and subtracting `π_β` in the leading factor:
            = Σ_a (π − π_β)²/π_β  +  Σ_a (π − π_β).
 
 The second sum is `Σπ − Σπ_β = 1 − 1 = 0`. The first sum is a sum of squares over a positive
-denominator, so `≥ 0`, and it's `= 0` iff `π = π_β`. So `D_CQL(s) ≥ 0` always. The value is
+denominator, so `≥ 0`, and it's `= 0` iff `π = π_β`. So `D_CQL(s) ≥ 0` always. Let me sanity-check
+both the identity and the sign on the same three-action instance, since I'll lean on it heavily:
+with `π_β = (0.6, 0.3, 0.1)`, `π = (0.2, 0.3, 0.5)`, the direct form
+`Σ_a π(π/π_β − 1) = 0.2(−0.667) + 0.3(0) + 0.5(4) = −0.133 + 0 + 2.0 = 1.867`, and the squared form
+`Σ_a (π−π_β)²/π_β = 0.16/0.6 + 0/0.3 + 0.16/0.1 = 0.267 + 0 + 1.6 = 1.867`. They match, and it's
+positive — so even though `Q̂^{k+1}` rose above the target at action 1, the *value* `E_π[Q̂^{k+1}]`
+still drops by `α·1.867` below the Bellman value. The per-action overshoot is overwhelmed by the
+underestimation on the actions `π` actually weights. The value is
 underestimated each step, and at the fixed point
 
   V̂^π(s) = V^π(s) − α [ (I − γP^π)^{-1} E_π[ π/π_β − 1 ] ](s),
@@ -172,14 +183,22 @@ some `π` breaks the bound. So I should ask which `ν` survives the worst case:
 Solve the inner `min_π` first, with a Lagrange multiplier `η` for `Σπ = 1` (and, since a Boltzmann
 `π` is full-support, the positivity multipliers vanish by KKT). The objective in `π` is
 `Σ_a π²/π_β − Σ_a π ν/π_β`; its gradient in `π(a|s)` is `2π(a|s)/π_β(a|s) − ν(a|s)/π_β(a|s) + η = 0`.
-Solving and using `Σπ = 1` to fix `η` gives `π*(a|s) = ½ν(a|s) + ½π_β(a|s)`. Plug that back in and
-the inner value becomes, after simplification, `Σ_a π_β(½ − ν/(2π_β))(½ + ν/(2π_β))`, which is a
-function only of `ν`. Maximizing *that* over `ν` (with `Σν=1`, `ν≥0`) — it's a downward
-concave-in-the-ratio expression maximized when `ν/π_β = 1`, i.e. `ν = π_β`, where its value is
-exactly `0`. So `ν = π_β` is the *only* choice for which the penalty is guaranteed `≥ 0` against an
-adversarial `π`; for any `ν ≠ π_β`, there's a `π` that makes the penalty negative and breaks the
-lower bound. So pushing up under the behavior distribution isn't a convenient choice — it's the
-necessary one. Good, that settles it.
+Solving and using `Σπ = 1` to fix `η` gives `π*(a|s) = ½ν(a|s) + ½π_β(a|s)`. Substituting back,
+the inner-min value is `f(ν) := Σ_a π* (π* − ν)/π_β` with `π* − ν = ½(π_β − ν)`, so
+`f(ν) = ½ Σ_a (ν + π_β)(π_β − ν)/(2π_β) = ¼ Σ_a (π_β² − ν²)/π_β = ¼ Σ_a π_β − ¼ Σ_a ν²/π_β
+= ¼(1 − Σ_a ν²/π_β)`. By Cauchy–Schwarz `Σ_a ν²/π_β ≥ (Σ_a ν)² = 1` with equality iff `ν ∝ π_β`,
+i.e. `ν = π_β`; so `f(ν) ≤ 0`, maxed at `ν = π_β` where `f = 0`.
+
+I don't fully trust an algebra chain I did in my head, so let me check it numerically before I build
+on it. Fix `π_β = (0.6, 0.3, 0.1)` and minimize `Σ_a π(π − ν)/π_β` over the simplex. For `ν = π_β`,
+the minimizer comes out `π* = (0.6, 0.3, 0.1)` with min value `≈ 0` (the solver returns `5e-16`) —
+matching `π* = (ν+π_β)/2 = π_β` and `f = 0`. For a perturbed `ν = (0.2, 0.3, 0.5)`, the closed form
+predicts `π* = (ν+π_β)/2 = (0.4, 0.3, 0.3)`; the solver returns exactly that, with min value
+`−0.467 < 0`. So for that `ν ≠ π_β` there genuinely *is* a `π` driving the penalty negative — the
+lower bound would break. Both the formula for `π*` and the sign of `f` hold up. So `ν = π_β` is the
+*only* choice for which the penalty is guaranteed `≥ 0` against an adversarial `π`; for any
+`ν ≠ π_β`, some `π` makes the penalty negative and breaks the lower bound. Pushing up under the
+behavior distribution isn't a convenient choice — it's forced.
 
 Now the practical headache: I've been writing the push-down distribution `μ` as if I get to fix it,
 and I set `μ = π` for the evaluation bound. But in a real algorithm `π` keeps changing as I improve
@@ -200,15 +219,21 @@ Lagrangian: `Σ_a μ(Q − log μ) + λ(1 − Σμ)`. Differentiate in `μ(a)`: 
 so `μ*(a) ∝ exp(Q(s,a))` — a Boltzmann distribution over actions. Plug it back. The maximized inner
 value is `E_{μ*}[Q] + H(μ*) = Σ_a μ*(Q − log μ*)`, and since `log μ*(a) = Q(a) − log Z` with
 `Z = Σ_a exp Q(a)`, we get `Σ_a μ*(Q − Q + log Z) = log Z = log Σ_a exp Q(s,a)`. The whole
-max-over-`μ` push-down term collapses to a clean `log-sum-exp`. So the objective becomes
+max-over-`μ` push-down term collapses to a clean `log-sum-exp`. Quick numeric check on a vector
+`Q = (1.0, 2.5, 0.3, −1.0)`: the Boltzmann `μ*` gives `E_{μ*}[Q] + H(μ*) = 2.8105`, and
+`log Σ_a exp Q = 2.8105` — identical, so the collapse is right and not an artifact of my Lagrangian
+bookkeeping. So the objective becomes
 
   min_Q  α E_{s~D}[ log Σ_a exp Q(s,a) − E_{a~π_β}[Q(s,a)] ]  +  ½ E_D[ (Q − B̂^π Q̂^k)² ].
 
-This is exactly the soft-maximum of `Q` minus the value on the data. And it's self-targeting: the
-`log-sum-exp` is dominated by whatever action currently has the largest `Q`, so the gradient pushes
-down hardest precisely on the action the Q-function is most overrating right now, while the
-`E_{π_β}[Q]` term holds up the in-data actions. That's the gap-expanding behavior I was chasing,
-falling straight out of an entropy regularizer. Call this variant CQL(H).
+This is the soft-maximum of `Q` minus the value on the data. Note the soft-max term is `≥ max_a Q`
+and therefore `≥ E_{π_β}[Q]` for any data distribution, so the `diff = logsumexp − E_{π_β}[Q]` is
+always non-negative — on the same `Q` and `π_β = (0.4, 0.4, 0.1, 0.1)` it is `2.8105 − 1.33 = 1.48`.
+And it's self-targeting: the `log-sum-exp` is dominated by whatever action currently has the largest
+`Q`, so the gradient pushes down hardest precisely on the action the Q-function is most overrating
+right now, while the `E_{π_β}[Q]` term holds up the in-data actions. So the push-down concentrates
+on exactly the OOD actions the critic is tempted to inflate, falling straight out of an entropy
+regularizer. Call this variant CQL(H).
 
 I could also regularize toward a prior `ρ` by using `R(μ) = −D_KL(μ ‖ ρ)`. The same Lagrangian computation gives
 `μ*(a) ∝ ρ(a) exp(Q(s,a))`. With `ρ = Uniform` this is CQL(H) again. With `ρ = π̂^{k-1}` (the
@@ -278,9 +303,10 @@ difference between empirical and true MDP is controlled by `√|A|/√|D(s)| · 
 
 Equivalently the slack `ζ` is the sampling-error term minus the conservative empirical gain, and
 that gain is non-negative. So `π*` is a `ζ`-safe improvement over the behavior policy, and as the
-dataset grows the sampling-error term shrinks, so smaller `α` suffices.
-That's the guarantee I wanted: at least as good as the data, with high probability, and provably
-better when the penalized empirical gain outweighs the sampling error.
+dataset grows the sampling-error term shrinks, so smaller `α` suffices. Reading the inequality back:
+`π*` is at least as good as the data with high probability, and strictly better once the penalized
+empirical gain outweighs the sampling error — which is the kind of statement I was hoping the
+penalty would buy, now that it falls out of the same fixed-point algebra rather than being assumed.
 
 One loose end I waved past: I derived everything assuming `Q` is tabular and exactly representable.
 With function approximation the iterate isn't a free per-entry minimizer. Take the linear case

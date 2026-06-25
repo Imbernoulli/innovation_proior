@@ -65,7 +65,7 @@ Let me check the sign and the `σ_λ` factor, because this is the kind of thing 
 ε̃ = −σ_λ[ ∇ log p(z_λ|c) + w ∇ log p(c|z_λ) ]
    = ε_θ(z_λ, c) − w σ_λ ∇ log p(c|z_λ).
 ```
-Yes — the conditional `ε` minus `w σ_λ` times the classifier gradient. Signs and factor check out, and this samples from `p̃(z_λ|c) ∝ p(z_λ|c) p_φ(c|z_λ)^w`. Sweep `w`, get the IS/FID curve. It works; this is the existing answer.
+Yes — the conditional `ε` minus `w σ_λ` times the classifier gradient. Signs and factor agree with the score I started from, so this samples from `p̃(z_λ|c) ∝ p(z_λ|c) p_φ(c|z_λ)^w`, and sweeping `w` should trace out a fidelity↔diversity curve. This is the classifier-guidance route, and it functions.
 
 But I don't like it, and the reasons are worth pinning down because they're going to tell me what a better method has to avoid. First, that classifier `p_φ(c | z_λ)` has to be trained on *noisy* images — at every noise level `λ`, from nearly-clean down to near-pure-noise. I can't grab a pretrained ImageNet classifier off the shelf; standard classifiers have only ever seen clean images and fall apart on `z_λ` at low SNR. So I have to build and train a second model, on noised data, spanning the whole schedule. That's a whole extra pipeline bolted onto a diffusion model that was, by itself, simple to train.
 
@@ -85,7 +85,9 @@ Take logs: `log p(c | z_λ) = log p(z_λ | c) − log p(z_λ) + log p(c)`. Now t
 ∇_{z_λ} log p(c | z_λ) = ∇_{z_λ} log p(z_λ | c) − ∇_{z_λ} log p(z_λ).
 ```
 
-There it is. The classifier gradient I thought I needed a whole separate model for is *the conditional score minus the unconditional score*. Both of those are generative scores. I already have the conditional one. The only thing I don't yet have is the unconditional score `∇ log p(z_λ)` — and that's not a classifier, it's just a diffusion model with no label. This is an *implicit classifier*: I never train `p(c|z)` directly; I read it off the two generative models through Bayes.
+That would be too convenient to take on faith — I've talked myself into wrong "Bayes drops the prior" identities before by being sloppy about which variable the gradient is in. So let me actually evaluate both sides on a case where I can compute everything in closed form. Fix a noise level and pretend, just for the check, that at that level the class-`c` marginal is `p(z|c) = N(1, 0.5²)` and the unconditional marginal is `p(z) = N(0, 1²)` (one dimension). Then the two scores are exact: `∇ log p(z|c) = −(z−1)/0.25` and `∇ log p(z) = −z`. The right-hand side of my identity is their difference. The left-hand side I get *independently*, by forming `log p(c|z) = log p(z|c) + log p(c) − log p(z)` with some arbitrary prior — say `p(c)=0.3` — and differentiating it numerically. If the identity is real, the prior had better not survive, and the two sides must agree. Numerically, at `z = −1, 0, 0.7, 2.0` the finite-difference derivative of `log p(c|z)` comes out `+7.000, +4.000, +1.900, −2.000`, and the Bayes difference `score_cond − score_uncond` gives `+7.000, +4.000, +1.900, −2.000` — matching to within `~10⁻¹⁰`, and changing `p(c)` from 0.3 to anything else leaves both columns untouched. So the prior genuinely vanishes and the identity holds, not just symbolically but on actual numbers.
+
+So the classifier gradient I thought I needed a whole separate model for is *the conditional score minus the unconditional score*. Both of those are generative scores. I already have the conditional one. The only thing I don't yet have is the unconditional score `∇ log p(z_λ)` — and that's not a classifier, it's just a diffusion model with no label. This is an *implicit classifier*: I never train `p(c|z)` directly; I read it off the two generative models through Bayes.
 
 Now substitute this back into the tilted score and see what falls out:
 
@@ -94,7 +96,7 @@ Now substitute this back into the tilted score and see what falls out:
                   = (1 + w) ∇ log p(z_λ | c) − w ∇ log p(z_λ).
 ```
 
-The whole tilted score is a *linear combination of two generative scores* — the conditional one with weight `(1+w)`, the unconditional one with weight `−w`. No classifier anywhere. Let me push it into `ε`-space, which is what the sampler actually consumes. Both scores convert by `ε = −σ_λ ∇ log p`: write `ε(z_λ, c) = −σ_λ ∇ log p(z_λ|c)` and `ε(z_λ) = −σ_λ ∇ log p(z_λ)`. Multiply the combined score by `−σ_λ`:
+The whole tilted score is a *linear combination of two generative scores* — the conditional one with weight `(1+w)`, the unconditional one with weight `−w`. No classifier anywhere. Quick numeric confirm on the same testbed: at `z = 0.5`, the direct form `score_cond + w·(score_cond − score_uncond)` and the collapsed form `(1+w)·score_cond − w·score_uncond` both give `+2.000, +3.250, +4.500, +9.500` for `w = 0, 0.5, 1, 3` — identical, as the algebra demands. Let me push it into `ε`-space, which is what the sampler actually consumes. Both scores convert by `ε = −σ_λ ∇ log p`: write `ε(z_λ, c) = −σ_λ ∇ log p(z_λ|c)` and `ε(z_λ) = −σ_λ ∇ log p(z_λ)`. Multiply the combined score by `−σ_λ`:
 
 ```
 ε̃(z_λ, c) = −σ_λ[ (1+w) ∇ log p(z_λ|c) − w ∇ log p(z_λ) ]
@@ -117,9 +119,24 @@ One network produces both — feed it the real label for `ε_c`, feed it `∅` f
 
 How much should `p_uncond` be? The unconditional model is only ever used as the *baseline* I extrapolate away from — I don't need it to be a great unconditional generator, I just need a usable `ε_∅` to define the guidance direction. Too little dropout starves the unconditional estimate; too much dropout spends too many updates on the label-free task and weakens the conditional model I actually sample from. So I should treat `p_uncond` as a small hyperparameter, with something like `0.1` as a sensible starting point rather than a half-and-half split.
 
-Let me also make sure I understand *why* this sharpens, in plain terms, because the negative sign on `ε_∅` is unusual. Going back to the distribution: `p̃(z|c) ∝ p(z|c)^{1+w} / p(z)^w`. So I'm raising the conditional density to a power above 1 (concentrating on its modes) *and dividing by* a power of the unconditional density. That division is the interesting part — it actively pushes *down* the probability of samples that are generic, that look plausible under *any* class, and rewards samples that are distinctively class-`c`. The `−w ε(z_λ)` term is the score-space face of that "decrease the unconditional likelihood" move. Increasing the conditional likelihood while *decreasing* the unconditional one — a negative score term — is what concentrates mass onto class-typical, high-confidence images. That's the fidelity boost, and it's why `w` behaves like a temperature knob.
+Let me also make sure I understand *why* this sharpens, in plain terms, because the negative sign on `ε_∅` is unusual. Going back to the distribution: `p̃(z|c) ∝ p(z|c)^{1+w} / p(z)^w`. So I'm raising the conditional density to a power above 1 (concentrating on its modes) *and dividing by* a power of the unconditional density. That division is the interesting part — it actively pushes *down* the probability of samples that are generic, that look plausible under *any* class, and rewards samples that are distinctively class-`c`.
 
-What do I expect when I sweep `w`? At `w = 0` I'm back to ordinary conditional sampling: best diversity, modest fidelity. As `w` rises, samples should get sharper and more obviously on-class — IS should climb. FID is subtler: a little guidance may fix the worst, least-typical samples, but too much guidance should collapse diversity enough to hurt distributional match. So I should evaluate a curve, not a single setting: the knob is only useful if it traces the same fidelity-versus-diversity frontier that truncation traces.
+I'd like to actually see that this concentrates rather than just believe it, so back to the Gaussian testbed where `p̃` is computable in closed form. With `p(z|c) = N(1, 0.5²)` and `p(z) = N(0, 1²)`, the tilted density `p(z|c)^{1+w}/p(z)^w` is again Gaussian, with precision `τ(w) = (1+w)/0.5² − w/1²` and mean `m(w) = τ(w)⁻¹[(1+w)·1/0.5² − w·0/1²]`. Computing the standard deviation `1/√τ` and mean as `w` increases:
+
+```
+w     std     mean
+0.0   0.500   1.000
+0.5   0.426   1.091
+1.0   0.378   1.143
+2.0   0.316   1.200
+3.0   0.277   1.231
+```
+
+So the spread really does shrink monotonically (0.500 → 0.277) while the mean walks away from the unconditional center toward the class mode — quantitatively, diversity down and the samples pulled toward the confident class region. The `−w ε(z_λ)` term is the score-space face of that move, and this is the fidelity↔diversity behavior I was after, now seen rather than asserted.
+
+One thing the same computation flags, which I'd otherwise have missed: `τ(w)` stays positive here for every `w` only because the conditional is *tighter* than the unconditional (`σ_c < σ_0`). If I flip the testbed to `p(z|c) = N(1, 1²)`, `p(z) = N(0, 0.5²)`, then `τ(w) = (1+w)/1 − w/0.25 = 1 − 3w`, which goes negative once `w > 1/3` — the "tilted distribution" becomes improper, a Gaussian with negative variance, i.e. not a distribution at all. So the `p̃ ∝ p(z|c)^{1+w}/p(z)^w` story is only literally a probability distribution when the conditional is sharper than the unconditional, and even then only the score is what the sampler ever touches — it never normalizes `p̃`. That fits the unconstrained-network caveat above: I'm running a score-space update that is well-behaved in the regime I expect (conditional tighter than unconditional, which is the whole point of conditioning) but isn't guaranteed to correspond to a proper density at arbitrary `w`. Good to know the knob can be pushed too far in principle.
+
+What do I then expect when I sweep `w` on real images? At `w = 0` I'm back to ordinary conditional sampling: best diversity, modest fidelity. As `w` rises, samples should get sharper and more obviously on-class — IS should climb. FID is subtler: a little guidance may fix the worst, least-typical samples, but too much guidance should collapse diversity enough to hurt distributional match (and the testbed just showed the extreme tail where the tilt stops even being a distribution). So I should evaluate a curve, not a single setting: the knob is only useful if it traces the same fidelity-versus-diversity frontier that truncation traces.
 
 Now let me write it as code, grounded in how a clean conditional diffusion model is actually built. Two touch points only: conditioning dropout in training, and the linear combination at sampling.
 

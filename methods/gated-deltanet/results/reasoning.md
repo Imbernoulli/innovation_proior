@@ -1,9 +1,10 @@
-Let me start from the two things that already work and the gap between them, because the gap is the
-whole opportunity. I want a subquadratic sequence mixer with a fixed-size matrix state `S`, trained by a
-matmul-rich chunkwise algorithm, that matches softmax attention on language modeling and especially on
-recall. I have two mechanisms in hand that each fix one disease of plain additive linear attention
-(`S_t = S_{t-1} + k_t^T v_t`, which never forgets and whose Hebbian write cross-talks once the sequence
-outruns the key dimension), and I want to see whether they are rivals or partners.
+Let me start from the two things that already work and the space between them. I want a subquadratic
+sequence mixer with a fixed-size matrix state `S`, trained by a matmul-rich chunkwise algorithm, that
+matches softmax attention on language modeling and especially on recall. I have two mechanisms in hand
+that each fix one disease of plain additive linear attention (`S_t = S_{t-1} + k_t^T v_t`, which never
+forgets and whose Hebbian write cross-talks once the sequence outruns the key dimension). I do not yet
+know whether they are rivals competing for the same job or partners doing different ones, and that is the
+first thing worth pinning down.
 
 The first is *gating*. Multiply the state by a data-dependent decay before the additive write,
 `S_t = Diag(alpha_t) S_{t-1} + k_t^T v_t` with `alpha_t in (0,1)` from `x_t`. This gives the model a
@@ -34,71 +35,105 @@ rank-one, with eigenvalue 1 on the entire orthogonal complement of `k_t`. An ass
 some direction, if no later key directly overwrites that direction, persists *forever*. The delta rule
 controls *what* is written and removed, precisely, but it cannot let memory globally fade.
 
-So the two mechanisms are not rivals — they are doing different jobs on different axes. Gating is a
-multiplicative pre-factor on `S_{t-1}`; the delta rule is the additive transition structure of the
-write. There is no reason I cannot have both, and the failure each one has is exactly the capability the
-other supplies: gating gives rapid global erasure, the delta rule gives targeted local update. Let me
-just write down the combined recurrence and then *check* that it is well-posed rather than assume it. I
-want the previous state first decayed by a data-dependent scalar `alpha_t in (0,1]`, then have the
-delta-rule erase-and-write applied:
+So put the two side by side. One is a multiplicative pre-factor on `S_{t-1}`; the other is the additive
+transition structure of the write. They act at different points in the update and on different axes —
+global magnitude versus per-direction content — and the deficiency I just traced in each is precisely
+the axis the other one acts on. That is the kind of pairing where composing them might actually buy
+something rather than have them fight, so it is worth writing down the combined recurrence and then
+*checking* that it is well-posed rather than assuming it. I want the previous state first decayed by a
+data-dependent scalar `alpha_t in (0,1]`, then the delta-rule erase-and-write applied on top:
 `S_t = alpha_t (I - beta_t k_t k_t^T) S_{t-1} + beta_t v_t k_t^T`, read out `o_t = S_t q_t`.
 
-Before anything else, verify it is a genuine generalization of both parents, because that is what makes
-it a safe bet — it should reduce to each in a limit, so it cannot be strictly worse than the better one
-unless the extra freedom is mis-trained. Set `alpha_t = 1` for all `t`: the pre-factor disappears and I
-recover `S_t = (I - beta_t k_t k_t^T) S_{t-1} + beta_t v_t k_t^T`, exactly the delta rule. Set
-`beta_t = 0`: the delta write vanishes and the Householder collapses to the identity, leaving
-`S_t = alpha_t S_{t-1}`, the pure scalar-gated *decay skeleton* that the Mamba2 / scalar-gated-linear-
-attention family is built on (that family adds its own additive write back on top; the `beta_t = 0`
-limit isolates only the gating mechanism). So the combined rule sits above both as special cases; it is strictly more general, and it can
-be better wherever a task needs *both* a global eraser and a local scalpel.
+Before trusting it, the first thing I can actually compute is whether this is a genuine generalization of
+both parents — whether each one falls out as a clean limit. If it does, the combined rule cannot be
+strictly worse than the better parent except through mis-training the extra freedom, which is a much
+safer place to start than a rule that is its own animal. Set `alpha_t = 1` for all `t`: the pre-factor
+disappears and I should recover `S_t = (I - beta_t k_t k_t^T) S_{t-1} + beta_t v_t k_t^T`, exactly the
+delta rule. Let me not just eyeball it — run the combined recurrence with `g = log alpha = 0` against a
+plain DeltaNet recurrence on random L2-normalized keys, `T = 5`, `d = 4`. The max absolute difference in
+the outputs comes back `0.0` — bit-identical, as it must be since `g = 0` makes the `S * exp(g)` line a
+no-op. Now set `beta_t = 0`: the delta write vanishes and the Householder collapses to the identity,
+leaving `S_t = alpha_t S_{t-1}`, the pure scalar-gated *decay skeleton* that the Mamba2 / scalar-gated-
+linear-attention family is built on (that family adds its own additive write back on top; the
+`beta_t = 0` limit isolates only the gating mechanism). With `beta = 0` and the state starting at zero,
+nothing is ever written, so `S` stays zero and every output should be zero — running it, the max absolute
+output is `0.0`. Both limits land where the algebra says they should, so the combined rule does sit above
+both as special cases. That is the property I wanted: it is strictly more general, and it can only beat a
+parent where a task genuinely needs *both* a global eraser and a local scalpel.
 
 Now the design choices, each of which I have to justify, because a combined rule opens new failure
-modes. First, what shape is `alpha_t`? The gating literature offers per-channel diagonal decay; I will
-use a single *scalar per head* instead. Two reasons. The delta rule already provides all the
-fine-grained, per-direction control I could want — the Householder picks out the exact subspace to erase
-— so I do not need the gate to *also* be fine-grained; I need it to do the one thing the delta rule
-cannot, uniform global fading, and a scalar does exactly that and nothing more, keeping the two
-mechanisms on non-overlapping jobs. And, decisively for training, a scalar pulls cleanly out of the
-chunkwise cumulative product — the same property that made fixed-scalar decay parallelizable — so the
-combined rule keeps the delta rule's UT-transform chunk algorithm intact, with the decay folded in as a
-chunk-local cumulative sum of log-gates. A diagonal gate combined with the Householder would break the
-clean telescoping that each parent relied on; the scalar is what lets the two compose without losing the
-matmul form.
+modes. First, what shape is `alpha_t`? The gating literature offers per-channel diagonal decay; let me
+weigh that against a single *scalar per head*. The argument for scalar is twofold. The delta rule already
+provides all the fine-grained, per-direction control I could want — the Householder picks out the exact
+subspace to erase — so a diagonal gate would be a second mechanism reaching for the same per-direction
+job, where what I actually need the gate to supply is the one thing the delta rule cannot, uniform global
+fading; a scalar does exactly that and nothing more, keeping the two mechanisms on non-overlapping jobs.
+The second reason is the one I most want to be true and least want to assume: a scalar pulls out of the
+chunkwise cumulative product the way fixed-scalar decay does, so the delta rule's UT-transform chunk
+algorithm should survive with the decay folded in as a chunk-local cumulative sum of log-gates. A
+diagonal gate woven into the Householder would not telescope cleanly — the per-channel factors would not
+commute past the rank-one update the way a single scalar does. I will hold the "survives" claim as a
+hypothesis and force the chunk algorithm to reproduce the reference recurrence numerically before I
+believe it.
 
 Second, how to parameterize `alpha_t` so it trains? A naive sigmoid gate sits near 0.5 at init — the
-state halves every step, long memory dead before training starts. I want a near-1 prior. Borrow the
-Mamba2 discretization, which is built for exactly this: a positive timescale `Delta_t = softplus(W_a x_t
-+ dt_bias)` with `dt_bias` initialized so `Delta_t` starts small, and a per-head positive rate
-`A = exp(A_log)`; the log-decay is `g_t = -A * Delta_t <= 0`, so `alpha_t = exp(g_t) in (0,1]`, near 1
-at initialization (slow forgetting), data-dependent through `W_a x_t`. This is the well-conditioned,
-small-magnitude log-decay the chunkwise stable form wants. (I keep `A_log` and `dt_bias` out of weight
-decay; they set timescales, not feature weights.)
+state halves every step, long memory dead before training starts. I want a near-1 prior. The Mamba2
+discretization is built for exactly this: a positive timescale `Delta_t = softplus(W_a x_t + dt_bias)`
+with `dt_bias` initialized so `Delta_t` starts small, and a per-head positive rate `A = exp(A_log)`; the
+log-decay is `g_t = -A * Delta_t <= 0`, so `alpha_t = exp(g_t) in (0,1]`, near 1 at initialization (slow
+forgetting), data-dependent through `W_a x_t`. This is a well-conditioned, small-magnitude log-decay,
+which is also what the chunkwise stable form wants — the cumulative sums of `g` stay small. (I keep
+`A_log` and `dt_bias` out of weight decay; they set timescales, not feature weights.)
 
-Third, stability — derive it, do not assume. The combined transition along the key direction scales by
-`alpha_t (1 - beta_t)`, and along every orthogonal direction it scales by `alpha_t`. With L2-normalized
-keys (so `1 - beta_t in [0,1]` for `beta_t in (0,1)`) and `alpha_t in (0,1]`, both factors are in
-`[0,1]` — inside the unit disk — so the recurrence is stable by the DeltaNet argument plus a
-strictly-contractive scalar. I keep DeltaNet's stabilizers: SiLU then L2-normalization on q and k (SiLU
-keeps sign and is smooth, L2 makes the projection exact), a learned `beta_t = sigma(W_beta x_t)` per
-head, and a lightweight depthwise short convolution (kernel 4) on the q/k/v projections, which
-generalizes the shift operator and lets the layer do precise local token comparisons that pure
-content-addressing is bad at. An output normalization per head before the projection completes it; and
-because re-introducing a data-dependent decay gives the per-head outputs head-varying, content-dependent
-scale, I route the output through a *gated* RMSNorm with a swish output gate — the standard linear-
-attention output recipe that closes the gap, the same nonlinearity-restoration deleting softmax forces.
+Third, stability — this one I can derive and then check, not assert. Take the combined transition
+`alpha_t (I - beta_t k_t k_t^T)` with `k_t` L2-normalized. Along `k_t` the bracket acts as `1 - beta_t`,
+so the eigenvalue there is `alpha_t (1 - beta_t)`; on the `d-1`-dimensional orthogonal complement the
+bracket is the identity, so the eigenvalue is `alpha_t`. Let me actually diagonalize one instance to be
+sure I have not mis-stated the multiplicities: with `d = 5`, `alpha = 0.85`, `beta = 0.7`, a random
+unit `k`, the eigenvalues come out `[0.255, 0.85, 0.85, 0.85, 0.85]` — one value at
+`alpha(1-beta) = 0.85 * 0.3 = 0.255` and a four-fold `0.85`, exactly the split I predicted, spectral
+radius `0.85 < 1`. For `beta_t in (0,1)` and `alpha_t in (0,1]` both factors sit in `[0,1]`, inside the
+unit disk, so the recurrence is stable — the DeltaNet argument with a strictly-contractive scalar layered
+on. (As a side note, pushing `beta` toward 2 sends the along-`k` factor negative — at `beta = 1.6`,
+`alpha = 0.85` it is `-0.51`, still radius `0.85` — which is the Grazzi-et-al. negative-eigenvalue regime
+for state tracking; an optional knob, off by default.) I keep DeltaNet's stabilizers: SiLU then
+L2-normalization on q and k (SiLU keeps sign and is smooth, L2 makes the projection exact), a learned
+`beta_t = sigma(W_beta x_t)` per head, and a lightweight depthwise short convolution (kernel 4) on the
+q/k/v projections, which generalizes the shift operator and lets the layer do precise local token
+comparisons that pure content-addressing is bad at. An output normalization per head before the
+projection completes it; and because re-introducing a data-dependent decay gives the per-head outputs
+head-varying, content-dependent scale, I route the output through a *gated* RMSNorm with a swish output
+gate — the standard linear-attention output recipe, the same nonlinearity-restoration that deleting
+softmax forces.
 
-Now make the chunkwise training algorithm concrete, because the whole claim is that the scalar decay
-folds into DeltaNet's chunk form without breaking it. Within a chunk, let `g` be the per-position
-log-decay and `decay = cumsum(g)` the chunk-local accumulated log-decay. The delta-rule pseudo-value
-solve is the same triangular UT inverse as DeltaNet, but the key-key similarities that build it must be
-weighted by the relative decay between positions: the strictly-lower-triangular matrix uses
-`(k_beta @ k^T) * exp(decay_i - decay_j)` for `i > j`, so the closed-form `T = (I + L)^{-1}` absorbs the
-gate. The carried chunk state is decayed across the chunk by `exp(decay_last)` and the chunk's keys are
-weighted by `exp(decay_last - decay)` before they fold into the next state; the inter-chunk read scales
-the query by `exp(decay)`. Every cumulative product spans at most one chunk, so it stays bounded, and
-every heavy operation is a matmul — exactly the DeltaNet hardware profile with the scalar gate threaded
-through the cumsum. Recompute the chunk states in the backward to save memory.
+Now make the chunkwise training algorithm concrete, because the whole bet that the scalar gate composes
+cleanly rests on the decay folding into DeltaNet's chunk form. Within a chunk, let `g` be the
+per-position log-decay and `decay = cumsum(g)` the chunk-local accumulated log-decay. The piece I want to
+get right is how a write made at position `j` is weighted when it reaches a read or a key-key interaction
+at position `i > j`. Between those two positions the state is multiplied by `alpha_{j+1}...alpha_i`,
+i.e. by `exp(g_{j+1} + ... + g_i)`. That sum of consecutive log-gates is exactly `decay_i - decay_j`, so
+the relative weight is `exp(decay_i - decay_j)`. Let me confirm the telescoping is not off by an index:
+with `g = [-0.1, -0.3, -0.2, -0.5, -0.4]`, take `i = 4, j = 1`; multiplying the gates from `t = 2` to
+`t = 4` explicitly gives `0.33287`, and `exp(decay_4 - decay_1)` gives `0.33287` — they agree. So the
+strictly-lower-triangular key-key matrix that builds the UT system uses `(k_beta @ k^T) * exp(decay_i -
+decay_j)` for `i > j`, and the triangular solve `T = (I + L)^{-1}` absorbs the gate. The carried chunk
+state is decayed across the chunk by `exp(decay_last)`; the chunk's keys are weighted by `exp(decay_last
+- decay)` before they fold into the next state; the inter-chunk read scales the query by `exp(decay)`.
+Every cumulative product spans at most one chunk, so it stays bounded, and every heavy operation is a
+matmul.
+
+That is the derivation, but the index bookkeeping across the chunk boundary — the carried-state decay,
+the key re-weighting, the query scaling — is exactly the kind of thing that is easy to get subtly wrong,
+so I will not trust it until the chunk kernel reproduces the reference recurrence end to end. Run both on
+the same random L2-normalized q, k, random v, random `beta`, and `g = -uniform(0,1) <= 0`, `T = 6`,
+`d = 4`. With `chunk_size = 6` (a single chunk — exercises only the intra-chunk UT solve and the gated
+key-key weighting) the max absolute difference against the recurrence is `5.96e-08`. With `chunk_size =
+3` (two chunks — now the inter-chunk state carry, the `exp(decay_last)` state decay and the
+`exp(decay_last - decay)` key folding are all in play) it is again `5.96e-08`. Both are floating-point
+round-off, and the two chunk sizes matching the same scalar recurrence is the real test, because the
+boundary handling only fires in the multi-chunk case. So the scalar decay does fold into DeltaNet's chunk
+form without breaking it — that was the load-bearing assumption and it holds. Recompute the chunk states
+in the backward to save memory.
 
 Let me write the reference recurrence first — it is the cleanest statement of the model and exactly what
 the chunk kernel parallelizes — then the chunk algorithm that does it in matmuls, then the layer module
@@ -241,16 +276,20 @@ class GatedDeltaNet(nn.Module):
 ```
 
 So the chain, end to end. Plain additive linear attention never forgets and cross-talks; the two cures
-each fix one axis — gating adds a data-dependent decay that fades memory globally but cannot localize
-removal, and the delta rule adds an error-correcting, content-addressed write that removes exactly the
-colliding association but has no global decay. They are complementary, not rival, so I compose them into
-one recurrence, `S_t = alpha_t (I - beta_t k_t k_t^T) S_{t-1} + beta_t v_t k_t^T`, which reduces to the
-delta rule at `alpha_t = 1` and to the pure scalar-gated decay skeleton (the gating part of the Mamba2 /
-gated-linear-attention family) at `beta_t = 0`, so it is a strict generalization of both. The decay is a *scalar per head* — the smallest gate that does only global
-fading, which keeps the two mechanisms non-overlapping and, being scalar, telescopes cleanly so the
-delta rule's UT-transform chunk algorithm survives with the decay folded into a chunk-local
-cumulative-sum; it is parameterized Mamba2-style (`alpha_t = exp(-exp(A_log) softplus(a_proj(x) +
-dt_bias))`) for a near-1 long-memory prior. L2-normalized keys make the combined contractive factor
-`alpha_t(1 - beta_t)` and the orthogonal factor `alpha_t` both land in `[0,1]`, so the recurrence is
+each act on a different axis — gating adds a data-dependent decay that fades memory globally but cannot
+localize removal, and the delta rule adds an error-correcting, content-addressed write that removes
+exactly the colliding association but has no global decay. The deficiency of each is on the axis the
+other acts on, so I composed them into one recurrence,
+`S_t = alpha_t (I - beta_t k_t k_t^T) S_{t-1} + beta_t v_t k_t^T`, and checked the composition rather than
+assumed it: it reduces (numerically, to round-off) to the delta rule at `alpha_t = 1` and to the pure
+scalar-gated decay skeleton at `beta_t = 0`, its combined transition has the eigenvalues `alpha_t(1 -
+beta_t)` along `k_t` and `alpha_t` on the complement (verified by diagonalizing an instance), and the
+chunk kernel matches the reference recurrence to `5.96e-08` across chunk boundaries at two different chunk
+sizes. The decay is a *scalar per head* — the smallest gate that does only global fading, which keeps the
+two mechanisms non-overlapping and, being scalar, telescopes cleanly (the off-diagonal weight
+`exp(decay_i - decay_j)` is just the product of intervening gates, checked by hand) so the delta rule's
+UT-transform chunk algorithm survives with the decay folded into a chunk-local cumulative-sum; it is
+parameterized Mamba2-style (`alpha_t = exp(-exp(A_log) softplus(a_proj(x) + dt_bias))`) for a near-1
+long-memory prior. L2-normalized keys keep both eigenvalue factors in `[0,1]`, so the recurrence is
 stable; SiLU + short conv, a learned `beta_t`, a per-head gated RMSNorm output and a swish gate complete
 a layer that drops into a pre-norm transformer block with no absolute position embeddings.

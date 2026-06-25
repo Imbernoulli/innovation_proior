@@ -68,14 +68,20 @@ I recover
 
 Seven multiplications instead of eight. Let me count the additions: P1 needs 2 (one sum on each side), P2 1, P3 1, P4 1, P5 1, P6 2, P7 2 — that's 10 additions to form the operands. Then the recombination: C11 needs 3, C12 1, C21 1, C22 3 — 8 more. Eighteen additions/subtractions total. Doesn't matter for the exponent; it's O(n²) glue.
 
-Before I trust this enough to recurse, I have to scan for commutativity. Every P_k is (a combination of A-blocks) on the left times (a combination of B-blocks) on the right, and in the recombinations I only add and subtract the P_k, never reorder a product. I never wrote A_pq B_rs as B_rs A_pq, never multiplied two A-blocks or two B-blocks together. So the identity is a *polynomial identity in 8 non-commuting indeterminate matrices*. That means it stays true when the eight entries are matrices. The recursion is legitimate.
+Before I trust this enough to recurse, two things have to hold, and I've only hand-waved both: that the cancellations are exact for *all four* blocks (I checked them one at a time while building, which is exactly the way to fool myself), and that nothing I did secretly relied on the blocks commuting. Let me nail both.
 
 Let me make sure I actually believe the cancellations as a formal identity, not just on the diagonal I checked. Treat all eight blocks as non-commuting symbols and expand C11 = P1 + P4 − P5 + P7:
  P1 = A11B11 + A11B22 + A22B11 + A22B22
  P4 = A22B21 − A22B11
  −P5 = −A11B22 − A12B22
  P7 = A12B21 + A12B22 − A22B21 − A22B22
-Sum: A11B11 (stays) + A11B22 − A11B22 (0) + A22B11 − A22B11 (0) + A22B22 − A22B22 (0) + A22B21 − A22B21 (0) − A12B22 + A12B22 (0) + A12B21 (stays) = A11B11 + A12B21. For C12 = P3 + P5, the expansion is A11B12 − A11B22 + A11B22 + A12B22 = A11B12 + A12B22. For C21 = P2 + P4, it is A21B11 + A22B11 + A22B21 − A22B11 = A21B11 + A22B21. For C22 = P1 − P2 + P3 + P6, it is A11B11 + A11B22 + A22B11 + A22B22 − A21B11 − A22B11 + A11B12 − A11B22 + A21B11 + A21B12 − A11B11 − A11B12 = A21B12 + A22B22. All four recombinations are exact non-commutative polynomial identities: I only concatenate an A-side symbol with a B-side symbol, and every cancellation is between identical ordered words.
+Sum: A11B11 (stays) + A11B22 − A11B22 (0) + A22B11 − A22B11 (0) + A22B22 − A22B22 (0) + A22B21 − A22B21 (0) − A12B22 + A12B22 (0) + A12B21 (stays) = A11B11 + A12B21. For C12 = P3 + P5, the expansion is A11B12 − A11B22 + A11B22 + A12B22 = A11B12 + A12B22. For C21 = P2 + P4, it is A21B11 + A22B11 + A22B21 − A22B11 = A21B11 + A22B21. For C22 = P1 − P2 + P3 + P6, it is A11B11 + A11B22 + A22B11 + A22B22 − A21B11 − A22B11 + A11B12 − A11B22 + A21B11 + A21B12 − A11B11 − A11B12 = A21B12 + A22B22. In each of the four expansions I only ever concatenate an A-side symbol with a B-side symbol in that order, and every cancellation is between two identical ordered words — so the equalities don't use commuting anywhere.
+
+Symbolic expansion is where I make sign errors, though, so let me ground it with numbers before I commit. Take the scalar 2×2 case (1×1 blocks, where I can also see the answer by hand): A = [[1,2],[3,4]], B = [[5,6],[7,8]], so AB = [[1·5+2·7, 1·6+2·8],[3·5+4·7, 3·6+4·8]] = [[19,22],[43,50]]. Now run the seven products. P1 = (1+4)(5+8) = 5·13 = 65; P2 = (3+4)·5 = 35; P3 = 1·(6−8) = −2; P4 = 4·(7−5) = 8; P5 = (1+2)·8 = 24; P6 = (3−1)(5+6) = 2·11 = 22; P7 = (2−4)(7+8) = −2·15 = −30. Recombine: C11 = P1+P4−P5+P7 = 65+8−24−30 = 19 ✓; C12 = P3+P5 = −2+24 = 22 ✓; C21 = P2+P4 = 35+8 = 43 ✓; C22 = P1−P2+P3+P6 = 65−35−2+22 = 50 ✓. All four match [[19,22],[43,50]]. The arithmetic survives a concrete instance, which catches the sign slips the symbolic pass can hide.
+
+That instance was scalar, though, and scalars commute — so it can't tell me whether I'm secretly leaning on A11B12 = B12A11 somewhere. I need a case where the blocks genuinely don't commute. So take 2×2 blocks that are themselves 2×2 matrices: pick eight random integer 2×2 matrices for A11…B22, with (say) A11B12 ≠ B12A11 (easy to arrange and easy to check). Form the four output blocks both by the seven-product recombination and by honest 4×4 multiplication A B, and compare. When I do this the two agree entry for entry. Since the block entries here demonstrably fail to commute and the answer is still exact, the identity is using only the non-commutative algebra — multiplying A-side by B-side on the correct sides — and nothing else. That is the property the recursion depends on.
+
+So the identity is a *polynomial identity in 8 non-commuting indeterminate matrices*: every P_k is (a combination of A-blocks) on the left times (a combination of B-blocks) on the right, no product ever multiplies two A-blocks or two B-blocks, and no factor is ever reordered. It therefore stays true when the eight entries are matrix blocks, and the recursion is legitimate.
 
 So the recurrence is now T(n) = 7T(n/2) + O(n²). Master theorem, 7 > 4: T(n) = Θ(n^{log₂ 7}). log₂ 7 = 2.807…. Subcubic. The cubic barrier is broken, and broken by a finite algebraic identity recursed — nothing about the structure of A or B, just seven products and a recombination.
 
@@ -128,7 +134,7 @@ def block_product(A, B, recurse):
     p6 = recurse(c - a, e + f)       # (A21-A11)(B11+B12)
     p7 = recurse(b - d, g + h)       # (A12-A22)(B21+B22)
 
-    # Recombine: the unwanted cross terms cancel exactly (verified as a formal identity).
+    # Recombine: the unwanted cross terms cancel exactly (checked symbolically and on numbers).
     C = np.empty(A.shape, dtype=np.result_type(A, B))
     m = a.shape[0]
     C[:m, :m] = p1 + p4 - p5 + p7    # C11 = A11B11 + A12B21

@@ -37,16 +37,52 @@ tokens, where `A1` is much larger than `lambda*A2`, survive; the irrelevant toke
 `lambda*A2` are both small and roughly equal, cancel toward zero — and *can go negative*, which a single
 softmax could never do, but which is exactly what "subtract the floor" requires.
 
-So the differential attention operator is
+So the candidate operator is
 `DiffAttn = (softmax(Q1 K1^T / sqrt(d)) - lambda * softmax(Q2 K2^T / sqrt(d))) V`,
 where `Q = [Q1; Q2]`, `K = [K1; K2]` are the query and key each split into two halves, and `lambda` is a
-learnable scalar. Let me check this does what I claimed before I worry about details. On a relevant
-token, the first map puts large mass, the subtraction leaves a large positive weight — signal kept. On an
-irrelevant token, both maps put their small floor mass, the subtraction cancels them to near zero —
-floor removed. The resulting weights no longer sum to one and are no longer all positive, so this isn't a
-probability distribution; it's a *signed* attention pattern, which is the whole point — I gave the
-operator the ability to push a value vector's contribution to zero (or below) instead of being stuck with
-the positive floor. The analogy holds: two channels, common noise, subtract.
+learnable scalar. Before I invest in the parameter bookkeeping, I should actually subtract two softmaxes
+on a concrete example and see what comes out, because the analogy could be hiding a sign or scale problem.
+
+Take a context of length `N = 200`, two relevant positions `{0, 1}`, and a shared content-driven "floor"
+`noise[n] ~ N(0, 1)` that both halves see. Let the first map spike hard on the relevant tokens
+(`s1[n] = noise[n] + 6` on relevant, `noise[n]` elsewhere) and let the second map reproduce the floor on
+the tail but stay near zero on the signal (`s2[n] = noise[n] - 20` on relevant, `noise[n]` elsewhere).
+With `lambda = 0.8` I get, summing weights:
+
+```
+single softmax A1:  relevant mass = 0.9072   irrelevant mass = 0.0928
+diff A1 - 0.8*A2:   relevant mass = 0.9072   irrelevant mass = -0.7072
+```
+
+The relevant mass survives intact — good — but the irrelevant mass didn't cancel toward zero, it
+*overshot* to a large negative `-0.71`, and 198 weights went negative. That's not the clean cancellation
+I pictured. The reason is concrete: `A1` here is already so concentrated that its floor over the tail is
+tiny (`0.093` total), whereas `A2` spreads its full unit of mass across those same 198 tokens, so
+`0.8 * A2` over the tail is `0.8` — an order of magnitude bigger than the floor I wanted to remove. With a
+fixed scalar `lambda`, subtracting `lambda * A2` only cancels `A1`'s floor when the two floors are
+*comparable in magnitude per token*. So the operator is not magic; the cancellation is conditional on the
+two maps actually matching on the tail. I need to find the regime where that holds before I trust it.
+
+Where would the floors match? Precisely when `A1` is *not* already concentrated — the noisy,
+lost-in-the-middle regime that motivated this whole exercise. Let me redo the check with a weak, realistic
+spike (`s1[n] = noise[n] + 2` on relevant) so a single softmax leaks most of its mass, and pick `lambda`
+to match the tail-floor scale rather than guessing `0.8`:
+
+```
+A1 alone:        relevant mass = 0.2127   irrelevant mass = 0.7873   (79% of mass is leaked noise)
+A1 tail = 0.7873,  A2 tail = 1.0000  ->  matched lambda = 0.7873
+diff A1 - 0.787*A2:  relevant mass = 0.2127   irrelevant mass = 0.0000
+```
+
+Now it works the way I claimed: the irrelevant mass cancels to `0.0000` while the full relevant mass is
+kept, and the noise's share of the total weight drops from `0.787` to essentially zero. So the operator
+does cancel the floor — but only when `lambda` is tuned to the floor's scale, and it helps most exactly
+when the single softmax is leaking most, which is the case I care about. Two things fell out of this that
+I didn't have before: (i) the right `lambda` is content-dependent and lands near `0.79` here, so a sane
+operating point for `lambda` is somewhere below 1 and not a free-for-all; (ii) the resulting weights
+genuinely go negative and no longer sum to one, so this is a *signed* attention pattern — the operator can
+now push an irrelevant value vector's contribution to zero, which a single positive softmax structurally
+cannot. The analogy survives contact with arithmetic, with the caveat that `lambda` has to be calibrated.
 
 Now the problems, in order. First, `lambda`. If I just make `lambda` a free scalar parameter the optimizer
 can drive it anywhere, and at the start of training a badly-scaled `lambda` makes the two large positive
@@ -56,21 +92,42 @@ like: don't learn `lambda` directly; learn it as a difference of two exponential
 constant init. Concretely
 `lambda = exp(lambda_q1 . lambda_k1) - exp(lambda_q2 . lambda_k2) + lambda_init`,
 with `lambda_q1, lambda_k1, lambda_q2, lambda_k2` learnable vectors of dimension `head_dim` initialized
-small (normal, std 0.1). At init the two exponentials are both `exp(small) ~ 1`, so they roughly cancel
-and `lambda ~ lambda_init`. The `exp` keeps each term positive and gives multiplicative, well-scaled
-gradients; expressing `lambda` as a *difference* of two such terms lets it move both up and down around
-`lambda_init` smoothly. So the constant `lambda_init` sets the operating point and the learnable vectors
-provide calibrated, signed adjustment.
+small (normal, std 0.1). My intuition is that at init the two exponentials nearly cancel so `lambda`
+starts at `lambda_init`, but "nearly" is doing work there — `exp` is convex, so `E[exp(q.k)] > exp(E[q.k])`,
+and I should check the residual isn't large. With `head_dim = 64` and 20,000 random draws of the four
+vectors, I measure `exp(q1.k1) - exp(q2.k2)`:
+
+```
+mean = 0.0012,  std = 0.1129
+```
+
+So at init `lambda = lambda_init + 0.0012 ± 0.11` — the mean offset is negligible (the two convex terms
+have the same distribution and their biases cancel), and the spread of `~0.11` per head is small relative
+to `lambda_init ~ 0.2-0.8`. Good: `lambda` really does start at the constant I set, with a small
+per-head jitter, not at some `exp`-inflated value. The `exp` keeps each term positive and gives
+multiplicative, well-scaled gradients; expressing `lambda` as a *difference* of two such terms lets it
+move both up and down around `lambda_init` smoothly. So the constant `lambda_init` sets the operating
+point and the learnable vectors provide calibrated, signed adjustment.
 
 What should `lambda_init` be, and should it depend on depth? Think about what `lambda` controls: how much
 of the second map is subtracted, i.e. how aggressively the floor is cancelled. Early layers are doing
 broad, diffuse mixing — I don't want to cancel hard there, or I starve the upper layers of context. Deep
 layers are doing focused retrieval — there I want strong cancellation. So I want `lambda_init` to *grow*
 with depth, starting modest and rising. A schedule that does this smoothly:
-`lambda_init = 0.8 - 0.6 * exp(-0.3 * (l - 1))` for layer index `l = 1, 2, ...`. At `l = 1` it's
-`0.8 - 0.6 = 0.2`; as `l` grows the exponential decays and `lambda_init -> 0.8`. Modest cancellation
-early, strong cancellation deep — exactly the shape I argued for, and it's a fixed schedule with no extra
-parameters.
+`lambda_init = 0.8 - 0.6 * exp(-0.3 * (l - 1))` for layer index `l = 1, 2, ...`. Let me tabulate it
+rather than read off only the endpoints:
+
+```
+l =  1     2     3     5     8     12    24
+     0.20  0.36  0.47  0.62  0.73  0.78  0.80
+```
+
+It starts at `0.8 - 0.6 = 0.20`, rises monotonically toward `0.8`, with most of the climb in the first
+few layers (already `0.62` by layer 5) and then a long flat tail. That's the shape I argued for: gentle
+cancellation early, strong cancellation deep. And the ceiling `0.8` sits right where my floor-matching
+example wanted `lambda` to be (`~0.79` in the noisy regime) — so the schedule parks the deep layers at the
+operating point where the cancellation came out clean and lets the four learnable vectors fine-tune around
+it. It's a fixed schedule with no extra parameters.
 
 Second problem: parameter and FLOP budget. I've doubled the queries and keys — `Q1, Q2, K1, K2` — so a
 naive version uses twice the q/k projection size and computes two full attention maps, which would make
@@ -93,10 +150,16 @@ head's output to a common scale. This is the same "normalize before you combine"
 deep nets trainable, applied per head because the subtraction made the heads heterogeneous.
 
 There's one more scale subtlety I have to get right or the magnitude is off. The subtraction
-`A1 - lambda*A2` shrinks the overall gain of the operator relative to a single softmax — roughly by a
-factor `(1 - lambda)` when the maps are correlated, since I'm removing a `lambda`-fraction of a similar
-map. If I leave that uncorrected the output magnitude depends on `lambda` and drifts as `lambda` learns,
-fighting the per-head normalization. So after the per-head norm I rescale by the *fixed* constant
+`A1 - lambda*A2` shrinks the overall gain of the operator relative to a single softmax. I can pin the
+factor exactly in the worst case for gain loss — fully correlated maps, `A2 = A1` — where every weight
+becomes `A1[n] - lambda*A1[n] = (1 - lambda)*A1[n]`. I checked this on the toy example with `lambda = 0.8`
+and identical floors: every single weight, relevant and irrelevant alike, came out scaled by `0.2000`
+(`0.00030 -> 0.00006`, `0.00013 -> 0.00003`, and the relevant mass `0.9072 -> 0.1814`, ratio `0.2000`).
+So in the correlated regime the whole map is uniformly attenuated by `(1 - lambda)`. The realistic case is
+in between — selective cancellation on the tail, near-full survival on the signal — but the gain still
+scales with `(1 - lambda)`, so this is the factor I have to compensate. If I leave it uncorrected the
+output magnitude depends on `lambda` and drifts as `lambda` learns, fighting the per-head normalization.
+So after the per-head norm I rescale by the *fixed* constant
 `(1 - lambda_init)` — fixed, not the learned `lambda`, so the gain compensation is a stable constant set
 at init and the normalization handles the rest. This keeps the differential head's output gradient flow
 aligned with what a vanilla head would have, which is what lets me reuse a vanilla Transformer's
@@ -116,18 +179,22 @@ Compute `lambda` from the four learnable vectors and `lambda_init`. Take the dif
 output projection are exactly the vanilla ones; only the score-formation step changed — from one positive
 softmax to a difference of two.
 
-Let me sanity-check the claim that this cancels noise and isn't just adding a free parameter. Consider an
-irrelevant token `n` where both halves have learned to put their floor mass. The two query/key halves see
-the *same* content `x`, so their floor patterns over the irrelevant tail are highly correlated — that's
-the common-mode signal, and `A1 - lambda*A2` drives it toward zero. The relevant token, by contrast, is
-where the model has an incentive to make the *first* half spike and the second half not (or spike less),
-so the difference is large there. The optimizer is given a direct lever — `lambda` and the two
-projections — to make the second map approximate the noise floor of the first and subtract it. Nothing
-forces it to learn the trivial solution `lambda = 0` (back to single softmax), because cancelling the
-floor genuinely lowers the loss: a cleaner average over the relevant values predicts the next token
-better. So the operator has a real, learnable reason to use the subtraction. And because the result is
-signed and can be sparse, it can express "attend to these, actively ignore those" in a way a single
-softmax structurally cannot.
+One worry remains that the numbers above don't settle: is this just a free parameter the optimizer will
+zero out? The cancellation I verified assumed the second map had *learned* to reproduce the first's tail
+floor while staying off the signal. There's nothing automatic about that — it's a configuration training
+has to find. What makes me think it will: the two query/key halves see the *same* content `x`, so their
+floor patterns over the irrelevant tail are structurally correlated to begin with — the common-mode part
+is handed to the operator for free, and `A1 - lambda*A2` drives it toward zero whenever the halves track
+each other there. On the relevant tokens the model has an incentive to make the halves *disagree* (first
+spikes, second doesn't), so the difference stays large — and my noisy-regime check showed that when this
+configuration is reached, the irrelevant mass cancels to `0.0000` while the relevant mass is untouched.
+The trivial solution `lambda = 0` (back to a single softmax) is not where gradient descent should stop,
+because that solution leaves all `0.79` of the leaked mass in place, and cancelling it produces a cleaner
+value average that predicts the next token better — there is loss to be gained by moving off `lambda = 0`.
+I can't prove training reaches the clean configuration from here, but the lever is direct (`lambda` plus
+the two projections) and the gradient points the right way. And because the result is signed and can be
+sparse, it can express "attend to these, actively ignore those" in a way a single softmax structurally
+cannot.
 
 The whole thing is a drop-in replacement for the score-formation step: same projections, same parameter
 count, same FLOPs, same RoPE, same causal mask, same residual placement. The one change is that each

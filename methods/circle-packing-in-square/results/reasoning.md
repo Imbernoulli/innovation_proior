@@ -12,22 +12,31 @@ side `1−2r`. So if I rescale the shrunken square back to unit size, the circle
 put `n` points in a unit square, push the minimum pairwise distance up. Let me nail the conversion.
 Centres live in a square of side `1−2r`; rescale by `1/(1−2r)` so they live in the unit square,
 and the smallest center-spacing `2r` becomes `2r/(1−2r) =: d`. Invert: `d(1−2r)=2r`, so
-`d = 2r/(1−2r)` and `r = d/(2(1+d))`. Clean. `r` is monotone increasing in `d`, so **maximizing
-the minimum pairwise distance `d_n = min_{i<j} ‖s_i−s_j‖` of `n` points in the unit square is
-exactly maximizing the radius.** From here on I forget the circles. I have `n` points in a box and
-I want them as spread out as possible.
+`d = 2r/(1−2r)` and `r = d/(2(1+d))`. Since `r` is monotone increasing in `d`, the point-spreading
+problem — maximize `d_n = min_{i<j} ‖s_i−s_j‖` over `n` points in the unit square — should be the
+same problem as maximizing the radius. Before I commit to that I want to check the conversion on a
+case I already know. Take `n = 2`: two points spread maximally in the unit square sit at opposite
+corners, so `d_2 = √2`. Then `r = √2/(2(1+√2)) = 0.29289…`, which I can simplify by rationalizing
+to `1/(2+√2)` — and `1/(2+√2) = 0.29289…` too. That is exactly the textbook `r_2` for two circles
+in a square, so the formula maps the point answer back onto the circle answer correctly. One more:
+`n = 5`, whose exact value is `d_5 = √2/2` (four corners plus centre). Then
+`r = (√2/2)/(2(1+√2/2)) = 0.20711…`, and the published `r_5` is `1/(2+2√2) = 0.20711…` — same
+number. The conversion holds on both, so from here on I forget the circles. I have `n` points in a
+box and I want them as spread out as possible.
 
 Now, the objective. `d_n = min_{i<j} ‖s_i − s_j‖`. Stare at this for a second. It is a *minimum
 over pairs*. At any given configuration only one pair, or a few tied pairs, actually achieve that
 minimum; all the other distances are bystanders. If I perturb a point, the active pair can switch,
 and the function has a kink there — it is piecewise-smooth with a subgradient at the active
-constraint, not a gradient. That's the wall the obvious approaches keep hitting. de Groot, Peikert
-and Würtz did exactly the direct thing — variables are the centres, maximize the admissible
-radius, drive it with simplex and BFGS — and they couldn't reach the optimum for `n = 14, 15, 17`.
-A smooth quasi-Newton method builds a quadratic model from gradients, but here the function has no
-clean gradient at the very points that matter (the contacts); it stalls in the kinks. Tellingly,
-their stochastic Langevin variant — gradient flow plus injected noise — did *better*. So the
-missing ingredient is something that smooths over the kinks and shakes free of local optima.
+constraint, not a gradient. That kink is worth taking seriously, because it predicts trouble for
+any optimizer that assumes a clean gradient. de Groot, Peikert and Würtz did exactly the direct
+thing — variables are the centres, maximize the admissible radius, drive it with simplex and BFGS
+— and they couldn't reach the optimum for `n = 14, 15, 17`. A smooth quasi-Newton method builds a
+quadratic model from gradients, but here the function has no clean gradient at the very points that
+matter (the contacts); it stalls in the kinks. Tellingly, their stochastic Langevin variant —
+gradient flow plus injected noise — did *better*, which fits the diagnosis: the noise lets it slip
+out of the kinks a plain gradient method gets stuck in. So whatever I do, I want something that
+smooths over the kinks and shakes free of local optima.
 
 The other tempting escape is brute force: put a fine grid in the square, try point subsets, maybe
 enumerate candidate contact graphs. That is exactly the wrong direction. The search space is
@@ -38,12 +47,21 @@ guess in advance. Brute force spends the budget on a discretization artifact and
 with the original geometric question. I need a smooth continuous surrogate, not an enumeration.
 
 Let me think about what the "right" smoothing is. The pain is the hard `min`. Is there a soft
-version of `min` that becomes the hard one in a limit, and is differentiable along the way? Yes —
-the classic `L^p`/power-mean trick. For positive numbers `a_k`,
+version of `min` that becomes the hard one in a limit, and is differentiable along the way? The
+classic `L^p`/power-mean trick is the candidate. For positive numbers `a_k`,
 `(Σ_k a_k^p)^{1/p} → max_k a_k` as `p → +∞`, and `→ min_k a_k` as `p → −∞`. The negative side is
-the one I need. If `a_* = min_k a_k` and there are `N` terms, then for `p < 0`,
-`a_*^p ≤ Σ_k a_k^p ≤ N a_*^p`; raising to `1/p` reverses the inequalities, so
-`a_* ≥ (Σ_k a_k^p)^{1/p} ≥ a_* N^{1/p}`, and `N^{1/p} → 1`. Thus
+the one I need. Let me pin down *why* it converges to the min, because I'll lean on it. If
+`a_* = min_k a_k` and there are `N` terms, then for `p < 0`, dividing through by `a_*^p` (the
+largest of the `a_k^p`, since `p<0` inverts the ordering), `a_*^p ≤ Σ_k a_k^p ≤ N a_*^p`; raising
+to `1/p` reverses the inequalities (that map is decreasing for `p<0`), so
+`a_* ≥ (Σ_k a_k^p)^{1/p} ≥ a_* N^{1/p}`, and `N^{1/p} → 1`. So the soft-min is squeezed onto `a_*`.
+I don't fully trust an inequality chain I just wrote until I've seen it move, so let me put numbers
+on it: take `a = (1.0, 1.5, 2.3)`, where `min = 1.0` and `N = 3`. At `p = −2` the soft-min is
+`0.782`, and the lower bound `a_* N^{1/p} = 1·3^{−1/2} = 0.577` — so `0.577 ≤ 0.782 ≤ 1.0`, the
+squeeze holds and it's still loose. At `p = −10` the soft-min is `0.998` with lower bound `0.896`;
+at `p = −50` it reads `1.0000000` to seven places, lower bound `0.978`. The bound brackets the
+value at every step and the value climbs monotonically to `1.0` exactly as the chain says. Good —
+the surrogate really does become the hard min. Concretely,
 `min_{i<j} ‖s_i−s_j‖ = lim_{p→−∞} ( Σ_{i<j} ‖s_i−s_j‖^p )^{1/p}.`
 The sign matters. For fixed negative `p`, the map `z ↦ z^{1/p}` is decreasing, so maximizing the
 soft minimum is the same as minimizing `Σ ‖s_i−s_j‖^p`. If I keep Euclidean distances, this is an
@@ -169,6 +187,22 @@ pairwise distance and accept the polished coordinates only if the contact residu
 solved contact distance is finite and agrees with the actual minimum, and the actual minimum has not
 dropped. If the detected contact system was wrong, the code falls back to the unpolished optimizer
 output.
+
+Before I trust any of this on hard `n`, I should run the whole pipeline on cases whose answer I
+already know and see what comes back. `n = 5` first: with 20 restarts the solver returns
+`d_5 = 0.70710678`, and `√2/2 = 0.70710678` — they agree to about `6×10⁻¹¹`, so the annealing plus
+polish reproduces the exact pigeonhole value essentially to machine precision. `n = 9` is the 3×3
+grid: nine points at `{0, ½, 1}²` have nearest spacing exactly `½`, so `d_9 = 0.5`, and the solver
+returns `0.50000000` on the nose. (I'd first mis-remembered `d_9` as `√2/4 ≈ 0.354`; computing the
+grid spacing directly — the nearest neighbours are half a side apart, not a half-diagonal — set me
+straight, and the code agrees with the corrected `0.5`.) `n = 6` is the interesting one: the solver
+gives `d_6 = 0.60092521`, converting to `r_6 = 0.18768`, against the published `r_6 = 0.18776` — so
+the raw optimizer lands about four digits in, not ten. That four-vs-ten-digit gap is exactly the
+reason the contact polish exists: for the lattice-clean cases the optimizer already nails it, but
+for an irregular packing like `n = 6` the floating-point energy saturates a few digits short, and
+only re-solving the contact equations recovers the rest. The checks do two jobs at once — they show
+the surrogate-plus-polish actually recovers known optima, and they show me where its unaided
+accuracy runs out.
 
 Let me also sanity-check this against the physical alternative I know works, to make sure I trust
 the energy route. The billiard picture — Graham and Lubachevsky's growing-disk molecular dynamics,
