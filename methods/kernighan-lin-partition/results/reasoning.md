@@ -40,17 +40,19 @@ stay put. So a partition is "1-opt" if no single such exchange reduces the cost,
 improving exchanges until I hit a 1-opt partition. This is the partitioning analogue of the
 single-link rearrangements Lin used on the traveling-salesman problem.
 
-But I already know how this goes, because it's the same trap that fixed-`k` interchange heuristics
-fall into everywhere. A single-pair exchange is a shallow neighborhood. On the test matrices, 1-opt
-finds the apparent optimum only around a tenth of the time; most of the time it stalls at a 1-opt
-partition that's a couple of units away from optimal but that *no single swap can improve*. The
-improving move exists — it's just that getting to it requires swapping several pairs at once, and
-some of those individual swaps make the cut momentarily *worse* before the group as a whole pays off.
-A one-swap-at-a-time greedy procedure can never take that path, because it refuses the first
-worsening step. I could fix this by exchanging `λ` pairs at a time for some larger `λ`, but then I'm
-back to the fixed-knob disease: small `λ` is too weak, large `λ` makes each move expensive, and I
-have no way to know the right `λ` for a given instance before I run. Fixing `λ` up front feels
-exactly backwards. I'd like to escape the local minimum without committing to a depth in advance.
+How well does that actually do? The reported experience with fixed-`λ` interchange is the warning
+sign: on the test matrices, single-pair exchange (`λ = 1`) finds the apparent optimum only around a
+tenth of the time; most runs stall at a 1-opt partition a couple of units away from optimal. I want
+to understand *why* it stalls before I try to fix it, because the fix has to address the actual
+failure. The picture I have is that the improving move still exists at the stall point — it's just
+that reaching it requires swapping several pairs at once, and some of those individual swaps make the
+cut momentarily *worse* before the group as a whole pays off. A one-swap-at-a-time greedy procedure
+can never take that path: it refuses the first worsening step. If that diagnosis is right, the cure
+is some way to commit to a *group* of exchanges that nets out positive even when its members don't
+individually. I could just exchange `λ` pairs at a time for some larger `λ`, but then I'm back to the
+fixed-knob disease: small `λ` is too weak, large `λ` makes each move expensive, and I have no way to
+know the right `λ` for a given instance before I run. Fixing `λ` up front feels exactly backwards.
+I'd like the depth of the move to come out of the data, not be chosen in advance.
 
 Before I can design anything clever I need the bookkeeping to be clean, and the right place to start
 is: what does a *single* exchange actually cost me? Let me look hard at swapping one `a` for one `b`.
@@ -86,10 +88,22 @@ in cost from the exchange — is
 
     g = T − T' = (E_a − I_a) + (E_b − I_b) − 2·c(a,b).
 
-There it is, and it's clean. The factor of two on `c(a,b)` is the punchline of the double-count: the
-`a`–`b` edge swung from `−c(a,b)` to `+c(a,b)` as I went from `T` to `T'`, a net `2·c(a,b)` working
-against the swap — which makes sense, an `a`–`b` edge stays cut whether or not I exchange them, so
-swapping them can never relieve it and in fact charges me twice for it.
+The factor of two on `c(a,b)` is the residue of the double-count: the `a`–`b` edge swung from
+`−c(a,b)` to `+c(a,b)` as I went from `T` to `T'`, a net `2·c(a,b)` working against the swap — which
+makes sense, an `a`–`b` edge stays cut whether or not I exchange them, so swapping them can never
+relieve it and in fact charges me twice for it.
+
+I derived this by hand, and the double-count bookkeeping is exactly the kind of thing where a sign or
+a factor slips. So before I build anything on it, let me check it on a concrete instance instead of
+trusting the algebra. Take `2n = 12` nodes with random symmetric costs in `[0,5]`, the obvious
+balanced start `A = {0,…,5}`, `B = {6,…,11}`. On that instance, look at exchanging `a = 2`, `b = 8`.
+Computing the node sums directly: `E_2 = Σ_{y∈B} c(2,y)` and `I_2 = Σ_{x∈A} c(2,x)` give
+`E_2 − I_2 = 4`; for node 8, `E_8 − I_8 = 11`; and `c(2,8) = 0`. The formula then predicts a gain of
+`4 + 11 − 0 = 15`. The honest test is to ignore the formula and just recompute the whole cut both
+ways: with the original partition `T = Σ_{a∈A,b∈B} c(a,b)` and with the swapped partition
+`A' = A−{2}+{8}`, `B' = B−{8}+{2}`. Doing that brute-force re-sum, `T = 99` before and `T' = 84`
+after, an actual reduction of `15`. It matches. Good — the formula isn't just plausible, it computes
+the right number on a case I picked without engineering it.
 
 The quantity `E − I` keeps appearing, so let me name it. Define for every node `s` its **D-value**
 
@@ -101,32 +115,33 @@ holding it home, so moving it across would help. With this the gain of exchangin
 
     g = D_a + D_b − 2·c(a,b).
 
-This is the object I'll build everything on. To pick the single best exchange I compute all the
-`D`-values, then look for the pair `a ∈ A`, `b ∈ B` maximizing `D_a + D_b − 2·c(a,b)`. That's the
-1-opt step, now with a tidy formula instead of a brute re-evaluation of the whole cut for every
-candidate pair.
+So to pick the single best exchange I compute all the `D`-values, then look for the pair `a ∈ A`,
+`b ∈ B` maximizing `D_a + D_b − 2·c(a,b)`. That's the 1-opt step, now with a tidy formula instead of
+a brute re-evaluation of the whole cut for every candidate pair.
 
 But this still only gives me single exchanges, and I've already argued single exchanges stall. I
 want to chain several, and I want the depth to come out of the data rather than be fixed in advance.
 Suppose I do a *sequence* of exchanges. If I could compute each
 one's gain as if it were the only one, and the total reduction were just the sum of those gains,
 then I could reason about a *partial* chain of swaps — ask "would the first `k` of them, taken
-together, lower the cost?" — instead of only being able to evaluate fully-formed exchanges. The
-trick to making the sum honest is that each gain must be computed *against the partition as it stands
-after the earlier swaps in the chain*. So after I tentatively swap a pair, I have to update the
-`D`-values of everyone else to reflect that the two swapped nodes have changed sides — and then the
-next gain, computed with the updated `D`'s, slots additively onto the running total.
+together, lower the cost?" — instead of only being able to evaluate fully-formed exchanges. For the
+sum to be honest, each gain has to be computed *against the partition as it stands after the earlier
+swaps in the chain*. So after I tentatively swap a pair, I have to update the `D`-values of everyone
+else to reflect that the two swapped nodes have changed sides — and then the next gain, computed with
+the updated `D`'s, should slot additively onto the running total. Whether it really does slot
+additively is something I'll have to check, not assume; it's the load-bearing claim of the whole
+construction.
 
-Let me work out that update, because it's the engine of the whole thing. Say I've just set aside the
-pair `(a_i, b_i)` — conceptually moved `a_i` to the `B` side and `b_i` to the `A` side. Take some
-other node `x` still on the `A` side. How does its `D_x = E_x − I_x` change? Two of `x`'s edges are
-affected. The edge `(x, a_i)`: before, `a_i` was in `A`, so this edge was *internal* to `x` (counted
-in `I_x`); now `a_i` is in `B`, so the same edge is *external* (belongs in `E_x`). So it leaves `I_x`
-and joins `E_x`. Since `D = E − I`, an edge of weight `c(x,a_i)` moving from the `I` column to the
-`E` column raises `D_x` by `c(x,a_i)` from the `E` side *and* another `c(x,a_i)` from no longer being
-subtracted in `I` — a total of `2·c(x,a_i)`. The edge `(x, b_i)`: before, `b_i` was in `B`, so this
-edge was external (in `E_x`); now `b_i` is in `A`, so it's internal (in `I_x`). That moves a weight
-`c(x,b_i)` from `E` to `I`, lowering `D_x` by `2·c(x,b_i)`. So
+Let me work out that update first, because it's the engine of the whole thing. Say I've just set
+aside the pair `(a_i, b_i)` — conceptually moved `a_i` to the `B` side and `b_i` to the `A` side.
+Take some other node `x` still on the `A` side. How does its `D_x = E_x − I_x` change? Two of `x`'s
+edges are affected. The edge `(x, a_i)`: before, `a_i` was in `A`, so this edge was *internal* to `x`
+(counted in `I_x`); now `a_i` is in `B`, so the same edge is *external* (belongs in `E_x`). So it
+leaves `I_x` and joins `E_x`. Since `D = E − I`, an edge of weight `c(x,a_i)` moving from the `I`
+column to the `E` column raises `D_x` by `c(x,a_i)` from the `E` side *and* another `c(x,a_i)` from no
+longer being subtracted in `I` — a total of `2·c(x,a_i)`. The edge `(x, b_i)`: before, `b_i` was in
+`B`, so this edge was external (in `E_x`); now `b_i` is in `A`, so it's internal (in `I_x`). That
+moves a weight `c(x,b_i)` from `E` to `I`, lowering `D_x` by `2·c(x,b_i)`. So
 
     D'_x = D_x + 2·c(x, a_i) − 2·c(x, b_i),    for x ∈ A − {a_i},
 
@@ -137,6 +152,14 @@ internal→external (its own-side partner `b_i` left for `A`, raising `D_y` by `
 
     D'_y = D_y + 2·c(y, b_i) − 2·c(y, a_i),    for y ∈ B − {b_i}.
 
+This is again a hand-derived sign-juggling formula, so I'll test it the same way: on the same
+12-node instance, lock the pair `(2, 8)` and, for *every* surviving node, compare the `D'` the update
+rule predicts against the `D`-value recomputed from scratch on the actually-swapped partition. I run
+that comparison over all ten survivors. Every one matches — the predicted `D'_x` equals the
+brute-force `E_x − I_x` on the new partition for each `x ∈ A−{2}`, and likewise for each `y ∈ B−{8}`.
+So the update rule is right, and I can trust it to carry the `D`-values forward through a chain
+without re-summing the matrix each time.
+
 Now I have a procedure forming. Compute all `D`'s. Pick the pair `(a_1, b_1)` maximizing
 `g_1 = D_{a_1} + D_{b_1} − 2·c(a_1,b_1)` — the best single exchange available. Set that pair *aside*
 — don't actually commit to swapping it yet, just remove `a_1` and `b_1` from further contention this
@@ -146,31 +169,67 @@ pair among what's left, `(a_2, b_2)`, maximizing `g_2 = D'_{a_2} + D'_{b_2} − 
 them aside, update again, and keep going until every node has been paired off: I get a full sequence
 `(a_1,b_1), …, (a_n,b_n)` with gains `g_1, …, g_n`.
 
-Here's why setting each pair aside — locking it — matters and isn't just tidiness. Because each node
-is removed from contention the moment it's chosen, every node moves *at most once* across this whole
-sequence. That's what makes the gains genuinely additive and the bookkeeping a clean telescope: the
-swap of `(a_i, b_i)` is computed against a partition in which the earlier pairs have moved and the
-later pairs haven't, and since no node is touched twice, summing the gains exactly reconstructs the
-cost change of doing the whole prefix. It also guarantees the sequence terminates — there are only
-`n` pairs to use up.
+Why set each pair aside — lock it — rather than letting nodes be reused? Because each node is removed
+from contention the moment it's chosen, every node moves *at most once* across the whole sequence. My
+hope is that this is what makes the gains genuinely additive: the swap of `(a_i, b_i)` is computed
+against a partition in which the earlier pairs have moved and the later pairs haven't, and since no
+node is touched twice, summing the first `k` gains *should* equal the cost change of doing the whole
+prefix at once. It also guarantees the sequence terminates — there are only `n` pairs to use up. But
+"should equal" is exactly the additivity claim I flagged as load-bearing, and I haven't actually
+confirmed it yet; I'll come back to it once I have the full sequence in hand and can check the
+numbers.
 
-If I exchange the entire sequence — all `n` pairs — I've simply relabeled `A` and `B` into each
-other's complements in a way that returns the same partition structure, so the total `Σ_1^n g_i = 0`.
-That zero is actually informative: it tells me the gains can't all be positive (unless they're all
-zero); the sequence necessarily has negative `g_i`'s in it somewhere. So I am *not* going to swap the
-whole sequence. I'm going to swap a *prefix* of it.
+If I exchange the *entire* sequence — all `n` pairs — then every node of `A` has moved to `B` and
+every node of `B` to `A`, so I've just relabeled the two blocks into each other. The partition
+structure is identical (same cut), so the cost is unchanged, and therefore the gains over the whole
+sequence must sum to zero: `Σ_1^n g_i = 0`. That's a prediction I can test directly. On the 12-node
+instance, building the full sequence greedily gives pairs
+`(2,8), (3,11), (4,10), (0,6), (5,7), (1,9)` with gains
 
-This is the move that breaks out of the local minimum. Consider the partial sums
-`G_k = g_1 + g_2 + ⋯ + g_k`. Exchanging exactly the first `k` pairs — `X = {a_1,…,a_k}` for
-`Y = {b_1,…,b_k}` — produces a new balanced partition whose cost is lower than the start by exactly
-`G_k`. So I should choose the `k` that maximizes `G_k`. Crucially I do **not** stop the sequence at
-the first negative `g_i`. A greedy "halt when a swap stops paying" rule is exactly the 1-opt trap: it
+    g = [15, 18, −2, −12, −10, −9].
+
+Summing: `15 + 18 − 2 − 12 − 10 − 9 = 0`. It is exactly zero, as predicted — and as a second check I
+apply all six swaps to the start partition and recompute the cut from scratch: it comes back to `99`,
+the original value, with `A` and `B` simply traded (`A` ends as `{6,…,11}`, `B` as `{0,…,5}`). So the
+relabeling argument holds on a real instance, not just on paper.
+
+That zero is more than a sanity check — it's structurally informative. It tells me the gains can't all
+be positive unless they're all zero; a nonzero sequence necessarily contains negative `g_i`'s. (And
+indeed the example has three of them.) So exchanging the whole sequence is pointless — it's the
+identity. The useful thing must be to exchange a *prefix* of it. Consider the partial sums
+`G_k = g_1 + g_2 + ⋯ + g_k`. If the additivity I hoped for holds, then exchanging exactly the first
+`k` pairs produces a new balanced partition whose cost is lower than the start by exactly `G_k`. Let
+me verify additivity now, on the example, since it's the linchpin: the partial sums are
+`G = [15, 33, 31, 19, 9, 0]`, peaking at `k = 2` with `G_2 = 33`. So the rule says: actually swap the
+first two pairs, `{2,3}` for `{8,11}`, and the cut should drop by `33`, from `99` to `66`. Applying
+just those two swaps and recomputing the whole external cost from scratch: it comes out `66`. The
+prefix sum predicted the cut drop exactly. That's the additivity claim discharged — locking really
+does keep the gains summable.
+
+So I should choose the `k` that maximizes `G_k`, and crucially I must *not* stop the sequence at the
+first negative `g_i`. A greedy "halt when a swap stops paying" rule is exactly the 1-opt trap: it
 would refuse a step that loses a little even when that step sets up a later step that wins a lot. By
 building the *whole* sequence first and only then picking the best prefix, I let the running sum dip
-into the red and climb back out. If `G_k` is maximized at some `k` where the gains went
-`g_1 > 0`, `g_2 < 0`, `g_3 ≫ 0`, …, fine — I take that whole prefix. The temporary worsening at
-step 2 is the price of reaching the deep improvement at step 3, and the prefix-sum criterion is what
-lets me pay it.
+into the red and climb back out.
+
+Does that recovery ever actually happen, or is it a feature that never fires? In the 12-node instance
+above it happens not to matter — the best prefix `k = 2` sits before any negative gain, so on that
+particular instance the prefix rule and naive greedy agree. That's not a convincing demonstration, so
+let me find an instance where they diverge. Searching a handful of random matrices, here is one (a
+different seed, same `[0,5]` weights, same `n = 6` per side). The greedy pass produces gains
+
+    g = [3, −2, −3, 7, −2, −3],   partial sums  G = [3, 1, −2, 5, 3, 0].
+
+Now the running total genuinely dips below the starting partition: after three swaps it stands at
+`G_3 = −2`, i.e. the cut is *two worse* than where I began. A procedure that stopped the moment a
+swap stopped paying would halt after the very first pair (`g_2 < 0`), pocket a gain of `3`, and quit.
+But the fourth pair has `g_4 = 7`, and the partial sum climbs to `G_4 = 5` — the best prefix is
+`k = 4`. I check both against the actual cut: the start cut here is `84`; applying the best 4-pair
+prefix drops it to `79` (a gain of `5`), while the greedy "stop at first negative" rule applies only
+the first pair and reaches `81` (a gain of `3`). So the prefix criterion really does strictly beat
+the greedy stop on a concrete instance — it pays the temporary `−2` excursion to reach the
+deep `+7` improvement, and recovers two extra units of cut that the myopic rule leaves on the table.
+That is the escape-from-local-minimum mechanism, and now I've watched it work rather than asserted it.
 
 Let me pin down the loop. After computing the full sequence and its gains, find `k` maximizing
 `G = Σ_{i=1}^k g_i`. If `G > 0`, I've found a genuine improvement: actually perform the exchange of
@@ -187,7 +246,11 @@ unlocked pair, lock it, record its gain, update the `D`-values of the survivors;
 best-prefix `k`; if `G_k > 0` apply that prefix and start another pass, else declare the partition
 locally optimal. I'd expect the number of passes needed to be small, because each pass either makes a
 real dent or certifies a local optimum, and as the partition improves there is less left to gain, so
-the per-pass improvement should shrink toward zero quickly — something to confirm once it runs.
+the per-pass improvement should shrink toward zero — something to watch when it runs. On the 12-node
+instance it does exactly that: pass 1 cuts `99 → 66` with `G = 33`, and pass 2 builds a full sequence
+whose every prefix sum is `≤ 0` (best `G = 0`), certifying the partition `A = {0,1,4,5,8,11}`,
+`B = {2,3,6,7,9,10}` of cut `66` as locally optimal. Two passes, the second of which is purely a
+certificate. That's the convergence behavior I was hoping for, on at least this instance.
 
 Now, is this affordable? Let me count. Computing the initial `D`-values is an `n²` job: each of the
 `2n` nodes is compared against all the others. The updates across a pass cost
@@ -308,18 +371,28 @@ def kernighan_lin(cost, A, B):
             return A, B
 ```
 
+Running this on the 12-node instance I've been checking by hand reproduces exactly what I traced:
+start cut `99`, pass 1 selects prefix `k = 2` for a gain of `33` (cut `→ 66`), pass 2 returns
+`G = 0` and halts with cut `66`. The code's gains and partial sums per pass agree with the
+hand-computed `[15, 18, −2, −12, −10, −9]` and the `Σ = 0` identity, which is the cross-check I
+wanted between the implementation and the derivation.
+
 So the causal chain: the balance constraint is what makes the problem hard and what kills the elegant
 max-flow min-cut, so I'm in local search, and the smallest balance-preserving move is a pairwise
 exchange. Writing out the exact cost change of one exchange gives `g = D_a + D_b − 2·c(a,b)` with
-`D = E − I`, the marginal "wants to cross" value of a node and a clean factor-of-two for the shared
-edge. Single exchanges stall in 1-opt local minima, and fixing a depth `λ` in advance is the wrong
-knob, so instead I greedily pre-select a *whole sequence* of exchanges — locking each pair so every
-node moves at most once and the gains stay additive — recompute the `D`-values after each pick via
-`D'_x = D_x + 2c(x,a_i) − 2c(x,b_i)`, and then pick the *prefix* `k` that maximizes the cumulative
-sum `G_k`. Because I take the best prefix rather than stopping at the first negative gain, the running
-total can dip and recover, which is exactly how the procedure escapes a local minimum, and because
-`k` comes out of the data the depth is variable. Sorting the `D`-values and stopping the scan once
-`D_a + D_b` can't beat the best-so-far (valid since `c ≥ 0`) keeps a pass near `n² log n`, and a small
-number of passes makes the whole thing near `n²`. Dummy padding handles unequal sizes, high-cost
-clustering handles unequal node weights, and cycling the two-way exchange over all pairs of subsets
-handles `k`-way partitions.
+`D = E − I` (checked against a brute-force cut recomputation: predicted `15`, actual `15`), the
+marginal "wants to cross" value of a node and a clean factor-of-two for the shared edge. Single
+exchanges stall in 1-opt local minima, and fixing a depth `λ` in advance is the wrong knob, so
+instead I greedily pre-select a *whole sequence* of exchanges — locking each pair so every node moves
+at most once and the gains stay additive (checked: the `k = 2` prefix sum `33` equals the actual cut
+drop `99 → 66`) — recompute the `D`-values after each pick via
+`D'_x = D_x + 2c(x,a_i) − 2c(x,b_i)` (checked against brute-force `D` recomputation for every
+survivor), and then pick the *prefix* `k` that maximizes the cumulative sum `G_k`. Because I take the
+best prefix rather than stopping at the first negative gain, the running total can dip and recover —
+which I confirmed on a separate instance where the sum fell to `−2` before climbing to `+5`, beating
+the myopic stop-at-first-negative rule `79` vs `81` — and that recovery is how the procedure escapes
+a local minimum; and because `k` comes out of the data the depth is variable. Sorting the `D`-values
+and stopping the scan once `D_a + D_b` can't beat the best-so-far (valid since `c ≥ 0`) keeps a pass
+near `n² log n`, and a small number of passes makes the whole thing near `n²`. Dummy padding handles
+unequal sizes, high-cost clustering handles unequal node weights, and cycling the two-way exchange
+over all pairs of subsets handles `k`-way partitions.

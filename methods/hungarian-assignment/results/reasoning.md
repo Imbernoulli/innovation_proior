@@ -53,8 +53,13 @@ when I maximize a linear function over this polytope, the optimum is attained at
 vertices *are* permutation matrices. There's no fractional trap: the LP optimum is automatically an
 honest assignment. (The same fact in constraint-matrix language: the bipartite row/column incidence
 matrix is totally unimodular, so every vertex of the polytope has integer coordinates, and with unit
-right-hand sides those integers are `0`/`1`.) Good — so an optimal budget whose tight pairs carry a
-full assignment must exist. I just have to construct the pair.
+right-hand sides those integers are `0`/`1`.) So at least the thing I'm hunting for isn't a mirage —
+the optimal primal is a permutation and the optimal dual is some `(u, v)`, and at their common
+optimum weak duality is met with equality, which forces every chosen pair tight. That's an existence
+statement, but it doesn't hand me the pair. What I actually need is a *procedure* that walks from
+some easy starting budget to a budget-and-assignment that meet, and the real content will be proving
+that procedure terminates. So let me try to build one, and watch for where it could fail to make
+progress.
 
 So let me deliberately strip the problem down to its bones and solve the easiest possible version
 first, because if I can't handle that I can't handle anything. Suppose every rating is just `0` or
@@ -329,12 +334,73 @@ def hungarian_matrix(cost):
                 if covered_cols[j]:     a[i][j] += d
 ```
 
-Let me sanity-check the whole chain on a small maximization and against brute force. For a
-maximization with rating matrix `R`, I flip signs (`cost = −R`) and minimize, then negate the total
-back. Take `R = [[8,7,9,9],[5,2,7,8],[5,1,4,8],[2,2,2,6]]`: both forms return the assignment
-`(1→1, 2→3, 3→4, 4→2)` with rating sum `8 + 7 + 8 + 2 = 25`, and a full permutation enumeration on
-this `4 × 4` agrees that `25` is the maximum. Running both forms against brute force on a few hundred
-random small integer matrices, the optimal cost matches every time.
+Before I trust any of this I want to run the tableau form by hand on a concrete instance — not to
+admire the answer but because I half-expect to find that one König cover and one update isn't enough,
+and I'd like to see how many rounds it actually takes and whether the dual certificate it leaves
+behind really equals the cost. For a maximization with rating matrix `R`, I flip signs (`cost = −R`)
+and minimize, then negate the total back. Take
+
+    R = [[8,7,9,9],[5,2,7,8],[5,1,4,8],[2,2,2,6]],  so neg = −R = [[-8,-7,-9,-9],
+                                                                    [-5,-2,-7,-8],
+                                                                    [-5,-1,-4,-8],
+                                                                    [-2,-2,-2,-6]].
+
+Row-reduce first: the row minima are `−9, −8, −8, −6`, and subtracting each off its row gives
+
+    [[1,2,0,0],[3,6,1,0],[3,7,4,0],[4,4,4,0]].
+
+Now column-reduce: the column minima are `1, 2, 0, 0`, so subtracting those off the columns gives the
+reduced tableau
+
+    a = [[0,0,0,0],[2,4,1,0],[2,5,4,0],[3,2,4,0]].
+
+The zeros are the tight pairs. Try to place four independent zeros. Row 0 has zeros all across;
+column 3 is the only zero in rows 1, 2, 3. So however I match, rows 1, 2, 3 all compete for the
+single zero in column 3 — at most one of them can be placed there, and row 0 takes one more zero, so
+the maximum matching on the zeros has just **2** edges (say `0→0, 1→3`), not 4. The reduction alone
+did not solve it — exactly the "fewer than `n`" case where I need the König cover and a dual update.
+Good, this is the interesting branch and not a triviality.
+
+König's cover here: start the alternating search from the exposed rows `2` and `3`. From row 2 the
+only zero is column 3, mark column 3; column 3 is matched to row 1, so mark row 1; from row 1 the
+only zeros are column 3 (already marked); the search stalls. The reachable set is rows `{1,2,3}` and
+column `{3}`. The cover is *unmarked rows ∪ marked columns* `= {row 0} ∪ {column 3}` — two lines,
+which equals the matching size of 2, just as König promises. The uncovered block is rows `{1,2,3}` ×
+columns `{0,1,2}`, with entries `[[2,4,1],[2,5,4],[3,2,4]]`; the smallest is `d = 1` (at `(1,2)`).
+Update: subtract `1` from the three uncovered rows, add `1` to the one covered column (column 3):
+
+    a → [[0,0,0,1],[1,3,0,0],[1,4,3,0],[2,1,3,0]].
+
+A new zero has appeared at `(1,2)` exactly where the minimum was, and everything is still `≥ 0`. Match
+again: now row 1 can take column 2, freeing column 3 for row 2 — I get `0→0, 1→2, 2→3` — but row 3's
+only zero is still column 3, already taken. Maximum matching is **3**, still short. So the single
+update did *not* finish it; this needs a second round, which is the thing I wanted to check. Cover
+again: exposed row is `3`; from row 3 mark column 3; column 3 matched to row 2, mark row 2; from row 2
+the only zero is column 3; stall. Reachable rows `{2,3}`, column `{3}`; cover `= {rows 0,1} ∪ {col 3}`,
+three lines `=` matching size 3. Uncovered block rows `{2,3}` × columns `{0,1,2}` is `[[1,4,3],[2,1,3]]`,
+minimum `d = 1`. Subtract `1` off rows 2, 3 and add `1` to column 3:
+
+    a → [[0,0,0,2],[1,3,0,1],[0,3,2,0],[1,0,2,0]].
+
+Match a third time: row 0 → col 0, row 1 → col 2, row 2 → col 3, row 3 → col 1 — four independent
+zeros, a perfect matching. So the assignment is `(0→0, 1→2, 2→3, 3→1)`, i.e. in 1-based terms
+`1→1, 2→3, 3→4, 4→2`, with rating sum `R[0][0]+R[1][2]+R[2][3]+R[3][1] = 8 + 7 + 8 + 2 = 25`.
+
+Now the part I actually care about: does the dual certificate it leaves behind meet the cost? The
+duals are the total amounts reduced off each row and column over the whole run. Rows lost
+`−9, −8, −8, −6` in the first reduction and then rows 1, 2, 3 each lost a further `1` in round one and
+rows 2, 3 a further `1` in round two, giving `u = (−9, −7, −6, −4)`. Columns lost `1, 2, 0, 0` in the
+column reduction, and column 3 gained `1` in each of the two updates, giving `v = (1, 2, 0, −2)`. Then
+`Σu + Σv = (−9−7−6−4) + (1+2+0−2) = −26 + 1 = −25`, which is exactly the cost of the assignment in the
+minimization (`neg[0][0]+neg[1][2]+neg[2][3]+neg[3][1] = −8−7−8−2 = −25`). The bound is met with
+equality — so the assignment is certified optimal without enumerating permutations. And on each
+chosen cell the budget is tight: `u_0+v_0 = −9+1 = −8 = neg_{00}`, `u_1+v_2 = −7+0 = −7 = neg_{12}`,
+`u_2+v_3 = −6−2 = −8 = neg_{23}`, `u_3+v_1 = −4+2 = −2 = neg_{31}`. That is complementary slackness,
+verified cell by cell, not assumed. A full permutation enumeration on this `4 × 4` independently
+returns the same value `25`, so the certificate isn't fooling me. The trace took two cover-and-update
+rounds, which is the reassuring part: it confirms the loop isn't a formality — the reduction left real
+work, and the dual updates are what closed the gap. Running both forms against brute force on a few
+hundred random small integer matrices, the optimal cost matches every time (`0` mismatches).
 
 ```python
 def brute_force(cost):

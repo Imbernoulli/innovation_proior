@@ -1,4 +1,4 @@
-Let me start from the pain. I want 2-, 3-, 4-bit weights and activations and I want to keep full-precision accuracy. At so few bits there are only a handful of representable levels per layer, so *where* those levels land matters enormously, and where they land is set entirely by one number per layer: the step size s. Pick s too small and I clip away the tails; too large and I waste my precious few levels on coarse spacing. So the real question is how to *set s per layer*, and the honest answer is: don't set it by hand or by some fixed statistic — *learn* it, jointly with the weights, against the actual task loss. A per-layer scalar that the network tunes to minimize what I actually care about.
+Let me start from the pain. I want 2-, 3-, 4-bit weights and activations and I want to keep full-precision accuracy. At so few bits there are only a handful of representable levels per layer, so *where* those levels land matters enormously, and where they land is set entirely by one number per layer: the step size s. Pick s too small and I clip away the tails; too large and I waste my precious few levels on coarse spacing. So the real question is how to *set s per layer*. The usual answers are to fix it by hand or from a statistic of the data — but those pick s to fit the *distribution* of v, not to minimize the *task loss*, which is what I actually care about and which couples across layers. So the option I want to chase is: make s a per-layer scalar parameter and let SGD tune it against the loss, jointly with the weights. The whole question is then whether I can give that scalar a usable gradient.
 
 The obstacle is immediate. The quantizer is
 
@@ -6,7 +6,7 @@ The obstacle is immediate. The quantizer is
 v̄ = round( clip(v/s, −Q_N, Q_P) ),   v̂ = v̄ · s.
 ```
 
-with Q_N = 0, Q_P = 2^b − 1 for unsigned activations and Q_N = 2^{b−1}, Q_P = 2^{b−1} − 1 for signed weights. The round is flat almost everywhere, so the path from s through v/s into the integer code has zero ordinary derivative almost everywhere; ordinary backprop can see the final multiply by s, but it misses how s moves values toward or away from bin transitions. Standard move for the round itself: straight-through estimator — pretend the round is identity on the backward pass, ∂round(z)/∂z = 1. Fine. But I have to be careful: STE applies to the round *node*, while the *rest* of the expression — the divide by s, the clip, the multiply by s — I should differentiate honestly. People who tried to learn a clip parameter before me cut corners here, and it cost them, so let me actually do the calculus.
+with Q_N = 0, Q_P = 2^b − 1 for unsigned activations and Q_N = 2^{b−1}, Q_P = 2^{b−1} − 1 for signed weights. The round is flat almost everywhere, so the path from s through v/s into the integer code has zero ordinary derivative almost everywhere; ordinary backprop can see the final multiply by s, but it misses how s moves values toward or away from bin transitions. Standard move for the round itself: straight-through estimator — pretend the round is identity on the backward pass, ∂round(z)/∂z = 1. Fine. But I have to be careful about *where* I apply that approximation: STE applies to the round *node*, while the *rest* of the expression — the divide by s, the clip, the multiply by s — I should differentiate honestly. People who tried to learn a clip parameter before me approximated more aggressively than that, so let me just do the calculus and see what the honest derivative is.
 
 Take the interior region first, where −Q_N < v/s < Q_P so the clip is inactive. Then
 
@@ -34,67 +34,81 @@ The clipped regions are simpler. If v/s ≤ −Q_N, the clip pins the argument a
               ⎩  Q_P,                if v/s ≥ Q_P.
 ```
 
-Let me stare at the interior branch, −v/s + round(v/s), because this is where the payoff is. Write z = v/s, n = round(z), and r = z − n, with r sitting between about −1/2 and 1/2 under the rounding tie convention. The quantization levels are at the integers; the bin transitions are at the half-integers, where |r| is largest. Then −v/s + round(v/s) = −z + n = −r. So in the interior, ∂v̂/∂s is the negative signed residual between z and the integer level it rounds to. The gradient to the step size is large in magnitude exactly when z sits near a transition between bins, and it goes to zero when z sits right on a level. That's the behavior I want, and it's the behavior the prior methods lacked: a value near a transition is the one most likely to jump to a different integer code under a small change in s (a smaller nudge to s flips it), which produces a large jump in v̂ — so its gradient to s should be large. The earlier clip-learning approaches either zeroed this interior gradient out entirely (cancel-the-round trick → ∂v̂/∂s = 0 inside the range) or made the gradient depend only on distance to the *clip* points, blind to the interior transitions. Here the right sensitivity falls straight out of just doing the STE honestly on the round and the calculus honestly on everything else. Nothing exotic — I just didn't cancel the term they cancelled.
+I derived this by hand under an STE approximation, so before I read anything into it I want to confirm the autograd implementation I'll actually ship reproduces these three branches. I build the quantizer with a straight-through round (`roundpass(x) = round(x)` forward, gradient 1 backward) and let the framework differentiate v̂ w.r.t. s. Take signed 3-bit weights, Q_N = 4, Q_P = 3, s = 1, and feed in a few values of v spanning interior and both clipped sides. The autograd ∂v̂/∂s comes out: v = 1.30 → −0.300, v = 0.30 → −0.300, v = −2.20 → +0.200, v = 2.60 → +0.400, v = 3.40 → +3.000 (= Q_P), v = −5.00 → −4.000 (= −Q_N). Each matches the branch above: interior gives −v/s + round(v/s) and the two clipped points give exactly Q_P and −Q_N. So the hand derivation and the code agree.
 
-I also need the gradient to flow to the *data* v for training the weights/activations, same STE on the round:
+Now let me stare at the interior branch, −v/s + round(v/s), because the two clipped branches are just constants and this is the only one that carries information about the data. Write z = v/s, n = round(z), and r = z − n, with r sitting between about −1/2 and 1/2 under the rounding tie convention. The quantization levels are at the integers; the bin transitions are at the half-integers, where |r| is largest. Then −v/s + round(v/s) = −z + n = −r. So in the interior, ∂v̂/∂s is the negative signed residual between z and the integer level it rounds to.
+
+I want to see what that residual does as z sweeps across a bin, so let me tabulate −z + round(z) over one cell. z = 1.00 → 0.000; z = 1.10 → −0.100; z = 1.30 → −0.300; z = 1.49 → −0.490; z = 1.51 → +0.490; z = 1.70 → +0.300; z = 2.00 → 0.000. So the step-size gradient is exactly zero when z sits on a level (z = 1, z = 2), grows in magnitude as z moves toward the bin boundary, peaks near ±0.49 at the transition (z = 1.49/1.51), and flips sign as z crosses from one integer's basin to the next. That is the behavior I'd want from a sensitivity to s: a value near a transition is the one most likely to jump to a different integer code under a small change in s — a smaller nudge to s flips it — which produces a discrete jump in v̂, so its gradient to s should be large; a value already on a level is insensitive, so its gradient should vanish. The earlier clip-learning approaches lose this: approximating the round away inside the range cancels exactly this term and zeros the interior gradient, or a gradient defined only by distance to the *clip* points is blind to where z sits relative to interior transitions. The interior sensitivity here is just what the calculus produces once the round is the only thing I approximate — I didn't have to design it in.
+
+I also need the gradient to flow to the *data* v for training the weights/activations, same STE on the round. Inside the range ∂v̂/∂v = (∂/∂v) round(v/s)·s ≈ (∂/∂v)(v/s)·s = 1; outside the range v̂ is constant in v (pinned to ±Q_N·s or Q_P·s), so the derivative is 0:
 
 ```
-∂v̂/∂v = 1 if −Q_N < v/s < Q_P, else 0,
+∂v̂/∂v = 1 if −Q_N < v/s < Q_P, else 0.
 ```
 
-i.e. identity inside the range, killed outside (clipped values get no gradient). And I'll keep fp32 shadow weights, quantize in forward/backward, accumulate updates on the fp32 copy — the usual quantization-aware training setup.
+The same autograd run confirms it: for the interior v's above the data gradient is 1.00, and for the two clipped v's (3.40, −5.00) it is 0.00 — clipped values get no gradient, which is correct since moving them does not move the output. And I'll keep fp32 shadow weights, quantize in forward/backward, accumulate updates on the fp32 copy — the usual quantization-aware training setup.
 
-Before SGD can refine s, I still need a starting value that lands the levels roughly where the data lives. A simple, scale-aware choice is to set s so that the typical magnitude of v maps to around the middle-ish of the available positive range: s = 2⟨|v|⟩ / √Q_P, computed from the initial weights for a weight layer or the first batch for an activation layer. The √Q_P denominator says: more levels implies a finer step and a smaller s, which is the right direction. Good enough as a start; the point is s is then *learned*.
+Before SGD can refine s, I still need a starting value that lands the levels roughly where the data lives. A simple, scale-aware choice is to set s so that the typical magnitude of v maps to around the middle-ish of the available positive range: s = 2⟨|v|⟩ / √Q_P, computed from the initial weights for a weight layer or the first batch for an activation layer. The √Q_P denominator says: more levels implies a finer step and a smaller s, which is the right direction. It only has to put the levels in the rough vicinity of the data; s is then learned from there.
 
-If I stop here, there's a problem I should anticipate before it bites me. I have one scalar s per layer being optimized by the same SGD, same global learning rate, as millions of weights. There's a known principle that training behaves well when, *across layers*, the ratio of average update magnitude to average parameter magnitude is about the same — if some parameter gets updates that are huge relative to its own size it overshoots, if tiny it stalls. So I'd like each step size's (update magnitude)/(parameter magnitude) to sit in the same band as the weights'. Let me check whether it does, by estimating the ratio
+There is one thing about this setup that worries me before I commit to it. I now have one scalar s per layer being optimized by the same SGD, same single global learning rate, as the millions of weights in that layer. A scalar and a high-dimensional vector trained by one learning rate is exactly the kind of mismatch that goes wrong quietly. There's a known principle (from the LARS line of work) that training behaves well when, *across* parameters, the ratio of average update magnitude to average parameter magnitude is roughly the same — if some parameter gets updates that are huge relative to its own size it overshoots, if tiny it stalls. So the thing I should check is whether s's (update/parameter) ratio sits in the same band as the weights'. Define the imbalance
 
 ```
 R = (∇_s L / s) / (‖∇_w L‖ / ‖w‖).
 ```
 
-If R ≈ 1, s and w are balanced and a single learning rate serves both. If R is far from 1, s will be mis-trained relative to the weights. Let me actually estimate R, because I bet it's not 1.
+If R ≈ 1, s and w are balanced and a single learning rate serves both; if R is far from 1, s is being mis-trained relative to the weights. I'd rather not guess the answer, so let me get a back-of-envelope prediction and then actually measure R numerically.
 
-First ‖w‖ / s. For a layer of N_W weights, an L2 norm grows like √(number of elements), so ‖w‖ ∝ √N_W times a typical weight magnitude. And what's s relative to the typical weight magnitude? Anchor at Q_P = 1: with a single positive level, s should be about the average weight magnitude, to split the distribution into zero / non-zero roughly evenly. For larger Q_P, I argued s should shrink like √(1/Q_P) (more levels, finer step, clip points sQ_P move out to catch outliers). So typical weight magnitude ≈ s·√Q_P, giving
-
-```
-‖w‖ / s ≈ √N_W · √Q_P = √(N_W Q_P).
-```
-
-For the gradient norms, the chain rule gives
-
-```
-∇_s L = Σ_{i=1}^{N_W} (∂L/∂ŵ_i)(∂ŵ_i/∂s).
-```
-
-The factor ∂ŵ_i/∂s is the residual branch above for unclipped weights, and the clip endpoint for clipped weights. For this scaling estimate I do not need its exact distribution; I need the fact that it contributes a per-element factor rather than a new sum over weights. Treat that factor's squared magnitude as a constant in the same heuristic sense used for the layer-norm estimate, and treat the ∂L/∂ŵ_i as uncorrelated, zero-mean random variables. Then the sum of N_W such terms has
-
-```
-E[(∇_s L)²] ≈ N_W · E[(∂L/∂ŵ)²].
-```
-
-For the weight-gradient norm, with ∂ŵ/∂w ≈ 1 for most (unclipped) weights,
-
-```
-E[‖∇_w L‖²] ≈ N_W · E[(∂L/∂ŵ)²].
-```
-
-Same right-hand side. So ∇_s L (a single scalar) and ‖∇_w L‖ (a norm over N_W weights) are of the *same order* — both ≈ √(N_W · E[(∂L/∂ŵ)²]). The numerator of R is ∇_s L / s and the denominator is ‖∇_w L‖ / ‖w‖, so
+First the prediction. Numerator and denominator separately. For ‖w‖/s: an L2 norm of N_W weights grows like √N_W times a typical weight magnitude, and from the init reasoning the typical weight magnitude is about s·√Q_P (s splits the distribution sensibly at Q_P = 1, and shrinks like 1/√Q_P as levels are added), so ‖w‖/s ≈ √(N_W Q_P). For the gradient norms: by the chain rule ∇_s L = Σ_i (∂L/∂ŵ_i)(∂ŵ_i/∂s), a single scalar built from a sum of N_W per-weight terms; if the ∂L/∂ŵ_i are treated as uncorrelated zero-mean and ∂ŵ_i/∂s contributes a per-element factor of order one (the residual branch), then E[(∇_s L)²] ≈ N_W·E[(∂L/∂ŵ)²]. The weight-gradient norm, with ∂ŵ/∂w ≈ 1 for unclipped weights, has E[‖∇_w L‖²] ≈ N_W·E[(∂L/∂ŵ)²] — the same right-hand side. So ∇_s L and ‖∇_w L‖ are of the same order, the two cancel, and the prediction is
 
 ```
 R ≈ (∇_s L / s) · (‖w‖ / ‖∇_w L‖) ≈ 1 · (‖w‖/s) ≈ √(N_W Q_P).
 ```
 
-There it is — R is not 1, it scales like √(N_W Q_P), and it grows with both layer width and precision. The step-size update is too large relative to its magnitude by roughly that factor in this estimate: bigger layers and higher precision make it worse. So s will be over-driven and training destabilized, and the bigger the layer the more so.
+This rests on two heuristic approximations (treating the per-weight gradients as uncorrelated, and the ∂ŵ/∂s factor as O(1)), so I trust the *functional form* more than the constant out front. Let me put a number on it. I draw weights ~ N(0,1), set s = 2⟨|w|⟩/√Q_P, push them through the STE quantizer with a random zero-mean upstream gradient, and read off R from autograd, averaging over many draws. For 3-bit weights (Q_P = 3), sweeping the layer size:
 
-The fix is to cancel the imbalance directly: scale the gradient to s by g = 1/R = 1/√(N_W Q_P) for weight step sizes. For activations, the relevant count is the number of features N_F in the layer (assuming a preceding batch-norm whose learned scale is the main driver of pre-quantization activation changes, the same √(N_F Q_P) imbalance appears), so g = 1/√(N_F Q_P). Multiply the step-size gradient by g and the expected (update/parameter) scale for s is brought into line with the weights, so one learning rate can train everyone.
+```
+N_W      measured R     √(N_W·Q_P)
+   64        2.40          13.86
+  256        4.10          27.71
+ 1024        8.71          55.43
+ 4096       19.56         110.85
+16384       39.69         221.70
+```
 
-How do I inject a gradient *scale* g cleanly, without touching the forward value of s? The detach trick. Define
+Two things jump out. The good news: each 4× in N_W multiplies measured R by very close to 2 (2.40 → 4.10 → 8.71 → 19.56 → 39.69), so R really does scale like √N_W — the layer-size dependence of the prediction is right. The caveat: the absolute value is not √(N_W·Q_P); measured R is about 0.16× the predicted value, fairly consistently. So my back-of-envelope got the *power* right and the *constant* wrong by ~6×, which is exactly what I'd expect from the uncorrelated/O(1) approximations. That's fine for what I need — I'm going to absorb the constant into the learning rate anyway — but I should also confirm the Q_P part of the scaling, not just N_W, since I asserted √(N_W·Q_P) and only swept N_W. Fixing N_W = 4096 and varying bits:
+
+```
+bits  Q_P     R       R/√N_W    √Q_P
+  2     1   11.11     0.174     1.000
+  3     3   20.21     0.316     1.732
+  4     7   26.29     0.411     2.646
+  8   127   92.34     1.443    11.269
+```
+
+R/√N_W tracks √Q_P across a 127× range of Q_P (0.174/1.000, 0.316/1.732, 0.411/2.646, 1.443/11.269 ≈ 0.17, 0.18, 0.16, 0.13 — roughly constant), so the full √(N_W·Q_P) form holds, prefactor ≈ 0.16. So R is genuinely *not* 1; it grows like √(N_W·Q_P), worse for wider layers and higher precision. Left alone, s is over-driven relative to its magnitude by that factor and training is destabilized, the more so the bigger the layer — which is a real problem precisely on the big high-precision layers I care about.
+
+The fix is to cancel the imbalance directly: scale the gradient to s by g = 1/R. Since the constant is going to be swallowed by the learning rate, I take g = 1/√(N_W Q_P) for weight step sizes — the part of R that varies across layers. For activations, the relevant count is the number of features N_F in the layer (with a preceding batch-norm whose learned scale is the main driver of pre-quantization activation changes, the same √(N_F Q_P) imbalance argument applies), so g = 1/√(N_F Q_P).
+
+I should check this actually does what I want — flatten R across layers — rather than assume the algebra carries over to the STE quantizer. Rerunning the same Monte Carlo with the gradient to s multiplied by g = 1/√(N_W·Q_P), at 3-bit:
+
+```
+N_W      R (with gradscale)
+   64        0.167
+  256        0.152
+ 1024        0.185
+ 4096        0.148
+16384        0.155
+```
+
+R is now flat at ≈ 0.16 from N_W = 64 to 16384 — a 256× span over which the uncorrected R had climbed from 2.4 to 39.7. The leftover constant ≈ 0.16 is the same across all layers, so a single learning rate (the constant rescaled once) trains every step size in balance with its weights. That is the property I was after, and the numbers say the correction delivers it.
+
+Now, how do I inject a gradient *scale* g cleanly, without touching the forward value of s? A `detach`-style op — identity forward, gradient blocked backward — lets me do it. Define
 
 ```
 gradscale(x, g) = detach(x − g·x) + g·x.
 ```
 
-Forward: detach is identity, so this is (x − g·x) + g·x = x — s is unchanged. Backward: detach blocks gradient through its argument, so ∂/∂x flows only through the +g·x branch and arrives scaled by g. Exactly a transparent gradient multiplier. The round STE I get the same way: roundpass(x) = detach(round(x) − x) + x — forward rounds, backward passes gradient = 1 (the round(x) − x is detached). Two custom-gradient ops, both built from one detach primitive.
+Forward: detach is identity, so this is (x − g·x) + g·x = x — s is unchanged. Backward: detach blocks gradient through its argument, so ∂/∂x flows only through the +g·x branch and arrives scaled by g. I check it on the framework: `gradscale(2.5, 0.07)` returns 2.5 in the forward pass and its backward gradient to the input is 0.07 = g. The round STE comes from the same primitive: roundpass(x) = detach(round(x) − x) + x — forward rounds, backward passes gradient = 1 (the round(x) − x is detached); checking, `roundpass(1.27)` returns 1.0 forward with backward gradient 1.0. Two custom-gradient ops, both built from one detach primitive.
 
 The remaining training setup follows the usual quantized-network path: use quantized weights and activations in forward/backward passes, store and update full-precision weights, quantize all matrix-multiplication layers except the first and last, keep those first and last layers at 8-bit, represent other model parameters in fp32, initialize from a trained full-precision model, and fine-tune in the quantized space with momentum SGD, cross-entropy, and cosine learning-rate decay.
 
@@ -155,4 +169,4 @@ class QuantLayer(nn.Module):
         return quantize(v, self.s, self.bits, self.is_activation)
 ```
 
-So the causal chain: at 2–4 bits the quantizer knob that controls level placement is the per-layer step size, so make it a trained parameter; the round blocks the bin-transition path, so apply STE to the round but differentiate the divide/clip/multiply honestly — and the interior branch −v/s + round(v/s) drops out, giving exactly the missing sensitivity-to-transitions that prior clip-learners lacked; then, checking the update/parameter balance, the step-size gradient imbalance scales like √(N·Q_P), so divide by that — g = 1/√(N_W Q_P) for weights, 1/√(N_F Q_P) for activations — and inject g and the round-STE through a single detach-based gradient trick; initialize s ≈ 2⟨|v|⟩/√Q_P and fine-tune from a pretrained full-precision model.
+Looking back at the chain that got me here: at 2–4 bits the quantizer knob that controls level placement is the per-layer step size, so I made it a trained parameter; the round blocks the bin-transition path, so I applied STE to the round but differentiated the divide/clip/multiply honestly, and the interior branch −v/s + round(v/s) dropped out — verified against autograd, zero on a level and ±0.49 at a transition — giving the sensitivity-to-transitions the prior clip-learners had cancelled away. Then a balance check turned up a real problem: the step-size update is over-driven relative to its magnitude by a factor that the Monte Carlo confirmed scales like √(N·Q_P), so I divide the step-size gradient by exactly that — g = 1/√(N_W Q_P) for weights, 1/√(N_F Q_P) for activations, the correction measured to flatten R across a 256× range of layer sizes — and inject g and the round-STE through a single detach-based gradient trick. Initialize s ≈ 2⟨|v|⟩/√Q_P and fine-tune from a pretrained full-precision model.

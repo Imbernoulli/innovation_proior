@@ -16,32 +16,59 @@ and 2-regular. The cheap things I know how to compute are the ones where I've dr
 constraint. Drop "2-regular" entirely and I'm left with "connected spanning subgraph," whose
 minimum is a minimum spanning tree — and I can get that greedily in polynomial time. A tour
 contains a spanning tree (delete any one edge of the cycle), so the minimum spanning tree weight
-is `≤` the minimum tour weight. There's my lower bound. But it's loose: a tree is free to dump
-many edges onto a few hub vertices, nothing pushes it toward looking like a cycle.
+is `≤` the minimum tour weight. There's a lower bound. But I suspect it's loose: a tree is free to
+dump many edges onto a few hub vertices, nothing pushes it toward looking like a cycle.
 
 Let me not throw away the tour's structure quite so violently. A tour has `n` edges; a spanning
 tree has `n−1`. The difference is exactly one edge. So instead of a plain tree, take a spanning
 tree on the vertices `{2, 3, …, n}` and then attach vertex `1` back with its two cheapest edges.
 Call that a 1-tree: a tree on `{2,…,n}`, plus two distinct edges at vertex 1. It has `n` edges
 like a tour, it's still trivially cheap (one MST on `n−1` vertices, plus pick the two smallest
-edges at vertex 1), and here's the clean part — a tour is *precisely* a 1-tree in which every
-vertex has degree 2. So every tour is a 1-tree, which means the minimum-weight 1-tree costs no
-more than the minimum tour: `min-1-tree ≤ C*`. And a bonus I should keep in my pocket: if the
-minimum 1-tree happens to come out with all degrees 2, it *is* a tour, and then it's the optimum
-tour. Nice. But generically it won't — some vertex will have degree 3 or more and some will hang
-off with degree 1. The bound is still loose. I need a way to *tighten* it without actually
+edges at vertex 1). And a tour is a 1-tree in which every vertex has degree 2 — delete one edge
+of vertex 1 from the tour and what remains is a tree on `{2,…,n}` (a connected, `n−1`-edge,
+`n−1`-vertex graph), with vertex 1 hanging off by its two original tour edges. So every tour is a
+1-tree, which means the minimum-weight 1-tree costs no more than the minimum tour:
+`min-1-tree ≤ C*`. And a bonus I should keep in my pocket: if the minimum 1-tree happens to come
+out with all degrees 2, it satisfies the tour definition, so it *is* a tour, and being the
+cheapest 1-tree it's then the optimum tour.
+
+Before I trust any of this, let me actually run a tiny instance and see how loose the plain
+1-tree really is, because the whole investment depends on the gap being worth closing. Take five
+points in the unit square (a fixed pseudorandom draw) with Euclidean costs:
+
+```
+      0       1       2       3       4
+0   0.0000  0.6476  0.6667  0.4607  0.6718
+1   0.6476  0.0000  1.1831  0.9101  1.0471
+2   0.6667  1.1831  0.0000  0.2762  0.2706
+3   0.4607  0.9101  0.2762  0.0000  0.2150
+4   0.6718  1.0471  0.2706  0.2150  0.0000
+```
+
+Brute-forcing all `4! = 24` tours through these five cities, the optimum is the tour
+`0–1–4–2–3–0` at cost `C* = 2.7021`. Now the minimum 1-tree on raw costs (MST on `{0,1,2,3}` —
+I'll let vertex 4 play the role of the special vertex — plus vertex 4's two cheapest edges): its
+cost comes out `1.8700`, with degree sequence `[2, 1, 2, 3, 2]`. So the plain bound is `1.87`
+against an optimum of `2.70`: a gap of `0.83`, about 31% low. That is exactly as loose as I
+feared, and the degree sequence tells me *why* — vertex 3 has degree 3 (the tree dumped edges on
+it) and vertex 1 has degree 1 (starved). Neither of those is allowed in a tour. I need a way to
+push degree-3 vertices down and degree-1 vertices up, and to *tighten* the bound, without actually
 solving the TSP.
 
 Suppose I add a number `π_i` to "every edge touching vertex `i`."
 Concretely, replace `c_ij` by `c_ij + π_i + π_j`. What does that do to a *tour*? In a tour every
 vertex has degree exactly 2, so the total added cost is `Σ_i π_i · (degree of i) = Σ_i 2π_i = 2Σπ_i`
-— the *same constant* for every tour. So the perturbation shifts every tour's cost by the same
-`2Σπ_i`; the argmin tour doesn't move; the TSP is invariant under `c_ij → c_ij + π_i + π_j`. But
-what does it do to a *1-tree*? A 1-tree's vertices do *not* all have degree 2, so the added cost
-is `Σ_i π_i · d_i` with the `d_i` not all equal to 2 — the perturbation changes which 1-tree is
-minimal, and by how much. So I have a free parameter vector `π` that leaves the thing I care
-about (the optimal tour) fixed while reshaping the cheap object I'm using to bound it. That's a
-lever.
+— the *same constant* for every tour. So I'd expect the perturbation to shift every tour's cost by
+the same `2Σπ_i`, leaving the argmin tour where it was. Let me not just assert that; let me check
+it on the five-city instance. Pick an arbitrary potential vector `π = (0.3, −0.5, 0.2, 0.7, −0.1)`,
+so `2Σπ_i = 1.2`. Recomputing the cost of all 24 tours under `c_ij + π_i + π_j` and comparing each
+to its raw cost plus `1.2`: every one of the 24 matches to machine precision, zero mismatches. So
+the TSP really is invariant under `c_ij → c_ij + π_i + π_j` up to a global constant — the optimal
+tour is fixed. But the 1-tree is not: a 1-tree's vertices do *not* all have degree 2, so its added
+cost is `Σ_i π_i · d_i` with the `d_i` not all equal to 2. On the same instance, the plain 1-tree
+bound `w(0) = 1.87` moves to `w(π) = 2.0584` under this `π` — already closer to `2.70`, just from
+a random shove. So `π` is a free parameter that leaves the thing I care about (the optimal tour)
+fixed while reshaping the cheap object I'm using to bound it.
 
 Let me write the bound carefully under the perturbation. With weights `c_ij + π_i + π_j`, the
 minimum tour still costs `C* + 2Σπ_i` (its cost shifted by the constant), and the minimum 1-tree
@@ -93,14 +120,15 @@ And both crawl. The LP has an astronomical number of constraints; generating col
 is heavy. The steepest-ascent version has to fight the non-differentiability — near the optimum,
 where 1-trees tie, the "increase `w` at every step" requirement forces tiny, expensively
 line-searched steps, and the number of iterations grows badly as `n` grows. I'm spending all my
-time maximizing the bound and none solving TSPs. This is the wall: insisting that the function
-*increase* every step is exactly what makes me crawl, because at the kinks I want to reach, no
-small step increases `w`.
+time maximizing the bound and none solving TSPs. The trouble is structural: insisting that the
+function *increase* every step is exactly what makes me crawl, because at the kinks I want to
+reach, no small step increases `w`.
 
-So let me give up on "increase `w` each step." What weaker guarantee could I settle for that still
-gets me to the maximizer? The maximizer `π*` is a point. What if, instead of demanding the
-function value go up, I demand the *distance to `π*` go down*? Monotone progress in distance, not
-in value. That's a completely different, and weaker, request.
+So let me question that requirement. Maybe I don't need the function to increase every step. What
+weaker guarantee could I settle for that still gets me to the maximizer? The maximizer `π*` is a
+point. What if, instead of demanding the function value go up, I demand the *distance to `π*`* go
+down? Monotone progress in distance, not in value. That's a completely different, and weaker,
+request — and crucially it could let me step right through a kink where `w` momentarily dips.
 
 Let me see if the degree-residual direction actually buys me that. Take the active 1-tree at `π`,
 call its degree-residual vector `v_{k(π)}`. For any other point `τ`, I'll compare `w(τ)` to
@@ -111,10 +139,16 @@ choice at `τ`, so the true min is no larger). Subtract the first from this ineq
   `w(τ) − w(π) ≤ (τ − π) · v_{k(π)}`.
 
 So `v_{k(π)}` is a **subgradient** of the concave function `w` at `π`: it over-estimates the
-increase along every direction. In particular, plug in `τ = π*`, the maximizer:
-`(π* − π) · v_{k(π)} ≥ w(π*) − w(π) ≥ 0`. The degree-residual vector makes an acute angle with
-the direction from my current `π` toward the maximizer. It *points roughly at* `π*`, even though
-it is not an ascent direction of `w` in the differentiable sense. That's exactly the handle I
+increase along every direction. Let me sanity-check this inequality on the five-city instance
+before I lean on it. At `π = 0` the active 1-tree has residual `v = d − 2 = [0, −1, 0, 1, 0]`
+(the `[2,1,2,3,2]` degrees minus 2 — exactly the starved vertex 1 and the over-used vertex 3 I
+flagged earlier). Take `τ` to be the random potential from before. The inequality predicts
+`w(τ) − w(0) ≤ (τ − 0)·v`. The left side is `2.0584 − 1.87 = 0.1884`; the right side is
+`τ·v = (−0.5)(−1) + (0.7)(1) = 1.2`. Indeed `0.1884 ≤ 1.2` — the subgradient bound holds, and it's
+slack here because `τ` is not the active-tree direction. In particular, plugging in `τ = π*`, the
+maximizer: `(π* − π) · v_{k(π)} ≥ w(π*) − w(π) ≥ 0`. The degree-residual vector makes an acute
+angle with the direction from my current `π` toward the maximizer. It *points roughly at* `π*`,
+even though it is not an ascent direction of `w` in the differentiable sense. That's the handle I
 need: step along `v_{k(π)}` and, for a small enough step, I move closer to `π*` — whether or not
 `w` went up.
 
@@ -129,12 +163,13 @@ enough to take
 
   `0 < t < 2 (w(π*) − w(π)) / ‖v‖²`.
 
-For any `t` in that range, `π_{m+1}` is strictly closer to `π*` than `π_m` was — and this holds
-for *every* maximizer simultaneously. The hyperplane through `π` with normal `v` cuts off a
-closed half-space containing all points with `w(·) ≥ w(π)`, in particular every maximizer, and
-the step moves into that half-space along the normal. I don't need `w` to increase; I need only
-that I'm Fejér-monotone — non-increasing distance to the set of maximizers — and the iteration
-delivers that.
+For any `t` in that range, `π_{m+1}` is strictly closer to `π*` than `π_m` was — and since the
+derivation used only `(π*−π)·v ≥ w(π*)−w(π) ≥ 0`, which holds for *every* maximizer, this is true
+for all of them simultaneously. The hyperplane through `π` with normal `v` cuts off a closed
+half-space containing all points with `w(·) ≥ w(π)`, in particular every maximizer, and the step
+moves into that half-space along the normal. I don't need `w` to increase; I need only that I'm
+Fejér-monotone — non-increasing distance to the set of maximizers — and the iteration delivers
+that.
 
 This is suspiciously familiar. "Pick a violated linear inequality, step along its normal across
 the bounding hyperplane by a relaxed amount, and you provably get closer to the solution set" —
@@ -173,12 +208,12 @@ contradicting `w(π_m) < A < \bar w`. So the constant-step run must satisfy
 
   `sup_m w(π_m) ≥ max_π w(π) − ½ t · limsup_m ‖v_{k(π_m)}‖²`.
 
-That makes a fixed step less reckless than it first looks. As the iteration proceeds, the 1-trees
-produced start to look like tours: a great many vertices land on degree 2, so most components of
-`v = d − 2` are zero and `‖v‖²` is a small integer. The penalty term shrinks the over-degree
-vertices' edges and fattens the starved ones until almost everybody has degree 2. So
-`limsup‖v‖²` is small, the slack `½t‖v‖²` is small, and a constant step can land the bound very
-close to `max w`.
+That makes a fixed step less reckless than it first looks. As the iteration proceeds, I'd expect
+the 1-trees produced to start looking like tours: a great many vertices land on degree 2, so most
+components of `v = d − 2` are zero and `‖v‖²` is a small integer. The penalty term shrinks the
+over-degree vertices' edges and fattens the starved ones until almost everybody has degree 2. So
+`limsup‖v‖²` should be small, the slack `½t‖v‖²` small, and a constant step could land the bound
+very close to `max w`.
 
 The same computation suggests a target-driven step when I have a level `ℓ < max w` that I want
 to reach. The distance condition says that
@@ -197,9 +232,11 @@ bound `UB ≥ C* ≥ max w`. Using
 
   `t = λ · (UB − w(π)) / ‖v‖²`
 
-is therefore a practical overestimate rule, not the same theorem. The repair is to force
-`λ → 0`: start with `λ = 2`, run a block of iterations, halve `λ`, shorten the block, and stop
-when the steps are too small to matter.
+is therefore a practical overestimate rule, not the same theorem — `UB − w(π)` over-shoots the
+safe `ℓ − w(π)`, so individual steps can be too long and the distance guarantee can fail on a
+given step. The repair is to force `λ → 0`: start with `λ = 2`, run a block of iterations, halve
+`λ`, shorten the block, and stop when the steps are too small to matter; as the steps vanish the
+over-shoot vanishes too.
 
 One more practical lever for the starting point. Cold-starting at `π = 0` means the first 1-tree
 is computed on raw costs and may be far from tour-like. I can warm-start from the assignment
@@ -219,8 +256,8 @@ a block of `p` iterations — stop and branch. To branch, I order the not-yet-de
 much excluding each would raise the bound (a by-product of the greedy 1-tree computation), and
 split into children that force the leading edges in one at a time while forbidding the next; when
 forcing two edges into some vertex, I can legitimately forbid all that vertex's other edges in
-that child, since a tour using two edges at a vertex uses no others there. Because the bound is so
-tight, the trees stay tiny.
+that child, since a tour using two edges at a vertex uses no others there. The hope is that the
+bound is tight enough that the trees stay tiny.
 
 Let me write the bound computation, then drop it into the search. The 1-tree is an MST on the
 `n−1` "ordinary" vertices under the perturbed costs, plus the two cheapest perturbed edges from
@@ -364,15 +401,30 @@ def held_karp_lower_bound(cost, algorithm="VJ", upper_bound=None, max_iterations
     return one_tree_cost + float(np.dot(best_pi, degrees - 2))
 ```
 
+Let me run this on the same five-city instance and see where the ascent lands, since I know the
+true answer is `C* = 2.7021` and the cold-start floor is `1.87`. The vanishing Volgenant-Jonker
+schedule drives the bound from `1.87` up to `2.7021` — it closes the entire gap here and recovers
+the optimum exactly, which makes sense because at the maximizing `π` the minimum 1-tree must have
+come out all-degree-2 and therefore *is* the optimal tour. That is the best case, and a useful
+reassurance that the machinery is wired correctly. It is not guaranteed in general: the
+upper-bound HWC schedule, fed the true optimum as `UB`, only reaches `2.3808` on this same
+instance — better than the `1.87` floor but well short of `max w`, because the over-shooting
+`UB`-based step with a coarse halving block does not fully converge in so few iterations on five
+cities. So the two schedules genuinely differ, and the bound returned is whatever the chosen
+schedule's best `π` achieves — always a valid lower bound, never necessarily `max w`.
+
 So the chain is: branch-and-bound needs a cheap, tight under-estimate of the optimum tour; a tour
 is a 1-tree with every degree 2, and the minimum 1-tree is MST-cheap, giving a first loose lower
-bound; perturbing edge costs by per-vertex potentials `π` shifts every tour by the same constant
-(so the TSP is invariant) while reshaping the 1-tree, yielding the family `w(π) = min_k[c_k +
-π·(d_k − 2)] ≤ C*` — the Lagrangian dual of the degree-2 constraints, concave and piecewise
-linear; maximizing it by demanding the function increase is too slow at the kinks, so instead I
-demand decreasing distance to high-level sets, which the degree-residual vector `d − 2` delivers as
-a subgradient (the maximum-residual relaxation method of Agmon-Motzkin-Schoenberg); the constant
+bound (on the five-city test, `1.87` against `C* = 2.70`); perturbing edge costs by per-vertex
+potentials `π` shifts every tour by the same constant (verified: all 24 tours shift by exactly
+`2Σπ`, so the TSP is invariant) while reshaping the 1-tree, yielding the family
+`w(π) = min_k[c_k + π·(d_k − 2)] ≤ C*` — the Lagrangian dual of the degree-2 constraints, concave
+and piecewise linear; maximizing it by demanding the function increase is too slow at the kinks,
+so instead I demand decreasing distance to high-level sets, which the degree-residual vector
+`d − 2` delivers as a subgradient (checked numerically: `w(τ)−w(π) ≤ (τ−π)·(d−2)` held on the
+test point), the maximum-residual relaxation method of Agmon-Motzkin-Schoenberg; the constant
 step has the bound `sup_m w(π_m) ≥ max w − (t/2)limsup_m‖d_m−2‖²`, the target step
 `t = λ(ℓ − w)/‖d−2‖²` follows when `ℓ < max w`, and the practical code uses either a
-vanishing Volgenant-Jonker schedule or an upper-bound HWC schedule with halved `λ`; the whole thing
-slots into branch-and-bound, forcing/forbidding edges and branching when the ascent stalls.
+vanishing Volgenant-Jonker schedule (which closed the gap to the optimum on the test) or an
+upper-bound HWC schedule with halved `λ`; the whole thing slots into branch-and-bound,
+forcing/forbidding edges and branching when the ascent stalls.

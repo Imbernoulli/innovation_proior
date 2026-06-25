@@ -31,9 +31,11 @@ density. But the flows on offer don't scale. The planar flow f_t(z) = z + u·h(w
 a single scalar bottleneck wᵀz + b: one direction per step. To reshape a high-dimensional correlated
 posterior I'd need a chain as long as the dimensionality is wide, which is hopeless for the latent space
 of an image model. These planar and radial flows are demonstrably fine for a few hundred dimensions and
-not for thousands. I need a flow step that touches *all* the dimensions at once with a cheap
-Jacobian — and that's a strong hint, because "cheap Jacobian determinant over all dimensions at once"
-is exactly what triangular structure buys.
+not for thousands. So I need a flow step that touches *all* the dimensions of z at once and still has a
+log-determinant I can compute without an O(D³) determinant. The cheap log-determinants I know of come
+from special Jacobian structure: diagonal (too weak — that's just the diagonal Gaussian again), or
+triangular (det = product of the diagonal, computable in O(D)). Triangular it is, then — but where do I
+find a flexible, learned map whose Jacobian is triangular over thousands of dimensions?
 
 Where do I already have flexible, triangular-Jacobian functions over high-dimensional vectors? The
 autoregressive density estimators — MADE, PixelCNN, WaveNet. Take a vector y with a chosen order and a
@@ -64,13 +66,12 @@ Jacobian dε/dy is lower-triangular. Its diagonal is ∂ε_i/∂y_i, and since �
 *earlier* coordinates, the only y_i-dependence on the diagonal is through the explicit division, giving
 ∂ε_i/∂y_i = 1/σ_i(y). The determinant of a triangular matrix is the product of its diagonal, so
 
-  log |det(dε/dy)| = Σ_i −log σ_i(y).
+  log |det(dε/dy)| = Σ_i −log σ_i(y),
 
-A sum of logs of the per-coordinate scales — trivially cheap, and over all dimensions at once. So the
-inverse autoregressive transformation is flexible, parallel, *and* has a dead-simple log-determinant.
-It's the flow step I couldn't find. The sampling direction of the autoregressive model is sequential and
-useless to me; its inverse is parallel and exactly right. So I'll build a normalizing flow out of these
-inverse autoregressive steps.
+a sum of logs of the per-coordinate scales — trivially cheap, and over all dimensions at once. That is
+the structure I was looking for: flexible, parallel, and a log-determinant in O(D). The forward sampling
+direction was sequential and useless; its inverse is parallel and tractable. I'll chain these inverse
+autoregressive steps into a normalizing flow.
 
 Now make it concrete as a posterior. The encoder reads x and produces the parameters of an initial,
 simple Gaussian — μ_0, σ_0 — and one extra vector h, a context I'll feed into every refinement step so
@@ -93,12 +94,33 @@ step contributes −Σ_i log σ_{t,i} to the telescoped density. Summing over th
 
   log q(z_T|x) = − Σ_i ( ½ ε_i² + ½ log 2π + Σ_{t=0}^{T} log σ_{t,i} ).
 
-That's the exact density of my flexible posterior, computable in one forward pass per step, all
-dimensions in parallel, with the flexibility growing with the expressiveness of the autoregressive nets
-and the depth of the chain.
+I want to be sure this formula is right before I build anything on it, because the whole telescoping
+argument rests on each step's Jacobian really being triangular with σ_t on the diagonal. The clean test
+is the change-of-variables identity itself: the map ε ↦ z_T is deterministic once I fix the encoder
+outputs, so I can compute log q(z_T) two ways and demand they agree — once by my formula above, and once
+by the brute-force log N(ε; 0, I) − log|det(∂z_T/∂ε)| with the full Jacobian from autodiff. I make this
+concrete with D = 4, T = 3 inverse-autoregressive steps and random net weights, a case small enough that
+a dense 4×4 Jacobian and its exact log-determinant are available. Running both: my analytic log q comes
+out to 1.01707 and the autodiff change-of-variables value to 1.01708 — they agree to about 1e-5, which is
+just float noise. So the telescoped formula is the genuine density, not an approximation.
 
-Before I trust it I should sanity-check that the simplest version recovers something I understand. Take
-one linear autoregressive step. A full-covariance Gaussian N(m, C) can be written coordinate by coordinate:
+While I have the Jacobian in hand I check the structural claim directly, since that's what the whole idea
+hangs on. The Jacobian of a single step on D = 4 prints as
+
+  [[0.767  0     0     0   ]
+   [0.031  0.941 0     0   ]
+   [-0.060 0.090 0.851 0   ]
+   [0.012 -0.002 0.017 0.996]],
+
+i.e. exactly lower-triangular (every entry above the diagonal is 0 to machine precision), and its diagonal
+[0.767, 0.941, 0.851, 0.996] equals the σ_t the net emitted for that step, coordinate for coordinate. That
+is precisely the triangular-with-σ-on-the-diagonal structure the −Σ log σ log-determinant relies on. Good:
+the density is exact and the structure is what I assumed.
+
+That tells me the bookkeeping is right; now I want to know what the *simplest* instance actually
+represents, to be sure I'm gaining real posterior flexibility and not just reshuffling a diagonal Gaussian.
+Take one linear autoregressive step. A full-covariance Gaussian N(m, C) can be written coordinate by
+coordinate:
 
   y_i = μ_i(y_{1:i-1}) + σ_i(y_{1:i-1})·ε_i,
 
@@ -109,9 +131,20 @@ the inverse Cholesky factor of C under this ordering. The flow direction I actua
 other way: start from a factorized Gaussian y = μ(x) + σ(x) ⊙ ε and apply a lower-triangular linear map
 to get z. If I restrict that triangular map to have ones on the diagonal, its determinant is one, so
 q(z|x) = q(y|x) and no extra log-determinant appears; the diagonal scales in the starting Gaussian plus
-the unit-diagonal triangular map give an LDLᵀ factorization, which reaches any full covariance matrix.
-So the linear bottom of the construction is not a toy: it is exactly a full-covariance Gaussian posterior,
-and the nonlinear autoregressive nets generalize beyond Gaussian from there.
+the unit-diagonal triangular map should give an LDLᵀ factorization that reaches *any* full covariance
+matrix.
+
+I should check that last reach-any claim rather than wave at it, because if the unit-diagonal restriction
+secretly loses covariances, the linear case would be weaker than a full Gaussian and the whole premise
+would be shaky. So take an arbitrary 3×3 SPD target C = AAᵀ + 0.1·I with A random. Its Cholesky factor is
+G with C = GGᵀ; dividing each column of G by its own diagonal entry, L = G / diag(G), gives a
+unit-diagonal lower-triangular L, and D = diag(G)². I check three things numerically: diag(L) = [1, 1, 1]
+with the strict upper triangle 0 (so L is genuinely unit-lower-triangular), det(L) = 1.0000 (so the map is
+volume-preserving, no stray log-determinant), and max|C − L·diag(D)·Lᵀ| = 2.4e-7 — the reconstruction lands
+back on the original C to float precision. So the unit-diagonal triangular map times a diagonal Gaussian
+does reach an arbitrary full covariance, with determinant exactly one. The linear bottom of the
+construction is therefore not a toy: it is exactly a full-covariance Gaussian posterior, and the nonlinear
+autoregressive nets generalize beyond Gaussian from there.
 
 Now a wall I'll hit in practice. The step z_t = μ_t + σ_t ⊙ z_{t-1} multiplies by a learned σ_t every
 layer, and an unconstrained σ_t can blow up or vanish across a deep chain — multiplying T learned scales

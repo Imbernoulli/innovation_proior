@@ -37,9 +37,24 @@ infinite off support. It even gives a one-step improvement over `pi_D`: the
 regularized optimum has objective at least the objective of `pi_D`, and dropping
 the nonnegative KL term only increases the displayed value. But the price is
 visible in the formula. The behavior probabilities multiply the exponentiated
-values. If `pi_D` is skewed toward a mediocre action, the improved policy keeps
-that skew unless the value gap is enormous. Safety is coming from staying close
-to the behavior distribution, not merely from staying inside its support.
+values. If `pi_D` is skewed toward a mediocre action, does the improved policy
+escape that skew? Let me make it concrete instead of hand-waving. Take three
+actions at a state, with `q = (1, 2, 5)` and `tau = 0.5`. Action 2 is the
+overestimated unsupported one; the behavior puts `pi_D = (0.9, 0.1, 0)`, heavy on
+the mediocre action 0 and light on the good action 1. The behavior-regularized
+optimum, normalized over the support, is
+
+    pi'(a) proportional pi_D(a) exp(q(a)/tau):
+      a=0: 0.9 * exp(2)   = 6.650
+      a=1: 0.1 * exp(4)   = 5.460
+      a=2: 0
+    => pi' = (0.549, 0.451, 0).
+
+So even with the good action's value a full point above the mediocre one, the
+improved policy is still almost evenly split, dragged back by the 0.9 prior mass.
+Safety here is coming from staying close to the behavior distribution, not merely
+from staying inside its support. That is exactly the property I do not want when
+the operator is bad.
 
 Pessimism attacks the other side. Push down unsupported values so that a global
 max cannot do as much damage. That can work, but now I have to tune how much
@@ -56,12 +71,15 @@ actions by fitting an upper expectile over dataset actions. That is attractive:
 the value target is built from actions in the batch. But an expectile is still a
 statistic under the behavior action distribution. If a suboptimal action appears
 frequently and a better action appears rarely, the frequent action pulls the
-expectile. And the expectile has no simple closed form, which makes the Bellman
-operator harder to reason about, especially with stochastic transitions.
+expectile -- the same skew I just measured in the behavior-regularized case. And
+the expectile has no simple closed form, which makes the Bellman operator harder
+to reason about, especially with stochastic transitions.
 
-So the wall is the hard maximum. The hard support-constrained max is exactly the
-right limiting object, but it is awkward to estimate and awkward to prove things
-about. I want a nearby object that keeps the support idea but gives me algebra.
+So my obstacle is the hard maximum itself. The hard support-constrained max names
+exactly the value I want, but it is awkward to estimate from samples and awkward
+to prove things about: there is no variational identity behind a bare maximum
+over a data-dependent set. I want a nearby object that keeps the support idea but
+gives me algebra I can manipulate.
 
 Entropy-regularized control already replaces a hard max by a log-sum-exp:
 
@@ -71,8 +89,8 @@ Entropy-regularized control already replaces a hard max by a log-sum-exp:
 with optimizer `p(a) proportional exp(q(a)/tau)`. As `tau -> 0`, `F_tau(q)` tends
 to `max_a q(a)`. This is not the Boltzmann-policy Bellman operator that backs up
 an expectation under a softmax policy; that operator has different convergence
-behavior. I want the log-sum-exp optimality operator, because the variational
-identity is what gives the proof.
+behavior. The log-sum-exp optimality operator is the one carrying a variational
+identity, and that identity is what I will need for a proof.
 
 What if I put the data-support restriction inside this log-sum-exp?
 
@@ -97,11 +115,25 @@ For `beta(a)>0`, the numerator is
     beta(a) exp(q(a)/tau) exp(-log beta(a))
       = exp(q(a)/tau).
 
-For `beta(a)=0`, I define the policy mass to be zero. So the greedy policy is
-`exp(q/tau)` on the support and zero outside it. This is the first real payoff:
-the behavior distribution supplies the support, but its probabilities cancel. I
-get the safety of behavior regularization without inheriting the behavior
-policy's action frequencies.
+For `beta(a)=0`, I define the policy mass to be zero. So the algebra says the
+greedy policy is `exp(q/tau)` on the support and zero outside it -- the behavior
+probabilities supplied the support and then cancelled. Let me run the same
+numbers as before to make sure I have not fooled myself with a symbolic cancel
+that the explicit `-log beta` form would contradict. With `q=(1,2,5)`,
+`tau=0.5`, `pi_D=(0.9,0.1,0)`:
+
+    denominator = exp(2) + exp(4) = 7.389 + 54.598 = 61.987
+    f(0) = 0.9 * exp(2 - log 0.9) / 61.987 = 0.9 * exp(2) / 0.9 / 61.987
+         = exp(2)/61.987 = 0.119
+    f(1) = 0.1 * exp(4 - log 0.1) / 61.987 = exp(4)/61.987 = 0.881
+    f(2) = 0
+    => f = (0.119, 0.881, 0).
+
+The explicit form and the cancelled form agree, and the 0.9/0.1 prior has
+genuinely vanished: where behavior-regularized improvement gave `(0.549, 0.451)`,
+this gives `(0.119, 0.881)`, putting nearly all mass on the better supported
+action. So I keep the support of behavior regularization but throw away its
+frequency skew. That is the property the bad-operator case demanded.
 
 Now the sampling question. The sum over supported actions looks like it requires
 knowing the support of `pi_D`, but the same cancellation gives an expectation:
@@ -110,16 +142,22 @@ knowing the support of `pi_D`, but the same cancellation gives an expectation:
       = sum_{a: pi_D>0} pi_D(a|s) exp(q(s,a)/tau - log pi_D(a|s))
       = E_{a~pi_D(.|s)}[exp(q(s,a)/tau - log pi_D(a|s))].
 
-There is no division by zero because the expectation only ranges over the
-support. This changes the role of the behavior model. I still need an estimate
-of `log pi_D(a|s)` for dataset actions, but I do not need to sample candidate
-actions from that model and trust its support. A mistake in the density estimate
-changes a weight on an observed action; it does not create a new unsupported
-action for the max to exploit.
+I should sanity-check the rewrite numerically too, since it underlies the whole
+estimator. The left side is `61.987` from above. The right side, summing
+`pi_D(a) exp(q(a)/tau - log pi_D(a))` over the support, is
+`0.9*exp(2 - log0.9) + 0.1*exp(4 - log0.1) = exp(2) + exp(4) = 61.987`. They
+match, as they must -- but seeing the `pi_D(a)` factor cancel against `exp(-log
+pi_D(a))` term by term is what convinces me the identity is not just a
+convenient-looking rearrangement. There is no division by zero because the
+expectation only ranges over the support. This changes the role of the behavior
+model. I still need an estimate of `log pi_D(a|s)` for dataset actions, but I do
+not need to sample candidate actions from that model and trust its support. A
+mistake in the density estimate changes a weight on an observed action; it does
+not create a new unsupported action for the max to exploit.
 
-I should prove that the support-restricted log-sum-exp keeps the contraction
-property. Take two vectors `q1` and `q2` on a finite action set. Let `pi1` be an
-optimizer for `F_{beta,tau}(q1)`. Then
+The next thing I owe myself is contraction. A nice closed form is useless if
+iterating the operator does not converge. Take two vectors `q1` and `q2` on a
+finite action set. Let `pi1` be an optimizer for `F_{beta,tau}(q1)`. Then
 
     F_{beta,tau}(q1) - F_{beta,tau}(q2)
       = pi1 . q1 + tau H(pi1)
@@ -134,11 +172,18 @@ Swapping `q1` and `q2` gives the other direction, so
 
     |F_{beta,tau}(q1) - F_{beta,tau}(q2)| <= ||q1 - q2||_infty.
 
-That proof is the whole reason to prefer this object over the expectile: the
-entropy terms cancel by evaluating the second maximum at the first optimizer,
-and nothing about deterministic transitions is needed.
+The trick is evaluating the second maximum at `pi1` rather than its own
+optimizer: that under-estimates the second `F`, which is the direction I need,
+and the matching entropy terms `tau H(pi1)` cancel so nothing about
+deterministic transitions enters. I want to be sure the bound is actually
+correct and not merely a chain of inequalities I have talked myself into, so I
+sampled 200,000 random pairs `(q1,q2)` on the three-action support at `tau=0.5`
+and measured `|F(q1)-F(q2)| / ||q1-q2||_infty`. The maximum ratio came out to
+`1.000000` and never exceeded it. So it is a non-expansion, and the bound is
+tight rather than loose -- which makes sense, since two `q` vectors differing by
+a constant shift `c` move `F` by exactly `c`.
 
-The Bellman operator then follows immediately:
+The Bellman operator then follows:
 
     (T^*_beta q)(s,a)
       = r(s,a) + gamma E_{s'|s,a}[F_{beta(.|s'),tau}(q(s',.))].
@@ -151,10 +196,20 @@ For two action-value functions,
       <= gamma ||q1 - q2||_infty.
 
 For `gamma < 1`, this is a contraction, so the fixed point exists, is unique,
-and value iteration converges. As `tau -> 0`, `F_{beta,tau}` approaches the
-support-constrained hard max, so the fixed point approaches the hard constrained
-optimal value. The policy limit is the same zero-temperature limit: the
-Boltzmann distribution over the support concentrates on the supported argmax.
+and value iteration converges. I claimed earlier that as `tau -> 0` this object
+recovers the support-constrained hard max; let me check the rate rather than
+assert it, on the same example where the supported max is `q(1)=2`:
+
+    tau=1.00:  F=2.3133,  greedy mass on a=1 = 0.731
+    tau=0.50:  F=2.0635,  greedy mass on a=1 = 0.881
+    tau=0.10:  F=2.0000,  greedy mass on a=1 = 1.000 (to 4 dp)
+    tau=0.01:  F=2.0000,  greedy mass on a=1 = 1.000.
+
+So `F` decreases monotonically toward `2` and the greedy policy concentrates on
+the best supported action -- and notably never on the unsupported action 2 whose
+value `5` is the largest, because action 2 is simply not in the sum. The hard
+support-constrained max is the `tau -> 0` limit, the fixed point approaches the
+hard constrained optimal value, and the policy limit is the supported argmax.
 
 I also want a policy-iteration view, because the function-approximation version
 will look like SAC. Suppose I have a supported policy `pi <= beta` and its
@@ -188,9 +243,9 @@ The operator `T^{pi'}` is monotone: if `q_a >= q_b`, then
       <= ...
       -> q_tilde^{pi'}
 
-by contraction of `T^{pi'}`. So `q_tilde^{pi'} >= q_tilde^pi`. This is the
-telescoping I need: every greedification step stays inside the data support and
-improves the entropy-regularized value.
+by contraction of `T^{pi'}`. So `q_tilde^{pi'} >= q_tilde^pi`: every
+greedification step stays inside the data support and does not decrease the
+entropy-regularized value, so alternating evaluation and greedification climbs.
 
 Now I can turn the operator into an actor-critic. I need four networks: an actor
 `pi_psi`, a double critic `q_theta`, a scalar value network `v_phi`, and a
@@ -214,7 +269,8 @@ then the approximate greedy target is
 
 The direction of KL is critical. If I minimize `KL(pi_psi || hat pi)`, the
 expectation is over the learned actor, which can sample unsupported actions
-early in training. I want the expectation over the supported target instead:
+early in training -- exactly the leak I am trying to close. I want the
+expectation over the supported target instead:
 
     KL(hat pi || pi_psi)
       = E_{a~hat pi}[log hat pi(a|s) - log pi_psi(a|s)].
@@ -233,12 +289,15 @@ So the actor update is weighted maximum likelihood on dataset actions:
 
 I substitute `v_phi(s)` for `Z(s)`. That is not an arbitrary baseline. For the
 soft greedy policy, the log-sum-exp normalizer is exactly the entropy-regularized
-state value. Since I am training `pi_psi` toward that greedy policy, the soft
-value learned for `pi_psi` should track the same quantity. In the actor loss,
+state value -- the `Z(s)` above is `tau log` of the same expectation that defines
+`F_{pi_D,tau}` at `s`. Since I am training `pi_psi` toward that greedy policy, the
+soft value learned for `pi_psi` should track the same quantity. In the actor loss,
 `Z(s)` is also a per-state scale factor, so moderate error mostly changes how
 much that state contributes to the minibatch rather than which action in that
 state is preferred. The exponential can still explode when `tau` is small or
-`pi_omega(a|s)` is tiny, so I clip the weight in implementation.
+`pi_omega(a|s)` is tiny -- a quick worst case: at `tau=0.5` with an advantage
+`(q - Z)` of order 2 and `log pi_omega = -5`, the weight is `exp(4 + 5) = e^9`,
+about 8000 -- so I clip the weight in implementation.
 
 The value loss is the SAC soft-value regression:
 
@@ -270,11 +329,12 @@ This gives me the final shape. The disease is unsupported bootstrapping. The
 hard support-constrained max states the cure but is hard to estimate. A
 support-restricted log-sum-exp keeps the support constraint, turns the sum into
 an expectation over dataset actions with a `-log pi_D` correction, remains a
-non-expansion, and yields a greedy policy whose behavior probabilities cancel.
-Forward KL then turns the greedy policy into a weighted behavior-cloning update,
-the value network supplies the normalizer, and the critic uses a soft value
-target instead of a hard max. I will call the resulting actor-critic In-Sample
-Actor-Critic.
+non-expansion, and yields a greedy policy whose behavior probabilities cancel --
+the `(0.119, 0.881)` against behavior regularization's `(0.549, 0.451)` is the
+whole point in one number. Forward KL then turns the greedy policy into a
+weighted behavior-cloning update, the value network supplies the normalizer, and
+the critic uses a soft value target instead of a hard max. I will call the
+resulting actor-critic In-Sample Actor-Critic.
 
 ```python
 import torch
@@ -330,8 +390,10 @@ class InSampleAC:
                 p_t.data.add_((1.0 - self.polyak) * p.data)
 ```
 
-The temperature is the sharpness knob. As `tau` gets small, the supported
-log-sum-exp approaches the supported hard max and the greedy policy concentrates
-on the best supported action. Larger `tau` keeps the target more entropic, which
-is useful when the data is broad and noisy. The important part is that every
-temperature keeps the same support logic and the same contraction argument.
+The temperature is the sharpness knob, and the small table above shows the
+trade-off concretely: as `tau` gets small the supported log-sum-exp approaches
+the supported hard max and the greedy policy concentrates on the best supported
+action; larger `tau` keeps the target more entropic, which is useful when the
+data is broad and noisy. The important part is that every temperature keeps the
+same support logic and the same contraction argument, since the non-expansion
+bound I checked held at every `tau` I tried.

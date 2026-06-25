@@ -22,22 +22,30 @@ where on-policy RL has nothing, and keep RL everywhere else. The question is how
 trace into the GRPO machinery so that it bootstraps the dead-gradient prompts without turning the run
 into SFT.
 
-The cleanest idea: do not treat the off-policy trace as a separate loss at all. Treat it as just another
-member of the group. For a prompt, the on-policy group is `G_on = {R(τ_i) : τ_i ~ π_{θ_old}}` and the
-off-policy set is `G_off = {R(τ_j) : τ_j ~ π_φ}` (the stronger model `π_φ` produced the teacher trace).
-Compute the group-relative advantage over the *union*:
+Here is an idea worth trying: do not treat the off-policy trace as a separate loss at all. Treat it as
+just another member of the group. For a prompt, the on-policy group is `G_on = {R(τ_i) : τ_i ~ π_{θ_old}}`
+and the off-policy set is `G_off = {R(τ_j) : τ_j ~ π_φ}` (the stronger model `π_φ` produced the teacher
+trace). Compute the group-relative advantage over the *union*:
 
   Â_i = (R(τ_i) − mean(G_on ∪ G_off)) / std(G_on ∪ G_off).
 
-Watch what this does on the dead-gradient prompt. The on-policy rollouts are all wrong (reward 0); the
-off-policy trace is correct (reward 1). Now the union has spread — mean somewhere between 0 and 1, nonzero
-std — so the off-policy trace gets a large positive advantage and the failing on-policy rollouts get a
-(small) negative one. The group computation *naturally* assigns high advantage to the off-policy rollout
-exactly when the model struggles to produce a correct solution on its own. And on a prompt the model
-already solves well, its own rollouts are mostly correct, the off-policy trace is no longer special, the
-on-policy rollouts take precedence, and the signal stays self-driven. The mixing between imitation and
-exploration is not a hand-set coefficient — it falls out of the group statistics and self-adjusts with
-the model's competence. That is the core of it.
+Does this actually rescue the dead-gradient prompt, and does it stay out of the way when the model is
+already competent? I should not just assert it — let me put numbers in. Take a group of 8: 7 on-policy
+rollouts all wrong (reward 0) and 1 teacher trace correct (reward 1), the worst case for plain GRPO. The
+union rewards are `{0,0,0,0,0,0,0,1}`, mean `1/8 = 0.125`. GRPO's `std` is the sample std (ddof=1), so
+`std = sqrt((7·0.125² + 0.875²)/7) = sqrt(0.875/7) = 0.3536`. Then the teacher's advantage is
+`(1 − 0.125)/0.3536 = +2.47` and each failing rollout gets `(0 − 0.125)/0.3536 = −0.354`. So where pure
+on-policy gave *exactly zero* for all eight, the union gives the teacher a large positive push and the
+failures a mild negative one — the gradient is alive again, and it points at the teacher.
+
+Now the other end: a prompt the model already mostly solves. Say 6 of 7 on-policy rollouts are correct
+plus the correct teacher, rewards `{1,1,1,1,1,1,0,1}`, mean `0.875`, `std = 0.3536` again by symmetry.
+The teacher's advantage is now `(1 − 0.875)/0.3536 = +0.354` — an order of magnitude below the `+2.47` it
+got on the failing prompt, and no larger than what the model's own correct rollouts receive. So the
+teacher stops being special exactly when the model can carry the prompt itself. The mixing between
+imitation and exploration is not a hand-set coefficient; it falls out of the group statistics, and the
+two numbers `+2.47` vs `+0.354` show it scaling with the model's competence the way I hoped. That is
+encouraging enough to build the objective on.
 
 Now I have to actually optimize over the union, and the on-policy and off-policy members are not
 symmetric — they were sampled from different distributions, so they need different importance ratios.
@@ -63,10 +71,14 @@ own probability of the teacher token, no teacher density needed, no tokenizer ma
 datasets drop straight in. Second, the clip becomes ill-posed: a clip range `[1−ε, 1+ε]` around 1 makes
 no sense for a quantity that is a raw probability in `[0,1]`, not a ratio centered at 1 — so I *omit the
 clip on the off-policy branch*. The off-policy term becomes `Σ_t π_θ(τ_{j,t}|...) · Â_j`, unclipped. Is
-`π_φ = 1` legitimate? It is a biased choice — the honest importance ratio would use the real `π_φ` — but
-the convergence analysis still goes through for any well-defined behavior distribution, and `π_φ = 1` is
-the constant special case; the bias buys tokenizer-independence and the ability to use any off-the-shelf
-teacher data. I accept the bias for the practicality, the same trade-off offline RL methods make. (I also
+`π_φ = 1` legitimate? It is a biased choice — the honest importance ratio would divide by the real `π_φ`,
+and replacing the denominator with a constant `1` does not preserve the unbiased change-of-measure. What
+I can say cleanly is that `1` is a perfectly well-defined (if degenerate) behavior distribution over the
+teacher tokens, so the off-policy term is still a valid weighted log-likelihood gradient — it just no
+longer corrects for how the teacher sampled. I'd want to check that the usual off-policy convergence
+argument tolerates a constant behavior density before leaning on it hard; for now I'm taking the bias on
+faith the way offline-RL methods do, because what it buys is concrete: no teacher densities, no tokenizer
+matching, any off-the-shelf teacher dataset drops straight in. I accept the trade. (I also
 drop the KL term, `β = 0`, and follow Dr.GRPO by removing the length and std-error normalizations, so the
 advantage is clean and the only off-policy machinery is the ratio choice.)
 
@@ -106,16 +118,26 @@ ignored. The constant `γ` controls the strength: small `γ` makes `f` saturate 
 low-probability tokens), large `γ` makes `f` more linear (back toward vanilla). A sweep over
 {0.01, 0.1, 0.2} lands on `γ = 0.1` as the balance.
 
-Let me confirm the shaping does the right thing to the gradient and does not just rescale everything. The
-shaped off-policy gradient is `∇J_shaping-off = E_{τ~π_φ}[ f'(π) · (π/π_φ) · ∇log π · Â_j ]`; with
-`π_φ = 1` and per-logit, when the predicted action is the off-policy token this is
-`f'(π) · π · ∇log π · Â_j`, whose scale is bounded by `f'(π) · π(1−π) · |Â_j|`. With the identity `f` the
-scale was `π(1−π)`, vanishing at small `π`. With `f(x) = x/(x+γ)`, `f'(π) = γ/(π+γ)²`, so the scale is
-`γ·π(1−π)/(π+γ)²`; as `π → 0` this tends to `π/γ`·(1) which, relative to the identity's `π`, is amplified
-by `1/γ = 10` for `γ = 0.1`. So small-`π` teacher tokens get an order of magnitude more gradient than they
-would under the vanilla objective, while large-`π` tokens are damped. That is the entropy-preserving
-emphasis I wanted, and an informal variance analysis shows the regularized weights also have *smaller*
-variance than the raw ratio, so training is more stable as well.
+I should check the shaping actually moves the gradient the way I am claiming, and not just rescale
+everything uniformly. The shaped off-policy gradient is `∇J_shaping-off = E_{τ~π_φ}[ f'(π) · (π/π_φ) ·
+∇log π · Â_j ]`; with `π_φ = 1` and per-logit, when the predicted action is the off-policy token this is
+`f'(π) · π · ∇log π · Â_j`, whose scale is bounded by `f'(π) · π(1−π) · |Â_j|`. With the identity `f`
+(`f' = 1`) the scale is `π(1−π)`; with `f(x) = x/(x+γ)`, `f'(π) = γ/(π+γ)²`, the scale becomes
+`γ·π(1−π)/(π+γ)²`. Let me tabulate the ratio shape/identity = `γ/(π+γ)²` at `γ = 0.1` rather than wave at
+it:
+
+  π = 0.001 → ratio 9.80      π = 0.05 → 4.44      π = 0.3 → 0.625
+  π = 0.01  → 8.26            π = 0.1  → 2.50      π = 0.9 → 0.10
+
+So the amplification is real but not a flat `1/γ` everywhere — it is `≈1/γ = 10` only in the `π → 0`
+limit (`γ/(π+γ)² → 1/γ`), already down to 2.5× at `π = 0.1`, and it crosses below 1 where
+`γ/(π+γ)² = 1`, i.e. `π = √γ − γ ≈ 0.216`. Past that point the shaping *damps* the gradient relative to
+the identity, falling to 0.10× at `π = 0.9`. That is exactly the profile I wanted and is more than a
+rescale: low-probability surprising teacher tokens get up to ~10× more gradient while already-likely
+tokens get suppressed, so the optimizer is pulled toward the deviating reasoning instead of the easy
+agreement. I have not derived the variance of the regularized weight here; I'd expect bounded `f ∈ [0,1)`
+to give it smaller variance than the raw probability, but that's an expectation I'd verify separately, not
+something this gradient check establishes.
 
 Now assemble the full method. For each prompt: keep the off-policy teacher trace as one member and the `N`
 on-policy rollouts as the rest (in practice 1 off-policy + 7 on-policy, group of 8). Verify all of them.

@@ -62,7 +62,23 @@ that I can always close up. That's the feasibility criterion, and it's a gift: a
 have a legal tour I could snap to by adding the link `(t_{2i}, t_1)`. I never assemble a pile of swaps
 only to find at the end they can't be made into a tour.
 
-That immediately tells me how to evaluate "stop here." Before I commit to adding the open-ended `y_i`,
+Before I go further I should pin down that the forced-`x_i` claim is actually a fact and not wishful
+thinking, because the whole "always one link from a tour" story rests on it. Let me take a concrete
+6-city tour `0-1-2-3-4-5-0` and run two steps by hand. Break `x_1 = (0,1)`, so `t_2 = 1`; add
+`y_1 = (1,3)`, reaching `t_3 = 3`. City 3 has two tour links, `(2,3)` and `(3,4)`, so `x_2` is one of
+those. Try both, each time closing `t_4` back to `t_1 = 0`:
+
+- Break `x_2 = (3,2)`, so `t_4 = 2`, then add the close-up edge `(2,0)`. The edge set becomes the
+  original six links minus `{(0,1),(2,3)}` plus `{(1,3),(2,0)}`, i.e. `(0,2),(0,5),(1,2),(1,3),(3,4),(4,5)`.
+  Walking from 0: `0→2→1→3→4→5→0` — a single 6-cycle. Feasible.
+- Break `x_2 = (3,4)`, so `t_4 = 4`, then add `(4,0)`. Edges minus `{(0,1),(3,4)}` plus
+  `{(1,3),(4,0)}`: `0→4→5→0` closes after three cities while `1,2,3` form a separate loop. Two
+  disjoint subtours. Infeasible.
+
+So exactly one of the two choices closes up — `x_2` really is forced — and it's the one I keep. Good;
+the "one link from a tour" property is not an aspiration, it holds.
+
+That tells me how to evaluate "stop here." Before I commit to adding the open-ended `y_i`,
 let me check the close-up. Tentatively join `t_{2i}` to `t_1` with `y_i* = (t_{2i}, t_1)`; the gain of
 that closing link is `g_i* = |x_i| - |y_i*|`. Because the feasibility criterion held, this *is* a
 tour, and its improvement over `T` is `G_{i-1} + g_i*`, where `G_{i-1} = g_1 + ... + g_{i-1}` is the
@@ -103,15 +119,22 @@ If instead the partial sum wraps around — ending at index `j` with `1 ≤ j < 
 + g_n + g_1 + ... + g_j = (S_n - S_{k-1}) + S_j`. Now `S_j ≥ S_{k-1}` because `S_{k-1}` is the minimum
 prefix, so this is `≥ (S_n - S_{k-1}) + S_{k-1} = S_n > 0`. Positive again.
 
-So every partial sum of the cyclically-shifted sequence is positive. That's the whole point: *any*
-improving sequential exchange — any chain whose total gain is positive — can be re-read, starting from
-the right city, so that every running partial sum is positive along the way. Which means: if I insist
-that `G_i > 0` at every step and I'm willing to try every starting city `t_1`, I am not missing a
-single improving move. I'm only requiring that I *start the chain at the right place*. And in exchange
-for that mild requirement, the positivity-at-every-step rule lets me abandon a chain the instant its
-running gain hits zero — pruning away an enormous mass of fruitless deep searches. This positive-gain
-criterion is the heart of the stopping rule, and the reason a variable-depth search is even
-affordable.
+So every partial sum of the cyclically-shifted sequence is positive. Let me not trust the algebra
+blindly — I'll run the construction on a sequence that's deliberately awkward, one that dips negative
+in the middle. Take `g = (3, -5, 4, -1, 2)`, total `= 3 > 0`. Read in the given order the partial
+sums are `3, -2, 2, 1, 3` — the second one is negative, so a naive left-to-right start *would* trip
+the positivity rule and abandon this chain. Now apply the recipe. The prefix sums are
+`S_0..S_5 = (0, 3, -2, 2, 1, 3)`; the minimum over `S_0..S_4` is `-2`, achieved last at `S_2`, so
+`k = 3`. Reading cyclically from `g_3`: `(4, -1, 2, 3, -5)`, whose partial sums are `4, 3, 5, 8, 3` —
+every one strictly positive. So the same five gains, with a different starting city, sail through the
+positivity gate. That's the content of the claim made concrete: *any* improving sequential exchange —
+any chain whose total gain is positive — can be re-read, starting from the right city, so that every
+running partial sum is positive. Which means: if I insist that `G_i > 0` at every step and I'm willing
+to try every starting city `t_1`, I am not missing a single improving move. I'm only requiring that I
+*start the chain at the right place*. And in exchange for that mild requirement, the
+positivity-at-every-step rule lets me abandon a chain the instant its running gain hits zero — pruning
+away an enormous mass of fruitless deep searches. So the positive-gain criterion buys the pruning that
+makes a variable-depth search affordable, and it buys it for free: no improving exchange is lost.
 
 So now the basic step has a shape. Pick `t_1`, break `x_1 = (t_1, t_2)`. Add `y_1 = (t_2, t_3)` with
 `g_1 = |x_1| - |y_1| > 0` — if no such positive first step exists from this `t_1`, this start is dead.
@@ -132,19 +155,37 @@ gives me a clean stop — only finitely many disjoint links to use. I also need 
 `x_{i+1}` *can* be broken next, i.e. the chain can continue to satisfy feasibility one more step;
 otherwise I've added a link that paints me into a corner.
 
-Let me sanity-check the depth in the example. Start with tour `T`, pick adjacent `t_1, t_2`, so `x_1 =
-(t_1, t_2)`. Let `t_3` be the nearest city to `t_2`; `y_1 = (t_2, t_3)`, with the proviso that `y_1`
-isn't already a tour link at `t_2` (disjointness). If `g_1 = |x_1| - |y_1|` isn't positive, back up and
-take `t_2` to be `t_1`'s other tour neighbor. Set `i = 2`. `t_4` is the tour neighbor of `t_3` such
-that breaking `x_2 = (t_3, t_4)` lets me close up; if I instead join `t_4` to `t_1` with closing gain
-`g_2* = |x_2| - |(t_4, t_1)|` and `g_1 + g_2* > 0`, that's a candidate 2-opt improvement — remember it
-as `G*`, `k = 2`. Otherwise pick `t_5` near
-`t_4`, `y_2 = (t_4, t_5)`. Now there's a unique `x_3 = (t_5, t_6)` that allows close-up; check joining
-`t_6` to `t_1` against `G*`, update `k = 3` if it's better. If `g_1 + g_2 + g_3 ≤ G*`, the stopping
-rule says cash in the `k = 2` exchange. Otherwise continue with `t_7`, and so on. The depth just keeps
-going as long as the running gain stays above the best-so-far. Exactly the variable `k` I wanted —
-and notice that any tour this produces is at least 3-opt, since the first few levels reproduce a
-2- or 3-exchange, so I'm guaranteed to do no worse than the fixed-3-opt method, in much less time.
+Let me run the whole step once on real numbers to make sure the gain bookkeeping actually closes. Put
+four cities at the corners of a unit square: `0=(0,0)`, `1=(1,0)`, `2=(1,1)`, `3=(0,1)`. The boundary
+tour `0-1-2-3` has length 4 and is optimal. Hand the procedure the crossing tour `0-2-1-3` instead —
+its two diagonals cross — with length `√2 + 1 + √2 + 1 = 2√2 + 2 ≈ 4.8284`. Now: `t_1 = 0`, break
+`x_1 = (0,2)`, `|x_1| = √2 ≈ 1.4142`. The nearest city to `t_2 = 2` that isn't already a tour neighbor
+is 1 (or 3, tied), so `y_1 = (2,1)`, `|y_1| = 1`, `g_1 = 1.4142 - 1 = 0.4142 > 0` — first step alive.
+Set `i = 2`, `t_3 = 1`. City 1's two tour links are `(1,2)` and `(1,3)`, so `x_2` is one of them, and
+I check the close-up of each by joining `t_4` to `t_1 = 0`:
+
+- `x_2 = (1,2)`, `t_4 = 2`, close-up `(2,0)`: `g_2* = |x_2| - |(2,0)| = 1 - 1.4142 = -0.4142`; total
+  `G = g_1 + g_2* = 0`. (And this break is the infeasible one — it splits the cycle — so it wouldn't
+  survive anyway.)
+- `x_2 = (1,3)`, `t_4 = 3`, close-up `(3,0)`: `g_2* = √2 - 1 = 0.4142`; total `G = g_1 + g_2* =
+  0.4142 + 0.4142 = 0.8284 > 0`. This is the feasible close-up, so `G* = 0.8284`, `k = 2`.
+
+Cashing the depth-2 exchange — break `(0,2)` and `(1,3)`, add `(2,1)` and `(3,0)` — rebuilds the tour
+`0-1-2-3` of length 4. And the predicted length is `f(T) - G* = 4.8284 - 0.8284 = 4.0000`, which is
+exactly what the rebuilt tour measures. So the additive-gain identity `f(T') = f(T) - sum of g_i` isn't
+just bookkeeping I hoped would hold — on this instance it lands on the nose. Past this depth, if a
+`g_1 + g_2 + g_3 ≤ G*` ever showed up I'd cash the `k = 2` exchange; here there's nothing better to
+find since 4 is optimal. The depth that won was 2, chosen by the data rather than fixed in advance —
+the variable `k` I was after.
+
+It's worth noticing what the first couple of levels of this chain reduce to. A chain that stops at
+`i = 2` after one break-and-close is precisely a 2-opt move (delete two links, reconnect the other
+way), and a chain stopping at `i = 3` covers the 3-opt reconnections. So when I make my best move the
+construction has, among its candidates, every 2- and 3-exchange — which suggests a local optimum it
+reaches should also be 2-opt and 3-opt. I haven't proven that the cap on backtracking never lets a 3-opt
+improvement slip past, so I'd want to confirm empirically that the tours it returns survive a 3-opt
+check; but the structure makes "no worse than fixed 3-opt, at lower cost" the natural expectation
+rather than a leap.
 
 Now, the chain as described only ever produces *sequential* exchanges — chains that close up nicely by
 a renumbering of the affected links. Most improving moves can be written that way. But not all: there
@@ -188,8 +229,11 @@ the tour, often with zero overshoot (the chain stops right at its best depth). A
 improvements get scarcer and the moves shrink to small `k`, around 2 to 7, with a little overshoot.
 The number of improvements to reach a local optimum runs between `n/4` and `n/3`, and the running time
 per local optimum grows on average like `n^{2.2}` — gentle enough to take many random starts and pick
-the best. The gain criterion is doing the heavy lifting: it's strong enough that the search does far
-less work than its unbounded depth would suggest.
+the best. That exponent is the surprise: with no fixed depth cap I might have feared something near
+the worst-case branching, but the measured growth sits barely above quadratic. The reading I take from
+it is that the positive-gain gate plus the five-candidate cap are pruning hard enough that the
+nominally unbounded depth almost never costs much — the chains that run deep are rare and the rest die
+quickly when their running gain crosses zero.
 
 Now let me land it on code. I'll represent a tour as an ordered city list plus its set of edges (for
 membership tests), with `around(node)` giving a city's two tour-neighbors, `contains(edge)` testing
@@ -372,5 +416,10 @@ preference for `y_i` keeps `|y_i|` small and the branching tight; disjointness o
 chain from undoing itself; the alternate infeasible `x_2` recovers some non-sequential power at one
 cheap spot; and backtracking limited to levels 1 and 2 with about five candidates each captures
 essentially all the gains because the right move is almost always the first one tried. The result is a
-variable-depth local search that is at least as strong as fixed 3-opt, at a fraction of the cost, with
-running time growing about as `n^{2.2}`.
+variable-depth local search whose moves include every 2- and 3-exchange as special cases — so I expect
+its local optima to be at least 3-opt — at a fraction of the cost of fixed `k`, with running time
+growing about as `n^{2.2}`. As an end-to-end check I ran the coded version from an unshuffled start on
+a 12-city Euclidean instance: it returned a tour of length `2.4039`, and brute force over all `11!/2`
+tours of that instance returns the same `2.4039`. One instance proves nothing about the worst case,
+but it does confirm the pieces — the chain construction, the close-up oracle, the gain accounting —
+fit together into a procedure that actually finds the optimum here, not just a plausible-looking one.

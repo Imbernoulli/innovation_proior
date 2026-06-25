@@ -17,19 +17,24 @@ coordinates of the donor taken into the trial, so the population can make large 
 and the high `CR` regime tends to come with a not-too-small `F`. Starting the memory at `0.5` means
 the first many generations are spent re-discovering, on every new problem, that high `CR` helps early.
 That is budget I could save by initializing the bias I already believe in. So: start all `CR` memory
-slots high, at `0.8`, and start `F` conservatively at `0.3`. This is a free head start — if the problem turns out to
-prefer low `CR` (a near-separable landscape), the adaptation will drive the slots down anyway, but the
-default no longer wastes the early generations.
+slots high, at `0.8`, and start `F` conservatively at `0.3`. If the problem turns out to
+prefer low `CR` (a near-separable landscape), the adaptation will drive the slots down anyway, so the
+worst case of a wrong prior is a few generations of relearning — the same cost the neutral start pays
+unconditionally — while the common case gets the early generations for free.
 
 There is a sharper version of the same idea. The memory adapts toward whatever the winners report, and
 on a hard multimodal problem the winners late in the run may drive every slot toward a quiet,
-conservative setting — small `F`, the search going gentle exactly when it might be stuck. I want a
-permanent reservoir of aggression that the adaptation can never extinguish. So I reserve one sampled
+conservative setting — small `F`, the search going gentle exactly when it might be stuck. I would like
+a permanent reservoir of aggression that the adaptation can never extinguish. So I reserve one sampled
 period (the last memory index) to use `M_F = M_CR = 0.9` no matter what is stored in the adaptive
-arrays. Now, because each individual picks its
-memory index uniformly, a fixed fraction of the population — about `1/H` of it — always samples around
-an aggressive `(0.9, 0.9)` regardless of what the rest of the memory has decided. This is cheap
-insurance against the whole population going quiet, and it costs me only one of `H` adaptable slots.
+arrays. Because each individual picks its memory index uniformly over `H` slots, the fraction of the
+population that lands on that fixed slot is `1/H`; with `H = 5` that is `1/5`, so on every generation
+roughly a fifth of the trials are drawn around an aggressive `(0.9, 0.9)` regardless of what the rest
+of the memory has decided. That is the cost too — one of `H` adaptable slots is spent, leaving four to
+carry learned centers. The question is whether trading a fifth of the slots' representational capacity
+for a floor on aggression is worth it; on the multimodal functions where the failure mode is the whole
+population going quiet, a persistent fifth that keeps probing at `F = 0.9` is exactly the hedge I want,
+and four learned periods is still enough that one noisy generation does not dominate.
 
 The third early-run fix is a guardrail, not a bias. The Cauchy on `F` has heavy tails, so even with a
 moderate center it will occasionally throw an `F` near 1; early in the run, a near-1 `F` on a spread
@@ -45,47 +50,82 @@ adaptation takes over for the refinement phase. (The exact fractions are chosen 
 And a fourth, subtle one about the memory update itself. L-SHADE writes a slot by overwriting it with
 the weighted Lehmer summary of this generation's winners. But one generation is a noisy estimate, and
 overwriting throws away the slot's accumulated history. I would rather *blend*: write
-`M[k] <- (mean_WL(S) + M[k]_old)/2`, the average of the new summary and the old slot value. Now a
-single generation can move a slot by at most half the distance to its summary, so a noisy generation
-is damped and the slot retains memory of what worked before. This is a small change with a real
-stabilizing effect on the adaptation trajectory.
+`M[k] <- (mean_WL(S) + M[k]_old)/2`, the average of the new summary and the old slot value. Let me
+actually trace what that does to a slot, because "stabilizing" is the kind of word I should not take on
+faith. Take a slot at `0.3` that gets pushed by a string of generations each summarizing to `0.9`.
+Overwriting jumps it to `0.9` in one step. The blend gives `0.5*(0.9+0.3) = 0.6` after one generation,
+then `0.5*(0.9+0.6) = 0.75`, then `0.825`, `0.8625`, `0.88125` — the gap to `0.9` halves every
+generation (`0.6, 0.3, 0.15, 0.075, 0.0375, ...`). So a single generation can move a slot by at most
+half its current distance to the summary, and a coherent signal still gets there in a handful of
+generations: the blend is a one-pole low-pass on the slot, not a brake that stalls it. That is the
+behavior I wanted — noisy generations damped, persistent signal still followed — and now I have watched
+it happen rather than asserted it.
 
-Those four are refinements to the *parameter propagation*. Now the change I think matters most, which
-is to the *mutation operator itself*. Look hard at current-to-pbest/1:
+Those four are refinements to the *parameter propagation*. Now a change to the *mutation operator
+itself*. Look hard at current-to-pbest/1:
 `v_i = x_i + F_i*(x_pbest - x_i) + F_i*(x_r1 - x_r2)`. The same `F_i` multiplies two structurally
 different things. The first term, `x_pbest - x_i`, is a *directed pull toward the elite* — it is
 exploitation, dragging the individual toward one of the best solutions found. The second term,
 `x_r1 - x_r2`, is the *self-scaling random difference* — it is the exploration, the perturbation that
-carries the population's scatter. Using one `F_i` for both forces the strength of the elite-pull and
-the strength of the random perturbation to move in lockstep. But I have just spent four refinements
+carries the population's scatter. Using one `F_i` for both ties the strength of the elite-pull and
+the strength of the random perturbation together. But I have just spent four refinements
 arguing that the right balance between exploration and exploitation *changes over the run*: broad and
-diversifying early, focused and elite-following late. So the elite-pull term should be *weaker* than
-the perturbation early (do not commit to the current elite while still exploring) and *stronger* than
-the perturbation late (follow the good solutions once the basin is found). A single `F_i` cannot
-express that.
+diversifying early, focused and elite-following late. With a single `F_i`, the relative weight of pull
+to perturbation is fixed by the operator's geometry and cannot move with the phase. So the lever I am
+missing is a way to make the elite-pull *weaker* than the perturbation early (do not commit to the
+current elite while still exploring) and *stronger* than the perturbation late (follow the good
+solutions once the basin is found).
 
-The fix is to give the elite-pull term its own factor — a *weighted* `F`. Replace `F_i*(x_pbest -
-x_i)` with `Fw*(x_pbest - x_i)`, where `Fw` is `F_i` scaled by a phase-dependent multiplier, keeping
-`F_i` on the random-difference term. Early in the run I want the elite pull weaker, so `Fw < F_i`;
-late, stronger, so `Fw > F_i`. A simple three-step schedule on the budget fraction does it:
+The fix I want to try is to give the elite-pull term its own factor — a *weighted* `F`. Replace
+`F_i*(x_pbest - x_i)` with `Fw*(x_pbest - x_i)`, where `Fw` is `F_i` scaled by a phase-dependent
+multiplier, keeping `F_i` on the random-difference term. Early in the run I want `Fw < F_i`; late,
+`Fw > F_i`. A simple three-step schedule on the budget fraction:
 `Fw = 0.7*F_i` for the first 0.2 of the budget, `0.8*F_i` for the first 0.4, and `1.2*F_i` thereafter.
-The donor becomes `v_i = x_i + Fw*(x_pbest - x_i) + F_i*(x_r1 - x_r2)` — current-to-pbest *weighted*.
-Early, the individual is perturbed more than it is pulled toward the elite, preserving diversity;
-late, it is pulled toward the elite more than it is perturbed, sharpening convergence. This decouples
-the two roles `F` was forced to play, and it is the single most consequential change over the
-unweighted operator: it is the difference between an algorithm whose exploration/exploitation balance
-is one knob and one whose balance follows the run's phase by construction.
+The donor becomes `v_i = x_i + Fw*(x_pbest - x_i) + F_i*(x_r1 - x_r2)`.
+
+Before I commit to this I want to see, on actual numbers, that it does what I claim — that the balance
+moves with phase and that the unweighted operator genuinely cannot do the same thing. Take a 1-D
+slice: an individual at `x_i = 0`, an elite at `x_pbest = 10`, and pick a sampled `F = 0.5`. Consider
+just the pull term (set the perturbation aside for a moment). The donor's pure-pull landing point is
+`x_i + Fw*(x_pbest - x_i) = Fw*10`, i.e. it sits a fraction `Fw` of the way from the individual toward
+the elite. With the schedule, `Fw = 0.35, 0.40, 0.60` across early/mid/late, so the donor lands
+**35%, then 40%, then 60%** of the way to the elite. The *unweighted* operator uses `F = 0.5`, so it
+lands at `50%` of the way — *every phase, identically*, because nothing in it depends on the budget
+fraction. There it is, computed: the weighted operator slides the commitment-to-elite from 0.35 to
+0.60 over the run while the unweighted one is pinned at 0.50, and the difference is exactly the
+phase-dependence I was trying to inject. And crucially the perturbation term still carries the full
+`F = 0.5` in both operators, so what I have changed is *only* the pull's weight relative to a fixed
+perturbation — early the individual is pulled less than half a `F` toward the elite while perturbed at
+full `F`, preserving scatter; late it is pulled past `F` toward the elite, sharpening convergence.
+
+The numbers also surface a detail I should be honest about. Late, `F` is no longer capped (the rail
+only holds for the first 0.6 of the budget), so `F` can reach `1`, and then `Fw = 1.2*F` can reach
+`1.2` — the donor overshoots `x_pbest` by 20%. That is intended, not a bug: an overshoot past the
+elite is a probe just beyond the current best, which is what I want when refining a basin, and the
+binomial crossover plus greedy selection discard it if it is worse. Early it cannot happen: `F` is
+capped at `0.7` and `Fw = 0.7*F`, so the maximum elite multiplier is `0.49` — the early donor never
+even reaches the elite, let alone overshoots it. So the schedule's two ends are doing visibly different
+geometric things, and both match the exploration-then-exploitation story. This decoupling of the two
+roles `F` was forced to play is the change I expect to matter most of the five, precisely because it is
+the one the unweighted operator structurally cannot mimic.
 
 Let me also reconsider the greediness `p` of the pbest pool in light of the same phase argument.
 Pulling toward the top `N*p` individuals: a *larger* `p` early means the elite pool is broad, so the
 pull is toward a diverse set of good solutions, not one incumbent — that is the diversity I want
 early. A *smaller* `p` late means the pool narrows toward the very best, sharpening the convergence.
-So `p` should *decrease* over the run, linearly from a larger value to a smaller one:
-`p = (p_max - p_min)*nfes/max_nfes + p_max`... no — I want it to *decrease*, so
-`p = p_max - (p_max - p_min)*nfes/max_nfes`, starting at `p_max` and ending at `p_min`. A natural
-setting is `p_max = 0.25`, `p_min = p_max/2 = 0.125`: early, draw the elite guide from the top quarter
-(broad), late, from the top eighth (sharp). This matches the same exploration-to-exploitation arc as
-the weighted mutation, applied to the pool the elite guide comes from.
+So `p` should *decrease* over the run, linearly from a larger value to a smaller one. The first form I
+wrote, `p = (p_max - p_min)*nfes/max_nfes + p_max`, is wrong — at `nfes = 0` it gives `p_max` but the
+slope is positive, so it *increases*; I want
+`p = p_max - (p_max - p_min)*nfes/max_nfes`, which starts at `p_max` and ends at `p_min`. With
+`p_max = 0.25`, `p_min = 0.125`: checking the endpoints, `nfes/max = 0` gives `0.25`, `= 1` gives
+`0.125`, and the midpoint `= 0.5` gives `0.1875` — a clean linear descent from the top quarter to the
+top eighth. I should sanity-check it survives the population shrinking too: at a healthy `N = 100`
+the pool goes from `round(0.25*100)=25` down to `round(0.125*100)=12`; at the end of the run when `N`
+has fallen to `4`, both ends give `max(2, round(0.25*4))=2` and `max(2, round(0.125*4))=2`, so the
+floor of 2 takes over and the pool is just the top two — which is fine, the population is tiny and
+already near-converged. So the schedule degrades gracefully rather than collapsing to one elite. This
+matches the same exploration-to-exploitation arc as the weighted mutation, applied to the pool the
+elite guide comes from.
 
 Two edge cases I will pin down so the adaptation does not divide by zero. First, if a generation
 produces no winners, no slot is updated — no evidence, no change. Second, `CR`: on some landscapes the
@@ -98,7 +138,9 @@ which is slow but thorough on rugged functions.
 
 The remaining constants follow standard adaptive-DE practice. Memory size `H = 5`: enough slots that
 one bad generation cannot dominate, small enough that stale entries do not steer the search; and with
-the last sampled period fixed at `0.9`, four ordinary periods carry learned centers at any instant. `N_init` scales with the problem,
+the last sampled period fixed at `0.9`, four ordinary periods carry learned centers at any instant —
+which is also the `H` that made the frozen slot's `1/H = 1/5` aggression fraction come out where I
+wanted it above. `N_init` scales with the problem,
 `round(25*log(D)*sqrt(D))` — large enough early for exploration and good adaptation statistics,
 knowing linear reduction will whittle it to `N_min = 4` (the minimum current-to-pbest/1 can run on).
 The archive caps at `|A| = N` and rescales as `N` shrinks, random deletion on overflow. The
@@ -107,7 +149,7 @@ Cauchy/Normal spread `0.1` is tight enough that samples stay near the learned ce
 offending coordinate halfway between the violated bound and the parent's coordinate — the standard DE
 repair that keeps the trial inside the box without snapping it hard to the wall.
 
-Now let me assemble the whole machine and check it is exactly L-SHADE plus these changes, nothing more.
+Now let me assemble the whole machine and read it back against L-SHADE to see what I have actually added.
 Initialize `N_init` random vectors and evaluate; set `H` memory slots to `M_F = 0.3`, `M_CR = 0.8`,
 with the last sampled period overriding its center to `0.9, 0.9`; empty archive; memory counter `k = 0`. Each generation: sort
 by fitness; compute the current `p` from the decreasing schedule and the elite pool from the top
@@ -121,7 +163,8 @@ success. After the generation, if there were successes, blend the improvement-we
 `S_F` and `S_CR` into slot `k` (with the terminal-`CR` rule and the `(new+old)/2` averaging), advance
 `k` round-robin; then apply the linear population reduction (delete the worst, rescale the archive)
 and decrease the pbest fraction along its `0.25 -> 0.125` schedule.
-That is the entire method: L-SHADE's reproduction and schedule, with the high/frozen/phase-rail memory
-handling, the blended update, the decreasing `p`, and — the heart of it — the weighted mutation factor
-that decouples the elite pull from the random perturbation and slides their balance from
-exploration-heavy early to exploitation-heavy late.
+Reading it back: the reproduction and population schedule are L-SHADE's untouched; what is layered on
+is the high/frozen/phase-rail memory handling, the blended update I traced halving its way to a signal,
+the decreasing `p` I checked descends cleanly from a quarter to an eighth, and the weighted mutation
+factor that — as the 35%/40%/60%-vs-fixed-50% slice showed — decouples the elite pull from the random
+perturbation and slides their balance from exploration-heavy early to exploitation-heavy late.

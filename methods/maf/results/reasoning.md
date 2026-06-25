@@ -66,10 +66,24 @@ touch the diagonal — so
 
   |det(∂f^{-1}/∂x)| = exp(−Σ_i α_i),   α_i = f_{α_i}(x_{1:i-1}).
 
-Substitute the inverse map and this determinant into the change-of-variables formula and I have the
-exact density of any x. So an autoregressive model with Gaussian conditionals *is* a normalizing flow,
-no metaphor: f maps base randomness to data, f^{-1} maps data to base randomness in one masked pass,
-and the log-det is just −Σ α_i.
+That triangularity argument is the load-bearing step, so before I trust it I want to see the Jacobian
+on an actual point rather than just assert its shape. Take D = 2, pick conditioners μ = (0.3, 3·tanh 2x_1),
+α = (0.1, 0.2·x_1) — α_2 genuinely depends on x_1, so coordinate 2 is doing real autoregressive work —
+and evaluate at x = (0.7, −1.3). I form u = f^{-1}(x) coordinate-wise and take the Jacobian ∂u/∂x by
+finite differences. It comes out
+
+  [ 0.904837   0       ]
+  [−0.439638   0.869358 ]
+
+— the upper-right entry is zero to numerical precision, confirming u_1 really does ignore x_2, so the
+matrix is lower-triangular as the argument claimed. The diagonal is (0.904837, 0.869358), which equals
+exp(−α) = (exp(−0.1), exp(−0.2·0.7)) = (0.904837, 0.869358) on the nose — only the explicit (x_i − μ_i)
+factor lands on the diagonal, exactly as I argued. And the numeric determinant is 0.78662786, while the
+formula exp(−Σα_i) = exp(−0.1 − 0.14) = 0.78662786 — same to eight digits. So the change-of-variables is
+not a hopeful analogy: f maps base randomness to data, f^{-1} maps data to base randomness in one masked
+pass, the Jacobian is triangular, and the log-det is −Σ α_i. Substituting the inverse map and this
+determinant into the change-of-variables formula gives the exact density of any x. An autoregressive
+model with Gaussian conditionals is, computationally, already a normalizing flow.
 
 Now I can act on the diagnostic. If the u's that f^{-1} produces from the data aren't standard normal —
 which is exactly the symptom of a bad single-Gaussian-conditional fit — then instead of forcing them to
@@ -78,10 +92,27 @@ recurse. Stack flows M_1, M_2, …, M_K: M_2 models the random numbers u_1 that 
 random numbers u_2 that M_2 emits, and so on, with only the final u_K declared standard normal. Because
 each layer is an invertible, tractable-Jacobian flow, the stack is again an invertible, tractable-Jacobian
 flow — the log-det of the whole is the sum of the layers' log-dets, and the density of x is the base
-density at the fully-transformed code plus that sum. And the stack is genuinely more expressive than any
-one layer: each individual MADE has unimodal Gaussian conditionals, but composing several of them lets the
-*overall* model express multimodal conditionals, because a smooth invertible reshaping of a Gaussian can
-be multimodal in the original coordinates. I implement each layer's {f_{μ_i}, f_{α_i}} with a MADE that
+density at the fully-transformed code plus that sum.
+
+Does this actually buy multimodality, though? That's the whole justification for stacking, and I should
+be careful: each layer's per-coordinate conditional is a *single* Gaussian, so it's not obvious the model
+can ever be multimodal. Worse, I have to be honest about a degenerate case. In one dimension a MAF layer
+is x = u·exp(α) + μ with α, μ constants (coordinate 1 has no earlier coordinates to condition on), which
+is a pure affine map — a single Gaussian stays a single Gaussian, and composing affine maps just gives
+another affine map, so a stack of 1-D layers is *exactly* a single Gaussian and never multimodal. So if
+multimodality appears at all, it cannot come from depth alone; it has to come from the cross-coordinate
+conditioner being nonlinear. Let me check whether that's enough with the simplest possible nonlinear
+conditioner. Take D = 2, base u ~ N(0, I), and one layer with x_1 = u_1, x_2 = u_2 + 3·tanh(2x_1)
+(so μ_2 saturates toward ±3 as x_1 moves away from zero). Drawing two million samples and histogramming
+x_2 on (−6, 6): the marginal has two clear peaks, at x_2 ≈ −2.5 (density 0.154) and x_2 ≈ +2.5 (density
+0.154), with a *dip* at x_2 = 0 (density 0.078 — about half the peak height). So a single MAF layer with
+a nonlinear conditioner already produces a bimodal marginal, even though every conditional in it is one
+Gaussian. The mechanism is now concrete: the marginal of x_2 is a continuous mixture, over x_1 ~ N(0,1),
+of Gaussians centered at 3·tanh(2x_1); because tanh saturates, x_1's mass piles the centers up near ±3,
+and the mixture is bimodal. Stacking layers (each reshaping the previous layer's outputs through such a
+conditioner) compounds this. So the expressiveness claim holds, and I now know *where* it comes from —
+the nonlinear coupling across coordinates inside each MADE, not from the single-Gaussian conditional and
+not from depth in isolation. I implement each layer's {f_{μ_i}, f_{α_i}} with a MADE that
 has Gaussian outputs — it emits μ_i and α_i for all i in one masked pass — so the entire x → u direction,
 and hence the density, is one parallel pass per layer with no sequential recursion. That's the model:
 stacked masked autoregressive flows. The conditioners read the data (and, deeper in the stack, the
