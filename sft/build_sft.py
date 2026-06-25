@@ -83,10 +83,19 @@ def read(p):
 def think(reasoning, answer):
     return f"<think>\n{reasoning.strip()}\n</think>\n\n{answer.strip()}"
 
-_THINK_RE = re.compile(r'<think>.*?</think>', re.DOTALL)
+_THINK_RE = re.compile(r'<think>.*?</think>\s*', re.DOTALL)
 def fold_think(value):
-    """Empty the <think> content (keep the tags + everything after) -- the non-thinking form."""
-    return _THINK_RE.sub('<think>\n\n</think>', value, count=1)
+    """Remove the <think>...</think> block ENTIRELY from a folded HISTORY turn (keep the answer/action).
+
+    Previously this left an EMPTY `<think>\\n\\n</think>` in place. Training conditioned the model on
+    thousands of those empty-think history blocks (2738 in the built file), and methodtraj/agentic
+    models learned to NARRATE the empty think and bail mid-trace -- e.g. "I cannot complete this thought
+    because the next thinking is empty </think>" then dump code, observed in 159/2955 real eval samples
+    (concentrated in the methodtraj models that carry the most folded turns; see
+    experiments/DATA_REMEDIATION_zh.md). Dropping the block removes that conditioning signal while still
+    giving the current turn a reasoning-stripped history (the whole intent of folding). The current
+    (loss=True) turn is unchanged and keeps its full reasoning."""
+    return _THINK_RE.sub('', value, count=1).lstrip('\n')
 def fold_turn(turn):
     t = dict(turn)
     if t['from'] in ('gpt', 'function_call'):
