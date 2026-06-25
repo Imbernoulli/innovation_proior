@@ -37,6 +37,13 @@ git-ignored and regenerable with the scripts. Two datasets, trained **together i
   into every system prompt as meta-conditioning. Multi-turn data is emitted in two framings —
   *full* (history keeps its reasoning) and *folded* (prior rounds' reasoning emptied, only the
   current round trained) — so the model learns to derive against both kinds of history.
+  > **Training-code note (2026-06 remediation, see below):** the *folded* framing emptied history
+  > `<think>` to a literal `<think>\n\n</think>`, which does **not** match the official Qwen3/Qwen3.5
+  > template (it strips history `<think>` **entirely**) and was traced to the "the next thinking is
+  > empty" artifact. Fixed in `build_sft.fold_think` (strip the whole block). This also showed the
+  > `feat/per-turn-loss-mask` fork is largely **unnecessary** — emitting natural single-user +
+  > observation conversations lets upstream LLaMA-Factory handle it. Details:
+  > [`experiments/PIPELINE_FINDINGS_zh.md`](experiments/PIPELINE_FINDINGS_zh.md) §发现二.
 - **`maintain_sft.jsonl`** (`sft/build_maintain.py`) — a capability-**maintenance** set: public
   **Qwen**-distilled traces (khazarai, WithinUsAI, armand `pi`/Claude-Code, nvidia Open-SWE) mixed
   in as on-policy replay to preserve the base Qwen model's original abilities (against catastrophic
@@ -88,7 +95,7 @@ every case correctly. Full details: [`sft/README.md`](sft/README.md).
 1. **De-rewrite（核心，进行中）**——让 reasoning **真的验证自己的结论**：把「this confirms…/guaranteed」这类裸断言换成**在页面上实际算出来的检查**（小例子手算、数值核对、反例、trace 代码），去掉「预先宣布答案」的腔调，只在推导**本来就有**弯路时才走死胡同（不演假失败），**终点方法与代码保持不变**。这同时把 trace 自然加长。已扫完 **Empirical ML + 组合/竞赛算法** 类约 **500+/817** 条（数学/物理/理论暂缓）。工具：[`tools/derewrite_workflow.js`](tools/derewrite_workflow.js)。
 2. **In-frame 泄露清理**——移除 285 个文件里 411 处 `the paper`/`the authors`/`arXiv` 等暴露「反推自论文」的措辞（改写为第一人称、保留正经的前作引用）。工具：`tools/data_audit.py`、`tools/fix_inframe*.js`。
 3. **build_sft 折叠修复**——`fold_think` 原来在历史轮留**空 `<think>\n\n</think>`**，与官方 Qwen3/Qwen3.5 模板（历史轮 `<think>` **整块剥除**）不一致，是 "the next thinking is empty" 伪影的根源；现改为**整块删除**（built 文件里空 think 块 2738 → 0）。亦因此发现 `feat/per-turn-loss-mask` fork 的折叠多半多余（详见 PIPELINE_FINDINGS_zh §发现二）。
-4. **新竞赛数据**——`data_v4/` 下 **110 条已验证**的 FrontierCS 风格单文件 C++（读 stdin、`g++` 实编译 + 暴力对拍 ≥100 组 0 不符），spine 是 **debug + self-verify**。工具：`tools/gen_v4*`、`tools/verify_v4.py`、入 SFT：`sft/build_v4.py`。
+4. **新竞赛数据**——`data_v4/` 下 **177 条已验证**的 FrontierCS 风格单文件 C++（读 stdin、`g++` 实编译 + 暴力对拍 0 不符），spine 是 **debug + self-verify**。两波：`cpv4-*` 110 条（22 算法标签 × 5 坑型）+ `cpv4b-*` 67 条（第二波，含针对真实失败的 `fakeproof`/`construct-verify` 等坑型；该波生成时被限额打断，已对落盘的 83 条本地复验，67 条过、其余因半成品/对拍不符剔除）。工具：`tools/gen_v4*`、`tools/verify_v4.py`、入 SFT：`sft/build_v4.py`。
 5. **管线去放大器**——`sft/build_sft.py` 去掉 "narrative, telling tone" 提示、system prompt 注入交付 + 验证纪律。
 
 > 待办：剩余 in-scope de-rewrite（~300 条）、trajectory 逐 rung 加深、用 HF 现成蒸馏+筛选集（OpenCodeReasoning-2 等）规模化竞赛数据、build_sft 按 Qwen3 模板统一改造（退 fork）。见任务清单与上述文档。
