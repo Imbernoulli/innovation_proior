@@ -76,6 +76,23 @@ every case correctly. Full details: [`sft/README.md`](sft/README.md).
 
 一句话结论：核心假设在竞赛类评测上**未被支持**（SFT 把模型打崩），但很可能是**评测口径错配**——同一模型在 MLS 研究任务上反超起点；模型学到的是**创新的叙事姿态而非可提交的解**。详见上面两份文档。
 
+## Data-quality remediation（数据补救，2026-06）
+
+针对上面「SFT 在竞赛评测上把模型打崩」的问题，我们**逐字读了真实模型输出**（`experiments/raw_outputs/`）独立定位根因，并对**现有数据**做了批量改造。完整记录：
+**[`experiments/PIPELINE_FINDINGS_zh.md`](experiments/PIPELINE_FINDINGS_zh.md)**（两个坐实的深层发现）、**[`experiments/MODEL_FAILURE_ROOTCAUSE_zh.md`](experiments/MODEL_FAILURE_ROOTCAUSE_zh.md)**（15 失败模式 + 根因映射）、**[`experiments/DATA_REMEDIATION_zh.md`](experiments/DATA_REMEDIATION_zh.md)**（补救方案）。
+
+**根因（独立实测，非转述）**：落点是研究叙事 + 论文级 Python 库而非可提交单文件（实测 1.9% 读 stdin、0.2% C++、58% class）；**88% 的带代码 trace 写完代码从不验证**；数据是**反推改写**（从已知论文倒推「必然 land」的发现），导致模型学会**断言但不验证**（输出里 28.9% 说 "guaranteed" 却 80% 得 0），跑空时还会幻觉「原始思考是空的，没东西可改写」而拒答。
+
+**已做的改造（均已 push 到 `main`）**：
+
+1. **De-rewrite（核心，进行中）**——让 reasoning **真的验证自己的结论**：把「this confirms…/guaranteed」这类裸断言换成**在页面上实际算出来的检查**（小例子手算、数值核对、反例、trace 代码），去掉「预先宣布答案」的腔调，只在推导**本来就有**弯路时才走死胡同（不演假失败），**终点方法与代码保持不变**。这同时把 trace 自然加长。已扫完 **Empirical ML + 组合/竞赛算法** 类约 **500+/817** 条（数学/物理/理论暂缓）。工具：[`tools/derewrite_workflow.js`](tools/derewrite_workflow.js)。
+2. **In-frame 泄露清理**——移除 285 个文件里 411 处 `the paper`/`the authors`/`arXiv` 等暴露「反推自论文」的措辞（改写为第一人称、保留正经的前作引用）。工具：`tools/data_audit.py`、`tools/fix_inframe*.js`。
+3. **build_sft 折叠修复**——`fold_think` 原来在历史轮留**空 `<think>\n\n</think>`**，与官方 Qwen3/Qwen3.5 模板（历史轮 `<think>` **整块剥除**）不一致，是 "the next thinking is empty" 伪影的根源；现改为**整块删除**（built 文件里空 think 块 2738 → 0）。亦因此发现 `feat/per-turn-loss-mask` fork 的折叠多半多余（详见 PIPELINE_FINDINGS_zh §发现二）。
+4. **新竞赛数据**——`data_v4/` 下 **110 条已验证**的 FrontierCS 风格单文件 C++（读 stdin、`g++` 实编译 + 暴力对拍 ≥100 组 0 不符），spine 是 **debug + self-verify**。工具：`tools/gen_v4*`、`tools/verify_v4.py`、入 SFT：`sft/build_v4.py`。
+5. **管线去放大器**——`sft/build_sft.py` 去掉 "narrative, telling tone" 提示、system prompt 注入交付 + 验证纪律。
+
+> 待办：剩余 in-scope de-rewrite（~300 条）、trajectory 逐 rung 加深、用 HF 现成蒸馏+筛选集（OpenCodeReasoning-2 等）规模化竞赛数据、build_sft 按 Qwen3 模板统一改造（退 fork）。见任务清单与上述文档。
+
 ## The website
 
 A pure-static single-page app — no build step, all relative paths, so it works as-is on
