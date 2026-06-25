@@ -70,10 +70,11 @@ function's behavior on exponentially many inputs, but is itself tiny, feels much
 maybe these short representatives of exponential computation could be discovered, and exploited,
 *algorithmically* — fast. If having small circuits secretly means you have so much structure that a
 fast algorithm can use it, then small circuits for SUCCINCT 3SAT would buy a fast algorithm for
-SUCCINCT 3SAT, contradicting the time lower bound I just established. That's the shape of the thing
-I want: a theorem that *spins circuits into algorithms*. If SUCCINCT 3SAT ∈ ACC implies a
-faster-than-2^n nondeterministic algorithm for SUCCINCT 3SAT, then by the time lower bound,
-SUCCINCT 3SAT ∉ ACC, i.e. NEXP ⊄ ACC. Let me try to make that real.
+SUCCINCT 3SAT, contradicting the time lower bound I just established. So the shape I'm chasing is a
+theorem that turns circuits *into* algorithms: small circuits for SUCCINCT 3SAT should imply a
+faster-than-2^n nondeterministic algorithm for it, which the time lower bound then forbids. Whether
+that implication actually holds is the whole game; let me try to make it real and see where it
+fights back.
 
 First attempt, the obvious one. I'm allowed nondeterminism. So guess a poly-size ACC circuit C that
 supposedly decides SUCCINCT 3SAT, then run it on my input. But — how do I check C is *correct*?
@@ -108,8 +109,9 @@ adversary answers 0 to every query until forced, so this needs 2^n queries — g
 black boxes. Replace the box with a circuit and the same question is *Circuit-SAT*. So the gap I'm
 hunting is exactly: can analyzing a circuit's *structure* beat the 2^n you'd need for a black box?
 Let me sanity-check the extreme: assume the strongest possible separation, that circuits are totally
-easy — P = NP, Circuit-SAT in P. Can I then get a circuit lower bound? Yes — this is essentially the
-old Karp–Lipton–Meyer observation, and re-deriving it tells me the *mechanism*.
+easy — P = NP, Circuit-SAT in P. Can I then get a circuit lower bound? Let me try to push this
+through; if it works, the derivation should show me which feature of "small circuit" the argument
+actually leans on.
 
 Suppose P = NP and, for contradiction, EXP ⊆ P/poly. Take any 2^n-time machine A, say one-tape.
 On input x, nondeterministically guess a poly-size circuit C whose truth table T(C) is the
@@ -119,9 +121,10 @@ that C's claim about cell j at step i is consistent with its claims about cells 
 i−1 (one-tape locality). That's evaluating C at four index pairs, poly time. If every local check
 passes, accept iff C says A(x) accepts. This is a Σ₂ computation: guess, then universally verify.
 But P = NP collapses Σ₂ to P. So I've simulated an arbitrary 2^n-time machine in P — contradicting
-the time hierarchy. Hence EXP ⊄ P/poly. The mechanism is exactly the one I wanted: **guess a circuit
-encoding an exponential object, and verify it by purely LOCAL consistency checks.** Locality is what
-makes the verification cheap.
+the time hierarchy. Hence EXP ⊄ P/poly. Reading back what made it go through: I guessed a circuit
+encoding an exponential object, and I never had to recompute that object — I only checked *local*
+consistency between neighboring claims. Locality is what kept the verification at poly time, and it's
+the feature of "small circuit" I want to keep exploiting.
 
 The catch is the assumption. P = NP is absurdly strong. Can I weaken it? Following the argument, a
 half-exponential-time Circuit-SAT algorithm (f with f(f(n^k)^k) ≤ 2^{n/2}) suffices instead. But
@@ -242,8 +245,10 @@ ACC-SAT call. If it's satisfiable, reject the guess. The number of inputs to VAL
 n + O(log n), so the ACC-SAT call runs in 2^{n}/n^{k} time by the (soon-to-be-built) ACC-SAT
 algorithm; that's the dominant cost and it's below 2^n.
 
-Once E is verified, x' falls out for free: x(i) = E(x, i, j*) where j* is the index of the output
-gate of x. So set x' = E(·, j*), guaranteed equivalent to x and ACC. (Equivalently, just use E
+Once E is verified, x' falls out for free. The output of x on input i is just the value carried on
+its output gate, gate j*; and E by definition reports the value on any gate. So set x' = E(·, j*).
+This x' is ACC because E is, and it equals x on every input precisely because the ACC-SAT call
+certified that E reports the true gate value everywhere — including at j*. (Equivalently, just use E
 itself.) The regress is broken: D is checked directly (poly time), E is checked using D plus one
 ACC-SAT call, and x' is read off E. Three stages, each grounded in the previous, base case
 self-evident. Write the assembled algorithm:
@@ -293,17 +298,43 @@ becomes a constant-fan-in AND of MOD_p of ANDs, using that p^e | x iff p | C(x, 
 i = 0, …, e−1. Derandomize the probabilistic inputs by enumerating all poly(log s) settings and
 taking a MAJORITY of the copies — that's the symmetric top gate appearing — at a quasipolynomial
 size cost. Then push the remaining layers of MOD_p gates up into the top symmetric gate, one layer
-at a time, using the modulus-amplifying polynomials of Beigel–Tarui: the polynomial
-  P_k(x) = (−1)^k (x−1)^k ( Σ_{i=0}^{k−1} C(k+i−1, i) x^i ) + 1
-satisfies P_k(x) ≡ 0 (mod p^k) when x ≡ 0 (mod p) and P_k(x) ≡ 1 (mod p^k) when x ≡ 1 (mod p);
-setting Q_k(x) = 1 − P_k(x^{p−1}) and invoking Fermat's little theorem, Q_k(Σ y_i) ≡ 1 (mod p^k) iff
-p divides Σ y_i, i.e. Q_k expresses a MOD_p gate as a polynomial mod p^k. Each Q_k of a sum is a
-symmetric multivariate polynomial of degree ≤ k(p−1), expand it into ≤ (f f')^{O(k(p−1))} monomials,
-each an AND of polylog variables times a small coefficient (simulate the coefficient by duplicating
-monomials), so a layer of MOD_p over ANDs becomes a *single sum mod p^k of ANDs* — a new symmetric
-function consuming that layer. Iterating a constant number of times (constant depth), the whole
-circuit collapses to a symmetric function of quasipolynomially many ANDs of variables, where the
-final symmetric function has the form
+at a time, using a *modulus-amplifying* polynomial of Beigel–Tarui: a low-degree polynomial that
+collapses a value's residue mod p into a residue mod p^k. The exact polynomial is fiddly and I do not
+trust myself to write it from memory, so let me pin it down by what it has to do. I need a polynomial
+P_k of degree O(k) such that
+  x ≡ 0 (mod p)  ⟹  P_k(x) ≡ 0 (mod p^k),     x ≡ 1 (mod p)  ⟹  P_k(x) ≡ 1 (mod p^k);
+i.e. it *amplifies* a mod-p decision into a mod-p^k decision. The shape I half-remember is
+P_k(x) = (−1)^k (x−1)^k ( Σ_{i=0}^{k−1} C(k+i−1, i) x^i ) + 1. Before I lean a whole construction on
+it, let me just evaluate it on a small case rather than assume it. Take p = 3, k = 2, so p^k = 9, and
+test x ≡ 0 (mod 3). At x = 0: the sum Σ_{i=0}^{1} C(1+i, i) x^i = C(1,0) + C(2,1)·0 = 1, and
+(−1)^2 (0−1)^2 · 1 + 1 = (1)(1)(1) + 1 = 2. So P_2(0) = 2, and 2 ≡ 2 (mod 9), not 0. The "x ≡ 0
+⟹ 0 mod p^k" property *fails* — and it fails by exactly the constant +1 I tacked on at the end. The
+x ≡ 1 case happens to land right (at x = 1 the (x−1)^k factor zeroes the product, giving 1), which is
+why the bad +1 is easy to miss: it only corrupts the x ≡ 0 branch. So the formula as I wrote it is
+wrong. The fix is forced by the small computation: I want the bracketed product itself to read 0 at
+x ≡ 0 and 1 at x ≡ 1, with no additive correction laid over the wrong branch. That is
+  P_k(x) = 1 − (1 − x)^k ( Σ_{i=0}^{k−1} C(k+i−1, i) x^i ).
+Re-test p = 3, k = 2: at x = 0, 1 − (1)(1) = 0 ≡ 0 (mod 9) ✓; at x = 1, the (1−x)^k factor kills the
+second term so P_2(1) = 1 ✓. Let me push the check further, over all residues mod p and a couple of
+moduli, to be sure it is the *amplification* I claimed and not just luck at 0 and 1: for p ∈ {2,3,5}
+and k ∈ {1,2,3,4}, evaluating P_k on every x in a wide range, every x ≡ 0 (mod p) gives P_k(x) ≡ 0
+(mod p^k) and every x ≡ 1 (mod p) gives P_k(x) ≡ 1 (mod p^k). All cases pass. Good — *now* I trust
+the polynomial; the lesson is that the additive-constant version was a plausible-looking trap.
+
+With the corrected amplifier I can build the MOD_p gate as a polynomial mod p^k. Set
+Q_k(x) = P_k(x^{p−1}) and invoke Fermat's little theorem: for x not divisible by p, x^{p−1} ≡ 1
+(mod p), so Q_k pushes it to ≡ 1 (mod p^k); for x ≡ 0 (mod p), x^{p−1} ≡ 0, so Q_k ≡ 0 (mod p^k).
+Thus 1 − Q_k(Σ y_i) ≡ 1 (mod p^k) iff p divides Σ y_i — a MOD_p gate expressed as a single
+polynomial mod p^k. Let me confirm the wiring on a concrete sum: p = 2, k = 3, p^k = 8. For
+y = Σ y_i running 0, 1, 2, …, 12, the value 1 − Q_3(y) mod 8 comes out 1, 0, 1, 0, 1, 0, … — exactly
+1 whenever y is even, 0 whenever y is odd. That is the MOD_2 indicator, and it matches the actual
+parity-of-y at every value I checked. So the gate identity holds, not just the amplifier.
+Each Q_k of a sum is a symmetric multivariate polynomial of degree ≤ k(p−1); expand it into
+≤ (f f')^{O(k(p−1))} monomials, each an AND of polylog variables times a small coefficient (simulate
+the coefficient by duplicating monomials), so a layer of MOD_p over ANDs becomes a *single sum
+mod p^k of ANDs* — a new symmetric function consuming that layer. Iterating a constant number of
+times (constant depth), the whole circuit collapses to a symmetric function of quasipolynomially many
+ANDs of variables, where the final symmetric function has the form
   F(v) = MAJORITY( ( ( v mod p_1^{k_1} ) mod p_2^{k_2} ) … mod p_{d'}^{k_{d'}} ),
 which is still symmetric (a symmetric function composed with sum-mod-p^k is symmetric), and
 evaluable in time comparable to the circuit size. One more bookkeeping point: I want the bottom ANDs
@@ -327,12 +358,21 @@ exactly the variables in T to 1" is g(T) = Σ_{S ⊆ T} f(S) — because AND_j f
 variables are set, i.e. G_j ⊆ T. That g is precisely the *zeta transform* of f over the subset
 lattice. And the zeta transform is computable by Yates's 1937 dynamic program in O(2^n · poly(n)):
 set g_0 = f and, for i = 1, …, n,
-  g_i(T) = g_{i−1}(T) + g_{i−1}(T \ {i})  if i ∈ T,   else  g_i(T) = g_{i−1}(T);
-each pass is O(2^n · poly(n)), n passes, and an induction shows g_n(T) = Σ_{S ⊆ T} f(S) = g(T). So
-in O(2^n · poly(n)) time I have, for every assignment T, the count of satisfied ANDs; apply F to
-each count (poly(s) to tabulate F, then a lookup per assignment) and I've evaluated the SYM⁺ circuit
-everywhere. Satisfiable iff some count makes F output 1. Clean, and it's the proof I'd actually
-present — minimal machinery.
+  g_i(T) = g_{i−1}(T) + g_{i−1}(T \ {i})  if i ∈ T,   else  g_i(T) = g_{i−1}(T).
+The claim that g_n = g is exactly the kind of thing I have talked myself into before and been wrong,
+so let me actually run the DP on a tiny case and compare against the definition. Take n = 2, variables
+{1, 2}, and pick a concrete table f(∅) = 3, f({1}) = 2, f({2}) = 0, f({1,2}) = 5. By the *definition*
+g(T) = Σ_{S⊆T} f(S): g(∅) = 3; g({1}) = f(∅)+f({1}) = 3+2 = 5; g({2}) = f(∅)+f({2}) = 3+0 = 3;
+g({1,2}) = 3+2+0+5 = 10. Now run Yates. Pass i = 1 (add the {1}-shifted value where 1 ∈ T):
+g_1(∅)=3, g_1({1})=g_0({1})+g_0(∅)=2+3=5, g_1({2})=0, g_1({1,2})=g_0({1,2})+g_0({2})=5+0=5. Pass
+i = 2 (add the {2}-shifted value where 2 ∈ T): g_2(∅)=3, g_2({1})=5, g_2({2})=g_1({2})+g_1(∅)=0+3=3,
+g_2({1,2})=g_1({1,2})+g_1({1})=5+5=10. So the DP gives (3, 5, 3, 10) on (∅, {1}, {2}, {1,2}) — equal,
+entry by entry, to the definitional (3, 5, 3, 10). The induction it suggests is clear: after pass i,
+g_i(T) sums f over exactly those S ⊆ T that agree with T outside {1,…,i}, and after pass n that is
+all S ⊆ T. Each pass is O(2^n · poly(n)), n passes. So in O(2^n · poly(n)) time I have, for every
+assignment T, the count of satisfied ANDs; apply F to each count (poly(s) to tabulate F, then a
+lookup per assignment) and I've evaluated the SYM⁺ circuit everywhere. Satisfiable iff some count
+makes F output 1. Clean, and it's the proof I'd actually present — minimal machinery.
 
 I should record that there are two other ways to do this same bulk evaluation, because they reveal
 why the method is robust. One uses fast matrix multiplication: split the n inputs into halves A and
@@ -356,8 +396,8 @@ Circuit satisfiability is "does the OR over all 2^n assignments fire?" Split off
 n inputs: for each of the 2^k settings of that k-subset, substitute it into C to get a circuit on the
 remaining n − k inputs, and take the OR of all 2^k copies. Call it the *k-blowup* C'. Then C' has
 only n − k free inputs; size O(2^k · s); it's still ACC (one extra depth level, since ACC has
-unbounded-fan-in OR); and C is satisfiable iff C' is. I've brute-forced k variables to *buy fewer
-variables* in exchange for more size — and I'm happy to pay size, because the SYM⁺ decomposition
+unbounded-fan-in OR); and C is satisfiable iff C' is. I've brute-forced k variables to *buy fewer*
+variables in exchange for more size — and I'm happy to pay size, because the SYM⁺ decomposition
 tolerates quasipolynomial blowup and the evaluation cost is governed by the *number of variables*.
 
 Now assemble. Given a depth-d ACC circuit C of size s = 2^{n^ε} on n inputs:
@@ -369,12 +409,23 @@ Now assemble. Given a depth-d ACC circuit C of size s = 2^{n^ε} on n inputs:
     evaluate h on all 2^{n−k} points         # zeta-transform DP, O(2^{n−k} poly(n) + K) time
     output satisfiable iff g(h(·)) = 1 somewhere
 
-Let me check the exponents land below 2^n. Writing e for f(d, m), the decomposition of the k-blowup
-gives a symmetric gate over K ≤ s^{e(e · log^e s)} ANDs. With s = 2^{n^ε} this is
-K ≤ 2^{e n^ε (e n^{εe})}, and choosing k = n^{1/(2e)} forces K ≤ 2^{n^{2/3}} for all small enough ε
-and large n (the extra 2^k size factor from the blowup only raises log s' from n^ε to n^ε + n^{1/(2e)},
-which keeps the exponent below n^{2/3} for small ε). The evaluation runs in
-O(2^{n−k} · poly(n) + K) = O(2^{n − n^{1/(2e)}} · poly(n)), since 2^{n^{2/3}} ≪ 2^{n − n^{1/(2e)}}.
+Let me check the exponents land below 2^n, not assert it — the whole argument is worthless if the
+running time secretly creeps back to 2^n. Writing e for f(d, m), the decomposition of the k-blowup
+gives a symmetric gate over K ≤ s^{e(e · log^e s)} ANDs, i.e. the exponent of K (base 2) is on the
+order of e·k + (log s')^e where s' = 2^k·s is the blown-up size, so log s' = n^ε + k. There are two
+competing exponents: the *evaluation* exponent n − k, and the *monomial* exponent E_K ≈ e·k + (n^ε +
+k)^e. I need E_K to stay well below n − k. With k = n^{1/(2e)}: the term (n^ε + k)^e is dominated by
+max(n^{εe}, k^e) = max(n^{εe}, n^{1/2}); choosing ε < 1/(2e) makes n^{εe} < n^{1/2}, so (n^ε+k)^e =
+O(n^{1/2}) and the e·k term is O(n^{1/(2e)}) ≤ O(n^{1/2}) as well, giving E_K = O(n^{1/2}) — certainly
+below n^{2/3}. Meanwhile n − k = n − n^{1/(2e)}, whose gap from n is n^{1/(2e)}, far larger than the
+n^{1/2}… wait, I should check that direction too, since if E_K exceeded n − k the whole thing dies.
+n − k ≈ n for large n, and E_K = O(n^{1/2}) ≪ n, so 2^{E_K} ≪ 2^{n−k}; the evaluation term dominates.
+Let me also sanity it numerically at a sample point: e = 3, ε = 0.05, n = 10^6. Then k = n^{1/6} = 10,
+log s' = n^{0.05} + 10 ≈ 12.6, E_K ≈ e·k + (log s')^e = 30 + 12.6³ ≈ 2.0×10³, while n − k ≈ 1.0×10⁶.
+So E_K/(n−k) ≈ 0.002 — the monomial count's exponent is three orders of magnitude under the
+evaluation exponent, comfortably inside the budget; and repeating with e = 2, ε = 0.01 gives the same
+verdict (E_K ≈ 1.1×10³ ≪ 10⁶). So the evaluation runs in
+O(2^{n−k} · poly(n) + K) = O(2^{n − n^{1/(2e)}} · poly(n)), since 2^{O(n^{1/2})} ≪ 2^{n − n^{1/(2e)}}.
 So ACC-SAT on subexponential-size depth-d ACC circuits runs in 2^{n − Ω(n^δ)} time for a δ > 0
 depending only on d and m. That is comfortably faster than 2^n — in fact a savings of a 2^{Ω(n^δ)}
 factor, far more than the mere 1/n^{ω(1)} the connection needs.

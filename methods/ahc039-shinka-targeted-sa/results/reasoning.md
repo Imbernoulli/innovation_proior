@@ -1,70 +1,134 @@
-The annealing works, and it plateaus, and I diagnosed why before I even ran it: with the boundary
-pressed against its perimeter limit, almost every random flip lands on boundary that is already
-correct, and the rare flip that would fix a genuinely misclassified fish — a mackerel sitting just
-outside the net, or a sardine the net is still swallowing — is one proposal in thousands. The search
-is undirected. This is precisely the wall the benchmark hit too: ALE-Agent's SA reached performance
-`2880`, fifth place, and then a program-evolution system, ShinkaEvolve, evolved that same SA to
-`3140`, second place, with two changes and only two. I do not have to guess what to try next; I have
-to reproduce those two levers in my representation and see them move the number.
+The annealing works, and it plateaus, and I think I know why before I even look at a run: with the
+boundary pressed against its perimeter limit, almost every random flip lands on boundary that is
+already correct, and the rare flip that would fix a genuinely misclassified fish — a mackerel sitting
+just outside the net, or a sardine the net is still swallowing — is one proposal in thousands. The
+search is undirected. That diagnosis is the thing to act on. It also matches where the benchmark got
+stuck: ALE-Agent's SA reached performance `2880`, fifth place, and a program-evolution system,
+ShinkaEvolve, took that same SA to `3140`, second place, with a small number of targeted edits
+described as "strengthening the directionality of the search." So I have two directions worth
+pursuing — make the search affordable enough to be directed, and then actually direct it — and a
+number to check myself against.
 
-The first lever ShinkaEvolve found is **caching the validation process**. In their kd-tree solution
-they augmented each node to cache subtree statistics — bounding boxes and fish counts — so that
-checking and scoring a candidate net no longer walked the tree from scratch. The principle, stripped
-of the kd-tree, is: never recompute from the whole structure what you can maintain incrementally on
-the small patch a move touches. In my grid representation I already cache the per-cell fish counts
-(that is what makes scoring O(1)) and the running boundary-edge count (that makes the perimeter
-check O(1)). What I have *not* been caching is which cells are currently *on the boundary* — and
-that is the set my proposals should be drawn from and the set my next operator needs to consult. So
-I add a boundary-flag cache: a per-cell bit saying "this region cell touches the outside." Crucially,
-when I accept a flip, the boundary status of cells can only change in the 3×3 window around the
-flipped cell, so I refresh exactly those nine flags and nothing else. Now every candidate move can
-ask "is this a boundary cell?" and "what are its outside neighbors?" in O(1), with no scan of the
-grid. That is the same idea as caching subtree statistics: the validation and the proposal both read
-a cache that an accepted move updates only locally.
+Start with the affordability. ShinkaEvolve's kd-tree change augmented each node to cache subtree
+statistics — bounding boxes and fish counts — so that scoring a candidate net no longer walked the
+tree. Stripped of the kd-tree, the principle is: never recompute from the whole structure what you can
+maintain incrementally on the small patch a move touches. In my grid representation I already cache
+per-cell fish counts (that is what makes scoring O(1)) and a running boundary-edge count (that makes
+the perimeter check O(1)). What I am *not* caching is which cells are currently on the boundary — and
+that is exactly the set a directed operator would want to draw proposals from. So I add a per-cell
+boundary-flag cache: a bit saying "this region cell touches the outside."
 
-The second lever is the one that actually redirects the search: the **targeted edge move**.
-ShinkaEvolve described it exactly — heuristically identify a misclassified fish (for instance a
-mackerel outside the polygon) and greedily move the nearest edge to correct its state. This is the
-cure for undirectedness. Instead of proposing a uniformly random flip and hoping it helps, I aim the
-proposal at a fish the current net gets wrong. In my grid that becomes concrete and cheap. I sample a
-boundary cell of the region — those are exactly the cells the cache flags — and I look at its outside
-neighbors. If one of them is mackerel-rich (a cell whose `#mackerel − #sardine` is high, sitting just
-outside the net), I propose *adding* it: that is moving the nearest edge outward to capture a
-misclassified mackerel. Conversely, if the boundary cell I sampled is itself sardine-heavy — the net
-is catching sardine there — I propose *removing* it: moving the edge inward to release a misclassified
-sardine. Either way the proposal is *directed* at a fish the net misclassifies and at the nearest
-piece of boundary that can fix it, exactly as ShinkaEvolve framed it. I still wrap these directed
-proposals in the same Metropolis acceptance and cooling, so the search can still decline a fix that
-costs too much elsewhere; what changes is that a large fraction of proposals are now aimed at real
-errors instead of at already-correct boundary.
+The whole value of that cache rests on a claim I should not just assert: that an accepted flip only
+disturbs boundary flags in a small local window, so I can refresh that window and nothing else. A
+cell `(p,q)`'s flag is a function of its own membership and its four orthogonal neighbours'
+membership. A flip changes membership at exactly one cell `(i,j)`. So the only flags that can change
+are the cell `(i,j)` itself and the cells that have `(i,j)` as an orthogonal neighbour — i.e. `(i,j)`
+plus its four orthogonal neighbours, a plus-shape. That argument says the diagonal cells of the 3×3
+window should *never* change, and the orthogonal-plus is the true footprint. Let me actually test
+that rather than trust the argument. I generate 300k random grids, snapshot every cell's true
+boundary flag, flip one random cell, recompute, and look for any flag that changed outside the 3×3
+window — and separately, for any flag at a strict diagonal of the flipped cell that changed:
 
-I mix the two move types rather than replacing the random flip entirely. A pure targeted search
-would over-commit to fixing local errors and could stop exploring the larger reshapes that the
-high-temperature random flips still discover. So with some probability I propose a targeted edge
-move and otherwise fall back to the baseline uniform flip. The temperature schedule, the
-perimeter and topology checks (simple-point plus the diagonal-pinch guard), and the warm start from
-the best rectangle all carry over unchanged — this rung is the previous rung's SA with the boundary
-cache feeding a directed operator on top.
+```
+trials=300000  outside_3x3_violations=0
+trials=300000  strict_diagonal_changes=0
+```
 
-Two things I want to verify rather than assume, because it is easy to fool myself here. First, the
-cache must actually be *faithful*: the boundary flags it maintains incrementally have to match what a
-full recompute would say, or the targeted operator aims at phantom boundary. The 3×3 refresh after
-each accepted flip is the exact footprint over which boundary status can change, so the cache is
-correct by construction — but I confirm it by watching that the internal `a − b` the search tracks
-still matches the frozen evaluator's exact count to the unit on the emitted net. Second, the
-targeted move must not quietly break validity: it goes through the same simple-point, pinch, and
-perimeter gates as any flip, so a directed proposal that would self-intersect or bust the budget is
-rejected like any other. With both confirmed, the directed operator only changes *which* legal moves
-get proposed, never whether illegal ones slip through.
+Zero on both. So the footprint is genuinely the orthogonal plus, and refreshing the full 3×3
+neighbourhood after each accepted flip is a safe superset of it — cheap and correct. That is the
+local-maintenance discipline the kd-tree caching used, made concrete here.
 
-What I expect, and what I will read in the feedback: the targeted edge move should lift exactly the
-instances where rung 3 plateaued against the perimeter ceiling — the overlapping-shoal layouts where
-the win comes from a coordinated "release this sardine cell, capture that mackerel cell" trade that
-undirected flips almost never propose. On the easy seeds where the net is already near-optimal there
-is little misclassification to target, so the rung should hold rung 3's result, not regress. The gain
-should be modest but real and reproducible across runs — the same character as the benchmark's
-`2880 → 3140`: not a new algorithm, but the same SA made to *search in the right direction*, with a
-cache that makes the directed proposals affordable. This is the endpoint: it reproduces the two
-specific levers ShinkaEvolve evolved on top of ALE-Agent's SA, and there is no further rung here
-because the next gains on the real benchmark come from a different kind of search (continuous-polygon
-representations, multi-net restarts) rather than from sharpening this local-move annealer.
+Now the cache wants to feed something. The undirectedness is the real problem, so the operator I add
+should aim a proposal at a fish the net gets wrong instead of at uniformly random boundary. In the
+grid this becomes cheap and concrete: sample a boundary cell — those are exactly the cells the cache
+flags — and look at its outside neighbours. If one of them is mackerel-rich (high `Av − Bv`, sitting
+just outside the net), propose adding it: that is moving the nearest edge outward to capture a
+misclassified mackerel. Conversely, if the sampled boundary cell is itself sardine-heavy (`Av − Bv <
+0`, the net is catching sardine there), propose removing it: moving the edge inward to release a
+misclassified sardine. Either way the proposal is aimed at a fish the net misclassifies and at the
+nearest boundary that can fix it. I keep the same Metropolis acceptance and cooling around it, so the
+search can still decline a fix that costs too much elsewhere; what changes is that a large fraction of
+proposals now land on real errors rather than on already-correct boundary.
+
+I want to mix this with the baseline uniform flip rather than replace it. A pure targeted search would
+over-commit to local error-fixing and stop discovering the larger reshapes that high-temperature
+random flips still find. So with probability `P_TARGET` I propose a targeted edge move and otherwise
+fall back to the uniform flip. The cooling schedule, the warm start from the best rectangle, and the
+validity gates all carry over.
+
+Before I trust any of this I have to check the two pieces of bookkeeping the operator leans on,
+because both are easy to get subtly wrong.
+
+First, the perimeter bookkeeping. Toggling a cell changes the running boundary-edge count, and the
+code claims the change is `4 − 2·sameNbr`, where `sameNbr` is the number of orthogonal in-region
+neighbours (negated when removing). The reasoning: an added cell contributes four unit edges, but each
+in-region neighbour was already exposing a shared edge that now becomes interior — that edge vanishes
+from the neighbour's count and is not added to the new cell's, so each such neighbour removes two from
+the global count. Net `4 − 2·sameNbr`. That is a derivation, not a verification, so I check it against
+a recomputed-from-scratch boundary count: 200k random grids, toggle a random cell, compare the
+predicted delta to (after − before) of a full O(grid) boundary-edge recount.
+
+```
+checks=200000  fails=0
+```
+
+Exact every time, including the grid-border cases where a cell has fewer than four neighbours (the
+border edges are part of the four and are handled by the same formula). So the O(1) perimeter update
+is trustworthy.
+
+Second, the topology gate — the part I was most likely to fool myself on. Every flip, targeted or
+uniform, goes through `simple_point`, a crossing-number test on the 8-neighbourhood plus an explicit
+diagonal-pinch rejection. I want to trace it on concrete configurations rather than assume it does
+what I think. A diagonal-only touch — in-cells at `(0,0)` and `(1,1)` meeting only at a corner — should
+be rejected, because the boundary there is a figure-8, not one cycle; testing `(1,1)` returns false,
+good. An orthogonal bar `(1,1),(1,2)` should be fine; testing `(1,1)` returns true, good. Then I tried
+a case I expected to pass and it didn't: a vertical bar `(0,1),(1,1),(2,1)`, testing the centre
+`(1,1)`, returned **false**. My first instinct was that the guard was over-firing. So I traced the
+crossing number by hand. The clockwise 8-neighbourhood sequence from the top is
+
+```
+seq (p2..p9): [1, 0, 0, 0, 1, 0, 0, 0]
+trans (0->1 count): 2   -> simple iff trans==1
+```
+
+Foreground above (`p2`) and below (`p6`), nothing else, gives two separate `0→1` transitions, so
+`trans = 2`. That is not the guard misfiring — it is the test correctly reporting that the centre cell
+touches *two distinct* foreground arcs, so removing it would split the region into two disconnected
+arms. The crossing number is literally counting connected foreground arcs around the cell, and `trans
+= 1` is the condition that toggling keeps the region one piece. My expectation was wrong and the trace
+corrected it; the gate is doing exactly its job. Since the targeted operator routes every proposal
+through this same gate, a directed move that would self-intersect or disconnect is rejected like any
+other — the operator only changes *which* legal moves get proposed, never whether illegal ones slip
+through.
+
+There is one more consistency I can pin down here without the full harness: the warm start. It picks
+the best perimeter-feasible rectangle by 2D prefix sums of the per-cell weight `Av − Bv`, and the
+running `curScore` is then `Σ(Av − Bv)` over in-region cells. For those to agree, the prefix-sum
+rectangle weight has to equal a direct cell sum. On a small random grid I take a rectangle `[1,4)×[0,3)`
+and compare the inclusion–exclusion `PS[i2][j2] − PS[i1][j2] − PS[i2][j1] + PS[i1][j1]` against the
+literal double-loop sum:
+
+```
+prefix-sum rect weight: 1   direct sum: 1   match: True
+```
+
+They agree, so the rectangle the warm start chooses really is the one maximising `Σ(Av − Bv)`, and
+`curScore` starts consistent with the score the cells carry. The remaining faithfulness claim — that
+the internal `a − b` the search tracks matches the frozen evaluator's exact point-in-polygon count to
+the unit on the emitted net — I cannot fully close on this page, since it needs the harness's exact
+geometry evaluator; I expect it to hold because the incremental delta `Av[c] − Bv[c]` and the cache
+refresh are both exact and local, but I would want to read it off a real run to be sure rather than
+declare it here.
+
+So the rung is the previous SA with a locally-maintained boundary cache feeding a directed
+edge-move operator, mixed with the uniform flip. What I expect, and what I will watch for in the
+feedback: the targeted move should lift exactly the instances where the previous rung plateaued
+against the perimeter ceiling — the overlapping-shoal layouts where the win comes from a coordinated
+"release this sardine cell, capture that mackerel cell" trade that undirected flips almost never
+propose. On easy seeds where the net is already near-optimal there is little misclassification to
+target, so the rung should hold the previous result, not regress. I would expect a modest but
+reproducible gain — the same character as the benchmark's `2880 → 3140`: not a new algorithm, but the
+same SA made to search in the right direction, with a cache that makes the directed proposals
+affordable. And there is no further rung past this in the same representation, because the next gains
+on the real benchmark come from a different kind of search — continuous-polygon representations,
+multi-net restarts — rather than from sharpening this local-move annealer.

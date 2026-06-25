@@ -102,9 +102,9 @@ make the circuit a tree; randomize AND/OR into MOD_p of polylog-ANDs (Valiant–
 composite moduli by CRT and reduce MOD_{p^e} to constant-fan-in ANDs of MOD_p; derandomize to a
 MAJORITY top gate; then push each MOD_p layer into the top symmetric gate using the modulus-amplifying
 polynomial
-  P_k(x) = (−1)^k (x−1)^k ( Σ_{i=0}^{k−1} C(k+i−1, i) x^i ) + 1,
+  P_k(x) = 1 − (1 − x)^k ( Σ_{i=0}^{k−1} C(k+i−1, i) x^i ),
 which satisfies P_k(x) ≡ 0 mod p^k for x ≡ 0 mod p and ≡ 1 mod p^k for x ≡ 1 mod p; with
-Q_k(x) = 1 − P_k(x^{p−1}) and Fermat, Q_k(Σ y_i) ≡ 1 mod p^k iff p | Σ y_i. The final symmetric
+Q_k(x) = P_k(x^{p−1}) and Fermat, 1 − Q_k(Σ y_i) ≡ 1 mod p^k iff p | Σ y_i. The final symmetric
 function is F(v) = MAJORITY((…((v mod p_1^{k_1}) mod p_2^{k_2})… mod p_{d'}^{k_{d'}}).
 
 **Ingredient 5 (Evaluation Lemma).** A SYM⁺ circuit of size s ≤ 2^{0.1n} on n inputs, with a
