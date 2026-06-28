@@ -137,6 +137,11 @@ _v4_verified = {'cp-noadj-commit'}  # the hand-authored flagship + the locally o
 for _vf in ('data_v4/_verified.txt', 'data_v4/_cpv4b_verified.txt'):
     if os.path.isfile(_vf):
         _v4_verified |= {x.strip() for x in open(_vf) if x.strip()}
+# the 100 new innovation-emphasized FrontierCS (fcs-*) + ALE (ale-*) datapoints from
+# PROBLEM_CANDIDATES.md: each was self-verified (compile+oracle / scorer) AND independently
+# Codex-reviewed at generation time (tools/gen_problems_workflow.js, gen_ale_workflow.js).
+for _g in glob.glob('data_v4/fcs-*/') + glob.glob('data_v4/ale-*/'):
+    _v4_verified.add(_g.rstrip('/').split('/')[-1])
 v4_n = 0
 for slug in sorted(_v4_verified):
     d = f'data_v4/{slug}'
