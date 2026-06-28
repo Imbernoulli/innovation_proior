@@ -28,7 +28,7 @@ The deliverable is a single self-contained C++17 program reading from stdin and
 writing to stdout. It reads `n`, then arrays `a` and `b`, computes the dynamic
 program, and prints `dp[n - 1]` followed by a newline.
 
-```python
+```cpp
 #include <bits/stdc++.h>
 using namespace std;
 
@@ -42,7 +42,8 @@ int main() {
     for (int i = 0; i < n; ++i) cin >> a[i];
     for (int i = 0; i < n; ++i) cin >> b[i];
 
-    vector<long long> dp(n);
+    vector<long long> dp(n, 0);
+    dp[0] = 0;
 
     // TODO:
 

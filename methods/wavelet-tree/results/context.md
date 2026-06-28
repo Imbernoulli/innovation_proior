@@ -13,8 +13,8 @@ with multiplicity.
 
 ## Code framework
 
-The deliverable is a single self-contained C++17 program reading from stdin and
-writing to stdout. The scaffold fixes the input/output shape and value types;
+The deliverable is a single self-contained C++17 program that reads from stdin
+and writes to stdout. The scaffold fixes the input/output shape and value types;
 fill in the query-processing logic.
 
 ```cpp
@@ -26,35 +26,33 @@ int main() {
     cin.tie(nullptr);
 
     int n, q;
-    if (cin >> n >> q) {
-        vector<long long> a(n);
-        for (int i = 0; i < n; ++i) {
-            cin >> a[i];
-        }
+    if (!(cin >> n >> q)) return 0;
 
-        // TODO:
-        (void)a;
-
-        for (int i = 0; i < q; ++i) {
-            int t;
-            cin >> t;
-            long long answer = 0;
-            if (t == 1) {
-                int l, r, k;
-                cin >> l >> r >> k;
-                (void)l;
-                (void)r;
-                (void)k;
-            } else {
-                int l, r;
-                long long x;
-                cin >> l >> r >> x;
-                (void)l;
-                (void)r;
-                (void)x;
-            }
-            cout << answer << '\n';
-        }
+    vector<long long> a(n);
+    for (int i = 0; i < n; ++i) {
+        cin >> a[i];
     }
+
+    // TODO:
+
+    string out;
+    for (int i = 0; i < q; ++i) {
+        int t;
+        cin >> t;
+        long long answer = 0;
+        if (t == 1) {
+            int l, r, k;
+            cin >> l >> r >> k;
+        } else {
+            int l, r;
+            long long x;
+            cin >> l >> r >> x;
+        }
+        out += to_string(answer);
+        out += '\n';
+    }
+
+    cout << out;
+    return 0;
 }
 ```

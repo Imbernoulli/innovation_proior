@@ -62,12 +62,13 @@ directed.
 
 ## Input-output contract
 
-The program reads `n m s t`, then `m` directed roads `u v w`, from stdin. Node codes are
-0-based integers, and each road length `w` is nonnegative. It prints the minimum total
-length from `s` to `t` followed by one shortest route as space-separated node codes, or
-prints `UNREACHABLE` when `t` cannot be reached.
+The deliverable is a single self-contained C++17 program. It reads `n m s t`, then `m`
+directed roads `u v w`, from stdin. Node codes are 0-based integers, and each road length
+`w` is nonnegative. It prints the minimum total length from `s` to `t` followed by one
+shortest route as space-separated node codes, or prints `UNREACHABLE` when `t` cannot be
+reached.
 
-```python
+```cpp
 #include <bits/stdc++.h>
 using namespace std;
 
@@ -90,8 +91,7 @@ int main(){
     long long total_length = 0;
     vector<int> path;
 
-    // TODO: compute whether t is reachable from s, the minimum total length,
-    // and one corresponding route as node codes in order.
+    // TODO:
 
     if (!reachable) {
         cout << "UNREACHABLE\n";
