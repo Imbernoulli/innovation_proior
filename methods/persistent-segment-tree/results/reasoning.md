@@ -34,6 +34,8 @@ And `kth(1, 3, 2)` — the median of `[5, 1, 3]`, which is `3`. Here `u = root[0
 
 With the identity and the descent both checked, the implementation follows the invariants directly: `_insert` returns a new root after copying one path; `build` stores one root per prefix; `_query` walks two roots in lockstep on the difference of their left counts; `kth` maps the reached compressed index back to the original value.
 
+The risky step is the persistent update logic: allocating a new node only on the root-to-leaf path while preserving untouched child links for old versions, so if I cannot prove those version links and the `root[r] - root[l-1]` left-count descent within the contest budget, I will fall back to a merge-sort tree over positions with value-domain binary search for static range k-th smallest queries and ship that correct variant.
+
 ```cpp
 // Reads: n q, then n array values, then q queries (l, r, k);
 // prints, one per line, the k-th smallest value in a[l..r] (1-based l, r, k).

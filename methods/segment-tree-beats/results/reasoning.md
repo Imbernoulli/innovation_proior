@@ -22,6 +22,8 @@ Look at one extra descent at a fully covered node `u`. Since `x <= m_u < M_u`, t
 
 That settles the node summary: `mx` is the maximum `M`, `se` is the strict second maximum `m`, `cn` is the count of entries equal to `M`, and `sm` is the sum (a 64-bit accumulator, since a range sum overflows 32 bits). The update follows the three cases with the fast path guarded by the strict middle case `m < x < M`, and the merge writes `m` from the losing child's maximum.
 
+If I were not confident I could implement the strict `se[u] < x < mx[u]` fast path and pending-cap push correctly in the budget, I'd ship the straightforward segment tree that descends to affected leaves for each range `chmin` and rebuilds max/sum -- a plain correct submission beats an ambitious broken one.
+
 ```cpp
 // Segment Tree Beats for HDU 5306 "Gorgeous Sequence".
 // Reads from stdin: T test cases; each gives n m, the array a[1..n], then m

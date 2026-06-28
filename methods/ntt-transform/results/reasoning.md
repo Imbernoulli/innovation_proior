@@ -57,6 +57,8 @@ Let me make this concrete and check it, because I want to *see* the negacyclic p
 
 Here's the code — a single-file C++17 program that reads `q`, `n`, then the coefficients of `f` and `g` from stdin and prints `f*g mod (x^n + 1)`. It's the fast merged-`ψ` pair: a Cooley–Tukey decimation-in-time forward (twiddles are odd powers of `ψ` drawn from a bit-reversed table, so the `ψ`-weighting is built in and there's no pre-scale pass, output bit-reversed) and a Gentleman–Sande decimation-in-frequency inverse (twiddles are powers of `ψ^{-1}`, the `n^{-1}` and `ψ^{-i}` post-weight folded in, input bit-reversed). Every modular product runs through `__int128` so two near-`q` residues never overflow. I'll check it against the schoolbook negacyclic convolution by hand and at scale.
 
+The risky step is the merged-`ψ` negacyclic NTT butterfly with the CT/GS twiddle order and output-indexed `ψ^{-i}` post-weight; if I wasn't confident I could implement that correctly within budget, I'd fall back to the length-`2n` zero-padded cyclic NTT and explicitly subtract the high half modulo `x^n + 1`, then ship that.
+
 ```cpp
 // Negacyclic polynomial multiplication in Z_q[x]/(x^n + 1) via the NTT, O(n log n).
 // stdin:  q  n   then n coefficients of f   then n coefficients of g

@@ -77,6 +77,11 @@ will require a score that depends on the bins *jointly*, how a candidate bin com
 shape of the whole open-bin landscape. For now the single-bin tightest fit is the strong classical
 baseline, and it is the real bar to clear.
 
+The only clever step I am actually relying on is classical Best-Fit: score each valid bin by `−(r −
+s)` so `argmax` chooses the bin with minimum post-placement slack. If I were not confident I could
+implement that slack-ordering and new-bin-last behavior correctly within the budget, I would fall back
+to plain First-Fit, accept the weaker packing, and ship the simpler correct online variant.
+
 So I will run Best-Fit and read off the margin over First-Fit and the gap to the lower bound. The gap
 that remains is the dead space in those tightest-fit holes — the leftover slivers Best-Fit cannot avoid
 because it is myopic about which hole sizes will turn out to be reusable. Attacking *that* — the

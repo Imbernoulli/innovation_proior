@@ -76,6 +76,8 @@ The log q is the FFT; the log log q is the number of exact modular levels before
 
 Let me write it down as a single self-contained C++17 program in the structure I just derived — split, weight, forward NTT by shifts, recursive pointwise multiply, inverse NTT, unweight, carry — and check it against the schoolbook product across many bit-lengths. C++ has no native big integer, so I carry a minimal magnitude type (base-2^32 limbs with shift/add/sub and a schoolbook base-case multiply); everything else is exact integer arithmetic in the Fermat ring. The program reads the two operands as decimal integers (each may carry a leading `-`) from stdin and prints the exact product to stdout.
 
+The negacyclic weighting and unweighting around the Fermat-ring NTT is the part I would most likely mis-index under time pressure; if I were not confident I could implement it correctly in budget, I would fall back to the base-2^32 schoolbook multiplier path I have already traced as correct and ship that.
+
 ```cpp
 // Schoenhage-Strassen exact integer multiplication, single-file C++17.
 // Reads two integers a and b (decimal, optional leading '-') from stdin,

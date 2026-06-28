@@ -74,6 +74,8 @@ Before I trust the implementation I want one end-to-end check that the broadcast
 
 So the production version is a single self-contained C++17 program. It reads the link graph from stdin — a header `n m` (pages and directed links), then `m` lines `src dst` (0-indexed, page src links to dst) — and writes `n` lines `i score`, the importance of each page, scores summing to 1. It never forms G: each power-iteration step is one sparse sweep over the links (every non-dangling page splits `alpha*r(v)` over its out-links) plus the two scalar broadcasts — the redistributed dangling mass `alpha*d/n` and the teleport trickle `(1-alpha)/n`. It stops on the L1 change between iterates falling below `n*tol` (the NetworkX-style per-node tolerance; for an L1 tolerance ε the worst-case bound is ~ log(ε)/log(α) steps, independent of n).
 
+The risky step here is the sparse PageRank power iteration that simulates the dense Google matrix by combining dangling-node redistribution with the teleport broadcast; if I weren't confident I could implement that bookkeeping correctly in the budget, I'd fall back to explicitly forming the patched Google matrix and running plain power iteration on it, which I've already traced as correct, because a simple correct submission beats an ambitious broken one.
+
 ```cpp
 // PageRank via power iteration on the Google matrix G = alpha*M + (1-alpha)*(1/n)*11^T.
 // Reads from stdin: "n m", then m lines "src dst" (0-indexed directed edges, page src links to dst).

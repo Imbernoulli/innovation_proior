@@ -56,6 +56,8 @@ Before I trust the $h[i] \ge h[i-1]-1$ argument I'd like to watch the carried $k
 
 Putting the two together: doubling with radix sort gives $SA$ and $\mathrm{rank}$ in $O(n\log n)$, and this position-order recurrence gives $\mathrm{height}$ in $O(n)$ on top. Let me write it as a single self-contained C++17 program that reads one line — the string $S$ — from standard input and prints $n$, the $sa[]$ row, then the $height[]$ row. I'll keep the construction faithful to the tight integer-array form: $x$ holds current ranks, $y$ doubles as the second-key order and then the old ranks, $sa$ the permutation, and a single counting array; the sentinel is an appended smallest character, while missing second halves are guarded explicitly as the synthetic smallest key. `main` does the boilerplate — append the sentinel, rank-compress characters to dense codes, call the two routines, print.
 
+The shifted second-key order in the prefix-doubling radix construction is the part I'd most easily get wrong under pressure; if I weren't confident in it, I'd fall back to the plain two-pass stable counting-sort radix sort on $(\mathrm{rank}_\ell(i), \mathrm{rank}_\ell(i+\ell))$ each round and ship that correct variant.
+
 ```cpp
 // Reads one line (the string S) from stdin. Appends a unique smallest sentinel,
 // builds the suffix array sa[] (start positions of all suffixes, including the

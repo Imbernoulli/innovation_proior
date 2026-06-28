@@ -300,6 +300,11 @@ already-sequenced machines in cycles after each insertion, and grind to a local 
 bottleneck keeps "shifting" from machine to machine as the graph fills in, which is the whole character
 of the thing.
 
+The exact Carlier `1|r_j|L_max` bottleneck ranking and re-optimization loop is the part I'd most
+easily get wrong under time pressure; if I weren't confident I could implement it correctly in the
+budget, I'd fall back to an active-schedule MWKR/SPT greedy dispatcher that I've already traced as
+correct and ship that -- a plain correct submission beats an ambitious broken one.
+
 Now let me land it on real code, as a single self-contained C++17 program that reads a job-shop
 instance from stdin (the standard OR-Library format — `n m`, then one route of `machine duration`
 pairs per job) and prints the makespan. The graph carries conjunctive arcs (job routes) as a fixed

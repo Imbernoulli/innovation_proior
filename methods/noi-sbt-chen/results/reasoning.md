@@ -57,6 +57,8 @@ Before I commit, let me settle the prediction I left hanging from the height pro
 
 Let me write it out, array-based — parallel arrays $\mathrm{key}, \mathrm{left}, \mathrm{right}, s$ with index $0$ the null node and $s[0]=0$ — so the rotations and `rebalance` read exactly like the reasoning above. I land it as a single self-contained C++17 program reading from stdin: it reads a count `q` of operations, each one `I v` (insert key `v`), `S k` (print the `k`-th smallest), or `R v` (print one plus the number of stored keys strictly below `v`), and writes one line per query. Keys are 64-bit (`long long`) so nothing overflows.
 
+The flag-directed Size Balanced Tree `_rebalance` step, especially the inner-nephew double rotation and the four follow-up repairs, is the part I would most easily get wrong under time pressure; if I were not confident I could implement it correctly within budget, I would fall back to a standard order-statistic AVL tree with subtree sizes that I have already traced as correct and ship that -- a plain correct submission beats an ambitious broken one.
+
 ```cpp
 // Size Balanced Tree: an order-statistic balanced BST whose only per-node
 // field, the subtree size s, both answers the queries and drives the rotations.

@@ -69,6 +69,8 @@ That's the version recursion lets me write so elegantly that the hard part is in
 
 There's one more thing I want from the by-hand version that the recursive one hides. If I always postpone one piece and dive into the other, how big can the nest get? I already saw the recursion go N levels deep on the worst case — the sorted-list-with-first-pivot blow-up — and if I reserve a fixed nest block by hand I cannot afford an N-deep one; that's exactly the store-hungry behaviour I was trying to avoid. But here I get to choose *which* piece to postpone. If I always dive into the *smaller* piece and postpone the *larger*, then each time I push something onto the nest, the piece I keep working on is at most half of what I had — so the depth of postponed pieces can't exceed about log2(N) regardless of how lopsided the splits are. That caps the nest at a size I can know and reserve in advance. So:
 
+The explicit nest that keeps a last-in-first-out list while always continuing into the smaller segment is the part I'd most easily get wrong under time pressure; if I weren't confident I could implement it correctly in the budget, I'd fall back to the plain recursive quicksort version above that I've already traced as correct and ship that -- a plain correct submission beats an ambitious broken one.
+
 ```cpp
 static void sort_with_nest(vector<long long>& a) {
     long long n = (long long)a.size();

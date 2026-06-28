@@ -38,6 +38,8 @@ Let me write the code around the online counter. Each node stores its palindrome
 
 I will land this as a single self-contained program that reads one string `s` from stdin, prints the number of distinct non-empty palindromic substrings of `s`, then on a second line the running count after each prefix `s[0..i]`.
 
+If I cannot implement the eertree suffix-link search confidently within the budget, especially the second `walk(fail[cur])` for the new node's `fail`, I will fall back to the simpler provably correct substring/set counter and ship that.
+
 ```cpp
 // Reads one string s from stdin; prints the number of distinct non-empty
 // palindromic substrings of s, then a second line with the running count after

@@ -55,6 +55,8 @@ One step of the process has become multiplication by a fixed $d \times d$ table 
 
 The landing is a single self-contained C++17 program reading from stdin: the first token picks the form — `W` then `d s t N m` and the $d\times d$ edge-count table prints the length-$N$ walk count $s\to t$; `L` then `d N m`, the $d$ coefficients and $d$ initial terms prints $a_N$ — and everything is kept reduced mod $m$, with one product widened to `__int128` so $a\cdot b$ can't overflow before the reduction.
 
+If I were not confident I could implement the companion-matrix state encoding and binary matrix exponentiation cleanly within the budget, I would fall back to the straightforward recurrence/DP simulation for the standard small-$N$ version and ship that correct variant.
+
 ```cpp
 // Reads from stdin either a walk-counting query or a linear-recurrence query and
 // prints the single integer answer mod m to stdout.

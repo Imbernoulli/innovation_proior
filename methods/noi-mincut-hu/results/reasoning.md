@@ -74,6 +74,8 @@ For the flow algorithm itself I'll use Dinic's, which finds the max flow in phas
 
 I'll land this as a single self-contained C++17 program on the concrete relay-station instance the construction was built for: $n$ stations (station $i$ costs $p_i$, a negative-weight project) and $m$ user groups (group $j$ uses stations $a_j,b_j$ and pays revenue $c_j$, a positive-weight project with two prerequisite edges to its stations). The program reads `n m`, the $n$ station costs, then $m$ lines `a_j b_j c_j` (stations 1-indexed) from stdin, builds the network, runs one max-flow, and prints the maximum net profit (revenue minus build cost) to stdout. I keep every capacity and the positive-sum in `long long` — the positive total alone can exceed a 32-bit range when revenues are large, and the flow inherits that bound — and I store edges in a forward-star (`head`/`nxt`) flat array so the reverse arc of edge $i$ is again $i \oplus 1$.
 
+The only part I would not freestyle under time pressure is Hu's max-weight-closure min-cut step, especially the group-to-station `INF` edges; if I could not implement that direction confidently, I would fall back to the plain relay-station project-selection max-flow model: source to revenue groups, groups to required stations with `INF`, stations to sink for costs.
+
 ```cpp
 // Relay-station selection (maximum net profit) via maximum-weight closure / min-cut.
 // Reads from stdin:

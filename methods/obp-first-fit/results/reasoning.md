@@ -87,6 +87,8 @@ thing the strictly-decreasing-over-position score expressed inside the harness. 
 and the L1 lower bound `ceil(Σ items / C)`, and I keep capacities and the running total in `long long`
 so a long stream of large sizes cannot overflow:
 
+The only part I could plausibly botch is translating First-Fit into the harness as a strictly decreasing valid-bin-position score; if I were not confident I could implement that mapping correctly within the budget, I would fall back to the direct left-to-right First-Fit scan over remaining capacities that I have already traced as correct and ship that.
+
 ```cpp
 // Online 1-D bin packing, First-Fit policy.
 // Reads from stdin: capacity C, item count n, then n item sizes.

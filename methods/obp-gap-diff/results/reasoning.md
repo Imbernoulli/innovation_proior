@@ -95,3 +95,8 @@ the weighting, and the sign convention, letting measured bin counts on the seede
 member of the family that actually consolidates instead of scatters. I have derived the form and found,
 by tracing it, where it breaks; what I have not done, and cannot do by hand, is find the member of the
 family that wins, which is the job I am handing to the search.
+
+For this gap-difference rule, the risky part is the neighbour first-difference after the item-weighted
+squared distance from the emptiest bin; if I cannot keep those signs and exact-fit cases straight
+within budget, I will fall back to ordinary Best-Fit, whose trace is simple and correct, and ship that.
+A plain correct submission beats an ambitious broken one.
