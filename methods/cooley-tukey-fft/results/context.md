@@ -50,30 +50,34 @@ The natural yardstick is the operation count — complex multiplications and add
 
 ## Code framework
 
-The primitives already exist: complex arithmetic, a routine to form powers of a root of unity, and the direct transform as both a baseline and a small-$N$ correctness oracle. The open slots are a faster transform, whatever size validation it requires, and the inverse wrapper.
+The deliverable is a single self-contained C++17 program. It reads from stdin: `N` (a power of two) followed by `N` complex samples as `re im` pairs. It writes to stdout the `N` transform coefficients, one `re im` pair per line, using fixed six-decimal formatting. The skeleton supplies the I/O shell and leaves the computation slot open.
 
-```python
-import cmath
+```cpp
+#include <bits/stdc++.h>
+using namespace std;
 
-def root_of_unity(N, sign=-1):
-    # principal N-th root W = exp(sign * 2 pi i / N); sign=-1 forward, +1 inverse
-    return cmath.exp(sign * 2j * cmath.pi / N)
+using cd = complex<double>;
 
-def dft_direct(A, sign=-1):
-    # baseline O(N^2) transform; also the trusted small-N base case
-    N = len(A)
-    W = root_of_unity(N, sign)
-    return [sum(A[k] * W**(j * k) for k in range(N)) for j in range(N)]
-
-def _validate_length(n):
-    # TODO: enforce whatever size condition the faster transform needs.
-    pass
-
-def transform(A, sign=-1):
-    # TODO: fill the faster transform slot; it must agree with dft_direct.
-    pass
-
-def inverse_transform(X):
-    # TODO: run the conjugate-root transform and apply the normalization.
-    pass
+int main(){
+    ios::sync_with_stdio(false);
+    cin.tie(nullptr);
+    int N;
+    if (!(cin >> N)) return 0;
+    if (N < 1 || (N & (N - 1))) {
+        cerr << "length must be a power of two\n";
+        return 1;
+    }
+    vector<cd> A(N);
+    for (int i = 0; i < N; ++i) {
+        double re, im;
+        cin >> re >> im;
+        A[i] = cd(re, im);
+    }
+    vector<cd> X(N);
+    // TODO: compute the N output coefficients from A.
+    cout << fixed << setprecision(6);
+    for (int j = 0; j < N; ++j)
+        cout << X[j].real() << ' ' << X[j].imag() << '\n';
+    return 0;
+}
 ```

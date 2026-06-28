@@ -2,58 +2,41 @@
 
 ## Problem
 
-Given a directed graph (flowgraph) with a start vertex $s$, a vertex $u$ dominates $v$ if every path from $s$ to $v$ passes through $u$. For every vertex $v$ reachable from $s$, compute its immediate dominator $\mathrm{idom}(v)$ (the unique dominator of $v$, other than $v$, that is dominated by all other dominators of $v$). Output the dominator tree ($\mathrm{parent}[v] = \mathrm{idom}(v)$).
+Given a directed graph (flowgraph) with start vertex $s=1$, a vertex $u$ dominates $v$ if every path from $s$ to $v$ passes through $u$. For every vertex $v$ reachable from $s$, compute its immediate dominator $\mathrm{idom}(v)$ (the unique dominator of $v$, other than $v$, that is dominated by all other dominators of $v$). Output, for each vertex, the number of vertices it dominates: the subtree size of that vertex in the dominator tree, or $0$ if it is unreachable from $s$.
 
 The graph may contain cycles, self-loops, and parallel edges, and not every vertex need be reachable from $s$ — vertices unreachable from $s$ have no dominators to report and are left out of the tree. The graph can be large ($n$ vertices and $m$ edges, each up to $\sim 10^5$ or more).
 
 ## Code framework
 
-The graph is read into a $0$-based successor adjacency list; the predecessor adjacency list is the reverse. The missing piece is the top-level routine that consumes the graph and returns, for every reachable vertex, its immediate dominator.
+The deliverable is a single self-contained C++17 program reading from stdin and writing to stdout. The first line contains `n m`; the next `m` lines contain directed edges `u v` using 1-based vertex labels, and the start vertex is fixed as `s=1`. The program builds successor and predecessor adjacency lists and prints `n` integers, where the `i`th integer is the number of vertices dominated by vertex `i`, or `0` if vertex `i` is unreachable from `s`.
 
-```python
-import sys
+```cpp
+#include <bits/stdc++.h>
+using namespace std;
 
+int main(){
+    ios::sync_with_stdio(false);
+    cin.tie(nullptr);
 
-def read_graph(data):
-    """Parse n, m, the start s (1-based in input), and m directed edges into a
-    0-based successor list and its reverse. Returns (n, s, succ, pred)."""
-    it = iter(data)
-    n = int(next(it))
-    m = int(next(it))
-    s = int(next(it)) - 1
-    succ = [[] for _ in range(n)]
-    pred = [[] for _ in range(n)]
-    for _ in range(m):
-        a = int(next(it)) - 1
-        b = int(next(it)) - 1
-        succ[a].append(b)
-        pred[b].append(a)
-    return n, s, succ, pred
+    int n, m;
+    if (!(cin >> n >> m)) return 0;
 
+    vector<vector<int>> succ(n + 1), pred(n + 1);
+    for (int i = 0; i < m; ++i) {
+        int u, v;
+        cin >> u >> v;
+        succ[u].push_back(v);
+        pred[v].push_back(u);
+    }
 
-def dominator_tree(n, s, edges):
-    """idom[v] = the immediate dominator of v for every v reachable from s;
-    idom[s] = s by convention; idom[v] = -1 for v unreachable from s."""
-    succ = [[] for _ in range(n)]
-    pred = [[] for _ in range(n)]
-    for a, b in edges:
-        succ[a].append(b)
-        pred[b].append(a)
-    idom = [-1] * n
-    # TODO
-    return idom
+    const int s = 1;
+    vector<int> ans(n + 1, 0);
 
+    // TODO: fill ans[1..n] according to the required output.
 
-def main():
-    data = sys.stdin.buffer.read().split()
-    if not data:
-        return
-    n, s, succ, pred = read_graph(data)
-    edges = [(a, b) for a in range(n) for b in succ[a]]
-    idom = dominator_tree(n, s, edges)
-    # (driver would print the dominator tree / per-vertex idom here)
-
-
-if __name__ == "__main__":
-    main()
+    for (int i = 1; i <= n; ++i) {
+        cout << ans[i] << " \n"[i == n];
+    }
+    return 0;
+}
 ```

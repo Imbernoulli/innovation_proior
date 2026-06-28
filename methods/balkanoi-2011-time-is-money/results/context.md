@@ -10,19 +10,42 @@ Find a spanning tree $T$ that minimizes this value, and output its edges.
 
 ## Code framework
 
-```python
-def mst(n, edges, weight_fn):
-    """Minimum spanning tree helper.
-    n: number of vertices (0-indexed); edges: list of (u, v, t, c).
-    weight_fn(t, c) -> number: per-edge weight; returns the spanning tree of
-    minimum total weight, as (sum_t, sum_c, chosen_edge_indices)."""
-    # TODO
-    pass
+Write a single-file C++17 program that reads from stdin and writes to stdout.
+The input begins with `V E`, followed by `E` lines `u v t c` for 0-indexed
+edge endpoints, time, and cost. The output should be the chosen tree's total
+time and total cost as `X Y`, followed by the `V-1` selected edges, one `u v`
+per line.
 
+```cpp
+#include <bits/stdc++.h>
+using namespace std;
 
-def solve(n, edges):
-    """edges: list of (u, v, t, c), 0-indexed vertices, graph connected.
-    Returns (best_product, sum_t, sum_c, tree_edge_indices)."""
-    # TODO
-    pass
+struct Edge {
+    int u, v, t, c;
+};
+
+int main() {
+    ios::sync_with_stdio(false);
+    cin.tie(nullptr);
+
+    int V, E;
+    if (!(cin >> V >> E)) return 0;
+
+    vector<Edge> edges(E);
+    for (int i = 0; i < E; ++i) {
+        cin >> edges[i].u >> edges[i].v >> edges[i].t >> edges[i].c;
+    }
+
+    long long X = 0, Y = 0;
+    vector<pair<int, int>> tree_edges;
+
+    // TODO:
+
+    cout << X << ' ' << Y << '\n';
+    for (auto [u, v] : tree_edges) {
+        cout << u << ' ' << v << '\n';
+    }
+
+    return 0;
+}
 ```

@@ -17,7 +17,8 @@ millions of phonetic paths for a single utterance, `2^n` subsets for an `n`-item
 knapsack. The question is how to search such a graph fast enough to be practical,
 with runtime and memory that grow linearly in the depth, returning a final
 answer whose score is high and whose runtime is bounded — accepting that we may
-not prove optimality.
+not prove optimality. For the coding artifact, the deliverable is a single
+self-contained C++17 program that reads from stdin and writes to stdout.
 
 ## Background
 
@@ -101,43 +102,47 @@ so the quality gap can be read off directly.
 The protocol throughout: fix a time/effort budget, run the search, and report
 the achieved objective and runtime against the exact reference where one exists.
 
+## Input-output contract
+
+The deliverable is a single self-contained C++17 program. It reads one 0/1
+knapsack instance from stdin: the first line contains `n W capacity`, and the
+next `n` lines each contain an item's `weight value`. It writes the best value
+found on the first line and the chosen 0-based item indices on the second line,
+printing a blank second line if no item is chosen.
+
 ## Code framework
 
-The primitives already exist: a problem exposes an initial state, a way to
-enumerate a state's children (the decisions available at the next layer), and an
-evaluation function that scores a state. What is missing is the search
-discipline itself — the rule for which states to explore. That is the empty
-slot below.
+The scaffold below preserves the concrete stdin/stdout contract. What is missing
+is the algorithmic core that selects a feasible subset and fills the result
+variables before output.
 
-```python
-from dataclasses import dataclass
+```cpp
+#include <bits/stdc++.h>
+using namespace std;
 
-@dataclass
-class State:
-    idx: int        # how many decisions made (which layer)
-    value: float    # objective accumulated so far
-    # ... problem-specific fields (remaining capacity, partial schedule, ...)
+int main() {
+    ios::sync_with_stdio(false);
+    cin.tie(nullptr);
 
-def children(state, problem):
-    """Enumerate the states reachable by one more decision. Known: this is the
-    problem's transition relation."""
-    ...
+    int n;
+    long long W, capacity;
+    if (!(cin >> n >> W >> capacity)) return 0;
 
-def evaluate(state, problem):
-    """Score a (partial) state -- higher is more promising. A cheap local score
-    and an expensive accurate score are both available."""
-    ...
+    vector<pair<long long, long long>> items(n);  // (weight, value)
+    for (int i = 0; i < n; ++i) {
+        cin >> items[i].first >> items[i].second;
+    }
 
-def exact_full_breadth(problem):
-    """Reference: sweep the entire layer forward with no pruning. Correct; its
-    cost is the full breadth at every layer."""
-    layer = [problem.start]
-    for _ in range(problem.depth):
-        layer = [c for s in layer for c in children(s, problem)]
-        # no pruning
-    ...
+    long long bestValue = 0;
+    vector<int> chosen;
 
-def search(problem):
-    # TODO: the search discipline to design.
-    pass
+    // TODO: Fill bestValue and chosen with a feasible solution.
+
+    cout << bestValue << "\n";
+    for (size_t i = 0; i < chosen.size(); ++i) {
+        cout << chosen[i] << (i + 1 == chosen.size() ? '\n' : ' ');
+    }
+    if (chosen.empty()) cout << "\n";
+    return 0;
+}
 ```

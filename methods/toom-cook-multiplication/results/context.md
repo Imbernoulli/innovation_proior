@@ -99,37 +99,27 @@ linear system in the split parameter).
 
 ## Code framework
 
-The primitives already available: arbitrary-size integers, the schoolbook product as a base
-operation, integer floor-division and remainder to cut an operand into limbs, shifting by
-multiplying by powers of the radix, and exact integer linear algebra for a fixed, small system.
-The scaffold is a recursive routine with a base case, a fixed multi-limb split, and one empty
-algebraic slot to be filled in.
+The deliverable is a single self-contained C++17 program. It reads two possibly signed,
+arbitrarily long decimal integers from stdin, separated by whitespace, and writes exactly their
+product to stdout as a decimal integer followed by a newline. The program must carry whatever
+integer representation, direct small-case product, limb slicing, shifting, and exact fixed-size
+linear algebra it needs inside that one translation unit.
 
-```python
-BASE = 10
-THRESHOLD = 3   # operands with few enough limbs are multiplied directly
+The scaffold below fixes only the C++ I/O shell; the arithmetic body is the empty slot to be
+filled in.
 
-def multiply_candidate(x, y, base=BASE):
-    if base <= 1:
-        raise ValueError("base must be greater than 1")
+```cpp
+#include <bits/stdc++.h>
+using namespace std;
 
-    if x < 0 or y < 0:
-        sign = -1 if (x < 0) ^ (y < 0) else 1
-        return sign * multiply_candidate(abs(x), abs(y), base)
+int main() {
+    string sx, sy;
+    if (!(cin >> sx >> sy)) return 0;
 
-    # base case: small operands -> direct multiply (O(1))
-    if x < base ** THRESHOLD or y < base ** THRESHOLD:
-        return x * y
+    string product;
+    // TODO:
 
-    # choose a limb size so each operand has at most three limbs in base**m
-    n = max(len(str(x)), len(str(y)))
-    m = n // 3 + 1
-    B = base ** m
-
-    # cut each operand into limbs: x = sum x_i * B**i  (the limb polynomial p)
-    x0, x1, x2 = (x % B), (x // B) % B, (x // (B * B))
-    y0, y1, y2 = (y % B), (y // B) % B, (y // (B * B))
-
-    # TODO: combine the limbs into the product and return it.
-    return ...  # TODO
+    cout << product << '\n';
+    return 0;
+}
 ```

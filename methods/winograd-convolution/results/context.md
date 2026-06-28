@@ -2,7 +2,7 @@
 
 ## Research question
 
-Deep convolutional networks built almost entirely from small 3×3 convolution layers have become the state of the art for image recognition. Their cost is dominated by the convolution layers, and that cost is paid across both training and inference. Two regimes are of particular interest: very small batch sizes (a single image for low-latency detection; small per-node minibatches when training is sharded across a cluster) and small filters (3×3 almost exclusively). The problem: compute a convolution layer — correlate K filters of C channels and size R×S against N images of C channels and size H×W — using as few multiplications per output as possible, while keeping the heavy stage a dense matrix multiply that is efficient across a range of batch sizes, and keeping the working memory small.
+Deep convolutional networks built almost entirely from small 3×3 convolution layers have become the state of the art for image recognition. Their cost is dominated by the convolution layers, and that cost is paid across both training and inference. Two regimes are of particular interest: very small batch sizes (a single image for low-latency detection; small per-node minibatches when training is sharded across a cluster) and small filters (3×3 almost exclusively). The problem: deliver a single self-contained C++17 program that reads a convolution layer from stdin, writes the valid output to stdout, and computes that layer — correlating K filters of C channels and size R×S against N images of C channels and size H×W — using as few multiplications per output as possible, while keeping the heavy stage a dense matrix multiply that is efficient across a range of batch sizes, and keeping the working memory small.
 
 ## Background
 
@@ -31,21 +31,54 @@ The natural yardstick is a deep 3×3 convnet for ImageNet-scale recognition — 
 
 ## Code framework
 
-The pre-existing primitives: dense matrix multiply (GEMM/SGEMM, including a batched form and a β-accumulate form), elementwise operations, and a symbolic-math toolkit (polynomial arithmetic, rational arithmetic, and matrix construction over an exact field) sufficient to build and *symbolically verify* small exact linear-algebra identities. A convnet layer is, abstractly, a per-channel small-window operation summed over channels.
+The pre-existing primitives: dense matrix multiply (GEMM/SGEMM, including a batched form and a β-accumulate form), elementwise operations, and a symbolic-math toolkit (polynomial arithmetic, rational arithmetic, and matrix construction over an exact field) sufficient to build and *symbolically verify* small exact linear-algebra identities. A convnet layer is, abstractly, a per-channel small-window operation summed over channels. The program reads `N C H W K`, then the `N*C*H*W` data values in index order `[n][c][h][w]`, then the `K*C*3*3` filter values in index order `[k][c][u][v]`. It writes the valid output `Y[n][k][H-2][W-2]` to stdout, one row of `W-2` space-separated values per line, ordered by `n` then `k`.
 
-```python
-import numpy as np
+```cpp
+#include <bits/stdc++.h>
+using namespace std;
 
-# --- baseline for checking ---
-def direct_conv_valid(D, W):
-    # TODO: explicit valid R x S correlation, summed over channels.
-    pass
+int main() {
+    ios::sync_with_stdio(false);
+    cin.tie(nullptr);
 
-# --- the slot: a full convolution layer with fewer multiplies than direct ---
-def conv_layer(D, W):
-    # D: N,C,H,W   W: K,C,R,S   ->  Y: N,K,H',W'
-    # TODO: compute the exact layer with fewer multiplications per output than
-    #       direct R*S, keeping the heavy stage a dense matrix multiply that is
-    #       efficient even at batch size 1, with a small workspace.
-    pass
+    int N, C, H, W, K;
+    if (!(cin >> N >> C >> H >> W >> K)) return 0;
+
+    const int R = 3, S = 3;
+
+    vector<double> D((size_t)N * C * H * W);
+    for (double &x : D) cin >> x;
+
+    vector<double> Wt((size_t)K * C * R * S);
+    for (double &x : Wt) cin >> x;
+
+    auto Didx = [&](int n, int c, int h, int w) -> double & {
+        return D[(((size_t)n * C + c) * H + h) * W + w];
+    };
+    auto Widx = [&](int k, int c, int u, int v) -> double & {
+        return Wt[(((size_t)k * C + c) * R + u) * S + v];
+    };
+
+    const int Ho = H - R + 1, Wo = W - S + 1;
+    if (Ho <= 0 || Wo <= 0) return 0;
+
+    vector<double> Y((size_t)N * K * Ho * Wo, 0.0);
+    auto Yidx = [&](int n, int k, int h, int w) -> double & {
+        return Y[(((size_t)n * K + k) * Ho + h) * Wo + w];
+    };
+
+    // TODO: fill Y with the valid layer output.
+
+    cout << setprecision(10);
+    for (int n = 0; n < N; n++)
+        for (int k = 0; k < K; k++)
+            for (int i = 0; i < Ho; i++) {
+                for (int j = 0; j < Wo; j++) {
+                    if (j) cout << ' ';
+                    cout << Yidx(n, k, i, j);
+                }
+                cout << '\n';
+            }
+    return 0;
+}
 ```

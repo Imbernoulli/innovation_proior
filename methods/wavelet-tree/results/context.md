@@ -13,74 +13,48 @@ with multiplicity.
 
 ## Code framework
 
-The scaffold fixes the input/output shape, stored fields, and public query methods.
-`build`, `kth`, and `rank_leq` are the slots to fill.
+The deliverable is a single self-contained C++17 program reading from stdin and
+writing to stdout. The scaffold fixes the input/output shape and value types;
+fill in the query-processing logic.
 
-```python
-import sys
-from bisect import bisect_left, bisect_right
+```cpp
+#include <bits/stdc++.h>
+using namespace std;
 
+int main() {
+    ios_base::sync_with_stdio(false);
+    cin.tie(nullptr);
 
-class RangeQuery:
-    def __init__(self, a):
-        self.a = a
-        self.n = len(a)
-        self.vals = sorted(set(a))
-        self.sigma = len(self.vals)
-        self.lo = []
-        self.hi = []
-        self.lc = []
-        self.rc = []
-        self.aux = []
-        self.root = -1
-        self.build()
+    int n, q;
+    if (cin >> n >> q) {
+        vector<long long> a(n);
+        for (int i = 0; i < n; ++i) {
+            cin >> a[i];
+        }
 
-    def code(self, x):
-        return bisect_left(self.vals, x)
+        // TODO:
+        (void)a;
 
-    def _new(self, vlo, vhi):
-        self.lo.append(vlo)
-        self.hi.append(vhi)
-        self.lc.append(-1)
-        self.rc.append(-1)
-        self.aux.append(None)
-        return len(self.lo) - 1
-
-    def build(self):
-        # TODO
-        pass
-
-    def kth(self, l, r, k):
-        """k-th smallest value in a[l..r] (1-based l, r; 1-based k)."""
-        # TODO
-        pass
-
-    def rank_leq(self, l, r, x):
-        """Number of elements in a[l..r] with value <= x (1-based l, r)."""
-        # TODO
-        pass
-
-
-def main():
-    data = sys.stdin.buffer.read().split()
-    if not data:
-        return
-    it = iter(data)
-    n = int(next(it)); q = int(next(it))
-    a = [int(next(it)) for _ in range(n)]
-    w = RangeQuery(a)
-    out = []
-    for _ in range(q):
-        t = int(next(it))
-        if t == 1:
-            l = int(next(it)); r = int(next(it)); k = int(next(it))
-            out.append(str(w.kth(l, r, k)))
-        else:
-            l = int(next(it)); r = int(next(it)); x = int(next(it))
-            out.append(str(w.rank_leq(l, r, x)))
-    sys.stdout.write("\n".join(out) + ("\n" if out else ""))
-
-
-if __name__ == "__main__":
-    main()
+        for (int i = 0; i < q; ++i) {
+            int t;
+            cin >> t;
+            long long answer = 0;
+            if (t == 1) {
+                int l, r, k;
+                cin >> l >> r >> k;
+                (void)l;
+                (void)r;
+                (void)k;
+            } else {
+                int l, r;
+                long long x;
+                cin >> l >> r >> x;
+                (void)l;
+                (void)r;
+                (void)x;
+            }
+            cout << answer << '\n';
+        }
+    }
+}
 ```

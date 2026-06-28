@@ -2,100 +2,49 @@
 
 ## Problem
 
-Given n boolean variables x_1..x_n and m clauses, each of the form (a OR b) where a, b are literals (a variable or its negation), decide whether the formula is satisfiable, and if so output a satisfying assignment. (2-SAT; n, m up to ~10^6.)
+Given n boolean variables x_1..x_n and m clauses, each of the form (a OR b) where a, b are literals (a variable or its negation), decide whether the formula is satisfiable, and if so output a satisfying assignment. The deliverable is a single self-contained C++17 program that reads from stdin and writes to stdout. The input begins with `n m`, followed by `m` clauses, each given as two signed 1-based literal tokens (`i` or `+i` for x_i true, `-i` for x_i false). Output `UNSATISFIABLE`, or output `SATISFIABLE` followed by a line of `n` 0/1 assignment values. (2-SAT; n, m up to ~10^6.)
 
 ## Code framework
 
-```python
-import sys
+```cpp
+#include <bits/stdc++.h>
+using namespace std;
 
+static inline int lit_to_node(long long v) {
+    long long var = (v < 0 ? -v : v) - 1;
+    return (int)(2 * var + (v > 0 ? 0 : 1));
+}
 
-def strongly_connected_components(n, adj):
-    """Iterative SCC. Returns comp[0..n-1], the component id of each vertex.
-    Two vertices share an id exactly when each is reachable from the other.
-    Component ids follow the order in which components are closed. O(V + E)."""
-    index = [0] * n
-    low = [0] * n
-    on_stack = [False] * n
-    comp = [-1] * n
-    stack = []
-    counter = 0
-    cid = 0
-    for s in range(n):
-        if index[s]:
-            continue
-        work = [(s, 0)]
-        while work:
-            v, pi = work[-1]
-            if pi == 0:
-                counter += 1
-                index[v] = low[v] = counter
-                stack.append(v)
-                on_stack[v] = True
-            recursed = False
-            while pi < len(adj[v]):
-                u = adj[v][pi]
-                pi += 1
-                if index[u] == 0:
-                    work[-1] = (v, pi)
-                    work.append((u, 0))
-                    recursed = True
-                    break
-                elif on_stack[u] and index[u] < low[v]:
-                    low[v] = index[u]
-            if recursed:
-                continue
-            if low[v] == index[v]:
-                while True:
-                    w = stack.pop()
-                    on_stack[w] = False
-                    comp[w] = cid
-                    if w == v:
-                        break
-                cid += 1
-            work.pop()
-            if work:
-                pv = work[-1][0]
-                if low[v] < low[pv]:
-                    low[pv] = low[v]
-    return comp
+int main() {
+    int n, m;
+    if (scanf("%d %d", &n, &m) != 2) return 0;
 
+    vector<int> clauses;
+    clauses.reserve((size_t)2 * m);
+    for (int i = 0; i < m; ++i) {
+        long long a, b;
+        if (scanf("%lld %lld", &a, &b) != 2) break;
+        clauses.push_back(lit_to_node(a));
+        clauses.push_back(lit_to_node(b));
+    }
 
-def solve(n, clauses):
-    """n boolean variables; clauses a list of (a, b), each literal encoded as
-    an integer node: variable i positive is 2*i, negated is 2*i+1. Return None
-    if unsatisfiable, else assign[0..n-1] of booleans."""
-    # TODO
-    pass
+    // TODO
+    bool satisfiable = false;
+    vector<char> assign(n, 0);
 
-
-def lit_to_node(tok):
-    v = int(tok)
-    var = abs(v) - 1
-    return 2 * var + (0 if v > 0 else 1)
-
-
-def main():
-    data = sys.stdin.buffer.read().split()
-    if not data:
-        return
-    it = iter(data)
-    n = int(next(it)); m = int(next(it))
-    clauses = []
-    for _ in range(m):
-        a = lit_to_node(next(it))
-        b = lit_to_node(next(it))
-        clauses.append((a, b))
-    res = solve(n, clauses)
-    out = []
-    if res is None:
-        out.append("UNSATISFIABLE")
-    else:
-        out.append("SATISFIABLE")
-        out.append(" ".join(str(int(x)) for x in res))
-    sys.stdout.write("\n".join(out) + "\n")
-
-
-if __name__ == "__main__":
-    main()
+    if (!satisfiable) {
+        printf("UNSATISFIABLE\n");
+    } else {
+        printf("SATISFIABLE\n");
+        string out;
+        out.reserve((size_t)2 * n);
+        for (int i = 0; i < n; ++i) {
+            if (i) out.push_back(' ');
+            out.push_back(assign[i] ? '1' : '0');
+        }
+        out.push_back('\n');
+        fputs(out.c_str(), stdout);
+    }
+    return 0;
+}
 ```

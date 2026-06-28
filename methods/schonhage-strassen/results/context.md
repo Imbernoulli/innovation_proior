@@ -73,16 +73,31 @@ product, validated on integers spanning many bit-lengths.
 
 ## Code framework
 
-The primitives that already exist: arbitrary-precision integers with shift/add/mod, and the
-Cooley–Tukey FFT recurrence over a ring that supplies a root of unity. We can lay out the harness
-into which a fast method will be filled.
+The deliverable is a single self-contained C++17 program. It reads two whitespace-separated decimal
+integers from stdin, each optionally prefixed by `-`, and writes their exact decimal product to
+stdout followed by a newline. The scaffold below fixes the required entry point and I/O behavior;
+the multiplication logic itself is left to be filled in.
 
-```python
-# Arbitrary-precision integers, bit-shifts, add, and modular reduction already exist,
-# along with a Cooley-Tukey length-N transform recurrence over a ring that supplies a
-# root of unity.
+```cpp
+#include <bits/stdc++.h>
+using namespace std;
 
-def multiply(a, b):
-    # TODO: fill in an exact fast multiplication.
-    pass
+int main() {
+    string sa, sb;
+    if (!(cin >> sa)) return 0;
+    if (!(cin >> sb)) return 0;
+
+    bool negA = !sa.empty() && sa[0] == '-';
+    bool negB = !sb.empty() && sb[0] == '-';
+
+    string productMagnitude = "0";
+    bool productIsZero = true;
+
+    // TODO: implement the algorithm to compute the decimal magnitude of the product.
+
+    bool negR = (negA ^ negB) && !productIsZero;
+    if (negR) cout << '-';
+    cout << productMagnitude << '\n';
+    return 0;
+}
 ```

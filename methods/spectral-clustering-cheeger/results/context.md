@@ -20,6 +20,9 @@ value means the graph is an expander with no good cut.
 The question is how to find a cut with small conductance in polynomial time, given that
 $\phi_G$ is a minimum over all $2^{|V|}$ subsets.
 
+For this programming task, the deliverable is a single self-contained C++17 program that reads the
+graph instance from standard input and writes the required output to standard output.
+
 ## Background
 
 **The graph Laplacian and its quadratic form.** For a weighted graph $G=(V,E,w)$ define the
@@ -112,42 +115,51 @@ and the available spectral certificate.
 
 ## Code framework
 
-The pieces that already exist: build the Laplacian, score a cut, and compute a few extreme
-eigenpairs of a symmetric matrix.
+The program reads a weighted undirected graph from stdin as `n m`, followed by `m` lines `u v w`
+for 0-indexed endpoints and a positive edge weight. It prints stdout in the final-answer format:
+first a line with the two computed numeric quantities and `lower=... upper=...`, then the size of
+the returned vertex set, then the vertices of that set in ascending order.
 
-```python
-import numpy as np
-import scipy.sparse as sp
-from scipy.sparse.linalg import eigsh
+```cpp
+#include <bits/stdc++.h>
+using namespace std;
 
-def build_laplacian(adj):
-    """L = D - A for a weighted adjacency matrix A."""
-    d = np.asarray(adj.sum(axis=1)).ravel()
-    D = sp.diags(d)
-    return (D - adj).tocsr(), d
+int main() {
+    ios::sync_with_stdio(false);
+    cin.tie(nullptr);
 
-def boundary_weight(adj, S_mask):
-    """Total weight of edges leaving S."""
-    cross = adj[S_mask][:, ~S_mask]
-    return cross.sum()
+    int n, m;
+    if (!(cin >> n >> m)) return 0;
 
-def conductance(adj, d, S_mask):
-    """phi(S) = |boundary(S)| / min(vol(S), vol(V\\S))."""
-    volS = d[S_mask].sum()
-    volC = d.sum() - volS
-    if min(volS, volC) == 0:
-        return np.inf
-    return boundary_weight(adj, S_mask) / min(volS, volC)
+    struct Edge {
+        int u, v;
+        double w;
+    };
 
-def smallest_eigenpairs(M, k):
-    """k smallest eigenpairs of a symmetric matrix, via Lanczos (eigsh)."""
-    vals, vecs = eigsh(M.astype(float), k=k, which="SM")
-    order = np.argsort(vals)
-    return vals[order], vecs[:, order]
+    vector<Edge> edges;
+    edges.reserve(m);
+    for (int i = 0; i < m; ++i) {
+        int u, v;
+        double w;
+        cin >> u >> v >> w;
+        edges.push_back({u, v, w});
+    }
 
-def find_cut(adj):
-    """Map a graph to a low-conductance cut S.
-    # TODO: fill in.
-    """
-    pass
+    // TODO: implement algorithm.
+    double nu2 = 0.0;
+    double best_phi = 0.0;
+    double lower = 0.0;
+    double upper = 0.0;
+    vector<int> cut;
+
+    cout.setf(std::ios::fixed);
+    cout << setprecision(6);
+    cout << nu2 << " " << best_phi << "  lower=" << lower << " upper=" << upper << "\n";
+    cout << cut.size() << "\n";
+    for (size_t i = 0; i < cut.size(); ++i)
+        cout << cut[i] << (i + 1 < cut.size() ? ' ' : '\n');
+    if (cut.empty()) cout << "\n";
+
+    return 0;
+}
 ```

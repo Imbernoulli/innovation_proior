@@ -6,27 +6,29 @@ The construction should avoid materializing all suffix strings and should run in
 
 ## Code framework
 
-The input sequence for the suffix-array builder has already been converted to integer codes: `r` has length `n`, every entry is in `[0, m)`, and `r[n - 1]` is a unique smallest sentinel. A stable bounded-key counting primitive is available, along with linear-size integer work arrays.
+The deliverable is a single self-contained C++17 program. It reads one line, the string $S$, from standard input; appends the unique smallest sentinel internally; and writes `n`, then the `sa[]` row, then the `height[]` row to standard output.
 
-```python
-def build_suffix_array(r, n, m):
-    """sa[0..n-1] sorting the n suffixes of r (integer codes in [0, m),
-    r[n-1] the unique smallest sentinel) lexicographically. O(n log n)."""
-    sa = [0] * n
-    x = list(r)            # working integer key per suffix; seed with the code
-    y = [0] * n            # scratch
-    ws = [0] * max(m, n)   # bounded-key tally
-    # TODO
-    return sa
+```cpp
+#include <bits/stdc++.h>
+using namespace std;
 
+int main() {
+    string text;
+    getline(cin, text);
 
-def build_height(s, sa):
-    """height[i] = LCP(Suffix(sa[i-1]), Suffix(sa[i])); height[0] = 0. O(n)."""
-    n = len(s)
-    rank = [0] * n
-    for i in range(n):
-        rank[sa[i]] = i    # inverse of sa
-    height = [0] * n
-    # TODO
-    return height
+    vector<int> s;
+    s.reserve(text.size() + 1);
+    for (unsigned char c : text) s.push_back((int)c + 1);
+    s.push_back(0);
+    int n = (int)s.size();
+
+    vector<int> sa(n), height(n);
+
+    // TODO:
+
+    cout << n << "\n";
+    for (int i = 0; i < n; i++) cout << sa[i] << " \n"[i == n - 1];
+    for (int i = 0; i < n; i++) cout << height[i] << " \n"[i == n - 1];
+    return 0;
+}
 ```

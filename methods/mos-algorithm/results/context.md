@@ -6,69 +6,50 @@ Given a static array of `n` integers and `q` offline queries `(l, r)`, report th
 number of distinct values in `a[l..r]`. (`n, q` up to ~10^5 / 10^6.)
 
 All `q` queries are available before any answer has to be printed, and the output
-must still follow the original query order. Inside `answer_queries`, indices are
-0-based and each range includes both endpoints; the input wrapper reads 1-based
-query endpoints and converts them.
+must still follow the original query order. The deliverable is a single
+self-contained C++17 program that reads from stdin and writes to stdout. The
+input query endpoints are 1-based inclusive; the program may convert them to
+0-based inclusive indices internally.
 
 ## Code framework
 
-The array and the query list are read in. A top-level `answer_queries(a, queries)`
-returns one integer per query, in the order the queries were given. A frequency
-table `cnt` indexed by value, together with a running `distinct` count, is
-available; the `add(i)` / `remove(i)` hooks are the single place where bringing one
-more index into, or out of, the collection currently being tracked updates that
-running count.
+The program reads `n`, then the `n` array values, then `q`, then `q` query pairs
+`l r` from stdin. It prints one integer per query to stdout, in the same order as
+the queries were given.
 
-```python
-import sys
-from collections import defaultdict
+```cpp
+#include <bits/stdc++.h>
+using namespace std;
 
+int main() {
+    ios_base::sync_with_stdio(false);
+    cin.tie(nullptr);
 
-def answer_queries(a, queries):
-    """Return one distinct-count answer per inclusive 0-based query."""
-    n = len(a)
-    cnt = defaultdict(int)          # how many times each value is in play
-    distinct = 0                    # values currently with count > 0
-    answers = [0] * len(queries)
+    int n;
+    if (!(cin >> n)) return 0;
+    vector<int> a(n);
+    for (int i = 0; i < n; ++i) cin >> a[i];
 
-    def add(i):
-        nonlocal distinct
-        value = a[i]
-        cnt[value] += 1
-        if cnt[value] == 1:
-            distinct += 1
+    int q;
+    cin >> q;
+    vector<int> ql(q), qr(q);
+    for (int i = 0; i < q; ++i) {
+        int l, r;
+        cin >> l >> r;
+        ql[i] = l - 1;
+        qr[i] = r - 1;
+    }
 
-    def remove(i):
-        nonlocal distinct
-        value = a[i]
-        cnt[value] -= 1
-        if cnt[value] == 0:
-            distinct -= 1
+    vector<int> answers(q);
 
-    order = range(len(queries))
+    // TODO: implement the solution
 
-    def place_answer(idx):
-        # TODO
-        answers[idx] = distinct
-
-    for idx in order:
-        place_answer(idx)
-    return answers
-
-
-def main():
-    data = sys.stdin.buffer.read().split()
-    if not data:
-        return
-    it = iter(data)
-    n = int(next(it))
-    a = [int(next(it)) for _ in range(n)]
-    q = int(next(it))
-    queries = [(int(next(it)) - 1, int(next(it)) - 1) for _ in range(q)]
-    out = answer_queries(a, queries)
-    sys.stdout.write("\n".join(map(str, out)))
-
-
-if __name__ == "__main__":
-    main()
+    string out;
+    for (int i = 0; i < q; ++i) {
+        out += to_string(answers[i]);
+        if (i + 1 < q) out += '\n';
+    }
+    cout << out;
+    return 0;
+}
 ```

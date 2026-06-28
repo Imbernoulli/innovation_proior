@@ -16,7 +16,8 @@ A useful way to phrase "how hard is it" is the **exponent** ω: the infimum of a
 n×n matrices can be multiplied in O(n^β) operations. The naive algorithm shows ω ≤ 3. The
 trivial lower bound is ω ≥ 2 (the output has n² entries, each of which must be written). The
 question is where in [2, 3] the truth lies, and how to construct algorithms for the upper
-bound.
+bound. For this programming task, the deliverable is a single self-contained C++17 program
+that reads the matrix instance from stdin and writes the product to stdout.
 
 ## Background
 
@@ -91,62 +92,51 @@ kernel, and — since extra additions cause cancellation — backward error ‖�
 the classical algorithm. The recursive harness below focuses on square matrices over ℚ, ℝ
 (floating point), or a finite field, where the exponent question is already visible.
 
-## Code framework
+## Input-output contract
 
-The existing ingredients are a cubic leaf kernel and a generic divide-and-conquer harness. The
-unresolved slot is how a 2×2 block product is computed.
+Write one self-contained C++17 program. It reads from stdin an integer `n`, then two `n x n`
+integer matrices `A` and `B` in row-major order, all whitespace-separated. It prints `C = A*B`
+to stdout as `n` rows, with entries on each row separated by spaces. The entry point is
+`main`.
 
-```python
-import numpy as np
+```cpp
+#include <bits/stdc++.h>
+using namespace std;
 
-def matmul_naive(A, B):
-    """Cubic leaf kernel and ground truth."""
-    return A @ B
+using ll = long long;
+using Matrix = vector<vector<ll>>;
 
-def split(M):
-    """Partition a 2m x 2m matrix into four m x m blocks."""
-    m = M.shape[0] // 2
-    return M[:m, :m], M[:m, m:], M[m:, :m], M[m:, m:]
+int main() {
+    ios::sync_with_stdio(false);
+    cin.tie(nullptr);
 
-def block_product(A, B, recurse):
-    """
-    Multiply two even-size matrices by treating them as 2x2 block matrices.
-    The blocks are matrices and do NOT commute, so any identity used here
-    may only multiply an A-block by a B-block (never two A-blocks or two B-blocks).
-    `recurse(X, Y)` multiplies two same-size blocks.
+    int n;
+    if (!(cin >> n)) return 0;
 
-    The naive scheme forms the eight block products
-    A11 B11 + A12 B21, A11 B12 + A12 B22, A21 B11 + A22 B21, A21 B12 + A22 B22.
+    Matrix A(n, vector<ll>(n));
+    Matrix B(n, vector<ll>(n));
+    for (int i = 0; i < n; i++) {
+        for (int j = 0; j < n; j++) {
+            cin >> A[i][j];
+        }
+    }
+    for (int i = 0; i < n; i++) {
+        for (int j = 0; j < n; j++) {
+            cin >> B[i][j];
+        }
+    }
 
-    TODO: compute the four output blocks here.
-    """
-    pass  # TODO
+    Matrix C(n, vector<ll>(n, 0));
 
-def recursive_matmul(A, B, leaf=64):
-    """
-    Recursive divide-and-conquer matrix product for square inputs. Pads to
-    an even size when needed, recurses via block_product down to a crossover
-    `leaf`, then calls the cubic kernel.
-    """
-    A = np.asarray(A)
-    B = np.asarray(B)
-    if leaf < 1:
-        raise ValueError("leaf must be at least 1")
-    if A.ndim != 2 or B.ndim != 2 or A.shape != B.shape or A.shape[0] != A.shape[1]:
-        raise ValueError("this square recursive harness expects two n x n matrices")
+    // TODO: compute C from A and B.
 
-    def recurse(X, Y):
-        n = X.shape[0]
-        if n <= leaf:
-            return matmul_naive(X, Y)
-
-        original_n = n
-        if n % 2 == 1:
-            X = np.pad(X, ((0, 1), (0, 1)), mode="constant")
-            Y = np.pad(Y, ((0, 1), (0, 1)), mode="constant")
-
-        C = block_product(X, Y, recurse)
-        return C[:original_n, :original_n]
-
-    return recurse(A, B)
+    for (int i = 0; i < n; i++) {
+        for (int j = 0; j < n; j++) {
+            if (j) cout << ' ';
+            cout << C[i][j];
+        }
+        cout << '\n';
+    }
+    return 0;
+}
 ```

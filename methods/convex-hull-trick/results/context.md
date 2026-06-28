@@ -24,64 +24,29 @@ monotonicity assumptions.
 
 ## Code framework
 
-The program reads `n`, then arrays `a` and `b`. The `Transition` object stores
-finished states and answers the transition query for the next state. The bodies
-inside `Transition` are the only missing pieces.
+The deliverable is a single self-contained C++17 program reading from stdin and
+writing to stdout. It reads `n`, then arrays `a` and `b`, computes the dynamic
+program, and prints `dp[n - 1]` followed by a newline.
 
 ```python
-import sys
+#include <bits/stdc++.h>
+using namespace std;
 
+int main() {
+    ios_base::sync_with_stdio(false);
+    cin.tie(nullptr);
 
-def read_input(data):
-    """Parse n, then the arrays a[0..n-1] and b[0..n-1] as integers."""
-    it = iter(data)
-    n = int(next(it))
-    a = [int(next(it)) for _ in range(n)]
-    b = [int(next(it)) for _ in range(n)]
-    return n, a, b
+    int n;
+    if (!(cin >> n)) return 0;
+    vector<long long> a(n), b(n);
+    for (int i = 0; i < n; ++i) cin >> a[i];
+    for (int i = 0; i < n; ++i) cin >> b[i];
 
+    vector<long long> dp(n);
 
-class Transition:
-    """Stores finished states and answers min(value + slope * x)."""
+    // TODO:
 
-    def __init__(self):
-        # TODO
-        pass
-
-    def register(self, slope, value):
-        """Make one finished state available to later transitions."""
-        # TODO
-        pass
-
-    def query(self, x):
-        """Return the best transition value at x."""
-        # TODO
-        pass
-
-
-def solve(n, a, b):
-    dp = [0] * n
-    dp[0] = 0
-
-    tr = Transition()
-    tr.register(b[0], dp[0])
-
-    for i in range(1, n):
-        dp[i] = tr.query(a[i])
-        tr.register(b[i], dp[i])
-
-    return dp
-
-
-def main():
-    data = sys.stdin.buffer.read().split()
-    if not data:
-        return
-    n, a, b = read_input(data)
-    dp = solve(n, a, b)
-    sys.stdout.write(str(dp[n - 1]) + "\n")
-
-
-if __name__ == "__main__":
-    main()
+    cout << dp[n - 1] << "\n";
+    return 0;
+}
 ```

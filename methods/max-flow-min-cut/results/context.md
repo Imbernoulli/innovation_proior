@@ -44,37 +44,46 @@ A third approach is route decomposition: view a flow as a sum of path flows. Thi
 
 ## Evaluation And Code Scaffold
 
-The setting is a finite directed graph with nonnegative capacities, source `s`, and sink `t`. The desired output is a feasible flow, a separating cut, and a local certificate showing that the two values match. Integer capacities should lead to an integer flow; route choices should be controlled enough to avoid a runtime depending only on the magnitude of capacities.
+The deliverable is a single self-contained C++17 program that reads from stdin and writes to stdout. Input is `n m s t` followed by `m` lines `u v c`, where vertices are 1-indexed and each line gives a directed arc `u->v` with nonnegative capacity `c`.
 
-The available implementation primitives are a capacity table, a mutable flow table, graph search, a way to measure unused capacity, and a stopping rule that can also explain why stopping is correct.
+The program prints the maximum `s-t` flow value on its own line, then prints the source side `S` of a minimum cut as a sorted, space-separated vertex list on the next line. Integer capacities should lead to an integer flow; route choices should be controlled enough to avoid a runtime depending only on the magnitude of capacities.
 
-```python
-from collections import deque
+```cpp
+#include <bits/stdc++.h>
+using namespace std;
 
-def solve(cap, s, t):
-    vertices = {s, t}
-    for u, nbrs in cap.items():
-        vertices.add(u)
-        vertices.update(nbrs)
+struct Edge {
+    int u, v;
+    long long c;
+};
 
-    capacity = {u: dict(cap.get(u, {})) for u in vertices}
-    flow = {u: {v: 0 for v in capacity[u]} for u in vertices}
+int main() {
+    ios::sync_with_stdio(false);
+    cin.tie(nullptr);
 
-    def available_step(u, v):
-        # TODO: quantify how a step from u to v can still change the current flow.
-        pass
+    int n, m, s, t;
+    if (!(cin >> n >> m >> s >> t)) return 0;
 
-    def find_route():
-        # TODO: search from s to t using only steps with positive available change.
-        pass
+    vector<Edge> edges;
+    edges.reserve(m);
+    for (int i = 0; i < m; ++i) {
+        int u, v;
+        long long c;
+        cin >> u >> v >> c;
+        edges.push_back({u, v, c});
+    }
 
-    def improve(parent):
-        # TODO: change the current flow along the found route without violating feasibility.
-        pass
+    long long value = 0;
+    vector<int> source_side;
 
-    def certificate():
-        # TODO: when no route remains, report the cut that certifies optimality.
-        pass
+    // TODO: fill value and source_side.
 
-    pass
+    cout << value << '\n';
+    for (size_t i = 0; i < source_side.size(); ++i) {
+        if (i) cout << ' ';
+        cout << source_side[i];
+    }
+    cout << '\n';
+    return 0;
+}
 ```

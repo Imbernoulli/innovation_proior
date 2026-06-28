@@ -49,39 +49,38 @@ These are the load-bearing ancestors: each encodes "importance begets importance
 
 ## Code framework
 
-The scaffold ingests a crawl into a sparse directed graph, keeps the out-degree information needed for link-based flow, and iterates a ranking update until the L₁ change between successive score vectors falls below a tolerance. The score definition and the update rule are the empty slot.
+The deliverable is a single self-contained C++17 program. It reads from stdin a header `n m` (number of pages and directed links) followed by `m` lines `src dst` (0-indexed, "page src links to dst"), and writes to stdout `n` lines `i score` — the importance score of each page, with the scores summing to 1. The scaffold records the graph input and leaves the scoring step as the empty slot.
 
-```python
-import numpy as np
-import scipy.sparse as sp
+```cpp
+#include <bits/stdc++.h>
+using namespace std;
 
-def load_link_graph(edges, n):
-    """Sparse directed link graph from a crawl: edges = list of (src, dst).
-    Returns an n x n adjacency in sparse form; column j = out-links of page j."""
-    rows = [d for (_, d) in edges]
-    cols = [s for (s, _) in edges]
-    A = sp.csr_matrix((np.ones(len(edges)), (rows, cols)), shape=(n, n))
-    return A
+int main() {
+    ios::sync_with_stdio(false);
+    cin.tie(nullptr);
 
-def out_degrees(A):
-    """Number of out-links per page (column sums of A)."""
-    return np.asarray(A.sum(axis=0)).ravel()
+    int n;
+    long long m;
+    if (!(cin >> n >> m)) return 0;
 
-def ranking_update(A):
-    """Return an update function r -> next_r for a link-based importance score."""
-    # TODO: define a well-posed link-based update
-    pass
+    vector<pair<int, int>> edges;
+    if (m > 0) edges.reserve(static_cast<size_t>(m));
+    for (long long i = 0; i < m; ++i) {
+        int src, dst;
+        cin >> src >> dst;
+        edges.push_back({src, dst});
+    }
 
-def rank_scores(A, tol=1e-7, max_iter=200):
-    """Compute one importance score per page by iterating the operator
-    to convergence (an L1 tolerance on the change between iterates)."""
-    n = A.shape[1]
-    r = np.full(n, 1.0 / n)          # generic positive start, sums to 1
-    apply_update = ranking_update(A)
-    for _ in range(max_iter):
-        r_next = apply_update(r)
-        if np.abs(r_next - r).sum() < tol:
-            return r_next
-        r = r_next
-    return r
+    vector<double> score(max(0, n), 0.0);
+
+    // TODO:
+
+    cout.setf(ios::fixed);
+    cout << setprecision(10);
+    for (int i = 0; i < n; ++i) {
+        cout << i << ' ' << score[i] << '\n';
+    }
+
+    return 0;
+}
 ```

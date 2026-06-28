@@ -13,7 +13,10 @@ doubly-stochastic matrices, the convex hull of the permutation matrices, so in p
 method solves it. A `10 × 10` instance is a linear program with `100` nonnegative variables and `20`
 equality constraints, and it is highly **degenerate** (the assignment problem is the most degenerate
 special case of the transportation problem). The setting, then, is how to find — and certify — an
-exact optimal assignment for square integer rating matrices of small-to-moderate order.
+exact optimal assignment for square integer rating or cost matrices of small-to-moderate order. The
+deliverable is a single self-contained C++17 program that reads an integer `n` and then the `n × n`
+integer matrix from standard input, and writes the optimum value and chosen row/column pairs to
+standard output.
 
 ## Background
 
@@ -104,40 +107,35 @@ permutations.
 
 ## Code framework
 
-Available pieces: a cost/rating matrix, a bipartite maximum-matching routine via augmenting paths,
-a König minimum-line-cover routine that reads a cover off such a matching, and a brute-force checker
-for small instances. The solver itself is left to be filled in.
+The program reads from stdin: an integer `n`, followed by `n × n` integer costs in row-major order.
+It writes to stdout: the minimum total cost on the first line, then `n` lines of `i j`, meaning
+0-based row `i` is matched to 0-based column `j`. A maximization instance can be supplied by
+negating the input values and then negating the reported optimum value.
 
-```python
-INF = float("inf")
+```cpp
+#include <bits/stdc++.h>
+using namespace std;
 
-def cost_at(cost, i, j):
-    return cost[i][j]
+int main() {
+    int n;
+    if (!(cin >> n)) return 0;
 
-def bipartite_max_matching(adj):
-    """Maximum matching on a 0/1 adjacency.
-    Returns row->col and col->row arrays."""
-    # TODO: alternating/augmenting-path search; standard and pre-existing.
-    pass
+    vector<vector<long long>> cost(n, vector<long long>(n));
+    for (int i = 0; i < n; ++i) {
+        for (int j = 0; j < n; ++j) {
+            cin >> cost[i][j];
+        }
+    }
 
-def min_vertex_cover_from_matching(adj, match_col, match_row):
-    """Given a maximum matching, return a minimum vertex cover (Koenig)."""
-    # TODO: mark exposed rows, alternate; cover = unmarked rows + marked cols.
-    pass
+    vector<int> column_for_row(n, 0);
+    long long total = 0;
 
-def solve_assignment(cost):
-    """Return an optimal assignment (permutation) and its total cost."""
-    # TODO: fill in.
-    pass
+    // TODO: Fill in the optimization logic.
 
-def brute_force(cost):
-    """Optimal assignment by full permutation enumeration -- a checker only."""
-    import itertools
-    n = len(cost)
-    best, bestp = INF, None
-    for perm in itertools.permutations(range(n)):
-        s = sum(cost[i][perm[i]] for i in range(n))
-        if s < best:
-            best, bestp = s, perm
-    return list(bestp), best
+    cout << total << '\n';
+    for (int i = 0; i < n; ++i) {
+        cout << i << ' ' << column_for_row[i] << '\n';
+    }
+    return 0;
+}
 ```

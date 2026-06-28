@@ -1,49 +1,27 @@
 ## Problem
 
-Given a string of length $n$, maintain the number of distinct non-empty palindromic substrings while the string is read one character at a time. After each appended character, the current prefix's count should be available without rebuilding from scratch. The target is an online implementation whose total work is linear over a fixed alphabet if a compact representation can be found.
+Given a string of length $n$, maintain the number of distinct non-empty palindromic substrings while the string is read one character at a time. After each appended character, the current prefix's count should be available without rebuilding from scratch. The deliverable is a single self-contained C++ program that reads from stdin and writes to stdout. The program reads one string, prints the final number of distinct non-empty palindromic substrings, then prints a second line with the running count after each prefix.
 
 ## Code framework
 
-```python
-class DistinctPalindromes:
-    """Online counter: feed one character at a time with add(c), then query
-    count_distinct() for the number of distinct non-empty palindromic substrings
-    seen so far."""
+```cpp
+#include <bits/stdc++.h>
+using namespace std;
 
-    def __init__(self):
-        # TODO: initialize the online state
-        pass
+int main() {
+    string text;
+    if (!(cin >> text)) text = "";
 
-    def _walk(self, x):
-        # TODO: internal search helper
-        pass
+    long long total = 0;
+    vector<long long> per_prefix(text.size(), 0);
 
-    def add(self, c):
-        # TODO: incorporate the next character
-        pass
+    // TODO: fill total and per_prefix for the input.
 
-    def count_distinct(self):
-        # TODO: return the current count
-        pass
-
-
-def count_distinct_palindromes(text):
-    """Number of distinct non-empty palindromic substrings of text, built online."""
-    dp = DistinctPalindromes()
-    code = {ch: i for i, ch in enumerate(sorted(set(text)))}
-    for ch in text:
-        dp.add(code[ch])
-    return dp.count_distinct()
-
-
-def distinct_palindromes_per_prefix(text):
-    """For each prefix text[:i+1], the running count of distinct non-empty
-    palindromic substrings -- one online pass."""
-    dp = DistinctPalindromes()
-    code = {ch: i for i, ch in enumerate(sorted(set(text)))}
-    out = []
-    for ch in text:
-        dp.add(code[ch])
-        out.append(dp.count_distinct())
-    return out
+    cout << total << "\n";
+    for (size_t i = 0; i < per_prefix.size(); ++i) {
+        cout << per_prefix[i] << (i + 1 < per_prefix.size() ? ' ' : '\n');
+    }
+    if (per_prefix.empty()) cout << "\n";
+    return 0;
+}
 ```

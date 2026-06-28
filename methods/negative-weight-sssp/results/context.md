@@ -4,6 +4,8 @@
 
 Given a directed graph $G=(V,E,w)$ with $m$ edges, $n$ vertices, **integer** edge weights that may be negative, and a source $s$, compute the shortest-path distances $\operatorname{dist}_G(s,v)$ from $s$ to every vertex $v$ (equivalently, a shortest-path tree), or correctly report that some cycle reachable from $s$ has negative total weight. Let $W \ge 2$ be the smallest integer such that every edge weight is $\ge -W$.
 
+The deliverable is a single self-contained C++17 program with an `int main()` entry point. It reads one instance from standard input: `n m s` followed by `m` directed edges `u v w` with 0-indexed vertices and integer weights; it writes to standard output either `NEGATIVE CYCLE` or `n` lines containing $\operatorname{dist}(s,v)$, using `INF` for unreachable vertices.
+
 When all weights are non-negative this is solved in near-linear time. The only fully general tool that handles negative weights — Bellman–Ford — costs $O(mn)$. The question is how to compute shortest-path distances on general directed graphs with integer edge weights.
 
 This problem is foundational: it sits underneath transshipment, min-cost flow, the assignment problem, and many graph primitives, and it has driven "waves" of algorithmic progress since the 1950s.
@@ -50,54 +52,54 @@ The natural yardsticks (all pre-existing):
 
 ## Code framework
 
-The pre-existing primitives are: graphs with integer weights, Dijkstra on non-negative graphs, Bellman–Ford for the general case, and the price-function reweighting identity. Everything specific to the new method goes into one empty slot.
+The pre-existing primitives are conceptual: graphs with integer weights, Dijkstra on non-negative graphs, Bellman–Ford for the general case, and the price-function reweighting identity. The code submission itself is one C++17 source file, and everything specific to the new method belongs in the TODO region between input parsing and output.
 
-```python
-import math, random
-from dataclasses import dataclass
+```cpp
+#include <bits/stdc++.h>
+using namespace std;
 
-# ---- existing primitives -------------------------------------------------
+using ll = long long;
+const ll INF = (ll)4e18;
 
-@dataclass
-class Graph:
-    n: int
-    adj: dict          # u -> list of (v, weight)   integer weights, may be negative
-    def out_edges(self, u): return self.adj[u]
-    def vertices(self):     return range(self.n)
+struct Edge {
+    int u, v;
+    ll w;
+};
 
-def dijkstra(G, s):
-    """Shortest-path tree from s. Correct ONLY when all weights >= 0. O(m + n log n)."""
-    # standard binary-heap Dijkstra
-    ...
+int main() {
+    ios_base::sync_with_stdio(false);
+    cin.tie(nullptr);
 
-def bellman_ford(G, s):
-    """Distances from s, or report a negative cycle. O(m*n). The general but slow tool."""
-    ...
+    int n, m, s;
+    if (!(cin >> n >> m >> s)) return 0;
 
-def reweight(G, phi):
-    """Return G_phi with w_phi(u,v) = w(u,v) + phi[u] - phi[v].
-       Preserves shortest paths and cycle weights (Johnson 1977)."""
-    H = Graph(G.n, {u: [] for u in G.vertices()})
-    for u in G.vertices():
-        for (v, w) in G.out_edges(u):
-            H.adj[u].append((v, w + phi[u] - phi[v]))
-    return H
+    vector<Edge> edges;
+    edges.reserve(m);
+    vector<vector<pair<int, ll>>> adj(n);
+    for (int i = 0; i < m; ++i) {
+        int u, v;
+        ll w;
+        cin >> u >> v >> w;
+        edges.push_back({u, v, w});
+        adj[u].push_back({v, w});
+    }
 
-# ---- the slot the method will occupy -------------------------------------
+    bool negative_cycle = false;
+    vector<ll> dist(n, INF);
 
-def make_nonnegative_price(G):
-    """Given an integer-weighted digraph with no negative cycle, return an integral
-       price function phi such that every reduced weight w_phi(e) >= 0.
-       TODO: the procedure we will design goes here. With such a phi we can finish
-             by a single Dijkstra on reweight(G, phi)."""
-    pass  # TODO
+    // TODO: Fill in the computation required by the input-output contract.
 
-def sssp(G, s):
-    """Negative-weight SSSP: return a shortest-path tree from s, or a negative cycle."""
-    phi = make_nonnegative_price(G)          # TODO: the contribution
-    if phi is None:
-        return ("negative_cycle", ...)       # TODO: witness extraction
-    return dijkstra(reweight(G, phi), s)
+    if (negative_cycle) {
+        cout << "NEGATIVE CYCLE\n";
+        return 0;
+    }
+
+    for (int v = 0; v < n; ++v) {
+        if (dist[v] >= INF) cout << "INF\n";
+        else cout << dist[v] << "\n";
+    }
+    return 0;
+}
 ```
 
-The contribution is whatever fills `make_nonnegative_price` (and the witness path for the cycle case): a way to produce a non-negativizing integral price function, using only Dijkstra, Bellman–Ford, reweighting, and elementary graph operations.
+The contribution is whatever replaces the TODO region: a way to compute the requested output using only Dijkstra, Bellman–Ford, reweighting, and elementary graph operations.

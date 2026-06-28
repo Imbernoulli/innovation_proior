@@ -20,6 +20,11 @@ achievable goal is weaker: return a vector that is *provably* short relative to
 the true shortest one, with a guarantee that degrades gracefully — ideally only
 exponentially in `n` but with a small base — and in *polynomial* time.
 
+Input-output contract: the deliverable is a single self-contained C++17 program
+that reads from stdin and writes to stdout. The input is `n m`, followed by `n`
+rows of `m` integers giving the basis vectors; the output is the transformed
+basis as `n` rows of `m` integers.
+
 ## Background
 
 **Lattices and the determinant.** The determinant `d(L) = sqrt(det(G))`, where
@@ -115,36 +120,44 @@ datasets. For an input integer basis with `|b_i|^2 <= B`:
 
 ## Code framework
 
-What exists before the method: exact rational arithmetic, the inner product, and
-Gram-Schmidt. The reduction logic itself — what counts as reduced, which move to
-make, when to stop — is the empty slot.
+The program is a single self-contained C++17 file. It reads the lattice rank
+`n`, ambient dimension `m`, and the `n` integer basis rows from standard input,
+performs the reduction in place, and writes the resulting basis rows to standard
+output. The reduction logic itself — what counts as reduced, which move to make,
+when to stop — is the empty slot.
 
-```python
-from fractions import Fraction
+```cpp
+#include <bits/stdc++.h>
+using namespace std;
 
+int main() {
+    ios::sync_with_stdio(false);
+    cin.tie(nullptr);
 
-def dot(u, v):
-    return sum(Fraction(a) * Fraction(b) for a, b in zip(u, v))
+    int n, m;
+    if (!(cin >> n >> m)) {
+        return 0;
+    }
 
+    vector<vector<long long>> basis(n, vector<long long>(m));
+    for (int i = 0; i < n; ++i) {
+        for (int j = 0; j < m; ++j) {
+            cin >> basis[i][j];
+        }
+    }
 
-def gram_schmidt(B):
-    """b*_i = b_i - sum_{j<i} mu_{i,j} b*_j,  mu_{i,j} = <b_i,b*_j>/<b*_j,b*_j>."""
-    n = len(B)
-    Bstar = [None] * n
-    mu = [[Fraction(0) for _ in range(n)] for _ in range(n)]
-    for i in range(n):
-        bi = [Fraction(x) for x in B[i]]
-        Bstar[i] = bi[:]
-        for j in range(i):
-            mu[i][j] = dot(B[i], Bstar[j]) / dot(Bstar[j], Bstar[j])
-            Bstar[i] = [a - mu[i][j] * c for a, c in zip(Bstar[i], Bstar[j])]
-    return Bstar, mu
+    // TODO:
 
+    for (int i = 0; i < n; ++i) {
+        for (int j = 0; j < m; ++j) {
+            if (j) {
+                cout << ' ';
+            }
+            cout << basis[i][j];
+        }
+        cout << '\n';
+    }
 
-def reduce_basis(B):
-    """Apply unimodular (det +-1) integer moves to B until it is 'reduced enough'.
-    TODO: decide what 'reduced enough' means, which local moves drive an
-          arbitrary basis to that state, and prove the move-count is polynomial.
-    """
-    pass
+    return 0;
+}
 ```

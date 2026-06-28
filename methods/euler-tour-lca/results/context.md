@@ -4,98 +4,50 @@
 
 Given a rooted tree of $n$ nodes, answer $q$ queries each asking the Lowest Common Ancestor of two nodes $u$ and $v$, with $O(n \log n)$ preprocessing and $O(1)$ time per query. ($n, q$ up to $\sim 10^5 / 10^6$.)
 
-The tree is rooted at node $0$. Input is 1-based: `n q`, then `n - 1` undirected tree edges, then `q` query pairs. The reusable query method works with 0-based node ids; the command-line driver prints 1-based answers.
+The tree is rooted at node $0$. Input is 1-based: `n q`, then `n - 1` undirected tree edges, then `q` query pairs. The program may convert node ids to 0-based internally and must print 1-based answers.
 
 ## Code framework
 
-The tree is parsed into a 0-based adjacency list. A generic immutable-array minimum helper is available; it stores positions of minima so callers can recover whatever value they keep at those positions. Fill the one-time tree preparation and the query method.
+Deliver a single self-contained C++17 program that reads from stdin and writes to stdout. The skeleton below parses the tree into a 0-based adjacency list and stores the 0-based query pairs; fill the algorithm body and print one answer per line.
 
-```python
-import sys
+```cpp
+#include <bits/stdc++.h>
+using namespace std;
 
+int main() {
+    ios::sync_with_stdio(false);
+    cin.tie(nullptr);
 
-def read_input(data):
-    """Parse n, q, n-1 edges, and q queries from 1-based input."""
-    it = iter(data)
-    n = int(next(it))
-    q = int(next(it))
-    adj = [[] for _ in range(n)]
-    for _ in range(n - 1):
-        u = int(next(it)) - 1
-        v = int(next(it)) - 1
-        adj[u].append(v)
-        adj[v].append(u)
-    queries = []
-    for _ in range(q):
-        u = int(next(it)) - 1
-        v = int(next(it)) - 1
-        queries.append((u, v))
-    return n, adj, queries
+    int n, q;
+    if (!(cin >> n >> q)) return 0;
 
+    vector<vector<int>> adj(n);
+    for (int i = 0; i < n - 1; ++i) {
+        int u, v;
+        cin >> u >> v;
+        --u;
+        --v;
+        adj[u].push_back(v);
+        adj[v].push_back(u);
+    }
 
-class SparseTableMin:
-    """Range minimum over a fixed integer array.
+    vector<pair<int, int>> queries(q);
+    for (int i = 0; i < q; ++i) {
+        int u, v;
+        cin >> u >> v;
+        --u;
+        --v;
+        queries[i] = {u, v};
+    }
 
-    Each table cell stores the position whose key is minimal, so a caller can
-    recover the value associated with that position. Build is O(m log m);
-    queries are O(1).
-    """
+    vector<int> answers(q);
 
-    def __init__(self, key):
-        self.key = key
-        m = len(key)
-        self.log = [0] * (m + 1)
-        for i in range(2, m + 1):
-            self.log[i] = self.log[i >> 1] + 1
+    // TODO: algorithm body
 
-        levels = self.log[m] + 1 if m else 1
-        table = [[0] * m for _ in range(levels)]
-        table[0] = list(range(m))
-        for k in range(1, levels):
-            half = 1 << (k - 1)
-            span = half << 1
-            row = table[k]
-            prev = table[k - 1]
-            for start in range(m - span + 1):
-                left = prev[start]
-                right = prev[start + half]
-                row[start] = left if key[left] <= key[right] else right
-        self.table = table
+    for (int ans : answers) {
+        cout << ans + 1 << '\n';
+    }
 
-    def argmin(self, left, right):
-        """Return a position of the minimum key in inclusive range [left, right]."""
-        length = right - left + 1
-        k = self.log[length]
-        a = self.table[k][left]
-        b = self.table[k][right - (1 << k) + 1]
-        return a if self.key[a] <= self.key[b] else b
-
-
-class LCA:
-    def __init__(self, n, adj, root=0):
-        self.n = n
-        self.adj = adj
-        self.preprocess(root)
-
-    def preprocess(self, root):
-        # TODO
-        pass
-
-    def lca(self, u, v):
-        # TODO
-        pass
-
-
-def main():
-    data = sys.stdin.buffer.read().split()
-    if not data:
-        return
-    n, adj, queries = read_input(data)
-    solver = LCA(n, adj)
-    out = [str(solver.lca(u, v) + 1) for u, v in queries]
-    sys.stdout.write("\n".join(out))
-
-
-if __name__ == "__main__":
-    main()
+    return 0;
+}
 ```

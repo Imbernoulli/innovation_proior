@@ -117,34 +117,75 @@ The natural inputs and yardsticks that exist before any discrete-solving routine
 
 ## Code framework
 
-The pre-existing machinery is an LP solver — feed it `c`, `A`, `b`, and per-variable bounds, and it
-returns the continuous vertex optimum and its value.
+The deliverable is a single self-contained C++17 program. It reads one mixed-integer linear program
+from `stdin` and writes the result to `stdout`.
 
-```python
-import numpy as np
-from scipy.optimize import linprog
+Input is `n m`, then the `n` objective coefficients to maximize, then `m` constraint rows of
+`n` coefficients followed by the right-hand side, then `n` bound rows giving lower bound, upper
+bound, and a `0`/`1` flag for whether the variable must be integer. Bounds are read as strings so
+`inf` and `-inf` can be accepted.
 
-# ---- pre-existing machinery -----------------------------------------------
-# An LP solver. Minimizes c'x subject to A_ub x <= b_ub and per-variable
-# bounds l_j <= x_j <= u_j. Returns the continuous optimum and its value.
+The program prints `INFEASIBLE` if no integer-feasible point exists and `UNBOUNDED` if the instance
+has no finite optimum. Otherwise it prints the optimal objective value followed by the `n`
+coordinates on the first line, and the number of explored nodes on the second line.
 
-def solve_lp(c, A_ub, b_ub, bounds):
-    """Continuous relaxation: ignore integrality, solve the LP at this node.
-    (linprog minimizes; to MAXimize c'x we pass -c and negate the value.)"""
-    res = linprog(-np.asarray(c, float), A_ub=A_ub, b_ub=b_ub,
-                  bounds=bounds, method="highs")
-    if res.status == 2:
-        return None, None            # infeasible node
-    if res.status == 3:
-        raise ValueError("LP relaxation is unbounded; no finite upper bound")
-    if not res.success:
-        raise RuntimeError(res.message)
-    return res.x, -res.fun           # (vertex x, objective value)
+```cpp
+#include <bits/stdc++.h>
+using namespace std;
 
+int main() {
+    ios::sync_with_stdio(false);
+    cin.tie(nullptr);
 
-def solve_integer_lp(c, A_ub, b_ub, n, int_vars, bounds, tol=1e-6):
-    # TODO: turn the continuous bound-giver `solve_lp` into an exact solver for
-    #       the marked-integer problem, returning a provably optimal
-    #       integer-feasible point.
-    raise NotImplementedError
+    int n, m;
+    if (!(cin >> n >> m)) return 0;
+
+    vector<double> c(n);
+    for (int j = 0; j < n; ++j) cin >> c[j];
+
+    vector<vector<double>> A(m, vector<double>(n));
+    vector<double> b(m);
+    for (int i = 0; i < m; ++i) {
+        for (int j = 0; j < n; ++j) cin >> A[i][j];
+        cin >> b[i];
+    }
+
+    const double INF = 1e30;
+    auto parse_bound = [&](const string& s) -> double {
+        if (s == "inf") return INF;
+        if (s == "-inf") return -INF;
+        return stod(s);
+    };
+
+    vector<double> lower(n), upper(n);
+    vector<int> integer_flag(n);
+    for (int j = 0; j < n; ++j) {
+        string lo, hi;
+        cin >> lo >> hi >> integer_flag[j];
+        lower[j] = parse_bound(lo);
+        upper[j] = parse_bound(hi);
+    }
+
+    bool feasible = false;
+    bool unbounded = false;
+    long long optimal_value = 0;
+    vector<long long> coordinates(n, 0);
+    long long explored_nodes = 0;
+
+    // TODO: compute the required output.
+
+    if (unbounded) {
+        cout << "UNBOUNDED\n";
+        return 0;
+    }
+    if (!feasible) {
+        cout << "INFEASIBLE\n";
+        return 0;
+    }
+
+    cout << optimal_value;
+    for (long long x : coordinates) cout << ' ' << x;
+    cout << '\n' << explored_nodes << '\n';
+    return 0;
+}
 ```

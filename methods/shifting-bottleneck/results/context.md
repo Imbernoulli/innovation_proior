@@ -105,40 +105,37 @@ instances, at comparable computing budgets.
 
 ## Code framework
 
-The primitives that already exist: a disjunctive-graph data structure (operations as nodes,
-conjunctive job arcs fixed, machine cliques to be oriented), a DAG longest-path / makespan routine,
-and an exact single-machine `1|r_j|L_max` solver. A constraint or MIP model can evaluate the makespan
-of any completed orientation. The slot to be filled is the *strategy* that decides machine orders.
+The deliverable is a single self-contained C++17 program. It reads a job-shop instance from stdin in
+the standard OR-Library format: first line `n m` (jobs, machines), then `n` job rows, each containing
+`m` pairs `machine duration` in processing order. It writes one makespan value followed by a newline
+to stdout. Operations may be numbered `op = job*m + position`.
 
-```python
-class DisjunctiveGraph:
-    """Operations as nodes; conjunctive (job) arcs fixed; one disjunctive
-    clique per machine, initially unoriented."""
-    def __init__(self, durations, machines, num_jobs, num_machines): ...
-    def add_arc(self, i, j): ...        # orient one disjunctive edge i -> j
-    def remove_arc(self, i, j): ...
-    def makespan(self, reverse=False):
-        """Longest-path labeling. Forward gives completion labels; reverse gives
-        longest path from each operation to the end. Return makespan, critical
-        path, and labels; report a cycle if the current orientation is infeasible."""
-        ...
+```cpp
+#include <bits/stdc++.h>
+using namespace std;
 
-def solve_one_machine_lmax(tasks):
-    """Exact 1|r_j|L_max on a single machine: each task has
-    (duration, release/head r, due date f). Return optimal max-lateness and the job order."""
-    # TODO: branch-and-bound (Schrage heuristic + critical-block bound),
-    #       or an equivalent exact single-machine solver.
-    pass
+int main() {
+    ios::sync_with_stdio(false);
+    cin.tie(nullptr);
 
-class Scheduler:
-    """The strategy that orders the machines. To be designed."""
-    def solve(self, graph):
-        # TODO: decide the machine orders.
-        pass
+    int n, m;
+    if (!(cin >> n >> m)) {
+        return 0;
+    }
 
-def evaluate_makespan(instance, orientation):
-    """Exact makespan of a fully oriented schedule (CP/MIP):
-    interval per op, end == start + dur, job precedence end <= next.start,
-    no-overlap per machine, minimize max end."""
-    ...
+    vector<vector<int>> machine(n, vector<int>(m));
+    vector<vector<long long>> duration(n, vector<long long>(m));
+
+    for (int job = 0; job < n; ++job) {
+        for (int position = 0; position < m; ++position) {
+            cin >> machine[job][position] >> duration[job][position];
+        }
+    }
+
+    long long makespan = 0;
+    // TODO: Compute the requested makespan from the parsed instance.
+
+    cout << makespan << '\n';
+    return 0;
+}
 ```

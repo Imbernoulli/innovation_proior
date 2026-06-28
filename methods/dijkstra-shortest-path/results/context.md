@@ -10,7 +10,8 @@ Netherlands — *what is the shortest way to travel from Rotterdam to Groningen?
 an algorithm that, given a road map with distances, produces the minimum-total-length route
 between two named places, and that is small and frugal enough to actually run on the ARMAC:
 the map is reduced to 64 cities so that a city fits in 6 bits, and the machine has very
-little memory.
+little memory. The deliverable is a single self-contained C++17 program that reads the map
+from stdin and writes the route answer to stdout.
 
 ## Background
 
@@ -59,38 +60,48 @@ on this machine are how many branch records must be held at any moment and how m
 arithmetic and bookkeeping is done. The map lengths are nonnegative and roads may be
 directed.
 
-## Code framework
+## Input-output contract
 
-The caller supplies a way to enumerate the outgoing roads of one city and calls one route
-routine.
+The program reads `n m s t`, then `m` directed roads `u v w`, from stdin. Node codes are
+0-based integers, and each road length `w` is nonnegative. It prints the minimum total
+length from `s` to `t` followed by one shortest route as space-separated node codes, or
+prints `UNREACHABLE` when `t` cannot be reached.
 
 ```python
-# outgoing_roads(city) -> iterable of (neighbour, length).
-# Lengths are nonnegative; roads may be directed.
-# Example reduced road map (cities as strings; on the machine, 6-bit codes).
-road_map = {
-    "Rotterdam": [("Utrecht", 57), ("Amsterdam", 78)],
-    "Amsterdam": [("Utrecht", 40), ("Zwolle", 112)],
-    "Utrecht":   [("Zwolle", 90), ("Amsterdam", 40)],
-    "Zwolle":    [("Groningen", 100)],
-    "Groningen": [],
+#include <bits/stdc++.h>
+using namespace std;
+
+int main(){
+    ios_base::sync_with_stdio(false);
+    cin.tie(nullptr);
+
+    int n, m, s, t;
+    if (!(cin >> n >> m >> s >> t)) return 0;
+
+    vector<vector<pair<int, long long>>> adj(n);
+    for (int i = 0; i < m; ++i) {
+        int u, v;
+        long long w;
+        cin >> u >> v >> w;
+        adj[u].push_back({v, w});
+    }
+
+    bool reachable = false;
+    long long total_length = 0;
+    vector<int> path;
+
+    // TODO: compute whether t is reachable from s, the minimum total length,
+    // and one corresponding route as node codes in order.
+
+    if (!reachable) {
+        cout << "UNREACHABLE\n";
+        return 0;
+    }
+
+    cout << total_length << "\n";
+    for (size_t i = 0; i < path.size(); ++i) {
+        cout << path[i] << " \n"[i + 1 == path.size()];
+    }
+    return 0;
 }
-
-
-def outgoing_roads(city):
-    return road_map.get(city, ())
-
-
-def shortest_path(outgoing_roads, start, end):
-    """Return the minimum total length and route from start to end.
-
-    Return None when end is unreachable.
-    """
-    # TODO: choose and maintain the search state, update it from outgoing
-    # roads, and reconstruct the route when `end` is reached.
-    pass
-
-
-if __name__ == "__main__":
-    print(shortest_path(outgoing_roads, "Rotterdam", "Groningen"))
 ```

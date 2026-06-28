@@ -18,7 +18,8 @@ fixed-size memory pages to minimize cross-page references.
 
 Since the problem is computationally hard, the practical goal is a heuristic that produces good
 partitions quickly on realistic instances (tens to a few hundred nodes), while respecting the size
-constraint exactly.
+constraint exactly. The deliverable is a single self-contained C++17 program that reads the graph
+from stdin and writes the resulting partition summary to stdout.
 
 ## Background
 
@@ -86,43 +87,59 @@ on the same matrices.
 
 ## Code framework
 
-The primitives that already exist: a symmetric cost matrix with `cost(i,j)`, a representation of a
-two-block partition as two node sets `A`, `B`, a routine to compute the external cost of a
-partition, and the per-node internal/external cost sums. The slot to be filled is the
-*transformation* — the local-search step that turns one balanced partition into a cheaper one.
+The program contract is deliberately plain: read an even integer `m = 2n`, then read the `m × m`
+symmetric nonnegative cost matrix in row-major order. Start from the balanced split
+`A = {0, ..., n-1}`, `B = {n, ..., 2n-1}`. Write the initial cut cost, the final cut cost, and the
+two output blocks in the same stdout format shown by the scaffold. The slot to be filled is the
+balance-preserving improvement logic that updates the side assignment before the final report.
 
-```python
-class Partitioning:
-    """Holds the instance; a subclass implements the improvement step."""
+```cpp
+#include <bits/stdc++.h>
+using namespace std;
 
-    def __init__(self, cost):
-        self.cost = cost                      # symmetric matrix, cost[i][j] >= 0, cost[i][i] = 0
-        self.n = len(cost)
+long long external_cost(const vector<vector<long long>>& cost,
+                        const vector<int>& side) {
+    int m = (int)side.size();
+    long long total = 0;
+    for (int i = 0; i < m; ++i) {
+        for (int j = i + 1; j < m; ++j) {
+            if (side[i] != side[j]) total += cost[i][j];
+        }
+    }
+    return total;
+}
 
-    def external_cost(self, A, B):
-        """Total cost of edges cut by the partition (A, B)."""
-        return sum(self.cost[a][b] for a in A for b in B)
+int main() {
+    int m;
+    if (!(cin >> m)) return 0;
 
-    def internal_external(self, node, own, other):
-        """Sum of edge costs from `node` to its own side and to the other side."""
-        I = sum(self.cost[node][x] for x in own if x != node)
-        E = sum(self.cost[node][y] for y in other)
-        return I, E
+    vector<vector<long long>> cost(m, vector<long long>(m, 0));
+    for (int i = 0; i < m; ++i) {
+        for (int j = 0; j < m; ++j) {
+            cin >> cost[i][j];
+        }
+    }
 
+    int n = m / 2;
+    vector<int> side(m, 0);
+    for (int i = n; i < m; ++i) side[i] = 1;
 
-class Improver(Partitioning):
-    """The local-search transformation on a balanced bipartition. To be designed."""
+    cout << "start cut: " << external_cost(cost, side) << "\n";
 
-    def improve_once(self, A, B):
-        # TODO: from the balanced partition (A, B), find a cost-reducing
-        #       rearrangement that keeps |A| = |B|; return the improved (A, B)
-        #       and whether any improvement was made.
-        pass
+    // TODO: update side to a better balanced partition while keeping exactly n nodes per block.
 
-    def optimise(self, A, B):
-        # repeatedly apply the improving step until it stops improving, then return
-        improved = True
-        while improved:
-            A, B, improved = self.improve_once(A, B)
-        return A, B
+    cout << "final cut: " << external_cost(cost, side) << "\n";
+
+    vector<int> A, B;
+    for (int i = 0; i < m; ++i) {
+        (side[i] == 0 ? A : B).push_back(i);
+    }
+
+    cout << "A:";
+    for (int x : A) cout << ' ' << x;
+    cout << "\nB:";
+    for (int x : B) cout << ' ' << x;
+    cout << "\n";
+    return 0;
+}
 ```

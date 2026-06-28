@@ -16,48 +16,45 @@ The input size can be as large as `n = 100000`, and every color is an integer in
 
 ## Code framework
 
-The tree is passed as an undirected edge list. `color[v]` is the color of node
-`v`, using zero-based node indices. The required artifact is a single top-level
-`solve` function that returns the answer list indexed by node. The input wrapper
-uses one-based input vertices and converts them before calling `solve`.
+The required artifact is a single self-contained C++ program that reads from
+stdin and writes to stdout. The input gives `n`, then `n` colors for vertices
+`1..n`, then `n - 1` undirected edges with one-based endpoints; the tree is
+rooted at vertex `1`. Output `n` space-separated sums, one per vertex in vertex
+order, followed by a newline.
 
-```python
-import sys
-from sys import setrecursionlimit
+```cpp
+#include <bits/stdc++.h>
+using namespace std;
 
+int main() {
+    ios::sync_with_stdio(false);
+    cin.tie(nullptr);
 
-def solve(n, color, edges):
-    """color[v] is the color of node v (0-based); edges is a list of (a, b)
-    undirected tree edges. Return ans where ans[v] is the sum of all
-    dominating colors in the subtree of v (tree rooted at node 0)."""
-    g = [[] for _ in range(n)]
-    for a, b in edges:
-        g[a].append(b)
-        g[b].append(a)
+    int n;
+    if (!(cin >> n)) return 0;
 
-    ans = [0] * n
+    vector<int> color(n);
+    for (int i = 0; i < n; ++i) cin >> color[i];
 
-    # TODO
+    vector<vector<int>> g(n);
+    for (int i = 0; i < n - 1; ++i) {
+        int x, y;
+        cin >> x >> y;
+        --x;
+        --y;
+        g[x].push_back(y);
+        g[y].push_back(x);
+    }
 
-    return ans
+    vector<long long> ans(n, 0);
 
+    // TODO: compute the answer for each vertex.
 
-def main():
-    data = sys.stdin.buffer.read().split()
-    if not data:
-        return
-    it = iter(data)
-    n = int(next(it))
-    color = [int(next(it)) for _ in range(n)]
-    edges = []
-    for _ in range(n - 1):
-        x = int(next(it)) - 1
-        y = int(next(it)) - 1
-        edges.append((x, y))
-    ans = solve(n, color, edges)
-    sys.stdout.write(" ".join(map(str, ans)) + "\n")
-
-
-if __name__ == "__main__":
-    main()
+    for (int i = 0; i < n; ++i) {
+        if (i) cout << ' ';
+        cout << ans[i];
+    }
+    cout << '\n';
+    return 0;
+}
 ```

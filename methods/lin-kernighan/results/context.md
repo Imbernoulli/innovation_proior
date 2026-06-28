@@ -15,7 +15,9 @@ problem is inherently exponential: exact methods blow up in running time at real
 The practical bar is to find optimum or near-optimum tours on the classical and randomly generated
 instances of the day, on the order of tens to a hundred-plus cities, with running time that grows
 gently with `n` rather than explosively. The question is how to design a `k`-exchange local-search
-step that achieves high solution quality at reasonable computational cost.
+step that achieves high solution quality at reasonable computational cost. The deliverable is a
+single self-contained C++17 program that reads the instance from stdin and writes the tour and its
+length to stdout.
 
 ## Background
 
@@ -71,51 +73,35 @@ interchange heuristics — 2-opt and 3-opt — at comparable computing budgets, 
 
 ## Code framework
 
-The primitives that already exist: a distance matrix with `dist(i,j)`, a tour represented as an
-ordered list of cities with a routine to compute its length, a way to look at the two tour-neighbors
-of a city and to test whether a proposed set of edges still forms a single Hamiltonian cycle, and
-per-city neighbor lists ordered by distance. The slot to be filled is the *transformation* — the
-local-search step that turns one tour into a better one.
+The program should read `n`, then the full `n × n` symmetric distance matrix in row-major order from
+stdin. It should print the chosen tour as `n` zero-based city indices in visit order on one line, then
+print the tour length with four digits after the decimal point on the next line. The scaffold below is
+deliberately pre-method; the algorithmic step is left blank.
 
-```python
-class TSP:
-    """Holds the instance; subclasses implement an improvement heuristic."""
-    edges = {}  # global cost matrix
+```cpp
+#include <bits/stdc++.h>
+using namespace std;
 
-    @staticmethod
-    def dist(i, j):
-        return TSP.edges[i][j]
+int main() {
+    ios::sync_with_stdio(false);
+    cin.tie(nullptr);
 
-    @staticmethod
-    def pathCost(path):
-        cost = TSP.dist(path[-1], path[0])          # close the loop
-        for i in range(1, len(path)):
-            cost += TSP.dist(path[i - 1], path[i])
-        return cost
+    int n;
+    if (!(cin >> n) || n <= 0) return 0;
 
+    vector<vector<double>> dist(n, vector<double>(n, 0.0));
+    for (int i = 0; i < n; i++)
+        for (int j = 0; j < n; j++)
+            cin >> dist[i][j];
 
-class Tour:
-    """A tour as an ordered city list, plus its edge set for membership tests."""
-    def __init__(self, tour): ...
-    def around(self, node):
-        """Return (predecessor, successor) of a city on the tour."""
-        ...
-    def contains(self, edge): ...                   # is this edge currently in the tour?
-    def generate(self, broken, joined):
-        """Given a set of tour edges to delete and a set of new edges to add,
-        rebuild the city order; report whether the result is a single tour."""
-        ...
+    vector<int> tour(n);
+    double length = 0.0;
 
+    // TODO: (NO hint at the method name or idea -- this is pre-method)
 
-class Improver(TSP):
-    """The local-search transformation. To be designed."""
-    def _optimise(self):
-        # repeatedly apply the improving step until no improvement, then save
-        # TODO: the step that turns one tour into a strictly shorter one
-        pass
-
-    def improve(self):
-        # TODO: search for one improving move from the current tour;
-        #       return True (and update the tour) if one is found.
-        pass
+    for (int i = 0; i < n; i++)
+        cout << tour[i] << (i + 1 < n ? ' ' : '\n');
+    cout << fixed << setprecision(4) << length << '\n';
+    return 0;
+}
 ```

@@ -19,6 +19,9 @@ approximate `s-t` flow and a `(1+ε)`-approximate `s-t` cut on undirected capaci
 A faster routine would speed up every algorithm that calls approximate `s-t` flow as a
 subroutine (sparsest cut, for instance).
 
+The deliverable is a single self-contained C++17 program that reads the graph instance from
+stdin and writes the resulting certificate or flow data to stdout.
+
 (`Õ(g)` hides `polylog(g)` factors; throughout, `ε` is treated as a small constant and the
 results are interesting whenever they beat the `O(m^{3/2})` of exact methods.)
 
@@ -131,55 +134,82 @@ search with only an `O(log)` overhead. Correctness is measured against the exact
 the Max-Flow Min-Cut theorem, which lets any cut's capacity upper-bound any feasible flow's
 value.
 
+## Input-output contract
+
+The program is a single self-contained C++17 source file. It reads from stdin:
+
+```text
+n m s t F eps
+a_0 b_0 u_0
+a_1 b_1 u_1
+...
+a_{m-1} b_{m-1} u_{m-1}
+```
+
+Vertices are 0-indexed. Each edge line gives an undirected edge `a b` with positive capacity
+`u`. The program writes to stdout either `FAIL` on one line, or:
+
+```text
+value <V>
+<f_0>
+<f_1>
+...
+<f_{m-1}>
+maxcong <c>
+```
+
+where the `m` middle lines are the per-edge flow values in input order and `maxcong` is the
+maximum absolute congestion over all edges.
+
 ## Code framework
 
-The primitives below already exist: build the incidence matrix and the Laplacian, and solve
-an SDD linear system (the nearly-linear-time solver) to get electrical potentials and the
-corresponding `ℓ_2` (electrical) flow.
+The scaffold below is intentionally pre-method: it fixes only the C++17 stdin/stdout contract
+and leaves the implementation body blank.
 
-```python
-import numpy as np
-import scipy.sparse as sp
-import scipy.sparse.linalg as spla
+```cpp
+#include <bits/stdc++.h>
+using namespace std;
 
-def incidence_matrix(n, edges):
-    # B: n x m, +1 at head, -1 at tail (arbitrary orientation)
-    m = len(edges)
-    rows, cols, vals = [], [], []
-    for e, (a, b) in enumerate(edges):
-        rows += [a, b]; cols += [e, e]; vals += [1.0, -1.0]
-    return sp.csr_matrix((vals, (rows, cols)), shape=(n, m))
+struct Edge {
+    int a, b;
+    double u;
+};
 
-def solve_potentials(B, conduct, chi, F):
-    # L = B diag(conduct) B^T ;  solve L phi = F*chi  (ground one vertex)
-    n, _ = B.shape
-    L = (B @ sp.diags(conduct) @ B.T).tolil()
-    rhs = F * np.asarray(chi, float)
-    keep = list(range(1, n))
-    phi = np.zeros(n)
-    phi[keep] = spla.spsolve(L[keep, :][:, keep].tocsr(), rhs[keep])
-    return phi
+int main() {
+    ios::sync_with_stdio(false);
+    cin.tie(nullptr);
 
-def electrical_flow(B, conduct, phi):
-    # Ohm's law: f = C B^T phi
-    return conduct * (B.T @ phi)
+    int n, s, t;
+    long long m_ll;
+    double F, eps;
+    if (!(cin >> n >> m_ll >> s >> t >> F >> eps)) return 0;
+    int m = static_cast<int>(m_ll);
 
-def energy(res, f):
-    return float(np.sum(res * f * f))
+    vector<Edge> edges(m);
+    for (int e = 0; e < m; ++e) {
+        cin >> edges[e].a >> edges[e].b >> edges[e].u;
+    }
 
-# ----- the slot the method will fill -----
-def resistances_from_weights(u, w, eps, m):
-    # TODO: how should per-edge resistances depend on the capacities and the
-    #       current weights so that a single electrical solve says something
-    #       useful about capacity constraints?
-    pass
+    bool failed = false;
+    double value = 0.0;
+    vector<double> flow(m, 0.0);
+    double maxcong = 0.0;
 
-def oracle(B, u, w, F, eps, active):
-    # TODO: one electrical solve + a test that decides accept / fail
-    pass
+    // TODO: implement the computation here.
 
-def approx_max_flow(n, edges, u, F, eps):
-    # TODO: an outer loop over repeated oracle calls that updates the weights
-    #       from the returned flow and combines the per-step flows into the answer
-    pass
+    cout.setf(ios::fixed);
+    cout << setprecision(6);
+
+    if (failed) {
+        cout << "FAIL\n";
+        return 0;
+    }
+
+    cout << "value " << value << "\n";
+    for (int e = 0; e < m; ++e) {
+        cout << flow[e] << "\n";
+    }
+    cout << "maxcong " << maxcong << "\n";
+    return 0;
+}
 ```

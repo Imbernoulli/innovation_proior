@@ -5,10 +5,10 @@
 A stream of items arrives **one at a time**; each has a size and must be placed **immediately and
 irrevocably**, before the next item is seen, into one of the currently open bins (each of fixed
 capacity `C`) that still has room for it, or into a brand-new bin. Once placed, an item never moves.
-The single thing being designed is a **priority function** `priority(item, bins) -> array`: given the
-incoming item's size and the array of remaining capacities of the bins that can still fit it, it
-scores every such bin, and the item goes into the highest-scoring one. The goal is to use as **few
-bins** as possible over the whole stream (lower is better).
+The single thing being designed is the online placement rule: when an item arrives, choose one open
+bin that fits it or open a new bin. The deliverable is a **single self-contained C++17 program reading from stdin**
+and writing to stdout; it reads the stream, applies the rule, and prints the final number of used
+bins. The goal is to use as **few bins** as possible over the whole stream (lower is better).
 
 Because the online optimum is order-dependent and NP-hard to pin down, the honest yardstick is the
 **L1 lower bound** `LB = ceil(Σ items / C)` — the bins needed if every bin were filled to the brim
@@ -31,33 +31,38 @@ lower bound. Published Table 1 (excess over LB; lower is better):
 | Weibull 100k | 4.00% | 3.79% | 0.03% |
 
 
-## The fixed substrate
+## Input-output contract
 
-The harness is the FunSearch online-bin-packing skeleton, reproduced verbatim. It maintains an array
-of bin remaining-capacities (pre-allocated large enough that a fresh bin is always available); for
-each arriving item it finds the valid bins (`remaining ≥ item`), calls `priority(item,
-valid_remaining)`, places the item in the `argmax` bin, and decrements it. A bin is "used" iff its
-remaining capacity ever dropped below `C`.
+The program reads the bin capacity `C`, item count `N`, then the `N` item sizes from stdin as
+whitespace-separated integers. The first two values are `C N`; the following `N` values may appear on
+any later lines. It writes exactly one integer to stdout: the number of bins used by the online
+placement on that stream, followed by a newline.
 
-```python
-import numpy as np
+```cpp
+#include <bits/stdc++.h>
+using namespace std;
+int main(){
+    ios::sync_with_stdio(false);
+    cin.tie(nullptr);
 
-def get_valid_bin_indices(item, bins):
-    return np.nonzero((bins - item) >= 0)[0]
+    // read input from stdin per the contract
+    long long C, N;
+    if (!(cin >> C >> N)) return 0;
+    vector<long long> items;
+    items.reserve(static_cast<size_t>(N));
+    for (long long k = 0; k < N; ++k) {
+        long long s;
+        cin >> s;
+        items.push_back(s);
+    }
 
-def online_binpack(items, bins, priority):
-    for item in items:
-        valid = get_valid_bin_indices(item, bins)
-        best = valid[np.argmax(priority(item, bins[valid]))]
-        bins[best] -= item
-    return bins
+    long long bins_used = 0;
+    // TODO: compute the result for this stream
 
-def num_bins_used(items, capacity, priority):
-    bins = np.array([capacity] * len(items), dtype=float)
-    return int((online_binpack(items, bins, priority) != capacity).sum())
-
-def l1_bound(items, capacity):
-    return int(np.ceil(np.sum(items) / capacity))
+    // print result to stdout
+    cout << bins_used << '\n';
+    return 0;
+}
 ```
 
 ## Evaluation settings
@@ -72,6 +77,5 @@ calibration check.
 
 ## The editable interface
 
-Exactly one function is editable: `priority(item, bins) -> array`, returning a real score per valid
-bin (higher = more preferred); the item goes to its `argmax`. Everything else — the simulator, the
-streams, the capacity — is frozen.
+All code lives in one C++17 source file. The placement rule is the editable part; the input format,
+output format, online constraint, item order, bin capacity, and metric are fixed.

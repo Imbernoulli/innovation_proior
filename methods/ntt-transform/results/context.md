@@ -4,7 +4,7 @@
 
 Polynomial multiplication is the bottleneck operation in two large families of computation. The first is exact arithmetic on long objects: multiplying two big integers, or two polynomials of high degree with integer coefficients, where the schoolbook method costs `O(n^2)` coefficient multiplications. The second is ideal lattice-based cryptography built on the Ring Learning With Errors (R-LWE) problem, where every encryption, signature, or key-exchange step multiplies two polynomials in a quotient ring `R_q = Z_q[x]/(x^n + 1)` with `n` a power of two (typically `256`, `512`, or `1024`) and `q` a modest prime. Here the product is taken modulo `x^n + 1`, so the natural operation is not an ordinary product but a **negacyclic convolution** of the two coefficient vectors.
 
-The goal is to compute these products in quasi-linear time `O(n log n)` instead of `O(n^2)` using exact integer (modular) arithmetic, with no floating-point round-off. The precise problem: given `n` a power of two and a prime `q` with the right structure, multiply two degree-`< n` polynomials over `Z_q` modulo `x^n + 1` in `O(n log n)` modular operations, exactly.
+The goal is to compute these products in quasi-linear time `O(n log n)` instead of `O(n^2)` using exact integer (modular) arithmetic, with no floating-point round-off. The precise problem: given `n` a power of two and a prime `q` with the right structure, multiply two degree-`< n` polynomials over `Z_q` modulo `x^n + 1` in `O(n log n)` modular operations, exactly. The deliverable is a single self-contained C++17 program that reads the instance from stdin and writes the product coefficients to stdout.
 
 ## Background
 
@@ -34,52 +34,38 @@ The goal is to compute these products in quasi-linear time `O(n log n)` instead 
 
 The natural yardsticks are the two application regimes. For big-integer / big-polynomial multiplication: pairs of operands of increasing size (e.g. integers of thousands to millions of bits, encoded base `u` into coefficient vectors), measuring correctness against schoolbook or library multiplication and runtime as a function of length; when a single prime is too small, several primes `p_i ≡ 1 (mod d)` for a common transform length `d` are used with CRT recombination. For R-LWE cryptography: the standardized parameter sets — `n = 256, 512, 1024` with primes such as `q = 12289 = 3·2^{12}+1` (BLISS signatures, R-LWE key exchange) and `q = 7681` or `q = 8380417` — multiplying uniformly random and error-distributed polynomials in `Z_q[x]/(x^n+1)`. Metrics: bit-exact agreement of the negacyclic product with schoolbook, transform throughput (cycles, or modular multiplies per transform), and constant-time behaviour. A faithful re-implementation needs only exact integer arithmetic modulo `q`; no floating point is required, which is the point.
 
-## Code framework
+## Input-output contract
 
-The pieces already on hand: exact modular arithmetic in `Z_q` (`+`, `-`, `*`, and modular inverse via extended Euclid or Fermat), a routine to find a primitive root of `Z_q^*` and hence roots of unity, a bit-reversal permutation, and a schoolbook convolution to check against. The radix-2 Cooley–Tukey butterfly is known as a complex-arithmetic primitive.
+The program is a single self-contained C++17 source file. It reads `q`, `n`, then the `n` coefficients of `f`, then the `n` coefficients of `g` from stdin; `n` is a power of two, `q` is prime, and the coefficients are interpreted modulo `q`. It writes the `n` coefficients of `f*g mod (x^n + 1)`, each reduced into `[0, q)`, to stdout as one space-separated line ending in a newline.
 
-```python
-import math
+```cpp
+#include <bits/stdc++.h>
+using namespace std;
 
-def find_primitive_root(q):
-    """Generator of (Z/qZ)^* for prime q — already a standard routine."""
-    phi = q - 1
-    factors = set()
-    m, d = phi, 2
-    while d * d <= m:
-        if m % d == 0:
-            factors.add(d)
-            while m % d == 0:
-                m //= d
-        d += 1
-    if m > 1:
-        factors.add(m)
-    for g in range(2, q):
-        if all(pow(g, phi // f, q) != 1 for f in factors):
-            return g
-    raise ValueError("no primitive root")
+int main() {
+    ios_base::sync_with_stdio(false);
+    cin.tie(nullptr);
 
-def brv(x, bits):
-    """Bit-reversal of x in 'bits' bits — a standard permutation primitive."""
-    r = 0
-    for _ in range(bits):
-        r = (r << 1) | (x & 1)
-        x >>= 1
-    return r
+    long long q;
+    int n;
+    if (!(cin >> q >> n)) return 0;
 
-def ring_multiply(f, g, q):
-    # TODO: multiply f*g in Z_q[x]/(x^n + 1) exactly, in O(n log n) modular operations.
-    pass
+    vector<long long> f(n), g(n);
+    for (int i = 0; i < n; ++i) {
+        cin >> f[i];
+        f[i] = ((f[i] % q) + q) % q;
+    }
+    for (int i = 0; i < n; ++i) {
+        cin >> g[i];
+        g[i] = ((g[i] % q) + q) % q;
+    }
 
-def schoolbook_negacyclic(f, g, q):
-    n = len(f)
-    res = [0] * n
-    for i in range(n):
-        for j in range(n):
-            k = i + j
-            if k < n:
-                res[k] += f[i] * g[j]
-            else:
-                res[k - n] -= f[i] * g[j]   # x^n = -1
-    return [x % q for x in res]
+    vector<long long> c(n);
+    // TODO:
+
+    for (int i = 0; i < n; ++i) {
+        cout << c[i] << (i + 1 < n ? ' ' : '\n');
+    }
+    return 0;
+}
 ```

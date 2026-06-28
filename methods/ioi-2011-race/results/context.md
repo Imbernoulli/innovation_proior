@@ -9,54 +9,34 @@ a path, or $-1$ if no path has total length exactly $K$.
 
 ## Code framework
 
-```python
-import sys
+The deliverable is a single self-contained C++17 program that reads `n K`
+followed by `n-1` lines `u v w` from stdin and writes the answer to stdout.
 
-def race(n, K, edges):
-    """edges: list of (u, v, w) with 0-based vertices and non-negative w.
-    Returns the minimum number of edges on a path of total length exactly K,
-    or -1 if no such path exists."""
-    adj = [[] for _ in range(n)]
-    for u, v, w in edges:
-        adj[u].append((v, w))
-        adj[v].append((u, w))
+```cpp
+#include <bits/stdc++.h>
+using namespace std;
 
-    removed = [False] * n
-    size = [0] * n
-    parent = [-1] * n
+int main() {
+    ios::sync_with_stdio(false);
+    cin.tie(nullptr);
 
-    best_depth = [0] * (K + 1)
-    seen = [-1] * (K + 1)
-    stamp = 0
-    answer = -1
+    int n;
+    long long K;
+    if (!(cin >> n >> K)) return 0;
 
-    def calc_size(root):
-        # TODO
-        pass
+    vector<vector<pair<int, long long>>> g(n);
+    for (int i = 0; i < n - 1; ++i) {
+        int u, v;
+        long long w;
+        cin >> u >> v >> w;
+        g[u].emplace_back(v, w);
+        g[v].emplace_back(u, w);
+    }
 
-    def find_centroid(order, parent, total):
-        # TODO
-        pass
+    long long answer = -1;
+    // TODO:
 
-    def dfs_collect(start, c0, centroid):
-        # TODO
-        pass
-
-    def process(start):
-        # TODO
-        pass
-
-    sys.setrecursionlimit(1 << 20)
-    process(0)
-    return answer
-
-
-if __name__ == "__main__":
-    data = sys.stdin.buffer.read().split()
-    if data:
-        it = iter(data)
-        n = int(next(it)); K = int(next(it))
-        edges = [(int(next(it)), int(next(it)), int(next(it)))
-                 for _ in range(n - 1)]
-        print(race(n, K, edges))
+    cout << answer << "\n";
+    return 0;
+}
 ```

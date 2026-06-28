@@ -4,6 +4,8 @@
 
 Given a nonempty *pattern* string of length `m` and a long *text* string of length `n`, find every position in the text at which the pattern occurs as a contiguous substring (or just the leftmost). Text-editing programs perform this operation constantly. The naive scanner that re-tries the pattern at every starting position costs `O(nm)` in the worst case. How can one match a fixed literal pattern against a text in time proportional to `m + n`, using memory proportional only to the pattern, and independently of the alphabet size?
 
+The deliverable is a single self-contained C++ program that reads from stdin and writes to stdout. It reads the pattern `W` from the first input line and the text `S` from the second input line, then prints the `0`-based start positions of every occurrence of `W` in `S` on one space-separated line, followed by a newline.
+
 ## Background
 
 The naive algorithm: align the pattern at text position `p`, compare `pattern[1], pattern[2], …` against `text[p+1], text[p+2], …`; on the first mismatch, advance `p` by one and start the comparison over from `pattern[1]`. On a pattern like `aaaaaaab` against `aaaa…aab` this does `≈ (n+1)·m`-ish work and repeatedly re-examines the same text characters. After a partial match it backs the text pointer up, which forces the editor to keep characters around in a buffer.
@@ -32,21 +34,24 @@ The natural yardsticks: worst-case running time as a function of `m` and `n` (th
 
 ## Code framework
 
-A streaming scanner. The text arrives left to right; we keep a text pointer, a pattern pointer, and an empty preprocessing slot for whatever pattern-derived state is needed to choose the next comparison after a mismatch.
+A single-file C++17 streaming scanner scaffold. The input parsing and output formatting are fixed; the algorithm body fills `matches` with the start positions to print.
 
-```python
-def preprocess(pattern):
-    # TODO: derive pattern-only state for resuming after a mismatch.
-    pass
-
-def search(text, pattern):
-    table = preprocess(pattern)
-    matches = []
-    k = 0   # text pointer
-    j = 0   # pattern pointer
-    while k < len(text):
-        # TODO: compare text[k] with pattern[j], update j from table on
-        # mismatch, and record starts of full matches.
-        pass
-    return matches
+```cpp
+#include <bits/stdc++.h>
+using namespace std;
+int main(){
+    ios_base::sync_with_stdio(false);
+    cin.tie(nullptr);
+    string W, S;
+    getline(cin, W);
+    getline(cin, S);
+    vector<long long> matches;
+    // TODO: fill matches with the 0-based start positions where W occurs in S.
+    for (size_t i = 0; i < matches.size(); ++i) {
+        if (i) cout << ' ';
+        cout << matches[i];
+    }
+    cout << '\n';
+    return 0;
+}
 ```

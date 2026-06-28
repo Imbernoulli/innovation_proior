@@ -16,66 +16,38 @@ procedure is acceptable.
 
 ## Code framework
 
-The graph is read into a $0$-based adjacency list of directed edges. The helper
-functions and input/output wrapper are fixed. What is missing is the top-level
-`min_path_cover(n, adj)` that turns the graph into the integer answer.
+The deliverable is a single self-contained C++17 program. It reads `n m`
+followed by `m` directed edges `u v` from stdin, with edge endpoints 1-based in
+the input, stores them as a 0-based adjacency list, and writes one integer to
+stdout: the minimum number of vertex-disjoint paths covering every vertex
+exactly once.
 
-```python
-import sys
+```cpp
+#include <bits/stdc++.h>
+using namespace std;
 
-sys.setrecursionlimit(1_000_000)
+int main() {
+    ios::sync_with_stdio(false);
+    cin.tie(nullptr);
 
+    int n;
+    long long m;
+    if (!(cin >> n >> m)) return 0;
 
-def read_dag(data):
-    """Parse n, m, and m directed edges (1-based in input) into a 0-based
-    adjacency list of a DAG. Returns (n, adj)."""
-    it = iter(data)
-    n = int(next(it))
-    m = int(next(it))
-    adj = [[] for _ in range(n)]
-    for _ in range(m):
-        u = int(next(it)) - 1
-        v = int(next(it)) - 1
-        adj[u].append(v)
-    return n, adj
+    vector<vector<int>> adj(n);
+    for (long long i = 0; i < m; ++i) {
+        int u, v;
+        cin >> u >> v;
+        --u;
+        --v;
+        adj[u].push_back(v);
+    }
 
+    long long answer = 0;
 
-def bipartite_matching(n_left, n_right, adj):
-    """Maximum-cardinality matching of a bipartite graph by Kuhn's
-    augmenting-path search. adj[u] lists right vertices joined to left vertex u.
-    Returns the size of a maximum matching. O(V * E)."""
-    match_right = [-1] * n_right       # right vertex -> its matched left vertex
+    // TODO:
 
-    def try_kuhn(u, used):
-        for w in adj[u]:
-            if not used[w]:
-                used[w] = True
-                if match_right[w] == -1 or try_kuhn(match_right[w], used):
-                    match_right[w] = u
-                    return True
-        return False
-
-    size = 0
-    for u in range(n_left):
-        used = [False] * n_right
-        if try_kuhn(u, used):
-            size += 1
-    return size
-
-
-def min_path_cover(n, adj):
-    # TODO
-    pass
-
-
-def main():
-    data = sys.stdin.buffer.read().split()
-    if not data:
-        return
-    n, adj = read_dag(data)
-    print(min_path_cover(n, adj))
-
-
-if __name__ == "__main__":
-    main()
+    cout << answer << "\n";
+    return 0;
+}
 ```

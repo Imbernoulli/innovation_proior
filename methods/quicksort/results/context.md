@@ -68,28 +68,32 @@ few hundred to a few thousand items, timed automatically by the computer.
 
 ## Code framework
 
-The pieces that already exist: items live contiguously in an array `a` in the random-access store; we
-can read and compare their keys and exchange two of them in place. A sort is a routine that
-rearranges `a` into ascending order using only these primitives, ideally touching no store beyond `a`
-itself.
+The deliverable is a single self-contained C++17 program. It reads `N` followed by `N` integer keys
+from standard input, rearranges the keys into ascending order in place, and writes the sorted keys to
+standard output, space-separated on one line. Any additional bookkeeping store must be managed
+explicitly inside the program.
 
-```python
-def key(item):
-    # the sort key of an item (for words, the spelling)
-    return item
+```cpp
+#include <bits/stdc++.h>
+using namespace std;
 
-def exchange(a, p, q):
-    # swap two items in place — the only data-movement primitive we rely on
-    a[p], a[q] = a[q], a[p]
+static void quicksort(vector<long long>& a) {
+    // TODO: implement
+}
 
-def sort(a):
-    # Rearrange a[0..len(a)-1] into ascending key order, in place,
-    # fast (we want far better than N^2) and without a second array.
-    # TODO: the method.
-    pass
-
-# An auxiliary fixed block of store we are allowed to manage by hand, if the
-# method needs one. On this machine the language gives us no automatic stack,
-# so any such block is ours to administer.
-work_store = []  # TODO: only if the method needs it
+int main() {
+    ios_base::sync_with_stdio(false);
+    cin.tie(nullptr);
+    long long n;
+    if (!(cin >> n)) return 0;
+    vector<long long> a(n);
+    for (long long k = 0; k < n; ++k) cin >> a[k];
+    quicksort(a);
+    for (long long k = 0; k < n; ++k) {
+        cout << a[k];
+        if (k + 1 < n) cout << ' ';
+    }
+    cout << '\n';
+    return 0;
+}
 ```

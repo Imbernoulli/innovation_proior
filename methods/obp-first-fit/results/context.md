@@ -5,10 +5,10 @@
 A stream of items arrives **one at a time**; each has a size and must be placed **immediately and
 irrevocably**, before the next item is seen, into one of the currently open bins (each of fixed
 capacity `C`) that still has room for it, or into a brand-new bin. Once placed, an item never moves.
-The single thing being designed is a **priority function** `priority(item, bins) -> array`: given the
-incoming item's size and the array of remaining capacities of the bins that can still fit it, it
-scores every such bin, and the item goes into the highest-scoring one. The goal is to use as **few
-bins** as possible over the whole stream (lower is better).
+The deliverable is a single self-contained C++17 program reading from stdin and writing to stdout.
+It reads the capacity `C`, the item count `n`, then the `n` item sizes in stream order; it processes
+the stream online and prints the number of bins used followed by the L1 lower bound. The goal is to
+use as **few bins** as possible over the whole stream (lower is better).
 
 Because the online optimum is order-dependent and NP-hard to pin down, the honest yardstick is the
 **L1 lower bound** `LB = ceil(Σ items / C)` — the bins needed if every bin were filled to the brim
@@ -32,33 +32,40 @@ lower bound. Published Table 1 (excess over LB; lower is better):
 
 The discovered heuristic beats Best Fit on every dataset and widens the gap as streams grow.
 
-## The fixed substrate
+## Code framework
 
-The harness is the FunSearch online-bin-packing skeleton, reproduced verbatim. It maintains an array
-of bin remaining-capacities (pre-allocated large enough that a fresh bin is always available); for
-each arriving item it finds the valid bins (`remaining ≥ item`), calls `priority(item,
-valid_remaining)`, places the item in the `argmax` bin, and decrements it. A bin is "used" iff its
-remaining capacity ever dropped below `C`.
+The program is a single self-contained C++17 file. It reads from stdin: capacity `C`, item count `n`,
+then the `n` item sizes. It writes to stdout the number of bins used, then the L1 lower bound
+`ceil(Σ items / C)`, one value per line. The scaffold fixes the entry point and I/O contract while
+leaving the online placement policy open.
 
-```python
-import numpy as np
+```cpp
+#include <bits/stdc++.h>
+using namespace std;
 
-def get_valid_bin_indices(item, bins):
-    return np.nonzero((bins - item) >= 0)[0]
+int main(){
+    ios::sync_with_stdio(false);
+    cin.tie(nullptr);
 
-def online_binpack(items, bins, priority):
-    for item in items:
-        valid = get_valid_bin_indices(item, bins)
-        best = valid[np.argmax(priority(item, bins[valid]))]
-        bins[best] -= item
-    return bins
+    long long C;
+    int n;
+    if (!(cin >> C >> n)) return 0;
 
-def num_bins_used(items, capacity, priority):
-    bins = np.array([capacity] * len(items), dtype=float)
-    return int((online_binpack(items, bins, priority) != capacity).sum())
+    vector<long long> items(n);
+    long long total = 0;
+    for (int i = 0; i < n; ++i) {
+        cin >> items[i];
+        total += items[i];
+    }
 
-def l1_bound(items, capacity):
-    return int(np.ceil(np.sum(items) / capacity))
+    long long used_bins = 0;
+    // TODO:
+
+    long long lb = (total + C - 1) / C;
+    cout << used_bins << '\n';
+    cout << lb << '\n';
+    return 0;
+}
 ```
 
 ## Evaluation settings
@@ -71,8 +78,9 @@ percent excess over the mean L1 lower bound. The simulator reproduces the publis
 the digit (OR3 First/Best/FunSearch = 5.74%/5.37%/3.11%; Weibull 5k = 4.23%/3.98%/0.68%) as a
 calibration check.
 
-## The editable interface
+## Input-output contract
 
-Exactly one function is editable: `priority(item, bins) -> array`, returning a real score per valid
-bin (higher = more preferred); the item goes to its `argmax`. Everything else — the simulator, the
-streams, the capacity — is frozen.
+The deliverable is a single self-contained C++17 program. It is a C++ program reading from stdin and
+writing to stdout.
+Input is whitespace-separated: capacity `C`, item count `n`, then the `n` item sizes in stream order.
+Output is exactly two lines: the number of bins used, then the L1 lower bound `ceil(Σ items / C)`.

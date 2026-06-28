@@ -2,7 +2,7 @@
 
 ## Research question
 
-Given a connected undirected graph G = (V, E) on n = |V| vertices and m = |E| edges (possibly a weighted multigraph), find a **global minimum cut**: a partition of V into two nonempty sides (S, V∖S) that minimizes the number of edges crossing between them (or, in the weighted case, their total weight). "Global" means we are *not* given a source s and sink t — we want the cut of least value over *all* ways of splitting the vertices into two groups.
+Given a connected undirected graph G = (V, E) on n = |V| vertices and m = |E| edges (possibly a weighted multigraph), find a **global minimum cut**: a partition of V into two nonempty sides (S, V∖S) that minimizes the number of edges crossing between them (or, in the weighted case, their total weight). "Global" means we are *not* given a source s and sink t — we want the cut of least value over *all* ways of splitting the vertices into two groups. The deliverable is a single self-contained C++17 program that reads the graph from stdin and writes the minimum-cut value to stdout.
 
 The cut value of a graph measures its weakest point: the fewest edges whose removal disconnects it. It is the basic measure of network reliability (how many links must fail before the network splits), the cost of the cheapest way to two-color a system into communicating clusters, and a building block in graph partitioning, image segmentation, and clustering. The question is how to find a global minimum cut efficiently.
 
@@ -28,37 +28,33 @@ The cut value of a graph measures its weakest point: the fewest edges whose remo
 
 The natural yardstick is correctness probability against the true global min cut, and running time, as functions of n and m. Test instances are connected undirected (multi)graphs: random graphs at various densities; graphs with a planted sparse cut (e.g. two dense clusters joined by a few bridge edges, so the min-cut value is known by construction); and standard benchmark graphs used for partitioning. The metrics are: the empirical fraction of independent runs that recover a cut of the true minimum value, the number of repetitions needed to reach a target overall failure probability (e.g. 1/n or 1/poly(n)), and wall-clock / asymptotic running time versus the flow-based and deterministic-contraction baselines. Memory is O(m) for the adjacency multigraph. These are the conditions under which a method would be measured.
 
-## Code framework
+## Input-output contract
 
-The primitives that already exist: an adjacency-multigraph representation (a map from supernode to a list of incident supernodes, with parallel edges as repeats and no self-loops), a way to sample from a finite weighted list, the contraction operation that merges two supernodes, and a routine to read off the crossing-edge count when two supernodes remain. The open slot is the driver that turns these primitives into an algorithm for the global minimum cut.
+Write a single self-contained C++17 program. It reads `n m` from stdin, followed by `m` lines `u v` giving 1-based endpoints of undirected edges, and writes one integer to stdout: the value of a global minimum cut. Vertex labels fit in `int`; the crossing-edge count should be stored in `long long`.
 
-```python
-import copy
-import math
-import random
+```cpp
+#include <bits/stdc++.h>
+using namespace std;
 
+int main() {
+    ios_base::sync_with_stdio(false);
+    cin.tie(nullptr);
 
-def contract(graph, t):
-    """Drive the multigraph down to t supernodes by merging edges.
+    long long n, m;
+    if (!(cin >> n >> m)) return 0;
 
-    graph: adjacency multigraph as {node: [neighbor, ...]}; parallel edges
-    appear as repeated neighbors, self-loops are never stored.
-    Returns the contracted multigraph (still has t supernodes).
-    """
-    # TODO: copy the graph, choose which edges to contract, merge
-    # endpoints, drop self-loops, keep parallel edges, and return
-    # the contracted graph.
-    pass
+    vector<pair<int, int>> edges;
+    edges.reserve(static_cast<size_t>(m));
+    for (long long i = 0; i < m; i++) {
+        long long u, v;
+        cin >> u >> v;
+        edges.push_back({static_cast<int>(u), static_cast<int>(v)});
+    }
 
+    long long result = 0;
+    // TODO: compute the required value from n and edges.
 
-def cut_value(g):
-    """Number of crossing edges once two supernodes remain."""
-    # TODO: read the edge multiplicity between the two remaining supernodes.
-    pass
-
-
-def min_cut(graph):
-    """Return the value of a global minimum cut of graph."""
-    # TODO: build an algorithm on top of the primitives above.
-    pass
+    cout << result << "\n";
+    return 0;
+}
 ```

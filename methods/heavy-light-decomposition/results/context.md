@@ -13,107 +13,43 @@ $n$ nodes.
 
 ## Code framework
 
-The tree is read into a $0$-based adjacency list together with the per-node
-values. A generic segment tree over a flat array is already available — point
-update plus range query under any associative combine (it is written for sum
-below; swapping `_combine`/`_identity` turns it into a max tree). To be filled
-in are a `build` that preprocesses the tree and the two top-level operations
-`update(u, val)` and `path_query(u, v)`.
+The deliverable is a single self-contained C++17 program that reads from stdin
+and writes to stdout. It follows the judged input format: read `n`, then the
+`n-1` one-based tree edges, then the `n` node weights, then `q` operations.
+`CHANGE u t` updates node `u`, while `QMAX u v` and `QSUM u v` print one line
+with the path maximum or path sum respectively.
 
-```python
-import sys
+```cpp
+#include <bits/stdc++.h>
+using namespace std;
 
+int n;
+vector<vector<int>> adj;
+vector<long long> wt;
 
-def read_tree(data):
-    """Parse n, the n node values, and n-1 edges (1-based in input) into a
-    0-based adjacency list. Returns (n, values, adj)."""
-    it = iter(data)
-    n = int(next(it))
-    values = [int(next(it)) for _ in range(n)]
-    adj = [[] for _ in range(n)]
-    for _ in range(n - 1):
-        u = int(next(it)) - 1
-        v = int(next(it)) - 1
-        adj[u].append(v)
-        adj[v].append(u)
-    return n, values, adj
+int main() {
+    ios_base::sync_with_stdio(false);
+    cin.tie(nullptr);
+    if (!(cin >> n)) return 0;
+    adj.assign(n + 1, {});
+    wt.assign(n + 1, 0);
+    for (int i = 0; i < n - 1; i++) {
+        int a, b; cin >> a >> b;
+        adj[a].push_back(b);
+        adj[b].push_back(a);
+    }
+    for (int i = 1; i <= n; i++) cin >> wt[i];
 
+    // TODO
 
-class SegmentTree:
-    """Array-backed segment tree: point update, range query under an
-    associative combine. Defaults to sum (swap _combine/_identity for max)."""
-
-    def __init__(self, base):
-        self.n = len(base)
-        self.t = [0] * (2 * self.n)
-        for i in range(self.n):
-            self.t[self.n + i] = base[i]
-        for i in range(self.n - 1, 0, -1):
-            self.t[i] = self._combine(self.t[2 * i], self.t[2 * i + 1])
-
-    @staticmethod
-    def _combine(a, b):
-        return a + b
-
-    _identity = 0
-
-    def update(self, i, val):
-        i += self.n
-        self.t[i] = val
-        i >>= 1
-        while i:
-            self.t[i] = self._combine(self.t[2 * i], self.t[2 * i + 1])
-            i >>= 1
-
-    def query(self, l, r):
-        """Aggregate over the index range [l, r] inclusive."""
-        res = self._identity
-        l += self.n
-        r += self.n + 1
-        while l < r:
-            if l & 1:
-                res = self._combine(res, self.t[l])
-                l += 1
-            if r & 1:
-                r -= 1
-                res = self._combine(res, self.t[r])
-            l >>= 1
-            r >>= 1
-        return res
-
-
-class TreePaths:
-    def __init__(self, n, values, adj, root=0):
-        self.n = n
-        self.values = values
-        self.adj = adj
-        self.parent = [-1] * n
-        self.depth = [0] * n
-        self.size = [1] * n
-        self.build(root)
-
-    def build(self, root):
-        # TODO
-        pass
-
-    def update(self, u, val):
-        # TODO
-        pass
-
-    def path_query(self, u, v):
-        # TODO
-        pass
-
-
-def main():
-    data = sys.stdin.buffer.read().split()
-    if not data:
-        return
-    n, values, adj = read_tree(data)
-    tp = TreePaths(n, values, adj)
-    # (driver would read and dispatch queries here)
-
-
-if __name__ == "__main__":
-    main()
+    int q; cin >> q;
+    string op; int u, v;
+    while (q--) {
+        cin >> op >> u >> v;
+        if (op == "CHANGE") updateNode(u, v);
+        else if (op == "QMAX") cout << pathMax(u, v) << '\n';
+        else if (op == "QSUM") cout << pathSum(u, v) << '\n';
+    }
+    return 0;
+}
 ```

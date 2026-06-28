@@ -8,22 +8,53 @@ with fixed integer coefficients $c_1, \dots, c_d$ and $d$ given initial terms $a
 
 The length or index $N$ can be as large as $10^{18}$. To keep the numbers bounded, every answer is reported modulo a given positive integer $m$ (the exact counts can grow extremely quickly, so the value modulo $m$ is what is required).
 
-## Code framework
+## Research question / Input-output contract
 
-For the walk-counting form, the graph is an edge-count table `adj`, where
-`adj[i][j]` is the number of edges from vertex `i` to vertex `j`; `s`, `t`,
-`N`, and `m` are integers. For the recurrence form, `coeffs = [c_1, ..., c_d]`
-and `init = [a_0, ..., a_{d-1}]` are lists, with `N` and `m` again integers.
+The deliverable is a single self-contained C++17 program that reads from stdin
+and writes the answer to stdout. The first token selects the input form:
+`W` then `d s t N m` followed by the $d \times d$ edge-count table prints the
+length-$N$ walk count from `s` to `t`; `L` then `d N m`, followed by the $d$
+coefficients and then the $d$ initial terms, prints $a_N$. The program prints
+one integer, reduced modulo `m`.
 
-```python
-def walks(adj,s,t,N,m):
-    """Number of length-N walks s -> t in a directed graph (adj[i][j] = #edges i->j)."""
-    # TODO
-    pass
+```cpp
+#include <bits/stdc++.h>
+using namespace std;
 
+int main() {
+    ios::sync_with_stdio(false);
+    cin.tie(nullptr);
 
-def linrec(coeffs,init,N,m):
-    """Evaluate a_n = sum_j coeffs[j]*a_{n-1-j} at index N; init = [a_0, ..., a_{d-1}]."""
-    # TODO
-    pass
+    string mode;
+    if (!(cin >> mode)) return 0;
+
+    long long answer = 0;
+    if (mode == "W" || mode == "w") {
+        int d, s, t;
+        long long N, m;
+        cin >> d >> s >> t >> N >> m;
+
+        vector<vector<long long>> adj(d, vector<long long>(d));
+        for (int i = 0; i < d; ++i) {
+            for (int j = 0; j < d; ++j) {
+                cin >> adj[i][j];
+            }
+        }
+
+        // TODO: compute the requested answer.
+    } else {
+        int d;
+        long long N, m;
+        cin >> d >> N >> m;
+
+        vector<long long> coeffs(d), init(d);
+        for (int i = 0; i < d; ++i) cin >> coeffs[i];
+        for (int i = 0; i < d; ++i) cin >> init[i];
+
+        // TODO: compute the requested answer.
+    }
+
+    cout << answer << '\n';
+    return 0;
+}
 ```

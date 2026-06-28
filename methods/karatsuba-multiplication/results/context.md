@@ -52,24 +52,21 @@ The yardstick is the asymptotic count of elementary operations — single-bit (o
 
 ## Code framework
 
-The primitives already available: arbitrary-size integers, the schoolbook product as a base operation, integer floor-division and remainder to split an operand into high/low halves, and shifting by multiplying by powers of the base. The scaffold is a recursive routine with a base case, a half-size split, and one empty algebraic slot for the recursive products and recombination.
+The deliverable is a single self-contained C++17 program. It reads two non-negative big integers, whitespace-separated and of arbitrary length, from `stdin`, and writes their exact product to `stdout`. The scaffold fixes that entry point and I/O contract while leaving the internal multiplication logic open.
 
-```python
-BASE = 10
+```cpp
+#include <bits/stdc++.h>
+using namespace std;
 
-def multiply_candidate(x, y):
-    # base case: operands small enough to multiply directly
-    if x < BASE or y < BASE:
-        return x * y
+static string multiply_candidate(const string& a, const string& b) {
+    // TODO: compute the exact decimal product of a and b.
+    return "0";
+}
 
-    # choose the split point (about half the digits)
-    n = max(len(str(x)), len(str(y)))
-    m = n // 2
-    split = BASE ** m
-
-    high1, low1 = divmod(x, split)
-    high2, low2 = divmod(y, split)
-
-    # TODO: choose the recursive products and recombine them with powers of BASE.
-    return ...  # TODO
+int main() {
+    string sa, sb;
+    if (!(cin >> sa >> sb)) return 0;
+    cout << multiply_candidate(sa, sb) << "\n";
+    return 0;
+}
 ```

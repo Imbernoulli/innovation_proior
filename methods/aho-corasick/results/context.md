@@ -4,6 +4,12 @@ Given a finite set of keywords (and phrases) and an arbitrary text string, locat
 *all* occurrences of *any* of the keywords as substrings of the text — including
 overlapping occurrences — in a single left-to-right pass over the text.
 
+The deliverable is a single self-contained C++17 program that reads from stdin
+and writes to stdout. Its input is an integer `k`, followed by `k`
+whitespace-delimited keywords, followed by the text string. It must print one
+line per match as `start_index keyword`, using 0-indexed starts, including
+overlapping matches, sorted by `(start_index, keyword)`.
+
 The setting is bibliographic search. At a large industrial research library,
 machine-readable citation tapes accumulate into a corpus of hundreds of thousands
 of citations and on the order of 10^7 characters. A bibliographer issues a query
@@ -96,45 +102,35 @@ output volume, against which any matcher must print the same large answer.
 
 ## Code framework
 
-The pieces that already exist: a way to read the text symbol by symbol, a tree
-(trie) structure for storing a set of strings, and the general shape of a
-finite-state driver (a current state, a per-symbol transition, an occasional
-emit). The slots the method must fill are the construction of the machine from
-the keyword set and the per-symbol transition rule that lets a single pass report
-every match.
+The scaffold fixes the input and output shape for a single-file C++17 program.
+The missing work is to compute every required match and leave it in `matches`
+for sorted printing to stdout.
 
-```python
-from collections import deque
+```cpp
+#include <bits/stdc++.h>
+using namespace std;
 
+int main() {
+    ios::sync_with_stdio(false);
+    cin.tie(nullptr);
 
-class MultiKeywordMatcher:
-    def __init__(self):
-        # goto graph: list of dicts, transitions[state][symbol] -> state.
-        self.goto = [{}]          # state 0 is the root
-        self.output = [[]]        # keywords ending exactly at a state
-        # TODO: any auxiliary per-state bookkeeping the method needs.
+    int k;
+    if (!(cin >> k)) return 0;
 
-    def add_keyword(self, word):
-        # Insert word as a root-to-node path in the goto graph (trie insert),
-        # tag the terminal state with the keyword.
-        state = 0
-        for ch in word:
-            nxt = self.goto[state].get(ch)
-            if nxt is None:
-                nxt = len(self.goto)
-                self.goto.append({})
-                self.output.append([])
-                self.goto[state][ch] = nxt
-            state = nxt
-        self.output[state].append(word)
+    vector<string> keywords(k);
+    for (int i = 0; i < k; ++i) cin >> keywords[i];
 
-    def build(self):
-        # TODO: preprocess the goto graph into whatever the search loop needs.
-        pass
+    string text;
+    cin >> text;
 
-    def search(self, text):
-        # TODO: drive the machine over the text one symbol at a time, emitting
-        #       (position, keyword) for every match. Exactly one symbol consumed
-        #       per step.
-        pass
+    vector<pair<int, string>> matches;
+
+    // TODO:
+
+    sort(matches.begin(), matches.end());
+    for (const auto& [start, keyword] : matches) {
+        cout << start << ' ' << keyword << '\n';
+    }
+    return 0;
+}
 ```

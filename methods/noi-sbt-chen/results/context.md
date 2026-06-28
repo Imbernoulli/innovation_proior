@@ -1,59 +1,42 @@
-## Problem
+## Research question
 
-Maintain a dynamic set of distinct keys under insertions while supporting the order-statistic queries: report the $k$-th smallest key, and report the rank of a given key (one plus the number of stored keys less than it). The underlying binary search tree must stay balanced, keeping its height $O(\log n)$.
+Maintain a dynamic set of distinct keys under insertions while supporting the order-statistic queries: report the $k$-th smallest key, and report the rank of a given key (one plus the number of stored keys less than it). The underlying binary search tree must stay balanced, keeping its height $O(\log n)$. The deliverable is a single self-contained C++17 program that reads operations from stdin and writes query answers to stdout.
+
+## Input-output contract
+
+The program reads an integer `q`. Each of the next `q` lines contains an operation code and one integer argument: `I v` inserts distinct 64-bit key `v`, `S k` prints the `k`-th smallest stored key, and `R v` prints one plus the number of stored keys strictly less than `v`. It writes one line to stdout for each `S` or `R` operation, and writes nothing for `I`.
 
 ## Code framework
 
-```python
-class OrderStatisticBST:
-    """Binary search tree storing per-node subtree size, array-based;
-    index 0 is the null node with s[0] = 0."""
+The scaffold is a C++17 program with `int main` as the entry point. It parses the operation stream from stdin and prints the query answers to stdout.
 
-    def __init__(self):
-        self.key = [0]; self.left = [0]; self.right = [0]; self.s = [0]
-        self.root = 0
+```cpp
+#include <bits/stdc++.h>
+using namespace std;
 
-    def _new_node(self, v):
-        self.key.append(v); self.left.append(0)
-        self.right.append(0); self.s.append(1)
-        return len(self.key) - 1
+int main(){
+    ios::sync_with_stdio(false);
+    cin.tie(nullptr);
 
-    def _left_rotate(self, t):                       # pull right child up
-        k = self.right[t]
-        self.right[t] = self.left[k]; self.left[k] = t
-        self.s[k] = self.s[t]                         # k inherits t's old subtree
-        self.s[t] = self.s[self.left[t]] + self.s[self.right[t]] + 1
-        return k
+    int q;
+    if (!(cin >> q)) return 0;
 
-    def _right_rotate(self, t):                      # pull left child up
-        k = self.left[t]
-        self.left[t] = self.right[k]; self.right[k] = t
-        self.s[k] = self.s[t]
-        self.s[t] = self.s[self.left[t]] + self.s[self.right[t]] + 1
-        return k
+    vector<pair<char, long long>> operations;
+    operations.reserve(q);
+    for (int i = 0; i < q; ++i) {
+        char op;
+        long long x;
+        cin >> op >> x;
+        operations.push_back({op, x});
+    }
 
-    def _rebalance(self, t, flag):                   # maintenance hook after a BST insert
-        # TODO
-        return t
+    vector<long long> answers;
 
-    def _insert(self, t, v):                         # BST insert + one maintenance call
-        if t == 0:
-            return self._new_node(v)
-        self.s[t] += 1
-        if v < self.key[t]:
-            self.left[t] = self._insert(self.left[t], v)
-        else:
-            self.right[t] = self._insert(self.right[t], v)
-        return self._rebalance(t, v >= self.key[t])
+    // TODO:
 
-    def insert(self, v):
-        self.root = self._insert(self.root, v)
-
-    def select(self, k):                             # k-th smallest (1-indexed)
-        # TODO
-        pass
-
-    def rank(self, v):                               # 1 + #keys strictly < v
-        # TODO
-        pass
+    for (long long answer : answers) {
+        cout << answer << '\n';
+    }
+    return 0;
+}
 ```

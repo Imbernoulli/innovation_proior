@@ -12,45 +12,40 @@ Draw exactly $g-1$ green segments so that all green points lie in a single compo
 
 ## Code framework
 
-```python
-import sys
+The deliverable is a single self-contained C++17 program. It reads `g`, the `g` green coordinates, then `r`, the `r` red coordinates from stdin, and writes exactly `(g-1)+(r-1)` segment lines `i j c` to stdout, where `c` is `g` or `r`.
 
-def cross(ax, ay, bx, by, cx, cy):
-    # twice the signed area of (A,B,C); exact in 64-bit ints
-    return (ax - bx) * (cy - by) - (cx - bx) * (ay - by)
+```cpp
+#include <bits/stdc++.h>
+using namespace std;
 
-def sgn(v):
-    return 1 if v > 0 else (-1 if v < 0 else 0)
+int main(){
+    ios::sync_with_stdio(false);
+    cin.tie(nullptr);
 
-def inside(A, B, C, X, P):
-    # strict interior: same orientation sign on all three directed edges
-    ax, ay = P[A]; bx, by = P[B]; cx, cy = P[C]; xx, xy = P[X]
-    s1 = sgn(cross(ax, ay, bx, by, xx, xy))
-    s2 = sgn(cross(bx, by, cx, cy, xx, xy))
-    s3 = sgn(cross(cx, cy, ax, ay, xx, xy))
-    return s1 == s2 and s2 == s3
+    int g;
+    if (!(cin >> g)) return 0;
 
-def solve(P, g, r):
-    out = []
-    G1, G2 = ('g', 1), ('g', 2)      # top-left, top-right corners (green)
-    R1, R2 = ('r', 1), ('r', 2)      # bottom-left, bottom-right corners (red)
+    vector<pair<long long, long long>> green(g + 1);
+    for (int i = 1; i <= g; ++i) {
+        cin >> green[i].first >> green[i].second;
+    }
 
-    # TODO
+    int r;
+    cin >> r;
 
-    return out
+    vector<pair<long long, long long>> red(r + 1);
+    for (int i = 1; i <= r; ++i) {
+        cin >> red[i].first >> red[i].second;
+    }
 
-def main():
-    data = sys.stdin.buffer.read().split()
-    it = iter(data)
-    g = int(next(it)); P = {}
-    for i in range(1, g + 1):
-        P[('g', i)] = (int(next(it)), int(next(it)))
-    r = int(next(it))
-    for i in range(1, r + 1):
-        P[('r', i)] = (int(next(it)), int(next(it)))
-    out = solve(P, g, r)
-    sys.stdout.write('\n'.join(f"{a} {b} {c}" for a, b, c in out) + '\n')
+    vector<tuple<int, int, char>> output;
 
-if __name__ == "__main__":
-    main()
+    // TODO: fill output with segment endpoints and their color.
+
+    for (auto [i, j, c] : output) {
+        cout << i << ' ' << j << ' ' << c << '\n';
+    }
+
+    return 0;
+}
 ```

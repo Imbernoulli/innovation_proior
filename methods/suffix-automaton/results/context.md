@@ -6,48 +6,43 @@ Given a string $s$ of length $n$, count the number of distinct non-empty substri
 
 ## Code framework
 
-The string arrives online: a raw-text wrapper assigns stable dense integer codes as characters first appear, then feeds one code at a time. The driver below maintains some incremental state and exposes a query for the running answer; the per-character update and the query body are left to fill in.
+The deliverable is a single self-contained C++17 program. It reads one whitespace-delimited string `s` from stdin and writes to stdout: first the number of distinct non-empty substrings of `s`, then the running count after each prefix `s[0..i]` as space-separated values on the second line. The string should still be handled online: assign stable dense integer codes as characters first appear, feed one code at a time into incremental state, and maintain the running answer.
 
-```python
-class SubstringCounter:
-    """Online structure: feed one character code at a time with extend(c),
-    then query count_distinct_substrings() for the number of distinct
-    non-empty substrings of the prefix seen so far."""
+```cpp
+#include <bits/stdc++.h>
+using namespace std;
 
-    def __init__(self):
-        # TODO: initialize the online state
-        pass
+int main() {
+    ios::sync_with_stdio(false);
+    cin.tie(nullptr);
 
-    def extend(self, c):
-        # TODO: incorporate the next character code c
-        pass
+    string s;
+    if (!(cin >> s)) {
+        cout << 0 << '\n';
+        return 0;
+    }
 
-    def count_distinct_substrings(self):
-        # TODO: return the current count
-        pass
+    vector<long long> per_prefix;
+    per_prefix.reserve(s.size());
+    long long total = 0;
 
+    unordered_map<unsigned char, int> code;
+    int next_code = 0;
+    for (unsigned char ch : s) {
+        if (!code.count(ch)) code[ch] = next_code++;
+        int c = code[ch];
+        (void)c;
 
-def count_distinct_substrings(text):
-    """Number of distinct non-empty substrings of text, built online."""
-    sc = SubstringCounter()
-    code = {}
-    for ch in text:
-        if ch not in code:
-            code[ch] = len(code)
-        sc.extend(code[ch])
-    return sc.count_distinct_substrings()
+        // TODO: extend the online state by c and update total.
+        per_prefix.push_back(total);
+    }
 
-
-def distinct_substrings_per_prefix(text):
-    """For each prefix text[:i+1], the running count of distinct non-empty
-    substrings -- one online pass."""
-    sc = SubstringCounter()
-    code = {}
-    out = []
-    for ch in text:
-        if ch not in code:
-            code[ch] = len(code)
-        sc.extend(code[ch])
-        out.append(sc.count_distinct_substrings())
-    return out
+    cout << total << '\n';
+    for (size_t i = 0; i < per_prefix.size(); ++i) {
+        if (i) cout << ' ';
+        cout << per_prefix[i];
+    }
+    cout << '\n';
+    return 0;
+}
 ```

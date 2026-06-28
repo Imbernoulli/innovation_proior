@@ -4,53 +4,47 @@
 
 Given a bipartite graph with left part `L` of size `n`, right part `R` of size `m`, and edges only between `L` and `R`, find a maximum-cardinality matching: the largest possible set of edges such that no two chosen edges share an endpoint.
 
-The graph is supplied as a `0`-based adjacency list `adj`, where `adj[u]` contains the right-side vertices adjacent to left vertex `u`. A valid output can be represented by two partner arrays: `match_l[u]` is the right vertex paired with left vertex `u`, or `-1` if `u` is unmatched; `match_r[v]` is the left vertex paired with right vertex `v`, or `-1` if `v` is unmatched. The required result is the matching size and the list of matched `(left, right)` pairs.
+The deliverable is a single self-contained C++17 program. It reads from standard input: `n` (left size), `m` (right size), `e` (edge count), followed by `e` edges `u v` with `u` in `[0, n)` and `v` in `[0, m)`. It writes to standard output the matching size, then one matched `(left, right)` pair per line.
 
 ## Code framework
 
-The parser and output harness are already fixed. The missing work is the search inside `max_matching` that fills `match_l` and `match_r` with a largest valid set of pairs.
+The parser and output harness are already fixed. The missing work is the implementation that fills `match_l` and `match_r` with a largest valid set of pairs.
 
-```python
-import sys
+```cpp
+#include <bits/stdc++.h>
+using namespace std;
 
+int main() {
+    ios::sync_with_stdio(false);
+    cin.tie(nullptr);
 
-def read_bipartite(data):
-    """Parse n (left size), m (right size), e (edge count), then e edges
-    (u in [0, n), v in [0, m)) into a 0-based adjacency list adj[u] -> [v, ...]."""
-    it = iter(data)
-    n = int(next(it))
-    m = int(next(it))
-    e = int(next(it))
-    adj = [[] for _ in range(n)]
-    for _ in range(e):
-        u = int(next(it))
-        v = int(next(it))
-        adj[u].append(v)
-    return n, m, adj
+    int n, m;
+    long long e;
+    if (!(cin >> n >> m >> e)) return 0;
 
+    vector<vector<int>> adj(n);
+    for (long long i = 0; i < e; ++i) {
+        int u, v;
+        cin >> u >> v;
+        adj[u].push_back(v);
+    }
 
-def max_matching(n, m, adj):
-    """Return maximum matching size and matched (left, right) pairs."""
-    sys.setrecursionlimit(max(sys.getrecursionlimit(), n + m + 10))
-    match_l = [-1] * n
-    match_r = [-1] * m
-    # TODO: fill match_l and match_r with a largest valid set of pairs.
-    pairs = [(u, match_l[u]) for u in range(n) if match_l[u] != -1]
-    return len(pairs), pairs
+    vector<int> match_l(n, -1), match_r(m, -1);
 
+    // TODO: fill the required partner arrays.
 
-def main():
-    data = sys.stdin.buffer.read().split()
-    if not data:
-        return
-    n, m, adj = read_bipartite(data)
-    size, pairs = max_matching(n, m, adj)
-    out = [str(size)]
-    for u, v in pairs:
-        out.append(f"{u} {v}")
-    sys.stdout.write("\n".join(out) + "\n")
+    int size = 0;
+    for (int u = 0; u < n; ++u) {
+        if (match_l[u] != -1) ++size;
+    }
 
+    cout << size << '\n';
+    for (int u = 0; u < n; ++u) {
+        if (match_l[u] != -1) {
+            cout << u << ' ' << match_l[u] << '\n';
+        }
+    }
 
-if __name__ == "__main__":
-    main()
+    return 0;
+}
 ```

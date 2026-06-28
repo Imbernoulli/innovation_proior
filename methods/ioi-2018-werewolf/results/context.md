@@ -19,80 +19,47 @@ Decide each query independently: output yes if such a walk exists, no otherwise.
 
 Both $N$ and $Q$ can be large (each up to a few hundred thousand).
 
+The deliverable is a single self-contained C++17 program that reads from
+standard input and writes to standard output. It reads `N M Q`, then `M` lines
+`u v` for 0-based undirected edges, then `Q` lines `S E L R`, and prints one
+line per query: `YES` if such a walk exists and `NO` otherwise.
+
 ## Code framework
 
-```python
-import sys
+```cpp
+#include <bits/stdc++.h>
+using namespace std;
 
+struct Query {
+    int S, E, L, R;
+};
 
-class DSU:
-    """Generic disjoint-set union over a fixed universe, with path compression.
-    union(a, b) merges the sets; find(x) returns a set representative."""
+int main() {
+    ios_base::sync_with_stdio(false);
+    cin.tie(nullptr);
 
-    def __init__(self, size):
-        self.par = list(range(size))
+    int n, m, q;
+    if (!(cin >> n >> m >> q)) return 0;
 
-    def find(self, x):
-        root = x
-        while self.par[root] != root:
-            root = self.par[root]
-        while self.par[x] != root:
-            self.par[x], x = root, self.par[x]
-        return root
+    vector<pair<int, int>> edges(m);
+    for (int i = 0; i < m; i++) {
+        int u, v;
+        cin >> u >> v;
+        edges[i] = {u, v};
+    }
 
-    def union(self, a, b):
-        ra, rb = self.find(a), self.find(b)
-        if ra != rb:
-            self.par[rb] = ra
-        return ra
+    vector<Query> queries(q);
+    for (int i = 0; i < q; i++) {
+        cin >> queries[i].S >> queries[i].E >> queries[i].L >> queries[i].R;
+    }
 
+    vector<char> answer(q, 0);
 
-def answer_queries(n, edges, queries):
-    """edges: list of (u, v), 0-based undirected. queries: list of (S, E, L, R)
-    with L <= R. For each query, return whether a walk from S to E exists that
-    stays on vertices >= L up to a single switch vertex v (with L <= v <= R),
-    then stays on vertices <= R. Returns a list of bools, one per query."""
-    adj = [[] for _ in range(n)]
-    for u, v in edges:
-        adj[u].append(v)
-        adj[v].append(u)
+    // TODO: Compute the yes/no result for each query.
 
-    def build_structure(order):
-        # TODO
-        return None
-
-    def make_jumps(parent):
-        # TODO
-        return None
-
-    def locate_first(S, L):
-        # TODO
-        return None
-
-    def locate_second(E, R):
-        # TODO
-        return None
-
-    def add_value(i):
-        # TODO
-        pass
-
-    def prefix_value(i):
-        # TODO
-        return 0
-
-    # TODO
-
-    return [False] * len(queries)
-
-
-if __name__ == "__main__":
-    data = sys.stdin.buffer.read().split()
-    it = iter(data)
-    n = int(next(it)); m = int(next(it)); q = int(next(it))
-    edges = [(int(next(it)), int(next(it))) for _ in range(m)]
-    queries = [(int(next(it)), int(next(it)), int(next(it)), int(next(it)))
-               for _ in range(q)]
-    out = answer_queries(n, edges, queries)
-    print("\n".join("YES" if a else "NO" for a in out))
+    for (int i = 0; i < q; i++) {
+        cout << (answer[i] ? "YES" : "NO") << '\n';
+    }
+    return 0;
+}
 ```
