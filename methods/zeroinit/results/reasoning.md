@@ -37,15 +37,31 @@ The conditional-mean formula gives
     = mu + Cov(x_1 - x_0, x_t) Var(x_t)^{-1} (x - t mu)
     = mu + ((2t - 1) / ((1 - t)^2 + t^2)) (x - t mu).
 
-Good. Now I can compare a learned velocity to the exact one in a controlled setting and ask
-where the learned field is least trustworthy. The error is not just a global training-quality
-number; it changes with `t`, and the source end of the trajectory is a dangerous place because
-the sample is still close to noise while guidance is already allowed to push hard.
+Before I lean on this as a measuring stick, I want to know I did not slip a sign. Take a scalar
+case, `mu = 2`, and estimate `E[x_1 - x_0 | x_t]` directly by Monte Carlo: draw twenty million
+pairs `(x_0, x_1)`, form `x_t`, keep the samples whose `x_t` falls in a thin band around `0.7`,
+and average `x_1 - x_0` over that band. The closed form predicts, at `x = 0.7`:
 
-The fixed CFG mix is also too rigid. It ties the unconditional coefficient to `(1 - w)`, even
-though the unconditional prediction itself may be too large, too small, or poorly aligned with
-the conditional prediction at this particular `(x, t)`. Classifier guidance already suggests a
-useful separation: there can be a separate scalar balancing the baseline direction against the
+  t = 0.00 -> 1.300,   t = 0.25 -> 1.840,   t = 0.50 -> 2.000,
+  t = 0.75 -> 1.360,   t = 1.00 -> 0.700.
+
+The empirical band means come back `1.300, 1.843, 2.003, 1.355, 0.705`. They track the formula to
+three digits across the whole schedule, so the covariance terms and the sign of `(2t - 1)` are
+right. One feature stands out: at `t = 1/2` the coefficient `(2t - 1)/((1-t)^2 + t^2)` is exactly
+zero and `v^* = mu`, and at `t = 0` it is `-1`, so `v_0^*(x) = mu - x`. Since `x` at `t = 0` is
+literally `x_0` and `E[x_1 - x_0 | x_0] = E[x_1] - x_0 = mu - x_0`, that special case is forced,
+and it confirms the source-end velocity is just "head from this noise sample toward the class
+mean."
+
+Now I can compare a learned velocity to the exact one in a controlled setting and ask where the
+learned field is least trustworthy. The error is not just a global training-quality number; it
+changes with `t`, and the source end of the trajectory is a place I should watch, because the
+sample is still close to noise while guidance is already allowed to push hard.
+
+The fixed CFG mix is also rigid. It ties the unconditional coefficient to `(1 - w)`, even though
+the unconditional prediction itself may be too large, too small, or poorly aligned with the
+conditional prediction at this particular `(x, t)`. Classifier guidance suggests a useful
+separation: there can be a separate scalar balancing the baseline direction against the
 condition-improving direction. I can introduce that scalar on the unconditional prediction:
 
   v_s = (1 - w) s v_uncond + w v_cond.
@@ -85,12 +101,14 @@ and setting this to zero gives
 
   s^* = (v_cond^T v_uncond) / ||v_uncond||^2.
 
-The second derivative is `2 ||v_uncond||^2`, so this is the least-squares minimizer whenever the
-unconditional vector is nonzero. Geometrically, `s^* v_uncond` is the orthogonal projection of
-`v_cond` onto the line spanned by `v_uncond`, and `v_cond - s^* v_uncond` is the residual that
-the unconditional prediction cannot explain. That is exactly the direction I want guidance to
-amplify: not the whole conditional vector, but the conditional part left after the best scalar
-match to the unconditional vector is removed.
+The second derivative is `2 ||v_uncond||^2 > 0`, so this is a minimum whenever the unconditional
+vector is nonzero. I check this is not wishful: with two random eight-dimensional vectors,
+`s^* = 0.59503`, and a fine grid search over `s` puts the minimum of `g` at `0.59503` to five
+decimals. The residual `v_cond - s^* v_uncond` dotted with `v_uncond` comes out `~5.7e-16`, i.e.
+zero. So `s^* v_uncond` is the orthogonal projection of `v_cond` onto the line spanned by
+`v_uncond`, and the residual is the conditional part the unconditional prediction cannot explain.
+That residual is the direction I want guidance to amplify: not the whole conditional vector, but
+what is left after the best scalar match to the unconditional vector is removed.
 
 Numerically, I add a small denominator floor, flatten all non-batch dimensions, compute one dot
 product and one squared norm per sample, and broadcast the scalar back. The guided velocity can
@@ -102,26 +120,50 @@ or as
 
   s^* v_uncond + w (v_cond - s^* v_uncond).
 
-The second form reads like the geometry: rescale the unconditional baseline, then push along the
-conditional residual.
+These are the same vector — collecting the second form gives `s^* v_uncond + w v_cond - w s^*
+v_uncond = (1 - w) s^* v_uncond + w v_cond` — and a quick numeric check on random vectors with
+`s = 0.83, w = 4.2` puts the gap between the two forms at `1.8e-15`. The second form reads like
+the geometry: rescale the unconditional baseline, then push along the conditional residual.
 
 That fixes the mix, but it does not answer what to do when the velocity at the beginning is so
-bad that even a better mix is not a good step. The closed-form diagnostic lets me ask a sharper
-question at `t = 0`: is the guided first-step velocity closer to the optimal first-step velocity
-than the zero vector is? In the underfitted regime the diagnostic can satisfy
+bad that even a better mix is not a good step. My first instinct is that a smarter mix should
+help everywhere, so the natural thing is to use the optimized guided velocity at every step,
+including `t = 0`, and let the projection do its work. The closed-form diagnostic lets me test
+that instinct instead of trusting it. At `t = 0` I know `v_0^*(x) = mu - x` exactly, so I can ask
+a concrete question: is the guided first-step velocity actually closer to `v_0^*` than the zero
+vector is?
+
+To make the comparison honest I have to model what "underfitted" means. I take the underfit
+learned velocities to be the true ones corrupted toward a random direction of the same energy,
+parameterized by a correlation `rho` (so `rho = 1` is a perfect fit, `rho` small is badly fit),
+and I form the optimized guided velocity from those. Then I average
+`||v_guided - v_0^*||^2` over a batch of `x_0` and compare it to `||0 - v_0^*||^2 = ||v_0^*||^2`.
+At a moderate guidance scale `w = 1.5`, the ratio `||v_guided - v_0^*||^2 / ||v_0^*||^2` comes out
+
+  rho = 0.99 -> 0.16,   rho = 0.90 -> 0.50,   rho = 0.70 -> 1.16,
+  rho = 0.50 -> 1.76,   rho = 0.30 -> 2.34,   rho = 0.10 -> 2.93.
+
+This kills my first instinct, but only partway, and the partway is the interesting part. When the
+field is well fit (`rho >= 0.9`) the ratio is below one: the guided step really is the better
+estimate, and zeroing it would throw away a good move. But once the fit degrades past about
+`rho ~ 0.8`, the ratio crosses one and keeps climbing: the guided first-step velocity becomes a
+worse estimate of the optimal velocity than doing nothing at all. So in the underfitted regime
+the diagnostic genuinely satisfies
 
   ||v_guided(t = 0) - v_0^*||_2^2 >= ||0 - v_0^*||_2^2.
 
-Read that as a decision rule. At the source end, a guided move can be a worse velocity estimate
-than no velocity at all. If I take that step, I inject the largest wrong direction exactly when
-the trajectory has the least semantic information. If I set the velocity to zero, the ODE update
-leaves `x` unchanged and I avoid that particular bad move.
+Read that as a decision rule. At the source end, when the field is unreliable, a guided move can
+be a worse velocity estimate than no velocity at all. If I take that step, I inject the largest
+wrong direction exactly when the trajectory has the least semantic information. If I set the
+velocity to zero, the ODE update leaves `x` unchanged and I avoid that particular bad move.
 
-So the beginning of the solver needs an inert prefix. Conceptually I zero the velocity for the
-first `K` solver steps and use the optimized guided velocity after that. `K` has to stay small
-because the inequality is a statement about the unreliable source end, not the whole trajectory;
-once the velocity field becomes informative, continuing to do nothing would simply throw away
-useful solver steps.
+The crossover also tells me how far this can extend. It is not a property of guidance in general;
+it is a property of the worst-fit, lowest-`rho` part of the schedule, which on a flow path is the
+noise end. So the beginning of the solver needs an inert prefix, but a short one: I zero the
+velocity for the first `K` solver steps and use the optimized guided velocity after that. `K` has
+to stay small, because the inequality is a statement about the unreliable source end, not the
+whole trajectory; once the velocity field becomes informative the ratio drops back below one, and
+continuing to do nothing would simply throw away useful solver steps.
 
 The sampler code only needs the two predictions it already computes. I flatten each prediction per
 batch element, form the projection scale, reshape it for broadcasting, and use the same per-step
@@ -156,10 +198,10 @@ def sample(pipeline, cond, uncond, w, num_steps, zero_steps=0, use_zero_init=Tru
     return x
 ```
 
-The algebra checks out: `v_uncond * alpha + w(v_cond - v_uncond * alpha)` collects to
-`(1 - w) alpha v_uncond + w v_cond`. At `alpha = 1` and with the zero branch disabled, this is
-standard CFG. With the branch written as `i <= zero_steps`, `zero_steps = 0` zeros exactly the
-first solver step.
+The branch matches the diagnostic: `v_uncond * alpha + w(v_cond - v_uncond * alpha)` collects to
+`(1 - w) alpha v_uncond + w v_cond`, and at `alpha = 1` with the zero branch disabled this is
+standard CFG (the two forms agreed to `1e-15` above). With the branch written as
+`i <= zero_steps`, `zero_steps = 0` zeros exactly the first solver step.
 
 Some samplers expose predicted noise rather than an ODE velocity. In a DDIM-style step,
 
@@ -202,10 +244,11 @@ def sample_ddim_zeroinit(pipeline, prompt, cfg_guidance=7.5, K=2):
 The pieces now fit into one causal chain. CFG is brittle under velocity error because the
 guidance scale amplifies prediction errors as well as conditional signal. The Gaussian path
 gives an exact velocity,
-`v_t^*(x) = ((2t - 1) / ((1 - t)^2 + t^2))(x - t mu) + mu`, so I can locate where that error is
-worst. The mix gets a per-sample projection coefficient
-`s^* = v_cond^T v_uncond / ||v_uncond||^2`, which leaves guidance to amplify the conditional
-residual. The initial steps get zero velocity when the guided estimate is worse than the zero
-vector under the first-step diagnostic. I still have a drop-in guidance rule: the same two network
-predictions per step, one dot product and one norm for the scale, and an inert prefix at the
-unreliable source end.
+`v_t^*(x) = ((2t - 1) / ((1 - t)^2 + t^2))(x - t mu) + mu`, checked against Monte Carlo, so I can
+locate where that error is worst. The mix gets a per-sample projection coefficient
+`s^* = v_cond^T v_uncond / ||v_uncond||^2`, verified as the least-squares minimizer with an
+orthogonal residual, which leaves guidance to amplify the conditional residual. The initial steps
+get zero velocity in the underfitted regime, where the first-step diagnostic shows the guided
+estimate crossing over to be worse than the zero vector. I still have a drop-in guidance rule: the
+same two network predictions per step, one dot product and one norm for the scale, and an inert
+prefix at the unreliable source end.
