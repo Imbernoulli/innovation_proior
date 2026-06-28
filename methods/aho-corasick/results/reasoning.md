@@ -32,78 +32,109 @@ The search itself: in each cycle the machine makes zero or more failure transiti
 
 One refinement I can see, the same one KMP noticed. My failure link from a node sometimes points to a node that will also immediately fail on the same symbol, costing a wasted hop. If state 4, the node for "sh", fails on a symbol that isn't e, I go to f(4)=1, the node for "h"; but if the only continuation from 1 were e as well — if "his" weren't in the set — then 1 would fail too on that symbol and I'd be re-testing something I already know fails. KMP's next table fixes this by collapsing chains of links that cannot possibly help. But there's a cleaner way to kill all failure transitions if I want to: precompute, for every state and every symbol, the state I'd end up in after doing all the failure hops and then the goto — a genuine deterministic next-move function δ. Define δ(0,a)=goto(0,a) for the root, and for any other state r, δ(r,a)=goto(r,a) if that edge exists, else δ(r,a)=δ(f(r),a) — and since I build δ in breadth-first order, δ(f(r),·) is already filled in because f(r) is shallower. Then search is just state←δ(state, a), exactly one transition per character, no inner loop at all. That's the full DFA. Before I believe it's the *same* machine, I build δ over the alphabet of the four-keyword example and run a δ-driven search against the failure-link search on 200 random texts; they produce identical match sets every time, so the determinization didn't change the language, only how I get there. It's at most twice as fast in transition count, but it's bigger to store, and in practice the machine sits in the root state most of the time, where there are no failure transitions to save anyway — the degenerate run above is the *favorable* case for δ and even there it only saves 34 transitions out of 74. On ordinary text the saving would be far smaller, so the speedup would virtually never be worth the storage. That's why the failure-link version is the one to keep by default, with the DFA available when the transitions genuinely dominate. For storing goto itself, the same practical note: a full two-dimensional state-by-alphabet array gives O(1) lookups but eats memory when the alphabet and keyword set are large; storing only the non-fail edges as a small per-state list costs memory proportional to the real edges, with hot states like the root kept as direct-index tables. A sensible compromise, and it doesn't touch the asymptotics.
 
-So the whole thing falls out as: build a trie of all the keywords with a self-looping root, breadth-first-compute a failure link on every node generalizing KMP's longest-viable-suffix rule from one pattern to the set, add output links so suffix keywords are reported without re-walking empty failure states, then run one pass over the text taking a goto when I can and a failure link when I can't, emitting matches as I go — fewer than 2n non-output transitions, build linear in total keyword length, search cost independent of the number of keywords, and optionally collapse the failure transitions into a one-move-per-symbol deterministic automaton. Here it is.
+So the whole thing falls out as: build a trie of all the keywords with a self-looping root, breadth-first-compute a failure link on every node generalizing KMP's longest-viable-suffix rule from one pattern to the set, add output links so suffix keywords are reported without re-walking empty failure states, then run one pass over the text taking a goto when I can and a failure link when I can't, emitting matches as I go — fewer than 2n non-output transitions, build linear in total keyword length, search cost independent of the number of keywords, and optionally collapse the failure transitions into a one-move-per-symbol deterministic automaton. Here it is as a single-file program: it reads `k`, then `k` keywords, then the text, and prints every `start_index keyword` match (0-indexed start, overlaps included), sorted by `(start, keyword)`. The build folds the failure recovery straight into `go` so each symbol is one deterministic transition (the `to_dfa` refinement), keeping the inner search loop branch-free.
 
-```python
-from collections import deque
+```cpp
+#include <bits/stdc++.h>
+using namespace std;
 
+struct AhoCorasick {
+    vector<array<int, 256>> go;     // goto: go[s][c] = next state, -1 = fail
+    vector<vector<int>> output;     // indices of keywords ending exactly at s
+    vector<int> fail;               // failure link
+    vector<int> out_link;           // nearest terminal state on the failure chain
+    vector<string> keywords;        // stored keywords, by index
 
-class AhoCorasick:
-    def __init__(self):
-        self.goto = [{}]        # goto[state][symbol] -> state; missing == fail
-        self.output = [[]]      # keywords ending exactly at this state
-        self.fail = [0]         # deepest proper-suffix state
-        self.out_link = [0]     # nearest terminal state on the failure chain
+    AhoCorasick() { new_state(); }  // state 0 is the root
 
-    def add_keyword(self, word):
-        state = 0
-        for ch in word:
-            nxt = self.goto[state].get(ch)
-            if nxt is None:
-                nxt = len(self.goto)
-                self.goto.append({})
-                self.output.append([])
-                self.fail.append(0)
-                self.out_link.append(0)
-                self.goto[state][ch] = nxt
-            state = nxt
-        if word not in self.output[state]:
-            self.output[state].append(word)
+    int new_state() {
+        go.push_back({});
+        go.back().fill(-1);
+        output.emplace_back();
+        fail.push_back(0);
+        out_link.push_back(0);
+        return (int)go.size() - 1;
+    }
 
-    def build(self):
-        queue = deque()
-        for _, s in self.goto[0].items():
-            self.fail[s] = 0
-            queue.append(s)
-        while queue:
-            r = queue.popleft()
-            for ch, s in self.goto[r].items():
-                queue.append(s)
-                state = self.fail[r]
-                while ch not in self.goto[state] and state != 0:
-                    state = self.fail[state]
-                self.fail[s] = self.goto[state].get(ch, 0)
-                self.out_link[s] = (
-                    self.fail[s]
-                    if self.output[self.fail[s]]
-                    else self.out_link[self.fail[s]]
-                )
-        return self
+    void add_keyword(const string& word, int id) {
+        int state = 0;
+        for (unsigned char ch : word) {
+            if (go[state][ch] == -1) go[state][ch] = new_state();
+            state = go[state][ch];
+        }
+        output[state].push_back(id);
+    }
 
-    def search(self, text):
-        state = 0
-        for i, ch in enumerate(text):
-            while ch not in self.goto[state] and state != 0:
-                state = self.fail[state]
-            state = self.goto[state].get(ch, 0)
-            for word in self.output[state]:
-                yield (i - len(word) + 1, word)
-            out = self.out_link[state]
-            while out:
-                for word in self.output[out]:
-                    yield (i - len(word) + 1, word)
-                out = self.out_link[out]
+    void build() {
+        queue<int> q;
+        for (int c = 0; c < 256; ++c) {
+            int s = go[0][c];
+            if (s == -1) {
+                go[0][c] = 0;          // root self-loops on unmatched symbols
+            } else {
+                fail[s] = 0;
+                q.push(s);
+            }
+        }
+        while (!q.empty()) {
+            int r = q.front(); q.pop();
+            for (int c = 0; c < 256; ++c) {
+                int s = go[r][c];
+                if (s == -1) {
+                    go[r][c] = go[fail[r]][c];   // build the deterministic move
+                    continue;
+                }
+                q.push(s);
+                fail[s] = go[fail[r]][c];        // fail[r] already deterministic
+                out_link[s] = output[fail[s]].empty() ? out_link[fail[s]]
+                                                       : fail[s];
+            }
+        }
+    }
 
+    // Emit every (start, keyword-id) match, overlaps included, in one pass.
+    void search(const string& text, vector<pair<int, int>>& matches) const {
+        int state = 0;
+        for (int i = 0; i < (int)text.size(); ++i) {
+            state = go[state][(unsigned char)text[i]];
+            for (int id : output[state])
+                matches.push_back({i - (int)keywords[id].size() + 1, id});
+            for (int out = out_link[state]; out; out = out_link[out])
+                for (int id : output[out])
+                    matches.push_back({i - (int)keywords[id].size() + 1, id});
+        }
+    }
+};
 
-def build_matcher(keywords):
-    ac = AhoCorasick()
-    for w in keywords:
-        ac.add_keyword(w)
-    return ac.build()
+int main() {
+    ios::sync_with_stdio(false);
+    cin.tie(nullptr);
 
+    int k;
+    if (!(cin >> k)) return 0;
 
-if __name__ == "__main__":
-    ac = build_matcher(["he", "she", "his", "hers"])
-    print(sorted(ac.search("ushers")))
-    # [(1, 'she'), (2, 'he'), (2, 'hers')]
+    AhoCorasick ac;
+    ac.keywords.resize(k);
+    for (int i = 0; i < k; ++i) {
+        cin >> ac.keywords[i];
+        ac.add_keyword(ac.keywords[i], i);
+    }
+    ac.build();
+
+    string text;
+    cin >> text;
+
+    vector<pair<int, int>> matches;          // (start, keyword-id)
+    ac.search(text, matches);
+
+    sort(matches.begin(), matches.end(),
+         [&](const pair<int, int>& a, const pair<int, int>& b) {
+             if (a.first != b.first) return a.first < b.first;
+             return ac.keywords[a.second] < ac.keywords[b.second];
+         });
+
+    for (auto& m : matches)
+        cout << m.first << ' ' << ac.keywords[m.second] << '\n';
+    return 0;
+}
 ```

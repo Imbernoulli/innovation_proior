@@ -64,80 +64,116 @@ transition per input symbol, at the cost of storing more transitions.
 
 ## Algorithm
 
-```python
-from collections import deque
+Single-file C++17. It reads `k`, then `k` keywords, then the text, and prints
+every `start_index keyword` match (0-indexed start, overlaps included), sorted by
+`(start, keyword)`. The build folds failure recovery into `go`, so each text
+symbol is one deterministic transition.
 
+```cpp
+#include <bits/stdc++.h>
+using namespace std;
 
-class AhoCorasick:
-    def __init__(self):
-        self.goto = [{}]        # goto[state][symbol] -> state; missing == fail
-        self.output = [[]]      # keywords ending exactly at this state
-        self.fail = [0]         # failure link
-        self.out_link = [0]     # nearest terminal state on the failure chain
+struct AhoCorasick {
+    vector<array<int, 256>> go;     // goto: go[s][c] = next state, -1 = fail
+    vector<vector<int>> output;     // indices of keywords ending exactly at s
+    vector<int> fail;               // failure link
+    vector<int> out_link;           // nearest terminal state on the failure chain
+    vector<string> keywords;        // stored keywords, by index
 
-    def add_keyword(self, word):
-        state = 0
-        for ch in word:
-            nxt = self.goto[state].get(ch)
-            if nxt is None:
-                nxt = len(self.goto)
-                self.goto.append({})
-                self.output.append([])
-                self.fail.append(0)
-                self.out_link.append(0)
-                self.goto[state][ch] = nxt
-            state = nxt
-        if word not in self.output[state]:
-            self.output[state].append(word)
+    AhoCorasick() { new_state(); }  // state 0 is the root
 
-    def build(self):
-        queue = deque()
-        for _, s in self.goto[0].items():
-            self.fail[s] = 0
-            queue.append(s)
-        while queue:
-            r = queue.popleft()
-            for ch, s in self.goto[r].items():
-                queue.append(s)
-                state = self.fail[r]
-                while ch not in self.goto[state] and state != 0:
-                    state = self.fail[state]
-                self.fail[s] = self.goto[state].get(ch, 0)
-                self.out_link[s] = (
-                    self.fail[s]
-                    if self.output[self.fail[s]]
-                    else self.out_link[self.fail[s]]
-                )
-        return self
+    int new_state() {
+        go.push_back({});
+        go.back().fill(-1);
+        output.emplace_back();
+        fail.push_back(0);
+        out_link.push_back(0);
+        return (int)go.size() - 1;
+    }
 
-    def search(self, text):
-        state = 0
-        for i, ch in enumerate(text):
-            while ch not in self.goto[state] and state != 0:
-                state = self.fail[state]
-            state = self.goto[state].get(ch, 0)
-            for word in self.output[state]:
-                yield (i - len(word) + 1, word)
-            out = self.out_link[state]
-            while out:
-                for word in self.output[out]:
-                    yield (i - len(word) + 1, word)
-                out = self.out_link[out]
+    void add_keyword(const string& word, int id) {
+        int state = 0;
+        for (unsigned char ch : word) {
+            if (go[state][ch] == -1) go[state][ch] = new_state();
+            state = go[state][ch];
+        }
+        output[state].push_back(id);
+    }
 
+    void build() {
+        queue<int> q;
+        for (int c = 0; c < 256; ++c) {
+            int s = go[0][c];
+            if (s == -1) {
+                go[0][c] = 0;          // root self-loops on unmatched symbols
+            } else {
+                fail[s] = 0;
+                q.push(s);
+            }
+        }
+        while (!q.empty()) {
+            int r = q.front(); q.pop();
+            for (int c = 0; c < 256; ++c) {
+                int s = go[r][c];
+                if (s == -1) {
+                    go[r][c] = go[fail[r]][c];   // build the deterministic move
+                    continue;
+                }
+                q.push(s);
+                fail[s] = go[fail[r]][c];        // fail[r] already deterministic
+                out_link[s] = output[fail[s]].empty() ? out_link[fail[s]]
+                                                       : fail[s];
+            }
+        }
+    }
 
-def build_matcher(keywords):
-    ac = AhoCorasick()
-    for w in keywords:
-        ac.add_keyword(w)
-    return ac.build()
+    // Emit every (start, keyword-id) match, overlaps included, in one pass.
+    void search(const string& text, vector<pair<int, int>>& matches) const {
+        int state = 0;
+        for (int i = 0; i < (int)text.size(); ++i) {
+            state = go[state][(unsigned char)text[i]];
+            for (int id : output[state])
+                matches.push_back({i - (int)keywords[id].size() + 1, id});
+            for (int out = out_link[state]; out; out = out_link[out])
+                for (int id : output[out])
+                    matches.push_back({i - (int)keywords[id].size() + 1, id});
+        }
+    }
+};
 
+int main() {
+    ios::sync_with_stdio(false);
+    cin.tie(nullptr);
 
-if __name__ == "__main__":
-    ac = build_matcher(["he", "she", "his", "hers"])
-    print(sorted(ac.search("ushers")))
-    # [(1, 'she'), (2, 'he'), (2, 'hers')]
+    int k;
+    if (!(cin >> k)) return 0;
+
+    AhoCorasick ac;
+    ac.keywords.resize(k);
+    for (int i = 0; i < k; ++i) {
+        cin >> ac.keywords[i];
+        ac.add_keyword(ac.keywords[i], i);
+    }
+    ac.build();
+
+    string text;
+    cin >> text;
+
+    vector<pair<int, int>> matches;          // (start, keyword-id)
+    ac.search(text, matches);
+
+    sort(matches.begin(), matches.end(),
+         [&](const pair<int, int>& a, const pair<int, int>& b) {
+             if (a.first != b.first) return a.first < b.first;
+             return ac.keywords[a.second] < ac.keywords[b.second];
+         });
+
+    for (auto& m : matches)
+        cout << m.first << ' ' << ac.keywords[m.second] << '\n';
+    return 0;
+}
 ```
 
-On `{he, she, his, hers}` over `"ushers"` the machine reports `she` and `he`
-ending at the `e` and `hers` ending at the final `s`: every keyword substring,
-overlaps included, in one pass.
+On `{he, she, his, hers}` over `"ushers"` (input `4 / he / she / his / hers /
+ushers`) the machine reports `1 she`, `2 he`, and `2 hers`: every keyword
+substring, overlaps included, in one pass.

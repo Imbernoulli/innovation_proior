@@ -60,121 +60,135 @@ Binary exponentiation needs a starting "$x^1$" and an accumulator "$x^0 = 1$". I
 
 Before I trust this I want to see the whole reduction-and-evaluate chain produce a known number, on the recurrence I already have in hand: Fibonacci, $C=(1,1)$, so $f(x)=x^2-x-1$. By hand, $x^2\equiv x+1$, so $x^2\bmod f=(1,1)$ in coefficient order $(s_0,s_1)$, and $a_2=s_0a_0+s_1a_1=1\cdot1+1\cdot1=2$ — matches $a_2=2$. One more multiply: $x^3=x\cdot x^2\equiv x(x+1)=x^2+x\equiv(x+1)+x=2x+1$, so $x^3\bmod f=(1,2)$ and $a_3=1\cdot1+2\cdot1=3$ — matches. Now push it past anything I could reach by hand-iterating: $x^{10}\bmod f$ by square-and-multiply comes out to $34+55x$, giving $a_{10}=34\cdot1+55\cdot1=89$, and the ordinary Fibonacci value at this index is indeed $89$. So the reduction sweep, the bit walk, and the final dot product all line up, and the $34,55$ falling out as consecutive Fibonacci numbers is a reassuring sanity check on the whole pipeline rather than a coincidence I arranged.
 
-Putting the two halves together I can write it as runnable code. Modular power and inverse first (inverse by Fermat, since $p$ is prime — and I needed exactly that for the $1/\text{ld}$ in the repair). Then the incremental scan that maintains the current recurrence `cur`, the last failing recurrence `last`, and its failing position `lf` and discrepancy `ld`. Then the polynomial-power evaluator. The parsing just reads $p$, $N$, the term count, and the terms.
+Putting the two halves together I can write it as a single self-contained C++17 program reading from stdin. Modular power and inverse first (inverse by Fermat, since $p$ is prime — and I needed exactly that for the $1/\text{ld}$ in the repair), with `__int128` for the products since $p$ near $10^{18}$-scale would overflow `long long` on a plain multiply. Then the incremental scan that maintains the current recurrence `cur`, the last failing recurrence `last`, and its failing position `lf` and discrepancy `ld`. Then the polynomial-power evaluator. The parsing reads $p$, $N$, the term count, and the terms, and the program prints $a_N \bmod p$.
 
-```python
-import sys
+```cpp
+// Reads: p, N, the count of supplied terms, then the terms (whitespace-separated).
+// Prints: the N-th term of the sequence modulo p.
+#include <bits/stdc++.h>
+using namespace std;
+typedef long long ll;
+typedef unsigned long long ull;
 
+ll power(ll a, ll b, ll p) {
+    a %= p;
+    if (a < 0) a += p;
+    ll r = 1;
+    while (b) {
+        if (b & 1) r = (ll)((__int128)r * a % p);
+        a = (ll)((__int128)a * a % p);
+        b >>= 1;
+    }
+    return r;
+}
 
-def power(a, b, p):
-    a %= p
-    r = 1
-    while b:
-        if b & 1:
-            r = r * a % p
-        a = a * a % p
-        b >>= 1
-    return r
+ll inv(ll a, ll p) { return power(a, p - 2, p); } // Fermat; p prime
 
+// Shortest C with a_i = sum_j C[j]*a[i-j-1], over Z_p.
+vector<ll> find_recurrence(const vector<ll>& seq, ll p) {
+    vector<ll> cur;        // current shortest recurrence so far
+    vector<ll> last;       // the recurrence current right before the last failure
+    ll lf = -1;            // failing index of `last`
+    ll ld = 0;             // discrepancy (predicted - actual) of `last` at lf
+    int n = (int)seq.size();
+    for (int i = 0; i < n; i++) {
+        // predict a_i from the current recurrence
+        ll t = 0;
+        for (int j = 0; j < (int)cur.size(); j++)
+            t = (t + (__int128)seq[i - j - 1] * cur[j]) % p;
+        ll d = ((t - seq[i]) % p + p) % p;     // discrepancy, predicted - actual
+        if (d == 0) continue;                  // current recurrence still fits
+        if (cur.empty()) {
+            // first nonzero term: set the order floor, record this failure
+            cur.assign(i + 1, 0);
+            lf = i;
+            ld = d;
+            continue;
+        }
+        // build the scaled, shifted residual of the last failing recurrence
+        ll k = (__int128)d * inv(ld, p) % p;   // discrepancy now / discrepancy then
+        vector<ll> c(i - lf - 1, 0);
+        c.push_back(k);                        // the +1-at-index-(i-lf-1), scaled
+        for (int j = 0; j < (int)last.size(); j++)
+            c.push_back(((-(__int128)last[j] * k) % p + p) % p);
+        if ((int)c.size() < (int)cur.size())
+            c.resize(cur.size(), 0);
+        vector<ll> prev = cur;                 // remember pre-repair cur as a candidate ref
+        for (int j = 0; j < (int)c.size(); j++) {
+            ll cj = (j < (int)cur.size()) ? cur[j] : 0;
+            c[j] = (c[j] + cj) % p;
+        }
+        // keep, as `last`, whichever reference grows the order least next time
+        if (i - lf + (ll)last.size() >= (ll)cur.size()) {
+            last = prev;
+            lf = i;
+            ld = d;
+        }
+        cur = c;
+    }
+    for (auto& x : cur) x = ((x % p) + p) % p;
+    return cur;
+}
 
-def inv(a, p):
-    return power(a, p - 2, p)  # Fermat; p prime
+// a_N mod p from rec = C[0..m-1] and the seed terms seq.
+ll kth_term(const vector<ll>& rec, const vector<ll>& seq, ll N, ll p) {
+    int m = (int)rec.size();
+    if (N < (ll)seq.size()) return ((seq[N] % p) + p) % p;
+    if (m == 0) return 0;
 
+    // multiply two deg<m polys, reduce mod x^m - sum rec[j] x^{m-1-j}
+    auto mulmod = [&](const vector<ll>& a, const vector<ll>& b) {
+        vector<ll> r(2 * m, 0);
+        for (int i = 0; i < m; i++) {
+            if (a[i]) {
+                ll ai = a[i];
+                for (int j = 0; j < m; j++)
+                    r[i + j] = (r[i + j] + (__int128)ai * b[j]) % p;
+            }
+        }
+        for (int e = 2 * m - 1; e >= m; e--) {
+            if (r[e]) {
+                ll re = r[e];
+                for (int j = 0; j < m; j++)
+                    r[e - 1 - j] = (r[e - 1 - j] + (__int128)re * rec[j]) % p;
+            }
+        }
+        r.resize(m);
+        return r;
+    };
 
-def find_recurrence(seq, p):
-    """Shortest C with a_i = sum_j C[j]*a[i-j-1], over Z_p."""
-    cur = []            # current shortest recurrence so far
-    last = []           # the recurrence current right before the last failure
-    lf = -1             # failing index of `last`
-    ld = 0              # discrepancy (predicted - actual) of `last` at lf
-    for i in range(len(seq)):
-        # predict a_i from the current recurrence
-        t = 0
-        for j in range(len(cur)):
-            t = (t + seq[i - j - 1] * cur[j]) % p
-        d = (t - seq[i]) % p          # discrepancy, predicted - actual
-        if d == 0:
-            continue                  # current recurrence still fits
-        if not cur:
-            # first nonzero term: set the order floor, record this failure
-            cur = [0] * (i + 1)
-            lf = i
-            ld = d
-            continue
-        # build the scaled, shifted residual of the last failing recurrence
-        k = d * inv(ld, p) % p        # discrepancy now / discrepancy then
-        c = [0] * (i - lf - 1)
-        c.append(k)                   # the +1-at-index-(i-lf-1), scaled
-        for j in range(len(last)):
-            c.append((-last[j] * k) % p)
-        if len(c) < len(cur):
-            c.extend([0] * (len(cur) - len(c)))
-        prev = cur                    # remember pre-repair cur as a candidate ref
-        c = [(c[j] + (cur[j] if j < len(cur) else 0)) % p
-             for j in range(len(c))]
-        # keep, as `last`, whichever reference grows the order least next time
-        if i - lf + len(last) >= len(cur):
-            last = prev
-            lf = i
-            ld = d
-        cur = c
-    return [x % p for x in cur]
+    vector<ll> s(m, 0), t(m, 0);
+    s[0] = 1;                          // accumulator = 1
+    if (m == 1) t[0] = rec[0] % p;     // x reduces to the constant c_0
+    else t[1] = 1;                     // running square = x
+    ull K = (ull)N;
+    while (K) {
+        if (K & 1ULL) s = mulmod(s, t);
+        t = mulmod(t, t);
+        K >>= 1;
+    }
+    ll ans = 0;
+    for (int i = 0; i < m; i++)
+        ans = (ans + (__int128)s[i] * seq[i]) % p;
+    return ((ans % p) + p) % p;
+}
 
-
-def kth_term(rec, seq, N, p):
-    """a_N mod p from rec = C[0..m-1] and the seed terms seq."""
-    m = len(rec)
-    if N < len(seq):
-        return seq[N] % p
-    if m == 0:
-        return 0
-
-    def mulmod(a, b):
-        # multiply two deg<m polys, reduce mod x^m - sum rec[j] x^{m-1-j}
-        r = [0] * (2 * m)
-        for i in range(m):
-            if a[i]:
-                ai = a[i]
-                for j in range(m):
-                    r[i + j] = (r[i + j] + ai * b[j]) % p
-        for e in range(2 * m - 1, m - 1, -1):
-            if r[e]:
-                re = r[e]
-                for j in range(m):
-                    r[e - 1 - j] = (r[e - 1 - j] + re * rec[j]) % p
-        return r[:m]
-
-    s = [0] * m
-    s[0] = 1                          # accumulator = 1
-    t = [0] * m
-    if m == 1:
-        t[0] = rec[0] % p             # x reduces to the constant c_0
-    else:
-        t[1] = 1                      # running square = x
-    K = N
-    while K:
-        if K & 1:
-            s = mulmod(s, t)
-        t = mulmod(t, t)
-        K >>= 1
-    return sum(s[i] * seq[i] for i in range(m)) % p
-
-
-def main():
-    data = sys.stdin.buffer.read().split()
-    if not data:
-        return
-    it = iter(data)
-    p = int(next(it))
-    N = int(next(it))
-    cnt = int(next(it))
-    seq = [int(next(it)) % p for _ in range(cnt)]
-    rec = find_recurrence(seq, p)
-    print(kth_term(rec, seq, N, p))
-
-
-if __name__ == "__main__":
-    main()
+int main() {
+    ios_base::sync_with_stdio(false);
+    cin.tie(nullptr);
+    ll p, N, cnt;
+    if (!(cin >> p)) return 0;
+    cin >> N >> cnt;
+    vector<ll> seq(cnt);
+    for (ll i = 0; i < cnt; i++) {
+        ll v;
+        cin >> v;
+        seq[i] = ((v % p) + p) % p;
+    }
+    vector<ll> rec = find_recurrence(seq, p);
+    cout << kth_term(rec, seq, N, p) << "\n";
+    return 0;
+}
 ```
 
 The whole chain: a linear recurrence makes each term a fixed combination of the previous $m$, so guessing the order and solving a square system works but costs $O(k^4)$ across guesses and throws away work; instead scan the terms once holding the current shortest recurrence, predict each term, and on a nonzero discrepancy repair it by adding a scaled-and-shifted copy of the last recurrence that failed — the shift moves that recurrence's lone failing spot onto the current position and the scale (discrepancy-now over discrepancy-then, needing a modular inverse, hence $p$ prime) sets it to exactly close the gap, growing the order only when the fix vector reaches past the current length and keeping, as the reference for next time, whichever past failure shifts to the shortest result — all in $O(k^2)$; then to leap to index $N$, read the recurrence as $x^m \equiv \sum_j c_j x^{m-1-j} \pmod{f}$, so $a_N = \Lambda(x^N) = \Lambda(x^N \bmod f) = \sum_i (x^N \bmod f)_i\, a_i$, and compute $x^N \bmod f$ by square-and-multiply with polynomial multiply-then-reduce, $O(m^2 \log N)$.

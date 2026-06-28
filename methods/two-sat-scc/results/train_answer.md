@@ -16,110 +16,136 @@ so $q$ is the later literal of its own variable and is also set true. The select
 
 One concrete thing must be pinned down rather than guessed: which direction the component-finding routine numbers components, because "later in topological order is true" has to become an integer comparison and a flipped sign would silently produce plausible-looking wrong answers. I compute components in a single pass by depth-first search with discovery indices and low-links, popping a component the moment its root finishes. The closing order is significant — a sink component, having nowhere downstream to wait on, gets closed and numbered first — so this routine numbers components in reverse topological order: smaller id means closer to a sink means later in topological order. Encoding variable $i$'s positive literal at vertex $2i$ and its negation at $2i+1$, so that negation is the single operation $u \oplus 1$ on adjacent integers, the assignment becomes $\mathrm{assign}[i] = \big(\mathrm{comp}[2i] < \mathrm{comp}[2i+1]\big)$ and the unsatisfiability test is $\mathrm{comp}[2i] = \mathrm{comp}[2i+1]$. (A two-pass routine numbering in forward topological order would flip the comparison to $>$ — same principle, different id convention.) The last practical hazard at this scale is that a recursive depth-first search would blow the call stack on a long implication chain, so the search runs iteratively with an explicit stack of (vertex, adjacency-position) frames simulating the recursion: push a frame when recursing into an unvisited neighbor, do the low-link update against the parent and pop when neighbors are exhausted, and close a component whenever a vertex's low-link equals its own discovery index. Everything stays $O(n + m)$ in time and memory.
 
-```python
-import sys
+The deliverable is a single self-contained C++17 program reading the instance from stdin: the first line is `n m`, then `m` clauses each given as two signed literal tokens (variable `i` 1-based, `+i` for `x_i` true and `-i` for `x_i` false); it prints `SATISFIABLE` followed by a line of `n` 0/1 values, or `UNSATISFIABLE`. Vertex ids fit in `int` since $2n \le 2 \times 10^6$, but the signed input tokens are read as `long long` before mapping to a vertex so the encoding never overflows.
 
+```cpp
+// 2-SAT via strongly connected components.
+// Reads from stdin: "n m", then m clauses, each two signed literal tokens
+// (variable i is 1-based; +i means x_i true, -i means x_i false).
+// Prints "SATISFIABLE" and a line of n 0/1 values, or "UNSATISFIABLE".
+#include <cstdio>
+#include <vector>
+#include <string>
+using namespace std;
 
-def strongly_connected_components(n, adj):
-    """Iterative SCC. Returns comp[0..n-1], the component id of each vertex.
-    Two vertices share an id exactly when each is reachable from the other.
-    Component ids follow the order in which components are closed. O(V + E)."""
-    index = [0] * n
-    low = [0] * n
-    on_stack = [False] * n
-    comp = [-1] * n
-    stack = []
-    counter = 0
-    cid = 0
-    for s in range(n):
-        if index[s]:
-            continue
-        work = [(s, 0)]
-        while work:
-            v, pi = work[-1]
-            if pi == 0:
-                counter += 1
-                index[v] = low[v] = counter
-                stack.append(v)
-                on_stack[v] = True
-            recursed = False
-            while pi < len(adj[v]):
-                u = adj[v][pi]
-                pi += 1
-                if index[u] == 0:
-                    work[-1] = (v, pi)
-                    work.append((u, 0))
-                    recursed = True
-                    break
-                elif on_stack[u] and index[u] < low[v]:
-                    low[v] = index[u]
-            if recursed:
-                continue
-            if low[v] == index[v]:
-                while True:
-                    w = stack.pop()
-                    on_stack[w] = False
-                    comp[w] = cid
-                    if w == v:
-                        break
-                cid += 1
-            work.pop()
-            if work:
-                pv = work[-1][0]
-                if low[v] < low[pv]:
-                    low[pv] = low[v]
-    return comp
+// Iterative SCC. Fills comp[0..tot-1], the component id of each vertex.
+// Two vertices share an id exactly when each is reachable from the other.
+// Component ids follow the order in which components close, so a sink
+// component (nothing downstream) closes first and gets the smaller id:
+// the ids run in reverse topological order. O(V + E).
+static void strongly_connected_components(int tot, const vector<vector<int>>& adj,
+                                          vector<int>& comp) {
+    vector<int> index(tot, 0), low(tot, 0), stk;
+    vector<char> on_stack(tot, 0);
+    comp.assign(tot, -1);
+    stk.reserve(tot);
+    // Explicit work stack of (vertex, adjacency position) to avoid recursion,
+    // which would overflow at ~2e6 vertices on a long implication chain.
+    vector<int> wv, wp;
+    wv.reserve(tot);
+    wp.reserve(tot);
+    int counter = 0, cid = 0;
+    for (int s = 0; s < tot; ++s) {
+        if (index[s]) continue;
+        wv.push_back(s);
+        wp.push_back(0);
+        while (!wv.empty()) {
+            int v = wv.back();
+            int& pi = wp.back();
+            if (pi == 0) {
+                index[v] = low[v] = ++counter;
+                stk.push_back(v);
+                on_stack[v] = 1;
+            }
+            bool recursed = false;
+            while (pi < (int)adj[v].size()) {
+                int u = adj[v][pi++];
+                if (index[u] == 0) {
+                    wv.push_back(u);
+                    wp.push_back(0);
+                    recursed = true;
+                    break;
+                } else if (on_stack[u] && index[u] < low[v]) {
+                    low[v] = index[u];
+                }
+            }
+            if (recursed) continue;
+            if (low[v] == index[v]) {
+                while (true) {
+                    int w = stk.back();
+                    stk.pop_back();
+                    on_stack[w] = 0;
+                    comp[w] = cid;
+                    if (w == v) break;
+                }
+                ++cid;
+            }
+            int lv = low[v];
+            wv.pop_back();
+            wp.pop_back();
+            if (!wv.empty()) {
+                int pv = wv.back();
+                if (lv < low[pv]) low[pv] = lv;
+            }
+        }
+    }
+}
 
+// Solve n-variable 2-SAT. clauses holds 2m literal-vertices (a, b per clause),
+// each literal encoded as a node: variable i positive is 2*i, negated 2*i+1.
+// Returns true if satisfiable, filling assign[0..n-1]; false otherwise.
+static bool solve(int n, const vector<int>& clauses, vector<char>& assign) {
+    int tot = 2 * n;
+    vector<vector<int>> adj(tot);
+    for (size_t k = 0; k + 1 < clauses.size(); k += 2) {
+        int a = clauses[k], b = clauses[k + 1];
+        // (a OR b) is the two forced cases: not-a -> b and not-b -> a.
+        adj[a ^ 1].push_back(b);
+        adj[b ^ 1].push_back(a);
+    }
+    vector<int> comp;
+    strongly_connected_components(tot, adj, comp);
+    assign.assign(n, 0);
+    for (int i = 0; i < n; ++i) {
+        int positive = 2 * i, negative = positive + 1;
+        if (comp[positive] == comp[negative]) return false;
+        // This SCC routine closes sinkward components first, so smaller id is later.
+        assign[i] = (comp[positive] < comp[negative]) ? 1 : 0;
+    }
+    return true;
+}
 
-def solve(n, clauses):
-    """n boolean variables; clauses a list of (a, b), each literal encoded as
-    an integer node: variable i positive is 2*i, negated is 2*i+1. Return None
-    if unsatisfiable, else assign[0..n-1] of booleans."""
-    total = 2 * n
-    adj = [[] for _ in range(total)]
-    for a, b in clauses:
-        # (a OR b) is the two forced cases: not-a -> b and not-b -> a.
-        adj[a ^ 1].append(b)
-        adj[b ^ 1].append(a)
-    comp = strongly_connected_components(total, adj)
-    assign = []
-    for i in range(n):
-        positive = 2 * i
-        negative = positive + 1
-        if comp[positive] == comp[negative]:
-            return None
-        # This SCC routine closes sinkward components first, so smaller id is later.
-        assign.append(comp[positive] < comp[negative])
-    return assign
+// Signed token i (1-based, sign for negation) -> literal-vertex.
+static inline int lit_to_node(long long v) {
+    long long var = (v < 0 ? -v : v) - 1;
+    return (int)(2 * var + (v > 0 ? 0 : 1));
+}
 
-
-def lit_to_node(tok):
-    v = int(tok)
-    var = abs(v) - 1
-    return 2 * var + (0 if v > 0 else 1)
-
-
-def main():
-    data = sys.stdin.buffer.read().split()
-    if not data:
-        return
-    it = iter(data)
-    n = int(next(it)); m = int(next(it))
-    clauses = []
-    for _ in range(m):
-        a = lit_to_node(next(it))
-        b = lit_to_node(next(it))
-        clauses.append((a, b))
-    res = solve(n, clauses)
-    out = []
-    if res is None:
-        out.append("UNSATISFIABLE")
-    else:
-        out.append("SATISFIABLE")
-        out.append(" ".join(str(int(x)) for x in res))
-    sys.stdout.write("\n".join(out) + "\n")
-
-
-if __name__ == "__main__":
-    main()
+int main() {
+    int n, m;
+    if (scanf("%d %d", &n, &m) != 2) return 0;
+    vector<int> clauses;
+    clauses.reserve((size_t)2 * m);
+    for (int i = 0; i < m; ++i) {
+        long long a, b;
+        if (scanf("%lld %lld", &a, &b) != 2) break;
+        clauses.push_back(lit_to_node(a));
+        clauses.push_back(lit_to_node(b));
+    }
+    vector<char> assign;
+    if (!solve(n, clauses, assign)) {
+        printf("UNSATISFIABLE\n");
+    } else {
+        printf("SATISFIABLE\n");
+        string out;
+        out.reserve((size_t)2 * n);
+        for (int i = 0; i < n; ++i) {
+            if (i) out.push_back(' ');
+            out.push_back(assign[i] ? '1' : '0');
+        }
+        out.push_back('\n');
+        fputs(out.c_str(), stdout);
+    }
+    return 0;
+}
 ```

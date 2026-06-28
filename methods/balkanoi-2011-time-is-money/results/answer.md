@@ -24,85 +24,106 @@ This enumerates exactly the lower-left hull vertices, so the global minimum of $
 
 ## Code
 
-```python
-def mst(n, edges, weight_fn):
-    """Minimize sum over a spanning tree of a LINEAR per-edge weight.
-    n: number of vertices (0-indexed); edges: list of (u, v, t, c).
-    weight_fn(t, c) -> number: the per-edge weight to minimize over spanning trees.
-    Returns (sum_t, sum_c, chosen_edge_indices) for the resulting tree.
-    Standard Kruskal + union-find (disjoint-set with path compression)."""
-    m = len(edges)
-    order = sorted(range(m), key=lambda i: weight_fn(edges[i][2], edges[i][3]))
-    pa = list(range(n))
-    def find(x):
-        while pa[x] != x:
-            pa[x] = pa[pa[x]]                   # path compression
-            x = pa[x]
-        return x
-    sum_t = sum_c = 0
-    chosen = []
-    for i in order:                             # Kruskal: take the lightest safe edge
-        u, v, t, c = edges[i]
-        ru, rv = find(u), find(v)
-        if ru != rv:
-            pa[ru] = rv
-            sum_t += t
-            sum_c += c
-            chosen.append(i)
-    return (sum_t, sum_c, chosen)
+Single-file C++17, reading from stdin and writing to stdout. Input: first line `V E`; then `E` lines `u v t c` (0-indexed endpoints, edge time, edge cost). Output: first line the minimum-product tree's total time and total cost `X Y` (so `X*Y` is the minimal achievable product), then the `V-1` tree edges, one `u v` per line.
 
+```cpp
+// Time is Money (Balkan OI 2011, balkan11_timeismoney).
+// Reads from stdin: first line "V E"; then E lines "u v t c" (0-indexed
+// endpoints, edge time t, edge cost c). Writes to stdout: first line the
+// minimum-product tree's total time and total cost "X Y" (product X*Y is
+// minimized over spanning trees), then the V-1 tree edges, one "u v" per line.
+#include <bits/stdc++.h>
+using namespace std;
+typedef long long ll;
 
-def solve(n, edges):
-    """edges: list of (u, v, t, c), 0-indexed vertices, graph connected.
-    Returns (best_product, sum_t, sum_c, tree_edge_indices)."""
-    best = {"prod": None, "dir": None}          # running best product + winning direction
+struct Edge { int u, v, t, c; };
 
-    def probe_dir(a, b):
-        # one MST extreme in direction (a, b): blend the weight w_e = a*t_e + b*c_e,
-        # evaluate the real objective X*Y at the returned hull vertex, update best.
-        X, Y, chosen = mst(n, edges, lambda t, c: a * t + b * c)
-        prod = X * Y                            # the true objective at this hull vertex
-        if best["prod"] is None or prod < best["prod"]:
-            best["prod"] = prod
-            best["dir"] = (a, b)
-        return (X, Y, chosen)
+int n, m;
+vector<Edge> edges;
+vector<int> parent;
 
-    def below(s, e, m):
-        # cross((s - e), (m - e)) > 0  <=>  m is on the lower-left side of segment s->e
-        return (s[0]-e[0]) * (m[1]-e[1]) - (s[1]-e[1]) * (m[0]-e[0]) > 0
+int find_set(int x) {
+    while (parent[x] != x) { parent[x] = parent[parent[x]]; x = parent[x]; }
+    return x;
+}
 
-    def hull(s, e):
-        # probe the normal of segment s->e pointing down-left (both components >= 0)
-        a, b = s[1] - e[1], e[0] - s[0]
-        if a == 0 and b == 0:
-            return
-        mx, my, _ = probe_dir(a, b)
-        m = (mx, my)
-        if below(s, e, m):                      # found a new lower-left hull vertex
-            hull(s, m)
-            hull(m, e)
+ll best_prod;            // smallest X*Y seen so far
+int best_a, best_b;      // direction (a,b) that achieved it
 
-    sx, sy, _ = probe_dir(1, 0)                 # leftmost vertex: minimize total time
-    ex, ey, _ = probe_dir(0, 1)                 # bottommost vertex: minimize total cost
-    hull((sx, sy), (ex, ey))
+// Kruskal MST minimizing the linear blend w_e = a*t_e + b*c_e over spanning
+// trees. Returns (X, Y) = (sum of times, sum of costs) of the resulting tree.
+// If print is true, also emits the chosen edges' endpoints to stdout.
+pair<int,int> getmst(ll a, ll b, bool print) {
+    vector<int> order(m);
+    iota(order.begin(), order.end(), 0);
+    sort(order.begin(), order.end(), [&](int i, int j) {
+        ll wi = a * edges[i].t + b * edges[i].c;
+        ll wj = a * edges[j].t + b * edges[j].c;
+        return wi < wj;
+    });
+    parent.resize(n);
+    iota(parent.begin(), parent.end(), 0);
+    ll X = 0, Y = 0;
+    for (int idx : order) {
+        int ru = find_set(edges[idx].u), rv = find_set(edges[idx].v);
+        if (ru != rv) {
+            parent[ru] = rv;
+            X += edges[idx].t;
+            Y += edges[idx].c;
+            if (print) printf("%d %d\n", edges[idx].u, edges[idx].v);
+        }
+    }
+    if (!print) {
+        ll prod = (ll)X * (ll)Y;
+        if (prod < best_prod) { best_prod = prod; best_a = (int)a; best_b = (int)b; }
+    }
+    return {(int)X, (int)Y};
+}
 
-    a, b = best["dir"]                           # rebuild the tree under the winning direction
-    X, Y, tree = mst(n, edges, lambda t, c: a * t + b * c)
-    return best["prod"], X, Y, tree
+// cross((s - e), (m - e)) > 0  <=>  m is strictly on the lower-left side of
+// segment s->e, i.e. a genuine new lower-left hull vertex.
+bool below(pair<int,int> s, pair<int,int> e, pair<int,int> mid) {
+    ll cross = (ll)(s.first - e.first) * (mid.second - e.second)
+             - (ll)(s.second - e.second) * (mid.first - e.first);
+    return cross > 0;
+}
 
+// Probe the down-left normal of segment s->e; recurse on each half if the
+// returned point bulges strictly below the segment.
+void hull(pair<int,int> s, pair<int,int> e) {
+    int a = s.second - e.second;   // both >= 0 along the lower hull
+    int b = e.first - s.first;
+    if (a == 0 && b == 0) return;
+    pair<int,int> mid = getmst(a, b, false);
+    if (below(s, e, mid)) {
+        hull(s, mid);
+        hull(mid, e);
+    }
+}
 
-if __name__ == "__main__":
-    edges = [(0,1,1,5), (1,2,2,3), (2,3,4,1), (0,3,3,2), (0,2,5,5), (1,3,2,2)]
-    prod, st, sc, tree = solve(4, edges)
-    print(prod, st, sc)                              # 45 9 5
-    for i in tree:
-        u, v, t, c = edges[i]
-        print(u, v)
+int main() {
+    if (scanf("%d %d", &n, &m) != 2) return 0;
+    edges.resize(m);
+    for (int i = 0; i < m; i++)
+        scanf("%d %d %d %d", &edges[i].u, &edges[i].v, &edges[i].t, &edges[i].c);
+
+    best_prod = LLONG_MAX;
+    best_a = 1; best_b = 0;
+
+    pair<int,int> s = getmst(1, 0, false);   // leftmost: minimize total time
+    pair<int,int> e = getmst(0, 1, false);   // bottommost: minimize total cost
+    hull(s, e);
+
+    pair<int,int> ans = getmst(best_a, best_b, false);   // realize the winning point
+    printf("%d %d\n", ans.first, ans.second);
+    getmst(best_a, best_b, true);            // reprint the winning tree's edges
+    return 0;
+}
 ```
 
 ## Complexity
 
-- Each `mst` call: $O(E\log E)$ (edge sort + union-find with path compression).
-- Number of `mst` calls $= O(H)$, where $H$ is the number of lower-left convex-hull vertices. With coordinates bounded by $X,Y \in [V-1,\ (V-1)M]$ ($M = \max$ single weight $= 255$), $H = O(VM)$ in the worst case, and far smaller in practice.
-- Total: $O(E\log E \cdot VM)$ worst case; typically only a handful of MSTs.
+- Each `getmst` call: $O(E\log E)$ (edge sort + union-find with path compression).
+- Number of `getmst` calls $= O(H)$, where $H$ is the number of lower-left convex-hull vertices. With coordinates bounded by $X,Y \in [V-1,\ (V-1)M]$ ($M = \max$ single weight $= 255$), $H = O(VM)$ in the worst case, and far smaller in practice.
+- Total: $O(E\log E \cdot VM)$ worst case; typically only a handful of MSTs. Sums fit comfortably in 32-bit ($X, Y \le 199 \cdot 255 < 51000$), but the product and the blended weights use `long long` to be safe.
 - Memory: $O(V + E)$.

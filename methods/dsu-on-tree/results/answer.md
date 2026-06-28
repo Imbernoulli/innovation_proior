@@ -33,117 +33,146 @@ time is `O(n log n)`, and the memory use is `O(n)`.
 
 ## Code
 
-```python
-import sys
-from sys import setrecursionlimit
+This is CF600E. The program reads from stdin the integer `n`, then `n` colors, then
+`n - 1` edges (1-based vertices, tree rooted at vertex 1), and prints `n`
+space-separated sums of dominating colors, one per vertex, to stdout. Sums use
+`long long` because a subtree of all-distinct colors can make the answer exceed the
+32-bit range (e.g. `sum(1..10^5)` is about `5 * 10^9`). The heavy-edge recursion is
+unrolled with an explicit frame stack so a path of `n = 10^5` nodes cannot overflow
+the call stack.
 
+```cpp
+// CF600E: reads n, then n colors, then n-1 edges (1-based, tree rooted at vertex 1)
+// from stdin; prints n space-separated sums of dominating colors per vertex to stdout.
+#include <bits/stdc++.h>
+using namespace std;
 
-def solve(n, color, edges):
-    """color[v] is the color of node v (0-based); edges is a list of (a, b)
-    undirected tree edges. Return ans where ans[v] is the sum of all
-    dominating colors in the subtree of v (tree rooted at node 0)."""
-    g = [[] for _ in range(n)]
-    for a, b in edges:
-        g[a].append(b)
-        g[b].append(a)
+int n;
+vector<int> color;
+vector<vector<int>> g;
+vector<int> sz, pivot_child, parent_;
+vector<long long> cnt;        // cnt[c] = active occurrences of color c
+long long max_freq = 0;       // current maximum active frequency
+long long sum_dom = 0;        // sum of colors achieving max_freq
+vector<long long> ans;
 
-    size = [1] * n
-    pivot_child = [-1] * n
-    parent = [-1] * n
-    stack = [(0, -1, False)]
-    while stack:
-        u, p, processed = stack.pop()
-        if processed:
-            best = 0
-            for w in g[u]:
-                if w != p:
-                    size[u] += size[w]
-                    if size[w] > best:
-                        best = size[w]
-                        pivot_child[u] = w
-            continue
-        parent[u] = p
-        stack.append((u, p, True))
-        for w in g[u]:
-            if w != p:
-                stack.append((w, u, False))
+static inline void add_node(int u) {
+    int c = color[u];
+    cnt[c] += 1;
+    long long f = cnt[c];
+    if (f > max_freq) { max_freq = f; sum_dom = c; }
+    else if (f == max_freq) { sum_dom += c; }
+}
 
-    cnt = [0] * (n + 1)
-    max_freq = 0
-    sum_dom = 0
-    ans = [0] * n
+static inline void remove_node(int u) {
+    cnt[color[u]] -= 1;
+}
 
-    def add(u):
-        nonlocal max_freq, sum_dom
-        c = color[u]
-        cnt[c] += 1
-        f = cnt[c]
-        if f > max_freq:
-            max_freq = f
-            sum_dom = c
-        elif f == max_freq:
-            sum_dom += c
+// iterative subtree add/clear over an explicit child stack (never crosses parent edge)
+static void add_subtree(int root) {
+    vector<int> st{root};
+    while (!st.empty()) {
+        int u = st.back(); st.pop_back();
+        add_node(u);
+        for (int w : g[u]) if (w != parent_[u]) st.push_back(w);
+    }
+}
+static void clear_subtree(int root) {
+    vector<int> st{root};
+    while (!st.empty()) {
+        int u = st.back(); st.pop_back();
+        remove_node(u);
+        for (int w : g[u]) if (w != parent_[u]) st.push_back(w);
+    }
+}
 
-    def remove(u):
-        cnt[color[u]] -= 1
+// main dsu-on-tree pass; recursion descends only the heavy edge so its depth is the
+// tree height. We unroll it with an explicit frame stack to avoid stack overflow on
+// a path of n = 1e5 nodes (where the heavy-edge depth is the full n).
+static void run() {
+    // mode==false: clean own subtree before returning; mode==true: leave it for parent
+    struct Frame { int u; bool mode; int phase; };
+    vector<Frame> fs;
+    fs.push_back({0, false, 0});
+    while (!fs.empty()) {
+        Frame &fr = fs.back();
+        int u = fr.u;
+        if (fr.phase == 0) {
+            // light children first (cleared afterwards); push them to be processed
+            fr.phase = 1;
+            for (int w : g[u]) if (w != parent_[u] && w != pivot_child[u])
+                fs.push_back({w, false, 0});
+        } else if (fr.phase == 1) {
+            // heavy child last; keep its accumulated counts in place
+            fr.phase = 2;
+            if (pivot_child[u] != -1)
+                fs.push_back({pivot_child[u], true, 0});
+        } else {
+            // fold in u itself and the light subtrees (heavy counts already present)
+            add_node(u);
+            for (int w : g[u]) if (w != parent_[u] && w != pivot_child[u])
+                add_subtree(w);
+            ans[u] = sum_dom;
+            if (!fr.mode) {
+                clear_subtree(u);
+                max_freq = 0;
+                sum_dom = 0;
+            }
+            fs.pop_back();
+        }
+    }
+}
 
-    def add_subtree(root):
-        st = [root]
-        while st:
-            u = st.pop()
-            add(u)
-            for w in g[u]:
-                if w != parent[u]:
-                    st.append(w)
+int main() {
+    ios_base::sync_with_stdio(false);
+    cin.tie(nullptr);
+    if (!(cin >> n)) return 0;
+    color.assign(n, 0);
+    g.assign(n, {});
+    for (int i = 0; i < n; ++i) cin >> color[i];
+    for (int i = 0; i < n - 1; ++i) {
+        int x, y; cin >> x >> y;
+        --x; --y;
+        g[x].push_back(y);
+        g[y].push_back(x);
+    }
 
-    def clear_subtree(root):
-        st = [root]
-        while st:
-            u = st.pop()
-            remove(u)
-            for w in g[u]:
-                if w != parent[u]:
-                    st.append(w)
+    sz.assign(n, 1);
+    pivot_child.assign(n, -1);
+    parent_.assign(n, -1);
+    cnt.assign(n + 1, 0);
+    ans.assign(n, 0);
 
-    setrecursionlimit(1 << 20)
+    // one iterative post-order pass: roots tree at 0, fills parent_, size,
+    // and records the maximum-size child in pivot_child[u]
+    vector<array<int,3>> stack0;     // {u, p, processed}
+    stack0.push_back({0, -1, 0});
+    while (!stack0.empty()) {
+        auto [u, p, processed] = stack0.back(); stack0.pop_back();
+        if (processed) {
+            int best = 0;
+            for (int w : g[u]) if (w != p) {
+                sz[u] += sz[w];
+                if (sz[w] > best) { best = sz[w]; pivot_child[u] = w; }
+            }
+            continue;
+        }
+        parent_[u] = p;
+        stack0.push_back({u, p, 1});
+        for (int w : g[u]) if (w != p) stack0.push_back({w, u, 0});
+    }
 
-    def dfs(u, mode):
-        nonlocal max_freq, sum_dom
-        for w in g[u]:
-            if w != parent[u] and w != pivot_child[u]:
-                dfs(w, False)
-        if pivot_child[u] != -1:
-            dfs(pivot_child[u], True)
-        add(u)
-        for w in g[u]:
-            if w != parent[u] and w != pivot_child[u]:
-                add_subtree(w)
-        ans[u] = sum_dom
-        if not mode:
-            clear_subtree(u)
-            max_freq = 0
-            sum_dom = 0
+    run();
 
-    dfs(0, False)
-    return ans
-
-
-def main():
-    data = sys.stdin.buffer.read().split()
-    if not data:
-        return
-    it = iter(data)
-    n = int(next(it))
-    color = [int(next(it)) for _ in range(n)]
-    edges = []
-    for _ in range(n - 1):
-        x = int(next(it)) - 1
-        y = int(next(it)) - 1
-        edges.append((x, y))
-    ans = solve(n, color, edges)
-    sys.stdout.write(" ".join(map(str, ans)) + "\n")
-
-
-if __name__ == "__main__":
-    main()
+    // print n space-separated answers on one line
+    string out;
+    out.reserve(n * 7);
+    for (int i = 0; i < n; ++i) {
+        if (i) out.push_back(' ');
+        out += to_string(ans[i]);
+    }
+    out.push_back('\n');
+    fwrite(out.data(), 1, out.size(), stdout);
+    return 0;
+}
 ```
