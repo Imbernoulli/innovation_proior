@@ -59,9 +59,12 @@
 
 1. **把竞赛/算法类 method 的落点从「Python class/库」改写成「单文件 C++ 读 stdin」。**
    - 优先 ~111 条推理本就可移植 C++ 的竞赛方法（DP / 图 / 树 / 字符串 / 数论）。
-   - 做法：把已验证的 Python `solve()` 转写成一个 `int main()` 从 `cin` 读、`cout` 写；把 `class` 包装拆成自由函数 / struct；**推理（reasoning.md）原样保留**，只换落点代码块，并在开头补一句 I/O 契约 + `long long` 溢出意识。
-   - 目标：把 0.2%-C++ / 51%-class 的画像推向 v4 的画像（~100% C++/stdin、0 class）。
-2. **把 v4 在 SFT 混合里提到 ≥15–20%**（现在 raw 占比 ~13%，oversample 上去）。它已经全对，是最干净的 off-segment 信号。
+   - 做法：把已验证的 Python `solve()` 转写成一个 `int main()` 从 `cin` 读、`cout` 写；把 `class` 包装拆成自由函数 / struct；在开头补一句 I/O 契约 + `long long` 溢出意识。
+   - **⚠️ 关键(易踩坑):不能只换最终落点块，`reasoning.md` 里的代码块也要一起改/删。** SFT target 是 `<think>{reasoning}</think>` + `train_answer`(见 `build_sft.py`)。实测 `persistent-segment-tree` / `segment-tree-beats` / `convex-hull-trick` 的 **`reasoning.md` 本身就含一个 Python `class` 实现块**——如果只翻译末尾 `train_answer` 而把 reasoning 原样保留，样本**仍然在训练模型"先吐一段 Python 库代码、再给 C++"**,落点转换被稀释。**做法:把 reasoning 里的实现代码块也转成 C++(或删掉,只留必要的代码片段)；只「原样保留」推理的散文部分(复杂度感知 + 验证叙事),不是代码。**
+   - 目标：把 0.2%-C++ / 51%-class 的画像推向 v4 的画像（~100% C++/stdin、0 class）——画像统计要把 reasoning 里的代码块也算进去,别只看 train_answer。
+2. **把 v4 加进 SFT 混合并加权到 ≥15–20%。**
+   - **⚠️ 关键(易踩坑):v4 现在根本不在 SFT 混合里(占比 0%,不是 13%)。** 实测:`build_sft.py` 不读 `data_v4/`(grep=0)；`sft/dataset_info_snippet.json` 只注册了 `innovation_sft` + `innovation_maintain`；`build_v4.py` 写的是**独立文件** `sft/innovation_v4_sft.jsonl`,没接进任何训练混合。所以"按现有 config 直接重跑"会让 v4 仍是 0%。
+   - **做法:必须先把 v4 接进混合**——把 `innovation_v4_sft.jsonl` 拼进 `build_sft.py` 的输出(或在 `dataset_info` 里注册 `innovation_v4` 为独立 dataset),**然后**把它的采样占比调到 ≥15–20%(原始条数 178/(1233+178)≈13%,要 oversample 才到 15–20%)。它已经全对(178/178 单文件 C++/stdin),是最干净的 off-segment 信号。
 
 ### P1 — 补「退回最简正确解」纪律（anti-(a)/anti-(b)）
 
