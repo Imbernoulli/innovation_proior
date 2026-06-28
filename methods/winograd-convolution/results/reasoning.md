@@ -138,6 +138,8 @@ Now let me make this concrete in code. The transform *generator* is the Cook–T
 
 So I land the F(2×2,3×3) layer as one self-contained C++17 program. It reads a convolution layer from stdin — `N C H W K`, then the N·C·H·W data values in index order [n][c][h][w], then the K·C·3·3 filter values [k][c][u][v] — and writes the valid output Y[n][k][H−2][W−2] to stdout, one row of W−2 space-separated values per line. The transform matrices are baked in as the F(2,3) triple (entries only 0, ±1, ±1/2, the best-conditioned operating point); the heavy stage is the 16 dense GEMMs whose reduction dimension is channels, so it stays full-width at batch 1; each output costs 4 real multiplies versus the direct 9, and the result matches a direct convolution to fp32 rounding.
 
+The part I would most easily get wrong under contest pressure is the F(2×2,3×3) Winograd transform layout and the 16-coordinate GEMM scatter/gather reuse; if I were not confident I could implement that cleanly in time, I would fall back to the direct valid 3×3 convolution I already used as the verified reference.
+
 ```cpp
 // Winograd minimal-filtering fast convolution F(2x2,3x3) for a convnet layer.
 // Reads from stdin:  N C H W K, then the N*C*H*W data values (row-major,

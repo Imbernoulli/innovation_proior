@@ -24,6 +24,11 @@ So I can pin the implementation down. One iterative postorder pass roots the tre
 
 This is CF600E, so the deliverable is a single self-contained C++17 program. It reads from stdin `n`, then `n` colors, then `n - 1` edges (1-based vertices, tree rooted at vertex 1), and prints `n` space-separated sums of dominating colors to stdout. The running totals are kept in `long long`, because a subtree of all-distinct colors makes the answer the sum of those colors — about `5 * 10^9` for `n = 10^5`, past the 32-bit range. Here is the final runnable form:
 
+If I were not confident I could implement the DSU-on-tree keep/clear invariant within budget,
+especially preserving the heavy child's live count table while clearing and re-adding light subtrees,
+I would fall back to explicit small-to-large map merging of per-subtree color tables for CF600E;
+a plain correct submission beats an ambitious broken one.
+
 ```cpp
 // CF600E: reads n, then n colors, then n-1 edges (1-based, tree rooted at vertex 1)
 // from stdin; prints n space-separated sums of dominating colors per vertex to stdout.

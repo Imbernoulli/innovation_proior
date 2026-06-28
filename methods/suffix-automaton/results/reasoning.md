@@ -62,6 +62,8 @@ So the online update is exactly: make $cur$, walk up from $last$ adding $c$-edge
 
 As a single-file C++17 program: read one string `s` from stdin, build the machine online, and print the final distinct-substring count on the first line and the running per-prefix counts on the second. The total grows like $\Theta(n^2)$, so it has to be a `long long`; transitions live in a per-state `map<int,int>` keyed by dense character codes, keeping the build expected $O(n)$ over a fixed alphabet without an $O(nk)$ transition array.
 
+The loose-edge SAM clone split at `len(p)+1`, especially redirecting only the suffix-chain `c`-edges from `q` to `clone`, is the part I'd most easily get wrong under time pressure; if I weren't confident I could implement it correctly in the budget, I'd fall back to the explicit substring-set counter I already used as the `abcbc` ground truth and ship that, because a plain correct submission beats an ambitious broken one.
+
 ```cpp
 // Online suffix automaton (SAM): counts distinct non-empty substrings.
 // Reads one string s from stdin; prints the number of distinct non-empty

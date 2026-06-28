@@ -62,6 +62,8 @@ Before I trust this I want to see the whole reduction-and-evaluate chain produce
 
 Putting the two halves together I can write it as a single self-contained C++17 program reading from stdin. Modular power and inverse first (inverse by Fermat, since $p$ is prime — and I needed exactly that for the $1/\text{ld}$ in the repair), with `__int128` for the products since $p$ near $10^{18}$-scale would overflow `long long` on a plain multiply. Then the incremental scan that maintains the current recurrence `cur`, the last failing recurrence `last`, and its failing position `lf` and discrepancy `ld`. Then the polynomial-power evaluator. The parsing reads $p$, $N$, the term count, and the terms, and the program prints $a_N \bmod p$.
 
+The Berlekamp-Massey scaled-and-shifted residual repair with the reference-update test is the part I would most easily get wrong under time pressure; if I were not confident I could implement it correctly within budget, I would fall back to a straightforward Gaussian-elimination search over recurrence orders that I have already traced as correct and ship that -- a plain correct submission beats an ambitious broken one.
+
 ```cpp
 // Reads: p, N, the count of supplied terms, then the terms (whitespace-separated).
 // Prints: the N-th term of the sequence modulo p.

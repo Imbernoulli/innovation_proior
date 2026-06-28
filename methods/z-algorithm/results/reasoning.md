@@ -38,6 +38,8 @@ That hand computation is exactly the kind I just caught myself nearly miscountin
 
 Now I can assemble the single-file program. It reads the text `s` on the first line of stdin and the pattern `p` on the second, prints the Z-array of `s`, then prints the start indices in `s` where `p` occurs. One thing does not survive the move to C++: the `object()` sentinel, since a `char` cannot be a fresh identity-distinct object. I lift input characters to integer byte values and use `-1` as the separator, so the separator is outside every possible byte from either input line:
 
+The clamp-and-extend mirror reuse around `min(z[i - l], r - i + 1)` is the part I'd most easily get wrong under time pressure; if I weren't confident I could implement the boundary update correctly in the budget, I'd fall back to the straightforward per-position prefix scan and brute-force occurrence check I've already traced as correct and ship that -- a plain correct submission beats an ambitious broken one.
+
 ```cpp
 // Reads two lines from stdin: the text s on the first line and the pattern p on
 // the second. Prints the Z-array of s (space-separated, with z[0]=0), then the

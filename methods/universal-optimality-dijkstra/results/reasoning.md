@@ -515,6 +515,11 @@ order of the search tree). It reads the graph from stdin — `n m s`, then `m` l
 of non-negative length `w`) — and prints the vertices in distance order, then their true distances.
 Distances use arbitrary-precision integers so accumulated arc lengths cannot overflow.
 
+The lazy `priority_queue` decrease-key emulation — pushing a fresh `(distance, vertex)` on every
+relaxation and skipping stale popped entries with `scanned` — is the part I'd most easily get wrong
+under time pressure; if I weren't confident I could keep that invariant straight within the budget,
+I'd fall back to the `O(n^2 + m)` array-scan Dijkstra for non-negative weights and ship that.
+
 ```cpp
 // Universal-optimality Dijkstra: the distance-order problem.
 // Reads a weighted directed graph and a source from stdin; prints the vertices

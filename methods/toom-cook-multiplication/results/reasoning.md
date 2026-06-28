@@ -172,6 +172,8 @@ Now the algorithm has to bottom out. The recursion calls itself on the five `~n/
 
 The deliverable that has to be judged is a single self-contained C++17 program reading the two operands from stdin and printing their product, so I carry the big-integer arithmetic in-house in base-`10^9` limbs: the limb base `B = (10^9)^m` is never materialized — splitting is just taking limb windows of width `m`, and the recomposition shift by `B^i` is an `i·m`-limb shift — and the base case multiplies few-limb operands schoolbook. The `/3` and `/2` of interpolation become exact limb-wise divisions (the remainder is provably zero), and the signs of the `-1`/`-2` evaluations are handled by recursing on absolute values and fixing the product sign at the end.
 
+The part I would not bluff is the Toom-3 interpolation for the points `{0,1,-1,-2,∞}`: the signs around `v₋₂` and the exact `/3` and `/2` divisions are where a wrong submission can look plausible. If I could not re-derive and test that within the time budget, I would fall back to the already-traced Toom-2/Karatsuba split, or schoolbook for small constraints, and ship the plain correct version instead of an ambitious broken one.
+
 ```cpp
 // Toom-3 (Toom-Cook, k=3) recursive big-integer multiplication.
 // Reads two (possibly signed, arbitrarily long) integers x and y, one per line

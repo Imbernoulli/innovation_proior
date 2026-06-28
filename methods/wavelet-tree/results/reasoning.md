@@ -36,6 +36,8 @@ Two loose ends. Empty arrays and degenerate value ranges: if every value is equa
 
 Let me write it. The structure is a binary tree stored in parallel arrays: per node, its value-range bounds `lo[node]`, `hi[node]`, child ids `lc[node]`, `rc[node]`, and the prefix-zeros array as its auxiliary. `build` recursively creates a node, and if its range is more than one code, bisects at the midpoint, builds the prefix-zeros array while stably splitting the sequence into low and high child sequences, and recurses. `kth` runs the iterative left/right descent on half-open ranges; `rank_leq` runs the threshold-prefix recursion. Values are compressed up front and the final code is mapped back through `vals`.
 
+The half-open prefix-zero remapping step -- sending a node slice left as `[z(l), z(r))` and right as `[l-z(l), r-z(r))` -- is the part I would most easily get wrong under time pressure, so if I were not confident I could implement it correctly in budget, I would fall back to a merge-sort tree that answers range counts by binary search and finds `kth` by binary-searching the compressed value, and ship that -- a plain correct submission beats an ambitious broken one.
+
 ```cpp
 // Reads: "n q", then n integers, then q queries. A type-1 query "1 l r k" asks the
 // k-th smallest value in a[l..r] (1-based l,r,k); a type-2 query "2 l r x" asks the

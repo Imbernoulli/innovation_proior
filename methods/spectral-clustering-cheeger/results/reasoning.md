@@ -116,6 +116,11 @@ sweeps the $n-1$ sorted threshold cuts keeping the least-conductance one (the
 boundary weight maintained incrementally), and prints $\nu_2$, the cut conductance,
 the bracket $\nu_2/2\le\phi_G\le\sqrt{2\nu_2}$, and the smaller side $S$.
 
+The implementation step I would distrust most under time pressure is the incremental
+boundary update inside the threshold sweep for the Cheeger ratio; if I could not
+convince myself it was right, I would fall back to recomputing every prefix cut's
+boundary and volume from scratch after sorting by the Fiedler vector, and ship that.
+
 ```cpp
 // Spectral clustering via the discrete Cheeger inequality.
 // Reads a weighted undirected graph from stdin and prints a low-conductance cut

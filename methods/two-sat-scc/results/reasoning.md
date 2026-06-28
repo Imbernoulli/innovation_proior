@@ -42,6 +42,8 @@ Let me also fix the literal encoding so the negation operation is trivial. Put v
 
 So the whole pipeline: parse clauses into literal-vertex pairs; build the $2n$-vertex implication graph by adding the two implication edges per clause; run iterative strongly-connected-components to get a component id per vertex (ids in reverse topological order); for each variable, if its two literals share a component report unsatisfiable, otherwise set the variable true when its positive literal's component id is the smaller (the later, sink-ward one). Let me write it as a single self-contained C++17 program that reads the instance from stdin — first line `n m`, then `m` clauses each as two signed literal tokens (variable `i` 1-based, `+i` for `x_i` true and `-i` for `x_i` false) — and prints `SATISFIABLE` followed by `n` 0/1 values, or `UNSATISFIABLE`. Vertex ids fit in `int` ($2n \le 2 \times 10^6$), but I read the signed input tokens as `long long` before mapping each to a vertex so the literal encoding can never overflow.
 
+If I were not fully confident in the fragile part here — the iterative SCC closing order that makes `comp[2i] < comp[2i+1]` mean the positive literal is sinkward — I would ship a more standard Kosaraju implementation and assign from an explicit SCC topological order instead of relying on that id convention.
+
 ```cpp
 // 2-SAT via strongly connected components.
 // Reads from stdin: "n m", then m clauses, each two signed literal tokens

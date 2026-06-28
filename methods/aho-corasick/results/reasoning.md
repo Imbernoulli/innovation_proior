@@ -34,6 +34,8 @@ One refinement I can see, the same one KMP noticed. My failure link from a node 
 
 So the whole thing falls out as: build a trie of all the keywords with a self-looping root, breadth-first-compute a failure link on every node generalizing KMP's longest-viable-suffix rule from one pattern to the set, add output links so suffix keywords are reported without re-walking empty failure states, then run one pass over the text taking a goto when I can and a failure link when I can't, emitting matches as I go — fewer than 2n non-output transitions, build linear in total keyword length, search cost independent of the number of keywords, and optionally collapse the failure transitions into a one-move-per-symbol deterministic automaton. Here it is as a single-file program: it reads `k`, then `k` keywords, then the text, and prints every `start_index keyword` match (0-indexed start, overlaps included), sorted by `(start, keyword)`. The build folds the failure recovery straight into `go` so each symbol is one deterministic transition (the `to_dfa` refinement), keeping the inner search loop branch-free.
 
+If I am not confident I can correctly BFS-propagate goto and failure links into the unified `go` DFA table within the budget, I will keep the simpler explicit failure-link search loop and ship that correct version instead.
+
 ```cpp
 #include <bits/stdc++.h>
 using namespace std;
