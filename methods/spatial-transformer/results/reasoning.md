@@ -34,7 +34,16 @@ The `1` in the input vector and the third column give me the translation `(θ13,
     x_s = θ11 · x_t + θ12 · y_t + θ13
     y_s = θ21 · x_t + θ22 · y_t + θ23.
 
-One thing to settle before I go further: in what units are these coordinates? If I measure `x_t, y_t` in pixels, then the meaning of `A_θ` depends on the feature-map size — the identity transform would have different numbers at 28×28 than at 42×42, and a module dropped at a different resolution would mean something different. That's brittle. So I'll use height- and width-normalised coordinates: `−1 ≤ x_t, y_t ≤ 1` spans the output, `−1 ≤ x_s, y_s ≤ 1` spans the input. Now the identity transform is just `A_θ = [[1,0,0],[0,1,0]]` regardless of resolution, and the same six numbers mean the same geometric thing at any size. As a sanity check on the affine giving me what I claimed: if the left 2×2 block is a contraction — determinant magnitude below one — the mapped grid lands inside a sub-region of the input, so the output reads from a small patch: that's a crop-and-zoom. Good, cropping falls out for free, which is the attention behaviour I wanted, no separate mechanism.
+One thing to settle before I go further: in what units are these coordinates? If I measure `x_t, y_t` in pixels, then the meaning of `A_θ` depends on the feature-map size — the identity transform would have different numbers at 28×28 than at 42×42, and a module dropped at a different resolution would mean something different. That's brittle. So I'll use height- and width-normalised coordinates: `−1 ≤ x_t, y_t ≤ 1` spans the output, `−1 ≤ x_s, y_s ≤ 1` spans the input. With `A_θ = [[1,0,0],[0,1,0]]` the formula gives `x_s = 1·x_t + 0·y_t + 0 = x_t` and `y_s = y_t`, so every output pixel reads from its own location in the input — that's the identity, and it's the same six numbers whether the map is 28×28 or 42×42. Good, that's resolution-independent as I wanted.
+
+Before trusting the affine for the thing I actually care about — cropping — let me run a contraction through it with numbers rather than just assert it crops. Take `A_θ = [[0.5, 0, 0.3], [0, 0.5, 0]]`, a half-scale block (|det| = 0.25 < 1) with a translation. Walk the four corners of the output grid (the extremes `x_t, y_t ∈ {−1, +1}`) to their source coordinates:
+
+- output corner `(−1, −1) → x_s = 0.5·(−1) + 0.3 = −0.2`, `y_s = 0.5·(−1) = −0.5`
+- output corner `(+1, −1) → x_s = 0.5·(+1) + 0.3 = +0.8`, `y_s = −0.5`
+- output corner `(−1, +1) → x_s = −0.2`, `y_s = +0.5`
+- output corner `(+1, +1) → x_s = +0.8`, `y_s = +0.5`
+
+So the full output grid, which spans `[−1,1]²`, reads from the input box `x_s ∈ [−0.2, 0.8]`, `y_s ∈ [−0.5, 0.5]` — a sub-rectangle that's half the width and half the height of the input, off-centre to the right. The output stretches that small box to fill the whole `[−1,1]²` frame. That is exactly a crop-and-zoom, and the `0.3` translated the crop window where I wanted it. Cropping falls out of the affine for free, which is the attention behaviour I wanted, no separate mechanism — and now I've actually seen it happen on coordinates rather than taken it on faith.
 
 And I'm not locked into the full affine. If I only want attention — isotropic scale plus translation — I constrain it to
 
@@ -76,7 +85,15 @@ Gradient with respect to `x_s`. Hold the `y` factor fixed and differentiate the 
                     +1   if |m − x_s^i| < 1 and m ≥ x_s^i
                     −1   if |m − x_s^i| < 1 and m < x_s^i }.
 
-It only sums over the support, and it weights each contribution by the input value and the orthogonal `y`-weight — so its sign and size tell the localisation network which way to slide the sampling point to reduce the loss. The `y_s` derivative is identical with `x` and `y` swapped. The absolute value has a kink at `x_s = m`, so strictly there's no derivative there; I just pick a sub-gradient at the kink, which is exactly what SGD is happy with. So this is a sub-differentiable sampler.
+It only sums over the support, and it weights each contribution by the input value and the orthogonal `y`-weight — so its sign and size tell the localisation network which way to slide the sampling point to reduce the loss. The `y_s` derivative is identical with `x` and `y` swapped. The absolute value has a kink at `x_s = m`, so strictly there's no derivative there; I just pick a sub-gradient at the kink, which is exactly what SGD is happy with.
+
+I derived that derivative by hand and I don't trust hand-derivations of piecewise things, so let me check it against the function it's supposed to be the derivative of, on a concrete 1-D read. Drop the `y` factor (set `y_s` on a pixel so its weight is 1) and take a row of three input pixels at integer positions with values `U_0 = 2`, `U_1 = 5`, `U_2 = 1`. Sample at `x_s = 1.3`. The only pixels within distance 1 are `m=1` (weight `1−|1.3−1| = 0.7`) and `m=2` (weight `1−|1.3−2| = 0.3`); `m=0` is at distance 1.3, weight 0. So
+
+    V(1.3) = 5·0.7 + 1·0.3 = 3.5 + 0.3 = 3.8.
+
+Now my formula for `∂V/∂x_s` at `x_s = 1.3`: for `m=1`, `|1−1.3| = 0.3 < 1` and `m=1 < x_s=1.3`, so the branch is `−1`, contributing `U_1·(−1) = −5`. For `m=2`, `|2−1.3| = 0.7 < 1` and `m=2 ≥ x_s=1.3`, so the branch is `+1`, contributing `U_2·(+1) = +1`. Sum: `∂V/∂x_s = −5 + 1 = −4`.
+
+Check it numerically. Nudge `x_s` to 1.31: weights `0.69` and `0.31`, `V = 5·0.69 + 1·0.31 = 3.45 + 0.31 = 3.76`. The slope is `(3.76 − 3.8)/0.01 = −0.04/0.01 = −4`. That matches my analytic `−4` exactly — as it should, since `V` is linear in `x_s` between integer pixels so the finite difference *is* the derivative there. And the sign reads correctly: moving the sample point right (toward pixel 2, value 1) lowers `V`, away from the bright pixel 1 (value 5). The sub-gradient does carry usable directional information. So this is a sub-differentiable sampler, and I've now confirmed both the value and the derivative on a real read.
 
 Now close the loop to `θ`. The source coordinate is the affine of the output coordinate, so `∂x_s/∂θ` is trivial: `∂x_s/∂θ11 = x_t`, `∂x_s/∂θ12 = y_t`, `∂x_s/∂θ13 = 1`, and zero for the `θ2·` row; symmetrically for `y_s`. Chaining, the loss gradient reaches `θ` as
 

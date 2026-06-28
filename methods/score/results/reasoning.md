@@ -37,37 +37,55 @@ Now specialize to the case the identifiability theory most cleanly covers: Gauss
 `∂^2/∂x_j^2 [ -(x_j - f_j(pa(j)))^2 / (2σ_j^2) ]`. Crucially `f_j` does *not* depend on `x_j` — there are
 no self-loops — so `x_j - f_j(pa(j))` is just `x_j` minus a constant-in-`x_j` quantity, and the second
 derivative is exactly `-1/σ_j^2`, a *constant*. Every bit of `x`-dependence in `H_{jj}` therefore comes
-from the *second* group of terms — the children. And here is the payoff: if `j` is a **leaf**, it has no
-children, the second group is empty, and `H_{jj}(x) = -1/σ_j^2` is constant over the whole sample. Its
-*variance over `x`* is zero. Conversely, if `j` has a child, that child's mechanism `f_c` is nonlinear in
-`x_j`, so `H_{jj}` genuinely varies with `x` and its variance is strictly positive. So I have an exact,
-distributional characterization I did not have before:
+from the *second* group of terms — the children. So whether `H_{jj}` is constant or not is governed
+entirely by whether `j` has children. Let me not just assert that — let me actually differentiate the
+child term and see what comes out, on the smallest case that has both a leaf and a non-leaf. Take the
+two-node chain `X_1 → X_2`, `X_1 = N_1`, `X_2 = f(X_1) + N_2`, both noises Gaussian. The log-density is
+
+  `log p(x_1, x_2) = -x_1^2/(2σ_1^2) - (x_2 - f(x_1))^2/(2σ_2^2) + const`.
+
+Differentiate twice in `x_2` (the leaf). The first term has no `x_2`, the second is
+`-(x_2 - f(x_1))^2/(2σ_2^2)`, and `f` does not contain `x_2`, so `∂_{x_2}^2` gives `-1/σ_2^2` — flat in
+both `x_1` and `x_2`. Now twice in `x_1` (the root). The first term gives `-1/σ_1^2`. The second is where
+the child shows up: writing `r = x_2 - f(x_1)`, `∂_{x_1}[-r^2/(2σ_2^2)] = r f'(x_1)/σ_2^2`, and
+`∂_{x_1}` again gives `[-f'(x_1)^2 + r f''(x_1)]/σ_2^2`. So
+
+  `H_{11}(x) = -1/σ_1^2 + ( -f'(x_1)^2 + (x_2 - f(x_1)) f''(x_1) ) / σ_2^2`,
+  `H_{22}(x) = -1/σ_2^2`.
+
+That is the whole story made explicit. `H_{22}`, the leaf's column, is a constant; `H_{11}`, the root's
+column, carries `f'(x_1)^2` and `f''(x_1)` and the residual `x_2 - f(x_1)` — genuinely `x`-dependent
+whenever `f` is nonlinear (`f'' ≢ 0`). For a strictly linear `f` the `f''` term vanishes and only
+`-f'(x_1)^2/σ_2^2` survives, still a *constant* — which is the right behavior, since linear-Gaussian SEMs
+are exactly the non-identifiable case, so I would not want the root's column to look different from a
+leaf's there. The nonlinearity is doing the identifying work, exactly as the ANM theory says it should.
+Generalizing the two derivatives back to `d` nodes: factor `j` always contributes the constant `-1/σ_j^2`,
+and each child factor `c` contributes a term of the form `[ -(∂_{x_j} f_c)^2 + (x_c - f_c)·∂_{x_j}^2 f_c ]/σ_c^2`,
+which is non-constant precisely when `f_c` depends nonlinearly on `x_j`. So I have an exact, distributional
+characterization:
 
   **`j` is a leaf of the DAG  ⟺  Var_x[ H_{jj}(x) ] = 0.**
 
-This is the thing I was hunting for — the order read directly off the score's Jacobian, no regression in
-the loop. Let me make sure I believe the "only children matter" claim, because it is the whole method.
-The diagonal Hessian entry `H_{jj}` is `∂_{x_j}^2 log p`. Under the factorization, the only factors whose
-log depends on `x_j` are factor `j` (own noise) and the child factors. Factor `j` contributes the
-constant `-1/σ_j^2` (Gaussian noise, no self-dependence of `f_j` on `x_j`). Child factor `c` contributes
-`∂_{x_j}^2 [ -(x_c - f_c(pa(c)))^2 / (2σ_c^2) ]`, which expands to terms in `f_c` and its derivatives in
-`x_j` — nonzero and `x`-dependent precisely because `f_c` is a nonlinear function of `x_j`. So
-non-constancy of `H_{jj}` is equivalent to "has at least one child," i.e. "is not a leaf." Good. The leaf
-characterization is exact in the population.
+The order can be read directly off the score's Jacobian, with no regression in the loop.
 
-So the order algorithm writes itself, and it is a *global* measurement, not a greedy search. Estimate the
-diagonal of the Hessian of `log p` at the sample points; the variable whose diagonal-Hessian column has
-the *minimum* empirical variance is the current leaf (in finite samples the variance is not exactly zero
-for the true leaf, but it is the smallest). Append that variable to the order as the *last* element. Now
-remove it: a leaf deleted from an ANM leaves an ANM over the remaining `d-1` variables (the leaf's value
-does not enter any other mechanism, since it has no children), so the reduced system is again a
-Gaussian-noise ANM and its leaf is the second-to-last variable. Recompute the diagonal Hessian on the
-reduced data, find its leaf, prepend, and recurse. After `d-1` removals one variable remains — the root —
-and reversing the leaf sequence gives the topological order, roots first. This is strictly better-posed
-than CAM's greedy residual-variance append: there is no commitment based on a noisy fit comparison that
-compounds down the chain; each step is a direct read of a distributional quantity, and the problem shrinks
-by one variable each time, so the small-sample behavior is far steadier than regressing on an
-ever-growing predictor set.
+This gives me a way to find *one* variable — the leaf — directly. To get the full order I need to repeat,
+so I have to check that removing the leaf leaves me with a problem of the same shape. Marginalize out a
+leaf `ℓ`: because `ℓ` has no children, its value `x_ℓ` does not appear in any other mechanism `f_j`, so
+the remaining variables still satisfy `X_j = f_j(pa(j)) + N_j` with the *same* mechanisms and the *same*
+independent Gaussian noises (none of which involved `N_ℓ`). The marginal over the remaining `d-1`
+variables is therefore again a Gaussian-noise ANM on the sub-DAG with `ℓ` deleted — and its leaf is the
+second-to-last variable of the original order. (This is the one place I should be careful: the *estimated*
+diagonal Hessian on the reduced data is recomputed from the reduced kernel, not sliced from the old one,
+precisely because the marginal density, not the conditional, is the object whose score I now want.) So the
+procedure is: estimate the diagonal of the Hessian of `log p` at the sample points; take the column with
+the *minimum* empirical variance as the current leaf (in finite samples the true leaf's variance is not
+exactly zero, but I expect it to be the smallest — something to confirm on data below); append it as the
+last element; delete that column and recurse on the `d-1` remaining variables; reverse the leaf sequence
+at the end to get the order roots-first. It is a *global* measurement at each step, not a greedy fit
+comparison: there is no commitment based on a noisy regression that compounds down the chain, and the
+problem shrinks by one variable each time rather than regressing on an ever-growing predictor set as CAM
+does — which I would expect to make the small-sample behavior steadier, though that is an empirical claim
+I cannot settle from the algebra alone.
 
 Everything now hinges on estimating, from finite samples, the diagonal of the Hessian of `log p` — the
 quantities `∂_{x_j} log p` (the score) and `∂_{x_j}^2 log p` (its diagonal Jacobian) at each data point. I
@@ -90,11 +108,16 @@ and the second-order Stein estimate of the diagonal Hessian of `log p` is
 
   `H = -G^2 + (K + η_H I)^{-1} ∇^2 K`,
 
-with `η_H = 10^{-3}`. The `-G^2` term is not optional decoration: the second-order Stein solve estimates
-`∂_{jj} p(x) / p(x)`, and
-`∂_{jj} p(x) / p(x) = ∂_{jj} log p(x) + (∂_j log p(x))^2`; subtracting the squared score estimate
-therefore converts it to the genuine diagonal Hessian of `log p`. Both `G` and `H` are `O(n^3)` matrix solves,
-entirely practical for the hundreds-to-few-thousand sample sizes and tens-of-nodes graphs in play.
+with `η_H = 10^{-3}`. The `-G^2` term is the part I am least sure of by inspection, so let me derive it
+rather than trust it. The second-order Stein solve, by construction, estimates `∂_{jj} p / p` (the ratio
+of the second derivative of the *density* to the density — that is what the kernel identity returns), but
+what I want is `∂_{jj} log p`. Relate the two. With `s_j = ∂_j log p = (∂_j p)/p`,
+`∂_j s_j = ∂_j[(∂_j p)/p] = (∂_{jj} p)/p - ((∂_j p)/p)^2 = (∂_{jj} p)/p - s_j^2`. Rearranging,
+`(∂_{jj} p)/p = ∂_{jj} log p + (∂_j log p)^2`. So to recover `∂_{jj} log p` I must subtract the squared
+score `(∂_j log p)^2` from the second-order Stein estimate — which is exactly the `-G^2` term, with `G`
+the estimated score. Good: the correction is forced, not cosmetic, and I now know its sign. Both `G` and
+`H` are `O(n^3)` matrix solves, entirely practical for the hundreds-to-few-thousand sample sizes and
+tens-of-nodes graphs in play.
 
 Two finite-sample refinements before I take the variance. First, the columns of `H` live on different
 scales (each `-1/σ_j^2` plus child-driven variation), so comparing raw variances across variables is
@@ -108,10 +131,12 @@ explicitly do not want to reinvent, because the order was the hard part and the 
 mature. For each node in order position `pos`, fit a flexible nonlinear regression of it on its
 predecessors and keep a parent only if it genuinely contributes. The canonical realization is CAM-style
 pruning: fit a generalized additive model of each node on its current parents and drop any parent whose
-covariate significance test exceeds a small p-value (e.g. `0.001`); this gives the screening property
-that true edges survive with high probability. The order from the score-matching stage feeds straight in,
-and because a correct order's super-DAG already yields consistent intervention distributions, the pruning
-is pure refinement — it lowers SHD and improves readability without being needed for correctness.
+covariate significance test exceeds a small p-value (e.g. `0.001`); the appeal is the screening property,
+that a true edge's covariate is significant and so should survive the cut while spurious predecessors are
+dropped. The order from the score-matching stage feeds straight in, and since a correct order already
+makes the super-DAG (every node regressed on all its predecessors) a valid causal model, pruning only
+removes the redundant edges — it lowers SHD and improves readability, but a mistake in pruning costs edges,
+not the order, so the order stage is where correctness is won or lost.
 
 So let me assemble the whole thing into the code I would actually run — the score/diagonal-Hessian
 estimator via Stein, the iterative leaf-removal order recovery, and the CAM-style pruning along the
@@ -182,6 +207,23 @@ def run_causal_discovery(X):
     order = compute_topological_order(X)
     return cam_prune(X, order)
 ```
+
+Before I trust any of this I want to run the estimator on a case where I know the answer, because the leaf
+criterion rests on two things that could fail in finite samples: the population claim (leaf column flat)
+and the *estimate* actually reflecting it. The cleanest test is the same two-node chain I differentiated
+by hand. Generate `n = 800` points from `X_1 = N_1` (`σ_1 = 1`), `X_2 = sin(2 X_1) + 0.5 X_1 + N_2`
+(`σ_2 = 0.5`) — index 1 is the true leaf — and run `stein_hessian_diagonal`, then look at the mean and
+variance of each column. The leaf's diagonal-Hessian column should sit near the constant `-1/σ_2^2 = -4.0`
+with little spread; the root's should be larger in magnitude (it carries the extra child term) and clearly
+more dispersed. What comes back: the leaf column has estimated mean `≈ -4.54` (vs. the population `-4.0` —
+in the right place, biased a bit by the ridge and bandwidth) and raw variance `≈ 11.6`, while the root
+column has mean `≈ -9.1` and raw variance `≈ 89`. After the mean-normalization the algorithm uses, the
+normalized variances are `≈ 1.07` for the root and `≈ 0.57` for the leaf, so `argmin` picks index 1 — the
+true leaf. So the criterion is not just a population statement: at `n = 800` the leaf's column really is
+the flattest one, by a comfortable factor of roughly two even after normalization, and the procedure
+identifies it. (I also notice the leaf column is not perfectly flat — variance `11.6`, not `0` — which is
+the expected finite-sample blur; it is the *relative* flatness that the `argmin` exploits, which is why
+ranking columns is safer than thresholding any one of them against zero.)
 
 Let me trace the causal chain so nothing is hand-waved. I wanted the topological order — the irreducibly
 causal part of nonlinear ANM discovery — without the greedy, regression-based, error-compounding search

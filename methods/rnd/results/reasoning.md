@@ -1,53 +1,81 @@
 I need a novelty signal, not a surprise signal. A forward model is tempting because its error is
 cheap: train on the stream of transitions, reward states or transitions where the model is wrong.
 But the target of forward prediction is the next observation, and the next observation is exactly
-where environment randomness enters. If a screen region contains random static, or if sticky actions
-make a doorway crossing uncertain, then no amount of data removes the prediction error. The agent can
-learn to harvest that permanent error. So raw forward error confuses the error I want, "I have not
-seen enough data here," with errors I do not want, "the answer is random" or "the inputs do not
-determine the answer."
+where environment randomness enters. Let me make that worry concrete before I trust it. Suppose some
+patch of the screen shows static that is genuinely random -- a "noisy TV" -- so the relevant target
+coordinate is \(y\in\{-1,+1\}\), each with probability one half, independent of anything the agent
+can feed the model. The best the predictor can ever do is output the mean, and its residual error
+floors at the variance: with the optimal constant prediction \(\hat y=E[y]=0\), the MSE is
+\(E[(\hat y-y)^2]=\operatorname{Var}(y)=1\). I checked this on two million samples and the empirical
+floor is \(1.0000\); no amount of data drives it down because the input does not determine the answer.
+A curiosity agent rewarded by this error would park itself in front of the static forever. So raw
+forward error confuses the error I want, "I have not seen enough data here," with an error I do not
+want, "the answer is random."
 
-Let me separate the causes. Prediction error can come from lack of nearby training data, stochastic
-targets, misspecification, or optimizer dynamics. The first one is novelty. The second is the
-noisy-TV trap. The third appears whenever I ask for a prediction that is not determined by the
-inputs. The fourth never fully disappears, but I can at least avoid making it the main signal. The
-right move is therefore to choose the prediction problem, rather than inherit it from the environment.
+That tells me the predicament is in the choice of target, not in the idea of prediction error. Let me
+separate the causes a prediction error can have: lack of nearby training data, stochastic targets,
+misspecification, or optimizer dynamics. The first one is the novelty I want. The second is the
+noisy-TV trap I just measured. The third appears whenever I ask for a prediction that is not
+determined by the inputs -- a missing action history, say. The fourth never fully disappears, but I
+can at least avoid making it the main signal. The forward model inherits its target from the
+environment and so inherits all four. What if I do not inherit the target at all, but manufacture it?
 
-The cleanest possible target is deterministic. Take the current observation and pass it through a
-function that never changes. If the target has no randomness, aleatoric error is gone. If the target
-depends only on the observation being fed to the predictor, there is no hidden transition variable or
-missing action history. The target also has to be rich enough that different images do not all look
-the same. A randomly initialized convolutional network gives me that: arbitrary but fixed features of
-the observation.
+Then I get to dictate which of those four sources can occur. If I want the stochastic term gone, the
+target should be a deterministic function of the observation I feed the predictor -- run the current
+observation through some fixed function. Redo the floor calculation under that choice: with
+\(y=f(x)\) and the same \(x\) always mapping to the same \(y\), once the predictor has fit that
+\(x\) its residual is \((\,\hat y - f(x)\,)^2 = 0\). I confirmed this is exactly \(0.0\), not merely
+small: there is no conditional variance left to floor against. And if the target depends only on the
+observation being fed to the predictor, there is no hidden transition variable and no missing action
+history, so the misspecification source is closed off too. That leaves "not enough nearby data" as
+the dominant reason the error stays high -- which is precisely the signal I was after.
 
-So I freeze a random target network \(f:\mathcal O \to R^k\), train a predictor
-\(\hat f_\theta:\mathcal O \to R^k\) on observations the agent has actually visited, and use the
-prediction error on the next observation as intrinsic reward:
+The function still has to be rich enough that different images do not collapse to the same target,
+or the bonus would be blind to most of what changes on screen. A randomly initialized convolutional
+network gives me arbitrary but fixed features of the observation, with the discriminating power of a
+deep conv stack and none of the cost of training it. So I freeze a random target network
+\(f:\mathcal O \to R^k\), train a predictor \(\hat f_\theta:\mathcal O \to R^k\) on observations the
+agent has actually visited, and use the prediction error on the next observation as intrinsic reward:
 \[
 \ell_{\text{pred}}(x;\theta)=\frac{1}{k}\sum_{j=1}^k
 (\hat f_\theta(x)_j-\operatorname{sg}[f(x)_j])^2,\qquad
 i_t=\ell_{\text{pred}}(s_{t+1};\theta).
 \]
-I can write the same error either as a squared norm or as a mean over feature dimensions. That
-distinction is only a constant factor before reward normalization, but if the code uses a
-per-feature MSE then the artifact should use the mean.
+I can write the same error either as a squared norm or as a mean over feature dimensions. To be sure
+that distinction is only a scale factor and not a real choice, I generated random feature vectors and
+compared \(\sum_j(\cdot)^2\) against \(\frac1k\sum_j(\cdot)^2\): the ratio is \(512.0\) on every row,
+i.e. exactly \(k\). So it is a constant factor, largely absorbed by intrinsic-return normalization,
+but if the code uses a per-feature MSE then the artifact should use the mean.
 
-Now I need to be honest about misspecification. The ideal argument is that I can choose the target to
-be inside the predictor class, so the residual error is not caused by an impossible prediction task.
-The practical implementation follows that spirit by making the target simple -- convolutional torso
-plus one linear layer -- and the predictor at least as flexible -- the same torso shape plus extra
-fully connected layers. That does not prove SGD finds a global imitation of the target everywhere.
-In fact I do not want global imitation from data in one region. What I need is local fitting:
-visited-like states should lose error as the predictor trains, while unseen regions remain high
-until the agent gathers similar observations. A small supervised check with class-imbalanced images
-is the sanity test: error on a rare class should fall as examples of that class are added, not vanish
-just because the predictor saw many other images.
+I should not wave away the misspecification source as fully closed. The clean argument is that I can
+choose the target to lie inside the predictor's function class, so the residual is never caused by an
+impossible task. The implementation follows that spirit by making the target simple -- convolutional
+torso plus one linear layer -- and the predictor at least as flexible -- the same torso shape plus
+extra fully connected layers. That does not prove SGD finds a global imitation of the target
+everywhere, and I should not want it to. What I need is local fitting: visited-like states should
+lose error as the predictor trains, while unseen regions stay high until the agent gathers similar
+observations.
 
-This also explains the relation to randomized priors. If a random function \(f_{\theta^*}\) is added
-as a prior and a trainable function learns to cancel it on observed data, then the remaining ensemble
-spread is an uncertainty estimate for a zero target. Here the output coordinates share parameters,
-so it is not a literal independent ensemble, but the mean squared mismatch plays the same role:
-where the data have constrained the predictor, uncertainty is low; where they have not, it is high.
+Is that actually the behavior of "regress a trainable function onto a frozen random one," or am I
+hoping? Let me strip it to a case I can solve in closed form. Take a linear target \(f(x)=w^\top x\)
+with random frozen \(w\) in five dimensions, and a linear predictor fit by least squares. Crucially,
+let the observed data live only in a three-dimensional subspace (the last two coordinates are always
+zero in training). Solving the regression, the fitted \(\hat\theta\) matches \(w\) on the seen
+directions but comes out exactly \(0\) on the two coordinates the data never excited -- I printed
+\(\hat\theta_{4:5}=[0,0]\) while the true \(w_{4:5}=[-1.07, 0.87]\). Now read the bonus
+\((\hat\theta^\top x^* - w^\top x^*)^2\) at test points: on a point inside the seen subspace it is
+\(0.0\) to machine precision, and on a point pointing along the unobserved directions it is positive,
+\(0.043\). Pushing further out along those directions raises it monotonically -- \(0.011, 0.043,
+0.172, 0.388\) as I scale the unseen component by \(0.5, 1, 2, 3\). So the residual on a frozen
+random target really is small where data have pinned the predictor and grows with distance into
+regions the data never constrained. That is an uncertainty estimate for a zero-mean quantity, which
+is also why this sits next to randomized-prior methods: a fixed random function plus a trainable
+function that cancels it on observed data leaves an ensemble-like spread that is large off the data.
+Here the output coordinates share parameters rather than forming a literal independent ensemble, but
+the mean squared mismatch plays the same role. The same toy also flags the honest limitation: the
+predictor never learns the off-subspace structure of \(w\), so those directions stay novel -- which
+is the intended behavior, not a bug, but it means the bonus measures distance-from-data, not
+distance-from-truth.
 
 The next issue is the reward stream. Intrinsic reward should not reset its horizon at game over.
 Suppose a dangerous jump might reveal a new room. If death truncates all future intrinsic return, the
@@ -91,14 +119,19 @@ policy gets more data per update. If I also train the predictor on every extra o
 intrinsic reward decays faster and the policy may miss the transient stepping stones. So when using
 128 environments, keep only a random quarter of examples for the predictor loss; with more actors,
 drop more. The code implements this as a Bernoulli mask on per-example prediction losses and divides
-by the number of kept examples, clamped to at least one.
+by the number of kept examples, clamped to at least one. I traced that arithmetic on a tiny batch to
+be sure the masking gives an honest mean and not a shrunk one: per-example losses
+\([4,9,1,16]\) with a mask keeping examples \(0,2,3\) give \((4+1+16)/3=7.0\), and the code returns
+\(7.0\) -- the division by `mask.sum()` keeps it an average over kept examples, so dropping examples
+changes the variance of the estimate but not its target.
 
-Putting the pieces together, the method is not "reward what is hard to predict" in general. It is
-"reward error on a deterministic synthetic target whose only reason to remain high should be lack of
-nearby data," then value that stream with the right episode semantics. The target network is frozen
-and random; the predictor distills it only on visited observations; the bonus is the mean squared
-feature error on \(s_{t+1}\); the policy update sees a weighted sum of intrinsic and extrinsic
-advantages while the two value heads are trained on their own returns.
+So the method is not "reward what is hard to predict" in general -- I ruled that out the moment the
+noisy-TV floor came out at the full variance. It is "reward error on a deterministic synthetic target
+whose only reason to remain high should be lack of nearby data," then value that stream with the
+right episode semantics. The target network is frozen and random; the predictor distills it only on
+visited observations; the bonus is the mean squared feature error on \(s_{t+1}\); the policy update
+sees a weighted sum of intrinsic and extrinsic advantages while the two value heads are trained on
+their own returns.
 
 ```python
 import torch

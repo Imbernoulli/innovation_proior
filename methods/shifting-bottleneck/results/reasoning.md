@@ -17,14 +17,15 @@ The job-precedence constraints are rigid — the route is given. The pain is ent
 line: for every two operations sharing a machine, one has to go before the other, and *which* is my
 decision. Those "or" constraints, the disjunctions, are the whole combinatorial problem.
 
-The cleanest way I know to hold this is the disjunctive graph. Nodes are operations (plus a dummy
-source `0` and sink `n`). Draw a directed *conjunctive* arc `i -> j`, weight `d_i`, whenever `j`
-follows `i` in a job — those are fixed. For every pair on the same machine, draw an undirected
-*disjunctive* edge. The disjunctive edges fall into cliques, one clique `E_k` per machine, because on
-machine `k` every pair of its operations conflicts. To *schedule a machine* is to *orient* its
-clique: pick a direction for each edge so the operations get a linear order. Call an orientation of
-one machine's clique a selection `S_k`; it's valid (acyclic) exactly when it's a genuine sequence. A
-complete selection `S = ∪_k S_k` orients every machine.
+I need a representation that holds both the rigid arcs and the free ones in one object. The
+disjunctive graph does this. Nodes are operations (plus a dummy source `0` and sink `n`). Draw a
+directed *conjunctive* arc `i -> j`, weight `d_i`, whenever `j` follows `i` in a job — those are
+fixed. For every pair on the same machine, draw an undirected *disjunctive* edge. The disjunctive
+edges fall into cliques, one clique `E_k` per machine, because on machine `k` every pair of its
+operations conflicts. To *schedule a machine* is to *orient* its clique: pick a direction for each
+edge so the operations get a linear order. Call an orientation of one machine's clique a selection
+`S_k`; it's valid (acyclic) exactly when it's a genuine sequence. A complete selection `S = ∪_k S_k`
+orients every machine.
 
 Once I've oriented everything, the graph `D_S = (N, A ∪ S)` is an ordinary DAG, and the earliest
 operation `i` can start is just the longest path from the source to `i` — because every incoming arc is
@@ -36,6 +37,19 @@ the orientation.
 So the honest statement of my problem is: choose an acyclic complete selection `S` minimizing the
 length of the longest path in `D_S`. And that's NP-hard — orienting all the cliques jointly is the
 hard combinatorial object, no way around it at the full scale.
+
+I want a small instance in hand to check my reasoning against as I go, something I can solve by brute
+force later to see whether the ideas actually do what I'll claim. Take 3 jobs on 3 machines, routes
+and durations:
+
+    Job 0:  M0(3) -> M1(2) -> M2(2)
+    Job 1:  M0(2) -> M2(1) -> M1(4)
+    Job 2:  M1(4) -> M0(3) -> M2(3)
+
+Nine operations. I'll number them `op = 3*job + position`, so op0..op2 are job 0's, etc. With only
+the job arcs in the graph and no machine oriented yet, the longest path from source to sink is just
+the longest single job route: job 2 runs `4+3+3 = 10`. So the bare job-precedence makespan is
+`H_0 = 10`. That's the loosest the graph ever is.
 
 Fine. Greedy dispatching is the standard fast answer — SPT, MWKR, FCFS and friends. At each tick,
 look at the operations that are eligible right now, pick one by some priority, commit it, never look
@@ -70,8 +84,19 @@ write `L(a,b)` for the longest path length from `a` to `b` in the current graph.
 and the current makespan is `L(0,n)`. Two longest-path passes — one forward from the source giving
 all the heads, one backward from the sink giving all the tails — hand me a head and a tail for every
 operation. So the single-machine subproblem for machine `k` is completely determined by the current
-state of the graph. Nice: the heads and tails are *exactly* how the rest of the shop bears on machine
-`k`, condensed into two numbers per operation.
+state of the graph. The heads and tails are, I think, *exactly* how the rest of the shop bears on
+machine `k`, condensed into two numbers per operation — but let me actually compute them on the small
+instance with no machine yet oriented, so I'm not just asserting it. Running the two longest-path
+passes over the six job arcs:
+
+    op0 M0 d3: r=0  q=4        op3 M0 d2: r=0  q=5        op6 M1 d4: r=0  q=6
+    op1 M1 d2: r=3  q=2        op4 M2 d1: r=2  q=4        op7 M0 d3: r=4  q=3
+    op2 M2 d2: r=5  q=0        op5 M1 d4: r=3  q=0        op8 M2 d3: r=7  q=0
+
+I can spot-check one by hand: op7 (job 2's second operation) has `r=4` — it can't start until M1's
+op6 finishes at time 4 — and `q=3`, the duration of op8 still downstream. Both match the route. So
+the labels are right, and each operation now carries a release date and a leftover tail without my
+having said anything about machine sequencing yet.
 
 Wait — there's a subtlety about the machines that *aren't* sequenced yet, the ones in `M\M_0` other
 than `k`. Their cliques aren't oriented. So when I compute longest paths, what do I do with their
@@ -92,38 +117,74 @@ the machines into critical and non-critical and stops there; it doesn't tell me 
 machine is *more* of a bottleneck. I need a degree, not a flag.
 
 What I'd really love to rank by is each machine's *marginal effect on the makespan* — how much does
-committing this machine's order push the finish time up? But I can't cheaply compute that. So I need a
-computable proxy. And I already built the right object: the single-machine subproblem. When I solve
-machine `k` in isolation with its heads and tails, the optimal value tells me the smallest path length
-I can force through that machine. On the subproblem, "finish time of job through `k`" is
+committing this machine's order push the finish time up? But I can't cheaply compute that exactly. So
+I need a computable proxy. And I already built the right object: the single-machine subproblem. When I
+solve machine `k` in isolation with its heads and tails, the optimal value tells me the smallest path
+length I can force through that machine. On the subproblem, "finish time of job through `k`" is
 `start + d + q`, head accounted for in `start >= r`. Minimizing the maximum of
 `start_i + d_i + q_i` gives a tail-augmented one-machine makespan; call it `B(k, M_0)`. If the current
 graph bound is `H = L(0,n)` and I set a due date `f_i = H - q_i`, then
 
     start_i + d_i - f_i = start_i + d_i + q_i - H
 
-is the lateness of operation `i`. So minimizing the tail-augmented makespan `B(k, M_0)` is the same as
-minimizing the maximum lateness `ell(k, M_0) = B(k, M_0) - H`. Once I insert the machine, paths that do
-not use it still have length at most `H`, and paths through it have length at most `B(k, M_0)`, so the
-new partial makespan is `max(H, B(k, M_0))`; the actual increase is `max(0, ell(k, M_0))`. At a fixed
-iteration `H` is the same for every candidate machine, so ranking by `B` and ranking by `ell` are the
-same. A machine with a large optimal lateness is one whose best possible order still presses hardest
-against the current bound:
+should be the lateness of operation `i`, which would make minimizing the tail-augmented makespan
+`B(k, M_0)` the same as minimizing the maximum lateness `ell(k, M_0) = B(k, M_0) - H`. Before I lean
+on that equivalence let me check it concretely. Take machine 0 in the small instance, ops {0,3,7},
+with the heads and tails I just computed and `H = H_0 = 10`. Try the order op0, op3, op7: op0 runs
+[0,3], op3 runs [3,5], op7 runs [5,8] — wait, op7 has `r=4`, which is already satisfied, but I should
+respect it, and `max(5,4)=5`, so op7 runs [5,8], completion 8. Tail-augmented completions:
+
+    op0: C=3, q=4 -> C+q = 7
+    op3: C=5, q=5 -> C+q = 10
+    op7: C=8, q=3 -> C+q = 11
+
+so `B = 11` for this order. Now the lateness form, `f_i = H - q_i = 10 - q_i`:
+
+    op0: f=6,  C-f = 3-6  = -3,   and C+q-H = 7-10  = -3   ✓
+    op3: f=5,  C-f = 5-5  =  0,   and C+q-H = 10-10 =  0   ✓
+    op7: f=7,  C-f = 8-7  =  1,   and C+q-H = 11-10 =  1   ✓
+
+The two expressions agree op-by-op, and `L_max = max(-3,0,1) = 1 = B - H = 11 - 10`. Good — the
+identity is exact, so I can solve the cleaner `1|r|L_max` and read `ell = L_max` off it. And is this
+order optimal for machine 0? It's the only one that keeps op0 (the long-tail M0 op of job 0) early;
+checking the other five permutations by the same arithmetic, none beats `B = 11`, so `B(0,∅) = 11`,
+`ell(0,∅) = 1`.
+
+Now, what happens to the makespan when I actually drop this order into the graph? My instinct is that
+paths not using machine 0 stay at length `≤ H = 10`, paths through it reach length `≤ B = 11`, so the
+new bound is `max(H, B) = 11`. Rather than trust that, I orient op0->op3->op7 in the graph and recompute
+the longest path: it comes out to `11`. So inserting the bottleneck raised the makespan from 10 to 11,
+exactly `max(0, ell) = 1` of increase, as predicted. The proxy is measuring a real thing.
+
+A machine with a large optimal lateness is one whose best possible order still presses hardest against
+the current bound:
 
     ell(k, M_0) = optimal L_max of machine k's subproblem
     bottleneck m = argmax over unsequenced k of ell(k, M_0)
 
-Now "which machine is the bottleneck" is no longer a yes/no property; it is a number I can compute and
-maximize. And it's intuitive in scheduling terms: deal with the hardest, most-constraining machine
-*first*, while the graph is still loose and I have the most freedom to accommodate it — then let the
-easier machines fit around it. Priority to the bottleneck.
+So "which machine is the bottleneck" is no longer a yes/no property; it is a number I can compute and
+maximize. Let me see what it picks on the example. Solving all three machines' subproblems against the
+job-arc-only labels:
 
-Let me also sanity-check that this is a sensible *first* yardstick. With `M_0` empty, `B(k, ∅)` is the
-best tail-augmented makespan of machine `k` against just the job-precedence arcs. Every full schedule
-has to respect every one of those one-machine relaxations, so `max_k B(k, ∅)` is a lower bound on the
-whole problem's makespan. Equivalently, if the initial job-precedence longest path is `H_0`, then
-`H_0 + max_k ell(k, ∅)` is that same lower bound. Good — the scoring criterion isn't arbitrary; it's
-grounded in a relaxation.
+    machine 0  {0,3,7}:  B = 11,  ell = 1   (order 0,3,7)
+    machine 1  {1,5,6}:  B = 10,  ell = 0   (order 6,1,5)
+    machine 2  {2,4,8}:  B = 10,  ell = 0   (order 4,2,8)
+
+Machine 0 is the unique bottleneck, `ell = 1`; machines 1 and 2 can be sequenced without pushing past
+the current `H = 10` at all. That matches the scheduling intuition: deal with the hardest,
+most-constraining machine *first*, while the graph is still loose and I have the most freedom to
+accommodate it — then let the easier machines fit around it. Priority to the bottleneck.
+
+There's a sanity check on the *scoring* hiding in those numbers too. With `M_0` empty, `B(k, ∅)` is
+the best tail-augmented makespan of machine `k` against just the job-precedence arcs, and every full
+schedule has to respect each of those one-machine relaxations — so `max_k B(k, ∅)` ought to be a lower
+bound on the whole problem's optimal makespan. Here that is `max(11,10,10) = 11`. I can test whether
+that's really a valid bound by brute-forcing this tiny instance: enumerate all `6·6·6 = 216` machine
+orderings, discard the ones that create a cycle, take the longest path of each, and keep the minimum.
+That comes out to an optimal makespan of `11`. So the bound `max_k B(k,∅) = 11` is not only valid but
+tight on this instance — and equivalently `H_0 + max_k ell(k,∅) = 10 + 1 = 11`. The scoring criterion
+isn't arbitrary; it's a genuine relaxation bound, and on this instance the bottleneck-first first move
+already lands on the optimum.
 
 Now I need to actually solve the single-machine subproblem to optimality, because the *ranking* of
 machines depends on getting `ell(k, M_0)` right. The subproblem is `1|r_i,q_i|C_max`, equivalently
@@ -208,11 +269,21 @@ Let me also make sure the inner loop is fast, because the longest-path computati
 candidate machine on every iteration and again on every re-optimization — it's the hot spot. The graph
 `D_T` I run longest paths on is dense: each sequenced machine contributes a *complete* subgraph on its
 operations (every pair is comparable once the order is fixed — that's the transitive closure of the
-order). So naively `α = O(n^2)` arcs and an `O(α)` labeling. But — an acyclic complete digraph *is* the
-transitive closure of its unique Hamiltonian path. All the extra arcs are redundant for longest paths;
-only the `n-1` consecutive arcs of the order actually matter. If I keep only those, every node has at
-most one or two relevant predecessors (its job-predecessor and its machine-predecessor), and the
-labeling becomes `O(n)`. In practice I don't even build that reduced graph explicitly: I keep a "job
+order). So naively `α = O(n^2)` arcs and an `O(α)` labeling. But an acyclic complete digraph is the
+transitive closure of its unique Hamiltonian path, and I suspect the extra arcs are redundant for
+longest paths — only the `n-1` consecutive arcs of the order should matter. Let me check that rather
+than assume it. Three operations in fixed order a,b,c with durations 3,2,5. Full closure has arcs
+a->b, a->c, b->c; the Hamiltonian path keeps only a->b, b->c. Completion labels (longest path from
+source, plus own duration):
+
+    full closure:  a=3, b=5, c=10
+    Hamiltonian:   a=3, b=5, c=10
+
+Identical — the direct a->c arc never wins, because the path a->b->c is at least as long (it includes
+b's duration on top). That's general: in a complete order any "skip" arc i->j is dominated by the
+chain through the intervening operations, so dropping it changes no longest path. If I keep only the
+consecutive arcs, every node has at most one or two relevant predecessors (its job-predecessor and its
+machine-predecessor), and the labeling becomes `O(n)`. In practice I don't even build that reduced graph explicitly: I keep a "job
 list" (the operations in route order, per job) and a "machine list" (the operations in sequence order,
 per sequenced machine). Every operation lives on exactly one job list and at most one machine list, and
 its relevant neighbors are just its successors/predecessors on those two lists. Longest paths over that

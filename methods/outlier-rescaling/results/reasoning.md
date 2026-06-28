@@ -2,35 +2,49 @@ OK, let me start from the thing I keep seeing and cannot explain. I take trained
 
 The engineering problem is immediate. These values dominate quantization scales. W8A8 already has to waste range on them, and W4A4 is even more brittle. But the obvious fixes are suspicious. Clipping large activations can make the model unstable or poor; replacing the normalizer that seems to create the outlier can also hurt. So I do not want to start by declaring the outliers bad. I want to know what computation becomes unavailable when I remove them.
 
-The attention sink gives me the first clean clue. The sink token gets a huge attention weight, yet its value vector has unusually small norm. If attention weight meant "fetch this token's content," that would be strange. Let the real-token logits be `z_i`, their values be `v_i`, the sink logit be `z_s`, and the sink value be `v_s`. Write `S = Σ_i exp(z_i)` and `w_s = exp(z_s)/(exp(z_s)+S)`. Then every real-token weight is
+The attention sink gives me a place to start. The sink token gets a huge attention weight, yet its value vector has unusually small norm. If attention weight meant "fetch this token's content," that pairing would be strange — why pay almost all your probability mass for a token that carries almost nothing? So let me write out what the output actually is and see what the sink is buying. Let the real-token logits be `z_i`, their values be `v_i`, the sink logit be `z_s`, and the sink value be `v_s`. Write `S = Σ_i exp(z_i)` and `w_s = exp(z_s)/(exp(z_s)+S)`. Every real-token weight shares the same denominator, so
 
-`w_i = exp(z_i)/(exp(z_s)+S) = (1-w_s) exp(z_i)/S`.
+`w_i = exp(z_i)/(exp(z_s)+S) = (1-w_s) exp(z_i)/S`,
 
-So the attention output is
+where the last step just multiplies and divides by `S`. The output is then
 
 `Σ_i w_i v_i + w_s v_s = (1-w_s)Σ_i softmax(z)_i v_i + w_s v_s`.
 
-If `v_s` is small, the sink mostly contributes denominator mass. The useful content is the same real-token mixture, scaled down by about `1-w_s`. The sink is not there to add information; it is a scale knob created through softmax's denominator.
+I want to be sure I have not dropped a term, so let me put numbers to it. Take five real tokens with random logits, a sink logit `z_s = 6`, and random value vectors, then compare the direct weighted sum `w·v + w_s v_s` against the right-hand side `(1-w_s)·softmax(z)·v + w_s v_s`. The two agree to machine precision (max coordinate difference `~3e-17`), so the rewrite is an identity, not an approximation. With `z_s = 6` here, `w_s ≈ 0.986`, so `1-w_s ≈ 0.0137`.
 
-Now I can ask whether the fixed residual stripe is the same trick through RMSNorm. RMSNorm divides every coordinate by `sqrt(mean(x^2)+eps)` and then applies a learned weight `λ`. One huge coordinate raises the shared denominator and shrinks all coordinates after the division. If that coordinate is not supposed to contribute directly, the matching fingerprint should be a tiny post-normalization weight on that same dimension. That is exactly what shows up: most RMSNorm weights are near one, while the residual-sink dimension can have a weight around a few thousandths. The network makes the coordinate large before the denominator, then suppresses it immediately after the denominator. That is the residual analogue of a sink token with a small value vector.
+The identity by itself does not say the sink is "just a scale knob" — that depends on `v_s`. So let me push on the value vector. I shrink `v_s` toward zero and watch the two pieces of the output. When `v_s` is comparable to the real values, the sink's content term `w_s v_s` dominates everything (it is heavily weighted). But that is not the regime I measured: the sink's value norm is small. When I scale `v_s` down to zero, the output becomes exactly `(1-w_s)·(real-token mixture)` — the same direction the head would attend to without any sink, attenuated by a constant `1-w_s`. So in the small-`v_s` regime the sink is not adding a direction to the output; it is multiplying the real-token mixture by a scalar the head controls through `z_s`. The sink is a scale knob created through softmax's denominator. One thing the numbers make honest: at `w_s ≈ 0.99` that scalar is severe attenuation, so when a head wants this, it wants to nearly mute its own output — which is a real function, not a pathology.
 
-Let me check the magnitude claim without hiding a factor of `D`. I will ignore `eps` for the algebra; with `eps` included, the denominator is only larger, so the bound I get remains an upper bound. Take `h ∈ R^D`, one outlier dimension `d`, and a post-norm weight vector `λ`. Let `r = |h_d|/||h||_2`, and assume the observed suppression is true in the form `|λ_d| ≤ ε||λ||_∞` with `ε < 1`. Define `u = h/||h||_2`, so `|u_d| = r` and `Σ_{i≠d}u_i^2 = 1-r^2`. Since `||h||_rms = ||h||_2/√D`, the L2 norm after RMSNorm is `√D ||λ⊙u||_2`, and the RMS norm after RMSNorm is exactly `||λ⊙u||_2`. Now
+Now I can ask whether the fixed residual stripe is doing the analogous thing through RMSNorm. RMSNorm divides every coordinate by `sqrt(mean(x^2)+eps)` and then applies a learned weight `λ`. One huge coordinate raises the shared denominator and shrinks all coordinates after the division. If the residual stripe were playing the sink's role, then the coordinate it lives in should not contribute directly — and the fingerprint of that would be a tiny post-normalization weight on that same dimension, the residual analogue of the sink's small value vector. So I go look at the measured `λ` on that dimension. Most RMSNorm weights are near one, while the residual-sink dimension can carry a weight around a few thousandths. The fingerprint is there. So the candidate hypothesis is: the network makes the coordinate large before the denominator, then suppresses its direct output immediately after the denominator. But "raises the denominator and shrinks the rest" is a verbal story; I do not yet know whether a large outlier actually shrinks the surviving features or whether the small `λ_d` is doing something I have not accounted for. I need the magnitude relation in closed form.
 
-`||λ⊙u||_2^2 = λ_d^2r^2 + Σ_{i≠d} λ_i^2u_i^2`.
+Let me work it out without hiding a factor of `D`. I will ignore `eps` for the algebra; with `eps` included the denominator is only larger, so whatever upper bound I get only loosens. Take `h ∈ R^D`, one outlier dimension `d`, and a post-norm weight vector `λ`. Let `r = |h_d|/||h||_2`, and write the suppression as `|λ_d| ≤ ε||λ||_∞` with `ε < 1`. Define `u = h/||h||_2`, so `|u_d| = r` and `Σ_{i≠d}u_i^2 = 1-r^2`. The RMS denominator is `||h||_rms = ||h||_2/√D`, so dividing `h` by it gives `√D·u`; multiplying by `λ` and taking the RMS norm of the result (`||·||_2/√D`) cancels the `√D`, leaving `||RMSNorm(h)||_rms = ||λ⊙u||_2` exactly. Now
+
+`||λ⊙u||_2^2 = λ_d^2 r^2 + Σ_{i≠d} λ_i^2 u_i^2`.
 
 The non-outlier part is at most
 
-`Σ_{i≠d} λ_i^2u_i^2 ≤ ||λ_{-d}||_∞^2 Σ_{i≠d}u_i^2 = ||λ_{-d}||_∞^2(1-r^2)`,
+`Σ_{i≠d} λ_i^2 u_i^2 ≤ ||λ_{-d}||_∞^2 Σ_{i≠d} u_i^2 = ||λ_{-d}||_∞^2 (1-r^2)`,
 
-so the tight intermediate bound is
+so
 
-`||RMSNorm(h)||_rms ≤ sqrt(||λ_{-d}||_∞^2(1-r^2) + λ_d^2r^2)`.
+`||RMSNorm(h)||_rms ≤ sqrt(||λ_{-d}||_∞^2 (1-r^2) + λ_d^2 r^2)`.
 
-Relaxing `||λ_{-d}||_∞ ≤ ||λ||_∞` and `λ_d^2 ≤ ε^2||λ||_∞^2` gives
+Relaxing `||λ_{-d}||_∞ ≤ ||λ||_∞` and `λ_d^2 ≤ ε^2||λ||_∞^2`,
 
-`||RMSNorm(h)||_rms ≤ ||λ||_∞ sqrt((1-r^2)+ε^2r^2) = ||λ||_∞ sqrt(1-(1-ε^2)r^2)`.
+`||RMSNorm(h)||_rms ≤ ||λ||_∞ sqrt((1-r^2)+ε^2 r^2) = ||λ||_∞ sqrt(1-(1-ε^2)r^2)`.
 
-Because `ε<1`, that upper bound decreases as `r` grows. A larger residual outlier can shrink the post-normalization feature magnitude, while its own dimension is muted by the small `λ_d`. The attention sink and the residual sink now have the same algebraic role: a large pre-normalization component controls the scale of non-outlier components through a shared denominator.
+Algebraically, `ε<1` makes `1-(1-ε^2)r^2` shrink as `r` grows, so the bound should fall with the outlier fraction. But I have been wrong about monotonicity in finite-`D` derivations before — the bound and the actual norm can diverge — so I check it directly. I build `h` in `D=64` with `λ` drawn near one except `λ_d = 0.003` (giving `ε ≈ 0.0023`), sweep `r` from `0.1` to `0.99` by placing fraction `r` of the unit norm on dimension `d` and the rest at random, and compute both the true `||λ⊙u||_2` and the bound:
+
+```text
+ r       actual ||out||_rms     bound ||λ||∞·sqrt(1-(1-ε²)r²)
+ 0.10     1.0557                  1.2906
+ 0.30     1.0003                  1.2373
+ 0.50     0.8658                  1.1233
+ 0.70     0.6768                  0.9263
+ 0.90     0.4574                  0.5654
+ 0.99     0.1472                  0.1830
+```
+
+The bound holds at every `r`, and both the actual norm and the bound fall as `r` grows; sampling the bound on a fine grid of `r` confirms it is monotonically decreasing. So a larger residual outlier really does shrink the post-normalization feature magnitude, while its own dimension is muted by the small `λ_d`. The attention sink and the residual sink now sit in the same algebraic role: a large pre-normalization component sets the scale of the surviving components through a shared denominator, and a tiny accompanying weight keeps the outlier itself from leaking into the output.
 
 This picture makes several diagnostics fall into place. If I remove softmax from token mixing with sigmoid or linear attention, attention-side massive activations shrink because the token-mixing denominator no longer needs a sink. But a residual sink can remain, because RMSNorm is still present. If I replace RMSNorm with Dynamic Tanh, `tanh(alpha*x)*weight+bias`, the operation is pointwise. Each coordinate only sees itself. That removes the cross-dimensional denominator, and the residual outlier mostly vanishes, but the model has also lost the ability for one coordinate to rescale the rest. The instability at ordinary learning rates and the need for a much smaller learning rate are exactly what I would expect if the outlier was carrying a useful scaling function.
 
@@ -50,7 +64,7 @@ A low-rank self-gate fits those constraints: down-project `y` from `d` to a smal
 
 `g = sigmoid(W_up(silu(W_down(y))))`, `y' = g ⊙ y`.
 
-The low rank keeps the cost linear in hidden size with a small constant. The element-wise output gives each coordinate its own scale. The sigmoid matters because the path is meant to be a bounded down-scaling path. Tanh can flip signs, SiLU and identity can amplify without bound, and an unbounded gate risks recreating the very large activations I am trying to avoid. With a sigmoid gate, the model can shrink a component directly instead of inventing a residual sink to shrink it indirectly through the RMS denominator.
+The low rank keeps the cost linear in hidden size with a small constant. The element-wise output gives each coordinate its own scale. The choice of squashing function is the part I least want to take on faith, because the whole point is to *avoid* manufacturing large values, and a gate that can exceed one would reintroduce them. So I check the candidate output function `g = sigmoid(·)` against the alternatives. With sigmoid, `g ∈ (0,1)`, so `|y'| = |g⊙y| ≤ |y|` coordinate-wise — running the module on random inputs with random small projection weights, the gate lands in roughly `(0.45, 0.54)` and `|g⊙y| ≤ |y|` holds on every coordinate. That is the property I want: the path can only attenuate, never amplify. Tanh would let `g` go negative and flip signs; SiLU and identity are unbounded above, so the gate could grow a coordinate and recreate exactly the large activations I am trying to eliminate. Only the bounded, nonnegative sigmoid gives a pure down-scaling path. With it, the model can shrink a component directly instead of inventing a residual sink to shrink it indirectly through the RMS denominator.
 
 If the explicit gate supplies the residual rescaling function, then choices that were useful mainly because they helped manufacture outliers should become less important. Dynamic Tanh with a residual gate should recover part of the missing cross-coordinate scale path. Sigmoid GLU should no longer be starved of rescaling capacity just because it makes smaller FFN activations. Low-bit quantization should also be easier because the residual stream no longer needs a few coordinates to carry enormous scale signals.
 

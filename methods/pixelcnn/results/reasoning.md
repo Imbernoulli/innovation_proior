@@ -34,13 +34,49 @@ My first instinct is a convolutional net, because images are translation-structu
 
 How? The connectivity I'm allowed is precisely: all pixels in rows strictly above `i`, plus the pixels in `i`'s own row strictly to its left. Everything else — `i` itself, the rest of its row, all rows below — is forbidden. A convolution's connectivity *is* its kernel: weight `(a, b)` connects the output at `(r, c)` to the input at `(r + a − k//2, c + b − k//2)`. So I can forbid a connection simply by *zeroing that weight*. Mask the kernel. In a centered `k×k` kernel, every weight in the rows below the center must be zero, the center row must be zero from the center column through the right edge, and the rows above plus the left part of the center row can stay on.
 
-That's a masked convolution, and stacking masked convs gives me a net where, by construction, the output at `i` is a function only of `x_{<i}`. Beautiful — it's the MADE masking idea, but adapted to a spatial conv kernel instead of a fully-connected matrix, so I keep weight sharing and the 2-D structure.
+That's a masked convolution, and stacking masked convs should give me a net where, by construction, the output at `i` is a function only of `x_{<i}`. It's the same trick MADE plays on a fully-connected matrix, but adapted to a spatial conv kernel, so I keep weight sharing and the 2-D structure.
 
 Now there's a subtlety about the center pixel that I have to get exactly right, and it splits into two cases. In the *first* layer, the input is the raw image, so the center weight reads the actual value `x_i` — I absolutely must zero the center weight there. Call that **mask A**: it excludes the center. But in *later* layers, the "center" position carries a *feature* computed by the previous layer, and by induction that feature already depended only on `x_{<i}` (never on `x_i`). So reading it is fine — in fact I *want* to, because it lets information about position `i`'s legitimate context flow straight up the stack. Call that **mask B**: it includes the center. If I used mask A everywhere, every layer would shave one pixel off the reachable context and I'd be needlessly crippling the receptive field. So: mask A on the first layer only, mask B on all the rest.
 
-Let me sanity-check the scalar version of this mask, because it's easy to get an off-by-one wrong. For a `kH×kW` kernel I fill the mask with ones, then set the center row from the center column onward to zero — but for type B I want to *keep* the center, so I start the zeroing one column later. In index terms: zero `mask[..., kH//2, kW//2 + (type=='B') : ]`, and zero `mask[..., kH//2 + 1 :, :]` for all rows below. For type A the `kW//2` column (the center) is zeroed; for type B the zeroing starts at `kW//2 + 1`, so the center survives. Rows above (`< kH//2`) are untouched, fully visible. That matches exactly the allowed region. Good.
+Let me sanity-check the scalar version of this mask, because it's easy to get an off-by-one wrong. For a `kH×kW` kernel I fill the mask with ones, then set the center row from the center column onward to zero — but for type B I want to *keep* the center, so I start the zeroing one column later. In index terms: zero `mask[..., kH//2, kW//2 + (type=='B') : ]`, and zero `mask[..., kH//2 + 1 :, :]` for all rows below. Let me actually print what that produces for a `5×5` kernel rather than trust my indexing. Type A gives
 
-But there are three channels, and the within-pixel R→G→B order has to be enforced *inside* the channel dimension too, not just spatially. Split the feature maps of each layer into three groups, one per color. The off-center spatial weights follow the rule above for all groups. The interesting part is the *center* weight, which is now a little `3×3` block of group-to-group connections. For mask A (no self-connection, since at the input the center is the raw value): R connects to nothing of itself, G connects to R, B connects to R and G — group `g` reads only groups *before* it. For mask B (self allowed, since now it's a feature): R reads R, G reads R and G, B reads R, G, B — group `g` reads groups up to and including itself. That's precisely the `p(R) p(G|R) p(B|R,G)` chain expressed as a connectivity pattern. (For a single-channel image like binarized MNIST this collapses to the scalar mask, no channel grouping needed.)
+```
+1 1 1 1 1
+1 1 1 1 1
+1 1 0 0 0
+0 0 0 0 0
+0 0 0 0 0
+```
+
+and type B gives
+
+```
+1 1 1 1 1
+1 1 1 1 1
+1 1 1 0 0
+0 0 0 0 0
+0 0 0 0 0
+```
+
+So for type A the center column (`kW//2 = 2`) is zeroed; for type B the zeroing starts at column 3 and the center survives. The two rows above (`< kH//2`) are all ones — fully visible — and the two rows below are all zeros. That is exactly "rows strictly above, plus the current row strictly to the left, plus (for B) the center." The off-by-one I was worried about is the single `+ (type=='B')` in the column index, and the printout confirms it lands the boundary on the right column. Good.
+
+But there are three channels, and the within-pixel R→G→B order has to be enforced *inside* the channel dimension too, not just spatially. Split the feature maps of each layer into three groups, one per color. The off-center spatial weights follow the rule above for all groups. The interesting part is the *center* weight, which is now a little `3×3` block of group-to-group connections. Let me write down the rule as "out-group `g` may read in-group `g'` iff `g' < g` (mask A) or `g' ≤ g` (mask B)" and tabulate the block (rows = out-group R,G,B; cols = in-group R,G,B). Mask A:
+
+```
+R: 0 0 0      (R reads nothing of itself)
+G: 1 0 0      (G reads R)
+B: 1 1 0      (B reads R, G)
+```
+
+Mask B:
+
+```
+R: 1 0 0      (R reads R)
+G: 1 1 0      (G reads R, G)
+B: 1 1 1      (B reads R, G, B)
+```
+
+Reading those off: under A, the chain is R←nothing, G←R, B←{R,G}; under B every group additionally reads itself. That is exactly the `p(R) p(G|R) p(B|R,G)` factorization turned into a connectivity pattern — and the strict-lower-triangle (A) versus lower-triangle-including-diagonal (B) is the same A/B distinction as the spatial center, just on the channel block. (For a single-channel image like binarized MNIST this collapses to the scalar mask, no channel grouping needed.)
 
 So I have a fully-convolutional, parallel-trainable, exact-likelihood image model: stack masked convs, end with a per-position 256-way softmax per channel, train with cross-entropy. Let me call this the convolutional version. It's fast. But there's a limitation staring at me: a stack of convolutions has a *bounded* receptive field. Each masked conv reaches `k` pixels; `L` of them reach roughly `L·k`. For a big image, the conditional `p(x_i | x_{<i})` can only actually depend on a finite window of earlier pixels, not the entire history. Objects and scenes have long-range structure — the left edge of a face constrains the right edge — and a bounded window can't represent that. I want, in principle, an *unbounded* dependency range.
 
@@ -64,15 +100,39 @@ Skew the image. Offset each row to the right by its row index: row 0 unchanged, 
 
 One diagonal scan covers the context that flows from one top corner through one diagonal family — but not everything; I also need the contributions coming from the other top corner. So run a *second* scan in the mirror direction on the flipped map. Now I have two output maps. If I just add them I'll break causality, because the mirrored scan, at pixel `i`, can have incorporated pixels that are on `i`'s own row to its *right* or even below-right — future pixels. To keep it honest, before adding, shift the right map *down by one row*. After the shift, every pixel the right scan contributes to position `i` is strictly *previous* in raster order. Add the shifted right map to the left map. Call the pair a **Diagonal BiLSTM**.
 
-What's its receptive field now? Each direction's diagonal recurrence transitively reaches everything along its diagonals back to the corner, and the two directions between them sweep the *entire* region up-and-left of `i`. No triangular gap, no bounded window — the full valid context, for any image size. And the two-position kernel is the *minimal* nonlinear step; making it bigger would not broaden a field that is already global, so a larger kernel mostly adds parameters. This is where I would expect the most expressive likelihood model to come from: global context first, triangular context second, bounded convolution last.
+Let me check the skew geometry actually does what I claimed before trusting it. Take a `5×5` grid and a down-left diagonal `(0,4),(1,3),(2,2),(3,1),(4,0)`. After offsetting row `r` right by `r`, position `(r,c)` sits at column `c + r`: the five points map to columns `4,4,4,4,4` — they collapse to a single column. So a column-wise convolution over the skewed map really does propagate along that diagonal for all diagonals at once. Good, the change of coordinates is sound.
+
+And the down-by-one shift for the mirrored scan: the right scan, run on the flipped map, can at pixel `i` have absorbed pixels on `i`'s own row to its right (future). Shifting that map down one row before adding sends whatever it computed at row `r` to row `r+1`, so anything it "saw" while sitting at `i` is now attributed to a position strictly later in raster order than `i` — i.e. `i` itself only ever receives contributions from rows above it. That restores causality without throwing away the mirrored direction's reach.
+
+What's its receptive field now? Each direction's diagonal recurrence transitively reaches everything along its diagonals back to the corner, and the two directions between them sweep the region up-and-left of `i`. No triangular gap, no bounded window — the full valid context, for any image size. And the two-position kernel is the *minimal* nonlinear step; making it bigger would not broaden a field that is already global, so a larger kernel mostly adds parameters. I'd expect the ordering on expressiveness to track receptive field — global context (Diagonal BiLSTM), then triangular (Row LSTM), then bounded (plain conv) — though that's a hypothesis about what helps likelihood, not something I can settle without running all three on the same data.
 
 Now depth. I want many of these recurrent layers stacked — say up to twelve — to build expressive conditionals. Deep stacks are hard to train; signal and gradient attenuate. The fix that's been working elsewhere is residual connections: add a layer's input to its output so the layer only has to learn a *residual*, giving the signal a direct path. Let me wire it for the recurrent block. The block's input map carries `2h` features; the input-to-state step reduces to `h` features per gate, the recurrence runs, then a `1×1` convolution upsamples the output back to `2h`, and I add the input map to it. I can also add layer-to-output skip connections that route each layer straight to the final prediction. The point is not to change the probability model; it is to make enough depth trainable that the conditional predictor can use the context it is allowed to see.
 
-Let me step back to the fast convolutional version, the masked-conv stack, because I waved at its bounded receptive field but I glossed over something more insidious, and it bothers me now that I look hard at the mask. I claimed stacking masked convs gives the output at `i` access to "all of `x_{<i}` within the window." Let me actually verify that the reachable set is the full upper-left region (within the window), by composing the masks. One masked conv's allowed region is the rows strictly above plus the left part of the current row — a flat-topped shape that leans left. Stack two: the second conv at position `i` reads positions in *its* allowed region, each of which reads *its* allowed region in the layer below. Compose these and the reachable footprint grows upward and leftward... but trace the upper-*right*. A pixel that sits a couple of rows above `i` and a few columns to its *right* is legitimately in `x_{<i}` (it's on an earlier row). Is it reachable? To carry its information down to `i`, some chain of allowed connections has to route from it to `i`. But every masked conv leans left — within a row it only ever connects leftward, and across rows it fans within the same left-leaning cone. There's no path that goes up-and-to-the-right and then comes back down to `i`. So that whole wedge of pixels up and to the right of `i` is *never reached*, no matter how deep I stack.
+Let me step back to the fast convolutional version, the masked-conv stack, because I waved at its bounded receptive field but I glossed over something more insidious, and it bothers me now that I look hard at the mask. I claimed stacking masked convs gives the output at `i` access to "all of `x_{<i}` within the window." Let me actually verify that, rather than assert it, by computing the reachable set directly: build a mask-A first layer and several mask-B layers with all-ones weights, put them on an `11×11` grid, and ask — for one fixed output position — which input pixels its value actually depends on. (I can read that off by backprop: the input pixels with nonzero gradient are exactly the ones in the receptive field.)
 
-That's a blind spot. And it's a nasty kind of failure: those pixels are ones the model is *allowed* to use — they're real context, strictly previous in the ordering — but the architecture *cannot* see them. It's not a correctness bug (causality holds, I never peek ahead), it's a *capacity* bug: a triangular region of legitimate context is silently amputated. It arises precisely because a single masked kernel is left-biased and the only way convolution carries information rightward-and-upward is through paths that the same-row mask blocks. The Row LSTM has its own version of this (its triangular field is the same phenomenon); only the Diagonal BiLSTM, with its two skewed scans, has no blind spot at all.
+Take the output at `(5,7)` through a 7-deep stack. The set of input pixels it depends on comes out as
 
-So if I want to keep the speed of a pure conv net but kill the blind spot, I shouldn't try to patch one cleverly-shaped mask — the geometry fights me. The clean fix is to split the finite convolutional receptive field into two stacks that are each individually easy to reason about, and combine them. A **vertical stack** reads rows above the current one, with no same-row complication, so the upper-right pixels inside its finite range are no longer amputated. A **horizontal stack** reads the current row strictly to the left. Each stack is causal on its own, and the vertical stack can feed the horizontal stack through a `1×1` link, but never the reverse. That one-way coupling keeps causality while letting the horizontal stack use above-row information from both left and right. The model is still a finite-depth convolutional model, but within that finite range the blind wedge is gone.
+```
+X X X X X X X X X X X
+X X X X X X X X X X X
+X X X X X X X X X X X
+X X X X X X X X X X .
+X X X X X X X X X . .
+X X X X X X X O . . .
+. . . . . . . . . . .   (and all rows below empty)
+```
+
+with `O` the position itself. So causality holds — nothing on `(5,7)`'s own row to its right, nothing below, is reached. But now compare against the set of pixels that are *legitimately earlier* in raster order (every pixel on rows `0..4`, plus `(5,0)..(5,6)`). Differencing the two, the earlier-but-unreached pixels are exactly
+
+```
+(3,10), (4,9), (4,10)
+```
+
+— a little wedge up and to the *right* of `(5,7)`. Those three pixels are real context, strictly previous in the ordering, and the network *cannot* see them no matter that I stacked seven layers. Tracing why: every masked conv leans left, so the reachable footprint of `(5,7)` fans up-and-left in a cone, and there is no chain of allowed connections that routes up-and-to-the-right and then back down to `i` — the same-row mask blocks the return leg. Deeper stacking widens the cone but the cone's right edge is fixed by the geometry, so the wedge never closes.
+
+That's a blind spot, and it's a nasty kind of failure: those pixels are ones the model is *allowed* to use, but the architecture amputates them. It's not a correctness bug — the backprop check confirmed causality, I never peek ahead — it's a *capacity* bug. The Row LSTM has its own version of this (its triangular field is the same phenomenon: the recurrence only fans a fixed width per row); the Diagonal BiLSTM, with its two skewed scans reaching back to both corners, is the one variant I'd expect to have no such gap.
+
+So if I want to keep the speed of a pure conv net but kill the blind spot, I shouldn't try to patch one cleverly-shaped mask — the geometry fights me, because the wedge came precisely from the *same-row* part of the mask forcing every cross-row path to lean left. The clean fix is to separate the two responsibilities. A **vertical stack** reads only rows strictly above the current one; with no same-row constraint at all it can use an *unmasked* horizontal conv within each above-row, so the upper-right pixels inside its finite range are reachable — the wedge was an artifact of mixing "rows above" and "left of me" in one kernel, and the vertical stack simply doesn't do the second thing. A **horizontal stack** reads the current row strictly to the left. Each stack is causal on its own, and the vertical stack feeds the horizontal stack through a `1×1` link, but never the reverse — so the horizontal stack inherits the full (wedge-free) above-row context while still only ever reading left within its own row. I'd confirm the wedge is closed the same way I found it — run the backprop-footprint check on the two-stack model and verify that for `(5,7)` the earlier-but-unreached set, which was `{(3,10),(4,9),(4,10)}`, is now empty within the stack's finite range — but the mechanism is clear: there is no longer any kernel that both spans rows and is forced to lean left.
 
 I have to be careful implementing the vertical-to-horizontal link so it really excludes the current row. I can use a `1×k` convolution to mix horizontally in the vertical stream, then a `(k//2 + 1)×1` convolution with extra top padding and crop the output back to height `H`; the cropped tensor passed through the `1×1` link is shifted so that the horizontal stack receives only rows above. The vertical stream itself may also carry a pointwise transform of the current row forward, but that pointwise part must be added *after* the link is computed, so it can only help lower rows later. The horizontal stack gets its strictly-left field with a `1×(k//2+1)` convolution padded on the left and cropped back to width `W`. And the residual connection: I can put one on later horizontal layers to ease optimization, but I must not put a residual on the very first causal input layer, because that would add the raw `x_i` straight back in.
 
