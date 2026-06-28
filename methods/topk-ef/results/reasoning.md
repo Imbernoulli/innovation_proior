@@ -32,7 +32,7 @@ So the linchpin is: keep `e_t` bounded. For that I need to say something quantit
 
   `E_ω ‖x − rand_k(x)‖² = Σ_{i=1}^d x_i² · Pr[i not kept] = Σ_i x_i² · (1 − k/d) = (1 − k/d)‖x‖²,`
 
-because each coordinate is kept with probability `k/d`. So `‖x − top_k(x)‖² ≤ (1 − k/d)‖x‖²`, which is exactly the `δ`-compressor property with `δ = k/d`. Good: top-k is a `(k/d)`-approximate compressor, and keeping a fraction `k/d` of coordinates buys me `δ = k/d`. (For the special case `k = 1`, `δ = 1/d` — the most aggressive sparsifier, one coordinate per step.)
+because each coordinate is kept with probability `k/d`. So `‖x − top_k(x)‖² ≤ (1 − k/d)‖x‖²`, which is the `δ`-compressor property with `δ = k/d`. Top-k is a `(k/d)`-approximate compressor, and keeping a fraction `k/d` of coordinates buys me `δ = k/d`. (For the special case `k = 1`, `δ = 1/d` — the most aggressive sparsifier, one coordinate per step.) Let me sanity-check the rand-k expectation on a tiny case before I lean on it: `x = (3, 0, 0, 0)`, `d = 4`, `k = 1`. Top-1 keeps the `3`, drops nothing of value, `‖x − top_1(x)‖² = 0 ≤ (1 − 1/4)·9`. Rand-1 keeps the nonzero coordinate with probability `1/4` (residual `0`) and drops it with probability `3/4` (residual `9`), so `E = (3/4)·9 = 6.75 = (1 − 1/4)·9`. The formula lands, and top-1 beats it because it never drops the only coordinate that matters — which is the whole point of choosing by magnitude.
 
 Now bound the residual. From the update, `e_{t+1} = p_t − C(p_t)`, so `‖e_{t+1}‖² = ‖C(p_t) − p_t‖² ≤ (1 − δ)‖p_t‖² = (1 − δ)‖e_t + γ g_t‖²`. There's the recurrence — the residual energy is a contraction of itself plus the freshly injected gradient. I expand `‖e_t + γ g_t‖²` but I can't just expand it as equality because the cross term couples `e_t` and `g_t`; I'll use Young's inequality, `‖a + b‖² ≤ (1 + η)‖a‖² + (1 + 1/η)‖b‖²` for any `η > 0`, which lets me split them at the cost of two constants I get to choose:
 
@@ -42,7 +42,7 @@ This is a linear recursion `a_{t+1} ≤ r·a_t + c` with `r = (1 − δ)(1 + η)
 
   `r = (1 − δ)·(2 − δ)/(2(1 − δ)) = (2 − δ)/2 = 1 − δ/2,`  hence  `1 − r = δ/2.`
 
-And `1 + 1/η = 1 + 2(1 − δ)/δ = (2 − δ)/δ ≤ 2/δ`. So
+And `1 + 1/η = 1 + 2(1 − δ)/δ = (2 − δ)/δ`. I should check `(2 − δ)/δ ≤ 2/δ`: that's `2 − δ ≤ 2`, true for `δ > 0`, with slack exactly `1` per the `−δ/δ` term — so the `2/δ` I'm about to use is a real upper bound and not wishful. So
 
   `c = (1 − δ)(1 + 1/η) γ² σ² ≤ (1 − δ)(2/δ) γ² σ²,`  and  `E‖e_t‖² ≤ c/(1 − r) ≤ (1 − δ)(2/δ)γ²σ² / (δ/2) = 4(1 − δ)γ²σ²/δ².`
 
@@ -51,6 +51,15 @@ So the residual is bounded for all `t`:
   `E‖e_t‖² ≤ 4(1 − δ)γ²σ² / δ².`
 
 It's `O(γ²)`, it's finite, and at `δ = 1` (lossless) it's zero, exactly as it should be. The memory never blows up; it holds at most an `O(γ²σ²(1−δ)/δ²)` amount of suppressed mass. The `1/δ²` warns me that very aggressive compression (`δ → 0`) lets the residual grow large — but it's still bounded for any fixed `δ`, and crucially it's controlled by `γ²`, which I'll shrink.
+
+Before I cash this into a convergence rate, I want to actually watch the mechanism on a concrete sequence, because the bound only tells me the residual *stays small* — it doesn't tell me the starved coordinates ever get *delivered*, which is the whole reason I added the memory. The cleanest test is an adversarial one: a *constant* gradient where one coordinate dominates every step, so a memoryless top-k would lock onto it and never look at the others. Take `d = 4`, `k = 1`, and `g_t = (0.3, 0.2, 0.1, 1.0)` at every step (set `γ = 1` so I can read the mass off directly). Coordinate 3 has magnitude 1.0 and will win every naive top-1. Coordinates 0–2 are persistently smaller — exactly the starvation setup. Now run the error-feedback loop and track what is actually sent each step and what sits in `e_t`:
+
+  `t=0`: `p = (0.3,0.2,0.1,1.0)`, send coord 3 (val 1.0), `e = (0.3,0.2,0.1,0)`.
+  `t=1`: `p = e + g = (0.6,0.4,0.2,1.0)`, send coord 3 again, `e = (0.6,0.4,0.2,0)`.
+  `t=2`: `p = (0.9,0.6,0.3,1.0)`, send coord 3 again, `e = (0.9,0.6,0.3,0)`.
+  `t=3`: `p = (1.2,0.8,0.4,1.0)` — now coord 0's accumulated `1.2` *beats* coord 3's `1.0`. Send coord 0 (val 1.2), `e = (0,0.8,0.4,1.0)`.
+
+So coordinate 0 was silent for three steps and then fired once, delivering `1.2` — which is exactly the `0.3` it should have contributed per step, summed over the four steps `t=0…3`. It wasn't dropped; it was *batched* and paid in one lump the moment it crossed threshold. Letting the loop run to `t=7`, coord 0 fires again at `t=7`, coord 1 fires at `t=5`; the cumulative *delivered* mass is `(2.4, 1.2, 0, 7)` after 8 steps. Compare the memoryless top-1 on the same sequence: it sends coord 3 all 8 times and delivers `(0, 0, 0, 8)` — coordinates 0–2 are frozen at zero forever, the `ε(1,1)`-starvation failure made concrete. The error-feedback version instead conserves mass exactly: at every step the *delivered cumulative plus the leftover residual* equals `Σ γ g_i = 8·g = (2.4, 1.6, 0.8, 8.0)`, which I can read straight off the `t=7` line (`(2.4,1.2,0,7)` delivered `+ (0,0.4,0.8,1.0)` residual `= (2.4,1.6,0.8,8.0)`). Nothing leaks. The per-coordinate lag from the ideal never exceeds the residual, which the bound above caps — so the gap is `O(γ)` and shrinks as I decay `γ`. That is the behavior I needed to confirm and couldn't get from the magnitude bound alone: persistent small signal is delayed, not erased, and the books balance to the last digit.
 
 Now cash it in. Work on the virtual iterate, which does plain SGD, `x̃_{t+1} = x̃_t − γ g_t`. By `L`-smoothness,
 
@@ -84,7 +93,7 @@ Balance with `γ = 1/√(T+1)`:
 
   `min_t E‖∇f(x_t)‖² ≤ (2f₀ + Lσ²)/√(T+1) + 4L²σ²(1−δ)/(δ²(T+1)).`
 
-For any fixed `ρ`, the leading term is still `O(1/√(T+1))`, and the compression quality `δ` appears only in the higher-order `O(1/T)` term. If I want the leading constants to approach the plain-SGD constants as well, I can let `ρ` decrease slowly with `T`; for example, `ρ = (T+1)^{-1/4}` keeps the residual penalty higher order while making the first two constants tend to the SGD proof constants. That is the precise "compression for free" statement I can defend: no compression-dependent leading `O(1/√T)` term, with the `δ` penalty delayed into a smaller-order term. The starvation that killed naive top-k is gone — persistent suppressed signal is carried forward rather than discarded, and on a smooth function that delay is cheap.
+For any fixed `ρ`, the leading term is still `O(1/√(T+1))`, and the compression quality `δ` appears only in the higher-order `O(1/T)` term. Let me check that `δ` really is confined to the lower order and didn't sneak into the `1/√T` part: in the `ρ = 1` bound the `δ`-dependent piece is `4γ²L²σ²(1−δ)/δ²`, and with `γ = 1/√(T+1)` that's `4L²σ²(1−δ)/(δ²(T+1)) = O(1/T)`, while the two `δ`-free terms `(2f₀ + Lσ²)/√(T+1)` carry the `O(1/√T)` rate. So aggressive compression (small `δ`, hence large `1/δ²`) inflates the constant on the *fast-decaying* term only. If I want the leading constants to approach the plain-SGD constants too, I can let `ρ` decrease slowly with `T`; for example, `ρ = (T+1)^{-1/4}` keeps the residual penalty higher order while making the first two constants tend to the SGD proof constants. What I can defend, then, is that there is no compression-dependent leading `O(1/√T)` term — the `δ` penalty is delayed into a smaller-order term, the same way the suppressed gradient mass is delayed rather than discarded. The starvation that killed naive top-k is gone, and on a smooth function that delay is cheap.
 
 I want to double check this isn't a fluke of smoothness, because deep losses are non-convex but also locally rough. What if `f` is convex but *non-smooth*? Then I can't say `∇f(x_t) ≈ ∇f(x̃_t)`, so I expect `δ` to bite the leading term. Run the convex argument on `x̃` with a subgradient `∂f(x_t)` and optimum `x^⋆`:
 

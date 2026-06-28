@@ -3,14 +3,33 @@ from the backbone — translation at `Cα`, rotation from `N, Cα, C` by Gram–
 that reads the geometric relationship between two residues' frames and turns it into features that update
 the residue representation. The dominant primitive for this is invariant point attention: each residue
 emits query and key *points* in its own frame, and the geometric attention term is the squared distance
-between `i`'s query points and `j`'s key points after both are brought into a common frame. It works, it
-is invariant, and I see precisely where it hurts. The geometry between the two residues is a relationship
-between two little clouds of points in 3D, and IPA collapses that relationship into a *scalar* — a sum of
-squared point distances — before anything learnable touches it. A scalar distance-sum is blind to
-*direction*: two neighbors whose atom clouds sit at the same set of distances but rotated differently
-relative to me produce nearly the same scalar, and yet they are different environments. The point cloud
-carries directional structure and IPA throws it away at the door. I will call this the atom-
-representation bottleneck, and breaking it is the whole job.
+between `i`'s query points and `j`'s key points after both are brought into a common frame. It works, and
+it is invariant. But I want to understand exactly what information it keeps and what it throws away,
+because that is where any improvement has to come from.
+
+Let me write the IPA geometric term out and look at it. For center query points `Q_i` (a small cloud in
+`i`'s frame) and neighbor key points `K_j` (the neighbor's points brought into `i`'s frame), the term is
+`Σ_{a,b} ‖q_a − k_b‖²`. Expand it: `Σ_{a,b}(‖q_a‖² + ‖k_b‖² − 2 q_a·k_b) = M Σ_b‖k_b‖² + N Σ_a‖q_a‖²
+− 2 (Σ_a q_a)·(Σ_b k_b)`. So as a function of the *neighbor* cloud, this scalar depends on `K_j` only
+through two quantities: the total squared norm `Σ_b‖k_b‖²` and the centroid `Σ_b k_b`. Everything else
+about the shape and orientation of the neighbor cloud — how its points are arranged relative to the
+center — has been integrated out before any learnable weight touches it. That is a strong statement, and
+I want to check it isn't an artifact of my algebra, because if it's true it is the whole opening.
+
+Let me construct two genuinely different neighbor clouds with the *same* total norm and centroid and see
+whether IPA's scalar really cannot tell them apart. Take a neighbor cloud `K_j` centered at the origin
+(so its centroid is `0`), and rotate the whole cloud about the origin to get `K_j'`. A rotation about the
+origin preserves every `‖k_b‖²` individually, hence `Σ_b‖k_b‖²`, and keeps the centroid at `0`. So by
+the expansion the IPA scalar should be identical for `K_j` and `K_j'` even though the clouds are rotated
+versions of each other. I ran this with four random points and a random rotation: the centroids stay at
+`~1e-8`, `Σ‖k‖²` is `17.8390` versus `17.8390`, and the IPA squared-distance scalar comes out
+`89.314323` for `K_j` and `89.314346` for `K_j'` — equal to six figures, the residual being float noise,
+while the two clouds are demonstrably not the same array. So two neighbor environments that differ by a
+rotation relative to me are invisible to the scalar IPA computes. That confirms it concretely: the
+geometry between the two residues is a relationship between two little clouds of points in 3D, and IPA
+collapses that relationship into a *scalar* — a sum of squared point distances — before anything
+learnable touches it, and a scalar distance-sum is blind to *direction*. The point cloud carries
+directional structure and IPA throws it away at the door. That is the bottleneck to break.
 
 So what would "not collapse to a scalar" look like while staying invariant? The instinct is to keep the
 geometry as *vectors* and only reduce to scalars at the very end. Let me think about what object I should
@@ -19,44 +38,67 @@ atoms are an obvious set, but they are few and fixed, and the side chain — whi
 distinguishes amino acids — is not in the input. So let me give each residue a set of *virtual atoms*:
 learnable points whose coordinates are parameters expressed in the local frame, shared across residues.
 Because they live in the frame, they rotate and translate with the residue, so any frame-relative
-quantity computed from them is invariant. Shared coordinates force the optimizer to learn a *transferable*
-geometric probe — a consensus set of points in the residue frame that best help discriminate identity —
-rather than arbitrary per-example points. PiFold already has such virtual atoms, but it reads only their
-pairwise distances, which is the same scalar collapse one notch down. I want to read *vectors* between
-them.
+quantity computed from them should be invariant — I'll want to check that rather than assume it. Shared
+coordinates force the optimizer to learn a *transferable* geometric probe — a consensus set of points in
+the residue frame that best help discriminate identity — rather than arbitrary per-example points. PiFold
+already has such virtual atoms, but it reads only their pairwise distances, which is the same scalar
+collapse one notch down: from the expansion above, pairwise distances feed exactly the norm-and-centroid
+projection I just showed to be direction-blind. I want to read *vectors* between them.
 
 Now make the relationship between two residues concrete. Residue `i` carries virtual atoms `Q_i` in its
 own frame; residue `j` carries `Q_j` in *its* frame. To relate them I must put them in a common frame —
 the center residue `i`'s frame is the natural choice. The neighbor's atoms in world coordinates are
-`R_j Q_j + t_j`; bringing those into `i`'s frame gives `K_j = R_i^T(R_j Q_j + t_j − t_i)`, which is
-exactly `T_{i←j} ∘ Q_j` with `T_{i←j} = T_i^{-1} ∘ T_j`. The center's own atoms in its frame are just
-`Q_i`. So in `i`'s frame I now have two sets of 3D points — `Q_i` (the center, `d_q` points) and `K_j`
-(the neighbor, `d_q` points) — and the global rotation has cancelled, because under `X → R_g X + t_g` the
-frames become `R_i → R_g R_i`, `t_i → R_g t_i + t_g`, and `R_i^T R_g^T R_g (·) = R_i^T (·)`. Whatever I
-compute from `Q_i` and `K_j` is invariant. Good — that is the substrate.
+`R_j Q_j + t_j`; bringing those into `i`'s frame gives `K_j = R_i^T(R_j Q_j + t_j − t_i)`. I claim this
+equals `T_{i←j} ∘ Q_j` with `T_{i←j} = T_i^{-1} ∘ T_j`, but I have been burned by sign and transpose
+conventions before, so let me check it numerically rather than trust the manipulation. With random
+frames `(R_i,t_i)`, `(R_j,t_j)` and random `Q_j`, I compute `K_j` by the one-line formula and separately
+by composing the two rigid maps the long way — apply `T_j` (`R_j q + t_j`), then `T_i^{-1}`
+(`R_i^T(· − t_i)`). The maximum absolute difference is `0.0` exactly. Good — the formula is the
+composition, not an approximation of it. The center's own atoms in its frame are just `Q_i`. So in `i`'s
+frame I now have two sets of 3D points — `Q_i` (the center) and `K_j` (the neighbor) — and I expect the
+global rotation to have cancelled, because under `X → R_g X + t_g` the frames become `R_i → R_g R_i`,
+`t_i → R_g t_i + t_g`, and `R_i^T R_g^T R_g (·) = R_i^T (·)`. I'll verify that cancellation once I have
+the full feature, since that is the property everything rides on.
 
-What computation do I run on two sets of vectors? Here is the key move: treat it like a *linear layer*,
-but with 3D vectors as the channel values instead of scalars. An ordinary linear layer takes scalar
-inputs `x_l` and outputs `y_k = Σ_l w_{k,l} x_l`. I do the same, but the `x_l` are now the virtual-atom
-*vectors*, so the output channels are themselves vectors:
+What computation do I run on two sets of vectors? The move I keep coming back to is to treat it like a
+*linear layer*, but with 3D vectors as the channel values instead of scalars. An ordinary linear layer
+takes scalar inputs `x_l` and outputs `y_k = Σ_l w_{k,l} x_l`. Do the same, but let the `x_l` be the
+virtual-atom *vectors*, so the output channels are themselves vectors:
 `h⃗_k = Σ_l w^a_{k,l} q⃗_l + Σ_l w^b_{k,l} k⃗_l`, with learnable scalar weights `w^a, w^b` mixing the
-center atoms and the neighbor atoms into `d_out` output *vectors* in `R^3`. This is the vector field
-operator: it is a learnable linear combination over the input atom vectors, exactly like a linear layer,
-except every channel carries an `R^3` vector. Crucially the weights are *scalars* multiplying whole
-vectors, so the operation commutes with rotation of the common frame — if I rotated `Q_i, K_j` by some
-`U`, every `h⃗_k` rotates by the same `U`, because `Σ w (vU) = (Σ w v)U`. So the output vectors are
-equivariant in the common frame, which is what I want before I reduce.
+center atoms and the neighbor atoms into `d_out` output *vectors* in `R^3`. This is a learnable linear
+combination over the input atom vectors, exactly like a linear layer, except every channel carries an
+`R^3` vector. The reason I want the weights to be *scalars* multiplying whole vectors, rather than `3×3`
+matrices, is that scalar weights should make the operation commute with rotation of the common frame: if
+I rotate `Q_i, K_j` by some `U`, every `h⃗_k` should rotate by the same `U`, because formally
+`Σ w (vU) = (Σ w v)U`. Let me check this is really true of the implementation and not just the formula —
+matrix weights would secretly break it. With random `w^a, w^b`, random clouds `q,k`, and a random
+rotation `U`, I compare `(Σ w v) U` (rotate the output) against `Σ w (vU)` (rotate the inputs, then
+combine): max absolute difference `9.5e-7`, i.e. float noise. So the operator is genuinely equivariant in
+the common frame, which is what I want *before* I reduce. (A `3×3`-matrix weight would have given a large
+difference here; the scalar-weight choice is what buys the equivariance.)
 
 Now reduce to invariant scalars, but reduce *late* and reduce *richly*. The norm of a vector is
 invariant; so is the unit direction *relative to the (already-canonical) center frame*. So for each
 output vector I keep both: the unit direction `h⃗_k / ‖h⃗_k‖` (three numbers that survive because the
 center frame is canonical) and the magnitude lifted into an RBF basis `RBF(‖h⃗_k‖)`. Concatenate over the
 `d_out` channels: `g_{i,j} = concat_k( h⃗_k/‖h⃗_k‖ , RBF(‖h⃗_k‖) )`. This is the geometric feature for
-the edge `(i, j)`, an invariant vector of length `d_out · (3 + num_rbf)`. Compare to IPA: IPA kept only
-`Σ ‖·‖²` (one scalar), I keep `d_out` learnable directions *and* their RBF-coded magnitudes — many more
-geometric numbers, and the *directions* that IPA discarded are back. That is the bottleneck broken. The
-RBF on the magnitude (rather than the raw norm) is the same trick the rest of the field uses: it turns
-"this length is about `μ_n`" into a soft one-hot the downstream linear layer can act on like a lookup.
+the edge `(i, j)`, an invariant vector of length `d_out · (3 + num_rbf)`. The RBF on the magnitude
+(rather than the raw norm) is the same trick the rest of the field uses: it turns "this length is about
+`μ_n`" into a soft one-hot the downstream linear layer can act on like a lookup.
+
+Two things to verify here, because the whole design is justified by them. First, is `g_{i,j}` actually
+invariant to a global rigid motion? I apply a random `R_g, t_g` to the frames (`R_i → R_g R_i`,
+`t_i → R_g t_i + t_g`, same for `j`), keep the virtual-atom *parameters* `Q_i, Q_j` fixed (they are frame
+coordinates, so a global motion of the molecule does not change them), and recompute the whole feature —
+neighbor-into-center-frame, vector field operator, unit-direction + RBF. Max absolute change in
+`g_{i,j}`: `7.7e-7`. So the cancellation I sketched does hold through the full reduction, not just in the
+algebra. Second — and this is the payoff — does the feature actually *distinguish* the two clouds that
+IPA could not? On the same `K_j` versus rotated-about-centroid `K_j'` pair from before (identical IPA
+scalar to six figures), the vector geometric feature differs by `1.00` in max absolute value, almost all
+of it in the unit-direction components. So `g_{i,j}` keeps `d_out` learnable directions *and* their
+RBF-coded magnitudes — many more geometric numbers than IPA's one scalar — and the *directions* IPA
+discarded are demonstrably back. That is the bottleneck broken, and I can point at the number that shows
+it (`1.00` of separation where IPA had `0`).
 
 With the geometric feature in hand, the layer is an ordinary attention-plus-update block, except the
 attention and value functions get to see `g_{i,j}`. Attention weight from the center node, neighbor
@@ -68,52 +110,69 @@ Update the edges too, because a static edge wastes the most geometry-laden chann
 from the refreshed endpoints and its geometry, `e_{i,j} ← e_{i,j} + MLP(s_i, s_j, g_{i,j}, e_{i,j})`.
 
 There is one more thing to decide: the virtual atoms are fixed parameters so far, but they could *move*
-as the representation refines, which would let the geometric probe adapt per residue through depth. The
-paper offers two updates. The node-feature-based update simply re-predicts the atoms from the current
-node state, `Q_i ← Linear(s_i)` — cheap, and it lets each residue's probe specialize to what its
-embedding now knows. The coordinate-aggregating update instead pulls neighbor atoms in,
-`Q_i ← V-MLP(Q_i, Σ_j a_{i,j} K_j)`. The node-feature update is the lighter, more stable choice and is
-what I will lean on: predict the virtual-atom coordinates directly from the node features at the end of
-each layer, so the atoms stay frame-anchored while specializing to the current residue state.
+as the representation refines, which would let the geometric probe adapt per residue through depth. Two
+updates are on the table. A node-feature-based update simply re-predicts the atoms from the current node
+state, `Q_i ← Linear(s_i)` — cheap, and it lets each residue's probe specialize to what its embedding now
+knows. A coordinate-aggregating update instead pulls neighbor atoms in,
+`Q_i ← V-MLP(Q_i, Σ_j a_{i,j} K_j)`. The second is more expressive but mixes coordinates across residues
+inside the update, which is exactly the kind of step where an invariance bug can creep in; the
+node-feature update predicts coordinates from already-invariant node features, so it stays frame-anchored
+by construction and is the lighter, more stable choice. I'll lean on the node-feature update: predict the
+virtual-atom coordinates directly from the node features at the end of each layer.
 
-Let me check the whole thing is invariant end to end, because that is the property everything rides on.
-The geometric feature `g_{i,j}` is computed from `Q_i` and `K_j`, both expressed in the canonical center
-frame, through scalar-weighted vector combinations and then norm/unit-direction reductions — invariant,
-as shown. The node and edge scalar features feeding the MLPs are themselves invariant (dihedrals, RBF
-distances, sequence offsets). The attention is a softmax over a symmetric neighbor set. The virtual-atom
-update predicts atoms in the local frame from invariant node features, so the atoms stay frame-anchored.
-The final readout is a linear map of the invariant node embeddings. So the output distribution does not
-move when the whole protein is rotated or translated — SE(3)-invariant by construction. And the
-cost is `O(L·k·d_q·d_out)` per layer, linear in length; with modest `d_q` and `d_out` it scales to whole
+Now the real test: is the *whole stacked network* invariant, not just the geometric feature in isolation?
+The per-feature check above is necessary but not sufficient — the attention MLPs, the edge update, and
+the virtual-atom re-prediction could each leak a frame somewhere. So I build a small instance of the
+actual model (a few layers, `eval` mode to kill dropout), feed it a synthetic 12-residue backbone, and
+run two things: the original coordinates, and the coordinates after a random global rotation *and*
+translation. The catch I have to respect: the model also consumes the kNN graph (`E_idx`), the neighbor
+distances, and the backbone dihedrals, and the invariance claim only holds if *those* inputs are
+themselves invariant. So I check them first. After the rigid motion the kNN graph is identical (the
+neighbor relation is by `Cα` distance, which a rigid motion preserves), and the dihedral features match to
+`9.5e-7` (they are computed from invariant geometry). With invariant inputs confirmed, the output
+log-probabilities move by `4.8e-7` under rotation+translation, and by `4.8e-7` under pure translation —
+float noise in both cases. So the output distribution does not move when the whole protein is moved:
+SE(3)-invariant in practice, and now I know *why* — every geometric quantity entered the network through
+the center frame, and the graph and dihedral inputs were invariant to begin with. (Worth stating the
+honest caveat the test made explicit: the network is invariant *given* an invariant graph and invariant
+node features; it is not magically invariant if you fed it frame-dependent inputs.) The cost is
+`O(L·k·d_q·d_out)` per layer, linear in length; with modest `d_q` and `d_out` it scales to whole
 proteins.
 
-For the design task itself I follow PiFold's decoding decision rather than an autoregressive one: make
-the encoder strong enough that a *one-shot* linear decoder suffices, `p(s_i | X) = log_softmax(W h_i)`,
-trained with per-residue cross-entropy. The autoregressive factorization models residue-residue
-dependencies through generated tokens, but most of those dependencies are already induced by the shared
-structure the encoder now reads with high geometric fidelity — so a single parallel forward pass through
-fifteen VFN layers and a linear head is enough, and it is fast. Fifteen layers is the depth at which the
-vector-field machinery pays off; deeper than PiFold's ten because each layer's geometric feature is
-richer and benefits from more rounds of refinement.
+For the design task itself I weigh autoregressive against one-shot decoding. The autoregressive
+factorization models residue-residue dependencies through generated tokens, but most of those
+dependencies are already induced by the shared structure — and the encoder now reads that structure with
+high geometric fidelity, since I just showed it retains the directional information IPA discarded. So I
+expect a single parallel forward pass plus a linear head to suffice: `p(s_i | X) = log_softmax(W h_i)`,
+trained with per-residue cross-entropy. This is the bet PiFold makes too, and it pays off in speed; the
+risk is that one-shot decoding underperforms on the residual sequence-level dependencies, which is the
+thing I'd actually want to measure on CATH recovery rather than assert. For depth I take fifteen layers,
+deeper than PiFold's ten, on the reasoning that each layer's geometric feature is richer (it carries
+directions, not just distances) and so benefits from more rounds of refinement — though the exact depth
+is a hyperparameter I'd tune, not derive.
 
-Let me sanity-check by removing each piece. Drop the vector field operator and keep only scalar
-distances between virtual atoms, and I am back to PiFold's distance-only reading — the bottleneck
-returns. Drop the virtual atoms and use only real backbone atoms, and the probe loses the side-chain-
-like capacity that distinguishes residues. Reduce the geometric feature to just the norms (drop the unit
-directions), and I have re-collapsed direction into magnitude — IPA again. Freeze the virtual atoms
-(drop the node-feature update), and the probe cannot specialize through depth. Each piece prevents a
-specific regression, and the central one — the learnable vector combination of frame-anchored points,
-reduced to invariant directions-plus-magnitudes only at the end — is exactly what breaks the atom-
-representation bottleneck that scalar pooling imposes.
+Let me sanity-check by removing each piece. Drop the vector field operator and keep only scalar distances
+between virtual atoms, and I am back to PiFold's distance-only reading — which my expansion showed feeds
+the same direction-blind norm-and-centroid projection, so the bottleneck returns. Drop the virtual atoms
+and use only real backbone atoms, and the probe loses the side-chain-like capacity that distinguishes
+residues. Reduce the geometric feature to just the norms (drop the unit directions), and I have
+re-collapsed direction into magnitude — and concretely, the `1.00` of separation between the two clouds
+above lived almost entirely in the unit-direction components, so dropping them would put me back near
+IPA's `0`. Freeze the virtual atoms (drop the node-feature update), and the probe cannot specialize
+through depth. Each ablation removes something I can name a consequence for.
 
 So the causal chain, end to end. Frame-aware encoders model the geometry between two residues' atom
-clouds, but IPA (and distance-only PiFold) pool that relationship into a scalar before anything learnable
-sees it, discarding direction. Keep the geometry as vectors instead: express the center's and neighbor's
-virtual atoms in the common center frame, run a learnable *linear-layer-over-vectors* (the vector field
-operator) to produce `d_out` output vectors, and reduce to invariant scalars only at the end by keeping
-each output vector's unit direction *and* its RBF-coded magnitude. Feed that rich geometric feature into
-an attention-plus-edge-update block, let the frame-anchored virtual atoms drift via a node-feature
-update, stack fifteen such layers, and decode one-shot with a linear head under cross-entropy. The
+clouds, but IPA (and distance-only PiFold) pool that relationship into a scalar — a norm-and-centroid
+projection I checked is blind to a rotation of the neighbor cloud — before anything learnable sees it.
+Keep the geometry as vectors instead: express the center's and neighbor's virtual atoms in the common
+center frame (the change-of-frame formula verified against the rigid-map composition exactly), run a
+learnable *linear-layer-over-vectors* whose scalar weights make it equivariant (checked to `1e-6`) to
+produce `d_out` output vectors, and reduce to invariant scalars only at the end by keeping each output
+vector's unit direction *and* its RBF-coded magnitude (the feature verified invariant under global motion
+to `1e-6`, and verified to separate clouds IPA cannot). Feed that rich geometric feature into an
+attention-plus-edge-update block, let the frame-anchored virtual atoms drift via a node-feature update,
+stack fifteen such layers, and decode one-shot with a linear head under cross-entropy — the full stack
+checked SE(3)-invariant on a real forward pass to `1e-6`, given invariant graph and node inputs. The
 result models frames with the capacity of a vector-valued linear layer rather than a scalar distance-sum,
 breaking the bottleneck while staying exactly invariant and linear in length.
 

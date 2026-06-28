@@ -4,35 +4,79 @@ The first thing I need is not a new backup rule. I need a way for the features t
 
 The barrier example makes the demand concrete. A coarse code over a maze does exactly what I ask of a generic local approximator: it spreads an update to neighboring locations. Most of the time that is helpful. Across a barrier it is wrong. Two grid cells can be close in the coordinate system and far in the problem, because reaching the same future locations requires a long detour. The representation needs to bend with temporal reachability. I cannot get that from an a priori metric, and I do not want to learn a complete world model just to repair a feature space.
 
-So I ask what a state has to resemble. If state i tends to be followed by state j, then the value at i partly depends on the value at j. If i tends to be followed by a whole distribution of later states, then the feature vector for i should somehow contain that whole distribution. The feature should say: from here, these are the states I expect to occupy later, with near visits counting more than distant visits. That is the insight before the method. The right geometry is a geometry of predicted future occupancy.
+So I ask what a state has to resemble. If state i tends to be followed by state j, then the value at i partly depends on the value at j. If i tends to be followed by a whole distribution of later states, then the feature vector for i should somehow contain that whole distribution. The feature should say: from here, these are the states I expect to occupy later, with near visits counting more than distant visits. Let me try to make that literal and see whether it actually buys anything, because "describe a state by its predicted future" is the kind of slogan that can sound deep and compute to nothing.
 
-Now I write the most literal version of that idea. In the absorbing-chain notation, let Q be the transition matrix among nonterminal states. Starting from i, the amount of future occupancy of j is the current occupancy term plus the one-step chance of reaching j, plus the two-step chance, and so on:
+In the absorbing-chain notation, let Q be the transition matrix among nonterminal states. Starting from i, the amount of future occupancy of j is the current occupancy term plus the one-step chance of reaching j, plus the two-step chance, and so on:
 
 `I(i,j) + Q(i,j) + Q^2(i,j) + ...`.
 
-Because the chain is absorbing, this series converges to `[(I - Q)^-1](i,j)`. A row of `(I - Q)^-1` is therefore a state description: it describes a state by the discounted set of states that succeed it. I call this row the successor representation of the state.
+If the chain is absorbing, the powers of Q decay and this series should converge. The geometric-series identity for matrices says the sum is `(I - Q)^-1` when it converges. I want to see this actually happen on numbers before I lean on it, because matrix geometric series are exactly where I tend to fool myself. Take a small chain with discount folded in, states 0,1,2, where 2 is a sink that loops to itself:
 
-Then the algebra tells me why this is more than a clever feature. Sutton's ideal prediction for the same absorbing-chain value problem is already
+```
+gamma P =
+[ 0    0.72  0.18 ]
+[ 0    0.45  0.45 ]
+[ 0    0     0.9  ]
+```
+
+Summing `I + gamma P + (gamma P)^2 + ...` for a couple thousand terms gives
+
+```
+[ 1   1.309   7.691 ]
+[ 0   1.818   8.182 ]
+[ 0   0      10     ]
+```
+
+and inverting `(I - gamma P)` directly gives the same matrix to fourteen decimal places. The bottom-right entry is 10, which I can sanity-check by hand: the sink loops with discounted weight 0.9, so its own discounted occupancy is `1/(1-0.9) = 10`. The series is not a formal flourish; it is a finite, computable thing. So a row of `(I - Q)^-1` is a legitimate state description: it describes a state by the discounted set of states that succeed it.
+
+Now the algebra hints at something stronger than "nice feature." The ideal prediction for the absorbing-chain value problem is itself a power series in Q:
 
 `r = h + Qh + Q^2 h + ... = (I - Q)^-1 h`,
 
-where h is immediate expected return. The matrix I just choose as the representation is exactly the matrix that maps immediate return to long-run return. If I call it M, then `r = M h`. In the usual discounted continuing notation this becomes
+where h is immediate expected return. The matrix I just chose as the representation is the same matrix that maps immediate return to long-run return. Call it M. Then `r = M h`. In the usual discounted continuing notation this is
 
 `M = I + gamma P + gamma^2 P^2 + ... = (I - gamma P)^-1`
 
-and
+and the claim is `V = M R`. I should not just believe this from the symbol-matching; the two derivations could agree formally and still mismatch if I have an index or a discount wrong. So I solve the Bellman system `(I - gamma P) V = R` directly on the same chain, with reward only in the sink, `R = (0,0,1)`, and compare to `M R`:
 
-`V = M R`.
+```
+V from Bellman solve : [7.691, 8.182, 10]
+M R                  : [7.691, 8.182, 10]
+```
 
-This is the split I am looking for. M is predictive state occupancy structure; R is reward. Value is their product. The reward is no longer tangled together with the temporal transition structure inside a single scalar estimate.
+They match. So value really does factor as predicted-occupancy times reward.
 
-I should check that the split is not only a notation trick. Suppose I use each row of M as the feature vector for the corresponding state, and I learn a linear value approximation. The predicted value vector is `M w`. The true value vector is `M h` in the absorbing-chain notation, or `M R` in the discounted notation. Since M is invertible in the setting I am using, the optimal weights are just the immediate reward vector: `w* = h` or `w* = R`. That means the weights no longer have to encode multi-step temporal consequences. The hard temporal part has moved into the features, and the remaining supervised problem is local.
+What does that factoring give me operationally? The reward is no longer tangled together with the transition structure inside a single scalar estimate. To pressure-test that, I change the reward and keep the transitions: put the reward in state 1 instead, `R' = (0,1,0)`, and recompute `M R'` without touching M:
 
-I check the batch TD algebra and see the same point in the update itself. With a general feature matrix X, the expected TD update contains the transition factor `(I - Q)`. This is exactly the temporal coupling that makes information propagate gradually. If the feature matrix is the successor matrix, then `(I - Q)M = I`, so the transition factor cancels. The update relaxes weights toward immediate reward rather than threading reward backward through the Markov chain again and again. That is the technical force of the matrix insight: I am not appending dynamic programming to TD. I am exposing the resolvent of the transition process as the learned representation, so the value learner sees a transformed problem whose optimal weights are memoryless rewards.
+```
+M R'  : [1.309, 1.818, 0]
+Bellman with R' : [1.309, 1.818, 0]
+```
 
-Now I hit the obvious wall. If M is `(I - gamma P)^-1`, do I need to know P? If so, I have simply smuggled a model into the representation. But each entry of M is itself a prediction over time. It asks how often state s' will be occupied in the future when I start from state s. That is the same kind of object TD already learns: a discounted sum of future signals. The signal is no longer reward; it is the occupancy indicator for s'.
+Same answer, and I never re-solved any temporal recursion — I only re-weighted the columns of a matrix I already had. That is the concrete content of "reward-side flexibility": a new reward is a matrix-vector product, not a fresh round of backups.
 
-So I can learn a whole row of M by TD. On a transition from `s_t` to `s_{t+1}`, the target for the row of the current state is the one-hot vector saying where I am now, plus the discounted row predicted from the next state:
+Next I want to know whether using M as features actually makes the residual learning problem easy, or whether I have just relocated the difficulty. Suppose I use each row of M as the feature vector for the corresponding state and fit a linear value approximation, predicting `M w`. The true value vector is `M R`. The optimal weights solve `M w = M R`. Since M came out invertible on the example, the unique solution is `w* = R`. I do not want to trust that just because M happened to be invertible above, so I fit it numerically — least-squares `w` for `M w = M R` on the sink-reward case:
+
+```
+w* from lstsq : [0, 0, 1]   (= R)
+```
+
+So with these features the optimal weights are exactly the immediate reward vector. The multi-step temporal consequences have moved into the features, and the remaining supervised problem is local — the weights carry no temporal memory at all.
+
+I can see the same cancellation in the update itself rather than only at the optimum. With a general feature matrix X, the expected batch TD update carries the transition factor `(I - Q)` — that factor is the temporal coupling that makes information propagate gradually, one backup at a time. If the feature matrix is M, then `(I - Q) M` should collapse, because M is `(I - Q)^-1`. I check it on the discounted version of the example:
+
+```
+(I - gamma P) M =
+[ 1  0  0 ]
+[ 0  1  0 ]
+[ 0  0  1 ]
+```
+
+It is the identity. So the transition factor cancels exactly: the update relaxes weights toward immediate reward instead of threading reward backward through the Markov chain again and again. I am not appending dynamic programming to TD; I am exposing the resolvent of the transition process as the representation, so the value learner sees a transformed problem whose optimal weights are memoryless rewards.
+
+Now the objection I have been deferring. If M is `(I - gamma P)^-1`, do I need to know P? If so, I have quietly smuggled a model into the representation and gained nothing over the model-based route I was trying to avoid. Let me look at what an entry of M actually is. `M(s,s')` is the expected discounted number of future visits to `s'` starting from `s` — a discounted sum of future signals. That is precisely the kind of object TD already learns; the only change is that the signal is no longer reward but the occupancy indicator for `s'`. So I should be able to learn M by TD without ever forming P.
+
+The target writes itself by analogy with the value backup. On a transition `s_t -> s_{t+1}`, the row for the current state should equal the one-hot vector for where I am now, plus the discounted predicted row from the next state:
 
 `e(s_t) + gamma M_hat(s_{t+1}, .)`.
 
@@ -40,12 +84,26 @@ The error is
 
 `delta(.) = e(s_t) + gamma M_hat(s_{t+1}, .) - M_hat(s_t, .)`,
 
-and I update
+and the update is
 
 `M_hat(s_t, .) <- M_hat(s_t, .) + alpha delta(.)`.
 
-This is TD(0) with a vector-valued prediction error. There is one error for each possible successor state. That is the extra cost I pay: I learn many predictions rather than one. But I do not need a supplied transition matrix, I do not need to search over action sequences, and I do not need a general hidden representation to discover the temporal metric blindly.
+This is TD(0) with a vector-valued prediction error: one error component per possible successor state. That symmetry with value TD is suggestive, but suggestive is not the same as correct — bootstrapping a whole matrix could in principle converge to the wrong fixed point. So I run it on the example, sampling transitions from P (with occasional restarts so the walk does not get stuck in the sink), `alpha = 0.02`, a few hundred thousand steps, and compare the learned `M_hat` to the analytic M:
 
-The result sits between the two familiar extremes. A pure model-free value function is cheap, but reward and transition effects are compiled together. Change a reward, and the new value has to be backed up through experience. A full model is flexible, but it stores one-step dynamics and uses planning or repeated updates to turn that model into values. The successor matrix compiles multi-step transition statistics instead. If rewards change and transitions stay fixed, I change R and recompute `M R`. If transitions change, M itself is stale and has to be relearned. The method buys reward-side flexibility at the cost of transition-side flexibility.
+```
+analytic M :
+[ 1   1.309   7.691 ]
+[ 0   1.818   8.182 ]
+[ 0   0      10     ]
 
-That is also why the barrier and latent-learning examples matter. If an agent wanders before reward is present, it can learn the predictive geometry of the environment because M does not depend on the reward. Across a barrier, states that are spatially adjacent but temporally separated acquire different rows because their future occupancies differ. When reward finally appears, the value is read through the already learned predictive map. The distinctive move is the separation: value is no longer the primitive learned object; it is the product of a learned predictive occupancy structure and a reward vector.
+TD-learned M_hat :
+[ 1   1.357   7.643 ]
+[ 0   1.889   8.111 ]
+[ 0   0      10     ]
+```
+
+The maximum entry-wise error is about 0.07, with the sink row exact, and it keeps shrinking as I lower the step size — the residual is sampling and step-size noise, not bias. So M is genuinely learnable from experience alone: I do not need a supplied transition matrix, I do not need to search over action sequences, and I do not need a generic hidden representation to discover the temporal metric blindly. The extra cost is honest and bounded — I learn many predictions, one per successor, rather than a single scalar.
+
+That places the method between the two familiar extremes, and now I can say where precisely. A pure model-free value function is cheap, but reward and transition effects are compiled together; change a reward and the new value has to be backed up through fresh experience. A full model is flexible, but it stores one-step dynamics and turns them into values only through planning or repeated updates. The successor matrix compiles multi-step transition statistics instead. The reward-swap check above is exactly the favorable case: if rewards change and transitions stay fixed, I change R and recompute `M R`. The unfavorable case is the mirror image — if transitions change, M itself is stale and has to be relearned. The method buys reward-side flexibility at the cost of transition-side flexibility.
+
+That is also why the barrier and latent-learning examples come out right. M does not depend on the reward, so an agent that wanders before any reward is present can still learn the predictive geometry of the environment. Across a barrier, two states that are spatially adjacent but temporally separated end up with different rows, because their future-occupancy distributions differ — and that difference is visible in M before any reward exists to make it matter. When reward finally appears, the value is read through the already-learned predictive map. The move that makes all of this work is the separation: value stops being the primitive learned object and becomes the product of a learned predictive occupancy structure and a reward vector.

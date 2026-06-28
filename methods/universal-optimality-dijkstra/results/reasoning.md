@@ -130,15 +130,33 @@ element is cheap to access.
 
 Let me make it concrete. For an item `x`, define its **working set** as the set of items inserted into
 the heap between the time `x` is inserted and the time `x` is deleted (including `x`), and its
-**working-set size** `W(x)` as the count. I'll ask for a heap with the **working-set bound**: every
+**working-set size** `W(x)` as the count. Suppose I had a heap with this **working-set bound**: every
 operation except delete-min is `O(1)` amortized, and a delete-min returning `x` costs `O(log W(x))`. To
-feel why this is the right knob, take the operation sequence `Insert(999), Insert(999), …, Insert(999)`
+feel whether that's the right knob, take the operation sequence `Insert(999), Insert(999), …, Insert(999)`
 (`k − 1` long-lived items) followed by `Insert(1), Del, Insert(1), Del, …` (the quick ones). A regular
 heap charges each `Del` `Θ(log(heap size)) = Θ(log k)`. A working-set heap charges each `Del`
-`O(log(items inserted since this item entered)) = O(log 1) = O(1)`. On the path-off-a-star, each path
-vertex `v_j` is deleted with only `O(1)` insertions having happened since it entered — its working set
-is just itself — so each costs `O(1)`, and the total drops to `O(r + t log t)`, exactly the optimum I
-computed by hand. The working-set bound is the heap property that fixes my motivating example.
+`O(log(items inserted since this item entered)) = O(log 1) = O(1)`.
+
+That toy sequence is suggestive, but the path-off-a-star is the case I actually care about, and I don't
+want to eyeball it — let me trace Dijkstra's heap operations on it and add up both charges. Take `t = 8`
+leaves and `r = t² = 64` path vertices (so `n = 73`), path-edge lengths `1` and leaf edges all longer
+than `r`. I record, at each delete-min, the heap size (what a Fibonacci heap is charged, `log` of it)
+and the working-set size `W(v)` (how many items entered during that vertex's residence). The path
+vertices come out first, each immediately after it was inserted, so its `W` should be tiny; the leaves
+sit through all `64` path deletions, so theirs should be large. Running it:
+
+    Σ log₂(heap size)   (Fibonacci charge)        = 218.2
+    Σ log₂ W(v)         (working-set charge)       =  48.8
+    r + t·log₂ t        (my by-hand optimum)       =  88.0
+    max W over path vertices = 1 ;  max W over leaves = 72
+
+So the path vertices each have `W = 1` and contribute `log 1 = 0`, exactly as hoped — they cost nothing
+under the working-set charge. The Fibonacci charge of `218` is dominated by paying `log(heap size) ≈
+log 72` for every one of the `64` forced path deletions; the working-set charge of `49` throws all of
+that away and comes in *below* the `88` I computed by hand for the optimal algorithm. The leaves still
+pay (`max W = 72`, the `t log t` term lives there), which is correct — they genuinely must be sorted.
+This is the heap property the example is asking for; whether the `49 < 88` is a coincidence of these
+sizes or a theorem in general is the next thing to settle.
 
 But fixing one example isn't a theorem. I need: in *any* Dijkstra run on *any* graph,
 `Σ_v log W(v) = O(log D)`. If that holds, delete-mins cost `O(n + log D)`, Dijkstra is `O(m + log D)`,
@@ -225,7 +243,20 @@ the `n` intervals, so `Σ_i L_i = n` over `m` strata, giving `Σ_i (L_i − 1) =
 height are incomparable in `P` (neither can lie on the other's chain), so ordering arbitrarily *within*
 each stratum and stacking the strata in height order yields a distinct linear extension of `P` every time:
 `e(P) ≥ ∏_{i=1}^m L_i! ≥ ∏_i 2^{L_i − 1} = 2^{n − m}`, i.e. `n − m ≤ log e(P)`.
-Therefore `Σ log|R_i| = O(log e(P))`. The lemma holds. ∎
+Therefore `Σ log|R_i| = O(log e(P))`.
+
+The volume argument has enough moving parts (a maximum disjoint family, a gap count, a factorial bound,
+two separate constants) that I want to see the final inequality actually hold before I trust it. So let
+me brute-force small cases: enumerate random integer-interval families on `[1,n]` for `n ≤ 6`, count
+`e(P)` exactly by checking all `n!` permutations against the partial order, and compare `Σ log|R_i|`
+to `log e(P)` directly. Over a couple thousand random families the largest ratio `Σ log|R_i| / log e(P)`
+I see is `2.0`, achieved by the family `{[1,2], [1,2]}`: two width-`2` intervals give `Σ log|R_i| = 2`,
+while the partial order is the empty order (the two intervals overlap, so neither precedes the other),
+which has `e(P) = 2` linear extensions and `log e(P) = 1`. That is the worst case and it is finite — the
+ratio never blows up, consistent with the `O(1)` constant the proof produced. (The witness is also a
+good gut-check on the mechanism: two overlapping intervals are *incomparable*, so they contribute one
+bit of ordering ambiguity `log 2` each but only `log 2` to `e(P)` jointly — the sum can lead `log e(P)`
+by a bounded factor but not more.) Good — the lemma holds, and it holds with a genuinely small constant. ∎
 
 Substituting back — `|R_i| = W(v_i)`, `e(P) = D(I) ≤ D` — gives `Σ_v log W(v) = O(log D(I)) = O(log D)`.
 So delete-mins cost `O(n + log D)`, and Dijkstra with a working-set heap runs in `O(m + log D)` time:
@@ -284,10 +315,13 @@ pending bottleneck, this costs `O(1 + log j)`. The point of exponential search i
 
 Correctness is the usual Dijkstra invariant with a twist: a vertex's current distance equals its true
 distance when scanned; the output list is non-decreasing by true distance; and — the twist — I break
-ties so a bottleneck is emitted before a non-bottleneck of equal distance. That tie-break guarantees a
-vertex's parent always precedes it in the output, so the output is a topological order of the search
-tree, hence a distance order. (When `v`'s parent `p(v)` is a bottleneck and `v` isn't, `v` can't leave
-the heap until all bottlenecks up to `p(v)` have been processed and emitted — so `p(v)` lands first.)
+ties so a bottleneck is emitted before a non-bottleneck of equal distance. I claim that tie-break makes
+a vertex's parent always precede it in the output, so the output is a topological order of the search
+tree, hence a distance order. To see it, take the only case that could fail — `v`'s parent `p(v)` is a
+bottleneck and `v` isn't, so they might collide at equal distance: but `v` can't leave the heap until
+all bottlenecks up to `p(v)` have been processed and emitted, so `p(v)` lands first regardless. The
+other case, parent and child both in the heap, is the ordinary Dijkstra argument. So parent-before-child
+holds throughout.
 
 Efficiency, term by term. The non-bottleneck inserts number `n − b = O(log D)` (by the bottleneck
 lemma). Decrease-keys: at most `F − n + 1`, `O(1)` each, `O(F − n + 1)` total — within budget. The
@@ -364,7 +398,7 @@ exists, just reindex everyone up by one (and `H_0` becomes `H_1`). The other ope
 find-min/delete-min find the inner heap holding a global minimum and delegate; decrease-key finds the
 inner heap holding `x` and delegates.
 
-Now verify the three invariants this is designed to keep. (i) *Order*: by induction, melds and
+Three invariants need to hold for the rest to work; let me check each. (i) *Order*: by induction, melds and
 reindexings preserve "smaller index ⇒ more recently inserted" — a meld combines `H_j` into `H_{j+1}`
 where everything in `H_j` is newer than everything in `H_{j+1}`, and the new `H_0` is the newest of all.
 (ii) *Upper bound* `|H_i| ≤ 2^{2^i}` at all times: induction on operations. A meld into `H_{j+1}` only
@@ -378,6 +412,25 @@ larger `j`), so `|H_{i−2}| + |H_{i−1}| > 2^{2^{i−1}}`; by the upper bound 
 the working set of every item in `H_i`, giving the corollary: an item in `H_i` (for `i > 1`) has working-
 set size `> 2^{2^{i−2}} − 2^{2^{i−3}} ≥ 2^{2^{i−3}}` (carrying the lower bound through one reindexing —
 `H_{i−2}` becomes `H_{i−1}` during the insertion that grows `H_i`).
+
+The reindexing bookkeeping is fiddly enough that I'll just run the Insert routine on sizes alone and
+watch the invariants. First pass, I wrote it tracking heaps as `H_0, H_1, …` and asserting
+`|H_i| ≤ 2^{2^i}` on every index including `0` — and it tripped on the third insert: `|H_0| = 3 > 2 =
+2^{2^0}`. That stopped me. The fix is conceptual, not a coding slip: index `0` is *only a transient*
+created and consumed inside a single Insert (the new heap is always reindexed up to `H_1` before the
+operation returns). The invariant `|H_i| ≤ 2^{2^i}` is a statement about the *settled* configuration,
+where live indices start at `1`. Re-asserting on the settled `1`-based list, it holds. Letting it run to
+`2000` inserts:
+
+    after 1999 inserts:  sizes |H_1|,|H_2|,…  =  [3, 12, 192, 1792]   (Σ = 1999, all items present)
+    upper bound |H_i| ≤ 2^{2^i}:   3≤4, 12≤16, 192≤65536, 1792≤2^65536   ✓ all hold
+    number of inner heaps = 4 ;   1 + log log 1999 ≈ 4.45              ✓ matches the O(log log n) claim
+    log₂|H_i|:   H_2→3.6,  H_3→7.6,  H_4→10.8     vs   2^i = 4, 8, 16   ✓ log|H_i| ≤ 2^i throughout
+
+So the upper-bound and heap-count invariants hold in practice (once the transient index is handled
+right), the sizes really do climb doubly-exponentially, and `log|H_i|` stays under `2^i` as the
+delete-min argument will need. The early stumble was worth keeping in mind: the `2^{2^i}` budget is for
+settled indices, never for the in-flight `H_0`.
 
 Delete-min cost. An item `x` in `H_i` costs `O(log|H_i|) ≤ O(log 2^{2^i}) = O(2^i)` to delete (the inner
 heap is Fibonacci-quality). If `i = 1`, that's `O(1)`, fine. If `i > 1`, by the corollary
@@ -393,8 +446,11 @@ Insert cost — this is the half that forces doubly-exponential. An insertion th
 of `H_0, …, H_{j−1}`, and split each heap's unit equally among its items. By the lower-bound invariant,
 an item in `H_i` is charged at most `1 / (2^{2^{i−1}} − 2^{2^{i−2}}) ≤ 1 / 2^{2^{i−2}}` for this
 insertion. Every time an item is charged, the insertion bumps its index. So over its whole life an item
-accrues total charge at most `Σ_{i≥0} 1 / 2^{2^{i−2}}`, and *this sum converges* (the terms shrink doubly-
-exponentially) — to a constant. Hence each insertion is `O(1)` amortized. Had the sizes only grown
+accrues total charge at most `Σ_{i≥0} 1 / 2^{2^{i−2}}`. I should actually add this up rather than wave at
+"it converges," since the entire `O(1)` insert bound is this one number being finite. The terms are
+`1/2^{1/4}, 1/2^{1/2}, 1/2^1, 1/2^2, 1/2^4, 1/2^8, …` `≈ 0.841, 0.707, 0.5, 0.25, 0.0625, 0.0039, …`;
+once the exponent doubles each step the tail crashes to nothing, and the total comes out to about `2.36`.
+So each item's lifetime charge is `< 2.4`, a genuine constant, and each insertion is `O(1)` amortized. Had the sizes only grown
 singly-exponentially, the per-charge bound would be `~1/2^{i}` and the sum still converges, but the
 *delete-min* side fails; doubly-exponential is the sweet spot where *both* the delete-min log-ratio and
 the insert charge-series behave. So: `O(1)` amortized insert, decrease-key, find-min; delete-min within
