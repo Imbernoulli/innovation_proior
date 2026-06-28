@@ -1,0 +1,29 @@
+Josephus O(k log n) idea:
+0-indexed survivor r after m people, eliminating every k-th:
+  r(1) = 0
+  r(m) = (r(m-1) + k) mod m
+
+Fast version: when current count is `cnt` and k <= cnt, we can process many
+steps at once. Going from cnt people up to n: we add k each step and take mod.
+The trick: when r + k*t stays below the modulus growth, batch.
+
+Standard fast algo (count up):
+  start with cnt = k (since for cnt < k the +k always exceeds, we can compute
+  small base directly), r = position for cnt people.
+  Actually simplest correct fast algo:
+
+  long long r = 0; // survivor for 1 person, 0-indexed
+  long long cnt = 1;
+  while (cnt < n) {
+      // we currently have answer r for `cnt` people.
+      // we want to advance cnt. Each increment: cnt++, r = (r+k)%cnt.
+      // If k>=2 we can skip. Number of people we can add in one batch:
+      // we want the largest step s such that none of the next intermediate
+      // (r + k) values wrap around mod (cnt+1..cnt+s).
+      // Known approach:
+      if (k <= cnt) {
+          // advance by chunks
+          long long quotient = (cnt - r - 1) / (k - 1); // careful k>=2
+          ...
+      }
+  }
