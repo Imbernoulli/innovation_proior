@@ -513,7 +513,7 @@ order it produces is exactly Dijkstra's non-decreasing-distance scan order, whic
 binary heap realizes, with a deterministic id tie-break so a parent precedes its child (a topological
 order of the search tree). It reads the graph from stdin — `n m s`, then `m` lines `u v w` (arc `u→v`
 of non-negative length `w`) — and prints the vertices in distance order, then their true distances.
-Distances are `long long` so accumulated arc lengths cannot overflow.
+Distances use arbitrary-precision integers so accumulated arc lengths cannot overflow.
 
 ```cpp
 // Universal-optimality Dijkstra: the distance-order problem.
@@ -531,10 +531,12 @@ Distances are `long long` so accumulated arc lengths cannot overflow.
 // heaps giving O(1) decrease-key with an O(log W(x)) delete-min) is the device
 // for the universal-optimality *analysis*; the produced order is exactly that
 // of Dijkstra scanning vertices in non-decreasing distance, which a standard
-// lazy binary heap realizes here. Distances use long long to avoid overflow.
+// lazy binary heap realizes here. Distances use arbitrary-precision integers.
 
 #include <bits/stdc++.h>
+#include <boost/multiprecision/cpp_int.hpp>
 using namespace std;
+using boost::multiprecision::cpp_int;
 
 int main() {
     ios::sync_with_stdio(false);
@@ -543,16 +545,17 @@ int main() {
     int n, m, s;
     if (!(cin >> n >> m >> s)) return 0;
 
-    vector<vector<pair<int, long long>>> adj(n);
+    vector<vector<pair<int, cpp_int>>> adj(n);
     for (int e = 0; e < m; ++e) {
         int u, v;
-        long long w;
-        cin >> u >> v >> w;
+        string weight_text;
+        cin >> u >> v >> weight_text;
+        cpp_int w(weight_text);
         adj[u].push_back({v, w});
     }
 
-    const long long INF = numeric_limits<long long>::max();
-    vector<long long> dist(n, INF);
+    vector<cpp_int> dist(n);
+    vector<char> has_dist(n, 0);     // avoids using a finite overflow-prone INF
     vector<char> scanned(n, 0);      // SCANNED once popped with final distance
     vector<int> order;               // vertices in scanned (distance) order
     order.reserve(n);
@@ -561,27 +564,29 @@ int main() {
     // makes the scan order deterministic; a vertex's current distance equals its
     // true distance when first scanned, so vertices leave in non-decreasing
     // true-distance order -- a valid distance order.
-    typedef pair<long long, int> State;   // (distance, vertex)
+    typedef pair<cpp_int, int> State;     // (distance, vertex)
     priority_queue<State, vector<State>, greater<State>> H;
 
     dist[s] = 0;
+    has_dist[s] = 1;
     H.push({0, s});
 
     while (!H.empty()) {
         State top = H.top();
         H.pop();
-        long long dv = top.first;
+        cpp_int dv = top.first;
         int v = top.second;
         if (scanned[v]) continue;          // stale entry from an earlier key
         scanned[v] = 1;
         order.push_back(v);
         for (const auto& arc : adj[v]) {
             int w = arc.first;
-            long long len = arc.second;
+            const cpp_int& len = arc.second;
             if (scanned[w]) continue;
-            long long nd = dv + len;
-            if (nd < dist[w]) {            // relax (insert or decrease-key)
+            cpp_int nd = dv + len;
+            if (!has_dist[w] || nd < dist[w]) {  // relax (insert or decrease-key)
                 dist[w] = nd;
+                has_dist[w] = 1;
                 H.push({nd, w});
             }
         }

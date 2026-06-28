@@ -18,7 +18,7 @@ That clamp-and-extend structure is what buys linear time. Every successful chara
 
 With the Z-array in hand, pattern matching is almost free. An occurrence of $\texttt{pattern}$ at text index $j$ means $\texttt{pattern}$ and $\texttt{text[j:]}$ share a common prefix of length exactly $\mathrm{len}(\texttt{pattern})$ — which is exactly what the Z-array reports if I make the pattern the prefix of a longer sequence. I build $\texttt{list(pattern)} + [\texttt{separator}] + \texttt{list(text)}$, where $\texttt{separator}$ is a fresh sentinel that cannot equal any text element. The cleanest choice here is a brand-new $\texttt{object()}$ rather than assuming some character is absent from the text: a fresh object compares unequal to everything in the input by identity, so any prefix match that starts in the text region must stop at the separator after at most $\mathrm{len}(\texttt{pattern})$ characters and can never run through it. With $m = \mathrm{len}(\texttt{pattern})$, the text position $j$ lands at combined index $j + m + 1$, and a Z-value equal to $m$ at that index is exactly an occurrence — no more, no less, because the value can equal $m$ only when the full pattern matches and cannot exceed $m$ because of the separator. This reports overlapping matches naturally and runs in $O(\mathrm{len}(\texttt{pattern}) + \mathrm{len}(\texttt{text}))$, dominated by the single Z-array pass over the combined sequence. The empty-pattern case is handled separately, returning every index from $0$ through $\mathrm{len}(\texttt{text})$ inclusive, since an empty pattern occurs at every position.
 
-Packaged as a single self-contained program, it reads the text $s$ on the first line of stdin and the pattern $p$ on the second, prints the Z-array of $s$, then prints the start indices in $s$ where $p$ occurs. The one detail that does not transcribe verbatim is the sentinel: a C++ `char` cannot be a fresh identity-distinct `object()`, so the separator becomes a control byte `'\1'` assumed absent from the inputs (any value outside the input alphabet works), playing exactly the same role.
+Packaged as a single self-contained program, it reads the text $s$ on the first line of stdin and the pattern $p$ on the second, prints the Z-array of $s$, then prints the start indices in $s$ where $p$ occurs. The one detail that does not transcribe verbatim is the sentinel: a C++ `char` cannot be a fresh identity-distinct `object()`, so the program lifts both strings to integer byte values and uses `-1` as the separator, which cannot equal any `unsigned char` input value.
 
 ```cpp
 // Reads two lines from stdin: the text s on the first line and the pattern p on
@@ -29,7 +29,8 @@ using namespace std;
 
 // Z-array of s: z[i] is the length of the longest prefix of s that also starts
 // at position i. z[0] is 0 by convention. Runs in O(n).
-vector<int> z_function(const string &s) {
+template <class Sequence>
+vector<int> z_function(const Sequence &s) {
     int n = (int)s.size();
     vector<int> z(n, 0);
     int l = 0, r = 0;
@@ -42,8 +43,8 @@ vector<int> z_function(const string &s) {
 }
 
 // Sorted start indices i in text where pattern occurs (overlaps included).
-// Builds pattern + sentinel + text and reports positions whose Z-value equals
-// the pattern length. Total work O(len(pattern) + len(text)).
+// Builds pattern + integer sentinel + text and reports positions whose Z-value
+// equals the pattern length. Total work O(len(pattern) + len(text)).
 vector<int> find_occurrences(const string &text, const string &pattern) {
     int m = (int)pattern.size();
     vector<int> occ;
@@ -51,9 +52,11 @@ vector<int> find_occurrences(const string &text, const string &pattern) {
         for (int i = 0; i <= (int)text.size(); ++i) occ.push_back(i);
         return occ;
     }
-    // '\1' is a sentinel assumed absent from the inputs; pick any value outside
-    // the alphabet of text and pattern if that assumption does not hold.
-    string combined = pattern + '\1' + text;
+    vector<int> combined;
+    combined.reserve(pattern.size() + 1 + text.size());
+    for (unsigned char ch : pattern) combined.push_back((int)ch);
+    combined.push_back(-1);             // outside every possible byte value
+    for (unsigned char ch : text) combined.push_back((int)ch);
     vector<int> z = z_function(combined);
     for (int j = 0; j < (int)text.size(); ++j)
         if (z[j + m + 1] == m) occ.push_back(j);

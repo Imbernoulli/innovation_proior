@@ -29,17 +29,19 @@ That settles the node summary: `mx` is the maximum `M`, `se` is the strict secon
 // "2 l r" = print sum a[l..r] (1-based). Prints one line per query to stdout.
 #include <cstdio>
 #include <algorithm>
+#include <limits>
 using namespace std;
 
 const int MAXN = 1000006;
-const int NEG = -1;          // "no strict second maximum" / "no pending tag"
+const long long NEG_INF = numeric_limits<long long>::lowest(); // no second max
 
 int n, m;
-int a[MAXN];
-int mx[MAXN << 2];           // maximum M in the node's interval
-int se[MAXN << 2];           // strict second maximum m (NEG if one distinct value)
+long long a[MAXN];
+long long mx[MAXN << 2];     // maximum M in the node's interval
+long long se[MAXN << 2];     // strict second maximum m (NEG_INF if one distinct value)
 int cn[MAXN << 2];           // count of entries equal to mx
-int tag[MAXN << 2];          // pending cap, NEG if none
+long long tag[MAXN << 2];    // pending cap value
+bool tagged[MAXN << 2];      // whether a pending cap exists
 long long sm[MAXN << 2];     // sum over the node's interval (needs 64-bit)
 
 void pushup(int u) {
@@ -60,26 +62,27 @@ void pushup(int u) {
     }
 }
 
-void apply_cap(int u, int x) {
+void apply_cap(int u, long long x) {
     // Valid only when the cap drops exactly the maxima: se[u] < x < mx[u].
     if (mx[u] <= x) return;
-    sm[u] += (long long)(x - mx[u]) * cn[u];
+    sm[u] += (x - mx[u]) * (long long)cn[u];
     mx[u] = x;
     tag[u] = x;
+    tagged[u] = true;
 }
 
 void pushdown(int u) {
-    if (tag[u] == NEG) return;
+    if (!tagged[u]) return;
     apply_cap(u << 1, tag[u]);
     apply_cap(u << 1 | 1, tag[u]);
-    tag[u] = NEG;
+    tagged[u] = false;
 }
 
 void build(int u, int l, int r) {
-    tag[u] = NEG;
+    tagged[u] = false;
     if (l == r) {
         sm[u] = mx[u] = a[l];
-        se[u] = NEG;
+        se[u] = NEG_INF;
         cn[u] = 1;
         return;
     }
@@ -89,9 +92,13 @@ void build(int u, int l, int r) {
     pushup(u);
 }
 
-void chmin(int ql, int qr, int x, int u, int l, int r) {
+void chmin(int ql, int qr, long long x, int u, int l, int r) {
     if (mx[u] <= x) return;                       // break: nothing here exceeds x
     if (ql <= l && r <= qr && se[u] < x) {        // tag: only the maxima fall to x
+        apply_cap(u, x);
+        return;
+    }
+    if (l == r) {
         apply_cap(u, x);
         return;
     }
@@ -102,9 +109,10 @@ void chmin(int ql, int qr, int x, int u, int l, int r) {
     pushup(u);
 }
 
-int query_max(int ql, int qr, int u, int l, int r) {
+long long query_max(int ql, int qr, int u, int l, int r) {
     if (ql <= l && r <= qr) return mx[u];
-    int mid = (l + r) >> 1, res = NEG;
+    int mid = (l + r) >> 1;
+    long long res = NEG_INF;
     pushdown(u);
     if (ql <= mid) res = max(res, query_max(ql, qr, u << 1, l, mid));
     if (mid < qr) res = max(res, query_max(ql, qr, u << 1 | 1, mid + 1, r));
@@ -126,16 +134,17 @@ int main() {
     if (scanf("%d", &T) != 1) return 0;
     while (T--) {
         scanf("%d %d", &n, &m);
-        for (int i = 1; i <= n; i++) scanf("%d", &a[i]);
+        for (int i = 1; i <= n; i++) scanf("%lld", &a[i]);
         build(1, 1, n);
         for (int i = 0; i < m; i++) {
-            int op, l, r, x;
+            int op, l, r;
+            long long x;
             scanf("%d %d %d", &op, &l, &r);
             if (op == 0) {
-                scanf("%d", &x);
+                scanf("%lld", &x);
                 chmin(l, r, x, 1, 1, n);
             } else if (op == 1) {
-                printf("%d\n", query_max(l, r, 1, 1, n));
+                printf("%lld\n", query_max(l, r, 1, 1, n));
             } else {
                 printf("%lld\n", query_sum(l, r, 1, 1, n));
             }

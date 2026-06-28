@@ -261,6 +261,12 @@ static vector<double> electrical_flow(int n, const vector<Edge>& edges,
     return f;
 }
 
+static double output_number(double x) {
+    double y = round(x * 1000000.0) / 1000000.0;
+    if (fabs(y) < 0.5e-6) return 0.0;
+    return y;
+}
+
 int main() {
     ios::sync_with_stdio(false);
     cin.tie(nullptr);
@@ -281,9 +287,6 @@ int main() {
     // Multiplicative-weights outer loop (the plain (eps, 3 sqrt(m/eps)) oracle).
     double rho = 3.0 * sqrt((double)m / eps);             // width of the plain oracle
     long long N = (long long)ceil(2.0 * rho * log((double)max(m, 2)) / (eps * eps));
-    // Cap iterations so the dense O(N * n^3) demo stays bounded on big inputs.
-    const long long N_CAP = 20000;
-    if (N > N_CAP) N = N_CAP;
 
     vector<double> w(m, 1.0);
     vector<double> acc(m, 0.0);
@@ -331,20 +334,22 @@ int main() {
     double scale = (1.0 - eps) * (1.0 - eps) / ((1.0 + eps) * (double)N);
     vector<double> fbar(m);
     for (int e = 0; e < m; ++e) fbar[e] = scale * acc[e];
+    vector<double> printed_flow(m);
+    for (int e = 0; e < m; ++e) printed_flow[e] = output_number(fbar[e]);
 
-    // Flow value = net flow out of s.
+    // Flow value = net flow out of s in the printed certificate.
     double value = 0.0;
     for (int e = 0; e < m; ++e) {
-        if (edges[e].a == s) value += fbar[e];
-        else if (edges[e].b == s) value -= fbar[e];
+        if (edges[e].a == s) value += printed_flow[e];
+        else if (edges[e].b == s) value -= printed_flow[e];
     }
 
     double maxcong = 0.0;
-    for (int e = 0; e < m; ++e) maxcong = max(maxcong, fabs(fbar[e]) / u[e]);
+    for (int e = 0; e < m; ++e) maxcong = max(maxcong, fabs(printed_flow[e]) / u[e]);
 
-    cout << "value " << fabs(value) << "\n";
-    for (int e = 0; e < m; ++e) cout << fbar[e] << "\n";
-    cout << "maxcong " << maxcong << "\n";
+    cout << "value " << output_number(fabs(value)) << "\n";
+    for (int e = 0; e < m; ++e) cout << printed_flow[e] << "\n";
+    cout << "maxcong " << output_number(maxcong) << "\n";
     return 0;
 }
 ```

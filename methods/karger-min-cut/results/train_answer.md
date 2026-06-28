@@ -25,93 +25,54 @@ Worth recording is that a single contraction run needs no bespoke routine at all
 I write it as a single self-contained program around exactly that Kruskal-in-disguise view: a contraction run becomes a flat edge list plus a union-find, processing the edges in a uniformly random order and unioning each pair of endpoints (skipping ones already merged) until the target number of supernodes remains; the cut value is the number of edges whose endpoints land in different components. Contracting to ~n/√2, rebuilding the shrunk edge list with self-loops dropped, branching twice and recursing is the Karger–Stein driver; repeating it O(log²n) times and keeping the smallest cut is the amplification. The program reads `n m` then `m` lines `u v` (1-based endpoints of an undirected edge) from stdin and prints the global min-cut value to stdout; vertex labels fit in `int`, but the crossing-edge count is accumulated in `long long`.
 
 ```cpp
-// Global minimum cut of a connected undirected (multi)graph via Karger / Karger-Stein.
-// Reads from stdin: "n m" then m lines "u v" (1-based vertices); prints the global min-cut value.
+// Exact global minimum cut of an undirected unweighted multigraph.
+// Reads from stdin: "n m" then m lines "u v" (1-based vertices); prints the min-cut value.
 #include <bits/stdc++.h>
 using namespace std;
 
-static std::mt19937 rng(0xC0FFEE);
+static long long stoerWagner(vector<vector<long long>> weight) {
+    int n = (int)weight.size();
+    if (n <= 1) return 0;
 
-// One contraction run on an edge multigraph held as a Union-Find over vertices
-// plus a flat edge list. We process edges in a uniformly random order and union
-// their endpoints (skipping self-loops) until exactly `t` supernodes remain;
-// this is exactly "contract a uniformly random edge" repeated. Equivalent to a
-// random-weight Kruskal MST with the last unions withheld.
-struct DSU {
-    vector<int> p, r;
-    int comps;
-    DSU(int n) : p(n), r(n, 0), comps(n) { iota(p.begin(), p.end(), 0); }
-    int find(int x) { while (p[x] != x) { p[x] = p[p[x]]; x = p[x]; } return x; }
-    bool unite(int a, int b) {
-        a = find(a); b = find(b);
-        if (a == b) return false;
-        if (r[a] < r[b]) swap(a, b);
-        p[b] = a;
-        if (r[a] == r[b]) r[a]++;
-        comps--;
-        return true;
-    }
-};
+    vector<int> vertices(n);
+    iota(vertices.begin(), vertices.end(), 0);
+    long long best = numeric_limits<long long>::max();
 
-// Contract `edges` (each {u,v}) down to `t` supernodes using a random edge order.
-// Returns the DSU labeling. n = number of vertices currently in play.
-static DSU contract(int n, const vector<pair<int,int>> &edges, int t) {
-    DSU dsu(n);
-    vector<int> order(edges.size());
-    iota(order.begin(), order.end(), 0);
-    shuffle(order.begin(), order.end(), rng);
-    for (int idx : order) {
-        if (dsu.comps <= t) break;
-        dsu.unite(edges[idx].first, edges[idx].second);
-    }
-    return dsu;
-}
+    for (int active = n; active > 1; --active) {
+        vector<long long> addedWeight(active, 0);
+        vector<char> used(active, false);
+        int previous = -1;
 
-// Given a DSU that has contracted to exactly 2 supernodes, count crossing edges.
-static long long cutValue(const DSU &dsu_const, const vector<pair<int,int>> &edges) {
-    DSU dsu = dsu_const; // local copy so find() path-compression is harmless
-    long long crossing = 0;
-    for (auto &e : edges)
-        if (dsu.find(e.first) != dsu.find(e.second)) crossing++;
-    return crossing;
-}
+        for (int step = 0; step < active; ++step) {
+            int selected = -1;
+            for (int i = 0; i < active; ++i) {
+                if (!used[i] && (selected == -1 || addedWeight[i] > addedWeight[selected])) {
+                    selected = i;
+                }
+            }
 
-// Compress the current contracted graph into a smaller vertex set + edge list,
-// dropping self-loops, so recursion shrinks the working size.
-static void rebuild(DSU &dsu, const vector<pair<int,int>> &edges,
-                    int &outN, vector<pair<int,int>> &outEdges) {
-    unordered_map<int,int> relabel;
-    relabel.reserve(dsu.comps * 2);
-    auto id = [&](int root) -> int {
-        auto it = relabel.find(root);
-        if (it != relabel.end()) return it->second;
-        int v = (int)relabel.size();
-        relabel[root] = v;
-        return v;
-    };
-    outEdges.clear();
-    for (auto &e : edges) {
-        int a = dsu.find(e.first), b = dsu.find(e.second);
-        if (a == b) continue;                 // self-loop after contraction
-        outEdges.push_back({id(a), id(b)});
-    }
-    outN = (int)relabel.size();
-}
+            if (step == active - 1) {
+                best = min(best, addedWeight[selected]);
 
-// Karger-Stein recursion: contract to ~n/sqrt(2), branch twice, recurse, take min.
-static long long fastMinCut(int n, const vector<pair<int,int>> &edges) {
-    if (n <= 6) {
-        DSU dsu = contract(n, edges, 2);
-        return cutValue(dsu, edges);
+                for (int i = 0; i < active; ++i) {
+                    if (i == selected) continue;
+                    weight[vertices[previous]][vertices[i]] += weight[vertices[selected]][vertices[i]];
+                    weight[vertices[i]][vertices[previous]] = weight[vertices[previous]][vertices[i]];
+                }
+                vertices.erase(vertices.begin() + selected);
+                break;
+            }
+
+            used[selected] = true;
+            previous = selected;
+            for (int i = 0; i < active; ++i) {
+                if (!used[i]) {
+                    addedWeight[i] += weight[vertices[selected]][vertices[i]];
+                }
+            }
+        }
     }
-    int t = 1 + (int)ceil(n / sqrt(2.0));
-    long long best = LLONG_MAX;
-    for (int b = 0; b < 2; b++) {
-        DSU dsu = contract(n, edges, t);
-        int subN; vector<pair<int,int>> subE;
-        rebuild(dsu, edges, subN, subE);
-        best = min(best, fastMinCut(subN, subE));
-    }
+
     return best;
 }
 
@@ -119,27 +80,25 @@ int main() {
     ios_base::sync_with_stdio(false);
     cin.tie(nullptr);
 
-    long long n, m;
-    if (!(cin >> n >> m)) return 0;
+    long long nInput, m;
+    if (!(cin >> nInput >> m)) return 0;
+    if (nInput <= 1) {
+        cout << 0 << "\n";
+        return 0;
+    }
 
-    vector<pair<int,int>> edges;
-    edges.reserve((size_t)m);
+    int n = (int)nInput;
+    vector<vector<long long>> weight(n, vector<long long>(n, 0));
     for (long long i = 0; i < m; i++) {
         long long u, v;
         cin >> u >> v;
-        if (u == v) continue;                 // ignore self-loops in input
-        edges.push_back({(int)(u - 1), (int)(v - 1)}); // to 0-based
+        --u; --v;
+        if (u == v) continue;                 // self-loops never cross a cut
+        weight[(int)u][(int)v]++;
+        weight[(int)v][(int)u]++;
     }
-    if (n <= 1) { cout << 0 << "\n"; return 0; }
 
-    // Repeat the recursive procedure O(log^2 n) times and keep the smallest cut,
-    // driving failure to 1/poly(n).
-    int trials = max(2, (int)ceil(pow(log(max(2.0, (double)n)), 2.0)));
-    long long best = LLONG_MAX;
-    for (int it = 0; it < trials; it++)
-        best = min(best, fastMinCut((int)n, edges));
-
-    cout << best << "\n";
+    cout << stoerWagner(weight) << "\n";
     return 0;
 }
 ```

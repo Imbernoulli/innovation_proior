@@ -178,6 +178,26 @@ static void jacobiEigen(vector<double>& A, int n, vector<double>& eval, vector<d
     for (int i = 0; i < n; ++i) eval[i] = A[(size_t)i * n + i];
 }
 
+static bool lexLessVec(const vector<int>& a, const vector<int>& b) {
+    return lexicographical_compare(a.begin(), a.end(), b.begin(), b.end());
+}
+
+static vector<int> listedSide(const vector<char>& inS, const vector<double>& deg,
+                              double dV, double volS) {
+    vector<int> side, comp;
+    side.reserve(inS.size());
+    comp.reserve(inS.size());
+    for (int i = 0; i < (int)inS.size(); ++i) {
+        if (inS[i]) side.push_back(i);
+        else comp.push_back(i);
+    }
+    double volC = dV - volS;
+    const double EPS = 1e-12;
+    if (volS < volC - EPS) return side;
+    if (volC < volS - EPS) return comp;
+    return lexLessVec(side, comp) ? side : comp;
+}
+
 int main() {
     ios::sync_with_stdio(false);
     cin.tie(nullptr);
@@ -237,15 +257,29 @@ int main() {
             y[i] = evec[(size_t)i * n + idx2] * dinv[i];   // map back: y = D^{-1/2} x2
     }
 
+    // Fix the arbitrary eigenvector sign so equal-quality complementary sweeps
+    // print a deterministic side.
+    for (double val : y) {
+        if (fabs(val) > 1e-12) {
+            if (val > 0.0)
+                for (double& z : y) z = -z;
+            break;
+        }
+    }
+
     // Sweep: sort vertices by y, try the n-1 prefix cuts, keep least conductance.
     vector<int> order(n);
     iota(order.begin(), order.end(), 0);
-    sort(order.begin(), order.end(), [&](int a, int b) { return y[a] < y[b]; });
+    sort(order.begin(), order.end(), [&](int a, int b) {
+        if (fabs(y[a] - y[b]) > 1e-12) return y[a] < y[b];
+        return a < b;
+    });
 
     vector<char> inS(n, 0);
     vector<int> bestS;
     double bestPhi = numeric_limits<double>::infinity();
     double volS = 0.0;
+    bool haveBest = false;
 
     // Boundary weight is maintained incrementally as vertices enter S.
     double boundary = 0.0;
@@ -264,10 +298,13 @@ int main() {
         double mn = min(volS, volC);
         if (mn <= 0.0) continue;
         double phi = boundary / mn;
-        if (phi < bestPhi) {
+        vector<int> candidate = listedSide(inS, deg, dV, volS);
+        const double EPS = 1e-12;
+        if (!haveBest || phi < bestPhi - EPS ||
+            (fabs(phi - bestPhi) <= EPS && lexLessVec(candidate, bestS))) {
             bestPhi = phi;
-            bestS.clear();
-            for (int i = 0; i < n; ++i) if (inS[i]) bestS.push_back(i);
+            bestS = move(candidate);
+            haveBest = true;
         }
     }
 

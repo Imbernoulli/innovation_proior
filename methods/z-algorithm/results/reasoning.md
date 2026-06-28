@@ -36,7 +36,7 @@ I do not want to take that on faith for the overlapping case, which is where nai
 
 That hand computation is exactly the kind I just caught myself nearly miscounting (the `z[6]=1` correction), so I want the real code to confirm it rather than trust my by-hand scan. Running `find_occurrences("aaaa", "aa")` returns `[0, 1, 2]`, and `find_occurrences("ababab", "aba")` returns `[0, 2]`, both matching a brute-force substring check. So I trust the index shift `j + m + 1` and the equality test `== m`.
 
-Now I can assemble the single-file program. It reads the text `s` on the first line of stdin and the pattern `p` on the second, prints the Z-array of `s`, then prints the start indices in `s` where `p` occurs. One thing does not survive the move to C++: the `object()` sentinel, since a `char` cannot be a fresh identity-distinct object. I drop in a control byte `'\1'` assumed absent from the inputs — any value outside the alphabet of text and pattern would do — and it plays the identical role of stopping a forward match at the separator:
+Now I can assemble the single-file program. It reads the text `s` on the first line of stdin and the pattern `p` on the second, prints the Z-array of `s`, then prints the start indices in `s` where `p` occurs. One thing does not survive the move to C++: the `object()` sentinel, since a `char` cannot be a fresh identity-distinct object. I lift input characters to integer byte values and use `-1` as the separator, so the separator is outside every possible byte from either input line:
 
 ```cpp
 // Reads two lines from stdin: the text s on the first line and the pattern p on
@@ -47,7 +47,8 @@ using namespace std;
 
 // Z-array of s: z[i] is the length of the longest prefix of s that also starts
 // at position i. z[0] is 0 by convention. Runs in O(n).
-vector<int> z_function(const string &s) {
+template <class Sequence>
+vector<int> z_function(const Sequence &s) {
     int n = (int)s.size();
     vector<int> z(n, 0);
     int l = 0, r = 0;
@@ -60,8 +61,8 @@ vector<int> z_function(const string &s) {
 }
 
 // Sorted start indices i in text where pattern occurs (overlaps included).
-// Builds pattern + sentinel + text and reports positions whose Z-value equals
-// the pattern length. Total work O(len(pattern) + len(text)).
+// Builds pattern + integer sentinel + text and reports positions whose Z-value
+// equals the pattern length. Total work O(len(pattern) + len(text)).
 vector<int> find_occurrences(const string &text, const string &pattern) {
     int m = (int)pattern.size();
     vector<int> occ;
@@ -69,9 +70,11 @@ vector<int> find_occurrences(const string &text, const string &pattern) {
         for (int i = 0; i <= (int)text.size(); ++i) occ.push_back(i);
         return occ;
     }
-    // '\1' is a sentinel assumed absent from the inputs; pick any value outside
-    // the alphabet of text and pattern if that assumption does not hold.
-    string combined = pattern + '\1' + text;
+    vector<int> combined;
+    combined.reserve(pattern.size() + 1 + text.size());
+    for (unsigned char ch : pattern) combined.push_back((int)ch);
+    combined.push_back(-1);             // outside every possible byte value
+    for (unsigned char ch : text) combined.push_back((int)ch);
     vector<int> z = z_function(combined);
     for (int j = 0; j < (int)text.size(); ++j)
         if (z[j + m + 1] == m) occ.push_back(j);

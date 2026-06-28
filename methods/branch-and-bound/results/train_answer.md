@@ -9,22 +9,22 @@ The algorithm is correct because branching partitions the integer-feasible set e
 Concretely this lands as a single self-contained C++17 program. It reads one MILP from stdin — `n m`,
 the objective row to maximize, then `m` constraint rows each followed by their right-hand side, then
 `n` lines giving each variable's lower bound, upper bound (`inf` allowed), and a 0/1 integer flag —
-and prints the optimal objective value with its integer coordinates on the first line and the number
+and prints the optimal objective value with its coordinates on the first line and the number
 of nodes explored on the second. The node solver is a small inline Big-M primal simplex on the
 bounded-variable LP relaxation; a branch is nothing more than tightening one variable's bound, so a
 child differs from its parent by a single number.
 
 ```cpp
 // Branch and Bound for (mixed-)integer linear programming.
-// Reads a MILP from stdin and prints the provably optimal integer point.
+// Reads a MILP from stdin and prints the provably optimal point.
 //
 // Input (maximization):
 //   n m                       # n variables, m inequality constraints (Ax <= b)
 //   c_1 ... c_n               # objective row to MAXIMIZE  c'x
 //   then m lines:  a_i1 ... a_in  b_i      # one constraint row + its rhs
-//   then n lines:  l_j u_j integer_flag    # bound l_j<=x_j<=u_j (u_j may be "inf"), 1 if x_j integer
+//   then n lines:  l_j u_j integer_flag    # bound l_j<=x_j<=u_j (inf/-inf allowed), 1 if x_j integer
 // Output:
-//   first line:  the optimal objective value, then the n integer coordinates
+//   first line:  the optimal objective value, then the n coordinates
 //   second line: number of nodes explored
 //   ("INFEASIBLE" if no integer-feasible point exists; "UNBOUNDED" if the relaxation is unbounded)
 
@@ -42,78 +42,144 @@ struct LP {
     vector<double> c;           // n  (maximize)
 };
 
+static bool finite_bound(double v) {
+    return fabs(v) < INF / 2;
+}
+
+static string format_number(double v) {
+    if (fabs(v) < 5e-10) v = 0.0;
+    double r = round(v);
+    if (fabs(v - r) <= 1e-7) return to_string((long long)llround(r));
+    ostringstream out;
+    out << setprecision(10) << v;
+    return out.str();
+}
+
+struct ExpandedVar {
+    int original;
+    double scale;
+};
+
 // ---------------------------------------------------------------------------
-// Bounded-variable LP relaxation solver: maximize c'x s.t. Ax<=b, lo<=x<=up.
-// Shift y_j = x_j - lo[j] >= 0, add an explicit row y_j <= up[j]-lo[j] for each
-// finite upper bound, then run a Big-M primal simplex on
-//      max c'y  s.t.  A'y (<= or >=) b',  y >= 0.
-// Rows whose shifted rhs is negative are sign-flipped to ">=" and given an
-// artificial variable with a large penalty. Returns true if feasible/bounded
-// (filling x and value); false if infeasible; sets `unbounded` when unbounded.
+// Bounded/free-variable LP relaxation solver: maximize c'x s.t. Ax<=b,
+// lo<=x<=up. Each original variable is represented with nonnegative simplex
+// variables: x=lo+y for finite lower bounds, x=up-y for upper-only bounds,
+// and x=y+ - y- for free variables. Finite upper bounds become explicit rows.
+// A Big-M primal simplex then solves the resulting nonnegative LP.
 // ---------------------------------------------------------------------------
 static bool solve_lp(const LP& lp, const vector<double>& lo, const vector<double>& up,
                      vector<double>& x, double& value, bool& unbounded) {
     unbounded = false;
     int n = lp.n;
 
-    vector<vector<double>> R;   // constraint rows in shifted variable y
-    vector<double> rhs;
-    vector<int> ge;             // 1 if row is ">=" (needs an artificial)
+    vector<double> constant(n, 0.0);
+    vector<vector<pair<int, double>>> expr(n);
+    vector<ExpandedVar> expanded;
+    vector<double> obj;
+    vector<vector<double>> extraRows;
+    vector<double> extraRhs;
 
-    for (int i = 0; i < lp.m; ++i) {
-        vector<double> row(n);
-        double bb = lp.b[i];
-        for (int j = 0; j < n; ++j) { row[j] = lp.A[i][j]; bb -= lp.A[i][j] * lo[j]; }
-        if (bb < 0) { for (double& v : row) v = -v; bb = -bb; ge.push_back(1); }
-        else ge.push_back(0);
-        R.push_back(row); rhs.push_back(bb);
-    }
+    auto add_expanded = [&](int original, double scale, double coeff) {
+        int id = (int)obj.size();
+        obj.push_back(coeff);
+        expanded.push_back({original, scale});
+        expr[original].push_back({id, scale});
+        return id;
+    };
+
     for (int j = 0; j < n; ++j) {
-        if (up[j] < INF / 2) {
-            double cap = up[j] - lo[j];
-            if (cap < -TOL) return false;       // lo_j > up_j : node infeasible
-            vector<double> row(n, 0.0); row[j] = 1.0;
-            R.push_back(row); rhs.push_back(max(cap, 0.0)); ge.push_back(0);
+        bool hasLo = finite_bound(lo[j]);
+        bool hasUp = finite_bound(up[j]);
+        if (lo[j] >= INF / 2 || up[j] <= -INF / 2) return false;
+        if (hasLo && hasUp && lo[j] > up[j] + TOL) return false;
+
+        if (hasLo) {
+            constant[j] = lo[j];
+            int y = add_expanded(j, 1.0, lp.c[j]);
+            if (hasUp) {
+                double cap = up[j] - lo[j];
+                if (cap < -TOL) return false;
+                vector<double> row(obj.size(), 0.0);
+                row[y] = 1.0;
+                extraRows.push_back(row);
+                extraRhs.push_back(max(0.0, cap));
+            }
+        } else if (hasUp) {
+            constant[j] = up[j];
+            add_expanded(j, -1.0, -lp.c[j]);
+        } else {
+            add_expanded(j, 1.0, lp.c[j]);
+            add_expanded(j, -1.0, -lp.c[j]);
         }
     }
 
+    int N = (int)obj.size();
+    vector<vector<double>> R;   // constraint rows in expanded variable y
+    vector<double> rhs;
+    vector<int> ge;             // 1 if row is ">=" (needs an artificial)
+
+    auto add_row = [&](vector<double> row, double bb) {
+        row.resize(N, 0.0);
+        if (bb < -EPS) {
+            for (double& v : row) v = -v;
+            R.push_back(row);
+            rhs.push_back(-bb);
+            ge.push_back(1);
+        } else {
+            R.push_back(row);
+            rhs.push_back(max(0.0, bb));
+            ge.push_back(0);
+        }
+    };
+
+    for (int i = 0; i < lp.m; ++i) {
+        vector<double> row(N, 0.0);
+        double bb = lp.b[i];
+        for (int j = 0; j < n; ++j) {
+            bb -= lp.A[i][j] * constant[j];
+            for (auto [id, scale] : expr[j]) row[id] += lp.A[i][j] * scale;
+        }
+        add_row(row, bb);
+    }
+    for (int k = 0; k < (int)extraRows.size(); ++k) add_row(extraRows[k], extraRhs[k]);
+
     int M = (int)R.size();
-    int total = n + M + M;       // structural | slack/surplus | artificial
-    int artStart = n + M;
+    int total = N + M + M;       // structural | slack/surplus | artificial
+    int artStart = N + M;
 
     vector<vector<double>> T(M, vector<double>(total + 1, 0.0)); // last col = rhs
     vector<int> basis(M);
     for (int i = 0; i < M; ++i) {
-        for (int j = 0; j < n; ++j) T[i][j] = R[i][j];
-        T[i][n + i] = (ge[i] ? -1.0 : 1.0);     // slack (+1) or surplus (-1)
+        for (int j = 0; j < N; ++j) T[i][j] = R[i][j];
+        T[i][N + i] = (ge[i] ? -1.0 : 1.0);     // slack (+1) or surplus (-1)
         if (ge[i]) { T[i][artStart + i] = 1.0; basis[i] = artStart + i; }
-        else        basis[i] = n + i;
+        else        basis[i] = N + i;
         T[i][total] = rhs[i];
     }
 
     double BIGM = 0;
-    for (int j = 0; j < n; ++j) BIGM = max(BIGM, fabs(lp.c[j]));
-    for (double v : rhs)        BIGM = max(BIGM, fabs(v));
+    for (double v : obj) BIGM = max(BIGM, fabs(v));
+    for (double v : rhs) BIGM = max(BIGM, fabs(v));
     BIGM = (BIGM + 1.0) * 1e7;
 
-    vector<double> obj(total, 0.0);     // objective coefficient of each column
-    for (int j = 0; j < n; ++j) obj[j] = lp.c[j];
-    for (int i = 0; i < M; ++i) if (ge[i]) obj[artStart + i] = -BIGM;
+    vector<double> simplexObj(total, 0.0);
+    for (int j = 0; j < N; ++j) simplexObj[j] = obj[j];
+    for (int i = 0; i < M; ++i) if (ge[i]) simplexObj[artStart + i] = -BIGM;
 
     int guard = 0, maxIter = 20000 + 50 * (M + total);
-    vector<double> red(total, 0.0);
     while (true) {
         if (++guard > maxIter) break;            // safety; effectively never hit
-        // reduced cost of column j = (obj of basis . column j) - obj[j]
-        int piv = -1; double best = -EPS;
+        int piv = -1;
+        double best = -EPS;
         for (int j = 0; j < total; ++j) {
-            double s = 0;
-            for (int i = 0; i < M; ++i) s += obj[basis[i]] * T[i][j];
-            double r = s - obj[j];
-            if (r < best) { best = r; piv = j; }
+            double s = 0.0;
+            for (int i = 0; i < M; ++i) s += simplexObj[basis[i]] * T[i][j];
+            double reduced = s - simplexObj[j];
+            if (reduced < best) { best = reduced; piv = j; }
         }
         if (piv < 0) break;                      // optimal
-        int leave = -1; double bestRatio = 0;
+        int leave = -1;
+        double bestRatio = 0.0;
         for (int i = 0; i < M; ++i) {
             if (T[i][piv] > EPS) {
                 double ratio = T[i][total] / T[i][piv];
@@ -132,25 +198,26 @@ static bool solve_lp(const LP& lp, const vector<double>& lo, const vector<double
         basis[leave] = piv;
     }
 
-    // any artificial still basic at a positive level => infeasible node
     for (int i = 0; i < M; ++i)
         if (basis[i] >= artStart && T[i][total] > 1e-5) return false;
 
-    vector<double> y(n, 0.0);
+    vector<double> y(N, 0.0);
     for (int i = 0; i < M; ++i)
-        if (basis[i] < n) y[basis[i]] = T[i][total];
-    x.assign(n, 0.0);
-    double val = 0;
-    for (int j = 0; j < n; ++j) { x[j] = y[j] + lo[j]; val += lp.c[j] * x[j]; }
-    value = val;
+        if (basis[i] < N) y[basis[i]] = T[i][total];
+
+    x = constant;
+    for (int id = 0; id < N; ++id) x[expanded[id].original] += expanded[id].scale * y[id];
+
+    value = 0.0;
+    for (int j = 0; j < n; ++j) value += lp.c[j] * x[j];
     return true;
 }
 
 // ---------------------------------------------------------------------------
-// Branch and bound.  Open nodes = per-variable bound vectors on a depth-first
+// Branch and bound. Open nodes = per-variable bound vectors on a depth-first
 // stack. At each node: solve the relaxation (bound); fathom if infeasible, if
-// its ceiling cannot beat the incumbent, or if it is integral (a leaf); else
-// branch on the most-fractional integer variable into x_j<=floor and x_j>=ceil.
+// its ceiling cannot beat the incumbent, or if it is integral in the marked
+// variables; otherwise branch on the most-fractional integer variable.
 // ---------------------------------------------------------------------------
 struct Node { vector<double> lo, up; };
 
@@ -188,20 +255,21 @@ int main() {
     while (!stack.empty()) {
         Node nd = stack.back(); stack.pop_back();
         ++nodes;
-        vector<double> x; double ub; bool unbounded = false;
+        vector<double> x; double ub = 0.0; bool unbounded = false;
         bool feas = solve_lp(lp, nd.lo, nd.up, x, ub, unbounded);
         if (unbounded) { cout << "UNBOUNDED\n"; return 0; }
         if (!feas) continue;                       // FATHOM: infeasible
         if (ub <= bestVal + TOL) continue;         // FATHOM by bound: ceiling <= incumbent floor
 
-        double frac = -1; int jbr = -1;            // most-fractional integer variable
+        double frac = -1.0;
+        int jbr = -1;
         for (int j = 0; j < n; ++j) {
             if (!isInt[j]) continue;
             double f = fabs(x[j] - round(x[j]));
             if (f > frac) { frac = f; jbr = j; }
         }
-        if (jbr < 0 || frac <= TOL) {              // relaxation integral -> leaf candidate
-            if (ub > bestVal + TOL) { bestVal = ub; bestX = x; }   // update incumbent
+        if (jbr < 0 || frac <= TOL) {              // relaxation integral on marked variables
+            if (ub > bestVal + TOL) { bestVal = ub; bestX = x; }
             continue;
         }
         double fl = floor(x[jbr]), ce = ceil(x[jbr]);
@@ -214,8 +282,8 @@ int main() {
     }
 
     if (bestX.empty()) { cout << "INFEASIBLE\n"; return 0; }
-    cout << (long long)llround(bestVal);
-    for (int j = 0; j < n; ++j) cout << ' ' << (long long)llround(bestX[j]);
+    cout << format_number(bestVal);
+    for (int j = 0; j < n; ++j) cout << ' ' << format_number(bestX[j]);
     cout << '\n' << nodes << '\n';
     return 0;
 }

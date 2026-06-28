@@ -109,9 +109,9 @@ Here is the landing I commit to. The full near-linear algorithm above is the asy
 // Core idea (Johnson reweighting): find an integral price function phi with every reduced weight
 // w(u,v)+phi[u]-phi[v] >= 0, then a single Dijkstra on the reweighted graph yields true distances.
 // The price function is produced by ElimNeg, the Dijkstra+Bellman-Ford hybrid whose cost is governed
-// by eta (the number of negative edges shortest paths must use); a super-source reaching every vertex
-// makes phi[v]=dist(s_super,v) a non-negativizing price function, and Bellman-Ford with an
-// early-exit / extra relaxation round doubles as the negative-cycle detector.
+// by eta (the number of negative edges shortest paths must use); a super-source reaching every
+// source-reachable vertex makes phi[v]=dist(s_super,v) a non-negativizing price function, and
+// Bellman-Ford with an early-exit / extra relaxation round doubles as the negative-cycle detector.
 
 #include <bits/stdc++.h>
 using namespace std;
@@ -135,16 +135,41 @@ int main() {
         adj[(int)u].push_back({(int)v, w});
     }
 
+    // Only vertices reachable from the requested source can affect its shortest-path distances, and
+    // only cycles in this reachable subgraph should be reported.
+    vector<char> reachable(n, 0);
+    deque<int> rq;
+    reachable[s] = 1;
+    rq.push_back(s);
+    int reachableCount = 0;
+    while (!rq.empty()) {
+        int u = rq.front(); rq.pop_front();
+        ++reachableCount;
+        for (auto [v, w] : adj[u]) {
+            (void)w;
+            if (!reachable[v]) {
+                reachable[v] = 1;
+                rq.push_back(v);
+            }
+        }
+    }
+
     // ---- Step 1: ElimNeg-style price function via Bellman-Ford from a super-source ----
-    // A virtual super-source has a weight-0 edge to every vertex, so h[v] = dist(super, v) <= 0 is
-    // defined for all v and is a non-negativizing price function: for any edge (u,v),
+    // A virtual super-source has a weight-0 edge to every reachable vertex, so h[v] = dist(super, v)
+    // <= 0 is defined on the reachable subgraph and is a non-negativizing price function: for any
+    // reachable edge (u,v),
     // h[v] <= h[u] + w  =>  w + h[u] - h[v] >= 0.  We run the hybrid sweep: keep a queue of vertices
     // whose label changed (the "marked" frontier) and relax their out-edges; this settles a vertex
     // within eta(v)+1 rounds, so it tracks the negative-edge count rather than always doing n-1 rounds.
-    vector<ll> h(n, 0);                            // h[v] starts at 0 (the super-source edge)
-    vector<char> inq(n, 1);
-    deque<int> q(n);
-    iota(q.begin(), q.end(), 0);
+    vector<ll> h(n, 0);                            // h[v] starts at 0 for reachable vertices
+    vector<char> inq(n, 0);
+    deque<int> q;
+    for (int v = 0; v < n; ++v) {
+        if (reachable[v]) {
+            inq[v] = 1;
+            q.push_back(v);
+        }
+    }
     vector<int> cnt(n, 0);                         // relaxation count, for negative-cycle detection
     bool negCycle = false;
 
@@ -152,24 +177,25 @@ int main() {
         int u = q.front(); q.pop_front();
         inq[u] = 0;
         for (auto [v, w] : adj[u]) {
+            if (!reachable[v]) continue;
             if (h[u] + w < h[v]) {
                 h[v] = h[u] + w;
                 if (!inq[v]) {
                     inq[v] = 1;
                     q.push_back(v);
-                    if (++cnt[v] > n) { negCycle = true; break; }
+                    if (++cnt[v] > reachableCount) { negCycle = true; break; }
                 }
             }
         }
         if (negCycle) break;
     }
 
-    // Confirm with one extra full relaxation sweep: any edge still active => a negative cycle is
-    // reachable from the super-source (hence from some vertex), so the input has a negative cycle.
+    // Confirm with one extra full relaxation sweep: any reachable edge still active implies a
+    // negative cycle reachable from the requested source.
     if (!negCycle) {
         for (auto &e : edges) {
             int u = (int)e[0], v = (int)e[1]; ll w = e[2];
-            if (h[u] + w < h[v]) { negCycle = true; break; }
+            if (reachable[u] && reachable[v] && h[u] + w < h[v]) { negCycle = true; break; }
         }
     }
 
@@ -189,6 +215,7 @@ int main() {
         auto [d, u] = pq.top(); pq.pop();
         if (d > dr[u]) continue;
         for (auto [v, w] : adj[u]) {
+            if (!reachable[v]) continue;
             ll rw = w + h[u] - h[v];              // reduced weight, >= 0
             if (dr[u] + rw < dr[v]) {
                 dr[v] = dr[u] + rw;
@@ -198,7 +225,7 @@ int main() {
     }
 
     for (int v = 0; v < n; ++v) {
-        if (dr[v] >= INF) cout << "INF\n";
+        if (!reachable[v] || dr[v] >= INF) cout << "INF\n";
         else cout << (dr[v] - h[s] + h[v]) << "\n";
     }
     return 0;
