@@ -275,3 +275,37 @@ solution, and (iv) drop the `verify/{sol.cpp, brute.py, gen.py(, greedy.cpp)}` o
 - FrontierCS: *Evolving Challenges for Evolving Intelligence* — arXiv:2512.15699
 - ALE-Bench: *A Benchmark for Long-Horizon Objective-Driven Algorithm Engineering* — arXiv:2506.09050
 - Internal: `experiments/EXPERIMENTS_zh.md` (§5.1 FCS, §5.2 ALE), `experiments/DATA_FIX_FCS_LANDING_zh.md`, gold trace `data_v4/cp-noadj-commit/`.
+
+## FrontierCS v2 (expansion — distinct from the first 50)
+
+| id | title | area | THE INSIGHT | I/O sketch | constraints / difficulty | oracle |
+|---|---|---|---|---|---|---|
+| fcs-v2-dp-01 | Kitamasa Linear Recurrence | DP | Compute the N-th term (N up to 1e18) of an order-k linear recurrence; matrix power is O(k^3 log N). **Kitamasa / Berlekamp-Massey + polynomial mod** reduces it to O(k log k log N) via x^N mod the characteristic polynomial. | `k` coeffs + k seeds + `N` -> term mod p | k<=2e4, N<=1e18; hard | O(k^2 log N) poly-mult on small k |
+| fcs-v2-dp-02 | SOS + Mobius Superset Counting | DP | Count, for each mask, items that are SUPERSETS; naive is O(3^B). **Mobius/SOS over the subset lattice in the superset direction**, O(B 2^B). | n masks<2^B, q masks -> superset counts | B<=20, n<=1e6 | O(3^B)/O(n*masks) on B<=12 |
+| fcs-v2-gr-01 | Min-Cost Flow with Negative Edges (Johnson potentials) | graph | SSP fails with negative edges; **Bellman-Ford once to init potentials, then Dijkstra-with-potentials per augmentation** -> O(F E log V). | bipartite/general costs (some negative) -> min cost flow of value F | V<=1000; hard | brute MCMF (SPFA) on small |
+| fcs-v2-gr-02 | Dominator Tree (Lengauer-Tarjan) | graph | "Which nodes must every path from s pass through to reach v?" -> the **dominator tree**; Lengauer-Tarjan with DSU + semidominators in near-linear. | `n m s` directed -> idom[] | n,m<=2e5; hard | brute per-node reachability-removal on n<=200 |
+| fcs-v2-gr-03 | 2-Edge / Biconnected Components + Block-Cut Tree | graph | Answers about articulation points across many path queries -> build the **block-cut tree** and LCA; the BCC contraction is the insight. | edges + q path queries -> per-query answer | n,m<=2e5; medium-hard | brute remove-vertex check on small |
+| fcs-v2-tr-01 | Auxiliary Tree + Tree-DP per Query | tree | Repeated tree-DP over query node-subsets; build the **virtual tree** (Euler-in sort + adjacent LCAs) so each query is O(\|S\| log n). | tree + q node-sets -> answers | sum\|S\|<=2e5; hard | full-tree DP per query on small |
+| fcs-v2-tr-02 | Long-Path Decomposition kth-ancestor O(1) | tree | k-th ancestor for many queries; binary lifting is O(log). **Long-path decomposition + jump pointers + ladder** gives O(1) per query after O(n log n) build. | tree + q (v,k) -> ancestors | n,q<=5e5; hard | direct climb on small |
+| fcs-v2-st-01 | Suffix Array + LCP + Sparse Table | strings | Many substring-equality / k-th-distinct queries; **suffix array (O(n log n)) + Kasai LCP + sparse-table RMQ** answers each in O(1)/O(log). | string + queries -> answers | n<=2e5; hard | brute suffix sort on small |
+| fcs-v2-st-02 | Z / Hashing Double-Check Period Tiling | strings | Smallest period under wildcards; **failure-function + double rolling hash** to confirm candidate periods; the wildcard-transitive-closure is the trap. | pattern with '?' -> min period | n<=2e5; medium-hard | brute period test on small |
+| fcs-v2-nt-01 | NTT Convolution Counting | number-theory | Count pairs/triples summing to each value; that's a **polynomial product -> NTT** in O(n log n), not O(n^2). | freq array -> convolution mod p | n<=2e5; medium-hard | O(n^2) conv on small |
+| fcs-v2-nt-02 | Burnside / Polya Necklace Counting | number-theory | Count distinct colorings under rotation/reflection; **Burnside lemma**: average fixed points over the group; gcd-cycle structure gives the count. | `n k` (beads,colors) -> #distinct mod p | n<=1e9, via divisor sum; medium-hard | brute enumerate on tiny n,k |
+| fcs-v2-ge-01 | Convex Hull + Andrew Monotone + Antipodal | geometry | Max-area triangle / width over points; **monotone-chain hull then rotating calipers**; O(n log n). | n points -> max triangle area*2 | n<=1e5; hard | O(n^3) on small |
+| fcs-v2-ds-01 | Mo's Algorithm with Hilbert Order | data-structures | Range-distinct/freq queries; **Mo's with Hilbert-curve ordering** beats block-ordering constant; O((n+q) sqrt n). | array + q ranges -> answers | n,q<=2e5; hard | brute per-query on small |
+| fcs-v2-ds-02 | Persistent Treap / Rope Operations | data-structures | Versioned sequence with split/merge and rollback; **persistent balanced BST (treap by implicit key)** with path-copying. | ops (insert/reverse/query) referencing old versions -> outputs | n,q<=1e5; hard | brute array ops on small |
+| fcs-v2-gx-01 | Matroid-Intersection / Exchange Greedy | greedy-exchange | Max common independent set of two matroids (e.g. graphic + partition); **augmenting-path matroid intersection**; greedy-by-weight alone is wrong. | two matroid oracles -> max common indep set | small; hard | brute subset check on tiny |
+| fcs-v2-ac-01 | Lagrangian-Relaxation Feasibility | ad-hoc-constructive | "Min cost with exactly k of a resource" -> **Lagrangian relaxation / aliens on a non-DP objective**; binary-search the multiplier, the convexity argument is the insight. | items + k -> min cost exactly k | n<=2e5; hard | brute exact-k DP on small |
+
+ALE v2 subtotal continues from ale-50.
+
+| id | title | objective | I/O sketch | heuristic-design innovation | local scoring |
+|---|---|---|---|---|---|
+| ale-v2-01 | Capacitated Vehicle Routing | minimize total route length serving all clients with vehicle capacity | `n cap`, depot+clients(demand) -> routes | Clarke-Wright savings init + LNS (ruin worst route segment, regret-insertion reinsert); O(1) delta per 2-opt | sum route lengths, capacity feasibility -> 0 if violated; ratio to savings baseline |
+| ale-v2-02 | Rectangle Strip Packing | minimize used strip height packing rectangles | `W` + rect sizes -> placements | bottom-left-fill + SA over insertion order with skyline incremental height | recompute skyline height; ratio to BL baseline |
+| ale-v2-03 | Job-Shop Scheduling | minimize makespan | machines x jobs ops -> schedule | disjunctive-graph + critical-block neighborhood (N5) tabu; recompute only the critical path | longest path = makespan; baseline = list-scheduling |
+| ale-v2-04 | Graph Coloring (few colors) | minimize #colors of a proper coloring | graph -> color[] | DSATUR construction + Kempe-chain local search / tabu on conflicts | #colors used, 0 if conflicts; baseline greedy |
+| ale-v2-05 | Facility Location with Opening Cost | minimize open-cost + service-cost | facilities(cost)+clients -> open set | continuous LP relaxation -> round -> local swap with incremental second-nearest cache | sum costs; baseline = open-all-cheapest |
+| ale-v2-06 | Maximum Independent Set (weighted, dense) | maximize weight of an independent set | graph+weights -> set | greedy-by-weight/degree + simulated annealing with O(degree) conflict delta | sum weights, 0 if not independent; baseline greedy |
+| ale-v2-07 | Grid Wire Routing | maximize nets routed without crossings | grid + net endpoints -> paths | rip-up-and-reroute (LNS) with A* per net + congestion costs | #routed nets; baseline = sequential A* |
+| ale-v2-08 | Quadratic Assignment | minimize flow*distance over a permutation | flow + dist matrices -> perm | 2-swap local search with O(n) incremental delta + tabu | sum flow*dist; baseline identity |
