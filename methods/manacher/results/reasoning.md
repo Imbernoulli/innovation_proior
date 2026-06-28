@@ -30,6 +30,8 @@ The start index comes from the same alternating layout. Original character `s[j]
 
 Let me run the whole pipeline on a string where the answer is even-length and not at the start, so both the separator transform and the start formula get exercised non-trivially. Take `cbbd`, transform `#c#b#b#d#` (length 9). Scanning: center 1 (`c`) gets `p=1`; center 3 (`b`) gets `p=1`; center 4 (the middle `#`) expands `b==b` then `#==#`, `p=2`, the longest. Center 5 (`b`) has `c,r = 4,6`, `mirror = 3`, `p[3]=1`, clamp `min(6-5,1)=1`, no further steps — again the mirror does the work. The radius array is `[0,1,0,1,2,1,0,1,0]`, so `max(p)=2` at `best_center = 4`. Then `start = (4 - 2)//2 = 1`, and `s[1:1+2] = "bb"`. That is the correct answer, an even palindrome sitting in the interior, recovered with the right start. I also checked the answers against brute force over the twenty thousand random strings above and found no length mismatch.
 
+The clever risky step here is Manacher's mirror-radius seed with an inclusive right edge, especially copying `p[mirror]` only as `min(r - i, p[mirror])` before expanding through the parity-based virtual separators. If I am not confident I can implement that correctly in budget, I should fall back to the simpler center-expansion variant I have already traced as correct and ship that.
+
 ```cpp
 #include <bits/stdc++.h>
 using namespace std;

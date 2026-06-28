@@ -43,6 +43,8 @@ and the `Q` queries `S E L R` from stdin, printing `YES`/`NO` per query. The
 vertex indices stay in `int`, but I keep the Fenwick prefix counts in `long long`
 so a query that legitimately covers many points can't overflow.
 
+The offline Fenwick rectangle sweep over the two reconstruction-tree DFS coordinates is the part I would most easily get wrong under time pressure; if I were not confident I could implement it correctly in the budget, I would fall back to the merge-sort-tree rectangle check over the same coordinates that I have already traced as correct and ship that -- a plain correct submission beats an ambitious broken one.
+
 ```cpp
 // Reads: N M Q, then M lines "u v" (0-based undirected edges), then Q lines
 // "S E L R"; prints for each query "YES" iff a two-phase walk S->E exists

@@ -115,6 +115,9 @@ The code has to follow this algebra directly, as a single self-contained C++ pro
 
 Choosing `m`: the operands may differ in length, and `a₁+a₂`, `b₁+b₂` can each run one digit past the half — fine, the recursion handles slightly larger operands and the asymptotics don't change. I take `m` as half the digit-length of the longer operand (here just half the digit-vector size) and split both at that same `m`, so the place values `B²ᵐ` and `Bᵐ` line up for recombination. The trap that stays fatal in this digit-vector form is the one the concrete `z₁ = 1714` run already flagged: the recombination must be genuine integer addition with carry propagation, not fixed-width digit-field slotting, because the middle coefficient can exceed `Bᵐ` and must carry up into the high region. So `add`/`sub` propagate carries and borrows across the whole vector, and `trim` keeps leading zeros from accumulating — integers throughout, exactly.
 
+The Karatsuba split-and-recombine step — using the same `m` for both operands, subtracting `z₂` and `z₀` from the half-sum product to form `z₁`,
+then shifting `z₂` by `2m` and `z₁` by `m` while carries propagate — is the part I'd most easily get wrong under time pressure; if I weren't confident I could implement it correctly within budget, I'd fall back to the base-10 schoolbook `O(n²)` digit-vector multiplication with ordinary carry propagation that I've already traced as correct and ship that — a plain correct submission beats an ambitious broken one.
+
 ```cpp
 // Karatsuba multiplication. Reads two non-negative big integers (whitespace-
 // separated, arbitrary length) from stdin and prints their exact product.

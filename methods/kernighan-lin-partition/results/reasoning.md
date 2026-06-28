@@ -306,6 +306,8 @@ even integer `m = 2n` and the `m×m` symmetric cost matrix, encodes the partitio
 times selecting and locking the best unlocked pair while updating `D`'s, then choose the best prefix.
 The accumulated cut is held in `long long` to stay overflow-safe.
 
+The survivor `D`-value update after each locked pair in `kl_pass` is the step I'd most easily get wrong under time pressure; if I weren't confident I could keep the `+2c(x,ba)-2c(x,bb)` signs straight in the budget, I'd fall back to a brute-force greedy single-swap local search that recomputes each candidate cut and preserves the `n/n` split - a plain correct balanced submission beats an ambitious broken one.
+
 ```cpp
 // Kernighan-Lin variable-depth balanced graph bisection.
 // Reads from stdin: first an even integer m = 2n (number of nodes), then an

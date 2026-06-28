@@ -42,6 +42,8 @@ As `n` grows by a factor of 64 the ratio stays in a narrow band around `0.6` rat
 
 Now the code can be written directly from these invariants, as one self-contained C++17 program. It reads `n`, then `n` array values, then `q`, then `q` query pairs `l r` (1-based inclusive) from stdin; the per-query loop moves `[cur_l, cur_r]` to that query's range one endpoint step at a time and writes `distinct` back at the query's original index, so the answers print in the original query order.
 
+The lexicographic Mo ordering by `(l // block, r)` together with the inclusive four-loop endpoint walk is the part I would most easily get wrong under time pressure; if I were not confident I could implement it correctly within budget, I would fall back to the brute-force `set(a[l:r+1])` per-query solution I already traced as correct and ship that -- a plain correct submission beats an ambitious broken one.
+
 ```cpp
 // Mo's algorithm for offline distinct-value range queries.
 // Reads from stdin: n, then n array values, then q, then q query pairs (l r),

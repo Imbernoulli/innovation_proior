@@ -18,6 +18,8 @@ The recovery is the part where it is easy to be off by one count, and the tie ca
 
 With both checks passing — the cost formula and convexity on the strictly-increasing instance, and the off-by-one tangent recovery on the tied instance — I can write the code as the actual interval recurrence. The preprocessing keeps only the non-contained intervals. `Line` stores both the affine value and the count attached to the split. `LiChao` compares pairs by smaller value and, on ties, larger count, because the binary search is using the rightmost optimal count. Inside `minimum_cost_exact_k`, the local sweep builds the one-dimensional priced DP for a given `C`; the outer binary search finds the critical price and removes exactly `K` prices from the penalized value.
 
+The lambda-penalty binary search with rightmost-count Li Chao tie-breaking and `G(C)-C*K` tangent recovery is the part I would most easily get wrong under time pressure; if I were not confident I could implement it correctly within budget, I would fall back to the traced exact-count `f[i][j]=min_t f[t][j-1]+cost(t,i)` DP and ship that -- a plain correct submission beats an ambitious broken one.
+
 ```cpp
 // IOI 2016 "Aliens" trick: cover n segments with exactly K larger segments,
 // minimizing the sum of squared spans minus already-paid overlaps.

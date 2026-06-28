@@ -100,6 +100,8 @@ Output: `(0,1,0), (1,0,1), (-1,0,2)`. Let me check it against everything I claim
 
 So the implementation mirrors the sweep exactly. Compute `b*` and `mu` by Gram-Schmidt. Hold `k`. Size-reduce `b_k` against `b_{k-1}` (and, when advancing, against the rest). Test `|b*_k|^2 >= (3/4 - mu_{k,k-1}^2)|b*_{k-1}|^2`. Advance on success, swap and retreat on failure. Stop at the end. To keep everything exact in integers rather than carrying `Fraction` denominators, I'll track the integer determinants `d_i = prod_{j<=i}|b*_j|^2` and the integer-scaled coefficients `lambda_{i,j} = d_{j+1} mu_{i,j}` (recovered from the Gram matrix by the integer Cholesky recurrence): then the Lovász test clears denominators to `4 d_{k+1} d_{k-1} >= 3 d_k^2 - 4 lambda_{k,k-1}^2`, and the size-reduction rounding of `mu_{k,j}` becomes `round(lambda_{k,j} / d_{j+1})`. As a single-file C++17 program reading the basis (`n m` then `n` rows of `m` integers) from stdin and printing the reduced basis to stdout:
 
+The integer-scaled Gram-Schmidt update that feeds the denominator-cleared Lovász check is the part I would most easily get wrong under time pressure; if I were not confident I could implement it correctly in the budget, I would fall back to the simpler exact-Fraction version that recomputes Gram-Schmidt after each size-reduction or swap, which I have already traced as correct, and ship that, because a plain correct LLL submission beats an ambitious broken one.
+
 ```cpp
 // LLL lattice basis reduction (single-file, stdin -> stdout).
 // Reads: n m, then n rows of m integers (an integer basis b_1..b_n of a lattice

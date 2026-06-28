@@ -50,6 +50,8 @@ Now let me also pin down the seeding precisely so the corners and the diagonal a
 
 Let me now turn this into real code — a single self-contained C++17 program reading the board from stdin and printing the segments to stdout. I'll keep an explicit work-stack rather than actual recursion, because at $5\times10^4$ points per color a manual stack sidesteps any call-stack depth limit and the bucketing is the same. Points carry a color tag and an index; I keep green and red in separate index namespaces (so green #3 and red #3 are different points) and emit each segment as the two indices plus the color character. Orientation is exact 64-bit integer arithmetic (coordinates up to $2\times10^8$ make the cross product overflow 32 bits, so the products must be `long long`); the strict point-in-triangle test is "same sign on all three directed edges," and since no three points are collinear I never see a zero. For the median I compare rays from the apex by exact cross products inside the current wedge, then use a median-of-medians selector so the selection step is linear in the number of candidates.
 
+The local wedge median chosen with median-of-medians is the part I'd most easily get wrong under time pressure; if I weren't confident I could implement it correctly in the budget, I'd fall back to the same triangle-splitting recursion with a uniformly random apex-color cut that I've already traced as correct and ship that -- a plain correct expected-time submission beats an ambitious broken deterministic one.
+
 ```cpp
 // Reads: g, then g green coords; then r, then r red coords (integers, stdin).
 // Writes: (g-1)+(r-1) lines "i j c" (c='g'/'r') -- a non-crossing green spanning

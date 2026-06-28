@@ -26,6 +26,8 @@ The failure points at the cure. To keep $G$ short, I want every yes edge to come
 
 So the online rule collapses to this. For a query $(u,v)$, set $w=\max(u,v)$, increment $c[w]$, and answer yes exactly when the counter reaches $w$. As a single-file program I read the sample grader's input from stdin -- the first line is $n$, then $r=n(n-1)/2$ lines each give a queried pair $u\ v$ -- and print one answer per line, $1$ for a claimed flight and $0$ otherwise.
 
+The last-query tree strategy, where the lazy spanning-tree adversary answers yes only on the last pair in each larger-endpoint owned set $E_w$, is the part I would most easily get wrong under time pressure; if I were not confident I could implement it correctly in the budget, I would fall back to the component-count bridge strategy with $S(P,Q)$ counts between current $G$-components that I have already traced as correct and ship that -- a plain correct submission beats an ambitious broken one.
+
 ```cpp
 // IOI 2014 "Game": lazy spanning-tree adversary.
 // Reads from stdin: line 1 is n; then r = n(n-1)/2 lines, each "u v".

@@ -50,6 +50,8 @@ The other cost is the number of chosen-child changes per `access` - the length o
 
 Let me write it as a single self-contained C++17 program. It reads `n q`, then `n` node values, then `q` operations `op a b` with `op` in {`link`, `cut`, `conn`, `path`}, and prints `0`/`1` for each `conn` and the path-sum for each `path`, one per line; sums use `long long` since a path can stack up to $n$ values. Node $0$ is a null sentinel so I never special-case missing children; real nodes are $1..n$; each node stores its value `val`, the subtree sum `sm`, the two splay children `ch`, the parent `fa` (which doubles as splay-parent when claimed and path-parent when not), and the lazy `rev` flag. `is_root` tests the asymmetry; `splay` pushes the pending `rev` chain down before rotating; `access`, `make_root`, `find_root` are the climb, the reverse, and the leftmost-walk; the four forest operations are thin wrappers. I'll keep the pushdown-before-splay loop iterative so a long chain can't overflow the call stack.
 
+The lazy `rev` propagation through `make_root` and the pushdown-before-splay rotations are the parts I would most easily get wrong under time pressure; if I were not confident I could implement them correctly within budget, I would fall back to an adjacency-list forest with BFS/parent recovery for connectivity and path sums that I have already verified is correct and ship that -- a plain correct submission beats an ambitious broken one.
+
 ```cpp
 // Dynamic forest of n valued nodes (link-cut tree).
 // Reads: n q, then n node values, then q ops "op a b" with op in
