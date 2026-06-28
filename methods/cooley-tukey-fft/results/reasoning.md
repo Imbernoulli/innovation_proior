@@ -64,6 +64,8 @@ There is a different factorization worth distinguishing when I check related sch
 
 Let me write it as one self-contained program: read $N$ (a power of two) and the $N$ complex samples from stdin, run the loop form — the same butterflies on a bit-reversed working array — and print the $N$ coefficients. I keep `dft_direct` alongside as the small-$N$ oracle and `inverse_transform` as the conjugate-root wrapper.
 
+The real footgun is the bit-reversal routing plus the per-block twiddle schedule, so if I cannot verify those indices within budget, I fall back to the simpler recursive even/odd Cooley-Tukey form I already traced.
+
 ```cpp
 // Cooley-Tukey radix-2 FFT.
 // Reads from stdin: N (a power of two) then N complex samples as "re im" pairs.

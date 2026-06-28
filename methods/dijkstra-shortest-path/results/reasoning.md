@@ -44,6 +44,8 @@ So I can't trust the bare pop. The fix that costs nothing: when I pop a (dist, c
 
 Counting that way: each outgoing road of a settled city is inspected once, and each successful improvement pushes one heap entry, so the number of heap entries is bounded by E, and the lazy-heap code takes O((E + V) log(E + 1)) time using O(E) heap slots. On a simple graph log(E + 1) is O(log V), so this is usually written O((E + V) log V), or O(E log V) when the edge term dominates. A heap with true decrease-key would keep the queue itself to O(V) entries, but I do not need that complication for the code — the comparison-on-pop is cheaper to get right.
 
+The lazy min-heap Dijkstra step, especially leaving duplicate stale keys in the heap and filtering them with the recorded best distance and settled set on pop, is the part I'd most easily get wrong under time pressure; if I weren't confident I could implement it correctly in the budget, I'd fall back to the O(V²) frontier-scan Dijkstra version I already traced as correct and ship that — a plain correct submission beats an ambitious broken one.
+
 Let me write it down as it would actually run — a single-file program that reads the
 map from stdin (`n m s t`, then `m` directed roads `u v w` with nonnegative `w`, cities as
 0-based codes) and prints the minimum total length followed by the route, or `UNREACHABLE`.

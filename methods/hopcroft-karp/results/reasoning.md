@@ -38,6 +38,8 @@ Strict increase alone could still allow many phases, so I split the run by path 
 
 I want a sanity check on this phase count too, since it is the whole point of the construction. On the complete graph `K_{k,k}` for `k` from 1 up to 1024, the algorithm finished in exactly one phase every time — every augmenting path has length one, so a single sweep takes the perfect matching, far under the `2 sqrt(s)` budget. On 2000 random bipartite graphs with `n, m <= 40`, the worst ratio of actual phases to `2 sqrt(s) + 2` was `0.366`, so the phase count stayed well within the predicted envelope on every instance I tried. Nothing contradicted the `O(sqrt V)` bound.
 
+If I were not confident I could implement the layered BFS plus DFS augmentation with dead-vertex pruning correctly within budget, I would fall back to the plain `O(VE)` augmenting-path matcher I have already traced as correct and ship that; a plain correct submission beats an ambitious broken one.
+
 Each phase scans the edges once in the breadth-first layering and once in the layered search, with dead left vertices preventing repeated failed exploration inside the same phase. So the total time is `O(E sqrt V)` for `V = n + m`, and the stopping condition is Berge's criterion: when the breadth-first pass cannot reach any free right vertex, no augmenting path exists, so the matching is maximum.
 
 ```cpp

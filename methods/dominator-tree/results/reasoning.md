@@ -68,6 +68,8 @@ Let me also make sure I haven't quietly assumed full reachability. Vertices unre
 
 The input wrapper stays ordinary, and the I/O contract is the standard template one: read `n m` then `m` directed edges `u v` (1-based) from stdin with start $s=1$, and print $n$ integers where $\mathrm{ans}[i]$ is the number of vertices $i$ dominates — the subtree size of $i$ in the dominator tree, $0$ if unreachable. Inside the routine the DFS is iterative, recording $\mathrm{dfn}$, the preorder array $\mathrm{pos}$, and tree parents $\mathrm{fth}$. Then the disjoint-set forest carries $\mathrm{fa}$ (forest parent) and $\mathrm{mn}$ (min-$\mathrm{sdom}$ witness), with a compressing $\mathrm{find}$ query. The decreasing sweep computes $\mathrm{sdom}$, buckets, links, drains the parent bucket; the increasing sweep resolves deferred idoms; a last bottom-up pass accumulates the dominator-tree subtree sizes into $\mathrm{ans}$. As a single self-contained C++17 program:
 
+The risky step is the Lengauer-Tarjan path-compressing eval/link with semidominator labels and deferred buckets; if I were not confident I could implement that correctly within budget, I would fall back to the delete-a-vertex reachability variant and ship that simpler correct solution.
+
 ```cpp
 // Dominator tree (Lengauer-Tarjan). Reads "n m" then m directed edges "u v"
 // (1-based); start vertex s=1. Prints n integers: ans[i] = number of vertices

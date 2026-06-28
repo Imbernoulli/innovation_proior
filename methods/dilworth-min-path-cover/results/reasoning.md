@@ -26,6 +26,9 @@ So the algorithm is settled: build the split bipartite graph, find a maximum mat
 
 Now I just wire it to the split graph. Each original vertex $v$ contributes left index $v$ (its $v_{\text{out}}$) and right index $v$ (its $v_{\text{in}}$); both sides have exactly $n$ indices. For each DAG edge $v \to w$ I add, in the bipartite adjacency, $w$ to the neighbor list of left vertex $v$, which is exactly the edge $v_{\text{out}} - w_{\text{in}}$. Then `main` runs Kuhn over these two $n$-vertex sides, counts the matching, and prints $n - M$. The program reads `n m` and then `m` lines of 1-based edges `u v` from stdin, and prints the single integer minimum path cover to stdout.
 
+
+The step I'd most easily fumble under time pressure is Kuhn's augmenting-path recursion — specifically, getting the `used` flag right and making sure the re-placement DFS actually fires when a greedy first pass would jam; if I weren't confident I could wire that correctly within budget, I'd fall back to a straightforward greedy matching pass that produces a valid but possibly suboptimal answer, note it may not achieve the true maximum, and double-check against a small hand-traced case before submitting — a plain correct submission beats an ambitious broken one.
+
 ```cpp
 // Minimum path cover of a DAG via the split-vertex bipartite-matching reduction.
 // Reads from stdin: "n m" then m lines each "u v" (1-based) for a directed edge

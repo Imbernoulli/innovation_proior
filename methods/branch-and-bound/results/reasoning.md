@@ -42,6 +42,8 @@ The relaxation bound is only as good as the relaxation is *tight*. If the contin
 
 Let me write it as a single self-contained program. The pieces map one-to-one: a routine that solves a node's relaxation (a bounded-variable LP solver — since there's no library to lean on I'll carry a small Big-M simplex inline, fed `c` to maximize), a routine that picks the most-fractional marked variable, a stack of open nodes where each node is just the per-variable bound vector, the incumbent and its value carried across the search, and the three fathoming tests. The disposition is a competition single-file C++ program that reads one MILP from stdin — `n m`, the objective row, the `m` constraint rows with their right-hand sides, then per-variable `l u integer_flag` lines — and prints the optimal value with its coordinates and the node count. Then I'll run it on tiny instances where exhaustive enumeration is still affordable, and *watch the tree*, so the completeness argument and the prune directions get checked rather than assumed.
 
+The risky step is the inline Big-M primal simplex that supplies the LP relaxation bound for `ub <= bestVal + TOL` fathoming; if I weren't confident I could implement that correctly within budget, I'd fall back to bounded exhaustive enumeration of the integer lattice that I've already traced as correct and ship that.
+
 ```cpp
 // Branch and Bound for (mixed-)integer linear programming.
 // Reads a MILP from stdin and prints the provably optimal point.

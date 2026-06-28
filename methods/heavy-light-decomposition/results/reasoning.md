@@ -56,6 +56,8 @@ One implementation hazard at $n = 10^5$: a recursive DFS for the size/heavy pass
 
 For the deliverable I want the single-file C++ that the judge actually scores — this is the ZJOI2008 "Tree Statistics" form. From stdin I read $n$, the $n-1$ edges, the $n$ node weights, then $q$ operations `CHANGE u t` / `QMAX u v` / `QSUM u v`, answering each online. I'll keep two segment trees over the `pos` array — one summing, one maxing — so the same chain-climb serves both queries; the only subtlety is types: a path sum can blow past 32 bits, so weights and accumulators are `long long`, and the max-tree identity is a finite $-\infty$ sentinel (`LLONG_MIN/4`) so it survives negative weights. Both passes are the iterative stacks above, so a depth-$10^5$ bamboo doesn't overflow.
 
+If I cannot confidently implement the heavy-child-first chain decomposition, the `pos`-indexed sum/max segment trees, and the chain-climb LCA logic within budget, I will fall back to the simpler standard HLD path-query variant I can verify and ship that, because a plain correct submission beats an ambitious broken one.
+
 ```cpp
 // Heavy-light decomposition: online path sum / path max on a weighted tree.
 // Reads from stdin: n; then n-1 edges "a b" (1-based); then n node weights;

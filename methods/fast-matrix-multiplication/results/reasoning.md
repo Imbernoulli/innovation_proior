@@ -107,6 +107,8 @@ Setting n = 2^L, R(⟨n,n,n⟩) ≤ n^{log₂ 7}. The recursion *is* the tensor 
 
 Let me write the witness as real, runnable code, because the whole thing has to bottom out in something I can run. A single self-contained C++17 program: read `n` and two n×n integer matrices A, B from stdin (row-major, whitespace-separated), print C = A·B to stdout. Recurse with the seven products; below a crossover size the recursion overhead and the eighteen additions aren't worth it, so switch to a cubic leaf kernel there; pad odd sizes up so the halving always works; accumulate in `long long` so the products don't overflow.
 
+If I were not confident I could implement Strassen's seven-product block recurrence and the P1..P7 recombination correctly within the budget, I would fall back to the standard cubic matrix multiplication kernel for this problem and ship that instead.
+
 ```cpp
 // Reads n, then two n x n integer matrices A and B from stdin (row-major,
 // whitespace-separated); prints C = A*B (n rows, space-separated) to stdout.

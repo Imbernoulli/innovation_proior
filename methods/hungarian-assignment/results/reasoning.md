@@ -373,6 +373,11 @@ work, and the dual updates are what closed the gap. Checking against a brute-for
 enumerator — try all `n!` orderings and keep the cheapest — on a few hundred random small integer
 matrices, the optimal cost from the program matches every time (`0` mismatches).
 
+The `minv`/`way` shortest-augmenting-path update is the part I'd most easily get wrong under time
+pressure; if I weren't confident I could get the potential signs and path flip right in the budget,
+I'd fall back to the literal tableau Hungarian loop I've already traced as correct, with zero matching
+and König-cover recomputed after each slack update, and ship that -- a plain correct submission beats an ambitious broken one.
+
 So the causal chain: the assignment problem is a linear program, but a degenerate one where generic
 simplex is the wrong tool, so I write its dual and read off weak duality — every feasible budget
 `(u, v)` bounds every assignment, and they meet exactly when the assignment uses only *tight* pairs

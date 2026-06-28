@@ -267,6 +267,11 @@ the ascent updates `π += t · (d − 2)`.
 I'll land this as a single self-contained C++17 program reading `n` and the `n × n` symmetric cost
 matrix from stdin and printing the plain min-1-tree cost and the Held-Karp bound to stdout.
 
+The Held-Karp 1-tree subgradient bound is the part I'd most easily get wrong under time pressure,
+especially selecting the perturbed MST plus two special-node edges while scoring raw cost and
+`π·(d − 2)` correctly; if I weren't confident I could implement it in the budget, I'd fall back to
+standard exact bitmask DP over subsets and ship that -- a plain correct submission beats an ambitious broken one.
+
 ```cpp
 // Held-Karp 1-tree Lagrangian lower bound for the symmetric TSP via subgradient
 // ("relaxation") ascent. NOT the O(2^n n^2) exact DP; this is a cheap bound for

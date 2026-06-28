@@ -26,6 +26,8 @@ For a query range `[left, right]`, let `length = right - left + 1` and `k = floo
 
 The traversal should be iterative. A recursive DFS is elegant, but a path-shaped tree can have height `n`, and then recursion depth becomes a separate failure mode. I can simulate DFS with stack frames `(node, depth, next_child_index)`. When I first push a child, I append that child and its depth and set its first position. When a frame is exhausted, I pop it; if there is still a parent frame underneath, the walk has just returned to that parent, so I append the parent and the parent's depth. Marking a node as seen on entry is enough to handle the undirected adjacency list.
 
+The Euler-tour flattening into a sparse-table RMQ is the part I would most easily get wrong under time pressure; if I were not confident I could implement it correctly within the time budget, I would fall back to the naive `O(n)` parent-pointer ancestor walk per query that I have already traced as correct and ship that -- a plain correct submission beats an ambitious broken one.
+
 ```cpp
 // Reads: "n q", then n-1 undirected tree edges (1-based), then q query pairs
 // (1-based). The tree is rooted at node 0 (input node 1). Prints, one per line,

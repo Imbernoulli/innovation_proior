@@ -56,6 +56,8 @@ Before I trust the whole machine, the sign check on one inequality is not enough
 
 So the method produces $dp=[0,5,10,17,10]$. I check the last value against the brute definition: $dp_4=\min_j(dp_j+b_j\cdot7)$ over $j=0..3$ is $\min(0+35,\,5+21,\,10+21,\,17-7)=\min(35,26,31,10)=10$. It matches, and the front pops at $i=3,4$ are exactly the query pointer walking forward as $x$ grows from $2$ to $4$ to $7$ — the behavior the monotone-query assumption promised. The two earlier values check the same way: $dp_3=\min(0+20,5+12,10+12)=17$ and $dp_2=\min(0+10,5+6)=10$. Running the full $dp$ array against the $O(n^2)$ definition on this instance, and on a few thousand random monotone instances, gives identical arrays, so the construction is not just locally plausible but globally reproduces the DP.
 
+If I am not confident I can get the monotone deque hull's equal-slope cleanup and exact three-line cross-product back-pop test right under the budget, I would fall back to a coordinate-compressed Li Chao tree over the given `a[i]` queries, which is slower but is the standard correct CHT variant for this recurrence.
+
 ```cpp
 // Reads n, then arrays a[0..n-1] and b[0..n-1] from stdin; prints dp[n-1].
 // dp[i] = min_{0<=j<i}(dp[j] + b[j]*a[i]), dp[0]=0, with b non-increasing,
