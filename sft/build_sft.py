@@ -123,6 +123,35 @@ for m in methods:
                      'system': METHOD_SYS.format(year=yr), '_kind':'method', '_id':slug})
     stats['method'] += 1
 
+# ---------- (a2) v4 competition deliverables : single-turn, OVERSAMPLED into the mix ----------
+# The data_v4/ traces (single-file C++ reading stdin, debug+self-verify spine, no class) were NOT in
+# the SFT mix at all -- build_sft never read them and build_v4.py wrote a separate, untrained file
+# (experiments/DATA_FIX_FCS_LANDING_zh.md P0.2 flags this: "v4 is 0%, not 13%"). They are the cleanest
+# "executable deliverable" signal, so we ingest the VERIFIED ones here and oversample to ~15-20% of the
+# mix. Oversample factor is tunable via env; default 3 -> ~178 verified * 3 / (~2352 + 534) ~= 18%.
+V4_SYS = ("It is now year {year}. You are an expert competitive programmer. Solve the problem with a "
+          "single, self-contained C++ program that reads from standard input and writes to standard "
+          "output. Before committing, verify your reasoning and your code: trace it on concrete inputs, "
+          "check the edge cases, and fix any bug you find. Output the final solution as one C++ block.")
+V4_OVERSAMPLE = int(os.environ.get('V4_OVERSAMPLE', '3'))
+_v4_verified = {'cp-noadj-commit'}  # the hand-authored flagship + the locally oracle-verified lists
+for _vf in ('data_v4/_verified.txt', 'data_v4/_cpv4b_verified.txt'):
+    if os.path.isfile(_vf):
+        _v4_verified |= {x.strip() for x in open(_vf) if x.strip()}
+v4_n = 0
+for slug in sorted(_v4_verified):
+    d = f'data_v4/{slug}'
+    if not all(os.path.isfile(f'{d}/{f}.md') for f in ('context', 'reasoning', 'train_answer')):
+        continue
+    ex = {'conversations': [{'from':'human','value':read_with_note(f'{d}/context.md')},
+                            {'from':'gpt','value':think(read(f'{d}/reasoning.md'), read(f'{d}/train_answer.md'))}],
+          'system': V4_SYS.format(year=2025), '_kind':'v4', '_id':slug}
+    for _ in range(V4_OVERSAMPLE):
+        examples.append(dict(ex))
+    v4_n += 1
+stats['v4_unique'] = v4_n
+stats['v4_emitted'] = v4_n * V4_OVERSAMPLE
+
 # ---------- (b) trajectories ----------
 trajs = {x['task']: x for x in json.load(open('trajectories.json'))}
 def step_answer(d, st):
