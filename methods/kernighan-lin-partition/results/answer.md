@@ -73,87 +73,126 @@ unit nodes bound by high-cost edges; `k`-way partitions by cycling the two-way e
 
 ## Code
 
-A faithful, self-contained implementation: D-values, the greedy max-gain locked-pair selection, the
-D-value update, the cumulative-gain prefix choice, and multiple passes.
+A faithful, self-contained single-file C++17 program: D-values, the greedy max-gain locked-pair
+selection, the D-value update, the cumulative-gain prefix choice, and multiple passes. It reads from
+stdin an even integer `m = 2n` followed by an `m x m` symmetric nonnegative cost matrix (row major),
+and writes the initial cut, the final cut, and the two blocks. (`long long` throughout for the
+accumulated cut.)
 
-```python
-def kl_pass(cost, A, B):
-    """One Kernighan-Lin pass on a balanced bipartition (A, B).
-    Returns the improved (A, B) and the cost reduction G (0.0 if already locally optimal)."""
-    n = len(cost)
-    A, B = set(A), set(B)
+```cpp
+// Kernighan-Lin variable-depth balanced graph bisection.
+// Reads from stdin: first an even integer m = 2n (number of nodes), then an
+// m x m symmetric nonnegative integer cost matrix (m*m entries, row major).
+// Writes to stdout: the external cut cost of the initial balanced split
+// A = {0..n-1}, B = {n..2n-1}, then the final cut cost after KL, then the two
+// blocks A and B (sorted node indices, space separated, one block per line).
+#include <bits/stdc++.h>
+using namespace std;
 
-    def compute_D(A, B):
-        # D_s = E_s - I_s : external (edges crossing the cut) minus internal (edges to own side)
-        D = {}
-        for s in range(n):
-            own, other = (A, B) if s in A else (B, A)
-            I = sum(cost[s][x] for x in own if x != s)
-            E = sum(cost[s][y] for y in other)
-            D[s] = E - I
-        return D
+// External cut cost: total weight of edges with endpoints in different blocks.
+long long external_cost(const vector<vector<long long>>& cost,
+                        const vector<int>& side) {
+    int m = (int)side.size();
+    long long T = 0;
+    for (int i = 0; i < m; ++i)
+        for (int j = i + 1; j < m; ++j)
+            if (side[i] != side[j]) T += cost[i][j];
+    return T;
+}
 
-    D = compute_D(A, B)
-    free_A, free_B = set(A), set(B)
-    av, bv, gv = [], [], []
+// One Kernighan-Lin pass on a balanced bipartition encoded by side[] (0 = A, 1 = B).
+// Returns the cost reduction G achieved (0 if the partition is already locally optimal);
+// applies the best improving prefix of exchanges to side[] in place.
+long long kl_pass(const vector<vector<long long>>& cost, vector<int>& side) {
+    int m = (int)side.size();
+    int n = m / 2;
 
-    for _ in range(len(A)):
-        # select the unlocked pair maximizing the gain g = D[a] + D[b] - 2 c(a,b)
-        best, ba, bb = None, None, None
-        for a in free_A:
-            for b in free_B:
-                g = D[a] + D[b] - 2 * cost[a][b]
-                if best is None or g > best:
-                    best, ba, bb = g, a, b
-        av.append(ba); bv.append(bb); gv.append(best)      # record and LOCK the pair
-        free_A.discard(ba); free_B.discard(bb)
+    // D_s = E_s - I_s : external (edges crossing the cut) minus internal (edges to own side).
+    vector<long long> D(m, 0);
+    for (int s = 0; s < m; ++s) {
+        long long I = 0, E = 0;
+        for (int t = 0; t < m; ++t) {
+            if (t == s) continue;
+            if (side[t] == side[s]) I += cost[s][t]; else E += cost[s][t];
+        }
+        D[s] = E - I;
+    }
 
-        # update survivors: ba moved A->B, bb moved B->A
-        for x in free_A:
-            D[x] += 2 * cost[x][ba] - 2 * cost[x][bb]
-        for y in free_B:
-            D[y] += 2 * cost[y][bb] - 2 * cost[y][ba]
+    vector<char> locked(m, 0);
+    vector<int> av(n), bv(n);          // the sequence of locked pairs
+    vector<long long> gv(n);           // and their gains
 
-    # best prefix: maximize the cumulative gain G_k = g_1 + ... + g_k (allowed to dip and recover)
-    G, best_G, k = 0.0, 0.0, 0
-    for i, g in enumerate(gv, start=1):
-        G += g
-        if G > best_G:
-            best_G, k = G, i
+    for (int step = 0; step < n; ++step) {
+        // select the unlocked pair maximizing the gain g = D[a] + D[b] - 2 c(a,b)
+        long long best = LLONG_MIN; int ba = -1, bb = -1;
+        for (int a = 0; a < m; ++a) {
+            if (locked[a] || side[a] != 0) continue;
+            for (int b = 0; b < m; ++b) {
+                if (locked[b] || side[b] != 1) continue;
+                long long g = D[a] + D[b] - 2 * cost[a][b];
+                if (g > best) { best = g; ba = a; bb = b; }
+            }
+        }
+        if (ba < 0) break;                                 // no unlocked pair left (cannot happen for n>=1)
+        av[step] = ba; bv[step] = bb; gv[step] = best;     // record and LOCK the pair
+        locked[ba] = 1; locked[bb] = 1;
 
-    if best_G > 0:                                         # apply the improving prefix
-        for i in range(k):
-            A.discard(av[i]); A.add(bv[i])
-            B.discard(bv[i]); B.add(av[i])
-    return A, B, best_G
+        // update survivors: ba moved A->B, bb moved B->A
+        //   D'_x = D_x + 2 c(x,ba) - 2 c(x,bb)   for unlocked x on the A side
+        //   D'_y = D_y + 2 c(y,bb) - 2 c(y,ba)   for unlocked y on the B side
+        for (int x = 0; x < m; ++x) {
+            if (locked[x]) continue;
+            if (side[x] == 0) D[x] += 2 * cost[x][ba] - 2 * cost[x][bb];
+            else              D[x] += 2 * cost[x][bb] - 2 * cost[x][ba];
+        }
+    }
 
+    // best prefix: maximize the cumulative gain G_k = g_1 + ... + g_k (allowed to dip and recover).
+    long long G = 0, best_G = 0; int k = 0;
+    for (int i = 0; i < n; ++i) {
+        G += gv[i];
+        if (G > best_G) { best_G = G; k = i + 1; }
+    }
 
-def kernighan_lin(cost, A, B):
-    """Run passes until one certifies a local optimum (G <= 0)."""
-    A, B = set(A), set(B)
-    while True:
-        A, B, G = kl_pass(cost, A, B)
-        if G <= 0:
-            return A, B
+    if (best_G > 0) {                                      // apply the improving prefix
+        for (int i = 0; i < k; ++i) {
+            side[av[i]] = 1;                               // a_i moves A -> B
+            side[bv[i]] = 0;                               // b_i moves B -> A
+        }
+    }
+    return best_G;
+}
 
+int main() {
+    int m;
+    if (!(cin >> m)) return 0;
+    vector<vector<long long>> cost(m, vector<long long>(m, 0));
+    for (int i = 0; i < m; ++i)
+        for (int j = 0; j < m; ++j)
+            cin >> cost[i][j];
 
-def external_cost(cost, A, B):
-    return sum(cost[a][b] for a in A for b in B)
+    int n = m / 2;
+    vector<int> side(m, 0);                               // balanced start: A = {0..n-1}, B = {n..m-1}
+    for (int i = n; i < m; ++i) side[i] = 1;
 
+    cout << "start cut: " << external_cost(cost, side) << "\n";
 
-if __name__ == "__main__":
-    import random
-    random.seed(0)
-    n2 = 12                                                # 2n = 12 nodes -> two sets of 6
-    cost = [[0] * n2 for _ in range(n2)]
-    for i in range(n2):
-        for j in range(i + 1, n2):                         # random symmetric nonnegative costs
-            w = random.randint(0, 5)
-            cost[i][j] = cost[j][i] = w
-    A0, B0 = set(range(0, n2 // 2)), set(range(n2 // 2, n2))
-    print("start cut:", external_cost(cost, A0, B0))
-    A, B = kernighan_lin(cost, A0, B0)
-    print("A =", sorted(A), "B =", sorted(B), "cut:", external_cost(cost, A, B))
+    while (true) {                                        // run passes until one certifies a local optimum
+        long long G = kl_pass(cost, side);
+        if (G <= 0) break;
+    }
+
+    cout << "final cut: " << external_cost(cost, side) << "\n";
+
+    vector<int> A, B;
+    for (int i = 0; i < m; ++i) (side[i] == 0 ? A : B).push_back(i);
+    cout << "A:";
+    for (int x : A) cout << ' ' << x;
+    cout << "\nB:";
+    for (int x : B) cout << ' ' << x;
+    cout << "\n";
+    return 0;
+}
 ```
 
 ### The Fiduccia–Mattheyses successor (linear-time, single-cell moves, gain buckets)
@@ -181,22 +220,26 @@ edges. A later refinement that became the workhorse of VLSI partitioning changes
   local-minimum scheme is reused — only the move, the gain object, and the selection data structure
   change.
 
-```python
-# Sketch of the FM selection/update primitives (hypergraph netlist).
-def fm_gain(cell, side, nets_of, cells_of):
-    """Cell gain = (# nets that would leave the cutset) - (# nets that would enter it) if `cell`
-    moves to the other block. FS = nets with `cell` the only cell on its side; TE = nets entirely
-    on `cell`'s side (would become cut)."""
-    g = 0
-    for net in nets_of[cell]:
-        here = sum(1 for c in cells_of[net] if side[c] == side[cell])
-        there = len(cells_of[net]) - here
-        if here == 1:   g += 1        # cell is alone on its side -> moving it uncuts the net
-        if there == 0:  g -= 1        # net is entirely on this side -> moving it cuts the net
-    return g
+```cpp
+// Sketch of the FM selection/update primitives (hypergraph netlist).
+// Cell gain = (# nets that would leave the cutset) - (# nets that would enter it) if `cell`
+// moves to the other block. here == 1 means `cell` is the only cell on its side of the net;
+// there == 0 means the net is entirely on `cell`'s side (would become cut).
+int fm_gain(int cell, const vector<int>& side,
+            const vector<vector<int>>& nets_of, const vector<vector<int>>& cells_of) {
+    int g = 0;
+    for (int net : nets_of[cell]) {
+        int here = 0;
+        for (int c : cells_of[net]) if (side[c] == side[cell]) ++here;
+        int there = (int)cells_of[net].size() - here;
+        if (here == 1)  ++g;          // cell is alone on its side -> moving it uncuts the net
+        if (there == 0) --g;          // net is entirely on this side -> moving it cuts the net
+    }
+    return g;
+}
 
-# buckets[block][g] = doubly-linked list of free cells of gain g; pick the top non-empty bucket,
-# move that cell, lock it, then for each free neighbor sharing a net recompute its gain and
-# relocate it to its new bucket in O(1). Track the best cumulative-gain prefix over the pass and
-# apply it; repeat passes until no improvement.
+// buckets[block][g] = doubly-linked list of free cells of gain g; pick the top non-empty bucket,
+// move that cell, lock it, then for each free neighbor sharing a net recompute its gain and
+// relocate it to its new bucket in O(1). Track the best cumulative-gain prefix over the pass and
+// apply it; repeat passes until no improvement.
 ```

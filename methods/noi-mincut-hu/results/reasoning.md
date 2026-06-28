@@ -72,107 +72,110 @@ But the hand check and the brute force are both *me*, and the place I'm least su
 
 For the flow algorithm itself I'll use Dinic's, which finds the max flow in phases: a BFS labels each vertex with its distance from $s$, building a level graph; then a DFS pushes a blocking flow that only ever steps from level $k$ to level $k+1$, with a current-arc pointer so each phase skips arcs it has already exhausted. Repeat until $t$ is unreachable. I'll store edges in a flat array with each forward edge $i$ paired to its reverse $i \oplus 1$, so cancelling flow on the reverse arc is a one-line index flip. After the flow saturates, one more BFS over residual-positive edges from $s$ gives me $S$, and the chosen projects fall out.
 
-```python
-from collections import deque
+I'll land this as a single self-contained C++17 program on the concrete relay-station instance the construction was built for: $n$ stations (station $i$ costs $p_i$, a negative-weight project) and $m$ user groups (group $j$ uses stations $a_j,b_j$ and pays revenue $c_j$, a positive-weight project with two prerequisite edges to its stations). The program reads `n m`, the $n$ station costs, then $m$ lines `a_j b_j c_j` (stations 1-indexed) from stdin, builds the network, runs one max-flow, and prints the maximum net profit (revenue minus build cost) to stdout. I keep every capacity and the positive-sum in `long long` — the positive total alone can exceed a 32-bit range when revenues are large, and the flow inherits that bound — and I store edges in a forward-star (`head`/`nxt`) flat array so the reverse arc of edge $i$ is again $i \oplus 1$.
 
+```cpp
+// Relay-station selection (maximum net profit) via maximum-weight closure / min-cut.
+// Reads from stdin:
+//   line 1: n m            (n stations, m user groups)
+//   line 2: p_1 ... p_n    (cost to build station i)
+//   next m lines: a_i b_i c_i  (group i uses stations a_i,b_i (1-indexed), revenue c_i)
+// Writes to stdout: the maximum achievable net profit (total revenue - total build cost).
+#include <bits/stdc++.h>
+using namespace std;
 
-class Dinic:
-    """Dinic max-flow on integer capacities. Edges live in a flat list; the
-    forward edge 2k and its reverse 2k+1 are paired, so reverse(i) = i ^ 1."""
+struct Dinic {
+    int n, s, t;
+    vector<int> to, nxt, head;
+    vector<long long> cap;
+    vector<int> dep, it;
+    Dinic(int n) : n(n), head(n, -1), dep(n), it(n) {}
+    void add_edge(int u, int v, long long c) {
+        to.push_back(v); cap.push_back(c); nxt.push_back(head[u]); head[u] = (int)to.size() - 1;
+        to.push_back(u); cap.push_back(0); nxt.push_back(head[v]); head[v] = (int)to.size() - 1;
+    }
+    bool bfs() {
+        fill(dep.begin(), dep.end(), -1);
+        queue<int> q; q.push(s); dep[s] = 0;
+        while (!q.empty()) {
+            int u = q.front(); q.pop();
+            for (int e = head[u]; e != -1; e = nxt[e]) {
+                int v = to[e];
+                if (cap[e] > 0 && dep[v] == -1) { dep[v] = dep[u] + 1; q.push(v); }
+            }
+        }
+        return dep[t] != -1;
+    }
+    long long dfs(int u, long long f) {
+        if (u == t) return f;
+        long long pushed = 0;
+        for (int &e = it[u]; e != -1; e = nxt[e]) {
+            int v = to[e];
+            if (cap[e] > 0 && dep[v] == dep[u] + 1) {
+                long long d = dfs(v, min(f - pushed, cap[e]));
+                if (d > 0) {
+                    cap[e] -= d; cap[e ^ 1] += d; pushed += d;
+                    if (pushed == f) return pushed;
+                }
+            }
+        }
+        return pushed;
+    }
+    long long max_flow(int s_, int t_) {
+        s = s_; t = t_;
+        long long flow = 0;
+        while (bfs()) {
+            for (int i = 0; i < n; i++) it[i] = head[i];
+            flow += dfs(s, LLONG_MAX);
+        }
+        return flow;
+    }
+};
 
-    def __init__(self, n):
-        self.n = n
-        self.to = []
-        self.cap = []
-        self.head = [[] for _ in range(n)]   # head[u] = edge indices out of u
+int main() {
+    ios::sync_with_stdio(false);
+    cin.tie(nullptr);
 
-    def add_edge(self, u, v, c):
-        self.head[u].append(len(self.to)); self.to.append(v); self.cap.append(c)
-        self.head[v].append(len(self.to)); self.to.append(u); self.cap.append(0)
+    int n, m;
+    if (!(cin >> n >> m)) return 0;
 
-    def _bfs(self, s, t):                     # build the level graph
-        self.dep = [-1] * self.n
-        self.dep[s] = 0
-        q = deque([s])
-        while q:
-            u = q.popleft()
-            for i in self.head[u]:
-                v = self.to[i]
-                if self.cap[i] > 0 and self.dep[v] == -1:
-                    self.dep[v] = self.dep[u] + 1
-                    q.append(v)
-        return self.dep[t] != -1
+    // Node weight of each project (closure vertex):
+    //   station i -> weight -p_i (a cost)
+    //   user group j -> weight +c_j (a revenue), requires its two stations.
+    vector<long long> cost(n);          // build cost of each station
+    for (int i = 0; i < n; i++) cin >> cost[i];
 
-    def _dfs(self, u, t, f):                  # push blocking flow, level k -> k+1
-        if u == t:
-            return f
-        pushed = 0
-        while self.it[u] < len(self.head[u]):
-            i = self.head[u][self.it[u]]
-            v = self.to[i]
-            if self.cap[i] > 0 and self.dep[v] == self.dep[u] + 1:
-                d = self._dfs(v, t, min(f - pushed, self.cap[i]))
-                if d > 0:
-                    self.cap[i] -= d
-                    self.cap[i ^ 1] += d       # cancel on the paired reverse arc
-                    pushed += d
-                    if pushed == f:
-                        return pushed
-            self.it[u] += 1                    # current-arc: don't revisit dead arcs
-        return pushed
+    vector<int> ga(m), gb(m);
+    vector<long long> gc(m);
+    long long sumAbs = 0;
+    for (int i = 0; i < n; i++) sumAbs += cost[i];
+    for (int j = 0; j < m; j++) {
+        cin >> ga[j] >> gb[j] >> gc[j];
+        ga[j]--; gb[j]--;                // to 0-indexed stations
+        sumAbs += gc[j];
+    }
 
-    def max_flow(self, s, t):
-        flow = 0
-        while self._bfs(s, t):
-            self.it = [0] * self.n
-            flow += self._dfs(s, t, float("inf"))
-        return flow
+    // Vertices: 0..n-1 stations, n..n+m-1 user groups, then s, t.
+    int S = n + m, T = n + m + 1;
+    Dinic g(n + m + 2);
+    long long INF = sumAbs + 1;          // strictly larger than any finite cut
 
-    def reachable_from(self, start):           # residual-positive reachability
-        seen = [False] * self.n
-        seen[start] = True
-        q = deque([start])
-        while q:
-            u = q.popleft()
-            for i in self.head[u]:
-                v = self.to[i]
-                if self.cap[i] > 0 and not seen[v]:
-                    seen[v] = True
-                    q.append(v)
-        return seen
+    long long posSum = 0;                // sum of all positive node weights = sum of revenues
+    // negative-weight stations: edge station -> t with cap = cost
+    for (int i = 0; i < n; i++)
+        if (cost[i] > 0) g.add_edge(i, T, cost[i]);
+    // positive-weight user groups: edge s -> group with cap = revenue, plus prerequisite edges
+    for (int j = 0; j < m; j++) {
+        int gv = n + j;
+        if (gc[j] > 0) { g.add_edge(S, gv, gc[j]); posSum += gc[j]; }
+        g.add_edge(gv, ga[j], INF);      // group requires station a_j
+        g.add_edge(gv, gb[j], INF);      // group requires station b_j
+    }
 
-
-def max_weight_closure(profit, prereq):
-    """profit[i] = profit of project i (may be negative).
-       prereq = list of (u, v): selecting u requires selecting v.
-       Returns (best_total_profit, list of selected projects)."""
-    n = len(profit)
-    s, t = n, n + 1
-    g = Dinic(n + 2)
-    INF = sum(abs(w) for w in profit) + 1      # strictly bigger than any finite cut
-
-    pos_sum = 0
-    for i, w in enumerate(profit):
-        if w > 0:
-            g.add_edge(s, i, w)                # s -> profitable project, cap = profit
-            pos_sum += w
-        elif w < 0:
-            g.add_edge(i, t, -w)               # loss-making project -> t, cap = |profit|
-
-    for u, v in prereq:
-        g.add_edge(u, v, INF)                  # prerequisite: never worth cutting
-
-    cut = g.max_flow(s, t)                     # max-flow value = min-cut capacity
-    S = g.reachable_from(s)
-    selected = [i for i in range(n) if S[i]]   # chosen = source side, minus s
-    return pos_sum - cut, selected             # take all positive profit, pay the min cut
-
-
-if __name__ == "__main__":
-    # weights 5, -6, 7, 0, -3; edges 1->2, 1->4, 3->4, 2->5, 4->5 (0-indexed).
-    profit = [5, -6, 7, 0, -3]
-    prereq = [(0, 1), (0, 3), (2, 3), (1, 4), (3, 4)]
-    print(max_weight_closure(profit, prereq))  # (4, [2, 3, 4])
+    long long cut = g.max_flow(S, T);    // max-flow value = min-cut capacity
+    cout << (posSum - cut) << "\n";
+    return 0;
+}
 ```
 
 Stepping back over the path: greedy failed because prerequisites couple the keep-or-drop decisions both ways, which pushed me to think of a feasible selection as a two-way partition with no edge leaving the chosen side — a closure. The directional "no $V_1 \to V_2$ edge" matched the shape of an $s$–$t$ cut, and chasing that match, wiring each positive project to $s$ and each negative project to $t$ with prerequisite edges set above any finite cut, made the cut capacity come out as the constant positive total minus the selection profit. The min-cut-is-simple inequality and the cut/closure bijection are what license reading the answer off a single max-flow, and the small instance both confirmed the value ($4 = 12 - 8$) and, via the reversed-orientation experiment, caught the one step where I could most plausibly have gone wrong. The arrow direction is the load-bearing modeling choice; everything downstream is the standard max-flow machinery.

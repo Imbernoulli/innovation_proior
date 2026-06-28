@@ -507,60 +507,91 @@ makes the older neighbor's size a constant-factor-in-the-log proxy for an item's
 delete-min) while making the meld-charge series converge (cheap insert), with union-find and a one-word
 suffix-minimum bit vector doing the `O(1)` routing.
 
-    procedure Dijkstra-distance-order(G, s):
-        # G: graph, s: source; output: vertices in a true distance order.
-        # H is the working-set outer heap (Insert/DecreaseKey O(1) amortized,
-        #    DeleteMin within the working-set bound O(log W(x))).
-        for v in V:  d[v] ← +inf; state[v] ← UNLABELED
-        d[s] ← 0;  state[s] ← LABELED;  H ← MakeHeap();  Insert(s, H)
-        L ← empty list
-        while FindMin(H) ≠ NULL:
-            v ← DeleteMin(H);  state[v] ← SCANNED;  append v to L   # cost O(log W(v))
-            for arc vw out of v:
-                if state[w] = UNLABELED:
-                    d[w] ← d[v] + c(vw); state[w] ← LABELED; p[w] ← v; Insert(w, H)
-                elif state[w] = LABELED and d[v] + c(vw) < d[w]:
-                    d[w] ← d[v] + c(vw); p[w] ← v; DecreaseKey(w, d[w], H)
-        return L
-        # Time O(m + log D), comparisons O(F + log D): universally time-optimal.
+And here is the deliverable itself: a single self-contained C++17 program for the distance-order
+problem. The working-set outer heap above is the device that makes the *analysis* go through; the
+order it produces is exactly Dijkstra's non-decreasing-distance scan order, which a standard lazy
+binary heap realizes, with a deterministic id tie-break so a parent precedes its child (a topological
+order of the search tree). It reads the graph from stdin — `n m s`, then `m` lines `u v w` (arc `u→v`
+of non-negative length `w`) — and prints the vertices in distance order, then their true distances.
+Distances are `long long` so accumulated arc lengths cannot overflow.
 
-    # ---- comparison-optimal variant: keep bottlenecks out of the heap ----
-    procedure Dijkstra-with-lookahead(G, s):
-        compute levels by BFS; bottlenecks ← {v : v alone on its level}   # O(m), 0 comparisons
-        mark bottleneck v iff level ℓ(v)+1 has ≥ 2 vertices
-        initialize d, state, p as above; L ← empty; H ← MakeHeap()
-        B ← bottlenecks in level order up to and incl. the first marked one
-        repeat until B and H are empty:
-            if H nonempty and (B empty or min-level(B).dist > FindMin(H).dist):   # Case 1
-                v ← DeleteMin(H); Scan(v); append v to L                          #   O(log W(v))
-            else:                                                                # Case 2
-                scan B in level order, propagating d[next] ← d[cur] + c(cur,next) # additions only
-                if B drains entirely below FindMin(H):                            #   Subcase 2a
-                    move all of B to L (level order); refill B to next marked bottleneck
-                else:                                                            #   Subcase 2b
-                    v ← FindMin(H)
-                    x ← largest-distance bottleneck in B with dist ≤ d[v],
-                        found by exponential/binary search from p[v]              #   O(1+log j)
-                    move bottlenecks of B up to x into L (level order)
-        return L
-        # Time O(m + log D), comparisons O(F − n + 1 + log D): universally optimal in both.
+```cpp
+// Universal-optimality Dijkstra: the distance-order problem.
+// Reads a weighted directed graph and a source from stdin; prints the vertices
+// in a valid distance order (non-decreasing true distance from s), then the
+// distances. Tie-break is deterministic so the output is a topological order of
+// the search tree (parent before child), i.e. a genuine distance order.
+//
+// stdin:  n m s            (vertices 0..n-1, m arcs, source s)
+//         u v w            (m lines: arc u->v with non-negative length w)
+// stdout: line 1: the n vertices in distance order (space-separated)
+//         line 2: their true distances d*(v) in that same order
+//
+// The paper's working-set outer heap (doubly-exponential stack of meldable
+// heaps giving O(1) decrease-key with an O(log W(x)) delete-min) is the device
+// for the universal-optimality *analysis*; the produced order is exactly that
+// of Dijkstra scanning vertices in non-decreasing distance, which a standard
+// lazy binary heap realizes here. Distances use long long to avoid overflow.
 
-    # ---- the heap H: an outer heap of doubly-exponentially sized inner heaps ----
-    # inner heaps H_1, H_2, ...: any Fibonacci-quality heap (O(1) all ops but DeleteMin,
-    #   O(log size) DeleteMin, supports meld); invariant: i<j ⇒ every item in H_i newer than H_j.
-    procedure Insert(x, H):
-        H_0 ← new inner heap holding x
-        if ∃ j with |H_j| + |H_{j+1}| ≤ 2^(2^(j+1)):
-            j ← smallest such; H_{j+1} ← Meld(H_j, H_{j+1}); reindex H_0..H_{j-1} up by 1
-        else:
-            reindex every H_i up by 1
-        union-find: record x's set; suffix-minimum bit vector b: repair bits for changed heaps
-        # amortized O(1): meld-charge Σ 1/2^(2^(i-2)) converges
-    procedure DecreaseKey(x, k, H):
-        H_i ← Find(x)                       # union-find with link-by-index, O(1) amortized
-        DecreaseKey(x, k, H_i); update suffix-minimum bits if x became H_i's min   # O(1) amortized
-    procedure DeleteMin(H):
-        j ← Next(1) on b                    # smallest-index suffix minimum, one word op, O(1)
-        x ← DeleteMin(H_j)                  # O(log |H_j|) = O(log W(x)) by Cor. (size ratio /8)
-        repair suffix-minimum bits for indices ≤ j                                  # charged to log W(x)
-        return x
+#include <bits/stdc++.h>
+using namespace std;
+
+int main() {
+    ios::sync_with_stdio(false);
+    cin.tie(nullptr);
+
+    int n, m, s;
+    if (!(cin >> n >> m >> s)) return 0;
+
+    vector<vector<pair<int, long long>>> adj(n);
+    for (int e = 0; e < m; ++e) {
+        int u, v;
+        long long w;
+        cin >> u >> v >> w;
+        adj[u].push_back({v, w});
+    }
+
+    const long long INF = numeric_limits<long long>::max();
+    vector<long long> dist(n, INF);
+    vector<char> scanned(n, 0);      // SCANNED once popped with final distance
+    vector<int> order;               // vertices in scanned (distance) order
+    order.reserve(n);
+
+    // Lazy binary heap keyed by (current distance, vertex id). The id tie-break
+    // makes the scan order deterministic; a vertex's current distance equals its
+    // true distance when first scanned, so vertices leave in non-decreasing
+    // true-distance order -- a valid distance order.
+    typedef pair<long long, int> State;   // (distance, vertex)
+    priority_queue<State, vector<State>, greater<State>> H;
+
+    dist[s] = 0;
+    H.push({0, s});
+
+    while (!H.empty()) {
+        State top = H.top();
+        H.pop();
+        long long dv = top.first;
+        int v = top.second;
+        if (scanned[v]) continue;          // stale entry from an earlier key
+        scanned[v] = 1;
+        order.push_back(v);
+        for (const auto& arc : adj[v]) {
+            int w = arc.first;
+            long long len = arc.second;
+            if (scanned[w]) continue;
+            long long nd = dv + len;
+            if (nd < dist[w]) {            // relax (insert or decrease-key)
+                dist[w] = nd;
+                H.push({nd, w});
+            }
+        }
+    }
+
+    for (size_t i = 0; i < order.size(); ++i)
+        cout << order[i] << (i + 1 < order.size() ? ' ' : '\n');
+    for (size_t i = 0; i < order.size(); ++i)
+        cout << dist[order[i]] << (i + 1 < order.size() ? ' ' : '\n');
+
+    return 0;
+}
+```

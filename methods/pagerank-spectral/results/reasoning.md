@@ -72,41 +72,68 @@ The pieces now line up. Importance is recursive — important pages make you imp
 
 Before I trust the implementation I want one end-to-end check that the broadcast-based update — which never forms G and only patches dangling mass with a scalar — actually lands on the same vector as the explicit Perron eigenvector I computed by brute eigendecomposition. So I run the sparse power iteration on the 4-node dangling graph and compare. It converges in 46 iterations (well under my worst-case ceiling of ≈85 at this tolerance, as expected since the true |λ₂| ≈ 0.672 < α) to r = (0.214, 0.265, 0.308, 0.214) — agreeing with the directly-decomposed eigenvector to within 8×10⁻¹⁰. The dangling page 3 gets a perfectly healthy score of 0.214 rather than the zero it would have decayed to without the patch, and the highest score lands on page 2, the one every cycle funnels through, which is the common-sense ranking I wanted. The never-form-G trick reproduces the exact eigenvector. Now I can write the production version.
 
-```python
-import numpy as np
+So the production version is a single self-contained C++17 program. It reads the link graph from stdin — a header `n m` (pages and directed links), then `m` lines `src dst` (0-indexed, page src links to dst) — and writes `n` lines `i score`, the importance of each page, scores summing to 1. It never forms G: each power-iteration step is one sparse sweep over the links (every non-dangling page splits `alpha*r(v)` over its out-links) plus the two scalar broadcasts — the redistributed dangling mass `alpha*d/n` and the teleport trickle `(1-alpha)/n`. It stops on the L1 change between iterates falling below `n*tol` (the NetworkX-style per-node tolerance; for an L1 tolerance ε the worst-case bound is ~ log(ε)/log(α) steps, independent of n).
 
-def pagerank(A, alpha=0.85, tol=1.0e-6, max_iter=100):
-    """Importance score = principal eigenvector / stationary distribution of
-    the Google matrix G = alpha*M + (1-alpha)*(1/n)*1*1^T, by power iteration.
-    A is the sparse adjacency: A[i, j] = 1 if page j links to page i."""
-    n = A.shape[0]
-    if n == 0:
-        return np.array([])
+```cpp
+// PageRank via power iteration on the Google matrix G = alpha*M + (1-alpha)*(1/n)*11^T.
+// Reads from stdin: "n m", then m lines "src dst" (0-indexed directed edges, page src links to dst).
+// Writes to stdout: n lines "i score", the importance score of each page (scores sum to 1).
+#include <bits/stdc++.h>
+using namespace std;
 
-    # Sparse normalized link matrix for non-dangling columns. Dangling columns
-    # stay zero here and are patched by the dangle_mass broadcast below.
-    out_deg = np.asarray(A.sum(axis=0)).ravel()          # out-links per page
-    dangling = (out_deg == 0)                             # dead-end pages
-    inv = np.zeros(n)
-    inv[~dangling] = 1.0 / out_deg[~dangling]
-    M = A.multiply(inv)                                   # M[i,j] = 1/N_j if j->i
+int main() {
+    ios::sync_with_stdio(false);
+    cin.tie(nullptr);
 
-    p = np.full(n, 1.0 / n)        # uniform teleport target (the rank source)
-    r = np.full(n, 1.0 / n)        # generic positive start, sums to 1
+    int n;
+    long long m;
+    if (!(cin >> n >> m)) return 0;
+    if (n <= 0) return 0;
 
-    for _ in range(max_iter):
-        r_last = r
-        # dangling mass would leak out of M; send it to the teleport target,
-        # which is exactly the zero-column -> uniform-column patch.
-        dangle_mass = alpha * r_last[dangling].sum()
-        # one power-iteration step on G, never forming G:
-        #   alpha * (sparse link flow)  +  redistributed dangling mass
-        #                               +  (1-alpha) uniform teleport
-        r = alpha * (M @ r_last) + (dangle_mass + (1.0 - alpha)) * p
-        # converged when the L1 change between iterates is below the
-        # NetworkX-style average-per-node tolerance; for an L1 tolerance eps,
-        # the worst-case bound is ~ log(eps)/log(alpha) steps, independent of n.
-        if np.abs(r - r_last).sum() < n * tol:
-            return r
-    raise RuntimeError("power iteration did not converge in max_iter")
+    const double alpha = 0.85;
+    const double tol = 1.0e-6;       // L1 tolerance per node: stop when |r-r_last|_1 < n*tol
+    const int max_iter = 100;
+
+    // Column-stochastic link operator stored sparsely: for each edge v->u we will
+    // push r(v)/N_v onto u. Keep out-degree N_v and the out-neighbour list per page.
+    vector<vector<int>> out(n);
+    vector<long long> outdeg(n, 0);
+    for (long long e = 0; e < m; ++e) {
+        long long s, d;
+        cin >> s >> d;
+        if (s < 0 || s >= n || d < 0 || d >= n) continue; // ignore out-of-range edges
+        out[(int)s].push_back((int)d);
+        outdeg[(int)s]++;
+    }
+
+    vector<double> r(n, 1.0 / n);      // positive start, sums to 1
+    vector<double> rn(n, 0.0);
+    const double teleport = (1.0 - alpha) / n;
+
+    for (int it = 0; it < max_iter; ++it) {
+        // dangling mass (pages with no out-links) is redistributed uniformly.
+        double dangle = 0.0;
+        for (int v = 0; v < n; ++v)
+            if (outdeg[v] == 0) dangle += r[v];
+        double broadcast = alpha * dangle / n + teleport; // per-page constant trickle
+
+        for (int u = 0; u < n; ++u) rn[u] = broadcast;
+        // sparse link flow: every non-dangling page v splits alpha*r(v) over its out-links.
+        for (int v = 0; v < n; ++v) {
+            if (outdeg[v] == 0) continue;
+            double share = alpha * r[v] / (double)outdeg[v];
+            for (int u : out[v]) rn[u] += share;
+        }
+
+        double diff = 0.0;
+        for (int u = 0; u < n; ++u) diff += fabs(rn[u] - r[u]);
+        swap(r, rn);
+        if (diff < (double)n * tol) break;
+    }
+
+    cout.setf(std::ios::fixed);
+    cout << setprecision(10);
+    for (int u = 0; u < n; ++u) cout << u << ' ' << r[u] << '\n';
+    return 0;
+}
 ```

@@ -16,76 +16,28 @@ For any non-final prefix, let the last query of the entire interaction be the on
 
 The implementation is tiny and efficient. Only a counter per vertex is needed, initialized to zero. Each query takes constant time: compare u and v to find the larger endpoint, increment the counter, and test equality with the vertex label. Initialization is O(n), memory is O(n), and over all n choose 2 queries the total time is O(n^2). This easily satisfies the required constraints up to n = 1500.
 
-The Python snippet below implements the lazy spanning-tree adversary and verifies it on random query orders. It defines the responder, simulates an arbitrary ordering of all pairs, checks the spanning-tree structure of the final yes graph, and confirms that the ambiguity invariant holds for every non-final prefix.
+The program below implements the lazy spanning-tree adversary as a single self-contained C++17 file driven by the sample grader's stdin format: the first line is `n`, then the next `r = n(n-1)/2` lines each hold a queried pair `u v`, and for each query it prints `1` if a direct flight is claimed and `0` otherwise. The only state is one counter per vertex; each query compares the two endpoints, increments the owner's counter, and answers yes exactly when that counter reaches the owner's label, so the yes edges accumulate into the spanning tree only at the very last query of each owned set.
 
-```python
-import itertools
-import random
+```cpp
+// IOI 2014 "Game": lazy spanning-tree adversary.
+// Reads from stdin: line 1 is n; then r = n(n-1)/2 lines, each "u v".
+// For each query prints one line, 1 if a direct flight is claimed, else 0.
+#include <cstdio>
 
-def lazy_tree_adversary(n, queries):
-    """Simulate the lazy spanning-tree adversary.
-    queries is a list of unordered pairs (u, v) with u != v,
-    containing each unordered pair exactly once.
-    Returns (answers, final_edges) where answers[i] is 0/1.
-    """
-    c = [0] * n
-    answers = []
-    final_edges = []
-    for (u, v) in queries:
-        w = u if u > v else v
-        c[w] += 1
-        ans = 1 if c[w] == w else 0
-        answers.append(ans)
-        if ans == 1:
-            final_edges.append((u, v))
-    return answers, final_edges
+static int c[1500];
 
-def is_connected(edges, n):
-    adj = [[] for _ in range(n)]
-    for u, v in edges:
-        adj[u].append(v)
-        adj[v].append(u)
-    seen = [False] * n
-    stack = [0]
-    seen[0] = True
-    count = 1
-    while stack:
-        u = stack.pop()
-        for v in adj[u]:
-            if not seen[v]:
-                seen[v] = True
-                count += 1
-                stack.append(v)
-    return count == n
-
-def check_invariant(n, queries, answers):
-    """Check that before every non-final prefix G is disconnected
-    and H (yes edges plus all unasked pairs) is connected."""
-    asked = set()
-    yes_edges = []
-    total_pairs = n * (n - 1) // 2
-    for idx, ((u, v), ans) in enumerate(zip(queries, answers)):
-        asked.add((min(u, v), max(u, v)))
-        if ans == 1:
-            yes_edges.append((u, v))
-        if idx + 1 == total_pairs:
-            break
-        # G is the yes graph so far.
-        assert not is_connected(yes_edges, n), "G connected too early"
-        # H is yes_edges plus every unasked pair.
-        unasked = [(i, j) for i in range(n) for j in range(i + 1, n)
-                   if (i, j) not in asked]
-        assert is_connected(yes_edges + unasked, n), "H disconnected"
-
-for n in [4, 7, 12]:
-    all_pairs = [(u, v) for u in range(n) for v in range(u + 1, n)]
-    for trial in range(20):
-        queries = all_pairs[:]
-        random.shuffle(queries)
-        answers, final_edges = lazy_tree_adversary(n, queries)
-        assert len(final_edges) == n - 1
-        assert is_connected(final_edges, n)
-        # Tree has exactly n-1 edges and is connected, so it is acyclic.
-        check_invariant(n, queries, answers)
-print("All random tests passed.")
+int main() {
+    int n;
+    if (scanf("%d", &n) != 1) return 0;
+    for (int i = 0; i < n; ++i) c[i] = 0;
+    long long r = (long long)n * (n - 1) / 2;
+    for (long long q = 0; q < r; ++q) {
+        int u, v;
+        if (scanf("%d %d", &u, &v) != 2) break;
+        int w = u > v ? u : v;          // owner = larger endpoint
+        int ans = (++c[w] == w) ? 1 : 0; // yes only on the last query owned by w
+        printf("%d\n", ans);
+    }
+    return 0;
+}
 ```

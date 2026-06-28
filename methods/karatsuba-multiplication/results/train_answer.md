@@ -21,34 +21,126 @@ The recursion tree has $\log_2 n$ levels; level $i$ holds $3^i$ nodes of size $n
 $$T(n) = \Theta\!\big(n^{\log_2 3}\big) \approx \Theta\!\big(n^{1.585}\big),$$
 strictly sub-quadratic. (In master-theorem terms $a = 3$, $b = 2$, combine exponent $c = 1 < \log_2 3$, so the leaf term $n^{\log_b a}$ wins.) And $\log_2 3 < 2$, so the conjectured floor is false. The intuition behind the floor confused the product *depending* on all $n^2$ digit-pair interactions with *needing* one multiplication per pair: the cross sum $a_1b_2 + a_2b_1$ does depend on those interactions, yet it is pulled out with a single multiplication by sharing work with the corner products. Two halves are the smallest split where the two cross products collide into one middle coefficient, and that collision is exactly what the product-of-sums identity exploits — no more elaborate split is needed to refute the lower bound. The implementation follows the algebra directly: a base case when an operand is a single digit; otherwise pick $m$ as half the digit-length of the longer operand and split both at that same $m$ so the place values line up, make the three recursive multiplications, and recombine with shifts. The one language trap is fatal if missed — the split must use integer floor-division and remainder (`divmod`), because true division would turn the halves into floats, the operands would stop shrinking toward the base case, and the recursion would never bottom out.
 
-```python
-BASE = 10
+The deliverable is a single self-contained C++17 program: it reads two non-negative big integers (whitespace-separated, arbitrary length) from `stdin` and prints their exact product to `stdout`. Because the whole point is operands far past machine-word width, the numbers are carried as little-endian base-10 digit vectors and all of add/sub/shift are done on those vectors; the recursion is the three-multiplication split above, with the split point `m` taken as half the longer operand's digit length. The half-sums `x1+x2`, `y1+y2` may carry an extra digit — that is harmless, the recursion simply takes a slightly longer sub-operand and the asymptotics are unchanged.
 
-def karatsuba(x, y):
-    # base case: a single-digit operand — multiply directly (O(1))
-    if x < BASE or y < BASE:
-        return x * y
+```cpp
+// Karatsuba multiplication. Reads two non-negative big integers (whitespace-
+// separated, arbitrary length) from stdin and prints their exact product.
+#include <bits/stdc++.h>
+using namespace std;
 
-    # split point: half the digit-length of the longer operand
-    n = max(len(str(x)), len(str(y)))
-    m = n // 2
-    split = BASE ** m
+// A big number is held little-endian, one base-10 digit per vector slot.
+using Big = vector<int>;          // digits[0] is the units place
 
-    # cut each number into high/low halves at the B^m boundary.
-    # integer floor-division + remainder (divmod) — true division would
-    # turn the operands into floats and never reach the base case.
-    high1, low1 = divmod(x, split)   # x = high1 * 10^m + low1
-    high2, low2 = divmod(y, split)   # y = high2 * 10^m + low2
+static const int BASE = 10;
 
-    # the THREE recursive multiplications
-    z2 = karatsuba(high1, high2)                # a1 * b1
-    z0 = karatsuba(low1, low2)                  # a2 * b2
-    z3 = karatsuba(high1 + low1, high2 + low2)  # (a1+a2)(b1+b2)
+Big from_string(const string& s) {
+    Big d;
+    for (int i = (int)s.size() - 1; i >= 0; --i) d.push_back(s[i] - '0');
+    if (d.empty()) d.push_back(0);
+    return d;
+}
 
-    # middle coefficient: cross sum recovered from the product-of-sums
-    # minus the two corner products already computed
-    z1 = z3 - z2 - z0                           # = a1*b2 + a2*b1
+void trim(Big& a) {                // drop leading (high-order) zeros
+    while (a.size() > 1 && a.back() == 0) a.pop_back();
+}
 
-    # recombine: x*y = z2 * B^(2m) + z1 * B^m + z0   (shifts + adds, O(n))
-    return z2 * BASE ** (2 * m) + z1 * BASE ** m + z0
+// add: a + b
+Big add(const Big& a, const Big& b) {
+    Big c;
+    int carry = 0;
+    for (size_t i = 0; i < a.size() || i < b.size() || carry; ++i) {
+        int s = carry;
+        if (i < a.size()) s += a[i];
+        if (i < b.size()) s += b[i];
+        c.push_back(s % BASE);
+        carry = s / BASE;
+    }
+    return c;
+}
+
+// sub: a - b, assuming a >= b (used only where the algebra guarantees it)
+Big sub(const Big& a, const Big& b) {
+    Big c;
+    int borrow = 0;
+    for (size_t i = 0; i < a.size(); ++i) {
+        int s = a[i] - borrow - (i < b.size() ? b[i] : 0);
+        if (s < 0) { s += BASE; borrow = 1; } else borrow = 0;
+        c.push_back(s);
+    }
+    trim(c);
+    return c;
+}
+
+// shift: multiply by BASE^k (append k low-order zeros)
+Big shift(const Big& a, size_t k) {
+    if (a.size() == 1 && a[0] == 0) return a;   // 0 stays 0
+    Big c(k, 0);
+    c.insert(c.end(), a.begin(), a.end());
+    return c;
+}
+
+bool is_zero(const Big& a) { return a.size() == 1 && a[0] == 0; }
+
+// Karatsuba: three half-size multiplications instead of four.
+//   z2 = x1*y1,  z0 = x2*y2,  z1 = (x1+x2)(y1+y2) - z2 - z0
+//   x*y = z2*B^(2m) + z1*B^m + z0
+Big karatsuba(const Big& x, const Big& y) {
+    // base case: a single-digit operand -> multiply digit-by-number, O(len)
+    if (x.size() == 1 || y.size() == 1) {
+        long long mul = (x.size() == 1) ? x[0] : y[0];
+        const Big& big = (x.size() == 1) ? y : x;
+        Big c;
+        long long carry = 0;
+        for (size_t i = 0; i < big.size(); ++i) {
+            long long s = (long long)big[i] * mul + carry;
+            c.push_back((int)(s % BASE));
+            carry = s / BASE;
+        }
+        while (carry) { c.push_back((int)(carry % BASE)); carry /= BASE; }
+        if (c.empty()) c.push_back(0);
+        trim(c);
+        return c;
+    }
+
+    // split both operands at m = half the length of the longer one
+    size_t m = max(x.size(), y.size()) / 2;
+    size_t mx = min(m, x.size()), my = min(m, y.size());
+
+    Big x2(x.begin(), x.begin() + mx);   // low  half of x
+    Big x1(x.begin() + mx, x.end());     // high half of x
+    Big y2(y.begin(), y.begin() + my);   // low  half of y
+    Big y1(y.begin() + my, y.end());     // high half of y
+    if (x1.empty()) x1.push_back(0);
+    if (x2.empty()) x2.push_back(0);
+    if (y1.empty()) y1.push_back(0);
+    if (y2.empty()) y2.push_back(0);
+    trim(x1); trim(x2); trim(y1); trim(y2);
+
+    Big z2 = karatsuba(x1, y1);                       // a1*b1   (high)
+    Big z0 = karatsuba(x2, y2);                       // a2*b2   (low)
+    Big z3 = karatsuba(add(x1, x2), add(y1, y2));     // (a1+a2)(b1+b2)
+    Big z1 = sub(sub(z3, z2), z0);                    // = a1*b2 + a2*b1
+
+    // recombine: z2*B^(2m) + z1*B^m + z0
+    Big result = add(add(shift(z2, 2 * m), shift(z1, m)), z0);
+    trim(result);
+    return result;
+}
+
+string to_string_big(const Big& a) {
+    string s;
+    for (int i = (int)a.size() - 1; i >= 0; --i) s += char('0' + a[i]);
+    return s;
+}
+
+int main() {
+    string sa, sb;
+    if (!(cin >> sa >> sb)) return 0;
+    Big a = from_string(sa), b = from_string(sb);
+    trim(a); trim(b);
+    Big prod = (is_zero(a) || is_zero(b)) ? Big{0} : karatsuba(a, b);
+    cout << to_string_big(prod) << "\n";
+    return 0;
+}
 ```

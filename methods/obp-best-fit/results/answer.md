@@ -20,18 +20,63 @@ monotone function of a single bin's slack, so any reshaping of the per-bin score
 ordering and the same choices. Beating it therefore requires a score that compares a bin *against the
 others* — the lever the next rung pulls.
 
-**Hyperparameters / contract.** None. Returns `−(bins − item)`, the negative leftover slack per valid
-bin. Deterministic given the stream; works at any capacity and item sizes.
+**Hyperparameters / contract.** None. Deterministic given the stream; works at any capacity and item
+sizes. The program reads `C N` (capacity, item count) then `N` item sizes from stdin, runs the online
+Best-Fit packing, and prints the number of bins used. The whole policy is the inner placement rule:
+pick the open bin with minimal remaining capacity among those with `remaining ≥ size` (equivalently,
+maximise `−(remaining − size)`); a still-full bin has the largest slack and the most negative score,
+so a fresh bin opens only as a last resort.
 
-```python
-import numpy as np
+```cpp
+// Online 1-D bin packing, Best-Fit policy (single-file, reads stdin).
+// Input:  first line "C N" (bin capacity C, number of items N);
+//         then N item sizes (whitespace-separated, any layout).
+// Output: the number of bins used by online Best-Fit on that stream.
+// Best-Fit places each arriving item into the open bin where it fits most
+// snugly -- the bin left with the least slack (remaining - size) after
+// placement -- opening a new bin only when no open bin can hold it.
 
-def priority(item, bins):
-    """Best-Fit: prefer the valid bin left with the least slack after placement.
+#include <bits/stdc++.h>
+using namespace std;
 
-    `bins` are remaining capacities of bins that can fit the item (so bins - item >= 0).
-    Maximising -(bins - item) selects the tightest fit; a still-full bin has the
-    largest slack and the most negative score, so a new bin opens only as a last resort.
-    """
-    return -(bins - item)
+int main() {
+    ios_base::sync_with_stdio(false);
+    cin.tie(nullptr);
+
+    long long C, N;
+    if (!(cin >> C >> N)) return 0;
+
+    // remaining[i] = remaining capacity of open bin i.
+    vector<long long> remaining;
+    remaining.reserve((size_t)N);
+
+    for (long long k = 0; k < N; ++k) {
+        long long s;
+        if (!(cin >> s)) break;
+
+        // Best-Fit: among open bins that fit (remaining >= s), pick the one
+        // left with the least slack (remaining - s), i.e. minimal remaining.
+        long long bestIdx = -1;
+        long long bestRemaining = 0;
+        for (size_t i = 0; i < remaining.size(); ++i) {
+            if (remaining[i] >= s) {
+                if (bestIdx == -1 || remaining[i] < bestRemaining) {
+                    bestRemaining = remaining[i];
+                    bestIdx = (long long)i;
+                }
+            }
+        }
+
+        if (bestIdx == -1) {
+            // No open bin fits: open a fresh bin at capacity C.
+            remaining.push_back(C - s);
+        } else {
+            remaining[(size_t)bestIdx] -= s;
+        }
+    }
+
+    // Every opened bin is a used bin.
+    cout << remaining.size() << "\n";
+    return 0;
+}
 ```

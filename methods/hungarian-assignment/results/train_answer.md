@@ -6,82 +6,69 @@ The right tool is the Hungarian Method, also known as the Kuhn–Munkres algorit
 
 The algorithm therefore alternates between two combinatorial steps. First it builds a maximum matching on the tight edges using augmenting paths; if the matching is perfect, we are done. If the matching is short, König's theorem gives a minimum vertex cover of the tight graph, which means the uncovered entries all have strictly positive reduced cost. Let δ be the smallest such uncovered slack. We update the potentials by subtracting δ from the uncovered rows and adding δ to the covered columns. This keeps every reduced cost nonnegative, creates at least one new tight edge, and strictly improves the dual objective. Repeating the loop must terminate, because each dual update lowers the gap by a positive amount and the optimum is bounded.
 
-A clean way to implement the same logic in O(n^3) is to add one row at a time and grow a single shortest augmenting path while raising potentials by the minimum slack encountered along the way. The version below accepts a rectangular n × m cost matrix with m ≥ n and returns the optimal assignment together with its total cost. For a maximization problem, negate the matrix before calling the function and negate the returned total.
+A clean way to implement the same logic in O(n^3) is to add one row at a time and grow a single shortest augmenting path while raising potentials by the minimum slack encountered along the way. The single-file C++17 program below reads the instance from stdin — an integer n, then the n × n integer cost matrix in row-major order — and writes the minimum total cost followed by the chosen column for each row. For a maximization problem, negate the matrix on input and negate the reported total. It works in long long throughout to avoid overflow on large entries.
 
-```python
-INF = float("inf")
+```cpp
+// Hungarian (Kuhn-Munkres) assignment, primal-dual O(n^3) shortest-augmenting-path form.
+// Reads from stdin: an integer n, then an n x n integer cost matrix (row-major).
+// Writes to stdout: the minimum total assignment cost, then n lines "i j"
+// meaning row i (0-based) is matched to column j. Uses long long to avoid overflow.
+#include <bits/stdc++.h>
+using namespace std;
 
-def hungarian(cost):
-    """
-    Min-cost assignment by the Hungarian (Kuhn-Munkres) method.
-    cost is n x m with m >= n.  Returns (assignment, total_cost),
-    where assignment[i] is the column chosen for row i.
-    For maximization, pass -cost and negate the total.
-    """
-    n, m = len(cost), len(cost[0])
-    u = [0] * (n + 1)       # row potentials
-    v = [0] * (m + 1)       # column potentials
-    p = [0] * (m + 1)       # matching: p[j] = row matched to column j (0 = free)
-    way = [0] * (m + 1)     # predecessor column for path tracing
+int main() {
+    int n;
+    if (!(cin >> n)) return 0;
+    vector<vector<long long>> cost(n, vector<long long>(n));
+    for (int i = 0; i < n; i++)
+        for (int j = 0; j < n; j++)
+            cin >> cost[i][j];
 
-    for i in range(1, n + 1):
-        p[0] = i
-        j0 = 0
-        minv = [INF] * (m + 1)
-        used = [False] * (m + 1)
+    const long long INF = LLONG_MAX / 4;
+    // 1-based with a dummy column 0 anchoring each augmenting path.
+    vector<long long> u(n + 1, 0), v(n + 1, 0); // dual potentials (reduced costs >= 0)
+    vector<int> p(n + 1, 0);                    // p[j] = row matched to column j (0 = free)
+    vector<int> way(n + 1, 0);                  // predecessor column, to trace the path
+    for (int i = 1; i <= n; i++) {
+        p[0] = i;
+        int j0 = 0;
+        vector<long long> minv(n + 1, INF);     // min reduced cost reaching each column
+        vector<char> used(n + 1, false);        // columns already on the path
+        do {
+            used[j0] = true;
+            int i0 = p[j0], j1 = -1;
+            long long delta = INF;
+            for (int j = 1; j <= n; j++) {       // relax: extend the alternating path
+                if (!used[j]) {
+                    long long cur = cost[i0 - 1][j - 1] - u[i0] - v[j]; // reduced cost (slack)
+                    if (cur < minv[j]) { minv[j] = cur; way[j] = j0; }
+                    if (minv[j] < delta) { delta = minv[j]; j1 = j; }   // smallest slack = Koenig min
+                }
+            }
+            for (int j = 0; j <= n; j++) {        // dual update by delta: tight edges stay tight
+                if (used[j]) { u[p[j]] += delta; v[j] -= delta; }
+                else          minv[j] -= delta;
+            }
+            j0 = j1;
+        } while (p[j0] != 0);                     // until a free column -> augmenting path found
+        do {                                      // flip the path via the predecessor chain
+            int j1 = way[j0];
+            p[j0] = p[j1];
+            j0 = j1;
+        } while (j0);
+    }
 
-        while True:
-            used[j0] = True
-            i0 = p[j0]
-            delta = INF
-            j1 = -1
-            for j in range(1, m + 1):
-                if not used[j]:
-                    cur = cost[i0 - 1][j - 1] - u[i0] - v[j]
-                    if cur < minv[j]:
-                        minv[j] = cur
-                        way[j] = j0
-                    if minv[j] < delta:
-                        delta = minv[j]
-                        j1 = j
-            # dual update: keep tight edges tight, reduce slack elsewhere
-            for j in range(0, m + 1):
-                if used[j]:
-                    u[p[j]] += delta
-                    v[j] -= delta
-                else:
-                    minv[j] -= delta
-            j0 = j1
-            if p[j0] == 0:        # reached a free column -> augment
-                break
+    vector<int> assign(n, 0);
+    for (int j = 1; j <= n; j++)
+        if (p[j] != 0) assign[p[j] - 1] = j - 1;
 
-        # flip the alternating path to enlarge the matching
-        while j0:
-            j1 = way[j0]
-            p[j0] = p[j1]
-            j0 = j1
+    long long total = 0;
+    for (int i = 0; i < n; i++) total += cost[i][assign[i]];
 
-    assignment = [0] * n
-    for j in range(1, m + 1):
-        if p[j] != 0:
-            assignment[p[j] - 1] = j - 1
-
-    total = sum(cost[i][assignment[i]] for i in range(n))
-    return assignment, total
-
-
-if __name__ == "__main__":
-    # Example: maximize ratings by minimizing their negatives.
-    ratings = [
-        [8, 7, 9, 9],
-        [5, 2, 7, 8],
-        [5, 1, 4, 8],
-        [2, 2, 2, 6],
-    ]
-    neg = [[-x for x in row] for row in ratings]
-    assign, cost = hungarian(neg)
-    print("assignment:", assign)
-    print("maximum rating sum:", -cost)
+    cout << total << "\n";
+    for (int i = 0; i < n; i++) cout << i << " " << assign[i] << "\n";
+    return 0;
+}
 ```
 
 The Hungarian Method is the canonical polynomial-time algorithm for the assignment problem. It is strongly polynomial, independent of the size of the matrix entries, and the potentials it produces serve as a compact, hand-checkable proof that the returned permutation is optimal.

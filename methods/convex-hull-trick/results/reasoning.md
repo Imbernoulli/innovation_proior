@@ -56,85 +56,77 @@ Before I trust the whole machine, the sign check on one inequality is not enough
 
 So the method produces $dp=[0,5,10,17,10]$. I check the last value against the brute definition: $dp_4=\min_j(dp_j+b_j\cdot7)$ over $j=0..3$ is $\min(0+35,\,5+21,\,10+21,\,17-7)=\min(35,26,31,10)=10$. It matches, and the front pops at $i=3,4$ are exactly the query pointer walking forward as $x$ grows from $2$ to $4$ to $7$ — the behavior the monotone-query assumption promised. The two earlier values check the same way: $dp_3=\min(0+20,5+12,10+12)=17$ and $dp_2=\min(0+10,5+6)=10$. Running the full $dp$ array against the $O(n^2)$ definition on this instance, and on a few thousand random monotone instances, gives identical arrays, so the construction is not just locally plausible but globally reproduces the DP.
 
-```python
-import sys
+```cpp
+// Reads n, then arrays a[0..n-1] and b[0..n-1] from stdin; prints dp[n-1].
+// dp[i] = min_{0<=j<i}(dp[j] + b[j]*a[i]), dp[0]=0, with b non-increasing,
+// a non-decreasing. Solved in O(n) by the monotone convex hull trick.
+#include <bits/stdc++.h>
+using namespace std;
 
+struct Transition {
+    // Lower-envelope of lines (slope, intercept) kept in a deque.
+    deque<pair<long long, long long>> lines;
 
-def read_input(data):
-    """Parse n, then the arrays a[0..n-1] and b[0..n-1] as integers."""
-    it = iter(data)
-    n = int(next(it))
-    a = [int(next(it)) for _ in range(n)]
-    b = [int(next(it)) for _ in range(n)]
-    return n, a, b
+    // Make one finished state available to later transitions.
+    void register_line(long long slope, long long value) {
+        if (!lines.empty() && lines.back().first == slope) {
+            if (lines.back().second <= value) return;
+            lines.pop_back();
+        }
+        pair<long long, long long> nw{slope, value};
+        while (lines.size() >= 2) {
+            long long m1 = lines[lines.size() - 2].first;
+            long long c1 = lines[lines.size() - 2].second;
+            long long m2 = lines.back().first;
+            long long c2 = lines.back().second;
+            long long m3 = nw.first, c3 = nw.second;
+            // Keep the middle line only if it dips below the envelope of the
+            // outer two: (c2-c3)(m1-m3) < (m3-m2)(c3-c1). Use __int128 since the
+            // cross-products can overflow 64-bit even when each value fits.
+            __int128 lhs = (__int128)(c2 - c3) * (m1 - m3);
+            __int128 rhs = (__int128)(m3 - m2) * (c3 - c1);
+            if (lhs < rhs) break;
+            lines.pop_back();
+        }
+        lines.push_back(nw);
+    }
 
+    // Return the best transition value at x (x non-decreasing across calls).
+    long long query(long long x) {
+        while (lines.size() >= 2) {
+            long long m1 = lines[0].first, c1 = lines[0].second;
+            long long m2 = lines[1].first, c2 = lines[1].second;
+            if (m2 * x + c2 > m1 * x + c1) break;
+            lines.pop_front();
+        }
+        return lines[0].first * x + lines[0].second;
+    }
+};
 
-class Transition:
-    """Stores finished states and answers min(value + slope * x)."""
+int main() {
+    ios_base::sync_with_stdio(false);
+    cin.tie(nullptr);
 
-    def __init__(self):
-        from collections import deque
-        self.lines = deque()
+    int n;
+    if (!(cin >> n)) return 0;
+    vector<long long> a(n), b(n);
+    for (int i = 0; i < n; ++i) cin >> a[i];
+    for (int i = 0; i < n; ++i) cin >> b[i];
 
-    def register(self, slope, value):
-        """Make one finished state available to later transitions."""
-        lines = self.lines
+    vector<long long> dp(n, 0);
+    dp[0] = 0;
 
-        if lines and lines[-1][0] == slope:
-            if lines[-1][1] <= value:
-                return
-            lines.pop()
+    Transition tr;
+    tr.register_line(b[0], dp[0]);
 
-        new_line = (slope, value)
-        while len(lines) >= 2:
-            m1, c1 = lines[-2]
-            m2, c2 = lines[-1]
-            m3, c3 = new_line
-            if (c2 - c3) * (m1 - m3) < (m3 - m2) * (c3 - c1):
-                break
-            lines.pop()
+    for (int i = 1; i < n; ++i) {
+        dp[i] = tr.query(a[i]);
+        tr.register_line(b[i], dp[i]);
+    }
 
-        lines.append(new_line)
-
-    def query(self, x):
-        """Return the best transition value at x."""
-        lines = self.lines
-        while len(lines) >= 2:
-            m1, c1 = lines[0]
-            m2, c2 = lines[1]
-            if m2 * x + c2 > m1 * x + c1:
-                break
-            lines.popleft()
-
-        slope, value = lines[0]
-        return slope * x + value
-
-
-def solve(n, a, b):
-    dp = [0] * n
-    dp[0] = 0
-
-    tr = Transition()
-    tr.register(b[0], dp[0])
-
-    for i in range(1, n):
-        dp[i] = tr.query(a[i])
-        tr.register(b[i], dp[i])
-
-    return dp
-
-
-def main():
-    data = sys.stdin.buffer.read().split()
-    if not data:
-        return
-    n, a, b = read_input(data)
-    dp = solve(n, a, b)
-    sys.stdout.write(str(dp[n - 1]) + "\n")
-
-
-if __name__ == "__main__":
-    main()
+    cout << dp[n - 1] << "\n";
+    return 0;
+}
 ```
 
 The recurrence becomes linear because the expression contributed by each finished state is a line, the ordered slopes let me repair the useful lower boundary by popping from the back, the ordered queries let me discard expired front lines permanently, and the redundancy comparison stays exact by using the cross-product inequality instead of a divided breakpoint.

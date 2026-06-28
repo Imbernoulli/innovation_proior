@@ -8,33 +8,68 @@ Strict positivity lets me invoke Perron–Frobenius: for a strictly positive mat
 
 Computing this needs the power method, because $n\approx 10^8$ makes a full $O(n^3)$ eigendecomposition unthinkable and I only need the single eigenvalue-1 eigenvector of a sparse operator. I must never materialize $G$ — it is dense, every entry $\ge (1-\alpha)/n$ — but I never have to: $\alpha M r$ is a sparse mat-vec over the link columns, and both the redistributed dangling mass and the teleport are scalar broadcasts to the uniform target, so one step costs $O(\#\text{links}+n)$. Convergence is governed by the second eigenvalue, and the teleport pins it down. Any eigenvector $x_2$ of $G$ for $\lambda_2\neq 1$ is orthogonal to the eigenvalue-1 left eigenvector $e$ (left/right eigenvectors for distinct eigenvalues are orthogonal), so $e^\top x_2 = 0$, meaning $x_2$ sums to zero. The rank-one teleport then annihilates it: $(\mathbf{1}\mathbf{1}^\top)x_2 = \mathbf{1}(e^\top x_2)=0$. Hence $\lambda_2 x_2 = G x_2 = \alpha M x_2$, so $M x_2 = (\lambda_2/\alpha)x_2$, and since $M$ is column-stochastic with $\rho(M)\le 1$, $$|\lambda_2| \le \alpha.$$ The power-method error contracts like $|\lambda_2|^k \le \alpha^k$, so reaching an $L_1$ tolerance $\varepsilon$ takes about $\log\varepsilon/\log\alpha$ iterations — independent of $n$. With $\alpha=0.85$ this worst-case bound is roughly 85 iterations for $\varepsilon=10^{-6}$ and 99 for $\varepsilon=10^{-7}$. This is why $\alpha=0.85$ is not an arbitrary knob: $\alpha<1$ is what makes $G$ strictly positive (uniqueness) and $|\lambda_2|\le\alpha<1$ (convergence); pushing $\alpha\to 1$ makes the ranking more link-faithful but lets $|\lambda_2|$ approach 1 so convergence collapses and the disconnection and sinks reassert themselves; pushing $\alpha\to 0$ washes the score toward uniform $1/n$ and ignores the links entirely. The damping factor is simultaneously the surfer's persistence, the guarantor of a unique positive ranking, and the convergence-rate control — one number doing three jobs.
 
-```python
-import numpy as np
+Concretely, the deliverable is a single self-contained C++17 program. It reads from stdin a header `n m` (number of pages and directed links) followed by `m` lines `src dst` (0-indexed, "page src links to dst"), and writes `n` lines `i score` — the importance of each page, with the scores summing to 1. It never materializes the dense Google matrix G: each power-iteration step is a sparse sweep over the links (every non-dangling page splits `alpha*r(v)` over its out-links), plus two O(n) scalar broadcasts — the dangling mass `alpha*d/n` put back into circulation and the teleport trickle `(1-alpha)/n` handed to every page. It stops on the L1 change between iterates falling below `n*tol`.
 
-def pagerank(A, alpha=0.85, tol=1.0e-6, max_iter=100):
-    """PageRank = principal eigenvector / stationary distribution of
-    G = alpha*M + (1-alpha)*(1/n)*1*1^T, via the power method.
-    A: sparse adjacency, A[i, j] = 1 iff page j links to page i."""
-    n = A.shape[0]
-    if n == 0:
-        return np.array([])
+```cpp
+// PageRank via power iteration on the Google matrix G = alpha*M + (1-alpha)*(1/n)*11^T.
+// Reads from stdin: "n m", then m lines "src dst" (0-indexed directed edges, page src links to dst).
+// Writes to stdout: n lines "i score", the importance score of each page (scores sum to 1).
+#include <bits/stdc++.h>
+using namespace std;
 
-    # Sparse normalized link matrix for non-dangling columns; dangling columns
-    # stay zero here and are patched by the dangle_mass broadcast below.
-    out_deg = np.asarray(A.sum(axis=0)).ravel()
-    dangling = (out_deg == 0)                  # dead-end pages (zero columns)
-    inv = np.zeros(n)
-    inv[~dangling] = 1.0 / out_deg[~dangling]
-    M = A.multiply(inv)
+int main() {
+    ios::sync_with_stdio(false);
+    cin.tie(nullptr);
 
-    p = np.full(n, 1.0 / n)     # uniform teleport target (rank source)
-    r = np.full(n, 1.0 / n)     # positive start, sums to 1
+    int n;
+    long long m;
+    if (!(cin >> n >> m)) return 0;
+    if (n <= 0) return 0;
 
-    for _ in range(max_iter):
-        r_last = r
-        dangle_mass = alpha * r_last[dangling].sum()       # patch zero columns
-        r = alpha * (M @ r_last) + (dangle_mass + (1.0 - alpha)) * p
-        if np.abs(r - r_last).sum() < n * tol:             # L1 convergence
-            return r
-    raise RuntimeError("power iteration did not converge in max_iter")
+    const double alpha = 0.85;
+    const double tol = 1.0e-6;       // L1 tolerance per node: stop when |r-r_last|_1 < n*tol
+    const int max_iter = 100;
+
+    // Column-stochastic link operator stored sparsely: for each edge v->u we will
+    // push r(v)/N_v onto u. Keep out-degree N_v and the out-neighbour list per page.
+    vector<vector<int>> out(n);
+    vector<long long> outdeg(n, 0);
+    for (long long e = 0; e < m; ++e) {
+        long long s, d;
+        cin >> s >> d;
+        if (s < 0 || s >= n || d < 0 || d >= n) continue; // ignore out-of-range edges
+        out[(int)s].push_back((int)d);
+        outdeg[(int)s]++;
+    }
+
+    vector<double> r(n, 1.0 / n);      // positive start, sums to 1
+    vector<double> rn(n, 0.0);
+    const double teleport = (1.0 - alpha) / n;
+
+    for (int it = 0; it < max_iter; ++it) {
+        // dangling mass (pages with no out-links) is redistributed uniformly.
+        double dangle = 0.0;
+        for (int v = 0; v < n; ++v)
+            if (outdeg[v] == 0) dangle += r[v];
+        double broadcast = alpha * dangle / n + teleport; // per-page constant trickle
+
+        for (int u = 0; u < n; ++u) rn[u] = broadcast;
+        // sparse link flow: every non-dangling page v splits alpha*r(v) over its out-links.
+        for (int v = 0; v < n; ++v) {
+            if (outdeg[v] == 0) continue;
+            double share = alpha * r[v] / (double)outdeg[v];
+            for (int u : out[v]) rn[u] += share;
+        }
+
+        double diff = 0.0;
+        for (int u = 0; u < n; ++u) diff += fabs(rn[u] - r[u]);
+        swap(r, rn);
+        if (diff < (double)n * tol) break;
+    }
+
+    cout.setf(std::ios::fixed);
+    cout << setprecision(10);
+    for (int u = 0; u < n; ++u) cout << u << ' ' << r[u] << '\n';
+    return 0;
+}
 ```

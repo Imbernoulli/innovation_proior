@@ -10,19 +10,29 @@ $$
 
 The set $E_w$ has exactly $w$ pairs. Answer yes to exactly the last queried pair in each $E_w$, and answer no to all earlier pairs in that set. A counter `c[w]` detects that last query online: after incrementing it, the pair is last exactly when `c[w] == w`.
 
-```c
-#include "game.h"
+The deliverable is a single self-contained C++17 program reading the sample grader's input from stdin (line 1 is `n`; then `r = n(n-1)/2` lines, each a queried pair `u v`) and printing one answer per line, `1` for a claimed flight and `0` otherwise.
 
-int c[1500];
+```cpp
+// IOI 2014 "Game": lazy spanning-tree adversary.
+// Reads from stdin: line 1 is n; then r = n(n-1)/2 lines, each "u v".
+// For each query prints one line, 1 if a direct flight is claimed, else 0.
+#include <cstdio>
 
-void initialize(int n) {
-    int i;
-    for (i = 0; i < n; ++i) c[i] = 0;
-}
+static int c[1500];
 
-int hasEdge(int u, int v) {
-    int w = u > v ? u : v;
-    return ++c[w] == w;
+int main() {
+    int n;
+    if (scanf("%d", &n) != 1) return 0;
+    for (int i = 0; i < n; ++i) c[i] = 0;
+    long long r = (long long)n * (n - 1) / 2;
+    for (long long q = 0; q < r; ++q) {
+        int u, v;
+        if (scanf("%d %d", &u, &v) != 2) break;
+        int w = u > v ? u : v;          // owner = larger endpoint
+        int ans = (++c[w] == w) ? 1 : 0; // yes only on the last query owned by w
+        printf("%d\n", ans);
+    }
+    return 0;
 }
 ```
 

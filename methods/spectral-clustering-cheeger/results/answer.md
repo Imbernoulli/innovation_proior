@@ -65,47 +65,180 @@ $\phi_G\asymp\sqrt{\nu_2}$.
 
 ## Algorithm
 
-```python
-import numpy as np
-import scipy.sparse as sp
-from scipy.sparse.linalg import eigsh
+A self-contained C++17 program. It reads a weighted undirected graph from stdin
+(`n m`, then `m` lines `u v w`), forms the normalized Laplacian
+$N=D^{-1/2}LD^{-1/2}$, computes the Fiedler vector with a built-in symmetric
+Jacobi eigensolver, sweeps the $n-1$ threshold cuts keeping the least-conductance
+one, and writes $\nu_2$, the cut conductance, the Cheeger bracket, and the smaller
+side $S$ to stdout.
 
-def build_laplacian(adj):
-    d = np.asarray(adj.sum(axis=1)).ravel()
-    return (sp.diags(d) - adj).tocsr(), d
+```cpp
+// Spectral clustering via the discrete Cheeger inequality.
+// Reads a weighted undirected graph from stdin and prints a low-conductance cut
+// (the sweep over the Fiedler vector) together with the Cheeger bracket
+// nu2/2 <= phi_G <= phi(cut) <= sqrt(2*nu2).
+//
+// Input (stdin):
+//   n m                      n = #vertices (0-indexed 0..n-1), m = #edges
+//   u v w   (m lines)        undirected edge {u,v} with positive weight w
+// Output (stdout):
+//   nu2 best_phi  lower=nu2/2 upper=sqrt(2*nu2)
+//   k                        size of the returned cut S (smaller side listed)
+//   the k vertices of S, ascending
 
-def conductance(adj, d, S_mask):
-    volS = d[S_mask].sum(); volC = d.sum() - volS
-    if min(volS, volC) == 0:
-        return np.inf
-    return adj[S_mask][:, ~S_mask].sum() / min(volS, volC)
+#include <bits/stdc++.h>
+using namespace std;
 
-def fiedler_vector(adj):
-    # nu_2 of N = D^{-1/2} L D^{-1/2}; map eigenvector back by D^{-1/2} to get y orthogonal to d.
-    L, d = build_laplacian(adj)
-    if np.any(d <= 0):
-        raise ValueError("normalized Laplacian requires positive degrees")
-    dinv_half = sp.diags(1.0 / np.sqrt(d))
-    N = (dinv_half @ L @ dinv_half).tocsr()
-    vals, vecs = eigsh(N.astype(float), k=2, which="SM")
-    order = np.argsort(vals)
-    y = np.asarray(dinv_half @ vecs[:, order[1]]).ravel()
-    return y, max(float(vals[order[1]]), 0.0)
+// Symmetric eigendecomposition by the cyclic Jacobi rotation method.
+// A (n x n, row-major) is overwritten; eigenvalues -> eval, eigenvectors -> columns of evec.
+static void jacobiEigen(vector<double>& A, int n, vector<double>& eval, vector<double>& evec) {
+    evec.assign((size_t)n * n, 0.0);
+    for (int i = 0; i < n; ++i) evec[(size_t)i * n + i] = 1.0;
+    const int maxSweeps = 100;
+    for (int sweep = 0; sweep < maxSweeps; ++sweep) {
+        double off = 0.0;
+        for (int p = 0; p < n; ++p)
+            for (int q = p + 1; q < n; ++q)
+                off += A[(size_t)p * n + q] * A[(size_t)p * n + q];
+        if (off < 1e-30) break;
+        for (int p = 0; p < n; ++p) {
+            for (int q = p + 1; q < n; ++q) {
+                double apq = A[(size_t)p * n + q];
+                if (fabs(apq) < 1e-300) continue;
+                double app = A[(size_t)p * n + p];
+                double aqq = A[(size_t)q * n + q];
+                double phi = 0.5 * atan2(2.0 * apq, aqq - app);
+                double c = cos(phi), s = sin(phi);
+                for (int k = 0; k < n; ++k) {
+                    double akp = A[(size_t)k * n + p];
+                    double akq = A[(size_t)k * n + q];
+                    A[(size_t)k * n + p] = c * akp - s * akq;
+                    A[(size_t)k * n + q] = s * akp + c * akq;
+                }
+                for (int k = 0; k < n; ++k) {
+                    double apk = A[(size_t)p * n + k];
+                    double aqk = A[(size_t)q * n + k];
+                    A[(size_t)p * n + k] = c * apk - s * aqk;
+                    A[(size_t)q * n + k] = s * apk + c * aqk;
+                }
+                for (int k = 0; k < n; ++k) {
+                    double vkp = evec[(size_t)k * n + p];
+                    double vkq = evec[(size_t)k * n + q];
+                    evec[(size_t)k * n + p] = c * vkp - s * vkq;
+                    evec[(size_t)k * n + q] = s * vkp + c * vkq;
+                }
+            }
+        }
+    }
+    eval.resize(n);
+    for (int i = 0; i < n; ++i) eval[i] = A[(size_t)i * n + i];
+}
 
-def relax_and_round(adj):
-    # Sweep all n-1 threshold cuts of the sorted Fiedler vector; keep the best.
-    _, d = build_laplacian(adj)
-    y, nu2 = fiedler_vector(adj)
-    order = np.argsort(y); n = len(y)
-    in_S = np.zeros(n, dtype=bool)
-    best_S, best_phi = None, np.inf
-    for k in range(n - 1):
-        in_S[order[k]] = True
-        phi = conductance(adj, d, in_S)
-        if phi < best_phi:
-            best_phi, best_S = phi, in_S.copy()
-    # Cheeger bracket in exact arithmetic: nu2/2 <= phi_G <= best_phi <= sqrt(2*nu2).
-    return best_S, best_phi, nu2
+int main() {
+    ios::sync_with_stdio(false);
+    cin.tie(nullptr);
+
+    int n, m;
+    if (!(cin >> n >> m)) return 0;
+
+    // Dense weighted adjacency and degrees.
+    vector<double> adj((size_t)n * n, 0.0);
+    vector<double> deg(n, 0.0);
+    vector<array<int, 2>> edges;       // store endpoints for boundary scoring
+    vector<double> ew;                 // edge weights
+    edges.reserve(m);
+    ew.reserve(m);
+    for (int e = 0; e < m; ++e) {
+        int u, v; double w;
+        cin >> u >> v >> w;
+        adj[(size_t)u * n + v] += w;
+        adj[(size_t)v * n + u] += w;
+        deg[u] += w;
+        deg[v] += w;
+        edges.push_back({u, v});
+        ew.push_back(w);
+    }
+
+    double dV = 0.0;
+    for (int i = 0; i < n; ++i) dV += deg[i];
+
+    // Normalized Laplacian N = D^{-1/2} L D^{-1/2}, L = D - A.
+    // N(u,u) = 1 (if deg>0), N(u,v) = -A(u,v)/sqrt(d(u) d(v)).
+    bool posdeg = true;
+    for (int i = 0; i < n; ++i) if (deg[i] <= 0.0) posdeg = false;
+
+    vector<double> y(n, 0.0);   // Fiedler vector y = D^{-1/2} x2, orthogonal to d
+    double nu2 = 0.0;
+
+    if (posdeg && n >= 2) {
+        vector<double> N((size_t)n * n, 0.0);
+        vector<double> dinv(n);
+        for (int i = 0; i < n; ++i) dinv[i] = 1.0 / sqrt(deg[i]);
+        for (int i = 0; i < n; ++i) N[(size_t)i * n + i] = 1.0;
+        for (int u = 0; u < n; ++u)
+            for (int v = 0; v < n; ++v)
+                if (u != v && adj[(size_t)u * n + v] != 0.0)
+                    N[(size_t)u * n + v] = -adj[(size_t)u * n + v] * dinv[u] * dinv[v];
+
+        vector<double> eval, evec;
+        jacobiEigen(N, n, eval, evec);
+
+        // Order eigenvalues ascending; the 2nd smallest is nu2, its eigenvector x2.
+        vector<int> ord(n);
+        iota(ord.begin(), ord.end(), 0);
+        sort(ord.begin(), ord.end(), [&](int a, int b) { return eval[a] < eval[b]; });
+        int idx2 = ord[1];
+        nu2 = max(eval[idx2], 0.0);
+        for (int i = 0; i < n; ++i)
+            y[i] = evec[(size_t)i * n + idx2] * dinv[i];   // map back: y = D^{-1/2} x2
+    }
+
+    // Sweep: sort vertices by y, try the n-1 prefix cuts, keep least conductance.
+    vector<int> order(n);
+    iota(order.begin(), order.end(), 0);
+    sort(order.begin(), order.end(), [&](int a, int b) { return y[a] < y[b]; });
+
+    vector<char> inS(n, 0);
+    vector<int> bestS;
+    double bestPhi = numeric_limits<double>::infinity();
+    double volS = 0.0;
+
+    // Boundary weight is maintained incrementally as vertices enter S.
+    double boundary = 0.0;
+    for (int k = 0; k < n - 1; ++k) {
+        int u = order[k];
+        inS[u] = 1;
+        volS += deg[u];
+        // update boundary: edges from u to outside add, edges from u to inside subtract
+        for (int v = 0; v < n; ++v) {
+            double w = adj[(size_t)u * n + v];
+            if (w == 0.0) continue;
+            if (inS[v]) boundary -= w;   // v already in S: this edge no longer crosses
+            else        boundary += w;   // v outside S: this edge now crosses
+        }
+        double volC = dV - volS;
+        double mn = min(volS, volC);
+        if (mn <= 0.0) continue;
+        double phi = boundary / mn;
+        if (phi < bestPhi) {
+            bestPhi = phi;
+            bestS.clear();
+            for (int i = 0; i < n; ++i) if (inS[i]) bestS.push_back(i);
+        }
+    }
+
+    double lower = nu2 / 2.0;
+    double upper = sqrt(2.0 * nu2);
+
+    cout.setf(std::ios::fixed);
+    cout << setprecision(6);
+    cout << nu2 << " " << bestPhi << "  lower=" << lower << " upper=" << upper << "\n";
+    cout << bestS.size() << "\n";
+    for (size_t i = 0; i < bestS.size(); ++i)
+        cout << bestS[i] << (i + 1 < bestS.size() ? ' ' : '\n');
+    if (bestS.empty()) cout << "\n";
+    return 0;
+}
 ```
 
 This is **spectral clustering / spectral bisection** by the Fiedler vector: a continuous

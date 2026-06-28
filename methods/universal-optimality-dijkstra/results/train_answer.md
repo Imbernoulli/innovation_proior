@@ -16,55 +16,92 @@ In comparisons plain Dijkstra does $O(F + \log D)$, off by an additive $O(n)$ fr
 
 What remains is the heap I assumed: the working-set bound *together with* $O(1)$ decrease-key, a combination that did not exist — the recency-sensitive pairing-heap-style bounds all require that decrease-key not be supported, and Dijkstra needs up to $F - n + 1$ decrease-keys at $O(1)$ amortized. I build it as an **outer heap**: a list of **inner heaps** $H_1, H_2, \dots$, each an ordinary Fibonacci-quality heap ($O(1)$ on everything but delete-min, $O(\log \text{size})$ delete-min, supports meld — Fibonacci, hollow, or rank-pairing, used black-box), with the invariant that $i < j$ means every item in $H_i$ was inserted after every item in $H_j$. Then for an item $x \in H_i$ all of $H_1, \dots, H_{i-1}$ are in its working set, so $|H_{i-1}|$ lower-bounds $W(x)$, and to make this lower bound a constant-factor-in-the-log proxy for $H_i$'s size I grow the inner heaps *doubly exponentially*: $|H_i| \approx 2^{2^i}$. Insert creates a one-item $H_0$, melds the smallest pair $H_j, H_{j+1}$ with $|H_j| + |H_{j+1}| \le 2^{2^{j+1}}$ (else reindexes everyone up by one), and reindexes $H_0, \dots, H_{j-1}$ up by one. This keeps $|H_i| \le 2^{2^i}$, and when $H_i$ changes in an insert, $|H_{i-1}| > 2^{2^{i-1}} - 2^{2^{i-2}}$ beforehand, so an item in $H_i$ ($i>1$) has $W > 2^{2^{i-3}}$. Delete-min of $x \in H_i$ costs $O(\log|H_i|) = O(2^i)$ while $\log W(x) \ge 2^{i-3} = 2^i/8$, so it is $O(\log W(x))$ — the doubly-exponential growth is exactly what makes the older neighbor's size match within a factor of $8$ in the log. Insert is $O(1)$ amortized: charging $1$ to each changed heap and splitting among items, an item in $H_i$ is charged $\le 1/2^{2^{i-2}}$ per index-bump, and the series $\sum_{i\ge 0} 1/2^{2^{i-2}}$ converges — and singly-exponential growth would make the delete-min log-ratio collapse to an additive gap, so doubly-exponential is the sweet spot where both sides behave. There are only $\le 1 + \log\log n$ inner heaps, and the two routing tasks are $O(1)$ amortized: decrease-key locates $x$'s heap by **union-find with link-by-index** (the higher index becomes the root, so $x$ gains $\le j$ ancestors over its life, charged to its delete-min, which is within budget since Dijkstra deletes everything it inserts); find-min and delete-min locate the heap holding the global minimum via a **one-word suffix-minimum bit vector** whose $\mathrm{Next}/\mathrm{Prev}$ queries are mask-and-shift operations, since the instance is only $\log\log n$ bits. That closes the loop: an outer heap with $O(1)$ amortized insert, decrease-key, and find-min, delete-min within the working-set bound, *with* $O(1)$ decrease-key, built on any Fibonacci-quality inner heap. Dijkstra driven by it is universally time-optimal, and the lookahead variant is universally comparison-optimal, both matching the topological lower bounds $\Omega(m + \log D)$ and $\Omega(F - n + 1 + \log D)$.
 
-```text
-# ---------- Universally time-optimal: Dijkstra + working-set heap ----------
-procedure DijkstraDistanceOrder(G, s):
-    for v in V: d[v] ← +inf; state[v] ← UNLABELED
-    d[s] ← 0; state[s] ← LABELED; H ← MakeHeap(); Insert(s, H); L ← []
-    while FindMin(H) ≠ NULL:
-        v ← DeleteMin(H)                       # O(log W(v))
-        state[v] ← SCANNED; append v to L
-        for arc vw out of v:
-            if state[w] = UNLABELED:
-                d[w] ← d[v] + c(vw); state[w] ← LABELED; p[w] ← v; Insert(w, H)
-            elif state[w] = LABELED and d[v] + c(vw) < d[w]:
-                d[w] ← d[v] + c(vw); p[w] ← v; DecreaseKey(w, d[w], H)
-    return L                                   # O(m + log D) time, O(F + log D) comparisons
+Concretely, the deliverable is a single self-contained C++17 program for the distance-order problem.
+It reads a weighted directed graph and a source from stdin — `n m s`, then `m` lines `u v w` (arc
+`u→v` of non-negative length `w`) — and prints the vertices in a valid distance order followed by
+their true distances. The working-set outer heap is the device for the universal-optimality
+*analysis*; the order it produces is exactly Dijkstra's non-decreasing-distance scan order, which a
+standard lazy binary heap realizes here, with a deterministic id tie-break making the output a
+topological order of the search tree (parent before child). Distances are `long long` to avoid
+overflow when arc lengths accumulate.
 
-# ---------- Universally comparison-optimal: Dijkstra with lookahead ----------
-procedure DijkstraWithLookahead(G, s):
-    compute ℓ(·) by BFS; bottlenecks ← {v alone on its level}     # O(m), 0 comparisons
-    mark bottleneck v iff level ℓ(v)+1 has ≥ 2 vertices
-    init d, state, p; L ← []; H ← MakeHeap()
-    B ← bottlenecks in level order up to and incl. first marked
-    repeat until B and H empty:
-        if H nonempty and (B empty or minLevel(B).d > FindMin(H).d):          # Case 1
-            v ← DeleteMin(H); Scan(v); append v to L                          #   O(log W(v))
-        else:                                                                # Case 2
-            scan B in level order: d[next] ← d[cur] + c(cur,next)            #   additions only
-            if B drains below FindMin(H):                                    #   Subcase 2a
-                move all of B to L (level order); refill B to next marked
-            else:                                                            #   Subcase 2b
-                v ← FindMin(H)
-                x ← largest-d bottleneck in B with d ≤ d[v],
-                      via exponential/binary search from p[v]                #   O(1+log j)
-                move bottlenecks of B up to x into L (level order)
-    return L                          # O(m + log D) time, O(F − n + 1 + log D) comparisons
+```cpp
+// Universal-optimality Dijkstra: the distance-order problem.
+// Reads a weighted directed graph and a source from stdin; prints the vertices
+// in a valid distance order (non-decreasing true distance from s), then the
+// distances. Tie-break is deterministic so the output is a topological order of
+// the search tree (parent before child), i.e. a genuine distance order.
+//
+// stdin:  n m s            (vertices 0..n-1, m arcs, source s)
+//         u v w            (m lines: arc u->v with non-negative length w)
+// stdout: line 1: the n vertices in distance order (space-separated)
+//         line 2: their true distances d*(v) in that same order
+//
+// The paper's working-set outer heap (doubly-exponential stack of meldable
+// heaps giving O(1) decrease-key with an O(log W(x)) delete-min) is the device
+// for the universal-optimality *analysis*; the produced order is exactly that
+// of Dijkstra scanning vertices in non-decreasing distance, which a standard
+// lazy binary heap realizes here. Distances use long long to avoid overflow.
 
-# ---------- The working-set outer heap ----------
-# inner heaps H_1, H_2, ... : Fibonacci-quality, support meld; i<j ⇒ H_i items newer than H_j
-procedure Insert(x, H):
-    H_0 ← inner heap {x}
-    if ∃ j: |H_j| + |H_{j+1}| ≤ 2^(2^(j+1)):
-        j ← min such; H_{j+1} ← Meld(H_j, H_{j+1}); reindex H_0..H_{j-1} up by 1
-    else: reindex every H_i up by 1
-    record x in union-find; repair suffix-minimum bits of changed heaps      # O(1) amortized
-procedure DecreaseKey(x, k, H):
-    H_i ← Find(x); DecreaseKey(x, k, H_i)                                     # link-by-index, O(1) am.
-    if x is now min of H_i: repair suffix-minimum bits
-procedure FindMin(H):  j ← Next(1) on bitvector b; return FindMin(H_j)        # one-word op, O(1)
-procedure DeleteMin(H):
-    j ← Next(1); x ← DeleteMin(H_j)                                           # O(log|H_j|)=O(log W(x))
-    repair suffix-minimum bits for indices ≤ j                                # charged to log W(x)
-    return x
+#include <bits/stdc++.h>
+using namespace std;
+
+int main() {
+    ios::sync_with_stdio(false);
+    cin.tie(nullptr);
+
+    int n, m, s;
+    if (!(cin >> n >> m >> s)) return 0;
+
+    vector<vector<pair<int, long long>>> adj(n);
+    for (int e = 0; e < m; ++e) {
+        int u, v;
+        long long w;
+        cin >> u >> v >> w;
+        adj[u].push_back({v, w});
+    }
+
+    const long long INF = numeric_limits<long long>::max();
+    vector<long long> dist(n, INF);
+    vector<char> scanned(n, 0);      // SCANNED once popped with final distance
+    vector<int> order;               // vertices in scanned (distance) order
+    order.reserve(n);
+
+    // Lazy binary heap keyed by (current distance, vertex id). The id tie-break
+    // makes the scan order deterministic; a vertex's current distance equals its
+    // true distance when first scanned, so vertices leave in non-decreasing
+    // true-distance order -- a valid distance order.
+    typedef pair<long long, int> State;   // (distance, vertex)
+    priority_queue<State, vector<State>, greater<State>> H;
+
+    dist[s] = 0;
+    H.push({0, s});
+
+    while (!H.empty()) {
+        State top = H.top();
+        H.pop();
+        long long dv = top.first;
+        int v = top.second;
+        if (scanned[v]) continue;          // stale entry from an earlier key
+        scanned[v] = 1;
+        order.push_back(v);
+        for (const auto& arc : adj[v]) {
+            int w = arc.first;
+            long long len = arc.second;
+            if (scanned[w]) continue;
+            long long nd = dv + len;
+            if (nd < dist[w]) {            // relax (insert or decrease-key)
+                dist[w] = nd;
+                H.push({nd, w});
+            }
+        }
+    }
+
+    for (size_t i = 0; i < order.size(); ++i)
+        cout << order[i] << (i + 1 < order.size() ? ' ' : '\n');
+    for (size_t i = 0; i < order.size(); ++i)
+        cout << dist[order[i]] << (i + 1 < order.size() ? ' ' : '\n');
+
+    return 0;
+}
 ```

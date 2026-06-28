@@ -44,65 +44,79 @@ So I can't trust the bare pop. The fix that costs nothing: when I pop a (dist, c
 
 Counting that way: each outgoing road of a settled city is inspected once, and each successful improvement pushes one heap entry, so the number of heap entries is bounded by E, and the lazy-heap code takes O((E + V) log(E + 1)) time using O(E) heap slots. On a simple graph log(E + 1) is O(log V), so this is usually written O((E + V) log V), or O(E log V) when the edge term dominates. A heap with true decrease-key would keep the queue itself to O(V) entries, but I do not need that complication for the code — the comparison-on-pop is cheaper to get right.
 
-Let me write it down as it would actually run.
+Let me write it down as it would actually run — a single-file program that reads the
+map from stdin (`n m s t`, then `m` directed roads `u v w` with nonnegative `w`, cities as
+0-based codes) and prints the minimum total length followed by the route, or `UNREACHABLE`.
 
-```python
-import heapq
+```cpp
+// Dijkstra single-source shortest path (lazy-heap variant).
+// Reads from stdin: "n m s t", then m lines "u v w" (0-based nodes, w >= 0,
+// directed edges); prints the minimum total length from s to t followed by the
+// node sequence of one shortest path, or "UNREACHABLE" if t cannot be reached.
+#include <bits/stdc++.h>
+using namespace std;
 
-# outgoing_roads(city) -> iterable of (neighbour, road_length).
-# Road lengths are nonnegative; roads may be one-way.
+int main() {
+    ios_base::sync_with_stdio(false);
+    cin.tie(nullptr);
 
-def shortest_path(outgoing_roads, start, end):
-    # frontier keys; best/predecessor hold the single live candidate per city.
-    heap = [(0, start)]
-    best = {start: 0}
-    predecessor = {start: None}
-    settled = set()          # cities whose shortest distance is now final
+    int n, m, s, t;
+    if (!(cin >> n >> m >> s >> t)) return 0;
 
-    while heap:
-        dist, u = heapq.heappop(heap)
-        if dist > best.get(u, float("inf")):
-            # stale key left over from an older, worse route
-            continue
-        if u in settled:
-            continue
-        settled.add(u)        # u joins A; dist is its true shortest distance
-
-        if u == end:
-            path = []
-            node = end
-            while node is not None:
-                path.append(node)
-                node = predecessor[node]
-            path.reverse()
-            return dist, path
-
-        # Only routes through the newly settled city can improve the frontier.
-        for v, length in outgoing_roads(u):
-            if v in settled:
-                continue
-            candidate = dist + length
-            if candidate < best.get(v, float("inf")):
-                best[v] = candidate
-                predecessor[v] = u
-                heapq.heappush(heap, (candidate, v))
-
-    return None
-
-
-if __name__ == "__main__":
-    road_map = {
-        "Rotterdam": [("Utrecht", 57), ("Amsterdam", 78)],
-        "Amsterdam": [("Utrecht", 40), ("Zwolle", 112)],
-        "Utrecht":   [("Zwolle", 90), ("Amsterdam", 40)],
-        "Zwolle":    [("Groningen", 100)],
-        "Groningen": [],
+    vector<vector<pair<int, long long>>> adj(n);  // adj[u] = {(v, length)}
+    for (int i = 0; i < m; ++i) {
+        int u, v;
+        long long w;
+        cin >> u >> v >> w;
+        adj[u].push_back({v, w});  // lengths are nonnegative; roads may be directed
     }
 
-    def outgoing_roads(city):
-        return road_map.get(city, ())
+    const long long INF = numeric_limits<long long>::max();
+    vector<long long> best(n, INF);   // best tentative distance per node
+    vector<int> pred(n, -1);          // predecessor on the recorded route
+    vector<char> settled(n, 0);       // nodes whose shortest distance is final
 
-    print(shortest_path(outgoing_roads, "Rotterdam", "Groningen"))
+    // Min-heap of (tentative distance, node); the frontier with set-II distances.
+    priority_queue<pair<long long, int>, vector<pair<long long, int>>,
+                   greater<pair<long long, int>>> heap;
+    best[s] = 0;
+    heap.push({0, s});
+
+    while (!heap.empty()) {
+        auto [dist, u] = heap.top();
+        heap.pop();
+        if (dist > best[u]) continue;   // stale key left by a later improvement
+        if (settled[u]) continue;
+        settled[u] = 1;                 // u joins A; dist is its true shortest distance
+        if (u == t) break;
+
+        // Only routes through the newly settled u can improve the frontier.
+        for (auto [v, w] : adj[u]) {
+            if (settled[v]) continue;
+            long long cand = dist + w;
+            if (cand < best[v]) {
+                best[v] = cand;
+                pred[v] = u;
+                heap.push({cand, v});
+            }
+        }
+    }
+
+    if (best[t] == INF) {
+        cout << "UNREACHABLE\n";
+        return 0;
+    }
+
+    // Reconstruct the route by tracing predecessors back to the source.
+    vector<int> path;
+    for (int node = t; node != -1; node = pred[node]) path.push_back(node);
+    reverse(path.begin(), path.end());
+
+    cout << best[t] << "\n";
+    for (size_t i = 0; i < path.size(); ++i)
+        cout << path[i] << " \n"[i + 1 == path.size()];
+    return 0;
+}
 ```
 
 Looking back over how it came together: the demo had to be a problem laypeople grasp and the machine can run, which forced shortest road route, tiny map, no room for the whole branch list. The substructure fact — a shortest route is built from shortest routes to its intermediate cities — kept pointing back toward the source, which is what made growing the distances *outward* in increasing order the natural move rather than aiming at the target. The risky step was declaring the nearest frontier city final, and the nonnegativity argument is what licenses it; when I ran the Rotterdam map by hand, settling Utrecht early really did cost nothing and the by-hand enumeration agreed at 247, so I believe the argument rather than just having written it. The frugality came from noticing only the single best candidate per frontier city can matter, so the store is one branch per frontier city and one per settled city, and each settling stirs only the roads out of that one city. Reading "pick the nearest" as extract-min and "found a cheaper way" as an improved key let a plain min-heap stand in for the frontier scan — once I checked the three-city case, the lazy skip-on-pop handled the stale keys that improvement leaves behind. What I did not expect at the café is that the version small enough to hold in my head with no pencil would turn out to be the efficient one too; but that is how it came out.

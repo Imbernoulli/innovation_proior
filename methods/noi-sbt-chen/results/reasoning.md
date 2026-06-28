@@ -55,88 +55,120 @@ That settles the design. The insertion is the ordinary recursive BST insert that
 
 Before I commit, let me settle the prediction I left hanging from the height proof: a sorted run of $1000$ keys should come out no taller than about $13$. Walk the very first sorted inserts to see the repair actually engage. Insert $1$: single node. Insert $2$: it's $\ge 1$ so it hangs as $1$'s right child; at the root $1$ the right nephew check has nothing below it yet, no rotation. Insert $3$: goes right of $1$, then right of $2$, landing as $2$'s right child — now at the root $1$ the right subtree $\{2,3\}$ has $s=2$ and the outer-right nephew $\mathrm{right}[\mathrm{right}[\mathrm{root}]]=3$ has $s=1 > s[\mathrm{left}[\mathrm{root}]]=0$, so the outer-right case fires: left-rotate the root, lifting $2$ to the top with $1$ and $3$ as its children. So three sorted inserts, which a plain BST would stack into a height-$2$ chain, instead produce a balanced height-$1$ tree — the chain is being broken as it forms, exactly the failure mode I started from. The formula caps the sorted-$1000$ height at $1.44\log_2(1001.5)-1.33\approx13$, and since sorted input tends to fill the tree densely rather than skirt the worst case, I'd expect the realized height to come in a bit under that, around $9$ or $10$ — and in any event nowhere near the chain of height $999$. The mechanism producing it is the same outer-rotation firing as the rightmost path keeps growing, so I'm confident the structure delivers the bound and not just the algebra; it's worth running a sorted $1$-to-$1000$ insertion once the code is down to confirm the height lands where I predict.
 
-Let me write it out, array-based — parallel arrays $\mathrm{key}, \mathrm{left}, \mathrm{right}, s$ with index $0$ the null node and $s[0]=0$ — so the rotations and `_rebalance` read exactly like the reasoning above.
+Let me write it out, array-based — parallel arrays $\mathrm{key}, \mathrm{left}, \mathrm{right}, s$ with index $0$ the null node and $s[0]=0$ — so the rotations and `rebalance` read exactly like the reasoning above. I land it as a single self-contained C++17 program reading from stdin: it reads a count `q` of operations, each one `I v` (insert key `v`), `S k` (print the `k`-th smallest), or `R v` (print one plus the number of stored keys strictly below `v`), and writes one line per query. Keys are 64-bit (`long long`) so nothing overflows.
 
-```python
-class OrderStatisticBST:
-    def __init__(self):
-        self.key = [0]; self.left = [0]; self.right = [0]; self.s = [0]  # 0 = null
-        self.root = 0
+```cpp
+// Size Balanced Tree: an order-statistic balanced BST whose only per-node
+// field, the subtree size s, both answers the queries and drives the rotations.
+//
+// I/O contract: reads q (number of operations); each subsequent line is an
+// operation -- "I v" insert key v, "S k" print the k-th smallest stored key,
+// "R v" print 1 + (number of stored keys strictly less than v). One answer per
+// S/R query is written to stdout. Keys are 64-bit (long long, overflow-safe).
+#include <bits/stdc++.h>
+using namespace std;
 
-    def _new_node(self, v):
-        self.key.append(v); self.left.append(0)
-        self.right.append(0); self.s.append(1)
-        return len(self.key) - 1
+// Array-based forest of nodes; index 0 is the null node with s[0] = 0.
+vector<long long> key{0};                    // node key
+vector<int> lc{0}, rc{0};                     // left / right child indices
+vector<long long> s{0};                       // subtree size (the only extra field)
+int root = 0;
 
-    def _left_rotate(self, t):                      # pull right child up
-        k = self.right[t]
-        self.right[t] = self.left[k]; self.left[k] = t
-        self.s[k] = self.s[t]                        # k takes t's old subtree
-        self.s[t] = self.s[self.left[t]] + self.s[self.right[t]] + 1
-        return k
+int new_node(long long v) {                   // allocate a fresh leaf
+    key.push_back(v); lc.push_back(0); rc.push_back(0); s.push_back(1);
+    return (int)key.size() - 1;
+}
 
-    def _right_rotate(self, t):                     # pull left child up
-        k = self.left[t]
-        self.left[t] = self.right[k]; self.right[k] = t
-        self.s[k] = self.s[t]
-        self.s[t] = self.s[self.left[t]] + self.s[self.right[t]] + 1
-        return k
+int left_rotate(int t) {                      // pull right child up
+    int k = rc[t];
+    rc[t] = lc[k]; lc[k] = t;
+    s[k] = s[t];                              // k inherits t's old subtree
+    s[t] = s[lc[t]] + s[rc[t]] + 1;
+    return k;
+}
 
-    def _rebalance(self, t, flag):                   # restore the nephew condition at t
-        L, R, s = self.left, self.right, self.s
-        if t == 0:
-            return 0
-        if not flag:                                # left side may be too heavy
-            if s[L[L[t]]] > s[R[t]]:                 # outer-left nephew too big
-                t = self._right_rotate(t)
-            elif s[R[L[t]]] > s[R[t]]:               # inner-left nephew too big
-                L[t] = self._left_rotate(L[t]); t = self._right_rotate(t)
-            else:
-                return t
-        else:                                       # right side may be too heavy (mirror)
-            if s[R[R[t]]] > s[L[t]]:                 # outer-right nephew too big
-                t = self._left_rotate(t)
-            elif s[L[R[t]]] > s[L[t]]:               # inner-right nephew too big
-                R[t] = self._right_rotate(R[t]); t = self._left_rotate(t)
-            else:
-                return t
-        L[t] = self._rebalance(L[t], False)          # repair the touched nodes
-        R[t] = self._rebalance(R[t], True)
-        t = self._rebalance(t, False)
-        t = self._rebalance(t, True)
-        return t
+int right_rotate(int t) {                     // pull left child up
+    int k = lc[t];
+    lc[t] = rc[k]; rc[k] = t;
+    s[k] = s[t];                              // k inherits t's old subtree
+    s[t] = s[lc[t]] + s[rc[t]] + 1;
+    return k;
+}
 
-    def _insert(self, t, v):                        # plain BST insert + one rebalance
-        if t == 0:
-            return self._new_node(v)
-        self.s[t] += 1
-        if v < self.key[t]:
-            self.left[t] = self._insert(self.left[t], v)
-        else:
-            self.right[t] = self._insert(self.right[t], v)
-        return self._rebalance(t, v >= self.key[t])  # flag = which way we descended
+int rebalance(int t, bool flag) {             // restore the nephew condition at t
+    if (t == 0) return 0;
+    if (!flag) {                              // left side may be too heavy
+        if (s[lc[lc[t]]] > s[rc[t]]) {        // outer-left nephew -> single
+            t = right_rotate(t);
+        } else if (s[rc[lc[t]]] > s[rc[t]]) { // inner-left nephew -> double
+            lc[t] = left_rotate(lc[t]); t = right_rotate(t);
+        } else {
+            return t;
+        }
+    } else {                                  // right side (mirror)
+        if (s[rc[rc[t]]] > s[lc[t]]) {        // outer-right nephew -> single
+            t = left_rotate(t);
+        } else if (s[lc[rc[t]]] > s[lc[t]]) { // inner-right nephew -> double
+            rc[t] = right_rotate(rc[t]); t = left_rotate(t);
+        } else {
+            return t;
+        }
+    }
+    lc[t] = rebalance(lc[t], false);          // repair the touched nodes
+    rc[t] = rebalance(rc[t], true);
+    t = rebalance(t, false);
+    t = rebalance(t, true);
+    return t;
+}
 
-    def insert(self, v):
-        self.root = self._insert(self.root, v)
+int insert_rec(int t, long long v) {          // BST insert + one rebalance
+    if (t == 0) return new_node(v);
+    s[t] += 1;
+    if (v < key[t]) lc[t] = insert_rec(lc[t], v);
+    else            rc[t] = insert_rec(rc[t], v);
+    return rebalance(t, v >= key[t]);         // flag = which way we descended
+}
 
-    def select(self, k):                            # k-th smallest (1-indexed)
-        t = self.root
-        while t:
-            r = self.s[self.left[t]] + 1            # rank of t in its own subtree
-            if k == r:   return self.key[t]
-            elif k < r:  t = self.left[t]
-            else:        k -= r; t = self.right[t]
-        raise IndexError("k out of range")
+void insert(long long v) { root = insert_rec(root, v); }
 
-    def rank(self, v):                              # 1 + #keys strictly < v
-        t = self.root; ans = 0
-        while t:
-            if v <= self.key[t]:
-                t = self.left[t]
-            else:
-                ans += self.s[self.left[t]] + 1     # bank left subtree + node
-                t = self.right[t]
-        return ans + 1
+long long select_kth(long long k) {           // k-th smallest (1-indexed)
+    int t = root;
+    while (t) {
+        long long r = s[lc[t]] + 1;           // rank of t in its own subtree
+        if (k == r)      return key[t];
+        else if (k < r)  t = lc[t];
+        else           { k -= r; t = rc[t]; }
+    }
+    return 0;                                  // k out of range
+}
+
+long long rank_of(long long v) {              // 1 + #keys strictly < v
+    int t = root; long long ans = 0;
+    while (t) {
+        if (v <= key[t]) {
+            t = lc[t];
+        } else {
+            ans += s[lc[t]] + 1;              // bank left subtree + node
+            t = rc[t];
+        }
+    }
+    return ans + 1;
+}
+
+int main() {
+    ios_base::sync_with_stdio(false);
+    cin.tie(nullptr);
+    int q;
+    if (!(cin >> q)) return 0;
+    while (q--) {
+        char op; long long x;
+        cin >> op >> x;
+        if (op == 'I')      insert(x);
+        else if (op == 'S') cout << select_kth(x) << '\n';
+        else if (op == 'R') cout << rank_of(x) << '\n';
+    }
+    return 0;
+}
 ```
 
 The chain start to finish: order statistics force every node to carry its subtree size, while balance ordinarily wants a *second* field (height, color, priority) that the queries can't use — so I asked the size field to do double duty, demanding that each child's subtree be no smaller than either of its nephews, the granularity at which a single rotation can repair a violation; that condition forces a Fibonacci lower bound $f[h] = f[h-1]+f[h-2]+1$ on the node count, hence height $O(\log n)$; an ordinary BST insert then breaks the condition at one node, which a four-case `_rebalance` — a single rotation for an outer-heavy nephew, a double for an inner-heavy one, followed by recursive rebalances on the touched nodes — restores; every rotation it fires strictly lowers the total depth $SD$, and since $SD$ stays in an $O(n\log n)$ band and each insert lifts it by only $O(\log n)$, the rotations over $n$ inserts total $O(n\log n)$, making each `_rebalance` invocation $O(1)$ amortized across the $O(n\log n)$ invocations and each insertion $O(\log n)$ amortized, with logarithmic select and rank from the height bound and no field beyond the size the queries already needed.

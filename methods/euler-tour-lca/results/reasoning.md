@@ -26,138 +26,125 @@ For a query range `[left, right]`, let `length = right - left + 1` and `k = floo
 
 The traversal should be iterative. A recursive DFS is elegant, but a path-shaped tree can have height `n`, and then recursion depth becomes a separate failure mode. I can simulate DFS with stack frames `(node, depth, next_child_index)`. When I first push a child, I append that child and its depth and set its first position. When a frame is exhausted, I pop it; if there is still a parent frame underneath, the walk has just returned to that parent, so I append the parent and the parent's depth. Marking a node as seen on entry is enough to handle the undirected adjacency list.
 
-```python
-import sys
+```cpp
+// Reads: "n q", then n-1 undirected tree edges (1-based), then q query pairs
+// (1-based). The tree is rooted at node 0 (input node 1). Prints, one per line,
+// the 1-based lowest common ancestor of each queried pair.
+#include <bits/stdc++.h>
+using namespace std;
 
+int main() {
+    ios::sync_with_stdio(false);
+    cin.tie(nullptr);
 
-def read_input(data):
-    """Parse n, q, n-1 edges, and q queries from 1-based input."""
-    it = iter(data)
-    n = int(next(it))
-    q = int(next(it))
-    adj = [[] for _ in range(n)]
-    for _ in range(n - 1):
-        u = int(next(it)) - 1
-        v = int(next(it)) - 1
-        adj[u].append(v)
-        adj[v].append(u)
-    queries = []
-    for _ in range(q):
-        u = int(next(it)) - 1
-        v = int(next(it)) - 1
-        queries.append((u, v))
-    return n, adj, queries
+    int n, q;
+    if (!(cin >> n >> q)) return 0;
 
+    vector<vector<int>> adj(n);
+    for (int i = 0; i < n - 1; ++i) {
+        int u, v;
+        cin >> u >> v;
+        --u; --v;
+        adj[u].push_back(v);
+        adj[v].push_back(u);
+    }
 
-class SparseTableMin:
-    """Range minimum over a fixed integer array.
+    // One iterative DFS records the order in which vertices are touched: a
+    // vertex is appended when first entered and again every time the walk
+    // returns to it from a child. The tour has length 2n-1; alongside it we
+    // keep the depth at each tour position and, per vertex, the index of its
+    // first appearance. Iterative DFS so a path-shaped tree can't overflow.
+    vector<int> euler;        // node touched at each tour position
+    vector<int> depthAt;      // depth at each tour position
+    vector<int> first(n, -1); // first tour position of each node
+    euler.reserve(n > 0 ? 2 * n - 1 : 0);
+    depthAt.reserve(n > 0 ? 2 * n - 1 : 0);
 
-    Each table cell stores the position whose key is minimal, so a caller can
-    recover the value associated with that position. Build is O(m log m);
-    queries are O(1).
-    """
+    if (n > 0) {
+        vector<char> seen(n, 0);
+        // frame: node, depth, next child index into adj[node]
+        vector<array<int, 3>> stk;
+        int root = 0;
+        seen[root] = 1;
+        first[root] = 0;
+        euler.push_back(root);
+        depthAt.push_back(0);
+        stk.push_back({root, 0, 0});
 
-    def __init__(self, key):
-        self.key = key
-        m = len(key)
-        self.log = [0] * (m + 1)
-        for i in range(2, m + 1):
-            self.log[i] = self.log[i >> 1] + 1
+        while (!stk.empty()) {
+            int node = stk.back()[0];
+            int d = stk.back()[1];
+            int idx = stk.back()[2];
+            const vector<int>& children = adj[node];
+            bool advanced = false;
+            while (idx < (int)children.size()) {
+                int nxt = children[idx];
+                ++idx;
+                if (!seen[nxt]) {
+                    stk.back()[2] = idx;
+                    seen[nxt] = 1;
+                    first[nxt] = (int)euler.size();
+                    euler.push_back(nxt);
+                    depthAt.push_back(d + 1);
+                    stk.push_back({nxt, d + 1, 0});
+                    advanced = true;
+                    break;
+                }
+            }
+            if (!advanced) {
+                stk.back()[2] = idx;
+                stk.pop_back();
+                if (!stk.empty()) {
+                    // returned to the parent: re-record it
+                    euler.push_back(stk.back()[0]);
+                    depthAt.push_back(stk.back()[1]);
+                }
+            }
+        }
+    }
 
-        levels = self.log[m] + 1 if m else 1
-        table = [[0] * m for _ in range(levels)]
-        table[0] = list(range(m))
-        for k in range(1, levels):
-            half = 1 << (k - 1)
-            span = half << 1
-            row = table[k]
-            prev = table[k - 1]
-            for start in range(m - span + 1):
-                left = prev[start]
-                right = prev[start + half]
-                row[start] = left if key[left] <= key[right] else right
-        self.table = table
+    // Sparse table over depthAt that stores the *position* of the minimal
+    // depth, so we can recover the Euler node there. min is idempotent, so
+    // overlapping the two covering blocks is harmless and the query is O(1).
+    int m = (int)depthAt.size();
+    vector<int> logTable(m + 1, 0);
+    for (int i = 2; i <= m; ++i) logTable[i] = logTable[i >> 1] + 1;
+    int levels = (m > 0 ? logTable[m] + 1 : 1);
 
-    def argmin(self, left, right):
-        """Return a position of the minimum key in inclusive range [left, right]."""
-        length = right - left + 1
-        k = self.log[length]
-        a = self.table[k][left]
-        b = self.table[k][right - (1 << k) + 1]
-        return a if self.key[a] <= self.key[b] else b
+    vector<vector<int>> sp(levels, vector<int>(m, 0));
+    for (int j = 0; j < m; ++j) sp[0][j] = j;
+    for (int k = 1; k < levels; ++k) {
+        int span = 1 << k;
+        int half = 1 << (k - 1);
+        for (int j = 0; j + span <= m; ++j) {
+            int a = sp[k - 1][j];
+            int b = sp[k - 1][j + half];
+            sp[k][j] = (depthAt[a] <= depthAt[b]) ? a : b;
+        }
+    }
 
+    auto argmin = [&](int l, int r) -> int {
+        int k = logTable[r - l + 1];
+        int a = sp[k][l];
+        int b = sp[k][r - (1 << k) + 1];
+        return (depthAt[a] <= depthAt[b]) ? a : b;
+    };
 
-class LCA:
-    def __init__(self, n, adj, root=0):
-        self.n = n
-        self.adj = adj
-        self.preprocess(root)
-
-    def preprocess(self, root):
-        euler = []
-        depth_at = []
-        first = [-1] * self.n
-        seen = [False] * self.n
-
-        stack = [(root, 0, 0)]
-        seen[root] = True
-        first[root] = 0
-        euler.append(root)
-        depth_at.append(0)
-
-        while stack:
-            node, depth, child_index = stack[-1]
-            children = self.adj[node]
-            advanced = False
-
-            while child_index < len(children):
-                nxt = children[child_index]
-                child_index += 1
-                if seen[nxt]:
-                    continue
-
-                stack[-1] = (node, depth, child_index)
-                seen[nxt] = True
-                first[nxt] = len(euler)
-                euler.append(nxt)
-                depth_at.append(depth + 1)
-                stack.append((nxt, depth + 1, 0))
-                advanced = True
-                break
-
-            if not advanced:
-                stack.pop()
-                if stack:
-                    parent, parent_depth, _ = stack[-1]
-                    euler.append(parent)
-                    depth_at.append(parent_depth)
-
-        self.euler = euler
-        self.first = first
-        self.depth_at = depth_at
-        self.rmq = SparseTableMin(depth_at)
-
-    def lca(self, u, v):
-        left = self.first[u]
-        right = self.first[v]
-        if left > right:
-            left, right = right, left
-        pos = self.rmq.argmin(left, right)
-        return self.euler[pos]
-
-
-def main():
-    data = sys.stdin.buffer.read().split()
-    if not data:
-        return
-    n, adj, queries = read_input(data)
-    solver = LCA(n, adj)
-    out = [str(solver.lca(u, v) + 1) for u, v in queries]
-    sys.stdout.write("\n".join(out))
-
-
-if __name__ == "__main__":
-    main()
+    string out;
+    out.reserve((size_t)q * 7);
+    for (int i = 0; i < q; ++i) {
+        int u, v;
+        cin >> u >> v;
+        --u; --v;
+        int l = first[u], r = first[v];
+        if (l > r) swap(l, r);
+        int ans = euler[argmin(l, r)] + 1;
+        out += to_string(ans);
+        out.push_back('\n');
+    }
+    cout << out;
+    return 0;
+}
 ```
 
 Stepping back, the pieces line up the way I needed them to. One traversal creates a length-`2n - 1` Euler array, a first-position array, and a depth array; the sparse table preprocesses the depth array in `O(n log n)` while storing minimizing positions; each query converts the two nodes to a first-occurrence interval, takes the minimum-depth position in that interval with two table lookups, and returns the Euler node at that position in `O(1)`. The all-pairs check on the small tree, including the ancestor case, is what convinces me the depth-minimum rule is doing the right thing rather than merely looking plausible.

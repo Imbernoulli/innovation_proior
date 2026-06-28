@@ -64,62 +64,139 @@ factor 2) balances approximation quality against the per-swap potential drop
 
 ## Code
 
-```python
-from fractions import Fraction
+Single-file C++17. It reads `n m` and then `n` rows of `m` integers (the basis
+`b_1, ..., b_n` in `Z^m`) from stdin, and writes the reduced basis to stdout. All
+arithmetic is kept exact in integers by carrying the determinants
+`d_i = prod_{j<=i}|b*_j|^2` and the integer-scaled coefficients
+`lambda_{i,j} = d_{j+1} * mu_{i,j}`; the Lovász test and size-reduction rounding
+are then evaluated entirely over integers, with `__int128` guarding the products.
 
+```cpp
+// LLL lattice basis reduction (single-file, stdin -> stdout).
+// Reads: n m, then n rows of m integers (an integer basis b_1..b_n of a lattice
+// in Z^m). Writes: the LLL-reduced basis (delta = 3/4), n rows of m integers.
+//
+// All arithmetic is exact in integers: the algorithm carries the Gram-Schmidt
+// data as the integer determinants d_i = prod_{j<=i}|b*_j|^2 together with the
+// integer-scaled coefficients lambda_{i,j} = d_j * mu_{i,j}, so no floating point
+// and no rationals are needed (de Weger's integer LLL). __int128 guards the
+// products against overflow of the intermediate quantities.
 
-def dot(u, v):
-    return sum(Fraction(a) * Fraction(b) for a, b in zip(u, v))
+#include <bits/stdc++.h>
+using namespace std;
 
+typedef long long ll;
+typedef __int128 lll_t;
 
-def gram_schmidt(B):
-    """Bstar[i] = b*_i,  mu[i][j] = <b_i, b*_j> / <b*_j, b*_j>  for j < i."""
-    n = len(B)
-    Bstar = [None] * n
-    mu = [[Fraction(0) for _ in range(n)] for _ in range(n)]
-    for i in range(n):
-        Bstar[i] = [Fraction(x) for x in B[i]]
-        for j in range(i):
-            mu[i][j] = dot(B[i], Bstar[j]) / dot(Bstar[j], Bstar[j])
-            Bstar[i] = [a - mu[i][j] * c for a, c in zip(Bstar[i], Bstar[j])]
-    return Bstar, mu
+static int n, m;
+static vector<vector<ll>> B;     // basis rows, integers
+static vector<vector<ll>> G;     // Gram matrix <b_i,b_j>
+static vector<ll> d;             // d[0..n], d[i] = prod_{j<=i}|b*_j|^2 (d[0]=1)
+static vector<vector<ll>> lam;   // lam[i][j] = d[j+1]*mu_{i,j} for j<i (integers)
 
+static ll dot(const vector<ll>& u, const vector<ll>& v) {
+    lll_t s = 0;
+    for (int t = 0; t < m; t++) s += (lll_t)u[t] * v[t];
+    return (ll)s; // assumed to fit in ll for the test inputs
+}
 
-def lll(B, delta=Fraction(3, 4)):
-    """LLL-reduce the integer rows of B (1/4 < delta < 1). Exact via Fraction."""
-    B = [[Fraction(x) for x in row] for row in B]
-    n = len(B)
-    Bstar, mu = gram_schmidt(B)
+// Round a rational num/den to nearest integer, ties to even (matching the
+// round() used in the reasoning's size-reduction so b_i loses the integer part
+// of mu and lands |mu| in [-1/2, 1/2]).
+static ll nint(ll num, ll den) {
+    if (den < 0) { num = -num; den = -den; }
+    // floor division
+    ll q = num / den, r = num - q * den;
+    if (r < 0) { q -= 1; r += den; }   // now 0 <= r < den, q = floor(num/den)
+    ll twice = 2 * r;
+    if (twice > den) q += 1;
+    else if (twice == den && (q & 1)) q += 1; // tie -> round to even
+    return q;
+}
 
-    k = 1                                          # 0-based pointer
-    while k < n:
-        # reduce only mu_{k,k-1} before the test
-        if abs(mu[k][k - 1]) > Fraction(1, 2):
-            r = round(mu[k][k - 1])                # nearest integer
-            B[k] = [a - r * b for a, b in zip(B[k], B[k - 1])]
-            Bstar, mu = gram_schmidt(B)            # keep mu and b* exact
+// Recompute Gram matrix, d[], and lambda[] from scratch from B (exact).
+static void recompute() {
+    G.assign(n, vector<ll>(n, 0));
+    for (int i = 0; i < n; i++)
+        for (int j = 0; j < n; j++)
+            G[i][j] = dot(B[i], B[j]);
 
-        # Lovasz condition: |b*_k|^2 >= (delta - mu_{k,k-1}^2) |b*_{k-1}|^2
-        lhs = dot(Bstar[k], Bstar[k])
-        rhs = (delta - mu[k][k - 1] ** 2) * dot(Bstar[k - 1], Bstar[k - 1])
-        if lhs >= rhs:
-            # finish size-reducing b_k against b_{k-2},...,b_0, then advance
-            for j in range(k - 2, -1, -1):
-                if abs(mu[k][j]) > Fraction(1, 2):
-                    r = round(mu[k][j])
-                    B[k] = [a - r * b for a, b in zip(B[k], B[j])]
-                    Bstar, mu = gram_schmidt(B)
-            k += 1                                 # advance
-        else:
-            B[k], B[k - 1] = B[k - 1], B[k]        # swap shrinks |b*_{k-1}|^2 < delta
-            Bstar, mu = gram_schmidt(B)
-            k = max(k - 1, 1)                       # retreat
+    d.assign(n + 1, 0);
+    d[0] = 1;
+    lam.assign(n, vector<ll>(n, 0));
+    // Cholesky-like integer recurrence (Gram-Schmidt over the Gram matrix):
+    // u_{i,j} = G[i][j] - sum_{p<j} lam[j][p]*u_{i,p}/d[p]   (built iteratively)
+    // with lam[i][j] = u_{i,j} (the d_{j+1}-scaled coefficient) and
+    // d[i+1] = u_{i,i}.
+    for (int i = 0; i < n; i++) {
+        for (int j = 0; j <= i; j++) {
+            lll_t u = G[i][j];
+            for (int p = 0; p < j; p++) {
+                // u = (d[p+1]*u - lam[i][p]*lam[j][p]) / d[p]
+                u = (lll_t)d[p + 1] * u - (lll_t)lam[i][p] * lam[j][p];
+                u /= d[p];
+            }
+            if (j < i) lam[i][j] = (ll)u;
+            else d[i + 1] = (ll)u;
+        }
+    }
+}
 
-    return [[int(x) for x in row] for row in B]
+int main() {
+    ios::sync_with_stdio(false);
+    cin.tie(nullptr);
+    if (!(cin >> n >> m)) return 0;
+    B.assign(n, vector<ll>(m, 0));
+    for (int i = 0; i < n; i++)
+        for (int j = 0; j < m; j++)
+            cin >> B[i][j];
 
+    recompute();
 
-if __name__ == "__main__":
-    basis = [[1, 1, 1], [-1, 0, 2], [3, 5, 6]]
-    for row in lll(basis):
-        print(row)            # -> [0, 1, 0], [1, 0, 1], [-1, 0, 2]
+    // delta = 3/4. The Lovasz test |b*_k|^2 >= (delta - mu_{k,k-1}^2)|b*_{k-1}|^2
+    // becomes, after multiplying by d[k-1]^2 and using |b*_k|^2 = d[k+1]/d[k],
+    // |b*_{k-1}|^2 = d[k]/d[k-1], mu_{k,k-1} = lam[k][k-1]/d[k]:
+    //   4 * d[k+1] * d[k-1] >= (3 * d[k]^2 - 4 * lam[k][k-1]^2),
+    // all in integers (here k is the 0-based pointer, predecessor k-1).
+    int k = 1;
+    while (k < n) {
+        // size-reduce b_k against b_{k-1} only, before the test
+        if (2 * llabs(lam[k][k - 1]) > d[k]) {
+            ll r = nint(lam[k][k - 1], d[k]);
+            for (int t = 0; t < m; t++) B[k][t] -= r * B[k - 1][t];
+            recompute();
+        }
+
+        lll_t lhs = (lll_t)4 * d[k + 1] * d[k - 1];
+        lll_t rhs = (lll_t)3 * d[k] * d[k] - (lll_t)4 * lam[k][k - 1] * lam[k][k - 1];
+        if (lhs >= rhs) {
+            // Lovasz holds: finish size-reducing b_k against b_{k-2}..b_0, advance
+            for (int j = k - 2; j >= 0; j--) {
+                if (2 * llabs(lam[k][j]) > d[j + 1]) {
+                    ll r = nint(lam[k][j], d[j + 1]);
+                    for (int t = 0; t < m; t++) B[k][t] -= r * B[j][t];
+                    recompute();
+                }
+            }
+            k += 1;
+        } else {
+            // swap b_{k-1}, b_k; potential drops by factor < 3/4; retreat
+            swap(B[k], B[k - 1]);
+            recompute();
+            k = max(k - 1, 1);
+        }
+    }
+
+    for (int i = 0; i < n; i++) {
+        for (int j = 0; j < m; j++) {
+            cout << B[i][j];
+            if (j + 1 < m) cout << ' ';
+        }
+        cout << '\n';
+    }
+    return 0;
+}
 ```
+
+For input `3 3 / 1 1 1 / -1 0 2 / 3 5 6` the program prints the reduced basis
+`0 1 0`, `1 0 1`, `-1 0 2`.

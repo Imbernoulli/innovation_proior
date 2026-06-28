@@ -19,6 +19,10 @@ The recovery is the part where it is easy to be off by one count, and the tie ca
 With both checks passing — the cost formula and convexity on the strictly-increasing instance, and the off-by-one tangent recovery on the tied instance — I can write the code as the actual interval recurrence. The preprocessing keeps only the non-contained intervals. `Line` stores both the affine value and the count attached to the split. `LiChao` compares pairs by smaller value and, on ties, larger count, because the binary search is using the rightmost optimal count. Inside `minimum_cost_exact_k`, the local sweep builds the one-dimensional priced DP for a given `C`; the outer binary search finds the critical price and removes exactly `K` prices from the penalized value.
 
 ```cpp
+// IOI 2016 "Aliens" trick: cover n segments with exactly K larger segments,
+// minimizing the sum of squared spans minus already-paid overlaps.
+// Reads:  first line "n K"; then n lines "r_i c_i" (each point gives segment
+//         [min(r_i,c_i), max(r_i,c_i)]). Writes: the minimum cost f(n,K). Uses long long.
 #include <bits/stdc++.h>
 using namespace std;
 
@@ -79,6 +83,8 @@ struct LiChao {
 
 i128 sq(ll x) { return (i128)x * x; }
 
+// Sort, split, and drop intervals contained in an earlier kept interval,
+// leaving a strictly-increasing endpoint sequence.
 vector<pair<int,int>> reduce_intervals(vector<int> row, vector<int> col) {
     vector<pair<int,int>> seg;
     for (int i = 0; i < (int)row.size(); ++i) {
@@ -112,6 +118,7 @@ ll minimum_cost_exact_k(vector<int> row, vector<int> col, int K) {
         r[i] = seg[i].second;
     }
 
+    // overlap(t): cells of split t already paid for by the previous block.
     auto overlap = [&](int t) -> i128 {
         if (t == 0) return 0;
         return sq(max(0LL, (ll)r[t - 1] - l[t] + 1));
@@ -151,6 +158,19 @@ ll minimum_cost_exact_k(vector<int> row, vector<int> col, int K) {
     }
     auto best = sweep(lo);
     return (ll)(best.first - lo * K);
+}
+
+int main() {
+    ios::sync_with_stdio(false);
+    cin.tie(nullptr);
+
+    int n, K;
+    if (!(cin >> n >> K)) return 0;
+    vector<int> row(n), col(n);
+    for (int i = 0; i < n; ++i) cin >> row[i] >> col[i];
+
+    cout << minimum_cost_exact_k(row, col, K) << "\n";
+    return 0;
 }
 ```
 

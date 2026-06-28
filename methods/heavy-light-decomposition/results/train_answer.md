@@ -14,162 +14,189 @@ To make each chain a contiguous slice of the array I run a DFS that visits the *
 
 The path query climbs chain by chain, and the lowest common ancestor falls out for free. I keep two pointers $u$ and $v$. While they sit on different chains (`head[u] != head[v]`), I lift the one whose chain *head is deeper*: that node's chain head, being deeper, cannot be an ancestor of the other pointer, so the slice of the path from the chain head down to the pointer — `query(pos[head[u]], pos[u])` — is definitely part of the answer and can be aggregated now, after which I jump that pointer to `parent[head[u]]`, stepping up one light edge onto the next chain. Each iteration moves a pointer up one entire chain, so the loop runs $O(\log n)$ times by the light-edge bound. When the heads finally coincide, both pointers lie on one chain; the shallower of them is the lowest common ancestor $l$, and a final `query` over `[pos[shallower], pos[deeper]]` adds the last stretch through $l$ — I never computed the LCA on the side. Accounting confirms no double-count and no gap: while heads differ I consume `[pos[head[u]], pos[u]]` and then jump strictly above it to the parent of the head, so the consumed and remaining parts abut without overlap; when the heads match the inclusive range covers $l$ exactly once, and the two arms stitched at $l$ count it once. The climb never assumes anything about the aggregate, so swapping the segment tree's `_combine`/`_identity` from sum to max returns the path maximum with no other change. The cost is $O(\log n)$ chains times $O(\log n)$ per range query, i.e. $O(\log^2 n)$ per query, with $O(n)$ build and $O(\log n)$ updates — over $q$ operations, $O(n + q\log^2 n)$, ample at $n,q\sim 10^5$. The extra $\log$ over a single-$\log$ trick is the price of vertical chains under a general associative aggregate; prefix-aggregate-per-chain shortcuts exist but need an invertible or static aggregate, whereas I want plain online point-update with sum *or* max.
 
-One implementation hazard at $n=10^5$: a recursive DFS would recurse to depth $n$ on a bamboo and overflow the interpreter stack, so both passes use explicit stacks. The first pass pushes the root, records nodes while setting `parent`/`depth` on the way down, then walks that visit order in reverse — children before parents — to accumulate subtree sizes and pick each node's heavy child as the running-largest child. The decompose pass carries `(vertex, chain_head)` on its stack and, to make the heavy child come off next and keep its chain contiguous, pushes the light children first and the heavy child last, exploiting the stack's LIFO order. Then the array is filled in `pos` order and handed to the segment tree.
+One implementation hazard at $n=10^5$: a recursive DFS would recurse to depth $n$ on a bamboo and overflow the stack, so both passes use explicit stacks. The first pass pushes the root, records nodes while setting `parent`/`depth` on the way down, then walks that visit order in reverse — children before parents — to accumulate subtree sizes and pick each node's heavy child as the running-largest child. The decompose pass carries `(vertex, chain_head)` on its stack and, to make the heavy child come off next and keep its chain contiguous, pushes the light children first and the heavy child last, exploiting the stack's LIFO order. Then the array is filled in `pos` order and handed to the segment trees.
 
-```python
-import sys
+The deliverable is a single self-contained C++17 program. It follows the judged form of this task (ZJOI2008 "Tree Statistics"): from stdin it reads $n$, then the $n-1$ tree edges, then the $n$ node weights, then $q$ operations — `CHANGE u t` sets node $u$'s weight, `QMAX u v` and `QSUM u v` report the path maximum and path sum — and prints one line per query to stdout. Two parallel segment trees over the `pos` array carry sum and max so the same chain-climb answers either; weights and accumulators are `long long` because a path sum can exceed 32 bits, and the max-tree's identity is a finite $-\infty$ sentinel so negative weights are handled.
 
+```cpp
+// Heavy-light decomposition: online path sum / path max on a weighted tree.
+// Reads from stdin: n; then n-1 edges "a b" (1-based); then n node weights;
+// then q; then q operations, one per line:
+//   CHANGE u t  -> set node u's weight to t
+//   QMAX u v    -> print max weight on the path u..v
+//   QSUM u v    -> print sum of weights on the path u..v
+// Prints one line per QMAX/QSUM query to stdout. (ZJOI2008 "Tree Statistics".)
+#include <bits/stdc++.h>
+using namespace std;
 
-def read_tree(data):
-    """Parse n, the n node values, and n-1 edges (1-based in input) into a
-    0-based adjacency list. Returns (n, values, adj)."""
-    it = iter(data)
-    n = int(next(it))
-    values = [int(next(it)) for _ in range(n)]
-    adj = [[] for _ in range(n)]
-    for _ in range(n - 1):
-        u = int(next(it)) - 1
-        v = int(next(it)) - 1
-        adj[u].append(v)
-        adj[v].append(u)
-    return n, values, adj
+const long long NEG_INF = LLONG_MIN / 4;
 
+int n;
+vector<vector<int>> adj;
+vector<long long> wt;           // node weights, 1-based
+vector<int> parent, depth_, sz, heavy, head, pos_;
 
-class SegmentTree:
-    """Array-backed segment tree: point update, range query under an
-    associative combine. Defaults to sum (swap _combine/_identity for max)."""
+// Two segment trees over the pos[] array: one for sum, one for max.
+struct SegSum {
+    int m;
+    vector<long long> t;
+    void init(const vector<long long>& base) {
+        m = (int)base.size();
+        t.assign(2 * m, 0);
+        for (int i = 0; i < m; i++) t[m + i] = base[i];
+        for (int i = m - 1; i > 0; i--) t[i] = t[2 * i] + t[2 * i + 1];
+    }
+    void update(int i, long long val) {
+        for (t[i += m] = val, i >>= 1; i; i >>= 1)
+            t[i] = t[2 * i] + t[2 * i + 1];
+    }
+    long long query(int l, int r) { // inclusive [l, r]
+        long long res = 0;
+        for (l += m, r += m + 1; l < r; l >>= 1, r >>= 1) {
+            if (l & 1) res += t[l++];
+            if (r & 1) res += t[--r];
+        }
+        return res;
+    }
+};
 
-    def __init__(self, base):
-        self.n = len(base)
-        self.t = [0] * (2 * self.n)
-        for i in range(self.n):
-            self.t[self.n + i] = base[i]
-        for i in range(self.n - 1, 0, -1):
-            self.t[i] = self._combine(self.t[2 * i], self.t[2 * i + 1])
+struct SegMax {
+    int m;
+    vector<long long> t;
+    void init(const vector<long long>& base) {
+        m = (int)base.size();
+        t.assign(2 * m, NEG_INF);
+        for (int i = 0; i < m; i++) t[m + i] = base[i];
+        for (int i = m - 1; i > 0; i--) t[i] = max(t[2 * i], t[2 * i + 1]);
+    }
+    void update(int i, long long val) {
+        for (t[i += m] = val, i >>= 1; i; i >>= 1)
+            t[i] = max(t[2 * i], t[2 * i + 1]);
+    }
+    long long query(int l, int r) { // inclusive [l, r]
+        long long res = NEG_INF;
+        for (l += m, r += m + 1; l < r; l >>= 1, r >>= 1) {
+            if (l & 1) res = max(res, t[l++]);
+            if (r & 1) res = max(res, t[--r]);
+        }
+        return res;
+    }
+};
 
-    @staticmethod
-    def _combine(a, b):
-        return a + b
+SegSum segSum;
+SegMax segMax;
 
-    _identity = 0
+// First pass (iterative): parent, depth, subtree size, heavy child.
+// Second pass (iterative, heavy child first): head[] and pos[], laying each
+// heavy chain into a contiguous block. Iterative to survive depth-n bamboos.
+void build(int root) {
+    parent.assign(n + 1, 0);
+    depth_.assign(n + 1, 0);
+    sz.assign(n + 1, 1);
+    heavy.assign(n + 1, 0);   // 0 = none (nodes are 1-based)
+    head.assign(n + 1, 0);
+    pos_.assign(n + 1, 0);
 
-    def update(self, i, val):
-        i += self.n
-        self.t[i] = val
-        i >>= 1
-        while i:
-            self.t[i] = self._combine(self.t[2 * i], self.t[2 * i + 1])
-            i >>= 1
+    vector<int> order;
+    order.reserve(n);
+    vector<char> visited(n + 1, 0);
+    vector<int> stk;
+    stk.push_back(root);
+    parent[root] = 0;
+    depth_[root] = 0;
+    while (!stk.empty()) {
+        int v = stk.back(); stk.pop_back();
+        if (visited[v]) continue;
+        visited[v] = 1;
+        order.push_back(v);
+        for (int c : adj[v]) if (c != parent[v]) {
+            parent[c] = v;
+            depth_[c] = depth_[v] + 1;
+            stk.push_back(c);
+        }
+    }
+    for (int i = (int)order.size() - 1; i >= 0; i--) { // children before parents
+        int v = order[i];
+        int best = 0;
+        for (int c : adj[v]) if (c != parent[v]) {
+            sz[v] += sz[c];
+            if (sz[c] > best) { best = sz[c]; heavy[v] = c; }
+        }
+    }
 
-    def query(self, l, r):
-        """Aggregate over the index range [l, r] inclusive."""
-        res = self._identity
-        l += self.n
-        r += self.n + 1
-        while l < r:
-            if l & 1:
-                res = self._combine(res, self.t[l])
-                l += 1
-            if r & 1:
-                r -= 1
-                res = self._combine(res, self.t[r])
-            l >>= 1
-            r >>= 1
-        return res
+    // Heavy-child-first DFS: stack carries (vertex, chain head). Push light
+    // children first so the heavy child pops next (LIFO) -> chain stays contiguous.
+    int cur = 0;
+    vector<pair<int,int>> stk2;
+    stk2.emplace_back(root, root);
+    while (!stk2.empty()) {
+        auto [v, h] = stk2.back(); stk2.pop_back();
+        head[v] = h;
+        pos_[v] = cur++;
+        for (int c : adj[v]) if (c != parent[v] && c != heavy[v])
+            stk2.emplace_back(c, c);
+        if (heavy[v] != 0) stk2.emplace_back(heavy[v], h);
+    }
 
+    vector<long long> base(n, 0);
+    for (int v = 1; v <= n; v++) base[pos_[v]] = wt[v];
+    segSum.init(base);
+    segMax.init(base);
+}
 
-class TreePaths:
-    def __init__(self, n, values, adj, root=0):
-        self.n = n
-        self.values = values
-        self.adj = adj
-        self.parent = [-1] * n
-        self.depth = [0] * n
-        self.size = [1] * n
-        self.build(root)
+void updateNode(int u, long long val) {
+    wt[u] = val;
+    segSum.update(pos_[u], val);
+    segMax.update(pos_[u], val);
+}
 
-    def build(self, root):
-        n, adj = self.n, self.adj
-        self.heavy = [-1] * n
-        self.head = [0] * n
-        self.pos = [0] * n
-        parent, depth, size, heavy = self.parent, self.depth, self.size, self.heavy
+// Climb chain by chain, always lifting the deeper-headed pointer. The LCA
+// falls out as the surviving pointer; the climb is aggregate-agnostic.
+long long pathSum(int u, int v) {
+    long long res = 0;
+    while (head[u] != head[v]) {
+        if (depth_[head[u]] < depth_[head[v]]) swap(u, v);
+        res += segSum.query(pos_[head[u]], pos_[u]);
+        u = parent[head[u]];
+    }
+    if (depth_[u] > depth_[v]) swap(u, v);
+    res += segSum.query(pos_[u], pos_[v]);
+    return res;
+}
 
-        # First pass (iterative): parent, depth, subtree size, heavy child.
-        order = []
-        stack = [root]
-        parent[root] = -1
-        depth[root] = 0
-        visited = [False] * n
-        while stack:
-            v = stack.pop()
-            if visited[v]:
-                continue
-            visited[v] = True
-            order.append(v)
-            for c in adj[v]:
-                if c != parent[v]:
-                    parent[c] = v
-                    depth[c] = depth[v] + 1
-                    stack.append(c)
-        for v in reversed(order):          # children before parents
-            best = 0
-            for c in adj[v]:
-                if c != parent[v]:
-                    size[v] += size[c]
-                    if size[c] > best:
-                        best = size[c]
-                        heavy[v] = c
+long long pathMax(int u, int v) {
+    long long res = NEG_INF;
+    while (head[u] != head[v]) {
+        if (depth_[head[u]] < depth_[head[v]]) swap(u, v);
+        res = max(res, segMax.query(pos_[head[u]], pos_[u]));
+        u = parent[head[u]];
+    }
+    if (depth_[u] > depth_[v]) swap(u, v);
+    res = max(res, segMax.query(pos_[u], pos_[v]));
+    return res;
+}
 
-        # Second pass (iterative): heavy-child-first DFS assigns chain heads and
-        # contiguous positions. Stack carries (vertex, chain head).
-        head, pos = self.head, self.pos
-        cur = 0
-        stack = [(root, root)]
-        while stack:
-            v, h = stack.pop()
-            head[v] = h
-            pos[v] = cur
-            cur += 1
-            # Push light children first so the heavy child is processed next
-            # (LIFO), keeping each heavy chain contiguous in pos.
-            for c in adj[v]:
-                if c != parent[v] and c != heavy[v]:
-                    stack.append((c, c))
-            if heavy[v] != -1:
-                stack.append((heavy[v], h))
-
-        base = [0] * n
-        for v in range(n):
-            base[pos[v]] = self.values[v]
-        self.seg = SegmentTree(base)
-
-    def update(self, u, val):
-        self.seg.update(self.pos[u], val)
-
-    def path_query(self, u, v):
-        res = SegmentTree._identity
-        head, pos, parent, depth = self.head, self.pos, self.parent, self.depth
-        while head[u] != head[v]:
-            if depth[head[u]] < depth[head[v]]:
-                u, v = v, u
-            res = SegmentTree._combine(res, self.seg.query(pos[head[u]], pos[u]))
-            u = parent[head[u]]
-        if depth[u] > depth[v]:
-            u, v = v, u
-        res = SegmentTree._combine(res, self.seg.query(pos[u], pos[v]))
-        return res
-
-
-def main():
-    data = sys.stdin.buffer.read().split()
-    if not data:
-        return
-    n, values, adj = read_tree(data)
-    tp = TreePaths(n, values, adj)
-    # (driver would read and dispatch queries here)
-
-
-if __name__ == "__main__":
-    main()
+int main() {
+    ios_base::sync_with_stdio(false);
+    cin.tie(nullptr);
+    if (!(cin >> n)) return 0;
+    adj.assign(n + 1, {});
+    wt.assign(n + 1, 0);
+    for (int i = 0; i < n - 1; i++) {
+        int a, b; cin >> a >> b;
+        adj[a].push_back(b);
+        adj[b].push_back(a);
+    }
+    for (int i = 1; i <= n; i++) cin >> wt[i];
+    build(1);
+    int q; cin >> q;
+    string op; int u, v;
+    while (q--) {
+        cin >> op >> u >> v;
+        if (op == "CHANGE") updateNode(u, v);
+        else if (op == "QMAX") cout << pathMax(u, v) << '\n';
+        else if (op == "QSUM") cout << pathSum(u, v) << '\n';
+    }
+    return 0;
+}
 ```

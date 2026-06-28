@@ -29,76 +29,83 @@ query, plus lower-order cross-block movement, giving `O(q * block + n)`. With
 
 ## Code
 
-```python
-import sys
-from collections import defaultdict
+Single-file C++17. Reads from stdin: `n`, then `n` array values, then `q`, then
+`q` query pairs `l r` (1-based inclusive). Prints one distinct-count per query,
+in the original query order.
 
+```cpp
+// Mo's algorithm for offline distinct-value range queries.
+// Reads from stdin: n, then n array values, then q, then q query pairs (l r),
+// 1-based inclusive. Prints, one per line in original query order, the number of
+// distinct values in a[l..r].
+#include <bits/stdc++.h>
+using namespace std;
 
-def answer_queries(a, queries):
-    """Return one distinct-count answer per inclusive 0-based query."""
-    n = len(a)
-    cnt = defaultdict(int)
-    distinct = 0
-    answers = [0] * len(queries)
+int main() {
+    ios_base::sync_with_stdio(false);
+    cin.tie(nullptr);
 
-    def add(i):
-        nonlocal distinct
-        value = a[i]
-        cnt[value] += 1
-        if cnt[value] == 1:
-            distinct += 1
+    int n;
+    if (!(cin >> n)) return 0;
+    vector<int> a(n);
+    for (int i = 0; i < n; ++i) cin >> a[i];
 
-    def remove(i):
-        nonlocal distinct
-        value = a[i]
-        cnt[value] -= 1
-        if cnt[value] == 0:
-            distinct -= 1
+    // Coordinate-compress values so cnt can be a dense array, valid for
+    // arbitrary integer values (the dictionary-backed count in the reference).
+    vector<int> sorted_vals(a.begin(), a.end());
+    sort(sorted_vals.begin(), sorted_vals.end());
+    sorted_vals.erase(unique(sorted_vals.begin(), sorted_vals.end()),
+                      sorted_vals.end());
+    for (int i = 0; i < n; ++i)
+        a[i] = int(lower_bound(sorted_vals.begin(), sorted_vals.end(), a[i]) -
+                   sorted_vals.begin());
 
-    block = max(1, int(n ** 0.5))
-    order = sorted(
-        range(len(queries)),
-        key=lambda idx: (queries[idx][0] // block, queries[idx][1]),
-    )
-    cur_l, cur_r = 0, -1
+    int q;
+    cin >> q;
+    vector<int> ql(q), qr(q), order(q);
+    for (int i = 0; i < q; ++i) {
+        int l, r;
+        cin >> l >> r;             // 1-based inclusive
+        ql[i] = l - 1;
+        qr[i] = r - 1;
+        order[i] = i;
+    }
 
-    def place_answer(idx):
-        nonlocal cur_l, cur_r
-        l, r = queries[idx]
-        while cur_l > l:
-            cur_l -= 1
-            add(cur_l)
-        while cur_r < r:
-            cur_r += 1
-            add(cur_r)
-        while cur_l < l:
-            remove(cur_l)
-            cur_l += 1
-        while cur_r > r:
-            remove(cur_r)
-            cur_r -= 1
-        answers[idx] = distinct
+    int block = max(1, (int)sqrt((double)n));
+    sort(order.begin(), order.end(), [&](int x, int y) {
+        if (ql[x] / block != ql[y] / block) return ql[x] / block < ql[y] / block;
+        return qr[x] < qr[y];
+    });
 
-    for idx in order:
-        place_answer(idx)
-    return answers
+    vector<int> cnt(max(1, (int)sorted_vals.size()), 0);
+    int distinct = 0;
+    vector<int> answers(q);
 
+    auto add = [&](int i) {
+        if (++cnt[a[i]] == 1) ++distinct;
+    };
+    auto remove = [&](int i) {
+        if (--cnt[a[i]] == 0) --distinct;
+    };
 
-def main():
-    data = sys.stdin.buffer.read().split()
-    if not data:
-        return
-    it = iter(data)
-    n = int(next(it))
-    a = [int(next(it)) for _ in range(n)]
-    q = int(next(it))
-    queries = [(int(next(it)) - 1, int(next(it)) - 1) for _ in range(q)]
-    out = answer_queries(a, queries)
-    sys.stdout.write("\n".join(map(str, out)))
+    int cur_l = 0, cur_r = -1;
+    for (int idx : order) {
+        int l = ql[idx], r = qr[idx];
+        while (cur_l > l) add(--cur_l);
+        while (cur_r < r) add(++cur_r);
+        while (cur_l < l) remove(cur_l++);
+        while (cur_r > r) remove(cur_r--);
+        answers[idx] = distinct;
+    }
 
-
-if __name__ == "__main__":
-    main()
+    string out;
+    for (int i = 0; i < q; ++i) {
+        out += to_string(answers[i]);
+        if (i + 1 < q) out += '\n';
+    }
+    cout << out;
+    return 0;
+}
 ```
 
 ## Complexity

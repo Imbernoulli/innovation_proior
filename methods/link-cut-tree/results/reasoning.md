@@ -48,166 +48,224 @@ So everything is `access` plus a constant amount of pointer surgery, which means
 
 The other cost is the number of chosen-child changes per `access` - the length of the climb. Here I reuse the heavy-light bound, but applied to the *represented* tree (which `access` doesn't reshape) rather than to a static array. Classify each virtual edge as heavy or light by the same rule as before: the edge from $v$ up to its parent is heavy if $v$'s subtree is more than half its parent's, light otherwise. A single `access` makes a root-to-$x$ path of chosen edges; along it, the number of *light* edges it newly makes chosen is at most $\log n$, by the halving argument. The chosen edges it makes from *heavy* virtual edges could be many in one operation, but they're paid for globally: every time a heavy edge becomes chosen, some heavy edge had to become *un*chosen to make room, and each "heavy becomes unchosen" is charged against a "light becomes chosen," of which there are only $O(\log n)$ per operation. So the total number of chosen-child changes is $O(\log n)$ amortized per `access`. Multiply by the $O(\log n)$ splay cost and you'd get $O(\log^2 n)$; but the sharper accounting folds the chosen-child changes into the *same* $\sum \log s(x)$ potential - each graft attaches $x$'s tree as a child with $s(x) \le s(\text{parent})$, so the per-level splay terms telescope across the whole climb to $3(\log s(\text{top}) - \log s(x)) + O(\#\text{changes})$, which is $O(\log n)$ since $s(\text{top}) = n$. `cut` only lowers the potential and `link` raises it by at most $\log n$, so every operation is $O(\log n)$ amortized. That's the target: $n$ and the number of operations up to $10^5$ each cost $O(\log n)$, comfortably fast.
 
-Let me write it. Node $0$ is a null sentinel so I never special-case missing children; real nodes are $1..n$; each node stores its value `val`, the subtree sum `sm`, the two splay children `ch`, the parent `fa` (which doubles as splay-parent when claimed and path-parent when not), and the lazy `rev` flag. `_is_root` tests the asymmetry; `_splay` pushes the pending `rev` chain down before rotating; `access`, `make_root`, `find_root` are the climb, the reverse, and the leftmost-walk; the four forest operations are thin wrappers. I'll keep the pushdown-before-splay loop iterative so a long chain can't overflow the call stack.
+Let me write it as a single self-contained C++17 program. It reads `n q`, then `n` node values, then `q` operations `op a b` with `op` in {`link`, `cut`, `conn`, `path`}, and prints `0`/`1` for each `conn` and the path-sum for each `path`, one per line; sums use `long long` since a path can stack up to $n$ values. Node $0$ is a null sentinel so I never special-case missing children; real nodes are $1..n$; each node stores its value `val`, the subtree sum `sm`, the two splay children `ch`, the parent `fa` (which doubles as splay-parent when claimed and path-parent when not), and the lazy `rev` flag. `is_root` tests the asymmetry; `splay` pushes the pending `rev` chain down before rotating; `access`, `make_root`, `find_root` are the climb, the reverse, and the leftmost-walk; the four forest operations are thin wrappers. I'll keep the pushdown-before-splay loop iterative so a long chain can't overflow the call stack.
 
-```python
-import sys
+```cpp
+// Dynamic forest of n valued nodes (link-cut tree).
+// Reads: n q, then n node values, then q ops "op a b" with op in
+// {link, cut, conn, path}; prints 0/1 for each conn and the path-sum
+// for each path, one per line.
+#include <array>
+#include <cstdio>
+#include <string>
+#include <vector>
+using namespace std;
 
+// Node 0 is a null sentinel; real nodes are 1..n. Each preferred path is a
+// splay tree keyed by depth (shallow -> deep); fa[x] doubles as splay-parent
+// when claimed and path-parent when not.
+struct Forest {
+    vector<array<int, 2>> ch;  // splay children: [left, right]
+    vector<int> fa;            // splay parent OR path-parent
+    vector<long long> val;     // node value
+    vector<long long> sm;      // sum of values in this splay subtree
+    vector<char> rev;          // lazy "reverse this subtree" flag
 
-class Forest:
-    """A dynamic forest with per-node values: link, cut, connected, and
-    path-sum queries. Node 0 is a null sentinel; real nodes are 1..n."""
+    Forest(int n, const vector<long long>& values)
+        : ch(n + 1, {0, 0}), fa(n + 1, 0), val(n + 1, 0), sm(n + 1, 0),
+          rev(n + 1, 0) {
+        for (int i = 1; i <= n; ++i) val[i] = sm[i] = values[i - 1];
+    }
 
-    def __init__(self, n, values):
-        self.ch = [[0, 0] for _ in range(n + 1)]  # splay children: [left, right]
-        self.fa = [0] * (n + 1)                   # splay parent OR path-parent
-        self.val = [0] * (n + 1)                  # node value
-        self.sm = [0] * (n + 1)                   # sum of values in this splay subtree
-        self.rev = [0] * (n + 1)                  # lazy "reverse this subtree" flag
-        for i in range(1, n + 1):
-            self.val[i] = self.sm[i] = values[i - 1]
+    // x roots its own splay tree iff its parent claims neither child slot
+    // (then fa[x] is a one-way path-parent: child knows parent, not back).
+    bool is_root(int x) const {
+        int f = fa[x];
+        return ch[f][0] != x && ch[f][1] != x;
+    }
 
-    # x roots its own splay tree iff its parent claims neither child slot
-    # (then fa[x] is a path-parent, a virtual edge: child knows parent, not back).
-    def _is_root(self, x):
-        f = self.fa[x]
-        return self.ch[f][0] != x and self.ch[f][1] != x
+    int side(int x) const { return ch[fa[x]][1] == x ? 1 : 0; }
 
-    def _side(self, x):
-        return 1 if self.ch[self.fa[x]][1] == x else 0
+    void pushup(int x) {  // in-order = depth order
+        sm[x] = sm[ch[x][0]] + val[x] + sm[ch[x][1]];
+    }
 
-    def _pushup(self, x):                          # in-order = depth order
-        l, r = self.ch[x]
-        self.sm[x] = self.sm[l] + self.val[x] + self.sm[r]
+    void apply_rev(int x) {  // reverse = swap children + toggle flag
+        if (x) {
+            int t = ch[x][0];
+            ch[x][0] = ch[x][1];
+            ch[x][1] = t;
+            rev[x] ^= 1;
+        }
+    }
 
-    def _apply_rev(self, x):                        # reverse = swap children + flag
-        if x:
-            self.ch[x][0], self.ch[x][1] = self.ch[x][1], self.ch[x][0]
-            self.rev[x] ^= 1
+    void pushdown(int x) {
+        if (rev[x]) {
+            apply_rev(ch[x][0]);
+            apply_rev(ch[x][1]);
+            rev[x] = 0;
+        }
+    }
 
-    def _pushdown(self, x):
-        if self.rev[x]:
-            self._apply_rev(self.ch[x][0])
-            self._apply_rev(self.ch[x][1])
-            self.rev[x] = 0
+    void rotate(int x) {
+        int y = fa[x], z = fa[y], k = side(x);
+        if (!is_root(y)) ch[z][side(y)] = x;  // only relink z if y wasn't a splay root
+        fa[x] = z;
+        int w = ch[x][k ^ 1];
+        ch[y][k] = w;
+        if (w) fa[w] = y;
+        ch[x][k ^ 1] = y;
+        fa[y] = x;
+        pushup(y);
+        pushup(x);
+    }
 
-    def _rotate(self, x):
-        y = self.fa[x]
-        z = self.fa[y]
-        k = self._side(x)
-        if not self._is_root(y):                    # only relink z if y wasn't a splay root
-            self.ch[z][self._side(y)] = x
-        self.fa[x] = z
-        w = self.ch[x][k ^ 1]
-        self.ch[y][k] = w
-        if w:
-            self.fa[w] = y
-        self.ch[x][k ^ 1] = y
-        self.fa[y] = x
-        self._pushup(y)
-        self._pushup(x)
+    void splay(int x) {
+        // push pending reversals down the whole root..x chain first, top-down
+        static vector<int> stk;
+        stk.clear();
+        int y = x;
+        stk.push_back(y);
+        while (!is_root(y)) {
+            y = fa[y];
+            stk.push_back(y);
+        }
+        while (!stk.empty()) {
+            pushdown(stk.back());
+            stk.pop_back();
+        }
+        while (!is_root(x)) {
+            y = fa[x];
+            if (!is_root(y)) {
+                if (side(x) == side(y))
+                    rotate(y);  // zig-zig: rotate the parent first
+                else
+                    rotate(x);  // zig-zag
+            }
+            rotate(x);
+        }
+    }
 
-    def _splay(self, x):
-        # push pending reversals down the whole root..x chain first, top-down
-        stack = [x]
-        y = x
-        while not self._is_root(y):
-            y = self.fa[y]
-            stack.append(y)
-        while stack:
-            self._pushdown(stack.pop())
-        while not self._is_root(x):
-            y = self.fa[x]
-            if not self._is_root(y):
-                if self._side(x) == self._side(y):
-                    self._rotate(y)                 # zig-zig: rotate the parent first
-                else:
-                    self._rotate(x)                 # zig-zag
-            self._rotate(x)
+    // make the path from the real root down to x one splay tree, x on top
+    int access(int x) {
+        int last = 0, cur = x;
+        while (cur) {
+            splay(cur);
+            ch[cur][1] = last;  // graft the lower chain as the deeper subtree
+            pushup(cur);        // (old right child becomes virtual: parent forgets it)
+            last = cur;
+            cur = fa[cur];
+        }
+        splay(x);
+        return last;
+    }
 
-    # make the path from the real root down to x one splay tree, x on top
-    def access(self, x):
-        last = 0
-        cur = x
-        while cur:
-            self._splay(cur)
-            self.ch[cur][1] = last                  # graft the lower chain as the deeper subtree
-            self._pushup(cur)                       # (old right child becomes virtual: parent forgets it)
-            last = cur
-            cur = self.fa[cur]
-        self._splay(x)
-        return last
+    void make_root(int x) {
+        access(x);      // path real-root..x as a chain
+        apply_rev(x);   // reverse it: x becomes the new root
+    }
 
-    def make_root(self, x):
-        self.access(x)                              # path real-root..x as a chain
-        self._apply_rev(x)                          # reverse it: x becomes the new root
+    int find_root(int x) {
+        access(x);
+        while (ch[x][0]) {  // shallowest node = leftmost
+            pushdown(x);
+            x = ch[x][0];
+        }
+        splay(x);
+        return x;
+    }
 
-    def find_root(self, x):
-        self.access(x)
-        while self.ch[x][0]:                        # shallowest node = leftmost
-            self._pushdown(x)
-            x = self.ch[x][0]
-        self._splay(x)
-        return x
+    bool connected(int u, int v) {
+        if (u == v) return true;
+        return find_root(u) == find_root(v);
+    }
 
-    def connected(self, u, v):
-        if u == v:
-            return True
-        return self.find_root(u) == self.find_root(v)
+    void link(int u, int v) {  // u, v in different trees
+        make_root(u);
+        if (find_root(v) != u) fa[u] = v;  // new virtual edge; v doesn't point back
+    }
 
-    def link(self, u, v):                           # u, v in different trees
-        self.make_root(u)
-        if self.find_root(v) != u:
-            self.fa[u] = v                          # new virtual edge; v doesn't point back
+    void cut(int u, int v) {
+        make_root(u);
+        // after access(v)+splay(v): (u,v) is an edge iff u is v's left child
+        // with no right child of its own (nothing between them on the path).
+        access(v);
+        if (ch[v][0] == u && fa[u] == v && ch[u][1] == 0) {
+            ch[v][0] = 0;
+            fa[u] = 0;
+            pushup(v);
+        }
+    }
 
-    def cut(self, u, v):
-        self.make_root(u)
-        # after access(v)+splay(v): (u,v) is an edge iff u is v's left child
-        # with no right child of its own (nothing between them on the path).
-        self.access(v)
-        if self.ch[v][0] == u and self.fa[u] == v and self.ch[u][1] == 0:
-            self.ch[v][0] = 0
-            self.fa[u] = 0
-            self._pushup(v)
+    long long path_query(int u, int v) {
+        make_root(u);     // root at u: u..v is now a clean chain
+        access(v);        // v on top, sm[v] = sum over the path
+        return sm[v];
+    }
 
-    def path_query(self, u, v):
-        self.make_root(u)                           # root at u: u..v is now a clean chain
-        self.access(v)                              # v on top, sm[v] = sum over the path
-        return self.sm[v]
+    void set_val(int x, long long value) {
+        splay(x);
+        val[x] = value;
+        pushup(x);
+    }
+};
 
-    def set_val(self, x, value):
-        self._splay(x)
-        self.val[x] = value
-        self._pushup(x)
+static inline bool read_token(char* buf, int cap) {
+    int c = getchar_unlocked();
+    while (c == ' ' || c == '\n' || c == '\r' || c == '\t') c = getchar_unlocked();
+    if (c == EOF) return false;
+    int i = 0;
+    while (c != EOF && c != ' ' && c != '\n' && c != '\r' && c != '\t') {
+        if (i < cap - 1) buf[i++] = (char)c;
+        c = getchar_unlocked();
+    }
+    buf[i] = '\0';
+    return i > 0;
+}
 
+static inline bool read_ll(long long& out) {
+    char buf[32];
+    if (!read_token(buf, sizeof(buf))) return false;
+    long long sign = 1, v = 0;
+    const char* p = buf;
+    if (*p == '-') { sign = -1; ++p; }
+    while (*p) { v = v * 10 + (*p - '0'); ++p; }
+    out = sign * v;
+    return true;
+}
 
-def main():
-    data = sys.stdin.buffer.read().split()
-    if not data:
-        return
-    it = iter(data)
-    n = int(next(it))
-    q = int(next(it))
-    values = [int(next(it)) for _ in range(n)]
-    forest = Forest(n, values)
-    out = []
-    for _ in range(q):
-        op = next(it).decode()
-        a = int(next(it))
-        b = int(next(it))
-        if op == "link":
-            forest.link(a, b)
-        elif op == "cut":
-            forest.cut(a, b)
-        elif op == "conn":
-            out.append("1" if forest.connected(a, b) else "0")
-        elif op == "path":
-            out.append(str(forest.path_query(a, b)))
-    sys.stdout.write("\n".join(out))
-
-
-if __name__ == "__main__":
-    main()
+int main() {
+    long long n_ll, q_ll;
+    if (!read_ll(n_ll)) return 0;
+    if (!read_ll(q_ll)) return 0;
+    int n = (int)n_ll, q = (int)q_ll;
+    vector<long long> values(n);
+    for (int i = 0; i < n; ++i) read_ll(values[i]);
+    Forest forest(n, values);
+    string out;
+    char op[16];
+    long long a, b;
+    for (int i = 0; i < q; ++i) {
+        if (!read_token(op, sizeof(op))) break;
+        read_ll(a);
+        read_ll(b);
+        int ai = (int)a, bi = (int)b;
+        if (op[0] == 'l') {  // link
+            forest.link(ai, bi);
+        } else if (op[0] == 'c' && op[1] == 'u') {  // cut
+            forest.cut(ai, bi);
+        } else if (op[0] == 'c' && op[1] == 'o') {  // conn
+            out += forest.connected(ai, bi) ? '1' : '0';
+            out += '\n';
+        } else if (op[0] == 'p') {  // path
+            out += to_string(forest.path_query(ai, bi));
+            out += '\n';
+        }
+    }
+    if (!out.empty() && out.back() == '\n') out.pop_back();
+    fputs(out.c_str(), stdout);
+    return 0;
+}
 ```
 
 The whole chain: a static heavy-light decomposition makes path queries cheap only because the chains never move, so `link`/`cut` that reshape the tree kill it; keep the "path = a few ordered ranges" idea but make the chains *mutable* - each node picks at most one chosen child, the forest splits into chosen-paths, each stored as a splay tree keyed by depth, the pieces glued by one-way path-parent pointers; the single primitive `access(x)` makes the root-to-$x$ path one such splay tree by climbing and grafting, after which `connected` is "same leftmost node," `link`/`cut` are a couple of pointer writes, and a $u$-to-$v$ path query works once `make_root(u)` straightens the path - re-rooting being a lazy order-reversal of the accessed chain; and the heavy-light light-edge bound, reused on the represented tree and folded into the splay potential $\sum \log s(x)$, makes every operation $O(\log n)$ amortized.

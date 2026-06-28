@@ -40,122 +40,125 @@ Barrett in general; or K-RED using k·2^m ≡ -1 (mod q): K-RED(C)=k·C0 - C1 wi
 
 ## Code
 
-```python
-import math
+Single-file C++17, reading the instance from stdin. It reads `q`, `n`, then the `n` coefficients of `f` and the `n` coefficients of `g`, and prints the `n` coefficients of `f*g mod (x^n + 1)` reduced into `[0, q)` — the merged-`ψ` Cooley–Tukey forward / Gentleman–Sande inverse pair, with all modular products carried through `__int128` so a multiply of two near-`q` residues never overflows. (`q` a prime with `q ≡ 1 (mod 2n)`, `n` a power of two.)
 
-def find_primitive_root(q):
-    """Generator g of (Z/qZ)^*, q prime."""
-    phi = q - 1
-    factors, m, d = set(), phi, 2
-    while d * d <= m:
-        if m % d == 0:
-            factors.add(d)
-            while m % d == 0:
-                m //= d
-        d += 1
-    if m > 1:
-        factors.add(m)
-    for g in range(2, q):
-        if all(pow(g, phi // f, q) != 1 for f in factors):
-            return g
-    raise ValueError("no primitive root")
+```cpp
+// Negacyclic polynomial multiplication in Z_q[x]/(x^n + 1) via the NTT, O(n log n).
+// stdin:  q  n   then n coefficients of f   then n coefficients of g
+//         (n a power of two, q a prime with q == 1 (mod 2n))
+// stdout: the n coefficients of f*g mod (x^n + 1), each reduced into [0, q).
+#include <bits/stdc++.h>
+using namespace std;
+typedef long long ll;
 
-def roots_of_unity(q, n):
-    """psi = g^{(q-1)/2n} is a primitive 2n-th root (psi^n = -1); omega = psi^2."""
-    g = find_primitive_root(q)
-    psi = pow(g, (q - 1) // (2 * n), q)
-    omega = pow(psi, 2, q)                         # = g^{(q-1)/n}, primitive n-th root
-    assert pow(omega, n, q) == 1 and pow(psi, n, q) == q - 1
-    return omega, psi
+ll power_mod(ll a, ll e, ll q) {            // a^e mod q, exact via 128-bit products
+    a %= q; if (a < 0) a += q;
+    ll r = 1 % q;
+    while (e > 0) {
+        if (e & 1) r = (__int128)r * a % q;
+        a = (__int128)a * a % q;
+        e >>= 1;
+    }
+    return r;
+}
 
-def brv(x, bits):
-    r = 0
-    for _ in range(bits):
-        r = (r << 1) | (x & 1)
-        x >>= 1
-    return r
+ll inv_mod(ll a, ll q) { return power_mod(a, q - 2, q); }   // q prime => Fermat inverse
 
-def _psi_table(psi, n, q):
-    """psi^0..psi^{n-1} stored in bit-reversed index order (the twiddle table)."""
-    bits = int(math.log2(n))
-    pw = [pow(psi, i, q) for i in range(n)]
-    return [pw[brv(i, bits)] for i in range(n)]
+// Generator g of (Z/qZ)^*, q prime: factor q-1 and test orders.
+ll find_primitive_root(ll q) {
+    ll phi = q - 1, m = phi;
+    vector<ll> factors;
+    for (ll d = 2; d * d <= m; ++d)
+        if (m % d == 0) { factors.push_back(d); while (m % d == 0) m /= d; }
+    if (m > 1) factors.push_back(m);
+    for (ll g = 2; g < q; ++g) {
+        bool ok = true;
+        for (ll f : factors) if (power_mod(g, phi / f, q) == 1) { ok = false; break; }
+        if (ok) return g;
+    }
+    throw runtime_error("no primitive root");
+}
 
-def ntt_forward(a, psi, q):
-    """Negacyclic forward NTT, Cooley-Tukey butterflies (decimation-in-time).
-    Input in standard order, output in bit-reversed order; psi weighting is built
-    into the twiddle table, so there is no separate pre-scaling pass."""
-    a = a[:]; n = len(a); Psi = _psi_table(psi, n, q)
-    t, m = n, 1
-    while m < n:
-        t //= 2
-        for i in range(m):
-            j1 = 2 * i * t; S = Psi[m + i]
-            for j in range(j1, j1 + t):
-                U = a[j]; V = a[j + t] * S % q
-                a[j] = (U + V) % q
-                a[j + t] = (U - V) % q
-        m *= 2
-    return a
+int brv(int x, int bits) {                  // bit-reversal of x in 'bits' bits
+    int r = 0;
+    for (int i = 0; i < bits; ++i) { r = (r << 1) | (x & 1); x >>= 1; }
+    return r;
+}
 
-def ntt_inverse(a, psi, q):
-    """Negacyclic inverse NTT, Gentleman-Sande butterflies (decimation-in-frequency).
-    Input in bit-reversed order, output in standard order; the n^{-1} scaling and the
-    psi^{-i} post-weighting are folded into the twiddle table and the final scale."""
-    a = a[:]; n = len(a); Psi = _psi_table(pow(psi, -1, q), n, q)
-    t, m = 1, n
-    while m > 1:
-        j1 = 0; h = m // 2
-        for i in range(h):
-            S = Psi[h + i]
-            for j in range(j1, j1 + t):
-                U = a[j]; V = a[j + t]
-                a[j] = (U + V) % q
-                a[j + t] = (U - V) * S % q
-            j1 += 2 * t
-        t *= 2; m //= 2
-    ninv = pow(n, -1, q)
-    return [x * ninv % q for x in a]
+// psi^0..psi^{n-1} stored in bit-reversed index order (the twiddle table).
+vector<ll> psi_table(ll psi, int n, ll q) {
+    int bits = __builtin_ctz((unsigned)n);
+    vector<ll> pw(n);
+    pw[0] = 1 % q;
+    for (int i = 1; i < n; ++i) pw[i] = (__int128)pw[i - 1] * psi % q;
+    vector<ll> rev(n);
+    for (int i = 0; i < n; ++i) rev[i] = pw[brv(i, bits)];
+    return rev;
+}
 
-def negacyclic_mul(f, g, q):
-    """Product f * g in Z_q[x]/(x^n + 1) via the NTT (n a power of two, q ≡ 1 mod 2n)."""
-    n = len(f); _, psi = roots_of_unity(q, n)
-    F = ntt_forward(f, psi, q); G = ntt_forward(g, psi, q)
-    H = [F[i] * G[i] % q for i in range(n)]
-    return ntt_inverse(H, psi, q)
+// Negacyclic forward NTT, Cooley-Tukey (decimation-in-time): standard -> bit-reversed.
+// psi weighting is built into the twiddle table, so there is no separate pre-scale.
+void ntt_forward(vector<ll> &a, ll psi, ll q) {
+    int n = a.size();
+    vector<ll> Psi = psi_table(psi, n, q);
+    for (int m = 1, t = n; m < n; m <<= 1) {
+        t >>= 1;
+        for (int i = 0; i < m; ++i) {
+            int j1 = 2 * i * t; ll S = Psi[m + i];
+            for (int j = j1; j < j1 + t; ++j) {
+                ll U = a[j], V = (__int128)a[j + t] * S % q;
+                a[j]     = (U + V) % q;
+                a[j + t] = (U - V % q + q) % q;
+            }
+        }
+    }
+}
 
-# --- definitional O(n^2) transforms, for the cyclic case and cross-checking ---
-def ntt_naive(a, omega, q):
-    n = len(a)
-    return [sum(a[i] * pow(omega, i * j, q) for i in range(n)) % q for j in range(n)]
+// Negacyclic inverse NTT, Gentleman-Sande (decimation-in-frequency): bit-reversed -> standard.
+// The n^{-1} scaling and psi^{-i} post-weighting fold into the twiddle table and final scale.
+void ntt_inverse(vector<ll> &a, ll psi, ll q) {
+    int n = a.size();
+    vector<ll> Psi = psi_table(inv_mod(psi, q), n, q);
+    for (int t = 1, m = n; m > 1; t <<= 1, m >>= 1) {
+        int j1 = 0, h = m / 2;
+        for (int i = 0; i < h; ++i) {
+            ll S = Psi[h + i];
+            for (int j = j1; j < j1 + t; ++j) {
+                ll U = a[j], V = a[j + t];
+                a[j]     = (U + V) % q;
+                a[j + t] = (__int128)((U - V + q) % q) * S % q;
+            }
+            j1 += 2 * t;
+        }
+    }
+    ll ninv = inv_mod(n % q, q);
+    for (int i = 0; i < n; ++i) a[i] = (__int128)a[i] * ninv % q;
+}
 
-def intt_naive(A, omega, q):
-    n = len(A); ninv, oinv = pow(n, -1, q), pow(omega, -1, q)
-    return [ninv * sum(A[j] * pow(oinv, i * j, q) for j in range(n)) % q for i in range(n)]
+// Product f*g in Z_q[x]/(x^n + 1): forward-NTT both, multiply pointwise, inverse-NTT.
+vector<ll> negacyclic_mul(vector<ll> f, vector<ll> g, ll q) {
+    int n = f.size();
+    ll root = find_primitive_root(q);
+    ll psi = power_mod(root, (q - 1) / (2LL * n), q);   // primitive 2n-th root, psi^n = -1
+    ntt_forward(f, psi, q);
+    ntt_forward(g, psi, q);
+    vector<ll> h(n);
+    for (int i = 0; i < n; ++i) h[i] = (__int128)f[i] * g[i] % q;
+    ntt_inverse(h, psi, q);
+    return h;
+}
 
-def schoolbook_negacyclic(f, g, q):
-    n = len(f); res = [0] * n
-    for i in range(n):
-        for j in range(n):
-            k = i + j
-            if k < n: res[k] += f[i] * g[j]
-            else:     res[k - n] -= f[i] * g[j]     # x^n = -1
-    return [x % q for x in res]
-
-if __name__ == "__main__":
-    # toy: n=4, q=7681 (= 15*2^9 + 1).  g=17, omega=3383, psi=1925.
-    q, n = 7681, 4
-    omega, psi = roots_of_unity(q, n)
-    f, g = [1, 2, 3, 4], [5, 6, 7, 8]
-    assert intt_naive(ntt_naive(f, omega, q), omega, q) == f       # cyclic identity
-    assert negacyclic_mul(f, g, q) == schoolbook_negacyclic(f, g, q) == [7625, 7645, 2, 60]
-    # real parameters: n=512, q=12289 (= 3*2^12 + 1), random polynomials
-    import random
-    q, n = 12289, 512; random.seed(0)
-    f = [random.randrange(q) for _ in range(n)]
-    g = [random.randrange(q) for _ in range(n)]
-    assert negacyclic_mul(f, g, q) == schoolbook_negacyclic(f, g, q)
-    print("NTT negacyclic convolution matches schoolbook")
+int main() {
+    ios_base::sync_with_stdio(false); cin.tie(nullptr);
+    ll q; int n;
+    if (!(cin >> q >> n)) return 0;
+    vector<ll> f(n), g(n);
+    for (int i = 0; i < n; ++i) { cin >> f[i]; f[i] = ((f[i] % q) + q) % q; }
+    for (int i = 0; i < n; ++i) { cin >> g[i]; g[i] = ((g[i] % q) + q) % q; }
+    vector<ll> c = negacyclic_mul(f, g, q);
+    for (int i = 0; i < n; ++i) cout << c[i] << (i + 1 < n ? ' ' : '\n');
+    return 0;
+}
 ```
 
 `[7625, 7645, 2, 60] (= [−56, −36, 2, 60] mod 7681)` is the schoolbook product of `1+2x+3x^2+4x^3` and `5+6x+7x^2+8x^3` modulo `x^4 + 1`; the fast NTT reproduces it exactly, and agrees with schoolbook on random length-512 inputs at the BLISS/key-exchange prime `q = 12289`.

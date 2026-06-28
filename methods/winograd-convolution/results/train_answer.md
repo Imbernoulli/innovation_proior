@@ -16,174 +16,203 @@ a $(K\times C)\cdot(C\times P)$ dense matrix multiply. So the entire heavy stage
 
 The tile size cannot be cranked up freely to drive the normalized cost $\alpha'=(m+r-1)^2/m^2$ toward one. Two costs grow with the tile: the number of additions and constant-multiplications in the transforms grows quadratically, and — the sharper limit — the magnitudes of the transform-matrix entries grow, because adding interpolation points $2,-2,3,-3,\dots$ makes the Lagrange denominators $\prod_{k\neq i}(\beta_i-\beta_k)$ blow up. Carrying the CRT construction out to $F(4,3)$ with points $\{0,1,-1,2,-2,\infty\}$ already produces denominators $4, 6, 24$ — the filter transform $G$ acquires $1/24$-scale entries — and $F(6,3)$ throws up $1/720$; in finite precision such matrices lose bits. So there is a sweet spot at *small* tiles, not a limit at one: $F(2\times 2,3\times 3)$ (tile 4, transform entries only $0,\pm 1,\pm\tfrac12$, best conditioned, $2.25\times$) is the safe default, and $F(4\times 4,3\times 3)$ (tile 6, $36$ vs $144$, the full $4\times$) is available when the precision budget — convnets being known to tolerate surprisingly few bits — can absorb the larger roundoff. The same machinery covers backprop: the input gradient is a convolution with spatially flipped filters, so the forward algorithm applies unchanged; the weight gradient is $F(R\times S, H\times W)$, whose huge $H\times W$ "filter" is exactly the large tile to avoid, so it is decomposed into a sum of small convolutions — e.g. $F(3\times 3, 2\times 2)$, the tile-4 sibling of $F(2\times 2,3\times 3)$, overlap-added over the large operands. I deliberately do not stack Strassen on top: its $8/7$ gain comes at the cost of halving $K$, $C$, and $P$, the dimensions my $\alpha^2$ GEMMs need to be large, so it is a net loss here except possibly for layers with very large $C$, $K$, $P$.
 
-In code, two layers. First the transform generator — the Cook–Toom construction from interpolation points, which produced every $G$, $B^{\mathsf T}$, $A^{\mathsf T}$ above and verifies them symbolically rather than by transcription:
+The $G$, $B^{\mathsf T}$, $A^{\mathsf T}$ above are the Cook–Toom construction at points $\{0,1,-1,\infty\}$ — evaluate the filter and data polynomials at those points (the "point at infinity" reading off the top coefficient), divide by the interpolation denominators $\prod_{k\neq i}(\beta_i-\beta_k)$ (which place the $1/2$-scale entries into $G$), and transpose the linear-convolution factorization to land on the filtering form $A^{\mathsf T}[(Gg)\odot(B^{\mathsf T}d)]$; expanding it reproduces exactly $y_0=d_0g_0+d_1g_1+d_2g_2$ and $y_1=d_1g_0+d_2g_1+d_3g_2$. The same construction at $\{0,\pm1,\pm2,\infty\}$ gives the $F(4,3)$ transforms with the $1/24$-scale $G$ entries, and at $\{0,\pm1,\infty\}$ the $F(3,2)$ transforms for tiled weight-gradient accumulation.
 
-```python
-import operator
-from functools import reduce
-from sympy import IndexedBase, Matrix, Poly, Rational as Q, simplify, symbols, zeros
+The deliverable is a single self-contained C++17 program implementing the $F(2\times 2,3\times 3)$ layer — tile, transform, the $\alpha^2$ GEMMs that came out of the channel sum, and the single inverse transform. It reads a convolution layer from stdin (`N C H W K`, then the $N\cdot C\cdot H\cdot W$ data values in index order $[n][c][h][w]$, then the $K\cdot C\cdot 3\cdot 3$ filter values $[k][c][u][v]$) and writes the valid output $Y[n][k][H-2][W-2]$ to stdout, one row of $W-2$ space-separated values per line. Each output costs four real multiplies versus the direct nine, and it matches a direct convolution to fp32 rounding.
 
-def At(a, m, n):                      # Vandermonde: evaluate poly at points a[i]
-    return Matrix(m, n, lambda i, j: a[i] ** j)
+```cpp
+// Winograd minimal-filtering fast convolution F(2x2,3x3) for a convnet layer.
+// Reads from stdin:  N C H W K, then the N*C*H*W data values (row-major,
+//   indices [n][c][h][w]), then the K*C*3*3 filter values ([k][c][u][v]).
+// Writes to stdout:  the valid layer output Y[n][k][H-2][W-2], one row of
+//   (W-2) space-separated values per line, blocks ordered by n then k.
+// The heavy stage is alpha^2 = 16 dense matrix multiplies whose reduction
+// dimension is channels (efficient even at batch 1); each output costs 4
+// real multiplies vs the direct 9.
+#include <bits/stdc++.h>
+using namespace std;
 
-def A(a, m, n):                       # append the "infinity" row -> top coefficient
-    return At(a, m - 1, n).row_insert(m - 1, Matrix(1, n, lambda i, j: 1 if j == n - 1 else 0))
+// F(2x2,3x3) transforms (the F(2,3) triple applied along both axes).
+// Data transform B^T (4x4), filter transform G (4x3), inverse transform A^T (2x4).
+static const double BT[4][4] = {
+    {1, 0, -1, 0},
+    {0, 1,  1, 0},
+    {0, -1, 1, 0},
+    {0, -1, 0, 1}};
+static const double G[4][3] = {
+    {1,    0,    0},
+    {0.5,  0.5,  0.5},
+    {0.5, -0.5,  0.5},
+    {0,    0,    1}};
+static const double AT[2][4] = {
+    {1, 1,  1, 0},
+    {0, 1, -1, 1}};
 
-def T(a, n):                          # modified Cook-Toom degree-reduction column
-    return Matrix(Matrix.eye(n).col_insert(n, Matrix(n, 1, lambda i, j: -(a[i] ** n))))
+int main() {
+    ios::sync_with_stdio(false);
+    cin.tie(nullptr);
 
-def Lx(a, n):                         # Lagrange numerators prod_{k!=i}(x - a[k])
-    x = symbols("x")
-    return Matrix(n, 1, lambda i, j: Poly(
-        reduce(operator.mul, ((x - a[k] if k != i else 1) for k in range(n)), 1).expand(), x).as_expr())
+    int N, C, H, W, K;
+    if (!(cin >> N >> C >> H >> W >> K)) return 0;
 
-def F(a, n):                          # interpolation denominators -> the 1/4,1/6,1/24 scalings
-    return Matrix(n, 1, lambda i, j: reduce(
-        operator.mul, ((a[i] - a[k] if k != i else 1) for k in range(n)), 1))
+    const int R = 3, S = 3, m = 2, r = 3, alpha = 4;
+    // Data: D[n][c][h][w]
+    vector<double> D((size_t)N * C * H * W);
+    for (double &x : D) cin >> x;
+    // Filters: Wt[k][c][u][v]
+    vector<double> Wt((size_t)K * C * R * S);
+    for (double &x : Wt) cin >> x;
 
-def Fdiag(a, n):
-    f = F(a, n); return Matrix(n, n, lambda i, j: (f[i, 0] if i == j else 0))
+    auto Didx = [&](int n, int c, int h, int w) -> double & {
+        return D[(((size_t)n * C + c) * H + h) * W + w];
+    };
+    auto Widx = [&](int k, int c, int u, int v) -> double & {
+        return Wt[(((size_t)k * C + c) * R + u) * S + v];
+    };
 
-def FdiagPlus1(a, n):
-    f = Fdiag(a, n - 1); f = f.col_insert(n - 1, zeros(n - 1, 1))
-    return f.row_insert(n - 1, Matrix(1, n, lambda i, j: (1 if j == n - 1 else 0)))
+    const int Ho = H - R + 1, Wo = W - S + 1;       // valid output size
+    if (Ho <= 0 || Wo <= 0) return 0;
+    const int tH = (Ho + m - 1) / m, tW = (Wo + m - 1) / m;  // tiles per dim
+    const int P = N * tH * tW;                       // total tiles
+    const int Hp = tH * m + r - 1, Wp = tW * m + r - 1;       // padded extent
 
-def L(a, n):
-    x = symbols("x"); lx, f = Lx(a, n), F(a, n)
-    return Matrix(n, n, lambda i, j: lx[i, 0].coeff(x, j) / f[i]).T
+    // Padded data Dp[n][c][hp][wp] (zero-filled beyond H,W).
+    vector<double> Dp((size_t)N * C * Hp * Wp, 0.0);
+    auto Dpidx = [&](int n, int c, int h, int w) -> double & {
+        return Dp[(((size_t)n * C + c) * Hp + h) * Wp + w];
+    };
+    for (int n = 0; n < N; n++)
+        for (int c = 0; c < C; c++)
+            for (int h = 0; h < H; h++)
+                for (int w = 0; w < W; w++)
+                    Dpidx(n, c, h, w) = Didx(n, c, h, w);
 
-def Bt(a, n): return L(a, n) * T(a, n)
-def B(a, n):  return Bt(a, n - 1).row_insert(n - 1, Matrix(1, n, lambda i, j: 1 if j == n - 1 else 0))
+    // Filter transform U = G g G^T, scattered into alpha*alpha matrices of
+    // shape K x C.  U[(xi*alpha+nu)][k*C + c].
+    vector<double> U((size_t)alpha * alpha * K * C, 0.0);
+    {
+        double tmp[4][3], u[4][4];
+        for (int k = 0; k < K; k++)
+            for (int c = 0; c < C; c++) {
+                // tmp = G * g   (4x3)
+                for (int i = 0; i < alpha; i++)
+                    for (int j = 0; j < S; j++) {
+                        double s = 0;
+                        for (int t = 0; t < R; t++) s += G[i][t] * Widx(k, c, t, j);
+                        tmp[i][j] = s;
+                    }
+                // u = tmp * G^T (4x4)
+                for (int i = 0; i < alpha; i++)
+                    for (int j = 0; j < alpha; j++) {
+                        double s = 0;
+                        for (int t = 0; t < S; t++) s += tmp[i][t] * G[j][t];
+                        u[i][j] = s;
+                    }
+                for (int xi = 0; xi < alpha; xi++)
+                    for (int nu = 0; nu < alpha; nu++)
+                        U[((size_t)(xi * alpha + nu) * K + k) * C + c] = u[xi][nu];
+            }
+    }
 
-def cook_toom_filter(points, n_out, r):
-    alpha = n_out + r - 1
-    f = FdiagPlus1(points, alpha)
-    if f[0, 0] < 0: f[0, :] *= -1
-    AT = A(points, alpha, n_out).T
-    G  = (A(points, alpha, r).T * f ** (-1)).T   # fractions land in the offline filter transform
-    BT = f * B(points, alpha).T
-    return AT, G, BT
+    // Data transform V = B^T d B, scattered into alpha*alpha matrices of
+    // shape C x P.  V[(xi*alpha+nu)][c*P + b].
+    vector<double> V((size_t)alpha * alpha * C * P, 0.0);
+    {
+        double tmp[4][4], v[4][4];
+        int b = 0;
+        for (int n = 0; n < N; n++)
+            for (int ti = 0; ti < tH; ti++)
+                for (int tj = 0; tj < tW; tj++) {
+                    for (int c = 0; c < C; c++) {
+                        // tmp = B^T * tile  (4x4)
+                        for (int i = 0; i < alpha; i++)
+                            for (int j = 0; j < alpha; j++) {
+                                double s = 0;
+                                for (int t = 0; t < alpha; t++)
+                                    s += BT[i][t] * Dpidx(n, c, ti * m + t, tj * m + j);
+                                tmp[i][j] = s;
+                            }
+                        // v = tmp * B  (= tmp * (B^T)^T) (4x4)
+                        for (int i = 0; i < alpha; i++)
+                            for (int j = 0; j < alpha; j++) {
+                                double s = 0;
+                                for (int t = 0; t < alpha; t++) s += tmp[i][t] * BT[j][t];
+                                v[i][j] = s;
+                            }
+                        for (int xi = 0; xi < alpha; xi++)
+                            for (int nu = 0; nu < alpha; nu++)
+                                V[((size_t)(xi * alpha + nu) * C + c) * P + b] = v[xi][nu];
+                    }
+                    b++;
+                }
+    }
 
-def filter_verify(n_out, r, AT, G, BT):
-    alpha = n_out + r - 1
-    d = Matrix(alpha, 1, lambda i, j: IndexedBase("d")[i])
-    g = Matrix(r, 1, lambda i, j: IndexedBase("g")[i])
-    return simplify(AT * (G * g).multiply_elementwise(BT * d))
+    // Heavy stage: alpha^2 dense GEMMs  M^(xi,nu) = U^(xi,nu) (KxC) * V^(xi,nu) (CxP).
+    // M[(xi*alpha+nu)][k*P + b].
+    vector<double> M((size_t)alpha * alpha * K * P, 0.0);
+    for (int e = 0; e < alpha * alpha; e++) {
+        const double *Ue = &U[(size_t)e * K * C];
+        const double *Ve = &V[(size_t)e * C * P];
+        double *Me = &M[(size_t)e * K * P];
+        for (int k = 0; k < K; k++)
+            for (int c = 0; c < C; c++) {
+                double a = Ue[(size_t)k * C + c];
+                if (a == 0.0) continue;
+                const double *Vrow = &Ve[(size_t)c * P];
+                double *Mrow = &Me[(size_t)k * P];
+                for (int b = 0; b < P; b++) Mrow[b] += a * Vrow[b];
+            }
+    }
 
-# F(2,3) -> 4 multiplies; F(4,3) -> 6 multiplies (G has 1/24-scale entries)
-AT, G, BT = cook_toom_filter((0, 1, -1), 2, 3)
-assert BT == Matrix([[1, 0, -1, 0],
-                     [0, 1,  1, 0],
-                     [0, -1, 1, 0],
-                     [0, -1, 0, 1]])
-assert G == Matrix([[1, 0, 0],
-                    [Q(1, 2), Q(1, 2), Q(1, 2)],
-                    [Q(1, 2), -Q(1, 2), Q(1, 2)],
-                    [0, 0, 1]])
-assert AT == Matrix([[1, 1, 1, 0],
-                     [0, 1, -1, 1]])
-assert list(filter_verify(2, 3, AT, G, BT)) == [
-    IndexedBase("d")[0]*IndexedBase("g")[0] + IndexedBase("d")[1]*IndexedBase("g")[1] + IndexedBase("d")[2]*IndexedBase("g")[2],
-    IndexedBase("d")[1]*IndexedBase("g")[0] + IndexedBase("d")[2]*IndexedBase("g")[1] + IndexedBase("d")[3]*IndexedBase("g")[2],
-]
-AT4, G4, BT4 = cook_toom_filter((0, 1, -1, 2, -2), 4, 3)
-assert G4 == Matrix([[Q(1, 4), 0, 0],
-                     [-Q(1, 6), -Q(1, 6), -Q(1, 6)],
-                     [-Q(1, 6),  Q(1, 6), -Q(1, 6)],
-                     [Q(1, 24),  Q(1, 12), Q(1, 6)],
-                     [Q(1, 24), -Q(1, 12), Q(1, 6)],
-                     [0, 0, 1]])
-assert BT4 == Matrix([[4, 0, -5, 0, 1, 0],
-                      [0, -4, -4, 1, 1, 0],
-                      [0, 4, -4, -1, 1, 0],
-                      [0, -2, -1, 2, 1, 0],
-                      [0, 2, -1, -2, 1, 0],
-                      [0, 4, 0, -5, 0, 1]])
-assert AT4 == Matrix([[1, 1, 1, 1, 1, 0],
-                      [0, 1, -1, 2, -2, 0],
-                      [0, 1, 1, 4, 4, 0],
-                      [0, 1, -1, 8, -8, 1]])
-AT32, G32, BT32 = cook_toom_filter((0, 1, -1), 3, 2)
-assert BT32 == Matrix([[1, 0, -1, 0],
-                       [0, 1,  1, 0],
-                       [0, -1, 1, 0],
-                       [0, -1, 0, 1]])
-assert G32 == Matrix([[1, 0],
-                      [Q(1, 2), Q(1, 2)],
-                      [Q(1, 2), -Q(1, 2)],
-                      [0, 1]])
-assert AT32 == Matrix([[1, 1, 1, 0],
-                       [0, 1, -1, 0],
-                       [0, 1, 1, 1]])
-```
+    // Inverse transform Y_tile = A^T M A  (m x m) per (k, tile), scatter to output.
+    vector<double> Y((size_t)N * K * tH * m * tW * m, 0.0);
+    const int Yh = tH * m, Yw = tW * m;
+    auto Yidx = [&](int n, int k, int h, int w) -> double & {
+        return Y[(((size_t)n * K + k) * Yh + h) * Yw + w];
+    };
+    {
+        double mt[4][4], tmp[2][4], y[2][2];
+        for (int k = 0; k < K; k++) {
+            int b = 0;
+            for (int n = 0; n < N; n++)
+                for (int ti = 0; ti < tH; ti++)
+                    for (int tj = 0; tj < tW; tj++) {
+                        for (int xi = 0; xi < alpha; xi++)
+                            for (int nu = 0; nu < alpha; nu++)
+                                mt[xi][nu] = M[((size_t)(xi * alpha + nu) * K + k) * P + b];
+                        // tmp = A^T * M  (2x4)
+                        for (int i = 0; i < m; i++)
+                            for (int j = 0; j < alpha; j++) {
+                                double s = 0;
+                                for (int t = 0; t < alpha; t++) s += AT[i][t] * mt[t][j];
+                                tmp[i][j] = s;
+                            }
+                        // y = tmp * A  (= tmp * (A^T)^T) (2x2)
+                        for (int i = 0; i < m; i++)
+                            for (int j = 0; j < m; j++) {
+                                double s = 0;
+                                for (int t = 0; t < alpha; t++) s += tmp[i][t] * AT[j][t];
+                                y[i][j] = s;
+                            }
+                        for (int i = 0; i < m; i++)
+                            for (int j = 0; j < m; j++)
+                                Yidx(n, k, ti * m + i, tj * m + j) = y[i][j];
+                        b++;
+                    }
+        }
+    }
 
-Then the numeric $F(2\times 2,3\times 3)$ layer — tile, transform, the $\alpha^2$ GEMMs that came out of the channel sum, and the single inverse transform — matching direct convolution to fp32 rounding:
-
-```python
-import numpy as np
-
-BT = np.array([[1,0,-1,0],[0,1,1,0],[0,-1,1,0],[0,-1,0,1]], dtype=np.float32)
-G  = np.array([[1,0,0],[0.5,0.5,0.5],[0.5,-0.5,0.5],[0,0,1]], dtype=np.float32)
-AT = np.array([[1,1,1,0],[0,1,-1,1]], dtype=np.float32)
-
-def direct_conv_valid(D, W):
-    D = np.asarray(D, dtype=np.float32)
-    W = np.asarray(W, dtype=np.float32)
-    N, C, H, Wd = D.shape
-    K, Cw, R, S = W.shape
-    assert C == Cw
-    Y = np.zeros((N, K, H - R + 1, Wd - S + 1), np.float32)
-    for n in range(N):
-        for k in range(K):
-            for c in range(C):
-                for i in range(H - R + 1):
-                    for j in range(Wd - S + 1):
-                        Y[n, k, i, j] += np.sum(D[n, c, i:i+R, j:j+S] * W[k, c])
-    return Y
-
-def conv_layer(D, W):
-    # D: (N,C,H,W)  W: (K,C,3,3)  ->  Y: (N,K,H-2,W-2)   (valid F(2x2,3x3))
-    D = np.asarray(D, dtype=np.float32)
-    W = np.asarray(W, dtype=np.float32)
-    N, C, H, Wd = D.shape
-    K, Cw, R, S = W.shape
-    assert (C, R, S) == (Cw, 3, 3)
-    m, r, alpha = 2, 3, 4
-    Ho, Wo = H - r + 1, Wd - r + 1
-    tH, tW = (Ho + m - 1)//m, (Wo + m - 1)//m
-    P = N*tH*tW
-    Dp = np.zeros((N, C, tH*m + r - 1, tW*m + r - 1), np.float32)
-    Dp[:, :, :H, :Wd] = D
-
-    U = np.zeros((alpha, alpha, K, C), np.float32)          # filter transform G g G^T
-    for k in range(K):
-        for c in range(C):
-            U[:, :, k, c] = G @ W[k, c] @ G.T
-
-    V = np.zeros((alpha, alpha, C, P), np.float32)          # data transform B^T d B
-    coords = []; b = 0
-    for n in range(N):
-        for ti in range(tH):
-            for tj in range(tW):
-                for c in range(C):
-                    tile = Dp[n, c, ti*m:ti*m+alpha, tj*m:tj*m+alpha]
-                    V[:, :, c, b] = BT @ tile @ BT.T
-                coords.append((n, ti, tj)); b += 1
-
-    M = np.zeros((alpha, alpha, K, P), np.float32)          # alpha^2 GEMMs, 1 real mult/input
-    for xi in range(alpha):
-        for nu in range(alpha):
-            M[xi, nu] = U[xi, nu] @ V[xi, nu]
-
-    Y = np.zeros((N, K, tH*m, tW*m), np.float32)            # single inverse transform A^T M A
-    for k in range(K):
-        for b, (n, ti, tj) in enumerate(coords):
-            Y[n, k, ti*m:ti*m+m, tj*m:tj*m+m] = AT @ M[:, :, k, b] @ AT.T
-    return Y[:, :, :Ho, :Wo]
-
-rng = np.random.default_rng(0)
-Dtest = rng.normal(size=(2, 3, 7, 8)).astype(np.float32)
-Wtest = rng.normal(size=(4, 3, 3, 3)).astype(np.float32)
-np.testing.assert_allclose(conv_layer(Dtest, Wtest), direct_conv_valid(Dtest, Wtest),
-                           rtol=1e-5, atol=2e-5)
+    // Emit the valid Ho x Wo region per (n, k).
+    cout << setprecision(10);
+    for (int n = 0; n < N; n++)
+        for (int k = 0; k < K; k++)
+            for (int i = 0; i < Ho; i++) {
+                for (int j = 0; j < Wo; j++) {
+                    if (j) cout << ' ';
+                    cout << Yidx(n, k, i, j);
+                }
+                cout << '\n';
+            }
+    return 0;
+}
 ```

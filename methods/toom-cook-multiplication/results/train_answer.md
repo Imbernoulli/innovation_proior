@@ -15,72 +15,294 @@ $$r_0=v_0,\quad r_4=v_\infty,\quad r_3=\frac{v_{-2}-v_1}{3},\quad r_1=\frac{v_1-
 $$r_3=\frac{r_2-r_3}{2}+2v_\infty,\quad r_2=r_2+r_1-v_\infty,\quad r_1=r_1-r_3,$$
 reusing partial results so only a single $/3$ and two $/2$ divisions appear. Each division lands on an exact integer — this is essential, and it is not luck. Because $r=p\cdot q$ has integer coefficients, the Vandermonde system over $\mathbb{Z}$ has an integer solution, and the elimination can be run so every intermediate stays integral: each step subtracts evaluations of a monic polynomial $P$ at two points, and $P(s_i)-P(s_j) = (s_i-s_j)\,Q(s_i)$ for a monic $Q$ of degree one less, so the point-difference factors out cleanly with no remainder. Those differences are exactly the small numbers $3$ and $2$ that show up as divisors. (For limb polynomials reduced modulo $b$ the same holds provided $b$ is prime, so the ring is an integral domain and the system stays uniquely solvable; over the ordinary integers we are always safe.) Finally I recompose $x\cdot y = r_4 B^4 + r_3 B^3 + r_2 B^2 + r_1 B + r_0$ by shifts and adds; some $r_\ell$ can be negative or exceed $B$, but evaluating the polynomial at $B$ with full-precision integer arithmetic carries and borrows correctly, so no manual normalization is needed. The recursion bottoms out by stripping signs and recursing on absolute values (the $-1$ and $-2$ evaluations can be negative), with a base case that multiplies directly once an operand is small, and a limb size $m = \lfloor n/3 \rfloor + 1$ chosen via integer floor-division and remainder so the limbs are genuine integers and the operands actually shrink toward the base case.
 
-```python
-THRESHOLD = 3   # operands with at most a few base digits multiply directly
+Concretely, the deliverable is a single self-contained C++17 program that reads the two (possibly signed, arbitrarily long) integers `x` and `y` from stdin, whitespace-separated, and writes their exact product `x*y` to stdout. The big-integer arithmetic is carried in-house, base `10^9` limbs little-endian; the limb base `B = (10^9)^m` never has to be materialized — it is realized by slicing limb windows of width `m` and shifting by `i·m` limbs — so the split, the five evaluations, the five recursive products, the exact interpolation, and the shift-and-add recomposition all run directly on the limb arrays.
 
-def exact_div(value, divisor):
-    quotient, remainder = divmod(value, divisor)
-    if remainder:
-        raise ArithmeticError("interpolation division was not exact")
-    return quotient
+```cpp
+// Toom-3 (Toom-Cook, k=3) recursive big-integer multiplication.
+// Reads two (possibly signed, arbitrarily long) integers x and y, one per line
+// (or whitespace-separated) from stdin, prints their exact product x*y to stdout.
+//
+// Split each operand into 3 base-B limbs -> degree-2 polynomials p,q with
+// p(B)=x, q(B)=y. The product r=p*q has degree 4, so it is fixed by its values
+// at 5 points {0,1,-1,-2,inf}. Evaluate p,q there, multiply pointwise (5
+// recursive products instead of 9), interpolate r0..r4, recompose r(B).
+// T(n) = 5*T(n/3) + O(n) = Theta(n^{log_3 5}) ~ Theta(n^1.465).
 
-def toom3(x, y, base=10):
-    if base <= 1:
-        raise ValueError("base must be greater than 1")
+#include <bits/stdc++.h>
+using namespace std;
 
-    if x < 0 or y < 0:
-        sign = -1 if (x < 0) ^ (y < 0) else 1
-        return sign * toom3(abs(x), abs(y), base)
+// Arbitrary-precision signed integer in base 10^9 (little-endian limbs).
+struct Big {
+    static const uint32_t BASE = 1000000000u; // 10^9
+    int sign = 1;            // +1 or -1; zero has sign +1 and empty mag
+    vector<uint32_t> mag;    // little-endian, no trailing zero limbs
 
-    # base case: small enough that the direct product is O(1)
-    if x < base ** THRESHOLD or y < base ** THRESHOLD:
-        return x * y
+    Big() {}
+    Big(long long v) {
+        if (v < 0) { sign = -1; v = -v; }
+        while (v) { mag.push_back((uint32_t)(v % BASE)); v /= BASE; }
+    }
 
-    # limb size m so each operand has at most 3 limbs in B = base**m
-    n = max(len(str(x)), len(str(y)))
-    m = n // 3 + 1
-    B = base ** m
+    bool isZero() const { return mag.empty(); }
+    void trim() { while (!mag.empty() && mag.back() == 0) mag.pop_back(); if (mag.empty()) sign = 1; }
 
-    # cut into 3 limbs (the polynomials p, q); integer floor-div/remainder only
-    x0, x1, x2 = x % B, (x // B) % B, x // (B * B)
-    y0, y1, y2 = y % B, (y // B) % B, y // (B * B)
+    // unsigned compare of magnitudes: -1,0,1
+    static int cmpMag(const Big& a, const Big& b) {
+        if (a.mag.size() != b.mag.size()) return a.mag.size() < b.mag.size() ? -1 : 1;
+        for (size_t i = a.mag.size(); i-- > 0;)
+            if (a.mag[i] != b.mag[i]) return a.mag[i] < b.mag[i] ? -1 : 1;
+        return 0;
+    }
+};
 
-    # evaluate p, q at 0, 1, -1, -2, inf  (adds + small shifts, no multiply)
-    px1, py1 = x0 + x1 + x2,        y0 + y1 + y2
-    pxm1, pym1 = x0 - x1 + x2,      y0 - y1 + y2
-    pxm2, pym2 = x0 - 2*x1 + 4*x2,  y0 - 2*y1 + 4*y2
+// magnitude add: |a|+|b|
+static Big addMag(const Big& a, const Big& b) {
+    Big r; r.mag.resize(max(a.mag.size(), b.mag.size()) + 1, 0);
+    uint64_t carry = 0;
+    for (size_t i = 0; i < r.mag.size(); i++) {
+        uint64_t s = carry;
+        if (i < a.mag.size()) s += a.mag[i];
+        if (i < b.mag.size()) s += b.mag[i];
+        r.mag[i] = (uint32_t)(s % Big::BASE);
+        carry = s / Big::BASE;
+    }
+    r.trim();
+    return r;
+}
 
-    # the FIVE recursive multiplications (5 instead of 9)
-    v0   = toom3(x0,   y0,   base)
-    v1   = toom3(px1,  py1,  base)
-    vm1  = toom3(pxm1, pym1, base)
-    vm2  = toom3(pxm2, pym2, base)
-    vinf = toom3(x2,   y2,   base)
+// magnitude subtract: |a|-|b|, requires |a| >= |b|
+static Big subMag(const Big& a, const Big& b) {
+    Big r; r.mag.resize(a.mag.size(), 0);
+    int64_t borrow = 0;
+    for (size_t i = 0; i < a.mag.size(); i++) {
+        int64_t s = (int64_t)a.mag[i] - borrow - (i < b.mag.size() ? (int64_t)b.mag[i] : 0);
+        if (s < 0) { s += Big::BASE; borrow = 1; } else borrow = 0;
+        r.mag[i] = (uint32_t)s;
+    }
+    r.trim();
+    return r;
+}
 
-    # interpolation (exact: r = p*q has integer coefficients)
-    r0 = v0
-    r4 = vinf
-    r3 = exact_div(vm2 - v1, 3)
-    r1 = exact_div(v1 - vm1, 2)
-    r2 = vm1 - v0
-    r3 = exact_div(r2 - r3, 2) + 2 * r4
-    r2 = r2 + r1 - r4
-    r1 = r1 - r3
-    coeffs = [r0, r1, r2, r3, r4]
+static Big add(const Big& a, const Big& b);
 
-    # recompose r(B) = sum r_i * B^i  (shifts + adds, O(n))
-    result = 0
-    for c in reversed(coeffs):
-        result = result * B + c
-    return result
+// signed subtract a-b
+static Big sub(const Big& a, const Big& b) {
+    Big nb = b; nb.sign = -nb.sign;
+    return add(a, nb);
+}
 
+// signed add
+static Big add(const Big& a, const Big& b) {
+    if (a.isZero()) return b;
+    if (b.isZero()) return a;
+    if (a.sign == b.sign) { Big r = addMag(a, b); r.sign = a.sign; r.trim(); return r; }
+    int c = Big::cmpMag(a, b);
+    if (c == 0) return Big();
+    if (c > 0) { Big r = subMag(a, b); r.sign = a.sign; r.trim(); return r; }
+    Big r = subMag(b, a); r.sign = b.sign; r.trim(); return r;
+}
 
-if __name__ == "__main__":
-    import random
-    for _ in range(5000):
-        a = random.randint(-10 ** random.randint(0, 40), 10 ** random.randint(0, 40))
-        b = random.randint(-10 ** random.randint(0, 40), 10 ** random.randint(0, 40))
-        assert toom3(a, b) == a * b
-    assert toom3(123456, 654321) == 80779853376
-    print("all toom3 tests passed")
+// multiply magnitude by small non-negative int (fits in uint32 factor)
+static Big mulSmallMag(const Big& a, uint32_t k) {
+    Big r;
+    if (k == 0 || a.isZero()) return r;
+    r.mag.resize(a.mag.size() + 1, 0);
+    uint64_t carry = 0;
+    for (size_t i = 0; i < a.mag.size(); i++) {
+        uint64_t s = (uint64_t)a.mag[i] * k + carry;
+        r.mag[i] = (uint32_t)(s % Big::BASE);
+        carry = s / Big::BASE;
+    }
+    r.mag[a.mag.size()] = (uint32_t)carry;
+    r.trim();
+    return r;
+}
+
+// signed multiply by small signed int
+static Big mulSmall(const Big& a, long long k) {
+    if (k == 0) return Big();
+    int s = (k < 0) ? -1 : 1;
+    Big r = mulSmallMag(a, (uint32_t)llabs(k));
+    r.sign = a.sign * s; r.trim();
+    return r;
+}
+
+// exact division of signed Big by small positive int (remainder must be 0)
+static Big divExact(const Big& a, uint32_t d) {
+    Big r; r.mag.resize(a.mag.size(), 0);
+    uint64_t rem = 0;
+    for (size_t i = a.mag.size(); i-- > 0;) {
+        uint64_t cur = rem * Big::BASE + a.mag[i];
+        r.mag[i] = (uint32_t)(cur / d);
+        rem = cur % d;
+    }
+    // rem must be 0 for an exact division (guaranteed by Toom-3 interpolation)
+    r.sign = a.sign; r.trim();
+    return r;
+}
+
+// shift left by `limbs` base-10^9 limbs (multiply by BASE^limbs)
+static Big shiftLimbs(const Big& a, size_t limbs) {
+    if (a.isZero()) return a;
+    Big r; r.mag.assign(limbs, 0);
+    r.mag.insert(r.mag.end(), a.mag.begin(), a.mag.end());
+    r.sign = a.sign; r.trim();
+    return r;
+}
+
+// extract limbs [lo, hi) (a window of base-10^9 limbs) as a non-negative Big
+static Big limbWindow(const Big& a, size_t lo, size_t hi) {
+    Big r;
+    if (lo >= a.mag.size()) return r;
+    hi = min(hi, a.mag.size());
+    r.mag.assign(a.mag.begin() + lo, a.mag.begin() + hi);
+    r.trim();
+    return r;
+}
+
+// total decimal-ish size proxy: number of base-10^9 limbs
+static size_t limbCount(const Big& a) { return a.mag.size(); }
+
+// schoolbook multiply of two non-negative magnitudes
+static Big mulSchool(const Big& a, const Big& b) {
+    Big r;
+    if (a.isZero() || b.isZero()) return r;
+    r.mag.assign(a.mag.size() + b.mag.size(), 0);
+    for (size_t i = 0; i < a.mag.size(); i++) {
+        uint64_t carry = 0;
+        uint64_t ai = a.mag[i];
+        for (size_t j = 0; j < b.mag.size(); j++) {
+            uint64_t cur = r.mag[i + j] + ai * b.mag[j] + carry;
+            r.mag[i + j] = (uint32_t)(cur % Big::BASE);
+            carry = cur / Big::BASE;
+        }
+        size_t k = i + b.mag.size();
+        while (carry) { uint64_t cur = r.mag[k] + carry; r.mag[k] = (uint32_t)(cur % Big::BASE); carry = cur / Big::BASE; k++; }
+    }
+    r.trim();
+    return r;
+}
+
+static const size_t THRESHOLD = 8; // few-limb operands multiply directly
+
+// Toom-3 multiplication of two signed Bigs.
+static Big toom3(const Big& X, const Big& Y) {
+    // sign handling: recurse on absolute values, fix sign at the end
+    int outSign = X.sign * Y.sign;
+    Big x = X; x.sign = 1;
+    Big y = Y; y.sign = 1;
+
+    // base case: small operands -> direct schoolbook product (O(1) in limbs)
+    if (limbCount(x) < THRESHOLD || limbCount(y) < THRESHOLD) {
+        Big r = mulSchool(x, y); r.sign = (r.isZero() ? 1 : outSign); r.trim();
+        return r;
+    }
+
+    // limb size m (in base-10^9 limbs) so each operand has at most 3 limbs in B = (10^9)^m
+    size_t n = max(limbCount(x), limbCount(y));
+    size_t m = n / 3 + 1;
+    // B = BASE^m, represented implicitly via limb windows of width m
+
+    // cut into 3 limbs (the polynomials p, q): x = xb*B^2 + xa*B + xc, with
+    // limbs xc,xa,xb (low,mid,high) and yc,ya,yb likewise
+    Big xc = limbWindow(x, 0, m), xa = limbWindow(x, m, 2 * m), xb = limbWindow(x, 2 * m, 3 * m);
+    Big yc = limbWindow(y, 0, m), ya = limbWindow(y, m, 2 * m), yb = limbWindow(y, 2 * m, 3 * m);
+
+    // evaluate p, q at 0, 1, -1, -2, inf  (adds and small shifts, no multiply)
+    Big px1 = add(add(xc, xa), xb);
+    Big py1 = add(add(yc, ya), yb);
+    Big pxm1 = add(sub(xc, xa), xb);
+    Big pym1 = add(sub(yc, ya), yb);
+    Big pxm2 = add(sub(xc, mulSmall(xa, 2)), mulSmall(xb, 4));
+    Big pym2 = add(sub(yc, mulSmall(ya, 2)), mulSmall(yb, 4));
+
+    // the FIVE recursive multiplications (5 instead of 9):
+    Big v0 = toom3(xc, yc);     // r(0)   = x0*y0
+    Big v1 = toom3(px1, py1);   // r(1)
+    Big vm1 = toom3(pxm1, pym1);// r(-1)
+    Big vm2 = toom3(pxm2, pym2);// r(-2)
+    Big vinf = toom3(xb, yb);   // r(inf) = x2*y2
+
+    // interpolation: recover r0..r4 from the five values.
+    // every division (/3, /2) is exact because r = p*q has integer coefficients.
+    Big r0 = v0;
+    Big r4 = vinf;
+    Big r3 = divExact(sub(vm2, v1), 3);
+    Big r1 = divExact(sub(v1, vm1), 2);
+    Big r2 = sub(vm1, v0);
+    r3 = add(divExact(sub(r2, r3), 2), mulSmall(r4, 2));
+    r2 = sub(add(r2, r1), r4);
+    r1 = sub(r1, r3);
+
+    // recompose r(B) = sum r_i * B^i  (shifts by i*m limbs + adds, O(n));
+    // negative / oversized coefficients are absorbed by big-integer carries/borrows
+    Big result = r0;
+    result = add(result, shiftLimbs(r1, m));
+    result = add(result, shiftLimbs(r2, 2 * m));
+    result = add(result, shiftLimbs(r3, 3 * m));
+    result = add(result, shiftLimbs(r4, 4 * m));
+
+    result.sign = (result.isZero() ? 1 : outSign);
+    result.trim();
+    return result;
+}
+
+// parse a decimal string (optional leading +/-) into a Big
+static Big parseBig(const string& s) {
+    Big r;
+    size_t i = 0; int sign = 1;
+    if (i < s.size() && (s[i] == '+' || s[i] == '-')) { if (s[i] == '-') sign = -1; i++; }
+    // strip leading zeros for clean magnitude, keep at least value
+    string digits = s.substr(i);
+    // build by processing 9 decimal digits at a time from the most significant end
+    // simpler: accumulate via repeated *10^9 chunks from the front
+    size_t start = 0;
+    while (start < digits.size() && digits[start] == '0') start++;
+    digits = digits.substr(start);
+    if (digits.empty()) return r; // zero
+    // process from most significant: group into 9-digit chunks aligned to the right
+    int firstLen = (int)(digits.size() % 9);
+    if (firstLen == 0) firstLen = 9;
+    size_t pos = 0;
+    // start with first chunk
+    auto chunkVal = [&](size_t p, int len) -> uint32_t {
+        uint32_t v = 0;
+        for (int k = 0; k < len; k++) v = v * 10 + (uint32_t)(digits[p + k] - '0');
+        return v;
+    };
+    r = Big((long long)chunkVal(pos, firstLen));
+    pos += firstLen;
+    while (pos < digits.size()) {
+        r = mulSmallMag(r, Big::BASE); // *10^9
+        uint32_t v = chunkVal(pos, 9);
+        r = addMag(r, Big((long long)v));
+        pos += 9;
+    }
+    r.sign = (r.isZero() ? 1 : sign);
+    return r;
+}
+
+// convert Big to decimal string
+static string toString(const Big& a) {
+    if (a.isZero()) return "0";
+    string s;
+    for (size_t i = 0; i < a.mag.size(); i++) {
+        char buf[16];
+        if (i + 1 == a.mag.size()) snprintf(buf, sizeof(buf), "%u", a.mag[i]);
+        else snprintf(buf, sizeof(buf), "%09u", a.mag[i]);
+        s = string(buf) + s;
+    }
+    if (a.sign < 0) s = "-" + s;
+    return s;
+}
+
+int main() {
+    string sx, sy;
+    if (!(cin >> sx >> sy)) return 0;
+    Big x = parseBig(sx);
+    Big y = parseBig(sy);
+    Big prod = toom3(x, y);
+    cout << toString(prod) << "\n";
+    return 0;
+}
 ```

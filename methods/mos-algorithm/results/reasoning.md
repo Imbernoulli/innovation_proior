@@ -2,7 +2,7 @@ I have a static array `a` and many inclusive range queries `(l, r)`. Each answer
 
 The repeated work is sitting at the boundaries. If I know the distinct count for one range, then extending the right end by one index only asks what happens to `a[r + 1]`. If that value was absent, the distinct count increases; if it was already present, it does not. Removing one endpoint is symmetric: the distinct count decreases only when the removed value had frequency one. So the state I need is not a set rebuilt per query, but a frequency table `cnt` and one integer `distinct` that changes only at zero crossings.
 
-That gives the exact update rules. When index `i` is added, set `value = a[i]`, increment `cnt[value]`, and increment `distinct` only if the new count is `1`. When index `i` is removed, decrement `cnt[value]`, and decrement `distinct` only if the new count is `0`. A dictionary-backed `cnt` keeps the code valid for arbitrary integer values in `a`.
+That gives the exact update rules. When index `i` is added, set `value = a[i]`, increment `cnt[value]`, and increment `distinct` only if the new count is `1`. When index `i` is removed, decrement `cnt[value]`, and decrement `distinct` only if the new count is `0`. Coordinate-compressing the values once up front lets `cnt` be a dense array — `O(1)` indexed — while staying valid for arbitrary integer values in `a`.
 
 Now I can move from one requested range to another by changing endpoints one step at a time. I keep an inclusive range `[cur_l, cur_r]` whose contents are exactly described by `cnt` and `distinct`; the empty initial range is `cur_l = 0, cur_r = -1`. To reach a target `(l, r)`, I grow left by decrementing `cur_l` before `add(cur_l)`, grow right by incrementing `cur_r` before `add(cur_r)`, shrink left by `remove(cur_l)` before incrementing `cur_l`, and shrink right by `remove(cur_r)` before decrementing `cur_r`.
 
@@ -40,78 +40,81 @@ n= 6400   moves=  665895   (n+q)sqrt(n)= 1024000   ratio 0.65
 
 As `n` grows by a factor of 64 the ratio stays in a narrow band around `0.6` rather than drifting upward, so the measured travel tracks `(n + q) sqrt(n)` with a small constant — consistent with the derived bound and not with any faster-growing hidden term. The sort itself adds `O(q log q)`.
 
-Now the code can be written directly from these invariants. The `place_answer(idx)` helper moves `[cur_l, cur_r]` to `queries[idx]` and writes the answer back at the original index.
+Now the code can be written directly from these invariants, as one self-contained C++17 program. It reads `n`, then `n` array values, then `q`, then `q` query pairs `l r` (1-based inclusive) from stdin; the per-query loop moves `[cur_l, cur_r]` to that query's range one endpoint step at a time and writes `distinct` back at the query's original index, so the answers print in the original query order.
 
-```python
-import sys
-from collections import defaultdict
+```cpp
+// Mo's algorithm for offline distinct-value range queries.
+// Reads from stdin: n, then n array values, then q, then q query pairs (l r),
+// 1-based inclusive. Prints, one per line in original query order, the number of
+// distinct values in a[l..r].
+#include <bits/stdc++.h>
+using namespace std;
 
+int main() {
+    ios_base::sync_with_stdio(false);
+    cin.tie(nullptr);
 
-def answer_queries(a, queries):
-    """Return one distinct-count answer per inclusive 0-based query."""
-    n = len(a)
-    cnt = defaultdict(int)
-    distinct = 0
-    answers = [0] * len(queries)
+    int n;
+    if (!(cin >> n)) return 0;
+    vector<int> a(n);
+    for (int i = 0; i < n; ++i) cin >> a[i];
 
-    def add(i):
-        nonlocal distinct
-        value = a[i]
-        cnt[value] += 1
-        if cnt[value] == 1:
-            distinct += 1
+    // Coordinate-compress values so cnt can be a dense array, valid for
+    // arbitrary integer values (the dictionary-backed count in the reference).
+    vector<int> sorted_vals(a.begin(), a.end());
+    sort(sorted_vals.begin(), sorted_vals.end());
+    sorted_vals.erase(unique(sorted_vals.begin(), sorted_vals.end()),
+                      sorted_vals.end());
+    for (int i = 0; i < n; ++i)
+        a[i] = int(lower_bound(sorted_vals.begin(), sorted_vals.end(), a[i]) -
+                   sorted_vals.begin());
 
-    def remove(i):
-        nonlocal distinct
-        value = a[i]
-        cnt[value] -= 1
-        if cnt[value] == 0:
-            distinct -= 1
+    int q;
+    cin >> q;
+    vector<int> ql(q), qr(q), order(q);
+    for (int i = 0; i < q; ++i) {
+        int l, r;
+        cin >> l >> r;             // 1-based inclusive
+        ql[i] = l - 1;
+        qr[i] = r - 1;
+        order[i] = i;
+    }
 
-    block = max(1, int(n ** 0.5))
-    order = sorted(
-        range(len(queries)),
-        key=lambda idx: (queries[idx][0] // block, queries[idx][1]),
-    )
-    cur_l, cur_r = 0, -1
+    int block = max(1, (int)sqrt((double)n));
+    sort(order.begin(), order.end(), [&](int x, int y) {
+        if (ql[x] / block != ql[y] / block) return ql[x] / block < ql[y] / block;
+        return qr[x] < qr[y];
+    });
 
-    def place_answer(idx):
-        nonlocal cur_l, cur_r
-        l, r = queries[idx]
-        while cur_l > l:
-            cur_l -= 1
-            add(cur_l)
-        while cur_r < r:
-            cur_r += 1
-            add(cur_r)
-        while cur_l < l:
-            remove(cur_l)
-            cur_l += 1
-        while cur_r > r:
-            remove(cur_r)
-            cur_r -= 1
-        answers[idx] = distinct
+    vector<int> cnt(max(1, (int)sorted_vals.size()), 0);
+    int distinct = 0;
+    vector<int> answers(q);
 
-    for idx in order:
-        place_answer(idx)
-    return answers
+    auto add = [&](int i) {
+        if (++cnt[a[i]] == 1) ++distinct;
+    };
+    auto remove = [&](int i) {
+        if (--cnt[a[i]] == 0) --distinct;
+    };
 
+    int cur_l = 0, cur_r = -1;
+    for (int idx : order) {
+        int l = ql[idx], r = qr[idx];
+        while (cur_l > l) add(--cur_l);
+        while (cur_r < r) add(++cur_r);
+        while (cur_l < l) remove(cur_l++);
+        while (cur_r > r) remove(cur_r--);
+        answers[idx] = distinct;
+    }
 
-def main():
-    data = sys.stdin.buffer.read().split()
-    if not data:
-        return
-    it = iter(data)
-    n = int(next(it))
-    a = [int(next(it)) for _ in range(n)]
-    q = int(next(it))
-    queries = [(int(next(it)) - 1, int(next(it)) - 1) for _ in range(q)]
-    out = answer_queries(a, queries)
-    sys.stdout.write("\n".join(map(str, out)))
-
-
-if __name__ == "__main__":
-    main()
+    string out;
+    for (int i = 0; i < q; ++i) {
+        out += to_string(answers[i]);
+        if (i + 1 < q) out += '\n';
+    }
+    cout << out;
+    return 0;
+}
 ```
 
 The full chain is: exact frequency maintenance makes each endpoint step constant time and, checked against brute force, correct; an invariant range `[cur_l, cur_r]` lets answers be transferred between queries; lexicographic order by `(l // block, r)` keeps the right endpoint monotone within each block and so controls total endpoint travel; `block = sqrt(n)` balances the two travel terms to `O((n + q) sqrt(n))`, a bound the measured step counts track with a small constant, after the `O(q log q)` sort.

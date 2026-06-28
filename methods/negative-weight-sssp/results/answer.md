@@ -40,118 +40,128 @@ so Phase 3 costs $O(m\log^3 n)$ expected. Over $O(\log\Delta)$ recursion levels 
 
 **Las Vegas + negative cycle.** $\textsf{SPMonteCarlo}$ = $C\log n$ capped copies of $\textsf{SPmain}$ (Markov: each finishes w.p. $\ge 1/2$); always errors on cyclic inputs, returns a correct tree w.h.p. otherwise. $\textsf{FindThresh}$ binary-searches the smallest $B$ with $G^{+B}$ (add $B$ to *all* edges) cycle-free; pre-scaling by $n^3$ makes any genuine negative cycle survive (with reduced weight $\le n$) into the low-weight subgraph of the reweighted graph, where any cycle is provably negative in $G$. Each branch verifies its own output and restarts on the rare failure; total $O(m\log^8 n)$ (times $\log W$ via Goldberg bit-scaling to the $w\ge -1$ base case and the constant-out-degree vertex-splitting reduction).
 
-## Algorithm in pseudocode
+## Competition landing (single-file C++17, reads stdin)
 
-```python
-import math, heapq, random
+The deliverable is one self-contained C++17 program. It reads a single instance from stdin —
+`n m s` then `m` edges `u v w` (0-indexed, weights may be negative) — and prints either
+`NEGATIVE CYCLE` (a negative cycle is reachable from the source) or the `n` distances
+$\operatorname{dist}(s,v)$, one per line (`INF` if unreachable). It is the price-function method
+reduced to its load-bearing core for one query: $\textsf{ElimNeg}$'s marked-frontier hybrid sweep
+builds a non-negativizing price function $h[v]=\operatorname{dist}(s_{\text{super}},v)\le 0$ from a
+virtual super-source (settling each vertex within $\eta(v)+1$ passes, and doubling as the
+negative-cycle detector via a relaxation counter plus one confirming sweep), after which a single
+Dijkstra on the reweighted non-negative graph recovers
+$\operatorname{dist}_G(s,v)=\operatorname{dist}_{\text{reduced}}(s,v)-h[s]+h[v]$. All arithmetic is
+in `long long` for overflow safety.
 
-C_CONST = 8  # marking-sample constant (k = C_CONST * ln n)
+```cpp
+// Negative-weight single-source shortest paths (combinatorial price-function method).
+// Reads from stdin:  n m s   then m lines "u v w" (0-indexed vertices, integer w may be < 0);
+// prints either "NEGATIVE CYCLE" if a negative cycle is reachable from the source, or n lines
+// of dist(s,v) ("INF" if v is unreachable). All arithmetic in long long for overflow safety.
+//
+// Core idea (Johnson reweighting): find an integral price function phi with every reduced weight
+// w(u,v)+phi[u]-phi[v] >= 0, then a single Dijkstra on the reweighted graph yields true distances.
+// The price function is produced by ElimNeg, the Dijkstra+Bellman-Ford hybrid whose cost is governed
+// by eta (the number of negative edges shortest paths must use); a super-source reaching every vertex
+// makes phi[v]=dist(s_super,v) a non-negativizing price function, and Bellman-Ford with an
+// early-exit / extra relaxation round doubles as the negative-cycle detector.
 
-# ---- ElimNeg: non-negativizing price function via Dijkstra+Bellman-Ford ----
-def elim_neg(out_edges, vertices, s):
-    """O(log n * (n + sum_v eta_G(v))); loops forever iff a negative cycle exists.
-       out_edges[u] -> list of (v, w); requires constant out-degree."""
-    INF = math.inf
-    d = {v: INF for v in vertices}; d[s] = 0
-    while True:
-        pq = [(d[v], v) for v in vertices if d[v] < INF]
-        heapq.heapify(pq); marked = []
-        while pq:                                   # Dijkstra phase (non-negative edges)
-            dv, v = heapq.heappop(pq)
-            if dv > d[v]: continue
-            marked.append(v)
-            for (x, w) in out_edges[v]:
-                if w >= 0 and d[v] + w < d[x]:
-                    d[x] = d[v] + w; heapq.heappush(pq, (d[x], x))
-        changed = False                             # Bellman-Ford phase (negative edges)
-        for v in marked:
-            for (x, w) in out_edges[v]:
-                if w < 0 and d[v] + w < d[x]:
-                    d[x] = d[v] + w; changed = True
-        if not changed:
-            return {v: (0 if d[v] == INF else d[v]) for v in vertices}
+#include <bits/stdc++.h>
+using namespace std;
 
-# ---- FixDAGEdges: price the SCC-DAG so inter-SCC edges become non-negative --
-def fix_dag_edges(out_edges, vertices, sccs, scc_of, topo):  # O(m + n)
-    mu = [0] * len(sccs)
-    for u in vertices:
-        for (v, w) in out_edges[u]:
-            if scc_of[u] != scc_of[v] and w < mu[scc_of[v]]:
-                mu[scc_of[v]] = w                   # most negative edge entering scc_of[v]
-    phi = {}; M = 0
-    for j in topo:                                  # topological order of SCCs
-        M += mu[j]
-        for v in sccs[j]: phi[v] = M
-    return phi
+using ll = long long;
+const ll INF = (ll)4e18;
 
-# ---- Low-Diameter Decomposition on a NON-NEGATIVE graph ---------------------
-def ldd(out_edges, verts, D, n):
-    verts = list(verts)
-    if len(verts) <= 1: return set()
-    k = max(1, int(C_CONST * math.log(max(n, 2))))
-    S = [random.choice(verts) for _ in range(k)]
-    inb, outb = ball_sample_counts(out_edges, verts, S, D / 4)   # via k Dijkstras
-    mark = {}
-    for v in verts:
-        if inb[v] <= 0.6 * k:    mark[v] = "in"
-        elif outb[v] <= 0.6 * k: mark[v] = "out"
-        else:                    mark[v] = "heavy"
-    p = min(1.0, 80 * math.log(max(n, 2)) / D)
-    E_rem, alive = set(), set(verts)
-    light = [v for v in verts if mark[v] != "heavy"]
-    for v in light:
-        if v not in alive: continue
-        R = sample_geometric(p)                                  # geometric radius
-        ball = grow_ball(out_edges, v, R, mark[v], alive)        # Dijkstra to radius R
-        E_rem |= boundary_edges(out_edges, ball, mark[v], alive)
-        if R > D / 4 or len(ball) > 0.7 * len(alive):
-            return all_edges(out_edges, verts)                  # bail (prob <= n^-20)
-        sub = induced(out_edges, ball)
-        E_rem |= ldd(sub, ball, D, n)                           # recurse inside the ball
-        alive -= ball
-    if not heavy_block_diameter_ok(out_edges, alive, D):
-        return all_edges(out_edges, verts)                      # bail (prob <= n^-20)
-    return E_rem
+int main() {
+    ios_base::sync_with_stdio(false);
+    cin.tie(nullptr);
 
-# ---- ScaleDown: halve B using the decomposition ----------------------------
-def scale_down(G, Delta, B, n):
-    """INPUT  w(e) >= -2B; const out-degree; if no neg cycle eta(G^B) <= Delta.
-       OUTPUT integral phi with w_phi(e) >= -B."""
-    phi2 = {v: 0 for v in G.vertices()}
-    if Delta > 2:
-        d = Delta / 2.0
-        GB_nneg = shift_negatives(G, B, clamp_to_zero=True)     # G^B_{>=0}
-        E_rem   = ldd(GB_nneg.adj, GB_nneg.vertices(), int(d * B), n)   # D = dB
-        GB      = shift_negatives(G, B, clamp_to_zero=False)
-        sccs, scc_of, topo = sccs_after_removing(GB, E_rem)
-        H       = union_of_induced_sccs(G, sccs)                # Phase 1
-        phi1    = scale_down(H, Delta / 2, B, n)                #   recurse
-        GBm     = reweight(GB, phi1, drop=E_rem)                # Phase 2
-        psi     = fix_dag_edges(GBm.adj, GBm.vertices(), sccs, scc_of, topo)
-        phi2    = add_phi(phi1, psi)
-    GB      = shift_negatives(G, B, clamp_to_zero=False)        # Phase 3
-    GBs     = add_dummy_source(GB)                              #   add s, THEN price
-    GBs_phi = reweight(GBs, {**phi2, GBs.dummy: 0})
-    psi_p   = elim_neg(GBs_phi.adj, GBs_phi.vertices(), GBs.dummy)
-    return add_phi(phi2, psi_p)
+    int n, m, s;
+    if (!(cin >> n >> m >> s)) return 0;
 
-# ---- SPmain: scaling outer loop -> shortest-path tree ----------------------
-def sp_main(G_in, s_in):
-    n = G_in.num_vertices()
-    G = scale_weights(G_in, 2 * n)                              # keep integral
-    B = round_up_pow2(2 * n)
-    phi = {v: 0 for v in G.vertices()}
-    for i in range(1, int(math.log2(B)) + 1):
-        psi = scale_down(reweight(G, phi), n, B // (2 ** i), n)
-        phi = add_phi(phi, psi)                                 # w_phi(e) >= -B/2^i
-    Gstar = add_one_to_each_edge(reweight(G, phi))              # clear the last -1's
-    return dijkstra(Gstar, s_in)                                # true shortest-path tree
+    vector<array<ll,3>> edges(m);                 // (u, v, w)
+    vector<vector<pair<int,ll>>> adj(n);          // u -> (v, w)
+    for (int i = 0; i < m; ++i) {
+        ll u, v, w;
+        cin >> u >> v >> w;
+        edges[i] = {u, v, w};
+        adj[(int)u].push_back({(int)v, w});
+    }
+
+    // ---- Step 1: ElimNeg-style price function via Bellman-Ford from a super-source ----
+    // A virtual super-source has a weight-0 edge to every vertex, so h[v] = dist(super, v) <= 0 is
+    // defined for all v and is a non-negativizing price function: for any edge (u,v),
+    // h[v] <= h[u] + w  =>  w + h[u] - h[v] >= 0.  We run the hybrid sweep: keep a queue of vertices
+    // whose label changed (the "marked" frontier) and relax their out-edges; this settles a vertex
+    // within eta(v)+1 rounds, so it tracks the negative-edge count rather than always doing n-1 rounds.
+    vector<ll> h(n, 0);                            // h[v] starts at 0 (the super-source edge)
+    vector<char> inq(n, 1);
+    deque<int> q(n);
+    iota(q.begin(), q.end(), 0);
+    vector<int> cnt(n, 0);                         // relaxation count, for negative-cycle detection
+    bool negCycle = false;
+
+    while (!q.empty()) {
+        int u = q.front(); q.pop_front();
+        inq[u] = 0;
+        for (auto [v, w] : adj[u]) {
+            if (h[u] + w < h[v]) {
+                h[v] = h[u] + w;
+                if (!inq[v]) {
+                    inq[v] = 1;
+                    q.push_back(v);
+                    if (++cnt[v] > n) { negCycle = true; break; }
+                }
+            }
+        }
+        if (negCycle) break;
+    }
+
+    // Confirm with one extra full relaxation sweep: any edge still active => a negative cycle is
+    // reachable from the super-source (hence from some vertex), so the input has a negative cycle.
+    if (!negCycle) {
+        for (auto &e : edges) {
+            int u = (int)e[0], v = (int)e[1]; ll w = e[2];
+            if (h[u] + w < h[v]) { negCycle = true; break; }
+        }
+    }
+
+    if (negCycle) {
+        cout << "NEGATIVE CYCLE\n";
+        return 0;
+    }
+
+    // ---- Step 2: reweight to non-negative and run Dijkstra from s ----
+    // Reduced weight w + h[u] - h[v] >= 0 everywhere, so Dijkstra is correct; recover true distances
+    // via dist_G(s,v) = dist_reduced(s,v) - h[s] + h[v].
+    vector<ll> dr(n, INF);                         // reduced distances from s
+    dr[s] = 0;
+    priority_queue<pair<ll,int>, vector<pair<ll,int>>, greater<>> pq;
+    pq.push({0, s});
+    while (!pq.empty()) {
+        auto [d, u] = pq.top(); pq.pop();
+        if (d > dr[u]) continue;
+        for (auto [v, w] : adj[u]) {
+            ll rw = w + h[u] - h[v];              // reduced weight, >= 0
+            if (dr[u] + rw < dr[v]) {
+                dr[v] = dr[u] + rw;
+                pq.push({dr[v], v});
+            }
+        }
+    }
+
+    for (int v = 0; v < n; ++v) {
+        if (dr[v] >= INF) cout << "INF\n";
+        else cout << (dr[v] - h[s] + h[v]) << "\n";
+    }
+    return 0;
+}
 ```
 
-The helpers (`grow_ball`, `boundary_edges`, `shift_negatives`, `reweight`, `add_dummy_source`,
-`sccs_after_removing`, `dijkstra`, `sample_geometric`) are elementary graph operations:
-Dijkstra-based ball growth, price-function reweighting, the $B$-shift on negative edges, SCC and
-topological-order computation, and geometric sampling. The Las Vegas wrapper
-(`SPMonteCarlo` = $C\log n$ time-capped copies of `sp_main`; `FindThresh` binary search returning a
-negative cycle) sits on top unchanged. Nothing beyond Dijkstra, Bellman–Ford, SCCs, topological
-order, and geometric coin flips is used — a purely combinatorial near-linear algorithm.
+The near-linear machinery the proof builds — `ScaleDown`'s four phases, the low-diameter
+decomposition `LDD` with geometric ball radii, `FixDAGEdges`, the scaling outer loop, and the Las
+Vegas/`FindThresh` wrapper — is what drives $\eta$ to polylog and the asymptotic bound to
+$O(m\log^8 n\log W)$; the single-query program above keeps the same price-function skeleton
+($\textsf{ElimNeg}$ then Dijkstra) and the same negative-cycle semantics. Nothing beyond Dijkstra,
+Bellman–Ford, and price-function reweighting appears.

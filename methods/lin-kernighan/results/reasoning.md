@@ -240,62 +240,92 @@ membership tests), with `around(node)` giving a city's two tour-neighbors, `cont
 membership, and `generate(broken, joined)` rebuilding the order from "current edges minus broken plus
 joined" and reporting whether the result is a single tour — that's my feasibility/close-up oracle.
 
-```python
-from copy import deepcopy
+I'll land it as a single self-contained C++17 program: it reads `n` and an `n × n` symmetric distance
+matrix from stdin, runs the search from the identity tour, and prints the resulting tour and its
+length to stdout. An undirected edge becomes the ordered key `min(i,j)*N + max(i,j)`, and a `Tour`
+holds the order, a `pos[]` index, and the edge set; `generate` is the close-up oracle — it forms
+`(tour - broken) + joined`, walks the cycle from city 0, and reports whether it is one Hamiltonian
+cycle (orienting the walk canonically so the rebuilt order is deterministic):
 
-def makePair(i, j):
-    return (i, j) if i < j else (j, i)   # undirected edge as a sorted tuple
+```cpp
+static inline long long key(int i, int j) {   // undirected edge as an ordered key (a < b)
+    if (i > j) swap(i, j);
+    return (long long)i * N + j;
+}
 
+struct Tour {
+    vector<int> order;                          // city visit order
+    vector<int> pos;                            // pos[city] = index in order
+    unordered_set<long long> edges;             // current tour edges (membership)
+    int size = 0;
 
-class Tour:
-    def __init__(self, tour):
-        self.tour = tour
-        self.size = len(tour)
-        self.edges = {makePair(tour[i - 1], tour[i]) for i in range(self.size)}
+    explicit Tour(const vector<int>& o) : order(o), size((int)o.size()) {
+        pos.assign(size, 0);
+        for (int i = 0; i < size; i++) pos[order[i]] = i;
+        for (int i = 0; i < size; i++) edges.insert(key(order[(i + size - 1) % size], order[i]));
+    }
 
-    def around(self, node):              # the two tour-neighbours of `node`
-        idx = self.tour.index(node)
-        succ = idx + 1 if idx + 1 < self.size else 0
-        return (self.tour[idx - 1], self.tour[succ])
+    pair<int,int> around(int node) const {      // the two tour-neighbours of `node`
+        int idx = pos[node];
+        return {order[(idx + size - 1) % size], order[(idx + 1) % size]};
+    }
 
-    def contains(self, edge):
-        return edge in self.edges
+    bool contains(long long e) const { return edges.count(e) != 0; }
 
-    def generate(self, broken, joined):
-        # new edge set = (tour edges - broken) + joined; rebuild and check it is ONE cycle.
-        # Returns (is_tour, new_tour) -- this is the close-up / feasibility oracle.
-        edges = (self.edges - broken) | joined
-        if len(edges) < self.size:
-            return False, []
-        succ, node = {}, 0
-        while edges:                     # chain the edges into a successor map
-            for i, j in edges:
-                if i == node: succ[node] = j; node = j; break
-                if j == node: succ[node] = i; node = i; break
-            edges.remove((i, j))
-        if len(succ) < self.size:
-            return False, []
-        new_tour, cur, seen = [0], succ[0], {0}
-        while cur not in seen:           # walk successors; a premature repeat = disjoint subtours
-            seen.add(cur); new_tour.append(cur); cur = succ[cur]
-        return len(new_tour) == self.size, new_tour
+    // New edges = (tour - broken) + joined; rebuild and check it is ONE Hamiltonian cycle.
+    bool generate(const unordered_set<long long>& broken,
+                  const unordered_set<long long>& joined, vector<int>& out) const {
+        vector<array<int,2>> adj(size, {-1, -1});
+        vector<int> deg(size, 0);
+        auto addEdge = [&](int a, int b) {
+            if (deg[a] < 2) adj[a][deg[a]] = b; deg[a]++;
+            if (deg[b] < 2) adj[b][deg[b]] = a; deg[b]++;
+        };
+        int edgeCount = 0;
+        for (long long e : edges) if (!broken.count(e)) { addEdge((int)(e / N), (int)(e % N)); edgeCount++; }
+        for (long long e : joined) { addEdge((int)(e / N), (int)(e % N)); edgeCount++; }
+        if (edgeCount != size) return false;
+        for (int i = 0; i < size; i++) if (deg[i] != 2) return false;
+        out.clear();
+        int prev = -1, cur = 0;
+        for (int step = 0; step < size; step++) {
+            out.push_back(cur);
+            int a = adj[cur][0], b = adj[cur][1];
+            int nxt = (step == 0) ? min(a, b) : ((a != prev) ? a : b);   // canonical orientation
+            prev = cur; cur = nxt;
+            if (cur == 0 && step + 1 < size) return false;  // premature return => subtours
+        }
+        return cur == 0 && (int)out.size() == size;
+    }
+};
 ```
 
 The driver restarts the search every time it finds an improving move, and gives up when a full pass
 finds nothing — that's the local optimum:
 
-```python
-class LinKernighan(TSP):
-    def _optimise(self):
-        better = True
-        self.solutions = set()
-        self.neighbours = {i: [j for j, d in enumerate(TSP.edges[i]) if d > 0
-                                and j in self.heuristic_path]
-                           for i in self.heuristic_path}
-        while better:
-            better = self.improve()                       # one improving step, or False
-            self.solutions.add(str(self.heuristic_path))  # remember tours seen, to break cycles
-        self.save(self.heuristic_path, self.heuristic_cost)
+```cpp
+struct LinKernighan {
+    vector<int> path;            // current tour order
+    double cost;                 // its length
+    unordered_set<string> seen;  // tours already reached (cycle guard)
+
+    void optimise() {
+        NB.assign(N, {});                            // neighbour lists, nearest first
+        for (int i = 0; i < N; i++) {
+            vector<pair<double,int>> nbrs;
+            for (int j = 0; j < N; j++) if (j != i && D[i][j] > 0) nbrs.emplace_back(D[i][j], j);
+            sort(nbrs.begin(), nbrs.end());
+            for (auto& pr : nbrs) NB[i].push_back(pr.second);
+        }
+        seen.clear();
+        bool better = true;
+        while (better) {                             // restart at every improving move
+            better = improve();                      // one improving step, or false
+            seen.insert(tourKey(path));              // remember tours seen, to break cycles
+        }
+    }
+    // ... closest / chooseY / chooseX / improve below ...
+};
 ```
 
 `closest` is where the nearest-neighbour preference and the positive-gain gate live: from the current
@@ -304,21 +334,35 @@ new links `y_i = (t2i, node)`, computes the would-be running gain `Gi = gain - |
 those with `Gi > 0` that aren't already broken and aren't tour edges — and orders them by how
 promising the next omission looks, so the best `y` is tried first:
 
-```python
-    def closest(self, t2i, tour, gain, broken, joined):
-        candidates = {}
-        for node in self.neighbours[t2i]:
-            yi = makePair(t2i, node)
-            Gi = gain - TSP.dist(t2i, node)               # running gain if we ADD y_i = (t2i,node)
-            if Gi <= 0 or yi in broken or tour.contains(yi):
-                continue                                  # POSITIVE-GAIN CRITERION + disjointness
-            for succ in tour.around(node):                # the x_{i+1} we could break next
-                xi = makePair(node, succ)
-                if xi not in broken and xi not in joined: # ensure an x_{i+1} can still be broken
-                    diff = TSP.dist(node, succ) - TSP.dist(t2i, node)
-                    if node not in candidates or diff > candidates[node][0]:
-                        candidates[node] = [diff, Gi]
-        return sorted(candidates.items(), key=lambda x: x[1][0], reverse=True)
+```cpp
+    // candidate y_i = (t2i, node), kept in neighbour-list order then stably sorted by `diff`.
+    vector<pair<int,double>> closest(int t2i, const Tour& tour, double gain,
+                                     const unordered_set<long long>& broken,
+                                     const unordered_set<long long>& joined) const {
+        vector<int> nodes;                                // distinct candidate nodes, in order
+        unordered_map<int, pair<double,double>> cand;     // node -> {diff, Gi}
+        for (int node : NB[t2i]) {
+            long long yi = key(t2i, node);
+            double Gi = gain - D[t2i][node];              // running gain if we ADD y_i = (t2i,node)
+            if (Gi <= 0 || broken.count(yi) || tour.contains(yi))
+                continue;                                 // POSITIVE-GAIN CRITERION + disjointness
+            auto pr = tour.around(node);
+            for (int s : {pr.first, pr.second}) {         // the x_{i+1} we could break next
+                long long xi = key(node, s);
+                if (!broken.count(xi) && !joined.count(xi)) {   // an x_{i+1} can still be broken
+                    double diff = D[node][s] - D[t2i][node];
+                    auto it = cand.find(node);
+                    if (it == cand.end()) { cand[node] = {diff, Gi}; nodes.push_back(node); }
+                    else if (diff > it->second.first) it->second = {diff, Gi};
+                }
+            }
+        }
+        stable_sort(nodes.begin(), nodes.end(),           // best `diff` first
+                    [&](int a, int b){ return cand[a].first > cand[b].first; });
+        vector<pair<int,double>> out;
+        for (int node : nodes) out.emplace_back(node, cand[node].second);
+        return out;
+    }
 ```
 
 `improve` runs the level-1 part: for each start city `t1`, both choices of `x1 = (t1, t2)` (its two
@@ -326,26 +370,28 @@ tour links), the initial gain is `|x1|`, and `closest` gives the `y1 = (t2, t3)`
 0`. Capping to five candidates is the limited level-1 backtracking; trying both `t2`'s is the alternate
 `x1`; iterating over all `t1` is "new starting city":
 
-```python
-    def improve(self):
-        tour = Tour(self.heuristic_path)
-        for t1 in self.heuristic_path:
-            around = tour.around(t1)
-            for t2 in around:                             # the two choices of x1 (alternate x1)
-                broken = {makePair(t1, t2)}
-                gain = TSP.dist(t1, t2)                   # |x1|
-                close = self.closest(t2, tour, gain, broken, set())  # y1 candidates, g1 > 0
-                tries = 5                                 # limited level-1 backtracking (~5)
-                for t3, (_, Gi) in close:
-                    if t3 in around:                      # t3 can't be a tour-neighbour of t1
-                        continue
-                    joined = {makePair(t2, t3)}
-                    if self.chooseX(tour, t1, t3, Gi, broken, joined):
-                        return True                       # improvement -> restart from Step 2
-                    tries -= 1
-                    if tries == 0:
-                        break
-        return False
+```cpp
+    bool improve() {
+        Tour tour(path);
+        for (int t1 : path) {                             // try every start city
+            auto ar = tour.around(t1);
+            for (int t2 : {ar.first, ar.second}) {        // the two choices of x1 (alternate x1)
+                unordered_set<long long> broken; broken.insert(key(t1, t2));
+                double gain = D[t1][t2];                  // |x1|
+                auto close = closest(t2, tour, gain, broken, {});  // y1 candidates, g1 > 0
+                int tries = 5;                            // limited level-1 backtracking (~5)
+                for (auto& nc : close) {
+                    int t3 = nc.first; double Gi = nc.second;
+                    if (t3 == ar.first || t3 == ar.second) continue;  // t3 not a tour-neighbour of t1
+                    unordered_set<long long> joined; joined.insert(key(t2, t3));
+                    if (chooseX(tour, t1, t3, Gi, broken, joined))
+                        return true;                      // improvement -> restart from Step 2
+                    if (--tries == 0) break;
+                }
+            }
+        }
+        return false;
+    }
 ```
 
 `chooseX` chooses the link `x_i` to break from the last reached city. The forced-vs-alternate choice
@@ -355,54 +401,54 @@ shows up here: normally both tour links at the last city are tried, but once the
 the improvement; otherwise it recurses into `chooseY` to extend the chain — and the rule that
 backtracking is full only at level 2 but single-shot deeper is exactly the `len(broken) == 2` branch:
 
-```python
-    def chooseX(self, tour, t1, last, gain, broken, joined):
-        if len(broken) == 4:                              # deep: commit to the longer x_i
-            pred, succ = tour.around(last)
-            around = [pred] if TSP.dist(pred, last) > TSP.dist(succ, last) else [succ]
-        else:
-            around = tour.around(last)                    # both tour links are candidate x_i
-        for t2i in around:
-            xi = makePair(last, t2i)
-            Gi = gain + TSP.dist(last, t2i)               # add |x_i| to the running gain
-            if xi in joined or xi in broken:              # disjointness: X and Y stay disjoint
-                continue
-            added   = deepcopy(joined); added.add(makePair(t2i, t1))   # close-up edge (t2i, t1)
-            removed = deepcopy(broken); removed.add(xi)
-            relink = Gi - TSP.dist(t2i, t1)               # gain G* if we close up here
-            is_tour, new_tour = tour.generate(removed, added)
-            if not is_tour and len(added) > 2:            # infeasible close-up allowed only at i = 2
-                continue
-            if str(new_tour) in self.solutions:           # already-seen tour -> stop, avoid cycling
-                return False
-            if is_tour and relink > 0:                    # a strictly better tour: take it
-                self.heuristic_path = new_tour
-                self.heuristic_cost -= relink
-                return True
-            choice = self.chooseY(tour, t1, t2i, Gi, removed, joined)  # else extend the chain
-            if len(broken) == 2:                                       # level 2: keep trying the other x_2
-                if choice:
-                    return True
-            else:
-                return choice                                          # single shot for i > 2
-        return False
+```cpp
+    bool chooseX(const Tour& tour, int t1, int last, double gain,
+                 const unordered_set<long long>& broken,
+                 const unordered_set<long long>& joined) {
+        vector<int> aroundNodes;
+        auto pr = tour.around(last);
+        if (broken.size() == 4)                           // deep: commit to the longer x_i
+            aroundNodes.push_back(D[pr.first][last] > D[pr.second][last] ? pr.first : pr.second);
+        else { aroundNodes.push_back(pr.first); aroundNodes.push_back(pr.second); } // both candidate x_i
+        for (int t2i : aroundNodes) {
+            long long xi = key(last, t2i);
+            double Gi = gain + D[last][t2i];              // add |x_i| to the running gain
+            if (joined.count(xi) || broken.count(xi)) continue;  // disjointness: X and Y stay disjoint
+            auto added = joined; added.insert(key(t2i, t1));     // close-up edge (t2i, t1)
+            auto removed = broken; removed.insert(xi);
+            double relink = Gi - D[t2i][t1];              // gain G* if we close up here
+            vector<int> newTour;
+            bool isTour = tour.generate(removed, added, newTour);
+            if (!isTour && added.size() > 2) continue;    // infeasible close-up allowed only at i = 2
+            if (isTour && seen.count(tourKey(newTour))) return false; // already-seen -> avoid cycling
+            if (isTour && relink > 1e-12) {               // a strictly better tour: take it
+                path = newTour; cost -= relink; return true;
+            }
+            bool choice = chooseY(tour, t1, t2i, Gi, removed, joined); // else extend the chain
+            if (broken.size() == 2) { if (choice) return true; }       // level 2: try the other x_2
+            else return choice;                                        // single shot for i > 2
+        }
+        return false;
+    }
 ```
 
 `chooseY` chooses the next added link `y_i` from the close-up candidates — five contenders at level 2,
 just the single best deeper, which is the asymmetric backtracking budget made concrete:
 
-```python
-    def chooseY(self, tour, t1, t2i, gain, broken, joined):
-        ordered = self.closest(t2i, tour, gain, broken, joined)
-        top = 5 if len(broken) == 2 else 1                # 5 candidates at level 2, else top-ranked only
-        for node, (_, Gi) in ordered:
-            added = deepcopy(joined); added.add(makePair(t2i, node))   # y_i = (t2i, node)
-            if self.chooseX(tour, t1, node, Gi, broken, added):
-                return True
-            top -= 1
-            if top == 0:
-                return False
-        return False
+```cpp
+    bool chooseY(const Tour& tour, int t1, int t2i, double gain,
+                 const unordered_set<long long>& broken,
+                 const unordered_set<long long>& joined) {
+        auto ordered = closest(t2i, tour, gain, broken, joined);
+        int top = (broken.size() == 2) ? 5 : 1;           // 5 candidates at level 2, else top-ranked only
+        for (auto& nc : ordered) {
+            int node = nc.first; double Gi = nc.second;
+            auto added = joined; added.insert(key(t2i, node));   // y_i = (t2i, node)
+            if (chooseX(tour, t1, node, Gi, broken, added)) return true;
+            if (--top == 0) return false;
+        }
+        return false;
+    }
 ```
 
 So the causal chain: I refused to fix `k` because the right depth can't be known in advance, so I

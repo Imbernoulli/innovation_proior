@@ -36,122 +36,156 @@ Let me hand-trace the whole thing on a tiny tree before I commit to code, becaus
 
 One hand example proves nothing about the corners, though — the $c=K$ branch, zero-weight edges, the $-1$ case, an unbalanced tree where the centroid recursion really kicks in. So rather than trust my eye, I'll write the algorithm out and pit it against a dead-simple reference: an all-pairs brute force that, from every source, walks to every other vertex accumulating (cost, depth) and keeps the min depth wherever cost hits $K$. That reference is obviously correct and obviously too slow, which is exactly what I want from an oracle. Run both on a few fixed cases and then on thousands of random small weighted trees ($n\le 9$, $K\le 6$, edge weights $0$–$4$, so zero-weight edges and missed targets both occur). On the fixed cases: the path-of-$4$ above returns $2$; the official-style sample (edges $0\!-\!1{:}1,\,1\!-\!2{:}2,\,1\!-\!3{:}4$, $K=3$) returns $2$ for the path $0\!-\!1\!-\!2$ of length $3$; a tree with no exact-$K$ path returns $-1$; and a tree with a $0$-weight edge under $K=0$ returns $1$, a genuine two-vertex path of total length $0$. Over $3000$ random trials the centroid algorithm and the brute reference agreed on every single one — zero mismatches. That's the check I actually wanted: not that the idea sounds right, but that the implementation with all its index arithmetic ($K-c$, the stamp gating, the prune at cost $>K$) reproduces a trivially-correct oracle across the corners I couldn't enumerate by hand.
 
-Time to write it. I'll build an adjacency list of (neighbor, edge-length). `process(start)` takes any vertex of a still-undeleted piece: compute sizes, find the center, run the double-DFS combine, mark the center removed, then recurse on each neighbor that isn't removed. The combine uses the global `best_depth[]`/`seen[]` pair with the `stamp` trick, and `answer` is min-updated, initialized to $-1$ / "infinity." I'll write the DFS iteratively where recursion depth could reach $O(n)$ on a degenerate line, to avoid blowing Python's stack. I also need `parent` to be a reusable array: allocating a fresh length-$n$ parent array inside every recursive component would add an accidental $O(n)$ cost per component, which is not the algorithm I just derived.
+Time to write it as one self-contained C++17 program that reads `n K` then `n-1` lines `u v w` (0-based vertices, non-negative weights) from stdin and prints the answer. I'll build an adjacency list of (neighbor, edge-length). `process(start)` takes any vertex of a still-undeleted piece: compute sizes, find the center, run the double-DFS combine, mark the center removed, then recurse on each neighbor that isn't removed. The combine uses the global `best_depth[]`/`seen[]` pair with the `stamp` trick, and `answer` is min-updated, initialized to $-1$ / "infinity." I'll write everything iteratively — explicit stacks for the DFSes and an outer worklist for the piece-recursion — where depth could reach $O(n)$ on a degenerate line, to avoid blowing the call stack. I also need `par` to be a reusable array: allocating a fresh length-$n$ parent array inside every recursive component would add an accidental $O(n)$ cost per component, which is not the algorithm I just derived. Costs accumulate into `long long` so nothing overflows even though $K$ itself fits in 32 bits.
 
-```python
-import sys
+```cpp
+// Reads "n K" then n-1 lines "u v w" (0-based vertices, non-negative weights);
+// prints the minimum number of edges on a simple path of total length exactly K,
+// or -1 if no such path exists. O(n log n) via centroid decomposition.
+#include <bits/stdc++.h>
+using namespace std;
 
-def race(n, K, edges):
-    """edges: list of (u, v, w) with 0-based vertices and non-negative w.
-    Returns the minimum number of edges on a path of total length exactly K,
-    or -1 if no such path exists. O(n log n)."""
-    adj = [[] for _ in range(n)]
-    for u, v, w in edges:
-        adj[u].append((v, w))
-        adj[v].append((u, w))
+int n;
+long long K;
+vector<vector<pair<int, long long>>> g;        // g[u] = list of (neighbor, weight)
 
-    removed = [False] * n
-    size = [0] * n
-    parent = [-1] * n
+vector<char> removed_;                          // centroid already deleted from tree
+vector<int> sz;                                 // subtree sizes within current piece
+vector<int> par;                                // reusable parent array
 
-    # best_depth[c] = min #edges of a centroid->node half-path of total length
-    # c, among neighbor-subtrees processed SO FAR. Live only when seen[c] equals
-    # the current stamp (a per-centroid stamp gives O(1) reset, no O(K) wipe).
-    best_depth = [0] * (K + 1)
-    seen = [-1] * (K + 1)
-    stamp = 0
-    answer = -1
+// best_depth[c] = min #edges of a centroid->node half-path of total length c,
+// among neighbor-subtrees processed SO FAR. Live only when seen[c] == stamp
+// (a per-centroid stamp gives O(1) reset, no O(K) wipe).
+vector<int> best_depth;
+vector<long long> seen;
+long long stamp = 0;
+long long answer = -1;
 
-    def calc_size(root):
-        order = []
-        st = [root]
-        parent[root] = root
-        while st:                          # iterative DFS over the component
-            cur = st.pop()
-            order.append(cur)
-            for nxt, _ in adj[cur]:
-                if not removed[nxt] and nxt != parent[cur]:
-                    parent[nxt] = cur
-                    st.append(nxt)
-        for cur in order:
-            size[cur] = 1
-        for cur in reversed(order):        # children before parents
-            if parent[cur] != cur:
-                size[parent[cur]] += size[cur]
-        return order, parent
+// Iterative DFS over the current component: fill order[] and par[], then sizes.
+void calc_size(int root, vector<int>& order) {
+    order.clear();
+    vector<int> st = {root};
+    par[root] = root;
+    while (!st.empty()) {
+        int cur = st.back(); st.pop_back();
+        order.push_back(cur);
+        for (auto& e : g[cur]) {
+            int nxt = e.first;
+            if (!removed_[nxt] && nxt != par[cur]) {
+                par[nxt] = cur;
+                st.push_back(nxt);
+            }
+        }
+    }
+    for (int cur : order) sz[cur] = 1;
+    for (int i = (int)order.size() - 1; i >= 0; --i) {   // children before parents
+        int cur = order[i];
+        if (par[cur] != cur) sz[par[cur]] += sz[cur];
+    }
+}
 
-    def find_centroid(order, parent, total):
-        best, best_max = order[0], total + 1
-        for cur in order:
-            mx = total - size[cur]         # the "upward" piece
-            for nxt, _ in adj[cur]:
-                if not removed[nxt] and nxt != parent[cur]:
-                    if size[nxt] > mx:
-                        mx = size[nxt]     # a child subtree
-            if mx < best_max:
-                best_max, best = mx, cur
-        return best
+// The centroid minimizes the largest piece left after its deletion.
+int find_centroid(const vector<int>& order, int total) {
+    int best = order[0], best_max = total + 1;
+    for (int cur : order) {
+        int mx = total - sz[cur];                // the "upward" piece
+        for (auto& e : g[cur]) {
+            int nxt = e.first;
+            if (!removed_[nxt] && nxt != par[cur] && sz[nxt] > mx)
+                mx = sz[nxt];                    // a child subtree
+        }
+        if (mx < best_max) { best_max = mx; best = cur; }
+    }
+    return best;
+}
 
-    def dfs_collect(start, c0, centroid):
-        # (cost, depth) of every half-path into the subtree entered via 'start';
-        # 'centroid' is start's parent, so the DFS never crosses back through it
-        # into a sibling subtree. prune once cost > K.
-        out = []
-        st = [(start, c0, 1, centroid)]
-        while st:
-            cur, cost, depth, par = st.pop()
-            if cost > K:
-                continue
-            out.append((cost, depth))
-            for nxt, w in adj[cur]:
-                if not removed[nxt] and nxt != par:
-                    st.append((nxt, cost + w, depth + 1, cur))
-        return out
+// Collect (cost, depth) of every half-path into the subtree entered via 'start';
+// 'centroid' is start's parent, so the DFS never crosses back through it into a
+// sibling subtree. Prune once cost > K.
+void dfs_collect(int start, long long c0, int centroid,
+                 vector<pair<long long, int>>& out) {
+    out.clear();
+    // stack of (node, cost, depth, parent)
+    vector<tuple<int, long long, int, int>> st;
+    st.emplace_back(start, c0, 1, centroid);
+    while (!st.empty()) {
+        auto [cur, cost, depth, p] = st.back(); st.pop_back();
+        if (cost > K) continue;
+        out.emplace_back(cost, depth);
+        for (auto& e : g[cur]) {
+            int nxt = e.first;
+            if (!removed_[nxt] && nxt != p)
+                st.emplace_back(nxt, cost + e.second, depth + 1, cur);
+        }
+    }
+}
 
-    def process(start):
-        nonlocal stamp, answer
-        order, parent = calc_size(start)
-        if len(order) == 1:
-            return
-        total = size[start]
-        c = find_centroid(order, parent, total)
+void process(int start) {
+    // Iterative worklist over pieces to avoid recursion depth O(n) on a line graph.
+    vector<int> work = {start};
+    vector<int> order;
+    vector<pair<long long, int>> half;
+    while (!work.empty()) {
+        int s = work.back(); work.pop_back();
+        if (removed_[s]) continue;
+        calc_size(s, order);
+        if ((int)order.size() == 1) continue;
+        int total = sz[s];
+        int c = find_centroid(order, total);
 
-        stamp += 1
-        for nb, w in adj[c]:               # one neighbor-subtree at a time
-            if removed[nb]:
-                continue
-            half = dfs_collect(nb, w, c)
-            for cost, depth in half:       # query against EARLIER subtrees
-                if cost == K and (answer == -1 or depth < answer):
-                    answer = depth         # centroid is an endpoint
-                need = K - cost
-                if 0 <= need <= K and seen[need] == stamp:
-                    cand = depth + best_depth[need]
-                    if answer == -1 or cand < answer:
-                        answer = cand
-            for cost, depth in half:       # then fill, visible to LATER subtrees
-                if seen[cost] != stamp or depth < best_depth[cost]:
-                    seen[cost] = stamp
-                    best_depth[cost] = depth
+        ++stamp;
+        for (auto& e : g[c]) {                   // one neighbor-subtree at a time
+            int nb = e.first;
+            if (removed_[nb]) continue;
+            dfs_collect(nb, e.second, c, half);
+            for (auto& pr : half) {              // query against EARLIER subtrees
+                long long cost = pr.first; int depth = pr.second;
+                if (cost == K && (answer == -1 || depth < answer))
+                    answer = depth;              // centroid is an endpoint
+                long long need = K - cost;
+                if (need >= 0 && need <= K && seen[need] == stamp) {
+                    long long cand = (long long)depth + best_depth[need];
+                    if (answer == -1 || cand < answer) answer = cand;
+                }
+            }
+            for (auto& pr : half) {              // then fill, visible to LATER subtrees
+                long long cost = pr.first; int depth = pr.second;
+                if (seen[cost] != stamp || depth < best_depth[cost]) {
+                    seen[cost] = stamp;
+                    best_depth[cost] = depth;
+                }
+            }
+        }
 
-        removed[c] = True                  # delete centroid, recurse on pieces
-        for nb, _ in adj[c]:
-            if not removed[nb]:
-                process(nb)
+        removed_[c] = 1;                         // delete centroid, recurse on pieces
+        for (auto& e : g[c])
+            if (!removed_[e.first]) work.push_back(e.first);
+    }
+}
 
-    sys.setrecursionlimit(1 << 20)
-    process(0)
-    return answer
+int main() {
+    ios::sync_with_stdio(false);
+    cin.tie(nullptr);
+    if (!(cin >> n >> K)) return 0;             // empty input -> nothing to do
 
+    g.assign(n, {});
+    for (int i = 0; i < n - 1; ++i) {
+        int u, v; long long w;
+        cin >> u >> v >> w;
+        g[u].emplace_back(v, w);
+        g[v].emplace_back(u, w);
+    }
 
-if __name__ == "__main__":
-    data = sys.stdin.buffer.read().split()
-    if data:
-        it = iter(data)
-        n = int(next(it)); K = int(next(it))
-        edges = [(int(next(it)), int(next(it)), int(next(it)))
-                 for _ in range(n - 1)]
-        print(race(n, K, edges))
+    removed_.assign(n, 0);
+    sz.assign(n, 0);
+    par.assign(n, -1);
+    best_depth.assign(K + 1, 0);
+    seen.assign(K + 1, -1);
+
+    if (n >= 1) process(0);
+    cout << answer << "\n";
+    return 0;
+}
 ```
 
 I end up with each endpoint pair considered at the first deleted central vertex that its path crosses. Pair enumeration disappears because, at that vertex, I only keep the best earlier half-path for each length; query-then-fill keeps the two halves in different neighbor-subtrees; `seen` and `stamp` make each reset constant-time; and deleting a vertex whose remaining pieces are all at most half the current component keeps the recursion to $O(\log n)$ levels. The implementation follows that shape: size the current component, find the central vertex, combine every exact-$K$ path through it, delete it, and handle the remaining pieces independently.

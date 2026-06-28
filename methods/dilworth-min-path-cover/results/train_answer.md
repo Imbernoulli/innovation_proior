@@ -20,68 +20,61 @@ That the correspondence is an exact bijection, in both directions, is what makes
 
 This same quantity has a second face. If the DAG is the strict comparability relation of a finite poset — an edge $v \to w$ whenever $v \prec w$ — then a directed path is a *chain* of pairwise-comparable elements, a disjoint-path cover is a partition into chains, and the minimum path cover is the minimum number of chains covering the poset. By Dilworth's theorem that number equals the maximum size of an *antichain*, a set of pairwise-incomparable elements, which is the *width* of the poset. Two incomparable elements can never share a chain, so the largest antichain is a lower bound on the chains needed, and Dilworth's theorem makes it tight, with the antichain serving as a certificate of optimality. So $n - M$ is also a constructive way to compute poset width, and the bipartite reduction is the algorithmic face of the min-chain-cover $=$ max-antichain identity. One care: for the poset reading I must feed in the transitive strict comparability edges — an edge for every $v \prec w$, not only cover-relation-adjacent pairs — because a chain is any increasing subset; given a sparser edge set the algorithm still correctly solves the path-cover problem for that edge set, but the number need not be the width.
 
-The only remaining piece is computing $M$, and Kuhn's augmenting-path search supplies it in $O(V \cdot E) = O(n \cdot m)$, comfortable at this scale. For each right vertex I keep the left vertex it is currently matched to, or none. Processing left vertices one at a time, I run a DFS that tries to place the current vertex: walk to a neighbor $w$; if $w$ is free, claim it; if $w$ is taken by some $u'$, recursively try to re-place $u'$ on a different right vertex, freeing $w$ if that succeeds. A `used` flag per right vertex prevents revisiting a right vertex within one augmentation. Berge's lemma guarantees correctness: a matching is maximum exactly when no augmenting path exists, and the DFS finds one whenever one exists, so once every left vertex has been tried the matching is maximum and the count of successful placements is $M$. Wiring this to the split graph is direct: each original vertex $v$ is left index $v$ (its $v_{\text{out}}$) and right index $v$ (its $v_{\text{in}}$), both sides have $n$ indices, and each DAG edge $v \to w$ adds $w$ to the neighbor list of left vertex $v$. Then `min_path_cover` calls the matching routine and returns $n - M$.
+The only remaining piece is computing $M$, and Kuhn's augmenting-path search supplies it in $O(V \cdot E) = O(n \cdot m)$, comfortable at this scale. For each right vertex I keep the left vertex it is currently matched to, or none. Processing left vertices one at a time, I run a DFS that tries to place the current vertex: walk to a neighbor $w$; if $w$ is free, claim it; if $w$ is taken by some $u'$, recursively try to re-place $u'$ on a different right vertex, freeing $w$ if that succeeds. A `used` flag per right vertex prevents revisiting a right vertex within one augmentation. Berge's lemma guarantees correctness: a matching is maximum exactly when no augmenting path exists, and the DFS finds one whenever one exists, so once every left vertex has been tried the matching is maximum and the count of successful placements is $M$. Wiring this to the split graph is direct: each original vertex $v$ is left index $v$ (its $v_{\text{out}}$) and right index $v$ (its $v_{\text{in}}$), both sides have $n$ indices, and each DAG edge $v \to w$ adds $w$ to the neighbor list of left vertex $v$. The program reads `n m` then `m` lines of 1-based edges `u v` from stdin, runs Kuhn's matching over the split graph, and prints the single integer $n - M$ to stdout.
 
-```python
-import sys
+```cpp
+// Minimum path cover of a DAG via the split-vertex bipartite-matching reduction.
+// Reads from stdin: "n m" then m lines each "u v" (1-based) for a directed edge
+// u -> v of an acyclic graph. Writes to stdout the single integer minimum number
+// of vertex-disjoint paths covering every vertex exactly once, which equals
+// n - (maximum bipartite matching of the split graph).
+#include <bits/stdc++.h>
+using namespace std;
 
-sys.setrecursionlimit(1_000_000)
+int n;
+vector<vector<int>> adj;   // adj[v] = right copies w_in joined to left copy v_out
+vector<int> match_right;   // right vertex -> its matched left vertex, or -1
+vector<char> used;         // per-augmentation visited flag on right vertices
 
+// Kuhn's augmenting-path DFS: try to place left vertex u on some free/freeable
+// right vertex. Returns true on success.
+bool try_kuhn(int u) {
+    for (int w : adj[u]) {
+        if (!used[w]) {
+            used[w] = 1;
+            if (match_right[w] == -1 || try_kuhn(match_right[w])) {
+                match_right[w] = u;
+                return true;
+            }
+        }
+    }
+    return false;
+}
 
-def read_dag(data):
-    """Parse n, m, and m directed edges (1-based in input) into a 0-based
-    adjacency list of a DAG. Returns (n, adj)."""
-    it = iter(data)
-    n = int(next(it))
-    m = int(next(it))
-    adj = [[] for _ in range(n)]
-    for _ in range(m):
-        u = int(next(it)) - 1
-        v = int(next(it)) - 1
-        adj[u].append(v)
-    return n, adj
+int main() {
+    ios::sync_with_stdio(false);
+    cin.tie(nullptr);
 
+    long long m_ll;
+    if (!(cin >> n >> m_ll)) return 0;
+    long long m = m_ll;
 
-def bipartite_matching(n_left, n_right, adj):
-    """Maximum-cardinality matching of a bipartite graph by Kuhn's
-    augmenting-path search. adj[u] lists right vertices joined to left vertex u.
-    Returns the size of a maximum matching. O(V * E)."""
-    match_right = [-1] * n_right       # right vertex -> its matched left vertex
+    adj.assign(n, {});
+    for (long long i = 0; i < m; ++i) {
+        int u, v;
+        cin >> u >> v;
+        --u; --v;                 // to 0-based
+        adj[u].push_back(v);      // bipartite edge v_out - w_in
+    }
 
-    def try_kuhn(u, used):
-        for w in adj[u]:
-            if not used[w]:
-                used[w] = True
-                if match_right[w] == -1 or try_kuhn(match_right[w], used):
-                    match_right[w] = u
-                    return True
-        return False
+    match_right.assign(n, -1);
+    long long matching_size = 0;
+    for (int u = 0; u < n; ++u) {
+        used.assign(n, 0);
+        if (try_kuhn(u)) ++matching_size;
+    }
 
-    size = 0
-    for u in range(n_left):
-        used = [False] * n_right
-        if try_kuhn(u, used):
-            size += 1
-    return size
-
-
-def min_path_cover(n, adj):
-    bip = [[] for _ in range(n)]
-    for v in range(n):
-        for w in adj[v]:
-            bip[v].append(w)
-    matching_size = bipartite_matching(n, n, bip)
-    return n - matching_size
-
-
-def main():
-    data = sys.stdin.buffer.read().split()
-    if not data:
-        return
-    n, adj = read_dag(data)
-    print(min_path_cover(n, adj))
-
-
-if __name__ == "__main__":
-    main()
+    cout << (n - matching_size) << "\n";
+    return 0;
+}
 ```

@@ -40,98 +40,111 @@ I want a sanity check on this phase count too, since it is the whole point of th
 
 Each phase scans the edges once in the breadth-first layering and once in the layered search, with dead left vertices preventing repeated failed exploration inside the same phase. So the total time is `O(E sqrt V)` for `V = n + m`, and the stopping condition is Berge's criterion: when the breadth-first pass cannot reach any free right vertex, no augmenting path exists, so the matching is maximum.
 
-```python
-import sys
+```cpp
+// Maximum bipartite matching via Hopcroft-Karp.
+// Reads from stdin: n (left size) m (right size) e (edge count), then e edges
+// "u v" with u in [0,n), v in [0,m). Writes the matching size on the first
+// line, then one matched "u v" pair per line.
+#include <bits/stdc++.h>
+using namespace std;
 
+int main() {
+    ios::sync_with_stdio(false);
+    cin.tie(nullptr);
 
-def read_bipartite(data):
-    """Parse n (left size), m (right size), e (edge count), then e edges
-    (u in [0, n), v in [0, m)) into a 0-based adjacency list adj[u] -> [v, ...]."""
-    it = iter(data)
-    n = int(next(it))
-    m = int(next(it))
-    e = int(next(it))
-    adj = [[] for _ in range(n)]
-    for _ in range(e):
-        u = int(next(it))
-        v = int(next(it))
-        adj[u].append(v)
-    return n, m, adj
+    int n, m;
+    long long e;
+    if (!(cin >> n >> m >> e)) return 0;
 
+    vector<vector<int>> adj(n);
+    for (long long i = 0; i < e; ++i) {
+        int u, v;
+        cin >> u >> v;
+        adj[u].push_back(v);
+    }
 
-def max_matching(n, m, adj):
-    """Return maximum matching size and matched (left, right) pairs."""
-    sys.setrecursionlimit(max(sys.getrecursionlimit(), n + m + 10))
-    match_l = [-1] * n
-    match_r = [-1] * m
-    INF = n + m + 1
-    level = [INF] * n
-    free_level = INF
+    const int INF = n + m + 1;
+    vector<int> match_l(n, -1), match_r(m, -1), level(n, INF);
+    int free_level = INF;
 
-    def build_layers():
-        nonlocal free_level
-        queue = []
-        head = 0
-        free_level = INF
-        for u in range(n):
-            if match_l[u] == -1:
-                level[u] = 0
-                queue.append(u)
-            else:
-                level[u] = INF
-        while head < len(queue):
-            u = queue[head]
-            head += 1
-            next_level = level[u] + 1
-            if next_level >= free_level:
-                continue
-            for v in adj[u]:
-                w = match_r[v]
-                if w == -1:
-                    free_level = next_level
-                elif level[w] == INF:
-                    level[w] = next_level
-                    queue.append(w)
-        return free_level != INF
+    // BFS: assign left-side layers, record shortest free-right distance.
+    auto build_layers = [&]() -> bool {
+        free_level = INF;
+        vector<int> queue;
+        queue.reserve(n);
+        for (int u = 0; u < n; ++u) {
+            if (match_l[u] == -1) {
+                level[u] = 0;
+                queue.push_back(u);
+            } else {
+                level[u] = INF;
+            }
+        }
+        size_t head = 0;
+        while (head < queue.size()) {
+            int u = queue[head++];
+            int next_level = level[u] + 1;
+            if (next_level >= free_level) continue;
+            for (int v : adj[u]) {
+                int w = match_r[v];
+                if (w == -1) {
+                    free_level = next_level;
+                } else if (level[w] == INF) {
+                    level[w] = next_level;
+                    queue.push_back(w);
+                }
+            }
+        }
+        return free_level != INF;
+    };
 
-    def find_path(u):
-        next_level = level[u] + 1
-        for v in adj[u]:
-            w = match_r[v]
-            if w == -1:
-                if next_level == free_level:
-                    match_l[u] = v
-                    match_r[v] = u
-                    level[u] = INF
-                    return True
-            elif next_level < free_level and level[w] == next_level and find_path(w):
-                match_l[u] = v
-                match_r[v] = u
-                level[u] = INF
-                return True
-        level[u] = INF
-        return False
+    // DFS inside the layered graph; flip edges on success, mark vertices dead.
+    function<bool(int)> find_path = [&](int u) -> bool {
+        int next_level = level[u] + 1;
+        for (int v : adj[u]) {
+            int w = match_r[v];
+            if (w == -1) {
+                if (next_level == free_level) {
+                    match_l[u] = v;
+                    match_r[v] = u;
+                    level[u] = INF;
+                    return true;
+                }
+            } else if (next_level < free_level && level[w] == next_level && find_path(w)) {
+                match_l[u] = v;
+                match_r[v] = u;
+                level[u] = INF;
+                return true;
+            }
+        }
+        level[u] = INF;
+        return false;
+    };
 
-    while build_layers():
-        for u in range(n):
-            if match_l[u] == -1 and level[u] == 0:
-                find_path(u)
-    pairs = [(u, match_l[u]) for u in range(n) if match_l[u] != -1]
-    return len(pairs), pairs
+    while (build_layers()) {
+        for (int u = 0; u < n; ++u) {
+            if (match_l[u] == -1 && level[u] == 0) {
+                find_path(u);
+            }
+        }
+    }
 
-
-def main():
-    data = sys.stdin.buffer.read().split()
-    if not data:
-        return
-    n, m, adj = read_bipartite(data)
-    size, pairs = max_matching(n, m, adj)
-    out = [str(size)]
-    for u, v in pairs:
-        out.append(f"{u} {v}")
-    sys.stdout.write("\n".join(out) + "\n")
-
-
-if __name__ == "__main__":
-    main()
+    int size = 0;
+    string out;
+    for (int u = 0; u < n; ++u) {
+        if (match_l[u] != -1) ++size;
+    }
+    out += to_string(size);
+    out += '\n';
+    for (int u = 0; u < n; ++u) {
+        if (match_l[u] != -1) {
+            out += to_string(u);
+            out += ' ';
+            out += to_string(match_l[u]);
+            out += '\n';
+        }
+    }
+    cout << out;
+    return 0;
+}
 ```

@@ -300,104 +300,74 @@ already-sequenced machines in cycles after each insertion, and grind to a local 
 bottleneck keeps "shifting" from machine to machine as the graph fills in, which is the whole character
 of the thing.
 
-Now let me land it on real code. The graph carries conjunctive arcs (job routes) as a fixed first set
-of successors/predecessors and disjunctive arcs (machine orders) as a second set I add and remove. A
-forward longest-path pass gives release dates, a backward pass gives downstream tails, and a
-topological longest path gives the makespan and the critical path.
+Now let me land it on real code, as a single self-contained C++17 program that reads a job-shop
+instance from stdin (the standard OR-Library format — `n m`, then one route of `machine duration`
+pairs per job) and prints the makespan. The graph carries conjunctive arcs (job routes) as a fixed
+first column of successors/predecessors and disjunctive arcs (machine orders) as a second column I add
+and remove. A forward longest-path pass gives release dates, a backward pass gives downstream tails,
+and a topological longest path gives the makespan and the critical path — all `O(n)` over the two
+adjacency columns, with `long long` for the times.
 
-```python
-import numpy as np
-from collections import namedtuple
-
-Task = namedtuple("Task", "p head due")      # duration, release (head), due date f
-
-class DisjunctiveGraph:
-    """Conjunctive (job) arcs are fixed; disjunctive (machine) arcs are added /
-    removed as machines get sequenced. Longest paths give releases, due dates, makespan."""
-    def __init__(self, costs, machines, num_j, num_m):
-        self.num_j, self.num_m = num_j, num_m
-        self.num_nodes = num_j * num_m
-        self.costs = costs.reshape(-1).astype(np.float32)      # d_i
-        self.machines = machines.reshape(-1).astype(np.int32)  # machine of op i
-        # column 0 = conjunctive (job) neighbor, column 1 = disjunctive (machine) neighbor
-        self.successors   = -np.ones((self.num_nodes, 2), dtype=np.int64)
-        self.predecessors = -np.ones((self.num_nodes, 2), dtype=np.int64)
-        for job in range(num_j):                               # wire the job routes (fixed)
-            for idx in range(num_m - 1):
-                n = job * num_m + idx
-                self.successors[n, 0]       = n + 1
-                self.predecessors[n + 1, 0] = n
-
-    def add_arc(self, s, e):      # orient one machine edge s -> e
-        self.successors[s, 1] = e; self.predecessors[e, 1] = s
-    def remove_arc(self, s, e):
-        self.successors[s, 1] = -1; self.predecessors[e, 1] = -1
-
-    def makespan(self, reverse=False):
-        # forward labels include each op's duration; reverse labels give paths from op to the end
-        # returns (makespan, critical_path, distances) — None makespan signals a cycle
-        ...   # O(n) labeling over the job-list / machine-list structure
+```cpp
+int n_jobs, n_mach, n_ops;
+vector<ll> dur;                       // dur[op]
+vector<int> mach;                     // machine of op
+vector<array<int,2>> succ, pred;      // col 0 = job neighbor (fixed), col 1 = machine neighbor
+inline void add_arc(int s,int e){ succ[s][1]=e; pred[e][1]=s; }      // orient one machine edge
+inline void remove_arc(int s,int e){ succ[s][1]=-1; pred[e][1]=-1; }
+// makespan(): forward labels include each op's duration; longest_path(false,...) gives paths from op
+// to the end; both run in O(n) over the two adjacency columns, returning -1 / false on a cycle.
 ```
 
-The single-machine subproblem `1|r_i,q_i|C_max == 1|r_i|L_max`. I can drop in Carlier's branch and
-bound exactly as derived above, or — equivalently and more cleanly to code — a tiny
-constraint-programming model. The model stores the due date `f_i = H - q_i`, not the delivery tail
-itself: an interval per operation released no earlier than its head, no two overlapping, and minimize
-the maximum of `end - due`, which is exactly `L_max`.
+The single-machine subproblem `1|r_i,q_i|C_max == 1|r_i|L_max`. I drop in Carlier's branch and bound
+exactly as derived above: Schrage gives the upper bound and the critical block, `h(J)` the lower
+bound, and the critical job branches before/after the block by inflating its head or tail. Tasks carry
+duration, head `r`, and tail `q`, and the subproblem returns the optimal `L_max = C_max_with_tails - H`
+and the order; extra precedence pairs (for cycle repair) are enforced by inflating heads/tails.
 
-```python
-from ortools.sat.python import cp_model
-
-def solve_lmax(tasks, precs=None, horizon=20000):
-    """Exact 1|r_i|L_max on one machine. tasks[op] = Task(p, head, due)."""
-    mdl = cp_model.CpModel()
-    iv = {}
-    for op, t in tasks.items():
-        s = mdl.NewIntVar(t.head, horizon, f"s_{op}")          # start >= head r_i
-        e = mdl.NewIntVar(t.head + t.p, horizon, f"e_{op}")
-        iv[op] = (s, e, t.due, mdl.NewIntervalVar(s, t.p, e, f"i_{op}"))
-    mdl.AddNoOverlap([x[3] for x in iv.values()])              # one op at a time
-    if precs:                                                  # cycle-avoidance constraints
-        for a, b in precs:
-            mdl.Add(iv[b][0] < iv[a][0])
-    lmax = mdl.NewIntVar(-horizon, horizon, "Lmax")
-    mdl.AddMaxEquality(lmax, [e - due for (_, e, due, _) in iv.values()])
-    mdl.Minimize(lmax)                                         # minimize max lateness
-    solver = cp_model.CpSolver(); solver.Solve(mdl)
-    order = [op for _, op in sorted((solver.Value(iv[op][0]), op) for op in iv)]
-    return solver.ObjectiveValue(), np.array(order)
+```cpp
+struct CTask { ll p, r, q; int id; };           // duration, head, tail
+// schrage(T, seq): dispatch released jobs largest-tail-first -> upper bound + dispatch order.
+// carlier_rec(T): from the Schrage critical block J, lower bound h(J)=min r + sum p + min q; prune
+//   when h(J) >= incumbent; else branch the critical job AFTER J (bump its head) or BEFORE J (bump
+//   its tail). Trees rarely exceed 2n nodes. carlier_best / carlier_seq hold the optimum.
+struct LmaxResult { ll ell; vector<int> order; };
+LmaxResult solve_lmax(const vector<int>& ops, const vector<ll>& head, const vector<ll>& tail,
+                      ll H, const vector<pair<int,int>>& extraPrec);   // returns ell = L_max
 ```
 
-Release and due-date labels for a machine's operations are read straight off the two longest-path
-passes. The head is the earliest start (forward longest path to the op, minus its own duration). The
-backward label gives the duration of the longest path from the op to the end, including the op; so the
-code's due date is `H - q_i = H - (long_from_i - d_i)`:
+Release and tail labels for a machine's operations are read straight off the two longest-path passes:
+the head is the earliest start (forward longest path to the op, minus its own duration), and the tail
+is the backward label minus the op's duration (the downstream work after it). `H` is the current
+makespan, common to every candidate, so `ell = C_max_with_tails - H` ranks the machines.
 
-```python
-def heads_and_due_dates(g, ops, costs):
-    ms, _, long_to   = g.makespan()              # forward longest paths
-    _,  _, long_from = g.makespan(reverse=True)  # backward longest paths
-    return {op: Task(p=int(costs[op]),
-                     head=int(long_to[op]   - costs[op]),
-                     due=int(ms - long_from[op] + costs[op])) for op in ops}
+```cpp
+void heads_tails(vector<ll>& head, vector<ll>& tail, ll& H){
+    vector<ll> fwd, bwd;
+    longest_path(true, fwd);                     // forward longest paths
+    longest_path(false, bwd);                    // backward longest paths
+    H=0; for(int v=0;v<n_ops;++v) H=max(H,fwd[v]);
+    for(int op=0;op<n_ops;++op){ head[op]=fwd[op]-dur[op]; tail[op]=bwd[op]-dur[op]; }
+}
 ```
 
-Solving one machine into the graph, re-solving if the new order created a cycle (add the offending
+Solving one machine into the graph, re-solving if the new order created a cycle (find the offending
 precedence and try again):
 
-```python
-def insert_machine(g, tasks):
-    ms, precs = None, []
-    while ms is None:
-        lmax, order = solve_lmax(tasks, precs)
-        for s, e in zip(order[:-1], order[1:]):
-            g.add_arc(s, e)
-        ms, cycle, _ = g.makespan()              # None -> cycle, find culprit precedence
-        if ms is None:
-            for s, e in zip(order[:-1], order[1:]):
-                g.remove_arc(s, e)
-            precs.append(_offending_pair(cycle, order))
-    return order, lmax, ms
+```cpp
+InsertResult insert_machine(const vector<int>& ops){
+    vector<pair<int,int>> precs;
+    while(true){
+        vector<ll> head,tail; ll H; heads_tails(head,tail,H);
+        LmaxResult lr = solve_lmax(ops, head, tail, H, precs);
+        for(size_t i=0;i+1<lr.order.size();++i) add_arc(lr.order[i], lr.order[i+1]);
+        ll ms = makespan();
+        if(ms>=0) return {lr.order, lr.ell, ms};                     // feasible: done
+        auto cyc = succ_cycle();                                     // cycle -> find culprit
+        for(size_t i=0;i+1<lr.order.size();++i) remove_arc(lr.order[i], lr.order[i+1]);
+        precs.push_back(offending_pair(cyc, lr.order));
+    }
+}
 ```
 
 And the driver — the shifting bottleneck loop itself: each iteration scores every unsequenced machine
@@ -405,43 +375,26 @@ by its optimal `L_max` relative to the same current bound, fixes the worst (the 
 re-optimizes the already-sequenced machines in cycles; a final local-reoptimization grinds to a local
 optimum.
 
-```python
-def shifting_bottleneck(instance, max_reopt=3):
-    num_j, num_m = instance["j"], instance["m"]
-    machines = instance["machines"].reshape(-1)
-    machine_ops = [np.argwhere(machines == m).reshape(-1) for m in range(num_m)]
-    g = DisjunctiveGraph(instance["costs"], instance["machines"], num_j, num_m)
-    costs = g.costs.astype(int)
-    sol = -np.ones((num_m, num_j), dtype=np.int32)
-    to_schedule, scheduled = set(range(num_m)), []
-
-    for it in range(num_m):
-        max_lmax, bm, bperm = -np.inf, None, None
-        for k in to_schedule:                                  # score every unsequenced machine
-            tasks = heads_and_due_dates(g, machine_ops[k], costs)
-            order, lmax, _ = insert_machine(g, tasks)          # optimal single-machine L_max
-            if lmax > max_lmax:                                # the bottleneck = largest L_max
-                max_lmax, bm, bperm = lmax, k, order
-            for s, e in zip(order[:-1], order[1:]):            # undo the trial insertion
-                g.remove_arc(s, e)
-        sol[bm] = bperm                                        # commit the bottleneck's order
-        for s, e in zip(bperm[:-1], bperm[1:]):
-            g.add_arc(s, e)
-        if 0 < it < num_m - 1:                                 # re-optimize previously sequenced
-            reoptimize(g, sol, scheduled, machine_ops, costs, max_reopt)
-        to_schedule.remove(bm); scheduled.append(bm)
-    return last_reoptimize(g, sol, scheduled, machine_ops, costs)
-
-def reoptimize(g, sol, scheduled, machine_ops, costs, max_reopt):
-    for _ in range(max_reopt):                                 # ~3 cycles, as the procedure prescribes
-        scores = []
-        for m in scheduled:
-            for s, e in zip(sol[m][:-1], sol[m][1:]):          # pull machine m out
-                g.remove_arc(s, e)
-            tasks = heads_and_due_dates(g, machine_ops[m], costs)  # fresh labels without m
-            order, lmax, _ = insert_machine(g, tasks)          # re-solve and drop back in
-            sol[m] = order; scores.append((lmax, m))
-        scheduled[:] = [m for _, m in sorted(scores, reverse=True)]   # worst-first next sweep
+```cpp
+for(int it=0; it<n_mach; ++it){
+    ll bestEll=LLONG_MIN; int bm=-1; vector<int> bperm;
+    for(int k: to_schedule){                                         // score every unsequenced machine
+        InsertResult r = insert_machine(machine_ops[k]);             // optimal single-machine L_max
+        if(r.ell>bestEll){ bestEll=r.ell; bm=k; bperm=r.order; }     // bottleneck = largest L_max
+        for(size_t i=0;i+1<r.order.size();++i) remove_arc(r.order[i], r.order[i+1]);  // undo trial
+    }
+    sol[bm]=bperm;                                                   // commit the bottleneck's order
+    for(size_t i=0;i+1<bperm.size();++i) add_arc(bperm[i], bperm[i+1]);
+    if(it>0 && it<n_mach-1)                                          // re-optimize previously sequenced
+        for(int cyc=0; cyc<3; ++cyc){                                // ~3 worst-first cycles
+            vector<pair<ll,int>> sc;
+            for(int m: scheduled) sc.push_back({reopt_machine(m), m});  // pull out, re-solve, drop back
+            sort(sc.rbegin(), sc.rend());                            // worst-first next sweep
+            scheduled.clear(); for(auto& pr:sc) scheduled.push_back(pr.second);
+        }
+    to_schedule.erase(find(to_schedule.begin(),to_schedule.end(),bm)); scheduled.push_back(bm);
+}
+// then last_reoptimize: cycle until a full sweep yields no makespan improvement.
 ```
 
 Makespan is a longest path in the oriented disjunctive graph; the orientation is NP-hard jointly, so I

@@ -27,18 +27,94 @@ negated so feasibility is respected before differencing.
 fixed. Returns an array the length of the valid-bin slice. Deterministic given the stream. Works at
 any capacity and item sizes.
 
-```python
-import numpy as np
+Single-file C++17 program. It reads from stdin the capacity `C`, then the stream of item
+sizes (either `n` followed by `n` sizes, or sizes until EOF), runs the online bin-packing
+simulator under the gap-difference `priority` rule, and prints to stdout: bins used, the L1
+lower bound `ceil(sum/C)`, and percent excess over it.
 
-def priority(item, bins):
-    """Relational score: squared distance below the emptiest valid bin, item-weighted,
-    then differenced across neighbouring bins so each bin is judged in context.
+```cpp
+// Online 1-D bin packing with the "gap-difference" relational priority rule.
+// Reads from stdin: first token is capacity C, then n, then n item sizes
+// (or just C followed by item sizes until EOF). Runs the FunSearch online
+// bin-packing simulator -- each item is placed irrevocably into the argmax
+// bin under priority(item, valid_bin_remaining) -- and prints to stdout:
+//   bins used, the L1 lower bound ceil(sum/C), and percent excess over it.
+#include <bits/stdc++.h>
+using namespace std;
 
-    `bins` are remaining capacities of bins that can fit the item (bins - item >= 0).
-    """
-    max_bin_cap = max(bins)
-    score = (bins - max_bin_cap) ** 2 / item     # distance below the emptiest bin, item-weighted
-    score[bins > item] = -score[bins > item]      # respect feasibility on the fitting bins
-    score[1:] -= score[:-1]                        # couple each bin to its neighbour (differencing)
-    return score
+// Relational score: squared distance below the emptiest valid bin, item-weighted,
+// then differenced across neighbouring bins so each bin is judged in context.
+// `rem` holds remaining capacities of the bins that can fit the item (rem >= item).
+static vector<double> priority(double item, const vector<double>& rem) {
+    int n = (int)rem.size();
+    double max_bin_cap = rem[0];
+    for (int i = 1; i < n; ++i) max_bin_cap = max(max_bin_cap, rem[i]);
+    vector<double> score(n);
+    for (int i = 0; i < n; ++i) {
+        double d = rem[i] - max_bin_cap;
+        score[i] = d * d / item;            // distance below the emptiest bin, item-weighted
+        if (rem[i] > item) score[i] = -score[i];   // respect feasibility on the fitting bins
+    }
+    for (int i = n - 1; i >= 1; --i)        // couple each bin to its neighbour (differencing)
+        score[i] -= score[i - 1];
+    return score;
+}
+
+int main() {
+    ios::sync_with_stdio(false);
+    cin.tie(nullptr);
+
+    double C;
+    if (!(cin >> C)) return 0;
+
+    // Read either "n then n sizes" or "all sizes until EOF".
+    vector<double> items;
+    double x;
+    vector<double> rest;
+    while (cin >> x) rest.push_back(x);
+    if (!rest.empty()) {
+        // If the first value is a plausible count matching the remainder, treat it as n.
+        long long maybe_n = (long long)llround(rest[0]);
+        if (maybe_n >= 0 && (size_t)maybe_n == rest.size() - 1 &&
+            fabs(rest[0] - (double)maybe_n) < 1e-9) {
+            items.assign(rest.begin() + 1, rest.end());
+        } else {
+            items = rest;
+        }
+    }
+
+    // One pre-allocated remaining-capacity slot per item guarantees a fresh
+    // bin is always available; a bin is "used" iff its remaining ever dropped below C.
+    int m = (int)items.size();
+    vector<double> bins(max(m, 1), C);
+
+    double total = 0.0;
+    for (double item : items) {
+        total += item;
+        // Gather valid bins (remaining >= item) in stable positional order.
+        vector<int> valid;
+        vector<double> valid_rem;
+        valid.reserve(bins.size());
+        valid_rem.reserve(bins.size());
+        for (int i = 0; i < (int)bins.size(); ++i)
+            if (bins[i] - item >= 0) { valid.push_back(i); valid_rem.push_back(bins[i]); }
+        // (A fresh capacity-C bin is always among the valid ones for a sane item.)
+        vector<double> sc = priority(item, valid_rem);
+        int best = 0;
+        for (int i = 1; i < (int)sc.size(); ++i)
+            if (sc[i] > sc[best]) best = i;
+        bins[valid[best]] -= item;
+    }
+
+    long long used = 0;
+    for (double b : bins) if (b != C) ++used;
+
+    long long lb = (long long)ceil(total / C - 1e-12);
+    double excess = lb > 0 ? 100.0 * (double)(used - lb) / (double)lb : 0.0;
+
+    cout << used << "\n";
+    cout << lb << "\n";
+    cout << fixed << setprecision(4) << excess << "\n";
+    return 0;
+}
 ```

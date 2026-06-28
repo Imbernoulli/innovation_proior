@@ -54,92 +54,107 @@ That's the lever. Walk $i$ from $1$ upward carrying a running $k$ that holds the
 
 Before I trust the $h[i] \ge h[i-1]-1$ argument I'd like to watch the carried $k$ actually behave, because the amortization claim is the whole point and it's exactly the kind of thing that's easy to believe and wrong. Take the same string with $SA = [8,3,4,5,0,6,1,7,2]$; inverting gives $\mathrm{rank}$ by position $= [4,6,8,1,2,3,5,7,0]$. Now walk positions $i = 0,1,2,3,\dots$ carrying $k$. At $i=0$ ($\mathrm{rank}=4$, predecessor pos $5 = \texttt{aab\$}$ vs $\texttt{aabaaaab\$}$): nothing carried, I extend and match $\texttt{aab}$, so $h = 3$. At $i=1$ ($\mathrm{rank}=6$): I drop $k$ to $2$ and extend — predecessor is pos $6 = \texttt{ab\$}$ vs $\texttt{abaaaab\$}$, which share $\texttt{ab}$, so $h$ stays $2$, no extension past the inherited $2$. At $i=2$ ($\mathrm{rank}=8$): drop to $1$, predecessor pos $7 = \texttt{b\$}$ vs $\texttt{baaaab\$}$ share $\texttt{b}$, $h = 1$. At $i=3$ ($\mathrm{rank}=1$): drop to $0$, predecessor pos $8 = \texttt{\$}$ vs $\texttt{aaaab\$}$ share nothing, $h = 0$. So across $i = 0,1,2,3$ the values run $3, 2, 1, 0$ — each exactly the previous minus one, the inequality biting at its tightest, and at every step I started the character comparison from the dropped $k$ rather than from zero. Then $i=4$ ($\mathrm{rank}=2$, predecessor pos $3$): $\mathrm{Suffix}(4) = \texttt{aaab\$}$ against $\mathrm{Suffix}(3) = \texttt{aaaab\$}$ jumps back up to $h=3$, extending $\texttt{aaa}$ from a dropped $k=0$ — a real climb, paid for by the text pointer $i+k$ advancing, never retreating. Indexed back by rank, these give $\mathrm{height} = [0,0,3,2,3,1,2,0,1]$ over ranks $0..8$. Checking a couple directly against the sorted list: rank $2$ is pos $4=\texttt{aaab\$}$ against rank $1$ pos $3=\texttt{aaaab\$}$ — they share $\texttt{aaa}$, LCP $3$, and $\mathrm{height}[2]=3$; rank $4$ is pos $0=\texttt{aabaaaab\$}$ against rank $3$ pos $5=\texttt{aab\$}$, sharing $\texttt{aab}$, LCP $3$, and $\mathrm{height}[4]=3$. Both match. The recurrence and its amortization do what the argument said.
 
-Putting the two together: doubling with radix sort gives $SA$ and $\mathrm{rank}$ in $O(n\log n)$, and this position-order recurrence gives $\mathrm{height}$ in $O(n)$ on top. Let me write it. I'll keep the construction faithful to the tight integer-array form: $x$ holds current ranks, $y$ doubles as the second-key order and then the old ranks, $sa$ the permutation, and a single counting array; the sentinel is an appended smallest character, while missing second halves are guarded explicitly as the synthetic smallest key.
+Putting the two together: doubling with radix sort gives $SA$ and $\mathrm{rank}$ in $O(n\log n)$, and this position-order recurrence gives $\mathrm{height}$ in $O(n)$ on top. Let me write it as a single self-contained C++17 program that reads one line — the string $S$ — from standard input and prints $n$, the $sa[]$ row, then the $height[]$ row. I'll keep the construction faithful to the tight integer-array form: $x$ holds current ranks, $y$ doubles as the second-key order and then the old ranks, $sa$ the permutation, and a single counting array; the sentinel is an appended smallest character, while missing second halves are guarded explicitly as the synthetic smallest key. `main` does the boilerplate — append the sentinel, rank-compress characters to dense codes, call the two routines, print.
 
-```python
-def build_suffix_array(r, n, m):
-    """sa[0..n-1] sorting the n suffixes of r (integer codes in [0, m),
-    r[n-1] the unique smallest sentinel) lexicographically. O(n log n)."""
-    sa = [0] * n
-    x = list(r)            # working integer key per suffix; seed with the code
-    y = [0] * n            # scratch
-    ws = [0] * max(m, n)   # bounded-key tally
+```cpp
+// Reads one line (the string S) from stdin. Appends a unique smallest sentinel,
+// builds the suffix array sa[] (start positions of all suffixes, including the
+// sentinel suffix, in lexicographic order) in O(n log n), then the height array
+// (height[i] = LCP(Suffix(sa[i-1]), Suffix(sa[i])), height[0] = 0) in O(n).
+// Prints n, then the sa[] row, then the height[] row (space-separated).
+#include <bits/stdc++.h>
+using namespace std;
 
-    # Initial order by one code.
-    for i in range(m):
-        ws[i] = 0
-    for i in range(n):
-        ws[x[i]] += 1
-    for i in range(1, m):
-        ws[i] += ws[i - 1]
-    for i in range(n - 1, -1, -1):
-        ws[x[i]] -= 1
-        sa[ws[x[i]]] = i
+// sa[0..n-1] sorts the n suffixes of r (integer codes in [0, m), r[n-1] the
+// unique smallest sentinel) lexicographically. O(n log n).
+vector<int> build_suffix_array(const vector<int>& r, int n, int m) {
+    vector<int> sa(n), x(r), y(n, 0), ws(max(m, n), 0);
 
-    j, p = 1, 1
-    while p < n:
-        # Build the order by the later half, then stably sort by the earlier half.
-        p = 0
-        for i in range(max(n - j, 0), n):
-            y[p] = i
-            p += 1
-        for i in range(n):
-            if sa[i] >= j:
-                y[p] = sa[i] - j
-                p += 1
+    // Initial order by one code.
+    for (int i = 0; i < m; i++) ws[i] = 0;
+    for (int i = 0; i < n; i++) ws[x[i]]++;
+    for (int i = 1; i < m; i++) ws[i] += ws[i - 1];
+    for (int i = n - 1; i >= 0; i--) sa[--ws[x[i]]] = i;
 
-        wv = [x[y[i]] for i in range(n)]
-        for i in range(m):
-            ws[i] = 0
-        for i in range(n):
-            ws[wv[i]] += 1
-        for i in range(1, m):
-            ws[i] += ws[i - 1]
-        for i in range(n - 1, -1, -1):
-            ws[wv[i]] -= 1
-            sa[ws[wv[i]]] = y[i]
+    for (long long j = 1, p = 1; p < n; j *= 2) {
+        // Build the order by the later half, then stably sort by the earlier half.
+        p = 0;
+        for (long long i = max((long long)n - j, 0LL); i < n; i++) y[p++] = (int)i;
+        for (int i = 0; i < n; i++)
+            if (sa[i] >= j) y[p++] = sa[i] - (int)j;
 
-        # Reuse the arrays: y is the previous key array, x receives new keys.
-        x, y = y, x
-        p = 1
-        x[sa[0]] = 0
-        for i in range(1, n):
-            a, b = sa[i - 1], sa[i]
-            left_a = y[a + j] if a + j < n else -1
-            left_b = y[b + j] if b + j < n else -1
-            same = y[a] == y[b] and left_a == left_b
-            if same:
-                x[b] = p - 1
-            else:
-                x[b] = p
-                p += 1
+        vector<int> wv(n);
+        for (int i = 0; i < n; i++) wv[i] = x[y[i]];
+        for (int i = 0; i < m; i++) ws[i] = 0;
+        for (int i = 0; i < n; i++) ws[wv[i]]++;
+        for (int i = 1; i < m; i++) ws[i] += ws[i - 1];
+        for (int i = n - 1; i >= 0; i--) sa[--ws[wv[i]]] = y[i];
 
-        m = p
-        j *= 2
-    return sa
+        // Reuse the arrays: y becomes the previous key array, x receives new keys.
+        swap(x, y);
+        p = 1;
+        x[sa[0]] = 0;
+        for (int i = 1; i < n; i++) {
+            int a = sa[i - 1], b = sa[i];
+            int left_a = (a + j < n) ? y[a + (int)j] : -1;
+            int left_b = (b + j < n) ? y[b + (int)j] : -1;
+            bool same = (y[a] == y[b]) && (left_a == left_b);
+            if (same) x[b] = (int)p - 1;
+            else x[b] = (int)p++;
+        }
+        m = (int)p;
+    }
+    return sa;
+}
 
+// height[i] = LCP(Suffix(sa[i-1]), Suffix(sa[i])); height[0] = 0. O(n).
+vector<int> build_height(const vector<int>& s, const vector<int>& sa) {
+    int n = (int)s.size();
+    vector<int> rank(n, 0), height(n, 0);
+    for (int i = 0; i < n; i++) rank[sa[i]] = i;  // inverse of sa
 
-def build_height(s, sa):
-    """height[i] = LCP(Suffix(sa[i-1]), Suffix(sa[i])); height[0] = 0. O(n)."""
-    n = len(s)
-    rank = [0] * n
-    for i in range(n):
-        rank[sa[i]] = i    # inverse of sa
-    height = [0] * n
+    int k = 0;
+    for (int i = 0; i < n; i++) {
+        int pos = rank[i];
+        if (pos == 0) { k = 0; continue; }
+        if (k) k--;
+        int j = sa[pos - 1];
+        while (i + k < n && j + k < n && s[i + k] == s[j + k]) k++;
+        height[pos] = k;
+    }
+    return height;
+}
 
-    k = 0
-    for i in range(n):
-        pos = rank[i]
-        if pos == 0:
-            k = 0
-            continue
-        if k:
-            k -= 1
-        j = sa[pos - 1]
-        while i + k < n and j + k < n and s[i + k] == s[j + k]:
-            k += 1
-        height[pos] = k
-    return height
+int main() {
+    string text;
+    getline(cin, text);
+
+    // Append a sentinel (chr 0) strictly smaller than every real character,
+    // then rank-compress characters so keys are dense in [0, m).
+    vector<int> s;
+    s.reserve(text.size() + 1);
+    for (unsigned char c : text) s.push_back((int)c + 1);  // shift so 0 is free
+    s.push_back(0);                                        // sentinel = 0, smallest
+    int n = (int)s.size();
+
+    vector<int> sorted_codes = s;
+    sort(sorted_codes.begin(), sorted_codes.end());
+    sorted_codes.erase(unique(sorted_codes.begin(), sorted_codes.end()),
+                       sorted_codes.end());
+    int m = (int)sorted_codes.size();
+    vector<int> r(n);
+    for (int i = 0; i < n; i++)
+        r[i] = (int)(lower_bound(sorted_codes.begin(), sorted_codes.end(), s[i]) -
+                     sorted_codes.begin());
+
+    vector<int> sa = build_suffix_array(r, n, m);
+    vector<int> height = build_height(s, sa);
+
+    cout << n << "\n";
+    for (int i = 0; i < n; i++) cout << sa[i] << " \n"[i == n - 1];
+    for (int i = 0; i < n; i++) cout << height[i] << " \n"[i == n - 1];
+    return 0;
+}
 ```
 
 The whole chain: comparing suffixes as opaque strings costs $O(n)$ per comparison because they share long prefixes and the work is thrown away, so instead I rank every suffix by a bounded-length prefix and double that length, since a length-$2\ell$ prefix is the pair of length-$\ell$ ranks of the suffix and the one $\ell$ further on; each doubling sorts those pairs in linear time with a stable counting sort — and the second key needs no sort at all because the previous round's $SA$, read with a shift, already lists the suffixes in second-key order — so the sort is $O(n\log n)$, an appended smallest sentinel makes every suffix strictly ordered, missing second halves compare as one synthetic smallest key, and ranks are recomputed by adjacent-pair equality with an early stop when all ranks separate; then, indexing the adjacent-LCP array by start position turns "drop one leading character" into the inequality $h[i] \ge h[i-1]-1$, which lets a single position-order pass build the height array in $O(n)$.

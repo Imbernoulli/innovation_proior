@@ -52,112 +52,75 @@ magnitudes).
 
 ## Code
 
-Two self-contained forms; both verified against brute force.
+A single self-contained C++17 program. It reads the instance from **stdin** — an integer `n`, then
+the `n × n` integer cost matrix in row-major order — and writes the minimum total cost to **stdout**,
+followed by `n` lines `i j` (row `i` is matched to column `j`, both 0-based). For a *maximization*
+with ratings, negate the matrix on input and negate the printed total. It uses `long long` throughout
+to avoid overflow.
 
-```python
-INF = float("inf")
+```cpp
+// Hungarian (Kuhn-Munkres) assignment, primal-dual O(n^3) shortest-augmenting-path form.
+// Reads from stdin: an integer n, then an n x n integer cost matrix (row-major).
+// Writes to stdout: the minimum total assignment cost, then n lines "i j"
+// meaning row i (0-based) is matched to column j. Uses long long to avoid overflow.
+#include <bits/stdc++.h>
+using namespace std;
 
-# ---- primal-dual O(n^3) potential / shortest-augmenting-path form ----
-def hungarian_potential(cost):
-    """Min-cost assignment. cost is n x m with m >= n. Returns (assignment, total)."""
-    n, m = len(cost), len(cost[0])
-    u = [0]*(n+1); v = [0]*(m+1)          # dual potentials (reduced costs >= 0 on processed rows)
-    p = [0]*(m+1)                         # p[j] = row matched to column j (0 = free)
-    way = [0]*(m+1)                       # predecessor column, to trace the path
-    for i in range(1, n+1):
-        p[0] = i; j0 = 0
-        minv = [INF]*(m+1); used = [False]*(m+1)
-        while True:
-            used[j0] = True
-            i0 = p[j0]; delta = INF; j1 = -1
-            for j in range(1, m+1):                       # relax / extend alternating path
-                if not used[j]:
-                    cur = cost[i0-1][j-1] - u[i0] - v[j]  # reduced cost (slack)
-                    if cur < minv[j]:
-                        minv[j] = cur; way[j] = j0
-                    if minv[j] < delta:
-                        delta = minv[j]; j1 = j           # smallest slack = Koenig minimum
-            for j in range(0, m+1):                       # dual update by delta
-                if used[j]:
-                    u[p[j]] += delta; v[j] -= delta       # tight edges stay tight
-                else:
-                    minv[j] -= delta
-            j0 = j1
-            if p[j0] == 0:                                # reached a free column
-                break
-        while j0:                                         # flip the augmenting path
-            j1 = way[j0]; p[j0] = p[j1]; j0 = j1
-    assign = [0]*n
-    for j in range(1, m+1):
-        if p[j] != 0:
-            assign[p[j]-1] = j-1
-    return assign, sum(cost[i][assign[i]] for i in range(n))
+int main() {
+    int n;
+    if (!(cin >> n)) return 0;
+    vector<vector<long long>> cost(n, vector<long long>(n));
+    for (int i = 0; i < n; i++)
+        for (int j = 0; j < n; j++)
+            cin >> cost[i][j];
 
+    const long long INF = LLONG_MAX / 4;
+    // 1-based with a dummy column 0 anchoring each augmenting path.
+    vector<long long> u(n + 1, 0), v(n + 1, 0); // dual potentials (reduced costs >= 0)
+    vector<int> p(n + 1, 0);                    // p[j] = row matched to column j (0 = free)
+    vector<int> way(n + 1, 0);                  // predecessor column, to trace the path
+    for (int i = 1; i <= n; i++) {
+        p[0] = i;
+        int j0 = 0;
+        vector<long long> minv(n + 1, INF);     // min reduced cost reaching each column
+        vector<char> used(n + 1, false);        // columns already on the path
+        do {
+            used[j0] = true;
+            int i0 = p[j0], j1 = -1;
+            long long delta = INF;
+            for (int j = 1; j <= n; j++) {       // relax: extend the alternating path
+                if (!used[j]) {
+                    long long cur = cost[i0 - 1][j - 1] - u[i0] - v[j]; // reduced cost (slack)
+                    if (cur < minv[j]) { minv[j] = cur; way[j] = j0; }
+                    if (minv[j] < delta) { delta = minv[j]; j1 = j; }   // smallest slack = Koenig min
+                }
+            }
+            for (int j = 0; j <= n; j++) {        // dual update by delta: tight edges stay tight
+                if (used[j]) { u[p[j]] += delta; v[j] -= delta; }
+                else          minv[j] -= delta;
+            }
+            j0 = j1;
+        } while (p[j0] != 0);                     // until a free column -> augmenting path found
+        do {                                      // flip the path via the predecessor chain
+            int j1 = way[j0];
+            p[j0] = p[j1];
+            j0 = j1;
+        } while (j0);
+    }
 
-# ---- classic O(n^3) matrix form: reduce, cover, subtract/add minimum uncovered ----
-def hungarian_matrix(cost):
-    """Min-cost assignment, square cost. Returns (assignment, total)."""
-    n = len(cost)
-    a = [row[:] for row in cost]
-    for i in range(n):                                    # row reduction
-        r = min(a[i])
-        for j in range(n): a[i][j] -= r
-    for j in range(n):                                    # column reduction
-        c = min(a[i][j] for i in range(n))
-        for i in range(n): a[i][j] -= c
-    while True:
-        match_col = [-1]*n; match_row = [-1]*n
-        def aug(i, seen):                                 # augmenting-path match on zeros
-            for j in range(n):
-                if a[i][j] == 0 and not seen[j]:
-                    seen[j] = True
-                    if match_row[j] == -1 or aug(match_row[j], seen):
-                        match_col[i] = j; match_row[j] = i; return True
-            return False
-        for i in range(n): aug(i, [False]*n)
-        if all(c != -1 for c in match_col):               # n independent zeros -> optimal
-            assign = match_col[:]
-            return assign, sum(cost[i][assign[i]] for i in range(n))
-        # Koenig minimum vertex cover from the maximum matching:
-        row_marked = [match_col[i] == -1 for i in range(n)]
-        col_marked = [False]*n; changed = True
-        while changed:
-            changed = False
-            for i in range(n):
-                if row_marked[i]:
-                    for j in range(n):
-                        if a[i][j] == 0 and not col_marked[j]:
-                            col_marked[j] = True; changed = True
-            for j in range(n):
-                if col_marked[j] and match_row[j] != -1 and not row_marked[match_row[j]]:
-                    row_marked[match_row[j]] = True; changed = True
-        covered_rows = [not m for m in row_marked]        # cover = unmarked rows + marked cols
-        covered_cols = col_marked
-        d = min(a[i][j] for i in range(n) for j in range(n)
-                if not covered_rows[i] and not covered_cols[j])
-        for i in range(n):                                # subtract from uncovered rows,
-            for j in range(n):                            # add to covered columns
-                if not covered_rows[i]: a[i][j] -= d
-                if covered_cols[j]:     a[i][j] += d
+    vector<int> assign(n, 0);
+    for (int j = 1; j <= n; j++)
+        if (p[j] != 0) assign[p[j] - 1] = j - 1;
 
+    long long total = 0;
+    for (int i = 0; i < n; i++) total += cost[i][assign[i]];
 
-def brute_force(cost):
-    import itertools
-    n = len(cost); best, bestp = INF, None
-    for perm in itertools.permutations(range(n)):
-        s = sum(cost[i][perm[i]] for i in range(n))
-        if s < best: best, bestp = s, perm
-    return list(bestp), best
-
-
-if __name__ == "__main__":
-    R = [[8,7,9,9],[5,2,7,8],[5,1,4,8],[2,2,2,6]]         # maximization -> negate
-    neg = [[-x for x in row] for row in R]
-    for fn in (hungarian_potential, hungarian_matrix):
-        a, t = fn(neg)
-        print(fn.__name__, "assignment", a, "rating sum", -t)   # 25, (0,2,3,1)
+    cout << total << "\n";
+    for (int i = 0; i < n; i++) cout << i << " " << assign[i] << "\n";
+    return 0;
+}
 ```
 
-`hungarian_potential` runs in `O(n^3)` and accepts rectangular `n × m` (`m ≥ n`) cost matrices;
-`hungarian_matrix` is the literal König/Egerváry tableau for square inputs. Both agree with each
-other and with full permutation enumeration on small random matrices.
+The program runs in `O(n^3)` (strongly polynomial, independent of the cost magnitudes) and the
+potentials it builds internally are the dual certificate of optimality. It agrees with full
+permutation enumeration on small random matrices.

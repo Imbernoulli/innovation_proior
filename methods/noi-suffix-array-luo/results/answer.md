@@ -70,90 +70,109 @@ most $n$ successful extensions and at most $n$ one-step drops.
 
 ## Code
 
-```python
-def build_suffix_array(r, n, m):
-    """sa[0..n-1] sorting the n suffixes of r (integer codes in [0, m),
-    r[n-1] the unique smallest sentinel) lexicographically. O(n log n)."""
-    sa = [0] * n
-    x = list(r)            # working integer key per suffix; seed with the code
-    y = [0] * n            # scratch
-    ws = [0] * max(m, n)   # bounded-key tally
+Single-file C++17. Reads one line (the string $S$) from stdin; appends a unique
+smallest sentinel, builds the suffix array (including the sentinel suffix) and
+the height array, and prints `n`, then the `sa[]` row, then the `height[]` row.
 
-    # Initial order by one code.
-    for i in range(m):
-        ws[i] = 0
-    for i in range(n):
-        ws[x[i]] += 1
-    for i in range(1, m):
-        ws[i] += ws[i - 1]
-    for i in range(n - 1, -1, -1):
-        ws[x[i]] -= 1
-        sa[ws[x[i]]] = i
+```cpp
+// Reads one line (the string S) from stdin. Appends a unique smallest sentinel,
+// builds the suffix array sa[] (start positions of all suffixes, including the
+// sentinel suffix, in lexicographic order) in O(n log n), then the height array
+// (height[i] = LCP(Suffix(sa[i-1]), Suffix(sa[i])), height[0] = 0) in O(n).
+// Prints n, then the sa[] row, then the height[] row (space-separated).
+#include <bits/stdc++.h>
+using namespace std;
 
-    j, p = 1, 1
-    while p < n:
-        # Build the order by the later half, then stably sort by the earlier half.
-        p = 0
-        for i in range(max(n - j, 0), n):
-            y[p] = i
-            p += 1
-        for i in range(n):
-            if sa[i] >= j:
-                y[p] = sa[i] - j
-                p += 1
+// sa[0..n-1] sorts the n suffixes of r (integer codes in [0, m), r[n-1] the
+// unique smallest sentinel) lexicographically. O(n log n).
+vector<int> build_suffix_array(const vector<int>& r, int n, int m) {
+    vector<int> sa(n), x(r), y(n, 0), ws(max(m, n), 0);
 
-        wv = [x[y[i]] for i in range(n)]
-        for i in range(m):
-            ws[i] = 0
-        for i in range(n):
-            ws[wv[i]] += 1
-        for i in range(1, m):
-            ws[i] += ws[i - 1]
-        for i in range(n - 1, -1, -1):
-            ws[wv[i]] -= 1
-            sa[ws[wv[i]]] = y[i]
+    // Initial order by one code.
+    for (int i = 0; i < m; i++) ws[i] = 0;
+    for (int i = 0; i < n; i++) ws[x[i]]++;
+    for (int i = 1; i < m; i++) ws[i] += ws[i - 1];
+    for (int i = n - 1; i >= 0; i--) sa[--ws[x[i]]] = i;
 
-        # Reuse the arrays: y is the previous key array, x receives new keys.
-        x, y = y, x
-        p = 1
-        x[sa[0]] = 0
-        for i in range(1, n):
-            a, b = sa[i - 1], sa[i]
-            left_a = y[a + j] if a + j < n else -1
-            left_b = y[b + j] if b + j < n else -1
-            same = y[a] == y[b] and left_a == left_b
-            if same:
-                x[b] = p - 1
-            else:
-                x[b] = p
-                p += 1
+    for (long long j = 1, p = 1; p < n; j *= 2) {
+        // Build the order by the later half, then stably sort by the earlier half.
+        p = 0;
+        for (long long i = max((long long)n - j, 0LL); i < n; i++) y[p++] = (int)i;
+        for (int i = 0; i < n; i++)
+            if (sa[i] >= j) y[p++] = sa[i] - (int)j;
 
-        m = p
-        j *= 2
-    return sa
+        vector<int> wv(n);
+        for (int i = 0; i < n; i++) wv[i] = x[y[i]];
+        for (int i = 0; i < m; i++) ws[i] = 0;
+        for (int i = 0; i < n; i++) ws[wv[i]]++;
+        for (int i = 1; i < m; i++) ws[i] += ws[i - 1];
+        for (int i = n - 1; i >= 0; i--) sa[--ws[wv[i]]] = y[i];
 
+        // Reuse the arrays: y becomes the previous key array, x receives new keys.
+        swap(x, y);
+        p = 1;
+        x[sa[0]] = 0;
+        for (int i = 1; i < n; i++) {
+            int a = sa[i - 1], b = sa[i];
+            int left_a = (a + j < n) ? y[a + (int)j] : -1;
+            int left_b = (b + j < n) ? y[b + (int)j] : -1;
+            bool same = (y[a] == y[b]) && (left_a == left_b);
+            if (same) x[b] = (int)p - 1;
+            else x[b] = (int)p++;
+        }
+        m = (int)p;
+    }
+    return sa;
+}
 
-def build_height(s, sa):
-    """height[i] = LCP(Suffix(sa[i-1]), Suffix(sa[i])); height[0] = 0. O(n)."""
-    n = len(s)
-    rank = [0] * n
-    for i in range(n):
-        rank[sa[i]] = i    # inverse of sa
-    height = [0] * n
+// height[i] = LCP(Suffix(sa[i-1]), Suffix(sa[i])); height[0] = 0. O(n).
+vector<int> build_height(const vector<int>& s, const vector<int>& sa) {
+    int n = (int)s.size();
+    vector<int> rank(n, 0), height(n, 0);
+    for (int i = 0; i < n; i++) rank[sa[i]] = i;  // inverse of sa
 
-    k = 0
-    for i in range(n):
-        pos = rank[i]
-        if pos == 0:
-            k = 0
-            continue
-        if k:
-            k -= 1
-        j = sa[pos - 1]
-        while i + k < n and j + k < n and s[i + k] == s[j + k]:
-            k += 1
-        height[pos] = k
-    return height
+    int k = 0;
+    for (int i = 0; i < n; i++) {
+        int pos = rank[i];
+        if (pos == 0) { k = 0; continue; }
+        if (k) k--;
+        int j = sa[pos - 1];
+        while (i + k < n && j + k < n && s[i + k] == s[j + k]) k++;
+        height[pos] = k;
+    }
+    return height;
+}
+
+int main() {
+    string text;
+    getline(cin, text);
+
+    // Append a sentinel (chr 0) strictly smaller than every real character,
+    // then rank-compress characters so keys are dense in [0, m).
+    vector<int> s;
+    s.reserve(text.size() + 1);
+    for (unsigned char c : text) s.push_back((int)c + 1);  // shift so 0 is free
+    s.push_back(0);                                        // sentinel = 0, smallest
+    int n = (int)s.size();
+
+    vector<int> sorted_codes = s;
+    sort(sorted_codes.begin(), sorted_codes.end());
+    sorted_codes.erase(unique(sorted_codes.begin(), sorted_codes.end()),
+                       sorted_codes.end());
+    int m = (int)sorted_codes.size();
+    vector<int> r(n);
+    for (int i = 0; i < n; i++)
+        r[i] = (int)(lower_bound(sorted_codes.begin(), sorted_codes.end(), s[i]) -
+                     sorted_codes.begin());
+
+    vector<int> sa = build_suffix_array(r, n, m);
+    vector<int> height = build_height(s, sa);
+
+    cout << n << "\n";
+    for (int i = 0; i < n; i++) cout << sa[i] << " \n"[i == n - 1];
+    for (int i = 0; i < n; i++) cout << height[i] << " \n"[i == n - 1];
+    return 0;
+}
 ```
 
 ## Complexity

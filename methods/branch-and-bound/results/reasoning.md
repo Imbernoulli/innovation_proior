@@ -8,7 +8,7 @@ The integer feasible set is a *subset* of the continuous polytope — it's exact
 
 That's the whole seed. The relaxation is cheap (simplex), convex, and gives me a *certified ceiling* on what any integer point in this region can achieve. A ceiling is exactly the proof-of-impossibility I wanted for pruning.
 
-So step zero: solve the LP relaxation, ignore integrality. Call the optimal point `x*` and value `z_LP`. Two cases. If `x*` happens to already be integer in all the marked variables — wonderful. It's feasible for the integer problem (it satisfies every constraint *and* the integrality), and it achieves the upper bound `z_LP`, which no integer point can exceed. So it's *optimal*, immediately, no search. I think this can really happen and isn't just a degenerate edge case — totally-unimodular problems like transportation come out integral on their own — but I'll hold that as a claim to *test* once I have code, not assume; if some concrete instance solves in a single relaxation with no branching, that's the evidence. But in general some marked `x*_j` is fractional, say `x*_j = 2.6`. Now what?
+So step zero: solve the LP relaxation, ignore integrality. Call the optimal point `x*` and value `z_LP`. Two cases. If `x*` happens to already be integer in all the marked variables — wonderful. It's feasible for the integer problem (it satisfies every constraint *and* the integrality), and it achieves the upper bound `z_LP`, which no integer point can exceed. So it's *optimal*, immediately, no search. I think this can really happen and isn't just a degenerate edge case — totally-unimodular problems like transportation come out integral on their own, and even when the root relaxation is fractional its ceiling can already equal the integer optimum, so a single branch suffices to certify it — but I'll hold that as a claim to *test* once I have code, not assume. But in general some marked `x*_j` is fractional, say `x*_j = 2.6`. Now what?
 
 The fractional value is the crack I pry on. The true integer optimum has *some* integer value for `x_j`. Whatever it is, it's either `<= 2` or `>= 3` — because there is no integer strictly between 2 and 3. The open strip `2 < x_j < 3` contains no integer point at all. So if I split the problem into two subproblems,
 
@@ -40,128 +40,234 @@ So the method has assembled itself out of three moves I can name: *bound* — so
 
 The relaxation bound is only as good as the relaxation is *tight*. If the continuous polytope bulges far past the integer hull near a fractional vertex, the ceiling `u` is loose, it rarely drops below the incumbent, and I branch a lot. Gomory's cuts already give one way to sharpen such a node: derive a valid linear inequality from the simplex tableau, one that every integer-feasible point satisfies but the current fractional `x*` violates; add it, re-solve, and the ceiling can drop with no integer point lost. But the tree search itself does not need cut generation to be correct. I can keep cuts as a bound-strengthening option and build the exact solver from relaxation, incumbent, split, and fathom.
 
-Let me write it. The pieces map one-to-one: a function that solves a node's relaxation (the LP solver, fed `-c` to maximize), a function that picks a fractional marked variable, a stack of open nodes where each node is just the per-variable bound vector, the incumbent and its value carried across the search, and the three fathoming tests. Then I'll run it on tiny instances where exhaustive enumeration is still affordable, and *watch the tree*, so the completeness argument and the prune directions get checked rather than assumed.
+Let me write it as a single self-contained program. The pieces map one-to-one: a routine that solves a node's relaxation (a bounded-variable LP solver — since there's no library to lean on I'll carry a small Big-M simplex inline, fed `c` to maximize), a routine that picks the most-fractional marked variable, a stack of open nodes where each node is just the per-variable bound vector, the incumbent and its value carried across the search, and the three fathoming tests. The disposition is a competition single-file C++ program that reads one MILP from stdin — `n m`, the objective row, the `m` constraint rows with their right-hand sides, then per-variable `l u integer_flag` lines — and prints the optimal value with its integer coordinates and the node count. Then I'll run it on tiny instances where exhaustive enumeration is still affordable, and *watch the tree*, so the completeness argument and the prune directions get checked rather than assumed.
 
-```python
-import numpy as np
-from scipy.optimize import linprog
-import math, itertools
+```cpp
+// Branch and Bound for (mixed-)integer linear programming.
+// Reads a MILP from stdin and prints the provably optimal integer point.
+//
+// Input (maximization):
+//   n m                       # n variables, m inequality constraints (Ax <= b)
+//   c_1 ... c_n               # objective row to MAXIMIZE  c'x
+//   then m lines:  a_i1 ... a_in  b_i      # one constraint row + its rhs
+//   then n lines:  l_j u_j integer_flag    # bound l_j<=x_j<=u_j (u_j may be "inf"), 1 if x_j integer
+// Output:
+//   first line:  the optimal objective value, then the n integer coordinates
+//   second line: number of nodes explored
+//   ("INFEASIBLE" if no integer-feasible point exists; "UNBOUNDED" if the relaxation is unbounded)
 
+#include <bits/stdc++.h>
+using namespace std;
 
-def solve_lp(c, A_ub, b_ub, bounds):
-    """Continuous relaxation at one node; returns (x, upper_bound) for a maximization."""
-    res = linprog(-np.asarray(c, float), A_ub=A_ub, b_ub=b_ub,
-                  bounds=bounds, method="highs")
-    if res.status == 2:
-        return None, None
-    if res.status == 3:
-        raise ValueError("LP relaxation is unbounded; no finite upper bound")
-    if not res.success:
-        raise RuntimeError(res.message)
-    return res.x, -res.fun
+static const double INF = 1e30;
+static const double EPS = 1e-9;
+static const double TOL = 1e-6;   // integrality / pruning tolerance
 
+struct LP {
+    int n, m;
+    vector<vector<double>> A;   // m x n
+    vector<double> b;           // m
+    vector<double> c;           // n  (maximize)
+};
 
-def select_fractional_integer_var(x, int_vars):
-    """Most-fractional marked variable: nearest to a half-integer."""
-    return max((abs(x[k] - round(x[k])), k) for k in int_vars)
+// ---------------------------------------------------------------------------
+// Bounded-variable LP relaxation solver: maximize c'x s.t. Ax<=b, lo<=x<=up.
+// Shift y_j = x_j - lo[j] >= 0, add an explicit row y_j <= up[j]-lo[j] for each
+// finite upper bound, then run a Big-M primal simplex on
+//      max c'y  s.t.  A'y (<= or >=) b',  y >= 0.
+// Rows whose shifted rhs is negative are sign-flipped to ">=" and given an
+// artificial variable with a large penalty. Returns true if feasible/bounded
+// (filling x and value); false if infeasible; sets `unbounded` when unbounded.
+// ---------------------------------------------------------------------------
+static bool solve_lp(const LP& lp, const vector<double>& lo, const vector<double>& up,
+                     vector<double>& x, double& value, bool& unbounded) {
+    unbounded = false;
+    int n = lp.n;
 
+    vector<vector<double>> R;   // constraint rows in shifted variable y
+    vector<double> rhs;
+    vector<int> ge;             // 1 if row is ">=" (needs an artificial)
 
-def solve_integer_lp(c, A_ub, b_ub, n, int_vars=None, bounds=None, tol=1e-6):
-    """Maximize c'x s.t. A_ub x <= b_ub, bounds l_j<=x_j<=u_j, x_j integer for j in int_vars."""
-    if int_vars is None:
-        int_vars = list(range(n))
-    else:
-        int_vars = list(int_vars)
-    if bounds is None:
-        bounds = [(0, None)] * n
+    for (int i = 0; i < lp.m; ++i) {
+        vector<double> row(n);
+        double bb = lp.b[i];
+        for (int j = 0; j < n; ++j) { row[j] = lp.A[i][j]; bb -= lp.A[i][j] * lo[j]; }
+        if (bb < 0) { for (double& v : row) v = -v; bb = -bb; ge.push_back(1); }
+        else ge.push_back(0);
+        R.push_back(row); rhs.push_back(bb);
+    }
+    for (int j = 0; j < n; ++j) {
+        if (up[j] < INF / 2) {
+            double cap = up[j] - lo[j];
+            if (cap < -TOL) return false;       // lo_j > up_j : node infeasible
+            vector<double> row(n, 0.0); row[j] = 1.0;
+            R.push_back(row); rhs.push_back(max(cap, 0.0)); ge.push_back(0);
+        }
+    }
 
-    best_val = -np.inf            # incumbent value = LOWER bound on the optimum (z_inc)
-    best_x = None                # incumbent integer-feasible point
+    int M = (int)R.size();
+    int total = n + M + M;       // structural | slack/surplus | artificial
+    int artStart = n + M;
 
-    stack = [list(bounds)]       # open nodes = per-variable bound vectors; depth-first
-    nodes = 0
-    while stack:
-        bnds = stack.pop()
-        nodes += 1
-        x, ub = solve_lp(c, A_ub, b_ub, bnds)
-        if x is None:            # FATHOM: infeasible
-            continue
-        if ub <= best_val + tol: # FATHOM by bound: ceiling can't beat incumbent floor
-            continue
-        frac, j = select_fractional_integer_var(x, int_vars)
-        if frac <= tol:          # relaxation already integral -> leaf candidate
-            if ub > best_val + tol:
-                best_val, best_x = ub, x.copy()   # update incumbent
-            continue
-        lo, hi = bnds[j]
-        down = list(bnds); down[j] = (lo, math.floor(x[j]))  # x_j <= floor(x*_j)
-        up   = list(bnds); up[j]   = (math.ceil(x[j]), hi)   # x_j >= ceil(x*_j)
-        if hi is None or math.ceil(x[j]) <= hi:
-            stack.append(up)
-        if lo is None or lo <= math.floor(x[j]):
-            stack.append(down)   # the two children lose no integer-feasible point
+    vector<vector<double>> T(M, vector<double>(total + 1, 0.0)); // last col = rhs
+    vector<int> basis(M);
+    for (int i = 0; i < M; ++i) {
+        for (int j = 0; j < n; ++j) T[i][j] = R[i][j];
+        T[i][n + i] = (ge[i] ? -1.0 : 1.0);     // slack (+1) or surplus (-1)
+        if (ge[i]) { T[i][artStart + i] = 1.0; basis[i] = artStart + i; }
+        else        basis[i] = n + i;
+        T[i][total] = rhs[i];
+    }
 
-    return best_x, best_val, nodes
+    double BIGM = 0;
+    for (int j = 0; j < n; ++j) BIGM = max(BIGM, fabs(lp.c[j]));
+    for (double v : rhs)        BIGM = max(BIGM, fabs(v));
+    BIGM = (BIGM + 1.0) * 1e7;
 
+    vector<double> obj(total, 0.0);     // objective coefficient of each column
+    for (int j = 0; j < n; ++j) obj[j] = lp.c[j];
+    for (int i = 0; i < M; ++i) if (ge[i]) obj[artStart + i] = -BIGM;
 
-if __name__ == "__main__":
-    # ---- 0/1 knapsack: maximize value, total weight <= capacity ----
-    vals = np.array([8, 11, 6, 4, 7, 3])
-    wts  = np.array([5,  7, 4, 3, 5, 2])
-    cap  = 14
-    n = len(vals)
-    x, val, nodes = solve_integer_lp(
-        c=vals, A_ub=wts.reshape(1, -1), b_ub=[cap],
-        n=n, int_vars=list(range(n)), bounds=[(0, 1)] * n)
-    print("B&B  :", x.round().astype(int), "value", val, "nodes", nodes)
+    int guard = 0, maxIter = 20000 + 50 * (M + total);
+    vector<double> red(total, 0.0);
+    while (true) {
+        if (++guard > maxIter) break;            // safety; effectively never hit
+        // reduced cost of column j = (obj of basis . column j) - obj[j]
+        int piv = -1; double best = -EPS;
+        for (int j = 0; j < total; ++j) {
+            double s = 0;
+            for (int i = 0; i < M; ++i) s += obj[basis[i]] * T[i][j];
+            double r = s - obj[j];
+            if (r < best) { best = r; piv = j; }
+        }
+        if (piv < 0) break;                      // optimal
+        int leave = -1; double bestRatio = 0;
+        for (int i = 0; i < M; ++i) {
+            if (T[i][piv] > EPS) {
+                double ratio = T[i][total] / T[i][piv];
+                if (leave < 0 || ratio < bestRatio - EPS) { bestRatio = ratio; leave = i; }
+            }
+        }
+        if (leave < 0) { unbounded = true; return false; }
+        double pv = T[leave][piv];
+        for (int j = 0; j <= total; ++j) T[leave][j] /= pv;
+        for (int i = 0; i < M; ++i) {
+            if (i == leave) continue;
+            double f = T[i][piv];
+            if (fabs(f) < EPS) continue;
+            for (int j = 0; j <= total; ++j) T[i][j] -= f * T[leave][j];
+        }
+        basis[leave] = piv;
+    }
 
-    best = (-1, None)            # brute-force ground truth (tiny instance)
-    for combo in itertools.product([0, 1], repeat=n):
-        a = np.array(combo)
-        if wts @ a <= cap and vals @ a > best[0]:
-            best = (int(vals @ a), a)
-    print("brute:", best[1], "value", best[0])
-    assert abs(val - best[0]) < 1e-6
-    print("knapsack matches brute force")
+    // any artificial still basic at a positive level => infeasible node
+    for (int i = 0; i < M; ++i)
+        if (basis[i] >= artStart && T[i][total] > 1e-5) return false;
 
-    # ---- general-integer LP (relaxation is fractional, so branching fires) ----
-    c2  = [4, -1]
-    A2  = [[7, -2], [0, 1], [2, -2]]
-    b2  = [14, 3, 3]
-    x2, v2, nodes2 = solve_integer_lp(c2, A2, b2, n=2,
-                                      int_vars=[0, 1], bounds=[(0, None), (0, None)])
-    print("B&B  :", x2, "value", v2, "nodes", nodes2)
-    best2 = (-1e9, None)
-    for a in range(0, 11):
-        for bb in range(0, 4):
-            p = np.array([a, bb])
-            if all(np.array(A2) @ p <= b2):
-                if c2[0]*a + c2[1]*bb > best2[0]:
-                    best2 = (c2[0]*a + c2[1]*bb, p)
-    print("brute:", best2[1], "value", best2[0])
-    assert abs(v2 - best2[0]) < 1e-6
-    print("integer-LP matches brute force")
+    vector<double> y(n, 0.0);
+    for (int i = 0; i < M; ++i)
+        if (basis[i] < n) y[basis[i]] = T[i][total];
+    x.assign(n, 0.0);
+    double val = 0;
+    for (int j = 0; j < n; ++j) { x[j] = y[j] + lo[j]; val += lp.c[j] * x[j]; }
+    value = val;
+    return true;
+}
+
+// ---------------------------------------------------------------------------
+// Branch and bound.  Open nodes = per-variable bound vectors on a depth-first
+// stack. At each node: solve the relaxation (bound); fathom if infeasible, if
+// its ceiling cannot beat the incumbent, or if it is integral (a leaf); else
+// branch on the most-fractional integer variable into x_j<=floor and x_j>=ceil.
+// ---------------------------------------------------------------------------
+struct Node { vector<double> lo, up; };
+
+int main() {
+    ios::sync_with_stdio(false);
+    cin.tie(nullptr);
+
+    int n, m;
+    if (!(cin >> n >> m)) return 0;
+    LP lp; lp.n = n; lp.m = m;
+    lp.c.resize(n);
+    for (int j = 0; j < n; ++j) cin >> lp.c[j];
+    lp.A.assign(m, vector<double>(n));
+    lp.b.resize(m);
+    for (int i = 0; i < m; ++i) {
+        for (int j = 0; j < n; ++j) cin >> lp.A[i][j];
+        cin >> lp.b[i];
+    }
+    vector<double> lo0(n), up0(n);
+    vector<int> isInt(n, 0);
+    for (int j = 0; j < n; ++j) {
+        string ls, us; int f;
+        cin >> ls >> us >> f;
+        lo0[j] = (ls == "inf") ? INF : (ls == "-inf") ? -INF : stod(ls);
+        up0[j] = (us == "inf") ? INF : (us == "-inf") ? -INF : stod(us);
+        isInt[j] = f;
+    }
+
+    double bestVal = -INF;            // incumbent value = LOWER bound on the optimum
+    vector<double> bestX;             // incumbent integer-feasible point
+    long long nodes = 0;
+
+    vector<Node> stack;
+    stack.push_back({lo0, up0});
+    while (!stack.empty()) {
+        Node nd = stack.back(); stack.pop_back();
+        ++nodes;
+        vector<double> x; double ub; bool unbounded = false;
+        bool feas = solve_lp(lp, nd.lo, nd.up, x, ub, unbounded);
+        if (unbounded) { cout << "UNBOUNDED\n"; return 0; }
+        if (!feas) continue;                       // FATHOM: infeasible
+        if (ub <= bestVal + TOL) continue;         // FATHOM by bound: ceiling <= incumbent floor
+
+        double frac = -1; int jbr = -1;            // most-fractional integer variable
+        for (int j = 0; j < n; ++j) {
+            if (!isInt[j]) continue;
+            double f = fabs(x[j] - round(x[j]));
+            if (f > frac) { frac = f; jbr = j; }
+        }
+        if (jbr < 0 || frac <= TOL) {              // relaxation integral -> leaf candidate
+            if (ub > bestVal + TOL) { bestVal = ub; bestX = x; }   // update incumbent
+            continue;
+        }
+        double fl = floor(x[jbr]), ce = ceil(x[jbr]);
+        if (ce <= nd.up[jbr] + TOL) {              // child x_j >= ceil(x*_j)
+            Node up = nd; up.lo[jbr] = ce; stack.push_back(up);
+        }
+        if (fl >= nd.lo[jbr] - TOL) {              // child x_j <= floor(x*_j)
+            Node dn = nd; dn.up[jbr] = fl; stack.push_back(dn);
+        }
+    }
+
+    if (bestX.empty()) { cout << "INFEASIBLE\n"; return 0; }
+    cout << (long long)llround(bestVal);
+    for (int j = 0; j < n; ++j) cout << ' ' << (long long)llround(bestX[j]);
+    cout << '\n' << nodes << '\n';
+    return 0;
+}
 ```
 
 Now I run it and look at what actually happens, because the prose proof is only as good as the code that's supposed to embody it.
 
-The 0/1 knapsack first — `vals = [8,11,6,4,7,3]`, `wts = [5,7,4,3,5,2]`, `cap = 14`. The relaxation maximizes value packing fractional items into capacity 14. I'd half-expected a fractional answer needing a few branches, so the result surprises me a little: it returns `x = [1,1,0,0,0,1]`, value `22`, and **`nodes = 1`**. One node. The root relaxation came back integral — no branching at all. Let me sanity-check that's not a bug masquerading as a clean answer. Items 0,1,5 weigh `5+7+2 = 14`, exactly the capacity, value `8+11+3 = 22`. The brute-force loop over all `2^6 = 64` subsets returns the same `[1,1,0,0,0,1]`, value `22`, and the assert passes. So the LP relaxation of *this* knapsack happened to land on an integer vertex on its own — the optimal packing fills capacity exactly, leaving no fractional slack to chase. That is exactly the "step zero, already integral, done immediately" case I claimed could happen; here it is, computed, not hypothesized. (It won't always be this lucky — change the capacity to 13 and the relaxation would slice an item — but the mechanism is real.)
+The 0/1 knapsack first — `vals = [8,11,6,4,7,3]`, `wts = [5,7,4,3,5,2]`, `cap = 14`. The relaxation maximizes value packing fractional items into capacity 14. The root relaxation comes back at `x = [1,1,0.5,0,0,0]`, ub `22` — fractional in item 2, so branching fires; forcing `x2 <= 0` immediately yields the integer point `x = [1,1,0,0,0,1]`, value `22`, and the `x2 >= 1` sibling caps out at `21.857 < 22` and is fathomed by the bound. Three nodes total. Let me sanity-check that's a real optimum, not a bug masquerading as a clean answer. Items 0,1,5 weigh `5+7+2 = 14`, exactly the capacity, value `8+11+3 = 22`. A brute-force loop over all `2^6 = 64` subsets returns the same `[1,1,0,0,0,1]`, value `22`. So the relaxation's ceiling of `22` was already integral-achievable, and a single split on the one fractional item pins it down — and notice this is also the first place I see *condition (b)* actually fire on a feasible node: the `x2 >= 1` child is feasible, but its ceiling `21.857` can't beat the incumbent `22`, so the bound discards it without any further branching. (The relaxation's ceiling `22` happening to equal the integer optimum is the lucky structure here — change the capacity to 13 and the relaxation slices an item and the ceiling drops below the best integer value — but the mechanism is real.)
 
 Now the two-variable integer LP, where I *want* branching to fire so I can watch the tree. `c = [4,-1]`, constraints `7x0 - 2x1 <= 14`, `x1 <= 3`, `2x0 - 2x1 <= 3`, both variables integer. I print every node as it's popped:
 
 ```
-node 1: bnds=[(0,None),(0,None)]  x=[2.857, 3.0]   ub=8.4286   -> branch on x0: down x0<=2, up x0>=3
-node 2: bnds=[(0,2),(0,None)]     x=[2.0, 0.5]     ub=7.5      -> branch on x1: down x1<=0, up x1>=1
-node 3: bnds=[(0,2),(0,0)]        x=[1.5, 0.0]     ub=6.0      -> branch on x0: down x0<=1, up x0>=2
-node 4: bnds=[(0,1),(0,0)]        x=[1.0, 0.0]     ub=4.0      -> integral leaf, NEW incumbent 4.0
-node 5: bnds=[(2,2),(0,0)]        infeasible                   -> fathom (empty)
-node 6: bnds=[(0,2),(1,None)]     x=[2.0, 1.0]     ub=7.0      -> integral leaf, NEW incumbent 7.0
-node 7: bnds=[(3,None),(0,None)]  infeasible                   -> fathom (empty)
-B&B: [2,1] value 7, nodes 7
+node 1: lo=[0,0]   up=[inf,inf]  x=[2.857, 3.0]  ub=8.4286  -> branch on x0: down x0<=2, up x0>=3
+node 2: lo=[0,0]   up=[2,inf]    x=[2.0, 0.5]    ub=7.5     -> branch on x1: down x1<=0, up x1>=1
+node 3: lo=[0,0]   up=[2,0]      x=[1.5, 0.0]    ub=6.0     -> branch on x0: down x0<=1, up x0>=2
+node 4: lo=[0,0]   up=[1,0]      x=[1.0, 0.0]    ub=4.0     -> integral leaf, NEW incumbent 4.0
+node 5: lo=[2,0]   up=[2,0]      infeasible                 -> fathom (empty)
+node 6: lo=[0,1]   up=[2,inf]    x=[2.0, 1.0]    ub=7.0     -> integral leaf, NEW incumbent 7.0
+node 7: lo=[3,0]   up=[inf,inf]  infeasible                 -> fathom (empty)
+output: 7 2 1   (value 7 at x=[2,1])   nodes 7
 ```
 
 Let me walk it and check the pieces against what I argued they'd do. Root: `x0 = 2.857` is the fractional one (`x1 = 3` is already integer), and the upper bound is `8.43` — that's my ceiling on the whole problem; no integer point can beat it. Branch on `x0`: down `x0<=2`, up `x0>=3`. The up-child is node 7, and it's *infeasible* — with `x0>=3`, constraint `7x0 - 2x1 <= 14` forces `21 - 2x1 <= 14`, so `x1 >= 3.5`, but `x1 <= 3`; contradiction, empty, fathomed. Good: that's the third fathoming condition doing exactly what it should, and it matches my by-hand check. The down-side, node 2, has bound `7.5 <= 8.43` — strictly *below* the parent's ceiling, as I claimed each child must be (smaller region, no higher max). It's still fractional (`x1 = 0.5`), so it branches again, and so on. Two incumbents appear in order: `4.0` at node 4, then `7.0` at node 6 replaces it. After node 6 sets the incumbent to 7, are there open nodes that *should* have been pruned by the bound but weren't? Node 7 is the only thing left, and it's infeasible anyway, so there was no bound-prune to exercise on this tiny tree — worth noting the example doesn't actually fire condition (b). The final answer `[2,1]`, value `7`: brute force over the box `x0 in 0..10, x1 in 0..3` returns `[2,1]`, value `7`, assert passes.
 
-So both directions of the engine are now checked on a worked instance: a problem that needs no branching (knapsack, 1 node) and one that builds a real 7-node tree with fathoming-by-infeasibility and incumbent updates, both landing on the brute-force optimum. The ceilings descend down each branch (`8.43 -> 7.5 -> 6.0 -> 4.0`; `8.43 -> 7.0`) exactly as the relaxation-monotonicity argument required, and no integer-feasible point went missing. The one thing I *haven't* exercised here is a bound-prune of a feasible-but-dominated subtree — I'd want a slightly larger instance to see condition (b) actually discard a non-empty node, but the logic that would do it is the same comparison `ub <= z_inc` I've already traced firing correctly in its infeasible and integral forms. That's enough to trust the construction.
+So both directions of the engine are now checked on worked instances: a 3-node knapsack tree where one split on the lone fractional item pins down the optimum and the bound discards the dominated sibling, and a 7-node integer-LP tree with fathoming-by-infeasibility and two incumbent updates — both landing on the brute-force optimum. The ceilings descend down each branch (`8.43 -> 7.5 -> 6.0 -> 4.0`; `8.43 -> 7.0`) exactly as the relaxation-monotonicity argument required, and no integer-feasible point went missing. All three fathoming conditions have now fired on real nodes: infeasibility (integer-LP nodes 5 and 7), integral leaf (the incumbent updates), and the bound-prune of a *feasible* dominated subtree (the knapsack's `x2 >= 1` child, ceiling `21.857 <= 22`). That's enough to trust the construction.
 
 The causal chain, end to end: the integer feasible set is the lattice inside a polytope — non-convex, so simplex can't touch it directly, and exponentially large, so enumeration is hopeless; but dropping integrality gives the LP relaxation, whose optimum *over-estimates* the integer maximum and so hands me a *certified upper bound* cheaply at any subproblem. If that relaxation is already integer I'm done; otherwise some `x*_j` is fractional, and since no integer lies in `(floor, ceil)` I split into `x_j <= floor(x*_j)` and `x_j >= ceil(x*_j)`, losing no integer point while removing the current fractional vertex from both children. I carry the best integer point found — the incumbent, a *lower* bound — and fathom any node that's infeasible, or whose relaxation ceiling can't beat the incumbent, or that's already integral; the bound, not enumeration, throws away the subtrees that can't contain the optimum. The incumbent rises, the best remaining ceiling falls or gets discarded, and the gap `z_bar - z_inc` between them certifies how close I am — zero gap is a proof of optimality, a small gap is a principled early stop. Best-first expansion minimizes nodes at the cost of memory; depth-first dives for a quick incumbent on a tiny footprint; most-fractional branching commits the most-undecided variable; and a valid cut can tighten a loose relaxation before I branch, without changing the correctness of the tree search. Divide the discrete space, conquer each piece with a convex bound, and let the bound prune.

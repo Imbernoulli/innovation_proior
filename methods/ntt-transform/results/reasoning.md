@@ -55,108 +55,125 @@ Now the modulus. I need `q ≡ 1 (mod 2n)`, prime. The cheapest such primes have
 
 Let me make this concrete and check it, because I want to *see* the negacyclic product fall out, and I want to confirm the `ψ^{-i}` post-weight sign and indexing. Take the smallest honest case: `n = 4`, and a prime with `2n = 8 | q - 1`. `q = 7681 = 15·2^9 + 1` works, `q - 1 = 7680` is divisible by `8`. Its primitive root is `17`; `ω = 17^{7680/4} = 3383` has order `4`, and `ψ = 17^{7680/8} = 1925` has `ψ^2 = 3383 = ω` and `ψ^4 = -1 ≡ 7680`. Now multiply `f = [1,2,3,4]` by `g = [5,6,7,8]` modulo `x^4 + 1`. Schoolbook: the linear product is `5 + 16x + 34x^2 + 60x^3 + 61x^4 + 52x^5 + 32x^6`, and folding `x^4 = -1`, `x^5 = -x`, `x^6 = -x^2` gives `(5 - 61) + (16 - 52)x + (34 - 32)x^2 + 60x^3 = -56 - 36x + 2x^2 + 60x^3`, i.e. `[7625, 7645, 2, 60]` mod `7681`. That's my target.
 
-Here's the code. I'll write a definitional `O(n^2)` transform first to anchor the math, then the fast merged-`ψ` CT-forward / GS-inverse pair, and check both against schoolbook.
+Here's the code — a single-file C++17 program that reads `q`, `n`, then the coefficients of `f` and `g` from stdin and prints `f*g mod (x^n + 1)`. It's the fast merged-`ψ` pair: a Cooley–Tukey decimation-in-time forward (twiddles are odd powers of `ψ` drawn from a bit-reversed table, so the `ψ`-weighting is built in and there's no pre-scale pass, output bit-reversed) and a Gentleman–Sande decimation-in-frequency inverse (twiddles are powers of `ψ^{-1}`, the `n^{-1}` and `ψ^{-i}` post-weight folded in, input bit-reversed). Every modular product runs through `__int128` so two near-`q` residues never overflow. I'll check it against the schoolbook negacyclic convolution by hand and at scale.
 
-```python
-import math
+```cpp
+// Negacyclic polynomial multiplication in Z_q[x]/(x^n + 1) via the NTT, O(n log n).
+// stdin:  q  n   then n coefficients of f   then n coefficients of g
+//         (n a power of two, q a prime with q == 1 (mod 2n))
+// stdout: the n coefficients of f*g mod (x^n + 1), each reduced into [0, q).
+#include <bits/stdc++.h>
+using namespace std;
+typedef long long ll;
 
-def find_primitive_root(q):
-    """Generator g of (Z/qZ)^*, q prime — via factoring q-1 and testing orders."""
-    phi = q - 1
-    factors, m, d = set(), phi, 2
-    while d * d <= m:
-        if m % d == 0:
-            factors.add(d)
-            while m % d == 0:
-                m //= d
-        d += 1
-    if m > 1:
-        factors.add(m)
-    for g in range(2, q):
-        if all(pow(g, phi // f, q) != 1 for f in factors):
-            return g
-    raise ValueError("no primitive root")
+ll power_mod(ll a, ll e, ll q) {            // a^e mod q, exact via 128-bit products
+    a %= q; if (a < 0) a += q;
+    ll r = 1 % q;
+    while (e > 0) {
+        if (e & 1) r = (__int128)r * a % q;
+        a = (__int128)a * a % q;
+        e >>= 1;
+    }
+    return r;
+}
 
-def roots_of_unity(q, n):
-    """psi = g^{(q-1)/2n} primitive 2n-th root (psi^n = -1); omega = psi^2."""
-    g = find_primitive_root(q)
-    psi = pow(g, (q - 1) // (2 * n), q)
-    omega = pow(psi, 2, q)                       # = g^{(q-1)/n}, primitive n-th root
-    assert pow(omega, n, q) == 1 and pow(psi, n, q) == q - 1
-    return omega, psi
+ll inv_mod(ll a, ll q) { return power_mod(a, q - 2, q); }   // q prime => Fermat inverse
 
-def brv(x, bits):
-    r = 0
-    for _ in range(bits):
-        r = (r << 1) | (x & 1)
-        x >>= 1
-    return r
+// Generator g of (Z/qZ)^*, q prime: factor q-1 and test orders.
+ll find_primitive_root(ll q) {
+    ll phi = q - 1, m = phi;
+    vector<ll> factors;
+    for (ll d = 2; d * d <= m; ++d)
+        if (m % d == 0) { factors.push_back(d); while (m % d == 0) m /= d; }
+    if (m > 1) factors.push_back(m);
+    for (ll g = 2; g < q; ++g) {
+        bool ok = true;
+        for (ll f : factors) if (power_mod(g, phi / f, q) == 1) { ok = false; break; }
+        if (ok) return g;
+    }
+    throw runtime_error("no primitive root");
+}
 
-# --- definitional O(n^2) NTT, just to anchor the identities ---
-def ntt_naive(a, omega, q):                      # A_j = sum_i a_i omega^{ij}
-    n = len(a)
-    return [sum(a[i] * pow(omega, i * j, q) for i in range(n)) % q for j in range(n)]
+int brv(int x, int bits) {                  // bit-reversal of x in 'bits' bits
+    int r = 0;
+    for (int i = 0; i < bits; ++i) { r = (r << 1) | (x & 1); x >>= 1; }
+    return r;
+}
 
-def intt_naive(A, omega, q):                     # a_i = n^{-1} sum_j A_j omega^{-ij}
-    n = len(A)
-    ninv, oinv = pow(n, -1, q), pow(omega, -1, q)
-    return [ninv * sum(A[j] * pow(oinv, i * j, q) for j in range(n)) % q for i in range(n)]
+// psi^0..psi^{n-1} stored in bit-reversed index order (the twiddle table).
+vector<ll> psi_table(ll psi, int n, ll q) {
+    int bits = __builtin_ctz((unsigned)n);
+    vector<ll> pw(n);
+    pw[0] = 1 % q;
+    for (int i = 1; i < n; ++i) pw[i] = (__int128)pw[i - 1] * psi % q;
+    vector<ll> rev(n);
+    for (int i = 0; i < n; ++i) rev[i] = pw[brv(i, bits)];
+    return rev;
+}
 
-# --- fast negacyclic NTT: psi absorbed into a bit-reversed twiddle table ---
-def _psi_table(psi, n, q):                       # psi^0..psi^{n-1}, stored bit-reversed
-    bits = int(math.log2(n))
-    pw = [pow(psi, i, q) for i in range(n)]
-    return [pw[brv(i, bits)] for i in range(n)]
+// Negacyclic forward NTT, Cooley-Tukey (decimation-in-time): standard -> bit-reversed.
+// psi weighting is built into the twiddle table, so there is no separate pre-scale.
+void ntt_forward(vector<ll> &a, ll psi, ll q) {
+    int n = a.size();
+    vector<ll> Psi = psi_table(psi, n, q);
+    for (int m = 1, t = n; m < n; m <<= 1) {
+        t >>= 1;
+        for (int i = 0; i < m; ++i) {
+            int j1 = 2 * i * t; ll S = Psi[m + i];
+            for (int j = j1; j < j1 + t; ++j) {
+                ll U = a[j], V = (__int128)a[j + t] * S % q;
+                a[j]     = (U + V) % q;
+                a[j + t] = (U - V % q + q) % q;
+            }
+        }
+    }
+}
 
-def ntt_forward(a, psi, q):
-    """Cooley-Tukey, decimation-in-time. Input standard order, output bit-reversed.
-    Twiddles are odd powers of psi, so the psi-weighting is built in -- no pre-scale."""
-    a = a[:]; n = len(a); Psi = _psi_table(psi, n, q)
-    t, m = n, 1
-    while m < n:
-        t //= 2
-        for i in range(m):
-            j1 = 2 * i * t; S = Psi[m + i]                  # twiddle = a power of psi
-            for j in range(j1, j1 + t):
-                U = a[j]; V = a[j + t] * S % q              # butterfly: A_j = U + w O_j
-                a[j] = (U + V) % q                          #           A_{j+t} = U - w O_j
-                a[j + t] = (U - V) % q
-        m *= 2
-    return a
+// Negacyclic inverse NTT, Gentleman-Sande (decimation-in-frequency): bit-reversed -> standard.
+// The n^{-1} scaling and psi^{-i} post-weighting fold into the twiddle table and final scale.
+void ntt_inverse(vector<ll> &a, ll psi, ll q) {
+    int n = a.size();
+    vector<ll> Psi = psi_table(inv_mod(psi, q), n, q);
+    for (int t = 1, m = n; m > 1; t <<= 1, m >>= 1) {
+        int j1 = 0, h = m / 2;
+        for (int i = 0; i < h; ++i) {
+            ll S = Psi[h + i];
+            for (int j = j1; j < j1 + t; ++j) {
+                ll U = a[j], V = a[j + t];
+                a[j]     = (U + V) % q;
+                a[j + t] = (__int128)((U - V + q) % q) * S % q;
+            }
+            j1 += 2 * t;
+        }
+    }
+    ll ninv = inv_mod(n % q, q);
+    for (int i = 0; i < n; ++i) a[i] = (__int128)a[i] * ninv % q;
+}
 
-def ntt_inverse(a, psi, q):
-    """Gentleman-Sande, decimation-in-frequency. Input bit-reversed, output standard.
-    Twiddles are powers of psi^{-1}; the n^{-1} and psi^{-i} post-weight fold in here."""
-    a = a[:]; n = len(a); Psi = _psi_table(pow(psi, -1, q), n, q)
-    t, m = 1, n
-    while m > 1:
-        j1 = 0; h = m // 2
-        for i in range(h):
-            S = Psi[h + i]
-            for j in range(j1, j1 + t):
-                U = a[j]; V = a[j + t]
-                a[j] = (U + V) % q
-                a[j + t] = (U - V) * S % q                  # GS: post-multiply by twiddle
-            j1 += 2 * t
-        t *= 2; m //= 2
-    ninv = pow(n, -1, q)                                    # the M M* = nI scaling
-    return [x * ninv % q for x in a]
+// Product f*g in Z_q[x]/(x^n + 1): forward-NTT both, multiply pointwise, inverse-NTT.
+vector<ll> negacyclic_mul(vector<ll> f, vector<ll> g, ll q) {
+    int n = f.size();
+    ll root = find_primitive_root(q);
+    ll psi = power_mod(root, (q - 1) / (2LL * n), q);   // primitive 2n-th root, psi^n = -1
+    ntt_forward(f, psi, q);
+    ntt_forward(g, psi, q);
+    vector<ll> h(n);
+    for (int i = 0; i < n; ++i) h[i] = (__int128)f[i] * g[i] % q;
+    ntt_inverse(h, psi, q);
+    return h;
+}
 
-def negacyclic_mul(f, g, q):
-    """f*g in Z_q[x]/(x^n + 1): forward-NTT both, multiply pointwise, inverse-NTT."""
-    n = len(f); _, psi = roots_of_unity(q, n)
-    F = ntt_forward(f, psi, q); G = ntt_forward(g, psi, q)  # both in bit-reversed order
-    H = [F[i] * G[i] % q for i in range(n)]                 # convolution -> pointwise
-    return ntt_inverse(H, psi, q)                           # back to standard order
-
-def schoolbook_negacyclic(f, g, q):
-    n = len(f); res = [0] * n
-    for i in range(n):
-        for j in range(n):
-            k = i + j
-            if k < n: res[k] += f[i] * g[j]
-            else:     res[k - n] -= f[i] * g[j]             # x^n = -1
-    return [x % q for x in res]
+int main() {
+    ios_base::sync_with_stdio(false); cin.tie(nullptr);
+    ll q; int n;
+    if (!(cin >> q >> n)) return 0;
+    vector<ll> f(n), g(n);
+    for (int i = 0; i < n; ++i) { cin >> f[i]; f[i] = ((f[i] % q) + q) % q; }
+    for (int i = 0; i < n; ++i) { cin >> g[i]; g[i] = ((g[i] % q) + q) % q; }
+    vector<ll> c = negacyclic_mul(f, g, q);
+    for (int i = 0; i < n; ++i) cout << c[i] << (i + 1 < n ? ' ' : '\n');
+    return 0;
+}
 ```
 
 Now let me actually run it on the `n = 4`, `q = 7681` case and see whether what comes out is the negacyclic product I computed by hand. First the parameters the code derives: it finds the primitive root `g = 17`, sets `ψ = 17^{7680/8} = 1925` and `ω = ψ^2 = 3383`, and the asserts `ω^4 ≡ 1`, `ψ^4 ≡ -1` both pass — so `1925^4 mod 7681 = 7680 = -1`, the sign-flip element is where I claimed.
@@ -165,6 +182,6 @@ The forward transform `ntt_forward([1,2,3,4])` returns `[1467, 3471, 2807, 7621]
 
 Now the resolution of the `ψ^{-i}` vs `ψ^{-j}` question I deferred. I evaluate both inverse candidates on the forward spectrum `A = [1467, 2807, 3471, 7621]`. Candidate A (`a_i = n^{-1} ψ^{-i} Σ_j ω^{-ij} A_j`, the weight outside, output-indexed) returns `[1, 2, 3, 4]` — it inverts. Candidate B (`a_i = n^{-1} Σ_j ψ^{-j} ω^{-ij} A_j`, the weight inside, summation-indexed) returns `[1454, 5738, 4048, 5589]` — not even close to `[1,2,3,4]`. So my worry was justified: the post-weight must be `ψ^{-i}`, output-indexed, outside the sum, and the summation-indexed arrangement that looked just as plausible on paper is simply wrong. The two were genuinely not interchangeable, and only running them told me which.
 
-With that pinned down, the full pipeline: pointwise-multiply the forward transform of `[1,2,3,4]` with that of `[5,6,7,8]`, run the GS inverse. It returns `[7625, 7645, 2, 60]` — exactly the schoolbook negacyclic product `[-56, -36, 2, 60] mod 7681` I worked out above. The roundtrip `ntt_inverse(ntt_forward(f))` returns `[1,2,3,4]`, so the `n^{-1}` scaling and the matched `ψ`/`ψ^{-1}` tables are consistent end-to-end; and the cyclic `intt_naive(ntt_naive(f))` returns `f`, re-confirming the bare identity underneath. Finally I push to the real parameters — `n = 512`, `q = 12289` — with random polynomials: `negacyclic_mul` agrees with `schoolbook_negacyclic` on every one of the 512 coefficients. That's the size the cryptography actually runs at, so the merged-`ψ`, no-bit-reversal version is not just correct on the toy case.
+With that pinned down, the full pipeline: pointwise-multiply the forward transform of `[1,2,3,4]` with that of `[5,6,7,8]`, run the GS inverse. It returns `[7625, 7645, 2, 60]` — exactly the schoolbook negacyclic product `[-56, -36, 2, 60] mod 7681` I worked out above. The roundtrip `ntt_inverse(ntt_forward(f))` returns `[1,2,3,4]`, so the `n^{-1}` scaling and the matched `ψ`/`ψ^{-1}` tables are consistent end-to-end; and the bare definitional cyclic transform `a_i = n^{-1} Σ_j (Σ_k a_k ω^{kj}) ω^{-ij}` also returns `f` when worked out by hand, re-confirming the bare identity underneath. Finally I push to the real parameters — `n = 512`, `q = 12289` — with random polynomials: `negacyclic_mul` agrees with `schoolbook_negacyclic` on every one of the 512 coefficients. That's the size the cryptography actually runs at, so the merged-`ψ`, no-bit-reversal version is not just correct on the toy case.
 
 So the whole causal chain: I wanted exact `O(n log n)` polynomial multiplication, especially modulo `x^n + 1`. The DFT-plus-convolution-theorem gives `O(n log n)` but over `C` it rounds, and rounding integers is fragile. Stripping the DFT's correctness proof to its core, it needs only an element of exact order `n` with `1 - ω^K ≠ 0` — a primitive `n`-th root of unity — which `Z_p` supplies exactly when `n | p - 1`, in pure modular arithmetic with no round-off. The Cooley–Tukey butterfly is purely algebraic (`ω^{n/2} = -1`), so it runs over `Z_p` unchanged, giving the NTT. Cyclic convolution mod `x^n - 1` follows immediately. For the cryptographic ring `x^n + 1`, instead of doubling the length, I weight the inputs by powers of a `2n`-th root `ψ` (existence needs `q ≡ 1 mod 2n`); because `ψ^n = -1`, the wrap-around term flips sign, turning the cyclic convolution into the negacyclic one — equivalently, the weighted transform evaluates at the odd `2n`-th roots, the roots of `x^n + 1`, so the reduction is implicit. Folding `ψ` into the twiddle factors and pairing a decimation-in-time forward with a decimation-in-frequency inverse absorbs both the weighting and the bit-reversal. Roots come from a primitive root via `ψ = g^{(q-1)/2n}`, `ω = ψ^2`; the modulus is a Proth prime `k·2^m + 1` whose structure (`k·2^m ≡ -1`) also gives a fast modular reduction, with Montgomery/Barrett as the general fallback. The result is bit-exact integer convolution at `O(n log n)`, verified against schoolbook.

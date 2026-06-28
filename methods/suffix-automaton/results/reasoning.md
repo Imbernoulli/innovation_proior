@@ -60,92 +60,115 @@ Finally the running time, which has three non-obvious loops. The first is the wa
 
 So the online update is exactly: make $cur$, walk up from $last$ adding $c$-edges until a $c$-edge exists or I fall off; if I fell off, link $cur$ to the root; else look at the edge's target $q$ — if the edge is tight, link $cur$ to $q$; if loose, clone $q$ at length $\mathrm{len}(p)+1$, redirect the suffix-chain of $c$-edges from $q$ to the clone, link both $q$ and $cur$ to the clone; set $last=cur$. And the distinct-substring count is $\sum_{v\ne t_0}(\mathrm{len}(v)-\mathrm{len}(\mathrm{link}(v)))$. I can maintain that sum online: a clone only partitions $q$'s old length interval, so $q$ plus $clone$ contributes the same amount $q$ used to contribute; the only net increase is the new state $cur$, namely $\mathrm{len}(cur)-\mathrm{len}(\mathrm{link}(cur))$ — which is exactly the per-step bookkeeping I just watched produce $12$ on $\texttt{abcbc}$. Let me write it with parallel arrays: $\mathrm{len}$, $\mathrm{link}$, a per-state dictionary of transitions, and a running total.
 
-```python
-class SubstringCounter:
-    """Online suffix automaton over integer character codes.
+As a single-file C++17 program: read one string `s` from stdin, build the machine online, and print the final distinct-substring count on the first line and the running per-prefix counts on the second. The total grows like $\Theta(n^2)$, so it has to be a `long long`; transitions live in a per-state `map<int,int>` keyed by dense character codes, keeping the build expected $O(n)$ over a fixed alphabet without an $O(nk)$ transition array.
 
-    One state per ending-position equivalence class (plus the root t0 = state 0).
-    State v stores len[v] (length of its longest string), link[v] (the suffix
-    link: the state of the longest proper suffix of longest(v) lying in another
-    class), and trans[v] (character-code -> state). The distinct non-empty
-    substrings owned by v are exactly the suffixes of longest(v) with lengths in
-    [len[link[v]] + 1, len[v]], i.e. len[v] - len[link[v]] of them.
-    """
+```cpp
+// Online suffix automaton (SAM): counts distinct non-empty substrings.
+// Reads one string s from stdin; prints the number of distinct non-empty
+// substrings of s on the first line, then the running count after each prefix
+// s[0..i] (space-separated) on the second line.
+#include <bits/stdc++.h>
+using namespace std;
 
-    def __init__(self):
-        self.length = [0]      # len of the root's longest string (empty) is 0
-        self.link = [-1]       # root has no suffix link
-        self.trans = [dict()]  # root's outgoing transitions
-        self.last = 0          # state whose longest string is the whole prefix
-        self.total = 0         # current number of distinct non-empty substrings
+// One state per ending-position equivalence class (plus the root t0 = state 0).
+// State v stores len[v] (length of its longest string), link[v] (the suffix
+// link: the state of the longest proper suffix of longest(v) lying in another
+// class), and trans[v] (character code -> state). The distinct non-empty
+// substrings owned by v are exactly the suffixes of longest(v) with lengths in
+// [len[link[v]] + 1, len[v]], i.e. len[v] - len[link[v]] of them.
+struct SubstringCounter {
+    vector<long long> length;       // len[v]: length of v's longest string
+    vector<int> link;               // link[v]: suffix link (-1 for the root)
+    vector<map<int, int>> trans;    // trans[v]: character code -> state
+    int last;                       // state whose longest string is the whole prefix
+    long long total;                // current number of distinct non-empty substrings
 
-    def extend(self, c):
-        # New state for the whole prefix s + c; its longest string grew by one.
-        cur = len(self.length)
-        self.length.append(self.length[self.last] + 1)
-        self.link.append(-1)
-        self.trans.append(dict())
+    SubstringCounter() {
+        length.push_back(0);        // len of the root's longest string (empty) is 0
+        link.push_back(-1);         // root has no suffix link
+        trans.emplace_back();       // root's outgoing transitions
+        last = 0;
+        total = 0;
+    }
 
-        # Walk suffix links from last, attaching a c-edge to cur for every
-        # suffix of s that was not yet followed by c (those x + c are new).
-        p = self.last
-        while p != -1 and c not in self.trans[p]:
-            self.trans[p][c] = cur
-            p = self.link[p]
+    void extend(int c) {
+        // New state for the whole prefix s + c; its longest string grew by one.
+        int cur = (int)length.size();
+        length.push_back(length[last] + 1);
+        link.push_back(-1);
+        trans.emplace_back();
 
-        if p == -1:
-            # c never followed any suffix of s: c is new, link cur to the root.
-            self.link[cur] = 0
-        else:
-            q = self.trans[p][c]
-            if self.length[p] + 1 == self.length[q]:
-                # Tight edge: q's longest string is exactly x + c. Link straight.
-                self.link[cur] = q
-            else:
-                # Loose edge: x + c gained the new ending position but q's longer
-                # strings did not, so q's class splits. Clone q at length len(p)+1.
-                clone = len(self.length)
-                self.length.append(self.length[p] + 1)
-                self.link.append(self.link[q])         # clone copies q's link
-                self.trans.append(dict(self.trans[q]))  # and q's transitions
-                # Redirect the suffix chain of c-edges from q over to the clone.
-                while p != -1 and self.trans[p].get(c) == q:
-                    self.trans[p][c] = clone
-                    p = self.link[p]
-                self.link[q] = clone
-                self.link[cur] = clone
+        // Walk suffix links from last, attaching a c-edge to cur for every
+        // suffix of s that was not yet followed by c (those x + c are new).
+        int p = last;
+        while (p != -1 && trans[p].find(c) == trans[p].end()) {
+            trans[p][c] = cur;
+            p = link[p];
+        }
 
-        self.last = cur
-        self.total += self.length[cur] - self.length[self.link[cur]]
-        return self
+        if (p == -1) {
+            // c never followed any suffix of s: c is new, link cur to the root.
+            link[cur] = 0;
+        } else {
+            int q = trans[p][c];
+            if (length[p] + 1 == length[q]) {
+                // Tight edge: q's longest string is exactly x + c. Link straight.
+                link[cur] = q;
+            } else {
+                // Loose edge: x + c gained the new ending position but q's longer
+                // strings did not, so q's class splits. Clone q at length len(p)+1.
+                int clone = (int)length.size();
+                length.push_back(length[p] + 1);
+                link.push_back(link[q]);     // clone copies q's link
+                trans.push_back(trans[q]);   // and q's transitions
+                // Redirect the suffix chain of c-edges from q over to the clone.
+                while (p != -1) {
+                    auto it = trans[p].find(c);
+                    if (it == trans[p].end() || it->second != q) break;
+                    it->second = clone;
+                    p = link[p];
+                }
+                link[q] = clone;
+                link[cur] = clone;
+            }
+        }
 
-    def count_distinct_substrings(self):
-        return self.total
+        last = cur;
+        total += length[cur] - length[link[cur]];
+    }
 
+    long long count_distinct_substrings() const { return total; }
+};
 
-def count_distinct_substrings(text):
-    """Number of distinct non-empty substrings of text, built online."""
-    sc = SubstringCounter()
-    code = {}
-    for ch in text:
-        if ch not in code:
-            code[ch] = len(code)
-        sc.extend(code[ch])
-    return sc.count_distinct_substrings()
+int main() {
+    ios::sync_with_stdio(false);
+    cin.tie(nullptr);
 
+    string s;
+    // Read the string as a single whitespace-delimited token.
+    if (!(cin >> s)) { cout << 0 << "\n"; return 0; }
 
-def distinct_substrings_per_prefix(text):
-    """For each prefix text[:i+1], the running count of distinct non-empty
-    substrings -- one online pass."""
-    sc = SubstringCounter()
-    code = {}
-    out = []
-    for ch in text:
-        if ch not in code:
-            code[ch] = len(code)
-        sc.extend(code[ch])
-        out.append(sc.count_distinct_substrings())
-    return out
+    // Assign stable dense integer codes to characters as they first appear,
+    // then feed one code at a time (the alphabet is fixed for a given input).
+    SubstringCounter sc;
+    vector<long long> perPrefix;
+    perPrefix.reserve(s.size());
+    int code[256];
+    fill(begin(code), end(code), -1);
+    int nextCode = 0;
+
+    for (unsigned char ch : s) {
+        if (code[ch] == -1) code[ch] = nextCode++;
+        sc.extend(code[ch]);
+        perPrefix.push_back(sc.count_distinct_substrings());
+    }
+
+    cout << sc.count_distinct_substrings() << "\n";
+    for (size_t i = 0; i < perPrefix.size(); i++) {
+        cout << perPrefix[i] << (i + 1 < perPrefix.size() ? ' ' : '\n');
+    }
+    return 0;
+}
 ```
 
 One last sanity pass, against the case where the clone never fires so I'm sure I haven't built something that only works when it splits: $s=\texttt{aaaa}$. Every appended $a$ finds an existing $a$-edge on the very first chain state, and that edge is always tight (the matched suffix already has the right length), so the link goes straight through with no clone — each step adds $\mathrm{len}(cur)-\mathrm{len}(\mathrm{link}(cur))=1$, giving running totals $1,2,3,4$. By hand the distinct substrings of $\texttt{aaaa}$ are just $a,aa,aaa,aaaa$ — four of them, matching, and the per-prefix counts $1,2,3,4$ match too. The all-tight path and the all-loose-ish path of $\texttt{abcbc}$ both check out.

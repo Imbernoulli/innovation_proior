@@ -38,190 +38,206 @@ That trace also lets me state precisely why the high tree's climb is exact, now 
 
 One implementation detail matters for scale. If I climb parent pointers one edge at a time, a path-shaped merge history can make a query linear. The tags on a leaf-to-root path are monotone, so I can precompute $2^j$ ancestors. For the lower-bound side, a jump is valid exactly when the candidate ancestor still has tag at least $L$; for the upper-bound side, it is valid exactly when the candidate ancestor still has tag at most $R$. That makes each component-range lookup logarithmic. The code has two builds (decreasing order for the human/high side, increasing for the wolf/low side), each followed by DFS leaf positions, jump tables for the ancestor searches, and then one offline $x$-sweep over a Fenwick tree for the rectangle counts.
 
-```python
-import sys
+I'll write it as one self-contained C++17 program reading `N M Q`, the `M` edges,
+and the `Q` queries `S E L R` from stdin, printing `YES`/`NO` per query. The
+vertex indices stay in `int`, but I keep the Fenwick prefix counts in `long long`
+so a query that legitimately covers many points can't overflow.
 
+```cpp
+// Reads: N M Q, then M lines "u v" (0-based undirected edges), then Q lines
+// "S E L R"; prints for each query "YES" iff a two-phase walk S->E exists
+// (vertices >= L until one switch vertex in [L,R], then vertices <= R), else "NO".
+#include <bits/stdc++.h>
+using namespace std;
 
-class DSU:
-    """Generic disjoint-set union over a fixed universe, with path compression.
-    union(a, b) merges the sets; find(x) returns a set representative."""
+struct DSU {
+    vector<int> par;
+    DSU(int n) : par(n) { iota(par.begin(), par.end(), 0); }
+    int find(int x) {
+        int root = x;
+        while (par[root] != root) root = par[root];
+        while (par[x] != root) { int nx = par[x]; par[x] = root; x = nx; }
+        return root;
+    }
+};
 
-    def __init__(self, size):
-        self.par = list(range(size))
+struct Tree {
+    vector<int> parent;                 // forest parent (root points to self)
+    vector<int> tag;                    // tag[node]: the vertex that created it
+    vector<int> left, right;            // contiguous leaf-interval per node
+    vector<int> place;                  // leaf position of each original vertex
+    vector<vector<int>> jump;           // binary-lifting table over parent
+};
 
-    def find(self, x):
-        root = x
-        while self.par[root] != root:
-            root = self.par[root]
-        while self.par[x] != root:
-            self.par[x], x = root, self.par[x]
-        return root
+// Turn vertices on in `order`; turning on w hangs the components of all already-on
+// neighbors (and the leaf w) under a fresh internal node tagged with value w.
+// Leaves 0..n-1 keep their own value as tag.
+static Tree build_structure(int n, const vector<vector<int>>& adj,
+                            const vector<int>& order) {
+    int cap = 2 * n;
+    vector<int> parent(cap), tag(cap);
+    iota(parent.begin(), parent.end(), 0);
+    iota(tag.begin(), tag.end(), 0);
+    vector<vector<int>> children(cap);
+    DSU dsu(cap);
+    vector<char> added(n, 0);
+    int nxt = n;
+    for (int w : order) {
+        added[w] = 1;
+        vector<int> roots;
+        int r0 = dsu.find(w);
+        roots.push_back(r0);
+        unordered_set<int> seen;
+        seen.insert(r0);
+        for (int u : adj[w]) {
+            if (added[u]) {
+                int r = dsu.find(u);
+                if (!seen.count(r)) { seen.insert(r); roots.push_back(r); }
+            }
+        }
+        int node = nxt++;
+        tag[node] = w;
+        for (int r : roots) { parent[r] = node; dsu.par[r] = node; }
+        children[node] = roots;
+        dsu.par[node] = node;           // node is the new component root
+    }
 
-    def union(self, a, b):
-        ra, rb = self.find(a), self.find(b)
-        if ra != rb:
-            self.par[rb] = ra
-        return ra
+    // DFS leaf order: each subtree's leaves become a contiguous interval.
+    vector<int> left(nxt, 0), right(nxt, -1), place(n, 0);
+    int timer = 0;
+    vector<int> rootsList;
+    for (int x = 0; x < nxt; x++) if (parent[x] == x) rootsList.push_back(x);
+    sort(rootsList.begin(), rootsList.end());
+    for (int root : rootsList) {
+        // iterative post-order: stack of (node, child-index)
+        vector<pair<int,int>> st;
+        st.push_back({root, 0});
+        while (!st.empty()) {
+            int node = st.back().first;
+            int ci = st.back().second;
+            if (node < n) {
+                place[node] = timer;
+                left[node] = right[node] = timer;
+                timer++;
+                st.pop_back();
+            } else if (ci < (int)children[node].size()) {
+                st.back().second = ci + 1;
+                st.push_back({children[node][ci], 0});
+            } else {
+                int lo = INT_MAX, hi = INT_MIN;
+                for (int c : children[node]) { lo = min(lo, left[c]); hi = max(hi, right[c]); }
+                left[node] = lo; right[node] = hi;
+                st.pop_back();
+            }
+        }
+    }
 
+    Tree t;
+    t.parent.assign(parent.begin(), parent.begin() + nxt);
+    t.tag.assign(tag.begin(), tag.begin() + nxt);
+    t.left = move(left);
+    t.right = move(right);
+    t.place = move(place);
 
-def answer_queries(n, edges, queries):
-    """edges: list of (u, v), 0-based undirected. queries: list of (S, E, L, R)
-    with L <= R. For each query, return whether a walk from S to E exists that
-    stays on vertices >= L up to a single switch vertex v (with L <= v <= R),
-    then stays on vertices <= R. Returns a list of bools, one per query."""
-    adj = [[] for _ in range(n)]
-    for u, v in edges:
-        adj[u].append(v)
-        adj[v].append(u)
+    // Binary-lifting table over parent pointers.
+    t.jump.push_back(t.parent);
+    int bit = 1;
+    while ((1 << bit) <= nxt) {
+        const vector<int>& prev = t.jump.back();
+        vector<int> cur(nxt);
+        for (int x = 0; x < nxt; x++) cur[x] = prev[prev[x]];
+        t.jump.push_back(move(cur));
+        bit++;
+    }
+    return t;
+}
 
-    def build_structure(order):
-        # Turn vertices on in `order`; turning on w hangs the components of all
-        # already-on neighbors (and the leaf w) under a fresh internal node
-        # tagged with value w. Leaves 0..n-1 keep their own value as tag.
-        cap = 2 * n
-        parent = list(range(cap))          # forest parent (root points to self)
-        dsu = DSU(cap)                     # current component representative
-        children = [[] for _ in range(cap)]
-        tag = list(range(cap))             # tag[node]: the vertex that created it
-        nxt = n
-        added = [False] * n
-        for w in order:
-            added[w] = True
-            roots = [dsu.find(w)]
-            seen = {roots[0]}
-            for u in adj[w]:
-                if added[u]:
-                    r = dsu.find(u)
-                    if r not in seen:
-                        seen.add(r)
-                        roots.append(r)
-            node = nxt
-            nxt += 1
-            tag[node] = w
-            for r in roots:
-                parent[r] = node           # tree edge
-                dsu.par[r] = node          # the old roots now live under node
-            children[node] = roots
-            dsu.par[node] = node           # node is the new component root
+int main() {
+    ios_base::sync_with_stdio(false);
+    cin.tie(nullptr);
 
-        # DFS leaf order: each subtree's leaves become a contiguous interval.
-        left = [0] * nxt
-        right = [-1] * nxt
-        place = [0] * n
-        timer = 0
-        for root in sorted(x for x in range(nxt) if parent[x] == x):
-            stack = [(root, 0)]
-            while stack:                   # iterative post-order
-                node, ci = stack[-1]
-                if node < n:
-                    place[node] = timer
-                    left[node] = right[node] = timer
-                    timer += 1
-                    stack.pop()
-                elif ci < len(children[node]):
-                    stack[-1] = (node, ci + 1)
-                    stack.append((children[node][ci], 0))
-                else:
-                    left[node] = min(left[c] for c in children[node])
-                    right[node] = max(right[c] for c in children[node])
-                    stack.pop()
-        return parent[:nxt], tag[:nxt], left, right, place
+    int n, m, q;
+    if (!(cin >> n >> m >> q)) return 0;
+    vector<vector<int>> adj(n);
+    for (int i = 0; i < m; i++) {
+        int u, v; cin >> u >> v;
+        adj[u].push_back(v);
+        adj[v].push_back(u);
+    }
+    vector<int> S(q), E(q), L(q), R(q);
+    for (int i = 0; i < q; i++) cin >> S[i] >> E[i] >> L[i] >> R[i];
 
-    def make_jumps(parent):
-        jumps = [parent[:]]
-        bit = 1
-        while (1 << bit) <= len(parent):
-            prev = jumps[-1]
-            jumps.append([prev[prev[x]] for x in range(len(parent))])
-            bit += 1
-        return jumps
+    // human side: vertices on high-to-low; threshold L is a lower bound.
+    vector<int> orderHigh(n), orderLow(n);
+    for (int i = 0; i < n; i++) { orderHigh[i] = n - 1 - i; orderLow[i] = i; }
+    Tree first = build_structure(n, adj, orderHigh);
+    Tree second = build_structure(n, adj, orderLow);
 
-    # human side: turn vertices on high-to-low; the threshold L is a lower bound.
-    first_parent, first_tag, first_left, first_right, first_place = (
-        build_structure(range(n - 1, -1, -1))
-    )
-    # wolf side: turn vertices on low-to-high; the threshold R is an upper bound.
-    second_parent, second_tag, second_left, second_right, second_place = (
-        build_structure(range(n))
-    )
-    first_jump = make_jumps(first_parent)
-    second_jump = make_jumps(second_parent)
+    // vertex v becomes the point (first.place[v], second.place[v]).
+    vector<int> axisValue(n, 0);
+    for (int v = 0; v < n; v++) axisValue[first.place[v]] = second.place[v];
 
-    def locate_first(S, L):
-        if S < L:                          # S not even in the >=L subgraph
-            return None
-        x = S
-        for jump in reversed(first_jump):
-            y = jump[x]
-            if y != x and first_tag[y] >= L:
-                x = y                       # highest tag-in-range ancestor
-        return first_left[x], first_right[x]
+    // For each query, locate the high interval [xlo,xhi] and low interval [ylo,yhi].
+    vector<char> usable(q, 0);
+    vector<int> xlo(q), xhi(q), ylo(q), yhi(q);
+    for (int i = 0; i < q; i++) {
+        if (S[i] < L[i] || E[i] > R[i]) continue;     // a side is empty
+        // climb in high tree while ancestor tag >= L
+        int x = S[i];
+        for (int j = (int)first.jump.size() - 1; j >= 0; j--) {
+            int y = first.jump[j][x];
+            if (y != x && first.tag[y] >= L[i]) x = y;
+        }
+        int a1 = first.left[x], b1 = first.right[x];
+        // climb in low tree while ancestor tag <= R
+        int z = E[i];
+        for (int j = (int)second.jump.size() - 1; j >= 0; j--) {
+            int y = second.jump[j][z];
+            if (y != z && second.tag[y] <= R[i]) z = y;
+        }
+        int a2 = second.left[z], b2 = second.right[z];
+        usable[i] = 1;
+        xlo[i] = a1; xhi[i] = b1; ylo[i] = a2; yhi[i] = b2;
+    }
 
-    def locate_second(E, R):
-        if E > R:
-            return None
-        x = E
-        for jump in reversed(second_jump):
-            y = jump[x]
-            if y != x and second_tag[y] <= R:
-                x = y
-        return second_left[x], second_right[x]
+    // Offline x-sweep with a Fenwick tree over y: rectangle count by x-prefix diff.
+    // events[x] holds tuples (qid, sign, ylo, yhi).
+    vector<vector<array<int,4>>> events(n);
+    for (int i = 0; i < q; i++) {
+        if (!usable[i]) continue;
+        if (xlo[i] > 0) events[xlo[i] - 1].push_back({i, -1, ylo[i], yhi[i]});
+        events[xhi[i]].push_back({i, +1, ylo[i], yhi[i]});
+    }
 
-    # vertex v becomes the point (first_place[v], second_place[v]).
-    axis_value = [0] * n
-    for v in range(n):
-        axis_value[first_place[v]] = second_place[v]
+    vector<long long> fenwick(n + 1, 0);
+    auto addValue = [&](int idx) {
+        idx += 1;
+        while (idx <= n) { fenwick[idx] += 1; idx += idx & (-idx); }
+    };
+    auto prefixValue = [&](int idx) -> long long {  // #inserted with y in [0..idx]
+        idx += 1;
+        long long total = 0;
+        while (idx > 0) { total += fenwick[idx]; idx -= idx & (-idx); }
+        return total;
+    };
 
-    Q = len(queries)
-    usable = [False] * Q                   # False if a side is already empty
-    pending = [[] for _ in range(n)]       # x-sweep events: (qid, sign, ylo, yhi)
-    for qid, (S, E, L, R) in enumerate(queries):
-        first = locate_first(S, L)
-        second = locate_second(E, R)
-        if first is None or second is None:
-            continue
-        xlo, xhi = first
-        ylo, yhi = second
-        usable[qid] = True
-        if xlo > 0:
-            pending[xlo - 1].append((qid, -1, ylo, yhi))
-        pending[xhi].append((qid, +1, ylo, yhi))
+    vector<long long> hits(q, 0);
+    for (int x = 0; x < n; x++) {
+        addValue(axisValue[x]);
+        for (const auto& ev : events[x]) {
+            int qid = ev[0], sign = ev[1], yl = ev[2], yh = ev[3];
+            long long count = prefixValue(yh) - (yl > 0 ? prefixValue(yl - 1) : 0);
+            hits[qid] += (long long)sign * count;
+        }
+    }
 
-    fenwick = [0] * (n + 1)                 # Fenwick over the y-axis
-
-    def add_value(i):
-        i += 1
-        while i <= n:
-            fenwick[i] += 1
-            i += i & (-i)
-
-    def prefix_value(i):                    # #inserted points with y in [0..i]
-        i += 1
-        total = 0
-        while i > 0:
-            total += fenwick[i]
-            i -= i & (-i)
-        return total
-
-    hits = [0] * Q
-    for x in range(n):                      # sweep x; insert this point's y
-        add_value(axis_value[x])
-        for (qid, sign, ylo, yhi) in pending[x]:
-            count = prefix_value(yhi) - (prefix_value(ylo - 1) if ylo > 0 else 0)
-            hits[qid] += sign * count       # rectangle count by x-prefix difference
-
-    return [usable[qid] and hits[qid] > 0 for qid in range(Q)]
-
-
-if __name__ == "__main__":
-    data = sys.stdin.buffer.read().split()
-    it = iter(data)
-    n = int(next(it)); m = int(next(it)); q = int(next(it))
-    edges = [(int(next(it)), int(next(it))) for _ in range(m)]
-    queries = [(int(next(it)), int(next(it)), int(next(it)), int(next(it)))
-               for _ in range(q)]
-    out = answer_queries(n, edges, queries)
-    print("\n".join("YES" if a else "NO" for a in out))
+    string out;
+    out.reserve(q * 4);
+    for (int i = 0; i < q; i++)
+        out += (usable[i] && hits[i] > 0) ? "YES\n" : "NO\n";
+    cout << out;
+    return 0;
+}
 ```
 
 I end up with this chain: a query is satisfiable iff the human-reachable set $V_L$ (from $S$ over vertices $\ge L$) and the wolf-reachable set $V_R$ (from $E$ over vertices $\le R$) share a vertex, and any shared vertex is automatically a legal switch. Per-query flooding is too slow, but the reachable sets are monotone — lowering $L$ or raising $R$ only merges components — so each merge history is a laminar family, hence a tree. If I build that tree by turning vertices on in decreasing order for the human side and increasing order for the wolf side, $V_L$ becomes the subtree under $S$'s highest ancestor with tag $\ge L$, and $V_R$ becomes the subtree under $E$'s highest ancestor with tag $\le R$; binary lifting finds those ancestors in logarithmic time, and in each tree's DFS leaf order those subtrees are contiguous intervals. The two trees order leaves differently, so I give each vertex a 2D point from its two positions, and the query "$V_L\cap V_R\ne\varnothing$" becomes "is the rectangle [human interval] $\times$ [wolf interval] nonempty" — which I answer for all queries together by one $x$-sweep with a Fenwick tree over the $y$-axis.

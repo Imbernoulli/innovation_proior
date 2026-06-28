@@ -77,68 +77,65 @@ problem for the given edge set, but that number need not be the poset width.
 
 ## Code
 
-```python
-import sys
+Single self-contained C++17 program. It reads `n m` then `m` lines of 1-based
+edges `u v` from stdin, and prints the single integer minimum path cover ($n - M$)
+to stdout.
 
-sys.setrecursionlimit(1_000_000)
+```cpp
+// Minimum path cover of a DAG via the split-vertex bipartite-matching reduction.
+// Reads from stdin: "n m" then m lines each "u v" (1-based) for a directed edge
+// u -> v of an acyclic graph. Writes to stdout the single integer minimum number
+// of vertex-disjoint paths covering every vertex exactly once, which equals
+// n - (maximum bipartite matching of the split graph).
+#include <bits/stdc++.h>
+using namespace std;
 
+int n;
+vector<vector<int>> adj;   // adj[v] = right copies w_in joined to left copy v_out
+vector<int> match_right;   // right vertex -> its matched left vertex, or -1
+vector<char> used;         // per-augmentation visited flag on right vertices
 
-def read_dag(data):
-    """Parse n, m, and m directed edges (1-based in input) into a 0-based
-    adjacency list of a DAG. Returns (n, adj)."""
-    it = iter(data)
-    n = int(next(it))
-    m = int(next(it))
-    adj = [[] for _ in range(n)]
-    for _ in range(m):
-        u = int(next(it)) - 1
-        v = int(next(it)) - 1
-        adj[u].append(v)
-    return n, adj
+// Kuhn's augmenting-path DFS: try to place left vertex u on some free/freeable
+// right vertex. Returns true on success.
+bool try_kuhn(int u) {
+    for (int w : adj[u]) {
+        if (!used[w]) {
+            used[w] = 1;
+            if (match_right[w] == -1 || try_kuhn(match_right[w])) {
+                match_right[w] = u;
+                return true;
+            }
+        }
+    }
+    return false;
+}
 
+int main() {
+    ios::sync_with_stdio(false);
+    cin.tie(nullptr);
 
-def bipartite_matching(n_left, n_right, adj):
-    """Maximum-cardinality matching of a bipartite graph by Kuhn's
-    augmenting-path search. adj[u] lists right vertices joined to left vertex u.
-    Returns the size of a maximum matching. O(V * E)."""
-    match_right = [-1] * n_right       # right vertex -> its matched left vertex
+    long long m_ll;
+    if (!(cin >> n >> m_ll)) return 0;
+    long long m = m_ll;
 
-    def try_kuhn(u, used):
-        for w in adj[u]:
-            if not used[w]:
-                used[w] = True
-                if match_right[w] == -1 or try_kuhn(match_right[w], used):
-                    match_right[w] = u
-                    return True
-        return False
+    adj.assign(n, {});
+    for (long long i = 0; i < m; ++i) {
+        int u, v;
+        cin >> u >> v;
+        --u; --v;                 // to 0-based
+        adj[u].push_back(v);      // bipartite edge v_out - w_in
+    }
 
-    size = 0
-    for u in range(n_left):
-        used = [False] * n_right
-        if try_kuhn(u, used):
-            size += 1
-    return size
+    match_right.assign(n, -1);
+    long long matching_size = 0;
+    for (int u = 0; u < n; ++u) {
+        used.assign(n, 0);
+        if (try_kuhn(u)) ++matching_size;
+    }
 
-
-def min_path_cover(n, adj):
-    bip = [[] for _ in range(n)]
-    for v in range(n):
-        for w in adj[v]:
-            bip[v].append(w)
-    matching_size = bipartite_matching(n, n, bip)
-    return n - matching_size
-
-
-def main():
-    data = sys.stdin.buffer.read().split()
-    if not data:
-        return
-    n, adj = read_dag(data)
-    print(min_path_cover(n, adj))
-
-
-if __name__ == "__main__":
-    main()
+    cout << (n - matching_size) << "\n";
+    return 0;
+}
 ```
 
 ## Complexity

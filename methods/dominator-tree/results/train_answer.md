@@ -16,117 +16,110 @@ Knowing $\mathrm{sdom}$ pins $\mathrm{idom}(v)$ between $\mathrm{sdom}(v)$ and $
 $$\mathrm{idom}(v)=\begin{cases}\mathrm{sdom}(v) & \text{if }\mathrm{sdom}(u)=\mathrm{sdom}(v),\\ \mathrm{idom}(u) & \text{otherwise,}\end{cases}\qquad u=\mathrm{eval}(v).$$
 The second case references $\mathrm{idom}(u)$, which may be unknown when I reach $v$, so I defer it: drop $v$ into $\mathrm{bucket}(\mathrm{sdom}(v))$, and when I link $v$ under $\mathrm{fa}(v)$, drain $\mathrm{bucket}(\mathrm{fa}(v))$ — for each $x$ there, $\mathrm{fa}(v)=\mathrm{sdom}(x)$, the stretch from $\mathrm{sdom}(x)$ down is now linked, so I run $u=\mathrm{eval}(x)$ and apply the rule, recording the witness $u$ tentatively in the second case. Draining at the parent rather than at $v$ is what makes the linked region exactly the stretch the $\mathrm{eval}$ must see. A final pass in increasing $\mathrm{dfn}$ order resolves the deferrals: for each $v$ whose recorded $\mathrm{idom}(v)$ is not already its semidominator, set $\mathrm{idom}(v)\leftarrow\mathrm{idom}(\mathrm{idom}(v))$; increasing order guarantees the witness was finalized first. Then $\mathrm{idom}(s)=s$ and the tree is complete. Unreachable vertices keep $\mathrm{dfn}=0$, never enter the sweeps, and are skipped as predecessors; self-loops and parallel edges only repeat harmless candidates, so the raw graph goes in unmodified. The total $\mathrm{eval}$ count is $O(m)$ — one per edge for $\mathrm{sdom}$, one per bucketed vertex for $\mathrm{idom}$ — plus the linear DFS and two linear passes, with $O(n+m)$ memory.
 
-```python
-import sys
+Concretely, the deliverable is a single self-contained C++17 program reading from stdin: the first line is `n m`, then `m` lines each give a directed edge `u v` (1-based), with start vertex `s=1`; it prints `n` integers where `ans[i]` is the number of vertices dominated by `i` — the subtree size of `i` in the dominator tree, or `0` if `i` is unreachable from `s`.
 
+```cpp
+// Dominator tree (Lengauer-Tarjan). Reads "n m" then m directed edges "u v"
+// (1-based); start vertex s=1. Prints n integers: ans[i] = number of vertices
+// vertex i dominates (its subtree size in the dominator tree), 0 if unreachable.
+#include <bits/stdc++.h>
+using namespace std;
 
-def read_graph(data):
-    """Parse n, m, the start s (1-based in input), and m directed edges into a
-    0-based successor list and its reverse. Returns (n, s, succ, pred)."""
-    it = iter(data)
-    n = int(next(it))
-    m = int(next(it))
-    s = int(next(it)) - 1
-    succ = [[] for _ in range(n)]
-    pred = [[] for _ in range(n)]
-    for _ in range(m):
-        a = int(next(it)) - 1
-        b = int(next(it)) - 1
-        succ[a].append(b)
-        pred[b].append(a)
-    return n, s, succ, pred
+const int INF = INT_MAX;
 
+int n, m, dfc = 0;
+vector<vector<int>> succ_, pred_, bucket_;
+vector<int> dfn, pos_, fa, fth, sdm, mn, idm, ans_;
 
-def dominator_tree(n, s, edges):
-    """idom[v] = the immediate dominator of v for every v reachable from s;
-    idom[s] = s by convention; idom[v] = -1 for v unreachable from s."""
-    succ = [[] for _ in range(n)]
-    pred = [[] for _ in range(n)]
-    for a, b in edges:
-        succ[a].append(b)
-        pred[b].append(a)
+void dfs(int s) {
+    // iterative DFS from s: assign dfn (preorder), pos[dfn]=vertex, tree parent fth
+    vector<pair<int,int>> st;            // (vertex, index into succ_)
+    dfn[s] = ++dfc; pos_[dfc] = s;
+    st.push_back({s, 0});
+    while (!st.empty()) {
+        int u = st.back().first;
+        int &i = st.back().second;
+        bool advanced = false;
+        while (i < (int)succ_[u].size()) {
+            int w = succ_[u][i++];
+            if (dfn[w] == 0) {
+                dfn[w] = ++dfc; pos_[dfc] = w; fth[w] = u;
+                st.push_back({w, 0});
+                advanced = true;
+                break;
+            }
+        }
+        if (!advanced) st.pop_back();
+    }
+}
 
-    # Depth-first search from s: preorder number dfn, order[], tree parent fa.
-    dfn = [0] * n            # 1..cnt preorder number; 0 means unreached from s
-    order = [0] * (n + 1)    # order[i] = the vertex whose dfn is i
-    fa = [-1] * n
-    cnt = 1
-    dfn[s] = cnt
-    order[cnt] = s
-    stack = [(s, iter(succ[s]))]
-    while stack:
-        u, it = stack[-1]
-        for w in it:
-            if dfn[w] == 0:
-                cnt += 1
-                dfn[w] = cnt
-                order[cnt] = w
-                fa[w] = u
-                stack.append((w, iter(succ[w])))
-                break
-        else:
-            stack.pop()
+// disjoint-set find carrying the minimum-sdom witness through path compression
+int find(int x) {
+    if (fa[x] == x) return x;
+    int r = find(fa[x]);
+    if (dfn[sdm[mn[fa[x]]]] < dfn[sdm[mn[x]]]) mn[x] = mn[fa[x]];
+    fa[x] = r;
+    return r;
+}
 
-    # Disjoint-set forest carrying the minimum-sdom witness along compressed paths.
-    sdom = list(range(n))    # unprocessed vertex reads as its own sdom
-    anc = [-1] * n           # forest parent; -1 while v is a root
-    label = list(range(n))   # label[x] = min-sdom vertex on the compressed chain above x
-    idom = [-1] * n
-    bucket = [[] for _ in range(n)]
+void tarjan(int s) {
+    dfs(s);
+    for (int i = 1; i <= n; ++i) { fa[i] = sdm[i] = mn[i] = i; }
+    // decreasing dfn: semidominators, then deferred immediate dominators
+    for (int i = dfc; i >= 2; --i) {
+        int u = pos_[i], res = INF;
+        for (int v : pred_[u]) {
+            if (dfn[v] == 0) continue;
+            find(v);
+            if (dfn[v] < dfn[u]) res = min(res, dfn[v]);
+            else res = min(res, dfn[sdm[mn[v]]]);
+        }
+        sdm[u] = pos_[res];
+        fa[u] = fth[u];
+        bucket_[sdm[u]].push_back(u);
+        int p = fth[u];
+        for (int v : bucket_[p]) {
+            find(v);
+            idm[v] = (p == sdm[mn[v]]) ? p : mn[v];
+        }
+        bucket_[p].clear();
+    }
+    // increasing dfn: resolve deferred immediate dominators
+    for (int i = 2; i <= dfc; ++i) {
+        int u = pos_[i];
+        if (idm[u] != sdm[u]) idm[u] = idm[idm[u]];
+    }
+    // subtree sizes in the dominator tree: ans[i] = # vertices i dominates
+    for (int i = dfc; i >= 2; --i) {
+        int u = pos_[i];
+        ++ans_[u];
+        ans_[idm[u]] += ans_[u];
+    }
+    ++ans_[s];
+}
 
-    def compress(v):
-        path = []
-        x = v
-        while anc[x] != -1 and anc[anc[x]] != -1:
-            path.append(x)
-            x = anc[x]
-        for x in reversed(path):
-            a = anc[x]
-            if dfn[sdom[label[a]]] < dfn[sdom[label[x]]]:
-                label[x] = label[a]
-            anc[x] = anc[a]
-
-    def eval_(v):
-        if anc[v] == -1:
-            return v
-        compress(v)
-        return label[v]
-
-    # Decreasing dfn: semidominators, then deferred immediate dominators.
-    for i in range(cnt, 1, -1):
-        v = order[i]
-        for w in pred[v]:
-            if dfn[w] == 0:
-                continue
-            u = eval_(w)
-            if dfn[sdom[u]] < dfn[sdom[v]]:
-                sdom[v] = sdom[u]
-        bucket[sdom[v]].append(v)
-        anc[v] = fa[v]
-        p = fa[v]
-        for x in bucket[p]:
-            u = eval_(x)
-            idom[x] = u if dfn[sdom[u]] < dfn[sdom[x]] else p
-        bucket[p] = []
-
-    # Increasing dfn: resolve deferred immediate dominators.
-    for i in range(2, cnt + 1):
-        v = order[i]
-        if idom[v] != sdom[v]:
-            idom[v] = idom[idom[v]]
-    idom[s] = s
-    return idom
-
-
-def main():
-    data = sys.stdin.buffer.read().split()
-    if not data:
-        return
-    n, s, succ, pred = read_graph(data)
-    edges = [(a, b) for a in range(n) for b in succ[a]]
-    idom = dominator_tree(n, s, edges)
-
-
-if __name__ == "__main__":
-    main()
+int main() {
+    ios::sync_with_stdio(false);
+    cin.tie(nullptr);
+    if (!(cin >> n >> m)) return 0;
+    succ_.assign(n + 1, {});
+    pred_.assign(n + 1, {});
+    bucket_.assign(n + 1, {});
+    dfn.assign(n + 1, 0);
+    pos_.assign(n + 1, 0);
+    fa.assign(n + 1, 0);
+    fth.assign(n + 1, 0);
+    sdm.assign(n + 1, 0);
+    mn.assign(n + 1, 0);
+    idm.assign(n + 1, 0);
+    ans_.assign(n + 1, 0);
+    for (int i = 0; i < m; ++i) {
+        int u, v; cin >> u >> v;
+        succ_[u].push_back(v);
+        pred_[v].push_back(u);
+    }
+    tarjan(1);
+    for (int i = 1; i <= n; ++i) cout << ans_[i] << " \n"[i == n];
+    return 0;
+}
 ```

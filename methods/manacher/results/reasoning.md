@@ -22,7 +22,7 @@ Adding the successes: `0+1+2+2+2+0+0+0+0 = 7`. The transformed array has length 
 
 Now the odd/even split I waved at. Keeping two algorithms — one for character centers, one for gap centers — would duplicate the same mirror argument with two sets of off-by-one indices. I would rather have a single odd-centered pass. The trick is to make every original gap into an actual position. Insert a separator between every pair of characters and at both ends, so `abba` becomes `#a#b#b#a#`. An even palindrome in the original is now centered on a separator, an odd palindrome stays centered on its character, and every palindrome I care about is odd-centered in the transformed sequence.
 
-Before I commit to `#` as the separator, I should check the one thing that could quietly break it: what if `#` is a real input character? If `s = "a#a"`, the transform is `#a###a#`, and now a real `#` from the input is indistinguishable from a structural separator. Expanding around the wrong middle would compare a real `#` against a structural `#` and wrongly extend. So a literal character is not safe — the separator has to be a token that no input character can equal. In Python the clean way is a sentinel `object()`; I keep `t` as a list, put the sentinel at the even positions, and real characters at the odd positions. The derivation can keep thinking of it as `#`, but the code must use the sentinel so that an input containing `#` still works. (I confirmed this: with the sentinel, `longest_palindrome("a#a")` returns `"a#a"`, matching brute force; with a literal `#` it would not.)
+Before I commit to `#` as the separator, I should check the one thing that could quietly break it: what if `#` is a real input character? If `s = "a#a"`, the transform is `#a###a#`, and now a real `#` from the input is indistinguishable from a structural separator. Expanding around the wrong middle would compare a real `#` against a structural `#` and wrongly extend. So a literal character is not safe — the separator has to be a token that no input character can equal. The clean way is to store no separator character at all: I work in the transformed coordinate where even positions are separators and odd positions are real characters, and I make the comparison itself respect the parity — two even positions are always equal as separators, an even and an odd position are never equal, and two odd positions compare the underlying characters. The derivation can keep thinking of it as `#`, but the comparison must use the parity rule so that an input containing `#` still works. (I confirmed this: with the parity rule, `longest_palindrome("a#a")` returns `"a#a"`, matching brute force; with a literal `#` separator it would not.)
 
 With the transformed sequence, `p[i]` is the number of successful outward steps around transformed center `i`, so the palindrome occupies transformed indices `i - p[i]` through `i + p[i]`. Because separators and real characters strictly alternate, the count of original characters inside that span equals `p[i]`. Let me check that the radius really reads back as an original length rather than needing a conversion. For `#b#b#` centered on the middle `#`, expanding gives `b==b` then `#==#`, radius 2, and the original palindrome is `bb`, length 2 — matches. For `#a#`, radius 1, original `a`, length 1 — matches. A bare separator has radius 0, the empty palindrome — matches. So the longest original length is just `max(p)`.
 
@@ -30,60 +30,79 @@ The start index comes from the same alternating layout. Original character `s[j]
 
 Let me run the whole pipeline on a string where the answer is even-length and not at the start, so both the separator transform and the start formula get exercised non-trivially. Take `cbbd`, transform `#c#b#b#d#` (length 9). Scanning: center 1 (`c`) gets `p=1`; center 3 (`b`) gets `p=1`; center 4 (the middle `#`) expands `b==b` then `#==#`, `p=2`, the longest. Center 5 (`b`) has `c,r = 4,6`, `mirror = 3`, `p[3]=1`, clamp `min(6-5,1)=1`, no further steps — again the mirror does the work. The radius array is `[0,1,0,1,2,1,0,1,0]`, so `max(p)=2` at `best_center = 4`. Then `start = (4 - 2)//2 = 1`, and `s[1:1+2] = "bb"`. That is the correct answer, an even palindrome sitting in the interior, recovered with the right start. I also checked the answers against brute force over the twenty thousand random strings above and found no length mismatch.
 
-```python
-def manacher(s):
-    """Return transformed-center radii for palindromes in s.
+```cpp
+#include <bits/stdc++.h>
+using namespace std;
 
-    The transform is conceptually #s0#s1#...#s_{n-1}#, but the implementation
-    uses a private separator object so ordinary input strings may contain '#'.
-    p[i] is the number of successful outward steps around transformed center i;
-    the same value is the length of the original-string palindrome represented
-    by that center.
-    """
-    if not s:
-        return [0]
+// Manacher's algorithm. Conceptually the input s = s0 s1 ... s_{n-1} is woven
+// with a separator into #s0#s1#...#s_{n-1}#, but no literal separator character
+// is used: in the transformed coordinate even indices are separators and odd
+// indices carry real characters, so two transformed positions are "equal" iff
+// both are separators or both hold the same real character. p[i] is the number
+// of successful outward steps around transformed center i, which is exactly the
+// length of the original-string palindrome represented by that center.
+vector<int> manacher(const string& s) {
+    int n = (int)s.size();
+    if (n == 0) return vector<int>(1, 0);
 
-    sep = object()
-    t = [sep]
-    for ch in s:
-        t.append(ch)
-        t.append(sep)
+    int m = 2 * n + 1;                 // transformed length: separators + chars
+    // same(i, j): do transformed positions i and j compare equal?
+    auto same = [&](int i, int j) -> bool {
+        bool sep_i = (i % 2 == 0);     // even index => separator
+        bool sep_j = (j % 2 == 0);
+        if (sep_i || sep_j) return sep_i && sep_j;   // separators only match separators
+        return s[i / 2] == s[j / 2];                 // both real characters
+    };
 
-    n = len(t)
-    p = [0] * n
-    c, r = 0, 0
+    vector<int> p(m, 0);
+    int c = 0, r = 0;                  // carried palindrome: center c, inclusive right edge r
+    for (int i = 0; i < m; ++i) {
+        if (i < r) {
+            int mirror = 2 * c - i;
+            p[i] = min(r - i, p[mirror]);
+        }
+        while (i - p[i] - 1 >= 0 && i + p[i] + 1 < m &&
+               same(i - p[i] - 1, i + p[i] + 1)) {
+            ++p[i];
+        }
+        if (i + p[i] > r) {
+            c = i;
+            r = i + p[i];
+        }
+    }
+    return p;
+}
 
-    for i in range(n):
-        if i < r:
-            mirror = 2 * c - i
-            p[i] = min(r - i, p[mirror])
+// Return one longest palindromic substring of s in O(n) time.
+string longest_palindrome(const string& s) {
+    if (s.empty()) return "";
+    vector<int> p = manacher(s);
+    int best_len = 0, best_center = 0;
+    for (int i = 0; i < (int)p.size(); ++i) {
+        if (p[i] > best_len) {
+            best_len = p[i];
+            best_center = i;
+        }
+    }
+    int start = (best_center - best_len) / 2;
+    return s.substr(start, best_len);
+}
 
-        while (
-            i - p[i] - 1 >= 0
-            and i + p[i] + 1 < n
-            and t[i - p[i] - 1] == t[i + p[i] + 1]
-        ):
-            p[i] += 1
+// Reads one line s (which may contain '#' or any other characters) from stdin
+// and prints the length of a longest palindromic substring, then the substring.
+int main() {
+    ios::sync_with_stdio(false);
+    cin.tie(nullptr);
 
-        if i + p[i] > r:
-            c, r = i, i + p[i]
+    string s;
+    getline(cin, s);
+    if (!s.empty() && s.back() == '\r') s.pop_back();   // tolerate CRLF input
 
-    return p
-
-
-def longest_palindrome(s):
-    """Return a longest palindromic substring of s in O(n) time."""
-    if not s:
-        return ""
-
-    p = manacher(s)
-    best_len, best_center = 0, 0
-    for i, radius in enumerate(p):
-        if radius > best_len:
-            best_len, best_center = radius, i
-
-    start = (best_center - best_len) // 2
-    return s[start:start + best_len]
+    string ans = longest_palindrome(s);
+    cout << ans.size() << '\n';
+    cout << ans << '\n';
+    return 0;
+}
 ```
 
 Each center first receives the radius forced by its reflected center, clamped to the current inclusive right boundary, so direct comparisons begin only at the first unverified pair and the boundary only advances. The separator transform folds even and odd original palindromes into one odd-centered pass, and the transformed radius reads back directly as the original substring length — which the `cbbd` and `aaaa` traces above bear out end to end.

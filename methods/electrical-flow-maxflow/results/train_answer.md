@@ -14,52 +14,196 @@ The win comes from width reduction, and it rests on the observation that the ove
 
 The cut admits a cleaner dual that needs no oracle abstraction, no averaging, and no forbidden set: repeatedly solve an electrical flow, raise resistances by congestion, and read a cut directly from the potentials by a threshold sweep. Scaling $\varphi_s = 1, \varphi_t = 0$ and cutting at a uniform random threshold $x$, an edge $(u,v)$ is cut with probability $|\varphi_u - \varphi_v|$, so some threshold achieves capacity at most $\sum_e |\varphi_u-\varphi_v|u_e$, which by Cauchy-Schwarz with $\mu = \sum_e u_e^2 r_e$ is $\le \sqrt{\mu/R_\text{eff}}$. Driving $R_\text{eff}$ up to $\approx\mu/F^2$ — its ceiling, attained when the resistance has concentrated onto the minimum cut — makes this $\approx F$. The update $w_e \leftarrow w_e + (\varepsilon/\rho)\mathrm{cong}(\tilde f,e)w_e + (\varepsilon^2/(m\rho))\mu$ carries a new additive floor term keeping every $w_e \ge (\varepsilon/m)\mu$, which the jump lemma needs so a reweighted edge carries meaningful absolute weight. A contradiction argument — total weight bounded, the capacity-weighted geometric mean of min-cut edge weights growing on low-congestion steps, $R_\text{eff}$ growing on high-congestion steps, both step-counts summing to less than $N$ — shows $R_\text{eff}$ reaches $(1-7\varepsilon)\mu/F^2$ within $N = 5\varepsilon^{-8/3}m^{1/3}\ln m$ steps with $\rho = 3m^{1/3}\varepsilon^{-2/3}$, yielding a cut of capacity at most $F/(1-7\varepsilon)$ in $\tilde O(m^{4/3}\varepsilon^{-8/3})$, and $\tilde O(m + n^{4/3}\varepsilon^{-8/3})$ on a sparsifier.
 
-Here is the algorithm — the electrical-flow primitive, the oracle, and the multiplicative-weights loop:
+Here is the algorithm — the electrical-flow primitive, the oracle, and the multiplicative-weights loop — as a single self-contained C++17 program. It reads `n m s t F eps` and then `m` lines `a b u` from stdin and prints the feasibility-scaled flow value, the per-edge flow, and the maximum congestion (or `FAIL` when the energy fail-test certifies `F > F*`). The Laplacian solve is a dense Cholesky factorization of the grounded system, standing in for the nearly-linear-time SDD solver the analysis assumes:
 
-```python
-import numpy as np
-import scipy.sparse as sp
-import scipy.sparse.linalg as spla
+```cpp
+// Electrical-flow + multiplicative-weights approximate maximum s-t flow.
+// Reads from stdin:  n m s t F eps
+//                    then m lines:  a b u   (undirected edge a--b, capacity u)
+// Writes to stdout:  one line "FAIL" if F > F* (oracle certifies infeasibility),
+//                    otherwise "value <V>" then m lines of per-edge flow f(e),
+//                    then "maxcong <c>".  (0-indexed vertices.)
+//
+// The electrical flow of value F minimizes the energy sum_e r_e f(e)^2 over s-t
+// flows with B f = F*chi; it is the potential flow f = C B^T phi where
+// L phi = F*chi, L = B C B^T the weighted Laplacian.  L is SDD; here we ground
+// one vertex and solve the dense reduced system directly (the algorithm's
+// intended regime replaces this with a nearly-linear-time SDD solver).  The
+// multiplicative-weights outer loop turns this capacity-oblivious oracle into a
+// feasible flow, reweighting by congestion each round.
+//
+// long long is unused for the numeric core (flows are real), but capacities and
+// counts are read as long long to avoid overflow on large inputs.
 
-def incidence_matrix(n, edges):
-    m = len(edges)
-    rows, cols, vals = [], [], []
-    for e, (a, b) in enumerate(edges):
-        rows += [a, b]; cols += [e, e]; vals += [1.0, -1.0]
-    return sp.csr_matrix((vals, (rows, cols)), shape=(n, m))
+#include <bits/stdc++.h>
+using namespace std;
 
-def electrical_flow(B, conduct, src, snk, F):
-    # min-energy s-t flow of value F: L phi = F*chi, f = C B^T phi
-    n, _ = B.shape
-    L = (B @ sp.diags(conduct) @ B.T).tolil()
-    chi = np.zeros(n); chi[src] = 1.0; chi[snk] = -1.0
-    keep = list(range(1, n))                       # ground vertex 0
-    phi = np.zeros(n)
-    phi[keep] = spla.spsolve(L[keep, :][:, keep].tocsr(), (F * chi)[keep])
-    return conduct * (B.T @ phi), phi
+struct Edge { int a, b; double u; };
 
-def oracle(B, u, w, src, snk, F, eps, active):
-    m = len(u); w1 = float(w.sum())
-    res = np.full(m, np.inf)
-    res[active] = (w[active] + eps * w1 / (3 * m)) / (u[active] ** 2)  # avg term + floor term
-    conduct = np.where(np.isinf(res), 0.0, 1.0 / res)
-    f, phi = electrical_flow(B, conduct, src, snk, F)
-    E = float(np.sum(np.where(np.isinf(res), 0.0, res) * f * f))
-    return f, phi, E <= (1 + eps) * w1                                # fail-test on energy
+// Solve the symmetric positive-definite reduced Laplacian system A x = rhs by
+// Cholesky factorization (A is the Laplacian with the grounded vertex removed).
+// A is given as a dense (k x k) row-major matrix; solves in place.
+static vector<double> cholesky_solve(vector<vector<double>>& A, vector<double> rhs) {
+    int k = (int)A.size();
+    // Cholesky: A = L L^T (store L in lower triangle of A).
+    for (int i = 0; i < k; ++i) {
+        for (int j = 0; j <= i; ++j) {
+            double sum = A[i][j];
+            for (int p = 0; p < j; ++p) sum -= A[i][p] * A[j][p];
+            if (i == j) {
+                if (sum <= 0) sum = 1e-12;        // guard tiny/round-off pivots
+                A[i][j] = sqrt(sum);
+            } else {
+                A[i][j] = sum / A[j][j];
+            }
+        }
+    }
+    // Forward solve L y = rhs.
+    vector<double> y(k);
+    for (int i = 0; i < k; ++i) {
+        double sum = rhs[i];
+        for (int p = 0; p < i; ++p) sum -= A[i][p] * y[p];
+        y[i] = sum / A[i][i];
+    }
+    // Back solve L^T x = y.
+    vector<double> x(k);
+    for (int i = k - 1; i >= 0; --i) {
+        double sum = y[i];
+        for (int p = i + 1; p < k; ++p) sum -= A[p][i] * x[p];
+        x[i] = sum / A[i][i];
+    }
+    return x;
+}
 
-def approx_max_flow(n, edges, u, src, snk, F, eps, rho=None):
-    B = incidence_matrix(n, edges); m = len(edges); u = np.asarray(u, float)
-    rho = 3.0 * np.sqrt(m / eps) if rho is None else rho
-    w = np.ones(m); active = np.ones(m, dtype=bool)
-    N = int(np.ceil(2 * rho * np.log(m) / eps ** 2))
-    acc = np.zeros(m)
-    for _ in range(N):
-        f, phi, ok = oracle(B, u, w, src, snk, F, eps, active)
-        if not ok:
-            return None                                              # certifies F > F*
-        w = w * (1 + (eps / rho) * (np.abs(f) / u))                  # reweight by congestion
-        acc += f
-    return (1 - eps) ** 2 / ((1 + eps) * N) * acc                    # feasibility-scaled average
+// Electrical s-t flow of value F with the given per-edge conductances.
+// Returns the flow vector f (length m); potentials phi returned via out-param.
+static vector<double> electrical_flow(int n, const vector<Edge>& edges,
+                                      const vector<double>& conduct,
+                                      int s, int t, double F,
+                                      vector<double>& phi_out) {
+    int m = (int)edges.size();
+    // Build dense Laplacian L = B C B^T (n x n).
+    vector<vector<double>> L(n, vector<double>(n, 0.0));
+    for (int e = 0; e < m; ++e) {
+        if (conduct[e] == 0.0) continue;
+        int a = edges[e].a, b = edges[e].b;
+        double c = conduct[e];
+        L[a][a] += c; L[b][b] += c;
+        L[a][b] -= c; L[b][a] -= c;
+    }
+    // Ground vertex 0: solve on indices 1..n-1.
+    int k = n - 1;
+    vector<vector<double>> A(k, vector<double>(k, 0.0));
+    for (int i = 0; i < k; ++i)
+        for (int j = 0; j < k; ++j)
+            A[i][j] = L[i + 1][j + 1];
+    vector<double> rhs(k, 0.0);
+    // chi: +1 at s, -1 at t (scaled by F); drop the grounded row 0.
+    auto add_chi = [&](int v, double val) {
+        if (v == 0) return;        // grounded row removed
+        rhs[v - 1] += val;
+    };
+    add_chi(s, F);
+    add_chi(t, -F);
 
-# Improved oracle: add `if cong>rho: active[e]=False; recompute` and reuse this loop.
+    vector<double> xk = cholesky_solve(A, rhs);
+    vector<double> phi(n, 0.0);
+    for (int i = 0; i < k; ++i) phi[i + 1] = xk[i];
+
+    // Ohm's law: f = C B^T phi, with B^T phi on edge (a,b) = phi[a]-phi[b].
+    vector<double> f(m, 0.0);
+    for (int e = 0; e < m; ++e) {
+        if (conduct[e] == 0.0) { f[e] = 0.0; continue; }
+        f[e] = conduct[e] * (phi[edges[e].a] - phi[edges[e].b]);
+    }
+    phi_out = phi;
+    return f;
+}
+
+int main() {
+    ios::sync_with_stdio(false);
+    cin.tie(nullptr);
+
+    int n, s, t;
+    long long m_ll;
+    double F, eps;
+    if (!(cin >> n >> m_ll >> s >> t >> F >> eps)) return 0;
+    int m = (int)m_ll;
+
+    vector<Edge> edges(m);
+    vector<double> u(m);
+    for (int e = 0; e < m; ++e) {
+        cin >> edges[e].a >> edges[e].b >> edges[e].u;
+        u[e] = edges[e].u;
+    }
+
+    // Multiplicative-weights outer loop (the plain (eps, 3 sqrt(m/eps)) oracle).
+    double rho = 3.0 * sqrt((double)m / eps);             // width of the plain oracle
+    long long N = (long long)ceil(2.0 * rho * log((double)max(m, 2)) / (eps * eps));
+    // Cap iterations so the dense O(N * n^3) demo stays bounded on big inputs.
+    const long long N_CAP = 20000;
+    if (N > N_CAP) N = N_CAP;
+
+    vector<double> w(m, 1.0);
+    vector<double> acc(m, 0.0);
+    bool failed = false;
+
+    for (long long it = 0; it < N; ++it) {
+        double w1 = 0.0;
+        for (int e = 0; e < m; ++e) w1 += w[e];
+
+        // r_e = (1/u_e^2)(w_e + eps*|w|_1/(3m)): w_e term for the average,
+        // floor term eps*|w|_1/(3m) caps the worst congestion.
+        vector<double> conduct(m, 0.0);
+        vector<double> res(m, 0.0);
+        double floor_term = eps * w1 / (3.0 * m);
+        for (int e = 0; e < m; ++e) {
+            res[e] = (w[e] + floor_term) / (u[e] * u[e]);
+            conduct[e] = 1.0 / res[e];
+        }
+
+        vector<double> phi;
+        vector<double> f = electrical_flow(n, edges, conduct, s, t, F, phi);
+
+        // Energy E_r(f); fail-test certifies F > F* when energy too large.
+        double E = 0.0;
+        for (int e = 0; e < m; ++e) E += res[e] * f[e] * f[e];
+        if (E > (1.0 + eps) * w1) { failed = true; break; }
+
+        // Reweight by congestion; accumulate the per-round flow.
+        for (int e = 0; e < m; ++e) {
+            double cong = fabs(f[e]) / u[e];
+            w[e] *= (1.0 + (eps / rho) * cong);
+            acc[e] += f[e];
+        }
+    }
+
+    cout.setf(std::ios::fixed);
+    cout << setprecision(6);
+
+    if (failed) {
+        cout << "FAIL\n";
+        return 0;
+    }
+
+    // Feasibility-scaled average of the per-round flows.
+    double scale = (1.0 - eps) * (1.0 - eps) / ((1.0 + eps) * (double)N);
+    vector<double> fbar(m);
+    for (int e = 0; e < m; ++e) fbar[e] = scale * acc[e];
+
+    // Flow value = net flow out of s.
+    double value = 0.0;
+    for (int e = 0; e < m; ++e) {
+        if (edges[e].a == s) value += fbar[e];
+        else if (edges[e].b == s) value -= fbar[e];
+    }
+
+    double maxcong = 0.0;
+    for (int e = 0; e < m; ++e) maxcong = max(maxcong, fabs(fbar[e]) / u[e]);
+
+    cout << "value " << fabs(value) << "\n";
+    for (int e = 0; e < m; ++e) cout << fbar[e] << "\n";
+    cout << "maxcong " << maxcong << "\n";
+    return 0;
+}
 ```

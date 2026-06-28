@@ -55,150 +55,144 @@ step sequence whose first step is based on the unweighted 1-tree cost.
 
 ## Code
 
-```python
-import math
-import numpy as np
+A single-file C++17 program: it reads `n` and an `n × n` symmetric cost matrix from stdin and
+prints the plain minimum 1-tree cost and the Held-Karp bound (Volgenant-Jonker schedule) to stdout.
 
-def _prim_mst(weighed):
-    """Minimum spanning tree on a dense perturbed-cost matrix."""
-    k = weighed.shape[0]
-    in_tree = np.zeros(k, dtype=bool)
-    best = weighed[0].copy()
-    parent = np.zeros(k, dtype=int)
-    in_tree[0] = True
-    best[0] = np.inf
-    edges = []
-    for _ in range(k - 1):
-        v = int(np.argmin(np.where(in_tree, np.inf, best)))
-        edges.append((parent[v], v))
-        in_tree[v] = True
-        upd = (~in_tree) & (weighed[v] < best)
-        best[upd] = weighed[v][upd]
-        parent[upd] = v
-    return edges
+```cpp
+// Held-Karp 1-tree Lagrangian lower bound for the symmetric TSP via subgradient
+// ("relaxation") ascent. NOT the O(2^n n^2) exact DP; this is a cheap bound for
+// branch-and-bound pruning.
+//
+// Input (stdin):  n, then an n x n symmetric real cost matrix (row-major).
+// Output (stdout): the plain minimum 1-tree cost and the Held-Karp bound (VJ schedule).
+#include <bits/stdc++.h>
+using namespace std;
 
-def compute_one_tree(cost, pi):
-    """Minimum 1-tree under node potentials pi. Returns raw cost and degrees."""
-    n = cost.shape[0]
-    extra = n - 1
-    weighed = cost + pi[:, None] + pi[None, :]
-    sub_edges = _prim_mst(weighed[:extra, :extra])
+// Minimum 1-tree under node potentials pi: MST on nodes {0..n-2} plus the two
+// cheapest edges from the left-out node n-1, all under weighed cost
+// c(i,j)+pi[i]+pi[j]. Returns the sum of RAW edge costs in one_tree_cost and the
+// degree of each node in deg.
+static double compute_one_tree(const vector<vector<double>>& cost,
+                               const vector<double>& pi,
+                               vector<int>& deg) {
+    int n = (int)cost.size();
+    int extra = n - 1;  // the left-out / special node
+    fill(deg.begin(), deg.end(), 0);
+    double one_tree_cost = 0.0;
 
-    degrees = np.zeros(n, dtype=int)
-    one_tree_cost = 0.0
-    for u, v in sub_edges:
-        degrees[u] += 1
-        degrees[v] += 1
-        one_tree_cost += cost[u, v]
+    // Prim MST on the extra ordinary nodes {0..extra-1} under perturbed cost.
+    vector<double> best(extra);
+    vector<int> parent(extra, 0);
+    vector<char> in_tree(extra, 0);
+    for (int j = 0; j < extra; ++j) best[j] = cost[0][j] + pi[0] + pi[j];
+    in_tree[0] = 1;
+    best[0] = numeric_limits<double>::infinity();
+    for (int t = 0; t < extra - 1; ++t) {
+        int v = -1;
+        double bv = numeric_limits<double>::infinity();
+        for (int j = 0; j < extra; ++j)
+            if (!in_tree[j] && best[j] < bv) { bv = best[j]; v = j; }
+        int u = parent[v];
+        deg[u]++; deg[v]++;
+        one_tree_cost += cost[u][v];          // accumulate RAW cost
+        in_tree[v] = 1;
+        for (int j = 0; j < extra; ++j) {
+            double w = cost[v][j] + pi[v] + pi[j];
+            if (!in_tree[j] && w < best[j]) { best[j] = w; parent[j] = v; }
+        }
+    }
 
-    order = np.argsort(weighed[extra, :extra])
-    for v in (int(order[0]), int(order[1])):
-        degrees[extra] += 1
-        degrees[v] += 1
-        one_tree_cost += cost[extra, v]
-    return one_tree_cost, degrees
+    // Attach the extra node by its two cheapest (perturbed) edges.
+    int e1 = -1, e2 = -1;
+    double w1 = numeric_limits<double>::infinity(), w2 = w1;
+    for (int j = 0; j < extra; ++j) {
+        double w = cost[extra][j] + pi[extra] + pi[j];
+        if (w < w1) { w2 = w1; e2 = e1; w1 = w; e1 = j; }
+        else if (w < w2) { w2 = w; e2 = j; }
+    }
+    for (int v : {e1, e2}) {
+        deg[extra]++; deg[v]++;
+        one_tree_cost += cost[extra][v];
+    }
+    return one_tree_cost;
+}
 
-class VolgenantJonker:
-    """Vanishing step schedule reaching zero at iteration M."""
-    def __init__(self, n, max_iterations=0):
-        self.n = n
-        self.M = max_iterations if max_iterations > 0 else int(28 * n ** 0.62)
-        self.step1 = 0.0
-        self.m = 0
-        self._init = False
+// Volgenant-Jonker vanishing step schedule reaching 0 at iteration M
+// (EJOR 9:83-89, 1982). step1 is seeded from the first / best 1-tree cost.
+struct VolgenantJonker {
+    int n, M, m = 0;
+    double step1 = 0.0;
+    bool inited = false;
+    VolgenantJonker(int n_, int max_iterations)
+        : n(n_), M(max_iterations > 0 ? max_iterations
+                                      : (int)(28.0 * pow((double)n_, 0.62))) {}
+    bool cont() { ++m; return m <= M; }
+    double step() const {
+        double mm = m, MM = M;
+        return (mm - 1) * (2 * MM - 5) / (2 * (MM - 1)) * step1
+               - (mm - 2) * step1
+               + 0.5 * (mm - 1) * (mm - 2) / ((MM - 1) * (MM - 2)) * step1;
+    }
+    void on_one_tree(double one_tree_cost) {
+        if (!inited) { inited = true; step1 = one_tree_cost / (2.0 * n); }
+    }
+    void on_new_wmax(double one_tree_cost) { step1 = one_tree_cost / (2.0 * n); }
+};
 
-    def cont(self):
-        self.m += 1
-        return self.m <= self.M
+// Held-Karp 1-tree Lagrangian lower bound on OPT for cost matrix `cost`,
+// using the Volgenant-Jonker schedule. w(pi) = cost(1-tree) + sum_i pi_i*(deg_i-2).
+static double held_karp_lower_bound(const vector<vector<double>>& cost,
+                                    int max_iterations = 0) {
+    int n = (int)cost.size();
+    if (n < 2) return 0.0;
+    if (n == 2) return cost[0][1] + cost[1][0];
 
-    def step(self):
-        m, M = self.m, self.M
-        return ((m - 1) * (2 * M - 5) / (2 * (M - 1)) * self.step1
-                - (m - 2) * self.step1
-                + 0.5 * (m - 1) * (m - 2) / ((M - 1) * (M - 2)) * self.step1)
+    VolgenantJonker alg(n, max_iterations);
+    vector<double> pi(n, 0.0), best_pi(n, 0.0);
+    vector<int> deg(n, 0);
+    double max_w = -numeric_limits<double>::infinity();
 
-    def on_one_tree(self, one_tree_cost):
-        if not self._init:
-            self._init = True
-            self.step1 = one_tree_cost / (2 * self.n)
+    while (alg.cont()) {
+        double one_tree_cost = compute_one_tree(cost, pi, deg);
+        alg.on_one_tree(one_tree_cost);
+        double w = one_tree_cost;
+        for (int i = 0; i < n; ++i) w += pi[i] * (deg[i] - 2);  // w(pi) <= OPT
+        if (w > max_w) {
+            max_w = w;
+            best_pi = pi;
+            alg.on_new_wmax(one_tree_cost);
+        }
+        double s = alg.step();
+        for (int i = 0; i < n; ++i) pi[i] += s * (deg[i] - 2);  // ascent g_i=deg_i-2
+    }
 
-    def on_new_wmax(self, one_tree_cost):
-        self.step1 = one_tree_cost / (2 * self.n)
+    double one_tree_cost = compute_one_tree(cost, best_pi, deg);
+    double w = one_tree_cost;
+    for (int i = 0; i < n; ++i) w += best_pi[i] * (deg[i] - 2);
+    return w;
+}
 
-class HeldWolfeCrowder:
-    """Upper-bound Polyak-style evaluator with lambda halving."""
-    def __init__(self, n, upper_bound):
-        self.n = n
-        self.UB = upper_bound
-        self.num_iter = 2 * n
-        self.lam = 2.0
-        self.it = 0
-        self._step = 0.0
+int main() {
+    ios::sync_with_stdio(false);
+    cin.tie(nullptr);
+    int n;
+    if (!(cin >> n) || n <= 0) return 0;
+    vector<vector<double>> cost(n, vector<double>(n, 0.0));
+    for (int i = 0; i < n; ++i)
+        for (int j = 0; j < n; ++j) cin >> cost[i][j];
 
-    def cont(self):
-        if self.it >= self.num_iter:
-            self.num_iter //= 2
-            if self.num_iter < 2:
-                return False
-            self.it = 0
-            self.lam /= 2
-        else:
-            self.it += 1
-        return True
+    vector<int> deg(n, 0);
+    vector<double> zero(n, 0.0);
+    // A 1-tree needs n >= 3 (a tree on n-1 >= 2 nodes plus two distinct edges).
+    double plain = (n >= 3) ? compute_one_tree(cost, zero, deg)
+                            : (n == 2 ? cost[0][1] + cost[1][0] : 0.0);
+    double bound = held_karp_lower_bound(cost);
 
-    def step(self):
-        return self._step
-
-    def on_one_tree(self, one_tree_cost, w, degrees):
-        norm = float(np.sum((degrees - 2) ** 2))
-        self._step = self.lam * (self.UB - w) / norm if norm > 0 else 0.0
-
-    def on_new_wmax(self, one_tree_cost):
-        pass
-
-def held_karp_lower_bound(cost, algorithm="VJ", upper_bound=None, max_iterations=0):
-    """Return the Held-Karp 1-tree lower bound."""
-    cost = np.asarray(cost, dtype=float)
-    n = cost.shape[0]
-    if n < 2:
-        return 0.0
-    if n == 2:
-        return cost[0, 1] + cost[1, 0]
-
-    if algorithm == "HWC":
-        if upper_bound is None:
-            raise ValueError("HWC needs an upper_bound on OPT")
-        alg = HeldWolfeCrowder(n, upper_bound)
-    else:
-        alg = VolgenantJonker(n, max_iterations)
-
-    pi = np.zeros(n)
-    best_pi = pi.copy()
-    max_w = -math.inf
-    w = 0.0
-    while alg.cont():
-        one_tree_cost, degrees = compute_one_tree(cost, pi)
-        if isinstance(alg, HeldWolfeCrowder):
-            alg.on_one_tree(one_tree_cost, w, degrees)
-        else:
-            alg.on_one_tree(one_tree_cost)
-        g = degrees - 2
-        w = one_tree_cost + float(np.dot(pi, g))
-        if w > max_w:
-            max_w = w
-            best_pi = pi.copy()
-            alg.on_new_wmax(one_tree_cost)
-        pi = pi + alg.step() * g
-
-    one_tree_cost, degrees = compute_one_tree(cost, best_pi)
-    return one_tree_cost + float(np.dot(best_pi, degrees - 2))
-
-if __name__ == "__main__":
-    rng = np.random.default_rng(0)
-    pts = rng.random((5, 2))
-    d = np.linalg.norm(pts[:, None, :] - pts[None, :, :], axis=-1)
-    print("plain min-1-tree   :", compute_one_tree(d, np.zeros(5))[0])
-    print("Held-Karp bound (VJ):", held_karp_lower_bound(d, "VJ"))
+    cout << fixed << setprecision(4);
+    cout << "plain min-1-tree    : " << plain << "\n";
+    cout << "Held-Karp bound (VJ): " << bound << "\n";
+    return 0;
+}
 ```
 
 The returned value is always evaluated as raw 1-tree cost plus `π·(d−2)` at the best potentials

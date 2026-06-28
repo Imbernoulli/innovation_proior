@@ -10,146 +10,143 @@ This produces exactly the trees and counts required. Every interior point become
 
 What makes the method efficient — and the choice of $Q$ is the entire efficiency, not a cosmetic detail — is selecting $Q$ as the median apex-color point in the current triangular wedge. A call on $m$ interior points does $O(m)$ work (one scan to pick $Q$, one to bucket the rest into three children), and the children's point-counts sum to $m-1$, so the cost is $O(n)$ per recursion level and the depth decides everything. A careless choice, such as always grabbing the first apex-color point seen, lets an adversary place that point at the extreme of the apex-color fan so the cut barely changes the subproblem and nearly all the mixed work survives in one child; the depth then degrades to $\Theta(m)$ and we are back at the quadratic wall. The balance comes from making the chosen ray non-extreme. I do not use a global polar angle, because the wedge can straddle any branch cut; what I need is the local order of rays from the apex inside this one triangle, and because a triangle angle is smaller than a half-turn, two rays have an exact local order given by the sign of their cross product. Taking the median in that order forces both sides of the cut to inherit at most half of the apex-color candidates, so a mixed branch cannot keep peeling off extremes; the moment a branch loses one color entirely it terminates as a single star. With a linear-time selection — a median-of-medians selector using the wedge cross-product comparator — each mixed level costs linear work and the depth is $O(\log n)$, giving an $O(n\log n)$ construction in $n=g+r$ with $O(n)$ space. (A uniformly random apex-color point yields the same bound in expectation; the median is the deterministic way to defeat adversarial extreme cuts.) I keep an explicit work-stack rather than real recursion to sidestep the interpreter recursion limit at this scale, tag points with color and index in separate per-color namespaces, and do all orientation work with exact integers, where the no-three-collinear guarantee means the strict same-sign-on-all-three-edges point-in-triangle test never sees a zero.
 
-```python
-import sys
+The deliverable is a single self-contained C++17 program. It reads `g`, the `g` green coordinates, then `r`, the `r` red coordinates from stdin, and writes the `(g-1)+(r-1)` segments as lines `i j c` (`c`=`g`/`r`) to stdout. Orientation arithmetic stays exact in 64-bit integers, and the recursion is carried by an explicit work-stack so there is no depth limit at this scale.
 
-def cross(ax, ay, bx, by, cx, cy):
-    # twice the signed area of (A,B,C); exact in 64-bit ints
-    return (ax - bx) * (cy - by) - (cx - bx) * (ay - by)
+```cpp
+// Reads: g, then g green coords; then r, then r red coords (integers, stdin).
+// Writes: (g-1)+(r-1) lines "i j c" (c='g'/'r') -- a non-crossing green spanning
+// tree and a non-crossing red spanning tree, via recursive triangle splitting.
+#include <cstdio>
+#include <vector>
+#include <algorithm>
+using namespace std;
 
-def sgn(v):
-    return 1 if v > 0 else (-1 if v < 0 else 0)
+struct Pt { long long x, y; int color; int ind; }; // color 0=green, 1=red
+static vector<Pt> P; // 1-indexed; greens 1..g, reds at g+1..g+r (ind is per-color)
 
-def inside(A, B, C, X, P):
-    # strict interior: same orientation sign on all three directed edges
-    ax, ay = P[A]; bx, by = P[B]; cx, cy = P[C]; xx, xy = P[X]
-    s1 = sgn(cross(ax, ay, bx, by, xx, xy))
-    s2 = sgn(cross(bx, by, cx, cy, xx, xy))
-    s3 = sgn(cross(cx, cy, ax, ay, xx, xy))
-    return s1 == s2 and s2 == s3
+// twice the signed area of (A,B,C); exact in 64-bit ints; sign gives orientation
+static inline long long cross(const Pt& A, const Pt& B, const Pt& C) {
+    return (A.x - B.x) * (C.y - B.y) - (C.x - B.x) * (A.y - B.y);
+}
+static inline int sgn(long long v) { return v > 0 ? 1 : (v < 0 ? -1 : 0); }
 
-def solve(P, g, r):
-    out = []
-    G1, G2 = ('g', 1), ('g', 2)      # top-left, top-right corners (green)
-    R1, R2 = ('r', 1), ('r', 2)      # bottom-left, bottom-right corners (red)
+// strict interior: same orientation sign on all three directed edges
+static inline bool inside(const Pt& A, const Pt& B, const Pt& C, const Pt& X) {
+    int s1 = sgn(cross(A, B, X));
+    int s2 = sgn(cross(B, C, X));
+    int s3 = sgn(cross(C, A, X));
+    return s1 == s2 && s2 == s3;
+}
 
-    def median_item(items, less):
-        target = len(items) // 2
+// median (lower middle, index n/2) of apex-color point ids ordered by ray angle
+// from the apex, via median-of-medians so selection is linear in #candidates.
+static long long apexX, apexY; // apex coords for the wedge comparator
+// true iff ray apex->u precedes ray apex->v locally (wedge angle < half-turn)
+static inline bool angleLess(int u, int v) {
+    return (P[u].x - apexX) * (P[v].y - apexY) - (P[v].x - apexX) * (P[u].y - apexY) > 0;
+}
+static void smallSort(vector<int>& a, int lo, int hi) { // insertion sort [lo,hi)
+    for (int i = lo + 1; i < hi; ++i) {
+        int x = a[i], j = i;
+        while (j > lo && angleLess(x, a[j - 1])) { a[j] = a[j - 1]; --j; }
+        a[j] = x;
+    }
+}
+static int selectK(vector<int> a, int k) { // k-th smallest (0-indexed) under angleLess
+    while (true) {
+        int n = (int)a.size();
+        if (n <= 32) { smallSort(a, 0, n); return a[k]; }
+        vector<int> medians;
+        for (int i = 0; i < n; i += 5) {
+            int hi = min(i + 5, n);
+            smallSort(a, i, hi);
+            medians.push_back(a[i + (hi - i) / 2]);
+        }
+        int pivot = selectK(medians, (int)medians.size() / 2);
+        vector<int> lows, equals, highs;
+        for (int x : a) {
+            if (x == pivot) equals.push_back(x);
+            else if (angleLess(x, pivot)) lows.push_back(x);
+            else if (angleLess(pivot, x)) highs.push_back(x);
+            else equals.push_back(x);
+        }
+        if (k < (int)lows.size()) a.swap(lows);
+        else if (k < (int)lows.size() + (int)equals.size()) return equals[0];
+        else { k -= (int)lows.size() + (int)equals.size(); a.swap(highs); }
+    }
+}
 
-        def small_sort(a):
-            for i in range(1, len(a)):
-                x = a[i]
-                j = i
-                while j > 0 and less(x, a[j - 1]):
-                    a[j] = a[j - 1]
-                    j -= 1
-                a[j] = x
+// A subproblem triangle: drawn monochrome edge A-B (color = P[A].color),
+// apex C of the opposite color, and the interior point ids in pts.
+struct Frame { int A, B, C; vector<int> pts; };
 
-        def select(a, k):
-            a = list(a)
-            while True:
-                if len(a) <= 32:
-                    small_sort(a)
-                    return a[k]
-                medians = []
-                for i in range(0, len(a), 5):
-                    group = a[i:i + 5]
-                    small_sort(group)
-                    medians.append(group[len(group) // 2])
-                pivot = select(medians, len(medians) // 2)
-                lows, equals, highs = [], [], []
-                for x in a:
-                    if x == pivot:
-                        equals.append(x)
-                    elif less(x, pivot):
-                        lows.append(x)
-                    elif less(pivot, x):
-                        highs.append(x)
-                    else:
-                        equals.append(x)
-                if k < len(lows):
-                    a = lows
-                elif k < len(lows) + len(equals):
-                    return equals[0]
-                else:
-                    k -= len(lows) + len(equals)
-                    a = highs
+int main() {
+    int g, r;
+    if (scanf("%d", &g) != 1) return 0;
+    P.assign(1, Pt{}); // dummy 0
+    for (int i = 1; i <= g; ++i) { Pt p; scanf("%lld %lld", &p.x, &p.y); p.color = 0; p.ind = i; P.push_back(p); }
+    scanf("%d", &r);
+    for (int i = 1; i <= r; ++i) { Pt p; scanf("%lld %lld", &p.x, &p.y); p.color = 1; p.ind = i; P.push_back(p); }
 
-        return select(items, target)
+    int G1 = 1, G2 = 2;           // green corners (top-left #1, top-right #2)
+    int R1 = g + 1, R2 = g + 2;   // red corners (bottom-left #1, bottom-right #2)
 
-    # the two monochrome base edges -- always legal, on the boundary
-    out.append((1, 2, 'g'))
-    out.append((1, 2, 'r'))
+    // the two monochrome base edges -- always legal, on the boundary
+    printf("1 2 g\n");
+    printf("1 2 r\n");
 
-    # diagonal G2--R1 is bichromatic: NOT drawn, only used to split the points.
-    # Upper triangle (G1,G2,R1): drawn edge G1-G2 (green), apex R1.
-    # Lower triangle (R1,R2,G2): drawn edge R1-R2 (red),   apex G2.
-    interior = [k for k in P if k not in (G1, G2, R1, R2)]
-    upper, lower = [], []
-    for k in interior:
-        (upper if inside(G1, G2, R1, k, P) else lower).append(k)
+    // diagonal G2--R1 is bichromatic: NOT drawn, only used to split the points.
+    // Upper triangle (G1,G2,R1): drawn edge G1-G2 (green), apex R1.
+    // Lower triangle (R1,R2,G2): drawn edge R1-R2 (red),   apex G2.
+    vector<int> upper, lower;
+    for (int i = 1; i <= g + r; ++i) {
+        if (i == G1 || i == G2 || i == R1 || i == R2) continue;
+        (inside(P[G1], P[G2], P[R1], P[i]) ? upper : lower).push_back(i);
+    }
 
-    # work-stack of subproblems: (A, B, Apex, pts)
-    #   edge A-B already drawn and monochrome; Apex is the opposite color
-    stack = [(G1, G2, R1, upper), (R1, R2, G2, lower)]
+    vector<Frame> stack;
+    stack.push_back({G1, G2, R1, move(upper)});
+    stack.push_back({R1, R2, G2, move(lower)});
 
-    while stack:
-        A, B, Apex, pts = stack.pop()
-        if not pts:
-            continue                         # empty triangle: nothing to do
-        cEdge = A[0]                          # color of the drawn edge A-B
-        cApex = Apex[0]                       # opposite color
-        same = [k for k in pts if k[0] == cEdge]
-        opp  = [k for k in pts if k[0] == cApex]
+    while (!stack.empty()) {
+        Frame f = move(stack.back()); stack.pop_back();
+        if (f.pts.empty()) continue;        // empty triangle: nothing to do
+        int A = f.A, B = f.B, C = f.C;
+        int cEdge = P[A].color;             // color of the drawn edge A-B
+        int cApex = P[C].color;             // opposite color
+        char chEdge = cEdge ? 'r' : 'g', chApex = cApex ? 'r' : 'g';
+        vector<int> same, opp;
+        for (int k : f.pts) (P[k].color == cEdge ? same : opp).push_back(k);
 
-        if not opp:                           # all interior are edge-color:
-            for k in same:                    # star them to a same-color vertex
-                out.append((A[1], k[1], cEdge))
-            continue
-        if not same:                          # all interior are apex-color:
-            for k in opp:                      # star them to the apex
-                out.append((Apex[1], k[1], cApex))
-            continue
+        if (opp.empty()) {                  // all interior are edge-color:
+            for (int k : same)              // star them to a same-color vertex
+                printf("%d %d %c\n", P[A].ind, P[k].ind, chEdge);
+            continue;
+        }
+        if (same.empty()) {                 // all interior are apex-color:
+            for (int k : opp)               // star them to the apex
+                printf("%d %d %c\n", P[C].ind, P[k].ind, chApex);
+            continue;
+        }
 
-        # mixed: pick Q as the median apex-color point in the current angular wedge
-        apx, apy = P[Apex]
-        def angle_less(U, V):
-            ux, uy = P[U]; vx, vy = P[V]
-            return cross(ux, uy, apx, apy, vx, vy) > 0
+        // mixed: pick Q as the median apex-color point in the current wedge
+        apexX = P[C].x; apexY = P[C].y;
+        int Q = selectK(opp, (int)opp.size() / 2);
 
-        Q = median_item(opp, angle_less)
+        printf("%d %d %c\n", P[Q].ind, P[C].ind, chApex); // legal cut Q--apex
 
-        out.append((Q[1], Apex[1], cApex))    # the legal cut: Q--Apex, both apex-color
-
-        # the three children tiling (A,B,Apex): (Apex,Q,A), (A,B,Q), (Q,Apex,B)
-        c1, c2, c3 = [], [], []
-        for k in pts:
-            if k == Q:
-                continue
-            if inside(Apex, Q, A, k, P):
-                c1.append(k)
-            elif inside(A, B, Q, k, P):
-                c2.append(k)
-            else:
-                c3.append(k)
-        stack.append((Apex, Q, A, c1))        # drawn edge Apex-Q, apex A
-        stack.append((A, B, Q, c2))           # drawn edge A-B,    apex Q
-        stack.append((Q, Apex, B, c3))        # drawn edge Q-Apex, apex B
-
-    return out
-
-def main():
-    data = sys.stdin.buffer.read().split()
-    it = iter(data)
-    g = int(next(it)); P = {}
-    for i in range(1, g + 1):
-        P[('g', i)] = (int(next(it)), int(next(it)))
-    r = int(next(it))
-    for i in range(1, r + 1):
-        P[('r', i)] = (int(next(it)), int(next(it)))
-    out = solve(P, g, r)
-    sys.stdout.write('\n'.join(f"{a} {b} {c}" for a, b, c in out) + '\n')
-
-if __name__ == "__main__":
-    main()
+        // the three children tiling (A,B,C): (C,Q,A), (A,B,Q), (Q,C,B)
+        vector<int> c1, c2, c3;
+        for (int k : f.pts) {
+            if (k == Q) continue;
+            if (inside(P[C], P[Q], P[A], P[k])) c1.push_back(k);
+            else if (inside(P[A], P[B], P[Q], P[k])) c2.push_back(k);
+            else c3.push_back(k);
+        }
+        stack.push_back({C, Q, A, move(c1)}); // drawn edge C-Q, apex A
+        stack.push_back({A, B, Q, move(c2)}); // drawn edge A-B, apex Q
+        stack.push_back({Q, C, B, move(c3)}); // drawn edge Q-C, apex B
+    }
+    return 0;
+}
 ```

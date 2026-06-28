@@ -10,70 +10,101 @@ a finite double sum of ordinary products, which may be reordered freely:
 $$= \sum_{k} A[i,k]\Big(\sum_{l} B[k,l]\,C[l,j]\Big) = (A(BC))[i,j].$$
 Equal entrywise, so $(AB)C = A(BC)$ — table multiplication is associative precisely because the underlying number arithmetic is, $T^N$ is unambiguous, and squaring is licensed. So I compute the power by binary exponentiation: an accumulator $R$ starting at the identity table $I$ (the table analogue of the number $1$, which leaves any table unchanged under the product), a running power $B$ starting at $T$ and squared once per bit, folded into $R$ on each set bit. There are only $O(\log N)$ bits, hence $O(\log N)$ squarings and folds. One $d \times d$ table product costs $O(d^3)$ — each of $d^2$ output entries is a sum over $d$ terms — so the whole power is $O(d^3 \log N)$ time and $O(d^2)$ space; at $N = 10^{18}$ that is about sixty bit rounds instead of $10^{18}$ scan steps. The modulus slots in cleanly because reduction mod $m$ commutes with both $+$ and $\times$, so keeping every entry reduced into $[0,m)$ after each operation yields the true counts mod $m$ while the gigantic exact counts are never formed — the only reason the answer is even representable. A small Fibonacci check confirms the wiring: with $d=2$, $c_1=c_2=1$, $T = \begin{pmatrix} 1 & 1 \\ 1 & 0 \end{pmatrix}$ acts as $T\binom{a_{n-1}}{a_{n-2}} = \binom{a_n}{a_{n-1}}$, and indeed $T^n = \begin{pmatrix} F_{n+1} & F_n \\ F_n & F_{n-1} \end{pmatrix}$. One boundary case remains: when $N \le d-1$ for the recurrence the answer is simply a given initial term and the exponent $N-(d-1)$ would go negative, so I guard it by returning $a_N \bmod m$ directly when $N < d$; for the walk problem $N=0$ is the empty walk, the identity table, which the loop returns correctly since $R$ starts at $I$ and the loop is never entered.
 
-```python
-def walks(adj,s,t,N,m):
-    """Number of length-N walks s -> t in a directed graph (adj[i][j] = #edges i->j)."""
-    d = len(adj)
+The deliverable is a single self-contained C++17 program reading from stdin: the first token selects the form — `W` then `d s t N m` followed by the $d\times d$ edge-count table prints the length-$N$ walk count $s\to t$; `L` then `d N m`, the $d$ coefficients and $d$ initial terms prints $a_N$ — every entry kept reduced mod $m$, with the one product before each reduction widened to `__int128` so it cannot overflow.
 
-    def mul(A, B):
-        p, q, r = len(A), len(B), len(B[0])
-        C = [[0] * r for _ in range(p)]
-        for i in range(p):
-            Ai, Ci = A[i], C[i]
-            for k in range(q):
-                a = Ai[k]
-                if a == 0:
-                    continue
-                Bk = B[k]
-                for j in range(r):
-                    Ci[j] = (Ci[j] + a * Bk[j]) % m
-        return C
+```cpp
+// Reads from stdin either a walk-counting query or a linear-recurrence query and
+// prints the single integer answer mod m to stdout.
+//   First token = mode: "W" (walks) or "L" (linrec).
+//   W:  d  s  t  N  m,  then a d x d edge-count table adj[i][j] (# edges i->j);
+//       prints the number of length-N walks s -> t, mod m.
+//   L:  d  N  m,  then d coefficients c_1..c_d, then d initial terms a_0..a_{d-1};
+//       prints a_N for  a_n = c_1 a_{n-1} + ... + c_d a_{n-d},  mod m.
+// N may be as large as 1e18; everything is kept reduced mod m via O(d^3 log N)
+// fast matrix exponentiation (entries stay in [0,m), products fit in __int128).
+#include <bits/stdc++.h>
+using namespace std;
 
-    R = [[1 % m if i == j else 0 for j in range(d)] for i in range(d)]
-    B = [[x % m for x in row] for row in adj]
-    while N > 0:
-        if N & 1:
-            R = mul(R, B)
-        B = mul(B, B)
-        N >>= 1
-    return R[s][t]
+typedef long long ll;
+typedef vector<vector<ll>> Mat;
 
+static ll MOD;
 
-def linrec(coeffs,init,N,m):
-    """Evaluate a_n = sum_j coeffs[j]*a_{n-1-j} at index N; init = [a_0, ..., a_{d-1}]."""
-    d = len(coeffs)
-    if N < d:
-        return init[N] % m
+// (p x q) by (q x r) product, every entry reduced mod MOD.
+Mat mul(const Mat &A, const Mat &B) {
+    int p = A.size(), q = B.size(), r = B[0].size();
+    Mat C(p, vector<ll>(r, 0));
+    for (int i = 0; i < p; i++) {
+        for (int k = 0; k < q; k++) {
+            ll a = A[i][k];
+            if (a == 0) continue;
+            const vector<ll> &Bk = B[k];
+            vector<ll> &Ci = C[i];
+            for (int j = 0; j < r; j++) {
+                Ci[j] = (Ci[j] + (__int128)a * Bk[j]) % MOD;
+            }
+        }
+    }
+    return C;
+}
 
-    def mul(A, B):
-        p, q, r = len(A), len(B), len(B[0])
-        C = [[0] * r for _ in range(p)]
-        for i in range(p):
-            Ai, Ci = A[i], C[i]
-            for k in range(q):
-                a = Ai[k]
-                if a == 0:
-                    continue
-                Bk = B[k]
-                for j in range(r):
-                    Ci[j] = (Ci[j] + a * Bk[j]) % m
-        return C
+Mat identity(int d) {
+    Mat I(d, vector<ll>(d, 0));
+    for (int i = 0; i < d; i++) I[i][i] = 1 % MOD;
+    return I;
+}
 
-    def power(M, exponent):
-        R = [[1 % m if i == j else 0 for j in range(d)] for i in range(d)]
-        B = [[x % m for x in row] for row in M]
-        while exponent > 0:
-            if exponent & 1:
-                R = mul(R, B)
-            B = mul(B, B)
-            exponent >>= 1
-        return R
+// M^N mod MOD by binary exponentiation; O(d^3 log N) ring multiplications.
+Mat matpow(Mat M, ll N) {
+    int d = M.size();
+    Mat R = identity(d);
+    for (auto &row : M) for (auto &x : row) x %= MOD;
+    while (N > 0) {
+        if (N & 1) R = mul(R, M);
+        M = mul(M, M);
+        N >>= 1;
+    }
+    return R;
+}
 
-    T = [[0] * d for _ in range(d)]
-    T[0] = [c % m for c in coeffs]
-    for i in range(1, d):
-        T[i][i - 1] = 1
-    v0 = [[init[d - 1 - i] % m] for i in range(d)]
-    vN = mul(power(T, N - (d - 1)), v0)
-    return vN[0][0]
+// Number of length-N walks s -> t in a directed graph, mod MOD.
+ll walks(const Mat &adj, int s, int t, ll N) {
+    return matpow(adj, N)[s][t];
+}
+
+// Evaluate a_n = sum_j coeffs[j]*a_{n-1-j} at index N, given init = [a_0..a_{d-1}].
+ll linrec(const vector<ll> &coeffs, const vector<ll> &init, ll N) {
+    int d = coeffs.size();
+    if (N < d) return ((init[N] % MOD) + MOD) % MOD;
+    Mat T(d, vector<ll>(d, 0));
+    for (int j = 0; j < d; j++) T[0][j] = ((coeffs[j] % MOD) + MOD) % MOD; // top row = coefficients
+    for (int i = 1; i < d; i++) T[i][i - 1] = 1 % MOD;                     // sub-diagonal shift
+    Mat v0(d, vector<ll>(1, 0));
+    for (int i = 0; i < d; i++) v0[i][0] = ((init[d - 1 - i] % MOD) + MOD) % MOD; // (a_{d-1},...,a_0)^T
+    Mat vN = mul(matpow(T, N - (d - 1)), v0);
+    return vN[0][0];
+}
+
+int main() {
+    ios::sync_with_stdio(false);
+    cin.tie(nullptr);
+    string mode;
+    if (!(cin >> mode)) return 0;
+    if (mode == "W" || mode == "w") {
+        int d, s, t; ll N;
+        cin >> d >> s >> t >> N >> MOD;
+        Mat adj(d, vector<ll>(d, 0));
+        for (int i = 0; i < d; i++)
+            for (int j = 0; j < d; j++) cin >> adj[i][j];
+        cout << walks(adj, s, t, N) << "\n";
+    } else { // "L" linear recurrence
+        int d; ll N;
+        cin >> d >> N >> MOD;
+        vector<ll> coeffs(d), init(d);
+        for (int i = 0; i < d; i++) cin >> coeffs[i];
+        for (int i = 0; i < d; i++) cin >> init[i];
+        cout << linrec(coeffs, init, N) << "\n";
+    }
+    return 0;
+}
 ```

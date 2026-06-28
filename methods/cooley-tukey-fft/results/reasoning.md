@@ -62,73 +62,95 @@ This general-factor statement is exactly what Tukey is pointing at from the star
 
 There is a different factorization worth distinguishing when I check related schemes, because it looks similar and is not the same. If $r_1$ and $r_2$ are *coprime*, the Chinese Remainder Theorem gives an index map under which the cross term disappears entirely — no twiddle at all, just a genuine two-dimensional $r_1 \times r_2$ transform. That is a real, multiplication-saving scheme, but the coprimality is essential to it, and that is exactly why it cannot do what I want here: $N = 2^L$ factors as $2 \cdot 2 \cdots 2$, and those factors are *not* coprime, so the CRT route cannot recurse on a power of two at all. The twiddle-factor version I derived has no such restriction — it works for *any* factorization, coprime or not, including the repeated factor of $2$ — and that generality, plus the in-place butterfly bookkeeping, is what turns the splitting idea into a single algorithm I can just run.
 
-Let me write it. The recursive form mirrors the derivation directly; the loop form uses the same butterflies on a bit-reversed working array.
+Let me write it as one self-contained program: read $N$ (a power of two) and the $N$ complex samples from stdin, run the loop form — the same butterflies on a bit-reversed working array — and print the $N$ coefficients. I keep `dft_direct` alongside as the small-$N$ oracle and `inverse_transform` as the conjugate-root wrapper.
 
-```python
-import cmath
+```cpp
+// Cooley-Tukey radix-2 FFT.
+// Reads from stdin: N (a power of two) then N complex samples as "re im" pairs.
+// Writes to stdout: the N DFT coefficients X(j) = sum_k A(k) W^{jk}, W = e^{-2*pi*i/N},
+// one "re im" pair per line.
+#include <bits/stdc++.h>
+using namespace std;
 
-def root_of_unity(N, sign=-1):
-    return cmath.exp(sign * 2j * cmath.pi / N)
+using cd = complex<double>;
+const double PI = acos(-1.0);
 
-def dft_direct(A, sign=-1):
-    # baseline X(j) = sum_k A(k) W^{jk}, W = exp(sign*2pi i/N): the O(N^2) matrix multiply
-    N = len(A)
-    W = root_of_unity(N, sign)
-    return [sum(A[k] * W**(j * k) for k in range(N)) for j in range(N)]
+// O(N^2) baseline / small-N oracle: X(j) = sum_k A(k) W^{jk}, W = exp(sign*2*pi*i/N).
+vector<cd> dft_direct(const vector<cd>& A, int sign = -1) {
+    int N = (int)A.size();
+    cd W = exp(cd(0.0, sign * 2.0 * PI / N));
+    vector<cd> X(N);
+    for (int j = 0; j < N; ++j) {
+        cd acc = 0.0;
+        for (int k = 0; k < N; ++k) acc += A[k] * pow(W, (double)(j * k));
+        X[j] = acc;
+    }
+    return X;
+}
 
-def _validate_length(n):
-    if n < 1 or n & (n - 1):
-        raise ValueError("length must be a power of two")
+// Route input to leaf order: sample at index rev(p) goes to position p.
+// Reversal is an involution, so the swaps are disjoint and done in place.
+void bit_reverse(vector<cd>& a) {
+    int n = (int)a.size();
+    int bits = __builtin_ctz((unsigned)n); // log2 n, n a power of two
+    for (int p = 0; p < n; ++p) {
+        int q = 0;
+        for (int b = 0; b < bits; ++b)
+            if (p & (1 << b)) q |= 1 << (bits - 1 - b);
+        if (q > p) swap(a[p], a[q]);
+    }
+}
 
-def transform_recursive(A, sign=-1):
-    # decimation in time: split by parity, recurse, splice with one twiddle per pair
-    N = len(A)
-    _validate_length(N)
-    if N == 1:                     # one-point DFT is the identity
-        return [A[0]]
-    E = transform_recursive(A[0::2], sign)   # transform of the even-indexed samples
-    O = transform_recursive(A[1::2], sign)   # transform of the odd-indexed samples
-    X = [0j] * N
-    W = root_of_unity(N, sign)
-    for j in range(N // 2):
-        t = W ** j * O[j]       # twiddle W^j times O(j)
-        X[j]          = E[j] + t       # X(j)        = E(j) + W^j O(j)
-        X[j + N // 2] = E[j] - t       # X(j+N/2)    = E(j) - W^j O(j),  since W^{N/2}=-1
-    return X
+// Iterative radix-2 FFT: bit-reverse a working copy, then run log2 N doubling
+// passes of in-place butterflies. N must be a power of two. sign=-1 forward, +1 inverse.
+vector<cd> transform(vector<cd> A, int sign = -1) {
+    int n = (int)A.size();
+    bit_reverse(A);
+    for (int L = 2; L <= n; L <<= 1) {            // pass builds length-L = 2^s transforms
+        cd wL = exp(cd(0.0, sign * 2.0 * PI / L)); // root of unity for this block length
+        for (int start = 0; start < n; start += L) {
+            cd w = 1.0;                            // running twiddle, propagated by multiplication
+            for (int r = 0; r < L / 2; ++r) {
+                cd u = A[start + r];
+                cd t = w * A[start + r + L / 2];   // twiddle times the upper half
+                A[start + r]         = u + t;      // butterfly: E + W^r O
+                A[start + r + L / 2] = u - t;      // butterfly: E - W^r O
+                w *= wL;
+            }
+        }
+    }
+    return A;
+}
 
-def _reorder_for_iteration(A):
-    # route input to leaf order: sample at position rev(p) goes to position p
-    A = list(A)
-    n = len(A)
-    _validate_length(n)
-    bits = n.bit_length() - 1
-    for p in range(n):
-        q = int(format(p, '0{}b'.format(bits))[::-1], 2)
-        if q > p:                  # reversal is an involution -> disjoint swaps, in place
-            A[p], A[q] = A[q], A[p]
-    return A
+// Inverse: conjugate root (sign=+1) and 1/N normalization.
+vector<cd> inverse_transform(const vector<cd>& X) {
+    int n = (int)X.size();
+    vector<cd> a = transform(X, +1);
+    for (cd& v : a) v /= (double)n;
+    return a;
+}
 
-def transform_iterative(A, sign=-1):
-    # bit-reverse a working copy, then run log2 N doubling passes of in-place butterflies
-    A = _reorder_for_iteration(A)
-    n = len(A)
-    L = 2
-    while L <= n:                  # pass s builds length-L = 2^s transforms
-        wL = root_of_unity(L, sign)   # root of unity for this block length
-        for start in range(0, n, L):
-            w = 1 + 0j             # running twiddle, propagated by multiplication
-            for r in range(L // 2):
-                u = A[start + r]
-                t = w * A[start + r + L // 2]       # twiddle times the upper half
-                A[start + r]          = u + t       # butterfly: E + W^r O
-                A[start + r + L // 2] = u - t       # and        E - W^r O
-                w *= wL
-        L <<= 1
-    return A
-
-def inverse_transform(X):
-    n = len(X)
-    return [v / n for v in transform_iterative(X, sign=+1)]
+int main() {
+    ios::sync_with_stdio(false);
+    cin.tie(nullptr);
+    int N;
+    if (!(cin >> N)) return 0;
+    if (N < 1 || (N & (N - 1))) {                  // length must be a power of two
+        cerr << "length must be a power of two\n";
+        return 1;
+    }
+    vector<cd> A(N);
+    for (int i = 0; i < N; ++i) {
+        double re, im;
+        cin >> re >> im;
+        A[i] = cd(re, im);
+    }
+    vector<cd> X = transform(A, -1);
+    cout << fixed << setprecision(6);
+    for (int j = 0; j < N; ++j)
+        cout << X[j].real() << ' ' << X[j].imag() << '\n';
+    return 0;
+}
 ```
 
 The chain, end to end: Garwin hands me the helium-3 computation and Tukey's factor-$N$ hint while the same arithmetic wall is sitting inside test-ban seismometer spectra; the DFT is a matrix-vector product whose matrix is all powers of one root of unity and is therefore drowning in redundancy; the redundancy is exposed by splitting the sum on the index, where $W^2$ being the half-length root makes each half a genuine shorter DFT and the cross factor $W^j$ — the twiddle — splices them; the periodicity of the half-transforms plus $W^{N/2} = -1$ lets one twiddle multiply produce two outputs, the butterfly; recursing gives $T(N) = 2T(N/2) + O(N) = O(N\log N)$; and the leaf ordering being bit-reversal turns the recursion into doubling passes with in-place butterflies on a working array — which generalizes from radix 2 to any composite $N = r_1 r_2$ via the same index reindexing and the twiddle $W^{j_0 k_0}$, at cost $N$ times the sum of the prime factors. That last generality is the part that makes it a program rather than a hand recipe: one routine, any highly composite $N$, the crystal's power-of-two grid as the case I run first.

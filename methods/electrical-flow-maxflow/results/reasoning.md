@@ -216,59 +216,198 @@ for `ε ≤ 1/7`. So `a + b < N`, contradicting `a + b = N`. Therefore the assum
 
 Let me trace the whole causal chain once more. The flow-decomposition barrier blocks every path-augmentation method, so I switch to a primitive that produces a whole flow vector in one shot — the electrical (minimum-energy, `ℓ_2`) flow, which is a single nearly-linear-time Laplacian solve. That flow ignores capacities and can overload an edge by `√m` (the `ℓ_2`-vs-`ℓ_∞` gap, witnessed by the parallel-paths-plus-direct-edge graph). Multiplicative weights converts a capacity-oblivious oracle that only satisfies the *weighted-average* capacity constraint into a feasible flow, in iterations proportional to the oracle's *width*; choosing resistances `r_e = (w_e + ε‖w‖_1/3m)/u_e²` makes one electrical solve such an oracle, with width `√m` — yielding `m^{3/2}`. To beat it, I exploit that the overloaded edges are fragile: remove any edge that exceeds a smaller width `ρ`, recompute, and bound the removals by tracking effective resistance, which is monotone (Rayleigh) and jumps multiplicatively whenever a high-energy edge is cut (the resistance-increase lemma); balancing iterations `Õ(ρ)` against removals `Õ(m/ρ²)` gives `ρ ≈ m^{1/3}` and a running time of `Õ(m^{4/3}ε^{-3})`, improved to `Õ(mn^{1/3}ε^{-11/3})` by Karger smoothing. The dual reads a cut directly from the electrical potentials by sweeping a threshold, bounding the cut by `√(μ/R_eff)` and driving `R_eff` up onto the minimum cut, for `Õ(m + n^{4/3}ε^{-8/3})`.
 
-Here is the algorithm, the oracle plus the multiplicative-weights loop, with the electrical-flow primitive at its core.
+Here is the algorithm as a single self-contained C++17 program, the oracle plus the multiplicative-weights loop with the electrical-flow primitive at its core. It reads `n m s t F eps` and then `m` lines `a b u` from stdin, and prints the feasibility-scaled flow value, the per-edge flow, and the maximum congestion (or `FAIL` when the oracle certifies `F > F*`). The Laplacian solve is done by a dense Cholesky factorization of the grounded system, standing in for the nearly-linear-time SDD solver the analysis assumes.
 
-```python
-import numpy as np
-import scipy.sparse as sp
-import scipy.sparse.linalg as spla
+```cpp
+// Electrical-flow + multiplicative-weights approximate maximum s-t flow.
+// Reads from stdin:  n m s t F eps
+//                    then m lines:  a b u   (undirected edge a--b, capacity u)
+// Writes to stdout:  one line "FAIL" if F > F* (oracle certifies infeasibility),
+//                    otherwise "value <V>" then m lines of per-edge flow f(e),
+//                    then "maxcong <c>".  (0-indexed vertices.)
+//
+// The electrical flow of value F minimizes the energy sum_e r_e f(e)^2 over s-t
+// flows with B f = F*chi; it is the potential flow f = C B^T phi where
+// L phi = F*chi, L = B C B^T the weighted Laplacian.  L is SDD; here we ground
+// one vertex and solve the dense reduced system directly (the algorithm's
+// intended regime replaces this with a nearly-linear-time SDD solver).  The
+// multiplicative-weights outer loop turns this capacity-oblivious oracle into a
+// feasible flow, reweighting by congestion each round.
+//
+// long long is unused for the numeric core (flows are real), but capacities and
+// counts are read as long long to avoid overflow on large inputs.
 
-def incidence_matrix(n, edges):
-    # B: n x m incidence; +1 at head, -1 at tail under an arbitrary orientation.
-    m = len(edges)
-    rows, cols, vals = [], [], []
-    for e, (a, b) in enumerate(edges):
-        rows += [a, b]; cols += [e, e]; vals += [1.0, -1.0]
-    return sp.csr_matrix((vals, (rows, cols)), shape=(n, m))
+#include <bits/stdc++.h>
+using namespace std;
 
-def electrical_flow(B, conduct, src, snk, F):
-    # The min-energy s-t flow of value F: solve L phi = F*chi, then f = C B^T phi.
-    n, _ = B.shape
-    L = (B @ sp.diags(conduct) @ B.T).tolil()
-    chi = np.zeros(n); chi[src] = 1.0; chi[snk] = -1.0
-    rhs = F * chi
-    keep = list(range(n)); keep.remove(0)        # ground one vertex (kill all-ones nullspace)
-    phi = np.zeros(n)
-    phi[keep] = spla.spsolve(L[keep, :][:, keep].tocsr(), rhs[keep])
-    return conduct * (B.T @ phi), phi            # Ohm's law gives the flow
+struct Edge { int a, b; double u; };
 
-def oracle(B, u, w, src, snk, F, eps, active):
-    # One electrical solve as an (eps, 3 sqrt(m/eps))-oracle.
-    m = len(u); w1 = float(w.sum())
-    res = np.full(m, np.inf)
-    res[active] = (w[active] + eps * w1 / (3 * m)) / (u[active] ** 2)  # r_e: w_e for the average, floor for the max
-    conduct = np.where(np.isinf(res), 0.0, 1.0 / res)
-    f, phi = electrical_flow(B, conduct, src, snk, F)
-    E = float(np.sum(np.where(np.isinf(res), 0.0, res) * f * f))       # energy
-    ok = E <= (1 + eps) * w1                                           # fail-test: energy too big => F > F*
-    return f, phi, ok
+// Solve the symmetric positive-definite reduced Laplacian system A x = rhs by
+// Cholesky factorization (A is the Laplacian with the grounded vertex removed).
+// A is given as a dense (k x k) row-major matrix; solves in place.
+static vector<double> cholesky_solve(vector<vector<double>>& A, vector<double> rhs) {
+    int k = (int)A.size();
+    // Cholesky: A = L L^T (store L in lower triangle of A).
+    for (int i = 0; i < k; ++i) {
+        for (int j = 0; j <= i; ++j) {
+            double sum = A[i][j];
+            for (int p = 0; p < j; ++p) sum -= A[i][p] * A[j][p];
+            if (i == j) {
+                if (sum <= 0) sum = 1e-12;        // guard tiny/round-off pivots
+                A[i][j] = sqrt(sum);
+            } else {
+                A[i][j] = sum / A[j][j];
+            }
+        }
+    }
+    // Forward solve L y = rhs.
+    vector<double> y(k);
+    for (int i = 0; i < k; ++i) {
+        double sum = rhs[i];
+        for (int p = 0; p < i; ++p) sum -= A[i][p] * y[p];
+        y[i] = sum / A[i][i];
+    }
+    // Back solve L^T x = y.
+    vector<double> x(k);
+    for (int i = k - 1; i >= 0; --i) {
+        double sum = y[i];
+        for (int p = i + 1; p < k; ++p) sum -= A[p][i] * x[p];
+        x[i] = sum / A[i][i];
+    }
+    return x;
+}
 
-def approx_max_flow(n, edges, u, src, snk, F, eps, rho=None):
-    # Multiplicative-weights outer loop over repeated electrical-flow oracle calls.
-    B = incidence_matrix(n, edges); m = len(edges); u = np.asarray(u, float)
-    if rho is None:
-        rho = 3.0 * np.sqrt(m / eps)                                   # width of the plain oracle
-    w = np.ones(m); active = np.ones(m, dtype=bool)
-    N = int(np.ceil(2 * rho * np.log(m) / eps ** 2))                   # iterations ~ width / eps^2
-    acc = np.zeros(m)
-    for _ in range(N):
-        f, phi, ok = oracle(B, u, w, src, snk, F, eps, active)
-        if not ok:
-            return None                                               # certifies F > F*
-        cong = np.abs(f) / u
-        w = w * (1 + (eps / rho) * cong)                              # penalize the edges that stayed congested
-        acc += f
-    return (1 - eps) ** 2 / ((1 + eps) * N) * acc                      # averaged + feasibility-scaled flow
+// Electrical s-t flow of value F with the given per-edge conductances.
+// Returns the flow vector f (length m); potentials phi returned via out-param.
+static vector<double> electrical_flow(int n, const vector<Edge>& edges,
+                                      const vector<double>& conduct,
+                                      int s, int t, double F,
+                                      vector<double>& phi_out) {
+    int m = (int)edges.size();
+    // Build dense Laplacian L = B C B^T (n x n).
+    vector<vector<double>> L(n, vector<double>(n, 0.0));
+    for (int e = 0; e < m; ++e) {
+        if (conduct[e] == 0.0) continue;
+        int a = edges[e].a, b = edges[e].b;
+        double c = conduct[e];
+        L[a][a] += c; L[b][b] += c;
+        L[a][b] -= c; L[b][a] -= c;
+    }
+    // Ground vertex 0: solve on indices 1..n-1.
+    int k = n - 1;
+    vector<vector<double>> A(k, vector<double>(k, 0.0));
+    for (int i = 0; i < k; ++i)
+        for (int j = 0; j < k; ++j)
+            A[i][j] = L[i + 1][j + 1];
+    vector<double> rhs(k, 0.0);
+    // chi: +1 at s, -1 at t (scaled by F); drop the grounded row 0.
+    auto add_chi = [&](int v, double val) {
+        if (v == 0) return;        // grounded row removed
+        rhs[v - 1] += val;
+    };
+    add_chi(s, F);
+    add_chi(t, -F);
+
+    vector<double> xk = cholesky_solve(A, rhs);
+    vector<double> phi(n, 0.0);
+    for (int i = 0; i < k; ++i) phi[i + 1] = xk[i];
+
+    // Ohm's law: f = C B^T phi, with B^T phi on edge (a,b) = phi[a]-phi[b].
+    vector<double> f(m, 0.0);
+    for (int e = 0; e < m; ++e) {
+        if (conduct[e] == 0.0) { f[e] = 0.0; continue; }
+        f[e] = conduct[e] * (phi[edges[e].a] - phi[edges[e].b]);
+    }
+    phi_out = phi;
+    return f;
+}
+
+int main() {
+    ios::sync_with_stdio(false);
+    cin.tie(nullptr);
+
+    int n, s, t;
+    long long m_ll;
+    double F, eps;
+    if (!(cin >> n >> m_ll >> s >> t >> F >> eps)) return 0;
+    int m = (int)m_ll;
+
+    vector<Edge> edges(m);
+    vector<double> u(m);
+    for (int e = 0; e < m; ++e) {
+        cin >> edges[e].a >> edges[e].b >> edges[e].u;
+        u[e] = edges[e].u;
+    }
+
+    // Multiplicative-weights outer loop (the plain (eps, 3 sqrt(m/eps)) oracle).
+    double rho = 3.0 * sqrt((double)m / eps);             // width of the plain oracle
+    long long N = (long long)ceil(2.0 * rho * log((double)max(m, 2)) / (eps * eps));
+    // Cap iterations so the dense O(N * n^3) demo stays bounded on big inputs.
+    const long long N_CAP = 20000;
+    if (N > N_CAP) N = N_CAP;
+
+    vector<double> w(m, 1.0);
+    vector<double> acc(m, 0.0);
+    bool failed = false;
+
+    for (long long it = 0; it < N; ++it) {
+        double w1 = 0.0;
+        for (int e = 0; e < m; ++e) w1 += w[e];
+
+        // r_e = (1/u_e^2)(w_e + eps*|w|_1/(3m)): w_e term for the average,
+        // floor term eps*|w|_1/(3m) caps the worst congestion.
+        vector<double> conduct(m, 0.0);
+        vector<double> res(m, 0.0);
+        double floor_term = eps * w1 / (3.0 * m);
+        for (int e = 0; e < m; ++e) {
+            res[e] = (w[e] + floor_term) / (u[e] * u[e]);
+            conduct[e] = 1.0 / res[e];
+        }
+
+        vector<double> phi;
+        vector<double> f = electrical_flow(n, edges, conduct, s, t, F, phi);
+
+        // Energy E_r(f); fail-test certifies F > F* when energy too large.
+        double E = 0.0;
+        for (int e = 0; e < m; ++e) E += res[e] * f[e] * f[e];
+        if (E > (1.0 + eps) * w1) { failed = true; break; }
+
+        // Reweight by congestion; accumulate the per-round flow.
+        for (int e = 0; e < m; ++e) {
+            double cong = fabs(f[e]) / u[e];
+            w[e] *= (1.0 + (eps / rho) * cong);
+            acc[e] += f[e];
+        }
+    }
+
+    cout.setf(std::ios::fixed);
+    cout << setprecision(6);
+
+    if (failed) {
+        cout << "FAIL\n";
+        return 0;
+    }
+
+    // Feasibility-scaled average of the per-round flows.
+    double scale = (1.0 - eps) * (1.0 - eps) / ((1.0 + eps) * (double)N);
+    vector<double> fbar(m);
+    for (int e = 0; e < m; ++e) fbar[e] = scale * acc[e];
+
+    // Flow value = net flow out of s.
+    double value = 0.0;
+    for (int e = 0; e < m; ++e) {
+        if (edges[e].a == s) value += fbar[e];
+        else if (edges[e].b == s) value -= fbar[e];
+    }
+
+    double maxcong = 0.0;
+    for (int e = 0; e < m; ++e) maxcong = max(maxcong, fabs(fbar[e]) / u[e]);
+
+    cout << "value " << fabs(value) << "\n";
+    for (int e = 0; e < m; ++e) cout << fbar[e] << "\n";
+    cout << "maxcong " << maxcong << "\n";
+    return 0;
+}
 ```
 
-One last sanity pass: does the implemented loop actually produce a feasible flow, and does the final scaling do what the analysis claims? The smallest input that exercises the averaging is two parallel unit-capacity edges between `s` and `t`, `F = 2`, `ε = 0.2`. By symmetry the true answer is `1` unit per edge, congestion `1`. Running `approx_max_flow` on it returns `0.5333` on each edge — max congestion `0.5333 < 1`, so it is feasible, and the value is `1.067`, a `0.53` fraction of `F`. That fraction is exactly `(1−ε)²/(1+ε) = 0.8²/1.2 = 0.64/1.2 = 0.5333`, the feasibility scaling I derived, with no surprise hiding in the iteration loop. The gap from the optimal `1` per edge is entirely the conservative scaling, not infeasibility — which is the right behaviour, since the analysis only ever promised value `(1−O(ε))F` and feasibility, and here I see precisely those two things and nothing worse. It does not, of course, exhibit the `m^{1/3}` width reduction (this plain oracle has width `√m`); for that I would need to run the improved oracle on the parallel-paths-plus-direct-edge family and watch the forbidden set `H` stay at `Õ(m^{1/3})`, which the removal lemma predicts but I have not traced end-to-end here.
+One last sanity pass: does the implemented loop actually produce a feasible flow, and does the final scaling do what the analysis claims? The smallest input that exercises the averaging is two parallel unit-capacity edges between `s` and `t`, `F = 2`, `ε = 0.2` — stdin `2 2 0 1 2 0.2` then `0 1 1` twice. By symmetry the true answer is `1` unit per edge, congestion `1`. The program prints `value 1.066667`, `0.533333` on each edge, and `maxcong 0.533333` — max congestion `0.533333 < 1`, so it is feasible, and the value is a `0.53` fraction of `F`. That fraction is exactly `(1−ε)²/(1+ε) = 0.8²/1.2 = 0.64/1.2 = 0.5333`, the feasibility scaling I derived, with no surprise hiding in the iteration loop. The gap from the optimal `1` per edge is entirely the conservative scaling, not infeasibility — which is the right behaviour, since the analysis only ever promised value `(1−O(ε))F` and feasibility, and here I see precisely those two things and nothing worse. Pushing `F` past `F*` (e.g. `2 1 0 1 10 0.2` then `0 1 1`) makes the energy fail-test trip and the program print `FAIL`, certifying `F > F*`. It does not, of course, exhibit the `m^{1/3}` width reduction (this plain oracle has width `√m`); for that I would need to run the improved oracle on the parallel-paths-plus-direct-edge family and watch the forbidden set `H` stay at `Õ(m^{1/3})`, which the removal lemma predicts but I have not traced end-to-end here.

@@ -19,19 +19,58 @@ by accident of creation order, with no regard for the slack left behind. It will
 capacity on a small item and fail to top off a nearly-full bin — wasted capacity that becomes extra
 bins. The fix is to rank by fit quality (Best-Fit), which is the next rung.
 
-**Hyperparameters / contract.** None. `priority` returns a strictly decreasing function of bin index,
-so `argmax` selects the lowest-index valid bin. Deterministic given the stream. Works at any capacity
-`C` and any item sizes.
+**Hyperparameters / contract.** None. The single-file program reads the instance from stdin —
+capacity `C`, item count `n`, then the `n` item sizes — and prints the number of bins First-Fit uses
+followed by the L1 lower bound `ceil(Σ items / C)`. Each item goes into the earliest open bin that
+still fits, opening a fresh bin only when none do. Deterministic given the stream; works at any
+capacity `C` and any item sizes. Capacities and the running total are `long long` to avoid overflow.
 
-```python
-import numpy as np
+```cpp
+// Online 1-D bin packing, First-Fit policy.
+// Reads from stdin: capacity C, item count n, then n item sizes.
+// Prints the number of bins used (and the L1 lower bound) to stdout.
+#include <bits/stdc++.h>
+using namespace std;
 
-def priority(item, bins):
-    """First-Fit: prefer the earliest (lowest-index) valid bin.
+int main() {
+    ios_base::sync_with_stdio(false);
+    cin.tie(nullptr);
 
-    `bins` holds the remaining capacities of the bins that can currently fit the
-    item, in stable positional order. A strictly decreasing score over position
-    makes the earliest valid bin the argmax, i.e. 'first bin that fits'.
-    """
-    return -np.arange(len(bins), dtype=float)
+    long long C;
+    int n;
+    if (!(cin >> C >> n)) return 0;
+
+    vector<long long> items(n);
+    long long total = 0;
+    for (int i = 0; i < n; ++i) {
+        cin >> items[i];
+        total += items[i];
+    }
+
+    // remaining[b] = leftover capacity of bin b, in bin-creation order.
+    // First-Fit: place each item in the earliest (lowest-index) bin that still
+    // fits it; if none fit, open a new bin at the end. Equivalent to the
+    // priority rule "score strictly decreasing in bin index, take the argmax".
+    vector<long long> remaining;
+    remaining.reserve(n);
+    for (int i = 0; i < n; ++i) {
+        long long item = items[i];
+        int chosen = -1;
+        for (int b = 0; b < (int)remaining.size(); ++b) {
+            if (remaining[b] >= item) { chosen = b; break; }  // earliest valid bin
+        }
+        if (chosen == -1) {                 // no open bin fits -> open a fresh bin
+            remaining.push_back(C - item);
+        } else {
+            remaining[chosen] -= item;
+        }
+    }
+
+    long long used = (long long)remaining.size();
+    long long lb = (total + C - 1) / C;     // L1 lower bound ceil(sum/C)
+
+    cout << used << "\n";
+    cout << lb << "\n";
+    return 0;
+}
 ```

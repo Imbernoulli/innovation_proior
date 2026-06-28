@@ -105,67 +105,134 @@ This also explains why a 2×2 identity gives an n×n algorithm. Matrix tensors m
 
 Setting n = 2^L, R(⟨n,n,n⟩) ≤ n^{log₂ 7}. The recursion *is* the tensor power, and the exponent log₂ 7 is the log of the seven-term rank bound for the base tensor. That's why saving one multiplication once compounds: each tensor power multiplies the available rank bound, so the base bound goes into the exponent bound. This also tells me the general principle for going further: find *any* matrix tensor ⟨n,n,n⟩ with R < n³, and I get ω ≤ log_n R. Define ω as the infimum of β with R(⟨n,n,n⟩) ≤ O(n^β); my result is ω ≤ log₂ 7 ≈ 2.807, the trivial bounds are 2 ≤ ω ≤ 3, and *any* rank bound on *any* fixed-size matrix tensor that beats cubic pushes ω down.
 
-Let me write the witness as real, runnable code, because the whole thing has to bottom out in something I can run. Recurse with the seven products; below a crossover size the recursion overhead and the eighteen additions aren't worth it, so switch to a tuned cubic kernel there; pad odd sizes up so the halving always works.
+Let me write the witness as real, runnable code, because the whole thing has to bottom out in something I can run. A single self-contained C++17 program: read `n` and two n×n integer matrices A, B from stdin (row-major, whitespace-separated), print C = A·B to stdout. Recurse with the seven products; below a crossover size the recursion overhead and the eighteen additions aren't worth it, so switch to a cubic leaf kernel there; pad odd sizes up so the halving always works; accumulate in `long long` so the products don't overflow.
 
-```python
-import numpy as np
+```cpp
+// Reads n, then two n x n integer matrices A and B from stdin (row-major,
+// whitespace-separated); prints C = A*B (n rows, space-separated) to stdout.
+// Recursive Strassen (7 block products) with a cubic leaf kernel; long long
+// accumulation to avoid overflow.
+#include <bits/stdc++.h>
+using namespace std;
 
-def matmul_naive(A, B):
-    # Cubic leaf kernel and ground truth.
-    return A @ B
+using ll = long long;
+using Mat = vector<vector<ll>>;
 
-def split(M):
-    m = M.shape[0] // 2
-    return M[:m, :m], M[:m, m:], M[m:, :m], M[m:, m:]
+static const int LEAF = 64;
 
-def block_product(A, B, recurse):
-    a, b, c, d = split(A)            # A = [[a, b],
-                                     #      [c, d]]
-    e, f, g, h = split(B)            # B = [[e, f],
-                                     #      [g, h]]
+// Cubic leaf kernel / ground truth: C = A*B for two s x s matrices.
+Mat matmul_naive(const Mat& A, const Mat& B) {
+    int s = (int)A.size();
+    Mat C(s, vector<ll>(s, 0));
+    for (int i = 0; i < s; i++)
+        for (int k = 0; k < s; k++) {
+            ll a = A[i][k];
+            if (a == 0) continue;
+            for (int j = 0; j < s; j++)
+                C[i][j] += a * B[k][j];
+        }
+    return C;
+}
 
-    # The seven products. Each is (combination of A-blocks) x (combination of B-blocks):
-    # never two A's or two B's, never a reordered factor -- so it lifts to non-commuting blocks.
-    p1 = recurse(a + d, e + h)       # (A11+A22)(B11+B22): two diagonal monomials at once
-    p2 = recurse(c + d, e)           # (A21+A22)B11
-    p3 = recurse(a, f - h)           # A11(B12-B22)
-    p4 = recurse(d, g - e)           # A22(B21-B11)
-    p5 = recurse(a + b, h)           # (A11+A12)B22
-    p6 = recurse(c - a, e + f)       # (A21-A11)(B11+B12)
-    p7 = recurse(b - d, g + h)       # (A12-A22)(B21+B22)
+Mat add(const Mat& A, const Mat& B) {
+    int s = (int)A.size();
+    Mat C(s, vector<ll>(s));
+    for (int i = 0; i < s; i++)
+        for (int j = 0; j < s; j++) C[i][j] = A[i][j] + B[i][j];
+    return C;
+}
 
-    # Recombine: the unwanted cross terms cancel exactly (checked symbolically and on numbers).
-    C = np.empty(A.shape, dtype=np.result_type(A, B))
-    m = a.shape[0]
-    C[:m, :m] = p1 + p4 - p5 + p7    # C11 = A11B11 + A12B21
-    C[:m, m:] = p3 + p5              # C12 = A11B12 + A12B22
-    C[m:, :m] = p2 + p4              # C21 = A21B11 + A22B21
-    C[m:, m:] = p1 - p2 + p3 + p6    # C22 = A21B12 + A22B22
+Mat sub(const Mat& A, const Mat& B) {
+    int s = (int)A.size();
+    Mat C(s, vector<ll>(s));
+    for (int i = 0; i < s; i++)
+        for (int j = 0; j < s; j++) C[i][j] = A[i][j] - B[i][j];
+    return C;
+}
 
-    return C
+// Recursive Strassen for an s x s matrix where s is even (or <= LEAF).
+Mat strassen(const Mat& X, const Mat& Y) {
+    int n = (int)X.size();
+    if (n <= LEAF || (n & 1)) return matmul_naive(X, Y);
 
-def recursive_matmul(A, B, leaf=64):
-    A = np.asarray(A)
-    B = np.asarray(B)
-    if leaf < 1:
-        raise ValueError("leaf must be at least 1")
-    if A.ndim != 2 or B.ndim != 2 or A.shape != B.shape or A.shape[0] != A.shape[1]:
-        raise ValueError("recursive_matmul expects two n x n matrices")
+    int m = n / 2;
+    Mat a(m, vector<ll>(m)), b(m, vector<ll>(m)), c(m, vector<ll>(m)), d(m, vector<ll>(m));
+    Mat e(m, vector<ll>(m)), f(m, vector<ll>(m)), g(m, vector<ll>(m)), h(m, vector<ll>(m));
+    for (int i = 0; i < m; i++)
+        for (int j = 0; j < m; j++) {
+            a[i][j] = X[i][j];     b[i][j] = X[i][j + m];
+            c[i][j] = X[i + m][j]; d[i][j] = X[i + m][j + m];
+            e[i][j] = Y[i][j];     f[i][j] = Y[i][j + m];
+            g[i][j] = Y[i + m][j]; h[i][j] = Y[i + m][j + m];
+        }
 
-    def recurse(X, Y):
-        n = X.shape[0]
-        if n <= leaf:
-            return matmul_naive(X, Y)
+    // Seven products: each is (A-side combination) x (B-side combination),
+    // A always on the left, so the identity lifts to non-commuting blocks.
+    Mat p1 = strassen(add(a, d), add(e, h));   // (A11+A22)(B11+B22)
+    Mat p2 = strassen(add(c, d), e);           // (A21+A22) B11
+    Mat p3 = strassen(a, sub(f, h));           // A11 (B12-B22)
+    Mat p4 = strassen(d, sub(g, e));           // A22 (B21-B11)
+    Mat p5 = strassen(add(a, b), h);           // (A11+A12) B22
+    Mat p6 = strassen(sub(c, a), add(e, f));   // (A21-A11)(B11+B12)
+    Mat p7 = strassen(sub(b, d), add(g, h));   // (A12-A22)(B21+B22)
 
-        original_n = n
-        if n % 2 == 1:
-            X = np.pad(X, ((0, 1), (0, 1)), mode="constant")
-            Y = np.pad(Y, ((0, 1), (0, 1)), mode="constant")
+    // Recombine; cross terms cancel exactly by the Strassen identity.
+    Mat c11 = add(sub(add(p1, p4), p5), p7);   // C11 = p1 + p4 - p5 + p7
+    Mat c12 = add(p3, p5);                      // C12 = p3 + p5
+    Mat c21 = add(p2, p4);                      // C21 = p2 + p4
+    Mat c22 = add(add(sub(p1, p2), p3), p6);    // C22 = p1 - p2 + p3 + p6
 
-        C = block_product(X, Y, recurse)
-        return C[:original_n, :original_n]
+    Mat C(n, vector<ll>(n));
+    for (int i = 0; i < m; i++)
+        for (int j = 0; j < m; j++) {
+            C[i][j] = c11[i][j];     C[i][j + m] = c12[i][j];
+            C[i + m][j] = c21[i][j]; C[i + m][j + m] = c22[i][j];
+        }
+    return C;
+}
 
-    return recurse(A, B)
+// Pad to the next even size when needed so the halving always works.
+Mat recursive_matmul(const Mat& A, const Mat& B) {
+    int n = (int)A.size();
+    if (n == 0) return Mat();
+    if (n <= LEAF) return matmul_naive(A, B);
+
+    int s = (n & 1) ? n + 1 : n;
+    if (s == n) return strassen(A, B);
+
+    Mat Ap(s, vector<ll>(s, 0)), Bp(s, vector<ll>(s, 0));
+    for (int i = 0; i < n; i++)
+        for (int j = 0; j < n; j++) { Ap[i][j] = A[i][j]; Bp[i][j] = B[i][j]; }
+    Mat Cp = strassen(Ap, Bp);
+    Mat C(n, vector<ll>(n));
+    for (int i = 0; i < n; i++)
+        for (int j = 0; j < n; j++) C[i][j] = Cp[i][j];
+    return C;
+}
+
+int main() {
+    ios::sync_with_stdio(false);
+    cin.tie(nullptr);
+
+    int n;
+    if (!(cin >> n)) return 0;
+    Mat A(n, vector<ll>(n)), B(n, vector<ll>(n));
+    for (int i = 0; i < n; i++)
+        for (int j = 0; j < n; j++) cin >> A[i][j];
+    for (int i = 0; i < n; i++)
+        for (int j = 0; j < n; j++) cin >> B[i][j];
+
+    Mat C = recursive_matmul(A, B);
+
+    for (int i = 0; i < n; i++) {
+        for (int j = 0; j < n; j++) {
+            if (j) cout << ' ';
+            cout << C[i][j];
+        }
+        cout << '\n';
+    }
+    return 0;
+}
 ```
 
 The causal chain, start to finish: the cubic count came from believing every monomial a_ik b_kj must be formed, but bilinear forms can be built from *combinations* with cancellation, as Karatsuba already showed for polynomials; recursion alone reproduces cubic because eight block products is 2³, so the only lever is the multiplication count, whose log₂ becomes the exponent; an algebraic hunt — one central product of sums to grab two diagonal monomials, auxiliary products to cancel the junk and sweep the corners — yields seven block products that reconstruct all four output blocks without ever multiplying two same-side blocks, so the identity holds for non-commuting matrix entries and recurses to Θ(n^{log₂ 7}); and finally, reading "number of multiplications" as the rank of the matrix-multiplication tensor turns the recursion into a tensor power, with rank submultiplicativity explaining why the base rank bound lands in the exponent bound.

@@ -14,72 +14,94 @@ When the walk lands at `cur`, the new longest palindromic suffix is the node `go
 
 What makes this linear rather than quadratic is a potential argument over the suffix-link walks. Let $\Phi_i$ be the length of `last` after $i$ characters, with $\Phi_0 = 0$. During the first walk for character $i$, every failed step strictly decreases the candidate length, and if the walk stops at length $L$ the new `last` has length $L+2$, so the number of failed steps is at most $\Phi_{i-1} - L = \Phi_{i-1} - \Phi_i + 2$. Summing over all appends gives at most $2n + \Phi_0 - \Phi_n = O(n)$ failed steps. The second walk, used only when a new node is born, is the same proper-suffix-chain search; each of its failed steps again spends a strict drop in candidate length and is charged by the same potential, adding only a constant multiple of the first walk's work. So the total number of suffix-link jumps is $O(n)$. There are at most $n$ non-root nodes plus the two roots, and each non-root node has exactly one incoming wrapping edge with one label, so the transitions are also $O(n)$ when stored sparsely. With array transitions over a fixed alphabet $\Sigma$ each lookup is constant and construction is $O(n)$ time with $O(n\Sigma)$ space; with balanced maps it is $O(n\log\Sigma)$ time and $O(n)$ space; with hash maps the expected transition factor is constant. Either way the online counter maintains the distinct-palindrome count after every prefix in amortized linear total work.
 
-```python
-class DistinctPalindromes:
-    """Online counter for distinct non-empty palindromic substrings."""
+The program reads one string `s` from stdin; it prints the number of distinct non-empty palindromic substrings of `s`, then a second line with the running count after each prefix `s[0..i]`.
 
-    ODD = 0
-    EVEN = 1
+```cpp
+// Reads one string s from stdin; prints the number of distinct non-empty
+// palindromic substrings of s, then a second line with the running count after
+// each prefix s[0..i]. Online via a palindromic tree (eertree).
+#include <bits/stdc++.h>
+using namespace std;
 
-    def __init__(self):
-        self._guard = object()
-        self.s = [self._guard]
-        self.length = [-1, 0]
-        self.fail = [self.ODD, self.ODD]
-        self.go = [dict(), dict()]
-        self.last = self.EVEN
-        self._count = 0
+struct Eertree {
+    enum { ODD = 0,   // imaginary root, len -1; seeds odd palindromes
+           EVEN = 1 };// root, len 0; seeds even palindromes
 
-    def _walk(self, x):
-        i = len(self.s) - 1
-        while self.s[i - 1 - self.length[x]] != self.s[i]:
-            x = self.fail[x]
-        return x
+    vector<int> s;              // processed characters; s[0] is a guard
+    vector<int> len;            // node -> palindrome length
+    vector<int> fail;           // node -> longest proper palindromic suffix
+    vector<map<int,int>> go;    // node -> {char: child}
+    int last;                   // node of the longest palindromic suffix so far
+    long long num_distinct;     // distinct non-empty palindromes seen
 
-    def add(self, c):
-        self.s.append(c)
-        cur = self._walk(self.last)
-        created = False
+    Eertree() {
+        s.push_back(-1);        // guard
+        len = {-1, 0};
+        fail = {ODD, ODD};
+        go.resize(2);
+        last = EVEN;
+        num_distinct = 0;
+    }
 
-        if c not in self.go[cur]:
-            now = len(self.length)
-            self.length.append(self.length[cur] + 2)
-            self.go.append(dict())
+    // climb suffix links until s can be wrapped: s[i-1-len] == s[i]
+    int walk(int x) const {
+        int i = (int)s.size() - 1;
+        while (s[i - 1 - len[x]] != s[i]) x = fail[x];
+        return x;
+    }
 
-            if self.length[now] == 1:
-                self.fail.append(self.EVEN)
-            else:
-                f = self._walk(self.fail[cur])
-                self.fail.append(self.go[f][c])
+    // append character c; returns true iff a new distinct palindrome was created
+    bool add(int c) {
+        s.push_back(c);
+        int cur = walk(last);                // longest pal. suffix we can extend
+        bool created = false;
+        auto it = go[cur].find(c);
+        if (it == go[cur].end()) {
+            int now = (int)len.size();        // new node for c + (cur's pal.) + c
+            len.push_back(len[cur] + 2);
+            go.push_back(map<int,int>());
+            if (len[now] == 1) {
+                fail.push_back(EVEN);         // single char -> empty palindrome
+            } else {
+                int f = walk(fail[cur]);      // continue up fail[cur]
+                fail.push_back(go[f][c]);
+            }
+            go[cur][c] = now;
+            ++num_distinct;
+            created = true;
+        }
+        last = go[cur][c];
+        return created;
+    }
+};
 
-            self.go[cur][c] = now
-            self._count += 1
-            created = True
+int main() {
+    string text;
+    {
+        // read the whole input as one token (first whitespace-delimited word)
+        if (!(cin >> text)) text = "";
+    }
 
-        self.last = self.go[cur][c]
-        return created
+    // map distinct characters to small integer codes (compact alphabet)
+    map<char,int> code;
+    for (char ch : text)
+        if (!code.count(ch)) {
+            int id = (int)code.size();
+            code[ch] = id;
+        }
 
-    def count_distinct(self):
-        return self._count
+    Eertree et;
+    vector<long long> per_prefix;
+    per_prefix.reserve(text.size());
+    for (char ch : text) {
+        et.add(code[ch]);
+        per_prefix.push_back(et.num_distinct);
+    }
 
-
-def count_distinct_palindromes(text):
-    """Number of distinct non-empty palindromic substrings of text, built online."""
-    dp = DistinctPalindromes()
-    code = {ch: i for i, ch in enumerate(sorted(set(text)))}
-    for ch in text:
-        dp.add(code[ch])
-    return dp.count_distinct()
-
-
-def distinct_palindromes_per_prefix(text):
-    """For each prefix text[:i+1], the running count of distinct non-empty
-    palindromic substrings -- one online pass."""
-    dp = DistinctPalindromes()
-    code = {ch: i for i, ch in enumerate(sorted(set(text)))}
-    out = []
-    for ch in text:
-        dp.add(code[ch])
-        out.append(dp.count_distinct())
-    return out
+    cout << et.num_distinct << "\n";
+    for (size_t i = 0; i < per_prefix.size(); ++i)
+        cout << per_prefix[i] << (i + 1 < per_prefix.size() ? ' ' : '\n');
+    if (per_prefix.empty()) cout << "\n";
+    return 0;
+}
 ```

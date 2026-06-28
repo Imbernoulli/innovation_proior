@@ -18,80 +18,99 @@ In a language with recursive procedures, the bookkeeping of partitioned-but-not-
 
 Small practical refinements, such as switching to insertion sort for very short segments or choosing the median of a small sample as the bound, can improve the constant factors, but the core method remains the partition-and-recurse structure described above.
 
-```python
-import random
+The program reads `N` followed by `N` integer keys from standard input and prints the keys in ascending order, space-separated on one line. It sorts in place, with no second array, using the random-bound two-pointer partition and the explicit-nest loop that always postpones the larger piece (so the nest depth stays at log₂ N).
 
-def key(item):
-    return item
+```cpp
+// Quicksort: in-place comparison sort by partitioning around a random bound.
+// Reads from stdin: N, then N integer keys. Prints the N keys in ascending order,
+// space-separated on one line. Sorts in place (no second array), expected N log N.
+#include <bits/stdc++.h>
+using namespace std;
 
-def exchange(a, p, q):
-    a[p], a[q] = a[q], a[p]
+static uint64_t rng_state = 0x9e3779b97f4a7c15ULL;
+static inline uint64_t xorshift64() {
+    rng_state ^= rng_state << 13;
+    rng_state ^= rng_state >> 7;
+    rng_state ^= rng_state << 17;
+    return rng_state;
+}
+// uniform position in [lo, hi]
+static inline long long rand_pos(long long lo, long long hi) {
+    return lo + (long long)(xorshift64() % (uint64_t)(hi - lo + 1));
+}
 
-def partition(a, lo, hi):
-    f = random.randint(lo, hi)
-    bound = key(a[f])
-    i = lo
-    j = hi
-    while True:
-        while i < hi and key(a[i]) <= bound:
-            i += 1
-        while j > lo and key(a[j]) >= bound:
-            j -= 1
-        if i < j:
-            exchange(a, i, j)
-            i += 1
-            j -= 1
-            continue
-        if i < f:
-            exchange(a, i, f)
-            i += 1
-        elif f < j:
-            exchange(a, f, j)
-            j -= 1
-        return i, j
+// Hoare-style two-pointer partition around a randomly chosen bound.
+// Rearranges a[lo..hi] in place; returns (i, j) so the recursive sides are
+// a[lo..j] and a[i..hi]. Equal keys are passed over by both scans so they do
+// not trap the pointers; the bound item is peeled to an edge if it remains
+// inside a side, guaranteeing every returned side is strictly smaller.
+static pair<long long, long long> partition_seg(vector<long long>& a,
+                                                long long lo, long long hi) {
+    long long f = rand_pos(lo, hi);     // an actual item -> bound is in range
+    long long bound = a[f];
+    long long i = lo, j = hi;
+    while (true) {
+        while (i < hi && a[i] <= bound) ++i;   // stop at first key > bound
+        while (j > lo && a[j] >= bound) --j;    // stop at first key < bound
+        if (i < j) {
+            swap(a[i], a[j]);                   // two items in each other's territory
+            ++i; --j;
+            continue;
+        }
+        if (i < f) {            // bound item lies in the upper recursive side
+            swap(a[i], a[f]);
+            ++i;
+        } else if (f < j) {     // bound item lies in the lower recursive side
+            swap(a[f], a[j]);
+            --j;
+        }
+        return {i, j};
+    }
+}
 
-def sort(a, lo=0, hi=None):
-    if hi is None:
-        hi = len(a) - 1
-    if lo < hi:
-        i, j = partition(a, lo, hi)
-        sort(a, lo, j)
-        sort(a, i, hi)
-    return a
+// Explicit-nest form (no language recursion): the "nest" is a pushdown stack of
+// postponed segments. Always continue on the SMALLER piece and postpone the
+// LARGER one, so the nest depth is bounded by log2(N).
+static void quicksort(vector<long long>& a) {
+    long long n = (long long)a.size();
+    if (n < 2) return;
+    long long lo = 0, hi = n - 1;
+    vector<pair<long long, long long>> nest;
+    while (true) {
+        while (lo < hi) {
+            auto pr = partition_seg(a, lo, hi);
+            long long i = pr.first, j = pr.second;
+            long long left_lo = lo, left_hi = j;       // a[lo..j]
+            long long right_lo = i, right_hi = hi;      // a[i..hi]
+            long long left_size = max(0LL, left_hi - left_lo + 1);
+            long long right_size = max(0LL, right_hi - right_lo + 1);
+            if (left_size < right_size) {               // postpone larger (right)
+                if (right_size > 1) nest.push_back({right_lo, right_hi});
+                lo = left_lo; hi = left_hi;
+            } else {                                    // postpone larger (left)
+                if (left_size > 1) nest.push_back({left_lo, left_hi});
+                lo = right_lo; hi = right_hi;
+            }
+        }
+        if (nest.empty()) break;
+        lo = nest.back().first; hi = nest.back().second;   // resume most recent
+        nest.pop_back();
+    }
+}
 
-def sort_with_explicit_nest(a):
-    lo, hi = 0, len(a) - 1
-    nest = []
-
-    def segment_size(segment):
-        first, last = segment
-        return max(0, last - first + 1)
-
-    while True:
-        while lo < hi:
-            i, j = partition(a, lo, hi)
-            left = (lo, j)
-            right = (i, hi)
-            left_size = segment_size(left)
-            right_size = segment_size(right)
-            if left_size < right_size:
-                if right_size > 1:
-                    nest.append(right)
-                lo, hi = left
-            else:
-                if left_size > 1:
-                    nest.append(left)
-                lo, hi = right
-        if not nest:
-            break
-        lo, hi = nest.pop()
-    return a
-
-if __name__ == "__main__":
-    data = ["cherry", "apple", "banana", "date", "elderberry", "fig"]
-    sort(data)
-    assert data == sorted(data)
-    data2 = list(range(20, 0, -1))
-    sort_with_explicit_nest(data2)
-    assert data2 == sorted(data2)
+int main() {
+    ios_base::sync_with_stdio(false);
+    cin.tie(nullptr);
+    long long n;
+    if (!(cin >> n)) return 0;
+    vector<long long> a(n);
+    for (long long k = 0; k < n; ++k) cin >> a[k];
+    quicksort(a);
+    for (long long k = 0; k < n; ++k) {
+        cout << a[k];
+        if (k + 1 < n) cout << ' ';
+    }
+    cout << '\n';
+    return 0;
+}
 ```

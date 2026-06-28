@@ -54,83 +54,75 @@ $O(\log C)$ each and is the standard structure for that non-monotone case.
 
 ## Code
 
-```python
-import sys
+```cpp
+// Reads n, then arrays a[0..n-1] and b[0..n-1] from stdin; prints dp[n-1].
+// dp[i] = min_{0<=j<i}(dp[j] + b[j]*a[i]), dp[0]=0, with b non-increasing,
+// a non-decreasing. Solved in O(n) by the monotone convex hull trick.
+#include <bits/stdc++.h>
+using namespace std;
 
+struct Transition {
+    // Lower-envelope of lines (slope, intercept) kept in a deque.
+    deque<pair<long long, long long>> lines;
 
-def read_input(data):
-    """Parse n, then the arrays a[0..n-1] and b[0..n-1] as integers."""
-    it = iter(data)
-    n = int(next(it))
-    a = [int(next(it)) for _ in range(n)]
-    b = [int(next(it)) for _ in range(n)]
-    return n, a, b
+    // Make one finished state available to later transitions.
+    void register_line(long long slope, long long value) {
+        if (!lines.empty() && lines.back().first == slope) {
+            if (lines.back().second <= value) return;
+            lines.pop_back();
+        }
+        pair<long long, long long> nw{slope, value};
+        while (lines.size() >= 2) {
+            long long m1 = lines[lines.size() - 2].first;
+            long long c1 = lines[lines.size() - 2].second;
+            long long m2 = lines.back().first;
+            long long c2 = lines.back().second;
+            long long m3 = nw.first, c3 = nw.second;
+            // Keep the middle line only if it dips below the envelope of the
+            // outer two: (c2-c3)(m1-m3) < (m3-m2)(c3-c1). Use __int128 since the
+            // cross-products can overflow 64-bit even when each value fits.
+            __int128 lhs = (__int128)(c2 - c3) * (m1 - m3);
+            __int128 rhs = (__int128)(m3 - m2) * (c3 - c1);
+            if (lhs < rhs) break;
+            lines.pop_back();
+        }
+        lines.push_back(nw);
+    }
 
+    // Return the best transition value at x (x non-decreasing across calls).
+    long long query(long long x) {
+        while (lines.size() >= 2) {
+            long long m1 = lines[0].first, c1 = lines[0].second;
+            long long m2 = lines[1].first, c2 = lines[1].second;
+            if (m2 * x + c2 > m1 * x + c1) break;
+            lines.pop_front();
+        }
+        return lines[0].first * x + lines[0].second;
+    }
+};
 
-class Transition:
-    """Stores finished states and answers min(value + slope * x)."""
+int main() {
+    ios_base::sync_with_stdio(false);
+    cin.tie(nullptr);
 
-    def __init__(self):
-        from collections import deque
-        self.lines = deque()
+    int n;
+    if (!(cin >> n)) return 0;
+    vector<long long> a(n), b(n);
+    for (int i = 0; i < n; ++i) cin >> a[i];
+    for (int i = 0; i < n; ++i) cin >> b[i];
 
-    def register(self, slope, value):
-        """Make one finished state available to later transitions."""
-        lines = self.lines
+    vector<long long> dp(n, 0);
+    dp[0] = 0;
 
-        if lines and lines[-1][0] == slope:
-            if lines[-1][1] <= value:
-                return
-            lines.pop()
+    Transition tr;
+    tr.register_line(b[0], dp[0]);
 
-        new_line = (slope, value)
-        while len(lines) >= 2:
-            m1, c1 = lines[-2]
-            m2, c2 = lines[-1]
-            m3, c3 = new_line
-            if (c2 - c3) * (m1 - m3) < (m3 - m2) * (c3 - c1):
-                break
-            lines.pop()
+    for (int i = 1; i < n; ++i) {
+        dp[i] = tr.query(a[i]);
+        tr.register_line(b[i], dp[i]);
+    }
 
-        lines.append(new_line)
-
-    def query(self, x):
-        """Return the best transition value at x."""
-        lines = self.lines
-        while len(lines) >= 2:
-            m1, c1 = lines[0]
-            m2, c2 = lines[1]
-            if m2 * x + c2 > m1 * x + c1:
-                break
-            lines.popleft()
-
-        slope, value = lines[0]
-        return slope * x + value
-
-
-def solve(n, a, b):
-    dp = [0] * n
-    dp[0] = 0
-
-    tr = Transition()
-    tr.register(b[0], dp[0])
-
-    for i in range(1, n):
-        dp[i] = tr.query(a[i])
-        tr.register(b[i], dp[i])
-
-    return dp
-
-
-def main():
-    data = sys.stdin.buffer.read().split()
-    if not data:
-        return
-    n, a, b = read_input(data)
-    dp = solve(n, a, b)
-    sys.stdout.write(str(dp[n - 1]) + "\n")
-
-
-if __name__ == "__main__":
-    main()
+    cout << dp[n - 1] << "\n";
+    return 0;
+}
 ```

@@ -8,34 +8,60 @@ A nonzero `z[l]` certifies that `s[l : l + z[l]]` is a verbatim copy of the pref
 
 For pattern search, an occurrence of `pattern` at text index `j` means `pattern` and `text[j:]` share a prefix of length exactly `len(pattern)` - what the Z-array reports when `pattern` is the prefix of a longer sequence. Build `list(pattern) + [separator] + list(text)` with `separator` a fresh sentinel object that cannot equal any text element, so a prefix match starting in the text region stops at the separator after at most `len(pattern)` characters. Text index `j` lands at combined index `j + len(pattern) + 1`; a Z-value equal to `len(pattern)` there is exactly one occurrence. This reports overlapping matches and runs in `O(len(pattern) + len(text))`.
 
-```python
-def z_function(s):
-    """Return the Z-array of s: z[i] is the length of the longest prefix of s
-    that also starts at position i. z[0] is 0 by convention."""
-    n = len(s)
-    z = [0] * n
-    l, r = 0, 0
-    for i in range(1, n):
-        if i <= r:
-            z[i] = min(z[i - l], r - i + 1)
-        while i + z[i] < n and s[z[i]] == s[i + z[i]]:
-            z[i] += 1
-        if i + z[i] - 1 > r:
-            l, r = i, i + z[i] - 1
-    return z
+The deliverable is a single self-contained C++17 program: it reads the text `s` on the first line of stdin and the pattern `p` on the second, prints the Z-array of `s` (space-separated, `z[0]=0`), then prints the start indices in `s` where `p` occurs (overlaps included). The Python `object()` sentinel becomes a control byte `'\1'` assumed absent from the inputs (any value outside the input alphabet works).
 
+```cpp
+// Reads two lines from stdin: the text s on the first line and the pattern p on
+// the second. Prints the Z-array of s (space-separated, with z[0]=0), then the
+// sorted start indices in s where p occurs (overlaps included; empty line if none).
+#include <bits/stdc++.h>
+using namespace std;
 
-def find_occurrences(text, pattern):
-    """Return the sorted list of start indices i in text where pattern occurs."""
-    m = len(pattern)
-    if m == 0:
-        return list(range(len(text) + 1))
-    separator = object()
-    combined = list(pattern) + [separator] + list(text)
-    z = z_function(combined)
-    occurrences = []
-    for j in range(len(text)):
-        if z[j + m + 1] == m:
-            occurrences.append(j)
-    return occurrences
+// Z-array of s: z[i] is the length of the longest prefix of s that also starts
+// at position i. z[0] is 0 by convention. Runs in O(n).
+vector<int> z_function(const string &s) {
+    int n = (int)s.size();
+    vector<int> z(n, 0);
+    int l = 0, r = 0;
+    for (int i = 1; i < n; ++i) {
+        if (i <= r) z[i] = min(z[i - l], r - i + 1);
+        while (i + z[i] < n && s[z[i]] == s[i + z[i]]) ++z[i];
+        if (i + z[i] - 1 > r) { l = i; r = i + z[i] - 1; }
+    }
+    return z;
+}
+
+// Sorted start indices i in text where pattern occurs (overlaps included).
+// Builds pattern + sentinel + text and reports positions whose Z-value equals
+// the pattern length. Total work O(len(pattern) + len(text)).
+vector<int> find_occurrences(const string &text, const string &pattern) {
+    int m = (int)pattern.size();
+    vector<int> occ;
+    if (m == 0) {                       // empty pattern occurs at every index
+        for (int i = 0; i <= (int)text.size(); ++i) occ.push_back(i);
+        return occ;
+    }
+    // '\1' is a sentinel assumed absent from the inputs; pick any value outside
+    // the alphabet of text and pattern if that assumption does not hold.
+    string combined = pattern + '\1' + text;
+    vector<int> z = z_function(combined);
+    for (int j = 0; j < (int)text.size(); ++j)
+        if (z[j + m + 1] == m) occ.push_back(j);
+    return occ;
+}
+
+int main() {
+    string s, p;
+    getline(cin, s);
+    getline(cin, p);
+
+    vector<int> z = z_function(s);
+    for (size_t i = 0; i < z.size(); ++i) cout << (i ? " " : "") << z[i];
+    cout << "\n";
+
+    vector<int> occ = find_occurrences(s, p);
+    for (size_t i = 0; i < occ.size(); ++i) cout << (i ? " " : "") << occ[i];
+    cout << "\n";
+    return 0;
+}
 ```

@@ -8,71 +8,93 @@ The recursion has a clean iterative form. Repeatedly splitting by parity routes 
 
 The same factorization generalizes beyond radix 2. For N = r₁r₂, group inputs by residue modulo r₁ and split outputs compatibly; the inner stage computes r₁ DFTs of length r₂, the outer stage computes r₂ DFTs of length r₁, and the cross term W^{j₀k₀} is the twiddle that couples them. Recursing to the prime factorization N = p₁p₂⋯pₗ gives cost N(p₁ + p₂ + ⋯ + pₗ). When every prime is 2 this is 2N log₂ N; when N is prime the factorization has no smaller pieces and the method falls back to direct Θ(N²) evaluation. For scientific applications that can tolerate a longer transform, zero-padding to a composite length is the usual escape.
 
-```python
-import cmath
+The program reads `N` (a power of two) and `N` complex samples as `re im` pairs from stdin, and writes the `N` coefficients `X(j)`, one `re im` pair per line. The transform is in-place radix-2 on a bit-reversed working copy; `dft_direct` and `inverse_transform` are carried as the small-N oracle and the conjugate-root wrapper.
 
-def root_of_unity(N, sign=-1):
-    # W = exp(sign * 2πi / N); sign=-1 for forward, +1 for inverse
-    return cmath.exp(sign * 2j * cmath.pi / N)
+```cpp
+// Cooley-Tukey radix-2 FFT.
+// Reads from stdin: N (a power of two) then N complex samples as "re im" pairs.
+// Writes to stdout: the N DFT coefficients X(j) = sum_k A(k) W^{jk}, W = e^{-2*pi*i/N},
+// one "re im" pair per line.
+#include <bits/stdc++.h>
+using namespace std;
 
-def dft_direct(A, sign=-1):
-    # Baseline O(N^2) transform; also the trusted small-N oracle.
-    N = len(A)
-    W = root_of_unity(N, sign)
-    return [sum(A[k] * W ** (j * k) for k in range(N)) for j in range(N)]
+using cd = complex<double>;
+const double PI = acos(-1.0);
 
-def _validate_length(n):
-    if n < 1 or n & (n - 1):
-        raise ValueError("length must be a power of two")
+// O(N^2) baseline / small-N oracle: X(j) = sum_k A(k) W^{jk}, W = exp(sign*2*pi*i/N).
+vector<cd> dft_direct(const vector<cd>& A, int sign = -1) {
+    int N = (int)A.size();
+    cd W = exp(cd(0.0, sign * 2.0 * PI / N));
+    vector<cd> X(N);
+    for (int j = 0; j < N; ++j) {
+        cd acc = 0.0;
+        for (int k = 0; k < N; ++k) acc += A[k] * pow(W, (double)(j * k));
+        X[j] = acc;
+    }
+    return X;
+}
 
-def transform_recursive(A, sign=-1):
-    # Recursive radix-2 decimation-in-time transform.
-    N = len(A)
-    _validate_length(N)
-    if N == 1:
-        return [A[0]]
-    E = transform_recursive(A[0::2], sign)  # even-indexed subsequence
-    O = transform_recursive(A[1::2], sign)  # odd-indexed subsequence
-    X = [0j] * N
-    W = root_of_unity(N, sign)
-    for j in range(N // 2):
-        t = W ** j * O[j]                # twiddle W^j times O(j)
-        X[j] = E[j] + t                  # X(j)   = E(j) + W^j O(j)
-        X[j + N // 2] = E[j] - t         # X(j+N/2) = E(j) - W^j O(j)
-    return X
+// Route input to leaf order: sample at index rev(p) goes to position p.
+// Reversal is an involution, so the swaps are disjoint and done in place.
+void bit_reverse(vector<cd>& a) {
+    int n = (int)a.size();
+    int bits = __builtin_ctz((unsigned)n); // log2 n, n a power of two
+    for (int p = 0; p < n; ++p) {
+        int q = 0;
+        for (int b = 0; b < bits; ++b)
+            if (p & (1 << b)) q |= 1 << (bits - 1 - b);
+        if (q > p) swap(a[p], a[q]);
+    }
+}
 
-def _reorder_for_iteration(A):
-    # Route input to leaf order: position p receives input at index bitrev(p).
-    A = list(A)
-    n = len(A)
-    _validate_length(n)
-    bits = n.bit_length() - 1
-    for p in range(n):
-        q = int(format(p, '0{}b'.format(bits))[::-1], 2)
-        if q > p:                        # reversal is an involution
-            A[p], A[q] = A[q], A[p]
-    return A
+// Iterative radix-2 FFT: bit-reverse a working copy, then run log2 N doubling
+// passes of in-place butterflies. N must be a power of two. sign=-1 forward, +1 inverse.
+vector<cd> transform(vector<cd> A, int sign = -1) {
+    int n = (int)A.size();
+    bit_reverse(A);
+    for (int L = 2; L <= n; L <<= 1) {            // pass builds length-L = 2^s transforms
+        cd wL = exp(cd(0.0, sign * 2.0 * PI / L)); // root of unity for this block length
+        for (int start = 0; start < n; start += L) {
+            cd w = 1.0;                            // running twiddle, propagated by multiplication
+            for (int r = 0; r < L / 2; ++r) {
+                cd u = A[start + r];
+                cd t = w * A[start + r + L / 2];   // twiddle times the upper half
+                A[start + r]         = u + t;      // butterfly: E + W^r O
+                A[start + r + L / 2] = u - t;      // butterfly: E - W^r O
+                w *= wL;
+            }
+        }
+    }
+    return A;
+}
 
-def transform_iterative(A, sign=-1):
-    # In-place radix-2 FFT on a bit-reversed working copy.
-    A = _reorder_for_iteration(A)
-    n = len(A)
-    L = 2
-    while L <= n:
-        wL = root_of_unity(L, sign)      # root of unity for length-L blocks
-        for start in range(0, n, L):
-            w = 1 + 0j
-            for r in range(L // 2):
-                u = A[start + r]
-                t = w * A[start + r + L // 2]
-                A[start + r] = u + t     # butterfly: E + W^r O
-                A[start + r + L // 2] = u - t  # butterfly: E - W^r O
-                w *= wL
-        L <<= 1
-    return A
+// Inverse: conjugate root (sign=+1) and 1/N normalization.
+vector<cd> inverse_transform(const vector<cd>& X) {
+    int n = (int)X.size();
+    vector<cd> a = transform(X, +1);
+    for (cd& v : a) v /= (double)n;
+    return a;
+}
 
-def inverse_transform(X):
-    # Inverse: conjugate root and 1/N normalization.
-    n = len(X)
-    return [v / n for v in transform_iterative(X, sign=+1)]
+int main() {
+    ios::sync_with_stdio(false);
+    cin.tie(nullptr);
+    int N;
+    if (!(cin >> N)) return 0;
+    if (N < 1 || (N & (N - 1))) {                  // length must be a power of two
+        cerr << "length must be a power of two\n";
+        return 1;
+    }
+    vector<cd> A(N);
+    for (int i = 0; i < N; ++i) {
+        double re, im;
+        cin >> re >> im;
+        A[i] = cd(re, im);
+    }
+    vector<cd> X = transform(A, -1);
+    cout << fixed << setprecision(6);
+    for (int j = 0; j < N; ++j)
+        cout << X[j].real() << ' ' << X[j].imag() << '\n';
+    return 0;
+}
 ```

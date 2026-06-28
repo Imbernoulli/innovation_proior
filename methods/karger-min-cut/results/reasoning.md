@@ -80,72 +80,126 @@ So the global min cut, with high probability, in O(n² log³ n) — flow-free, a
 
 One more thing I want to record, because it connects this to machinery I already trust. There's an equivalent way to do a single random contraction run without writing a contraction routine at all: assign every edge an independent uniform random weight, run Kruskal's algorithm to grow the minimum spanning tree merging components, and stop just before the last merge — i.e., remove the single heaviest edge that Kruskal would add, splitting the spanning forest into two components. Processing edges in increasing random-weight order and merging their components via union-find is *exactly* contracting edges in a uniformly random order: at each step Kruskal merges the two components joined by the lightest remaining edge, and over a uniform random weighting "lightest remaining edge" is a uniformly random edge among those still crossing distinct components — the same distribution as picking a uniform edge to contract. The two components you're left with when you withhold the final union are the two supernodes of a contraction run. So a contraction run is a random-weight MST computation with the last edge dropped, and decades of union-find and MST optimization can be pointed straight at min cuts. The primitive isn't exotic; it's Kruskal in disguise.
 
-Let me write it. The multigraph is an adjacency map {node: [neighbors…]} with parallel edges as repeated entries and self-loops never stored. Contraction down to t supernodes, the cut readout, the plain repeat-and-keep-best driver, and the recursive two-branch driver are the whole program.
+Let me write it as a single self-contained program reading from stdin. The clean representation is exactly the Kruskal-in-disguise view from a moment ago: a contraction run is a flat edge list plus a union-find. I process the edges in a uniformly random order and union each pair of endpoints — already-merged endpoints union to a no-op, which is the self-loop being discarded — until the target number of supernodes remains; the cut value is then the number of edges whose endpoints land in different components. For Karger–Stein I contract down to ~n/√2, rebuild a shrunk edge list with self-loops dropped so the recursion gets smaller, branch into two contracted copies and recurse, and take the minimum; then repeat the whole recursion O(log²n) times and keep the smallest cut. It reads `n m` then `m` lines `u v` (1-based undirected edges) from stdin and prints the global min-cut value; vertex labels fit in `int` while the crossing-edge count is summed in `long long`.
 
-```python
-import copy
-import math
-import random
+```cpp
+// Global minimum cut of a connected undirected (multi)graph via Karger / Karger-Stein.
+// Reads from stdin: "n m" then m lines "u v" (1-based vertices); prints the global min-cut value.
+#include <bits/stdc++.h>
+using namespace std;
 
+static std::mt19937 rng(0xC0FFEE);
 
-def contract(graph, t):
-    """Contract uniformly random edges until t supernodes remain.
+// One contraction run on an edge multigraph held as a Union-Find over vertices
+// plus a flat edge list. We process edges in a uniformly random order and union
+// their endpoints (skipping self-loops) until exactly `t` supernodes remain;
+// this is exactly "contract a uniformly random edge" repeated. Equivalent to a
+// random-weight Kruskal MST with the last unions withheld.
+struct DSU {
+    vector<int> p, r;
+    int comps;
+    DSU(int n) : p(n), r(n, 0), comps(n) { iota(p.begin(), p.end(), 0); }
+    int find(int x) { while (p[x] != x) { p[x] = p[p[x]]; x = p[x]; } return x; }
+    bool unite(int a, int b) {
+        a = find(a); b = find(b);
+        if (a == b) return false;
+        if (r[a] < r[b]) swap(a, b);
+        p[b] = a;
+        if (r[a] == r[b]) r[a]++;
+        comps--;
+        return true;
+    }
+};
 
-    graph: adjacency multigraph as {node: [neighbor, ...]}; parallel edges
-    appear as repeated neighbors, self-loops are never stored.
-    Returns the contracted multigraph (still has t supernodes).
-    """
-    g = copy.deepcopy(graph)
-    while len(g) > t:
-        # uniform-over-edges: pick u with prob proportional to its degree,
-        # then a uniform incident edge -> overall uniform over edge endpoints.
-        u = random.choices(list(g.keys()),
-                           weights=[len(g[v]) for v in g])[0]
-        w = random.choice(g[u])  # the edge (u, w) to contract
+// Contract `edges` (each {u,v}) down to `t` supernodes using a random edge order.
+// Returns the DSU labeling. n = number of vertices currently in play.
+static DSU contract(int n, const vector<pair<int,int>> &edges, int t) {
+    DSU dsu(n);
+    vector<int> order(edges.size());
+    iota(order.begin(), order.end(), 0);
+    shuffle(order.begin(), order.end(), rng);
+    for (int idx : order) {
+        if (dsu.comps <= t) break;
+        dsu.unite(edges[idx].first, edges[idx].second);
+    }
+    return dsu;
+}
 
-        # merge w into u: redirect w's incident edges to u, dropping self-loops
-        for x in g[w]:
-            if x != u:
-                g[u].append(x)
-        for x in g[w]:
-            g[x].remove(w)
-            if x != u:
-                g[x].append(u)
-        del g[w]
-    return g
+// Given a DSU that has contracted to exactly 2 supernodes, count crossing edges.
+static long long cutValue(const DSU &dsu_const, const vector<pair<int,int>> &edges) {
+    DSU dsu = dsu_const; // local copy so find() path-compression is harmless
+    long long crossing = 0;
+    for (auto &e : edges)
+        if (dsu.find(e.first) != dsu.find(e.second)) crossing++;
+    return crossing;
+}
 
+// Compress the current contracted graph into a smaller vertex set + edge list,
+// dropping self-loops, so recursion shrinks the working size.
+static void rebuild(DSU &dsu, const vector<pair<int,int>> &edges,
+                    int &outN, vector<pair<int,int>> &outEdges) {
+    unordered_map<int,int> relabel;
+    relabel.reserve(dsu.comps * 2);
+    auto id = [&](int root) -> int {
+        auto it = relabel.find(root);
+        if (it != relabel.end()) return it->second;
+        int v = (int)relabel.size();
+        relabel[root] = v;
+        return v;
+    };
+    outEdges.clear();
+    for (auto &e : edges) {
+        int a = dsu.find(e.first), b = dsu.find(e.second);
+        if (a == b) continue;                 // self-loop after contraction
+        outEdges.push_back({id(a), id(b)});
+    }
+    outN = (int)relabel.size();
+}
 
-def cut_value(g):
-    """Number of crossing edges once two supernodes remain."""
-    return len(g[next(iter(g))])
+// Karger-Stein recursion: contract to ~n/sqrt(2), branch twice, recurse, take min.
+static long long fastMinCut(int n, const vector<pair<int,int>> &edges) {
+    if (n <= 6) {
+        DSU dsu = contract(n, edges, 2);
+        return cutValue(dsu, edges);
+    }
+    int t = 1 + (int)ceil(n / sqrt(2.0));
+    long long best = LLONG_MAX;
+    for (int b = 0; b < 2; b++) {
+        DSU dsu = contract(n, edges, t);
+        int subN; vector<pair<int,int>> subE;
+        rebuild(dsu, edges, subN, subE);
+        best = min(best, fastMinCut(subN, subE));
+    }
+    return best;
+}
 
+int main() {
+    ios_base::sync_with_stdio(false);
+    cin.tie(nullptr);
 
-def karger_min_cut(graph, trials):
-    """Plain Karger: contract to 2, repeat, keep the smallest cut."""
-    best = math.inf
-    for _ in range(trials):
-        g = contract(graph, 2)
-        best = min(best, cut_value(g))
-    return best
+    long long n, m;
+    if (!(cin >> n >> m)) return 0;
 
+    vector<pair<int,int>> edges;
+    edges.reserve((size_t)m);
+    for (long long i = 0; i < m; i++) {
+        long long u, v;
+        cin >> u >> v;
+        if (u == v) continue;                 // ignore self-loops in input
+        edges.push_back({(int)(u - 1), (int)(v - 1)}); // to 0-based
+    }
+    if (n <= 1) { cout << 0 << "\n"; return 0; }
 
-def fast_min_cut(graph):
-    """Karger-Stein recursion: contract to ~n/sqrt2, branch twice, recurse."""
-    n = len(graph)
-    if n <= 6:
-        g = contract(graph, 2)
-        return cut_value(g)
-    t = 1 + math.ceil(n / math.sqrt(2))
-    g1 = contract(graph, t)
-    g2 = contract(graph, t)
-    return min(fast_min_cut(g1), fast_min_cut(g2))
+    // Repeat the recursive procedure O(log^2 n) times and keep the smallest cut,
+    // driving failure to 1/poly(n).
+    int trials = max(2, (int)ceil(pow(log(max(2.0, (double)n)), 2.0)));
+    long long best = LLONG_MAX;
+    for (int it = 0; it < trials; it++)
+        best = min(best, fastMinCut((int)n, edges));
 
-
-def karger_stein_min_cut(graph, trials):
-    best = math.inf
-    for _ in range(trials):
-        best = min(best, fast_min_cut(graph))
-    return best
+    cout << best << "\n";
+    return 0;
+}
 ```
 
 So the causal chain: the handshake identity forces m ≥ nk/2, which means a random edge is a min-cut edge with probability only ≤ 2/n; contraction commits two vertices to the same side and never lowers the min cut, so contracting random edges preserves the cut whenever the chosen edges stay internal; telescoping the per-step survival from n down to 2 supernodes gives a clean 2/(n(n−1)) success per run (which I verified collapses exactly, and which matched an empirical 0.435 ≥ 1/28 on a concrete 8-vertex graph), repeatable to high confidence in O(n⁴ log n). Then, noticing the risk lives entirely in the *late* contractions, I share the safe early prefix down to n/√2 (the survival-½ threshold, checked numerically at ≈ 0.50), branch into exactly two independent continuations (so one survivor is carried forward in expectation), and recurse — and iterating the success recurrence shows this turns a 1/n² success rate into Ω(1/log n) at O(n² log n) per call, for a global minimum cut in O(n² log³ n) with high probability.

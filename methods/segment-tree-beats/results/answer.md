@@ -23,140 +23,125 @@ is `O((n + q) log n)`: every extra descent past a fully covered node with
 inside it completes, while each update can introduce the new cap value only along
 `O(log n)` partially covered boundary nodes.
 
-```python
-import sys
-from sys import setrecursionlimit
+```cpp
+// Segment Tree Beats for HDU 5306 "Gorgeous Sequence".
+// Reads from stdin: T test cases; each gives n m, the array a[1..n], then m
+// operations -- "0 l r t" = chmin a[l..r] by t, "1 l r" = print max a[l..r],
+// "2 l r" = print sum a[l..r] (1-based). Prints one line per query to stdout.
+#include <cstdio>
+#include <algorithm>
+using namespace std;
 
-NEG = float("-inf")
+const int MAXN = 1000006;
+const int NEG = -1;          // "no strict second maximum" / "no pending tag"
 
+int n, m;
+int a[MAXN];
+int mx[MAXN << 2];           // maximum M in the node's interval
+int se[MAXN << 2];           // strict second maximum m (NEG if one distinct value)
+int cn[MAXN << 2];           // count of entries equal to mx
+int tag[MAXN << 2];          // pending cap, NEG if none
+long long sm[MAXN << 2];     // sum over the node's interval (needs 64-bit)
 
-class RangeChminTree:
-    def __init__(self, a):
-        self.n = len(a)
-        size = 4 * self.n
-        self.slot_a = [0] * size      # maximum M
-        self.slot_b = [NEG] * size    # strict second maximum m
-        self.slot_c = [0] * size      # count of entries equal to M
-        self.sm = [0] * size          # sum over the node interval
-        self.tag = [NEG] * size       # pending cap, if any
-        self._build(1, 0, self.n - 1, a)
+void pushup(int u) {
+    int ls = u << 1, rs = u << 1 | 1;
+    sm[u] = sm[ls] + sm[rs];
+    if (mx[ls] == mx[rs]) {
+        mx[u] = mx[ls];
+        se[u] = max(se[ls], se[rs]);
+        cn[u] = cn[ls] + cn[rs];
+    } else if (mx[ls] > mx[rs]) {
+        mx[u] = mx[ls];
+        se[u] = max(se[ls], mx[rs]);
+        cn[u] = cn[ls];
+    } else {
+        mx[u] = mx[rs];
+        se[u] = max(mx[ls], se[rs]);
+        cn[u] = cn[rs];
+    }
+}
 
-    def _pushup(self, u):
-        ls, rs = u << 1, u << 1 | 1
-        self.sm[u] = self.sm[ls] + self.sm[rs]
-        if self.slot_a[ls] == self.slot_a[rs]:
-            self.slot_a[u] = self.slot_a[ls]
-            self.slot_b[u] = max(self.slot_b[ls], self.slot_b[rs])
-            self.slot_c[u] = self.slot_c[ls] + self.slot_c[rs]
-        elif self.slot_a[ls] > self.slot_a[rs]:
-            self.slot_a[u] = self.slot_a[ls]
-            self.slot_b[u] = max(self.slot_b[ls], self.slot_a[rs])
-            self.slot_c[u] = self.slot_c[ls]
-        else:
-            self.slot_a[u] = self.slot_a[rs]
-            self.slot_b[u] = max(self.slot_a[ls], self.slot_b[rs])
-            self.slot_c[u] = self.slot_c[rs]
+void apply_cap(int u, int x) {
+    // Valid only when the cap drops exactly the maxima: se[u] < x < mx[u].
+    if (mx[u] <= x) return;
+    sm[u] += (long long)(x - mx[u]) * cn[u];
+    mx[u] = x;
+    tag[u] = x;
+}
 
-    def _apply(self, u, x):
-        if self.slot_a[u] <= x:
-            return
-        self.sm[u] += (x - self.slot_a[u]) * self.slot_c[u]
-        self.slot_a[u] = x
-        self.tag[u] = x
+void pushdown(int u) {
+    if (tag[u] == NEG) return;
+    apply_cap(u << 1, tag[u]);
+    apply_cap(u << 1 | 1, tag[u]);
+    tag[u] = NEG;
+}
 
-    def _pushdown(self, u):
-        if self.tag[u] == NEG:
-            return
-        self._apply(u << 1, self.tag[u])
-        self._apply(u << 1 | 1, self.tag[u])
-        self.tag[u] = NEG
+void build(int u, int l, int r) {
+    tag[u] = NEG;
+    if (l == r) {
+        sm[u] = mx[u] = a[l];
+        se[u] = NEG;
+        cn[u] = 1;
+        return;
+    }
+    int mid = (l + r) >> 1;
+    build(u << 1, l, mid);
+    build(u << 1 | 1, mid + 1, r);
+    pushup(u);
+}
 
-    def _build(self, u, l, r, a):
-        if l == r:
-            self.sm[u] = a[l]
-            self.slot_a[u] = a[l]
-            self.slot_b[u] = NEG
-            self.slot_c[u] = 1
-            return
-        mid = (l + r) >> 1
-        self._build(u << 1, l, mid, a)
-        self._build(u << 1 | 1, mid + 1, r, a)
-        self._pushup(u)
+void chmin(int ql, int qr, int x, int u, int l, int r) {
+    if (mx[u] <= x) return;                       // break: nothing here exceeds x
+    if (ql <= l && r <= qr && se[u] < x) {        // tag: only the maxima fall to x
+        apply_cap(u, x);
+        return;
+    }
+    int mid = (l + r) >> 1;
+    pushdown(u);
+    if (ql <= mid) chmin(ql, qr, x, u << 1, l, mid);
+    if (mid < qr) chmin(ql, qr, x, u << 1 | 1, mid + 1, r);
+    pushup(u);
+}
 
-    def chmin(self, ql, qr, x, u=1, l=0, r=None):
-        if r is None:
-            r = self.n - 1
-        if self.slot_a[u] <= x:
-            return
-        if ql <= l and r <= qr and self.slot_b[u] < x:
-            self._apply(u, x)
-            return
-        mid = (l + r) >> 1
-        self._pushdown(u)
-        if ql <= mid:
-            self.chmin(ql, qr, x, u << 1, l, mid)
-        if mid < qr:
-            self.chmin(ql, qr, x, u << 1 | 1, mid + 1, r)
-        self._pushup(u)
+int query_max(int ql, int qr, int u, int l, int r) {
+    if (ql <= l && r <= qr) return mx[u];
+    int mid = (l + r) >> 1, res = NEG;
+    pushdown(u);
+    if (ql <= mid) res = max(res, query_max(ql, qr, u << 1, l, mid));
+    if (mid < qr) res = max(res, query_max(ql, qr, u << 1 | 1, mid + 1, r));
+    return res;
+}
 
-    def query_max(self, ql, qr, u=1, l=0, r=None):
-        if r is None:
-            r = self.n - 1
-        if ql <= l and r <= qr:
-            return self._node_max(u)
-        mid = (l + r) >> 1
-        self._pushdown(u)
-        res = NEG
-        if ql <= mid:
-            res = max(res, self.query_max(ql, qr, u << 1, l, mid))
-        if mid < qr:
-            res = max(res, self.query_max(ql, qr, u << 1 | 1, mid + 1, r))
-        return res
+long long query_sum(int ql, int qr, int u, int l, int r) {
+    if (ql <= l && r <= qr) return sm[u];
+    int mid = (l + r) >> 1;
+    long long res = 0;
+    pushdown(u);
+    if (ql <= mid) res += query_sum(ql, qr, u << 1, l, mid);
+    if (mid < qr) res += query_sum(ql, qr, u << 1 | 1, mid + 1, r);
+    return res;
+}
 
-    def query_sum(self, ql, qr, u=1, l=0, r=None):
-        if r is None:
-            r = self.n - 1
-        if ql <= l and r <= qr:
-            return self.sm[u]
-        mid = (l + r) >> 1
-        self._pushdown(u)
-        res = 0
-        if ql <= mid:
-            res += self.query_sum(ql, qr, u << 1, l, mid)
-        if mid < qr:
-            res += self.query_sum(ql, qr, u << 1 | 1, mid + 1, r)
-        return res
-
-    def _node_max(self, u):
-        return self.slot_a[u]
-
-
-def main():
-    setrecursionlimit(1 << 20)
-    data = sys.stdin.buffer.read().split()
-    if not data:
-        return
-    it = iter(data)
-    out = []
-    T = int(next(it))
-    for _ in range(T):
-        n = int(next(it)); m = int(next(it))
-        a = [int(next(it)) for _ in range(n)]
-        st = RangeChminTree(a)
-        for _ in range(m):
-            op = int(next(it))
-            if op == 0:
-                l = int(next(it)); r = int(next(it)); x = int(next(it))
-                st.chmin(l - 1, r - 1, x)
-            elif op == 1:
-                l = int(next(it)); r = int(next(it))
-                out.append(str(st.query_max(l - 1, r - 1)))
-            else:
-                l = int(next(it)); r = int(next(it))
-                out.append(str(st.query_sum(l - 1, r - 1)))
-    sys.stdout.write("\n".join(out) + ("\n" if out else ""))
-
-
-if __name__ == "__main__":
-    main()
+int main() {
+    int T;
+    if (scanf("%d", &T) != 1) return 0;
+    while (T--) {
+        scanf("%d %d", &n, &m);
+        for (int i = 1; i <= n; i++) scanf("%d", &a[i]);
+        build(1, 1, n);
+        for (int i = 0; i < m; i++) {
+            int op, l, r, x;
+            scanf("%d %d %d", &op, &l, &r);
+            if (op == 0) {
+                scanf("%d", &x);
+                chmin(l, r, x, 1, 1, n);
+            } else if (op == 1) {
+                printf("%d\n", query_max(l, r, 1, 1, n));
+            } else {
+                printf("%lld\n", query_sum(l, r, 1, 1, n));
+            }
+        }
+    }
+    return 0;
+}
 ```

@@ -24,21 +24,29 @@ The obvious greedy choice is to say yes to the first pair of $E_w$ that gets que
 
 The failure points at the cure. To keep $G$ short, I want every yes edge to come as late as possible, so I should answer yes to the *last* queried pair of each $E_w$ instead of the first. Then the single yes of $E_w$ is deferred to the moment its set is exhausted. I cannot know in advance which pair of $E_w$ will be last, but I can recognize it when it arrives: keep a counter $c[w]$ of how many pairs from $E_w$ have been queried. The last one is precisely the moment after the increment when $c[w]=w$.
 
-So the online rule collapses to this. For a query $(u,v)$, set $w=\max(u,v)$, increment $c[w]$, and answer yes exactly when the counter reaches $w$.
+So the online rule collapses to this. For a query $(u,v)$, set $w=\max(u,v)$, increment $c[w]$, and answer yes exactly when the counter reaches $w$. As a single-file program I read the sample grader's input from stdin -- the first line is $n$, then $r=n(n-1)/2$ lines each give a queried pair $u\ v$ -- and print one answer per line, $1$ for a claimed flight and $0$ otherwise.
 
-```c
-#include "game.h"
+```cpp
+// IOI 2014 "Game": lazy spanning-tree adversary.
+// Reads from stdin: line 1 is n; then r = n(n-1)/2 lines, each "u v".
+// For each query prints one line, 1 if a direct flight is claimed, else 0.
+#include <cstdio>
 
-int c[1500];
+static int c[1500];
 
-void initialize(int n) {
-    int i;
-    for (i = 0; i < n; ++i) c[i] = 0;
-}
-
-int hasEdge(int u, int v) {
-    int w = u > v ? u : v;
-    return ++c[w] == w;
+int main() {
+    int n;
+    if (scanf("%d", &n) != 1) return 0;
+    for (int i = 0; i < n; ++i) c[i] = 0;
+    long long r = (long long)n * (n - 1) / 2;
+    for (long long q = 0; q < r; ++q) {
+        int u, v;
+        if (scanf("%d %d", &u, &v) != 2) break;
+        int w = u > v ? u : v;          // owner = larger endpoint
+        int ans = (++c[w] == w) ? 1 : 0; // yes only on the last query owned by w
+        printf("%d\n", ans);
+    }
+    return 0;
 }
 ```
 

@@ -24,70 +24,63 @@ One care: for a poset I should feed in the strict comparability edges, the trans
 
 So the algorithm is settled: build the split bipartite graph, find a maximum matching $M$, return $n - M$. The one remaining piece is the matching itself, and I have a maximum-bipartite-matching routine available; let me make sure I know what it's doing so the $O(n \cdot m)$ cost is honest, and so I trust it on inputs where a greedy first pass would jam. Kuhn's method is augmenting paths. Keep, for each right vertex, the left vertex it's currently matched to (or none). Process left vertices one at a time; for the current left vertex run a DFS that tries to "place" it: walk to a neighboring right vertex $w$; if $w$ is free, claim it and we're done; if $w$ is already taken by some left vertex $u'$, recursively try to re-place $u'$ on a *different* right vertex, and if that succeeds, $w$ frees up for the current vertex. Let me watch the re-placement actually fire, since that recursion is the part a naive greedy lacks. Edges $0\to2$, $0\to3$, $1\to2$: split-graph edges $0_{\text{out}}-2_{\text{in}}$, $0_{\text{out}}-3_{\text{in}}$, $1_{\text{out}}-2_{\text{in}}$. Process left $0$ first; it grabs the first free right it sees, $2_{\text{in}}$. Process left $1$; its only neighbor is $2_{\text{in}}$, which is taken by $0$, so the DFS recurses to re-place $0$ — $0$ has another neighbor $3_{\text{in}}$, free, so $0$ moves to $3_{\text{in}}$ and $1$ takes $2_{\text{in}}$. Final matching $\{0_{\text{out}}-3_{\text{in}},\,1_{\text{out}}-2_{\text{in}}\}$, $M=2$. Without the re-placement, left $1$ would have failed and we'd have gotten $M=1$, the wrong answer ($4-1=3$ paths instead of the true $2$). The `used` flag per right vertex stops the DFS from revisiting a right vertex within one augmentation. Each left vertex triggers at most one DFS that touches each edge once, so the whole thing is $O(V \cdot E)$ — here $O(n \cdot m)$, fine for a few thousand vertices. Berge's lemma is the reason it's correct: a matching is maximum exactly when no augmenting path exists, and Kuhn's DFS finds an augmenting path from a left vertex whenever one exists, so when every left vertex has been tried the matching is maximum. The count of successful placements is $M$.
 
-Now I just wire it to the split graph. Each original vertex $v$ contributes left index $v$ (its $v_{\text{out}}$) and right index $v$ (its $v_{\text{in}}$); both sides have exactly $n$ indices. For each DAG edge $v \to w$ I add, in the bipartite adjacency, $w$ to the neighbor list of left vertex $v$, which is exactly the edge $v_{\text{out}} - w_{\text{in}}$. Then `min_path_cover` calls the given matching routine on these two $n$-vertex sides, stores its size, and returns $n - M$.
+Now I just wire it to the split graph. Each original vertex $v$ contributes left index $v$ (its $v_{\text{out}}$) and right index $v$ (its $v_{\text{in}}$); both sides have exactly $n$ indices. For each DAG edge $v \to w$ I add, in the bipartite adjacency, $w$ to the neighbor list of left vertex $v$, which is exactly the edge $v_{\text{out}} - w_{\text{in}}$. Then `main` runs Kuhn over these two $n$-vertex sides, counts the matching, and prints $n - M$. The program reads `n m` and then `m` lines of 1-based edges `u v` from stdin, and prints the single integer minimum path cover to stdout.
 
-```python
-import sys
+```cpp
+// Minimum path cover of a DAG via the split-vertex bipartite-matching reduction.
+// Reads from stdin: "n m" then m lines each "u v" (1-based) for a directed edge
+// u -> v of an acyclic graph. Writes to stdout the single integer minimum number
+// of vertex-disjoint paths covering every vertex exactly once, which equals
+// n - (maximum bipartite matching of the split graph).
+#include <bits/stdc++.h>
+using namespace std;
 
-sys.setrecursionlimit(1_000_000)
+int n;
+vector<vector<int>> adj;   // adj[v] = right copies w_in joined to left copy v_out
+vector<int> match_right;   // right vertex -> its matched left vertex, or -1
+vector<char> used;         // per-augmentation visited flag on right vertices
 
+// Kuhn's augmenting-path DFS: try to place left vertex u on some free/freeable
+// right vertex. Returns true on success.
+bool try_kuhn(int u) {
+    for (int w : adj[u]) {
+        if (!used[w]) {
+            used[w] = 1;
+            if (match_right[w] == -1 || try_kuhn(match_right[w])) {
+                match_right[w] = u;
+                return true;
+            }
+        }
+    }
+    return false;
+}
 
-def read_dag(data):
-    """Parse n, m, and m directed edges (1-based in input) into a 0-based
-    adjacency list of a DAG. Returns (n, adj)."""
-    it = iter(data)
-    n = int(next(it))
-    m = int(next(it))
-    adj = [[] for _ in range(n)]
-    for _ in range(m):
-        u = int(next(it)) - 1
-        v = int(next(it)) - 1
-        adj[u].append(v)
-    return n, adj
+int main() {
+    ios::sync_with_stdio(false);
+    cin.tie(nullptr);
 
+    long long m_ll;
+    if (!(cin >> n >> m_ll)) return 0;
+    long long m = m_ll;
 
-def bipartite_matching(n_left, n_right, adj):
-    """Maximum-cardinality matching of a bipartite graph by Kuhn's
-    augmenting-path search. adj[u] lists right vertices joined to left vertex u.
-    Returns the size of a maximum matching. O(V * E)."""
-    match_right = [-1] * n_right       # right vertex -> its matched left vertex
+    adj.assign(n, {});
+    for (long long i = 0; i < m; ++i) {
+        int u, v;
+        cin >> u >> v;
+        --u; --v;                 // to 0-based
+        adj[u].push_back(v);      // bipartite edge v_out - w_in
+    }
 
-    def try_kuhn(u, used):
-        for w in adj[u]:
-            if not used[w]:
-                used[w] = True
-                if match_right[w] == -1 or try_kuhn(match_right[w], used):
-                    match_right[w] = u
-                    return True
-        return False
+    match_right.assign(n, -1);
+    long long matching_size = 0;
+    for (int u = 0; u < n; ++u) {
+        used.assign(n, 0);
+        if (try_kuhn(u)) ++matching_size;
+    }
 
-    size = 0
-    for u in range(n_left):
-        used = [False] * n_right
-        if try_kuhn(u, used):
-            size += 1
-    return size
-
-
-def min_path_cover(n, adj):
-    bip = [[] for _ in range(n)]
-    for v in range(n):
-        for w in adj[v]:
-            bip[v].append(w)
-    matching_size = bipartite_matching(n, n, bip)
-    return n - matching_size
-
-
-def main():
-    data = sys.stdin.buffer.read().split()
-    if not data:
-        return
-    n, adj = read_dag(data)
-    print(min_path_cover(n, adj))
-
-
-if __name__ == "__main__":
-    main()
+    cout << (n - matching_size) << "\n";
+    return 0;
+}
 ```
 
 The whole chain, in one breath: a disjoint-path cover is a choice of "successor on my path" for some vertices, and the only constraints are that each link is a real edge and that no vertex is used twice — once as a source, once as a target — which are *independent* one-time budgets, so I split each vertex into a source-copy and a target-copy and the legal successor choices become exactly the matchings of the resulting bipartite graph; turning on $M$ links glues $n$ singleton paths down to $n - M$, which the diamond ($M=2$, two paths) and the chain ($M=3$, one path) both confirm; minimizing paths is maximizing the matching and the answer is $n - M$; the bijection holds because an indegree-$\le 1$, outdegree-$\le 1$ subgraph of an *acyclic* graph is forced to be disjoint paths with no cycles — the directed 3-cycle, where the formula collapses to $0$, shows what acyclicity is buying — and on a poset this same $n - M$ is the minimum chain cover, equal by Dilworth's theorem to the largest antichain, as the V-poset's width of $2$ checks out.

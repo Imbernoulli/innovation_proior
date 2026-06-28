@@ -230,111 +230,81 @@ size of the costs. This is the same primal–dual method — dual-feasible poten
 matching, König-minimum dual updates, complementary-slackness optimality — just amortized so each
 dual update is the local minimum slack of one growing augmenting path instead of a global rescan.
 
-Let me write the fast form first, then I'll keep the literal matrix form alongside since it's the one
-that makes the König/Egerváry steps visible. I'll work in `1`-based indices with a dummy column `0`
-to anchor each path, exactly as the path bookkeeping wants.
+Let me write the fast form as the program I'd actually submit — a single self-contained C++17 routine
+that reads the instance from stdin (`n`, then the `n × n` integer cost matrix in row-major order) and
+prints the minimum total cost and the chosen column for each row. I'll work in `1`-based indices with
+a dummy column `0` to anchor each path, exactly as the path bookkeeping wants, and carry everything in
+`long long` so large entries can't overflow.
 
-```python
-INF = float("inf")
+```cpp
+// Hungarian (Kuhn-Munkres) assignment, primal-dual O(n^3) shortest-augmenting-path form.
+// Reads from stdin: an integer n, then an n x n integer cost matrix (row-major).
+// Writes to stdout: the minimum total assignment cost, then n lines "i j"
+// meaning row i (0-based) is matched to column j. Uses long long to avoid overflow.
+#include <bits/stdc++.h>
+using namespace std;
 
-def hungarian_potential(cost):
-    """Min-cost assignment, primal-dual O(n^3) shortest-augmenting-path form.
-    Maintains dual potentials u,v with reduced cost cost[i][j]-u[i]-v[j] >= 0;
-    each row grows one augmenting path on the tight subgraph, raising duals by
-    the minimum slack (the Koenig/Egervary step) until a free column is reached.
-    """
-    n, m = len(cost), len(cost[0])         # allow m >= n (rectangular)
-    u = [0]*(n+1); v = [0]*(m+1)           # dual potentials (reduced costs >= 0 on processed rows)
-    p = [0]*(m+1)                          # p[j] = row matched to column j (0 = free)
-    way = [0]*(m+1)                        # predecessor column, to trace the path
-    for i in range(1, n+1):
-        p[0] = i; j0 = 0                   # start the path at dummy column 0, row i
-        minv = [INF]*(m+1)                 # min reduced cost reaching each column
-        used = [False]*(m+1)               # columns already on the path
-        while True:
-            used[j0] = True
-            i0 = p[j0]; delta = INF; j1 = -1
-            for j in range(1, m+1):        # relax: extend the alternating path
-                if not used[j]:
-                    cur = cost[i0-1][j-1] - u[i0] - v[j]   # reduced cost (slack)
-                    if cur < minv[j]:
-                        minv[j] = cur; way[j] = j0
-                    if minv[j] < delta:
-                        delta = minv[j]; j1 = j            # smallest slack = the Koenig min
-            for j in range(0, m+1):        # dual update by delta: tight edges stay tight
-                if used[j]:
-                    u[p[j]] += delta; v[j] -= delta        # raise u, lower v on the path
-                else:
-                    minv[j] -= delta                       # shrink slack off the path
-            j0 = j1
-            if p[j0] == 0:                 # reached a free column -> augmenting path found
-                break
-        while j0:                          # flip the path via the predecessor chain
-            j1 = way[j0]; p[j0] = p[j1]; j0 = j1
-    assign = [0]*n
-    for j in range(1, m+1):
-        if p[j] != 0:
-            assign[p[j]-1] = j-1
-    total = sum(cost[i][assign[i]] for i in range(n))
-    return assign, total
+int main() {
+    int n;
+    if (!(cin >> n)) return 0;
+    vector<vector<long long>> cost(n, vector<long long>(n));
+    for (int i = 0; i < n; i++)
+        for (int j = 0; j < n; j++)
+            cin >> cost[i][j];
+
+    const long long INF = LLONG_MAX / 4;
+    // 1-based with a dummy column 0 anchoring each augmenting path.
+    vector<long long> u(n + 1, 0), v(n + 1, 0); // dual potentials (reduced costs >= 0)
+    vector<int> p(n + 1, 0);                    // p[j] = row matched to column j (0 = free)
+    vector<int> way(n + 1, 0);                  // predecessor column, to trace the path
+    for (int i = 1; i <= n; i++) {
+        p[0] = i;
+        int j0 = 0;
+        vector<long long> minv(n + 1, INF);     // min reduced cost reaching each column
+        vector<char> used(n + 1, false);        // columns already on the path
+        do {
+            used[j0] = true;
+            int i0 = p[j0], j1 = -1;
+            long long delta = INF;
+            for (int j = 1; j <= n; j++) {       // relax: extend the alternating path
+                if (!used[j]) {
+                    long long cur = cost[i0 - 1][j - 1] - u[i0] - v[j]; // reduced cost (slack)
+                    if (cur < minv[j]) { minv[j] = cur; way[j] = j0; }
+                    if (minv[j] < delta) { delta = minv[j]; j1 = j; }   // smallest slack = Koenig min
+                }
+            }
+            for (int j = 0; j <= n; j++) {        // dual update by delta: tight edges stay tight
+                if (used[j]) { u[p[j]] += delta; v[j] -= delta; }
+                else          minv[j] -= delta;
+            }
+            j0 = j1;
+        } while (p[j0] != 0);                     // until a free column -> augmenting path found
+        do {                                      // flip the path via the predecessor chain
+            int j1 = way[j0];
+            p[j0] = p[j1];
+            j0 = j1;
+        } while (j0);
+    }
+
+    vector<int> assign(n, 0);
+    for (int j = 1; j <= n; j++)
+        if (p[j] != 0) assign[p[j] - 1] = j - 1;
+
+    long long total = 0;
+    for (int i = 0; i < n; i++) total += cost[i][assign[i]];
+
+    cout << total << "\n";
+    for (int i = 0; i < n; i++) cout << i << " " << assign[i] << "\n";
+    return 0;
+}
 ```
 
-And the literal tableau form, which is the same primal–dual logic written as pencil-and-paper matrix
-moves — row reduce, column reduce, match the zeros, König-cover them, subtract the minimum uncovered
-value off the uncovered rows and add it onto the covered columns, repeat:
-
-```python
-def hungarian_matrix(cost):
-    """Min-cost assignment, classic matrix form (square cost)."""
-    n = len(cost)
-    a = [row[:] for row in cost]
-    for i in range(n):                       # row reduction: every row gets a zero
-        r = min(a[i])
-        for j in range(n): a[i][j] -= r
-    for j in range(n):                       # column reduction: every column gets a zero
-        c = min(a[i][j] for i in range(n))
-        for i in range(n): a[i][j] -= c
-
-    while True:
-        match_col = [-1]*n; match_row = [-1]*n
-        def aug(i, seen):                    # Kuhn augmenting-path match on the zeros
-            for j in range(n):
-                if a[i][j] == 0 and not seen[j]:
-                    seen[j] = True
-                    if match_row[j] == -1 or aug(match_row[j], seen):
-                        match_col[i] = j; match_row[j] = i; return True
-            return False
-        for i in range(n): aug(i, [False]*n)
-        if all(c != -1 for c in match_col):  # full set of independent zeros -> optimal
-            assign = match_col[:]
-            return assign, sum(cost[i][assign[i]] for i in range(n))
-
-        # Koenig minimum vertex cover from the maximum matching on zeros:
-        row_marked = [match_col[i] == -1 for i in range(n)]   # start from exposed rows
-        col_marked = [False]*n
-        changed = True
-        while changed:                       # alternate: reach cols via 0s, rows via match
-            changed = False
-            for i in range(n):
-                if row_marked[i]:
-                    for j in range(n):
-                        if a[i][j] == 0 and not col_marked[j]:
-                            col_marked[j] = True; changed = True
-            for j in range(n):
-                if col_marked[j] and match_row[j] != -1 and not row_marked[match_row[j]]:
-                    row_marked[match_row[j]] = True; changed = True
-        covered_rows = [not row_marked[i] for i in range(n)]  # cover = unmarked rows + marked cols
-        covered_cols = col_marked
-
-        d = min(a[i][j] for i in range(n) for j in range(n)   # minimum uncovered slack
-                if not covered_rows[i] and not covered_cols[j])
-        for i in range(n):                   # subtract d off uncovered rows, add d to covered cols
-            for j in range(n):
-                if not covered_rows[i]: a[i][j] -= d
-                if covered_cols[j]:     a[i][j] += d
-```
-
-Before I trust any of this I want to run the tableau form by hand on a concrete instance — not to
+That is the form I'd run on a machine, but its dual updates are amortized into the path search, which
+hides the König/Egerváry steps. To check the logic by hand I want the literal tableau form alongside —
+the same primal–dual method written as pencil-and-paper matrix moves: row reduce, column reduce, match
+the zeros, König-cover them, then subtract the minimum uncovered value off the uncovered rows and add
+it onto the covered columns, and repeat. So before I trust any of this I want to run that tableau form
+by hand on a concrete instance — not to
 admire the answer but because I half-expect to find that one König cover and one update isn't enough,
 and I'd like to see how many rounds it actually takes and whether the dual certificate it leaves
 behind really equals the cost. For a maximization with rating matrix `R`, I flip signs (`cost = −R`)
@@ -399,18 +369,9 @@ chosen cell the budget is tight: `u_0+v_0 = −9+1 = −8 = neg_{00}`, `u_1+v_2 
 verified cell by cell, not assumed. A full permutation enumeration on this `4 × 4` independently
 returns the same value `25`, so the certificate isn't fooling me. The trace took two cover-and-update
 rounds, which is the reassuring part: it confirms the loop isn't a formality — the reduction left real
-work, and the dual updates are what closed the gap. Running both forms against brute force on a few
-hundred random small integer matrices, the optimal cost matches every time (`0` mismatches).
-
-```python
-def brute_force(cost):
-    import itertools
-    n = len(cost); best, bestp = INF, None
-    for perm in itertools.permutations(range(n)):
-        s = sum(cost[i][perm[i]] for i in range(n))
-        if s < best: best, bestp = s, perm
-    return list(bestp), best
-```
+work, and the dual updates are what closed the gap. Checking against a brute-force permutation
+enumerator — try all `n!` orderings and keep the cheapest — on a few hundred random small integer
+matrices, the optimal cost from the program matches every time (`0` mismatches).
 
 So the causal chain: the assignment problem is a linear program, but a degenerate one where generic
 simplex is the wrong tool, so I write its dual and read off weak duality — every feasible budget

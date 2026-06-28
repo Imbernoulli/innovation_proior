@@ -111,44 +111,132 @@ And `log₂ 3 < 2`. So the conjecture I sat down to *prove* is false, and the co
 
 I do not need a more elaborate split to refute the lower-bound conjecture. Two halves are the smallest place where the two cross products collide into the same middle coefficient, and that collision is exactly what the product-of-sums identity exploits. A single clean counterexample is enough, so I should keep the construction here and make the implementation exact.
 
-The code has to follow this algebra directly, with a base case when an operand is a single digit; otherwise pick the split `m`, cut both numbers into halves, make the *three* recursive multiplications, and recombine with shifts.
+The code has to follow this algebra directly, as a single self-contained C++ program that reads the two operands from stdin and prints their product to stdout. The whole interest is operands far past machine-word width, so I can't lean on a built-in 64-bit multiply: I carry each number as a little-endian vector of base-10 digits and write add, subtract, and shift on those vectors by hand, with a base case when one operand is a single digit; otherwise pick the split `m`, cut both numbers into halves, make the *three* recursive multiplications, and recombine with shifts.
 
-Choosing `m`: the operands may differ in length, and `a₁+a₂`, `b₁+b₂` can each run one digit past the half — fine, the recursion handles slightly larger operands and the asymptotics don't change. I take `m` as half the digit-length of the longer operand and split both at that same `m`, so the place values `B²ᵐ` and `Bᵐ` line up for recombination. The other trap is a language one but fatal: when I split, I must use *integer* floor-division and remainder; true division would turn the halves into floats, the operands would stop shrinking toward the single-digit base case, and the recursion would never bottom out. So `divmod` everywhere, integers throughout.
+Choosing `m`: the operands may differ in length, and `a₁+a₂`, `b₁+b₂` can each run one digit past the half — fine, the recursion handles slightly larger operands and the asymptotics don't change. I take `m` as half the digit-length of the longer operand (here just half the digit-vector size) and split both at that same `m`, so the place values `B²ᵐ` and `Bᵐ` line up for recombination. The trap that stays fatal in this digit-vector form is the one the concrete `z₁ = 1714` run already flagged: the recombination must be genuine integer addition with carry propagation, not fixed-width digit-field slotting, because the middle coefficient can exceed `Bᵐ` and must carry up into the high region. So `add`/`sub` propagate carries and borrows across the whole vector, and `trim` keeps leading zeros from accumulating — integers throughout, exactly.
 
-```python
-BASE = 10
+```cpp
+// Karatsuba multiplication. Reads two non-negative big integers (whitespace-
+// separated, arbitrary length) from stdin and prints their exact product.
+#include <bits/stdc++.h>
+using namespace std;
 
-def karatsuba(x, y):
-    # base case: a single-digit operand — multiply directly (O(1))
-    if x < BASE or y < BASE:
-        return x * y
+// A big number is held little-endian, one base-10 digit per vector slot.
+using Big = vector<int>;          // digits[0] is the units place
 
-    # split point: half the digit-length of the longer operand
-    n = max(len(str(x)), len(str(y)))
-    m = n // 2
-    split = BASE ** m
+static const int BASE = 10;
 
-    # cut each number into high and low halves at the B^m boundary.
-    # integer floor-division + remainder — NOT true division, or the
-    # operands turn into floats and never reach the base case.
-    high1, low1 = divmod(x, split)   # x = high1 * 10^m + low1
-    high2, low2 = divmod(y, split)   # y = high2 * 10^m + low2
+Big from_string(const string& s) {
+    Big d;
+    for (int i = (int)s.size() - 1; i >= 0; --i) d.push_back(s[i] - '0');
+    if (d.empty()) d.push_back(0);
+    return d;
+}
 
-    # the THREE multiplications — the whole point:
-    z2 = karatsuba(high1, high2)                 # a1 * b1   (high coeff)
-    z0 = karatsuba(low1, low2)                   # a2 * b2   (low coeff)
-    z3 = karatsuba(high1 + low1, high2 + low2)   # (a1+a2)(b1+b2)
+void trim(Big& a) {                // drop leading (high-order) zeros
+    while (a.size() > 1 && a.back() == 0) a.pop_back();
+}
 
-    # middle coeff = cross sum, recovered from the product-of-sums
-    # minus the two corner products already computed:
-    #   a1*b2 + a2*b1 = z3 - z2 - z0
-    z1 = z3 - z2 - z0
+// add: a + b
+Big add(const Big& a, const Big& b) {
+    Big c;
+    int carry = 0;
+    for (size_t i = 0; i < a.size() || i < b.size() || carry; ++i) {
+        int s = carry;
+        if (i < a.size()) s += a[i];
+        if (i < b.size()) s += b[i];
+        c.push_back(s % BASE);
+        carry = s / BASE;
+    }
+    return c;
+}
 
-    # recombine with shifts (powers of the base) and adds — all O(n):
-    #   x*y = z2 * B^(2m) + z1 * B^m + z0
-    return z2 * BASE ** (2 * m) + z1 * BASE ** m + z0
+// sub: a - b, assuming a >= b (used only where the algebra guarantees it)
+Big sub(const Big& a, const Big& b) {
+    Big c;
+    int borrow = 0;
+    for (size_t i = 0; i < a.size(); ++i) {
+        int s = a[i] - borrow - (i < b.size() ? b[i] : 0);
+        if (s < 0) { s += BASE; borrow = 1; } else borrow = 0;
+        c.push_back(s);
+    }
+    trim(c);
+    return c;
+}
+
+// shift: multiply by BASE^k (append k low-order zeros)
+Big shift(const Big& a, size_t k) {
+    if (a.size() == 1 && a[0] == 0) return a;   // 0 stays 0
+    Big c(k, 0);
+    c.insert(c.end(), a.begin(), a.end());
+    return c;
+}
+
+bool is_zero(const Big& a) { return a.size() == 1 && a[0] == 0; }
+
+// Karatsuba: three half-size multiplications instead of four.
+//   z2 = x1*y1,  z0 = x2*y2,  z1 = (x1+x2)(y1+y2) - z2 - z0
+//   x*y = z2*B^(2m) + z1*B^m + z0
+Big karatsuba(const Big& x, const Big& y) {
+    // base case: a single-digit operand -> multiply digit-by-number, O(len)
+    if (x.size() == 1 || y.size() == 1) {
+        long long mul = (x.size() == 1) ? x[0] : y[0];
+        const Big& big = (x.size() == 1) ? y : x;
+        Big c;
+        long long carry = 0;
+        for (size_t i = 0; i < big.size(); ++i) {
+            long long s = (long long)big[i] * mul + carry;
+            c.push_back((int)(s % BASE));
+            carry = s / BASE;
+        }
+        while (carry) { c.push_back((int)(carry % BASE)); carry /= BASE; }
+        if (c.empty()) c.push_back(0);
+        trim(c);
+        return c;
+    }
+
+    // split both operands at m = half the length of the longer one
+    size_t m = max(x.size(), y.size()) / 2;
+    size_t mx = min(m, x.size()), my = min(m, y.size());
+
+    Big x2(x.begin(), x.begin() + mx);   // low  half of x
+    Big x1(x.begin() + mx, x.end());     // high half of x
+    Big y2(y.begin(), y.begin() + my);   // low  half of y
+    Big y1(y.begin() + my, y.end());     // high half of y
+    if (x1.empty()) x1.push_back(0);
+    if (x2.empty()) x2.push_back(0);
+    if (y1.empty()) y1.push_back(0);
+    if (y2.empty()) y2.push_back(0);
+    trim(x1); trim(x2); trim(y1); trim(y2);
+
+    Big z2 = karatsuba(x1, y1);                       // a1*b1   (high)
+    Big z0 = karatsuba(x2, y2);                       // a2*b2   (low)
+    Big z3 = karatsuba(add(x1, x2), add(y1, y2));     // (a1+a2)(b1+b2)
+    Big z1 = sub(sub(z3, z2), z0);                    // = a1*b2 + a2*b1
+
+    // recombine: z2*B^(2m) + z1*B^m + z0
+    Big result = add(add(shift(z2, 2 * m), shift(z1, m)), z0);
+    trim(result);
+    return result;
+}
+
+string to_string_big(const Big& a) {
+    string s;
+    for (int i = (int)a.size() - 1; i >= 0; --i) s += char('0' + a[i]);
+    return s;
+}
+
+int main() {
+    string sa, sb;
+    if (!(cin >> sa >> sb)) return 0;
+    Big a = from_string(sa), b = from_string(sb);
+    trim(a); trim(b);
+    Big prod = (is_zero(a) || is_zero(b)) ? Big{0} : karatsuba(a, b);
+    cout << to_string_big(prod) << "\n";
+    return 0;
+}
 ```
 
-Let me run this on a couple of pairs to be sure the code matches the algebra I verified by hand and isn't tripped up by, say, the split point when the operands have different lengths. `karatsuba(1234, 4321)` should give `5332114`, the value I traced through above — and it does. `karatsuba(31415926, 27182818)` should equal the honest product `31415926·27182818`; checking the two against each other, they agree. A sweep of a couple thousand random pairs up to seven digits each, comparing `karatsuba(x, y)` against `x·y`, comes back with no mismatch. So the implementation computes the exact product, and the recursion bottoms out (the `divmod` keeps every operand an integer that strictly shrinks toward the single-digit base case).
+Let me run this on a couple of pairs to be sure the code matches the algebra I verified by hand and isn't tripped up by, say, the split point when the operands have different lengths. Feeding `1234 4321` should give `5332114`, the value I traced through above — and it does. `31415926 27182818` should equal the honest product `31415926·27182818 = 853973398759468`; checking the two against each other, they agree. A sweep of a few thousand random pairs up to several hundred digits each, comparing the program's output against the exact product, comes back with no mismatch. So the implementation computes the exact product, and the recursion bottoms out (the integer split keeps every sub-operand a digit vector that strictly shrinks toward the single-digit base case, and the carry-propagating recombination puts the overflowing middle coefficient in its right place).
 
 What I find worth pausing on is that I started out trying to *prove* the `n²` floor and ended up refuting it with the very scheme I built to corner it. The whole thing turned on one observation that the schoolbook layout buries: the two cross products `a₁b₂` and `a₂b₁` live at the *same* place value, so only their sum is ever needed, and a sum of cross terms is exactly what falls out of multiplying the two half-sums — minus corner products I was already computing. That dropped the branching from four to three, and `log₂ 3 < 2`. The old intuition that `n²` was forced confused "the answer depends on all `n²` digit-pairs" with "you must spend one multiplication per pair"; the dependence is real, the one-multiplication-per-pair is not. I don't have a matching *lower* bound — I haven't shown `n^{log₂ 3}` can't itself be beaten — but the conjecture as stated is dead, and that's what the construction settled.

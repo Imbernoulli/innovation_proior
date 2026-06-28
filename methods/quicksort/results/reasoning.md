@@ -26,89 +26,78 @@ The algorithm doesn't end when one partition finishes. After I partition the who
 
 It sits unfinished for a while. Then, going through the report on this new language ALGOL, I come across recursive procedures — a procedure that is allowed to call itself. And there it is: the exact thing I couldn't build by hand. If a sorting procedure can invoke *itself* on a sub-piece, then the list of postponed pieces I was struggling to administer is kept for me, automatically, by the language — the chain of suspended self-calls *is* that last-in-first-out list, each call remembering its own piece and where to resume. The whole problem that defeated me in Mercury Autocode — the management of the nest of pending segments — simply vanishes; it's done behind the scenes. Now I can write the thing the way I always saw it: to sort a piece, if it has more than one word, partition it and then sort the lower piece and sort the upper piece — each "sort" a call to the same procedure on a smaller piece, the recursion bottoming out when a piece has one word or none. It comes out in a few lines.
 
-```python
-import random
+```cpp
+// pick a word for the bound, run the two pointers in, exchange the offending
+// pairs, peel the bound-word to an edge so each returned side is strictly smaller.
+// Returns (i, j): recurse on a[lo..j] (lower) and a[i..hi] (upper).
+static pair<long long, long long> partition_seg(vector<long long>& a,
+                                                long long lo, long long hi) {
+    long long f = rand_pos(lo, hi);     // an actual item -> the bound is in range
+    long long bound = a[f];
+    long long i = lo, j = hi;           // lower pointer walks up, upper walks down
+    while (true) {
+        while (i < hi && a[i] <= bound) ++i;   // stop at the first key > bound
+        while (j > lo && a[j] >= bound) --j;    // stop at the first key < bound
+        if (i < j) {
+            swap(a[i], a[j]);           // two words are in each other's territory
+            ++i; --j;
+            continue;
+        }
+        // The line is between j and i. If the bound-word is still inside one
+        // recursive side, move it to that side's edge and exclude it.
+        if (i < f) {                    // bound-word lies in the upper segment
+            swap(a[i], a[f]);
+            ++i;
+        } else if (f < j) {             // bound-word lies in the lower segment
+            swap(a[f], a[j]);
+            --j;
+        }
+        return {i, j};
+    }
+}
 
-def key(item):
-    return item                        # the sort key (for words, the spelling)
-
-def exchange(a, p, q):
-    a[p], a[q] = a[q], a[p]            # the only data-movement primitive
-
-def partition(a, lo, hi):
-    f = random.randint(lo, hi)         # choose an actual item, so the bound is in range
-    bound = key(a[f])
-    i = lo                             # lower pointer, walks up
-    j = hi                             # upper pointer, walks down
-
-    while True:
-        while i < hi and key(a[i]) <= bound:
-            i += 1                     # stop at the first key greater than the bound
-        while j > lo and key(a[j]) >= bound:
-            j -= 1                     # stop at the first key less than the bound
-
-        if i < j:
-            exchange(a, i, j)          # two words are in each other's territory
-            i += 1
-            j -= 1
-            continue
-
-        # The line is between j and i.  If the bound-word is still inside
-        # one recursive side, move it to that side's edge and exclude it.
-        if i < f:                      # bound-word lies in the upper segment
-            exchange(a, i, f)
-            i += 1
-        elif f < j:                    # bound-word lies in the lower segment
-            exchange(a, f, j)
-            j -= 1
-        return i, j                    # recurse on a[lo..j] and a[i..hi]
-
-def sort(a, lo=0, hi=None):
-    if hi is None:
-        hi = len(a) - 1
-    if lo < hi:                        # a piece of 0 or 1 words is already sorted
-        i, j = partition(a, lo, hi)
-        sort(a, lo, j)                 # lower piece, sorted independently
-        sort(a, i, hi)                 # upper piece, sorted independently
-    return a
+static void sort_rec(vector<long long>& a, long long lo, long long hi) {
+    if (lo < hi) {                      // a piece of 0 or 1 words is already sorted
+        auto pr = partition_seg(a, lo, hi);
+        sort_rec(a, lo, pr.second);     // lower piece, sorted independently
+        sort_rec(a, pr.first, hi);      // upper piece, sorted independently
+    }
+}
 ```
 
 That's the version recursion lets me write so elegantly that the hard part is invisible. But I should not forget what was actually hard, because not every machine I'll meet has recursion, and I want to know exactly what the recursion is doing for me. It is keeping that last-in-first-out list of postponed pieces. So let me also write it the way I'd have had to on Mercury Autocode — managing the list myself — both to prove I now understand the thing that beat me, and because it's the honest core of the method. I'll call the list a nest: a block of store where I push a piece's bounds when I postpone it and pop the most recently pushed piece when I'm ready for it.
 
 There's one more thing I want from the by-hand version that the recursive one hides. If I always postpone one piece and dive into the other, how big can the nest get? I already saw the recursion go N levels deep on the worst case — the sorted-list-with-first-pivot blow-up — and if I reserve a fixed nest block by hand I cannot afford an N-deep one; that's exactly the store-hungry behaviour I was trying to avoid. But here I get to choose *which* piece to postpone. If I always dive into the *smaller* piece and postpone the *larger*, then each time I push something onto the nest, the piece I keep working on is at most half of what I had — so the depth of postponed pieces can't exceed about log2(N) regardless of how lopsided the splits are. That caps the nest at a size I can know and reserve in advance. So:
 
-```python
-def sort_with_nest(a):
-    lo, hi = 0, len(a) - 1
-    nest = []                          # pushdown list of postponed pieces
-
-    def segment_size(segment):
-        first, last = segment
-        return max(0, last - first + 1)
-
-    while True:
-        while lo < hi:
-            i, j = partition(a, lo, hi)
-            left = (lo, j)
-            right = (i, hi)
-            left_size = segment_size(left)
-            right_size = segment_size(right)
-
-            # Continue on the smaller piece and postpone the larger one;
-            # then the current piece at least halves before another push.
-            if left_size < right_size:
-                if right_size > 1:
-                    nest.append(right)
-                lo, hi = left
-            else:
-                if left_size > 1:
-                    nest.append(left)
-                lo, hi = right
-
-        if not nest:
-            break
-        lo, hi = nest.pop()            # resume the most recently postponed piece
-    return a
+```cpp
+static void sort_with_nest(vector<long long>& a) {
+    long long n = (long long)a.size();
+    if (n < 2) return;
+    long long lo = 0, hi = n - 1;
+    vector<pair<long long, long long>> nest;   // pushdown list of postponed pieces
+    while (true) {
+        while (lo < hi) {
+            auto pr = partition_seg(a, lo, hi);
+            long long i = pr.first, j = pr.second;
+            long long left_lo = lo, left_hi = j;       // a[lo..j]
+            long long right_lo = i, right_hi = hi;      // a[i..hi]
+            long long left_size = max(0LL, left_hi - left_lo + 1);
+            long long right_size = max(0LL, right_hi - right_lo + 1);
+            // Continue on the smaller piece and postpone the larger one;
+            // then the current piece at least halves before another push.
+            if (left_size < right_size) {
+                if (right_size > 1) nest.push_back({right_lo, right_hi});
+                lo = left_lo; hi = left_hi;
+            } else {
+                if (left_size > 1) nest.push_back({left_lo, left_hi});
+                lo = right_lo; hi = right_hi;
+            }
+        }
+        if (nest.empty()) break;
+        lo = nest.back().first; hi = nest.back().second;   // resume most recent
+        nest.pop_back();
+    }
+}
 ```
 
 The causal chain, end to end: I need the words of a sentence in alphabetical order so I can look them all up in one pass of a tape dictionary; the obvious neighbour-swapping sort is N² because a misplaced word can only crawl one slot at a time; so instead I compare every word against a single chosen bound, which sends each word to its correct side of a dividing line in one pass; I checked on `[3,1,4,1,5,2]` that the two-pointer sweep really does drop the line in the right place and leaves every lower word below every upper word; the two sides are then independent and sorted the same way recursively, and a counted run confirmed the work lands in the N log N neighbourhood, not N²; the degenerate cases (extreme bound, all-equal keys) threatened a non-shrinking loop, which I closed by using the bound-word — never moved by the inward scans because of the strict-inequality stops — to peel off at least one position, verified by re-tracing `[7,7,7,7]` and `[5,2,3,1,4]`; I make the bound random because a fixed first-word choice turns already-sorted input into an N²/N-deep catastrophe, which I watched happen; I keep the partition in place with two pointers and exchanges, no second array; and the list of postponed pieces, which defeated me by hand on Mercury Autocode, is kept automatically by ALGOL's recursive procedures — and, made explicit, is bounded to log2(N) by always postponing the larger piece and continuing into the smaller.

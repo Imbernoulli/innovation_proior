@@ -13,112 +13,97 @@ $$G \text{ has a perfect matching} \iff \mathrm{Pf}(T(G))\not\equiv 0 \iff \det(
 
 What makes this algorithmic, without ever expanding the determinant symbolically, is that rank over a field is computable by elimination once the variables hold concrete values. Substitute each $x_{ij}$ independently from a large set $S$ in a field. If there is no perfect matching the determinant polynomial is identically zero, so every substitution yields a singular matrix. If there is one, the determinant is a nonzero polynomial of degree $n$, and by polynomial identity testing a random substitution fails to give full rank with probability at most $n/|S|$; independent repetition multiplies that false-negative risk down. The test is therefore one-sided and asymmetric. Full rank at a single random point is decisive, because a nonzero evaluation proves the polynomial is not identically zero and a matching must exist. Singularity after one trial is not decisive, since a nonzero polynomial can still vanish at a particular point, especially over a small field — so repeated singular trials are reported as nonexistence only with one-sided error. The implementation below mirrors exactly this decision consequence and nothing more: it returns False immediately for odd $n$, instantiates the signed skew matrix at random values over a prime field, computes the modular rank by Gaussian elimination, returns True the moment a trial is full rank, and returns False if every trial is singular. It deliberately does not construct a witness matching or implement the later Rabin–Vazirani maximum-matching search; the conceptual core is the whole point — encode all vertex pairings in one Pfaffian, use the graph's zeros to kill illegal pairings, and use independent edge variables to keep legal pairings from cancelling.
 
-```python
-"""Randomized Tutte-matrix perfect-matching test over a prime field.
+The program below reads a graph from stdin — first line `n m` (n vertices numbered `0..n-1`, m edges), then m lines `u v` — and prints `YES` if a perfect matching exists, otherwise `NO`.
 
-This is a compact reference implementation of the decision consequence:
-instantiate the symbolic skew-symmetric matrix at random field values and
-test whether any trial has full rank.
-"""
+```cpp
+// Randomized Tutte-matrix perfect-matching test over a prime field.
+// Reads: first line "n m" (n vertices numbered 0..n-1, m edges); then m lines
+// "u v". Prints "YES" if G has a perfect matching, otherwise "NO" (one-sided
+// error: a NO can be wrong only with probability driven below any threshold by
+// the trial count, while a YES is always correct).
 
-from __future__ import annotations
+#include <bits/stdc++.h>
+using namespace std;
 
-import random
-from collections.abc import Iterable
+static const long long PRIME = 2147483647LL; // 2^31 - 1, a Mersenne prime
 
+// Modular exponentiation, used for the field inverse via Fermat's little theorem.
+long long pow_mod(long long base, long long exp, long long mod) {
+    long long result = 1 % mod;
+    base %= mod;
+    if (base < 0) base += mod;
+    while (exp > 0) {
+        if (exp & 1) result = (__int128)result * base % mod;
+        base = (__int128)base * base % mod;
+        exp >>= 1;
+    }
+    return result;
+}
 
-DEFAULT_PRIME = 2_147_483_647
+// Rank of an n x n matrix over the prime field by Gaussian elimination.
+int rank_mod(vector<vector<long long>> a, long long prime) {
+    int n_rows = (int)a.size();
+    int n_cols = n_rows ? (int)a[0].size() : 0;
+    int rank = 0;
+    for (int col = 0; col < n_cols && rank < n_rows; ++col) {
+        int pivot = -1;
+        for (int row = rank; row < n_rows; ++row) {
+            if (((a[row][col] % prime) + prime) % prime) { pivot = row; break; }
+        }
+        if (pivot == -1) continue;
+        swap(a[rank], a[pivot]);
+        long long inv = pow_mod(a[rank][col], prime - 2, prime);
+        for (long long &v : a[rank]) v = (__int128)((v % prime + prime) % prime) * inv % prime;
+        for (int row = 0; row < n_rows; ++row) {
+            if (row == rank) continue;
+            long long factor = ((a[row][col] % prime) + prime) % prime;
+            if (factor) {
+                for (int c = 0; c < n_cols; ++c) {
+                    long long sub = (__int128)factor * a[rank][c] % prime;
+                    a[row][c] = ((a[row][c] - sub) % prime + prime) % prime;
+                }
+            }
+        }
+        ++rank;
+    }
+    return rank;
+}
 
+// True on a full-rank random instantiation of the Tutte matrix; loops are
+// ignored because they cannot take part in a perfect matching.
+bool has_perfect_matching(int n, const vector<pair<int,int>> &edges,
+                          int trials, long long prime, mt19937_64 &rng) {
+    if (n % 2) return false;
+    for (int t = 0; t < trials; ++t) {
+        vector<vector<long long>> mat(n, vector<long long>(n, 0));
+        for (auto [u, v] : edges) {
+            if (u == v) continue;
+            long long value = (long long)(rng() % (unsigned long long)(prime - 1)) + 1; // 1..prime-1
+            mat[u][v] = value;
+            mat[v][u] = (prime - value) % prime;
+        }
+        if (rank_mod(mat, prime) == n) return true;
+    }
+    return false;
+}
 
-def _rank_mod(matrix: list[list[int]], prime: int) -> int:
-    a = [row[:] for row in matrix]
-    n_rows = len(a)
-    n_cols = len(a[0]) if a else 0
-    rank = 0
+int main() {
+    ios::sync_with_stdio(false);
+    cin.tie(nullptr);
 
-    for col in range(n_cols):
-        pivot = None
-        for row in range(rank, n_rows):
-            if a[row][col] % prime:
-                pivot = row
-                break
-        if pivot is None:
-            continue
+    int n, m;
+    if (!(cin >> n >> m)) return 0;
 
-        a[rank], a[pivot] = a[pivot], a[rank]
-        inv = pow(a[rank][col] % prime, prime - 2, prime)
-        a[rank] = [(value * inv) % prime for value in a[rank]]
+    vector<pair<int,int>> edges(m);
+    for (int i = 0; i < m; ++i) {
+        int u, v;
+        cin >> u >> v;
+        edges[i] = {u, v};
+    }
 
-        for row in range(n_rows):
-            if row == rank:
-                continue
-            factor = a[row][col] % prime
-            if factor:
-                a[row] = [
-                    (x - factor * y) % prime
-                    for x, y in zip(a[row], a[rank], strict=True)
-                ]
-
-        rank += 1
-        if rank == n_rows:
-            break
-
-    return rank
-
-
-def tutte_matrix(
-    n_vertices: int,
-    edges: Iterable[tuple[int, int]],
-    *,
-    prime: int = DEFAULT_PRIME,
-    rng: random.Random | None = None,
-) -> list[list[int]]:
-    """Return one random field instantiation of the Tutte matrix.
-
-    Vertices are numbered `0..n_vertices-1`; loops are ignored because they
-    cannot participate in a perfect matching.
-    """
-
-    if rng is None:
-        rng = random.Random()
-
-    matrix = [[0 for _ in range(n_vertices)] for _ in range(n_vertices)]
-    for u, v in edges:
-        if u == v:
-            continue
-        if not (0 <= u < n_vertices and 0 <= v < n_vertices):
-            raise ValueError("edge endpoint outside vertex range")
-        i, j = sorted((u, v))
-        value = rng.randrange(1, prime)
-        matrix[i][j] = value
-        matrix[j][i] = (-value) % prime
-    return matrix
-
-
-def has_perfect_matching(
-    n_vertices: int,
-    edges: Iterable[tuple[int, int]],
-    *,
-    trials: int = 8,
-    prime: int = DEFAULT_PRIME,
-    seed: int | None = None,
-) -> bool:
-    """Return True on a full-rank trial, otherwise False with one-sided error."""
-
-    if n_vertices % 2:
-        return False
-
-    edge_list = list(edges)
-    rng = random.Random(seed)
-    for _ in range(trials):
-        matrix = tutte_matrix(n_vertices, edge_list, prime=prime, rng=rng)
-        if _rank_mod(matrix, prime) == n_vertices:
-            return True
-    return False
-
-
-if __name__ == "__main__":
-    assert has_perfect_matching(4, [(0, 1), (1, 2), (2, 3)], seed=1)
-    assert not has_perfect_matching(3, [(0, 1), (1, 2), (2, 0)], seed=1)
-    assert not has_perfect_matching(4, [(0, 1), (1, 2)], seed=1)
+    mt19937_64 rng(0x9e3779b97f4a7c15ULL);
+    bool yes = has_perfect_matching(n, edges, 8, PRIME, rng);
+    cout << (yes ? "YES" : "NO") << "\n";
+    return 0;
+}
 ```

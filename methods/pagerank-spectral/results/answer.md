@@ -35,35 +35,70 @@ The power method error contracts like |λ₂|ᵏ ≤ αᵏ; reaching an L₁ tol
 
 G is dense but never formed: α M is a sparse mat-vec, the teleport adds the single scalar (1−α)/n to every component, and dangling mass is redistributed as one more scalar broadcast — O(#links + n) per iteration.
 
-```python
-import numpy as np
+The deliverable is a single self-contained C++17 program. It reads from stdin a header `n m` (pages, directed links) then `m` lines `src dst` (0-indexed, page src links to dst), and writes `n` lines `i score` — the importance of each page, scores summing to 1.
 
-def pagerank(A, alpha=0.85, tol=1.0e-6, max_iter=100):
-    """PageRank = principal eigenvector / stationary distribution of
-    G = alpha*M + (1-alpha)*(1/n)*1*1^T, via the power method.
-    A: sparse adjacency, A[i, j] = 1 iff page j links to page i."""
-    n = A.shape[0]
-    if n == 0:
-        return np.array([])
+```cpp
+// PageRank via power iteration on the Google matrix G = alpha*M + (1-alpha)*(1/n)*11^T.
+// Reads from stdin: "n m", then m lines "src dst" (0-indexed directed edges, page src links to dst).
+// Writes to stdout: n lines "i score", the importance score of each page (scores sum to 1).
+#include <bits/stdc++.h>
+using namespace std;
 
-    # Sparse normalized link matrix for non-dangling columns; dangling columns
-    # stay zero here and are patched by the dangle_mass broadcast below.
-    out_deg = np.asarray(A.sum(axis=0)).ravel()
-    dangling = (out_deg == 0)                  # dead-end pages (zero columns)
-    inv = np.zeros(n)
-    inv[~dangling] = 1.0 / out_deg[~dangling]
-    M = A.multiply(inv)
+int main() {
+    ios::sync_with_stdio(false);
+    cin.tie(nullptr);
 
-    p = np.full(n, 1.0 / n)     # uniform teleport target (rank source)
-    r = np.full(n, 1.0 / n)     # positive start, sums to 1
+    int n;
+    long long m;
+    if (!(cin >> n >> m)) return 0;
+    if (n <= 0) return 0;
 
-    for _ in range(max_iter):
-        r_last = r
-        dangle_mass = alpha * r_last[dangling].sum()       # patch zero columns
-        r = alpha * (M @ r_last) + (dangle_mass + (1.0 - alpha)) * p
-        if np.abs(r - r_last).sum() < n * tol:             # L1 convergence
-            return r
-    raise RuntimeError("power iteration did not converge in max_iter")
+    const double alpha = 0.85;
+    const double tol = 1.0e-6;       // L1 tolerance per node: stop when |r-r_last|_1 < n*tol
+    const int max_iter = 100;
+
+    // Column-stochastic link operator stored sparsely: for each edge v->u we will
+    // push r(v)/N_v onto u. Keep out-degree N_v and the out-neighbour list per page.
+    vector<vector<int>> out(n);
+    vector<long long> outdeg(n, 0);
+    for (long long e = 0; e < m; ++e) {
+        long long s, d;
+        cin >> s >> d;
+        if (s < 0 || s >= n || d < 0 || d >= n) continue; // ignore out-of-range edges
+        out[(int)s].push_back((int)d);
+        outdeg[(int)s]++;
+    }
+
+    vector<double> r(n, 1.0 / n);      // positive start, sums to 1
+    vector<double> rn(n, 0.0);
+    const double teleport = (1.0 - alpha) / n;
+
+    for (int it = 0; it < max_iter; ++it) {
+        // dangling mass (pages with no out-links) is redistributed uniformly.
+        double dangle = 0.0;
+        for (int v = 0; v < n; ++v)
+            if (outdeg[v] == 0) dangle += r[v];
+        double broadcast = alpha * dangle / n + teleport; // per-page constant trickle
+
+        for (int u = 0; u < n; ++u) rn[u] = broadcast;
+        // sparse link flow: every non-dangling page v splits alpha*r(v) over its out-links.
+        for (int v = 0; v < n; ++v) {
+            if (outdeg[v] == 0) continue;
+            double share = alpha * r[v] / (double)outdeg[v];
+            for (int u : out[v]) rn[u] += share;
+        }
+
+        double diff = 0.0;
+        for (int u = 0; u < n; ++u) diff += fabs(rn[u] - r[u]);
+        swap(r, rn);
+        if (diff < (double)n * tol) break;
+    }
+
+    cout.setf(std::ios::fixed);
+    cout << setprecision(10);
+    for (int u = 0; u < n; ++u) cout << u << ' ' << r[u] << '\n';
+    return 0;
+}
 ```
 
-This mirrors the canonical sparse power-iteration implementation (e.g. NetworkX `pagerank`): build the right/column-stochastic link operator, redistribute dangling mass to the teleport target, add the (1−α) uniform teleport each step, and stop on the L₁ change between iterates.
+This is the canonical sparse power iteration (cf. NetworkX `pagerank`): build the column-stochastic link operator implicitly, redistribute dangling mass to the uniform teleport target, add the (1−α) uniform teleport each step, and stop on the L₁ change between iterates.

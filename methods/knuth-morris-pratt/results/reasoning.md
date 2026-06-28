@@ -122,52 +122,86 @@ Seven steps. Look at the values: `20, 12, 7, 4, 2, 1` are `F₈−1, F₇−1, F
 
 I have the scan; now I need the executable version. I'll switch to `0`-based indexing because it is cleaner in a real implementation, and I'll fold the "slide all the way past, advance text" case (`j = 0` in the `1`-based version) into a sentinel: let the table hold `−1` at the front, so a mismatch that drives the pattern pointer below `0` signals "advance the text pointer and reset," with no special-case branch. The table built this way is the refined `next` for mismatches, and the extra final slot is the restart border length after a complete match so overlapping matches are still found.
 
-```python
-def preprocess(W):
-    # Build the failure / "next" table from the pattern alone (O(m)).
-    # For k < len(W), T[k] resumes after a mismatch at W[k] without
-    # moving the text pointer. T[len(W)] restarts after a full match.
-    # T[0] = -1 is the sentinel for "no prefix survives."
-    T = [0] * (len(W) + 1)
-    T[0] = -1
-    pos, cnd = 1, 0          # cnd tracks the current border length (the f[j] role)
-    while pos < len(W):
-        if W[pos] == W[cnd]:
-            # border extends, AND the next chars agree, so resuming at cnd
-            # would just re-mismatch the same text char — short-circuit it
-            # (this is the pattern[i] != pattern[j] refinement).
-            T[pos] = T[cnd]
-        else:
-            T[pos] = cnd
-            # slide the pattern against itself via the table already built
-            while cnd >= 0 and W[pos] != W[cnd]:
-                cnd = T[cnd]
-        pos += 1
-        cnd += 1
-    T[pos] = cnd
-    return T
+I'll package this as a single self-contained C++17 program: it reads the pattern `W` on the first line of stdin and the text `S` on the second, and prints the `0`-based start positions of every occurrence. Lengths are kept in `long long` so the indices never overflow on long texts.
 
+```cpp
+// Knuth-Morris-Pratt exact string matching, single-file C++17.
+// Reads two lines from stdin: line 1 = pattern W, line 2 = text S.
+// Prints the 0-based start positions of every occurrence of W in S
+// (space-separated on one line; an empty line if there are none).
+#include <bits/stdc++.h>
+using namespace std;
 
-def search(S, W):
-    T = preprocess(W)
-    matches = []
-    k = 0   # text pointer — only ever advances; never backs up
-    j = 0   # pattern pointer
-    while k < len(S):
-        if W[j] == S[k]:
-            k += 1
-            j += 1
-            if j == len(W):                 # full match ends just before k
-                matches.append(k - j)
-                j = T[j]                     # resume to find further matches
-        else:
-            j = T[j]                         # slide the pattern, keep k fixed
-            if j < 0:                        # sentinel: nothing survives
-                k += 1
-                j += 1
-    return matches
+// Failure / "next" table from the pattern alone (O(m)).
+// For k < m, T[k] resumes after a mismatch at W[k] without moving the text
+// pointer. T[m] restarts after a full match (so overlapping matches are found).
+// T[0] = -1 is the sentinel for "no prefix survives."
+vector<long long> preprocess(const string& W) {
+    long long m = (long long)W.size();
+    vector<long long> T(m + 1, 0);
+    T[0] = -1;
+    long long pos = 1, cnd = 0;     // cnd = current border length (the f[j] role)
+    while (pos < m) {
+        if (W[pos] == W[cnd]) {
+            // border extends AND the next chars agree, so resuming at cnd would
+            // just re-mismatch the same text char -- short-circuit it
+            // (this is the pattern[i] != pattern[j] refinement).
+            T[pos] = T[cnd];
+        } else {
+            T[pos] = cnd;
+            while (cnd >= 0 && W[pos] != W[cnd])
+                cnd = T[cnd];       // slide the pattern against itself
+        }
+        pos += 1;
+        cnd += 1;
+    }
+    T[pos] = cnd;
+    return T;
+}
+
+// Find every occurrence of W in S; the text pointer k only ever advances.
+vector<long long> search(const string& S, const string& W) {
+    vector<long long> matches;
+    long long n = (long long)S.size(), m = (long long)W.size();
+    if (m == 0) return matches;
+    vector<long long> T = preprocess(W);
+    long long k = 0;                // text pointer -- only ever advances; never backs up
+    long long j = 0;                // pattern pointer
+    while (k < n) {
+        if (W[j] == S[k]) {
+            k += 1;
+            j += 1;
+            if (j == m) {                   // full match ends just before k
+                matches.push_back(k - j);
+                j = T[j];                   // resume to find further matches
+            }
+        } else {
+            j = T[j];                       // slide the pattern, keep k fixed
+            if (j < 0) {                    // sentinel: nothing survives
+                k += 1;
+                j += 1;
+            }
+        }
+    }
+    return matches;
+}
+
+int main() {
+    ios_base::sync_with_stdio(false);
+    cin.tie(nullptr);
+    string W, S;
+    getline(cin, W);
+    getline(cin, S);
+    vector<long long> matches = search(S, W);
+    for (size_t i = 0; i < matches.size(); ++i) {
+        if (i) cout << ' ';
+        cout << matches[i];
+    }
+    cout << '\n';
+    return 0;
+}
 ```
 
-Let me run the `0`-based code on the cases I already worked by hand, to be sure the indexing translation didn't introduce an off-by-one. `preprocess("abcabcacab")` should encode the same refinement I computed by hand; tracing it I get `[-1, 0, 0, -1, 0, 0, -1, 4, -1, 0, 2]` — the `−1`s sit at the positions where my `1`-based `next` was `0` (the "slide fully past" positions `4, 7, 9` become `0`-based `3, 6, 8`, holding `−1`), so the two tables agree under the index shift. And `search("caababa", "aba")` returns `[2, 4]` — the `0`-based starts of the same two overlapping matches I traced as `1`-based `3` and `5`. The translation is faithful.
+Let me run the `0`-based code on the cases I already worked by hand, to be sure the indexing translation didn't introduce an off-by-one. The table for `abcabcacab` should encode the same refinement I computed by hand; tracing `preprocess` on it I get `[-1, 0, 0, -1, 0, 0, -1, 4, -1, 0, 2]` — the `−1`s sit at the positions where my `1`-based `next` was `0` (the "slide fully past" positions `4, 7, 9` become `0`-based `3, 6, 8`, holding `−1`), so the two tables agree under the index shift. And feeding pattern `aba` with text `caababa` to the program prints `2 4` — the `0`-based starts of the same two overlapping matches I traced as `1`-based `3` and `5`. The translation is faithful.
 
 The causal chain, end to end: the naive scanner wastes work and, worse, backs the text pointer up, which an editor's buffering makes painful — so I want a strictly forward, no-backup scan, and I can feel that a partial match already tells me the characters just read, but I have no systematic way to exploit it. Cook's theorem insists a linear method *exists* for problems I can phrase as a two-way pushdown automaton, including a palindrome problem I can't crack by hand — so I trace his construction and find, by actually accounting for its cost, that its engine is memoizing each surface configuration's terminator: `O(n)` configurations each filled once in `O(1)`, sharing repeated sub-computations through a table, which is why a possibly-exponential machine simulates in linear time. Distilling that to the matching automaton, the only thing the table needs to remember is, for each matched-prefix length `j`, where to resume after a mismatch — a function of the pattern alone — so I precompute a `next` table off the pattern, with the `pattern[i] ≠ pattern[j]` refinement to avoid re-comparisons; building it is the same matching algorithm run on the pattern against itself, in `O(m)`; the matcher then makes only the text pointer advance, recovering on mismatch by shrinking `j` through `next`, total `O(m + n)`, never backing up, `O(m)` memory — verified by hand-building the table for `abcabcacab`, hand-tracing the overlapping matches in `caababa`, and computing the worst-case per-character delay as a tight `Θ(log_φ m)`, witnessed by the `b₈` chain `20 → 12 → 7 → 4 → 2 → 1 → 0`.

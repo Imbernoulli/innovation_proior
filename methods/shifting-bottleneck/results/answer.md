@@ -65,243 +65,398 @@ Notes:
 
 ## Code
 
-```python
-import numpy as np
-from collections import namedtuple
-from ortools.sat.python import cp_model
+Single-file C++17 program. It reads a job-shop instance from stdin in the standard OR-Library
+format — first line `n m` (jobs, machines), then `n` job rows, each a route of `m` pairs
+`machine duration` in processing order — and prints the makespan found by the shifting-bottleneck
+procedure (a valid upper bound on the optimum). The single-machine `1|r_j|L_max` subproblem is
+solved exactly by Carlier's branch-and-bound; longest paths over the per-job / per-machine adjacency
+lists give heads and tails. All time arithmetic uses `long long`.
 
-Task = namedtuple("Task", "p head due")
+```cpp
+// Shifting Bottleneck Procedure for job-shop makespan minimization.
+//
+// I/O contract: reads a job-shop instance from stdin in the standard OR-Library
+// format -- first line "n m" (n jobs, m machines), then n lines, each job a route
+// of m pairs "machine duration" in processing order. Prints the makespan found by
+// the shifting-bottleneck procedure on stdout (a valid upper bound on the optimum).
+//
+// Operations are numbered op = job*m + position. Makespan is the longest path in
+// the oriented disjunctive graph; the bottleneck (largest single-machine optimal
+// L_max) is sequenced first, and already-sequenced machines are re-optimized in
+// cycles. The single-machine 1|r_j|L_max subproblem is solved exactly by Carlier's
+// branch-and-bound. All path/time arithmetic uses long long to avoid overflow.
 
+#include <bits/stdc++.h>
+using namespace std;
+typedef long long ll;
 
-class DisjunctiveGraph:
-    """Conjunctive (job) arcs fixed in column 0; disjunctive (machine) arcs in
-    column 1, added/removed as machines are sequenced. Longest paths -> release
-    labels, due-date labels, makespan, critical path (O(n) over adjacency lists)."""
+int n_jobs, n_mach, n_ops;            // jobs, machines, operations
+vector<ll> dur;                       // dur[op]
+vector<int> mach;                     // machine of op
+// disjunctive graph: each op has a job-successor/predecessor (col 0, fixed) and a
+// machine-successor/predecessor (col 1, oriented as machines are sequenced).
+vector<array<int,2>> succ, pred;      // -1 = none
 
-    def __init__(self, costs, machines, num_j, num_m):
-        self.num_j, self.num_m = num_j, num_m
-        self.num_nodes = num_j * num_m
-        self.costs = costs.reshape(-1).astype(np.float32)
-        self.machines = machines.reshape(-1).astype(np.int32)
-        self.successors = -np.ones((self.num_nodes, 2), dtype=np.int64)
-        self.predecessors = -np.ones((self.num_nodes, 2), dtype=np.int64)
-        for job in range(num_j):
-            for idx in range(num_m - 1):
-                n = job * num_m + idx
-                self.successors[n, 0] = n + 1
-                self.predecessors[n + 1, 0] = n
+inline void add_arc(int s, int e){ succ[s][1]=e; pred[e][1]=s; }
+inline void remove_arc(int s,int e){ succ[s][1]=-1; pred[e][1]=-1; }
 
-    def add_arc(self, s, e):
-        self.successors[s, 1] = e
-        self.predecessors[e, 1] = s
+// Find one cycle in the current oriented graph; returns a parent map node->next
+// along the cycle (following successors). Used to repair an infeasible selection.
+unordered_map<int,int> succ_cycle(){
+    vector<int> state(n_ops,0);           // 0=unseen,1=active,2=done
+    vector<int> parent(n_ops,-1);
+    unordered_map<int,int> cyc;
+    // iterative DFS to avoid deep recursion
+    for(int s=0;s<n_ops && cyc.empty(); ++s){
+        if(state[s]) continue;
+        vector<pair<int,int>> st; st.push_back({s,0});
+        while(!st.empty()){
+            auto& [v,ci] = st.back();
+            if(ci==0) state[v]=1;
+            if(ci<2){
+                int w=succ[v][ci]; ci++;
+                if(w<0) continue;
+                if(state[w]==0){ parent[w]=v; st.push_back({w,0}); }
+                else if(state[w]==1){      // back edge v->w : cycle
+                    int cur=v; cyc[v]=w;
+                    while(cur!=w){ int p=parent[cur]; cyc[p]=cur; cur=p; }
+                    break;
+                }
+            } else { state[v]=2; st.pop_back(); }
+        }
+        if(!cyc.empty()) break;
+    }
+    return cyc;
+}
 
-    def remove_arc(self, s, e):
-        self.successors[s, 1] = -1
-        self.predecessors[e, 1] = -1
+// Longest-path labeling over the (at most 2-in / 2-out) sparse graph. forward=true
+// gives completion-style labels (dist[op] = longest path ending at op, including
+// dur[op]); forward=false gives labels from op to the sink (including dur[op]).
+// Returns true on success (DAG); on a cycle returns false and fills cyc.
+bool longest_path(bool forward, vector<ll>& dist, unordered_map<int,int>* cyc=nullptr){
+    const auto& nbr = forward ? succ : pred;   // direction we relax along
+    const auto& rev = forward ? pred : succ;   // gives in-degree
+    dist.assign(n_ops, 0);
+    vector<int> indeg(n_ops,0);
+    for(int v=0; v<n_ops; ++v)
+        for(int c=0;c<2;++c) if(rev[v][c]>=0) indeg[v]++;
+    vector<int> stk;
+    for(int v=0; v<n_ops; ++v) if(indeg[v]==0){ dist[v]=dur[v]; stk.push_back(v); }
+    int seen=0;
+    while(!stk.empty()){
+        int v=stk.back(); stk.pop_back(); seen++;
+        for(int c=0;c<2;++c){
+            int w=nbr[v][c]; if(w<0) continue;
+            if(dist[v]+dur[w] > dist[w]) dist[w]=dist[v]+dur[w];
+            if(--indeg[w]==0) stk.push_back(w);
+        }
+    }
+    if(seen<n_ops){                 // cycle present
+        if(cyc) *cyc = succ_cycle();
+        return false;
+    }
+    return true;
+}
 
-    def _cycle_map(self):
-        seen, active, parent = set(), set(), {}
+// Current makespan (longest source-to-sink path) and the critical path of ops.
+// Returns -1 on a cycle.
+ll makespan(vector<int>* critical=nullptr){
+    // forward labeling with predecessor tracking for the critical path
+    vector<ll> dist(n_ops,0);
+    vector<int> indeg(n_ops,0), prv(n_ops,-1);
+    for(int v=0; v<n_ops; ++v)
+        for(int c=0;c<2;++c) if(pred[v][c]>=0) indeg[v]++;
+    vector<int> stk;
+    for(int v=0; v<n_ops; ++v) if(indeg[v]==0){ dist[v]=dur[v]; stk.push_back(v); }
+    int seen=0;
+    while(!stk.empty()){
+        int v=stk.back(); stk.pop_back(); seen++;
+        for(int c=0;c<2;++c){
+            int w=succ[v][c]; if(w<0) continue;
+            if(dist[v]+dur[w] > dist[w]){ dist[w]=dist[v]+dur[w]; prv[w]=v; }
+            if(--indeg[w]==0) stk.push_back(w);
+        }
+    }
+    if(seen<n_ops) return -1;
+    int sink=0; for(int v=1;v<n_ops;++v) if(dist[v]>dist[sink]) sink=v;
+    if(critical){ critical->clear(); int v=sink; while(v>=0){ critical->push_back(v); v=prv[v]; } reverse(critical->begin(),critical->end()); }
+    return dist[sink];
+}
 
-        def dfs(n):
-            seen.add(n); active.add(n)
-            for nb in self.successors[n]:
-                if nb < 0:
-                    continue
-                if nb not in seen:
-                    parent[nb] = n
-                    cycle = dfs(nb)
-                    if cycle:
-                        return cycle
-                elif nb in active:
-                    cycle, cur = {n: nb}, n
-                    while cur != nb:
-                        prev = parent[cur]
-                        cycle[prev] = cur
-                        cur = prev
-                    return cycle
-            active.remove(n)
-            return None
+// ---------------------------------------------------------------------------
+// Exact single-machine 1|r_j|L_max via Carlier (1982) branch and bound.
+// Each task has processing time p, head (release) r, tail q. Objective: minimize
+// max over jobs of (completion + q). We return that optimum (C_max with tails) and
+// a job order achieving it. Optional extra precedences (a before b) are enforced
+// by inflating heads/tails, used to repair cycles.
+// ---------------------------------------------------------------------------
+struct CTask { ll p, r, q; int id; };
 
-        for n in range(self.num_nodes):
-            if n not in seen:
-                cycle = dfs(n)
-                if cycle:
-                    return cycle
-        return {}
+// Schrage heuristic: among released jobs, dispatch the one with largest tail.
+// Returns the C_max-with-tails value and fills seq with the dispatch order (ids).
+ll schrage(const vector<CTask>& T, vector<int>& seq){
+    int N=T.size();
+    vector<char> done(N,0);
+    seq.clear();
+    ll t = LLONG_MAX;
+    for(auto& x:T) t=min(t,x.r);
+    ll best=0;
+    for(int cnt=0;cnt<N;++cnt){
+        int pick=-1;
+        for(int i=0;i<N;++i) if(!done[i] && T[i].r<=t){
+            if(pick<0 || T[i].q>T[pick].q || (T[i].q==T[pick].q && T[i].p>T[pick].p)) pick=i;
+        }
+        if(pick<0){ // none released; jump clock to next release
+            ll nr=LLONG_MAX; for(int i=0;i<N;++i) if(!done[i]) nr=min(nr,T[i].r);
+            t=nr; --cnt; continue;
+        }
+        ll c=t+T[pick].p;
+        best=max(best,c+T[pick].q);
+        done[pick]=1; seq.push_back(T[pick].id);
+        // advance clock
+        ll nr=LLONG_MAX; for(int i=0;i<N;++i) if(!done[i]) nr=min(nr,T[i].r);
+        t = max(c, nr==LLONG_MAX? c : nr);
+    }
+    return best;
+}
 
-    def makespan(self, reverse=False):
-        """Longest-path labeling. Forward labels include each operation duration;
-        reverse labels give paths from an operation to the end. Returns
-        (makespan, critical_path, distances); makespan is None on a cycle."""
-        nbr = self.predecessors if reverse else self.successors
-        rev = self.successors if reverse else self.predecessors
-        dist = np.zeros(self.num_nodes, dtype=np.float64)
-        indeg = np.array([(rev[n] >= 0).sum() for n in range(self.num_nodes)])
-        pred = -np.ones(self.num_nodes, dtype=np.int64)
-        stack = [n for n in range(self.num_nodes) if indeg[n] == 0]
-        for n in stack:
-            dist[n] = self.costs[n]
-        seen = 0
-        while stack:
-            n = stack.pop(); seen += 1
-            for nb in nbr[n]:
-                if nb < 0:
-                    continue
-                if dist[n] + self.costs[nb] > dist[nb]:
-                    dist[nb] = dist[n] + self.costs[nb]
-                    pred[nb] = n
-                indeg[nb] -= 1
-                if indeg[nb] == 0:
-                    stack.append(nb)
-        if seen < self.num_nodes:
-            return None, self._cycle_map(), dist
-        sink = int(dist.argmax()); ms = float(dist[sink])
-        cp, n = [], sink
-        while n >= 0:
-            cp.append(n); n = pred[n]
-        return ms, list(reversed(cp)), dist
+ll carlier_best;           // incumbent C_max-with-tails
+vector<int> carlier_seq;   // incumbent order
 
+void carlier_rec(vector<CTask> T){
+    int N=T.size();
+    if(N==0) return;
+    vector<int> seq;
+    ll ub = schrage(T, seq);
+    if(ub < carlier_best){ carlier_best=ub; carlier_seq=seq; }
+    // rebuild the Schrage schedule to find the critical path / critical job
+    // recompute completion times in dispatch order
+    unordered_map<int,int> idx; for(int i=0;i<N;++i) idx[T[i].id]=i;
+    vector<ll> comp(N,0);
+    ll t=LLONG_MAX; for(auto&x:T) t=min(t,x.r);
+    ll cmax=0; int critJobPos=-1; ll critVal=-1;
+    // track, for each scheduled job, its completion
+    {
+        ll clk=t;
+        for(int s=0;s<N;++s){
+            int id=seq[s], i=idx[id];
+            clk = max(clk, T[i].r) + T[i].p;
+            comp[i]=clk;
+            if(clk + T[i].q > critVal){ critVal=clk+T[i].q; critJobPos=s; }
+        }
+        cmax=critVal;
+    }
+    // Critical path: the block of consecutive jobs (in dispatch order) ending at
+    // the job realizing cmax, back to where the machine last had idle time before
+    // a contiguous busy run. Identify block [a..b] (positions) that runs with no
+    // idle and ends at critJobPos.
+    int b=critJobPos;
+    int a=b;
+    {
+        // start of the contiguous busy block ending at b
+        ll clk=t;
+        vector<ll> startp(N), endp(N);
+        clk=t;
+        for(int s=0;s<N;++s){ int i=idx[seq[s]]; ll st=max(clk,T[i].r); startp[s]=st; endp[s]=st+T[i].p; clk=endp[s]; }
+        a=b;
+        while(a>0){ int i=idx[seq[a]]; if(startp[a]==max(endp[a-1], T[i].r) && startp[a]==endp[a-1]) a--; else break; }
+        // ensure block start respects release: find smallest a' with no idle before each
+        while(a>0 && startp[a]==endp[a-1]) a--;
+    }
+    // The critical sequence J' = jobs at positions [a..b]. Find critical job c:
+    // largest position k in [a..b-1] with q_{seq[k]} < q_{seq[b]} (tail of last).
+    int bId=seq[b];
+    ll qlast=T[idx[bId]].q;
+    int cpos=-1;
+    for(int s=a; s<b; ++s){ if(T[idx[seq[s]]].q < qlast) cpos=s; }
+    if(cpos<0) return;   // no critical job: Schrage is optimal for this block
+    int cId=seq[cpos];
+    // block J = positions (cpos, b]
+    vector<int> J;
+    for(int s=cpos+1;s<=b;++s) J.push_back(idx[seq[s]]);
+    // lower bound h(J) = min r + sum p + min q over J
+    ll minr=LLONG_MAX,sump=0,minq=LLONG_MAX;
+    for(int i:J){ minr=min(minr,T[i].r); sump+=T[i].p; minq=min(minq,T[i].q); }
+    ll hJ = minr+sump+minq;
+    if(hJ >= carlier_best) return;     // prune
 
-def solve_lmax(tasks, precs=None, horizon=20000):
-    """Exact single-machine 1|r|L_max. tasks[op] = Task(p, head, due)."""
-    mdl = cp_model.CpModel()
-    iv = {}
-    for op, t in tasks.items():
-        s = mdl.NewIntVar(t.head, horizon, f"s_{op}")
-        e = mdl.NewIntVar(t.head + t.p, horizon, f"e_{op}")
-        iv[op] = (s, e, t.due, mdl.NewIntervalVar(s, t.p, e, f"i_{op}"))
-    mdl.AddNoOverlap([x[3] for x in iv.values()])
-    if precs:
-        for a, b in precs:
-            mdl.Add(iv[b][0] < iv[a][0])
-    lmax = mdl.NewIntVar(-horizon, horizon, "Lmax")
-    mdl.AddMaxEquality(lmax, [e - due for (_, e, due, _) in iv.values()])
-    mdl.Minimize(lmax)
-    solver = cp_model.CpSolver()
-    solver.parameters.num_search_workers = 1
-    solver.Solve(mdl)
-    order = [op for _, op in sorted((solver.Value(iv[op][0]), op) for op in iv)]
-    return solver.ObjectiveValue(), np.array(order)
+    int ci = idx[cId];
+    // Branch 1: critical job AFTER J -> new head r'_c = max(r_c, min_{J} r + sum_J p)
+    {
+        vector<CTask> T1=T;
+        ll newr = max(T[ci].r, minr+sump);
+        T1[ci].r = newr;
+        // lower bound for this child
+        ll childLB = max(hJ, /*overall lb*/ 0LL);
+        if(childLB < carlier_best) carlier_rec(T1);
+    }
+    // Branch 2: critical job BEFORE J -> new tail q'_c = max(q_c, sum_J p + min_J q)
+    {
+        vector<CTask> T2=T;
+        ll newq = max(T[ci].q, sump+minq);
+        T2[ci].q = newq;
+        ll childLB = max(hJ, 0LL);
+        if(childLB < carlier_best) carlier_rec(T2);
+    }
+}
 
+// Solve 1|r_j|L_max exactly. ops: operation ids on this machine. head[op],tail[op]
+// give release/tail (tail q here is the downstream work after the op). extraPrec:
+// pairs (a,b) meaning op a must precede op b (cycle repair). Returns the optimal
+// "L_max" = (C_max_with_tails - H) and the order; we keep H implicit by working in
+// raw C_max-with-tails and the caller subtracts H. Here we return ell directly.
+struct LmaxResult { ll ell; vector<int> order; };
 
-def heads_and_due_dates(g, ops, costs):
-    ms, _, long_to = g.makespan()
-    _, _, long_from = g.makespan(reverse=True)
-    return {op: Task(p=int(costs[op]),
-                     head=int(long_to[op] - costs[op]),
-                     due=int(ms - long_from[op] + costs[op])) for op in ops}
+LmaxResult solve_lmax(const vector<int>& ops, const vector<ll>& head,
+                      const vector<ll>& tail, ll H,
+                      const vector<pair<int,int>>& extraPrec){
+    vector<CTask> T; T.reserve(ops.size());
+    unordered_map<int,int> pos;
+    for(int op:ops){ pos[op]=T.size(); T.push_back({dur[op], head[op], tail[op], op}); }
+    // enforce extra precedences a->b by inflating heads/tails (a before b):
+    // bump b's head past a, and a's tail past b. Repeat to a fixed point.
+    for(int it=0; it<(int)extraPrec.size()+1; ++it){
+        bool ch=false;
+        for(auto& pr:extraPrec){
+            int a=pos.count(pr.first)?pos[pr.first]:-1;
+            int b=pos.count(pr.second)?pos[pr.second]:-1;
+            if(a<0||b<0) continue;
+            ll nr = T[a].r + T[a].p;            // b cannot start before a finishes
+            if(T[b].r < nr){ T[b].r=nr; ch=true; }
+            ll nq = T[b].q + T[b].p;            // a's downstream includes b
+            if(T[a].q < nq){ T[a].q=nq; ch=true; }
+        }
+        if(!ch) break;
+    }
+    carlier_best=LLONG_MAX; carlier_seq.clear();
+    // seed incumbent with Schrage
+    { vector<int> s; ll v=schrage(T,s); carlier_best=v; carlier_seq=s; }
+    carlier_rec(T);
+    LmaxResult R; R.order=carlier_seq; R.ell=carlier_best - H;
+    return R;
+}
 
+// ---------------------------------------------------------------------------
+// Read heads and tails (q_i = L(i,n)-d_i) off two longest-path passes.
+// ---------------------------------------------------------------------------
+void heads_tails(vector<ll>& head, vector<ll>& tail, ll& H){
+    vector<ll> fwd, bwd;
+    longest_path(true, fwd);     // dist ending at op, includes dur
+    longest_path(false, bwd);    // dist from op to sink, includes dur
+    H=0; for(int v=0;v<n_ops;++v) H=max(H,fwd[v]);
+    head.assign(n_ops,0); tail.assign(n_ops,0);
+    for(int op=0;op<n_ops;++op){
+        head[op]=fwd[op]-dur[op];     // earliest start
+        tail[op]=bwd[op]-dur[op];     // downstream work after op
+    }
+}
 
-def _offending_pair(cycle, order):
-    for s in order:
-        if s in cycle:
-            n = cycle[s]
-            while n not in order:
-                n = cycle[n]
-            while cycle.get(n) in order:
-                n = cycle[n]
-            if s != n:
-                return (s, n)
-    raise RuntimeError("no offending precedence found")
+// Find the offending precedence pair from a cycle, to enforce on re-solve.
+pair<int,int> offending_pair(const unordered_map<int,int>& cyc, const vector<int>& order){
+    unordered_set<int> oset(order.begin(), order.end());
+    for(int s: order){
+        if(cyc.count(s)){
+            int nb=cyc.at(s);
+            while(!oset.count(nb) && cyc.count(nb)) nb=cyc.at(nb);
+            // walk forward while the *next* node is still in order
+            while(cyc.count(nb) && oset.count(cyc.at(nb))) nb=cyc.at(nb);
+            if(s!=nb) return {s,nb};
+        }
+    }
+    // fallback: any consecutive pair in the order
+    return {order.front(), order.back()};
+}
 
+// Insert one machine: solve its 1|r|L_max, lay the order's consecutive arcs into
+// the graph; if that creates a cycle, enforce the offending precedence and retry.
+// Returns the chosen order and its ell (= L_max).
+struct InsertResult { vector<int> order; ll ell; ll ms; };
 
-def insert_machine(g, tasks):
-    """Solve one machine; if its order creates a cycle, enforce the offending
-    precedence and re-solve."""
-    ms, precs = None, []
-    while ms is None:
-        lmax, order = solve_lmax(tasks, precs)
-        for s, e in zip(order[:-1], order[1:]):
-            g.add_arc(s, e)
-        ms, cycle, _ = g.makespan()
-        if ms is None:
-            for s, e in zip(order[:-1], order[1:]):
-                g.remove_arc(s, e)
-            precs.append(_offending_pair(cycle, order))
-    return order, lmax, ms
+InsertResult insert_machine(const vector<int>& ops){
+    vector<pair<int,int>> precs;
+    while(true){
+        vector<ll> head,tail; ll H; heads_tails(head,tail,H);
+        LmaxResult lr = solve_lmax(ops, head, tail, H, precs);
+        for(size_t i=0;i+1<lr.order.size();++i) add_arc(lr.order[i], lr.order[i+1]);
+        vector<int> crit;
+        ll ms = makespan(&crit);
+        if(ms>=0) return {lr.order, lr.ell, ms};
+        // cycle: detect it on the graph WITH the trial arcs, then undo and enforce
+        // the offending precedence before re-solving.
+        unordered_map<int,int> cyc = succ_cycle();
+        for(size_t i=0;i+1<lr.order.size();++i) remove_arc(lr.order[i], lr.order[i+1]);
+        precs.push_back(offending_pair(cyc, lr.order));
+    }
+}
 
+int main(){
+    ios::sync_with_stdio(false); cin.tie(nullptr);
+    if(!(cin>>n_jobs>>n_mach)) return 0;
+    n_ops = n_jobs*n_mach;
+    dur.assign(n_ops,0); mach.assign(n_ops,0);
+    succ.assign(n_ops,{-1,-1}); pred.assign(n_ops,{-1,-1});
+    for(int j=0;j<n_jobs;++j)
+        for(int k=0;k<n_mach;++k){
+            int op=j*n_mach+k; ll m,d; cin>>m>>d; mach[op]=(int)m; dur[op]=d;
+            // job route arc (fixed, col 0)
+            if(k<n_mach-1){ succ[op][0]=op+1; pred[op+1][0]=op; }
+        }
+    // operations per machine
+    vector<vector<int>> machine_ops(n_mach);
+    for(int op=0;op<n_ops;++op) machine_ops[mach[op]].push_back(op);
 
-def reoptimize(g, sol, scheduled, machine_ops, costs, max_reopt=3):
-    """Re-solve each already-sequenced machine for a few cycles (worst-first)."""
-    for _ in range(max_reopt):
-        scores = []
-        for m in scheduled:
-            for s, e in zip(sol[m][:-1], sol[m][1:]):
-                g.remove_arc(s, e)
-            tasks = heads_and_due_dates(g, machine_ops[m], costs)
-            order, lmax, _ = insert_machine(g, tasks)
-            sol[m] = order
-            scores.append((lmax, m))
-        scheduled[:] = [m for _, m in sorted(scores, reverse=True)]
-    noncritical_reoptimize(g, sol, scheduled, machine_ops, costs)
+    vector<vector<int>> sol(n_mach);    // committed order per machine
+    vector<int> to_schedule, scheduled;
+    for(int m=0;m<n_mach;++m) to_schedule.push_back(m);
 
+    auto reopt_machine = [&](int m){
+        // pull m out, re-solve, drop back in
+        for(size_t i=0;i+1<sol[m].size();++i) remove_arc(sol[m][i], sol[m][i+1]);
+        InsertResult r = insert_machine(machine_ops[m]);
+        sol[m]=r.order;
+        return r.ell;
+    };
 
-def noncritical_reoptimize(g, sol, scheduled, machine_ops, costs):
-    """Temporarily remove about sqrt(|M0|) non-critical machines and reinsert them."""
-    ms, critical_path, _ = g.makespan()
-    if ms is None:
-        return
-    critical_machines = {int(g.machines[op]) for op in critical_path}
-    candidates = [m for m in reversed(scheduled) if m not in critical_machines]
-    num_remove = min(int(np.sqrt(len(scheduled))), len(candidates))
-    removed = candidates[:num_remove]
-    for m in removed:
-        for s, e in zip(sol[m][:-1], sol[m][1:]):
-            g.remove_arc(s, e)
-    for m in reversed(removed):
-        tasks = heads_and_due_dates(g, machine_ops[m], costs)
-        order, _, _ = insert_machine(g, tasks)
-        sol[m] = order
+    for(int it=0; it<n_mach; ++it){
+        ll bestEll=LLONG_MIN; int bm=-1; vector<int> bperm;
+        for(int k: to_schedule){
+            InsertResult r = insert_machine(machine_ops[k]);
+            if(r.ell>bestEll){ bestEll=r.ell; bm=k; bperm=r.order; }
+            for(size_t i=0;i+1<r.order.size();++i) remove_arc(r.order[i], r.order[i+1]);  // undo trial
+        }
+        sol[bm]=bperm;
+        for(size_t i=0;i+1<bperm.size();++i) add_arc(bperm[i], bperm[i+1]);
+        // re-optimize previously sequenced machines (a few worst-first cycles)
+        if(it>0 && it<n_mach-1){
+            for(int cyc=0; cyc<3; ++cyc){
+                vector<pair<ll,int>> scores;
+                for(int m: scheduled) scores.push_back({reopt_machine(m), m});
+                sort(scores.rbegin(), scores.rend());
+                scheduled.clear();
+                for(auto& pr:scores) scheduled.push_back(pr.second);
+            }
+        }
+        to_schedule.erase(find(to_schedule.begin(),to_schedule.end(),bm));
+        scheduled.push_back(bm);
+    }
 
-
-def last_reoptimize(g, sol, scheduled, machine_ops, costs, max_iters=200):
-    """Cycle until a full sweep yields no makespan improvement; keep the best."""
-    best_ms = g.makespan()[0]
-    best_sol = sol.copy()
-    for _ in range(max_iters):
-        improved = False
-        for m in list(scheduled):
-            for s, e in zip(sol[m][:-1], sol[m][1:]):
-                g.remove_arc(s, e)
-            tasks = heads_and_due_dates(g, machine_ops[m], costs)
-            order, _, ms = insert_machine(g, tasks)
-            sol[m] = order
-            if ms < best_ms:
-                best_ms = ms; best_sol = sol.copy(); improved = True
-        if not improved:
-            break
-    return best_sol, best_ms
-
-
-def shifting_bottleneck(instance, max_reopt=3):
-    """instance: {'j','m','costs'(j,m),'machines'(j,m)}. Returns (sol, makespan)."""
-    num_j, num_m = instance["j"], instance["m"]
-    machines = instance["machines"].reshape(-1)
-    machine_ops = [np.argwhere(machines == m).reshape(-1) for m in range(num_m)]
-    g = DisjunctiveGraph(instance["costs"], instance["machines"], num_j, num_m)
-    costs = g.costs.astype(int)
-    sol = -np.ones((num_m, num_j), dtype=np.int32)
-    to_schedule, scheduled = set(range(num_m)), []
-
-    for it in range(num_m):
-        max_lmax, bm, bperm = -np.inf, None, None
-        for k in to_schedule:                          # rank every unsequenced machine
-            tasks = heads_and_due_dates(g, machine_ops[k], costs)
-            order, lmax, _ = insert_machine(g, tasks)  # optimal single-machine L_max
-            if lmax > max_lmax:                        # bottleneck = largest L_max
-                max_lmax, bm, bperm = lmax, k, order
-            for s, e in zip(order[:-1], order[1:]):    # undo trial insertion
-                g.remove_arc(s, e)
-        sol[bm] = bperm                                # commit the bottleneck
-        for s, e in zip(bperm[:-1], bperm[1:]):
-            g.add_arc(s, e)
-        if 0 < it < num_m - 1:                         # re-optimize previously sequenced machines
-            reoptimize(g, sol, scheduled, machine_ops, costs, max_reopt)
-        to_schedule.remove(bm); scheduled.append(bm)
-
-    return last_reoptimize(g, sol, scheduled, machine_ops, costs)
+    // final local re-optimization: cycle until a full sweep yields no improvement
+    ll best_ms = makespan();
+    for(int iter=0; iter<200; ++iter){
+        bool improved=false;
+        for(int m: scheduled){
+            reopt_machine(m);
+            ll ms = makespan();
+            if(ms<best_ms){ best_ms=ms; improved=true; }
+        }
+        if(!improved) break;
+    }
+    cout << best_ms << "\n";
+    return 0;
+}
 ```
 
-Evaluating the makespan of a fully oriented schedule with a CP/MIP model (interval per operation,
-`end == start + duration`, job precedence `end <= next.start`, no-overlap per machine, minimize the
-maximum end) is the standard exact check used to score any schedule.
+The makespan is itself the exact evaluation of a fully oriented schedule: it is the longest
+source-to-sink path in the oriented disjunctive graph (`end == start + duration`, job precedence,
+no-overlap per machine all encoded by the conjunctive arcs and the committed machine orders), so the
+printed value is the schedule's true completion time, a valid upper bound on the optimum.

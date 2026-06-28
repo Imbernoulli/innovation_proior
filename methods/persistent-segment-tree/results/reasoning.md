@@ -34,84 +34,88 @@ And `kth(1, 3, 2)` — the median of `[5, 1, 3]`, which is `3`. Here `u = root[0
 
 With the identity and the descent both checked, the implementation follows the invariants directly: `_insert` returns a new root after copying one path; `build` stores one root per prefix; `_query` walks two roots in lockstep on the difference of their left counts; `kth` maps the reached compressed index back to the original value.
 
-```python
-import sys
-from bisect import bisect_left
+```cpp
+// Reads: n q, then n array values, then q queries (l, r, k);
+// prints, one per line, the k-th smallest value in a[l..r] (1-based l, r, k).
+#include <bits/stdc++.h>
+using namespace std;
 
+// Persistent (value-indexed count) segment tree stored in parallel arrays.
+// One persisted version per array prefix: root[i] holds the multiset a[1..i].
+// A query window a[l..r] is the node-wise difference of root[r] and root[l-1].
+static vector<long long> tsum;   // count stored at a node
+static vector<int> ls, rs;       // child node ids (node 0 is the shared empty node)
 
-class RangeKth:
-    def __init__(self, a):
-        self.a = a
-        self.n = len(a)
-        self.vals = sorted(set(a))
-        self.len = len(self.vals)
-        self.sum = [0]
-        self.ls = [0]
-        self.rs = [0]
-        self.root = [0] * (self.n + 1)
-        self.build()
+static int newNode(long long s, int l, int r) {
+    tsum.push_back(s);
+    ls.push_back(l);
+    rs.push_back(r);
+    return (int)tsum.size() - 1;
+}
 
-    def getid(self, x):
-        return bisect_left(self.vals, x) + 1
+// Insert value-index k into the version rooted at prev; return the new root.
+// Copies only the root-to-leaf path; every untouched child stays shared.
+static int insertNode(int k, int l, int r, int prev) {
+    int cur = newNode(tsum[prev] + 1, ls[prev], rs[prev]);
+    if (l == r) return cur;
+    int mid = (l + r) >> 1;
+    if (k <= mid) ls[cur] = insertNode(k, l, mid, ls[cur]);
+    else          rs[cur] = insertNode(k, mid + 1, r, rs[cur]);
+    return cur;
+}
 
-    def _new(self, s, l, r):
-        self.sum.append(s)
-        self.ls.append(l)
-        self.rs.append(r)
-        return len(self.sum) - 1
+// u = root[l-1], v = root[r]; window counts are v minus u, node by node.
+static int queryNode(int u, int v, int l, int r, long long k) {
+    if (l == r) return l;
+    int mid = (l + r) >> 1;
+    long long x = tsum[ls[v]] - tsum[ls[u]];   // window items in the lower value half
+    if (k <= x) return queryNode(ls[u], ls[v], l, mid, k);
+    return queryNode(rs[u], rs[v], mid + 1, r, k - x);
+}
 
-    def _insert(self, k, l, r, prev):
-        # Copy this node; reuse both of prev's subtrees by default.
-        cur = self._new(self.sum[prev] + 1, self.ls[prev], self.rs[prev])
-        if l == r:
-            return cur
-        mid = (l + r) >> 1
-        # Rebuild only the half holding k; the other child stays shared.
-        if k <= mid:
-            self.ls[cur] = self._insert(k, l, mid, self.ls[cur])
-        else:
-            self.rs[cur] = self._insert(k, mid + 1, r, self.rs[cur])
-        return cur
+int main() {
+    ios::sync_with_stdio(false);
+    cin.tie(nullptr);
 
-    def build(self):
-        # root[0] = empty (node 0); each prefix copies one root-to-leaf path.
-        for i in range(1, self.n + 1):
-            self.root[i] = self._insert(
-                self.getid(self.a[i - 1]), 1, self.len, self.root[i - 1]
-            )
+    int n, q;
+    if (!(cin >> n >> q)) return 0;
 
-    def _query(self, u, v, l, r, k):
-        # u = root[l-1], v = root[r]; counts over a[l..r] are v minus u.
-        if l == r:
-            return l
-        mid = (l + r) >> 1
-        x = self.sum[self.ls[v]] - self.sum[self.ls[u]]   # window items in lower half
-        if k <= x:
-            return self._query(self.ls[u], self.ls[v], l, mid, k)
-        return self._query(self.rs[u], self.rs[v], mid + 1, r, k - x)
+    vector<long long> a(n);
+    for (int i = 0; i < n; ++i) cin >> a[i];
 
-    def kth(self, l, r, k):
-        """k-th smallest value in a[l..r] (1-based l, r; 1-based k)."""
-        idx = self._query(self.root[l - 1], self.root[r], 1, self.len, k)
-        return self.vals[idx - 1]
+    // Coordinate compression: dense value domain [1, len].
+    vector<long long> vals(a.begin(), a.end());
+    sort(vals.begin(), vals.end());
+    vals.erase(unique(vals.begin(), vals.end()), vals.end());
+    int len = (int)vals.size();
+    auto getid = [&](long long x) {
+        return (int)(lower_bound(vals.begin(), vals.end(), x) - vals.begin()) + 1;
+    };
 
+    // Node 0 is the shared empty node; root[0] = empty version.
+    tsum.assign(1, 0);
+    ls.assign(1, 0);
+    rs.assign(1, 0);
+    tsum.reserve((size_t)1 + (size_t)n * (33 - __builtin_clz(len > 1 ? len : 1)));
+    ls.reserve(tsum.capacity());
+    rs.reserve(tsum.capacity());
 
-def main():
-    data = sys.stdin.buffer.read().split()
-    if not data:
-        return
-    it = iter(data)
-    n = int(next(it))
-    q = int(next(it))
-    a = [int(next(it)) for _ in range(n)]
-    rk = RangeKth(a)
-    out = []
-    for _ in range(q):
-        l = int(next(it)); r = int(next(it)); k = int(next(it))
-        out.append(str(rk.kth(l, r, k)))
-    sys.stdout.write("\n".join(out) + ("\n" if out else ""))
+    vector<int> root(n + 1, 0);
+    if (len > 0) {
+        for (int i = 1; i <= n; ++i)
+            root[i] = insertNode(getid(a[i - 1]), 1, len, root[i - 1]);
+    }
 
-
-if __name__ == "__main__":
-    main()
+    string out;
+    for (int i = 0; i < q; ++i) {
+        int l, r;
+        long long k;
+        cin >> l >> r >> k;
+        int idx = queryNode(root[l - 1], root[r], 1, len, k);
+        out += to_string(vals[idx - 1]);
+        out += '\n';
+    }
+    cout << out;
+    return 0;
+}
 ```

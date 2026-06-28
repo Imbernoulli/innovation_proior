@@ -12,110 +12,160 @@ Because of convexity, increasing C makes extra intervals less attractive, so the
 
 The answer is recovered as F(K)=G(C)-C K. It is essential to subtract C times the requested K, not C times the count that happened to be returned by the tie-breaker. If the probe at C returns exactly K the formula is immediate. If the returned count jumps from above K to below K at the next integer price, convexity implies that the skipped counts all lie on the same linear segment of the chain, so F(k)+C k is constant across that segment and the same tangent evaluation works for every k in it, including K.
 
-This transforms the original O(n^2 K) computation into O(log M) probes, each an O(n log n) lower-envelope sweep, where M bounds the largest possible span. For verification and illustration, the Python script below uses a direct O(n^2) probe instead of a Li Chao tree, compares the Aliens-trick answer against a brute-force exact-count DP on small random instances, and prints the convex sequence F(k) so the shrinking marginal savings are visible.
+This transforms the original O(n^2 K) computation into O(log M) probes, each an O(n log n) lower-envelope sweep, where M bounds the largest possible span. The single-file C++17 program below is the deliverable: it reads `n K` and then the `n` point coordinates `r_i c_i` from stdin, forms the segments `[min(r_i,c_i), max(r_i,c_i)]`, and prints the minimum cost f(n,K) to stdout. Each price probe is one compressed Li Chao lower-envelope sweep, and the binary search over the penalty C drives the count to exactly K before the tangent subtraction G(C)-C*K recovers the answer. I checked it on the worked instances above — F(2)=57 and F(4)=45 on the four-interval chain, and the tied F(4)=300 case where the returned count overshoots to 5 yet the C*K subtraction still lands on the right value.
 
-```python
-import random
+```cpp
+// IOI 2016 "Aliens" trick: cover n segments with exactly K larger segments,
+// minimizing the sum of squared spans minus already-paid overlaps.
+// Reads:  first line "n K"; then n lines "r_i c_i" (each point gives segment
+//         [min(r_i,c_i), max(r_i,c_i)]). Writes: the minimum cost f(n,K). Uses long long.
+#include <bits/stdc++.h>
+using namespace std;
 
-def reduce_intervals(row, col):
-    seg = []
-    for a, b in zip(row, col):
-        l, r = min(a, b), max(a, b)
-        seg.append((l, r))
-    seg.sort(key=lambda x: (x[0], -x[1]))
-    keep = []
-    far = -10**9
-    for l, r in seg:
-        if r > far:
-            keep.append((l, r))
-            far = r
-    return keep
+using ll = long long;
+using i128 = __int128_t;
+const i128 INF = (i128(1) << 120);
 
-def block_cost(l, r, t, i):
-    span = r[i - 1] - l[t] + 1
-    if t == 0:
-        ov = 0
-    else:
-        ov = max(0, r[t - 1] - l[t] + 1)
-    return span * span - ov * ov
+struct Line {
+    ll m = 0;
+    i128 b = INF;
+    int cnt = 0;
+    pair<i128,int> eval(ll x) const {
+        if (b >= INF / 2) return {INF, cnt};
+        return {(i128)m * x + b, cnt};
+    }
+};
 
-def brute_force(row, col, K):
-    seg = reduce_intervals(row, col)
-    n = len(seg)
-    if n == 0 or K <= 0:
-        return 0
-    K = min(K, n)
-    l = [s[0] for s in seg]
-    r = [s[1] for s in seg]
-    INF = 10**30
-    dp = [[INF] * (K + 1) for _ in range(n + 1)]
-    dp[0][0] = 0
-    for i in range(1, n + 1):
-        for k in range(1, K + 1):
-            for t in range(i):
-                if dp[t][k - 1] < INF:
-                    c = block_cost(l, r, t, i)
-                    dp[i][k] = min(dp[i][k], dp[t][k - 1] + c)
-    return dp[n][K]
+struct LiChao {
+    vector<int> xs;
+    vector<Line> st;
+    LiChao(vector<int> xs_) : xs(move(xs_)), st(4 * max<size_t>(1, xs.size())) {}
 
-def aliens_trick(row, col, K):
-    seg = reduce_intervals(row, col)
-    n = len(seg)
-    if n == 0 or K <= 0:
-        return 0
-    K = min(K, n)
-    l = [s[0] for s in seg]
-    r = [s[1] for s in seg]
-    INF = 10**30
+    static bool better(pair<i128,int> a, pair<i128,int> b) {
+        if (a.first != b.first) return a.first < b.first;
+        return a.second > b.second;
+    }
 
-    def probe(C):
-        dp = [INF] * (n + 1)
-        cnt = [0] * (n + 1)
-        dp[0] = 0
-        for i in range(1, n + 1):
-            best_val = INF
-            best_cnt = 0
-            for t in range(i):
-                if dp[t] < INF:
-                    val = dp[t] + block_cost(l, r, t, i) + C
-                    if val < best_val or (val == best_val and cnt[t] + 1 > best_cnt):
-                        best_val = val
-                        best_cnt = cnt[t] + 1
-            dp[i] = best_val
-            cnt[i] = best_cnt
-        return dp[n], cnt[n]
+    void add(Line nw, int p, int l, int r) {
+        int m = (l + r) >> 1;
+        bool lef = better(nw.eval(xs[l]), st[p].eval(xs[l]));
+        bool mid = better(nw.eval(xs[m]), st[p].eval(xs[m]));
+        if (mid) swap(nw, st[p]);
+        if (l == r) return;
+        if (lef != mid) add(nw, p << 1, l, m);
+        else add(nw, p << 1 | 1, m + 1, r);
+    }
 
-    max_span = r[-1] - l[0] + 1
-    lo, hi = 0, max_span * max_span
-    while lo < hi:
-        mid = (lo + hi + 1) // 2
-        _, c = probe(mid)
-        if c >= K:
-            lo = mid
-        else:
-            hi = mid - 1
-    val, _ = probe(lo)
-    return val - lo * K
+    void add(Line nw) {
+        if (xs.empty()) return;
+        add(nw, 1, 0, (int)xs.size() - 1);
+    }
 
-random.seed(0)
-for _ in range(500):
-    n = random.randint(1, 8)
-    K = random.randint(1, n)
-    row = [random.randint(1, 10) for _ in range(n)]
-    col = [random.randint(1, 10) for _ in range(n)]
-    a = brute_force(row, col, K)
-    b = aliens_trick(row, col, K)
-    if a != b:
-        print("Mismatch!", row, col, K, a, b)
-        break
-else:
-    print("All random tests passed.")
+    pair<i128,int> query_idx(int idx, int p, int l, int r) const {
+        int x = xs[idx];
+        auto res = st[p].eval(x);
+        if (l == r) return res;
+        int m = (l + r) >> 1;
+        auto child = (idx <= m) ? query_idx(idx, p << 1, l, m)
+                                : query_idx(idx, p << 1 | 1, m + 1, r);
+        return better(child, res) ? child : res;
+    }
 
-print("\nConvexity check (marginal savings should be non-increasing):")
-row = [1, 2, 3, 4, 5]
-col = [3, 5, 7, 9, 11]
-prev = None
-for k in range(1, len(row) + 1):
-    Fk = brute_force(row, col, k)
-    print(f"F({k}) = {Fk}")
+    pair<i128,int> query(int x) const {
+        int idx = lower_bound(xs.begin(), xs.end(), x) - xs.begin();
+        return query_idx(idx, 1, 0, (int)xs.size() - 1);
+    }
+};
+
+i128 sq(ll x) { return (i128)x * x; }
+
+// Sort, split, and drop intervals contained in an earlier kept interval,
+// leaving a strictly-increasing endpoint sequence.
+vector<pair<int,int>> reduce_intervals(vector<int> row, vector<int> col) {
+    vector<pair<int,int>> seg;
+    for (int i = 0; i < (int)row.size(); ++i) {
+        int l = min(row[i], col[i]);
+        int r = max(row[i], col[i]);
+        seg.push_back({l, r});
+    }
+    sort(seg.begin(), seg.end(), [](auto a, auto b) {
+        if (a.first != b.first) return a.first < b.first;
+        return a.second > b.second;
+    });
+    vector<pair<int,int>> keep;
+    int far = numeric_limits<int>::min();
+    for (auto [l, r] : seg) {
+        if (r > far) {
+            keep.push_back({l, r});
+            far = r;
+        }
+    }
+    return keep;
+}
+
+ll minimum_cost_exact_k(vector<int> row, vector<int> col, int K) {
+    auto seg = reduce_intervals(row, col);
+    int n = seg.size();
+    if (n == 0 || K <= 0) return 0;
+    K = min(K, n);
+    vector<int> l(n), r(n);
+    for (int i = 0; i < n; ++i) {
+        l[i] = seg[i].first;
+        r[i] = seg[i].second;
+    }
+
+    // overlap(t): cells of split t already paid for by the previous block.
+    auto overlap = [&](int t) -> i128 {
+        if (t == 0) return 0;
+        return sq(max(0LL, (ll)r[t - 1] - l[t] + 1));
+    };
+
+    auto sweep = [&](i128 C) -> pair<i128,int> {
+        vector<i128> dp(n + 1, INF);
+        vector<int> cnt(n + 1, 0);
+        LiChao hull(r);
+
+        auto add_split = [&](int t) {
+            if (dp[t] >= INF / 2) return;
+            Line ln;
+            ln.m = -2LL * ((ll)l[t] - 1);
+            ln.b = dp[t] + sq((ll)l[t] - 1) - overlap(t) + (i128)C;
+            ln.cnt = cnt[t] + 1;
+            hull.add(ln);
+        };
+
+        dp[0] = 0;
+        add_split(0);
+        for (int i = 1; i <= n; ++i) {
+            auto q = hull.query(r[i - 1]);
+            dp[i] = sq(r[i - 1]) + q.first;
+            cnt[i] = q.second;
+            if (i < n) add_split(i);
+        }
+        return {dp[n], cnt[n]};
+    };
+
+    ll maxSpan = (ll)r.back() - l.front() + 1;
+    i128 lo = 0, hi = sq(maxSpan);
+    while (lo < hi) {
+        i128 mid = (lo + hi + 1) >> 1;
+        if (sweep(mid).second >= K) lo = mid;
+        else hi = mid - 1;
+    }
+    auto best = sweep(lo);
+    return (ll)(best.first - lo * K);
+}
+
+int main() {
+    ios::sync_with_stdio(false);
+    cin.tie(nullptr);
+
+    int n, K;
+    if (!(cin >> n >> K)) return 0;
+    vector<int> row(n), col(n);
+    for (int i = 0; i < n; ++i) cin >> row[i] >> col[i];
+
+    cout << minimum_cost_exact_k(row, col, K) << "\n";
+    return 0;
+}
 ```

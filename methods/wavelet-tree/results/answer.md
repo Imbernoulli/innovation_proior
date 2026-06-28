@@ -59,120 +59,130 @@ per level are split — $O(\log \sigma)$.
 
 ## Code
 
-```python
-import sys
-from bisect import bisect_left, bisect_right
+```cpp
+// Reads: "n q", then n integers, then q queries. A type-1 query "1 l r k" asks the
+// k-th smallest value in a[l..r] (1-based l,r,k); a type-2 query "2 l r x" asks the
+// number of elements in a[l..r] with value <= x. Prints one answer per query.
+#include <bits/stdc++.h>
+using namespace std;
 
+struct Wavelet {
+    int n, sigma, root;
+    vector<long long> vals;            // sorted distinct values
+    vector<int> lo, hi, lc, rc;        // per-node value interval and child ids
+    vector<vector<int>> pz;            // pz[node] = prefix-zeros array
 
-class RangeQuery:
-    def __init__(self, a):
-        self.a = a
-        self.n = len(a)
-        self.vals = sorted(set(a))
-        self.sigma = len(self.vals)
-        self.lo = []
-        self.hi = []
-        self.lc = []
-        self.rc = []
-        self.aux = []
-        self.root = -1
-        self.build()
+    int newNode(int vlo, int vhi) {
+        lo.push_back(vlo); hi.push_back(vhi);
+        lc.push_back(-1); rc.push_back(-1);
+        pz.emplace_back();
+        return (int)lo.size() - 1;
+    }
 
-    def code(self, x):
-        return bisect_left(self.vals, x)
+    int buildRec(vector<int>& seq, int vlo, int vhi) {
+        int node = newNode(vlo, vhi);
+        if (vlo == vhi) {                       // leaf: one value, no split
+            pz[node].assign(seq.size() + 1, 0);
+            return node;
+        }
+        int mid = (vlo + vhi) >> 1;             // bisect the value range
+        vector<int> z(seq.size() + 1, 0);       // prefix count of low elements
+        vector<int> left, right;                // stable partition into the two halves
+        for (size_t i = 0; i < seq.size(); ++i) {
+            int c = seq[i];
+            if (c <= mid) {                     // low half -> bit 0, goes left
+                z[i + 1] = z[i] + 1;
+                left.push_back(c);
+            } else {                            // high half -> bit 1, goes right
+                z[i + 1] = z[i];
+                right.push_back(c);
+            }
+        }
+        pz[node] = move(z);
+        int lcId = buildRec(left, vlo, mid);
+        int rcId = buildRec(right, mid + 1, vhi);
+        lc[node] = lcId; rc[node] = rcId;
+        return node;
+    }
 
-    def _new(self, vlo, vhi):
-        self.lo.append(vlo)
-        self.hi.append(vhi)
-        self.lc.append(-1)
-        self.rc.append(-1)
-        self.aux.append(None)
-        return len(self.lo) - 1
+    Wavelet(const vector<long long>& a) {
+        n = (int)a.size();
+        vals = a;
+        sort(vals.begin(), vals.end());
+        vals.erase(unique(vals.begin(), vals.end()), vals.end());
+        sigma = (int)vals.size();
+        root = -1;
+        if (n == 0) {                           // empty array: single trivial leaf
+            root = newNode(0, 0);
+            pz[root].assign(1, 0);
+            return;
+        }
+        vector<int> codes(n);
+        for (int i = 0; i < n; ++i)
+            codes[i] = (int)(lower_bound(vals.begin(), vals.end(), a[i]) - vals.begin());
+        root = buildRec(codes, 0, sigma - 1);
+    }
 
-    def build(self):
-        codes = [self.code(x) for x in self.a]
+    // k-th smallest value in a[l..r]; 1-based l,r,k.
+    long long kth(int l, int r, int k) {
+        int loP = l - 1, hiP = r;               // half-open slice [loP, hiP)
+        int node = root;
+        while (lo[node] != hi[node]) {          // until a single-value leaf
+            const vector<int>& z = pz[node];
+            int zl = z[loP], zr = z[hiP];
+            int num_left = zr - zl;             // slice elements in the low half
+            if (k <= num_left) {                // answer is low: map slice into left
+                loP = zl; hiP = zr;
+                node = lc[node];
+            } else {                            // answer is high: drop the low count
+                k -= num_left;
+                loP = loP - zl; hiP = hiP - zr; // map slice into right
+                node = rc[node];
+            }
+        }
+        return vals[lo[node]];
+    }
 
-        def rec(seq, vlo, vhi):
-            node = self._new(vlo, vhi)
-            if vlo == vhi:                     # leaf: one value, no split
-                self.aux[node] = [0] * (len(seq) + 1)
-                return node
-            mid = (vlo + vhi) >> 1             # bisect the value range
-            z = [0] * (len(seq) + 1)           # prefix count of low elements
-            left, right = [], []              # stable partition into the two halves
-            for i, c in enumerate(seq):
-                if c <= mid:                  # low half -> bit 0, goes left
-                    z[i + 1] = z[i] + 1
-                    left.append(c)
-                else:                         # high half -> bit 1, goes right
-                    z[i + 1] = z[i]
-                    right.append(c)
-            self.aux[node] = z
-            self.lc[node] = rec(left, vlo, mid)
-            self.rc[node] = rec(right, mid + 1, vhi)
-            return node
+    // Number of elements in a[l..r] with value <= x; 1-based l,r.
+    long long rank_leq(int l, int r, long long x) {
+        // codes <= x are exactly [0, xc): xc = number of distinct values <= x
+        int xc = (int)(upper_bound(vals.begin(), vals.end(), x) - vals.begin());
+        return rankRec(root, l - 1, r, xc);
+    }
 
-        if self.n == 0:
-            self.root = self._new(0, 0)
-            self.aux[self.root] = [0]
-            return
-        self.root = rec(codes, 0, self.sigma - 1)
+    long long rankRec(int node, int loP, int hiP, int xc) {
+        if (hiP <= loP || xc <= lo[node]) return 0;   // empty slice / node wholly above x
+        if (hi[node] < xc) return hiP - loP;          // node wholly at or below x
+        const vector<int>& z = pz[node];
+        int zl = z[loP], zr = z[hiP];                 // threshold splits this node
+        return rankRec(lc[node], zl, zr, xc)
+             + rankRec(rc[node], loP - zl, hiP - zr, xc);
+    }
+};
 
-    def kth(self, l, r, k):
-        """k-th smallest value in a[l..r] (1-based l, r; 1-based k)."""
-        lo, hi = l - 1, r                      # half-open slice [lo, hi)
-        node = self.root
-        while self.lo[node] != self.hi[node]:  # until a single-value leaf
-            z = self.aux[node]
-            zl, zr = z[lo], z[hi]
-            num_left = zr - zl                 # slice elements in the low half
-            if k <= num_left:                  # answer is low: map slice into left
-                lo, hi = zl, zr
-                node = self.lc[node]
-            else:                              # answer is high: drop the low count
-                k -= num_left
-                lo, hi = lo - zl, hi - zr      # map slice into right
-                node = self.rc[node]
-        return self.vals[self.lo[node]]
-
-    def rank_leq(self, l, r, x):
-        """Number of elements in a[l..r] with value <= x (1-based l, r)."""
-        xc = bisect_right(self.vals, x)        # codes <= x are exactly [0, xc)
-
-        def rec(node, lo, hi):
-            if hi <= lo or xc <= self.lo[node]:   # empty slice / node wholly above x
-                return 0
-            if self.hi[node] < xc:                # node wholly at or below x
-                return hi - lo
-            z = self.aux[node]
-            zl, zr = z[lo], z[hi]                 # threshold splits this node
-            return rec(self.lc[node], zl, zr) + rec(self.rc[node], lo - zl, hi - zr)
-
-        return rec(self.root, l - 1, r)
-
-
-def main():
-    data = sys.stdin.buffer.read().split()
-    if not data:
-        return
-    it = iter(data)
-    n = int(next(it)); q = int(next(it))
-    a = [int(next(it)) for _ in range(n)]
-    w = RangeQuery(a)
-    out = []
-    for _ in range(q):
-        t = int(next(it))
-        if t == 1:
-            l = int(next(it)); r = int(next(it)); k = int(next(it))
-            out.append(str(w.kth(l, r, k)))
-        else:
-            l = int(next(it)); r = int(next(it)); x = int(next(it))
-            out.append(str(w.rank_leq(l, r, x)))
-    sys.stdout.write("\n".join(out) + ("\n" if out else ""))
-
-
-if __name__ == "__main__":
-    main()
+int main() {
+    ios_base::sync_with_stdio(false);
+    cin.tie(nullptr);
+    int n, q;
+    if (!(cin >> n >> q)) return 0;
+    vector<long long> a(n);
+    for (int i = 0; i < n; ++i) cin >> a[i];
+    Wavelet w(a);
+    string out;
+    for (int i = 0; i < q; ++i) {
+        int t; cin >> t;
+        if (t == 1) {
+            int l, r, k; cin >> l >> r >> k;
+            out += to_string(w.kth(l, r, k));
+        } else {
+            int l, r; long long x; cin >> l >> r >> x;
+            out += to_string(w.rank_leq(l, r, x));
+        }
+        out += '\n';
+    }
+    cout << out;
+    return 0;
+}
 ```
 
 ## Complexity

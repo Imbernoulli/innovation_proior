@@ -40,90 +40,113 @@ Appending $c$ to $s$ injects exactly the strings $x+c$ for every suffix $x$ of $
 
 ## Code
 
-```python
-class SubstringCounter:
-    """Online suffix automaton over integer character codes.
+Single-file C++17. It reads one string `s` from stdin and prints, on the first line, the number of distinct non-empty substrings of `s`; on the second line, the running count after each prefix `s[0..i]` (space-separated). The total is accumulated in `long long` (it grows like $\Theta(n^2)$, so it overflows 32 bits well before $n=10^6$).
 
-    One state per ending-position equivalence class (plus the root t0 = state 0).
-    State v stores len[v] (length of its longest string), link[v] (the suffix
-    link: the state of the longest proper suffix of longest(v) lying in another
-    class), and trans[v] (character-code -> state). The distinct non-empty
-    substrings owned by v are exactly the suffixes of longest(v) with lengths in
-    [len[link[v]] + 1, len[v]], i.e. len[v] - len[link[v]] of them.
-    """
+```cpp
+// Online suffix automaton (SAM): counts distinct non-empty substrings.
+// Reads one string s from stdin; prints the number of distinct non-empty
+// substrings of s on the first line, then the running count after each prefix
+// s[0..i] (space-separated) on the second line.
+#include <bits/stdc++.h>
+using namespace std;
 
-    def __init__(self):
-        self.length = [0]      # len of the root's longest string (empty) is 0
-        self.link = [-1]       # root has no suffix link
-        self.trans = [dict()]  # root's outgoing transitions
-        self.last = 0          # state whose longest string is the whole prefix
-        self.total = 0         # current number of distinct non-empty substrings
+// One state per ending-position equivalence class (plus the root t0 = state 0).
+// State v stores len[v] (length of its longest string), link[v] (the suffix
+// link: the state of the longest proper suffix of longest(v) lying in another
+// class), and trans[v] (character code -> state). The distinct non-empty
+// substrings owned by v are exactly the suffixes of longest(v) with lengths in
+// [len[link[v]] + 1, len[v]], i.e. len[v] - len[link[v]] of them.
+struct SubstringCounter {
+    vector<long long> length;       // len[v]: length of v's longest string
+    vector<int> link;               // link[v]: suffix link (-1 for the root)
+    vector<map<int, int>> trans;    // trans[v]: character code -> state
+    int last;                       // state whose longest string is the whole prefix
+    long long total;                // current number of distinct non-empty substrings
 
-    def extend(self, c):
-        # New state for the whole prefix s + c; its longest string grew by one.
-        cur = len(self.length)
-        self.length.append(self.length[self.last] + 1)
-        self.link.append(-1)
-        self.trans.append(dict())
+    SubstringCounter() {
+        length.push_back(0);        // len of the root's longest string (empty) is 0
+        link.push_back(-1);         // root has no suffix link
+        trans.emplace_back();       // root's outgoing transitions
+        last = 0;
+        total = 0;
+    }
 
-        # Walk suffix links from last, attaching a c-edge to cur for every
-        # suffix of s that was not yet followed by c (those x + c are new).
-        p = self.last
-        while p != -1 and c not in self.trans[p]:
-            self.trans[p][c] = cur
-            p = self.link[p]
+    void extend(int c) {
+        // New state for the whole prefix s + c; its longest string grew by one.
+        int cur = (int)length.size();
+        length.push_back(length[last] + 1);
+        link.push_back(-1);
+        trans.emplace_back();
 
-        if p == -1:
-            # c never followed any suffix of s: c is new, link cur to the root.
-            self.link[cur] = 0
-        else:
-            q = self.trans[p][c]
-            if self.length[p] + 1 == self.length[q]:
-                # Tight edge: q's longest string is exactly x + c. Link straight.
-                self.link[cur] = q
-            else:
-                # Loose edge: x + c gained the new ending position but q's longer
-                # strings did not, so q's class splits. Clone q at length len(p)+1.
-                clone = len(self.length)
-                self.length.append(self.length[p] + 1)
-                self.link.append(self.link[q])         # clone copies q's link
-                self.trans.append(dict(self.trans[q]))  # and q's transitions
-                # Redirect the suffix chain of c-edges from q over to the clone.
-                while p != -1 and self.trans[p].get(c) == q:
-                    self.trans[p][c] = clone
-                    p = self.link[p]
-                self.link[q] = clone
-                self.link[cur] = clone
+        // Walk suffix links from last, attaching a c-edge to cur for every
+        // suffix of s that was not yet followed by c (those x + c are new).
+        int p = last;
+        while (p != -1 && trans[p].find(c) == trans[p].end()) {
+            trans[p][c] = cur;
+            p = link[p];
+        }
 
-        self.last = cur
-        self.total += self.length[cur] - self.length[self.link[cur]]
-        return self
+        if (p == -1) {
+            // c never followed any suffix of s: c is new, link cur to the root.
+            link[cur] = 0;
+        } else {
+            int q = trans[p][c];
+            if (length[p] + 1 == length[q]) {
+                // Tight edge: q's longest string is exactly x + c. Link straight.
+                link[cur] = q;
+            } else {
+                // Loose edge: x + c gained the new ending position but q's longer
+                // strings did not, so q's class splits. Clone q at length len(p)+1.
+                int clone = (int)length.size();
+                length.push_back(length[p] + 1);
+                link.push_back(link[q]);     // clone copies q's link
+                trans.push_back(trans[q]);   // and q's transitions
+                // Redirect the suffix chain of c-edges from q over to the clone.
+                while (p != -1) {
+                    auto it = trans[p].find(c);
+                    if (it == trans[p].end() || it->second != q) break;
+                    it->second = clone;
+                    p = link[p];
+                }
+                link[q] = clone;
+                link[cur] = clone;
+            }
+        }
 
-    def count_distinct_substrings(self):
-        return self.total
+        last = cur;
+        total += length[cur] - length[link[cur]];
+    }
 
+    long long count_distinct_substrings() const { return total; }
+};
 
-def count_distinct_substrings(text):
-    """Number of distinct non-empty substrings of text, built online."""
-    sc = SubstringCounter()
-    code = {}
-    for ch in text:
-        if ch not in code:
-            code[ch] = len(code)
-        sc.extend(code[ch])
-    return sc.count_distinct_substrings()
+int main() {
+    ios::sync_with_stdio(false);
+    cin.tie(nullptr);
 
+    string s;
+    // Read the string as a single whitespace-delimited token.
+    if (!(cin >> s)) { cout << 0 << "\n"; return 0; }
 
-def distinct_substrings_per_prefix(text):
-    """For each prefix text[:i+1], the running count of distinct non-empty
-    substrings -- one online pass."""
-    sc = SubstringCounter()
-    code = {}
-    out = []
-    for ch in text:
-        if ch not in code:
-            code[ch] = len(code)
-        sc.extend(code[ch])
-        out.append(sc.count_distinct_substrings())
-    return out
+    // Assign stable dense integer codes to characters as they first appear,
+    // then feed one code at a time (the alphabet is fixed for a given input).
+    SubstringCounter sc;
+    vector<long long> perPrefix;
+    perPrefix.reserve(s.size());
+    int code[256];
+    fill(begin(code), end(code), -1);
+    int nextCode = 0;
+
+    for (unsigned char ch : s) {
+        if (code[ch] == -1) code[ch] = nextCode++;
+        sc.extend(code[ch]);
+        perPrefix.push_back(sc.count_distinct_substrings());
+    }
+
+    cout << sc.count_distinct_substrings() << "\n";
+    for (size_t i = 0; i < perPrefix.size(); i++) {
+        cout << perPrefix[i] << (i + 1 < perPrefix.size() ? ' ' : '\n');
+    }
+    return 0;
+}
 ```
