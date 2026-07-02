@@ -32,6 +32,8 @@
 
 ## 2. 掉点的病因(按频率排,每类带真实题号 + 片段)
 
+> **📎 全部真实样本可查证**:每道题的**完整 generation(base vs 直接SFT)**都导出在 [`DATA_FIX_ROUND2_samples/`](DATA_FIX_ROUND2_samples/INDEX.md) —— **全 172 题**,文件名 `prob_<题id>.md`,每个含 **base 最高分样本 + SFT 最低分样本的完整原文**(含 `<think>`、得分、completion_tokens)。[`INDEX.md`](DATA_FIX_ROUND2_samples/INDEX.md) 按掉点幅度排序。下文每个例子都能在对应 `prob_<id>.md` 里看到完整输出(如题 109 → [`prob_109.md`](DATA_FIX_ROUND2_samples/prob_109.md))。**我没分析到的题也全给了,你可以自己翻。**
+
 ### 2.1 脆实现:思路对、C++ 写崩 —— **78.4%(196/250),绝对大头**
 
 模型认出了正确的 NP-hard / 启发式框架,却交了写崩的 C++:无界递归、占位符、输出形状错、未定义符号。
