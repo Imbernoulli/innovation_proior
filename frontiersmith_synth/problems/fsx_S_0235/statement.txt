@@ -1,0 +1,136 @@
+# Aurora Station Trench Network: Connecting the Polar Research Base
+
+## Problem
+
+A polar research consortium is wiring up a new base on the ice sheet. The base is a set of
+`N` numbered **junction sites** (drill rigs, generator huts, met masts, ...). Between some
+pairs of sites the survey team has already flagged a **candidate cable trench**: a straight
+cut through the ice along which a power/data cable *could* be laid. Trench `k` joins two
+sites and, if you decide to dig it, costs `w_k` (metres of ice to cut) — a fixed known
+amount.
+
+A subset `S` of the `N` sites are **research huts**: these are the sites that actually
+need to talk to each other. You must choose a set of trenches to dig so that **all research
+huts end up in one connected component** (a hut can reach any other hut by walking along dug
+trenches, possibly passing through non-hut sites that act as junctions). You do **not** need
+to connect the non-hut sites — they are useful only as optional relay junctions.
+
+You want to dig as little ice as possible: **minimize the total cost of the trenches you
+dig**. If you were forced to connect *every* site this would just be a minimum spanning
+tree, but here you may freely skip sites, so the cheapest network is a **Steiner tree over
+the huts** — no efficient optimal algorithm is known and heuristics are expected.
+
+The survey guarantees the base is buildable: the first `N-1` listed trenches form a
+**backbone path** `1-2, 2-3, ..., (N-1)-N` linking every site, so a feasible network always
+exists.
+
+## Input
+
+```
+N M K
+u_1 v_1 w_1
+u_2 v_2 w_2
+...
+u_M v_M w_M
+h_1 h_2 ... h_K
+```
+
+- Line 1: `N` sites, `M` candidate trenches, `K` research huts.
+- Each of the next `M` lines describes trench `k` (numbered `1..M` in this order):
+  it joins sites `u_k` and `v_k` (`1 <= u_k, v_k <= N`, `u_k != v_k`) and costs `w_k >= 1`.
+- **The first `N-1` trenches are the backbone**: trench `k` (for `1 <= k <= N-1`) joins
+  site `k` and site `k+1`. The remaining trenches are extra shortcut trenches.
+- The last line lists the `K` distinct research-hut sites `h_1 .. h_K`.
+
+There may be more than one trench between the same pair of sites (with possibly different
+costs); treat them as distinct trenches identified by their index.
+
+## Output
+
+Print the trenches you dig, referenced by their **1-based index** in the input.
+
+```
+E
+i_1 i_2 ... i_E
+```
+
+- Line 1: integer `E`, the number of trenches you dig (`0 <= E <= M`).
+- The following tokens are `E` distinct trench indices, each in `1..M` (whitespace/newlines
+  between them do not matter). No index may appear more than once.
+
+## Feasibility
+
+An output is feasible if and only if:
+
+- every printed index is an integer in `1..M`;
+- no index is repeated;
+- in the subgraph formed by exactly the dug trenches, **all `K` research huts lie in a
+  single connected component**.
+
+Non-hut sites need not be connected. Any output that violates feasibility scores 0.
+
+## Objective
+
+Let the total dug cost be
+
+```
+F = sum over every dug trench i of w_i.
+```
+
+Minimize `F`.
+
+## Scoring
+
+The reference baseline `B` is the cost of digging the **entire backbone** (trenches
+`1 .. N-1`), which always connects every site and hence every hut:
+
+```
+B = w_1 + w_2 + ... + w_{N-1}.
+```
+
+Your score on a test is
+
+```
+ratio = min( 1.0, (B / max(1, F)) / 10 ).
+```
+
+So digging exactly the backbone scores `0.1`; a network costing half the backbone scores
+`0.2`; reaching one tenth of the backbone cost (or cheaper) caps the score at `1.0`. Larger
+is better. Per-test ratios are averaged.
+
+## Constraints
+
+- `2 <= N <= 260`
+- `N-1 <= M <= 4*N`
+- `2 <= K <= max(2, N/3)`
+- `1 <= w_k <= 1000`
+- Time limit: 5s
+- Memory limit: 512 MiB
+
+## Example
+
+Input:
+```
+4 5 2
+1 2 60
+2 3 70
+3 4 50
+1 4 20
+1 3 30
+1 4
+```
+
+There are 4 sites and 5 trenches. Trenches 1,2,3 are the backbone (`1-2,2-3,3-4`); trenches
+4 (`1-4`, cost 20) and 5 (`1-3`, cost 30) are shortcuts. The research huts are sites 1 and 4.
+
+The backbone baseline digs trenches 1,2,3: `B = 60 + 70 + 50 = 180`.
+
+Digging only trench 4 (`1-4`) already puts huts 1 and 4 in one component, so `E = 1`,
+`F = 20`, and
+
+```
+ratio = min( 1.0, (180 / 20) / 10 ) = min(1.0, 0.9) = 0.9.
+```
+
+Digging the whole backbone (`E = 3`, indices 1 2 3) gives `F = 180 = B` and scores exactly
+`0.1`.

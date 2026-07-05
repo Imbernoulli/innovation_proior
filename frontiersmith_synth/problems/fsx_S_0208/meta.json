@@ -1,0 +1,16 @@
+{
+  "id": "fsx_S_0208",
+  "tier": "S",
+  "family": "routing-tour",
+  "seed_problem": "ALE-Bench pickup-delivery TSP (ahc006/027/039); Frontier-CS routing",
+  "mutation": "composite: prize-collecting selective pickup-delivery single-vehicle tour on an X-Y traverse gantry (Chebyshev/L-infinity metric) with rack-capacity batching and a per-served instrumentation cost -- choose which precedence-constrained mount/read pairs to perform and order them to minimize gantry travel plus instrumentation plus omission penalties",
+  "objective": "min",
+  "theme": "wind tunnel sensors",
+  "title": "Wind-Tunnel Sensor Traverse: Selective Probe Mount-and-Read Tour",
+  "strategies": [
+    "perform-nothing baseline: output an empty tour, cost = total omission penalty (calibration point)",
+    "standalone-benefit greedy: perform tasks whose omission penalty exceeds their solo dock round-trip travel plus instrumentation, each mounted then immediately read",
+    "profitable-set selection + capacity/precedence nearest-neighbor interleaving: pick profitable tasks then route with a nearest available (mount-or-read) event heuristic that batches probes on the rack to cut Chebyshev travel",
+    "penalty-driven subset reoptimization: alternate re-selecting the performed set and re-routing (local search) to trade gantry travel plus instrumentation against skipped-task penalties"
+  ]
+}

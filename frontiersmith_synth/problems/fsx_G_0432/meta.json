@@ -1,0 +1,16 @@
+{
+  "id": "fsx_G_0432",
+  "tier": "G",
+  "format": "E",
+  "family": "sci-periodic-sparse",
+  "eval_form": "quality-metric",
+  "theme": "tidal gauge",
+  "title": "Tidal-Gauge Harmonic Recovery -- extrapolating Fourier-sparse symbolic regression",
+  "objective": "min",
+  "strategies": [
+    "constant baseline: predict the mean of the training tide heights (ignores all periodicity) -> ~0.1",
+    "single-harmonic periodogram: fit only the dominant tidal constituent by a cos/sin least-squares frequency scan; misses secondary constituents so extrapolation is partial",
+    "iterated matching pursuit: peel off the strongest tidal-band frequency, subtract, repeat with adaptive stopping to recover the sparse set of constituents, then refine each frequency locally",
+    "alternatives: finer frequency grids, joint nonlinear refinement of all frequencies/phases, or trading the complexity penalty against held-out error by dropping weak constituents"
+  ]
+}

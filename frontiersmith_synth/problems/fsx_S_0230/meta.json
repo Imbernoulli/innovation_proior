@@ -1,0 +1,17 @@
+{
+  "id": "fsx_S_0230",
+  "tier": "S",
+  "family": "covering-facility-location",
+  "seed_problem": "Place watchtowers on a forest graph to cover every cell within radius r, minimizing total cost; score = baseline_cost / achieved_cost.",
+  "mutation": "input+output: generalize the geometric radius-cover to a weighted connected graph with per-vertex installation costs (weighted minimum-cost dominating-set-within-radius = weighted set cover), skinned as placing chair-lift base stations on a ski-resort zone graph so every zone is within comfort ski-time R of a station, minimizing total installation cost.",
+  "objective": "min",
+  "theme": "ski resort lifts",
+  "title": "Alpine Lift Network Coverage",
+  "strategies": [
+    "build-everywhere baseline (trivial)",
+    "cost-effective greedy set cover: repeatedly add the station maximizing newly-served-zones per cost",
+    "greedy + redundancy pruning: drop stations whose served zones are already covered by others",
+    "randomized multi-start greedy with different cost-effectiveness tie-breaks, keep the cheapest valid plan",
+    "LP-relaxation / rounding of the covering LP"
+  ]
+}

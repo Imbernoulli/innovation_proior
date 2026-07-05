@@ -1,0 +1,16 @@
+{
+  "id": "fsx_B_0364",
+  "tier": "B",
+  "format": "D",
+  "family": "quantum-circuit-opcount",
+  "eval_form": "flops",
+  "theme": "deep-sea cable network",
+  "title": "Seabed Splice Router: Minimum-SWAP Channel Routing on a Cable Mesh",
+  "objective": "min",
+  "strategies": [
+    "reset-to-home router: route the first channel to its partner along a shortest cable path each splice, then undo all swaps to restore the home placement (trivial, ~0.1)",
+    "no-reset SABRE-naive: keep channels where routing leaves them and route the first channel toward its partner in the live mapping (greedy)",
+    "meet-in-the-middle with look-ahead: same swap cost per splice but choose the split point that steers the pair toward the next W splices' channels (strong)",
+    "full token-swapping / SABRE with reverse-traversal + weighted look-ahead over the whole schedule -- true minimum SWAP count is NP-hard and unknown (open ceiling, uncovered)"
+  ]
+}

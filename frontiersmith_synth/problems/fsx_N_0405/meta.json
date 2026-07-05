@@ -1,0 +1,18 @@
+{
+  "id": "fsx_N_0405",
+  "tier": "N",
+  "format": "A",
+  "family": "covering-temporal-carryover",
+  "eval_form": "quality-metric",
+  "seed_problem": "Over T rounds pick sensors (paying per activation); coverage a sensor gives decays each round it stays on and carries over when off. Keep every target's per-round coverage >= threshold at min total cost. Composite: set cover x temporal state; trap: static cover is wasteful, must cycle.",
+  "mutation": "composite: fuse weighted set cover with a per-sensor charge state machine (emitted pulse == current charge; drains when on, recharges when off) and a per-round coverage constraint, so the objective couples WHICH sensors cover WHICH targets with WHEN to rest them for recharge; the optimum is a non-additive duty-cycling schedule, not a static cover.",
+  "objective": "min",
+  "theme": "glacier sensor net",
+  "title": "Glacier Sensor Net: Duty-Cycling Under Charge Decay",
+  "strategies": [
+    "all-on baseline: switch every sensor on every round (always feasible, wasteful) -- the checker's reference B",
+    "myopic breadth greedy: each round add the sensor covering the most still-deficient targets until demands are met, cost-blind",
+    "cost-aware value/cost greedy + redundancy pruning: pick argmax of (charge * deficit)/cost, then drop the most expensive redundant sensors each round",
+    "charge-planning local search: reserve freshly-charged sensors, rotate duty across a covering family so every target is met by few high-charge pulses while the rest recharge"
+  ]
+}

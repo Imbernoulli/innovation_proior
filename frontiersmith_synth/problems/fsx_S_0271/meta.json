@@ -1,0 +1,19 @@
+{
+  "id": "fsx_S_0271",
+  "tier": "S",
+  "format": "A",
+  "family": "network-design",
+  "eval_form": "quality-metric",
+  "seed_problem": "Build a connected relay network where no node has degree > 3, minimizing total cable length; checker validates connectivity+degree and scores baseline/cost.",
+  "mutation": "output: keep the minimum-length degree-capped connectivity goal but strengthen the required output from a connected spanning network to a SURVIVABLE one -- a 2-edge-connected (bridgeless) spanning subgraph with per-module port caps in {2,3,4}. This turns the polynomial degree-bounded MST relaxation into the NP-hard minimum-length degree-constrained 2-edge-connected spanning subgraph problem.",
+  "objective": "min",
+  "theme": "lunar habitat",
+  "variant": 12,
+  "title": "Lunar Habitat Pressure Loops: Survivable Degree-Capped Tunnel Grid",
+  "strategies": [
+    "loop baseline: connect the modules in input order into a single Hamiltonian cycle (always 2-edge-connected, degree 2 within caps, matches the checker baseline, ratio ~0.1)",
+    "nearest-neighbour tour: build a short Hamiltonian cycle by repeatedly hopping to the closest unvisited module, then close the loop",
+    "2-opt local search on the survivable tour: start from a nearest-neighbour cycle and apply length-reducing segment reversals that keep it a single cycle (still 2-edge-connected, degree 2)",
+    "port-spending ear/cross-link construction: exploit modules with cap 3-4 to add short chords/ears that shorten the loop while preserving bridgelessness"
+  ]
+}

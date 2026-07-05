@@ -1,0 +1,17 @@
+{
+  "id": "fsx_A_0290",
+  "tier": "A",
+  "format": "B",
+  "family": "heuristic-contest-offline",
+  "eval_form": "quality-metric",
+  "theme": "forest fire watchtowers",
+  "title": "Ridgeline Watch: Budgeted Fire-Tower Placement",
+  "objective": "optimize",
+  "source_frameworks": ["ALE-Bench (AHC)", "TTT-Discover (ahc)", "SimpleTES (AHC)"],
+  "strategies": [
+    "cost-ascending fill: buy the cheapest sites first while the budget lasts, ignoring what they actually watch (reproduces the evaluator's weak coverage-blind reference, scores ~0.1)",
+    "ratio-greedy budgeted coverage: repeatedly build the affordable site with the highest NEW-watched-weight-per-cost, never revising, so early ratio-optimal picks that overlap later value leave weight uncollected",
+    "warm-started local search: seed from ratio- and absolute-gain greedy, then hill-climb add / drop-and-swap moves on a per-cell coverage-count grid to reclaim value one-shot greedy overlaps away, staying below the unaffordable all-towers ceiling",
+    "invalid over-budget plan: build every site so total cost blows the budget and the plan is rejected -> 0.0"
+  ]
+}

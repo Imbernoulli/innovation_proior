@@ -1,0 +1,18 @@
+{
+  "id": "fsx_A_0116",
+  "tier": "A",
+  "format": "C",
+  "family": "integer-matrix-construction",
+  "eval_form": "quality-metric",
+  "theme": "wildlife corridor",
+  "title": "Signed Corridor Robustness Matrix",
+  "objective": "max",
+  "source_frameworks": ["OpenEvolve", "ThetaEvolve", "SimpleTES"],
+  "strategies": [
+    "terrain-default completion (trivial baseline): fill free cells with the +1-if-downstream / -1-if-upstream triangular pattern, then apply forced signs; scores ~0.1",
+    "single-start coordinate ascent: from the terrain-default matrix, flip each free entry that increases the exact |det| until a local optimum",
+    "deterministic multi-restart coordinate ascent: many seeded random +/-1 starts plus the default start, each hill-climbed on |det|, keep the best",
+    "algebraic near-Hadamard construction: seed with a Sylvester/conference-style +/-1 matrix, then repair the terrain-fixed cells and locally refine"
+  ],
+  "scoring": "exact |det| via integer Bareiss elimination, normalized to |det| of the terrain-default completion; trivial ~= 0.1, 10x-baseline robustness caps at 1.0; infeasible (entry not +/-1 or a violated forced link) -> 0.0"
+}

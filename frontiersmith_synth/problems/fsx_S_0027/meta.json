@@ -1,0 +1,18 @@
+{
+  "id": "fsx_S_0027",
+  "tier": "S",
+  "format": "A",
+  "family": "packing-knapsack",
+  "eval_form": "quality-metric",
+  "seed_problem": "Frontier-CS polyomino/area packing: pack polyominoes into a W x H board maximizing covered area (reflections allowed); checker validates no-overlap and in-bounds.",
+  "mutation": "input+goal (composite): relax the flat board to a per-cell heat-value field with crevasse (value-0) holes and give module types bounded stock; change the objective from max raw covered area to max total covered heat VALUE, so optimal placement is a weighted bounded-knapsack polyomino packing that is NP-hard and value-sensitive.",
+  "objective": "max",
+  "theme": "polar research base",
+  "title": "Polar Research Base: Heated-Floor Module Layout",
+  "strategies": [
+    "single-type baseline: anchored greedy using only module type 0 up to its (generous) stock, blind to cell values (the calibration point)",
+    "value-density greedy: at each uncovered cell install, across all types/orientations anchored there, the placement of maximum captured heat value, stock-limited",
+    "full sub-anchor randomized restart: try every cell of every orientation on each seed cell, over many seeded random cell orders, keep the highest-value layout",
+    "local repair: fill greedily then re-pack sparse/low-value regions with smaller footprints to reach isolated high-value cells around crevasses"
+  ]
+}

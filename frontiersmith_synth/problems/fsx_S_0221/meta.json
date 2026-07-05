@@ -1,0 +1,16 @@
+{
+  "id": "fsx_S_0221",
+  "tier": "S",
+  "family": "scheduling-jssp",
+  "seed_problem": "Frontier-Eng JobShop / ALE-Bench makespan JSSP: emit a full machine schedule; checker validates precedence + no-overlap and scores min(100, 100*optimum/makespan)",
+  "mutation": "composite (input generalization + theme): generalize the classic job-shop makespan instance to a job-shop with SEQUENCE-DEPENDENT (family-based, asymmetric) setup times on every machine -- the reconfiguration time S[a][b] must elapse between consecutive operations of families a then b on a station -- which makes both the machine no-overlap feasibility check and the makespan objective depend on the chosen ORDER of operations per station, not just their disjointness; skinned as a deep-sea cable splice yard; the score denominator uses a checker-computed always-feasible fully-sequential reference makespan B instead of an unknown optimum",
+  "objective": "min",
+  "theme": "deep-sea cable network",
+  "title": "Abyssal Splice Yard: Cable Job-Shop with Reconfiguration Setups",
+  "strategies": [
+    "fully-sequential reference schedule (the calibration baseline B): run every operation one at a time in canonical order",
+    "SPT dispatch: Giffler-Thompson active-schedule generation breaking machine conflicts by shortest processing time",
+    "MWKR dispatch: Giffler-Thompson breaking conflicts by most-work-remaining, refined by a setup-avoidance secondary key that groups same-family operations to save reconfiguration",
+    "local search / neighbourhood moves over per-station operation orders (swap adjacent ops, relocate) to jointly cut idle time and setup overhead"
+  ]
+}

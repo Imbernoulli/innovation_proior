@@ -1,0 +1,17 @@
+{
+  "id": "fsx_G_0465",
+  "tier": "G",
+  "format": "B",
+  "family": "ml-imputation",
+  "eval_form": "quality-metric",
+  "theme": "clinical records",
+  "title": "Masked-Entry Imputation of Low-Rank Clinical Cohort Records",
+  "objective": "min",
+  "source_frameworks": ["breadth-fill (dataset/domain/task diversity)", "MLS-Bench"],
+  "strategies": [
+    "trivial: column-mean imputation -- predict each masked cell as the mean of its column's observed entries (the evaluator baseline) -> ~0.1",
+    "greedy: k-nearest-neighbour patients -- standardize columns, find the K most similar patients that observed the target variable and predict their distance-weighted average; captures row similarity but not the full multivariate structure",
+    "strong: iterative low-rank matrix completion (SoftImpute / EM-PCA) -- repeatedly SVD-truncate the mean-filled standardized matrix, resetting observed cells, to recover the shared physiological factors; the measurement-noise floor leaves headroom below the score cap",
+    "invalid: emit a non-finite prediction -> rejected -> 0 on every instance"
+  ]
+}

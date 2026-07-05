@@ -1,0 +1,17 @@
+{
+  "id": "fsx_B_0160",
+  "tier": "B",
+  "format": "B",
+  "family": "constrained-OR",
+  "eval_form": "quality-metric",
+  "theme": "subway system",
+  "title": "Metro Spare-Parts Safety-Stock Placement",
+  "objective": "min",
+  "source_frameworks": ["Frontier-Eng (Inventory/Portfolio)"],
+  "strategies": [
+    "trivial: quote S_i=0 everywhere (decoupled; hold safety stock at every node for its own lead time) -> exactly the evaluator baseline -> ~0.1",
+    "greedy: push each node's outbound service to the max (tau=0 internally), dumping all accumulated lead time onto the s_max-capped stations, which carry the priciest stock -> feasible but below baseline",
+    "strong: Graves-Willems dynamic program over the tree -> exact optimal service-time placement, balancing risk pooling vs downstream holding cost and station caps -> ~0.24-0.43, headroom below 1.0",
+    "invalid: quote S_i=500 everywhere -> net replenishment time goes negative / station caps blown -> infeasible -> 0"
+  ]
+}

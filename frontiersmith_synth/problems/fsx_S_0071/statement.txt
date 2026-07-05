@@ -1,0 +1,124 @@
+# Recycling Depot Routes: Non-Conflicting Collection Plan
+
+## Problem
+
+The *GreenLoop* recycling authority has drawn up a catalogue of candidate **collection
+routes**. Route `i` would earn an estimated daily **profit** `w_i` (materials recovered
+minus fuel and labour). Unfortunately many routes **conflict**: two routes conflict when
+they would compete for the same depot bay, share a one-lane transfer road at the same
+window, or double-book a crew. Whenever two routes conflict, **at most one of them may be
+run**.
+
+The conflicts are given as an undirected graph on the routes. You must pick a set of routes
+to run such that **no two chosen routes conflict** (the chosen set is an *independent set*
+of the conflict graph), and you want the **total profit** of the chosen routes to be as
+large as possible.
+
+This is maximum-weight independent set on a general graph: the optimum is NP-hard and
+unknown, so heuristics are expected. Many strategies are viable — profit-descending greedy,
+profit/degree greedy, and randomized local search all give different answers.
+
+## Input
+
+The first line contains two integers:
+
+```
+n m
+```
+
+- `n` — number of candidate routes, numbered `1..n`.
+- `m` — number of conflict pairs.
+
+The second line contains `n` integers `w_1 w_2 ... w_n`, where `w_i` is the profit of
+route `i` (`w_i >= 1`).
+
+Each of the next `m` lines contains two integers:
+
+```
+u v
+```
+
+meaning routes `u` and `v` conflict (an undirected edge, `u != v`). There are no repeated
+conflict pairs.
+
+## Output
+
+On the first line print `c` — the number of routes you choose to run (`0 <= c <= n`).
+On each of the next `c` lines print one route index (an integer in `1..n`). All indices
+must be distinct.
+
+Printing `1` followed by any single route index is always valid (a single route conflicts
+with nothing when chosen alone).
+
+## Feasibility
+
+An output is feasible iff:
+
+- `0 <= c <= n`;
+- every printed index is in `1..n` and all are distinct;
+- no two chosen routes conflict (the chosen set is independent in the conflict graph).
+
+Any infeasible output scores `0`.
+
+## Objective
+
+Let `F` be the total profit of your chosen routes, `F = sum of w_i over chosen i`. You are
+**maximizing** `F`.
+
+## Scoring
+
+Let `B` be the profit of the **single most-profitable route** (`B = max_i w_i`); running
+that one route alone is always feasible, so it is the baseline. The score for a test is
+
+```
+ratio = min(1.0, 0.1 * F / B)
+```
+
+Running only the single best route (`F = B`) scores `0.1`; assembling a non-conflicting
+plan worth ten times the best single route (`F = 10*B`) caps the score at `1.0`. The overall
+score is the mean ratio across all tests.
+
+## Constraints
+
+- `1 <= n <= 4000`.
+- `0 <= m <= 2 * 10^6`.
+- `1 <= w_i <= 1000`.
+- Time limit: 5 s. Memory limit: 512 MB.
+
+## Example
+
+Input:
+
+```
+6 7
+90 40 30 100 60 20
+1 2
+1 3
+2 3
+4 5
+4 6
+5 6
+1 4
+```
+
+Routes `{1,2,3}` mutually conflict (a depot cluster) and routes `{4,5,6}` mutually conflict
+(another cluster), so you may run at most one route from each cluster. In addition the two
+most profitable routes, `1` (profit `90`) and `4` (profit `100`), conflict with each other.
+
+The best single route is route `4`, so `B = 100`.
+
+A profit-greedy plan grabs route `4` first, which then blocks route `1` and route `5`,
+leaving only route `2` from the first cluster: plan `{4, 2}` with profit `140`.
+
+A better plan skips the tempting route `4` and runs route `1` (`90`) together with route `5`
+(`60`) — they do not conflict — for a profit of `F = 150`.
+
+Score for this test: `min(1.0, 0.1 * 150 / 100) = 0.15`.
+
+A valid worked output:
+
+```
+2
+1
+5
+```

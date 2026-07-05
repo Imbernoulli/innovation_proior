@@ -1,0 +1,15 @@
+{
+  "id": "fsx_C_0197",
+  "tier": "C",
+  "format": "B",
+  "family": "modular-component-cross-setting",
+  "eval_form": "quality-metric",
+  "theme": "beehive apiary",
+  "title": "Apiary Foraging Response — one drop-in activation across many meadows",
+  "strategies": [
+    "trivial: identity/linear curve f(s)=s (== reference baseline, collapses the MLP to linear)",
+    "greedy: rectified curve f(s)=max(0,s) (a crude nonlinearity)",
+    "strong: smooth self-gated swish-like curve f(s)=s*sigmoid(1.7s)",
+    "invalid: wrong-length / non-finite curve -> rejected -> 0"
+  ]
+}

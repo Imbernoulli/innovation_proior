@@ -1,0 +1,16 @@
+{
+  "id": "fsx_C_0194",
+  "tier": "C",
+  "format": "B",
+  "family": "causal-discovery",
+  "eval_form": "quality-metric",
+  "theme": "deep-sea cable network",
+  "title": "Deep-Sea Cable Network: Reconstructing the Signal-Propagation DAG",
+  "objective": "min",
+  "strategies": [
+    "predict the empty graph -- no edges (calibration baseline, SHD == number of true edges)",
+    "marginal-correlation skeleton oriented low-variance -> high-variance; adds transitive edges, moderate SHD",
+    "equal-variance top-down order recovery (min residual variance) + regression-coefficient pruning -- near the true DAG",
+    "emit a cyclic / malformed graph -- rejected by the DAG feasibility gate, score 0"
+  ]
+}

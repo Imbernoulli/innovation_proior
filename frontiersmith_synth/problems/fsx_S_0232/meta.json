@@ -1,0 +1,17 @@
+{
+  "id": "fsx_S_0232",
+  "tier": "S",
+  "format": "A",
+  "family": "routing-tour",
+  "seed_problem": "ALE-Bench pickup-delivery TSP (ahc006/027/039); Frontier-CS routing",
+  "mutation": "composite: prize-collecting selective single-vehicle pickup-delivery tour with hull capacity batching, plus a LOAD-WEIGHTED travel metric (each leg costs distance*(1+current load)) that makes carrying heavy silt far away expensive -- choose which precedence-constrained orders to serve and interleave them to minimize load-weighted travel plus skip-penalties. The load-weighting is the novel twist over a plain pickup-delivery TSP: it rewards short heavy legs and single-tour batching over per-order depot round-trips.",
+  "objective": "min",
+  "theme": "reservoir dam network",
+  "title": "Reservoir Cascade: Selective Load-Weighted Silt Ferry",
+  "strategies": [
+    "serve-nobody baseline: output an empty tour, cost = total penalty (the calibration point, ratio 0.1)",
+    "standalone-benefit greedy: serve each order whose penalty exceeds its solo load-weighted depot round-trip cost, each as an isolated pickup-then-delivery, in benefit order (revisits the depot between orders)",
+    "single-tour prize-collecting insertion + or-opt: build ONE tour by inserting profitable order blocks at least-cost positions (batching removes per-order depot round-trips), then locally relocate/drop blocks to cut load-weighted travel",
+    "load-aware subset reoptimization: alternate re-selecting the served set and reordering to keep heavy (large q_i) legs short while trading travel against skipped-order penalties"
+  ]
+}

@@ -1,0 +1,18 @@
+{
+  "id": "fsx_S_0277",
+  "tier": "S",
+  "format": "A",
+  "family": "graph-interdiction",
+  "eval_form": "quality-metric",
+  "seed_problem": "Themed grid network; remove at most k links to maximize the increase in s-t shortest path; checker verifies budget + connectivity and scores achieved delay.",
+  "mutation": "composite: switch from edge-deletion to NODE-deletion interdiction (shutting a junction removes all its incident pipes) AND generalize the budget from a plain count k to a weighted knapsack budget K over per-node removal costs; maximize the s-t shortest path subject to staying connected.",
+  "objective": "max",
+  "theme": "reservoir dam network",
+  "title": "Draining the Deluge: Reservoir Junction Interdiction",
+  "strategies": [
+    "do-nothing baseline: shut no junction (achieves the original delivery time)",
+    "cost-greedy: repeatedly shut the cheapest affordable junction lying on the current shortest route while keeping s-t connected",
+    "best-improvement local search: at each step evaluate the true post-shutdown shortest route for every path junction and shut the one giving the largest delay per remaining budget",
+    "randomized multi-restart: perturb the greedy junction choices across seeds and keep the shutdown set that maximizes final delivery time"
+  ]
+}

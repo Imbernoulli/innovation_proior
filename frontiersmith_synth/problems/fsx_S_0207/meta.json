@@ -1,0 +1,18 @@
+{
+  "id": "fsx_S_0207",
+  "tier": "S",
+  "format": "A",
+  "family": "packing-knapsack",
+  "eval_form": "quality-metric",
+  "seed_problem": "Pack polyominoes into a WxH board maximizing covered area (score = 1e5*sum(k)/(W*H)), reflections allowed; checker validates no-overlap and in-bounds.",
+  "mutation": "composite: (goal) area -> weighted conservation value of covered cells, and (input) add a per-cell value field plus per-type LIMITED supply counts, turning pure area packing into a bounded weighted polyomino knapsack where value-density placement decisions dominate.",
+  "objective": "max",
+  "theme": "wildlife corridor",
+  "title": "Wildlife Corridor Reserve: Habitat Patch Packing",
+  "strategies": [
+    "reference / trivial: reading-order fill with the 2x2 square only (baseline B)",
+    "area greedy: reading-order fill using all patch types (more area, value-blind)",
+    "value-density greedy: rank every (type,orientation,offset) candidate by covered value and place first-fit under supply/overlap constraints",
+    "local search / restarts: seed with a constructive fill then swap/relocate patches toward high-value clusters"
+  ]
+}

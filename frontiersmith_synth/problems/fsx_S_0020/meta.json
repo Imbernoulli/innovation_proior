@@ -1,0 +1,18 @@
+{
+  "id": "fsx_S_0020",
+  "tier": "S",
+  "format": "A",
+  "family": "partition-clustering",
+  "seed_problem": "Partition a weighted graph into two balanced halves maximizing cut weight; checker validates balance and scores cut/baseline.",
+  "mutation": "input: skin as a deep-sea cable network dual-landing-station bisection and plant a random (index-uncorrelated) balanced community structure with heavy inter-community cables plus a lighter intra-community noise layer, so the checker's fixed index-block reference bisection is a genuinely mediocre baseline while a good balanced cut collects far more cross-shore bandwidth; objective stays balanced maximum-cut (maximize inter-station trunk weight subject to |count0-count1|<=1).",
+  "objective": "max",
+  "theme": "deep-sea cable network",
+  "title": "Deep-Sea Cable Network: Dual Landing-Station Bisection",
+  "strategies": [
+    "index-block split (reproduces the checker baseline B, Ratio=0.1)",
+    "single-pass budget-limited best-gain balanced swaps (greedy)",
+    "Kernighan-Lin style balance-preserving swaps run to convergence",
+    "multi-restart local search from perturbed balanced starts keeping the best cut",
+    "spectral / planted-community recovery followed by balanced rounding"
+  ]
+}

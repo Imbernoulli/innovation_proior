@@ -1,0 +1,17 @@
+{
+  "id": "fsx_G_0473",
+  "tier": "G",
+  "format": "B",
+  "family": "ml-clustering-algo",
+  "eval_form": "quality-metric",
+  "theme": "market segmentation",
+  "title": "Segment Atlas: an Unsupervised Customer Segmentation Assigner",
+  "objective": "max",
+  "source_frameworks": ["breadth-fill (dataset/domain/task diversity)", "MLS-Bench"],
+  "strategies": [
+    "coordinate-threshold split: sort customers by their first feature and cut into k equal ranked bins -- structure-blind, reproduces the evaluator's weak reference (~0.1)",
+    "k-means (Lloyd + k-means++): centroid clustering on the raw 2-D features; recovers convex blob spend-tiers well but shreds the non-convex moon arcs and concentric ring shells",
+    "normalised spectral clustering: build a kNN Gaussian-affinity graph, embed via the top-k eigenvectors of the symmetric-normalised affinity, then k-means the row-normalised embedding -- follows connectivity/manifold structure so it recovers blobs, moons AND rings on aggregate, with headroom left by boundary noise",
+    "density / connectivity methods (single-linkage, DBSCAN, mutual-kNN components) that chain along manifolds -- strong on clean shapes but fragile to noise bridges, a viable alternative family"
+  ]
+}

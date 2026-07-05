@@ -1,0 +1,16 @@
+{
+  "id": "fsx_B_0362",
+  "tier": "B",
+  "format": "B",
+  "family": "constrained-OR",
+  "eval_form": "quality-metric",
+  "theme": "ski resort lifts",
+  "title": "Ski-Resort Lift Spares: Two-Echelon Safety-Stock Sizing (METRIC)",
+  "objective": "min",
+  "strategies": [
+    "decoupled equal-budget: warehouse near-perfect, every lift given the same expected-backorder budget cap/N (baseline/trivial)",
+    "per-lift marginal cost analysis: add spares where downtime-saved minus holding pays off, top up to the SLA cap by cheapest availability-per-dollar",
+    "two-echelon co-optimization: sweep the warehouse order-up-to level, recompute the METRIC lead-time coupling, and re-run the lift marginal allocation to exploit central risk-pooling",
+    "zero-inventory (infeasible): hold nothing, violating the service-level constraint -> rejected"
+  ]
+}

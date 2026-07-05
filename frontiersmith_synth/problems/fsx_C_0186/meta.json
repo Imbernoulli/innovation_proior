@@ -1,0 +1,16 @@
+{
+  "id": "fsx_C_0186",
+  "tier": "C",
+  "format": "C",
+  "family": "algebraic-exotic-construction",
+  "eval_form": "quality-metric",
+  "theme": "wind-farm turbines",
+  "title": "Wind-Farm Turbine Micrositing: Maximum Wake-Free Completion",
+  "objective": "max",
+  "strategies": [
+    "install-nothing baseline: echo only the pre-placed turbines (reproduces the checker baseline, ~0.1)",
+    "row-major smallest-model greedy: fast but dead-ends, leaving slots empty",
+    "most-constrained-variable (MRV) greedy: fills tighter slots first, reaches more cells",
+    "MRV backtracking search for a full wake-free Latin completion, with best-partial recording and greedy fallbacks -- installs the most turbines"
+  ]
+}

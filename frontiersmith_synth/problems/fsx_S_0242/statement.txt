@@ -1,0 +1,139 @@
+# Smart-City Adaptive Lighting: Minimum-Cost Multi-Coverage Lamp Placement
+
+## Problem
+
+A city's **Smart Lighting Authority** is retrofitting a district with intelligent lamp
+posts. The district is modelled as a graph of **intersections** connected by short street
+links. A lamp post built on an intersection illuminates that intersection and every
+intersection within **`R` street-hops** of it.
+
+For safety, different intersections need different amounts of light. A busy plaza may need
+to be reached by **several** lamps (redundant illumination survives a bulb failure and
+removes shadows), while a quiet cul-de-sac needs only one. Each intersection `u` therefore
+carries an **illumination demand** `d_u`: at least `d_u` distinct built lamps must lie
+within `R` hops of `u`.
+
+Building a lamp post on intersection `v` costs a fixed, site-specific amount `c_v`
+(trenching, taller poles, protected trees, ...). You must choose which intersections get
+lamp posts so that **every** intersection's illumination demand is met, while spending as
+little total build cost as possible.
+
+Formally: you are given an undirected graph on `N` intersections, an integer radius `R`, a
+positive build cost `c_v` and an integer demand `d_u` for every vertex. A lamp built on `v`
+*illuminates* every vertex `u` with hop-distance `dist(u, v) <= R` (a lamp always
+illuminates its own intersection). Choose a set `S` of intersections such that for **every**
+vertex `u`,
+```
+| { v in S : dist(u, v) <= R } | >= d_u ,
+```
+minimizing `sum of c_v over v in S`. This is a minimum-cost **`R`-multi-cover** (a weighted
+generalization of the `R`-dominating set, allowing demands greater than one). It is NP-hard,
+the optimum is unknown, and many heuristics are viable: coverage-greedy, cost-ratio greedy,
+LP-rounding, and redundancy pruning all give different trade-offs.
+
+The instances are constructed so that building a lamp on **every** intersection always meets
+all demands, so a feasible solution always exists.
+
+## Input
+
+The first line contains three integers:
+
+```
+N M R
+```
+
+- `N` — number of intersections, numbered `1..N`.
+- `M` — number of street links (undirected edges).
+- `R` — illumination radius in hops (`R >= 1`).
+
+The second line contains `N` integers `c_1 c_2 ... c_N` — the build cost of each
+intersection (`1 <= c_v`).
+
+The third line contains `N` integers `d_1 d_2 ... d_N` — the illumination demand of each
+intersection (`1 <= d_u`). It is guaranteed that `d_u` is at most the number of
+intersections within `R` hops of `u` (counting `u` itself), so building on every
+intersection is feasible.
+
+Each of the next `M` lines contains two integers:
+
+```
+u v
+```
+
+meaning a two-way street link between intersections `u` and `v` (`u != v`). There are no
+self-loops; duplicate links may appear but do not change reachability. The graph need not be
+connected (but every vertex's demand is still guaranteed satisfiable by the build-all set).
+
+## Output
+
+On the first line print `k` — the number of lamp posts you build (`0 <= k <= N`).
+On the second line print `k` distinct intersection indices (integers in `1..N`), separated
+by spaces — the intersections on which you build lamp posts. If `k = 0`, print an empty
+second line.
+
+## Feasibility
+
+An output is feasible iff:
+
+- `0 <= k <= N`;
+- every printed index is in `1..N` and all `k` indices are distinct;
+- every intersection `u` in `1..N` has at least `d_u` built lamps within `R` hops of it,
+  i.e. `|{ v in S : dist(u, v) <= R }| >= d_u`.
+
+Any infeasible output scores `0`.
+
+## Objective
+
+Minimize the total build cost `F = sum of c_v over the built lamp posts v`.
+
+## Scoring
+
+Let `B` be the cost of the trivial reference solution that **builds a lamp on every
+intersection** (`B = c_1 + c_2 + ... + c_N`); this always meets every demand, so it is
+feasible. For a feasible output with total cost `F`, the score is
+
+```
+ratio = min(1.0, 0.1 * B / F)
+```
+
+Building a lamp on every intersection reproduces `B` and scores exactly `0.1`. Halving the
+cost doubles the score; reaching one tenth of `B` (or less) caps the score at `1.0`.
+Infeasible outputs score `0`.
+
+## Constraints
+
+- `1 <= N <= 2000`, `1 <= M <= 6000`, `1 <= R <= 2`.
+- `1 <= c_v <= 20`, `1 <= d_u <= 4` (and `d_u` never exceeds the `R`-hop neighbourhood size).
+- Time limit: 5 s. Memory limit: 512 MiB.
+
+## Example
+
+Input:
+
+```
+5 4 1
+4 1 4 1 4
+2 1 2 1 1
+1 2
+2 3
+3 4
+4 5
+```
+
+The district is a path `1-2-3-4-5` with radius `R = 1`, so a lamp illuminates itself and its
+immediate street neighbours. Demands are `d = (2,1,2,1,1)`: intersections `1` and `3` each
+need two lamps within one hop. The all-lamps reference costs
+`B = 4+1+4+1+4 = 14`.
+
+A feasible output:
+
+```
+3
+1 2 4
+```
+
+Lamp `1` illuminates `{1,2}`; lamp `2` illuminates `{1,2,3}`; lamp `4` illuminates
+`{3,4,5}`. Coverage counts are: vertex 1 -> {1,2} = 2 (>= 2 ok), vertex 2 -> {1,2} = 2
+(>= 1), vertex 3 -> {2,4} = 2 (>= 2 ok), vertex 4 -> {4} = 1 (>= 1), vertex 5 -> {4} = 1
+(>= 1). All demands met, so the output is feasible with cost `F = c_1 + c_2 + c_4 =
+4 + 1 + 1 = 6`. The score is `ratio = min(1.0, 0.1 * 14 / 6) = min(1.0, 0.2333) = 0.2333`.

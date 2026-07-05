@@ -1,0 +1,117 @@
+# Single-Rack LIFO Picking Robot: Selective Tote Retrieval Tour
+
+## Problem
+A single autonomous picking robot works the floor of an automated warehouse out of
+a fixed **dock** (the depot, node `0`). The warehouse control system has queued
+**P retrieval requests**. Request `i` asks the robot to collect one tote from a
+**shelf** at `(px_i, py_i)` and drop it off at a **chute** at `(dx_i, dy_i)`. For
+every served request the robot must visit the shelf (pickup) **before** the chute
+(delivery).
+
+The robot carries totes on a **single-ended vertical rack**. Because the rack is
+loaded and unloaded only from the top, it behaves as a **stack (LIFO)**: at any
+delivery, the robot can only drop off the tote that is currently on **top** of the
+rack, i.e. the most recently picked-up tote that has not yet been delivered. The
+rack holds at most `H` totes at once.
+
+You do **not** have to serve every request. Each request you skip incurs a fixed
+backlog penalty `w_i` (a missed order line). You decide **which** requests to serve
+and produce **one** tour that starts and ends at the dock, visiting the chosen
+shelves and chutes in a valid LIFO order.
+
+Travel cost between two points is the **Manhattan distance**
+`|x1-x2| + |y1-y2|` (the robot moves along orthogonal aisles).
+
+## Input
+```
+P H
+x0 y0
+px_1 py_1 dx_1 dy_1 w_1
+px_2 py_2 dx_2 dy_2 w_2
+...
+px_P py_P dx_P dy_P w_P
+```
+- Line 1: the number of requests `P` and the rack height `H`.
+- Line 2: the integer dock coordinates `x0 y0`.
+- The next `P` lines describe requests `1..P`: shelf coordinates, chute
+  coordinates and skip-penalty `w_i`.
+
+## Output
+Describe the robot's tour as an ordered list of `L` visit events. Each event is a
+pair of integers `t i`:
+- `t = 0` means "pick up request `i`" (visit shelf `(px_i, py_i)`, push tote `i`),
+- `t = 1` means "deliver request `i`" (visit chute `(dx_i, dy_i)`, pop tote `i`).
+
+```
+L
+t_1 i_1
+t_2 i_2
+...
+t_L i_L
+```
+The robot always begins and ends at the dock; you list only the intermediate
+shelf / chute visits. `L = 0` (serve nobody) is a valid output.
+
+## Feasibility
+An output is feasible iff **all** of the following hold:
+1. `0 <= L <= 2P` and every index `i` is in `[1, P]`.
+2. Each request appears **at most once** as a pickup and **at most once** as a
+   delivery.
+3. A request is *served* iff **both** its pickup and its delivery appear. Any
+   request that appears exactly once (picked up but never delivered, or delivered
+   without a pickup) makes the output infeasible.
+4. **LIFO discipline**: process the events in order with a stack. A pickup of
+   request `i` pushes `i`. A delivery of request `i` is valid only if `i` is the
+   tote currently on **top** of the stack; it then pops `i`. Any delivery that is
+   not of the current top tote makes the output infeasible. (This also enforces
+   precedence, and guarantees the stack is empty at the end.)
+5. At no point does the stack hold more than `H` totes.
+
+An infeasible output scores 0.
+
+## Objective
+Let `D` be the total Manhattan length of the realized tour
+`dock -> visited points in order -> dock` (with `D = 0` if `L = 0`), and let `S`
+be the set of served requests. Minimize
+
+```
+F = D + sum over unserved requests i of w_i .
+```
+
+## Scoring
+The checker builds the trivial *serve-nobody* plan, whose cost is
+`B = sum over all i of w_i` (pure penalty, zero travel). Your score on a test is
+
+```
+ratio = min(1.0, (B / F) / 10)
+```
+
+reported as `Ratio: <ratio>`. Serving profitable requests and batching nearby
+pickups on the rack (respecting LIFO) drives `F` below `B` and raises the ratio;
+the serve-nobody plan scores exactly `0.1`. The final score is the mean ratio over
+all tests.
+
+## Constraints
+- `1 <= P <= 80`, `1 <= H <= 12`.
+- All coordinates are integers in `[0, 1000]`; `1 <= w_i <= 20000`.
+- Time limit: 5 s. Memory limit: 512 MB.
+
+## Example
+Input:
+```
+2 4
+0 0
+1 0 3 0 40
+0 5 0 8 6
+```
+Consider the output:
+```
+2
+0 1
+1 1
+```
+The robot serves only request 1: dock(0,0) -> shelf(1,0) -> chute(3,0) -> dock(0,0),
+travel `D = 1 + 2 + 3 = 6`. Request 2 is skipped, penalty `6`. So
+`F = 6 + 6 = 12`. The baseline is `B = 40 + 6 = 46`, giving
+`ratio = min(1.0, (46/12)/10) = 0.383...`. Serving request 2 as well would add
+travel `> 6`, exceeding its penalty, so skipping it is the better trade here.

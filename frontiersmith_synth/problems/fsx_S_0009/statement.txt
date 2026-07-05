@@ -1,0 +1,104 @@
+# Greenhouse Climate-Program Assignment
+
+## Problem
+
+A commercial greenhouse is partitioned into `N` growing **zones**. Each zone must be
+driven by exactly one of `K` available **climate programs** (a shared schedule of
+heating, misting and supplemental-lighting cycles). The programs are the "colors" of the
+zones.
+
+Certain pairs of zones are **thermally coupled**: warm/humid air, light spill and CO2
+diffuse between them through open partitions. For each coupled pair the coupling has a
+positive **strength** `w`. When two coupled zones are driven by the *same* climate
+program their cycles reinforce each other and the shared microclimate overshoots its
+set-point, producing an **interference conflict** whose cost equals the coupling
+strength `w`. If two coupled zones are driven by *different* programs their cycles are
+staggered and no conflict is incurred.
+
+You control only the assignment of programs to zones. You want to distribute the zones
+across the `K` programs so that the **total interference conflict is as small as
+possible**. Because you cannot buy more equipment, you may never use more than the `K`
+programs the greenhouse already has.
+
+## Input
+
+```
+N M K
+u_1 v_1 w_1
+u_2 v_2 w_2
+...
+u_M v_M w_M
+```
+
+- Line 1: three integers `N` (number of zones), `M` (number of coupled pairs) and
+  `K` (number of available climate programs).
+- Each of the next `M` lines describes one coupled pair: zones `u_i` and `v_i`
+  (`1 <= u_i, v_i <= N`, `u_i != v_i`) are coupled with strength `w_i >= 1`.
+
+Zones are numbered `1..N`. A pair may appear more than once; each listed occurrence
+contributes its own strength independently.
+
+## Output
+
+Print `N` integers `c_1, c_2, ..., c_N` (whitespace-separated; newlines are fine),
+where `c_j` is the climate program assigned to zone `j`.
+
+## Feasibility
+
+An output is feasible if and only if it contains exactly `N` integers and each `c_j`
+satisfies `1 <= c_j <= K`. Any assignment satisfying this is feasible — there is no
+other restriction, so a feasible output always exists (e.g. put every zone on program 1).
+An infeasible output scores 0.
+
+## Objective
+
+Minimize the total interference conflict
+
+```
+F = sum over all coupled pairs (u, v, w) with c_u == c_v of w.
+```
+
+## Scoring
+
+Let `B` be the conflict of the do-nothing assignment that puts *every* zone on the same
+program: `B` is the sum of all coupling strengths (every pair conflicts). Your score on a
+test is
+
+```
+ratio = min(1.0, (B / max(1, F)) / 10)
+```
+
+so an assignment that merely matches the do-nothing baseline scores `0.1`, halving the
+conflict scores `0.2`, and reaching one tenth of the baseline conflict (or less) reaches
+the capped score `1.0`. Larger is better. The per-test scores are averaged.
+
+## Constraints
+
+- `2 <= N <= 300`
+- `1 <= M <= 5000`
+- `2 <= K <= 5`
+- `1 <= w_i <= 1000`
+- Time limit: 5s
+- Memory limit: 256 MiB
+
+## Example
+
+Input:
+```
+4 5 2
+1 2 5
+2 3 3
+3 4 4
+4 1 6
+1 3 2
+```
+
+The do-nothing baseline (all zones on program 1) conflicts on every pair, so
+`B = 5 + 3 + 4 + 6 + 2 = 20`.
+
+Consider the assignment `c = [1, 2, 1, 2]`. Pairs with equal programs: `(1,3,2)` only
+(zones 1 and 3 both on program 1). So `F = 2`. Then
+`ratio = min(1.0, (20 / 2) / 10) = min(1.0, 1.0) = 1.0`.
+
+A weaker assignment `c = [1, 1, 2, 2]` has equal-program pairs `(1,2,5)` and `(3,4,4)`,
+giving `F = 9` and `ratio = min(1.0, (20 / 9) / 10) = 0.222...`.

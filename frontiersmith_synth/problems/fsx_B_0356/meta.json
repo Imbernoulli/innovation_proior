@@ -1,0 +1,16 @@
+{
+  "id": "fsx_B_0356",
+  "tier": "B",
+  "format": "D",
+  "family": "quantum-circuit-opcount",
+  "eval_form": "flops",
+  "theme": "vaccine cold chain",
+  "title": "Cold-Chain Qubit Routing: Minimum-SWAP QAOA Transpilation",
+  "objective": "min",
+  "strategies": [
+    "route-and-undo baseline (restore placement after every interaction)",
+    "no-undo greedy in the given order (inherit useful placements)",
+    "portfolio over static orders (given / distance-asc / distance-desc) and a dynamic nearest-pair-first order, with move-a / move-b policies",
+    "SWAP-count minimisation under a fixed coupling map with exact circuit-equivalence check"
+  ]
+}

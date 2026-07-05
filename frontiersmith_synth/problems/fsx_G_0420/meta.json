@@ -1,0 +1,16 @@
+{
+  "id": "fsx_G_0420",
+  "tier": "G",
+  "format": "E",
+  "family": "sci-economics-production",
+  "eval_form": "quality-metric",
+  "theme": "factory output",
+  "title": "Factory CES Production-Function Recovery — extrapolating symbolic regression",
+  "objective": "min",
+  "strategies": [
+    "constant baseline: predict the mean training output (ignores K,L) -> ~0.1",
+    "Cobb-Douglas log-linear OLS log y ~ 1 + log K + log L: captures the power-law trend but assumes unit substitution elasticity (rho=0), biased and extrapolates only moderately",
+    "translog / Kmenta second-order fit [1, logK, logL, logK^2, logL^2, logK*logL] by least squares: recovers the CES substitution curvature, extrapolates markedly better into the higher-throughput held-out region",
+    "alternatives: nonlinear grid search over rho with per-rho least squares on the exact CES form, ridge-regularised bases, or trading complexity penalty against held-out error"
+  ]
+}

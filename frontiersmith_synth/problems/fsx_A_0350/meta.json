@@ -1,0 +1,16 @@
+{
+  "id": "fsx_A_0350",
+  "tier": "A",
+  "format": "B",
+  "family": "heuristic-contest-offline",
+  "eval_form": "quality-metric",
+  "theme": "lunar habitat",
+  "title": "Selene Base: Pressurized Footprint Layout",
+  "objective": "optimize",
+  "strategies": [
+    "single best tile: occupy the one highest-net tile (the weak connected baseline)",
+    "single-deposit region growing: seed at the global best and annex the best positive frontier tile until the budget runs out or the frontier turns net-negative",
+    "multi-seed region growing + budget-aware deposit bridging (Dijkstra on max(0,-net) bridge cost) + negative-leaf pruning",
+    "restart / local-search over which deposits to connect, spending scarce budget on negative bridge tiles only when the second deposit pays for it"
+  ]
+}

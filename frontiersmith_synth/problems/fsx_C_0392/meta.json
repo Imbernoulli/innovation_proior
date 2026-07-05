@@ -1,0 +1,17 @@
+{
+  "id": "fsx_C_0392",
+  "tier": "C",
+  "format": "B",
+  "family": "causal-discovery",
+  "eval_form": "quality-metric",
+  "theme": "vaccine cold chain",
+  "title": "Cold-Chain Causal Cartographer",
+  "objective": "optimize",
+  "source_frameworks": ["MLS-Bench (causal-*)"],
+  "strategies": [
+    "learn nothing: predict the empty graph; reproduces the evaluator's empty-graph SHD reference (~0.1)",
+    "marginal-association thresholding: draw a link wherever pairwise mutual information exceeds a threshold and orient by (uninformative) index order -- keeps spurious transitive links and reverses ~half the edges",
+    "constraint-based PC-style discovery: MI skeleton, order-1 conditional-independence pruning to kill transitive links, then v-structure/collider orientation with light Meek propagation and a deterministic tiebreak -- strong skeleton plus partial orientation drives SHD well below the empty-graph baseline",
+    "stronger structure learning: higher-order CI tests, score-based search (BIC/BDeu hill-climbing over DAGs), or bootstrap-averaged CPDAG estimation with full Meek orientation"
+  ]
+}

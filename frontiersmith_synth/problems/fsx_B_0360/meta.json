@@ -1,0 +1,17 @@
+{
+  "id": "fsx_B_0360",
+  "tier": "B",
+  "format": "B",
+  "family": "offline-decision-policy",
+  "eval_form": "quality-metric",
+  "theme": "railway freight yard",
+  "title": "Railway Freight Yard: Budget-Constrained Motive-Power Routing",
+  "objective": "max",
+  "source_frameworks": ["Frontier-CS (cant_be_late/cloudcast/llm_router/llm_sql)"],
+  "strategies": [
+    "trivial: all-cheapest policy -- assign every cut its base yard switcher (option 0); always feasible, reproduces the evaluator baseline -> ~0.1",
+    "greedy: value/fuel-density greedy that upgrades each cut STRAIGHT to its single highest-value option; ignores diminishing returns and the multiple-choice structure, wasting budget on inefficient heavy units -> well above baseline but sub-optimal",
+    "strong: Lagrangian relaxation -- bisect a fuel price lambda so per-cut argmax(value - lambda*fuel) meets the budget, then greedily repair leftover budget with the most fuel-efficient upgrades; multiple-choice aware across the whole trace, near-optimal with headroom (~0.55-0.85)",
+    "invalid: assign every cut its heaviest option -> total fuel always exceeds the budget -> infeasible on every instance -> 0"
+  ]
+}

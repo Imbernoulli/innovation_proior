@@ -1,0 +1,17 @@
+{
+  "id": "fsx_G_0469",
+  "tier": "G",
+  "format": "B",
+  "family": "ml-calibration",
+  "eval_form": "quality-metric",
+  "theme": "weather model",
+  "title": "Recalibrating a Weather Model's Rain Odds",
+  "objective": "min",
+  "source_frameworks": ["breadth-fill (dataset/domain/task diversity)", "MLS-Bench (post-hoc calibration)"],
+  "strategies": [
+    "identity map: leave the raw model PoP untouched, reproducing the evaluator's weak reference (~0.1)",
+    "Platt scaling: fit q = sigmoid(a*logit(s)+b) on the validation history to fix global over/under-confidence and wet/dry bias, but a single affine-in-logit map misses regime-dependent miscalibration",
+    "isotonic recalibration with shrinkage: pool-adjacent-violators monotone fit on validation, blended with a Platt prior and shrunk toward the raw score on thin/shifted validation to avoid overfitting -- captures regime-dependent miscalibration yet stays below the test-fitted monotone oracle",
+    "temperature/histogram/beta calibration variants: different bias-variance trade-offs that buy different amounts of headroom across over-confident, under-confident, biased and shifted regimes, none reaching the held-out isotonic oracle"
+  ]
+}

@@ -1,0 +1,162 @@
+# Warehouse Robot Charging: Spot / On-Demand / Pause Replay
+
+## Problem
+
+A fully automated warehouse runs a fleet of picking robots. Every robot **pick task**
+must be pulled from a shared **charging + compute controller** exactly once, at some
+discrete time step, before its shipping cutoff. The controller can be powered three ways
+each step:
+
+- **PAUSE** — the controller is idle (no task processed), costs nothing.
+- **SPOT** — cheap interruptible solar/battery power, but only available for a limited
+  number of task-units at that step.
+- **ON-DEMAND (GRID)** — always available in unlimited amount, but expensive per unit.
+
+Whenever the controller is *woken up* at a step (i.e. it processes at least one task-unit
+that step) it pays a one-time **activation cost** for that step (spinning up the bay,
+warming the robots). On top of that, each task-unit processed at the step pays the SPOT
+price up to the step's spot capacity, and the GRID price for any overflow beyond it.
+
+Because this is the **offline replay** of an online provisioning problem, you are handed
+the *entire* fixed availability/deadline trace up front and must decide, for every task,
+**which step to process it at**, to minimize the total cost of running the whole trace.
+The controller can process at most `M` task-units per step (fleet throughput limit).
+
+Choosing the release step of each task is easy; choosing steps that (a) fall inside every
+task's window, (b) respect the per-step throughput, (c) pack onto cheap-SPOT steps, and
+(d) amortize the activation cost by consolidating work is a batch-scheduling-with-setup
+problem: it is NP-hard, the optimum is unknown, and greedy / cost-aware / local-search
+strategies all diverge.
+
+## Input
+
+The first line contains three integers:
+
+```
+T N M
+```
+
+- `T` — number of time steps, numbered `1..T`.
+- `N` — number of pick tasks, numbered `1..N` (each task is one task-unit).
+- `M` — maximum task-units the controller can process per step.
+
+The second line contains one integer:
+
+```
+G
+```
+
+- `G` — the ON-DEMAND (grid) cost per task-unit (always available, unlimited).
+
+Each of the next `T` lines describes one step `t` (in order `t = 1..T`):
+
+```
+f_t s_t cap_t
+```
+
+- `f_t` — activation cost paid once if step `t` processes at least one task-unit.
+- `s_t` — SPOT cost per task-unit at step `t`.
+- `cap_t` — SPOT capacity at step `t` (`0 <= cap_t <= M`); units beyond `cap_t` at that
+  step pay the GRID price `G` instead.
+
+Each of the next `N` lines describes one task `i` (in order `i = 1..N`):
+
+```
+r_i dl_i
+```
+
+- `r_i` — release step of task `i`.
+- `dl_i` — deadline step of task `i` (`1 <= r_i <= dl_i <= T`). Task `i` must be processed
+  at some step `t_i` with `r_i <= t_i <= dl_i`.
+
+It is guaranteed that at least one feasible assignment of all tasks to steps exists.
+
+## Output
+
+Print `N` integers, one per line: the `i`-th integer is `t_i`, the step at which you
+process task `i` (in input order `i = 1..N`).
+
+## Feasibility
+
+An output is feasible iff:
+
+- exactly `N` integers are printed, each in `1..T`;
+- `r_i <= t_i <= dl_i` for every task `i`;
+- for every step `t`, the number of tasks assigned to `t` is at most `M`.
+
+Any infeasible output scores `0`.
+
+## Objective
+
+For a step `t`, let `y_t` be the number of tasks you assigned to it. The cost of step `t`
+is
+
+```
+cost_t = [y_t >= 1] * f_t  +  s_t * min(y_t, cap_t)  +  G * max(0, y_t - cap_t)
+```
+
+where `[y_t >= 1]` is `1` if the step is woken up and `0` otherwise. You are
+**minimizing** the total cost `F = sum_t cost_t`.
+
+## Scoring
+
+Let `B` be the total cost of the checker's own baseline construction: process the tasks in
+non-decreasing deadline order and greedily place each at the **earliest** step inside its
+window that still has spare throughput (an *earliest-deadline-first* pack that ignores
+cost). The score for a test is
+
+```
+ratio = min(1.0, 0.1 * B / F)
+```
+
+A submission matching the baseline (`F = B`) scores `0.1`; driving the cost down to
+one-tenth of the baseline (`F = B / 10`) caps the score at `1.0`. The overall score is the
+mean ratio across all tests.
+
+## Constraints
+
+- `2 <= T <= 60`, `1 <= N <= 4000`, `1 <= M <= 8`.
+- `1 <= G <= 1000`, `0 <= f_t <= 2000`, `1 <= s_t <= G`, `0 <= cap_t <= M`.
+- `1 <= r_i <= dl_i <= T`.
+- Time limit: 5 s. Memory limit: 512 MB.
+
+## Example
+
+Input:
+
+```
+4 5 2
+100
+50 5 1
+10 4 2
+80 6 0
+5 8 2
+1 2
+1 3
+2 4
+3 4
+1 4
+```
+
+Baseline (earliest-deadline-first pack, `M = 2`): tasks sorted by deadline are
+`1(dl=2), 2(dl=3), 3(dl=4), 4(dl=4), 5(dl=4)`. Placing each at the earliest window step
+with room gives assignment `t = [1, 1, 2, 3, 3]`, so step 1 holds 2 units, step 2 holds 1,
+step 3 holds 2. Its cost is
+`(50 + 5*1 + 100*1) + (10 + 4*1) + (80 + 6*0 + 100*2) = 155 + 14 + 280 = 449`, so
+`B = 449`.
+
+A cost-aware output that instead uses the cheap step 4 (`s=8, cap=2`) and the cheap step 2
+(`s=4, cap=2`) — e.g. `t = [2, 2, 4, 4, 4]` — has step 2 with 2 units and step 4 with 3
+units: `(10 + 4*2) + (5 + 8*2 + 100*1) = 18 + 121 = 139`, so `F = 139`.
+
+Score for this test: `min(1.0, 0.1 * 449 / 139) = min(1.0, 0.323) = 0.323`.
+
+A valid worked output:
+
+```
+2
+2
+4
+4
+4
+```

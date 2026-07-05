@@ -1,0 +1,18 @@
+{
+  "id": "fsx_S_0224",
+  "tier": "S",
+  "format": "A",
+  "family": "partition-clustering",
+  "eval_form": "quality-metric",
+  "seed_problem": "Partition a weighted graph into two balanced halves maximizing cut weight; checker validates balance and scores cut/baseline.",
+  "mutation": "composite: keep the max-cut goal but replace strict 50/50 cardinality balance with a population-weighted balance BAND [L,U] on one side (nodes carry integer populations), so the constraint becomes a knapsack-style capacity window and the balanced max-cut stays NP-hard while admitting many divergent balance-aware heuristics.",
+  "objective": "max",
+  "theme": "pandemic contact net",
+  "title": "Firebreak Cohorts: Population-Balanced Contact Severance",
+  "strategies": [
+    "balance-only baseline: fill the lighter cohort in index order (cut-oblivious), always inside the band",
+    "balance-aware greedy: assign venues (heaviest-degree first) to the cohort that maximizes marginal cut while keeping room in the band",
+    "flip/swap local search: from any feasible split, repeatedly flip a node or swap a 0/1 pair when it raises the cut and keeps A's population in [L,U]",
+    "randomized multi-restart local search: many seeded starts + local search, keep the best feasible cut"
+  ]
+}

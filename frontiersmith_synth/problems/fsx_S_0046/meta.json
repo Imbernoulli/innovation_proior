@@ -1,0 +1,18 @@
+{
+  "id": "fsx_S_0046",
+  "tier": "S",
+  "format": "A",
+  "family": "maxsat-csp",
+  "eval_form": "quality-metric",
+  "seed_problem": "Maximize total weight of satisfied clauses in a synthetic weighted CNF; checker computes satisfied weight / baseline.",
+  "mutation": "composite: skin the weighted Max-SAT substrate as wind-tunnel sensor mode calibration, and shape the instance distribution (positive-biased polarity + a controlled block of negative-only, heavy-tailed-weight requirements) so the all-0 baseline is weak while opposing requirements create genuine variable conflicts -> neither all-0 nor all-1 is optimal and heuristics diverge.",
+  "objective": "max",
+  "theme": "wind tunnel sensors",
+  "title": "Windward Array: Sensor Mode Calibration",
+  "strategies": [
+    "do-nothing baseline: ship the all-0 (low-gain) calibration -> exactly the checker baseline",
+    "weighted majority voting: independently set each sensor to the mode with greater total incident satisfied weight (one pass, ignores clause interactions)",
+    "hill-climbing local search: start from the majority assignment and repeatedly flip any sensor whose flip increases total satisfied weight until a local optimum",
+    "seeded randomized multi-restart: run hill-climbing from many shuffled initial assignments and keep the best satisfied weight found"
+  ]
+}

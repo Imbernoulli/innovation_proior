@@ -1,0 +1,17 @@
+{
+  "id": "fsx_C_0400",
+  "tier": "C",
+  "format": "B",
+  "family": "synthetic-algorithmic-generalization",
+  "eval_form": "correctness",
+  "theme": "wildlife corridor",
+  "title": "Wildlife Corridor Flow-Balance: Length Generalization",
+  "objective": "optimize",
+  "source_frameworks": ["MLS-Bench (synth-*)"],
+  "strategies": [
+    "constant / majority-of-train predictor: emit the single most frequent training label for every log (reproduces the evaluator's baseline; captures none of the length generalization)",
+    "memorization / 1-nearest-neighbour in raw tag-count space: copy the label of the closest training log -- fits the short in-distribution logs but collapses on the long out-of-distribution logs whose counts dwarf anything seen in training",
+    "rule recovery: enumerate the tiny integer weight space, keep every per-tag flow rule consistent with all training band-constraints, and pick the simplest (min-L1) one, then apply the exact rule at any length -- extrapolates to long logs but the tolerance band leaves slack so it is not perfect (headroom)",
+    "hypothesis averaging / margin selection: over the set of training-consistent weight rules, predict by majority vote or pick the rule that maximizes classification margin, trading off among rules the short logs cannot disambiguate"
+  ]
+}

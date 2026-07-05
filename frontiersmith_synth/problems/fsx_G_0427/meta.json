@@ -1,0 +1,16 @@
+{
+  "id": "fsx_G_0427",
+  "tier": "G",
+  "format": "E",
+  "family": "sci-dimensional-analysis",
+  "eval_form": "quality-metric",
+  "theme": "turbulence lab",
+  "title": "Turbulence-Lab Invariant Group — integer exponents for a scale-free dimensionless number",
+  "objective": "max",
+  "strategies": [
+    "trivial: emit a fixed weakly-cancelling reference group (eps*L/U^2) -> reproduces the baseline ~0.1",
+    "greedy: brute-force support<=2 integer exponents minimizing train log-spread -> a two-channel partial ratio, mediocre",
+    "strong: support<=3 search scored by the worst of two disjoint Reynolds sub-regimes -> recovers the three-channel physical invariant (dissipation zeroth law eps*L/U^3) that generalizes off-regime",
+    "alternatives: PCA smallest log-variance direction rounded to integers, cross-validated regularized search, Buckingham-Pi reasoning over inferred channel dimensions"
+  ]
+}

@@ -1,0 +1,18 @@
+{
+  "id": "fsx_S_0056",
+  "tier": "S",
+  "format": "A",
+  "family": "partition-clustering",
+  "eval_form": "quality-metric",
+  "seed_problem": "Partition a weighted graph into two balanced halves maximizing cut weight; checker validates balance and scores cut/baseline.",
+  "mutation": "composite: relax the exact bisection to a balance WINDOW (each depot within slack of n/2) AND plant the instance as two id-contiguous material families, each hiding an internal balanced sub-bipartition of heavy conflict edges. The index-split baseline cuts no intra-family weight, so the achievable cut is several times the baseline and requires per-family local search to find; the balance slack adds a trade-off knob, keeping the optimum NP-hard and heuristics divergent.",
+  "objective": "max",
+  "theme": "recycling depot routes",
+  "title": "Split the Stream: Twin-Depot Recycling Assignment",
+  "strategies": [
+    "index-split baseline: zones 1..n/2 to depot 0, rest to depot 1 (the calibrated baseline)",
+    "sequential greedy: place zones one at a time on the depot that maximizes incremental separated conflict weight, subject to the balance cap",
+    "swap-based local search / Kernighan-Lin: from a starting labeling, repeatedly apply the balanced 0/1 swap with the largest cut gain until locally optimal, over several randomized restarts",
+    "randomized multi-restart with slack exploitation: seed random balanced labelings, local-search each, and use the balance window to trade a little imbalance for extra separated weight"
+  ]
+}

@@ -1,0 +1,17 @@
+{
+  "id": "fsx_B_0354",
+  "tier": "B",
+  "format": "B",
+  "family": "constrained-OR",
+  "eval_form": "quality-metric",
+  "theme": "coral reef survey",
+  "title": "Coral Reef Survey: Pre-Positioning Sample Kits across a Dive Supply Tree",
+  "objective": "min",
+  "source_frameworks": ["Frontier-Eng (Inventory/Portfolio)"],
+  "strategies": [
+    "order-to-mean baseline: stock each site to its historical mean specimen count with no vessel reserve (reproduces the evaluator's weak reference, ~50% service, always within budget)",
+    "single-echelon newsvendor: set each site to its own critical fractile q_i = mean_i + Phi^{-1}(p_i/(p_i+h_i))*std_i, cutting shortage sharply but ignoring the service target, risk pooling, and the budget headroom",
+    "two-echelon / risk-pooled safety stock: trim local stock toward the service-level floor and hold a shared vessel reserve q0 that is ferried to whichever site runs short, cutting total holding for the same protection",
+    "sample-average approximation + local search: draw own scenarios from the declared distributions and coordinate-descend q and q0 against the exact composite objective, generalizing to the held-out survey days"
+  ]
+}

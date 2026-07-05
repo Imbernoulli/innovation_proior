@@ -1,0 +1,18 @@
+{
+  "id": "fsx_S_0021",
+  "tier": "S",
+  "format": "A",
+  "family": "coloring-labeling",
+  "eval_form": "quality-metric",
+  "seed_problem": "Assign frequencies to transmitters minimizing total interference conflicts under a channel budget; checker scores baseline_conflicts/achieved.",
+  "mutation": "composite: generalize the plain graph-coloring conflict count to a weighted co-channel + adjacent-channel interference penalty over a fixed channel budget K (minimum-interference frequency assignment), on instances whose chromatic number exceeds K so zero-conflict is impossible and greedy vs. local-search strategies diverge.",
+  "objective": "min",
+  "theme": "orbital debris cleanup",
+  "title": "Static Cascade: Debris-Collector Channel Assignment",
+  "strategies": [
+    "all-on-one-channel baseline: assign every collector channel 1 (pays every co-channel penalty)",
+    "sequential greedy: color collectors in index order, each taking the channel that minimizes conflict with already-assigned neighbors",
+    "min-conflicts local search: greedy init then repeatedly reassign the worst collector to its least-conflicting channel until convergence",
+    "saturation/degree-ordered coloring with tie-breaking, optionally restarted from perturbed seeds"
+  ]
+}

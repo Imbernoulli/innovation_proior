@@ -1,0 +1,16 @@
+{
+  "id": "fsx_S_0280",
+  "tier": "S",
+  "family": "routing-tour",
+  "seed_problem": "ALE-Bench ahc006/027/039 pickup-delivery tour; Frontier-CS",
+  "mutation": "composite: prize-collecting selection (choose which pickup-delivery pairs to serve) added to a precedence-constrained depot-to-depot tour, objective = tour distance + unserved penalties (min)",
+  "objective": "min",
+  "theme": "carnival ride circuit",
+  "title": "Carnival Ride Circuit: Selective Pickup-Delivery Tour",
+  "strategies": [
+    "do-nothing baseline: serve nobody, pay all penalties (ratio 0.1)",
+    "standalone greedy: serve jobs whose single depot round trip beats the penalty, chained in nearest-neighbour pickup order",
+    "prize-collecting cheapest insertion: repeatedly insert the most profitable pickup+delivery pair at its least-marginal-cost route position, then relocate pairs to trim the route",
+    "regret / local-search variants: 2-opt over the combined route, or-opt of pickup and delivery separately, penalty-tuned selection thresholds"
+  ]
+}

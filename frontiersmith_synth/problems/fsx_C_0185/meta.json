@@ -1,0 +1,18 @@
+{
+  "id": "fsx_C_0185",
+  "tier": "C",
+  "format": "B",
+  "family": "modular-component-cross-setting",
+  "eval_form": "quality-metric",
+  "theme": "glacier sensor net",
+  "title": "Glacier Sensor Net: A Drop-in Activation Across Stations",
+  "objective": "optimize",
+  "source_frameworks": ["MLS-Bench (dl-* CPU proxies only)"],
+  "isolation": "candidate runs as an isolated stdin->stdout subprocess via isorun; every station's data, labels, and the training/scoring code stay in the evaluator process",
+  "strategies": [
+    "identity g(x)=x -> the network collapses to a linear classifier and reproduces the evaluator's linear baseline (~0.1 on every station)",
+    "ReLU / leaky-ReLU / swish / GELU -> unbounded rectifiers add nonlinearity and win big on the sharply nonlinear stations, but overfit the noisy near-linear sinusoidal station (below the linear baseline there) so the geometric mean punishes them",
+    "tanh / bounded saturating activations -> supply nonlinearity everywhere AND regularize via saturation, staying above the linear baseline on every station so the geometric mean stays high",
+    "a custom-shaped activation (piecewise samples on the grid) tuned for smooth saturation with the right gain / a small live negative branch, aiming to beat tanh on the remaining headroom"
+  ]
+}

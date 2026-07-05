@@ -1,0 +1,18 @@
+{
+  "id": "fsx_S_0013",
+  "tier": "S",
+  "format": "A",
+  "family": "graph-interdiction",
+  "eval_form": "quality-metric",
+  "seed_problem": "Themed grid network; remove at most k links to maximize the increase in s-t shortest path; checker verifies budget + connectivity and scores achieved delay.",
+  "mutation": "goal+input: generalize the single s-t interdiction into MULTI-COMMODITY shortest-path interdiction over P priority-weighted demand pairs on a backbone-plus-heavy-shortcut arena mesh; maximize the weighted total lag while keeping every pair connected, so budget-k interdiction is NP-hard and greedy vs. best-improvement local search diverge.",
+  "objective": "max",
+  "theme": "e-sports arena",
+  "title": "Lag Storm: Arena Fiber Interdiction",
+  "strategies": [
+    "do-nothing baseline: unplug no links (achieves the original weighted lag)",
+    "most-used-link greedy: repeatedly unplug the link carrying the most priority-weighted shortest-path traffic while keeping every pair connected",
+    "best-improvement local search: at each of k steps tentatively remove each candidate link, recompute the true weighted total lag for all pairs, and commit the removal with the largest gain",
+    "randomized multi-restart: perturb greedy choices across seeds and keep the interdiction set with the maximum weighted lag"
+  ]
+}

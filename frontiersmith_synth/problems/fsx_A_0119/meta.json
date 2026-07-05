@@ -1,0 +1,16 @@
+{
+  "id": "fsx_A_0119",
+  "tier": "A",
+  "format": "C",
+  "family": "low-discrepancy-pointset",
+  "eval_form": "quality-metric",
+  "theme": "bakery supply chain",
+  "title": "Sourdough Sampling Plan: Low-Discrepancy Recipe Coverage",
+  "objective": "min",
+  "strategies": [
+    "diagonal fill: place all free sample points on the main diagonal (baseline, high discrepancy ~0.1 ratio)",
+    "mediocre rank-1 lattice: spread free points with a coarse generator, modest improvement",
+    "Hammersley / van der Corput base-2 low-discrepancy set for the free points",
+    "optimize free points against the exact star-discrepancy objective (e.g. shifted lattices, Fibonacci/golden-ratio sets, local search)"
+  ]
+}

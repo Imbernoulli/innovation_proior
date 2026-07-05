@@ -1,0 +1,17 @@
+{
+  "id": "fsx_B_0168",
+  "tier": "B",
+  "format": "B",
+  "family": "constrained-OR",
+  "eval_form": "quality-metric",
+  "theme": "polar research base",
+  "title": "Winter Provisioning of a Polar Research Base Supply Tree",
+  "objective": "min",
+  "source_frameworks": ["Frontier-Eng (Inventory/Portfolio)"],
+  "strategies": [
+    "trivial: top off every station to safety factor 4 (evaluator baseline; always feasible for both floors) -> ~0.1",
+    "greedy: single-Lagrangian water-filling for the programme fill floor only, ignoring per-station life-support local floors; cheap+feasible on loose/no-critical instances but violates a local floor on tight-critical instances -> 0 there",
+    "strong: two-stage design -- pin each life-support station to its local floor k_c^min=Loss^{-1}((1-alpha)mu_c/sd_c), then water-fill the residual network deficit over the rest; feasible everywhere at near-min cost",
+    "invalid: zero safety stock everywhere -> programme fill collapses below beta and every local floor is violated -> infeasible on every instance -> 0"
+  ]
+}

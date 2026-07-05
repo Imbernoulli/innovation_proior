@@ -1,0 +1,17 @@
+{
+  "id": "fsx_A_0302",
+  "tier": "A",
+  "format": "B",
+  "family": "online-heuristic-simulator",
+  "eval_form": "quality-metric",
+  "theme": "telescope array",
+  "title": "Aperture Array: Exposure-Block Scheduling",
+  "objective": "optimize",
+  "source_frameworks": ["FunSearch (bin-packing)", "ALE-Bench (dispatch rules)"],
+  "strategies": [
+    "next-fit online: keep one open exposure block, flush and open a fresh block whenever the next request does not fit; reproduces the evaluator's weak baseline and wastes capacity on fragmentation",
+    "first-fit online: for each arriving request scan all open blocks in order and drop it into the first with room, opening a new block only when none fits; reuses earlier gaps without reordering",
+    "best-fit-decreasing: sort requests by descending duration, then place each into the block whose remaining room is smallest but still sufficient (tightest fit), leaving big gaps free for later large requests; near-optimal packing well above first-fit",
+    "invalid: assign every request to block 0 (or otherwise overflow a block), producing an over-capacity packing that the evaluator rejects to 0"
+  ]
+}

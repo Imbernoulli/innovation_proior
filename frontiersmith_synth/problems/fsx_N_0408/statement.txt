@@ -1,0 +1,116 @@
+# Dark-Sky Observatory: Interference-Minimizing Observation Schedule
+
+## Problem
+
+A radio-telescope array must run a batch of `n` **observations** back to back on a single
+night. Each observation `i` emits a fixed **timing pattern** during its slot: a sparse set
+of instants `A_i` (integer sample indices in a window `[0, L)`) at which the array's local
+oscillators fire. When two observations run in **consecutive** slots, their oscillators can
+resonate: the receiver can slide the later pattern by any integer offset relative to the
+earlier one, and the worst-case coupling is the **largest number of coincident firings** over
+all offsets — the peak of the discrete cross-correlation (a 1-D convolution peak) of the two
+patterns. This peak coupling is the *interference* charged to that adjacent pair.
+
+You must choose the **order** in which the `n` observations are executed (a permutation of
+`1..n`). The total interference of a schedule is the sum, over every pair of consecutive
+observations, of their peak coupling. **Minimize the total interference.**
+
+Formally, for two patterns `A` and `B` define the peak coupling
+
+```
+c(A, B) = max over all integer offsets t of  | { (a, b) : a in A, b in B, a - b = t } |
+```
+
+i.e. the maximum, over shifts `t`, of the number of firing pairs whose index difference is `t`
+(equivalently `max_t |A ∩ (B + t)|`). Note `c` is symmetric. Given an ordering
+`π = (π_1, …, π_n)` of the observations, the schedule cost is
+
+```
+Cost(π) = sum_{k=1}^{n-1} c(A_{π_k}, A_{π_{k+1}}).
+```
+
+Minimizing `Cost` is an open Hamiltonian-path (TSP-path) problem over the interference metric.
+It is NP-hard; the optimum is unknown, and greedy, nearest-neighbor, and local-search
+heuristics all apply.
+
+## Input
+
+The first line contains two integers:
+
+```
+n L
+```
+
+- `n` — number of observations, numbered `1..n`.
+- `L` — length of the timing window; every firing index lies in `[0, L)`.
+
+Each of the next `n` lines describes one observation's timing pattern:
+
+```
+s_i  p_1 p_2 ... p_{s_i}
+```
+
+- `s_i` — the number of firing instants of observation `i` (`s_i >= 1`).
+- `p_1 < p_2 < ... < p_{s_i}` — the strictly increasing firing indices, each in `[0, L)`.
+
+## Output
+
+Print a permutation of `1..n`: the order in which the observations are executed. Output the
+`n` integers separated by whitespace (spaces and/or newlines). The identity order
+`1 2 3 ... n` is always a valid submission.
+
+## Feasibility
+
+An output is feasible iff it contains exactly `n` integers, each in `1..n`, all distinct
+(a permutation). Any infeasible output scores `0`.
+
+## Objective
+
+Let `F = Cost(π)` be the total interference of your submitted ordering. You are **minimizing**
+`F`.
+
+## Scoring
+
+Let `B = Cost(identity)` be the total interference of the input order `1, 2, …, n` (the
+do-nothing schedule). The score for a test is
+
+```
+ratio = min(1.0, 0.1 * B / max(1, F)).
+```
+
+Submitting the identity order (`F = B`) scores `0.1`. Cutting the interference to one tenth of
+the baseline (`F <= B / 10`) caps the score at `1.0`. The overall score is the mean ratio
+across all tests.
+
+## Constraints
+
+- `2 <= n <= 450`.
+- `8 <= L <= 400`.
+- `1 <= s_i <= 40`; total firings `sum s_i <= 20000`.
+- Time limit: 5 s. Memory limit: 512 MB.
+
+## Example
+
+Input:
+
+```
+3 10
+3 0 2 5
+3 1 3 6
+3 0 4 9
+```
+
+Pattern 2 is pattern 1 shifted by `+1`, so at offset `t = -1` all three firings coincide:
+`c(A_1, A_2) = 3`. Working out the other pairs, `c(A_1, A_3) = 2` (the difference `-4` occurs
+twice) and `c(A_2, A_3) = 2` (the difference `-3` occurs twice).
+
+The identity order `1 2 3` costs `c(A_1,A_2) + c(A_2,A_3) = 3 + 2 = 5`, so `B = 5`.
+
+A valid worked output:
+
+```
+1 3 2
+```
+
+This order costs `c(A_1,A_3) + c(A_3,A_2) = 2 + 2 = 4`, so `F = 4` and the score is
+`min(1.0, 0.1 * 5 / 4) = 0.125`.

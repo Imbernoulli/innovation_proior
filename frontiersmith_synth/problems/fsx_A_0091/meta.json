@@ -1,0 +1,17 @@
+{
+  "id": "fsx_A_0091",
+  "tier": "A",
+  "format": "C",
+  "family": "greedy-priority-construction",
+  "eval_form": "correctness",
+  "theme": "bakery supply chain",
+  "title": "Sunrise Bakery Standing-Order Grid: Spoilage-Free Activation",
+  "objective": "optimize",
+  "source_frameworks": ["FunSearch (cap-set/admissible/corner-free/cyclic-graph)"],
+  "strategies": [
+    "single delivery window (t=0) baseline: activate one whole window, corner-free by construction (reproduces the checker baseline B=m)",
+    "lexicographic greedy: sweep slots in (w,t) order, activate each slot whose addition creates no spoilage cascade with the already-chosen set",
+    "seeded multi-restart randomized greedy: run the validity-guarded greedy under many shuffled priority orders and keep the largest corner-free set",
+    "priority heuristics that bias the ordering (diagonal-first / low-density-window-first) or add deterministic local-search swaps to push past plain greedy"
+  ]
+}

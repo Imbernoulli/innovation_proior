@@ -1,0 +1,16 @@
+{
+  "id": "fsx_A_0094",
+  "tier": "A",
+  "format": "C",
+  "family": "extremal-point-config",
+  "eval_form": "quality-metric",
+  "theme": "telescope array",
+  "title": "Sparse Telescope Array: Baseline Diversity in a Triangular Reserve",
+  "objective": "max",
+  "strategies": [
+    "small-circle baseline: N stations equally spaced on a small concyclic ring about the incenter (reproduces the checker baseline, ~0.1)",
+    "incircle spread: equally spaced on the largest inscribed circle -- fatter thin-triple, a clear improvement over the baseline ring",
+    "stochastic optimization: simulated annealing over station coordinates (multi-start, seeded) maximizing the exact minimum triangle area, escaping the concyclic local optimum",
+    "invalid: emit stations outside the triangular reserve (scores 0)"
+  ]
+}

@@ -1,0 +1,18 @@
+{
+  "id": "fsx_S_0025",
+  "tier": "S",
+  "format": "A",
+  "family": "graph-interdiction",
+  "eval_form": "quality-metric",
+  "seed_problem": "Themed grid network; remove at most k links to maximize the increase in the s-t shortest path; checker verifies budget + connectivity and scores achieved delay.",
+  "mutation": "goal+output: generalize the single s-t shortest-path interdiction to MULTI-TERMINAL interdiction -- maximize the SUM of shortest-path costs from one hive source to a set of q forage-patch terminals, subject to keeping every terminal reachable. The grid is overlaid with sparse cheap 'highway' shortcuts that carry most traffic, so budget-k destruction is NP-hard and greedy vs. best-improvement local search diverge.",
+  "objective": "max",
+  "theme": "beehive apiary",
+  "title": "Wasp Blight in the Apiary: Foraging-Corridor Interdiction",
+  "strategies": [
+    "do-nothing baseline: destroy no corridors (achieves the original total foraging effort)",
+    "traffic-weighted greedy: build one shortest-path tree, weight each edge by (terminal-traffic x cost), destroy the top-k that keep all patches reachable, no recomputation",
+    "best-improvement local search: each round recompute all shortest paths, evaluate the true objective gain of destroying each shortest-path-tree edge, commit the single best feasible one, repeat k times",
+    "randomized multi-restart: perturb the greedy ranking / tie-breaks across restarts and keep the interdiction set that maximizes final total effort"
+  ]
+}

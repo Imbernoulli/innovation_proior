@@ -1,0 +1,117 @@
+# Salmon Migration Ladder: Gate-Regime Weighting
+
+## Problem
+
+The *Coho Restoration Authority* has rebuilt a fish ladder along a dammed river. The
+ladder is controlled by `n` independent water-control **gates**, numbered `1..n`. For the
+season you must set each gate to one of two **regimes**:
+
+- `1` = **high-flow** (the gate spills water, creating a fast chute), or
+- `0` = **low-flow** (the gate is held back, creating a calm resting pool).
+
+Biologists have tagged `m` salmon **runs** (cohorts) that attempt to climb the ladder.
+Each run `j` has a habitat weight `w_j > 0` (the expected number of returning fish) and a
+list of **passage conditions**. A single condition is either
+
+- `+g` — "gate `g` must be in **high-flow**", or
+- `-g` — "gate `g` must be in **low-flow**".
+
+Run `j` is **passable** if **at least one** of its listed conditions is met by your chosen
+regimes (a salmon only needs one workable route). Your job is to choose the regime of every
+gate so as to maximize the total habitat weight of the passable runs.
+
+This is a **weighted Max-SAT** problem (gates are Boolean variables, runs are weighted
+clauses, conditions are literals). Finding the true optimum is NP-hard, the optimum is
+unknown, and many heuristics are viable: independent per-gate voting, steepest-ascent
+hill climbing, WalkSAT-style flips, and randomized multi-restart local search.
+
+## Input
+
+The first line contains two integers:
+
+```
+n m
+```
+
+- `n` — number of gates (Boolean variables), numbered `1..n`.
+- `m` — number of salmon runs (weighted clauses).
+
+Each of the next `m` lines describes one run:
+
+```
+w k c_1 c_2 ... c_k
+```
+
+- `w` — the run's habitat weight (`1 <= w`).
+- `k` — the number of passage conditions (`1 <= k`).
+- `c_1 .. c_k` — the conditions, each a nonzero integer: a positive value `g` means
+  "gate `g` high-flow" (`+g`), a negative value `-g` means "gate `g` low-flow". Every
+  `|c_i|` lies in `1..n`. Within one run all `|c_i|` are distinct.
+
+## Output
+
+Print a single line with `n` integers, the regime of gates `1..n` in order. Each value
+must be `0` (low-flow) or `1` (high-flow).
+
+Printing `n` zeros (all gates low-flow) is always valid.
+
+## Feasibility
+
+An output is feasible iff it contains exactly `n` tokens and each token is `0` or `1`.
+Any other output (wrong count, out-of-range value, trailing garbage) scores `0`.
+
+## Objective
+
+Let `F` be the total habitat weight of the runs that are passable under your chosen
+regimes. You are **maximizing** `F`.
+
+## Scoring
+
+Let `B` be the total habitat weight of the runs that are passable under the **all-low-flow**
+regime (every gate set to `0`) — the do-nothing baseline the ecologists start from. The
+score for a test is
+
+```
+ratio = min(1.0, 0.1 * F / B)
+```
+
+An all-low-flow submission (`F = B`) scores `0.1`; reaching a ten-fold improvement over
+the baseline (`F = 10*B`) caps the score at `1.0`. The overall score is the mean ratio
+across all tests.
+
+## Constraints
+
+- `1 <= n <= 400`.
+- `1 <= m <= 4000`.
+- `1 <= w <= 200`, `1 <= k <= 5`.
+- The baseline weight `B` is guaranteed to be positive (at least one run is passable at
+  all-low-flow).
+- Time limit: 5 s. Memory limit: 512 MB.
+
+## Example
+
+Input:
+
+```
+3 4
+5 1 -1
+8 2 1 2
+6 2 2 3
+4 1 -3
+```
+
+There are 3 gates and 4 runs. Under all-low-flow (`0 0 0`): run 1 is passable (gate 1 is
+low-flow, matching `-1`), run 4 is passable (gate 3 low-flow, `-3`), but runs 2 and 3 need
+a gate in high-flow, so they fail. Baseline `B = 5 + 4 = 9`.
+
+Now consider the regime `0 1 0` (only gate 2 high-flow): run 1 passes (`-1`), run 2 passes
+(`+2`), run 3 passes (`+2`), run 4 passes (`-3`) — all four runs are passable, so
+`F = 5 + 8 + 6 + 4 = 23`.
+
+Score for this test: `min(1.0, 0.1 * 23 / 9) = 0.255555...`.
+
+A valid worked output:
+
+```
+0 1 0
+```

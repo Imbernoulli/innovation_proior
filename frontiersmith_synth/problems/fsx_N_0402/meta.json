@@ -1,0 +1,18 @@
+{
+  "id": "fsx_N_0402",
+  "tier": "N",
+  "format": "A",
+  "family": "facility-location-spectral",
+  "eval_form": "quality-metric",
+  "seed_problem": "Choose k hub sites (budget) to maximize the algebraic connectivity of the induced coverage network minus install cost; composite facility-location x spectral robustness; the checker uses an exact integer surrogate (weighted global min cut) for the second-smallest Laplacian eigenvalue.",
+  "mutation": "composite: replace the additive 'connectivity minus cost' with a budgeted subset-selection whose objective MULTIPLIES the induced mesh's weighted edge connectivity (an integer, exact algebraic-connectivity surrogate = min sever cut) by the served bandwidth, so the winner must jointly maximize a spectral robustness term and a coverage term under a deployment-cost budget -- densest coverage is not most connected.",
+  "objective": "max",
+  "theme": "deep-sea cable network",
+  "title": "Abyssal Mesh: Resilient Deep-Sea Cable Hubs",
+  "strategies": [
+    "best-pair baseline: build the single affordable cable-connected hub pair maximizing pooled-weight times bandwidth",
+    "coverage-priority greedy: start from the best pair and add affordable hubs in decreasing bandwidth, keeping only non-worsening additions (trap-prone: chases high-bandwidth but flimsily-cabled hubs)",
+    "best-improvement F-greedy plus local swaps: repeatedly add the affordable hub that most increases lambda*bandwidth, then try 1-for-1 swaps to escape local optima",
+    "randomized multi-restart local search over budgeted subsets keeping the max composite value found"
+  ]
+}

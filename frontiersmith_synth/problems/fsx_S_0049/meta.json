@@ -1,0 +1,18 @@
+{
+  "id": "fsx_S_0049",
+  "tier": "S",
+  "format": "A",
+  "family": "graph-interdiction",
+  "eval_form": "quality-metric",
+  "seed_problem": "Themed grid network; remove at most k links to maximize the increase in s-t shortest path; checker verifies budget + connectivity and scores achieved delay ratio.",
+  "mutation": "input+output: replace the uniform count-k edge budget with a knapsack-style per-edge closure-effort budget B (each road has an independent removal cost c_e, sum over closures <= B) on a single s-t shortest-path interdiction over a plowed-highway grid; keeping s-t connected, maximize the forced shortest-path length, which makes cheapest-cut greedy vs. best-improvement local search diverge and the budgeted selection NP-hard.",
+  "objective": "max",
+  "theme": "polar research base",
+  "title": "Whiteout Blockade: Polar Route Interdiction",
+  "strategies": [
+    "do-nothing baseline: close no ice road (achieves the original s-t transit hours)",
+    "cheapest-cut greedy: take the current fastest route and barricade its roads cheapest-effort-first until the budget is spent, without re-planning the route",
+    "best-improvement local search: repeatedly re-plan the fastest route, and among its still-open, still-affordable roads close the one whose removal yields the largest true increase in s-t distance, until no positive-gain affordable cut remains",
+    "randomized multi-restart: perturb the greedy cut order across seeds and keep the closure set with the largest forced s-t distance"
+  ]
+}

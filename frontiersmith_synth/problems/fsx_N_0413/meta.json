@@ -1,0 +1,16 @@
+{
+  "id": "fsx_N_0413",
+  "tier": "N",
+  "family": "flow-congestion-convex",
+  "seed_problem": "Route integer demands on a capacitated graph where edge cost is convex (quadratic) in load; minimize total convex congestion plus unmet-demand penalty (multi-commodity flow x nonlinear congestion).",
+  "mutation": "composite + math twist: multi-commodity integer routing on a hard-capacitated subway graph where each shared segment's cost is CONVEX (a_e * x_e^2) in its total load, coupled with a per-passenger unserved penalty P. Three balanced mechanisms -- convex congestion spreading, hard capacity, and serve-vs-triage -- so the optimum must split each demand across parallel routes AND decide which passengers are worth moving. The x^2 term makes concentrating load strictly worse than spreading (2*(x/2)^2 < x^2), which no shortest-path/max-flow heuristic captures.",
+  "objective": "min",
+  "theme": "subway system",
+  "title": "Rush-Hour Rerouting on the Convex-Congestion Metro",
+  "strategies": [
+    "do-nothing baseline: route nobody (K=0), matching the checker baseline B = P*sum(vol), ratio ~0.1",
+    "single-route greedy: push each demand down one min-hop residual-capacity path, filling the tightest segment -- reduces unserved but concentrates load and pays the full a_e*x^2 crowding",
+    "convex successive-shortest-path: repeatedly route the largest beneficial batch along the minimum-marginal-cost (a_e*(2*load+1)) path via Dijkstra, spreading load across parallel routes and stopping a demand once further routing costs more than the penalty P",
+    "capacity/congestion local search: start from any feasible routing and shift flow off high-load segments onto lightly-loaded parallel routes, and drop demands whose marginal crowding exceeds P, until no cost-reducing reroute remains"
+  ]
+}

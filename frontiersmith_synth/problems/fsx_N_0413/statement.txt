@@ -1,0 +1,155 @@
+# Rush-Hour Rerouting on the Convex-Congestion Metro
+
+## Problem
+
+A metro authority runs a subway network of `N` **stations** connected by `M` bidirectional
+**track segments**. Segment `e` joins two stations, can physically carry at most `cap_e`
+trains-worth of passengers per period (a hard capacity), and suffers **crowding** that grows
+*faster than linearly* with load: if a total of `x` passengers traverse segment `e` during the
+period, the segment incurs a congestion cost
+
+```
+cost_e(x) = a_e * x^2.
+```
+
+The `x^2` term is the whole point: two lightly-loaded segments carrying `x/2` each cost
+`2 * a_e * (x/2)^2 = a_e * x^2 / 2`, only **half** as much as forcing all `x` down a single
+segment. Crowding is convex, so **spreading passengers out is cheaper than concentrating them**.
+
+There are `D` passenger **demands** (origin-destination groups). Demand `d` wants to move
+`vol_d` passengers from station `s_d` to station `t_d`. You do **not** have to move everyone: any
+passengers of demand `d` you leave unserved cost a fixed **inconvenience penalty `P`** each.
+
+You decide how to route passengers: for each demand you may split its passengers across several
+origin-to-destination paths, or leave some (or all) of them unserved. Passengers flowing through
+a segment add to that segment's load `x` (loads from **all** demands share the same physical
+tracks). No segment's total load may exceed its capacity `cap_e`.
+
+Your goal is to minimise the total period cost: the convex crowding on every segment plus the
+inconvenience penalty for every unserved passenger. The naive "send each group down its single
+shortest route" plan piles load onto shared segments and is punished hard by the `x^2` crowding;
+a good plan must balance route length, capacity, congestion spreading, and which demands are even
+worth serving. No efficient optimal algorithm is known, so heuristics are expected.
+
+## Input
+
+```
+N M D P
+u_1 v_1 cap_1 a_1
+u_2 v_2 cap_2 a_2
+...
+u_M v_M cap_M a_M
+s_1 t_1 vol_1
+s_2 t_2 vol_2
+...
+s_D t_D vol_D
+```
+
+- Line 1: integers `N` (stations), `M` (track segments), `D` (demands) and `P` (per-passenger
+  inconvenience penalty).
+- Each of the next `M` lines describes one bidirectional segment between stations `u_e` and `v_e`
+  (`1 <= u_e, v_e <= N`, `u_e != v_e`), with integer capacity `cap_e` and integer crowding
+  coefficient `a_e`. The graph is connected. There may be at most one segment between any pair of
+  stations.
+- Each of the next `D` lines gives one demand: origin `s_d`, destination `t_d` (`s_d != t_d`) and
+  integer passenger volume `vol_d`.
+
+## Output
+
+Describe your routing as a list of **path flows**. Each path flow moves an integer number of
+passengers of one demand along one origin-to-destination path.
+
+```
+K
+d_1 L_1 w_1,1 w_1,2 ... w_1,L_1 f_1
+d_2 L_2 w_2,1 w_2,2 ... w_2,L_2 f_2
+...
+d_K L_K w_K,1 w_K,2 ... w_K,L_K f_K
+```
+
+- Line 1: integer `K`, the number of path flows (`K = 0` is allowed: route nobody).
+- Each subsequent line is one path flow: the demand index `d` (`1 <= d <= D`), the number of
+  stations `L` on the path (`2 <= L <= N`), the `L` station ids `w_1 ... w_L` visited in order,
+  and the integer number of passengers `f >= 1` sent along it.
+- Each path flow must satisfy `w_1 = s_d`, `w_L = t_d`, and every consecutive pair
+  `(w_j, w_{j+1})` must be an existing track segment.
+
+## Feasibility
+
+An output is feasible if and only if all of the following hold:
+
+- every path flow is well-formed: `2 <= L <= N`, all station ids in `1..N`, each consecutive pair
+  is a real track segment, the first station is the demand's origin and the last is its
+  destination, and `f >= 1`;
+- for every demand `d`, the total passengers you route for it (summed over all its path flows)
+  does not exceed its volume `vol_d`;
+- for every segment `e`, its total load `x_e` (summed over **all** path flows that use it, from
+  **all** demands) does not exceed `cap_e`.
+
+Any output that violates feasibility scores 0.
+
+## Objective
+
+Let `x_e` be the total load on segment `e` and let `served_d` be the total passengers you route
+for demand `d` (so `unserved_d = vol_d - served_d`). Minimise
+
+```
+F = sum over segments e of a_e * x_e^2
+  + P * sum over demands d of unserved_d.
+```
+
+The first term is total convex crowding; the second is total inconvenience of unserved passengers.
+
+## Scoring
+
+Let `B = P * sum over demands d of vol_d` be the cost of the **do-nothing plan** (route nobody,
+so every passenger is unserved and there is zero crowding). This is always feasible and positive.
+Your score on a test is
+
+```
+ratio = min(1.0, (B / max(1, F)) / 10),
+```
+
+so a plan that merely matches the do-nothing cost scores `0.1`, halving the cost scores `0.2`, and
+reaching one tenth of the do-nothing cost (or lower) reaches the capped score `1.0`. Larger is
+better. Per-test scores are averaged.
+
+## Constraints
+
+- `2 <= N <= 2000`
+- `1 <= M <= 6000`
+- `1 <= D <= 1200`
+- `1 <= cap_e <= 2000`
+- `1 <= a_e <= 4`
+- `1 <= vol_d <= 200`
+- `1 <= P <= 3000`
+- Time limit: 5s
+- Memory limit: 512 MiB
+
+## Example
+
+Input:
+```
+4 4 1 1000
+1 2 100 1
+2 4 100 1
+1 3 100 1
+3 4 100 1
+1 4 60
+```
+
+The four stations form a square; demand 1 wants to move 60 passengers from station 1 to station 4.
+There are two symmetric routes: `1-2-4` and `1-3-4`.
+
+The do-nothing plan leaves all 60 unserved: `B = 1000 * 60 = 60000`.
+
+Sending all 60 down one route, say `1-2-4`, loads segments `1-2` and `2-4` with `x = 60` each, so
+crowding `= 1*60^2 + 1*60^2 = 7200`, unserved `= 0`, giving `F = 7200` and
+`ratio = min(1.0, (60000 / 7200) / 10) = 0.833...`.
+
+Splitting the flow, `30` down `1-2-4` and `30` down `1-3-4`, loads all four segments with `x = 30`,
+so crowding `= 4 * (1 * 30^2) = 3600`, unserved `= 0`, giving `F = 3600` and
+`ratio = min(1.0, (60000 / 3600) / 10) = 1.0` (capped).
+
+Spreading the 60 passengers across the two parallel routes halves the convex crowding and reaches
+the score cap here.

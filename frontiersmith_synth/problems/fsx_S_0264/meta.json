@@ -1,0 +1,16 @@
+{
+  "id": "fsx_S_0264",
+  "tier": "S",
+  "family": "online-to-offline-replay",
+  "seed_problem": "Given a fixed availability/deadline trace, choose Spot/On-Demand/pause per step to minimize cost; checker replays the trace and scores baseline/cost.",
+  "mutation": "composite: replay the online spot-vs-on-demand provisioning decision as a STATIC full-trace optimization, AND add a shared bounded-capacity cistern (reservoir) that carries harvested rain across steps. This couples two decisions -- window assignment of each bed's single-shot demand, and time-indexed lot-sizing of rain/mains sourcing with storage -- so the offline optimum is an inventory-lot-sizing-with-release/deadline-windows problem (NP-hard) rather than a per-step greedy. The reservoir cap is exactly what makes lookahead (hoarding cheap early rain for expensive later steps) valuable yet non-trivial.",
+  "objective": "min",
+  "theme": "rooftop gardens",
+  "title": "Rooftop Garden Cistern: Rain / Mains / Store Replay",
+  "strategies": [
+    "trivial baseline: water every bed at its release step and source each step's demand locally with no storage (rain up to catchment, then mains) -- ignores both cheap-step consolidation and the cistern",
+    "cost-aware greedy: assign each bed to the cheapest-rain step inside its window, still sourcing per-step with no storage -- consolidates onto cheap catchment steps and saves activations",
+    "storage-aware lookahead: cheapest-rain window assignment plus a forward supply pass that pre-harvests cheap rain and hoards it in the cistern (bounded by tank capacity and remaining future demand) to serve later expensive / zero-catchment steps for free",
+    "invalid: valid assignment but zero rain and zero mains everywhere -> some step runs dry -> infeasible -> score 0"
+  ]
+}

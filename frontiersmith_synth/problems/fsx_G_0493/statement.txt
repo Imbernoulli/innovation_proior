@@ -1,0 +1,174 @@
+# VLIW Backend: Latency-Constrained Bundle Scheduling with Read-Port Pressure
+
+## Problem
+
+You are the instruction scheduler in the backend of a **VLIW** (Very Long Instruction
+Word) compiler. A basic block has been lowered to a set of `n` micro-operations that must
+be issued on a statically-scheduled machine. Every machine cycle the hardware issues one
+**bundle** of operations *in parallel*; your job is to decide, for each operation, the
+cycle in which it is issued so that the whole block finishes in as few cycles as possible.
+
+The machine and the block impose three coupled constraints.
+
+**1. Data dependences with latencies.** The operations form a dependence DAG. If operation
+`u` produces a value consumed by operation `v`, then `v` may not issue until `u`'s result
+is available. Operation `u` has a **result latency** `L_u >= 1`: its result is ready
+`L_u` cycles after `u` issues. So for every dependence edge `u -> v`,
+
+```
+cycle(v) >= cycle(u) + L_u .
+```
+
+**2. Functional-unit slots.** The machine has `T` kinds of functional units. Operation `i`
+runs on a unit of kind `t_i`. In any single cycle at most `cap_t` operations of kind `t`
+may be issued (there are only `cap_t` copies of that unit), and — across all kinds — at
+most `W` operations may be issued in one bundle (the issue width).
+
+**3. Register-file read ports.** Every issued operation reads its source operands from the
+shared register file, which has only `P` **read ports** per cycle. An operation of kind
+`t` needs `rp_t` read ports. The total read-port demand of a bundle may not exceed `P`.
+
+Packing more operations into each bundle shortens the schedule, but the unit caps, the
+issue width, and the read-port budget all fight back — and a long dependence chain of
+high-latency operations can stretch the schedule no matter how you pack. Optimal
+resource-constrained scheduling is NP-hard, so heuristics are expected. Greedy
+list-scheduling in program order is a reasonable start but is easily trapped: issuing a
+cheap low-priority operation early can block the cycle a critical high-latency operation
+needed.
+
+## Input
+
+```
+n m W T P
+cap_1 cap_2 ... cap_T
+rp_1  rp_2  ... rp_T
+t_1 L_1
+t_2 L_2
+...
+t_n L_n
+u_1 v_1
+u_2 v_2
+...
+u_m v_m
+```
+
+- Line 1: number of operations `n`, number of dependence edges `m`, issue width `W`,
+  number of functional-unit kinds `T`, and read-port budget `P`.
+- Line 2: `cap_t` for each kind `t = 1..T` (unit copies available per cycle).
+- Line 3: `rp_t` for each kind `t = 1..T` (read ports one op of kind `t` consumes).
+- The next `n` lines describe operations `1..n`: kind `t_i` (in `1..T`) and result
+  latency `L_i`.
+- The next `m` lines give dependence edges `u_k -> v_k`. Every edge satisfies
+  `1 <= u_k < v_k <= n`, so program order `1, 2, ..., n` is already a valid topological
+  order of the DAG. No unordered pair is repeated.
+- The read-port budget always satisfies `P >= max_t rp_t`, so a bundle holding a single
+  operation is always legal.
+
+## Output
+
+Print `n` lines. Line `i` contains a single integer `s_i` — the cycle (0-indexed) in which
+you issue operation `i`.
+
+```
+s_1
+s_2
+...
+s_n
+```
+
+## Feasibility
+
+An output is feasible if and only if all of the following hold:
+
+- every `s_i` is an integer with `0 <= s_i <= 100000000`;
+- **dependences:** for every edge `u -> v`, `s_v >= s_u + L_u`;
+- **issue width:** for every cycle `c`, the number of operations with `s_i = c` is at
+  most `W`;
+- **unit slots:** for every cycle `c` and kind `t`, the number of operations of kind `t`
+  with `s_i = c` is at most `cap_t`;
+- **read ports:** for every cycle `c`, the sum of `rp_{t_i}` over operations with
+  `s_i = c` is at most `P`.
+
+Any output that violates feasibility scores 0.
+
+## Objective
+
+Let the schedule length (makespan) be
+
+```
+F = 1 + max_i s_i ,
+```
+
+the number of machine cycles the bundle stream occupies. **Minimize `F`.**
+
+## Scoring
+
+Let `B` be the makespan of the **sequential program-order schedule** the grader builds
+itself: process operations `1, 2, ..., n` and give each its own dedicated cycle, i.e.
+`s_i = max( max_{u -> i} (s_u + L_u), (previous cycle) + 1 )`. This issues exactly one
+operation per cycle, so it always satisfies every resource constraint, and its makespan
+`B` is positive. Your score on a test is
+
+```
+ratio = min(1.0, (B / max(1, F)) / 10)
+```
+
+so a schedule that merely matches the sequential baseline scores `0.1`, one that halves
+its length scores `0.2`, and reaching one tenth of the baseline length (or shorter) hits
+the capped score `1.0`. Larger is better. Per-test scores are averaged.
+
+## Constraints
+
+- `2 <= n <= 3000`
+- `1 <= m <= 8000`
+- `1 <= W <= 8`
+- `1 <= T <= 4`
+- `1 <= cap_t <= W`
+- `1 <= rp_t <= 3`
+- `max_t rp_t <= P <= 8`
+- `1 <= L_i <= 8`
+- Time limit: 5s
+- Memory limit: 512 MiB
+
+## Example
+
+Input:
+```
+6 5 2 2 2
+2 1
+1 2
+1 3
+1 1
+2 2
+1 1
+2 1
+1 2
+1 3
+2 4
+3 5
+5 6
+```
+
+Here `W = 2`, kinds `T = 2` with caps `cap = (2, 1)` and read-port demands `rp = (1, 2)`,
+and the read-port budget is `P = 2`. Operations (kind, latency) are
+`1:(1,3), 2:(1,1), 3:(2,2), 4:(1,1), 5:(2,1), 6:(1,3)`. Edges are
+`1->2, 1->3, 2->4, 3->5, 5->6`.
+
+The sequential baseline gives one op per cycle respecting latency:
+`s_1=0` (its result is ready at cycle 3), `s_2` needs `>= 0+3 = 3` and `> 0`, so `s_2=3`;
+`s_3` needs `>= 3` and `> 3`, so `s_3=4`; `s_4 >= 3+1=4` and `> 4`, so `s_4=5`;
+`s_5 >= 4+2=6` and `> 5`, so `s_5=6`; `s_6 >= 6+1=7`, so `s_6=7`. Baseline makespan
+`B = 1 + 7 = 8`.
+
+A packed schedule: `s_1=0`, then at cycle 3 issue both `2` and `3` in one bundle (two
+kind-1/kind-2 ops: unit caps `2,1` ok; read ports `1+2=3 > P=2` — **not** allowed, so
+instead issue `2` at cycle 3 and `3` at cycle 4). Take `s_1=0, s_2=3, s_3=4, s_4=4`
+(`4` is kind 1, `2` is kind 1 already placed elsewhere; at cycle 4 ops are `3:(kind2)` and
+`4:(kind1)`: caps ok, ports `2+1=3 > 2` — again blocked). So place `s_4=3` alongside `s_2`
+(both kind 1: caps `2` ok, ports `1+1=2 <= 2` ok). Now `s_1=0, s_2=3, s_4=3, s_3=4`,
+`s_5 >= 4+2=6` so `s_5=6`, `s_6 >= 6+1=7` so `s_6=7`. Makespan `F = 8` — the high-latency
+chain `1 -> 3 -> 5 -> 6` dominates, so packing the independent ops did not help here and
+`ratio = min(1, (8/8)/10) = 0.1`.
+
+The lesson the harder tests reward: shorten the schedule by packing along the *critical*
+resource and by keeping high-latency producers off the paths that gate everything else.

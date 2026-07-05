@@ -1,0 +1,18 @@
+{
+  "id": "fsx_S_0234",
+  "tier": "S",
+  "format": "A",
+  "family": "assignment-matching",
+  "eval_form": "quality-metric",
+  "seed_problem": "Assign drones to delivery zones under per-drone capacity to maximize served weight; checker validates capacities and scores total value / baseline.",
+  "mutation": "input+output: generalize the plain bipartite capacity assignment into a full generalized assignment problem (agent-dependent resource costs e_ij, per-drone energy budgets, at-most-one carrier per parcel) so the optimum is NP-hard and greedy / best-fit / eviction-swap / repacking local search strategies diverge.",
+  "objective": "max",
+  "theme": "warehouse robotics",
+  "title": "Skybridge Fulfillment: Drone Payload Dispatch",
+  "strategies": [
+    "first-fit baseline: assign each parcel in input order to the lowest-index drone with remaining budget",
+    "value/cost greedy: sort parcels by value divided by cheapest energy cost, assign each to its feasible min-cost drone",
+    "eviction-swap local search: from a greedy start, place unassigned high-value parcels by evicting cheaper lower-value ones when total value strictly increases",
+    "multi-start repacking: run greedy under several parcel orderings and keep the packing that maximizes total delivered value"
+  ]
+}

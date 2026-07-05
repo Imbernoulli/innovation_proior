@@ -1,0 +1,16 @@
+{
+  "id": "fsx_A_0143",
+  "tier": "A",
+  "format": "C",
+  "family": "geometric-packing",
+  "eval_form": "quality-metric",
+  "theme": "e-sports arena",
+  "title": "Arena Control Zones: Circular-Stage Capture-Point Layout",
+  "objective": "max",
+  "strategies": [
+    "row baseline: N equal zones along a diameter with radius R/N (reproduces the checker baseline)",
+    "equal-radius square-grid packing at the largest spacing that still fits N cells",
+    "densest-lattice choice (square vs hexagonal) at the largest fitting spacing, N cells nearest the centre",
+    "boundary-aware unequal inflation: grow rim zones into the wasted arena edge under wall + neighbour limits"
+  ]
+}

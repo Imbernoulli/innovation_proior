@@ -1,0 +1,16 @@
+{
+  "id": "fsx_S_0031",
+  "tier": "S",
+  "family": "network-design",
+  "seed_problem": "Build a connected relay network where no node has degree > 3, minimizing total cable length; checker validates connectivity+degree and scores baseline/cost.",
+  "mutation": "output-restriction: keep the min-cost connected-network goal but impose a per-node contact cap b_i in {2,3}, turning MST into an NP-hard degree-constrained minimum spanning structure; skinned as a pandemic contact-tracing backbone.",
+  "objective": "min",
+  "theme": "pandemic contact net",
+  "title": "Pandemic Contact-Net: Degree-Capped Tracing Backbone",
+  "strategies": [
+    "Morton/Z-order chain (space-filling curve) baseline connecting nodes in curve order",
+    "degree-constrained nearest-neighbour Hamiltonian path (greedy)",
+    "degree-constrained MST-style construction plus tree edge-swap local search that exploits the extra degree-3 branching",
+    "flow/rounding or metaheuristic refinements on a degree-constrained spanning tree"
+  ]
+}

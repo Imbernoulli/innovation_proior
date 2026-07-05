@@ -1,0 +1,16 @@
+{
+  "id": "fsx_G_0421",
+  "tier": "G",
+  "format": "E",
+  "family": "sci-ml-scaling-law",
+  "eval_form": "quality-metric",
+  "theme": "LLM pretraining runs",
+  "title": "Neural Scaling Law with an Irreducible Floor — extrapolating to larger compute",
+  "objective": "min",
+  "strategies": [
+    "constant baseline: predict the mean training loss (ignores scaling structure) -> ~0.1",
+    "log-linear fit L ~ p + q*log(C) + r*log(D): captures the decreasing trend, but has no irreducible floor so it slides below the true entropy floor when extrapolated to large scale",
+    "Chinchilla-style power law L = E + A*C**(-alpha) + B*D**(-beta): grid-search the two exponents, least-squares the linear (E,A,B); the modelled floor extrapolates to larger compute",
+    "alternatives: finer/continuous exponent optimisation, robust/Huber loss on the log-runs, ridge on (E,A,B), or joint (C,D) coupling terms traded against the complexity penalty"
+  ]
+}

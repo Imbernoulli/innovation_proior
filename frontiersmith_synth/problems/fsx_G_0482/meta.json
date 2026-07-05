@@ -1,0 +1,16 @@
+{
+  "id": "fsx_G_0482",
+  "tier": "G",
+  "format": "C",
+  "family": "disc-golomb-ruler",
+  "eval_form": "correctness",
+  "theme": "radio astronomy array",
+  "title": "Minimum-Span Non-Redundant Interferometer Track",
+  "objective": "min",
+  "strategies": [
+    "trivial: reproduce the checker's Erdos-Turan quadratic-residue reference ruler (~2n^2 span)",
+    "greedy: Mian-Chowla greedy insertion -- add smallest next position keeping all separations distinct",
+    "strong: best-known short non-redundant arrays plus seeded multi-restart randomized greedy, keeping the shortest valid ruler",
+    "search: branch-and-bound / local-search over mark placements for genuinely optimal spans (open-ended, no closed form)"
+  ]
+}

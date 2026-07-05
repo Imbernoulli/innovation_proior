@@ -1,0 +1,16 @@
+{
+  "id": "fsx_A_0345",
+  "tier": "A",
+  "format": "C",
+  "family": "functional-inequality-constant",
+  "eval_form": "quality-metric",
+  "theme": "data-center cooling",
+  "title": "Thermal Cross-Interference in a Data-Center Cooling Schedule",
+  "objective": "min",
+  "strategies": [
+    "concentrated coolant block (trivial baseline: high peak self-interference)",
+    "coarse triangular / ramp profiles (mild spreading, beats the block)",
+    "flat/uniform profile (c1 = 2, a strong simple reference)",
+    "simulated-annealing / coordinate-descent shape search seeded from the flat profile to push the autocorrelation peak below 2"
+  ]
+}

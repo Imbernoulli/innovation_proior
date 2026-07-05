@@ -1,0 +1,16 @@
+{
+  "id": "fsx_B_0373",
+  "tier": "B",
+  "format": "E",
+  "family": "symbolic-regression",
+  "eval_form": "quality-metric",
+  "theme": "bakery supply chain",
+  "title": "Fresh-Yield Law of an Artisan-Bakery Supply Line — extrapolating symbolic regression over daily supply-chain readings",
+  "objective": "optimize",
+  "strategies": [
+    "constant baseline: predict the mean training fresh-yield index (ignores structure) -> ~0.1",
+    "linear least squares y~1+x1+x2+x3+x4: captures the trend, misses the demand*staleness exponential envelope / proof-temp square-law / flour*proof interaction, extrapolates poorly onto the over-range frontier",
+    "structured basis [1, x3*exp(-c*x4), x1*x2, x2^2, x1] with a grid search over the hidden exponential staleness-decay rate c, coefficients by least squares",
+    "alternatives: finer / continuous optimisation of c, ridge-regularised bases, or adding cross terms to trade the complexity penalty against held-out R^2"
+  ]
+}

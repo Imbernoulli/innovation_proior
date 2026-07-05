@@ -1,0 +1,16 @@
+{
+  "id": "fsx_B_0165",
+  "tier": "B",
+  "format": "B",
+  "family": "multiobjective-hypervolume",
+  "eval_form": "quality-metric",
+  "theme": "volcano monitoring",
+  "title": "VolcanoWatch: Budgeted Batch Design for Maximum Pareto Hypervolume on a DTLZ2 Surrogate",
+  "objective": "max",
+  "strategies": [
+    "trivial: commission B identical center configurations -> collapses to one Pareto point (matches baseline)",
+    "greedy: sit on the trade-off surface (distance vars = 0.5) but sweep only one position variable -> a coarse 1D arc",
+    "strong: on-surface space-filling grid over all position variables plus extreme axis points -> covers the full front",
+    "invalid: out-of-range coordinates -> rejected -> 0"
+  ]
+}

@@ -1,0 +1,17 @@
+{
+  "id": "fsx_B_0367",
+  "tier": "B",
+  "format": "B",
+  "family": "multiobjective-hypervolume",
+  "eval_form": "quality-metric",
+  "theme": "orbital debris cleanup",
+  "title": "Orbital Debris Cleanup Mission Portfolio",
+  "objective": "max",
+  "source_frameworks": ["Frontier-Eng (ReactionOptimisation/DTLZ2)"],
+  "strategies": [
+    "trivial: fly the single midpoint profile budget-many times -> one 4D cost point, dominates baseline volume only -> ~0.1",
+    "greedy: uniform grid over the three trade-off (position) variables, distance vars at 0.5 (all on the cost frontier) -> spreads but grid is uneven on the curved 3D frontier -> ~0.3-0.4",
+    "strong: grid seed + coordinate-wise local 4D hypervolume ascent (multi-scale steps, keep only volume-increasing moves) -> reference-tuned spread, materially more 4D volume, still short of the global optimum -> ~0.5-0.8",
+    "invalid: out-of-range coordinates (5.0) -> rejected -> 0"
+  ]
+}

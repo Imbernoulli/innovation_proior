@@ -1,0 +1,17 @@
+{
+  "id": "fsx_B_0161",
+  "tier": "B",
+  "format": "B",
+  "family": "seeded-numerical-sim",
+  "eval_form": "quality-metric",
+  "theme": "traffic signal grid",
+  "title": "Green-Wave Phasing: Coordinating a Traffic-Signal Grid",
+  "objective": "max",
+  "source_frameworks": ["Frontier-Eng (Optics/Communications)"],
+  "strategies": [
+    "all-zero offsets: set every green phase to 0; all flow collapses to the DC center and every target corridor stays dark -- this reproduces the evaluator's weak baseline and scores ~0.1",
+    "grating superposition (phase-only): sum a linear phase ramp for each target corridor and keep only the resulting phase; steers substantial flow onto the corridors (efficiency ~0.75-0.8) but the phase-only truncation leaves them very unequal (uniformity ~0.4-0.5), so it beats the baseline yet leaves large headroom",
+    "Gerchberg-Saxton / iterative-Fourier-transform: alternately enforce the target amplitude on the corridors in the spectrum and unit amplitude on the grid, iterating to raise both efficiency and uniformity together -- clears the superposition heuristic but a phase-only device cannot reach the ideal, so it stays below 1.0",
+    "gradient ascent, random restarts, or simulated annealing on the composite metric: further squeeze uniformity, and adaptive weighting (e.g. boosting the dimmest corridors between iterations) trades a little efficiency for much better balance"
+  ]
+}

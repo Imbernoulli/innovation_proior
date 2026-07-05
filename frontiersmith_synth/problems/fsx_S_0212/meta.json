@@ -1,0 +1,18 @@
+{
+  "id": "fsx_S_0212",
+  "tier": "S",
+  "format": "A",
+  "family": "partition-clustering",
+  "eval_form": "quality-metric",
+  "seed_problem": "Partition a weighted graph into two balanced halves maximizing cut weight; checker validates balance and scores cut/baseline.",
+  "mutation": "composite: skin balanced max-cut bisection as two-AGV fleet zoning, and plant the heavy congestion weight on a hidden balanced ground-truth cut that is decorrelated from the checker's alternating index baseline, so the reference partition is far above the baseline while light intra/noise conflicts create a genuine balance-vs-cut tradeoff.",
+  "objective": "max",
+  "theme": "warehouse robotics",
+  "title": "Fleet Zoning: Two-AGV Congestion Split",
+  "strategies": [
+    "alternating baseline: label cell i by i mod 2 (balanced but uncorrelated with the good cut)",
+    "sequential greedy: assign each cell to the fleet that maximizes incremental cut weight against already-placed cells, respecting fleet-size caps",
+    "pairwise-swap local search: from a balanced start, repeatedly apply the best cross-fleet cell swap that increases the cut, with randomized multi-restart",
+    "planted-recovery heuristics: exploit heavy-edge community structure to approximately recover the balanced ground-truth partition"
+  ]
+}

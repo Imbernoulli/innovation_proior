@@ -1,0 +1,18 @@
+{
+  "id": "fsx_S_0253",
+  "tier": "S",
+  "format": "A",
+  "family": "graph-interdiction",
+  "eval_form": "quality-metric",
+  "seed_problem": "Themed grid network; remove at most k links to maximize the increase in s-t shortest path; checker verifies budget + connectivity and scores achieved delay.",
+  "mutation": "composite: replace the count budget (at most k links) with a KNAPSACK budget (each corridor has a clearing cost c_i, total cleared cost must stay within budget C), and skin as a wildlife-corridor interdiction. This embeds a knapsack-flavoured selection on top of shortest-path interdiction, keeping the optimum NP-hard while making cost-benefit greedy and best-improvement local search diverge.",
+  "objective": "max",
+  "theme": "wildlife corridor",
+  "title": "Severing the Wildlife Corridor: Budget-Constrained Habitat Interdiction",
+  "strategies": [
+    "do-nothing baseline: clear no corridors (herd keeps the original route length)",
+    "cost-benefit greedy: repeatedly clear the affordable corridor on the current shortest route with the best length-per-clearing-cost ratio while keeping den-watering connectivity",
+    "best-improvement local search: at each step tentatively clear every affordable corridor on the current shortest route, recompute the true resulting shortest route, and commit the clearing that maximizes it",
+    "randomized multi-restart / Lagrangian relaxation: perturb the cost-benefit ordering across restarts and keep the interdiction set with the largest final detour"
+  ]
+}

@@ -1,0 +1,18 @@
+{
+  "id": "fsx_S_0073",
+  "tier": "S",
+  "format": "A",
+  "family": "graph-interdiction",
+  "eval_form": "quality-metric",
+  "seed_problem": "Themed grid network; remove at most k links to maximize the increase in s-t shortest path; checker verifies budget + connectivity and scores achieved delay.",
+  "mutation": "output: interdict VERTICES instead of edges -- collapse at most k chambers (with s,t protected), which seals all incident passages, to maximize the s-t shortest path; the grid is augmented with heavy-tailed long-range crawlways so the vertex shortest-path interdiction is NP-hard and myopic-vs-search heuristics diverge.",
+  "objective": "max",
+  "theme": "cave mapping expedition",
+  "title": "Cave-In: Collapsing Chambers to Strand the Rival Expedition",
+  "strategies": [
+    "do-nothing baseline: collapse no chambers (rival keeps the original fastest route)",
+    "greedy proxy heuristic: repeatedly collapse the current-route intermediate chamber with the largest incident passage weight, checking connectivity only",
+    "best-improvement local search: at each step evaluate the true post-collapse shortest route for every collapsible chamber on the current route and commit the genuine best",
+    "randomized multi-restart: perturb the best-improvement choices across seeded restarts and keep the collapse set that maximizes the final detour"
+  ]
+}

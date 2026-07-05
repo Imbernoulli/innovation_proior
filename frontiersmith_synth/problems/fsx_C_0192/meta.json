@@ -1,0 +1,17 @@
+{
+  "id": "fsx_C_0192",
+  "tier": "C",
+  "format": "C",
+  "family": "algebraic-exotic-construction",
+  "eval_form": "quality-metric",
+  "theme": "recycling depot routes",
+  "title": "Recycling Depot Routes: Maximum Partial-Latin Schedule Completion",
+  "objective": "max",
+  "strategies": [
+    "schedule nothing new -- echo the prefilled grid (calibration baseline, F == prefilled count)",
+    "naive row-major fill with the smallest fitting depot -- no lookahead, traps later cells",
+    "MRV + least-constraining-value constraint propagation with forward checking -- fills far more cells",
+    "backtracking / exact partial-Latin completion search for a full N*N solution when time permits",
+    "matching / flow-based row-completion to maximize filled cells per row-column deficiency"
+  ]
+}

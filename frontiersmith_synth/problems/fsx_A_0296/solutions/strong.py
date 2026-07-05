@@ -1,0 +1,110 @@
+# TIER: strong
+"""Multi-restart single-flip hill climb with perturbation kicks: each restart
+kicks the incumbent by several free-cell flips then climbs to a local optimum,
+keeping the best matrix over all restarts.  Larger budget + restarts -> a
+markedly higher determinant than the single greedy climb, yet still far from any
+(unknown) optimum, so the score stays well below saturation."""
+import sys
+
+
+def bareiss_det(M):
+    n = len(M)
+    M = [row[:] for row in M]
+    sign = 1
+    prev = 1
+    for k in range(n - 1):
+        if M[k][k] == 0:
+            piv = -1
+            for i in range(k + 1, n):
+                if M[i][k] != 0:
+                    piv = i
+                    break
+            if piv < 0:
+                return 0
+            M[k], M[piv] = M[piv], M[k]
+            sign = -sign
+        mkk = M[k][k]
+        Mk = M[k]
+        for i in range(k + 1, n):
+            Mi = M[i]
+            mik = Mi[k]
+            for j in range(k + 1, n):
+                Mi[j] = (Mi[j] * mkk - mik * Mk[j]) // prev
+        prev = mkk
+    return sign * M[n - 1][n - 1]
+
+
+class LCG:
+    __slots__ = ("x",)
+
+    def __init__(self, seed):
+        self.x = (seed * 2862933555777941757 + 3037000493) & ((1 << 64) - 1)
+
+    def nxt(self):
+        self.x = (self.x * 6364136223846793005 + 1442695040888963407) & ((1 << 64) - 1)
+        return self.x
+
+    def bit(self):
+        return 1 if (self.nxt() >> 33) & 1 else -1
+
+    def rint(self, m):
+        return self.nxt() % m
+
+
+def build_baseline(n, seed, fixed):
+    for attempt in range(64):
+        rng = LCG(seed + attempt * 7919)
+        M = [[0] * n for _ in range(n)]
+        for i in range(n):
+            for j in range(n):
+                M[i][j] = fixed[(i, j)] if (i, j) in fixed else rng.bit()
+        if bareiss_det(M) != 0:
+            return M
+    return M
+
+
+def climb(M, fixed, rng, budget):
+    n = len(M)
+    cur = abs(bareiss_det(M))
+    for _ in range(budget):
+        i = rng.rint(n); j = rng.rint(n)
+        if (i, j) in fixed:
+            continue
+        M[i][j] = -M[i][j]
+        d = abs(bareiss_det(M))
+        if d >= cur:
+            cur = d
+        else:
+            M[i][j] = -M[i][j]
+    return cur
+
+
+def main():
+    toks = sys.stdin.read().split()
+    it = iter(toks)
+    n = int(next(it)); seed = int(next(it)); k = int(next(it))
+    fixed = {}
+    for _ in range(k):
+        i = int(next(it)); j = int(next(it)); v = int(next(it))
+        fixed[(i, j)] = v
+    base = build_baseline(n, seed, fixed)
+    rng = LCG(seed + 2)
+    best_val = -1
+    best_M = None
+    restarts = 4
+    for r in range(restarts):
+        M = [row[:] for row in base]
+        if r > 0:
+            for _ in range(2 * n):
+                i = rng.rint(n); j = rng.rint(n)
+                if (i, j) not in fixed:
+                    M[i][j] = -M[i][j]
+        v = climb(M, fixed, rng, 40 * n)
+        if v > best_val:
+            best_val = v
+            best_M = [row[:] for row in M]
+    sys.stdout.write("\n".join(" ".join(str(x) for x in row) for row in best_M) + "\n")
+
+
+if __name__ == "__main__":
+    main()

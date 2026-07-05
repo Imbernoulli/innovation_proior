@@ -1,0 +1,16 @@
+{
+  "id": "fsx_C_0397",
+  "tier": "C",
+  "format": "B",
+  "family": "classical-ml-algorithm",
+  "eval_form": "quality-metric",
+  "theme": "interstellar relay",
+  "title": "Interstellar Relay Fingerprint Sorting",
+  "objective": "optimize",
+  "strategies": [
+    "median split on max-variance coordinate (trivial reference)",
+    "standardized k-means (great on blobs, fails on rings/moons)",
+    "standardize + select among k-means / GMM / spectral by silhouette with a non-convex bonus",
+    "estimate structure per-geometry (density / manifold / mixture) and pick per instance"
+  ]
+}

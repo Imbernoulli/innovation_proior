@@ -1,0 +1,114 @@
+# Abyssal Cable Deployment: Spot-Weather Replay
+
+## Problem
+
+A single cable-laying ship must complete the deployment of `N` deep-sea trunk sections of a
+submarine fibre-optic network. Section `i` requires `W_i` units of laid-and-buried cable work and
+must be **finished on or before step `d_i`** (a scheduled survey checkpoint). There are `T` discrete
+work steps (tidal windows), numbered `1..T`.
+
+At each step `t` the ship performs **exactly one** action:
+
+- **SPOT** work on some section `i`: rides the opportunistic weather window and lays `cap[t]` units of
+  progress into section `i` at cost `sc[t]`. The spot capacity `cap[t]` is fixed in advance by the
+  sea-state trace (during a storm `cap[t] = 0`, so a spot action makes no progress yet still costs
+  `sc[t]`).
+- **ON-DEMAND** work on some section `i`: charters guaranteed support and lays exactly `D` units of
+  progress into section `i` at the fixed cost `OD`, regardless of weather.
+- **PAUSE**: the ship holds station, laying nothing at zero cost.
+
+Progress accumulates per section across steps. Section `i` is *complete* once its accumulated
+progress reaches `W_i`; over-laying past `W_i` is wasted but allowed. Each step advances **one**
+section only.
+
+You are given the entire trace up front. Plan the whole `T`-step schedule to minimise total cost.
+
+## Input
+
+```
+N T D OD
+cap[1] sc[1]
+cap[2] sc[2]
+...
+cap[T] sc[T]
+W[1] d[1]
+W[2] d[2]
+...
+W[N] d[N]
+```
+
+- Line 1: number of sections `N`, number of steps `T`, on-demand progress per step `D`, on-demand
+  cost per step `OD`.
+- Next `T` lines: the sea-state trace, `cap[t]` (spot progress) and `sc[t]` (spot cost) for step `t`.
+- Next `N` lines: work requirement `W[i]` and deadline `d[i]` for section `i`.
+
+## Output
+
+Print exactly `T` lines, one per step `t = 1..T`. Each line has two integers `mode sec`:
+
+- `mode = 0` (PAUSE): then `sec = 0`.
+- `mode = 1` (SPOT): then `sec` in `1..N`; section `sec` gains `cap[t]` progress at cost `sc[t]`.
+- `mode = 2` (ON-DEMAND): then `sec` in `1..N`; section `sec` gains `D` progress at cost `OD`.
+
+## Feasibility
+
+A schedule is feasible iff every section reaches its requirement in time: for each `i`, the
+accumulated progress into section `i` from steps `1..d_i` is at least `W_i`. An output with a
+wrong line count, an out-of-range token, a non-`0` section on a PAUSE line, or any missed deadline
+is infeasible and scores 0.
+
+## Objective
+
+Minimise total cost `F`, the sum over all steps of the cost of the chosen action (SPOT costs
+`sc[t]`, ON-DEMAND costs `OD`, PAUSE costs `0`).
+
+## Scoring
+
+Let `B` be the cost of the reference all-on-demand schedule: for each section spend
+`ceil(W_i / D)` on-demand steps (earliest-deadline-first). Because every `W_i` is a multiple of `D`,
+`B = OD * sum_i (W_i / D)`. Your score for a test is
+
+```
+ratio = min(1000, 100 * B / F) / 1000
+```
+
+so matching the all-on-demand cost scores `0.1`, and a schedule ten times cheaper (or better) caps
+at `1.0`. Higher is better.
+
+## Constraints
+
+- `3 <= N <= 60`, `1 <= T <= 400`.
+- `D = 10`, `OD = 100`.
+- `0 <= cap[t] <= 18`, `1 <= sc[t] <= 200`.
+- Each `W_i` is a positive multiple of `D`; deadlines are strictly increasing in the input order,
+  `1 <= d_1 < d_2 < ... < d_N = T`.
+- The instance is always feasible (the all-on-demand schedule meets every deadline).
+- Time limit: 5 s. Memory limit: 512 MB.
+
+## Example
+
+Input:
+```
+2 4 10 100
+12 40
+0 100
+15 90
+10 100
+10 2
+20 4
+```
+
+Here section 1 needs 10 units by step 2; section 2 needs 20 units by step 4. `D = 10`, `OD = 100`.
+
+A valid schedule:
+```
+1 1
+2 2
+1 2
+0 0
+```
+Step 1 spot on section 1: +12 (>=10, section 1 done by step 2), cost 40.
+Step 2 on-demand on section 2: +10, cost 100.
+Step 3 spot on section 2: +15 (total 25 >= 20, section 2 done by step 4), cost 90.
+Step 4 pause, cost 0.
+Total `F = 230`. Reference `B = 100 * (10/10 + 20/10) = 300`. Score `= 100 * 300 / 230 / 1000 = 0.1304`.

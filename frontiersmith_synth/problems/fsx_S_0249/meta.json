@@ -1,0 +1,18 @@
+{
+  "id": "fsx_S_0249",
+  "tier": "S",
+  "format": "A",
+  "family": "coloring-labeling",
+  "eval_form": "quality-metric",
+  "seed_problem": "Assign frequencies to transmitters minimizing total interference conflicts under a channel budget; checker scores baseline_conflicts/achieved.",
+  "mutation": "composite: keep the frequency-assignment goal but (a) generalize the conflict model from pure co-channel graph coloring to a weighted span-2 model with both co-channel penalty p and adjacent-channel penalty q per pair, and (b) generate the interference graph from a random geometric arena layout with a few heavy-tailed 'hero rig' links, so a small channel budget C makes zero-interference impossible and greedy / min-conflicts / multi-restart heuristics diverge.",
+  "objective": "min",
+  "theme": "e-sports arena",
+  "title": "Arena Airwaves: Channel Assignment for the Grand Final",
+  "strategies": [
+    "do-nothing baseline: assign every rig channel 1 (worst-case co-channel interference == the scoring baseline B)",
+    "degree/weight-ordered greedy: process rigs by descending interference weight and pick the channel minimizing added penalty against already-assigned neighbours (one pass)",
+    "min-conflicts local search: greedy init, then repeatedly move each rig to its least-penalty channel until no sweep improves the total interference",
+    "randomized multi-restart: run min-conflicts from several seeded random initial assignments and keep the lowest-interference assignment found"
+  ]
+}

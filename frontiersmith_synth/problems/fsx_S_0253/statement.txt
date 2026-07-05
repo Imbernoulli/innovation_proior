@@ -1,0 +1,127 @@
+# Severing the Wildlife Corridor: Budget-Constrained Habitat Interdiction
+
+## Problem
+
+A migratory herd travels every season from its winter **den** (node `s`) to a distant
+**watering ground** (node `t`) through a protected mosaic of habitat patches linked by
+safe wildlife **corridors**. Each corridor has a positive traversal length (the distance
+an animal must walk along it) and a positive **clearing cost** (the money a development
+consortium must spend to fell, fence, or build over that corridor and take it out of use).
+
+The consortium has a fixed budget `C`. It may clear any set of corridors whose total
+clearing cost is at most `C`, **but** if the den is ever completely cut off from the
+watering ground the environmental regulator halts all development and the plan is voided.
+Subject to those two rules, the consortium wants the herd's *shortest remaining route*
+from den to watering ground to be as **long** as possible (forcing a costly detour).
+
+Your job: choose which corridors to clear so as to maximize the length of the shortest
+den-to-watering-ground route in the surviving network, while (a) keeping the total
+clearing cost within budget `C`, and (b) keeping `s` and `t` connected.
+
+Formally: you are given an undirected weighted (multi)graph where edge `i` has traversal
+length `w_i` and clearing cost `c_i`. Choose a set `S` of edges with
+`sum_{i in S} c_i <= C` such that `s` and `t` remain connected, maximizing the length of
+the shortest `s`-`t` path after the edges of `S` are removed.
+
+This is a budget-constrained shortest-path interdiction problem: it is NP-hard (it embeds
+a knapsack-flavoured choice on top of the interdiction), the optimum is unknown, and many
+heuristics (cost-benefit greedy, best-improvement local search, randomized restarts,
+Lagrangian-style relaxations) are viable and tend to diverge.
+
+## Input
+
+The first line contains five integers:
+
+```
+n m s t C
+```
+
+- `n` — number of habitat patches (nodes), numbered `1..n`.
+- `m` — number of corridors (edges).
+- `s` — the den (source node).
+- `t` — the watering ground (sink node), `s != t`.
+- `C` — the total clearing budget.
+
+Each of the next `m` lines describes one corridor (edge index `1..m` in input order):
+
+```
+u v w c
+```
+
+meaning a two-way corridor between patches `u` and `v` with traversal length `w`
+(`1 <= w`) and clearing cost `c` (`1 <= c`). The graph may contain parallel corridors
+and is guaranteed to have `s` connected to `t`.
+
+## Output
+
+On the first line print `r` — the number of corridors you clear (`0 <= r <= m`).
+On each of the next `r` lines print one corridor index (an integer in `1..m`). All indices
+must be distinct.
+
+Printing `0` on the first line (and nothing else) is always valid.
+
+## Feasibility
+
+An output is feasible iff:
+
+- `0 <= r <= m`;
+- every printed index is in `1..m` and all are distinct;
+- the total clearing cost of the chosen corridors is at most `C`;
+- after removing exactly the chosen corridors, `s` and `t` are still connected.
+
+Any infeasible output scores `0`.
+
+## Objective
+
+Let `F` be the shortest-path traversal length from `s` to `t` after your chosen corridors
+are removed. You are **maximizing** `F`.
+
+## Scoring
+
+Let `B` be the shortest-path traversal length from `s` to `t` in the original network (no
+corridors cleared). The score for a test is
+
+```
+ratio = min(1.0, 0.1 * F / B)
+```
+
+A do-nothing submission (`F = B`) scores `0.1`; forcing a ten-fold detour (`F = 10*B`)
+caps the score at `1.0`. The overall score is the mean ratio across all tests.
+
+## Constraints
+
+- `2 <= n <= 450`, `1 <= m <= 2600`.
+- `1 <= w <= 60`.
+- `1 <= c <= 50`.
+- `1 <= C <= 100000`.
+- Time limit: 5 s. Memory limit: 512 MB.
+
+## Example
+
+Input:
+
+```
+4 5 1 4 6
+1 2 1 3
+2 4 1 3
+1 3 8 10
+3 4 8 10
+2 3 2 2
+```
+
+Original shortest route: `1 -> 2 -> 4` with total length `2`, so `B = 2`.
+
+With a budget of `C = 6`, clearing corridors `1` (the `1-2` link, cost `3`) and `2` (the
+`2-4` link, cost `3`) spends exactly `6`. The cheap route is gone; the fastest remaining
+route becomes `1 -> 3 -> 4` with length `16`, so `F = 16`. The den and watering ground are
+still connected, so this is feasible.
+
+Score for this test: `min(1.0, 0.1 * 16 / 2) = min(1.0, 0.8) = 0.8`.
+
+A valid worked output:
+
+```
+2
+1
+2
+```

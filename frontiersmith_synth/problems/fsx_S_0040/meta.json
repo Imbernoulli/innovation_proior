@@ -1,0 +1,18 @@
+{
+  "id": "fsx_S_0040",
+  "tier": "S",
+  "format": "A",
+  "family": "routing-tour",
+  "eval_form": "quality-metric",
+  "seed_problem": "Choose which pickup-delivery pairs to serve and output one depot-to-depot tour minimizing distance; checker validates precedence + returns tour length ratio.",
+  "mutation": "composite: turn the fixed-set pickup-delivery TSP into a prize-collecting selection problem (goal) over a Manhattan signal-grid metric with per-arrival red-light delays (input), so both WHICH jobs to serve and the precedence-constrained ordering must be optimized jointly; optimum is NP-hard and serve-all vs serve-none are both suboptimal.",
+  "objective": "min",
+  "theme": "traffic signal grid",
+  "title": "Signal-Grid Courier: Prize-Collecting Pickup-and-Delivery Tour",
+  "strategies": [
+    "do-nothing baseline: serve no job (cost equals the sum of all penalties)",
+    "append-greedy: sort jobs by penalty and tack pickup+delivery onto the end of the route whenever the marginal drive is cheaper than the forfeited penalty",
+    "cheapest-insertion: repeatedly insert the most profitable job at its best pickup/delivery positions until no positive-savings job remains",
+    "insertion + or-opt local search with randomized restarts: perturb job order across restarts, re-insert and relocate segments, keep the lowest-cost feasible tour"
+  ]
+}

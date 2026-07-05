@@ -1,0 +1,131 @@
+# Curator's Conundrum: Docent-Guided Gallery Tours
+
+## Problem
+
+The *Helvig Museum of Curiosities* is opening for a special evening. A number of
+**visitor groups** have booked, and the museum has several **galleries**, each staffed
+by a docent with a limited amount of guided-attention time (docent-minutes) available
+for the evening.
+
+If visitor group `i` is given a guided tour of gallery `j`, that tour consumes
+`a[i][j]` docent-minutes of gallery `j`'s budget and produces `p[i][j]` units of visitor
+satisfaction (the two depend on both the group's interests and the gallery's contents).
+
+Each visitor group can be sent to **at most one** gallery (a group either gets one guided
+tour or none). Within each gallery, the docent-minutes consumed by the groups sent there
+must not exceed that gallery's budget. Your job is to decide, for each group, whether and
+where to send it, so as to **maximize the total visitor satisfaction**.
+
+Formally this is a *generalized assignment* (multiple-knapsack) problem: assign a subset
+of groups to galleries, each group to one gallery, respecting per-gallery capacity, to
+maximize summed profit. It is NP-hard; the optimum is unknown and heuristics
+(profit-greedy, density-greedy, local search, swaps) are all viable and diverge.
+
+## Input
+
+The first line contains two integers:
+
+```
+V G
+```
+
+- `V` — number of visitor groups, numbered `1..V`.
+- `G` — number of galleries, numbered `1..G`.
+
+The second line contains `G` integers `C_1 C_2 ... C_G`, where `C_j` is the docent-minute
+budget of gallery `j`.
+
+Each of the next `V` lines describes one visitor group. Line `i` contains `2*G` integers:
+
+```
+a[i][1] p[i][1] a[i][2] p[i][2] ... a[i][G] p[i][G]
+```
+
+where `a[i][j]` is the docent-minutes group `i` needs in gallery `j` and `p[i][j]` is the
+satisfaction it produces there. It is guaranteed that `a[i][j] <= C_j` for every `i, j`,
+so any single group fits into any gallery on its own.
+
+## Output
+
+On the first line print `r` — the number of groups you send on a tour (`0 <= r <= V`).
+Each of the next `r` lines contains two integers:
+
+```
+i j
+```
+
+meaning group `i` is sent to gallery `j`. Every printed group index `i` must be distinct
+(each group at most once). Groups you do not list are simply not toured.
+
+Printing `0` on the first line (and nothing else) is always valid, but scores poorly.
+
+## Feasibility
+
+An output is feasible iff:
+
+- `0 <= r <= V`;
+- each printed `i` is in `1..V` and all printed `i` are distinct;
+- each printed `j` is in `1..G`;
+- for every gallery `j`, the sum of `a[i][j]` over the groups assigned to `j` does not
+  exceed `C_j`.
+
+Any infeasible output scores `0`.
+
+## Objective
+
+Let `F` be the total satisfaction `sum of p[i][j]` over all your assignments. You are
+**maximizing** `F`.
+
+## Scoring
+
+Let `B` be the internal baseline: the maximum satisfaction achievable by a single tour,
+`B = max over all (i,j) of p[i][j]` (always feasible since every group fits any gallery
+alone, so `B > 0`). The score for a test is
+
+```
+ratio = min(1.0, 0.1 * F / B)
+```
+
+Sending only the single best-value group (`F = B`) scores `0.1`; reaching ten times that
+value (`F = 10*B`) caps the score at `1.0`. The overall score is the mean ratio across
+all tests.
+
+## Constraints
+
+- `1 <= V <= 220`, `1 <= G <= 16`.
+- `1 <= a[i][j]`, `a[i][j] <= C_j`.
+- `1 <= p[i][j] <= 1000`.
+- `1 <= C_j <= 60`.
+- Time limit: 5 s. Memory limit: 512 MB.
+
+## Example
+
+Input:
+
+```
+3 2
+5 5
+2 6 4 3
+3 4 2 9
+1 2 5 5
+```
+
+There are 3 groups and 2 galleries, each with a docent budget of 5 minutes.
+
+The single best tour is group 2 in gallery 2, worth `9`, so `B = 9`.
+
+Consider this output:
+
+```
+3
+1 1
+2 2
+3 1
+```
+
+- Gallery 1 receives groups 1 and 3: docent-minutes `2 + 1 = 3 <= 5` (ok), profit
+  `6 + 2 = 8`.
+- Gallery 2 receives group 2: docent-minutes `2 <= 5` (ok), profit `9`.
+
+So `F = 6 + 9 + 2 = 17` and the score is `min(1.0, 0.1 * 17 / 9) = min(1.0, 0.1888...) =
+0.1888...`.

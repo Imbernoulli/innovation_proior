@@ -1,0 +1,17 @@
+{
+  "id": "fsx_A_0086",
+  "tier": "A",
+  "format": "C",
+  "family": "integer-matrix-construction",
+  "eval_form": "quality-metric",
+  "theme": "asteroid mining",
+  "title": "Resonant Polarity Array for Asteroid Ore Scanning",
+  "objective": "max",
+  "source_frameworks": ["OpenEvolve", "ThetaEvolve", "SimpleTES"],
+  "strategies": [
+    "arrow baseline: all +1 with -1 on the sub-diagonal, |det|=2^(N-1) (the minimum non-zero determinant, checker baseline)",
+    "seeded multi-restart random search: draw many ±1 matrices, keep the one with largest exact |det|",
+    "structured optimum: Sylvester–Hadamard for power-of-two N and Paley type-I for N=q+1 (q prime, q=3 mod 4), attaining |det|=N^(N/2) exactly",
+    "local sign-flip hill climbing on |det| starting from a structured or random array"
+  ]
+}

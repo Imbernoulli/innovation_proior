@@ -1,0 +1,18 @@
+{
+  "id": "fsx_G_0459",
+  "tier": "G",
+  "format": "B",
+  "family": "ml-active-learning-query",
+  "eval_form": "quality-metric",
+  "theme": "labeling budget",
+  "title": "Cold-Start Label Budget: Pool-Based Active-Learning Query Order",
+  "objective": "max",
+  "source_frameworks": ["MLS-Bench (active learning)", "breadth-fill (dataset/domain/task diversity)"],
+  "strategies": [
+    "uninformed random query order: send pool examples in a fixed shuffled order, ignoring the feature geometry (reproduces the evaluator's weak random anchor, ~0.1)",
+    "outlier / extreme-first order: label points farthest from the pool mean first; touches some rare clusters early but wastes budget on noisy tails of the common clusters",
+    "max-sum dispersion: greedily add the point maximizing the summed distance to the selected set; spreads out and beats random but over-samples the extreme directions",
+    "farthest-first / k-center coverage: greedily maximize the minimum distance to the selected set so every latent cluster (including rare ones) gets a labeled representative fast, driving the nearest-centroid learning curve up early",
+    "cluster-representative / density-peak sampling, or a seeded local search that reorders the first-budget prefix to maximize coverage of distinct clusters under a labeling budget"
+  ]
+}

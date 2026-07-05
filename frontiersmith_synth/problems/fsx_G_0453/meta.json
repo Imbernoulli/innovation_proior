@@ -1,0 +1,16 @@
+{
+  "id": "fsx_G_0453",
+  "tier": "G",
+  "format": "D",
+  "family": "flop-qaoa-swap-count",
+  "eval_form": "flops",
+  "theme": "IBM coupling map",
+  "title": "Coupling-Map Routing: Minimal-SWAP Compilation of a Fixed Interaction Schedule",
+  "objective": "min",
+  "strategies": [
+    "identity placement + greedy shortest-path routing (trivial baseline)",
+    "affinity-weighted initial placement + greedy routing (greedy)",
+    "affinity placement + look-ahead router choosing equal-cost final layouts (strong)",
+    "joint placement+routing search / SABRE-style bidirectional annealing below the greedy bound (open ceiling, uncovered)"
+  ]
+}

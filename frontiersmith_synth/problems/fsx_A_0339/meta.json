@@ -1,0 +1,17 @@
+{
+  "id": "fsx_A_0339",
+  "tier": "A",
+  "format": "C",
+  "family": "low-discrepancy-pointset",
+  "eval_form": "quality-metric",
+  "theme": "tide pool ecology",
+  "title": "Tide Pool Biodiversity Survey: Uniform Microhabitat Sampling",
+  "objective": "min",
+  "source_frameworks": ["OpenEvolve (star-discrepancy)", "AlphaEvolve"],
+  "strategies": [
+    "space-diagonal / single-line placement: all quadrats on the main diagonal of the cube (matches the checker baseline, high 3D star discrepancy ~0.1)",
+    "3D Halton set: coordinate j = radical inverse in prime base (2,3,5); a reliable fixed low-discrepancy construction that beats the diagonal",
+    "best Korobov rank-1 lattice: sweep the generator g over 1..n-1 for points ((i+.5)/n, (i*g mod n +.5)/n, (i*g^2 mod n +.5)/n) and keep the g with minimum EXACT 3D star discrepancy (a real per-instance search beating any single fixed rule)",
+    "jittered/stratified strata, scrambled Halton, Fibonacci/Sobol lattices, or local-search coordinate perturbation of a good seed set"
+  ]
+}

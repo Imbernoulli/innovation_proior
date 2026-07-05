@@ -1,0 +1,148 @@
+# Quantum Coupler Interdiction: Composite-Length Signal Paths
+
+## Problem
+
+A photonic quantum-computing lab is wired as a **layered coupler lattice**: a
+directed acyclic graph on `n` nodes. A control pulse is injected at the **source**
+node `s` and must arrive at the **sink** node `t`. It flows only forward along
+directed **couplers** (edges). The **hop-length** of a source-sink route is the
+number of couplers it traverses.
+
+Physicists have discovered a resonance pathology: any route whose hop-length is a
+**prime** number injects decoherence into the readout. A route whose hop-length is
+**composite** (i.e. not prime; lengths `0` and `1` are treated as non-prime) is safe.
+
+You are the wiring engineer. You may physically **cut** (remove) at most `k`
+couplers. Cutting coupler `i` costs `c_i`. After your cuts, the residual lattice
+still routes pulses, but you want to suppress prime-length resonance as cheaply as
+possible.
+
+For a fixed set `R` of cut couplers, let
+
+```
+resonant(R) = number of DISTINCT prime hop-lengths L for which the residual
+              lattice still contains at least one s -> t route of exactly L hops.
+```
+
+Your objective couples the physical cutting cost with a resonance penalty `P`:
+
+```
+F(R) = ( sum of c_i over i in R )  +  P * resonant(R).
+```
+
+Minimize `F(R)`. A perfect wiring (`resonant(R) = 0`) means **every surviving
+source-sink route has composite hop-length**, but achieving that within the budget
+`k` is generally impossible, so you must balance the two terms.
+
+## Input
+
+The first line contains six integers:
+
+```
+n m s t k P
+```
+
+* `n` — number of nodes, labeled `0 .. n-1`.
+* `m` — number of couplers.
+* `s` — source node.
+* `t` — sink node.
+* `k` — maximum number of couplers you may cut.
+* `P` — resonance penalty per surviving prime hop-length.
+
+Each of the next `m` lines describes coupler `i` (`i = 1 .. m`, in input order):
+
+```
+u v c
+```
+
+a directed coupler from `u` to `v` with cut cost `c`. The graph is a DAG and every
+coupler satisfies `u < v` (node ids increase with lattice depth), so `0..n-1` is a
+valid topological order.
+
+## Output
+
+Print your chosen cut set `R`:
+
+```
+r
+i_1
+i_2
+...
+i_r
+```
+
+* `r` — number of couplers you cut, with `0 <= r <= k`.
+* `i_1 .. i_r` — the **distinct** 1-based indices of the cut couplers.
+
+Printing `r = 0` (cut nothing) is always valid.
+
+## Feasibility
+
+An output is feasible iff `0 <= r <= k`, every index `i_j` is in `[1, m]`, and the
+indices are pairwise distinct. An infeasible or out-of-range output scores `0`.
+
+## Objective
+
+Minimize `F(R) = (sum of c_i, i in R) + P * resonant(R)`, where `resonant(R)`
+counts the distinct prime hop-lengths still realizable by some surviving `s -> t`
+route in the residual DAG.
+
+## Scoring
+
+Let `B = F(empty)` be the objective of cutting nothing (this equals
+`P * (number of prime hop-lengths present originally)`, which the generator
+guarantees to be positive). Your score for a test is
+
+```
+ratio = min(1000, 100 * B / max(1, F(R))) / 1000
+```
+
+so cutting nothing yields exactly `0.1`, and any genuine improvement scores higher,
+capped at `1.0` (a 10x reduction of the objective). Per-test ratios are averaged.
+
+## Constraints
+
+* `2 <= n <= 2100`, `1 <= m <= 40000`.
+* `s = 0`, `t = n-1`.
+* `1 <= k <= 25`.
+* `1 <= c_i <= 1000`, `1 <= P <= 2500`.
+* Max hop-length of any route is at most `n-1` (in practice bounded by the lattice
+  depth, at most ~40).
+* Time limit: 5 s. Memory limit: 512 MB.
+
+## Example
+
+```
+6 6 0 5 1 10
+0 1 3
+1 5 4
+0 2 7
+2 3 2
+3 5 6
+0 5 9
+```
+
+Source-sink routes and their hop-lengths:
+
+* `0 -> 1 -> 5`      length `2` (prime, resonant)
+* `0 -> 2 -> 3 -> 5` length `3` (prime, resonant)
+* `0 -> 5`           length `1` (non-prime, safe)
+
+Prime hop-lengths present: `{2, 3}`, so `B = P * 2 = 20`.
+
+With `k = 1` you may cut one coupler. Cutting coupler `4` (`2 -> 3`, cost `2`)
+destroys the only length-`3` route, leaving prime lengths `{2}`:
+
+```
+F = 2 + 10 * 1 = 12,   ratio = 100 * 20 / 12 / 1000 = 0.1667.
+```
+
+Output:
+
+```
+1
+4
+```
+
+(Cutting coupler `1` instead removes length `2` but costs `3`, giving
+`F = 3 + 10 = 13`, a slightly worse `0.1538`.)

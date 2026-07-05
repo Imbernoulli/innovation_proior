@@ -1,0 +1,16 @@
+{
+  "id": "fsx_S_0075",
+  "tier": "S",
+  "family": "packing-knapsack",
+  "seed_problem": "Pack polyominoes into a W x H board maximizing covered area (reflections allowed).",
+  "mutation": "composite: generalize input (each grid cell carries a traffic-yield weight + vent obstacles) and retarget the objective from covered area to maximum total weighted yield harvested by placed polyominoes under stock limits -> a weighted (value-density) 2D packing / geometric knapsack.",
+  "objective": "max",
+  "theme": "deep-sea cable network",
+  "title": "Abyssal Cable Grid: Relay-Pod Deployment",
+  "strategies": [
+    "trivial: anchored greedy using only design 0 (the checker baseline)",
+    "greedy: single row-major pass placing the best-yield pod anchored at each free cell",
+    "strong: global-best greedy placing the single highest-yield feasible pod each round, tie-broken by yield density",
+    "local search / multi-restart randomized packing over placement order (not implemented in ladder but viable)"
+  ]
+}

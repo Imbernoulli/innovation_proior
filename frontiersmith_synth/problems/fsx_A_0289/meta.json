@@ -1,0 +1,16 @@
+{
+  "id": "fsx_A_0289",
+  "tier": "A",
+  "format": "C",
+  "family": "low-discrepancy-pointset",
+  "eval_form": "quality-metric",
+  "theme": "carnival ride circuit",
+  "title": "Fairground Anchors: Minimum-Discrepancy Carnival Ride Circuit",
+  "objective": "min",
+  "strategies": [
+    "diagonal ride-line baseline: place all anchors along the main diagonal ((i+0.5)/M repeated) -- valid but badly clustered (scores ~0.1)",
+    "additive-recurrence (Kronecker) lattice: x_i^k = frac((i+1)*sqrt(prime_k)), a cheap low-discrepancy spread",
+    "Hammersley/Halton construction: fixed first coordinate i/M plus radical-inverse coordinates in distinct prime bases",
+    "local-search / optimization over anchor positions minimizing the exactly-computed star discrepancy (open-ended: no known optimal set)"
+  ]
+}

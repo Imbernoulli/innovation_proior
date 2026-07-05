@@ -1,0 +1,16 @@
+{
+  "id": "fsx_S_0012",
+  "tier": "S",
+  "family": "online-to-offline-replay",
+  "seed_problem": "Frontier-CS cant_be_late offline / ALE-Bench spot-vs-on-demand replay",
+  "mutation": "composite: replay the online spot/on-demand/pause deadline trace as a STATIC full-trace optimization, and generalize the single-resource cost problem into a multi-section single-ship scheduling+coverage problem (jobs with deadlines + time-varying spot capacity/cost) whose exact optimum is combinatorial",
+  "objective": "min",
+  "theme": "deep-sea cable network",
+  "title": "Abyssal Cable Deployment: Spot-Weather Replay",
+  "strategies": [
+    "all-on-demand EDF baseline (the reference cost B)",
+    "safe spot-swap greedy: replace on-demand steps by spot only where spot is at least as productive (cap>=D) and cheaper",
+    "per-section cost-per-unit coverage: re-cover each section (earliest deadline first) from its own slots plus idle slots, packing cheap sub-D spot windows and freeing on-demand steps",
+    "deadline-aware planning / local search reserving high-capacity cheap spot windows for the most work-heavy sections and using on-demand only for residual near tight deadlines"
+  ]
+}

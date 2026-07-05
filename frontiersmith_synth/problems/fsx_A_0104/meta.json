@@ -1,0 +1,16 @@
+{
+  "id": "fsx_A_0104",
+  "tier": "A",
+  "format": "C",
+  "family": "extremal-point-config",
+  "eval_form": "quality-metric",
+  "theme": "greenhouse zones",
+  "title": "Greenhouse Pod Dispersion: No Three Sensors in a Row",
+  "objective": "max",
+  "strategies": [
+    "quadratic-residue baseline: place pod i at (i/n, (i^2 mod n)/n); reproduces the checker baseline (~0.1) and has all triangles non-degenerate",
+    "randomized local search: from a seeded random layout, repeatedly relocate one vertex of the current smallest-area triangle to a spot that does not shrink the minimum triangle area (single restart, few iterations)",
+    "multi-restart adaptive local search: many seeded restarts with an annealed move radius, always improving the worst (smallest-area) triangle, keeping the best layout found",
+    "structured spreading / boundary-aware placements that keep every triple far from collinear"
+  ]
+}

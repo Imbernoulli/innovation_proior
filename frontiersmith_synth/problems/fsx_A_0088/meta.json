@@ -1,0 +1,16 @@
+{
+  "id": "fsx_A_0088",
+  "tier": "A",
+  "format": "D",
+  "family": "tensor-decomposition-rank",
+  "eval_form": "flops",
+  "theme": "satellite ground stations",
+  "title": "Beamforming Gain Tensor: Minimal-Multiplier Combiner Network",
+  "objective": "optimize",
+  "strategies": [
+    "naive one-stage-per-nonzero-gain baseline (trivial)",
+    "slice-rank factorization along the fixed time axis (greedy)",
+    "best-of-three-axes slice-rank factorization (strong)",
+    "true CP-rank search / rational ALS below the slice bound (open ceiling, uncovered)"
+  ]
+}

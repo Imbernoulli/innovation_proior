@@ -1,0 +1,19 @@
+{
+  "id": "fsx_S_0032",
+  "tier": "S",
+  "format": "A",
+  "family": "partition-clustering",
+  "eval_form": "quality-metric",
+  "seed_problem": "Partition a weighted graph into two balanced halves maximizing cut weight; checker validates balance and scores cut/baseline.",
+  "mutation": "composite: retheme to a two-stage festival layout and generalize the balance rule from exact equal-size bisection to a node-weighted (crowd-draw) balance with a tolerance tau, keeping the max-cut objective; the node weights plus a planted-but-noisy community structure make the balanced optimum NP-hard and unknown, and let index-balancing, greedy placement, and flip/swap local search diverge.",
+  "objective": "max",
+  "theme": "festival stage layout",
+  "title": "Twin-Stage Festival Layout: Maximizing Cross-Stage Crowd Flow",
+  "strategies": [
+    "index-balance baseline: walk performers in input order, always assign to the lighter stage (flow-blind) -> the calibration point",
+    "greedy flow-aware placement: order by incident flow, place each performer opposite its heavier-weighted placed neighbours, then repair balance",
+    "single-flip local search: repeatedly flip a performer whenever it raises cross-stage flow and keeps |T0-T1| <= tau",
+    "balance-preserving swap / Kernighan-Lin: exchange one performer per stage to escape flip-only local optima",
+    "randomized multi-restart: run local search from many balanced random starts and keep the best feasible layout"
+  ]
+}

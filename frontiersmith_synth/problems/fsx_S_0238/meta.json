@@ -1,0 +1,16 @@
+{
+  "id": "fsx_S_0238",
+  "tier": "S",
+  "family": "maxsat-csp",
+  "seed_problem": "Maximize total weight of satisfied clauses in a synthetic weighted CNF; checker computes satisfied weight / all-false baseline.",
+  "mutation": "composite: skin weighted Max-SAT as a vaccine cold-chain compliance switchboard; mixed positive/negative-leaning weighted OR-requirements so neither all-ON nor all-OFF is near-optimal, forcing genuine constraint-optimization; score = satisfied weight / all-OFF baseline weight.",
+  "objective": "max",
+  "theme": "vaccine cold chain",
+  "title": "Cold-Chain Compliance Switchboard",
+  "strategies": [
+    "all-OFF baseline (trivial reference the checker measures)",
+    "per-switch weighted majority: set each switch to the polarity holding more incident requirement weight (one pass, ignores clause interactions)",
+    "multi-restart hill-climbing local search: incremental flip gains from a greedy start plus seeded random restarts, keep best",
+    "DP / branch-and-bound relaxations or Max-SAT solvers for small instances"
+  ]
+}

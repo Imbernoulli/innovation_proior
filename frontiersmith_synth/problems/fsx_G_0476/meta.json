@@ -1,0 +1,17 @@
+{
+  "id": "fsx_G_0476",
+  "tier": "G",
+  "format": "B",
+  "family": "ml-activation-design",
+  "eval_form": "quality-metric",
+  "theme": "MLP battery",
+  "title": "Drop-in Activation Design: the MLP Battery",
+  "objective": "maximize",
+  "source_frameworks": ["MLS-Bench (activation-function search)", "breadth-fill (dataset/domain/task diversity)"],
+  "strategies": [
+    "identity / linear table: echo the grid back so phi(x)=x -- collapses each net to a linear model and reproduces the evaluator's baseline (~0.1)",
+    "smooth saturating nonlinearity: tanh / sigmoid-shaped table introduces curvature so the nets bend decision boundaries, but vanishing tail gradients cap accuracy on the hard batteries",
+    "non-saturating rectifier: ReLU / leaky-ReLU keeps a live positive-side gradient under the shared GD schedule, training the tiny MLPs faster to higher geometric-mean accuracy",
+    "shaped / self-gated tables: GELU / SiLU-like or hand-tuned piecewise tables trading off saturation, negative-region leak and gradient magnitude across the diverse dataset kinds and the held-out net"
+  ]
+}

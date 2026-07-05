@@ -1,0 +1,16 @@
+{
+  "id": "fsx_S_0078",
+  "tier": "S",
+  "family": "assignment-matching",
+  "seed_problem": "Assign drones to delivery zones under per-drone capacity to maximize served weight; checker validates capacities and scores total value / baseline.",
+  "mutation": "composite (input+goal): generalize the bipartite capacity-assignment seed into a capacitated Generalized Assignment Problem. Each rack's resource footprint depends on WHICH cooling unit serves it (a full N x M load matrix, driven by airflow distance), units have heterogeneous capacities, and racks may be left unassigned. The goal maximizes total served rack VALUE (decoupled from load) rather than served weight, so unit choice, packing, and value trade off against each other -- NP-hard, no known optimum.",
+  "objective": "max",
+  "theme": "data-center cooling",
+  "title": "Data-Center Cooling Assignment: Racks to Chillers under Airflow Load",
+  "strategies": [
+    "first-fit in index order (checker baseline): assign each rack to the first unit with room; feasible, ratio ~0.1",
+    "value-first best-fit: sort racks by descending value and place each on the cheapest feasible unit, prioritizing valuable racks and leaving the most slack",
+    "value-density greedy (v / min-load) with multi-start: try several rack orderings (value, density, footprint), keep the best-value construction",
+    "local search: fill remaining capacity, then eviction-swaps that kick a lower-value rack off a unit to admit a higher-value rack whenever total served value strictly rises"
+  ]
+}

@@ -1,0 +1,16 @@
+{
+  "id": "fsx_G_0436",
+  "tier": "G",
+  "format": "E",
+  "family": "sci-network-traffic-law",
+  "eval_form": "quality-metric",
+  "theme": "ISP telemetry",
+  "title": "ISP Telemetry: Congestion-vs-Load Law Discovery",
+  "objective": "min",
+  "strategies": [
+    "trivial: emit the constant train-mean of y (matches the grader's baseline predictor -> ~0.1)",
+    "greedy: OLS on a polynomial basis {1, rho, cv, hop, rho^2}; captures the low-load trend but cannot represent the rho/(1-rho) pole, so it under-predicts the high-load held-out split",
+    "strong: OLS on the physically-correct M/G/1 basis {1, hop, q, cv*q} with q=rho/(1-rho); recovers the queueing pole so it extrapolates to the high-load regime, limited only by irreducible held-out noise",
+    "invalid: emit a non-parsing / disallowed-token expression -> infeasible (0)"
+  ]
+}

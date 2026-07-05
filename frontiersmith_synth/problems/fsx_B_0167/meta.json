@@ -1,0 +1,20 @@
+{
+  "id": "fsx_B_0167",
+  "tier": "B",
+  "format": "B",
+  "family": "feasibility-gated-structural",
+  "eval_form": "quality-metric",
+  "theme": "data-center cooling",
+  "title": "Data-Center Overhead Cooling-Gantry Sizing",
+  "objective": "min",
+  "scale": "large",
+  "variant": 2,
+  "source_frameworks": ["Frontier-Eng (StructuralOptimization)"],
+  "strategies": [
+    "trivial: uniform a_max sizing (evaluator baseline, always feasible) -> ~0.1",
+    "greedy: fully-stressed yield-only sizing (area = |force|/sigma); passes yield but busts the buckling gate on slender members and the sag gate on tight instances -> 0 there, high on loose instances",
+    "strong: floor each bar to max(yield, Euler-buckling) area, then uniformly scale up until the sag gate is met; feasible on all three gates and far lighter than baseline (headroom left: hardest instances ~0.37, no instance hits 1.0)",
+    "invalid: uniform a_min sizing -> yield + buckling + sag all violated everywhere -> 0"
+  ],
+  "novelty": "Distinct from fsx_B_0159 (vineyard trellis, stress+sag only): large multi-bay data-center cooling gantry with an added Euler-buckling gate whose critical stress scales with the chosen area, coupling the sizing decision to compression stability."
+}

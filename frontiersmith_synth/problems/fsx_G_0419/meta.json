@@ -1,0 +1,18 @@
+{
+  "id": "fsx_G_0419",
+  "tier": "G",
+  "format": "E",
+  "family": "sci-biology-growth-law",
+  "eval_form": "quality-metric",
+  "theme": "cell culture bioreactor",
+  "title": "Bioreactor Growth-Law Extrapolation: Predicting the Stationary Plateau from Early VCD Samples",
+  "objective": "min",
+  "source_frameworks": ["breadth-fill (dataset/domain/task diversity)"],
+  "strategies": [
+    "trivial: crude saturating logistic with plateau fixed at 1.05*max(train) (reproduces the grader baseline) -> ~0.10",
+    "greedy: logistic fit with the plateau K grid-optimised on the early data -> better plateau but symmetric tail, mild extrapolation gain",
+    "strong: recover the correct asymmetric Gompertz family N=K*exp(-b*exp(-c*t)) via a 2-D (K,c) grid with closed-form b, extrapolating the late stationary phase; irreducible noise keeps it below 1.0",
+    "invalid: emit a non-parsing / forbidden-token expression -> infeasible (0)"
+  ],
+  "notes": "Format-E symbolic regression skinned as a fed-batch cell-culture bioreactor. The solver sees a noisy early-time viable-cell-density series (t <= 30 h, lag+exponential+start of deceleration) and must emit a closed-form growth law over t that EXTRAPOLATES to the withheld late saturation region (t = 40..90 h, stationary plateau), regenerated deterministically inside the checker. Hidden law is the Gompertz member of the logistic/Gompertz sigmoidal family, N(t)=K*exp(-b*exp(-c*t)); the plateau K is only weakly constrained by early data so a naive exponential fit blows up while a symmetric logistic mis-shapes the tail. Coefficients (K,b,c) and multiplicative-noise level vary per testId. Score = baseline_rmse/held_out_rmse (minimisation) with a gentle AST-complexity penalty; the internal baseline is itself a crude SATURATING logistic so a correct fit beats it only modestly, leaving headroom (no auto-cap). Deterministic CPU only; no wall-time, no shipped groundtruth module, no law/seed printed by gen.py."
+}

@@ -1,0 +1,20 @@
+{
+  "id": "fsx_C_0193",
+  "tier": "C",
+  "format": "B",
+  "family": "classical-ml-algorithm",
+  "eval_form": "quality-metric",
+  "theme": "traffic signal grid",
+  "title": "City Signal Grid: Intersection Regime Clustering",
+  "objective": "optimize",
+  "scale": "large",
+  "variant": 2,
+  "source_frameworks": ["MLS-Bench (ml-*)"],
+  "isolation": "candidate runs as an isolated stdin->stdout subprocess via isorun; the true regime labels and hidden state stay in the evaluator process",
+  "strategies": [
+    "null clustering (all intersections in one group) -> ARI 0 -> normalized ~0.1 on every city",
+    "plain Lloyd k-means on raw features: recovers compact isotropic regimes but is distorted by shear (anisotropic cities) and dominated by large-scale nuisance channels (scaled cities)",
+    "robust-standardize (median/MAD) + PCA whitening + k-means++ multi-restart: neutralizes scale/nuisance channels and decorrelates sheared regimes -> high ARI across the family, still imperfect on overlapping / many-regime / high-noise cities (headroom)",
+    "structure-adaptive methods (GMM/EM for anisotropic covariance, spectral / kNN-graph clustering for non-convex regimes, model-selection over k) that specialize per city geometry"
+  ]
+}

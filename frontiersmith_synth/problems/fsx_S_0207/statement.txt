@@ -1,0 +1,114 @@
+# Wildlife Corridor Reserve: Habitat Patch Packing
+
+## Problem
+A conservation authority manages a rectangular nature reserve laid out as an
+`H x W` grid of unit cells. Cell in row `r` (0-indexed from the top) and column
+`c` (0-indexed from the left) has a **conservation value** `v[r][c] >= 1`
+(rare-species density, water proximity, etc.).
+
+You have a catalogue of `T` **habitat-patch** shapes. Patch type `i` is a
+*polyomino* (a connected set of unit cells) given in a normalized frame, and you
+own only `cnt[i]` physical copies of it (limited restoration budget). A copy may
+be placed onto the reserve in any of its **8 orientations** (4 rotations x an
+optional reflection). Placed patches must lie fully inside the grid and must not
+overlap each other.
+
+Restoring a patch "activates" every cell it covers. Choose which patches to place,
+in which orientation, and where, to **maximize the total conservation value of the
+covered cells**. Because supply is limited you cannot cover the whole reserve, so
+you must decide *which* high-value regions to protect and *which* shapes fit them.
+
+## Input
+```
+H W T
+v[0][0] v[0][1] ... v[0][W-1]
+...
+v[H-1][0] ... v[H-1][W-1]
+```
+Then `T` patch-type blocks, for `i = 0 .. T-1`:
+```
+cnt[i] s[i]
+dr_0 dc_0
+...
+dr_{s[i]-1} dc_{s[i]-1}
+```
+`s[i]` is the number of cells in shape `i`. The `s[i]` cell offsets `(dr, dc)` are
+given in the shape's **normalized frame**: `min dr = 0`, `min dc = 0`, all offsets
+`>= 0`. Type `0` is always the `2 x 2` square.
+
+## Output
+```
+K
+i_1 o_1 r_1 c_1
+...
+i_K o_K r_K c_K
+```
+`K` is the number of patches you place. Each line describes one placement:
+patch type `i` (`0 <= i < T`), orientation `o` (`0 <= o <= 7`), and placement
+offset `(r, c)` (`0 <= r < H`, `0 <= c < W`).
+
+### Orientation semantics
+Let the normalized cells of shape `i` be `{(dr, dc)}`. Orientation `o` applies a
+transform, then re-normalizes so the minimum row and column are again `0`:
+- `reflect = o / 4`, `rot = o % 4`.
+- start from `(dr, dc)`; if `reflect == 1` replace `dc` with `-dc`;
+- then apply `rot` quarter-turns, each turn mapping `(x, y) -> (y, -x)`;
+- finally subtract the minimum row and minimum column so all coordinates are `>= 0`.
+
+A placement with offset `(r, c)` covers, for every transformed-and-normalized cell
+`(dr, dc)`, the grid cell `(r + dr, c + dc)`.
+
+## Feasibility
+A submission is feasible iff: `0 <= K <= sum_i cnt[i]`; every `i` in `[0, T)`,
+`o` in `[0, 7]`, `r` in `[0, H)`, `c` in `[0, W)`; each type `i` is used at most
+`cnt[i]` times; every covered cell lies inside the grid; and no two placed patches
+cover a common cell. Any violation scores 0.
+
+## Objective
+Maximize `F = sum of v[r][c] over all cells covered by at least one placed patch`
+(each covered cell counted once).
+
+## Scoring
+Let `B` be the total conservation value covered by the reference construction that
+the judge builds itself: place copies of type `0` in orientation `0` in row-major
+reading order (top-to-bottom, left-to-right), taking the first free, in-bounds
+position for each of up to `cnt[0]` copies. `B > 0`.
+
+Your score for a test is
+```
+sc    = min(1000, 100 * F / max(1, B))
+ratio = sc / 1000     (reported in [0, 1])
+```
+So matching the reference gives `ratio = 0.1`, and covering `10 x` the reference
+value (or more) caps at `ratio = 1.0`. The final score is the mean ratio over all
+tests.
+
+## Constraints
+- `2 <= H, W <= 56`, `2 <= T <= 8`.
+- `1 <= v[r][c] <= 100`.
+- Each shape has `2 <= s[i] <= 5` cells and fits inside the grid.
+- `1 <= cnt[i]`; `sum_i cnt[i] <= H * W`.
+- Time limit: 5 s. Memory limit: 512 MiB.
+
+## Example
+Input:
+```
+3 4 2
+1 1 1 9
+1 1 9 9
+1 1 9 9
+2 4
+0 0
+0 1
+1 0
+1 1
+2 2
+0 0
+0 1
+```
+Here type 0 is the 2x2 square (cnt 2), type 1 is a horizontal domino (cnt 2).
+The reference `B` places one 2x2 square at offset `(0,0)` covering values
+`1+1+1+1 = 4` (the second copy also fits at `(0,2)` covering `1+9+9+9 = 28`, so in
+fact `B = 4 + 28 = 32` here). A better plan places the 2x2 square at `(1,2)`
+covering `9+9+9+9 = 36` and a domino at `(0,2)` covering `1+9 = 10`, for
+`F = 46`, giving `ratio = min(1000, 100*46/32)/1000 = 0.14375`.

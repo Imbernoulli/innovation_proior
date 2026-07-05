@@ -1,0 +1,19 @@
+{
+  "id": "fsx_A_0308",
+  "tier": "A",
+  "format": "D",
+  "family": "tensor-decomposition-rank",
+  "eval_form": "flops",
+  "theme": "power grid",
+  "title": "Substation Phasor Coupling: Fewest Multiplier Primitives",
+  "objective": "optimize",
+  "variant": 9,
+  "scale": "small",
+  "source_frameworks": ["AlphaEvolve"],
+  "strategies": [
+    "trivial: one multiplier primitive per non-zero harmonic (mode-3) fiber (matches the checker baseline B0)",
+    "greedy: cheapest of the three fiber decompositions (fewest non-zero fibers over a mode)",
+    "strong: exact slice-rank (column-space) factorization along the best mode; beats every fiber decomposition but not the unknown optimum",
+    "open: search below the slice-rank bound (planted rank is over-complete, so the true minimum stays unknown)"
+  ]
+}

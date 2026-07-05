@@ -1,0 +1,17 @@
+{
+  "id": "fsx_A_0123",
+  "tier": "A",
+  "format": "C",
+  "family": "geometric-packing",
+  "eval_form": "quality-metric",
+  "theme": "data-center cooling",
+  "title": "Data-Center Cooling: Cold-Air Diffuser Placement",
+  "objective": "max",
+  "source_frameworks": ["AlphaEvolve", "OpenEvolve", "ThetaEvolve", "TTT-Discover"],
+  "strategies": [
+    "obstacle-aware equal-radius grid: touching disks on a coarse lattice, skipping cells that hit a rack (reproduces the checker baseline B, ~0.1)",
+    "grow-in-place: start from the grid then enlarge each diffuser to the maximum radius allowed by walls, racks and fixed neighbours (corners/edges first)",
+    "best-first insertion: over a fine candidate lattice, repeatedly drop the single disk with the largest achievable feasible radius into the biggest remaining gap",
+    "constructive layered packing + local perturb-and-regrow refinements that trade diffuser count against diffuser size around the rack keep-out zones"
+  ]
+}

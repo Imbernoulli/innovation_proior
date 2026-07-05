@@ -1,0 +1,17 @@
+{
+  "id": "fsx_G_0483",
+  "tier": "G",
+  "format": "C",
+  "family": "disc-costas-array",
+  "eval_form": "correctness",
+  "theme": "sonar waveform",
+  "title": "Sonar Costas Waveform: Minimum-Coincidence Frequency-Hop Permutation",
+  "objective": "min",
+  "strategies": [
+    "identity permutation (all marks on the main diagonal) -- reproduces the checker baseline",
+    "greedy column-by-column insertion minimizing added displacement coincidences",
+    "greedy seed + bounded seeded hill-climb over transpositions (local search)",
+    "algebraic near-Costas seeds (Welch/Lempel offsets on nearby prime orders) then repair",
+    "difference-triangle guided construction or backtracking search for near-Costas arrays"
+  ]
+}

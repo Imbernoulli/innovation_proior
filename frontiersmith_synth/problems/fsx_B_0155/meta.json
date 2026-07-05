@@ -1,0 +1,16 @@
+{
+  "id": "fsx_B_0155",
+  "tier": "B",
+  "format": "E",
+  "family": "symbolic-regression",
+  "eval_form": "quality-metric",
+  "theme": "smart-city lighting",
+  "title": "Adaptive Street-Lighting Power Law — extrapolating symbolic regression",
+  "objective": "optimize",
+  "strategies": [
+    "constant baseline: predict the mean training power draw (ignores structure) -> ~0.1",
+    "linear least squares y~1+x1+x2+x3+x4: captures trend, misses curvature, extrapolates poorly",
+    "structured basis [1,x1,x1^2,exp(c*x2),x3*x4] with a grid search over the hidden exp rate c, coefficients by least squares",
+    "alternatives: finer / continuous optimisation of c, ridge-regularised bases, or adding cross terms to trade complexity penalty against held-out error"
+  ]
+}

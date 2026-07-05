@@ -1,0 +1,16 @@
+{
+  "id": "fsx_G_0487",
+  "tier": "G",
+  "format": "C",
+  "family": "disc-corner-free-grid",
+  "eval_form": "correctness",
+  "theme": "grid scheduling",
+  "title": "Corner-Free Reservations: Packing an N x N Slot Grid",
+  "objective": "max",
+  "strategies": [
+    "single-row baseline: reserve every free cell in the fullest time slot (always corner-free)",
+    "lexicographic greedy: scan cells in row-major order, keep each free cell that completes no conflict corner with the set so far",
+    "multi-restart randomized greedy: run the corner-avoiding greedy under many seeded scan orders and keep the largest schedule",
+    "structured algebraic construction: place cells on residues r+2c of a 3-AP-free set so no corner can form"
+  ]
+}

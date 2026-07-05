@@ -1,0 +1,18 @@
+{
+  "id": "fsx_S_0059",
+  "tier": "S",
+  "format": "A",
+  "family": "independent-set-clique",
+  "eval_form": "quality-metric",
+  "seed_problem": "Select a maximum-weight set of mutually non-conflicting research sites on a general conflict graph; checker validates independence and scores weight/baseline.",
+  "mutation": "composite: generalize the conflict graph to an arbitrary general graph with planted cliques and heavy-tailed vertex weights (input), AND add a global knapsack water-budget constraint on the selected set (output), so the task becomes budget-constrained maximum-weight independent set -- NP-hard, with yield-greedy / yield-per-litre / yield-over-degree / randomized-restart strategies that diverge.",
+  "objective": "max",
+  "theme": "vineyard irrigation",
+  "title": "Vineyard Irrigation Scheduling: Runoff-Free High-Yield Plots",
+  "strategies": [
+    "single-plot baseline: irrigate only the highest-yield plot (always feasible; equals the checker baseline B)",
+    "yield-greedy: sort plots by yield descending, add each one whose addition keeps the set runoff-free and within the water budget",
+    "yield-per-litre / yield-over-degree greedy (GWMIN-style): repeatedly pick the plot maximizing w/(d*(1+conflict-degree)), irrigate it, drop it and its conflicting neighbours, respecting the budget",
+    "randomized multi-restart with density-ordered greedy fill and best-of-many selection: perturb the density ordering across seeded restarts, greedily fill each schedule, and keep the highest-yield runoff-free within-budget schedule found"
+  ]
+}

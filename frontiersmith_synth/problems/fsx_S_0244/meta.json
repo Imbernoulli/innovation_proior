@@ -1,0 +1,16 @@
+{
+  "id": "fsx_S_0244",
+  "tier": "S",
+  "family": "routing-tour",
+  "seed_problem": "ALE-Bench pickup-delivery TSP (ahc006/027/039); Frontier-CS routing",
+  "mutation": "composite: prize-collecting selective pickup-and-delivery single-vehicle tour under a LIFO (single-ended rack, stack) loading constraint with bounded rack height -- choose which precedence-constrained requests to serve and order events so deliveries pop only the top tote, minimizing travel plus skip penalties",
+  "objective": "min",
+  "theme": "warehouse robotics",
+  "title": "Single-Rack LIFO Picking Robot: Selective Tote Retrieval Tour",
+  "strategies": [
+    "serve-nobody baseline: output an empty tour, cost = total penalty (calibration point)",
+    "standalone-benefit greedy: serve requests whose penalty exceeds their solo dock round-trip cost, emitted as consecutive depth-1 pick/deliver pairs",
+    "nearest-neighbor stack construction: build the tour event-by-event choosing the cheapest legal move (pick up any not-yet-picked served request while rack has room, or deliver the current top tote), naturally batching nearby pickups under LIFO",
+    "selection + LIFO-aware local search: alternate re-selecting the served subset and re-routing (reorder/reinsert nested request intervals) to trade travel against skipped-request penalties"
+  ]
+}

@@ -1,0 +1,16 @@
+{
+  "id": "fsx_A_0115",
+  "tier": "A",
+  "format": "C",
+  "family": "functional-inequality-constant",
+  "eval_form": "quality-metric",
+  "theme": "forest fire watchtowers",
+  "title": "Watchtower Overlap Constant",
+  "objective": "min",
+  "strategies": [
+    "flat/constant profile (baseline, c=2)",
+    "coarse hill-climb from flat profile (moderate improvement)",
+    "multi-restart annealing on integer intensities to flatten the autocorrelation peak (c toward ~1.5)",
+    "analytic smooth/edge-weighted profiles (mostly worse than flat -- a trap)"
+  ]
+}

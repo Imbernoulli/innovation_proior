@@ -1,0 +1,166 @@
+# TIER: greedy
+import sys
+
+
+class CB:
+    def __init__(self, n):
+        self.n = n
+        self.g = []  # gate gi -> (op, a, b); its wire id is n+gi
+
+    def add(self, op, a, b=None):
+        w = self.n + len(self.g)
+        self.g.append((op, a, a if b is None else b))
+        return w
+
+    def AND(self, a, b):
+        return self.add('AND', a, b)
+
+    def OR(self, a, b):
+        return self.add('OR', a, b)
+
+    def NOT(self, a):
+        return self.add('NOT', a)
+
+
+def read_instance():
+    toks = sys.stdin.read().split()
+    n = int(toks[0])
+    spec = toks[1]
+    A = [k for k in range(n + 1) if k < len(spec) and spec[k] == '1']
+    return n, A
+
+
+def bubble_comps(n):
+    c = []
+    for a in range(n - 1):
+        for j in range(n - 1 - a):
+            c.append((j, j + 1))
+    return c
+
+
+def batcher_comps(n):
+    """Batcher odd-even mergesort on the next power of two; drop comparators that
+    touch a padded (virtual-largest) high index -> valid network for n."""
+    p = 1
+    while p < n:
+        p <<= 1
+    comps = []
+
+    def merge(lo, ln, r):
+        step = r * 2
+        if step < ln:
+            merge(lo, ln, step)
+            merge(lo + r, ln, step)
+            i = lo + r
+            while i + r < lo + ln:
+                comps.append((i, i + r))
+                i += step
+        else:
+            comps.append((lo, lo + r))
+
+    def sort(lo, ln):
+        if ln > 1:
+            m = ln // 2
+            sort(lo, m)
+            sort(lo + m, m)
+            merge(lo, ln, 1)
+
+    sort(0, p)
+    return [(i, j) for (i, j) in comps if j < n]
+
+
+def build_sort(cb, comps):
+    wire = list(range(cb.n))
+    for i, j in comps:
+        x, y = wire[i], wire[j]
+        lo = cb.AND(x, y)   # min
+        hi = cb.OR(x, y)    # max
+        wire[i] = lo
+        wire[j] = hi
+    return wire  # ascending: wire[p]==1 iff popcount >= n-p
+
+
+def thr(wire, n, k):
+    # returns ('c',1)/('c',0) for constants, ('w',id) otherwise
+    if k <= 0:
+        return ('c', 1)
+    if k > n:
+        return ('c', 0)
+    return ('w', wire[n - k])
+
+
+def run_term(cb, wire, n, a, b):
+    """Wire computing (a <= popcount <= b) = threshold_a AND NOT threshold_{b+1}."""
+    lo = thr(wire, n, a)
+    hi = thr(wire, n, b + 1)
+    if lo == ('c', 1):
+        return ('w', cb.NOT(hi[1]))      # popcount <= b
+    if hi == ('c', 0):
+        return lo                        # popcount >= a  (lo is a wire)
+    return ('w', cb.AND(lo[1], cb.NOT(hi[1])))
+
+
+def or_all(cb, terms):
+    cur = terms[0][1]
+    for t in terms[1:]:
+        cur = cb.OR(cur, t[1])
+    return cur
+
+
+def runs_of(A):
+    A = sorted(A)
+    res = []
+    s = pv = A[0]
+    for x in A[1:]:
+        if x == pv + 1:
+            pv = x
+        else:
+            res.append((s, pv))
+            s = pv = x
+    res.append((s, pv))
+    return res
+
+
+def emit(cb, out, prune):
+    n, g = cb.n, cb.g
+    if prune and out >= n:
+        used = set()
+        st = [out]
+        while st:
+            w = st.pop()
+            if w < n:
+                continue
+            gi = w - n
+            if gi in used:
+                continue
+            used.add(gi)
+            op, a, b = g[gi]
+            st.append(a)
+            if op != 'NOT':
+                st.append(b)
+        keep = sorted(used)
+    else:
+        keep = list(range(len(g)))
+    newid = {w: w for w in range(n)}
+    for idx, old in enumerate(keep):
+        newid[n + old] = n + idx
+    lines = [str(len(keep))]
+    for idx, old in enumerate(keep):
+        op, a, b = g[old]
+        if op == 'NOT':
+            lines.append("NOT %d" % newid[a])
+        else:
+            lines.append("%s %d %d" % (op, newid[a], newid[b]))
+    lines.append("OUT %d" % (newid[out] if out in newid else out))
+    sys.stdout.write("\n".join(lines) + "\n")
+
+def main():
+    n, A = read_instance()
+    cb = CB(n)
+    wire = build_sort(cb, bubble_comps(n))
+    terms = [run_term(cb, wire, n, a, b) for (a, b) in runs_of(A)]
+    out = or_all(cb, terms)
+    emit(cb, out, prune=True)
+
+
+main()

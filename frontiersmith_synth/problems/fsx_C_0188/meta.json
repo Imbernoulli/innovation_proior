@@ -1,0 +1,18 @@
+{
+  "id": "fsx_C_0188",
+  "tier": "C",
+  "format": "B",
+  "family": "causal-discovery",
+  "eval_form": "quality-metric",
+  "theme": "traffic signal grid",
+  "title": "Traffic Signal Grid: Congestion Causal-Graph Recovery",
+  "objective": "optimize",
+  "source_frameworks": ["MLS-Bench (causal-*)"],
+  "isolation": "candidate runs as an isolated stdin->stdout subprocess via isorun; the ground-truth flow DAG, SCM parameters and column permutation stay in the evaluator process",
+  "strategies": [
+    "empty flow graph (no edges) -> reproduces the evaluator's baseline SHD = E -> ~0.1 on every grid",
+    "marginal-correlation skeleton thresholded + orient low-variance -> high-variance (equal-variance cue): recovers real structure but adds transitively-induced spurious edges",
+    "equal-variance topological ordering (iterative smallest residual variance) + regression on predecessors with a standardized-coefficient threshold: conditions away indirect associations for a low SHD that generalizes across grid sizes / snapshot counts / flow densities",
+    "constraint-based (PC-style conditional-independence) or score-based (greedy DAG search, LiNGAM via non-Gaussianity) discovery"
+  ]
+}

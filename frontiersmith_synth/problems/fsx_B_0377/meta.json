@@ -1,0 +1,17 @@
+{
+  "id": "fsx_B_0377",
+  "tier": "B",
+  "format": "B",
+  "family": "feasibility-gated-structural",
+  "eval_form": "quality-metric",
+  "theme": "festival stage layout",
+  "title": "Festival Stage Roof-Truss Rigging Sizing",
+  "objective": "min",
+  "source_frameworks": ["Frontier-Eng (StructuralOptimization)"],
+  "strategies": [
+    "trivial: uniform a_max sizing (evaluator baseline, always feasible on all three gates) -> ~0.1",
+    "greedy: buckling-aware fully-stressed design (area=|force|/sigma, then thicken compression struts to their Euler-buckling area); passes yield+buckling but busts the global sag gate on tight instances -> 0 there, ~0.4 on loose instances",
+    "strong: buckling-aware fully-stressed design + global displacement repair (uniformly scale all areas up until the sag limit is met); feasible on all three gates everywhere and far lighter than baseline -> ~0.32-0.41",
+    "invalid: uniform a_min sizing -> stresses exceed yield everywhere -> 0"
+  ]
+}

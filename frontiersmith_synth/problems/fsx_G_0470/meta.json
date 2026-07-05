@@ -1,0 +1,16 @@
+{
+  "id": "fsx_G_0470",
+  "tier": "G",
+  "format": "B",
+  "family": "ml-metric-learning",
+  "eval_form": "quality-metric",
+  "theme": "face verification",
+  "title": "Face Verification: learn an embedding transform (held-out pair AUC)",
+  "objective": "max",
+  "strategies": [
+    "identity transform (raw features) -- trivial baseline",
+    "unsupervised Mahalanobis whitening (Sigma^-1/2)",
+    "supervised Fisher LDA on the training identity labels",
+    "nearest-class-mean / covariance-shrinkage / NCA-style metric learning"
+  ]
+}

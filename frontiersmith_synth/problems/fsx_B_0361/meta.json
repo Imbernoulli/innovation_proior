@@ -1,0 +1,16 @@
+{
+  "id": "fsx_B_0361",
+  "tier": "B",
+  "format": "B",
+  "family": "feasibility-gated-structural",
+  "eval_form": "quality-metric",
+  "theme": "orbital debris cleanup",
+  "title": "Orbital Debris Capture Boom: Multi-Load-Case Minimum-Mass Strut Sizing",
+  "objective": "min",
+  "strategies": [
+    "uniform sizing: one cross-section for every strut, just large enough to pass the worst stress and grapple-pointing limit across both capture load cases (baseline)",
+    "one-shot per-bar sizing against the single dominant net-drag load case, then uniform stiffening to clear the remaining load case and the pointing budget",
+    "multi-load-case fully-stressed design: iterate the FEM, size each strut to its worst axial force across all load cases, then add minimal uniform stiffness for pointing",
+    "sensitivity-based stiffening that adds material where it cuts grapple-head drift per kilogram most"
+  ]
+}

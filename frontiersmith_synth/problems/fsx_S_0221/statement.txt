@@ -1,0 +1,139 @@
+# Abyssal Splice Yard: Cable Job-Shop with Reconfiguration Setups
+
+## Problem
+
+A deep-sea telecommunications operator runs a **splice yard** that fabricates the
+segments of a submarine cable network. Each **cable order** is a job that must pass,
+in a fixed order, through a chain of **splice stations** (machines): stripping,
+gel-cleaning, fusion-splicing, armouring, pressure-testing, and so on. Each order
+visits every station exactly once, but the order in which an order visits the stations
+is specific to that order (routings differ).
+
+Every station handles **one operation at a time**. Before a station can start an
+operation it must be **reconfigured** for that operation's *cable family* (single-mode,
+multi-fibre, power-feed, repeater-housing, ...). The reconfiguration takes a
+**sequence-dependent setup time**: the time to switch a station from a family `a`
+operation to a family `b` operation is `S[a][b]` (switching within the same family is
+free). This setup must elapse on the station between finishing one operation and
+starting the next, in whatever order you choose to run the operations on that station.
+
+You must emit a **start time** for every operation so that:
+
+- the operations of each order run in its routing order (precedence), and
+- on every station, the operation that runs next cannot start until the previous
+  operation on that station has finished **and** the family reconfiguration setup has
+  elapsed (no-overlap with setups).
+
+The **makespan** is the moment the last operation finishes. Finding the minimum
+makespan for this setup-time job-shop is NP-hard, so any feasible schedule is accepted
+and scored by how short its makespan is.
+
+## Input
+
+```
+n m F
+S[0][0] S[0][1] ... S[0][F-1]
+...
+S[F-1][0] ... S[F-1][F-1]
+(then n job blocks, each of 3 lines)
+mach_0 mach_1 ... mach_{m-1}     # station visited at routing position 0,1,...,m-1
+p_0    p_1    ... p_{m-1}        # processing time of the operation at each position
+fam_0  fam_1  ... fam_{m-1}      # cable family of the operation at each position
+```
+
+- Line 1: `n` orders, `m` stations, `F` cable families.
+- Stations are numbered `0..m-1`, families `0..F-1`.
+- The next `F` lines give the `F x F` setup matrix `S`; `S[a][b] >= 0` is the setup to
+  switch a station from a family-`a` operation to a family-`b` operation. `S[a][a] = 0`.
+- Each order `j` (0-indexed by block order) is described by 3 lines of `m` integers:
+  its station routing (a permutation of `0..m-1`), the processing time of each of its
+  operations (`p >= 1`, listed in routing order), and the cable family of each
+  operation (`0..F-1`, in routing order).
+
+## Output
+
+Print `n` lines. Line `j` contains `m` integers: the start times of order `j`'s
+operations, in its routing order. Start times are non-negative integers.
+
+## Feasibility
+
+A schedule is feasible iff:
+
+- every start time is a non-negative integer;
+- **precedence**: for each order `j` and routing position `k >= 1`,
+  `start[j][k] >= start[j][k-1] + p[j][k-1]`;
+- **station no-overlap + setup**: on each station, list the operations assigned to it in
+  increasing start-time order; for every two consecutive operations (`a` then `b`),
+  `start_b >= (start_a + p_a) + S[fam_a][fam_b]`. In particular no two operations on the
+  same station may overlap.
+
+Any output that is not feasible scores **0**.
+
+## Objective
+
+Minimize the makespan `M = max over all operations of (start + p)`.
+
+## Scoring
+
+Let `B` be the makespan of the **fully-sequential reference schedule**: process the
+operations one at a time in the canonical order (order 0's operations in routing order,
+then order 1's, ...), each operation started at the earliest time consistent with global
+serialization, its order's precedence, and its station's availability + setup. `B` is
+always feasible and is computed by the checker.
+
+Your score on a test is
+
+```
+ratio = min(1.0, (100 * B / M) / 1000)
+```
+
+i.e. `min(1.0, 0.1 * B / M)`. Reproducing the sequential reference scores `0.1`; a
+schedule that is `k` times shorter than the reference scores `0.1 * k` (capped at `1.0`,
+reached at a 10x improvement). The overall score is the mean ratio over all tests.
+
+## Constraints
+
+- `1 <= n <= 2000`, `1 <= m <= 8`, `1 <= F <= 6`.
+- `1 <= p <= 100`, `0 <= S[a][b] <= 30`, `S[a][a] = 0`.
+- Time limit: 5 s. Memory limit: 512 MiB.
+
+## Example
+
+Input:
+
+```
+2 2 2
+0 5
+7 0
+0 1
+3 4
+0 1
+1 0
+5 6
+1 0
+```
+
+Two orders, two stations (0,1), two families (0,1).
+Setup: switching family 0->1 costs 5, family 1->0 costs 7, same family 0.
+
+- Order 0: routing [station 0, station 1]; processing [3, 4]; families [0, 1].
+- Order 1: routing [station 1, station 0]; processing [5, 6]; families [1, 0].
+
+A feasible output:
+
+```
+0 5
+0 5
+```
+
+- Order 0 (routing station0 then station1): op at station 0 starts 0 (fam 0, ends 3);
+  op at station 1 starts 5 (fam 1, ends 9); precedence `5 >= 0 + 3` OK.
+- Order 1 (routing station1 then station0): op at station 1 starts 0 (fam 1, ends 5);
+  op at station 0 starts 5 (fam 0, ends 11); precedence `5 >= 0 + 5` OK.
+- Station 0 in start order: order0-op (start 0, end 3, fam 0), then order1-op (start 5,
+  fam 0); need `5 >= 3 + S[0][0]=0` OK.
+- Station 1 in start order: order1-op (start 0, end 5, fam 1), then order0-op (start 5,
+  fam 1); need `5 >= 5 + S[1][1]=0` OK.
+
+This schedule is feasible with makespan `M = 11`. The sequential reference here has
+`B = 18`, so its ratio is `min(1.0, 0.1 * 18 / 11) = 0.1636...`.

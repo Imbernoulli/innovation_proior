@@ -1,0 +1,128 @@
+# Choked Current: Coral Reef Survey Interdiction
+
+## Problem
+
+A marine research team pilots an **autonomous underwater vehicle (AUV)** from its
+tender **base station** (node `s`) out to a deep **coral survey site** (node `t`).
+The reef is mapped as a network of two-way **transect corridors**; each corridor has
+a positive **traversal time** (how long the AUV takes to swim it). A rival salvage
+operator wants the survey to run as slowly as possible before a permit deadline. They
+may **close corridors** by dropping sediment screens — but each corridor has its own
+**closure cost** (screen material + effort), and the total closure cost they spend may
+not exceed a **budget `C`**. Crucially, if the survey site ever becomes completely
+unreachable from the base, the harbor authority notices and reopens everything, so the
+scheme fails. Your task: choose which corridors to close so that the AUV's *fastest
+remaining* base-to-site route is as **long** as possible.
+
+Formally: you are given an undirected weighted (multi)graph with a source `s` and a
+sink `t`. Each edge `e` has a positive traversal time `w_e` and a positive closure
+cost `c_e`. Choose a set `S` of edges to close with total cost `sum_{e in S} c_e <= C`
+such that `s` still reaches `t` after removing `S`, maximizing
+
+```
+F = dist_{G - S}(s, t)
+```
+
+the shortest-path distance from `s` to `t` in the graph with the closed edges removed.
+
+This is a weighted-budget single-source single-sink shortest-path interdiction problem:
+it is NP-hard, the optimum is unknown, and many heuristics (cheapest-first greedy,
+budget-aware best-improvement local search, randomized restarts) are viable and diverge.
+
+## Input
+
+The first line contains five integers:
+
+```
+n m s t C
+```
+
+- `n` — number of junctions (nodes), numbered `1..n`.
+- `m` — number of corridors (edges).
+- `s` — the base station (source node).
+- `t` — the survey site (sink node), `t != s`.
+- `C` — the closure-cost budget.
+
+Each of the next `m` lines describes one corridor (edge index `1..m` in input order):
+
+```
+u v w c
+```
+
+meaning a two-way corridor between junctions `u` and `v` with traversal time `w`
+(`1 <= w`) and closure cost `c` (`1 <= c`). The graph may contain parallel corridors
+and is guaranteed to let `s` reach `t` in the original network.
+
+## Output
+
+On the first line print `r` — the number of corridors you close (`0 <= r <= m`).
+On each of the next `r` lines print one corridor index (an integer in `1..m`). All
+printed indices must be distinct.
+
+Printing `0` on the first line (and nothing else) is always valid.
+
+## Feasibility
+
+An output is feasible iff:
+
+- `0 <= r <= m`;
+- every printed index is in `1..m` and all are distinct;
+- the total closure cost `sum` of the chosen corridors is `<= C`;
+- after removing exactly the chosen corridors, `s` remains connected to `t`.
+
+Any infeasible output scores `0`.
+
+## Objective
+
+Let `F` be the shortest base-to-site traversal time after your chosen corridors are
+removed. You are **maximizing** `F`.
+
+## Scoring
+
+Let `B` be the shortest base-to-site traversal time in the original network (no
+corridors closed). The score for a test is
+
+```
+ratio = min(1.0, 0.1 * F / B)
+```
+
+A do-nothing submission (`F = B`) scores `0.1`; achieving a ten-fold route length
+(`F = 10*B`) caps the score at `1.0`. The overall score is the mean ratio across all
+tests.
+
+## Constraints
+
+- `2 <= n <= 1600`, `1 <= m <= 5000`.
+- `1 <= w <= 25`.
+- `1 <= c <= 8`.
+- `2 <= C`.
+- Time limit: 5 s. Memory limit: 512 MB.
+
+## Example
+
+Input:
+
+```
+5 6 1 5 3
+1 2 1 2
+2 3 1 2
+3 4 1 2
+4 5 1 2
+1 5 20 5
+2 5 15 3
+```
+
+The cheap trunk `1 -> 2 -> 3 -> 4 -> 5` has length `4`, so `B = 4`.
+
+With budget `C = 3`, close corridor `1` (the `1-2` link, cost `2 <= 3`). Now node `1`
+can only leave via the expensive direct corridor `1-5` (traversal `20`), so the fastest
+remaining route is `1 -> 5` with length `20`: `F = 20`, and `t` is still reachable.
+
+Score for this test: `min(1.0, 0.1 * 20 / 4) = min(1.0, 0.5) = 0.5`.
+
+A valid worked output:
+
+```
+1
+1
+```

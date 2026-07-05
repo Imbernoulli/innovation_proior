@@ -1,0 +1,16 @@
+{
+  "id": "fsx_S_0057",
+  "tier": "S",
+  "family": "coloring-labeling",
+  "seed_problem": "Assign frequencies to transmitters minimizing total interference conflicts under a channel budget; checker scores baseline_conflicts/achieved.",
+  "mutation": "composite: generalized same-channel conflict into distance-graded separation penalty w*max(0,s-|c_u-c_v|) (frequency-assignment with separation constraints) AND restricted channels to a tight budget K below the graph's needs, skinned as ski-resort lift radio retuning",
+  "objective": "min",
+  "theme": "ski resort lifts",
+  "title": "Powder Peak Lift Radio Retuning",
+  "strategies": [
+    "trivial baseline: tune every lift to channel 1 (reproduces the checker baseline B)",
+    "weighted-degree greedy: order lifts by total interference weight, assign each the channel minimizing added penalty vs already-tuned neighbors",
+    "greedy init + iterated local search: sweep all lifts repeatedly, re-tuning each to its best channel given current neighbors until a local optimum",
+    "randomized multi-restart / min-conflicts style local search over channel assignments"
+  ]
+}

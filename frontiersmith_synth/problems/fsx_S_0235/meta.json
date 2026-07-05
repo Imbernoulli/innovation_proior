@@ -1,0 +1,16 @@
+{
+  "id": "fsx_S_0235",
+  "tier": "S",
+  "family": "network-design",
+  "seed_problem": "Build a connected relay network where no node has degree > 3, minimizing total cable length; checker validates connectivity+degree and scores baseline/cost.",
+  "mutation": "input+output: keep the min-cost connectivity goal but relax it from spanning ALL nodes to spanning only a designated hut subset over an arbitrary weighted graph of candidate trenches, with non-hut sites usable as optional relay junctions. This turns the polynomial minimum spanning tree into the NP-hard Steiner tree in graphs.",
+  "objective": "min",
+  "theme": "polar research base",
+  "title": "Aurora Station Trench Network: Connecting the Polar Research Base",
+  "strategies": [
+    "backbone baseline: dig the guaranteed backbone path (trenches 1..N-1); always feasible, matches the checker baseline, ratio ~0.1",
+    "shortest-path star: run one Dijkstra from the first hut and dig the union of shortest-path trenches to every other hut",
+    "Takahashi-Matsuyama shortest-path heuristic: grow the tree from one hut, repeatedly attach the nearest still-disconnected hut via a shortest path, then prune non-hut leaf trenches",
+    "metric-closure MST (Kou-Markowsky-Berman) plus local rerouting / leaf pruning for a tighter Steiner tree"
+  ]
+}

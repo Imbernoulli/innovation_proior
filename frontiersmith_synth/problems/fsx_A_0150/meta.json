@@ -1,0 +1,17 @@
+{
+  "id": "fsx_A_0150",
+  "tier": "A",
+  "format": "B",
+  "family": "heuristic-contest-offline",
+  "eval_form": "quality-metric",
+  "theme": "tide pool ecology",
+  "title": "Tide Pool Reserve: Intertidal Habitat Delineation",
+  "objective": "optimize",
+  "source_frameworks": ["ALE-Bench (AHC)", "TTT-Discover (ahc)", "SimpleTES (AHC)"],
+  "strategies": [
+    "1x1 baseline: draw a unit cell around each organism's survey point -- feasible but tiny, reproduces the evaluator's weak reference and scores ~0.1",
+    "single-pass greedy growth in input order: grow each pool one side at a time toward its target area, taking the largest feasible non-overshooting, non-overlapping extension; early organisms starve later ones",
+    "construct-then-refine: grow small-target pools first, then a seeded local search that grows/shrinks random sides accepting non-worsening moves, so overshooting pools free space that neighbours reclaim",
+    "infeasible: delineate every pool as the whole shore -> overlapping interiors -> the layout is rejected and scores 0"
+  ]
+}

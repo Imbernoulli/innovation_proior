@@ -1,0 +1,16 @@
+{
+  "id": "fsx_G_0433",
+  "tier": "G",
+  "format": "E",
+  "family": "sci-implicit-equation",
+  "eval_form": "quality-metric",
+  "theme": "planetary ellipse",
+  "title": "Planetary-Ellipse Orbit Recovery from a Sky-Plane Point Cloud - withheld-arc extrapolation",
+  "objective": "min",
+  "strategies": [
+    "circle baseline: fit a circle through the training centroid with the mean radius (ignores eccentricity) -> reproduces the grader baseline, ~0.1",
+    "generic algebraic conic: normalise the constant term and solve A*x^2+B*x*y+C*y^2+D*x+E*y=1 by linear least squares; captures the quadratic shape but the unweighted fit is biased and the 6-term form pays a larger complexity penalty, so it bends onto the withheld arc less cleanly",
+    "focus-structured recovery (Kepler): since the Sun sits at a focus (origin), the orbit obeys the special 3-parameter conic A*sqrt(x^2+y^2)+B*x+C*y=1; a linear fit recovers the exact hidden structure and extrapolates onto the withheld arc near the irreducible positional-noise floor while paying a small complexity penalty",
+    "alternatives: gradient-weighted (Taubin) conic fitting, robust/total-least-squares refinements, or trading the complexity penalty against the arc distance"
+  ]
+}

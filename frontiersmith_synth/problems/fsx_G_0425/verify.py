@@ -1,0 +1,289 @@
+#!/usr/bin/env python3
+"""
+verify.py <in> <out> <ans>   (ans ignored)
+
+Deterministic scorer for the gas-cylinder-lab equation-of-state recovery
+problem (format E: symbolic regression with EXTRAPOLATION held-out split).
+
+- <in>  : the TRAIN rows the solver saw:  "<V> <T> <P>" per line.
+- <out> : the solver's submitted CLOSED-FORM expression P(V, T) in variables
+          V (molar volume, L/mol) and T (temperature, K).
+
+The checker regenerates the hidden ground-truth EOS + a held-out HIGH-PRESSURE
+region (small molar volume -- genuine extrapolation, never in the train log),
+evaluates the submitted expression there, and scores extrapolation RMSE against
+an internal baseline B (a low-order virial fit the checker builds itself).
+Minimization objective:
+
+    sc = min(1000, 100 * B / max(eps, eff_error));  Ratio = sc/1000
+
+Any feasibility violation (unparseable / disallowed / non-finite / absurd
+output) prints  Ratio: 0.0  and exits 0.
+"""
+import sys
+import ast
+import math
+
+
+R = 0.083145  # L*bar/(mol*K)
+
+
+# ============ hidden ground truth (mirrors gen.py exactly) ============
+def _rng(seed):
+    state = [(seed * 2654435761 + 12345) & 0x7FFFFFFF]
+
+    def nxt():
+        state[0] = (1103515245 * state[0] + 12345) & 0x7FFFFFFF
+        return state[0] / 0x7FFFFFFF
+
+    return nxt
+
+
+def derive_params(test_id):
+    r = _rng(1000 + test_id)
+    a = 30.0 + 35.0 * r()
+    b = 0.022 + 0.016 * r()
+    return a, b
+
+
+def noise_rel(test_id):
+    return 0.025 + 0.005 * (test_id - 1)
+
+
+def true_P(a, b, V, T):
+    return R * T / (V - b) - a / (T ** 0.5 * V * (V + b))
+
+
+T_GRID = [300.0, 350.0, 400.0, 450.0, 500.0]
+
+
+def train_V(n=18, lo=0.22, hi=6.0):
+    return [lo * (hi / lo) ** (i / (n - 1)) for i in range(n)]
+
+
+def held_V(n=8, lo=0.11, hi=0.18):
+    # EXTRAPOLATION region: strictly smaller molar volumes (higher pressure)
+    # than any train point (train min = 0.22 L/mol).
+    return [lo * (hi / lo) ** (i / (n - 1)) for i in range(n)]
+
+
+def make_train_P(test_id):
+    a, b = derive_params(test_id)
+    nr = noise_rel(test_id)
+    rn = _rng(5000 + test_id)
+    ps = []
+    for T in T_GRID:
+        for V in train_V():
+            clean = true_P(a, b, V, T)
+            ps.append(clean * (1.0 + nr * (2.0 * rn() - 1.0)))
+    return ps
+
+
+def make_held(test_id):
+    a, b = derive_params(test_id)
+    nr = noise_rel(test_id)
+    rn = _rng(9000 + test_id)   # separate held-out noise stream
+    xs = []
+    ys = []
+    for T in T_GRID:
+        for V in held_V():
+            clean = true_P(a, b, V, T)
+            xs.append((V, T))
+            ys.append(clean * (1.0 + nr * (2.0 * rn() - 1.0)))
+    return xs, ys
+
+
+# ============ deterministic linear algebra (for the internal baseline) ====
+def _gelim(S, Sy):
+    m = len(Sy)
+    M = [S[i][:] + [Sy[i]] for i in range(m)]
+    for c in range(m):
+        piv = max(range(c, m), key=lambda r: abs(M[r][c]))
+        M[c], M[piv] = M[piv], M[c]
+        if abs(M[c][c]) < 1e-18:
+            return None
+        for r in range(m):
+            if r != c:
+                f = M[r][c] / M[c][c]
+                for k in range(c, m + 1):
+                    M[r][k] -= f * M[c][k]
+    return [M[i][m] / M[i][i] for i in range(m)]
+
+
+def virial_baseline(train):
+    """Two-term virial fit  P = k*T/V + c/V**2  (the internal trivial model)."""
+    S = [[0.0, 0.0], [0.0, 0.0]]
+    Sy = [0.0, 0.0]
+    for V, T, y in train:
+        g = [T / V, 1.0 / V ** 2]
+        for i in range(2):
+            Sy[i] += g[i] * y
+            for j in range(2):
+                S[i][j] += g[i] * g[j]
+    coef = _gelim(S, Sy)
+    if coef is None:
+        return 0.0, 0.0
+    return coef[0], coef[1]
+
+
+# ============ safe expression evaluation (whitelist AST) ============
+_ALLOWED_FUNCS = {
+    "log": math.log, "exp": math.exp, "sqrt": math.sqrt,
+    "sin": math.sin, "cos": math.cos, "tanh": math.tanh,
+    "abs": abs, "log10": math.log10, "pow": pow,
+}
+_ALLOWED_CONSTS = {"pi": math.pi, "e": math.e}
+_ALLOWED_VARS = {"V", "T"}
+
+
+def _check_node(node):
+    if isinstance(node, ast.Expression):
+        _check_node(node.body)
+    elif isinstance(node, ast.BinOp):
+        if not isinstance(node.op, (ast.Add, ast.Sub, ast.Mult,
+                                    ast.Div, ast.Pow, ast.Mod)):
+            raise ValueError("bad binop")
+        _check_node(node.left)
+        _check_node(node.right)
+    elif isinstance(node, ast.UnaryOp):
+        if not isinstance(node.op, (ast.UAdd, ast.USub)):
+            raise ValueError("bad unaryop")
+        _check_node(node.operand)
+    elif isinstance(node, ast.Call):
+        if not isinstance(node.func, ast.Name) or node.func.id not in _ALLOWED_FUNCS:
+            raise ValueError("bad call")
+        if node.keywords:
+            raise ValueError("kwargs")
+        for a in node.args:
+            _check_node(a)
+    elif isinstance(node, ast.Name):
+        if node.id not in _ALLOWED_VARS and node.id not in _ALLOWED_CONSTS:
+            raise ValueError("bad name: %s" % node.id)
+    elif isinstance(node, ast.Constant):
+        if not isinstance(node.value, (int, float)) or isinstance(node.value, bool):
+            raise ValueError("bad const")
+        if not math.isfinite(float(node.value)):
+            raise ValueError("nonfinite const")
+    elif isinstance(node, ast.Num):  # legacy py
+        if not math.isfinite(float(node.n)):
+            raise ValueError("nonfinite const")
+    else:
+        raise ValueError("disallowed node: %s" % type(node).__name__)
+
+
+def _count_nodes(node):
+    return sum(1 for _ in ast.walk(node))
+
+
+def compile_expr(text):
+    if len(text) > 4000:
+        raise ValueError("expr too long")
+    tree = ast.parse(text, mode="eval")
+    _check_node(tree)
+    complexity = _count_nodes(tree.body)
+    code = compile(tree, "<expr>", "eval")
+
+    def ev(Vval, Tval):
+        env = {"V": Vval, "T": Tval}
+        env.update(_ALLOWED_CONSTS)
+        env.update(_ALLOWED_FUNCS)
+        return eval(code, {"__builtins__": {}}, env)
+
+    return ev, complexity
+
+
+def fail(reason):
+    print("reason: %s" % reason)
+    print("Ratio: 0.0")
+    sys.exit(0)
+
+
+def rmse(pred, targ):
+    s = 0.0
+    for p, t in zip(pred, targ):
+        d = p - t
+        s += d * d
+    return math.sqrt(s / len(targ))
+
+
+def main():
+    if len(sys.argv) < 3:
+        fail("usage")
+    in_path, out_path = sys.argv[1], sys.argv[2]
+
+    # ---- read instance (train rows the solver saw) ----
+    try:
+        raw = open(in_path).read().split()
+        train = []
+        it = iter(raw)
+        for a in it:
+            b = next(it)
+            c = next(it)
+            train.append((float(a), float(b), float(c)))
+    except Exception:
+        fail("bad instance")
+    if not train:
+        fail("empty instance")
+
+    # ---- identify test_id by matching regenerated train pressures ----
+    obs_p = [r[2] for r in train]
+    test_id = None
+    for tid in range(1, 200):
+        gp = make_train_P(tid)
+        if len(gp) == len(obs_p) and all(abs(g - o) <= 1e-6 * (1 + abs(g))
+                                         for g, o in zip(gp, obs_p)):
+            test_id = tid
+            break
+    if test_id is None:
+        fail("unrecognized instance")
+
+    # ---- read participant expression ----
+    try:
+        blob = open(out_path).read()
+    except Exception:
+        fail("no output")
+    lines = [ln.strip() for ln in blob.splitlines() if ln.strip()]
+    if not lines:
+        fail("empty output")
+    expr = lines[-1]
+    if expr.count("=") == 1 and "==" not in expr:
+        expr = expr.split("=", 1)[1].strip()   # tolerate "P = ..."
+
+    try:
+        ev, complexity = compile_expr(expr)
+    except Exception as e:
+        fail("unparseable/disallowed: %s" % e)
+    if complexity > 400:
+        fail("expression too complex")
+
+    # ---- evaluate on held-out high-pressure region ----
+    hx, hy = make_held(test_id)
+    preds = []
+    for (V, T) in hx:
+        try:
+            v = ev(V, T)
+        except Exception as e:
+            fail("eval error: %s" % e)
+        v = float(v)
+        if not math.isfinite(v):
+            fail("non-finite prediction")
+        if abs(v) > 1e7:
+            fail("absurd prediction magnitude")
+        preds.append(v)
+
+    err = rmse(preds, hy)
+    eff = err * (1.0 + 0.004 * complexity)   # mild complexity penalty
+
+    # ---- internal baseline B: two-term virial fit on the same train log ----
+    k, c = virial_baseline(train)
+    bpred = [k * T / V + c / V ** 2 for (V, T) in hx]
+    B = rmse(bpred, hy)
+
+    sc = min(1000.0, 100.0 * B / max(1e-9, eff))
+    print("test_id=%d B=%.6g err=%.6g complexity=%d eff=%.6g" %
+          (test_id, B, err, complexity, eff))
+    print("Ratio: %.6f" % (sc / 1000.0))
+
+
+if __name__ == "__main__":
+    main()

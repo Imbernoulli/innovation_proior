@@ -1,0 +1,17 @@
+{
+  "id": "fsx_C_0393",
+  "tier": "C",
+  "format": "B",
+  "family": "optimization-convergence-analysis",
+  "eval_form": "flops",
+  "theme": "mountain rescue relays",
+  "title": "Alpine Relay: Convergence-Budget Saddle Descent",
+  "objective": "min",
+  "source_frameworks": ["MLS-Bench (optimization-*)"],
+  "strategies": [
+    "reference relay: plain gradient descent-ascent with the given conservative baseline step and no optimism (b=0); reproduces the evaluator's weak q_base and scores ~0.1",
+    "learning-rate tuning: keep the gains constant across all legs but grid-search the single best constant step via full-trajectory simulation; beats the untuned reference but is bottlenecked by the operator's extreme eigen-directions",
+    "designed schedule via per-leg residual minimization: exploit that the affine operator makes the next residual linear in (a,b) and solve the 2x2 normal equations over directions M g_t and M(g_t - g_{t-1}) each leg (Orthomin/Chebyshev-style 2D-Krylov acceleration), driving the operator norm orders of magnitude lower under the same budget",
+    "global schedule search / acceleration theory: optimize the whole degree-T residual polynomial (Chebyshev on the symmetrized spectrum, extragradient-with-momentum, or seeded coordinate search over all a[t],b[t]) to beat the myopic per-leg line search on ill-conditioned, strongly-coupled instances"
+  ]
+}

@@ -1,0 +1,104 @@
+# Abyssal Cable Grid: Relay-Pod Deployment
+
+## Problem
+An oceanographic consortium is wiring a stretch of seabed as a `W x H` grid of survey
+cells (columns `x` in `[0, W)`, rows `y` in `[0, H)`). Every cell `(x, y)` carries a
+known **traffic yield** `v(x, y) >= 1`: the volume of sensor data that a relay covering
+that cell can harvest. Some cells sit over active hydrothermal **vents** and cannot host
+hardware at all.
+
+The consortium owns a catalogue of `P` reusable **relay-pod** designs. Pod design `t` is a
+fixed *polyomino* footprint (a connected set of unit cells) and comes with a limited
+**stock** `c_t` of identical units.
+
+You drop pods onto the seabed. Each deployed unit may be **rotated** by a multiple of 90
+degrees and/or **reflected** (mirrored) before it is set down, but it must land
+axis-aligned on whole cells. A deployed pod:
+
+- must lie fully inside the grid,
+- must not cover any vent cell,
+- must not overlap any other deployed pod.
+
+A deployed pod harvests the traffic yield of every cell it covers. Because the footprints
+are irregular, stock is limited, and yields are unevenly distributed, no exact optimum is
+known: this is an open-ended **weighted packing** problem. Many deployments are feasible;
+they are scored by the total traffic yield harvested.
+
+## Input (stdin)
+```
+W H
+<H lines, each with W integers: row y = 0 .. H-1, giving v(x, y) for x = 0 .. W-1>
+K
+<K lines: "ox oy"  -- a vent cell, 0-indexed, all distinct>
+P
+<for each pod design t = 0 .. P-1, a block:>
+   c_t s_t
+   <s_t lines: "dx dy"  -- the cells of the base footprint, as integer offsets>
+```
+- `W H` grid dimensions.
+- The value grid follows, one grid row per line (`H` lines of `W` integers).
+- `K` vent cells follow, each a distinct in-grid coordinate.
+- `P` pod designs follow. For design `t`, the first line gives its stock `c_t` and its cell
+  count `s_t`; the next `s_t` lines list the footprint's cells as offsets. The offsets
+  merely *describe the shape*; you may place a copy at any translation/rotation/reflection.
+
+## Output (stdout)
+```
+M
+<for each of the M deployed pods, one line:>
+   t  x1 y1  x2 y2  ...  x_{s_t} y_{s_t}
+```
+Print `M`, the number of pods you deploy, then one line per pod: the pod **design** `t`
+followed by the **absolute grid coordinates** of the `s_t` cells that copy occupies (the
+order of cells within one pod is irrelevant).
+
+## Feasibility
+An output is valid iff ALL of the following hold:
+- `0 <= M`;
+- every declared design satisfies `0 <= t < P`;
+- each pod lists exactly `s_t` cells, all pairwise distinct, all inside the grid, none on a
+  vent cell;
+- the multiset of a pod's cells, translated so its bounding box touches the origin, equals
+  some rotation/reflection of design `t`'s base footprint (i.e. it is a legal copy);
+- no two deployed pods share a cell (no overlap);
+- for every design `t`, the number of deployed copies is at most its stock `c_t`.
+
+Any violation scores `Ratio: 0.0`.
+
+## Objective
+Maximize `F` = the total traffic yield harvested = the sum of `v(x, y)` over every cell
+covered by a deployed pod.
+
+## Scoring
+Let `B` be the harvest of the checker's own trivial construction: deploy **only pod design
+0** using the canonical *anchored greedy* rule. Scan cells in row-major order (`y` outer,
+`x` inner); at the first uncovered, non-vent cell, deploy a copy of design 0 in the first
+orientation (in a fixed sorted enumeration) that fits with that cell as the copy's
+**anchor** (its top-most, then left-most cell); repeat until stock `c_0` is exhausted or no
+copy fits. `B` is the total yield this single-design packing harvests (`B >= 1`).
+
+With maximization normalization:
+```
+sc = min(1000.0, 100.0 * F / max(1, B))
+Ratio = sc / 1000.0
+```
+Reproducing the design-0 baseline scores `Ratio = 0.1`; harvesting `10x` the baseline
+yield caps at `1.0`.
+
+## Constraints
+- `6 <= W, H <= 12`.
+- `2 <= P <= 5`; each footprint has `3 <= s_t <= 5` cells.
+- `1 <= v(x, y) <= 99`; a few high-yield hotspot cells exist.
+- Pod design 0 is a small footprint with small stock (a few copies); other designs carry
+  generous stock.
+- Vents cover under ~15% of the grid; design 0 always fits at least once.
+- Time limit 5s, memory 512m.
+
+## Example
+Grid `W=6, H=6`, no vents, `P=2`. Design 0 is the L-tromino
+`{(0,0),(1,0),(0,1)}` with stock `c_0 = 1`. Design 1 is the `2x2` square
+`{(0,0),(1,0),(0,1),(1,1)}` with generous stock. Suppose the value grid is `1`
+everywhere except a `4`-cell block of value `50` near the centre. The design-0
+anchored-greedy baseline drops one L-tromino at the top-left corner, harvesting
+`B = 3`. A solution that tiles squares to cover the value-`50` block and much of the grid
+might harvest `F = 231`, giving `sc = 100 * 231 / 3 = 7700 -> min 1000`, `Ratio = 1.0`.

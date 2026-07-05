@@ -1,0 +1,126 @@
+# Split the Stream: Twin-Depot Recycling Assignment
+
+## Problem
+
+The municipal recycling authority runs **two sorting depots** and must assign each of its
+`n` **collection zones** to exactly one depot. The hard constraint is *cross-contamination*:
+for certain pairs of zones, the materials they collect are chemically incompatible, and if
+those two zones are routed to the **same** depot their loads spoil each other on the sorting
+line. Each incompatible pair `(u, v)` has a positive **conflict weight** `w` measuring how
+much value is lost to contamination when both zones share a depot.
+
+You cannot avoid every conflict, but you can choose the assignment so that as much conflict
+weight as possible is **separated** — i.e. lands on a pair whose two zones go to *different*
+depots. At the same time the two depots have comparable fleets, so the assignment must be
+**roughly balanced**: neither depot may take too many zones.
+
+Formally: you are given an undirected weighted (multi)graph on `n` zones. Assign every zone a
+depot label in `{0, 1}`. Subject to a balance window on the number of zones per depot,
+**maximize the total conflict weight of edges whose endpoints receive different labels** (the
+cut weight).
+
+This is a **balanced maximum-cut / maximum-bisection** problem: it is NP-hard, the optimum is
+unknown, and many heuristics (index/one-pass constructions, sequential greedy, swap-based
+local search, Kernighan–Lin, randomized restarts) are viable and diverge in quality.
+
+## Input
+
+The first line contains three integers:
+
+```
+n m slack
+```
+
+- `n` — number of collection zones, numbered `1..n` (`n` is even).
+- `m` — number of incompatible pairs (edges).
+- `slack` — the balance tolerance (see Feasibility).
+
+Each of the next `m` lines describes one incompatible pair:
+
+```
+u v w
+```
+
+meaning zones `u` and `v` are incompatible with conflict weight `w` (`1 <= w`). The graph may
+contain parallel edges (the same pair listed more than once); each listed edge counts
+separately. Self-loops never appear (`u != v`).
+
+## Output
+
+Print `n` integers `d_1 d_2 ... d_n`, separated by whitespace, where `d_i` is the depot label
+(`0` or `1`) assigned to zone `i`. You may print them on one line or several — only the token
+sequence matters.
+
+## Feasibility
+
+Let `s0` be the number of zones labelled `0` (so `n - s0` are labelled `1`). An output is
+feasible iff:
+
+- exactly `n` labels are printed and each is `0` or `1`;
+- the depots are balanced within the window: `n/2 - slack <= s0 <= n/2 + slack`.
+
+(By symmetry the label-`1` count then satisfies the same window.) Any infeasible output
+scores `0`.
+
+## Objective
+
+Let `F` be the total conflict weight that is **separated**:
+
+```
+F = sum of w over all edges (u, v, w) with d_u != d_v.
+```
+
+You are **maximizing** `F`.
+
+## Scoring
+
+The checker builds an internal baseline `B`: the separated conflict weight of the **index
+split** — zones `1..n/2` to depot `0`, zones `n/2+1..n` to depot `1` — which is always
+feasible. `B` is guaranteed positive. The score for a test is
+
+```
+ratio = min(1.0, 0.1 * F / B)
+```
+
+The index split itself scores `0.1`; a solution that separates ten times the baseline weight
+caps the score at `1.0`. The overall score is the mean ratio across all tests.
+
+## Constraints
+
+- `2 <= n <= 512`, `n` even.
+- `1 <= m <= 200000`.
+- `1 <= w <= 1000000`.
+- `0 <= slack < n/2`.
+- Time limit: 5 s. Memory limit: 512 MB.
+
+## Example
+
+Input:
+
+```
+6 8 1
+1 2 6
+1 3 6
+2 3 2
+4 5 6
+4 6 6
+5 6 2
+3 4 4
+1 6 4
+```
+
+Here `n = 6`, so `n/2 = 3` and with `slack = 1` each depot must take between `2` and `4`
+zones. The index split `{1,2,3}` vs `{4,5,6}` separates only the two cross edges `3-4` (weight
+`4`) and `1-6` (weight `4`), so `B = 8`.
+
+A valid worked output:
+
+```
+0 1 1 0 0 1
+```
+
+This puts zones `{1,4,5}` in depot `0` and `{2,3,6}` in depot `1` (sizes `3` and `3`,
+inside the window). The separated edges are `1-2 (6)`, `1-3 (6)`, `4-6 (6)`, `5-6 (2)`,
+`3-4 (4)`, `1-6 (4)`, giving `F = 6+6+6+2+4+4 = 28`.
+
+Score for this test: `min(1.0, 0.1 * 28 / 8) = min(1.0, 0.35) = 0.35`.

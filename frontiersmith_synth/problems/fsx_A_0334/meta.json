@@ -1,0 +1,16 @@
+{
+  "id": "fsx_A_0334",
+  "tier": "A",
+  "format": "C",
+  "family": "extremal-point-config",
+  "eval_form": "quality-metric",
+  "theme": "museum gallery tour",
+  "title": "Gallery Tour Balance: Maximize the Uniformity of Viewing-Station Spread",
+  "objective": "max",
+  "strategies": [
+    "diagonal baseline: place the free stations equally spaced along the gallery's main diagonal (reproduces the checker baseline, scores ~0.1)",
+    "best-of-many-random: sample many independent random station layouts and keep the one with the largest combined d_min/d_max ratio",
+    "structured packing + hill climb: farthest-point insertion for a well-separated layout, then direct hill climbing on U = d_min/d_max with seeded shrinking perturbations, adapting to the fixed landmarks",
+    "invalid: emit stations outside the gallery / wrong count (scores 0)"
+  ]
+}

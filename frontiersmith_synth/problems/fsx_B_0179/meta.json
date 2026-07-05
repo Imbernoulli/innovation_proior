@@ -1,0 +1,16 @@
+{
+  "id": "fsx_B_0179",
+  "tier": "B",
+  "format": "E",
+  "family": "symbolic-regression",
+  "eval_form": "quality-metric",
+  "theme": "e-sports arena",
+  "title": "Clutch-Rating Law: Extrapolating a Hidden Poly-Exp Formula",
+  "objective": "optimize",
+  "strategies": [
+    "constant baseline: emit the mean training clutch-rating (reproduces the checker baseline ~0.1)",
+    "linear least squares: fit y ~ c0 + sum ci*xi and emit the linear closed form (moderate extrapolation)",
+    "structure discovery + refit: recover the poly-exp basis (quadratics, cross-terms, exp) and refit its coefficients by least squares for far better extrapolation",
+    "parsimony trade-off: drop weak basis terms to reduce the complexity penalty while keeping held-out fit"
+  ]
+}

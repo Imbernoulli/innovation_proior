@@ -1,0 +1,16 @@
+{
+  "id": "fsx_B_0171",
+  "tier": "B",
+  "format": "E",
+  "family": "symbolic-regression",
+  "eval_form": "quality-metric",
+  "theme": "solar farm inverters",
+  "title": "Inverter Response Law: Symbolic Regression with Extrapolation Hold-out",
+  "objective": "optimize",
+  "strategies": [
+    "constant baseline: emit the mean of the training targets (no structure, ~0.1)",
+    "affine least-squares: fit y ~ w.x + b; captures first-order trend, extrapolates poorly",
+    "poly-exp family fit: grid the single exp rate, solve linear coefficients for x0*exp(b*x1)+x2^2+x3^2+x0*x3 -> recovers the law",
+    "sparse/simple surrogate: trade accuracy for a lower complexity penalty on the RMSE+complexity objective"
+  ]
+}

@@ -1,0 +1,17 @@
+{
+  "id": "fsx_A_0121",
+  "tier": "A",
+  "format": "C",
+  "family": "greedy-priority-construction",
+  "eval_form": "correctness",
+  "theme": "reservoir dam network",
+  "title": "Resonance-Free Dam Discharge Scheduling",
+  "objective": "optimize",
+  "source_frameworks": ["FunSearch (cap-set/admissible/corner-free/cyclic-graph)"],
+  "strategies": [
+    "conservative hypercube-subset catalogue {0,1}^(n-1)x{0} (baseline)",
+    "randomized-order greedy best-of-K under the resonance validity check",
+    "product/recursive construction from optimal small-dimension cap sets",
+    "weight-ordered or priority-function greedy scaffolds (FunSearch-style)"
+  ]
+}

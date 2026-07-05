@@ -1,0 +1,17 @@
+{
+  "id": "fsx_S_0209",
+  "tier": "S",
+  "family": "scheduling-jssp",
+  "seed_problem": "Frontier-Eng JobShop / ALE-Bench: emit a machine schedule for a JSSP instance; checker validates precedence + no-overlap and scores against the optimum.",
+  "mutation": "goal+theme: keep the job-shop precedence/no-overlap feasibility structure but replace the makespan objective with TOTAL WEIGHTED COMPLETION TIME (sum_j w_j * C_j, opening time of each weighted ride). The unknown optimum in the score is replaced by a checker-computed, always-feasible fully-serial (ride-index-order) baseline B, so scoring is deterministic (ratio = min(1, 0.1*B/F)). Fresh randomized carnival instances with a difficulty ladder that adds blockbuster (heavy) rides and bottleneck (long) tasks at high testId.",
+  "objective": "optimize",
+  "theme": "carnival ride circuit",
+  "title": "Carnival Ride Circuit: Minimum Weighted Ride-Opening Schedule",
+  "strategies": [
+    "serial baseline: run every task back-to-back in ride index order (feasible, weighted opening = B, ratio 0.1)",
+    "ECT dispatch: repeatedly schedule the frontier task that finishes earliest at its earliest feasible slot",
+    "WSPT / weighted dispatch: prioritize rides with high weight per remaining work so popular rides open first",
+    "multi-restart randomized list scheduling: try many static ride priorities and keep the schedule with least weighted opening time",
+    "local search / shifting-bottleneck refinement on top of a good dispatch"
+  ]
+}

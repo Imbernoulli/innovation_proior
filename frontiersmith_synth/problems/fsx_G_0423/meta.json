@@ -1,0 +1,16 @@
+{
+  "id": "fsx_G_0423",
+  "tier": "G",
+  "format": "E",
+  "family": "sci-epidemiology-curve",
+  "eval_form": "quality-metric",
+  "theme": "outbreak dashboard",
+  "title": "Outbreak Incidence Law Recovery — extrapolating the post-peak tail",
+  "objective": "min",
+  "strategies": [
+    "constant baseline: predict the mean reported incidence (ignores the wave) -> ~0.1",
+    "quadratic-in-time + linear covariates: fits the hump in-window but a parabola diverges from the true slow exponential decay when extrapolated to the tail",
+    "mechanistic feature family curve = 1/(exp(-a*(x1-tp)) + exp(b*(x1-tp))) with a grid search over the hidden rise rate a, decay rate b and peak week tp, linear coefficients [A,d,e,g] by least squares",
+    "alternatives: finer / continuous optimisation of (a,b,tp), sech^2 / Richards / log-normal wave families, ridge-regularised bases, trading complexity penalty against held-out tail error"
+  ]
+}

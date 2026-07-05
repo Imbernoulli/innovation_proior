@@ -1,0 +1,17 @@
+{
+  "id": "fsx_A_0126",
+  "tier": "A",
+  "format": "C",
+  "family": "integer-matrix-construction",
+  "eval_form": "quality-metric",
+  "theme": "geothermal wells",
+  "title": "Geothermal Reservoir Polarity Grid: Maximal Flow-Independence",
+  "objective": "max",
+  "source_frameworks": ["OpenEvolve", "ThetaEvolve", "SimpleTES"],
+  "strategies": [
+    "baseline block grid: emit the checker's 3x3 det-2 block-diagonal 0/1 matrix (feasible by construction, honors all cemented cells) -> reproduces the baseline B = N//3 + 1 and scores ~0.1",
+    "seeded multi-restart random sampling: draw many 0/1 grids that respect the fixed cells, rank by a fast float log|det|, keep the best -- already beats the sparse block baseline",
+    "float-guided single-flip hill climbing with Sherman-Morrison inverse maintenance: from many seeded invertible starts, repeatedly flip the free cell that most multiplies |det|, updating the inverse in O(N^2); keep the best exact bit-length",
+    "structured near-Hadamard 0/1 constructions (image of a conference/Hadamard matrix under the +/-1 -> 0/1 bijection) repaired to honor the cemented cells, approaching the maximal 0/1 determinant"
+  ]
+}

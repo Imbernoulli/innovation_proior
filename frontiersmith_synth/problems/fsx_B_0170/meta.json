@@ -1,0 +1,16 @@
+{
+  "id": "fsx_B_0170",
+  "tier": "B",
+  "format": "D",
+  "family": "quantum-circuit-opcount",
+  "eval_form": "flops",
+  "theme": "beehive apiary",
+  "title": "Honeycomb Waggle Router: minimize SWAP moves for a commuting-interaction schedule on a hex comb",
+  "objective": "min",
+  "strategies": [
+    "naive per-waggle shortest-walk routing in the given order (baseline)",
+    "nearest-first routing that batches repeated interactions once they become adjacent",
+    "nearest-first with direction lookahead that keeps bees well-placed for future waggles",
+    "global re-placement / initial-mapping-aware batching heuristics (open-ended)"
+  ]
+}

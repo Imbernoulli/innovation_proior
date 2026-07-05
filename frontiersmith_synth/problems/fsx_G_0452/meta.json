@@ -1,0 +1,16 @@
+{
+  "id": "fsx_G_0452",
+  "tier": "G",
+  "format": "D",
+  "family": "flop-straight-line-linear-forms",
+  "eval_form": "flops",
+  "theme": "MIMO precoder",
+  "title": "Integer MIMO Precoder: Minimal-Operation Linear Straight-Line Program",
+  "objective": "min",
+  "strategies": [
+    "independent binary double-and-add per output linear form (trivial / reference)",
+    "per-coefficient best-of binary vs canonical-signed-digit recoding (greedy)",
+    "signed-digit recoding plus global common-subexpression elimination sharing power-of-two multiples across outputs (strong)",
+    "true minimum-addition-sequence / graph-based multiple-constant-multiplication below the CSE bound (open ceiling, uncovered)"
+  ]
+}

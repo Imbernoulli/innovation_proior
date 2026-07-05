@@ -1,0 +1,16 @@
+{
+  "id": "fsx_B_0378",
+  "tier": "B",
+  "format": "B",
+  "family": "constrained-OR",
+  "eval_form": "quality-metric",
+  "theme": "asteroid mining",
+  "title": "Asteroid-Belt Buffer Allocation across a Refining Tree",
+  "objective": "min",
+  "strategies": [
+    "equal-split: divide the buffer budget evenly across all stations, ignoring demand scale (baseline)",
+    "independent newsvendor: set each station to its own critical-fractile safety stock, then rescale the safety part to fit the budget; ignores pooling and the service floor",
+    "SAA + budget-projected reallocation: draw own scenarios from the announced distribution, start from the newsvendor point, then greedily shift buffer between stations to cut the simulated holding+transfer+shortage cost while holding the service floor",
+    "pooling-aware concentration: over-invest cheap-holding parent stations so downstream shortfalls are covered by routed surplus, trading transfer cost against per-child safety stock"
+  ]
+}

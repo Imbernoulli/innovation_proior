@@ -1,0 +1,18 @@
+{
+  "id": "fsx_S_0003",
+  "tier": "S",
+  "format": "A",
+  "family": "packing-knapsack",
+  "eval_form": "quality-metric",
+  "seed_problem": "Frontier-CS polyomino/area packing: pack polyominoes into a W x H board maximizing covered area (reflections allowed); checker validates no-overlap and in-bounds.",
+  "mutation": "output: from free polyomino tiling, add hard output constraints -- per-type limited stock (bounded knapsack) plus bedrock obstacles -- so perfect tiling is impossible and the optimal packing is NP-hard; objective stays max-covered-area.",
+  "objective": "max",
+  "theme": "vineyard irrigation",
+  "title": "Vineyard Irrigation: Sprinkler-Panel Coverage",
+  "strategies": [
+    "single-type baseline: anchored greedy using only panel type 0 up to its small stock (the calibration point)",
+    "largest-first greedy: at each uncovered cell install the largest-area panel that fits, mixing all types, stock-limited",
+    "seeded multi-restart randomized greedy: shuffle type priority and orientation enumeration across many restarts, keep the best-covering packing",
+    "local-search / repair: greedily fill, then re-pack sparse regions with smaller panels to plug leftover gaps"
+  ]
+}

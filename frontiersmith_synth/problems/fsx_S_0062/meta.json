@@ -1,0 +1,16 @@
+{
+  "id": "fsx_S_0062",
+  "tier": "S",
+  "family": "covering-facility-location",
+  "seed_problem": "Place watchtowers on a forest graph to cover every cell within radius r, minimizing total cost; score = baseline_cost / achieved_cost.",
+  "mutation": "input: replace the forest-graph radius cover with a large weighted GEOMETRIC covering instance on a dig grid (per-site installation costs + Chebyshev-radius coverage, artifacts are a subset of the candidate sites), turning min-cardinality tower placement into weighted geometric set cover / uncapacitated facility location.",
+  "objective": "min",
+  "theme": "archaeology dig grid",
+  "title": "Watchbeacon Coverage of an Archaeology Dig Grid",
+  "strategies": [
+    "trivial baseline: install a beacon on every artifact cell (always feasible, ratio 0.1)",
+    "greedy weighted set cover: repeatedly install the candidate maximizing (newly-recorded artifacts / cost) until all artifacts are recorded",
+    "greedy + redundancy pruning: run greedy, then drop, cost-descending, any beacon whose recorded artifacts are all still covered by others",
+    "local search / LP-rounding: cluster-aware placement and swap moves to trade several small beacons for one wider cheaper one"
+  ]
+}

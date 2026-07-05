@@ -1,0 +1,118 @@
+# Blinded Wind Tunnel: Sensor-Station Interdiction
+
+## Problem
+
+The *Aeolus* transonic wind tunnel is instrumented by a lattice of **sensor stations**
+that relay a pressure signal from the tunnel's **inlet probe** (node `s`) to its
+**data-acquisition sink** (node `t`). Neighbouring stations are joined by relay channels;
+each channel has a positive relay latency. During a calibration audit an adversary wants
+the pressure signal to arrive as *late* as possible. It may **power down at most `k`
+sensor stations** — but it may never power down the inlet probe `s` or the sink `t`, and
+if powering the stations down ever disconnects the sink from the inlet the whole audit is
+invalidated. Powering down a station removes that station **and every relay channel
+touching it**. Your job is to choose which stations to power down so that the *fastest
+remaining relay route* from `s` to `t` is as **long** as possible.
+
+Formally: you are given an undirected weighted graph on `n` nodes. Choose a set `S` of at
+most `k` nodes, with `s, t` not in `S`, such that `s` and `t` remain connected in the graph
+induced by the surviving nodes, maximizing the shortest `s`-`t` path length in that induced
+subgraph.
+
+This is the **node-deletion (most-vital-nodes) shortest-path interdiction** problem: it is
+NP-hard, the optimum is unknown, and many heuristics (degree/centrality greedy,
+best-improvement local search, randomized restarts) are viable and diverge.
+
+## Input
+
+The first line contains five integers:
+
+```
+n m s t k
+```
+
+- `n` — number of sensor stations (nodes), numbered `1..n`.
+- `m` — number of relay channels (edges).
+- `s` — the inlet probe (source node).
+- `t` — the data-acquisition sink (sink node), `s != t`.
+- `k` — the maximum number of stations you may power down.
+
+Each of the next `m` lines describes one channel:
+
+```
+u v w
+```
+
+meaning a two-way relay channel between stations `u` and `v` with latency `w` (`1 <= w`).
+The graph may contain parallel channels and is guaranteed to have `s` connected to `t`.
+
+## Output
+
+On the first line print `r` — the number of stations you power down (`0 <= r <= k`).
+On each of the next `r` lines print one station index (an integer in `1..n`). All indices
+must be distinct, and none may equal `s` or `t`.
+
+Printing `0` on the first line (and nothing else) is always valid.
+
+## Feasibility
+
+An output is feasible iff:
+
+- `0 <= r <= k`;
+- every printed index is in `1..n`, all are distinct, and none equals `s` or `t`;
+- after removing exactly the chosen stations (and their incident channels), `s` and `t`
+  are still connected.
+
+Any infeasible output scores `0`.
+
+## Objective
+
+Let `F` be the shortest-path relay latency from `s` to `t` in the induced subgraph after
+your chosen stations are powered down. You are **maximizing** `F`.
+
+## Scoring
+
+Let `B` be the shortest-path relay latency from `s` to `t` in the original network (no
+stations powered down). The score for a test is
+
+```
+ratio = min(1.0, 0.1 * F / B)
+```
+
+A do-nothing submission (`F = B`) scores `0.1`; reaching a ten-fold delay (`F = 10*B`)
+caps the score at `1.0`. The overall score is the mean ratio across all tests.
+
+## Constraints
+
+- `2 <= n <= 500`, `1 <= m <= 3000`.
+- `1 <= w <= 80`.
+- `0 <= k <= 20`.
+- Time limit: 5 s. Memory limit: 512 MB.
+
+## Example
+
+Input:
+
+```
+5 6 1 5 1
+1 2 1
+2 5 1
+1 3 6
+3 5 6
+1 4 3
+4 5 3
+```
+
+Original fastest route: `1 -> 2 -> 5` with latency `2`, so `B = 2`.
+
+With a budget of `k = 1`, powering down station `2` removes both channels through it; the
+fastest surviving route becomes `1 -> 4 -> 5` with latency `6`, so `F = 6`. (Powering down
+the inlet `1` or the sink `5` is forbidden.)
+
+Score for this test: `min(1.0, 0.1 * 6 / 2) = min(1.0, 0.3) = 0.3`.
+
+A valid worked output:
+
+```
+1
+2
+```

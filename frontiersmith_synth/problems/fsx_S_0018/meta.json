@@ -1,0 +1,18 @@
+{
+  "id": "fsx_S_0018",
+  "tier": "S",
+  "format": "A",
+  "family": "assignment-matching",
+  "eval_form": "quality-metric",
+  "seed_problem": "Assign drones to delivery zones under per-drone capacity to maximize served weight; checker validates capacities and scores total value / baseline.",
+  "mutation": "composite: generalize the input from a single-resource bin-capacity assignment to a full generalized assignment problem where both the value v[i][j] and the resource draw w[i][j] depend on the (act, platform) pair, and tighten the output so each act runs on at most one platform under per-platform generator budgets; the optimal schedule is NP-hard and first-fit / value-density / regret+local-search strategies diverge.",
+  "objective": "max",
+  "theme": "carnival ride circuit",
+  "title": "Starlight Carnival: Ride-Circuit Act Scheduling",
+  "strategies": [
+    "first-fit baseline: place each act in input order on the lowest-indexed platform with room (value-blind)",
+    "value-density greedy: sort all (act,platform) pairs by thrill-per-kilowatt and assign each act to its first affordable pair",
+    "regret-based construction: repeatedly assign the act whose best-vs-second-best placement gap is largest to its best platform",
+    "local search: relocate and swap acts across platforms (and in/out of the show) from a regret start, with deterministic randomized restarts"
+  ]
+}

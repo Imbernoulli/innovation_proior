@@ -1,0 +1,18 @@
+{
+  "id": "fsx_S_0210",
+  "tier": "S",
+  "format": "A",
+  "family": "assignment-matching",
+  "eval_form": "quality-metric",
+  "seed_problem": "Assign drones to delivery zones under per-drone capacity to maximize served weight; checker validates capacities and scores total value / baseline.",
+  "mutation": "composite: generalize the input from a single homogeneous cost/value to fully pump-specific (agent-specific) consumption AND yield matrices, and tighten output so each block is served by at most one capacitated pump -- turning simple weighted matching into the NP-hard Generalized Assignment Problem where greedy/local-search/multi-restart heuristics diverge.",
+  "objective": "max",
+  "theme": "vineyard irrigation",
+  "title": "Thirsty Terroir: Vineyard Irrigation Scheduling",
+  "strategies": [
+    "first-fit reference: scan blocks in index order and assign each to the first pump with remaining reservoir (the scored baseline)",
+    "density greedy: sort all (block,pump) pairs by yield-per-litre and assign each block to the best pump that still fits",
+    "local search with reassignments and swaps: start from greedy and repeatedly move/swap blocks between pumps to raise total yield",
+    "seeded randomized multi-restart: shuffle greedy tie-breaks across many deterministic restarts and keep the best schedule found"
+  ]
+}

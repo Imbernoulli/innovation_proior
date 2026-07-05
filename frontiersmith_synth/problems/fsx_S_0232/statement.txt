@@ -1,0 +1,122 @@
+# Reservoir Cascade: Selective Load-Weighted Silt Ferry
+
+## Problem
+A single self-propelled **silt barge** maintains a cascade of reservoirs behind a
+chain of dams. It is berthed overnight at the **control dam** (the *depot*, node 0).
+
+Each morning the authority publishes **P dredging orders**. Order `i` asks the barge
+to draw `q_i` units of accumulated silt from an **intake basin** at coordinates
+`(ax_i, ay_i)` (the *pickup*) and release it at a downstream **spoil lagoon** at
+coordinates `(bx_i, by_i)` (the *delivery*). For any order the barge must visit the
+intake basin **before** the spoil lagoon.
+
+The barge hull holds at most `Q` units of silt at any instant. An order's silt
+occupies the hull only between its pickup and its delivery, so several orders may be
+**batched** aboard at once as long as the on-board load never exceeds `Q`.
+
+Moving a *loaded* barge is expensive: pushing silt through the cascade fights the
+head of water. Travelling one leg between two points costs the **Manhattan distance**
+of the leg **multiplied by `(1 + current on-board load)`**. Concretely, if the barge
+carries `c` units while traversing a leg of Manhattan length `d`, that leg costs
+`d * (1 + c)`. An empty barge (`c = 0`) therefore pays only `d` for the same leg.
+
+You do **not** have to fill every order. Skipping order `i` incurs a fixed
+**silt-overflow penalty** `w_i` (regulatory fines, lost storage capacity). You must
+decide **which** orders to serve and produce **one** tour that starts and ends at
+the depot, visiting the chosen intakes and lagoons in a valid order.
+
+## Input
+```
+P Q
+x0 y0
+ax_1 ay_1 bx_1 by_1 q_1 w_1
+ax_2 ay_2 bx_2 by_2 q_2 w_2
+...
+ax_P ay_P bx_P by_P q_P w_P
+```
+- Line 1: the number of orders `P` and the hull capacity `Q`.
+- Line 2: the integer depot coordinates `x0 y0`.
+- The next `P` lines describe orders `1..P`: intake coordinates, spoil-lagoon
+  coordinates, silt quantity `q_i` and skip-penalty `w_i`.
+
+## Output
+Describe the barge's tour as an ordered list of `L` visit events. Each event is a
+pair of integers `t i`:
+- `t = 0` means "load order `i`" (visit intake `(ax_i, ay_i)`),
+- `t = 1` means "release order `i`" (visit lagoon `(bx_i, by_i)`).
+
+```
+L
+t_1 i_1
+t_2 i_2
+...
+t_L i_L
+```
+The barge always begins and ends at the depot; you list only the intermediate
+intake / lagoon visits. `L = 0` (serve nobody) is a valid output.
+
+## Feasibility
+An output is feasible iff **all** of the following hold:
+1. `0 <= L <= 2P` and every index `i` is in `[1, P]`.
+2. Each order appears **at most once** as a load event and **at most once** as a
+   release event.
+3. If an order's release event appears, its load event appears **earlier** in the
+   list (precedence).
+4. An order is *served* iff both its load and its release appear. Any order that
+   appears exactly once (loaded but never released, or vice versa) makes the output
+   infeasible.
+5. Processing the events in order, the on-board load (which increases by `q_i` at a
+   load event and decreases by `q_i` at a release event) never exceeds `Q`.
+
+An infeasible output scores 0.
+
+## Objective
+Simulate the realized tour `depot -> visited points in order -> depot`. Starting with
+an empty hull, for every leg of Manhattan length `d` traversed while carrying `c`
+units, add `d * (1 + c)` to the travel cost `D` (with `D = 0` if `L = 0`). Let `S` be
+the set of served orders. Minimize
+
+```
+F = D + sum over unserved orders i of w_i .
+```
+
+## Scoring
+The checker builds the trivial *serve-nobody* plan, whose cost is
+`B = sum over all i of w_i` (pure penalty, zero travel). Your score on a test is
+
+```
+ratio = min(1.0, (B / F) / 10)
+```
+
+reported as `Ratio: <ratio>`. Serving profitable orders and routing them tightly —
+in particular **batching** so the depot is not revisited between every order, and
+keeping heavy legs short — drives `F` below `B` and raises the ratio; the
+serve-nobody plan scores exactly `0.1`. The final score is the mean ratio over all
+tests.
+
+## Constraints
+- `1 <= P <= 50`, `4 <= Q <= 30`, `1 <= q_i <= min(Q, 8)`.
+- All coordinates are integers in `[0, 1000]`; `1 <= w_i <= 200000`.
+- Time limit: 5 s. Memory limit: 512 MB.
+
+## Example
+Input:
+```
+2 10
+0 0
+2 0 5 0 3 60
+0 6 0 9 1 4
+```
+Consider the output:
+```
+2
+0 1
+1 1
+```
+The barge serves only order 1: depot(0,0) -> intake(2,0) with empty hull, leg length
+`2`, cost `2*(1+0)=2`; load 3 units; intake(2,0) -> lagoon(5,0), leg length `3`, cost
+`3*(1+3)=12`; release; lagoon(5,0) -> depot(0,0), empty, leg length `5`, cost `5`.
+So `D = 2 + 12 + 5 = 19`. Order 2 is skipped, penalty `4`. Thus `F = 19 + 4 = 23`.
+The baseline is `B = 60 + 4 = 64`, giving
+`ratio = min(1.0, (64/23)/10) = 0.278...`. Serving order 2 as well would add far more
+loaded travel than its penalty of `4`, so skipping it is the better trade here.

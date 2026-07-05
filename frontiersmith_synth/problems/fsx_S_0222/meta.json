@@ -1,0 +1,19 @@
+{
+  "id": "fsx_S_0222",
+  "tier": "S",
+  "format": "A",
+  "family": "assignment-matching",
+  "eval_form": "quality-metric",
+  "seed_problem": "Assign drones to delivery zones under per-drone capacity to maximize served weight; checker validates capacities and scores total value / baseline.",
+  "mutation": "composite: generalized assignment (each zone to at most one gate) generalized with a SECOND per-agent constraint -- a valve/cardinality limit K_j on the number of zones a gate may serve, on top of the discharge volume capacity C_j, making it GAP-with-cardinality (knapsack-per-gate with a slot budget).",
+  "objective": "max",
+  "theme": "reservoir dam network",
+  "title": "Reservoir Dam Network: Spillway Release Allocation",
+  "source_frameworks": ["Frontier-CS", "ALE-Bench"],
+  "strategies": [
+    "first-fit reference: route each zone in input order through the lowest-index gate with both discharge room and a free valve slot (reproduces the checker baseline)",
+    "value-aware greedy: for each zone in order, pick the currently-feasible gate with the highest service value (ties -> smallest volume consumed)",
+    "regret-ordered construction + local search: order zones by best-minus-second-best value regret, assign to best feasible gate, then relocate/swap zones between gates to raise total value",
+    "flow/LP-relaxation rounding or metaheuristics: solve the fractional GAP-with-cardinality relaxation and round, or run seeded simulated-annealing / tabu over the two-constraint assignment"
+  ]
+}

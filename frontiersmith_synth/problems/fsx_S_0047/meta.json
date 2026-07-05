@@ -1,0 +1,17 @@
+{
+  "id": "fsx_S_0047",
+  "tier": "S",
+  "format": "A",
+  "family": "independent-set-clique",
+  "seed_problem": "Select a maximum-weight set of mutually non-conflicting research sites on a general conflict graph; checker validates independence and scores weight/baseline.",
+  "mutation": "input: relax the conflict structure from a bipartite/interval-style layout to a GENERAL conflict graph (arbitrary random-density edges plus skewed/clustered site values), turning an easy independent-set instance into NP-hard Maximum-Weight Independent Set; scored as total selected value against the single-best-site baseline.",
+  "objective": "max",
+  "theme": "volcano monitoring",
+  "title": "Caldera Watch: Maximum-Value Non-Interfering Monitoring Sites",
+  "strategies": [
+    "single-best-site baseline: build only the highest-value station (calibration point, ratio 0.1)",
+    "weight-greedy: sort sites by value descending, add each site if it conflicts with nothing already chosen",
+    "degree-aware greedy: order by value/(1+conflict-degree) so cheap-to-fit high-value sites go first",
+    "local search: degree-aware greedy start, then repeatedly add any free site and do remove-one/add-many swaps, with several seeded randomized restarts keeping the best independent set"
+  ]
+}

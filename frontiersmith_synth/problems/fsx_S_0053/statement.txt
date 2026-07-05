@@ -1,0 +1,120 @@
+# Festival Stage Layout: Crew Assignment & Build Schedule
+
+## Problem
+
+A music festival must build several **stages** before doors open. Building one stage
+is an ordered sequence of **phases** (for example: rigging, then sound, then lighting)
+that must be carried out one after another — you cannot start a phase of a stage until
+the previous phase of that same stage has finished.
+
+Every phase can be performed by any one crew drawn from a set of **eligible crews**
+qualified for that phase, but different crews take different amounts of time on the
+same phase (a specialist is faster than a generalist). A crew can work on **only one
+phase at a time**, across all stages.
+
+For every phase you must decide **which eligible crew performs it** and **at what time
+(in minutes) it starts**, so that:
+
+- the phases of each stage run in order (precedence), and
+- no crew is ever working on two phases at the same time (no-overlap).
+
+The **makespan** is the time the last phase finishes — the moment the whole festival is
+ready. Your goal is to make the makespan as small as possible.
+
+This is a *flexible* job-shop scheduling instance: stages are jobs, crews are machines,
+phases are operations, and — unlike classic job-shop — you also choose the machine
+(crew) for each operation. Finding the true minimum makespan is NP-hard, so any
+feasible schedule is accepted and scored by how short its makespan is.
+
+## Input
+
+```
+n m
+<stage 0>
+<stage 1>
+...
+<stage n-1>
+```
+
+- Line 1: two integers `n` (number of stages) and `m` (number of crews).
+- Crews are numbered `0 .. m-1`.
+- Each stage `j` (0-indexed by order) is described by:
+  - a line with one integer `o` — the number of phases of the stage;
+  - then `o` lines, one per phase in the order they must be performed. The line for a
+    phase begins with an integer `e` (the number of eligible crews), followed by `e`
+    pairs `crew duration`. Each `crew` is in `[0, m-1]` (the eligible crews of a phase
+    are distinct) and each `duration >= 1` is the time that crew needs for that phase.
+
+## Output
+
+Print `n` lines. Line `j` must contain exactly `2*o` integers describing the phases of
+stage `j` in order: for each phase `k`, print two integers `c[j][k] s[j][k]` — the crew
+you assign to phase `k` and the start time of that phase.
+
+## Feasibility
+
+Let `c[j][k]` be the chosen crew of phase `k` of stage `j`, `s[j][k]` its start time,
+and `d[j][k]` the duration of the chosen crew on that phase. A schedule is feasible iff:
+
+- `c[j][k]` is one of the eligible crews listed for phase `k` of stage `j`;
+- `0 <= s[j][k]` and every start time is an integer;
+- **precedence**: `s[j][k] >= s[j][k-1] + d[j][k-1]` for every `k >= 1`;
+- **no-overlap**: for any two phases assigned to the same crew, their busy intervals
+  `[s, s+d)` do not overlap.
+
+Any output that is malformed, out of range, assigns an ineligible crew, or violates a
+constraint scores 0.
+
+## Objective
+
+Minimize the makespan `F = max over all phases of (s[j][k] + d[j][k])`.
+
+## Scoring
+
+Let `B` be the makespan of the trivial **serial default** construction: assign every
+phase to the *first* crew listed as eligible for it, and run all phases one after
+another on a single global timeline. Then `B = sum over all phases of (duration of the
+first eligible crew)`. Your score on a test is
+
+```
+ratio = min(1.0, 0.1 * B / F)
+```
+
+where `F` is your makespan. The serial default scores `0.1`; a schedule ten times
+shorter than the serial default (or better) scores the maximum `1.0`. The overall score
+is the average ratio over all tests.
+
+## Constraints
+
+- `1 <= n <= 40`, `2 <= m <= 15`, `2 <= o <= m`, `1 <= e <= m`, `1 <= duration <= 99`.
+- Time limit: 5 s. Memory limit: 512 MB.
+
+## Example
+
+Input:
+```
+2 2
+2
+2 0 4 1 6
+1 1 3
+2
+2 1 5 0 3
+1 0 2
+```
+
+Stage 0 has 2 phases: phase 0 may use crew 0 (4 min) or crew 1 (6 min); phase 1 must
+use crew 1 (3 min). Stage 1 has 2 phases: phase 0 may use crew 1 (5 min) or crew 0
+(3 min); phase 1 must use crew 0 (2 min).
+
+The serial default assigns first-eligible crews (crew 0, crew 1, crew 1, crew 0) with
+durations `4, 3, 5, 2`, so `B = 4 + 3 + 5 + 2 = 14`.
+
+A feasible output:
+```
+0 0 1 4
+0 4 0 7
+```
+Stage 0: phase 0 on crew 0 `[0,4)`, phase 1 on crew 1 `[4,7)`. Stage 1: phase 0 on
+crew 0 `[4,7)`, phase 1 on crew 0 `[7,9)`. Crew 0 handles `[0,4)`, `[4,7)`, `[7,9)`
+(no overlap); crew 1 handles `[4,7)`; precedence holds. Makespan `F = 9`, so
+`ratio = min(1, 0.1 * 14 / 9) = 0.1556`.

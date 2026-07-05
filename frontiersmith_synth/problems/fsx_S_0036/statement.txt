@@ -1,0 +1,150 @@
+# Polar Research Base: Generator Commitment Replay
+
+## Problem
+
+A remote **polar research base** must keep its electrical grid supplied at every step
+of a fixed operating season. You are handed the *entire recorded trace* in advance — the
+station load and the (free but intermittent) wind output for every time step — and must
+plan, offline, exactly which diesel generators are running at each step.
+
+This is the classic online spot-vs-on-demand-vs-pause decision replayed as a **static
+full-trace optimization**: with timing removed, the whole difficulty is the *commitment*
+structure — a generator that has just been switched on must warm up (stay on for a
+minimum number of steps) and pays a start-up cost every time it is (re)started, plus a
+per-step no-load cost while running and a per-unit fuel rate for what it produces. Wind is
+free and always used first; the generators must cover whatever demand the wind cannot.
+
+You control the on/off schedule of a heterogeneous **fleet of `G` generators** over a
+horizon of `T` steps. At each step the running generators must be able to supply the
+wind-adjusted demand; you pay the resulting cost. **Minimize the total cost of the
+season.** This is offline unit commitment: the optimum is NP-hard and unknown at scale,
+and greedy, local-search and look-ahead strategies all diverge.
+
+## Input
+
+The first line contains two integers:
+
+```
+T G
+```
+
+- `T` — number of time steps in the season, indexed `1..T`.
+- `G` — number of generators, indexed `1..G` (row order below).
+
+Each of the next `G` lines describes one generator:
+
+```
+P b rate K U
+```
+
+- `P` — maximum output (units of power it can supply in one step, if on).
+- `b` — per-step **no-load cost** paid for every step the generator is on.
+- `rate` — **fuel cost per unit produced**.
+- `K` — **start-up cost**, paid each time the generator transitions from off to on.
+- `U` — **minimum-up time** (warm-up): once switched on it must stay on `U` steps.
+
+Each of the next `T` lines describes one step (step `1..T` in order):
+
+```
+D w
+```
+
+- `D` — the station load that must be met at this step.
+- `w` — the wind output available at this step (free power; used before any generator).
+
+All generators are off before step `1`. It is guaranteed that the total generator capacity
+alone can meet the load at every step (so a feasible schedule always exists).
+
+## Output
+
+Print `T` lines. Line `t` (for `t = 1..T`) contains `G` integers, each `0` or `1`,
+separated by single spaces: the `g`-th value is `1` iff generator `g` is **on** at step
+`t`. (This is the commitment matrix, one row per step.)
+
+Turning every generator on at every step is always a valid output.
+
+## Feasibility
+
+A schedule is feasible iff:
+
+- every printed value is `0` or `1`, and there are exactly `T` rows of `G` values;
+- **minimum-up time** is respected: for every generator `g`, each maximal block of
+  consecutive on-steps has length at least `U_g`. The single exception is a block that
+  runs all the way to the final step `T` — such a block may be shorter, since it is cut
+  off by the end of the horizon;
+- **capacity** suffices at every step: for each step `t`, the sum of `P_g` over the
+  generators on at step `t` is at least `max(0, D_t - w_t)`.
+
+Any infeasible output scores `0`.
+
+## Objective
+
+For a feasible schedule the cost is computed by replaying the trace:
+
+- for each generator, add `K_g` every time it turns on (from off), and add `b_g` for every
+  step it is on;
+- at each step, let the residual demand be `R_t = max(0, D_t - w_t)`. It is supplied by the
+  on generators using **cheapest fuel rate first** (this economic dispatch is optimal for a
+  fixed commitment): add `rate_g` per unit each generator produces until `R_t` is met.
+
+Let `F` be the total cost of your schedule over all steps. You are **minimizing** `F`.
+
+## Scoring
+
+Let `B` be the cost of the all-on baseline (every generator on for the whole horizon). The
+score for a test is
+
+```
+ratio = min(1.0, 0.1 * B / F)
+```
+
+The all-on baseline (`F = B`) scores `0.1`; driving the cost down to one tenth of the
+baseline (`F = B / 10`) caps the score at `1.0`. The overall score is the mean ratio
+across all tests.
+
+## Constraints
+
+- `8 <= T <= 1600`, `3 <= G <= 12`.
+- `1 <= P_g`, `1 <= b_g`, `1 <= rate_g`, `1 <= K_g`, `1 <= U_g <= T`.
+- `0 <= D_t`, `0 <= w_t`; all values fit in 64-bit integers.
+- Time limit: 5 s. Memory limit: 512 MB.
+
+## Example
+
+Input:
+
+```
+4 3
+100 80 3 400 3
+40 20 10 60 1
+40 20 12 60 1
+40 10
+20 20
+120 0
+15 15
+```
+
+Generator `1` is cheap-fuel baseload (rate `3`, no-load `80`, start-up `400`, warm-up `3`);
+generators `2` and `3` are peakers (dear fuel, cheap to start, warm-up `1`). Residual
+demand is `R = (30, 0, 120, 0)`.
+
+The all-on baseline pays start-ups `400+60+60 = 520`, no-load `120` per step over `4` steps
+`= 480`, and dispatch `30*3` at step 1 plus `100*3 + 20*10` at step 3 `= 590`, so
+`B = 520 + 480 + 590 = 1590`.
+
+A better schedule keeps generator `1` on the whole season and only fires generator `2` for
+the peak at step 3:
+
+```
+1 0 0
+1 0 0
+1 1 0
+1 0 0
+```
+
+This is feasible (generator `1`'s block has length `4 >= 3`; generator `2`'s single-step
+block satisfies its warm-up of `1`; capacity `140 >= 120` at the peak). It pays start-ups
+`400+60 = 460`, no-load `80*4 + 20*1 = 340`, and the same dispatch `590`, so
+`F = 460 + 340 + 590 = 1390`.
+
+Score for this test: `min(1.0, 0.1 * 1590 / 1390) = 0.1144`.

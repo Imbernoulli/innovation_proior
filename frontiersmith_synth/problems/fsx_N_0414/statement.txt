@@ -1,0 +1,87 @@
+# Coprime Bloom Trellis (Botanical Greenhouse Zones)
+
+## Problem
+A greenhouse is grown on a rooted trellis. You are given a tree with `N` nodes; node `1`
+is the root (the water main). Every non-root node of degree `1` is a **flower** (leaf); each
+flower `f` carries a market value `w_f`.
+
+You must dose every node with an integer **nutrient level** `x_v` in `{2, 3, ..., V}`
+(level `1` is forbidden -- pure water starves the trellis). A flower `f` is said to **bloom**
+iff the root->flower path `P(f)` satisfies **both** of the following:
+
+1. **Coprime path (number-theoretic):** the greatest common divisor of the nutrient levels of
+   all nodes on `P(f)` equals `1`. (Because level `1` is banned, an all-even path never
+   blooms -- every blooming path must carry a coprime "spark".)
+2. **Nutrient band (arithmetic):** the sum `S(f)` of the nutrient levels of all nodes on `P(f)`
+   lies inside the band `L <= S(f) <= U`.
+
+The three mechanisms are **coupled**: an internal node lies on the path of every flower in its
+subtree, so raising one dosage shifts a whole subtree of sums at once, while a flower's own node
+lets you fine-tune just that path. Planting a coprime "spark" high in a subtree can enable many
+paths cheaply, but it also spends part of the shared nutrient budget.
+
+## Input
+```
+N V L U
+u_1 v_1          (N-1 lines: an edge of the tree)
+...
+u_{N-1} v_{N-1}
+w_1 w_2 ... w_N   (N node values; only the values of leaf nodes are used)
+```
+The graph is a tree. Node `1` is the root.
+
+## Output
+Print `N` integers `x_1 x_2 ... x_N`, the nutrient level assigned to each node, in node order.
+
+## Feasibility
+Every `x_v` must be an integer with `2 <= x_v <= V`. Any level outside this range, a missing
+value, or an extra token makes the whole submission infeasible (score `0`).
+
+## Objective (maximize)
+```
+F = sum of w_f over all flowers f that BLOOM (coprime path AND sum in band).
+```
+Higher `F` is better.
+
+## Scoring
+Let `B` be the objective of the reference dosing that assigns level `3` to the root and level
+`2` to every other node (this is the minimum-sum coprime dosing: the root's `3` is the coprime
+spark, every path sum equals `2*depth + 3`). `B` counts exactly the flowers whose minimum path
+sum already lands in the band. Your ratio is
+```
+ratio = min(1000, 100 * F / max(1, B)) / 1000
+```
+so the reference dosing scores `0.1`, and beating it up to `10x` scores `1.0`. Flowers that are
+too deep can never lower their sum below `2*depth+3`; flowers that are too shallow must have
+shared ancestor dosages inflated to climb into the band -- which may push their deeper siblings
+out of it. Balancing these is the game.
+
+## Constraints
+- `2 <= N <= 200000`
+- `V = 4` (nutrient levels 2, 3, 4)
+- `1 <= L <= U <= 4*N`
+- `1 <= w_i <= 10^6`
+- Time limit: 5 s
+- Memory limit: 512 MiB
+
+## Example
+```
+6 4 8 12
+1 2
+2 3
+1 4
+4 5
+5 6
+1 1 10 1 1 4
+```
+Node `3` is a flower (value `10`, depth `2`); node `6` is a flower (value `4`, depth `3`).
+
+Reference dosing (root=3, rest=2):
+- Flower 3: path 1-2-3 = (3,2,2), gcd=1, sum=7 -> band is [8,12], 7 < 8, does NOT bloom.
+- Flower 6: path 1-4-5-6 = (3,2,2,2), gcd=1, sum=9, in band -> blooms.
+So `B = 4`.
+
+A better dosing `x = 3 4 2 2 2 2`:
+- Flower 3: path (3,4,2), gcd(3,4,2)=1, sum=9, in band -> blooms (+10). Node 2 is off flower 6's path.
+- Flower 6: unchanged, path (3,2,2,2), sum=9, in band -> blooms (+4).
+So `F = 14`, `ratio = min(1000, 100*14/4)/1000 = 350/1000 = 0.350`.

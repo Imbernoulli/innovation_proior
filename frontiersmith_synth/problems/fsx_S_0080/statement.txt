@@ -1,0 +1,132 @@
+# Trowel & Tessera: Splitting the Dig Grid
+
+## Problem
+
+At the *Tessera Ridge* excavation, a rectangular field has been broken into `n`
+**artifact clusters**. Two field crews — the **Ochre crew** (team `0`) and the
+**Indigo crew** (team `1`) — will excavate the site in parallel. Field records
+have produced a set of **stratigraphic correlations**: each correlation ties two
+clusters together with a positive **strength** (how strongly the same soil layer,
+pottery style, or datable charcoal links them).
+
+A correlation is considered **independently corroborated** only when its two
+clusters are excavated by *different* crews (each crew documents its half without
+knowing the other's field notes, so agreement across crews is real evidence).
+To keep the two crews' workloads comparable, the assignment must be **balanced**:
+the two crews must receive **the same number of clusters, up to a difference of one**.
+
+Your task: assign every cluster to one of the two crews, respecting the balance
+rule, so that the **total corroborated correlation strength** (the weight cut
+between the crews) is as **large** as possible.
+
+Formally, you are given an undirected weighted (multi)graph on `n` vertices.
+Choose `x_i \in {0,1}` for every vertex so that the two color classes differ in
+size by at most one, maximizing the total weight of edges whose endpoints receive
+different colors. This is a **balanced maximum-cut** problem: it is NP-hard, the
+optimum is unknown, and greedy, local-search, and multi-restart heuristics all
+apply and diverge.
+
+## Input
+
+The first line contains two integers:
+
+```
+n m
+```
+
+- `n` — number of artifact clusters (vertices), numbered `1..n`.
+- `m` — number of stratigraphic correlations (edges).
+
+Each of the next `m` lines describes one correlation:
+
+```
+u v w
+```
+
+meaning a correlation of strength `w` between clusters `u` and `v`
+(`1 <= u,v <= n`, `u != v`, `1 <= w`). Parallel correlations between the same
+pair may occur; treat them as separate edges.
+
+## Output
+
+Print `n` integers, each `0` (Ochre crew) or `1` (Indigo crew), separated by
+whitespace. The `i`-th integer is the crew assigned to cluster `i`.
+
+## Feasibility
+
+An output is feasible iff:
+
+- it contains exactly `n` integers, each equal to `0` or `1`;
+- the two crews are balanced: `| c0 - c1 | <= 1`, where `c0` and `c1` are the
+  numbers of clusters assigned to crews `0` and `1`.
+
+Any infeasible output scores `0`.
+
+## Objective
+
+Let `F` be the total strength of all corroborated correlations, i.e. the sum of
+`w` over every edge whose two clusters are on different crews. You are
+**maximizing** `F`.
+
+## Scoring
+
+The judge compares your cut against a fixed **reference partition** `R`, built
+deterministically as follows:
+
+1. For each cluster `i` (`1..n`) compute the 64-bit key
+   `key(i) = (i * 11400714819323198485) mod 2^64`
+   (unsigned 64-bit multiplication with wraparound).
+2. Sort the clusters by `key` ascending, breaking ties by smaller index.
+3. The first `floor(n/2)` clusters in this order form crew `0`; the rest form
+   crew `1`.
+
+Let `B` be the corroborated strength (cut weight) of `R`. The score for a test is
+
+```
+ratio = min(1.0, 0.1 * F / B)
+```
+
+Reproducing `R` exactly scores `0.1`; reaching a ten-fold improvement over the
+reference (`F = 10*B`) caps the score at `1.0`. The overall score is the mean
+ratio across all tests.
+
+## Constraints
+
+- `9 <= n <= 441`.
+- `1 <= m <= 2000`.
+- `1 <= w <= 20`.
+- Time limit: 5 s. Memory limit: 512 MB.
+
+## Example
+
+Input:
+
+```
+4 5
+1 2 3
+2 3 3
+3 4 3
+4 1 3
+1 3 10
+```
+
+The correlations form a 4-cycle `1-2-3-4-1` (each strength `3`) plus a heavy
+diagonal `1-3` (strength `10`). A balanced assignment must give each crew exactly
+two clusters.
+
+Consider the reference-style split `x = (0,1,0,1)`. Cross-crew edges: `1-2`,
+`2-3`, `3-4`, `4-1` are all cut (`3+3+3+3 = 12`); the diagonal `1-3` joins two
+crew-`0` clusters and is **not** cut. So that assignment scores `12`.
+
+Now consider `x = (0,1,1,0)` (crews `{1,4}` and `{2,3}`): cut edges are `1-2`
+(`3`), `4-1`... wait `4` and `1` are both crew `0`, not cut; `3-4` (`3`), and the
+diagonal `1-3` (`10`). Cut weight `= 3 + 3 + 10 = 16`.
+
+If the reference partition `R` yields `B = 12`, then the assignment `(0,1,1,0)`
+with `F = 16` scores `ratio = min(1.0, 0.1 * 16 / 12) = 0.1333...`.
+
+A valid worked output (for `F = 16`):
+
+```
+0 1 1 0
+```

@@ -1,0 +1,18 @@
+{
+  "id": "fsx_S_0206",
+  "tier": "S",
+  "format": "A",
+  "family": "covering-facility-location",
+  "eval_form": "quality-metric",
+  "seed_problem": "Place watchtowers on a forest graph to cover every cell within radius r, minimizing total cost; score = baseline_cost / achieved_cost.",
+  "mutation": "input+output: generalize the coverage domain from a grid/forest of cells to an arbitrary weighted road graph, attach a per-district build cost, and require distance-r coverage of a demand subset (weighted distance-r dominating set) so the min-cost covering is NP-hard and greedy vs. randomized local search diverge.",
+  "objective": "min",
+  "theme": "bakery supply chain",
+  "title": "Proofed & Provisioned: Bakery Depot Coverage",
+  "strategies": [
+    "reference baseline: build a depot in every shop district (each shop covers itself)",
+    "cost-effective greedy set cover: repeatedly build the depot with the best build-cost per newly-covered-shop ratio",
+    "GRASP randomized multi-restart with redundancy pruning: sample near-best cost-effective picks across seeded restarts and drop redundant depots, keeping the cheapest feasible covering",
+    "LP-relaxation rounding / swap-based local search over the distance-r coverage sets"
+  ]
+}

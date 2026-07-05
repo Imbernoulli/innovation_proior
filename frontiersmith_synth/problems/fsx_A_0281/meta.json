@@ -1,0 +1,16 @@
+{
+  "id": "fsx_A_0281",
+  "tier": "A",
+  "format": "C",
+  "family": "greedy-priority-construction",
+  "eval_form": "correctness",
+  "theme": "polar research base",
+  "title": "Aurora Relay Grid: Corner-Free Placement on the Ice Torus",
+  "objective": "optimize",
+  "strategies": [
+    "single-row / single-diagonal baseline (linear number of relays)",
+    "difference-set product with a small progression-free set (a few diagonals)",
+    "search for a large progression-free difference set A, then product T = {(x,y): (x-y) mod n in A}",
+    "direct 2D greedy that adds cells while keeping the set corner-free"
+  ]
+}

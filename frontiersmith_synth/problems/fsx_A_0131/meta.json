@@ -1,0 +1,17 @@
+{
+  "id": "fsx_A_0131",
+  "tier": "A",
+  "format": "C",
+  "family": "greedy-priority-construction",
+  "eval_form": "correctness",
+  "theme": "telescope array",
+  "title": "Telescope Array: Non-Degenerate Antenna Configurations",
+  "objective": "optimize",
+  "source_frameworks": ["FunSearch (cap-set/admissible/corner-free/cyclic-graph)"],
+  "strategies": [
+    "diagonal baseline {0, e_1..e_n} (size n+1)",
+    "binary-orthant heuristic: all {0,1}^n vectors (size 2^n)",
+    "greedy priority over F_3^n vectors under the cap validity check",
+    "block product of small optimal caps (dim-4 20-cap, dim-3 9-cap)"
+  ]
+}

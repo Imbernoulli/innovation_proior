@@ -1,0 +1,104 @@
+# Frostline Cooling Overhaul: Job-Shop Maintenance Schedule
+
+## Problem
+
+A hyperscale data center is taking its liquid-cooling plant offline for a scheduled overhaul.
+There are `N` **coolant loops** that must each be serviced, and `M` **cooling units** (chillers,
+CRAH units, dry coolers, pumps) that perform the servicing. Servicing loop `i` consists of `M`
+maintenance **stages** that must be carried out **in a fixed order**: stage `j` of loop `i` runs on
+cooling unit `mach[i][j]` and occupies it for `dur[i][j]` minutes. Across its `M` stages a loop
+visits every cooling unit exactly once (in a loop-specific order).
+
+Two hard rules govern the overhaul:
+
+- **Precedence.** Within a loop the stages are strictly sequential: stage `j` of loop `i` cannot
+  begin until stage `j-1` of the same loop has fully finished.
+- **No-overlap.** A cooling unit can service **one** stage at a time: no two stages assigned to the
+  same unit may run simultaneously (touching at an endpoint is allowed).
+
+You know the entire stage list up front. Assign a start time (in whole minutes) to every stage so
+that both rules hold, and finish the whole overhaul as early as possible.
+
+## Input
+
+```
+N M
+mach[1][1] dur[1][1] mach[1][2] dur[1][2] ... mach[1][M] dur[1][M]
+mach[2][1] dur[2][1] ... mach[2][M] dur[2][M]
+...
+mach[N][1] dur[N][1] ... mach[N][M] dur[N][M]
+```
+
+- Line 1: number of coolant loops `N` and number of cooling units `M`.
+- Line `1+i` (for `i = 1..N`) describes loop `i` as `M` pairs `mach dur` giving, in stage order, the
+  cooling unit `mach` (an integer in `0..M-1`) and the duration `dur` in minutes. The `M` unit
+  indices on a line form a permutation of `0..M-1` (each unit is visited once).
+
+## Output
+
+Print exactly `N` lines. Line `i` contains `M` integers `s[i][1] s[i][2] ... s[i][M]`, where
+`s[i][j]` is the start time (minute) of stage `j` of loop `i`. Stage `j` then occupies unit
+`mach[i][j]` over the half-open interval `[s[i][j], s[i][j] + dur[i][j])`.
+
+## Feasibility
+
+An output is feasible iff **all** of the following hold:
+
+- Every `s[i][j]` is an integer with `0 <= s[i][j] <= 10^15`.
+- **Precedence:** for every loop `i` and stage `j >= 2`, `s[i][j] >= s[i][j-1] + dur[i][j-1]`.
+- **No-overlap:** for every cooling unit `u`, the intervals of all stages assigned to `u` are
+  pairwise non-overlapping (they may share an endpoint).
+
+Any output with the wrong number of tokens, an out-of-range value, or a violated rule is infeasible
+and scores 0.
+
+## Objective
+
+Minimise the **makespan** `F`, the latest stage completion time:
+`F = max over all (i,j) of (s[i][j] + dur[i][j])`.
+
+## Scoring
+
+Let `B` be the makespan of the reference **serial** overhaul, in which every stage of every loop is
+run back-to-back on a single timeline with no parallelism. Because that schedule runs each stage
+once with no idle gaps, `B = sum over all (i,j) of dur[i][j]` (the total work). Your score for a
+test is
+
+```
+ratio = min(1000, 100 * B / F) / 1000
+```
+
+so reproducing the serial makespan scores `0.1`, and a schedule ten times shorter (or better) caps
+at `1.0`. Higher is better.
+
+## Constraints
+
+- `3 <= N <= 120`, `3 <= M <= 8`.
+- `1 <= dur[i][j] <= 99`.
+- On each input line the `M` unit indices are a permutation of `0..M-1`.
+- The instance is always feasible (the serial schedule witnesses feasibility).
+- Time limit: 5 s. Memory limit: 512 MB.
+
+## Example
+
+Input:
+```
+2 2
+0 3 1 2
+1 4 0 2
+```
+
+Loop 1: stage 1 on unit 0 for 3 min, then stage 2 on unit 1 for 2 min.
+Loop 2: stage 1 on unit 1 for 4 min, then stage 2 on unit 0 for 2 min.
+Total work `B = 3 + 2 + 4 + 2 = 11`.
+
+A valid schedule:
+```
+0 4
+0 4
+```
+- Loop 1 stage 1: unit 0 over `[0,3)`; stage 2: unit 1 over `[4,6)` (starts after minute 3, ok).
+- Loop 2 stage 1: unit 1 over `[0,4)`; stage 2: unit 0 over `[4,6)` (starts after minute 4, ok).
+- Unit 0 runs `[0,3)` then `[4,6)` (no overlap); unit 1 runs `[0,4)` then `[4,6)` (no overlap).
+
+Makespan `F = 6`. Score `= 100 * 11 / 6 / 1000 = 0.1833`.

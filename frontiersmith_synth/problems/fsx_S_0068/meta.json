@@ -1,0 +1,17 @@
+{
+  "id": "fsx_S_0068",
+  "tier": "S",
+  "format": "A",
+  "family": "partition-clustering",
+  "seed_problem": "Partition a weighted graph into two balanced halves maximizing cut weight; checker validates balance and scores cut/baseline.",
+  "mutation": "composite: flip the objective from balanced MAX-cut to balanced MIN k-cut (balanced graph partitioning / the METIS objective) AND generalize from two halves to k balanced yards of exactly n/k hives; instances are planted as k index-uncorrelated communities with heavy intra-community drift plus light cross-community noise, so the checker's fixed index-block reference cut is mediocre while the optimal balanced partition leaves only the noise. Minimization makes the score ratio B/F reward genuine structure recovery, and greedy vs. swap local search vs. multi-restart diverge.",
+  "objective": "min",
+  "theme": "beehive apiary",
+  "title": "Apiary Yard Split: Minimum Cross-Yard Bee Drift",
+  "strategies": [
+    "reference index-block split baseline: hives 1..n/k to yard 0, next n/k to yard 1, etc.",
+    "greedy constructive: place hives in a degree-sorted order, assigning each to the yard (with remaining capacity) to which it has the most drift already placed, so heavy drift stays intra-yard",
+    "balance-preserving swap local search: start from greedy and repeatedly swap two hives in different yards whenever the swap lowers total cross-yard drift (hill climbing with a move budget)",
+    "multi-restart / Kernighan-Lin style refinement to recover the planted balanced communities and approach the minimum k-cut"
+  ]
+}

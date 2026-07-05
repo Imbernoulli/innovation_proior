@@ -1,0 +1,18 @@
+{
+  "id": "fsx_S_0010",
+  "tier": "S",
+  "format": "A",
+  "family": "maxsat-csp",
+  "seed_problem": "Maximize total weight of satisfied clauses in a synthetic weighted CNF; checker computes satisfied weight / baseline.",
+  "mutation": "input: skin as orbital-debris thruster-mode selection and generalize to variable-arity (k=1..5) weighted disjunctive constraints with a positive-literal-biased structure so the all-retrograde baseline is a genuinely mediocre reference; objective stays weighted Max-SAT (maximize cleared debris weight).",
+  "objective": "max",
+  "theme": "orbital debris cleanup",
+  "title": "Orbital Debris Cleanup: Thruster Burn Scheduling",
+  "strategies": [
+    "all-retrograde constant assignment (reproduces the checker baseline B, Ratio=0.1)",
+    "single-pass greedy: for each satellite pick the mode that clears more incremental weight",
+    "iterated local search / hill-climbing to a local optimum via weight-improving flips",
+    "multi-restart weighted local search (WalkSAT-style) keeping the best assignment",
+    "weight-aware initialization prioritizing heavy debris fields before flipping"
+  ]
+}

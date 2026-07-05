@@ -1,0 +1,112 @@
+# Satellite Ground-Station Channel Separation
+
+## Problem
+
+A satellite operator runs `N` ground **stations**. Each station transmits on exactly one
+of `K` licensed **channels**, numbered `1..K` in increasing order of carrier frequency.
+The channel is the station's "color".
+
+Because the stations share the sky, certain pairs of them **interfere**. Interference is
+*graded by channel proximity*: for an interfering pair `(u, v)` the regulator specifies a
+required **separation** `g` (a minimum channel gap) and an interference **weight** `w`.
+If the two stations of the pair are placed on channels `c_u` and `c_v`, the pair incurs an
+interference cost
+
+```
+cost(u, v) = w * max(0, g - |c_u - c_v|).
+```
+
+In words: the pair is fully satisfied (cost 0) once the two channels differ by at least
+`g` steps; every step of separation below `g` costs `w`. Co-channel placement
+(`c_u == c_v`) is worst and costs the full `w * g`. You cannot license more channels — you
+may only use the `K` you already hold.
+
+You control only the channel assigned to each station. Distribute the stations across the
+`K` channels so that the **total interference cost is as small as possible**.
+
+## Input
+
+```
+N M K
+u_1 v_1 g_1 w_1
+u_2 v_2 g_2 w_2
+...
+u_M v_M g_M w_M
+```
+
+- Line 1: three integers `N` (stations), `M` (interfering pairs), `K` (available channels).
+- Each of the next `M` lines describes one interfering pair: stations `u_i` and `v_i`
+  (`1 <= u_i, v_i <= N`, `u_i != v_i`) require separation `g_i` (`1 <= g_i <= K-1`) with
+  weight `w_i` (`w_i >= 1`).
+
+Stations are numbered `1..N`. A pair may appear more than once; each listed occurrence
+contributes its own cost independently.
+
+## Output
+
+Print `N` integers `c_1, c_2, ..., c_N` (whitespace-separated; newlines are fine),
+where `c_j` is the channel assigned to station `j`.
+
+## Feasibility
+
+An output is feasible if and only if it contains exactly `N` integers and each `c_j`
+satisfies `1 <= c_j <= K`. Any such assignment is feasible — there is no other
+restriction, so a feasible output always exists (e.g. put every station on channel 1).
+An infeasible output scores 0.
+
+## Objective
+
+Minimize the total interference cost
+
+```
+F = sum over all interfering pairs (u, v, g, w) of  w * max(0, g - |c_u - c_v|).
+```
+
+## Scoring
+
+Let `B` be the interference of the do-nothing assignment that puts *every* station on the
+same channel: since then `|c_u - c_v| = 0` for every pair, `B = sum_i w_i * g_i` (every
+pair pays its full weight-times-separation). Your score on a test is
+
+```
+ratio = min(1.0, (B / max(1, F)) / 10)
+```
+
+so an assignment that merely matches the do-nothing baseline scores `0.1`, halving the
+interference scores `0.2`, and reaching one tenth of the baseline interference (or less)
+reaches the capped score `1.0`. Larger is better. The per-test scores are averaged.
+
+## Constraints
+
+- `2 <= N <= 800`
+- `1 <= M <= 8000`
+- `2 <= K <= 8`
+- `1 <= g_i <= K-1`
+- `1 <= w_i <= 1000`
+- Time limit: 5s
+- Memory limit: 256 MiB
+
+## Example
+
+Input:
+```
+4 4 3
+1 2 2 5
+2 3 1 4
+3 4 2 3
+4 1 1 6
+```
+
+The do-nothing baseline (every station on channel 1) pays `w*g` on each pair, so
+`B = 5*2 + 4*1 + 3*2 + 6*1 = 26`.
+
+Consider the assignment `c = [1, 2, 1, 2]`. Pair costs:
+- `(1,2,2,5)`: `|1-2| = 1 < 2`, cost `5*(2-1) = 5`.
+- `(2,3,1,4)`: `|2-1| = 1 >= 1`, cost `0`.
+- `(3,4,2,3)`: `|1-2| = 1 < 2`, cost `3*(2-1) = 3`.
+- `(4,1,1,6)`: `|2-1| = 1 >= 1`, cost `0`.
+
+So `F = 8` and `ratio = min(1.0, (26 / 8) / 10) = 0.325`.
+
+A stronger assignment `c = [1, 3, 1, 3]` separates every pair by 2, giving `F = 0` and the
+capped score `ratio = 1.0`.

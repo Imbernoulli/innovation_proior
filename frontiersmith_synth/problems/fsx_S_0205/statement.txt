@@ -1,0 +1,129 @@
+# Choked Reef: Aquarium Plumbing Interdiction
+
+## Problem
+
+A public aquarium circulates freshly filtered water from a single **sump pump**
+(node `s`) out to a set of `p` **display tanks** through a network of two-way pipe
+segments. Each segment has a positive flow time (how long clean water takes to
+traverse it). A rogue maintenance contractor wants to make the whole exhibit as
+sluggish as possible before the annual inspection: they may **shut at most `k`
+valves** (delete at most `k` pipe segments). But if *any* display tank ever loses
+its water supply completely, the alarm trips and the whole scheme is discovered and
+undone. Your task is to pick which valves to shut so that the *total* fresh-water
+travel time — the sum, over every tank, of the fastest remaining pump-to-tank route —
+is as **large** as possible.
+
+Formally: you are given an undirected weighted (multi)graph with a source `s` and a
+set `T` of `p` sink nodes. Choose a set `S` of at most `k` edges to delete such that
+`s` remains connected to *every* node of `T`, maximizing
+
+```
+F = sum over each tank u in T of dist_G-S(s, u)
+```
+
+where `dist_G-S` is the shortest-path distance after the edges of `S` are removed.
+
+This is a (multi-sink) shortest-path interdiction problem: it is NP-hard, the optimum
+is unknown, and many heuristics (greedy tree-edge cutting, best-improvement local
+search, randomized restarts) are viable and diverge.
+
+## Input
+
+The first line contains five integers:
+
+```
+n m s p k
+```
+
+- `n` — number of pipe junctions (nodes), numbered `1..n`.
+- `m` — number of pipe segments (edges).
+- `s` — the sump pump (source node).
+- `p` — number of display tanks (sinks).
+- `k` — the maximum number of valves you may shut (edges you may delete).
+
+Each of the next `m` lines describes one segment (edge index `1..m` in input order):
+
+```
+u v w
+```
+
+meaning a two-way pipe between junctions `u` and `v` with flow time `w` (`1 <= w`).
+The graph may contain parallel segments.
+
+The final line contains `p` distinct integers — the tank nodes `t_1 ... t_p`. Every
+tank is different from `s`, and `s` is guaranteed to reach every tank in the original
+network.
+
+## Output
+
+On the first line print `r` — the number of valves you shut (`0 <= r <= k`).
+On each of the next `r` lines print one segment index (an integer in `1..m`). All
+indices must be distinct.
+
+Printing `0` on the first line (and nothing else) is always valid.
+
+## Feasibility
+
+An output is feasible iff:
+
+- `0 <= r <= k`;
+- every printed index is in `1..m` and all are distinct;
+- after removing exactly the chosen segments, `s` remains connected to *every* tank.
+
+Any infeasible output scores `0`.
+
+## Objective
+
+Let `F` be the sum over all tanks `u` of the shortest pump-to-tank travel time after
+your chosen segments are removed. You are **maximizing** `F`.
+
+## Scoring
+
+Let `B` be the same sum in the original network (no valves shut). The score for a test
+is
+
+```
+ratio = min(1.0, 0.1 * F / B)
+```
+
+A do-nothing submission (`F = B`) scores `0.1`; reaching a ten-fold total delay
+(`F = 10*B`) caps the score at `1.0`. The overall score is the mean ratio across all
+tests.
+
+## Constraints
+
+- `2 <= n <= 500`, `1 <= m <= 3000`.
+- `1 <= p <= 12`.
+- `1 <= w <= 60`.
+- `0 <= k <= 12`.
+- Time limit: 5 s. Memory limit: 512 MB.
+
+## Example
+
+Input:
+
+```
+4 5 1 2 1
+1 2 1
+2 3 1
+2 4 1
+1 3 10
+1 4 10
+3 4
+```
+
+Tanks are junctions `3` and `4`. Original fastest routes:
+`1 -> 2 -> 3` has length `2` and `1 -> 2 -> 4` has length `2`, so `B = 2 + 2 = 4`.
+
+With a budget of `k = 1`, shutting valve `1` (the `1-2` segment) removes the shared
+cheap trunk. Both tanks stay supplied but only through the expensive direct pipes:
+`dist(1,3) = 10` and `dist(1,4) = 10`, so `F = 20`.
+
+Score for this test: `min(1.0, 0.1 * 20 / 4) = min(1.0, 0.5) = 0.5`.
+
+A valid worked output:
+
+```
+1
+1
+```

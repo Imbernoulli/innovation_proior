@@ -1,0 +1,12 @@
+# TIER: invalid
+# Emits a non-finite / malformed expression -> grader must reject (0.0).
+import sys
+
+
+def main():
+    sys.stdin.read()
+    sys.stdout.write("k + exp(inf) / 0.0 + log(-abs(t) - 1.0)\n")
+
+
+if __name__ == "__main__":
+    main()

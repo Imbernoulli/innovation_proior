@@ -1,0 +1,18 @@
+{
+  "id": "fsx_S_0061",
+  "tier": "S",
+  "format": "A",
+  "family": "graph-interdiction",
+  "eval_form": "quality-metric",
+  "seed_problem": "Themed grid network; remove at most k links to maximize the increase in s-t shortest path; checker verifies budget + connectivity and scores achieved delay ratio.",
+  "mutation": "composite (goal+output): replace the single s-t shortest-path objective with a single-source, multi-terminal objective -- maximize the SUM of shortest-path latencies from one correlator hub s to a fixed set of q science-antenna targets -- under a uniform cardinality cut budget k (at most k links), keeping every target connected to s. The many-target coupling makes cheap subtree-count greedy diverge sharply from re-planning best-improvement local search, and budgeted selection is NP-hard.",
+  "objective": "max",
+  "theme": "telescope array",
+  "title": "Correlator Starvation: Telescope-Array Fiber Interdiction",
+  "strategies": [
+    "do-nothing baseline: cut no fiber (achieves the original total correlator latency)",
+    "subtree-count greedy: build one shortest-path tree from the hub, rank tree links by the total latency of the targets hanging below them, and cut the top-k that keep every target connected -- no re-planning",
+    "best-improvement local search: repeatedly re-plan all shortest paths, and among the current shortest-path-tree links cut the one whose removal yields the largest true increase in TOTAL target latency while keeping every target connected, until the budget is spent",
+    "randomized multi-restart: perturb the greedy cut order across seeds and keep the cut set with the largest forced total latency"
+  ]
+}

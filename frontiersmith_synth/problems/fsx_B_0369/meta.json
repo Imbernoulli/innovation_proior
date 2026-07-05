@@ -1,0 +1,16 @@
+{
+  "id": "fsx_B_0369",
+  "tier": "B",
+  "format": "B",
+  "family": "feasibility-gated-structural",
+  "eval_form": "quality-metric",
+  "theme": "wind-farm turbines",
+  "title": "Wind-Turbine Support Tower: Minimum-Mass Lattice Member Sizing under Thrust and Sway Limits",
+  "objective": "min",
+  "strategies": [
+    "uniform sizing: one cross-section for every lattice member, just large enough to pass the stress and top-sway limits (baseline)",
+    "one-shot per-member stress sizing from a single reference FEM solve, then uniform stiffening to meet the top-sway limit",
+    "sensitivity / virtual-work sizing: allocate stiffness where it cuts top sway per kilogram most (A_i ~ sqrt(|N_i n_i|)), combined with the fully-stressed design",
+    "cheapest-possible min-area design (infeasible: over-stressed and over-swaying -> scores 0)"
+  ]
+}

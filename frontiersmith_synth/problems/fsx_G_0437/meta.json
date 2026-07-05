@@ -1,0 +1,16 @@
+{
+  "id": "fsx_G_0437",
+  "tier": "G",
+  "format": "D",
+  "family": "flop-matmul-rank-rect",
+  "eval_form": "flops",
+  "theme": "tensor lab",
+  "title": "Tensor Lab: Minimal-Multiplication Bilinear Decomposition of a Planted Overcomplete Tensor",
+  "objective": "min",
+  "strategies": [
+    "trivial mode-c flattening: one rank-1 term e_i (x) e_j (x) fibre per nonzero (i,j) fibre (R = a*b)",
+    "greedy best-of-three flattening: place the two unit vectors on the mode-pair with the fewest nonzero fibres (R = min(a*b, b*c, a*c))",
+    "strong exact slice-rank: slice along the mode minimizing the summed rational slice ranks, then rank-1-factor each slice exactly (R = sum_k rank(slice_k))",
+    "beat slice-rank: search for cross-slice cancellations / shared factors to approach the true (unknown, overcomplete) tensor rank below the sum-of-slice-ranks bound"
+  ]
+}

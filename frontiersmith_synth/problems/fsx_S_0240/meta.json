@@ -1,0 +1,16 @@
+{
+  "id": "fsx_S_0240",
+  "tier": "S",
+  "family": "online-to-offline-replay",
+  "seed_problem": "Given a fixed availability/deadline trace, choose Spot/On-Demand/pause per step to minimize cost; checker replays the trace and scores baseline/cost.",
+  "mutation": "composite: replay the online spot-vs-on-demand provisioning decision as a STATIC full-trace batch-scheduling problem, AND restrict the output with per-step throughput caps + a per-step activation (setup) cost so cheap-spot packing must be traded off against setup amortization -> the offline optimum becomes NP-hard (scheduling unit jobs with release/deadline windows and setup costs) rather than a per-step greedy.",
+  "objective": "min",
+  "theme": "warehouse robotics",
+  "title": "Warehouse Robot Charging: Spot / On-Demand / Pause Replay",
+  "strategies": [
+    "trivial baseline: earliest-deadline-first pack -- sort tasks by deadline and place each at the earliest in-window step with spare throughput, ignoring cost entirely",
+    "cost-aware marginal greedy: process tasks in deadline order and place each at the in-window step minimizing the marginal cost delta (spot price / grid overflow / new activation) at that moment",
+    "local-search consolidation: start from the cheaper of the EDF and greedy schedules, then repeatedly move single tasks to a cheaper in-window step (amortizing activations, filling cheap spot capacity) until no improving move remains, over several fixed-seed restarts",
+    "invalid: assign every task to step 1, violating windows and throughput"
+  ]
+}

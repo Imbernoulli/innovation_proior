@@ -1,0 +1,16 @@
+{
+  "id": "fsx_S_0016",
+  "tier": "S",
+  "family": "routing-tour",
+  "seed_problem": "ALE-Bench pickup-delivery TSP (ahc006/027/039); Frontier-CS routing",
+  "mutation": "composite: prize-collecting single-drone pickup-delivery tour under Chebyshev flight metric with a NEW freshness/carry penalty -- choose which precedence+capacity-constrained pairs to serve and order them so that flight distance, per-onboard-stop wilting cost, and skip penalties are jointly minimized (batching shortens flight but lengthens carry time, creating a trade-off absent from plain selective PDP-TSP)",
+  "objective": "min",
+  "theme": "rooftop gardens",
+  "title": "Rooftop Garden Seedling Relay: Fresh Pickup-and-Delivery Drone Tour",
+  "strategies": [
+    "serve-nobody baseline: output an empty tour, cost = total penalty (calibration point at ratio 0.1)",
+    "solo-benefit greedy: serve requests whose skip-penalty exceeds their standalone Chebyshev round-trip, delivered immediately after pickup (zero wilting), concatenated in input order",
+    "marginal cheapest-insertion: insert each pickup-delivery pair adjacently at the flight-cheapest gap, charging the extra wilting inflicted on requests already on board, accepting only net-negative insertions",
+    "insertion + remove-and-reinsert local search: repeatedly drop each served pair and reinsert it (or leave it out) to trade flight distance, carry-freshness, and skip penalties against each other"
+  ]
+}

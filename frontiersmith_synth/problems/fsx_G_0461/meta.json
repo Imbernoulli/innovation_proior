@@ -1,0 +1,17 @@
+{
+  "id": "fsx_G_0461",
+  "tier": "G",
+  "format": "B",
+  "family": "ml-loss-function-design",
+  "eval_form": "quality-metric",
+  "theme": "regression head",
+  "title": "Robust Regression Head: Fit a Loss for Corrupted Sensors",
+  "objective": "min",
+  "source_frameworks": ["MLS-Bench (regression head)", "breadth-fill (dataset/domain/task diversity)"],
+  "strategies": [
+    "predict the training-label mean (zero weights) -- reproduces the evaluator's baseline, ~0.1",
+    "ordinary least squares (plain squared/L2 loss) -- fits the signal but chases the corrupted outliers, so it generalizes worse than a robust fit",
+    "robust loss / fitting: Huber or absolute-error IRLS, Tukey biweight, trimmed least squares, RANSAC-style outlier rejection, or a quantile loss -- downweight or discard the corrupted labels to recover the clean head, tuning delta / breakdown / reweighting schedule",
+    "explicit two-stage: fit, flag high-residual points via a robust scale (MAD) threshold, drop them, and refit least squares on the clean subset"
+  ]
+}

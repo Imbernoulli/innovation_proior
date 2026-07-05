@@ -1,0 +1,16 @@
+{
+  "id": "fsx_A_0311",
+  "tier": "A",
+  "format": "C",
+  "family": "greedy-priority-construction",
+  "eval_form": "correctness",
+  "theme": "traffic signal grid",
+  "title": "Resonance-Free Traffic Signal Deployments",
+  "objective": "optimize",
+  "strategies": [
+    "trivial: fix the last two intersections and use only phases {0,1} elsewhere -> 2^(n-2) schedules (reproduces the baseline)",
+    "greedy: use the full {0,1}^n hypercube (no phase-2) -> 2^n schedules, a maximal but not maximum cap",
+    "strong: product construction of maximal 9-schedule caps over disjoint blocks of three intersections (times a small base cap) -> ~9^(n/3), well above 2^n",
+    "open-ended frontier: true maximum cap sizes (20,45,112,236 for n=4..7) are research-hard; better orderings / heuristics keep improving"
+  ]
+}

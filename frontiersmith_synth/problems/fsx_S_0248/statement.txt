@@ -1,0 +1,121 @@
+# Twin-Loop Cooling: Balanced Thermal Zone Split
+
+## Problem
+
+A hyperscale data hall houses `n` server **racks** (numbered `1..n`, with `n` even). Two
+independent **cooling loops** — the *blue* loop (`0`) and the *red* loop (`1`) — each draw
+waste heat to a separate chiller. Because the two chillers have identical, fixed capacity,
+each loop must serve **exactly `n/2` racks**.
+
+Pairs of racks are **thermally coupled**: they share airflow, so heat spilling out of one
+warms the other. Each coupling has a positive strength `w`. Operators have learned that
+when two strongly-coupled racks sit on the **same** loop their combined heat piles onto one
+chiller and forms a hotspot, whereas when they sit on **different** loops the two chillers
+split the load and the hotspot dissolves. You therefore want to assign racks to the two
+loops so that, subject to the equal-capacity rule, the total strength of couplings whose
+two racks land on **different** loops is as **large** as possible.
+
+Formally: you are given an undirected weighted (multi)graph on `n` vertices. Partition the
+vertices into two sets of size exactly `n/2` each, maximizing the total weight of edges
+whose endpoints fall in different sets.
+
+This is the **maximum balanced bisection** (balanced max-cut) problem: it is NP-hard, the
+optimum is unknown, and many heuristics (random balanced split, greedy assignment,
+Kernighan–Lin swap local search, randomized restarts) are viable and genuinely diverge.
+
+## Input
+
+The first line contains two integers:
+
+```
+n m
+```
+
+- `n` — number of racks (an **even** integer), racks are numbered `1..n`.
+- `m` — number of thermal couplings (edges).
+
+Each of the next `m` lines describes one coupling:
+
+```
+u v w
+```
+
+meaning racks `u` and `v` are thermally coupled with strength `w` (`1 <= w`, `u != v`).
+Parallel couplings between the same pair may appear and are all counted.
+
+## Output
+
+Print `n` integers `a_1 a_2 ... a_n` (whitespace-separated; newlines are fine). Value
+`a_i` is the cooling loop assigned to rack `i`: `0` for the blue loop or `1` for the red
+loop.
+
+## Feasibility
+
+An output is feasible iff:
+
+- it contains exactly `n` integers, each equal to `0` or `1`;
+- exactly `n/2` of them equal `1` (equivalently exactly `n/2` equal `0`) — the equal-
+  capacity rule.
+
+Any infeasible output scores `0`.
+
+## Objective
+
+Let `F` be the total strength of couplings that are **split** across the two loops:
+
+```
+F = sum of w over every edge (u, v, w) with a_u != a_v.
+```
+
+You are **maximizing** `F`.
+
+## Scoring
+
+Let `B` be the split strength achieved by the trivial reference assignment that places
+racks `1..n/2` on the blue loop and racks `n/2+1..n` on the red loop (a feasible, balanced
+"do-nothing" split). The score for a test is
+
+```
+ratio = min(1.0, 0.1 * F / B)
+```
+
+The reference split (`F = B`) scores `0.1`; a ten-fold improvement (`F = 10*B`) caps the
+score at `1.0`. The overall score is the mean ratio across all tests.
+
+## Constraints
+
+- `2 <= n <= 160`, `n` even.
+- `1 <= m <= 40000`.
+- `1 <= w <= 20`.
+- Time limit: 5 s. Memory limit: 512 MB.
+
+## Example
+
+Input:
+
+```
+4 6
+1 2 3
+2 3 4
+3 4 3
+1 4 4
+1 3 1
+2 4 1
+```
+
+The couplings form a 4-cycle `1-2-3-4-1` with heavy edges and two light diagonals.
+
+The reference split (racks `1,2` blue; racks `3,4` red) splits edges `2-3` (4), `1-4` (4),
+`1-3` (1) and `2-4` (1) for a total of `B = 10`.
+
+A better balanced split puts racks `1,3` on blue and racks `2,4` on red. Now the heavy
+cycle edges `1-2` (3), `2-3` (4), `3-4` (3), `1-4` (4) are all split while the light
+diagonals `1-3` and `2-4` are not, giving `F = 14`.
+
+Score for this test: `min(1.0, 0.1 * 14 / 10) = 0.14`.
+
+A valid worked output (rack 1 -> blue, rack 2 -> red, rack 3 -> blue, rack 4 -> red):
+
+```
+0 1 0 1
+```

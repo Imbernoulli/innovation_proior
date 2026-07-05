@@ -1,0 +1,17 @@
+{
+  "id": "fsx_S_0258",
+  "tier": "S",
+  "family": "assignment-matching",
+  "seed_problem": "Assign drones to delivery zones under per-drone capacity to maximize served weight",
+  "mutation": "composite: generalize input (per-satellite AND per-debris value/cost matrix, capacitated) and tighten objective (weighted generalized assignment) -> NP-hard maximization of hazard weight removed",
+  "objective": "max",
+  "theme": "orbital debris cleanup",
+  "title": "Orbital Debris Cleanup Tasking",
+  "strategies": [
+    "round-robin / fixed-satellite fill (baseline)",
+    "input-order value-greedy assignment",
+    "value-density ordering + best-value feasible assignment",
+    "constructive greedy + local reassignment / swap search",
+    "LP/flow relaxation rounding of the generalized assignment"
+  ]
+}

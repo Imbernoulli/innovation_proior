@@ -1,0 +1,16 @@
+{
+  "id": "fsx_A_0083",
+  "tier": "A",
+  "format": "C",
+  "family": "geometric-packing",
+  "eval_form": "quality-metric",
+  "theme": "orbital debris cleanup",
+  "title": "Orbital Debris Cleanup: Sweeper Drone Dispersion",
+  "objective": "max",
+  "strategies": [
+    "row baseline: N equal disks in a single line across the sector (reproduces the checker baseline)",
+    "aligned square grid of equal disks with radius S/(2*ceil(sqrt(N)))",
+    "hexagonal (offset-row) packing with the largest equal radius that still fits N disks",
+    "boundary-aware unequal packing: enlarge corner/edge disks and fill interstices near the densest-known N-circle packings"
+  ]
+}

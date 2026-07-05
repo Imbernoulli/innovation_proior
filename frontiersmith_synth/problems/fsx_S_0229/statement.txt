@@ -1,0 +1,115 @@
+# Museum Gallery Tour: Budgeted Doorway Closures
+
+## Problem
+
+A city museum is a floor plan of **galleries** connected by two-way **doorways**.
+A visitor always walks the **shortest tour** (least total walking time) from the
+**Grand Entrance** to the **Star Exhibit**.
+
+To reshape crowd flow, the curator may **rope off** a set of doorways. Roping off
+a doorway takes staff, so each doorway has a **closure cost**; the total closure
+cost of every doorway you rope off must not exceed a budget `K`. The curator wants
+to force visitors onto the longest possible detour: **maximize the shortest-tour
+walking time** from the Entrance to the Star Exhibit after the closures, while the
+two rooms must stay **connected** (some walk must remain).
+
+You are given the floor plan and must output which doorways to rope off.
+
+## Input
+
+The first line contains five integers:
+
+```
+n m s t K
+```
+
+- `n` — number of galleries (nodes), numbered `1..n`.
+- `m` — number of doorways (edges).
+- `s` — the Grand Entrance gallery.
+- `t` — the Star Exhibit gallery (`s != t`).
+- `K` — the total closure-cost budget.
+
+Each of the next `m` lines describes doorway `i` (`i = 1..m`, in this order):
+
+```
+u v w c
+```
+
+meaning a two-way doorway between galleries `u` and `v` with walking time `w`
+(a positive integer) and closure cost `c` (a positive integer).
+There may be several doorways between the same pair of galleries.
+
+## Output
+
+On the first line print `r`, the number of doorways you rope off (`0 <= r <= m`).
+Then print `r` lines, each a distinct doorway index in `1..m` (the input order).
+
+Printing `0` on the first line (and nothing else) is a valid "close nothing"
+submission.
+
+## Feasibility
+
+An output is feasible iff **all** of the following hold:
+
+1. Every printed index is in `1..m` and no index is repeated.
+2. The sum of closure costs of the printed doorways is `<= K`.
+3. After removing exactly the printed doorways, galleries `s` and `t` are still
+   connected.
+
+An infeasible output scores **0**.
+
+## Objective
+
+Let `F` be the shortest-tour walking time from `s` to `t` after removing your
+chosen doorways (a larger `F` is better; this is a **maximization** problem).
+
+## Scoring
+
+Let `B` be the shortest-tour walking time with **no** doorway closed (the
+do-nothing baseline). For a feasible output the score is
+
+```
+ratio = min(1.0, 0.1 * F / B)
+```
+
+So the do-nothing baseline scores `0.1`, and the score is capped at `1.0` when you
+manage to make the shortest tour at least `10x` longer than the baseline. An
+infeasible output scores `0.0`. Each test contributes its ratio; the reported
+score is the mean over all tests.
+
+## Constraints
+
+- `3 <= n <= 500`
+- `1 <= m <= 1200`
+- `1 <= w <= 25`, `1 <= c <= 4`
+- `1 <= K <= 60`
+- Time limit: 5 s
+- Memory limit: 512 MB
+
+## Example
+
+Input:
+
+```
+4 5 1 4 3
+1 2 1 2
+2 4 1 2
+1 3 10 1
+3 4 10 1
+1 4 20 3
+```
+
+Galleries `1..4`; Entrance `s=1`, Star Exhibit `t=4`; budget `K=3`.
+Baseline shortest tour is `1 -> 2 -> 4` with time `B = 2`.
+
+Suppose you rope off doorway `1` (the `1-2` link, closure cost `2 <= 3`).
+Then `1 -> 2` via that doorway is gone; the shortest remaining tour is
+`1 -> 3 -> 4` with time `F = 20`. Entrance and Star Exhibit stay connected, so the
+output is feasible and scores `ratio = min(1.0, 0.1 * 20 / 2) = min(1.0, 1.0) = 1.0`.
+
+A valid output achieving this:
+
+```
+1
+1
+```

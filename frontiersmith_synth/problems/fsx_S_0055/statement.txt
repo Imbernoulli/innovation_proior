@@ -1,0 +1,138 @@
+# Ridgeline Lift Grid: Tower-Capped Ski-Lift Network
+
+## Problem
+
+A new alpine resort must be wired together with **chairlifts**. There are `N` lift
+**stations** scattered across the mountain. Station `i` sits at map position `(x_i, y_i)`
+(metres on the survey grid) and at altitude `h_i` (metres above valley floor).
+
+You will build a set of point-to-point **lifts**, each lift joining two stations. The
+whole resort must end up **connected** — a skier (or a maintenance crew) must be able to
+travel between any two stations by riding a sequence of lifts.
+
+Every station is a lift terminal with only a limited number of **cable towers**: station
+`i` can be an endpoint of **at most `cap_i`** lifts. You choose which lifts to build, and
+you want the **total lift cable length as small as possible** without exceeding any
+station's tower cap.
+
+The cable cost of a lift is not pure horizontal distance: pulling cable up a steep
+mountainside is expensive, so vertical rise is penalised. The cost of a lift between
+stations `p` and `q` is
+
+```
+len(p, q) = round( sqrt( (x_p - x_q)^2 + (y_p - y_q)^2 ) + 3 * |h_p - h_q| )
+```
+
+i.e. the horizontal cable run plus **three times** the altitude difference, rounded to the
+nearest integer. (`round` rounds halves away from zero.)
+
+Without the tower caps this would just be a minimum spanning tree of a metric graph. The
+per-station tower caps make short networks compete for the few tower slots, so no efficient
+optimal algorithm is known. Heuristics are expected.
+
+## Input
+
+```
+N
+x_1 y_1 h_1 cap_1
+x_2 y_2 h_2 cap_2
+...
+x_N y_N h_N cap_N
+```
+
+- Line 1: integer `N`, the number of lift stations.
+- Each of the next `N` lines gives station `i` (numbered `1..N`): integer coordinates
+  `x_i`, `y_i`, altitude `h_i`, and its tower cap `cap_i`.
+- All station triples `(x_i, y_i, h_i)` are distinct. Every `cap_i >= 2`, so a connected
+  network always exists (for instance a single lift chain through all stations).
+
+## Output
+
+Print your lift network as a list of lifts.
+
+```
+E
+a_1 b_1
+a_2 b_2
+...
+a_E b_E
+```
+
+- Line 1: integer `E`, the number of lifts you build.
+- Each of the next `E` lines gives one lift between stations `a_k` and `b_k`
+  (`1 <= a_k, b_k <= N`, `a_k != b_k`). Lifts are undirected; do not list the same
+  unordered pair twice.
+
+## Feasibility
+
+An output is feasible if and only if all of the following hold:
+
+- `E` lifts are printed, each joining two distinct valid stations;
+- no unordered pair of stations appears more than once (no duplicate lift);
+- for every station `i`, the number of lifts incident to `i` is at most `cap_i`;
+- the resulting network is **connected** (spans all `N` stations).
+
+Any output that violates feasibility scores 0.
+
+## Objective
+
+Minimize the total network cable length
+
+```
+F = sum over all built lifts (a, b) of len(a, b),
+```
+
+with `len` as defined above (horizontal run plus three times altitude difference, rounded).
+
+## Scoring
+
+Let `B` be the length of the **chain baseline**: the network that links the stations in
+input order, `1-2, 2-3, ..., (N-1)-N` (a single chain, always feasible since every
+`cap_i >= 2`). Your score on a test is
+
+```
+ratio = min(1.0, (B / max(1, F)) / 10)
+```
+
+so a network that merely matches the chain baseline scores `0.1`, one half the baseline
+length scores `0.2`, and reaching one tenth of the baseline length (or shorter) reaches the
+capped score `1.0`. Larger is better. Per-test scores are averaged.
+
+## Constraints
+
+- `2 <= N <= 600`
+- `0 <= x_i, y_i <= 10000`
+- `0 <= h_i <= 3000`
+- `2 <= cap_i <= 4`
+- Time limit: 5s
+- Memory limit: 512 MiB
+
+## Example
+
+Input:
+```
+4
+0 0 0 3
+100 100 20 2
+0 100 10 2
+100 0 30 3
+```
+
+The four stations are numbered in a scrambled order. The chain baseline links
+`1-2, 2-3, 3-4`:
+
+- `len(1,2) = round( sqrt(100^2 + 100^2) + 3*20 ) = round(141.42 + 60) = 201`
+- `len(2,3) = round( sqrt(100^2 + 0)     + 3*10 ) = round(100 + 30) = 130`
+- `len(3,4) = round( sqrt(100^2 + 100^2) + 3*20 ) = round(141.42 + 60) = 201`
+
+so `B = 201 + 130 + 201 = 532`, and the chain itself scores exactly `0.1`.
+
+A better network is the reordered path `1-3, 3-2, 2-4`:
+
+- `len(1,3) = round( sqrt(0 + 100^2) + 3*10 ) = round(100 + 30) = 130`
+- `len(3,2) = round( sqrt(100^2 + 0) + 3*10 ) = round(100 + 30) = 130`
+- `len(2,4) = round( sqrt(0 + 100^2) + 3*10 ) = round(100 + 30) = 130`
+
+Every station has degree at most 2 (within its cap), it is connected, and
+`F = 130 + 130 + 130 = 390`, giving
+`ratio = min(1.0, (532 / 390) / 10) = 0.136...` — better than the baseline.

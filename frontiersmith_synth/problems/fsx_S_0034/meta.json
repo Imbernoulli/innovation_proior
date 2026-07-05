@@ -1,0 +1,17 @@
+{
+  "id": "fsx_S_0034",
+  "tier": "S",
+  "format": "A",
+  "family": "maxsat-csp",
+  "seed_problem": "Maximize total weight of satisfied clauses in a synthetic weighted CNF; checker computes satisfied weight / baseline.",
+  "mutation": "composite: weighted Max-SAT over ride-direction boolean variables with a mixed positive-only/negative-only/mixed clause-polarity structure so the all-reverse baseline is weak and neither uniform assignment is good; scored against the all-reverse baseline weight.",
+  "objective": "max",
+  "theme": "carnival ride circuit",
+  "title": "Midway Reversal: Carnival Ride-Circuit Tuning",
+  "strategies": [
+    "all-reverse baseline: emit n zeros (the calibration point, ratio 0.1)",
+    "weighted majority vote: set each ride independently to the polarity with the greater incident satisfied-request weight",
+    "sweep-based hill climbing: from the majority-vote start, repeatedly flip any ride whose flip increases total satisfied weight until a fixed point",
+    "randomized-restart local search: perturb the assignment and re-run hill climbing from several seeds, keeping the best circuit found"
+  ]
+}

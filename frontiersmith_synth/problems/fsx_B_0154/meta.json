@@ -1,0 +1,16 @@
+{
+  "id": "fsx_B_0154",
+  "tier": "B",
+  "format": "D",
+  "family": "quantum-circuit-opcount",
+  "eval_form": "flops",
+  "theme": "orbital debris cleanup",
+  "title": "Debris-Tug Rendezvous Routing on a Constellation Coupling Map",
+  "objective": "min",
+  "strategies": [
+    "in-order shortest-path routing (baseline)",
+    "exploit maneuver commutativity: flush already-adjacent maneuvers free, route the closest pending pair",
+    "opportunistic mid-route flushing so one SWAP can enable multiple maneuvers",
+    "token-swapping / SABRE-style lookahead to co-locate frequently-interacting tugs"
+  ]
+}

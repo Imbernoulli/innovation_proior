@@ -1,0 +1,17 @@
+{
+  "id": "fsx_S_0028",
+  "tier": "S",
+  "format": "A",
+  "family": "routing-tour",
+  "seed_problem": "ALE-Bench pickup-delivery TSP (ahc006/027/039); Frontier-CS routing: choose/serve precedence pickup-delivery pairs on one depot-to-depot tour, checker validates precedence + returns tour-length ratio.",
+  "mutation": "composite: skin as a satellite-ground-station downlink tender and turn the selective single-vehicle pickup-delivery TSP into a LARGE-scale MANDATORY-service capacitated precedence tour (all N jobs must be served) under rounded-Euclidean distance; the objective is pure tour length and the calibrated baseline B is the index-order serialized plan, so batching under capacity (not request selection) is the source of hardness and strategy divergence.",
+  "objective": "min",
+  "theme": "satellite ground stations",
+  "title": "Downlink Tender: Precedence-Constrained Cartridge Ferry Tour",
+  "strategies": [
+    "serialized baseline: serve jobs one at a time in index order (pickup i, deliver i) -- reproduces the checker baseline B, ratio = 0.1",
+    "sequential-nearest-request greedy: repeatedly serve the job whose pickup is nearest to the current position, fully (pickup then deliver) before the next -- shortens travel but never batches",
+    "nearest-feasible-event greedy with capacity batching: at each step move to the nearest of {a pickup that still fits the rack, a delivery of an on-board cartridge}, taking the better of this and the sequential tour",
+    "cheapest-insertion of pickup/delivery pairs plus feasibility-checked 2-opt / or-opt local search respecting precedence and capacity"
+  ]
+}

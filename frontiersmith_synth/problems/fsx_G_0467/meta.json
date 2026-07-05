@@ -1,0 +1,17 @@
+{
+  "id": "fsx_G_0467",
+  "tier": "G",
+  "format": "B",
+  "family": "ml-node-propagation",
+  "eval_form": "quality-metric",
+  "theme": "citation graph",
+  "title": "Ivory Tower: Semi-Supervised Citation Sorting",
+  "objective": "maximize",
+  "source_frameworks": ["breadth-fill (dataset/domain/task diversity)", "MLS-Bench (node classification)"],
+  "strategies": [
+    "majority-class predictor: label every unlabeled paper with the most frequent seed subfield (reproduces the evaluator's weak reference, ~0.1)",
+    "feature-only nearest-centroid: build per-class centroids from the labeled seeds' topic vectors and assign each query paper to the closest centroid, ignoring citations",
+    "feature-primed label propagation: spread the clamped seed labels along citation edges, blending neighbour aggregation with the feature-centroid prior, then argmax -- exploits homophily plus features",
+    "richer semi-supervised schemes: personalized-PageRank / harmonic-function propagation, degree-normalized aggregation, feature-kNN graph augmentation, or confidence-weighted self-training to push accuracy further"
+  ]
+}

@@ -1,0 +1,18 @@
+{
+  "id": "fsx_S_0216",
+  "tier": "S",
+  "format": "A",
+  "family": "online-to-offline-replay",
+  "eval_form": "quality-metric",
+  "seed_problem": "Given a fixed availability/deadline trace, choose Spot/On-Demand/pause per step to minimize cost; checker replays the trace and scores baseline/cost.",
+  "mutation": "composite: replay the online spot-vs-on-demand-vs-pause decision as a static full-trace schedule, and generalize from a single job to K deadline-windowed corridor segments sharing a scarce free-volunteer (spot) pool while a per-night contract mobilization fixed charge (on-demand dispatch) couples segments -> the offline optimum becomes a fixed-charge covering problem (NP-hard) instead of a poly DP.",
+  "objective": "min",
+  "theme": "wildlife corridor",
+  "title": "Wildlife Corridor Night Watch: Offline Guard-Schedule Replay",
+  "strategies": [
+    "trivial baseline: contract-only on the earliest W_i nights of each window (no volunteers, no clustering)",
+    "greedy: per-segment grab free volunteers then fill with cheapest per-guard-price contract nights, ignoring mobilization sharing",
+    "marginal-cost clustering: commit each guard at least marginal cost, amortizing the fixed mobilization fee across segments that share a contract night and spending scarce volunteers on the dearest nights",
+    "randomized multi-restart local search over segment processing order, keeping the cheapest schedule found"
+  ]
+}

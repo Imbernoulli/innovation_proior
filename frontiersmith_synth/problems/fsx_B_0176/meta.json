@@ -1,0 +1,17 @@
+{
+  "id": "fsx_B_0176",
+  "tier": "B",
+  "format": "B",
+  "family": "constrained-OR",
+  "eval_form": "quality-metric",
+  "theme": "glacier sensor net",
+  "title": "Glacier Sensor Net: Spare-Module Staging on a Supply Tree with Storage-Locker Caps",
+  "objective": "min",
+  "source_frameworks": ["Frontier-Eng (Inventory/Portfolio)"],
+  "strategies": [
+    "trivial: full-locker gold-plate, stock_i = min(4*sd_i, cap_i) (the evaluator baseline; always feasible) -> ~0.1",
+    "greedy: pure node-wise newsvendor k*=Phi^{-1}(1-h/p) clamped to the locker, ignoring the network availability floor; cheap+feasible on loose instances, violates beta on tight ones -> 0 there",
+    "strong: capacity-aware Lagrangian water-filling -- inflate every station's penalty by lambda, clamp each stock to its hard locker cap_i, and bisect lambda to the smallest value meeting the aggregate fill rate; when cheap tight lockers saturate, service is re-routed onto roomier stations (the correct KKT response to binding capacities)",
+    "invalid: hold zero spares everywhere -> aggregate availability collapses below beta on every instance -> infeasible -> 0"
+  ]
+}

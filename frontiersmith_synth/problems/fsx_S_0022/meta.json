@@ -1,0 +1,18 @@
+{
+  "id": "fsx_S_0022",
+  "tier": "S",
+  "format": "A",
+  "family": "maxsat-csp",
+  "eval_form": "quality-metric",
+  "seed_problem": "Maximize total weight of satisfied clauses in a synthetic weighted CNF; checker computes satisfied weight / baseline.",
+  "mutation": "composite: instantiate weighted Max-SAT as a fish-ladder gate-regime problem (gates=Boolean vars, salmon runs=weighted clauses, passage conditions=literals) with a sign/weight-biased generator so the all-low-flow baseline is genuinely weak while neither all-low nor all-high is optimal; score = satisfied weight / all-low-flow baseline weight.",
+  "objective": "max",
+  "theme": "salmon migration ladder",
+  "title": "Salmon Migration Ladder: Gate-Regime Weighting",
+  "strategies": [
+    "all-low-flow baseline: every gate set to 0 (matches the checker baseline, ratio ~0.1)",
+    "independent per-gate weighted vote: set each gate to the sign carrying more incident run weight (ignores interactions)",
+    "steepest-ascent hill climbing: repeatedly flip the gate that most increases total passable weight until no improving flip remains",
+    "randomized multi-restart local search: hill-climb from the vote seed and from several seeded random regimes, keep the best assignment found"
+  ]
+}

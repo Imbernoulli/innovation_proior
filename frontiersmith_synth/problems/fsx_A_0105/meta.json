@@ -1,0 +1,16 @@
+{
+  "id": "fsx_A_0105",
+  "tier": "A",
+  "format": "C",
+  "family": "functional-inequality-constant",
+  "eval_form": "quality-metric",
+  "theme": "cave mapping expedition",
+  "title": "Cave Mapping Expedition — Silent Sonar Profile",
+  "objective": "min",
+  "strategies": [
+    "naive half-fill baseline (fill first half of passage uniformly) -> reproduces internal baseline B",
+    "uniform full-support profile (ping equally everywhere) -> C1 = 2.0, a clean simple improvement",
+    "seeded coordinate-descent local search from uniform, incremental autoconvolution updates -> C1 ~ 1.7",
+    "analytic tapers (smooth bumps, arcsine) which are actually WORSE than uniform (trap)"
+  ]
+}

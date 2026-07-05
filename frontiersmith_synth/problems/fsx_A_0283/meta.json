@@ -1,0 +1,16 @@
+{
+  "id": "fsx_A_0283",
+  "tier": "A",
+  "format": "C",
+  "family": "geometric-packing",
+  "eval_form": "quality-metric",
+  "theme": "quantum lab wiring",
+  "title": "Quantum Lab Wiring: Shielded Spool Placement",
+  "objective": "max",
+  "strategies": [
+    "bottom-row baseline: N equal pads in the clear bottom margin (reproduces the checker baseline, F=S/2)",
+    "coarse largest-empty-circle greedy: place each pad in turn at the grid candidate with the largest feasible radius, respecting walls, zones and prior pads",
+    "fine largest-empty-circle greedy plus a hex-lattice equal-radius packing that drops zone-colliding sites, taking whichever total is larger",
+    "boundary-aware unequal packing: exploit the clear outer margin with big corner/edge pads and fill interstices around the forbidden zones"
+  ]
+}

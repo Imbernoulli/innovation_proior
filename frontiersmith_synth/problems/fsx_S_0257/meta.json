@@ -1,0 +1,16 @@
+{
+  "id": "fsx_S_0257",
+  "tier": "S",
+  "family": "scheduling-jssp",
+  "seed_problem": "Frontier-Eng (JobShop) makespan JSSP / ALE-Bench dispatch scheduling",
+  "mutation": "input+theme: instantiate a fresh large-scale classical job-shop (each coolant loop visits every cooling unit once in a loop-specific order) skinned as a data-center cooling overhaul; emit full stage start times, checker validates precedence + per-unit no-overlap and scores serial-baseline/makespan",
+  "objective": "min",
+  "theme": "data-center cooling",
+  "title": "Frostline Cooling Overhaul: Job-Shop Maintenance Schedule",
+  "strategies": [
+    "serial back-to-back overhaul on one timeline (the reference makespan B)",
+    "fixed stage-index list scheduling: place each stage at the earliest feasible minute per unit availability",
+    "Giffler-Thompson active-schedule generation with Most-Work-Remaining priority",
+    "priority-dispatch / local-search over stage orderings to shorten the critical path"
+  ]
+}

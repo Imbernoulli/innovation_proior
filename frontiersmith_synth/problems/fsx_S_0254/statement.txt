@@ -1,0 +1,120 @@
+# Tide Pool Watch: Minimum-Cost Sensor Cover
+
+## Problem
+
+A marine field station monitors a stretch of rocky shore modeled as a network of
+**tide pools** connected by tidal **channels**. Each channel has a positive travel
+time (the water distance a probe must swim between two pools). To watch the ecology,
+the station installs **sensors** in some of the pools. A sensor placed in pool `v`
+monitors every pool that lies within channel-distance `R` of `v` (including `v`
+itself, at distance `0`). Installing a sensor in pool `v` costs `c_v`.
+
+You must choose a set of pools in which to install sensors so that **every** tide
+pool is monitored by at least one sensor, while making the **total installation
+cost as small as possible**.
+
+Formally: you are given an undirected weighted graph on `N` pools, a covering radius
+`R`, and per-pool costs. For pools `u, v` let `d(u, v)` be the length of the shortest
+channel path between them. Choose a set `S` of pools such that for every pool `u`
+there is some `v` in `S` with `d(u, v) <= R`. Minimize `sum_{v in S} c_v`.
+
+This is a covering / facility-location problem (a weighted radius-`R` dominating set).
+It is NP-hard, the optimum is unknown, and several heuristics are viable: cost-effective
+greedy set cover, LP-rounding, and local search with redundancy pruning.
+
+## Input
+
+The first line contains three integers:
+
+```
+N M R
+```
+
+- `N` — number of tide pools, numbered `1..N`.
+- `M` — number of channels (edges).
+- `R` — covering radius (a non-negative integer channel-distance).
+
+The second line contains `N` integers `c_1 c_2 ... c_N`, where `c_v` (`c_v >= 1`) is
+the cost of installing a sensor in pool `v`.
+
+Each of the next `M` lines describes one channel:
+
+```
+u v w
+```
+
+meaning a two-way channel between pools `u` and `v` with travel time `w` (`w >= 1`).
+The graph may contain parallel channels and need not be connected.
+
+## Output
+
+On the first line print `K` — the number of sensors you install (`0 <= K <= N`).
+On each of the next `K` lines print one pool index (an integer in `1..N`). All
+indices must be distinct.
+
+## Feasibility
+
+An output is feasible iff:
+
+- `0 <= K <= N`;
+- every printed index is in `1..N` and all indices are distinct;
+- every pool `u` (for `u = 1..N`) is within channel-distance `R` of at least one
+  installed sensor.
+
+Any infeasible output scores `0`.
+
+## Objective
+
+Let `F = sum_{v in S} c_v` be the total installation cost of your chosen sensors.
+You are **minimizing** `F`.
+
+## Scoring
+
+Let `B = sum_{v = 1..N} c_v` be the cost of installing a sensor in *every* pool
+(always feasible, since each pool covers itself). The score for a test is
+
+```
+ratio = min(1.0, 0.1 * B / F)
+```
+
+Installing everywhere (`F = B`) scores `0.1`; driving the total cost down to one tenth
+of the everywhere-cost (`F = B / 10`) caps the score at `1.0`. The overall score is
+the mean ratio across all tests.
+
+## Constraints
+
+- `1 <= N <= 9000`, `1 <= M <= 30000`.
+- `1 <= c_v <= 15`.
+- `1 <= w <= 10`.
+- `0 <= R <= 20`.
+- Time limit: 6 s. Memory limit: 512 MB.
+
+## Example
+
+Input:
+
+```
+5 4 3
+4 2 9 2 4
+1 2 2
+2 3 2
+3 4 2
+4 5 2
+```
+
+The pools form a path `1 - 2 - 3 - 4 - 5` with every channel of length `2`, and the
+covering radius is `R = 3`. Installing everywhere costs `B = 4+2+9+2+4 = 21`.
+
+A sensor in pool `2` monitors pools `1, 2, 3` (distances `2, 0, 2`, all `<= 3`); a
+sensor in pool `4` monitors pools `3, 4, 5`. Together `{2, 4}` monitors all five
+pools at cost `F = c_2 + c_4 = 2 + 2 = 4`.
+
+Score for this test: `min(1.0, 0.1 * 21 / 4) = min(1.0, 0.525) = 0.525`.
+
+A valid worked output:
+
+```
+2
+2
+4
+```

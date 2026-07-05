@@ -1,0 +1,17 @@
+{
+  "id": "fsx_A_0084",
+  "tier": "A",
+  "format": "C",
+  "family": "extremal-point-config",
+  "eval_form": "quality-metric",
+  "theme": "glacier sensor net",
+  "title": "Glacier Sensor Net: Well-Spread Seismic Beacon Layout",
+  "objective": "max",
+  "source_frameworks": ["AlphaEvolve"],
+  "strategies": [
+    "incircle baseline: N beacons equally spaced on the survey triangle's incircle (reproduces the checker baseline, min area dominated by 3-consecutive-vertex slivers)",
+    "multi-restart uniform random sampling inside the triangle, keeping the layout with the largest minimum triangle area",
+    "bottleneck-driven local search: repeatedly find the smallest-area triple and push one vertex perpendicular to its opposite edge, accepting moves that raise the global minimum area, over several seeded restarts",
+    "structured Heilbronn-style constructions (boundary + interior lattices, perturbed grids) tuned to avoid thin triangles across the whole region"
+  ]
+}

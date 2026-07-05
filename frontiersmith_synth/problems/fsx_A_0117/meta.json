@@ -1,0 +1,16 @@
+{
+  "id": "fsx_A_0117",
+  "tier": "A",
+  "format": "C",
+  "family": "additive-combinatorics-set",
+  "eval_form": "quality-metric",
+  "theme": "satellite ground stations",
+  "title": "Orbital Phase Grid: Maximizing Resolvable Ground-Station Channels",
+  "objective": "max",
+  "strategies": [
+    "arithmetic-run baseline: place slots 0..n-1; both sumset and difference set have size 2n-1 (score ~0.1)",
+    "marginal-gain greedy: anchor the two grid endpoints, then repeatedly add the slot that maximizes the new |A+A|+|A-A|",
+    "greedy Sidon prefix + fill: grow a strict-Sidon (distinct-difference) prefix while it fits, then fill remaining slots by marginal gain",
+    "local-search refinement: seed from the greedy layout and hill-climb by single-slot moves across several seeds to escape greedy's collisions"
+  ]
+}

@@ -1,0 +1,16 @@
+{
+  "id": "fsx_S_0064",
+  "tier": "S",
+  "family": "routing-tour",
+  "seed_problem": "ALE-Bench pickup-delivery TSP (ahc006/027/039); Frontier-CS routing",
+  "mutation": "composite: prize-collecting selective single-vehicle pickup-delivery TSP with capacity batching, but REPLACE plain tour length with a LOAD-WEIGHTED haulage objective -- each leg costs distance*(1+onboard_crates), so the carrying ORDER (deliver-early-to-travel-light) matters even for a fixed visited set. Choose which precedence+capacity-constrained relocation pairs to serve and order them to minimize load-weighted haulage plus skip penalties.",
+  "objective": "min",
+  "theme": "wildlife corridor",
+  "title": "Wildlife Corridor Relocation Run: Load-Weighted Selective Pickup-and-Delivery Tour",
+  "strategies": [
+    "serve-nobody baseline: output an empty tour, cost = total penalty (calibration point, ratio 0.1)",
+    "solo-benefit greedy: serve requests whose penalty exceeds their solo load-weighted round trip, chained one-at-a-time so onboard load is never more than a single request's crates",
+    "cheapest-insertion selection + load-aware ordering: insert profitable pairs at least-incremental-cost capture/release gaps of a shared tour (batching to cut distance), preferring to release heavy loads before long legs, then adjacent-swap local search",
+    "load-weighted subset reoptimization: alternate re-selecting the served set and re-sequencing captures/releases so heavy crates ride short legs, trading haulage against skipped-request penalties"
+  ]
+}

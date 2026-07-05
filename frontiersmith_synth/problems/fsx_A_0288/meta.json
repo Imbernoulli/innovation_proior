@@ -1,0 +1,19 @@
+{
+  "id": "fsx_A_0288",
+  "tier": "A",
+  "format": "D",
+  "family": "tensor-decomposition-rank",
+  "eval_form": "flops",
+  "theme": "e-sports arena",
+  "title": "Arena Synergy Tensor: Fewest Trilinear Gadgets",
+  "objective": "optimize",
+  "variant": 7,
+  "scale": "medium",
+  "source_frameworks": ["AlphaEvolve"],
+  "strategies": [
+    "trivial: one gadget per non-zero frontal fiber (matches the checker baseline)",
+    "greedy: cheapest of the three fiber decompositions (min non-zero fibers over a mode)",
+    "strong: exact slice-rank (CR) factorization along the best mode; beats fibers but not the unknown optimum",
+    "open: search below the slice-rank bound (planted rank is over-complete; true minimum unknown)"
+  ]
+}

@@ -1,0 +1,17 @@
+{
+  "id": "fsx_A_0340",
+  "tier": "A",
+  "format": "B",
+  "family": "heuristic-contest-offline",
+  "eval_form": "quality-metric",
+  "theme": "data-center cooling",
+  "title": "Server Hall Cooling: Thermal-Aware Job Placement",
+  "objective": "optimize",
+  "source_frameworks": ["ALE-Bench (AHC)", "TTT-Discover (ahc)", "SimpleTES (AHC)"],
+  "strategies": [
+    "row-major overlap-blind: place job j at slot (j//N, j%N) (reproduces the evaluator's weak baseline; jobs pack into a corner, footprints stack, strong-vent slots go unused)",
+    "hottest-first greedy: sort jobs by descending load and drop each onto the free slot that adds the least squared over-temperature given deposits so far (overlap- and cooling-aware, but myopic and never revisits early placements)",
+    "greedy + local search: greedy build, then relocate single jobs to free slots and swap slots of unequal-load job pairs whenever total penalty drops (undoes the greedy's myopia within the op budget)",
+    "spread-then-anneal: seed a dispersed layout, then simulated-annealing / restart over the same squared-overheat objective to escape the local minima that pure descent gets stuck in"
+  ]
+}

@@ -1,0 +1,16 @@
+{
+  "id": "fsx_S_0054",
+  "tier": "S",
+  "family": "assignment-matching",
+  "seed_problem": "Assign drones to delivery zones under per-drone capacity to maximize served weight; checker validates capacities and scores total value / baseline.",
+  "mutation": "composite: generalize the input from unit-capacity bipartite matching to a fully weighted, capacitated generalized assignment (per-pair contact-hour cost AND per-pair risk-weight, per-tracer contact-hour budgets), and change the goal to maximizing total neutralised risk-weight; the optimum is NP-hard.",
+  "objective": "max",
+  "theme": "pandemic contact net",
+  "title": "Contact-Net Triage: Tracer Assignment Under Contact-Hour Capacity",
+  "strategies": [
+    "first-fit baseline: scan clusters in order, assign each to the lowest-index tracer that can still afford it (cost-blind, value-blind)",
+    "value/cost density greedy: rank all (cluster,tracer) pairs by v/t descending and assign the best affordable pair for each still-free cluster in one pass",
+    "greedy + fill + eviction local search: density greedy, then a fill pass for leftover capacity, then repeatedly move clusters to cheaper tracers and evict low-value clusters in favour of higher-value unassigned ones",
+    "LP-relaxation / Lagrangian rounding of the generalized assignment (fractional solve then repair to per-tracer budgets)"
+  ]
+}

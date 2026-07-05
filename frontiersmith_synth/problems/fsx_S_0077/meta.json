@@ -1,0 +1,17 @@
+{
+  "id": "fsx_S_0077",
+  "tier": "S",
+  "family": "scheduling-jssp",
+  "seed_problem": "Frontier-Eng JobShop / ALE-Bench: emit a machine schedule for a JSSP instance; checker validates precedence + no-overlap and scores 100*optimum/makespan.",
+  "mutation": "composite: generalize the input from rigid job-shop (one fixed machine per operation) to a FLEXIBLE job-shop where each operation carries an eligible machine set with machine-dependent durations (participant must choose routing AND timing), and replace the unknown optimum in the score with a checker-computed always-feasible serial baseline B = sum of fastest eligible durations, so scoring is deterministic (ratio = 0.1*B/F capped at 1.0). Skinned as a reservoir dam network; small-scale instances with a bottleneck-duration difficulty ladder.",
+  "objective": "optimize",
+  "theme": "reservoir dam network",
+  "title": "Reservoir Dam Network: Minimum-Makespan Release Schedule",
+  "strategies": [
+    "serial baseline: run every pass alone on one global timeline, each on its fastest dam (feasible, makespan = B, ratio 0.1)",
+    "earliest-completion-time list scheduling: route each pass to the eligible dam that finishes it soonest, appended to that dam's timeline",
+    "active scheduling with gap-filling: insert operations into the earliest feasible idle window on the best dam rather than only appending",
+    "multi-restart randomized dispatch: sample many static order priorities and selection rules, keep the shortest makespan found",
+    "load-balancing routing: bias machine choice away from congested dams to reduce the makespan bottleneck"
+  ]
+}

@@ -1,0 +1,17 @@
+{
+  "id": "fsx_B_0157",
+  "tier": "B",
+  "format": "B",
+  "family": "multiobjective-hypervolume",
+  "eval_form": "quality-metric",
+  "theme": "bakery supply chain",
+  "title": "Bakery Supply-Chain Recipe Trials",
+  "objective": "max",
+  "source_frameworks": ["Frontier-Eng (ReactionOptimisation/DTLZ2)"],
+  "strategies": [
+    "trivial: trial the single midpoint recipe budget-many times -> one cost point, dominates baseline volume only -> ~0.1",
+    "greedy: uniform grid over the two trade-off variables, distance vars at 0.5 (all on the cost frontier) -> spreads but grid is uneven on the curved frontier -> ~0.35",
+    "strong: uniform-grid seed + coordinate-wise local hypervolume ascent (multi-scale steps, keep only volume-increasing moves) -> reference-tuned spread, materially more volume, still short of global optimum -> ~0.48",
+    "invalid: out-of-range coordinates (5.0) -> rejected -> 0"
+  ]
+}

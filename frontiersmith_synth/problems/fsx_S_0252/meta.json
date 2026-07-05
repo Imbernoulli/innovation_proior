@@ -1,0 +1,18 @@
+{
+  "id": "fsx_S_0252",
+  "tier": "S",
+  "format": "A",
+  "family": "online-to-offline-replay",
+  "eval_form": "quality-metric",
+  "seed_problem": "Given a fixed availability/deadline trace, choose Spot/On-Demand/pause per step to minimize cost; checker replays the trace and scores baseline/cost.",
+  "mutation": "composite: replay the spot-vs-on-demand-vs-pause trace as a STATIC multi-room capacitated lot-sizing problem -- a single shared refrigeration plant must keep N independent cold-storage reserves non-negative over the whole horizon, with per-step spot availability/prices, a throughput cap, capacity clipping and cold-start costs; minimize total energy cost. Joint reserves + shared throughput make the optimum intractable (multi-item CLSP).",
+  "objective": "min",
+  "theme": "vaccine cold chain",
+  "title": "Cold-Chain Replay: Vaccine Reserve Power Scheduling",
+  "strategies": [
+    "all-grid baseline: every step buy grid power and refill exactly the load per room (the scoring baseline)",
+    "reactive greedy: produce only the minimum needed to keep each reserve non-negative, using spot power when solar happens to be available at that step, grid otherwise",
+    "lookahead pre-store: during cheap spot windows fill rooms toward capacity (subject to throughput) so grid use during no-solar stretches is minimized; coast on stored cold otherwise",
+    "randomized / local-search refinement over pre-store thresholds and start-cost batching"
+  ]
+}

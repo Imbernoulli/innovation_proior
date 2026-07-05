@@ -1,0 +1,16 @@
+{
+  "id": "fsx_G_0494",
+  "tier": "G",
+  "family": "new-bioinfo-rna-fold",
+  "seed_problem": "Weighted non-crossing base pairing maximizing stacking energy (Nussinov-style, weighted/constrained open variant); baseline = greedy pairing.",
+  "mutation": "composite: keep the non-crossing base-pairing goal but (1) make the objective cooperative/non-linear (helix stacking bonus, so lone pairs are near-worthless) and (2) couple pair selection to a second aptamer-pocket objective (unpaired loop positions gain value only when enclosed by a real helix). Best strategy must balance building high-weight helices against enclosing high-value pockets.",
+  "objective": "max",
+  "theme": "RNA lab",
+  "title": "Cooperative Ribozyme Folding with Aptamer Pockets",
+  "strategies": [
+    "reference greedy nested matching: parenthesis-style stack matching of nearest complementary bases (the calibration baseline)",
+    "weight-greedy: enumerate all valid base pairs, add highest-weight-first if non-crossing and positions free (packs C-G pairs but ignores stacking and pockets)",
+    "helix-and-pocket heuristic: enumerate maximal complementary stems, score each by stacking energy plus enclosed pocket value, greedily select a nested compatible set, then fill leftovers with high-weight pairs",
+    "DP / local search over nested structures balancing helix stacking against pocket enclosure"
+  ]
+}

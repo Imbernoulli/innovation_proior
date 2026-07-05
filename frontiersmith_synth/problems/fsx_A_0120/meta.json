@@ -1,0 +1,17 @@
+{
+  "id": "fsx_A_0120",
+  "tier": "A",
+  "format": "B",
+  "family": "heuristic-contest-offline",
+  "eval_form": "quality-metric",
+  "theme": "greenhouse zones",
+  "title": "Greenhouse Zone Partition",
+  "objective": "optimize",
+  "source_frameworks": ["ALE-Bench (AHC)", "TTT-Discover (ahc)", "SimpleTES (AHC)"],
+  "strategies": [
+    "one giant zone: assign every cell the same label -- zero walls, full mismatch; reproduces the evaluator's weak one-zone reference and scores ~0.1",
+    "global temperature bucketing: split the observed range into B equal bands and label each cell by its band; big mismatch drop but ignores geometry, so noisy neighbours create many walls and B is never tuned",
+    "agglomerative region merging: start one-cell-per-zone and repeatedly merge the adjacent zone pair whose merge most reduces total cost (mismatch increase minus removed-wall savings) until no improving merge remains -- directly optimizes the objective",
+    "seeded local search / metaheuristics: from a merged or band-segmented partition, relocate boundary cells or run perturb-and-remerge restarts to squeeze out remaining wall/mismatch trade-offs within the op budget"
+  ]
+}

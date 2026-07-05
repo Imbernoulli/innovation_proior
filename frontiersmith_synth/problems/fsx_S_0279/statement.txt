@@ -1,0 +1,158 @@
+# Volcano Flank: Weighted Seismic Sensor Packing
+
+## Problem
+
+A volcanology team is instrumenting the flank of an active volcano, modeled as an
+`H x W` grid of terrain cells. Long-baseline monitoring has produced a **hazard map**:
+each cell `(r, c)` carries an integer **hazard weight** `w(r,c) >= 1` — cells near a
+vent or a stressed fault segment score high, quiescent scree scores low.
+
+The team deploys **sensor arrays**. Each array type is a fixed **polyomino** footprint
+(a connected set of unit cells): a rigid frame of seismometers, tiltmeters and gas
+sniffers. Only a limited number of each type is available in the field cache — the
+supply is deliberately scarce, so **you cannot cover the whole flank**.
+
+A deployed array may be **rotated** (any of the four 90 degree orientations) and
+**reflected** (mirror-imaged) before it is anchored — the field crew can flip a frame
+either way. Every deployed array must sit fully inside the grid and arrays may **not**
+overlap (two frames cannot occupy the same cell).
+
+A cell is **monitored** if some deployed array covers it. The scientific value of a
+deployment is the **total hazard weight of the monitored cells**. Because supply is
+scarce, blindly filling area is wasteful: you must steer your frames onto the hot
+cells. Maximizing monitored weight under scarce supply and awkward footprints is
+NP-hard; strong solutions rely on heuristics (weight-density greedy, best-first
+placement, randomized multi-restart local search, ILP relaxations, ...).
+
+## Input
+
+The first line contains three integers:
+
+```
+H W T
+```
+
+- `H` — grid height (rows), numbered `0..H-1` top to bottom.
+- `W` — grid width (columns), numbered `0..W-1` left to right.
+- `T` — number of sensor-array types.
+
+The next `H` lines each contain `W` integers: line `r` gives `w(r,0) w(r,1) ... w(r,W-1)`,
+the hazard weights of row `r`.
+
+Then follow `T` array blocks. Array type `t` (`1..T`, in input order) is described by:
+
+```
+k c
+r_1 col_1
+r_2 col_2
+...
+r_k col_k
+```
+
+- `k` — number of cells in this array's footprint (its area).
+- `c` — how many copies of this type are available.
+- the next `k` lines give the footprint cells as offsets `(r_i, col_i)`, normalized so the
+  minimum row and minimum column are `0`. The footprint is connected.
+
+## Output
+
+On the first line print `P` — the number of arrays you deploy (`0 <= P <= H*W`).
+
+On each of the next `P` lines print one deployment:
+
+```
+t o r0 c0
+```
+
+- `t` — the array type deployed (`1 <= t <= T`).
+- `o` — an orientation code (`0 <= o <= 7`). Orientation `o` is obtained from the type's
+  footprint as follows: if `o >= 4`, first **reflect** it horizontally (`col -> -col`) and
+  set `o <- o-4`; then **rotate 90 degrees clockwise** `o` times (`(r,col) -> (col,-r)`).
+  Finally the transformed footprint is **renormalized** so its minimum row and minimum
+  column are `0`.
+- `r0 c0` — the grid cell where the renormalized footprint's `(0,0)` corner is anchored;
+  a footprint cell with offset `(dr,dc)` then occupies grid cell `(r0+dr, c0+dc)`.
+
+Printing `0` on the first line (and nothing else) is always valid (it monitors nothing).
+
+## Feasibility
+
+An output is feasible iff:
+
+- `0 <= P <= H*W`;
+- every deployment has `1 <= t <= T` and `0 <= o <= 7`;
+- every occupied cell `(r0+dr, c0+dc)` lies inside the grid (`0 <= row < H`, `0 <= col < W`);
+- no two deployed arrays share a cell;
+- for each type `t`, the number of deployed copies does not exceed its availability `c`.
+
+Any infeasible output scores `0`.
+
+## Objective
+
+Let `F` be the total hazard weight of the monitored cells — the sum of `w(r,c)` over every
+grid cell covered by at least one deployed array. You are **maximizing** `F`.
+
+## Scoring
+
+The judge builds an internal baseline `B`: it tiles the grid with axis-aligned, unrotated
+copies of **array type 1** packed on a regular bounding-box grid (row-major), limited by
+type 1's availability, and sets `B` to the total hazard weight that tiling monitors. The
+score for one test is
+
+```
+ratio = min(1.0, 0.1 * F / B)
+```
+
+A submission matching the baseline weight (`F = B`) scores `0.1`; reaching ten times the
+baseline monitored weight caps the score at `1.0`. The overall score is the mean ratio
+across tests.
+
+## Constraints
+
+- `8 <= H, W <= 26`.
+- `1 <= T <= 8`; each footprint has `4 <= k <= 5` connected cells.
+- `1 <= w(r,c) <= 60`.
+- Availability `c >= 1` per type; the **total** available frame area is far smaller than
+  `H*W`, so supply — not just packing — is binding.
+- Time limit: 5 s. Memory limit: 512 MB.
+
+## Example
+
+Input:
+
+```
+4 5 2
+1 1 1 1 1
+1 9 9 1 1
+1 9 9 1 1
+1 1 1 1 1
+4 1
+0 0
+0 1
+0 2
+1 1
+4 3
+0 0
+0 1
+1 0
+1 1
+```
+
+Type 1 is a T-tetromino (area 4, availability 1); type 2 is a 2x2 square (area 4,
+availability 3). The grid is `4 x 5`; there is a `2 x 2` weight-9 hotspot at rows 1..2,
+cols 1..2.
+
+The baseline tiles type 1's `2 x 3` bounding box (`floor(4/2)=2` box-rows by
+`floor(5/3)=1` box-col `= 2` slots, capped by availability `1`, so `1` copy) anchored at
+`(0,0)`. That T covers cells `(0,0),(0,1),(0,2),(1,1)` with weights `1+1+1+9 = 12`, so
+`B = 12`.
+
+A submission that drops one 2x2 square squarely on the hotspot:
+
+```
+1
+2 0 1 1
+```
+
+monitors cells `(1,1),(1,2),(2,1),(2,2)` = `9+9+9+9 = 36`, so `F = 36` and
+`ratio = min(1.0, 0.1 * 36 / 12) = 0.30`.

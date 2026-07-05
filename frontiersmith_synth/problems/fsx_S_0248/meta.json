@@ -1,0 +1,16 @@
+{
+  "id": "fsx_S_0248",
+  "tier": "S",
+  "family": "partition-clustering",
+  "seed_problem": "Partition a weighted graph into two balanced halves maximizing cut weight; checker validates balance and scores cut/baseline.",
+  "mutation": "input: relax the seed's generic balanced max-cut into a planted-bipartition thermal-coupling graph where heavy cross-side couplings and light intra-side noise are mixed and vertex labels are randomly permuted, so the equal-capacity max-bisection is NP-hard and random/greedy/Kernighan-Lin strategies genuinely diverge above a moderate index-split baseline.",
+  "objective": "max",
+  "theme": "data-center cooling",
+  "title": "Twin-Loop Cooling: Balanced Thermal Zone Split",
+  "strategies": [
+    "reference index split: racks 1..n/2 on blue, rest on red (the calibration baseline)",
+    "greedy assignment: process racks by descending incident coupling weight, place each on the capacity-remaining loop that maximizes marginal split strength",
+    "Kernighan-Lin swap local search: from a balanced start, repeatedly apply the best cut-improving swap of one blue rack with one red rack until no improvement",
+    "randomized multi-restart local search: run KL swaps from many random balanced starts and keep the best-scoring balanced partition found"
+  ]
+}

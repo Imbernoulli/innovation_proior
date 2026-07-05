@@ -1,0 +1,17 @@
+{
+  "id": "fsx_B_0177",
+  "tier": "B",
+  "format": "B",
+  "family": "seeded-numerical-sim",
+  "eval_form": "quality-metric",
+  "theme": "wildlife corridor",
+  "title": "Wildlife Corridor Guide-Light Phase Mask",
+  "objective": "max",
+  "source_frameworks": ["Frontier-Eng (Optics/Communications)"],
+  "strategies": [
+    "trivial: strawman single blazed grating dumping the whole beam on the top-weight patch (evaluator baseline) -> ~0.1",
+    "greedy: plain Gerchberg-Saxton toward the weighted profile -> claws energy into the corridor and beats the baseline, but leaves the bright patches ahead of profile",
+    "strong: weighted / adaptive-additive Gerchberg-Saxton -> feedback-reweights each patch to the prescribed intensity profile, high efficiency AND high fidelity",
+    "invalid: emits a flat 1-D phase list instead of the required N-by-N grid -> rejected by the shape gate -> 0"
+  ]
+}

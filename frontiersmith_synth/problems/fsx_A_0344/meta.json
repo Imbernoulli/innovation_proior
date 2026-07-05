@@ -1,0 +1,17 @@
+{
+  "id": "fsx_A_0344",
+  "tier": "A",
+  "format": "C",
+  "family": "extremal-point-config",
+  "eval_form": "quality-metric",
+  "theme": "quantum lab wiring",
+  "title": "Cryo Qubit Junction Layout: Sliver-Free Wire-Bond Pads",
+  "objective": "max",
+  "source_frameworks": ["AlphaEvolve"],
+  "strategies": [
+    "ring baseline: N pads equally spaced on a circle of radius 0.15 about the plate centroid (reproduces the checker baseline; min area is a thin 3-consecutive-vertex sliver)",
+    "multi-restart uniform sampling inside the unit triangle (reflect points with x+y>1 back into the plate), keeping the layout with the largest minimum triangle area, floored at the ring baseline",
+    "bottleneck-driven local search: from the best structured/jittered start, repeatedly locate the smallest-area triple and nudge/relocate one of its three pads inside the triangle, accepting only moves that raise the global minimum triangle area, over many seeded steps",
+    "structured Heilbronn-in-triangle constructions (corners + edge/interior lattices on the triangular plate, perturbed to break symmetry) tuned to avoid thin triangles everywhere"
+  ]
+}

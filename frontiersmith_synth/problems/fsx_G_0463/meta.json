@@ -1,0 +1,17 @@
+{
+  "id": "fsx_G_0463",
+  "tier": "G",
+  "format": "B",
+  "family": "ml-decision-tree-split",
+  "eval_form": "quality-metric",
+  "theme": "credit scoring",
+  "title": "Credit-Scoring Decision Tree: Design the Split",
+  "objective": "maximize",
+  "source_frameworks": ["breadth-fill (dataset/domain/task diversity)", "MLS-Bench"],
+  "strategies": [
+    "no-split majority leaf: predict the training-set majority class from a single leaf; reproduces the evaluator's majority-class baseline (~0.1) and models none of the risk regions",
+    "shallow Gini tree: greedy top-down splits minimising sample-weighted Gini impurity, capped at depth 3 with no leaf-size guard; carves the biggest risk region but underfits the population's several disjoint regions",
+    "deep regularised Gini tree: same impurity criterion grown to depth 8 with a min-samples-per-leaf floor; isolates each risk region while the leaf-size floor avoids memorising noise, maximising held-out accuracy without hitting 1.0",
+    "invalid: emit a structurally broken tree (out-of-range child index / cycle / non-finite threshold) -> rejected, scores 0"
+  ]
+}

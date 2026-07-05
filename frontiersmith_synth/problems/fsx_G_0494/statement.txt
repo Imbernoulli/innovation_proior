@@ -1,0 +1,145 @@
+# Cooperative Ribozyme Folding with Aptamer Pockets
+
+## Problem
+
+You run an RNA-design lab. Given a single-stranded RNA molecule written as a string
+`S` of length `L` over the alphabet `{A, C, G, U}`, you must propose a **secondary
+structure**: a set of base pairs that the molecule folds into.
+
+Real RNA does not gain much from lone base pairs — it gains free energy from **stacked
+helices** (runs of consecutive base pairs) and from **enclosing unpaired loop regions
+that bind a ligand** (aptamer pockets). Your goal is to pick a non-crossing set of base
+pairs that maximizes a cooperative energy that rewards helices and rewards closing off
+high-value pockets, while respecting the geometry of a folded chain.
+
+Positions are numbered `1 .. L`. A base pair is an unordered pair `(i, j)` with `i < j`.
+
+The RNA also carries a list of `P` **aptamer pockets**. Pocket `t` sits at position
+`p_t` and, if activated, contributes value `v_t`.
+
+## Input
+
+```
+L
+S
+P
+p_1 v_1
+p_2 v_2
+...
+p_P v_P
+```
+
+- Line 1: integer `L` — the length of the RNA (`8 <= L <= 1000`).
+- Line 2: the string `S`, exactly `L` characters, each in `{A, C, G, U}`.
+- Line 3: integer `P` — the number of aptamer pockets (`0 <= P <= L`).
+- Each of the next `P` lines: `p_t` (`1 <= p_t <= L`) and `v_t` (`1 <= v_t <= 50`).
+  Pocket positions are distinct.
+
+## Output
+
+Print a secondary structure as a list of base pairs.
+
+```
+K
+i_1 j_1
+i_2 j_2
+...
+i_K j_K
+```
+
+- Line 1: integer `K` — the number of base pairs (`0 <= K <= L/2`).
+- Each of the next `K` lines: two integers `i_k j_k` with `1 <= i_k < j_k <= L`.
+
+## Feasibility
+
+A structure is **feasible** iff ALL of the following hold:
+
+1. **Minimum loop length.** For every pair `(i, j)`: `j - i - 1 >= 3` (a hairpin must
+   enclose at least 3 nucleotides).
+2. **Complementarity.** For every pair `(i, j)`, `(S[i], S[j])` is one of the allowed
+   base pairs: Watson–Crick `A-U`, `U-A`, `C-G`, `G-C`, or wobble `G-U`, `U-G`.
+   No other combination may be paired.
+3. **Matching.** Every position is used in at most one pair.
+4. **Non-crossing (nested).** No two pairs `(a, b)` and `(c, d)` may cross:
+   you may never have `a < c < b < d`. Nested (`a < c < d < b`) and disjoint pairs
+   are allowed.
+
+Any output that violates any of these rules, is out of range, or is malformed scores 0.
+The empty structure (`K = 0`) is feasible.
+
+## Objective
+
+Let the base-pair weight be `w(C-G) = w(G-C) = 3`, `w(A-U) = w(U-A) = 2`,
+`w(G-U) = w(U-G) = 1`.
+
+Call two pairs `(i, j)` and `(i+1, j-1)` **stacked** (adjacent rungs of a helix).
+A pair is **helical** if it is stacked with at least one neighbor
+(`(i+1, j-1)` or `(i-1, j+1)` is also present).
+
+The energy of a feasible structure is
+
+```
+F  =  SUM over pairs (i,j) of  w(S[i], S[j])                     (base pairing)
+   +  3 * (number of stacked adjacent pair-couples)              (cooperative stacking)
+   +  SUM over pockets t that are ACTIVATED of v_t               (ligand binding)
+```
+
+A pocket `t` at position `p_t` is **activated** iff:
+- position `p_t` is **unpaired**, AND
+- there exists a **helical** pair `(i, j)` in the structure with `i < p_t < j`
+  (the pocket lies inside a real helix, not a lone pair).
+
+Maximize `F`.
+
+## Scoring
+
+Let `B` be the energy of the reference **greedy nested matching** (defined below), a
+simple non-crossing structure the judge builds itself, scored with the exact same energy
+`F`. Your score is
+
+```
+ratio = min(1.0, 0.1 * F / max(1, B))
+```
+
+so a structure equal in energy to the greedy baseline scores `0.1`, and a structure with
+`10x` the baseline energy (or more) scores the capped `1.0`. Higher is better.
+
+The reference greedy nested matching: scan positions `j = 1, 2, ..., L`, keeping a stack
+of unpaired positions. When reading `j`, find the nearest position `i` still on the stack
+(topmost first) such that `(i, j)` satisfies the minimum-loop and complementarity rules;
+pair them and discard every stack entry above `i` (those stay unpaired). If no such `i`
+exists, push `j`. This is non-crossing by construction.
+
+## Constraints
+
+- `8 <= L <= 1000`.
+- `0 <= P <= L`, `1 <= v_t <= 50`.
+- Time limit: 5 s.
+- Memory limit: 512 MB.
+
+## Example
+
+Input:
+```
+16
+GCGCAAAGCGCUAAAA
+2
+5 8
+14 6
+```
+
+The molecule `GCGCAAAGCGCU...` has a stem `G C G C ... G C G C`. One feasible structure
+pairs `(1,10),(2,9),(3,8),(4,7)`? Check loops and complementarity per your own solver.
+A structure that forms the helix `(1,10),(2,9),(3,8)` (three stacked C-G/G-C pairs) and
+leaves position 5 unpaired inside it activates the pocket at position 5 (value 8):
+
+```
+3
+1 10
+2 9
+3 8
+```
+
+Energy `F = (3+3+3) base` `+ 3*2 stacking` `+ 8 pocket = 9 + 6 + 8 = 23` (subject to the
+actual bases). The judge compares this against its greedy baseline `B` and prints the
+ratio. This example is illustrative; your job is to maximize `F` on the real tests.

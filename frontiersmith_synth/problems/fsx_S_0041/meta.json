@@ -1,0 +1,18 @@
+{
+  "id": "fsx_S_0041",
+  "tier": "S",
+  "format": "A",
+  "family": "scheduling-jssp",
+  "eval_form": "quality-metric",
+  "seed_problem": "Emit a full machine schedule for a synthetic JSSP instance; checker validates precedence/no-overlap and scores min(100, 100*optimum/makespan).",
+  "mutation": "composite: generalize the classic job-shop to a FLEXIBLE job-shop (each task is eligible on one of several assets with asset-dependent durations, so the solver must choose BOTH the asset assignment AND the timing), and replace the intractable optimum in the score by a checker-computed always-feasible sequential fallback B = sum of first-listed durations, keeping scoring deterministic as ratio = min(1, 0.1*B/F).",
+  "objective": "min",
+  "theme": "polar research base",
+  "title": "Halley Station: Flexible Field-Work Schedule",
+  "strategies": [
+    "sequential fallback: run every task on its first-listed asset back-to-back on one timeline (makespan = B)",
+    "job-order list scheduling: process jobs in order, appending each task to the eligible asset that yields the earliest completion (no gap insertion)",
+    "active-schedule dispatch with gap insertion + machine selection under multiple priority rules (SPT/LPT/MWKR/random) and seeded random restarts, keeping the best makespan",
+    "critical-path / local-search refinement reassigning bottleneck tasks off the slow asset into idle gaps"
+  ]
+}

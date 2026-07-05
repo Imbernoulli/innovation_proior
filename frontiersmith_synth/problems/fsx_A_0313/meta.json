@@ -1,0 +1,16 @@
+{
+  "id": "fsx_A_0313",
+  "tier": "A",
+  "format": "C",
+  "family": "geometric-packing",
+  "eval_form": "quality-metric",
+  "theme": "solar farm inverters",
+  "title": "Solar-Farm Inverter Clearance Packing Around Fixed Keep-Outs",
+  "objective": "max",
+  "strategies": [
+    "coarse row-major grid of small equal-ish clearance circles, each shrunk for walls and keep-out obstacles (reproduces the checker baseline B)",
+    "fixed grid centres with sequential radius growth to touch walls, obstacles, and previously fixed circles",
+    "largest-empty-circle greedy with unequal radii on a fine candidate lattice plus local recentering of each accepted circle",
+    "ensemble that fills open pockets first with big circles then packs the remaining slack, respecting every fixed keep-out"
+  ]
+}

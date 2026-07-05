@@ -1,0 +1,16 @@
+{
+  "id": "fsx_B_0174",
+  "tier": "B",
+  "format": "B",
+  "family": "offline-decision-policy",
+  "eval_form": "quality-metric",
+  "theme": "geothermal wells",
+  "title": "Geothermal Logging Tool-String Ordering: Maximize Calibration-Cache Reuse",
+  "objective": "max",
+  "strategies": [
+    "naive reference: assemble modules in natural module-id order (baseline, maps to 0.1)",
+    "frequency-descending: put the most-used sensor modules first so many tool strings share their leading calibration; ignores co-occurrence so groups get scattered",
+    "co-occurrence / trie-size aware ordering that keeps tightly-grouped modules contiguous while common modules stay in front",
+    "frequency-seeded pairwise-swap local search directly on the reuse (trie-size) objective, capturing both common-module fronting and group contiguity"
+  ]
+}

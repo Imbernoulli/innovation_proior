@@ -1,0 +1,121 @@
+# Interstellar Relay: Robust Degree-Bounded Backbone
+
+## Problem
+
+A deep-space consortium must wire `n` relay stations (numbered `0 .. n-1`) into a
+single connected communication backbone. Station `0` is the **central hub**: every
+other station continuously ships one unit of telemetry to the hub along the network.
+
+You are given a set of `m` candidate laser links, each with an integer build cost and
+each joining two stations. You must choose a subset of these links that keeps the whole
+constellation connected, respects a per-station antenna limit `D` (no station may touch
+more than `D` chosen links), and is **cheap** yet **robust**.
+
+Robustness is measured by the busiest relay. Under the fixed unit multi-source flow,
+each station routes its unit of telemetry to the hub along a shortest-cost path; the
+**stress** of a station is the number of units that pass through it. A backbone whose
+routing funnels everything through one poor relay is fragile (a spectral-radius-like
+overload). Your goal balances build cost against this worst-case stress.
+
+The trap: the cheapest connected network is typically a long chain, which forces almost
+all `n-1` units through a single neighbor of the hub — minimal cost, maximal stress.
+
+## Input
+
+The first line contains four integers:
+
+```
+n m D L
+```
+
+- `n` — number of stations (station `0` is the hub),
+- `m` — number of candidate links,
+- `D` — maximum number of chosen links incident to any single station,
+- `L` — the robustness weight `lambda` (a positive integer).
+
+Then `m` lines follow. Line `j` (for `j = 1 .. m`, i.e. links are 1-indexed) contains:
+
+```
+u v w
+```
+
+meaning candidate link `j` joins stations `u` and `v` (`0 <= u, v < n`, `u != v`) with
+integer build cost `w >= 1`.
+
+Guarantee: links `1 .. n-1` form the backbone path — link `i` joins `i-1` and `i`. The
+candidate graph is connected and admits at least one feasible degree-`D` spanning subgraph.
+
+## Output
+
+On the first line print `k`, the number of chosen links. Then print `k` lines, each a
+single link index in `[1, m]`. The indices must be **distinct**.
+
+## Feasibility
+
+Your chosen links must:
+
+1. be distinct indices in `[1, m]`;
+2. give every station a degree (count of incident chosen links) at most `D`;
+3. form a connected subgraph spanning **all** `n` stations.
+
+Any output violating these (or malformed / non-integer / out of range) scores `0`.
+
+## Objective
+
+Let `C` be the total build cost of your chosen links. Route the unit multi-source flow
+to the hub: compute shortest-cost distances from hub `0` using the chosen links as edge
+lengths, then form the shortest-path tree in which each station `v != 0` takes as parent
+the incident predecessor `u` on a shortest path (i.e. `dist[u] + cost(u,v) == dist[v]`)
+minimizing the tie-break key `(dist[u], u)`. The **stress** of a station is its rooted
+subtree size (the number of stations, including itself, whose route passes through it).
+Let `S = max over v != 0 of stress(v)`.
+
+You **minimize**
+
+```
+F = C + L * S.
+```
+
+## Scoring
+
+Let `B` be the objective of the backbone path (links `1 .. n-1`): its cost plus
+`L * (n-1)` (the chain forces `n-1` units through the hub's single neighbor). For a
+feasible output your raw score is
+
+```
+score = min(1000, 100 * B / F)
+```
+
+and the reported ratio is `score / 1000`, clamped to `[0, 1]`. Thus emitting the
+backbone scores about `0.1`; halving `F` roughly doubles the ratio, and driving `F`
+down to `B / 10` reaches the cap of `1.0`. Infeasible outputs score `0`. Each of the 10
+test cases contributes equally.
+
+## Constraints
+
+- `8 <= n <= 5000`, `n-1 <= m <= 6n`, `3 <= D <= 6`, `1 <= L <= 1000`, `1 <= w <= 1000`.
+- Time limit: 5 s. Memory limit: 512 MB.
+
+## Example
+
+Input (tiny, `n = 4`, hub `= 0`, `D = 3`, `L = 10`):
+
+```
+4 6 3 10
+0 1 900
+1 2 900
+2 3 900
+0 2 50
+0 3 60
+1 3 55
+```
+
+Links `1,2,3` are the backbone chain `0-1-2-3`. Baseline `B = (900+900+900) + 10*3 = 2730`.
+
+Consider choosing links `4,5,6` (`0-2`, `0-3`, `1-3`). Degrees: node 0 has 2, node 3 has 2,
+nodes 1 and 2 have 1 — all within `D = 3`, and the graph is connected. Cost `C = 50+60+55 = 165`.
+Shortest paths to the hub: `dist[2] = 50`, `dist[3] = 60`, `dist[1] = 60+55 = 115` (via `3`).
+Parents: `par[2]=0`, `par[3]=0`, `par[1]=3`. Subtree sizes: `stress[1]=1`, `stress[3]=2`,
+`stress[2]=1`, so `S = 2`. Then `F = 165 + 10*2 = 185`, and
+`score = min(1000, 100 * 2730 / 185) = 1000` (capped), ratio `1.0`. This bushy hub-anchored
+tree is far cheaper and far more robust than the fragile backbone chain.

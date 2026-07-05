@@ -1,0 +1,19 @@
+{
+  "id": "fsx_S_0202",
+  "tier": "S",
+  "format": "A",
+  "family": "maxsat-csp",
+  "seed_problem": "Maximize total weight of satisfied clauses in a synthetic weighted CNF; checker computes satisfied weight / baseline.",
+  "mutation": "goal+input: generalize weighted Max-SAT clauses to weighted CARDINALITY (threshold) constraints -- a 'reservoir balance zone' is cleared iff at least t_j of its k_j signed literals hold, not just one; skinned as geothermal well injection/production mode selection. Objective stays maximize total cleared weight, but threshold clauses make a single flip rarely decisive (real local-search structure), and the all-production baseline is the checker reference B.",
+  "objective": "max",
+  "theme": "geothermal wells",
+  "variant": 6,
+  "title": "Geothermal Field Balancing: Well Mode Selection under Zone Quorums",
+  "strategies": [
+    "all-production constant assignment (reproduces the checker baseline B, Ratio=0.1)",
+    "single-pass greedy: for each well pick the mode with positive incremental cleared weight",
+    "iterated hill-climbing to a local optimum via threshold-crossing weight-improving flips",
+    "multi-restart local search (all-production / all-injection / random seeds), keep best",
+    "weight-aware / quorum-aware ordering that prioritizes heavy high-enthalpy zones near their threshold"
+  ]
+}

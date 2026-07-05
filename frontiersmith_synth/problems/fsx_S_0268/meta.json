@@ -1,0 +1,16 @@
+{
+  "id": "fsx_S_0268",
+  "tier": "S",
+  "family": "routing-tour",
+  "seed_problem": "ALE-Bench pickup-delivery TSP (ahc006/027/039); Frontier-CS routing",
+  "mutation": "composite: prize-collecting selective pickup-delivery single-vehicle tour under an L1 (Manhattan) metric with cargo-capacity batching AND a load-dependent (cumulative) fuel cost -- every leg's cost scales with the total cargo mass currently on board -- plus per-served handling cost and per-skipped omission penalty; choose which precedence-constrained pickup/deliver pairs to perform and interleave the events to minimize load-aware fuel plus handling plus omission penalties",
+  "objective": "min",
+  "theme": "asteroid mining",
+  "title": "Asteroid Ore-Haul Tug: Selective Load-Aware Pickup-and-Delivery Tour",
+  "strategies": [
+    "perform-nothing baseline: output an empty tour, cost = total omission penalty (calibration point)",
+    "standalone-benefit greedy: perform each contract whose solo depot round-trip fuel plus handling is cheaper than its omission penalty, routed as immediate pickup-then-deliver blocks in input order",
+    "profitable-set selection + load-aware nearest-neighbour event interleaving: pick profitable contracts, then route by repeatedly choosing the available pickup/deliver event with least incremental load-weighted fuel, batching pickups to amortize legs",
+    "selection + NN routing + drop local search: alternate re-routing with removing contracts whose realized marginal cost exceeds their penalty, trading load-aware fuel and handling against skipped-contract penalties"
+  ]
+}

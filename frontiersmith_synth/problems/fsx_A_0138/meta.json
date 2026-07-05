@@ -1,0 +1,17 @@
+{
+  "id": "fsx_A_0138",
+  "tier": "A",
+  "format": "D",
+  "family": "tensor-decomposition-rank",
+  "eval_form": "flops",
+  "theme": "data-center cooling",
+  "title": "Cooling-Mode Rank of a Thermal-Coupling Tensor",
+  "objective": "optimize",
+  "source_frameworks": ["AlphaEvolve"],
+  "strategies": [
+    "schoolbook CP decomposition: one rank-1 cooling mode per non-zero coupling coefficient (rank = nnz(T) = the checker baseline)",
+    "fixed-axis slicing: decompose each zone slice (I x J matrix) by exact column-row rank factorisation; rank = K * min(I,J)",
+    "best-axis slicing: try all three slicing directions and keep the cheapest; rank = product of the two smallest dimensions",
+    "genuine low-rank search (unknown optimum): the tensor is overcomplete-rank so the planted factors are not polynomially recoverable (Jennrich fails); any approach beating best-axis slicing wins head-room"
+  ]
+}

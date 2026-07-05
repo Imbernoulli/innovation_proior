@@ -1,0 +1,17 @@
+{
+  "id": "fsx_S_0263",
+  "tier": "S",
+  "family": "independent-set-clique",
+  "seed_problem": "Maximum-weight independent set: select a max-weight set of mutually non-conflicting items on a general conflict graph.",
+  "mutation": "input: skin the max-weight-independent-set selection as a carnival ride circuit and place the conflict relation on a LARGE general (non-bipartite, dense) graph -- power-substation cliques, a random crowd-flow backbone cycle, random cross conflicts, and a few high-weight high-degree headliner super-connectors -- so the easy bipartite/interval special cases vanish and constructing the optimum simultaneously-lit circuit is NP-hard at n up to 5000.",
+  "objective": "max",
+  "theme": "carnival ride circuit",
+  "title": "Neon Midway: Simultaneous Ride Circuit",
+  "strategies": [
+    "index-order greedy (the baseline reference)",
+    "weight-descending greedy",
+    "weight-per-(degree+1) greedy",
+    "randomized weighted-greedy restarts keeping the best circuit",
+    "local-search add/swap improvement over a greedy seed"
+  ]
+}

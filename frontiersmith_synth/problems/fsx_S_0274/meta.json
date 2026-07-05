@@ -1,0 +1,18 @@
+{
+  "id": "fsx_S_0274",
+  "tier": "S",
+  "format": "A",
+  "family": "maxsat-csp",
+  "seed_problem": "Maximize total weight of satisfied clauses in a synthetic weighted CNF; checker computes satisfied weight / baseline.",
+  "mutation": "composite: generalize the Boolean weighted Max-SAT input into a D-valued weighted Max-CSP over channel-equality literals (literal (v,a) true iff station v is tuned to channel a; clause established if any literal true), and skin as alpine rescue relay channel-tuning; objective stays weighted Max-satisfaction (maximize established priority weight) with the all-channel-1 tuning as the checker baseline.",
+  "objective": "max",
+  "theme": "mountain rescue relays",
+  "title": "Alpine Rescue Relays: Channel Tuning",
+  "strategies": [
+    "all-channel-1 constant tuning (reproduces the checker baseline B, Ratio=0.1)",
+    "single-pass coordinate-optimal greedy: for each station pick the channel that clears the most currently-dark requirements given the rest fixed",
+    "coordinate-descent local search: sweep stations repeatedly, moving each to its best channel until no move helps (a local optimum)",
+    "multi-restart randomized local search: hill-climb from many seeded random channel tunings and keep the best-scoring one",
+    "weight-aware / priority-first heuristics that resolve heavy high-priority relays before filling in light requirements"
+  ]
+}

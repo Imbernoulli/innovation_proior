@@ -1,0 +1,17 @@
+{
+  "id": "fsx_S_0279",
+  "tier": "S",
+  "format": "A",
+  "family": "packing-knapsack",
+  "seed_problem": "Pack polyominoes into a WxH board maximizing covered area (Frontier-CS problems 0,1; AlphaEvolve)",
+  "mutation": "composite: (goal) maximize monitored HAZARD WEIGHT instead of uniform covered area, over a skewed per-cell weight map; (input/output) bounded per-type supply that is far below the board area so supply is binding and WHERE you place decides the score; rotation+reflection allowed, awkward footprints so exact tiling is impossible",
+  "objective": "max",
+  "theme": "volcano monitoring",
+  "title": "Volcano Flank: Weighted Seismic Sensor Packing",
+  "strategies": [
+    "regular bounding-box grid tiling of a single array type on arbitrary cells (baseline)",
+    "first-fit-by-area greedy: fill empty cells row-major with the largest array that fits (ignores weights)",
+    "weight-density best-first greedy: repeatedly deploy the array/orientation/anchor that adds the most hazard weight, until supply/packing is exhausted",
+    "randomized multi-restart local search over weighted-greedy orders, keep the best monitored weight; ILP relaxation under per-type availability"
+  ]
+}

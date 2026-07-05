@@ -1,0 +1,19 @@
+{
+  "id": "fsx_S_0256",
+  "tier": "S",
+  "family": "routing-tour",
+  "seed_problem": "ALE-Bench ahc006/027/039 pickup-delivery tour; Frontier-CS",
+  "mutation": "composite: prize-collecting pickup-delivery TSP with precedence -- choose which tasks to serve (skip => spoilage penalty) AND the visiting order of a single depot-to-depot tour, minimizing route_length + sum of skip penalties",
+  "objective": "min",
+  "theme": "beehive apiary",
+  "variant": 11,
+  "scale": "large",
+  "title": "Foraging Route of the Golden Apiary",
+  "strategies": [
+    "serve all tasks in index order (reference baseline)",
+    "nearest-neighbour construction over task pickups, serve all",
+    "nearest-neighbour + relocate/or-opt local search on task order",
+    "relocate local search plus profitable-drop pass (skip tasks whose detour exceeds their penalty)",
+    "cluster-aware insertion / savings heuristics"
+  ]
+}

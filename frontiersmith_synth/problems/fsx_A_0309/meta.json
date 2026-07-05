@@ -1,0 +1,16 @@
+{
+  "id": "fsx_A_0309",
+  "tier": "A",
+  "format": "C",
+  "family": "low-discrepancy-pointset",
+  "eval_form": "quality-metric",
+  "theme": "forest fire watchtowers",
+  "title": "Watchtowers Over the Reserve: Minimizing Sector Blind Spots",
+  "objective": "min",
+  "strategies": [
+    "ranger-diagonal baseline: place every tower on the main diagonal of the reserve (matches the checker baseline, star discrepancy ~ 0.25-0.4)",
+    "irrational lattice: a rank-1 Kronecker set with generators (sqrt2, sqrt3, sqrt5) that spreads towers quasi-uniformly",
+    "best-of low-discrepancy search: evaluate several Hammersley prime-base assignments under a grid of Cranley-Patterson digital shifts and keep the point set of minimum exact star discrepancy",
+    "direct discrepancy descent: seed with a Hammersley/Halton set then locally perturb tower coordinates to shrink the worst anchored-sector gap"
+  ]
+}

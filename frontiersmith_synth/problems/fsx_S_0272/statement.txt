@@ -1,0 +1,125 @@
+# Aurora Station: Two-Habitat Crew Split
+
+## Problem
+
+The **Aurora** polar research base is being reorganised for the long winter. The `n`
+overwintering crew must be split between two pressurised habitats — **Habitat A** and
+**Habitat B**. Life-support and rota planning require the two habitats to hold *roughly
+the same number of people*: the difference in headcount may be at most `L`.
+
+Long confinement breeds friction. For some pairs of crew members there is a measured
+**friction weight** `w > 0` — the higher the weight, the worse the two get on when they
+share a habitat. Station morale is best when as much friction as possible is *split across
+the two habitats* (people who clash are kept apart). Your job is to choose the split that
+**maximises the total friction weight of the pairs whose two members end up in different
+habitats**.
+
+Formally: you are given an undirected weighted graph on `n` crew (parallel friction
+records allowed). Partition the vertices into two sets `A` and `B` with
+`| |A| - |B| | <= L`, maximising the total weight of edges with one endpoint in `A` and
+the other in `B` (the *cut weight*).
+
+This is a balance-constrained maximum-cut problem: it is NP-hard, the optimum is unknown,
+and many heuristics (contiguous split, single-move local search, swap-based local search,
+randomised multi-restart) are viable and diverge.
+
+## Input
+
+The first line contains three integers:
+
+```
+n m L
+```
+
+- `n` — number of crew members, numbered `1..n`.
+- `m` — number of friction records (edges).
+- `L` — the maximum allowed difference between the two headcounts.
+
+Each of the next `m` lines describes one friction record:
+
+```
+u v w
+```
+
+meaning crew members `u` and `v` (`u != v`) clash with friction weight `w` (`1 <= w`).
+The same pair may appear more than once (records accumulate).
+
+## Output
+
+On the first line print `a` — the number of crew you assign to **Habitat A**
+(`0 <= a <= n`). On each of the next `a` lines print one crew id assigned to Habitat A
+(an integer in `1..n`). All printed ids must be distinct. Every crew member **not** listed
+is assigned to Habitat B.
+
+## Feasibility
+
+An output is feasible iff:
+
+- `0 <= a <= n`;
+- every printed id is in `1..n` and all are distinct;
+- the headcount balance holds: `| a - (n - a) | <= L`.
+
+Any infeasible output scores `0`.
+
+## Objective
+
+Let `F` be the total friction weight of all records `(u, v, w)` whose members `u` and `v`
+end up in **different** habitats. You are **maximising** `F`.
+
+## Scoring
+
+The checker builds an internal baseline `B`: the cut weight of the *contiguous split* that
+places crew `1 .. floor(n/2)` in Habitat A and the rest in Habitat B (always balance-feasible).
+The score for a test is
+
+```
+ratio = min(1.0, 0.1 * F / B)
+```
+
+The contiguous split itself (`F = B`) scores `0.1`; reaching a ten-fold improvement over the
+baseline (`F = 10*B`) caps the score at `1.0`. The overall score is the mean ratio across all
+tests.
+
+## Constraints
+
+- `2 <= n <= 400`.
+- `1 <= m <= 4000`.
+- `1 <= w <= 40`.
+- `1 <= L <= n`.
+- The graph always contains the chain records `(i, i+1)` for `1 <= i < n`, so the baseline
+  cut weight `B` is strictly positive.
+- Time limit: 5 s. Memory limit: 512 MB.
+
+## Example
+
+Input:
+
+```
+6 8 1
+1 2 10
+2 3 10
+3 4 10
+4 5 10
+5 6 10
+1 4 3
+2 5 3
+3 6 3
+```
+
+The baseline contiguous split puts `{1,2,3}` in Habitat A and `{4,5,6}` in Habitat B. The
+crossing records are `3-4` (10), `1-4` (3), `2-5` (3) and `3-6` (3), so `B = 19`.
+
+With `L = 1` the two habitats must each hold exactly `3` crew. The alternating split
+`A = {1,3,5}`, `B = {2,4,6}` cuts every chain record (`5 * 10 = 50`) plus all three extra
+records (`3 * 3 = 9`), giving `F = 59`.
+
+Score for this test: `min(1.0, 0.1 * 59 / 19) = min(1.0, 0.3105) = 0.3105`.
+
+A valid worked output:
+
+```
+3
+1
+3
+5
+```

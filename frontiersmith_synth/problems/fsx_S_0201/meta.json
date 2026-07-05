@@ -1,0 +1,18 @@
+{
+  "id": "fsx_S_0201",
+  "tier": "S",
+  "format": "A",
+  "family": "coloring-labeling",
+  "eval_form": "quality-metric",
+  "seed_problem": "Assign frequencies to transmitters minimizing total interference conflicts under a channel budget; checker scores baseline_conflicts / achieved.",
+  "mutation": "composite: generalize the input from pure co-channel conflicts to a frequency-assignment model with both co-channel (full weight) and adjacent-channel (half weight) leakage on a general weighted overlap graph with embedded over-budget cliques, and grade by baseline/achieved interference cost so optimal labeling is NP-hard and greedy / sequential-min-conflict / local-search strategies diverge.",
+  "objective": "min",
+  "theme": "interstellar relay",
+  "title": "Static on the Long Arm: Interstellar Relay Channel Assignment",
+  "strategies": [
+    "all-same-channel baseline: tune every station to channel 1 (feasible, equals the scoring baseline B)",
+    "sequential min-conflict greedy: process stations in order, assign each the channel minimizing added co-/adjacent-channel crosstalk against already-assigned neighbors",
+    "local search with random restarts: greedy or random init, then repeatedly re-tune each station to its locally best channel until stable, keeping the best of several seeded restarts",
+    "structure-aware coloring: color the embedded over-budget cliques first / spread heavy-weight overlaps across channels to avoid co-channel and adjacent-channel penalties"
+  ]
+}

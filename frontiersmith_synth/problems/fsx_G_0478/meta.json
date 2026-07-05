@@ -1,0 +1,18 @@
+{
+  "id": "fsx_G_0478",
+  "tier": "G",
+  "format": "B",
+  "family": "ml-regularizer-design",
+  "eval_form": "quality-metric",
+  "theme": "overfit-prone net",
+  "title": "Design a Regularizer for an Overfit-Prone Random-Feature Net",
+  "objective": "min",
+  "strategies": [
+    "no regularization (baseline; overfits, ~0.1)",
+    "uniform ridge / weight decay with a hand-tuned strength",
+    "L1 sparsity on the feature weights",
+    "input jitter (data augmentation) via the jitter knob",
+    "frequency-weighted per-feature ridge (smoothness prior, penalty proportional to omega^2)",
+    "internal hold-out cross-validation to calibrate the penalty strength"
+  ]
+}

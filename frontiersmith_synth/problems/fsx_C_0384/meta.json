@@ -1,0 +1,16 @@
+{
+  "id": "fsx_C_0384",
+  "tier": "C",
+  "format": "C",
+  "family": "algebraic-exotic-construction",
+  "eval_form": "quality-metric",
+  "theme": "railway freight yard",
+  "title": "Freight-Yard Block Assignment: Maximum Restricted-Latin Completion",
+  "objective": "max",
+  "strategies": [
+    "build-nothing baseline: echo only the pre-built givens (reproduces the checker baseline B, ~0.1)",
+    "row-major smallest-block greedy: fast but dead-ends against forbidden lists, leaving cells empty",
+    "MRV backtracking search for the largest restricted-Latin completion, keeping the best partial board -- builds strictly more cuts than greedy",
+    "invalid: build block 0 everywhere -> Latin rule violated + givens clobbered -> rejected"
+  ]
+}

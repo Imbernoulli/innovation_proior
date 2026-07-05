@@ -1,0 +1,17 @@
+{
+  "id": "fsx_A_0099",
+  "tier": "A",
+  "format": "C",
+  "family": "low-discrepancy-pointset",
+  "eval_form": "quality-metric",
+  "theme": "mountain rescue relays",
+  "title": "Mountain Rescue Relays: A Uniform 3D Relay Grid",
+  "objective": "min",
+  "source_frameworks": ["OpenEvolve (star-discrepancy)", "AlphaEvolve"],
+  "strategies": [
+    "diagonal / single-line placement: relays on the cube's main diagonal (matches the checker baseline, high 3D star discrepancy ~0.38-0.42)",
+    "Hammersley set in 3D: first coordinate (i+0.5)/m, remaining two = radical inverses in bases 2 and 3 (reliable single fixed low-discrepancy construction)",
+    "rank-1 Korobov lattice search: sweep the generating vector (1,a,a^2 mod m) and a per-axis shift over a in 1..m-1, keep the candidate with minimum EXACT 3D discrepancy (a real search that beats a single fixed construction)",
+    "jittered/stratified cube grids, Fibonacci-style lattices, or local coordinate-perturbation refinement of a good seed set"
+  ]
+}

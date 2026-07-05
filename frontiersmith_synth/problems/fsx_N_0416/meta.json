@@ -1,0 +1,17 @@
+{
+  "id": "fsx_N_0416",
+  "tier": "N",
+  "format": "A",
+  "family": "interdiction-effective-resistance",
+  "seed_problem": "Remove <=k edges keeping s-t connected to maximize s-t effective resistance",
+  "mutation": "composite: replace the simple edge-count budget with a weighted knapsack sabotage budget over cost-labelled edges, and the unit-resistance objective with a weighted effective-resistance (spectral/electrical) objective computed exactly by an integer Laplacian-minor determinant ratio; couple an s-t connectivity side-constraint with the electrical objective so the winning attack must balance budget, connectivity, and current-routing",
+  "objective": "max",
+  "theme": "power grid",
+  "title": "Grid Hardening Attack: Maximizing Source-to-Sink Effective Resistance",
+  "strategies": [
+    "trivial baseline: cut nothing (feasible, ratio 0.1)",
+    "cheap-first greedy: remove the lowest-cost lines while preserving s-t connectivity (maximizes cut count, ignores where current flows)",
+    "electrical local search: solve the network for the s-t current once (or over a few re-solve rounds), then cut the highest-power-dissipation, non-bridge, affordable lines to funnel current onto longer detours",
+    "shortest-path interdiction (a trap): cut the lowest-resistance direct link -- barely moves R while parallel paths survive"
+  ]
+}

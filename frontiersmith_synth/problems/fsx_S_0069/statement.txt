@@ -1,0 +1,131 @@
+# Gantry Chatter: Harbor Radio Channel Assignment
+
+## Problem
+
+The **Port of Meridian Bay** container terminal runs a fleet of automated gantry
+cranes, straddle carriers, and yard trucks, each carrying a short-range radio that
+talks to the terminal control tower on one of a fixed set of **channels**. When two
+nearby radios use channels that are too close together on the dial, their signals
+**interfere**, corrupting crane-positioning telemetry.
+
+For every pair of radios that can hear one another the port engineers have measured a
+**required channel separation** `s` (how many channel-steps apart the two must be to
+stay clean) and an **interference weight** `p` (how badly a shortfall hurts). If two
+radios `u` and `v` are assigned channels `c(u)` and `c(v)`, the interference they
+generate is
+
+```
+p(u,v) * max(0, s(u,v) - |c(u) - c(v)|)
+```
+
+i.e. every channel-step you fall short of the required separation costs `p(u,v)`.
+
+You must assign every radio one of the `K` available channels so as to **minimize the
+total interference** summed over all measured pairs. The channel budget `K` is fixed:
+you cannot invent new channels. Perfectly clean operation is generally impossible, so
+this is a minimum-interference frequency-assignment problem — NP-hard, with no known
+optimum, where greedy saturation ordering, min-conflicts local search, and
+simulated-annealing-style restarts are all viable and diverge.
+
+## Input
+
+The first line contains three integers:
+
+```
+N K M
+```
+
+- `N` — number of radios, numbered `1..N`.
+- `K` — number of available channels, numbered `1..K`.
+- `M` — number of measured interference pairs.
+
+Each of the next `M` lines describes one pair:
+
+```
+u v s p
+```
+
+meaning radios `u` and `v` (`1 <= u < v <= N`) require channel separation `s`
+(`1 <= s <= K-1`) with interference weight `p` (`1 <= p`). Each unordered pair appears
+at most once.
+
+## Output
+
+Print `N` integers `c(1) c(2) ... c(N)`, separated by whitespace (any layout). `c(i)`
+is the channel assigned to radio `i` and must satisfy `1 <= c(i) <= K`.
+
+Assigning every radio to channel `1` is always valid.
+
+## Feasibility
+
+An output is feasible iff it contains exactly `N` integers and every `c(i)` lies in
+`1..K`. Any output that is short, long, or out of range scores `0`.
+
+## Objective
+
+Let `F` be the total interference of your assignment:
+
+```
+F = sum over pairs (u,v) of  p(u,v) * max(0, s(u,v) - |c(u) - c(v)|)
+```
+
+You are **minimizing** `F`.
+
+## Scoring
+
+Let `B` be the interference of the trivial assignment that puts every radio on
+channel `1` (so `|c(u)-c(v)| = 0` and every pair pays its full `p*s`):
+
+```
+B = sum over pairs (u,v) of  p(u,v) * s(u,v)
+```
+
+The score for a test is
+
+```
+ratio = min(1.0, 0.1 * B / max(1, F))
+```
+
+A do-nothing submission (`F = B`) scores `0.1`; driving interference down to a tenth of
+the baseline (`F = B/10`) caps the score at `1.0`. The overall score is the mean ratio
+across all tests.
+
+## Constraints
+
+- `1 <= N <= 2500`.
+- `4 <= K <= 8`.
+- `1 <= M <= 200000`.
+- `1 <= s <= K-1`, `1 <= p <= 10`.
+- Time limit: 5 s. Memory limit: 512 MB.
+
+## Example
+
+Input:
+
+```
+4 3 4
+1 2 2 5
+2 3 1 3
+3 4 2 4
+1 3 1 2
+```
+
+Baseline (all on channel `1`):
+`B = 5*2 + 3*1 + 4*2 + 2*1 = 10 + 3 + 8 + 2 = 23`.
+
+Consider the assignment `c = [1, 2, 1, 3]`:
+
+- pair `(1,2)`: `|1-2| = 1`, need `2` -> shortfall `1` -> `5*1 = 5`
+- pair `(2,3)`: `|2-1| = 1`, need `1` -> shortfall `0` -> `0`
+- pair `(3,4)`: `|1-3| = 2`, need `2` -> shortfall `0` -> `0`
+- pair `(1,3)`: `|1-1| = 0`, need `1` -> shortfall `1` -> `2*1 = 2`
+
+So `F = 5 + 0 + 0 + 2 = 7`.
+
+Score for this test: `min(1.0, 0.1 * 23 / 7) = min(1.0, 0.32857) = 0.32857`.
+
+A valid worked output:
+
+```
+1 2 1 3
+```

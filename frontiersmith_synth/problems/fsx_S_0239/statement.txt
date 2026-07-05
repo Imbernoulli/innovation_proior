@@ -1,0 +1,119 @@
+# Salmon Ladder Watch: Non-Interfering Counting Weir Placement
+
+## Problem
+
+The *Cascade Salmon Authority* is instrumenting a river basin so it can count returning
+salmon as they climb a network of **fish ladders** (weirs, side channels, and pool-and-weir
+steps). It has identified `n` candidate **counting sites**. Site `i` has an estimated
+**data value** `w_i > 0` — the expected number of usable salmon observations a counting
+station there would yield in a season.
+
+Unfortunately some pairs of sites **interfere**: if both are activated their acoustic
+tags cross-talk, their light traps double-count the same fish, or the physical works at one
+disrupt the flow the other depends on. The Authority has surveyed all such **conflicts**.
+When two sites conflict, at most one of them may host a station.
+
+You must choose which candidate sites to activate so that **no two activated sites
+conflict**, maximizing the total data value of the activated sites.
+
+Formally: you are given an undirected graph on `n` vertices (the *conflict graph*) with a
+positive weight on each vertex. Choose an **independent set** `S` (no edge has both
+endpoints in `S`) maximizing `sum_{i in S} w_i`.
+
+This is **maximum-weight independent set** on a general graph: it is NP-hard, the optimum is
+unknown in advance, and many heuristics (weight-greedy, degree-discounted greedy, local
+search with swaps, randomized restarts) are viable and give different results.
+
+## Input
+
+The first line contains two integers:
+
+```
+n m
+```
+
+- `n` — number of candidate counting sites (vertices), numbered `1..n`.
+- `m` — number of conflicting pairs (edges).
+
+The second line contains `n` integers `w_1 w_2 ... w_n` — the data value of each site
+(`1 <= w_i`).
+
+Each of the next `m` lines contains two integers:
+
+```
+u v
+```
+
+meaning sites `u` and `v` conflict (`1 <= u, v <= n`, `u != v`). The graph is simple: no
+self-loops and no repeated pair (in either orientation).
+
+## Output
+
+On the first line print `c` — the number of sites you activate (`0 <= c <= n`).
+On the following line(s) print the `c` chosen site indices (integers in `1..n`), separated by
+whitespace. All indices must be **distinct**.
+
+Printing `0` on the first line (and nothing else) is always valid but scores nothing.
+
+## Feasibility
+
+An output is feasible iff:
+
+- `0 <= c <= n`;
+- every printed index is in `1..n` and all `c` indices are distinct;
+- no two activated sites conflict (the chosen set is an independent set).
+
+Any infeasible output scores `0`.
+
+## Objective
+
+Let `F = sum of w_i over your activated sites`. You are **maximizing** `F`.
+
+## Scoring
+
+Let `B = max_i w_i` be the largest single-site data value. Activating that one site is always
+feasible (a single vertex has no internal conflict), so `B` is an easy baseline. The score for
+a test is
+
+```
+ratio = min(1.0, 0.1 * F / B)
+```
+
+Activating just the single best site (`F = B`) scores `0.1`; assembling a conflict-free
+portfolio worth ten times the best single site (`F = 10*B`) caps the score at `1.0`. The
+overall score is the mean ratio across all tests.
+
+## Constraints
+
+- `2 <= n <= 120`.
+- `1 <= m <= n*(n-1)/2`.
+- `1 <= w_i <= 100`.
+- Time limit: 5 s. Memory limit: 256 MB.
+
+## Example
+
+Input:
+
+```
+5 4
+10 40 30 20 60
+1 2
+2 3
+3 4
+2 5
+```
+
+Here site 5 has the largest value, so `B = 60`. One good choice is to activate sites
+`{1, 3, 5}`: no listed pair among them conflicts (the conflicts are 1-2, 2-3, 3-4, 2-5), and
+the total value is `10 + 30 + 60 = 100`. Then `F = 100`, `B = 60`, and
+
+```
+ratio = min(1.0, 0.1 * 100 / 60) = min(1.0, 0.16667) = 0.16667.
+```
+
+A valid submission for this example:
+
+```
+3
+1 3 5
+```

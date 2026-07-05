@@ -1,0 +1,16 @@
+{
+  "id": "fsx_A_0113",
+  "tier": "A",
+  "format": "C",
+  "family": "geometric-packing",
+  "eval_form": "quality-metric",
+  "theme": "power grid",
+  "title": "Power-Grid Substation Siting: Weighted Coverage Packing",
+  "objective": "max",
+  "strategies": [
+    "uniform-grid baseline: ceil(sqrt(n)) x ceil(sqrt(n)) grid, equal disk radius 1/(2k), weight-blind -> ~0.1",
+    "weight-proportional treemap: tile the region into rectangles with area ~ w_i, inscribe a disk in each; heavy loads get bigger disks",
+    "squared-weight treemap (area ~ w_i^2, the Lagrangian optimum r_i ~ w_i) followed by radius coordinate-ascent that reclaims inter-disk slack in descending-weight order",
+    "alternative refinements: center relocation / continuous packing local search, mixed allocation exponents between w and w^2 per instance"
+  ]
+}

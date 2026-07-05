@@ -1,0 +1,19 @@
+{
+  "id": "fsx_C_0395",
+  "tier": "C",
+  "format": "B",
+  "family": "modular-component-cross-setting",
+  "eval_form": "quality-metric",
+  "theme": "cave mapping expedition",
+  "title": "Cave Mapping Expedition: A Drop-in Activation Function Across Survey Sites",
+  "objective": "optimize",
+  "source_frameworks": ["MLS-Bench (dl-* CPU proxies only)"],
+  "isolation": "candidate runs as an isolated stdin->stdout subprocess via isorun; every cave site's data, labels, and the training/scoring code stay in the evaluator process",
+  "strategies": [
+    "identity (linear) activation a(x)=x -> collapses the MLP to a linear classifier, reproduces the evaluator's internal linear baseline exactly (~0.1 on every site): under-fits every nonlinear cave",
+    "the obvious fix -- add a plain ReLU nonlinearity -> unlocks the hidden layer and jumps well above the linear baseline on every site, but the hard rectifier over-shoots the noisier caves under the hot base LR and leaves per-site headroom (a leaky/ELU tweak can even do WORSE)",
+    "a smooth self-gated activation (GELU/swish/softsign shape): nonlinear like ReLU but smoothly gated near the origin and ~linear in the positive tail, so it stays stable under the hot LR and fits the noisy caves better -> generalizes across every survey site and dominates the geometric mean",
+    "a custom-shaped curve (tuned gate sharpness, small negative leak, gentle saturation, or a bounded tail) squeezing the remaining per-site headroom the standard smooth activations leave",
+    "invalid: wrong-length / non-finite / wrong-type answer -> the strict validator rejects it and every site scores 0"
+  ]
+}

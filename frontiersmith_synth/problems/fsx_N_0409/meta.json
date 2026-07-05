@@ -1,0 +1,18 @@
+{
+  "id": "fsx_N_0409",
+  "tier": "N",
+  "format": "A",
+  "family": "partition-modular-balance",
+  "eval_form": "quality-metric",
+  "theme": "railway freight yard",
+  "title": "Tuned Freight-Yard Sorting",
+  "objective": "max",
+  "seed_problem": "balanced max-k-cut with per-part modular tonnage residues and a size balance band",
+  "mutation": "composite: multiply each track's max-cut boundary value by a residue-tuning bonus (1+lam) when its tonnage sum hits the target residue mod m, under a size balance band; nonlinear product couples cut and number-theoretic tuning",
+  "strategies": [
+    "round-robin baseline: car i -> ((i-1) mod k)+1, feasible band, zero tuned tracks",
+    "cut-only hill climb: size-preserving swaps that increase total separated conflict weight, ignoring residues",
+    "full-objective local search: size-preserving swaps optimizing F, biased to swap light (edge-free) adjuster cars to tune high-boundary tracks while separating heavy conflicts",
+    "planted/needle exploitation: detect the hidden high-cut partition or the heavy needle track and tune specifically its residue for the lam multiplier"
+  ]
+}

@@ -1,0 +1,16 @@
+{
+  "id": "fsx_G_0445",
+  "tier": "G",
+  "format": "D",
+  "family": "flop-small-dft-mults",
+  "eval_form": "flops",
+  "theme": "FFT core",
+  "title": "Minimize Real Multiplications for a Small Bilinear DFT-Core Tensor",
+  "objective": "min",
+  "strategies": [
+    "trivial: one bilinear multiplication per nonzero (i,j) support cell (= baseline rank)",
+    "greedy: mode-1 slice rank factorization (fewer products when slices are low rank)",
+    "strong: best of mode-1/mode-2/mode-3 exact rank factorizations",
+    "open: search for an overcomplete rank-R bilinear algorithm below any single-mode bound"
+  ]
+}

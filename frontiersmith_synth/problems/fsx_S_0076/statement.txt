@@ -1,0 +1,107 @@
+# Array Gantry Segment Ferrying
+
+## Problem
+A large ground telescope array is serviced by a single robotic **gantry** that rides an
+orthogonal rail system (it always moves along the X rail, then the Y rail, so the travel
+cost between two points is their **Manhattan distance**). The gantry starts and ends every
+shift at the maintenance **depot**.
+
+There are `m` outstanding **ferry tasks**. Task `j` requires the gantry to first collect a
+mirror segment from a **supply cache** at point `P_j` (the *pickup*), then install it at a
+**mount node** at point `D_j` (the *delivery*). A segment can only be installed after it has
+been collected, so within the shift the gantry must visit `P_j` **before** `D_j`.
+
+You do not have to complete every task. If task `j` is left **unserved**, the array runs
+degraded for that node and you pay a fixed **downtime penalty** `w_j`.
+
+Plan one shift: choose which tasks to serve and produce a single depot-to-depot route,
+minimizing the total gantry travel plus the downtime penalties of the tasks you skip.
+
+## Input
+```
+Xd Yd
+m
+px_1 py_1 dx_1 dy_1 w_1
+...
+px_m py_m dx_m dy_m w_m
+```
+- `Xd Yd` — depot coordinates.
+- `m` — number of ferry tasks.
+- For each task `j`: pickup `P_j=(px_j,py_j)`, delivery `D_j=(dx_j,dy_j)`, downtime penalty `w_j`.
+
+All coordinates are integers in `[0, 1000]`. Penalties `w_j` are positive integers.
+
+## Output
+```
+k
+t_1 s_1
+...
+t_k s_k
+```
+- `k` — number of stops the gantry makes (excluding the two depot endpoints).
+- Each stop is a pair `t s`: task index `t` (`1..m`) and stop type `s`
+  (`0` = visit that task's pickup `P_t`, `1` = visit that task's delivery `D_t`).
+
+The realized route is `depot -> stop_1 -> stop_2 -> ... -> stop_k -> depot`.
+
+## Feasibility
+A route is feasible iff **all** of the following hold:
+- Every `t_i` is in `1..m` and every `s_i` is `0` or `1`.
+- No task is picked up twice and no task is delivered twice.
+- If a task's delivery (`s=1`) appears, its pickup (`s=0`) must also appear and must occur
+  **earlier** in the stop sequence (precedence).
+- No task may have a lone pickup: if a task's pickup appears, its delivery must also appear.
+  (Thus each task is either **fully served** — pickup and delivery both present, pickup
+  first — or **not visited at all**.)
+
+Any violation scores `0`. The empty route (`k = 0`, serve nothing) is always feasible.
+
+## Objective
+Let `dist` be the Manhattan length of the closed route
+`depot -> stop_1 -> ... -> stop_k -> depot`, and let `U` be the set of tasks that are not
+served. Minimize
+```
+F = dist + sum_{j in U} w_j.
+```
+
+## Scoring
+The checker builds the trivial "serve nothing" baseline `B = sum_j w_j` (a feasible route of
+length 0 that pays every penalty). Your feasible route yields objective `F`. Your raw score is
+```
+score = min(1000, 100 * B / F) / 1000,
+```
+so an output no better than the do-nothing baseline scores `0.1`, and matching or beating
+one tenth of the baseline objective caps the score at `1.0`. Infeasible output scores `0`.
+The per-test scores are averaged.
+
+## Constraints
+- `1 <= m <= 60`.
+- Coordinates in `[0, 1000]`, penalties `w_j >= 1`.
+- Time limit: 5 s. Memory limit: 512 MB.
+
+## Example
+Input:
+```
+0 0
+2
+10 0 10 10 100
+0 20 5 20 8
+```
+Task 1: pickup (10,0), deliver (10,10), penalty 100. Task 2: pickup (0,20), deliver (5,20),
+penalty 8.
+
+Baseline `B = 100 + 8 = 108`.
+
+Consider serving only task 1 with route `depot -> P_1 -> D_1 -> depot`:
+```
+1
+2
+1 0
+1 1
+```
+Travel: (0,0)->(10,0)=10, (10,0)->(10,10)=10, (10,10)->(0,0)=20, total `dist = 40`.
+Unserved: task 2, penalty 8. So `F = 40 + 8 = 48`.
+Score = `min(1000, 100*108/48)/1000 = min(1000, 225)/1000 = 0.225`.
+
+Serving task 2 as well would add travel of at least `2*(20) + 5 = 45` but only save its
+penalty of `8`, so skipping it is the better choice here — a real selection trade-off.

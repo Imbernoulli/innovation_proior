@@ -1,0 +1,17 @@
+{
+  "id": "fsx_A_0142",
+  "tier": "A",
+  "format": "B",
+  "family": "online-heuristic-simulator",
+  "eval_form": "quality-metric",
+  "theme": "archaeology dig grid",
+  "title": "Tell Qadesh Dig: Crating the Catalogued Finds",
+  "objective": "optimize",
+  "source_frameworks": ["FunSearch (bin-packing)", "ALE-Bench (dispatch rules)"],
+  "strategies": [
+    "catalogue-order first-fit: seal each artifact into the lowest-index crate with room in BOTH mass and slots, opening a new crate only when none fits (reproduces the evaluator's weak first-fit reference)",
+    "first-fit-decreasing: sort artifacts heaviest-first, then first-fit, so big finds are placed early and light sherds top off partly-filled crates",
+    "best-fit-decreasing with local search: place heaviest-first into the tightest-fitting crate, then repeatedly dissolve the weakest (fewest-item) crate by re-homing its contents to cut the crate count further",
+    "constraint-aware / metaheuristic packing: balance the mass and slot limits per instance (mass binds for heavy 'half' instances, slots bind for light 'small' instances) and run seeded relocate/swap or perturb-and-reoptimize restarts"
+  ]
+}

@@ -1,0 +1,124 @@
+# Skybridge Fulfillment: Drone Payload Dispatch
+
+## Problem
+
+The *Skybridge* automated warehouse dispatches a fleet of delivery **drones** from their
+charging docks to serve a batch of pending **parcels**, each bound for a customer zone.
+Every drone starts a shift with a fixed **energy budget**. Flying a given parcel with a
+given drone drains a certain amount of energy (this depends on the drone's dock, the
+parcel's zone, its aerodynamics and headwinds, so the same parcel costs different energy
+on different drones). Delivering a parcel earns a **payload value** (its priority weight),
+regardless of which drone carries it.
+
+Each parcel may be carried by **at most one** drone (or left in the warehouse this shift),
+and the total energy a drone spends must not exceed its budget. You must decide which drone
+(if any) carries each parcel so as to **maximize the total payload value delivered**.
+
+Formally this is a **generalized assignment problem (GAP)**: `m` agents (drones) with
+capacities, `n` items (parcels) each with a value and an agent-dependent resource cost,
+assign each item to at most one agent respecting capacities, maximize total value of
+assigned items. GAP is NP-hard; the optimum is unknown and many heuristics (value/cost
+greedy, best-fit packing, eviction swaps, repacking local search, multi-start) are viable
+and diverge.
+
+## Input
+
+The first line contains two integers:
+
+```
+m n
+```
+
+- `m` — number of drones, numbered `1..m`.
+- `n` — number of parcels, numbered `1..n`.
+
+The second line contains `m` integers `c_1 c_2 ... c_m`, where `c_i` is the energy budget
+of drone `i`.
+
+Each of the next `n` lines describes one parcel `j` (in order `j = 1..n`):
+
+```
+w_j e_{1j} e_{2j} ... e_{mj}
+```
+
+where `w_j` is the payload value of parcel `j`, and `e_{ij}` is the energy drone `i` spends
+to carry parcel `j`. It is guaranteed that every single parcel fits alone on every drone
+(`e_{ij} <= c_i` for all `i, j`), so a feasible assignment always exists.
+
+## Output
+
+Print `n` integers `a_1 a_2 ... a_n` (separated by whitespace; newlines are fine). For each
+parcel `j`:
+
+- `a_j = 0` means parcel `j` is left in the warehouse (unassigned);
+- `a_j = i` (with `1 <= i <= m`) means parcel `j` is carried by drone `i`.
+
+Printing `n` zeros is always valid (it delivers nothing).
+
+## Feasibility
+
+An output is feasible iff:
+
+- it contains exactly `n` integers, each in the range `0..m`;
+- for every drone `i`, the total energy of the parcels assigned to it does not exceed its
+  budget: `sum_{ j : a_j = i } e_{ij} <= c_i`.
+
+Any infeasible output scores `0`.
+
+## Objective
+
+Let `F = sum_{ j : a_j >= 1 } w_j` be the total payload value delivered. You are
+**maximizing** `F`.
+
+## Scoring
+
+The checker builds an internal baseline `B` using a simple first-fit construction: process
+parcels in input order `j = 1..n`, and assign each parcel to the lowest-indexed drone that
+still has enough remaining budget for it (leave it unassigned if none does). `B` is the
+total payload value of that first-fit assignment.
+
+The score for a test is
+
+```
+ratio = min(1.0, 0.1 * F / B)
+```
+
+so a submission that merely matches the first-fit baseline (`F = B`) scores `0.1`, and a
+submission delivering ten times the baseline value caps at `1.0`. The overall score is the
+mean ratio across all tests.
+
+## Constraints
+
+- `2 <= m <= 6`, `4 <= n <= 40`.
+- `1 <= w_j <= 100`.
+- `1 <= e_{ij} <= c_i` for all `i, j`.
+- Time limit: 5 s. Memory limit: 512 MB.
+
+## Example
+
+Input:
+
+```
+2 4
+16 13
+50 6 7
+40 9 5
+30 8 6
+25 7 11
+```
+
+Here drone 1 has budget 16 and drone 2 has budget 13.
+
+First-fit baseline: parcel 1 -> drone 1 (rem 16>=6, now 10), parcel 2 -> drone 1
+(10>=9, now 1), parcel 3 -> drone 1? 1<8, try drone 2 (13>=6, now 7), parcel 4 -> drone 1?
+1<7, drone 2? 7<11, so it is left unassigned. Thus `B = 50 + 40 + 30 = 120`.
+
+A smarter repack delivers all four parcels:
+
+```
+1 2 2 1
+```
+
+Check: drone 1 carries parcels 1 (6) and 4 (7) = 13 <= 16; drone 2 carries parcels 2 (5)
+and 3 (6) = 11 <= 13. Feasible, `F = 50+40+30+25 = 145`,
+`ratio = min(1.0, 0.1 * 145 / 120) = 0.120833`.

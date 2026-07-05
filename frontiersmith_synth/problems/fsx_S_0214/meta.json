@@ -1,0 +1,18 @@
+{
+  "id": "fsx_S_0214",
+  "tier": "S",
+  "format": "A",
+  "family": "maxsat-csp",
+  "eval_form": "quality-metric",
+  "seed_problem": "Maximize total weight of satisfied clauses in a synthetic weighted CNF; checker computes satisfied weight / baseline.",
+  "mutation": "goal+output: replace the disjunctive weighted Max-SAT clauses with conjunctive requirement patterns (each opportunity is served only if ALL its listed station-alignment literals match), turning the instance into a weighted MAX-CSP / max-satisfied-conjunctions problem. This makes the do-nothing (all-0) baseline genuinely weak (it serves only ~2^-k of patterns), so real search is required and heuristics diverge, while a single global flip cannot win.",
+  "objective": "max",
+  "theme": "satellite ground stations",
+  "title": "Antenna Alignment for Satellite Ground Stations",
+  "strategies": [
+    "all-0 baseline: lock every station to alignment 0 (the calibration point, ratio 0.1)",
+    "weighted pattern-greedy: process opportunities in decreasing revenue and fix the required alignments of any opportunity still fully fixable, leaving untouched stations at 0",
+    "multi-restart bit-flip local search: hill-climb single-station flips from the greedy start, the all-0 start, and several seeded random starts, keeping the best-revenue alignment",
+    "per-station weighted majority relaxation followed by conflict-aware repair of the heaviest unsatisfied patterns"
+  ]
+}

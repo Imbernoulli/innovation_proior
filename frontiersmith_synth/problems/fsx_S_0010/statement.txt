@@ -1,0 +1,91 @@
+# Orbital Debris Cleanup: Thruster Burn Scheduling
+
+## Problem
+A cleanup constellation must clear a congested orbital band. Each of `n` collector
+satellites can commit to exactly one of two long-duration burn modes for the campaign:
+**prograde** (mode `1`) or **retrograde** (mode `0`). Your job is to choose one mode per
+satellite.
+
+Mission planners have compiled `m` **debris-field constraints**. Each constraint watches a
+small group of satellites and is *cleared* if **at least one** of the watched satellites
+adopts a specified mode. Formally, constraint `j` is a weighted disjunctive clause: a set of
+`k_j` literals, where a literal `+v` is cleared when satellite `v` burns prograde (mode `1`)
+and a literal `-v` is cleared when satellite `v` burns retrograde (mode `0`). Constraint `j`
+carries a positive integer **debris weight** `w_j`; the constraint is cleared if **any** of
+its literals is satisfied by your chosen modes.
+
+Because the physics couples every satellite to many fields at once, no assignment clears all
+constraints. This is exactly a **weighted Maximum-Satisfiability (Max-SAT)** instance: you
+maximize the total debris weight of cleared constraints. Finding the optimum is NP-hard, so
+strong heuristics (greedy, local search / WalkSAT-style flips, weighted restarts) are
+expected.
+
+## Input (stdin)
+```
+n m
+<m lines, each: w k l_1 l_2 ... l_k>
+```
+- Line 1: number of satellites `n` and number of constraints `m`.
+- Each of the next `m` lines describes one constraint: its weight `w` (`1 <= w`), its arity
+  `k` (`1 <= k`), then `k` literals. Each literal is a nonzero integer `l` with
+  `1 <= |l| <= n`; `l > 0` means "`satellite l` prograde", `l < 0` means
+  "`satellite |l|` retrograde". Within one constraint the referenced satellites are distinct.
+
+## Output (stdout)
+```
+x_1 x_2 ... x_n
+```
+Print exactly `n` integers, each `0` (retrograde) or `1` (prograde). `x_v` is the burn mode
+chosen for satellite `v`. Whitespace/newlines between the values are ignored; there must be
+exactly `n` of them and nothing else.
+
+## Feasibility
+An output is valid iff it contains **exactly `n`** tokens and **every** token is `0` or `1`.
+Any other output (wrong count, a value outside `{0,1}`, trailing junk) scores `Ratio: 0.0`.
+
+## Objective
+Maximize `F` = the total weight of cleared constraints under your assignment, where
+constraint `j` is cleared iff at least one of its literals is satisfied.
+
+## Scoring
+The checker builds its own trivial reference assignment: **all satellites retrograde**
+(every `x_v = 0`). Under this assignment a constraint is cleared iff it contains at least one
+negative literal, so the baseline weight is
+```
+B = sum of w_j over constraints that contain at least one negative literal   (B >= 1).
+```
+With the maximization normalization:
+```
+sc = min(1000.0, 100.0 * F / max(1e-9, B))
+Ratio = sc / 1000.0
+```
+Reproducing the all-retrograde assignment gives `F = B` and `Ratio = 0.1`. An assignment that
+clears `10x` the baseline weight caps at `Ratio = 1.0`.
+
+## Constraints
+- `12 <= n <= 90`.
+- `1 <= m <= 1600`.
+- `1 <= k <= 5` for every constraint; weights `1 <= w <= 60`.
+- Time limit: 5s. Memory limit: 512m.
+
+## Example
+Input:
+```
+3 4
+5 2 1 2
+3 2 -1 3
+4 1 2
+2 2 -2 -3
+```
+Constraints: `(x1 OR x2)` w5, `(NOT x1 OR x3)` w3, `(x2)` w4, `(NOT x2 OR NOT x3)` w2.
+
+Baseline (all retrograde `0 0 0`): cleared constraints are those with a negative literal:
+constraint 2 (`-1` true) and constraint 4 (`-2` true), so `B = 3 + 2 = 5`.
+
+Suppose you output `1 1 0` (x1=1, x2=1, x3=0):
+- `(x1 OR x2)`: x1=1 -> cleared (w5).
+- `(NOT x1 OR x3)`: NOT x1 false, x3=0 false -> NOT cleared.
+- `(x2)`: x2=1 -> cleared (w4).
+- `(NOT x2 OR NOT x3)`: NOT x3 true -> cleared (w2).
+
+`F = 5 + 4 + 2 = 11`. `sc = 100 * 11 / 5 = 220`, so `Ratio = 0.220`.

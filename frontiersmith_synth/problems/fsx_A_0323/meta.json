@@ -1,0 +1,16 @@
+{
+  "id": "fsx_A_0323",
+  "tier": "A",
+  "format": "C",
+  "family": "geometric-packing",
+  "eval_form": "quality-metric",
+  "theme": "highway toll gantries",
+  "title": "Highway Toll Gantries: Sensor Coverage on the Strip",
+  "objective": "max",
+  "strategies": [
+    "single center row of equal disks along the centerline (reproduces the checker baseline)",
+    "two offset rows using the road width so each disk grows larger for the same disk budget",
+    "sweep the row count R ~ sqrt(N*W/L), offset-lattice, grow each disk to the max feasible radius routing around pylons",
+    "boundary/obstacle-aware unequal packing that enlarges disks in pylon-free gaps"
+  ]
+}

@@ -1,0 +1,126 @@
+# Contact-Net Triage: Tracer Assignment Under Contact-Hour Capacity
+
+## Problem
+
+A pandemic response cell runs a **contact-tracing network**. There are `N`
+human contact tracers and `M` freshly detected infection **clusters** (groups of
+linked cases sitting on the contact graph). Each cluster must be worked by a
+single tracer, or left uncovered.
+
+Tracer `j` (for `j = 1 .. N`) has a weekly budget of `C[j]` **contact-hours**.
+
+If tracer `j` is assigned to cluster `i`, then:
+
+- the tracer spends `t[i][j]` contact-hours on that cluster, and
+- `v[i][j]` units of **transmission risk-weight** are neutralised (the value of
+  breaking that cluster's chains, which depends both on the cluster's severity
+  and on how well the particular tracer knows that community).
+
+Each cluster may be assigned to **at most one** tracer, and each tracer's total
+spent contact-hours may not exceed its budget `C[j]`. Uncovered clusters
+neutralise no risk-weight. Your job is to choose the assignment that neutralises
+the most total risk-weight. (This is a generalized assignment problem: the
+optimum is NP-hard, so heuristics are expected.)
+
+## Input
+
+```
+N M
+C[1] C[2] ... C[N]
+```
+
+followed by `M` lines. Line `i` (for `i = 1 .. M`) describes cluster `i` with
+`2*N` integers
+
+```
+t[i][1] v[i][1] t[i][2] v[i][2] ... t[i][N] v[i][N]
+```
+
+where `t[i][j]` and `v[i][j]` are the contact-hour cost and the risk-weight of
+tracer `j` handling cluster `i`.
+
+## Output
+
+Print `M` integers `a[1] a[2] ... a[M]` (whitespace-separated). `a[i]` is the
+1-based index of the tracer assigned to cluster `i`, or `0` if cluster `i` is
+left uncovered. Thus each `a[i]` is in `{0, 1, ..., N}`.
+
+## Feasibility
+
+An output is feasible iff:
+
+- every `a[i]` is an integer in `[0, N]`, and
+- for every tracer `j`, the sum of `t[i][j]` over all clusters `i` with
+  `a[i] = j` is at most `C[j]`.
+
+Any violation (out-of-range index, a tracer over its contact-hour budget, wrong
+count of numbers, or trailing garbage) makes the output infeasible and scores 0.
+
+## Objective
+
+Maximize the total neutralised risk-weight
+
+```
+F = sum over all i with a[i] > 0 of v[i][a[i]].
+```
+
+## Scoring
+
+Let `B` be the risk-weight neutralised by the **first-fit baseline**: process
+clusters `1, 2, ..., M` in order, and assign each cluster to the *lowest-indexed*
+tracer that still has enough remaining contact-hours to afford it (deducting
+`t[i][j]`); a cluster no tracer can afford is left uncovered. `B` is the total
+`v` collected by that construction.
+
+Your score on a test is
+
+```
+ratio = min(1000, 100 * F / B) / 1000
+```
+
+so reproducing the first-fit baseline scores `0.1`, and neutralising ten times
+the baseline risk-weight (or more) caps at `1.0`. Higher `F` is strictly better.
+The final score is the average `ratio` over all tests.
+
+## Constraints
+
+- `1 <= N <= 80`, `1 <= M <= 5000`.
+- `1 <= C[j] <= 10^9`.
+- `1 <= t[i][j] <= 10^6`, `1 <= v[i][j] <= 10^6`.
+- Time limit: 5 s. Memory limit: 512 MB.
+
+## Example
+
+```
+2 3
+5 4
+3 4 3 4
+3 9 3 9
+3 10 3 10
+```
+
+Here `N = 2`, `M = 3`, budgets `C = [5, 4]`. Every cluster costs 3 contact-hours
+on either tracer; the risk-weights are cluster 1 → 4, cluster 2 → 9,
+cluster 3 → 10.
+
+First-fit baseline: cluster 1 goes to tracer 1 (remaining 5-3 = 2); cluster 2
+cannot fit on tracer 1 (needs 3, only 2 left) so it goes to tracer 2
+(remaining 4-3 = 1); cluster 3 fits on neither tracer and is uncovered. So
+`B = 4 + 9 = 13`.
+
+Now output
+
+```
+2 2 1
+```
+
+i.e. cluster 1 uncovered? No -- `a = [2, 2, 1]` would put clusters 1 and 2 both
+on tracer 2 (3+3 = 6 > 4), which is infeasible. Instead output
+
+```
+0 2 1
+```
+
+leaving low-value cluster 1 uncovered, cluster 2 on tracer 2 (cost 3 <= 4),
+cluster 3 on tracer 1 (cost 3 <= 5). Then `F = 9 + 10 = 19`, and the score is
+`min(1000, 100 * 19 / 13) / 1000 = 0.146154`.

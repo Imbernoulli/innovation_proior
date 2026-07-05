@@ -1,0 +1,18 @@
+{
+  "id": "fsx_G_0496",
+  "tier": "G",
+  "format": "A",
+  "family": "new-planning-blocksworld",
+  "eval_form": "quality-metric",
+  "seed_problem": "Given start+goal block configs, output a plan (move sequence) of minimal length respecting stacking rules; baseline = naive unstack-all. AI planning.",
+  "mutation": "composite: keep the blocksworld plan-synthesis core but couple THREE mechanisms into one effort objective that a greedy cannot nail: (a) the classic settle-vs-move structure (crates already in a correct bottom prefix should never move), (b) a gantry TRAVEL cost |R-a|+|a-q| that turns move ORDERING into a sequencing/routing problem, and (c) a per-move handling cost H that trades ride distance against move count. The naive teardown (unstack-all-then-rebuild) is the calibration baseline; optimal restacking-plus-routing is intractable, so the best strategy must balance settling, direct placement, and ride minimization.",
+  "objective": "min",
+  "theme": "warehouse robot",
+  "title": "Warehouse Gantry Restacking: Minimum-Effort Crate Rearrangement",
+  "strategies": [
+    "trivial: naive teardown -- park every crate to its own staging slot, then rebuild each goal stack bottom-to-top (reproduces the grader baseline B, ratio ~0.1)",
+    "greedy: settle-aware teardown -- leave already-correct bottom prefixes in place and tear down only misplaced crates to fixed far staging slots, then rebuild (~2*U moves, travel-naive)",
+    "strong: settle-aware teardown PLUS direct placement (put a crate straight onto its final position when the target column is already built to the right height) PLUS travel-aware nearest-safe staging -- fewer moves and shorter rides",
+    "invalid: emit a move with an out-of-range destination position -> infeasible (0)"
+  ]
+}

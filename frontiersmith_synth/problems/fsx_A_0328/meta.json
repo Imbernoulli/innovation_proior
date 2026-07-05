@@ -1,0 +1,19 @@
+{
+  "id": "fsx_A_0328",
+  "tier": "A",
+  "format": "D",
+  "family": "tensor-decomposition-rank",
+  "eval_form": "flops",
+  "theme": "greenhouse zones",
+  "title": "Greenhouse Coupling Tensor: Fewest Actuator Gadgets",
+  "objective": "optimize",
+  "variant": 11,
+  "scale": "large",
+  "source_frameworks": ["AlphaEvolve"],
+  "strategies": [
+    "trivial: one gadget per non-zero frontal (mode-3) fiber (matches the checker baseline B)",
+    "greedy: cheapest of the three fiber decompositions (fewest non-zero fibers over a mode)",
+    "strong: exact slice-rank (column-space) factorization along the best of 3 orientations; beats fibers but not the unknown optimum",
+    "open: search below the slice-rank bound -- the asymmetric Tucker core is over-complete, so the true minimum rank is genuinely unknown"
+  ]
+}

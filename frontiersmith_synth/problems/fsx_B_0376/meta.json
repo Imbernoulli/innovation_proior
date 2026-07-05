@@ -1,0 +1,16 @@
+{
+  "id": "fsx_B_0376",
+  "tier": "B",
+  "format": "B",
+  "family": "offline-decision-policy",
+  "eval_form": "quality-metric",
+  "theme": "asteroid mining",
+  "title": "Belt Refinery: Assay-Calibration Prefix-Cache Ordering",
+  "objective": "max",
+  "strategies": [
+    "identity / arbitrary global order (reference baseline, scores ~0.1)",
+    "marginal-frequency order: place the most-frequently-required assay stage first so its calibration is reused by the most probes",
+    "correlation-aware order that keeps co-occurring stage clusters contiguous so whole latent mining profiles share a long cached prefix",
+    "local search (swap / insertion moves with multi-restart) over the global ordering to squeeze out the remaining distinct trie nodes"
+  ]
+}

@@ -1,0 +1,18 @@
+{
+  "id": "fsx_S_0243",
+  "tier": "S",
+  "format": "A",
+  "family": "packing-knapsack",
+  "eval_form": "quality-metric",
+  "seed_problem": "Pack polyominoes into a W x H board maximizing covered area (score = 1e5*sum(k)/(W*H)), reflections allowed; checker validates no-overlap and in-bounds.",
+  "mutation": "input: relax the empty board into an obstructed grid with sparse crevasses and a mixed catalogue of reusable polyomino footprints (rotations+reflections allowed) whose FIRST type tiles poorly; the goal stays maximum covered area, so a weak single-shape baseline is beaten by orientation-aware, value-density and gap-filling packings that diverge.",
+  "objective": "max",
+  "theme": "glacier sensor net",
+  "title": "Glacier Sensor Net: Cluster Tiling for Maximum Coverage",
+  "strategies": [
+    "baseline: stamp only footprint 0 (the plus pentomino) in its given orientation, row-major, wherever it fits",
+    "largest-first single-orientation greedy: at each empty solid cell place the largest catalogue footprint that fits using only base orientations",
+    "orientation-aware multi-pass packing: place footprints largest-first over all rotations/reflections, then run smaller-shape gap-filling passes to cover leftover pockets",
+    "randomized multi-restart repair: perturb placement order across seeded restarts and keep the covering with the most occupied cells"
+  ]
+}

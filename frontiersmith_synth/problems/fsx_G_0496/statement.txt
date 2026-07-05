@@ -1,0 +1,134 @@
+# Warehouse Gantry Restacking: Minimum-Effort Crate Rearrangement
+
+## Problem
+
+A warehouse aisle has `p` floor **positions** in a row, indexed `0 .. p-1`. At each
+position there is a vertical **stack** of crates (a crate may sit on top of another
+crate; the floor holds the bottom crate). There are `n` distinct crates, labeled
+`1 .. n`; every crate sits in exactly one stack.
+
+A single **gantry robot** rides along the aisle and carries **one crate at a time**.
+The gantry always begins the shift parked at position `0`.
+
+A **move** takes one crate `c` and drops it on top of the stack at some position `q`:
+
+* `c` must currently be **clear** — i.e. it is the topmost crate of its stack.
+* `q` must be different from `c`'s current position.
+* The gantry, currently at position `R`, first rides to `c`'s position `a`
+  (picking it up), then rides to position `q` (dropping it). After the move the
+  gantry is parked at `q`, `c` is the new top of stack `q`, and `c`'s old stack is
+  one crate shorter.
+
+The **effort** of that move is the ride distance plus a fixed per-crate
+**handling cost** `H`:
+
+```
+effort(c -> q) = |R - a| + |a - q| + H
+```
+
+You are given the **start** configuration and a **goal** configuration (a possibly
+different arrangement of the same `n` crates). Output a sequence of moves that
+transforms the start into the goal **exactly**. Minimize the total effort.
+
+The always-empty positions `n .. p-1` form a **staging area** you may use freely as
+scratch space.
+
+## Input
+
+```
+n p H
+```
+then `p` lines describing the **start** stacks (positions `0 .. p-1`, in order):
+
+```
+k  c_1 c_2 ... c_k
+```
+`k` = number of crates in that stack, listed **bottom to top** (`c_1` on the floor,
+`c_k` clear on top). `k = 0` means an empty position.
+
+Then `p` more lines describing the **goal** stacks in the same format.
+
+Across the `p` start lines each crate `1..n` appears exactly once; likewise for the
+`p` goal lines. Positions `n .. p-1` are empty in both start and goal.
+
+## Output
+
+```
+M
+c_1 q_1
+c_2 q_2
+...
+c_M q_M
+```
+`M` = number of moves (`0 <= M <= 30*n`), followed by the `M` moves in order; move
+`i` drops crate `c_i` onto position `q_i` (`1 <= c_i <= n`, `0 <= q_i <= p-1`).
+
+## Feasibility
+
+A submission is feasible iff **every** move is legal (the named crate is clear at
+that moment, and `q` differs from the crate's current position), `M` is within
+`[0, 30*n]`, and after applying all moves the configuration equals the goal
+**exactly** (every position's bottom-to-top stack matches). Any illegal move,
+out-of-range token, or final mismatch scores `0`.
+
+## Objective
+
+Minimize `F = sum of effort(c_i -> q_i)` over the submitted moves.
+
+## Scoring
+
+Let `B` be the effort of the grader's **naive teardown** plan: ride every crate to
+its own staging slot (fully disassembling all stacks), then rebuild each goal stack
+bottom-to-top. `B` is always positive. Your score on a test is
+
+```
+ratio = min(1000, 100 * B / max(1, F)) / 1000
+```
+
+so reproducing the naive teardown yields exactly `0.1`, and a `10x` reduction of the
+effort reaches the cap `1.0`. Per-test ratios are averaged. Because crates already
+sitting in their final position need not move at all, and rides can be shortened by
+smart ordering and staging, the naive teardown is far from optimal — but optimal
+restacking is intractable, so heuristics are expected.
+
+## Constraints
+
+* `3 <= n <= 40`, `p = 2*n`, `4 <= H <= 20`.
+* `0 <= M <= 30*n`.
+* Time limit: 5 s. Memory limit: 512 MB.
+
+## Example
+
+```
+3 6 3
+2 1 2
+1 3
+0
+0
+0
+0
+1 1
+2 3 2
+0
+0
+0
+0
+```
+
+Start: position `0` holds `[1,2]` (crate `2` on top), position `1` holds `[3]`.
+Goal: position `0` holds `[1]`, position `1` holds `[3,2]`.
+
+Only crate `2` is out of place: move it from position `0` onto position `1`.
+
+```
+1
+2 1
+```
+
+The gantry starts at `R=0`; crate `2` is at `a=0`, dropped at `q=1`:
+`effort = |0-0| + |0-1| + 3 = 4`, so `F = 4`.
+
+The grader's naive teardown tears down both stacks into the staging area and
+rebuilds them, spending `B = 55` effort. Score `= min(1000, 100*55/4)/1000 =
+min(1000, 1375)/1000 = 1.0` (the improvement exceeds the `10x` cap on this tiny
+instance).

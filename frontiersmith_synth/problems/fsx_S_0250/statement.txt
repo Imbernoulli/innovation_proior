@@ -1,0 +1,93 @@
+# Stratified Dig Grid: Trench-Depth Planning
+
+## Problem
+An archaeology team is planning an excavation season over a rectangular survey
+site laid out as an `R x C` grid of cells. The `n = R*C` cells are numbered
+`1, 2, ..., n` in row-major order (cell `(r, c)` with `0 <= r < R`, `0 <= c < C`
+has number `r*C + c + 1`).
+
+For each cell you must commit to a single **trench depth** for the whole season:
+**shallow** (`0`) or **deep** (`1`). You choose one depth per cell.
+
+The site director has compiled `m` weighted **find hypotheses**. Each hypothesis
+concerns a small cluster of nearby cells and predicts that a particular artifact
+can be **recovered** if *at least one* of its cell conditions is met. Formally,
+hypothesis `j` is a weighted disjunctive clause: a set of `k_j` literals, where a
+literal `+v` is met when cell `v` is dug **deep** (`x_v = 1`) and a literal `-v`
+is met when cell `v` is left **shallow** (`x_v = 0`). Hypothesis `j` carries a
+positive integer **artifact value** `w_j` and is recovered if **any** of its
+literals is met.
+
+Because the strata couple many cells to many overlapping hypotheses, no single
+depth plan recovers every artifact. This is a **weighted Maximum-Satisfiability
+(Max-SAT)** instance: maximize the total artifact value recovered. Finding the
+optimum is NP-hard, so any complete plan is accepted and *scored*; strong
+heuristics (weighted voting, hill-climbing / WalkSAT-style flips, randomized
+restarts) are expected.
+
+## Input
+The first line contains two integers `n` and `m`: the number of cells and the
+number of find hypotheses.
+
+Each of the next `m` lines describes one hypothesis and begins with two integers
+`w` and `k` (the artifact value and the number of literals), followed by `k`
+nonzero integers `l_1 ... l_k`. A literal `v > 0` is the condition "cell `v` is
+dug deep" (`x_v = 1`); a literal `v < 0` is the condition "cell `|v|` is left
+shallow" (`x_{|v|} = 0`). Every `|l_i|` lies in `[1, n]`.
+
+## Output
+Print `n` integers, each `0` (shallow) or `1` (deep), separated by whitespace:
+the chosen depth of cells `1, 2, ..., n` in order. Any such line is a feasible
+plan.
+
+## Feasibility
+An output is feasible iff it consists of **exactly `n` tokens**, each equal to
+`0` or `1`, with no extra tokens. Any other output scores 0.
+
+## Objective
+Let `F` be the total artifact value of the hypotheses **recovered** by your plan.
+The objective is to **maximize** `F`.
+
+## Scoring
+The checker builds the trivial **all-shallow** plan (every cell `0`) and measures
+its recovered value `B` (this equals the total value of all hypotheses that
+contain at least one negative literal; `B >= 1`). Your score for a test is
+
+```
+ratio = min(1000, 100 * F / B) / 1000
+```
+
+so the all-shallow plan scores `0.1`, and a plan recovering `10x` the baseline
+value (or more) reaches the cap `1.0`. The overall score is the mean ratio over
+all tests. Higher recovered value is always scored strictly higher (up to the
+cap).
+
+## Constraints
+- `1 <= n <= 300`, `1 <= m <= 3600`.
+- `1 <= w`, `1 <= k`, and within a hypothesis the literals reference cells in
+  `[1, n]`.
+- Time limit: 5s. Memory limit: 512 MB.
+
+## Example
+Input:
+```
+4 4
+5 2 1 -3
+3 2 2 4
+10 3 1 2 3
+2 1 -4
+```
+This is a `2 x 2` grid (cells 1,2 in the top row; 3,4 in the bottom row).
+
+Baseline all-shallow plan `0 0 0 0`: hypothesis 1 is recovered (cell 3 shallow,
+value 5) and hypothesis 4 is recovered (cell 4 shallow, value 2); hypotheses 2
+and 3 are not. So `B = 5 + 2 = 7`.
+
+Consider the plan `1 1 0 0` (dig cells 1 and 2 deep):
+- Hypothesis 1 (`+1`): cell 1 deep -> recovered (5).
+- Hypothesis 2 (`+2`): cell 2 deep -> recovered (3).
+- Hypothesis 3 (`+1,+2,+3`): cell 1 deep -> recovered (10).
+- Hypothesis 4 (`-4`): cell 4 shallow -> recovered (2).
+
+So `F = 20` and `ratio = 100 * 20 / 7 / 1000 = 0.285714`, well above the `0.1`
+baseline.

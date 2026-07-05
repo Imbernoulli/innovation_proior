@@ -1,0 +1,16 @@
+{
+  "id": "fsx_N_0412",
+  "tier": "N",
+  "family": "maxsat-parity",
+  "seed_problem": "weighted MaxSAT",
+  "mutation": "composite: a clause pays its weight ONLY if its number of satisfied literals is congruent to a per-clause target residue r modulo 3 (parity-coupled satisfaction); maximize paid weight. Adds a modular/number-theoretic gate on top of weighted MaxSAT so satisfying more literals can drop a clause off-phase.",
+  "objective": "max",
+  "theme": "beehive apiary",
+  "title": "Resonant Waggle Nectar: Parity-Gated Foraging Routes",
+  "strategies": [
+    "all-WEST baseline (do-nothing calibration point)",
+    "single-pass per-bee best-response flips from all-WEST (one sweep, first-improvement)",
+    "single-flip hill climbing to convergence with multi-restart (all-WEST + all-EAST + deterministic random restarts), keep best",
+    "residue-aware move selection that targets clauses one flip away from their mod-3 target while respecting coupling across shared bees"
+  ]
+}

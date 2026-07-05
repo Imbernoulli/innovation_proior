@@ -1,0 +1,18 @@
+{
+  "id": "fsx_S_0023",
+  "tier": "S",
+  "format": "A",
+  "family": "independent-set-clique",
+  "eval_form": "quality-metric",
+  "seed_problem": "Select a maximum-weight set of mutually non-conflicting research sites on a general conflict graph; checker validates independence and scores weight/baseline.",
+  "mutation": "input: generalize the conflict graph from a nice (bipartite/structured) class to an arbitrary general graph with planted cliques and heavy-tailed vertex weights, so maximum-weight independent set is NP-hard and weight-greedy / weight-over-degree / randomized-restart / local-search strategies diverge.",
+  "objective": "max",
+  "theme": "e-sports arena",
+  "title": "Arena Showcase Lineup: Rivalry-Free Roster",
+  "strategies": [
+    "single-star baseline: feature only the highest-hype performer (always feasible; equals the checker baseline B)",
+    "weight-greedy: sort performers by hype descending and add each one whose addition keeps the roster rivalry-free",
+    "weight-over-degree greedy (GWMIN): repeatedly pick the remaining performer maximizing hype/(1+current-conflict-degree), feature it, and drop it and its rivals",
+    "randomized multi-restart with local-search fill: perturb greedy orders across seeded restarts, then greedily add any still-addable performer, and keep the highest-hype rivalry-free roster found"
+  ]
+}

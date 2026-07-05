@@ -1,0 +1,17 @@
+{
+  "id": "fsx_G_0464",
+  "tier": "G",
+  "format": "B",
+  "family": "ml-kernel-similarity",
+  "eval_form": "quality-metric",
+  "theme": "protein retrieval",
+  "title": "Protein Family Retrieval: Design the Similarity Kernel",
+  "objective": "max",
+  "source_frameworks": ["breadth-fill (dataset/domain/task diversity)", "MLS-Bench (retrieval mAP)"],
+  "strategies": [
+    "raw squared-Euclidean nearest-neighbour on the descriptors as given: retrieval is dominated by the per-protein abundance/length factor and the loud nuisance channels, reproducing the evaluator's weak reference (~0.1)",
+    "L1-normalize each descriptor to a composition (removes the abundance factor) then divide each channel by its across-batch std (equalizes nuisance vs informative scale), cosine kNN -- but skip centering, so the constant per-channel offsets still tilt the cosine: a little above baseline",
+    "full standardized kernel: composition-normalize + per-channel z-score (center out the baseline offsets AND equalize scale) + cosine kNN, so the quiet informative channels dominate the geometry and same-fold proteins cluster -- large mAP gain with headroom left",
+    "channel-reweighted / whitened kernels: on top of standardization, upweight channels with the most between-cluster (multimodal) structure or decorrelate channels, pushing mAP further toward the (unreachable) ceiling"
+  ]
+}

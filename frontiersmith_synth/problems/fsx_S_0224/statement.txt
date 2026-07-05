@@ -1,0 +1,139 @@
+# Firebreak Cohorts: Population-Balanced Contact Severance
+
+## Problem
+
+A public-health agency is fighting an airborne outbreak spreading across a regional
+**contact network**. Each node is a *venue* (a workplace, school, market, ...) with a known
+resident **population**, and each edge is a recurring **contact channel** between two venues,
+weighted by its estimated *transmission intensity* (how much virus flows along it per day).
+
+To slow the epidemic the agency will split every venue into one of **two isolation cohorts**,
+Cohort A and Cohort B. Contacts *within* a cohort keep spreading disease, but every contact
+channel whose two venues land in *different* cohorts is physically **severed** (people in
+different cohorts never meet). The agency wants to sever as much transmission intensity as
+possible — i.e. **maximize the total weight of the cut** between the two cohorts.
+
+There is a hard logistics constraint: the two cohorts must be roughly comparable in size so
+that testing, food and medical capacity can serve either one. Concretely, the total
+population placed in Cohort A must lie inside a given band `[L, U]` (a population-balance
+window around half of the total). Any assignment that violates the band is rejected outright.
+
+Formally: you are given an undirected weighted graph with a positive integer population on
+every node. Assign each node a label in `{0,1}` (label `1` = Cohort A) so that the summed
+population of the label-`1` nodes lies in `[L, U]`, maximizing the total weight of edges whose
+endpoints receive different labels.
+
+This is a **population-balanced maximum cut**: it is NP-hard, the optimum is unknown, and a
+wide range of heuristics (balance-aware greedy assignment, flip/​swap local search,
+spectral or randomized-restart methods) are viable and tend to diverge.
+
+## Input
+
+The first line contains four integers:
+
+```
+n m L U
+```
+
+- `n` — number of venues (nodes), numbered `1..n`.
+- `m` — number of contact channels (edges).
+- `L` `U` — the inclusive population band for Cohort A (`1 <= L <= U`).
+
+The second line contains `n` integers:
+
+```
+p_1 p_2 ... p_n
+```
+
+where `p_i >= 1` is the resident population of venue `i`. Let `T = p_1 + ... + p_n`.
+
+Each of the next `m` lines describes one contact channel:
+
+```
+u v w
+```
+
+a channel of transmission intensity `w` (`w >= 1`) between venues `u` and `v`
+(`1 <= u, v <= n`, `u != v`). Parallel channels between the same pair may appear and are all
+counted separately.
+
+It is guaranteed that `L <= U`, that `U - L >= 2 * max_i p_i`, and that `L >= max_i p_i`
+and `U <= T - max_i p_i`, so a balanced assignment always exists.
+
+## Output
+
+Print `n` integers `c_1 c_2 ... c_n`, each `0` or `1`, where `c_i` is the cohort label of
+venue `i` (`1` = Cohort A). They may be separated by spaces and/or newlines.
+
+## Feasibility
+
+An output is feasible iff:
+
+- exactly `n` labels are printed, each equal to `0` or `1`;
+- there is no trailing garbage;
+- the total Cohort-A population `S_A = sum of p_i over i with c_i = 1` satisfies `L <= S_A <= U`.
+
+Any infeasible output scores `0`.
+
+## Objective
+
+Let `F` be the total weight of **cut** channels — channels `(u,v,w)` with `c_u != c_v`. You
+are **maximizing** `F`.
+
+## Scoring
+
+The checker builds an internal **balance-only baseline**: it scans the venues in index order
+and repeatedly assigns the next venue to whichever cohort currently holds the *smaller*
+population (ties go to Cohort B). This cut-oblivious construction always satisfies the band;
+let `B` be its cut weight. The score for a test is
+
+```
+ratio = min(1.0, 0.1 * F / B)
+```
+
+An assignment that merely reproduces the balance-only baseline (`F = B`) scores `0.1`;
+reaching a ten-fold improvement (`F = 10*B`) caps the score at `1.0`. The overall score is
+the mean ratio across all tests.
+
+## Constraints
+
+- `2 <= n <= 2000`, `1 <= m <= 20000`.
+- `1 <= p_i <= 50`.
+- `1 <= w <= 100`.
+- The band guarantees above hold, so a feasible assignment always exists.
+- Time limit: 5 s. Memory limit: 512 MB.
+
+## Example
+
+Input:
+
+```
+4 4 2 6
+3 3 2 2
+1 2 10
+2 3 1
+3 4 10
+1 4 1
+```
+
+Total population `T = 10`, band `[2,6]`.
+
+Balance-only baseline: process venues `1..4`, each time filling the lighter cohort (ties to B).
+Venue 1 (pop 3) -> B; venue 2 (pop 3) -> A (A=0 < B=3); venue 3 (pop 2) -> A (A=3=B, tie... A=3
+vs B=3 equal -> tie goes to B, so B); venue 4 (pop 2) -> A (A=3 < B=5). Labels
+`c = [0,1,0,1]`, `S_A = p_2 + p_4 = 5 in [2,6]`. Cut channels: `(1,2)` and `(3,4)` cross,
+`(2,3)` and `(1,4)` cross too -> here all four cross, `B = 10+1+10+1 = 22`.
+
+A better assignment `c = [1,0,1,0]` puts venues 1,3 in A: `S_A = 3+2 = 5 in [2,6]`; cut
+channels are `(1,2)=10, (2,3)=1, (3,4)=10, (1,4)=1`, all cross again, `F = 22`. To beat the
+baseline you must break the alternating pattern; e.g. `c = [1,1,0,0]` gives `S_A = 6 in [2,6]`
+and cut `= (2,3)=1 + (1,4)=1 = 2 < 22`, which is worse. On this tiny instance the baseline is
+already near-optimal; on the large generated instances it is far from it.
+
+A valid worked output:
+
+```
+0 1 0 1
+```
+
+Its score is `min(1.0, 0.1 * 22 / 22) = 0.1`.

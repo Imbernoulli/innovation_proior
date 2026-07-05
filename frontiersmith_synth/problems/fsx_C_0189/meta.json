@@ -1,0 +1,17 @@
+{
+  "id": "fsx_C_0189",
+  "tier": "C",
+  "format": "B",
+  "family": "optimization-convergence-analysis",
+  "eval_form": "flops",
+  "theme": "tide pool ecology",
+  "title": "Tide-Pool Truce: Extragradient Schedule Design for a Predator-Prey Saddle",
+  "objective": "min",
+  "source_frameworks": ["MLS-Bench (optimization-*)"],
+  "strategies": [
+    "trivial: zero step sizes -- take no steps, so the equilibrium-gradient norm stays at the starting value and the normalized score sits at the ~0.1 baseline floor",
+    "greedy: constant-step extragradient eta_k=gamma_k=1/||M||_2, the textbook stable choice; it converges but wastes the fixed budget by never accelerating or polishing",
+    "strong: simulate the exact update template internally and search the per-step (eta_k,gamma_k) schedule -- a constant-scale grid around 1/L followed by coordinate descent -- spending early steps aggressively and late steps as fine correction",
+    "invalid: emit non-finite (NaN/Inf) step sizes; the evaluator rejects the schedule and scores 0"
+  ]
+}

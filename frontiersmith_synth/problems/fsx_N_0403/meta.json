@@ -1,0 +1,16 @@
+{
+  "id": "fsx_N_0403",
+  "tier": "N",
+  "family": "packing-quadratic-residue",
+  "seed_problem": "FrontierSmith bespoke-novelty: pack weighted items into groups valid only when the group key-sum is a quadratic residue mod p; maximize packed weight",
+  "mutation": "composite: multi-loop knapsack (per-loop coolant budget C, at most M loops) x finite-field side-constraint (loop key-sum must be a nonzero quadratic residue mod prime p), with a non-linear fill-coupled yield yield=W+floor(W*U/(2C)); adversarial generator plants heavy rigs that are unstable alone but stable when grouped (needle) plus one-off near-miss traps",
+  "objective": "max",
+  "theme": "cryptomine cooling loops",
+  "title": "Cryptomine Cooling Loops",
+  "strategies": [
+    "reference baseline: keep each individually-stable rig as its own loop, take the M heaviest (ratio ~0.1)",
+    "weight-greedy grouping: pack heaviest rigs into loops up to the coolant budget, then drop one rig to repair the quadratic-residue lock",
+    "density knapsack + residue repair: fill loops by weight/coolant density near the budget, repair the residue lock by the min-weight-loss add-or-drop, and merge heavy rigs that are unstable alone into a stable group",
+    "local search: swap rigs between loops / re-pick the residue-repair rig to raise fill bonus and salvage more heavy rigs"
+  ]
+}

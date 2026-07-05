@@ -1,0 +1,18 @@
+{
+  "id": "fsx_S_0272",
+  "tier": "S",
+  "format": "A",
+  "family": "partition-clustering",
+  "eval_form": "quality-metric",
+  "seed_problem": "Partition a weighted graph into two balanced halves maximizing cut weight; checker validates balance and scores cut/baseline.",
+  "mutation": "input+output: relax the strict bisection to a headcount BAND (| |A|-|B| | <= L) and plant a heavy friction chain so the contiguous-split baseline is deliberately weak; the balance-band max-cut on this planted, heavy-tailed instance is NP-hard and single-move / swap / multi-restart heuristics diverge.",
+  "objective": "max",
+  "theme": "polar research base",
+  "title": "Aurora Station: Two-Habitat Crew Split",
+  "strategies": [
+    "contiguous-split baseline: crew 1..floor(n/2) to A, rest to B (the calibration point)",
+    "single-move local search: from the contiguous split, greedily flip each crew to the other habitat when it increases cut and keeps the headcount band feasible",
+    "swap-based local search: exchange a crew in A with a crew in B (balance-preserving) whenever it raises the cut, iterated to convergence",
+    "randomised multi-restart: many random balanced starts, local search each to a local optimum, keep the highest-cut split"
+  ]
+}

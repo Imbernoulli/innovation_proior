@@ -1,0 +1,16 @@
+{
+  "id": "fsx_A_0295",
+  "tier": "A",
+  "format": "C",
+  "family": "functional-inequality-constant",
+  "eval_form": "quality-metric",
+  "theme": "reservoir dam network",
+  "title": "Reservoir Spectral-Load Constant",
+  "objective": "min",
+  "strategies": [
+    "half-block baseline (all capacity crammed into one contiguous half of the chain)",
+    "uniform capacity across the whole chain (flat spectrum, mediocre)",
+    "analytic tapered 'tent/smile' profile shaping the stress spectrum",
+    "min-energy descent: Adam on the L2 autoconvolution objective with non-negativity projection and deterministic restarts"
+  ]
+}

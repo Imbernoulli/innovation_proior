@@ -1,0 +1,18 @@
+{
+  "id": "fsx_S_0050",
+  "tier": "S",
+  "format": "A",
+  "family": "covering-facility-location",
+  "eval_form": "quality-metric",
+  "seed_problem": "Place watchtowers on a forest graph to cover every cell within radius r, minimizing total cost; score = baseline_cost / achieved_cost.",
+  "mutation": "composite: keep the graph-radius covering goal but (input) replace the pure grid with a grid-plus-express-corridor weighted graph and (output) attach a heterogeneous menu of candidate stations, each with an independent construction cost AND its own coverage radius, so the task becomes a NP-hard weighted set-cover / facility-location optimization instead of a uniform-cost k-center placement.",
+  "objective": "min",
+  "theme": "harbor container port",
+  "title": "Harbor Watch: Minimum-Cost Surveillance of a Container Port",
+  "strategies": [
+    "build-everything baseline: construct all candidate stations (guaranteed feasible, defines B)",
+    "weighted greedy set cover: repeatedly build the station minimizing cost per newly-monitored demand block, using graph-radius coverage",
+    "greedy + redundancy pruning: after a greedy cover, drop any station whose demand is fully covered by the others (cheapest-first)",
+    "randomized multi-restart greedy with local swaps: perturb greedy tie-breaks, prune redundancy each restart, and keep the cheapest feasible cover found"
+  ]
+}

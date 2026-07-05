@@ -1,0 +1,16 @@
+{
+  "id": "fsx_S_0227",
+  "tier": "S",
+  "family": "independent-set-clique",
+  "seed_problem": "Select a maximum-weight set of mutually non-conflicting research sites on a general conflict graph; checker validates independence and scores weight/baseline.",
+  "mutation": "input: skin the max-weight-independent-set selection as issuing rush-hour busker performance permits across a large subway system and place the conflict relation on a general (non-bipartite, possibly dense, up to 5000 pitches / 60000 conflicts) crowd-interference graph with per-pitch audience values, so the easy bipartite/interval special cases vanish and constructing the optimum conflict-free permit set is NP-hard.",
+  "objective": "max",
+  "theme": "subway system",
+  "title": "Metro Busker Permit Scheduling",
+  "strategies": [
+    "trivial baseline: grant only the single highest-value pitch (matches checker baseline, ratio ~0.1)",
+    "weight-descending greedy: consider pitches from highest to lowest value, granting each whose grant introduces no conflict with the already-granted set",
+    "degree-aware greedy: order pitches by value/(conflict-degree+1) so high-value low-interference pitches are taken first, yielding larger conflict-free sets on dense graphs",
+    "multi-restart randomized greedy + maximal extension: run many seeded value-weighted random orderings, greedily build a maximal conflict-free set from each, and keep the highest-value schedule found"
+  ]
+}

@@ -1,0 +1,121 @@
+# Windward Array: Sensor Mode Calibration
+
+## Problem
+
+The *Windward* transonic wind tunnel is instrumented with `n` reconfigurable sensors.
+Before a run, every sensor is locked into exactly one of two **calibration modes**:
+
+- mode `0` — the low-gain (pressure) mode,
+- mode `1` — the high-gain (velocity) mode.
+
+The run's science team has filed `m` **data-quality requirements**. Each requirement is
+happy ("satisfied") as soon as *at least one* of a small handful of named sensors is in a
+particular mode; each requirement carries a positive **scientific weight** describing how
+valuable its data channel is. A requirement is written as a set of *literals*: a literal
+`+i` is met when sensor `i` is in mode `1`, and a literal `-i` is met when sensor `i` is in
+mode `0`. The requirement is satisfied iff at least one of its literals is met.
+
+Because a single sensor can serve several requirements at once — and the requirements pull
+individual sensors toward opposite modes — you usually cannot satisfy them all. Choose a
+mode for every sensor so that the **total scientific weight of the satisfied requirements**
+is as large as possible.
+
+This is a weighted Max-SAT problem: it is NP-hard, the optimum is unknown in general, and
+many heuristics (weighted majority voting, hill-climbing local search, randomized
+multi-restart) are viable and tend to diverge.
+
+## Input
+
+The first line contains two integers:
+
+```
+n m
+```
+
+- `n` — number of sensors, indexed `1..n`.
+- `m` — number of data-quality requirements.
+
+Each of the next `m` lines describes one requirement:
+
+```
+w L l_1 l_2 ... l_L
+```
+
+- `w` — the positive scientific weight of the requirement (`1 <= w`).
+- `L` — the number of literals in the requirement (`1 <= L <= 3`).
+- `l_1 ... l_L` — the literals, each a nonzero integer with `1 <= |l_j| <= n`. A positive
+  value `+i` means "sensor `i` in mode `1`"; a negative value `-i` means "sensor `i` in
+  mode `0`". The literals of one requirement reference distinct sensors.
+
+## Output
+
+Print `n` integers `a_1 a_2 ... a_n`, separated by whitespace (spaces or newlines), where
+`a_i` in `{0, 1}` is the chosen calibration mode of sensor `i`.
+
+## Feasibility
+
+An output is feasible iff it contains exactly `n` integers and every one of them is `0` or
+`1`. Any output that is missing values, has extra tokens, or contains a value outside
+`{0,1}` is infeasible and scores `0`.
+
+## Objective
+
+Given your assignment `a`, a requirement is *satisfied* if at least one of its literals is
+met (`+i` met when `a_i = 1`, `-i` met when `a_i = 0`). Let `F` be the sum of the weights
+of the satisfied requirements. You are **maximizing** `F`.
+
+## Scoring
+
+Let `B` be the total satisfied weight of the **all-`0`** assignment (every sensor in mode
+`0`) — the do-nothing calibration the tunnel ships in. The score for a test is
+
+```
+ratio = min(1.0, 0.1 * F / B)
+```
+
+The all-`0` submission (`F = B`) scores `0.1`; reaching a ten-fold improvement
+(`F = 10*B`) caps the score at `1.0`. The overall score is the mean ratio across all tests.
+
+## Constraints
+
+- `1 <= n <= 200`.
+- `1 <= m <= 1000`.
+- `1 <= L <= 3` literals per requirement.
+- `1 <= w <= 1000`.
+- The instance always has at least one requirement satisfied by the all-`0` assignment, so
+  `B >= 1`.
+- Time limit: 5 s. Memory limit: 512 MB.
+
+## Example
+
+Input:
+
+```
+3 4
+6 2 1 2
+4 1 3
+5 2 1 3
+3 1 -2
+```
+
+There are 3 sensors and 4 requirements.
+
+The all-`0` assignment `0 0 0` satisfies only the last requirement (`-2` is met because
+sensor 2 is in mode `0`), so `B = 3`.
+
+Consider the assignment `1 0 1`:
+
+- `6 2 1 2` — `+1` met (sensor 1 = 1): satisfied, `+6`.
+- `4 1 3` — `+3` met (sensor 3 = 1): satisfied, `+4`.
+- `5 2 1 3` — `+1` met: satisfied, `+5`.
+- `3 1 -2` — `-2` met (sensor 2 = 0): satisfied, `+3`.
+
+All four requirements are satisfied, so `F = 6 + 4 + 5 + 3 = 18`.
+
+Score for this test: `min(1.0, 0.1 * 18 / 3) = min(1.0, 0.6) = 0.6`.
+
+A valid worked output:
+
+```
+1 0 1
+```

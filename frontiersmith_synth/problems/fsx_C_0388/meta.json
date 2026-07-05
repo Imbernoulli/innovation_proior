@@ -1,0 +1,15 @@
+{
+  "id": "fsx_C_0388",
+  "tier": "C",
+  "format": "B",
+  "family": "synthetic-algorithmic-generalization",
+  "eval_form": "correctness",
+  "theme": "geothermal wells",
+  "title": "Casing-Log Validity: In-Distribution vs Length-OOD Generalization",
+  "strategies": [
+    "trivial: predict every log VALID (constant) -> baseline calibration",
+    "greedy: threshold the spurious `length` cue -> aces ID, collapses to chance on length-OOD",
+    "strong: length/order-invariant structural rule (abs_balance==0 AND max_depth<=Dmax) -> transfers to OOD",
+    "invalid: wrong-shape weight vector -> rejected"
+  ]
+}

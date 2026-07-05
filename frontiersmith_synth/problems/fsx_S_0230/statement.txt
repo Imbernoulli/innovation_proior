@@ -1,0 +1,101 @@
+# Alpine Lift Network Coverage
+
+## Problem
+You are the planning engineer for an alpine ski resort. The mountain is modeled as a
+connected weighted graph of **N** skiable *zones* (vertices) joined by **M** groomed
+*slopes* (edges). Each slope has an integer *ski-time* length. A guest standing in zone
+`i` can comfortably reach zone `j` on skis if the shortest total ski-time along slopes
+from `i` to `j` is at most a fixed *comfort radius* **R** (a lift ride back up is assumed
+free once inside range).
+
+You may install a **base station with a chair lift** in some subset of zones. Installing a
+station in zone `j` costs `cost[j]` (an integer). A station placed in zone `j` **serves**
+every zone `i` whose shortest ski-time distance `d(i, j)` satisfies `d(i, j) <= R`
+(in particular it always serves its own zone, since `d(j, j) = 0`).
+
+Your plan is *valid* only if **every** zone is served by at least one installed station.
+Among all valid plans you want to spend as little money as possible.
+
+This is a weighted covering / facility-location problem: choosing few well-placed cheap
+stations to dominate the whole mountain. The exact optimum is NP-hard, so heuristics
+(cost-effective greedy set cover, LP-style rounding, local search / redundancy pruning)
+are expected and are graded by how cheap a valid plan you find.
+
+## Input
+```
+N M R
+cost[1] cost[2] ... cost[N]
+u_1 v_1 w_1
+u_2 v_2 w_2
+...
+u_M v_M w_M
+```
+- Line 1: number of zones `N`, number of slopes `M`, comfort radius `R`.
+- Line 2: the `N` installation costs, `cost[i] >= 1`, one zone per token (1-indexed).
+- Each of the next `M` lines: an undirected slope between distinct zones `u` and `v`
+  (1-indexed) with positive integer ski-time `w`. The graph is connected. There may be
+  parallel slopes; the shortest one is what matters.
+
+## Output
+```
+K
+s_1 s_2 ... s_K
+```
+- Line 1: `K`, the number of stations you install (`1 <= K <= N`).
+- Line 2: the `K` **distinct** zone indices (each in `[1, N]`) where you install a station.
+  If `K` = 0 is never valid, so `K >= 1`. (A single line with the `K` indices; whitespace
+  separated. If `K` fits your plan on one token per index that is fine.)
+
+## Feasibility
+A plan is feasible iff:
+1. `1 <= K <= N`;
+2. all `K` indices are in `[1, N]` and pairwise distinct;
+3. every zone `i in {1..N}` is served by at least one installed station, i.e. there exists
+   a chosen station `s` with `d(i, s) <= R`.
+
+Any output violating these rules scores **0**.
+
+## Objective
+Minimize the total installation cost
+```
+F = sum over chosen stations s of cost[s].
+```
+
+## Scoring
+Let `B` be the cost of the trivial *build-everywhere* plan (install a station in every
+zone): `B = cost[1] + ... + cost[N]`. This plan is always feasible. Your score on a test is
+```
+ratio = min(1.0, (B / F) / 10)
+```
+so installing everywhere yields `ratio = 0.1`, and any plan at least 10x cheaper than
+build-everywhere caps at `ratio = 1.0`. Cheaper valid plans score strictly higher. The
+overall score is the mean ratio across all tests.
+
+## Constraints
+- `1 <= N <= 200`, `N-1 <= M <= 4*N + 200`.
+- `1 <= w <= 20` (slope ski-time), `0 <= R <= 400` (comfort radius).
+- `1 <= cost[i] <= 1000`.
+- Time limit: 5 s. Memory limit: 512 MB.
+
+## Example
+Input:
+```
+5 5 10
+7 3 3 7 3
+1 2 6
+2 3 6
+3 4 6
+4 5 6
+2 4 20
+```
+The path 1-2-3-4-5 has slope lengths 6 each. With `R = 10`, a station in zone 2 serves
+zones 1, 2, 3 (distances 6, 0, 6) but not zone 4 (distance 12). A station in zone 4 serves
+zones 3, 4, 5.
+
+- Build-everywhere cost `B = 7+3+3+7+3 = 23`.
+- A valid plan `{2, 4}` covers all zones (1,2,3 by station 2; 3,4,5 by station 4) at cost
+  `3 + 7 = 10`, giving `ratio = min(1, (23/10)/10) = 0.23`.
+- A cheaper valid plan `{2, 5}`: station 2 serves 1,2,3; station 5 serves 4,5 (distance 6)
+  and 3 (distance 12 > 10, not needed). Cost `3 + 3 = 6`, `ratio = min(1,(23/6)/10) = 0.3833`.
+```
+```

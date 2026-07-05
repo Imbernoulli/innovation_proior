@@ -1,0 +1,17 @@
+{
+  "id": "fsx_A_0342",
+  "tier": "A",
+  "format": "B",
+  "family": "online-heuristic-simulator",
+  "eval_form": "quality-metric",
+  "theme": "power grid",
+  "title": "Feeder Consolidation on a Distribution Substation",
+  "objective": "optimize",
+  "source_frameworks": ["FunSearch (bin-packing)", "ALE-Bench (dispatch rules)"],
+  "strategies": [
+    "next-fit dispatch baseline: keep loading the current transformer until a block exceeds the thermal cap OR the breaker panel is full, then energize a new one and never look back (reproduces the evaluator's weak reference)",
+    "first-fit in arrival order: energize each block onto the lowest-index transformer that still has both thermal room and a free breaker channel, reusing earlier gaps but never reordering the queue",
+    "decreasing-order packing under the dual cap: steer the largest blocks first via first-fit-decreasing / best-fit-decreasing (respecting the K-channel limit), keeping the fewer-transformer dispatch so small blocks top off partly loaded transformers",
+    "seeded local search / metaheuristics: start from a decreasing-order dispatch and relocate/swap blocks between transformers (respecting both C and K) or run perturb-and-reoptimize restarts to retire near-empty transformers"
+  ]
+}

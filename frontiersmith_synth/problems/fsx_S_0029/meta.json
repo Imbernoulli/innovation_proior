@@ -1,0 +1,18 @@
+{
+  "id": "fsx_S_0029",
+  "tier": "S",
+  "family": "scheduling-jssp",
+  "seed_problem": "Frontier-Eng JobShop / ALE-Bench: emit a machine schedule for a synthetic JSSP instance; checker validates precedence + no-overlap and scores 100*optimum/makespan.",
+  "mutation": "goal+theme: keep the job-shop precedence + no-overlap structure but replace the makespan objective with the total weighted completion time sum_j w_j*C_j (a distinct NP-hard JSSP objective from the makespan seed and from fsx_S_0005), and replace the unknown optimum in the score with a checker-computed, always-feasible serial baseline B (weighted completion of building corridors one at a time in input order). Skinned as large-scale wildlife-corridor construction with priority weights; difficulty ladder adds a bottleneck crew and skewed urgencies at high testId.",
+  "objective": "optimize",
+  "theme": "wildlife corridor",
+  "title": "Wildlife Corridor Construction: Minimum Weighted Completion Schedule",
+  "strategies": [
+    "serial baseline: build every corridor one after another on a single global timeline (feasible, ratio 0.1)",
+    "SPT non-delay list scheduling: dispatch the ready segment with the smallest earliest feasible start",
+    "WSPT priority: order corridors by remaining-work / weight so urgent short corridors finish first",
+    "heaviest-weight-first dispatch to pull high-priority corridors' completion earlier",
+    "multi-restart randomized list scheduling: perturb the WSPT priority key and keep the minimum-weighted-completion schedule",
+    "local search / shifting-bottleneck refinement on top of a good dispatch"
+  ]
+}

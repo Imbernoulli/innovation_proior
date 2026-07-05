@@ -1,0 +1,18 @@
+{
+  "id": "fsx_C_0195",
+  "tier": "C",
+  "format": "B",
+  "family": "optimization-convergence-analysis",
+  "eval_form": "flops",
+  "theme": "interstellar relay",
+  "title": "Interstellar Relay: Beam-Alignment Saddle Optimizer",
+  "objective": "min",
+  "source_frameworks": ["MLS-Bench (optimization-*)"],
+  "isolation": "candidate runs as an isolated stdin->stdout subprocess via isorun; the hidden saddle matrices, ground-truth equilibria, and evaluator state stay in the parent process",
+  "strategies": [
+    "reproduce the reference extragradient step 1/(2L) -> ~0.1 on every relay class (no design)",
+    "constant near-edge extragradient step 0.9/L -> beats the conservative reference on well-conditioned relays but wastes budget on rotation-dominated / ill-conditioned ones",
+    "structure-adaptive schedule: near-edge extragradient step + heavy-ball momentum tuned to mu/L on symmetric ill-conditioned classes, momentum suppressed on rotation-dominated (bilinear/mixed) classes where it diverges -> strong across the whole family",
+    "per-step decaying / restarted schedules, optimistic-gradient (OGDA) coefficients, or Nesterov-style acceleration expressed through the (eta_t, alpha_t, beta_t) arrays"
+  ]
+}

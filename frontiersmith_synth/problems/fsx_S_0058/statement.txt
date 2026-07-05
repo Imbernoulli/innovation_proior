@@ -1,0 +1,95 @@
+# Lunar Habitat Reconfiguration: Life-Support Mode Assignment
+
+## Problem
+A lunar surface habitat is built from `n` life-support modules (airlocks, sabatier
+reactors, thermal loops, electrolysers, ...). Before each long lunar night the ground
+crew must place **every** module into exactly one of `D` discrete **operating
+configurations** numbered `0, 1, ..., D-1` (config `0` is the default idle/safe mode).
+Your job is to choose one configuration per module.
+
+Mission control has compiled `m` **survivability requirements**. Each requirement watches
+a small group of modules and is **met** if **at least one** of the watched modules is set
+to a specific configuration that the requirement calls for. Formally, requirement `j` is a
+weighted disjunction of `k_j` *demands*: a demand is a pair `(v, a)` meaning "module `v` is
+in configuration `a`". Requirement `j` carries a positive integer **criticality weight**
+`w_j`, and it is met if **any** of its demands `(v, a)` holds under your assignment.
+
+Because power, heat and crew-time couple every module to many requirements at once, no
+assignment can meet them all. This is a **weighted Maximum Constraint Satisfaction
+(Max-CSP)** instance over finite domains: you maximize the total criticality weight of met
+requirements. It generalizes weighted Max-SAT (the case `D = 2`) and finding the optimum is
+NP-hard, so strong heuristics (greedy coordinate ascent, hill-climbing, multi-restart local
+search) are expected.
+
+## Input (stdin)
+```
+n m D
+<m lines, each: w k v_1 a_1 v_2 a_2 ... v_k a_k>
+```
+- Line 1: number of modules `n`, number of requirements `m`, and domain size `D`.
+- Each of the next `m` lines describes one requirement: its weight `w` (`1 <= w`), its arity
+  `k` (`1 <= k`), then `k` demand pairs. In a pair `v a`, `1 <= v <= n` is a module index and
+  `0 <= a <= D-1` is a configuration. Within one requirement the referenced modules `v` are
+  distinct.
+
+## Output (stdout)
+```
+c_1 c_2 ... c_n
+```
+Print exactly `n` integers, each in `{0, 1, ..., D-1}`. `c_v` is the configuration chosen for
+module `v`. Whitespace/newlines between values are ignored; there must be exactly `n` of them
+and nothing else.
+
+## Feasibility
+An output is valid iff it contains **exactly `n`** tokens and **every** token is an integer in
+`[0, D-1]`. Any other output (wrong count, a value outside the range, trailing junk) scores
+`Ratio: 0.0`.
+
+## Objective
+Maximize `F` = the total criticality weight of met requirements under your assignment, where
+requirement `j` is met iff at least one of its demands `(v, a)` has `c_v == a`.
+
+## Scoring
+The checker builds its own trivial reference assignment: **all modules in the default config
+`0`** (every `c_v = 0`). Under this assignment a requirement is met iff it contains at least
+one demand `(v, 0)`, so the baseline weight is
+```
+B = sum of w_j over requirements that contain at least one demand of the form (v, 0)   (B >= 1).
+```
+With the maximization normalization:
+```
+sc = min(1000.0, 100.0 * F / max(1e-9, B))
+Ratio = sc / 1000.0
+```
+Reproducing the all-default assignment gives `F = B` and `Ratio = 0.1`. An assignment that
+meets `10x` the baseline weight caps at `Ratio = 1.0`.
+
+## Constraints
+- `12 <= n <= 110`.
+- `1 <= m <= 1500`.
+- `2 <= D <= 5`.
+- `1 <= k <= 5` for every requirement; weights `1 <= w <= 60`.
+- Time limit: 6s. Memory limit: 512m.
+
+## Example
+Input:
+```
+3 4 3
+5 2 1 1 2 2
+3 2 1 0 3 1
+4 1 2 1
+2 2 2 0 3 0
+```
+Requirements: `R1 = (c1=1 OR c2=2)` w5, `R2 = (c1=0 OR c3=1)` w3, `R3 = (c2=1)` w4,
+`R4 = (c2=0 OR c3=0)` w2.
+
+Baseline (all default `0 0 0`): met requirements are those with a demand `(v,0)`:
+R2 (`c1=0` holds) and R4 (`c2=0` holds), so `B = 3 + 2 = 5`.
+
+Suppose you output `1 1 0` (c1=1, c2=1, c3=0):
+- `R1 (c1=1 OR c2=2)`: c1=1 -> met (w5).
+- `R2 (c1=0 OR c3=1)`: c1=1, c3=0 -> NOT met.
+- `R3 (c2=1)`: c2=1 -> met (w4).
+- `R4 (c2=0 OR c3=0)`: c3=0 -> met (w2).
+
+`F = 5 + 4 + 2 = 11`. `sc = 100 * 11 / 5 = 220`, so `Ratio = 0.220`.

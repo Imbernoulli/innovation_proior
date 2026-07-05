@@ -1,0 +1,17 @@
+{
+  "id": "fsx_A_0312",
+  "tier": "A",
+  "format": "B",
+  "family": "online-heuristic-simulator",
+  "eval_form": "quality-metric",
+  "theme": "asteroid mining",
+  "title": "Belt Rush: Hauler Stowage for a Mining Shift",
+  "objective": "optimize",
+  "source_frameworks": ["FunSearch (bin-packing)", "ALE-Bench (dispatch rules)"],
+  "strategies": [
+    "streaming Next-Fit autoloader: keep one hauler open and seal it the instant a fragment does not fit (reproduces the evaluator's weak baseline; never back-fills, scores ~0.1)",
+    "First-Fit in arrival order: drop each fragment into the first open hauler with room, else open a new one; back-fills earlier haulers and clears the streaming baseline",
+    "Best-Fit-Decreasing plus least-loaded-hauler emptying: pack big fragments first into the tightest-fitting hauler, then relocate the fragments of the least-loaded hauler to dispatch one fewer",
+    "invalid: stow every fragment into a single hauler, overflowing capacity so the plan fails validation and scores 0.0"
+  ]
+}

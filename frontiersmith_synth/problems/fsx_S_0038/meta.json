@@ -1,0 +1,18 @@
+{
+  "id": "fsx_S_0038",
+  "tier": "S",
+  "format": "A",
+  "family": "covering-facility-location",
+  "eval_form": "quality-metric",
+  "seed_problem": "Place watchtowers on a forest graph to cover every cell within radius r, minimizing total cost; score = baseline_cost / achieved_cost.",
+  "mutation": "output: keep the radius-r coverage goal but make watchtower sites carry per-cell installation costs and require full monitoring of an arbitrary trail graph, so the optimum is a minimum-weight r-dominating / covering-facility-location set (NP-hard) where cost-blind, cost-effective, and local-search heuristics diverge.",
+  "objective": "min",
+  "theme": "wildlife corridor",
+  "title": "Wildlife Corridor: Watchtower Coverage on a Habitat Graph",
+  "strategies": [
+    "build-everywhere baseline: a watchtower on every cell (always feasible, calibration point)",
+    "cost-blind max-coverage greedy: repeatedly build where it newly monitors the most cells",
+    "cost-effective greedy: repeatedly build the tower minimizing cost per newly monitored cell, then prune redundant towers whose cells are all doubly covered",
+    "randomized restart local search: shuffled cost-effective greedy over many restarts plus redundancy pruning, keeping the cheapest feasible cover found"
+  ]
+}

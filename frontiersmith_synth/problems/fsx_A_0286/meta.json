@@ -1,0 +1,18 @@
+{
+  "id": "fsx_A_0286",
+  "tier": "A",
+  "format": "C",
+  "family": "integer-matrix-construction",
+  "eval_form": "quality-metric",
+  "theme": "warehouse robotics",
+  "title": "Warehouse Fleet Polarity Array with Pre-Wired Dock Cells",
+  "objective": "max",
+  "source_frameworks": ["OpenEvolve", "ThetaEvolve", "SimpleTES"],
+  "strategies": [
+    "trivial: emit the first non-singular seeded random +/-1 completion that respects the pre-wired cells (nonzero |det|, ~0.1)",
+    "greedy: seeded multi-restart random sampling, keep the completion with the largest exact |det| (beats trivial, no local search)",
+    "strong: Sherman-Morrison rank-1 incremental hill climbing on |det| over the free (non-wired) cells with many random restarts -- flips the free sign maximizing |1 + delta * Ainv[j][i]| until a local optimum",
+    "invalid: emit entries outside {-1,+1} (0s) or violate a pre-wired cell -> feasibility gate rejects -> 0"
+  ],
+  "notes": "Odd N (9..23) => no Hadamard/Paley matrix exists at these orders, and the pre-wired cells forbid dropping in any known closed-form max-det construction, so the optimum stays genuinely unknown. Determinant scored EXACTLY via Bareiss integer elimination; objective is bit-length of |det| (compresses the super-exponential range so the score never trivially saturates)."
+}

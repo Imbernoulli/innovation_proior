@@ -1,0 +1,16 @@
+{
+  "id": "fsx_G_0435",
+  "tier": "G",
+  "format": "E",
+  "family": "sci-finance-vol-surface",
+  "eval_form": "quality-metric",
+  "theme": "options desk",
+  "title": "Far-Wing Implied-Volatility Surface Recovery — extrapolating symbolic regression",
+  "objective": "min",
+  "strategies": [
+    "flat-vol constant: predict the mean training implied vol (ignores smile) -> ~0.1",
+    "linear least squares sigma ~ 1 + k + t: captures skew + term structure but misses the k^2 smile, so it extrapolates poorly into the wings",
+    "structured basis [1, t, k, k^2, k^2*exp(-r*t)] with a grid search over the hidden smile-decay rate r, coefficients by least squares",
+    "alternatives: finer / continuous optimisation of r, ridge-regularised bases, or extra maturity cross-terms to trade complexity penalty against held-out wing error"
+  ]
+}

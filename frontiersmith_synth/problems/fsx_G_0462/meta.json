@@ -1,0 +1,17 @@
+{
+  "id": "fsx_G_0462",
+  "tier": "G",
+  "format": "B",
+  "family": "ml-lr-schedule",
+  "eval_form": "quality-metric",
+  "theme": "convex trainer",
+  "title": "Spectral Trainer: Learning-Rate Schedule Design",
+  "objective": "min",
+  "source_frameworks": ["breadth-fill (dataset/domain/task diversity)", "MLS-Bench optimization"],
+  "strategies": [
+    "conservative constant step eta=1/L (reproduces the evaluator's weak baseline; barely reduces slow modes -> ~0.1)",
+    "optimal constant step eta=2/(L+mu) for the quadratic (contraction rate (kappa-1)/(kappa+1) per step; beats 1/L but no acceleration; can oscillate on edge-heavy spectra)",
+    "Chebyshev step schedule: reciprocals of the roots of the degree-N minimax residual polynomial on [mu,L] -> accelerated rate (sqrt(kappa)-1)/(sqrt(kappa)+1); near-optimal worst-case, ignores gradient weights",
+    "per-instance polynomial optimization: weight the residual polynomial by the actual gradient components g_i (weighted-Chebyshev / least-squares fit or coordinate descent on the step sizes) to beat interval-Chebyshev on the discrete weighted spectrum, approaching the headroom ceiling"
+  ]
+}

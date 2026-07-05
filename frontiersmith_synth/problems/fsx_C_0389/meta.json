@@ -1,0 +1,17 @@
+{
+  "id": "fsx_C_0389",
+  "tier": "C",
+  "format": "B",
+  "family": "modular-component-cross-setting",
+  "eval_form": "quality-metric",
+  "theme": "solar farm inverters",
+  "title": "Solar-Farm Inverter Bench: Design a Drop-in Activation for the Inverter-Response Surrogate",
+  "objective": "optimize",
+  "source_frameworks": ["MLS-Bench (dl-*/llm-*, CPU proxies only)"],
+  "strategies": [
+    "identity / linear head (g(x)=x): the surrogate degenerates to a linear ridge that only sees the linear part of each inverter response; reproduces the evaluator baseline at ~0.1",
+    "single modern default (one ReLU / swish): rectified random features are a near-universal basis and clear the linear baseline everywhere, but one shape under-serves the even, localized responses (efficiency bell, MPP parabola) and leaves error on the table",
+    "shaped even+localized mixture (abs + gaussian bump): spans both signs and localizes peaks/troughs, generalizing across the visible mix AND the held-out setting; must deliberately AVOID naive periodic (sin) additions that inject high-frequency features and hurt non-periodic settings",
+    "over-flexible / mis-scaled activation (e.g. large-gain cube or high-frequency sin stack): either explodes/degenerates the features or overfits the visible mix and generalizes worse than the ReLU default on the held-out setting, so its cross-setting geometric mean regresses toward or below baseline"
+  ]
+}

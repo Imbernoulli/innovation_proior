@@ -1,0 +1,19 @@
+{
+  "id": "fsx_A_0132",
+  "tier": "A",
+  "format": "B",
+  "family": "online-heuristic-simulator",
+  "eval_form": "quality-metric",
+  "theme": "lunar habitat",
+  "title": "Selene Station: Streaming Cargo Consolidation",
+  "objective": "optimize",
+  "scale": "large",
+  "variant": 5,
+  "source_frameworks": ["FunSearch (bin-packing)", "ALE-Bench (dispatch rules)"],
+  "strategies": [
+    "worst-fit priority (w=[0,0,1,0]): stow each canister into the emptiest fitting module, maximizing wasted budget -- reproduces the evaluator's weak reference, ~0.1",
+    "first-fit priority (w=[1,0,0,0]): all fitting modules tie, so the lowest-index module wins, reusing earlier gaps without look-ahead",
+    "best-fit priority (w=[0,0,-1,0]): stow into the tightest fitting module to close modules densely -- the strongest simple online rule under the fixed streaming simulator",
+    "tuned combined priority: blend leftover fraction, current emptiness, and the squared-leftover term to search for a policy that consolidates further on skewed (bimodal / Weibull / heavy-tailed) cost distributions"
+  ]
+}

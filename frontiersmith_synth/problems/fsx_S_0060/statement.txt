@@ -1,0 +1,159 @@
+# Deep Heat: Offline Geothermal Drilling Power Schedule
+
+## Problem
+
+The *Deep Heat* consortium is drilling a field of geothermal wells. Drilling is powered
+by two energy sources whose availability and price are known in advance for the entire
+campaign of `T` hourly steps (a fully-known trace — this is an **offline replay** of what
+was originally an online decision problem).
+
+At every step, for every well, you decide one of three power modes:
+
+- **`0` — pause.** No progress, no cost.
+- **`1` — spot power.** One unit of drilling progress. Cheap, but at step `t` at most
+  `C[t]` wells may draw spot power simultaneously (limited spare grid capacity), and on
+  some steps `C[t] = 0` (no spot power at all).
+- **`2` — on-demand power.** One unit of drilling progress. Always available to every
+  well, but expensive.
+
+Each well `j` must accumulate at least `R_j` units of drilling progress **by the end of
+its deadline step `d_j`** (progress earned after step `d_j` does not count). A well that
+resumes drilling after being paused must be re-heated: **every time a well switches from
+inactive to active** (the first active step of any active run, including its very first
+active step) you pay a warm-up cost `warm`.
+
+Choose the full mode schedule for every well and every step to **minimize total cost**
+while every well meets its progress requirement by its deadline.
+
+Finding the optimum is a resource-constrained scheduling problem with time windows and
+switching costs (NP-hard). Greedy per-well selection, global spot-slot allocation by
+savings, and contiguity-aware local search are all viable and diverge.
+
+## Input
+
+The first line contains three integers:
+
+```
+N T warm
+```
+
+- `N` — number of wells, numbered `1..N`.
+- `T` — number of time steps, numbered `1..T`.
+- `warm` — the warm-up cost paid per activation.
+
+The next three lines each contain `T` integers:
+
+```
+od[1] od[2] ... od[T]     (on-demand price per active well-step)
+sp[1] sp[2] ... sp[T]     (spot price per active well-step)
+C[1]  C[2]  ... C[T]      (spot capacity: max wells on spot that step)
+```
+
+Each of the next `N` lines describes one well:
+
+```
+R_j d_j
+```
+
+meaning well `j` needs at least `R_j` units of progress by the end of step `d_j`
+(`1 <= R_j <= d_j <= T`).
+
+## Output
+
+Print `N` lines. Line `j` contains `T` integers, each in `{0, 1, 2}`: the power mode of
+well `j` at steps `1, 2, ..., T` in order (`0` pause, `1` spot, `2` on-demand).
+
+## Feasibility
+
+An output is feasible iff:
+
+- every printed value is `0`, `1`, or `2`, and each line has exactly `T` values;
+- for every step `t`, the number of wells with mode `1` (spot) at step `t` is at most `C[t]`;
+- for every well `j`, the number of active steps (mode `1` or `2`) among steps `1..d_j`
+  is at least `R_j`.
+
+Any infeasible output scores `0`.
+
+## Objective
+
+Let the total cost `F` be
+
+```
+F = sum over all well-steps of the step cost   ( mode 1 -> sp[t],  mode 2 -> od[t],  mode 0 -> 0 )
+  + warm * (total number of activations over all wells)
+```
+
+where an *activation* of a well is a step where it is active while the previous step (of
+that same well) was inactive (or it is the well's first step and it is active). You are
+**minimizing** `F`. (Active steps after a well's deadline earn no progress but still cost
+money — they are simply wasteful.)
+
+## Scoring
+
+The checker builds an internal baseline `B`: every well drills on-demand contiguously on
+steps `1..R_j` (one activation each). This is always feasible because `R_j <= d_j`. Its
+cost is
+
+```
+B = sum over wells j of ( warm + sum_{t=1}^{R_j} od[t] )
+```
+
+The score for a test is
+
+```
+ratio = min(1.0, 0.1 * B / F)
+```
+
+An all-on-demand submission (`F = B`) scores `0.1`; cutting cost to a tenth of the
+baseline (`F = B/10`) caps the score at `1.0`. The overall score is the mean ratio across
+all tests.
+
+## Constraints
+
+- `2 <= N <= 60`.
+- `10 <= T <= 300`.
+- `1 <= warm <= 100`.
+- `1 <= od[t] <= 200`, `1 <= sp[t] <= 200`.
+- `0 <= C[t] <= N`.
+- `1 <= R_j <= d_j <= T`.
+- Time limit: 5 s. Memory limit: 512 MB.
+
+## Example
+
+Input:
+
+```
+2 4 10
+100 100 100 100
+20 60 15 15
+1 0 1 1
+2 3
+2 4
+```
+
+Baseline `B`: well 1 on-demand on steps 1..2, well 2 on-demand on steps 1..2, each one
+activation: `B = (10 + 100 + 100) + (10 + 100 + 100) = 420`.
+
+A valid worked output:
+
+```
+1 0 1 0
+0 0 1 2
+```
+
+- Well 1: spot at step 1 (`sp=20`), spot at step 3 (`sp=15`). Progress within `d_1=3` is
+  `2 >= R_1=2`. It goes active(1) -> pause(2) -> active(3): two activations. Cost
+  `20 + 15 + 2*10 = 55`.
+- Well 2: spot at step 3 and on-demand at step 4. But step 3 already has well 1 on spot,
+  and `C[3] = 1`, so **two wells on spot at step 3 would be infeasible**. Suppose instead
+  well 2 uses `0 0 2 2`: on-demand at steps 3,4, progress `2 >= R_2=2` within `d_2=4`, one
+  activation, cost `100 + 100 + 10 = 210`.
+
+With output
+
+```
+1 0 1 0
+0 0 2 2
+```
+
+`F = 55 + 210 = 265`, `ratio = min(1.0, 0.1 * 420 / 265) = 0.1585...`.

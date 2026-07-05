@@ -1,0 +1,18 @@
+{
+  "id": "fsx_S_0242",
+  "tier": "S",
+  "format": "A",
+  "family": "covering-facility-location",
+  "seed_problem": "Place watchtowers on a forest graph to cover every cell within radius r, minimizing total cost; score = baseline_cost / achieved_cost.",
+  "mutation": "composite: re-skin as smart-city adaptive lighting and generalize the seed R-dominating set to a WEIGHTED minimum-cost R-MULTI-cover -- each vertex u carries an illumination demand d_u and must be reached by at least d_u distinct lamps within R hops (demands > 1), turning uniform single-cover into set-multicover where cost-ratio greedy, coverage-greedy and redundancy pruning genuinely diverge; the build-everywhere construction is the calibrated baseline B.",
+  "objective": "min",
+  "theme": "smart-city lighting",
+  "title": "Smart-City Adaptive Lighting: Minimum-Cost Multi-Coverage Lamp Placement",
+  "strategies": [
+    "build a lamp on every intersection (reproduces the checker baseline B, ratio = 0.1)",
+    "coverage-greedy: repeatedly build the lamp that satisfies the most outstanding demand units (ignores cost)",
+    "cost-ratio greedy: repeatedly build the lamp maximizing newly-satisfied-demand / build-cost",
+    "cost-ratio greedy followed by redundancy pruning (drop the most expensive lamps whose removal keeps every demand met)",
+    "LP-rounding of the fractional multi-cover relaxation, or local-search add/drop swaps"
+  ]
+}

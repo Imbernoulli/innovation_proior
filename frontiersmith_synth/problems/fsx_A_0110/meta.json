@@ -1,0 +1,17 @@
+{
+  "id": "fsx_A_0110",
+  "tier": "A",
+  "format": "B",
+  "family": "heuristic-contest-offline",
+  "eval_form": "quality-metric",
+  "theme": "polar research base",
+  "title": "Polar Research Base: Footprint Selection",
+  "objective": "optimize",
+  "source_frameworks": ["ALE-Bench (AHC)", "TTT-Discover (ahc)", "SimpleTES (AHC)"],
+  "strategies": [
+    "single-cell baseline: stake the whole base on the highest-value grid cell; reproduces the evaluator's weak reference and scores ~0.1",
+    "single-seed region growing: grow from the best cell, annexing the boundary cell of largest positive net gain (v - perim_cost*(4-2k)) until no improving move remains, capturing one hotspot cluster but stalling at its local optimum",
+    "multi-seed region growing: run greedy growth from EVERY hotspot seed and keep the best footprint, since the strongest region often surrounds a hotspot other than the global maximum cell",
+    "seeded add-only simulated annealing: from the best grown region, accept small negative-gain annexations with probability exp(gain/T) to pay short bridges of mild-cost ice toward nearby hotspot clusters, keeping a best-net snapshot"
+  ]
+}

@@ -1,0 +1,133 @@
+# Spot-Flour Milling: Offline Replay of the Bakery Power Trace
+
+## Problem
+
+The *Rising Crust* bakery cooperative must mill a large flour order before its shipping
+**deadline**. Milling runs on electric mills over a fixed horizon of `T` hourly slots
+(`1..T`). By the end of slot `T` the co-op must have milled at least `W` sacks of flour.
+
+At the start of the season the co-op has already recorded the *entire* power trace for the
+horizon (this is the offline replay of an online decision: normally you would choose hour
+by hour without knowing the future; here you see the whole trace up front). In each slot
+`t` you set the mill to exactly one of three modes:
+
+- **Spot** (`1`) — draw cheap surplus power from the shared community grid. This mode is
+  only usable when the grid is *available* in slot `t` (`avail[t] = 1`). When used it mills
+  `g[t]` sacks at operating cost `sc[t]`.
+- **On-Demand** (`2`) — draw reliable metered power. Always usable. It mills a fixed `q`
+  sacks at operating cost `dc[t]`.
+- **Pause** (`0`) — the mill is idle: `0` sacks, `0` operating cost.
+
+Running the mill is not free to start: every time the mill *begins a run* (a slot that is
+Spot or On-Demand whose previous slot was Pause, or the very first slot if it is active)
+you pay a **startup cost** `K` to spin up and preheat the mill. Two active slots that are
+adjacent share a single startup; a run is a maximal block of consecutive active slots.
+
+Choose a mode for every slot so that the deadline demand is met at **minimum total cost**.
+The optimum is NP-hard (this is a multiple-choice covering knapsack coupled with a
+run-segmentation cost), the true optimum is unknown, and many heuristics — greedy
+cost-per-sack, prefix filling, DP relaxations, local search — are viable and diverge.
+
+## Input
+
+The first line contains four integers:
+
+```
+T W q K
+```
+
+- `T` — number of hourly slots (`1..T`).
+- `W` — sacks of flour that must be milled by the end of slot `T`.
+- `q` — sacks milled by one On-Demand slot.
+- `K` — startup cost paid per run (maximal block of active slots).
+
+Each of the next `T` lines describes one slot `t` (in order `t = 1..T`):
+
+```
+avail[t] g[t] sc[t] dc[t]
+```
+
+- `avail[t]` — `1` if the shared grid is available in slot `t`, else `0`.
+- `g[t]` — sacks milled if Spot is used in slot `t` (`>= 1`).
+- `sc[t]` — Spot operating cost in slot `t` (`>= 1`).
+- `dc[t]` — On-Demand operating cost in slot `t` (`>= 1`).
+
+It is guaranteed that `q * T >= W`, so the demand is always satisfiable using On-Demand
+alone.
+
+## Output
+
+Print `T` integers `a[1], a[2], ..., a[T]` (whitespace-separated), where `a[t]` is the mode
+chosen for slot `t`:
+
+- `0` = Pause, `1` = Spot, `2` = On-Demand.
+
+## Feasibility
+
+An output is feasible iff:
+
+- it contains exactly `T` integers, each in `{0, 1, 2}`;
+- for every slot with `a[t] = 1` (Spot), the grid is available (`avail[t] = 1`);
+- the total sacks milled is at least `W`, i.e.
+  `sum over t of (a[t]==1 ? g[t] : a[t]==2 ? q : 0) >= W`.
+
+Any infeasible output scores `0`.
+
+## Objective
+
+Let the milled schedule have operating cost `C = sum over t of (a[t]==1 ? sc[t] :
+a[t]==2 ? dc[t] : 0)` and let `R` be the number of runs (maximal blocks of consecutive
+active slots). The total cost you **minimize** is
+
+```
+F = C + K * R
+```
+
+## Scoring
+
+The checker builds a trivial baseline plan `B`: run On-Demand for the first
+`ceil(W / q)` slots as one contiguous block. Let `B` be that plan's total cost. The score
+for a test is
+
+```
+ratio = min(1.0, 0.1 * B / F)
+```
+
+A submission that merely matches the baseline (`F = B`) scores `0.1`; cutting cost to a
+tenth of the baseline (`F = B / 10`) caps the score at `1.0`. The overall score is the mean
+ratio across all tests.
+
+## Constraints
+
+- `1 <= T <= 2000`.
+- `1 <= q <= 12`, and `1 <= W <= q * T`.
+- `1 <= K <= 200`.
+- `0 <= avail[t] <= 1`, `1 <= g[t] <= 15`, `1 <= sc[t] <= 40`, `1 <= dc[t] <= 80`.
+- Time limit: 5 s. Memory limit: 512 MB.
+
+## Example
+
+Input:
+
+```
+4 8 4 5
+1 5 3 10
+0 4 2 12
+1 3 4 9
+1 6 2 11
+```
+
+Baseline: `ceil(8 / 4) = 2` On-Demand slots (slots 1 and 2), cost
+`dc[1] + dc[2] + K = 10 + 12 + 5 = 27`, so `B = 27`.
+
+A better plan mills with Spot in slots 1 and 4: sacks `g[1] + g[4] = 5 + 6 = 11 >= 8`,
+operating cost `sc[1] + sc[4] = 3 + 2 = 5`. The active slots (1 and 4) are not adjacent, so
+there are `R = 2` runs, adding `2 * K = 10`. Total `F = 5 + 10 = 15`.
+
+Score for this test: `min(1.0, 0.1 * 27 / 15) = min(1.0, 0.18) = 0.18`.
+
+A valid worked output:
+
+```
+1 0 0 1
+```

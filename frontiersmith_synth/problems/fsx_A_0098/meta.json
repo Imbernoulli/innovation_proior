@@ -1,0 +1,16 @@
+{
+  "id": "fsx_A_0098",
+  "tier": "A",
+  "format": "D",
+  "family": "tensor-decomposition-rank",
+  "eval_form": "flops",
+  "theme": "coral reef survey",
+  "title": "Reef Survey Response Tensor: Minimal Separable Survey Modes",
+  "objective": "optimize",
+  "strategies": [
+    "one separable survey mode per nonzero entry (trivial per-entry baseline)",
+    "best-of-three-axes exact slice-rank factorization (greedy)",
+    "exact rational Tucker compression then best-of-three-axes slicing of the tiny core (strong)",
+    "true CP-rank search below the multilinear-slice bound / rational ALS (open, unreached ceiling)"
+  ]
+}

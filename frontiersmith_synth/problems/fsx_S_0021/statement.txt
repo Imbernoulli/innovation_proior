@@ -1,0 +1,127 @@
+# Static Cascade: Debris-Collector Channel Assignment
+
+## Problem
+
+The orbital-debris cleanup consortium *Sweeper Command* operates a swarm of autonomous
+**collector craft**. Each collector continuously broadcasts telemetry and grapple-control
+signals on a single **transponder channel** drawn from a narrow licensed band of `K`
+channels. Because the collectors fly in tightly packed clusters while chasing debris, many
+pairs of craft **interfere** with one another:
+
+- if two interfering collectors broadcast on the **same channel**, they suffer a
+  *co-channel* penalty (a burst of mutual static that corrupts grapple commands);
+- if they broadcast on **adjacent channels** (channel numbers differing by exactly `1`),
+  they suffer a smaller *adjacent-channel* penalty (spectral bleed);
+- otherwise the pair does not interfere at all.
+
+Mission Control must assign a channel to every collector so that the **total interference
+penalty** summed over all interfering pairs is as small as possible. The band is too narrow
+to eliminate interference entirely, so this is an optimization problem, not a feasibility
+one: any assignment is allowed and is scored by how little residual static it produces.
+
+This is a minimum-interference frequency-assignment problem (a weighted generalization of
+graph coloring under a fixed color budget). It is NP-hard, the optimum is unknown, and many
+heuristics are viable: sequential greedy coloring, saturation-degree ordering, and
+min-conflicts local search all give different results.
+
+## Input
+
+The first line contains three integers:
+
+```
+n m K
+```
+
+- `n` — number of collector craft, numbered `1..n`.
+- `m` — number of interfering pairs.
+- `K` — number of available channels (channels are numbered `1..K`).
+
+Each of the next `m` lines describes one interfering pair:
+
+```
+u v p q
+```
+
+meaning collectors `u` and `v` interfere, with **co-channel penalty** `p` (charged if they
+share a channel) and **adjacent-channel penalty** `q` (charged if their channel numbers
+differ by exactly `1`). Here `1 <= u, v <= n`, `u != v`, `1 <= p`, and `0 <= q <= p`. The
+same unordered pair may appear more than once (treat each listed line as its own penalty).
+
+## Output
+
+Print `n` integers `c_1 c_2 ... c_n` (whitespace-separated; line breaks are allowed), where
+`c_i` is the channel assigned to collector `i`, and `1 <= c_i <= K`.
+
+Assigning every collector to channel `1` is always valid.
+
+## Feasibility
+
+An output is feasible iff it contains exactly `n` integers and each lies in `1..K`. Any
+output that is missing values, has extra tokens, or contains a channel outside `1..K`
+scores `0`.
+
+## Objective
+
+For each interfering pair `(u, v, p, q)` its contribution is
+
+```
+  p            if c_u == c_v            (co-channel)
+  q            if |c_u - c_v| == 1      (adjacent-channel)
+  0            otherwise
+```
+
+Let `F` be the sum of these contributions over all `m` pairs. You are **minimizing** `F`.
+
+## Scoring
+
+Let `B` be the total penalty of the trivial assignment that puts **every** collector on
+channel `1` (so every interfering pair is co-channel): `B = sum of p over all pairs`. The
+score for a test is
+
+```
+ratio = min(1.0, 0.1 * B / max(1, F))
+```
+
+The all-on-one-channel baseline (`F = B`) scores `0.1`; cutting the residual static to a
+tenth of the baseline or less (`F <= B / 10`) caps the score at `1.0`. The overall score is
+the mean ratio across all tests.
+
+## Constraints
+
+- `1 <= n <= 300`.
+- `1 <= m <= 4000`.
+- `2 <= K <= 8`.
+- `1 <= p <= 10`, `0 <= q <= p`.
+- Time limit: 5 s. Memory limit: 512 MB.
+
+## Example
+
+Input:
+
+```
+4 4 2
+1 2 5 1
+2 3 4 2
+3 4 3 1
+1 3 6 2
+```
+
+Collectors `1`, `2`, `3` form an interference triangle, so with only `K = 2` channels some
+static is unavoidable. The all-on-channel-`1` baseline pays every co-channel penalty:
+`B = 5 + 4 + 3 + 6 = 18`.
+
+Consider the assignment `c = [1, 2, 2, 1]`:
+
+- pair `1-2`: channels `1,2` differ by `1` -> adjacent penalty `q = 1`;
+- pair `2-3`: channels `2,2` equal -> co-channel penalty `p = 4`;
+- pair `3-4`: channels `2,1` differ by `1` -> adjacent penalty `q = 1`;
+- pair `1-3`: channels `1,2` differ by `1` -> adjacent penalty `q = 2`.
+
+So `F = 1 + 4 + 1 + 2 = 8` and the score is
+`min(1.0, 0.1 * 18 / 8) = min(1.0, 0.225) = 0.225`.
+
+A valid worked output:
+
+```
+1 2 2 1
+```

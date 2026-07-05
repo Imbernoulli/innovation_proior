@@ -1,0 +1,16 @@
+{
+  "id": "fsx_B_0163",
+  "tier": "B",
+  "format": "E",
+  "family": "symbolic-regression",
+  "eval_form": "quality-metric",
+  "theme": "polar research base",
+  "title": "Polar Research Base: Reactor Load Law Discovery",
+  "objective": "min",
+  "strategies": [
+    "trivial: emit the constant train-mean of y (matches the grader's baseline predictor -> ~0.1)",
+    "greedy: full quadratic-diagonal least squares (captures curvature, misses the cross-product and exponential terms -> mild extrapolation gain)",
+    "strong: least-squares fit on the correct poly-exp basis {1, x0^2, x1*x2, exp(0.45*x3), x1}, recovering the functional form so it extrapolates to the held-out storm regime",
+    "invalid: emit a non-parsing / disallowed-token expression -> infeasible (0)"
+  ]
+}

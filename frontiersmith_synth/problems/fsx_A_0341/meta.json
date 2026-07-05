@@ -1,0 +1,16 @@
+{
+  "id": "fsx_A_0341",
+  "tier": "A",
+  "format": "C",
+  "family": "greedy-priority-construction",
+  "eval_form": "correctness",
+  "theme": "deep-sea cable network",
+  "title": "Interference-Free Cable Backbone (Max-Weight Cap Set in AG(n,3))",
+  "objective": "optimize",
+  "strategies": [
+    "weight-blind canonical greedy (baseline: deploys the 0/1 sub-cube)",
+    "randomized multi-start greedy, keep the highest-throughput cap",
+    "weight-steered descending-priority greedy with perturbed restarts",
+    "smarter priority / local exchange search toward the (unknown) max-weight cap"
+  ]
+}

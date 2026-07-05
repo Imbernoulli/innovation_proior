@@ -1,0 +1,18 @@
+{
+  "id": "fsx_S_0006",
+  "tier": "S",
+  "format": "A",
+  "family": "assignment-matching",
+  "eval_form": "quality-metric",
+  "theme": "salmon migration ladder",
+  "title": "Salmon Migration Ladder: Spawning-Pool Assignment",
+  "seed_problem": "Assign drones to delivery zones under per-drone capacity to maximize served weight",
+  "mutation": "composite: generalize the bipartite/unit-capacity matching to a full Generalized Assignment Problem (per-(school,pool) values and volumes, per-pool holding capacities) and maximize total spawning value",
+  "objective": "max",
+  "strategies": [
+    "first-fit baseline: guide each school into the lowest-indexed pool that still has room (the reference construction; ratio ~0.1)",
+    "value-density greedy: rank (school,pool) pairs by value-per-volume and assign each unassigned school to its best still-fitting pool in one pass",
+    "greedy + local search: start from the greedy assignment, then repeatedly move schools to higher-value fitting pools and admit unassigned schools where they fit, iterating until no improvement",
+    "capacity-aware / knapsack-per-pool style construction: treat each pool as a knapsack and trade schools between pools to raise total value"
+  ]
+}

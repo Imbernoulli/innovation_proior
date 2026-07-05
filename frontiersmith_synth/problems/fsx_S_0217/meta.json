@@ -1,0 +1,18 @@
+{
+  "id": "fsx_S_0217",
+  "tier": "S",
+  "format": "A",
+  "family": "graph-interdiction",
+  "eval_form": "quality-metric",
+  "seed_problem": "Themed grid network; remove at most k links to maximize the increase in s-t shortest path; checker verifies budget + connectivity and scores achieved delay.",
+  "mutation": "composite: replace the cardinality budget (remove <=k edges) with a WEIGHTED closure-cost budget (each transect has an individual closure cost, total closed cost <= C), turning the single s-t shortest-path interdiction into a knapsack-flavored selection; network is a large grid-plus-random-chord multigraph with a single cheap current trunk and otherwise expensive links.",
+  "objective": "max",
+  "theme": "coral reef survey",
+  "title": "Choked Current: Coral Reef Survey Interdiction",
+  "strategies": [
+    "do-nothing baseline: close no transects (original fastest AUV route length)",
+    "cheapest-first greedy: repeatedly close the lowest-closure-cost edge on the current shortest path that keeps the survey site reachable, until the budget cannot afford any path edge",
+    "budget-aware best-improvement local search: each round evaluate the true delay gain of closing every affordable shortest-path edge via a fresh Dijkstra and commit the edge with the best gain-per-cost, keeping s-t connected",
+    "randomized multi-restart: perturb the closure order/choices and keep the transect set maximizing the final AUV route length within budget"
+  ]
+}

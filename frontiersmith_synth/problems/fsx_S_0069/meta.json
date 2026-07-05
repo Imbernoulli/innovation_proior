@@ -1,0 +1,18 @@
+{
+  "id": "fsx_S_0069",
+  "tier": "S",
+  "format": "A",
+  "family": "coloring-labeling",
+  "eval_form": "quality-metric",
+  "seed_problem": "Assign frequencies to transmitters minimizing total interference conflicts under a channel budget; checker scores baseline_conflicts/achieved.",
+  "mutation": "composite: generalize the input from plain co-channel conflict counting to a weighted minimum-interference frequency-assignment (MI-FAP) with per-pair required channel separations and interference weights over a geometric harbor-radio interference graph, and keep the min-conflicts objective under a fixed channel budget so the optimum is NP-hard and saturation-greedy vs min-conflicts local search vs restart heuristics diverge.",
+  "objective": "min",
+  "theme": "harbor container port",
+  "title": "Gantry Chatter: Harbor Radio Channel Assignment",
+  "strategies": [
+    "trivial baseline: put every radio on channel 1 (pays the full weighted separation on every pair)",
+    "saturation greedy: order radios by interference degree and assign each the channel minimizing added interference against already-placed neighbors (DSATUR-style)",
+    "min-conflicts local search: start from the greedy assignment then repeatedly move each radio to the channel minimizing its local interference until convergence",
+    "randomized restart / annealing: perturb assignments and keep the lowest-interference labeling seen across restarts"
+  ]
+}

@@ -1,0 +1,18 @@
+{
+  "id": "fsx_C_0398",
+  "tier": "C",
+  "format": "B",
+  "family": "causal-discovery",
+  "eval_form": "quality-metric",
+  "theme": "museum gallery tour",
+  "title": "Museum Gallery Tour: Recovering the Visitor-Flow Causal Map",
+  "objective": "optimize",
+  "source_frameworks": ["MLS-Bench (causal-*)"],
+  "isolation": "candidate runs as an isolated stdin->stdout subprocess via isorun; the ground-truth DAG, topological order, noisy-OR weights, leak rates and hidden state stay in the evaluator process",
+  "strategies": [
+    "predict the empty visitor-flow map (SHD = number of true edges = the evaluator baseline -> ~0.1 everywhere)",
+    "marginal mutual-information thresholding with index-order orientation: catches real driver-galleries but drowns in transitive-path false positives and coin-flip orientations",
+    "conditional-independence (PC-style) skeleton -- marginal-MI edges pruned when a third gallery screens them off (MI(X,Y|Z)~0) -- oriented by ascending marginal entry frequency (rarer gallery = source): removes transitive false edges and recovers most orientations, but finite tours and near-saturated descendants leave residual errors",
+    "score- or constraint-based discrete BN discovery (larger conditioning sets, BDeu/BIC search, or an explicit noisy-OR likelihood) that models each museum's structure to push SHD lower still"
+  ]
+}

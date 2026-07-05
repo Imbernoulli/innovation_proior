@@ -1,0 +1,17 @@
+{
+  "id": "fsx_A_0330",
+  "tier": "A",
+  "format": "B",
+  "family": "heuristic-contest-offline",
+  "eval_form": "quality-metric",
+  "theme": "ski resort lifts",
+  "title": "Alpine Lift Circuit: Overnight Inspection Route",
+  "objective": "optimize",
+  "source_frameworks": ["ALE-Bench (AHC)", "TTT-Discover (ahc)", "SimpleTES (AHC)"],
+  "strategies": [
+    "roster order: inspect stations in listed order (identity permutation); reproduces the evaluator's do-nothing baseline circuit and scores ~0.1",
+    "greedy nearest-station chain: from the depot repeatedly drive to the closest un-inspected station; large win over the roster order but leaves long crossing return hops",
+    "nearest-neighbour + 2-opt: uncross circuit edges by reversing segments whenever it shortens the closed tour, iterating under a fixed pass budget; clears the greedy chain",
+    "multi-restart / or-opt refinement: seed several starts and add single-station relocations plus 2-opt within the op budget to squeeze out remaining slack, staying below the loose lower bound"
+  ]
+}

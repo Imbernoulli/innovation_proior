@@ -1,0 +1,16 @@
+{
+  "id": "fsx_A_0139",
+  "tier": "A",
+  "format": "C",
+  "family": "low-discrepancy-pointset",
+  "eval_form": "quality-metric",
+  "theme": "salmon migration ladder",
+  "title": "Salmon Migration Ladder: Completing a Uniform Camera Grid",
+  "objective": "min",
+  "strategies": [
+    "diagonal completion: place every new camera on the main diagonal (concentrated, the checker's own poor baseline)",
+    "Hammersley completion: fill the remaining cameras with a fixed van-der-Corput low-discrepancy set, ignoring the pre-installed cameras",
+    "fixed-aware portfolio: build several rank-1 / Hammersley / jittered candidate fills, union each with the legacy cameras, and keep the one whose EXACT full-set star discrepancy is smallest",
+    "local search: seed with a lattice fill then relocate individual cameras toward under-sampled anchored boxes, accepting only discrepancy-reducing moves"
+  ]
+}

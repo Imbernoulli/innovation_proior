@@ -1,0 +1,18 @@
+{
+  "id": "fsx_S_0262",
+  "tier": "S",
+  "format": "A",
+  "family": "maxsat-csp",
+  "eval_form": "quality-metric",
+  "seed_problem": "Maximize total weight of satisfied clauses in a synthetic weighted CNF; checker computes satisfied weight / baseline.",
+  "mutation": "composite: skin weighted Max-SAT as volcano sensor-mode selection and structure the instance (mostly-positive coverage clauses + negative-unit keep-dormant clauses + a mixing fraction) so the all-low-power dormant plan is a genuinely weak baseline and no uniform assignment is good, forcing greedy vs local-search divergence.",
+  "objective": "max",
+  "theme": "volcano monitoring",
+  "title": "Caldera Watch: Sensor-Mode Constraint Satisfaction",
+  "strategies": [
+    "dormant baseline: every station low-power (all-zero) -- satisfies exactly the keep-dormant negative-unit clauses",
+    "per-variable majority vote: set each station high-power iff its positive-literal clause weight exceeds its negative-literal weight, ignoring clause coverage overlap",
+    "flip local search from a greedy init: repeatedly flip any station whose flip increases satisfied weight (exact incremental delta) until a local optimum, with seeded random restarts",
+    "randomized-restart / WalkSAT-style search that perturbs assignments across restarts and keeps the best satisfied weight"
+  ]
+}

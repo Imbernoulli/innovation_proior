@@ -1,0 +1,102 @@
+# Deep-Sea Cable Network: Dual Landing-Station Bisection
+
+## Problem
+A submarine survey has mapped `n` seafloor junction nodes that must be wired back to shore
+through **two** independent coastal landing stations, called station `0` and station `1`.
+Every junction is permanently assigned to exactly one landing station. For operational
+resilience the two stations must carry an equal share of the field, so the assignment must be
+a near-perfect **bisection**: the number of junctions on the two stations may differ by at
+most `1`.
+
+The survey also recorded `m` candidate **fiber cables**. Cable `e` links two distinct
+junctions `u` and `v` and, if the two endpoints end up on **different** landing stations, that
+cable becomes a live **inter-station trunk** carrying `w_e` units of redundant cross-shore
+bandwidth (a cable whose endpoints share a station is internal to that station and contributes
+nothing to cross-shore redundancy).
+
+Your job is to choose the landing station of every junction so that the total cross-shore
+bandwidth — the summed weight of all cables whose endpoints land on opposite stations — is as
+large as possible, subject to the bisection balance rule.
+
+This is a **balanced maximum-cut** problem. Computing the optimal balanced cut is NP-hard, so
+strong heuristics (greedy swaps, Kernighan–Lin style local search, multi-restart annealing)
+are expected; no exact optimum is known for the large instances.
+
+## Input (stdin)
+```
+n m
+<m lines, each: u v w>
+```
+- Line 1: number of junctions `n` (always even) and number of cables `m`.
+- Each of the next `m` lines describes one cable: two distinct junction indices
+  `u` and `v` (`1 <= u, v <= n`, `u != v`) and a positive integer bandwidth `w` (`1 <= w`).
+  A pair of junctions may appear at most once.
+
+## Output (stdout)
+```
+s_1 s_2 ... s_n
+```
+Print exactly `n` integers, each `0` or `1`. `s_v` is the landing station assigned to
+junction `v`. Whitespace/newlines between the values are ignored; there must be exactly `n`
+tokens and nothing else.
+
+## Feasibility
+An output is valid iff **all** of the following hold:
+- it contains **exactly `n`** tokens;
+- every token is `0` or `1`;
+- it is a near-balanced bisection: `| count(0) - count(1) | <= 1`.
+
+Any other output (wrong count, a value outside `{0,1}`, an unbalanced split, trailing junk)
+scores `Ratio: 0.0`.
+
+## Objective
+Maximize `F` = the total bandwidth of inter-station trunks, i.e. the sum of `w_e` over every
+cable `e = (u, v)` with `s_u != s_v`.
+
+## Scoring
+The checker builds its own trivial reference bisection: the **index-block split**, where the
+first half of the junctions goes to station `0` and the second half to station `1`
+(`s_v = 0` if `v <= n/2`, else `s_v = 1`). Let `B` be the cross-shore bandwidth of that block
+split (`B >= 1`). With the maximization normalization:
+```
+sc = min(1000.0, 100.0 * F / max(1e-9, B))
+Ratio = sc / 1000.0
+```
+Reproducing the index-block split gives `F = B` and `Ratio = 0.1`. A bisection that delivers
+`10x` the block-split bandwidth caps at `Ratio = 1.0`.
+
+## Constraints
+- `16 <= n <= 300`, `n` even.
+- `1 <= m <= 3000`.
+- `1 <= w <= 10` for every cable.
+- Time limit: 5s. Memory limit: 512m.
+
+## Example
+Input:
+```
+4 5
+1 2 3
+1 3 5
+2 4 4
+3 4 2
+1 4 6
+```
+There are 4 junctions and 5 cables.
+
+Baseline (index-block split `s = 0 0 1 1`, i.e. junctions 1,2 -> station 0 and 3,4 ->
+station 1): cables crossing are `(1,3)` w5, `(2,4)` w4, `(1,4)` w6; cables `(1,2)` and `(3,4)`
+are internal. So `B = 5 + 4 + 6 = 15`.
+
+Suppose you output `0 1 1 0` (junction 1 -> 0, 2 -> 1, 3 -> 1, 4 -> 0). This is balanced
+(two `0`s and two `1`s):
+- `(1,2)`: 0 vs 1 -> crossing, w3
+- `(1,3)`: 0 vs 1 -> crossing, w5
+- `(2,4)`: 1 vs 0 -> crossing, w4
+- `(3,4)`: 1 vs 0 -> crossing, w2
+- `(1,4)`: 0 vs 0 -> internal
+
+`F = 3 + 5 + 4 + 2 = 14`. `sc = 100 * 14 / 15 = 93.33`, so `Ratio = 0.0933`.
+
+(On this tiny instance the block split happens to already be a strong bisection; on the larger
+generated instances the block split is a mediocre reference and good local search scores far
+above `Ratio = 0.1`.)

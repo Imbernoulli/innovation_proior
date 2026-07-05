@@ -1,0 +1,18 @@
+{
+  "id": "fsx_S_0215",
+  "tier": "S",
+  "format": "A",
+  "family": "independent-set-clique",
+  "eval_form": "quality-metric",
+  "seed_problem": "Select a maximum-weight set of mutually non-conflicting research sites on a general conflict graph; checker validates independence and scores weight/baseline.",
+  "mutation": "input: relax the conflict structure from separable clusters to a general graph -- dense household/workplace cliques wired together by sparse cross-cluster contacts plus a few high-weight high-degree super-connector vertices -- so max-weight independent set is NP-hard and weight-greedy, weight/degree-greedy, and randomized local search diverge.",
+  "objective": "max",
+  "theme": "pandemic contact net",
+  "title": "Quiet Cohort: Sentinel Sampling on a Pandemic Contact Net",
+  "strategies": [
+    "single-best baseline: monitor only the highest-value individual (always independent, scores the calibration point)",
+    "weight-greedy: consider individuals in descending surveillance value and add each one whose contacts are all still unmonitored",
+    "weight-over-degree greedy: order by value/(contacts+1) so cheap-to-block low-degree individuals are grabbed before high-degree super-connectors",
+    "randomized multi-restart local search: run many perturbed greedy orderings and keep the maximal independent set of highest total value"
+  ]
+}

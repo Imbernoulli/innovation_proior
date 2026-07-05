@@ -1,0 +1,16 @@
+{
+  "id": "fsx_G_0444",
+  "tier": "G",
+  "format": "D",
+  "family": "flop-winograd-filter",
+  "eval_form": "flops",
+  "theme": "conv accelerator",
+  "title": "Short-Convolution Accelerator: Fewest-Multiplier Bilinear Algorithm",
+  "objective": "min",
+  "strategies": [
+    "naive one-multiplier-per-used-product-fiber baseline (trivial)",
+    "fixed signal-axis mode slicing via exact skeleton elimination (greedy)",
+    "best-of-three-modes slice-rank Winograd algorithm (strong)",
+    "true bilinear-rank / border-rank search below the slice bound (open ceiling, uncovered)"
+  ]
+}

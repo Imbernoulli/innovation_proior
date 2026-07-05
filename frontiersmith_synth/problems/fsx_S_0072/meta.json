@@ -1,0 +1,18 @@
+{
+  "id": "fsx_S_0072",
+  "tier": "S",
+  "format": "A",
+  "family": "online-to-offline-replay",
+  "eval_form": "quality-metric",
+  "seed_problem": "Given a fixed availability/deadline trace, choose Spot/On-Demand/pause per step to minimize cost; checker replays the trace and scores baseline/cost.",
+  "mutation": "composite: replay the online spot/on-demand/pause decision as a STATIC full-trace optimization AND couple many ships through a shared per-hour spot capacity while adding a per-run gantry fixed charge, turning the poly-time single-job replay into an NP-hard fixed-charge scheduling problem where greedy / per-ship DP / local search diverge.",
+  "objective": "min",
+  "theme": "harbor container port",
+  "title": "Slack Tide Quay: Spot-vs-Shore Crane Power Replay",
+  "strategies": [
+    "trivial baseline: every ship works its earliest w_j hours contiguously on shore power (one run each)",
+    "spot-chasing greedy: pick each ship's w_j cheapest-spot hours, grab a shared spot slot if one remains else shore; ignores gantry re-mobilisation and fragments runs",
+    "per-ship fixed-charge DP: tight-window-first, dynamic program per ship trading spot/shore price against G-per-run gantry cost under the shared remaining spot capacity",
+    "capacity-aware local search: reassign spot slots and merge/split runs across ships to reduce total power + gantry cost"
+  ]
+}

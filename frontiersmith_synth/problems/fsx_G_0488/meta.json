@@ -1,0 +1,17 @@
+{
+  "id": "fsx_G_0488",
+  "tier": "G",
+  "format": "C",
+  "family": "disc-progression-free-Zp",
+  "eval_form": "correctness",
+  "theme": "hash spreading",
+  "title": "Collision-Spread Hash Offsets — a large progression-free set in Z_p",
+  "objective": "max",
+  "strategies": [
+    "no-carry base-3 {0,1}-digit set restricted to [0, p/2) (classic Salem-Spencer construction; progression-free mod p because no modular wraparound occurs)",
+    "greedy Stanley-sequence scan in Z_p: add offsets in increasing order, skipping any that complete a 3-AP with the current set",
+    "Behrend sphere construction: digits on a fixed-radius sphere in a high base, mapped to a wide register",
+    "affine/multiplier transforms of a known progression-free set followed by greedy augmentation over the unused residues",
+    "restricting an integer progression-free set to a sub-interval so modular wraparound cannot create a progression"
+  ]
+}

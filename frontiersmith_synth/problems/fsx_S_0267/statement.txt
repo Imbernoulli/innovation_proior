@@ -1,0 +1,167 @@
+# Golden-Super Comb Packing: Filling the Apiary Frames
+
+## Problem
+
+The *Golden Meadow* apiary is fitting out a rectangular **super frame** with pre-built
+wax **comb sections**. The frame is an `H x W` grid of cells. Some cells are occupied by
+**brood** (marked `#`) and cannot hold a honey comb; every other cell (`.`) is free wax
+foundation.
+
+The workshop has produced several **types** of rigid comb section. Each type is a
+*polyomino* (a connected set of unit cells) and comes in a limited supply. A comb section
+may be freely **rotated** (by 0/90/180/270 degrees) and **reflected** before it is pressed
+onto the frame, but it must land exactly on grid cells.
+
+You place comb sections onto the frame so that:
+- each placed section lies fully inside the frame,
+- no section covers a brood (`#`) cell,
+- no two placed sections overlap,
+- you use no more copies of a type than its available supply.
+
+Your goal is to **maximize the total number of frame cells covered** by comb (i.e. the
+total honey area installed). The optimum is a hard 2D bounded-packing problem: greedy
+value-density fills, largest-first placement, and randomized local search are all viable
+and give different results.
+
+## Input
+
+The first line contains three integers:
+
+```
+H W P
+```
+
+- `H` — number of frame rows (`1..H`), `1 <= H`.
+- `W` — number of frame columns (`1..W`), `1 <= W`.
+- `P` — number of comb-section types.
+
+The next `H` lines each contain a string of exactly `W` characters describing the frame,
+where `.` is a free cell and `#` is a brood cell. Row `0` is the first of these lines,
+column `0` is the first character of each row.
+
+Then the `P` comb-section types follow, type indices `1..P` in input order. Each type is
+given as:
+
+```
+s cnt
+```
+
+on one line (`s` = number of cells in the polyomino, `cnt` = available supply of this
+type), followed by `s` lines each containing two integers
+
+```
+dr dc
+```
+
+the cell offsets of the polyomino in some local coordinate system. The offsets of one type
+are all distinct and describe a connected shape.
+
+## Output
+
+On the first line print `N` — the number of comb sections you place (`0 <= N <= H*W`).
+
+On each of the next `N` lines print four integers:
+
+```
+t o r c
+```
+
+describing one placement:
+- `t` — the comb-section type used (`1 <= t <= P`);
+- `o` — the orientation index (`0 <= o <= 7`), see below;
+- `r c` — the anchor row and column (`0 <= r <= H-1`, `0 <= c <= W-1`).
+
+Orientation `o` transforms each local offset `(dr, dc)` of type `t` as follows, then the
+whole shape is shifted so its minimum row offset and minimum column offset are both `0`:
+
+```
+o=0: ( dr,  dc)      o=4: ( dr, -dc)
+o=1: ( dc, -dr)      o=5: (-dr,  dc)
+o=2: (-dr, -dc)      o=6: ( dc,  dr)
+o=3: (-dc,  dr)      o=7: (-dc, -dr)
+```
+
+After normalization (all offsets made non-negative), the section covers, for each
+normalized offset `(a, b)`, the frame cell `(r + a, c + b)`.
+
+Printing `0` on the first line (and nothing else) is always valid and covers nothing.
+
+## Feasibility
+
+An output is feasible iff:
+- `0 <= N <= H*W`;
+- every placement has `1 <= t <= P`, `0 <= o <= 7`, `0 <= r <= H-1`, `0 <= c <= W-1`;
+- for each type `t`, the number of placements using `t` does not exceed its supply `cnt`;
+- every covered cell is inside the frame, is a free (`.`) cell, and is not covered by any
+  other placed section.
+
+Any infeasible output scores `0`.
+
+## Objective
+
+Let `F` be the total number of frame cells covered by your placed comb sections (the
+installed honey area). You are **maximizing** `F`.
+
+## Scoring
+
+The checker builds an internal baseline `B` = the area of the single largest comb-section
+type that can be legally placed somewhere on the frame (a "place one big comb and stop"
+solution). The score for a test is
+
+```
+ratio = min(1.0, 0.1 * F / B)
+```
+
+So installing just one largest comb section scores `0.1`; covering ten times that area
+caps the score at `1.0`. The overall score is the mean ratio across all tests.
+
+## Constraints
+
+- `1 <= H, W <= 15`.
+- `1 <= P <= 6`.
+- `3 <= s <= 40` cells per comb-section type.
+- `1 <= cnt <= 6` copies per type.
+- Time limit: 5 s. Memory limit: 512 MB.
+
+## Example
+
+Input:
+
+```
+4 5 2
+.....
+..#..
+.....
+.....
+6 1
+0 0
+0 1
+1 0
+1 1
+2 0
+2 1
+3 1
+0 0
+0 1
+1 0
+```
+
+Type 1 is a `3x2` rectangle (6 cells), supply 1. Type 2 is an L-triomino (3 cells),
+supply 1.
+
+Baseline: the largest section that fits is type 1 (area 6), so `B = 6`.
+
+A valid worked output:
+
+```
+2
+1 0 0 3
+2 0 2 0
+```
+
+Placement 1 puts the `3x2` rectangle (orientation 0) with anchor `(0,3)`, covering cells
+`(0,3),(0,4),(1,3),(1,4),(2,3),(2,4)` — all free. Placement 2 puts the L-triomino
+(orientation 0) at anchor `(2,0)`, covering `(2,0),(2,1),(3,0)` — all free, no overlap.
+Total covered `F = 6 + 3 = 9`.
+
+Score for this test: `min(1.0, 0.1 * 9 / 6) = min(1.0, 0.15) = 0.15`.

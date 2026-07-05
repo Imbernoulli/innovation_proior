@@ -1,0 +1,16 @@
+{
+  "id": "fsx_S_0024",
+  "tier": "S",
+  "family": "online-to-offline-replay",
+  "seed_problem": "Frontier-CS cant_be_late offline / ALE-Bench spot-vs-on-demand replay",
+  "mutation": "composite: replace the online single-job deadline goal with an offline multi-tower minimum-cost coverage objective, and restrict output with a shared per-step ranger-crew capacity K (turning a per-item sort into a resource-constrained covering problem)",
+  "objective": "min",
+  "theme": "forest fire watchtowers",
+  "title": "Fire-Season Watchtower Staffing (Offline Replay)",
+  "strategies": [
+    "do-nothing baseline: leave every tower idle and pay full fire-risk liability",
+    "per-tower spot greedy: staff spot at every available step until R_i met, ignoring price and rangers",
+    "value-aware allocation: use spot only when spot[t] < lambda_i, then allocate the scarce ranger crew to the highest-liability towers still short (only when lambda_i > D), else accept the penalty",
+    "local search / swap improvement over an initial assignment (reassign expensive spot cells to rangers or idle when it lowers F)"
+  ]
+}

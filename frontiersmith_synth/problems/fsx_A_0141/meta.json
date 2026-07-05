@@ -1,0 +1,16 @@
+{
+  "id": "fsx_A_0141",
+  "tier": "A",
+  "format": "C",
+  "family": "greedy-priority-construction",
+  "eval_form": "correctness",
+  "theme": "forest fire watchtowers",
+  "title": "Ridgeline Watchtowers: Sightline-Free Placement of Maximum Value",
+  "objective": "optimize",
+  "strategies": [
+    "shoreline-ridge baseline: light every cell whose code starts with 0 and whose remaining digits are all 0/1 (a subcube that is always sightline-free), scoring ~0.1",
+    "weight-agnostic lexicographic greedy: scan unblocked cells in canonical order and keep each tower iff it forms no collinear sightline with the current set (maximizes count, not value)",
+    "value-aware multi-restart greedy: run the frozen scaffold under a value-descending priority plus several seeded perturbations and keep the highest total-value sightline-free set",
+    "algebraic product / structured caps: assemble a large cap set as a product of maximum small-dimension caps, then bias selection toward high-value unblocked cells"
+  ]
+}

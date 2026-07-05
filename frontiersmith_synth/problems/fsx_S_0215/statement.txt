@@ -1,0 +1,123 @@
+# Quiet Cohort: Sentinel Sampling on a Pandemic Contact Net
+
+## Problem
+
+A public-health agency wants to place **sentinel monitors** on individuals inside a
+population to track an emerging pathogen. Each candidate individual has a known
+**surveillance value** (how informative it is to monitor them). The catch: two
+individuals who are in **direct physical contact** produce highly correlated,
+redundant signals, so the agency will never place monitors on **both** endpoints of a
+contact. Contacts are recorded as an undirected **contact network**: households and
+workplaces form dense clusters, and a handful of high-mobility "super-connector"
+individuals touch many clusters at once.
+
+You must choose a set of monitored individuals such that **no two chosen individuals are
+in direct contact** (an *independent set* of the contact graph), maximizing the total
+surveillance value of the chosen set.
+
+Formally: given an undirected graph with a positive weight on every vertex, select a
+vertex subset `S` that is **independent** (no edge has both endpoints in `S`), maximizing
+`sum of weights over S`.
+
+This is the **maximum-weight independent set** problem on a general graph: NP-hard, the
+optimum is unknown, and many heuristics (weight-greedy, weight/degree-greedy,
+randomized-restart local search) are viable and diverge.
+
+## Input
+
+The first line contains two integers:
+
+```
+n m
+```
+
+- `n` — number of candidate individuals (vertices), numbered `1..n`.
+- `m` — number of recorded contacts (edges).
+
+The second line contains `n` integers `w_1 w_2 ... w_n`, where `w_i` is the surveillance
+value of individual `i` (`1 <= w_i`).
+
+Each of the next `m` lines contains two integers:
+
+```
+u v
+```
+
+meaning individuals `u` and `v` are in direct contact (`1 <= u, v <= n`, `u != v`). The
+graph may contain duplicate contacts; treat them as a single contact.
+
+## Output
+
+On the first line print `r` — the number of individuals you monitor (`0 <= r <= n`).
+On each of the next `r` lines print one individual index (an integer in `1..n`). All
+printed indices must be distinct.
+
+Printing `0` on the first line (and nothing else) is a valid — but worthless — output.
+
+## Feasibility
+
+An output is feasible iff:
+
+- `0 <= r <= n`;
+- every printed index is in `1..n` and all `r` indices are distinct;
+- no two printed individuals are in direct contact (the chosen set is independent).
+
+Any infeasible output scores `0`.
+
+## Objective
+
+Let `F` be the total surveillance value of your chosen set (the sum of the weights of the
+printed individuals). You are **maximizing** `F`.
+
+## Scoring
+
+Let `B` be the largest single surveillance value, `B = max_i w_i` (monitoring the single
+most valuable individual is always feasible, since a single vertex is independent). The
+score for a test is
+
+```
+ratio = min(1.0, 0.1 * F / B)
+```
+
+Monitoring just the single most valuable individual (`F = B`) scores `0.1`; assembling an
+independent set worth ten times that best individual (`F = 10*B`) caps the score at `1.0`.
+The overall score is the mean ratio across all tests.
+
+## Constraints
+
+- `2 <= n <= 2000`.
+- `1 <= m <= 4 * 10^5`.
+- `1 <= w_i <= 400`.
+- Time limit: 5 s. Memory limit: 512 MB.
+
+## Example
+
+Input:
+
+```
+5 6
+10 9 8 7 12
+1 2
+3 4
+5 1
+5 2
+5 3
+5 4
+```
+
+Here individual `5` is a super-connector (in contact with everyone else) and is the most
+valuable single individual, so `B = 12`. Monitoring only individual `5` would give
+`F = 12`, a ratio of `0.1`.
+
+But a smarter choice is `{1, 3}`: individuals `1` and `3` are not in direct contact
+(there is no edge `1-3`), so the set is independent, with `F = 10 + 8 = 18`.
+
+Score for this test: `min(1.0, 0.1 * 18 / 12) = min(1.0, 0.15) = 0.15`.
+
+A valid worked output:
+
+```
+2
+1
+3
+```

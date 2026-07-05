@@ -1,0 +1,16 @@
+{
+  "id": "fsx_S_0007",
+  "tier": "S",
+  "family": "network-design",
+  "seed_problem": "Build a connected relay network where no node has degree > 3, minimizing total cable length; checker validates connectivity+degree and scores baseline/cost.",
+  "mutation": "output: keep the min-length connectivity goal but restrict the output to a per-station degree-capped connected spanning network (caps in {2,3,4}), turning the polynomial Euclidean minimum spanning tree into the NP-hard degree-constrained minimum spanning tree.",
+  "objective": "min",
+  "theme": "asteroid mining",
+  "title": "Prospector Relay Grid: Degree-Capped Asteroid Comms",
+  "strategies": [
+    "chain baseline: link the stations in input order into a single path (always feasible, matches the checker baseline, ratio ~0.1)",
+    "nearest-neighbour path: start anywhere and repeatedly hop to the closest unvisited station, forming a short degree-2 chain",
+    "degree-constrained Kruskal/Prim: grow a spanning tree by adding the globally shortest links whose endpoints still have free relay heads, repairing any leftover components via spare-capacity nodes",
+    "local search: start from a degree-constrained tree and apply length-reducing edge swaps / branch reroutes that respect the caps"
+  ]
+}

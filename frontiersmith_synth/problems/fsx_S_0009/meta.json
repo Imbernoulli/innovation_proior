@@ -1,0 +1,16 @@
+{
+  "id": "fsx_S_0009",
+  "tier": "S",
+  "family": "coloring-labeling",
+  "seed_problem": "Assign frequencies to transmitters minimizing total interference conflicts under a channel budget; checker scores baseline_conflicts/achieved.",
+  "mutation": "input: skin frequency-assignment as greenhouse zones and generalize to a weighted coupling graph with a hard color budget K in {2..5}, turning proper-coloring into weighted min-conflict K-coloring (weighted Max-K-Cut complement) where forced conflicts make the optimum intractable.",
+  "objective": "min",
+  "theme": "greenhouse zones",
+  "title": "Greenhouse Climate-Program Assignment",
+  "strategies": [
+    "do-nothing baseline: put every zone on program 1 (matches checker baseline, ratio ~0.1)",
+    "one-pass greedy: color zones in index order, giving each the program that adds the least conflict with already-colored coupled neighbors",
+    "local-search with multi-restart: greedy/random init then repeatedly move each zone to its least-conflict program until convergence, keeping the best of many seeded restarts",
+    "structure-aware moves: prioritize high-strength couplings first, or Kernighan-Lin-style swaps between program classes"
+  ]
+}

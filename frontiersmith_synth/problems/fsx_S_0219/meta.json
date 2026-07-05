@@ -1,0 +1,18 @@
+{
+  "id": "fsx_S_0219",
+  "tier": "S",
+  "format": "A",
+  "family": "packing-knapsack",
+  "eval_form": "quality-metric",
+  "seed_problem": "Pack polyominoes into a W x H board maximizing covered area (score = 1e5*sum(k)/(W*H)), reflections allowed; checker validates no-overlap and in-bounds.",
+  "mutation": "composite: generalize the input from an empty board to an obstructed rooftop with scattered blocked tiles, and tighten the output with bounded per-shape supplies (a two-dimensional bounded-supply knapsack), so a single dominant piece cannot tile the roof and value-density / orientation-search / gap-filling strategies diverge.",
+  "objective": "max",
+  "theme": "rooftop gardens",
+  "title": "Skyline Sprouts: Rooftop Garden Bed Packing",
+  "strategies": [
+    "sparse reference baseline: place 2x2 squares on a coarse lattice (the calibration point)",
+    "value-density greedy: scan tiles row-major, place the largest-area piece that fits in its default orientation subject to remaining supply",
+    "orientation-search greedy with gap-filling: try all 8 dihedral orientations of each piece largest-first, then fill leftover gaps with scarce dominoes and monominoes",
+    "multi-order local search / restarts: retry the constructive pass under several deterministic shape orderings and keep the best-covering packing"
+  ]
+}

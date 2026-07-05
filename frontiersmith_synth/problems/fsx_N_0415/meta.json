@@ -1,0 +1,18 @@
+{
+  "id": "fsx_N_0415",
+  "tier": "N",
+  "format": "A",
+  "family": "dispersion-lattice-cover",
+  "eval_form": "quality-metric",
+  "theme": "lunar habitat",
+  "title": "Regolith Relay Dispersion on the Selene Grid",
+  "objective": "max",
+  "seed_problem": "place m grid points maximizing the minimum pairwise L1 distance subject to every demand cell being within radius R of a point (max-min dispersion x coverage)",
+  "mutation": "composite: keep the hard L1 coverage constraint and the max-min dispersion objective, then multiply Dmin by a number-theoretic resonance factor (1 + Align/m) where a pod is resonant iff (a*x+b*y) mod K == r0; the residue bonus is non-degenerate (a spread pod can be snapped onto a ley line for free) so it adds a genuine second mechanism and strategy divergence without collapsing dispersion",
+  "strategies": [
+    "reference/naive: greedy cover then fill spares with demand cells in input order (clustered near hubs, Dmin ~ demand offset)",
+    "pure-dispersion greedy: greedy cover then one-pass farthest-point spread of spares into the empty basin; high Dmin, resonance left at chance level",
+    "resonance-aware spread: farthest-point spread with each spare snapped onto the nearest free (a*x+b*y)==r0 ley-line cell; keeps Dmin high and drives Align (and the 1+Align/m factor) toward its maximum",
+    "coverage-budget balancing: on trap instances, invest scarce pods to both cover the crowded quadrant and reach far demand while spreading the remainder"
+  ]
+}

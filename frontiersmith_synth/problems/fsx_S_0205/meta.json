@@ -1,0 +1,18 @@
+{
+  "id": "fsx_S_0205",
+  "tier": "S",
+  "format": "A",
+  "family": "graph-interdiction",
+  "eval_form": "quality-metric",
+  "seed_problem": "Themed grid network; remove at most k links to maximize the increase in s-t shortest path; checker verifies budget + connectivity and scores achieved delay.",
+  "mutation": "composite: generalize the single s-t objective to a MULTI-SINK objective (one pump source, p display-tank sinks) and maximize the SUM of shortest pump-to-tank distances after deleting <=k edges, with the connectivity gate requiring every tank (not just one) to stay reachable; network is a grid-plus-bypass multigraph with heavy-tailed pipe costs.",
+  "objective": "max",
+  "theme": "aquarium plumbing",
+  "title": "Choked Reef: Aquarium Plumbing Interdiction",
+  "strategies": [
+    "do-nothing baseline: shut no valves (original total travel time)",
+    "greedy tree-edge cutting: shut the heaviest edges lying on the shortest-path tree toward the tanks, while keeping every tank connected",
+    "best-improvement local search: each round, tentatively delete every remaining edge, recompute the true multi-sink total via one Dijkstra, and commit the edge giving the largest feasible increase",
+    "randomized multi-restart: perturb the greedy choices and keep the valve set maximizing total delay"
+  ]
+}

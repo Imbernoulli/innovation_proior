@@ -1,0 +1,16 @@
+{
+  "id": "fsx_G_0428",
+  "tier": "G",
+  "format": "E",
+  "family": "sci-recurrence-discovery",
+  "eval_form": "quality-metric",
+  "theme": "integer sequence oracle",
+  "title": "Integer-Sequence Oracle — extrapolating recurrence discovery",
+  "objective": "min",
+  "strategies": [
+    "constant baseline: predict the last observed term (ignores all structure) -> ~0.1",
+    "degree-3 polynomial least-squares fit in the index n: nails figurate/polynomial sequences, extrapolates poorly on exponential n-nacci growth",
+    "order-3 linear-recurrence fit a(n)=c1*a(n-1)+c2*a(n-2)+c3*a(n-3): recovers the dominant linear-recurrence signal, extrapolating far better on Fibonacci/n-nacci and low-degree figurate sequences",
+    "alternatives: higher-order recurrence fits, exact integer recurrence recovery (Berlekamp-Massey style), mixed exponential-polynomial closed forms, or robust fits that resist the far-future jitter floor"
+  ]
+}

@@ -1,0 +1,18 @@
+{
+  "id": "fsx_S_0066",
+  "tier": "S",
+  "format": "A",
+  "family": "assignment-matching",
+  "eval_form": "quality-metric",
+  "theme": "beehive apiary",
+  "title": "Beehive Apiary: Forager Dispatch under Patch Saturation",
+  "seed_problem": "Assign drones to delivery zones under per-drone capacity to maximize served weight",
+  "mutation": "composite: replace the anchor's per-agent capacity + additive value with a per-resource SATURATION model -- each patch has a depletable nectar stock S_j and the harvest from a patch is min(S_j, total appetite dispatched there); foragers reach only a sparse set of patches and are assigned at most one. The objective sum_j min(S_j, A_j) is submodular/concave, making over-crowding wasteful; the true optimum is NP-hard and value-blind first-fit, saturation-aware marginal-gain greedy, and reassignment local search diverge.",
+  "objective": "max",
+  "strategies": [
+    "reference first-fit: send every forager to its lowest-indexed reachable patch (concentrates load, saturates low patches; ratio ~0.1)",
+    "saturation-aware greedy: process foragers by descending best appetite, send each to the reachable patch maximizing marginal gain clamp(S_j - load_j, 0, a) given current loads",
+    "greedy + reassignment local search: from the greedy dispatch, repeatedly move each forager to the reachable patch giving the best net (add - remove) marginal change until no improvement",
+    "knapsack/spreading construction: treat each patch as a saturating bucket and rebalance foragers off over-saturated patches toward under-used reachable patches"
+  ]
+}

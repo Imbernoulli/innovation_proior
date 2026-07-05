@@ -1,0 +1,129 @@
+# Data-Center Cooling Assignment: Racks to Chillers under Airflow Load
+
+## Problem
+
+A data center hall contains `N` **server racks** and `M` **cooling units** (CRAC/chiller
+units). Rack `i` runs a workload whose business **value** is `v_i` (throughput / priority
+of the jobs on that rack). Each cooling unit `j` can remove a bounded amount of heat: its
+**cooling capacity** is `C_j` (kilowatts of heat removal available).
+
+To keep a rack running you must attach it to exactly one cooling unit. The catch is that
+the amount of a unit's capacity a rack consumes depends on **which** unit cools it: cold air
+must be pushed from the unit to the rack, and the farther and more awkward the airflow path,
+the more capacity it burns. If rack `i` is cooled by unit `j` it draws a **cooling load**
+`d[i][j]` from that unit. These loads are given to you as a full `N x M` table.
+
+You do not have to keep every rack running. A rack you leave **uncooled** is powered down and
+contributes no value (but also draws no cooling load). Every rack you *do* keep running must
+be assigned to one unit, and no unit may have its total assigned cooling load exceed its
+capacity.
+
+You choose an assignment of racks to cooling units. You want to keep the most valuable set of
+racks running: **maximize the total value of the cooled racks** subject to the per-unit
+capacities. Because each rack's footprint changes from unit to unit and units compete for the
+same racks, this is a capacitated generalized assignment problem; no efficient optimal
+algorithm is known, so heuristics are expected.
+
+## Input
+
+```
+N M
+v_1 v_2 ... v_N
+C_1 C_2 ... C_M
+d[1][1] d[1][2] ... d[1][M]
+d[2][1] d[2][2] ... d[2][M]
+...
+d[N][1] d[N][2] ... d[N][M]
+```
+
+- Line 1: integers `N` (racks) and `M` (cooling units).
+- Line 2: `N` integers, the rack values `v_i`.
+- Line 3: `M` integers, the cooling-unit capacities `C_j`.
+- Each of the next `N` lines has `M` integers: line `i` gives `d[i][1..M]`, the cooling load
+  rack `i` would draw from each unit. Every `d[i][j] <= C_j`, so any single rack fits on any
+  unit by itself.
+
+## Output
+
+Print one line with `N` integers `a_1 a_2 ... a_N`.
+
+```
+a_1 a_2 ... a_N
+```
+
+- `a_i = 0` means rack `i` is left uncooled (powered down).
+- `a_i = j` with `1 <= j <= M` means rack `i` is cooled by unit `j`.
+
+## Feasibility
+
+An output is feasible if and only if:
+
+- exactly `N` integers are printed, each in the range `0 .. M`;
+- for every cooling unit `j`, the total cooling load of the racks assigned to it does not
+  exceed its capacity: `sum over i with a_i = j of d[i][j]  <=  C_j`.
+
+Any output that violates feasibility scores 0.
+
+## Objective
+
+Let the set of cooled racks be `S = { i : a_i != 0 }`. Maximize the total served value
+
+```
+F = sum over i in S of v_i.
+```
+
+## Scoring
+
+The checker builds an internal **baseline** `B`: the value obtained by a simple
+**first-fit-in-index-order** assignment. It processes racks `i = 1, 2, ..., N` in order; for
+each rack it scans units `j = 1, 2, ..., M` in order and assigns the rack to the **first**
+unit whose remaining capacity is at least `d[i][j]` (reducing that unit's remaining capacity
+and adding `v_i` to `B`); if no unit currently has room, the rack is left uncooled. Because
+every rack fits on any empty unit, `B` is always positive.
+
+Your score on a test is
+
+```
+ratio = min(1.0, (F / max(1, B)) / 10)
+```
+
+so matching the first-fit baseline scores `0.1`, doubling it scores `0.2`, and reaching ten
+times the baseline value (or more) reaches the capped score `1.0`. Larger is better. Per-test
+scores are averaged.
+
+## Constraints
+
+- `2 <= N <= 1000`
+- `2 <= M <= 25`
+- `1 <= v_i <= 1000`
+- `1 <= d[i][j] <= C_j`, and `1 <= C_j <= 2 000 000`
+- Time limit: 5s
+- Memory limit: 512 MiB
+
+## Example
+
+Input:
+```
+3 2
+3 9 9
+10 10
+8 8
+9 3
+3 9
+```
+
+There are 3 racks and 2 cooling units, both with capacity 10. Rack 1 has low value (3) but
+draws load 8 from either unit; racks 2 and 3 are valuable (9 each) and each has one cheap
+unit (rack 2 draws 3 from unit 2, rack 3 draws 3 from unit 1).
+
+The first-fit baseline assigns rack 1 to unit 1 (load 8, unit 1 now has room 2 left), then
+rack 2 to unit 2 (load 3, unit 2 has room 7 left), then tries rack 3: unit 1 has only room 2
+(< 3) and unit 2 has room 7 but `d[3][2] = 9 > 7`, so rack 3 is left uncooled. Thus
+`B = 3 + 9 = 12`.
+
+A better assignment cools the two valuable racks: put rack 3 on unit 1 (load 3) and rack 2 on
+unit 2 (load 3), leaving rack 1 uncooled. Output `0 2 1`. Both units are within capacity and
+`F = 9 + 9 = 18`, giving `ratio = min(1.0, (18 / 12) / 10) = 0.15`.
+
+Sacrificing the cheap-but-bulky low-value rack to make room for the two high-value racks is
+what buys the improvement over the first-fit baseline.

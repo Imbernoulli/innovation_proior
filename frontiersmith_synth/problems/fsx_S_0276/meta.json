@@ -1,0 +1,16 @@
+{
+  "id": "fsx_S_0276",
+  "tier": "S",
+  "family": "online-to-offline-replay",
+  "seed_problem": "Given a fixed availability/deadline trace, choose Spot/On-Demand/pause per step to minimize cost; checker replays the trace and scores baseline/cost.",
+  "mutation": "composite: take the single-job cant_be_late spot/on-demand replay (choose spot/on-demand/pause per step to finish one job by a deadline) and (1) generalize the input to N monitoring tasks with individual release/deadline windows and required compute, sharing ONE unit-capacity processor, and (2) change the goal from 'always finish' to a soft min-cost objective = power burned + per-task data-loss penalty for unfinished tasks. The all-or-nothing per-task value plus the scarce shared solar (spot) steps turns the poly-time single-job greedy into a knapsack-like selection over a scheduling substrate, so no easy optimum exists.",
+  "objective": "min",
+  "theme": "volcano monitoring",
+  "title": "Volcano Watch: Solar/Diesel Compute Replay for Sensor Backlogs",
+  "strategies": [
+    "do-nothing baseline: pause every step, clear no task, pay all penalties (matches the checker baseline, ratio ~0.1)",
+    "value-greedy: sort tasks by penalty v_j descending, give each the cheapest free steps in its window, commit only if power cost < v_j (grabs big tasks first, hogs solar steps)",
+    "density/multi-order search: evaluate several task orderings (penalty-descending, value-density v_j/p_j descending, small-p first), simulate each cheapest-step packing, and keep the schedule with the lowest total cost -> spends scarce solar steps on the most efficient tasks",
+    "local search: after a constructive pack, try inserting still-profitable dropped tasks into freed/diesel steps and swapping solar allocations between contending tasks to lower cost"
+  ]
+}

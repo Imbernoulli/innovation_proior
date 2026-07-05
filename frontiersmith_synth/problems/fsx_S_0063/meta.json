@@ -1,0 +1,18 @@
+{
+  "id": "fsx_S_0063",
+  "tier": "S",
+  "format": "A",
+  "family": "packing-knapsack",
+  "eval_form": "quality-metric",
+  "seed_problem": "Pack polyominoes into a W x H board maximizing covered area (Frontier-CS problems 0,1; AlphaEvolve).",
+  "mutation": "composite: keep the max-coverage packing goal but add per-type bounded stock (bounded knapsack) so no single shape can fill the tray, and allow all 8 dihedral orientations; scored against a single-type grid-tiling baseline.",
+  "objective": "max",
+  "theme": "vaccine cold chain",
+  "title": "Cold-Chain Tray Packing",
+  "strategies": [
+    "single-type grid tiling: pick the one type/orientation with the best bounding-box grid coverage (the baseline B)",
+    "area-descending first-fit: scan cells row-major, drop the largest available piece (4 rotations) whose bounding box fits at the anchor",
+    "cover-this-cell greedy: for each empty cell try all types and all 8 orientations, shifting a piece so one of its cells lands on the scanned cell, then fill leftover gaps with small pieces",
+    "local search / multi-restart over placement order to squeeze coverage toward the tray capacity"
+  ]
+}

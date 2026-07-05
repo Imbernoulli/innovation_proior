@@ -1,0 +1,16 @@
+{
+  "id": "fsx_G_0484",
+  "tier": "G",
+  "format": "C",
+  "family": "disc-covering-code",
+  "eval_form": "correctness",
+  "theme": "fault-tolerant memory",
+  "title": "Anchor Words: Minimum-Size Binary Covering Codes for r-Fault Memory",
+  "objective": "min",
+  "strategies": [
+    "natural-order first-fit (each uncovered word becomes an anchor) -- the baseline",
+    "local look-ahead: anchor the best of a word and its single-bit neighbours",
+    "full-ball max-coverage greedy: anchor the ball centre covering the most uncovered words",
+    "linear/coset covering codes, simulated annealing or ILP over anchor placements (open)"
+  ]
+}

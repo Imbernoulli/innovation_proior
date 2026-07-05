@@ -1,0 +1,136 @@
+# Solar Farm DC Collection Grid: Port-Capped Trench Cabling
+
+## Problem
+
+A utility-scale photovoltaic plant has `N` **string inverters** installed across a flat
+site. Inverter `i` stands at an integer map coordinate `(x_i, y_i)` (metres on the survey
+grid). To gather the generated DC power you must lay a **collection network**: a set of
+buried cable runs, each run joining two inverters. Because cables are pulled through
+orthogonal trenches that follow the site's row/column layout, a cable between inverters
+`p` and `q` occupies a trench length equal to their **Manhattan (L1) distance**
+
+```
+trench(p, q) = |x_p - x_q| + |y_p - y_q|.
+```
+
+The whole plant must end up **connected** — every inverter can reach every other by
+following cable runs. But each inverter `i` has a combiner box with only a limited number
+of cable **ports**: it can be an endpoint of **at most `cap_i`** runs. Moreover, every
+cable terminated at inverter `i` must be landed, glanded and commissioned by hand, which
+costs a fixed **termination fee `w_i` per port used** at that inverter.
+
+You choose which cable runs to build. You want a connected network whose **total cost** —
+trench length plus all termination fees — is as small as possible, without ever exceeding
+any combiner's port cap.
+
+Without the port caps and fees this would just be a minimum spanning tree; the per-inverter
+caps make short cable layouts fight for the few ports, and the per-port termination fees
+punish turning any expensive combiner into a hub. No efficient optimal algorithm is known,
+so heuristics are expected.
+
+## Input
+
+```
+N
+x_1 y_1 cap_1 w_1
+x_2 y_2 cap_2 w_2
+...
+x_N y_N cap_N w_N
+```
+
+- Line 1: integer `N`, the number of inverters.
+- Each of the next `N` lines describes inverter `i` (numbered `1..N`): integer coordinates
+  `x_i`, `y_i`, its port cap `cap_i`, and its per-port termination fee `w_i`.
+- All inverter coordinates are distinct. Every `cap_i >= 2`, so a connected network always
+  exists (for instance a single cable chain threading all inverters).
+
+## Output
+
+Print your collection network as a list of cable runs.
+
+```
+E
+a_1 b_1
+a_2 b_2
+...
+a_E b_E
+```
+
+- Line 1: integer `E`, the number of cable runs you build.
+- Each of the next `E` lines gives one run between inverters `a_k` and `b_k`
+  (`1 <= a_k, b_k <= N`, `a_k != b_k`). Runs are undirected; do not list the same
+  unordered pair twice.
+
+## Feasibility
+
+An output is feasible if and only if all of the following hold:
+
+- `E` runs are printed, each joining two distinct valid inverters;
+- no unordered pair of inverters appears more than once (no duplicate run);
+- for every inverter `i`, the number of runs incident to `i` is at most `cap_i`;
+- the resulting network is **connected** (spans all `N` inverters).
+
+Any output that violates feasibility scores 0.
+
+## Objective
+
+Let `deg(i)` be the number of cable runs terminated at inverter `i`. Minimize the total
+plant cost
+
+```
+F = sum over all built runs (a, b) of trench(a, b)
+  + sum over all inverters i of w_i * deg(i).
+```
+
+The first term is total trench length; the second is total termination labour.
+
+## Scoring
+
+Let `B` be the total cost of the **chain baseline**: the network that links the inverters
+in input order, `1-2, 2-3, ..., (N-1)-N` (a single path, always feasible since every
+`cap_i >= 2`). Its cost includes the L1 trench of every consecutive pair plus the
+termination fees for the resulting degrees (the two ends have degree 1, the rest degree 2).
+Your score on a test is
+
+```
+ratio = min(1.0, (B / max(1, F)) / 10)
+```
+
+so a network that merely matches the chain baseline scores `0.1`, one half its cost scores
+`0.2`, and reaching one tenth of the baseline cost (or cheaper) reaches the capped score
+`1.0`. Larger is better. Per-test scores are averaged.
+
+## Constraints
+
+- `2 <= N <= 2000`
+- `0 <= x_i, y_i <= 10000`
+- `2 <= cap_i <= 4`
+- `1 <= w_i <= 2000`
+- Time limit: 5s
+- Memory limit: 512 MiB
+
+## Example
+
+Input:
+```
+4
+0 0 3 2
+0 10 2 9
+10 10 3 2
+10 0 2 2
+```
+
+The four inverters sit on the corners of a 10x10 square; inverter 2 has an expensive
+combiner (`w_2 = 9`).
+
+The chain baseline links `1-2, 2-3, 3-4`. Trench lengths are all `10` (each pair differs
+by 10 on one axis), so trench `= 30`. Degrees are `deg = (1, 2, 2, 1)`, so termination fees
+are `2*1 + 9*2 + 2*2 + 2*1 = 26`. Hence `B = 30 + 26 = 56`.
+
+Now consider the tree with runs `1-2, 1-4, 4-3`. Trenches are `10 + 10 + 10 = 30`. Degrees
+are `deg = (2, 1, 1, 2)`, so the expensive inverter 2 is now only a leaf: termination fees
+are `2*2 + 9*1 + 2*1 + 2*2 = 19`. Hence `F = 30 + 19 = 49`, giving
+`ratio = min(1.0, (56 / 49) / 10) = 0.1142...`.
+
+Keeping the expensive combiner off the busy interior of the network is what buys the
+improvement over the chain baseline.

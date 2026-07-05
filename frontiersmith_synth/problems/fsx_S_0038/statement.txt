@@ -1,0 +1,118 @@
+# Wildlife Corridor: Watchtower Coverage on a Habitat Graph
+
+## Problem
+
+A conservation trust manages a **wildlife corridor** represented as a graph of habitat
+**cells** connected by animal **trails**. To monitor the corridor, the trust can build
+**watchtowers**. A watchtower may be built on any cell; each cell `i` has a fixed
+**installation cost** `c_i > 0` (terrain, permits, materials).
+
+A watchtower built on cell `u` **monitors** every cell that is reachable from `u` in at
+most `r` trail hops (graph distance `<= r`), including `u` itself.
+
+Every cell in the corridor must be monitored by at least one watchtower. Subject to that,
+you want to spend as little as possible: choose the set of cells on which to build so that
+**every cell is monitored**, minimizing the **total installation cost**.
+
+Formally: given an undirected graph on `N` cells with per-cell costs and a monitoring
+radius `r`, choose a subset `S` of cells such that every cell is within graph distance `r`
+of some cell in `S`, minimizing `sum_{i in S} c_i`. This is a minimum-weight
+`r`-dominating / covering-facility-location problem: it is NP-hard, the optimum is unknown,
+and many heuristics (max-coverage greedy, cost-effective greedy, LP rounding, redundancy
+pruning, local search) are viable and diverge.
+
+## Input
+
+The first line contains three integers:
+
+```
+N M r
+```
+
+- `N` — number of habitat cells, numbered `1..N`.
+- `M` — number of trails (undirected edges).
+- `r` — the monitoring radius in hops (`r >= 1`).
+
+The second line contains `N` integers `c_1 c_2 ... c_N` — the installation cost of a
+watchtower on each cell (`1 <= c_i`).
+
+Each of the next `M` lines contains two integers:
+
+```
+u v
+```
+
+meaning a two-way trail between cells `u` and `v` (`1 <= u, v <= N`, `u != v`). The graph
+may contain parallel trails.
+
+## Output
+
+On the first line print `K` — the number of watchtowers you build (`0 <= K <= N`).
+On each of the next `K` lines print one cell index (an integer in `1..N`). All printed
+indices must be distinct.
+
+## Feasibility
+
+An output is feasible iff:
+
+- `0 <= K <= N`;
+- every printed index is in `1..N` and all `K` indices are distinct;
+- **every** cell `1..N` is within graph distance `r` of at least one chosen cell.
+
+Building a watchtower on every cell (`K = N`, listing `1..N`) is always feasible, since a
+cell monitors itself. Any infeasible output scores `0`.
+
+## Objective
+
+Let `F = sum_{i in S} c_i` be the total installation cost of your chosen set `S`. You are
+**minimizing** `F`.
+
+## Scoring
+
+Let `B = sum_{i=1}^{N} c_i` be the cost of the trivial "build everywhere" cover (the
+checker's internal baseline). The score for a test is
+
+```
+ratio = min(1.0, 0.1 * B / F)
+```
+
+Building everywhere (`F = B`) scores `0.1`; reaching a ten-fold cost reduction
+(`F = B / 10`) caps the score at `1.0`. The overall score is the mean ratio across all
+tests.
+
+## Constraints
+
+- `3 <= N <= 450`.
+- `1 <= M <= 5000`.
+- `1 <= r <= 3`.
+- `1 <= c_i <= 3`.
+- Time limit: 5 s. Memory limit: 512 MB.
+
+## Example
+
+Input:
+
+```
+4 3 1
+2 1 1 2
+1 2
+2 3
+3 4
+```
+
+The corridor is the path `1 - 2 - 3 - 4` with costs `[2, 1, 1, 2]` and radius `r = 1`.
+The build-everywhere baseline costs `B = 2 + 1 + 1 + 2 = 6`.
+
+Building watchtowers on cells `2` and `3`: tower `2` monitors `{1, 2, 3}` and tower `3`
+monitors `{2, 3, 4}`, so together they monitor all four cells. The cost is
+`F = c_2 + c_3 = 1 + 1 = 2`.
+
+Score for this test: `min(1.0, 0.1 * 6 / 2) = min(1.0, 0.3) = 0.3`.
+
+A valid worked output:
+
+```
+2
+2
+3
+```

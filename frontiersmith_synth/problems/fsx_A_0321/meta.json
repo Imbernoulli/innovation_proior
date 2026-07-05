@@ -1,0 +1,16 @@
+{
+  "id": "fsx_A_0321",
+  "tier": "A",
+  "format": "C",
+  "family": "greedy-priority-construction",
+  "eval_form": "correctness",
+  "theme": "vineyard irrigation",
+  "title": "Vineyard Emitter Placement: Yield-Weighted Cap Set in F_3^n",
+  "objective": "optimize",
+  "strategies": [
+    "structural baseline: switch on every plot whose ternary address uses only terraces 0 and 1 (the {0,1}^n sub-cube) -- always a valid cap set, ignores yields, reproduces the checker baseline (ratio ~0.1)",
+    "yield-priority greedy: consider plots in decreasing water yield and add each emitter that does not complete a forbidden 3-in-a-line with two already-on emitters (the FunSearch priority scaffold)",
+    "greedy + local search: refine the greedy cap set by swapping in heavy off-emitters, evicting the cheaper emitters that block them whenever the trade strictly raises total yield",
+    "structured constructions: build large caps from products of small extremal caps, or randomized multi-restart yield-greedy keeping the best over seeds"
+  ]
+}

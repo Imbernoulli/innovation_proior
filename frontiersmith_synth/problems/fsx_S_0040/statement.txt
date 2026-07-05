@@ -1,0 +1,156 @@
+# Signal-Grid Courier: Prize-Collecting Pickup-and-Delivery Tour
+
+## Problem
+
+A single autonomous courier van serves a downtown laid out as a **traffic-signal grid**.
+There are `N` signalized intersections. The van is garaged at a **depot** intersection and
+must return there at the end of its shift. A dispatch board lists `M` delivery **jobs**;
+job `j` has a **pickup** intersection `p_j` and a **delivery** intersection `q_j`. To
+complete a job the van must visit `p_j` (collect the parcel) and *later* visit `q_j` (drop
+it off). The van has unlimited cargo space, so it may hold several collected parcels at
+once. For every job the van **does not** complete, the company forfeits a lost-revenue
+penalty `w_j`.
+
+Driving between intersections costs travel distance plus the red-light wait at the
+intersection you arrive at. Concretely, moving from intersection `a` to intersection `b`
+costs
+
+```
+dist(a, b) = |x_a - x_b| + |y_a - y_b| + delay_b
+```
+
+where `(x_i, y_i)` are the grid coordinates of intersection `i` and `delay_i` is its signal
+wait. Every arrival — including the final return to the depot — pays the destination's
+signal delay; the initial departure from the depot pays nothing extra.
+
+You choose **which subset of jobs to serve** and **one depot-to-depot tour** that respects
+every served job's pickup-before-delivery precedence, so as to minimize the total cost:
+the driven tour length plus the penalties of all unserved jobs.
+
+This is a prize-collecting pickup-and-delivery routing problem: it is NP-hard, the optimum
+is unknown, and construction heuristics (append-greedy, cheapest-insertion, local search,
+randomized restarts) all diverge.
+
+## Input
+
+The first line contains three integers:
+
+```
+N M depot
+```
+
+- `N` — number of intersections, numbered `1..N`.
+- `M` — number of jobs, numbered `1..M`.
+- `depot` — the depot intersection (`1 <= depot <= N`).
+
+Each of the next `N` lines describes one intersection `i` (`i = 1..N`):
+
+```
+x_i y_i delay_i
+```
+
+with grid coordinates `x_i, y_i` and signal wait `delay_i >= 0`.
+
+Each of the next `M` lines describes one job `j` (`j = 1..M`):
+
+```
+p_j q_j w_j
+```
+
+meaning pickup intersection `p_j`, delivery intersection `q_j` (`p_j != q_j`), and
+lost-revenue penalty `w_j >= 1` if the job is left unserved.
+
+## Output
+
+Describe your tour as an ordered list of **stop events**. First print one line with `K`,
+the number of events. Then print `K` lines, each
+
+```
+type j
+```
+
+where `type` is `1` for a pickup (visit `p_j`) or `2` for a delivery (visit `q_j`), and
+`j` is the job index. The van drives, in the printed order, from the depot to each event's
+intersection and finally back to the depot.
+
+Printing `0` on the first line (serve nothing, van stays home) is always valid.
+
+## Feasibility
+
+An output is feasible iff:
+
+- `0 <= K <= 2*M`;
+- every `type` is `1` or `2` and every `j` is in `1..M`;
+- no job has two pickup events and no job has two delivery events;
+- for every job, its pickup event (if any) appears **before** its delivery event;
+- every job that is picked up is also delivered, and vice versa (a job is either fully
+  served — one pickup then one delivery — or not served at all).
+
+Any output violating these rules scores `0`.
+
+## Objective
+
+Let the served jobs be those that appear (as a pickup+delivery pair). Let `T` be the total
+driven cost of the tour `depot -> (event locations in order) -> depot`, where each leg is
+charged by `dist(a, b)` above; if no jobs are served, `T = 0`. Let `U` be the sum of `w_j`
+over all **unserved** jobs. You are **minimizing**
+
+```
+F = T + U
+```
+
+## Scoring
+
+Let `B` be the cost of the do-nothing plan (serve no job): `B = sum of all w_j`. The score
+for a test is
+
+```
+ratio = min(1.0, 0.1 * B / F)
+```
+
+The do-nothing plan (`F = B`) scores `0.1`; driving the total cost down to one-tenth of the
+forfeit-everything cost (`F = B/10`) caps the score at `1.0`. The overall score is the mean
+ratio across all tests.
+
+## Constraints
+
+- `2 <= N <= 40`, `1 <= M <= 40`.
+- `0 <= x_i, y_i <= 40`, `0 <= delay_i <= 3`.
+- `1 <= w_j <= 5000`, `p_j != q_j`.
+- Time limit: 5 s. Memory limit: 512 MB.
+
+## Example
+
+Input:
+
+```
+5 3 1
+5 5 0
+0 5 1
+10 5 1
+5 0 2
+5 10 2
+2 3 30
+4 5 25
+2 4 40
+```
+
+Job 1: pickup at intersection 2 `(0,5)`, deliver at 3 `(10,5)`, penalty 30.
+Job 2: pickup at 4 `(5,0)`, deliver at 5 `(5,10)`, penalty 25.
+Job 3: pickup at 2 `(0,5)`, deliver at 4 `(5,0)`, penalty 40.
+
+Do-nothing baseline: `B = 30 + 25 + 40 = 95`.
+
+Consider serving job 1 with the tour `depot(1) -> pickup 2 -> deliver 3 -> depot`:
+
+```
+2
+1 1
+2 1
+```
+
+Legs: `dist(1,2)=|5-0|+|5-5|+1=6`, `dist(2,3)=|0-10|+0+1=11`,
+`dist(3,1)=|10-5|+0+0=5`. So `T = 6+11+5 = 22`. Unserved penalties `U = 25+40 = 65`.
+Thus `F = 22 + 65 = 87` and `ratio = min(1.0, 0.1 * 95 / 87) = 0.1092...`.
+
+Serving more of the profitable jobs on a shared route lowers `F` further and raises the score.

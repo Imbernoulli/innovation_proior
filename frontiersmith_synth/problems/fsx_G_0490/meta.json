@@ -1,0 +1,17 @@
+{
+  "id": "fsx_G_0490",
+  "tier": "G",
+  "format": "C",
+  "family": "disc-mutually-orthogonal-latin",
+  "eval_form": "correctness",
+  "theme": "experiment design",
+  "title": "Near-Orthogonal Latin Squares: Maximizing Satisfied Orthogonality",
+  "objective": "max",
+  "source_frameworks": ["breadth-fill (dataset/domain/task diversity)"],
+  "strategies": [
+    "cyclic construction L_m[i][j]=(a_m*i+j+s_m) mod n (reproduces the checker baseline -> ~0.1)",
+    "intercalate (2x2 trade) hill-climbing from the cyclic start, single restart",
+    "multi-restart intercalate local search with randomized diversification of the starting squares -> markedly higher distinct-pair counts across the family",
+    "structured pair constructions (prolongation, Kronecker/product designs, group-based transversals) that push toward the open MOLS bounds"
+  ]
+}

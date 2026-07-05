@@ -1,0 +1,17 @@
+{
+  "id": "fsx_A_0093",
+  "tier": "A",
+  "format": "C",
+  "family": "geometric-packing",
+  "eval_form": "quality-metric",
+  "theme": "museum gallery tour",
+  "title": "Rotunda Gallery Tour: Viewing-Zone Layout",
+  "objective": "max",
+  "source_frameworks": ["AlphaEvolve", "OpenEvolve", "ThetaEvolve", "TTT-Discover"],
+  "strategies": [
+    "single-ring baseline: N equal zones evenly spaced on the mid-annulus circle (reproduces the checker baseline B, ~0.1)",
+    "coarse grid fill: scan a coarse lattice of candidate centres in the annulus, dropping the largest feasible zone at each in reading order",
+    "best-first greedy insertion: repeatedly place the single feasible zone (over a fine candidate grid) with the largest achievable radius, filling multiple concentric layers of the annulus",
+    "constructive concentric rings + local growth / seeded perturb-and-reoptimize refinements that trade zone count against zone size"
+  ]
+}

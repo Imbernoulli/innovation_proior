@@ -1,0 +1,18 @@
+{
+  "id": "fsx_S_0229",
+  "tier": "S",
+  "format": "A",
+  "family": "graph-interdiction",
+  "eval_form": "quality-metric",
+  "seed_problem": "Given a themed grid network, remove at most k links to MAXIMIZE the increase in s-t shortest path; checker verifies budget + connectivity and scores the achieved delay ratio.",
+  "mutation": "output: replace the unit-cardinality edge budget (remove at most k links) with a weighted CLOSURE-COST budget (each doorway has a closure cost; total closed cost must stay <= K). This turns the interdiction budget into a knapsack-style constraint, so the choice space couples 'which doorway lengthens the tour most' with 'how much budget it consumes', keeping the exact optimum NP-hard while preserving the connectivity validity gate and the delay-ratio scoring.",
+  "objective": "max",
+  "theme": "museum gallery tour",
+  "title": "Museum Gallery Tour: Budgeted Doorway Closures",
+  "strategies": [
+    "do-nothing baseline (close no doorways; scores the calibration point)",
+    "cheapest-first path interdiction: close the cheapest affordable doorway on the current shortest tour, repeat",
+    "best-improvement path interdiction: close the shortest-tour doorway that lengthens the tour the most per step",
+    "benefit/cost knapsack greedy or local search over closure subsets that respects the cost budget"
+  ]
+}

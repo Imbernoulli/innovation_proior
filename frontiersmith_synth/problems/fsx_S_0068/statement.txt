@@ -1,0 +1,104 @@
+# Apiary Yard Split: Minimum Cross-Yard Bee Drift
+
+## Problem
+
+You manage a large commercial apiary with `n` beehives. Bees from nearby or related
+hives share foraging routes and robbing traffic; for some pairs of hives `u` and `v`
+there is a measured **drift weight** `w` describing how much bee traffic (and, with it,
+mite and disease transfer) passes between the two hives.
+
+To rotate pasture and spread out labor, you must split the hives across `k` physically
+separate **bee yards** (apiary sites), numbered `0 .. k-1`. When two hives that share
+drift are placed in **different** yards, that traffic now crosses between sites: bees get
+lost, robbing spreads mites between yards, and colonies weaken. When both hives sit in the
+**same** yard, their drift stays local and costs you nothing.
+
+For labor and equipment reasons the split must be **balanced**: every yard must hold
+between `floor(n/k)` and `ceil(n/k)` hives. `n` is always a multiple of `k`, so this means
+**exactly `n/k` hives per yard**.
+
+Your goal is to choose the balanced assignment that **minimizes** the total drift weight
+that crosses between different yards.
+
+This is a balanced minimum `k`-cut (balanced graph partitioning) instance. The optimum is
+NP-hard to find, so any balanced assignment is accepted and graded by how little cross-yard
+drift it leaves.
+
+## Input
+
+- Line 1: three integers `n m k` — the number of hives, the number of drift records, and the
+  number of yards.
+- Next `m` lines: three integers `u v w` — a drift record between hives `u` and `v` with
+  weight `w`.
+
+Hives are numbered `1..n`. Records are undirected; there are no self-loops and no duplicate
+records. `n` is a multiple of `k`.
+
+## Output
+
+Print `n` integers `y_1 y_2 ... y_n` (whitespace-separated), where `y_i` is the yard
+(`0 .. k-1`) assigned to hive `i`.
+
+## Feasibility
+
+- Each `y_i` must be an integer in `[0, k-1]`.
+- Each yard must hold exactly `n/k` hives.
+
+Any output violating these rules scores `0`.
+
+## Objective
+
+Minimize the cross-yard drift
+
+```
+F = sum of w over all records (u,v) with y_u != y_v.
+```
+
+## Scoring
+
+Let `B` be the cross-yard drift of the **reference block split** in which hives are placed in
+`k` contiguous index blocks (hives `1 .. n/k` go to yard `0`, the next `n/k` to yard `1`, and
+so on). The checker computes `B` itself; it is always positive. With `F` your feasible split's
+cross-yard drift, the raw score is
+
+```
+score = min(1000, 100 * B / max(1, F))
+```
+
+and the reported ratio is `score / 1000`. So the reference block split earns ratio `0.1`,
+cutting the cross-yard drift to one tenth of the reference caps the ratio at `1.0`, and
+**lower `F` is better**.
+
+## Constraints
+
+- `2 <= n <= 3000`, `n` a multiple of `k`.
+- `2 <= k <= 6`.
+- `1 <= m <= min(2*10^5, n*(n-1)/2)`.
+- `1 <= w <= 100`.
+- Time limit: 5 s. Memory limit: 512 MB.
+
+## Example
+
+Input:
+
+```
+6 6 2
+1 3 20
+3 5 18
+1 5 15
+2 4 22
+4 6 17
+2 6 19
+```
+
+Here the drift forms two hidden clusters that do **not** line up with the index blocks:
+`{1,3,5}` and `{2,4,6}`.
+
+The checker's reference block split puts hives `1,2,3` in yard `0` and hives `4,5,6` in yard
+`1`. That cuts records (3,5), (1,5), (2,4) and (2,6): `B = 18 + 15 + 22 + 19 = 74`. Outputting
+this block split (`0 0 0 1 1 1`) therefore scores exactly `100 * 74 / 74 = 100`, ratio `0.1`.
+
+Suppose instead you output `0 1 0 1 0 1` (hives 1,3,5 -> yard 0; hives 2,4,6 -> yard 1). Each
+yard holds exactly three hives, so the split is balanced, and it recovers the two clusters:
+every record now stays inside a yard, so `F = 0`. The score is `min(1000, 100 * 74 / max(1,0)) =
+7400`, capped to `1000`, ratio `1.0`. Lower `F` earns a higher score.

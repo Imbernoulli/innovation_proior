@@ -1,0 +1,129 @@
+# Migratory Herds in the Greatplains Wildlife Corridor
+
+## Problem
+
+The *Greatplains Conservation Trust* is stitching fragmented habitat patches into a single
+**wildlife corridor**. Each season a set of **migratory herds** must move through the
+corridor, and the Trust has surveyed a set of candidate **corridor routes** (fenced
+underpasses, riparian strips, restored land bridges). A route can only sustain so much
+traffic before its forage and water are exhausted, so every route `j` has a fixed seasonal
+**carrying capacity** `C_j`.
+
+Steering herd `i` through route `j` yields a **conservation value** `v_{ij}` (how well that
+route's terrain, cover and predator load suit that particular herd) and consumes `d_{ij}`
+units of route `j`'s carrying capacity (that herd's grazing/water footprint on that route,
+which depends on both the herd and the route). A herd may be sent through **at most one**
+route, or left out of the program entirely (assigned to no route). The total footprint of
+all herds routed through a route may not exceed that route's carrying capacity.
+
+You must decide, for each herd, which route (if any) it takes, so as to **maximize the
+total conservation value** of the herds that are routed.
+
+Formally this is a **generalized assignment problem**: bipartite herds-to-routes matching
+where each (herd, route) pair carries its own value and its own capacity demand, each herd
+is used at most once, and each route has a knapsack-style capacity. The optimum is NP-hard
+and unknown; value-greedy, density-greedy, and local-search strategies all differ.
+
+## Input
+
+The first line contains two integers:
+
+```
+H R
+```
+
+- `H` — the number of migratory herds, numbered `1..H`.
+- `R` — the number of candidate corridor routes, numbered `1..R`.
+
+The second line contains `R` integers `C_1 C_2 ... C_R`, the carrying capacities of the
+routes (`C_j >= 1`).
+
+Each of the next `H` lines describes one herd. Line `i` contains `2R` integers:
+
+```
+v_{i1} d_{i1} v_{i2} d_{i2} ... v_{iR} d_{iR}
+```
+
+where `v_{ij}` (`1 <= v_{ij}`) is the conservation value and `d_{ij}` (`1 <= d_{ij}`) is
+the capacity footprint of routing herd `i` through route `j`.
+
+## Output
+
+Print `H` lines. Line `i` contains a single integer `a_i` — the route herd `i` is sent
+through, where `1 <= a_i <= R`, or `a_i = 0` if herd `i` is left unassigned.
+
+Printing `0` on every line is always valid (it just scores nothing).
+
+## Feasibility
+
+An output is feasible iff:
+
+- it contains exactly `H` integers, each `a_i` in `0..R`;
+- for every route `j`, the sum of `d_{ij}` over all herds `i` with `a_i = j` does not
+  exceed the carrying capacity `C_j`.
+
+Any infeasible output scores `0`.
+
+## Objective
+
+Let `F = sum over all herds i with a_i != 0 of v_{i,a_i}`, the total conservation value of
+the routed herds. You are **maximizing** `F`.
+
+## Scoring
+
+The checker builds an internal baseline `B` using a deterministic **first-fit-by-index**
+construction: processing herds in order `1..H`, each herd is placed on the *lowest-indexed*
+route that still has room for it (ignoring value), if any. `B` is the total conservation
+value of that construction.
+
+The score for a test is
+
+```
+ratio = min(1.0, 0.1 * F / B)
+```
+
+Reproducing the baseline (`F = B`) scores `0.1`; reaching a ten-fold improvement over the
+value-blind baseline (`F = 10*B`) caps the score at `1.0`. The overall score is the mean
+ratio across all tests.
+
+## Constraints
+
+- `2 <= H <= 2000`, `1 <= R <= 60`.
+- `1 <= C_j <= 300`.
+- `1 <= v_{ij} <= 100`, `1 <= d_{ij} <= 15`.
+- Time limit: 5 s. Memory limit: 512 MB.
+
+## Example
+
+Input:
+
+```
+3 2
+5 6
+80 4 10 3
+5 2 90 5
+40 3 30 6
+```
+
+Here there are `3` herds and `2` routes with capacities `C_1 = 5`, `C_2 = 6`.
+
+The baseline first-fit-by-index processes herds in order. Herd 1: route 1 has room
+(`d = 4 <= 5`), place it (value `80`), route-1 remaining `= 1`. Herd 2: route 1 needs
+`d = 2 > 1`, skip; route 2 has room (`d = 5 <= 6`), place it (value `90`), route-2 remaining
+`= 1`. Herd 3: route 1 needs `3 > 1`, route 2 needs `6 > 1`, so herd 3 is unassigned. So
+`B = 80 + 90 = 170`.
+
+A better assignment sends herd 1 through route 1 (value `80`, footprint `4`, route-1
+remaining `1`) and herd 2 through route 2 (value `90`, footprint `5`, route-2 remaining
+`1`); herd 3 does not fit either route, so `F = 170` as well here — but on larger instances
+value-aware strategies pull far ahead of the value-blind baseline.
+
+A valid worked output for this example:
+
+```
+1
+2
+0
+```
+
+Score for this test: `min(1.0, 0.1 * 170 / 170) = 0.1`.

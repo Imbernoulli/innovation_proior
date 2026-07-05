@@ -1,0 +1,122 @@
+# Orbital Debris Cleanup Tasking
+
+## Problem
+
+A constellation of **M** autonomous cleanup satellites must deorbit **N** tracked pieces of
+orbital debris. Each satellite `i` starts a cleanup campaign with a fixed delta-v budget
+`cap[i]` (its maneuvering fuel). Capturing debris `j` with satellite `i` consumes `c[i][j]`
+units of delta-v and removes `v[i][j]` units of "hazard weight" from the busy orbital shells
+(the reward depends on both the debris and which satellite performs the capture, because the
+optimal rendezvous burn differs per satellite).
+
+Each piece of debris may be captured by **at most one** satellite (or left in orbit). The
+total delta-v a satellite spends across all the debris it captures may not exceed its budget.
+
+Your job is to decide, for every piece of debris, which satellite (if any) captures it, so as
+to **maximize the total hazard weight removed**. This is a generalized assignment problem: the
+optimum is NP-hard, so heuristics are expected.
+
+## Input
+
+```
+M N
+cap[1] cap[2] ... cap[M]
+row_1
+row_2
+...
+row_N
+```
+
+- Line 1: two integers `M` (satellites) and `N` (debris).
+- Line 2: `M` integers, the delta-v budget `cap[i]` of each satellite.
+- The next `N` lines describe the debris. Line `j` (for `j = 1..N`) contains `2*M` integers:
+  `v[1][j] c[1][j] v[2][j] c[2][j] ... v[M][j] c[M][j]`,
+  i.e. for each satellite `i`, the pair (hazard weight `v[i][j]`, delta-v cost `c[i][j]`).
+
+## Output
+
+Print `N` integers, one per line. The `j`-th integer `a[j]` is the index of the satellite
+(`1..M`) assigned to capture debris `j`, or `0` if debris `j` is left uncaptured.
+
+## Feasibility
+
+For each satellite `i`, the sum of `c[i][j]` over all debris `j` with `a[j] = i` must not
+exceed `cap[i]`. Every `a[j]` must be an integer in `[0, M]`. Any output that violates a
+capacity budget, uses an out-of-range index, prints the wrong count of assignments, or
+contains trailing tokens scores **0**.
+
+## Objective
+
+Maximize the total hazard weight removed:
+`F = sum over all j with a[j] >= 1 of v[a[j]][j]`.
+
+## Scoring
+
+Let `B` be the hazard weight removed by a fixed **round-robin** reference plan the judge
+constructs itself: process the debris `j = 1..N` in order and tentatively hand debris `j`
+to satellite `((j-1) mod M) + 1`, accepting the capture only if it still fits that
+satellite's remaining budget. Your score on a test is
+
+```
+Ratio = min(1.0, 0.1 * F / B)
+```
+
+so matching the round-robin reference scores `0.1`, and removing ten times its hazard weight
+(or more) saturates at `1.0`. The overall score is the average of `Ratio` across all tests.
+
+## Constraints
+
+- `1 <= M <= 40`, `1 <= N <= 3000`.
+- `1 <= v[i][j] <= 1000`, `1 <= c[i][j] <= 1000`.
+- `1 <= cap[i] <= 1_500_000`.
+- Time limit: 5 s. Memory limit: 512 MB.
+
+## Example
+
+Input:
+```
+2 3
+5 4
+7 3 4 6
+2 2 9 5
+6 4 1 2
+```
+
+Here `M=2`, `N=3`, budgets `cap=[5,4]`.
+- Debris 1: satellite 1 gives (v=7, c=3), satellite 2 gives (v=4, c=6).
+- Debris 2: satellite 1 gives (v=2, c=2), satellite 2 gives (v=9, c=5).
+- Debris 3: satellite 1 gives (v=6, c=4), satellite 2 gives (v=1, c=2).
+
+A valid output:
+```
+1
+0
+0
+```
+assigns debris 1 to satellite 1 (cost 3 <= 5), leaves the rest. `F = 7`.
+
+The round-robin reference: debris 1 -> satellite 1 (cost 3 <= 5, take, weight 7), debris 2 ->
+satellite 2 (cost 5 > 4, skip), debris 3 -> satellite 1 (cost 4 > remaining 2, skip). So
+`B = 7`, and the sample output scores `Ratio = min(1, 0.1 * 7 / 7) = 0.1`.
+
+A better output:
+```
+2
+0
+1
+```
+assigns debris 1 to satellite 2 (cost 6 > 4 — infeasible!) — this would score 0. Instead
+```
+1
+0
+1
+```
+is infeasible too (satellite 1 spends 3+4 = 7 > 5). A feasible improvement is
+```
+0
+2
+1
+```
+debris 2 -> satellite 2 (cost 5 > 4, infeasible). The tight budgets make packing nontrivial;
+`0 / 0 / 1` (debris 3 -> satellite 1, weight 6) plus `debris 1 -> ...` must respect the shared
+budget of satellite 1. One good feasible plan is `1 / 0 / 0` with `F = 7`.

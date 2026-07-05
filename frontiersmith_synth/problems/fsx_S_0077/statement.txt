@@ -1,0 +1,115 @@
+# Reservoir Dam Network: Minimum-Makespan Release Schedule
+
+## Problem
+
+A regional water authority operates a **reservoir dam network**. During a drawdown
+window it must push several **release orders** through the network. Each release order
+is a fixed ordered chain of **passes** (for example: aerate, then de-silt, then spill)
+that must be carried out one after another: a pass of an order cannot begin until the
+previous pass of the *same* order has completed.
+
+Unlike a rigid pipeline, each pass may be performed at any one of several **eligible
+dams**, and how long the pass takes depends on which dam you route it through (a dam
+with a wide spillway finishes faster than a narrow one). A dam can work on **only one
+pass at a time**.
+
+For every pass you must choose **which eligible dam** performs it and at **what time
+it starts**, so that:
+
+- the passes of each order run in order (precedence), and
+- no dam is ever running two passes at the same time (no-overlap).
+
+The **makespan** is the time the last pass finishes. Your goal is to make the makespan
+as small as possible.
+
+This is a *flexible* job-shop scheduling instance: orders are jobs, dams are machines,
+passes are operations, and each operation carries a machine-dependent processing time
+over an eligible machine set. Finding the true minimum makespan is NP-hard, so any
+feasible schedule is accepted and scored by how short its makespan is.
+
+## Input
+
+```
+n m
+order_1
+order_2
+...
+order_n
+```
+
+- Line 1: two integers `n` (number of release orders) and `m` (number of dams).
+- Dams are numbered `0 .. m-1`.
+- Each of the next `n` lines describes one order `j` (0-indexed by line order).
+  The line starts with an integer `o` (the number of passes of this order), followed
+  by the `o` passes **in the order they must be performed**. Each pass is written as:
+  an integer `c` (the number of eligible dams for this pass) followed by `c` pairs
+  `dam duration`, where `dam` is in `[0, m-1]` and `duration >= 1`. The `c` dams of a
+  single pass are distinct.
+
+## Output
+
+Print `n` lines. Line `j` describes order `j`. It must contain exactly `2*o` integers:
+for each pass `k` of order `j`, in pass order, a pair `dam start` giving the dam you
+route pass `k` through and the (integer, non-negative) time it starts.
+
+## Feasibility
+
+Let pass `k` of order `j` be routed to dam `g[j][k]` at start `s[j][k]`, and let
+`d[j][k]` be that pass's duration on the chosen dam. The schedule is feasible iff:
+
+- `g[j][k]` is one of the eligible dams listed for pass `k` of order `j`;
+- `0 <= s[j][k]` and each start is an integer;
+- **precedence**: `s[j][k] >= s[j][k-1] + d[j][k-1]` for every `k >= 1`;
+- **no-overlap**: for any two passes routed to the same dam, their busy intervals
+  `[s, s + d)` do not overlap.
+
+Any output that is malformed, out of range, routes a pass to an ineligible dam, or
+violates a constraint scores 0.
+
+## Objective
+
+Minimize the makespan `F = max over all passes of (s[j][k] + d[j][k])`.
+
+## Scoring
+
+Let `B` be the sum, over all passes, of that pass's **fastest** eligible duration.
+`B` is the makespan of the fully-serial schedule that runs every pass alone, one after
+another, each on its fastest dam. Your score on a test is
+
+```
+ratio = min(1.0, 0.1 * B / F)
+```
+
+where `F` is your makespan. The fully-serial schedule scores exactly `0.1`; a schedule
+ten times shorter than serial (or better) scores the maximum `1.0`. The overall score
+is the average ratio over all tests.
+
+## Constraints
+
+- `1 <= n <= 40`, `3 <= m <= 8`, passes per order `2 <= o <= 6`.
+- `1 <= c <= 3` eligible dams per pass, `1 <= duration <= 99`.
+- Time limit: 5 s. Memory limit: 512 MB.
+
+## Example
+
+Input:
+```
+2 3
+2 2 0 4 1 6 1 2 5
+2 1 0 3 2 1 2 2 8
+```
+
+Order 0 has 2 passes: pass 0 is eligible on dam 0 (4) or dam 1 (6); pass 1 only on
+dam 2 (5). Order 1 has 2 passes: pass 0 only on dam 0 (3); pass 1 on dam 1 (2) or
+dam 2 (8).
+
+A feasible output:
+```
+0 0 2 4
+0 4 1 7
+```
+Order 0: pass 0 on dam 0 over `[0,4)`, pass 1 on dam 2 over `[4,9)`. Order 1: pass 0
+on dam 0 over `[4,7)`, pass 1 on dam 1 over `[7,9)`. Dam 0 runs `[0,4)` then `[4,7)`
+(no overlap); dam 2 runs `[4,9)`; dam 1 runs `[7,9)`; precedence holds. Makespan
+`F = 9`. The fastest-duration sum is `B = 4 + 5 + 3 + 2 = 14`, so
+`ratio = min(1, 0.1 * 14 / 9) = 0.1556`.

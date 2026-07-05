@@ -1,0 +1,16 @@
+{
+  "id": "fsx_B_0352",
+  "tier": "B",
+  "format": "B",
+  "family": "offline-decision-policy",
+  "eval_form": "quality-metric",
+  "theme": "greenhouse zones",
+  "title": "Greenhouse Zones: Sensor-Predicate Prefix-Cache Layout Ordering",
+  "objective": "max",
+  "strategies": [
+    "identity layout: evaluate predicates in the given index order (baseline; sprinkle predicates sit at the front and shatter shared prefixes)",
+    "frequency-first layout: order predicates by how many checks reference them, ties by token weight, so frequent core predicates lead every prefix",
+    "weight-first layout: order predicates by descending token cost regardless of how often they occur",
+    "greedy construction against the true prefix-cache objective: fill the global order slot by slot, each time picking the predicate that maximizes total cache-hit tokens"
+  ]
+}

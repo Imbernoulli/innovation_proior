@@ -1,0 +1,17 @@
+{
+  "id": "fsx_A_0144",
+  "tier": "A",
+  "format": "C",
+  "family": "extremal-point-config",
+  "eval_form": "quality-metric",
+  "theme": "reservoir dam network",
+  "title": "Reservoir Gauge Network: Maximize the Smallest Sensing Triangle in a Triangular Catchment",
+  "objective": "max",
+  "source_frameworks": ["AlphaEvolve"],
+  "strategies": [
+    "thin inscribed elliptical arc: drop every gauge on one flat ellipse (reproduces the checker baseline, ~0.1)",
+    "rounder inscribed ellipse: fatten the ring so every triple of gauges spans more area",
+    "fatter ellipse seed + seeded monotone hill-climb: jitter one gauge at a time inside the triangle, keep a move only if the minimum triangle area does not shrink, letting gauges drift into the corners a smooth ellipse wastes",
+    "Heilbronn-style dispersion / simulated-annealing placements that push gauges toward the three catchment corners"
+  ]
+}

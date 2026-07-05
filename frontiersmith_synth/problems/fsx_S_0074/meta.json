@@ -1,0 +1,18 @@
+{
+  "id": "fsx_S_0074",
+  "tier": "S",
+  "format": "A",
+  "family": "covering-facility-location",
+  "eval_form": "quality-metric",
+  "seed_problem": "Place watchtowers on a forest graph to cover every cell within radius r, minimizing total cost",
+  "mutation": "input: relax the covering domain from a tree to a general grid graph with impassable obstacles (cycles + distorted, non-tree coverage balls) and require covering EVERY habitable cell, making the weighted min-cost cover NP-hard",
+  "objective": "min",
+  "theme": "polar research base",
+  "title": "Polar Research Base: Thermal Relay Placement",
+  "strategies": [
+    "trivial baseline: install a relay on every habitable sector (cost = baseline B)",
+    "max-coverage greedy: repeatedly install the relay warming the most still-cold sectors (ignoring cost), ties to lower id",
+    "cost-effectiveness greedy: repeatedly install the relay maximizing newly-warmed sectors per unit cost, then prune relays made redundant",
+    "multi-start local search: seeded randomized cost-effectiveness greedy over several restarts, redundancy pruning, keep the cheapest feasible cover"
+  ]
+}

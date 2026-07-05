@@ -1,0 +1,120 @@
+# Fleet Zoning: Two-AGV Congestion Split
+
+## Problem
+
+The *NorthDock* fulfillment center is run by two independent fleets of automated guided
+vehicles (AGVs): **fleet A** and **fleet B**. Every storage cell in the warehouse must be
+assigned to exactly one fleet, which is then solely responsible for picking from that cell.
+
+Whenever two cells are frequently picked in overlapping time windows, they generate
+**congestion** if — and only if — they are served by the **same** fleet (two AGVs of one
+fleet fighting for the same aisle). If the two cells are served by *different* fleets the
+overlap is resolved on separate vehicle networks and costs nothing. For each conflicting
+pair of cells `u`, `v` you are given a positive congestion weight `w`.
+
+Management also insists the two fleets stay balanced: the number of cells assigned to
+fleet A and to fleet B may differ by at most `D`.
+
+Your job: assign every cell to fleet A or fleet B so that the two fleets are balanced and
+the **total congestion that is avoided** (i.e. the total weight of conflicting pairs that
+end up split across the two fleets) is as **large** as possible. Equivalently, you maximise
+the weight of the cut between the two fleets.
+
+This is a balanced maximum-cut (graph bisection) problem: the optimum is NP-hard and
+unknown, so heuristics (greedy assignment, pairwise-swap local search, randomized
+multi-restart) are expected and will diverge.
+
+## Input
+
+The first line contains three integers:
+
+```
+n m D
+```
+
+- `n` — number of storage cells, numbered `1..n` (`n` is even).
+- `m` — number of conflicting cell pairs (edges).
+- `D` — the maximum allowed difference between the two fleet sizes.
+
+Each of the next `m` lines contains three integers:
+
+```
+u v w
+```
+
+meaning cells `u` and `v` conflict with congestion weight `w` if they share a fleet
+(`1 <= u, v <= n`, `u != v`, `1 <= w`). Parallel pairs may appear and are counted
+independently.
+
+## Output
+
+Print `n` lines. Line `i` contains a single integer `x_i` in `{0, 1}` — the fleet of cell
+`i` (`0` = fleet A, `1` = fleet B).
+
+## Feasibility
+
+An output is feasible iff:
+
+- exactly `n` labels are printed, each equal to `0` or `1`;
+- `| (#cells with label 0) - (#cells with label 1) | <= D`.
+
+Any infeasible output scores `0`.
+
+## Objective
+
+Let `F` be the total weight of conflicting pairs whose two cells receive **different**
+labels (the cut weight = congestion avoided). You are **maximizing** `F`.
+
+## Scoring
+
+The checker builds an internal baseline `B`: the cut weight of the fixed *alternating*
+assignment `x_i = i mod 2` (cell 1 to fleet B, cell 2 to fleet A, and so on). The score
+for a test is
+
+```
+ratio = min(1.0, 0.1 * F / B)
+```
+
+The alternating baseline scores `0.1`; reaching ten times the baseline cut caps the score
+at `1.0`. The overall score is the mean ratio across all tests.
+
+## Constraints
+
+- `2 <= n <= 240` (`n` even), `1 <= m <= 2000`.
+- `0 <= D <= 2`.
+- `1 <= w <= 30`.
+- Time limit: 5 s. Memory limit: 512 MB.
+
+## Example
+
+Input:
+
+```
+6 5 0
+1 4 10
+2 5 10
+3 6 10
+1 2 1
+4 5 1
+```
+
+The alternating baseline `x = (1,0,1,0,1,0)` (for cells 1..6) splits pairs `(1,2)` and
+`(4,5)` but keeps pairs `(1,4)`, `(2,5)`, `(3,6)` on one fleet each, so `B = 1 + 1 = 2`.
+
+A better balanced assignment puts cells `{1,2,3}` on fleet A and `{4,5,6}` on fleet B,
+i.e. `x = (0,0,0,1,1,1)`. Fleet sizes are `3` and `3` (difference `0 <= D`). Now pairs
+`(1,4)`, `(2,5)`, `(3,6)` are all split while `(1,2)`, `(4,5)` are not, so
+`F = 10 + 10 + 10 = 30`.
+
+Score for this test: `min(1.0, 0.1 * 30 / 2) = min(1.0, 1.5) = 1.0`.
+
+A valid worked output:
+
+```
+0
+0
+0
+1
+1
+1
+```

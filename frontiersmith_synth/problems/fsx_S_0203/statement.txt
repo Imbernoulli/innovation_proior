@@ -1,0 +1,124 @@
+# Grain-Lot Slate: Conflict-Free Sourcing
+
+## Problem
+
+The *Miller's Dozen* bakery cooperative buys flour by the **grain lot**. Each
+season a broker floats a catalogue of candidate lots; buying lot `i` earns the
+cooperative an estimated seasonal profit `w[i]` (better provenance, price locked
+in, milling contract, etc.).
+
+Unfortunately some pairs of lots **cannot both be purchased**: two lots may need
+the same reserved silo bay, carry mutually exclusive certification clauses, or
+draw on the same limited barge slot. The broker hands you a list of such
+**conflicting pairs**. If two lots conflict, at most one of them may appear on
+your final purchase slate.
+
+Choose a slate of lots — a set with **no conflicting pair inside it** — that
+maximizes the total seasonal profit.
+
+Formally this is a **maximum-weight independent set** on the general conflict
+graph whose vertices are lots and whose edges are conflicting pairs. It is
+NP-hard, the optimum is unknown at this scale, and many heuristics (weight-greedy,
+weight-per-degree greedy, local-search swaps, randomized restarts) are viable and
+give genuinely different slates.
+
+## Input
+
+The first line contains two integers:
+
+```
+n m
+```
+
+- `n` — number of candidate lots, numbered `1..n`.
+- `m` — number of conflicting pairs.
+
+The second line contains `n` integers `w[1] w[2] ... w[n]` — the profit of each
+lot (`1 <= w[i] <= 99`).
+
+Each of the next `m` lines contains two integers:
+
+```
+u v
+```
+
+meaning lots `u` and `v` conflict (`1 <= u, v <= n`, `u != v`). A pair may be
+listed at most once; conflicts are symmetric.
+
+## Output
+
+On the first line print `c` — the number of lots on your slate (`0 <= c <= n`).
+On the following lines (or the same line, whitespace-separated) print the `c`
+chosen lot indices, each in `1..n`, all distinct.
+
+Printing `1` followed by any single lot index is always valid (a one-lot slate
+never conflicts with itself).
+
+## Feasibility
+
+An output is feasible iff:
+
+- `0 <= c <= n`;
+- every printed index is in `1..n` and all `c` indices are distinct;
+- no two chosen lots form a conflicting pair.
+
+Any infeasible output scores `0`.
+
+## Objective
+
+Let `F` be the total profit of your chosen slate (sum of `w[i]` over chosen
+lots). You are **maximizing** `F`.
+
+## Scoring
+
+The checker builds a reference slate `B` by the **index-order greedy** rule: scan
+lots `1, 2, ..., n` and add each lot to the reference slate whenever it conflicts
+with no lot already in it. Let `B` be that reference slate's total profit. The
+score for a test is
+
+```
+ratio = min(1.0, 0.1 * F / B)
+```
+
+Reproducing the index-order reference slate scores exactly `0.1`; reaching a
+ten-fold-of-reference profit caps the score at `1.0`. The overall score is the
+mean ratio across all tests.
+
+## Constraints
+
+- `1 <= n <= 200`.
+- `0 <= m <= n*(n-1)/2`.
+- `1 <= w[i] <= 99`.
+- Time limit: 5 s. Memory limit: 512 MB.
+
+## Example
+
+Input:
+
+```
+5 4
+10 8 7 9 6
+1 2
+2 3
+3 4
+4 5
+```
+
+The conflict graph is a path `1-2-3-4-5`.
+
+Index-order greedy reference: take lot `1` (profit 10), skip `2` (conflicts with
+1), take `3` (profit 7), skip `4` (conflicts with 3), take `5` (profit 6). So the
+reference slate is `{1,3,5}` with `B = 10 + 7 + 6 = 23`.
+
+A better slate is `{1, 4}`? That gives `10 + 9 = 19` — worse. Consider `{2, 4}`:
+`8 + 9 = 17`. The best independent set here is `{1, 3, 5}` with profit `23`, or
+`{1, 4}`... in fact `{1,3,5}=23` is optimal, tied by no other. A valid worked
+output picking `{1, 4}`:
+
+```
+2
+1 4
+```
+
+scores `ratio = min(1.0, 0.1 * 19 / 23) = 0.0826`. Reproducing `{1,3,5}` scores
+`ratio = min(1.0, 0.1 * 23 / 23) = 0.1`.

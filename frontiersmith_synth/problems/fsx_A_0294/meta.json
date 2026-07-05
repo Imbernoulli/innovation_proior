@@ -1,0 +1,17 @@
+{
+  "id": "fsx_A_0294",
+  "tier": "A",
+  "format": "C",
+  "family": "extremal-point-config",
+  "eval_form": "quality-metric",
+  "theme": "pandemic contact net",
+  "title": "Pandemic Contact Net: Spread-Out Superspreader-Safe Layout",
+  "objective": "max",
+  "source_frameworks": ["AlphaEvolve"],
+  "strategies": [
+    "shrunk-ring baseline: N attendees equally spaced on the radius-0.3 concentric ring (reproduces the checker baseline; min area dominated by 3-consecutive-vertex slivers)",
+    "full inscribed-circle ring (radius 0.5) plus multi-restart uniform random sampling in the square, keeping the layout with the largest minimum triangle area",
+    "bottleneck-driven local search: seed from the full inscribed ring, repeatedly locate the smallest-area triple and push one of its vertices perpendicular to the opposite edge, accepting only moves that raise the global minimum triangle area, over several seeded restarts",
+    "structured corner-loaded lattices / perturbed grids that fill the square and avoid thin triangles across the whole hall"
+  ]
+}

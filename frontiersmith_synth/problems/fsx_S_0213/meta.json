@@ -1,0 +1,18 @@
+{
+  "id": "fsx_S_0213",
+  "tier": "S",
+  "format": "A",
+  "family": "coloring-labeling",
+  "eval_form": "quality-metric",
+  "seed_problem": "Assign frequencies to transmitters minimizing total interference conflicts under a channel budget; checker scores baseline_conflicts/achieved.",
+  "mutation": "composite: recast frequency assignment as weighted minimum-conflict C-labeling on a themed tide-pool overflow graph (min monochromatic edge weight = Max-C-Cut complement), and generalize the input from a geometric interference graph to an arbitrary weighted multigraph with heavy-tailed mixing strengths and shelf community structure, so the optimum is NP-hard and greedy/local-search/multi-restart heuristics diverge.",
+  "objective": "min",
+  "theme": "tide pool ecology",
+  "title": "Tide Pool Niche Partition: Minimizing Competitive Overlap",
+  "strategies": [
+    "do-nothing baseline: seed every pool with niche 1 (all channels monochromatic -> equals baseline B, ratio 0.1)",
+    "sequential greedy labeling: scan pools 1..n and assign each the niche minimizing added conflict weight to already-labeled neighbors",
+    "local-move descent: from a greedy start, repeatedly relabel any pool to the niche minimizing conflict over all its neighbors until no single move improves",
+    "seeded multi-restart randomized descent: run local-move descent from several randomized initial labelings and keep the lowest-conflict assignment found"
+  ]
+}

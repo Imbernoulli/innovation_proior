@@ -1,0 +1,16 @@
+{
+  "id": "fsx_A_0127",
+  "tier": "A",
+  "format": "C",
+  "family": "additive-combinatorics-set",
+  "eval_form": "quality-metric",
+  "theme": "subway system",
+  "title": "Metro Ladder: Maximizing Combined Through-Fares and Skip-Gaps",
+  "objective": "max",
+  "strategies": [
+    "contiguous ladder baseline: build mileposts {0,1,...,m0-1}; sumset and difference set are both solid blocks of 2*m0-1 values, so F = 4*m0-2 (the checker's baseline)",
+    "Mian-Chowla greedy Sidon layout: scan mileposts 0..V and install each iff all pairwise sums stay distinct (equivalently a B_2 set, which also keeps all differences distinct); near-optimal when the corridor is loose but stalls early and undersizes when tight",
+    "algebraic Erdos-Turan Sidon set {2*p*i + (i^2 mod p)} scaled to fit [0,V], packing ~p distinct-sum mileposts into a bounded corridor",
+    "seeded marginal-gain restarts: from a random seed milepost, repeatedly add the milepost giving the largest marginal gain in distinct sums + distinct differences; keep the best F over restarts (best-of ensemble beats any single heuristic, especially in the tight regime)"
+  ]
+}

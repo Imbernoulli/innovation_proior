@@ -1,0 +1,17 @@
+{
+  "id": "fsx_B_0158",
+  "tier": "B",
+  "format": "B",
+  "family": "offline-decision-policy",
+  "eval_form": "quality-metric",
+  "theme": "forest fire watchtowers",
+  "title": "Watchtower Scan-Directive Prefix Cache",
+  "objective": "max",
+  "source_frameworks": ["Frontier-CS (llm_sql prefix KV-cache column reordering)"],
+  "strategies": [
+    "trivial: identity / catalog order [0..C-1] (the evaluator baseline order) -> ~0.1",
+    "greedy: marginal-frequency ordering (most-frequent clause first, ties by weight then index) -> hoists widely-shared clauses to the front, well above baseline but blind to co-occurrence",
+    "strong: seed with frequency order then deterministic hill-climb (adjacent swap + re-insertion) on the exactly-simulated hit rate -> captures co-occurrence structure, beats greedy, stops at a local optimum (headroom remains)",
+    "invalid: emits a non-permutation (all zeros) -> rejected as malformed -> 0"
+  ]
+}

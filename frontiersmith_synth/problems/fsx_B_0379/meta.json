@@ -1,0 +1,17 @@
+{
+  "id": "fsx_B_0379",
+  "tier": "B",
+  "format": "B",
+  "family": "seeded-numerical-sim",
+  "eval_form": "quality-metric",
+  "theme": "asteroid mining",
+  "title": "Regolith-Ablation Beam Splitter: Phase-Mask Design for a Mining Spot Array",
+  "objective": "max",
+  "source_frameworks": ["Frontier-Eng (Optics/Communications)"],
+  "strategies": [
+    "superposition-of-gratings DOE: sum a blazed grating per target spot and take the phase (the reference; interference makes spots non-uniform)",
+    "random-phase superposition or a few Gerchberg-Saxton back-and-forth steps to break destructive interference",
+    "iterative Fourier-transform (Gerchberg-Saxton): enforce far-field amplitude on the target spots, keep aperture phase, iterate to concentrate power",
+    "multi-restart weighted / adaptive-additive GS that boosts the dimmest spots and keeps the best mask found, trading efficiency against uniformity"
+  ]
+}

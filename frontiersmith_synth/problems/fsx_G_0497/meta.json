@@ -1,0 +1,17 @@
+{
+  "id": "fsx_G_0497",
+  "tier": "G",
+  "format": "A",
+  "family": "new-vlsi-floorplan",
+  "seed_problem": "Place rectangular blocks non-overlapping in a fixed die minimizing area+wirelength (HPWL); baseline = shelf packing (VLSI/EDA).",
+  "mutation": "composite: keep the fixed-die non-overlap packing + HPWL wirelength core, then COUPLE a second competing objective -- a pairwise thermal-proximity penalty (power_i*power_j scaled by how far inside a thermal radius the two blocks are). Nets pull connected blocks together while power pushes hotspots apart, so the best floorplan must BALANCE clustering against thermal spreading under the packing constraint. No easy optimum.",
+  "objective": "min",
+  "theme": "chip layout",
+  "title": "Thermal-Aware Fixed-Die Floorplanning",
+  "strategies": [
+    "index-order shelf packing (baseline; scatters every cluster -> high HPWL)",
+    "connectivity-ordered shelf packing: BFS the net-adjacency graph so connected blocks land adjacent -> lower HPWL",
+    "multi-width / multi-ordering shelf search: pack BFS/DFS/power-sorted orders into narrow bands to make clusters compact, keep best F",
+    "local search: pairwise swaps in the winning order, re-shelf and accept improvements, trading wirelength against thermal spreading"
+  ]
+}

@@ -1,0 +1,18 @@
+{
+  "id": "fsx_S_0033",
+  "tier": "S",
+  "format": "A",
+  "family": "coloring-labeling",
+  "eval_form": "quality-metric",
+  "seed_problem": "Assign frequencies to transmitters minimizing total interference conflicts under a channel budget; checker scores baseline_conflicts/achieved.",
+  "mutation": "composite: change the goal from frequency assignment to weighted minimum-conflict k-coloring of a museum overlap graph (minimize total annoyance weight of monochromatic edges), and generalize the input from a geometric interference graph to an arbitrary dense heavy-tailed weighted (multi)graph so optimal k-coloring is NP-hard and round-robin / one-pass greedy / local-search strategies diverge.",
+  "objective": "min",
+  "theme": "museum gallery tour",
+  "title": "Whispering Halls: Audio-Beacon Channel Planning",
+  "strategies": [
+    "channel-cycling baseline: gallery g gets channel ((g-1) mod k)+1, ignoring the overlap structure entirely",
+    "one-pass min-conflict greedy: assign galleries in id order, each to the channel adding the least annoyance with already-assigned overlapping neighbors",
+    "iterated local search: greedy init then repeatedly move each gallery to its least-annoying channel given the full current assignment, until convergence",
+    "weight-aware randomized restarts: multiple perturbed local-search runs keeping the plan with minimum total annoyance"
+  ]
+}

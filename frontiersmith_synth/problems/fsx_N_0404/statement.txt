@@ -1,0 +1,143 @@
+# Aurora Festival: Stage Reconfiguration Scheduling
+
+## Problem
+
+The **Aurora Festival** runs `M` identical outdoor stages in parallel. There are `N`
+scheduled **acts** to place. Every act must be assigned to exactly one stage, and the
+acts on each stage are performed back-to-back in an order you choose.
+
+Each act `j` has a **runtime** `p_j` (minutes) and a `d`-dimensional **rig profile**
+`x_j = (x_{j,1}, ..., x_{j,d})` — integer settings describing how that act needs the
+stage configured (lighting rig height, PA delay taps, pyro zones, LED wall preset, ...).
+
+Whenever two acts run **consecutively on the same stage**, the crew must reconfigure the
+rig between them. The reconfiguration takes time equal to the **squared Euclidean
+distance** between the two rig profiles:
+
+```
+setup(a, b) = sum_{k=1..d} ( x_{a,k} - x_{b,k} )^2
+```
+
+The **first** act on a stage needs no reconfiguration (the stage is prepped before the
+festival opens). A stage with 0 or 1 act incurs no setup at all.
+
+For a stage that runs acts `a_1, a_2, ..., a_c` in that order:
+
+```
+load(stage)  = sum_{i} p_{a_i}  +  sum_{i=1..c-1} setup(a_i, a_{i+1})
+setup(stage) = sum_{i=1..c-1} setup(a_i, a_{i+1})
+```
+
+i.e. a stage's finishing time (`load`) counts both act runtimes and the reconfiguration
+time between its acts.
+
+You control the whole festival schedule. Two things matter to the organizers:
+
+- the **makespan** `L = max over stages of load(stage)` — when the last stage finishes;
+- the **total reconfiguration effort** `S = sum over stages of setup(stage)` — total
+  crew overtime.
+
+## Composite objective
+
+Minimize
+
+```
+F = L + S
+```
+
+Note the coupling: reconfiguration time is charged **twice** on the critical stage — once
+inside its `load` (hence in `L`) and once in the global effort `S` — but only once on
+non-critical stages. So *where* you spend setup matters, not just how much. Balancing acts
+across stages fights the makespan; ordering geometrically-similar acts together fights the
+setup; and these two goals pull in different directions. A shortest-runtime-first schedule
+that ignores rig geometry is a trap.
+
+Finding the optimal `F` is NP-hard (it couples a makespan partition with a per-stage
+Euclidean routing problem), so any feasible schedule is accepted and scored by how small
+its `F` is.
+
+## Input
+
+```
+N M d
+```
+then `N` lines, the `j`-th describing act `j` (acts are numbered `1..N` in input order):
+```
+p_j  x_{j,1}  x_{j,2}  ...  x_{j,d}
+```
+
+## Output
+
+Print exactly `M` lines, one per stage (stage `i` on line `i`). Line `i` begins with an
+integer `c_i` (the number of acts on stage `i`), followed by `c_i` act indices giving the
+performance order on that stage:
+```
+c_i  a_1  a_2  ...  a_{c_i}
+```
+A stage may be empty (`c_i = 0`, the line is just `0`).
+
+Every act index in `1..N` must appear **exactly once** across all `M` lines
+(so `c_1 + c_2 + ... + c_M = N`).
+
+## Feasibility
+
+An output is feasible iff:
+
+- there are exactly `M` stage lines;
+- each `c_i` satisfies `0 <= c_i <= N`;
+- every printed act index lies in `1..N`;
+- each of the `N` acts appears exactly once in total.
+
+Any infeasible output scores `0`.
+
+## Objective
+
+Compute `L`, `S` and `F = L + S` as defined above from your schedule. You are
+**minimizing** `F`.
+
+## Scoring
+
+Let `B` be the objective of the trivial "one-stage" schedule that the judge builds itself:
+put **all** acts on stage 1 in input order (stages 2..M empty). Because setup is charged
+twice, `B = (sum_j p_j) + 2 * (input-order setup along acts 1,2,...,N)`.
+
+The score for a test is
+
+```
+ratio = min(1.0, 0.1 * B / F)
+```
+
+The trivial one-stage schedule scores `0.1`; matching or beating a **ten-fold** reduction
+of `F` versus that baseline caps the score at `1.0`. Your overall score is the mean ratio
+across all tests.
+
+## Constraints
+
+- `2 <= M < N`, `2 <= N <= 1200`, `2 <= d <= 5`.
+- `1 <= p_j <= 3500`.
+- `0 <= x_{j,k} <= 90`.
+- Time limit: 5 s. Memory limit: 512 MB.
+
+## Example
+
+Input:
+```
+4 2 2
+5 0 0
+5 1 0
+5 10 10
+5 11 10
+```
+
+Baseline `B`: one stage, order 1,2,3,4. Runtimes sum to `20`. Input-order setup is
+`setup(1,2)+setup(2,3)+setup(3,4) = 1 + 181 + 1 = 183`. So `B = 20 + 2*183 = 386`.
+
+A better schedule groups the two nearby clusters onto separate stages:
+```
+2 1 2
+2 3 4
+```
+Stage 1 runs acts 1,2: `load = 10 + setup(1,2) = 10 + 1 = 11`, `setup = 1`.
+Stage 2 runs acts 3,4: `load = 10 + setup(3,4) = 10 + 1 = 11`, `setup = 1`.
+Makespan `L = 11`, total effort `S = 2`, so `F = 11 + 2 = 13`.
+Then `ratio = min(1.0, 0.1 * 386 / 13) = min(1.0, 2.969...) = 1.0`.

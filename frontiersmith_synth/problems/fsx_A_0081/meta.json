@@ -1,0 +1,16 @@
+{
+  "id": "fsx_A_0081",
+  "tier": "A",
+  "format": "C",
+  "family": "greedy-priority-construction",
+  "eval_form": "correctness",
+  "theme": "beehive apiary",
+  "title": "Queenless Apiary: Raid-Free Hive Activation",
+  "objective": "optimize",
+  "strategies": [
+    "diagonal baseline: activate the all-zero address plus each single-1 address (n+1 hives, always raid-free)",
+    "lexicographic greedy: scan non-flooded addresses in canonical order, activate each hive iff it completes no raiding line with the already-activated set",
+    "seeded multi-restart randomized greedy: try many shuffled activation orders and keep the largest raid-free set found",
+    "algebraic product construction: build a large cap set as a Cartesian product of maximum small-dimension caps, then drop flooded addresses"
+  ]
+}

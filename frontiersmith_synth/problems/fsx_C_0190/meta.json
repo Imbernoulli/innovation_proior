@@ -1,0 +1,17 @@
+{
+  "id": "fsx_C_0190",
+  "tier": "C",
+  "format": "B",
+  "family": "synthetic-algorithmic-generalization",
+  "eval_form": "correctness",
+  "theme": "deep-sea cable network",
+  "title": "Deep-Sea Cable Splice: Length-OOD Generalization",
+  "objective": "optimize",
+  "source_frameworks": ["MLS-Bench (synth-*)"],
+  "strategies": [
+    "majority-class constant: predict 'not well-spliced' for every query (the strict majority) -> reproduces the evaluator's anchor baseline (~0.1); no generalization",
+    "count-balance heuristic: label well-spliced iff #opening tokens == #closing tokens; catches deleted-token cables but is blind to type mismatches and to the depth budget -> only marginally above the constant",
+    "recover the matcher: run a per-type stack matcher (a Dyck check over K bracket types) to generalize the matching rule to arbitrary length, and infer the depth budget conservatively from the deepest well-spliced training cable; nails the length-OOD split but under-estimates the unseen depth budget -> strong yet sub-perfect",
+    "aggressive depth extrapolation: same matcher but guess a larger depth budget (e.g. observed max + margin, or no cap at all) -- a different inductive bias that trades deep-valid recall against too-deep false-accepts; can exceed the conservative learner if the guess is right"
+  ]
+}

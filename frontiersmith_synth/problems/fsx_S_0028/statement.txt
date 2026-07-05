@@ -1,0 +1,120 @@
+# Downlink Tender: Precedence-Constrained Cartridge Ferry Tour
+
+## Problem
+A single autonomous **downlink tender** vehicle serves a network of satellite
+ground stations spread across a large operations plain. Every night it departs
+from the **mission hub** (the *depot*, a fixed point in the plane), performs a
+sequence of visits, and returns to the hub.
+
+There are **N transfer jobs**. Job `j` requires the tender to collect a sealed
+data cartridge from an **uplink cache** located at `(px_j, py_j)` and hand it off
+at a **processing station** located at `(dx_j, dy_j)`. For every job the tender
+must visit the uplink cache (the *pickup*) **strictly before** the processing
+station (the *delivery*).
+
+The tender has a shielded cartridge rack that holds at most `Q` cartridges at any
+instant. Job `j`'s cartridge occupies `q_j` rack slots, but only while it is
+on board — that is, between that job's pickup and its delivery. The tender may
+therefore **batch** several jobs together as long as the number of slots in use
+never exceeds `Q`.
+
+**Every job must be served** (mandatory service). Your task is to produce **one**
+tour, starting and ending at the hub, that visits all pickups and deliveries in a
+valid order and minimizes the total travel distance.
+
+Travel cost between two points is the Euclidean distance **rounded to the nearest
+integer**: `round( sqrt( (x1-x2)^2 + (y1-y2)^2 ) )`.
+
+## Input
+```
+N Q
+x0 y0
+px_1 py_1 dx_1 dy_1 q_1
+px_2 py_2 dx_2 dy_2 q_2
+...
+px_N py_N dx_N dy_N q_N
+```
+- Line 1: the number of jobs `N` and the rack capacity `Q`.
+- Line 2: the integer hub (depot) coordinates `x0 y0`.
+- The next `N` lines describe jobs `1..N`: the uplink-cache coordinates, the
+  processing-station coordinates, and the slot demand `q_j`.
+
+## Output
+Describe the tour as an ordered list of `L` visit events. Each event is a pair of
+integers `t i`:
+- `t = 0` means "pick up job `i`" (visit uplink cache `(px_i, py_i)`),
+- `t = 1` means "deliver job `i`" (visit processing station `(dx_i, dy_i)`).
+
+```
+L
+t_1 i_1
+t_2 i_2
+...
+t_L i_L
+```
+The tender always begins and ends at the hub, so you list only the intermediate
+cache / station visits.
+
+## Feasibility
+An output is feasible iff **all** of the following hold:
+1. `0 <= L <= 2N` and every job index `i` is in `[1, N]`.
+2. Each job appears **at most once** as a pickup and **at most once** as a
+   delivery.
+3. If a job's delivery event appears, its pickup event appears **earlier** in the
+   list (precedence).
+4. **Every** job is served, i.e. each job `i` in `[1, N]` appears exactly once as
+   a pickup and exactly once as a delivery (so a feasible list has `L = 2N`).
+5. Processing the events in order, the on-board load (which increases by `q_i` at
+   a pickup and decreases by `q_i` at a delivery) never exceeds `Q`.
+
+An infeasible output scores 0.
+
+## Objective
+Let `F` be the total rounded-Euclidean length of the realized tour
+`hub -> visited points in order -> hub`. Minimize `F`.
+
+## Scoring
+The checker builds a trivial *serialized* plan that serves the jobs one at a time
+in index order (pick up job 1, deliver job 1, pick up job 2, deliver job 2, ...),
+and lets `B` be that plan's tour length. Your score on a test is
+
+```
+ratio = min(1.0, (B / F) / 10)
+```
+
+reported as `Ratio: <ratio>`. Batching nearby jobs and ordering visits tightly
+drives `F` below `B` and raises the ratio; the serialized plan scores exactly
+`0.1`, and a tour ten times shorter than the serialized plan reaches the cap of
+`1.0`. The final score is the mean ratio over all tests.
+
+## Constraints
+- `1 <= N <= 400`, `1 <= Q <= 15`, `1 <= q_j <= min(5, Q)`.
+- All coordinates are integers in `[0, 10000]`.
+- Time limit: 5 s. Memory limit: 512 MB.
+
+## Example
+Input:
+```
+2 10
+0 0
+10 0 100 0 1
+20 0 110 0 1
+```
+Consider the batched output:
+```
+4
+0 1
+0 2
+1 1
+1 2
+```
+The tender visits hub(0,0) -> cache1(10,0) [+10] -> cache2(20,0) [+10] ->
+station1(100,0) [+80] -> station2(110,0) [+10] -> hub(0,0) [+110], for total
+`F = 10 + 10 + 80 + 10 + 110 = 220`. Both cartridges are on board between the two
+pickups, using `2 <= Q = 10` slots, so the plan is feasible.
+
+The serialized baseline (pick up 1, deliver 1, pick up 2, deliver 2) travels
+hub -> (10,0) [+10] -> (100,0) [+90] -> (20,0) [+80] -> (110,0) [+90] -> hub
+[+110], for `B = 380`. The score is therefore
+`ratio = min(1.0, (380/220)/10) = 0.1727...`, better than the serialized plan's
+`0.1`.

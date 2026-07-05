@@ -1,0 +1,17 @@
+{
+  "id": "fsx_C_0391",
+  "tier": "C",
+  "format": "B",
+  "family": "classical-ml-algorithm",
+  "eval_form": "quality-metric",
+  "theme": "drone delivery swarm",
+  "title": "SwarmSort: Drone Delivery Zone Discovery",
+  "objective": "optimize",
+  "source_frameworks": ["MLS-Bench (ml-*)"],
+  "strategies": [
+    "axis-split baseline: sort the drops by x-coordinate and cut into K equal-count contiguous bands; reproduces the evaluator's weak reference partition and ignores the true 2-D zone geometry",
+    "single-pass Lloyd K-means with a cheap deterministic init: recovers well-separated round zones but is init-sensitive and collapses on varied-spread, anisotropic, or non-convex zones",
+    "z-score standardised, K-means++ seeded, multi-restart K-means keeping the lowest-inertia partition: handles scale/anisotropy and escapes bad local optima, but as a centroidal method still cannot recover non-convex zones (crescents / rings)",
+    "shape-aware clustering: density- or connectivity-based methods (DBSCAN-style, single-linkage, spectral / graph-cut) or per-instance model selection that can bend around non-convex zones to push ARI toward the true partition on the hardest instances"
+  ]
+}

@@ -1,0 +1,127 @@
+# Hump Yard Split: Balanced Wagon Bowl Assignment
+
+## Problem
+
+At the *Ostmark* marshalling (hump) yard, an incoming cut of freight **wagons** is pushed
+over the hump and must be sorted into exactly **two classification bowls**, `Bowl 0` and
+`Bowl 1`, which feed two outbound trains. For many *pairs* of wagons the yardmaster records
+a **separation gain** `w`: if those two wagons end up in **different** bowls, the yard avoids
+a shunting conflict (incompatible freight, mismatched destinations, or a braking-order clash)
+and earns `w` points. If the pair lands in the **same** bowl, nothing is earned from it.
+
+Because the two outbound trains share the yard's pull-out engines, the two bowls must be
+**roughly balanced**: the number of wagons in the two bowls may differ by at most a given
+tolerance `tol`.
+
+Your job: assign every wagon to one of the two bowls so that the **total separation gain**
+over all pairs split between the bowls is as **large** as possible, while respecting the
+balance tolerance.
+
+Formally, you are given an undirected weighted (multi)graph on `n` wagons. Choose a label
+`b_i in {0,1}` for each wagon `i` so that `| (#wagons with b=0) - (#wagons with b=1) | <= tol`,
+maximizing the total weight of pairs `(u,v)` with `b_u != b_v`.
+
+This is a **size-balanced maximum-cut** problem: it is NP-hard, the optimum is unknown, and
+many heuristics (parity baseline, one-pass greedy, swap-based local search / Kernighan–Lin,
+randomized restarts, spectral rounding) are viable and diverge.
+
+## Input
+
+The first line contains three integers:
+
+```
+n m tol
+```
+
+- `n` — number of wagons, numbered `1..n`.
+- `m` — number of recorded pairs (edges).
+- `tol` — the balance tolerance (the two bowls' sizes may differ by at most `tol`).
+
+Each of the next `m` lines describes one pair:
+
+```
+u v w
+```
+
+meaning wagons `u` and `v` (`1 <= u,v <= n`, `u != v`) earn a separation gain `w >= 1` if
+they are placed in different bowls. The same unordered pair may appear more than once; each
+listed occurrence is scored independently (i.e. it is a multigraph and weights add).
+
+## Output
+
+Print `n` integers `b_1 b_2 ... b_n`, each either `0` or `1`, where `b_i` is the bowl of
+wagon `i`. They may be separated by spaces and/or newlines.
+
+## Feasibility
+
+An output is feasible iff:
+
+- it contains exactly `n` values, each equal to `0` or `1`;
+- letting `c0` and `c1` be the number of wagons labelled `0` and `1`, `| c0 - c1 | <= tol`.
+
+Any infeasible output scores `0`.
+
+## Objective
+
+Let `F` be the total separation gain of your assignment:
+
+```
+F = sum of w over all listed pairs (u,v,w) with b_u != b_v.
+```
+
+You are **maximizing** `F`.
+
+## Scoring
+
+The checker builds a reference **parity assignment** `p_i = i mod 2` (wagon `i` goes to
+`Bowl (i mod 2)`; this is always balanced) and lets `B` be its total separation gain. The
+score for a test is
+
+```
+ratio = min(1.0, 0.1 * F / B).
+```
+
+A submission that merely reproduces the parity baseline (`F = B`) scores `0.1`; reaching a
+ten-fold gain (`F = 10*B`) caps the score at `1.0`. The overall score is the mean ratio
+across all tests.
+
+## Constraints
+
+- `2 <= n <= 2000`.
+- `1 <= m <= 40000`.
+- `1 <= w <= 1000`.
+- `0 <= tol <= n`.
+- Time limit: 5 s. Memory limit: 512 MB.
+
+## Example
+
+Input:
+
+```
+6 6 1
+1 5 8
+3 5 8
+2 4 8
+2 6 8
+1 2 2
+4 5 2
+```
+
+There are 6 wagons and 6 recorded pairs, and the bowls may differ in size by at most 1.
+
+The parity baseline assigns `b = (1,0,1,0,1,0)` for wagons `1..6` (odd wagons to Bowl 1,
+even to Bowl 0). Checking each pair: `(1,5)` same bowl, `(3,5)` same bowl, `(2,4)` same
+bowl, `(2,6)` same bowl, `(1,2)` split `+2`, `(4,5)` split `+2`. So `B = 4`.
+
+Now consider the assignment `b = (0,0,0,1,1,1)` (wagons `1,2,3` in Bowl 0; wagons `4,5,6`
+in Bowl 1). Sizes are `3` and `3` (difference `0 <= 1`, feasible). Scoring the pairs:
+`(1,5)` split `+8`, `(3,5)` split `+8`, `(2,4)` split `+8`, `(2,6)` split `+8`,
+`(1,2)` same `0`, `(4,5)` same `0`. So `F = 32`.
+
+Score for this test: `min(1.0, 0.1 * 32 / 4) = min(1.0, 0.8) = 0.8`.
+
+A valid worked output:
+
+```
+0 0 0 1 1 1
+```

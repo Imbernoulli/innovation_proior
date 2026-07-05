@@ -1,0 +1,18 @@
+{
+  "id": "fsx_S_0241",
+  "tier": "S",
+  "format": "A",
+  "family": "graph-interdiction",
+  "eval_form": "quality-metric",
+  "seed_problem": "Themed grid network; remove at most k links to maximize the increase in s-t shortest path; checker verifies budget + connectivity and scores achieved delay.",
+  "mutation": "output: change the removable objects from EDGES to NODES -- power down at most k sensor stations (deleting each station and all its incident channels) to maximize the s-t shortest path. Node-deletion (most-vital-nodes) shortest-path interdiction is NP-hard and greedy/local-search strategies diverge differently than in the edge variant.",
+  "objective": "max",
+  "theme": "wind tunnel sensors",
+  "title": "Blinded Wind Tunnel: Sensor-Station Interdiction",
+  "strategies": [
+    "do-nothing baseline: power down no station (achieves the original relay latency)",
+    "degree greedy: repeatedly power down the highest-degree interior station on the current fastest route while keeping inlet-sink connectivity",
+    "best-improvement local search: at each step re-solve the shortest route after tentatively powering down each candidate station and commit the one that maximizes latency",
+    "randomized multi-restart: perturb the best-improvement choices across seeded restarts and keep the station set that maximizes final latency"
+  ]
+}

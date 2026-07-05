@@ -1,0 +1,16 @@
+{
+  "id": "fsx_A_0111",
+  "tier": "A",
+  "format": "C",
+  "family": "greedy-priority-construction",
+  "eval_form": "correctness",
+  "theme": "drone delivery swarm",
+  "title": "SkyGrid Swarm: Corner-Free Drone Deployment",
+  "objective": "optimize",
+  "strategies": [
+    "border-line baseline: activate one full unobstructed row (or column); always corner-free, size m",
+    "lexicographic greedy: scan pads in row-major order, activate each iff it completes no corner with the already-active set",
+    "seeded multi-restart randomized greedy: try many shuffled activation orders and keep the largest corner-free set found",
+    "priority-heuristic construction: rank pads by a learned/handcrafted priority and greedily accept under the corner-validity checker"
+  ]
+}

@@ -1,0 +1,18 @@
+{
+  "id": "fsx_N_0407",
+  "tier": "N",
+  "format": "A",
+  "family": "matching-submodular",
+  "eval_form": "quality-metric",
+  "seed_problem": "Assign agents to tasks; the value of an assignment is a submodular coverage over task-features (diminishing returns), not a linear sum; maximize coverage.",
+  "mutation": "composite: keep the assignment-x-submodularity goal but COUPLE it with a geometric energy knapsack (each drone->zone pairing costs a rounded Euclidean flight energy, global budget E) and hard zone capacities. The value is a SATURATING (min-capped) feature coverage summed over zones, so it is submodular; a tight energy budget forces choosing ~a-dozen drones out of many while feature overlap makes greedy-by-marginal saturate and waste budget, so a coordinated swap/spread wins.",
+  "objective": "max",
+  "theme": "drone delivery swarm",
+  "title": "Nimbus Swarm: Submodular Airspace Coverage",
+  "strategies": [
+    "trivial baseline: deploy the single most valuable feasible (drone,zone) pairing",
+    "greedy-by-absolute-marginal: repeatedly add the pairing with the largest coverage gain that fits budget and capacity (falls into the feature-overlap saturation trap)",
+    "ratio greedy: add the pairing with the best gain-per-energy, spending the tight budget more efficiently",
+    "randomized local search: ratio-greedy seed then add/swap/move/remove moves that spread complementary drones and reclaim energy from saturated picks"
+  ]
+}

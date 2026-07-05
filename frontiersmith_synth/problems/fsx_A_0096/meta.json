@@ -1,0 +1,16 @@
+{
+  "id": "fsx_A_0096",
+  "tier": "A",
+  "format": "C",
+  "family": "integer-matrix-construction",
+  "eval_form": "quality-metric",
+  "theme": "lunar habitat",
+  "title": "Lunar Habitat Sensor Array: Low-Crosstalk Code Matrix",
+  "objective": "min",
+  "strategies": [
+    "baseline reproduction: emit the seeded pseudo-random +/-1 matrix (first row fixed) after a light deterministic greedy pass -- reproduces the checker normalizer",
+    "greedy local descent: start from the baseline and apply single-chip sign flips that never increase the total off-diagonal Gram energy",
+    "multi-restart hill-climbing: run single-flip descent to convergence from many seeded random starts (row 0 fixed) and keep the lowest-energy layout, exploiting the incremental Gram update for speed",
+    "structured near-orthogonal codes: circulant / conference-style constructions or block designs that push pairwise column correlations toward the Ehlich/Wojtas lower bound for n not divisible by 4"
+  ]
+}

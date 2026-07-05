@@ -1,0 +1,18 @@
+{
+  "id": "fsx_S_0275",
+  "tier": "S",
+  "format": "A",
+  "family": "independent-set-clique",
+  "eval_form": "quality-metric",
+  "seed_problem": "Select a maximum-weight set of mutually non-conflicting research sites on a general conflict graph; checker validates independence and scores weight against a single-best-site baseline.",
+  "mutation": "input: relax the conflict structure from a well-behaved (near-bipartite) siting graph to a general weighted conflict graph with mutually-conflicting high-degree high-value 'beacon' sites, so maximum-weight independent set is NP-hard and weight-greedy / degree-aware / randomized strategies diverge.",
+  "objective": "max",
+  "theme": "glacier sensor net",
+  "title": "Glacier Sensor Net: Interference-Free Beacon Placement",
+  "strategies": [
+    "single-best baseline: equip only the single most valuable site (always feasible, matches the scoring baseline)",
+    "weight-greedy: scan sites in decreasing value order, equip each site whose conflicts are all still unequipped",
+    "degree-aware greedy (GWMIN): repeatedly equip the alive site maximizing value/(current-conflict-degree+1), then drop it and its conflicting neighbours",
+    "randomized multi-restart with maximalization: run many perturbed degree-aware passes, greedily top up each result to a maximal independent set, and keep the highest-value deployment"
+  ]
+}

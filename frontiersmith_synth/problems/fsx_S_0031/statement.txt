@@ -1,0 +1,95 @@
+# Pandemic Contact-Net: Degree-Capped Tracing Backbone
+
+## Problem
+A public-health agency must wire up a **contact-tracing communication backbone** among
+`n` monitored individuals located at fixed 2D positions. A direct communication link may be
+installed between any two individuals; the *cost* of a link equals the Euclidean distance
+between the two people (rounded to the nearest integer), which models the risk/effort of
+maintaining that channel.
+
+To keep the network robust yet auditable during an outbreak, each individual `i` may take part
+in **at most `b_i` links** (a per-person contact cap, `b_i` in {2, 3}). The whole population must
+end up on **one connected backbone** so that any alert can reach everyone.
+
+Design the set of links that keeps everyone connected while respecting every contact cap, and
+make the **total link cost as small as possible**. Finding the true optimum is NP-hard (this is a
+degree-constrained minimum spanning structure), so heuristic constructions are expected.
+
+## Input
+```
+n
+x_1 y_1 b_1
+x_2 y_2 b_2
+...
+x_n y_n b_n
+```
+- Line 1: integer `n`, the number of individuals.
+- Each of the next `n` lines: integer coordinates `x_i y_i` and the contact cap `b_i`.
+- Individuals are numbered `1..n` in input order.
+
+## Output
+```
+m
+u_1 v_1
+u_2 v_2
+...
+u_m v_m
+```
+- Line 1: `m`, the number of links you install.
+- Each following line: a link between distinct individuals `u_j` and `v_j` (`1 <= u_j,v_j <= n`).
+- A link is undirected; do not list the same unordered pair twice.
+
+## Feasibility
+An output is **feasible** iff ALL of the following hold:
+1. Every `u_j`, `v_j` is a valid index in `1..n` and `u_j != v_j`.
+2. No unordered pair `{u,v}` appears more than once.
+3. For every individual `i`, the number of installed links touching `i` is at most `b_i`.
+4. The installed links connect **all** `n` individuals into a single component.
+
+Any infeasible output scores **0**.
+
+## Objective
+Minimize the total link cost
+```
+F = sum over installed links {u,v} of dist(u,v),
+dist(u,v) = round( sqrt( (x_u-x_v)^2 + (y_u-y_v)^2 ) ).
+```
+(`min` objective.)
+
+## Scoring
+Let `B` be the cost of a fixed reference backbone the judge builds itself: order all
+individuals by the Morton (Z-order) code of their coordinates and connect them in that order as a
+chain (this always respects the caps because every `b_i >= 2`). Your score on a test is
+```
+ratio = min(1000, 100 * B / max(1, F)) / 1000.
+```
+So matching the reference chain scores about `0.100`, and a backbone `10x` cheaper (or better)
+caps at `1.000`. Infeasible outputs score `0`. The final score is the mean ratio over all tests.
+
+## Constraints
+- `8 <= n <= 3000`.
+- `0 <= x_i, y_i <= 1000000`.
+- `b_i` in {2, 3}.
+- Time limit: 5s. Memory limit: 512 MB.
+
+## Example
+Input:
+```
+4
+0 0 3
+0 10 2
+10 0 2
+10 10 3
+```
+One feasible output (a star centered at individual 1, whose cap is 3):
+```
+3
+1 2
+1 3
+1 4
+```
+Degrees: node 1 has 3 links (cap 3, ok), nodes 2,3,4 have 1 link each (ok), and all four are
+connected. Costs: dist(1,2)=10, dist(1,3)=10, dist(1,4)=round(sqrt(200))=14, so `F = 34`.
+If the judge's Morton chain here costs `B = 34` as well, the ratio would be
+`min(1000, 100*34/34)/1000 = 0.100`. A cheaper feasible backbone (e.g. the perimeter path
+2-1-3 plus 3-4) would raise the ratio.

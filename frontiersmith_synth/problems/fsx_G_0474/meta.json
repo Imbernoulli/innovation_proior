@@ -1,0 +1,16 @@
+{
+  "id": "fsx_G_0474",
+  "tier": "G",
+  "format": "B",
+  "family": "ml-causal-discovery",
+  "eval_form": "quality-metric",
+  "theme": "sensor network",
+  "title": "Riverside Sensor Mesh: Recovering the Causal Wiring of an Environmental Monitoring Network",
+  "objective": "min",
+  "strategies": [
+    "Empty graph (do-nothing lower bound; SHD = number of true edges)",
+    "Marginal-correlation skeleton with index-order orientation (indirect-path false positives, coin-flip orientation)",
+    "Precision-matrix (partial-correlation) skeleton + BFS layering orientation anchored on the known forcing/weather-driver nodes, with a variance-rank tie-breaker",
+    "Score-based / constraint-based DAG search that combines partial correlations, the forcing-node orientation constraint, and a residual-independence ordering to fight heteroscedasticity"
+  ]
+}

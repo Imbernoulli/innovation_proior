@@ -1,0 +1,115 @@
+# Firewatch: Watchtower Placement on a Forest Graph
+
+## Problem
+
+The regional **Forest Fire Authority** must keep an entire woodland under constant visual
+surveillance. The woodland is modelled as a graph of **forest cells** connected by short
+sightline corridors. A **watchtower** built on a cell can see that cell and every cell that
+lies within **`R` corridor hops** of it. Building a tower on a cell costs a fixed,
+cell-specific amount (taller stands, harder access, protected groves, ...).
+
+You must choose a set of cells on which to build watchtowers so that **every** forest cell
+is watched by at least one tower, while spending **as little total build cost as possible**.
+
+Formally: you are given an undirected graph on `N` cells, an integer radius `R`, and a
+positive build cost `c_v` for each cell `v`. A tower built on cell `v` *covers* every cell
+`u` whose hop-distance `dist(u, v) <= R` (a tower always covers its own cell). Choose a set
+`S` of cells so that every cell is covered by at least one tower in `S`, minimizing
+`sum of c_v over v in S`.
+
+This is a minimum-cost `R`-covering (weighted `R`-dominating set) problem. It is NP-hard,
+the optimum is unknown, and many heuristics are viable: coverage-greedy, cost-ratio greedy,
+LP-rounding, redundancy pruning, and local-search swaps all give different trade-offs.
+
+## Input
+
+The first line contains three integers:
+
+```
+N M R
+```
+
+- `N` — number of forest cells, numbered `1..N`.
+- `M` — number of sightline corridors (undirected edges).
+- `R` — coverage radius in hops (`R >= 1`).
+
+The second line contains `N` integers `c_1 c_2 ... c_N` — the build cost of each cell
+(`1 <= c_v`).
+
+Each of the next `M` lines contains two integers:
+
+```
+u v
+```
+
+meaning a two-way corridor between cells `u` and `v` (`u != v`). There are no self-loops;
+duplicate corridors may appear but do not change reachability. The graph need not be
+connected.
+
+## Output
+
+On the first line print `k` — the number of watchtowers you build (`0 <= k <= N`).
+On the second line print `k` distinct cell indices (integers in `1..N`), separated by
+spaces — the cells on which you build towers. If `k = 0`, print an empty second line.
+
+## Feasibility
+
+An output is feasible iff:
+
+- `0 <= k <= N`;
+- every printed index is in `1..N` and all `k` indices are distinct;
+- every cell `u` in `1..N` is covered by at least one built tower, i.e. there exists a
+  built tower `v` with `dist(u, v) <= R`.
+
+Any infeasible output scores `0`.
+
+## Objective
+
+Minimize the total build cost `F = sum of c_v over the built towers v`.
+
+## Scoring
+
+Let `B` be the cost of the trivial reference solution that **builds a tower on every cell**
+(`B = c_1 + c_2 + ... + c_N`); this always covers the whole forest, so it is feasible.
+For a feasible output with total cost `F`, the score is
+
+```
+ratio = min(1.0, 0.1 * B / F)
+```
+
+Building a tower on every cell reproduces `B` and scores exactly `0.1`. Halving the cost
+doubles the score; reaching one tenth of `B` (or less) caps the score at `1.0`. Infeasible
+outputs score `0`.
+
+## Constraints
+
+- `1 <= N <= 20000`, `1 <= M <= 60000`, `1 <= R <= 2`.
+- `1 <= c_v <= 25`.
+- Time limit: 5 s. Memory limit: 512 MiB.
+
+## Example
+
+Input:
+
+```
+5 4 1
+4 1 4 1 4
+1 2
+2 3
+3 4
+4 5
+```
+
+The forest is a path `1-2-3-4-5` with radius `R = 1`, so a tower covers itself and its
+immediate corridor neighbours. The all-towers reference costs `B = 4+1+4+1+4 = 14`.
+
+A feasible output:
+
+```
+2
+2 4
+```
+
+Tower on cell `2` covers `{1,2,3}`; tower on cell `4` covers `{3,4,5}`. Together they cover
+all five cells, so the output is feasible with cost `F = c_2 + c_4 = 1 + 1 = 2`. The score
+is `ratio = min(1.0, 0.1 * 14 / 2) = min(1.0, 0.7) = 0.7`.

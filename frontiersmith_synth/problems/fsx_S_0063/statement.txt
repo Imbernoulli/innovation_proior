@@ -1,0 +1,118 @@
+# Cold-Chain Tray Packing
+
+## Problem
+
+A regional vaccine depot loads flat refrigerated **trays** with insulated vial cassettes
+before shipment. Each tray is a `W x H` grid of unit cells. A cassette is a **polyomino**
+(a connected set of unit cells). The warehouse holds several cassette *types*; type `i`
+has a fixed shape and a limited **stock** of `c_i` identical cassettes.
+
+You must lay cassettes flat onto a single tray. A cassette may be freely **rotated** (by
+0, 90, 180 or 270 degrees) and **reflected** (mirror-flipped) before being placed — the
+cold packs are symmetric, so every one of the 8 dihedral orientations is allowed. Placed
+cassettes may not overlap and must lie entirely inside the tray. You want to cover as much
+of the tray floor as possible so that cold air is not wasted on empty cells.
+
+This is a bounded, multi-shape 2-D packing problem: geometry (awkward shapes leave gaps)
+*and* stock limits (no single type can fill the tray) both bite, so mixing types and
+searching over placements is required. The optimum is NP-hard; any feasible layout is scored.
+
+## Input
+
+```
+W H n
+```
+followed by `n` cassette-type blocks. Block `i` (types are numbered `1..n`) is:
+```
+s_i c_i
+a_1 b_1
+a_2 b_2
+...
+a_{s_i} b_{s_i}
+```
+where `s_i` is the number of cells in type `i`, `c_i` is the available stock, and each
+`a_j b_j` is an integer cell coordinate of the shape (relative, may be negative; the shape
+is connected). Coordinates are `(x, y)` with `x` a column and `y` a row.
+
+## Output
+
+```
+P
+t_1 k_1 x_1 y_1
+t_2 k_2 x_2 y_2
+...
+t_P k_P x_P y_P
+```
+`P` is the number of cassettes you place. Each placement line gives:
+
+- `t` — the cassette type (`1..n`),
+- `k` — the orientation (`0..7`); see below,
+- `x y` — the placement offset (`0 <= x < W`, `0 <= y < H`).
+
+**How an orientation is applied.** Let `f = k / 4` (0 or 1) and `r = k % 4`. Take each
+shape cell `(a, b)`; if `f = 1` set `a <- -a` (reflection); then apply `r` quarter-turns,
+each mapping `(a, b) -> (b, -a)`. After transforming all cells, translate the whole
+cassette so its minimum column and minimum row become 0, then add the offset `(x, y)`.
+The resulting occupied cells are `{ (a' + x, b' + y) }`.
+
+## Feasibility
+
+A layout is feasible iff, for every placement, all occupied cells satisfy
+`0 <= col < W` and `0 <= row < H`; no two placed cells coincide (no overlap); and for each
+type `i` the number of placements of type `i` does not exceed its stock `c_i`. Any violation
+makes the whole submission score 0.
+
+## Objective
+
+Maximize `F`, the total number of tray cells covered by placed cassettes
+(equivalently, the sum of `s_{t}` over all placements, since there is no overlap).
+
+## Scoring
+
+Let `B` be the depot's internal single-type baseline: the best coverage achievable by
+tiling copies of **one** cassette type in a regular bounding-box grid (over all types and
+all 8 orientations, capped by that type's stock). For each test the score is
+
+```
+score = min(1.0, F / (10 * B))
+```
+
+so a feasible layout matching the single-type baseline scores about `0.1`, and reaching
+ten times the baseline coverage scores the maximum `1.0`. The reported result is the mean
+score over all tests. Infeasible output scores 0.
+
+## Constraints
+
+- `3 <= W, H <= 60`, `1 <= n <= 12`.
+- `1 <= s_i <= 5`, `1 <= c_i <= W*H`.
+- `0 <= P <= W*H`.
+- Time limit: 5 s. Memory limit: 512 MB.
+
+## Example
+
+Input:
+```
+6 6 2
+4 3
+0 0
+1 0
+0 1
+1 1
+3 2
+0 0
+1 0
+2 0
+```
+Here the tray is `6 x 6`. Type 1 is a `2 x 2` square (stock 3); type 2 is a straight
+tromino (stock 2). A valid output:
+```
+5
+1 0 0 0
+1 0 2 0
+1 0 4 0
+2 0 0 2
+2 0 3 2
+```
+This places all 3 squares (covering 12 cells) and both trominoes (covering 6 cells), for
+`F = 18`. The single-type baseline `B` here is `12` (three squares, the best a single type
+can do), so the score is `min(1.0, 18 / 120) = 0.15`.

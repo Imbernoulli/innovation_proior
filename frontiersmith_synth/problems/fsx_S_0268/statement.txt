@@ -1,0 +1,139 @@
+# Asteroid Ore-Haul Tug: Selective Load-Aware Pickup-and-Delivery Tour
+
+## Problem
+A single autonomous **ore-haul tug** works a belt of mining sites. It begins and
+ends every shift docked at the **home platform** (the *depot*, node 0).
+
+The dispatch board lists **P haul contracts**. Contract `i` requires the tug to
+first **pick up** a batch of raw ore at an asteroid located at `(ax_i, ay_i)`
+(a *pickup* event), and later **deliver** that batch to a refinery drop at
+`(bx_i, by_i)` (a *delivery* event). A contract's ore must be **picked up before
+it is delivered**.
+
+The tug's cargo hold has capacity `Q`. Contract `i` occupies `m_i` cargo units
+from the moment its ore is picked up until it is delivered, so several contracts
+may ride in the hold **simultaneously** as long as the total occupied units never
+exceed `Q`.
+
+You do **not** have to accept every contract. A contract you actually perform
+adds a fixed **handling cost** `c_i` (docking, transfer, paperwork). A contract
+you skip forfeits the job and incurs a fixed **omission penalty** `w_i`. You must
+decide **which** contracts to perform and produce **one** tour that starts and
+ends at the home platform, visiting the chosen pickup and delivery events in a
+valid order.
+
+**Movement is on independent thruster axes**, so the travel distance between two
+points is the **Manhattan distance** `|x1-x2| + |y1-y2|`.
+
+**Fuel burns with cargo.** A heavier hold costs more fuel per unit distance.
+Concretely, a leg of Manhattan length `d` flown while the hold currently carries
+a total of `M` cargo units burns
+
+```
+d * (K + M)
+```
+
+fuel, where `K >= 1` is the tug's base burn coefficient. The load `M` on a leg is
+the amount on board **while that leg is flown** (i.e. after every event at the
+leg's start point has been applied). The tug leaves the depot empty and, because
+every performed contract must be delivered, returns to the depot empty.
+
+## Input
+```
+P Q K
+x0 y0
+ax_1 ay_1 bx_1 by_1 m_1 c_1 w_1
+ax_2 ay_2 bx_2 by_2 m_2 c_2 w_2
+...
+ax_P ay_P bx_P by_P m_P c_P w_P
+```
+- Line 1: number of contracts `P`, hold capacity `Q`, base burn coefficient `K`.
+- Line 2: integer home-platform coordinates `x0 y0`.
+- The next `P` lines describe contracts `1..P`: pickup-asteroid coordinates,
+  refinery-drop coordinates, cargo demand `m_i`, handling cost `c_i`, and
+  omission penalty `w_i`.
+
+## Output
+Describe the tug's tour as an ordered list of `L` visit events. Each event is a
+pair of integers `t i`:
+- `t = 0` means "pick up ore of contract `i`" (visit asteroid `(ax_i, ay_i)`),
+- `t = 1` means "deliver ore of contract `i`" (visit refinery drop `(bx_i, by_i)`).
+
+```
+L
+t_1 i_1
+t_2 i_2
+...
+t_L i_L
+```
+The tug always begins and ends parked at the home platform; you list only the
+intermediate pickup / delivery visits. `L = 0` (perform nothing) is valid.
+
+## Feasibility
+An output is feasible iff **all** of the following hold:
+1. `0 <= L <= 2P` and every index `i` is in `[1, P]`.
+2. Each contract appears **at most once** as a pickup and **at most once** as a
+   delivery.
+3. If a contract's delivery event appears, its pickup event appears **earlier**
+   in the list (precedence).
+4. A contract is *performed* iff both its pickup and its delivery appear. Any
+   contract that appears exactly once (picked up but never delivered, or
+   delivered but never picked up) makes the output infeasible.
+5. Processing the events in order, the occupied cargo units (which increase by
+   `m_i` at a pickup and decrease by `m_i` at a delivery) never exceed `Q`.
+
+An infeasible output scores 0.
+
+## Objective
+Simulate the realized tour `depot -> visited points in order -> depot`. Let
+`Fuel` be the total load-aware fuel burned (each leg of Manhattan length `d`
+flown at current onboard load `M` burns `d*(K+M)`; `Fuel = 0` if `L = 0`). Let
+`S` be the set of performed contracts and `U` the set of omitted contracts.
+Minimize
+
+```
+F = Fuel + sum_{i in S} c_i + sum_{i in U} w_i .
+```
+
+## Scoring
+The checker builds the trivial *perform-nothing* plan, whose cost is
+`B = sum over all i of w_i` (pure omission penalty, zero travel, zero handling).
+Your score on a test is
+
+```
+ratio = min(1.0, (B / F) / 10)
+```
+
+reported as `Ratio: <ratio>`. Accepting profitable contracts, batching pickups
+that share the hold, and delivering heavy loads over short legs drives `F` below
+`B` and raises the ratio; the perform-nothing plan scores exactly `0.1`. The
+final score is the mean ratio over all tests.
+
+## Constraints
+- `1 <= P <= 120`, `6 <= Q <= 30`, `1 <= m_i <= 6 <= Q`, `1 <= K <= 8`.
+- All coordinates are integers in `[0, 1600]`.
+- `0 <= c_i`, `1 <= w_i`, and all values fit in 64-bit signed integers.
+- Time limit: 5 s. Memory limit: 512 MB.
+
+## Example
+Input:
+```
+2 10 1
+0 0
+4 1 6 2 2 3 40
+0 8 1 12 1 2 5
+```
+Consider the output:
+```
+2
+0 1
+1 1
+```
+The tug performs only contract 1:
+platform(0,0) -> asteroid(4,1) -> drop(6,2) -> platform(0,0). The legs have
+Manhattan lengths `5`, `3`, `8` flown at loads `0`, `2`, `0`, so the fuel is
+`5*(1+0) + 3*(1+2) + 8*(1+0) = 5 + 9 + 8 = 22`, plus handling `c_1 = 3`.
+Contract 2 is omitted, penalty `w_2 = 5`. So `F = 22 + 3 + 5 = 30`. The baseline
+is `B = 40 + 5 = 45`, giving `ratio = min(1.0, (45/30)/10) = 0.15`. Also
+performing contract 2 would add travel and handling far exceeding its penalty
+`5`, so omitting it is the better trade here.

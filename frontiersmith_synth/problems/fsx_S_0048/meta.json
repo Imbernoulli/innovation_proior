@@ -1,0 +1,18 @@
+{
+  "id": "fsx_S_0048",
+  "tier": "S",
+  "format": "A",
+  "family": "online-to-offline-replay",
+  "eval_form": "quality-metric",
+  "seed_problem": "Given a fixed availability/deadline trace, choose Spot/On-Demand/pause per step to minimize cost; a checker replays the trace and scores baseline/cost.",
+  "mutation": "composite: (goal) turn the online sequential cost-control decision into a static full-trace cost-minimization objective by revealing the whole workload+price trace up front; (input) generalize a single-resource replay into a MULTI-ZONE data-center cooling instance where zones share one capacity-limited chiller and each step incurs a fixed startup charge -> a capacitated multi-zone lot-sizing / pre-cooling problem whose optimum is intractable and where reactive, price-threshold, valley-batching and local-search-shift strategies diverge.",
+  "objective": "min",
+  "theme": "data-center cooling",
+  "title": "Coolant Rush: Offline Cooling Schedule for a Data Center",
+  "strategies": [
+    "reactive baseline: cool each zone by exactly its incoming heat every step (holds all temperatures constant) -- matches the checker's internal baseline B",
+    "price-threshold bang-bang (greedy): pre-cool aggressively toward the floor on cheap (sub-median) steps to store coolth, and coast with only the minimum required cooling on expensive steps, respecting shared capacity",
+    "local-search shift (strong): start from the reactive schedule and repeatedly move cooling from expensive later steps to the cheapest reachable earlier step whenever thermal slack and plant capacity allow and the move lowers energy+startup cost",
+    "per-zone relaxation / valley batching: solve each zone's lot-sizing (fixed-charge pre-cooling) ignoring the shared cap, then repair capacity violations"
+  ]
+}

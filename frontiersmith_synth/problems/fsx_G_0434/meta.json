@@ -1,0 +1,16 @@
+{
+  "id": "fsx_G_0434",
+  "tier": "G",
+  "format": "E",
+  "family": "sci-pharmacokinetics",
+  "eval_form": "quality-metric",
+  "theme": "drug trial",
+  "title": "Terminal Clearance Extrapolation — recovering a two-compartment PK decay law",
+  "objective": "min",
+  "strategies": [
+    "constant baseline: predict the geometric-mean early concentration (ignores decay) -> ~0.1",
+    "mono-exponential C=a*exp(-k*t): least squares on log C, collapses distribution+elimination into one rate, wrong terminal slope on the tail",
+    "biexponential C=A*exp(-alpha t)+B*exp(-beta t) via rate grid-search with closed-form amplitude least squares, separating the slow elimination rate beta so it extrapolates the tail",
+    "alternatives: curve-peeling / residual stripping, nonlinear least squares refinement of the rates, weighting late draws, trading complexity penalty against terminal accuracy"
+  ]
+}

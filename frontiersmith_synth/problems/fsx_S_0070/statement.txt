@@ -1,0 +1,124 @@
+# Riverbank Sound Festival: Two-Stage Billing
+
+## Problem
+
+The *Riverbank Sound* festival runs **two stages**: the roaring **Main Stage** and the
+intimate **Side Stage**. Every one of the `n` booked acts must be placed on exactly one of
+the two stages. The festival's booking team has collected a big pile of weighted
+**billing demands** from artists, agents and sponsors. Each demand is a soft rule of the
+form "at least one of these placements holds", and each carries a positive **importance
+weight** measuring how much money / goodwill is on the line if it is honoured.
+
+Formally each demand is a **clause** over the boolean placement variables
+`x_1, ..., x_n`, where `x_i = 1` means act `i` is on the Main Stage and `x_i = 0` means
+act `i` is on the Side Stage. A clause is a disjunction of literals; the literal `+i` is
+true when `x_i = 1` (act `i` on Main), and the literal `-i` is true when `x_i = 0`
+(act `i` on Side). A clause is **satisfied** if at least one of its literals is true.
+
+Your job is to pick a stage for every act so as to **maximize the total weight of the
+satisfied demands**. This is weighted Max-SAT: the intended optimum is NP-hard and
+unknown, so heuristics (per-act greedy, coordinate ascent / local search, randomized
+restarts) are expected and different strategies give different results.
+
+## Input
+
+The first line contains two integers:
+
+```
+n m
+```
+
+- `n` — number of acts (variables), numbered `1..n`.
+- `m` — number of billing demands (clauses).
+
+Each of the next `m` lines describes one demand:
+
+```
+k w  l_1 l_2 ... l_k
+```
+
+- `k` — the number of literals in this clause (`k >= 1`).
+- `w` — the importance weight of this demand (`w >= 1`).
+- `l_1 ... l_k` — the literals: each `l_j` is a non-zero integer with `1 <= |l_j| <= n`.
+  A positive value `+i` denotes the literal `x_i` (act `i` on Main Stage); a negative
+  value `-i` denotes the literal `NOT x_i` (act `i` on Side Stage). Within one clause the
+  same variable may not appear twice (no repeated `|l_j|`).
+
+## Output
+
+Print `n` integers `a_1 a_2 ... a_n`, separated by whitespace (spaces and/or newlines),
+where `a_i` is the stage chosen for act `i`:
+
+- `a_i = 1` — act `i` on the Main Stage,
+- `a_i = 0` — act `i` on the Side Stage.
+
+Printing all zeros (every act on the Side Stage) is always valid.
+
+## Feasibility
+
+An output is feasible iff it consists of **exactly `n`** integers, each equal to `0` or
+`1`, with no extra trailing tokens. Any other output scores `0`.
+
+## Objective
+
+Given your placement, a demand is satisfied if at least one of its literals is true. Let
+`F` be the **total weight of the satisfied demands**. You are **maximizing** `F`.
+
+## Scoring
+
+Let `B` be the total weight of the demands satisfied by the do-nothing placement in which
+**every act is on the Side Stage** (all `a_i = 0`). The score for a test is
+
+```
+ratio = min(1.0, 0.1 * F / B)
+```
+
+The all-Side-Stage submission scores exactly `0.1`; matching ten times the baseline weight
+caps the score at `1.0`. The overall score is the mean ratio across all tests.
+
+## Constraints
+
+- `1 <= n <= 4000`.
+- `1 <= m <= 40000`.
+- `1 <= k <= 5` literals per clause.
+- `1 <= w <= 40`.
+- The instance always contains at least one demand satisfied by the all-Side-Stage
+  placement, so `B >= 1`.
+- Time limit: 5 s. Memory limit: 512 MB.
+
+## Example
+
+Input:
+
+```
+3 4
+1 20 1
+1 20 2
+2 5 -1 -2
+1 30 3
+```
+
+The demands are:
+
+- `x_1` with weight 20 (act 1 wants the Main Stage),
+- `x_2` with weight 20 (act 2 wants the Main Stage),
+- `(NOT x_1) OR (NOT x_2)` with weight 5 (acts 1 and 2 should not both be on Main),
+- `x_3` with weight 30 (act 3 wants the Main Stage).
+
+Baseline (all Side Stage, `a = 0 0 0`): only the third demand `(NOT x_1) OR (NOT x_2)` is
+satisfied, so `B = 5`.
+
+Consider the placement `a = 1 0 1` (acts 1 and 3 on Main, act 2 on Side):
+
+- `x_1` satisfied (weight 20),
+- `x_2` not satisfied,
+- `(NOT x_1) OR (NOT x_2)` satisfied because `x_2 = 0` (weight 5),
+- `x_3` satisfied (weight 30).
+
+So `F = 20 + 5 + 30 = 55`, and the score is `min(1.0, 0.1 * 55 / 5) = min(1.0, 1.1) = 1.0`.
+
+A valid worked output:
+
+```
+1 0 1
+```

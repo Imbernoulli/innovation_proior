@@ -1,0 +1,132 @@
+# Draining the Deluge: Reservoir Junction Interdiction
+
+## Problem
+
+The regional **reservoir dam network** delivers water from a mountain **reservoir**
+(node `s`) down to a downstream **city intake** (node `t`) through a mesh of pipes that
+meet at *pumping junctions*. Every pipe has a positive transit time. A hostile actor
+wants to slow the delivery as much as possible by **decommissioning pumping junctions**:
+shutting a junction down instantly severs *all* pipes that meet at it.
+
+Shutting a junction down is not free — each junction `i` has a decommissioning cost
+`c_i`, and the total cost of the junctions you shut may not exceed a budget `K`. The
+reservoir `s` and the city intake `t` are dam terminals and can never be shut. Finally,
+if the city intake is ever completely cut off from the reservoir the water authority
+declares an emergency and every shutdown is reversed — so `s` and `t` must stay
+connected.
+
+Choose which junctions to decommission so that the *fastest surviving route* from the
+reservoir to the city intake is as **long** as possible.
+
+Formally: you are given an undirected weighted graph with a source `s` and sink `t`.
+Each node `i` has a positive removal cost `c_i`. Choose a set `S` of nodes with
+`s, t not in S` and `sum_{i in S} c_i <= K`, such that `s` and `t` remain connected in
+the graph induced by deleting `S` (a deleted node takes all of its incident edges with
+it), maximizing the length of the shortest `s`-`t` path in that induced graph.
+
+This is a **node-deletion shortest-path interdiction** problem: it is NP-hard, the
+optimum is unknown, and many heuristics (cost-greedy, best-improvement local search,
+randomized restarts) are viable and diverge.
+
+## Input
+
+The first line contains five integers:
+
+```
+n m s t K
+```
+
+- `n` — number of junctions (nodes), numbered `1..n`.
+- `m` — number of pipes (edges).
+- `s` — the reservoir (source node).
+- `t` — the city intake (sink node), `s != t`.
+- `K` — the total decommissioning budget.
+
+The second line contains `n` integers `c_1 c_2 ... c_n`, where `c_i >= 1` is the cost of
+decommissioning junction `i`. The costs `c_s` and `c_t` are present but irrelevant (you
+may never shut `s` or `t`).
+
+Each of the next `m` lines describes one pipe:
+
+```
+u v w
+```
+
+meaning a two-way pipe between junctions `u` and `v` with transit time `w` (`1 <= w`).
+The graph is connected, so `s` can reach `t`.
+
+## Output
+
+On the first line print `r` — the number of junctions you decommission (`0 <= r <= n`).
+On each of the next `r` lines print one junction index (an integer in `1..n`). All
+indices must be distinct, and none may equal `s` or `t`.
+
+Printing `0` on the first line (and nothing else) is always valid.
+
+## Feasibility
+
+An output is feasible iff:
+
+- `0 <= r <= n`;
+- every printed index is in `1..n`, all are distinct, and none equals `s` or `t`;
+- the total cost `sum_{i in S} c_i` of the chosen junctions is at most `K`;
+- after deleting the chosen junctions (and all their incident pipes), `s` and `t` are
+  still connected.
+
+Any infeasible output scores `0`.
+
+## Objective
+
+Let `F` be the shortest-path transit time from `s` to `t` after your chosen junctions
+are deleted. You are **maximizing** `F`.
+
+## Scoring
+
+Let `B` be the shortest-path transit time from `s` to `t` in the original network (no
+junctions shut). The score for a single test is
+
+```
+ratio = min(1.0, 0.1 * F / B)
+```
+
+A do-nothing submission (`F = B`) scores `0.1`; reaching a ten-fold delay (`F = 10*B`)
+caps the score at `1.0`. The overall score is the mean ratio across all tests.
+
+## Constraints
+
+- `2 <= n <= 1600`, `1 <= m <= 6000`.
+- `1 <= w <= 100`.
+- `1 <= c_i <= 50`.
+- `0 <= K <= 400`.
+- Time limit: 5 s. Memory limit: 512 MB.
+
+## Example
+
+Input:
+
+```
+5 6 1 5 3
+9 2 3 4 9
+1 2 1
+2 5 1
+1 3 4
+3 4 4
+4 5 4
+2 4 10
+```
+
+The reservoir is `s = 1`, the city intake is `t = 5`, and the budget is `K = 3`.
+The original fastest route is `1 -> 2 -> 5` with length `2`, so `B = 2`.
+
+Junction `2` has removal cost `c_2 = 2 <= 3`. Shutting it deletes the cheap corridor;
+the fastest surviving route becomes `1 -> 3 -> 4 -> 5` with length `4 + 4 + 4 = 12`, so
+`F = 12` (and `s`, `t` stay connected).
+
+Score for this test: `min(1.0, 0.1 * 12 / 2) = min(1.0, 0.6) = 0.6`.
+
+A valid worked output:
+
+```
+1
+2
+```

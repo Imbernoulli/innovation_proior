@@ -1,0 +1,18 @@
+{
+  "id": "fsx_S_0044",
+  "tier": "S",
+  "format": "A",
+  "family": "partition-clustering",
+  "eval_form": "quality-metric",
+  "seed_problem": "Partition a weighted graph into two balanced halves maximizing cut weight; checker validates balance and scores cut/baseline.",
+  "mutation": "composite: keep the balanced max-cut goal but tighten the output to an EXACT balanced bisection (n/2 per side, not just approximately balanced) and generalize the input to a planted-bipartition-plus-frustration weighted (multi)graph, so recovering the optimal balanced bisection is NP-hard and greedy vs. swap-local-search vs. multi-restart strategies diverge.",
+  "objective": "max",
+  "theme": "asteroid mining",
+  "title": "Twin-Refinery Belt Split: Balanced Ore-Conflict Separation",
+  "strategies": [
+    "alternating-dock baseline: assign asteroid i to refinery (i mod 2); always balanced, cuts about half of the heavy cross weight",
+    "weight-greedy construction: place asteroids in order of decreasing incident weight, each to the refinery that maximizes marginal separation bonus while respecting the n/2 capacity",
+    "pairwise-swap local search: from a greedy start, repeatedly swap one asteroid from each refinery whenever it raises the total bonus, until no improving swap remains",
+    "seeded multi-restart search: run swap local search from many random balanced starts and keep the best balanced bisection found"
+  ]
+}

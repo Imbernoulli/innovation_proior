@@ -1,0 +1,17 @@
+{
+  "id": "fsx_S_0233",
+  "tier": "S",
+  "family": "scheduling-jssp",
+  "seed_problem": "Frontier-Eng JobShop / ALE-Bench: emit a machine schedule for a synthetic JSSP instance; checker validates precedence + no-overlap and scores min(100, 100*optimum/makespan).",
+  "mutation": "input+theme: keep the classic job-shop makespan objective but generalize the input with per-job RELEASE (ready) times and a difficulty ladder that injects a heavy bottleneck resource and long steps, skinned as commissioning an array of telescopes that share scarce facility resources. The intractable 'optimum' in the anchor score is replaced by a checker-computed, always-feasible fully-serial makespan baseline B, so scoring is deterministic: ratio = min(1, 0.1*B/F).",
+  "objective": "optimize",
+  "theme": "telescope array",
+  "title": "Telescope Array Commissioning: Minimum-Makespan Instrument Schedule",
+  "strategies": [
+    "serial baseline: run every step back-to-back on one global timeline in telescope order (feasible, makespan = B, ratio 0.1)",
+    "ECT list scheduling (append-only): repeatedly dispatch the ready step with earliest completion, appending after the resource's last busy time",
+    "gap-insertion dispatch: place each dispatched step in the earliest feasible idle gap of its resource, not just after the last op",
+    "multi-restart randomized list scheduling with gap insertion: perturb dispatch priorities across seeds and keep the least-makespan schedule",
+    "critical-path / shifting-bottleneck refinement on top of a good dispatch"
+  ]
+}

@@ -1,0 +1,78 @@
+# Cold-Chain Compliance Switchboard
+
+## Problem
+A regional vaccine cold-chain authority operates a distribution grid with `n`
+binary control switches `x_1, ..., x_n`. Each switch is a policy toggle for the
+network, for example "run cold-storage node i on its backup generator" or
+"pre-chill outbound lane i overnight". Every switch is either ON (1) or OFF (0).
+
+The regulator publishes `m` weighted **compliance requirements**. Each requirement
+is a disjunction (an OR) of literal conditions on the switches. A requirement is
+**satisfied** if at least one of its literal conditions holds under your switch
+configuration. Requirement `j` carries a positive integer weight `w_j` equal to
+the compliance value (penalty avoided) earned when it is satisfied.
+
+You must choose the ON/OFF state of every switch to maximize the total weight of
+satisfied requirements. There is no known efficient way to find the optimum for
+general weighted requirement sets, so any configuration is accepted and scored.
+
+## Input
+The first line contains two integers `n` and `m`: the number of switches and the
+number of requirements.
+
+Each of the next `m` lines describes one requirement and starts with two integers
+`w` and `k` (the weight and the number of literals), followed by `k` nonzero
+integers `l_1 ... l_k`. A literal `v > 0` is the condition "switch v is ON"
+(`x_v = 1`); a literal `v < 0` is the condition "switch |v| is OFF" (`x_{|v|} = 0`).
+Within one requirement all `|l_i|` are distinct and lie in `[1, n]`.
+
+## Output
+Print `n` integers, each `0` or `1`, separated by whitespace: the state of
+`x_1, x_2, ..., x_n` in order. Any such line is a feasible configuration.
+
+## Feasibility
+An output is feasible iff it consists of exactly `n` tokens, each equal to `0` or
+`1`, with no extra tokens. Any other output scores 0.
+
+## Objective
+Let `F` be the total weight of requirements satisfied by your configuration. The
+objective is to **maximize** `F`.
+
+## Scoring
+The checker builds the trivial baseline configuration "all switches OFF" and lets
+`B` be the total weight it satisfies (`B > 0` is guaranteed by the input). Your
+raw score is
+
+    ratio = min(1000, 100 * F / max(1, B)) / 1000
+
+so the all-OFF baseline scores about `0.1`, and reaching ten times the baseline
+weight caps at `1.0`. Higher `F` is strictly better. Each test contributes its
+own ratio; the reported score is the average over all tests.
+
+## Constraints
+- `1 <= n <= 500`
+- `1 <= m <= 3000`
+- `1 <= w <= 100`
+- `2 <= k <= 3`
+- Time limit: 5 s
+- Memory limit: 512 MB
+
+## Example
+Input:
+```
+3 4
+5 2 1 2
+4 2 -1 3
+3 2 -2 -3
+6 2 1 -3
+```
+Requirements: (x1 OR x2) w=5; (NOT x1 OR x3) w=4; (NOT x2 OR NOT x3) w=3;
+(x1 OR NOT x3) w=6.
+
+All-OFF baseline `x = (0,0,0)`: req1 needs x1 or x2 (both OFF) -> unsatisfied;
+req2 has NOT x1 (true) -> satisfied (4); req3 has NOT x2 (true) -> satisfied (3);
+req4 has NOT x3 (true) -> satisfied (6). So `B = 4 + 3 + 6 = 13`.
+
+Configuration `x = (1, 0, 0)`: req1 has x1 (true) -> 5; req2 has NOT x1 (false),
+x3 (false) -> 0; req3 has NOT x2 (true) -> 3; req4 has x1 (true) -> 6. Total
+`F = 5 + 3 + 6 = 14`. Score `ratio = 100 * 14 / 13 / 1000 = 0.107692`.

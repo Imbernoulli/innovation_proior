@@ -1,0 +1,17 @@
+{
+  "id": "fsx_A_0325",
+  "tier": "A",
+  "format": "C",
+  "family": "functional-inequality-constant",
+  "eval_form": "quality-metric",
+  "theme": "e-sports arena",
+  "title": "Arena Hype Resonance: Minimizing the First Autocorrelation Constant",
+  "objective": "min",
+  "source_frameworks": ["AlphaEvolve", "OpenEvolve", "ThetaEvolve", "TTT-Discover", "SimpleTES"],
+  "strategies": [
+    "front-half block: pour uniform intensity into the first ceil(n/2) slots and leave the rest dark; reproduces the checker's naive baseline (c1 ~= 4) and scores ~0.1",
+    "uniform spread: fill every slot with equal intensity so the self-echo is a single centered triangle (c1 = 2 exactly), the strong local optimum that all smooth/analytic shapes fail to beat",
+    "peak-flattening descent: seeded soft-max (log-sum-exp) projected momentum descent on the normalized convolution peak, escaping the uniform optimum toward c1 ~ 1.55-1.97 while staying non-negative and integer-quantized, guarded to never underperform the uniform spread",
+    "different variants: two-block / notch / chirp shapes, Sidon-style sparse combs (all provably worse here), or heavier multi-restart global search that pushes further toward the open ~1.5 conjectured floor"
+  ]
+}

@@ -1,0 +1,16 @@
+{
+  "id": "fsx_G_0447",
+  "tier": "G",
+  "format": "D",
+  "family": "flop-cse-arith-dag",
+  "eval_form": "flops",
+  "theme": "compiler backend",
+  "title": "Common-Subexpression Scheduling for a Multi-Output Polynomial Kernel",
+  "objective": "min",
+  "strategies": [
+    "trivial: rebuild every monomial per term with no sharing (reproduces the grader's naive baseline, ~0.1)",
+    "greedy: compute each DISTINCT monomial once and reuse it across all targets",
+    "strong: canonicalize monomials and share leading SUB-PRODUCTS via a prefix trie so common partial products are built once across all targets",
+    "invalid: emit a well-formed circuit that computes the wrong function (all-zero outputs) -> exact-equivalence check fails, score 0"
+  ]
+}

@@ -1,0 +1,16 @@
+{
+  "id": "fsx_S_0245",
+  "tier": "S",
+  "family": "scheduling-jssp",
+  "seed_problem": "Frontier-Eng (JobShop) makespan / ALE-Bench dispatch scheduling",
+  "mutation": "output: keep the JSSP makespan-minimization goal but require the participant to emit explicit integer start times for every operation (not just a machine permutation), with the checker enforcing precedence + per-machine no-overlap and scoring 100*B/F against the fully-serial total-work baseline B",
+  "objective": "min",
+  "theme": "solar farm inverters",
+  "title": "Solar Farm Inverter Commissioning: Test-Bay Job Shop",
+  "strategies": [
+    "fully-serial reference plan (one stage at a time on a global timeline) -> the baseline B",
+    "single non-delay dispatch rule (earliest-start / shortest-processing-time) list scheduling",
+    "multi-rule dispatch: run SPT/LPT/MWKR/LWKR/EST/FCFS priority generators plus randomized tie-break restarts and keep the best makespan",
+    "active-schedule generation / local search shifting operations left into machine idle gaps"
+  ]
+}

@@ -1,0 +1,16 @@
+{
+  "id": "fsx_C_0200",
+  "tier": "C",
+  "format": "B",
+  "family": "causal-discovery",
+  "eval_form": "quality-metric",
+  "theme": "warehouse robotics",
+  "title": "Warehouse Fleet Telemetry: Causal Influence-Map Discovery by Minimum SHD",
+  "objective": "min",
+  "strategies": [
+    "emit the empty influence map -- no edges (calibration baseline; SHD == number of true edges)",
+    "marginal-correlation thresholding with index-order orientation -- cheap, many transitive false edges and ~random directions",
+    "order-0/order-1 PC skeleton pruning + equal-variance topological ordering to orient edges (low-variance source -> high-variance descendant)",
+    "score-based / higher-order conditional-independence search or exhaustive DAG scoring for the denser held-out graphs"
+  ]
+}

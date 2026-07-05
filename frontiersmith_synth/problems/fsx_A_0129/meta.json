@@ -1,0 +1,16 @@
+{
+  "id": "fsx_A_0129",
+  "tier": "A",
+  "format": "C",
+  "family": "low-discrepancy-pointset",
+  "eval_form": "quality-metric",
+  "theme": "aquarium plumbing",
+  "title": "Aquarium Floor Probe Placement (Minimum Star Discrepancy)",
+  "objective": "min",
+  "strategies": [
+    "trivial: all fittings on the vertical line x=1/2 (reproduces the checker baseline, ~0.1)",
+    "greedy: Hammersley (base-2 radical inverse) low-discrepancy set",
+    "strong: Hammersley seed + multi-restart coordinate-descent minimizing exact D*",
+    "invalid: emit out-of-range / wrong-count garbage (scores 0)"
+  ]
+}

@@ -1,0 +1,17 @@
+{
+  "id": "fsx_A_0107",
+  "tier": "A",
+  "format": "C",
+  "family": "additive-combinatorics-set",
+  "eval_form": "quality-metric",
+  "theme": "forest fire watchtowers",
+  "title": "Ridge-Line Watchtower Codes",
+  "objective": "max",
+  "strategies": [
+    "Sidon / perfect-ruler layout (all pairwise differences distinct) -> ratio well below 1, reproduces the grader baseline (~0.1)",
+    "symmetric arithmetic run 0..n-1 -> |A+A| = |A-A| = 2n-1, ratio exactly 1 (a clear jump over the baseline)",
+    "more-sums-than-differences block construction: direct sum of the MSTD seed {0,2,3,4,7,11,12,14} with an arithmetic/MSTD factor, ratio 1.04-1.08 (>1)",
+    "recursive tensor (direct-sum power) of the MSTD seed to multiply the ratio for sizes that factor cleanly",
+    "local / hill-climb search over placements to push the ratio above the structured constructions"
+  ]
+}

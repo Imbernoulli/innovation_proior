@@ -1,0 +1,17 @@
+{
+  "id": "fsx_A_0102",
+  "tier": "A",
+  "format": "B",
+  "family": "online-heuristic-simulator",
+  "eval_form": "quality-metric",
+  "theme": "festival stage layout",
+  "title": "Solstice Festival: Main-Stage Slotting",
+  "objective": "optimize",
+  "source_frameworks": ["FunSearch (bin-packing)", "ALE-Bench (dispatch rules)"],
+  "strategies": [
+    "next-fit slotting baseline: load the current stage until the next act exceeds capacity C or hits the K-act changeover cap, then open a new stage and never look back (reproduces the evaluator's weak reference)",
+    "first-fit in booking order: place each act on the lowest-index stage with both resource room and a free changeover window, reusing earlier gaps but never reordering the lineup",
+    "cardinality-aware decreasing-order packing: slot the largest acts first via first-fit-decreasing / best-fit-decreasing respecting BOTH the capacity C and the per-stage K-act cap, so small acts top off partly-filled stages",
+    "seeded local search: start from a decreasing-order layout and relocate acts off the least-loaded stage (or perturb-and-reoptimize) to eliminate whole stages under both constraints"
+  ]
+}

@@ -1,0 +1,16 @@
+{
+  "id": "fsx_A_0097",
+  "tier": "A",
+  "format": "C",
+  "family": "additive-combinatorics-set",
+  "eval_form": "quality-metric",
+  "theme": "aquarium plumbing",
+  "title": "Reef Manifold: Maximizing Distinct Serviceable Reaches",
+  "objective": "max",
+  "strategies": [
+    "contiguous ramp baseline: install offsets {0,1,...,k-1}; sumset is a solid block of 2k-1 reaches (the checker's baseline)",
+    "Mian-Chowla greedy: scan offsets 0..V in order, install each iff it keeps every pairwise sum distinct (a Sidon set); near-optimal when the range is loose, but stalls early and undersizes when the range is tight",
+    "randomized Sidon-core + marginal-gain extension: build a Sidon core from several seeded scan offsets, then fill up to k fittings by repeatedly adding the offset that creates the most new distinct reaches; keep the best sumset over restarts",
+    "algebraic Sidon construction: place offsets via a perfect-difference / Erdos-Turan (i, 2*p*i+(i*i mod p)) pattern to pack many distinct sums into a bounded range"
+  ]
+}

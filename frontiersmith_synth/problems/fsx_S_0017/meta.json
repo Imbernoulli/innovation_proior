@@ -1,0 +1,18 @@
+{
+  "id": "fsx_S_0017",
+  "tier": "S",
+  "format": "A",
+  "family": "scheduling-jssp",
+  "eval_form": "quality-metric",
+  "seed_problem": "Emit a full machine schedule for a synthetic JSSP instance; checker validates precedence/no-overlap and scores min(100, 100*optimum/makespan).",
+  "mutation": "input: generalize classic one-visit-per-machine job-shop to a job-shop WITH RECIRCULATION (variable-length routings, machines may be revisited or skipped within a job) and per-test skewed 'slow workstation' durations, and replace the intractable optimum in the score by a checker-computed sequential-schedule baseline B=sum of durations so scoring stays deterministic.",
+  "objective": "min",
+  "theme": "quantum lab wiring",
+  "title": "Cryo-Harness: Quantum Lab Wiring Schedule",
+  "strategies": [
+    "sequential baseline: run every operation back-to-back on one timeline (makespan = sum of durations)",
+    "job-order list scheduling: process modules one at a time, appending each operation to the earliest free slot at the end of its workstation timeline",
+    "active-schedule dispatch with gap insertion: dynamically pick the next ready operation by a priority rule (ECT / SPT / LPT / most-work-remaining) and insert it into the earliest fitting gap; run several rules plus seeded random restarts and keep the best makespan",
+    "local-search refinement over critical-path operations that reschedules bottleneck operations into gaps"
+  ]
+}

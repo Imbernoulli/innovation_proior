@@ -1,0 +1,16 @@
+{
+  "id": "fsx_A_0333",
+  "tier": "A",
+  "format": "C",
+  "family": "geometric-packing",
+  "eval_form": "quality-metric",
+  "theme": "subway system",
+  "title": "Metro Catchment Packing: Non-Overlapping Station Reach",
+  "objective": "max",
+  "strategies": [
+    "trivial baseline: centre each catchment disk on its platform and grow it to min(wall distance, half the distance to the nearest other platform) -- the even symmetric split",
+    "greedy water-filling: keep centres on platforms but replace the even split with coordinate-ascent water-filling, letting some disks claim a full inter-platform gap while neighbours shrink",
+    "strong push-and-refill local search: free the centres (each still covering its platform), nudge each disk into open space away from neighbours and walls, refill radii, and keep only feasibility-verified non-decreasing moves",
+    "asymmetric slack allocation: relocate small crowded disks toward voids so larger disks can absorb the freed room"
+  ]
+}

@@ -1,0 +1,17 @@
+{
+  "id": "fsx_G_0458",
+  "tier": "G",
+  "format": "B",
+  "family": "ml-imbalance-resampling",
+  "eval_form": "quality-metric",
+  "theme": "rare-disease screen",
+  "title": "Rare-Disease Screen: Resampling/Reweighting Policy for a Fixed Classifier",
+  "objective": "maximize",
+  "source_frameworks": ["MLS-Bench (imbalanced classification)", "breadth-fill (dataset/domain/task diversity)"],
+  "strategies": [
+    "uniform weights: do nothing about the imbalance; the fixed classifier collapses onto the healthy majority and the rare subtypes get near-zero recall (reproduces the evaluator's weak baseline ~0.1)",
+    "square-root inverse-frequency reweighting: weight each patient by 1/sqrt(class count); a gentle rebalance that beats uniform but under-corrects, leaving macro-F1 on the table",
+    "full inverse-frequency (class-balanced) reweighting: weight by N/(K*class_count) so every class contributes equal training mass; the textbook macro-F1 fix, recovers rare-class recall and lands well above the gentle rule",
+    "difficulty-aware / synthetic-minority policies: estimate per-class separability from the biomarker features and up-weight the harder rare subtype, or synthesize/jitter minority points, to push toward (but not reach) the balanced-ideal ceiling"
+  ]
+}

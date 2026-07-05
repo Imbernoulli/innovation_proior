@@ -1,0 +1,16 @@
+{
+  "id": "fsx_S_0043",
+  "tier": "S",
+  "family": "network-design",
+  "seed_problem": "Build a connected relay network where no node has degree > 3, minimizing total cable length; checker validates connectivity+degree and scores baseline/cost.",
+  "mutation": "composite: keep the min-cost degree-capped connectivity goal but (a) restrict the output to a per-node collar-capped connected spanning network (caps in {2,3,4}, degree-constrained => NP-hard) and (b) generalize the input from a Euclidean complete graph to an arbitrary weighted terrain graph given as an explicit buildable-link list with non-metric costs, turning the polynomial Euclidean MST into the NP-hard degree-constrained MST on a general graph.",
+  "objective": "min",
+  "theme": "volcano monitoring",
+  "title": "Caldera Sensor Backbone: Degree-Capped Relay Mesh over Lava Terrain",
+  "strategies": [
+    "chain baseline: build the guaranteed backbone links 1-2, 2-3, ..., (N-1)-N (always feasible, matches the checker baseline, ratio ~0.1)",
+    "degree-constrained Kruskal: sort buildable links by cost and add each shortest link that joins two components while both endpoints still have a free collar, repairing leftover components with any cap-respecting cross link, else fall back to the chain",
+    "Kruskal + cap-aware cycle-swap local search: from the degree-constrained tree, repeatedly insert a cheaper non-tree link and drop the most expensive link on the cycle it closes whenever the caps still hold, driving total cost well below the greedy tree",
+    "randomized/priority variants: bias link selection toward low-degree nodes or run multiple Kruskal orders and keep the cheapest feasible spanning mesh"
+  ]
+}

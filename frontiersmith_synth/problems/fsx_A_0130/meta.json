@@ -1,0 +1,17 @@
+{
+  "id": "fsx_A_0130",
+  "tier": "A",
+  "format": "B",
+  "family": "heuristic-contest-offline",
+  "eval_form": "quality-metric",
+  "theme": "railway freight yard",
+  "title": "Riverside Freight Yard: Classification Track Plan",
+  "objective": "optimize",
+  "source_frameworks": ["ALE-Bench (AHC)", "TTT-Discover (ahc)", "SimpleTES (AHC)"],
+  "strategies": [
+    "round-robin baseline: send car i to track i % K -- balanced track loads but every block is scattered across all tracks, reproducing the evaluator's weak reference plan",
+    "marginal-cost greedy: place each car in arrival order on the track whose incremental split/mix/overflow cost is smallest, clustering same-block cars without revisiting earlier placements",
+    "block-partition construction: group whole blocks onto tracks (bin-packing blocks by size under capacity, splitting only the oversized blocks) so mixing is confined to the fewest, smallest blocks",
+    "relocation local search / metaheuristics: start from greedy or a block partition and relocate/swap cars via an O(1) cost delta, with seeded perturb-and-re-descend restarts to escape local optima"
+  ]
+}

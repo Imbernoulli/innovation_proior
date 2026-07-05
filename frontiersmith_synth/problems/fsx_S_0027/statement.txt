@@ -1,0 +1,99 @@
+# Polar Research Base: Heated-Floor Module Layout
+
+## Problem
+You are laying out a polar research base on a rectangular ice shelf modelled as a
+`W x H` grid of floor cells (columns `x` in `[0, W)`, rows `y` in `[0, H)`). Geothermal
+drilling has left every cell with a measured **heat value** `v(x, y) >= 0`. A cell whose
+heat value is `0` sits over an open **crevasse** and cannot bear any structure.
+
+The base is assembled from a catalogue of `P` prefabricated **module types**. Module type
+`t` is a fixed *polyomino* footprint (a connected set of unit cells) and you own a limited
+**stock** `c_t` of identical copies. When you install a copy you may first **rotate** it by
+a multiple of 90 degrees and/or **reflect** (mirror) it; it then drops onto whole grid
+cells, axis-aligned. An installed copy:
+
+- must lie fully inside the grid,
+- must not cover any crevasse cell (a cell with `v = 0`),
+- must not overlap any other installed copy.
+
+Every cell a module covers taps the geothermal heat beneath it. You want to route heat to
+as much high-value floor as possible. Because footprints are irregular, crevasses break up
+the field, and stock is limited, a perfect high-value tiling is generally impossible: this
+is an open-ended packing optimization where many layouts are feasible and are scored by the
+total heat value they capture.
+
+## Input (stdin)
+```
+W H
+P
+<for each module type t = 0 .. P-1, a block:>
+   c_t s_t
+   <s_t lines: "dx dy"  -- the cells of the base footprint, as integer offsets>
+<then H lines, each with W integers:>
+   v(0,y) v(1,y) ... v(W-1,y)     for y = 0, 1, ..., H-1
+```
+- `W H` grid dimensions.
+- `P` module types follow. For type `t`, the first line gives its stock `c_t` and its cell
+  count `s_t`; the next `s_t` lines list the footprint's cells as offsets. The offsets only
+  *describe the shape* -- you may place the shape at any translation / rotation / reflection.
+- The final `H` rows give the heat grid in row-major order (row `y = 0` first). A value of
+  `0` marks a crevasse cell that may never be covered.
+
+## Output (stdout)
+```
+M
+<for each of the M installed copies, one line:>
+   t  x1 y1  x2 y2  ...  x_{s_t} y_{s_t}
+```
+Print `M`, the number of copies you install, then one line per copy: the module **type** `t`
+followed by the **absolute grid coordinates** of the `s_t` cells that copy occupies (the
+order of the cells within a copy is irrelevant).
+
+## Feasibility
+An output is valid iff ALL of the following hold:
+- `0 <= M`;
+- every declared type satisfies `0 <= t < P`;
+- each copy lists exactly `s_t` cells, all pairwise distinct, all inside the grid, none on a
+  crevasse cell (`v = 0`);
+- the multiset of a copy's cells, translated so its bounding box starts at the origin, equals
+  some rotation/reflection of type `t`'s base footprint (i.e. it really is a legal copy);
+- no two installed copies share a cell (no overlap);
+- for every type `t`, the number of installed copies is at most its stock `c_t`.
+
+Any violation scores `Ratio: 0.0`.
+
+## Objective
+Maximize `F` = the total heat value of all cells covered by installed copies:
+`F = sum over installed copies of ( sum of v(x, y) over the copy's cells )`.
+
+## Scoring
+Let `B` be the heat value captured by the checker's own trivial construction: install **only
+module type 0** using a canonical *anchored greedy* rule. Scan cells in row-major order; at
+the first non-crevasse, uncovered cell, install a copy of type 0 in the first orientation (in
+a fixed canonical enumeration) whose *anchor cell* -- the row-major-smallest cell of the
+orientation -- lands on that cell and which fits (in-bounds, no crevasse, no overlap); repeat
+until stock `c_0` is exhausted or no copy fits anywhere. `B` is the heat value this
+single-type layout captures (`B >= 1`).
+
+With maximization normalization:
+```
+sc    = min(1000.0, 100.0 * F / max(1, B))
+Ratio = sc / 1000.0
+```
+Reproducing the type-0 baseline scores `Ratio = 0.1`; capturing `10x` the baseline value caps
+at `1.0`.
+
+## Constraints
+- `8 <= W, H <= 50`.
+- `2 <= P <= 8`; each footprint has `3 <= s_t <= 6` cells.
+- `1 <= v(x, y) <= 99` for floor cells; `v = 0` marks a crevasse.
+- Crevasses cover under ~20% of the grid; the type-0 baseline always installs at least one copy.
+- Module type 0 has generous stock; several other types are scarce (bounded-knapsack flavour).
+- Time limit 5s, memory 512m.
+
+## Example
+Grid `W = 8, H = 8`, module type 0 is the L-tromino `{(0,0),(0,1),(1,1)}` with generous
+stock, and type 1 is a 2x2 square with small stock. Suppose the checker's type-0 anchored
+greedy layout captures `B = 120` heat. A layout that mixes squares over the highest-value
+patches and fills the rest with trominoes might capture `F = 300`, giving
+`sc = 100 * 300 / 120 = 250`, `Ratio = 0.250`.

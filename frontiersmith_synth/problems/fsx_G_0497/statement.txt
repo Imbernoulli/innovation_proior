@@ -1,0 +1,113 @@
+# Thermal-Aware Fixed-Die Floorplanning
+
+## Problem
+You are the placement engine of a chip layout (physical design / EDA) tool. You are given a
+fixed rectangular die and a set of hard rectangular blocks (macros / standard-cell clusters),
+each with a fixed size and a power rating. You must place every block, axis-aligned and
+non-overlapping, entirely inside the die.
+
+Two physical costs are traded off simultaneously:
+
+- **Wirelength.** Blocks are wired together by a netlist. Each net connects a set of blocks;
+  routing a net costs its half-perimeter wirelength (HPWL) over the block centers. Nets pull
+  their member blocks together.
+- **Thermal proximity.** Two powered blocks that sit close together create a hotspot. Each
+  ordered pair of blocks incurs a thermal penalty proportional to the product of their powers
+  and to how far *inside* a thermal radius `R` they are. Power pushes blocks apart.
+
+A good floorplan clusters connected blocks while keeping high-power blocks spread out. There is
+no easy optimum: the two forces conflict and the non-overlap packing constraint couples every
+decision.
+
+## Input
+The first line contains five integers:
+```
+W H N M R
+```
+- `W`, `H` — die width and height (the die occupies `[0,W] x [0,H]`).
+- `N` — number of blocks (indexed `1..N`).
+- `M` — number of nets.
+- `R` — thermal radius (in doubled-center Manhattan units, see Objective).
+
+The next `N` lines each contain three integers:
+```
+w_i h_i p_i
+```
+the width, height and power of block `i` (`1 <= w_i <= W`, `1 <= h_i <= H`, `0 <= p_i`).
+
+The next `M` lines each describe one net: an integer `k` (the net degree, `k >= 2`) followed
+by `k` distinct block indices (in `1..N`) that the net connects.
+
+## Output
+Print `N` lines. Line `i` must contain two integers `x_i y_i`: the coordinates of the
+**lower-left corner** of block `i`. Block `i` then occupies the rectangle
+`[x_i, x_i + w_i] x [y_i, y_i + h_i]`.
+
+## Feasibility
+A placement is feasible iff **all** of the following hold:
+- `0 <= x_i` and `x_i + w_i <= W` for every block `i`;
+- `0 <= y_i` and `y_i + h_i <= H` for every block `i`;
+- no two blocks overlap in positive area: for all `i != j`, the open rectangles of `i` and `j`
+  are disjoint (touching edges/corners is allowed).
+
+Any infeasible or malformed output scores `0`.
+
+## Objective
+Work in **doubled-center** coordinates so all quantities are integers. The center of block `i`
+is `cx_i = 2*x_i + w_i`, `cy_i = 2*y_i + h_i`.
+
+- **Wirelength.** For a net connecting block set `S`, its HPWL is
+  `(max_{i in S} cx_i - min_{i in S} cx_i) + (max_{i in S} cy_i - min_{i in S} cy_i)`.
+  Let `WIRE` be the sum of HPWL over all `M` nets.
+- **Thermal.** For each unordered pair `i < j`, let `d = |cx_i - cx_j| + |cy_i - cy_j|` be the
+  doubled-center Manhattan distance. The pair's penalty is `p_i * p_j * max(0, R - d)`.
+  Let `THERM` be the sum over all pairs.
+
+The cost to **minimize** is
+```
+F = WIRE + THERM.
+```
+
+## Scoring
+Let `B` be the cost `F` of the reference **shelf-packing** baseline: blocks are placed in
+index order, left to right; when the next block would exceed width `W`, a new shelf starts
+above the tallest block of the current shelf (each block's lower-left corner is where it lands).
+This baseline is always feasible for the supplied die.
+
+Your score on a test is
+```
+ratio = min(1000, 100 * B / max(1, F)) / 1000
+```
+so matching the baseline scores `0.1`, and driving the cost down to one tenth of the baseline
+(or below) reaches the cap `1.0`. Higher is better. The final score averages `ratio` over all
+tests.
+
+## Constraints
+- `2 <= N <= 300`, `1 <= M <= 800`, net degree `2 <= k <= 8`.
+- `1 <= W, H`, and `W * H` comfortably exceeds the total block area (a feasible placement always
+  exists; the shelf baseline is one).
+- All arithmetic fits in signed 64-bit integers.
+- Time limit: 5 s. Memory limit: 512 MB.
+
+## Example
+Input:
+```
+40 40 3 2 30
+10 8 5
+8 12 4
+6 6 20
+2 1 2
+2 2 3
+```
+Die is `40x40`, three blocks, two nets (net 1 links blocks 1,2; net 2 links blocks 2,3), R=30.
+
+One feasible output:
+```
+0 0
+12 0
+0 20
+```
+Centers: block1 `(10,8)`, block2 `(32,12)`, block3 `(6,46)`... (block 3 would exceed H=40, so
+that layout is infeasible — shown only to illustrate the center formula). A valid layout keeps
+every block inside `[0,40]^2` and non-overlapping; the checker then computes `WIRE + THERM` and
+compares it to the shelf baseline `B` to award the ratio.

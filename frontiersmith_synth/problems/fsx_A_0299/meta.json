@@ -1,0 +1,16 @@
+{
+  "id": "fsx_A_0299",
+  "tier": "A",
+  "format": "C",
+  "family": "low-discrepancy-pointset",
+  "eval_form": "quality-metric",
+  "theme": "pandemic contact net",
+  "title": "Sentinel Grid: Minimum-Discrepancy Pandemic Contact-Net Surveillance",
+  "objective": "min",
+  "strategies": [
+    "pseudo-random scatter baseline: a deterministic LCG placement (valid but uneven) that reproduces the checker's internal baseline and scores ~0.1",
+    "Kronecker / additive-recurrence lattice: x_i^k = frac((i+1)*sqrt(prime_k)), a cheap moderate-quality low-discrepancy spread",
+    "Hammersley/Halton plus best-of-shifts: fixed first coordinate (i+0.5)/M with radical-inverse coordinates in distinct prime bases, choosing the best deterministic Cranley-Patterson shift",
+    "further optimisation over probe positions minimising the exactly-computed L2 star discrepancy (open-ended: no known optimal set for these (d,M))"
+  ]
+}

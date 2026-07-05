@@ -1,0 +1,174 @@
+# Fragment-Based Ligand Assembly: Balancing Affinity, Rings, and Drug-Likeness
+
+## Problem
+
+You are a medicinal chemist running a **fragment-based drug design** campaign.
+A robotic synthesizer has prepared a library of `M` molecular **fragment
+instances** (labeled `1 .. M`). Each fragment is a small chemical building block
+with a fixed number of open valences (**attachment ports**). You assemble a
+single candidate **ligand** by selecting a subset of fragments and forming
+covalent **bonds** between their ports. The assembled molecule must be one
+connected piece.
+
+Every fragment `i` carries four fixed descriptors:
+
+* `w_i` — its molecular weight,
+* `b_i` — its intrinsic contribution to the predicted binding score (may be
+  negative: some scaffolds are inert or mildly repulsive),
+* `val_i` — its valence, i.e. the maximum number of bonds it may participate in,
+* `p_i` — its **pharmacophore class** in `0 .. C-1` (e.g. donor, acceptor,
+  aromatic, hydrophobic).
+
+When two fragments are bonded, the interaction contributes an amount that depends
+only on the pharmacophore classes of the two endpoints: a fixed symmetric
+`C x C` matrix `q[a][b]` gives the bond-interaction score between a class-`a`
+port and a class-`b` port. Some class pairs are synergistic (`q > 0`); others
+clash (`q < 0`).
+
+Two structural / physicochemical effects modulate the raw score:
+
+* **Ring closure bonus.** Fused and aromatic ring systems improve potency. If the
+  assembled molecule has `S` fragments and `E` bonds, then (because it is
+  connected) it contains exactly `E - S + 1` independent rings. Each independent
+  ring is worth a bonus `Rb`.
+* **Drug-likeness (weight) penalty.** Oversized molecules are poor drugs
+  (Lipinski's rule of five). If the total molecular weight `W = sum of w_i`
+  exceeds the budget `Wmax`, you pay a penalty `Lam * (W - Wmax)`; staying at or
+  under budget costs nothing.
+
+## Input
+
+The first line contains five integers:
+
+```
+M C Wmax Lam Rb
+```
+
+* `M` — number of available fragment instances.
+* `C` — number of pharmacophore classes.
+* `Wmax` — molecular-weight budget.
+* `Lam` — weight-overflow penalty coefficient.
+* `Rb` — bonus per independent ring.
+
+Each of the next `M` lines describes fragment `i` (`i = 1 .. M`, in order):
+
+```
+w_i b_i val_i p_i
+```
+
+Then follow `C` lines, each with `C` integers, giving the symmetric
+pharmacophore interaction matrix `q` (row `a`, column `b` is `q[a][b] = q[b][a]`).
+
+## Output
+
+Describe your assembled ligand:
+
+```
+S
+v_1 v_2 ... v_S
+E
+a_1 b_1
+a_2 b_2
+...
+a_E b_E
+```
+
+* `S` — number of fragments used (`1 <= S <= M`); the second line lists their
+  `S` **distinct** indices `v_1 .. v_S` (each in `[1, M]`).
+* `E` — number of bonds; each of the next `E` lines gives an unordered bonded
+  pair `a_j b_j`.
+
+## Feasibility
+
+An output is feasible iff **all** of the following hold:
+
+* `1 <= S <= M` and the `S` fragment indices are distinct and in `[1, M]`.
+* Every bond endpoint `a_j, b_j` is one of the selected fragments, `a_j != b_j`.
+* No unordered pair of fragments is bonded more than once (no parallel bonds).
+* For every selected fragment, the number of bonds incident to it is at most its
+  valence `val_i` (degree constraint).
+* The selected fragments together with the bonds form a **single connected
+  component** (one molecule).
+
+Any output that violates a rule, is out of range, or contains a non-integer /
+non-finite token scores `0`.
+
+## Objective
+
+Maximize
+
+```
+F = sum_{i in S} b_i
+  + sum_{bonds (a,b)} q[ p_a ][ p_b ]
+  + Rb * ( E - S + 1 )
+  - Lam * max( 0, W - Wmax )
+```
+
+where `W = sum_{i in S} w_i`. The three positive mechanisms (fragment
+contributions, favorable bonds, ring bonuses) compete against the valence budget
+and the weight penalty, so no single greedy rule is optimal.
+
+## Scoring
+
+Let `B` be the best single-fragment score the checker can achieve on its own:
+
+```
+B = max over i of ( b_i - Lam * max(0, w_i - Wmax) )
+```
+
+(the generator guarantees `B > 0`). Your score for one test is
+
+```
+ratio = clamp( 100 * F / max(1, B), 0, 1000 ) / 1000
+```
+
+so submitting just the best single fragment yields `ratio = 0.1`, and a genuine
+assembly that reaches `10 * B` (or more) is capped at `1.0`. Per-test ratios are
+averaged.
+
+## Constraints
+
+* `1 <= M <= 2000`, `2 <= C <= 8`.
+* `1 <= w_i <= 500`, `-200 <= b_i <= 300`, `1 <= val_i <= 4`, `0 <= p_i <= C-1`.
+* `-300 <= q[a][b] <= 300`, `q` symmetric.
+* `1 <= Wmax <= 5000`, `1 <= Lam <= 50`, `0 <= Rb <= 200`.
+* Time limit: 5 s. Memory limit: 512 MB.
+
+## Example
+
+```
+4 2 800 10 50
+100 120 2 0
+150 80 2 0
+200 60 3 0
+900 400 1 1
+100 -40
+-40 20
+```
+
+Single-fragment scores: fragment 1 -> 120, fragment 2 -> 80, fragment 3 -> 60,
+fragment 4 -> `400 - 10*(900-800) = -600` (the heavy "trap" scaffold). So
+`B = 120`.
+
+Assemble fragments `{1, 2, 3}` (all class 0) with bonds `1-3` and `1-2`:
+
+* fragment contributions: `120 + 80 + 60 = 260`,
+* bond interactions: `q[0][0] + q[0][0] = 100 + 100 = 200`,
+* rings: `E - S + 1 = 2 - 3 + 1 = 0`, bonus `0`,
+* weight `W = 450 <= 800`, no penalty.
+
+So `F = 260 + 200 = 460`, and `ratio = 100 * 460 / 120 / 1000 = 0.3833`.
+
+Output:
+
+```
+3
+1 2 3
+2
+1 3
+1 2
+```
+
+Adding the ring-closing bond `2-3` (both fragments still have a free valence)
+would give `E = 3`, `F = 460 + q[0][0] + Rb = 460 + 100 + 50 = 610`, i.e.
+`ratio = 0.5083` — better, illustrating why ring closure is worth chasing.

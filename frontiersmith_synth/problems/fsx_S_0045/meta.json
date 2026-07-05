@@ -1,0 +1,18 @@
+{
+  "id": "fsx_S_0045",
+  "tier": "S",
+  "format": "A",
+  "family": "coloring-labeling",
+  "eval_form": "quality-metric",
+  "seed_problem": "Assign frequencies to transmitters minimizing total interference conflicts under a channel budget; checker scores baseline_conflicts/achieved.",
+  "mutation": "composite: keep the frequency/channel-assignment goal but (a) generalize the input from a plain conflict graph to a weighted general graph with per-link interference severities and (b) tighten the output with a small channel budget C so a conflict-free coloring is impossible, turning the problem into NP-hard weighted minimum-conflict k-coloring where greedy, local-search and multi-restart strategies diverge.",
+  "objective": "min",
+  "theme": "vaccine cold chain",
+  "title": "Cold-Chain Compressor Circuits: Interference-Minimal Channel Assignment",
+  "strategies": [
+    "do-nothing baseline: put every depot on circuit 1 (achieves the worst-case total interference B)",
+    "one-pass greedy coloring: process depots in index order, assign each the circuit minimizing added conflict with already-colored neighbors",
+    "node-move local search: start from greedy, repeatedly move any depot to the circuit that lowers its local interference until no single move improves",
+    "randomized multi-restart: run local search from several seeded random initial colorings and keep the assignment with the least total interference"
+  ]
+}

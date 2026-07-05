@@ -1,0 +1,129 @@
+# Verdant Vault: Greenhouse Climate-Zone Coverage
+
+## Problem
+
+The *Verdant Vault* is a sprawling research greenhouse whose growing floor is divided into
+**zones**. Zones are wired together by climate **ducts** (two-way air corridors). To keep
+every zone within a safe temperature band you must install **climate regulators**. Installing
+a regulator in a zone `v` costs `c_v` and actively conditions zone `v` together with every
+zone reachable from `v` through at most `r` ducts (graph hop distance `<= r`).
+
+You must choose a set of zones in which to install regulators so that **every** zone in the
+greenhouse is conditioned by at least one regulator, while spending as little as possible.
+
+Formally: you are given an undirected graph on `n` zones, a per-zone cost `c_v`, and a
+coverage radius `r`. A zone `u` is *covered* by an installed regulator at `v` iff the
+shortest-path hop distance `d(u, v) <= r`. Choose a set `Z` of zones (the regulator sites)
+such that every zone is covered by at least one site in `Z`, minimizing the total cost
+`sum_{v in Z} c_v`.
+
+This is a weighted distance-`r` dominating set / covering-facility-location problem: it is
+NP-hard, the optimum is unknown, and many heuristics (coverage greedy, cost-effectiveness
+greedy, LP rounding, local-search pruning) are viable and tend to diverge.
+
+## Input
+
+The first line contains three integers:
+
+```
+n m r
+```
+
+- `n` — number of zones, numbered `1..n`.
+- `m` — number of ducts (undirected edges).
+- `r` — coverage radius in hops (`r >= 1`).
+
+The second line contains `n` integers `c_1 c_2 ... c_n`, where `c_v >= 1` is the cost of
+installing a regulator in zone `v`.
+
+Each of the next `m` lines contains two integers:
+
+```
+u v
+```
+
+describing a two-way duct between zones `u` and `v` (`1 <= u, v <= n`, `u != v`). The graph
+may contain parallel ducts. Distances are measured in number of ducts traversed (each duct
+counts as one hop, regardless of which zones it joins).
+
+## Output
+
+On the first line print `p` — the number of regulators you install (`0 <= p <= n`).
+On each of the next `p` lines print one zone index (an integer in `1..n`). All indices must
+be distinct.
+
+## Feasibility
+
+An output is feasible iff:
+
+- `0 <= p <= n`;
+- every printed zone index is in `1..n` and all `p` indices are distinct;
+- every zone `1..n` is within hop distance `r` of at least one installed regulator.
+
+Any infeasible output scores `0`. In particular, installing a regulator in every zone is
+always feasible (each zone covers itself, since `d(v, v) = 0 <= r`).
+
+## Objective
+
+Let `F = sum_{v in Z} c_v` be the total installation cost of your chosen set `Z`. You are
+**minimizing** `F`.
+
+## Scoring
+
+Let `B = sum_{v=1}^{n} c_v` be the cost of the trivial "regulator in every zone" solution.
+The score for a test is
+
+```
+ratio = min(1.0, 0.1 * B / F)
+```
+
+The trivial full-install solution (`F = B`) scores `0.1`; achieving a ten-fold cost
+reduction (`F = B / 10`) caps the score at `1.0`. The overall score is the mean ratio
+across all tests.
+
+## Constraints
+
+- `1 <= n <= 1200`.
+- `1 <= m <= 5000`.
+- `1 <= r <= 2`.
+- `1 <= c_v <= 100`.
+- Time limit: 5 s. Memory limit: 512 MB.
+
+## Example
+
+Input:
+
+```
+9 12 1
+5 5 5 5 1 5 5 5 5
+1 2
+2 3
+4 5
+5 6
+7 8
+8 9
+1 4
+4 7
+2 5
+5 8
+3 6
+6 9
+```
+
+This is a `3x3` grid of zones (row-major indices `1..9`) with radius `r = 1`, so a regulator
+covers its own zone and its grid neighbours. The trivial baseline cost is
+`B = 5+5+5+5+1+5+5+5+5 = 41`.
+
+A valid worked output installs regulators in zones `2, 4, 6, 8`:
+
+```
+4
+2
+4
+6
+8
+```
+
+Zone `2` covers `{1,2,3,5}`, zone `4` covers `{1,4,5,7}`, zone `6` covers `{3,5,6,9}`,
+zone `8` covers `{5,7,8,9}`; together they cover all nine zones, so the output is feasible.
+Its cost is `F = 5+5+5+5 = 20`, giving score `min(1.0, 0.1 * 41 / 20) = 0.205`.

@@ -1,0 +1,16 @@
+{
+  "id": "fsx_G_0448",
+  "tier": "G",
+  "format": "D",
+  "family": "flop-integer-mult-splits",
+  "eval_form": "flops",
+  "theme": "bignum library",
+  "title": "Bilinear Limb-Kernel Splits: Minimizing Scalar Multiplications for a Fixed Coefficient Tensor",
+  "objective": "min",
+  "strategies": [
+    "trivial: schoolbook split -- form every product x_i*y_j (R = p*q), reproduces the checker baseline (~0.1)",
+    "greedy: support-pruned schoolbook -- skip products whose coefficient column T[:,i,j] is all-zero; beats baseline on sparse tensors but ignores linear-rank structure (middling)",
+    "strong: mode-wise rank exploitation -- rank-1 peel the slices of the best tensor mode (output / x / y), emitting the smallest valid split; captures the planted low linear rank, far fewer products, but only an upper bound on the unknown true bilinear rank (headroom remains)",
+    "invalid: emit an all-zero (or otherwise non-reconstructing) split -> exact identity fails -> 0"
+  ]
+}

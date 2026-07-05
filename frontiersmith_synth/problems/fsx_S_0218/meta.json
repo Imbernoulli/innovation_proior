@@ -1,0 +1,18 @@
+{
+  "id": "fsx_S_0218",
+  "tier": "S",
+  "format": "A",
+  "family": "covering-facility-location",
+  "eval_form": "quality-metric",
+  "seed_problem": "Place watchtowers on a forest graph to cover every cell within radius r, minimizing total cost; score = baseline_cost / achieved_cost.",
+  "mutation": "composite: replace uniform watchtower cost + geometric forest with a heavy-tailed per-zone install cost on an irregular grid-plus-shortcut duct graph, turning the covering task into a weighted distance-r dominating set (facility location) where graph hop distance (not geometry) defines coverage, so LP-rounding and cost-effectiveness greedy diverge from plain coverage greedy.",
+  "objective": "min",
+  "theme": "greenhouse zones",
+  "title": "Verdant Vault: Greenhouse Climate-Zone Coverage",
+  "strategies": [
+    "trivial full install: put a regulator in every zone (always feasible, equals the baseline cost)",
+    "coverage greedy: repeatedly install the regulator that newly covers the most uncovered zones, ignoring cost",
+    "cost-effectiveness greedy: repeatedly install the regulator minimizing cost per newly covered zone, then prune redundant regulators",
+    "randomized multi-restart local search: perturb the greedy order across seeds and keep the cheapest feasible cover found"
+  ]
+}

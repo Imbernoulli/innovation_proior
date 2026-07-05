@@ -1,0 +1,110 @@
+# Reef Aquarium Plumbing: Minimum-Cost Circulation Pump Placement
+
+## Problem
+A public reef aquarium is one big **circulation network**. There are `n` tanks, joined by
+`m` bidirectional plumbing runs (pipes). Water quality in a tank stays healthy only if a
+**circulation pump** is installed close enough to it in the pipe network.
+
+You choose a set of tanks in which to *install* a pump. Installing a pump in tank `v`:
+
+- costs a positive integer `c_v` (equipment + labour for that location), and
+- **serves** every tank whose pipe-hop distance from `v` is at most `r`, i.e. every tank
+  reachable from `v` by traversing at most `r` pipes (a pump serves its own tank, distance 0).
+
+Every tank must be **served by at least one installed pump**. Among all such installations you
+want the **cheapest** one. This is a **minimum-cost covering / facility-location** problem
+(the covering sets are the radius-`r` balls of the pipe graph): finding the true optimum is
+NP-hard, so strong heuristics (cost-aware greedy set cover, LP-style rounding, redundancy
+pruning, local-search swaps) are expected.
+
+## Input (stdin)
+```
+n m r
+c_1 c_2 ... c_n
+u_1 v_1
+u_2 v_2
+...
+u_m v_m
+```
+- Line 1: number of tanks `n`, number of pipes `m`, and the service radius `r`.
+- Line 2: `n` positive integers, the installation cost `c_v` of each tank `v` (1-indexed).
+- Each of the next `m` lines: a pipe connecting distinct tanks `u_i` and `v_i`
+  (`1 <= u_i, v_i <= n`, `u_i != v_i`). The graph is connected. There may be parallel
+  pipes; treat them as a single adjacency (they do not change hop distances).
+
+## Output (stdout)
+```
+s
+p_1 p_2 ... p_s
+```
+- Line 1: `s`, the number of pumps you install (`0 <= s <= n`).
+- Line 2: `s` **distinct** tank indices `p_1 ... p_s` (each `1 <= p_j <= n`), the tanks where
+  you install a pump. If `s = 0` you may omit the second line (but an empty installation is
+  only feasible when `n = 0`, which never happens here). Whitespace between tokens is ignored;
+  there must be exactly `s` indices and nothing else after them.
+
+## Feasibility
+An output is valid iff:
+1. `s` is an integer with `0 <= s <= n`;
+2. it is followed by exactly `s` integers, all in `[1, n]`, all **distinct**;
+3. there is no extra trailing token; and
+4. **coverage is complete**: every tank is within pipe-hop distance `r` of at least one
+   installed pump.
+
+Any output that violates any rule scores `Ratio: 0.0`.
+
+## Objective
+Minimize `F` = the total installation cost of the pumps you place:
+```
+F = sum of c_{p_j} over the installed tanks.
+```
+
+## Scoring
+The checker builds its own trivial reference installation: **install a pump in every tank**.
+That always covers everything, at cost
+```
+B = c_1 + c_2 + ... + c_n      (B >= 1).
+```
+With the minimization normalization:
+```
+sc    = min(1000.0, 100.0 * B / max(1, F))
+Ratio = sc / 1000.0
+```
+Reproducing the install-everywhere reference gives `F = B` and `Ratio = 0.1`. A feasible
+installation whose cost is at most `B / 10` (a 10x cost reduction) caps at `Ratio = 1.0`.
+Cheaper (smaller `F`) is always strictly better.
+
+## Constraints
+- `10 <= n <= 460`.
+- `n-1 <= m <= 3*n` (a connected pipe network with extra cross-pipes / cycles).
+- `1 <= r <= 3`.
+- `1 <= c_v <= 100`.
+- Time limit: 6s. Memory limit: 512m.
+
+## Example
+Input:
+```
+6 6 1
+5 1 1 1 1 5
+1 2
+2 3
+3 4
+4 5
+5 6
+2 5
+```
+Pipes form a path `1-2-3-4-5-6` plus a cross-pipe `2-5`. Radius `r = 1`, so a pump serves its
+own tank and its direct pipe-neighbours. Costs are `c = [5,1,1,1,1,5]`.
+
+Reference (install everywhere): `B = 5+1+1+1+1+5 = 14`.
+
+Suppose you output:
+```
+2
+2 5
+```
+- Pump at tank 2 (`r=1`) serves {1, 2, 3, 5} (neighbours 1, 3, 5 plus itself).
+- Pump at tank 5 serves {2, 4, 5, 6} (neighbours 2, 4, 6 plus itself).
+- Union = {1,2,3,4,5,6} = all tanks, so the installation is feasible.
+
+`F = c_2 + c_5 = 1 + 1 = 2`. `sc = 100 * 14 / 2 = 700`, so `Ratio = 0.700`.

@@ -1,0 +1,17 @@
+{
+  "id": "fsx_B_0173",
+  "tier": "B",
+  "format": "B",
+  "family": "multiobjective-hypervolume",
+  "eval_form": "quality-metric",
+  "theme": "glacier sensor net",
+  "title": "Glacier Sensor Net: budgeted Pareto hypervolume on a DTLZ2 surrogate",
+  "objective": "max",
+  "source_frameworks": ["Frontier-Eng (ReactionOptimisation/DTLZ2)"],
+  "strategies": [
+    "trivial: a single centre sensor x=[0.5,...] (one on-front point) -> ~0.1",
+    "greedy: a coarse 3x3 grid of position variables with distance variables pinned to 0.5",
+    "strong: a floor(sqrt(budget))^2 grid over the two position variables (endpoints included so axis extremes are hit) with distance variables pinned to 0.5 -> dense, well-spread on-front batch",
+    "invalid: decision coordinates outside [0,1] -> rejected, scores 0"
+  ]
+}

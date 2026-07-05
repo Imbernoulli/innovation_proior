@@ -1,0 +1,133 @@
+# Skybridge Swarm: Degree-Bounded Relay Mesh
+
+## Problem
+
+A logistics company runs a **drone delivery swarm**. Each drone hovers at a fixed
+station and must be tied into a single laser-link mesh so that telemetry can flow
+between every pair of stations (directly or through relays). A laser link is a
+bidirectional beam between two stations; its running cost equals the physical
+distance the beam must travel.
+
+Every drone carries only a small number of laser transceivers, so drone `i` can host
+**at most `c_i`** simultaneous links (its *capacity*). You must choose a set of links
+so that the whole swarm is **connected** (all stations lie in one component) while
+**respecting every capacity** and **minimizing the total link cost**.
+
+Formally: you are given `n` points in the plane, each with an integer capacity `c_i`.
+Build an undirected simple graph on these `n` nodes such that the graph is connected,
+`deg(i) <= c_i` for every node `i`, and the sum of edge lengths is as small as
+possible. (An optimal solution is always a spanning tree, but you may output any
+feasible connected graph.)
+
+This is a **degree-constrained minimum spanning network** problem. It is NP-hard, the
+optimum is unknown, and many heuristics diverge here: nearest-neighbour chains,
+degree-constrained Kruskal/Prim, and local-search rewiring all give different results.
+
+## Input
+
+The first line contains one integer:
+
+```
+n
+```
+
+Each of the next `n` lines describes one station (node index `1..n` in input order):
+
+```
+x_i y_i c_i
+```
+
+- `x_i`, `y_i` — integer coordinates of station `i`.
+- `c_i` — the capacity (maximum degree) of station `i`, with `c_i >= 2`.
+
+## Output
+
+On the first line print `E` — the number of laser links you build.
+On each of the next `E` lines print two distinct integers:
+
+```
+u v
+```
+
+meaning a link between stations `u` and `v` (`1 <= u, v <= n`, `u != v`).
+
+The links form a **simple** graph: no self-loops and no repeated unordered pair.
+
+## Feasibility
+
+An output is feasible iff:
+
+- `n-1 <= E <= 4*n`;
+- every endpoint is in `1..n` and `u != v`;
+- no unordered pair `{u,v}` appears more than once;
+- `deg(i) <= c_i` for every node `i`;
+- the graph is connected (every station reachable from station `1`).
+
+Any infeasible output scores `0`.
+
+## Objective
+
+The **length** of a link `{u,v}` is the Euclidean distance between the two stations,
+rounded to the nearest integer:
+
+```
+len(u,v) = round( sqrt( (x_u - x_v)^2 + (y_u - y_v)^2 ) )
+```
+
+Let `F` be the sum of `len` over all links you output. You are **minimizing** `F`.
+
+## Scoring
+
+Let `B` be the total length of the **input-order chain** — the connected mesh that
+links station `1`-`2`, `2`-`3`, ..., `(n-1)`-`n` in order. This chain is always
+feasible (every internal node has degree `2 <= c_i`), and the checker builds it as its
+internal baseline. The score for a test is
+
+```
+ratio = min(1.0, 0.1 * B / F)
+```
+
+Reproducing the input-order chain (`F = B`) scores `0.1`; cutting the total link cost
+to a tenth of the baseline (`F = B/10`) caps the score at `1.0`. The overall score is
+the mean ratio across all tests.
+
+## Constraints
+
+- `2 <= n <= 2100`.
+- `0 <= x_i, y_i <= 20000`.
+- `2 <= c_i <= 4`.
+- Time limit: 5 s. Memory limit: 512 MB.
+
+## Example
+
+Input:
+
+```
+5
+0 0 2
+0 10 3
+10 0 2
+10 10 2
+5 5 3
+```
+
+The input-order chain links `1-2`, `2-3`, `3-4`, `4-5`:
+`len(1,2)=10`, `len(2,3)=round(sqrt(200))=14`, `len(3,4)=10`,
+`len(4,5)=round(sqrt(50))=7`, so `B = 10+14+10+7 = 41`.
+
+A cheaper feasible mesh links the centre hub `5` (capacity 3) to three corners and
+adds one more corner link, e.g. links `5-1`, `5-3`, `5-4`, `1-2`:
+`len(5,1)=7`, `len(5,3)=7`, `len(5,4)=7`, `len(1,2)=10`, so `F = 31`.
+Node degrees: `5` has degree 3 (<=3), all others <= 2. Connected. Feasible.
+
+Score for this test: `min(1.0, 0.1 * 41 / 31) = 0.132...`.
+
+A valid worked output:
+
+```
+4
+5 1
+5 3
+5 4
+1 2
+```

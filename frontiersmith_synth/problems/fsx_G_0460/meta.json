@@ -1,0 +1,17 @@
+{
+  "id": "fsx_G_0460",
+  "tier": "G",
+  "format": "B",
+  "family": "ml-data-augmentation",
+  "eval_form": "quality-metric",
+  "theme": "tiny image model",
+  "title": "Tiny Sprite Classifier: Design the Augmentation Policy",
+  "objective": "maximize",
+  "source_frameworks": ["breadth-fill (dataset/domain/task diversity)", "MLS-Bench (CPU proxy)"],
+  "strategies": [
+    "no-augmentation baseline: return an empty policy; the 1-NN gallery is just the raw handful of sprites, reproducing the evaluator's weak reference (~0.1)",
+    "single-lever shift augmentation: notice the sprites are translated and add a few shifted copies so shifted test sprites find shifted gallery matches, capturing most of the shift gain but ignoring noise/brightness",
+    "matched multi-transform policy: augment with exactly the test-time nuisances (translation + Gaussian noise + brightness offset), spending most of the copy budget on the dominant translation and estimating magnitudes from the training sprites, while avoiding flips/contrast/cutout that the test set never contains",
+    "budget-aware tuning / search: read train_images to estimate the shift spread and background noise, sweep magnitudes and copy allocations under the total-copies cap, and keep the allocation that maximizes inferred held-out accuracy"
+  ]
+}

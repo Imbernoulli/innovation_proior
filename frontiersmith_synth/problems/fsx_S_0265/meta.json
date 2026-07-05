@@ -1,0 +1,18 @@
+{
+  "id": "fsx_S_0265",
+  "tier": "S",
+  "format": "A",
+  "family": "graph-interdiction",
+  "eval_form": "quality-metric",
+  "seed_problem": "remove at most k links from a themed grid network to maximize the s-t shortest-path (delay) while keeping s and t connected",
+  "mutation": "output-constrained interdiction: keep the max-shortest-path goal but require the residual network stay s-t connected and cap the number of severed links at k (budget-constrained most-vital-edges, NP-hard)",
+  "objective": "max",
+  "theme": "interstellar relay",
+  "title": "Interstellar Relay Sabotage: Maximum Signal Delay Under a Cut Budget",
+  "strategies": [
+    "do-nothing baseline: sever no links (residual delay == original, calibration point)",
+    "cheapest-on-path greedy: iteratively cut the lowest-latency link on the current shortest route while preserving connectivity",
+    "steepest-ascent interdiction: each round cut the path link whose removal maximizes the resulting shortest-path delay",
+    "bottleneck/cut-oriented search: target links shared by many short routes or forming a narrow crossing to force expensive detours"
+  ]
+}

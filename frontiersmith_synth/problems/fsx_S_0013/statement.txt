@@ -1,0 +1,144 @@
+# Lag Storm: Arena Fiber Interdiction
+
+## Problem
+
+The **NeoCircuit Arena** hosts a live e-sports championship. Its floor is wired as a mesh
+of network **relays** (nodes) joined by two-way **fiber links** (edges); every link adds a
+known amount of latency (in microseconds). During the *Lag Storm* stress-test exhibition,
+the arena's chaos crew is allowed to physically **unplug at most `k` fiber links** to see
+how badly they can degrade competitive play — but there is one hard rule from the referees:
+**every monitored connection must stay alive**. If unplugging your chosen links ever severs
+a monitored connection, the whole stunt is disqualified.
+
+There are `P` **monitored connections**. Connection `i` runs from a player pod `a_i` to a
+tournament server `b_i` and carries a *priority weight* `d_i` (a marquee finals match matters
+more than a warm-up lobby). The felt lag of a connection is the latency of its **fastest
+remaining route** (shortest path). Your goal is to unplug links so that the
+**priority-weighted total lag** across all monitored connections is as **large** as possible,
+while keeping every connection reachable.
+
+Formally: you are given an undirected weighted (multi)graph with `P` demand pairs
+`(a_i, b_i)` and weights `d_i`. Choose a set `S` of at most `k` edges to delete such that
+for every `i`, `a_i` and `b_i` remain connected, maximizing
+`F = sum_i d_i * dist_{G \ S}(a_i, b_i)`, where `dist` is the shortest-path distance.
+
+This is a **multi-commodity shortest-path interdiction** problem: it is NP-hard, the optimum
+is unknown, and many heuristics (most-used-link greedy, best-improvement local search,
+randomized restarts) are viable and give different results.
+
+## Input
+
+The first line contains four integers:
+
+```
+n m P k
+```
+
+- `n` — number of relays (nodes), numbered `1..n`.
+- `m` — number of fiber links (edges).
+- `P` — number of monitored connections.
+- `k` — the maximum number of links you may unplug.
+
+Each of the next `m` lines describes one link (edge index `1..m` in input order):
+
+```
+u v w
+```
+
+a two-way link between relays `u` and `v` with latency `w` (`1 <= w`). The graph may
+contain parallel links and self-loops are absent. The graph is connected.
+
+Each of the next `P` lines describes one monitored connection:
+
+```
+a b d
+```
+
+meaning a demand from pod `a` to server `b` (`a != b`) with priority weight `d` (`d >= 1`).
+
+## Output
+
+On the first line print `r` — the number of links you unplug (`0 <= r <= k`).
+On each of the next `r` lines print one link index (an integer in `1..m`). All indices
+must be distinct.
+
+Printing `0` on the first line (and nothing else) is always valid.
+
+## Feasibility
+
+An output is feasible iff:
+
+- `0 <= r <= k`;
+- every printed index is in `1..m` and all are distinct;
+- after removing exactly the chosen links, `a_i` and `b_i` are still connected for **every**
+  monitored connection `i`.
+
+Any infeasible output scores `0`.
+
+## Objective
+
+Let `F = sum_i d_i * dist_{G \ S}(a_i, b_i)` be the priority-weighted total lag after your
+chosen links are removed. You are **maximizing** `F`.
+
+## Scoring
+
+Let `B = sum_i d_i * dist_G(a_i, b_i)` be the priority-weighted total lag in the original
+network (no links unplugged). The score for a test is
+
+```
+ratio = min(1.0, 0.1 * F / B)
+```
+
+A do-nothing submission (`F = B`) scores `0.1`; reaching a ten-fold weighted lag
+(`F = 10*B`) caps the score at `1.0`. The overall score is the mean ratio across all tests.
+
+## Constraints
+
+- `2 <= n <= 420`, `1 <= m <= 1200`.
+- `1 <= P <= 30`.
+- `1 <= w <= 1000`, `1 <= d <= 5`.
+- `0 <= k <= 15`.
+- Time limit: 5 s. Memory limit: 512 MB.
+
+## Example
+
+Input:
+
+```
+5 6 2 1
+1 2 1
+2 3 1
+3 5 1
+1 4 1
+4 5 10
+2 5 10
+1 5 1
+1 3 1
+```
+
+Here `n=5`, `m=6`, `P=2`, `k=1`. The two monitored connections are `(1,5)` with weight `1`
+and `(1,3)` with weight `1`.
+
+Original fastest routes:
+
+- `dist(1,5)`: `1 -> 2 -> 3 -> 5` = `3`.
+- `dist(1,3)`: `1 -> 2 -> 3` = `2`.
+
+So `B = 1*3 + 1*2 = 5`.
+
+With budget `k = 1`, unplug link `1` (the `1-2` link). Relay `2` is still reachable through
+link `6` (`2-5`), so nothing is disconnected. Now:
+
+- `dist(1,5)`: `1 -> 4 -> 5` = `11`.
+- `dist(1,3)`: `1 -> 4 -> 5 -> 3` = `12`.
+
+So `F = 1*11 + 1*12 = 23`.
+
+Score for this test: `min(1.0, 0.1 * 23 / 5) = min(1.0, 0.46) = 0.46`.
+
+A valid worked output:
+
+```
+1
+1
+```

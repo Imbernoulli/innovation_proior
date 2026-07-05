@@ -1,0 +1,16 @@
+{
+  "id": "fsx_S_0004",
+  "tier": "S",
+  "family": "routing-tour",
+  "seed_problem": "ALE-Bench pickup-delivery TSP (ahc006/027/039); Frontier-CS routing",
+  "mutation": "composite: prize-collecting/selective pickup-delivery single-vehicle TSP with capacity batching -- choose which precedence-constrained pairs to serve and order them to minimize travel plus skip-penalties",
+  "objective": "min",
+  "theme": "vaccine cold chain",
+  "title": "Vaccine Cold-Chain Milk Run: Selective Pickup-and-Delivery Tour",
+  "strategies": [
+    "serve-nobody baseline: output an empty tour, cost = total penalty (calibration point)",
+    "standalone-benefit greedy: serve requests whose penalty exceeds their solo round-trip cost, serialized in benefit order",
+    "cheapest-insertion selection + feasibility-checked 2-opt: insert profitable pairs at least-cost positions respecting precedence & capacity, then locally reorder to batch pickups/deliveries",
+    "penalty-driven subset reoptimization: alternate re-selecting the served set and re-routing (local search) to trade travel against skipped-request penalties"
+  ]
+}

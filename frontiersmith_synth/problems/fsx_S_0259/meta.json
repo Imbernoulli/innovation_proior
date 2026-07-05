@@ -1,0 +1,18 @@
+{
+  "id": "fsx_S_0259",
+  "tier": "S",
+  "format": "A",
+  "family": "network-design",
+  "eval_form": "quality-metric",
+  "seed_problem": "Build a connected relay network where no node has degree > 3, minimizing total cable length; checker validates connectivity + degree and scores baseline/cost.",
+  "mutation": "output: keep the minimum-length connected-network goal but restrict the output to a spanning subgraph in which every junction has fan-out (degree) at most 3, turning the easy MST into the NP-hard degree-bounded minimum spanning tree so greedy vs. local-search strategies diverge.",
+  "objective": "min",
+  "theme": "vineyard irrigation",
+  "title": "Vineyard Drip Lines: Fan-Out-Bounded Irrigation Grid",
+  "strategies": [
+    "backbone baseline: lay the pre-surveyed strip-sweep path connecting consecutive junctions 1-2-...-n (degree <= 2, always feasible)",
+    "degree-capped Kruskal: add candidate pipes cheapest-first, skipping any that would push a junction past fan-out 3 or close a cycle, then patch to the backbone if it fails to span",
+    "edge-swap local search: start from a feasible tree and repeatedly replace the most expensive pipe on the cycle formed by a cheaper unused pipe whenever the swap keeps all fan-outs <= 3",
+    "randomized multi-restart: perturb the pipe insertion order across seeds and keep the cheapest feasible degree-bounded network found"
+  ]
+}

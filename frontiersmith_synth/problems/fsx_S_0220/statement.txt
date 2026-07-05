@@ -1,0 +1,135 @@
+# Contact-Tracing Courier: Prize-Collecting Sample Relay Tour
+
+## Problem
+
+During a pandemic, a single mobile courier drives out from the central health lab
+(the **depot**) to run one round of the day's **sample relays** and returns to the
+lab. Each relay is a **pickup-delivery pair**: a swab must first be **collected** at a
+patient's **contact site** (the pickup), then dropped at the matching **analysis
+station** (the delivery). Because the swab is physically carried in the van, the
+courier must visit a relay's contact site **before** its analysis station.
+
+The courier has one shift and cannot possibly serve every relay. For each relay you may
+**choose to serve it or skip it**. Skipping relay `i` leaves a contact untraced and
+incurs a fixed **public-health penalty** `P_i` (an untraced-exposure cost). Serving a
+relay costs only the extra driving needed to weave its two sites into the tour.
+
+You output **one depot-to-depot tour**: an ordered list of the sites you visit (a
+subset of all contact sites and analysis stations), starting and ending at the depot.
+For every relay whose analysis station you visit, you must have visited its contact
+site earlier in the tour (precedence).
+
+Your cost is the **total driving distance of the tour plus the penalties of all
+relays you did not fully serve**. Minimize it. Deciding which relays to serve and in
+what order is a prize-collecting precedence-constrained pickup-delivery TSP, which is
+NP-hard, so any feasible tour is accepted and scored by how small its cost is.
+
+## Input
+
+```
+n
+xd yd
+xp_1 yp_1 xq_1 yq_1 P_1
+xp_2 yp_2 xq_2 yq_2 P_2
+...
+xp_n yp_n xq_n yq_n P_n
+```
+
+- Line 1: integer `n`, the number of relays.
+- Line 2: `xd yd`, the integer coordinates of the depot (the central lab).
+- Each of the next `n` lines describes relay `i` (1-indexed): the contact-site
+  coordinates `xp_i yp_i` (the **pickup**), the analysis-station coordinates
+  `xq_i yq_i` (the **delivery**), and the skip penalty `P_i`.
+
+Node numbering: the depot is node `0`. For relay `i`, its **pickup** is node `i` and
+its **delivery** is node `n + i`.
+
+## Output
+
+```
+k
+v_1 v_2 ... v_k
+```
+
+- Line 1: integer `k` in `[0, 2n]`, the number of sites you visit.
+- Line 2: `k` distinct integers `v_1 .. v_k`, each in `[1, 2n]`, the visiting order.
+  (If `k = 0`, print an empty second line or omit it.)
+
+The driven tour is `depot -> v_1 -> v_2 -> ... -> v_k -> depot`.
+
+## Feasibility
+
+An output is feasible iff:
+
+- `0 <= k <= 2n`;
+- the `k` node ids are pairwise **distinct** and each lies in `[1, 2n]`;
+- **precedence**: for every relay `i`, if its delivery node `n + i` is visited, then its
+  pickup node `i` is also visited and appears **earlier** in the list.
+
+Any output that is malformed, out of range, has duplicates, or violates precedence
+scores 0.
+
+## Objective
+
+Distances are **rounded Euclidean**: the distance between nodes at `(x1,y1)` and
+`(x2,y2)` is `round( sqrt( (x1-x2)^2 + (y1-y2)^2 ) )` (round half to nearest integer).
+
+A relay `i` is **served** iff both its pickup node `i` and its delivery node `n + i`
+are visited. Let `T` be the total driven distance of the depot-to-depot tour and let
+`U` be the sum of `P_i` over all relays that are **not** served. Minimize
+
+```
+F = T + U.
+```
+
+## Scoring
+
+Let `B` be the cost of the **serial serve-all** tour that the grader builds itself:
+`depot -> pickup_1 -> delivery_1 -> pickup_2 -> delivery_2 -> ... -> pickup_n ->
+delivery_n -> depot` (every relay served, so `U = 0`). This is a valid but poor plan,
+and `B > 0`. Your score on a test is
+
+```
+ratio = min(1.0, 0.1 * B / F)
+```
+
+where `F` is your cost. The serial serve-all plan scores exactly `0.1`; a plan ten
+times cheaper (or better) scores the capped maximum `1.0`. The overall score is the
+average ratio over all tests.
+
+## Constraints
+
+- `1 <= n <= 250`.
+- All coordinates are integers in `[0, 1000]`; the depot is in the same range.
+- `1 <= P_i <= 3000`.
+- Coordinates fit easily in 32-bit; `F` and `B` fit in 64-bit.
+- Time limit: 5 s. Memory limit: 512 MB.
+
+## Example
+
+Input:
+```
+2
+0 0
+1 0 100 0 1000
+2 0 99 0 1000
+```
+
+Relay 1: pickup at `(1,0)`, delivery at `(100,0)`, penalty `1000`. Relay 2: pickup at
+`(2,0)`, delivery at `(99,0)`, penalty `1000`. Node ids: pickup 1 = `1`, pickup 2 =
+`2`, delivery 1 = `3`, delivery 2 = `4`.
+
+A feasible output:
+```
+4
+1 2 4 3
+```
+
+Tour `depot(0,0) -> node1(1,0) -> node2(2,0) -> node4(99,0) -> node3(100,0) ->
+depot(0,0)` has driving distance `1 + 1 + 97 + 1 + 100 = 200`. Both relays are served
+(precedence holds: pickup 1 before delivery 1, pickup 2 before delivery 2), so `U = 0`
+and `F = 200`.
+
+The serial serve-all baseline `depot -> 1 -> 3 -> 2 -> 4 -> depot` drives
+`1 + 99 + 98 + 97 + 99 = 394`, so `B = 394`. This output scores
+`ratio = min(1, 0.1 * 394 / 200) = 0.197`.

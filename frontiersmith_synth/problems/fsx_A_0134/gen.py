@@ -1,0 +1,18 @@
+import sys
+
+# Difficulty ladder: number of wind-tunnel sensors n grows from small to large.
+# The instance is fully described by n; the domain is the fixed unit square.
+LADDER = [9, 11, 13, 15, 17, 19, 21, 24, 27, 30]
+
+def main():
+    i = int(sys.argv[1])
+    if 1 <= i <= len(LADDER):
+        n = LADDER[i - 1]
+    else:
+        # deterministic fallback for out-of-range test ids
+        n = 9 + 3 * (i - 1)
+        n = max(4, min(48, n))
+    sys.stdout.write("%d\n" % n)
+
+if __name__ == "__main__":
+    main()

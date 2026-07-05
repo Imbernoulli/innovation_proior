@@ -1,0 +1,16 @@
+{
+  "id": "fsx_B_0156",
+  "tier": "B",
+  "format": "E",
+  "family": "scientific-law-extrapolation",
+  "eval_form": "quality-metric",
+  "theme": "power grid",
+  "title": "Grid Efficiency Scaling Law: Extrapolate to Continental Scale",
+  "objective": "optimize",
+  "strategies": [
+    "constant baseline: predict the mean training efficiency (ignores scale trend)",
+    "semilog regression: fit eta = p + q*log(x); captures the trend but the wrong shape mis-extrapolates",
+    "saturating power law: recover eta = c - a*x**(-b) by exponent grid-search + linear least squares",
+    "invalid: emit a non-expression / disallowed token"
+  ]
+}

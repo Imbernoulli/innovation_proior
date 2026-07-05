@@ -1,0 +1,18 @@
+{
+  "id": "fsx_S_0254",
+  "tier": "S",
+  "format": "A",
+  "family": "covering-facility-location",
+  "eval_form": "quality-metric",
+  "seed_problem": "Place watchtowers on a forest grid to cover every cell within radius r, minimizing total watchtower cost; checker verifies full coverage and scores baseline_cost / achieved_cost.",
+  "mutation": "composite: change the goal from min-#facilities k-center covering to MIN-TOTAL-COST radius-R covering (weighted radius-R dominating set), and generalize the input from a uniform grid to a weighted channel graph with parallel edges and long shortcuts, so optimal covering is NP-hard and greedy-vs-LP-rounding-vs-local-search strategies diverge.",
+  "objective": "min",
+  "theme": "tide pool ecology",
+  "title": "Tide Pool Watch: Minimum-Cost Sensor Cover",
+  "strategies": [
+    "everywhere baseline: install a sensor in every pool (feasible, matches the checker baseline cost)",
+    "coverage-only greedy: repeatedly install where it newly monitors the most uncovered pools, ignoring cost",
+    "cost-effective greedy: repeatedly install where newly-covered-per-cost is maximal, then prune redundant sensors",
+    "randomized multi-restart local search: perturb the cost-effective greedy order across restarts, prune, and keep the lowest-cost feasible cover"
+  ]
+}

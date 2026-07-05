@@ -1,0 +1,17 @@
+{
+  "id": "fsx_A_0347",
+  "tier": "A",
+  "format": "C",
+  "family": "additive-combinatorics-set",
+  "eval_form": "quality-metric",
+  "theme": "drone delivery swarm",
+  "title": "Drone Swarm Rendezvous: Maximum Sumset Diversity",
+  "objective": "max",
+  "source_frameworks": ["AlphaEvolve", "SimpleTES"],
+  "strategies": [
+    "arithmetic-progression baseline: offsets 0,1,...,k-1 give only 2k-1 distinct pairwise sums (reproduces the checker's internal baseline)",
+    "seeded random-restart search: sample many k-subsets of [0,M] and keep the one with the largest sumset",
+    "greedy max-gain (Mian-Chowla / B_2 flavour): add offsets one at a time, each maximizing the number of NEW pairwise sums, then hill-climb-polish by swapping offsets",
+    "Sidon / B_2-set constructions: pack a near-perfect-difference set into the horizon so almost all pairwise sums are distinct, approaching the (unreachable) k(k+1)/2 ceiling"
+  ]
+}

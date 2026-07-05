@@ -1,0 +1,18 @@
+{
+  "id": "fsx_S_0001",
+  "tier": "S",
+  "format": "A",
+  "family": "graph-interdiction",
+  "eval_form": "quality-metric",
+  "seed_problem": "Themed grid network; remove at most k links to maximize the increase in s-t shortest path; checker verifies budget + connectivity and scores achieved delay.",
+  "mutation": "output: keep the interdiction goal but relax the network from a pure grid to a grid-plus-shortcut multigraph with heavy-tailed edge costs, so the optimal budget-k shortest-path interdiction is NP-hard and greedy/local-search strategies diverge.",
+  "objective": "max",
+  "theme": "bakery supply chain",
+  "title": "Sabotaged Sourdough: Flour-Route Interdiction",
+  "strategies": [
+    "do-nothing baseline: close no links (achieves the original route length)",
+    "greedy weight heuristic: repeatedly close the heaviest link on the current shortest route while keeping mill-bakery connectivity",
+    "best-improvement local search: at each step evaluate the true post-closure shortest route for every candidate link and commit the best",
+    "randomized multi-restart: perturb the greedy-best choices across restarts and keep the interdiction set that maximizes final delay"
+  ]
+}

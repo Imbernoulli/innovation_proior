@@ -1,0 +1,17 @@
+{
+  "id": "fsx_A_0100",
+  "tier": "A",
+  "format": "B",
+  "family": "heuristic-contest-offline",
+  "eval_form": "quality-metric",
+  "theme": "archaeology dig grid",
+  "title": "Tell Qadesh: The Connected Dig Plan",
+  "objective": "optimize",
+  "source_frameworks": ["ALE-Bench (AHC)", "TTT-Discover (ahc)", "SimpleTES (AHC)"],
+  "strategies": [
+    "best single cell: dig only the highest-yield cell as a size-1 trench (reproduces the evaluator's weak reference, ~0.1)",
+    "single-seed region growing: start at the best cell and greedily add the boundary neighbour that most improves plan value until no addition helps (captures one hotspot, never removes or re-seeds)",
+    "multi-start add/remove hill-climbing with seeded random kicks: grow from every top hotspot cell, absorb profitable cells and trim cells whose shoring outweighs their yield (connectivity-preserving removals), and bridge two hotspots when the bridge pays -- a real search that beats single-seed growing",
+    "stronger metaheuristics: simulated annealing / tabu over connected regions, exact graph-cut relaxation followed by connectivity repair, or beam search over region boundaries"
+  ]
+}

@@ -1,0 +1,17 @@
+{
+  "id": "fsx_A_0320",
+  "tier": "A",
+  "format": "B",
+  "family": "heuristic-contest-offline",
+  "eval_form": "quality-metric",
+  "theme": "harbor container port",
+  "title": "Harbor Container Port: The Secured-Zone Cordon",
+  "objective": "optimize",
+  "source_frameworks": ["ALE-Bench (AHC)", "TTT-Discover (ahc)", "SimpleTES (AHC)"],
+  "strategies": [
+    "single-stack cordon: fence only the most profitable stack (max v - 4*lam); reproduces the evaluator's weak anchor and scores ~0.1",
+    "single-seed region growing: start from the best stack and greedily annex the frontier cell that most increases profit (v - lam*(4-2*shared_edges)) until no addition helps; never restarts or backtracks",
+    "best-of-N seeded restarts + add/remove local search: grow from many top-value seeds, then sweep the frontier adding profit-positive cells and peel interior cells whose removal helps while keeping the zone connected, keeping the best cordon across restarts",
+    "region metaheuristics: simulated-annealing / perturb-and-reoptimize over the connected region, or exact submodular-cut relaxations, to escape the greedy basin and squeeze the loose perimeter penalty"
+  ]
+}

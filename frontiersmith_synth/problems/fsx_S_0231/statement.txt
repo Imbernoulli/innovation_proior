@@ -1,0 +1,110 @@
+# Traffic Signal Grid: Green-Wave Controller Placement
+
+## Problem
+A downtown is modeled as a `W x H` grid of intersections (columns `x` in `[0, W)`,
+rows `y` in `[0, H)`). Every intersection `(x, y)` has an integer **traffic demand**
+`w(x, y) >= 1` (the number of vehicles per cycle that pass through it). Some
+intersections are **locked** -- they are hand-operated or under construction and cannot
+be brought under automatic control.
+
+The city owns a catalogue of `P` **coordination templates**. Template type `t` is a fixed
+*polyomino* (a connected cluster of unit cells) describing a group of adjacent
+intersections that a single controller cabinet synchronizes into one *green wave*. The
+city has a limited **stock** `c_t` of cabinets of each type (a bounded inventory).
+
+You deploy cabinets onto the grid. Each deployed cabinet may be **rotated** by a multiple
+of 90 degrees and/or **reflected** (mirrored) before being dropped onto the grid, but it
+must land axis-aligned on whole intersections. A deployed cabinet:
+
+- must lie fully inside the grid,
+- must not cover any locked intersection,
+- must not overlap any other deployed cabinet (an intersection belongs to at most one
+  green wave).
+
+Bringing an intersection under coordination services its traffic demand. Because templates
+are irregular and inventory is bounded, you cannot coordinate every intersection, so this
+is an open-ended packing/knapsack optimization: many deployments are feasible and are
+scored by the **total demand serviced**.
+
+## Input (stdin)
+```
+W H
+R
+<R lines: "ox oy"  -- a locked intersection, 0-indexed>
+<H lines, each with W integers: the demand grid, row y = 0 .. H-1, column x = 0 .. W-1>
+P
+<for each template type t = 0 .. P-1, a block:>
+   c_t s_t
+   <s_t lines: "dx dy"  -- the cells of the base shape, as integer offsets>
+```
+- `W H` grid dimensions.
+- `R` locked intersections follow, each a distinct in-grid coordinate.
+- Then the demand grid: `H` rows, each with `W` integers; the `x`-th integer on the `y`-th
+  such row is `w(x, y)`.
+- `P` template types follow. For type `t`, the first line gives its stock `c_t` and its
+  cell count `s_t`; the next `s_t` lines list the shape's cells as offsets (the offsets are
+  only a description of the shape -- you may place the shape at any
+  translation/rotation/reflection).
+
+## Output (stdout)
+```
+M
+<for each of the M deployed cabinets, one line:>
+   t  x1 y1  x2 y2  ...  x_{s_t} y_{s_t}
+```
+Print `M`, the number of cabinets you deploy, then one line per cabinet: the template
+**type** `t` followed by the **absolute grid coordinates** of the `s_t` intersections that
+copy occupies (order of cells within a cabinet is irrelevant).
+
+## Feasibility
+An output is valid iff ALL of the following hold:
+- `0 <= M`;
+- every declared type satisfies `0 <= t < P`;
+- each cabinet lists exactly `s_t` cells, all pairwise distinct, all inside the grid, none
+  on a locked intersection;
+- the multiset of cells of one cabinet, translated so its bounding box starts at the
+  origin, equals some rotation/reflection of type `t`'s base shape (i.e. it really is a
+  legal copy of that template);
+- no two deployed cabinets share a cell (no overlap);
+- for every type `t`, the number of deployed copies is at most its stock `c_t`.
+
+Any violation scores `Ratio: 0.0`.
+
+## Objective
+Maximize `F` = the total traffic demand serviced =
+`sum of w(x, y) over every intersection (x, y) covered by some deployed cabinet`.
+
+## Scoring
+Let `B` be the demand serviced by the checker's own trivial construction: deploy **only
+template type 0** using the canonical *anchored greedy* rule -- scan cells in row-major
+order, and at the first uncovered, unlocked cell, deploy a copy of type 0 in the first
+orientation (in a fixed enumeration) that fits with that cell as the copy's top-left-most
+cell; repeat until stock `c_0` is exhausted or no copy fits. `B` is the total demand this
+single-type deployment services (`B >= 1`).
+
+With maximization normalization:
+```
+sc = min(1000.0, 100.0 * F / max(1, B))
+Ratio = sc / 1000.0
+```
+Reproducing the type-0 baseline scores `Ratio = 0.1`; servicing `10x` the baseline demand
+caps at `1.0`.
+
+## Constraints
+- `6 <= W, H <= 12`.
+- `3 <= P <= 6`; each shape has `3 <= s_t <= 5` cells.
+- `1 <= w(x, y) <= 9`; demand is skewed (a minority of hotspot intersections carry most of
+  the load).
+- Every type has bounded stock; type 0's shape is an awkward pentomino, so single-type
+  coverage leaves gaps and demand on the table.
+- Locked intersections cover under ~12% of the grid; the top-left `3x3` block is always
+  unlocked so the baseline can always deploy at least one type-0 copy.
+- Time limit 5s, memory 512m.
+
+## Example
+Grid `W=6, H=6`, no locked cells, `P=2`. Type 0 is the plus-pentomino
+`{(1,0),(0,1),(1,1),(2,1),(1,2)}` with stock `c_0 = 3`. Type 1 is the `2x2` square
+`{(0,0),(1,0),(0,1),(1,1)}` with stock `c_1 = 6`. Suppose demand is `1` everywhere except
+four hotspot corners of value `9`. The type-0 anchored-greedy baseline services, say,
+`B = 15` demand. A deployment that steers `2x2` squares onto the hotspot corners and fills
+the rest might service `F = 45` demand, giving `sc = 100 * 45 / 15 = 300`, `Ratio = 0.300`.

@@ -1,0 +1,142 @@
+# Brownfield Substation: Modular Equipment Packing
+
+## Problem
+
+The regional utility is energizing a rectangular brownfield **substation parcel** laid out as
+an `H x W` grid of standard equipment tiles. It owns a catalogue of prefabricated
+**equipment modules** — transformer banks, switchgear assemblies, capacitor arrays — each
+delivered as a fixed **polyomino** footprint (a connected set of unit tiles). Only a limited
+number of each module type is on hand.
+
+Modules are craned onto the parcel. A placed module may be **rotated** (any of the four 90°
+orientations) and **reflected** (mirror-imaged) before it is set down — cranes can flip a
+skid either way. Placed modules must sit fully inside the parcel and may **not overlap**.
+
+Every tile a module covers becomes **energized/utilized** parcel area. Bare tiles are wasted
+land. Your job: decide which modules to place, how to orient them, and where to set them, so
+that the **total covered area** is as large as possible.
+
+Exactly tiling the parcel with these awkward footprints is generally impossible and finding
+the maximum coverage is NP-hard; strong solutions rely on heuristics (value-density greedy,
+first-fit-decreasing, randomized multi-restart local search, ILP relaxations, ...).
+
+## Input
+
+The first line contains three integers:
+
+```
+H W T
+```
+
+- `H` — parcel height (rows), tiles numbered `0..H-1` top to bottom.
+- `W` — parcel width (columns), tiles numbered `0..W-1` left to right.
+- `T` — number of module types.
+
+Then follow `T` module blocks. Module type `t` (`1..T`, in input order) is described by:
+
+```
+k c
+r_1 col_1
+r_2 col_2
+...
+r_k col_k
+```
+
+- `k` — number of tiles in this module's footprint (its area).
+- `c` — how many copies of this module type are available.
+- the next `k` lines give the footprint cells as offsets `(r_i, col_i)`, normalized so the
+  minimum row and minimum column are `0`. The footprint is connected.
+
+## Output
+
+On the first line print `P` — the number of modules you place (`0 <= P <= H*W`).
+
+On each of the next `P` lines print one placement:
+
+```
+t o r0 c0
+```
+
+- `t` — the module type placed (`1 <= t <= T`).
+- `o` — an orientation code (`0 <= o <= 7`). Orientation `o` is obtained from the module's
+  footprint as follows: if `o >= 4`, first **reflect** it horizontally (`col -> -col`) and set
+  `o <- o-4`; then **rotate 90° clockwise** `o` times (`(r,col) -> (col,-r)`). Finally the
+  transformed footprint is **renormalized** so its minimum row and column are `0`.
+- `r0 c0` — the parcel cell where the renormalized footprint's `(0,0)` corner is anchored;
+  a footprint cell with offset `(dr,dc)` then occupies parcel tile `(r0+dr, c0+dc)`.
+
+Printing `0` on the first line (and nothing else) is always valid (it covers no area).
+
+## Feasibility
+
+An output is feasible iff:
+
+- `0 <= P <= H*W`;
+- every placement has `1 <= t <= T` and `0 <= o <= 7`;
+- every occupied tile `(r0+dr, c0+dc)` lies inside the parcel (`0 <= row < H`, `0 <= col < W`);
+- no two placed modules share a tile;
+- for each type `t`, the number of placed copies does not exceed its availability `c`.
+
+Any infeasible output scores `0`.
+
+## Objective
+
+Let `F` be the total number of parcel tiles covered by your placed modules (the sum of the
+areas of the placed footprints). You are **maximizing** `F`.
+
+## Scoring
+
+The judge builds an internal baseline `B`: it tiles the parcel with axis-aligned copies of
+**module type 1** packed on a regular bounding-box grid, limited by type 1's availability, and
+sets `B` to the area that covers. The score for one test is
+
+```
+ratio = min(1.0, 0.1 * F / B)
+```
+
+A submission matching the baseline coverage (`F = B`) scores `0.1`; reaching ten times the
+baseline coverage caps the score at `1.0`. The overall score is the mean ratio across tests.
+
+## Constraints
+
+- `6 <= H, W <= 33`.
+- `1 <= T <= 8`; each module footprint has `4 <= k <= 5` connected tiles.
+- Availability `c >= 1` per type; total available area may exceed `H*W`.
+- Time limit: 5 s. Memory limit: 512 MB.
+
+## Example
+
+Input:
+
+```
+6 6 2
+4 2
+0 0
+0 1
+0 2
+1 1
+4 3
+0 0
+0 1
+1 0
+1 1
+```
+
+Here type 1 is a T-tetromino (area 4, availability 2) and type 2 is a 2x2 square
+(area 4, availability 3). The parcel is `6 x 6 = 36` tiles.
+
+The baseline tiles type 1's `2 x 3` bounding box on a grid: `floor(6/2)=3` rows by
+`floor(6/3)=2` cols `= 6` slots, but only `2` copies are available, so `B = 2 * 4 = 8`.
+
+A submission that places the two T's plus three squares:
+
+```
+5
+1 0 0 0
+1 0 0 3
+2 0 2 0
+2 0 2 2
+2 0 4 0
+```
+
+covers `2*4 + 3*4 = 20` tiles, so `F = 20` and `ratio = min(1.0, 0.1 * 20 / 8) = 0.25`.

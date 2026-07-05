@@ -1,0 +1,17 @@
+{
+  "id": "fsx_G_0468",
+  "tier": "G",
+  "format": "B",
+  "family": "ml-recommendation-rank",
+  "eval_form": "quality-metric",
+  "theme": "shopping feed",
+  "title": "Aurora Bazaar: Shopping-Feed Re-Ranker (NDCG@k)",
+  "objective": "max",
+  "source_frameworks": ["breadth-fill (dataset/domain/task diversity)", "MLS-Bench (learning-to-rank / NDCG)"],
+  "strategies": [
+    "as-presented passthrough: return the retrieval order unchanged, reproducing the evaluator's weak random-ordering reference (~0.1)",
+    "single-signal greedy: sort by the universal quality prior (star-rating feature), which has a positive taste weight in every session but ignores session-specific tastes",
+    "pointwise learning-to-rank: fit a ridge/least-squares scoring model on the historical log (features -> graded label) and rank candidates by the predicted score, exploiting ALL features",
+    "richer LTR: per-session feature normalization, pairwise/listwise objectives, quantile-calibrated scores, or ensembling the rating prior with the learned model to squeeze more NDCG on noisy sessions"
+  ]
+}

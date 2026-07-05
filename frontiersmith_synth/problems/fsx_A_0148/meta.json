@@ -1,0 +1,16 @@
+{
+  "id": "fsx_A_0148",
+  "tier": "A",
+  "format": "D",
+  "family": "tensor-decomposition-rank",
+  "eval_form": "flops",
+  "theme": "festival stage layout",
+  "title": "Festival Vibe Tensor: Minimum-Act Rank Decomposition",
+  "objective": "optimize",
+  "strategies": [
+    "mode-3 slab (one act per stage x timeslot) -> baseline rank a*b",
+    "best-axis slab -> rank min(a*b, a*c, b*c)",
+    "exact Tucker compression + core slab -> rank = product of two smallest multilinear ranks",
+    "search for a still-lower exact CP decomposition (open rank)"
+  ]
+}

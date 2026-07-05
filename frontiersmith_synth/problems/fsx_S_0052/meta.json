@@ -1,0 +1,17 @@
+{
+  "id": "fsx_S_0052",
+  "tier": "S",
+  "family": "routing-tour",
+  "seed_problem": "ALE-Bench pickup-delivery TSP (ahc006/027/039); Frontier-CS routing: choose which precedence-constrained pickup-delivery pairs to serve and output one depot-to-depot tour minimizing distance.",
+  "mutation": "composite: quota-constrained selective pickup-and-delivery single-vehicle TSP with drawbar (capacity) batching -- REPLACE the additive skip-penalty term with a hard coverage quota (complete at least M of N precedence-constrained orders) and minimize the pure closed depot-to-depot Manhattan tour length; skinned as a night-shift shunting locomotive in a railway freight yard. Subset choice, capacity-limited batching of cuts, and tour ordering interact so value-blind, cheapest-solo greedy and batched nearest-neighbor/local-search strategies diverge.",
+  "objective": "min",
+  "theme": "railway freight yard",
+  "title": "Night-Shift Shunting in the Riverbend Freight Yard",
+  "strategies": [
+    "serve-everything one-cut-at-a-time in input order: reproduces the checker baseline B, ratio = 0.1 (calibration point)",
+    "cheapest-solo greedy: complete the M orders with the smallest solo round-trip cost, one cut at a time in cost order -- drops the far/expensive orders but never batches",
+    "batched nearest-neighbor: on the chosen served set, repeatedly take the nearest feasible pickup (if the drawbar limit allows) or delivery, carrying several cuts at once to amortize deadhead moves",
+    "insertion + capacity-aware local search: cheapest-insertion of profitable orders respecting precedence and the drawbar limit, then or-opt / 2-opt reordering, alternating with re-selection of the served subset",
+    "LP/assignment-relaxation lower bounds and matching-based stacker-crane heuristics to guide subset and sequence choice"
+  ]
+}

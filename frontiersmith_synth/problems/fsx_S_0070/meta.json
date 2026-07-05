@@ -1,0 +1,16 @@
+{
+  "id": "fsx_S_0070",
+  "tier": "S",
+  "family": "maxsat-csp",
+  "seed_problem": "Maximize total weight of satisfied clauses in a synthetic weighted CNF; checker computes satisfied weight / baseline.",
+  "mutation": "composite: skinned as a two-stage festival booking (boolean = Main/Side stage) and specialized the CNF to a hard weighted Max-SAT with positive-unit 'billing demands' plus binary 'rivalry conflicts' (independent-set/max-cut frustration) so the all-Side baseline is weak and no constant placement is optimal; score = satisfied weight / all-Side baseline weight.",
+  "objective": "max",
+  "theme": "festival stage layout",
+  "title": "Riverbank Sound Festival: Two-Stage Billing",
+  "strategies": [
+    "all-Side baseline (all-zero assignment): the do-nothing calibration point",
+    "per-act greedy: order acts by Main-Stage appeal and move each to Main iff it increases satisfied weight, one sweep",
+    "coordinate-ascent local search: greedy init then best-improvement flip sweeps to a local optimum",
+    "seeded random restarts / perturbation: escape local optima by restarting from biased-random and perturbed assignments, keep best"
+  ]
+}

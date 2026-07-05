@@ -1,0 +1,16 @@
+{
+  "id": "fsx_C_0198",
+  "tier": "C",
+  "format": "C",
+  "family": "algebraic-exotic-construction",
+  "eval_form": "quality-metric",
+  "theme": "forest fire watchtowers",
+  "title": "Forest-Fire Watchtowers: Maximum Interference-Free Channel Completion (Gerechte Design)",
+  "objective": "max",
+  "strategies": [
+    "tune-nothing baseline: echo only the pre-tuned givens (reproduces the checker baseline, ~0.1)",
+    "row-major smallest-channel greedy: fast but paints itself into corners, leaving many towers untuned",
+    "most-constrained-variable (MRV) greedy ordering: tunes the tightest sites first, reaches more towers",
+    "MRV backtracking search for a full gerechte (row + column + sector) completion, with a deterministic node budget and best-partial recording -- tunes the most towers"
+  ]
+}

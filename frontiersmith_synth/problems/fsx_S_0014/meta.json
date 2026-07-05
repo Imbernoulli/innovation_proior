@@ -1,0 +1,18 @@
+{
+  "id": "fsx_S_0014",
+  "tier": "S",
+  "format": "A",
+  "family": "covering-facility-location",
+  "seed_problem": "Place watchtowers on a forest graph to cover every cell within radius r, minimizing total cost; score = baseline_cost / achieved_cost.",
+  "mutation": "input+goal: generalize the forest/tree to a GENERAL connected pipe graph with cross-pipes (cycles) so radius-r covering becomes NP-hard (min-cost covering is polynomial on trees), skin as aquarium circulation-pump placement, add skewed per-location installation costs correlated with hub degree; objective stays minimize total cost to serve every tank within pipe-hop radius r. Baseline B = install-in-every-tank; score = B / achieved_cost.",
+  "objective": "min",
+  "theme": "aquarium plumbing",
+  "title": "Reef Aquarium Plumbing: Minimum-Cost Circulation Pump Placement",
+  "strategies": [
+    "install-everywhere reference (reproduces checker baseline B, Ratio=0.1)",
+    "max-coverage greedy set cover: repeatedly install where the most currently-unserved tanks get served (cost-blind)",
+    "cost-effective greedy: repeatedly install where newly-served-tanks / cost is largest",
+    "redundancy pruning: drop the most expensive installed pumps that are no longer needed for full coverage",
+    "multi-start greedy + local-search swaps keeping the cheapest feasible cover"
+  ]
+}

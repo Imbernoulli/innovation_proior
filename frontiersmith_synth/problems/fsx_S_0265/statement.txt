@@ -1,0 +1,103 @@
+# Interstellar Relay Sabotage: Maximum Signal Delay Under a Cut Budget
+
+## Problem
+
+A galactic communications grid links `n` relay stations by `m` bidirectional laser
+channels ("links"). Link `e` connects stations `u_e` and `v_e` and carries a signal with
+latency `w_e` (a positive integer). A priority transmission must travel from the source
+relay `s` to the target relay `t`; its delay is the **shortest-path latency** from `s` to
+`t` over the currently active links.
+
+You command a sabotage fleet that can permanently sever **at most `k` links**. Your goal is
+to sever a set of links so that the surviving grid still lets `s` reach `t`, while the
+`s`-`t` shortest-path latency (the signal delay) becomes **as large as possible**.
+
+This is a budget-constrained shortest-path interdiction (most-vital-links) problem: the
+optimum is NP-hard, so any feasible cut is accepted and scored by the delay it achieves.
+
+## Input
+
+The first line contains five integers:
+
+```
+n m k s t
+```
+
+- `n` — number of relay stations (nodes are `0 .. n-1`).
+- `m` — number of links.
+- `k` — maximum number of links you may sever.
+- `s` — source relay, `t` — target relay (`s != t`).
+
+Each of the next `m` lines describes one link (link ids are the line order, `0 .. m-1`):
+
+```
+u_e v_e w_e
+```
+
+with `0 <= u_e, v_e < n`, `u_e != v_e`, and `1 <= w_e`.
+
+## Output
+
+Print the sabotage plan:
+
+- The first token `r` — the number of links you sever (`0 <= r <= k`).
+- Then `r` distinct link ids (each an integer in `[0, m)`), in any order, whitespace-separated.
+
+Print `0` (and no ids) to sever nothing.
+
+## Feasibility
+
+A plan is feasible iff:
+
+1. `0 <= r <= k`;
+2. all `r` link ids are valid (`0 <= id < m`) and pairwise distinct;
+3. after removing exactly those links, `s` and `t` are still connected.
+
+Any plan violating these rules — or containing non-integer / non-finite tokens — scores 0.
+
+## Objective
+
+Let `F` be the `s`-`t` shortest-path latency in the residual grid (after your cuts). Maximize `F`.
+
+## Scoring
+
+Let `B` be the original `s`-`t` shortest-path latency (before any cut); `B > 0`. Your raw
+delay ratio is `F / B >= 1`. The reported score is
+
+```
+score = min(1000, 100 * F / B) / 1000
+```
+
+so a do-nothing plan scores `0.1`, and the score rises with the delay you force, saturating
+at `1.0` once you multiply the delay by 10x. Per-test scores are averaged.
+
+## Constraints
+
+- `n <= 200`, `m <= 400`, `2 <= k <= n`.
+- `1 <= w_e <= 60`.
+- Time limit: 6 s. Memory limit: 512 MB.
+
+## Example
+
+Input:
+
+```
+4 4 2 0 3
+0 1 1
+1 3 1
+0 2 5
+2 3 5
+```
+
+The relays form two routes from `0` to `3`: the fast route `0-1-3` (latency `2`) and the
+slow route `0-2-3` (latency `10`). Original delay `B = 2`.
+
+A do-nothing plan (`0`) leaves `F = 2`, scoring `0.1`.
+
+Severing link id `0` (the `0-1` channel) forces the transmission onto `0-2-3`, giving
+`F = 10`. Score `= min(1000, 100 * 10 / 2) / 1000 = min(1000, 500)/1000 = 0.5`. Output:
+
+```
+1
+0
+```

@@ -1,0 +1,113 @@
+# Vaccine Cold-Chain Milk Run: Selective Pickup-and-Delivery Tour
+
+## Problem
+A single refrigerated van operates a daily "milk run" out of a central cold store
+(the *depot*, node 0). The public-health network has registered **P transfer
+requests**. Request `i` asks the van to collect `q_i` insulated vaccine boxes from a
+regional **cold hub** located at `(px_i, py_i)` and hand them off at a **clinic**
+located at `(dx_i, dy_i)`. For each request the van must visit the hub (pickup)
+*before* the clinic (delivery).
+
+The van has a refrigerated cargo bay that holds at most `Q` boxes at any instant.
+Boxes for a request occupy the bay only between that request's pickup and its
+delivery, so the van may *batch* several requests together as long as the on-board
+load never exceeds `Q`.
+
+You do **not** have to serve every request. Any request you skip incurs a fixed
+public-health penalty `w_i` (spoiled doses, missed appointments). You must decide
+**which** requests to serve and produce **one** tour that starts and ends at the
+depot, visiting the chosen pickups and deliveries in a valid order.
+
+Travel cost between two points is the **Manhattan distance**
+`|x1-x2| + |y1-y2|` (a city street grid).
+
+## Input
+```
+P Q
+x0 y0
+px_1 py_1 dx_1 dy_1 q_1 w_1
+px_2 py_2 dx_2 dy_2 q_2 w_2
+...
+px_P py_P dx_P dy_P q_P w_P
+```
+- Line 1: the number of requests `P` and the cargo capacity `Q`.
+- Line 2: the integer depot coordinates `x0 y0`.
+- The next `P` lines describe requests `1..P`: pickup coordinates, delivery
+  coordinates, quantity `q_i` and skip-penalty `w_i`.
+
+## Output
+Describe the van's tour as an ordered list of `L` visit events. Each event is a
+pair of integers `t i`:
+- `t = 0` means "pick up request `i`" (visit hub `(px_i, py_i)`),
+- `t = 1` means "deliver request `i`" (visit clinic `(dx_i, dy_i)`).
+
+```
+L
+t_1 i_1
+t_2 i_2
+...
+t_L i_L
+```
+The van always begins and ends at the depot; you list only the intermediate hub /
+clinic visits. `L = 0` (serve nobody) is a valid output.
+
+## Feasibility
+An output is feasible iff **all** of the following hold:
+1. `0 <= L <= 2P` and every index `i` is in `[1, P]`.
+2. Each request appears **at most once** as a pickup and **at most once** as a
+   delivery.
+3. If a request's delivery event appears, its pickup event appears **earlier** in
+   the list (precedence).
+4. A request is *served* iff both its pickup and its delivery appear. Any request
+   that appears exactly once (picked up but never delivered, or vice versa) makes
+   the output infeasible.
+5. Processing the events in order, the on-board load (which increases by `q_i` at
+   a pickup and decreases by `q_i` at a delivery) never exceeds `Q`.
+
+An infeasible output scores 0.
+
+## Objective
+Let `D` be the total Manhattan length of the realized tour
+`depot -> visited points in order -> depot` (with `D = 0` if `L = 0`), and let
+`S` be the set of served requests. Minimize
+
+```
+F = D + sum over unserved requests i of w_i .
+```
+
+## Scoring
+The checker builds the trivial *serve-nobody* plan, whose cost is
+`B = sum over all i of w_i` (pure penalty, zero travel). Your score on a test is
+
+```
+ratio = min(1.0, (B / F) / 10)
+```
+
+reported as `Ratio: <ratio>`. Serving profitable requests and routing them tightly
+drives `F` below `B` and raises the ratio; the serve-nobody plan scores exactly
+`0.1`. The final score is the mean ratio over all tests.
+
+## Constraints
+- `1 <= P <= 60`, `1 <= Q <= 15`, `1 <= q_i <= 5 <= Q`.
+- All coordinates are integers in `[0, 1200]`; `1 <= w_i`.
+- Time limit: 5 s. Memory limit: 512 MB.
+
+## Example
+Input:
+```
+2 10
+0 0
+1 0 3 0 2 20
+0 5 0 8 1 3
+```
+Consider the output:
+```
+2
+0 1
+1 1
+```
+The van serves only request 1: depot(0,0) -> hub(1,0) -> clinic(3,0) -> depot(0,0),
+travel `D = 1 + 2 + 3 = 6`. Request 2 is skipped, penalty `3`. So
+`F = 6 + 3 = 9`. The baseline is `B = 20 + 3 = 23`, giving
+`ratio = min(1.0, (23/9)/10) = 0.255...`. Serving request 2 as well would add
+travel `> 3`, exceeding its penalty, so skipping it is the better trade here.

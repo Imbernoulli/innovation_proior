@@ -1,0 +1,16 @@
+{
+  "id": "fsx_S_0267",
+  "tier": "S",
+  "family": "packing-knapsack",
+  "seed_problem": "Pack polyominoes into a W x H board maximizing covered area; reflections allowed, checker validates no-overlap and in-bounds.",
+  "mutation": "composite: add per-type bounded supply (bounded knapsack) and brood-cell obstacles to the polyomino area-packing board, keeping rotations+reflections; objective = maximize covered honey area.",
+  "objective": "max",
+  "theme": "beehive apiary",
+  "title": "Golden-Super Comb Packing: Filling the Apiary Frames",
+  "strategies": [
+    "trivial baseline: install the single largest comb section that fits and stop",
+    "largest-first first-fit greedy: place types in decreasing area, each copy at the first feasible cell/orientation",
+    "randomized multi-restart maximal fill: shuffle anchor order, greedily place the largest feasible section at each anchor, keep the best coverage over many restarts",
+    "value-density / obstacle-aware local search around brood cells"
+  ]
+}

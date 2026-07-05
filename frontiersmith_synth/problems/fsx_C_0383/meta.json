@@ -1,0 +1,18 @@
+{
+  "id": "fsx_C_0383",
+  "tier": "C",
+  "format": "B",
+  "family": "modular-component-cross-setting",
+  "eval_form": "quality-metric",
+  "theme": "rooftop gardens",
+  "title": "Rooftop Gardens: A Drop-in Learning-Rate Schedule Across Plots",
+  "objective": "optimize",
+  "source_frameworks": ["MLS-Bench (dl-* CPU proxies only)"],
+  "isolation": "candidate runs as an isolated stdin->stdout subprocess via isorun; every plot's data, labels, and the training/scoring code stay in the evaluator process",
+  "strategies": [
+    "flat schedule m_t=1 -> keeps the hot base LR constant, reproduces the evaluator's flat baseline (~0.1 on every plot): over-shoots the noisy plots and never anneals",
+    "flat lower multiplier m_t=0.5 -> the obvious 'just turn the LR down' fix; stops the worst over-shoot and beats the baseline, but the wrong SHAPE (too slow to converge the hard spiral plots, no late annealing) so the geometric mean stays modest",
+    "warm-up + cosine anneal -> runs near the hot base LR early so the hard nonlinear plots converge in budget, then anneals to a small floor so the noisy near-linear plots settle; generalizes across every plot and dominates any constant multiplier",
+    "a custom-tuned schedule (peak height, warm-up length, anneal floor, or a cyclic/step shape) squeezing the remaining per-plot headroom the cosine leaves"
+  ]
+}

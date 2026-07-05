@@ -1,0 +1,17 @@
+{
+  "id": "fsx_C_0196",
+  "tier": "C",
+  "format": "B",
+  "family": "synthetic-algorithmic-generalization",
+  "eval_form": "correctness",
+  "theme": "rooftop gardens",
+  "title": "Rooftop Garden Trellis: Inducing a Nesting Rule that Generalizes to Taller Trellises",
+  "objective": "optimize",
+  "source_frameworks": ["MLS-Bench (synth-*)"],
+  "strategies": [
+    "majority-label rule: a one-state DFA predicting the train-majority label everywhere -- reproduces the evaluator's baseline and shows zero ID->OOD generalization (~0.1)",
+    "suffix-window classifier: a DFA whose state remembers only the last k modules, labeled by local majority -- captures short-range patterns and beats the baseline, but cannot represent the global finite-state rule",
+    "RPNI-style grammar induction: build the prefix-tree acceptor then merge states in shortlex order (folding for determinism, rejecting label-conflicting merges) to recover the underlying automaton, which generalizes to much taller OOD trellises",
+    "evidence-driven / larger-window variants: EDSM-style scored merges, blue-fringe heuristics, or Occam-biased hypothesis selection to squeeze more generalization out of the under-determined sparse instances"
+  ]
+}

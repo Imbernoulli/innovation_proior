@@ -1,0 +1,18 @@
+{
+  "id": "fsx_S_0080",
+  "tier": "S",
+  "format": "A",
+  "family": "partition-clustering",
+  "eval_form": "quality-metric",
+  "seed_problem": "Partition a weighted graph into two balanced halves maximizing cut weight; checker validates balance and scores cut/baseline.",
+  "mutation": "input+output: instantiate balanced max-cut as a fresh non-bipartite instance (heavy grid backbone + lighter random chords creating odd cycles) skinned as an archaeology dig grid; balance is exact equal team size (|c0-c1|<=1); the calibrated baseline is a deterministic hash-scrambled balanced partition (not the trivial all-same or geometric split), keeping F/B scale-invariant across grid sizes.",
+  "objective": "max",
+  "theme": "archaeology dig grid",
+  "title": "Trowel & Tessera: Splitting the Dig Grid",
+  "strategies": [
+    "reference baseline: reproduce the deterministic hash-scrambled balanced partition (scores ~0.1)",
+    "one-pass swap greedy: from the reference, apply first-improvement crew swaps (i on crew 0 with j on crew 1) in a single sweep",
+    "best-improvement local search: from a fresh init, repeatedly commit the single most improving balance-preserving swap until convergence",
+    "multi-restart local search: deterministic perturbation restarts, keep the balanced assignment with the largest corroborated cut"
+  ]
+}

@@ -1,0 +1,16 @@
+{
+  "id": "fsx_B_0363",
+  "tier": "B",
+  "format": "B",
+  "family": "seeded-numerical-sim",
+  "eval_form": "quality-metric",
+  "theme": "telescope array",
+  "title": "Telescope-Array Guide-Beacon Fan-Out: Phase-Mask Design for Efficient, Uniform Spot Arrays",
+  "objective": "max",
+  "strategies": [
+    "in-phase superposition of single-spot gratings, keep only the argument (phase-only projection) -- the reference baseline",
+    "random-phase superposition: de-correlate interference by giving each grating an independent random phase offset, keep the best of several draws",
+    "weighted Gerchberg-Saxton / iterative Fourier-transform algorithm with adaptive spot reweighting to flatten uniformity and pack efficiency",
+    "multi-restart IFTA keeping the best figure of merit over several random initial phases"
+  ]
+}

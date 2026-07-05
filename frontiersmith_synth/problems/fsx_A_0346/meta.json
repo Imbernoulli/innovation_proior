@@ -1,0 +1,17 @@
+{
+  "id": "fsx_A_0346",
+  "tier": "A",
+  "format": "C",
+  "family": "integer-matrix-construction",
+  "eval_form": "quality-metric",
+  "theme": "traffic signal grid",
+  "title": "Arterial Polarity Grid: Maximally Decorrelated Signal Schedules",
+  "objective": "max",
+  "source_frameworks": ["OpenEvolve", "ThetaEvolve", "SimpleTES"],
+  "strategies": [
+    "corridor baseline: arrow plan with column 0 all +1, row 0 all +1, cell (i,i)=-1 for i>=1; |det|=2^(N-1), the minimum non-zero determinant (checker baseline -> 0.1)",
+    "seeded multi-restart random search: draw many normalized +/-1 grids and keep the one with the largest exact |det| via Bareiss",
+    "restart + sign-flip hill climbing: from the best random grid, greedily flip single signal cells that increase the exact |det|, then renormalize the reference column",
+    "row/column orthogonalization heuristics that push toward the unreachable Hadamard bound N^(N/2) without ever attaining it (N is odd)"
+  ]
+}

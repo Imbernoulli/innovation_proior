@@ -1,0 +1,16 @@
+{
+  "id": "fsx_S_0011",
+  "tier": "S",
+  "family": "independent-set-clique",
+  "seed_problem": "Select a maximum-weight set of mutually non-conflicting research sites on a general conflict graph; checker validates independence and scores weight/baseline.",
+  "mutation": "input: skin the max-weight-independent-set selection as satellite ground-station activation and place the conflict relation on a general (non-bipartite, possibly dense) interference graph with per-vertex scientific values, so the easy bipartite/interval special cases vanish and constructing the optimum conflict-free set is NP-hard.",
+  "objective": "max",
+  "theme": "satellite ground stations",
+  "title": "Satellite Ground-Station Activation",
+  "strategies": [
+    "trivial baseline: activate only the single highest-value station (matches checker baseline, ratio ~0.1)",
+    "weight-descending greedy: consider stations from highest value to lowest, activating each one whose activation introduces no conflict with the already-activated set",
+    "degree-aware greedy: order stations by value/(conflict-degree+1) so high-value low-interference stations are taken first, yielding larger conflict-free sets on dense graphs",
+    "multi-restart randomized greedy + maximal extension: run many seeded value-weighted random orderings, greedily build a maximal conflict-free set from each, and keep the highest-value set found"
+  ]
+}

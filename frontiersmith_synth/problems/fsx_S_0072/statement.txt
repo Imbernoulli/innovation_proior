@@ -1,0 +1,142 @@
+# Slack Tide Quay: Spot-vs-Shore Crane Power Replay
+
+## Problem
+
+The **Slack Tide** container terminal has already logged a full shift-by-shift trace of its
+harbour for the coming planning horizon of `T` hours. It must service `J` moored ships. Ship
+`j` is berthed during the half-open hour window `[a_j, b_j)` and needs exactly `w_j`
+**crane-hours** of gantry work done inside that window before it can sail. A ship has a single
+quay gantry, so in any given hour a ship performs **at most one** crane-hour of work; the
+remaining hours in its window are *pauses*.
+
+Every crane-hour must be powered. Because the whole trace is known in advance, this is an
+**offline replay** of what is normally an online spot-market decision: for each crane-hour you
+choose the power source.
+
+- **Spot power** at hour `t` costs `sp[t]` per crane-hour, but the spot grid can feed **at most
+  `C[t]` cranes** during hour `t` across the *entire* terminal (a shared, scarce resource).
+- **Shore power** (on-demand) at hour `t` costs `od[t]` per crane-hour and is unlimited.
+
+Cheap spot hours are tempting, but chasing them fragments a ship's work: every time a ship
+**starts a new run** of consecutive working hours it must re-mobilise its gantry at a fixed cost
+`G`. So a schedule trades three levers per hour — **spot**, **shore**, or **pause** — against
+gantry re-mobilisation. Minimise total terminal cost.
+
+This is a fixed-charge scheduling problem over a shared capacity: the optimum is intractable and
+greedy, per-ship dynamic programming, and local search all give different schedules.
+
+## Input
+
+The first line contains three integers:
+
+```
+T J G
+```
+
+- `T` — number of hours in the horizon, hours numbered `0..T-1`.
+- `J` — number of ships.
+- `G` — gantry re-mobilisation cost charged once per contiguous working run of a ship.
+
+Each of the next `T` lines describes one hour `t` (in order `t = 0..T-1`):
+
+```
+sp od C
+```
+
+- `sp` — spot power price per crane-hour at hour `t` (`sp >= 1`).
+- `od` — shore power price per crane-hour at hour `t` (`od >= sp`).
+- `C`  — terminal-wide spot capacity at hour `t` (`C >= 0`).
+
+Each of the next `J` lines describes one ship `j` (in order `j = 1..J`):
+
+```
+a b w
+```
+
+meaning ship `j` is berthed during `[a, b)` and needs `w` crane-hours, with
+`0 <= a < b <= T` and `1 <= w <= b - a`.
+
+## Output
+
+Print `J` blocks, one per ship in input order. For ship `j` print exactly `w_j` pairs of
+integers
+
+```
+t m
+```
+
+(whitespace/newlines between tokens are ignored), one pair per crane-hour that ship `j` works:
+
+- `t` — the hour worked, with `a_j <= t < b_j`; the `w_j` hours of a ship must be **distinct**.
+- `m` — the power source, `0` for spot or `1` for shore.
+
+## Feasibility
+
+An output is feasible iff, reading `w_j` pairs for each ship in order:
+
+- every `t` lies in `[a_j, b_j)` and the `w_j` hours of a ship are pairwise distinct;
+- every `m` is `0` or `1`;
+- for each hour `t`, the number of ships that use **spot** (`m = 0`) at hour `t` is `<= C[t]`;
+- there is no trailing or missing output.
+
+Any infeasible output scores `0`.
+
+## Objective
+
+Let a ship's chosen hours, sorted ascending, form some number of maximal runs of consecutive
+integers. The cost of the schedule is
+
+```
+F = sum over every worked crane-hour of ( sp[t] if spot else od[t] )
+    + G * (total number of runs summed over all ships).
+```
+
+You are **minimising** `F`.
+
+## Scoring
+
+The checker builds a trivial feasible baseline `B`: every ship works its **earliest** `w_j`
+hours contiguously (`[a_j, a_j + w_j)`, a single run) entirely on shore power. Then
+
+```
+ratio = min(1.0, 0.1 * B / F).
+```
+
+Reproducing the baseline (`F = B`) scores `0.1`; a ten-fold cost reduction (`F = B / 10`) caps
+the score at `1.0`. The overall score is the mean ratio across all tests.
+
+## Constraints
+
+- `1 <= T <= 200`, `1 <= J <= 60`, `1 <= G <= 40`.
+- `1 <= sp[t] <= od[t] <= 40`, `0 <= C[t] <= J`.
+- `0 <= a_j < b_j <= T`, `1 <= w_j <= b_j - a_j`.
+- Time limit: 5 s. Memory limit: 512 MB.
+
+## Example
+
+Input:
+
+```
+4 2 5
+2 10 1
+8 10 0
+1 12 1
+9 11 1
+0 3 2
+1 4 1
+```
+
+Baseline `B`: ship 1 works hours `0,1` on shore (`5 + 10 + 10 = 25`); ship 2 works hour `1` on
+shore (`5 + 10 = 15`); so `B = 40`.
+
+A valid worked output:
+
+```
+0 0 2 0
+3 0
+```
+
+Ship 1 works hours `{0, 2}` on spot: two runs, so `2*5 = 10` gantry, power `sp[0] + sp[2] = 2 +
+1 = 3`, total `13`. Ship 2 works hour `{3}` on spot: one run `5`, power `sp[3] = 9`, total `14`.
+Spot use per hour: `C[0], C[2], C[3]` each carry one crane (all `<= 1`), hour `1` unused — feasible.
+Thus `F = 27` and `ratio = min(1.0, 0.1 * 40 / 27) = 0.148148`.

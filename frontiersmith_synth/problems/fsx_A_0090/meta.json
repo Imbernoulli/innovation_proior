@@ -1,0 +1,17 @@
+{
+  "id": "fsx_A_0090",
+  "tier": "A",
+  "format": "B",
+  "family": "heuristic-contest-offline",
+  "eval_form": "quality-metric",
+  "theme": "geothermal wells",
+  "title": "Rift Valley Geothermal: Well-Field Siting",
+  "objective": "optimize",
+  "source_frameworks": ["ALE-Bench (AHC)", "TTT-Discover (ahc)", "SimpleTES (AHC)"],
+  "strategies": [
+    "overlap-blind top-K: drill wells at the K hottest cells (reproduces the evaluator's weak baseline; wells pile onto the tallest plume and re-tap the same cells)",
+    "overlap-blind window-sum: rank cells by the total heat inside their (2R+1)x(2R+1) tap window and pick the K best, valuing the whole region but still not discounting already-tapped heat",
+    "submodular marginal-gain greedy: build wells one at a time, each time choosing the cell whose window adds the most heat not yet tapped, so wells spread across separate plumes (1-1/e coverage guarantee)",
+    "greedy build plus local search: relocate individual wells to any free cell whenever it raises the union yield; seeded restarts / simulated annealing over the same objective squeeze out remaining overlap within the op budget"
+  ]
+}

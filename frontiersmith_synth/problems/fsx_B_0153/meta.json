@@ -1,0 +1,17 @@
+{
+  "id": "fsx_B_0153",
+  "tier": "B",
+  "format": "B",
+  "family": "seeded-numerical-sim",
+  "eval_form": "quality-metric",
+  "theme": "interstellar relay",
+  "title": "Interstellar Relay Beam Fan-Out Phase Mask",
+  "objective": "max",
+  "source_frameworks": ["Frontier-Eng (Optics/Communications)"],
+  "strategies": [
+    "trivial: cheapest binary (0/pi) phase mask (evaluator baseline) -> ~0.1",
+    "greedy: one-shot analog grating-superposition mask (full continuous phase) -> recovers efficiency+uniformity over the binary etch, no iteration",
+    "strong: weighted / adaptive-additive Gerchberg-Saxton -> reweights per-spot targets to equalize brightness, high efficiency AND uniformity",
+    "invalid: emits a flat 1-D phase list instead of the required N-by-N grid -> rejected by the shape gate -> 0"
+  ]
+}

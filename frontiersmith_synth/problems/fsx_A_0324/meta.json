@@ -1,0 +1,16 @@
+{
+  "id": "fsx_A_0324",
+  "tier": "A",
+  "format": "C",
+  "family": "extremal-point-config",
+  "eval_form": "quality-metric",
+  "theme": "beehive apiary",
+  "title": "Apiary Landing-Pad Spread: Maximize the Faintest Foraging Triangle",
+  "objective": "max",
+  "strategies": [
+    "reference baseline: reproduce the checker's fixed pseudo-random folded-triangle layout (scores ~0.1)",
+    "best-of-many-random: sample many independent random layouts and keep the one whose faintest triangle is largest",
+    "targeted local search: multi-start hill-climbing that repeatedly perturbs a vertex of the currently faintest triangle to enlarge the minimum area",
+    "structured lattice spreads: near-regular triangular sublattices / boundary-plus-interior placements tuned to avoid thin triples"
+  ]
+}

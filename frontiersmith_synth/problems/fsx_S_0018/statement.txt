@@ -1,0 +1,128 @@
+# Starlight Carnival: Ride-Circuit Act Scheduling
+
+## Problem
+
+The travelling **Starlight Carnival** rolls into town and sets up a circuit of `m`
+independent **ride platforms**, each fed by its own portable generator with a limited
+power budget. The ringmaster has a roster of `n` dazzling **acts** — pyrotechnic shows,
+stunt loops, holographic light displays — and wants to stage as many of the best ones as
+the generators can support.
+
+Every act behaves differently depending on which platform hosts it: staging act `i` on
+platform `j` delights the crowd by a **thrill value** `v[i][j]` but draws `w[i][j]`
+kilowatts from that platform's generator. Each act can be staged on **at most one**
+platform (or left out of the show entirely), and the total kilowatts drawn from any
+platform must not exceed its generator budget `C[j]`.
+
+Choose where (if anywhere) to stage each act so that the **total thrill value** of all
+staged acts is as large as possible.
+
+Formally this is a **generalized assignment problem**: it is NP-hard, the true optimum is
+unknown, and many heuristics (first-fit, value-density greedy, regret-based assignment,
+local-search reassignment) are viable and diverge in quality.
+
+## Input
+
+The first line contains two integers:
+
+```
+m n
+```
+
+- `m` — number of ride platforms, numbered `1..m`.
+- `n` — number of carnival acts, numbered `1..n`.
+
+The second line contains `m` integers `C[1] C[2] ... C[m]` — the generator power budget of
+each platform.
+
+The next `n` lines form the **thrill matrix**: line `i` contains `m` integers
+`v[i][1] v[i][2] ... v[i][m]`, the thrill value of staging act `i` on each platform.
+
+The next `n` lines form the **power matrix**: line `i` contains `m` integers
+`w[i][1] w[i][2] ... w[i][m]`, the kilowatts act `i` draws on each platform.
+
+It is guaranteed that `w[i][j] <= C[j]` for every act and platform, so any single act can
+always be staged alone on any platform.
+
+## Output
+
+Print `n` integers `a[1] a[2] ... a[n]`, one per act (whitespace-separated; any layout).
+`a[i]` is the platform on which act `i` is staged, or `0` if act `i` is **not staged**.
+
+Printing `0` for every act (staging nothing) is always feasible.
+
+## Feasibility
+
+An output is feasible iff:
+
+- each `a[i]` is an integer in `0..m`;
+- for every platform `j`, the sum of `w[i][j]` over all acts `i` with `a[i] = j` does not
+  exceed `C[j]`.
+
+Any infeasible output scores `0`.
+
+## Objective
+
+Let `F` be the total thrill value of the staged acts:
+
+```
+F = sum over all i with a[i] > 0 of v[i][a[i]]
+```
+
+You are **maximizing** `F`.
+
+## Scoring
+
+The checker builds an internal baseline `B` by staging acts with a naive
+**first-fit** rule: process acts `1..n` in order and, for each, place it on the
+lowest-indexed platform that still has room for it (or skip it if none does); `B` is the
+total thrill of that first-fit schedule. The score for a test is
+
+```
+ratio = min(1.0, 0.1 * F / B)
+```
+
+Matching the first-fit baseline (`F = B`) scores `0.1`; reaching ten times the baseline
+thrill caps the score at `1.0`. The overall score is the mean ratio across all tests.
+
+## Constraints
+
+- `2 <= m <= 30`, `m <= n <= 200`.
+- `1 <= C[j] <= 60`.
+- `1 <= v[i][j] <= 100`.
+- `1 <= w[i][j] <= 10`, and `w[i][j] <= C[j]`.
+- Time limit: 5 s. Memory limit: 512 MB.
+
+## Example
+
+Input:
+
+```
+2 3
+10 10
+60 5
+55 5
+5 70
+6 9
+6 9
+9 6
+```
+
+Here `m = 2` platforms with budgets `C = [10, 10]`, and `n = 3` acts.
+
+First-fit baseline: act 1 goes to platform 1 (draw 6, room left 4, thrill 60); act 2 needs
+6 kW on platform 1 but only 4 remain, so it goes to platform 2 (draw 9, room left 1, thrill
+5); act 3 needs 9 kW on platform 1 (no room) and 6 kW on platform 2 (only 1 remains), so it
+is skipped. Baseline thrill `B = 60 + 5 = 65`.
+
+A smarter schedule stages act 1 on platform 1 (draw 6, thrill 60), skips act 2, and stages
+act 3 on platform 2 (draw 6, thrill 70). Platform loads are `6 <= 10` and `6 <= 10`, so it
+is feasible, with `F = 60 + 70 = 130`.
+
+Score for this test: `min(1.0, 0.1 * 130 / 65) = 0.2`.
+
+A valid worked output:
+
+```
+1 0 2
+```

@@ -1,0 +1,16 @@
+{
+  "id": "fsx_B_0374",
+  "tier": "B",
+  "format": "E",
+  "family": "scientific-law-extrapolation",
+  "eval_form": "quality-metric",
+  "theme": "wind tunnel sensors",
+  "title": "Wind-Tunnel Sensor Scaling Law — extrapolating to large compute & resolution",
+  "objective": "optimize",
+  "strategies": [
+    "constant baseline: predict the mean training calibration error (ignores structure) -> ~0.1",
+    "log-linear power law: fit log L ~ c0 + c1 log C + c2 log R and emit A*C^c1*R^c2; captures the cheap-regime slope but has NO floor, so it collapses toward 0 in the large-compute held-out region and extrapolates poorly",
+    "floored scaling law: grid-search the two exponents (alpha,beta), least-squares fit E_inf + A*C^-alpha + B*R^-beta; identifies the irreducible floor and extrapolates well",
+    "alternatives: continuous/finer exponent optimisation, joint nonlinear least squares, adding a small cross term or ridge regularisation to trade complexity penalty against held-out error"
+  ]
+}

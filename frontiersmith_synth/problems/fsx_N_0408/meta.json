@@ -1,0 +1,17 @@
+{
+  "id": "fsx_N_0408",
+  "tier": "N",
+  "format": "A",
+  "family": "routing-convolution-interference",
+  "seed_problem": "Order n observations, each a discrete time-signal; cost = sum over consecutive pairs of the max convolution overlap of their signals; minimize total interference of the sequence.",
+  "mutation": "composite: Hamiltonian-path sequencing (TSP-path) coupled with a 1-D discrete cross-correlation peak as the pairwise edge cost; edge metric is a max-over-shift coincidence count (number-theoretic/convolution twist), not a plain distance.",
+  "objective": "min",
+  "theme": "telescope array",
+  "title": "Dark-Sky Observatory: Interference-Minimizing Observation Schedule",
+  "strategies": [
+    "identity/do-nothing baseline (input order, deliberately clustered => high interference)",
+    "nearest-neighbor path construction on the peak-coupling metric",
+    "nearest-neighbor + 2-opt local search with multiple deterministic restarts",
+    "cluster-aware dispersion: infer latent signature clusters and interleave them to maximize adjacent dissimilarity"
+  ]
+}

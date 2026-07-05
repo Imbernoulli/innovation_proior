@@ -1,0 +1,107 @@
+# Fire-Season Watchtower Staffing (Offline Replay)
+
+## Problem
+
+A national forest runs `N` fire watchtowers over a fixed fire season of `T` discrete
+time steps `t = 1 .. T`. The whole season is known in advance (an offline *replay* of what
+would otherwise be an online staffing decision): for every tower and every step you already
+know exactly when volunteer lookouts will show up and what the spot volunteer wage will be.
+
+Every tower `i` must accumulate at least `R_i` **surveillance units** during the season.
+One staffed step produces exactly one surveillance unit. At each step, for each tower, you
+choose exactly one of three modes:
+
+- **Idle (`0`)** — nobody watches. 0 surveillance units, cost 0.
+- **Spot / volunteer (`1`)** — a volunteer lookout staffs the tower. Allowed **only** at
+  steps where a volunteer is available for that tower (`avail[i][t] = 1`). Produces 1
+  surveillance unit at cost `spot[t]` (a season-wide volunteer wage that varies day to day).
+- **Ranger (`2`)** — a paid ranger staffs the tower. Always allowed. Produces 1 surveillance
+  unit at cost `D`. Rangers are drawn from a single shared crew: **at most `K` towers may be
+  in ranger mode at any single step** `t`.
+
+If a tower finishes the season with fewer than `R_i` surveillance units, the shortfall is a
+fire-risk liability costing `lambda_i` per missing unit.
+
+You are given the full trace. Assign a mode to every (tower, step) cell to minimize total
+season cost = staffing cost + shortfall liability.
+
+## Input
+
+```
+N T K D
+spot[1] spot[2] ... spot[T]
+R[1] R[2] ... R[N]
+lambda[1] lambda[2] ... lambda[N]
+```
+followed by `N` lines, the `i`-th containing `T` bits `avail[i][1] ... avail[i][T]`
+(`0` or `1`), the volunteer-availability row of tower `i`.
+
+## Output
+
+Print `N` lines. Line `i` must contain `T` integers `m[i][1] ... m[i][T]`, each in `{0,1,2}`,
+the chosen mode for tower `i` at each step.
+
+## Feasibility
+
+An output is feasible iff:
+
+1. Every `m[i][t]` is one of `0`, `1`, `2`.
+2. If `m[i][t] = 1` (spot) then `avail[i][t] = 1`.
+3. For every step `t`, the number of towers with `m[i][t] = 2` is at most `K`.
+
+Any feasible assignment is accepted and scored; an infeasible one scores 0. There is no
+requirement to actually meet any `R_i` — leaving a tower short is allowed, you simply pay the
+liability.
+
+## Objective (minimize)
+
+For a feasible assignment let, for each tower `i`, `work_i` be the number of steps with
+`m[i][t] != 0`. Then
+
+```
+cost    = sum over cells with m=1 of spot[t]  +  (#cells with m=2) * D
+shortfall = sum_i lambda_i * max(0, R_i - work_i)
+F = cost + shortfall
+```
+
+Minimize `F`.
+
+## Scoring
+
+Let `B = sum_i lambda_i * R_i` be the cost of the do-nothing (all-idle) plan, which the judge
+uses as the baseline. Your score is
+
+```
+ratio = min(1000, 100 * B / max(1, F)) / 1000
+```
+
+reported per test case (higher is better). The all-idle plan scores `0.1`; a plan that drives
+season cost to one tenth of the baseline or below scores the maximum `1.0`.
+
+## Constraints
+
+- `1 <= N <= 130`, `1 <= T <= 200`, `1 <= K <= N`.
+- `1 <= D <= 1000`, `1 <= spot[t] <= 1000`, `1 <= R_i <= T`, `1 <= lambda_i <= 2000`.
+- Time limit: 5 s. Memory limit: 512 MB.
+
+## Example
+
+Input:
+```
+2 3 1 100
+50 200 80
+2 2
+150 90
+1 0 1
+1 1 0
+```
+
+Here `B = 150*2 + 90*2 = 480`. Consider the assignment
+```
+1 0 1
+1 0 0
+```
+Tower 1 staffs spot at steps 1 and 3: `work_1 = 2`, meets `R_1 = 2`, cost `50 + 80 = 130`.
+Tower 2 staffs spot at step 1 only: `work_2 = 1`, short by 1, liability `90`, cost `50`.
+So `cost = 180`, `shortfall = 90`, `F = 270`, and
+`ratio = min(1000, 100 * 480 / 270)/1000 = 0.177778`.

@@ -1,0 +1,19 @@
+{
+  "id": "fsx_B_0358",
+  "tier": "B",
+  "format": "E",
+  "family": "scientific-law-extrapolation",
+  "eval_form": "quality-metric",
+  "theme": "rooftop gardens",
+  "title": "Rooftop-Garden Water-Stress Scaling Law",
+  "objective": "optimize",
+  "source_frameworks": ["SimpleTES (scaling laws)"],
+  "strategies": [
+    "constant / mean-of-train law -> reproduces the internal baseline (trivial, ~0.10)",
+    "single product power law L=k*A^c1*W^c2 by log-linear fit (no floor, no resource pooling) -> trivial baseline",
+    "additive first-order model L=a+b/A+c/W (right monotonicity + a floor, but separate reciprocals not a pooled budget) -> greedy",
+    "correct combined-resource form L=Linf+C*(A+rho*W)^(-p), with (rho,p) chosen by an internal train/val split to extrapolate -> strong",
+    "over-parameterised polynomial that memorises train noise -> penalised + extrapolates poorly"
+  ],
+  "notes": "Format-E symbolic regression skinned as a rooftop garden. The solver sees a noisy (bed area A m^2, daily water W L/day, canopy water-stress index L) table from small pilot beds and must emit a closed-form law that EXTRAPOLATES to a hidden larger-rooftop region (bigger A and W), regenerated deterministically inside the checker. Hidden law L=Linf+C*(A+rho*W)^(-p): an irreducible stress floor plus a single power decay in a POOLED effective-resource budget (A+rho*W), where rho is the litres-to-area equivalence -- a combined-resource scaling law distinct from separated additive-power forms. Coefficients (Linf,C,rho,p) and multiplicative-noise level vary per testId. Score = baseline_rmse/held_out_rmse (minimisation) with a gentle complexity penalty; irreducible held-out noise keeps strong below 1.0. Deterministic CPU only; no wall-time, no shipped groundtruth module, no law/seed printed by gen.py."
+}

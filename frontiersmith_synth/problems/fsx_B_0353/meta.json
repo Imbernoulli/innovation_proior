@@ -1,0 +1,16 @@
+{
+  "id": "fsx_B_0353",
+  "tier": "B",
+  "format": "B",
+  "family": "feasibility-gated-structural",
+  "eval_form": "quality-metric",
+  "theme": "aquarium plumbing",
+  "title": "Aquarium Gantry Pipe-Sizing (feasibility-gated 2D truss FEM)",
+  "objective": "min",
+  "strategies": [
+    "trivial: set every pipe to the maximum area Amax (safe, heavy) -> ratio 0.1",
+    "greedy: shrink all pipes by one uniform scale factor until just feasible (bounded by joint deflection)",
+    "strong: fully-stressed design -- iterate FEM and resize each pipe to |N|/sigma, then scale up to meet the displacement limit",
+    "invalid: zero/undersized areas that violate the manufacturable bound and the feasibility gate -> 0"
+  ]
+}

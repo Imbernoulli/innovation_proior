@@ -1,0 +1,17 @@
+{
+  "id": "fsx_A_0082",
+  "tier": "A",
+  "format": "B",
+  "family": "online-heuristic-simulator",
+  "eval_form": "quality-metric",
+  "theme": "carnival ride circuit",
+  "title": "Twilight Carnival: Gondola Dispatch Circuit",
+  "objective": "optimize",
+  "source_frameworks": ["FunSearch (bin-packing)", "ALE-Bench (dispatch rules)"],
+  "strategies": [
+    "next-fit dispatch baseline: fill the current gondola until a party doesn't fit, then open a new one and never look back (reproduces the evaluator's weak reference)",
+    "first-fit in arrival order: board each party onto the lowest-index gondola with room, reusing earlier gaps but never reordering the queue",
+    "decreasing-order packing: seat the largest parties first via first-fit-decreasing / best-fit-decreasing, keeping the fewer-dispatch layout so small parties top off partially-filled gondolas",
+    "seeded local search / metaheuristics: start from a decreasing-order layout and swap/relocate parties or run perturb-and-reoptimize restarts to squeeze out remaining wasted seats"
+  ]
+}

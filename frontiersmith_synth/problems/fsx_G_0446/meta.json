@@ -1,0 +1,16 @@
+{
+  "id": "fsx_G_0446",
+  "tier": "G",
+  "format": "D",
+  "family": "flop-bilinear-general-rank",
+  "eval_form": "flops",
+  "theme": "signal combiner",
+  "title": "Signal-Combiner Bilinear Form: Minimize Multiplications",
+  "objective": "min",
+  "strategies": [
+    "naive m*n product scheme (baseline)",
+    "per-slice exact rank factorization",
+    "cross-slice sharing via mode-3 dependence (factor only an independent basis of slices)",
+    "deeper tensor-rank reduction toward the (unknown) planted overcomplete rank"
+  ]
+}

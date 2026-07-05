@@ -1,0 +1,17 @@
+{
+  "id": "fsx_A_0310",
+  "tier": "A",
+  "format": "B",
+  "family": "heuristic-contest-offline",
+  "eval_form": "quality-metric",
+  "theme": "interstellar relay",
+  "title": "Relay Run: Fuel-Budgeted Interstellar Survey",
+  "objective": "optimize",
+  "source_frameworks": ["ALE-Bench (AHC)", "TTT-Discover (ahc)", "SimpleTES (AHC)"],
+  "strategies": [
+    "fuel-blind nearest hop: from the starbase always jump to the nearest unvisited system that still fits fuel, ignoring science value (reproduces the evaluator's weak reference, scores ~0.1)",
+    "value-density insertion greedy: repeatedly cheapest-insert the unvisited system with the best prize-per-extra-fuel while it fits the budget, never revising, so early placements that block a better ordering leave value stranded",
+    "warm-started local search: seed from the insertion greedy, then alternate 2-opt route shortening, cheapest-insertion of newly affordable systems, and drop-and-swap of cheap systems for richer reachable ones, reclaiming value one-shot greedy strands while the visit-everything ceiling stays unaffordable (headroom < 1.0)",
+    "invalid over-budget route: visit every system so the flown path blows the fuel budget and the route is rejected -> 0.0"
+  ]
+}

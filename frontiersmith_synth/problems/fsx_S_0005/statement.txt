@@ -1,0 +1,101 @@
+# Mountain Rescue Relays: Minimum-Makespan Relay Schedule
+
+## Problem
+
+A mountain search-and-rescue command coordinates several **rescue missions**. Each
+mission is a fixed **relay** — an ordered chain of **legs** that must be carried out
+one after another (you cannot start a leg of a mission until the previous leg of the
+same mission has finished). Every leg is handled by a specific **relay team**, and a
+relay team can work on **only one leg at a time**.
+
+You are given all missions and, for each mission, the ordered list of legs together
+with the team assigned to each leg and how long that leg takes. You must produce a
+**start time** (in minutes) for every leg so that:
+
+- the legs of each mission run in order (precedence), and
+- no team is ever handling two legs at the same time (no-overlap).
+
+The **makespan** is the time the last leg finishes. Your goal is to make the makespan
+as small as possible.
+
+This is a job-shop scheduling instance: missions are jobs, teams are machines, legs
+are operations. Finding the true minimum makespan is NP-hard, so any feasible schedule
+is accepted and scored by how short its makespan is.
+
+## Input
+
+```
+n m
+job_1
+job_2
+...
+job_n
+```
+
+- Line 1: two integers `n` (number of missions) and `m` (number of relay teams).
+- Teams are numbered `0 .. m-1`.
+- Each of the next `n` lines describes one mission `j` (0-indexed by line order):
+  it starts with an integer `o` (the number of legs), followed by `o` pairs
+  `team duration`, listing the legs in the order they must be performed.
+  `team` is in `[0, m-1]` and `duration >= 1`.
+
+## Output
+
+Print `n` lines. Line `j` must contain exactly `o` non-negative integers: the start
+times (in minutes) of the legs of mission `j`, in mission order.
+
+## Feasibility
+
+A schedule is feasible iff, letting `s[j][k]` be the start time of leg `k` of mission
+`j` and `d[j][k]` its duration:
+
+- `0 <= s[j][k]` and each is an integer;
+- **precedence**: `s[j][k] >= s[j][k-1] + d[j][k-1]` for every `k >= 1`;
+- **no-overlap**: for any two legs assigned to the same team, their intervals
+  `[s, s+d)` do not overlap.
+
+Any output that is malformed, out of range, or violates a constraint scores 0.
+
+## Objective
+
+Minimize the makespan `F = max over all legs of (s[j][k] + d[j][k])`.
+
+## Scoring
+
+Let `B` be the total work `= sum of all leg durations` (this is the makespan of the
+fully-serial schedule that runs every leg one after another). Your score on a test is
+
+```
+ratio = min(1.0, 0.1 * B / F)
+```
+
+where `F` is your makespan. A fully-serial schedule scores `0.1`; a schedule ten times
+shorter than serial (or better) scores the maximum `1.0`. The overall score is the
+average ratio over all tests.
+
+## Constraints
+
+- `1 <= n <= 40`, `3 <= m <= 20`, `1 <= duration <= 99`.
+- Time limit: 5 s. Memory limit: 512 MB.
+
+## Example
+
+Input:
+```
+2 2
+2 0 3 1 2
+2 1 2 0 4
+```
+
+Mission 0 has legs: team 0 for 3 min, then team 1 for 2 min.
+Mission 1 has legs: team 1 for 2 min, then team 0 for 4 min.
+
+A feasible output:
+```
+0 3
+0 3
+```
+Mission 0: leg0 on team0 [0,3), leg1 on team1 [3,5). Mission 1: leg0 on team1 [0,2),
+leg1 on team0 [3,7). Team 0 handles [0,3) and [3,7) (no overlap); team 1 handles [3,5)
+and [0,2) (no overlap); precedence holds. Makespan `F = 7`. Total work `B = 3+2+2+4 = 11`,
+so `ratio = min(1, 0.1 * 11 / 7) = 0.157`.

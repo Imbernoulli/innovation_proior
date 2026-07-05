@@ -1,0 +1,17 @@
+{
+  "id": "fsx_C_0387",
+  "tier": "C",
+  "format": "B",
+  "family": "optimization-convergence-analysis",
+  "eval_form": "flops",
+  "theme": "coral reef survey",
+  "title": "Coral Reef Survey: Robust Transect Balancing",
+  "objective": "min",
+  "source_frameworks": ["MLS-Bench (optimization-*)"],
+  "strategies": [
+    "reference reproduction: emit the constant, conservative extragradient step (alpha_k = beta_k = 0.4/||H||) the evaluator uses as its weak baseline -> ~0.1 everywhere",
+    "edge-of-stability constant step: double the reference step to 0.8/||H|| so the fixed-step method contracts low-frequency error faster, but with no spectral adaptation it plateaus",
+    "Chebyshev semi-iterative schedule: read H, take the real-part spectral interval [a,b], and set the descent-ascent steps to reciprocals of the Chebyshev nodes on [a,b] for optimal min-residual acceleration",
+    "spectrum-aware / extragradient designs: use the full extragradient extrapolation (alpha_k>0) or momentum/optimistic corrections to damp the rotational (imaginary) part of the saddle field beyond a real-interval Chebyshev design"
+  ]
+}

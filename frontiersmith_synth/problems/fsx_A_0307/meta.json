@@ -1,0 +1,15 @@
+{
+  "id": "fsx_A_0307",
+  "tier": "A",
+  "format": "C",
+  "family": "additive-combinatorics-set",
+  "eval_form": "quality-metric",
+  "theme": "tide pool ecology",
+  "title": "Tide-Pool Transect: Maximizing Spawning-Node Richness",
+  "objective": "max",
+  "strategies": [
+    "arithmetic-progression baseline (evenly spaced pools, R=1 -> Ratio 0.1)",
+    "short low-restart simulated-annealing over pool sets (weak more-sums layout, R~1.01-1.05)",
+    "multi-restart simulated annealing from random seeds maximizing |A+A|/|A-A| (R~1.02-1.06)"
+  ]
+}

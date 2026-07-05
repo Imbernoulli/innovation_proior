@@ -1,0 +1,17 @@
+{
+  "id": "fsx_A_0149",
+  "tier": "A",
+  "format": "C",
+  "family": "low-discrepancy-pointset",
+  "eval_form": "quality-metric",
+  "theme": "geothermal wells",
+  "title": "Geothermal Field: Even Well Siting by Star Discrepancy",
+  "objective": "min",
+  "source_frameworks": ["OpenEvolve (star-discrepancy)", "AlphaEvolve"],
+  "strategies": [
+    "diagonal baseline: N wells evenly along the field diagonal (reproduces the checker baseline)",
+    "Halton (2,3) low-discrepancy sequence: reliable sub-1/sqrt(N) discrepancy for any N",
+    "golden-ratio Kronecker lattice: x = frac(k*phi), y = (k+0.5)/N -- lowest discrepancy of the ladder",
+    "invalid: place a well outside the field (containment violation) -> scores 0"
+  ]
+}

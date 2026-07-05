@@ -1,0 +1,116 @@
+# Whispering Halls: Audio-Beacon Channel Planning
+
+## Problem
+
+The *Whispering Halls* museum is rolling out a self-guided audio tour. Every gallery gets
+a small wireless **beacon** that streams narration to visitors' headsets on one of a fixed
+set of **channels**. Because galleries are close together and walls are thin, some pairs of
+beacons **bleed into each other**: if two galleries whose signals overlap are tuned to the
+*same* channel, visitors hear a garbled mix and complain. Each overlapping pair has a known
+**annoyance weight** (how badly the crosstalk hurts the tour) measured from a pilot survey.
+
+The audio system only supports a limited **channel budget** of `k` distinct channels. You
+must assign every gallery exactly one channel from `1..k` so that the **total annoyance** —
+the sum of the annoyance weights over all overlapping pairs that end up on the *same*
+channel — is as **small** as possible.
+
+Formally: you are given a weighted undirected (multi)graph on `n` galleries. Assign each
+gallery a color (channel) in `1..k` to minimize the total weight of monochromatic edges.
+This is the weighted minimum-conflict `k`-coloring (a.k.a. weighted minimum `k`-partition)
+problem: it is NP-hard, the optimum is unknown, and many heuristics (round-robin, one-pass
+min-conflict greedy, local search, randomized restarts) are viable and diverge.
+
+## Input
+
+The first line contains three integers:
+
+```
+n k m
+```
+
+- `n` — number of galleries (nodes), numbered `1..n`.
+- `k` — number of available channels (the channel budget).
+- `m` — number of overlapping pairs (edges).
+
+Each of the next `m` lines describes one overlapping pair:
+
+```
+u v w
+```
+
+meaning galleries `u` and `v` bleed into each other with annoyance weight `w`
+(`1 <= w`, `u != v`). Parallel pairs (the same `u,v` listed more than once) may occur and
+are each counted separately.
+
+## Output
+
+Print `n` integers `c_1 c_2 ... c_n` (separated by spaces and/or newlines), where `c_g` is
+the channel assigned to gallery `g`. Every `c_g` must satisfy `1 <= c_g <= k`.
+
+## Feasibility
+
+An output is feasible iff it contains exactly `n` integers and every `c_g` lies in `1..k`.
+Any output that is missing/extra tokens or uses an out-of-range channel scores `0`.
+
+## Objective
+
+Let `F` be the total annoyance of your assignment: the sum of `w` over every overlapping
+pair `(u,v,w)` with `c_u == c_v`. You are **minimizing** `F`. (`F = 0` means a perfectly
+conflict-free plan.)
+
+## Scoring
+
+The checker builds an internal **baseline** assignment (a channel-cycling plan that ignores
+the overlap structure: gallery `g` gets channel `((g-1) mod k) + 1`) and measures its total
+annoyance `B`. The score for a test is
+
+```
+ratio = min(1.0, 0.1 * B / max(1, F))
+```
+
+Matching the baseline (`F = B`) scores `0.1`; cutting annoyance to a tenth of the baseline
+or below (`F <= B/10`) caps the score at `1.0`. The overall score is the mean ratio across
+all tests.
+
+## Constraints
+
+- `2 <= n <= 3000`, `1 <= m <= 60000`.
+- `2 <= k <= 12`.
+- `1 <= w <= 100`.
+- Time limit: 5 s. Memory limit: 512 MB.
+
+## Example
+
+Input:
+
+```
+5 2 5
+1 2 2
+2 4 10
+1 4 10
+3 5 1
+1 5 3
+```
+
+There are 5 galleries and `k = 2` channels. Galleries `1,2,4` form a triangle (an odd
+cycle), so with only 2 channels at least one of its three edges must be monochromatic.
+
+The baseline plan `c = (1,2,1,2,1)` (channel `((g-1) mod 2)+1`) leaves pair `2-4` on the
+same channel (`c_2=c_4=2`, weight 10) and pair `3-5` on the same channel (`c_3=c_5=1`,
+weight 1). All other pairs are split. So `B = 10 + 1 = 11`.
+
+A better plan is `c = (1, 1, 1, 2, 2)`:
+
+- `1-2`: `1,1` same channel -> annoyance `2`
+- `2-4`: `1,2` different -> `0`
+- `1-4`: `1,2` different -> `0`
+- `3-5`: `1,2` different -> `0`
+- `1-5`: `1,2` different -> `0`
+
+so `F = 2`. Score for this test: `min(1.0, 0.1 * 11 / 2) = min(1.0, 0.55) = 0.55`.
+
+A valid worked output:
+
+```
+1 1 1 2 2
+```

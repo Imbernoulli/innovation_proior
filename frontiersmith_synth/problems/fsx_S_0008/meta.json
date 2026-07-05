@@ -1,0 +1,17 @@
+{
+  "id": "fsx_S_0008",
+  "tier": "S",
+  "format": "A",
+  "family": "partition-clustering",
+  "seed_problem": "Partition a weighted graph into two balanced halves maximizing cut weight; checker validates balance and scores cut/baseline.",
+  "mutation": "output: keep the max-cut goal but tighten the output to a perfectly balanced bisection (exactly n/2 per side), turning easy unconstrained max-cut into NP-hard balanced max-bisection; instances are planted so a random reference split is far from optimal.",
+  "objective": "max",
+  "theme": "glacier sensor net",
+  "title": "Glacier Sensor Net: Balanced Dual-Uplink Split",
+  "strategies": [
+    "reference (id) split baseline: sensors 1..n/2 to station 0, rest to station 1",
+    "greedy constructive: place sensors in order, assign each to the station that maximizes cross-checked weight to already-placed sensors while respecting the n/2 capacity",
+    "local search: start from greedy and apply balance-preserving pair swaps that increase cross-checked weight (hill climbing with a swap budget)",
+    "planted-structure recovery / Kernighan-Lin style refinement to approach the hidden balanced bisection"
+  ]
+}

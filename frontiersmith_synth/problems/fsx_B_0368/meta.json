@@ -1,0 +1,16 @@
+{
+  "id": "fsx_B_0368",
+  "tier": "B",
+  "format": "B",
+  "family": "offline-decision-policy",
+  "eval_form": "quality-metric",
+  "theme": "vineyard irrigation",
+  "title": "Vineyard Irrigation: Season-Weighted Moisture-Predicate Prefix-Cache Ordering",
+  "objective": "max",
+  "strategies": [
+    "identity layout: evaluate predicates in the given index order (baseline; low-index sprinkle predicates sit at the front and shatter every shared prefix)",
+    "frequency-first layout: order predicates by how many distinct checks reference them (ties by token weight), season weights ignored -- serves common cores but under-prioritizes the checks that actually run most often",
+    "season-weighted frequency layout: order predicates by total season-weighted occurrence so the cores of high-frequency check families lead every prefix",
+    "season-weighted greedy construction against the true weighted objective: fill the global order slot by slot, each time picking the predicate that maximizes total season-weighted cache-hit tokens, capturing cross-family ordering interactions"
+  ]
+}

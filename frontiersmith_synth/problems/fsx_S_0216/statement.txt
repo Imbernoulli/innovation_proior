@@ -1,0 +1,155 @@
+# Wildlife Corridor Night Watch: Offline Guard-Schedule Replay
+
+## Problem
+
+A conservation trust protects a chain of **corridor segments** that migrating animals
+cross at night. The whole migration season has already happened and been logged, so you
+are handed the *full trace* and must decide, offline, how the segments should have been
+guarded — turning an online spot-vs-on-demand staffing problem into one static schedule
+optimization.
+
+The season lasts `T` **nights** (numbered `1..T`). There are `K` corridor **segments**.
+Segment `i` is only crossed during its migration window `[L_i, R_i]` and must be guarded
+on at least `W_i` distinct nights inside that window to keep its animals safe.
+
+Each night, each active segment may be guarded by one of two crew types (or left unguarded):
+
+- **Volunteers (the "spot" resource).** Volunteers are **free**, but only a limited number
+  `vol[t]` of volunteer crews show up on night `t`, and that pool is **shared across all
+  segments** guarded that night. A segment can be guarded by at most one crew per night.
+- **Contract rangers (the "on-demand" resource).** Contract crews are always available in
+  unlimited number, but each night `t` on which you dispatch *any* contract crew costs a
+  fixed **mobilization fee** `D[t]` (the truck rolls out once), plus a **per-guard price**
+  `p[t]` for every segment a contract crew guards that night.
+- **Rest.** A segment can simply be left unguarded on a night (contributes nothing).
+
+Because the mobilization fee is charged once per active night regardless of how many
+segments the contract team covers, it pays to **cluster** contract work onto shared nights
+and to spend the scarce free volunteers where contract would otherwise be most expensive.
+Choosing which segment gets each scarce volunteer, and which nights to cluster contract
+work on, is a fixed-charge covering problem: the optimum is intractable, and greedy,
+price-aware, and clustering local-search strategies all diverge.
+
+## Input
+
+The first line contains two integers:
+
+```
+T K
+```
+
+The next line contains `T` integers `vol[1] ... vol[T]` — the volunteer crews available
+each night (`0 <= vol[t]`).
+
+The next line contains `T` integers `D[1] ... D[T]` — the contract mobilization fee for
+each night (`1 <= D[t]`).
+
+The next line contains `T` integers `p[1] ... p[T]` — the contract per-guard price for
+each night (`1 <= p[t]`).
+
+Each of the next `K` lines describes one segment `i` (in order `1..K`):
+
+```
+L_i R_i W_i
+```
+
+with `1 <= L_i <= R_i <= T` and `1 <= W_i <= R_i - L_i + 1` (so the window is always long
+enough to be guarded on `W_i` distinct nights).
+
+## Output
+
+Print the schedule segment by segment, in order `i = 1..K`. For each segment print:
+
+```
+g_i
+```
+
+the number of nights on which you guard segment `i` (`W_i <= g_i <= R_i - L_i + 1`), then
+`g_i` lines each containing:
+
+```
+t m
+```
+
+meaning segment `i` is guarded on night `t` (with `L_i <= t <= R_i`) by crew type
+`m` (`m = 0` volunteer, `m = 1` contract). For a given segment the guarded nights `t`
+must be distinct.
+
+## Feasibility
+
+An output is feasible iff **all** of the following hold:
+
+- for every segment, `W_i <= g_i <= R_i - L_i + 1`;
+- every listed night `t` for segment `i` satisfies `L_i <= t <= R_i`, and the nights
+  listed for one segment are pairwise distinct;
+- every crew type is `0` or `1`;
+- for every night `t`, the total number of **volunteer** guards assigned that night
+  (summed over all segments) does not exceed `vol[t]`.
+
+Any infeasible output scores `0`.
+
+## Objective
+
+Let the participant's total cost be
+
+```
+F = sum over nights t with >= 1 contract guard of D[t]
+    + sum over all contract guards (i, t) of p[t].
+```
+
+Volunteers contribute nothing to the cost. You are **minimizing** `F`.
+
+## Scoring
+
+Let `B` be the cost of the reference baseline the judge builds itself: guard every segment
+with **contract crews only**, on the earliest `W_i` nights of its window (`L_i, L_i+1,
+..., L_i+W_i-1`), sharing mobilization fees where those nights coincide. The score for a
+test is
+
+```
+ratio = min(1.0, 0.1 * B / F)
+```
+
+A submission that merely reproduces the baseline (`F = B`) scores `0.1`; driving cost down
+to one tenth of the baseline (`F = B / 10`) caps the score at `1.0`. The overall score is
+the mean ratio across all tests.
+
+## Constraints
+
+- `1 <= T <= 1000`, `1 <= K <= 400`.
+- `0 <= vol[t]`, `1 <= D[t] <= 100`, `1 <= p[t] <= 100`.
+- `1 <= W_i <= R_i - L_i + 1`.
+- Time limit: 5 s. Memory limit: 512 MB.
+
+## Example
+
+Input:
+
+```
+5 2
+0 1 0 1 0
+6 6 6 6 6
+3 8 2 5 4
+1 3 2
+2 4 2
+```
+
+Baseline `B`: segment 1 guarded by contract on nights `1,2`; segment 2 by contract on
+nights `2,3`. Contract is active on nights `1,2,3` (mobilization `6+6+6 = 18`); per-guard
+prices are `p[1] + 2*p[2] + p[3] = 3 + 16 + 2 = 21`. So `B = 18 + 21 = 39`.
+
+A better schedule spends the two volunteers (nights `2` and `4`) and clusters both
+remaining contract guards onto night `3`:
+
+```
+2
+2 0
+3 1
+2
+4 0
+3 1
+```
+
+Here only night `3` uses contract (mobilization `6`), with two guards at `p[3] = 2` each
+(`4`), so `F = 6 + 4 = 10`. Volunteer usage is `1` on night `2` and `1` on night `4`,
+both within `vol`. The score is `min(1.0, 0.1 * 39 / 10) = 0.39`.

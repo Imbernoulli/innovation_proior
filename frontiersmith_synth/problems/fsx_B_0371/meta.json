@@ -1,0 +1,17 @@
+{
+  "id": "fsx_B_0371",
+  "tier": "B",
+  "format": "B",
+  "family": "seeded-numerical-sim",
+  "eval_form": "quality-metric",
+  "theme": "quantum lab wiring",
+  "title": "Tweezer-Array Wiring: Phase-Mask Hologram for a Qubit Register",
+  "objective": "max",
+  "source_frameworks": ["Frontier-Eng (Optics/Communications)"],
+  "strategies": [
+    "plain superposition of gratings: place an in-phase unit point at every trap site, inverse-FFT, keep the phase (reproduces the evaluator's weak analytic baseline; coherent spot interference wrecks efficiency and uniformity)",
+    "random-phase superposition: give each trap an independent seeded random phase before the inverse transform, de-correlating the spots so far more of the beam lands in the traps, though depths stay uneven",
+    "weighted Gerchberg-Saxton: iterate propagate -> reweight dim/bright traps -> reinsert weighted achieved phase -> inverse-FFT, driving traps to equal depth while concentrating energy (high efficiency + near-perfect uniformity, still below the phase-only ideal)",
+    "seeded direct search / simulated annealing on the phase pixels, or adaptive-additive / mixed-region-amplitude-freedom variants that trade a controlled amount of uniformity for extra efficiency"
+  ]
+}

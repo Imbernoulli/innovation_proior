@@ -1,0 +1,16 @@
+{
+  "id": "fsx_N_0410",
+  "tier": "N",
+  "family": "independent-set-geometry",
+  "seed_problem": "Given candidate disk centers with weights and a shared radius chosen from a menu, two disks conflict if they overlap; pick radius + a max-weight non-conflicting (independent) subset.",
+  "mutation": "composite: keep the geometric MWIS core but (1) make the shared aperture r a fleet-wide decision drawn from a menu that couples ALL selections, (2) replace static per-disk weights with an aperture-dependent NON-LINEAR value v_i(r)=w_i*r - c_i*r^2 - a_i (coverage grows linearly, fuel loss grows quadratically, plus a fixed activation cost that kills tiny-aperture mass-selection), and (3) add a saturating band-diversity bonus D per distinct altitude band occupied. The optimizer must simultaneously TUNE the aperture (denser packing but lower/negative per-disk value at large r) and SOLVE the induced geometric independent set, then spread across bands. The largest aperture is a trap.",
+  "objective": "max",
+  "theme": "orbital debris cleanup",
+  "title": "Orbital Debris Cleanup: Shared-Aperture Sweeper Deployment",
+  "strategies": [
+    "single-best (baseline): deploy the one cluster+aperture with the highest v_i(r); reproduces B, ratio ~0.1",
+    "fixed-aperture input-order greedy: pick a middle aperture, scan clusters in input order, deploy if v>0 and collision-free via a grid (ignores value ranking, aperture tuning, and bands)",
+    "aperture-sweep value-greedy: for every menu aperture sort clusters by v_i(r) descending, grid-greedily pack a collision-free independent set, add the band bonus, keep the best aperture (finds the sweet-spot r and the planted hidden grid)",
+    "local search: start from the aperture-sweep fleet and apply value-improving swaps / try re-seating deployments to gain extra distinct bands under the collision constraint"
+  ]
+}

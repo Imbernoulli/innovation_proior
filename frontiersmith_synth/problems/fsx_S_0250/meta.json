@@ -1,0 +1,16 @@
+{
+  "id": "fsx_S_0250",
+  "tier": "S",
+  "family": "maxsat-csp",
+  "seed_problem": "Weighted Max-SAT: maximize total weight of satisfied clauses in a synthetic weighted CNF; score = satisfied weight / baseline weight.",
+  "mutation": "input+theme: skin weighted Max-SAT as an archaeology trench-depth plan on an R x C dig grid; clauses ('find hypotheses') are spatially clustered over grid neighborhoods, with a stratum-dependent literal-sign lean (upper rows favor deep, lower rows favor shallow) so neither all-shallow nor all-deep is near-optimal, plus a pure-deep-clause fraction that makes the all-shallow baseline a genuinely mediocre reference. Objective stays weighted Max-SAT (maximize recovered artifact weight); score = recovered weight / all-shallow baseline weight.",
+  "objective": "max",
+  "theme": "archaeology dig grid",
+  "title": "Stratified Dig Grid: Trench-Depth Planning",
+  "strategies": [
+    "all-shallow baseline: leave every cell shallow (reproduces the scoring baseline B, ratio ~0.1)",
+    "weighted per-cell majority vote: dig deep iff the weight of hypotheses wanting the cell deep exceeds the weight wanting it shallow (interaction-free one pass)",
+    "hill-climbing local search with weighted delta-evaluation: flip any cell that increases recovered weight until no improving flip remains",
+    "multi-restart randomized local search: perturb the best plan / random restarts and keep the highest-weight plan found (escapes local optima created by the stratum frustration)"
+  ]
+}

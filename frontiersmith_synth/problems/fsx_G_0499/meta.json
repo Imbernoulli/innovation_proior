@@ -1,0 +1,18 @@
+{
+  "id": "fsx_G_0499",
+  "tier": "G",
+  "format": "A",
+  "family": "new-chem-molecule-assembly",
+  "eval_form": "quality-metric",
+  "seed_problem": "Assemble a molecular graph from fragments under valence/degree constraints maximizing a deterministic property score (a fixed additive QSAR surrogate); baseline = single fragment. cheminformatics.",
+  "mutation": "composite: fold three competing cheminformatics mechanisms into one deterministic QSAR surrogate over a fragment-assembly graph. (1) additive fragment binding contributions, (2) pharmacophore-class-dependent pairwise bond interactions (a C x C matrix with synergies AND clashes), and (3) a nonlinear ring-closure bonus Rb*(E-S+1) that rewards forming independent cycles -- all constrained by per-fragment valence/degree limits, a hard connectivity requirement, and a Lipinski-style piecewise-linear molecular-weight-overflow penalty. The best assembly must balance affinity, favorable bonding, ring formation, valence budget and weight; baseline = single best fragment.",
+  "objective": "max",
+  "theme": "drug discovery",
+  "title": "Fragment-Based Ligand Assembly: Balancing Affinity, Rings, and Drug-Likeness",
+  "strategies": [
+    "single-fragment baseline: output the fragment maximizing b_i minus the weight-overflow penalty (calibration point, ratio 0.1)",
+    "affinity-first greedy: add fragments in decreasing b_i, connecting each to the already-selected fragment with the most synergistic bond that still has a free valence; stop when marginal contribution (incl. weight penalty) turns negative, then add ring-closing bonds where q+Rb > 0",
+    "class-aware growth + ring augmentation + pruning: multi-restart randomized greedy over different seeds and fragment orders, prefer same-synergy-class clusters, saturate free valences with ring-closing bonds, then prune fragments whose marginal contribution is negative; keep the best-F assembly",
+    "cluster-and-cycle local search: detect dense positive-q pharmacophore clusters, build a ring-rich core there, attach high-b fragments as pendants under the valence budget, and 1-swap fragments to escape weight-penalty local optima"
+  ]
+}

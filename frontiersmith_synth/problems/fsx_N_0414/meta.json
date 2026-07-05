@@ -1,0 +1,18 @@
+{
+  "id": "fsx_N_0414",
+  "tier": "N",
+  "format": "A",
+  "family": "tree-arithmetic-labeling",
+  "eval_form": "quality-metric",
+  "seed_problem": "Root a tree, label each node in [1..V]; a root-leaf path blooms iff its labels are coprime (gcd=1) AND its label-sum is within a band; maximize total weight of blooming leaves.",
+  "mutation": "composite: (a) forbid label 1 so setwise-coprimality is genuinely binding (with V=4 every blooming path must carry the sole odd spark 3, coupling the number-theoretic and additive mechanisms); (b) restrict the alphabet to {2,3,4} so a single leaf level can only nudge a path-sum by +-2, forcing shallow flowers to be activated through SHARED ancestor inflation -- which ejects deeper siblings from the band. Baseline = minimum-sum coprime dosing.",
+  "objective": "max",
+  "theme": "botanical greenhouse zones",
+  "title": "Coprime Bloom Trellis",
+  "strategies": [
+    "reference dosing (root=3, rest=2): minimum-sum coprime labeling; blooms only medium-depth flowers already inside the band (the scoring baseline)",
+    "leaf-only tuner (greedy): keep ancestors at 2 and pick each flower's own level in {2,3,4} to slide its path-sum by +-2 into the band; activates near-band flowers only",
+    "per-subtree uniform inflation (strong): root fixed at 3; for each child subtree try a common internal level u in {2,3,4}, retune each leaf, keep the u maximizing that subtree's blooming weight -- captures shallow/planted/needle flowers and resolves trap brooms by value",
+    "coupled tree-DP over path-sum states (intended optimum, intractable at scale): choose per-node levels balancing shallow activation against sibling ejection while maintaining a coprime spark on each path"
+  ]
+}

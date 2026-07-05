@@ -1,0 +1,17 @@
+{
+  "id": "fsx_A_0118",
+  "tier": "A",
+  "format": "D",
+  "family": "tensor-decomposition-rank",
+  "eval_form": "flops",
+  "theme": "traffic signal grid",
+  "title": "Signal-Grid Actuation Tensor: Fewest Shared Multiplier Units",
+  "objective": "optimize",
+  "source_frameworks": ["AlphaEvolve"],
+  "strategies": [
+    "naive one-multiplier-per-nonzero-coefficient decomposition (trivial, reproduces the nnz baseline)",
+    "fixed last-axis slice-rank factorization: sum of frontal-slice ranks along the phase axis (greedy)",
+    "best-of-three-axes slice-rank factorization: pick the axis with the fewest total slice ranks (strong)",
+    "true CP-rank search / rational ALS below the slice bound -- open ceiling, uncovered"
+  ]
+}

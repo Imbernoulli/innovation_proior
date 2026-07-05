@@ -1,0 +1,16 @@
+{
+  "id": "fsx_S_0019",
+  "tier": "S",
+  "family": "network-design",
+  "seed_problem": "Build a connected relay network where no node has degree > 3, minimizing total cable length; checker validates connectivity+degree and scores baseline/cost.",
+  "mutation": "composite: keep the min-length degree-capped connectivity goal but (a) restrict the output so every marker has a per-marker collar cap in {2,3,4} (degree-constrained, NP-hard), and (b) generalize the input by splitting markers into mandatory artifact chambers (terminals) and optional relay posts (Steiner junction candidates) -- only the chambers must be connected, so the polynomial Euclidean MST becomes a degree-constrained Steiner tree.",
+  "objective": "min",
+  "theme": "archaeology dig grid",
+  "title": "Buried Cable Trenches: Degree-Capped Artifact Comms on a Dig Grid",
+  "strategies": [
+    "chamber chain baseline: link the artifact chambers in input order into a single path (always feasible, matches the checker baseline, ratio ~0.1)",
+    "nearest-neighbour chamber path: start at a chamber and repeatedly hop to the closest unwired chamber, forming a short degree-2 path (ignores relay posts)",
+    "degree-constrained Kruskal over chambers: add globally shortest chamber-chamber trenches whose endpoints still have free collars and that merge two components, then repair leftover components via spare-collar leaves; keep the shorter of tree vs NN path",
+    "Steiner routing through relay posts: exploit the optional posts as junction points (Fermat/Steiner topology) and apply length-reducing edge-swap local search that respects the collar caps"
+  ]
+}

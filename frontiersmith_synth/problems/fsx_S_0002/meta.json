@@ -1,0 +1,16 @@
+{
+  "id": "fsx_S_0002",
+  "tier": "S",
+  "family": "covering-facility-location",
+  "seed_problem": "Place watchtowers on a forest graph to cover every cell within radius r, minimizing total cost.",
+  "mutation": "composite: retheme watchtowers -> variable-reach fish ladders on a river tree, per-node cost tied to reach (facility-location trade-off), and cover only a demand subset (spawning grounds) rather than every cell -> weighted partial radius cover / min-cost dominating-set variant.",
+  "objective": "min",
+  "theme": "salmon migration ladder",
+  "title": "Salmon Migration Ladder Placement",
+  "strategies": [
+    "trivial baseline: build one ladder at every spawning ground (always feasible)",
+    "cost-effectiveness greedy: repeatedly build the ladder maximizing newly-covered spawning grounds per unit cost",
+    "multi-start randomized greedy with redundancy pruning: diversify tie-breaking over restarts and drop ladders made redundant by later picks",
+    "LP-relaxation rounding / local-search swaps trading one high-reach hub for several small local ladders"
+  ]
+}

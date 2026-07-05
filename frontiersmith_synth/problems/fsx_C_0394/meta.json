@@ -1,0 +1,15 @@
+{
+  "id": "fsx_C_0394",
+  "tier": "C",
+  "format": "B",
+  "family": "synthetic-algorithmic-generalization",
+  "eval_form": "correctness",
+  "theme": "harbor container port",
+  "title": "Harbor Container Port -- Berth-Code Prediction (Dyck length-generalization)",
+  "strategies": [
+    "trivial: predict the single most-frequent training berth code for every UNLOAD (~0.1)",
+    "greedy: track the LIFO stack and learn a code map keyed on the removed container's bay-type only",
+    "strong: track the stack and learn the full hidden (top,under) local law with stupid-backoff, generalizing to the longer/deeper OOD manifests",
+    "invalid: emit a wrong-shape / out-of-range answer -> 0"
+  ]
+}

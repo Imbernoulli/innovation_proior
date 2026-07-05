@@ -1,0 +1,17 @@
+{
+  "id": "fsx_S_0236",
+  "tier": "S",
+  "format": "A",
+  "family": "partition-clustering",
+  "seed_problem": "Partition a weighted graph into two balanced halves maximizing cut weight; checker validates balance and scores cut/baseline.",
+  "mutation": "composite: change the objective from plain max-cut to a mixed agreement/disagreement earned-value (correlation-clustering/Ising-flavored) objective where each wire is one of two types -- coupling wires reward being CUT, control-bus wires reward being UNCUT -- while keeping the balanced-bisection output constraint (exactly n/2 modules per cryostat). Instances plant a hidden balanced partition (uncorrelated with id order) plus type noise, so the id-order reference split is only a mediocre baseline and the optimum is intractable.",
+  "objective": "max",
+  "theme": "quantum lab wiring",
+  "title": "Quantum Lab Wiring: Twin-Cryostat Module Split",
+  "strategies": [
+    "reference (id-order) split baseline: modules 1..n/2 to cryostat 0, rest to cryostat 1",
+    "greedy constructive: place modules in index order, assign each to the cryostat maximizing earned value against already-placed modules while respecting the n/2 capacity",
+    "local search: start from greedy and apply balance-preserving pair swaps (module on side 0 <-> module on side 1) that increase earned value; deterministic seeded hill climbing with a swap budget",
+    "planted-structure / Kernighan-Lin-style recovery of the hidden balanced partition despite type noise"
+  ]
+}

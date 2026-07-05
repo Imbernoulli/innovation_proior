@@ -1,0 +1,144 @@
+# Volcano Watch: Solar/Diesel Compute Replay for Sensor Backlogs
+
+## Problem
+
+A remote volcano observatory runs a single edge computer that must crunch the backlogs of
+its monitoring arrays (seismic, gas, tilt, thermal). Time is divided into `T` discrete
+**work steps** (the fixed daily trace). At each step the computer can advance **at most one**
+monitoring task by one unit of compute, or sit idle.
+
+Power for the computer comes from two sources, chosen **per step**:
+
+- **Solar (spot):** cheap, but only usable at steps where the sun/battery trace says it is
+  available. Step `t` is solar-capable iff `a_t = 1`; running one step on solar there costs
+  `cs_t`.
+- **Diesel (on-demand):** always usable at any step, but expensive; running one step on
+  diesel at step `t` costs `cd_t` (with `cd_t >= cs_t`).
+- **Pause (idle):** advance nothing, cost `0`.
+
+There are `N` monitoring **tasks**. Task `j` becomes available at release step `r_j`, must be
+finished no later than deadline step `d_j`, and needs exactly `p_j` compute steps to clear its
+backlog. Every step you spend on task `j` must satisfy `r_j <= t <= d_j`. If task `j` receives
+at least `p_j` steps (anywhere in its window), its backlog is **cleared**; otherwise its data
+is lost and you pay a **data-loss penalty** `v_j`.
+
+Because there is only one computer and only some steps are solar-capable, tasks compete for the
+cheap steps inside their windows. You want to pick which tasks to clear, when, and on which power
+source, so that the **total operating cost** — power burned plus data lost — is as small as
+possible. No efficient optimal algorithm is known (selecting which tasks to clear under the
+shared cheap-step budget generalizes knapsack), so heuristics are expected.
+
+## Input
+
+```
+T N
+a_1 cs_1 cd_1
+a_2 cs_2 cd_2
+...
+a_T cs_T cd_T
+r_1 d_1 p_1 v_1
+r_2 d_2 p_2 v_2
+...
+r_N d_N p_N v_N
+```
+
+- Line 1: number of work steps `T` and number of tasks `N`.
+- Each of the next `T` lines describes step `t` (`1..T`): the solar flag `a_t` (`0` or `1`),
+  the solar cost `cs_t`, and the diesel cost `cd_t`.
+- Each of the next `N` lines describes task `j` (`1..N`): release `r_j`, deadline `d_j`,
+  required compute steps `p_j`, and data-loss penalty `v_j`. Always `1 <= r_j <= d_j <= T` and
+  `1 <= p_j <= d_j - r_j + 1` (a task always fits in its own window if given the whole window).
+
+## Output
+
+Print exactly `T` lines, one per work step `t = 1, 2, ..., T`, each with two integers:
+
+```
+job_t mode_t
+```
+
+- `job_t` is the task advanced at step `t`: `0` means **pause** (idle), otherwise `1..N`.
+- `mode_t` is the power source: `0` = **solar**, `1` = **diesel**. When `job_t = 0` the mode is
+  ignored but must still be `0` or `1`.
+
+## Feasibility
+
+An output is feasible if and only if all of the following hold:
+
+- exactly `T` lines are printed, each a valid `(job_t, mode_t)` pair with `0 <= job_t <= N` and
+  `0 <= mode_t <= 1`;
+- whenever `job_t = j != 0`, the step lies in the task window: `r_j <= t <= d_j`;
+- whenever an active step uses solar (`mode_t = 0`), that step is solar-capable: `a_t = 1`.
+
+Any output violating these rules scores 0.
+
+## Objective
+
+Let a step `t` with `job_t != 0` cost `cs_t` if `mode_t = 0` (solar) and `cd_t` if `mode_t = 1`
+(diesel); idle steps cost `0`. Let `cnt_j` be the number of steps assigned to task `j`; task `j`
+is *cleared* iff `cnt_j >= p_j`. Minimize the total operating cost
+
+```
+F = sum over active steps of the chosen power cost
+  + sum over tasks NOT cleared of v_j.
+```
+
+## Scoring
+
+Let `B` be the cost of the **do-nothing baseline** (pause every step): it burns no power and
+clears no task, so `B = sum_j v_j` (all penalties paid). Your score on a test is
+
+```
+ratio = min(1.0, (B / max(1, F)) / 10)
+```
+
+so matching the do-nothing cost scores `0.1`, halving it scores `0.2`, and driving total cost
+down to one tenth of the do-nothing penalty (or lower) reaches the capped score `1.0`. Larger is
+better. Per-test scores are averaged.
+
+## Constraints
+
+- `1 <= T <= 5000`
+- `1 <= N <= 2000`
+- `a_t in {0, 1}`, `1 <= cs_t <= cd_t <= 1000000`
+- `1 <= r_j <= d_j <= T`, `1 <= p_j <= d_j - r_j + 1`, `1 <= v_j <= 1000000`
+- Time limit: 5s
+- Memory limit: 512 MiB
+
+## Example
+
+Input:
+```
+6 3
+1 2 12
+0 3 15
+1 1 10
+1 2 14
+0 2 11
+1 3 13
+1 3 2 20
+3 6 2 10
+2 5 3 12
+```
+
+Here the do-nothing baseline pays every penalty: `B = 20 + 10 + 12 = 42`.
+
+Consider clearing tasks 1 and 2 on solar and dropping task 3. Task 1 (window `[1,3]`, needs 2)
+takes solar steps `t=1` and `t=3` at cost `2 + 1 = 3`. Task 2 (window `[3,6]`, needs 2) takes
+solar steps `t=4` and `t=6` at cost `2 + 3 = 5`. Task 3 (window `[2,5]`, needs 3) now has only
+steps `t=2` and `t=5` free inside its window — just 2, fewer than 3 — so it stays uncleared and
+pays `12`.
+
+A valid output:
+```
+1 0
+0 0
+1 0
+2 0
+0 0
+2 0
+```
+
+Power cost `= 2 + 1 + 2 + 3 = 8`, dropped-task penalty `= 12`, so `F = 8 + 12 = 20` and
+`ratio = min(1.0, (42 / 20) / 10) = 0.21`. Choosing which task to sacrifice for the scarce solar
+steps is what buys the improvement over doing nothing.

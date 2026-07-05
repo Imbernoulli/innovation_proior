@@ -1,0 +1,16 @@
+{
+  "id": "fsx_B_0359",
+  "tier": "B",
+  "format": "B",
+  "family": "multiobjective-hypervolume",
+  "eval_form": "quality-metric",
+  "theme": "quantum lab wiring",
+  "title": "Cryo Wiring Harness: Budgeted Hypervolume Search on a DTLZ2 Cost Surrogate",
+  "objective": "max",
+  "strategies": [
+    "single centre layout (all vars 0.5): one middle trade-off on the sphere -> tiny hypervolume (baseline)",
+    "on-sphere random scatter: pin distance vars at 0.5, randomise angle vars -> beats the centre but clumps",
+    "on-sphere near-uniform grid incl. axis extremes: even tiling of the front -> large hypervolume with finite-grid headroom",
+    "collapse distance vars off 0.5 (g blows up): every cost exceeds the reference -> nothing counted -> hypervolume 0 (invalid)"
+  ]
+}

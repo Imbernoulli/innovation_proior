@@ -1,0 +1,16 @@
+{
+  "id": "fsx_A_0101",
+  "tier": "A",
+  "format": "C",
+  "family": "greedy-priority-construction",
+  "eval_form": "correctness",
+  "theme": "power grid",
+  "title": "Resonance-Free Substation Deployment",
+  "objective": "optimize",
+  "strategies": [
+    "audit-grid baseline: phase-0/1 grid on one fixed line (2^(n-1) substations)",
+    "lexicographic greedy over the base-3 config order (finds the {0,1}^n cap, ~2^n)",
+    "multi-start randomised-order greedy keeping the largest resonance-free deployment",
+    "priority/ordering heuristics over F_3^n vectors under the no-collinear-triple validity check"
+  ]
+}

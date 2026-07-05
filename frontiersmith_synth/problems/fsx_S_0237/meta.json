@@ -1,0 +1,18 @@
+{
+  "id": "fsx_S_0237",
+  "tier": "S",
+  "format": "A",
+  "family": "coloring-labeling",
+  "eval_form": "quality-metric",
+  "seed_problem": "Assign frequencies to transmitters minimizing total interference conflicts under a channel budget; checker scores baseline_conflicts/achieved.",
+  "mutation": "composite: change the goal from a plain same-channel conflict count to a weighted distance-constrained labeling (T-coloring), where each contact pairing has its own separation demand d and residual risk w*max(0,d-|c_u-c_v|); and generalize the input from a clean transmitter graph to an over-constrained pandemic contact network (K+1 cliques + diffuse community edges) so no perfect assignment exists and greedy vs local-search diverge.",
+  "objective": "min",
+  "theme": "pandemic contact net",
+  "title": "Cohort Shuffle: Minimizing Transmission Overlap in a Contact Network",
+  "strategies": [
+    "do-nothing baseline: put every person in cohort 1 (achieves B, the maximal residual risk)",
+    "sequential greedy: process people in order, assign each the cohort minimizing added residual risk against already-assigned neighbors",
+    "best-response local search: from a greedy start, repeatedly move each person to their cost-minimizing cohort until no single move improves the total",
+    "randomized multi-restart local search: run best-response from the greedy start plus several fixed-seed random starts, keep the lowest-risk assignment found"
+  ]
+}

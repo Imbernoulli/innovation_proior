@@ -1,0 +1,18 @@
+{
+  "id": "fsx_S_0071",
+  "tier": "S",
+  "format": "A",
+  "family": "independent-set-clique",
+  "eval_form": "quality-metric",
+  "seed_problem": "Select a maximum-weight set of mutually non-conflicting research sites on a general conflict graph; checker validates independence and scores weight/baseline.",
+  "mutation": "input: generalize the conflict graph from an easy (bipartite / clique-partition) structure to a general graph built from zone cliques plus random cross-zone conflicts among high-profit routes, so maximum-weight independent set is NP-hard and profit-greedy vs. weight/degree local search diverge; scored as achieved profit over the best-single-route baseline.",
+  "objective": "max",
+  "theme": "recycling depot routes",
+  "title": "Recycling Depot Routes: Non-Conflicting Collection Plan",
+  "strategies": [
+    "trivial baseline: run only the single most-profitable collection route",
+    "profit-descending greedy: take routes from most to least profitable, skipping any that conflict with a chosen route",
+    "weight/degree (GWMIN) greedy: repeatedly take the alive route maximizing profit/(remaining-conflict-degree+1)",
+    "randomized multi-restart local search: perturb the greedy order, then improve with free-add passes and (1 -> many) swap moves, keeping the best independent selection"
+  ]
+}

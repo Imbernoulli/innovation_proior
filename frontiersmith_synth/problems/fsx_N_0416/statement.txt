@@ -1,0 +1,130 @@
+# Grid Hardening Attack: Maximizing Source-to-Sink Effective Resistance
+
+## Problem
+
+You are a red-team analyst probing a power distribution grid. The grid is an
+undirected electrical network: each transmission line (edge) is a resistor with an
+integer resistance, and two special buses are singled out — a **source** `s` and a
+**sink** `t`. The grid's electrical robustness between `s` and `t` is measured by the
+**effective resistance** `R(s,t)` — the resistance an ohmmeter would read across the
+two buses when the whole network is treated as one equivalent resistor.
+
+Your attack is a **line-interdiction with a sabotage budget**. Each line `e` has a
+**removal cost** `c_e` (the effort to physically cut it). You may cut any subset `S` of
+lines whose total cost does not exceed a budget `B`, subject to the hard constraint that
+**`s` and `t` must remain electrically connected** afterwards (you must never fully
+islanding the sink from the source). Cutting lines can only *raise* the effective
+resistance (Rayleigh's monotonicity law), degrading the grid. Your goal is to cut lines
+so as to **maximize** the resulting effective resistance `R(s,t)`.
+
+This is deceptively hard. Cutting the single shortest / lowest-resistance path does
+**not** maximize `R(s,t)`: as long as parallel paths remain, resistance barely moves.
+The winning attack must funnel current onto ever-longer detours while never severing the
+last surviving `s`-`t` route, all under the cost budget — a coupling of a knapsack-style
+budget, an `s`-`t` connectivity side-constraint, and a spectral/electrical objective.
+
+## Definitions
+
+The network is a weighted graph. Give each line `e` a **conductance** `g_e = 1 / r_e`.
+Parallel lines between the same pair of buses add their conductances. For a graph `H`
+in which `s` and `t` lie in the same connected component, the effective resistance
+`R_H(s,t)` is defined by the Laplacian minor formula
+
+```
+R_H(s,t) = det( L^{(s,t)} ) / det( L^{(s)} )
+```
+
+where `L` is the weighted Laplacian of the component containing `s` (diagonal =
+sum of incident conductances, off-diagonal `(u,v)` = `-`(sum of conductances of lines
+between `u` and `v`)), `L^{(s)}` is `L` with the row and column of `s` deleted, and
+`L^{(s,t)}` is `L` with the rows and columns of **both** `s` and `t` deleted. Buses in
+other components (islanded by your cuts) do not affect `R(s,t)` and are ignored. This
+value equals the classical two-terminal effective resistance in ohms and is a positive
+real number.
+
+## Input
+
+```
+n m s t B
+u_1 v_1 r_1 c_1
+u_2 v_2 r_2 c_2
+...
+u_m v_m r_m c_m
+```
+
+- `n` buses (`1`-indexed), `m` lines.
+- `s` `t` are the source and sink buses, `s != t`.
+- `B` is the total sabotage budget.
+- Line `i` connects buses `u_i` and `v_i` (`u_i != v_i`), has integer resistance
+  `r_i` and integer removal cost `c_i`. Parallel lines (repeated bus pairs) may occur.
+- The input network is connected between `s` and `t`.
+
+## Output
+
+```
+K
+e_1 e_2 ... e_K
+```
+
+- `K` is the number of lines you cut (`0 <= K <= m`).
+- The second line lists the `K` distinct line indices (`1`-indexed by input order).
+  If `K = 0`, print an empty second line (or omit it).
+
+## Feasibility
+
+An output is feasible iff:
+1. `0 <= K <= m` and the `K` line indices are distinct and each in `[1, m]`.
+2. The total removal cost `sum_{i in S} c_i <= B`.
+3. After deleting the cut lines, `s` and `t` are still in the same connected component.
+
+An infeasible output scores `0`.
+
+## Objective
+
+Let `F = R_H(s,t)` be the effective resistance of the network `H` obtained by deleting
+your cut lines. **Maximize `F`.**
+
+## Scoring
+
+Let `Base = R_G(s,t)` be the effective resistance of the *original* network `G` with no
+lines cut (this is always feasible — cutting nothing costs `0`). By Rayleigh's
+monotonicity, every feasible attack satisfies `F >= Base`. Your ratio is
+
+```
+score = min( 1000, 100 * F / Base ) / 1000
+```
+
+so cutting nothing scores exactly `0.1`, and driving the effective resistance to `10x`
+the original (or more) attains the capped maximum `1.0`. The final score is the mean of
+per-test scores.
+
+## Constraints
+
+- `2 <= n <= 600`, `1 <= m <= 4000`.
+- `1 <= r_i <= 9`, `1 <= c_i <= 9`.
+- `0 <= B < sum_i c_i`.
+- Time limit: 5 s. Memory limit: 512 MB.
+
+## Example
+
+Input:
+```
+4 5 1 4 2
+1 2 1 1
+2 4 1 1
+1 3 1 1
+3 4 1 1
+1 4 1 1
+```
+
+Here `s=1`, `t=4`. Two length-2 paths (`1-2-4` and `1-3-4`, each `2` ohms) and one direct
+line `1-4` (`1` ohm) run in parallel, so `Base = R_G(1,4) = 1 / (1/2 + 1/2 + 1) = 0.5`.
+
+A feasible attack: cut lines `3` (`1-3`) and `5` (`1-4`), total cost `2 <= B = 2`. The
+survivors are `1-2-4` (a `2`-ohm series path) plus a dead stub `3-4`, which carries no
+current. Now `s` and `t` are joined only by the `2`-ohm path, so `F = 2`. The ratio is
+`100 * 2 / 0.5 = 400`, giving `score = 400 / 1000 = 0.4`.
+
+Cutting instead the single lowest-resistance line `5` (`1-4`) alone leaves the two
+parallel `2`-ohm paths: `F = 1`, ratio `200`, `score = 0.2` — illustrating that hitting
+the "obvious" shortest link is far from optimal.

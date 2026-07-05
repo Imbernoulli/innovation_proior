@@ -1,0 +1,18 @@
+{
+  "id": "fsx_S_0036",
+  "tier": "S",
+  "format": "A",
+  "family": "online-to-offline-replay",
+  "eval_form": "quality-metric",
+  "seed_problem": "Given a fixed availability/deadline trace, choose Spot/On-Demand/pause per step to minimize cost; checker replays the trace and scores baseline/cost.",
+  "mutation": "composite: replay the online spot-vs-on-demand-vs-pause decision as a STATIC full-trace optimization, and generalize the single machine to a heterogeneous fleet of generators with start-up costs and minimum-up (warm-up) times. This turns the easy myopic decision into offline unit commitment (NP-hard): a per-step commitment must cover a wind-adjusted demand trace while trading no-load cost, fuel rate, start-up churn and warm-up coupling.",
+  "objective": "min",
+  "theme": "polar research base",
+  "title": "Polar Research Base: Generator Commitment Replay",
+  "strategies": [
+    "all-on baseline: commit every generator for the whole horizon (always feasible, maximally wasteful)",
+    "myopic per-step greedy: keep warm-up-forced units on, then add lowest no-load units until this step's residual demand is covered",
+    "baseload + peakers local search: start from greedy, then promote cheap-fuel units to full-horizon baseload, consolidate runs to kill start-up churn, and drop redundant units",
+    "look-ahead / DP-style commitment: reason over the whole trace about when to pre-warm a generator across a demand valley versus paying repeated start-ups"
+  ]
+}

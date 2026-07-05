@@ -1,0 +1,118 @@
+# Carnival Ride Circuit: Minimum Weighted Ride-Opening Schedule
+
+## Problem
+
+A traveling carnival is rolling into town and must **assemble** its rides before the
+gates open. Each **ride** is built by a fixed **assembly chain** — an ordered sequence
+of tasks that must be done one after another (you cannot start a task of a ride until
+the previous task of that same ride has finished). Every task needs one specific
+**specialist crew** (riggers, electricians, safety inspectors, …), and a crew can work
+on **only one task at a time**.
+
+A ride is **open** the moment its last assembly task finishes. Each ride has a
+**popularity weight** (how much revenue it draws per minute it is open): the sooner a
+popular ride opens, the better. You must choose a **start time** (in minutes) for every
+task so that:
+
+- the tasks of each ride run in order (precedence), and
+- no crew is ever handling two tasks at the same time (no-overlap).
+
+For a ride `j` let `C_j` be the finish time of its last task (its opening time). Your
+goal is to make the **total weighted opening time** `sum_j w_j * C_j` as small as
+possible — i.e. open the popular rides early.
+
+This is a job-shop scheduling instance (rides are jobs, crews are machines, tasks are
+operations) under the total-weighted-completion-time objective. Finding the true
+optimum is NP-hard, so any feasible schedule is accepted and scored by how small its
+weighted opening time is.
+
+## Input
+
+```
+n m
+ride_1
+ride_2
+...
+ride_n
+```
+
+- Line 1: two integers `n` (number of rides) and `m` (number of crews).
+- Crews are numbered `0 .. m-1`.
+- Each of the next `n` lines describes one ride `j` (0-indexed by line order). The line
+  starts with an integer `w` (the popularity weight of the ride), then an integer `o`
+  (the number of tasks), followed by `o` pairs `crew duration` listing the tasks in the
+  order they must be performed. `crew` is in `[0, m-1]` and `duration >= 1`.
+
+## Output
+
+Print `n` lines. Line `j` must contain exactly `o` non-negative integers: the start
+times (in minutes) of the tasks of ride `j`, in ride order.
+
+## Feasibility
+
+Let `s[j][k]` be the start time of task `k` of ride `j` and `d[j][k]` its duration.
+A schedule is feasible iff:
+
+- `0 <= s[j][k]` and each is an integer;
+- **precedence**: `s[j][k] >= s[j][k-1] + d[j][k-1]` for every `k >= 1`;
+- **no-overlap**: for any two tasks assigned to the same crew, their intervals
+  `[s, s+d)` do not overlap.
+
+Any output that is malformed, out of range, or violates a constraint scores 0.
+
+## Objective
+
+For ride `j` let its opening time be `C_j = s[j][o-1] + d[j][o-1]` (finish of its last
+task). Minimize the **total weighted opening time**
+
+```
+F = sum over rides j of  w_j * C_j.
+```
+
+## Scoring
+
+Let `B` be the total weighted opening time of the **fully-serial** schedule that runs
+every task back-to-back on one global timeline in ride order (ride 0's tasks first,
+then ride 1's, and so on). This is a valid but poor schedule that the grader computes
+itself, and `B > 0`. Your score on a test is
+
+```
+ratio = min(1.0, 0.1 * B / F)
+```
+
+where `F` is your total weighted opening time. The fully-serial schedule scores exactly
+`0.1`; a schedule ten times better than serial (or better) scores the maximum `1.0`.
+The overall score is the average ratio over all tests.
+
+## Constraints
+
+- `1 <= n <= 30`, `2 <= m <= 15`.
+- `1 <= o <= m` tasks per ride; `1 <= duration <= 99`; `1 <= w <= 20`.
+- Start times fit in 32-bit range (`0 <= s <= 2*10^9`).
+- Time limit: 5 s. Memory limit: 512 MB.
+
+## Example
+
+Input:
+```
+2 2
+3 2 0 3 1 2
+1 2 1 2 0 4
+```
+
+Ride 0 (weight 3): task on crew 0 for 3 min, then crew 1 for 2 min.
+Ride 1 (weight 1): task on crew 1 for 2 min, then crew 0 for 4 min.
+
+A feasible output:
+```
+0 3
+0 3
+```
+Ride 0: task0 on crew0 `[0,3)`, task1 on crew1 `[3,5)`, so `C_0 = 5`. Ride 1: task0 on
+crew1 `[0,2)`, task1 on crew0 `[3,7)`, so `C_1 = 7`. Crew 0 handles `[0,3)` and `[3,7)`
+(no overlap); crew 1 handles `[0,2)` and `[3,5)` (no overlap); precedence holds.
+The weighted opening time is `F = 3*5 + 1*7 = 22`.
+
+The fully-serial baseline runs ride 0 (`[0,3),[3,5)`, `C_0=5`) then ride 1
+(`[5,7),[7,11)`, `C_1=11`), giving `B = 3*5 + 1*11 = 26`. So this output scores
+`ratio = min(1, 0.1 * 26 / 22) = 0.118`.

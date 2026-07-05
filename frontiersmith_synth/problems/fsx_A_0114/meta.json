@@ -1,0 +1,16 @@
+{
+  "id": "fsx_A_0114",
+  "tier": "A",
+  "format": "C",
+  "family": "extremal-point-config",
+  "eval_form": "quality-metric",
+  "theme": "lunar habitat",
+  "title": "Lunar Habitat Module Dispersion: Maximizing the Minimum Triangle Area",
+  "objective": "max",
+  "strategies": [
+    "central ring baseline: place all n modules on a small regular n-gon of radius 0.55*inradius about the plot incentre (reproduces the checker baseline, ~0.1)",
+    "wider-ring search: sweep the concentric-ring radius and rotation phase, keeping the ring whose minimum triangle area is largest (still one ring, but pushed outward)",
+    "independent-point local search: seed from spread rings and a barycentric lattice, then repeatedly relocate a vertex of the current minimum-area triangle to a feasible spot that raises the global minimum triangle area, with seeded multi-restart and random kicks",
+    "boundary-aware / corner-exploiting layouts that push some modules toward the plot corners and edges to enlarge the smallest triangle formed by any three modules"
+  ]
+}

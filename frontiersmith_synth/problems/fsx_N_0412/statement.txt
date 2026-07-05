@@ -1,0 +1,143 @@
+# Resonant Waggle Nectar: Parity-Gated Foraging Routes
+
+## Problem
+
+In the *Hollow Oak* apiary, every worker bee must commit to one of two heading
+lobes for the day: it either flies to the **EAST** meadow (`1`) or the **WEST**
+meadow (`0`). There are `n` bees, numbered `1..n`.
+
+The hive's scouts have advertised `m` **nectar routes** by waggle dance. Each route
+`j` is a promise of `w_j` units of nectar, but a route only *resonates* — and only
+then pays out — when a very particular number of its enlisted foragers actually
+follow the heading the dance asked for.
+
+Concretely, route `j` carries a list of **signals**. A signal names a bee `v` and a
+requested heading; a positive literal `+v` means "bee `v` should fly EAST", a
+negative literal `-v` means "bee `v` should fly WEST". A signal is **met** when
+bee `v`'s chosen heading equals the requested one. Let `c_j` be the number of met
+signals on route `j`.
+
+Here is the twist that makes the Hollow Oak dances special. Route `j` also carries a
+**resonance target** `r_j` in `{0, 1, 2}`. The route pays its `w_j` nectar **only if**
+
+```
+c_j  ≡  r_j   (mod 3).
+```
+
+Otherwise the dance is out of phase and the route pays nothing — even if many
+signals are met. Satisfying *more* signals is not automatically better; you must land
+the met-signal count on the right residue modulo 3.
+
+You choose every bee's heading. **Maximize the total nectar collected**, i.e. the sum
+of `w_j` over the routes whose met-signal count is congruent to their resonance target
+modulo 3.
+
+This is a parity-coupled weighted MaxSAT variant: the resonance-mod-3 gate couples the
+routes non-linearly, the optimum is unknown and the exact problem is NP-hard, so
+heuristics (per-bee best response, single-flip hill climbing, multi-restart local
+search) are expected and diverge.
+
+## Input
+
+The first line contains two integers:
+
+```
+n m
+```
+
+- `n` — number of bees (variables), numbered `1..n`.
+- `m` — number of nectar routes (clauses).
+
+Each of the next `m` lines describes one route:
+
+```
+w r k l_1 l_2 ... l_k
+```
+
+- `w` — the route's nectar value (`1 <= w`).
+- `r` — the resonance target (`0 <= r <= 2`).
+- `k` — the number of signals on this route (`1 <= k`).
+- `l_1 ... l_k` — the signals: each is a nonzero integer; `+v` (with `1 <= v <= n`)
+  means "bee `v` EAST", `-v` means "bee `v` WEST". The variables named on one route
+  are pairwise distinct (`|l_a| != |l_b|` for `a != b`).
+
+## Output
+
+Print `n` integers `x_1 x_2 ... x_n`, separated by whitespace, where `x_v` is the
+heading chosen for bee `v`: `1` for EAST, `0` for WEST.
+
+Printing `n` zeros (all bees WEST) is always a valid submission.
+
+## Feasibility
+
+An output is feasible iff it consists of exactly `n` integers, each equal to `0` or
+`1`, and nothing else follows. Any other output scores `0`.
+
+## Objective
+
+For an assignment `x`, let `c_j(x)` be the number of met signals on route `j`. The
+route contributes iff `c_j(x) ≡ r_j (mod 3)`. Your collected nectar is
+
+```
+F(x) = sum over routes j with c_j(x) ≡ r_j (mod 3) of w_j.
+```
+
+You are **maximizing** `F(x)`.
+
+## Scoring
+
+Let `B` be the nectar collected by the all-WEST assignment (every `x_v = 0`), which the
+grader guarantees to be positive. The score for a test is
+
+```
+ratio = min(1.0, 0.1 * F / B).
+```
+
+The all-WEST submission scores exactly `0.1`; matching a tenfold improvement
+(`F = 10*B`) caps the test at `1.0`. Your overall score is the mean ratio across all
+tests.
+
+## Constraints
+
+- `1 <= n <= 1500`.
+- `1 <= m <= 12000`.
+- `1 <= k <= 7` signals per route; `1 <= w <= 100`.
+- Every route names pairwise-distinct bees.
+- Time limit: 5 s. Memory limit: 512 MiB.
+
+## Example
+
+Input:
+
+```
+3 3
+5 0 2 1 2
+4 1 2 -1 3
+6 2 3 1 -2 3
+```
+
+Three bees, three routes.
+
+- Route 1: `w=5`, `r=0`, signals `{+1, +2}`.
+- Route 2: `w=4`, `r=1`, signals `{-1, +3}`.
+- Route 3: `w=6`, `r=2`, signals `{+1, -2, +3}`.
+
+The all-WEST baseline `x = (0,0,0)`:
+
+- Route 1: neither `+1` nor `+2` met, `c=0`, `0 ≡ 0` -> pays `5`.
+- Route 2: `-1` met (bee 1 WEST), `+3` not met, `c=1`, `1 ≡ 1` -> pays `4`.
+- Route 3: `-2` met, others not, `c=1`, `1 ≢ 2` -> pays `0`.
+
+So `B = 9`.
+
+Now consider `x = (0, 0, 1)` (only bee 3 flies EAST):
+
+- Route 1: `c=0`, `0 ≡ 0` -> pays `5`.
+- Route 2: `-1` met, `+3` met, `c=2`, `2 ≢ 1` -> pays `0`.
+- Route 3: `-2` met, `+3` met, `c=2`, `2 ≡ 2` -> pays `6`.
+
+So `F = 11`, and this test would score `min(1.0, 0.1 * 11 / 9) = 0.1222`.
+
+Notice that flipping bee 3 EAST *gained* route 3 but *lost* route 2, because pushing
+route 2's met-signal count from `1` to `2` knocked it off its resonance residue. That
+tension — more met signals can drop a route out of phase — is the heart of the problem.

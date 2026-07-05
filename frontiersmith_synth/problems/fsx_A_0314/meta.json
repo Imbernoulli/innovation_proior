@@ -1,0 +1,16 @@
+{
+  "id": "fsx_A_0314",
+  "tier": "A",
+  "format": "C",
+  "family": "extremal-point-config",
+  "eval_form": "quality-metric",
+  "theme": "wind-farm turbines",
+  "title": "Wide-Wake Turbine Siting: Maximize the Thinnest Wake Triangle",
+  "objective": "max",
+  "strategies": [
+    "ring baseline: place turbines equally spaced on a circle inscribed in the field (reproduces the checker baseline, ~0.1)",
+    "incremental spacing: insert turbines one at a time, each at the grid candidate that maximizes the current thinnest wake triangle",
+    "annealed relaxation: start from the incremental layout, then hill-climb the binding (thinnest) triangle's vertices with seeded random moves to enlarge the minimum area",
+    "invalid: emit turbines outside the field / wrong count (scores 0)"
+  ]
+}

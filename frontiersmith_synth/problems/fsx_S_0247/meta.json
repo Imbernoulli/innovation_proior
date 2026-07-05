@@ -1,0 +1,16 @@
+{
+  "id": "fsx_S_0247",
+  "tier": "S",
+  "family": "network-design",
+  "seed_problem": "Build a connected relay network where no node has degree > 3, minimizing total cable length; checker validates connectivity+degree and scores baseline/cost.",
+  "mutation": "composite: keep the min-length connectivity goal but (a) restrict the output to a per-location degree-capped network (caps in {2,3,4}), and (b) generalize the input so only a marked subset of locations (light poles) must be connected while the rest (junction cabinets) are optional Steiner points -- turning the polynomial Euclidean minimum spanning tree into the NP-hard degree-constrained Steiner tree.",
+  "objective": "min",
+  "theme": "smart-city lighting",
+  "title": "Luminet: Degree-Capped Smart-City Lighting Backhaul",
+  "strategies": [
+    "pole-chain baseline: wire the light poles in input index order into a single path (always feasible since every pole cap >= 2, matches the checker baseline, ratio ~0.1)",
+    "nearest-neighbour pole path: start at a pole and repeatedly hop to the closest unvisited pole, ignoring junction cabinets -- a short degree-2 chain",
+    "degree-constrained Steiner tree: run Kruskal/Prim with port-cap limits over ALL locations (poles + cabinets), repair any leftover components via spare-capacity nodes, then prune junction-cabinet leaves so cabinets are kept only where they shorten routing",
+    "local search: start from a degree-constrained Steiner tree and apply length-reducing edge swaps / reroutes through cabinets that respect the caps"
+  ]
+}

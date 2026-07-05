@@ -1,0 +1,18 @@
+{
+  "id": "fsx_S_0035",
+  "tier": "S",
+  "format": "A",
+  "family": "independent-set-clique",
+  "eval_form": "quality-metric",
+  "seed_problem": "Select a maximum-weight set of mutually non-conflicting research sites on a general conflict graph; checker validates independence and scores weight/baseline.",
+  "mutation": "input: generalize the conflict structure from a bipartite/structured graph to an arbitrary general graph with planted conflict cliques and heavy-tailed vertex values, so maximum-weight independent set is NP-hard and weight-greedy / weight-over-degree / local-search-swap strategies diverge.",
+  "objective": "max",
+  "theme": "museum gallery tour",
+  "title": "The Curator's Dilemma: Conflict-Free Gallery Tour",
+  "strategies": [
+    "index-order greedy baseline: scan installations 1..n and add each one whenever it conflicts with none already chosen (ignores value)",
+    "weight-greedy: sort installations by value descending, add each if it conflicts with none already chosen",
+    "weight-over-degree greedy: sort by value/(1+degree) descending to favour high-value, low-conflict installations",
+    "local-search swap improvement: from a weighted-greedy start, repeatedly add a vertex and evict the lighter conflicting chosen neighbours whenever that yields a net value gain"
+  ]
+}

@@ -1,0 +1,18 @@
+{
+  "id": "fsx_S_0079",
+  "tier": "S",
+  "format": "A",
+  "family": "network-design",
+  "eval_form": "quality-metric",
+  "seed_problem": "Build a connected relay network where no node has degree > 3, minimizing total cable length; checker validates connectivity + degree and scores baseline/cost.",
+  "mutation": "output+input: keep the min-cost connectivity goal but (a) replace the uniform degree-<=3 bound with per-station heterogeneous port limits d_v in {2,3}, and (b) restrict cabling to an arbitrary catalogue of candidate edges (not a complete geometric graph), so the optimal connected spanning subgraph is a degree-constrained bounded spanning tree = NP-hard, and degree-aware greedy vs. edge-swap local search diverge.",
+  "objective": "min",
+  "theme": "e-sports arena",
+  "title": "Arena Relay Fabric: Port-Bounded Cable Layout",
+  "strategies": [
+    "daisy-chain baseline: install the cheapest cable between each consecutive station pair (always feasible, degree <= 2)",
+    "degree-aware Kruskal: add candidate cables cheapest-first, skipping any that form a cycle or would exceed a station's port limit, then repair to full connectivity",
+    "edge-swap local search: start from the greedy fabric and repeatedly cut an installed cable and reconnect the two sides with the cheapest feasible cross-cut cable that respects port limits",
+    "randomized multi-restart local search over the swap neighbourhood, keeping the cheapest feasible fabric found"
+  ]
+}

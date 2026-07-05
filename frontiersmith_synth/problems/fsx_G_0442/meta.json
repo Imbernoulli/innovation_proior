@@ -1,0 +1,16 @@
+{
+  "id": "fsx_G_0442",
+  "tier": "G",
+  "format": "D",
+  "family": "flop-boolean-circuit-symmetric",
+  "eval_form": "flops",
+  "theme": "logic synthesis",
+  "title": "Gate-Minimal Circuits for Symmetric Boolean Functions",
+  "objective": "min",
+  "strategies": [
+    "bubble/insertion sorting network computing all thresholds + per-value exactly-k decode (baseline)",
+    "sorting network + run-merged threshold decode + dead-gate elimination",
+    "compact Batcher odd-even mergesort network + run-merged decode + pruning to the needed order statistics",
+    "adder-tree popcount + magnitude comparison against the accepting set (alternative untested family)"
+  ]
+}

@@ -1,0 +1,18 @@
+{
+  "id": "fsx_C_0187",
+  "tier": "C",
+  "format": "B",
+  "family": "classical-ml-algorithm",
+  "eval_form": "quality-metric",
+  "theme": "ski resort lifts",
+  "title": "Ski Resort Lift Traffic: Skier-Segment Clustering",
+  "objective": "optimize",
+  "source_frameworks": ["MLS-Bench (ml-*)"],
+  "isolation": "candidate runs as an isolated stdin->stdout subprocess via isorun; true segments and hidden data stay in the evaluator process",
+  "strategies": [
+    "rank-quantile split of the first usage feature into k contiguous groups (reproduces the evaluator baseline -> ~0.1 on every instance)",
+    "Lloyd k-means on z-standardized features (k-means++ init, restarts): strong on compact/blob/high-dim segments but slices interleaving crescents and concentric rings through the middle",
+    "normalized spectral clustering on a self-tuning kNN affinity graph (k-means on row-normalized Laplacian eigenvectors): recovers non-convex crescents/rings AND compact/anisotropic/unequal-spread/high-dim segments -> high geometric mean across the whole family",
+    "other viable designs: agglomerative single/average-linkage cut to k, Gaussian-mixture EM (recovers anisotropy/unequal spread), DBSCAN-style density with label reconciliation to k, mutual-kNN connected components"
+  ]
+}

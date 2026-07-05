@@ -1,0 +1,17 @@
+{
+  "id": "fsx_G_0477",
+  "tier": "G",
+  "format": "B",
+  "family": "ml-anomaly-scorer",
+  "eval_form": "quality-metric",
+  "theme": "fleet telemetry",
+  "title": "Fleet-Telemetry Unsupervised Anomaly Scorer across Diverse Fault Regimes",
+  "objective": "max",
+  "source_frameworks": ["MLS-Bench", "breadth-fill (dataset/domain/task diversity)"],
+  "strategies": [
+    "trivial: constant score for every snapshot -> ROC-AUC exactly 0.5 -> reward 0.10 everywhere (baseline)",
+    "greedy: univariate max |z-score| per row; catches global/point faults (a pegged sensor) but is blind to correlation-break / contextual / density faults whose marginals look normal -> chance there",
+    "strong: OR-of-views (max) rank ensemble of Mahalanobis (full-covariance whitening -> global+correlation-break+contextual) and kNN k-th-neighbour distance (local density -> scattered isolated outliers); robust across regimes but leaves headroom on the harder/held-out instances",
+    "invalid: returns a wrong-length score list -> strict validation rejects it -> 0 on every instance"
+  ]
+}

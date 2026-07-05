@@ -1,0 +1,161 @@
+# Skyline Sprouts: Rooftop Garden Bed Packing
+
+## Problem
+
+A city greening cooperative is turning bare rooftops into productive gardens. Each rooftop
+is a `H x W` grid of tiles. Some tiles are **obstructed** (vents, skylights, HVAC units,
+drainage channels) and cannot hold soil. The cooperative owns a catalog of modular
+**planter-bed pieces**, each a fixed polyomino shape, available in a limited supply.
+
+You must place planter beds on the rooftop to cover as much usable tile area with green as
+possible. Each placed bed may be freely **translated, rotated by any multiple of 90 degrees,
+and reflected** (all 8 orientations of its dihedral group are allowed). Placed beds may not
+overlap each other, may not cover an obstructed tile, and must lie fully inside the grid.
+Bed supplies are bounded, so you cannot simply flood the roof with your largest piece: you
+must trade shape against shape and fit awkward pieces into awkward gaps.
+
+Formally, this is a two-dimensional bounded-supply polyomino packing problem. Deciding the
+maximum covered area is NP-hard, the optimum is unknown, and many heuristics
+(value-density greedy, orientation search, gap-filling, local search / restarts) are viable
+and produce genuinely different packings.
+
+## Input
+
+The first line contains three integers:
+
+```
+H W D
+```
+
+- `H` — number of rows of the rooftop (`1..H` tiles vertically), rows indexed `0..H-1`.
+- `W` — number of columns, columns indexed `0..W-1`.
+- `D` — the number of distinct planter-bed shapes in the catalog.
+
+Then the `D` shapes follow, shape ids `0..D-1` in order. Each shape is given as:
+
+```
+A c
+dr_1 dc_1
+dr_2 dc_2
+...
+dr_A dc_A
+```
+
+- `A` — the shape's area (number of cells), `A >= 1`.
+- `c` — the supply: the maximum number of copies of this shape you may place.
+- The next `A` lines list the shape's cells as non-negative offsets `(dr, dc)` relative to
+  the shape's own bounding box (so `min dr = 0` and `min dc = 0`). All cells are distinct
+  and the shape is connected.
+
+After the shapes, one line contains an integer `Q` — the number of obstructed tiles —
+followed by `Q` lines each containing `r c`, an obstructed tile at row `r`, column `c`.
+
+## Output
+
+On the first line print `P` — the number of planter beds you place (`P >= 0`).
+
+Then print `P` lines, one per placed bed:
+
+```
+i o r c
+```
+
+- `i` — the shape id used (`0 <= i < D`).
+- `o` — the orientation (`0 <= o <= 7`, see Feasibility for the exact transform).
+- `r c` — the anchor tile: after transforming shape `i` by orientation `o` and normalizing
+  it to its own bounding box (min row `0`, min col `0`), every cell `(dr, dc)` of the
+  transformed shape is placed at rooftop tile `(r + dr, c + dc)`.
+
+Printing `0` on the first line (and nothing else) is always valid but scores poorly.
+
+## Feasibility
+
+The orientation `o` is decoded exactly as follows. Take the shape's base cells `(dr, dc)`.
+If `o >= 4`, first reflect: `dc <- -dc`. Then rotate 90 degrees `(o mod 4)` times, where one
+rotation sends `(r, c) -> (c, -r)`. Finally normalize the resulting cell set so its minimum
+row and minimum column are both `0`. This yields the transformed shape; placing it at anchor
+`(r, c)` occupies tiles `{ (r + dr', c + dc') }` over its transformed cells.
+
+An output is feasible iff **all** of the following hold:
+
+- `P >= 0` and exactly `P` placement lines follow, with no trailing tokens;
+- every `i` in `[0, D)`, every `o` in `[0, 7]`, every `r` in `[0, H)`, every `c` in `[0, W)`;
+- for each shape id `i`, the number of placements using shape `i` is at most its supply `c_i`;
+- every occupied tile lies inside the grid;
+- no occupied tile is obstructed;
+- no two placed beds share a tile (no overlap).
+
+Any infeasible output scores `0`.
+
+## Objective
+
+Let `F` be the total number of rooftop tiles covered by your placed beds (because overlaps
+are forbidden, this equals the sum of the areas of the placed beds). You are **maximizing**
+`F`.
+
+## Scoring
+
+The checker builds an internal reference baseline `B`: it tiles the roof with copies of
+shape `0` placed on a coarse lattice with spacing `6` (anchoring shape `0`, orientation `0`,
+at every tile `(r, c)` with `r` and `c` multiples of `6` where the piece fits on free tiles).
+`B` is the covered area of that sparse reference packing.
+
+The score for a test is
+
+```
+ratio = min(1.0, 0.1 * F / B)
+```
+
+A submission that merely reproduces the sparse reference baseline (`F = B`) scores `0.1`;
+covering ten times the reference area caps the score at `1.0`. The overall score is the
+mean ratio across all tests.
+
+## Constraints
+
+- `1 <= H, W <= 70`.
+- `1 <= D <= 12`; each shape area `1 <= A <= 6`.
+- Shape `0` is always the `2 x 2` square and has effectively unlimited supply.
+- Obstructed tiles number at most `H * W`.
+- Time limit: 5 s. Memory limit: 512 MB.
+
+## Example
+
+Input:
+
+```
+3 4 2
+4 5
+0 0
+0 1
+1 0
+1 1
+3 2
+0 0
+0 1
+1 0
+1
+2 3
+```
+
+The roof is `H = 3` rows by `W = 4` columns with `D = 2` shapes. Shape `0` is the `2x2`
+square (area `4`, supply `5`) with cells `(0,0),(0,1),(1,0),(1,1)`. Shape `1` is the
+L-tromino (area `3`, supply `2`) with cells `(0,0),(0,1),(1,0)`. Then `Q = 1` obstructed
+tile: `(2, 3)`. So `11` of the `12` tiles are free.
+
+Reference baseline `B`: the only lattice anchor with `r, c` multiples of `6` where a `2x2`
+square fits is `(0,0)` (all four tiles free), so `B = 4`.
+
+A valid packing:
+
+```
+2
+0 0 0 0
+0 0 0 2
+```
+
+- Bed 1: shape `0`, orientation `0`, anchor `(0,0)` -> tiles `(0,0),(0,1),(1,0),(1,1)`.
+- Bed 2: shape `0`, orientation `0`, anchor `(0,2)` -> tiles `(0,2),(0,3),(1,2),(1,3)`.
+
+This covers `F = 8` tiles with no overlaps, all in bounds and off the obstruction. Score:
+`min(1.0, 0.1 * 8 / 4) = 0.2`. Fitting further beds into the bottom row would raise `F`
+and the score.

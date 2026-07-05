@@ -1,0 +1,120 @@
+# Caldera Watch: Maximum-Value Non-Interfering Monitoring Sites
+
+## Problem
+
+A volcanological survey is deploying a network of seismo-acoustic **monitoring stations**
+around an active caldera. Geologists have short-listed `n` candidate **sites**, and site `i`
+carries a positive **scientific value** `w_i` (a mix of expected data quality, geologic
+interest and access safety).
+
+Unfortunately many pairs of sites **interfere**: two stations that are too close, that share a
+venting fissure, or that would saturate the same telemetry uplink cannot both be commissioned.
+These pairwise conflicts are listed as `m` unordered pairs `(u, v)`. If two sites conflict,
+**at most one** of them may be chosen.
+
+You must select a set `S` of sites to build so that **no two chosen sites conflict** and the
+**total scientific value of `S` is as large as possible**.
+
+Formally this is **Maximum-Weight Independent Set** on a general conflict graph: vertices are
+sites (weight `w_i`), edges are conflicts, and you want a maximum-weight independent set. The
+optimum is NP-hard and unknown for these instances; weight-greedy selection, degree-aware
+greedy, local "add-a-free-site" improvement and remove-one/add-many swaps are all viable
+strategies that reach different quality.
+
+## Input
+
+The first line contains two integers:
+
+```
+n m
+```
+
+- `n` — the number of candidate sites, numbered `1..n`.
+- `m` — the number of conflict pairs.
+
+The second line contains `n` integers `w_1 w_2 ... w_n` — the scientific value of each site.
+
+Each of the next `m` lines contains two integers `u v` (`1 <= u, v <= n`, `u != v`) meaning
+sites `u` and `v` **conflict** (they may not both be selected). A pair may be listed at most
+once and there are no self-conflicts.
+
+## Output
+
+Print your selection as:
+
+```
+s
+i_1 i_2 ... i_s
+```
+
+- `s` — the number of sites you select (`0 <= s <= n`).
+- `i_1 ... i_s` — the `s` selected site indices, **distinct**, each in `1..n` (any order,
+  any whitespace layout). If `s = 0`, the second line may be empty or omitted.
+
+Selecting a single site is always valid.
+
+## Feasibility
+
+An output is feasible iff:
+
+- `s` is an integer with `0 <= s <= n`;
+- it is followed by exactly `s` integers, each in `1..n`, all **distinct**;
+- **no two selected sites conflict** (the selection is an independent set);
+- there are no extra trailing tokens.
+
+Any other output scores `0`.
+
+## Objective
+
+Let `F` be the total value of your selection, `F = sum of w_i over i in S`. You are
+**maximizing** `F`.
+
+## Scoring
+
+Let `B` be the value of the **single most valuable site**, `B = max_i w_i` (building only that
+one station is always a feasible selection, so `B` is the natural do-something baseline). The
+score for a test is
+
+```
+ratio = min(1.0, 0.1 * F / B)
+```
+
+Selecting just the single best site (`F = B`) scores exactly `0.1`; reaching a ten-fold
+improvement over that baseline (`F >= 10*B`) caps the score at `1.0`. The overall score is the
+mean ratio across all tests.
+
+## Constraints
+
+- `1 <= n <= 400`.
+- `1 <= m <= n*(n-1)/2`.
+- `1 <= w_i <= 1000`.
+- Time limit: 5 s. Memory limit: 512 MB.
+
+## Example
+
+Input:
+
+```
+5 5
+10 6 6 8 3
+1 2
+2 3
+3 4
+4 5
+1 5
+```
+
+Here `n = 5` sites with values `(10, 6, 6, 8, 3)` and the 5 conflicts form a ring
+`1-2-3-4-5-1`. The most valuable single site is site 1 with value `10`, so `B = 10`.
+
+Consider selecting `S = {1, 4}`. Sites 1 and 4 do not conflict (the ring edges are
+`1-2, 2-3, 3-4, 4-5, 1-5`), so the selection is feasible. Its total value is
+`F = w_1 + w_4 = 10 + 8 = 18`, and the score is
+`min(1.0, 0.1 * 18 / 10) = 0.18`.
+
+A valid worked output:
+
+```
+2
+1 4
+```

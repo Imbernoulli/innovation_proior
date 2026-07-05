@@ -1,0 +1,121 @@
+# Glacier Sensor Net: Duty-Cycling Under Charge Decay
+
+## Problem
+
+A polar research station monitors a glacier field with a network of battery-buffered
+ice sensors. There are `S` sensors, `G` monitoring targets (crevasse zones), and the
+mission runs for `T` discrete rounds (`r = 1..T`).
+
+Each **round** you decide which sensors to switch **on**. Every sensor that is on in a
+round pays its activation cost `c_s` for that round, and emits a *coverage pulse* into
+every target it can reach. The twist is that a sensor's emitted pulse is equal to its
+current **charge**, and charge is a temporal state:
+
+- Every sensor starts fully charged at `Cfull` in round 1.
+- If a sensor is **on** in round `r`, it emits a pulse of strength equal to its current
+  charge `h`, and then its charge **decays**: `h <- max(Cmin, h - Drain)`.
+- If a sensor is **off** in round `r`, it emits nothing, and its charge **carries over
+  and recovers**: `h <- min(Cfull, h + Recharge)`.
+
+So a sensor that is left on continuously drains toward the floor `Cmin` (weak but still
+billed every round), while a rested sensor recharges back toward `Cfull` and delivers a
+strong pulse when you finally switch it on. Charge is always clamped to `[Cmin, Cfull]`.
+
+In each round, the **coverage** received by a target is the sum of the pulses (current
+charges) of the on-sensors that reach it. Every target `g` has a demand `D_g` that must
+be met in **every** round.
+
+You must produce an on/off schedule for all `T` rounds that keeps every target's
+per-round coverage at or above its demand, while **minimizing the total activation cost**
+(summed over all rounds and all on-sensors).
+
+## Input
+
+```
+line 1:  S G T
+line 2:  Cfull Cmin Drain Recharge
+line 3:  D_1 D_2 ... D_G            (G integers, the per-round demands)
+next S lines: for sensor s (s = 1..S):
+             c_s  k_s  t_1 t_2 ... t_{k_s}
+```
+
+`c_s` is the per-round activation cost of sensor `s`; `k_s` is the number of targets it
+reaches; `t_1..t_{k_s}` are the (distinct) target indices it reaches. Sensors are numbered
+`1..S`, targets `1..G`. Every target is reachable by at least two sensors, and each demand
+satisfies `D_g = (number of sensors reaching g) * Cmin`, so switching **every** sensor on
+in **every** round is always a feasible (but wasteful) schedule.
+
+## Output
+
+Print `T` lines, one per round in order `r = 1..T`. Line `r` must contain an integer
+`m_r` (the number of sensors switched on in round `r`), followed by `m_r` **distinct**
+sensor indices (the sensors that are on in round `r`). `m_r` may be `0`.
+
+## Feasibility
+
+Simulate the charges exactly as described (start at `Cfull`; drained sensors clamp at
+`Cmin`, rested sensors clamp at `Cfull`). For every round `r` and every target `g` the
+total coverage — the sum over on-sensors reaching `g` of that sensor's charge in round `r`
+— must be `>= D_g`. Any out-of-range index, a repeated sensor within one round, a missing
+or extra line, or any round/target whose demand is not met makes the whole output
+infeasible (score 0).
+
+## Objective
+
+Minimize the total activation cost
+`F = sum over rounds r of sum over sensors s on in round r of c_s`.
+
+## Scoring
+
+Let `B` be the cost of the all-on schedule (every sensor on every round),
+`B = T * sum_s c_s`, which is always feasible. Your ratio on a test is
+
+```
+ratio = min(1.0, (B / F) / 10)
+```
+
+i.e. `100 * B / F` capped at 1000, divided by 1000. Switching everything on every round
+scores `0.1`; a schedule ten times cheaper than all-on scores the maximum `1.0`. Infeasible
+output scores `0`. Your total score is the mean ratio over all tests.
+
+## Constraints
+
+- `1 <= S <= 400`, `1 <= G <= 320`, `1 <= T <= 60`.
+- `2 <= Cmin < Cfull <= 60`, `1 <= Drain, Recharge <= 30`.
+- `1 <= c_s <= 200`, total coverage incidences `sum_s k_s <= 60000`.
+- Time limit: 5 s. Memory limit: 512 MB.
+
+## Example
+
+```
+5 3 4
+20 5 6 4
+15 10 10
+30 3 1 2 3
+25 2 1 2
+18 2 2 3
+40 3 1 2 3
+22 1 1
+```
+
+Here `S=5, G=3, T=4`, `Cfull=20, Cmin=5, Drain=6, Recharge=4`. Demands are
+`D_1=15, D_2=10, D_3=10` (target 1 is reached by sensors 1,2,4,5 -> deg 4 -> hmm; the
+generator sets `D_g = deg_g * Cmin`; in this hand-built example the demands are given
+directly). Consider the schedule
+
+```
+2 1 4
+1 4
+2 1 4
+1 1
+```
+
+Round 1: sensors 1,4 on (both fresh, charge 20). Target 1 gets 20+20=40>=15, target 2
+gets 20+20=40>=10, target 3 gets 20+20=40>=10. Feasible; cost 30+40=70. Sensors 1,4 drain
+to 14; sensors 2,3,5 recharge (already full). Round 2: only sensor 4 (charge 14). Targets
+1,2,3 each get 14 >=their demands. Cost 40. Round 3: sensors 1 (recovered to 18),4(drained
+to 8). Target coverage 18+8=26 for {1,2,3}; feasible; cost 70. Round 4: sensor 1 alone
+(charge >= its value) covers 1 only... to keep it simple this illustrative schedule may be
+infeasible on round 4; the checker is the ground truth. All-on cost here is
+`B = 4 * (30+25+18+40+22) = 540`; a feasible schedule of total cost `F` scores
+`min(1.0, (540/F)/10)`.

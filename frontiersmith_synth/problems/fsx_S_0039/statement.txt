@@ -1,0 +1,109 @@
+# Carnival Ride Circuit: Fairground Footprint Packing
+
+## Problem
+The city fairground is a rectangular lot of `W` columns by `H` rows of unit tiles. You run a
+travelling carnival and own `N` types of ride. Ride type `i` has a fixed **footprint**: a
+connected polyomino (a set of `m_i` unit cells given as relative integer coordinates), a
+per-installation **revenue** `v_i`, and an **inventory** `c_i` (you own at most `c_i` copies of
+that ride type).
+
+You must lay out a subset of your rides on the lot to maximise total revenue. Each installed ride
+occupies its footprint after an optional rigid transform (any of the 8 rotations/reflections of the
+square symmetry group) followed by a translation onto the grid. Rides may not overlap and must lie
+fully inside the lot. Empty tiles (walkways) are allowed and cost nothing.
+
+## Input
+```
+W H N
+```
+Then `N` ride blocks. Block `i` (1-based) is:
+```
+m_i v_i c_i
+x_1 y_1
+...
+x_{m_i} y_{m_i}
+```
+where `m_i` is the number of footprint cells, `v_i` the revenue per installation, `c_i` the
+inventory, and each `x y` is a footprint cell. Footprint cells are distinct and connected
+(orthogonally); coordinates are normalised so the minimum `x` and minimum `y` are both 0.
+
+## Orientation convention
+An installed ride chooses an orientation `r` in `0..7`. Each footprint cell `(x, y)` maps to `(x', y')`:
+
+```
+r=0: ( x,  y)      r=4: (-x,  y)
+r=1: (-y,  x)      r=5: ( y,  x)
+r=2: (-x, -y)      r=6: ( x, -y)
+r=3: ( y, -x)      r=7: (-y, -x)
+```
+
+After transforming all cells, the shape is **re-normalised** by subtracting the minimum `x'` and the
+minimum `y'` over its cells (so the transformed footprint again has minimum coordinate 0 on both
+axes). Finally a translation `(ox, oy)` is added: the ride occupies tiles `(ox + x'', oy + y'')` for
+every re-normalised cell `(x'', y'')`.
+
+## Output
+```
+K
+i_1 r_1 ox_1 oy_1
+...
+i_K r_K ox_K oy_K
+```
+`K` is the number of installed rides. Each subsequent line installs ride type `i` (1-based) at
+orientation `r` (`0..7`) with lower-left translation `(ox, oy)`. `K = 0` (with just the `0` line) is
+a legal empty layout.
+
+## Feasibility
+A layout is feasible iff:
+- every `i` in `1..N`, every `r` in `0..7`;
+- every occupied tile `(ox + x'', oy + y'')` satisfies `0 <= column < W` and `0 <= row < H`;
+- no tile is occupied by two installed rides;
+- for each ride type `i`, the number of installations of type `i` is at most `c_i`.
+
+Any violation scores 0.
+
+## Objective
+Maximise `F = sum of v_i over all installed rides`.
+
+## Scoring
+Let `B` be the revenue of a reference layout: over each ride type `i`, tile the lot with an
+axis-aligned grid of `r=0` copies, giving `t_i = min(c_i, floor(W / w_i) * floor(H / h_i))`
+installations (where `w_i x h_i` is the `r=0` bounding box of footprint `i`), worth `t_i * v_i`;
+`B = max_i (t_i * v_i)` is the best single-type regular tiling. Then
+
+```
+score = min(1000, 100 * F / max(1, B)) / 1000
+```
+
+A feasible layout matching the reference tiling scores about `0.1`; richer mixed packings score
+higher.
+
+## Constraints
+- `5 <= W, H <= 28`, `3 <= N <= 12`.
+- `1 <= m_i <= 16`, footprint bounding box side at most 4.
+- `1 <= v_i <= 200`, `1 <= c_i <= 12`.
+- Time limit: 5 s. Memory limit: 512 MB.
+
+## Example
+Input:
+```
+5 5 3
+4 40 4
+0 0
+1 0
+0 1
+1 1
+2 30 4
+0 0
+1 0
+1 20 6
+0 0
+```
+Ride 1 is a 2x2 block (revenue 40), ride 2 a domino (revenue 30), ride 3 a single tile
+(revenue 20). Reference tiling: ride 1 gives `t = min(4, floor(5/2)*floor(5/2)) = 4` copies worth
+`160`; ride 2 gives `min(4, 2*5)=4` worth `120`; ride 3 gives `min(6,25)=6` worth `120`. So
+`B = 160`.
+
+A layout that installs four 2x2 blocks (`F = 160`) scores `100*160/160/1000 = 0.1`. A layout that
+packs four 2x2 blocks plus six single tiles into the leftover column and row
+(`F = 160 + 6*20 = 280`) scores `100*280/160/1000 = 0.175`.

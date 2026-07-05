@@ -1,0 +1,128 @@
+# Rooftop Garden Seedling Relay: Fresh Pickup-and-Delivery Drone Tour
+
+## Problem
+A city runs a network of **rooftop gardens** served by a single autonomous cargo
+drone that is stationed on the roof of the **greenhouse depot** (node 0). Over the
+course of a shift the drone flies **one** tour: it lifts off from the depot, makes a
+sequence of rooftop stops, and lands back on the depot roof.
+
+The horticulture office has registered **P transfer requests**. Request `i` asks the
+drone to collect `q_i` trays of live seedlings from a **source rooftop** at
+`(px_i, py_i)` and hand them off at a **destination rooftop** at `(dx_i, dy_i)`.
+For every request the drone must visit the source (pickup) *before* the destination
+(delivery).
+
+The drone has a cargo cage that holds at most `Q` trays at any instant. Trays for a
+request occupy the cage only between that request's pickup and its delivery, so the
+drone may **batch** several requests together as long as the on-board load never
+exceeds `Q`.
+
+Live seedlings **wilt while they ride**. For request `i`, every intermediate rooftop
+stop the drone makes *while trays `i` are still on board* costs `f_i` freshness units
+(dehydration, transplant shock). Delivering a request immediately after picking it up
+costs nothing; carrying it past many other stops is expensive.
+
+You do **not** have to serve every request. A request you skip incurs a fixed penalty
+`w_i` (a missed rooftop that must be serviced by a costly manual courier). You decide
+**which** requests to serve and produce **one** depot-to-depot tour visiting the
+chosen pickups and deliveries in a valid order.
+
+The drone flies freely in the plane, including diagonally at full speed, so the flight
+cost between two rooftops is the **Chebyshev distance**
+`max(|x1-x2|, |y1-y2|)`.
+
+## Input
+```
+P Q
+x0 y0
+px_1 py_1 dx_1 dy_1 q_1 w_1 f_1
+px_2 py_2 dx_2 dy_2 q_2 w_2 f_2
+...
+px_P py_P dx_P dy_P q_P w_P f_P
+```
+- Line 1: the number of requests `P` and the cage capacity `Q`.
+- Line 2: the integer depot coordinates `x0 y0`.
+- The next `P` lines describe requests `1..P`: source coordinates, destination
+  coordinates, tray count `q_i`, skip-penalty `w_i`, and freshness rate `f_i`.
+
+## Output
+Describe the drone's tour as an ordered list of `L` visit events. Each event is a
+pair of integers `t i`:
+- `t = 0` means "pick up request `i`" (visit source `(px_i, py_i)`),
+- `t = 1` means "deliver request `i`" (visit destination `(dx_i, dy_i)`).
+
+```
+L
+t_1 i_1
+t_2 i_2
+...
+t_L i_L
+```
+The drone always begins and ends the tour at the depot; you list only the intermediate
+rooftop visits. `L = 0` (serve nobody) is a valid output.
+
+## Feasibility
+An output is feasible iff **all** of the following hold:
+1. `0 <= L <= 2P` and every index `i` is in `[1, P]`.
+2. Each request appears **at most once** as a pickup and **at most once** as a delivery.
+3. If a request's delivery event appears, its pickup event appears **earlier** in the
+   list (precedence).
+4. A request is *served* iff both its pickup and its delivery appear. Any request that
+   appears exactly once (picked up but never delivered, or vice versa) makes the output
+   infeasible.
+5. Processing the events in order, the on-board load (which increases by `q_i` at a
+   pickup and decreases by `q_i` at a delivery) never exceeds `Q`.
+
+An infeasible output scores 0.
+
+## Objective
+Let the realized flight path be `depot -> visited points in order -> depot` (with total
+flight distance `D = 0` if `L = 0`), measured in Chebyshev distance. For a served
+request `i`, let `hops_i` be the number of events strictly between its pickup event and
+its delivery event (the number of rooftop stops made while its trays ride). Let `U` be
+the set of unserved requests. Minimize
+
+```
+F = D + sum over served i of (f_i * hops_i) + sum over i in U of w_i .
+```
+
+## Scoring
+The checker builds the trivial *serve-nobody* plan, whose cost is
+`B = sum over all i of w_i` (pure penalty, zero flight, zero wilting). Your score on a
+test is
+
+```
+ratio = min(1.0, (B / F) / 10)
+```
+
+reported as `Ratio: <ratio>`. Serving profitable requests, routing them with short
+flights, and keeping trays on board only briefly all drive `F` below `B` and raise the
+ratio; the serve-nobody plan scores exactly `0.1`. The final score is the mean ratio
+over all tests.
+
+## Constraints
+- `2 <= P <= 70`, `5 <= Q <= 40`, `1 <= q_i <= 5`.
+- All coordinates are integers in `[0, 1000]`; `1 <= w_i <= 3000`; `1 <= f_i <= 15`.
+- Time limit: 5 s. Memory limit: 512 MB.
+
+## Example
+Input:
+```
+2 10
+0 0
+1 0 3 0 2 20 3
+0 5 0 8 1 3 2
+```
+Consider the output:
+```
+2
+0 1
+1 1
+```
+The drone serves only request 1: depot(0,0) -> source(1,0) -> destination(3,0) ->
+depot(0,0). Chebyshev flight `D = 1 + 2 + 3 = 6`. Request 1 is delivered immediately
+after pickup, so `hops_1 = 0` and its freshness cost is `0`. Request 2 is skipped,
+penalty `3`. So `F = 6 + 0 + 3 = 9`. The baseline is `B = 20 + 3 = 23`, giving
+`ratio = min(1.0, (23/9)/10) = 0.255...`. Serving request 2 as well would add a
+round-trip flight larger than its penalty of `3`, so skipping it is the better trade
+here.

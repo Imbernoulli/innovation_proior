@@ -1,0 +1,122 @@
+# Vineyard Drip Lines: Fan-Out-Bounded Irrigation Grid
+
+## Problem
+
+The *Coteau Vineyards* estate must connect every **junction** in its new drip-irrigation
+system into one continuous water network. Junctions are joined by **buried pipe segments**;
+each candidate segment has a positive length (metres of trenching + pipe). Because each
+junction is a cheap gravity manifold, it can physically host **at most three pipe
+connections** — a junction with a fourth incoming pipe would lose pressure. You must choose
+a set of pipe segments so that:
+
+- water can flow between every pair of junctions (the chosen segments form **one connected
+  network** spanning all junctions), and
+- **no junction has more than `D` incident chosen segments** (fan-out limit),
+
+while minimizing the **total length of chosen pipe**.
+
+Formally: you are given an undirected weighted graph on `n` junctions with `m` candidate
+edges and a degree bound `D`. Choose a subset `S` of edges such that the subgraph `(V, S)`
+is connected and every vertex has degree at most `D` in `S`, minimizing the total weight of
+`S`. This is the **degree-bounded minimum spanning tree** problem: it is NP-hard for `D <= n-2`,
+the optimum is unknown, and greedy, edge-swap local search, and randomized restarts are all
+viable heuristics that produce different networks.
+
+The input always contains the "backbone" edges `(1,2), (2,3), ..., (n-1,n)`, so a connected
+degree-bounded network always exists (the path itself uses degree at most 2).
+
+## Input
+
+The first line contains three integers:
+
+```
+n m D
+```
+
+- `n` — number of junctions, numbered `1..n`.
+- `m` — number of candidate pipe segments (edges), indexed `1..m` in input order.
+- `D` — the per-junction fan-out limit (maximum degree).
+
+Each of the next `m` lines describes one candidate segment (edge index `1..m` in input order):
+
+```
+u v w
+```
+
+meaning a candidate pipe of length `w` between junctions `u` and `v` (`1 <= w`, `u != v`).
+The graph may contain parallel candidate segments. For every `i` in `1..n-1` at least one
+segment directly connecting junctions `i` and `i+1` is guaranteed to be present.
+
+## Output
+
+On the first line print `r` — the number of pipe segments you install (`0 <= r <= m`).
+On each of the next `r` lines print one segment index (an integer in `1..m`). All indices
+must be distinct.
+
+## Feasibility
+
+An output is feasible iff:
+
+- `0 <= r <= m` and every printed index is in `1..m` and all are distinct;
+- in the chosen subgraph every junction has degree at most `D`;
+- the chosen subgraph is connected and spans all `n` junctions.
+
+Any infeasible output scores `0`.
+
+## Objective
+
+Let `F` be the total length of the pipe segments you install. You are **minimizing** `F`.
+
+## Scoring
+
+Let `B` be the total length of the backbone path `1-2-...-n` (using, for each consecutive
+pair, the shortest available direct segment). The score for a test is
+
+```
+ratio = min(1.0, 0.1 * B / F)
+```
+
+Installing exactly the backbone path (`F = B`) scores `0.1`; a network that is ten times
+cheaper than the backbone (`F = B / 10`) caps the score at `1.0`. The overall score is the
+mean ratio across all tests.
+
+## Constraints
+
+- `2 <= n <= 1500`.
+- `n - 1 <= m <= 8 * n`.
+- `D = 3`.
+- `1 <= w <= 20000`.
+- Time limit: 5 s. Memory limit: 512 MB.
+
+## Example
+
+Input:
+
+```
+4 6 3
+1 2 10
+2 3 10
+3 4 10
+1 3 4
+2 4 4
+1 4 12
+```
+
+The backbone path uses edges `1` (`1-2`, len 10), `2` (`2-3`, len 10) and `3` (`3-4`, len 10),
+so `B = 30`.
+
+A cheaper feasible network installs edges `4` (`1-3`, len 4), `5` (`2-4`, len 4) and `1`
+(`1-2`, len 10): the subgraph `1-3`, `1-2`, `2-4` is connected, spans all four junctions,
+and every junction has degree at most 3 (junction 1 has degree 2, junction 2 has degree 2).
+Its total length is `F = 4 + 4 + 10 = 18`.
+
+Score for this test: `min(1.0, 0.1 * 30 / 18) = min(1.0, 0.1667) = 0.1667`.
+
+A valid worked output:
+
+```
+3
+4
+5
+1
+```

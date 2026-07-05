@@ -1,0 +1,19 @@
+{
+  "id": "fsx_S_0203",
+  "tier": "S",
+  "format": "A",
+  "family": "independent-set-clique",
+  "eval_form": "quality-metric",
+  "seed_problem": "Select a maximum-weight set of mutually non-conflicting research sites on a general conflict graph; checker validates independence and scores weight relative to a baseline.",
+  "mutation": "input: relax the conflict graph from a special (e.g. bipartite/interval) structure to a general graph built from conflict-cliques plus random cross edges, so maximum-weight independent set is NP-hard and weight-greedy / weight-per-degree / local-search heuristics diverge.",
+  "objective": "max",
+  "theme": "bakery supply chain",
+  "title": "Grain-Lot Slate: Conflict-Free Sourcing",
+  "strategies": [
+    "index-order reference: scan lots 1..n, keep each that conflicts with nothing kept so far (the scored baseline)",
+    "weight-greedy: consider lots in descending profit, add if it conflicts with no chosen lot",
+    "weight-per-degree greedy: order lots by profit divided by (conflict degree + 1) to favour high-value low-conflict lots",
+    "local-search swaps: seed with weight-greedy, then repeatedly add a lot while evicting the lighter conflicting chosen lots whenever that raises total profit",
+    "randomized multi-restart: perturb the greedy ordering across restarts and keep the highest-profit conflict-free slate"
+  ]
+}

@@ -1,0 +1,16 @@
+{
+  "id": "fsx_A_0087",
+  "tier": "A",
+  "format": "C",
+  "family": "additive-combinatorics-set",
+  "eval_form": "quality-metric",
+  "theme": "festival stage layout",
+  "title": "Echo Promenade: Distinct-Distance Stage Layout",
+  "objective": "max",
+  "strategies": [
+    "arithmetic-progression baseline: place stages at 0,1,...,n-1 (|A-A| = 2n-1)",
+    "Mian-Chowla / Golomb greedy: add the smallest position keeping every pairwise distance distinct, then fill remaining stages with smallest unused positions",
+    "seeded random-restart hill climbing: sample n random positions and relocate one stage at a time, accepting moves that increase the distinct-distance count |A-A|",
+    "algebraic perfect-difference-set constructions (e.g. Singer/quadratic-residue difference sets mod a prime) to cover many distinct spacings in a tight length budget"
+  ]
+}

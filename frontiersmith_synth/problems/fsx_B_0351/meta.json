@@ -1,0 +1,17 @@
+{
+  "id": "fsx_B_0351",
+  "tier": "B",
+  "format": "B",
+  "family": "multiobjective-hypervolume",
+  "eval_form": "quality-metric",
+  "theme": "solar farm inverters",
+  "title": "Solar-Farm Inverter Design Sweep (biased-DTLZ hypervolume)",
+  "objective": "max",
+  "source_frameworks": ["Frontier-Eng (ReactionOptimisation/DTLZ2)"],
+  "strategies": [
+    "trivial: prototype the single midpoint design x=[0.5]*n budget-many times -> one cost point, dominates baseline volume only -> ~0.1",
+    "greedy: uniform grid over the position variables in DECISION space, distance vars at 0.5 -> lands on the frontier but the (x**alpha) bias warps it into a clustered, uneven spread -> beats baseline but leaves volume on the table",
+    "strong: INVERT the bias (x_j = target**(1/alpha)) for an angle-even seed, then coordinate-wise local hypervolume ascent (multi-scale steps, keep only volume-increasing moves) -> reference-tuned spread on the warped frontier, materially more volume, still short of the global optimum",
+    "invalid: out-of-range coordinates (5.0) -> rejected -> 0"
+  ]
+}

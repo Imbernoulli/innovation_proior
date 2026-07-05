@@ -1,0 +1,17 @@
+{
+  "id": "fsx_A_0133",
+  "tier": "A",
+  "format": "C",
+  "family": "geometric-packing",
+  "eval_form": "quality-metric",
+  "theme": "drone delivery swarm",
+  "title": "Drone Delivery Swarm: Safety-Bubble Packing in Restricted Airspace",
+  "objective": "max",
+  "source_frameworks": ["AlphaEvolve", "OpenEvolve", "ThetaEvolve", "TTT-Discover"],
+  "strategies": [
+    "airspace-aware equal-radius grid: touching bubbles on a coarse lattice clipped to the circular airspace, skipping cells that hit a no-fly zone (reproduces the checker baseline B, ~0.1)",
+    "grow-in-place: start from the grid then enlarge each bubble to the maximum radius allowed by the airspace boundary, no-fly zones and fixed neighbours (boundary bubbles first)",
+    "best-first insertion: over a fine candidate lattice clipped to the airspace, repeatedly drop the single bubble with the largest achievable feasible radius into the biggest remaining gap",
+    "constructive layered packing + local perturb-and-regrow refinements that trade bubble count against bubble size around the no-fly keep-out circles"
+  ]
+}

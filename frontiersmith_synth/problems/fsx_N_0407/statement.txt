@@ -1,0 +1,157 @@
+# Nimbus Swarm: Submodular Airspace Coverage
+
+## Problem
+
+The **Nimbus** delivery cooperative runs a swarm of `D` autonomous drones over a city
+of `Z` delivery **zones**. Every zone has a menu of package **feature** types it needs
+delivered (chilled goods, fragile parcels, priority mail, ...), and each feature comes
+with a *value per unit* and a *saturation cap*: once a zone has received enough of a
+feature, extra deliveries of that feature are worthless (diminishing returns). Each drone
+carries a fixed payload profile — how many units of which features it can deposit if it
+is dispatched to a zone.
+
+You dispatch each drone to **at most one** zone. A zone `z` can host at most `cap_z`
+drones (airspace capacity). Flying drone `d` to zone `z` burns a rounded-Euclidean amount
+of battery **energy**, and the whole swarm shares a single energy budget `E`. Your job is
+to choose the dispatch that maximises the total *saturated* coverage value delivered
+across the whole city.
+
+The value is a **submodular coverage**, not a linear sum: when several drones deposit the
+same feature at the same zone, only the part below the saturation cap counts. Because the
+energy budget is tight you can only afford a small fraction of the swarm, and because
+payloads overlap, the greedy "add the biggest single gain" rule saturates zones and wastes
+battery — a coordinated dispatch that spreads complementary drones does strictly better.
+The optimum is NP-hard; any feasible dispatch is accepted and scored.
+
+## Input
+
+The first line contains four integers:
+
+```
+D Z F E
+```
+
+- `D` — number of drones, indexed `1..D`.
+- `Z` — number of zones, indexed `1..Z`.
+- `F` — number of distinct feature types, indexed `1..F`.
+- `E` — the shared energy budget.
+
+Then `Z` lines, one per zone `z = 1..Z`:
+
+```
+X Y cap L   f_1 w_1 s_1   f_2 w_2 s_2   ...   f_L w_L s_L
+```
+
+- `X Y` — integer coordinates of the zone.
+- `cap` — maximum number of drones that may be dispatched to this zone.
+- `L` — number of feature types this zone demands.
+- each triple `f w s` — the zone demands feature `f` with value-per-unit `w` and
+  saturation cap `s`. Feature ids within one zone are distinct.
+
+Then `D` lines, one per drone `d = 1..D`:
+
+```
+x y K   g_1 a_1   g_2 a_2   ...   g_K a_K
+```
+
+- `x y` — integer coordinates of the drone's launch point.
+- `K` — number of feature types in the drone's payload.
+- each pair `g a` — the drone can deposit `a` units of feature `g`. Feature ids within
+  one drone are distinct.
+
+The energy to fly drone `d` to zone `z` is
+`energy(d,z) = 1 + floor( sqrt( (x_d - X_z)^2 + (y_d - Y_z)^2 ) )`
+(integer square root, fully deterministic).
+
+## Output
+
+On the first line print `A` — the number of drones you dispatch (`0 <= A <= D`).
+On each of the next `A` lines print two integers
+
+```
+d z
+```
+
+meaning drone `d` is dispatched to zone `z`. Every dispatched drone id must be
+**distinct**. Printing `0` on the first line (dispatch nothing) is a valid — but
+zero-scoring — output.
+
+## Feasibility
+
+A dispatch is feasible iff:
+
+- `0 <= A <= D`;
+- every printed `d` is in `1..D` and all are distinct;
+- every printed `z` is in `1..Z`;
+- for every zone `z`, the number of drones dispatched to it is at most `cap_z`;
+- the total energy `sum of energy(d,z)` over all dispatched pairs is at most `E`.
+
+Any infeasible output scores `0`.
+
+## Objective
+
+For a feasible dispatch, let `cov[z][f]` be the total units of feature `f` deposited at
+zone `z` (summed over all drones dispatched to `z` that carry `f`). The delivered value is
+
+```
+F_obj = sum over zones z, over each demanded feature (f,w,s) of  w * min(s, cov[z][f]).
+```
+
+The `min(s, .)` cap makes the coverage **submodular** (diminishing returns). You are
+**maximising** `F_obj`.
+
+## Scoring
+
+Let `B` be the value of the single best feasible dispatch of exactly one drone to one
+zone (the checker computes this internally; `B > 0` is guaranteed). The score for a test is
+
+```
+ratio = min(1.0, 0.1 * F_obj / B).
+```
+
+A single-best-pairing dispatch (`F_obj = B`) scores `0.1`; reaching a ten-fold coverage
+(`F_obj >= 10*B`) caps the score at `1.0`. The overall score is the mean ratio across all
+tests.
+
+## Constraints
+
+- `6 <= D <= 2000`, `2 <= Z <= 500`, `4 <= F <= 500`.
+- `1 <= cap_z <= 3`; each drone lists `2..6` features; each zone lists `3..9` features.
+- values `w`, saturation caps `s`, and payload amounts `a` are positive integers up to a
+  few hundred; coordinates are in `0..10000`; `1 <= E <= 10^6`.
+- Time limit: 5 s. Memory limit: 512 MB.
+
+## Example
+
+```
+3 2 3 10
+0 0 2 2  1 5 10  2 3 6
+10 0 1 1  3 4 8
+0 0 1  1 6
+0 0 2  1 5  2 6
+10 0 1  3 8
+```
+
+Here drone 1 launches at `(0,0)` carrying 6 units of feature 1; drone 2 at `(0,0)`
+carrying feature 1 (5 units) and feature 2 (6 units); drone 3 at `(10,0)` carrying
+feature 3 (8 units). Zone 1 (`cap 2`) demands feature 1 (value 5, cap 10) and feature 2
+(value 3, cap 6); zone 2 (`cap 1`) demands feature 3 (value 4, cap 8).
+
+The best single pairing is drone 2 -> zone 1, worth `5*min(10,5) + 3*min(6,6) = 25 + 18 =
+43`, so `B = 43`.
+
+Consider the dispatch
+
+```
+3
+2 1
+1 1
+3 2
+```
+
+Zone 1 now holds `cov[1][1] = 5 + 6 = 11` (capped at 10 -> `5*10 = 50`) and
+`cov[1][2] = 6` (`3*6 = 18`), for `68`; zone 2 holds `cov[2][3] = 8` (`4*8 = 32`). Total
+`F_obj = 68 + 32 = 100`. Energy used is `1 + 1 + 1 = 3 <= 10`, and zone 1 hosts 2 drones
+`<= cap 2`, so the dispatch is feasible. The score is
+`min(1.0, 0.1 * 100 / 43) = 0.2326`. (Note the second drone of feature 1 at zone 1 only
+added 25, not 30 — the saturation cap is what makes coverage submodular.)

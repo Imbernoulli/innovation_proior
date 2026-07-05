@@ -1,0 +1,18 @@
+{
+  "id": "fsx_G_0456",
+  "tier": "G",
+  "format": "B",
+  "family": "ml-dim-reduction-projection",
+  "eval_form": "quality-metric",
+  "theme": "gene expression",
+  "title": "Gene-Expression Cell-Type Atlas: Unsupervised Linear Embedding for Downstream kNN",
+  "objective": "max",
+  "source_frameworks": ["MLS-Bench (ml-*)", "breadth-fill (dataset/domain/task diversity)"],
+  "isolation": "candidate runs as an isolated stdin->stdout subprocess via isorun; reference/test splits and cell-type labels stay in the evaluator process",
+  "strategies": [
+    "random Johnson-Lindenstrauss projection centred on the training mean (reproduces the evaluator's random baseline -> ~0.1 on every atlas)",
+    "plain PCA (top-d raw principal directions): strong on clean atlases where cell-type signal is the dominant variance, but distracted by loud technical-noise / high-expression housekeeping genes on noisy and wildly-scaled atlases",
+    "standardized (z-scored) PCA folded into a single affine map z = W(x-b) with W = V diag(1/sigma): neutralizes noise/scale, locks onto correlated co-expression modules, and generalizes across the whole atlas family",
+    "supervised-flavoured unsupervised extensions (whitening + module/ICA structure, graph/locality-preserving projections, spectral embeddings) that further close the gap to the hidden Fisher-LDA oracle"
+  ]
+}

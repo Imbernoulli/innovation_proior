@@ -1,0 +1,17 @@
+{
+  "id": "fsx_A_0136",
+  "tier": "A",
+  "format": "C",
+  "family": "integer-matrix-construction",
+  "eval_form": "quality-metric",
+  "theme": "power grid",
+  "title": "Grid Phase-Decoupling Matrix: Maximum-Determinant Sign Design",
+  "objective": "max",
+  "source_frameworks": ["OpenEvolve", "ThetaEvolve", "SimpleTES"],
+  "strategies": [
+    "trivial: normalised triangular +/-1 matrix (|det| = 2^(N-1)), reproduces the checker baseline (~0.1)",
+    "greedy: top-left N x N block of the smallest Sylvester-Hadamard matrix of order 2^k >= N, normalised (optimal at powers of two)",
+    "strong: seeded single-flip hill-climbing on the exact Bareiss determinant with random restarts, beating the Sylvester seed at non-Hadamard sizes",
+    "expert: Paley / Williamson / conference-matrix constructions and near-optimal maximal-determinant designs for N not a power of two"
+  ]
+}

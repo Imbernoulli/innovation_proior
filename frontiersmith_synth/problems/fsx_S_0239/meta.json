@@ -1,0 +1,18 @@
+{
+  "id": "fsx_S_0239",
+  "tier": "S",
+  "format": "A",
+  "family": "independent-set-clique",
+  "eval_form": "quality-metric",
+  "seed_problem": "Select a maximum-weight set of mutually non-conflicting research sites on a general conflict graph; checker validates independence and scores weight/baseline.",
+  "mutation": "input: relax the conflict graph from bipartite to a general (Erdos-Renyi + hub-augmented) graph so maximum-weight independent set becomes NP-hard, with weights correlated to degree so weight-greedy and degree-discounted heuristics diverge.",
+  "objective": "max",
+  "theme": "salmon migration ladder",
+  "title": "Salmon Ladder Watch: Non-Interfering Counting Weir Placement",
+  "strategies": [
+    "trivial baseline: activate only the single highest-value site (the checker's baseline B)",
+    "weight-greedy: sort sites by data value descending, add each if it conflicts with nothing already chosen",
+    "degree-discounted greedy (GWMIN): repeatedly take the residual site maximizing w/(deg+1), then remove it and its neighbors",
+    "local search: seed with a greedy set, then apply (1,2)-swaps and additions across several randomized restarts, keeping the best conflict-free portfolio"
+  ]
+}

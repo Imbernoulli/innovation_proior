@@ -1,0 +1,16 @@
+{
+  "id": "fsx_G_0417",
+  "tier": "G",
+  "format": "E",
+  "family": "sci-physics-force-law",
+  "eval_form": "quality-metric",
+  "theme": "gravitational lensing",
+  "title": "Gravitational Lensing: Recovering a Radial Deflection Law from the Inner Band",
+  "objective": "min",
+  "strategies": [
+    "trivial: leading-only inverse-square fit c/r^2 (short-range correction ignored) -> reproduces the grader's baseline predictor (~0.1)",
+    "greedy: two-term fit A/r^2 + C/r^3 with the WRONG short-range exponent -> absorbs some inner-band curvature but mis-extrapolates the outer band (middling)",
+    "strong: recover the true form A/r^2 + C/r^4 by selecting the best short-range exponent from a small library -> extrapolates into the held-out outer weak-lensing band (noise-limited, no saturation)",
+    "invalid: emit a non-parsing / disallowed-identifier expression -> infeasible (0)"
+  ]
+}

@@ -1,0 +1,16 @@
+{
+  "id": "fsx_S_0266",
+  "tier": "S",
+  "family": "covering-facility-location",
+  "seed_problem": "Place watchtowers on a forest graph to cover every cell within radius r, minimizing total cost; score = baseline_cost / achieved_cost.",
+  "mutation": "input+output: generalize the forest/tree to an arbitrary connected hyperlane graph and use graph hop-distance coverage with per-node build costs, turning a poly-time tree domination into NP-hard minimum-cost r-covering (facility location).",
+  "objective": "min",
+  "theme": "interstellar relay",
+  "title": "Interstellar Relay Coverage: Lighting the Star Lanes",
+  "strategies": [
+    "trivial: build a relay on every system (feasible, equals the baseline cost B)",
+    "coverage-greedy: repeatedly build the relay illuminating the most still-dark systems",
+    "cost-ratio greedy + redundancy pruning: pick relays maximizing new-coverage per credit, then drop redundant relays cheapest-cost-last",
+    "local search: swap/replace relays and remove dominated ones to shrink total credit spend"
+  ]
+}

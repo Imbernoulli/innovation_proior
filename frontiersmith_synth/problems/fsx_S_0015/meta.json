@@ -1,0 +1,17 @@
+{
+  "id": "fsx_S_0015",
+  "tier": "S",
+  "format": "A",
+  "family": "packing-knapsack",
+  "seed_problem": "Pack polyominoes into a WxH board maximizing covered area (Frontier-CS problems 0,1; AlphaEvolve)",
+  "mutation": "composite: bounded-supply (knapsack) polyomino set + awkward footprints so exact tiling is impossible; objective = maximize covered area of an HxW parcel with rotation+reflection allowed",
+  "objective": "max",
+  "theme": "power grid",
+  "title": "Brownfield Substation: Modular Equipment Packing",
+  "strategies": [
+    "regular bounding-box grid tiling of a single module type (baseline)",
+    "first-fit-decreasing greedy: at each empty tile place the largest module (over all types/8 orientations) that fits and covers it",
+    "randomized multi-restart local search: many shuffled type-priority / orientation orders, keep the best coverage",
+    "value-density / ILP-relaxation rounding under the per-type availability constraints"
+  ]
+}

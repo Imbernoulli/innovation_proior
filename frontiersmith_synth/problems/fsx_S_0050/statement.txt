@@ -1,0 +1,144 @@
+# Harbor Watch: Minimum-Cost Surveillance of a Container Port
+
+## Problem
+
+The *Meridian Deepwater Terminal* is laid out as a grid of container **yard blocks**
+connected by internal haulage lanes. A subset of these blocks store hazardous or
+high-value cargo and are declared **demand blocks**: every demand block must be kept
+under continuous surveillance.
+
+Surveillance is provided by **watch stations**. A station may only be built at one of a
+fixed list of candidate positions (each a yard block). Building station `i` costs
+`c_i`, and once built it monitors every demand block whose lane-distance from the
+station is at most the station's coverage radius `r_i` (lane-distance = the length of the
+shortest lane route, summing lane travel times).
+
+You must choose which watch stations to build so that **every** demand block is monitored
+by at least one built station, while **minimizing the total construction cost**.
+
+Formally: given an undirected weighted graph, a set of demand vertices, and a list of
+candidate stations `(node_i, c_i, r_i)`, choose a subset `S` of stations such that every
+demand vertex lies within graph-distance `r_i` of some built station `i in S`, minimizing
+`sum_{i in S} c_i`.
+
+This is a weighted covering / facility-location problem: it is NP-hard, the optimum is
+unknown, and greedy set-cover, LP-style rounding, and local-search / pruning heuristics
+are all viable and diverge.
+
+## Input
+
+The first line contains two integers:
+
+```
+n m
+```
+
+- `n` — number of yard blocks (vertices), numbered `1..n`.
+- `m` — number of haulage lanes (undirected edges).
+
+Each of the next `m` lines contains three integers:
+
+```
+u v w
+```
+
+an undirected lane between blocks `u` and `v` with positive travel time `w`.
+
+The next line contains one integer `D` — the number of demand blocks. The following line
+contains `D` distinct integers in `1..n`: the demand block ids.
+
+The next line contains one integer `P` — the number of candidate watch stations. Each of
+the next `P` lines (station index `1..P` in input order) contains three integers:
+
+```
+node cost radius
+```
+
+- `node` — the yard block where station `i` would be built (`1..n`).
+- `cost` — its construction cost `c_i` (`c_i >= 1`).
+- `radius` — its coverage radius `r_i` (`r_i >= 0`); it monitors every demand block whose
+  lane-distance from `node` is `<= r_i`.
+
+It is guaranteed that building **all** candidate stations monitors every demand block
+(so a feasible solution always exists).
+
+## Output
+
+On the first line print `q` — the number of watch stations you build (`0 <= q <= P`).
+On each of the next `q` lines print one station index (an integer in `1..P`). All printed
+indices must be distinct.
+
+## Feasibility
+
+An output is feasible iff:
+
+- `0 <= q <= P`;
+- every printed index is in `1..P` and all are distinct;
+- every demand block is monitored by at least one built station (i.e. lies within that
+  station's coverage radius by lane-distance).
+
+Any infeasible output scores `0`.
+
+## Objective
+
+Let `F` be the total construction cost of the stations you build (`F = sum of their
+costs`). You are **minimizing** `F`.
+
+## Scoring
+
+Let `B` be the total cost of building **all** candidate stations (a guaranteed-feasible
+"build everything" baseline). The score for a test is
+
+```
+ratio = min(1.0, 0.1 * B / F)
+```
+
+Building everything (`F = B`) scores `0.1`; a solution ten times cheaper than the
+everything-baseline (`F = B / 10`) caps the score at `1.0`. The overall score is the mean
+ratio across all tests.
+
+## Constraints
+
+- `2 <= n <= 1500`.
+- `1 <= m <= 6000`.
+- `1 <= w <= 5`.
+- `1 <= D <= n`.
+- `1 <= P <= n + 200`.
+- `1 <= c_i <= 100`, `0 <= r_i <= 50`.
+- Time limit: 6 s. Memory limit: 512 MB.
+
+## Example
+
+Input:
+
+```
+4 3
+1 2 2
+2 3 2
+3 4 2
+2
+1 4
+3
+1 5 2
+4 5 2
+2 8 4
+```
+
+There are 4 blocks in a line, demand blocks `{1, 4}`, and 3 candidate stations:
+
+- station 1 at block 1, cost 5, radius 2 -> monitors block 1 (dist 0) but not block 4 (dist 6).
+- station 2 at block 4, cost 5, radius 2 -> monitors block 4 but not block 1.
+- station 3 at block 2, cost 8, radius 4 -> monitors block 1 (dist 2) and block 4 (dist 4).
+
+The "build everything" baseline costs `B = 5 + 5 + 8 = 18`.
+
+Building only station 3 monitors both demand blocks at cost `F = 8`, which is feasible.
+
+Score for this test: `min(1.0, 0.1 * 18 / 8) = min(1.0, 0.225) = 0.225`.
+
+A valid worked output:
+
+```
+1
+3
+```

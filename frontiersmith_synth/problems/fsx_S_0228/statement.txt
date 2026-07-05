@@ -1,0 +1,99 @@
+# Alpine Lift Dispatch Replay
+
+## Problem
+A ski resort must move skiers from the base station to the summit over one operating
+day divided into `T` equal time slots (an offline *replay* of a fixed demand/availability
+trace). At the start of slot `t` a batch of `a[t]` new skiers arrives at the base and joins
+the waiting queue. For every slot you must decide which of two lift systems to run:
+
+- **On-Demand gondola (`on`)**: always operable. When run in a slot it transports up to `M`
+  skiers from the queue and costs a fixed `D` per slot it runs (independent of how many ride).
+- **Spot surface-lift (`spot`)**: a cheaper backup lift that is only powered on certain slots.
+  It may be run in slot `t` **only if** the trace marks that slot available (`avail[t]=1`).
+  When run it transports up to `S` skiers and costs a fixed `P` per slot (with `P < D`).
+
+You may run both lifts in the same slot (combined capacity `M+S`), one of them, or neither
+(**pause**). Skiers still waiting at the *end* of a slot incur a comfort/holding cost `h` each,
+per slot they keep waiting. Any skier still in the queue after the final slot `T` is *stranded*
+overnight and incurs a large penalty `H` each.
+
+Replaying the trace with your per-slot decisions is deterministic: within each slot arrivals are
+added first, then the lifts you ran serve `min(queue, capacity)` skiers (as many as fit).
+
+You do not have to empty the queue; stranded skiers are simply charged the penalty `H`. Your job
+is to choose the schedule of lift runs that minimizes total cost.
+
+## Input
+The first line contains seven integers:
+```
+T M S D P h H
+```
+Then follow `T` lines; line `t` (for `t = 1..T`) contains two integers:
+```
+a[t] avail[t]
+```
+where `a[t]` is the number of skiers arriving at the start of slot `t`, and `avail[t]` is 1 if
+the spot lift may run in slot `t`, else 0.
+
+## Output
+Print `T` lines. Line `t` must contain two integers `on[t] spot[t]`, each 0 or 1, meaning
+whether you run the on-demand gondola / the spot lift in slot `t`.
+
+## Feasibility
+An output is feasible iff:
+- it contains exactly `T` lines of two values each, every value in `{0,1}`;
+- `spot[t] = 1` only where `avail[t] = 1`;
+- there is no trailing extra output.
+An infeasible output scores 0.
+
+## Objective (minimize)
+Replay the trace. Let `q` be the running queue (starting at 0). For each slot `t = 1..T`:
+```
+q += a[t]
+cap = on[t]*M + spot[t]*S
+served = min(q, cap)
+q -= served
+F += on[t]*D + spot[t]*P + h*q          # holding on skiers still waiting after slot t
+```
+After the last slot add the stranding penalty `F += H*q`.
+Minimize `F`.
+
+## Scoring
+Let `B = D*T` be the cost of the trivial "run the on-demand gondola every slot" schedule
+(it always empties the queue, so it has no holding or stranding cost). Your score for a test is
+```
+ratio = min(1000, 100 * B / F) / 1000
+```
+so the trivial baseline scores ratio 0.1, and cutting the cost to one tenth of the baseline or
+below caps the ratio at 1.0. The overall score is the mean ratio over all tests.
+
+## Constraints
+- `1 <= T <= 200000`
+- `1 <= M <= 10^6`, `1 <= S < M`, `0 <= a[t] <= M/2` (so a single on-demand run always clears
+  one slot's arrivals), `avail[t] in {0,1}`
+- `1 <= P < D <= 10^6`, `1 <= h <= 10^6`, `1 <= H <= 10^9`
+- Time limit: 5 s
+- Memory limit: 512 MiB
+
+## Example
+Input:
+```
+4 200 80 100 30 1 1000000
+30 0
+50 1
+20 0
+40 1
+```
+Baseline `B = D*T = 100*4 = 400`.
+
+Consider the schedule:
+```
+0 0
+0 1
+0 0
+0 1
+```
+Replay: slot1 pause -> q=30 (holding 30); slot2 spot -> q=30+50=80, served min(80,80)=80,
+q=0, cost 30; slot3 pause -> q=20 (holding 20); slot4 spot -> q=20+40=60, served 60, q=0,
+cost 30. Total `F = 30 + 30 + 20 + 30 = 110`, no stranding.
+Score `ratio = min(1000, 100*400/110)/1000 = 0.363636`.

@@ -1,0 +1,16 @@
+{
+  "id": "fsx_G_0426",
+  "tier": "G",
+  "format": "E",
+  "family": "sci-astronomy-period-lum",
+  "eval_form": "quality-metric",
+  "theme": "variable star survey",
+  "title": "Period-Luminosity-Color Calibration from a Variable-Star Survey - long-period extrapolation",
+  "objective": "min",
+  "strategies": [
+    "constant baseline: predict the mean training absolute magnitude (ignores all structure) -> ~0.1",
+    "linear PLZ fit M ~ 1 + logP + color + [Fe/H]: captures the leading trend but misses the period-luminosity curvature and metallicity-dependent slope, so it extrapolates poorly onto long periods",
+    "structured basis [1, logP, logP^2, color, [Fe/H], [Fe/H]*logP] solved by least squares: recovers the physical shape of the hidden relation and extrapolates well, limited only by the photometric-noise floor",
+    "alternatives: ridge-regularised or Wesenheit-style reddening-free magnitudes, adding higher-order period terms, or trading the complexity penalty against held-out error"
+  ]
+}

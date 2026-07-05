@@ -1,0 +1,16 @@
+{
+  "id": "fsx_S_0055",
+  "tier": "S",
+  "family": "network-design",
+  "seed_problem": "Build a connected relay network where no node has degree > 3, minimizing total cable length; checker validates connectivity+degree and scores baseline/cost.",
+  "mutation": "composite: keep the min-length degree-capped connectivity goal but (a) restrict the output to a per-station tower-capped connected spanning network (caps in {2,3,4}, degree-constrained => NP-hard) and (b) generalize the input with a third altitude coordinate and a vertically-penalised lift cost len = round(horizontal_distance + 3*|delta_h|), turning the plain planar Euclidean MST into an NP-hard degree-constrained MST on an elevation-weighted metric with ridge/basin terrain structure.",
+  "objective": "min",
+  "theme": "ski resort lifts",
+  "title": "Ridgeline Lift Grid: Tower-Capped Ski-Lift Network",
+  "strategies": [
+    "chain baseline: link the stations in input order into one lift chain (always feasible, matches the checker baseline, ratio ~0.1)",
+    "nearest-neighbour path: start anywhere and repeatedly hop to the cheapest unvisited station under the elevation-weighted cost, forming a short degree-2 chain",
+    "degree-constrained Kruskal/Prim: grow a spanning tree by adding globally cheapest lifts whose endpoints still have free tower slots, giving a near-MST that respects the caps",
+    "local search: start from a degree-constrained tree and apply cost-reducing edge swaps / branch reroutes that keep degrees within cap"
+  ]
+}

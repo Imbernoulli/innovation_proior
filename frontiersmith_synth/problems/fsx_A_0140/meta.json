@@ -1,0 +1,17 @@
+{
+  "id": "fsx_A_0140",
+  "tier": "A",
+  "format": "B",
+  "family": "heuristic-contest-offline",
+  "eval_form": "quality-metric",
+  "theme": "vineyard irrigation",
+  "title": "Terraced Vineyard: Drip-Emitter Placement",
+  "objective": "optimize",
+  "source_frameworks": ["ALE-Bench (AHC)", "TTT-Discover (ahc)", "SimpleTES (AHC)"],
+  "strategies": [
+    "top-block pile-up baseline: drop the K emitters on the K plots with the largest surrounding block deficit, ignoring overlap; on a clustered vineyard they crowd the hottest zone and reproduce the evaluator's weak reference (~0.1)",
+    "marginal-gain greedy maximum coverage: place emitters one at a time on the plot that adds the most currently-uncovered deficit, which spreads emitters across separate hot zones and beats the pile-up",
+    "greedy + relocation local search: pull each emitter out and best-respond it to the plot adding the most uncovered deficit given the others, climbing past greedy toward a locally optimal spread under a fixed pass budget",
+    "seeded metaheuristics: swap/relocate multiple emitters at once or perturb-and-reoptimize restarts to escape the local optimum a single-move search settles into"
+  ]
+}

@@ -1,0 +1,18 @@
+{
+  "id": "fsx_N_0404",
+  "tier": "N",
+  "format": "A",
+  "family": "scheduling-geometric-setup",
+  "seed_problem": "job-shop with d-dimensional job profiles and squared-Euclidean changeover setup; minimize makespan + total setup",
+  "mutation": "composite: couple a makespan partition across identical parallel stages with a per-stage squared-Euclidean routing (setup) problem, and charge setup twice on the critical stage (nonlinear coupling) so the winning strategy must balance load AND order acts geometrically",
+  "objective": "min",
+  "theme": "festival stage layout",
+  "title": "Aurora Festival: Stage Reconfiguration Scheduling",
+  "strategies": [
+    "trivial one-stage: all acts on stage 1 in input order (the judge baseline)",
+    "LPT load balancer ignoring geometry: assign longest-runtime acts to least-loaded stage; balances makespan but scrambles rig clusters and pays huge setup (the SPT/LPT trap)",
+    "nearest-neighbor profile tour cut into M runtime-balanced contiguous segments: balances makespan while keeping geometrically-similar acts adjacent (low setup)",
+    "cluster acts in profile space, assign whole clusters to stages to balance load, then order each stage by a local nearest-neighbor / 2-opt path",
+    "coupled incremental greedy: insert each act into the (stage, position) minimizing the marginal increase of makespan + setup, then local-search reassign"
+  ]
+}

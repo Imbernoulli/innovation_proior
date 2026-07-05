@@ -1,0 +1,118 @@
+# Aperture Atlas: Conflict-Free Sky Docket
+
+## Problem
+
+The *Aperture Atlas* is a globe-spanning array of robotic telescopes that shares a single
+observing night. Tonight the science board has queued a long list of **candidate targets**
+(supernova follow-ups, exoplanet transits, asteroid recovery fields, ...). Each candidate
+target carries a **science value** — how much the collaboration gains from observing it.
+
+Unfortunately many pairs of targets **conflict**: two targets in overlapping patches of sky
+saturate the same detector, or demand the same narrow calibration window, or would smear each
+other with stray light. A conflicting pair can never both be scheduled on the same night.
+
+You must choose a set of targets to schedule so that **no two chosen targets conflict**, while
+making the total science value of the chosen set as **large** as possible.
+
+Formally: you are given an undirected graph on `n` targets with a positive value `w_i` on each
+target, and `m` conflict edges. Choose a subset `S` of the targets containing **no** conflict
+edge (an *independent set*), maximizing the total value `sum_{i in S} w_i`.
+
+This is the maximum-weight independent set problem on a general conflict graph: it is NP-hard,
+the optimum is unknown, and many heuristics (weight-greedy, weight-over-degree greedy,
+randomized restarts, local-search swaps) are viable and disagree.
+
+## Input
+
+The first line contains two integers:
+
+```
+n m
+```
+
+- `n` — the number of candidate targets, numbered `1..n`.
+- `m` — the number of conflict edges.
+
+The second line contains `n` integers `w_1 w_2 ... w_n`, where `w_i` is the science value of
+target `i` (`1 <= w_i`).
+
+Each of the next `m` lines contains two integers:
+
+```
+u v
+```
+
+meaning targets `u` and `v` conflict (`1 <= u, v <= n`, `u != v`). The graph is undirected; a
+pair may appear at most once.
+
+## Output
+
+On the first line print `r` — the number of targets you schedule (`0 <= r <= n`).
+On each of the next `r` lines print one target index (an integer in `1..n`). All printed
+indices must be distinct.
+
+Printing `0` on the first line (and nothing else) is valid but scores nothing (empty docket).
+
+## Feasibility
+
+An output is feasible iff:
+
+- `0 <= r <= n`;
+- every printed index is in `1..n` and all `r` indices are distinct;
+- no two printed targets are joined by a conflict edge (the chosen set is independent).
+
+Any infeasible output scores `0`.
+
+## Objective
+
+Let `F = sum_{i in S} w_i` be the total science value of your chosen set `S`. You are
+**maximizing** `F`.
+
+## Scoring
+
+Let `B` be the largest single target value in the instance, `B = max_i w_i` (scheduling that
+one target alone is always feasible). The score for a test is
+
+```
+ratio = min(1.0, 0.1 * F / B)
+```
+
+Scheduling just the single most valuable target (`F = B`) scores `0.1`; assembling a
+conflict-free docket worth ten times the best single target (`F = 10*B`) caps the score at
+`1.0`. The overall score is the mean ratio across all tests.
+
+## Constraints
+
+- `2 <= n <= 600`.
+- `1 <= m <= n*(n-1)/2`.
+- `1 <= w_i <= 1000`.
+- Time limit: 5 s. Memory limit: 512 MB.
+
+## Example
+
+Input:
+
+```
+5 4
+10 40 30 50 20
+1 2
+2 3
+3 4
+4 5
+```
+
+The conflicts form a path `1 - 2 - 3 - 4 - 5`. The single best target is target `4` with value
+`50`, so `B = 50`.
+
+Choosing `S = {2, 4}` is conflict-free (targets `2` and `4` are not joined by an edge) and has
+total value `F = 40 + 50 = 90`.
+
+Score for this test: `min(1.0, 0.1 * 90 / 50) = min(1.0, 0.18) = 0.18`.
+
+A valid worked output:
+
+```
+2
+2
+4
+```

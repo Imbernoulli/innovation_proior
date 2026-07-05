@@ -1,0 +1,132 @@
+# Lunar Habitat Pressure Loops: Survivable Degree-Capped Tunnel Grid
+
+## Problem
+
+A lunar base consists of `N` sealed **habitat modules** anchored to the regolith at fixed
+2D map coordinates `(x, y)` (metres on the survey grid). You must bore a network of
+**pressurized tunnels**, each tunnel joining two modules and costing regolith-boring energy
+proportional to the straight-line distance between them.
+
+Because a single micrometeorite strike can rupture any one tunnel, the network must be
+**survivable**: after the loss of **any single tunnel**, every module must still be able to
+reach every other module through the remaining tunnels. Equivalently, the tunnel network must
+be **2-edge-connected** (connected, and containing no bridge — no tunnel whose removal
+disconnects the base).
+
+Each module `i` has a limited number of airlock ports: it can be an endpoint of **at most
+`cap_i`** tunnels. You choose which tunnels to bore. You want a survivable network whose
+**total tunnel length is as small as possible**, without ever exceeding any module's port cap.
+
+Without the survivability requirement a spanning tree would do; forcing 2-edge-connectivity
+under per-module port caps makes short survivable networks fight for airlock ports, and no
+efficient optimal algorithm is known. Heuristics are expected.
+
+## Input
+
+```
+N
+x_1 y_1 cap_1
+x_2 y_2 cap_2
+...
+x_N y_N cap_N
+```
+
+- Line 1: integer `N`, the number of modules.
+- Each of the next `N` lines gives module `i` (numbered `1..N`): integer coordinates
+  `x_i`, `y_i` and its airlock port cap `cap_i`.
+- All module coordinates are distinct. Every `cap_i >= 2`, so a survivable network always
+  exists (for instance a single cycle through all modules in some order).
+
+## Output
+
+Print your tunnel network as a list of tunnels.
+
+```
+E
+a_1 b_1
+a_2 b_2
+...
+a_E b_E
+```
+
+- Line 1: integer `E`, the number of tunnels you bore.
+- Each of the next `E` lines gives one tunnel between modules `a_k` and `b_k`
+  (`1 <= a_k, b_k <= N`, `a_k != b_k`). Tunnels are undirected; do not list the same
+  unordered pair twice.
+
+## Feasibility
+
+An output is feasible if and only if all of the following hold:
+
+- `E` tunnels are printed, each joining two distinct valid modules;
+- no unordered pair of modules appears more than once (no duplicate tunnel);
+- for every module `i`, the number of tunnels incident to `i` is at most `cap_i`;
+- the resulting network is **2-edge-connected**: it spans all `N` modules, is connected, and
+  has **no bridge** (there is no tunnel whose removal disconnects the network).
+
+Any output that violates feasibility scores 0.
+
+## Objective
+
+The **length** of a tunnel between modules `p` and `q` is the Euclidean distance rounded to
+the nearest integer:
+
+```
+len(p, q) = round( sqrt( (x_p - x_q)^2 + (y_p - y_q)^2 ) )
+```
+
+Minimize the total network length
+
+```
+F = sum over all bored tunnels (a, b) of len(a, b).
+```
+
+## Scoring
+
+Let `B` be the length of the **loop baseline**: the single cycle that links the modules in
+input order, `1-2, 2-3, ..., (N-1)-N, N-1` (a Hamiltonian cycle, always feasible and
+survivable since every `cap_i >= 2`). Your score on a test is
+
+```
+ratio = min(1.0, (B / max(1, F)) / 10)
+```
+
+so a network that merely matches the loop baseline scores `0.1`, one half its length scores
+`0.2`, and reaching one tenth of the baseline length (or shorter) reaches the capped score
+`1.0`. Larger is better. Per-test scores are averaged.
+
+## Constraints
+
+- `3 <= N <= 500`
+- `0 <= x_i, y_i <= 10000`
+- `2 <= cap_i <= 4`
+- Time limit: 5s
+- Memory limit: 512 MiB
+
+## Example
+
+Input:
+```
+4
+0 0 2
+0 10 3
+10 10 2
+10 0 3
+```
+
+The four modules sit on the corners of a 10x10 square (side length 10, diagonal
+`round(sqrt(200)) = 14`). The loop baseline links `1-2, 2-3, 3-4, 4-1` (the four sides in
+input order), so `B = 10 + 10 + 10 + 10 = 40`.
+
+Consider the network with tunnels `1-2, 2-3, 3-4, 4-1` — the full square loop. Every module
+has degree 2 (within its cap), it is connected with no bridge (removing any one side leaves a
+path through the other three), and `F = 40`, giving `ratio = min(1.0, (40 / 40) / 10) = 0.1`.
+
+Now consider `1-2, 2-3, 3-4` (three sides, no closing tunnel). It is connected and every
+module is within its cap, but every tunnel is a **bridge** (removing `2-3` splits the base),
+so it is **not** survivable and scores `0`.
+
+A network cannot beat the square loop here (any 2-edge-connected graph on these four corners
+needs at least the four sides), so `0.1` is the best achievable on this tiny instance. On
+larger scattered instances, a shorter survivable loop (a good tour, or a network that spends a
+few extra airlock ports to take short cross-links) scores well above `0.1`.

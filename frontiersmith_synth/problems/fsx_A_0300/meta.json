@@ -1,0 +1,17 @@
+{
+  "id": "fsx_A_0300",
+  "tier": "A",
+  "format": "B",
+  "family": "heuristic-contest-offline",
+  "eval_form": "quality-metric",
+  "theme": "cave mapping expedition",
+  "title": "Lechuguilla Deep: The Survey Loop",
+  "objective": "optimize",
+  "source_frameworks": ["ALE-Bench (AHC)", "TTT-Discover (ahc)", "SimpleTES (AHC)"],
+  "strategies": [
+    "best single triangle: string the highest-value triangular loop over 3 stations (reproduces the evaluator's weak reference, ~0.1)",
+    "enclose-everything hull: convex hull of all interior stations -- captures every cluster but pays one large perimeter and cannot skip a far/low-value cluster",
+    "cluster-selection local search: group formations into clusters, then search over WHICH subset of clusters to enclose and how tightly to hug each (nearest-station convex hulls at several radii), scoring every candidate loop by the true objective and keeping the best -- trades rope against documentation value and beats the enclose-everything hull",
+    "stronger metaheuristics: simulated annealing / tabu over the vertex set, prize-collecting polygon construction with boundary smoothing, or beam search over station insertions/removals with an incremental simplicity+containment check"
+  ]
+}

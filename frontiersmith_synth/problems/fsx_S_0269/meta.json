@@ -1,0 +1,18 @@
+{
+  "id": "fsx_S_0269",
+  "tier": "S",
+  "format": "A",
+  "family": "scheduling-jssp",
+  "eval_form": "quality-metric",
+  "seed_problem": "Emit a full machine schedule for a synthetic JSSP instance; checker validates precedence/no-overlap and scores min(100, 100*optimum/makespan).",
+  "mutation": "input+theme: skin the job-shop as a traffic-signal grid where convoys are jobs, intersections are machines and green windows are operations; routes are grid walks with heavy-tailed green windows and shared intersections, so the min-makespan schedule is NP-hard and dispatch/list-scheduling/active-schedule/randomised strategies diverge. Scoring uses a checker-built fully-serial baseline B (sum of green windows) instead of an unknown optimum.",
+  "objective": "min",
+  "theme": "traffic signal grid",
+  "title": "Green Wave: Convoy Signal Scheduling on a Traffic Grid",
+  "strategies": [
+    "fully-serial baseline: run every green window back-to-back with no overlap (makespan = sum of windows)",
+    "earliest-start list scheduling: repeatedly dispatch the ready stop with the smallest earliest start (SPT tie-break)",
+    "active-schedule generation (Giffler-Thompson) with SPT/LPT/min-completion priority rules",
+    "randomised multi-restart active-schedule search: seeded random resolution of machine conflicts, keeping the lowest-makespan timetable found"
+  ]
+}

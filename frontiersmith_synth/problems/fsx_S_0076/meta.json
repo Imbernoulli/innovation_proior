@@ -1,0 +1,19 @@
+{
+  "id": "fsx_S_0076",
+  "tier": "S",
+  "family": "routing-tour",
+  "format": "A",
+  "eval_form": "quality-metric",
+  "seed_problem": "ALE-Bench pickup-delivery selective tour (ahc006/027/039); Frontier-CS routing",
+  "mutation": "composite: prize-collecting SELECTIVE pickup-delivery TSP with precedence on a Manhattan gantry -- choose a subset of pairs AND output one depot-to-depot precedence-constrained tour; objective = total travel + skip penalties (min)",
+  "objective": "min",
+  "theme": "telescope array",
+  "variant": 6,
+  "title": "Array Gantry Segment Ferrying",
+  "strategies": [
+    "do-nothing baseline: serve no task, pay every downtime penalty (calibration point)",
+    "profit-filter greedy: serve each task whose penalty exceeds its standalone round-trip, chained by nearest-neighbour on pickups with consecutive P-then-D",
+    "cheapest-insertion with precedence: grow one route, insert each task's pickup/delivery at cheapest positions (pickup earlier), accept when insertion cost < penalty; multi-pass so shared travel pulls in more tasks",
+    "local search: 2-opt / or-opt on the served route plus add/drop moves on the selection set"
+  ]
+}

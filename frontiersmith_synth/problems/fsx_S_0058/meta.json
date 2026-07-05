@@ -1,0 +1,22 @@
+{
+  "id": "fsx_S_0058",
+  "tier": "S",
+  "format": "A",
+  "family": "maxsat-csp",
+  "eval_form": "quality-metric",
+  "source_frameworks": ["Frontier-CS", "MLS-Bench"],
+  "seed_problem": "Maximize total weight of satisfied clauses in a synthetic weighted CNF; checker computes satisfied weight / baseline.",
+  "mutation": "input+goal: generalize binary weighted Max-SAT to finite-domain weighted Max-CSP (D-ary equality demands (v,a) instead of +/- literals), skinned as lunar-habitat life-support mode assignment; a default-config-averse clause structure keeps the all-zero baseline genuinely mediocre. Objective stays maximize met-requirement criticality weight.",
+  "objective": "max",
+  "theme": "lunar habitat",
+  "variant": 4,
+  "scale": "medium",
+  "title": "Lunar Habitat Reconfiguration: Life-Support Mode Assignment",
+  "strategies": [
+    "all-default constant assignment (reproduces the checker baseline B, Ratio=0.1)",
+    "single-pass coordinate ascent: for each module pick the config that meets more incremental weight",
+    "iterated hill-climbing to a local optimum via weight-improving reconfigurations",
+    "multi-restart weighted local search keeping the best assignment across seeded restarts",
+    "criticality-aware initialization prioritizing high-weight requirements before local search"
+  ]
+}

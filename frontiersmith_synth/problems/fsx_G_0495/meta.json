@@ -1,0 +1,18 @@
+{
+  "id": "fsx_G_0495",
+  "tier": "G",
+  "format": "B",
+  "family": "new-mechanism-auction",
+  "eval_form": "quality-metric",
+  "theme": "spectrum auction",
+  "title": "Airwaves: A Combinatorial Spectrum Auction",
+  "objective": "max",
+  "source_frameworks": ["breadth-fill (dataset/domain/task diversity)"],
+  "strategies": [
+    "arrival-order greedy (weak reference): accept packages in submission order, skipping any that collide on a licence or repeat a carrier; reproduces the evaluator's w_base anchor (~0.10)",
+    "value / density greedy: reorder packages by value or value-per-licence so efficient bundles outrank one huge blocking bid; a large jump over arrival order but never revisits its choices",
+    "multi-key greedy + 1-for-many-swap local search: seed from several orderings (value, density, sqrt-density, small-first), then repeatedly drop the winners a package collides with and adopt it whenever welfare strictly rises; approaches the strong internal anchor (~0.80)",
+    "toward-optimal winner determination: branch-and-bound / ILP / stronger metaheuristics on the NP-hard combinatorial-auction WDP push past the internal local-search reference toward 1.0",
+    "infeasible: awarding every bid (overlapping licences + multiple XOR packages per carrier) is rejected and scores 0.0"
+  ]
+}

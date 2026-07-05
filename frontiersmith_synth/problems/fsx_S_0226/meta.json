@@ -1,0 +1,18 @@
+{
+  "id": "fsx_S_0226",
+  "tier": "S",
+  "format": "A",
+  "family": "maxsat-csp",
+  "eval_form": "quality-metric",
+  "seed_problem": "Maximize total weight of satisfied clauses in a synthetic weighted CNF; checker computes satisfied weight / baseline.",
+  "mutation": "input+output: generalize the boolean weighted Max-SAT to a D-symbol Max-CSP whose clauses are disjunctions of equality literals (marker == color) over a D>2 domain, and replace the all-0 baseline with the strictly stronger best-uniform-coloring baseline the checker computes. The larger domain plus the strong uniform baseline mean a single uniform color already captures a solid fraction of value, so beating it requires genuine per-marker differentiation (greedy vs coordinate-ascent vs multi-restart local search diverge) rather than blowing past a weak do-nothing point and capping.",
+  "objective": "max",
+  "theme": "cave mapping expedition",
+  "title": "Cave Mapping Expedition: Dye-Marker Corroboration",
+  "strategies": [
+    "best-uniform baseline: paint every marker the single color that corroborates the most observation value (the checker's calibration point, ratio 0.1)",
+    "single-pass coordinate greedy: start from the best-uniform coloring and set each marker once to the color that maximizes currently corroborated value, ignoring later interactions",
+    "multi-restart coordinate-ascent local search: hill-climb per-marker color moves to convergence from the uniform start and several seeded random starts, keeping the best coloring",
+    "clause-weighted relaxation with conflict repair: aggregate per-marker weighted color demands, round to a coloring, then repair the heaviest still-uncorroborated observations"
+  ]
+}

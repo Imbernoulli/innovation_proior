@@ -1,0 +1,18 @@
+{
+  "id": "fsx_S_0251",
+  "tier": "S",
+  "format": "A",
+  "family": "independent-set-clique",
+  "eval_form": "quality-metric",
+  "seed_problem": "Select a maximum-weight set of mutually non-conflicting research sites on a conflict graph; checker validates independence and scores achieved weight against a single-best baseline.",
+  "mutation": "input: generalize the conflict graph from an easy structured class (bipartite/interval) to an arbitrary dense general graph with per-target values, so maximum-weight independent set selection becomes NP-hard and weight-greedy vs. weight/degree vs. randomized local-search strategies diverge.",
+  "objective": "max",
+  "theme": "telescope array",
+  "title": "Aperture Atlas: Conflict-Free Sky Docket",
+  "strategies": [
+    "single-best baseline: schedule only the highest-value target (always feasible, ratio 0.1)",
+    "weight-greedy: sort targets by value descending, add each if it conflicts with nothing already scheduled",
+    "weight-over-degree greedy: prioritize by value/(1+remaining conflict degree), removing neighbors as targets are locked in",
+    "randomized multi-restart with (1,2)-swap local search: perturb the greedy order, build a maximal docket, then improve via remove-one/add-more swaps and keep the best docket found"
+  ]
+}

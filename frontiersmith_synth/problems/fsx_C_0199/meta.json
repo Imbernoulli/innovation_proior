@@ -1,0 +1,17 @@
+{
+  "id": "fsx_C_0199",
+  "tier": "C",
+  "format": "B",
+  "family": "classical-ml-algorithm",
+  "eval_form": "quality-metric",
+  "theme": "pandemic contact net",
+  "title": "Contact-Net Outbreak Clustering: One Algorithm, Many Transmission Geometries",
+  "objective": "max",
+  "source_frameworks": ["MLS-Bench (ml-*)"],
+  "strategies": [
+    "trivial: put every individual in one outbreak cluster -- structurally valid so it earns the 0.1 floor, but ARI=0 on every dataset, geometric mean pinned at 0.1",
+    "greedy: Lloyd k-means on the raw exposure coordinates with deterministic k-means++ seeding; recovers round household blobs but its Euclidean/spherical bias collapses on ring, chain and concentric transmission geometries",
+    "strong: standardize, build a symmetric kNN affinity graph, take the normalized-Laplacian spectral embedding, and k-means the row-normalized eigenvectors with deterministic restarts -- the connectivity view transfers across blobs, moons, rings and elongated chains",
+    "invalid: emit a wrong-length labeling containing NaN; strict validation rejects it -> 0 on every dataset -> geometric mean 0"
+  ]
+}

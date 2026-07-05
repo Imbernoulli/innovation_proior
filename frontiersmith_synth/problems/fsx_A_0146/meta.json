@@ -1,0 +1,15 @@
+{
+  "id": "fsx_A_0146",
+  "tier": "A",
+  "format": "C",
+  "family": "integer-matrix-construction",
+  "eval_form": "quality-metric",
+  "theme": "archaeology dig grid",
+  "title": "Excavation Grid Resonance: Constrained Max-Determinant Completion",
+  "objective": "max",
+  "strategies": [
+    "trivial: minimal triangular sign completion (checker baseline)",
+    "greedy: random fill + one sweep of |det|-increasing single-cell flips",
+    "strong: multi-restart Sherman-Morrison coordinate descent on |det| to convergence"
+  ]
+}

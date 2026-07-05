@@ -1,0 +1,18 @@
+{
+  "id": "fsx_S_0026",
+  "tier": "S",
+  "format": "A",
+  "family": "covering-facility-location",
+  "seed_problem": "Place watchtowers on a forest graph to cover every cell within radius r, minimizing total build cost; score = baseline_cost / achieved_cost.",
+  "mutation": "composite: skin as forest-fire watchtower surveillance and generalize the seed from a grid to an arbitrary weighted forest-cell graph with a per-cell build cost and a hop-radius R (R-dominating set), turning uniform k-center into a genuinely weighted min-cost R-covering where cost-aware and coverage-aware heuristics diverge; the all-towers construction is the calibrated baseline B.",
+  "objective": "min",
+  "theme": "forest fire watchtowers",
+  "title": "Firewatch: Watchtower Placement on a Forest Graph",
+  "strategies": [
+    "build a tower on every cell (reproduces the checker baseline B, ratio = 0.1)",
+    "coverage-greedy: repeatedly build on the cell that newly covers the most cells (ignores cost)",
+    "cost-ratio greedy: repeatedly build on the cell maximizing newly-covered / build-cost",
+    "cost-ratio greedy followed by redundancy pruning (drop towers whose coverage is fully redundant, most-expensive first)",
+    "local-search swaps / LP-rounding of the fractional covering relaxation"
+  ]
+}

@@ -1,0 +1,17 @@
+{
+  "id": "fsx_B_0159",
+  "tier": "B",
+  "format": "B",
+  "family": "feasibility-gated-structural",
+  "eval_form": "quality-metric",
+  "theme": "vineyard irrigation",
+  "title": "Vineyard Irrigation Trellis Sizing",
+  "objective": "min",
+  "source_frameworks": ["Frontier-Eng (StructuralOptimization)"],
+  "strategies": [
+    "trivial: uniform a_max sizing (evaluator baseline, always feasible) -> ~0.1",
+    "greedy: single-pass fully-stressed design (area = |force|/sigma); passes the yield gate but busts the sag gate on tight instances -> 0 there",
+    "strong: fully-stressed design + displacement-gate repair (scale areas up until sag limit met); feasible on both gates and far lighter than baseline",
+    "invalid: uniform a_min sizing -> stresses exceed yield everywhere -> 0"
+  ]
+}

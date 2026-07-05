@@ -1,0 +1,117 @@
+# Salmon Migration Ladder: Spawning-Pool Assignment
+
+## Problem
+
+A river restoration project has built a **fish ladder** of `P` resting **pools** along a
+migration route. During the spawning run, `N` **salmon schools** arrive and each school may be
+guided into **at most one** pool to rest and spawn, or be left in the main channel (unassigned).
+
+Every pool `j` has a limited **holding volume** `C_j` (cubic metres of usable slack water).
+Guiding school `i` into pool `j` occupies `w[i][j]` cubic metres of that pool (the space the
+school and its redd need, which varies with the pool's current and temperature) and yields a
+**spawning value** `v[i][j]` (expected surviving eggs, higher when the pool's flow and
+temperature suit that school's strain).
+
+A single pool cannot be overfilled: the total volume occupied by the schools guided into it must
+not exceed its holding volume. Your task is to decide, for every school, which pool (if any) to
+guide it into, so as to **maximize the total spawning value** of all guided schools.
+
+This is a Generalized Assignment Problem: finding the true optimum is NP-hard, so heuristic
+constructions are expected and are graded on the value they achieve.
+
+## Input
+
+```
+N P
+C_1 C_2 ... C_P
+v[1][1] w[1][1] v[1][2] w[1][2] ... v[1][P] w[1][P]
+v[2][1] w[2][1] ... v[2][P] w[2][P]
+...
+v[N][1] w[N][1] ... v[N][P] w[N][P]
+```
+
+- Line 1: the number of schools `N` and the number of pools `P`.
+- Line 2: the `P` pool holding volumes `C_j`.
+- The next `N` lines: for each school `i`, the `P` pairs `(v[i][j], w[i][j])` giving the spawning
+  value and occupied volume if school `i` is guided into pool `j`.
+
+## Output
+
+Print `N` integers `a_1 a_2 ... a_N` (whitespace-separated; any layout). Value `a_i` is the pool
+that school `i` is guided into, or `0` if school `i` is left in the main channel.
+
+- `0 <= a_i <= P`.
+
+## Feasibility
+
+An output is feasible iff:
+
+1. every `a_i` is an integer in `[0, P]`, and
+2. for every pool `j`, the sum of `w[i][j]` over all schools `i` with `a_i = j` does not exceed
+   `C_j` (no pool is overfilled).
+
+An infeasible output scores **0**.
+
+## Objective
+
+Maximize the total spawning value
+
+```
+F = sum over i with a_i >= 1 of v[i][a_i].
+```
+
+## Scoring
+
+Let `B` be the total value of a fixed **first-fit** reference construction: process the schools in
+input order, and guide each school into the lowest-indexed pool that still has room for it
+(occupied volume of that school in that pool fits the pool's remaining volume); if no pool has
+room, the school is left unassigned. `B` is guaranteed positive.
+
+Your ratio on a test is
+
+```
+ratio = min(1000, 100 * F / B) / 1000,
+```
+
+so matching the reference construction scores about `0.1`, and reaching ten times the reference
+value (or more) caps the ratio at `1.0`. The reported per-test score is this ratio.
+
+## Constraints
+
+- `1 <= P <= 25`
+- `1 <= N <= 300`
+- `1 <= C_j <= 200000`
+- `0 <= v[i][j] <= 1000`
+- `1 <= w[i][j] <= 200`
+- Time limit: 5 s
+- Memory limit: 512 MB
+
+## Example
+
+Input:
+
+```
+5 2
+70 70
+40 20 10 30
+50 25 5 40
+30 15 60 22
+10 35 55 18
+20 40 45 33
+```
+
+Consider the output:
+
+```
+1 1 2 2 0
+```
+
+- Pool 1 holds schools 1 and 2: volume `20 + 25 = 45 <= 70`. OK.
+- Pool 2 holds schools 3 and 4: volume `22 + 18 = 40 <= 70`. OK.
+- School 5 stays in the channel.
+- `F = v[1][1] + v[2][1] + v[3][2] + v[4][2] = 40 + 50 + 60 + 55 = 205`.
+
+The first-fit reference here guides school 1→pool1 (fits), 2→pool1 (20+25=45), 3→pool1
+(45+15=60), 4→pool1 (60+35=95>70, try pool2, 18<=70 → pool2), 5→pool1 (60+40=100>70, pool2
+18+33=51<=70 → pool2), giving `B = 40 + 50 + 30 + 55 + 45 = 220`. The shown output has
+`F = 205`, so its ratio is `min(1000, 100*205/220)/1000 = 0.0931...`.

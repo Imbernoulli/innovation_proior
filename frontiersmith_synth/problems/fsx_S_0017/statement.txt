@@ -1,0 +1,120 @@
+# Cryo-Harness: Quantum Lab Wiring Schedule
+
+## Problem
+
+A superconducting quantum lab is assembling a batch of qubit modules. Each **module**
+(a *job*) must be routed through a fixed **sequence of wiring operations** — thread the
+cryo-loom, solder the flux lines, calibrate the couplers, and so on. Every operation must
+be performed at a specific **workstation** (a *machine*), takes a known amount of time, and
+the operations of a module must be done **in their listed order** (you cannot calibrate a
+coupler before its flux lines are soldered).
+
+Each workstation can handle only **one operation at a time**. Because different modules use
+the same workstations in different orders — and a module may even revisit a workstation more
+than once (recirculation) — the technicians must interleave the work cleverly to finish the
+whole batch quickly.
+
+Your task: assign a **start time** to every operation so that all precedence and
+one-operation-per-workstation constraints hold, and the **makespan** — the moment the last
+operation finishes — is as **small** as possible.
+
+This is a job-shop scheduling problem (with recirculation). The optimum makespan is NP-hard
+to compute; many dispatch rules and local-search strategies are viable and diverge.
+
+## Input
+
+The first line contains two integers:
+
+```
+J M
+```
+
+- `J` — number of modules (jobs), numbered `1..J`.
+- `M` — number of workstations (machines), numbered `1..M`.
+
+Each of the next `J` lines describes one module. Line `j` begins with an integer `k_j`, the
+number of operations of module `j`, followed by `k_j` pairs of integers:
+
+```
+k_j  m_{j,1} d_{j,1}  m_{j,2} d_{j,2}  ...  m_{j,k_j} d_{j,k_j}
+```
+
+The `o`-th operation of module `j` must run on workstation `m_{j,o}` (`1 <= m_{j,o} <= M`)
+and takes `d_{j,o}` time units (`1 <= d_{j,o}`). The operations are listed in the order they
+must be performed. A workstation may appear more than once within a module.
+
+## Output
+
+Print the **start time of every operation**, as nonnegative integers, in the order the
+operations appear in the input: first all operations of module `1` (in order), then all of
+module `2`, and so on. The output is a flat list of exactly `sum_j k_j` integers, separated
+by whitespace (any mix of spaces and newlines is accepted).
+
+## Feasibility
+
+Let `s(op)` be the start time you assign and `d(op)` its duration, so it occupies the
+half-open interval `[s(op), s(op) + d(op))`. An output is feasible iff:
+
+- every start time is an integer in `[0, 2*10^9]`;
+- **precedence**: within each module, for consecutive operations `a` then `b`,
+  `s(b) >= s(a) + d(a)`;
+- **no overlap**: for any two operations assigned to the *same* workstation, their occupied
+  intervals do not overlap.
+
+Any infeasible output scores `0`.
+
+## Objective
+
+Let `F` be the **makespan**: the maximum over all operations of `s(op) + d(op)`. You are
+**minimizing** `F`.
+
+## Scoring
+
+Let `B` be the makespan of the *fully sequential* schedule — run every operation one after
+another on a single timeline with no overlap at all — which equals the sum of all operation
+durations. This is always feasible. The score for a test is
+
+```
+ratio = min(1.0, 0.1 * B / F)
+```
+
+The fully sequential schedule (`F = B`) scores `0.1`; a schedule ten times shorter
+(`F = B / 10`) caps the score at `1.0`. The overall score is the mean ratio across all tests.
+
+## Constraints
+
+- `1 <= J <= 40`, `1 <= M <= 12`.
+- Total number of operations `sum_j k_j <= 500`.
+- `1 <= d_{j,o} <= 99`.
+- Time limit: 5 s. Memory limit: 512 MB.
+
+## Example
+
+Input:
+
+```
+2 2
+2 1 3 2 2
+2 2 4 1 1
+```
+
+Module 1 has operations `(machine 1, dur 3)` then `(machine 2, dur 2)`. Module 2 has
+`(machine 2, dur 4)` then `(machine 1, dur 1)`. The sum of durations is `B = 10`.
+
+A valid interleaved schedule:
+
+- op1 (module 1, machine 1): start `0`, occupies `[0,3)`
+- op2 (module 1, machine 2): start `4`, occupies `[4,6)`
+- op3 (module 2, machine 2): start `0`, occupies `[0,4)`
+- op4 (module 2, machine 1): start `4`, occupies `[4,5)`
+
+Machine 1 hosts `[0,3)` and `[4,5)` (disjoint); machine 2 hosts `[0,4)` and `[4,6)`
+(disjoint); both modules obey precedence. The makespan is `F = 6`.
+
+Output (start times in input order):
+
+```
+0 4 0 4
+```
+
+Score for this test: `min(1.0, 0.1 * 10 / 6) = 0.16667`.

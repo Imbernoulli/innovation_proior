@@ -1,0 +1,126 @@
+# Twin-Refinery Belt Split: Balanced Ore-Conflict Separation
+
+## Problem
+
+The *Ceres Deep-Belt Consortium* has surveyed a cluster of `n` asteroids and must dock
+each one at exactly **one of two identical orbital refineries** (call them refinery `0`
+and refinery `1`). The two refineries have equal berthing capacity, so **each refinery
+must receive exactly `n / 2` asteroids** (`n` is even).
+
+Some pairs of asteroids carry **incompatible ore chemistries**: if two incompatible
+asteroids are processed at the *same* refinery their tailings react and waste yield, but
+if they are sent to *different* refineries the reaction is avoided and the consortium
+banks a **separation bonus** equal to that pair's incompatibility weight. There is no
+penalty for compatible pairs; they simply contribute nothing.
+
+Your job is to assign every asteroid to a refinery so that the two refineries hold equal
+numbers of asteroids and the **total separation bonus** — the sum of the weights of all
+incompatible pairs that end up split across the two refineries — is as **large** as
+possible.
+
+Formally this is a **maximum balanced bisection** (balanced max-cut) of a weighted graph:
+it is NP-hard, the optimum is unknown, and greedy assignment, pairwise-swap local search,
+and randomized multi-restart search are all viable and give different results.
+
+## Input
+
+The first line contains two integers:
+
+```
+n m
+```
+
+- `n` — number of asteroids, numbered `1..n`. `n` is **even**.
+- `m` — number of incompatible pairs (weighted edges).
+
+Each of the next `m` lines describes one incompatibility:
+
+```
+u v w
+```
+
+meaning asteroids `u` and `v` are incompatible with separation bonus `w`
+(`1 <= u, v <= n`, `u != v`, `1 <= w`). A pair may appear more than once (each listed
+occurrence contributes its own weight independently); self-pairs never occur.
+
+## Output
+
+Print `n` integers `a_1 a_2 ... a_n`, one per line (whitespace between them is ignored),
+where `a_i` is the refinery (`0` or `1`) that asteroid `i` is docked at.
+
+Exactly `n / 2` of the values must equal `1` (and hence exactly `n / 2` equal `0`).
+
+## Feasibility
+
+An output is feasible iff:
+
+- it contains exactly `n` integers, each equal to `0` or `1`;
+- exactly `n / 2` of them equal `1`;
+- there is no trailing garbage.
+
+Any infeasible output scores `0`.
+
+## Objective
+
+Let `F` be the total separation bonus you achieve:
+
+```
+F = sum of w over all listed incompatibilities (u, v, w) with a_u != a_v.
+```
+
+You are **maximizing** `F`.
+
+## Scoring
+
+The checker builds a fixed reference assignment — the **alternating dock**, where asteroid
+`i` goes to refinery `(i mod 2)` (odd-numbered asteroids to refinery `1`, even-numbered to
+refinery `0`). This is always balanced. Let `B` be its total separation bonus. The score
+for a test is
+
+```
+ratio = min(1.0, 0.1 * F / B)
+```
+
+Reproducing the alternating dock (`F = B`) scores `0.1`; reaching a ten-fold bonus
+(`F = 10 * B`) caps the score at `1.0`. The overall score is the mean ratio across all
+tests.
+
+## Constraints
+
+- `4 <= n <= 48`, `n` even.
+- `1 <= m <= 2000`.
+- `1 <= w <= 60`.
+- Time limit: 5 s. Memory limit: 256 MB.
+
+## Example
+
+Input:
+
+```
+4 4
+1 2 5
+3 4 5
+1 3 8
+2 4 8
+```
+
+Here `n = 4`, so each refinery must hold exactly `2` asteroids.
+
+Reference alternating dock: `a = (1, 0, 1, 0)` (asteroid 1 -> 1, 2 -> 0, 3 -> 1, 4 -> 0).
+Split pairs are those with different sides: pair `(1,2)` split (bonus 5), `(3,4)` split
+(bonus 5); pairs `(1,3)` same side, `(2,4)` same side. So `B = 5 + 5 = 10`.
+
+Now consider the output `a = (1, 1, 0, 0)` (asteroids 1,2 to refinery 1; 3,4 to refinery 0),
+which is balanced. Split pairs: `(1,3)` bonus 8, `(2,4)` bonus 8, `(1,2)` same side,
+`(3,4)` same side. So `F = 8 + 8 = 16`.
+
+Score for this test: `min(1.0, 0.1 * 16 / 10) = min(1.0, 0.16) = 0.16`.
+
+A valid worked output:
+
+```
+1
+1
+0
+0
+```

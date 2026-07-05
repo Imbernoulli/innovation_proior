@@ -1,0 +1,20 @@
+{
+  "id": "fsx_C_0191",
+  "tier": "C",
+  "format": "B",
+  "family": "modular-component-cross-setting",
+  "eval_form": "quality-metric",
+  "theme": "data-center cooling",
+  "title": "Data-Center Cooling: A Drop-In Thermal Response Nonlinearity for Cross-Hall Load Classifiers",
+  "objective": "optimize",
+  "source_frameworks": ["MLS-Bench (dl-*/llm-*, CPU proxies only)"],
+  "isolation": "candidate runs as an isolated stdin->stdout subprocess via isorun; sensor data, labels, trained weights and oracle state stay in the evaluator process",
+  "strategies": [
+    "identity curve phi(x)=x -> reproduces the evaluator's linear baseline (~0.1 on every hall)",
+    "plain unit-gain tanh -> real curvature, beats linear on several halls but under-uses the knot range and saturates early",
+    "gain-tuned saturating unit 2*tanh(1.5x) -> steep live gradient near 0 + wide bounded plateau; separates the nonlinear halls while staying stable on the near-linear blobs hall -> high geometric mean",
+    "rectifier-family curves (relu/gelu/swish/elu) -> excellent on XOR/rings but collapse the near-linear Gaussian-regime hall below baseline, zeroing the geometric mean",
+    "even/radial curves (abs) -> strong on rings/ring4d but poor on spirals/moons",
+    "per-setting adaptation using the public 'setting'/'n_features'/'n_classes' fields to pick a curve shape per hall (candidate never sees the labelled data, so it cannot overfit)"
+  ]
+}

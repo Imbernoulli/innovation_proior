@@ -1,0 +1,117 @@
+# Arena Showcase Lineup: Rivalry-Free Roster
+
+## Problem
+
+*NovaClash Arena* is booking its grand exhibition night. There are `n` candidate
+performers (star players and hero duos), and slot `i` on the showcase would generate a
+positive **hype value** `w_i`. Unfortunately many performers cannot share the same
+showcase night: bitter in-game rivalries, shared signature champions, contractual
+exclusivity, or overlapping fan feuds mean certain **pairs conflict** and must never both
+be featured. The conflicts form an arbitrary graph — there is no nice structure to exploit.
+
+Your job is to pick a **rivalry-free roster**: a subset `S` of performers such that no two
+chosen performers conflict, maximizing the total hype `sum_{i in S} w_i`.
+
+Formally: given an undirected graph on `n` vertices with positive vertex weights, select a
+maximum-weight **independent set** (no chosen pair is joined by an edge).
+
+This is the maximum-weight independent set problem on a general graph. It is NP-hard, the
+optimum is unknown at these scales, and many heuristics (weight-greedy, weight-over-degree
+greedy, randomized multi-restart, local-search swaps) are viable and diverge.
+
+## Input
+
+The first line contains two integers:
+
+```
+n m
+```
+
+- `n` — number of candidate performers (vertices), numbered `1..n`.
+- `m` — number of rivalry conflicts (edges).
+
+The second line contains `n` integers `w_1 w_2 ... w_n` — the hype value of each
+performer (`1 <= w_i`).
+
+Each of the next `m` lines describes one conflict:
+
+```
+u v
+```
+
+meaning performers `u` and `v` cannot both be featured (`1 <= u, v <= n`, `u != v`).
+The graph is a general graph; it may contain triangles, cliques, and repeated edges.
+
+## Output
+
+On the first line print `c` — the number of performers you feature (`0 <= c <= n`).
+On each of the next `c` lines print one performer index (an integer in `1..n`). All
+printed indices must be **distinct**.
+
+Printing `0` on the first line (and nothing else) is always valid but scores nothing extra.
+
+## Feasibility
+
+An output is feasible iff:
+
+- `0 <= c <= n`;
+- every printed index is in `1..n` and all `c` indices are distinct;
+- no two chosen performers conflict (the chosen set is an independent set).
+
+Any infeasible output scores `0`.
+
+## Objective
+
+Let `F = sum of w_i over the chosen performers`. You are **maximizing** `F`.
+
+## Scoring
+
+Let `B` be the largest single hype value, `B = max_i w_i` (featuring just that one
+performer is always a feasible roster). The score for a test is
+
+```
+ratio = min(1.0, 0.1 * F / B)
+```
+
+Featuring only the single best performer (`F = B`) scores `0.1`; assembling a roster worth
+ten times the best single performer (`F = 10*B`) caps the score at `1.0`. The overall score
+is the mean ratio across all tests.
+
+## Constraints
+
+- `1 <= n <= 3000`.
+- `1 <= m <= 25000`.
+- `1 <= w_i <= 1000`.
+- Time limit: 5 s. Memory limit: 512 MB.
+
+## Example
+
+Input:
+
+```
+6 7
+10 8 6 6 5 4
+1 2
+1 3
+2 3
+3 4
+4 5
+5 6
+2 6
+```
+
+Here `B = max(10,8,6,6,5,4) = 10` (performer 1 alone).
+
+Featuring performers `{1, 4, 6}` is rivalry-free (none of the pairs 1-4, 1-6, 4-6 is a
+conflict) and worth `F = 10 + 6 + 4 = 20`.
+
+Score for this test: `min(1.0, 0.1 * 20 / 10) = min(1.0, 0.2) = 0.2`.
+
+A valid worked output:
+
+```
+3
+1
+4
+6
+```

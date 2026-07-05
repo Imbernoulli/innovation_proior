@@ -1,0 +1,16 @@
+{
+  "id": "fsx_S_0067",
+  "tier": "S",
+  "family": "network-design",
+  "seed_problem": "Build a connected relay network where no node has degree > 3, minimizing total cable length; checker validates connectivity+degree and scores baseline/cost.",
+  "mutation": "composite: keep the min-cost connectivity goal but (1) restrict the output to a per-inverter port-capped connected spanning network (caps in {2,3,4}) and (2) generalize the objective from pure Euclidean length to L1 trench length PLUS per-inverter port-termination fees w_i*deg(i). This couples the NP-hard degree-constrained spanning-network problem with a node-degree-weighted cost, so a good layout must simultaneously stay short and keep expensive combiners off busy hubs.",
+  "objective": "min",
+  "theme": "solar farm inverters",
+  "title": "Solar Farm DC Collection Grid: Port-Capped Trench Cabling",
+  "strategies": [
+    "chain baseline: link inverters in input order into one path (always feasible, matches the checker baseline, ratio ~0.1)",
+    "nearest-neighbour path: repeatedly hop to the closest unvisited inverter (Manhattan), a short degree-2 chain that ignores termination fees",
+    "fee-aware degree-constrained Kruskal: add candidate short links whose endpoints still have a free port, weighting each link by trench(a,b)+w_a+w_b so expensive combiners are pushed to be leaves; repair leftover components via spare-capacity nodes",
+    "local search: start from a degree-constrained tree and apply cost-reducing edge swaps / branch reroutes (moving degree off high-fee inverters) that respect the port caps"
+  ]
+}

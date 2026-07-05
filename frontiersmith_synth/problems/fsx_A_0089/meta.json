@@ -1,0 +1,17 @@
+{
+  "id": "fsx_A_0089",
+  "tier": "A",
+  "format": "C",
+  "family": "low-discrepancy-pointset",
+  "eval_form": "quality-metric",
+  "theme": "lunar habitat",
+  "title": "Lunar Habitat: Sensor Lattice for Uniform Floor Coverage",
+  "objective": "min",
+  "source_frameworks": ["OpenEvolve (star-discrepancy)", "AlphaEvolve"],
+  "strategies": [
+    "diagonal / single-line placement: points on the main diagonal (matches the checker baseline, star discrepancy ~0.26-0.33)",
+    "Hammersley / van der Corput set: one coordinate = (i+0.5)/n, the other = radical-inverse base 2 (reliable low discrepancy)",
+    "best rank-1 lattice: sweep the generator g over 1..n-1 for points ((i+0.5)/n, (i*g mod n + 0.5)/n) and keep the g with minimum exact discrepancy (a real search that beats a single fixed construction)",
+    "jittered / stratified grids, Fibonacci lattices, or local-search coordinate perturbation of a good seed set"
+  ]
+}

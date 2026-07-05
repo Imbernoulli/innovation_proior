@@ -1,0 +1,78 @@
+# Antenna Alignment for Satellite Ground Stations
+
+## Problem
+You operate a network of `n` ground stations that relay data from passing satellites.
+Each station has a steerable antenna that, for the whole planning horizon, must be locked
+into exactly one of two fixed alignments: `0` (equatorial rest position) or `1` (polar
+rest position). You cannot re-steer during the horizon — one alignment per station.
+
+There are `m` scheduled **contact opportunities** (satellite passes). Opportunity `j` earns
+its revenue `w_j` only if it is *fully served*: it lists a set of `k_j` participating
+stations together with the exact antenna alignment each of those stations must be locked
+into for the pass geometry to close the link. Opportunity `j` is served **iff every** one
+of its listed stations is locked into the exact alignment it requires (a conjunction of
+requirements). A partially matched opportunity earns nothing.
+
+Choose an alignment for every station to maximize the total revenue of served opportunities.
+Because one station appears in many opportunities that demand conflicting alignments, no
+alignment can serve everything; the intended optimum is NP-hard, so heuristics are expected.
+
+## Input
+```
+n m
+```
+followed by `m` lines. Line `j` describes one opportunity:
+```
+k_j  s_1 o_1  s_2 o_2  ...  s_k o_k  w_j
+```
+where `k_j` is the number of participating stations, each pair `s_e o_e` gives a station
+index `s_e` (1-based) and its required alignment `o_e` in `{0,1}`, and `w_j` is the revenue.
+Within one opportunity the station indices `s_e` are distinct.
+
+## Output
+Print `n` integers `b_1 b_2 ... b_n` (whitespace-separated), where `b_i` in `{0,1}` is the
+alignment you lock station `i` into.
+
+## Feasibility
+Output must contain exactly `n` integers, each `0` or `1`, and nothing else. Any other
+output (wrong count, out-of-range value, trailing tokens, non-integer tokens) is rejected
+and scores 0.
+
+## Objective
+Maximize `F` = sum of `w_j` over every opportunity `j` that is fully served by your
+alignment (i.e. `b_{s_e} == o_e` for all its listed pairs).
+
+## Scoring
+Let `B` be the revenue served by the **all-`0` alignment** (every station locked to `0`),
+computed by the checker; `B > 0` on every test. Your ratio is
+```
+ratio = min(1000, 100 * F / max(1, B)) / 1000
+```
+So the all-`0` baseline scores `0.1`, and reaching `10 x B` (or more) caps the ratio at
+`1.0`. Higher served revenue is always scored strictly higher. The reported per-test score
+is `ratio`; the overall score is the mean over all tests.
+
+## Constraints
+- `1 <= n <= 1200`, `1 <= m <= 5000`.
+- `1 <= k_j <= 4`, station indices distinct within an opportunity, `1 <= w_j <= 1000`.
+- Time limit: 5 s. Memory limit: 512 MB.
+
+## Example
+Input:
+```
+3 4
+2 1 0 2 0 5
+2 1 1 3 1 8
+1 2 1 4
+2 1 1 2 0 6
+```
+Here `n = 3`, `m = 4`. The all-`0` alignment `0 0 0` serves only opportunity 1
+(requires station1=0, station2=0), so `B = 5`.
+
+Consider the output `1 0 1`:
+- Opp 1 (1->0, 2->0): station1 is 1, not 0 -> not served.
+- Opp 2 (1->1, 3->1): both match -> served, +8.
+- Opp 3 (2->1): station2 is 0 -> not served.
+- Opp 4 (1->1, 2->0): both match -> served, +6.
+
+So `F = 14`, and `ratio = min(1000, 100 * 14 / 5) / 1000 = min(1000, 280)/1000 = 0.280`.

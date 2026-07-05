@@ -1,0 +1,18 @@
+{
+  "id": "fsx_S_0255",
+  "tier": "S",
+  "format": "A",
+  "family": "packing-knapsack",
+  "eval_form": "quality-metric",
+  "seed_problem": "Frontier-CS polyomino/area packing: pack polyominoes into a W x H board maximizing covered area (reflections allowed); checker validates no-overlap and in-bounds.",
+  "mutation": "input+goal (composite): replace the flat board with a per-cell regolith-DEPTH field (0 = unbuildable bedrock) and give each polyomino bay type a fixed scientific VALUE w_t, a shielding threshold r_t (every covered cell must have depth >= r_t), and bounded stock c_t. Change the objective from max covered AREA to max total per-module VALUE, turning it into a weighted bounded-knapsack polyomino packing where high-value bays compete for scarce deep-regolith ground (NP-hard, value- and threshold-sensitive).",
+  "objective": "max",
+  "theme": "lunar habitat",
+  "title": "Lunar Habitat: Regolith-Shielded Module Bay Packing",
+  "strategies": [
+    "single-type baseline: anchored greedy using only bay type 0 up to its (generous) stock, blind to value and depth (the calibration point)",
+    "value-first greedy: row-major scan; at each buildable cell install, over all in-stock types/orientations anchored there whose shielding threshold is met, the placement of maximum module value w_t",
+    "density local search: multi-restart randomized cell orders, trying every sub-cell of every orientation as the landing cell and selecting by value-per-area w_t/s_t so high-value deep bays are packed onto scarce deep-regolith patches; keep the best total value",
+    "knapsack-repair: fill with small low-shielding bays, then re-pack fragmented deep-regolith pockets with scarce high-value high-shielding bays to lift total value"
+  ]
+}

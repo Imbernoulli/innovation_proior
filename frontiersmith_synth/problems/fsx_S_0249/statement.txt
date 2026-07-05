@@ -1,0 +1,123 @@
+# Arena Airwaves: Channel Assignment for the Grand Final
+
+## Problem
+
+The *Nexus Colosseum* is hosting an e-sports Grand Final. Scattered around the arena are
+`n` wireless **rigs** — player stations, VR headsets, casting cameras, and telemetry
+beacons — each of which must be tuned to exactly one of `C` available radio **channels**
+(the channel budget granted by the venue's spectrum license).
+
+Two rigs that are physically close **interfere** when their channels are too near each
+other. For every interfering pair the arena engineers have measured two penalties:
+
+- a **co-channel** penalty `p` incurred if the two rigs share the *same* channel, and
+- an **adjacent-channel** penalty `q` incurred if their channels differ by *exactly one*.
+
+If the two channels differ by two or more, that pair contributes no interference.
+
+Your job: assign a channel to every rig so that the **total interference** summed over all
+interfering pairs is as **small** as possible, using no more than the `C` licensed channels.
+
+This is a minimum-interference frequency-assignment problem (a weighted, span-2
+generalization of graph coloring). It is NP-hard, the optimum is unknown, and many
+heuristics are viable: degree-ordered greedy assignment, min-conflicts local search,
+Kempe-chain swaps, and randomized multi-restart search all diverge on hard instances.
+
+## Input
+
+The first line contains three integers:
+
+```
+n m C
+```
+
+- `n` — number of rigs, numbered `1..n`.
+- `m` — number of interfering pairs.
+- `C` — number of available channels (the channel budget); channels are numbered `1..C`.
+
+Each of the next `m` lines describes one interfering pair:
+
+```
+u v p q
+```
+
+meaning rigs `u` and `v` interfere with co-channel penalty `p` and adjacent-channel
+penalty `q` (`1 <= u, v <= n`, `u != v`, `1 <= q <= p`). A pair of rigs may appear at
+most once.
+
+## Output
+
+Print `n` integers `c_1 c_2 ... c_n` (whitespace-separated, any layout), where `c_i` is
+the channel assigned to rig `i`. Every `c_i` must satisfy `1 <= c_i <= C`.
+
+Assigning every rig to channel `1` is always valid (it simply incurs the worst-case
+co-channel interference).
+
+## Feasibility
+
+An output is feasible iff it lists exactly `n` integers and every `c_i` lies in `1..C`.
+Any infeasible output scores `0`.
+
+## Objective
+
+For each interfering pair `(u, v, p, q)` its contribution is
+
+```
+p           if c_u == c_v
+q           if |c_u - c_v| == 1
+0           otherwise
+```
+
+Let `F` be the sum of contributions over all pairs. You are **minimizing** `F`.
+
+## Scoring
+
+Let `B` be the total interference of the do-nothing assignment in which every rig uses
+channel `1` (so every pair is co-channel and contributes `p`); thus `B = sum of p`.
+The score for a test is
+
+```
+ratio = min(1.0, 0.1 * B / max(1, F))
+```
+
+The all-on-channel-1 baseline (`F = B`) scores `0.1`; cutting interference to a tenth of
+the baseline (`F = B/10`) caps the score at `1.0`. The overall score is the mean ratio
+across all tests.
+
+## Constraints
+
+- `2 <= n <= 4000`.
+- `1 <= m <= 40000`.
+- `3 <= C <= 8`.
+- `1 <= q <= p <= 1000`.
+- Time limit: 5 s. Memory limit: 512 MB.
+
+## Example
+
+Input:
+
+```
+4 4 3
+1 2 10 4
+2 3 10 4
+3 4 10 4
+1 4 8 3
+```
+
+The all-on-channel-1 baseline: every one of the 4 pairs is co-channel, so
+`B = 10 + 10 + 10 + 8 = 38`.
+
+Consider the assignment `c = (1, 3, 1, 3)`:
+
+- pair `(1,2)`: channels `1,3`, difference `2` -> `0`
+- pair `(2,3)`: channels `3,1`, difference `2` -> `0`
+- pair `(3,4)`: channels `1,3`, difference `2` -> `0`
+- pair `(1,4)`: channels `1,3`, difference `2` -> `0`
+
+so `F = 0`. Score for this test: `min(1.0, 0.1 * 38 / max(1, 0)) = min(1.0, 3.8) = 1.0`.
+
+A valid worked output:
+
+```
+1 3 1 3
+```

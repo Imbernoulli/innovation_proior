@@ -1,0 +1,131 @@
+# Green Wave: Convoy Signal Scheduling on a Traffic Grid
+
+## Problem
+
+The city's transport authority runs a grid of `M` signalised **intersections** and must
+push `J` emergency **convoys** across town. Each convoy has a fixed **route**: an ordered
+list of intersections it must clear, one after another. Clearing an intersection takes a
+convoy a fixed **green window** of `p` time units, during which that intersection is
+dedicated to that convoy alone — the light cannot serve anyone else until the convoy has
+finished passing through.
+
+Two hard rules govern any timetable:
+
+- **Route order (precedence).** A convoy can only begin clearing the next intersection on
+  its route after it has fully finished clearing the previous one (it is one physical
+  column of vehicles).
+- **One convoy per light (no-overlap).** At any instant an intersection can be dedicated
+  to at most one convoy; two green windows scheduled on the same intersection may not
+  overlap in time.
+
+You must emit a **full timetable**: for every stop of every convoy, the integer time at
+which that convoy begins clearing that intersection. Your goal is to make the whole
+operation finish as early as possible — minimise the **makespan**, the time at which the
+last convoy clears its last intersection.
+
+This is a job-shop scheduling problem (convoys are jobs, intersections are machines, green
+windows are operations). Finding the true minimum makespan is NP-hard; the optimum is
+unknown, and dispatch rules, list scheduling, active-schedule generation and randomised
+local search are all viable and diverge.
+
+## Input
+
+The first line contains two integers:
+
+```
+M J
+```
+
+- `M` — number of intersections, numbered `1..M`.
+- `J` — number of convoys, numbered `1..J` in input order.
+
+Each of the next `J` lines describes one convoy:
+
+```
+L m_1 p_1 m_2 p_2 ... m_L p_L
+```
+
+- `L` — the number of stops on this convoy's route (`L >= 2`).
+- Then `L` pairs `m_i p_i`: the `i`-th stop is at intersection `m_i` (`1 <= m_i <= M`) and
+  requires a green window of `p_i` time units (`p_i >= 1`). Consecutive stops of a route
+  are always at different intersections, but a route may revisit an intersection later, and
+  different convoys routinely share intersections.
+
+## Output
+
+Print `J` lines. Line `j` must contain exactly `L_j` non-negative integers: the
+`i`-th integer is `s_{j,i}`, the start time at which convoy `j` begins clearing the
+`i`-th intersection on its route. (Whitespace/newlines between numbers are free-form; the
+values are read in order.)
+
+Printing the fully-serial timetable (every green window back-to-back with no overlap) is
+always feasible.
+
+## Feasibility
+
+Let convoy `j`'s `i`-th stop occupy the half-open interval `[s_{j,i}, s_{j,i} + p_{j,i})`.
+A timetable is feasible iff:
+
+- every `s_{j,i}` is an integer with `0 <= s_{j,i}`;
+- **precedence:** for every convoy `j` and stop `i >= 2`,
+  `s_{j,i} >= s_{j,i-1} + p_{j,i-1}`;
+- **no-overlap:** for every intersection, the occupied intervals of all green windows
+  scheduled on it are pairwise non-overlapping.
+
+Any infeasible timetable scores `0`.
+
+## Objective
+
+Let `F` be the **makespan**: `F = max over all stops of ( s_{j,i} + p_{j,i} )`.
+You are **minimising** `F`.
+
+## Scoring
+
+Let `B` be the makespan of the fully-serial timetable, i.e. the **sum of all green
+windows** `B = sum over all stops of p_{j,i}` (this is what you get by never overlapping
+anything). The score for a test is
+
+```
+ratio = min(1.0, 0.1 * B / F)
+```
+
+The fully-serial timetable (`F = B`) scores exactly `0.1`; compressing the schedule to a
+tenth of the serial time (`F = B / 10`) caps the score at `1.0`. The overall score is the
+mean ratio across all tests.
+
+## Constraints
+
+- `2 <= M <= 12`, `2 <= J <= 15`.
+- `2 <= L <= 8` stops per convoy.
+- `1 <= p_i <= 20`.
+- All start times you print must satisfy `0 <= s <= 4*10^15`.
+- Time limit: 5 s. Memory limit: 512 MB.
+
+## Example
+
+Input:
+
+```
+3 2
+2 1 2 2 3
+2 2 2 3 2
+```
+
+Convoy 1's route is intersection `1` (green `2`) then intersection `2` (green `3`).
+Convoy 2's route is intersection `2` (green `2`) then intersection `3` (green `2`).
+The total green time is `B = 2 + 3 + 2 + 2 = 9`.
+
+A valid timetable:
+
+```
+0 2
+0 2
+```
+
+- Convoy 1: stop 1 occupies intersection `1` over `[0,2)`; stop 2 occupies intersection `2`
+  over `[2,5)`. Precedence `2 >= 0 + 2` holds.
+- Convoy 2: stop 1 occupies intersection `2` over `[0,2)`; stop 2 occupies intersection `3`
+  over `[2,4)`. Precedence `2 >= 0 + 2` holds.
+- Intersection `2` carries `[0,2)` (convoy 2) and `[2,5)` (convoy 1) — no overlap.
+
+Makespan `F = max(2, 5, 2, 4) = 5`. Score `= min(1.0, 0.1 * 9 / 5) = 0.18`.

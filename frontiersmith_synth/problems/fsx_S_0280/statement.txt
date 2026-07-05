@@ -1,0 +1,118 @@
+# Carnival Ride Circuit: Selective Pickup-Delivery Tour
+
+## Problem
+
+The night crew at a travelling carnival runs a single maintenance cart out of the
+service depot. Overnight there is a list of `N` ride-service jobs. Each job `i`
+needs one heavy component **picked up** at a location `P_i` (a spare part in the
+parts tent) and then **delivered** to a location `D_i` (the ride that needs it).
+For a job to count as *served*, the cart must visit `P_i` and then, at some later
+point in the same circuit, visit `D_i` (you cannot deliver a component you have
+not yet collected — this is a precedence constraint).
+
+The cart starts and ends the night at the depot. You do **not** have to serve
+every job. If you leave job `i` unserved, that ride stays broken and the carnival
+pays a penalty `w_i`. Your total overnight cost is the distance the cart drives
+plus the penalties of every job you chose not to serve. You want that total cost
+as small as possible.
+
+Distances are rounded Euclidean: the distance between points `(x1,y1)` and
+`(x2,y2)` is `round(sqrt((x1-x2)^2 + (y1-y2)^2))` (nearest integer, ties to even
+as in standard `llround`).
+
+## Input
+
+```
+N SX SY
+px_1 py_1 dx_1 dy_1 w_1
+px_2 py_2 dx_2 dy_2 w_2
+...
+px_N py_N dx_N dy_N w_N
+```
+
+- Line 1: the number of jobs `N`, and the depot coordinates `(SX, SY)`.
+- Line `i+1`: the pickup coordinates `(px_i, py_i)`, the delivery coordinates
+  `(dx_i, dy_i)`, and the penalty `w_i` for leaving job `i` unserved.
+
+Jobs are numbered `1..N` in input order.
+
+## Output
+
+Describe the cart's circuit as a sequence of *visit events*. Print:
+
+```
+L
+e_1 e_2 ... e_L
+```
+
+- `L` is the number of visit events (`0 <= L <= 2N`). If `L = 0`, print an empty
+  second line (or nothing after `L`).
+- Each `e_k` is a non-zero signed integer in `[-N, N]`:
+  - `e_k = +j` means the cart visits pickup location `P_j`,
+  - `e_k = -j` means the cart visits delivery location `D_j`.
+
+The cart drives `depot -> location(e_1) -> location(e_2) -> ... -> location(e_L) -> depot`.
+
+## Feasibility
+
+An output is feasible iff:
+
+- Every event is a non-zero integer in `[-N, N]`.
+- No pickup `+j` appears more than once; no delivery `-j` appears more than once.
+- For every job `j`, the pickup `+j` and delivery `-j` are either **both absent**
+  (job `j` is unserved) or **both present** with the pickup appearing **before**
+  the delivery in the sequence (precedence). A job with only its pickup or only
+  its delivery present is infeasible.
+
+Any infeasible output scores 0.
+
+## Objective
+
+Let `served` be the set of jobs whose pickup and delivery both appear. Let
+`tour` be the total driven distance of the circuit `depot -> ... -> depot`. Then
+
+```
+F = tour + sum over unserved jobs j of w_j.
+```
+
+Minimize `F`.
+
+## Scoring
+
+Let `B = sum over all jobs j of w_j` be the cost of the do-nothing circuit
+(serve nobody, drive nowhere: `F = B`). Your ratio for a test is
+
+```
+ratio = min(1.0, (B / F) / 10)
+```
+
+reported by the checker as `Ratio: <ratio>`. Serving nobody scores `0.1`. Driving
+a smart circuit that cuts total cost below `B` scores higher, saturating at `1.0`
+once you reach one tenth of the do-nothing cost. Each test contributes equally.
+
+## Constraints
+
+- `1 <= N <= 300` on the graded tests (`N` grows with the test index).
+- `0 <= SX, SY, px_i, py_i, dx_i, dy_i <= 10000`.
+- `1 <= w_i <= 1000000`.
+- Time limit: 5 s. Memory limit: 512 MB.
+
+## Example
+
+Input:
+
+```
+2 5000 5000
+1000 1000 2000 1000 9000
+9000 9000 8000 9000 800
+```
+
+Serving only job 1: circuit `depot -> P_1 -> D_1 -> depot`.
+`tour = round(dist((5000,5000),(1000,1000))) + round(dist((1000,1000),(2000,1000)))
++ round(dist((2000,1000),(5000,5000)))` `= 5657 + 1000 + 5000 = 11657`, and job 2 is
+unserved so we add `w_2 = 800`, giving `F = 12457`. With `B = 9000 + 800 = 9800`,
+`ratio = min(1.0, (9800/12457)/10) = 0.0787`. Because serving job 1 costs more in
+driving than the `9000` penalty it saves here, this is actually *worse* than doing
+nothing (`ratio 0.1`). A feasible output that serves nobody would output `0` and a
+blank line and score `0.1`. The interesting instances are larger, where chaining
+many nearby pickups and deliveries into one circuit beats paying the penalties.

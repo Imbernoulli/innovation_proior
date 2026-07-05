@@ -1,0 +1,17 @@
+{
+  "id": "fsx_G_0500",
+  "tier": "G",
+  "format": "A",
+  "family": "new-scheduling-sports",
+  "seed_problem": "traveling-tournament: round-robin schedule minimizing travel + consecutive-away violations; baseline = canonical schedule",
+  "mutation": "composite: fix the double round-robin opponent timetable and expose ONLY the venue (home/away) assignment under the pair-balance rule, minimizing a coupled cost = total Manhattan travel + lambda * total home/away breaks. The two mechanisms compete (clustering away trips saves travel but creates breaks), and the adversarial generator plants geographic clusters, an outlier expansion franchise (needle), and tight-cluster traps.",
+  "objective": "min",
+  "theme": "league office",
+  "title": "League Office: Venue Assignment for a Double Round-Robin",
+  "strategies": [
+    "canonical baseline: lower-indexed team hosts the earlier meeting of each pair, higher-indexed the later meeting (the checker's B)",
+    "single-sweep venue greedy: from the baseline, flip each pair's host orientation once iff it lowers the two teams' combined travel+break cost",
+    "multi-restart local search: sweep pair-orientation flips to convergence from the baseline and from random starts, keeping the best travel+break assignment found",
+    "break-vs-travel balancing: alternate host patterns to kill breaks while routing away trips within geographic clusters to cut travel, trading the two coupled costs"
+  ]
+}

@@ -1,0 +1,17 @@
+{
+  "id": "fsx_G_0471",
+  "tier": "G",
+  "format": "B",
+  "family": "ml-curriculum-order",
+  "eval_form": "quality-metric",
+  "theme": "staged trainer",
+  "title": "Staged Trainer: Curriculum Ordering for Fastest Convergence",
+  "objective": "min",
+  "source_frameworks": ["breadth-fill (dataset/domain/task diversity)", "MLS-Bench (curriculum ordering)"],
+  "strategies": [
+    "as-shipped order: cycle the examples in the shuffled arrival order (reproduces the evaluator's weak q_base baseline, ~0.1)",
+    "static difficulty sort: order examples easy-to-hard by concept layer and cycle that fixed foundation-first curriculum, so prerequisites precede dependents within each pass",
+    "state-aware myopic greedy: simulate the frozen student from the public dynamics and at each step show the example with the largest immediate loss reduction LR*readiness*(1-m_c), adaptively front-loading foundations only until they unlock dependents",
+    "search / lookahead: seed a schedule from difficulty-sort or greedy, then locally perturb (swap/insert re-shows, beam or rollout over the deterministic simulator) to shave updates toward -- but never reaching -- the prerequisite-free optimistic bound"
+  ]
+}

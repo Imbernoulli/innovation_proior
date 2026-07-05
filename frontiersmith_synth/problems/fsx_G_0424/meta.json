@@ -1,0 +1,16 @@
+{
+  "id": "fsx_G_0424",
+  "tier": "G",
+  "format": "E",
+  "family": "sci-fluid-drag",
+  "eval_form": "quality-metric",
+  "theme": "wind tunnel",
+  "title": "Wind-Tunnel Multi-Regime Drag Law — extrapolating symbolic regression",
+  "objective": "min",
+  "strategies": [
+    "constant baseline: predict the mean training Cd (ignores Re structure) -> ~0.1",
+    "log-linear fit Cd ~ 1 + log(Re): captures the mid-Re downward trend but extrapolates the wrong asymptote at high Re",
+    "structured physical basis [1, 1/Re, 1/sqrt(Re)] fit by least squares: recovers the viscous + boundary-layer + plateau shape and extrapolates the correct decay",
+    "alternatives: add a roughness (eps) term, model the high-Re drag-crisis drop with a tanh/rational transition, or trade complexity penalty against held-out error"
+  ]
+}

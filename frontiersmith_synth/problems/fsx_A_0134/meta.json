@@ -1,0 +1,17 @@
+{
+  "id": "fsx_A_0134",
+  "tier": "A",
+  "format": "C",
+  "family": "extremal-point-config",
+  "eval_form": "quality-metric",
+  "theme": "wind tunnel sensors",
+  "title": "Wind Tunnel Sensor Spread: Maximize the Smallest Triangulation Cell",
+  "objective": "max",
+  "source_frameworks": ["AlphaEvolve"],
+  "strategies": [
+    "flat elliptical arc baseline: drop all sensors on one thin ellipse (reproduces the checker baseline)",
+    "rounder ring: spread sensors on a fatter ellipse so every triple is less skinny",
+    "inscribed circle + seeded monotone hill-climb: jitter one sensor at a time, keep a move only if the minimum triangle area does not shrink",
+    "2D dispersion / simulated-annealing constructions that push sensors into the corners the circle wastes"
+  ]
+}

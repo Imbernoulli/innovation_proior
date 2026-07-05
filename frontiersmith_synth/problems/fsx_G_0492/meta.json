@@ -1,0 +1,16 @@
+{
+  "id": "fsx_G_0492",
+  "tier": "G",
+  "format": "C",
+  "family": "disc-nonlinear-sbox",
+  "eval_form": "correctness",
+  "theme": "cipher design",
+  "title": "Nonlinear S-box Design: Minimizing the Walsh Peak of an n-bit Permutation",
+  "objective": "max",
+  "strategies": [
+    "trivial affine identity permutation (nonlinearity 0, linearity 2^n = baseline)",
+    "seeded multi-restart random-search over permutations, keeping the smallest Walsh peak",
+    "algebraic multiplicative-inverse (AES-core) construction over GF(2^n) with 0->0",
+    "targeted hill-climbing / genetic swaps on a seeded start to push linearity below the inverse function"
+  ]
+}

@@ -1,0 +1,19 @@
+{
+  "id": "fsx_S_0037",
+  "tier": "S",
+  "format": "A",
+  "family": "graph-interdiction",
+  "eval_form": "quality-metric",
+  "seed_problem": "Themed grid network; remove at most k links to maximize the increase in s-t shortest path; checker verifies budget + connectivity and scores achieved delay ratio.",
+  "mutation": "output: replace the simple 'at most k edges' cardinality budget with a per-edge barricade COST and a total cost budget P (each walkway has both a travel time and a closure price), turning count-interdiction into budgeted shortest-path interdiction -- a knapsack-flavored NP-hard variant where cost-greedy, delay-greedy, and cost/benefit local search diverge.",
+  "objective": "max",
+  "theme": "carnival ride circuit",
+  "title": "Carnival Circuit Sabotage: Barricading the Ride Walkways",
+  "strategies": [
+    "do-nothing baseline: barricade nothing (achieves the original stroll length, ratio 0.1)",
+    "cost-greedy: repeatedly barricade the cheapest affordable walkway lying on the current shortest stroll while keeping the finale reachable",
+    "best-improvement local search: at each step tentatively close each affordable shortest-path walkway, recompute the true post-closure shortest stroll, and commit the closure that maximizes it",
+    "cost/benefit knapsack heuristic: rank affordable path edges by delay-gain per barricade cost and pack the budget",
+    "randomized multi-restart: perturb tie-breaking across restarts and keep the barricade set with the largest final delay"
+  ]
+}

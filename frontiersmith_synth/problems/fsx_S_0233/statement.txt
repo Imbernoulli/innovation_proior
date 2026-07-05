@@ -1,0 +1,127 @@
+# Telescope Array Commissioning: Minimum-Makespan Instrument Schedule
+
+## Problem
+
+A new observatory has just powered on an **array of telescopes**. Before the sky survey
+can begin, **every telescope** must run through its own fixed **commissioning sequence** —
+an ordered chain of steps (mirror alignment, focus, cooling the detector, wavefront
+calibration, on-sky verification, ...). The steps of one telescope must be performed
+strictly in order: a step cannot start until the previous step of that **same** telescope
+has finished.
+
+Each step needs one specific **shared facility resource** — a laser guide-star unit, the
+correlator, the adaptive-optics bench, the calibration lamp, the control-room console, and
+so on. A resource can serve **only one step at a time**, so telescopes compete for the
+scarce shared facilities.
+
+Every telescope also has a **ready time**: it only rises above the horizon (and can begin
+its first step) at a certain minute. The whole array is **commissioned** when the last
+step of the last telescope finishes. You choose an integer **start time** (in minutes) for
+every step so that:
+
+- the steps of each telescope run in order (precedence),
+- no shared resource ever serves two steps at the same time (no-overlap), and
+- no telescope starts before its ready time.
+
+Your goal is to finish commissioning the **entire array as early as possible** — minimize
+the **makespan** (the finishing time of the very last step).
+
+This is a job-shop scheduling instance (telescopes are jobs, shared resources are machines,
+steps are operations) under the classic **makespan** objective. Finding the true optimum is
+NP-hard, so any feasible schedule is accepted and scored by how small its makespan is.
+
+## Input
+
+```
+n m
+tel_0
+tel_1
+...
+tel_{n-1}
+```
+
+- Line 1: two integers `n` (number of telescopes) and `m` (number of shared resources).
+- Resources are numbered `0 .. m-1`.
+- Each of the next `n` lines describes one telescope `j` (0-indexed by line order). The
+  line starts with an integer `r` (the telescope's ready time), then an integer `o`
+  (the number of steps), followed by `o` pairs `resource duration` listing the steps in
+  the order they must be performed. `resource` is in `[0, m-1]` and `duration >= 1`.
+
+## Output
+
+Print `n` lines. Line `j` must contain exactly `o` non-negative integers: the start times
+(in minutes) of the steps of telescope `j`, in step order.
+
+## Feasibility
+
+Let `s[j][k]` be the start time of step `k` of telescope `j` and `d[j][k]` its duration.
+A schedule is feasible iff:
+
+- every `s[j][k]` is an integer with `0 <= s[j][k] <= 2*10^9`;
+- **ready time**: `s[j][0] >= r_j`;
+- **precedence**: `s[j][k] >= s[j][k-1] + d[j][k-1]` for every `k >= 1`;
+- **no-overlap**: for any two steps assigned to the same resource, their occupancy
+  intervals `[s, s+d)` do not overlap.
+
+Any output that is malformed, out of range, or violates a constraint scores 0.
+
+## Objective
+
+The makespan is the finishing time of the last step over all telescopes:
+
+```
+F = max over all steps (j,k) of  ( s[j][k] + d[j][k] ).
+```
+
+Minimize `F`.
+
+## Scoring
+
+Let `B` be the makespan of the **fully-serial** schedule that runs every step back-to-back
+on one global timeline in telescope index order (telescope 0's steps first, then
+telescope 1's, ...), each telescope starting no earlier than its ready time. This is a
+valid but poor schedule that the grader builds itself, and `B > 0`. Your score on a test
+is
+
+```
+ratio = min(1.0, 0.1 * B / F)
+```
+
+where `F` is your makespan. The fully-serial schedule scores exactly `0.1`; a schedule ten
+times faster than serial (or better) scores the maximum `1.0`. The overall score is the
+average ratio over all tests.
+
+## Constraints
+
+- `1 <= n <= 22`, `2 <= m <= 9`.
+- `1 <= o <= m` steps per telescope; `1 <= duration <= 99`; `0 <= r <= 40`.
+- Start times fit in range `0 <= s <= 2*10^9`.
+- Time limit: 5 s. Memory limit: 512 MB.
+
+## Example
+
+Input:
+```
+2 2
+0 2 0 3 1 2
+0 2 1 2 0 4
+```
+
+Telescope 0 (ready at 0): step on resource 0 for 3 min, then resource 1 for 2 min.
+Telescope 1 (ready at 0): step on resource 1 for 2 min, then resource 0 for 4 min.
+
+A feasible output:
+```
+0 3
+0 3
+```
+
+Telescope 0: step0 on resource 0 over `[0,3)`, step1 on resource 1 over `[3,5)`.
+Telescope 1: step0 on resource 1 over `[0,2)`, step1 on resource 0 over `[3,7)`.
+Resource 0 serves `[0,3)` then `[3,7)` (no overlap); resource 1 serves `[0,2)` then
+`[3,5)` (no overlap); precedence and ready times hold. The makespan is
+`F = max(5, 7) = 7`.
+
+The fully-serial baseline runs telescope 0 (`[0,3),[3,5)`, finishes at 5) then telescope 1
+(`[5,7),[7,11)`, finishes at 11), giving `B = 11`. So this output scores
+`ratio = min(1, 0.1 * 11 / 7) = 0.157`.

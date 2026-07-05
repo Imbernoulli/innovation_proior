@@ -1,0 +1,16 @@
+{
+  "id": "fsx_G_0466",
+  "tier": "G",
+  "format": "B",
+  "family": "ml-timeseries-forecaster",
+  "eval_form": "quality-metric",
+  "theme": "energy demand",
+  "title": "Grid Load Forecasting: Minimum-MASE Hourly Energy-Demand Forecaster",
+  "objective": "min",
+  "strategies": [
+    "seasonal-naive: repeat the last observed day (period=24) across the horizon (baseline)",
+    "smoothed seasonal profile from the last few same-hour observations plus a linear daily-mean drift",
+    "additive harmonic + calendar regression (daily harmonics + day-of-week dummies + slow window harmonics) fit by ordinary least squares and extrapolated",
+    "state-space / damped-trend decomposition capturing trend, multi-seasonality and slow temperature drift"
+  ]
+}

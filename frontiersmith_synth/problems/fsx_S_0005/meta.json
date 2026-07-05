@@ -1,0 +1,17 @@
+{
+  "id": "fsx_S_0005",
+  "tier": "S",
+  "family": "scheduling-jssp",
+  "seed_problem": "Frontier-Eng JobShop / ALE-Bench: emit a machine schedule for a JSSP instance; checker validates precedence + no-overlap and scores 100*optimum/makespan.",
+  "mutation": "input+theme: keep the makespan-minimization goal but skin it as mountain-rescue relays and replace the unknown optimum in the score denominator/numerator with a checker-computed, always-feasible serial baseline B = total work, so scoring is deterministic (ratio = 0.1*B/F, capped at 1.0). Fresh randomized square job-shop instances with a difficulty ladder (skewed bottleneck legs at high testId).",
+  "objective": "optimize",
+  "theme": "mountain rescue relays",
+  "title": "Mountain Rescue Relays: Minimum-Makespan Relay Schedule",
+  "strategies": [
+    "serial baseline: run every leg one after another on a single global timeline (feasible, makespan = total work, ratio 0.1)",
+    "SPT list scheduling: repeatedly dispatch the ready leg with shortest duration at its earliest feasible slot",
+    "MWKR / LWKR dispatch rules: prioritize the mission with most (or least) remaining work",
+    "multi-restart randomized list scheduling: try many random static mission priorities and keep the shortest-makespan schedule found",
+    "local search / shifting-bottleneck style refinement on top of a good dispatch"
+  ]
+}

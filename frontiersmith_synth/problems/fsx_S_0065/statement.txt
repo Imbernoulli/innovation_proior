@@ -1,0 +1,110 @@
+# Warehouse Robot Bay Scheduling (Job-Shop Makespan)
+
+## Problem
+
+A robotic fulfillment warehouse runs `M` shared processing bays (each a distinct
+machine: picking, weighing, wrapping, labeling, ...). There are `J` order-jobs.
+Each order must be carried by a robot through **every** bay exactly once, in a
+fixed per-order bay sequence. Passing order `j` through the `o`-th bay in its
+route occupies that bay for `dur[j][o]` time units and **cannot be interrupted**.
+
+You must emit a full schedule: a start time for every (order, step) operation.
+The warehouse director wants the whole batch finished as early as possible.
+
+Rules of the floor:
+
+- **Route precedence.** Within an order, step `o+1` cannot start before step `o`
+  has fully finished (the robot physically carries the tote from bay to bay).
+- **Bay exclusivity (no overlap).** A bay processes at most one order at a time;
+  two operations assigned to the same bay may not overlap in time.
+
+Finding the makespan-optimal job-shop schedule is NP-hard, so any feasible
+schedule is accepted and scored by how short its makespan is.
+
+## Input
+
+```
+J M
+```
+Then `J` lines, one per order (0-indexed `j = 0..J-1`). Line `j` contains `2*M`
+integers describing the `M` steps of order `j` in route order:
+
+```
+b[j][0] d[j][0]  b[j][1] d[j][1]  ...  b[j][M-1] d[j][M-1]
+```
+
+where `b[j][o]` (1-indexed, in `1..M`) is the bay used by step `o` of order `j`
+and `d[j][o]` is that step's processing time. Each order's bay list `b[j][*]` is a
+permutation of `1..M` (every order visits every bay once).
+
+## Output
+
+`J` lines, one per order. Line `j` contains `M` integers: the start times
+`s[j][0] s[j][1] ... s[j][M-1]` of the steps of order `j`, in route order.
+(Whitespace/newlines are free-form; the checker reads `J*M` integers in
+row-major order.)
+
+## Feasibility
+
+An output is feasible iff **all** of the following hold:
+
+1. Every start time is an integer in `[0, 10*T]`, where `T = sum of all d[j][o]`.
+2. Route precedence: for every order `j` and step `o >= 1`,
+   `s[j][o] >= s[j][o-1] + d[j][o-1]`.
+3. Bay exclusivity: for every bay, the time intervals
+   `[s, s + d)` of operations assigned to that bay are pairwise non-overlapping.
+
+Any violation scores **0**.
+
+## Objective
+
+Minimize the **makespan** `F = max over all (j,o) of (s[j][o] + d[j][o])`
+(the time the last order leaves its final bay).
+
+## Scoring
+
+Let `T = sum of all d[j][o]` be the fully-serialized makespan (the reference
+baseline `B = T`). For a feasible schedule with makespan `F`,
+
+```
+score = min(1.0, 0.1 * T / F)
+```
+
+- The fully-serialized schedule (one operation at a time) has `F = T`, giving
+  score `0.1`.
+- A schedule that finishes `10x` faster than serial reaches the cap `1.0`.
+- Infeasible output scores `0.0`.
+
+The judge greps a line of the form `Ratio: <float>`.
+
+## Constraints
+
+- `1 <= M <= 6`, `3 <= J <= ~700`, `1 <= d[j][o] <= 1000`.
+- Number of operations `J*M` up to ~4000.
+- Time limit: 5 s. Memory limit: 512 MB.
+
+## Example
+
+Input:
+```
+2 2
+1 3 2 4
+2 2 1 5
+```
+Two orders, two bays.
+- Order 0: bay 1 for 3, then bay 2 for 4.
+- Order 1: bay 2 for 2, then bay 1 for 5.
+- `T = 3 + 4 + 2 + 5 = 14`.
+
+A good feasible schedule:
+```
+0 3
+0 7
+```
+- Order 0: step0 bay1 [0,3), step1 bay2 [3,7). Precedence 3 >= 0+3 OK.
+- Order 1: step0 bay2 [0,2), step1 bay1 [7,12). Precedence 7 >= 0+2 OK.
+- Bay 1 hosts order0 [0,3) and order1 [7,12): disjoint OK.
+- Bay 2 hosts order1 [0,2) and order0 [3,7): disjoint OK.
+- Makespan `F = max(3+... ) = 12`. Score `= 0.1 * 14 / 12 = 0.1167`.
+
+The fully-serialized schedule `0 3 / 7 9` would give `F = 14`, score `0.1`.

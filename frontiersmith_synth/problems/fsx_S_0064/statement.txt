@@ -1,0 +1,134 @@
+# Wildlife Corridor Relocation Run: Load-Weighted Selective Pickup-and-Delivery Tour
+
+## Problem
+A conservation trust operates a single animal-transport truck out of a field
+station (the *depot*, node 0) that threads a fragmented **wildlife corridor**.
+Rangers have logged **P relocation requests**. Request `i` asks the truck to
+crate `q_i` animals at a **capture site** located at `(px_i, py_i)` and release
+them at a **release site** located at `(dx_i, dy_i)`. Animals of a request must
+be captured (pickup) **before** they are released (delivery).
+
+The truck's welfare-compliant cage bank holds at most `Q` crates at any instant,
+so several requests may be **batched** together as long as the number of crates
+on board never exceeds `Q`.
+
+You do **not** have to serve every request. Any request you skip incurs a fixed
+conservation penalty `w_i` (a stranded population, a lost genetic-rescue window).
+You must decide **which** requests to serve and produce **one** tour that starts
+and ends at the depot, visiting the chosen capture and release sites in a valid
+order.
+
+### Load-weighted haulage cost (the twist)
+Distance between two points is the **Manhattan distance**
+`|x1-x2| + |y1-y2|` along the corridor's access tracks. Unlike a plain tour,
+haulage cost is **load-weighted**: a heavier truck stresses the corridor's rough
+tracks and burns more fuel per kilometre. Concretely, while the truck drives a
+leg of Manhattan length `d` carrying `L` crates on board, that leg costs
+
+```
+d * (1 + L)
+```
+
+(the `1` is the empty-truck haulage factor; each crate on board adds `1` per unit
+distance). Consequently the **order** in which you batch, carry and drop crates
+changes the cost even for a fixed set of visited points: carrying a heavy load
+over a long leg is expensive, so it can pay to deliver early and travel light.
+
+## Input
+```
+P Q
+x0 y0
+px_1 py_1 dx_1 dy_1 q_1 w_1
+px_2 py_2 dx_2 dy_2 q_2 w_2
+...
+px_P py_P dx_P dy_P q_P w_P
+```
+- Line 1: the number of requests `P` and the crate capacity `Q`.
+- Line 2: the integer depot coordinates `x0 y0`.
+- The next `P` lines describe requests `1..P`: capture-site coordinates,
+  release-site coordinates, crate count `q_i` and skip-penalty `w_i`.
+
+## Output
+Describe the truck's tour as an ordered list of `M` visit events. Each event is a
+pair of integers `t i`:
+- `t = 0` means "capture request `i`" (visit capture site `(px_i, py_i)`),
+- `t = 1` means "release request `i`" (visit release site `(dx_i, dy_i)`).
+
+```
+M
+t_1 i_1
+t_2 i_2
+...
+t_M i_M
+```
+The truck always begins and ends at the depot; you list only the intermediate
+capture / release visits. `M = 0` (serve nobody) is a valid output.
+
+## Feasibility
+An output is feasible iff **all** of the following hold:
+1. `0 <= M <= 2P` and every index `i` is in `[1, P]`.
+2. Each request appears **at most once** as a capture and **at most once** as a
+   release.
+3. If a request's release event appears, its capture event appears **earlier**
+   in the list (precedence).
+4. A request is *served* iff **both** its capture and its release appear. Any
+   request that appears exactly once (captured but never released, or vice
+   versa) makes the output infeasible.
+5. Processing the events in order, the on-board load (which increases by `q_i` at
+   a capture and decreases by `q_i` at a release) never exceeds `Q`.
+
+An infeasible output scores 0.
+
+## Objective
+Simulate the realized tour `depot -> visited points in order -> depot`. The load
+starts at `0`; a capture of request `i` raises it by `q_i`, a release lowers it
+by `q_i`. For each leg of Manhattan length `d` driven while carrying `L` crates,
+add `d * (1 + L)` to the haulage cost `H`. (Because every served request is both
+captured and released, the load is back to `0` on the closing leg to the depot,
+so `H = 0` when `M = 0`.)
+
+Let `S` be the set of served requests. Minimize
+
+```
+F = H + sum over unserved requests i of w_i .
+```
+
+## Scoring
+The checker builds the trivial *serve-nobody* plan, whose cost is
+`B = sum over all i of w_i` (pure penalty, zero haulage). Your score on a test is
+
+```
+ratio = min(1.0, (B / F) / 10)
+```
+
+reported as `Ratio: <ratio>`. Serving profitable requests and routing them so
+that heavy loads travel short distances drives `F` below `B` and raises the
+ratio; the serve-nobody plan scores exactly `0.1`. The final score is the mean
+ratio over all tests.
+
+## Constraints
+- `1 <= P <= 300`, `2 <= Q <= 30`, `1 <= q_i <= min(Q, 8)`.
+- All coordinates are integers in `[0, 10000]`; `1 <= w_i <= 5*10^7`.
+- Time limit: 5 s. Memory limit: 512 MB.
+
+## Example
+Input:
+```
+2 10
+0 0
+2 0 5 0 3 40
+0 4 0 6 1 3
+```
+Consider the output:
+```
+2
+0 1
+1 1
+```
+The truck serves only request 1: depot(0,0) -> capture(2,0) with load 0 over
+distance 2 (cost `2*(1+0)=2`) -> release(5,0) with load 3 over distance 3
+(cost `3*(1+3)=12`) -> depot(0,0) with load 0 over distance 5 (cost `5*1=5`).
+Haulage `H = 2 + 12 + 5 = 19`. Request 2 is skipped, penalty `3`, so
+`F = 19 + 3 = 22`. The baseline is `B = 40 + 3 = 43`, giving
+`ratio = min(1.0, (43/22)/10) = 0.1954...`. Serving request 2 would add more
+haulage than its penalty of `3`, so skipping it is the better trade here.

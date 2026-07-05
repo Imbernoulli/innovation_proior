@@ -1,0 +1,173 @@
+# Coolant Rush: Offline Cooling Schedule for a Data Center
+
+## Problem
+
+You operate the cooling plant of a data center over a fixed horizon of `T` discrete
+time steps (`t = 0, 1, ..., T-1`). The floor is divided into `Z` **thermal zones**
+(server rooms). Zone `j` starts the horizon at an integer temperature `init_j` and has a
+hard **overheat limit** `Cap_j`: at every step its temperature must stay within
+`0 <= theta <= Cap_j`. Temperature units are chosen so that heat and cooling are integers.
+
+At each step `t`, zone `j` absorbs a **known** amount of heat `h[j][t] >= 0` from the
+servers (the workload trace is given in advance — this is an *offline replay* of what was
+an online control problem). To fight the heat you run a single shared **chiller plant**.
+At step `t` you decide how many units of cooling `x[j][t] >= 0` to deliver to each zone.
+
+The plant is shared, so the total cooling delivered in one step is capped:
+
+```
+sum over j of x[j][t]  <=  C          (plant capacity, every step)
+```
+
+Electricity is bought on a **spot market**: unit `p[t]` is the price of one unit of
+cooling at step `t`, and prices swing wildly across the horizon (cheap valleys, expensive
+peaks). In addition, whenever the plant runs at all during a step (i.e. you deliver any
+cooling that step) you pay a fixed **startup / run charge** `s` for spinning up the
+compressors.
+
+Because each zone has thermal slack between its current temperature and its limits, you
+can **pre-cool** a zone during cheap steps (drive its temperature down, "storing coolth")
+so that during expensive steps you can coast with little or no cooling — as long as no
+zone ever overheats or is cooled below `0`, and the shared plant capacity is never
+exceeded.
+
+Temperature evolves deterministically:
+
+```
+theta[j] at step 0            = init_j
+theta[j] after processing t   = (theta[j] before t) + h[j][t] - x[j][t]
+```
+
+and this value (the temperature after every step `t = 0 .. T-1`) must satisfy
+`0 <= theta[j] <= Cap_j`.
+
+Your goal is to choose the whole cooling schedule `x[j][t]` to **minimize total cost**.
+Deciding the optimal schedule couples all zones through the shared capacity and the fixed
+startup charge (a capacitated multi-zone lot-sizing problem); the optimum is intractable
+and many strategies (reactive cooling, price-threshold pre-cooling, valley batching,
+per-zone relaxations, local-search shifting) are viable and diverge.
+
+## Input
+
+The first line contains four integers:
+
+```
+Z T C s
+```
+
+- `Z` — number of thermal zones.
+- `T` — number of time steps.
+- `C` — shared plant cooling capacity per step.
+- `s` — fixed startup/run charge paid on any step during which the plant delivers cooling.
+
+The second line contains `T` integers `p[0] p[1] ... p[T-1]` — the unit electricity price
+at each step (`1 <= p[t]`).
+
+The third line contains `Z` integers `Cap_1 ... Cap_Z` — the overheat limit of each zone.
+
+The fourth line contains `Z` integers `init_1 ... init_Z` — the starting temperature of
+each zone (`0 <= init_j <= Cap_j`).
+
+Each of the next `Z` lines contains `T` integers: line `j` (for `j = 1 .. Z`) gives the
+heat trace `h[j][0] ... h[j][T-1]` of zone `j` (`0 <= h[j][t]`).
+
+It is guaranteed that `sum_j h[j][t] <= C` for every step `t`, so cooling each zone by
+exactly its incoming heat every step (holding all temperatures constant) is always
+feasible.
+
+## Output
+
+Print `Z` lines. Line `j` (for `j = 1 .. Z`) must contain `T` integers
+`x[j][0] x[j][1] ... x[j][T-1]` — the cooling delivered to zone `j` at each step. Each
+value must satisfy `0 <= x[j][t] <= C`.
+
+Cooling every zone by exactly its incoming heat (`x[j][t] = h[j][t]`) is always a valid
+output.
+
+## Feasibility
+
+An output is feasible iff:
+
+- every `x[j][t]` is an integer with `0 <= x[j][t] <= C`;
+- for every step `t`: `sum_j x[j][t] <= C` (plant capacity);
+- for every zone `j` and every step `t`, the temperature after step `t` stays in range:
+  `0 <= theta[j] <= Cap_j`, where `theta[j]` evolves by the dynamics above.
+
+Any infeasible output scores `0`.
+
+## Objective
+
+Let `X[t] = sum_j x[j][t]` be the total cooling in step `t`. The cost you **minimize** is
+
+```
+F = sum over t of ( p[t] * X[t]  +  s * [ X[t] > 0 ] )
+```
+
+where `[ X[t] > 0 ]` is `1` if any cooling runs that step and `0` otherwise.
+
+## Scoring
+
+The checker builds an internal baseline `B`: the cost of the **reactive** schedule
+`x[j][t] = h[j][t]` (cool exactly the incoming heat every step, holding every temperature
+constant at `init_j`). This schedule is always feasible, and `B > 0`.
+
+The score for a test is
+
+```
+ratio = min( 1.0 , 0.1 * B / F )
+```
+
+A submission matching the reactive baseline (`F = B`) scores `0.1`; driving the total cost
+down to one tenth of the baseline (`F = B / 10`) caps the score at `1.0`. The overall
+score is the mean ratio across all tests.
+
+## Constraints
+
+- `1 <= Z <= 8`.
+- `1 <= T <= 400`.
+- `1 <= p[t] <= 1000`.
+- `0 <= h[j][t] <= 6`.
+- `1 <= Cap_j <= 90`, `0 <= init_j <= Cap_j`.
+- `1 <= s <= 200`.
+- `sum_j h[j][t] <= C` for every step; `C` fits in a 32-bit integer.
+- Time limit: 5 s. Memory limit: 512 MB.
+
+## Example
+
+Input:
+
+```
+2 3 10 5
+2 9 2
+20 20
+10 10
+4 4 4
+3 3 3
+```
+
+There are `Z = 2` zones, `T = 3` steps, capacity `C = 10`, startup charge `s = 5`.
+Prices are `[2, 9, 2]` (step 1 is expensive). Both zones start at `10` with limit `20`.
+
+**Reactive baseline.** Cool each zone by its heat every step: `X = [7, 7, 7]`.
+Cost `B = (2*7 + 5) + (9*7 + 5) + (2*7 + 5) = 19 + 68 + 19 = 106`.
+
+**A better schedule.** Pre-cool during the two cheap steps and coast through the
+expensive middle step:
+
+```
+6 0 4
+4 0 3
+```
+
+- Step 0 (price 2): `X = 6 + 4 = 10 <= 10`. Temperatures: zone1 `10+4-6 = 8`,
+  zone2 `10+3-4 = 9`. Cost `2*10 + 5 = 25`.
+- Step 1 (price 9): `X = 0`, plant idle (no startup). Temperatures: zone1 `8+4 = 12`,
+  zone2 `9+3 = 12` (both `<= 20`). Cost `0`.
+- Step 2 (price 2): `X = 4 + 3 = 7`. Temperatures: zone1 `12+4-4 = 12`,
+  zone2 `12+3-3 = 12`. Cost `2*7 + 5 = 19`.
+
+Total `F = 25 + 0 + 19 = 44`. All temperatures stayed within `[0, 20]` and no step
+exceeded capacity, so the output is feasible.
+
+Score `ratio = min(1.0, 0.1 * 106 / 44) = min(1.0, 0.2409...) = 0.2409`, well above the
+reactive baseline's `0.1`.

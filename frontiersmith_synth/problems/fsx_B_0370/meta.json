@@ -1,0 +1,16 @@
+{
+  "id": "fsx_B_0370",
+  "tier": "B",
+  "format": "B",
+  "family": "constrained-OR",
+  "eval_form": "quality-metric",
+  "theme": "pandemic contact net",
+  "title": "Pandemic Supply-Tree Stockpile: Safety-Stock Placement under a Fill-Rate Constraint",
+  "objective": "min",
+  "strategies": [
+    "uniform split: divide the stockpile evenly across depot + every district, ignoring how different their demand is (baseline)",
+    "demand-proportional local sizing: allocate to each district in proportion to its mean demand, no safety buffer or central reserve",
+    "distribution-driven marginal allocation: draw own Monte-Carlo demand from the public mean/std and add stock one unit at a time where expected (holding+escalation+shortage) cost drops most, discovering per-district buffers and central pooling reserves",
+    "explicit newsvendor buffers per district plus a variance-scaled depot/internal-node pooling reserve tuned to the escalation-vs-shortage trade-off"
+  ]
+}

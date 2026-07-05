@@ -1,0 +1,115 @@
+# Midway Reversal: Carnival Ride-Circuit Tuning
+
+## Problem
+
+The *Grand Midway* carnival is wiring up its ride circuit for opening night. There are `n`
+programmable rides, and each ride can be run in one of two **directions**: a *forward*
+circuit (`1`) or a *reverse* circuit (`0`). Once you choose a direction for every ride, the
+whole midway is locked in for the evening.
+
+Every visiting group filed a **ticket request**. A request lists a few rides together with
+the direction that group wants each of those rides to run, and the group is **satisfied** as
+long as *at least one* of its listed rides ends up running in the direction it asked for.
+Each request carries a positive **weight** equal to the number of guests in that group.
+
+Your job is to pick a direction for every ride so as to **maximize the total weight of the
+satisfied ticket requests**.
+
+Formally this is a **weighted Max-SAT** instance. Rides are boolean variables (`1` = forward
+= *true*, `0` = reverse = *true* for the reverse literal), each ticket request is a weighted
+clause (a disjunction of literals), and you maximize the summed weight of satisfied clauses.
+The optimum is NP-hard and unknown; greedy voting, weighted majority, hill-climbing local
+search and randomized restarts are all viable strategies that reach different quality.
+
+## Input
+
+The first line contains two integers:
+
+```
+n m
+```
+
+- `n` — the number of rides (variables), numbered `1..n`.
+- `m` — the number of ticket requests (clauses).
+
+Each of the next `m` lines describes one request:
+
+```
+w k l1 l2 ... lk
+```
+
+- `w` — the weight of the request (`1 <= w`), i.e. the number of guests.
+- `k` — the number of listed rides in this request (`1 <= k`).
+- `l1 ... lk` — the `k` literals. A literal `j` (`1 <= j <= n`) means "ride `j` runs
+  **forward**"; a literal `-j` means "ride `j` runs **reverse**". The `k` referenced rides
+  within a single request are distinct.
+
+## Output
+
+Print `n` integers `x_1 x_2 ... x_n`, separated by whitespace (any layout). `x_j` is the
+direction of ride `j`: `1` for forward, `0` for reverse.
+
+Printing `n` zeros is always valid.
+
+## Feasibility
+
+An output is feasible iff it contains **exactly `n`** integers, each equal to `0` or `1`,
+and nothing else. Any other output scores `0`.
+
+## Objective
+
+A request `w k l1 ... lk` is **satisfied** if at least one of its literals is true under
+your assignment: literal `j` is true when `x_j = 1`, literal `-j` is true when `x_j = 0`.
+Let `F` be the total weight of all satisfied requests. You are **maximizing** `F`.
+
+## Scoring
+
+Let `B` be the total weight of the requests satisfied by the **all-reverse** assignment
+(`x_j = 0` for every ride). The score for a test is
+
+```
+ratio = min(1.0, 0.1 * F / B)
+```
+
+The all-reverse submission (`F = B`) scores exactly `0.1`; matching or exceeding a ten-fold
+improvement over that baseline (`F >= 10*B`) caps the score at `1.0`. The overall score is
+the mean ratio across all tests.
+
+## Constraints
+
+- `1 <= n <= 1200`.
+- `1 <= m <= 20000`.
+- `1 <= k <= 6` for every request.
+- `1 <= w <= 1000`.
+- Time limit: 5 s. Memory limit: 512 MB.
+
+## Example
+
+Input:
+
+```
+3 4
+5 2 1 2
+4 2 -1 3
+3 1 -2
+6 2 2 3
+```
+
+Here `n = 3` rides and `m = 4` requests. The all-reverse assignment `(0,0,0)` satisfies
+request 2 (`-1` is true, weight 4) and request 3 (`-2` is true, weight 3) but not requests 1
+or 4, so `B = 4 + 3 = 7`.
+
+Consider the assignment `x = (0, 0, 1)` (rides 1,2 reverse, ride 3 forward):
+
+- Request 1 `x1 OR x2` = `0 OR 0` → unsatisfied.
+- Request 2 `-1 OR 3` = `1 OR 1` → satisfied (weight 4).
+- Request 3 `-2` = `1` → satisfied (weight 3).
+- Request 4 `x2 OR x3` = `0 OR 1` → satisfied (weight 6).
+
+So `F = 4 + 3 + 6 = 13` and the score is `min(1.0, 0.1 * 13 / 7) = 0.1857`.
+
+A valid worked output:
+
+```
+0 0 1
+```

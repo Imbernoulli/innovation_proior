@@ -1,0 +1,135 @@
+# Twin-Stage Festival Layout: Maximizing Cross-Stage Crowd Flow
+
+## Problem
+
+The *Aurora Fields* music festival runs **two main stages**, the **North Stage** and the
+**South Stage**, whose sets play in parallel all weekend. The organizers have booked `n`
+performers. Each performer `i` has a **crowd draw** `a_i` (thousands of expected fans).
+
+Whenever two performers share a large overlapping fan base, those fans want to catch *both*
+acts. If the two performers are booked on **different** stages, that shared audience streams
+across the festival grounds between sets, and every crossing fan passes the food trucks and
+merch tents in the central plaza — pure profit for the vendors. For a pair of performers
+`(u, v)` the size of that cross-plaza flow is a positive weight `w`. If the two performers
+play the **same** stage, their shared fans never cross the plaza and that flow earns nothing.
+
+You must assign every performer to exactly one of the two stages. To keep the two crowds
+comparable (safety, parking, staffing), the **total draw** of the two stages may differ by
+at most a tolerance `tau`. Subject to that balance rule, you want to **maximize the total
+cross-plaza flow** — the sum of `w` over all performer pairs whose two members end up on
+different stages.
+
+This is a node-weighted *balanced maximum-cut* problem: the exact optimum is NP-hard, its
+value is unknown, and many heuristics (index balancing, greedy placement, flip/swap local
+search, Kernighan–Lin, randomized restarts) are viable and give different results.
+
+## Input
+
+The first line contains three integers:
+
+```
+n m tau
+```
+
+- `n` — the number of performers, numbered `1..n`.
+- `m` — the number of overlapping-fan pairs (flow pairs).
+- `tau` — the maximum allowed difference between the two stages' total crowd draw.
+
+The second line contains `n` integers:
+
+```
+a_1 a_2 ... a_n
+```
+
+where `a_i` is the crowd draw of performer `i`.
+
+Each of the next `m` lines describes one flow pair:
+
+```
+u v w
+```
+
+meaning performers `u` and `v` share a fan flow of size `w` (`u != v`, `1 <= w`). The same
+unordered pair may appear more than once; every listed pair counts independently.
+
+## Output
+
+Print `n` lines. The `i`-th line must contain a single integer `s_i` in `{0, 1}`, the stage
+of performer `i` (`0` = North Stage, `1` = South Stage).
+
+## Feasibility
+
+Let `T0 = sum of a_i over performers with s_i = 0` and `T1 = sum of a_i over performers with
+s_i = 1`. An output is feasible iff:
+
+- exactly `n` values are printed, each equal to `0` or `1`;
+- `|T0 - T1| <= tau`.
+
+Any infeasible output scores `0`.
+
+## Objective
+
+Let `F` be the total cross-plaza flow you achieve:
+
+```
+F = sum of w over every flow pair (u, v, w) with s_u != s_v.
+```
+
+You are **maximizing** `F`.
+
+## Scoring
+
+The judge builds an internal **balance baseline** `B`: it walks the performers in input
+order and always places the next performer on the stage whose running total draw is currently
+smaller (ties go to the North Stage). This is always feasible, and `B` is the cross-plaza
+flow of that balanced-but-flow-blind assignment. The score for a test is
+
+```
+ratio = min(1.0, 0.1 * F / B)
+```
+
+so matching the baseline (`F = B`) scores `0.1`, and reaching a ten-fold flow (`F = 10*B`)
+caps the score at `1.0`. The overall score is the mean ratio across all tests.
+
+## Constraints
+
+- `2 <= n <= 2000`.
+- `1 <= m <= 40000`.
+- `1 <= a_i <= 10`.
+- `1 <= w <= 12`.
+- `tau >= max_i a_i` (so a balanced assignment always exists).
+- Time limit: 5 s. Memory limit: 512 MB.
+
+## Example
+
+Input:
+
+```
+4 4 2
+2 2 2 2
+1 3 5
+1 4 5
+2 3 5
+2 4 5
+```
+
+The four performers all have draw `2`. The flow pairs form a complete bipartite pattern
+between `{1, 2}` and `{3, 4}`.
+
+Baseline: place `1` on North (`T0=2`), `2` on South (`T1=2`), `3` on North (`T0=4`),
+`4` on South (`T1=4`). Assignment `1,3 -> North`, `2,4 -> South`. Crossing pairs:
+`(1,4)` and `(2,3)`, so `B = 5 + 5 = 10`.
+
+A better layout puts `1,2 -> North` and `3,4 -> South` (`T0 = T1 = 4`, `|T0-T1| = 0 <= 2`).
+Now all four pairs cross the plaza, so `F = 20`.
+
+A valid worked output:
+
+```
+0
+0
+1
+1
+```
+
+Its score is `min(1.0, 0.1 * 20 / 10) = min(1.0, 0.2) = 0.2`.

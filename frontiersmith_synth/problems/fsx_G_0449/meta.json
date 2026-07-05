@@ -1,0 +1,16 @@
+{
+  "id": "fsx_G_0449",
+  "tier": "G",
+  "format": "D",
+  "family": "flop-matrix-chain-mults",
+  "eval_form": "flops",
+  "theme": "graphics pipeline",
+  "title": "Composing a Graphics Transform Chain with Fewest Scalar Multiplies",
+  "objective": "min",
+  "strategies": [
+    "naive: materialize every stage densely, fold left-to-right (baseline)",
+    "greedy: matrix-chain DP reorder over the dense stage matrices",
+    "strong: flatten low-rank factors into the chain + DP over all factors",
+    "open: also distribute SUMLR sums (A+B.C) through the chain (not done by strong)"
+  ]
+}

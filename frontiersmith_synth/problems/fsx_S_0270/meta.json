@@ -1,0 +1,18 @@
+{
+  "id": "fsx_S_0270",
+  "tier": "S",
+  "format": "A",
+  "family": "assignment-matching",
+  "eval_form": "quality-metric",
+  "seed_problem": "Assign drones to delivery zones under per-drone capacity to maximize served weight; checker validates capacities and scores total value / baseline.",
+  "mutation": "composite: generalize the input from a plain capacitated bipartite matching to a full generalized assignment problem (per-(station,beacon) value AND bandwidth, heterogeneous station budgets, binding total capacity), and change the goal to maximize total station-dependent scientific value; the optimum becomes NP-hard and value-density greedy vs best-station greedy vs reassignment local search diverge.",
+  "objective": "max",
+  "theme": "interstellar relay",
+  "title": "Interstellar Relay: Beacon Uplink Assignment",
+  "strategies": [
+    "first-fit baseline: scan stations in order, greedily grab any beacon that fits the remaining budget, ignoring value",
+    "value-density greedy: rank (beacon,station) options by value-per-bandwidth and assign each beacon to its best still-feasible station",
+    "best-station greedy: for each beacon pick the station giving highest value that fits, in a value-sorted order",
+    "reassignment local search with randomized restarts: seed from greedy, then repeatedly move/swap beacons between stations to improve total value while respecting budgets"
+  ]
+}

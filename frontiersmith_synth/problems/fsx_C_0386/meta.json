@@ -1,0 +1,18 @@
+{
+  "id": "fsx_C_0386",
+  "tier": "C",
+  "format": "B",
+  "family": "causal-discovery",
+  "eval_form": "quality-metric",
+  "theme": "asteroid mining",
+  "title": "Asteroid Rig: Causal Map of Subsystem Telemetry",
+  "objective": "optimize",
+  "source_frameworks": ["MLS-Bench (causal-*)"],
+  "isolation": "candidate runs as an isolated stdin->stdout subprocess via isorun; the ground-truth DAG, topological order, structural weights, latent variables and hidden state stay in the evaluator process",
+  "strategies": [
+    "predict the empty causal map (SHD = number of true edges = the evaluator baseline -> ~0.1 on every rig)",
+    "marginal mutual-information thresholding with column-order orientation: catches real direct links but drowns in indirect/transitive false positives and coin-flip orientations",
+    "PC-style conditional-independence skeleton (order-0/1/2 MI screening removes transitive edges; collider co-parents were never linked) + ascending-marginal-entropy topological ordering to orient links",
+    "score-based or higher-order constraint-based discovery (deeper CI conditioning, GES, or an equal-disturbance ordering search) that models each rig to push SHD lower still across the held-out battery"
+  ]
+}

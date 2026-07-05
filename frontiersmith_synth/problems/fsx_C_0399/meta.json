@@ -1,0 +1,17 @@
+{
+  "id": "fsx_C_0399",
+  "tier": "C",
+  "format": "B",
+  "family": "optimization-convergence-analysis",
+  "eval_form": "flops",
+  "theme": "rooftop gardens",
+  "title": "Rooftop Garden Equilibrium: Blind Saddle-Point Schedule",
+  "objective": "min",
+  "source_frameworks": ["MLS-Bench (optimization-*)"],
+  "strategies": [
+    "do-nothing / zero schedule: commit all step, momentum and optimistic coefficients to 0 so the iterate never leaves z0; reproduces the evaluator's base residual and anchors at ~0.1",
+    "constant-step gradient descent-ascent: pick one safe step (e.g. 1/(2L) from the symmetric part) and reuse it every iteration; stable and steadily shrinking but ignores the bilinear rotation and never accelerates",
+    "spectrum-aware acceleration: read the extreme eigenvalues of the symmetric part and apply optimal heavy-ball momentum plus an optimistic (negative-probe) term to damp the rotation from the coupling A -- a committed convergence-rate design that closes most of the budget gap",
+    "offline schedule optimization: since the whole operator M, offset q and start z0 are public, simulate the committed T-step recurrence and numerically fit the per-step (a,m,o) coefficients toward the degree-T polynomial optimum (GMRES-optimal residual), approaching but never reaching the r=1 anchor because T < d"
+  ]
+}

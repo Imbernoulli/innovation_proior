@@ -1,0 +1,16 @@
+{
+  "id": "fsx_A_0318",
+  "tier": "A",
+  "format": "D",
+  "family": "tensor-decomposition-rank",
+  "eval_form": "flops",
+  "theme": "forest fire watchtowers",
+  "title": "Watchtower Alert Kernel: Minimal Rank Decomposition",
+  "objective": "optimize",
+  "strategies": [
+    "fiber baseline: one rank-1 primitive per nonzero mode-3 fiber (~a*b terms)",
+    "fixed-mode slice factorization: exact CR/rref rank-factor each frontal slice (good only when the planted low-rank axis is mode 3)",
+    "best-of-three-modes slice factorization: slice along every axis, keep the cheapest -- exploits the planted low-rank axis wherever it is",
+    "open frontier: cross-slice recombination / true tensor rank (NP-hard, no proven optimum)"
+  ]
+}

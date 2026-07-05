@@ -1,0 +1,19 @@
+{
+  "id": "fsx_S_0042",
+  "tier": "S",
+  "format": "A",
+  "family": "assignment-matching",
+  "eval_form": "quality-metric",
+  "seed_problem": "Assign drones to delivery zones under per-drone capacity to maximize served weight; checker validates capacities and scores total value / baseline.",
+  "mutation": "composite: generalize the input from a single value-per-item to a full per-agent (telescope) cost/value matrix, and tighten the output so each item (target) picks at most one capacitated agent -> a generalized assignment problem (multiple-knapsack + weighted matching), NP-hard, where value-greedy, value-per-minute greedy, and reassignment local search diverge.",
+  "objective": "max",
+  "theme": "telescope array",
+  "title": "Aperture Ledger: Telescope Array Observing Schedule",
+  "strategies": [
+    "first-fit baseline: assign each target in input order to the first telescope with room (value-blind reference)",
+    "value-greedy: order targets by their best value, place each on the highest-value telescope that still fits",
+    "value-per-minute greedy: sort all (target, telescope) pairs by val/cost and assign feasibly for capacity efficiency",
+    "reassignment local search: seed from a greedy schedule then hill-climb via relocation and evict-and-swap moves that strictly raise total value",
+    "randomized multi-restart: perturb the greedy ordering across seeded restarts and keep the highest-value feasible schedule"
+  ]
+}

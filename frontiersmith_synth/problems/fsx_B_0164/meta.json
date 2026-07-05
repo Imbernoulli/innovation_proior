@@ -1,0 +1,19 @@
+{
+  "id": "fsx_B_0164",
+  "tier": "B",
+  "format": "E",
+  "family": "scientific-law-extrapolation",
+  "eval_form": "quality-metric",
+  "theme": "railway freight yard",
+  "title": "Hump-Yard Dwell Scaling Law",
+  "objective": "optimize",
+  "source_frameworks": ["SimpleTES (scaling laws)"],
+  "strategies": [
+    "constant / mean-of-train law -> reproduces the internal baseline (trivial, ~0.10)",
+    "log-linear product power-law fit D=k*T^c1*V^c2 (single power law, wrong shape: no floor) -> trivial baseline",
+    "additive first-order model d=a+b/T+c*V (linear-in-V, right monotonicity, wrong curvature) -> greedy",
+    "correct additive scaling form E+A*T^-alpha+B*V^beta with exponents chosen by internal train/val split to extrapolate -> strong",
+    "over-parameterised polynomial that memorises train noise -> penalised + extrapolates poorly"
+  ],
+  "notes": "Format-E symbolic regression skinned as a railway classification (hump) yard. Solver sees a noisy (tracks T, volume V, dwell D) table sampled from a lightly loaded envelope and must emit a closed-form law that EXTRAPOLATES to a hidden busier-yard region (larger T and V), regenerated deterministically inside the checker. Hidden law D=E+A*T^-alpha+B*V^beta (floor + power decay in tracks + super-linear power growth in volume); coefficients and multiplicative-noise level vary per testId. Score = baseline_rmse/held_out_rmse (minimisation) with a gentle complexity penalty; irreducible held-out noise keeps strong below 1.0. Deterministic CPU only; no wall-time, no shipped groundtruth module, no law/seed printed by gen.py."
+}

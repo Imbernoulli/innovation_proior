@@ -1,0 +1,16 @@
+{
+  "id": "fsx_A_0317",
+  "tier": "A",
+  "format": "C",
+  "family": "additive-combinatorics-set",
+  "eval_form": "quality-metric",
+  "theme": "beehive apiary",
+  "title": "Waggle-Resonance Apiary: Maximizing Distinct Dance Channels",
+  "objective": "max",
+  "strategies": [
+    "arithmetic-progression apiary baseline: boxes at 0,1,...,n-1, sumset = {0..2n-2}, |A+A| = 2n-1 (Ratio 0.1)",
+    "Mian-Chowla sum-greedy (B_2^+ packing): repeatedly add the smallest post keeping every pairwise sum distinct, then fill leftovers with smallest unused posts",
+    "seeded random-restart hill climbing: start from the greedy set (and random sets), relocate one box at a time, accepting relocations that do not shrink the distinct-sum count |A+A|",
+    "algebraic Sidon/B_2 constructions (Singer / quadratic-residue difference sets, Erdos-Turan a=i^2 mod p) rescaled into the tight rail, or simulated annealing over the post set"
+  ]
+}

@@ -1,0 +1,136 @@
+# Caldera Sensor Backbone: Degree-Capped Relay Mesh over Lava Terrain
+
+## Problem
+
+A volcanology institute is instrumenting an active caldera. It has planted `N`
+**seismic sensor nodes** across the volcano. To stream data off the mountain the nodes
+must be wired into a single **relay mesh**: a set of point-to-point relay links (buried
+fibre or short-hop radio) so that every sensor can reach every other sensor by hopping
+along links.
+
+The lava field is not a clean plain — ropey flows, fissures and old vents mean that only
+**certain pairs of nodes can be linked at all**, and each buildable link has its own
+**terrain cost** (metres of trench, hazard pay, repeater hardware) that is *not* simply
+the straight-line distance. You are given the exact list of `M` buildable links and the
+cost of each.
+
+Every node also carries a limited number of relay collars: node `i` can be an endpoint of
+**at most `cap_i`** links (the volcano's radio congestion and armoured junction boxes cap
+how many links a single node can host). You choose which of the buildable links to
+construct. You want a mesh that connects **all `N` sensor nodes** with the **smallest
+possible total link cost**, without ever exceeding any node's collar cap.
+
+Without the caps this would be an ordinary minimum spanning tree over the buildable-link
+graph. The per-node degree caps turn it into a **degree-constrained minimum spanning tree
+on a general weighted graph**, for which no efficient optimal algorithm is known.
+Heuristics are expected.
+
+## Input
+
+```
+N M
+cap_1 cap_2 ... cap_N
+u_1 v_1 w_1
+u_2 v_2 w_2
+...
+u_M v_M w_M
+```
+
+- Line 1: integers `N` (number of sensor nodes) and `M` (number of buildable links).
+- Line 2: `N` integers, the collar caps `cap_1 ... cap_N` (node `i` may host at most
+  `cap_i` links). Every `cap_i >= 2`.
+- Each of the next `M` lines describes one buildable link: it may be built between nodes
+  `u_k` and `v_k` (`1 <= u_k, v_k <= N`, `u_k != v_k`) at integer cost `w_k >= 1`. Links
+  are undirected; no unordered pair appears more than once in the list.
+- **Guarantee.** For every `i` in `1..N-1` the link `(i, i+1)` is among the `M` buildable
+  links. Together with `cap_i >= 2`, this means the single chain
+  `1-2, 2-3, ..., (N-1)-N` is always a feasible mesh.
+
+## Output
+
+Print the mesh you build as a list of links.
+
+```
+E
+a_1 b_1
+a_2 b_2
+...
+a_E b_E
+```
+
+- Line 1: integer `E`, the number of links you construct (`E >= 0`).
+- Each of the next `E` lines gives one built link between nodes `a_k` and `b_k`. Every
+  link you build must be one of the `M` buildable links from the input (in either order).
+  Links are undirected; do not list the same unordered pair twice.
+
+## Feasibility
+
+An output is feasible if and only if all of the following hold:
+
+- exactly `E` links are printed, each joining two distinct nodes `1..N`;
+- every printed link is a **buildable** link (its unordered pair appears in the input list);
+- no unordered pair is printed more than once (no duplicate link);
+- for every node `i`, the number of printed links incident to `i` is at most `cap_i`;
+- the resulting mesh is **connected** — all `N` sensor nodes lie in one component.
+
+Any output that violates feasibility scores 0.
+
+## Objective
+
+Minimize the total mesh cost
+
+```
+F = sum over all built links (a, b) of cost(a, b)
+```
+
+where `cost(a, b)` is the buildable-link cost given in the input.
+
+## Scoring
+
+Let `B` be the cost of the **chain baseline**: the mesh that builds the links
+`1-2, 2-3, ..., (N-1)-N` (always feasible by the guarantee). Your score on a test is
+
+```
+ratio = min(1.0, (B / max(1, F)) / 10)
+```
+
+so a mesh that merely matches the chain baseline cost scores `0.1`, one half the baseline
+cost scores `0.2`, and reaching one tenth of the baseline cost (or cheaper) reaches the
+capped score `1.0`. Larger is better. Per-test scores are averaged.
+
+## Constraints
+
+- `2 <= N <= 600`
+- `N-1 <= M <= 6*N + N` (at most a few links per node beyond the guaranteed chain)
+- `2 <= cap_i <= 4`
+- `1 <= w_k <= 2000`
+- Time limit: 5s
+- Memory limit: 512 MiB
+
+## Example
+
+Input:
+```
+5 7
+3 2 2 2 3
+1 2 900
+2 3 800
+3 4 850
+4 5 950
+1 3 40
+3 5 60
+1 5 70
+```
+
+Nodes `1..5`. The guaranteed chain links `1-2, 2-3, 3-4, 4-5` are expensive
+(`900 + 800 + 850 + 950`). The chain baseline cost is `B = 900 + 800 + 850 + 950 = 3500`.
+
+Consider instead the mesh `1-3 (40), 3-5 (60), 1-5 (70)`... that is only a triangle on
+`{1,3,5}` and leaves nodes 2 and 4 unconnected — infeasible.
+
+A feasible cheap mesh: build `1-3 (40), 3-5 (60), 2-3 (800), 4-5 (950)`. Degrees: node 3
+has 3 links (cap 3, ok), node 5 has 2 (cap 3, ok), nodes 1,2,4 have 1 each. All five nodes
+are connected, and `F = 40 + 60 + 800 + 950 = 1850`, giving
+`ratio = min(1.0, (3500 / 1850) / 10) = 0.189...`.
+
+The chain itself (`1-2, 2-3, 3-4, 4-5`) has `F = 3500 = B` and scores exactly `0.1`.

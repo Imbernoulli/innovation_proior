@@ -1,0 +1,18 @@
+{
+  "id": "fsx_C_0182",
+  "tier": "C",
+  "format": "B",
+  "family": "causal-discovery",
+  "eval_form": "quality-metric",
+  "theme": "telescope array",
+  "title": "Telescope Array: Causal Wiring of Sensor Channels",
+  "objective": "optimize",
+  "source_frameworks": ["MLS-Bench (causal-*)"],
+  "isolation": "candidate runs as an isolated stdin->stdout subprocess via isorun; the ground-truth DAG, topological order, edge weights and hidden state stay in the evaluator process",
+  "strategies": [
+    "predict the empty graph (SHD = number of true edges = the evaluator baseline -> ~0.1 everywhere)",
+    "marginal-correlation thresholding with index-order orientation: catches real adjacencies but drowns in indirect-path false positives and coin-flip orientations",
+    "precision-matrix (partial-correlation) skeleton + equal-variance (ascending marginal variance) topological ordering to orient edges: removes indirect-path edges and recovers most orientations, but retains moralization edges between co-parents",
+    "constraint- or score-based discovery (PC-style conditional-independence tests, GES, or LiNGAM/equal-variance ordering search) that models each array's structure to push SHD lower still"
+  ]
+}

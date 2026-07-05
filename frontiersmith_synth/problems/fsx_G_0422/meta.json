@@ -1,0 +1,18 @@
+{
+  "id": "fsx_G_0422",
+  "tier": "G",
+  "format": "E",
+  "family": "sci-materials-constitutive",
+  "eval_form": "quality-metric",
+  "theme": "alloy stress test",
+  "title": "Alloy Flow-Stress Constitutive Law: Extrapolate a Coupon Test to High Strain",
+  "objective": "min",
+  "source_frameworks": ["breadth-fill (dataset/domain/task diversity)"],
+  "strategies": [
+    "single product power-law sigma=k*s^a*r^b via log-linear regression (no additive yield floor, wrong shape) -> reproduces internal baseline (trivial, ~0.10)",
+    "additive but strain-LINEAR model sigma=a+b*s+c*log(r): correct floor split, wrong curvature -> line fitted on the steep low-strain region overshoots the concave curve at high strain -> greedy",
+    "correct Ludwik + rate-hardening law sigma=Y+K*s^n+C*r^q with (n,q) chosen by an internal train/validation edge split so the fit is selected for extrapolation, then (Y,K,C) refit by least squares -> strong",
+    "over-parameterised polynomial that memorises training noise -> complexity penalty + poor extrapolation"
+  ],
+  "notes": "Format-E symbolic regression skinned as a metal-alloy uniaxial tensile stress test. Solver sees a noisy (strain s, strain-rate r, flow-stress sigma) table sampled from the coupon's LOW-strain / low-rate envelope and must emit a closed-form constitutive law that EXTRAPOLATES to a hidden HIGH-strain, high-rate region (necking / impact), regenerated deterministically inside the checker. Hidden law sigma=Y+K*s^n+C*r^q (additive yield floor + concave Ludwik strain hardening n<1 + power-law rate hardening); coefficients and multiplicative measurement-noise level vary per testId. Score = baseline_rmse/held_out_rmse (minimisation) with a gentle AST-node complexity penalty; irreducible measurement noise keeps strong below 1.0. Deterministic CPU only; no wall-time, no shipped groundtruth module, no law/seed printed by gen.py. Variables named s,r (not e) to avoid clashing with Euler's constant e in the allowed token set."
+}

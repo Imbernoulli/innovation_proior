@@ -1,0 +1,16 @@
+{
+  "id": "fsx_S_0273",
+  "tier": "S",
+  "family": "coloring-labeling",
+  "seed_problem": "Assign frequencies to transmitters minimizing total interference conflicts under a channel budget; checker scores baseline_conflicts/achieved.",
+  "mutation": "goal+input: replace binary co-channel conflict with a distance-graded T-coloring cost cost(u,v)=w*max(0,g-|c_u-c_v|) over a weighted interference graph with per-pair required separations g in 1..K-1 and a hard channel budget K in {2..8}, turning proper coloring into a weighted minimum-span / frequency-assignment problem (generalized Max-K-Cut with separation penalties) whose optimum is intractable.",
+  "objective": "min",
+  "theme": "satellite ground stations",
+  "title": "Satellite Ground-Station Channel Separation",
+  "strategies": [
+    "do-nothing baseline: put every station on channel 1 (matches checker baseline, ratio ~0.1)",
+    "one-pass greedy: assign stations in index order, giving each the channel that adds the least separation cost against already-assigned neighbors",
+    "local-search with seeded multi-restart: greedy/random init then repeatedly move each station to its least-cost channel until convergence, keeping the best of several deterministic restarts",
+    "structure-aware moves: weight-first ordering, or Kernighan-Lin-style block swaps between channel classes to escape local minima on dense high-separation instances"
+  ]
+}

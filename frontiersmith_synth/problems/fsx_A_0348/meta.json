@@ -1,0 +1,16 @@
+{
+  "id": "fsx_A_0348",
+  "tier": "A",
+  "format": "D",
+  "family": "tensor-decomposition-rank",
+  "eval_form": "flops",
+  "theme": "museum gallery tour",
+  "title": "Museum Gallery Tour — Fewest Multiplications for the Visitor Interaction Tensor",
+  "objective": "optimize",
+  "strategies": [
+    "mode-3 fiber decomposition: one term per (visitor,artwork) cell, R = I*J (trivial baseline, ratio ~0.1)",
+    "single-mode slice factorization: exactly factor each mode-1 slice, R = sum of slice ranks (greedy)",
+    "best-of-three-modes slice factorization: shop the slicing axis for the fewest terms (strong)",
+    "true low-rank / overcomplete decomposition below every slice bound (open; planted rank > max dimension so Jennrich fails)"
+  ]
+}

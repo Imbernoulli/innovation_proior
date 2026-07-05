@@ -1,0 +1,152 @@
+# League Office: Venue Assignment for a Double Round-Robin
+
+## Problem
+
+The league office has already locked the **opponent timetable** for the coming
+season: which teams meet in which round. You run the **venue desk** — for every
+scheduled game you must decide which of the two competitors plays at **home**
+(hosts the game). Your job is to choose all the venues so the season is cheap to
+travel and kind to the players.
+
+There are `n` teams (`n` even), each based in a home city on an integer grid.
+The season is a **double round-robin**: every unordered pair of teams `{i, j}`
+meets in **exactly two** of the `R = 2(n-1)` rounds. In each round every team
+plays exactly one game. The pairings are fixed and given to you; you only pick
+the host of each game, subject to the league's **venue-balance** rule:
+
+> Over the two meetings of a pair `{i, j}`, team `i` must host exactly one and
+> team `j` must host exactly one.
+
+Two costs are charged, and they pull against each other:
+
+- **Travel.** Each team starts the season at its home city and returns there
+  after the last round. In each round a team is physically at the **host's**
+  city (its own city if it hosts, the opponent's city if it visits). A team's
+  travel is the total **Manhattan** distance of this trip:
+  `home → venue_1 → venue_2 → … → venue_R → home`.
+- **Breaks.** A **break** for a team is any two consecutive rounds in which it
+  has the same status — home in both, or away in both. Long home or away streaks
+  wear teams down, so each break is penalised by a fixed weight `λ`.
+
+Clustering a team's away games in nearby cities cuts travel but tends to create
+away-streaks (breaks); alternating home/away kills breaks but can force long
+detours. A good venue plan must balance the two.
+
+## Input
+
+```
+n R λ
+x_1 y_1
+…
+x_n y_n
+game_{1,1}  game_{1,2}  …  game_{1,n/2}
+…
+game_{R,1}  game_{R,2}  …  game_{R,n/2}
+```
+
+- Line 1: number of teams `n`, number of rounds `R = 2(n-1)`, and the break
+  weight `λ`.
+- The next `n` lines: integer coordinates `x_t y_t` of team `t`'s home city
+  (`t = 1 … n`).
+- The next `R` lines: round `r` lists its `n/2` games. Each game is a pair of
+  distinct team ids `a b` meaning teams `a` and `b` meet in round `r`. Games are
+  whitespace-separated (two integers each). The timetable is a valid double
+  round-robin: each unordered pair appears in exactly two rounds, and each team
+  appears exactly once per round.
+
+## Output
+
+Print `R` lines. Line `r` must contain `n/2` integers: the `g`-th integer is the
+**host** of the `g`-th game listed in round `r` (in the same order as the
+input). Each host must be one of the two competitors of that game.
+
+## Feasibility
+
+An output is feasible iff (1) exactly `R` lines each with `n/2` host ids are
+printed, (2) every host is one of the two competitors of its game, and (3) the
+**venue-balance** rule holds for every pair: over its two meetings, each of the
+two teams hosts exactly once. Any violation, extra/missing token, or out-of-range
+id makes the output infeasible and scores `0`.
+
+## Objective
+
+Minimize
+
+```
+F  =  Σ_t  travel_t   +   λ · Σ_t  breaks_t ,
+```
+
+the total Manhattan travel over all teams plus `λ` times the total number of
+breaks over all teams.
+
+## Scoring
+
+Let `F` be the objective of your venue plan. The checker builds an internal
+**baseline** venue plan `B` = the objective of the *canonical* schedule: for each
+pair `{i, j}` with `i < j`, the **earlier** of its two meetings is hosted by the
+lower-indexed team `i` and the **later** meeting by the higher-indexed team `j`.
+`B > 0` always (every team is away in exactly `n-1` rounds, so it travels). Your
+score for a test is
+
+```
+ratio = min( 1000 , 100 · B / max(1, F) ) / 1000 .
+```
+
+A plan matching the canonical baseline scores `0.1`; the score rises toward the
+cap of `1.0` (a plan ten times cheaper than the baseline) as you cut travel and
+breaks below it. Infeasible output scores `0`.
+
+## Constraints
+
+- `4 ≤ n ≤ 32`, `n` even, `R = 2(n-1)`.
+- `0 ≤ x_t, y_t ≤ 1000`.
+- `1 ≤ λ ≤ 3000`.
+- Time limit: 6 s
+- Memory limit: 512 MB
+
+## Example
+
+Input:
+
+```
+4 6 100
+0 0
+10 0
+0 10
+10 10
+4 1 2 3
+4 2 3 1
+4 3 1 2
+4 1 2 3
+4 2 3 1
+4 3 1 2
+```
+
+Four teams sit on the corners of a square; `λ = 100`. Each pair meets twice
+(rounds 1 & 4 for `{1,4}` and `{2,3}`, rounds 2 & 5 for `{2,4}` and `{1,3}`,
+rounds 3 & 6 for `{3,4}` and `{1,2}`).
+
+The canonical baseline (lower index hosts the earlier meeting) has objective
+`B = 1620`.
+
+A feasible output:
+
+```
+1 2
+2 3
+4 1
+4 3
+4 1
+3 2
+```
+
+Here, for example, team `4` hosts in rounds 3, 4, 5 and visits in rounds 1, 2, 6,
+which spreads its long corner trips and trims both travel and breaks. This plan
+has `F = 860`, so
+
+```
+ratio = 100 · 1620 / 860 / 1000 = 0.188372 .
+```
+
+(The venue-balance rule is satisfied: e.g. pair `{1,4}` is hosted once by team 1
+in round 1 and once by team 4 in round 4.)

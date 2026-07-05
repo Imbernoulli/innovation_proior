@@ -1,0 +1,16 @@
+{
+  "id": "fsx_S_0051",
+  "tier": "S",
+  "family": "packing-knapsack",
+  "seed_problem": "Pack polyominoes into a W x H board maximizing covered area (score = 1e5*sum(k)/(W*H)), reflections allowed; checker validates no-overlap and in-bounds.",
+  "mutation": "composite: generalize the input (obstruction cells that cannot be covered + a per-shape supply cap turning it into a bounded/multi-dimensional knapsack) AND retighten the output (each placement must be a valid dihedral orientation of a catalogued cooling-zone polyomino), skinned as a data-center cooling-zone tiling problem.",
+  "objective": "max",
+  "theme": "data-center cooling",
+  "title": "Data-Center Cooling-Zone Tiling",
+  "strategies": [
+    "input-order first-fit with no rotation (weak baseline)",
+    "value-density greedy: largest-area cooling zones first, all 8 orientations, single first-fit pass",
+    "multi-restart randomized greedy with shuffled shape/orientation order plus a small-shape hole-filling pass",
+    "DP / LP-relaxation of the bounded knapsack for zone-count selection followed by constructive placement"
+  ]
+}

@@ -1,0 +1,16 @@
+{
+  "id": "fsx_N_0411",
+  "tier": "N",
+  "family": "network-design-spectral",
+  "seed_problem": "degree-bounded connected network design minimizing cost + lambda * spectral-radius (max node stress) surrogate",
+  "mutation": "composite: degree-bounded spanning network design x robustness surrogate. The objective couples total build cost with a shortest-path-tree betweenness (max node stress under a unit multi-source relay flow to the hub). The min-cost tree is a fragile long chain (max stress ~ n-1); balancing needs a bushy, degree-bounded structure -> distinct strategies (min-cost Kruskal vs balanced BFS tree) genuinely diverge.",
+  "objective": "min",
+  "theme": "interstellar relay",
+  "title": "Interstellar Relay: Robust Degree-Bounded Backbone",
+  "strategies": [
+    "trivial: emit the backbone chain (baseline, expensive + fragile)",
+    "greedy: minimum-cost degree-bounded spanning tree (Kruskal) -> low cost, high stress (chain trap)",
+    "strong: balanced breadth-first spanning tree from the hub -> bushy low-stress structure at moderate cost",
+    "local search / rerouting to co-minimize cost and the max-stress robustness surrogate"
+  ]
+}

@@ -1,0 +1,16 @@
+{
+  "id": "fsx_A_0137",
+  "tier": "A",
+  "format": "C",
+  "family": "additive-combinatorics-set",
+  "eval_form": "quality-metric",
+  "theme": "orbital debris cleanup",
+  "title": "Debris Sweep Cordon: Additive-Basis Depot Placement",
+  "objective": "max",
+  "strategies": [
+    "arithmetic-progression cordon: occupy slots 0,1,...,n-1; the sum set is the contiguous block [0,2n-2] so the cleared band is exactly the baseline reach 2n-2",
+    "gap-covering additive-basis greedy (Stohr / Mian-Chowla flavour): keep the covered prefix contiguous and add the depot slot that pushes the first uncovered slot furthest, ties -> smallest slot",
+    "randomized-restart greedy: break ties among equally-best slots randomly under a fixed seed, run many restarts and keep the longest cleared band -> escapes the single greedy trajectory",
+    "algebraic near-extremal 2-basis constructions (two-block Rohrbach/Mrose bases, small-block + arithmetic-step scaffolds) that provably cover a long interval with few slots"
+  ]
+}

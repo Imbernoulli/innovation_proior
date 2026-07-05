@@ -1,0 +1,134 @@
+# Orbital Downlink Backbone: Degree-Capped Relay Steiner Network
+
+## Problem
+
+A space agency operates a mesh of ground assets on a wide survey plain. Among them are
+`K` **satellite ground stations** (the *terminals*) that must all be tied into a single
+communications backbone so any station can relay telemetry to any other. Scattered across
+the same plain are `N - K` unmanned **relay masts** — cheap microwave repeaters you may
+optionally splice into the backbone to shorten cable runs, but which carry no telemetry of
+their own and need not be connected at all if they are not useful.
+
+You build **point-to-point fibre links**. A link joins two assets (station or mast) and
+costs cable proportional to the straight-line distance between them. Every asset — station
+or mast — has only a limited number of fibre ports: asset `i` may be an endpoint of **at
+most `cap_i`** links.
+
+Your job: choose a set of links so that **all `K` ground stations end up mutually
+connected** (possibly by routing through relay masts), never exceeding any asset's port
+cap, while making the **total cable length as small as possible**.
+
+Without the port caps and with no relays this would be a plain minimum spanning tree. The
+per-asset degree caps plus the freedom to bring in (or leave out) each relay mast turn this
+into a degree-constrained Steiner network problem, for which no efficient optimal algorithm
+is known. Heuristics are expected.
+
+## Input
+
+```
+N K
+x_1 y_1 cap_1
+x_2 y_2 cap_2
+...
+x_N y_N cap_N
+```
+
+- Line 1: integers `N` (total assets) and `K` (number of ground stations).
+- The **first `K`** assets (`i = 1..K`) are the ground stations (terminals). The remaining
+  assets (`i = K+1..N`) are optional relay masts.
+- Each of the next `N` lines gives asset `i`: integer coordinates `x_i`, `y_i` and its
+  port cap `cap_i`.
+- All asset coordinates are distinct. Every `cap_i >= 2`, so a connected backbone always
+  exists (for instance a single chain through all `K` ground stations).
+
+## Output
+
+Print your backbone as a list of links.
+
+```
+E
+a_1 b_1
+a_2 b_2
+...
+a_E b_E
+```
+
+- Line 1: integer `E`, the number of links you build (`E` may be `0`).
+- Each of the next `E` lines gives one link between assets `a_k` and `b_k`
+  (`1 <= a_k, b_k <= N`, `a_k != b_k`). Links are undirected; do not list the same
+  unordered pair twice.
+
+## Feasibility
+
+An output is feasible if and only if all of the following hold:
+
+- each of the `E` links joins two distinct valid assets;
+- no unordered pair of assets appears more than once (no duplicate link);
+- for every asset `i`, the number of links incident to `i` is at most `cap_i`;
+- all `K` ground stations lie in a single connected component of the built network
+  (relay masts may or may not be used; unused masts simply have no links).
+
+Any output that violates feasibility scores 0.
+
+## Objective
+
+The **length** of a link between assets `p` and `q` is the Euclidean distance rounded to
+the nearest integer:
+
+```
+len(p, q) = round( sqrt( (x_p - x_q)^2 + (y_p - y_q)^2 ) )
+```
+
+Minimize the total cable length
+
+```
+F = sum over all built links (a, b) of len(a, b).
+```
+
+## Scoring
+
+Let `B` be the length of the **station-chain baseline**: the backbone that links the
+ground stations in input order, `1-2, 2-3, ..., (K-1)-K` (a single path through the
+terminals only, always feasible since every `cap_i >= 2`). Your score on a test is
+
+```
+ratio = min(1.0, (B / max(1, F)) / 10)
+```
+
+so a backbone that merely matches the chain baseline scores `0.1`, one half the baseline
+length scores `0.2`, and reaching one tenth of the baseline length (or shorter) reaches the
+capped score `1.0`. Larger is better. Per-test scores are averaged.
+
+## Constraints
+
+- `3 <= K <= N <= 450`
+- `0 <= x_i, y_i <= 10000`
+- `2 <= cap_i <= 4`
+- Time limit: 5s
+- Memory limit: 512 MiB
+
+## Example
+
+Input:
+```
+6 4
+0 0 2
+0 10 2
+10 10 2
+10 0 2
+5 5 4
+100 100 2
+```
+
+Assets `1..4` are ground stations on the corners of a `10x10` square; asset `5` is a relay
+mast at the centre `(5,5)`; asset `6` is a far-away mast at `(100,100)`. The chain baseline
+links `1-2, 2-3, 3-4` with `B = 10 + 10 + 10 = 30`.
+
+Consider the backbone `1-2, 2-3, 3-4` (`F = 30 = B`): all four stations connected, every
+degree within cap. It scores `ratio = min(1.0, (30/30)/10) = 0.1`.
+
+Now consider the star through the centre mast: links `5-1, 5-2, 5-3, 5-4`. Each corner is a
+degree-`1` leaf, the mast has degree `4` (cap `4`, ok), and all four stations are connected
+through the mast. Each corner-to-centre distance is `round(sqrt(25+25)) = 7`, so
+`F = 7 + 7 + 7 + 7 = 28`, giving `ratio = min(1.0, (30/28)/10) = 0.107...` — using the
+relay mast beats the plain chain. (The far mast `6` is best left unused.)

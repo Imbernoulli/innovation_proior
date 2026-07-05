@@ -1,0 +1,16 @@
+{
+  "id": "fsx_A_0124",
+  "tier": "A",
+  "format": "C",
+  "family": "extremal-point-config",
+  "eval_form": "quality-metric",
+  "theme": "vaccine cold chain",
+  "title": "Cold-Chain Depot Dispersion: Spreading Refrigerated Hubs",
+  "objective": "max",
+  "strategies": [
+    "row baseline: place all n depots on the horizontal midline, min pairwise distance = 1/n (reproduces the checker baseline, ~0.1)",
+    "farthest-point greedy: from a dense feasible candidate grid (warm zones removed), seed a corner and repeatedly add the candidate farthest from all chosen depots",
+    "local search / hill climbing: seed with a coarse grid, then repeatedly relocate one endpoint of the currently closest pair to a feasible spot that increases the minimum pairwise distance, with seeded multi-restart",
+    "structured lattice: near-hexagonal / boundary-aware placement clipped to the square and pushed off the warm-zone disks to maximise the smallest inter-depot gap"
+  ]
+}

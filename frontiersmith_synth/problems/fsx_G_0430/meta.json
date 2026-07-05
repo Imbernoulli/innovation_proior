@@ -1,0 +1,16 @@
+{
+  "id": "fsx_G_0430",
+  "tier": "G",
+  "format": "E",
+  "family": "sci-rational-fit-extrap",
+  "eval_form": "quality-metric",
+  "theme": "antenna response",
+  "title": "Antenna Resonance — extrapolating a rational transfer function to the out-of-band roll-off",
+  "objective": "min",
+  "strategies": [
+    "constant baseline: predict the mean in-band power response (ignores structure) -> ~0.1",
+    "single-resonance Lorentzian A/(1+B*(f-c)^2) via reciprocal linearisation: captures the peak and a 1/f^2 tail but is symmetric in f and mis-sizes both out-of-band skirts",
+    "recover the true band-pass rational K*f^2/((f0^2-f^2)^2+(f0*f/Q)^2) by grid-searching the hidden (f0,Q) with K solved in closed form; matches the real roll-off so it extrapolates far better",
+    "alternatives: finer (f0,Q) grid, continuous Levenberg-style refinement, higher-order rational forms, or trading the complexity penalty against held-out error"
+  ]
+}

@@ -1,0 +1,123 @@
+# Glacier Sensor Net: Interference-Free Beacon Placement
+
+## Problem
+
+A polar research group is deploying a wireless sensor network across a receding glacier.
+Field surveyors have marked `n` candidate **sites** where a sensor beacon could be planted.
+Each site `i` has a **scientific value** `w_i > 0` (how much unique data a beacon there would
+return, factoring in crevasse coverage, sunlight for solar charging, and telemetry uplink
+quality).
+
+Unfortunately some pairs of sites **conflict**: if beacons were placed at both, their radios
+would jam each other, they would drain the same relay, or they would redundantly monitor the
+same ice fracture. Whenever two sites conflict, at most one of them may host a beacon.
+
+You must choose which sites to equip so that **no two chosen sites conflict**, while
+maximizing the total scientific value of the deployment.
+
+Formally: you are given an undirected **conflict graph** on `n` vertices with vertex weights
+`w_i`. Choose an **independent set** `S` (no edge of the graph has both endpoints in `S`) that
+maximizes `sum_{i in S} w_i`.
+
+This is the **maximum-weight independent set** problem on a general graph: it is NP-hard, the
+optimum is unknown, and many heuristics (weight-greedy, degree-aware greedy, randomized
+multi-restart, local search) are viable and tend to diverge.
+
+## Input
+
+The first line contains two integers:
+
+```
+n m
+```
+
+- `n` — the number of candidate sites (vertices), numbered `1..n`.
+- `m` — the number of conflict pairs (edges).
+
+The second line contains `n` integers `w_1 w_2 ... w_n`, where `w_i` is the scientific value
+of site `i`.
+
+Each of the next `m` lines contains two integers:
+
+```
+u v
+```
+
+meaning sites `u` and `v` **conflict** (`1 <= u, v <= n`, `u != v`). Each conflicting pair is
+listed at most once, in no particular order.
+
+## Output
+
+On the first line print `c` — the number of sites you equip (`0 <= c <= n`).
+On each of the next `c` lines print one site index (an integer in `1..n`). All indices must be
+distinct.
+
+Printing `0` on the first line (and nothing else) is valid but scores nothing. Printing `1`
+followed by any single site index is always feasible (a single beacon conflicts with no one).
+
+## Feasibility
+
+An output is feasible iff:
+
+- `0 <= c <= n`;
+- every printed index is in `1..n` and all `c` indices are distinct;
+- no two chosen sites conflict (the chosen set is an independent set of the conflict graph).
+
+Any infeasible output scores `0`.
+
+## Objective
+
+Let `F = sum_{i in S} w_i` be the total scientific value of your chosen (feasible) set `S`.
+You are **maximizing** `F`.
+
+## Scoring
+
+Let `B = max_i w_i` be the value of the single most valuable site (equipping just that one site
+is always feasible, so it is a natural do-nothing baseline). The score for a test is
+
+```
+ratio = min(1.0, 0.1 * F / B)
+```
+
+Equipping only the single best site (`F = B`) scores `0.1`; assembling a conflict-free
+deployment worth ten times the best single site (`F = 10*B`) caps the score at `1.0`. The
+overall score is the mean ratio across all tests.
+
+## Constraints
+
+- `1 <= n <= 400`.
+- `0 <= m <= n*(n-1)/2`.
+- `1 <= w_i <= 1000`.
+- Time limit: 5 s. Memory limit: 512 MB.
+
+## Example
+
+Input:
+
+```
+6 5
+50 8 9 7 6 5
+1 2
+1 3
+1 4
+1 5
+1 6
+```
+
+Site `1` is a high-value beacon (value `50`) but it conflicts with every other site. Sites
+`2..6` do not conflict with each other at all.
+
+- `B = max(50,8,9,7,6,5) = 50`.
+- Equipping only site `1`: `F = 50`, `ratio = min(1.0, 0.1 * 50 / 50) = 0.1`.
+- Equipping sites `2,3,4,5,6` (mutually conflict-free): `F = 8+9+7+6+5 = 35`, which is *less*
+  than `50`, giving `ratio = 0.1 * 35 / 50 = 0.07`. So here the single beacon is actually the
+  better choice.
+
+A valid worked output (the do-nothing baseline):
+
+```
+1
+1
+```
+
+which scores `ratio = 0.1`.

@@ -1,0 +1,129 @@
+# Watchbeacon Coverage of an Archaeology Dig Grid
+
+## Problem
+
+An archaeological survey team is mapping a large excavation site laid out on an
+integer grid. Scattered across the grid are `A` **artifact cells** whose exact
+positions have been logged. To document every artifact, the team must set up
+**survey beacons**. A beacon is a piece of equipment that is installed at one of
+a set of pre-cleared **candidate sites** and, once running, records every
+artifact whose grid position lies within Chebyshev distance `r` of the beacon
+(that is, `max(|dr|, |dc|) <= r`).
+
+Every candidate site has an installation **cost** that depends on the terrain
+there. Conveniently, every artifact cell is itself a candidate site (an artifact
+can always be documented by installing a beacon on top of it, which records at
+least that artifact). You must choose a subset of candidate sites at which to
+install beacons so that **every artifact is recorded by at least one beacon**,
+while keeping the **total installation cost as small as possible**.
+
+This is a weighted geometric covering problem: finding the cheapest covering set
+is NP-hard, so you are scored on the quality of any feasible covering you
+produce, not on matching an exact optimum.
+
+## Input
+
+```
+N r
+row_1 col_1 cost_1 art_1
+row_2 col_2 cost_2 art_2
+...
+row_N col_N cost_N art_N
+```
+
+- Line 1: `N` — the number of candidate sites (1-indexed `1..N`); `r` — the
+  coverage radius (Chebyshev metric).
+- The next `N` lines each describe one candidate site `i`:
+  - `row_i`, `col_i` — its integer grid coordinates,
+  - `cost_i` — its installation cost (a positive integer),
+  - `art_i` — `1` if this site is an artifact that must be recorded, else `0`.
+
+A beacon installed at site `j` records artifact site `i` if
+`max(|row_i - row_j|, |col_i - col_j|) <= r`. Note that a site with `art_i = 1`
+is simultaneously an artifact (which must be recorded) and a candidate location
+(at which a beacon may be installed).
+
+## Output
+
+```
+K
+b_1 b_2 ... b_K
+```
+
+- `K` — the number of beacons you install (`0 <= K <= N`).
+- The second line lists the `K` distinct candidate-site indices (each in
+  `1..N`) at which you install a beacon. If `K = 0`, the second line may be
+  empty or omitted.
+
+## Feasibility
+
+An output is feasible if and only if:
+- every listed index is in `1..N` and no index is repeated, and
+- every artifact site (`art_i = 1`) is recorded by at least one installed
+  beacon, i.e. lies within Chebyshev distance `r` of some chosen site.
+
+Infeasible output scores 0.
+
+## Objective
+
+Minimize the total installation cost `F = sum of cost_b over the chosen beacons b`.
+
+## Scoring
+
+Let `B` be the cost of the reference construction that installs a beacon on
+**every** artifact site (always feasible, since each artifact records itself).
+For a feasible output with total cost `F`, the score is
+
+```
+ratio = min(1.0, 0.1 * B / max(1, F))
+```
+
+Thus installing a beacon on every artifact scores `0.1`; halving the cost scores
+`0.2`; reaching a tenfold cost reduction (or better) caps the score at `1.0`.
+Infeasible output scores `0.0`. Higher is better.
+
+## Constraints
+
+- `1 <= N <= 20000`
+- `0 <= row, col < 300`
+- `1 <= r <= 12`
+- `1 <= cost <= 100`
+- At least one artifact site is present.
+- Time limit: 5 s
+- Memory limit: 512 MB
+
+## Example
+
+Input:
+```
+5 1
+0 0 10 1
+0 1 30 0
+2 2 10 1
+0 2 5 0
+2 3 40 0
+```
+
+Here there are two artifacts: site 1 at `(0,0)` and site 3 at `(2,2)`, radius
+`r = 1`. The reference cost is `B = cost_1 + cost_3 = 10 + 10 = 20`.
+
+A cheap feasible answer:
+```
+2
+4 3
+```
+Beacon at site 4 `(0,2)` records artifact 1? `max(0, 2) = 2 > 1`, no — so that
+would be infeasible. Instead consider:
+```
+1
+1
+```
+records artifact 1 (distance 0) but not artifact 3 — infeasible.
+
+A valid answer records both artifacts, e.g. install on both artifact cells:
+```
+2
+1 3
+```
+with `F = 20`, giving `ratio = min(1.0, 0.1 * 20 / 20) = 0.1`. A cheaper feasible
+set (if one existed within radius) would score higher.

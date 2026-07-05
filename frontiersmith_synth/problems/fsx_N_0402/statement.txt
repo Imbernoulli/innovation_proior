@@ -1,0 +1,159 @@
+# Abyssal Mesh: Resilient Deep-Sea Cable Hubs
+
+## Problem
+
+The *Abyssal Consortium* is planning a deep-sea fibre network. Engineers have surveyed
+`N` candidate **seabed hub sites**. Each hub `i`, if built, serves a fixed amount of
+bandwidth `p_i` and costs `c_i` to deploy. Surveyors have also charted `M` candidate
+**cable segments**; segment `j` would physically link hub `u_j` and hub `v_j` and, thanks
+to armouring, can survive `w_j` independent faults (its *robustness weight*). A cable
+segment only exists in the finished network if **both** of its endpoint hubs are built.
+
+You have a total deployment budget `C`. You must choose a set `S` of hubs to build (with
+total deployment cost at most `C`) so that the resulting mesh is both **well-served** and
+**hard to sever**. Concretely, look at the sub-network induced by the built hubs `S`: its
+nodes are the hubs of `S` and its edges are the cable segments with both endpoints in `S`
+(parallel segments between the same pair of hubs pool their robustness weights).
+
+The mesh's **resilience** is its weighted global edge connectivity
+
+```
+lambda(S) = min over all ways of splitting S into two non-empty parts
+            of the total robustness weight of the cable segments crossing the split.
+```
+
+This is an exact, integer surrogate for the algebraic connectivity of the mesh: it is the
+minimum total armouring an adversary must cut to break the built network into two pieces.
+If `S` is empty, a single hub, or the induced mesh is disconnected, then `lambda(S) = 0`.
+
+Your goal is to maximise the composite value
+
+```
+F(S) = lambda(S) * (sum of p_i over i in S).
+```
+
+Resilience and served bandwidth are **multiplied**, so the winning plan must balance them:
+a cluster of high-bandwidth hubs joined by flimsy cables scores poorly, and a robust ring
+of low-bandwidth hubs scores poorly too. The densest-bandwidth placement is almost never
+the most-connected one.
+
+The optimum is NP-hard and unknown; greedy, coverage-priority, best-improvement and
+local-search heuristics are all viable and diverge.
+
+## Input
+
+The first line contains three integers:
+
+```
+N M C
+```
+
+- `N` — number of candidate hub sites, numbered `1..N`.
+- `M` — number of candidate cable segments.
+- `C` — total deployment budget.
+
+Each of the next `N` lines contains two integers describing hub `i` (in order `i = 1..N`):
+
+```
+p_i c_i
+```
+
+- `p_i` — bandwidth served by hub `i`.
+- `c_i` — deployment cost of hub `i`.
+
+Each of the next `M` lines describes one cable segment:
+
+```
+u v w
+```
+
+meaning a candidate armoured cable between hubs `u` and `v` with robustness weight `w`
+(`u != v`). Parallel segments (repeated `u,v` pairs) may occur; their weights pool.
+
+## Output
+
+On the first line print `r` — the number of hubs you build (`0 <= r <= N`).
+Then print the `r` chosen hub indices (each in `1..N`, all distinct), separated by
+whitespace (spaces and/or newlines are both accepted).
+
+Printing `0` on the first line (and nothing else) is a valid — but zero-scoring — output.
+
+## Feasibility
+
+An output is feasible iff:
+
+- `0 <= r <= N`;
+- every printed hub index is in `1..N` and all `r` indices are distinct;
+- the total deployment cost `sum of c_i over the chosen hubs` is at most `C`.
+
+Any infeasible output scores `0`.
+
+## Objective
+
+Let `F = lambda(S) * (sum of p_i over i in S)` for your built set `S`, as defined above
+(`lambda` is the weighted global edge connectivity of the induced mesh, `0` if the mesh is
+empty / a single hub / disconnected). You are **maximising** `F`.
+
+## Scoring
+
+The checker computes an internal baseline `B`: the best value achievable by building a
+single affordable adjacent pair of hubs, i.e.
+
+```
+B = max over cable-connected hub pairs {u,v} with c_u + c_v <= C
+      of  ( pooled robustness weight between u and v ) * ( p_u + p_v ).
+```
+
+The score for a test is
+
+```
+ratio = min(1.0, 0.1 * F / B).
+```
+
+A best-pair submission (`F = B`) scores `0.1`; reaching a ten-fold composite value
+(`F = 10*B`) caps the score at `1.0`. The overall score is the mean ratio across all tests.
+
+## Constraints
+
+- `2 <= N <= 300`, `1 <= M <= 3000`.
+- `1 <= p_i <= 100`, `1 <= c_i <= 60`.
+- `1 <= w <= 20`.
+- The budget `C` always admits at least one affordable cable-connected pair of hubs.
+- Time limit: 5 s. Memory limit: 512 MB.
+
+## Example
+
+Input:
+
+```
+4 5 12
+30 3
+28 3
+90 20
+25 4
+1 2 4
+2 4 6
+1 4 5
+3 1 2
+3 2 2
+```
+
+Here hub `3` has huge bandwidth (`90`) but is joined only by flimsy weight-`2` cables and
+is expensive (`20`); hubs `1, 2, 4` are cheap and well-armoured.
+
+The best affordable pair is `{2,4}` with pooled weight `6` and bandwidth `28+25=53`, so
+`B = 6 * 53 = 318`.
+
+Build `S = {1, 2, 4}` (cost `3+3+4 = 10 <= 12`). The induced mesh has cables `1-2` (w=4),
+`2-4` (w=6), `1-4` (w=5). Its minimum sever cut isolates hub `1` (cut `4+5=9`) or hub `4`
+(cut `6+5=11`) or hub `2` (cut `4+6=10`); the minimum is `9`, so `lambda = 9`. Bandwidth
+sum is `30+28+25 = 83`, giving `F = 9 * 83 = 747`.
+
+Score for this test: `min(1.0, 0.1 * 747 / 318) = min(1.0, 0.2349) = 0.2349`.
+
+A valid worked output:
+
+```
+3
+1 2 4
+```

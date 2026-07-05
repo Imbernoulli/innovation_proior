@@ -1,0 +1,18 @@
+{
+  "id": "fsx_S_0260",
+  "tier": "S",
+  "format": "A",
+  "family": "partition-clustering",
+  "eval_form": "quality-metric",
+  "seed_problem": "Partition a weighted graph into two balanced halves maximizing cut weight; checker validates balance and scores cut/baseline.",
+  "mutation": "composite: relax the input to a large weighted general (multi)graph with a planted-but-scrambled heavy bipartition, and constrain the output to a size-balanced 2-partition (bowls differ by at most tol) -- so optimal balanced max-cut is NP-hard and the parity baseline is far from optimal, making greedy / swap-local-search / KL strategies diverge.",
+  "objective": "max",
+  "theme": "railway freight yard",
+  "title": "Hump Yard Split: Balanced Wagon Bowl Assignment",
+  "strategies": [
+    "parity baseline: label wagon i by (i mod 2); always balanced but ignores separation gains",
+    "one-pass greedy: process wagons in order, place each in the bowl that maximizes marginal cut against already-placed neighbors, capping bowl sizes to keep balance",
+    "swap-based local search / Kernighan-Lin: from a greedy start, repeatedly swap the highest-gain cross-bowl wagon pair to climb the cut while preserving balance",
+    "randomized multi-restart local search: perturb assignments across seeds and keep the highest-gain balanced partition found"
+  ]
+}

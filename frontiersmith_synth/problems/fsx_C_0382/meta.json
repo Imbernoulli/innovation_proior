@@ -1,0 +1,15 @@
+{
+  "id": "fsx_C_0382",
+  "tier": "C",
+  "format": "B",
+  "family": "synthetic-algorithmic-generalization",
+  "eval_form": "correctness",
+  "theme": "telescope array",
+  "title": "Telescope Array Focus Calibration (length-generalization)",
+  "strategies": [
+    "trivial: predict the single most-frequent training state everywhere (~0.1)",
+    "greedy: infer a length-invariant order-2 (bigram) local rule with backoff",
+    "strong: infer the full order-3 (trigram) local law with stupid-backoff for unseen contexts, generalizing to longer OOD arrays",
+    "invalid: emit a wrong-shape / out-of-range answer -> 0"
+  ]
+}

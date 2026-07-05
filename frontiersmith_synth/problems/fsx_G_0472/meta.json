@@ -1,0 +1,17 @@
+{
+  "id": "fsx_G_0472",
+  "tier": "G",
+  "format": "B",
+  "family": "ml-optimizer-update",
+  "eval_form": "quality-metric",
+  "theme": "saddle problem",
+  "title": "Saddle Optimizer: Duality-Gap Descent",
+  "objective": "min",
+  "source_frameworks": ["MLS-Bench (optimization)", "breadth-fill (dataset/domain/task diversity)"],
+  "strategies": [
+    "plain gradient descent-ascent at the default step (theta=0, alpha=0): reproduces the evaluator's weak reference and diverges on strongly-coupled saddles -> ~0.1",
+    "conservative small-step GDA: shrink eta so the bilinear rotation is damped by step size alone; converges slowly but reliably above the baseline",
+    "optimism + negative momentum + per-player steps: use theta>0 (extrapolated gradient) and alpha<0 (negative momentum) with eta_x != eta_y to cancel the saddle rotation; since the model matrices are public, grid-search the four coefficients against the exact duality gap",
+    "structured / spectral tuning: estimate the coupling and curvature spectra from P, Q, B to pick near-optimal constant coefficients, approaching (but never reaching) the unreachable ideal gap in the fixed step budget"
+  ]
+}

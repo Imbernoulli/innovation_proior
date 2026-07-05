@@ -1,0 +1,17 @@
+{
+  "id": "fsx_A_0284",
+  "tier": "A",
+  "format": "C",
+  "family": "extremal-point-config",
+  "eval_form": "quality-metric",
+  "theme": "ski resort lifts",
+  "title": "Summit Ridge Resort: Well-Spread Lift Tower Layout",
+  "objective": "max",
+  "source_frameworks": ["AlphaEvolve"],
+  "strategies": [
+    "ring baseline: N towers equally spaced on a circle of radius 0.45 about the plot center (reproduces the checker baseline; min area is a thin 3-consecutive-vertex sliver)",
+    "multi-restart uniform random sampling inside the unit square, keeping the layout with the largest minimum triangle area, floored at the ring baseline",
+    "bottleneck-driven local search: from the best random restart, repeatedly locate the smallest-area triple and nudge one of its three towers, accepting only moves that raise the global minimum triangle area, over many seeded steps",
+    "structured Heilbronn-style constructions (corners + edge/interior lattices, perturbed grids) tuned to avoid thin triangles across the whole square"
+  ]
+}

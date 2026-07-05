@@ -1,0 +1,16 @@
+{
+  "id": "fsx_G_0454",
+  "tier": "G",
+  "format": "D",
+  "family": "flop-rank1-updates",
+  "eval_form": "flops",
+  "theme": "low-rank builder",
+  "title": "Ternary Rank: Build an Integer Matrix From the Fewest {-1,0,1} Outer Products",
+  "objective": "minimize",
+  "strategies": [
+    "row-wise unary level decomposition (trivial baseline)",
+    "cheaper of row-wise vs column-wise unary orientation (greedy)",
+    "power-iteration ternary rank-1 peeling with exact unary fallback (strong)",
+    "true minimal ternary rank / combinatorial search below the real-rank gap (open ceiling, uncovered)"
+  ]
+}

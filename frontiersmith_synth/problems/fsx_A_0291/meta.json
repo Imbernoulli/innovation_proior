@@ -1,0 +1,15 @@
+{
+  "id": "fsx_A_0291",
+  "tier": "A",
+  "format": "C",
+  "family": "greedy-priority-construction",
+  "eval_form": "correctness",
+  "theme": "recycling depot routes",
+  "title": "Conflict-Free Recycling Depot Routes",
+  "objective": "optimize",
+  "strategies": [
+    "trivial: commission the {0,1}^n sub-cube minus blocked routes (the baseline)",
+    "greedy: single lexicographic cap-set scaffold over F_3^n with an incremental forbidden-completion set",
+    "strong: best-of-many restarts of the greedy scaffold under randomized priority orderings"
+  ]
+}

@@ -1,0 +1,16 @@
+{
+  "id": "fsx_G_0431",
+  "tier": "G",
+  "format": "E",
+  "family": "sci-piecewise-regime",
+  "eval_form": "quality-metric",
+  "theme": "climate sensor",
+  "title": "Climate Sensor: Tipping-Point Regime-Break Law Discovery",
+  "objective": "min",
+  "strategies": [
+    "trivial: emit the constant train-mean of y (matches the grader's constant-mean baseline -> ~0.1)",
+    "greedy: ordinary least squares on a single unbroken basis {1, x0, x1, x2*x3, x3, x0^2}; captures non-breaking drivers but a global quadratic under-fits the far-side tipping feedback -> weak extrapolation",
+    "strong: detect the break location on x0 by SSE scan, then least-squares fit the hinge basis {1, x0, x1, x2*x3, x3, max(0,x0-C)^2}, recovering the piecewise form so it extrapolates across the break; irreducible held-out noise keeps it below saturation",
+    "invalid: emit a disallowed expression (conditional/comparison) -> infeasible (0)"
+  ]
+}

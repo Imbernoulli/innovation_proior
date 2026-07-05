@@ -1,0 +1,100 @@
+# Alpine Rescue Relays: Channel Tuning
+
+## Problem
+A mountain rescue operation strings a chain of `n` radio **relay stations** across a valley.
+Every station must be tuned to exactly **one** of `D` available radio **channels**
+(numbered `1 .. D`) for the whole operation. Your job is to choose one channel per station.
+
+Command has compiled `m` **relay requirements**. Each requirement watches a small group of
+stations and is *established* if **at least one** of the watched stations is tuned to a
+specified channel. Formally, requirement `j` is a weighted disjunctive clause over
+**channel-equality literals**: a literal `(v, a)` is satisfied when station `v` is tuned to
+channel `a`. Requirement `j` lists `k_j` such literals (on distinct stations) and carries a
+positive integer **priority weight** `w_j`; the requirement is established if **any** of its
+literals is satisfied by your chosen channels.
+
+Because each station is coupled to many requirements at once, no tuning establishes every
+requirement. This is a weighted **Maximum-Constraint-Satisfaction (Max-CSP over a `D`-valued
+domain)** instance -- the non-Boolean generalization of weighted Max-SAT. You maximize the
+total priority weight of established requirements. Finding the optimum is NP-hard, so strong
+heuristics (per-station greedy, coordinate-descent local search, multi-restart search) are
+expected.
+
+## Input (stdin)
+```
+n m D
+<m lines, each: w k v_1 a_1 v_2 a_2 ... v_k a_k>
+```
+- Line 1: number of stations `n`, number of requirements `m`, number of channels `D`.
+- Each of the next `m` lines describes one requirement: its weight `w` (`1 <= w`), its arity
+  `k` (`1 <= k`), then `k` literals given as pairs. The `i`-th pair `v_i a_i` means the literal
+  "station `v_i` tuned to channel `a_i`", with `1 <= v_i <= n` and `1 <= a_i <= D`. The stations
+  `v_1, ..., v_k` within one requirement are **distinct** (a station appears at most once per
+  requirement).
+
+## Output (stdout)
+```
+x_1 x_2 ... x_n
+```
+Print exactly `n` integers. `x_v` is the channel (an integer in `1 .. D`) chosen for station
+`v`. Whitespace/newlines between the values are ignored; there must be exactly `n` of them and
+nothing else.
+
+## Feasibility
+An output is valid iff it contains **exactly `n`** tokens and **every** token is an integer in
+`1 .. D`. Any other output (wrong count, a value outside `[1, D]`, a non-integer, trailing
+junk) scores `Ratio: 0.0`.
+
+## Objective
+Maximize `F` = the total priority weight of established requirements under your tuning, where
+requirement `j` is established iff at least one of its literals `(v, a)` has `x_v == a`.
+
+## Scoring
+The checker builds its own trivial reference tuning: **every station on channel `1`**
+(all `x_v = 1`). Under this tuning a requirement is established iff it contains at least one
+literal that names channel `1`, so the baseline weight is
+```
+B = sum of w_j over requirements that contain a literal (v, 1)     (B >= 1).
+```
+With the maximization normalization:
+```
+sc    = min(1000.0, 100.0 * F / max(1e-9, B))
+Ratio = sc / 1000.0
+```
+Reproducing the all-channel-1 tuning gives `F = B` and `Ratio = 0.1`. A tuning that establishes
+`10x` the baseline weight caps at `Ratio = 1.0`.
+
+## Constraints
+- `8 <= n <= 80`.
+- `1 <= m <= 1500`.
+- `3 <= D <= 6`.
+- `1 <= k <= 4` for every requirement; weights `1 <= w <= 60`.
+- Time limit: 5s. Memory limit: 512m.
+
+## Example
+Input:
+```
+3 4 3
+5 2 1 2 2 1
+3 2 2 3 3 1
+4 1 2 2
+2 1 3 1
+```
+Requirements:
+- j1 (w5): `(x1=2) OR (x2=1)`
+- j2 (w3): `(x2=3) OR (x3=1)`
+- j3 (w4): `(x2=2)`
+- j4 (w2): `(x3=1)`
+
+Baseline (all channel 1, tuning `1 1 1`): a requirement is established iff it names channel 1.
+j1 names channel 1 (via literal `(x2=1)`) -> established (w5). j2 names channel 1 (via `(x3=1)`)
+-> established (w3). j3 names only channel 2 -> not. j4 names channel 1 -> established (w2). So
+`B = 5 + 3 + 2 = 10`.
+
+Suppose you output `2 2 1` (x1=2, x2=2, x3=1):
+- j1: `(x1=2)` true -> established (w5).
+- j2: `(x2=3)` false, `(x3=1)` true -> established (w3).
+- j3: `(x2=2)` true -> established (w4).
+- j4: `(x3=1)` true -> established (w2).
+
+`F = 5 + 3 + 4 + 2 = 14`. `sc = 100 * 14 / 10 = 140`, so `Ratio = 0.140`.

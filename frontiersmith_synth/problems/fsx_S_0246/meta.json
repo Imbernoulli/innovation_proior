@@ -1,0 +1,18 @@
+{
+  "id": "fsx_S_0246",
+  "tier": "S",
+  "format": "A",
+  "family": "assignment-matching",
+  "eval_form": "quality-metric",
+  "seed_problem": "Assign drones to delivery zones under per-drone capacity to maximize served weight; checker validates capacities and scores total value / baseline.",
+  "mutation": "composite: generalize the bipartite capacitated assignment into a full generalized-assignment (multiple-knapsack) problem where each group->gallery pair has BOTH a distinct docent-minute cost and a distinct profit, each group is assignable to at most one gallery, and per-gallery capacity must hold; this makes the max-profit assignment NP-hard and lets profit-greedy, density-greedy and local-search strategies diverge.",
+  "objective": "max",
+  "theme": "museum gallery tour",
+  "title": "Curator's Conundrum: Docent-Guided Gallery Tours",
+  "strategies": [
+    "single-best baseline: send only the one group->gallery tour with the highest satisfaction",
+    "profit-greedy: sort all (group,gallery) tours by profit descending, assign greedily while the group is free and the gallery has budget",
+    "density-greedy: sort tours by profit-per-docent-minute descending and pack galleries, then sweep unassigned groups into any remaining capacity",
+    "local search: start from density-greedy, then repeatedly apply first-improving adds, moves and swaps that raise total satisfaction"
+  ]
+}

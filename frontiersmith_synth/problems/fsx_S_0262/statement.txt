@@ -1,0 +1,126 @@
+# Caldera Watch: Sensor-Mode Constraint Satisfaction
+
+## Problem
+
+The **Caldera Watch** volcano-monitoring agency runs a large network of field stations
+scattered across an active caldera. Every station can be provisioned into one of two
+operating modes for the coming season:
+
+- **high-power mode** (`1`) — continuous seismic + gas telemetry, but drains the shared
+  solar/battery grid and radio bandwidth, and
+- **low-power mode** (`0`) — a dormant, energy-sparing configuration.
+
+Analysts have compiled a long list of **weighted monitoring requirements**. Each
+requirement is a *clause*: a set of literals, where a literal is satisfied either by a
+particular station running high-power (a *positive* literal) or by a particular station
+running low-power (a *negative* literal). A requirement is **met** if at least one of its
+literals is satisfied. Every requirement carries a positive **importance weight**.
+
+Some requirements pull toward more high-power stations (redundant coverage of a fault
+line), others pull toward keeping neighbors dormant (bandwidth/battery contention), so no
+uniform "everything on" or "everything off" plan is any good. You must choose a mode for
+every station to **maximize the total importance of the met requirements**.
+
+Formally this is a **weighted (partial) Max-SAT** instance over `n` Boolean variables and
+`m` weighted clauses. Choose an assignment `x in {0,1}^n` maximizing the summed weight of
+satisfied clauses. The optimum is NP-hard and unknown; greedy, majority-vote, local
+search (flip / WalkSAT-style), and randomized-restart heuristics are all viable and
+diverge.
+
+## Input
+
+The first line contains two integers:
+
+```
+n m
+```
+
+- `n` — number of stations (variables), numbered `1..n`.
+- `m` — number of monitoring requirements (clauses).
+
+Each of the next `m` lines describes one clause:
+
+```
+w L t_1 t_2 ... t_L
+```
+
+- `w` — the importance weight of the clause (`1 <= w`).
+- `L` — the number of literals in the clause (`1 <= L <= n`).
+- `t_1 ... t_L` — the literals. A value `+i` (positive, `1 <= i <= n`) is satisfied when
+  station `i` is in high-power mode (`x_i = 1`); a value `-i` is satisfied when station `i`
+  is in low-power mode (`x_i = 0`). All literals in a clause reference distinct stations,
+  and no `t_j` is zero.
+
+## Output
+
+Print the chosen assignment: `n` integers `x_1 x_2 ... x_n`, each `0` or `1`, separated by
+whitespace (line breaks are allowed anywhere between them). `x_i = 1` means station `i`
+runs high-power, `x_i = 0` means low-power.
+
+Printing `n` zeros is always valid.
+
+## Feasibility
+
+An output is feasible iff it consists of exactly `n` tokens, each equal to `0` or `1`,
+with no extra trailing tokens. Any other output (wrong count, out-of-range value,
+non-integer, extra tokens) scores `0`.
+
+## Objective
+
+A clause is **satisfied** by assignment `x` if at least one of its literals is satisfied:
+a positive literal `+i` needs `x_i = 1`; a negative literal `-i` needs `x_i = 0`. Let
+
+```
+F = sum of w over all satisfied clauses.
+```
+
+You are **maximizing** `F`.
+
+## Scoring
+
+Let `B` be the total weight of clauses satisfied by the all-low-power plan
+(`x_i = 0` for every station) — the do-nothing dormant configuration. The score for one
+test is
+
+```
+ratio = min(1.0, 0.1 * F / B).
+```
+
+The dormant baseline (`F = B`) scores `0.1`; matching ten times the baseline weight caps
+the score at `1.0`. The overall score is the mean ratio across all tests.
+
+## Constraints
+
+- `1 <= n <= 2500`.
+- `1 <= m <= 20000`.
+- `1 <= w <= 20`, clause length `1 <= L <= 3`.
+- The instance always contains at least one negative literal, so `B >= 1`.
+- Time limit: 5 s. Memory limit: 512 MB.
+
+## Example
+
+Input:
+
+```
+3 4
+5 2 1 2
+4 2 2 3
+7 1 -1
+3 1 -3
+```
+
+The four requirements are `(x1 OR x2)` weight `5`, `(x2 OR x3)` weight `4`,
+`(NOT x1)` weight `7`, and `(NOT x3)` weight `3`.
+
+The dormant plan `x = (0,0,0)` satisfies only the two negative-unit clauses, so
+`B = 7 + 3 = 10`.
+
+Consider the plan `x = (0,1,0)`: `(x1 OR x2)` is met via `x2` (`5`), `(x2 OR x3)` via `x2`
+(`4`), `(NOT x1)` holds (`7`), `(NOT x3)` holds (`3`). So `F = 5 + 4 + 7 + 3 = 19` and the
+score is `min(1.0, 0.1 * 19 / 10) = 0.19`.
+
+A valid worked output:
+
+```
+0 1 0
+```

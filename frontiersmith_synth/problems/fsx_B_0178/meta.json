@@ -1,0 +1,16 @@
+{
+  "id": "fsx_B_0178",
+  "tier": "B",
+  "format": "D",
+  "family": "quantum-circuit-opcount",
+  "eval_form": "flops",
+  "theme": "drone delivery swarm",
+  "title": "SwarmRoute: SWAP-Minimal Hand-off Routing on a Drone Mesh",
+  "objective": "min",
+  "strategies": [
+    "trivial: route each hand-off on a fresh identity layout via shortest path, then undo (matches checker baseline)",
+    "greedy: single evolving layout, input order, no undo (reuse drift)",
+    "strong: nearest-first schedule on the evolving layout, no undo (minimize cumulative routing)",
+    "invalid: infeasible program, executes no required hand-off"
+  ]
+}

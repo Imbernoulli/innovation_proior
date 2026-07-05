@@ -1,0 +1,18 @@
+{
+  "id": "fsx_B_0166",
+  "tier": "B",
+  "format": "B",
+  "family": "offline-decision-policy",
+  "eval_form": "quality-metric",
+  "theme": "glacier sensor net",
+  "title": "Glacier Sensor Net: Predicate Prefix-Cache Ordering",
+  "objective": "max",
+  "source_frameworks": ["Frontier-CS (cant_be_late/cloudcast/llm_router/llm_sql)"],
+  "strategies": [
+    "trivial: evaluate predicates in the natural channel order 0..N-1 (no reordering) -- reproduces the evaluator's weak baseline",
+    "first-appearance locality: order channels by when they are first seen scanning the training stream -- coarse locality but ignores frequency/co-occurrence",
+    "frequency-descending: put globally hot channels first so common leading prefixes are shared",
+    "co-occurrence clustering: grow the order by appending the channel most co-queried with those already placed, keeping sensor 'stations' contiguous",
+    "seeded local search: swap-based hill-climb over the training trie-node count from principled inits, refining without overfitting -- transfers to the held-out stream"
+  ]
+}

@@ -1,0 +1,17 @@
+{
+  "id": "fsx_B_0152",
+  "tier": "B",
+  "format": "B",
+  "family": "constrained-OR",
+  "eval_form": "quality-metric",
+  "theme": "deep-sea cable network",
+  "title": "Deep-Sea Cable Spare-Parts Positioning on a Supply Tree",
+  "objective": "min",
+  "source_frameworks": ["Frontier-Eng (Inventory/Portfolio)"],
+  "strategies": [
+    "trivial: gold-plate every depot to safety factor 4 (evaluator baseline; always feasible) -> ~0.1",
+    "greedy: node-wise newsvendor optimum k*=Phi^{-1}(1-h/p), ignoring the network fill-rate floor; feasible+cheap on 'loose' instances but violates beta on 'tight' ones -> 0 there",
+    "strong: constrained Lagrangian water-filling -- inflate the effective penalty p+lambda uniformly and bisect lambda to the smallest value meeting the network fill rate, giving the min-cost feasible design everywhere",
+    "invalid: zero safety stock everywhere -> network fill rate ~0.6 < beta -> infeasible on every instance -> 0"
+  ]
+}

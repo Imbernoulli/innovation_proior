@@ -1,0 +1,17 @@
+{
+  "id": "fsx_G_0455",
+  "tier": "G",
+  "format": "B",
+  "family": "ml-feature-selection",
+  "eval_form": "quality-metric",
+  "theme": "tabular fraud model",
+  "title": "Fraud Feature Sieve: Selecting Signals for a Frozen Scorer",
+  "objective": "max",
+  "source_frameworks": ["MLS-Bench (feature-selection heuristics)", "breadth-fill (dataset/domain/task diversity)"],
+  "strategies": [
+    "keep every column and hand the whole wide table to the frozen scorer (reproduces the evaluator's weak all-columns baseline, ~0.1; the curse of dimensionality from noise columns caps it)",
+    "univariate |correlation| filter with a fixed generous budget (top-k): discards most pure-noise columns for a large gain but keeps spurious-correlation columns and never adapts the count per dataset",
+    "adaptive filter: rank by correlation, then pick the number of columns by cross-validating the frozen nearest-centroid model on the training log, tracking the planted informative set while dropping in-sample-spurious columns",
+    "stability / redundancy-aware selection or forward search that estimates each column's out-of-sample contribution to the frozen scorer, trading breadth of signal against added distance noise"
+  ]
+}

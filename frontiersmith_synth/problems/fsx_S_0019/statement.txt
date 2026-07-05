@@ -1,0 +1,134 @@
+# Buried Cable Trenches: Degree-Capped Artifact Comms on a Dig Grid
+
+## Problem
+
+An archaeology team has staked out `N` survey markers across a large dig grid. Each
+marker sits at a fixed integer coordinate `(x, y)` on the site map (metres). The first
+`T` markers stand over **artifact chambers** that must be wired into the field lab; the
+remaining `N - T` markers are **optional relay posts** — spare survey stakes you may or
+may not use as junction points to route cable more cheaply.
+
+You must lay **buried cable trenches**. Each trench is a straight point-to-point link
+between two markers and costs digging effort proportional to the straight-line distance
+between them. The finished trench network must make **all `T` artifact chambers mutually
+reachable** (a chamber may reach another by hopping along trenches, possibly passing
+through relay posts). Relay posts do **not** have to be connected — an unused post is
+simply left in the ground.
+
+Every marker carries a limited number of trench collars: marker `i` can be an endpoint
+of **at most `cap_i`** trenches. You choose which trenches to dig. You want to connect
+all artifact chambers with the **smallest possible total trench length**, without ever
+exceeding any marker's collar cap.
+
+Without the caps and without the optional posts this would be a minimum spanning tree over
+the chambers; the per-marker degree caps plus the freedom to route through optional relay
+posts (Steiner junctions) make short networks fight for the few collars, so no efficient
+optimal algorithm is known. Heuristics are expected.
+
+## Input
+
+```
+N T
+x_1 y_1 cap_1
+x_2 y_2 cap_2
+...
+x_N y_N cap_N
+```
+
+- Line 1: integers `N` (number of markers) and `T` (number of artifact chambers).
+- Markers are numbered `1..N`. Markers `1..T` are **artifact chambers** (must be
+  connected). Markers `T+1..N` are **optional relay posts**.
+- Each of the next `N` lines gives marker `i`: integer coordinates `x_i`, `y_i`, and its
+  collar cap `cap_i`.
+- All marker coordinates are distinct. Every `cap_i >= 2`, so a connected network always
+  exists (for instance a single chain through the `T` chambers).
+
+## Output
+
+Print your trench network as a list of links.
+
+```
+E
+a_1 b_1
+a_2 b_2
+...
+a_E b_E
+```
+
+- Line 1: integer `E`, the number of trenches you dig (`E >= 0`).
+- Each of the next `E` lines gives one trench between markers `a_k` and `b_k`
+  (`1 <= a_k, b_k <= N`, `a_k != b_k`). Trenches are undirected; do not list the same
+  unordered pair twice.
+
+## Feasibility
+
+An output is feasible if and only if all of the following hold:
+
+- exactly `E` trenches are printed, each joining two distinct valid markers;
+- no unordered pair of markers appears more than once (no duplicate trench);
+- for every marker `i`, the number of trenches incident to `i` is at most `cap_i`;
+- all `T` artifact chambers lie in a **single connected component** of the trench network
+  (relay posts may be used to bridge chambers, but need not be connected themselves).
+
+Any output that violates feasibility scores 0.
+
+## Objective
+
+The **length** of a trench between markers `p` and `q` is the Euclidean distance rounded
+to the nearest integer:
+
+```
+len(p, q) = round( sqrt( (x_p - x_q)^2 + (y_p - y_q)^2 ) )
+```
+
+Minimize the total trench length
+
+```
+F = sum over all dug trenches (a, b) of len(a, b).
+```
+
+## Scoring
+
+Let `B` be the length of the **chamber chain baseline**: the network that links the
+artifact chambers in input order, `1-2, 2-3, ..., (T-1)-T` (a single path through the
+chambers, always feasible since every `cap_i >= 2`). Your score on a test is
+
+```
+ratio = min(1.0, (B / max(1, F)) / 10)
+```
+
+so a network that merely matches the chain baseline scores `0.1`, one half the baseline
+length scores `0.2`, and reaching one tenth of the baseline length (or shorter) reaches
+the capped score `1.0`. Larger is better. Per-test scores are averaged.
+
+## Constraints
+
+- `2 <= T <= N <= 600`
+- `0 <= x_i, y_i <= 10000`
+- `2 <= cap_i <= 4`
+- Time limit: 5s
+- Memory limit: 512 MiB
+
+## Example
+
+Input:
+```
+6 4
+0 0 2
+0 10 3
+10 10 2
+10 0 3
+5 5 4
+20 20 2
+```
+
+Markers 1..4 are artifact chambers on the corners of a 10x10 square; marker 5 (`5 5`) is
+a relay post near the centre and marker 6 (`20 20`) is a far, useless post. The chain
+baseline links chambers `1-2, 2-3, 3-4` (three sides), so `B = 10 + 10 + 10 = 30`.
+
+Consider the star through the central relay post: trenches `1-5, 2-5, 3-5, 4-5`. Post 5
+has degree 4 (cap 4, ok); each chamber has degree 1. All four chambers are connected
+through post 5, and each corner-to-centre distance is `round(sqrt(25 + 25)) = 7`, so
+`F = 7 + 7 + 7 + 7 = 28`, giving `ratio = min(1.0, (30 / 28) / 10) = 0.107...`.
+
+The chain itself (`1-2, 2-3, 3-4`) has `F = 30 = B` and scores exactly `0.1`.

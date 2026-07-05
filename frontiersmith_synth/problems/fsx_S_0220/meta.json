@@ -1,0 +1,17 @@
+{
+  "id": "fsx_S_0220",
+  "tier": "S",
+  "family": "routing-tour",
+  "seed_problem": "ALE-Bench (ahc006/027/039) / Frontier-CS: choose which pickup-delivery pairs to serve and output one depot-to-depot tour minimizing distance; checker validates precedence and returns a tour-length ratio.",
+  "mutation": "composite (goal+output): keep the precedence-constrained pickup-delivery tour feasibility structure but make it PRIZE-COLLECTING -- each relay may be served or skipped, an unserved relay pays a fixed penalty, and the objective F = total driving distance + sum of penalties of unserved relays. The unknown optimum in scoring is replaced by a checker-computed always-feasible serial serve-all baseline B, so scoring is deterministic (ratio = min(1, 0.1*B/F)). Large 2D instances (up to 250 relays / 500 sites) with a difficulty ladder that injects remote low-penalty relays so skipping decisions matter.",
+  "objective": "min",
+  "theme": "pandemic contact net",
+  "title": "Contact-Tracing Courier: Prize-Collecting Sample Relay Tour",
+  "strategies": [
+    "serial serve-all baseline: depot -> p1 -> d1 -> ... -> pn -> dn -> depot (feasible, cost = B, ratio 0.1)",
+    "nearest-feasible construction: drive to the closest allowed unvisited site (any pickup, or a delivery whose pickup is done), serving all relays",
+    "precedence-safe 2-opt local search on the visiting order to shorten the tour",
+    "prize-collecting removal: drop a served relay when splicing out its two sites saves more travel than its skip penalty",
+    "combined construction + local search + removal, alternating the ordering and skipping phases"
+  ]
+}

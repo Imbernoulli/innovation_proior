@@ -1,0 +1,16 @@
+{
+  "id": "fsx_A_0125",
+  "tier": "A",
+  "format": "C",
+  "family": "functional-inequality-constant",
+  "eval_form": "quality-metric",
+  "theme": "wind tunnel sensors",
+  "title": "Wind-Tunnel Sensor Leakage Energy",
+  "objective": "min",
+  "strategies": [
+    "half-block baseline (cram all gain into one contiguous half of the array)",
+    "uniform gains across the whole array (obvious anti-concentration move)",
+    "shaped profile via projected-gradient descent on the L2 leakage energy",
+    "analytic tapered profile (denser at the array ends) as a numpy-free fallback"
+  ]
+}

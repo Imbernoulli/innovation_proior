@@ -1,0 +1,16 @@
+{
+  "id": "fsx_B_0372",
+  "tier": "B",
+  "format": "D",
+  "family": "quantum-circuit-opcount",
+  "eval_form": "flops",
+  "theme": "reservoir dam network",
+  "title": "Canal-Exchange Routing: Minimum Batch Swaps on a Reservoir Grid",
+  "objective": "min",
+  "strategies": [
+    "naive fixed-order router, walk batch a to batch b per operation (trivial == checker baseline)",
+    "nearest-first scheduling of the commuting operations (greedy)",
+    "SABRE-style shared-exchange routing over the pending set, best of several lookahead widths (strong)",
+    "true minimum-exchange routing / token-swap optimum (NP-hard, open ceiling, uncovered)"
+  ]
+}

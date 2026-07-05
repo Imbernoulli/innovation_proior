@@ -1,0 +1,16 @@
+{
+  "id": "fsx_B_0380",
+  "tier": "B",
+  "format": "D",
+  "family": "quantum-circuit-opcount",
+  "eval_form": "flops",
+  "theme": "warehouse robotics",
+  "title": "Conveyor Handoff Routing: Minimal-SWAP Transpilation on a Warehouse Floor",
+  "objective": "min",
+  "strategies": [
+    "identity placement + per-task shortest-path routing (trivial baseline)",
+    "zone-aware greedy embedding of the handoff graph onto the floor (greedy)",
+    "greedy embedding + local-search refinement + lookahead endpoint choice (strong)",
+    "true minimal-SWAP routing / optimal token-swapping schedule (NP-hard, open ceiling, uncovered)"
+  ]
+}

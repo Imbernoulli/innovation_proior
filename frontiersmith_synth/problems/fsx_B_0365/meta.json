@@ -1,0 +1,16 @@
+{
+  "id": "fsx_B_0365",
+  "tier": "B",
+  "format": "E",
+  "family": "symbolic-regression",
+  "eval_form": "quality-metric",
+  "theme": "aquarium plumbing",
+  "title": "Sump Return-Line Flow Law — extrapolating symbolic regression over a reef-tank plumbing rig",
+  "objective": "optimize",
+  "strategies": [
+    "constant baseline: predict the mean training return flow (ignores structure) -> ~0.1",
+    "linear least squares y~1+x1+x2+x3+x4: captures the trend, misses the head-decay exponential / bore square-law / throttle*restriction interaction, extrapolates poorly onto the over-range frontier",
+    "structured basis [1, x1*exp(c*x2), x3^2, x1*x4, x3] with a grid search over the hidden exponential head-decay rate c, coefficients by least squares",
+    "alternatives: finer / continuous optimisation of c, ridge-regularised bases, or adding cross terms to trade the complexity penalty against held-out error"
+  ]
+}

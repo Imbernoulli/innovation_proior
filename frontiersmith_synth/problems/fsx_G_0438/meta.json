@@ -1,0 +1,16 @@
+{
+  "id": "fsx_G_0438",
+  "tier": "G",
+  "format": "D",
+  "family": "flop-poly-eval-mults",
+  "eval_form": "flops",
+  "theme": "DSP pipeline",
+  "title": "FIR Filter Kernel: Minimal-Multiplication Schedule for a Fixed Tap Polynomial",
+  "objective": "min",
+  "strategies": [
+    "Horner's rule over the dense taps: exactly d multiplications (trivial, = baseline)",
+    "recover the hidden quadratic-section power and raise it by naive repeated multiply: k+1 mults (greedy)",
+    "recover the section and raise it with a repeated-squaring addition chain: ~2+log2(k) mults (strong)",
+    "shortest addition chain for the exponent / joint sharing below binary exponentiation (open ceiling, uncovered)"
+  ]
+}

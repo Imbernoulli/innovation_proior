@@ -1,0 +1,19 @@
+{
+  "id": "fsx_A_0319",
+  "tier": "A",
+  "format": "C",
+  "family": "low-discrepancy-pointset",
+  "eval_form": "quality-metric",
+  "theme": "quantum lab wiring",
+  "title": "Cryostat Probe Layout: Minimum Star-Discrepancy Wiring",
+  "objective": "min",
+  "variant": 10,
+  "scale": "medium",
+  "source_frameworks": ["OpenEvolve (star-discrepancy)", "AlphaEvolve"],
+  "strategies": [
+    "trivial: pile all probes on the main diagonal ((i+0.5)/M,(i+0.5)/M) -- reproduces the checker baseline B (~0.1)",
+    "greedy: a centred sqrt(M) x sqrt(M) regular grid; uniform but O(1/sqrt(M)) discrepancy",
+    "strong: 2-D Hammersley set (van-der-Corput radical inverse base 2 vs i/M); O(log M / M) discrepancy, well below the grid but NOT the unknown optimum",
+    "open: optimise probe positions directly against the exact star discrepancy; the true minimum-discrepancy layout is unknown for M>~20 even in 2-D"
+  ]
+}

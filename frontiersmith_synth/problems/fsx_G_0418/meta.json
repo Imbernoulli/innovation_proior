@@ -1,0 +1,16 @@
+{
+  "id": "fsx_G_0418",
+  "tier": "G",
+  "format": "E",
+  "family": "sci-chemistry-rate-law",
+  "eval_form": "quality-metric",
+  "theme": "catalysis reactor",
+  "title": "Arrhenius Rate Law for a Catalytic Packed-Bed Reactor",
+  "objective": "min",
+  "strategies": [
+    "constant / mean predictor of training k (trivial baseline)",
+    "temperature-only Arrhenius fit ln k ~ ln A - E/T, ignoring concentration (greedy)",
+    "full log-linear Arrhenius fit ln k ~ ln A - E/T + n*ln C via 3x3 normal equations (strong)",
+    "add curvature / concentration-order corrections discovered from data"
+  ]
+}

@@ -1,0 +1,16 @@
+{
+  "id": "fsx_B_0169",
+  "tier": "B",
+  "format": "B",
+  "family": "seeded-numerical-sim",
+  "eval_form": "quality-metric",
+  "theme": "festival stage layout",
+  "title": "Festival Stage Layout: Binary Phase-Plate Spot-Array Beam Shaper",
+  "objective": "max",
+  "strategies": [
+    "trivial: reproduce the reference random-grating superposition (uses the instance seed) -> matches the grader's baseline -> ~0.1",
+    "greedy: plain Gerchberg-Saxton/IFTA from the superposition (uniform target amplitude, no spot weighting), quantised each iteration -> mild, uneven improvement",
+    "strong: weighted GS/IFTA with adaptive per-spot weights w*=sqrt(mean/I_spot), snapping to the L device levels every round -> equalises the constellation while holding efficiency, ~2.5x the baseline",
+    "invalid: emit a wrong-shape (1x1) phase mask -> strict shape check rejects -> 0"
+  ]
+}

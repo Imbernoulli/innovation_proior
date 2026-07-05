@@ -1,0 +1,17 @@
+{
+  "id": "fsx_A_0304",
+  "tier": "A",
+  "format": "C",
+  "family": "extremal-point-config",
+  "eval_form": "quality-metric",
+  "theme": "coral reef survey",
+  "title": "Coral Reef Survey: Sliver-Free Station Placement in a Reef Plot",
+  "objective": "max",
+  "source_frameworks": ["AlphaEvolve"],
+  "strategies": [
+    "incircle baseline: N survey stations equally spaced on the reef plot's incircle (a regular N-gon), reproducing the checker baseline whose minimum triangle area is a thin 3-consecutive-vertex sliver",
+    "multi-restart uniform random sampling inside the unit-square reef plot, keeping the layout with the largest minimum triangle area",
+    "bottleneck-driven local search from structured starts (boundary ring + interior jittered grid): repeatedly find the smallest-area triple and perturb one of its stations, accepting moves that raise the global minimum area over several seeded restarts",
+    "structured Heilbronn-in-a-square constructions (boundary plus interior lattices, perturbed grids) tuned to avoid thin triangles across the whole reef plot"
+  ]
+}

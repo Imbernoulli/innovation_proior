@@ -1,0 +1,18 @@
+{
+  "id": "fsx_C_0184",
+  "tier": "C",
+  "format": "B",
+  "family": "synthetic-algorithmic-generalization",
+  "eval_form": "correctness",
+  "theme": "drone delivery swarm",
+  "title": "Drone Delivery Swarm: Mission-Validity Rule Induction",
+  "objective": "optimize",
+  "source_frameworks": ["MLS-Bench (synth-*)"],
+  "isolation": "candidate runs as an isolated stdin->stdout subprocess via isorun; query labels, the hidden capacity D, and oracle state stay in the evaluator process",
+  "strategies": [
+    "majority TRAIN label for every query (reproduces the evaluator baseline -> ~0.1; no rule, no generalization)",
+    "well-nesting (Dyck-K) classifier only: recovers the type-matched LIFO structure but ignores the hidden airspace capacity -> wrongly accepts over-capacity missions",
+    "capacity-aware inducer: Dyck-K well-nesting PLUS an inferred max-airborne-depth threshold; length-independent so it generalizes to the long OOD queries, but conservative at the unseen boundary -> strong, not perfect",
+    "richer inducers (learn the depth threshold with a margin/extrapolation, statistical n-gram or small learned classifiers, or full grammar+constraint induction) that push accuracy higher on both ID and length-OOD splits"
+  ]
+}

@@ -1,0 +1,141 @@
+# Aperture Ledger: Telescope Array Observing Schedule
+
+## Problem
+
+The *Aperture Ledger* consortium operates an array of `T` robotic telescopes for a single
+observing night. There are `N` candidate celestial targets on tonight's queue. A target may
+be observed by **at most one** telescope, and each telescope has a finite nightly slewing +
+integration **time budget**.
+
+Because telescopes differ in aperture, filters, altitude and sky background, observing the
+*same* target on *different* telescopes costs a different number of minutes and yields a
+different amount of scientific value. For target `i` on telescope `j` you are given the
+integration time `cost[i][j]` (minutes it would consume of that telescope's budget) and the
+science value `val[i][j]` (payoff if that target is observed on that telescope).
+
+Choose, for each target, either a single telescope to observe it on or to skip it, so that
+**no telescope's total consumed time exceeds its budget**, and the **total science value of
+all observed targets is as large as possible**.
+
+This is a generalized assignment problem: it generalizes multiple-knapsack and bipartite
+matching, it is NP-hard, the optimum is unknown, and many heuristics (value-greedy,
+value-per-minute greedy, local search / reassignment, randomized restarts) are viable and
+give different schedules.
+
+## Input
+
+The first line contains two integers:
+
+```
+N T
+```
+
+- `N` — number of candidate targets, numbered `1..N`.
+- `T` — number of telescopes, numbered `1..T`.
+
+The second line contains `T` integers:
+
+```
+C_1 C_2 ... C_T
+```
+
+where `C_j` is the nightly time budget (minutes) of telescope `j`.
+
+Each of the next `N` lines describes one target. Line `i` (for `i = 1..N`) contains `2*T`
+integers:
+
+```
+cost[i][1] val[i][1] cost[i][2] val[i][2] ... cost[i][T] val[i][T]
+```
+
+so the pairs are given telescope by telescope: the time cost and the science value of
+observing target `i` on each telescope `1..T`.
+
+## Output
+
+Print `N` integers, one per line. The `i`-th integer `a_i` is your assignment for target `i`:
+
+- `a_i = 0` means target `i` is **skipped** (not observed);
+- `a_i = j` with `1 <= j <= T` means target `i` is observed on telescope `j`.
+
+Printing `0` on every line is always valid (it observes nothing).
+
+## Feasibility
+
+An output is feasible iff:
+
+- it contains exactly `N` integers, each in the range `0..T`;
+- for every telescope `j`, the sum of `cost[i][j]` over all targets `i` assigned to `j`
+  (i.e. with `a_i = j`) does **not** exceed the budget `C_j`.
+
+Any infeasible output scores `0`.
+
+## Objective
+
+Let `F` be the total science value of your schedule:
+
+```
+F = sum over all i with a_i > 0 of val[i][a_i].
+```
+
+You are **maximizing** `F`.
+
+## Scoring
+
+The checker builds an internal reference schedule `B` by a deterministic **first-fit** rule:
+processing targets in input order `i = 1..N`, and telescopes in index order `j = 1..T`,
+it assigns each target to the first telescope that still has enough remaining budget for it,
+accumulating that value. `B` is the total value of that reference schedule (guaranteed
+positive). The score for a test is
+
+```
+ratio = min(1.0, 0.1 * F / B).
+```
+
+A schedule that merely matches the first-fit reference (`F = B`) scores `0.1`; reaching a
+ten-fold improvement (`F = 10*B`) caps the score at `1.0`. The overall score is the mean
+ratio across all tests.
+
+## Constraints
+
+- `1 <= N <= 200`, `1 <= T <= 10`.
+- `1 <= C_j <= 2000`.
+- `1 <= cost[i][j] <= 1000`, `1 <= val[i][j] <= 1000`.
+- Time limit: 5 s. Memory limit: 512 MB.
+
+## Example
+
+Input:
+
+```
+3 2
+10 10
+6 5 8 9
+5 4 7 3
+9 8 4 6
+```
+
+There are 3 targets and 2 telescopes, each with a budget of 10 minutes.
+
+The checker's first-fit reference:
+
+- target 1: telescope 1 fits (cost 6 <= 10), assign it; telescope 1 has 4 left; value += 5.
+- target 2: telescope 1 needs 5 > 4 (no); telescope 2 fits (cost 7 <= 10), assign it;
+  telescope 2 has 3 left; value += 3.
+- target 3: telescope 1 needs 9 > 4 (no); telescope 2 needs 4 > 3 (no); skipped.
+
+So `B = 5 + 3 = 8`.
+
+A better schedule: observe target 1 on telescope 2 (cost 8 <= 10, value 9) and target 3 on
+telescope 1 (cost 9 <= 10, value 8), skipping target 2. Every telescope is within budget,
+and `F = 9 + 8 = 17`.
+
+Score for this test: `min(1.0, 0.1 * 17 / 8) = 0.2125`.
+
+A valid worked output:
+
+```
+2
+0
+1
+```

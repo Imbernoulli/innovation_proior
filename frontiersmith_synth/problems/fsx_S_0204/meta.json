@@ -1,0 +1,18 @@
+{
+  "id": "fsx_S_0204",
+  "tier": "S",
+  "format": "A",
+  "family": "online-to-offline-replay",
+  "eval_form": "quality-metric",
+  "seed_problem": "Given a fixed availability/deadline trace, choose Spot/On-Demand/pause per step to minimize cost; checker replays the trace and scores baseline/cost.",
+  "mutation": "composite: replay the online spot-vs-on-demand deadline problem as a static full-trace optimization (input) AND add a per-run startup cost plus variable spot throughput/availability (output constraint), turning it into a multiple-choice covering knapsack with run-segmentation whose optimum is NP-hard and where greedy/prefix/local-search strategies diverge.",
+  "objective": "min",
+  "theme": "bakery supply chain",
+  "title": "Spot-Flour Milling: Offline Replay of the Bakery Power Trace",
+  "strategies": [
+    "trivial baseline: run On-Demand for the first ceil(W/q) slots as one contiguous block (matches the checker baseline)",
+    "prefix greedy: fill from slot 1 with the cheaper-per-sack available mode each slot until demand is met (one run, cheap spot where possible)",
+    "cost-per-sack knapsack: select the globally cheapest per-sack slot-options to cover W, then repair the startup penalty by clustering",
+    "local search: hill-climb the full objective (operating cost + K*runs) from a feasible start, swapping modes and merging runs"
+  ]
+}

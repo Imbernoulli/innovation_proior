@@ -1,0 +1,92 @@
+# Vineyard Irrigation: Sprinkler-Panel Coverage
+
+## Problem
+A vineyard is laid out as a `W x H` grid of soil plots (columns `x` in `[0, W)`, rows
+`y` in `[0, H)`). Some plots are **bedrock** and cannot be irrigated. The estate owns a
+catalogue of `P` reusable **sprinkler panels**. Panel type `t` is a fixed *polyomino*
+shape (a connected set of unit cells) and comes with a limited **stock** `c_t` of
+identical copies.
+
+You install panels onto the grid. Each installed copy may be **rotated** by a multiple of
+90 degrees and/or **reflected** (mirrored) before being dropped onto the grid, but it must
+land axis-aligned on whole cells. An installed panel:
+
+- must lie fully inside the grid,
+- must not cover any bedrock plot,
+- must not overlap any other installed panel.
+
+You want to irrigate as much soil as possible. Because panels are irregular and stock is
+limited, perfectly tiling the field is generally impossible, so this is an open-ended
+packing optimization: many placements are feasible and are scored by total area covered.
+
+## Input (stdin)
+```
+W H
+R
+<R lines: "ox oy"  -- a bedrock plot, 0-indexed>
+P
+<for each panel type t = 0 .. P-1, a block:>
+   c_t s_t
+   <s_t lines: "dx dy"  -- the cells of the base shape, as integer offsets>
+```
+- `W H` grid dimensions.
+- `R` bedrock plots follow, each a distinct in-grid coordinate.
+- `P` panel types follow. For type `t`, the first line gives its stock `c_t` and its cell
+  count `s_t`; the next `s_t` lines list the shape's cells as offsets (the offsets are only
+  a description of the shape -- you may place the shape at any translation/rotation/reflection).
+
+## Output (stdout)
+```
+M
+<for each of the M installed panels, one line:>
+   t  x1 y1  x2 y2  ...  x_{s_t} y_{s_t}
+```
+Print `M`, the number of panels you install, then one line per panel: the panel **type**
+`t` followed by the **absolute grid coordinates** of the `s_t` cells that copy occupies
+(order of cells within a panel is irrelevant).
+
+## Feasibility
+An output is valid iff ALL of the following hold:
+- `0 <= M`;
+- every declared type satisfies `0 <= t < P`;
+- each panel lists exactly `s_t` cells, all pairwise distinct, all inside the grid, none on
+  a bedrock plot;
+- the multiset of cells of one panel, translated so its bounding box starts at the origin,
+  equals some rotation/reflection of type `t`'s base shape (i.e. it really is a legal copy
+  of that panel);
+- no two installed panels share a cell (no overlap);
+- for every type `t`, the number of installed copies is at most its stock `c_t`.
+Any violation scores `Ratio: 0.0`.
+
+## Objective
+Maximize `F` = the total number of soil cells covered by installed panels
+(the sum of `s_t` over all installed panels).
+
+## Scoring
+Let `B` be the coverage of the checker's own trivial construction: install **only panel
+type 0** using the canonical *anchored greedy* rule -- scan cells in row-major order, and
+at the first uncovered, non-bedrock cell, install a copy of type 0 in the first
+orientation (in a fixed enumeration) that fits with that cell as the copy's top-left-most
+cell; repeat until stock `c_0` is exhausted or no copy fits. `B` is the number of cells
+this single-type packing covers (`B >= 1`).
+
+With maximization normalization:
+```
+sc = min(1000.0, 100.0 * F / max(1, B))
+Ratio = sc / 1000.0
+```
+Reproducing the type-0 baseline scores `Ratio = 0.1`; covering `10x` the baseline caps at `1.0`.
+
+## Constraints
+- `6 <= W, H <= 12`.
+- `2 <= P <= 6`; each shape has `3 <= s_t <= 5` cells.
+- Panel type 0 has a small stock (a few copies); other types have generous stock.
+- Bedrock covers under ~15% of the grid; type-0 baseline always installs at least one copy.
+- Time limit 5s, memory 512m.
+
+## Example
+Grid `W=6, H=6`, no bedrock, `P=2`. Type 0 is the plus-pentomino
+`{(1,0),(0,1),(1,1),(2,1),(1,2)}` with stock `c_0 = 2`. Type 1 is the 2x2 square
+`{(0,0),(1,0),(0,1),(1,1)}` with generous stock. The type-0 anchored-greedy baseline
+installs 2 plus-panels covering `B = 10` cells. A solution mixing squares and one plus
+panel might cover `F = 28` cells, giving `sc = 100 * 28 / 10 = 280`, `Ratio = 0.280`.

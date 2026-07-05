@@ -1,0 +1,16 @@
+{
+  "id": "fsx_A_0301",
+  "tier": "A",
+  "format": "C",
+  "family": "greedy-priority-construction",
+  "eval_form": "correctness",
+  "theme": "warehouse robotics",
+  "title": "Warehouse Line-Free Shelf Activation (Weighted Cap Set in F_3^n)",
+  "objective": "optimize",
+  "strategies": [
+    "trivial: emit the binary sub-cube {0,1}^n (the checker's baseline) -> ~0.10",
+    "greedy: weight-descending greedy over a restricted shelf pool (drop the top slab of one coordinate)",
+    "strong: max over several deterministic weight-greedy runs (full space + each coordinate-slab restriction)",
+    "invalid: activate a hazard line -> 0.0"
+  ]
+}

@@ -1,0 +1,18 @@
+{
+  "id": "fsx_S_0065",
+  "tier": "S",
+  "format": "A",
+  "family": "scheduling-jssp",
+  "eval_form": "quality-metric",
+  "seed_problem": "Emit a full machine schedule for a synthetic JSSP instance; checker validates precedence/no-overlap and scores min(100, 100*optimum/makespan).",
+  "mutation": "composite: skin the job-shop as a warehouse robotics bay-scheduling instance and (input) relax durations to a heavy-tailed jam distribution at large scale, (output) require an explicit per-operation start-time schedule scored by the serial/makespan ratio 0.1*T/F, so optimal scheduling is NP-hard and dispatch rules diverge on the jam-induced idle gaps.",
+  "objective": "min",
+  "theme": "warehouse robotics",
+  "title": "Warehouse Robot Bay Scheduling (Job-Shop Makespan)",
+  "strategies": [
+    "fully-serialized baseline: run every operation one at a time (makespan = sum of all durations, score 0.1)",
+    "single-rule list scheduling: dynamic dispatch committing the shortest-processing-time ready head, placing each op at max(job-ready, bay-free)",
+    "multi-rule best-of dispatch: try SPT / LPT / most-work-remaining / earliest-completion plus randomized restarts and keep the shortest makespan",
+    "local search: seed with a dispatch schedule then swap/critical-path reorder operations on the bottleneck bay to shave the makespan"
+  ]
+}

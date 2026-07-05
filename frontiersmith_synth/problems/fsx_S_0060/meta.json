@@ -1,0 +1,18 @@
+{
+  "id": "fsx_S_0060",
+  "tier": "S",
+  "format": "A",
+  "family": "online-to-offline-replay",
+  "eval_form": "quality-metric",
+  "seed_problem": "Given a fixed availability/deadline trace, choose Spot/On-Demand/pause per step to minimize cost; checker replays the trace and scores baseline/cost.",
+  "mutation": "composite: generalize the single online job into N wells sharing a per-step spot-capacity trace and each carrying its own progress requirement + deadline, and add re-heat (switching) costs, turning the trivially-greedy 1-machine spot/on-demand replay into an NP-hard resource-constrained scheduling problem with time windows.",
+  "objective": "min",
+  "theme": "geothermal wells",
+  "title": "Deep Heat: Offline Geothermal Drilling Power Schedule",
+  "strategies": [
+    "all-on-demand baseline: every well drills on-demand on steps 1..R_j (the calibration point)",
+    "greedy per-well: for each well pick its R_j cheapest steps in-window, taking spot where capacity remains, else on-demand (ignores contiguity)",
+    "global spot-slot allocation: assign the limited spot slots to the (well,step) pairs with the largest spot-vs-on-demand savings, then fill remaining requirement with on-demand",
+    "contiguity-aware local search: perturb activations to merge runs and cut warm-up costs while respecting capacity"
+  ]
+}

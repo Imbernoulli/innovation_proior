@@ -1,0 +1,127 @@
+# Glacier Sensor Net: Minimum-Cost Crevasse Coverage
+
+## Problem
+
+A research consortium monitors a retreating glacier. There are `N` **demand stations**
+(fixed crevasse-monitoring markers) at integer coordinates on a flat `W x W` survey grid
+(`W = 20000` metres). To watch every station in real time they may switch on a subset of
+`M` **candidate sensors** (drilled radio-telemetry posts). Sensor `j` sits at integer
+coordinates `(sx_j, sy_j)`, has a coverage **radius** `r_j`, and an activation **cost**
+`c_j`. Crucially the sensors are heterogeneous: a wide-radius backbone beacon and a narrow
+local post may cost very differently, and cost is **not** a monotone function of radius, so
+picking a cheap effective net is a genuine trade-off.
+
+Sensor `j` **covers** demand station `i` iff their squared Euclidean distance is within the
+squared radius:
+
+```
+(sx_j - dx_i)^2 + (sy_j - dy_i)^2  <=  r_j^2
+```
+
+You must choose a set of sensors to activate so that **every** demand station is covered by
+at least one activated sensor, while spending as little total activation cost as possible.
+
+The instance is constructed so that activating **all** `M` sensors always covers every
+station (i.e. a feasible net exists). Finding the cheapest feasible net is weighted geometric
+set cover, which is NP-hard; you are scored on the quality of any feasible net you submit.
+
+## Input
+
+```
+N M
+dx_1 dy_1
+...
+dx_N dy_N
+sx_1 sy_1 r_1 c_1
+...
+sx_M sy_M r_M c_M
+```
+
+- Line 1: `N` (number of demand stations) and `M` (number of candidate sensors).
+- Next `N` lines: integer coordinates of each demand station, `0 <= dx_i, dy_i <= 20000`.
+- Next `M` lines: for each sensor, integer coordinates `sx_j, sy_j` in `[0, 20000]`,
+  integer radius `r_j >= 1`, and integer cost `c_j >= 1`.
+
+## Output
+
+```
+K
+a_1 a_2 ... a_K
+```
+
+- `K`: the number of sensors you activate (`0 <= K <= M`).
+- The second line lists the `K` distinct **1-based** indices of the activated sensors,
+  separated by single spaces. If `K = 0` the second line may be empty (this is only feasible
+  when `N = 0`, which does not occur).
+
+## Feasibility
+
+An output is feasible iff:
+- every listed index is in `[1, M]` and no index is repeated;
+- the activated sensors together cover **all** `N` demand stations.
+
+An infeasible or malformed output scores **0**.
+
+## Objective
+
+Minimize the total activation cost
+
+```
+F = sum of c_j over all activated sensors j.
+```
+
+## Scoring
+
+Let `B` be the cost of the trivial feasible net that switches **every** sensor on
+(`B = sum of all c_j`). For a feasible submission with cost `F`, the raw ratio is
+
+```
+raw = min(1000, 100 * B / F)
+```
+
+and the reported score is `raw / 1000`, a value in `(0, 1]`. Switching everything on gives
+`F = B` and hence score `0.1`; halving the cost gives `0.2`; a net costing one tenth of `B`
+or less reaches the cap `1.0`. Higher is better. Each of the 10 test cases is scored
+independently and the results are averaged.
+
+## Constraints
+
+- `1 <= N`, `1 <= M`; test sizes grow across the 10 cases from tiny (example scale) up to a
+  few hundred stations and sensors. Coordinates, radii and costs fit in 64-bit integers.
+- Even-numbered test cases have **clustered** demand (crevasse fields); odd-numbered cases
+  are near-uniform.
+- Time limit: 5 s.
+- Memory limit: 512 MB.
+
+## Example
+
+Input:
+
+```
+3 3
+100 100
+900 100
+500 900
+0 0 300 50
+500 100 600 40
+500 900 200 200
+```
+
+Here station 1 `(100,100)` is covered by sensor 1 (dist^2 = 20000 <= 90000) and by sensor 2
+(dist^2 = 160000 <= 360000). Station 2 `(900,100)` is covered by sensor 2
+(dist^2 = 160000 <= 360000). Station 3 `(500,900)` is covered by sensor 3
+(dist^2 = 0 <= 40000).
+
+Total cost of all sensors is `B = 50 + 40 + 200 = 290`.
+
+One feasible net is `{2, 3}`: sensor 2 covers stations 1 and 2, sensor 3 covers station 3.
+Its cost is `F = 40 + 200 = 240`, scoring `min(1000, 100*290/240)/1000 = 0.120833`.
+
+A worse net `{1, 2, 3}` (all on) costs `F = 290`, scoring exactly `0.1`.
+
+Output for the good net:
+
+```
+2
+2 3
+```

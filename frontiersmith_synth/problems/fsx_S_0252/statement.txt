@@ -1,0 +1,160 @@
+# Cold-Chain Replay: Vaccine Reserve Power Scheduling
+
+## Problem
+
+A regional **vaccine cold-chain hub** operates `N` refrigerated storage rooms and a single
+shared refrigeration **plant**. The whole `T`-step operating horizon (its power availability,
+prices and heat loads) has already been recorded, so you are solving the problem **offline**:
+you replay the entire trace and decide, for every step, how to run the plant.
+
+Each room `i` holds a **cold reserve** `I_i` (units of stored cooling), which must never fall
+below `0` — if a room's reserve hits `-1` the vaccines warm past their threshold and the batch
+is lost, so any such schedule is rejected outright. Every step the heat load `L[i][t]` drains
+`L[i][t]` units from room `i`. Each room can store at most `Cap_i` units (excess cooling
+delivered to a full room is simply lost).
+
+The plant can, at each step, produce cooling from one of two power sources, or stay off:
+
+- **Spot power** (`src = 1`): cheap solar/off-peak power, but **only available when
+  `solar[t] = 1`**. Each produced unit costs `p[t]`.
+- **Grid power** (`src = 2`): always available. Each produced unit costs `P` (fixed, high).
+- **Pause**: produce nothing (cost `0`).
+
+At each step you choose how many units `x[i]` of cooling to send to each room. The plant has a
+throughput limit: `sum_i x[i] <= Q`. Whenever the plant produces anything at a step **after a
+step in which it produced nothing**, it incurs a fixed **cold-start cost** `S` (compressor
+spin-up). Producing on consecutive steps incurs the start cost only once, at the first step.
+
+You want to keep every room cold through the whole horizon at **minimum total cost**. Because
+the plant is shared across rooms with independent reserves, this is a multi-item capacitated
+lot-sizing problem: the optimum is intractable and greedy, reactive and lookahead strategies
+all diverge.
+
+## Input
+
+The first line contains five integers:
+
+```
+N T Q S P
+```
+
+- `N` — number of storage rooms.
+- `T` — number of time steps.
+- `Q` — plant throughput limit per step (max total units produced in one step).
+- `S` — cold-start cost incurred when the plant switches from off to producing.
+- `P` — per-unit cost of grid power.
+
+The second line contains `T` integers `solar[1..T]`, each `0` or `1` (`1` = spot power
+available at that step).
+
+The third line contains `T` integers `p[1..T]` — the per-unit spot price at each step (given
+for every step; only meaningful at steps where `solar[t] = 1`).
+
+Then `N` blocks follow, one per room `i` (in order `1..N`):
+
+```
+Cap_i I0_i
+L[i][1] L[i][2] ... L[i][T]
+```
+
+where `Cap_i` is the room's storage capacity, `I0_i` its initial reserve, and `L[i][t]` its
+heat load (units drained) at step `t`.
+
+## Output
+
+Print `T` lines, one per step `t = 1..T`. Line `t` must contain `1 + N` integers:
+
+```
+src x[1] x[2] ... x[N]
+```
+
+- `src` is the power source for that step: `1` (spot) or `2` (grid).
+- `x[i]` is the number of cooling units delivered to room `i` at step `t` (`0 <= x[i]`).
+
+If `sum_i x[i] = 0` the plant is paused that step and `src` is ignored (still print a `1` or
+`2`).
+
+## Feasibility
+
+A schedule is feasible iff, processing steps in order `t = 1..T`:
+
+- `src in {1, 2}` and every `x[i] >= 0`;
+- `sum_i x[i] <= Q`;
+- if the plant produces at step `t` (`sum_i x[i] > 0`) with `src = 1`, then `solar[t] = 1`;
+- after applying the step, every reserve stays non-negative. The update for each room is:
+
+  ```
+  I_i := min(Cap_i, I_i + x[i]) - L[i][t]      (must have I_i >= 0)
+  ```
+
+  (produced cooling is added first, clipped at the room's capacity, then the heat load drains).
+
+Any infeasible output scores `0`.
+
+## Objective
+
+The **cost** of a feasible schedule is
+
+```
+F = sum over steps of [ (unit price at that step) * (units produced) ]
+    + S * (number of times the plant switches from off to producing)
+```
+
+where the unit price is `p[t]` if `src = 1` and `P` if `src = 2`. You are **minimizing** `F`.
+
+## Scoring
+
+Let `B` be the cost of the reference **all-grid** schedule that, every step, uses grid power to
+deliver exactly `x[i] = L[i][t]` to each room (this keeps every reserve unchanged and is always
+feasible). Its cost is `B = S + P * (sum over all i, t of L[i][t])`. The score for a test is
+
+```
+ratio = min(1.0, 0.1 * B / F)
+```
+
+The all-grid baseline (`F = B`) scores `0.1`; a schedule costing one tenth of the baseline
+(`F = B / 10`) caps the score at `1.0`. The overall score is the mean ratio across all tests.
+
+## Constraints
+
+- `1 <= N <= 8`, `1 <= T <= 1000`.
+- `1 <= L[i][t] <= 20`, `Cap_i >= max_t L[i][t]`, `0 <= I0_i <= Cap_i`.
+- `Q >= max_t sum_i L[i][t]` (so the all-grid baseline is always feasible).
+- `1 <= p[t] < P <= 100`, `1 <= S`.
+- Time limit: 5 s. Memory limit: 512 MB.
+
+## Example
+
+Input:
+
+```
+1 4 15 100 100
+1 1 0 0
+15 15 0 0
+30 10
+8 8 8 8
+```
+
+Here `N = 1` room, `T = 4` steps, plant throughput `Q = 15`, cold-start `S = 100`,
+grid price `P = 100`. Spot power is available at steps 1 and 2 (price `15`), unavailable at
+steps 3 and 4. The room has capacity `30`, starts with reserve `10`, and drains `8` each step.
+
+Total load `= 32`, so the all-grid baseline costs `B = 100 + 100 * 32 = 3300`.
+
+A better schedule pre-stores cheap spot cooling and then coasts:
+
+```
+1 15
+1 15
+2 0
+2 0
+```
+
+- Step 1 (spot): produce `15`. Reserve: `min(30, 10 + 15) - 8 = 17`. Cost: `15 * 15 + 100`
+  (cold-start) `= 325`.
+- Step 2 (spot): produce `15`. Reserve: `min(30, 17 + 15) - 8 = 30 - 8 = 22`. Cost: `15 * 15
+  = 225` (no cold-start, already running).
+- Step 3 (pause): reserve `22 - 8 = 14`.
+- Step 4 (pause): reserve `14 - 8 = 6`.
+
+Total cost `F = 325 + 225 = 550`. Score: `min(1.0, 0.1 * 3300 / 550) = min(1.0, 0.6) = 0.6`.

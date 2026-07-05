@@ -1,0 +1,17 @@
+{
+  "id": "fsx_A_0329",
+  "tier": "A",
+  "format": "C",
+  "family": "low-discrepancy-pointset",
+  "eval_form": "quality-metric",
+  "theme": "telescope array",
+  "title": "Formation-Flying Telescope Constellation: Uniform 3D Baseline Coverage",
+  "objective": "min",
+  "source_frameworks": ["OpenEvolve (star-discrepancy)", "AlphaEvolve"],
+  "strategies": [
+    "diagonal / single-line placement: all apertures on the cube's main diagonal (matches the checker baseline, high 3D star discrepancy) -> ~0.1",
+    "3D Hammersley / Halton set: coord0 = (i+0.5)/n, coord1 = radical inverse base 2, coord2 = radical inverse base 3 (a reliable low-discrepancy construction that beats the diagonal)",
+    "best rank-1 Korobov lattice: sweep the generator g and place points ((i*[1,g,g^2 mod n] + 0.5)/n mod 1); keep the g with minimum EXACT 3D star discrepancy (a genuine search that beats a single fixed construction)",
+    "jittered/stratified cube grids, Fibonacci-type lattices, or local-search coordinate perturbation of a good seed set"
+  ]
+}

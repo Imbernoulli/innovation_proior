@@ -1,0 +1,17 @@
+{
+  "id": "fsx_G_0493",
+  "tier": "G",
+  "format": "A",
+  "family": "new-compiler-instr-schedule",
+  "seed_problem": "Schedule a DAG of instructions onto p pipelines minimizing cycles under latency/dependency constraints (list-scheduling is a trap); baseline = topological order. compiler domain.",
+  "mutation": "composite: keep the min-cycles latency-constrained DAG scheduling goal but couple THREE per-bundle resource mechanisms into one feasibility region -- (1) per-kind functional-unit caps cap_t AND a global issue width W, plus (2) a shared register-file read-port budget P where kind t costs rp_t ports. The read-port budget cross-couples the functional-unit kinds (two ops that each fit their own unit cap may still be un-bundleable because their read ports collide), so a good schedule must balance latency-critical packing against port pressure, not just fill unit slots. Objective = makespan; baseline = one-op-per-cycle program-order schedule.",
+  "objective": "min",
+  "theme": "VLIW backend",
+  "title": "VLIW Backend: Latency-Constrained Bundle Scheduling with Read-Port Pressure",
+  "strategies": [
+    "sequential baseline: one operation per cycle in program (topological) order, spacing to satisfy latencies -> exactly the grader's B construction, ratio ~0.1",
+    "in-order list scheduling: walk operations in program order, drop each into the earliest cycle whose issue width, unit caps and read-port budget still admit it -> packs bundles but is trapped when a cheap op steals a slot a critical op needed",
+    "critical-path priority list scheduling: compute latency-weighted bottom levels, step cycle by cycle and among ready ops pack the most critical first under all three resource limits -> shortens the makespan-gating path and diverges from in-order packing on trap/needle tests",
+    "invalid: issue every operation in cycle 0 -> violates latencies and per-bundle resources, infeasible (0)"
+  ]
+}

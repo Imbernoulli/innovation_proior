@@ -1,0 +1,18 @@
+{
+  "id": "fsx_S_0225",
+  "tier": "S",
+  "format": "A",
+  "family": "coloring-labeling",
+  "eval_form": "quality-metric",
+  "seed_problem": "Assign frequencies to transmitters minimizing total interference conflicts under a channel budget; checker scores baseline_conflicts/achieved.",
+  "mutation": "composite: generalize the input from a plain conflict graph to a weighted graph with per-edge required channel separation d, and change the objective from counting same-channel conflicts to minimizing a separation-graded interference penalty w*max(0,d-|c_u-c_v|); this turns bounded-K frequency assignment into a weighted T-coloring / minimum-interference FAP that is NP-hard and admits diverging greedy / local-search / restart heuristics.",
+  "objective": "min",
+  "theme": "coral reef survey",
+  "title": "Reef Hydrophone Channel Assignment: Silencing Survey Interference",
+  "strategies": [
+    "trivial baseline: put every hydrophone on channel 1 (pays the full same-channel penalty on every pair)",
+    "one-pass greedy: process hydrophones in index order, assigning each the channel that minimizes added interference with already-assigned neighbors",
+    "local search: greedy init then repeatedly move each hydrophone to its best channel given all current neighbors until a fixed point",
+    "randomized multi-restart local search: run local search from several seeded random/greedy inits and keep the assignment with the lowest total interference"
+  ]
+}

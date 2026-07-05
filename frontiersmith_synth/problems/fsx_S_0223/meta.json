@@ -1,0 +1,18 @@
+{
+  "id": "fsx_S_0223",
+  "tier": "S",
+  "format": "A",
+  "family": "network-design",
+  "eval_form": "quality-metric",
+  "seed_problem": "Build a connected relay network where no node has degree > 3, minimizing total cable length; checker validates connectivity+degree and scores baseline/cost.",
+  "mutation": "output: keep the min-cost connected-network goal but replace the single global degree bound with heterogeneous per-node capacities c_i in {2,3,4} on geometric stations, so the optimal degree-constrained spanning network is NP-hard and greedy/local-search strategies diverge.",
+  "objective": "min",
+  "theme": "drone delivery swarm",
+  "title": "Skybridge Swarm: Degree-Bounded Relay Mesh",
+  "strategies": [
+    "input-order chain baseline: link stations 1-2-3-...-n in the given order (always feasible, degree <= 2)",
+    "nearest-neighbour chain: build a Hamiltonian path by always hopping to the closest unvisited station (degree <= 2, geometry-aware)",
+    "degree-constrained Kruskal: add globally cheapest edges that join two components without exceeding any capacity, then repair leftover components using spare-capacity nodes",
+    "local-search rewiring: start from a degree-constrained spanning tree and repeatedly swap an expensive edge for a cheaper capacity-feasible reconnection"
+  ]
+}

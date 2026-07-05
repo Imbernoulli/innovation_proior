@@ -1,0 +1,15 @@
+{
+  "id": "fsx_C_0183",
+  "tier": "C",
+  "format": "B",
+  "family": "optimization-convergence-analysis",
+  "eval_form": "flops",
+  "theme": "deep-sea cable network",
+  "title": "Deep-Sea Cable Tensioning: Step-Size Schedule for Saddle-Point GDA",
+  "strategies": [
+    "trivial: zero steps (no movement) -> residual equals initial disequilibrium (=0.1)",
+    "greedy: constant step eta = mu/(mu^2 + sigma_max^2) from the largest singular value of A",
+    "strong: coordinate-wise line search over the T step sizes to minimize final gradient norm",
+    "invalid: wrong-length / malformed schedule -> rejected (0)"
+  ]
+}

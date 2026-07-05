@@ -1,0 +1,114 @@
+# Lunar Habitat: Regolith-Shielded Module Bay Packing
+
+## Problem
+You are laying out a lunar surface habitat on a rectangular construction plot modelled as a
+`W x H` grid of unit build cells (columns `x` in `[0, W)`, rows `y` in `[0, H)`). A ground-
+penetrating radar survey has measured, for every cell, a **regolith depth** `d(x, y) >= 0`:
+the thickness of loose lunar soil that can be bulldozed over a structure there for radiation
+and micrometeorite shielding. A cell with `d(x, y) = 0` sits on exposed **crater bedrock**
+and cannot bear any structure at all.
+
+The habitat is assembled from a catalogue of `P` prefabricated **module bay types**. Bay type
+`t` is a fixed *polyomino* footprint (a connected set of unit cells) and comes with:
+
+- a **scientific value** `w_t >= 1` earned for each installed copy (life-support, labs,
+  greenhouses, etc.),
+- a **shielding requirement** `r_t >= 1`: the module can only be certified for occupancy if
+  **every** cell it covers has regolith depth `d >= r_t` (deeper, safer bays are worth more but
+  need scarce deep-regolith ground), and
+- a limited **stock** `c_t` of identical copies you own.
+
+When you install a copy you may first **rotate** it by a multiple of 90 degrees and/or
+**reflect** (mirror) it; it then drops onto whole grid cells, axis-aligned. An installed copy
+of type `t`:
+
+- must lie fully inside the grid,
+- must cover only cells with regolith depth `d >= r_t` (in particular never bedrock, `d = 0`),
+- must not overlap any other installed copy.
+
+You earn the module's scientific value `w_t` for *each* certified copy, regardless of how much
+soil sits beneath it beyond the threshold. Because footprints are irregular, deep-regolith
+ground is scarce and fragmented, and stock is limited, you cannot install everything: this is
+an open-ended weighted bounded-knapsack polyomino packing where many layouts are feasible and
+are scored by the total scientific value they realize.
+
+## Input (stdin)
+```
+W H
+P
+<for each bay type t = 0 .. P-1, a block:>
+   w_t r_t c_t s_t
+   <s_t lines: "dx dy"  -- the cells of the base footprint, as integer offsets>
+<then H lines, each with W integers:>
+   d(0,y) d(1,y) ... d(W-1,y)     for y = 0, 1, ..., H-1
+```
+- `W H` grid dimensions.
+- `P` bay types follow. For type `t`, the first line gives its value `w_t`, shielding
+  requirement `r_t`, stock `c_t`, and cell count `s_t`; the next `s_t` lines list the
+  footprint's cells as offsets. The offsets only *describe the shape* -- you may place the shape
+  at any translation / rotation / reflection.
+- The final `H` rows give the regolith-depth grid in row-major order (row `y = 0` first). A
+  value of `0` marks a crater-bedrock cell that may never be covered.
+
+## Output (stdout)
+```
+M
+<for each of the M installed copies, one line:>
+   t  x1 y1  x2 y2  ...  x_{s_t} y_{s_t}
+```
+Print `M`, the number of copies you install, then one line per copy: the bay **type** `t`
+followed by the **absolute grid coordinates** of the `s_t` cells that copy occupies (the order
+of the cells within a copy is irrelevant).
+
+## Feasibility
+An output is valid iff ALL of the following hold:
+- `0 <= M`;
+- every declared type satisfies `0 <= t < P`;
+- each copy lists exactly `s_t` cells, all pairwise distinct, all inside the grid, each with
+  regolith depth `d >= r_t`;
+- the multiset of a copy's cells, translated so its bounding box starts at the origin, equals
+  some rotation/reflection of type `t`'s base footprint (i.e. it really is a legal copy);
+- no two installed copies share a cell (no overlap);
+- for every type `t`, the number of installed copies is at most its stock `c_t`.
+
+Any violation scores `Ratio: 0.0`.
+
+## Objective
+Maximize `F` = the total scientific value of all installed copies:
+`F = sum over installed copies of w_t` (the value of that copy's type).
+
+## Scoring
+Let `B` be the value realized by the checker's own trivial construction: install **only bay
+type 0** using a canonical *anchored greedy* rule. Scan cells in row-major order; at the first
+buildable, uncovered cell, install a copy of type 0 in the first orientation (in a fixed
+canonical enumeration) whose *anchor cell* -- the row-major-smallest cell of the orientation --
+lands on that cell and which fits (in-bounds, every covered cell `d >= r_0`, no overlap);
+repeat until stock `c_0` is exhausted or no copy fits anywhere. `B = (number of type-0 copies
+installed) * w_0` is the value this single-type layout realizes (`B >= 1`).
+
+With maximization normalization:
+```
+sc    = min(1000.0, 100.0 * F / max(1, B))
+Ratio = sc / 1000.0
+```
+Reproducing the type-0 baseline scores `Ratio = 0.1`; realizing `10x` the baseline value caps
+at `1.0`.
+
+## Constraints
+- `8 <= W, H <= 60`.
+- `2 <= P <= 8`; each footprint has `3 <= s_t <= 6` cells.
+- `1 <= w_t <= 60`; `1 <= r_t <= 9`; `1 <= c_t`.
+- Regolith depth `0 <= d(x, y) <= 9`; `d = 0` marks crater bedrock (unbuildable). Type 0 has
+  the smallest shielding requirement `r_0 = 1` and generous stock, so the baseline always
+  installs at least one copy.
+- Deep-regolith ground (large `d`) is scarce and fragmented, while high-value bays demand large
+  `r_t`, giving the layout a weighted bounded-knapsack character.
+- Time limit 5s, memory 512m.
+
+## Example
+Grid `W = 8, H = 8`. Bay type 0 is the L-tromino `{(0,0),(0,1),(1,1)}` with value `w_0 = 2`,
+shielding `r_0 = 1`, and generous stock; type 1 is a 2x2 square with value `w_1 = 12`,
+shielding `r_1 = 5`, and small stock. Suppose the checker's type-0 anchored greedy layout
+installs 9 copies, realizing `B = 9 * 2 = 18`. A layout that drops the high-value square bays
+onto the few deep-regolith patches and back-fills the rest with trominoes might realize
+`F = 72`, giving `sc = 100 * 72 / 18 = 400`, `Ratio = 0.400`.

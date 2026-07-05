@@ -1,0 +1,17 @@
+{
+  "id": "fsx_N_0406",
+  "tier": "N",
+  "format": "A",
+  "family": "coloring-finite-field",
+  "seed_problem": "GF(q) node labeling with per-edge forbidden endpoint-sum sets; maximize satisfied edge weight",
+  "mutation": "composite: finite-field edge CSP (endpoint-sum avoids forbidden set) coupled with a NON-LINEAR all-or-nothing hub-harmonization bonus (AND over a hub's incident edges); adversarial generator plants a hidden algebraic labeling amid conflict cliques and a big-bonus needle hub",
+  "objective": "maximize",
+  "theme": "smart-city lighting",
+  "title": "Smart-City Lighting: Phase Harmonization over GF(q)",
+  "strategies": [
+    "best constant phase (baseline): assign every controller the single phase c that clears the most edge weight",
+    "per-node greedy best-response: sweep controllers, each picks the phase clearing the most incident edge weight given neighbours",
+    "hub-aware local search: node best-response whose score folds in the all-or-nothing hub bonuses, with seeded restarts to escape conflict-clique local optima",
+    "algebraic recovery: try to reconstruct the planted GF(q) labeling that simultaneously clears spine edges and harmonizes planted hubs"
+  ]
+}

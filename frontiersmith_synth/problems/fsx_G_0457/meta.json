@@ -1,0 +1,17 @@
+{
+  "id": "fsx_G_0457",
+  "tier": "G",
+  "format": "B",
+  "family": "ml-ensemble-combiner",
+  "eval_form": "quality-metric",
+  "theme": "forecast committee",
+  "title": "Forecast Committee: Fusing a Panel of Base Forecasters",
+  "objective": "max",
+  "source_frameworks": ["breadth-fill (dataset/domain/task diversity)", "MLS-Bench (ensemble combining)"],
+  "strategies": [
+    "equal-weight committee mean: average the k member forecasts with no learning (reproduces the evaluator's weak reference, ~0.1)",
+    "skill-weighted average: score each member by its validation Brier and weight the average toward the members that beat a coin, down-weighting near-noise members",
+    "calibrated logit-space stacking: ridge-regress validation outcomes on member log-odds to jointly re-weight and recalibrate, shrinking toward the skill-weighted prior on thin validation histories",
+    "trim + rank-fusion + isotonic calibration: drop clearly weak members, fuse by rank or by member-specific calibration maps, and blend fusers -- different amounts of headroom on different panels, none reaching the test-fitted oracle"
+  ]
+}

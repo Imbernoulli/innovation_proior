@@ -1,0 +1,180 @@
+# Rooftop Garden Cistern: Rain / Mains / Store Replay
+
+## Problem
+
+A district of connected **rooftop gardens** is watered from one shared **cistern**
+(a rooftop water tank of capacity `R` units). Time runs over discrete steps `1..T`.
+Every **garden bed** must be watered exactly once — its full water demand delivered in a
+single step inside its wilt window `[r_i, dl_i]`.
+
+At each step the shared pump can source water three ways:
+
+- **PAUSE** — the pump is off; no water is harvested that step (costs nothing).
+- **RAIN (SPOT)** — harvest collected rainwater, cheap but only up to that step's
+  catchment capacity `cap_t`, at price `s_t` per unit.
+- **MAINS (ON-DEMAND)** — draw from the municipal main, unlimited but expensive at price
+  `G` per unit.
+
+Whenever the pump *runs* at a step (i.e. it harvests rain and/or draws mains — any
+positive amount) it pays a one-time **activation cost** `f_t` (priming the rooftop pump).
+Water that is harvested but not delivered that step is **carried in the cistern** to later
+steps, up to the tank capacity `R`. Delivering already-stored water to a bed is gravity-fed
+and **free** — no activation, no per-unit cost.
+
+Because this is the **offline replay** of an online provisioning problem, you are handed the
+*entire* fixed rainfall / demand trace up front. You must decide (a) at which step to water
+each bed, and (b) how much rain and mains to source at each step, so that every bed is
+watered on time and the total running cost is minimized. Storing cheap early rainfall to
+serve expensive later steps is the whole point — but the tank only holds `R` units, so
+lookahead must be traded against capacity. The offline optimum couples time-indexed
+lot-sizing with window assignment; it is intractable and heuristics diverge.
+
+## Input
+
+The first line contains three integers:
+
+```
+T N R
+```
+
+- `T` — number of time steps, numbered `1..T`.
+- `N` — number of garden beds, numbered `1..N`.
+- `R` — cistern (reservoir) capacity in water units.
+
+The second line contains one integer:
+
+```
+G
+```
+
+- `G` — the MAINS (on-demand) price per unit of water (unlimited, always available).
+
+Each of the next `T` lines describes one step `t` (in order `t = 1..T`):
+
+```
+f_t s_t cap_t
+```
+
+- `f_t` — activation cost paid once if the pump runs at step `t`.
+- `s_t` — RAIN price per unit at step `t`.
+- `cap_t` — RAIN catchment capacity at step `t` (you may harvest at most `cap_t` rain units
+  that step; `s_t <= G`).
+
+Each of the next `N` lines describes one bed `i` (in order `i = 1..N`):
+
+```
+r_i dl_i d_i
+```
+
+- `r_i` — first step of bed `i`'s wilt window.
+- `dl_i` — last step of bed `i`'s wilt window (`1 <= r_i <= dl_i <= T`).
+- `d_i` — water units bed `i` needs (delivered all at once at the chosen step).
+
+The cistern starts empty.
+
+## Output
+
+Print `N` lines, then `T` lines.
+
+- Line `i` of the first block (`i = 1..N`): a single integer `t_i`, the step at which you
+  water bed `i` (must satisfy `r_i <= t_i <= dl_i`).
+- Line `t` of the second block (`t = 1..T`): two integers `rain_t mains_t`, the rain units
+  harvested and mains units drawn at step `t`.
+
+## Feasibility
+
+Let `Demand_t = sum of d_i over beds with t_i = t`. Simulate the cistern with level `L`,
+starting at `L = 0`. For `t = 1..T` in order:
+
+- `0 <= rain_t <= cap_t` and `mains_t >= 0`;
+- let `avail = L + rain_t + mains_t`; require `avail >= Demand_t` (enough water to deliver);
+- set `L = avail - Demand_t`; require `L <= R` (the tank cannot overflow).
+
+An output is feasible iff exactly `N` steps and `T` supply pairs are printed, every `t_i`
+lies in its window, and all the constraints above hold at every step. Any infeasible output
+scores `0`.
+
+## Objective
+
+The cost of step `t` is
+
+```
+cost_t = [rain_t + mains_t >= 1] * f_t  +  s_t * rain_t  +  G * mains_t
+```
+
+where `[.]` is `1` when the pump runs (harvests or draws a positive amount) and `0`
+otherwise. You are **minimizing** the total running cost `F = sum_t cost_t`.
+
+## Scoring
+
+Let `B` be the cost of the checker's own baseline construction: water every bed at its
+release step `r_i` (its earliest window step), and at each step source exactly that step's
+demand with no storage — rain first (up to `cap_t`) then mains for any overflow. The score
+for a test is
+
+```
+ratio = min(1.0, 0.1 * B / F)
+```
+
+A submission matching the baseline (`F = B`) scores `0.1`; driving the cost down to
+one-tenth of the baseline (`F <= B / 10`) caps the score at `1.0`. The overall score is the
+mean ratio across all tests.
+
+## Constraints
+
+- `2 <= T <= 400`, `1 <= N <= 60000`, `0 <= R <= 100000`.
+- `1 <= d_i <= 8`, `1 <= G <= 1000`, `1 <= s_t <= G`, `0 <= f_t <= 2000`,
+  `0 <= cap_t <= 100000`.
+- `1 <= r_i <= dl_i <= T`.
+- Time limit: 5 s. Memory limit: 512 MB.
+
+## Example
+
+Input:
+
+```
+4 5 20
+100
+10 2 15
+10 90 0
+10 90 0
+10 90 0
+1 1 3
+2 2 4
+3 3 4
+4 4 2
+1 4 2
+```
+
+Here only step 1 collects cheap rain (`s=2`, catchment `15`); steps 2–4 have no catchment
+(`cap=0`), so anything sourced there is expensive mains at `100/unit`.
+
+Baseline (water each bed at `r_i`, no storage): bed 1→1, bed 2→2, bed 3→3, bed 4→4,
+bed 5→1. Demands `Demand = [5, 4, 4, 2]`. Sourcing each step's demand with no carry-over:
+step 1 harvests `5` rain (`10 + 2*5 = 20`), step 2 draws `4` mains (`10 + 100*4 = 410`),
+step 3 draws `4` mains (`410`), step 4 draws `2` mains (`10 + 100*2 = 210`). So
+`B = 20 + 410 + 410 + 210 = 1050`.
+
+A storage-aware output waters bed 5 at step 1 and pre-harvests cheap rain to serve the later
+steps from the cistern:
+
+```
+1
+2
+3
+4
+1
+13 0
+0 0
+0 0
+0 2
+```
+
+Assignments give `Demand = [5, 4, 4, 2]`. Simulation: step 1 harvests `13` rain
+(`avail = 0+13 = 13 >= 5`, `L = 8 <= 20`), cost `10 + 2*13 = 36`. Steps 2 and 3 run the pump
+not at all (`rain=mains=0`): step 2 `avail = 8 >= 4`, `L = 4`, cost `0`; step 3 `avail = 4 >= 4`,
+`L = 0`, cost `0`. Step 4 draws `2` mains, cost `10 + 100*2 = 210`. So `F = 36 + 210 = 246`.
+
+Score for this test: `min(1.0, 0.1 * 1050 / 246) = min(1.0, 0.4268) = 0.4268`.
+
+A valid worked output is the 9-line block shown above.

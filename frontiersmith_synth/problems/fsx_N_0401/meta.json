@@ -1,0 +1,18 @@
+{
+  "id": "fsx_N_0401",
+  "tier": "N",
+  "format": "A",
+  "family": "graph-interdiction-primality",
+  "eval_form": "quality-metric",
+  "seed_problem": "Remove <=k links (budget) so that EVERY surviving s-t path has COMPOSITE (never prime) hop-length; minimize removal cost plus a penalty per surviving prime-length s-t path. Composite: interdiction budget x number-theoretic path-length constraint; the greedy 'cut the shortest path' is a planted trap.",
+  "mutation": "composite: couple a budgeted edge-interdiction on a layered DAG with a NUMBER-THEORETIC objective. The soft penalty is P per DISTINCT prime hop-length that still admits a surviving source-sink path (a residue/primality twist), so eliminating one prime length is an implicit min-cut whose cost trades against P; different prime lengths share couplers, making the removals coupled and non-additive. Removal cost and prime-length penalty must be balanced under a hard budget k. Zero penalty means 'every surviving path is composite'.",
+  "objective": "min",
+  "theme": "quantum lab wiring",
+  "title": "Quantum Coupler Interdiction: Composite-Length Signal Paths",
+  "strategies": [
+    "do-nothing baseline: remove no coupler; pays the full prime-resonance penalty (calibration point)",
+    "shortest-path greedy (planted trap): cut the cheapest coupler on the current fewest-hop source-sink path and repeat; keeps only the removal prefix that helps, so it is near-baseline when the shortest path is composite",
+    "resonant-flow greedy: rank couplers by the number of prime-length source-sink paths threading them (forward x backward hop-count convolution), remove the heaviest per step, recompute, keep the best-objective prefix",
+    "budgeted local search: interleave prime-length min-cut estimates with 1-coupler swaps to escape local optima and spend the budget where P-per-length beats the sever cost"
+  ]
+}

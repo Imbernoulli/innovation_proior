@@ -1,0 +1,18 @@
+{
+  "id": "fsx_S_0231",
+  "tier": "S",
+  "format": "A",
+  "family": "packing-knapsack",
+  "eval_form": "quality-metric",
+  "seed_problem": "Frontier-CS polyomino/area packing: pack polyominoes into a W x H board maximizing covered area (reflections allowed); checker validates no-overlap and in-bounds.",
+  "mutation": "composite (goal + input): replace unweighted covered-area with a per-cell traffic-demand field so the objective becomes WEIGHTED coverage (a bounded knapsack over irregular shapes), add a demand grid to the input, and keep obstacles plus per-type bounded stock; optimal weighted packing over rotatable/reflectable polyominoes is NP-hard.",
+  "objective": "max",
+  "theme": "traffic signal grid",
+  "title": "Traffic Signal Grid: Green-Wave Controller Placement",
+  "strategies": [
+    "single-type baseline: anchored greedy using only template type 0 up to its stock (reproduces the checker calibration point)",
+    "area-first greedy: at each uncovered cell deploy the largest-cell template that fits, mixing all types, stock-limited (weight-blind)",
+    "demand-aware best-fit greedy: at each anchor pick the type/orientation covering the most traffic demand, steering large templates onto hotspots",
+    "seeded multi-restart demand-aware search: shuffle anchor order and type priority across restarts, keep the highest-demand feasible packing"
+  ]
+}

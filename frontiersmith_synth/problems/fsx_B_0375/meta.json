@@ -1,0 +1,17 @@
+{
+  "id": "fsx_B_0375",
+  "tier": "B",
+  "format": "B",
+  "family": "multiobjective-hypervolume",
+  "eval_form": "quality-metric",
+  "theme": "harbor container port",
+  "title": "Harbor Container Port: Budgeted Berth-Plan Trials",
+  "objective": "max",
+  "source_frameworks": ["Frontier-Eng (ReactionOptimisation/DTLZ2)"],
+  "strategies": [
+    "trivial: trial the single domain-midpoint plan x=[0.5]*n budget-many times -> one cost point (off-frontier when center!=0.5), dominates baseline volume only -> ~0.1",
+    "greedy: uniform grid over the two trade-off variables, distance vars pinned to the frontier center (all on the cost frontier) -> spreads but grid is uneven on the curved frontier and ignores the asymmetric reference -> moderate",
+    "strong: uniform-grid seed + coordinate-wise local hypervolume ascent (multi-scale steps, keep only volume-increasing moves) -> reference-tuned skewed spread, materially more volume, still short of the global optimum -> higher, sub-1.0",
+    "invalid: out-of-range coordinates (5.0) -> rejected -> 0"
+  ]
+}

@@ -1,0 +1,17 @@
+{
+  "id": "fsx_S_0053",
+  "tier": "S",
+  "family": "scheduling-jssp",
+  "seed_problem": "Frontier-Eng JobShop / ALE-Bench: emit a machine schedule for a JSSP instance; checker validates precedence + no-overlap and scores 100*optimum/makespan.",
+  "mutation": "composite (output+theme): generalize classic JSSP to the FLEXIBLE job-shop (FJSP) -- each operation (phase) must be run on one crew chosen from a per-phase eligible set with crew-dependent durations, so the solver picks BOTH the crew assignment AND the start times. Skinned as festival stage build scheduling. The unknown optimum in the score is replaced by a checker-computed, always-feasible serial-default baseline B = sum of first-eligible-crew durations, so scoring is deterministic (ratio = 0.1*B/F, capped at 1.0). Difficulty ladder goes dense/flexible -> sparse eligibility + hot bottleneck crew + skewed durations.",
+  "objective": "optimize",
+  "theme": "festival stage layout",
+  "title": "Festival Stage Layout: Crew Assignment & Build Schedule",
+  "strategies": [
+    "serial default: first-eligible crew per phase, run everything on one global timeline (feasible, makespan = B, ratio 0.1)",
+    "min-duration assignment + list scheduling: assign each phase its fastest eligible crew, then dispatch ready phases into earliest feasible gap (earliest-release, SPT tie-break)",
+    "least-loaded / balanced assignment to relieve the bottleneck crew, then active-schedule insertion",
+    "multi-restart randomized assignment + priority-dispatch, keeping the shortest makespan found",
+    "local search / shifting-bottleneck refinement (reassign or reinsert operations off the critical path)"
+  ]
+}

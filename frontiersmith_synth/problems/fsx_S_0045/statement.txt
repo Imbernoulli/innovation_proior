@@ -1,0 +1,122 @@
+# Cold-Chain Compressor Circuits: Interference-Minimal Channel Assignment
+
+## Problem
+
+The regional **vaccine cold chain** runs on a network of refrigerated storage depots.
+Every depot's compressor draws heavy inrush current whenever it cycles on. Depots that
+share a power feeder, a backup-generator bus, or an overlapping thermal-monitoring radio
+band **interfere** with one another when they are wired to the *same* compressor circuit:
+simultaneous inrush causes voltage sag and radio cross-talk that can trip alarms and risk
+temperature excursions on stored doses.
+
+You must assign each depot to exactly one of `C` available compressor circuits (the
+"channels"). For every interference link between two depots, if both endpoints end up on
+the **same** circuit, that link contributes its **severity** to the total interference.
+Circuits are a scarce, fixed resource: `C` is small, and the interference graph is dense
+enough that a perfectly conflict-free assignment is generally impossible. Your job is to
+choose the assignment that makes the **total interference as small as possible**.
+
+Formally: you are given an undirected weighted graph on `n` depots and a channel budget
+`C`. Choose a color `c_i in {1,...,C}` for every depot `i` to minimize the total weight of
+monochromatic edges (edges whose two endpoints receive the same color).
+
+This is a weighted minimum-conflict graph coloring / frequency-assignment problem
+(equivalently weighted minimum-uncut / min-k-partition). It is NP-hard, the optimum is
+unknown, and many heuristics are viable: one-pass greedy coloring, node-move local search,
+and randomized multi-restart search all give different assignments.
+
+## Input
+
+The first line contains three integers:
+
+```
+n m C
+```
+
+- `n` — number of depots, numbered `1..n`.
+- `m` — number of interference links.
+- `C` — number of compressor circuits (channels) available.
+
+Each of the next `m` lines describes one interference link:
+
+```
+u v w
+```
+
+meaning depots `u` and `v` interfere with **severity** `w` (`1 <= w`) when placed on the
+same circuit. Links are undirected; no self-loops and no duplicate `{u,v}` pairs.
+
+## Output
+
+Print `n` integers `c_1 c_2 ... c_n` (whitespace-separated, any layout), where `c_i` is the
+circuit assigned to depot `i` and `1 <= c_i <= C`.
+
+Assigning every depot to circuit `1` is always valid (and is the do-nothing baseline).
+
+## Feasibility
+
+An output is feasible iff it consists of exactly `n` integers, each in the range `1..C`.
+Any infeasible output scores `0`.
+
+## Objective
+
+Let `F` be the total interference of your assignment:
+
+```
+F = sum of w over all links (u, v) with c_u == c_v.
+```
+
+You are **minimizing** `F`.
+
+## Scoring
+
+Let `B` be the interference of the do-nothing assignment that puts every depot on a single
+circuit — i.e. `B` = the sum of all link severities (every link is then monochromatic).
+`B` is the worst-case baseline. The score for a test is
+
+```
+ratio = min(1.0, 0.1 * B / max(1, F)).
+```
+
+A do-nothing submission (`F = B`) scores `0.1`; driving interference down to one-tenth of
+the baseline (`F = B/10`) caps the score at `1.0`. The overall score is the mean ratio
+across all tests.
+
+## Constraints
+
+- `2 <= n <= 300`.
+- `1 <= m <= n*(n-1)/2`.
+- `2 <= C <= 6`.
+- `1 <= w <= 20`.
+- Time limit: 5 s. Memory limit: 512 MB.
+
+## Example
+
+Input:
+
+```
+4 5 2
+1 2 3
+2 3 5
+3 4 2
+1 3 4
+1 4 1
+```
+
+Here `B = 3 + 5 + 2 + 4 + 1 = 15` (all depots on one circuit; every link conflicts).
+
+Consider the assignment `c = (1, 2, 1, 2)`:
+
+- link `1-2`: circuits `1,2` differ — no conflict.
+- link `2-3`: circuits `2,1` differ — no conflict.
+- link `3-4`: circuits `1,2` differ — no conflict.
+- link `1-3`: circuits `1,1` **same** — conflict `+4`.
+- link `1-4`: circuits `1,2` differ — no conflict.
+
+So `F = 4` and the score is `min(1.0, 0.1 * 15 / 4) = min(1.0, 0.375) = 0.375`.
+
+A valid worked output:
+
+```
+1 2 1 2
+```

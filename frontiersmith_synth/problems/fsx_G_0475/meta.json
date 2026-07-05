@@ -1,0 +1,17 @@
+{
+  "id": "fsx_G_0475",
+  "tier": "G",
+  "format": "B",
+  "family": "ml-synth-generalization",
+  "eval_form": "quality-metric",
+  "theme": "tiny transformer probe",
+  "title": "Length-Generalization Probe: Formal-Language Transducers",
+  "objective": "max",
+  "source_frameworks": ["breadth-fill (dataset/domain/task diversity)", "MLS-Bench (length generalization)"],
+  "strategies": [
+    "echo / memorizer: predict output == input; only the identity instances match and the longer test lengths never appear in training, so it stays at the ~0.1 baseline (the canonical length-generalization failure)",
+    "tiny fixed rule library: try identity / reversal / complement / parity, keep the first consistent with all training pairs; nails the easy tasks but is blind to sorting, shifts, counting, rotations",
+    "broad rule-library consistency search: enumerate many length-independent transducers (sort, double, dedup, rotate, suffix, pair-swap, caesar, plain-count, ...), pick the first consistent rule and extrapolate to the longer tests -- high but not perfect",
+    "true length-generalizer: infer the hidden modulus in the count-modulo trap and COMPOSE primitives (reverse-then-complement) rather than matching a single library entry, closing the headroom the library search leaves open"
+  ]
+}

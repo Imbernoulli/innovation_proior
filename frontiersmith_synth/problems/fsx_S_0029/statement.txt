@@ -1,0 +1,120 @@
+# Wildlife Corridor Construction: Minimum Weighted Completion Schedule
+
+## Problem
+
+A conservation agency is building several **wildlife corridors** across a fragmented
+landscape so that animals can move safely between habitat patches. Each corridor is a
+fixed **construction plan** — an ordered chain of **segments** (fencing a stretch,
+building a culvert, planting a hedgerow, ...) that must be built one after another: you
+cannot begin a segment until the previous segment of the *same corridor* is finished.
+
+Every segment is built by a specialized **field crew** (the culvert crew, the fencing
+crew, ...), and a crew can work on **only one segment at a time**.
+
+Each corridor also has an **ecological priority weight** `w` — a busier corridor that
+reconnects a large or endangered population matters more, and the agency is judged on
+how *quickly each corridor becomes fully usable*, weighted by its priority.
+
+You are given all corridors and, for each corridor, the ordered list of segments
+together with the crew assigned to each segment and how long that segment takes (in
+days). You must produce a **start day** for every segment so that:
+
+- the segments of each corridor are built in order (precedence), and
+- no crew is ever building two segments at the same time (no-overlap).
+
+The **completion day** `C_j` of corridor `j` is the day its last segment finishes. Your
+goal is to make the **priority-weighted total completion** `sum_j w_j * C_j` as small
+as possible: finish the high-priority corridors early.
+
+This is a job-shop scheduling instance (corridors are jobs, crews are machines, segments
+are operations) under the **total weighted completion time** objective. Finding the true
+optimum is NP-hard, so any feasible schedule is accepted and scored by how small its
+weighted completion is.
+
+## Input
+
+```
+n m
+corridor_1
+corridor_2
+...
+corridor_n
+```
+
+- Line 1: two integers `n` (number of corridors) and `m` (number of crews).
+- Crews are numbered `0 .. m-1`.
+- Each of the next `n` lines describes one corridor `j` (0-indexed by line order):
+  it starts with two integers `o` (number of segments) and `w` (priority weight),
+  followed by `o` pairs `crew duration`, listing the segments in the order they must be
+  built. `crew` is in `[0, m-1]` and `duration >= 1`.
+
+## Output
+
+Print `n` lines. Line `j` must contain exactly `o` non-negative integers: the start days
+of the segments of corridor `j`, in corridor order.
+
+## Feasibility
+
+A schedule is feasible iff, letting `s[j][k]` be the start day of segment `k` of corridor
+`j` and `d[j][k]` its duration:
+
+- `0 <= s[j][k] <= 1000000000` and each is an integer;
+- **precedence**: `s[j][k] >= s[j][k-1] + d[j][k-1]` for every `k >= 1`;
+- **no-overlap**: for any two segments assigned to the same crew, their intervals
+  `[s, s+d)` do not overlap.
+
+Any output that is malformed, out of range, or violates a constraint scores 0.
+
+## Objective
+
+Let `C_j = s[j][o-1] + d[j][o-1]` be the completion day of corridor `j`. Minimize the
+priority-weighted total completion
+
+```
+F = sum over corridors j of  w_j * C_j.
+```
+
+## Scoring
+
+Let `B` be the weighted total completion of the fully-serial baseline: build every
+corridor, one whole corridor at a time in input order, on a single global timeline
+(corridor 0 first, then corridor 1, ...). This is always feasible. Your score on a test
+is
+
+```
+ratio = min(1.0, 0.1 * B / F)
+```
+
+where `F` is your weighted total completion. The serial baseline scores exactly `0.1`; a
+schedule ten times better than serial (or beyond) scores the maximum `1.0`. The overall
+score is the average ratio over all tests.
+
+## Constraints
+
+- `1 <= n <= 60`, `2 <= m <= 10`, `1 <= o <= m`, `1 <= duration <= 99`, `1 <= w <= 100`.
+- Time limit: 5 s. Memory limit: 512 MB.
+
+## Example
+
+Input:
+```
+2 2
+2 5 0 3 1 2
+2 3 1 2 0 4
+```
+
+Corridor 0 has weight 5 and segments: crew 0 for 3 days, then crew 1 for 2 days.
+Corridor 1 has weight 3 and segments: crew 1 for 2 days, then crew 0 for 4 days.
+
+The serial baseline builds corridor 0 on days [0,3),[3,5) so `C_0 = 5`, then corridor 1
+on days [5,7),[7,11) so `C_1 = 11`; `B = 5*5 + 3*11 = 58`.
+
+A feasible output:
+```
+0 3
+0 3
+```
+Corridor 0: seg0 on crew0 [0,3), seg1 on crew1 [3,5), so `C_0 = 5`. Corridor 1: seg0 on
+crew1 [0,2), seg1 on crew0 [3,7), so `C_1 = 7`. Crew 0 handles [0,3) and [3,7)
+(no overlap); crew 1 handles [3,5) and [0,2) (no overlap); precedence holds. Thus
+`F = 5*5 + 3*7 = 46`, and `ratio = min(1, 0.1 * 58 / 46) = 0.126`.

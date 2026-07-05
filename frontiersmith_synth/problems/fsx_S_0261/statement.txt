@@ -1,0 +1,159 @@
+# Belt Beacon Channel Allocation: Taming Cross-Talk in an Asteroid Mining Swarm
+
+## Problem
+
+A deep-belt mining consortium has seeded thousands of autonomous **ore beacons** across a
+cluster of asteroids. Each beacon continuously transmits ore-assay telemetry to a shared
+orbital relay. The relay licenses only a small, fixed pool of **radio channels**
+(`1..K`), so channels must be reused across the swarm.
+
+Two beacons whose radio footprints overlap **cross-talk** unless their assigned channels
+are far enough apart on the dial. Every overlapping pair `(u, v)` carries a **traffic
+weight** `w` (how much telemetry is at stake) and a **guard-band demand** `g`: the pair is
+fully clean only if their channel numbers differ by at least `g`. If they differ by less
+than `g`, the pair leaks residual cross-talk proportional to how short the separation falls.
+
+Complicating matters, every beacon shipped from the factory pre-tuned to a **home channel**
+`p`. Retuning a beacon away from its home channel stresses its aging oscillator, and each
+beacon has a **rigidity** `s` measuring how costly that retuning is: parking beacon `i` on
+channel `c` costs `s * |c - p|`.
+
+You must assign every beacon a channel in `1..K` so that the **total cost — residual
+cross-talk plus retuning stress — is as small as possible**. Because the licensed channel
+pool is small and the overlap graph contains densely-packed asteroid clusters, no assignment
+can be perfectly clean: you are minimizing an unavoidable interference-plus-retuning budget.
+
+This is a weighted, guard-banded frequency-assignment (T-coloring) problem with an added
+per-node preference term. It is NP-hard, the optimum is unknown, and greedy, best-response
+local search and randomized-restart heuristics all yield different, improvable allocations.
+
+## Input
+
+The first line contains three integers:
+
+```
+n m K
+```
+
+- `n` — number of beacons (nodes), numbered `1..n`.
+- `m` — number of overlapping beacon pairs (edges).
+- `K` — number of licensed channels.
+
+The next `n` lines each describe one beacon's factory tuning:
+
+```
+p s
+```
+
+- `p` — the beacon's home channel (`1 <= p <= K`).
+- `s` — the beacon's retuning rigidity (`1 <= s`).
+
+Line `i` of this block (`1`-indexed) refers to beacon `i`.
+
+Each of the next `m` lines describes one overlapping pair:
+
+```
+u v w g
+```
+
+- `u`, `v` — the two overlapping beacons (`1 <= u, v <= n`, `u != v`).
+- `w` — traffic weight (`1 <= w`).
+- `g` — guard-band demand (`1 <= g`).
+
+The overlap graph may contain parallel pairs between the same two beacons (they are counted
+separately).
+
+## Output
+
+Print `n` integers separated by whitespace: the channel assigned to beacon `1`, then beacon
+`2`, and so on up to beacon `n`. Every channel number must be an integer in `1..K`.
+
+## Feasibility
+
+An output is feasible iff it contains exactly `n` integers and each is in the range `1..K`.
+Any other output (wrong count, out-of-range channel, extra tokens, non-integer) scores `0`.
+
+## Objective
+
+Let `c(i)` be the channel you assign to beacon `i`. The total cost is
+
+```
+F = SUM over pairs (u,v,w,g) of  w * max(0, g - |c(u) - c(v)|)
+  + SUM over beacons i        of  s(i) * |c(i) - p(i)|
+```
+
+The first sum is residual cross-talk (zero once a pair's channels are at least `g` apart);
+the second sum is retuning stress. You are **minimizing** `F`.
+
+## Scoring
+
+Let `B` be the cost of the **do-nothing** allocation that parks every beacon on channel `1`.
+Then every pair has `|c(u) - c(v)| = 0`, so its cross-talk is `w * g`, and every beacon pays
+`s * |1 - p|` of retuning stress:
+
+```
+B = SUM over pairs of w * g  +  SUM over beacons of s * |1 - p|
+```
+
+The score for a test is
+
+```
+ratio = min(1.0, 0.1 * B / F)
+```
+
+Parking everyone on channel `1` (`F = B`) scores `0.1`; driving the total cost down to a
+tenth of the do-nothing budget (`F <= B/10`) caps the score at `1.0`. The overall score is
+the mean ratio across all tests.
+
+## Constraints
+
+- `2 <= n <= 4000`.
+- `1 <= m <= 40000`.
+- `4 <= K <= 14`.
+- `1 <= w <= 9`, `1 <= g <= 3`.
+- `1 <= s <= 4`, `1 <= p <= K`.
+- Time limit: 6 s. Memory limit: 512 MB.
+
+## Example
+
+Input:
+
+```
+4 4 3
+1 2
+3 1
+2 1
+2 2
+1 2 5 2
+2 3 3 1
+3 4 4 2
+1 3 2 1
+```
+
+Beacons: home channels `p = [1, 3, 2, 2]`, rigidities `s = [2, 1, 1, 2]`.
+
+The do-nothing allocation (everyone on channel `1`) has
+
+- cross-talk `= 5*2 + 3*1 + 4*2 + 2*1 = 23`
+- retuning `= 2*|1-1| + 1*|1-3| + 1*|1-2| + 2*|1-2| = 0 + 2 + 1 + 2 = 5`
+
+so `B = 23 + 5 = 28`.
+
+Consider the allocation `c = [1, 3, 2, 3]` (beacon 1 -> channel 1, beacon 2 -> 3,
+beacon 3 -> 2, beacon 4 -> 3):
+
+- pair `(1,2)`: `diff = 2`, cross-talk `5 * max(0, 2 - 2) = 0`
+- pair `(2,3)`: `diff = 1`, cross-talk `3 * max(0, 1 - 1) = 0`
+- pair `(3,4)`: `diff = 1`, cross-talk `4 * max(0, 2 - 1) = 4`
+- pair `(1,3)`: `diff = 1`, cross-talk `2 * max(0, 1 - 1) = 0`
+- retuning: `2*|1-1| + 1*|3-3| + 1*|2-2| + 2*|3-2| = 0 + 0 + 0 + 2 = 2`
+
+so `F = (0 + 0 + 4 + 0) + 2 = 6`.
+
+Score for this test: `min(1.0, 0.1 * 28 / 6) = min(1.0, 0.466...) = 0.466`.
+
+A valid worked output:
+
+```
+1 3 2 3
+```

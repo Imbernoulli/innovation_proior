@@ -1,0 +1,18 @@
+{
+  "id": "fsx_C_0385",
+  "tier": "C",
+  "format": "B",
+  "family": "classical-ml-algorithm",
+  "eval_form": "quality-metric",
+  "theme": "rooftop gardens",
+  "title": "Rooftop Garden Sensor Grid: Missing-Reading Reconstruction",
+  "objective": "optimize",
+  "source_frameworks": ["MLS-Bench (ml-*)"],
+  "isolation": "candidate runs as an isolated stdin->stdout subprocess via isorun; the withheld true readings and hidden data stay in the evaluator process",
+  "strategies": [
+    "per-channel MEAN imputation (fill each hole with its column's observed mean) -- reproduces the evaluator baseline exactly -> ~0.1 on every instance",
+    "single-pass linear imputation: mean-fill, then one ridge regression per channel on the (frozen) mean-filled others -- exploits cross-channel correlation but never refines the predictors, so it recovers only part of the low-rank signal",
+    "iterative chained-equation (MICE-style) ridge imputation: re-impute every channel from the others over repeated sweeps so estimates co-adapt to the low-rank sensor field -- strong on reconstructable gardens, degrades gracefully to mean-level info on near-full-rank noisy gardens -> high geometric mean across regimes",
+    "other viable designs: low-rank SVD / soft-impute matrix completion, kNN-row imputation in the observed subspace, probabilistic PCA / EM, iterative random-forest imputation reconciled to the missing set"
+  ]
+}

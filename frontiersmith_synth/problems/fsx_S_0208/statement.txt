@@ -1,0 +1,125 @@
+# Wind-Tunnel Sensor Traverse: Selective Probe Mount-and-Read Tour
+
+## Problem
+A large wind tunnel is instrumented by a single **traverse gantry** — a probe
+carrier that rides on an X-Y rail bridge above the test section. It begins and
+ends every measurement campaign parked at its **home dock** (the *depot*,
+node 0).
+
+The test plan lists **P sensor tasks**. Task `i` requires the gantry to first
+**mount a probe module** at an *intake port* located at `(px_i, py_i)`
+(a *mount* event), and later **record a reading** at a downstream
+*measurement point* `(dx_i, dy_i)` (a *read* event). The probe of task `i` must
+be mounted **before** it is read.
+
+The gantry carries a probe rack that holds at most `Q` mounted probe modules at
+any instant. Task `i` occupies `q_i` rack slots from the moment its probe is
+mounted until the reading is taken, so several tasks may be **batched** on the
+rack simultaneously as long as the number of occupied slots never exceeds `Q`.
+
+Each task you actually perform incurs a fixed **instrumentation cost** `c_i`
+(probe warm-up and settling) that is added to the campaign cost. You do **not**
+have to perform every task: a task you skip loses its scheduled measurement and
+incurs a fixed **omission penalty** `w_i`. You must decide **which** tasks to
+perform and produce **one** tour that starts and ends at the home dock, visiting
+the chosen mount and read events in a valid order.
+
+Because the gantry drives both rail axes simultaneously, the travel cost between
+two points is the **Chebyshev distance**
+`max(|x1-x2|, |y1-y2|)` (the slower axis governs the move time).
+
+## Input
+```
+P Q
+x0 y0
+px_1 py_1 dx_1 dy_1 q_1 c_1 w_1
+px_2 py_2 dx_2 dy_2 q_2 c_2 w_2
+...
+px_P py_P dx_P dy_P q_P c_P w_P
+```
+- Line 1: the number of tasks `P` and the rack capacity `Q`.
+- Line 2: the integer home-dock coordinates `x0 y0`.
+- The next `P` lines describe tasks `1..P`: intake-port coordinates, measurement-
+  point coordinates, rack demand `q_i`, instrumentation cost `c_i`, and omission
+  penalty `w_i`.
+
+## Output
+Describe the gantry's tour as an ordered list of `L` visit events. Each event is
+a pair of integers `t i`:
+- `t = 0` means "mount probe of task `i`" (visit intake port `(px_i, py_i)`),
+- `t = 1` means "record reading of task `i`" (visit measurement point `(dx_i, dy_i)`).
+
+```
+L
+t_1 i_1
+t_2 i_2
+...
+t_L i_L
+```
+The gantry always begins and ends parked at the home dock; you list only the
+intermediate mount / read visits. `L = 0` (perform nothing) is a valid output.
+
+## Feasibility
+An output is feasible iff **all** of the following hold:
+1. `0 <= L <= 2P` and every index `i` is in `[1, P]`.
+2. Each task appears **at most once** as a mount and **at most once** as a read.
+3. If a task's read event appears, its mount event appears **earlier** in the
+   list (precedence).
+4. A task is *performed* iff both its mount and its read appear. Any task that
+   appears exactly once (mounted but never read, or read but never mounted) makes
+   the output infeasible.
+5. Processing the events in order, the occupied rack slots (which increase by
+   `q_i` at a mount and decrease by `q_i` at a read) never exceed `Q`.
+
+An infeasible output scores 0.
+
+## Objective
+Let `D` be the total Chebyshev length of the realized tour
+`dock -> visited points in order -> dock` (with `D = 0` if `L = 0`), let `S` be
+the set of performed tasks, and let `U` be the set of omitted tasks. Minimize
+
+```
+F = D + sum_{i in S} c_i + sum_{i in U} w_i .
+```
+
+## Scoring
+The checker builds the trivial *perform-nothing* plan, whose cost is
+`B = sum over all i of w_i` (pure omission penalty, zero travel, zero
+instrumentation). Your score on a test is
+
+```
+ratio = min(1.0, (B / F) / 10)
+```
+
+reported as `Ratio: <ratio>`. Performing profitable tasks and routing them
+tightly drives `F` below `B` and raises the ratio; the perform-nothing plan
+scores exactly `0.1`. The final score is the mean ratio over all tests.
+
+## Constraints
+- `1 <= P <= 130`, `1 <= Q <= 24`, `1 <= q_i <= 6 <= Q`.
+- All coordinates are integers in `[0, 1600]`.
+- `0 <= c_i`, `1 <= w_i`, and all values fit in 64-bit signed integers.
+- Time limit: 5 s. Memory limit: 512 MB.
+
+## Example
+Input:
+```
+2 10
+0 0
+4 1 6 2 2 3 40
+0 8 1 12 1 2 5
+```
+Consider the output:
+```
+2
+0 1
+1 1
+```
+The gantry performs only task 1:
+dock(0,0) -> intake(4,1) -> measure(6,2) -> dock(0,0). With Chebyshev moves the
+travel is `max(4,1) + max(2,1) + max(6,2) = 4 + 2 + 6 = 12`, plus the
+instrumentation cost `c_1 = 3`. Task 2 is omitted, penalty `w_2 = 5`. So
+`F = 12 + 3 + 5 = 20`. The baseline is `B = 40 + 5 = 45`, giving
+`ratio = min(1.0, (45/20)/10) = 0.225`. Also performing task 2 would add travel
+`> 8` plus `c_2 = 2`, far exceeding its penalty `5`, so omitting it is the
+better trade here.

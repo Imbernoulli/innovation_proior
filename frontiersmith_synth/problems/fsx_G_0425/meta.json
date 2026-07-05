@@ -1,0 +1,16 @@
+{
+  "id": "fsx_G_0425",
+  "tier": "G",
+  "format": "E",
+  "family": "sci-thermo-eos",
+  "eval_form": "quality-metric",
+  "theme": "gas cylinder lab",
+  "title": "Real-Gas Equation of State: Extrapolate a Cylinder EOS into the High-Pressure Regime",
+  "objective": "min",
+  "strategies": [
+    "constant/low-order baseline: two-term virial fit P = k*T/V + c/V**2 (captures dilute-gas trend, no excluded-volume pole -> mis-extrapolates at high pressure)",
+    "van-der-Waals recovery: P = k*T/(V-b) - a/V**2, co-volume b by 1-D search + linear least squares; the pressure pole at V=b is the dominant high-pressure physics -> beats the virial fit",
+    "Redlich-Kwong recovery: P = k*T/(V-b) - a/(sqrt(T)*V*(V+b)); matches the hidden law's temperature-dependent attraction and volume shape -> best extrapolation, still noise-limited (headroom remains)",
+    "invalid: emit a non-expression / disallowed token / non-finite output"
+  ]
+}

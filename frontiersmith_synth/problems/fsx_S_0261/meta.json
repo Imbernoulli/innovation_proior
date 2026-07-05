@@ -1,0 +1,18 @@
+{
+  "id": "fsx_S_0261",
+  "tier": "S",
+  "format": "A",
+  "family": "coloring-labeling",
+  "eval_form": "quality-metric",
+  "seed_problem": "Assign frequencies to transmitters minimizing total interference conflicts under a channel budget; checker scores baseline_conflicts/achieved.",
+  "mutation": "composite: (goal) replace a plain same-channel conflict count with a weighted guard-banded T-coloring cost w*max(0,g-|c_u-c_v|) AND add a per-node retuning-preference term s*|c-p|, turning the pure frequency-assignment objective into a bi-objective interference-plus-preference minimization; (input) generalize the clean transmitter graph to an over-constrained asteroid swarm (K+1 cliques + diffuse community overlaps + skewed vs uniform home-channel tunings) so no perfect allocation exists and greedy vs local-search vs multi-restart diverge.",
+  "objective": "min",
+  "theme": "asteroid mining",
+  "title": "Belt Beacon Channel Allocation: Taming Cross-Talk in an Asteroid Mining Swarm",
+  "strategies": [
+    "do-nothing baseline: park every beacon on channel 1 (achieves B, the maximal-cross-talk plus channel-1 retuning cost)",
+    "sequential greedy: process beacons in order, assign each the channel minimizing added cross-talk against already-placed neighbors plus its own retuning stress",
+    "best-response local search: from a greedy start, repeatedly move each beacon to its cost-minimizing channel (accounting for interference and retuning) until no single move improves the total",
+    "randomized multi-restart local search: run best-response from the greedy start plus several fixed-seed random and home-channel starts, keep the lowest-cost allocation found"
+  ]
+}

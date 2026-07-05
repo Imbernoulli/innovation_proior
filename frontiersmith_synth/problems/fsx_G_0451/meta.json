@@ -1,0 +1,16 @@
+{
+  "id": "fsx_G_0451",
+  "tier": "G",
+  "format": "D",
+  "family": "flop-finite-field-mult",
+  "eval_form": "flops",
+  "theme": "ECC hardware",
+  "title": "Minimize GF(2) Multiplications for a GF(2^k) Field Multiplier",
+  "objective": "min",
+  "strategies": [
+    "schoolbook: k*k partial products a_i&b_j, XOR-accumulate, reduce mod f (baseline)",
+    "one-level Karatsuba: 3 half-size products instead of 4",
+    "recursive Karatsuba down to a tuned base case, best-of several bases",
+    "manual bilinear identities / interpolation to push the multiplication count below Karatsuba"
+  ]
+}

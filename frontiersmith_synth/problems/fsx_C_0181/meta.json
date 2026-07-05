@@ -1,0 +1,18 @@
+{
+  "id": "fsx_C_0181",
+  "tier": "C",
+  "format": "B",
+  "family": "classical-ml-algorithm",
+  "eval_form": "quality-metric",
+  "theme": "warehouse robotics",
+  "title": "Warehouse AGV Fleet: Fault-Telemetry Anomaly Scoring",
+  "objective": "optimize",
+  "source_frameworks": ["MLS-Bench (ml-*)"],
+  "isolation": "candidate runs as an isolated stdin->stdout subprocess via isorun; labels/hidden data stay in the evaluator process",
+  "strategies": [
+    "raw distance-to-global-mean (reproduces the evaluator baseline -> ~0.1 on every fleet)",
+    "per-feature standardized (z-score) distance-to-mean: fixes wildly-scaled fleets but collapses on multi-modal regimes and correlation-breaking faults",
+    "local-density kNN score in a robust (median/MAD) standardized space: adapts to global outliers, off-manifold correlation breakers, multi-modal regimes, scaled features and local outliers -> high geometric mean across the whole family",
+    "hybrid / structure-adaptive detectors (Mahalanobis or PCA reconstruction residual, LOF-style local reachability, iForest-style random partition depth) that model each fleet's structure"
+  ]
+}

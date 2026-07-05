@@ -1,0 +1,16 @@
+{
+  "id": "fsx_S_0211",
+  "tier": "S",
+  "family": "network-design",
+  "seed_problem": "Build a connected relay network where no node has degree > 3, minimizing total cable length; checker validates connectivity+degree and scores baseline/cost.",
+  "mutation": "composite: keep the min-length degree-capped connectivity goal but (a) restrict output to a per-asset degree-capped network AND (b) generalize the input so only a subset of K terminal ground stations must be connected while N-K optional relay masts may be spliced in as Steiner points -- turning the polynomial Euclidean MST into the NP-hard degree-constrained Steiner network problem.",
+  "objective": "min",
+  "theme": "satellite ground stations",
+  "title": "Orbital Downlink Backbone: Degree-Capped Relay Steiner Network",
+  "strategies": [
+    "station-chain baseline: link the ground stations in input order into a single path (always feasible, matches the checker baseline, ratio ~0.1)",
+    "nearest-neighbour station path: start anywhere and repeatedly hop to the closest unvisited ground station, a short degree-2 chain over terminals only",
+    "degree-constrained Kruskal over terminals + component repair: grow a spanning tree of the K stations by adding globally shortest links whose endpoints still have free ports, reconnecting leftover components via spare-capacity nodes",
+    "Steiner relay insertion / local search: splice nearby relay masts into long station links (replace a-b by a-mast-b when it shortens cable) and apply length-reducing swaps respecting the caps"
+  ]
+}

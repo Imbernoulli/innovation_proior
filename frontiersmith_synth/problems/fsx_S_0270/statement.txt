@@ -1,0 +1,137 @@
+# Interstellar Relay: Beacon Uplink Assignment
+
+## Problem
+
+The *Kepler Deep-Space Array* is a constellation of `m` orbital **relay stations**.
+During each observation window it receives `n` incoming **science beacons** (compressed
+transmissions from probes scattered across the system). Every beacon must be uplinked
+through **exactly one** relay station to be preserved — or dropped entirely.
+
+Relay stations are not interchangeable. A given beacon `j`, when routed through station
+`i`, consumes `w[i][j]` units of that station's downlink bandwidth and yields
+`v[i][j]` units of scientific value (the value depends on the station's antenna geometry,
+so the same beacon is worth different amounts at different stations). Each station `i`
+has a hard bandwidth budget `c[i]` for the window: the total bandwidth consumed by the
+beacons assigned to it may not exceed `c[i]`.
+
+You must decide, for each beacon, which station uplinks it (or that it is dropped), so
+that no station exceeds its bandwidth budget and the **total scientific value uplinked**
+is as large as possible.
+
+This is a generalized assignment problem: it is NP-hard, the optimum is unknown for the
+larger windows, and many heuristics (value-density greedy, best-station greedy,
+reassignment local search, randomized restarts) are viable and diverge.
+
+## Input
+
+The first line contains two integers:
+
+```
+m n
+```
+
+- `m` — number of relay stations, numbered `1..m`.
+- `n` — number of science beacons, numbered `1..n`.
+
+The second line contains `m` integers `c[1] c[2] ... c[m]` — the bandwidth budget of
+each station.
+
+Each of the next `n` lines describes one beacon `j` (in order `j = 1..n`) and contains
+`2*m` integers:
+
+```
+v[1][j] w[1][j] v[2][j] w[2][j] ... v[m][j] w[m][j]
+```
+
+meaning that routing beacon `j` through station `i` yields value `v[i][j]` and consumes
+`w[i][j]` bandwidth.
+
+## Output
+
+Print `n` integers `a[1] a[2] ... a[n]` (separated by whitespace; newlines are fine).
+
+- `a[j] = i` (with `1 <= i <= m`) means beacon `j` is uplinked through station `i`.
+- `a[j] = 0` means beacon `j` is dropped (not uplinked).
+
+Printing `n` zeros (drop everything) is always feasible.
+
+## Feasibility
+
+An output is feasible iff:
+
+- it consists of exactly `n` integers, each in the range `0..m`;
+- for every station `i`, the sum of `w[i][j]` over all beacons `j` with `a[j] = i`
+  does not exceed the budget `c[i]`.
+
+Any infeasible output scores `0`.
+
+## Objective
+
+Let
+
+```
+F = sum over all j with a[j] != 0 of v[a[j]][j]
+```
+
+be the total scientific value uplinked. You are **maximizing** `F`.
+
+## Scoring
+
+The checker builds an internal reference assignment `B` by a deterministic
+**first-fit** pass: it considers the stations in order `1..m`, and for each station scans
+the beacons in order `1..n`, assigning a still-unassigned beacon to the current station
+whenever it still fits in that station's remaining budget. Let `B` be the total value of
+that reference assignment (`B > 0`).
+
+The score for a test is
+
+```
+ratio = min(1.0, 0.1 * F / B)
+```
+
+Matching the first-fit reference (`F = B`) scores `0.1`; reaching ten times the reference
+value (`F = 10*B`) caps the score at `1.0`. The overall score is the mean ratio across
+all tests.
+
+## Constraints
+
+- `2 <= m <= 10`.
+- `2 <= n <= 70`.
+- `1 <= v[i][j] <= 120`.
+- `1 <= w[i][j] <= 10`.
+- `10 <= c[i] <= 400`.
+- Time limit: 5 s. Memory limit: 512 MB.
+
+## Example
+
+Input:
+
+```
+2 3
+6 6
+10 3 40 6
+50 4 5 5
+8 2 60 3
+```
+
+There are 2 stations (each budget 6) and 3 beacons. The value/bandwidth table is:
+
+| beacon | via station 1 (v,w) | via station 2 (v,w) |
+|--------|---------------------|---------------------|
+| 1      | 10, 3               | 40, 6               |
+| 2      | 50, 4               | 5, 5                |
+| 3      | 8, 2                | 60, 3               |
+
+First-fit reference `B`: station 1 takes beacon 1 (uses 3, leaves 3), then beacon 3
+(uses 2, leaves 1); station 2 takes beacon 2 (uses 5). Value `B = 10 + 8 + 5 = 23`.
+
+A better assignment routes beacon 2 through station 1 (value 50, uses 4) and beacon 3
+through station 2 (value 60, uses 3), dropping beacon 1. Then `F = 50 + 60 = 110`.
+
+A valid worked output (`a[1] a[2] a[3]`):
+
+```
+0 1 2
+```
+
+Score for this test: `min(1.0, 0.1 * 110 / 23) = min(1.0, 0.478) = 0.478`.

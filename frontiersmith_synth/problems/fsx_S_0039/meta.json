@@ -1,0 +1,18 @@
+{
+  "id": "fsx_S_0039",
+  "tier": "S",
+  "format": "A",
+  "family": "packing-knapsack",
+  "eval_form": "quality-metric",
+  "seed_problem": "Pack polyominoes into a W x H board maximizing covered area (score = 1e5*sum(k)/(W*H)), reflections allowed; checker validates no-overlap and in-bounds.",
+  "mutation": "composite: keep the 2D polyomino board-packing goal but attach a per-piece revenue and a per-type bounded inventory (turning area coverage into a 2D bounded-knapsack), and generalize orientations to the full 8-element dihedral group; the reference baseline is the best single-type regular tiling, so mixed-type gap-filling with rotations/reflections is the open-ended lever.",
+  "objective": "max",
+  "theme": "carnival ride circuit",
+  "title": "Carnival Ride Circuit: Fairground Footprint Packing",
+  "strategies": [
+    "single-type regular tiling baseline: pick the ride type whose axis-aligned grid tiling yields the most revenue and stamp it out (the scored reference)",
+    "density-ordered one-pass greedy: install ride types in decreasing revenue-per-cell order, scanning the lot left-to-right with orientation r=0 only",
+    "fill-first-free-cell packing with all 8 orientations plus seeded multi-restart, keeping the highest-revenue layout found",
+    "mixed-type gap filling / local search that inserts small high-density footprints into the walkway gaps left by large rides"
+  ]
+}

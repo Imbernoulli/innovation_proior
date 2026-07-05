@@ -1,0 +1,120 @@
+# Metro Busker Permit Scheduling
+
+## Problem
+
+The transit authority of a sprawling **subway system** is issuing performance permits to
+street musicians ("buskers") for a single rush-hour window. There are `N` candidate
+**pitches** -- each pitch is one specific busker assigned to one specific spot in one
+specific station concourse. Granting pitch `j` yields an expected **audience value**
+`w_j >= 1` (a function of foot traffic at that spot, the busker's draw and the acoustics
+of the concourse).
+
+The trouble is **crowd interference**: certain pairs of pitches cannot both be granted in
+the same window, because their audiences would spill into the same corridors, block the
+same fare gates, or their amplified sound would bleed together so that *both* performances
+fail. These incompatibilities are given as an arbitrary undirected **conflict graph** over
+the pitches -- it need not be sparse, planar, or bipartite, and one pitch may conflict with
+very many others (a busy interchange spot clashes with dozens of nearby pitches).
+
+You must decide which pitches to **grant**. The granted set must be **conflict-free**: no
+two granted pitches may be an incompatible pair. Subject to that, you want to **maximize
+the total audience value** of the granted pitches.
+
+This is the maximum-weight independent set problem on a general conflict graph, which is
+NP-hard; you are expected to submit the best conflict-free permit schedule you can
+construct, not a provably optimal one.
+
+## Input
+
+```
+N M
+w_1 w_2 ... w_N
+u_1 v_1
+u_2 v_2
+...
+u_M v_M
+```
+
+- Line 1: two integers `N` (number of candidate pitches) and `M` (number of listed
+  conflict pairs).
+- Line 2: `N` integers, `w_1 ... w_N`, the audience value of each pitch.
+- Each of the next `M` lines lists one conflicting pair: pitches `u_i` and `v_i`
+  (`1 <= u_i, v_i <= N`, `u_i != v_i`) are incompatible. Pitches are numbered `1..N`. A
+  pair may be listed more than once; repeated listings describe the same conflict.
+
+## Output
+
+Print your permit schedule as follows:
+
+```
+k
+s_1 s_2 ... s_k
+```
+
+- The first token `k` (`0 <= k <= N`) is the number of pitches you grant.
+- The following `k` tokens are the **distinct** indices `s_1, ..., s_k` of the granted
+  pitches (each in `1..N`). Whitespace and line breaks among the indices are ignored; when
+  `k = 0` you may omit the second line.
+
+## Feasibility
+
+An output is feasible if and only if:
+
+1. it lists exactly `k` distinct pitch indices, each in `1..N`, and
+2. the granted set is **conflict-free**: for every listed conflict pair `(u_i, v_i)` at
+   most one of `u_i, v_i` is granted.
+
+A feasible output always exists (e.g. grant nothing, or grant a single pitch). An
+infeasible output scores 0.
+
+## Objective
+
+Maximize the total granted audience value
+
+```
+F = sum over granted pitches j of w_j.
+```
+
+## Scoring
+
+Let `B` be the value of the trivial baseline that grants only the **single highest-value
+pitch**: `B = max_j w_j` (a one-pitch set is always conflict-free, so `B` is achievable and
+positive). Your score on a test is
+
+```
+ratio = min(1.0, (F / B) / 10)
+```
+
+so matching the single-best-pitch baseline scores `0.1`, collecting five times that value
+scores `0.5`, and reaching ten times the best single pitch (or more) reaches the capped
+score `1.0`. Larger is better. The per-test ratios are averaged over all tests.
+
+## Constraints
+
+- `2 <= N <= 5000`
+- `1 <= M <= 60000`
+- `1 <= w_j <= 1000`
+- `1 <= u_i, v_i <= N`, `u_i != v_i`
+- Time limit: 5s
+- Memory limit: 512 MiB
+
+## Example
+
+Input:
+```
+5 4
+10 6 6 6 6
+1 2
+1 3
+1 4
+1 5
+```
+
+Pitch 1 (value 10) conflicts with every other pitch; pitches 2..5 (value 6 each) are
+mutually compatible. The single-best-pitch baseline is `B = 10`.
+
+Granting `{2, 3, 4, 5}` is conflict-free with value `F = 6 + 6 + 6 + 6 = 24`, giving
+`ratio = min(1.0, (24 / 10) / 10) = 0.24`.
+
+Granting only pitch 1 gives `F = 10 = B` and `ratio = 0.1`. Granting `{1, 2}` is infeasible
+(they conflict) and scores 0.

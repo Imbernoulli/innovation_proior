@@ -1,0 +1,18 @@
+{
+  "id": "fsx_S_0030",
+  "tier": "S",
+  "format": "A",
+  "family": "assignment-matching",
+  "seed_problem": "Assign drones to delivery zones under per-drone capacity to maximize served weight; checker validates capacities and scores total value / baseline.",
+  "mutation": "input+composite: generalize the anchor's multiple-knapsack (uniform per-item weight = value = size) into a FULL generalized assignment problem where every (herd, route) pair carries its own conservation value v_ij and its own capacity footprint d_ij, drawn independently, under per-route knapsack capacities and at-most-one-route-per-herd; skinned as migratory-herd routing through a wildlife corridor. Value/footprint decorrelation makes the value-blind first-fit baseline poor and forces value-greedy, density-greedy and local-search strategies to diverge.",
+  "objective": "max",
+  "theme": "wildlife corridor",
+  "title": "Migratory Herds in the Greatplains Wildlife Corridor",
+  "strategies": [
+    "first-fit-by-index (value-blind): place each herd, in order, on the lowest-indexed route with room -> reproduces the checker baseline B, ratio = 0.1",
+    "value-first greedy: sort all (herd, route) pairs by conservation value descending and assign when herd is free and route has room",
+    "value/footprint-density greedy: sort pairs by v_ij / d_ij and assign, packing more high-value herds per unit capacity",
+    "local search: density/value greedy followed by best-value reassignment passes and capacity-aware pairwise swaps",
+    "LP-relaxation rounding of the generalized assignment / column-generation heuristics"
+  ]
+}

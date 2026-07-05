@@ -1,0 +1,16 @@
+{
+  "id": "fsx_B_0151",
+  "tier": "B",
+  "format": "B",
+  "family": "feasibility-gated-structural",
+  "eval_form": "quality-metric",
+  "theme": "mountain rescue relays",
+  "title": "Mountain-Rescue Relay Gantry: Minimum-Mass Truss Strut Sizing",
+  "objective": "min",
+  "strategies": [
+    "uniform sizing: one cross-section for every strut, just large enough to pass the stress and tip-sway limits (baseline)",
+    "one-shot per-bar stress sizing from a single reference FEM solve, then uniform stiffening for the displacement limit",
+    "iterative fully-stressed design: re-solve and resize each strut to its redistributed axial force, adding minimal uniform stiffness",
+    "sensitivity-based sizing that adds stiffening material where it cuts tip sway per kilogram most"
+  ]
+}

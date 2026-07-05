@@ -1,0 +1,17 @@
+{
+  "id": "fsx_S_0278",
+  "tier": "S",
+  "family": "covering-facility-location",
+  "seed_problem": "Place watchtowers on a graph to cover every cell within radius r, minimizing total cost; score = baseline_cost / achieved_cost.",
+  "mutation": "input: relax the watchtower/forest-graph instance to a heterogeneous geometric covering-facility-location problem -- candidate sensors have INDIVIDUAL coverage radii and INDIVIDUAL costs (cost not monotone in radius), demand stations are clustered vs uniform, so minimizing total activation cost becomes weighted geometric set cover (NP-hard), not uniform-radius k-center.",
+  "objective": "min",
+  "theme": "glacier sensor net",
+  "title": "Glacier Sensor Net: Minimum-Cost Crevasse Coverage",
+  "strategies": [
+    "trivial baseline: switch every candidate sensor on (always feasible; equals the checker baseline B)",
+    "weighted greedy set cover: activate the sensor maximizing newly-covered-stations per unit cost until all covered",
+    "randomized multi-restart greedy + redundancy pruning: perturb near-tie greedy picks, drop sensors made redundant by later picks, keep the cheapest feasible net",
+    "LP relaxation + randomized rounding of the covering LP, then repair uncovered stations",
+    "local search: start from a feasible net and apply cost-reducing swaps / single-sensor replacements"
+  ]
+}

@@ -1,0 +1,113 @@
+# Foraging Route of the Golden Apiary
+
+## Problem
+
+The Golden Apiary keeps a single tireless forager bee that must ferry raw nectar
+across the meadow. There are `N` **nectar tasks**. Task `i` consists of an ordered pair
+of sites on the meadow: a **flower patch** `P_i = (px_i, py_i)` where the nectar is
+picked up, and a **comb cell** `D_i = (dx_i, dy_i)` where that nectar must be deposited.
+Because the bee can only carry one patch's nectar at a time on a given leg, if task `i`
+is served the bee must visit its flower patch `P_i` **before** its comb cell `D_i`
+somewhere along the route (they need not be adjacent).
+
+The bee starts and ends its shift at the hive entrance (the **depot**)
+`H = (Hx, Hy)`. You choose **which tasks to serve** and in **what order** the chosen
+sites are visited. Every task you decide to skip costs you a fixed **spoilage penalty**
+`w_i` (the value of nectar left to rot), measured in the same units as travel distance.
+
+Travel cost between two sites `a` and `b` is the Euclidean distance rounded to the
+nearest integer:
+`d(a, b) = round( sqrt( (ax-bx)^2 + (ay-by)^2 ) )`.
+
+## Input
+
+```
+N
+Hx Hy
+px_1 py_1 dx_1 dy_1 w_1
+px_2 py_2 dx_2 dy_2 w_2
+...
+px_N py_N dx_N dy_N w_N
+```
+
+All coordinates are integers in `[0, 1000000]`. Each penalty `w_i` is an integer.
+
+## Output
+
+Describe the sites the bee visits, in order, between leaving and returning to the
+depot. First print an integer `M` (`0 <= M <= 2N`): the number of site visits.
+Then print `M` lines, each of the form
+
+```
+T i
+```
+
+where `T` is the character `P` (visit flower patch of task `i`) or `D` (visit comb cell
+of task `i`), and `i` is a task index in `[1, N]`. The bee's route is
+`H -> visit_1 -> visit_2 -> ... -> visit_M -> H`.
+
+## Feasibility
+
+- Each `P i` may appear at most once; each `D i` may appear at most once.
+- A task `i` is **served** iff both `P i` and `D i` appear. In that case `P i` must
+  appear **before** `D i`. It is invalid for exactly one of `P i` / `D i` to appear.
+- Any index out of `[1, N]`, any repeated site, a delivery before its pickup, or a
+  lone pickup/delivery makes the whole output infeasible (score 0).
+
+## Objective (minimize)
+
+Let the route length be the sum of `d(.,.)` over all consecutive legs including the two
+depot legs, and let `SKIP` be the sum of `w_i` over all tasks you did **not** serve.
+Minimize
+
+```
+F = route_length + SKIP .
+```
+
+## Scoring
+
+Let `B` be the length of the reference route that serves **every** task in index order
+(`H -> P_1 -> D_1 -> P_2 -> D_2 -> ... -> P_N -> D_N -> H`, with no skips). Your score
+for a test is
+
+```
+ratio = min(1.0, 0.1 * B / max(1, F)) .
+```
+
+Serving all tasks in the given order reproduces `B` and scores `0.1`. Any route/skip
+plan with `F < B` scores higher; reaching `F <= B/10` caps the ratio at `1.0`. The
+overall score is the mean ratio across all tests.
+
+## Constraints
+
+- `1 <= N <= 2000`.
+- Coordinates in `[0, 1000000]`, penalties `w_i` in `[0, 5000000]`.
+- Time limit: 5 s. Memory limit: 512 MB.
+
+## Example
+
+Input:
+```
+2
+0 0
+0 10 10 10 100
+10 0 0 0 100
+```
+
+One feasible output (serve both tasks, patch-then-cell each):
+```
+4
+P 1
+D 1
+P 2
+D 2
+```
+Route `H(0,0) -> (0,10) -> (10,10) -> (10,0) -> (0,0) -> H`: legs
+`10 + 10 + 10 + 10 + 0 = 40`, no skips, `F = 40`. This is exactly the reference `B = 40`,
+so `ratio = 0.1 * 40 / 40 = 0.1`.
+
+A better plan serves task 1 but skips task 2 (penalty 100):
+route `H -> P_1(0,10) -> D_1(10,10) -> H`: `10 + 10 + round(sqrt(200)) = 10+10+14 = 34`,
+plus `SKIP = 100`, giving `F = 134 > B`, ratio `0.1*40/134 = 0.030` — worse here. With
+larger, more scattered instances, choosing a good visiting order (and dropping a few
+far, cheap-penalty tasks) drives `F` well below `B`.

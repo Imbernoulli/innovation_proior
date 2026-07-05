@@ -1,0 +1,129 @@
+# Tuned Freight-Yard Sorting
+
+## Problem
+
+A large freight yard must sort **n** rail cars onto **k** parallel sorting
+tracks. Car *i* has a **tonnage** `w_i`. Some pairs of cars are *incompatible*
+(hazmat placarding, brake-line conflicts, customer-separation rules): a
+conflict between cars *u* and *v* carries a **penalty weight** `c`. The penalty
+is *avoided* (turned into value) exactly when the two cars are routed to
+**different** tracks — a well separated conflict is a satisfied safety rule.
+
+On top of separation, the yardmaster runs an **axle-load balancer**. Each track
+*j* has a regulatory **target residue** `t_j` in `0..m-1`. A track is called
+**tuned** when the total tonnage parked on it is congruent to its target
+modulo `m`:
+
+```
+( sum of w_i over cars i on track j )  ≡  t_j   (mod m).
+```
+
+A tuned track earns a **multiplier bonus** on the separation value that already
+runs across its boundary. Concretely, let
+
+```
+Bnd_j = sum of penalty weights c of conflicts with EXACTLY ONE endpoint on track j
+```
+
+be the *boundary value* of track *j* (each separated conflict contributes to the
+two tracks it straddles). The yard's total merit is
+
+```
+F  =  sum over tracks j of  Bnd_j * ( 1 + lam * tuned_j )
+```
+
+where `tuned_j` is 1 if track *j* is tuned and 0 otherwise, and `lam` is a
+given positive integer. Note `sum_j Bnd_j = 2 * (total separated penalty)`, so
+`F` rewards (a) separating as much conflict weight as possible AND (b) getting
+the residue-tuning right **on the tracks that carry the most boundary value**.
+
+Every track must also satisfy a **balance band**: its car count must lie in
+`[L, U]` (no track may be starved or overloaded).
+
+Maximizing `F` couples three mechanisms — a balanced max-*k*-cut, a
+number-theoretic residue-tuning constraint, and a nonlinear product between
+them. The max-cut-optimal routing almost never lands the residues on its
+high-boundary tracks, and blindly tuning residues wrecks the cut; a good
+solution must trade them off.
+
+## Input
+
+```
+n k m lam L U
+w_1 w_2 ... w_n
+t_1 t_2 ... t_k
+E
+u_1 v_1 c_1
+...
+u_E v_E c_E
+```
+
+- Line 1: number of cars `n`, tracks `k`, modulus `m`, bonus weight `lam`,
+  and balance band `[L, U]`.
+- Line 2: the `n` tonnages `w_i` (positive integers).
+- Line 3: the `k` target residues `t_j`, each in `0..m-1`.
+- Line 4: the number of conflicts `E`.
+- Next `E` lines: a conflict between cars `u_i` and `v_i` (1-indexed,
+  `u_i != v_i`) with penalty weight `c_i`. Parallel conflicts may occur and
+  their weights add.
+
+## Output
+
+Print `n` integers `a_1 ... a_n` (whitespace-separated), where `a_i` in `1..k`
+is the track assigned to car *i*.
+
+## Feasibility
+
+An output is feasible iff:
+- exactly `n` integers are printed, each in `1..k`, and
+- every track's car count lies in `[L, U]`.
+
+An infeasible output scores 0.
+
+## Objective
+
+Maximize the total merit `F` defined above.
+
+## Scoring
+
+Let `B` be the merit `F` of the **round-robin** routing that assigns car *i* to
+track `((i-1) mod k) + 1` (this routing always satisfies the balance band). Your
+score ratio is
+
+```
+ratio = min( 1.0 , (F / B) / 10 )
+```
+
+i.e. matching the round-robin baseline scores `0.1`, and reaching `10 x` the
+baseline (or more) caps at `1.0`. Infeasible outputs score `0`.
+
+## Constraints
+
+- `2 <= k <= 24`, `5 <= m <= 17`, `1 <= lam <= 8`.
+- `12 <= n <= 40000`.
+- `1 <= E <= 250000`, `1 <= w_i <= 10^6`, `1 <= c_i <= 10^6`.
+- `1 <= L <= floor(n/k)` and `ceil(n/k) <= U`, so round-robin is always feasible.
+- Time limit: 5 s. Memory limit: 512 MB.
+
+## Example
+
+```
+12 3 5 8 3 5
+2 3 1 4 1 2 500 600 700 800 900 1000
+3 1 4
+6
+7 8 100
+8 9 100
+9 7 100
+10 11 200
+11 12 200
+7 10 50
+```
+
+Here cars 7..12 are the heavy, conflict-bearing cars; cars 1..6 are light
+(tonnage 1..4) with no conflicts and serve as residue *adjusters*. Round-robin
+assigns car *i* to track `((i-1) mod 3)+1`, giving some boundary value `B` and
+(by construction of the targets) zero tuned tracks. A solution that keeps the
+heavy conflicts separated **and** shuffles the light adjuster cars so that the
+high-boundary tracks become tuned multiplies their boundary value by
+`1 + lam`, scoring well above `0.1`.

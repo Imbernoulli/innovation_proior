@@ -1,0 +1,121 @@
+# Carnival Circuit Sabotage: Barricading the Ride Walkways
+
+## Problem
+
+The *Neon Midway* carnival lays out its attractions on a network of lit **walkways**. Guests
+enter at the **front gate** (node `s`) and everyone wants to reach the flagship **Grand
+Finale** coaster (node `t`) as fast as possible. Each walkway takes a positive amount of
+time to stroll across.
+
+A rival carnival wants to jam up the crowd flow. Overnight its crew can **barricade** some
+walkways, but every walkway has its own barricade cost (portable fences, permits, labor),
+and the crew has a fixed total **barricade budget** `P`. They may close any set of walkways
+whose barricade costs sum to at most `P` — *provided the Grand Finale is still reachable from
+the front gate* (if guests are fully cut off, the fire marshal shuts the whole sabotage down
+and nothing is closed).
+
+Your job: pick which walkways to barricade so that the **fastest remaining stroll** from the
+front gate to the Grand Finale is as **long** as possible.
+
+Formally: given an undirected weighted (multi)graph where every edge has a travel time `w`
+and a barricade cost `c`, choose a set `S` of edges to delete with `sum_{e in S} c_e <= P`,
+keeping `s` and `t` connected, so as to maximize the shortest `s`-`t` travel time in the
+graph with `S` removed.
+
+This is a *budgeted* shortest-path interdiction problem: it is NP-hard, the optimum is
+unknown, and many heuristics (cost-greedy, best-improvement local search, randomized
+restarts, knapsack-style trade-offs) are viable and diverge.
+
+## Input
+
+The first line contains five integers:
+
+```
+n m s t P
+```
+
+- `n` — number of ride junctions (nodes), numbered `1..n`.
+- `m` — number of walkways (edges).
+- `s` — the front gate (source node).
+- `t` — the Grand Finale (sink node), `s != t`.
+- `P` — the total barricade budget.
+
+Each of the next `m` lines describes one walkway (edge index `1..m` in input order):
+
+```
+u v w c
+```
+
+meaning a two-way walkway between junctions `u` and `v` with travel time `w` (`1 <= w`) and
+barricade cost `c` (`1 <= c`). The graph may contain parallel walkways and is guaranteed to
+have `s` connected to `t`.
+
+## Output
+
+On the first line print `r` — the number of walkways you barricade (`0 <= r <= m`).
+On each of the next `r` lines print one walkway index (an integer in `1..m`). All indices
+must be distinct.
+
+Printing `0` on the first line (and nothing else) is always valid.
+
+## Feasibility
+
+An output is feasible iff:
+
+- `0 <= r <= m`;
+- every printed index is in `1..m` and all are distinct;
+- the sum of barricade costs of the chosen walkways is at most `P`;
+- after removing exactly the chosen walkways, `s` and `t` are still connected.
+
+Any infeasible output scores `0`.
+
+## Objective
+
+Let `F` be the shortest-path travel time from `s` to `t` after your chosen walkways are
+removed. You are **maximizing** `F`.
+
+## Scoring
+
+Let `B` be the shortest-path travel time from `s` to `t` in the original network (nothing
+barricaded). The score for a test is
+
+```
+ratio = min(1.0, 0.1 * F / B)
+```
+
+A do-nothing submission (`F = B`) scores `0.1`; reaching a ten-fold delay (`F = 10*B`) caps
+the score at `1.0`. The overall score is the mean ratio across all tests.
+
+## Constraints
+
+- `2 <= n <= 200`, `1 <= m <= 800`.
+- `1 <= w <= 50`, `1 <= c <= 10`.
+- `1 <= P <= 400`.
+- Time limit: 5 s. Memory limit: 512 MB.
+
+## Example
+
+Input:
+
+```
+4 5 1 4 3
+1 2 1 2
+2 4 1 2
+1 3 6 5
+3 4 6 5
+1 4 30 9
+```
+
+Original fastest stroll: `1 -> 2 -> 4` with length `2`, so `B = 2`.
+
+Barricade walkway `1` (the `1-2` link, cost `2 <= 3`). The cheap route is gone; the fastest
+remaining stroll becomes `1 -> 3 -> 4` with length `12`, so `F = 12`.
+
+Score for this test: `min(1.0, 0.1 * 12 / 2) = min(1.0, 0.6) = 0.6`.
+
+A valid worked output:
+
+```
+1
+1
+```

@@ -1,0 +1,16 @@
+{
+  "id": "fsx_G_0440",
+  "tier": "G",
+  "format": "D",
+  "family": "flop-xor-circuit",
+  "eval_form": "flops",
+  "theme": "crypto linear layer",
+  "title": "XOR-Count of a GF(2) Linear Layer: Minimal 2-Input XOR Straight-Line Program",
+  "objective": "min",
+  "strategies": [
+    "naive per-row chain XOR, no sharing (trivial == baseline)",
+    "Paar greedy cancellation-free common-subexpression elimination (greedy)",
+    "multi-restart randomized Paar keeping the best schedule (strong)",
+    "true minimum linear straight-line program / SLP-optimal (NP-hard, open ceiling, uncovered)"
+  ]
+}

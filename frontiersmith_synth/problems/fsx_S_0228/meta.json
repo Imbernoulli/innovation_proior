@@ -1,0 +1,16 @@
+{
+  "id": "fsx_S_0228",
+  "tier": "S",
+  "family": "online-to-offline-replay",
+  "seed_problem": "Frontier-CS cant_be_late offline / ALE-Bench spot-vs-on-demand replay",
+  "mutation": "input+goal: replay a fixed ski-lift demand/availability trace as a static full-horizon lift-dispatch cost-minimization (choose on-demand/spot/pause per slot); intermittent cheap spot option + holding + stranding penalties make it a capacitated lot-sizing-style optimization with no easy optimum",
+  "objective": "min",
+  "theme": "ski resort lifts",
+  "title": "Alpine Lift Dispatch Replay",
+  "strategies": [
+    "trivial: run the on-demand gondola every slot (the scoring baseline)",
+    "greedy: clear each slot immediately with the cheapest single lift (spot when available, else on-demand)",
+    "strong: forward lookahead that pauses to batch demand across no-spot gaps and defers to cheap spot windows, running on-demand only when holding cost exceeds a run or the queue must be bounded/cleared by deadline",
+    "DP / local search over the queue trajectory (Wagner-Whitin-style lot sizing with capacity and intermittent options)"
+  ]
+}

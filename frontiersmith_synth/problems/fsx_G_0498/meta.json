@@ -1,0 +1,16 @@
+{
+  "id": "fsx_G_0498",
+  "tier": "G",
+  "format": "C",
+  "family": "new-ecc-decoder-construct",
+  "eval_form": "quality-metric",
+  "theme": "deep-space comms",
+  "title": "Deep-Space LDPC Batch Decoder",
+  "objective": "max",
+  "strategies": [
+    "do-nothing decoder (checker baseline): keep frames that are already codewords, zero the rest -> corrects only the clean frames",
+    "weight-1 syndrome decoding: precompute single-bit-error syndromes (columns of H) and flip one bit when the syndrome matches a unique column",
+    "Gallager hard-decision bit-flipping: iteratively flip the coordinate in the most unsatisfied parity checks until the syndrome vanishes -> catches multi-bit patterns",
+    "stronger decoders (belief-propagation / ordered-statistics / bounded error enumeration / information-set decoding) recover more heavy-error frames; nearest-codeword decoding is NP-hard so the true optimum is unreachable"
+  ]
+}

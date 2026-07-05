@@ -1,0 +1,127 @@
+# Thirsty Terroir: Vineyard Irrigation Scheduling
+
+## Problem
+
+The *Thirsty Terroir* estate must irrigate its vineyard for the season. The estate has `P`
+solar **irrigation pumps** and `B` vineyard **blocks** (rows of vines). Each pump `p` draws
+from its own reservoir and can deliver at most `cap[p]` litres of water this season.
+
+If block `j` is irrigated by pump `p`, it consumes `w[p][j]` litres from that pump's
+reservoir and produces a grape yield worth `v[p][j]`. The consumption and the yield both
+depend on **which** pump serves the block, because pumps sit at different elevations and
+distances (pressure loss and pipe length differ), and some pumps feed premium blocks better
+than others.
+
+Each block may be served by **at most one** pump (or left dry, producing nothing). Each pump's
+total delivered water must not exceed its reservoir. Choose which pump (if any) serves each
+block to **maximize the total yield**.
+
+This is a Generalized Assignment Problem: it is NP-hard, the optimum is unknown, and many
+heuristics (density-greedy, LP-relaxation rounding, local search with swaps, randomized
+multi-restart) are viable and diverge.
+
+## Input
+
+The first line contains two integers:
+
+```
+P B
+```
+
+- `P` — number of pumps, numbered `1..P`.
+- `B` — number of vineyard blocks, numbered `1..B`.
+
+The second line contains `P` integers: `cap[1] cap[2] ... cap[P]`, the reservoir litres of
+each pump.
+
+Each of the next `B` lines describes one block `j` (in order `j = 1..B`) and contains `2*P`
+integers:
+
+```
+w[1][j] v[1][j] w[2][j] v[2][j] ... w[P][j] v[P][j]
+```
+
+meaning: if pump `p` serves block `j` it consumes `w[p][j]` litres and yields `v[p][j]`.
+
+## Output
+
+Print `B` integers `a[1] a[2] ... a[B]` (whitespace-separated, any layout). For each block `j`:
+
+- `a[j] = 0` means block `j` is left dry (not irrigated);
+- `a[j] = p` (with `1 <= p <= P`) means block `j` is served by pump `p`.
+
+Printing `B` zeros is always feasible (it serves nothing).
+
+## Feasibility
+
+An output is feasible iff:
+
+- it contains exactly `B` integers, each in `0..P`;
+- for every pump `p`, the sum of `w[p][j]` over all blocks `j` assigned to `p` is at most
+  `cap[p]`.
+
+Any infeasible output scores `0`.
+
+## Objective
+
+Let `F` be the total yield of your assignment: the sum of `v[a[j]][j]` over all blocks `j`
+with `a[j] != 0`. You are **maximizing** `F`.
+
+## Scoring
+
+Let `B0` be the yield of the estate's **first-fit** reference schedule, built as follows:
+consider blocks in order `j = 1, 2, ..., B`; for each block try pumps in order
+`p = 1, 2, ..., P` and assign the block to the first pump whose remaining reservoir is at
+least `w[p][j]` (updating that reservoir), or leave it dry if none fits. `B0` is the total
+yield of this reference schedule.
+
+The score for a test is
+
+```
+ratio = min(1.0, 0.1 * F / B0)
+```
+
+The first-fit reference (`F = B0`) scores `0.1`; a schedule ten times better
+(`F = 10*B0`) caps the score at `1.0`. The overall score is the mean ratio across all tests.
+
+## Constraints
+
+- `2 <= P <= 30`.
+- `1 <= B <= 700`.
+- `1 <= w[p][j] <= 20`, `1 <= v[p][j] <= 300`.
+- `1 <= cap[p]`.
+- Time limit: 5 s. Memory limit: 512 MB.
+
+## Example
+
+Input:
+
+```
+2 3
+10 10
+6 10 4 30
+5 20 7 15
+8 25 3 40
+```
+
+There are 2 pumps (each 10 litres) and 3 blocks. Block 1 costs 6 litres / yields 10 on pump 1,
+or 4 litres / yields 30 on pump 2, and so on.
+
+First-fit reference `B0`:
+- Block 1 -> pump 1 (6 <= 10), pump 1 reservoir now 4, yield 10.
+- Block 2 -> pump 1 needs 5 > 4, try pump 2 (7 <= 10), reservoir 3, yield 15.
+- Block 3 -> pump 1 needs 8 > 4, pump 2 needs 3 <= 3, reservoir 0, yield 40.
+
+So `B0 = 10 + 15 + 40 = 65`.
+
+A better schedule assigns block 1 -> pump 2, block 2 -> pump 1, block 3 -> pump 2:
+- pump 1 uses 5 <= 10; pump 2 uses 4 + 3 = 7 <= 10 (feasible).
+- yield `F = 30 + 20 + 40 = 90`.
+
+A valid worked output:
+
+```
+2 1 2
+```
+
+Score for this test: `min(1.0, 0.1 * 90 / 65) = 0.1385`.

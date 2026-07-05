@@ -1,0 +1,16 @@
+{
+  "id": "fsx_C_0390",
+  "tier": "C",
+  "format": "C",
+  "family": "algebraic-exotic-construction",
+  "eval_form": "quality-metric",
+  "theme": "warehouse robotics",
+  "title": "Warehouse SKU Stocking: Maximum Diagonal-Restricted Latin Completion",
+  "objective": "max",
+  "strategies": [
+    "stock-nothing baseline: echo only the prefilled slots (reproduces the checker baseline B, ~0.1)",
+    "row-major smallest-SKU greedy: fast but dead-ends against tight reachability lists and the extra conveyor-loop rule, leaving many slots empty",
+    "MRV fill with seeded restarts: stock the most-constrained slot first with the least-used SKU, keep the best of several restarts -- stocks strictly more slots than greedy",
+    "invalid: stock SKU 1 everywhere -> aisle/column/loop distinctness violated and givens clobbered -> rejected (0.0)"
+  ]
+}

@@ -1,0 +1,18 @@
+{
+  "id": "fsx_B_0175",
+  "tier": "B",
+  "format": "B",
+  "family": "feasibility-gated-structural",
+  "eval_form": "quality-metric",
+  "theme": "bakery supply chain",
+  "title": "Bakery Mezzanine Rack-Gantry Sizing",
+  "objective": "min",
+  "source_frameworks": ["Frontier-Eng (StructuralOptimization)"],
+  "strategies": [
+    "trivial: uniform a_max sizing (evaluator baseline, always feasible) -> ~0.1",
+    "greedy: single-pass fully-stressed design (area = |force|/sigma) from the uniform analysis; because the frame is X-braced and statically indeterminate the load redistributes toward the stiffened members and their stress climbs back over yield, and the sag gate is ignored -> infeasible (0) on most instances",
+    "strong: damped iterated fully-stressed design that drives the indeterminate force redistribution to a fixed point (with a yield safety margin) + uniform sag-gate repair; feasible on both gates and far lighter than baseline",
+    "invalid: uniform a_min sizing -> stresses exceed yield everywhere -> 0"
+  ],
+  "notes": "Feasibility-gated-structural (Frontier-Eng StructuralOptimization) skinned as a bakery-warehouse mezzanine rack gantry. Novel variant vs the determinate trellis: every panel is X-braced, so the 2D pin-jointed truss is STATICALLY INDETERMINATE and member forces depend on the chosen cross-sections, defeating a single-pass fully-stressed design. Pure-numpy FEM (direct stiffness) in the parent; candidate is an isolated stdin->stdout program via isorun. Score = min(1, 0.1*b/weight), infeasible->0; per-instance sag-gate tightness keeps strong below 1.0."
+}

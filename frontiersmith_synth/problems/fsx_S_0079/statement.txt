@@ -1,0 +1,127 @@
+# Arena Relay Fabric: Port-Bounded Cable Layout
+
+## Problem
+
+The *NovaByte Arena* is wiring its e-sports floor. There are `n` gear stations
+(player pods, caster desks, spectator screens, and switching closets), each placed at a
+known 2D floor coordinate. The venue owns a fixed catalogue of `m` **candidate cable
+runs**; run `i` connects two stations and, if installed, costs `w_i` (its physical
+length in metres).
+
+Every station is a small managed switch with a limited number of free cable ports: station
+`v` can terminate **at most `d_v` cables** (`d_v` is `2` or `3`). Your task is to install a
+subset of the candidate cable runs so that the whole floor becomes one **single connected
+fabric** — every station can reach every other station over installed cable — while
+respecting every station's port limit, and you want the **total installed cable length to
+be as small as possible**.
+
+Formally: choose a subset `S` of the candidate edges of an undirected weighted graph so
+that the subgraph `(V, S)` is connected and spans all `n` vertices, and the degree of every
+vertex `v` in `S` is at most `d_v`. Minimize the total weight of `S`.
+
+This is a **degree-constrained minimum connected spanning subgraph** problem. Because the
+optimum reduces to a bounded-degree spanning tree, it is NP-hard; the true optimum is
+unknown and many heuristics (degree-aware Kruskal/Prim, edge-swap local search, randomized
+restarts) are viable and give different results.
+
+## Input
+
+The first line contains two integers:
+
+```
+n m
+```
+
+- `n` — number of stations, numbered `1..n`.
+- `m` — number of candidate cable runs (edges), indexed `1..m` in input order.
+
+The second line contains `n` integers `d_1 d_2 ... d_n`, the port limit of each station
+(each `d_v` is `2` or `3`).
+
+Each of the next `m` lines describes one candidate cable run:
+
+```
+u v w
+```
+
+meaning a possible cable between stations `u` and `v` of length `w` (`1 <= w`). The graph
+is guaranteed to contain, for every `i` in `1..n-1`, at least one cable directly connecting
+station `i` and station `i+1` (so a simple daisy-chain is always installable). There may be
+parallel candidate runs between the same pair of stations.
+
+## Output
+
+On the first line print `r` — the number of cable runs you install.
+On each of the next `r` lines print one cable-run index (an integer in `1..m`). All indices
+must be distinct.
+
+## Feasibility
+
+An output is feasible iff:
+
+- `0 <= r <= m`;
+- every printed index is in `1..m` and all are distinct;
+- in the installed subgraph, every station `v` has degree at most `d_v`;
+- the installed subgraph is connected and spans all `n` stations.
+
+Any infeasible output scores `0`.
+
+## Objective
+
+Let `F` be the total length (sum of `w_i`) of the cable runs you install. You are
+**minimizing** `F`.
+
+## Scoring
+
+Let `B` be the total length of the naive **daisy-chain** layout that installs, for each
+`i` in `1..n-1`, the cheapest single cable between stations `i` and `i+1` (this always
+respects the port limits, since interior stations then use exactly 2 ports). The score for
+a test is
+
+```
+ratio = min(1.0, 0.1 * B / F)
+```
+
+Installing the daisy chain (`F = B`) scores `0.1`; cutting total cable length to a tenth of
+the daisy chain (`F = B/10`) caps the score at `1.0`. The overall score is the mean ratio
+across all tests.
+
+## Constraints
+
+- `4 <= n <= 60`.
+- `n-1 <= m <= 6000`.
+- `1 <= w <= 100000`.
+- `d_v` is `2` or `3` for every station.
+- Time limit: 5 s. Memory limit: 512 MB.
+
+## Example
+
+Input:
+
+```
+4 5
+3 3 2 3
+1 2 10
+2 3 10
+3 4 10
+1 3 4
+2 4 4
+```
+
+The daisy chain uses cables `1` (`1-2`, len 10), `2` (`2-3`, len 10), `3` (`3-4`, len 10),
+so `B = 30`.
+
+A cheaper feasible fabric installs cables `4` (`1-3`, len 4), `5` (`2-4`, len 4), and `1`
+(`1-2`, len 10): degrees are station1=2, station2=2, station3=1, station4=1 (all within
+limits) and all four stations are connected. Then `F = 4 + 4 + 10 = 18`.
+
+Score for this test: `min(1.0, 0.1 * 30 / 18) = min(1.0, 0.1667) = 0.1667`.
+
+A valid worked output:
+
+```
+3
+4
+5
+1
+```

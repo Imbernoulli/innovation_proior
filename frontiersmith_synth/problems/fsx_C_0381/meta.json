@@ -1,0 +1,17 @@
+{
+  "id": "fsx_C_0381",
+  "tier": "C",
+  "format": "B",
+  "family": "optimization-convergence-analysis",
+  "eval_form": "flops",
+  "theme": "bakery supply chain",
+  "title": "Rolling-Dough Robust Planning: Saddle-Point Update Schedule Under a Round Budget",
+  "objective": "min",
+  "source_frameworks": ["MLS-Bench (optimization-*)"],
+  "strategies": [
+    "naive constant gradient descent-ascent at the supplied conservative reference step (beta = gamma = 0); reproduces the evaluator's weak baseline and scores ~0.1",
+    "greedy step tuning: keep pure descent-ascent but sweep a 1-D grid of constant step sizes and take the best; converges faster than the conservative baseline but the rotational coupling caps it",
+    "constant optimistic-GDA + Polyak momentum tuned by a deterministic 3-scalar grid search over the exact round budget; optimism cancels rotation and momentum accelerates the strongly-monotone contraction, driving the residual far below baseline while staying short of the per-round-tuned optimum",
+    "per-round (non-constant) schedule design toward the Krylov/Chebyshev-optimal degree-K polynomial method (e.g. GMRES-style least squares over M^j(z0-z*)); the analytic ceiling that still leaves headroom below 1.0 on every instance"
+  ]
+}

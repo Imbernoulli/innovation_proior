@@ -1,0 +1,115 @@
+# Satellite Ground-Station Activation
+
+## Problem
+
+A space agency operates a set of `N` candidate **ground stations**. Activating station
+`j` for the upcoming observation campaign yields a scientific **value** `w_j >= 1` (a
+function of the antenna aperture, its geographic coverage and its downlink capacity).
+
+Unfortunately some pairs of stations **interfere**: when both members of an interfering
+pair are activated at the same time their transmissions cross-talk on shared uplink bands
+and *both* stations are rendered useless for the campaign. The interference relation is an
+arbitrary (general) undirected graph over the stations -- it need not be sparse, planar
+or bipartite, and a single station may interfere with many others.
+
+You must choose which stations to **activate**. The chosen set must be **conflict-free**:
+no two activated stations may interfere with each other. Subject to that constraint you
+want to **maximize the total scientific value** of the activated stations.
+
+This is the maximum-weight independent set problem on a general conflict graph, which is
+NP-hard; you are expected to submit the best conflict-free selection you can construct.
+
+## Input
+
+```
+N M
+w_1 w_2 ... w_N
+u_1 v_1
+u_2 v_2
+...
+u_M v_M
+```
+
+- Line 1: two integers `N` (number of candidate stations) and `M` (number of interfering
+  pairs).
+- Line 2: `N` integers, `w_1 ... w_N`, the scientific value of each station.
+- Each of the next `M` lines lists one interfering pair: stations `u_i` and `v_i`
+  (`1 <= u_i, v_i <= N`, `u_i != v_i`) interfere. Stations are numbered `1..N`. A pair
+  may be listed more than once; repeated listings describe the same interference.
+
+## Output
+
+Print your activation set as follows:
+
+```
+k
+s_1 s_2 ... s_k
+```
+
+- The first token `k` (`0 <= k <= N`) is the number of stations you activate.
+- The following `k` tokens are the **distinct** indices `s_1, ..., s_k` of the activated
+  stations (each in `1..N`). Whitespace and line breaks between the indices are ignored;
+  when `k = 0` you may omit the second line.
+
+## Feasibility
+
+An output is feasible if and only if:
+
+1. it lists exactly `k` distinct station indices, each in `1..N`, and
+2. the activated set is **conflict-free**: for every interfering pair `(u_i, v_i)` at
+   most one of `u_i, v_i` is activated.
+
+A feasible output always exists (e.g. activate nothing, or activate a single station). An
+infeasible output scores 0.
+
+## Objective
+
+Maximize the total activated value
+
+```
+F = sum over activated stations j of w_j.
+```
+
+## Scoring
+
+Let `B` be the value of the trivial baseline that activates only the **single
+highest-value station**: `B = max_j w_j` (a one-station set is always conflict-free, so
+`B` is achievable and positive). Your score on a test is
+
+```
+ratio = min(1.0, (F / B) / 10)
+```
+
+so matching the single-best-station baseline scores `0.1`, collecting five times that
+value scores `0.5`, and reaching ten times the best single station (or more) reaches the
+capped score `1.0`. Larger is better. The per-test ratios are averaged over all tests.
+
+## Constraints
+
+- `2 <= N <= 250`
+- `1 <= M <= 6000`
+- `1 <= w_j <= 1000`
+- `1 <= u_i, v_i <= N`, `u_i != v_i`
+- Time limit: 5s
+- Memory limit: 256 MiB
+
+## Example
+
+Input:
+```
+5 4
+10 6 6 6 6
+1 2
+1 3
+1 4
+1 5
+```
+
+Station 1 (value 10) interferes with every other station; stations 2..5 (value 6 each)
+are mutually non-interfering. The single-best-station baseline is `B = 10`.
+
+Activating `{2, 3, 4, 5}` is conflict-free with value `F = 6 + 6 + 6 + 6 = 24`, giving
+`ratio = min(1.0, (24 / 10) / 10) = 0.24`.
+
+Activating only station 1 gives `F = 10 = B` and `ratio = 0.1`. Activating `{1, 2}` is
+infeasible (they interfere) and scores 0.

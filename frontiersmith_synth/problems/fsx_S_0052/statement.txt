@@ -1,0 +1,150 @@
+# Night-Shift Shunting in the Riverbend Freight Yard
+
+## Problem
+
+The **Riverbend classification yard** runs a single shunting locomotive on the night
+shift. At the start of the shift the loco sits on the **hump depot**, and it must return
+to the hump depot before dawn.
+
+The dispatcher has a list of `N` **transfer orders**. Order `i` asks the loco to collect a
+cut of wagons standing on a *source track* (its **pickup** point) and haul it to a
+*destination track* (its **delivery** point). To complete an order the loco must first
+visit the pickup point and *later* visit the delivery point (**precedence**): you cannot
+set out a cut you have not yet collected.
+
+The loco can haul several cuts at once, but its drawbar limit is `Q` **axle-units**; order
+`i`'s cut occupies `q_i` axle-units while it is on the loco (from the moment it is picked up
+until it is delivered). The total axle-load on the loco may never exceed `Q`.
+
+Not every order can be finished in one night, but the yardmaster has committed to the
+mainline schedule that **at least `M` orders** will be completed tonight. Subject to that
+quota, you want the loco to roll as few **yard-metres** as possible.
+
+Distances are measured with the **Manhattan (rectilinear) metric**, the natural cost of
+moving along a grid of ladder tracks and crossovers: the distance between points
+`(x1, y1)` and `(x2, y2)` is `|x1 - x2| + |y1 - y2|`.
+
+You choose **which** orders to complete (any set of at least `M` of them) and the **exact
+sequence** of pickup and delivery moves, respecting precedence and the drawbar limit, so as
+to minimize the total distance of the closed depot-to-depot tour. The optimum is NP-hard and
+unknown; subset selection, batching, and tour ordering all interact, so greedy, insertion,
+and local-search strategies diverge.
+
+## Input
+
+The first line contains three integers:
+
+```
+N Q M
+```
+
+- `N` — the number of transfer orders, numbered `1..N`.
+- `Q` — the drawbar limit in axle-units.
+- `M` — the minimum number of orders that must be completed.
+
+The second line contains two integers `X0 Y0`, the coordinates of the hump depot.
+
+Each of the next `N` lines describes one order. Line `i` contains five integers:
+
+```
+ax_i ay_i bx_i by_i q_i
+```
+
+- `(ax_i, ay_i)` — the pickup (source-track) coordinates of order `i`;
+- `(bx_i, by_i)` — the delivery (destination-track) coordinates of order `i`;
+- `q_i` — the axle-units the cut occupies while loaded (`1 <= q_i <= Q`).
+
+## Output
+
+First print an integer `L` (`0 <= L <= 2N`), the number of moves in your tour. Then print
+`L` lines, each describing one move as two integers
+
+```
+t j
+```
+
+where `t = 0` means "**pick up** order `j`" and `t = 1` means "**deliver** order `j`", with
+`1 <= j <= N`.
+
+The loco starts at the hump depot, performs the `L` moves in the given order, and (if it
+made at least one move) returns to the hump depot at the end. An order `j` is **completed**
+iff both its pickup (`0 j`) and its delivery (`1 j`) appear in the list.
+
+## Feasibility
+
+An output is feasible iff all of the following hold:
+
+- every printed `t` is `0` or `1`, and every printed `j` is in `1..N`;
+- no order is picked up more than once and no order is delivered more than once;
+- every delivery `1 j` appears **after** the matching pickup `0 j` (precedence);
+- every order that is picked up is also delivered (no cut is left on the loco at the end);
+- at every moment the total axle-load of the cuts currently on the loco is at most `Q`;
+- the number of **completed** orders is at least `M`.
+
+Any output that violates any of these rules scores `0`.
+
+## Objective
+
+Let the tour visit the sequence of points determined by your moves, starting and ending at
+the hump depot. Let `F` be the total Manhattan length of that closed tour (`F = 0` only if
+`L = 0`, which is infeasible whenever `M >= 1`). You are **minimizing** `F`.
+
+## Scoring
+
+The checker builds an internal baseline `B`: the length of the **serve-everything,
+one-cut-at-a-time** tour that visits the orders in input order — for `i = 1, 2, ..., N` it
+drives from the current position to pickup `i`, then to delivery `i`, and finally returns to
+the depot. This tour always completes all `N >= M` orders and never carries more than one cut
+at a time, so it is feasible; `B` is its length.
+
+The score for a test is
+
+```
+ratio = min(1.0, 0.1 * B / F)
+```
+
+Reproducing the baseline (`F = B`) scores `0.1`; cutting the tour to a tenth of the baseline
+length (`F = B / 10`) caps the score at `1.0`. The overall score is the mean ratio across all
+tests.
+
+## Constraints
+
+- `3 <= N <= 400`, `2 <= Q <= 8`, `1 <= M <= N`.
+- `0 <= X0, Y0, ax_i, ay_i, bx_i, by_i <= 1000`.
+- `1 <= q_i <= Q`.
+- Time limit: 5 s. Memory limit: 512 MB.
+
+## Example
+
+Input:
+
+```
+3 3 2
+0 0
+1 0 2 0 1
+0 5 0 6 1
+9 9 10 10 1
+```
+
+There are `3` orders, a drawbar limit of `Q = 3`, and a quota of `M = 2`; the depot is at
+`(0, 0)`.
+
+The baseline serves all three orders one cut at a time, in order:
+`depot(0,0) -> (1,0) -> (2,0) -> (0,5) -> (0,6) -> (9,9) -> (10,10) -> depot(0,0)`, with
+segment lengths `1 + 1 + 7 + 1 + 12 + 2 + 20 = 44`, so `B = 44`.
+
+A valid worked output completes the two nearby orders `1` and `2` and skips the far order `3`:
+
+```
+4
+0 1
+1 1
+0 2
+1 2
+```
+
+This tour is `depot -> (1,0) -> (2,0) -> (0,5) -> (0,6) -> depot`, with lengths
+`1 + 1 + 7 + 1 + 6 = 16`, so `F = 16`. It completes `2 >= M` orders and never exceeds the
+drawbar limit, so it is feasible.
+
+Score for this test: `min(1.0, 0.1 * 44 / 16) = 0.275`.

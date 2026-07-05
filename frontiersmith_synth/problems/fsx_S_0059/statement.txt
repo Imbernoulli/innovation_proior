@@ -1,0 +1,130 @@
+# Vineyard Irrigation Scheduling: Runoff-Free High-Yield Plots
+
+## Problem
+
+A hillside estate is planning this season's **irrigation schedule**. The estate is divided
+into `n` candidate **plots**. If plot `i` is irrigated this season it produces an expected
+**yield** `w_i` (a positive integer). Irrigating a plot draws `d_i` litres of water from the
+shared reservoir.
+
+Two problems constrain the schedule:
+
+1. **Runoff conflicts.** Because plots lie on a slope with shared drainage channels, certain
+   **pairs** of plots must never both be irrigated in the same season: watering both would
+   cause soil erosion / runoff between them. These `m` forbidden pairs form an arbitrary
+   **conflict graph** — there is no nice structure (it may contain triangles, cliques and
+   dense tangles of channels).
+2. **Reservoir budget.** The reservoir holds only `W` litres for the whole season, so the
+   total water drawn by the irrigated plots may not exceed `W`.
+
+Your job: choose a subset `S` of plots to irrigate that is **runoff-free** (an independent
+set in the conflict graph) **and** stays **within the water budget** (`sum_{i in S} d_i <= W`),
+maximizing the total yield `sum_{i in S} w_i`.
+
+Formally this is a maximum-weight independent set on a general graph with an added knapsack
+(budget) constraint. It is NP-hard, the optimum is unknown at these scales, and many
+heuristics (yield-greedy, yield-per-litre greedy, yield-over-degree greedy, randomized
+multi-restart, local-search swaps) are viable and diverge.
+
+## Input
+
+The first line contains three integers:
+
+```
+n m W
+```
+
+- `n` — number of candidate plots (vertices), numbered `1..n`.
+- `m` — number of runoff conflicts (edges).
+- `W` — total reservoir budget in litres.
+
+The second line contains `n` integers `w_1 w_2 ... w_n` — the yield of each plot
+(`1 <= w_i <= 1000`).
+
+The third line contains `n` integers `d_1 d_2 ... d_n` — the water demand of each plot
+(`1 <= d_i <= W`; every single plot fits the budget on its own).
+
+Each of the next `m` lines describes one conflict:
+
+```
+u v
+```
+
+meaning plots `u` and `v` cannot both be irrigated (`1 <= u, v <= n`, `u != v`).
+
+## Output
+
+On the first line print `c` — the number of plots you irrigate (`0 <= c <= n`).
+On each of the next `c` lines print one plot index (an integer in `1..n`). All printed
+indices must be **distinct**.
+
+Printing `0` on the first line (and nothing else) is always valid but scores nothing extra.
+
+## Feasibility
+
+An output is feasible iff:
+
+- `0 <= c <= n`;
+- every printed index is in `1..n` and all `c` indices are distinct;
+- no two chosen plots conflict (the chosen set is an independent set of the conflict graph);
+- the total water demand of the chosen plots is at most `W` (`sum_{i in S} d_i <= W`).
+
+Any infeasible output scores `0`.
+
+## Objective
+
+Let `F = sum of w_i over the chosen plots`. You are **maximizing** `F`.
+
+## Scoring
+
+Let `B` be the largest single yield, `B = max_i w_i` (irrigating just that one plot is always
+feasible, because `d_i <= W` for every plot). The score for a test is
+
+```
+ratio = min(1.0, 0.1 * F / B)
+```
+
+Irrigating only the single best plot (`F = B`) scores `0.1`; assembling a schedule worth ten
+times the best single plot (`F = 10*B`) caps the score at `1.0`. The overall score is the mean
+ratio across all tests.
+
+## Constraints
+
+- `1 <= n <= 3000`.
+- `1 <= m <= 25000`.
+- `1 <= w_i <= 1000`.
+- `1 <= d_i <= W`, `1 <= W <= 200000`.
+- Time limit: 5 s. Memory limit: 512 MB.
+
+## Example
+
+Input:
+
+```
+6 6 8
+10 8 6 6 5 4
+4 3 2 2 2 1
+1 2
+2 3
+3 4
+4 5
+5 6
+1 4
+```
+
+Here `B = max(10,8,6,6,5,4) = 10` (plot 1 alone).
+
+Irrigating plots `{1, 3, 6}` is runoff-free (none of the pairs 1-3, 1-6, 3-6 is a conflict)
+and its water demand is `4 + 2 + 1 = 7 <= 8`, so it is within budget. Its yield is
+`F = 10 + 6 + 4 = 20`.
+
+Score for this test: `min(1.0, 0.1 * 20 / 10) = min(1.0, 0.2) = 0.2`.
+
+A valid worked output:
+
+```
+3
+1
+3
+6
+```
