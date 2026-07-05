@@ -25,11 +25,30 @@ gzip -kf sft/innovation_sft.jsonl sft/maintain_sft.jsonl
 These files use **two per-example metadata flags** upstream LLaMA-Factory doesn't support, so
 everything can train in one run:
 
-> **https://github.com/Imbernoulli/LLaMA-Factory** — branch **`feat/per-turn-loss-mask`**
+> **https://github.com/Imbernoulli/LLaMA-Factory** — branch **`feat/per-turn-loss-mask`**,
+> **commit `494ff82` or later (required)**
 > ```bash
 > git clone -b feat/per-turn-loss-mask https://github.com/Imbernoulli/LLaMA-Factory.git
 > cd LLaMA-Factory && pip install -e ".[torch,metrics]"
 > ```
+>
+> ⚠️ **2026-07 fixes (`494ff82`) — do not train on earlier states of the branch:**
+> 1. **`loss: null` schema landmine.** A jsonl mixing flagged and unflagged examples gets ONE
+>    unified pyarrow message struct; the absent `loss` key materializes as `None` and the old
+>    `bool(message.get("loss", True))` silently masked EVERY turn of every unflagged example
+>    (zero loss, no warning) — or, depending on datasets version and row order, the load crashed
+>    on the schema cast. Fixed: absent and `None` both mean "train". Belt-and-braces, the build
+>    scripts now write a **uniform schema**: explicit `"loss": true` on every assistant turn and
+>    explicit `tools`/`enable_thinking` on every row (both shipped `.jsonl.gz` are already patched).
+> 2. **Folded turns render without an empty think.** `ReasoningTemplate` used to re-inject
+>    `<think>\n\n</think>` into every think-less assistant turn at encode time, undoing the
+>    `fold_think` data fix and conditioning the model on empty-think history that never occurs at
+>    inference. `loss:false` turns now render with **no** think block (official-template behavior).
+>
+> **Invariant (enforced):** a turn whose think was stripped by folding NEVER enters the loss —
+> `build_sft.py` hard-asserts it at build time (folded turns are `loss:false`, trained turns are
+> exactly the trailing current round), and the fork masks those targets to IGNORE_INDEX
+> (regression-tested end-to-end on the real files).
 
 1. **Per-turn `loss`** — a `"loss": false` on a sharegpt turn keeps it as context but excludes it
    from the loss (finer than `mask_history`). Used for innovation_sft's folded history.

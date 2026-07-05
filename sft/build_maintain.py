@@ -128,15 +128,16 @@ for stub, cap, et in SOURCES:
             c['value'] = neutralize_special(str(c['value']))
         if ex.get('system'):
             ex['system'] = neutralize_special(str(ex['system']))
-        out = {'conversations': ex['conversations']}
-        if ex.get('system'):
-            out['system'] = ex['system']
-        # tools: keep declared, else reconstruct from observed calls
-        tools = ex.get('tools') or synth_tools(ex['conversations'])
-        if tools:
-            out['tools'] = tools
-        if et is not None:
-            out['enable_thinking'] = et
+        # Uniform top-level schema (load-safety, 2026-07): every row carries the SAME keys, so the
+        # arrow schema never depends on which rows land in the first block -- optional columns that
+        # appear only later in the file crash the datasets load (observed with datasets 4.8.5).
+        # Reasoning rows get an explicit enable_thinking=true (identical behaviour to the qwen3
+        # template default, but immune to schema/None handling).
+        out = {'conversations': ex['conversations'],
+               'system': ex.get('system') or "",
+               # tools: keep declared, else reconstruct from observed calls
+               'tools': (ex.get('tools') or synth_tools(ex['conversations'])) or "",
+               'enable_thinking': True if et is None else et}
         merged.append(out)
         kept += 1
     has_think = sum(1 for e in merged[-kept:] if any('<think>' in c['value'] for c in e['conversations'] if c['from'] in ASST)) if kept else 0

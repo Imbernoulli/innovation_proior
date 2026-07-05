@@ -37,13 +37,19 @@ git-ignored and regenerable with the scripts. Two datasets, trained **together i
   into every system prompt as meta-conditioning. Multi-turn data is emitted in two framings —
   *full* (history keeps its reasoning) and *folded* (prior rounds' reasoning emptied, only the
   current round trained) — so the model learns to derive against both kinds of history.
-  > **Training-code note (2026-06 remediation, see below):** the *folded* framing emptied history
-  > `<think>` to a literal `<think>\n\n</think>`, which does **not** match the official Qwen3/Qwen3.5
-  > template (it strips history `<think>` **entirely**) and was traced to the "the next thinking is
-  > empty" artifact. Fixed in `build_sft.fold_think` (strip the whole block). This also showed the
-  > `feat/per-turn-loss-mask` fork is largely **unnecessary** — emitting natural single-user +
-  > observation conversations lets upstream LLaMA-Factory handle it. Details:
-  > [`experiments/PIPELINE_FINDINGS_zh.md`](experiments/PIPELINE_FINDINGS_zh.md) §发现二.
+  > **Training-code note (2026-06 remediation, corrected 2026-07):** the *folded* framing emptied
+  > history `<think>` to a literal `<think>\n\n</think>`, which does **not** match the official
+  > Qwen3/Qwen3.5 template (it strips history `<think>` **entirely**) and was traced to the "the
+  > next thinking is empty" artifact. The 2026-06 fix (`build_sft.fold_think` strips the whole
+  > block) turned out to be a **token-level no-op**: the fork's `ReasoningTemplate` re-injected the
+  > identical empty think into every think-less assistant turn at encode time. Truly fixed in fork
+  > commit `494ff82` (2026-07): `loss:false` turns now render **without any think block**, matching
+  > the official template; verified end-to-end on real folded examples. The fork also had a
+  > `loss:null` schema landmine that could crash the load or silently train unflagged examples with
+  > **zero loss** — fixed in the same commit, and both shipped jsonl now carry a uniform schema
+  > (explicit `loss`/`tools`/`enable_thinking` on every row). The longer-term plan (retire the fork,
+  > emit natural single-user + observation conversations for upstream LLaMA-Factory) still stands.
+  > Details: [`experiments/PIPELINE_FINDINGS_zh.md`](experiments/PIPELINE_FINDINGS_zh.md) §发现二/三.
 - **`maintain_sft.jsonl`** (`sft/build_maintain.py`) — a capability-**maintenance** set: public
   **Qwen**-distilled traces (khazarai, WithinUsAI, armand `pi`/Claude-Code, nvidia Open-SWE) mixed
   in as on-policy replay to preserve the base Qwen model's original abilities (against catastrophic
@@ -55,8 +61,10 @@ git-ignored and regenerable with the scripts. Two datasets, trained **together i
 Mixing all of this in **one** training run needs two per-example controls that upstream
 LLaMA-Factory lacks, so we maintain a fork:
 
-> **https://github.com/Imbernoulli/LLaMA-Factory** — branch **`feat/per-turn-loss-mask`**
-> (`INNOVATION_PRIOR.md` there documents exactly what changed and why)
+> **https://github.com/Imbernoulli/LLaMA-Factory** — branch **`feat/per-turn-loss-mask`**,
+> **commit `494ff82` or later** — earlier states of the branch have a `loss:null` handling bug
+> (silent zero-loss training / load crash on mixed files) and re-inject empty think blocks into
+> folded history turns. (`INNOVATION_PRIOR.md` there documents exactly what changed and why.)
 
 1. **Per-turn `loss`** — a `"loss": false` turn stays as context but is excluded from the loss.
    This folds prior rounds while still training **every** action of the current round — which

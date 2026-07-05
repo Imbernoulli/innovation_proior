@@ -308,6 +308,37 @@ def tag_example(ex):
             'defines_class': bool(_CLASS_RE.search(txt)), 'has_fallback': bool(_FALLBACK_RE.search(txt)),
             'has_code': '```' in txt}
 
+# ---------- uniform schema (load-safety, 2026-07) ----------
+# A file that uses the per-turn `loss` flag ANYWHERE must carry it EVERYWHERE, and every optional
+# top-level column (`tools`) must exist on every row. HF datasets/pyarrow infer the arrow schema
+# from the FIRST block and cast the rest: with mixed rows the absent `loss` key materializes as
+# `loss: None` on every unflagged turn -- and the fork's old `bool(message.get("loss", True))`
+# turned None into False, silently training those examples with ZERO loss -- or the load crashes
+# outright on the schema cast (both observed with datasets 4.8.5 on this exact file; which one you
+# get depends on row order). The fork treats None as "train" since commit 494ff82; the explicit
+# fields below make the load independent of datasets version and row order.
+for ex in examples:
+    if 'tools' not in ex:
+        ex['tools'] = ""
+    for t in ex['conversations']:
+        if t['from'] in ('gpt', 'function_call') and 'loss' not in t:
+            t['loss'] = True
+
+# ---------- HARD INVARIANT: a turn whose think was stripped by folding NEVER enters the loss ----
+# fold_turn() couples the strip with loss=False; this guards against any future edit decoupling
+# them. In a folded example the trained turns must be exactly the trailing current-round block,
+# every folded (loss=False) turn must carry no <think>, and non-folded examples train every turn.
+for ex in examples:
+    ast = [t for t in ex['conversations'] if t['from'] in ('gpt', 'function_call')]
+    flags = [t.get('loss', True) for t in ast]
+    if str(ex.get('_kind', '')).endswith('folded'):
+        assert False in flags and flags == [False] * flags.count(False) + [True] * flags.count(True), \
+            f"{ex.get('_id')}: folded example must train only the trailing current round"
+        assert all('<think>' not in t['value'] for t, fl in zip(ast, flags) if not fl), \
+            f"{ex.get('_id')}: a loss=False folded turn still carries a <think> block"
+    else:
+        assert all(flags), f"{ex.get('_id')}: non-folded example must train every assistant turn"
+
 # ---------- write ----------
 os.makedirs('sft', exist_ok=True)
 out = 'sft/innovation_sft.jsonl'
