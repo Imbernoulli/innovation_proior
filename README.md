@@ -33,6 +33,28 @@ LLaMA-Factory ShareGPT format. Build scripts and full documentation live in
 — `gunzip -k` to use); the working `.jsonl` are git-ignored and regenerable with the scripts.
 Training is **innovation-only** (the HF-scraped maintenance set was dropped 2026-07):
 
+### 数据总览 / Data inventory (2026-07)
+
+All examples are annotated or **verifier-passing** (no failed/wrong samples). **3,802** SFT examples
+in the mix; the HF-scraped maintenance set (903) was dropped.
+
+| 组 group | 条数 | 细分 breakdown | 来源 source |
+|---|---:|---|---|
+| **method**（单轮，一篇论文 = 一个发现 QA） | 1,547 | single-turn | 标注 annotated |
+| **trajectory**（逐 rung 多轮推导） | 678 | full 166 · folded 512 | 标注 annotated |
+| **agentic**（带工具调用的多轮） | 473 | full 127 · folded 346 | 标注 annotated |
+| **v4 / cpp**（FrontierCS 单文件 C++ 落点） | 346 | fcs/ale-converted 168 · cpv4 110 · cpv4b 67 | **cc + Codex** 合成，100% 单文件 C++/stdin、100% debug/自验 |
+| **wave-2 · reasoning** | 397 | Guru 6-domain | 27B 拒绝采样 + DeepSeek 兜底 |
+| **wave-2 · ifollow** | 141 | IFEval 约束 | 同上 |
+| **wave-2 · code (C++)** | 119 | 竞赛题，compile+run 验证 | 27B / DeepSeek 蒸馏 |
+| **wave-2 · math** | 92 | 含 Flash-judge 救回的不可判金标 | 27B / DeepSeek 蒸馏 |
+| **wave-2 · fcs_codex** | 9 | algorithm 7 · research-cpu 1 · research-gpu 1 | **Codex `gpt-5.5` 黑盒** |
+| ~~distill / maintain~~ | ~~903~~ | ❌ 已删 dropped 2026-07 | HF-scraped Qwen distill (khazarai/WithinUsAI/nvidia Open-SWE) |
+
+> 术语：仓库里旧的 **"distill" = 被删的 HF-maintain**；本轮**新蒸馏**（27B/DeepSeek rollout）在 **wave-2** 里，是保留的。
+> wave-2 的 raw verified keeper（787 条，含 problem + 所有过验证生成）另存 `sft/innovation_wave2_raw_keepers.jsonl.gz`。
+> 引擎仍在后台产出（27B code-only + DeepSeek tier-2 + Codex），wave-2 会继续增长。
+
 - **`innovation_sft.jsonl`** (`sft/build_sft.py`) — our annotated data: each method as a Q&A, each
   trajectory / agentic ladder as a multi-turn conversation (with tool use), the answer being the
   scientist write-up (`train_answer`), reasoning in `<think>`, and the discovery **year** injected
